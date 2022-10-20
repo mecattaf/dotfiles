@@ -1,0 +1,34 @@
+# More content: https://github.com/enoki-inc/docker/blob/60745a43c7a266639035ad6ef51686552d609124/aither-dots-main/aither/mako/mako-riv/config
+
+font=JetBrainsMono Nerd Font 12 
+margin=15
+padding=15,10,15
+default-timeout=5000
+border-size=1
+border-radius=0
+anchor=top-right
+layer=overlay
+#max_visible=3
+
+background-color=#002b36
+text-color=#93a1a1
+border-color=#b58900
+
+[urgency=low]
+background-color=#002b36
+text-color=#268bd2
+border-color=#b58900
+
+[urgency=high]
+background-color=#002b36
+text-color=#dc322f
+border-color=#b58900
+
+
+#Optional:
+#Icons
+#icon-path=/usr/share/icons/Papirus-Adapta-Nokto-Maia:/usr/share/icons/Papirus-Maia:/usr/share/icons/Papirus
+#[app-name=playerctl]
+#max-icon-size=96
+
+#Notify if seat occupancy has changed (ie. a user has logged in/out)

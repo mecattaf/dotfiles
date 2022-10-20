@@ -1,0 +1,54 @@
+## Multiplayer window border colors 
+# this still needs testing, make sure it's "mark"
+for_window [mark="seat1"] client.focused $base05 $base05 $base05 $base05 $base05
+for_window [mark="seat2"] client.focused $base08 $base08 $base08 $base08 $base08
+for_window [mark="seat3"] client.focused $base0D $base0D $base0D $base0D $base0D 
+for_window [mark="seat4"] client.focused $base0B $base0B $base0B $base0B $base0B 
+for_window [mark="seat6"] client.focused $base0F $base0F $base0F $base0F $base0F
+for_window [mark="seat5"] client.focused $base0A $base0A $base0A $base0A $base0A 
+for_window [mark="seat6"] client.focused $base0F $base0F $base0F $base0F $base0F
+for_window [mark="seat7"] client.focused $base0C $base0C $base0C $base0C $base0C 
+for_window [mark="seat8"] client.focused $base09 $base09 $base09 $base09 $base09 
+for_window [mark="seat9"] client.focused $base0E $base0E $base0E $base0E $base0E 
+for_window [mark="seat10"] client.focused $base00 $base00 $base00 $base00 $base00 
+
+##### Default Keybindings #####
+
+# Drag windows around
+floating_modifier Mod1 normal
+
+# Move focused window
+bindsym Mod1+h move left 50
+bindsym Mod1+j move down 50
+bindsym Mod1+k move up 50
+bindsym Mod1+l move right 50
+
+# Same with arrow keys
+bindsym Mod1+Left move left 100
+bindsym Mod1+Down move down 100
+bindsym Mod1+Up move up 100
+bindsym Mod1+Right move right 100
+
+# Move focus around
+bindsym Mod1+Shift+h exec swaymsg focus left
+bindsym Mod1+Shift+j exec swaymsg focus down
+bindsym Mod1+Shift+k exec swaymsg focus up
+bindsym Mod1+Shift+l exec swaymsg focus right
+
+# Resize window
+bindsym Mod1+Shift+Left resize shrink width 50
+bindsym Mod1+Shift+Down resize shrink height 50
+bindsym Mod1+Shift+Up resize grow height 50
+bindsym Mod1+Shift+Right resize grow width 50
+
+# Mark windows for a specific seat
+bindsym Mod1+1  mark "seat1"
+bindsym Mod1+2  mark "seat2"
+bindsym Mod1+3  mark "seat3"
+bindsym Mod1+4  mark "seat4"
+bindsym Mod1+5  mark "seat5"
+bindsym Mod1+6  mark "seat6"
+bindsym Mod1+7  mark "seat7"
+bindsym Mod1+8  mark "seat8"
+bindsym Mod1+9  mark "seat9"
+bindsym Mod1+10 mark "seat10"

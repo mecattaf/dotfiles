@@ -1,0 +1,89 @@
+# This should be compatible with the unpatched version of Sway
+
+##### Applying Dotfiles #####
+
+## General window border colors
+# Property Name           Border  BG      Text    Indicator Child-border
+client.focused            $base05 $base0D $base00 $base0D   $base0D
+client.unfocused          $base01 $base00 $base05 $base01   $base01
+client.focused_inactive   $base01 $base01 $base05 $base03   $base01
+client.urgent             $base08 $base08 $base00 $base08   $base08
+client.placeholder        $base00 $base00 $base05 $base00   $base00
+client.background         $base07
+
+# Mouse behavior
+focus_follows_mouse no 
+
+# Window activation focus (smart|urgent|focus|none)
+focus_on_window_activation none
+
+# Font
+font pango:$font $font-size
+
+
+# Gaps
+smart_gaps off
+gaps inner $tiling-inner-gaps
+
+# Borders
+default_border pixel $floating-border-size
+default_floating_border normal
+hide_edge_borders smart
+
+##### Autostart behavior #####
+
+# We are using an external wallpaper manager called azote, it's available on rpm-ostree and apk
+# it helps us graphically manage per-output wallpapers dynamically.
+# The user's selected wallpaper goes there
+#set $wallpaper ~/.local/share/backgrounds/default.png
+#exec swaybg -i $wallpaper -m fill -o "*"
+exec ~/.azotebg
+# Wallpaper fallback
+# exec swaybg -c '#000000'
+
+# Notification system
+## Rohan make sure this is the right directory
+exec mako --config ~/.config/mako/config
+
+# Gnome Settings
+set $gnome-schema org.gnome.desktop.interface
+exec_always {
+        gsettings set $gnome-schema cursor-theme $gnome-cursor-theme
+        gsettings set $gnome-schema gtk-theme 
+        #gsettings set $gnome-schema icon-theme 'Your icon theme'
+        #gsettings set $gnome-schema font-name 'Your font name'
+        gsettings set org.gnome.desktop.wm.preferences button-layout ""
+
+# Spawn an alacritty terminal
+set $term alacritty -o window.opacity=0.8
+# should also point to the right config file with -c ~/.config/alacritty/host.config
+
+
+# Mapping colored cursors to seats
+seat seat0 xcursor_theme  $seat0-cursor  $cursor-size
+seat seat1 xcursor_theme  $seat1-cursor  $cursor-size
+seat seat2 xcursor_theme  $seat2-cursor  $cursor-size
+seat seat3 xcursor_theme  $seat3-cursor  $cursor-size
+seat seat4 xcursor_theme  $seat4-cursor  $cursor-size
+seat seat5 xcursor_theme  $seat5-cursor  $cursor-size
+seat seat6 xcursor_theme  $seat6-cursor  $cursor-size
+seat seat7 xcursor_theme  $seat7-cursor  $cursor-size
+seat seat8 xcursor_theme  $seat8-cursor  $cursor-size
+seat seat9 xcursor_theme  $seat9-cursor  $cursor-size
+seat seat10 xcursor_theme $seat10-cursor $cursor-size
+
+seat seat0 fallback true
+
+
+# Displays are dynamically managed with Kanshi
+exec kanshi --config ~/.config/kanshi/config
+
+# Adjustments for multi-user setups
+for_window [app_id=".*"] floating enable, border pixel 4,  resize set height 100ppt width 100ppt, move window to workspace 1
+for_window [app_id="Alacritty"] floating enable, border pixel 3,  resize set height 800 width 1200
+# New windows do not capture focus by default
+no_focus [app_id=".*"]
+
+# Map seats to a single output
+# could avoid problems, tbd
+#input "*" map_to_output "HDMI-A-1"

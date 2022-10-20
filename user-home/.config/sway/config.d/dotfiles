@@ -1,0 +1,54 @@
+# Base16 colorschemes
+# Rohan the following colors should be templated as they are defined by the user themselves
+
+# Base16 Colorscheme, default to solarized 
+set $base00 #002b36
+set $base01 #073642
+set $base02 #586e75
+set $base03 #657b83
+set $base04 #839496
+set $base05 #93a1a1
+set $base06 #eee8d5
+set $base07 #fdf6e3
+set $base08 #dc322f
+set $base09 #cb4b16
+set $base0A #b58900
+set $base0B #859900
+set $base0C #2aa198
+set $base0D #268bd2
+set $base0E #6c71c4
+set $base0F #d33682
+
+# Not sure the brackets work here, also should we be using absolute directories
+set $font 'JetBrainsMono Nerd Font'
+set $font-size 12
+
+set $floating-border-size 5
+set $tiling-inner-gaps 10
+
+set $gnome-cursor-theme 'Bibata-Modern-Classic'
+# Not sure if we should be using absolute directories for the gtk
+# it's usually found in .themes/Base16
+set $gnome-gtk-theme'Base16'
+
+# The custom cursors are typically found at ~/.icons as per XDG standards
+# Rohan we should make sure this works with aither, might need full path to work?
+# Note that the cursor colors match the per-window marks for border colors in sway-aither
+set $seat0-cursor Bibata-Modern-Classic 
+set $seat1-cursor Bibata-Modern-Light 
+set $seat2-cursor Bibata-Modern-Red 
+set $seat3-cursor Bibata-Modern-Blue 
+set $seat4-cursor Bibata-Modern-Green
+set $seat5-cursor Bibata-Modern-Yellow
+set $seat6-cursor Bibata-Modern-Purple
+set $seat7-cursor Bibata-Modern-Cyan 
+set $seat8-cursor Bibata-Modern-Orange
+set $seat9-cursor Bibata-Modern-Magenta
+set $seat10-cursor Bibata-Modern-Dark 
+
+set $cursor-size 24
+
+# Hardware-specific:
+# Note: to find your own, run swaymst -t get_inputs from terminal
+set $touchpad-identifier "1267:12624:ELAN0670:00_04F3:3150_Touchpad"
+set $touchpad-scroll-factor 0.5

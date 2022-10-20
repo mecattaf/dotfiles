@@ -1,0 +1,34 @@
+# Fix for chrome applications on wayland, capturing focus
+for_window [app_id="^chrome-.*"] shortcuts_inhibitor disable
+
+set $google-chrome flatpak run com.google.Chrome
+set $soundcloud flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=eikjhbkpemdappjfcmdeeeamdpkgabmk'
+set $notion flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=mlneepkinfdepaiigomojgjbfpfieoln'
+set $superhuman flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=cabkgbgkeonbpeoedbaeolhgfkempoka'
+set $trello flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=kllgkemdchfblljcbacggbcjeongoidi'
+set $kumospace flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=dohoidcfojjilekckoebcgpmjcnbjped'
+
+# Autostart Chrome pages
+#exec $google-chrome
+#exec $soundcloud
+#exec $notion
+#exec $superhuman
+#exec $trello
+#exec $kumospace
+
+#for_window [app_id="^google-chrome"] mark "Chrome", move scratchpad
+for_window [app_id="^chrome-eikjhbkpemdappjfcmdeeeamdpkgabmk-Default"] mark "Soundcloud", move scratchpad
+for_window [app_id="^chrome-mlneepkinfdepaiigomojgjbfpfieoln-Default"] mark "Notion", move scratchpad
+for_window [app_id="^chrome-cabkgbgkeonbpeoedbaeolhgfkempoka-Default"] mark "Superhuman", move scratchpad
+for_window [app_id="^chrome-kllgkemdchfblljcbacggbcjeongoidi-Default"] mark "Trello", move scratchpad
+for_window [app_id="^chrome-dohoidcfojjilekckoebcgpmjcnbjped-Default"] mark "Kumospace", set opacity 0.6, move scratchpad
+
+#bindsym $mod+1 [con_mark="Chrome"] scratchpad show
+bindsym $mod+2 [con_mark="Soundcloud"] scratchpad show
+bindsym $mod+3 [con_mark="Notion"] scratchpad show
+bindsym $mod+4 [con_mark="Superhuman"] scratchpad show
+bindsym $mod+5 [con_mark="Trello"] scratchpad show
+bindsym XF86PickupPhone [con_mark="Kumospace"] scratchpad show
+
+
+#for_window [app_id="^chrome--Default"] move container to workspace 14

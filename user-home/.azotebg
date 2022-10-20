@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+pkill swaybg
+swaybg -o 'HEADLESS-1' -i "/var/home/dev/.local/share/wallpapers/plants-4k-1.png" -m fill &
+swaybg -o 'eDP-1' -i "/var/home/dev/.local/share/wallpapers/plants-4k-1.png" -m fill &
+swaybg -o 'DP-1' -i "/var/home/dev/.local/share/wallpapers/plants-4k-1.png" -m fill &
+
+
+# You can get the list of running displays with the swaymsg -t get_outputs function
+# Make sure to change "/var/home/dev/.local/share/wallpapers" to the right directory

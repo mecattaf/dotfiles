@@ -1,0 +1,19 @@
+# We may want to hardcode ~, or at least set it at ignition in aither. 
+# Ususally the "~" is meant for the Home directory
+
+# To include all configuration files, we should not do that because we expect 
+# the "dotfiles" component to be loaded at the start; but for posterity:
+#include ~/.config/sway/config.d/*
+
+
+include ~/.config/sway/config.d/dotfiles
+include ~/.config/sway/config.d/common
+
+# If using Ponos: 
+# include ~/.config/sway/config.d/ponos
+
+# If using Aither:
+# include ~/.config/sway/config.d/aither
+
+# The difference between Aither and Ponos is in the inputs, 
+#  the outputs, the autostarting scripts

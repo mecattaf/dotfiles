@@ -1,0 +1,21 @@
+profile default {
+    output eDP-1 mode 1920x1080 position 0,1081
+}
+
+profile home {
+    output eDP-1 mode 1920x1080 position 0,0
+    output HDMI-A-1 mode 3840x2160 position 5000,5000
+}
+
+profile headless {
+    output HEADLESS-1  pos 0 0 mode 3840x2160
+    output HEADLESS-2  pos 0 0 mode 3840x2160
+    output HEADLESS-3  pos 0 0 mode 3840x2160
+    output HEADLESS-4  pos 0 0 mode 3840x2160
+    output HEADLESS-5  pos 0 0 mode 3840x2160
+    output HEADLESS-6  pos 0 0 mode 3840x2160
+    output HEADLESS-7  pos 0 0 mode 3840x2160
+    output HEADLESS-8  pos 0 0 mode 3840x2160
+    output HEADLESS-9  pos 0 0 mode 3840x2160
+    output HEADLESS-10 pos 0 0 mode 3840x2160
+  }
