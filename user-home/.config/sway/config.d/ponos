@@ -5,7 +5,7 @@ exec systemctl --user import-environment DISPLAY WAYLAND_DISPLAY SWAYSOCK
 
 exec hash dbus-update-activation-environment 2>/dev/null && \
         dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK
-
+        
 exec gammastep -t 3500:3500 -l 30.2:97.7 -m wayland
 exec waybar
 exec clipman restore
