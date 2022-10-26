@@ -70,7 +70,6 @@ seat seat6 xcursor_theme  $seat6-cursor  $cursor-size
 seat seat7 xcursor_theme  $seat7-cursor  $cursor-size
 seat seat8 xcursor_theme  $seat8-cursor  $cursor-size
 seat seat9 xcursor_theme  $seat9-cursor  $cursor-size
-seat seat10 xcursor_theme $seat10-cursor $cursor-size
 
 seat seat0 fallback true
 
