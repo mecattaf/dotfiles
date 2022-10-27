@@ -4,7 +4,6 @@ for_window [mark="seat1"] client.focused $base05 $base05 $base05 $base05 $base05
 for_window [mark="seat2"] client.focused $base08 $base08 $base08 $base08 $base08
 for_window [mark="seat3"] client.focused $base0D $base0D $base0D $base0D $base0D 
 for_window [mark="seat4"] client.focused $base0B $base0B $base0B $base0B $base0B 
-for_window [mark="seat6"] client.focused $base0F $base0F $base0F $base0F $base0F
 for_window [mark="seat5"] client.focused $base0A $base0A $base0A $base0A $base0A 
 for_window [mark="seat6"] client.focused $base0F $base0F $base0F $base0F $base0F
 for_window [mark="seat7"] client.focused $base0C $base0C $base0C $base0C $base0C 
