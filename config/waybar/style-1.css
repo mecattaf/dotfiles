@@ -1,0 +1,92 @@
+@import "mocha.css";
+
+/** ********** Fonts ********** **/
+* {
+    font-family: "JetBrains Mono", "Iosevka Nerd Font", archcraft, sans-serif;
+    font-size: 28px;
+}
+
+/** ********** Waybar Window ********** **/
+window#waybar {
+    background-color: transparent;
+    color: @text;
+    transition-property: background-color;
+    transition-duration: .5s;
+}
+
+window#waybar.hidden {
+    opacity: 0.5;
+}
+
+/** ********** Sway ********** **/
+#workspaces {
+    background-color: @base;
+    color: @mantle;
+    border-radius: 15px 15px 15px 15px;
+    padding: 4px;
+}
+
+#workspaces button {
+    color: @text;
+    padding: 2px 6px;
+    margin: 5px;
+}
+
+#workspaces button:hover {
+    background-color: @base;
+    color: @text;
+    border: 0px solid @text;
+    border-radius: 15px;
+    padding: 2px 6px;
+}
+
+#workspaces button.visible {
+    background-color: @mantle;
+}
+
+#workspaces button.focus {
+    background-color: @subtext0;
+}
+
+/** ********** Sway Workspaces Custom Colors ********** **/
+#workspaces button#1:hover {
+    background-color: @teal;
+}
+#workspaces button#notion:focus {
+    background-color: @sapphire;
+}
+#workspaces button#loom:hover {
+    background-color: @lavender;
+}
+#workspaces button#linear:hover {
+    background-color: @blue;
+}
+#workspaces button#superhuman:hover {
+    background-color: @yellow;
+}
+#workspaces button#music:hover {
+    background-color: @peach;
+}
+#workspaces button#chatgpt:hover {
+    background-color: @green;
+}
+#workspaces button#calendar:hover {
+    background-color: @mauve;
+}
+#workspaces button#gcloud:hover {
+    background-color: @flamingo;
+}
+#workspaces button#comms:hover {
+    background-color: @rosewater;
+}
+
+
+.modules-left > widget:first-child > #workspaces {
+    margin-left: 0;
+}
+
+.modules-right > widget:last-child > #workspaces {
+    margin-right: 0;
+}
+
+

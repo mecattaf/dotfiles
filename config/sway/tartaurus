@@ -1,0 +1,25 @@
+## Custom Sway Key Bindings for Razer Tartarus
+## Original 15 Buttons
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" Tab exec <your_command_for_key_01>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" q exec <your_command_for_key_02>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" w exec <your_command_for_key_03>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" e exec <your_command_for_key_04>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" r exec <your_command_for_key_05>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" Caps_Lock exec <your_command_for_key_06>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" a exec <your_command_for_key_07>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" s exec <your_command_for_key_08>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" d exec <your_command_for_key_09>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" f exec <your_command_for_key_10>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" Shift_L exec <your_command_for_key_11>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" z exec <your_command_for_key_12>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" x exec <your_command_for_key_13>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" c exec <your_command_for_key_14>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" v exec <your_command_for_key_15>
+#
+## Additional Six Side Functions
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" Alt_L exec <your_command_for_top_button>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" Up exec <your_command_for_wheel_up>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" Left exec <your_command_for_wheel_left>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" Down exec <your_command_for_wheel_down>
+#bindsym --input-device="5426:513:Razer_Razer_Tartarus_Keyboard" Right exec <your_command_for_wheel_right>
+#

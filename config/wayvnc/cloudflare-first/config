@@ -1,0 +1,6 @@
+address=0.0.0.0
+enable_auth=false
+username=abc
+password=abc
+private_key_file=~/.config/wayvnc/cloudflare-first/key.pem
+certificate_file=~/.config/wayvnc/cloudflare-first/cert.pem

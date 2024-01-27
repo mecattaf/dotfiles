@@ -1,0 +1,26 @@
+// vim: set filetype=json:
+
+{
+    "include": "~/.config/waybar/modules",
+    "name": "bar-0", 			// Waybar name
+    "bar_id": "bar-0", 				// Waybar id
+    "layer": "overlay", 				// Waybar at top layer
+    "mode": "dock", 				// Display mode (dock|hide|invisible|overlay)
+    "exclusive": false, 				// Request an exclusive zone from the compositor
+    "passthrough": false, 			// Pass any pointer events to the window under the bar
+    "position": "right", 			// Waybar position (top|bottom|left|right)
+    "height": "", 					// Waybar height (to be removed for auto height)
+    "width": "", 					// Waybar width (empty for auto width)
+    "spacing": 0, 					// Gaps between modules
+    "margin": 0, 					// Space around the bar
+    "margin-top": 0, 				// Space above the bar
+    "margin-bottom": 0, 			// Space below the bar
+    "margin-left": 0, 				// Space to the left of the bar
+    "margin-right": 0, 				// Space to the right of the bar
+    "fixed-center": true, 			// Center modules position
+    "ipc": true, 					// Control waybar with `swaymsg bar` commands
+    // Choose the order of the modules
+    "modules-left": ["custom/pomo","custom/minutes","custom/seconds"],
+    "modules-center": ["pulseaudio", "pulseaudio#2", "backlight", "backlight#2", "battery", "battery#2"],
+    "modules-right": ["clock","clock#3"],
+}

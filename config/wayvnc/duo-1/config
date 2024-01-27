@@ -1,0 +1,6 @@
+address=100.82.27.52
+enable_auth=false
+username=abc
+password=abc
+private_key_file=~/.config/wayvnc/duo-1/key.pem
+certificate_file=~/.config/wayvnc/duo-1/cert.pem

@@ -1,0 +1,13 @@
+profile Laptop {
+    output 'eDP-1' scale 1.5 position 0,0
+}
+
+profile ASUS_and_Laptop {
+    output 'eDP-1' scale 1.5 position 0,0 
+    output 'DP-1' scale 1 position 0,0 
+}
+
+profile ASUS {
+    output 'DP-1' scale 1 position 0,0 
+}
+

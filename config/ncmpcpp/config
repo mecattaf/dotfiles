@@ -1,0 +1,55 @@
+# vim: set filetype=conf :
+
+# Directories
+ncmpcpp_directory = ~/.config/ncmpcpp
+lyrics_directory  = ~/.config/ncmpcpp/lyrics
+mpd_music_dir     = ~/Music
+
+# Behaviour
+message_delay_time = 1
+autocenter_mode = "yes"
+centered_cursor = "yes"
+ignore_leading_the = "no"
+allow_for_physical_item_deletion = "no"
+
+# Integration with external programs
+external_editor = "vim"
+use_console_editor = yes
+mouse_support = "yes"
+mouse_list_scroll_whole_page = "no"
+lines_scrolled = "1"
+
+# Appearance
+user_interface = "alternative"
+colors_enabled = "yes"
+color1 = "magenta"
+color2 = "green"
+main_window_color = "red"
+
+# Window
+song_window_title_format = "{%a - }{%t}|{%f}"
+statusbar_visibility = "yes"
+header_visibility = "no"
+titles_visibility = "no"
+
+# Progress bar
+progressbar_look = "━━─"
+progressbar_color = "black"
+progressbar_elapsed_color = "default"
+
+# Song status
+song_status_format = " {$b$6%a $b$0- $b$3%t}|{$b%f}"
+alternative_header_first_line_format = "$b$1$aqqu$/a$9 {%t}|{%f} $1$atqq$/a$9$/b"
+
+# Song columns list format
+song_columns_list_format = "(50)[magenta]{ar} (50)[green]{t}"
+playlist_display_mode = "columns"
+
+# Song list
+song_list_format = "{{$6%a $3}{%t}}|{%f} $R$5%b $5%l"
+
+# Visualizer
+visualizer_data_source = /tmp/mpd.fifo
+visualizer_output_name = "mpd_visualizer"
+visualizer_in_stereo = "yes"
+

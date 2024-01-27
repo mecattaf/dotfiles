@@ -1,0 +1,5 @@
+
+profile Headless {
+    output HEADLESS-1 scale 1 position 0,0
+}
+

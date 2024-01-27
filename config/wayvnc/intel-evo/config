@@ -1,0 +1,6 @@
+address=10.0.0.1
+enable_auth=false
+username=abc
+password=abc
+private_key_file=~/.config/wayvnc/intel-evo/key.pem
+certificate_file=~/.config/wayvnc/intel-evo/cert.pem

@@ -1,0 +1,30 @@
+
+font=JetBrainsMono Nerd Font 12
+margin=15
+padding=15,10,15
+default-timeout=2500
+border-size=1
+border-radius=15
+anchor=top-right
+layer=overlay
+#max_visible=3
+
+# Colors
+
+background-color=#1e1e2e
+text-color=#cdd6f4
+border-color=#89b4fa
+progress-color=over #313244
+
+[urgency=critical]
+border-color=#f38ba8
+
+[urgency=low]
+border-color=#fab387
+
+#Optional:
+#Icons
+#icon-path=/usr/share/icons/Papirus-Adapta-Nokto-Maia:/usr/share/icons/Papirus-Maia:/usr/share/icons/Papirus
+#[app-name=playerctl]
+#max-icon-size=96
+

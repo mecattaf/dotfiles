@@ -1,0 +1,299 @@
+@import "mocha.css";
+
+/** ********** Fonts ********** **/
+* {
+    font-family: "JetBrains Mono", "Iosevka Nerd Font", archcraft, sans-serif;
+    font-size: 16px;
+}
+
+/** ********** Waybar Window ********** **/
+window#waybar {
+    background-color: transparent;
+    color: @text;
+    border-right: 0px solid @sapphire;
+    transition-property: background-color;
+    transition-duration: .5s;
+}
+
+window#waybar.hidden {
+    opacity: 0.5;
+}
+
+/** ********** Backlight ********** **/
+#backlight {
+    background-color: @base;
+}
+#backlight.2 {
+}
+
+/** ********** Battery ********** **/
+#battery {
+    background-color: @base;
+}
+#battery.charging {
+}
+#battery.plugged {
+}
+
+#battery.2 {
+}
+#battery.2.charging {
+}
+#battery.2.plugged {
+}
+@keyframes blink {
+    to {
+        color: @red;
+    }
+}
+#battery.2.critical:not(.charging) {
+    color: @text;
+    border-bottom: 2px solid @red;
+    animation-name: blink;
+    animation-duration: 0.5s;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+}
+
+/** ********** Clock ********** **/
+#clock {
+    background-color: @base;
+    color: @text;
+    font-size: 16px;
+    font-weight: bold;
+    border-radius: 15px 15px 15px 15px;
+    padding: 10px 5px 10px 5px;
+    margin-left: 5px;
+    margin-right: 5px;
+    margin-bottom: 5px;
+}
+#clock.2 {
+    color: @text;
+    border-radius: 0px 0px 15px 15px;
+    padding: 0px 5px 10px 5px;
+    margin-bottom: 5px;
+}
+#clock.3 {
+    color: @text;
+    font-size: 14px;
+    border-radius: 15px;
+    padding: 5px;
+    margin-bottom: 5px;
+}
+
+/** ********** Sway ********** **/
+.modules-left > widget:first-child > #workspaces {
+    margin-left: 0;
+}
+
+.modules-right > widget:last-child > #workspaces {
+    margin-right: 0;
+}
+
+#mode {
+    background-color: @base;
+    font-weight: bold;
+}
+
+#window {
+    background-color: @base;
+    color: @text;
+}
+window#waybar.empty #window {
+    background-color: transparent;
+}
+
+/** ********** Tray ********** **/
+#tray {
+    padding: 10px 5px 10px 5px;
+}
+#tray > .passive {
+    -gtk-icon-effect: dim;
+}
+#tray > .needs-attention {
+    -gtk-icon-effect: highlight;
+}
+#tray > .active {
+}
+
+/** ********** MPD ********** **/
+#mpd {
+    background-color: @mantle;
+    color: @subtext0;
+    padding: 2px 5px 2px 5px;
+    margin-left: 5px;
+    margin-right: 5px;
+}
+#mpd.disconnected {
+    background-color: @red;
+    color: @crust;
+}
+#mpd.stopped {
+    background-image: linear-gradient(to right, @pink , @rosewater);
+    color: @crust;
+}
+#mpd.playing {
+    background-image: linear-gradient(to right, @teal , @mauve);
+    color: @crust;
+}
+#mpd.paused {
+}
+
+#mpd.2 {
+    border-radius: 15px 15px 0px 0px;
+    padding-top: 8px;
+}
+#mpd.3 {
+    border-radius: 0px 0px 15px 15px;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+}
+
+/** ********** Pulseaudio ********** **/
+#pulseaudio {
+    border-radius: 15px 15px 0px 0px;
+    background-color: @base;
+}
+#pulseaudio.bluetooth {
+    background-color: @base;
+}
+#pulseaudio.muted {
+    background-color: @red;
+}
+
+#pulseaudio.2 {
+    border-radius: 0px 0px 15px 15px;
+}
+#pulseaudio.2.bluetooth {
+}
+#pulseaudio.2.muted {
+}
+
+/** ********** Network ********** **/
+#network {
+    background-color: @mauve;
+    margin-bottom: 5px;
+}
+
+#network.disconnected {
+    background-color: @mantle;
+    color: @subtext0;
+}
+#network.disabled {
+    background-color: @red;
+    color: @crust;
+}
+#network.linked {
+}
+#network.ethernet {
+}
+#network.wifi {
+}
+
+/** ********** Taskbar ********** **/
+#taskbar {
+    border-radius: 15px 15px 0px 0px;
+    margin-top: 6px;
+    padding: 0px 4px;
+}
+#taskbar button {
+    border-radius: 0px;
+    margin: 0px 4px;
+    padding: 0px 4px;
+}
+#taskbar button:hover {
+    background-color: @overlay0;
+}
+#taskbar button.maximized {
+    border-bottom: 2px solid @peach;
+}
+#taskbar button.minimized {
+    border-bottom: 2px solid @pink;
+}
+#taskbar button.active {
+    border-bottom: 2px solid @teal;
+}
+#taskbar button.fullscreen {
+    border-bottom: 2px solid @mauve;
+}
+
+/** ********** Custom ********** **/
+#custom-menu {
+    background-color: @blue;
+    margin-top: 8px;
+}
+
+#custom-pomo {
+    background-color: @base;
+    margin-top: 5px;
+    margin-bottom: 5px;
+    border-radius: 15px;
+    padding: 5px;
+    margin-left: 5px;
+    margin-right: 5px;
+}
+
+#custom-minutes {
+    background-color: @base;
+    border-radius: 15px 15px 0px 0px;
+    margin-top: 5px;
+    margin-left: 5px;
+    margin-right: 5px;
+    margin-bottom: 0px;
+    padding: 10px 5px 0px 5px;
+}
+
+#custom-seconds {
+    background-color: @base;
+    border-radius: 0px 0px 15px 15px;
+    margin-top: 0px;
+    margin-bottom: 5px;
+    margin-left: 5px;
+    margin-right: 5px;
+    padding: 0px 5px 10px 5px;
+}
+
+#custom-power {
+    background-color: @red;
+    margin-bottom: 8px;
+}
+
+#custom-share {
+    background-color: @base; 
+    color: @yellow;
+    margin-top: 2px;
+    margin-bottom: 2px;
+    border-radius: 15px;
+    padding: 5px;
+    margin-left: 5px;
+    margin-right: 5px;
+}
+
+/** Common style **/
+#backlight, 
+#battery,
+#pulseaudio {
+    color: @subtext0;
+    border-radius: 15px 15px 0px 0px;
+    padding: 10px 5px 5px 5px;
+    margin-left: 5px;
+    margin-right: 5px;
+}
+
+#backlight.2, 
+#battery.2,
+#pulseaudio.2,
+#network,
+#clock.2,
+#custom-menu {
+    margin-bottom: 8px;
+}
+
+#tags, #tray {
+    background-color: @mantle;
+    border-radius: 15px;
+    margin-left: 5px;
+    margin-right: 5px;
+}
+

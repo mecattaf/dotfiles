@@ -1,0 +1,510 @@
+# vim: filetype=sh
+
+# appearance
+set $rosewater #f5e0dc
+set $flamingo  #f2cdcd
+set $pink      #f5c2e7
+set $mauve     #cba6f7
+set $red       #f38ba8
+set $maroon    #eba0ac
+set $peach     #fab387
+set $green     #a6e3a1
+set $teal      #94e2d5
+set $sky       #89dceb
+set $sapphire  #74c7ec
+set $blue      #89b4fa
+set $lavender  #b4befe
+set $text      #cdd6f4
+set $subtext1  #bac2de
+set $subtext0  #a6adc8
+set $overlay2  #9399b2
+set $overlay1  #7f849c
+set $overlay0  #6c7086
+set $surface2  #585b70
+set $surface1  #45475a
+set $surface0  #313244
+set $base      #1e1e2e
+set $mantle    #181825
+set $crust     #11111b
+
+# target                 title     bg    text   indicator  border
+client.focused           $lavender $base $text  $rosewater $lavender
+client.focused_inactive  $overlay0 $base $text  $rosewater $overlay0
+client.unfocused         $overlay0 $base $text  $rosewater $overlay0
+client.urgent            $peach    $base $peach $overlay0  $peach
+client.placeholder       $overlay0 $base $text  $overlay0  $overlay0
+client.background        $base
+
+
+# Mouse behavior
+focus_follows_mouse no
+
+# Font
+font pango:JetBrainsMono Nerd Font 12
+
+# Gaps
+smart_gaps off
+gaps inner 10
+gaps horizontal 320
+gaps vertical 180
+
+default_border pixel 5
+default_floating_border normal
+hide_edge_borders smart
+
+seat seat0 xcursor_theme Bibata-Modern-Classic 24
+seat seat0 fallback true
+
+# Gnome Settings
+set $gnome-schema org.gnome.desktop.interface
+exec_always  {
+        gsettings set $gnome-schema cursor-theme 'Bibata-Modern-Classic'
+      	#gsettings set $gnome-schema color-scheme 'prefer-dark'
+      	gsettings set $gnome-schema cursor-size '24'
+        gsettings set $gnome-schema gtk-theme 'Catppuccin-Mocha-Standard-Green-Dark'
+      	gsettings set org.gnome.desktop.interface.wm.preferences theme 'Catppuccin-Mocha-Standard-Green-Dark'
+        #gsettings set $gnome-schema icon-theme 'Your icon theme'
+        #gsettings set $gnome-schema font-name 'Your font name'
+        gsettings set org.gnome.desktop.wm.preferences button-layout ""
+}
+
+# Import variables into system-user environment
+exec systemctl --user import-environment DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP
+
+exec hash dbus-update-activation-environment 2>/dev/null && \
+        dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP=sway
+
+exec gammastep -t 3500:3500 -l 30.2:97.7 -m wayland
+exec mako
+exec clipman restore
+exec wl-paste -t text --watch clipman store
+exec /var/home/dev/.local/share/bin/pomo start
+exec /var/home/dev/.local/share/bin/pomo notify
+
+exec swaybg -c '#000000'
+#exec ~/.azotebg 
+
+# Bars
+exec --no-startup-id waybar -c ~/.config/waybar/config-1 -s ~/.config/waybar/style-1.css
+exec --no-startup-id waybar -c ~/.config/waybar/config-0 -s ~/.config/waybar/style-0.css
+
+# Music player backend
+exec --no-startup-id mpd
+exec --no-startup-id mpDris2
+
+# Variables
+set $mod Mod4
+set $scripts ~/.local/share/bin
+
+set $term alacritty
+set $host alacritty -o window.opacity=0.8 -e fish
+
+set $screenshot-full grim - | tee ~/Pictures/scrn-$(date +"%Y-%m-%d-%H:%M:%S").png | wl-copy && notify-send " Screenshot" -t 250
+set $screenshot-area grim -g "$(slurp)" - | tee ~/Pictures/scrn-$(date +"%Y-%m-%d-%H:%M:%S").png | wl-copy && notify-send " Screenshot" -t 250
+
+set $swappy-full grim - | swappy -f -
+set $swappy-area grim -g "$(slurp)" - | swappy -f -
+
+set $record-start notify-send -u critical " Screen Recording Started" -t 0 && wf-recorder -o $(swaymsg -r -t get_outputs | jq -r '.[] | select(.focused == true).name') -f ~/Videos/scrn-$(date +'%Y-%m-%d-%H:%M:%S').mp4 &> /dev/null  
+set $record-select-area notify-send -u critical " Screen Recording Started" -t 0 && wf-recorder -o $(swaymsg -r -t get_outputs | jq -r '.[] | select(.focused == true).name') -g "$(slurp)" -f ~/Videos/scrn-$(date +'%Y-%m-%d-%H:%M:%S').mp4 &> /dev/null
+set $record-stop pkill -SIGINT wf-recorder && notify-send -u low " Screen Recording Stopped" -t 0
+
+set $WOBSOCK $XDG_RUNTIME_DIR/wob.sock
+set $volume-up amixer sset Master 5%+ | sed -En 's/.*\[([0-9]+)%\].*/\1/p' | head -1 > $WOBSOCK && notify-send "ﱛ Volume up" -t 250
+set $volume-down amixer sset Master 5%- | sed -En 's/.*\[([0-9]+)%\].*/\1/p' | head -1 > $WOBSOCK && notify-send "ﱜ Volume down" -t 250
+set $volume-mute amixer sset Master toggle | sed -En '/\[on\]/ s/.*\[([0-9]+)%\].*/\1/ p; /\[off\]/ s/.*/0/p' | head -1 > $WOBSOCK
+
+set $brightness-up light -A 5 && light -O && notify-send " Brightness up" -t 250
+set $brightness-down light -U 5 && light -O && notify-send " Brightness down" -t 250
+set $brightness-up-single light -A 1 && light -O && notify-send " Brightness up" -t 250
+set $brightness-down-single light -U 1 && light -O && notify-send " Brightness down" -t 250
+
+set $waybar-toggle-0 pkill -SIGUSR1 -f 'waybar -c /var/home/dev/.config/waybar/config-0'
+set $waybar-toggle-1 pkill -SIGUSR1 -f 'waybar -c /var/home/dev/.config/waybar/config-1'
+
+set $playerctl-playing notify-send "$(playerctl metadata artist)" "$(playerctl metadata title)" -t 200
+
+
+set $fzf-wifi exec $term --class 'networkwidget' -t 'networkwidget' -e "$scripts/fzf-nmcli"
+set $fzf-bluetooth exec $term --class 'bluetoothwidget' -t 'bluetoothwidget' -e '$scripts/fzf-bluetooth'
+set $fzf-power-menu exec $term -o font.size=22 --class 'powerwidget' -t 'powerwidget' -e $scripts/fzf-power-menu
+
+set $fzf-shortcuts exec $term -o font.size=14 window.opacity=0.75 --class 'shortcutwidget' -t 'shortcutwidget' -e $scripts/fzf-shortcuts
+
+set $music-cli exec $term -o window.opacity=0.95 --class 'music-cli' -t 'music-cli' -e ncmpcpp 
+
+set $music-dl exec $scripts/music-download
+
+set $color-picker exec $scripts/colorpicker 
+
+set $emoji ~/.local/share/bin/emoji-fzf preview | fzf -m --preview '~/.local/share/bin/emoji-fzf get --name {1}' | cut -d ' ' -f 1 | ~/.local/share/bin/emoji-fzf get | clipman store
+
+
+
+for_window [title="bluetoothwidget"] border pixel 0, floating enable, resize set 250 250, move position 1300 790
+for_window [title="networkwidget"] border pixel 0, floating enable, resize set 453 500, move position 1380 490
+for_window [title="powerwidget"] border pixel 0, floating enable, resize set 300 250, move position 0 0, focus
+for_window [title="fzf-switcher"] border pixel 0, floating enable, focus
+for_window [title="music-download"] border pixel 0, floating enable, focus
+
+for_window [title="shortcutwidget"] border pixel 0, floating enable, resize set 1100 700, focus, blur enable
+
+for_window [title="music-cli"] {
+    move container to workspace music
+    blur enable
+    floating disable
+}
+
+for_window [title="clipboard-history"] focus
+for_window [title="emoji-picker"] focus
+
+for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 30 ppt 60 ppt, border pixel 10, focus
+
+
+## Key bindings
+#
+    # Caps Lock toggles trackpad
+    bindsym --to-code Caps_Lock exec swaymsg input type:touchpad events toggle && notify-send "🚀 Trackpad Toggled" -t 150
+    # Browser and Terminal
+    bindsym $mod+Return exec flatpak run com.google.Chrome 
+    bindsym $mod+Shift+Return exec $host  
+
+    # Kill focused window
+    bindsym $mod+Shift+q kill
+
+    # Fzf application launcher
+    bindsym $mod+d exec alacritty --class=launcher -e env GLYPH_COMMAND="" GLYPH_DESKTOP="" GLYPH_PROMPT="? " $scripts/sway-launcher-desktop
+
+    # Reload configuration file
+    bindsym $mod+Shift+r reload
+
+    # Clipboard History
+    bindsym $mod+v exec alacritty --class "clipboard-history" -t "clipboard-history" -e $scripts/fzf-clipboard-history
+
+    # Emoji Menu
+    bindsym $mod+Shift+v exec alacritty --class "emoji-picker" -t "emoji-picker" -e sh -c "$emoji"
+
+    # Screenshot Functionality
+    bindsym $mod+a exec $screenshot-full
+    bindsym $mod+Shift+a exec $screenshot-area
+    bindsym $mod+s exec $swappy-full
+    bindsym $mod+Shift+s exec $swappy-area
+    bindsym Print  exec $swappy-area
+
+    # Screen Recording Key Bindings
+    bindsym $mod+z exec $record-start
+    bindsym $mod+Shift+z exec $record-select-area
+    bindsym $mod+x exec $record-stop
+
+    # Toggle waybar
+    bindsym $mod+i exec $waybar-toggle-0
+    bindsym $mod+Shift+i exec notify-send "$(playerctl metadata artist)" "$(playerctl metadata title)"
+
+    # Toggle opacity
+    bindsym $mod+o  		opacity plus 0.1 
+    bindsym $mod+Shift+o  	opacity minus 0.1 
+
+    # Launch file explorer
+    bindsym $mod+e exec GTK_THEME=Catppuccin-Mocha-Standard-Green-Dark nautilus 
+
+    # Copy color hex code
+    bindsym $mod+c exec $color-picker 
+
+    # Soundcloud Music 
+    bindsym $mod+m workspace music
+    bindsym $mod+Shift+m exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=eikjhbkpemdappjfcmdeeeamdpkgabmk'
+
+    # ChatGPT LLM
+    bindsym $mod+n workspace chatgpt
+    bindsym $mod+Shift+n exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=adcclpceapdbhchilkbngkehpppaefko'
+
+    # Superhuman Mail
+    bindsym $mod+w workspace email
+    bindsym $mod+Shift+w exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=cabkgbgkeonbpeoedbaeolhgfkempoka'
+
+    # Linear Tasks 
+    bindsym $mod+grave workspace linear
+    bindsym $mod+Shift+grave exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=bgdbmehlmdmddlgneophbcddadgknlpm'
+
+    # Notion Notes
+    bindsym $mod+Comma workspace notion
+    bindsym $mod+Shift+Comma exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=mlneepkinfdepaiigomojgjbfpfieoln'
+    
+    # Loom Video
+    bindsym $mod+Semicolon workspace loom
+    bindsym $mod+Shift+Semicolon exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=eccmdalhcbddohhgljcjgindicpjbjkd'
+ 
+    # Calendar from notion
+    bindsym $mod+Period workspace calendar
+    bindsym $mod+Shift+Period exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=gfjiemlnmgajmgihefeppogphdpjchab'
+
+    # Google Cloud
+    bindsym $mod+Shift+e exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=aghbiahbpaijignceidepookljebhfak'
+    
+    # Communication Tools?
+    # workspace name: comms
+    # whatsapp web: hnpfjngllnobngcgfapefoaidbinmjnm
+    # slack
+    # kumospace
+#
+    # Speech note for audio transcription
+    # Consider swapping it for nvim+plugin for sox voice 
+    bindsym $mod+Slash exec flatpak 'run' 'net.mkiol.SpeechNote'
+    
+    # TUI for local music
+    bindsym $mod+b exec $music-cli #flatpak run io.bassi.Amberol
+
+    # Local music download
+    bindsym $mod+Shift+b exec $music-dl
+
+    # Shortcut Menu
+    bindsym $mod+Shift+Slash exec $fzf-shortcuts
+
+    # Toggle focus between tiling area and floating area:
+    bindsym $mod+Shift+Tab focus mode_toggle
+
+    # Toggle focus between tiling mode and floating mode:
+    bindsym $mod+Tab floating toggle
+
+    # Volume Control
+    bindsym XF86AudioRaiseVolume exec $volume-up
+    bindsym XF86AudioLowerVolume exec $volume-down
+    bindsym XF86AudioMute exec $volume-mute 
+
+    # Use the mic mute button to access settings
+    bindsym XF86AudioMicMute           exec GTK_THEME=Catppucin-Mocha-Standard-Green-Dark env XDG_CURRENT_DESKTOP=GNOME gnome-control-center wifi
+    bindsym $mod+XF86AudioMicMute      exec nm-connection-editor
+
+    # Brightness Control
+    bindsym XF86MonBrightnessUp   exec $brightness-up
+    bindsym XF86MonBrightnessDown exec $brightness-down
+    bindsym $mod+XF86MonBrightnessUp   exec $brightness-up-single
+    bindsym $mod+XF86MonBrightnessDown exec $brightness-down-single
+
+# Moving around:
+#
+    # Move focus around
+    bindsym $mod+Shift+h exec swaymsg focus left 
+    bindsym $mod+Shift+j exec swaymsg focus down 
+    bindsym $mod+Shift+k exec swaymsg focus up 
+    bindsym $mod+Shift+l exec swaymsg focus right 
+
+    # Resize window
+    bindsym $mod+Shift+Left resize shrink width 25 
+    bindsym $mod+Shift+Down resize shrink height 25
+    bindsym $mod+Shift+Up resize grow height 25 
+    bindsym $mod+Shift+Right resize grow width 25 
+
+    # Move focused window
+    bindsym $mod+h move left 25
+    bindsym $mod+j move down 25
+    bindsym $mod+k move up 25
+    bindsym $mod+l move right 25
+    # Same with arrow keys
+    bindsym $mod+Left move left 50
+    bindsym $mod+Down move down 50
+    bindsym $mod+Up move up 50
+    bindsym $mod+Right move right 50
+
+    # Alternate sticky
+    bindsym $mod+BackSpace sticky toggle
+
+    # Make the current focus fullscreen
+    bindsym $mod+f fullscreen
+
+    # Check on pomodoro status
+    bindsym $mod+p exec notify-send "Pomodoro" "$($scripts/pomo clock)" -t 250
+    bindsym $mod+Shift+p exec $scripts/pomo pause && notify-send "⏸️ Paused Pomodoro" -t 250
+
+
+    # Resizing to set sizes:
+    bindsym $mod+Shift+f    resize set 1920 1080
+    bindsym $mod+g          resize set 900 500
+    bindsym $mod+Shift+g    resize set 500 500
+
+    floating_modifier $mod normal
+
+    # Power Menu
+    bindsym Mod1+ctrl+Delete exec $fzf-power-menu 
+    bindsym $mod+XF86Search exec $fzf-power-menu     
+
+    # Change Wallpaper
+    bindsym XF86Search exec azote
+
+    # Music Controls
+    bindsym XF86AudioPrev exec playerctl previous && $playerctl-playing 
+    bindsym XF86AudioPlay exec playerctl play-pause && $playerctl-playing 
+    bindsym XF86AudioNext exec playerctl next && $playerctl-playing 
+
+    # Workspaces
+    bindsym XF86LaunchA exec $scripts/sway-tree-switcher
+    bindsym $mod+XF86LaunchA exec $waybar-toggle-1 
+
+#Other special lenovo keys
+#XF86Display #tbd
+#XF86WLAN #Skip this one because it already turns airplane mode on and off
+#XF86NotificationCenter #will be used for the Enoki Slack 
+#XF86PickupPhone #see later in config
+#XF86HangupPhone #probably zoom?
+#XF86Favorites #tbd
+#Home
+#End 
+#Insert
+#Delete 
+#
+
+bindsym XF86Sleep noop
+
+# window rules
+# for_window [app_id=""] floating enable
+for_window [app_id=".*"] floating enable, border pixel 4,  resize set height 100ppt width 100ppt, move window to workspace 1
+for_window [app_id="Alacritty"] floating enable, border pixel 3,  resize set height 800 width 1200
+
+no_focus [app_id=".*"]
+
+# Workspace
+    bindsym $mod+1 workspace number 1
+    bindsym $mod+2 workspace number 2
+    bindsym $mod+3 workspace number 3
+    bindsym $mod+4 workspace number 4
+    bindsym $mod+5 workspace number 5
+    bindsym $mod+6 workspace number 6
+    bindsym $mod+7 workspace number 7
+    bindsym $mod+8 workspace number 8
+    bindsym $mod+9 workspace number 9
+    bindsym $mod+0 workspace number 10
+    bindsym $mod+Shift+1 move container to workspace number 1
+    bindsym $mod+Shift+2 move container to workspace number 2
+    bindsym $mod+Shift+3 move container to workspace number 3
+    bindsym $mod+Shift+4 move container to workspace number 4
+    bindsym $mod+Shift+5 move container to workspace number 5
+    bindsym $mod+Shift+6 move container to workspace number 6
+    bindsym $mod+Shift+7 move container to workspace number 7
+    bindsym $mod+Shift+8 move container to workspace number 8
+    bindsym $mod+Shift+9 move container to workspace number 9
+    bindsym $mod+Shift+0 move container to workspace number 10
+
+# Chrome
+# Fix for chrome applications on wayland, capturing focus
+for_window [app_id="^chrome-.*"] shortcuts_inhibitor disable
+
+for_window [app_id="^google-chrome"] move container to workspace number 1
+
+for_window [app_id="^chrome-eikjhbkpemdappjfcmdeeeamdpkgabmk-Default$"] {
+    move container to workspace music
+    blur enable
+    floating disable
+}
+for_window [app_id="^chrome-adcclpceapdbhchilkbngkehpppaefko-Default$"] {
+    move container to workspace chatgpt
+    blur enable
+    floating disable
+}
+for_window [app_id="^chrome-cabkgbgkeonbpeoedbaeolhgfkempoka-Default$"] {
+    move container to workspace email
+    blur enable
+    floating disable
+}
+for_window [app_id="^chrome-bgdbmehlmdmddlgneophbcddadgknlpm-Default$"] {
+    move container to workspace linear
+    blur enable
+    floating disable
+}
+for_window [app_id="^chrome-mlneepkinfdepaiigomojgjbfpfieoln-Default$"] {
+    move container to workspace notion
+    blur enable
+    floating disable
+}
+for_window [app_id="^chrome-eccmdalhcbddohhgljcjgindicpjbjkd-Default$"] {
+    move container to workspace loom
+    blur enable
+    floating disable
+}
+for_window [app_id="^chrome-gfjiemlnmgajmgihefeppogphdpjchab-Default$"] {
+    move container to workspace calendar
+    blur enable
+    floating disable
+}
+for_window [app_id="^chrome-aghbiahbpaijignceidepookljebhfak-Default$"] {
+    # google drive opens on current workspace
+    blur enable
+    resize set 1100 700
+}
+
+for_window [app_id="io.bassi.Amberol"] {
+move container to workspace music
+    blur enable
+    floating disable
+}
+
+#for_window [app_id="^chrome-[]-Default$"] {
+#    move container to workspace kumospace
+#    blur enable
+#    floating disable
+#}
+
+
+# output
+exec kanshi
+
+# Input Devices
+# x1n trackpad
+input "1267:12624:ELAN0670:00_04F3:3150_Touchpad" {
+    dwt enabled
+    tap enabled
+    natural_scroll enable
+    scroll_factor 0.5
+    middle_emulation enabled
+}
+
+# Magic trackpad
+#input "1452:613:Apple_Inc._Magic_Trackpad" {
+input "76:613:Apple_Inc._Magic_Trackpad_2" {
+    dwt enabled
+    tap enabled
+    natural_scroll enabled
+    dwt enabled
+    click_method clickfinger
+}
+
+input type:keyboard {
+  xkb_options caps:none
+}
+
+# SwayFX changes
+    corner_radius 15
+    blur_radius 7
+    blur_passes 4
+    shadows disable
+
+    for_window [app_id="Alacritty"] blur enable
+    for_window [app_id="org.gnome.Nautilus"] blur enable
+    for_window [app_id="nautilus"] blur enable
+    for_window [app_id="google-chrome"] blur enable
+
+#    layer_effects "waybar" blur enable; shadows disable; opacity 0.8
+#    layer_effects "notifications" blur enable; shadows disable; opacity 0.8
+
+# Gestures
+bindgesture {
+
+    swipe:3:right  exec $scripts/gestures backward
+    swipe:3:left exec $scripts/gestures forward
+
+    pinch:4:outward   exec swaymsg gaps inner current plus 50
+    pinch:4:inward  exec swaymsg gaps inner current minus 50
+    pinch:5:outward   exec swaymsg gaps inner current plus 50
+    pinch:5:inward  exec swaymsg gaps inner current minus 50
+
+    swipe:4:up   exec swaymsg gaps vertical current plus 50
+    swipe:4:down  exec swaymsg gaps vertical current minus 50
+    swipe:4:right   exec swaymsg gaps horizontal current plus 75
+    swipe:4:left  exec swaymsg gaps horizontal current minus 75
+
+    #swipe:5:up    exec swaymsg 'move up 75'
+    #swipe:5:down  move down 75 
+    #swipe:5:right move right 75
+    #swipe:5:left  move left 75
+
+}
+
