@@ -11,6 +11,7 @@ declare -A file_map=(
     ["vim (2/3)"]="vim2.md"
     ["vim (3/3)"]="vim3.md"
     ["fish"]="fish.md"
+    ["ncmpcpp"]="ncmpcpp.md"
 
 )
 
