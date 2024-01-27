@@ -127,8 +127,12 @@ set $playerctl-playing notify-send "$(playerctl metadata artist)" "$(playerctl m
 
 set $fzf-wifi exec $term --class 'networkwidget' -t 'networkwidget' -e "$scripts/fzf-nmcli"
 set $fzf-power-menu exec $term -o font.size=22 --class 'powerwidget' -t 'powerwidget' -e $scripts/fzf-power-menu
-set $bluetooth-menu exec blueman-manager
 set $fzf-shortcuts exec $term -o font.size=14 window.opacity=0.75 --class 'shortcutwidget' -t 'shortcutwidget' -e $scripts/fzf-shortcuts
+
+
+set $bluetooth-menu exec blueman-manager
+set $audio-sources exec pavucontrol
+set $wifi exec nm-connection-editor
 
 set $music-cli exec $term -o window.opacity=0.95 --class 'music-cli' -t 'music-cli' -e ncmpcpp 
 
@@ -270,7 +274,7 @@ for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 30 p
 
     # Use the mic mute button to access settings
     bindsym XF86AudioMicMute           exec GTK_THEME=Catppucin-Mocha-Standard-Green-Dark env XDG_CURRENT_DESKTOP=GNOME gnome-control-center wifi
-    bindsym $mod+XF86AudioMicMute      exec nm-connection-editor
+    bindsym $mod+XF86AudioMicMute      $wifi
 
     # Brightness Control
     bindsym XF86MonBrightnessUp   exec $brightness-up
