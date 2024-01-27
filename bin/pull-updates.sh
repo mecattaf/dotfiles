@@ -2,18 +2,12 @@
 
 notify() {
     if [ $? -eq 0 ]; then
-        notify-send "Success" "$1 successfully updated."
+        notify-send "Success" "Dotfiles successfully updated."
     else
-        notify-send "Error" "$1 failed to update."
+        notify-send "Error" "Dotfiles update failed."
     fi
 }
 
 echo "Updating dotfiles..."
 git -C ~/dotfiles pull origin master
-notify "Dotfiles"
-
-echo "Updating Neovim configuration..."
-git -C ~/dotfiles/nvim pull origin master
-notify "Neovim Configuration"
-
-notify-send "Update Operation" "Update operation completed."
+notify
