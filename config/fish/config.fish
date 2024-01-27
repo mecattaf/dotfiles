@@ -10,4 +10,5 @@ alias vi='nvim'
 
 set -gx EDITOR 'nvim'
 
+set -x STARSHIP_CONFIG ~/.config/starship/starship.toml
 starship init fish | source
