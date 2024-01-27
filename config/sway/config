@@ -81,8 +81,8 @@ exec wl-paste -t text --watch clipman store
 exec /var/home/dev/.local/share/bin/pomo start
 exec /var/home/dev/.local/share/bin/pomo notify
 
-exec swaybg -c '#000000'
-#exec ~/.azotebg 
+#exec swaybg -c '#000000'
+exec ~/.azotebg 
 
 # Bars
 exec --no-startup-id waybar -c ~/.config/waybar/config-1 -s ~/.config/waybar/style-1.css
@@ -126,9 +126,8 @@ set $playerctl-playing notify-send "$(playerctl metadata artist)" "$(playerctl m
 
 
 set $fzf-wifi exec $term --class 'networkwidget' -t 'networkwidget' -e "$scripts/fzf-nmcli"
-set $fzf-bluetooth exec $term --class 'bluetoothwidget' -t 'bluetoothwidget' -e '$scripts/fzf-bluetooth'
 set $fzf-power-menu exec $term -o font.size=22 --class 'powerwidget' -t 'powerwidget' -e $scripts/fzf-power-menu
-
+set $bluetooth-menu exec blueman-manager
 set $fzf-shortcuts exec $term -o font.size=14 window.opacity=0.75 --class 'shortcutwidget' -t 'shortcutwidget' -e $scripts/fzf-shortcuts
 
 set $music-cli exec $term -o window.opacity=0.95 --class 'music-cli' -t 'music-cli' -e ncmpcpp 
@@ -140,8 +139,6 @@ set $color-picker exec $scripts/colorpicker
 set $emoji ~/.local/share/bin/emoji-fzf preview | fzf -m --preview '~/.local/share/bin/emoji-fzf get --name {1}' | cut -d ' ' -f 1 | ~/.local/share/bin/emoji-fzf get | clipman store
 
 
-
-for_window [title="bluetoothwidget"] border pixel 0, floating enable, resize set 250 250, move position 1300 790
 for_window [title="networkwidget"] border pixel 0, floating enable, resize set 453 500, move position 1380 490
 for_window [title="powerwidget"] border pixel 0, floating enable, resize set 300 250, move position 0 0, focus
 for_window [title="fzf-switcher"] border pixel 0, floating enable, focus
