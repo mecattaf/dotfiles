@@ -281,8 +281,15 @@ window#waybar.empty #window {
     margin-right: 5px;
 }
 
-#backlight.2, 
-#battery.2,
+#backlight.2 {
+    border-radius: 0px 0px 15px 15px;
+}
+ 
+
+#battery.2 {
+    border-radius: 0px 0px 15px 15px;
+}
+
 #pulseaudio.2,
 #network,
 #clock.2,
