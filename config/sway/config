@@ -449,7 +449,7 @@ move container to workspace music
 
 
 # output
-exec kanshi
+exec_always pkill kanshi; exec kanshi
 
 # Input Devices
 # x1n trackpad
