@@ -45,8 +45,7 @@ font pango:JetBrainsMono Nerd Font 12
 # Gaps
 smart_gaps off
 gaps inner 10
-gaps horizontal 320
-gaps vertical 180
+# outer gaps managed by kanshi
 
 default_border pixel 5
 default_floating_border normal
@@ -515,3 +514,5 @@ bindgesture {
 
 }
 
+# Always start from workspace 1
+workspace 1

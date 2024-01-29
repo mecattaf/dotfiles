@@ -1,20 +1,10 @@
 profile Laptop {
     output eDP-1 scale 1.5 position 0,0
+    exec swaymsg gaps outer 10
 }
 
-profile ASUS_and_Laptop {
-    output eDP-1 scale 1.5 position 0,0 
-    output DP-1 scale 1 position 0,0 
+profile Monitor {
+    output DP-3 scale 1 position 0,0
+    exec swaymsg gaps horizontal 320
+    exec swaymsg gaps vertical 180
 }
-
-profile Monitor_and_Laptop {
-    output eDP-1 scale 1.5 position 0,0 
-    output DP-3 scale 1 position 0,0 
-}
-
-
-
-profile ASUS {
-    output DP-1 scale 1 position 0,0 
-}
-
