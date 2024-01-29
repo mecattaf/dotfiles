@@ -1,0 +1,12 @@
+#!/usr/bin/env xdg-open
+
+[Desktop Entry]
+Version=1.0
+Terminal=false
+Type=Application
+Name=Google Drive
+Exec=flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=aghbiahbpaijignceidepookljebhfak'
+Icon=chrome-aghbiahbpaijignceidepookljebhfak-Default
+StartupWMClass=crx_aghbiahbpaijignceidepookljebhfak
+X-Flatpak-Part-Of=com.google.Chrome
+TryExec=/var/home/dev/.local/share/flatpak/exports/bin/com.google.Chrome
