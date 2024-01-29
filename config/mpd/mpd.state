@@ -1,9 +1,8 @@
 sw_volume: 100
 audio_device_state:1:My Pulse Output
 audio_device_state:1:Visualizer
-state: pause
-current: 113
-time: 89.028000
+state: stop
+current: 0
 random: 0
 repeat: 0
 single: 0
@@ -14,116 +13,115 @@ mixrampdelay: -1.000000
 playlist_begin
 0:Edition_Speciale_Monsieur_Business.mp3
 1:Edition_Speciale_Monsieur_Business.mp3
-2:Music/Kev Music/first wave/1998.mp3
-3:Johnny Music/Alabína/L'Essentiel/01 Alabína.m4a
-4:Johnny Music/ABBA/Gold_ Greatest Hits/04 Mamma Mia.m4a
-5:Johnny Music/C2C/C2C - Down the Road/01. Down the Road.mp3
-6:Johnny Music/Caseurs Flowteurs/Orelsan Et Gringe Sont Les Casseurs Flowters/04-casseurs_flowters-16h00_-_tu_mdois_dloseille.mp3
-7:Johnny Music/Charles Aznavour/Et Ses Amis À L'Opéra Garnier (Disc 2)/03 Hier Encore (Ft. Patrick Bruel).m4a
-8:Johnny Music/Empire Of The Sun/Walking On A Dream/(03) [Empire Of The Sun] Half Mast.mp3
-9:Johnny Music/Empire Of The Sun/Walking On A Dream/(01) [Empire Of The Sun] Standing On The Shore.mp3
-10:Johnny Music/Empire Of The Sun/Walking On A Dream/(02) [Empire Of The Sun] Walking On A Dream.mp3
-11:Johnny Music/Empire Of The Sun/Walking On A Dream/(06) [Empire Of The Sun] Country.mp3
-12:A1 music/11/1st Electric.mp3
-13:A1 music/11/BASTILLE feat. Ella - No Angels.mp3
-14:A1 music/11/STOMP!.wav
-15:A1 music/Daft Punk 1997 Essential Mix Tracklist/Cajmere - Only 4 U (Blast From The Past Mix) (Cajual.mp4
-16:A1 music/Daft Punk 1997 Essential Mix Tracklist/DJ Kom - And Da Beat Goes... (1997).mp4
-17:A1 music/Daft Punk 1997 Essential Mix Tracklist/Trankilou - Champagne.mp4
-18:A1 music/Stuff/09 In The Morning Feat. Drake (Produced By L&X Music).mp3
-19:A1 music/Stuff/1-11 Les hautes lumieres.mp3
-20:A1 music/Stuff/People (Original Mix).mp3
-21:A1 music/Stuff/Time Is Golden.mp3
-22:A1 music/Stuff/03 Can't Get Enough Feat. Trey Songz (Produced By Brian Kidd).mp3
-23:A1 music/Kendrick Lamar - Good Kid M.A.A.D City/02 Bitch, Dant Kill My Vibe.mp3
-24:A1 music/Justice/03 Ohio.mp3
-25:Johnny Music/Band Of Horses/Cease to Begin/Band of Horses - Cease to Begin - 01 - Is There A Ghost.mp3
-26:Johnny Music/Elvis Presley/Forrest Gump (Disc 1)/1-01 Hound Dog.m4a
-27:Johnny Music/Elvis Presley/Live At Madisson Square Garden/02 That's All Right.m4a
-28:Johnny Music/Fairuz/Kifak Inta/01 Oghniat Al Wadaa.m4a
-29:Johnny Music/Fairuz/Kifak Inta/03 Mukadimah '87.m4a
-30:Johnny Music/lykke li/Albums/2011 - Wounded Rhymes/01. Youth Knows No Pain.mp3
-31:Johnny Music/lykke li/Albums/2011 - Wounded Rhymes/02. I Follow Rivers.mp3
-32:Johnny Music/lykke li/Albums/2011 - Wounded Rhymes/04. Unrequited Love.mp3
-33:Johnny Music/Style of Eye/Duck, Cover & Hold/03 Girls.m4a
-34:Johnny Music/The Glitch Mob/Albums/The Glitch Mob - Crush Mode.mp3
-35:Johnny Music/Umberto Tozzi/Petite Marie - Single/01 Petite Marie.m4a
-36:Johnny Music/Fifa 13 songs/FIFA 13 Soundtrack - Astro - Panda.mp3
-37:Johnny Music/Pink Floyd/Pulse - Live](Disc 1)/1-09 Sorrow.m4a
-38:Johnny Music/Eric Prydz/Eric Prydz Presents Pryda (Deluxe Versio/1-09 Leja.m4a
-39:Johnny Music/The House/02-push-universal_nation__dj_ghost_and_danny_c_remixwww.livingelectro.com.mp3
-40:Johnny Music/Queen/Queen - Bohemian Rhapsody.mp3
-41:Johnny Music/Queen/Queen - Don't Stop Me Now.mp3
-42:Johnny Music/Queen/Queen - I Want To Break Free.mp3
-43:Johnny Music/Queen/Queen - Love of My Life.mp3
-44:Johnny Music/Queen/Queen - Under Pressure.mp3
-45:Johnny Music/Queen/The Miracle/1-01 Party.m4a
-46:Johnny Music/Queen/The Miracle/1-02 Khashoggi's Ship.m4a
-47:Johnny Music/Queen/The Miracle/1-03 The Miracle.m4a
-48:Johnny Music/Queen/The Miracle/1-04 I Want It All.m4a
-49:Johnny Music/Queen/The Miracle/1-05 The Invisible Man.m4a
-50:Johnny Music/Queen/The Miracle/1-06 Breakthru.m4a
-51:Johnny Music/Queen/The Miracle/1-07 Rain Must Fall.m4a
-52:Johnny Music/Queen/The Miracle/1-08 Scandal.m4a
-53:Johnny Music/Queen/The Miracle/1-09 My Baby Does Me.m4a
-54:Johnny Music/Queen/The Miracle/1-10 Was It All Worth It.m4a
-55:Johnny Music/Queen/Greatest Hits (Queen II)/2-06 Innuendo.mp3
-56:Johnny Music/Queen/Greatest Hits (Queen II)/2-16 The Show Must Go On.mp3
-57:Johnny Music/Queen/Greatest Hits II/01 A Kind Of Magic.mp3
-58:Johnny Music/Queen/Greatest Hits II/03 Radio Ga Ga.mp3
-59:Johnny Music/Queen/Greatest Hits II/04 I Want It All.mp3
-60:Johnny Music/Queen/Greatest Hits II/05 I Want To Break Free.mp3
-61:Johnny Music/Queen/Greatest Hits II/06 Innuendo.mp3
-62:Johnny Music/Queen/Greatest Hits II/07 It's A Hard Life.mp3
-63:Johnny Music/Queen/Greatest Hits II/08 Breakthru.mp3
-64:Johnny Music/Queen/Greatest Hits II/09 Who Wants To Live Forever.mp3
-65:Johnny Music/Queen/Greatest Hits II/10 Headlong.mp3
-66:Johnny Music/Queen/Greatest Hits II/11 The Miracle.mp3
-67:Johnny Music/Queen/Greatest Hits II/12 I'm Going Slightly Mad.mp3
-68:Johnny Music/Queen/Greatest Hits II/13 The Invisible Man.mp3
-69:Johnny Music/Queen/Greatest Hits II/14 Hammer To Fall.mp3
-70:Johnny Music/Queen/Greatest Hits II/15 Friends Will Be Friends.mp3
-71:Johnny Music/Queen/Greatest Hits II/16 The Show Must Go On.mp3
-72:Johnny Music/Queen/Greatest Hits II/17 One Vision.mp3
-73:Johnny Music/Queen/Greatest Hits I/01 Bohemian Rhapsody.mp3
-74:Johnny Music/Queen/Greatest Hits I/02 Another One Bites The Dust.mp3
-75:Johnny Music/Queen/Greatest Hits I/03 Killer Queen.mp3
-76:Johnny Music/Queen/Greatest Hits I/04 Fat Bottomed Girls.mp3
-77:Johnny Music/Queen/Greatest Hits I/05 Bicycle Race.mp3
-78:Johnny Music/Queen/Greatest Hits I/06 You're My Best Friend.mp3
-79:Johnny Music/Queen/Greatest Hits I/07 Don't Stop Me Now.mp3
-80:Johnny Music/Queen/Greatest Hits I/08 Save Me.mp3
-81:Johnny Music/Queen/Greatest Hits I/09 Crazy Little Thing Called Love.mp3
-82:Johnny Music/Queen/Greatest Hits I/10 Somebody To Love.mp3
-83:Johnny Music/Queen/Greatest Hits I/11 Now I'm Here.mp3
-84:Johnny Music/Queen/Greatest Hits I/12 Good Old-Fashioned Lover Boy.mp3
-85:Johnny Music/Queen/Greatest Hits I/13 Play The Game.mp3
-86:Johnny Music/Queen/Greatest Hits I/14 Flash.mp3
-87:Johnny Music/Queen/Greatest Hits I/15 Seven Seas Of Rhye.mp3
-88:Johnny Music/Queen/Greatest Hits I/16 We Will Rock You.mp3
-89:Johnny Music/Queen/Greatest Hits I/17 We Are The Champions.mp3
-90:Johnny Music/Queen/World's Greatest/1-01 Killer Queen.m4a
-91:Johnny Music/Unknown Artist/Unknown Album/KeeMo ft. Cosmo Klein - Beautiful Lie (Chuckie, Ortzy & Nico Hamuy Remix).mp3
-92:Johnny Music/Unknown Artist/Unknown Album/Sebastian Ingrosso - Calling ft. Alesso.mp3
-93:Johnny Music/Unknown Artist/Unknown Album/Usher - Climax (Kaskade Remix).mp3
-94:Johnny Music/Unknown Artist/Unknown Album/John Mayer - Gravity.mp3
-95:Johnny Music/Unknown Artist/Unknown Album/John Lennon - Imagine.mp3
-96:Johnny Music/Unknown Artist/Unknown Album/Laidback Luke vs. Example - Natural Disaster.mp3
-97:Johnny Music/vent/6inho/soundcloud-119318060_Allez_Viens.mp3
-98:Johnny Music/vent/6inho/NuDiscoco.mp3
-99:Johnny Music/vent/6inho/01 Faint (OVERWERK Remix).mp3
-100:Johnny Music/vent/6inho/soundcloud-130513014_Rodrigo_Tortilla.mp3
-101:Johnny Music/vent/6inho/Swimming Pools (Mastah Syphe x Nobi_4 Bootleg).mp3
-102:Johnny Music/vent/'Cochon Ville' (The Magician Remix).aif
-103:Johnny Music/vent/Still.mp3
-104:Johnny Music/vent/Can't Be Touched.mp3
-105:Johnny Music/vent/Fast Lane.mp3
-106:Johnny Music/vent/Skyfall.mp3
-107:Johnny Music/vent/So Good.mp3
-108:Johnny Music/vent/THRT (The End) [Urban Noize Remix].mp3
-109:Johnny Music/vent/Armistice (RAC Mix).mp3
-110:Johnny Music/The House/Buegel & Brett - Forrest Intro Podcast.mp3
-111:Johnny Music/The House/Cafe Mambo Competition - 17th March [Buegel&Brett].mp3
-112:Johnny Music/The House/Down With Webster – Chills (Manse Remix) thehouseofthebeat.com.mp3
-113:Yves_Larock_-_Rise_Up.mp3
+2:Johnny Music/Alabína/L'Essentiel/01 Alabína.m4a
+3:Johnny Music/ABBA/Gold_ Greatest Hits/04 Mamma Mia.m4a
+4:Johnny Music/C2C/C2C - Down the Road/01. Down the Road.mp3
+5:Johnny Music/Caseurs Flowteurs/Orelsan Et Gringe Sont Les Casseurs Flowters/04-casseurs_flowters-16h00_-_tu_mdois_dloseille.mp3
+6:Johnny Music/Charles Aznavour/Et Ses Amis À L'Opéra Garnier (Disc 2)/03 Hier Encore (Ft. Patrick Bruel).m4a
+7:Johnny Music/Empire Of The Sun/Walking On A Dream/(03) [Empire Of The Sun] Half Mast.mp3
+8:Johnny Music/Empire Of The Sun/Walking On A Dream/(01) [Empire Of The Sun] Standing On The Shore.mp3
+9:Johnny Music/Empire Of The Sun/Walking On A Dream/(02) [Empire Of The Sun] Walking On A Dream.mp3
+10:Johnny Music/Empire Of The Sun/Walking On A Dream/(06) [Empire Of The Sun] Country.mp3
+11:A1 music/11/1st Electric.mp3
+12:A1 music/11/BASTILLE feat. Ella - No Angels.mp3
+13:A1 music/11/STOMP!.wav
+14:A1 music/Daft Punk 1997 Essential Mix Tracklist/Cajmere - Only 4 U (Blast From The Past Mix) (Cajual.mp4
+15:A1 music/Daft Punk 1997 Essential Mix Tracklist/DJ Kom - And Da Beat Goes... (1997).mp4
+16:A1 music/Daft Punk 1997 Essential Mix Tracklist/Trankilou - Champagne.mp4
+17:A1 music/Stuff/09 In The Morning Feat. Drake (Produced By L&X Music).mp3
+18:A1 music/Stuff/1-11 Les hautes lumieres.mp3
+19:A1 music/Stuff/People (Original Mix).mp3
+20:A1 music/Stuff/Time Is Golden.mp3
+21:A1 music/Stuff/03 Can't Get Enough Feat. Trey Songz (Produced By Brian Kidd).mp3
+22:A1 music/Kendrick Lamar - Good Kid M.A.A.D City/02 Bitch, Dant Kill My Vibe.mp3
+23:A1 music/Justice/03 Ohio.mp3
+24:Johnny Music/Band Of Horses/Cease to Begin/Band of Horses - Cease to Begin - 01 - Is There A Ghost.mp3
+25:Johnny Music/Elvis Presley/Forrest Gump (Disc 1)/1-01 Hound Dog.m4a
+26:Johnny Music/Elvis Presley/Live At Madisson Square Garden/02 That's All Right.m4a
+27:Johnny Music/Fairuz/Kifak Inta/01 Oghniat Al Wadaa.m4a
+28:Johnny Music/Fairuz/Kifak Inta/03 Mukadimah '87.m4a
+29:Johnny Music/lykke li/Albums/2011 - Wounded Rhymes/01. Youth Knows No Pain.mp3
+30:Johnny Music/lykke li/Albums/2011 - Wounded Rhymes/02. I Follow Rivers.mp3
+31:Johnny Music/lykke li/Albums/2011 - Wounded Rhymes/04. Unrequited Love.mp3
+32:Johnny Music/Style of Eye/Duck, Cover & Hold/03 Girls.m4a
+33:Johnny Music/The Glitch Mob/Albums/The Glitch Mob - Crush Mode.mp3
+34:Johnny Music/Umberto Tozzi/Petite Marie - Single/01 Petite Marie.m4a
+35:Johnny Music/Fifa 13 songs/FIFA 13 Soundtrack - Astro - Panda.mp3
+36:Johnny Music/Pink Floyd/Pulse - Live](Disc 1)/1-09 Sorrow.m4a
+37:Johnny Music/Eric Prydz/Eric Prydz Presents Pryda (Deluxe Versio/1-09 Leja.m4a
+38:Johnny Music/The House/02-push-universal_nation__dj_ghost_and_danny_c_remixwww.livingelectro.com.mp3
+39:Johnny Music/Queen/Queen - Bohemian Rhapsody.mp3
+40:Johnny Music/Queen/Queen - Don't Stop Me Now.mp3
+41:Johnny Music/Queen/Queen - I Want To Break Free.mp3
+42:Johnny Music/Queen/Queen - Love of My Life.mp3
+43:Johnny Music/Queen/Queen - Under Pressure.mp3
+44:Johnny Music/Queen/The Miracle/1-01 Party.m4a
+45:Johnny Music/Queen/The Miracle/1-02 Khashoggi's Ship.m4a
+46:Johnny Music/Queen/The Miracle/1-03 The Miracle.m4a
+47:Johnny Music/Queen/The Miracle/1-04 I Want It All.m4a
+48:Johnny Music/Queen/The Miracle/1-05 The Invisible Man.m4a
+49:Johnny Music/Queen/The Miracle/1-06 Breakthru.m4a
+50:Johnny Music/Queen/The Miracle/1-07 Rain Must Fall.m4a
+51:Johnny Music/Queen/The Miracle/1-08 Scandal.m4a
+52:Johnny Music/Queen/The Miracle/1-09 My Baby Does Me.m4a
+53:Johnny Music/Queen/The Miracle/1-10 Was It All Worth It.m4a
+54:Johnny Music/Queen/Greatest Hits (Queen II)/2-06 Innuendo.mp3
+55:Johnny Music/Queen/Greatest Hits (Queen II)/2-16 The Show Must Go On.mp3
+56:Johnny Music/Queen/Greatest Hits II/01 A Kind Of Magic.mp3
+57:Johnny Music/Queen/Greatest Hits II/03 Radio Ga Ga.mp3
+58:Johnny Music/Queen/Greatest Hits II/04 I Want It All.mp3
+59:Johnny Music/Queen/Greatest Hits II/05 I Want To Break Free.mp3
+60:Johnny Music/Queen/Greatest Hits II/06 Innuendo.mp3
+61:Johnny Music/Queen/Greatest Hits II/07 It's A Hard Life.mp3
+62:Johnny Music/Queen/Greatest Hits II/08 Breakthru.mp3
+63:Johnny Music/Queen/Greatest Hits II/09 Who Wants To Live Forever.mp3
+64:Johnny Music/Queen/Greatest Hits II/10 Headlong.mp3
+65:Johnny Music/Queen/Greatest Hits II/11 The Miracle.mp3
+66:Johnny Music/Queen/Greatest Hits II/12 I'm Going Slightly Mad.mp3
+67:Johnny Music/Queen/Greatest Hits II/13 The Invisible Man.mp3
+68:Johnny Music/Queen/Greatest Hits II/14 Hammer To Fall.mp3
+69:Johnny Music/Queen/Greatest Hits II/15 Friends Will Be Friends.mp3
+70:Johnny Music/Queen/Greatest Hits II/16 The Show Must Go On.mp3
+71:Johnny Music/Queen/Greatest Hits II/17 One Vision.mp3
+72:Johnny Music/Queen/Greatest Hits I/01 Bohemian Rhapsody.mp3
+73:Johnny Music/Queen/Greatest Hits I/02 Another One Bites The Dust.mp3
+74:Johnny Music/Queen/Greatest Hits I/03 Killer Queen.mp3
+75:Johnny Music/Queen/Greatest Hits I/04 Fat Bottomed Girls.mp3
+76:Johnny Music/Queen/Greatest Hits I/05 Bicycle Race.mp3
+77:Johnny Music/Queen/Greatest Hits I/06 You're My Best Friend.mp3
+78:Johnny Music/Queen/Greatest Hits I/07 Don't Stop Me Now.mp3
+79:Johnny Music/Queen/Greatest Hits I/08 Save Me.mp3
+80:Johnny Music/Queen/Greatest Hits I/09 Crazy Little Thing Called Love.mp3
+81:Johnny Music/Queen/Greatest Hits I/10 Somebody To Love.mp3
+82:Johnny Music/Queen/Greatest Hits I/11 Now I'm Here.mp3
+83:Johnny Music/Queen/Greatest Hits I/12 Good Old-Fashioned Lover Boy.mp3
+84:Johnny Music/Queen/Greatest Hits I/13 Play The Game.mp3
+85:Johnny Music/Queen/Greatest Hits I/14 Flash.mp3
+86:Johnny Music/Queen/Greatest Hits I/15 Seven Seas Of Rhye.mp3
+87:Johnny Music/Queen/Greatest Hits I/16 We Will Rock You.mp3
+88:Johnny Music/Queen/Greatest Hits I/17 We Are The Champions.mp3
+89:Johnny Music/Queen/World's Greatest/1-01 Killer Queen.m4a
+90:Johnny Music/Unknown Artist/Unknown Album/KeeMo ft. Cosmo Klein - Beautiful Lie (Chuckie, Ortzy & Nico Hamuy Remix).mp3
+91:Johnny Music/Unknown Artist/Unknown Album/Sebastian Ingrosso - Calling ft. Alesso.mp3
+92:Johnny Music/Unknown Artist/Unknown Album/Usher - Climax (Kaskade Remix).mp3
+93:Johnny Music/Unknown Artist/Unknown Album/John Mayer - Gravity.mp3
+94:Johnny Music/Unknown Artist/Unknown Album/John Lennon - Imagine.mp3
+95:Johnny Music/Unknown Artist/Unknown Album/Laidback Luke vs. Example - Natural Disaster.mp3
+96:Johnny Music/vent/6inho/soundcloud-119318060_Allez_Viens.mp3
+97:Johnny Music/vent/6inho/NuDiscoco.mp3
+98:Johnny Music/vent/6inho/01 Faint (OVERWERK Remix).mp3
+99:Johnny Music/vent/6inho/soundcloud-130513014_Rodrigo_Tortilla.mp3
+100:Johnny Music/vent/6inho/Swimming Pools (Mastah Syphe x Nobi_4 Bootleg).mp3
+101:Johnny Music/vent/'Cochon Ville' (The Magician Remix).aif
+102:Johnny Music/vent/Still.mp3
+103:Johnny Music/vent/Can't Be Touched.mp3
+104:Johnny Music/vent/Fast Lane.mp3
+105:Johnny Music/vent/Skyfall.mp3
+106:Johnny Music/vent/So Good.mp3
+107:Johnny Music/vent/THRT (The End) [Urban Noize Remix].mp3
+108:Johnny Music/vent/Armistice (RAC Mix).mp3
+109:Johnny Music/The House/Buegel & Brett - Forrest Intro Podcast.mp3
+110:Johnny Music/The House/Cafe Mambo Competition - 17th March [Buegel&Brett].mp3
+111:Johnny Music/The House/Down With Webster – Chills (Manse Remix) thehouseofthebeat.com.mp3
+112:Yves_Larock_-_Rise_Up.mp3
 playlist_end
