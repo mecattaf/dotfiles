@@ -264,7 +264,7 @@
         "gcloud": " ",
         "comms": " ",
         "urgent": " ",
-        "focused": " ",
+        //"focused": " ",
         "default": " "
     },
     "smooth-scrolling-threshold": 1,
