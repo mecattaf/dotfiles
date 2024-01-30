@@ -464,8 +464,8 @@ input "1267:12624:ELAN0670:00_04F3:3150_Touchpad" {
 }
 
 # Magic trackpad
-#input "1452:613:Apple_Inc._Magic_Trackpad" {
-input "76:613:Apple_Inc._Magic_Trackpad_2" {
+input "1452:613:Apple_Inc._Magic_Trackpad" {
+#input "76:613:Apple_Inc._Magic_Trackpad_2" {
     dwt enabled
     tap enabled
     natural_scroll enabled
