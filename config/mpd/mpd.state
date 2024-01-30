@@ -1,8 +1,9 @@
 sw_volume: 100
 audio_device_state:1:My Pulse Output
 audio_device_state:1:Visualizer
-state: stop
-current: 0
+state: pause
+current: 2
+time: 2.060000
 random: 0
 repeat: 0
 single: 0
