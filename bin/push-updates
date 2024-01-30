@@ -13,5 +13,5 @@ notify() {
 echo "Committing and pushing dotfiles..."
 git -C ~/dotfiles add .
 git -C ~/dotfiles commit -m "$commit_message"
-git -C ~/dotfiles push origin master
+git -C ~/dotfiles push --force origin master
 notify
