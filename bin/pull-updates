@@ -9,5 +9,6 @@ notify() {
 }
 
 echo "Updating dotfiles..."
-git -C ~/dotfiles pull origin master
+git -C ~/dotfiles fetch origin master
+git -C ~/dotfiles reset --hard origin/master
 notify
