@@ -2,8 +2,8 @@ sw_volume: 100
 audio_device_state:1:My Pulse Output
 audio_device_state:1:Visualizer
 state: play
-current: 179
-time: 120.206000
+current: 257
+time: 1415.321000
 random: 0
 repeat: 0
 single: 0
@@ -237,4 +237,38 @@ playlist_begin
 222:Az USB/Music/Mark Tech Goldmine/Sweely - It's Over.mp3
 223:Az USB/Music/Mark Tech Goldmine/Sweely - More Love.mp3
 224:Az USB/Music/Mark Tech Goldmine/Sweely - Music Is Something Special.mp3
+225:Az USB/Music/Mark Tech Goldmine/Sweely - Please Stay.mp3
+226:Psychemagik/Psychemagik presents Magik Sunrise/Risky Mix 002 - Synapson goes World Music.mp3
+227:Psychemagik/Psychemagik presents Magik Sunrise/Sabo (Sol Selectas )at AZULIK Uh May - Roth Sounds.mp3
+228:Thomas Music/Comyd-19/Club Cheval Boiler Room Paris Live Set.mp4
+229:Thomas Music/Comyd-19/Lewis OfMan chez Radio Nova _ Des Lives En Été.mp4
+230:Thomas Music/Comyd-19/Myd - CoMyd-19 DJ Set #1.mp4
+231:Thomas Music/Comyd-19/Myd - Moving Men (feat. Mac DeMarco) - Live Stream Single Release Party_480p.mp4
+232:Goldcast/Copia-de-Copy-of-The-Goldcast-092-Oct-1-2021-with-guestmix-by-J-Pool.mp3
+233:Goldcast/Copy-of-The-Goldcast-022-May-29-2020-with-guestmix-by-Unders.mp3
+234:Goldcast/Copy-of-The-Goldcast-023-Jun-5-2020-Black-Lives-Matter.mp3
+235:Goldcast/Copy-of-The-Goldcast-024-Jun-12-2020-with-guestmix-by-PAAX-Tulum.mp3
+236:Goldcast/Copy-of-The-Goldcast-025-Jun-19-2020-with-guestmix-by-Nickodemus.mp3
+237:Goldcast/Copy-of-The-Goldcast-026-Jun-26-2020-with-guestmix-by-Evan-Hatfield.mp3
+238:Goldcast/Copy-of-The-Goldcast-027-Jul-3-2020-with-guestmix-by-The-Oddness.mp3
+239:Goldcast/Copy-of-The-Goldcast-028-Jul-10-2020-Live-Souq-Online-Festival.mp3
+240:Goldcast/Copy-of-The-Goldcast-030-Jul-24-2020-with-guestmix-by-Armen-Miran.mp3
+241:Goldcast/Copy-of-The-Goldcast-031-Jul-31-2020-with-guestmix-by-Seth-Schwarz.mp3
+242:Goldcast/Copy-of-The-Goldcast-032-Aug-7-2020-with-guestmix-by-MoM.mp3
+243:Goldcast/Copy-of-The-Goldcast-033-Aug-14-2020-with-guestmix-by-Herhangi.mp3
+244:Goldcast/Copy-of-The-Goldcast-034-Aug-21-2020-with-guestmix-by-MANUMAT.mp3
+245:Goldcast/Copy-of-The-Goldcast-036-Sep-4-2020-with-guestmix-by-The-Soul-Brothers.mp3
+246:Goldcast/Copy-of-The-Goldcast-037-Sep-11-2020-with-guestmix-by-Amentia.mp3
+247:Goldcast/Copy-of-The-Goldcast-039-Sept-25-2020-with-guestmix-by-Raidho.mp3
+248:Goldcast/Goldcap-Further-Future-002-Robot-Heart.mp4
+249:Goldcast/Goldcap-live-Playa-Alchemist-Burning-Man-2019-.mp4
+250:Goldcast/Jana-Goldcap-Remix-.mp4
+251:Goldcast/Sabo-Goldcap-Desert-Sunrise-2020.mp4
+252:Goldcast/Sabo-Goldcap-playing-Zuma-Dionys---Narodnaya-Desert-Sunrise-Set-.mp4
+253:Goldcast/Shanti-Goldcap-Remix-.mp4
+254:Goldcast/The-Goldcast-099-Nov-19-2021-with-guestmix-by-Kiko-Navarro.mp3
+255:Goldcast/The-Goldcast-100-Nov-26-2021-100th-Anniversary.mp3
+256:Goldcast/The-Goldcast-101-Dec-3-2021-with-guestmix-by-Aetius-Boutefoy.mp3
+257:Goldcast/The-Goldcast-103-Dec-17-2021-with-guestmix-by-Lauren-Mia.mp3
+258:Goldcast/videoplayback.mp4
 playlist_end
