@@ -1,9 +1,9 @@
 sw_volume: 100
 audio_device_state:1:My Pulse Output
 audio_device_state:1:Visualizer
-state: play
-current: 257
-time: 4651.551000
+state: pause
+current: 268
+time: 4202.445000
 random: 0
 repeat: 0
 single: 0
@@ -271,4 +271,14 @@ playlist_begin
 256:Goldcast/The-Goldcast-101-Dec-3-2021-with-guestmix-by-Aetius-Boutefoy.mp3
 257:Goldcast/The-Goldcast-103-Dec-17-2021-with-guestmix-by-Lauren-Mia.mp3
 258:Goldcast/videoplayback.mp4
+259:Nostalgie/Mille Neuf Cent Seventies/🌟 80s french discoveries 🌟.mp3
+260:Nostalgie/Mille Neuf Cent Seventies/Cerrone 3 Supernature (FULL album) Vinyl Rip 1977.mp3
+261:Nostalgie/Mille Neuf Cent Seventies/Walk On By - Isaac Hayes (1969).mp3
+262:Az USB/Music/Acid typa trip/anthony_rother_trans_europa_express.mp3
+263:Az USB/Music/Acid typa trip/17616332_Ray Of Flight_(Original Mix).mp3
+264:Az USB/Music/Moustache Records/Moustache Records - David Vunk - Trouble Tonight EP -omnidisc 009/Moustache Records - David Vunk - Trouble Tonight EP -omnidisc 009- - 02 David Vunk - Troubles Tonight -omnidisc 009-.mp3
+265:Az USB/Music/thomas-banglter/Night Flight (Psychemagik Remix).mp3
+266:gerardl-duosde-2012/[album_preview] GerardLenorman-DuosdemeschansonsauQuebe (2012).mp3
+267:Az USB/Music/Acid typa trip pt.2/15799564_Squillo_(Original Mix).mp3
+268:Goldcast/Copia-de-Copy-of-The-Goldcast-054-Jan-8-2021-with-guestmix-by-Timboletti.mp3
 playlist_end
