@@ -98,7 +98,7 @@ set $scripts ~/.local/share/bin
 set $term alacritty
 set $host alacritty -o window.opacity=0.8 -e fish
 
-set $ai exec $term -o font.size=16 --class 'ai-chat' -t 'ai-chat' -e mods -f "tell my fortune based on these files" | glow
+set $ai exec $term -o font.size=16 --class 'ai-chat' -t 'ai-chat' -e mods -f
 
 set $screenshot-full grim - | tee ~/Pictures/scrn-$(date +"%Y-%m-%d-%H:%M:%S").png | wl-copy && notify-send " Screenshot" -t 250
 set $screenshot-area grim -g "$(slurp)" - | tee ~/Pictures/scrn-$(date +"%Y-%m-%d-%H:%M:%S").png | wl-copy && notify-send " Screenshot" -t 250
