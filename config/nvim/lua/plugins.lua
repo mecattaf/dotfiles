@@ -15,6 +15,14 @@ opt.rtp:prepend(lazypath)
 g.mapleader = " "
 
 require("lazy").setup({
+ {
+    "robitx/gp.nvim",
+    config = function()
+      require("gp").setup({
+        openai_api_key = { "cat", vim.fn.expand("~/openai_key") },
+      })
+    end
+  },
   {
     'norcalli/nvim-colorizer.lua',
     config = function()
