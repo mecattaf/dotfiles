@@ -44,7 +44,6 @@ require("lazy").setup({
       require('plugins.treesitter')
     end
   },
-  'RRethy/nvim-base16',
   {
     'kyazdani42/nvim-tree.lua',
     config = function()
@@ -102,29 +101,6 @@ require("lazy").setup({
     "folke/zen-mode.nvim",
     config = function()
       require("zen-mode").setup()
-    end
-  },
-  {
-    'tpope/vim-repeat', 
-    config = function()
-      -- Configuration for vim-repeat can be added here if needed
-    end
-  },
-  {
-    "ggandor/leap.nvim",
-    config = function()
-      require('leap').set_default_keymaps()
-    end,
-  },
-  {
-    "ggandor/flit.nvim",
-    config = function()
-      require('flit').setup {
-        keys = { f = 'f', F = 'F', t = 't', T = 'T' },
-        labeled_modes = "v",
-        multiline = true,
-        opts = {}
-      }
     end
   },
   {

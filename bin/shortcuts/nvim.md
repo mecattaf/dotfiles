@@ -12,10 +12,6 @@
 |               |                                                           |
 | v + s         | Open a vertical split                                     |
 |               |                                                           |
-| s             | Leap forward navigation                                   |
-|               |                                                           |
-| S             | Leap backward navigation                                  |
-|               |                                                           |
 | Escape        | Remove search highlighting                                |
 
 ## Shortcuts that start with Space
