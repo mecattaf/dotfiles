@@ -98,8 +98,6 @@ set $scripts ~/.local/share/bin
 set $term alacritty
 set $host alacritty -o window.opacity=0.8 -e fish
 
-set $ai exec $term -o font.size=16 --class 'ai-chat' -t 'ai-chat' -e mods -f
-
 set $screenshot-full grim - | tee ~/Pictures/scrn-$(date +"%Y-%m-%d-%H:%M:%S").png | wl-copy && notify-send " Screenshot" -t 250
 set $screenshot-area grim -g "$(slurp)" - | tee ~/Pictures/scrn-$(date +"%Y-%m-%d-%H:%M:%S").png | wl-copy && notify-send " Screenshot" -t 250
 
@@ -145,8 +143,6 @@ set $emoji ~/.local/share/bin/emoji-fzf preview | fzf -m --preview '~/.local/sha
 set $git-pull exec $scripts/pull-updates
 set $git-push exec $scripts/push-updates
 
-for_window [title="ai-chat"] border pixel 0, floating enable, focus
-
 for_window [title="networkwidget"] border pixel 0, floating enable, resize set 453 500, move position 1380 490
 for_window [title="powerwidget"] border pixel 0, floating enable, resize set 300 250, move position 0 0, focus
 for_window [title="fzf-switcher"] border pixel 0, floating enable, focus
@@ -179,9 +175,6 @@ for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 30 p
 
     # Fzf application launcher
     bindsym $mod+d exec alacritty --class=launcher -e env GLYPH_COMMAND="" GLYPH_DESKTOP="" GLYPH_PROMPT="🚀 " $scripts/sway-launcher-desktop
-
-    # AI prompt window with mods
-    bindsym $mod+Space exec $ai
 
     # Git updates and Reload configuration file
     bindsym $mod+r $git-pull, exec swaymsg reload

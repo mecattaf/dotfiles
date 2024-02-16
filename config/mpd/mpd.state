@@ -2,8 +2,8 @@ sw_volume: 100
 audio_device_state:1:My Pulse Output
 audio_device_state:1:Visualizer
 state: pause
-current: 298
-time: 708.263000
+current: 300
+time: 197.735000
 random: 0
 repeat: 0
 single: 0
@@ -299,16 +299,18 @@ playlist_begin
 284:A1 music/Daft Punk 1997 Essential Mix Tracklist/I-Cube - Disco Cubizm (Daft Punk Mix).mp4
 285:A1 music/Daft Punk 1997 Essential Mix Tracklist/Jammin The House Gerald - Get The Ho '94.mp4
 286:A1 music/Daft Punk 1997 Essential Mix Tracklist/Paul Johnson - Hear The Music.mp4
-287:A1 music/Daft Punk 1997 Essential Mix Tracklist/Red-X - When Worlds Collide - Dee's Knots (1997).mp4
-288:A1 music/Daft Punk 1997 Essential Mix Tracklist/Rick Wilhite - Drum Patterns & Memories (MM Mix).mp4
-289:A1 music/Daft Punk 1997 Essential Mix Tracklist/ron maney & l.a. williams - roller rink 2000 - shining.mp4
-290:A1 music/Daft Punk 1997 Essential Mix Tracklist/Roy Davis Jr ft Peven Everett - Gabriel (Live Garage Version).mp4
-291:A1 music/Daft Punk 1997 Essential Mix Tracklist/Sweet - Somebody's Watching (White Label).mp4
-292:A1 music/Daft Punk 1997 Essential Mix Tracklist/Thomas Bangalter - Spinal Scratch.mp4
-293:A1 music/Daft Punk 1997 Essential Mix Tracklist/Traxxxsters - Da Way U Work (Club).mp4
-294:A1 music/Daft Punk 1997 Essential Mix Tracklist/WAXMASTER WAX SCRATCH TRACK CLASSIC HARD HOUSE MUSIC.mp4
-295:A1 music/Daft Punk 1997 Essential Mix Tracklist/Ween - Freedom Of '76.mp4
-296:A1 music/Daft Punk 1997 Essential Mix Tracklist/Trankilou - Champagne.mp4
-297:A1 music/Daft Punk 1997 Essential Mix Tracklist/Thomas Bangalter - Spinal Beats.mp4
-298:A1 music/Ibrahim Maalouf/Ibrahim Maalouf - J'attendrai  Paroles Paroles  Salma Ya Salama  Interlude Dalida.mp4
+287:A1 music/Daft Punk 1997 Essential Mix Tracklist/Rick Wilhite - Drum Patterns & Memories (MM Mix).mp4
+288:A1 music/Daft Punk 1997 Essential Mix Tracklist/Roy Davis Jr ft Peven Everett - Gabriel (Live Garage Version).mp4
+289:A1 music/Daft Punk 1997 Essential Mix Tracklist/Thomas Bangalter - Spinal Scratch.mp4
+290:A1 music/Daft Punk 1997 Essential Mix Tracklist/WAXMASTER WAX SCRATCH TRACK CLASSIC HARD HOUSE MUSIC.mp4
+291:A1 music/Daft Punk 1997 Essential Mix Tracklist/Ween - Freedom Of '76.mp4
+292:A1 music/Daft Punk 1997 Essential Mix Tracklist/Trankilou - Champagne.mp4
+293:A1 music/Ibrahim Maalouf/Ibrahim Maalouf - J'attendrai  Paroles Paroles  Salma Ya Salama  Interlude Dalida.mp4
+294:Recent/EXPRESSIONS_-_AZ_Ahwe_x_WeAreEclipse.mp3
+295:Az USB/Music/Bandcamp 12-8-2023/Soda Inc. - Inner Vision 2/Soda Inc. - Inner Vision - 02 Sweat Sour.mp3
+296:A1 music/Daft Punk 1997 Essential Mix Tracklist/Traxxxsters - Da Way U Work (Club).mp4
+297:A1 music/Daft Punk 1997 Essential Mix Tracklist/Sweet - Somebody's Watching (White Label).mp4
+298:A1 music/Daft Punk 1997 Essential Mix Tracklist/ron maney & l.a. williams - roller rink 2000 - shining.mp4
+299:A1 music/Daft Punk 1997 Essential Mix Tracklist/Red-X - When Worlds Collide - Dee's Knots (1997).mp4
+300:A1 music/Daft Punk 1997 Essential Mix Tracklist/Moodymann - U Can Dance if U Want 2 (A1).mp4
 playlist_end
