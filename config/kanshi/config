@@ -1,6 +1,6 @@
 profile Laptop {
     output eDP-1 scale 1.5 position 0,0
-    exec swaymsg gaps outer 10
+    exec swaymsg gaps outer 5
 }
 
 profile Monitor {
