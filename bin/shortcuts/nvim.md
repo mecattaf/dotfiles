@@ -36,7 +36,7 @@
 |               |                                                           |
 | Space + u     | Toggle Twilight                                           |
 |               |                                                           |
-| Space + f     | Open telescope find_files                                 |
+| Space + f     | Open telescope grep_string                                |
 |               |                                                           |
 | Space + g     | Open Glow.nvim                                            |
 |               |                                                           |
