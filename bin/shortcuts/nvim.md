@@ -39,8 +39,6 @@
 | Space + f     | Open telescope grep_string                                |
 |               |                                                           |
 | Space + g     | Open Glow.nvim                                            |
-|               |                                                           |
-| Space + /     | Toggle comment (in both normal and visual mode)           |
 
 ## Shortcuts that start with Ctrl
 
