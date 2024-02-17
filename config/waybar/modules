@@ -82,18 +82,6 @@
 	// waybar-cpu
 
 	// waybar-custom
-    "custom/chrome": {
-         "format": "",
-         "tooltip": false,
-         "on-click": "flatpak run com.google.Chrome",
-    },
-
-    "custom/share": {
-         "format": " ",
-         "tooltip": false,
-         "on-click": "wayvnc 0.0.0.0 5900",
-    },
-
     "custom/pomo": {
          "format": "{}",
          "exec": "~/.local/share/bin/pomo emoji",
