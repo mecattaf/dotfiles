@@ -57,10 +57,6 @@ map("n", "<leader>f", ":Telescope grep_string<CR>")
 map("n", "<C-N>", ":NvimTreeToggle<CR>")
 map("n", "<C-B>", ":NvimTreeFocus<CR>")
 
--- Comment
-map("n", "<leader>/", ":lua require('Comment.api').toggle_current_linewise()<CR>")
-map("v", "<leader>/", ":lua require('Comment.api').toggle_linewise_op(vim.fn.visualmode())<CR>")
-
 -- Insert Map
 map("i", "<C-E>", "<End>")
 map("i", "<C-A>", "<Home>")

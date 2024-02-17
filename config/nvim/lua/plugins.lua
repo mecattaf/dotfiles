@@ -74,7 +74,7 @@ require("lazy").setup({
     'catppuccin/nvim',
     as = 'catppuccin',
     config = function()
-      vim.g.catppuccin_flavour = "mocha" -- Set the flavour
+      vim.g.catppuccin_flavour = "mocha"
       require('catppuccin').setup()
       vim.cmd.colorscheme "catppuccin"
     end
@@ -83,12 +83,6 @@ require("lazy").setup({
     'windwp/nvim-autopairs',
     config = function()
       require('nvim-autopairs').setup()
-    end
-  },
-  {
-    'numToStr/Comment.nvim',
-    config = function()
-      require('Comment').setup()
     end
   },
   {
