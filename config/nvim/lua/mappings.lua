@@ -48,10 +48,10 @@ map("n", "<leader>n", ":set relativenumber!<CR>")
 
 -- Zen mode and Twilight toggle
 map("n", "<leader>z", ":ZenMode<CR>")
-map("n", "<leader>u", ":Twilight<CR>")  -- Updated Twilight shortcut
+map("n", "<leader>u", ":Twilight<CR>")  
 
--- Telescope remapped from "ff" to "space+f"
-map("n", "<leader>f", ":Telescope find_files<CR>")
+-- Telescope to search for a string
+map("n", "<leader>f", ":Telescope grep_string<CR>")
 
 -- NvimTree
 map("n", "<C-N>", ":NvimTreeToggle<CR>")
@@ -67,10 +67,6 @@ map("i", "<C-A>", "<Home>")
 
 -- Shift tab
 map("i", "<S-TAB>", "<ESC><<<Ins>")
-
--- Leap navigation
-map("n", "s", ":lua require('leap').leap()<CR>")
-map("n", "S", ":lua require('leap').leap({backward = true})<CR>")
 
 -- Glow.nvim mapping
 map("n", "<leader>g", ":Glow<CR>")
