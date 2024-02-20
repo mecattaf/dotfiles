@@ -331,7 +331,6 @@ for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 30 p
 
     # Power Menu
     bindsym Mod1+ctrl+Delete exec $fzf-power-menu 
-    bindsym $mod+XF86Search exec $fzf-power-menu     
 
     # Change Wallpaper
     bindsym XF86Search exec azote
@@ -352,6 +351,7 @@ for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 30 p
 #XF86PickupPhone #see later in config
 #XF86HangupPhone #probably zoom?
 #XF86Favorites #tbd
+#XF86Search 
 #Home
 #End 
 #Insert
