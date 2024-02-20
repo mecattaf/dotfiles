@@ -125,6 +125,7 @@ set $waybar-toggle-1 pkill -SIGUSR1 -f 'waybar -c /var/home/dev/.config/waybar/c
 
 set $playerctl-playing notify-send "$(playerctl metadata artist)" "$(playerctl metadata title)" -t 200
 
+set $wshowkeys-toggle pkill wshowkeys || wshowkeys --font "pango:JetBrainsMono Nerd Font 16"
 
 set $fzf-wifi exec $term --class 'networkwidget' -t 'networkwidget' -e "$scripts/fzf-nmcli"
 set $fzf-power-menu exec $term -o font.size=22 --class 'powerwidget' -t 'powerwidget' -e $scripts/fzf-power-menu
@@ -209,6 +210,9 @@ for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 30 p
 
     # Copy color hex code
     bindsym $mod+c exec $color-picker 
+
+    # Toggle wshowkeys
+    bindsym $mod+apostrophe exec $wshowkeys-toggle
 
     # SoundCloud Music
     bindsym $mod+m workspace music
