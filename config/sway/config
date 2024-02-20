@@ -98,6 +98,8 @@ set $scripts ~/.local/share/bin
 set $term alacritty
 set $host alacritty -o window.opacity=0.8 -e fish
 
+set $chrome flatpak run com.google.Chrome --profile-directory=Default
+
 set $screenshot-full grim - | tee ~/Pictures/scrn-$(date +"%Y-%m-%d-%H:%M:%S").png | wl-copy && notify-send " Screenshot" -t 250
 set $screenshot-area grim -g "$(slurp)" - | tee ~/Pictures/scrn-$(date +"%Y-%m-%d-%H:%M:%S").png | wl-copy && notify-send " Screenshot" -t 250
 
@@ -150,11 +152,7 @@ for_window [title="music-download"] border pixel 0, floating enable, focus
 
 for_window [title="shortcutwidget"] border pixel 0, floating enable, resize set 1100 700, focus, blur enable
 
-for_window [title="music-cli"] {
-    move container to workspace music
-    blur enable
-    floating disable
-}
+for_window [title="music-cli"] move container to workspace music, blur enable, floating disable
 
 for_window [title="clipboard-history"] focus
 for_window [title="emoji-picker"] focus
@@ -212,40 +210,39 @@ for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 30 p
     # Copy color hex code
     bindsym $mod+c exec $color-picker 
 
-    # Soundcloud Music 
+    # SoundCloud Music
     bindsym $mod+m workspace music
-    bindsym $mod+Shift+m exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=eikjhbkpemdappjfcmdeeeamdpkgabmk'
+    bindsym $mod+Shift+m exec $chrome --app=https://soundcloud.com
 
     # ChatGPT LLM
     bindsym $mod+n workspace chatgpt
-    bindsym $mod+Shift+n exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=adcclpceapdbhchilkbngkehpppaefko'
+    bindsym $mod+Shift+n exec $chrome --app=https://chat.openai.com/
 
     # Superhuman Mail
     bindsym $mod+w workspace email
-    bindsym $mod+Shift+w exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=cabkgbgkeonbpeoedbaeolhgfkempoka'
+    bindsym $mod+Shift+w exec $chrome --app=https://mail.superhuman.com/
 
-    # Linear Tasks 
+    # Linear Tasks
     bindsym $mod+grave workspace linear
-    bindsym $mod+Shift+grave exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=bgdbmehlmdmddlgneophbcddadgknlpm'
+    bindsym $mod+Shift+grave exec $chrome --app=https://linear.app/
 
     # Notion Notes
     bindsym $mod+Comma workspace notion
-    bindsym $mod+Shift+Comma exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=mlneepkinfdepaiigomojgjbfpfieoln'
-    
+    bindsym $mod+Shift+Comma exec $chrome --app=https://notion.so/
+
     # Loom Video
     bindsym $mod+Semicolon workspace loom
-    bindsym $mod+Shift+Semicolon exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=eccmdalhcbddohhgljcjgindicpjbjkd'
- 
-    # Calendar from notion
-    bindsym $mod+Period workspace calendar
-    bindsym $mod+Shift+Period exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=gfjiemlnmgajmgihefeppogphdpjchab'
+    bindsym $mod+Shift+Semicolon exec $chrome --app=https://www.loom.com/home
 
-    # Google Cloud
-    bindsym $mod+Shift+e exec flatpak 'run' '--command=/app/bin/chrome' 'com.google.Chrome' '--profile-directory=Default' '--app-id=aghbiahbpaijignceidepookljebhfak'
-    
+    # Calendar from Notion
+    bindsym $mod+Period workspace calendar
+    bindsym $mod+Shift+Period exec $chrome --app=https://calendar.notion.so/
+
+    # Google Cloud (Drive)
+    bindsym $mod+Shift+e exec $chrome --app=https://drive.google.com/drive/u/0/
     # Communication Tools?
     # workspace name: comms
-    # whatsapp web: hnpfjngllnobngcgfapefoaidbinmjnm
+    # whatsapp web
     # slack
     # kumospace
 #
@@ -392,59 +389,20 @@ for_window [app_id="^chrome-.*"] shortcuts_inhibitor disable
 
 for_window [app_id="^google-chrome"] move container to workspace number 1
 
-for_window [app_id="^chrome-eikjhbkpemdappjfcmdeeeamdpkgabmk-Default$"] {
-    move container to workspace music
-    blur enable
-    floating disable
-}
-for_window [app_id="^chrome-adcclpceapdbhchilkbngkehpppaefko-Default$"] {
-    move container to workspace chatgpt
-    blur enable
-    floating disable
-}
-for_window [app_id="^chrome-cabkgbgkeonbpeoedbaeolhgfkempoka-Default$"] {
-    move container to workspace email
-    blur enable
-    floating disable
-}
-for_window [app_id="^chrome-bgdbmehlmdmddlgneophbcddadgknlpm-Default$"] {
-    move container to workspace linear
-    blur enable
-    floating disable
-}
-for_window [app_id="^chrome-mlneepkinfdepaiigomojgjbfpfieoln-Default$"] {
-    move container to workspace notion
-    blur enable
-    floating disable
-}
-for_window [app_id="^chrome-eccmdalhcbddohhgljcjgindicpjbjkd-Default$"] {
-    move container to workspace loom
-    blur enable
-    floating disable
-}
-for_window [app_id="^chrome-gfjiemlnmgajmgihefeppogphdpjchab-Default$"] {
-    move container to workspace calendar
-    blur enable
-    floating disable
-}
-for_window [app_id="^chrome-aghbiahbpaijignceidepookljebhfak-Default$"] {
-    # google drive opens on current workspace
-    blur enable
-    resize set 1100 700
-}
+for_window [app_id="^chrome-soundcloud.com.*"] move container to workspace music, blur enable, floating disable
+for_window [app_id="^chrome-chat.openai.com.*"] move container to workspace chatgpt, blur enable, floating disable
+for_window [app_id="^chrome-mail.superhuman.com.*"] move container to workspace email, blur enable, floating disable
+for_window [app_id="^chrome-linear.app.*"] move container to workspace linear, blur enable, floating disable
+for_window [app_id="^chrome-notion.so.*"] move container to workspace notion, blur enable, floating disable
+for_window [app_id="^chrome-www.loom.com.*"] move container to workspace loom, blur enable, floating disable
+for_window [app_id="^chrome-calendar.notion.so.*"] move container to workspace calendar, blur enable, floating disable
+for_window [app_id="^chrome-drive.google.com.*"] move container to workspace "Google Drive", blur enable, resize set 1100 700
 
 for_window [app_id="io.bassi.Amberol"] {
 move container to workspace music
     blur enable
     floating disable
 }
-
-#for_window [app_id="^chrome-[]-Default$"] {
-#    move container to workspace kumospace
-#    blur enable
-#    floating disable
-#}
-
 
 # output
 exec_always {
