@@ -289,27 +289,27 @@ for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 30 p
 # Moving around:
 #
     # Move focus around
-    bindsym $mod+Shift+h exec swaymsg focus left 
-    bindsym $mod+Shift+j exec swaymsg focus down 
-    bindsym $mod+Shift+k exec swaymsg focus up 
-    bindsym $mod+Shift+l exec swaymsg focus right 
+    bindsym $mod+h exec swaymsg focus left 
+    bindsym $mod+j exec swaymsg focus down 
+    bindsym $mod+k exec swaymsg focus up 
+    bindsym $mod+l exec swaymsg focus right 
 
     # Resize window
-    bindsym $mod+Shift+Left resize shrink width 25 
-    bindsym $mod+Shift+Down resize shrink height 25
-    bindsym $mod+Shift+Up resize grow height 25 
-    bindsym $mod+Shift+Right resize grow width 25 
+    bindsym $mod+Left resize shrink width 25 
+    bindsym $mod+Down resize shrink height 25
+    bindsym $mod+Up resize grow height 25 
+    bindsym $mod+Right resize grow width 25 
 
     # Move focused window
-    bindsym $mod+h move left 25
-    bindsym $mod+j move down 25
-    bindsym $mod+k move up 25
-    bindsym $mod+l move right 25
+    bindsym $mod+Shift+h move left 25
+    bindsym $mod+Shift+j move down 25
+    bindsym $mod+Shift+k move up 25
+    bindsym $mod+Shift+l move right 25
     # Same with arrow keys
-    bindsym $mod+Left move left 50
-    bindsym $mod+Down move down 50
-    bindsym $mod+Up move up 50
-    bindsym $mod+Right move right 50
+    bindsym $mod+Shift+Left move left 50
+    bindsym $mod+Shift+Down move down 50
+    bindsym $mod+Shift+Up move up 50
+    bindsym $mod+Shift+Right move right 50
 
     # Alternate sticky
     bindsym $mod+BackSpace sticky toggle
