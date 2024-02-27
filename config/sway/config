@@ -130,7 +130,8 @@ set $stop-wshowkeys pkill wshowkeys
 
 set $fzf-wifi exec $term --class 'networkwidget' -t 'networkwidget' -e "$scripts/fzf-nmcli"
 set $fzf-power-menu exec $term -o font.size=22 --class 'powerwidget' -t 'powerwidget' -e $scripts/fzf-power-menu
-set $fzf-shortcuts exec $term -o font.size=14 window.opacity=0.75 --class 'shortcutwidget' -t 'shortcutwidget' -e $scripts/fzf-shortcuts
+set $fzf-shortcuts exec kitty --class 'shortcutwidget' -e $scripts/fzf-shortcuts
+#-o font.size=14 window.opacity=0.75
 
 set $bluetooth-menu exec blueman-manager
 set $audio-sources exec pavucontrol
