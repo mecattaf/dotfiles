@@ -175,7 +175,7 @@ for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 30 p
     bindsym $mod+Shift+q kill
 
     # Fzf application launcher
-    bindsym $mod+d exec alacritty --class=launcher -e env GLYPH_COMMAND="" GLYPH_DESKTOP="" GLYPH_PROMPT="🚀 " $scripts/sway-launcher-desktop
+    bindsym $mod+d exec kitty --class=launcher -e env GLYPH_COMMAND="" GLYPH_DESKTOP="" GLYPH_PROMPT="🚀 " $scripts/sway-launcher-desktop
 
     # Git updates and Reload configuration file
     bindsym $mod+r $git-pull, exec swaymsg reload
@@ -186,7 +186,6 @@ for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 30 p
 
     # Emoji Menu
     bindsym $mod+Shift+v exec kitty --class "emoji-picker" -e sh -c "$scripts/$emoji"
-    #-t "emoji-picker" -e sh -c "$scripts/$emoji"
 
     # Screenshot Functionality
     bindsym $mod+a exec $screenshot-full
