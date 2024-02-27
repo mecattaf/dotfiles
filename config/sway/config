@@ -97,7 +97,7 @@ set $scripts ~/.config/sway/scripts
 #~/.local/share/bin 
 
 set $term alacritty
-set $host kitty -o font_size=48 -o initial_window_width=1200 -o initial_window_height=800 
+set $host kitty -o initial_window_width=1200 -o initial_window_height=800 
 
 set $chrome flatpak run com.google.Chrome --profile-directory=Default
 
