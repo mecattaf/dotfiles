@@ -96,7 +96,7 @@ set $mod Mod4
 set $scripts ~/.local/share/bin
 
 set $term alacritty
-set $host alacritty -o window.opacity=0.8 -e fish
+set $host kitty --option background_opacity=0.9
 
 set $chrome flatpak run com.google.Chrome --profile-directory=Default
 
@@ -110,10 +110,9 @@ set $record-start notify-send -u critical " Screen Recording Started" -t 0 &&
 set $record-select-area notify-send -u critical " Screen Recording Started" -t 0 && wf-recorder -o $(swaymsg -r -t get_outputs | jq -r '.[] | select(.focused == true).name') -g "$(slurp)" -f ~/Videos/scrn-$(date +'%Y-%m-%d-%H:%M:%S').mp4 &> /dev/null
 set $record-stop pkill -SIGINT wf-recorder && notify-send -u low " Screen Recording Stopped" -t 0
 
-set $WOBSOCK $XDG_RUNTIME_DIR/wob.sock
-set $volume-up amixer sset Master 5%+ | sed -En 's/.*\[([0-9]+)%\].*/\1/p' | head -1 > $WOBSOCK && notify-send "ﱛ Volume up" -t 250
-set $volume-down amixer sset Master 5%- | sed -En 's/.*\[([0-9]+)%\].*/\1/p' | head -1 > $WOBSOCK && notify-send "ﱜ Volume down" -t 250
-set $volume-mute amixer sset Master toggle | sed -En '/\[on\]/ s/.*\[([0-9]+)%\].*/\1/ p; /\[off\]/ s/.*/0/p' | head -1 > $WOBSOCK
+set $volume-up amixer sset Master 5%+ && notify-send "ﱛ Volume up" -t 250
+set $volume-down amixer sset Master 5%- && notify-send "ﱜ Volume down" -t 250
+set $volume-mute amixer sset Master toggle && notify-send "ﱜ Volume $(amixer get Master | grep -oP '\[\d+%\]' | head -1 | tr -d '[]%')%" -t 250
 
 set $brightness-up light -A 5 && light -O && notify-send " Brightness up" -t 250
 set $brightness-down light -U 5 && light -O && notify-send " Brightness down" -t 250
