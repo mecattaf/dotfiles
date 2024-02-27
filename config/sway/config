@@ -115,8 +115,8 @@ set $volume-down amixer sset Master 5%- && notify-send "🔉 Volume down" "$(ami
 set $volume-mute amixer sset Master toggle && amixer get Master | awk '/\[off\]/ {print "mute"; exit} /\[on\]/ {gsub(/\[|\]/, "", $5); print "unmute " $5; exit}' | xargs -I {} bash -c 'if [[ "{}" == "mute" ]]; then notify-send "🔇 Muted" -t 250; else notify-send "🔊 Volume" "$(echo {} | cut -d" " -f2)%" -t 250; fi'
 
 set $brightness-up light -A 5 && light -G | xargs -I {} notify-send "☀️ Brightness up" "{}%" -t 250
-set $brightness-down light -U 5 && light -G | xargs -I {} notify-send "☀️ Brightness down" "{}%" -t 250
-set $brightness-up-single light -A 1 && light -G | xargs -I {} notify-send "🔅 Brightness up" "{}%" -t 250
+set $brightness-down light -U 5 && light -G | xargs -I {} notify-send "🔅 Brightness down" "{}%" -t 250
+set $brightness-up-single light -A 1 && light -G | xargs -I {} notify-send "☀️ Brightness up" "{}%" -t 250
 set $brightness-down-single light -U 1 && light -G | xargs -I {} notify-send "🔅 Brightness down" "{}%" -t 250
 
 set $waybar-toggle-0 pkill -SIGUSR1 -f 'waybar -c /var/home/dev/.config/waybar/config-0'
