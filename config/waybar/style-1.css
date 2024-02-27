@@ -3,7 +3,7 @@
 /** ********** Fonts ********** **/
 * {
     font-family: "JetBrainsMono Nerd Font", "Iosevka Nerd Font";
-    font-size: 28px;
+    font-size: 24px;
 }
 
 /** ********** Waybar Window ********** **/
@@ -23,21 +23,22 @@ window#waybar.hidden {
     background-color: @base;
     color: @mantle;
     border-radius: 15px 15px 15px 15px;
-    padding: 4px;
+    padding: 0px;
+    margin: 0px 6px;
 }
 
 #workspaces button {
     color: @text;
-    padding: 2px 6px;
-    margin: 5px;
+    padding: 1px 1px;
+    margin: 2px 6px;
+    padding-left: 6px;
 }
 
 #workspaces button:hover {
     background-color: @base;
     color: @text;
     border: 0px solid @text;
-    border-radius: 15px;
-    padding: 2px 6px;
+    border-radius: 10px;
 }
 
 #workspaces button.visible {
@@ -47,39 +48,6 @@ window#waybar.hidden {
 #workspaces button.focus {
     background-color: @subtext0;
 }
-
-/** ********** Sway Workspaces Custom Colors ********** **/
-#workspaces button#1:hover {
-    background-color: @teal;
-}
-#workspaces button#notion:focus {
-    background-color: @sapphire;
-}
-#workspaces button#loom:hover {
-    background-color: @lavender;
-}
-#workspaces button#linear:hover {
-    background-color: @blue;
-}
-#workspaces button#superhuman:hover {
-    background-color: @yellow;
-}
-#workspaces button#music:hover {
-    background-color: @peach;
-}
-#workspaces button#chatgpt:hover {
-    background-color: @green;
-}
-#workspaces button#calendar:hover {
-    background-color: @mauve;
-}
-#workspaces button#gcloud:hover {
-    background-color: @flamingo;
-}
-#workspaces button#comms:hover {
-    background-color: @rosewater;
-}
-
 
 .modules-left > widget:first-child > #workspaces {
     margin-left: 0;
