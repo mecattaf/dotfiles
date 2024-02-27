@@ -128,8 +128,8 @@ set $playerctl-playing notify-send "$(playerctl metadata artist)" "$(playerctl m
 set $start-wshowkeys wshowkeys -F "JetBrainsMono Nerd Font 16" -a bottom
 set $stop-wshowkeys pkill wshowkeys
 
-set $fzf-wifi exec $term --class 'networkwidget' -t 'networkwidget' -e "$scripts/fzf-nmcli"
-set $fzf-power-menu exec $term -o font.size=22 --class 'powerwidget' -t 'powerwidget' -e $scripts/fzf-power-menu
+set $fzf-wifi exec alacritty --class 'networkwidget' -t 'networkwidget' -e "$scripts/fzf-nmcli"
+set $fzf-power-menu exec alacritty -o font.size=22 --class 'powerwidget' -t 'powerwidget' -e $scripts/fzf-power-menu
 set $fzf-shortcuts exec kitty --class 'shortcutwidget' -e $scripts/fzf-shortcuts
 #-o font.size=14 window.opacity=0.75
 
@@ -138,7 +138,7 @@ set $audio-sources exec pavucontrol
 set $wifi-menu exec iwgtk
 set $wifi-connections exec nm-connection-editor
 
-set $music-cli exec $term -o window.opacity=0.95 --class 'music-cli' -t 'music-cli' -e ncmpcpp 
+set $music-cli exec kitty -o window.opacity=0.95 --class 'music-cli' -t 'music-cli' -e ncmpcpp 
 
 set $music-dl exec $scripts/music-download
 
@@ -450,7 +450,7 @@ input type:keyboard {
     shadows disable
 
     for_window [app_id="Alacritty"] blur enable
-    for_window [app_id="kitty"] blur enable
+    for_window [app_id="kitty"] blur enable, opacity 0.95
     for_window [app_id="org.gnome.Nautilus"] blur enable
     for_window [app_id="nautilus"] blur enable
     for_window [app_id="google-chrome"] blur enable

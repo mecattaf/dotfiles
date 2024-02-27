@@ -2,7 +2,6 @@ sw_volume: 100
 audio_device_state:1:My Pulse Output
 audio_device_state:1:Visualizer
 state: stop
-current: 0
 random: 0
 repeat: 0
 single: 0
@@ -125,4 +124,10 @@ playlist_begin
 111:Nostalgie/Mille Neuf Cent Seventies/🌟 80s french discoveries 🌟.mp3
 112:Nostalgie/Mille Neuf Cent Seventies/A Million Miles Away by マクロスMACROSS 82-99.mp3
 113:Recent/Yann_Muller_-_Voyage_Voyage_Extended_Mix.mp3
+114:Az USB/Music/Acid typa trip/anthony_rother_trans_europa_express.mp3
+115:Az USB/Music/Acid typa trip/Jake_Childs_Paul_Dyne_feat_Lil_Prince_Beat_Ma.mp3
+116:Az USB/Music/Acid typa trip/Jimi_Jules_Karma_Baby.mp3
+117:Az USB/Music/Acid typa trip/Louie_Vega_ft_Anané_Cosmic_Witch_Mochakk_Exten.mp3
+118:Az USB/Music/Acid typa trip/Love_s_Got_Me_High_Original_Vocal_Mix_.mp3
+119:Az USB/Music/Acid typa trip/13378406_Operation_(Unreleased Mix).mp3
 playlist_end
