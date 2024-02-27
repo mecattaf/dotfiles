@@ -1,0 +1,17 @@
+#!/bin/bash
+
+commit_message="Update dotfiles"
+
+notify() {
+    if [ $? -eq 0 ]; then
+        notify-send "Success" "Dotfiles successfully pushed."
+    else
+        notify-send "Error" "Dotfiles push failed."
+    fi
+}
+
+echo "Committing and pushing dotfiles..."
+git -C ~/dotfiles add .
+git -C ~/dotfiles commit -m "$commit_message"
+git -C ~/dotfiles push --force origin master
+notify
