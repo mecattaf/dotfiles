@@ -93,7 +93,8 @@ exec --no-startup-id mpDris2
 
 # Variables
 set $mod Mod4
-set $scripts ~/.local/share/bin #~/.config/sway/scripts 
+set $scripts ~/.config/sway/scripts 
+#~/.local/share/bin 
 
 set $term alacritty
 set $host kitty 
