@@ -114,7 +114,7 @@ set $volume-up amixer sset Master 5%+ && notify-send "ﱛ Volume up $(amixer get
 set $volume-down amixer sset Master 5%- && notify-send "ﱜ Volume down $(amixer get Master | grep -oP '\[\d+%\]' | head -1 | tr -d '[]%')" -t 250
 #set $volume-mute amixer sset Master toggle && notify-send "ﱜ Volume $(amixer get Master | grep -oP '\[\d+%\]' | head -1 | tr -d '[]%')%" -t 250
 
-set $volume-mute amixer -D pulse sset Master toggle && amixer get Master | grep -oE '\[off\]|\[\d+%\]' | head -1 | xargs -I {} bash -c 'if [[ "{}" == "[off]" ]]; then notify-send "🔇 Muted" -t 250; else notify-send "🔊 Volume" "$(echo {} | tr -d "[]%")%" -t 250; fi'
+set $volume-mute amixer sset Master toggle && amixer get Master | grep -oE '\[off\]|\[\d+%\]' | head -1 | xargs -I {} bash -c 'if [[ "{}" == "[off]" ]]; then notify-send "🔇 Muted" -t 250; else notify-send "🔊 Volume" "$(echo {} | tr -d "[]%")%" -t 250; fi'
 
 set $brightness-up light -A 5 && light -O && notify-send " Brightness up" -t 250
 set $brightness-down light -U 5 && light -O && notify-send " Brightness down" -t 250
