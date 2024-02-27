@@ -450,7 +450,7 @@ input type:keyboard {
     shadows disable
 
     for_window [app_id="Alacritty"] blur enable
-    for_window [app_id="kitty"] blur enable, opacity 0.75
+    for_window [app_id="kitty"] blur enable, opacity 0.8
     for_window [app_id="org.gnome.Nautilus"] blur enable
     for_window [app_id="nautilus"] blur enable
     for_window [app_id="google-chrome"] blur enable
