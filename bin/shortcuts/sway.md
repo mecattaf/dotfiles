@@ -11,13 +11,15 @@
 |                          |                                                    |
 | `⌘` + d                  | Application launcher                               |
 |                          |                                                    |
-| `⌘` + Shift + r          | Reload configuration file                          |
+| `⌘` + r                  | Pull dotfiles from github and reload sway          |
+|                          |                                                    |
+| `⌘` + Shift + r          | Reload sway and push dotfiles to github            |
 |                          |                                                    |
 | `⌘` + v                  | Clipboard History                                  |
 |                          |                                                    |
 | `⌘` + Shift + v          | Emoji Menu                                         |
 |                          |                                                    |
-st| `⌘` + a                  | Fullscreen Screenshot                              |
+| `⌘` + a                  | Fullscreen Screenshot                              |
 |                          |                                                    |
 | `⌘` + Shift + a          | Area Screenshot                                    |
 |                          |                                                    |
