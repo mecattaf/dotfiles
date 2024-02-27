@@ -236,7 +236,6 @@
     "disable-scroll": false,
     "disable-click": false,
     "all-outputs": true,
-    "tooltip": "exec /var/home/dev/.local/share/bin/workspace-indicator {}",
     "format": "{icon}",
     "format-icons": {
         "1":          " ",  
@@ -282,4 +281,3 @@
         "spacing": 8,
     }
 }
-
