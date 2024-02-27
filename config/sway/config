@@ -143,7 +143,7 @@ set $music-dl exec $scripts/music-download
 
 set $color-picker exec $scripts/colorpicker 
 
-set $emoji /emoji-fzf preview | fzf -m --preview '~/.config/sway/scripts/emoji-fzf get --name {1}' | cut -d ' ' -f 1 | ~/.config/sway/scripts/emoji-fzf get | clipman store
+set $emoji emoji-fzf preview | fzf -m --preview '~/.config/sway/scripts/emoji-fzf get --name {1}' | cut -d ' ' -f 1 | ~/.config/sway/scripts/emoji-fzf get | clipman store
 
 set $git-pull exec $scripts/pull-updates
 set $git-push exec $scripts/push-updates
@@ -185,7 +185,7 @@ for_window [app_id="^launcher$"] floating enable, sticky enable, resize set 30 p
     bindsym $mod+v exec alacritty --class "clipboard-history" -t "clipboard-history" -e $scripts/fzf-clipboard-history
 
     # Emoji Menu
-    bindsym $mod+Shift+v exec alacritty --class "emoji-picker" -t "emoji-picker" -e sh -c "$emoji"
+    bindsym $mod+Shift+v exec alacritty --class "emoji-picker" -t "emoji-picker" -e sh -c "$scripts/$emoji"
 
     # Screenshot Functionality
     bindsym $mod+a exec $screenshot-full
