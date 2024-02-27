@@ -96,7 +96,7 @@ set $mod Mod4
 set $scripts ~/.local/share/bin
 
 set $term alacritty
-set $host kitty --option background_opacity=0.9
+set $host kitty 
 
 set $chrome flatpak run com.google.Chrome --profile-directory=Default
 
@@ -133,7 +133,8 @@ set $fzf-shortcuts exec $term -o font.size=14 window.opacity=0.75 --class 'short
 
 set $bluetooth-menu exec blueman-manager
 set $audio-sources exec pavucontrol
-set $wifi exec nm-connection-editor
+set $wifi-menu exec iwgtk
+set $wifi-connections exec nm-connection-editor
 
 set $music-cli exec $term -o window.opacity=0.95 --class 'music-cli' -t 'music-cli' -e ncmpcpp 
 
