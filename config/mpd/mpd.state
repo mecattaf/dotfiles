@@ -2,7 +2,6 @@ sw_volume: 100
 audio_device_state:1:My Pulse Output
 audio_device_state:1:Visualizer
 state: stop
-current: 0
 random: 0
 repeat: 0
 single: 0
@@ -122,4 +121,7 @@ playlist_begin
 108:Johnny Music/The House/Cafe Mambo Competition - 17th March [Buegel&Brett].mp3
 109:Johnny Music/The House/Down With Webster – Chills (Manse Remix) thehouseofthebeat.com.mp3
 110:A1 music/©/Come join the murder.mp3
+111:Nostalgie/Mille Neuf Cent Seventies/🌟 80s french discoveries 🌟.mp3
+112:Nostalgie/Mille Neuf Cent Seventies/A Million Miles Away by マクロスMACROSS 82-99.mp3
+113:Recent/Yann_Muller_-_Voyage_Voyage_Extended_Mix.mp3
 playlist_end
