@@ -5,7 +5,7 @@ padding=15,10,15
 default-timeout=2500
 border-size=1
 border-radius=15
-anchor=top-right
+anchor=top-center
 layer=overlay
 #max_visible=3
 
