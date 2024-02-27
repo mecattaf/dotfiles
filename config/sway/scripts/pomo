@@ -98,7 +98,7 @@ function pomo_clock {
         left=$(( WORK_TIME*60 - running ))
         if [[ $left -lt 0 ]]; then
             left=$(( left + BREAK_TIME*60 ))
-            prefix=$'\U0001F3D6'
+            prefix=$'\U0001F334'
         else
             prefix=$'\U0001F345'
         fi
