@@ -101,6 +101,11 @@ function list-entries() {
       DIRS[$i]="${DIRS[i]}/applications/**/*.desktop"
     fi
   done
+  # Dotfiles: custom directory containing .desktop files
+  CUSTOM_DIR="${HOME}/.config/sway-launcher-desktop"
+  if [[ -d "${CUSTOM_DIR}" ]]; then
+    DIRS+=("${CUSTOM_DIR}/**/*.desktop")
+  fi
   # shellcheck disable=SC2068
   entries ${DIRS[@]}
 }
