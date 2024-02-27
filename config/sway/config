@@ -365,6 +365,7 @@ bindsym XF86Sleep noop
 # for_window [app_id=""] floating enable
 for_window [app_id=".*"] floating enable, border pixel 4,  resize set height 100ppt width 100ppt, move window to workspace 1
 for_window [app_id="Alacritty"] floating enable, border pixel 3,  resize set height 800 width 1200
+for_window [app_id="kitty"] floating enable, border pixel 3,  resize set height 800 width 1200
 
 no_focus [app_id=".*"]
 
