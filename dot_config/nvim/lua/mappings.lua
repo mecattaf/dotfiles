@@ -35,6 +35,9 @@ end
 -- BASIC NAVIGATION & EDITING
 -- ============================================================================
 
+-- Map semicolon to colon in normal mode
+map("n", ";", ":")
+
 -- Buffer navigation
 map("n", "<TAB>", ":bnext<CR>")
 map("n", "<S-TAB>", ":bprev<CR>")
