@@ -16,14 +16,5 @@ profile Duo {
 }
 
 profile Desktop {
-    output eDP-1 scale 2 position 0,0   adaptive_sync on
-    output eDP-2 scale 2 position 0,900 adaptive_sync on
-    output HDMI-A-1 mode 2560x1440@119.998Hz scale 1 position 1440,0
-    exec busctl --user set-property rs.wl-gammarelay /outputs/eDP_1 rs.wl.gammarelay Temperature q 3850
-    exec busctl --user set-property rs.wl-gammarelay /outputs/eDP_2 rs.wl.gammarelay Temperature q 3350
-    exec busctl --user set-property rs.wl-gammarelay /outputs/HDMI_A_1 rs.wl.gammarelay Temperature q 4000
-    exec scrollmsg input "1267:16986:ELAN9009:00_04F3:425A" map_to_output eDP-2
-    exec scrollmsg input "1267:16987:ELAN9008:00_04F3:425B" map_to_output eDP-1
-    exec scrollmsg input "1267:16986:ELAN9009:00_04F3:425A_Stylus" map_to_output eDP-2
-    exec scrollmsg input "1267:16987:ELAN9008:00_04F3:425B_Stylus" map_to_output eDP-1
+    output HDMI-A-1 mode 4096x2160@60.000Hz scale 1 position 0,0
 }
