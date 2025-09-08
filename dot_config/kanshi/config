@@ -27,7 +27,7 @@ profile Desktop {
 profile Desktop-Virtual {
     output eDP-1 disable
     output eDP-2 disable
-    output HDMI-A-1 mode 4096x2160@60.000Hz scale 1.5 position 0,0
+    output HDMI-A-1 mode 4096x2160@60.000Hz scale 1.5 position 0,0 transform 90
     output HEADLESS-1 mode 1600x900@60.000Hz scale 1.0 position 565,0
     output HEADLESS-2 mode 1600x900@60.000Hz scale 1.0 position 565,720
     exec busctl --user set-property rs.wl-gammarelay /outputs/HDMI_A_1 rs.wl.gammarelay Temperature q 4000
