@@ -93,8 +93,6 @@ set $color-picker exec $scripts/colorpicker
 # Workspace
 bindsym $mod+1 workspace 1
 bindsym $mod+0 workspace 2
-workspace 1 output "eDP-1"
-workspace 2 output "eDP-2"
 bindsym $mod+Shift+1 move container to workspace 1
 bindsym $mod+Shift+0 move container to workspace 2
 
