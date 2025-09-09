@@ -197,7 +197,6 @@ for_window [app_id="^chrome-.*"] shortcuts_inhibitor disable
 # previous approach which is not a good idea
 # for_window [app_id="nvim-terminal"] set_mode v, set_size v 0.666667, focus down, set_size v 0.333333, set_mode h
 
-
 # Utilities rules - discard?
 for_window [app_id="io.bassi.Amberol"] border pixel 0, floating enable
 #for_window [app_id="thunar"] border pixel 0, floating enable, resize 35% 35%, move 63% 60%
