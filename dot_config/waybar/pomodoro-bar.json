@@ -3,7 +3,7 @@
     "bar_id": "pomodoro",
     "layer": "top",
     "mode": "dock",
-    "output": "eDP-2",
+    "output": "HDMI-A-1",
     "exclusive": true,
     "passthrough": false,
     "position": "bottom",
