@@ -90,13 +90,8 @@ set $stop-wshowkeys pkill wshowkeys
 
 set $color-picker exec $scripts/colorpicker
 
-# Workspace
-bindsym $mod+1 workspace 1
-bindsym $mod+0 workspace 2
-bindsym $mod+Shift+1 move container to workspace 1
-bindsym $mod+Shift+0 move container to workspace 2
-
 bindsym $mod+space jump
+bindsym $mod+BackSpace set_mode
 bindsym $mod+Shift+Q kill
 bindsym $mod+D exec rofi -show drun 
 
@@ -160,14 +155,19 @@ bindsym $mod+l     focus  right
 bindsym $mod+home  focus  beginning
 bindsym $mod+end   focus  end
 
-bindsym $mod+Shift+h move left
-bindsym $mod+Shift+j move output down
-bindsym $mod+Shift+k move output up
-bindsym $mod+Shift+l move right
+bindsym $mod+Shift+h move left nomode
+bindsym $mod+Shift+j move down
+bindsym $mod+Shift+k move up
+bindsym $mod+Shift+l move right nomode
+
+bindsym $mod+Alt+h move left
+bindsym $mod+Alt+j move down nomode
+bindsym $mod+Alt+k move up nomode
+bindsym $mod+Alt+l move right
 
 # Layout settings
 layout_default_width 1.0
-layout_default_height 1.0
+layout_default_height 0.5
 layout_widths [0.33333333 0.5 0.66666667 1.0]
 layout_heights [0.33333333 0.5 0.66666667 1.0]
 
@@ -176,7 +176,7 @@ bindsym $mod+Shift+f  cycle_size h prev
 bindsym $mod+g        cycle_size v next
 bindsym $mod+Shift+g  cycle_size v prev
 
-bindsym $mod+BackSpace pin beginning
+#bindsym $mod+BackSpace pin beginning
 #bindsym $mod+space     pin end
 
 # Jump config
