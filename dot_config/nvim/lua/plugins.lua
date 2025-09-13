@@ -139,6 +139,7 @@ require("lazy").setup({
    config = function()
      vim.g.catppuccin_flavour = "mocha"
      require('catppuccin').setup({
+       transparent_background = true,
        color_overrides = {
          mocha = {
            base = "#000000",
