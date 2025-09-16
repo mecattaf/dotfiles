@@ -4,6 +4,8 @@ export XDG_SESSION_DESKTOP=scroll
 export QT_QPA_PLATFORMTHEME=qt5ct
 export QT_QPA_PLATFORM=wayland
 export MOZ_ENABLE_WAYLAND=1
+# - MOZ_DBUS_REMOTE=1 (Firefox desktop integration)
+# - MOZ_USE_XINPUT2=1 (Firefox touch support)
 
 # Import variables into system-user environment
 #exec systemctl --user import-environment DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP 
