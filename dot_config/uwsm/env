@@ -12,6 +12,11 @@ export MOZ_ENABLE_WAYLAND=1
 #exec hash dbus-update-activation-environment 2>/dev/null && \
 #        dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP=sway 
 
+# === Core Wayland Display Variables ===
+# These will be set by the compositor but we declare them for UWSM to handle
+#export WAYLAND_DISPLAY=wayland-1
+#export SWAYSOCK=/run/user/1000/sway-ipc.1000.1.sock
+
 ## from environment.d
 #GDK_BACKEND=wayland
 #XDG_SESSION_TYPE=wayland
