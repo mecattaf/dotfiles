@@ -13,6 +13,8 @@ client.urgent           $cl_urge $cl_urge $cl_fore $cl_urge $cl_urge
 focus_follows_mouse no
 font pango:JetBrainsMono Nerd Font 12
 smart_gaps off
+gaps inner 0
+gaps outer 0
 default_border pixel 1
 default_floating_border normal
 hide_edge_borders smart

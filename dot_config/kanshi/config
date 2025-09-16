@@ -15,8 +15,6 @@ profile Duo {
     exec scrollmsg input "1267:16987:ELAN9008:00_04F3:425B_Stylus" map_to_output eDP-1
     exec scrollmsg workspace 1 output "eDP-1"
     exec scrollmsg workspace 2 output "eDP-2"
-    exec scrollmsg gaps outer top 0
-    exec scrollmsg gaps outer bottom 0
 }
 
 profile Desktop {
@@ -24,5 +22,4 @@ profile Desktop {
     output eDP-2 disable
     output HDMI-A-1 mode 4096x2160@60.000Hz scale 1.5 position 0,0 transform 270
     exec busctl --user set-property rs.wl-gammarelay /outputs/HDMI_A_1 rs.wl.gammarelay Temperature q 4000
-    exec scrollmsg gaps vertical set 200
 }
