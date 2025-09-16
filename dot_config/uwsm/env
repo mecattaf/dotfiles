@@ -17,6 +17,20 @@ export MOZ_ENABLE_WAYLAND=1
 #export WAYLAND_DISPLAY=wayland-1
 #export SWAYSOCK=/run/user/1000/sway-ipc.1000.1.sock
 
+# === UWSM-specific Configuration ===
+# Tell UWSM to manage units in user config directory (faster startup)
+#export UWSM_UNIT_RUNG=home
+
+# Default to service units for apps (better than scopes for background apps)
+#export UWSM_APP_UNIT_TYPE=service
+
+# Variables that UWSM should export after compositor starts
+#export UWSM_FINALIZE_VARNAMES="WAYLAND_DISPLAY DISPLAY SWAYSOCK I3SOCK"
+
+# Variables to wait for before declaring graphical session ready
+#export UWSM_WAIT_VARNAMES="WAYLAND_DISPLAY"
+#export UWSM_WAIT_VARNAMES_SETTLETIME=0.2
+
 ## from environment.d
 #GDK_BACKEND=wayland
 #XDG_SESSION_TYPE=wayland
