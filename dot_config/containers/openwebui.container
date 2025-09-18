@@ -1,0 +1,61 @@
+
+[Unit]
+Description=Open WebUI - AI Chat Interface
+After=network-online.target llm.network.service litellm.service
+Requires=llm.network.service
+Wants=litellm.service
+
+[Container]
+Image=ghcr.io/open-webui/open-webui:main
+AutoUpdate=registry
+ContainerName=openwebui
+Network=llm.network
+PublishPort=3000:8080
+Volume=openwebui.volume:/app/backend/data:Z
+EnvironmentFile=%h/.config/containers/systemd/_config/openwebui.env
+HealthCmd="wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1"
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=3
+
+[Service]
+Slice=llm.slice
+TimeoutStartSec=900
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=scroll-session.target
+
+---
+TODO: check for differernces, if any, with the .container file proposed below:
+---
+
+[Unit]
+Description=Open WebUI - AI Chat Interface with Full Features
+After=network-online.target llm.network.service litellm.service llm-postgres.service llm-redis.service docling.service tika.service searxng.service mcp.service edgetts.service
+Requires=llm.network.service
+Wants=litellm.service llm-postgres.service llm-redis.service docling.service tika.service searxng.service mcp.service edgetts.service
+
+[Container]
+Image=ghcr.io/open-webui/open-webui:main
+AutoUpdate=registry
+ContainerName=openwebui
+Network=llm.network
+PublishPort=3000:8080
+Volume=openwebui.volume:/app/backend/data:Z
+EnvironmentFile=%h/.config/containers/systemd/_config/openwebui.env
+HealthCmd="wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1"
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=3
+HealthStartPeriod=10s
+
+[Service]
+Slice=llm.slice
+TimeoutStartSec=900
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=scroll-session.target

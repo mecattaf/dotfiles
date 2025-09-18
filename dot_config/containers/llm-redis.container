@@ -1,0 +1,27 @@
+[Unit]
+Description=Shared Redis cache for LLM services
+After=network-online.target llm.network.service
+Requires=llm.network.service
+
+[Container]
+Image=docker.io/redis/redis-stack:latest
+AutoUpdate=registry
+ContainerName=llm-redis
+Network=llm.network
+Volume=llm-redis.volume:/data:Z
+Environment=REDIS_ARGS=--save 60 1 --loglevel warning
+HealthCmd="redis-cli ping"
+HealthInterval=30s
+HealthTimeout=3s
+HealthRetries=3
+# Enable Redis Stack features
+PublishPort=8001:8001
+
+[Service]
+Slice=llm.slice
+TimeoutStartSec=300
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=scroll-session.target

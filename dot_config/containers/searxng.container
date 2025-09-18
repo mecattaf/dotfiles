@@ -1,0 +1,33 @@
+[Unit]
+Description=SearXNG metasearch engine for RAG web search
+After=network-online.target llm.network.service llm-redis.service
+Requires=llm.network.service
+Wants=llm-redis.service
+
+[Container]
+Image=docker.io/searxng/searxng:latest
+AutoUpdate=registry
+ContainerName=searxng
+Network=llm.network
+Volume=searxng.volume:/etc/searxng:Z
+Volume=%h/.config/containers/systemd/_config/searxng-settings.yml:/etc/searxng/settings.yml:ro,Z
+Environment=SEARXNG_BASE_URL=http://localhost:8080
+Environment=SEARXNG_SECRET=change-this-searxng-secret
+EnvironmentFile=-%h/.config/containers/llm.env
+AddCapability=CAP_CHOWN CAP_SETGID CAP_SETUID
+HealthCmd="wget -qO- http://127.0.0.1:8080/ || exit 1"
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=5
+HealthStartPeriod=10s
+LogDriver=journald
+LogOpt=max-size=1m
+
+[Service]
+Slice=llm.slice
+TimeoutStartSec=600
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=scroll-session.target

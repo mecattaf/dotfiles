@@ -1,0 +1,18 @@
+[Unit]
+Description=Kanshi dynamic display configuration daemon
+Documentation=man:kanshi(1) man:kanshi(5)
+PartOf=scroll-session.target
+After=graphical-session.target
+After=wayland-session@scroll.desktop.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/kanshi
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=1
+Slice=background-graphical.slice
+PassEnvironment=WAYLAND_DISPLAY
+
+[Install]
+WantedBy=scroll-session.target

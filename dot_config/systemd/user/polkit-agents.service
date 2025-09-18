@@ -1,0 +1,18 @@
+[Unit]
+Description=PolicyKit Authentication Agents
+Documentation=man:polkit(8)
+PartOf=scroll-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+# Try agents in order of preference, first successful one wins
+ExecStart=/bin/sh -c 'exec /usr/lib/lxpolkit || exec /usr/libexec/polkit-gnome-authentication-agent-1 || exec /usr/libexec/polkit-mate-authentication-agent-1'
+Restart=on-failure
+RestartSec=1
+Slice=session-graphical.slice
+# Agents should persist for the entire session
+TimeoutStopSec=5
+
+[Install]
+WantedBy=scroll-session.target

@@ -23,18 +23,18 @@ seat seat0 fallback true
 seat seat0 hide_cursor 1000
 focus_wrapping no
 
-set $gnome-schema org.gnome.desktop.interface
-exec_always  {
-        gsettings set $gnome-schema cursor-theme 'Bibata-Modern-Classic'
-        gsettings set $gnome-schema color-scheme 'prefer-dark'
-        gsettings set $gnome-schema cursor-size '48'
-        gsettings set $gnome-schema text-scaling-factor '1.0'
-        gsettings set $gnome-schema gtk-theme 'Catppuccin-Noir-Standard-Green-Dark'
-        gsettings set org.gnome.desktop.interface.wm.preferences theme 'Catppuccin-Noir-Standard-Green-Dark'
-        gsettings set org.gnome.desktop.wm.preferences button-layout ""
+#set $gnome-schema org.gnome.desktop.interface
+#exec_always  {
+#        gsettings set $gnome-schema cursor-theme 'Bibata-Modern-Classic'
+#        gsettings set $gnome-schema color-scheme 'prefer-dark'
+#        gsettings set $gnome-schema cursor-size '48'
+#        gsettings set $gnome-schema text-scaling-factor '1.0'
+#        gsettings set $gnome-schema gtk-theme 'Catppuccin-Noir-Standard-Green-Dark'
+#        gsettings set org.gnome.desktop.interface.wm.preferences theme 'Catppuccin-Noir-Standard-Green-Dark'
+#        gsettings set org.gnome.desktop.wm.preferences button-layout ""
         #gsettings set $gnome-schema icon-theme 'Your icon theme'
         #gsettings set $gnome-schema font-name 'Your font name'
-}
+#}
 
 # Import variables into system-user environment
 #exec systemctl --user import-environment DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP 
@@ -57,24 +57,23 @@ exec_always  {
 #exec $run_bg wl-paste --watch cliphist store
 
 # Credential mgmt
-exec gnome-keyring-daemon --start --components=secrets,ssh,keyring --daemonize
-exec /usr/libexec/polkit-mate-authentication-agent-1
-exec /usr/libexec/polkit-gnome-authentication-agent-1
-exec /usr/lib/lxpolkit
-
-exec wl-gammarelay-rs run
-exec mako
-exec wl-paste --type text --watch cliphist store
-exec wl-paste --type image --watch cliphist store
-exec kanshi
-exec swaybg -c '#000000'
-
+#exec gnome-keyring-daemon --start --components=secrets,ssh,keyring --daemonize
+#exec /usr/libexec/polkit-mate-authentication-agent-1
+#exec /usr/libexec/polkit-gnome-authentication-agent-1
+#exec /usr/lib/lxpolkit
+#
+#exec wl-gammarelay-rs run
+#exec mako
+#exec wl-paste --type text --watch cliphist store
+#exec wl-paste --type image --watch cliphist store
+#exec kanshi
+#exec swaybg -c '#000000'
+#
 # Variables
 set $mod Mod4
 set $scripts ~/.config/scroll/scripts
 set $host $scripts/host-terminal
 set $chrome flatpak run com.google.Chrome
-exec --no-startup-id $scripts/pomodoro stop
 
 floating_modifier $mod normal
 
@@ -221,8 +220,8 @@ for_window [app_id="rofimoji"] border pixel 0, floating enable, resize 35% 35%, 
 for_window [app_id="rofi"] border pixel 0, floating enable, resize 35% 35%, move 63% 60%
 
 # Touch gestures
-exec_always --no-startup-id ~/.config/scroll/lisgd-start --device="ELAN9008:00 04F3:425A"
-exec_always --no-startup-id ~/.config/scroll/lisgd-start --device="ELAN9008:00 04F3:425B"
+#exec_always --no-startup-id ~/.config/scroll/lisgd-start --device="ELAN9008:00 04F3:425A"
+#exec_always --no-startup-id ~/.config/scroll/lisgd-start --device="ELAN9008:00 04F3:425B"
 
 # Input Devices
 input type:touchpad {

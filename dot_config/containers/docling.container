@@ -1,0 +1,27 @@
+[Unit]
+Description=Docling document processing service
+After=network-online.target llm.network.service
+Requires=llm.network.service
+
+[Container]
+Image=quay.io/docling-project/docling-serve:latest
+AutoUpdate=registry
+ContainerName=docling
+Network=llm.network
+Environment=DOCLING_SERVE_ENABLE_UI=true
+Environment=DOCLING_SERVE_HOST=0.0.0.0
+Environment=DOCLING_SERVE_PORT=5001
+HealthCmd="wget -qO- http://127.0.0.1:5001/health || exit 1"
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=5
+HealthStartPeriod=10s
+
+[Service]
+Slice=llm.slice
+TimeoutStartSec=900
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=scroll-session.target

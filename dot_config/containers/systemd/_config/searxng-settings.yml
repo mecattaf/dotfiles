@@ -1,0 +1,80 @@
+# SearXNG settings
+# Minimal configuration for integration with Open WebUI
+
+use_default_settings: true
+
+general:
+  instance_name: "LLM Search"
+  contact_url: false
+  enable_metrics: false
+  debug: false
+
+search:
+  safe_search: 0
+  autocomplete: "duckduckgo"
+  default_lang: "en"
+  max_page: 5
+  port: 8080
+  bind_address: "0.0.0.0"
+  secret_key: "change-this-secret-key"
+
+server:
+  base_url: false
+  image_proxy: false
+  method: "GET"
+  default_http_headers:
+    X-Content-Type-Options: "nosniff"
+    X-XSS-Protection: "1; mode=block"
+    X-Robots-Tag: "noindex, nofollow"
+    Referrer-Policy: "no-referrer"
+
+ui:
+  static_use_hash: true
+  query_in_title: false
+  infinite_scroll: false
+  default_theme: "simple"
+  theme_args:
+    simple_style: "dark"
+
+outgoing:
+  request_timeout: 3.0
+  max_request_timeout: 10.0
+  pool_connections: 100
+  pool_maxsize: 20
+
+redis:
+  url: "redis://llm-redis:6379/1"
+
+enabled_plugins:
+  - 'Hash plugin'
+  - 'Search on category select'
+  - 'Self Information'
+  - 'Tracker URL remover'
+
+engines:
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+  - name: google
+    engine: google
+    shortcut: g
+    disabled: false
+  - name: bing
+    engine: bing
+    shortcut: bi
+    disabled: false
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: wp
+  - name: wikidata
+    engine: wikidata
+    shortcut: wd
+    disabled: false
+  - name: arxiv
+    engine: arxiv
+    shortcut: arx
+    disabled: false
+  - name: pubmed
+    engine: pubmed
+    shortcut: pub
+    disabled: false

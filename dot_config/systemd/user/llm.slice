@@ -1,0 +1,11 @@
+[Unit]
+Description=Slice for locally-hosted AI services
+Documentation=man:systemd.slice(5)
+After=scroll-session.target
+PartOf=scroll-session.target
+
+[Slice]
+# Resource limits (adjust based on your system)
+MemoryMax=8G
+CPUWeight=50
+IOWeight=50
