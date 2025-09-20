@@ -1,0 +1,130 @@
+/* ============================================
+   CONSOLIDATED FIREFOX CONTENT CUSTOMIZATION
+   Features from: Hypr, SimpleFox, ff-chrome-folder
+   ============================================ */
+
+/* ============================================
+   COLOR SCHEME VARIABLES
+   ============================================ */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --content-bg-primary: #000000;
+    --content-bg-secondary: #090909;
+    --content-text: #ffffff;
+    --content-accent: #1280fd;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --content-bg-primary: rgba(255, 255, 255, 0.8);
+    --content-bg-secondary: rgba(255, 255, 255, 0.95);
+    --content-text: #000000;
+    --content-accent: #007aff;
+  }
+}
+
+/* ============================================
+   WEBAPP PROFILE - CLEAN INTERFACE
+   Note: This applies when Firefox is launched with -P webapp
+   ============================================ */
+
+/* 
+ * When using the webapp profile, the userChrome.css should hide:
+ * - Navigation bar
+ * - Tab bar
+ * - Title bar
+ * This creates a native app-like experience for any website
+ * 
+ * The webapp profile styling is controlled in userChrome-webapp.css
+ * and applies universally to any site opened in that profile
+ */
+
+/* ============================================
+   PDF VIEWER - DARK MODE
+   ============================================ */
+
+#viewerContainer > #viewer > .page > .canvasWrapper > canvas {
+  filter: grayscale(100%) invert(100%);
+}
+
+/* High Contrast Highlights */
+.pdfViewer .textLayer .highlight {
+  background-color: #00ff00 !important;
+}
+
+.pdfViewer .textLayer .highlight.selected {
+  background-color: #ff0000 !important;
+}
+
+.pdfViewer .textLayer ::selection {
+  background-color: #ff00ff !important;
+  color: revert !important;
+}
+
+/* ============================================
+   NEW TAB PAGE - TODO: BENTO INTEGRATION
+   ============================================ */
+
+/* 
+ * TODO: Integrate Bento startpage for clock-only display
+ * Reference: https://github.com/MiguelRAvila/Bento
+ * This will be handled separately via extension or custom new tab override
+ */
+
+/* ============================================
+   ABOUT PAGES - DARK THEME
+   ============================================ */
+
+@-moz-document url-prefix("about:") {
+  :root {
+    --in-content-page-background: var(--content-bg-primary) !important;
+    --in-content-page-color: var(--content-text) !important;
+    --in-content-box-background: var(--content-bg-secondary) !important;
+    --in-content-border-color: rgba(255, 255, 255, 0.1) !important;
+    --in-content-link-color: var(--content-accent) !important;
+  }
+}
+
+/* ============================================
+   PRIVATE BROWSING
+   ============================================ */
+
+@-moz-document url("about:privatebrowsing") {
+  body {
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--content-bg-primary) 0 250px,
+      var(--content-bg-secondary) 0 500px
+    ) !important;
+  }
+
+  .search-handoff-button {
+    background-color: var(--content-bg-secondary) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .15) !important;
+    backdrop-filter: blur(30px) !important;
+    border: none !important;
+  }
+
+  .info,
+  .promo-visible {
+    display: none !important;
+  }
+}
+
+/* ============================================
+   READER MODE
+   ============================================ */
+
+@-moz-document url-prefix("about:reader") {
+  body {
+    background: var(--content-bg-primary) !important;
+  }
+  
+  .container {
+    background: var(--content-bg-secondary) !important;
+    color: var(--content-text) !important;
+  }
+}

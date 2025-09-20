@@ -1,0 +1,22 @@
+[Desktop Entry]
+Name=ChatGPT
+Comment=ChatGPT Web App
+Exec=flatpak run org.mozilla.firefox -P webapp --new-window https://chatgpt.com/
+Icon=applications-internet
+Terminal=false
+Type=Application
+Categories=Network;WebBrowser;
+
+# OpenWebUI launcher (if using local LLMs)
+[Desktop Entry]
+Name=OpenWebUI
+Comment=Local LLM Interface
+Exec=flatpak run org.mozilla.firefox -P webapp --new-window http://localhost:8080/
+Icon=applications-internet
+Terminal=false
+Type=Application
+Categories=Network;WebBrowser;
+
+TODO: move all other exec paths to flatpak firefox from flatpak chrome
+
+

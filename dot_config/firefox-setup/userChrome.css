@@ -1,0 +1,335 @@
+/* ============================================
+   CONSOLIDATED FIREFOX UI CUSTOMIZATION
+   Features from: Hypr, Cascade, SimpleFox, ff-chrome-folder
+   
+   Note: For webapp profile, use userChrome-webapp.css instead
+   That provides a native app experience with no browser UI
+   ============================================ */
+
+/* ============================================
+   COLOR SCHEME - OLED Black (Dark) / Transparent (Light)
+   ============================================ */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* OLED Black Theme */
+    --uc-base-colour: #000000;
+    --uc-highlight-colour: #090909;
+    --uc-inverted-colour: #ffffff;
+    --uc-muted-colour: #999999;
+    --uc-accent-colour: #1280fd;
+    
+    /* Container Tab Colors */
+    --uc-identity-colour-blue: #7ed6df;
+    --uc-identity-colour-turquoise: #55e6c1;
+    --uc-identity-colour-green: #b8e994;
+    --uc-identity-colour-yellow: #f7d794;
+    --uc-identity-colour-orange: #f19066;
+    --uc-identity-colour-red: #fc5c65;
+    --uc-identity-colour-pink: #f78fb3;
+    --uc-identity-colour-purple: #786fa6;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    /* Transparent Theme */
+    --uc-base-colour: rgba(255, 255, 255, 0.8);
+    --uc-highlight-colour: rgba(255, 255, 255, 0.95);
+    --uc-inverted-colour: #000000;
+    --uc-muted-colour: #666666;
+    --uc-accent-colour: #007aff;
+    
+    /* Container Tab Colors */
+    --uc-identity-colour-blue: #1d65f5;
+    --uc-identity-colour-turquoise: #209fb5;
+    --uc-identity-colour-green: #40a02b;
+    --uc-identity-colour-yellow: #e49320;
+    --uc-identity-colour-orange: #fe640b;
+    --uc-identity-colour-red: #fc5c65;
+    --uc-identity-colour-pink: #ec83d0;
+    --uc-identity-colour-purple: #822fee;
+  }
+}
+
+/* ============================================
+   GLOBAL CONFIGURATION
+   ============================================ */
+
+:root {
+  /* Layout Configuration */
+  --uc-border-radius: 8px;
+  --uc-status-panel-spacing: 12px;
+  --uc-urlbar-min-width: 35vw;
+  --uc-urlbar-max-width: 35vw;
+  --uc-urlbar-position: 1; /* tabs on the right */
+  --uc-toolbar-position: 4; /* personal toolbar on bottom */
+  
+  /* Tab Configuration */
+  --uc-active-tab-width: clamp(100px, 30vw, 300px);
+  --uc-inactive-tab-width: clamp(100px, 20vw, 200px);
+  --show-tab-close-button: none;
+  --show-tab-close-button-hover: -moz-inline-block;
+  --uc-show-all-tabs-button: none;
+  
+  /* Apply Colors */
+  --lwt-frame: var(--uc-base-colour) !important;
+  --lwt-accent-color: var(--lwt-frame) !important;
+  --lwt-text-color: var(--uc-inverted-colour) !important;
+  --toolbar-field-color: var(--uc-inverted-colour) !important;
+  --toolbar-field-background-color: var(--lwt-frame) !important;
+  --toolbar-bgcolor: var(--lwt-frame) !important;
+  --toolbar-color: var(--lwt-text-color) !important;
+  --toolbarbutton-border-radius: var(--uc-border-radius) !important;
+  --tab-border-radius: var(--uc-border-radius) !important;
+  --lwt-selected-tab-background-color: var(--uc-highlight-colour) !important;
+  --lwt-toolbar-field-focus-background-color: var(--uc-highlight-colour) !important;
+  --urlbar-box-bgcolor: var(--uc-highlight-colour) !important;
+  --lwt-sidebar-background-color: var(--lwt-frame) !important;
+}
+
+/* ============================================
+   ONE-LINE LAYOUT (from Cascade)
+   ============================================ */
+
+@media (min-width: 1000px) {
+  #navigator-toolbox {
+    display: flex;
+    flex-wrap: wrap;
+    flex-direction: row;
+  }
+
+  #nav-bar {
+    order: var(--uc-urlbar-position);
+    width: var(--uc-urlbar-min-width);
+  }
+
+  #nav-bar #urlbar-container {
+    min-width: 0px !important;
+    width: auto !important;
+  }
+
+  #TabsToolbar {
+    width: calc(100vw - var(--uc-urlbar-min-width) - 1px);
+  }
+
+  #navigator-toolbox:focus-within #nav-bar {
+    width: var(--uc-urlbar-max-width);
+  }
+  
+  #navigator-toolbox:focus-within #TabsToolbar {
+    width: calc(100vw - var(--uc-urlbar-max-width) - 1px);
+  }
+}
+
+/* ============================================
+   REMOVE UNNECESSARY ELEMENTS
+   ============================================ */
+
+/* Window Controls */
+.titlebar-buttonbox-container {
+  display: none !important;
+}
+
+/* Navigation Buttons (keyboard-focused) */
+#back-button,
+#forward-button,
+#reload-button,
+#stop-button {
+  display: none !important;
+}
+
+/* URL Bar Elements */
+#identity-permission-box,
+#identity-box.extensionPage,
+#pageActionButton,
+#pageActionSeparator,
+#urlbar-go-button,
+#star-button-box,
+#userContext-icons,
+#tracking-protection-icon-container {
+  display: none !important;
+}
+
+/* Tab Bar Elements */
+.tab-close-button {
+  display: var(--show-tab-close-button) !important;
+}
+
+.tabbrowser-tab:hover .tab-close-button {
+  display: var(--show-tab-close-button-hover) !important;
+}
+
+.tab-secondary-label,
+#tabs-newtab-button,
+#alltabs-button,
+#firefox-view-button {
+  display: none !important;
+}
+
+.tabbrowser-tab:not([pinned]) .tab-icon-image {
+  display: none !important;
+}
+
+/* Menu Button Minimal */
+#PanelUI-menu-button {
+  padding: 0px !important;
+}
+
+#PanelUI-menu-button .toolbarbutton-icon {
+  width: 1px !important;
+}
+
+/* ============================================
+   SIDEBAR STYLING
+   ============================================ */
+
+#sidebar-box {
+  background: var(--lwt-sidebar-background-color) !important;
+}
+
+#sidebar-header {
+  display: none !important;
+}
+
+/* ============================================
+   TAB STYLING
+   ============================================ */
+
+/* Active Tab */
+.tabbrowser-tab[selected] .tab-background {
+  background-color: var(--uc-highlight-colour) !important;
+  outline: none !important;
+}
+
+/* Tab Sizing */
+.tabbrowser-tab[selected][fadein]:not([pinned]) {
+  max-width: var(--uc-active-tab-width) !important;
+}
+
+.tabbrowser-tab[fadein]:not([selected]):not([pinned]) {
+  max-width: var(--uc-inactive-tab-width) !important;
+}
+
+/* Remove Tab Shadows */
+.tabbrowser-tab > .tab-stack > .tab-background {
+  box-shadow: none !important;
+  border: none !important;
+  margin: 0px !important;
+  border-radius: var(--tab-border-radius) !important;
+}
+
+/* Container Tabs Indicator */
+.tabbrowser-tab[usercontextid] > .tab-stack > .tab-background > .tab-context-line {
+  margin: 2px 10px 0 10px !important;
+  height: 2px !important;
+  border-radius: 2px !important;
+  background: var(--identity-tab-color) !important;
+}
+
+/* Tab Audio Indicator */
+.tab-icon-overlay:not([crashed]):is([soundplaying], [muted], [activemedia-blocked]) {
+  top: 5px !important;
+  z-index: 1 !important;
+  padding: 1.5px !important;
+  inset-inline-end: -8px !important;
+  width: 16px !important;
+  height: 16px !important;
+  border-radius: 10px !important;
+  stroke: var(--toolbar-bgcolor) !important;
+  background-color: var(--toolbar-bgcolor) !important;
+  fill-opacity: 0.8 !important;
+  color: currentColor !important;
+}
+
+/* ============================================
+   URL BAR STYLING
+   ============================================ */
+
+#urlbar,
+#urlbar * {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+#urlbar-background {
+  border: transparent !important;
+  background: var(--toolbar-field-background-color) !important;
+  border-radius: var(--uc-border-radius) !important;
+}
+
+#urlbar[focused="true"] > #urlbar-background {
+  background: var(--lwt-toolbar-field-focus-background-color) !important;
+}
+
+/* URL Bar Results */
+.urlbarView-row:hover > .urlbarView-row-inner,
+.urlbarView-row[selected] > .urlbarView-row-inner {
+  background: var(--uc-highlight-colour) !important;
+  border-radius: var(--uc-border-radius) !important;
+}
+
+/* ============================================
+   PERSONAL TOOLBAR
+   ============================================ */
+
+#PersonalToolbar {
+  padding: 6px !important;
+  order: var(--uc-toolbar-position);
+  width: 100%;
+  background: var(--lwt-frame) !important;
+}
+
+/* Remove Bookmark Icons */
+.bookmark-item .toolbarbutton-icon {
+  display: none;
+}
+
+toolbarbutton.bookmark-item:not(.subviewbutton) {
+  min-width: 1.6em;
+}
+
+/* ============================================
+   STATUS PANEL
+   ============================================ */
+
+#statuspanel #statuspanel-label {
+  border: none !important;
+  border-radius: var(--uc-border-radius) !important;
+  background: var(--uc-highlight-colour) !important;
+  margin: 0 0 var(--uc-status-panel-spacing) var(--uc-status-panel-spacing) !important;
+}
+
+/* ============================================
+   CONTEXT MENU CLEANUP
+   ============================================ */
+
+#context-navigation,
+#context-savepage,
+#context-pocket,
+#context-sendpagetodevice,
+#context-selectall,
+#context-viewsource,
+#context-inspect-a11y,
+#context-sendlinktodevice,
+#context-openlinkinusercontext-menu,
+#context-bookmarklink,
+#context-savelink,
+#context-savelinktopocket,
+#context_bookmarkTab,
+#context_moveTabOptions,
+#context_sendTabToDevice,
+#context_reopenInContainer,
+#context_selectAllTabs,
+#context_closeTabOptions {
+  display: none !important;
+}
+
+/* ============================================
+   ANIMATIONS
+   ============================================ */
+
+@keyframes panel-grow {
+  0% { transform: scale(.92); }
+  100% { transform: scale(1); }
+}
