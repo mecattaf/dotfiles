@@ -20,6 +20,6 @@ profile Duo {
 profile Desktop {
     output eDP-1 disable
     output eDP-2 disable
-    output HDMI-A-1 mode 4096x2160@60.000Hz scale 1.5 position 0,0 transform 90
+    output HDMI-A-1 mode 5120x2880@29.988Hz scale 2 position 0,0 transform 90
     exec busctl --user set-property rs.wl-gammarelay /outputs/HDMI_A_1 rs.wl.gammarelay Temperature q 4000
 }
