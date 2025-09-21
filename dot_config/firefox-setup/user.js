@@ -29,9 +29,25 @@ user_pref("sidebar.verticalTabs", false); // Using one-line layout instead
 user_pref("privacy.userContext.enabled", true);
 user_pref("privacy.userContext.ui.enabled", true);
 
-// Startup and New Tab Page
-user_pref("browser.startup.homepage", "about:home");
-user_pref("browser.newtabpage.enabled", true);
+// Startup and New Tab Page - Clock Configuration
+user_pref("browser.startup.homepage", "file:///home/.config/firefox-setup/clock.html");
+user_pref("browser.newtabpage.enabled", false);
+user_pref("browser.startup.page", 1); // 0=blank, 1=home, 2=last visited page, 3=resume previous session
+
+// Custom New Tab URL (requires extension or about:config modification)
+user_pref("browser.newtab.url", "file:///home/.config/firefox-setup/clock.html");
+user_pref("browser.newtab.preload", false);
+
+// Disable Firefox Home Content
+user_pref("browser.newtabpage.activity-stream.enabled", false);
+user_pref("browser.newtabpage.activity-stream.telemetry", false);
+user_pref("browser.newtabpage.activity-stream.feeds.telemetry", false);
+user_pref("browser.newtabpage.activity-stream.feeds.snippets", false);
+user_pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
+user_pref("browser.newtabpage.activity-stream.section.highlights.includePocket", false);
+user_pref("browser.newtabpage.activity-stream.showSponsored", false);
+user_pref("browser.newtabpage.activity-stream.feeds.discoverystreamfeed", false);
+user_pref("browser.newtabpage.activity-stream.default.sites", "");
 
 // URL Bar Behavior
 user_pref("browser.urlbar.suggest.searches", false);
@@ -74,4 +90,4 @@ user_pref("app.shield.optoutstudies.enabled", false);
 
 // Profile-specific settings (use separate profile folders)
 // For webapp profile: browser UI is completely hidden for native app experience
-// For default profile: standard browsing with one-line UI
+// For default profile: standard browsing with one-line UI and minimal clock startpage

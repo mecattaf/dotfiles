@@ -22,6 +22,16 @@ echo -e "${GREEN}Firefox Flatpak detected${NC}"
 # Create config directory if it doesn't exist
 mkdir -p "$CONFIG_DIR"
 
+# Deploy clock.html startpage if it exists
+if [[ -f "$CONFIG_DIR/clock.html" ]]; then
+    echo -e "${GREEN}Clock startpage found${NC}"
+    # Update the path in user.js to use the correct location
+    sed -i "s|file:///home/.config/firefox-setup/clock.html|file://$CONFIG_DIR/clock.html|g" "$CONFIG_DIR/user.js"
+else
+    echo -e "${YELLOW}Warning: clock.html not found in $CONFIG_DIR${NC}"
+    echo "The minimal clock startpage will not be available"
+fi
+
 # Create profiles
 echo -e "${YELLOW}Creating Firefox profiles...${NC}"
 for profile in default webapp work; do
@@ -80,6 +90,11 @@ Name=webapp
 IsRelative=1
 Path=webapp
 
+[Profile2]
+Name=work
+IsRelative=1
+Path=work
+
 [General]
 StartWithLastProfile=1
 Version=2
@@ -90,10 +105,19 @@ echo -e "\n${GREEN}════════════════════�
 echo -e "${GREEN}Firefox setup complete!${NC}"
 echo -e "${GREEN}═══════════════════════════════════════${NC}"
 echo -e "\nProfiles created:"
-echo -e "  • ${YELLOW}default${NC} - Standard browsing with one-line UI"
+echo -e "  • ${YELLOW}default${NC} - Standard browsing with one-line UI & clock startpage"
 echo -e "  • ${YELLOW}webapp${NC} - Native app mode (no UI)"
-echo -e "  • ${YELLOW}work${NC} - Work browsing with one-line UI"
+echo -e "  • ${YELLOW}work${NC} - Work browsing with one-line UI & clock startpage"
+echo -e "\nStartpage:"
+if [[ -f "$CONFIG_DIR/clock.html" ]]; then
+    echo -e "  • ${GREEN}Minimal clock startpage installed${NC}"
+    echo -e "    Location: $CONFIG_DIR/clock.html"
+else
+    echo -e "  • ${YELLOW}Clock startpage not found${NC}"
+    echo -e "    Add clock.html to: $CONFIG_DIR/"
+fi
 echo -e "\nUsage examples:"
 echo -e "  ${YELLOW}flatpak run org.mozilla.firefox${NC} (uses default profile)"
 echo -e "  ${YELLOW}flatpak run org.mozilla.firefox -P webapp --new-window URL${NC}"
+echo -e "  ${YELLOW}flatpak run org.mozilla.firefox -P work${NC}"
 echo -e "\nDesktop launchers available in your applications menu"
