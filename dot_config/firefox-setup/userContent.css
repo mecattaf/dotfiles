@@ -1,7 +1,6 @@
 /* ============================================
    CONSOLIDATED FIREFOX CONTENT CUSTOMIZATION
    Features from: Hypr, SimpleFox, ff-chrome-folder
-   With minimal clock startpage integration
    ============================================ */
 
 /* ============================================
@@ -27,11 +26,52 @@
 }
 
 /* ============================================
+   WEBAPP PROFILE - CLEAN INTERFACE
+   Note: This applies when Firefox is launched with -P webapp
+   ============================================ */
+
+/* 
+ * When using the webapp profile, the userChrome.css should hide:
+ * - Navigation bar
+ * - Tab bar
+ * - Title bar
+ * This creates a native app-like experience for any website
+ * 
+ * The webapp profile styling is controlled in userChrome-webapp.css
+ * and applies universally to any site opened in that profile
+ */
+
+/* ============================================
+   PDF VIEWER - DARK MODE
+   ============================================ */
+
+#viewerContainer > #viewer > .page > .canvasWrapper > canvas {
+  filter: grayscale(100%) invert(100%);
+}
+
+/* High Contrast Highlights */
+.pdfViewer .textLayer .highlight {
+  background-color: #00ff00 !important;
+}
+
+.pdfViewer .textLayer .highlight.selected {
+  background-color: #ff0000 !important;
+}
+
+.pdfViewer .textLayer ::selection {
+  background-color: #ff00ff !important;
+  color: revert !important;
+}
+
+/* ============================================
    NEW TAB PAGE - MINIMAL BLACK
+   Note: Clock is handled via clock.html as homepage
+   New tabs will show black background
    ============================================ */
 
 @-moz-document url("about:newtab"), url("about:home") {
-  body {
+  /* Force black background */
+  body, html {
     background: #000000 !important;
   }
   
@@ -42,49 +82,16 @@
   .section-title,
   .body-wrapper,
   .collapsible-section,
-    .top-sites,
+  .top-sites,
   .snippet,
-  #root > div {
+  #root > div,
+  .discovery-stream-base {
     display: none !important;
   }
   
-  /* Ensure black background */
+  /* Ensure root is black */
   #root {
     background: #000000 !important;
-  }
-}
-
-/* ============================================
-   BLANK PAGE STYLING
-   ============================================ */
-
-@-moz-document url("about:blank") {
-  html, body {
-    background: #000000 !important;
-  }
-}
-
-/* ============================================
-   PDF VIEWER - DARK MODE
-   ============================================ */
-
-@-moz-document url-prefix("about:reader"), regexp("^.*\\.pdf$") {
-  #viewerContainer > #viewer > .page > .canvasWrapper > canvas {
-    filter: grayscale(100%) invert(100%);
-  }
-
-  /* High Contrast Highlights */
-  .pdfViewer .textLayer .highlight {
-    background-color: #00ff00 !important;
-  }
-
-  .pdfViewer .textLayer .highlight.selected {
-    background-color: #ff0000 !important;
-  }
-
-  .pdfViewer .textLayer ::selection {
-    background-color: #ff00ff !important;
-    color: revert !important;
   }
 }
 
@@ -103,32 +110,29 @@
 }
 
 /* ============================================
-   PRIVATE BROWSING - MINIMAL
+   PRIVATE BROWSING
    ============================================ */
 
 @-moz-document url("about:privatebrowsing") {
   body {
-    background: #000000 !important;
+    background-image: repeating-linear-gradient(
+      -45deg,
+      var(--content-bg-primary) 0 250px,
+      var(--content-bg-secondary) 0 500px
+    ) !important;
   }
 
-  /* Hide promotional content */
-  .info,
-  .promo-visible,
-  .promo,
-  .logo-and-wordmark {
-    display: none !important;
-  }
-
-  /* Style search if visible */
   .search-handoff-button {
-    background-color: rgba(255, 255, 255, 0.05) !important;
-    border-radius: 8px !important;
-    box-shadow: none !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    background-color: var(--content-bg-secondary) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, .15) !important;
+    backdrop-filter: blur(30px) !important;
+    border: none !important;
   }
-  
-  .fake-textbox {
-    color: rgba(255, 255, 255, 0.5) !important;
+
+  .info,
+  .promo-visible {
+    display: none !important;
   }
 }
 
@@ -144,45 +148,5 @@
   .container {
     background: var(--content-bg-secondary) !important;
     color: var(--content-text) !important;
-  }
-}
-
-/* ============================================
-   DEVTOOLS - MATCH THEME
-   ============================================ */
-
-@-moz-document url-prefix("chrome://devtools") {
-  :root {
-    --theme-body-background: #000000 !important;
-    --theme-sidebar-background: #090909 !important;
-    --theme-toolbar-background: #090909 !important;
-  }
-}
-
-/* ============================================
-   ERROR PAGES - DARK THEME
-   ============================================ */
-
-@-moz-document url-prefix("about:neterror"), 
-               url-prefix("about:certerror"),
-               url-prefix("about:blocked") {
-  body {
-    background: #000000 !important;
-    color: #ffffff !important;
-  }
-  
-  .title {
-    color: #ffffff !important;
-  }
-  
-  #errorShortDesc,
-  #errorLongDesc {
-    color: rgba(255, 255, 255, 0.8) !important;
-  }
-  
-  button {
-    background: rgba(255, 255, 255, 0.1) !important;
-    color: #ffffff !important;
-    border: 1px solid rgba(255, 255, 255, 0.2) !important;
   }
 }

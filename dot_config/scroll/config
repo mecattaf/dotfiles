@@ -74,6 +74,7 @@ set $mod Mod4
 set $scripts ~/.config/scroll/scripts
 set $host $scripts/host-terminal
 set $chrome flatpak run com.google.Chrome
+# TODO change to firefox
 
 floating_modifier $mod normal
 
@@ -136,6 +137,7 @@ bindsym $mod+C exec $color-picker
 bindsym $mod+apostrophe exec $start-wshowkeys
 bindsym $mod+Shift+apostrophe exec $stop-wshowkeys
 
+# TODO change to firefox and point those shortcuts directly to the .desktop apps
 bindsym $mod+Shift+N exec $chrome --app=https://chat.openai.com/
 bindsym $mod+Shift+C exec $chrome --app=https://claude.ai/
 bindsym $mod+Shift+M exec $chrome --app=https://soundcloud.com
@@ -144,8 +146,10 @@ bindsym $mod+Shift+semicolon exec flatpak run com.obsproject.Studio
 bindsym $mod+Shift+period exec $chrome --app=https://calendar.notion.so/
 bindsym $mod+Shift+9 exec $chrome --app=https://app.slack.com/client/T045A37HTU2
 bindsym $mod+Shift+E exec $chrome --app=https://drive.google.com/drive/u/0/
-bindsym $mod+B exec  flatpak run io.bassi.Amberol
+bindsym $mod+B exec  flatpak run io.bassi.Amberol 
+# TODO change to selected music player
 
+# TODO: transition to quickshell
 bindsym F1 exec $brightness-down  
 bindsym F2 exec $brightness-up   
 bindsym F3 exec kitty --class "nmtui" -e nmtui # change to iwmenu in rofi?

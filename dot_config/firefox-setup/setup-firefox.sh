@@ -34,7 +34,7 @@ fi
 
 # Create profiles
 echo -e "${YELLOW}Creating Firefox profiles...${NC}"
-for profile in default webapp work; do
+for profile in default webapp; do
     if [[ ! -d "$FIREFOX_BASE/$profile" ]]; then
         echo "Creating profile: $profile"
         flatpak run --command=firefox org.mozilla.firefox -headless \
@@ -64,7 +64,7 @@ for profile in default webapp work; do
             echo "  ✓ Deployed userContent.css to $profile"
         fi
     else
-        # Default and work profiles get standard CSS
+        # Default profile gets standard CSS
         if [[ -f "$CONFIG_DIR/userChrome.css" ]]; then
             cp "$CONFIG_DIR/userChrome.css" "$FIREFOX_BASE/$profile/chrome/"
             echo "  ✓ Deployed standard userChrome.css to $profile"
@@ -90,11 +90,6 @@ Name=webapp
 IsRelative=1
 Path=webapp
 
-[Profile2]
-Name=work
-IsRelative=1
-Path=work
-
 [General]
 StartWithLastProfile=1
 Version=2
@@ -107,7 +102,6 @@ echo -e "${GREEN}═════════════════════
 echo -e "\nProfiles created:"
 echo -e "  • ${YELLOW}default${NC} - Standard browsing with one-line UI & clock startpage"
 echo -e "  • ${YELLOW}webapp${NC} - Native app mode (no UI)"
-echo -e "  • ${YELLOW}work${NC} - Work browsing with one-line UI & clock startpage"
 echo -e "\nStartpage:"
 if [[ -f "$CONFIG_DIR/clock.html" ]]; then
     echo -e "  • ${GREEN}Minimal clock startpage installed${NC}"
@@ -119,5 +113,3 @@ fi
 echo -e "\nUsage examples:"
 echo -e "  ${YELLOW}flatpak run org.mozilla.firefox${NC} (uses default profile)"
 echo -e "  ${YELLOW}flatpak run org.mozilla.firefox -P webapp --new-window URL${NC}"
-echo -e "  ${YELLOW}flatpak run org.mozilla.firefox -P work${NC}"
-echo -e "\nDesktop launchers available in your applications menu"
