@@ -57,17 +57,17 @@ focus_wrapping no
 #exec $run_bg wl-paste --watch cliphist store
 
 # Credential mgmt
-#exec gnome-keyring-daemon --start --components=secrets,ssh,keyring --daemonize
-#exec /usr/libexec/polkit-mate-authentication-agent-1
-#exec /usr/libexec/polkit-gnome-authentication-agent-1
-#exec /usr/lib/lxpolkit
+exec gnome-keyring-daemon --start --components=secrets,ssh,keyring --daemonize
+exec /usr/libexec/polkit-mate-authentication-agent-1
+exec /usr/libexec/polkit-gnome-authentication-agent-1
+exec /usr/lib/lxpolkit
 #
-#exec wl-gammarelay-rs run
-#exec mako
-#exec wl-paste --type text --watch cliphist store
-#exec wl-paste --type image --watch cliphist store
-#exec kanshi
-#exec swaybg -c '#000000'
+exec wl-gammarelay-rs run
+exec mako
+exec wl-paste --type text --watch cliphist store
+exec wl-paste --type image --watch cliphist store
+exec kanshi
+exec swaybg -c '#000000'
 #
 # Variables
 set $mod Mod4
