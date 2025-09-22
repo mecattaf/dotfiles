@@ -1,6 +1,6 @@
 export XDG_SESSION_TYPE=wayland
-export XDG_CURRENT_DESKTOP=scroll
-export XDG_SESSION_DESKTOP=scroll
+export XDG_CURRENT_DESKTOP=sway
+export XDG_SESSION_DESKTOP=sway
 export QT_QPA_PLATFORMTHEME=qt5ct
 export QT_QPA_PLATFORM=wayland
 export MOZ_ENABLE_WAYLAND=1
