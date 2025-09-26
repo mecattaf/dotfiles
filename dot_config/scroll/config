@@ -67,12 +67,12 @@ exec mako
 exec wl-paste --type text --watch cliphist store
 exec wl-paste --type image --watch cliphist store
 exec kanshi
-exec swaybg -c '#000000'
+#exec swaybg -c '#000000'
 #
 # Variables
 set $mod Mod4
 set $scripts ~/.config/scroll/scripts
-set $host $scripts/host-terminal
+set $host $scripts/nvim-terminal.lua
 set $chrome flatpak run com.google.Chrome
 # TODO change to firefox
 
@@ -105,8 +105,14 @@ set $stop-wshowkeys pkill wshowkeys
 
 set $color-picker exec $scripts/colorpicker
 
-bindsym $mod+space jump
 bindsym $mod+BackSpace set_mode
+# This will automatically center windows when focus changes
+#align_reset_auto yes
+# Add these to your global config section
+#set_mode h after focus center_horiz center_vert reorder_auto
+# jump is buggy for some reason when using this shortcut, but now when using touchpad
+#bindsym $mod+space jump
+
 bindsym $mod+Shift+Q kill
 bindsym $mod+D exec rofi -show drun 
 
@@ -144,7 +150,6 @@ bindsym $mod+Shift+M exec $chrome --app=https://soundcloud.com
 bindsym $mod+Shift+W exec $chrome --app=https://mail.google.com/
 bindsym $mod+Shift+semicolon exec flatpak run com.obsproject.Studio
 bindsym $mod+Shift+period exec $chrome --app=https://calendar.notion.so/
-bindsym $mod+Shift+9 exec $chrome --app=https://app.slack.com/client/T045A37HTU2
 bindsym $mod+Shift+E exec $chrome --app=https://drive.google.com/drive/u/0/
 bindsym $mod+B exec  flatpak run io.bassi.Amberol 
 # TODO change to selected music player
@@ -197,6 +202,17 @@ bindsym $mod+Shift+g  cycle_size v prev
 #bindsym $mod+BackSpace pin beginning
 #bindsym $mod+space     pin end
 
+# Workspace Scaling with PageUp/PageDown
+# Incremental scaling for better control on high-DPI display
+bindsym $mod+Page_Up scale_workspace incr 0.1
+bindsym $mod+Page_Down scale_workspace incr -0.1
+bindsym $mod+Ctrl+Page_Up scale_workspace reset
+bindsym $mod+Ctrl+Page_Down scale_workspace overview
+
+# Alternative mouse wheel scaling (you already have gesture-based, but direct bindings are faster)
+#bindsym --whole-window $mod+button4 scale_workspace incr -0.05
+#bindsym --whole-window $mod+button5 scale_workspace incr 0.05
+
 # Jump config
 jump_labels_color $cl_high 
 #jump_labels_background $cl_back  
@@ -210,10 +226,6 @@ jump_labels_keys asdfghjkl;
 
 # Chrome webapps rules
 for_window [app_id="^chrome-.*"] shortcuts_inhibitor disable
-
-# nvim terminal in ide-style screen proportion
-# previous approach which is not a good idea
-# for_window [app_id="nvim-terminal"] set_mode v, set_size v 0.666667, focus down, set_size v 0.333333, set_mode h
 
 # Utilities rules - discard?
 for_window [app_id="io.bassi.Amberol"] border pixel 0, floating enable
@@ -272,3 +284,45 @@ enabled no
 #window_open yes 100 var 3 [ 0 0 1 1 ]
 #window_size yes 100 var 3 [ 0 0 1 1 ]
 }
+
+# SMART MARKS SYSTEM (Lua-powered)
+# Define the mark commands
+set $mark-toggle lua ~/.config/scroll/scripts/smart-marks.lua toggle
+set $mark-clear lua ~/.config/scroll/scripts/smart-marks.lua clear
+set $mark-show lua ~/.config/scroll/scripts/smart-marks.lua show
+
+# Mark bindings for keys 1-9 and 0
+bindsym $mod+1 $mark-toggle 1
+bindsym $mod+2 $mark-toggle 2
+bindsym $mod+3 $mark-toggle 3
+bindsym $mod+4 $mark-toggle 4
+bindsym $mod+5 $mark-toggle 5
+bindsym $mod+6 $mark-toggle 6
+bindsym $mod+7 $mark-toggle 7
+bindsym $mod+8 $mark-toggle 8
+bindsym $mod+9 $mark-toggle 9
+bindsym $mod+0 $mark-toggle 0
+
+# Clear marks with Shift
+bindsym $mod+Shift+1 $mark-clear 1
+bindsym $mod+Shift+2 $mark-clear 2
+bindsym $mod+Shift+3 $mark-clear 3
+bindsym $mod+Shift+4 $mark-clear 4
+bindsym $mod+Shift+5 $mark-clear 5
+bindsym $mod+Shift+6 $mark-clear 6
+bindsym $mod+Shift+7 $mark-clear 7
+bindsym $mod+Shift+8 $mark-clear 8
+bindsym $mod+Shift+9 $mark-clear 9
+bindsym $mod+Shift+0 $mark-clear 0
+
+# Show mark in overview with Ctrl
+bindsym $mod+Ctrl+1 $mark-show 1
+bindsym $mod+Ctrl+2 $mark-show 2
+bindsym $mod+Ctrl+3 $mark-show 3
+bindsym $mod+Ctrl+4 $mark-show 4
+bindsym $mod+Ctrl+5 $mark-show 5
+bindsym $mod+Ctrl+6 $mark-show 6
+bindsym $mod+Ctrl+7 $mark-show 7
+bindsym $mod+Ctrl+8 $mark-show 8
+bindsym $mod+Ctrl+9 $mark-show 9
+bindsym $mod+Ctrl+0 $mark-show 0
