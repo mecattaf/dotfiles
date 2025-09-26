@@ -23,23 +23,23 @@ seat seat0 fallback true
 seat seat0 hide_cursor 1000
 focus_wrapping no
 
-#set $gnome-schema org.gnome.desktop.interface
-#exec_always  {
-#        gsettings set $gnome-schema cursor-theme 'Bibata-Modern-Classic'
-#        gsettings set $gnome-schema color-scheme 'prefer-dark'
-#        gsettings set $gnome-schema cursor-size '48'
-#        gsettings set $gnome-schema text-scaling-factor '1.0'
-#        gsettings set $gnome-schema gtk-theme 'Catppuccin-Noir-Standard-Green-Dark'
-#        gsettings set org.gnome.desktop.interface.wm.preferences theme 'Catppuccin-Noir-Standard-Green-Dark'
-#        gsettings set org.gnome.desktop.wm.preferences button-layout ""
+set $gnome-schema org.gnome.desktop.interface
+exec_always  {
+        gsettings set $gnome-schema cursor-theme 'Bibata-Modern-Classic'
+        gsettings set $gnome-schema color-scheme 'prefer-dark'
+        gsettings set $gnome-schema cursor-size '48'
+        gsettings set $gnome-schema text-scaling-factor '1.0'
+        gsettings set $gnome-schema gtk-theme 'Catppuccin-Noir-Standard-Green-Dark'
+        gsettings set org.gnome.desktop.interface.wm.preferences theme 'Catppuccin-Noir-Standard-Green-Dark'
+        gsettings set org.gnome.desktop.wm.preferences button-layout ""
         #gsettings set $gnome-schema icon-theme 'Your icon theme'
         #gsettings set $gnome-schema font-name 'Your font name'
-#}
+}
 
 # Import variables into system-user environment
-#exec systemctl --user import-environment DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP 
-#exec hash dbus-update-activation-environment 2>/dev/null && \
-#        dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP=sway 
+exec systemctl --user import-environment DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP 
+exec hash dbus-update-activation-environment 2>/dev/null && \
+        dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP=sway 
 ## Run programs with UWSM
 #set $run_app uwsm app --
 #set $run_bg uwsm app -s b --
@@ -264,11 +264,11 @@ pinch:5:inward    scale_workspace incr -0.1
 # Animations
 animations {
 
-enabled yes
-frequency_ms 8
+enabled no
+#frequency_ms 8
 # Minimal linear animations - test baseline
-default yes 100 var 3 [ 0 0 1 1 ]
-window_move yes 100 var 3 [ 0 0 1 1 ]
-window_open yes 100 var 3 [ 0 0 1 1 ]
-window_size yes 100 var 3 [ 0 0 1 1 ]
+#default yes 100 var 3 [ 0 0 1 1 ]
+#window_move yes 100 var 3 [ 0 0 1 1 ]
+#window_open yes 100 var 3 [ 0 0 1 1 ]
+#window_size yes 100 var 3 [ 0 0 1 1 ]
 }
