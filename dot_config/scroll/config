@@ -185,7 +185,7 @@ bindsym $mod+Alt+l move right
 
 # Layout settings
 layout_default_width 1.0
-layout_default_height 0.5
+layout_default_height 1.0 
 layout_widths [0.33333333 0.5 0.66666667 1.0]
 layout_heights [0.33333333 0.5 0.66666667 1.0]
 
