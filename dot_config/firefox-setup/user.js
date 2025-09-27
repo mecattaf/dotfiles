@@ -10,7 +10,7 @@ user_pref("layout.css.backdrop-filter.enabled", true);
 user_pref("layout.css.has-selector.enabled", true);
 
 // UI Customization
-user_pref("browser.uidensity", 0); // 0=normal, 1=compact, 2=touch
+user_pref("browser.uidensity", 0);
 user_pref("browser.tabs.inTitlebar", 1);
 user_pref("browser.proton.enabled", true);
 
@@ -23,18 +23,17 @@ user_pref("browser.newtabpage.activity-stream.showSponsoredTopSites", false);
 
 // Sidebar Configuration
 user_pref("sidebar.revamp", true);
-user_pref("sidebar.verticalTabs", false); // Using one-line layout instead
+user_pref("sidebar.verticalTabs", false);
 
 // Enable Container Tabs
 user_pref("privacy.userContext.enabled", true);
 user_pref("privacy.userContext.ui.enabled", true);
 
 // Startup and New Tab Page - Clock Configuration
-// Path will be updated by setup script to actual location
-user_pref("browser.startup.homepage", "file:///home/.config/firefox-setup/clock.html");
-user_pref("browser.startup.page", 1); // 0=blank, 1=home, 2=last visited page, 3=resume previous session
+user_pref("browser.startup.homepage", "file:///home/tom/.config/firefox-setup/clock.html");
+user_pref("browser.startup.page", 1);
 
-// Disable Firefox Home Content (force blank new tabs)
+// Disable Firefox Home Content
 user_pref("browser.newtabpage.enabled", false);
 user_pref("browser.newtabpage.activity-stream.enabled", false);
 user_pref("browser.newtabpage.activity-stream.telemetry", false);
@@ -77,7 +76,7 @@ user_pref("general.smoothScroll.pixels", true);
 user_pref("mousewheel.min_line_scroll_amount", 0);
 user_pref("mousewheel.default.delta_multiplier_y", 120);
 user_pref("apz.gtk.kinetic_scroll.enabled", true);
-user_pref("apz.overscroll.enabled", false); // No bounce
+user_pref("apz.overscroll.enabled", false);
 user_pref("apz.fling_friction", 0.1);
 
 // Smooth scroll physics parameters
@@ -97,7 +96,6 @@ user_pref("browser.tabs.loadBookmarksInTabs", true);
 user_pref("datareporting.healthreport.uploadEnabled", false);
 user_pref("browser.discovery.enabled", false);
 user_pref("app.shield.optoutstudies.enabled", false);
-user_pref("browser.newtabpage.activity-stream.telemetry", false);
 user_pref("browser.ping-centre.telemetry", false);
 user_pref("toolkit.telemetry.unified", false);
 user_pref("toolkit.telemetry.enabled", false);
@@ -105,11 +103,5 @@ user_pref("toolkit.telemetry.server", "data:,");
 user_pref("toolkit.telemetry.archive.enabled", false);
 user_pref("toolkit.telemetry.coverage.opt-out", true);
 
-// Privacy focused private mode (Ctrl+Shift+N behavior)
+// Privacy focused private mode
 user_pref("browser.privatebrowsing.autostart", false);
-
-
-
-// Profile-specific notes
-// Default profile: Standard browsing with one-line UI and minimal clock startpage
-// Webapp profile: Browser UI completely hidden for native app experience
