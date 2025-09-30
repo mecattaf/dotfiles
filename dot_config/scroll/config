@@ -72,9 +72,8 @@ exec kanshi
 # Variables
 set $mod Mod4
 set $scripts ~/.config/scroll/scripts
-set $host $scripts/nvim-terminal.lua
+set $host 
 set $chrome flatpak run com.google.Chrome
-# TODO change to firefox
 
 floating_modifier $mod normal
 
@@ -119,7 +118,7 @@ bindsym $mod+D exec rofi -show drun
 bindsym Ctrl+N exec flatpak run com.google.Chrome
 bindsym Ctrl+Shift+N exec flatpak run com.google.Chrome --incognito
 
-bindsym $mod+Return exec $host -e fish
+bindsym $mod+Return lua $scripts/nvim-terminal.lua
 
 
 bindsym $mod+V exec cliphist list | rofi -dmenu -theme-str '#listview { columns : 1 ; lines: 8 ; }' | cliphist decode | wl-copy
@@ -143,7 +142,6 @@ bindsym $mod+C exec $color-picker
 bindsym $mod+apostrophe exec $start-wshowkeys
 bindsym $mod+Shift+apostrophe exec $stop-wshowkeys
 
-# TODO change to firefox and point those shortcuts directly to the .desktop apps
 bindsym $mod+Shift+N exec $chrome --app=https://chat.openai.com/
 bindsym $mod+Shift+C exec $chrome --app=https://claude.ai/
 bindsym $mod+Shift+M exec $chrome --app=https://soundcloud.com
