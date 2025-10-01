@@ -3,7 +3,6 @@
 local view = scroll.focused_view()
 
 if not view then
-  -- No focused view, launch regular terminal
   scroll.command(nil, 'exec kitty -e fish')
   return
 end
@@ -33,7 +32,6 @@ local function has_nvim_running(parent_pid)
         return true, tonumber(child_pid)
       end
       
-      -- Recursively check children
       local found, nvim_pid = has_nvim_running(tonumber(child_pid))
       if found then
         return true, nvim_pid
@@ -52,12 +50,10 @@ if app_id == "kitty" and pid then
 end
 
 if not is_nvim then
-  -- Not in nvim, just launch regular terminal
   scroll.command(nil, 'exec kitty -e fish')
   return
 end
 
--- We're in nvim, create IDE layout
 -- Get the working directory from the nvim process
 local cwd = nil
 if nvim_pid then
@@ -87,43 +83,27 @@ if not cwd or cwd == "" then
   cwd = os.getenv("HOME") or "~"
 end
 
--- Escape the path for shell execution
 local escaped_cwd = cwd:gsub("'", "'\\''")
-
--- Build the kitty command with directory and fish shell
 local kitty_cmd = string.format("exec kitty --directory '%s' -e fish", escaped_cwd)
 
--- Callback data
+-- Callback data (no cleanup callback to prevent crashes)
 local data = {}
 data.pid = pid
 
 local id_map
-local id_unmap
 
 local on_create = function(cbview, cbdata)
   if scroll.view_get_app_id(cbview) == "kitty" then
     cbdata.view = cbview
     local container = scroll.view_get_container(cbview)
-    -- Terminal should already be below nvim due to set_mode v, just resize it
     scroll.command(container, "set_size v 0.33333333")
-    -- Restore horizontal mode for normal workflow
     scroll.command(nil, "set_mode h")
   end
   scroll.remove_callback(id_map)
 end
 
-local on_destroy = function(cbview, cbdata)
-  if scroll.view_get_pid(cbview) == cbdata.pid then
-    if cbdata.view then
-      scroll.view_close(cbdata.view)
-    end
-  end
-  scroll.remove_callback(id_unmap)
-end
-
+-- Register only the creation callback
 id_map = scroll.add_callback("view_map", on_create, data)
-id_unmap = scroll.add_callback("view_unmap", on_destroy, data)
 
 -- Resize nvim and launch terminal
--- Set mode to vertical so the terminal is added to the current column (below nvim)
 scroll.command(nil, 'set_mode v; set_size v 0.66666667; ' .. kitty_cmd)
