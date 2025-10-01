@@ -88,7 +88,10 @@ local on_create = function(cbview, cbdata)
   if scroll.view_get_app_id(cbview) == "kitty" then
     cbdata.view = cbview
     local container = scroll.view_get_container(cbview)
-    scroll.command(container, "set_size v 0.33333333; move down nomode")
+    -- Terminal should already be below nvim due to set_mode v, just resize it
+    scroll.command(container, "set_size v 0.33333333")
+    -- Restore horizontal mode for normal workflow
+    scroll.command(nil, "set_mode h")
   end
   scroll.remove_callback(id_map)
 end
@@ -106,4 +109,5 @@ id_map = scroll.add_callback("view_map", on_create, data)
 id_unmap = scroll.add_callback("view_unmap", on_destroy, data)
 
 -- Resize nvim and launch terminal
-scroll.command(nil, 'set_size v 0.66666667; ' .. kitty_cmd)
+-- Set mode to vertical so the terminal is added to the current column (below nvim)
+scroll.command(nil, 'set_mode v; set_size v 0.66666667; ' .. kitty_cmd)
