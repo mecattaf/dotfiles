@@ -87,7 +87,8 @@ local id_unmap
 local on_create = function(cbview, cbdata)
   if scroll.view_get_app_id(cbview) == "kitty" then
     cbdata.view = cbview
-    scroll.command(nil, "set_size v 0.33333333; move down nomode")
+    local container = scroll.view_get_container(cbview)
+    scroll.command(container, "set_size v 0.33333333; move down nomode")
   end
   scroll.remove_callback(id_map)
 end
