@@ -72,7 +72,6 @@ exec kanshi
 # Variables
 set $mod Mod4
 set $scripts ~/.config/scroll/scripts
-set $host 
 set $chrome flatpak run com.google.Chrome
 
 floating_modifier $mod normal
