@@ -67,8 +67,9 @@ exec mako
 exec wl-paste --type text --watch cliphist store
 exec wl-paste --type image --watch cliphist store
 exec kanshi
-#exec swaybg -c '#000000'
-#
+exec swaybg -c '#000000'
+    #exec pkill swaybg; swaybg -i ~/Downloads/wall.jpg -m fit
+
 # Variables
 set $mod Mod4
 set $scripts ~/.config/scroll/scripts
