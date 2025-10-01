@@ -117,8 +117,7 @@ bindsym $mod+D exec rofi -show drun
 bindsym Ctrl+N exec flatpak run com.google.Chrome
 bindsym Ctrl+Shift+N exec flatpak run com.google.Chrome --incognito
 
-bindsym $mod+Return lua $scripts/nvim-terminal.lua
-
+bindsym $mod+Return exec scrollmsg "lua $scripts/nvim-terminal.lua"
 
 bindsym $mod+V exec cliphist list | rofi -dmenu -theme-str '#listview { columns : 1 ; lines: 8 ; }' | cliphist decode | wl-copy
 bindsym $mod+Shift+V exec rofimoji -a clipboard
