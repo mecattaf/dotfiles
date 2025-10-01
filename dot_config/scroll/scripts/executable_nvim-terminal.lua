@@ -13,15 +13,15 @@ local pid = scroll.view_get_pid(view)
 
 -- Function to check if nvim is running as a child of this PID
 local function has_nvim_running(parent_pid)
-  if not parent_pid then return false end
+  if not parent_pid then return false, nil end
   
   local handle = io.popen(string.format("pgrep -P %d 2>/dev/null", parent_pid))
-  if not handle then return false end
+  if not handle then return false, nil end
   
   local children = handle:read("*a")
   handle:close()
   
-  if not children or children == "" then return false end
+  if not children or children == "" then return false, nil end
   
   for child_pid in children:gmatch("%S+") do
     local cmd_handle = io.popen(string.format("ps -p %s -o comm= 2>/dev/null", child_pid))
@@ -30,23 +30,25 @@ local function has_nvim_running(parent_pid)
       cmd_handle:close()
       
       if cmd and (cmd:match("nvim") or cmd:match("^vim$")) then
-        return true
+        return true, tonumber(child_pid)
       end
       
       -- Recursively check children
-      if has_nvim_running(tonumber(child_pid)) then
-        return true
+      local found, nvim_pid = has_nvim_running(tonumber(child_pid))
+      if found then
+        return true, nvim_pid
       end
     end
   end
   
-  return false
+  return false, nil
 end
 
 -- Check if this is a kitty terminal running nvim
 local is_nvim = false
+local nvim_pid = nil
 if app_id == "kitty" and pid then
-  is_nvim = has_nvim_running(pid)
+  is_nvim, nvim_pid = has_nvim_running(pid)
 end
 
 if not is_nvim then
@@ -56,14 +58,28 @@ if not is_nvim then
 end
 
 -- We're in nvim, create IDE layout
--- Get the working directory
+-- Get the working directory from the nvim process
 local cwd = nil
-local cwd_handle = io.popen(string.format("readlink /proc/%d/cwd 2>/dev/null", pid))
-if cwd_handle then
-  local result = cwd_handle:read("*a")
-  cwd_handle:close()
-  if result and result ~= "" then
-    cwd = result:gsub("%s+$", "")
+if nvim_pid then
+  local cwd_handle = io.popen(string.format("readlink /proc/%d/cwd 2>/dev/null", nvim_pid))
+  if cwd_handle then
+    local result = cwd_handle:read("*a")
+    cwd_handle:close()
+    if result and result ~= "" then
+      cwd = result:gsub("%s+$", "")
+    end
+  end
+end
+
+-- Fallback: try kitty's working directory if nvim's wasn't found
+if (not cwd or cwd == "") and pid then
+  local cwd_handle = io.popen(string.format("readlink /proc/%d/cwd 2>/dev/null", pid))
+  if cwd_handle then
+    local result = cwd_handle:read("*a")
+    cwd_handle:close()
+    if result and result ~= "" then
+      cwd = result:gsub("%s+$", "")
+    end
   end
 end
 
