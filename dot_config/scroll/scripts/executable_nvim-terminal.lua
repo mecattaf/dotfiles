@@ -14,7 +14,7 @@ local app_id = scroll.view_get_app_id(view)
 
 -- Check if focused window is nvim (checking both title and app_id)
 local is_nvim = false
-if title and (string.find(title, "^nvim") or string.find(title, "nvim") or string.find(title, "NVIM")) then
+if title and string.find(title, "nvim") then
   is_nvim = true
 elseif app_id and (string.find(app_id, "nvim") or string.find(app_id, "neovim")) then
   is_nvim = true

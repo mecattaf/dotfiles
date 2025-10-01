@@ -4,7 +4,7 @@ g.mapleader = ' '
 opt.scrolloff = 3
 opt.mouse = 'a'
 opt.title = true
-opt.titlestring = '%f'
+opt.titlestring = 'nvim %f'
 opt.clipboard = 'unnamedplus'
 opt.swapfile = false
 opt.undofile = true
@@ -76,4 +76,3 @@ local built_ins = {
 for _, plugin in pairs(built_ins) do
   g["loaded_" .. plugin] = 1
 end
-
