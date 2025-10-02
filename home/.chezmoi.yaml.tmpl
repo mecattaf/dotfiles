@@ -1,0 +1,15 @@
+# home/.chezmoi.yaml.tmpl
+encryption: age
+age:
+  identity: "{{ .chezmoi.homeDir }}/.config/chezmoi/key.txt"
+  recipient: "age1548mrmh00zlmd38c2xt37wu7zaszth4sgeyqfmljg55j0asj2evqgjp93f"
+
+
+data:
+  user:
+    name: "Thomas Mecattaf"
+    email: "thomas@mecattaf.dev"
+  
+  system:
+    hostname: "{{ .chezmoi.hostname }}"
+    os: "{{ .chezmoi.os }}"

@@ -40,21 +40,6 @@ exec_always  {
 exec systemctl --user import-environment DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP 
 exec hash dbus-update-activation-environment 2>/dev/null && \
         dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP=sway 
-## Run programs with UWSM
-#set $run_app uwsm app --
-#set $run_bg uwsm app -s b --
-
-## Autostart background processes
-#exec $run_bg autotiling-rs
-#exec $run_bg fcitx5
-#exec $run_bg sway-audio-idle-inhibit
-#exec $run_bg swayidle -w
-#exec $run_bg swaync
-#exec $run_bg swww-daemon
-#exec $run_bg syshud
-#exec $run_bg udiskie
-#exec $run_bg waybar
-#exec $run_bg wl-paste --watch cliphist store
 
 # Credential mgmt
 exec gnome-keyring-daemon --start --components=secrets,ssh,keyring --daemonize
