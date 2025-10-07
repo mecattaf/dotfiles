@@ -1,0 +1,228 @@
+# Fully templated Caddy configuration
+# All service definitions come from .chezmoi.yaml.tmpl
+
+{
+    # Global options
+    admin {{ .caddy.admin_bind }}:{{ .caddy.admin_port }}
+    email {{ .user.email }}
+}
+
+{{- if eq .caddy.routing_mode "subdomain" }}
+
+# Subdomain-based routing (PREFERRED)
+# Each service on its own subdomain: service.blueprint.tail8dd1.ts.net
+# Tailscale automatically handles HTTPS certificates for all subdomains!
+
+{{- range $name, $service := .services }}
+{{- if $service.enabled }}
+{{- if ne $service.subdomain "" }}
+
+# {{ $service.description }}
+{{ $service.subdomain }}.{{ $.tailscale.full_hostname }} {
+    reverse_proxy {{ $service.bind }}:{{ $service.port }} {
+        {{- if $service.websocket }}
+        # WebSocket support
+        header_up Connection {>Connection}
+        header_up Upgrade {>Upgrade}
+        {{- end }}
+        
+        # Preserve client information
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+    }
+    
+    log {
+        output file {{ $.caddy.log_dir }}/{{ $name }}.log {
+            roll_size 50mb
+            roll_keep 3
+        }
+        format console
+    }
+}
+{{- end }}
+{{- end }}
+{{- end }}
+
+# Main domain - Service directory
+{{ .tailscale.full_hostname }} {
+    respond `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ .system.hostname }} Services</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 700px;
+            width: 100%;
+        }
+        h1 {
+            color: #2d3748;
+            margin-bottom: 10px;
+            font-size: 2em;
+        }
+        .subtitle {
+            color: #718096;
+            margin-bottom: 30px;
+            font-size: 0.95em;
+        }
+        .services {
+            display: grid;
+            gap: 12px;
+        }
+        .service {
+            display: flex;
+            align-items: center;
+            padding: 16px;
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+        .service:hover {
+            border-color: #667eea;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+        .service-icon {
+            font-size: 2em;
+            margin-right: 16px;
+        }
+        .service-info {
+            flex: 1;
+        }
+        .service-name {
+            color: #2d3748;
+            font-weight: 600;
+            font-size: 1.1em;
+            margin-bottom: 4px;
+        }
+        .service-url {
+            color: #718096;
+            font-size: 0.85em;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            color: #a0aec0;
+            font-size: 0.85em;
+        }
+        .mode-badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            margin-left: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>
+            {{ .system.hostname }}
+            <span class="mode-badge">subdomain mode</span>
+        </h1>
+        <p class="subtitle">{{ .user.name }}'s Services</p>
+        
+        <div class="services">
+            {{- range $name, $service := .services }}
+            {{- if $service.enabled }}
+            {{- if ne $service.subdomain "" }}
+            <a href="https://{{ $service.subdomain }}.{{ $.tailscale.full_hostname }}" class="service">
+                <div class="service-icon">{{ $service.icon }}</div>
+                <div class="service-info">
+                    <div class="service-name">{{ $service.description }}</div>
+                    <div class="service-url">{{ $service.subdomain }}.{{ $.tailscale.full_hostname }}</div>
+                </div>
+            </a>
+            {{- end }}
+            {{- end }}
+            {{- end }}
+        </div>
+        
+        <div class="footer">
+            Secured by Tailscale • Powered by Caddy
+        </div>
+    </div>
+</body>
+</html>
+    ` 200
+    
+    log {
+        output file {{ .caddy.log_dir }}/main.log {
+            roll_size 100mb
+            roll_keep 5
+        }
+        format console
+    }
+}
+
+{{- else if eq .caddy.routing_mode "path" }}
+
+# Path-based routing (ALTERNATIVE)
+# All services under one domain: blueprint.tail8dd1.ts.net/service
+
+{{ .tailscale.full_hostname }} {
+    {{- range $name, $service := .services }}
+    {{- if $service.enabled }}
+    {{- if ne $service.path "" }}
+    
+    # {{ $service.description }}
+    handle {{ $service.path }}* {
+        {{- if $service.strip_path }}
+        uri strip_prefix {{ $service.path }}
+        {{- end }}
+        reverse_proxy {{ $service.bind }}:{{ $service.port }} {
+            {{- if $service.websocket }}
+            # WebSocket support
+            header_up Connection {>Connection}
+            header_up Upgrade {>Upgrade}
+            {{- end }}
+            
+            # Preserve client information
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+        }
+    }
+    {{- end }}
+    {{- end }}
+    {{- end }}
+    
+    # Catch-all for undefined paths
+    handle {
+        respond "Service not found" 404
+    }
+    
+    log {
+        output file {{ .caddy.log_dir }}/main.log {
+            roll_size 100mb
+            roll_keep 5
+        }
+        format console
+    }
+}
+
+{{- end }}

@@ -1,9 +1,8 @@
-# home/.chezmoi.yaml.tmpl
+# Single source of truth for all service configuration
 encryption: age
 age:
   identity: "{{ .chezmoi.homeDir }}/.config/chezmoi/key.txt"
   recipient: "age1548mrmh00zlmd38c2xt37wu7zaszth4sgeyqfmljg55j0asj2evqgjp93f"
-
 
 data:
   user:
@@ -21,3 +20,104 @@ data:
     full_hostname: "blueprint.tail8dd1.ts.net"
     oauth_client_id: "kfzCmKEfc821CNTRL"
     oauth_client_secret: "tskey-api-REPLACE_WITH_ACTUAL_SECRET_HERE"
+
+  # Caddy configuration
+  caddy:
+    # Routing strategy: "subdomain" (preferred) or "path"
+    routing_mode: "subdomain"
+    admin_port: 2019
+    admin_bind: "localhost"
+    log_dir: "/var/log/caddy"
+    data_dir: "{{ .chezmoi.homeDir }}/caddy/data"
+    config_dir: "{{ .chezmoi.homeDir }}/caddy/config"
+
+  # Service definitions - single source of truth
+  # Each service accessible at: {subdomain}.blueprint.tail8dd1.ts.net
+  services:
+    # System Management
+    cockpit:
+      enabled: true
+      subdomain: "cockpit"
+      port: 9090
+      bind: "127.0.0.1"
+      description: "System Management"
+      websocket: true
+    
+    # AI Services
+    openwebui:
+      enabled: true
+      subdomain: "ai"
+      port: 3000
+      bind: "127.0.0.1"
+      description: "AI Chat Interface"
+      websocket: true
+    
+    litellm:
+      enabled: true
+      subdomain: "llm"
+      port: 4000
+      bind: "127.0.0.1"
+      description: "LLM Proxy Admin"
+      websocket: false
+    
+    # Data & Monitoring
+    redis:
+      enabled: true
+      subdomain: "redis"
+      port: 8001
+      bind: "127.0.0.1"
+      description: "Redis Insight"
+      websocket: false
+    
+    # Media Services
+    jellyfin:
+      enabled: true
+      subdomain: "media"
+      port: 8096
+      bind: "127.0.0.1"
+      description: "Media Server"
+      websocket: false
+    
+    nextcloud:
+      enabled: true
+      subdomain: "cloud"
+      port: 8081
+      bind: "127.0.0.1"
+      description: "Cloud Storage"
+      websocket: false
+    
+    # Optional: Homepage/Dashboard
+    home:
+      enabled: true
+      subdomain: ""  # Root domain: blueprint.tail8dd1.ts.net
+      port: 8080
+      bind: "127.0.0.1"
+      description: "Dashboard"
+      websocket: false
+    
+    # Backend services (not exposed via Caddy)
+    searxng:
+      enabled: false
+      port: 8080
+      bind: "127.0.0.1"
+    
+    docling:
+      enabled: false
+      port: 5001
+      bind: "127.0.0.1"
+    
+    tika:
+      enabled: false
+      port: 9998
+      bind: "127.0.0.1"
+
+  # Container network settings
+  network:
+    llm:
+      name: "llm"
+      subnet: "10.89.0.0/24"
+      gateway: "10.89.0.1"
+    homeserver:
+      name: "homeserver"
+      subnet: "10.90.0.0/24"
+      gateway: "10.90.0.1"

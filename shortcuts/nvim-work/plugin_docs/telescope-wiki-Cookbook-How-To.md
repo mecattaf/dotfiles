@@ -1,1 +1,0 @@
-How to use telescope to find files with a certain filetype? How to pass arguments to find_files on the telescope promt? 
