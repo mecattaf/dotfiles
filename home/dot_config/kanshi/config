@@ -30,10 +30,10 @@ profile Desktop-2 {
 
 profile Desktop-3 {
     output DP-3 mode 5120x2880@60.000Hz scale 2 position 0,0
-    exec busctl --user set-property rs.wl-gammarelay /outputs/DP_1 rs.wl.gammarelay Temperature q 4000
+    exec busctl --user set-property rs.wl-gammarelay /outputs/DP_3 rs.wl.gammarelay Temperature q 4000
 }
 
 profile Desktop-4 {
     output DP-4 mode 5120x2880@60.000Hz scale 2 position 0,0
-    exec busctl --user set-property rs.wl-gammarelay /outputs/DP_1 rs.wl.gammarelay Temperature q 4000
+    exec busctl --user set-property rs.wl-gammarelay /outputs/DP_4 rs.wl.gammarelay Temperature q 4000
 }
