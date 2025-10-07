@@ -18,12 +18,22 @@ profile Duo-Desktop {
     exec busctl --user set-property rs.wl-gammarelay /outputs/HDMI_A_1 rs.wl.gammarelay Temperature q 4000
 }
 
-profile Desktop1 {
+profile Desktop-1 {
     output DP-1 mode 5120x2880@60.000Hz scale 2 position 0,0
     exec busctl --user set-property rs.wl-gammarelay /outputs/DP_1 rs.wl.gammarelay Temperature q 4000
 }
 
-profile Desktop2 {
+profile Desktop-2 {
     output DP-2 mode 5120x2880@60.000Hz scale 2 position 0,0
     exec busctl --user set-property rs.wl-gammarelay /outputs/DP_2 rs.wl.gammarelay Temperature q 4000
+}
+
+profile Desktop-3 {
+    output DP-1 mode 5120x2880@60.000Hz scale 2 position 0,0
+    exec busctl --user set-property rs.wl-gammarelay /outputs/DP_1 rs.wl.gammarelay Temperature q 4000
+}
+
+profile Desktop-4 {
+    output DP-1 mode 5120x2880@60.000Hz scale 2 position 0,0
+    exec busctl --user set-property rs.wl-gammarelay /outputs/DP_1 rs.wl.gammarelay Temperature q 4000
 }
