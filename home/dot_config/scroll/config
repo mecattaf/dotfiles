@@ -196,6 +196,10 @@ bindsym $mod+Ctrl+Page_Down scale_workspace overview
 #bindsym --whole-window $mod+button4 scale_workspace incr -0.05
 #bindsym --whole-window $mod+button5 scale_workspace incr 0.05
 
+bindsym $mod+equal fullscreen_application toggle
+bindsym $mod+Shift+equal fullscreen toggle
+bindsym $mod+Ctrl+equal fullscreen_application reset
+
 # Jump config
 jump_labels_color $cl_high 
 #jump_labels_background $cl_back  
