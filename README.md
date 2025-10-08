@@ -1,4 +1,3 @@
 # Dotfiles
 
-Personal dotfiles configuration for Duo and BluePrint linux.
-
+Personal dotfiles configuration for Duo and BluePrint linux with chezmoi templating.
