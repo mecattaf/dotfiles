@@ -11,7 +11,7 @@ https://{{ .tailscale.full_hostname }} {
 {{- else }}
 https://{{ $service.external_subdomain }}.{{ .tailscale.full_hostname }} {
 {{- end }}
-    reverse_proxy {{ $service.bind | default "127.0.0.1" }}:{{ $service.published_port }} {
+    reverse_proxy {{ $service.hostname }}:{{ $service.port }} {
         # Standard proxy headers
         header_up Host {host}
         header_up X-Real-IP {remote_host}
