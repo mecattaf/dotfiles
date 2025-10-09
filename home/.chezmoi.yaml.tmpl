@@ -186,7 +186,7 @@ data:
         container_name: "qdrant"
         port: 6333
         grpc_port: 6334
-        published_port: null  # Internal only (optional: 6333 for dashboard)
+        published_port: 6333  # Dashboard enabled
         image: "docker.io/qdrant/qdrant:latest"
         external_subdomain: "qdrant"
         enabled_by: ["openwebui.providers.vector_db == 'qdrant'"]
