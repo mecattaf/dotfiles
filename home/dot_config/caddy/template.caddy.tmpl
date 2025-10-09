@@ -1,0 +1,21 @@
+{{- if .services.SERVICENAME.enabled -}}
+# {{ .services.SERVICENAME.description }}
+{{ .services.SERVICENAME.subdomain }}.{{ .tailscale.full_hostname }} {
+    reverse_proxy {{ .services.SERVICENAME.bind }}:{{ .services.SERVICENAME.port }} {
+        header_up Connection {>Connection}
+        header_up Upgrade {>Upgrade}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+    }
+    
+    log {
+        output file /var/log/caddy/SERVICENAME.log {
+            roll_size 50mb
+            roll_keep 3
+        }
+        format console
+    }
+}
+{{- end }}

@@ -1,9 +1,0 @@
-#!/usr/bin/env xdg-open
-
-[Desktop Entry]
-Version=1.0
-Terminal=false
-Type=Application
-Name=Slack
-Exec=flatpak run --command=/app/bin/chrome com.google.Chrome --profile-directory=Default --app=https://app.slack.com/client/T045A37HTU2
-Icon=slack
