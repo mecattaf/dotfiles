@@ -7,40 +7,59 @@
 # 🤖 MODEL DEFINITIONS
 # ═════════════════════════════════════════════════════════════════════════════
 model_list:
-  # OpenAI Models
-  - model_name: gpt-4o
+  # ───────────────────────────────────────────────────────────────────────────
+  # CLOUD MODELS (OpenAI, Anthropic, Google)
+  # Auto-generated from .chezmoi.yaml.tmpl → litellm.models
+  # ───────────────────────────────────────────────────────────────────────────
+  {{- range .litellm.models }}
+  {{- if eq .provider "openai" }}
+  
+  # {{ .name }} (OpenAI)
+  - model_name: {{ .name }}
     litellm_params:
-      model: openai/gpt-4o
+      model: openai/{{ .name }}
       api_key: os.environ/OPENAI_API_KEY
+  {{- else if eq .provider "anthropic" }}
   
-  - model_name: gpt-4o-mini
+  # {{ .name }} (Anthropic)
+  - model_name: {{ .name }}
     litellm_params:
-      model: openai/gpt-4o-mini
-      api_key: os.environ/OPENAI_API_KEY
-  
-  # Anthropic Models
-  - model_name: claude-3-5-sonnet
-    litellm_params:
-      model: anthropic/claude-3-5-sonnet-latest
+      model: anthropic/{{ .name }}
       api_key: os.environ/ANTHROPIC_API_KEY
+  {{- else if eq .provider "gemini" }}
   
-  - model_name: claude-3-5-haiku
+  # {{ .name }} (Google Gemini)
+  - model_name: {{ .name }}
     litellm_params:
-      model: anthropic/claude-3-5-haiku-latest
-      api_key: os.environ/ANTHROPIC_API_KEY
-  
-  # Google Models
-  - model_name: gemini-2.0-flash
-    litellm_params:
-      model: gemini/gemini-2.0-flash-exp
+      model: gemini/{{ .name }}
       api_key: os.environ/GEMINI_API_KEY
+  {{- end }}
+  {{- end }}
+  
+  # ───────────────────────────────────────────────────────────────────────────
+  # LOCAL MODELS (via llama-swap → ramalama)
+  # Auto-generated from .chezmoi.yaml.tmpl → local_inference.models
+  # ───────────────────────────────────────────────────────────────────────────
+  {{- range $key, $model := .local_inference.models }}
+  {{- if $model.enabled }}
+  
+  # {{ $model.display_name }} (Local)
+  - model_name: {{ $model.name }}
+    litellm_params:
+      model: openai/{{ $model.name }}
+      api_base: http://{{ $.infrastructure.services.llama_swap.hostname }}:{{ $.infrastructure.services.llama_swap.port }}/v1
+      api_key: "sk-no-key-required"
+      stream: true
+      custom_llm_provider: openai
+  {{- end }}
+  {{- end }}
 
 # ═════════════════════════════════════════════════════════════════════════════
 # ⚙️  LITELLM SETTINGS
 # ═════════════════════════════════════════════════════════════════════════════
 litellm_settings:
-  # Essential for Ollama compatibility
-  drop_params: true
+  # Essential for compatibility with various providers
+  drop_params: {{ .litellm.drop_params | default true }}
   
   # Redis caching (auto-configured from infrastructure.services)
   cache: true
@@ -66,3 +85,32 @@ general_settings:
   
   # Store models in database
   store_model_in_db: true
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 📝 NOTES
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# This file is auto-generated from .chezmoi.yaml.tmpl
+#
+# CLOUD MODELS are defined in: litellm.models
+# LOCAL MODELS are defined in: local_inference.models
+#
+# LOCAL MODEL ROUTING:
+#   OpenWebUI/Client → LiteLLM:4000 → llama-swap:9292 → ramalama containers
+#
+# When a request comes in for a local model (e.g. "{{ (index .local_inference.models 0).name }}"):
+#   1. LiteLLM receives request at :4000/v1/chat/completions
+#   2. Looks up model in model_list
+#   3. Sees api_base points to llama-swap
+#   4. Forwards to llama-swap:9292/v1/chat/completions
+#   5. llama-swap checks if ramalama container is running
+#   6. If not, spawns it via podman socket
+#   7. Routes request to ramalama container
+#   8. Returns response through the chain
+#
+# ADDING MORE MODELS:
+#   1. Edit .chezmoi.yaml.tmpl (local_inference.models or litellm.models)
+#   2. Run: chezmoi apply
+#   3. Restart: systemctl --user restart llama-swap litellm
+#
+# ═════════════════════════════════════════════════════════════════════════════

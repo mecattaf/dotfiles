@@ -209,6 +209,22 @@ data:
         websocket: false
         description: "Model Context Protocol Server"
         config_file: "mcp/config.json"
+
+      # ─────────────────────────────────────────────────────────────────────────
+      # Local AI Inference
+      # ─────────────────────────────────────────────────────────────────────────
+      llama_swap:
+        hostname: "llama-swap"
+        container_name: "llama-swap"
+        port: 8080                         # Internal container port
+        published_port: 9292               # Published to host
+        bind: "127.0.0.1"
+        image: "ghcr.io/mostlygeek/llama-swap:cpu"
+        external_subdomain: "llama-swap"
+        websocket: true
+        enabled: true
+        volume: "llama-swap.volume"
+        description: "Local LLM Model Router"
       
       # ─────────────────────────────────────────────────────────────────────────
       # System Management
@@ -300,10 +316,84 @@ data:
         provider: "gemini"
         api_key: "{{ .secrets.llm_providers.gemini }}"
         enabled: true
+
+      # ───────────────────────────────────────────────────────────────────────
+      # LOCAL MODELS (via llama-swap → ramalama)
+      # ───────────────────────────────────────────────────────────────────────
+      - name: "gpt-oss-20b"
+        provider: "llama-swap"
+        enabled: true
+        endpoint: "http://{{ .infrastructure.services.llama_swap.hostname }}:{{ .infrastructure.services.llama_swap.port }}"
+        description: "OpenAI GPT-OSS 20B - Fast local model"
+      
+      - name: "gpt-oss-120b"
+        provider: "llama-swap"
+        enabled: true
+        endpoint: "http://{{ .infrastructure.services.llama_swap.hostname }}:{{ .infrastructure.services.llama_swap.port }}"
+        description: "OpenAI GPT-OSS 120B - Powerful local model"
     
     # General settings
     drop_params: true  # Essential for compatibility
     log_level: "INFO"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🤖 LOCAL INFERENCE - RamaLama + llama-swap Configuration
+  # ═══════════════════════════════════════════════════════════════════════════
+  local_inference:
+    enabled: true
+    
+    # Default settings for all local models
+    defaults:
+      runtime: "llama.cpp"
+      backend: "vulkan"              # AMD GPU acceleration
+      ctx_size: 8192                 # Context window
+      ngl: 999                       # GPU layers (all)
+      temp: 0.7                      # Temperature
+      auto_unload: true              # Enable TTL-based unloading
+    
+    # Model definitions
+    models:
+      gpt_oss_20b:
+        name: "gpt-oss-20b"
+        display_name: "GPT-OSS 20B"
+        description: "OpenAI's 20B parameter model - Fast general tasks"
+        
+        # HuggingFace repository
+        hf_repo: "openai/gpt-oss-20b-GGUF"
+        hf_file: "gpt-oss-20b-q4_k_m.gguf"
+        
+        # Model specs
+        quantization: "Q4_K_M"
+        ram_required_gb: 16
+        context_length: 8192
+        
+        # Runtime settings
+        ctx_size: 8192
+        ttl: 600                       # 10 minutes
+        
+        # Enable/disable
+        enabled: true
+      
+      gpt_oss_120b:
+        name: "gpt-oss-120b"
+        display_name: "GPT-OSS 120B"
+        description: "OpenAI's 120B parameter model - Complex reasoning"
+        
+        # HuggingFace repository
+        hf_repo: "openai/gpt-oss-120b-GGUF"
+        hf_file: "gpt-oss-120b-q4_k_m.gguf"
+        
+        # Model specs
+        quantization: "Q4_K_M"
+        ram_required_gb: 80
+        context_length: 8192
+        
+        # Runtime settings
+        ctx_size: 8192
+        ttl: 900                       # 15 minutes
+        
+        # Enable/disable
+        enabled: true
   
   # ═══════════════════════════════════════════════════════════════════════════
   # 🤖 OPENWEBUI - Feature-Centric Configuration (29 Decision Variables)
