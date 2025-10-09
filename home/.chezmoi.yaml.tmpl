@@ -357,44 +357,114 @@ data:
         name: "gpt-oss-20b"
         display_name: "GPT-OSS 20B"
         description: "OpenAI's 20B parameter model - Fast general tasks"
-        
-        # HuggingFace repository
         hf_repo: "openai/gpt-oss-20b-GGUF"
         hf_file: "gpt-oss-20b-q4_k_m.gguf"
-        
-        # Model specs
+        model_uri: "huggingface://openai/gpt-oss-20b-GGUF/gpt-oss-20b-q4_k_m.gguf"
         quantization: "Q4_K_M"
         ram_required_gb: 16
         context_length: 8192
-        
-        # Runtime settings
         ctx_size: 8192
-        ttl: 600                       # 10 minutes
-        
-        # Enable/disable
+        ttl: 600
+        vulkan_driver: "RADV"
+        flash_attn: true
+        aliases:
+          - "gpt-oss"
         enabled: true
+      
+      llama_4_scout_17b:
+        name: "llama-4-scout-17b"
+        display_name: "Llama 4 Scout 17B"
+        description: "Extended context specialist - 10M token capability"
+        model_uri: "huggingface://unsloth/Llama-4-Scout-17B-16E-Instruct-GGUF/Llama-4-Scout-17B-16E-Instruct-UD-Q4_K_XL.gguf"
+        quantization: "Q4_K_XL"
+        ram_required_gb: 58
+        context_length: 10485760      # 10M tokens!
+        ctx_size: 65536                # Practical limit for speed
+        ttl: 900
+        vulkan_driver: "AMDVLK"        # Better for long prompts
+        flash_attn: true
+        # Note: Can theoretically do 1M context in 128GB, but extremely slow
+        # Practical: 65k context is much more usable
+        enabled: false                 # Enable when you need long context
+      
+      qwen3_coder_30b:
+        name: "qwen3-coder-30b"
+        display_name: "Qwen3 Coder 30B"
+        description: "Advanced code model - great for complex refactoring"
+        model_uri: "huggingface://unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/Qwen3-Coder-30B-A3B-Instruct-BF16.gguf"
+        quantization: "BF16"
+        ram_required_gb: 60
+        context_length: 8192
+        ctx_size: 8192
+        ttl: 900
+        vulkan_driver: "RADV"
+        flash_attn: true
+        enabled: false                 # Enable when you need serious coding help
+      
+      qwen3_thinking_30b:
+        name: "qwen3-thinking-30b"
+        display_name: "Qwen3 Thinking 30B"
+        description: "Deep reasoning specialist - thinks through problems"
+        model_uri: "huggingface://unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF/Qwen3-30B-A3B-Thinking-2507-UD-Q4_K_XL.gguf"
+        quantization: "Q4_K_XL"
+        ram_required_gb: 20
+        context_length: 8192
+        ctx_size: 8192
+        ttl: 900
+        vulkan_driver: "AMDVLK"        # Better for long reasoning prompts
+        flash_attn: true
+        aliases:
+          - "thinking"
+          - "qwen-thinking"
+        enabled: false
+      
+      qwq_32b:
+        name: "qwq-32b"
+        display_name: "QwQ 32B"
+        description: "Question-answering specialist with reasoning"
+        model_uri: "huggingface://bartowski/Qwen_QwQ-32B-GGUF/Qwen_QwQ-32B-Q4_K_M.gguf"
+        quantization: "Q4_K_M"
+        ram_required_gb: 20
+        context_length: 32768
+        ctx_size: 32768
+        ttl: 900
+        vulkan_driver: "AMDVLK"
+        flash_attn: true
+        enabled: false
       
       gpt_oss_120b:
         name: "gpt-oss-120b"
         display_name: "GPT-OSS 120B"
         description: "OpenAI's 120B parameter model - Complex reasoning"
-        
-        # HuggingFace repository
         hf_repo: "openai/gpt-oss-120b-GGUF"
         hf_file: "gpt-oss-120b-q4_k_m.gguf"
-        
-        # Model specs
+        model_uri: "huggingface://openai/gpt-oss-120b-GGUF/gpt-oss-120b-q4_k_m.gguf"
         quantization: "Q4_K_M"
         ram_required_gb: 80
         context_length: 8192
-        
-        # Runtime settings
         ctx_size: 8192
-        ttl: 900                       # 15 minutes
-        
-        # Enable/disable
+        ttl: 900
+        vulkan_driver: "AMDVLK"        # Better for long prompts
+        flash_attn: true
         enabled: true
-  
+      
+      qwen3_235b:
+        name: "qwen3-235b"
+        display_name: "Qwen3 235B"
+        description: "Flagship model - incredible capability, fits in 128GB"
+        model_uri: "huggingface://unsloth/Qwen3-235B-A22B-Instruct-2507-GGUF/Qwen3-235B-A22B-Instruct-2507-UD-Q3_K_XL.gguf"
+        quantization: "Q3_K_XL"
+        ram_required_gb: 97
+        context_length: 131072
+        ctx_size: 65536                # Conservative - can do 130k max
+        ttl: 1800                      # 30 minutes
+        vulkan_driver: "AMDVLK"        # Better for complex prompts
+        flash_attn: true
+        batch_size: 2048
+        # Note: This is HUGE but fits in 128GB with Q3_K quantization
+        # Expect slower inference but incredible quality
+        enabled: false                 # Enable when you need the best
+       
   # ═══════════════════════════════════════════════════════════════════════════
   # 🤖 OPENWEBUI - Feature-Centric Configuration (29 Decision Variables)
   # ═══════════════════════════════════════════════════════════════════════════

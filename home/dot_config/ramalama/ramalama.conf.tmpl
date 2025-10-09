@@ -76,22 +76,41 @@ pull = "newer"
 image = "quay.io/ramalama/ramalama:latest"
 
 # ═════════════════════════════════════════════════════════════════════════════
+# 🎯 VULKAN BACKEND SELECTION
+# ═════════════════════════════════════════════════════════════════════════════
+# 
+# Based on AMD Strix Halo benchmarks:
+# - RADV: Best for token generation (interactive chat) - 10 first-place finishes
+# - AMDVLK: Best for prompt processing (batch) - 6 first-place finishes
+#
+# Default: RADV (best for typical chat usage)
+# Override per-model in llama-swap config for prompt-heavy workloads
+#
+# To override globally, uncomment:
+# [ramalama.env]
+# AMD_VULKAN_ICD = "RADV"
+
+# ═════════════════════════════════════════════════════════════════════════════
 # 📝 NOTES
 # ═════════════════════════════════════════════════════════════════════════════
 # 
-# This configuration is optimized for AMD Ryzen AI MAX+ (Strix Halo)
-# - Vulkan backend for GPU acceleration
-# - Unified memory architecture (128GB system RAM = GPU accessible)
-# - Models managed by llama-swap (automatic loading/unloading)
-# 
-# Models configured:
-#   - openai/gpt-oss-20b  (~12GB RAM, fast)
-#   - openai/gpt-oss-120b (~70GB RAM, powerful)
-# 
+# AMD Strix Halo Unified Memory:
+# - 128GB RAM is fully accessible by GPU via Vulkan
+# - No explicit VRAM allocation needed
+# - Models limited by context size, not VRAM
+#
+# Vulkan Performance (from benchmarks):
+# - Token Generation (tg128): RADV wins 10/17 models
+# - Prompt Processing (pp512): AMDVLK wins 6/17 models
+# - Balanced: AMDVLK slightly ahead overall
+#
+# Flash Attention: +6-11% prompt processing speed
+# - Enabled automatically in llama-swap configurations
+#
 # Manual model operations:
-#   ramalama pull huggingface://openai/gpt-oss-20b
-#   ramalama pull huggingface://openai/gpt-oss-120b
+#   ramalama pull <model-uri>
 #   ramalama list
+#   ramalama inspect <model>
 #   ramalama rm <model>
 # 
 # ═════════════════════════════════════════════════════════════════════════════
