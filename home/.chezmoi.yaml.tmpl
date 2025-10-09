@@ -601,6 +601,48 @@ data:
         enabled: false  # Disabled by default
 
       # ═══════════════════════════════════════════════════════════════════════
+      # IBM GRANITE 4.0 MODELS
+      # ═══════════════════════════════════════════════════════════════════════
+      
+      granite_4_0_h_micro:
+        name: "granite-4.0-h-micro"
+        display_name: "Granite 4.0 H-Micro"
+        description: "IBM's 3B enterprise model - Fast, efficient for edge use"
+        model_uri: "huggingface://unsloth/granite-4.0-h-micro-GGUF/granite-4.0-h-micro-UD-Q4_K_XL.gguf"
+        quantization: "Q4_K_XL"
+        ram_required_gb: 3
+        context_length: 131072
+        ctx_size: 8192
+        ttl: 600
+        group: "task"
+        vulkan_driver: "RADV"
+        flash_attn: true
+        shortname: "granite-micro"
+        enabled: false
+        aliases:
+          - "granite-micro"
+          - "granite-3b"
+      
+      granite_4_0_h_small:
+        name: "granite-4.0-h-small"
+        display_name: "Granite 4.0 H-Small"
+        description: "IBM's 32B MoE model (9B active) - Enterprise workhorse"
+        model_uri: "huggingface://unsloth/granite-4.0-h-small-GGUF/granite-4.0-h-small-UD-Q4_K_XL.gguf"
+        quantization: "Q4_K_XL"
+        ram_required_gb: 22
+        context_length: 131072
+        ctx_size: 16384
+        ttl: 900
+        group: "heavy"
+        vulkan_driver: "AMDVLK"
+        flash_attn: true
+        shortname: "granite-small"
+        enabled: false
+        aliases:
+          - "granite-small"
+          - "granite-32b"
+
+      # ═══════════════════════════════════════════════════════════════════════
       # EMBEDDING MODELS (for RAG/Vector Search)
       # ═══════════════════════════════════════════════════════════════════════
       
