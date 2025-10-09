@@ -599,6 +599,8 @@ data:
       enable_signup: false
       default_user_role: "user"
       
+      log_level: "info"  # debug | info | warning | error
+      
       # Performance
       enable_realtime_chat_save: false
       
@@ -612,10 +614,33 @@ data:
       rag_file_max_size: 50
       rag_file_max_count: 10
       
+      enable_search_query: true
+      enable_retrieval_query_generation: false
+      
       # Web search settings
       web_search_result_count: 3
       web_search_concurrent_requests: 10
-  
+      
+      enable_reranking: false
+      reranking_model: "BAAI/bge-reranker-v2-m3"
+      enable_hybrid_search: false
+      enable_query_rewriting: false
+      
+      # These will be configured to use LiteLLM proxy in future versions
+      # For now, OpenWebUI will use its internal defaults
+      # task_models:
+      #   title_generation: "litellm-model-name"
+      #   tags_generation: "litellm-model-name"  
+      #   query_generation: "litellm-model-name"
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # 🔧 Service Configuration
+    # ─────────────────────────────────────────────────────────────────────────
+    service:
+      timeout_start_sec: 900
+      restart: "on-failure"
+      restart_sec: 10
+
   # ═══════════════════════════════════════════════════════════════════════════
   # 🎨 CADDY - Reverse Proxy (Auto-generated from infrastructure.services)
   # ═══════════════════════════════════════════════════════════════════════════
