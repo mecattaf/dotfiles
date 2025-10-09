@@ -1,10 +1,12 @@
-# Single source of truth for all service configuration
 encryption: age
 age:
   identity: "{{ .chezmoi.homeDir }}/.config/chezmoi/key.txt"
-  recipient: "age1548mrmh00zlmd38c2xt37wu7zaszth4sgeyqfmljg55j0asj2evqgjp93f"
+  recipient: "age1YOUR_PUBLIC_KEY_HERE"  # Replace with your key from Step 2
 
 data:
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 👤 USER INFORMATION
+  # ═══════════════════════════════════════════════════════════════════════════
   user:
     name: "mecattaf"
     email: "thomas@mecattaf.dev"
@@ -12,112 +14,643 @@ data:
   system:
     hostname: "{{ .chezmoi.hostname }}"
     os: "{{ .chezmoi.os }}"
-
+    timezone: "America/New_York"
+  
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🌐 TAILSCALE CONFIGURATION
+  # ═══════════════════════════════════════════════════════════════════════════
   tailscale:
     hostname: "blueprint"
     tag: "tag:blueprint"
     tailnet: "tail8dd1.ts.net"
     full_hostname: "blueprint.tail8dd1.ts.net"
-    oauth_client_id: "kfzCmKEfc821CNTRL"
-    oauth_client_secret: "tskey-api-REPLACE_WITH_ACTUAL_SECRET_HERE"
+    oauth_client_id: "{{ .secrets.tailscale.oauth_client_id }}"
+    oauth_client_secret: "{{ .secrets.tailscale.oauth_client_secret }}"
 
-  # Caddy configuration
-  caddy:
-    # Routing strategy: "subdomain" (preferred) or "path"
-    routing_mode: "subdomain"
-    admin_port: 2019
-    admin_bind: "localhost"
-    log_dir: "/var/log/caddy"
-    data_dir: "{{ .chezmoi.homeDir }}/caddy/data"
-    config_dir: "{{ .chezmoi.homeDir }}/caddy/config"
 
-  # Service definitions - single source of truth
-  # Each service accessible at: {subdomain}.blueprint.tail8dd1.ts.net
-  services:
-    # System Management
-    cockpit:
-      enabled: true
-      subdomain: "cockpit"
-      port: 9090
-      bind: "127.0.0.1"
-      description: "System Management"
-      websocket: true
-    
-    # AI Services
-    openwebui:
-      enabled: true
-      subdomain: "ai"
-      port: 3000
-      bind: "127.0.0.1"
-      description: "AI Chat Interface"
-      websocket: true
-    
-    litellm:
-      enabled: true
-      subdomain: "llm"
-      port: 4000
-      bind: "127.0.0.1"
-      description: "LLM Proxy Admin"
-      websocket: false
-    
-    # Data & Monitoring
-    redis:
-      enabled: true
-      subdomain: "redis"
-      port: 8001
-      bind: "127.0.0.1"
-      description: "Redis Insight"
-      websocket: false
-    
-    # Media Services
-    jellyfin:
-      enabled: true
-      subdomain: "media"
-      port: 8096
-      bind: "127.0.0.1"
-      description: "Media Server"
-      websocket: false
-    
-    nextcloud:
-      enabled: true
-      subdomain: "cloud"
-      port: 8081
-      bind: "127.0.0.1"
-      description: "Cloud Storage"
-      websocket: false
-    
-    # Optional: Homepage/Dashboard
-    home:
-      enabled: true
-      subdomain: ""  # Root domain: blueprint.tail8dd1.ts.net
-      port: 8080
-      bind: "127.0.0.1"
-      description: "Dashboard"
-      websocket: false
-    
-    # Backend services (not exposed via Caddy)
-    searxng:
-      enabled: false
-      port: 8080
-      bind: "127.0.0.1"
-    
-    docling:
-      enabled: false
-      port: 5001
-      bind: "127.0.0.1"
-    
-    tika:
-      enabled: false
-      port: 9998
-      bind: "127.0.0.1"
-
-  # Container network settings
-  network:
-    llm:
+  
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🌉 INFRASTRUCTURE SERVICES REGISTRY
+  # ═══════════════════════════════════════════════════════════════════════════
+  infrastructure:
+    network:
       name: "llm"
       subnet: "10.89.0.0/24"
       gateway: "10.89.0.1"
-    homeserver:
-      name: "homeserver"
-      subnet: "10.90.0.0/24"
-      gateway: "10.90.0.1"
+    
+    services:
+      # ─────────────────────────────────────────────────────────────────────────
+      # Core Infrastructure Databases (Isolated per service)
+      # ─────────────────────────────────────────────────────────────────────────
+      litellm_postgres:
+        hostname: "litellm-postgres"
+        container_name: "litellm-postgres"
+        port: 5432
+        published_port: null  # Internal only
+        image: "docker.io/pgvector/pgvector:pg16"
+        db_name: "litellm"
+        db_user: "litellm"
+        volume: "litellm-postgres.volume"
+        enabled: true
+      
+      litellm_redis:
+        hostname: "litellm-redis"
+        container_name: "litellm-redis"
+        port: 6379
+        published_port: null  # Internal only
+        image: "docker.io/redis:latest"
+        volume: "litellm-redis.volume"
+        enabled: true
+        requires: []
+      
+      openwebui_postgres:
+        hostname: "openwebui-postgres"
+        container_name: "openwebui-postgres"
+        port: 5432
+        published_port: null  # Internal only
+        image: "docker.io/pgvector/pgvector:pg16"
+        db_name: "openwebui"
+        db_user: "openwebui"
+        volume: "openwebui-postgres.volume"
+        enabled: true
+      
+      openwebui_redis:
+        hostname: "openwebui-redis"
+        container_name: "openwebui-redis"
+        port: 6379
+        published_port: null  # Internal only
+        image: "docker.io/redis:latest"
+        volume: "openwebui-redis.volume"
+        enabled: true
+      
+      searxng_redis:
+        hostname: "searxng-redis"
+        container_name: "searxng-redis"
+        port: 6379
+        published_port: null  # Internal only
+        image: "docker.io/redis:latest"
+        volume: "searxng-redis.volume"
+        enabled_by: ["openwebui.providers.web_search_engine == 'searxng'"]
+      
+      # ─────────────────────────────────────────────────────────────────────────
+      # LLM Services
+      # ─────────────────────────────────────────────────────────────────────────
+      litellm:
+        hostname: "litellm"
+        container_name: "litellm"
+        port: 4000
+        published_port: 4000
+        image: "ghcr.io/berriai/litellm:main-stable"
+        external_subdomain: "llm"
+        requires: ["litellm_postgres", "litellm_redis"]
+        enabled: true
+        websocket: false
+        description: "LLM Proxy Service"
+        config_file: "litellm/litellm.yaml"
+      
+      openwebui:
+        hostname: "openwebui"
+        container_name: "openwebui"
+        port: 8080
+        published_port: 3000
+        image: "ghcr.io/open-webui/open-webui:main"
+        external_subdomain: "ai"
+        requires: ["openwebui_postgres", "openwebui_redis", "litellm"]
+        enabled: true
+        websocket: true
+        description: "Open WebUI Chat Interface"
+        env_file: "openwebui/openwebui.env"
+        volume: "openwebui.volume"
+      
+      # ─────────────────────────────────────────────────────────────────────────
+      # Document Processing (conditional based on content_extraction provider)
+      # ─────────────────────────────────────────────────────────────────────────
+      tika:
+        hostname: "tika"
+        container_name: "tika"
+        port: 9998
+        published_port: null  # Internal only
+        image: "docker.io/apache/tika:latest-full"
+        enabled_by: ["openwebui.providers.content_extraction == 'tika'"]
+        websocket: false
+        description: "Apache Tika Content Extraction"
+      
+      docling:
+        hostname: "docling"
+        container_name: "docling"
+        port: 5001
+        published_port: 5001
+        image: "quay.io/docling-project/docling-serve:latest"
+        external_subdomain: "docling"
+        enabled_by: ["openwebui.providers.content_extraction == 'docling'"]
+        websocket: false
+        description: "Docling Document Processing"
+      
+      # ─────────────────────────────────────────────────────────────────────────
+      # Search Services (conditional based on web_search_engine provider)
+      # ─────────────────────────────────────────────────────────────────────────
+      searxng:
+        hostname: "searxng"
+        container_name: "searxng"
+        port: 8080
+        published_port: 8888
+        image: "docker.io/searxng/searxng:latest"
+        external_subdomain: "search"
+        enabled_by: ["openwebui.providers.web_search_engine == 'searxng'"]
+        requires: ["searxng_redis"]
+        websocket: false
+        description: "SearXNG Meta Search Engine"
+        volume: "searxng.volume"
+      
+      # ─────────────────────────────────────────────────────────────────────────
+      # Code Execution (conditional based on code_execution_engine provider)
+      # ─────────────────────────────────────────────────────────────────────────
+      jupyter:
+        hostname: "jupyter"
+        container_name: "jupyter"
+        port: 8888
+        published_port: 8889
+        image: "quay.io/jupyter/scipy-notebook:latest"
+        external_subdomain: "jupyter"
+        enabled_by: ["openwebui.providers.code_execution_engine == 'jupyter'"]
+        websocket: true
+        description: "Jupyter Code Interpreter"
+        volume: "jupyter.volume"
+      
+      # ─────────────────────────────────────────────────────────────────────────
+      # Vector Databases (conditional based on vector_db provider)
+      # ─────────────────────────────────────────────────────────────────────────
+      qdrant:
+        hostname: "qdrant"
+        container_name: "qdrant"
+        port: 6333
+        grpc_port: 6334
+        published_port: null  # Internal only (optional: 6333 for dashboard)
+        image: "docker.io/qdrant/qdrant:latest"
+        external_subdomain: "qdrant"
+        enabled_by: ["openwebui.providers.vector_db == 'qdrant'"]
+        websocket: false
+        description: "Qdrant Vector Database"
+        volume: "qdrant.volume"
+      
+      # Note: pgvector uses openwebui_postgres (no separate service)
+      # Note: chroma embedded in OpenWebUI (no separate service)
+      
+      # ─────────────────────────────────────────────────────────────────────────
+      # MCP Tool Server
+      # ─────────────────────────────────────────────────────────────────────────
+      mcp:
+        hostname: "mcp"
+        container_name: "mcp"
+        port: 8000
+        published_port: null  # Internal only
+        image: "ghcr.io/open-webui/mcpo:latest"
+        enabled: true
+        websocket: false
+        description: "Model Context Protocol Server"
+        config_file: "mcp/config.json"
+      
+      # ─────────────────────────────────────────────────────────────────────────
+      # System Management
+      # ─────────────────────────────────────────────────────────────────────────
+      cockpit:
+        hostname: "{{ .tailscale.hostname }}"  # Runs on host
+        container_name: "cockpit-ws"
+        port: 9090
+        published_port: 9090
+        bind: "127.0.0.1"
+        image: "quay.io/cockpit/ws:latest"
+        external_subdomain: ""  # Root domain
+        enabled: true
+        websocket: true
+        description: "System Management Dashboard"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🔐 SECRETS REFERENCES (from encrypted_private_secrets.yaml)
+  # ═══════════════════════════════════════════════════════════════════════════
+  secrets:
+    # Database passwords (one per service)
+    databases:
+      litellm: "{{ .secrets.databases.litellm }}"
+      openwebui: "{{ .secrets.databases.openwebui }}"
+    
+    # Self-generated keys
+    api_keys:
+      litellm_master: "{{ .secrets.api_keys.litellm_master }}"
+      openwebui_secret: "{{ .secrets.api_keys.openwebui_secret }}"
+      jupyter_token: "{{ .secrets.api_keys.jupyter_token }}"
+    
+    # Cloud LLM providers
+    llm_providers:
+      openai: "{{ .secrets.llm_providers.openai }}"
+      anthropic: "{{ .secrets.llm_providers.anthropic }}"
+      gemini: "{{ .secrets.llm_providers.gemini }}"
+    
+    # Optional: Search providers
+    search_providers:
+      tavily: "{{ .secrets.search_providers.tavily }}"
+      brave: "{{ .secrets.search_providers.brave }}"
+    
+    # Optional: Document processing
+    document_providers:
+      mistral_ocr: "{{ .secrets.document_providers.mistral_ocr }}"
+    
+    # Optional: Audio providers
+    audio_providers:
+      elevenlabs: "{{ .secrets.audio_providers.elevenlabs }}"
+      deepgram: "{{ .secrets.audio_providers.deepgram }}"
+
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🚀 LITELLM - LLM Proxy Configuration
+  # ═══════════════════════════════════════════════════════════════════════════
+  litellm:
+    # Database connection (auto-generated from infrastructure.services)
+    database_url: "postgresql://litellm:{{ .secrets.databases.litellm }}@{{ .infrastructure.services.litellm_postgres.hostname }}:{{ .infrastructure.services.litellm_postgres.port }}/litellm"
+    
+    # Redis cache connection (auto-generated)
+    redis_url: "redis://{{ .infrastructure.services.litellm_redis.hostname }}:{{ .infrastructure.services.litellm_redis.port }}/0"
+    
+    # Master key for authentication
+    master_key: "{{ .secrets.api_keys.litellm_master }}"
+    
+    # Models to expose
+    models:
+      - name: "gpt-4o"
+        provider: "openai"
+        api_key: "{{ .secrets.llm_providers.openai }}"
+        enabled: true
+      
+      - name: "gpt-4o-mini"
+        provider: "openai"
+        api_key: "{{ .secrets.llm_providers.openai }}"
+        enabled: true
+      
+      - name: "claude-3-5-sonnet"
+        provider: "anthropic"
+        api_key: "{{ .secrets.llm_providers.anthropic }}"
+        enabled: true
+      
+      - name: "claude-3-5-haiku"
+        provider: "anthropic"
+        api_key: "{{ .secrets.llm_providers.anthropic }}"
+        enabled: true
+      
+      - name: "gemini-2.0-flash"
+        provider: "gemini"
+        api_key: "{{ .secrets.llm_providers.gemini }}"
+        enabled: true
+    
+    # General settings
+    drop_params: true  # Essential for compatibility
+    log_level: "INFO"
+  
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🤖 OPENWEBUI - Feature-Centric Configuration (29 Decision Variables)
+  # ═══════════════════════════════════════════════════════════════════════════
+  openwebui:
+    # ─────────────────────────────────────────────────────────────────────────
+    # 🎯 LAYER 1: Feature Flags (What capabilities to enable?)
+    # ─────────────────────────────────────────────────────────────────────────
+    features:
+      # Core AI capabilities
+      rag: true                           # 🔑 Decision 1: Enable RAG?
+      web_search: true                    # 🔑 Decision 2: Enable web search?
+      image_generation: false             # 🔑 Decision 3: Enable image gen?
+      speech_to_text: false               # 🔑 Decision 4: Enable STT?
+      text_to_speech: false               # 🔑 Decision 5: Enable TTS?
+      
+      # Code execution
+      code_execution: true                # 🔑 Decision 6: Enable code execution?
+      code_interpreter: true              # 🔑 Decision 7: Enable code interpreter?
+      
+      # Cloud integrations
+      google_drive: false                 # 🔑 Decision 8: Enable Google Drive?
+      onedrive: false                     # 🔑 Decision 9: Enable OneDrive?
+      
+      # Authentication
+      oauth_signup: false                 # 🔑 Decision 10: Enable OAuth?
+      ldap: false                         # 🔑 Decision 11: Enable LDAP?
+      
+      # Advanced features
+      title_generation: false             # 🔑 Decision 12: Auto-generate titles?
+      autocomplete_generation: false      # 🔑 Decision 13: Enable autocomplete?
+      tags_generation: false              # 🔑 Decision 14: Auto-generate tags?
+      
+      # Infrastructure
+      websocket_support: true             # 🔑 Decision 15: Enable WebSocket?
+      direct_connections: true            # 🔑 Decision 16: Direct model connections?
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # 🔌 LAYER 2: Provider Selections (Which implementation?)
+    # ─────────────────────────────────────────────────────────────────────────
+    providers:
+      # Vector database (controls 48+ variables)
+      vector_db: "pgvector"               # 🔑 Decision 17: chroma | pgvector | qdrant | milvus | opensearch | elasticsearch | pinecone
+      
+      # RAG components (controls 16+ variables)
+      rag_embedding: ""                   # 🔑 Decision 18: "" (local) | ollama | openai
+      content_extraction: "tika"          # 🔑 Decision 19: tika | docling | mistral_ocr | document_intelligence | external
+      text_splitter: "character"          # 🔑 Decision 20: character | token
+      
+      # Web search (controls 50+ variables)
+      web_search_engine: "searxng"        # 🔑 Decision 21: searxng | tavily | brave | google_pse | duckduckgo | kagi | etc
+      web_loader: "requests"              # 🔑 Decision 22: requests | playwright | safe_web
+      
+      # Image generation (controls 12+ variables)
+      image_engine: "openai"              # 🔑 Decision 23: openai | comfyui | automatic1111 | gemini
+      
+      # Audio (controls 20+ variables)
+      stt_engine: ""                      # 🔑 Decision 24: "" (local whisper) | openai | azure | deepgram
+      tts_engine: "openai"                # 🔑 Decision 25: openai | azure | elevenlabs | transformers
+      
+      # Code execution (controls 8+ variables)
+      code_execution_engine: "jupyter"    # 🔑 Decision 26: jupyter | pyodide
+      code_interpreter_engine: "jupyter"  # 🔑 Decision 27: jupyter | pyodide
+      
+      # Storage (controls 12+ variables)
+      storage_provider: ""                # 🔑 Decision 28: "" (local) | s3 | gcs | azure
+      
+      # Authentication (controls 10+ variables)
+      auth_provider: "local"              # 🔑 Decision 29: local | oauth | ldap
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # ⚙️  LAYER 3: Provider Configurations (How to configure?)
+    # Only the selected provider's config is used at runtime
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ VECTOR DATABASE CONFIGS (Decision 17)                               │
+    # └─────────────────────────────────────────────────────────────────────┘
+    vector_db_config:
+      pgvector:
+        # Auto-generated from infrastructure.services
+        db_url: "postgresql://openwebui:{{ .secrets.databases.openwebui }}@{{ .infrastructure.services.openwebui_postgres.hostname }}:{{ .infrastructure.services.openwebui_postgres.port }}/openwebui"
+        vector_dimension: 384
+      
+      chroma:
+        # Embedded - no external service needed
+        tenant: "default_tenant"
+        database: "default_database"
+      
+      qdrant:
+        # Auto-generated from infrastructure.services
+        uri: "http://{{ .infrastructure.services.qdrant.hostname }}:{{ .infrastructure.services.qdrant.port }}"
+        grpc_port: "{{ .infrastructure.services.qdrant.grpc_port }}"
+        api_key: ""  # Optional
+        prefer_grpc: false
+        on_disk: true
+      
+      milvus:
+        uri: "http://milvus:19530"
+        token: ""
+        index_type: "HNSW"
+        metric_type: "COSINE"
+      
+      elasticsearch:
+        url: "http://elasticsearch:9200"
+        api_key: ""
+        index_prefix: "openwebui"
+      
+      opensearch:
+        uri: "http://opensearch:9200"
+        username: "admin"
+        password: ""
+      
+      pinecone:
+        api_key: ""
+        environment: "us-east-1"
+        index_name: "openwebui"
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ RAG EMBEDDING CONFIGS (Decision 18)                                 │
+    # └─────────────────────────────────────────────────────────────────────┘
+    rag_embedding_config:
+      local:
+        model: "sentence-transformers/all-MiniLM-L6-v2"
+        device: "cpu"
+        batch_size: 1
+      
+      ollama:
+        base_url: "http://ollama:11434"
+        model: "nomic-embed-text:latest"
+      
+      openai:
+        # Auto-generated - uses LiteLLM proxy
+        base_url: "http://{{ .infrastructure.services.litellm.hostname }}:{{ .infrastructure.services.litellm.port }}/v1"
+        api_key: "{{ .secrets.api_keys.litellm_master }}"
+        model: "text-embedding-3-small"
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ CONTENT EXTRACTION CONFIGS (Decision 19)                            │
+    # └─────────────────────────────────────────────────────────────────────┘
+    content_extraction_config:
+      tika:
+        # Auto-generated from infrastructure.services
+        server_url: "http://{{ .infrastructure.services.tika.hostname }}:{{ .infrastructure.services.tika.port }}"
+      
+      docling:
+        # Auto-generated from infrastructure.services
+        server_url: "http://{{ .infrastructure.services.docling.hostname }}:{{ .infrastructure.services.docling.port }}"
+        ocr_engine: "tesseract"
+        ocr_lang: "eng"
+      
+      mistral_ocr:
+        api_key: "{{ .secrets.document_providers.mistral_ocr }}"
+      
+      external:
+        url: ""
+        api_key: ""
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ WEB SEARCH CONFIGS (Decision 21)                                    │
+    # └─────────────────────────────────────────────────────────────────────┘
+    web_search_config:
+      searxng:
+        # Auto-generated from infrastructure.services
+        query_url: "http://{{ .infrastructure.services.searxng.hostname }}:{{ .infrastructure.services.searxng.port }}/search?q=<query>&format=json"
+      
+      tavily:
+        api_key: "{{ .secrets.search_providers.tavily }}"
+        extract_depth: "basic"
+      
+      brave:
+        api_key: "{{ .secrets.search_providers.brave }}"
+      
+      google_pse:
+        api_key: ""
+        engine_id: ""
+      
+      duckduckgo: {}
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ WEB LOADER CONFIGS (Decision 22)                                    │
+    # └─────────────────────────────────────────────────────────────────────┘
+    web_loader_config:
+      requests: {}
+      
+      playwright:
+        ws_url: "ws://playwright:3000"
+        timeout: 10000
+      
+      safe_web: {}
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ IMAGE GENERATION CONFIGS (Decision 23)                              │
+    # └─────────────────────────────────────────────────────────────────────┘
+    image_generation_config:
+      openai:
+        # Auto-generated - uses LiteLLM proxy
+        base_url: "http://{{ .infrastructure.services.litellm.hostname }}:{{ .infrastructure.services.litellm.port }}/v1"
+        api_key: "{{ .secrets.api_keys.litellm_master }}"
+        model: "dall-e-3"
+      
+      comfyui:
+        base_url: "http://comfyui:8188"
+        workflow: ""
+      
+      automatic1111:
+        base_url: "http://automatic1111:7860"
+        api_auth: ""
+      
+      gemini:
+        api_key: "{{ .secrets.llm_providers.gemini }}"
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ AUDIO CONFIGS (Decisions 24-25)                                     │
+    # └─────────────────────────────────────────────────────────────────────┘
+    audio_config:
+      stt:
+        local_whisper:
+          model: "base"
+          vad_filter: true
+        
+        openai:
+          # Auto-generated - uses LiteLLM proxy
+          base_url: "http://{{ .infrastructure.services.litellm.hostname }}:{{ .infrastructure.services.litellm.port }}/v1"
+          api_key: "{{ .secrets.api_keys.litellm_master }}"
+          model: "whisper-1"
+        
+        deepgram:
+          api_key: "{{ .secrets.audio_providers.deepgram }}"
+      
+      tts:
+        openai:
+          # Auto-generated - uses LiteLLM proxy
+          base_url: "http://{{ .infrastructure.services.litellm.hostname }}:{{ .infrastructure.services.litellm.port }}/v1"
+          api_key: "{{ .secrets.api_keys.litellm_master }}"
+          model: "tts-1"
+          voice: "alloy"
+        
+        elevenlabs:
+          api_key: "{{ .secrets.audio_providers.elevenlabs }}"
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ CODE EXECUTION CONFIGS (Decisions 26-27)                            │
+    # └─────────────────────────────────────────────────────────────────────┘
+    code_execution_config:
+      jupyter:
+        # Auto-generated from infrastructure.services
+        url: "http://{{ .infrastructure.services.jupyter.hostname }}:{{ .infrastructure.services.jupyter.port }}"
+        auth: "token"
+        token: "{{ .secrets.api_keys.jupyter_token }}"
+        timeout: 60
+      
+      pyodide: {}
+    
+    # ┌─────────────────────────────────────────────────────────────────────┐
+    # │ STORAGE CONFIGS (Decision 28)                                       │
+    # └─────────────────────────────────────────────────────────────────────┘
+    storage_config:
+      local: {}
+      
+      s3:
+        endpoint_url: ""
+        bucket_name: "openwebui-storage"
+        region_name: "us-east-1"
+        access_key_id: ""
+        secret_access_key: ""
+      
+      gcs:
+        bucket_name: "openwebui-storage"
+        credentials_json: ""
+      
+      azure:
+        endpoint: ""
+        container_name: "openwebui-storage"
+        key: ""
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # 🎨 General Settings (Provider-agnostic)
+    # ─────────────────────────────────────────────────────────────────────────
+    general:
+      # Core connection (auto-generated from infrastructure.services)
+      database_url: "postgresql://openwebui:{{ .secrets.databases.openwebui }}@{{ .infrastructure.services.openwebui_postgres.hostname }}:{{ .infrastructure.services.openwebui_postgres.port }}/openwebui"
+      openai_api_base_url: "http://{{ .infrastructure.services.litellm.hostname }}:{{ .infrastructure.services.litellm.port }}/v1"
+      openai_api_key: "{{ .secrets.api_keys.litellm_master }}"
+      webui_secret_key: "{{ .secrets.api_keys.openwebui_secret }}"
+      
+      # Branding
+      webui_name: "Leger AI"
+      custom_name: "Blueprint LLM Stack"
+      
+      # Authentication
+      webui_auth: false
+      enable_signup: false
+      default_user_role: "user"
+      
+      # Performance
+      enable_realtime_chat_save: false
+      
+      # RAG settings
+      rag_top_k: 3
+      chunk_size: 1500
+      chunk_overlap: 100
+      pdf_extract_images: true
+      
+      # File upload limits
+      rag_file_max_size: 50
+      rag_file_max_count: 10
+      
+      # Web search settings
+      web_search_result_count: 3
+      web_search_concurrent_requests: 10
+  
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🎨 CADDY - Reverse Proxy (Auto-generated from infrastructure.services)
+  # ═══════════════════════════════════════════════════════════════════════════
+  caddy:
+    # Caddy automatically configures routes based on infrastructure.services
+    # where external_subdomain is defined
+    auto_https: "off"  # Tailscale handles TLS
+    
+    # Optional: Manual route overrides
+    custom_routes: []
+  
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🔍 SEARXNG - Search Engine Configuration
+  # ═══════════════════════════════════════════════════════════════════════════
+  searxng:
+    # Redis connection (auto-generated from infrastructure.services)
+    redis_url: "redis://{{ .infrastructure.services.searxng_redis.hostname }}:{{ .infrastructure.services.searxng_redis.port }}/0"
+    
+    # Base URL (auto-generated from Tailscale config)
+    base_url: "https://{{ .infrastructure.services.searxng.external_subdomain }}.{{ .tailscale.full_hostname }}"
+    
+    # Settings
+    safe_search: 0
+    max_page: 5
+    autocomplete: "duckduckgo"
+    
+    # Engines
+    engines:
+      - name: "duckduckgo"
+        enabled: true
+      - name: "google"
+        enabled: true
+      - name: "brave"
+        enabled: true
+      - name: "wikipedia"
+        enabled: true
+      - name: "github"
+        enabled: true

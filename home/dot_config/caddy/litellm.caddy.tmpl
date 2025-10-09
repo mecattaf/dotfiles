@@ -1,0 +1,29 @@
+{{- $service := .infrastructure.services.litellm }}
+{{- if and $service.enabled $service.external_subdomain }}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# {{ $service.description }}
+# ─────────────────────────────────────────────────────────────────────────────
+
+https://{{ $service.external_subdomain }}.{{ .tailscale.full_hostname }} {
+    reverse_proxy {{ $service.bind | default "127.0.0.1" }}:{{ $service.published_port }} {
+        # Standard proxy headers
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+    }
+    
+    # Logging
+    log {
+        output file /var/log/caddy/litellm.log {
+            roll_size 50mb
+            roll_keep 3
+        }
+        format console
+        level ERROR
+    }
+}
+
+{{- end }}

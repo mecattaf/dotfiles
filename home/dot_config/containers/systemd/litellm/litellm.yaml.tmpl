@@ -1,0 +1,68 @@
+# ═════════════════════════════════════════════════════════════════════════════
+# 🤖 LITELLM CONFIGURATION
+# Auto-generated from .chezmoi.yaml.tmpl
+# ═════════════════════════════════════════════════════════════════════════════
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🤖 MODEL DEFINITIONS
+# ═════════════════════════════════════════════════════════════════════════════
+model_list:
+  # OpenAI Models
+  - model_name: gpt-4o
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+  
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+  
+  # Anthropic Models
+  - model_name: claude-3-5-sonnet
+    litellm_params:
+      model: anthropic/claude-3-5-sonnet-latest
+      api_key: os.environ/ANTHROPIC_API_KEY
+  
+  - model_name: claude-3-5-haiku
+    litellm_params:
+      model: anthropic/claude-3-5-haiku-latest
+      api_key: os.environ/ANTHROPIC_API_KEY
+  
+  # Google Models
+  - model_name: gemini-2.0-flash
+    litellm_params:
+      model: gemini/gemini-2.0-flash-exp
+      api_key: os.environ/GEMINI_API_KEY
+
+# ═════════════════════════════════════════════════════════════════════════════
+# ⚙️  LITELLM SETTINGS
+# ═════════════════════════════════════════════════════════════════════════════
+litellm_settings:
+  # Essential for Ollama compatibility
+  drop_params: true
+  
+  # Redis caching (auto-configured from infrastructure.services)
+  cache: true
+  cache_params:
+    type: redis
+    host: {{ .infrastructure.services.litellm_redis.hostname }}
+    port: {{ .infrastructure.services.litellm_redis.port }}
+    ttl: 3600
+  
+  # Logging
+  set_verbose: false
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔧 GENERAL SETTINGS
+# Database URL auto-generated from infrastructure.services
+# ═════════════════════════════════════════════════════════════════════════════
+general_settings:
+  # Database connection (auto-generated)
+  database_url: "postgresql://{{ .infrastructure.services.litellm_postgres.db_user }}@{{ .infrastructure.services.litellm_postgres.hostname }}:{{ .infrastructure.services.litellm_postgres.port }}/{{ .infrastructure.services.litellm_postgres.db_name }}"
+  
+  # Master key from secrets
+  master_key: os.environ/LITELLM_MASTER_KEY
+  
+  # Store models in database
+  store_model_in_db: true
