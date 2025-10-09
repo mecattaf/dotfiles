@@ -226,6 +226,35 @@ data:
         enabled: true
         volume: "llama-swap.volume"
         description: "Local LLM Model Router"
+
+
+      whisper:
+        hostname: "whisper"
+        container_name: "whisper"
+        port: 8000                          # Internal container port
+        published_port: 8765                # Published to host (no conflicts)
+        bind: "127.0.0.1"
+        image: "docker.io/fedirz/faster-whisper-server:latest-cpu"
+        external_subdomain: "whisper"       # Optional: external access via Caddy
+        enabled_by: ["openwebui.features.speech_to_text"]  # Auto-enable when STT enabled
+        websocket: false
+        description: "Whisper Speech-to-Text Service"
+        volume: "whisper-cache.volume"
+
+
+
+      edgetts:
+        hostname: "edgetts"
+        container_name: "edgetts"
+        port: 5050                          # Internal container port
+        published_port: 5050                # Published to host
+        bind: "127.0.0.1"
+        image: "ghcr.io/traefik/parakeet:latest"  # Edge-TTS compatible server
+        external_subdomain: "tts"           # Optional: external access via Caddy
+        enabled_by: ["openwebui.features.text_to_speech"]
+        websocket: false
+        description: "Edge-TTS Text-to-Speech Service"
+        volume: "edgetts-cache.volume"
       
       # ─────────────────────────────────────────────────────────────────────────
       # System Management
@@ -465,6 +494,71 @@ data:
         # Note: This is HUGE but fits in 128GB with Q3_K quantization
         # Expect slower inference but incredible quality
         enabled: false                 # Enable when you need the best
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🎤 local whisper section
+  # ═══════════════════════════════════════════════════════════════════════════
+  whisper:
+    # Model cache directory - shared with host CLI tools
+    cache_dir: "{{ .chezmoi.homeDir }}/.cache/huggingface"
+    
+    # Model selection
+    # Options: tiny (75MB), base (142MB), small (466MB), medium (1.5GB), large-v3 (2.9GB)
+    model: "large-v3"
+    
+    # Language configuration
+    language: "en"             # Specific language, or "" for auto-detect (slower)
+    
+    # Inference settings
+    beam_size: 5               # Higher = more accurate but slower (1-10)
+    compute_type: "auto"       # auto, int8, float16, float32
+    device: "auto"             # auto detects Vulkan GPU
+    
+    # Performance notes for your AMD Strix Halo:
+    # - base model: ~16x real-time (6sec audio in 0.375sec)
+    # - small model: ~6x real-time
+    # - large-v3: ~1x real-time
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # 🔊 Edge-TTS Configuration (TTS)
+  # Add after whisper section
+  # ═══════════════════════════════════════════════════════════════════════════
+  edgetts:
+    # Audio format
+    response_format: "mp3"     # Options: mp3, opus, aac, flac, wav, pcm
+    
+    # Speech speed
+    speed: "1.0"               # 0.5 = half speed, 2.0 = double speed
+    
+    # Default voice
+    # Full list: https://speech.microsoft.com/portal/voicegallery
+    voice: "en-AU-NatashaNeural"
+    
+    # Alternative voices to try:
+    # English (US): en-US-AriaNeural, en-US-GuyNeural, en-US-JennyNeural
+    # English (UK): en-GB-SoniaNeural, en-GB-RyanNeural
+    # English (AU): en-AU-NatashaNeural, en-AU-WilliamNeural
+    
+    # Logging
+    log_level: "info"          # debug, info, warning, error
+    
+    # Available voices by model (OpenAI-compatible mapping)
+    models:
+      tts-1:
+        alloy: "en-US-AriaNeural"
+        echo: "en-US-GuyNeural"
+        fable: "en-GB-RyanNeural"
+        onyx: "en-US-DavisNeural"
+        nova: "en-US-JennyNeural"
+        shimmer: "en-US-AmberNeural"
+      
+      tts-1-hd:
+        alloy: "en-US-AriaNeural"
+        echo: "en-US-GuyNeural"
+        fable: "en-GB-RyanNeural"
+        onyx: "en-US-DavisNeural"
+        nova: "en-US-JennyNeural"
+        shimmer: "en-US-AmberNeural"
        
   # ═══════════════════════════════════════════════════════════════════════════
   # 🤖 OPENWEBUI - Feature-Centric Configuration (29 Decision Variables)
@@ -478,8 +572,8 @@ data:
       rag: true                           # 🔑 Decision 1: Enable RAG?
       web_search: true                    # 🔑 Decision 2: Enable web search?
       image_generation: false             # 🔑 Decision 3: Enable image gen?
-      speech_to_text: false               # 🔑 Decision 4: Enable STT?
-      text_to_speech: false               # 🔑 Decision 5: Enable TTS?
+      speech_to_text: true               # 🔑 Decision 4: Enable STT?
+      text_to_speech: true               # 🔑 Decision 5: Enable TTS?
       
       # Code execution
       code_execution: true                # 🔑 Decision 6: Enable code execution?
@@ -522,7 +616,7 @@ data:
       image_engine: "openai"              # 🔑 Decision 23: openai | comfyui | automatic1111 | gemini
       
       # Audio (controls 20+ variables)
-      stt_engine: ""                      # 🔑 Decision 24: "" (local whisper) | openai | azure | deepgram
+      stt_engine: "openai"                      # 🔑 Decision 24: "" (local whisper) | openai | azure | deepgram
       tts_engine: "openai"                # 🔑 Decision 25: openai | azure | elevenlabs | transformers
       
       # Code execution (controls 8+ variables)
@@ -682,26 +776,22 @@ data:
     # └─────────────────────────────────────────────────────────────────────┘
     audio_config:
       stt:
-        local_whisper:
-          model: "base"
-          vad_filter: true
-        
         openai:
-          # Auto-generated - uses LiteLLM proxy
-          base_url: "http://{{ .infrastructure.services.litellm.hostname }}:{{ .infrastructure.services.litellm.port }}/v1"
-          api_key: "{{ .secrets.api_keys.litellm_master }}"
+        # Auto-generated - points to local whisper container
+          base_url: "http://{{ .infrastructure.services.whisper.hostname }}:{{ .infrastructure.services.whisper.port }}/v1"
+          api_key: "sk-whisper-local"  # Dummy key (not validated for local)
           model: "whisper-1"
-        
+
         deepgram:
           api_key: "{{ .secrets.audio_providers.deepgram }}"
       
       tts:
         openai:
-          # Auto-generated - uses LiteLLM proxy
-          base_url: "http://{{ .infrastructure.services.litellm.hostname }}:{{ .infrastructure.services.litellm.port }}/v1"
-          api_key: "{{ .secrets.api_keys.litellm_master }}"
+          # Auto-generated - points to edgetts container
+          base_url: "http://{{ .infrastructure.services.edgetts.hostname }}:{{ .infrastructure.services.edgetts.port }}/v1"
+          api_key: "sk-edgetts-local"
           model: "tts-1"
-          voice: "alloy"
+          voice: "{{ .edgetts.models.tts-1.alloy }}"  # Default to Aria
         
         elevenlabs:
           api_key: "{{ .secrets.audio_providers.elevenlabs }}"
