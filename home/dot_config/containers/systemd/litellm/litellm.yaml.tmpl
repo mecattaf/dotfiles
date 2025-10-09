@@ -60,6 +60,23 @@ model_list:
   {{- end }}
   {{- end }}
 
+  # ───────────────────────────────────────────────────────────────────────
+  # EMBEDDING MODELS (via llama-swap → ramalama)
+  # Auto-generated from .chezmoi.yaml.tmpl → local_inference.models
+  # ───────────────────────────────────────────────────────────────────────
+  {{- range $key, $model := .local_inference.models }}
+  {{- if and $model.enabled (eq $model.group "embeddings") }}
+  
+  # {{ $model.display_name }} [{{ $model.group }} group] (Local Embedding)
+  - model_name: {{ $model.name }}
+    litellm_params:
+      model: openai/{{ $model.name }}
+      api_base: http://{{ $.infrastructure.services.llama_swap.hostname }}:{{ $.infrastructure.services.llama_swap.port }}/v1
+      api_key: "sk-no-key-required"
+      custom_llm_provider: openai
+  {{- end }}
+  {{- end }}
+
 # ═════════════════════════════════════════════════════════════════════════════
 # ⚙️  LITELLM SETTINGS
 # ═════════════════════════════════════════════════════════════════════════════

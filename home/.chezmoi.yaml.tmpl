@@ -397,6 +397,12 @@ data:
           - "qwen3-0.6b"
           - "qwen3-4b"
 
+      embeddings:
+        swap: false
+        description: "Embedding models for RAG (always loaded, parallel execution)"
+        members:
+          - "qwen3-embedding-8b"
+
     # Model definitions
     models:
       gpt_oss_20b:
@@ -594,6 +600,98 @@ data:
         shortname: "qwen3-xlarge"
         enabled: false  # Disabled by default
 
+      # ═══════════════════════════════════════════════════════════════════════
+      # EMBEDDING MODELS (for RAG/Vector Search)
+      # ═══════════════════════════════════════════════════════════════════════
+      
+      qwen3_embedding_0_6b:
+        name: "qwen3-embedding-0.6b"
+        display_name: "Qwen3 Embedding 0.6B"
+        description: "Ultra-fast embedding model - 0.6B parameters"
+        model_uri: "huggingface://Qwen/Qwen3-Embedding-0.6B-GGUF/qwen3-embedding-0.6b-q8_0.gguf"
+        quantization: "Q8_0"
+        ram_required_gb: 1
+        context_length: 8192
+        ctx_size: 8192
+        ttl: 0  # Never unload
+        group: "embeddings"
+        vulkan_driver: "RADV"
+        flash_attn: false  # Not applicable for embeddings
+        embedding_dimension: 1024
+        shortname: "qwen3-emb-tiny"
+        enabled: false
+      
+      qwen3_embedding_4b:
+        name: "qwen3-embedding-4b"
+        display_name: "Qwen3 Embedding 4B"
+        description: "Balanced embedding model - 4B parameters"
+        model_uri: "huggingface://Qwen/Qwen3-Embedding-4B-GGUF/qwen3-embedding-4b-q8_0.gguf"
+        quantization: "Q8_0"
+        ram_required_gb: 5
+        context_length: 8192
+        ctx_size: 8192
+        ttl: 0  # Never unload
+        group: "embeddings"
+        vulkan_driver: "RADV"
+        flash_attn: false
+        embedding_dimension: 2048
+        shortname: "qwen3-emb-medium"
+        enabled: false
+      
+      qwen3_embedding_8b:
+        name: "qwen3-embedding-8b"
+        display_name: "Qwen3 Embedding 8B"
+        description: "High-quality embedding model - 8B parameters (DEFAULT)"
+        model_uri: "huggingface://Qwen/Qwen3-Embedding-8B-GGUF/qwen3-embedding-8b-q8_0.gguf"
+        quantization: "Q8_0"
+        ram_required_gb: 9
+        context_length: 8192
+        ctx_size: 8192
+        ttl: 0  # Never unload
+        group: "embeddings"
+        vulkan_driver: "RADV"
+        flash_attn: false
+        embedding_dimension: 4096
+        shortname: "qwen3-emb-large"
+        enabled: true  # ✅ DEFAULT ENABLED
+        aliases:
+          - "qwen-embed"
+          - "default-embedding"
+
+      nomic_embed_text_v1_5:
+        name: "nomic-embed-text-v1.5"
+        display_name: "Nomic Embed Text v1.5"
+        description: "OpenAI-compatible embedding (text-embedding-3-small alternative)"
+        model_uri: "huggingface://nomic-ai/nomic-embed-text-v1.5-GGUF/nomic-embed-text-v1.5.Q8_0.gguf"
+        quantization: "Q8_0"
+        ram_required_gb: 1
+        context_length: 8192
+        ctx_size: 8192
+        ttl: 0
+        group: "embeddings"
+        vulkan_driver: "RADV"
+        flash_attn: false
+        enabled: false
+        aliases:
+          - "text-embedding-3-small"
+      
+      voyage_3_large:
+        name: "voyage-3-large"
+        display_name: "Voyage 3 Large"
+        description: "High-capacity embedding - 10B parameters"
+        model_uri: "huggingface://voyageai/voyage-3-large-GGUF/voyage-3-large-q8_0.gguf"
+        quantization: "Q8_0"
+        ram_required_gb: 11
+        context_length: 8192
+        ctx_size: 8192
+        ttl: 0
+        group: "embeddings"
+        vulkan_driver: "RADV"
+        flash_attn: false
+        enabled: false
+        aliases:
+          - "text-embedding-3-large"
+
   # ═══════════════════════════════════════════════════════════════════════════
   # 🎤 local whisper section
   # ═══════════════════════════════════════════════════════════════════════════
@@ -703,7 +801,7 @@ data:
       vector_db: "pgvector"               # 🔑 Decision 17: chroma | pgvector | qdrant | milvus | opensearch | elasticsearch | pinecone
       
       # RAG components (controls 16+ variables)
-      rag_embedding: ""                   # 🔑 Decision 18: "" (local) | ollama | openai
+      rag_embedding: "openai"                   # 🔑 Decision 18: "" (local) | ollama | openai
       content_extraction: "tika"          # 🔑 Decision 19: tika | docling | mistral_ocr | document_intelligence | external
       text_splitter: "character"          # 🔑 Decision 20: character | token
       
@@ -786,15 +884,15 @@ data:
         batch_size: 1
       
       ollama:
+        # Used when rag_embedding: "ollama" (native Ollama daemon)
         base_url: "http://ollama:11434"
         model: "nomic-embed-text:latest"
-      
+
       openai:
-        # Auto-generated - uses LiteLLM proxy
         base_url: "http://{{ .infrastructure.services.litellm.hostname }}:{{ .infrastructure.services.litellm.port }}/v1"
         api_key: "{{ .secrets.api_keys.litellm_master }}"
-        model: "text-embedding-3-small"
-    
+        model: "qwen3-embedding-8b"  # ← DEFAULT embedding model
+
     # ┌─────────────────────────────────────────────────────────────────────┐
     # │ CONTENT EXTRACTION CONFIGS (Decision 19)                            │
     # └─────────────────────────────────────────────────────────────────────┘
