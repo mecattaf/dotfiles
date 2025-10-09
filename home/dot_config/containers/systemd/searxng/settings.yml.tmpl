@@ -1,0 +1,113 @@
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔍 SEARXNG CONFIGURATION
+# Auto-generated from .chezmoi.yaml.tmpl
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Use SearXNG container defaults as baseline
+use_default_settings: true
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🎯 GENERAL SETTINGS
+# ═════════════════════════════════════════════════════════════════════════════
+general:
+  instance_name: "{{ .infrastructure.services.searxng.container_name }}"
+  enable_metrics: false
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔍 SEARCH SETTINGS
+# ═════════════════════════════════════════════════════════════════════════════
+search:
+  safe_search: {{ .searxng.safe_search }}
+  autocomplete: "{{ .searxng.autocomplete }}"
+  
+  # CRITICAL: Enable JSON format for OpenWebUI integration
+  # Without this, OpenWebUI gets 403 Forbidden errors
+  formats:
+    - html
+    - json
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🌐 SERVER SETTINGS
+# ═════════════════════════════════════════════════════════════════════════════
+server:
+  # Secret key (static value for local-only deployment)
+  secret_key: "local-searxng-no-secret-needed-tailscale-only"
+  
+  # Base URL (overridden by SEARXNG_BASE_URL env var)
+  base_url: "{{ .searxng.base_url }}"
+  
+  # Port and bind address
+  port: {{ .infrastructure.services.searxng.port }}
+  bind_address: "0.0.0.0"
+  
+  # Disable rate limiting (local Tailscale-only instance)
+  limiter: false
+  public_instance: false
+  
+  # Image proxy disabled (Caddy handles SSL termination)
+  image_proxy: false
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 📦 REDIS CACHE
+# ═════════════════════════════════════════════════════════════════════════════
+redis:
+  # Redis connection (overridden by SEARXNG_REDIS_URL env var)
+  url: "{{ .searxng.redis_url }}"
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🎨 UI SETTINGS
+# ═════════════════════════════════════════════════════════════════════════════
+ui:
+  default_theme: simple
+  theme_args:
+    simple_style: auto
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔌 PLUGINS - Enable useful functionality
+# ═════════════════════════════════════════════════════════════════════════════
+plugins:
+  # Inline calculator (e.g., "2+2" returns 4)
+  searx.plugins.calculator.SXNGPlugin:
+    active: true
+  
+  # Unit converter (e.g., "100 USD to EUR")
+  searx.plugins.unit_converter.SXNGPlugin:
+    active: true
+  
+  # Remove tracking parameters from URLs (privacy)
+  searx.plugins.tracker_url_remover.SXNGPlugin:
+    active: true
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🔍 ENABLED SEARCH ENGINES
+# Auto-generated from .chezmoi.yaml.tmpl → searxng.engines
+# ═════════════════════════════════════════════════════════════════════════════
+engines:
+{{- range .searxng.engines }}
+{{- if .enabled }}
+  - name: {{ .name }}
+    disabled: false
+{{- end }}
+{{- end }}
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 📝 NOTES
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# This file is auto-generated from .chezmoi.yaml.tmpl
+#
+# CRITICAL SETTINGS:
+#   - search.formats MUST include "json" for OpenWebUI integration
+#   - server.limiter set to false (local instance, no bot protection needed)
+#   - server.secret_key uses static value (local-only deployment)
+#   - redis.url connects to dedicated searxng-redis container
+#
+# CUSTOMIZATION:
+#   To add/remove search engines, edit .chezmoi.yaml.tmpl → searxng.engines
+#   Then run: chezmoi apply && systemctl --user restart searxng
+#
+# INTEGRATION:
+#   OpenWebUI queries: http://searxng:8080/search?q=<query>&format=json
+#   External access: https://search.blueprint.tail8dd1.ts.net (via Caddy)
+#
+# ═════════════════════════════════════════════════════════════════════════════
