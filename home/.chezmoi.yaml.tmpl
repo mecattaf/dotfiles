@@ -381,6 +381,22 @@ data:
       temp: 0.7                      # Temperature
       auto_unload: true              # Enable TTL-based unloading
     
+    # Model groups
+    groups:
+      heavy:
+        swap: true
+        description: "Primary large models (one active at a time)"
+        members:
+          - "gpt-oss-20b"
+          - "gpt-oss-120b"
+      
+      task:
+        swap: false
+        description: "Always-loaded task models (run in parallel, never swap)"
+        members:
+          - "qwen3-0.6b"
+          - "qwen3-4b"
+
     # Model definitions
     models:
       gpt_oss_20b:
@@ -395,6 +411,7 @@ data:
         context_length: 8192
         ctx_size: 8192
         ttl: 600
+        group: "heavy"
         vulkan_driver: "RADV"
         flash_attn: true
         aliases:
@@ -474,6 +491,7 @@ data:
         context_length: 8192
         ctx_size: 8192
         ttl: 900
+        group: "heavy"
         vulkan_driver: "AMDVLK"        # Better for long prompts
         flash_attn: true
         enabled: true
@@ -494,6 +512,87 @@ data:
         # Note: This is HUGE but fits in 128GB with Q3_K quantization
         # Expect slower inference but incredible quality
         enabled: false                 # Enable when you need the best
+
+      qwen3_0_6b:
+        name: "qwen3-0.6b"
+        display_name: "Qwen3 0.6B"
+        description: "Ultra-fast task model - title generation"
+        model_uri: "huggingface://Qwen/Qwen3-0.6B-GGUF/qwen3-0.6b-q4_k_m.gguf"
+        quantization: "Q4_K_M"
+        ram_required_gb: 1
+        context_length: 32768
+        ctx_size: 4096
+        ttl: 0  # Never unload
+        group: "task"
+        vulkan_driver: "RADV"
+        flash_attn: true
+        shortname: "qwen3-tiny"
+        enabled: true
+      
+      qwen3_4b:
+        name: "qwen3-4b"
+        display_name: "Qwen3 4B"
+        description: "Balanced task model - tags, queries, analysis"
+        model_uri: "huggingface://Qwen/Qwen3-4B-GGUF/qwen3-4b-q4_k_m.gguf"
+        quantization: "Q4_K_M"
+        ram_required_gb: 3
+        context_length: 32768
+        ctx_size: 8192
+        ttl: 0  # Never unload
+        group: "task"
+        vulkan_driver: "RADV"
+        flash_attn: true
+        shortname: "qwen3-medium"
+        enabled: true
+      
+      # Optional models for manual experimentation
+      qwen3_1_7b:
+        name: "qwen3-1.7b"
+        display_name: "Qwen3 1.7B"
+        description: "Fast task model - metadata tagging, summarization"
+        model_uri: "huggingface://Qwen/Qwen3-1.7B-GGUF/qwen3-1.7b-q4_k_m.gguf"
+        quantization: "Q4_K_M"
+        ram_required_gb: 2
+        context_length: 32768
+        ctx_size: 8192
+        ttl: 600  # Auto-unload after 10 min
+        group: "task"
+        vulkan_driver: "RADV"
+        flash_attn: true
+        shortname: "qwen3-small"
+        enabled: false  # Disabled by default
+      
+      qwen3_8b:
+        name: "qwen3-8b"
+        display_name: "Qwen3 8B"
+        description: "High-quality task model - complex reasoning"
+        model_uri: "huggingface://Qwen/Qwen3-8B-GGUF/qwen3-8b-q4_k_m.gguf"
+        quantization: "Q4_K_M"
+        ram_required_gb: 6
+        context_length: 32768
+        ctx_size: 8192
+        ttl: 600  # Auto-unload after 10 min
+        group: "task"
+        vulkan_driver: "RADV"
+        flash_attn: true
+        shortname: "qwen3-large"
+        enabled: false  # Disabled by default
+      
+      qwen3_14b:
+        name: "qwen3-14b"
+        display_name: "Qwen3 14B"
+        description: "Premium task model - advanced reasoning"
+        model_uri: "huggingface://Qwen/Qwen3-14B-GGUF/qwen3-14b-q4_k_m.gguf"
+        quantization: "Q4_K_M"
+        ram_required_gb: 10
+        context_length: 32768
+        ctx_size: 8192
+        ttl: 600  # Auto-unload after 10 min
+        group: "task"
+        vulkan_driver: "RADV"
+        flash_attn: true
+        shortname: "qwen3-xlarge"
+        enabled: false  # Disabled by default
 
   # ═══════════════════════════════════════════════════════════════════════════
   # 🎤 local whisper section
@@ -877,12 +976,19 @@ data:
       enable_hybrid_search: false
       enable_query_rewriting: false
       
-      # These will be configured to use LiteLLM proxy in future versions
-      # For now, OpenWebUI will use its internal defaults
-      # task_models:
-      #   title_generation: "litellm-model-name"
-      #   tags_generation: "litellm-model-name"  
-      #   query_generation: "litellm-model-name"
+      # ────────────────────────────────────────────────────────────────────────
+      # 🤖 TASK MODEL ASSIGNMENTS (via LiteLLM)
+      # ────────────────────────────────────────────────────────────────────────
+      task_models:
+        # Ultra-fast (0.6B) - single-task operations
+        title_generation: "qwen3-0.6b"
+        autocomplete_generation: "qwen3-0.6b"
+        
+        # Balanced (4B) - multi-step operations
+        tags_generation: "qwen3-4b"
+        query_generation: "qwen3-4b"
+        search_query_generation: "qwen3-4b"
+        rag_template_generation: "qwen3-4b"
     
     # ─────────────────────────────────────────────────────────────────────────
     # 🔧 Service Configuration

@@ -39,11 +39,17 @@ model_list:
   # ───────────────────────────────────────────────────────────────────────────
   # LOCAL MODELS (via llama-swap → ramalama)
   # Auto-generated from .chezmoi.yaml.tmpl → local_inference.models
+  # 
+  # Model Groups (managed by llama-swap):
+  #   - task group (swap=false): Always loaded, never swap, instant response
+  #   - heavy group (swap=true): One active at a time, auto-swap on demand
+  # 
+  # LiteLLM routes all models the same way - the swapping logic is in llama-swap
   # ───────────────────────────────────────────────────────────────────────────
   {{- range $key, $model := .local_inference.models }}
   {{- if $model.enabled }}
   
-  # {{ $model.display_name }} (Local)
+  # {{ $model.display_name }}{{ if $model.group }} [{{ $model.group }} group]{{ end }} (Local)
   - model_name: {{ $model.name }}
     litellm_params:
       model: openai/{{ $model.name }}
@@ -98,19 +104,25 @@ general_settings:
 # LOCAL MODEL ROUTING:
 #   OpenWebUI/Client → LiteLLM:4000 → llama-swap:9292 → ramalama containers
 #
-# When a request comes in for a local model (e.g. "{{ (index .local_inference.models 0).name }}"):
+# When a request comes in for a local model (e.g. "qwen3-0.6b"):
 #   1. LiteLLM receives request at :4000/v1/chat/completions
 #   2. Looks up model in model_list
 #   3. Sees api_base points to llama-swap
 #   4. Forwards to llama-swap:9292/v1/chat/completions
 #   5. llama-swap checks if ramalama container is running
-#   6. If not, spawns it via podman socket
+#   6. If not, spawns it via podman socket (respecting group swap rules)
 #   7. Routes request to ramalama container
 #   8. Returns response through the chain
 #
+# MODEL GROUPS (llama-swap behavior):
+#   - task group (swap=false): All models stay loaded, run in parallel
+#   - heavy group (swap=true): Only one model active, others unload after TTL
+#
 # ADDING MORE MODELS:
 #   1. Edit .chezmoi.yaml.tmpl (local_inference.models or litellm.models)
-#   2. Run: chezmoi apply
-#   3. Restart: systemctl --user restart llama-swap litellm
+#   2. Set group: "task" for always-loaded models
+#   3. Set group: "heavy" for swap-on-demand models
+#   4. Run: chezmoi apply
+#   5. Restart: systemctl --user restart llama-swap litellm
 #
 # ═════════════════════════════════════════════════════════════════════════════
