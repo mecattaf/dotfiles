@@ -1,0 +1,47 @@
+{{- $service := .infrastructure.services.cockpit }}
+{{- if $service.enabled }}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# {{ $service.description }}
+# Root domain (no subdomain) - https://{{ .tailscale.full_hostname }}
+# ─────────────────────────────────────────────────────────────────────────────
+
+{{- if eq $service.external_subdomain "" }}
+https://{{ .tailscale.full_hostname }} {
+{{- else }}
+https://{{ $service.external_subdomain }}.{{ .tailscale.full_hostname }} {
+{{- end }}
+    reverse_proxy {{ $service.bind | default "127.0.0.1" }}:{{ $service.published_port }} {
+        # Standard proxy headers
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+        
+        # WebSocket support (CRITICAL for Cockpit)
+        header_up Connection {>Connection}
+        header_up Upgrade {>Upgrade}
+        
+        # Cockpit-specific headers
+        header_up X-Forwarded-Port {server_port}
+        
+        # Remove Basic Auth headers (no login mode)
+        header_up -Authorization
+    }
+    
+    # Disable HSTS for local development (optional)
+    header -Strict-Transport-Security
+    
+    # Logging
+    log {
+        output file /var/log/caddy/cockpit.log {
+            roll_size 50mb
+            roll_keep 3
+        }
+        format console
+        level ERROR
+    }
+}
+
+{{- end }}
