@@ -1,0 +1,21 @@
+{{- /* ══════════════════════════════════════════════════════════ */ -}}
+{{- /* COCKPIT CONFIGURATION                                       */ -}}
+{{- /* Generated from: .chezmoi.yaml.tmpl                          */ -}}
+{{- /* ══════════════════════════════════════════════════════════ */ -}}
+
+[WebService]
+# Origins (Tailscale URL)
+Origins = https://{{ .tailscale.full_hostname }} wss://{{ .tailscale.full_hostname }}
+
+# Root URL
+UrlRoot = /
+
+# Authentication
+LoginTo = false
+
+# Allow unencrypted (Tailscale handles encryption)
+AllowUnencrypted = true
+
+[Session]
+# Session timeout (in minutes)
+IdleTimeout = 30

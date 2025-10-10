@@ -47,6 +47,9 @@ Volume=/run/systemd:/run/systemd:ro
 # User systemd for user service monitoring
 Volume=/run/user/%U/systemd:/run/user/systemd:ro
 
+# Cockpit configuration
+Volume=%h/.config/cockpit/cockpit.conf:/etc/cockpit/cockpit.conf:ro,Z
+
 # ═════════════════════════════════════════════════════════════════════════════
 # 🔐 SECURITY & PRIVILEGES
 # ═════════════════════════════════════════════════════════════════════════════
