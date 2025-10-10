@@ -330,30 +330,486 @@ data:
     
     # Models to expose
     models:
-      - name: "gpt-4o"
+
+      # ───────────────────────────────────────────────────────────────────────
+      # OPENAI GPT-5 FAMILY (Released August 7, 2025)
+      # ───────────────────────────────────────────────────────────────────────
+      
+      - name: "gpt-5"
+        display_name: "GPT-5 (Flagship)"
         provider: "openai"
+        full_model_id: "gpt-5-2025-08-07"
         api_key: "{{ .secrets.llm_providers.openai }}"
         enabled: true
+        description: "OpenAI's flagship GPT-5 model - Advanced reasoning, multimodal processing, tool calling"
+        capabilities:
+          - "Advanced reasoning and problem-solving"
+          - "Multimodal processing (text, images, audio)"
+          - "Tool calling and function execution"
+          - "Structured outputs (JSON, XML)"
+          - "Long-form content generation"
+        context_window: 400000  # 272K input + 128K output
+        pricing:
+          input: "$1.25/M tokens"
+          output: "$10.00/M tokens"
+        use_cases:
+          - "Complex reasoning tasks"
+          - "Multi-step problem solving"
+          - "Code generation and debugging"
+          - "Content creation and editing"
+          - "Research and analysis"
+        release_date: "2025-08-07"
+        notes: "Unprecedented capabilities in reasoning, coding, and agentic tasks"
+      
+      - name: "gpt-5-mini"
+        display_name: "GPT-5 Mini"
+        provider: "openai"
+        full_model_id: "gpt-5-mini-2025-08-07"
+        api_key: "{{ .secrets.llm_providers.openai }}"
+        enabled: true
+        description: "Cost-efficient GPT-5 variant for well-defined tasks"
+        capabilities:
+          - "Fast response times"
+          - "Cost-effective processing"
+          - "Well-defined task execution"
+          - "Multimodal support"
+          - "Tool calling"
+        context_window: 400000
+        pricing:
+          input: "$0.25/M tokens"
+          output: "$2.00/M tokens"
+        use_cases:
+          - "High-volume API calls"
+          - "Real-time chat applications"
+          - "Simple content generation"
+          - "Code completion"
+          - "Quick Q&A"
+        release_date: "2025-08-07"
+        notes: "80% cost reduction vs GPT-5 while maintaining strong performance"
+      
+      - name: "gpt-5-nano"
+        display_name: "GPT-5 Nano"
+        provider: "openai"
+        full_model_id: "gpt-5-nano-2025-08-07"
+        api_key: "{{ .secrets.llm_providers.openai }}"
+        enabled: true
+        description: "Fastest, most cost-efficient GPT-5 for everyday tasks"
+        capabilities:
+          - "Ultra-fast inference"
+          - "Minimal latency"
+          - "Basic reasoning"
+          - "Simple text generation"
+        context_window: 400000
+        pricing:
+          input: "$0.05/M tokens"
+          output: "$0.40/M tokens"
+        use_cases:
+          - "High-throughput applications"
+          - "Simple classification"
+          - "Basic Q&A"
+          - "Text summarization"
+          - "Sentiment analysis"
+        release_date: "2025-08-07"
+        notes: "96% cost reduction vs GPT-5 - ideal for edge cases and batch processing"
+      
+      - name: "gpt-5-pro"
+        display_name: "GPT-5 Pro"
+        provider: "openai"
+        full_model_id: "gpt-5-pro-2025-10-06"
+        api_key: "{{ .secrets.llm_providers.openai }}"
+        enabled: false  # Premium tier - enable when needed
+        description: "Scaled test-time compute for challenging reasoning tasks"
+        capabilities:
+          - "Extended reasoning time"
+          - "Complex problem decomposition"
+          - "Multi-step validation"
+          - "Self-correction"
+          - "Advanced logical reasoning"
+        context_window: 400000
+        pricing:
+          input: "Premium tier"
+          output: "Premium tier"
+        use_cases:
+          - "Mathematical proofs"
+          - "Complex code refactoring"
+          - "Research paper analysis"
+          - "Strategic planning"
+          - "Advanced debugging"
+        release_date: "2025-10-06"
+        notes: "Preferred in 67.8% of expert evaluations over GPT-5 Thinking"
+        performance:
+          expert_preference: "67.8%"
+          vs_model: "GPT-5 Thinking"
+      
+      # Legacy GPT-4 models (for backward compatibility)
+      - name: "gpt-4o"
+        display_name: "GPT-4o (Legacy)"
+        provider: "openai"
+        api_key: "{{ .secrets.llm_providers.openai }}"
+        enabled: false  # Deprecated - use GPT-5 family
+        description: "Legacy GPT-4 Omni model - superseded by GPT-5"
+        notes: "Maintained for backward compatibility only"
       
       - name: "gpt-4o-mini"
+        display_name: "GPT-4o Mini (Legacy)"
         provider: "openai"
         api_key: "{{ .secrets.llm_providers.openai }}"
-        enabled: true
+        enabled: false  # Deprecated - use GPT-5 Mini
+        description: "Legacy GPT-4o Mini - superseded by GPT-5 Mini"
+        notes: "Maintained for backward compatibility only"
       
-      - name: "claude-3-5-sonnet"
+      # ───────────────────────────────────────────────────────────────────────
+      # ANTHROPIC CLAUDE 4.x FAMILY
+      # ───────────────────────────────────────────────────────────────────────
+      
+      - name: "claude-sonnet-4-5"
+        display_name: "Claude Sonnet 4.5"
         provider: "anthropic"
+        full_model_id: "claude-sonnet-4-5-20250929"
         api_key: "{{ .secrets.llm_providers.anthropic }}"
         enabled: true
+        description: "Anthropic's most advanced Sonnet model - Hybrid reasoning with 30+ hour autonomy"
+        capabilities:
+          - "Hybrid reasoning (fast + deep thinking)"
+          - "Enhanced tool orchestration"
+          - "30+ hours autonomous operation"
+          - "Extended context understanding"
+          - "Advanced agentic workflows"
+        context_window: 200000
+        max_output: 64000
+        pricing:
+          input: "$3.00/M tokens"
+          output: "$15.00/M tokens"
+        use_cases:
+          - "Long-running autonomous tasks"
+          - "Complex multi-step workflows"
+          - "Advanced code generation"
+          - "Research and analysis"
+          - "Content creation at scale"
+        release_date: "2025-09-29"
+        notes: "Most intelligent and efficient Sonnet model - efficient for everyday use"
+        features:
+          - "Hybrid reasoning mode"
+          - "30+ hour memory span"
+          - "Enhanced tool use"
+          - "Improved code generation"
+      
+      - name: "claude-opus-4-1"
+        display_name: "Claude Opus 4.1"
+        provider: "anthropic"
+        full_model_id: "claude-opus-4-1-20250805"
+        api_key: "{{ .secrets.llm_providers.anthropic }}"
+        enabled: true
+        description: "Latest and most powerful Opus model - 7-hour memory span with extended thinking"
+        capabilities:
+          - "7-hour memory span"
+          - "Improved agentic search"
+          - "Extended thinking mode"
+          - "Complex reasoning tasks"
+          - "Advanced coding capabilities"
+        context_window: 200000
+        pricing:
+          input: "Premium tier"
+          output: "Premium tier"
+        use_cases:
+          - "Most challenging reasoning tasks"
+          - "Complex software architecture"
+          - "Advanced research"
+          - "Strategic planning"
+          - "Long-form content creation"
+        release_date: "2025-08-05"
+        notes: "Claude Opus 4.5 does NOT exist - Opus 4.1 is the latest Opus model"
+        features:
+          - "7-hour memory span"
+          - "Extended thinking mode"
+          - "Improved agentic search"
+          - "Enhanced coding"
+      
+      # Legacy Claude 3.5 models (for backward compatibility)
+      - name: "claude-3-5-sonnet"
+        display_name: "Claude 3.5 Sonnet (Legacy)"
+        provider: "anthropic"
+        api_key: "{{ .secrets.llm_providers.anthropic }}"
+        enabled: false  # Deprecated - use Claude Sonnet 4.5
+        description: "Legacy Claude 3.5 Sonnet - superseded by Claude Sonnet 4.5"
+        notes: "Maintained for backward compatibility only"
       
       - name: "claude-3-5-haiku"
+        display_name: "Claude 3.5 Haiku (Legacy)"
         provider: "anthropic"
         api_key: "{{ .secrets.llm_providers.anthropic }}"
-        enabled: true
+        enabled: false  # Deprecated
+        description: "Legacy Claude 3.5 Haiku - superseded by Claude Sonnet 4.5"
+        notes: "Maintained for backward compatibility only"
       
-      - name: "gemini-2.0-flash"
+      # ───────────────────────────────────────────────────────────────────────
+      # GOOGLE GEMINI 2.5 FAMILY
+      # ───────────────────────────────────────────────────────────────────────
+      
+      - name: "gemini-2.5-flash"
+        display_name: "Gemini 2.5 Flash"
         provider: "gemini"
         api_key: "{{ .secrets.llm_providers.gemini }}"
         enabled: true
+        description: "Google's fast multimodal model - 1M+ token context with reasoning control"
+        capabilities:
+          - "Ultra-long context (1M+ tokens)"
+          - "Multimodal understanding"
+          - "Configurable reasoning depth"
+          - "Fast inference"
+          - "Cost-effective processing"
+        context_window: 1048576  # 1,048,576 tokens
+        pricing:
+          input: "$0.30/M tokens"
+          output: "$2.50/M tokens"
+        use_cases:
+          - "Long document analysis"
+          - "Video understanding"
+          - "Code repository analysis"
+          - "Multi-document synthesis"
+          - "Real-time applications"
+        release_date: "2025"
+        notes: "Supports reasoning_effort parameter for controlling reasoning depth"
+        parameters:
+          reasoning_effort:
+            - "low"
+            - "medium"
+            - "high"
+      
+      - name: "gemini-2.5-pro"
+        display_name: "Gemini 2.5 Pro"
+        provider: "gemini"
+        api_key: "{{ .secrets.llm_providers.gemini }}"
+        enabled: true
+        description: "Google's most powerful model - 2M token context with thinking budget"
+        capabilities:
+          - "Extreme long context (2M tokens)"
+          - "Advanced reasoning"
+          - "Thinking budget configuration"
+          - "Multi-step problem solving"
+          - "Complex code generation"
+        context_window: 2000000  # 2,000,000 tokens
+        pricing:
+          input: "Premium tier"
+          output: "Premium tier"
+        use_cases:
+          - "Entire codebase analysis"
+          - "Large-scale research"
+          - "Multi-source synthesis"
+          - "Complex reasoning tasks"
+          - "Advanced code generation"
+        release_date: "2025"
+        notes: "Supports max_tokens_for_reasoning parameter for thinking budget control"
+        parameters:
+          reasoning_effort:
+            - "low"
+            - "medium"
+            - "high"
+          max_tokens_for_reasoning: "configurable"
+      
+      # Legacy Gemini 2.0 models (for backward compatibility)
+      - name: "gemini-2.0-flash"
+        display_name: "Gemini 2.0 Flash (Legacy)"
+        provider: "gemini"
+        api_key: "{{ .secrets.llm_providers.gemini }}"
+        enabled: false  # Deprecated - use Gemini 2.5 Flash
+        description: "Legacy Gemini 2.0 Flash - superseded by Gemini 2.5 Flash"
+        notes: "Maintained for backward compatibility only"
+      
+      # ───────────────────────────────────────────────────────────────────────
+      # X.AI GROK FAMILY (via OpenRouter)
+      # ───────────────────────────────────────────────────────────────────────
+      
+      - name: "grok-4-fast"
+        display_name: "Grok 4 Fast"
+        provider: "openrouter"
+        openrouter_model: "x-ai/grok-4-fast:free"
+        api_key: "{{ .secrets.llm_providers.openrouter }}"
+        enabled: false  # Optional - currently FREE promotion
+        description: "X.AI's fast reasoning model - 2M token context, currently FREE"
+        capabilities:
+          - "Reasoning and non-reasoning modes"
+          - "Ultra-long context (2M tokens)"
+          - "Fast inference"
+          - "Cost-effective (currently FREE)"
+        context_window: 2000000
+        pricing:
+          input: "FREE (limited time)"
+          output: "FREE (limited time)"
+        use_cases:
+          - "Experimental workflows"
+          - "High-volume testing"
+          - "Cost-sensitive applications"
+        notes: "Supports reasoning_enabled parameter. FREE promotion may be limited time"
+        parameters:
+          reasoning_enabled: "boolean"
+      
+      - name: "grok-code-fast-1"
+        display_name: "Grok Code Fast 1"
+        provider: "openrouter"
+        openrouter_model: "x-ai/grok-code-fast-1"
+        api_key: "{{ .secrets.llm_providers.openrouter }}"
+        enabled: false  # Optional
+        description: "X.AI's agentic coding model with visible reasoning traces"
+        capabilities:
+          - "Agentic code generation"
+          - "Visible reasoning traces"
+          - "Code debugging"
+          - "Architecture planning"
+        context_window: 256000
+        pricing:
+          input: "$0.20/M tokens"
+          output: "$1.50/M tokens"
+        use_cases:
+          - "Code generation with explanations"
+          - "Debugging with reasoning"
+          - "Educational coding"
+        notes: "Shows reasoning process - useful for learning and debugging"
+      
+      # ───────────────────────────────────────────────────────────────────────
+      # DEEPSEEK V3.1 (via OpenRouter - FREE tier)
+      # ───────────────────────────────────────────────────────────────────────
+      
+      - name: "deepseek-chat-v3.1"
+        display_name: "DeepSeek V3.1"
+        provider: "openrouter"
+        openrouter_model: "deepseek/deepseek-chat-v3.1:free"
+        api_key: "{{ .secrets.llm_providers.openrouter }}"
+        enabled: false  # Optional - FREE tier available
+        description: "DeepSeek's hybrid reasoning model - 671B params, 37B active, FREE tier"
+        capabilities:
+          - "Hybrid reasoning (Think/Non-Think modes)"
+          - "Mixture of Experts (MoE)"
+          - "Cost-effective reasoning"
+        context_window: 128000
+        pricing:
+          input: "FREE"
+          output: "FREE"
+        architecture:
+          total_params: "671B"
+          active_params: "37B"
+        use_cases:
+          - "Budget-conscious reasoning"
+          - "Experimental workflows"
+          - "High-volume applications"
+        notes: "Supports reasoning_enabled boolean parameter"
+        parameters:
+          reasoning_enabled: "boolean"
+      
+      # ───────────────────────────────────────────────────────────────────────
+      # ZHIPU AI GLM-4.6 (via OpenRouter)
+      # ───────────────────────────────────────────────────────────────────────
+      
+      - name: "glm-4.6"
+        display_name: "GLM-4.6"
+        provider: "openrouter"
+        openrouter_model: "z-ai/glm-4.6"
+        api_key: "{{ .secrets.llm_providers.openrouter }}"
+        enabled: false  # Optional
+        description: "Zhipu AI's real-world coding specialist - near parity with Claude Sonnet 4"
+        capabilities:
+          - "Real-world coding"
+          - "Long-context processing"
+          - "Advanced reasoning"
+          - "RAG optimization"
+        context_window: 200000
+        max_output: 128000
+        pricing:
+          input: "Varies by provider"
+          output: "Varies by provider"
+        use_cases:
+          - "Production code generation"
+          - "Long document analysis"
+          - "RAG applications"
+        notes: "Near parity with Claude Sonnet 4 (48.6% win rate)"
+        performance:
+          claude_sonnet_4_parity: "48.6%"
+      
+      # ───────────────────────────────────────────────────────────────────────
+      # ALIBABA QWEN3-MAX (via OpenRouter)
+      # ───────────────────────────────────────────────────────────────────────
+      
+      - name: "qwen3-max"
+        display_name: "Qwen3-Max"
+        provider: "openrouter"
+        openrouter_model: "qwen/qwen3-max"
+        api_key: "{{ .secrets.llm_providers.openrouter }}"
+        enabled: false  # Optional
+        description: "Alibaba's flagship model - 100+ languages, RAG-optimized"
+        capabilities:
+          - "100+ language support"
+          - "RAG optimization"
+          - "Tool calling"
+          - "Long-context understanding"
+        context_window: 256000
+        pricing:
+          input: "$1.20/M tokens"
+          output: "$6.00/M tokens"
+        use_cases:
+          - "Multilingual applications"
+          - "RAG pipelines"
+          - "International projects"
+        notes: "Excellent for non-English and RAG applications"
+      
+      # ───────────────────────────────────────────────────────────────────────
+      # META LLAMA 3.3 (via OpenRouter - FREE tier)
+      # ───────────────────────────────────────────────────────────────────────
+      
+      - name: "llama-3.3-8b"
+        display_name: "Llama 3.3 8B Instruct"
+        provider: "openrouter"
+        openrouter_model: "meta-llama/llama-3.3-8b-instruct:free"
+        api_key: "{{ .secrets.llm_providers.openrouter }}"
+        enabled: false  # Optional - FREE tier
+        description: "Meta's lightweight model - 8B params, FREE tier, 128K context"
+        capabilities:
+          - "Fast inference"
+          - "Cost-effective"
+          - "Long context (128K)"
+        context_window: 128000
+        pricing:
+          input: "FREE"
+          output: "FREE"
+        architecture:
+          params: "8B"
+        use_cases:
+          - "High-volume applications"
+          - "Budget-conscious projects"
+          - "Experimental workflows"
+        notes: "Lightweight variant of Llama 3.3 70B"
+      
+      # ───────────────────────────────────────────────────────────────────────
+      # GROQ INFERENCE (OpenAI GPT-OSS via Groq infrastructure)
+      # ───────────────────────────────────────────────────────────────────────
+      
+      - name: "gpt-oss-120b-groq"
+        display_name: "GPT-OSS 120B (Groq)"
+        provider: "groq"
+        groq_model: "openai/gpt-oss-120b"
+        api_key: "{{ .secrets.llm_providers.groq }}"
+        enabled: false  # Optional - for ultra-fast inference
+        description: "OpenAI's open-weight 120B model on Groq's infrastructure - 500 tokens/sec"
+        capabilities:
+          - "Ultra-fast inference (500 tok/s)"
+          - "MoE architecture"
+          - "Near o4-mini parity"
+          - "Apache 2.0 license"
+        context_window: 128000
+        pricing:
+          input: "$0.15/M tokens"
+          output: "$0.75/M tokens"
+        architecture:
+          total_params: "120B"
+          active_params: "5.1B per token"
+          license: "Apache 2.0"
+        use_cases:
+          - "Real-time applications"
+          - "Low-latency requirements"
+          - "High-throughput processing"
+        notes: "Groq's LPU infrastructure enables 500 tokens/second throughput"
+        performance:
+          speed: "500 tokens/second"
+          vs_model: "Near-parity with o4-mini"
 
       # ───────────────────────────────────────────────────────────────────────
       # LOCAL MODELS (via llama-swap → ramalama)

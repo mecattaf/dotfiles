@@ -8,31 +8,73 @@
 # ═════════════════════════════════════════════════════════════════════════════
 model_list:
   # ───────────────────────────────────────────────────────────────────────────
-  # CLOUD MODELS (OpenAI, Anthropic, Google)
+  # CLOUD MODELS (OpenAI, Anthropic, Google, X.AI, etc.)
   # Auto-generated from .chezmoi.yaml.tmpl → litellm.models
   # ───────────────────────────────────────────────────────────────────────────
   {{- range .litellm.models }}
+  {{- if .enabled }}
   {{- if eq .provider "openai" }}
   
-  # {{ .name }} (OpenAI)
+  # {{ .name }} (OpenAI){{ if .description }} - {{ .description }}{{ end }}
   - model_name: {{ .name }}
     litellm_params:
       model: openai/{{ .name }}
       api_key: os.environ/OPENAI_API_KEY
+      {{- if .context_window }}
+      max_tokens: {{ .context_window }}
+      {{- end }}
+      stream: true
+  
   {{- else if eq .provider "anthropic" }}
   
-  # {{ .name }} (Anthropic)
+  # {{ .name }} (Anthropic){{ if .description }} - {{ .description }}{{ end }}
   - model_name: {{ .name }}
     litellm_params:
       model: anthropic/{{ .name }}
       api_key: os.environ/ANTHROPIC_API_KEY
+      {{- if .context_window }}
+      max_tokens: {{ .context_window }}
+      {{- end }}
+      stream: true
+  
   {{- else if eq .provider "gemini" }}
   
-  # {{ .name }} (Google Gemini)
+  # {{ .name }} (Google Gemini){{ if .description }} - {{ .description }}{{ end }}
   - model_name: {{ .name }}
     litellm_params:
       model: gemini/{{ .name }}
       api_key: os.environ/GEMINI_API_KEY
+      {{- if .context_window }}
+      max_tokens: {{ .context_window }}
+      {{- end }}
+      stream: true
+  
+  {{- else if eq .provider "openrouter" }}
+  
+  # {{ .name }} (OpenRouter){{ if .description }} - {{ .description }}{{ end }}
+  - model_name: {{ .name }}
+    litellm_params:
+      model: {{ .openrouter_model }}
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+      {{- if .context_window }}
+      max_tokens: {{ .context_window }}
+      {{- end }}
+      stream: true
+      custom_llm_provider: openrouter
+  
+  {{- else if eq .provider "groq" }}
+  
+  # {{ .name }} (Groq){{ if .description }} - {{ .description }}{{ end }}
+  - model_name: {{ .name }}
+    litellm_params:
+      model: {{ .groq_model }}
+      api_base: https://api.groq.com/openai/v1
+      api_key: os.environ/GROQ_API_KEY
+      stream: true
+      custom_llm_provider: groq
+  
+  {{- end }}
   {{- end }}
   {{- end }}
   
@@ -48,6 +90,7 @@ model_list:
   # ───────────────────────────────────────────────────────────────────────────
   {{- range $key, $model := .local_inference.models }}
   {{- if $model.enabled }}
+  {{- if ne $model.group "embeddings" }}
   
   # {{ $model.display_name }}{{ if $model.group }} [{{ $model.group }} group]{{ end }} (Local)
   - model_name: {{ $model.name }}
@@ -57,6 +100,7 @@ model_list:
       api_key: "sk-no-key-required"
       stream: true
       custom_llm_provider: openai
+  {{- end }}
   {{- end }}
   {{- end }}
 
@@ -118,6 +162,13 @@ general_settings:
 # CLOUD MODELS are defined in: litellm.models
 # LOCAL MODELS are defined in: local_inference.models
 #
+# SUPPORTED CLOUD PROVIDERS:
+#   - openai: OpenAI GPT-5 family (gpt-5, gpt-5-mini, gpt-5-nano, gpt-5-pro)
+#   - anthropic: Anthropic Claude 4.x (claude-sonnet-4-5, claude-opus-4-1)
+#   - gemini: Google Gemini 2.5 (gemini-2.5-flash, gemini-2.5-pro)
+#   - openrouter: OpenRouter aggregate (Grok, DeepSeek, GLM, Qwen3, Llama)
+#   - groq: Groq LPU inference (gpt-oss-120b)
+#
 # LOCAL MODEL ROUTING:
 #   OpenWebUI/Client → LiteLLM:4000 → llama-swap:9292 → ramalama containers
 #
@@ -139,7 +190,8 @@ general_settings:
 #   1. Edit .chezmoi.yaml.tmpl (local_inference.models or litellm.models)
 #   2. Set group: "task" for always-loaded models
 #   3. Set group: "heavy" for swap-on-demand models
-#   4. Run: chezmoi apply
-#   5. Restart: systemctl --user restart llama-swap litellm
+#   4. For cloud: set provider: "openai"/"anthropic"/"gemini"/"openrouter"/"groq"
+#   5. Run: chezmoi apply
+#   6. Restart: systemctl --user restart llama-swap litellm
 #
 # ═════════════════════════════════════════════════════════════════════════════
