@@ -56,14 +56,21 @@ models:
       --device /dev/kfd
       --security-opt label=disable
       -v {{ $.chezmoi.homeDir }}/.local/share/ramalama:/root/.local/share/ramalama:Z
+      -v {{ $.chezmoi.homeDir }}/.config/ramalama:/root/.config/ramalama:ro,Z
       -e RAMALAMA_IN_CONTAINER=true
-      {{ $.local_inference.defaults.container_image | default "quay.io/ramalama/ramalama:latest" }}
+      -e HOME=/root
+      {{- if $model.vulkan_driver }}
+      -e AMD_VULKAN_ICD={{ $model.vulkan_driver }}
+      {{- end }}
+      {{ $.local_inference.defaults.container_image }}
       serve
-      --runtime {{ $model.runtime | default $.local_inference.defaults.runtime }}
       --host 0.0.0.0
       --port ${PORT}
+      --webui off
+      --tls-verify=false
+      {{- if $model.ctx_size }}
       --ctx-size {{ $model.ctx_size }}
-      --ngl {{ $model.ngl | default $.local_inference.defaults.ngl }}
+      {{- end }}
       {{ $model.model_uri }}
     
     # Command to stop container gracefully

@@ -387,8 +387,15 @@ data:
       ctx_size: 8192                 # Context window
       ngl: 999                       # GPU layers (all)
       temp: 0.7                      # Temperature
+      threads: 32                    # CPU threads (adjust for your system)
+      cache_reuse: 256               # KV cache reuse for better performance
       auto_unload: true              # Enable TTL-based unloading
-    
+      container_image: "quay.io/ramalama/ramalama:latest"
+      health_check_timeout: 3600     # Allow time for model downloads
+      log_level: "info"
+      metrics_max_in_memory: 1000
+      start_port: 10001
+
     # Model groups
     groups:
       heavy:

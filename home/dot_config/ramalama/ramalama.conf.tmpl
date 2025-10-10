@@ -31,11 +31,10 @@ store = "{{ .chezmoi.homeDir }}/.local/share/ramalama"
 # ═════════════════════════════════════════════════════════════════════════════
 
 # Use llama.cpp for best AMD GPU support (Vulkan backend)
-runtime = "llama.cpp"
+runtime = "{{ .local_inference.defaults.runtime }}"
 
 # Default transport for pulling models
 transport = "huggingface"
-#transport = "ollama"
 
 # ═════════════════════════════════════════════════════════════════════════════
 # 🌐 SERVING DEFAULTS
@@ -48,22 +47,24 @@ host = "0.0.0.0"
 port = "8080"
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 🚀 MODEL DEFAULTS
+# 🚀 MODEL DEFAULTS (Auto-generated from .chezmoi.yaml.tmpl)
 # ═════════════════════════════════════════════════════════════════════════════
 
 # Context window size
-# GPT-OSS-20B: 8k tokens
-# GPT-OSS-120B: 8k tokens (extended from original 4k)
-ctx_size = 8192
-#ctx_size = 32768
+ctx_size = {{ .local_inference.defaults.ctx_size }}
 
 # Temperature (creativity vs determinism)
-temp = "0.9"
+temp = "{{ .local_inference.defaults.temp }}"
 
 # GPU layers (-1 = auto-detect, 999 = all layers)
 # AMD Strix Halo: Use all available VRAM
-#ngl = 999
-ngl = -1
+ngl = {{ .local_inference.defaults.ngl }}
+
+# CPU threads (adjust based on your system)
+threads = {{ .local_inference.defaults.threads }}
+
+# KV cache reuse (performance optimization)
+cache_reuse = {{ .local_inference.defaults.cache_reuse }}
 
 # Model pull policy
 pull = "newer"
@@ -73,7 +74,7 @@ pull = "newer"
 # ═════════════════════════════════════════════════════════════════════════════
 
 # RamaLama container image (includes llama.cpp with Vulkan support)
-image = "quay.io/ramalama/ramalama:latest"
+image = "{{ .local_inference.defaults.container_image }}"
 
 # ═════════════════════════════════════════════════════════════════════════════
 # 🎯 VULKAN BACKEND SELECTION
@@ -94,6 +95,9 @@ image = "quay.io/ramalama/ramalama:latest"
 # 📝 NOTES
 # ═════════════════════════════════════════════════════════════════════════════
 # 
+# This file is auto-generated from .chezmoi.yaml.tmpl
+# All defaults come from: local_inference.defaults
+#
 # AMD Strix Halo Unified Memory:
 # - 128GB RAM is fully accessible by GPU via Vulkan
 # - No explicit VRAM allocation needed
@@ -114,6 +118,3 @@ image = "quay.io/ramalama/ramalama:latest"
 #   ramalama rm <model>
 # 
 # ═════════════════════════════════════════════════════════════════════════════
-# RamaLama Configuration File for GPT-OSS Models
-# This configuration is designed to run OpenAI's gpt-oss-120b and gpt-oss-20b models
-# Place this file at: ~/.config/ramalama/ramalama.conf
