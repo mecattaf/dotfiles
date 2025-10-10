@@ -280,12 +280,10 @@ data:
       litellm: "{{ .secrets.databases.litellm }}"
       openwebui: "{{ .secrets.databases.openwebui }}"
     
-    # Self-generated keys
     api_keys:
-      litellm_master: "{{ .secrets.api_keys.litellm_master }}"
-      openwebui_secret: "{{ .secrets.api_keys.openwebui_secret }}"
-      jupyter_token: "{{ .secrets.api_keys.jupyter_token }}"
-    
+      litellm_master: "sk-litellm-local"
+      openwebui_secret: "sk-openwebui-local"
+      jupyter_token: "sk-jupyter-local"
     # Cloud LLM providers
     llm_providers:
       openai: "{{ .secrets.llm_providers.openai }}"
