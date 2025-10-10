@@ -242,7 +242,6 @@ data:
         volume: "whisper-cache.volume"
 
 
-
       edgetts:
         hostname: "edgetts"
         container_name: "edgetts"
@@ -255,6 +254,21 @@ data:
         websocket: false
         description: "Edge-TTS Text-to-Speech Service"
         volume: "edgetts-cache.volume"
+
+      jupyter:
+        hostname: "jupyter"
+        container_name: "jupyter"
+        port: 8888                          # Internal container port
+        published_port: 8889                # Published to host (avoid SearXNG conflict)
+        bind: "127.0.0.1"
+        image: "localhost/blueprint-jupyter:latest"  # Custom built image
+        external_subdomain: "jupyter"
+        enabled_by: ["openwebui.features.code_execution"]
+        requires: ["litellm"]               # Needs LiteLLM for notebook-intelligence
+        websocket: true
+        description: "Blueprint Jupyter Lab - AI Code Interpreter"
+        volume: "jupyter.volume"
+        workspace: "/home/jovyan/blueprint-workspace"
       
       # ─────────────────────────────────────────────────────────────────────────
       # System Management
@@ -1040,8 +1054,9 @@ data:
       jupyter:
         # Auto-generated from infrastructure.services
         url: "http://{{ .infrastructure.services.jupyter.hostname }}:{{ .infrastructure.services.jupyter.port }}"
-        auth: "token"
-        token: "{{ .secrets.api_keys.jupyter_token }}"
+        auth: "none"
+        auth: "none"
+        token: ""
         timeout: 60
       
       pyodide: {}
