@@ -1,7 +1,0 @@
-[Unit]
-Description=Network for LLM services
-
-[Network]
-NetworkName=llm
-Gateway=10.89.0.1
-Subnet=10.89.0.0/24

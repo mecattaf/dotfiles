@@ -1,0 +1,7 @@
+[Unit]
+Description=Network for {{ .infrastructure.network.name }} services
+
+[Network]
+NetworkName={{ .infrastructure.network.name }}
+Gateway={{ .infrastructure.network.gateway }}
+Subnet={{ .infrastructure.network.subnet }}

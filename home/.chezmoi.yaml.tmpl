@@ -1,7 +1,7 @@
 encryption: age
 age:
   identity: "{{ .chezmoi.homeDir }}/.config/chezmoi/key.txt"
-  recipient: "age1YOUR_PUBLIC_KEY_HERE"  # Replace with your key from Step 2
+  recipient: "age1548mrmh00zlmd38c2xt37wu7zaszth4sgeyqfmljg55j0asj2evqgjp93f"
 
 data:
   # ═══════════════════════════════════════════════════════════════════════════
@@ -17,7 +17,7 @@ data:
     timezone: "America/New_York"
   
   # ═══════════════════════════════════════════════════════════════════════════
-  # 🌐 TAILSCALE CONFIGURATION
+  # 🌐 TAILSCALE AND GITHUB CONFIGURATION
   # ═══════════════════════════════════════════════════════════════════════════
   tailscale:
     hostname: "blueprint"
@@ -27,8 +27,11 @@ data:
     oauth_client_id: "{{ .secrets.tailscale.oauth_client_id }}"
     oauth_client_secret: "{{ .secrets.tailscale.oauth_client_secret }}"
 
+  github:
+    git_protocol: "https"
+    user: "mecattaf"
+    cli_pat: "{{ .secrets.github.cli_pat }}"
 
-  
   # ═══════════════════════════════════════════════════════════════════════════
   # 🌉 INFRASTRUCTURE SERVICES REGISTRY
   # ═══════════════════════════════════════════════════════════════════════════
@@ -289,10 +292,6 @@ data:
   # 🔐 SECRETS REFERENCES (from encrypted_private_secrets.yaml)
   # ═══════════════════════════════════════════════════════════════════════════
   secrets:
-    # Database passwords (one per service)
-    databases:
-      litellm: "{{ .secrets.databases.litellm }}"
-      openwebui: "{{ .secrets.databases.openwebui }}"
     
     api_keys:
       litellm_master: "sk-litellm-local"
@@ -303,15 +302,12 @@ data:
       openai: "{{ .secrets.llm_providers.openai }}"
       anthropic: "{{ .secrets.llm_providers.anthropic }}"
       gemini: "{{ .secrets.llm_providers.gemini }}"
+      groq:
+      openrouter:
     
     # Optional: Search providers
     search_providers:
       tavily: "{{ .secrets.search_providers.tavily }}"
-      brave: "{{ .secrets.search_providers.brave }}"
-    
-    # Optional: Document processing
-    document_providers:
-      mistral_ocr: "{{ .secrets.document_providers.mistral_ocr }}"
     
     # Optional: Audio providers
     audio_providers:
@@ -324,7 +320,7 @@ data:
   # ═══════════════════════════════════════════════════════════════════════════
   litellm:
     # Database connection (auto-generated from infrastructure.services)
-    database_url: "postgresql://litellm:{{ .secrets.databases.litellm }}@{{ .infrastructure.services.litellm_postgres.hostname }}:{{ .infrastructure.services.litellm_postgres.port }}/litellm"
+    database_url: "postgresql://litellm@{{ .infrastructure.services.litellm_postgres.hostname }}:{{ .infrastructure.services.litellm_postgres.port }}/litellm"
     
     # Redis cache connection (auto-generated)
     redis_url: "redis://{{ .infrastructure.services.litellm_redis.hostname }}:{{ .infrastructure.services.litellm_redis.port }}/0"
@@ -890,10 +886,9 @@ data:
     # └─────────────────────────────────────────────────────────────────────┘
     vector_db_config:
       pgvector:
-        # Auto-generated from infrastructure.services
-        db_url: "postgresql://openwebui:{{ .secrets.databases.openwebui }}@{{ .infrastructure.services.openwebui_postgres.hostname }}:{{ .infrastructure.services.openwebui_postgres.port }}/openwebui"
+        db_url: "postgresql://openwebui@{{ .infrastructure.services.openwebui_postgres.hostname }}:{{ .infrastructure.services.openwebui_postgres.port }}/openwebui"
         vector_dimension: 384
-      
+
       chroma:
         # Embedded - no external service needed
         tenant: "default_tenant"
@@ -962,7 +957,7 @@ data:
         ocr_lang: "eng"
       
       mistral_ocr:
-        api_key: "{{ .secrets.document_providers.mistral_ocr }}"
+        api_key: "{{ .secrets.llm_providers.mistral }}"
       
       external:
         url: ""
@@ -983,6 +978,9 @@ data:
       brave:
         api_key: "{{ .secrets.search_providers.brave }}"
       
+      #perplexity:
+      #  api_key: "{{ .secrets.search_providers.preplexity}}"
+    
       google_pse:
         api_key: ""
         engine_id: ""
@@ -1088,7 +1086,6 @@ data:
     # ─────────────────────────────────────────────────────────────────────────
     general:
       # Core connection (auto-generated from infrastructure.services)
-      database_url: "postgresql://openwebui:{{ .secrets.databases.openwebui }}@{{ .infrastructure.services.openwebui_postgres.hostname }}:{{ .infrastructure.services.openwebui_postgres.port }}/openwebui"
       openai_api_base_url: "http://{{ .infrastructure.services.litellm.hostname }}:{{ .infrastructure.services.litellm.port }}/v1"
       openai_api_key: "{{ .secrets.api_keys.litellm_master }}"
       webui_secret_key: "{{ .secrets.api_keys.openwebui_secret }}"
@@ -1184,7 +1181,7 @@ data:
       - name: "google"
         enabled: true
       - name: "brave"
-        enabled: true
+        enabled: false
       - name: "wikipedia"
         enabled: true
       - name: "github"
