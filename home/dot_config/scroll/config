@@ -262,14 +262,22 @@ pinch:5:inward    scale_workspace incr -0.1
 
 # Animations
 animations {
-
-enabled no
-#frequency_ms 8
-# Minimal linear animations - test baseline
-#default yes 100 var 3 [ 0 0 1 1 ]
-#window_move yes 100 var 3 [ 0 0 1 1 ]
-#window_open yes 100 var 3 [ 0 0 1 1 ]
-#window_size yes 100 var 3 [ 0 0 1 1 ]
+  #enabled no
+  enabled yes
+  #frequency_ms 8
+  frequency_ms 16
+  # style scale
+  style clip
+  # Minimal linear animations - test baseline
+  #default yes 150 var 3 [ 0 0 1 1 ]
+  #window_move yes 150 var 3 [ 0 0 1 1 ]
+  #window_open yes 150 var 3 [ 0 0 1 1 ]
+  #window_size yes 150 var 3 [ 0 0 1 1 ]
+  # Ultra-snappy timings with slight easing for polish
+  default yes 120 var 3 [ 0.25 0.1 0.25 1 ]
+  window_move yes 120 var 3 [ 0.25 0.1 0.25 1 ]
+  window_open yes 100 var 3 [ 0.3 0 0.7 1 ]
+  window_size yes 120 var 3 [ 0.25 0.1 0.25 1 ]
 }
 
 # SMART MARKS SYSTEM (Lua-powered)
