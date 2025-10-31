@@ -162,8 +162,8 @@ bindsym $mod+home  focus  beginning
 bindsym $mod+end   focus  end
 
 bindsym $mod+Shift+h move left nomode
-bindsym $mod+Shift+j move down
-bindsym $mod+Shift+k move up
+bindsym $mod+Shift+j move container to output down; focus output down
+bindsym $mod+Shift+k move container to output up; focus output up
 bindsym $mod+Shift+l move right nomode
 
 bindsym $mod+Alt+h move left
@@ -253,11 +253,8 @@ pinch:4:inward    jump
 
 swipe:5:right  align right
 swipe:5:left   align left
-swipe:5:up     scale_content incr 0.05
-swipe:5:down   scale_content incr -0.05
-
-pinch:5:outward   scale_workspace incr 0.1
-pinch:5:inward    scale_workspace incr -0.1
+swipe:5:up     scale_workspace incr 0.05
+swipe:5:down   scale_workspace incr -0.05
 }
 
 # Animations
