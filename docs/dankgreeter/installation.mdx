@@ -1,0 +1,113 @@
+---
+title: Installation
+description: Install DankGreeter display manager
+sidebar_position: 2
+---
+
+import Hero from '@site/src/components/Hero';
+
+<Hero
+  asciiArt={`██████╗  █████╗ ███╗   ██╗██╗  ██╗ ██████╗ ██████╗ ███████╗███████╗████████╗
+██╔══██╗██╔══██╗████╗  ██║██║ ██╔╝██╔════╝ ██╔══██╗██╔════╝██╔════╝╚══██╔══╝
+██║  ██║███████║██╔██╗ ██║█████╔╝ ██║  ███╗██████╔╝█████╗  █████╗     ██║
+██║  ██║██╔══██║██║╚██╗██║██╔═██╗ ██║   ██║██╔══██╗██╔══╝  ██╔══╝     ██║
+██████╔╝██║  ██║██║ ╚████║██║  ██╗╚██████╔╝██║  ██║███████╗███████╗   ██║
+╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝╚══════╝   ╚═╝
+                                                                            `}
+/>
+
+# Installation
+
+## Arch Linux
+
+Install from the AUR:
+
+```bash
+paru -S greetd-dms-greeter-git
+# Or with yay
+yay -S greetd-dms-greeter-git
+```
+
+Then go to [Enabling Greeter](#enabling-greeter-all-distros)
+
+## Fedora
+
+```bash
+sudo dnf copr enable avengemedia/danklinux
+sudo dnf install dms-greeter
+```
+
+Then go to [Enabling Greeter](#enabling-greeter-all-distros)
+
+## Other distributions
+
+Install `greetd`, `quickshell`, and then the greeter:
+
+```bash
+sudo mkdir -p /etc/xdg/quickshell
+sudo git clone https://github.com/AvengeMedia/DankMaterialShell.git /etc/xdg/quickshell/dms-greeter
+sudo mkdir /var/cache/dms-greeter
+sudo chown greeter:greeter /var/cache/dms-greeter
+```
+
+:::note
+
+Some distributions may have different user/group names for the greetd user.
+
+:::
+
+#### Prerequisites for Theme Syncing
+
+If you want to sync your user's theme with the greeter, ensure the `acl` package is installed.
+ACLs (Access Control Lists) are required to allow the greeter user to traverse your home directory and access configuration files.
+
+:::tip
+
+If you installed DMS using [dankinstall](/docs/dankinstall), you can automate the installation and configuration using:
+
+```bash
+dms greeter install
+```
+
+This will automatically:
+- Install greetd (if not already installed)
+- Set up the dms-greeter wrapper
+- Configure permissions and ACLs for theme syncing
+- Create the greeter cache directory
+- Configure greetd to use DMS
+
+:::
+
+## Enabling Greeter (all distros)
+
+1. Edit `/etc/greetd/config.toml` and set `command =` to use dms-greeter:
+  ```toml
+  [terminal]
+  vt = 1
+
+  [default_session]
+  user = "greeter"
+  command = "dms-greeter --command niri"
+  ### Uncomment the below line to run the greeter on Hyprland
+  # command = "dms-greeter --command Hyprland"
+  ### Uncomment to run the greeter on sway
+  # command = "dms-greeter --command sway"
+  ```
+
+2. Disable any existing conflicting greeters:
+
+:::warning
+
+Disabling a greeter while logged in under that greeter will log you out and bring you to a non-graphical TTY.
+
+:::
+
+  ```bash
+  sudo systemctl disable gdm lightdm sddm
+  ```
+
+3. Enable and start the greeter:
+  ```bash
+  sudo systemctl enable greetd
+  sudo systemctl start greetd
+  ```
