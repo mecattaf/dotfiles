@@ -129,6 +129,8 @@ bindsym $mod+Shift+ exec       $screenshot-full
 bindsym $mod+Shift+A exec $screenshot-area
 
 #bindsym $mod+I exec $waybar
+set $bar dms ipc call bar toggle
+bindsym $mod+I exec $bar
 #bindsym $mod+Shift+I exec $battery
 
 # Old notification controls with makoctl
