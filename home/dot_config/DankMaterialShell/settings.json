@@ -1,6 +1,6 @@
 {
   "currentThemeName": "catppuccin-noir",
-  "customThemeFile": "~/.config/DankMaterialShell/themes/catppuccin-noir.json",
+  "customThemeFile": "/home/tom/.config/DankMaterialShell/themes/catppuccin-noir.json",
   "matugenEnabled": false,
   "dynamicTheming": false,
   "fontFamily": "SF Pro",
