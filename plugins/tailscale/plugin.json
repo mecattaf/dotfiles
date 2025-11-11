@@ -1,0 +1,13 @@
+{
+    "id": "tailscale",
+    "name": "Tailscale",
+    "description": "Monitor and control Tailscale VPN connections with exit nodes, settings, and node management",
+    "version": "1.0.0",
+    "author": "DankMaterialShell",
+    "type": "widget",
+    "capabilities": ["dankbar-widget", "control-center", "vpn-management"],
+    "component": "./TailscaleWidget.qml",
+    "icon": "vpn_key",
+    "requires": ["tailscale"],
+    "permissions": ["settings_read", "settings_write", "process"]
+}
