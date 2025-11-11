@@ -9,6 +9,6 @@
     "component": "./OcrWidget.qml",
     "icon": "text_fields",
     "settings": "./OcrSettings.qml",
-    "requires": ["grimblast", "tesseract", "wl-copy"],
+    "requires": ["grim", "slurp", "tesseract", "wl-copy"],
     "permissions": ["settings_read", "settings_write", "process"]
 }

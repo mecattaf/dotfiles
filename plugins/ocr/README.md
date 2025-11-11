@@ -15,7 +15,8 @@ A powerful Optical Character Recognition (OCR) plugin for DankMaterialShell that
 
 The following dependencies must be installed on your system:
 
-- `grimblast` - Screenshot utility for Wayland
+- `grim` - Screenshot utility for Wayland
+- `slurp` - Region selection tool for Wayland
 - `tesseract` - OCR engine
 - `wl-copy` - Wayland clipboard utility (from wl-clipboard package)
 - `notify-send` - Desktop notification utility
@@ -23,7 +24,7 @@ The following dependencies must be installed on your system:
 ### Installation on Arch Linux
 
 ```bash
-sudo pacman -S grimblast tesseract wl-clipboard libnotify
+sudo pacman -S grim slurp tesseract wl-clipboard libnotify
 ```
 
 ### Installing Additional Languages
@@ -93,10 +94,11 @@ Access settings via Settings → Plugins → OCR
 ### How It Works
 
 1. The widget triggers the `ocr.sh` script with the selected language
-2. Grimblast captures a screenshot of the selected area (with freeze frame)
-3. Tesseract processes the image and extracts text
-4. The text is copied to the clipboard via wl-copy
-5. A notification displays the operation result
+2. Slurp launches to allow region selection with your cursor
+3. Grim captures a screenshot of the selected area and pipes it to stdout
+4. Tesseract processes the image and extracts text
+5. The text is copied to the clipboard via wl-copy
+6. A notification displays the operation result
 
 ### Script Options
 
@@ -117,7 +119,7 @@ If you receive a "Missing dependency" error:
 
 1. Verify all required packages are installed
 2. Ensure the commands are in your system PATH
-3. Check that you're running a Wayland session (required for grimblast and wl-copy)
+3. Check that you're running a Wayland session (required for grim, slurp, and wl-copy)
 
 ### OCR Recognition Issues
 
@@ -147,7 +149,7 @@ This plugin is distributed as part of DankMaterialShell dotfiles.
 - Original OCR implementation reference scripts
 - DankMaterialShell plugin system
 - Tesseract OCR engine
-- grimblast screenshot utility
+- grim and slurp screenshot utilities
 
 ## Version History
 

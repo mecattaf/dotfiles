@@ -101,7 +101,7 @@ PluginSettings {
 
         StyledText {
             width: parent.width
-            text: "• Left-click: Start OCR area selection\n• Right-click: Choose OCR language\n\nRequired dependencies: grimblast, tesseract, wl-copy"
+            text: "• Left-click: Start OCR area selection\n• Right-click: Choose OCR language\n\nRequired dependencies: grim, slurp, tesseract, wl-copy"
             font.pixelSize: Theme.fontSizeSmall
             color: Theme.surfaceVariantText
             wrapMode: Text.WordWrap

@@ -22,7 +22,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # --- Check Dependencies ---
-for cmd in grimblast tesseract wl-copy notify-send; do
+for cmd in grim slurp tesseract wl-copy notify-send; do
     if ! command -v "$cmd" &>/dev/null; then
         $NOTIFY && notify-send "OCR Tool" "Missing dependency: $cmd"
         echo "Missing dependency: $cmd"
@@ -31,7 +31,7 @@ for cmd in grimblast tesseract wl-copy notify-send; do
 done
 
 # --- Run OCR ---
-ocr_text=$(grimblast --freeze save area - | tesseract -l "$OCR_LANG" - - 2>/dev/null || true)
+ocr_text=$(grim -g "$(slurp)" - | tesseract -l "$OCR_LANG" - - 2>/dev/null || true)
 
 # --- Output / Notification ---
 if [[ -n "$ocr_text" ]]; then
