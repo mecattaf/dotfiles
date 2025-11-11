@@ -42,11 +42,11 @@ exec hash dbus-update-activation-environment 2>/dev/null && \
         dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP=sway 
 
 # Credential mgmt
-exec gnome-keyring-daemon --start --components=secrets,ssh,keyring --daemonize
-exec /usr/libexec/polkit-mate-authentication-agent-1
-exec /usr/libexec/polkit-gnome-authentication-agent-1
-exec /usr/lib/lxpolkit
-#
+#exec gnome-keyring-daemon --start --components=secrets,ssh,keyring --daemonize
+#exec /usr/libexec/polkit-mate-authentication-agent-1
+#exec /usr/libexec/polkit-gnome-authentication-agent-1
+#exec /usr/lib/lxpolkit
+
 exec wl-gammarelay-rs run
 # Old notification daemon
 # exec mako
@@ -56,7 +56,7 @@ exec wl-paste --type text --watch cliphist store
 exec wl-paste --type image --watch cliphist store
 exec kanshi
 exec swaybg -c '#000000'
-    #exec pkill swaybg; swaybg -i ~/Downloads/wall.jpg -m fit
+#exec pkill swaybg; swaybg -i ~/Downloads/wall.jpg -m fit
 
 # Variables
 set $mod Mod4
@@ -158,8 +158,6 @@ bindsym $mod+Shift+W exec $chrome --app=https://mail.google.com/
 bindsym $mod+Shift+semicolon exec flatpak run com.obsproject.Studio
 bindsym $mod+Shift+period exec $chrome --app=https://calendar.notion.so/
 bindsym $mod+Shift+E exec $chrome --app=https://drive.google.com/drive/u/0/
-bindsym $mod+B exec  flatpak run io.bassi.Amberol 
-# TODO change to selected music player
 
 # TODO: transition to quickshell
 # Old brightness controls
@@ -168,9 +166,13 @@ bindsym $mod+B exec  flatpak run io.bassi.Amberol
 # New DMS brightness controls
 bindsym F1 exec dms ipc call brightness decrement 5
 bindsym F2 exec dms ipc call brightness increment 5
-bindsym F3 exec kitty --class "nmtui" -e nmtui # change to iwmenu in rofi?
-bindsym F4 exec blueman-manager
-bindsym F5 exec pavucontrol
+# Old top three left hand keys
+#bindsym F3 exec kitty --class "nmtui" -e nmtui # change to iwmenu in rofi?
+#bindsym F4 exec blueman-manager
+#bindsym F5 exec pavucontrol
+bindsym F3 exec dms ipc call mpris playPause
+bindsym F4 exec dms ipc call mpris previous
+bindsym F5 exec dms ipc call mpris next
 # Old volume controls
 # bindsym F6 exec $volume-mute
 # bindsym F7 exec $volume-down
@@ -184,6 +186,8 @@ bindsym F9 exec $pomodoro-timer
 # bindsym F10 exec $power-menu
 # New DMS power menu
 bindsym F10 exec dms ipc call powermenu toggle 
+
+bindsym $mod+B exec dms ipc control-center toggle
 
 bindsym $mod+Shift+Tab focus mode_toggle
 bindsym $mod+Tab floating toggle
