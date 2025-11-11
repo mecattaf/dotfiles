@@ -1,0 +1,192 @@
+#!/bin/bash
+
+# Pomodoro Timer Backend for DMS
+# Simplified version for DMS integration
+
+#--- Check environment ---
+if [ "$(uname)" == "Darwin" ] || [ "${POMO_PREFIX_CMDS}" == "true" ]; then
+    DATE_CMD="gdate"
+    STAT_CMD="gstat"
+else
+    DATE_CMD="date"
+    STAT_CMD="stat"
+fi
+
+#--- Configuration ---
+[[ -n $POMO_FILE ]] && POMO=$POMO_FILE || POMO=$HOME/.local/share/pomo
+[[ -n $POMO_WORK_TIME ]] && WORK_TIME=$POMO_WORK_TIME || WORK_TIME=25
+[[ -n $POMO_BREAK_TIME ]] && BREAK_TIME=$POMO_BREAK_TIME || BREAK_TIME=5
+
+#--- Core Functions ---
+
+function pomo_start {
+    test -e "$(dirname -- "$POMO")" || mkdir -p "$(dirname -- "$POMO")"
+    :> "$POMO"
+    touch "$POMO"
+    command -v notify-send &>/dev/null && notify-send -t 1500 "🍅 Pomodoro Started" "Focus: ${WORK_TIME}m" || true
+}
+
+function pomo_isstopped {
+    [[ ! -e "$POMO" ]]
+    return $?
+}
+
+function pomo_stop {
+    rm -f "$POMO"
+    command -v notify-send &>/dev/null && notify-send "🛑 Pomodoro Stopped" -t 1000 || true
+}
+
+function pomo_stamp {
+    ago=$1
+    mtime=$(${DATE_CMD} --date "@$(( $(date +%s) - ago))" +%m%d%H%M.%S)
+    :> "$POMO"
+    touch -m -t "$mtime" "$POMO"
+}
+
+function pomo_ispaused {
+    [[ $(wc -l < "$POMO" 2>/dev/null || echo "0") -gt 0 ]]
+    return $?
+}
+
+function pomo_pause {
+    running=$(pomo_stat)
+    if pomo_isstopped; then
+        return 1
+    elif pomo_ispaused; then
+        # Resume
+        pomo_stamp "$running"
+        command -v notify-send &>/dev/null && notify-send "▶️ Pomodoro Resumed" -t 1000 || true
+    else
+        # Pause
+        echo "$running" > "$POMO"
+        command -v notify-send &>/dev/null && notify-send "⏸️ Pomodoro Paused" -t 1000 || true
+    fi
+}
+
+function pomo_restart {
+    if ! pomo_isstopped; then
+        pomo_stop
+        sleep 0.1
+    fi
+    pomo_start
+}
+
+function pomo_update {
+    running=$(pomo_stat)
+    block_time=$(( (WORK_TIME+BREAK_TIME)*60 ))
+    if [[ $running -ge $block_time ]]; then
+        ago=$(( running % block_time ))
+        mtime=$(${DATE_CMD} --date "@$(( $(date +%s) - ago))" +%m%d%H%M.%S)
+        touch -m -t "$mtime" "$POMO"
+    fi
+}
+
+function pomo_stat {
+    [[ -e "$POMO" ]] && running=$(cat "$POMO" 2>/dev/null) || running=0
+    if [[ -z $running ]]; then
+        pomo_start=$(${STAT_CMD} -c +%Y "$POMO" 2>/dev/null || echo "0")
+        now=$(${DATE_CMD} +%s)
+        running=$((now-pomo_start))
+    fi
+    echo $running
+}
+
+function pomo_json {
+    # Output JSON status for DMS integration
+    if ! pomo_isstopped; then
+        pomo_update
+        running=$(pomo_stat)
+
+        work_left=$(( WORK_TIME*60 - running ))
+        if [[ $work_left -lt 0 ]]; then
+            # Break phase
+            break_left=$(( work_left + BREAK_TIME*60 ))
+            total_time=$((BREAK_TIME*60))
+            elapsed=$((total_time - break_left))
+            phase="break"
+            remaining_seconds=$break_left
+            icon="🏖️"
+        else
+            # Work phase
+            total_time=$((WORK_TIME*60))
+            elapsed=$((total_time - work_left))
+            phase="work"
+            remaining_seconds=$work_left
+            icon="🍅"
+        fi
+
+        # Calculate percentage
+        if [[ $total_time -gt 0 ]]; then
+            percentage=$(( (elapsed * 100) / total_time ))
+        else
+            percentage=0
+        fi
+
+        min=$(( remaining_seconds / 60 ))
+        sec=$(( remaining_seconds % 60 ))
+        time_str=$(printf "%02d:%02d" $min $sec)
+
+        if pomo_ispaused; then
+            status="paused"
+            icon="⏸️"
+        else
+            status=$phase
+        fi
+
+        cat <<EOF
+{
+  "running": true,
+  "phase": "$phase",
+  "status": "$status",
+  "icon": "$icon",
+  "time": "$time_str",
+  "minutes": $min,
+  "seconds": $sec,
+  "percentage": $percentage,
+  "totalSeconds": $remaining_seconds,
+  "workTime": $WORK_TIME,
+  "breakTime": $BREAK_TIME
+}
+EOF
+    else
+        cat <<EOF
+{
+  "running": false,
+  "phase": "stopped",
+  "status": "stopped",
+  "icon": "⏱️",
+  "time": "--:--",
+  "minutes": 0,
+  "seconds": 0,
+  "percentage": 0,
+  "totalSeconds": 0,
+  "workTime": $WORK_TIME,
+  "breakTime": $BREAK_TIME
+}
+EOF
+    fi
+}
+
+#--- Command Line Interface ---
+
+case "${1:-json}" in
+    start)
+        pomo_start
+        ;;
+    stop)
+        pomo_stop
+        ;;
+    pause|toggle)
+        pomo_pause
+        ;;
+    restart)
+        pomo_restart
+        ;;
+    json)
+        pomo_json
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|pause|restart|json}"
+        exit 1
+        ;;
+esac
