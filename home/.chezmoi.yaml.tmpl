@@ -13,14 +13,6 @@ data:
     os: "{{ .chezmoi.os }}"
     timezone: "America/New_York"
   
-  tailscale:
-    hostname: "blueprint"
-    tag: "tag:blueprint"
-    tailnet: "tail8dd1.ts.net"
-    full_hostname: "blueprint.tail8dd1.ts.net"
-    oauth_client_id: "{{ .secrets.tailscale.oauth_client_id }}"
-    oauth_client_secret: "{{ .secrets.tailscale.oauth_client_secret }}"
-
   github:
     git_protocol: "https"
     user: "mecattaf"
