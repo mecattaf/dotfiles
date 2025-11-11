@@ -48,7 +48,10 @@ exec /usr/libexec/polkit-gnome-authentication-agent-1
 exec /usr/lib/lxpolkit
 #
 exec wl-gammarelay-rs run
-exec mako
+# Old notification daemon
+# exec mako
+# New DMS daemon
+exec dms run
 exec wl-paste --type text --watch cliphist store
 exec wl-paste --type image --watch cliphist store
 exec kanshi
@@ -72,16 +75,19 @@ set $record-start $scripts/record start
 set $record-select-area $scripts/record select
 set $record-stop $scripts/record stop
 
-set $volume-up $scripts/volume up
-set $volume-down $scripts/volume down
-set $volume-mute $scripts/volume mute
+# Old volume controls
+# set $volume-up $scripts/volume up
+# set $volume-down $scripts/volume down
+# set $volume-mute $scripts/volume mute
 
-set $brightness-up $scripts/brightness-control up
-set $brightness-down $scripts/brightness-control down
+# Old brightness controls
+# set $brightness-up $scripts/brightness-control up
+# set $brightness-down $scripts/brightness-control down
 
 #set $waybar pkill -SIGUSR1 -f 'waybar'
 
-set $power-menu $scripts/powermenu
+# Old power menu
+# set $power-menu $scripts/powermenu
 set $pomodoro-timer $scripts/pomodoro menu
 
 set $start-wshowkeys wshowkeys -F "JetBrainsMono Nerd Font 16" -a bottom
@@ -98,7 +104,11 @@ bindsym $mod+BackSpace set_mode
 #bindsym $mod+space jump
 
 bindsym $mod+Shift+Q kill
-bindsym $mod+D exec rofi -show drun 
+# Old rofi launcher
+# bindsym $mod+D exec rofi -show drun
+# New DMS launcher
+set $launcher dms ipc call spotlight toggle
+bindsym $mod+D exec $launcher
 
 bindsym Ctrl+N exec flatpak run com.google.Chrome
 bindsym Ctrl+Shift+N exec flatpak run com.google.Chrome --incognito
@@ -106,7 +116,11 @@ bindsym Ctrl+Shift+N exec flatpak run com.google.Chrome --incognito
 bindsym $mod+Return exec kitty -e fish
 bindsym $mod+Shift+Return exec $scripts/nvim-terminal.sh
 
-bindsym $mod+V exec cliphist list | rofi -dmenu -theme-str '#listview { columns : 1 ; lines: 8 ; }' | cliphist decode | wl-copy
+# Old clipboard with cliphist
+# bindsym $mod+V exec cliphist list | rofi -dmenu -theme-str '#listview { columns : 1 ; lines: 8 ; }' | cliphist decode | wl-copy
+# New DMS clipboard
+set $clipboard dms ipc call clipboard toggle
+bindsym $mod+V exec $clipboard
 bindsym $mod+Shift+V exec rofimoji -a clipboard
 
 bindsym $mod+A exec       $swappy-full
@@ -117,8 +131,16 @@ bindsym $mod+Shift+A exec $screenshot-area
 #bindsym $mod+I exec $waybar
 #bindsym $mod+Shift+I exec $battery
 
-bindsym $mod+O exec makoctl dismiss 
-bindsym $mod+Shift+O exec makoctl dismiss -a
+# Old notification controls with makoctl
+# bindsym $mod+O exec makoctl dismiss
+# bindsym $mod+Shift+O exec makoctl dismiss -a
+# New DMS notification controls
+set $notif_dismiss dms ipc call notifications toggle
+bindsym $mod+O exec $notif_dismiss
+
+# New DMS settings
+set $settings dms ipc call settings toggle
+bindsym $mod+comma exec $settings
 
 bindsym $mod+E exec thunar
 
@@ -138,16 +160,28 @@ bindsym $mod+B exec  flatpak run io.bassi.Amberol
 # TODO change to selected music player
 
 # TODO: transition to quickshell
-bindsym F1 exec $brightness-down  
-bindsym F2 exec $brightness-up   
+# Old brightness controls
+# bindsym F1 exec $brightness-down
+# bindsym F2 exec $brightness-up
+# New DMS brightness controls
+bindsym F1 exec dms ipc call brightness decrement 5
+bindsym F2 exec dms ipc call brightness increment 5
 bindsym F3 exec kitty --class "nmtui" -e nmtui # change to iwmenu in rofi?
 bindsym F4 exec blueman-manager
-bindsym F5 exec pavucontrol    
-bindsym F6 exec $volume-mute
-bindsym F7 exec $volume-down
-bindsym F8 exec $volume-up
+bindsym F5 exec pavucontrol
+# Old volume controls
+# bindsym F6 exec $volume-mute
+# bindsym F7 exec $volume-down
+# bindsym F8 exec $volume-up
+# New DMS volume controls
+bindsym F6 exec dms ipc call audio mute
+bindsym F7 exec dms ipc call audio decrement 3
+bindsym F8 exec dms ipc call audio increment 3
 bindsym F9 exec $pomodoro-timer
-bindsym F10 exec $power-menu 
+# Old power menu
+# bindsym F10 exec $power-menu
+# New DMS power menu
+bindsym F10 exec dms ipc call powermenu toggle 
 
 bindsym $mod+Shift+Tab focus mode_toggle
 bindsym $mod+Tab floating toggle
