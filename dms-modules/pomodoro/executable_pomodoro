@@ -1,0 +1,342 @@
+#!/bin/bash
+
+# Enhanced Pomodoro Timer with Waybar Integration
+# Location: ~/.config/scroll/scripts/pomodoro
+
+#--- Configuration ---
+[[ -n $POMO_FILE ]] && POMO=$POMO_FILE || POMO=$HOME/.local/share/pomo
+[[ -n $POMO_WORK_TIME ]] && WORK_TIME=$POMO_WORK_TIME || WORK_TIME=25
+[[ -n $POMO_BREAK_TIME ]] && BREAK_TIME=$POMO_BREAK_TIME || BREAK_TIME=5
+
+# Check environment for date commands
+if [ "$(uname)" == "Darwin" ] || [ "${POMO_PREFIX_CMDS}" == "true" ]; then
+    DATE_CMD="gdate"
+    STAT_CMD="gstat"
+else
+    DATE_CMD="date"
+    STAT_CMD="stat"
+fi
+
+#--- Waybar Integration Functions ---
+
+function pomo_waybar_signal {
+    # Signal waybar to update the pomodoro module
+    pkill -RTMIN+8 waybar 2>/dev/null || true
+}
+
+function pomo_waybar_output {
+    # Generate JSON output for waybar
+    if ! pomo_isstopped; then
+        pomo_update
+        running=$(pomo_stat)
+        
+        # Calculate work phase progress
+        work_left=$(( WORK_TIME*60 - running ))
+        if [[ $work_left -lt 0 ]]; then
+            # Break phase
+            break_left=$(( work_left + BREAK_TIME*60 ))
+            total_time=$((BREAK_TIME*60))
+            elapsed=$((total_time - break_left))
+            phase="break"
+            remaining_seconds=$break_left
+        else
+            # Work phase
+            total_time=$((WORK_TIME*60))
+            elapsed=$((total_time - work_left))
+            phase="work"
+            remaining_seconds=$work_left
+        fi
+        
+        # Calculate percentage (0-100)
+        if [[ $total_time -gt 0 ]]; then
+            percentage=$(( (elapsed * 100) / total_time ))
+        else
+            percentage=0
+        fi
+        
+        # Format remaining time for tooltip
+        min=$(( remaining_seconds / 60 ))
+        sec=$(( remaining_seconds % 60 ))
+        time_str=$(printf "%02d:%02d" $min $sec)
+        
+        # Determine CSS class based on state
+        if pomo_ispaused; then
+            css_class="paused"
+            tooltip_prefix="Paused"
+        elif [[ $phase == "work" ]]; then
+            css_class="work"
+            tooltip_prefix="Focus"
+        else
+            css_class="break"
+            tooltip_prefix="Break"
+        fi
+        
+        # Generate CSS class for percentage
+        perc_class="perc$(printf "%.0f" $percentage)"
+        
+        # Output minimal JSON - just tooltip and classes
+        echo "{\"text\":\" \",\"tooltip\":\"$tooltip_prefix: $time_str remaining\",\"class\":[\"$css_class\",\"$perc_class\"]}"
+    fi
+}
+
+#--- Core Pomodoro Functions ---
+
+function pomo_start {
+    test -e "$(dirname -- "$POMO")" || mkdir -p "$(dirname -- "$POMO")"
+    :> "$POMO"
+    touch "$POMO"
+    pomo_waybar_signal
+    pomo_ensure_services  
+    notify-send -t 1500 "🍅" "Focus: ${WORK_TIME}m"
+}
+
+function pomo_isstopped {
+    [[ ! -e "$POMO" ]]
+    return $?
+}
+
+function pomo_stop {
+    rm -f "$POMO"
+    pomo_waybar_signal
+    pomo_stop_services
+    notify-send "🛑 Pomodoro Stopped" -t 1000
+}
+
+function pomo_stamp {
+    ago=$1
+    mtime=$(${DATE_CMD} --date "@$(( $(date +%s) - ago))" +%m%d%H%M.%S)
+    :> "$POMO"
+    touch -m -t "$mtime" "$POMO"
+}
+
+function pomo_ispaused {
+    [[ $(wc -l < "$POMO") -gt 0 ]]
+    return $?
+}
+
+function pomo_pause {
+    running=$(pomo_stat)
+    if pomo_isstopped; then
+        notify-send "⚠️ No Active Timer" "Start a pomodoro session first" -t 1000
+        return 1
+    elif pomo_ispaused; then
+        # Resume
+        pomo_stamp "$running"
+        pomo_waybar_signal
+        notify-send "▶️ Pomodoro Resumed" -t 1000
+    else
+        # Pause
+        echo "$running" > "$POMO"
+        pomo_waybar_signal
+        notify-send "⏸️ Pomodoro Paused" -t 1000
+    fi
+}
+
+function pomo_restart {
+    if ! pomo_isstopped; then
+        pomo_stop
+        sleep 0.1
+    fi
+    pomo_start  # This will call pomo_ensure_services automatically
+}
+
+function pomo_update {
+    running=$(pomo_stat)
+    block_time=$(( (WORK_TIME+BREAK_TIME)*60 ))
+    if [[ $running -ge $block_time ]]; then
+        ago=$(( running % block_time ))
+        mtime=$(${DATE_CMD} --date "@$(( $(date +%s) - ago))" +%m%d%H%M.%S)
+        touch -m -t "$mtime" "$POMO"
+    fi
+}
+
+function pomo_stat {
+    [[ -e "$POMO" ]] && running=$(cat "$POMO") || running=0
+    if [[ -z $running ]]; then
+        pomo_start=$(${STAT_CMD} -c +%Y "$POMO")
+        now=$(${DATE_CMD} +%s)
+        running=$((now-pomo_start))
+    fi
+    echo $running
+}
+
+function pomo_status {
+    if ! pomo_isstopped; then
+        pomo_update
+        running=$(pomo_stat)
+        left=$(( WORK_TIME*60 - running ))
+        if [[ $left -lt 0 ]]; then
+            left=$(( left + BREAK_TIME*60 ))
+            prefix="Break"
+            icon="🏖️"
+        else
+            prefix="Focus"
+            icon="🍅"
+        fi
+        pomo_ispaused && prefix="Paused" && icon="⏸️"
+        min=$(( left / 60 ))
+        sec=$(( left - 60*min ))
+        printf "%s %02d:%02d\n" $icon $min $sec
+    else
+        printf "Timer stopped\n"
+    fi
+}
+
+function pomo_notify_daemon {
+    break_end_msg="Break's over! Time to focus! 🍅"
+    work_end_msg="Great work! Time for a break! 🏖️"
+    
+    while true; do
+        if [[ -e "$POMO" ]]; then
+            pomo_update
+            running=$(pomo_stat)
+            work_left=$(( WORK_TIME*60 - running ))
+            
+            if [[ $work_left -gt 0 ]]; then
+                # Work phase - wait for work to end
+                sleep $work_left
+                if [[ -e "$POMO" ]]; then
+                    notify-send "🏖️ Break Time!" "$work_end_msg" -t 5000
+                    pomo_waybar_signal
+                fi
+                sleep 1
+            else
+                # Break phase - wait for break to end
+                break_left=$(( work_left + BREAK_TIME*60 ))
+                if [[ $break_left -gt 0 ]]; then
+                    sleep $break_left
+                    if [[ -e "$POMO" ]]; then
+                        notify-send "🍅 Focus Time!" "$break_end_msg" -t 5000
+                        pomo_waybar_signal
+                        # Timer cycle complete - stop services then restart for new cycle
+                        pomo_stop_services
+                        sleep 0.5
+                        # Restart services for the new work cycle
+                        pomo_ensure_services
+                    fi
+                    sleep 1
+                else
+                    sleep 5
+                fi
+            fi
+        else
+            sleep 10
+        fi
+    done
+}
+
+function pomo_ensure_services {
+    # Ensure waybar progress bar is running with correct config files
+    if ! pgrep -f "waybar.*pomodoro-bar" > /dev/null; then
+        # Launch with explicit config and style files to avoid default style.css
+        waybar -c ~/.config/waybar/pomodoro-bar.json -s ~/.config/waybar/pomodoro-bar.css &
+        sleep 0.2  # Reduced sleep time for faster startup
+    fi
+    
+    # Ensure notification daemon is running
+    if ! pgrep -f "pomodoro notify" > /dev/null; then
+        ~/.config/scroll/scripts/pomodoro notify &
+    fi
+}
+
+function pomo_stop_services {
+    # Stop waybar progress bar
+    pkill -f "waybar.*pomodoro-bar"
+    
+    # Stop notification daemon
+    pkill -f "pomodoro notify"
+}
+
+function pomo_menu {
+    rofi_dir="$HOME/.config/rofi/pomodoro"
+    theme_file="$rofi_dir/pomodoro.rasi"
+    
+    # Don't start services here - only when timer actually starts
+    
+    # Static menu options - no dynamic generation
+    options=("🍅 Start/Pause"
+            "🔄 Restart" 
+            "⏹️ Stop")
+    
+    # Get current status for display only
+    if ! pomo_isstopped; then
+        status=$(pomo_status)
+        prompt="$status"
+    else
+        prompt="Pomodoro Timer"
+    fi
+    
+    # Show menu with static options
+    selected=$(printf '%s\n' "${options[@]}" | rofi \
+        -dmenu \
+        -i \
+        -p "$prompt" \
+        -theme "$theme_file")
+    
+    # Handle selection - check state only when action is taken
+    case "$selected" in
+        "🍅 Start/Pause")
+            if pomo_isstopped; then
+                pomo_start
+            else
+                pomo_pause
+            fi
+            ;;
+        "🔄 Restart")
+            pomo_restart
+            ;;
+        "⏹️ Stop")
+            pomo_stop
+            pomo_stop_services
+            ;;
+        "")
+            # User pressed escape
+            exit 0
+            ;;
+    esac
+}
+
+#--- Command Line Interface ---
+
+case "${1:-menu}" in
+    start)
+        pomo_start
+        ;;
+    stop)
+        pomo_stop
+        ;;
+    pause|toggle)
+        pomo_pause
+        ;;
+    restart)
+        pomo_restart
+        ;;
+    status)
+        pomo_status
+        ;;
+    waybar)
+        pomo_waybar_output
+        ;;
+    notify)
+        pomo_notify_daemon
+        ;;
+    menu)
+        pomo_menu
+        ;;
+    signal)
+        pomo_waybar_signal
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|pause|restart|status|waybar|notify|menu|signal}"
+        echo "  start    - Start new pomodoro session"
+        echo "  stop     - Stop current session"
+        echo "  pause    - Pause/resume current session"
+        echo "  restart  - Restart current session"
+        echo "  status   - Show current status"
+        echo "  waybar   - Output JSON for waybar"
+        echo "  notify   - Run notification daemon"
+        echo "  menu     - Show rofi menu (default)"
+        echo "  signal   - Signal waybar to update"
+        exit 1
+        ;;
+esac
