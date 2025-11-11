@@ -1,0 +1,12 @@
+{
+    "id": "calendar",
+    "name": "Calendar",
+    "description": "Monthly and weekly calendar widget with quick navigation",
+    "version": "0.1.0",
+    "author": "DankMaterialShell",
+    "type": "widget",
+    "capabilities": ["dankbar-widget", "calendar"],
+    "component": "./CalendarPlugin.qml",
+    "icon": "calendar_month",
+    "permissions": []
+}
