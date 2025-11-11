@@ -1,0 +1,13 @@
+{
+    "id": "pomodoro-advanced",
+    "name": "Pomodoro Timer",
+    "description": "Advanced Pomodoro technique timer with work/break cycles, progress tracking, and focus management",
+    "version": "1.0.0",
+    "author": "DankMaterialShell",
+    "type": "widget",
+    "capabilities": ["dankbar-widget", "control-center", "productivity"],
+    "component": "./PomodoroWidget.qml",
+    "icon": "schedule",
+    "requires": [],
+    "permissions": ["process"]
+}
