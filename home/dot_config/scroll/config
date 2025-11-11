@@ -56,6 +56,7 @@ exec wl-paste --type text --watch cliphist store
 exec wl-paste --type image --watch cliphist store
 exec kanshi
 exec swaybg -c '#000000'
+exec vicinae server
 #exec pkill swaybg; swaybg -i ~/Downloads/wall.jpg -m fit
 
 # Variables
@@ -108,7 +109,8 @@ bindsym $mod+Shift+Q kill
 # bindsym $mod+D exec rofi -show drun
 # New DMS launcher
 set $launcher dms ipc call spotlight toggle
-bindsym $mod+D exec $launcher
+bindsym $mod+Shift+D exec $launcher
+bindsym $mod+D exec vicinae
 
 bindsym Ctrl+N exec flatpak run com.google.Chrome
 bindsym Ctrl+Shift+N exec flatpak run com.google.Chrome --incognito
