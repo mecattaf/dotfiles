@@ -110,7 +110,7 @@ bindsym $mod+Shift+Q kill
 # New DMS launcher
 set $launcher dms ipc call spotlight toggle
 bindsym $mod+Shift+D exec $launcher
-bindsym $mod+D exec vicinae
+bindsym $mod+D exec vicinae open
 
 bindsym Ctrl+N exec flatpak run com.google.Chrome
 bindsym Ctrl+Shift+N exec flatpak run com.google.Chrome --incognito
