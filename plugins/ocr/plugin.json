@@ -1,0 +1,14 @@
+{
+    "id": "ocr",
+    "name": "OCR",
+    "description": "Optical Character Recognition for capturing and copying text from screen regions",
+    "version": "1.0.0",
+    "author": "DankMaterialShell",
+    "type": "widget",
+    "capabilities": ["dankbar-widget", "ocr", "clipboard"],
+    "component": "./OcrWidget.qml",
+    "icon": "text_fields",
+    "settings": "./OcrSettings.qml",
+    "requires": ["grim", "slurp", "tesseract", "wl-copy"],
+    "permissions": ["settings_read", "settings_write", "process"]
+}
