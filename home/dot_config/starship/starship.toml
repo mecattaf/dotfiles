@@ -10,14 +10,34 @@ $line_break\
 $python\
 $character"""
 
+#[directory]
+#style = "blue"
+#truncation_length = 0
+#truncate_to_repo = false
+#home_symbol = "~"
+#use_os_path_sep = true
+#fish_style_pwd_dir_length = 1 
+#substitutions = { "/var/home/tom" = "~" }
+
 [directory]
-style = "blue"
-truncation_length = 0
-truncate_to_repo = false
-home_symbol = "~"
-use_os_path_sep = true
+home_symbol = "  "
+read_only = "  "
+style = "bg:green fg:black"
+truncation_length = 6
+truncation_symbol = " ••/"
+format = '[](bold fg:green)[󰉋 $path]($style)[](bold fg:green)'
 fish_style_pwd_dir_length = 1 
-substitutions = { "/var/home/tom" = "~" }
+use_os_path_sep = true
+
+[directory.substitutions]
+"/var/home/tom" = "~"
+"Desktop" = "  "
+"Documents" = "  "
+"Downloads" = "  "
+"Music" = " 󰎈 "
+"Pictures" = "  "
+"Videos" = "  "
+"GitHub" = " 󰊤 "
 
 [character]
 success_symbol = "[❯](purple)"
