@@ -17,6 +17,7 @@ gaps inner 0
 gaps outer 0
 default_border pixel 1
 default_floating_border normal
+default_decoration border_radius 10 shadow false dim false
 hide_edge_borders smart
 seat seat0 xcursor_theme Bibata-Modern-Classic 48 
 seat seat0 fallback true
