@@ -1,0 +1,25 @@
+{
+  "onscreenkeyboard": {
+    "enabled": true
+  },
+  "pomodoro-advanced": {
+    "enabled": true
+  },
+  "tailscale": {
+    "enabled": true
+  },
+  "dockerManager": {
+    "enabled": true,
+    "dockerBinary": "podman",
+    "terminalApp": "kitty"
+  },
+  "calendar": {
+    "enabled": false
+  },
+  "dankPomodoroTimer": {
+    "enabled": true
+  },
+  "ocr": {
+    "enabled": true
+  }
+}

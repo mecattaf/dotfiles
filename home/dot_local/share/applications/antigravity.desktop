@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Antigravity
+Comment=Google IDE
+Exec=antigravity --ozone-platform-hint=wayland --enable-features=UseOzonePlatform --ozone-platform=wayland
+Icon=antigravity
+Terminal=false
+Type=Application
+Categories=IDE
+

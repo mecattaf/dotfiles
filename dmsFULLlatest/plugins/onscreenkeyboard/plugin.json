@@ -1,0 +1,15 @@
+{
+    "id": "onscreenkeyboard",
+    "name": "On-Screen Keyboard",
+    "description": "Virtual keyboard for touchscreen or accessibility support with ydotool integration",
+    "version": "1.0.0",
+    "author": "DankMaterialShell",
+    "type": "widget",
+    "capabilities": ["dankbar-widget", "control-center", "accessibility"],
+    "component": "./OnScreenKeyboardWidget.qml",
+    "icon": "keyboard",
+    "settings": "./OnScreenKeyboardSettings.qml",
+    "requires": ["ydotool"],
+    "permissions": ["process"],
+    "requires_dms": ">=0.1.0"
+}
