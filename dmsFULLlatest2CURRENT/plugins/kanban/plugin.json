@@ -1,0 +1,13 @@
+{
+    "id": "kanban",
+    "name": "Kanban Board",
+    "description": "Organize tasks across customizable columns with drag and drop, inline editing, and persistent storage",
+    "version": "1.0.0",
+    "author": "DankMaterialShell",
+    "type": "widget",
+    "capabilities": ["dankbar-widget", "control-center"],
+    "component": "./KanbanWidget.qml",
+    "settings": "./KanbanSettings.qml",
+    "icon": "layout-kanban",
+    "permissions": ["settings_read", "settings_write"]
+}
