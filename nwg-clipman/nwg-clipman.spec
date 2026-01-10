@@ -1,7 +1,7 @@
 # source: https://github.com/solopasha/hyprlandRPM/tree/master/nwg-clipman
 
 Name:           nwg-clipman
-Version:        null
+Version:        0.2.8
 Release:        %autorelease
 Summary:        GTK3-based GUI for cliphist
 
