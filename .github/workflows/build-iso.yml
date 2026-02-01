@@ -217,7 +217,7 @@ jobs:
           echo "🔗 ISO available at: ${R2_ISO_URL}"
 
       - name: Upload ISO Artifacts (Backup)
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: blueprint-iso-${{ env.TIMESTAMP }}
           path: ${{ steps.rename.outputs.output_directory }}
@@ -365,7 +365,7 @@ jobs:
           echo "title=Blueprint Linux ISO - ${VERSION_TAG}" >> $GITHUB_OUTPUT
 
       - name: Upload Changelog
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: changelog-${{ needs.build-iso.outputs.timestamp }}
           path: ${{ steps.changelog.outputs.file }}
