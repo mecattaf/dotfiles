@@ -1,3 +1,6 @@
+TODO: Add claude code install instructions since was not able to get it done with bluebuild install.. which is fine since we would need to authenticate anyway
+
+
 # BluePrint Linux &nbsp; [![build-ublue](https://github.com/blue-build/template/actions/workflows/build.yml/badge.svg)](https://github.com/blue-build/template/actions/workflows/build.yml)
 
 Using the Framework Desktop simultaneously as personal desktop AND a secure homelab/homeserver. This distribution is specialized for the highest-spec framework desktop available on the market. Use on other devices at your own risks and perils. 
