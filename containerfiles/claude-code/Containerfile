@@ -1,0 +1,32 @@
+ARG CLAUDE_VERSION=""
+ARG CLAUDE_CHANNEL="stable"
+
+RUN set -euo pipefail && \
+    GCS="https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases" && \
+    if [ -z "${CLAUDE_VERSION}" ]; then \
+        CLAUDE_VERSION="$(curl -fsSL "${GCS}/${CLAUDE_CHANNEL}")"; \
+    fi && \
+    printf 'Installing Claude Code %s\n' "${CLAUDE_VERSION}" && \
+    case "$(uname -m)" in \
+        x86_64)        PLATFORM="linux-x64"   ;; \
+        aarch64|arm64) PLATFORM="linux-arm64"  ;; \
+        *) printf 'Unsupported arch: %s\n' "$(uname -m)" >&2; exit 1 ;; \
+    esac && \
+    MANIFEST="$(curl -fsSL "${GCS}/${CLAUDE_VERSION}/manifest.json")" && \
+    EXPECTED="$(printf '%s' "${MANIFEST}" \
+      | python3 -c "import json,sys; print(json.load(sys.stdin)['platforms']['${PLATFORM}']['checksum'])")" && \
+    curl -fsSL "${GCS}/${CLAUDE_VERSION}/${PLATFORM}/claude" -o /tmp/claude && \
+    ACTUAL="$(sha256sum /tmp/claude | cut -d' ' -f1)" && \
+    if [ "${EXPECTED}" != "${ACTUAL}" ]; then \
+        printf 'CHECKSUM MISMATCH: expected %s, got %s\n' "${EXPECTED}" "${ACTUAL}" >&2; \
+        exit 1; \
+    fi && \
+    printf 'SHA-256 verified: %s\n' "${ACTUAL}" && \
+    mkdir -p /usr/lib/claude-code && \
+    install -m 0755 /tmp/claude /usr/lib/claude-code/claude && \
+    rm /tmp/claude && \
+    printf '#!/bin/sh\nexport NPM_CONFIG_PREFIX="${NPM_CONFIG_PREFIX:-/nonexistent}"\nexport DISABLE_AUTOUPDATER=1\nexec /usr/lib/claude-code/claude "$@"\n' \
+      > /usr/bin/claude && \
+    chmod 0755 /usr/bin/claude && \
+    mkdir -p /etc/environment.d && \
+    printf 'DISABLE_AUTOUPDATER=1\n' > /etc/environment.d/50-claude-code.conf

@@ -74,9 +74,9 @@ modules:
     include:
         - setup.just
 
-#  - type: script
-#    scripts:
-#        - claude-code.sh
+  - type: containerfile
+    containerfiles:
+      - claude-code
 
   - type: default-flatpaks
     configurations:
