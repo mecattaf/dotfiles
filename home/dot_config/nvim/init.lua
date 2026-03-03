@@ -8,12 +8,15 @@ local modules = {
   'options',
   'mappings',
   'plugins',
+  'external-changes',
 }
 
 for _, a in ipairs(modules) do
-  local ok, err = pcall(require, a)
+  local ok, mod = pcall(require, a)
   if not ok then
-    error("Error calling " .. a .. err)
+    error("Error calling " .. a .. mod)
+  elseif type(mod) == 'table' and mod.setup then
+    mod.setup()
   end
 end
 

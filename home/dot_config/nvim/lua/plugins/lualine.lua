@@ -78,6 +78,12 @@ components.filename = {
   },
 }
 
+-- External changes indicator
+components.external_changes = {
+  require('external-changes').lualine_component,
+  color = { fg = '#a6e3a1', gui = 'bold' },
+}
+
 -- Search count
 components.searchcount = {
   'searchcount',
@@ -163,6 +169,7 @@ function M.setup()
       },
       lualine_c = {
         components.filename,
+        components.external_changes,
         components.searchcount,
         components.recording,
       },
