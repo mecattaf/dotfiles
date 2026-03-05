@@ -1,4 +1,5 @@
-g.mapleader = ' '
+local opt = vim.opt
+local g = vim.g
 
 -- basic
 opt.scrolloff = 3
@@ -9,9 +10,8 @@ opt.clipboard = 'unnamedplus'
 opt.swapfile = false
 opt.undofile = true
 -- opt.cmdheight = 0
-opt.termguicolors = true
 opt.showmode = false
-opt.cul = true
+opt.cursorline = true
 
 -- timeout stuff
 opt.updatetime = 100
@@ -32,7 +32,6 @@ opt.signcolumn = "yes"
 opt.switchbuf = "newtab"
 opt.splitbelow = true
 opt.splitright = true
-opt.hidden = true
 opt.fillchars = {
   eob = " ",
   diff = " ",

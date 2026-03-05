@@ -11,7 +11,7 @@ nvim_tree.setup {
   },
   disable_netrw = true,
   hijack_cursor = true,
-  update_cwd = true,
+  sync_root_with_cwd = true,
   filesystem_watchers = {
     enable = true,
     debounce_delay = 100,
@@ -23,7 +23,9 @@ nvim_tree.setup {
       enable = true,
     },
     icons = {
-      webdev_colors = false,
+      web_devicons = {
+        file = { color = false },
+      },
       show = {
         file = false,
         folder = true,

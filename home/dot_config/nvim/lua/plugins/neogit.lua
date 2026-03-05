@@ -5,10 +5,8 @@ if not present then
 end
 
 neogit.setup({
-  -- Auto-fetch on open
-  disable_commit_confirmation = false,
   auto_refresh = true,
-  kind = "tab",  -- Opens in new tab
+  kind = "tab",
   signs = {
     section = { "", "" },
     item = { "", "" },
@@ -18,11 +16,6 @@ neogit.setup({
     diffview = true,
     telescope = true,
   },
-  -- Use Telescope for branch selection
-  use_telescope = true,
-  telescope_sorter = function()
-    return require("telescope").extensions.fzf.native_fzf_sorter()
-  end,
 })
 
 -- Smart auto-fetch when opening Neogit
@@ -99,7 +92,7 @@ vim.api.nvim_create_autocmd("User", {
                 local neogit_open = false
                 for _, win in ipairs(vim.api.nvim_list_wins()) do
                   local buf = vim.api.nvim_win_get_buf(win)
-                  local ft = vim.api.nvim_buf_get_option(buf, 'filetype')
+                  local ft = vim.bo[buf].filetype
                   if ft == 'NeogitStatus' then
                     neogit_open = true
                     break

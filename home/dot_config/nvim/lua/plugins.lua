@@ -1,5 +1,9 @@
+local fn = vim.fn
+local opt = vim.opt
+local g = vim.g
+
 local lazypath = fn.stdpath("data") .. "/lazy/lazy.nvim"
-if not vim.loop.fs_stat(lazypath) then
+if not vim.uv.fs_stat(lazypath) then
   fn.system({
     "git",
     "clone",
@@ -50,7 +54,7 @@ require("lazy").setup({
     end
   },
   {
-    'norcalli/nvim-colorizer.lua',
+    'catgoose/nvim-colorizer.lua',
     config = function()
       require('colorizer').setup()
     end
@@ -64,22 +68,7 @@ require("lazy").setup({
     end
   },
   {
-    'nathom/filetype.nvim',
-    config = function()
-      require('filetype').setup({
-        overrides = {
-          extensions = {
-            sh = "sh",
-          },
-          literal = {
-          },
-        },
-      })
-    end
-  },
-  {
     'nvim-treesitter/nvim-treesitter',
-    dependencies = { 'nathom/filetype.nvim' },
     config = function()
       require('nvim-treesitter.configs').setup({
         ensure_installed = { "markdown", "markdown_inline" },
@@ -92,7 +81,7 @@ require("lazy").setup({
     end
   },
   {
-    'kyazdani42/nvim-tree.lua',
+    'nvim-tree/nvim-tree.lua',
     config = function()
       require('plugins.nvim-tree')
     end
@@ -135,10 +124,10 @@ require("lazy").setup({
   },
   {
    'catppuccin/nvim',
-   as = 'catppuccin',
+   name = 'catppuccin',
    config = function()
-     vim.g.catppuccin_flavour = "mocha"
      require('catppuccin').setup({
+       flavour = "mocha",
        transparent_background = true,
        color_overrides = {
          mocha = {

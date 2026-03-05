@@ -47,16 +47,20 @@ local function on_post_reload()
       local hl_group = old_count == 0 and 'DiffAdd' or 'DiffChange'
 
       for i = new_start, math.min(new_start + new_count - 1, total_new) do
-        pcall(vim.api.nvim_buf_add_highlight, bufnr, ns, hl_group, i - 1, 0, -1)
+        pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, i - 1, 0, {
+          end_row = i - 1,
+          hl_eol = true,
+          hl_group = hl_group,
+        })
       end
     end
   end
 
-  vim.b[bufnr].externally_modified_at = vim.loop.now()
+  vim.b[bufnr].externally_modified_at = vim.uv.now()
   vim.b[bufnr].externally_modified_hunks = #hunks
   pcall(function() require('lualine').refresh() end)
 
-  local timer = vim.loop.new_timer()
+  local timer = vim.uv.new_timer()
   pending_timers[bufnr] = timer
   timer:start(fade_ms, 0, vim.schedule_wrap(function()
     if vim.api.nvim_buf_is_valid(bufnr) then
@@ -74,7 +78,7 @@ function M.lualine_component()
   local modified_at = vim.b.externally_modified_at
   if not modified_at then return '' end
 
-  local elapsed = vim.loop.now() - modified_at
+  local elapsed = vim.uv.now() - modified_at
   if elapsed < fade_ms then
     local hunks = vim.b.externally_modified_hunks or 0
     return '  ' .. hunks .. (hunks == 1 and ' change' or ' changes')
