@@ -188,8 +188,29 @@ require("lazy").setup({
     },
     cmd = { "DiffviewOpen", "DiffviewClose", "DiffviewToggleFiles", "DiffviewFocusFiles" },
     config = function()
-      require("diffview").setup()
+      require("diffview").setup({
+        default_args = {
+          DiffviewOpen = { '--imply-local' },
+        },
+        keymaps = {
+          view = {
+            { 'n', 'q', '<cmd>DiffviewClose<cr>', { desc = 'Close diffview' } },
+          },
+          file_panel = {
+            { 'n', 'q', '<cmd>DiffviewClose<cr>', { desc = 'Close diffview' } },
+          },
+          file_history_panel = {
+            { 'n', 'q', '<cmd>DiffviewClose<cr>', { desc = 'Close diffview' } },
+          },
+        },
+      })
       vim.opt.fillchars:append { diff = "╱" }
+      vim.api.nvim_create_autocmd('User', {
+        pattern = 'DiffviewViewLeave',
+        callback = function()
+          vim.cmd ':DiffviewClose'
+        end,
+      })
     end
   },
   {

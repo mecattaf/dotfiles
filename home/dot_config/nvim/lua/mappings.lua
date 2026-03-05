@@ -108,9 +108,9 @@ setup_neoscroll()
 -- GIT INTEGRATION (commented out — not currently using git shortcuts)
 -- ============================================================================
 
--- -- Git tools
--- map("n", "<leader>dv", "<cmd>DiffviewOpen<cr>")
--- map("n", "<leader>dc", "<cmd>DiffviewClose<cr>")
+-- Git tools
+map("n", "<leader>dv", "<cmd>DiffviewOpen<cr>")
+map("n", "<leader>dc", "<cmd>DiffviewClose<cr>")
 -- map("n", "<leader>ng", "<cmd>Neogit<cr>")
 --
 -- map("n", "<leader>gf", ":!git fetch --all<CR>")  -- Quick fetch
@@ -193,3 +193,17 @@ lua_map("n", "<leader>ko", function()
     kitty_cmd("launch --type=os-window --cwd=current nvim -- " .. vim.fn.shellescape(cfile))
   end
 end)
+
+-- ============================================================================
+-- YANK WITH PATH (for Claude Code)
+-- ============================================================================
+
+local yank = require('yank')
+
+-- Normal mode: yank file paths
+lua_map("n", "<leader>yr", function() yank.yank_path(yank.get_buffer_cwd_relative(), 'relative') end)
+lua_map("n", "<leader>ya", function() yank.yank_path(yank.get_buffer_absolute(), 'absolute') end)
+
+-- Visual mode: yank selection with file path + line range
+lua_map("v", "<leader>yr", function() yank.yank_visual_with_path(yank.get_buffer_cwd_relative(), 'relative') end)
+lua_map("v", "<leader>ya", function() yank.yank_visual_with_path(yank.get_buffer_absolute(), 'absolute') end)

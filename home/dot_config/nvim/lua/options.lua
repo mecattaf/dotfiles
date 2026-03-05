@@ -9,6 +9,7 @@ opt.titlestring = 'nvim %f'
 opt.clipboard = 'unnamedplus'
 opt.swapfile = false
 opt.undofile = true
+opt.autoread = true
 -- opt.cmdheight = 0
 opt.showmode = false
 opt.cursorline = true

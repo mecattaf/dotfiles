@@ -4,6 +4,9 @@ local modules = {
   'options',
   'mappings',
   'plugins',
+  'directory-watcher',
+  'hotreload',
+  'diffview-watcher',
   'external-changes',
 }
 

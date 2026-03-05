@@ -89,14 +89,6 @@ end
 function M.setup()
   local augroup = vim.api.nvim_create_augroup('ExternalChanges', { clear = true })
 
-  vim.opt.autoread = true
-
-  vim.api.nvim_create_autocmd({ 'FocusGained', 'BufEnter', 'CursorHold', 'CursorHoldI' }, {
-    group = augroup,
-    pattern = '*',
-    command = 'checktime',
-  })
-
   vim.api.nvim_create_autocmd('FileChangedShell', {
     group = augroup,
     pattern = '*',
