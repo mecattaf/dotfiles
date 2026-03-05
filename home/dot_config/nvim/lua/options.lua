@@ -12,6 +12,7 @@ opt.undofile = true
 -- opt.cmdheight = 0
 opt.showmode = false
 opt.cursorline = true
+opt.termguicolors = true
 
 -- timeout stuff
 opt.updatetime = 100
