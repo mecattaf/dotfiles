@@ -43,19 +43,6 @@ require("lazy").setup({
     end
   },
   {
-    'ggandor/flit.nvim',
-    dependencies = { { url = 'https://codeberg.org/andyg/leap.nvim' } },
-    config = function()
-      require('flit').setup {
-        keys = { f = 'f', F = 'F', t = 't', T = 'T' },
-        labeled_modes = "v",
-        clever_repeat = true,
-        multiline = true,
-        opts = {}
-      }
-    end
-  },
-  {
     'catgoose/nvim-colorizer.lua',
     config = function()
       require('colorizer').setup()
