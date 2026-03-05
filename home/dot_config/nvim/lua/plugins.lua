@@ -278,14 +278,6 @@ require("lazy").setup({
 
   -- ===== NEW PLUGINS ADDED BELOW =====
   
-  -- NEW: mdx.nvim - MDX file support
-  {
-    "davidmh/mdx.nvim",
-    config = true,
-    dependencies = { "nvim-treesitter/nvim-treesitter" },
-    ft = "mdx",  -- Lazy-loads on .mdx files
-  },
-
   -- IMPROVED: pipeline.nvim - CI/CD pipeline viewer (using yq instead of make)
   {
     "topaxi/pipeline.nvim",
@@ -326,7 +318,7 @@ require("lazy").setup({
       "williamboman/mason-lspconfig.nvim",
       "neovim/nvim-lspconfig",
     },
-    ft = { "markdown", "md", "mdx" },
+    ft = { "markdown", "md" },
     config = function()
       require("mason").setup()
       require("mason-lspconfig").setup({
