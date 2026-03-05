@@ -44,9 +44,9 @@ map("n", ";", ":")
 map("n", "<TAB>", ":bnext<CR>")
 map("n", "<S-TAB>", ":bprev<CR>")
 
--- Window splits
-map("n", "hs", ":split<CR>")
-map("n", "vs", ":vs<CR>")
+-- Window splits (leader-prefixed to avoid lag on h/v motions)
+map("n", "<leader>hs", ":split<CR>")
+map("n", "<leader>vs", ":vs<CR>")
 
 -- Save operations
 map("i", "<C-S>", "<ESC>:w<CR><Insert>")
@@ -70,7 +70,6 @@ map("i", "<S-TAB>", "<ESC><<<Ins>")
 map("n", "<leader>m", ":lua Minimal()<CR>")
 map("n", "<leader>n", ":set relativenumber!<CR>")
 map("n", "<leader>z", ":ZenMode<CR>")
-map("n", "<leader>u", ":Twilight<CR>")
 
 -- ============================================================================
 -- PLUGIN MAPPINGS
@@ -98,72 +97,99 @@ local function setup_neoscroll()
   lua_map("n", "<C-d>", function() neoscroll.ctrl_d({ duration = 200, easing = 'sine' }) end)
   lua_map("n", "<C-y>", function() neoscroll.scroll(-0.1, { move_cursor=false, duration = 80 }) end)
   lua_map("n", "<C-e>", function() neoscroll.scroll(0.1, { move_cursor=false, duration = 80 }) end)
+  lua_map("n", "zt", function() neoscroll.zt({ half_win_duration = 150 }) end)
+  lua_map("n", "zz", function() neoscroll.zz({ half_win_duration = 150 }) end)
+  lua_map("n", "zb", function() neoscroll.zb({ half_win_duration = 150 }) end)
 end
 
 setup_neoscroll()
 
 -- ============================================================================
--- GIT INTEGRATION
+-- GIT INTEGRATION (commented out — not currently using git shortcuts)
 -- ============================================================================
 
--- Git tools
-map("n", "<leader>dv", "<cmd>DiffviewOpen<cr>")
-map("n", "<leader>dc", "<cmd>DiffviewClose<cr>")
-map("n", "<leader>ng", "<cmd>Neogit<cr>")
+-- -- Git tools
+-- map("n", "<leader>dv", "<cmd>DiffviewOpen<cr>")
+-- map("n", "<leader>dc", "<cmd>DiffviewClose<cr>")
+-- map("n", "<leader>ng", "<cmd>Neogit<cr>")
+--
+-- map("n", "<leader>gf", ":!git fetch --all<CR>")  -- Quick fetch
+-- map("n", "<leader>gr", ":DiffviewOpen origin/main...HEAD<CR>")  -- Review against main
+--
+-- -- GitHub integration
+-- map("n", "<leader>oi", "<cmd>Octo issue list<cr>")
+-- map("n", "<leader>op", "<cmd>Octo pr list<cr>")
+--
+-- -- Gitsigns hunk navigation
+-- lua_map("n", "]c", function()
+--   if vim.wo.diff then
+--     return "]c"
+--   end
+--   vim.schedule(function()
+--     require('gitsigns').next_hunk()
+--   end)
+--   return "<Ignore>"
+-- end, { expr = true })
+--
+-- lua_map("n", "[c", function()
+--   if vim.wo.diff then
+--     return "[c"
+--   end
+--   vim.schedule(function()
+--     require('gitsigns').prev_hunk()
+--   end)
+--   return "<Ignore>"
+-- end, { expr = true })
+--
+-- -- Gitsigns hunk operations
+-- local gitsigns_maps = {
+--   { "n", "<leader>hs", ":Gitsigns stage_hunk<CR>" },
+--   { "n", "<leader>hr", ":Gitsigns reset_hunk<CR>" },
+--   { "v", "<leader>hs", ":Gitsigns stage_hunk<CR>" },
+--   { "v", "<leader>hr", ":Gitsigns reset_hunk<CR>" },
+--   { "n", "<leader>hp", ":Gitsigns preview_hunk<CR>" },
+--   { "n", "<leader>hi", ":Gitsigns preview_hunk_inline<CR>" },
+--   { "n", "<leader>hb", ":Gitsigns blame_line<CR>" },
+--   { "n", "<leader>tb", ":Gitsigns toggle_current_line_blame<CR>" },
+--   { "n", "<leader>tw", ":Gitsigns toggle_word_diff<CR>" },
+--   { "o", "ih", ":<C-U>Gitsigns select_hunk<CR>" },
+--   { "x", "ih", ":<C-U>Gitsigns select_hunk<CR>" },
+-- }
+--
+-- for _, mapping in ipairs(gitsigns_maps) do
+--   map(mapping[1], mapping[2], mapping[3])
+-- end
 
--- NEW! 
-map("n", "<leader>gf", ":!git fetch --all<CR>")  -- Quick fetch
-map("n", "<leader>gr", ":DiffviewOpen origin/main...HEAD<CR>")  -- Review against main
+-- ============================================================================
+-- KITTY INTEGRATION
+-- ============================================================================
 
--- GitHub integration
-map("n", "<leader>oi", "<cmd>Octo issue list<cr>")
-map("n", "<leader>op", "<cmd>Octo pr list<cr>")
-
--- Gitsigns hunk navigation
-lua_map("n", "]c", function()
-  if vim.wo.diff then
-    return "]c"
-  end
-  vim.schedule(function() 
-    require('gitsigns').next_hunk() 
-  end)
-  return "<Ignore>"
-end, { expr = true })
-
-lua_map("n", "[c", function()
-  if vim.wo.diff then
-    return "[c"
-  end
-  vim.schedule(function() 
-    require('gitsigns').prev_hunk() 
-  end)
-  return "<Ignore>"
-end, { expr = true })
-
--- Gitsigns hunk operations
-local gitsigns_maps = {
-  -- Hunk staging/reset
-  { "n", "<leader>hs", ":Gitsigns stage_hunk<CR>" },
-  { "n", "<leader>hr", ":Gitsigns reset_hunk<CR>" },
-  { "v", "<leader>hs", ":Gitsigns stage_hunk<CR>" },
-  { "v", "<leader>hr", ":Gitsigns reset_hunk<CR>" },
-  
-  -- Hunk preview
-  { "n", "<leader>hp", ":Gitsigns preview_hunk<CR>" },
-  { "n", "<leader>hi", ":Gitsigns preview_hunk_inline<CR>" },
-  
-  -- Blame operations
-  { "n", "<leader>hb", ":Gitsigns blame_line<CR>" },
-  { "n", "<leader>tb", ":Gitsigns toggle_current_line_blame<CR>" },
-  
-  -- Word diff toggle
-  { "n", "<leader>tw", ":Gitsigns toggle_word_diff<CR>" },
-  
-  -- Text objects
-  { "o", "ih", ":<C-U>Gitsigns select_hunk<CR>" },
-  { "x", "ih", ":<C-U>Gitsigns select_hunk<CR>" },
-}
-
-for _, mapping in ipairs(gitsigns_maps) do
-  map(mapping[1], mapping[2], mapping[3])
+local function kitty_cmd(args)
+  local socket = vim.env.KITTY_LISTEN_ON
+  if not socket then return end
+  vim.fn.jobstart(
+    "kitty @ --to " .. socket .. " " .. args,
+    { detach = true }
+  )
 end
+
+local function is_url(s)
+  if s:match("^https?://") then return true end
+  if s:match("^www%.") then return true end
+  if s:match("^localhost[:/]") then return true end
+  if s:match("^127%.0%.0%.1[:/]") then return true end
+  return false
+end
+
+lua_map("n", "<leader>kw", function() kitty_cmd("launch --type=os-window") end)
+lua_map("n", "<leader>kg", function() kitty_cmd("launch --type=os-window --cwd=current lazygit") end)
+lua_map("n", "<leader>ko", function()
+  local cfile = vim.fn.expand("<cfile>")
+  if cfile == "" then return end
+
+  if is_url(cfile) then
+    vim.fn.jobstart({ "xdg-open", cfile }, { detach = true })
+  else
+    kitty_cmd("launch --type=os-window --cwd=current nvim -- " .. vim.fn.shellescape(cfile))
+  end
+end)

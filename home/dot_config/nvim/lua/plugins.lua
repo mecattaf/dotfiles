@@ -144,7 +144,25 @@ require("lazy").setup({
   {
     "folke/zen-mode.nvim",
     config = function()
-      require("zen-mode").setup()
+      require("zen-mode").setup({
+        window = {
+          width = 90,
+          options = {
+            signcolumn = "no",
+            number = false,
+            relativenumber = false,
+            cursorline = false,
+          },
+        },
+        plugins = {
+          twilight = { enabled = true },  -- auto-enable twilight in zen
+          kitty = {
+            enabled = true,
+            font = "+2",  -- bump kitty font by 2pt in zen mode
+          },
+          gitsigns = { enabled = false },  -- hide git signs in zen
+        },
+      })
     end
   },
   {
