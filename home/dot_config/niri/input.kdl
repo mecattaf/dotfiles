@@ -1,0 +1,43 @@
+input {
+    keyboard {
+        // scroll: input type:keyboard { xkb_options caps:none }
+        xkb {
+            options "caps:none"
+        }
+        numlock
+    }
+
+    touchpad {
+        // scroll: input type:touchpad { tap enabled }
+        tap
+        // scroll: input type:touchpad { dwt enabled }
+        dwt
+        // scroll: input type:touchpad { natural_scroll enabled }
+        natural-scroll
+        accel-profile "adaptive"
+        // scroll: input type:touchpad { click_method clickfinger }
+        click-method "clickfinger"
+    }
+
+    mouse {
+        accel-profile "flat"
+    }
+
+    trackpoint {}
+
+    // scroll: focus_follows_mouse no
+    // ^ niri defaults to click-to-focus. Using focus-follows-mouse with scroll prevention:
+    // focus-follows-mouse max-scroll-amount="0%"
+
+    // scroll: gesture_scroll_enable true
+    // scroll: gesture_scroll_fingers 4
+    // scroll: gesture_scroll_sensitivity 1.0
+    // ^ NO NIRI EQUIVALENT
+
+    // scroll: focus_wrapping no
+    // ^ NO NIRI EQUIVALENT (niri's scrolling model doesn't wrap)
+}
+
+clipboard {
+    disable-primary
+}

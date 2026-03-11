@@ -1,0 +1,45 @@
+// scroll: exec wl-gammarelay-rs run
+spawn-at-startup "wl-gammarelay-rs" "run"
+
+// scroll: exec wl-paste --type text --watch cliphist store
+spawn-at-startup "wl-paste" "--type" "text" "--watch" "cliphist" "store"
+// scroll: exec wl-paste --type image --watch cliphist store
+spawn-at-startup "wl-paste" "--type" "image" "--watch" "cliphist" "store"
+
+// scroll: exec kanshi
+spawn-at-startup "kanshi"
+
+// scroll: exec vicinae server
+spawn-at-startup "vicinae" "server"
+
+// scroll: exec dms run
+// ^ DROPPED: replaced by quickshell (separate startup)
+
+// scroll: exec swaybg -c '#000000'
+// ^ DROPPED: niri uses layout { background-color "#000000" }
+
+
+// ── gsettings ────────────────────────────────────────────────
+// scroll: exec_always {
+// scroll:         gsettings set $gnome-schema cursor-theme 'Bibata-Modern-Classic'
+spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "cursor-theme" "Bibata-Modern-Classic"
+// scroll:         gsettings set $gnome-schema color-scheme 'prefer-dark'
+spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "color-scheme" "prefer-dark"
+// scroll:         gsettings set $gnome-schema cursor-size '48'
+spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "cursor-size" "48"
+// scroll:         gsettings set $gnome-schema text-scaling-factor '1.0'
+spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "text-scaling-factor" "1.0"
+// scroll:         gsettings set $gnome-schema gtk-theme 'Catppuccin-Noir-Standard-Green-Dark'
+spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "gtk-theme" "Catppuccin-Noir-Standard-Green-Dark"
+// scroll:         gsettings set org.gnome.desktop.interface.wm.preferences theme 'Catppuccin-Noir-Standard-Green-Dark'
+// ^ corrected schema: org.gnome.desktop.wm.preferences (not .interface.wm.preferences)
+spawn-at-startup "gsettings" "set" "org.gnome.desktop.wm.preferences" "theme" "Catppuccin-Noir-Standard-Green-Dark"
+// scroll:         gsettings set org.gnome.desktop.wm.preferences button-layout ""
+spawn-at-startup "gsettings" "set" "org.gnome.desktop.wm.preferences" "button-layout" ""
+// scroll:         #gsettings set $gnome-schema icon-theme 'Your icon theme'
+spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "icon-theme" "MacTahoe-grey"
+// scroll: }
+// ^ note: exec_always re-ran on reload. spawn-at-startup runs once. gsettings persist, so fine.
+
+// nautilus-open-any-terminal extension
+spawn-at-startup "gsettings" "set" "com.github.stunkymonkey.nautilus-open-any-terminal" "terminal" "kitty"

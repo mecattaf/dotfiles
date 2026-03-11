@@ -1,0 +1,315 @@
+binds {
+    // scroll: floating_modifier $mod normal
+    // ^ niri handles floating drag natively
+
+
+    // ── Application Launchers ────────────────────────────────────
+
+    // scroll: bindsym $mod+Return exec kitty -e fish
+    Mod+Return hotkey-overlay-title="Terminal" { spawn "kitty" "-e" "fish"; }
+
+    // scroll: bindsym $mod+Shift+Return exec $scripts/nvim-terminal.sh
+    // ^ DROPPED: used scrollmsg (scroll-specific IPC)
+
+    // scroll: bindsym $mod+D exec vicinae open
+    Mod+D hotkey-overlay-title="Vicinae" { spawn "vicinae" "open"; }
+
+    // scroll: bindsym $mod+E exec thunar
+    Mod+E hotkey-overlay-title="File Manager" { spawn "thunar"; }
+
+    // scroll: bindsym Ctrl+N exec flatpak run com.google.Chrome
+    Ctrl+N { spawn "flatpak" "run" "com.google.Chrome"; }
+    // scroll: bindsym Ctrl+Shift+N exec flatpak run com.google.Chrome --incognito
+    Ctrl+Shift+N { spawn "flatpak" "run" "com.google.Chrome" "--incognito"; }
+
+
+    // ── Quickshell (was DMS) ─────────────────────────────────────
+
+    // scroll: set $launcher dms ipc call spotlight toggle
+    // scroll: bindsym $mod+Shift+D exec $launcher
+    // QUICKSHELL TODO: app launcher
+    // Mod+Shift+D hotkey-overlay-title="App Launcher" { spawn "..." ; }
+
+    // scroll: set $clipboard dms ipc call clipboard toggle
+    // scroll: bindsym $mod+V exec $clipboard
+    // QUICKSHELL TODO: clipboard manager
+    // Mod+V hotkey-overlay-title="Clipboard" { spawn "..." ; }
+
+    // scroll: bindsym $mod+Shift+V exec rofimoji -a clipboard
+    Mod+Shift+V hotkey-overlay-title="Emoji Picker" { spawn "rofimoji" "-a" "clipboard"; }
+
+    // scroll: set $bar dms ipc call bar toggle
+    // scroll: bindsym $mod+I exec $bar
+    // QUICKSHELL TODO: bar/panel toggle
+    // Mod+I hotkey-overlay-title="Toggle Bar" { spawn "..." ; }
+
+    // scroll: set $notif_dismiss dms ipc call notifications toggle
+    // scroll: bindsym $mod+O exec $notif_dismiss
+    // QUICKSHELL TODO: notification center
+    // Mod+O hotkey-overlay-title="Notifications" { spawn "..." ; }
+
+    // scroll: set $settings dms ipc call settings toggle
+    // scroll: bindsym $mod+comma exec $settings
+    // QUICKSHELL TODO: settings panel
+    // Mod+Comma hotkey-overlay-title="Settings" { spawn "..." ; }
+
+    // scroll: bindsym $mod+B exec dms ipc control-center toggle
+    // QUICKSHELL TODO: control center
+    // Mod+B hotkey-overlay-title="Control Center" { spawn "..." ; }
+
+
+    // ── Screenshots ──────────────────────────────────────────────
+
+    // scroll: set $swappy-full $scripts/swappy full
+    // scroll: bindsym $mod+A exec $swappy-full
+    Mod+A hotkey-overlay-title="Swappy Full" { spawn-sh "~/.config/niri/scripts/swappy full"; }
+
+    // scroll: set $swappy-area $scripts/swappy area
+    // scroll: bindsym $mod+S exec $swappy-area
+    Mod+S hotkey-overlay-title="Swappy Area" { spawn-sh "~/.config/niri/scripts/swappy area"; }
+
+    // scroll: set $screenshot-full $scripts/screenshot full
+    // scroll: set $screenshot-area $scripts/screenshot area
+    // scroll: bindsym $mod+Shift+ exec $screenshot-full    (broken line: missing key)
+    // scroll: bindsym $mod+Shift+A exec $screenshot-area
+    // ^ Replaced by niri built-in screenshots:
+    Print { screenshot; }
+    Ctrl+Print { screenshot-screen; }
+    Alt+Print { screenshot-window; }
+    Mod+Shift+S { screenshot; }
+
+
+    // ── Color Picker ─────────────────────────────────────────────
+
+    // scroll: set $color-picker exec $scripts/colorpicker
+    // scroll: bindsym $mod+C exec $color-picker
+    // ^ Replaced by niri built-in:
+    Mod+C hotkey-overlay-title="Color Picker" { spawn "niri" "msg" "action" "pick-color"; }
+
+
+    // ── Media & Hardware Keys (F1-F10) ───────────────────────────
+
+    // scroll: bindsym F1 exec dms ipc call brightness decrement 5
+    // scroll: bindsym F2 exec dms ipc call brightness increment 5
+    // QUICKSHELL TODO: brightness control
+    // F1 { spawn "..." ; }
+    // F2 { spawn "..." ; }
+
+    // scroll: bindsym F3 exec dms ipc call mpris playPause
+    // scroll: bindsym F4 exec dms ipc call mpris previous
+    // scroll: bindsym F5 exec dms ipc call mpris next
+    // QUICKSHELL TODO: media control
+    // F3 { spawn "..." ; }
+    // F4 { spawn "..." ; }
+    // F5 { spawn "..." ; }
+
+    // scroll: bindsym F6 exec dms ipc call audio mute
+    // scroll: bindsym F7 exec dms ipc call audio decrement 3
+    // scroll: bindsym F8 exec dms ipc call audio increment 3
+    // QUICKSHELL TODO: volume control
+    // F6 { spawn "..." ; }
+    // F7 { spawn "..." ; }
+    // F8 { spawn "..." ; }
+
+    // scroll: set $pomodoro-timer $scripts/pomodoro menu
+    // scroll: bindsym F9 exec $pomodoro-timer
+    F9 hotkey-overlay-title="Pomodoro" { spawn-sh "~/.config/niri/scripts/pomodoro menu"; }
+
+    // scroll: bindsym F10 exec dms ipc call powermenu toggle
+    // QUICKSHELL TODO: power menu
+    // F10 hotkey-overlay-title="Power Menu" { spawn "..." ; }
+
+
+    // ── Chrome Webapps ───────────────────────────────────────────
+
+    // scroll: set $chrome flatpak run com.google.Chrome
+
+    // scroll: bindsym $mod+Shift+N exec $chrome --app=https://chat.openai.com/
+    Mod+Shift+N { spawn "flatpak" "run" "com.google.Chrome" "--app=https://chat.openai.com/"; }
+    // scroll: bindsym $mod+Shift+C exec $chrome --app=https://claude.ai/
+    Mod+Shift+C { spawn "flatpak" "run" "com.google.Chrome" "--app=https://claude.ai/"; }
+    // scroll: bindsym $mod+Shift+M exec $chrome --app=https://soundcloud.com
+    Mod+Shift+M { spawn "flatpak" "run" "com.google.Chrome" "--app=https://soundcloud.com"; }
+    // scroll: bindsym $mod+Shift+W exec $chrome --app=https://mail.google.com/
+    Mod+Shift+W { spawn "flatpak" "run" "com.google.Chrome" "--app=https://mail.google.com/"; }
+    // scroll: bindsym $mod+Shift+semicolon exec flatpak run com.obsproject.Studio
+    Mod+Shift+Semicolon { spawn "flatpak" "run" "com.obsproject.Studio"; }
+    // scroll: bindsym $mod+Shift+period exec $chrome --app=https://calendar.notion.so/
+    Mod+Shift+Period { spawn "flatpak" "run" "com.google.Chrome" "--app=https://calendar.notion.so/"; }
+    // scroll: bindsym $mod+Shift+E exec $chrome --app=https://drive.google.com/drive/u/0/
+    // ^ DROPPED: conflicts with quit
+
+
+    // ── Utilities ────────────────────────────────────────────────
+
+    // scroll: set $start-wshowkeys wshowkeys -F "JetBrainsMono Nerd Font 16" -a bottom
+    // scroll: bindsym $mod+apostrophe exec $start-wshowkeys
+    Mod+Apostrophe hotkey-overlay-title="Show Keys" { spawn-sh "wshowkeys -F 'JetBrainsMono Nerd Font 16' -a bottom"; }
+    // scroll: set $stop-wshowkeys pkill wshowkeys
+    // scroll: bindsym $mod+Shift+apostrophe exec $stop-wshowkeys
+    Mod+Shift+Apostrophe { spawn-sh "pkill wshowkeys"; }
+
+    Mod+Slash { show-hotkey-overlay; }
+
+
+    // ── Window Management ────────────────────────────────────────
+
+    // scroll: bindsym $mod+Shift+Q kill
+    Mod+Q { close-window; }
+
+    // ^ quit takes Mod+Shift+Q (see niri-specific section below)
+
+    // scroll: bindsym $mod+Tab floating toggle
+    Mod+Tab { toggle-window-floating; }
+
+    // scroll: bindsym $mod+Shift+Tab focus mode_toggle
+    Mod+Shift+Tab { switch-focus-between-floating-and-tiling; }
+
+    // scroll: bindsym $mod+grave layout_transpose
+    // ^ DROPPED: no niri equivalent
+
+
+    // ── Focus Navigation ─────────────────────────────────────────
+
+    // scroll: bindsym $mod+h     focus  left
+    Mod+H { focus-column-left; }
+    // scroll: bindsym $mod+j     focus  down
+    Mod+J { focus-window-down; }
+    // scroll: bindsym $mod+k     focus  up
+    Mod+K { focus-window-up; }
+    // scroll: bindsym $mod+l     focus  right
+    Mod+L { focus-column-right; }
+
+    // scroll: bindsym $mod+home  focus  beginning
+    Mod+Home { focus-column-first; }
+    // scroll: bindsym $mod+end   focus  end
+    Mod+End  { focus-column-last; }
+
+
+    // ── Window/Column Movement ───────────────────────────────────
+
+    // scroll: bindsym $mod+Shift+h move left nomode
+    Mod+Shift+H { move-column-left; }
+    // scroll: bindsym $mod+Shift+l move right nomode
+    Mod+Shift+L { move-column-right; }
+
+    // scroll: bindsym $mod+Shift+j move container to output down; focus output down
+    Mod+Shift+J { move-column-to-monitor-down; }
+    // scroll: bindsym $mod+Shift+k move container to output up; focus output up
+    Mod+Shift+K { move-column-to-monitor-up; }
+
+    // scroll: bindsym $mod+Alt+j move down nomode
+    Mod+Alt+J { move-window-down; }
+    // scroll: bindsym $mod+Alt+k move up nomode
+    Mod+Alt+K { move-window-up; }
+
+    // scroll: bindsym $mod+Alt+h move left
+    // ^ closest niri equivalent: consume/expel (absorb into or eject from adjacent column)
+    Mod+Alt+H { consume-or-expel-window-left; }
+    // scroll: bindsym $mod+Alt+l move right
+    Mod+Alt+L { consume-or-expel-window-right; }
+
+
+    // ── Column/Window Sizing ─────────────────────────────────────
+
+    // scroll: bindsym $mod+f        cycle_size h next
+    Mod+F { switch-preset-column-width; }
+    // scroll: bindsym $mod+Shift+f  cycle_size h prev
+    // ^ DROPPED: niri only cycles forward
+
+    // scroll: bindsym $mod+g        cycle_size v next
+    Mod+G { switch-preset-window-height; }
+    // scroll: bindsym $mod+Shift+g  cycle_size v prev
+    // ^ DROPPED: niri only cycles forward
+
+    Mod+Minus { set-column-width "-10%"; }
+
+
+    // ── Fullscreen ───────────────────────────────────────────────
+
+    // scroll: bindsym $mod+equal fullscreen_application toggle
+    Mod+Equal { fullscreen-window; }
+    // scroll: bindsym $mod+Shift+equal fullscreen toggle
+    Mod+Shift+Equal { maximize-column; }
+    // scroll: bindsym $mod+Ctrl+equal fullscreen_application reset
+    // ^ DROPPED: fullscreen-window is a toggle in niri
+
+    Mod+Ctrl+F { maximize-window-to-edges; }
+
+
+    // ── Gap Adjustment ───────────────────────────────────────────
+
+    // scroll: bindsym $mod+Page_Up scale_workspace incr 0.1
+    // scroll: bindsym $mod+Page_Down scale_workspace incr -0.1
+    // ^ scale_workspace has no niri equivalent.
+    // Repurposed for gap adjustment:
+    // TODO: niri has no built-in gap action — needs IPC script via niri msg
+    // Mod+Page_Up { ??? increase gaps 10px }
+    // Mod+Page_Down { ??? decrease gaps 10px }
+
+    // scroll: bindsym $mod+Ctrl+Page_Up scale_workspace reset
+    // ^ DROPPED
+    // scroll: bindsym $mod+Ctrl+Page_Down scale_workspace overview
+    // ^ see Mod+Ctrl+O toggle-overview below
+
+
+    // ── Workspace Navigation ─────────────────────────────────────
+
+    // scroll: bindsym $mod+1 $mark-toggle 1  (smart marks — all 30 bindings dropped)
+    // scroll: bindsym $mod+Shift+1 $mark-clear 1
+    // scroll: bindsym $mod+Ctrl+1 $mark-show 1
+    // ^ DROPPED: Lua smart marks system. Mod+1-9 repurposed for workspaces.
+    Mod+1 { focus-workspace 1; }
+    Mod+2 { focus-workspace 2; }
+    Mod+3 { focus-workspace 3; }
+    Mod+4 { focus-workspace 4; }
+    Mod+5 { focus-workspace 5; }
+    Mod+6 { focus-workspace 6; }
+    Mod+7 { focus-workspace 7; }
+    Mod+8 { focus-workspace 8; }
+    Mod+9 { focus-workspace 9; }
+    Mod+Ctrl+1 { move-column-to-workspace 1; }
+    Mod+Ctrl+2 { move-column-to-workspace 2; }
+    Mod+Ctrl+3 { move-column-to-workspace 3; }
+    Mod+Ctrl+4 { move-column-to-workspace 4; }
+    Mod+Ctrl+5 { move-column-to-workspace 5; }
+    Mod+Ctrl+6 { move-column-to-workspace 6; }
+    Mod+Ctrl+7 { move-column-to-workspace 7; }
+    Mod+Ctrl+8 { move-column-to-workspace 8; }
+    Mod+Ctrl+9 { move-column-to-workspace 9; }
+
+    Mod+U { focus-workspace-down; }
+
+    Mod+WheelScrollDown      cooldown-ms=150 { focus-workspace-down; }
+    Mod+WheelScrollUp        cooldown-ms=150 { focus-workspace-up; }
+    Mod+Ctrl+WheelScrollDown cooldown-ms=150 { move-column-to-workspace-down; }
+    Mod+Ctrl+WheelScrollUp   cooldown-ms=150 { move-column-to-workspace-up; }
+    Mod+WheelScrollRight { focus-column-right; }
+    Mod+WheelScrollLeft  { focus-column-left; }
+
+
+    // ── Niri-specific (no scroll origin) ─────────────────────────
+
+    Mod+W { toggle-column-tabbed-display; }
+    Mod+BracketLeft  { consume-or-expel-window-left; }
+    Mod+BracketRight { consume-or-expel-window-right; }
+    Mod+Ctrl+C { center-column; }
+    Mod+Ctrl+O repeat=false { toggle-overview; }
+    Mod+Ctrl+R { reset-window-height; }
+    Mod+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
+    Mod+Shift+P { power-off-monitors; }
+    Mod+Shift+Q { quit; }
+
+
+    // ── Dropped scroll-specific (no port) ────────────────────────
+    // scroll: bindsym $mod+BackSpace set_mode
+    // scroll: bindsym $mod+grave layout_transpose
+    // scroll: #bindsym --no-repeat $mod+slash jump
+    // scroll: jump_labels_color $cl_high
+    // scroll: jump_labels_scale 0.5
+    // scroll: jump_labels_keys asdfghjkl;
+    // scroll: bindgesture { swipe:3:right exec $scripts/gestures backward ... }
+    // scroll: bindgesture { pinch:4:outward jump ... }
+    // scroll: bindsym $mod+Shift+Return exec $scripts/nvim-terminal.sh
+    //   ^ all used scrollmsg or scroll Lua engine — no niri equivalent
+}

@@ -1,0 +1,37 @@
+// scroll: animations {
+// scroll:   enabled yes
+// scroll:   frequency_ms 16
+// scroll:   style clip
+// scroll:   default yes 120 var 3 [ 0.25 0.1 0.25 1 ]
+// scroll:   window_move yes 120 var 3 [ 0.25 0.1 0.25 1 ]
+// scroll:   window_open yes 100 var 3 [ 0.3 0 0.7 1 ]
+// scroll:   window_size yes 120 var 3 [ 0.25 0.1 0.25 1 ]
+// scroll: }
+// ^ niri uses a completely different animation system.
+// See: https://github.com/YaLTeR/niri/wiki/Configuration:-Animations
+animations {}
+
+hotkey-overlay {}
+
+// scroll: default_border pixel 1
+// scroll: default_floating_border normal
+prefer-no-csd
+
+screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
+
+// scroll: seat seat0 xcursor_theme Bibata-Modern-Classic 48
+// scroll: seat seat0 hide_cursor 1000
+cursor {
+    xcursor-theme "Bibata-Modern-Classic"
+    xcursor-size 48
+    hide-after-inactive-ms 1000
+}
+
+// scroll: font pango:JetBrainsMono Nerd Font 12
+// ^ NO NIRI EQUIVALENT: niri uses system fonts for its UI
+
+// scroll: exec systemctl --user import-environment DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP
+// scroll: exec hash dbus-update-activation-environment 2>/dev/null && \
+// scroll:         dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP=sway
+// ^ DELETE: niri-session handles env export and D-Bus activation natively
+environment {}

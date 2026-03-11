@@ -1,0 +1,51 @@
+// Global rounded corners
+window-rule {
+    geometry-corner-radius 4
+    clip-to-geometry true
+}
+
+// scroll: for_window [app_id="^chrome-.*"] shortcuts_inhibitor disable
+// ^ NO NIRI EQUIVALENT: use Mod+Escape to toggle keyboard-shortcuts-inhibit
+
+// scroll: for_window [app_id="io.bassi.Amberol"] border pixel 0, floating enable
+window-rule {
+    match app-id="io.bassi.Amberol"
+    open-floating true
+}
+
+// scroll: for_window [app_id="blueman-manager"] border pixel 0, floating enable, resize 35% 35%, move 63% 60%
+window-rule {
+    match app-id="blueman-manager"
+    open-floating true
+    // ^ niri can't set floating size/position via rules
+}
+
+// scroll: for_window [app_id="pavucontrol"] border pixel 0, floating enable, resize 35% 35%, move 63% 60%
+window-rule {
+    match app-id="pavucontrol"
+    open-floating true
+}
+
+// scroll: for_window [app_id="rofimoji"] border pixel 0, floating enable, resize 35% 35%, move 63% 60%
+window-rule {
+    match app-id="rofimoji"
+    open-floating true
+}
+
+// scroll: for_window [app_id="rofi"] border pixel 0, floating enable, resize 35% 35%, move 63% 60%
+window-rule {
+    match app-id="rofi"
+    open-floating true
+}
+
+// Firefox Picture-in-Picture
+window-rule {
+    match app-id=r#"firefox$"# title="^Picture-in-Picture$"
+    open-floating true
+}
+
+// Wezterm: no default column width
+window-rule {
+    match app-id=r#"^org\.wezfurlong\.wezterm$"#
+    default-column-width {}
+}

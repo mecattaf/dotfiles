@@ -1,0 +1,37 @@
+/*
+  o%%%%%o                               o%%%%%o
+ %%%%%%%%%%%o                       o%%%%%%%%%%%
+  O%%%%%%%%%%o                     o%%%%%%%%%%O
+    O%%%%%%%%%o                   o%%%%%%%%%O
+      O%%%%%%%%o                 o%%%%%%%%O
+        O%%%%%%%o               o%%%%%%%O
+          O%%%%%%o             o%%%%%%O
+           O%%%%%o             o%%%%%O
+            O%%%%o             o%%%%O
+           ++%%%%%%%%%%%%%%%%%%%%%%%++
+         ++++%%%%%%%%%%%%%%%%%%%%%%%++++
+       ==+++++%%%%%%%%%%%%%%%%%%%%%+++++==
+         ++++%%%%%%%%%%%%%%%%%%%%%%%++++
+           ++%%%%%%%%%%%%%%%%%%%%%%%++
+            O%%%%o             o%%%%O
+           O%%%%%o             o%%%%%O
+          O%%%%%%o             o%%%%%%O
+        O%%%%%%%o               o%%%%%%%O
+      O%%%%%%%%o                 o%%%%%%%%O
+    O%%%%%%%%%o                   o%%%%%%%%%O
+  O%%%%%%%%%%o                     o%%%%%%%%%%O
+ %%%%%%%%%%%o                       o%%%%%%%%%%%
+  o%%%%%o                               o%%%%%o
+
+  harness niri config
+*/
+
+include "input.kdl"
+include "layout.kdl"
+include "binds.kdl"
+include "window-rules.kdl"
+include "misc.kdl"
+include "startup.kdl"
+
+// local overrides (not tracked in dotfiles)
+include optional=true "local.kdl"
