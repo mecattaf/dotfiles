@@ -105,7 +105,7 @@ binds {
     // scroll: bindsym $mod+Shift+apostrophe exec $stop-wshowkeys
     Mod+Shift+Apostrophe { spawn-sh "pkill wshowkeys"; }
 
-    Mod+I hotkey-overlay-title="Toggle Top Bar" { spawn "quickshell" "ipc" "call" "bar" "toggle"; }
+    Mod+I hotkey-overlay-title="Toggle Top Bar" { spawn-sh "~/.config/niri/scripts/bar-toggle"; }
 
     Mod+Slash { show-hotkey-overlay; }
 
