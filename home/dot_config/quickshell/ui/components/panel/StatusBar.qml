@@ -27,6 +27,13 @@ Scope {
   property bool   inFullscreen: shown ? forceHide : appInFullscreen || forceHide
   property var    focusedscreen: null
   property var    focusedwindow: null
+  IpcHandler {
+    target: "bar"
+    function toggle() {
+      root.visible = !root.visible;
+    }
+  }
+
   Connections {
       target: Hyprland
       function onFocusedMonitorChanged() {
