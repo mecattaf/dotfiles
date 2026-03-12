@@ -23,7 +23,6 @@ import qs.ui.components.settings
 import qs.ui.components.background
 import qs.ui.components.screenshot
 import qs.ui.components.ai
-import qs.ui.components.greetd
 import qs.ui.components.about
 import qs.ui.controls.auxiliary
 import qs.ui.controls.advanced
@@ -55,7 +54,6 @@ Scope {
   Settings {}
   HyprPersist {}
   ReloadPopup {}
-  //Greeter {}
   Loader { active: Config.wallpaper.enable; sourceComponent: Background {}}
   Loader {
     active: Config.lockScreen.enable
