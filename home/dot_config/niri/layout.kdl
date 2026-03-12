@@ -51,8 +51,6 @@ layout {
     // scroll: layout_default_height 1.0
     // ^ NO NIRI EQUIVALENT
 
-    shadow { off }
-
     tab-indicator {
         active-color "#b4befe"
         inactive-color "#9399b2"

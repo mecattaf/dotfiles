@@ -84,7 +84,7 @@ binds {
     // scroll: set $color-picker exec $scripts/colorpicker
     // scroll: bindsym $mod+C exec $color-picker
     // ^ Replaced by niri built-in:
-    Mod+C hotkey-overlay-title="Color Picker" { spawn "niri" "msg" "action" "pick-color"; }
+    Mod+C hotkey-overlay-title="Color Picker" { spawn "niri" "msg" "pick-color"; }
 
 
     // ── Media & Hardware Keys (F1-F10) ───────────────────────────
