@@ -367,6 +367,9 @@ Scope {
   }
   IpcHandler {
     target: "notch"
+    function toggle() {
+      root.visible = !root.visible;
+    }
     function instance(code: string) {
       Logger.d("IPC::Notch", "Notch instance requested");
       root.notchInstance(code);

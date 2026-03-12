@@ -106,6 +106,7 @@ binds {
     Mod+Shift+Apostrophe { spawn-sh "pkill wshowkeys"; }
 
     Mod+I hotkey-overlay-title="Toggle Top Bar" { spawn-sh "~/.config/niri/scripts/bar-toggle"; }
+    Mod+Shift+I hotkey-overlay-title="Toggle Notch" { spawn-sh "~/.config/niri/scripts/notch-toggle"; }
 
     Mod+Slash { show-hotkey-overlay; }
 
