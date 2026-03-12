@@ -1,0 +1,156 @@
+#!/bin/bash
+# Pomodoro Timer — adapted from scroll, waybar refs removed
+
+[[ -n $POMO_FILE ]] && POMO=$POMO_FILE || POMO=$HOME/.local/share/pomo
+[[ -n $POMO_WORK_TIME ]] && WORK_TIME=$POMO_WORK_TIME || WORK_TIME=25
+[[ -n $POMO_BREAK_TIME ]] && BREAK_TIME=$POMO_BREAK_TIME || BREAK_TIME=5
+
+if [ "$(uname)" == "Darwin" ] || [ "${POMO_PREFIX_CMDS}" == "true" ]; then
+    DATE_CMD="gdate"; STAT_CMD="gstat"
+else
+    DATE_CMD="date"; STAT_CMD="stat"
+fi
+
+function pomo_start {
+    test -e "$(dirname -- "$POMO")" || mkdir -p "$(dirname -- "$POMO")"
+    :> "$POMO"
+    touch "$POMO"
+    pomo_ensure_services
+    notify-send -t 1500 "Pomodoro" "Focus: ${WORK_TIME}m"
+}
+
+function pomo_isstopped { [[ ! -e "$POMO" ]]; }
+
+function pomo_stop {
+    rm -f "$POMO"
+    pomo_stop_services
+    notify-send "Pomodoro Stopped" -t 1000
+}
+
+function pomo_stamp {
+    local ago=$1
+    local mtime=$(${DATE_CMD} --date "@$(( $(date +%s) - ago))" +%m%d%H%M.%S)
+    :> "$POMO"
+    touch -m -t "$mtime" "$POMO"
+}
+
+function pomo_ispaused { [[ $(wc -l < "$POMO") -gt 0 ]]; }
+
+function pomo_pause {
+    local running=$(pomo_stat)
+    if pomo_isstopped; then
+        notify-send "No Active Timer" -t 1000; return 1
+    elif pomo_ispaused; then
+        pomo_stamp "$running"
+        notify-send "Pomodoro Resumed" -t 1000
+    else
+        echo "$running" > "$POMO"
+        notify-send "Pomodoro Paused" -t 1000
+    fi
+}
+
+function pomo_restart {
+    pomo_isstopped || { pomo_stop; sleep 0.1; }
+    pomo_start
+}
+
+function pomo_update {
+    local running=$(pomo_stat)
+    local block_time=$(( (WORK_TIME+BREAK_TIME)*60 ))
+    if [[ $running -ge $block_time ]]; then
+        local ago=$(( running % block_time ))
+        local mtime=$(${DATE_CMD} --date "@$(( $(date +%s) - ago))" +%m%d%H%M.%S)
+        touch -m -t "$mtime" "$POMO"
+    fi
+}
+
+function pomo_stat {
+    [[ -e "$POMO" ]] && running=$(cat "$POMO") || running=0
+    if [[ -z $running ]]; then
+        pomo_start=$(${STAT_CMD} -c +%Y "$POMO")
+        now=$(${DATE_CMD} +%s)
+        running=$((now-pomo_start))
+    fi
+    echo $running
+}
+
+function pomo_status {
+    if ! pomo_isstopped; then
+        pomo_update
+        local running=$(pomo_stat)
+        local left=$(( WORK_TIME*60 - running ))
+        local prefix="Focus" icon="pomodoro"
+        if [[ $left -lt 0 ]]; then
+            left=$(( left + BREAK_TIME*60 ))
+            prefix="Break"
+        fi
+        pomo_ispaused && prefix="Paused"
+        local min=$(( left / 60 ))
+        local sec=$(( left - 60*min ))
+        printf "%s %02d:%02d\n" "$prefix" $min $sec
+    else
+        printf "Timer stopped\n"
+    fi
+}
+
+function pomo_notify_daemon {
+    while true; do
+        if [[ -e "$POMO" ]]; then
+            pomo_update
+            local running=$(pomo_stat)
+            local work_left=$(( WORK_TIME*60 - running ))
+            if [[ $work_left -gt 0 ]]; then
+                sleep $work_left
+                [[ -e "$POMO" ]] && notify-send "Break Time!" "Great work! Time for a break." -t 5000
+                sleep 1
+            else
+                local break_left=$(( work_left + BREAK_TIME*60 ))
+                if [[ $break_left -gt 0 ]]; then
+                    sleep $break_left
+                    [[ -e "$POMO" ]] && notify-send "Focus Time!" "Break's over! Time to focus." -t 5000
+                    sleep 1
+                else
+                    sleep 5
+                fi
+            fi
+        else
+            sleep 10
+        fi
+    done
+}
+
+function pomo_ensure_services {
+    if ! pgrep -f "pomodoro notify" >/dev/null; then
+        ~/.config/niri/scripts/pomodoro notify &
+    fi
+}
+
+function pomo_stop_services {
+    pkill -f "pomodoro notify"
+}
+
+function pomo_menu {
+    local options=("Start/Pause" "Restart" "Stop")
+    local prompt="Pomodoro Timer"
+    pomo_isstopped || prompt=$(pomo_status)
+
+    local selected=$(printf '%s\n' "${options[@]}" | rofi -dmenu -i -p "$prompt")
+
+    case "$selected" in
+        "Start/Pause")
+            if pomo_isstopped; then pomo_start; else pomo_pause; fi ;;
+        "Restart") pomo_restart ;;
+        "Stop") pomo_stop ;;
+    esac
+}
+
+case "${1:-menu}" in
+    start)   pomo_start ;;
+    stop)    pomo_stop ;;
+    pause)   pomo_pause ;;
+    restart) pomo_restart ;;
+    status)  pomo_status ;;
+    notify)  pomo_notify_daemon ;;
+    menu)    pomo_menu ;;
+    *)       echo "Usage: $0 {start|stop|pause|restart|status|notify|menu}"; exit 1 ;;
+esac

@@ -1,0 +1,50 @@
+#!/bin/bash
+# Battery applet for rofi
+
+ROFI_DIR="$HOME/.config/rofi"
+THEME_FILE="$ROFI_DIR/battery/battery.rasi"
+
+if ! command -v acpi &>/dev/null; then
+    echo "Error: acpi is not installed."
+    exit 1
+fi
+
+battery=$(acpi -b | cut -d',' -f1 | cut -d':' -f1)
+status=$(acpi -b | cut -d',' -f1 | cut -d':' -f2 | tr -d ' ')
+percentage=$(acpi -b | cut -d',' -f2 | tr -d ' ',\%)
+time=$(acpi -b | cut -d',' -f3)
+[[ -z "$time" ]] && time=' Fully Charged'
+
+if [[ $status = *"Charging"* ]]; then
+    active="-a 1"; ICON_CHRG=""
+elif [[ $status = *"Full"* ]]; then
+    active="-a 2"; ICON_CHRG=""
+else
+    active="-u 1"; ICON_CHRG=""
+fi
+
+if [[ $percentage -ge 80 ]]; then ICON_DISCHRG=""
+elif [[ $percentage -ge 60 ]]; then ICON_DISCHRG=""
+elif [[ $percentage -ge 40 ]]; then ICON_DISCHRG=""
+elif [[ $percentage -ge 20 ]]; then ICON_DISCHRG=""
+else ICON_DISCHRG=""
+fi
+
+option_1=" Remaining ${percentage}%"
+option_2=" $status"
+option_3=" Power Manager"
+option_4=" Diagnose"
+
+chosen=$(echo -e "$option_1\n$option_2\n$option_3\n$option_4" | \
+    rofi -theme-str "listview {columns: 1; lines: 4;}" \
+         -theme-str "textbox-prompt-colon {str: \"$ICON_DISCHRG\";}" \
+         -dmenu -p "$status" \
+         -mesg "${battery}: ${percentage}%,${time}" \
+         ${active} -markup-rows -theme "$THEME_FILE")
+
+case "$chosen" in
+    "$option_1") notify-send -u low "Remaining: ${percentage}%" ;;
+    "$option_2") notify-send -u low "$ICON_CHRG Status: $status" ;;
+    "$option_3") xfce4-power-manager-settings 2>/dev/null || notify-send -u low "Power manager not found" ;;
+    "$option_4") command -v powertop &>/dev/null && pkexec kitty -e powertop || notify-send -u low "Powertop not found" ;;
+esac

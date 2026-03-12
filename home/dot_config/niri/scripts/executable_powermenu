@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+
+# Power menu with battery info — standalone (no eqsh dependency)
+
+get_battery_info() {
+    local power_supply_dir="/sys/class/power_supply"
+    local battery_path=""
+
+    for bat_dir in "$power_supply_dir"/BAT*; do
+        if [[ -d "$bat_dir" && -f "$bat_dir/capacity" && -f "$bat_dir/status" ]]; then
+            battery_path="$bat_dir"
+            break
+        fi
+    done
+
+    [[ -z "$battery_path" ]] && { echo "No battery"; return; }
+
+    local capacity=$(cat "$battery_path/capacity" 2>/dev/null || echo "0")
+    local status=$(cat "$battery_path/status" 2>/dev/null || echo "Unknown")
+
+    local time_info=""
+    if command -v acpi &>/dev/null; then
+        time_info=$(acpi -b 2>/dev/null | head -1 | grep -o '[0-9][0-9]:[0-9][0-9]:[0-9][0-9]' | head -1)
+        if [[ -n "$time_info" ]]; then
+            local hours=$((10#$(echo "$time_info" | cut -d: -f1)))
+            local minutes=$((10#$(echo "$time_info" | cut -d: -f2)))
+            if [[ "$status" == "Charging" ]]; then
+                time_info="${hours}h ${minutes}m to full"
+            else
+                time_info="${hours}h ${minutes}m remaining"
+            fi
+        fi
+    fi
+    [[ -z "$time_info" ]] && time_info="$status"
+
+    local icon=""
+    if [[ "$status" == "Charging" ]]; then icon="󰂄"
+    elif [[ "$capacity" -ge 80 ]]; then icon="󰁹"
+    elif [[ "$capacity" -ge 60 ]]; then icon="󰂀"
+    elif [[ "$capacity" -ge 40 ]]; then icon="󰁾"
+    elif [[ "$capacity" -ge 20 ]]; then icon="󰁼"
+    else icon="󰁺"
+    fi
+
+    echo "$icon $capacity% • $time_info"
+}
+
+battery_display=$(get_battery_info)
+
+options=(
+    "󰤄 Suspend"
+    "󰜉 Reboot"
+    "⏻ Shutdown"
+)
+
+selected=$(printf '%s\n' "${options[@]}" | rofi -dmenu -i -p "Power" -mesg "$battery_display")
+
+case "$selected" in
+    "󰤄 Suspend")   systemctl suspend ;;
+    "󰜉 Reboot")    systemctl reboot ;;
+    "⏻ Shutdown")  systemctl poweroff ;;
+esac

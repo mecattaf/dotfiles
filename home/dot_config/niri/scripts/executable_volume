@@ -1,0 +1,17 @@
+#!/bin/bash
+# eqsh VolumeOSD auto-reacts to pipewire changes
+case "$1" in
+    up)
+        wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%+
+        ;;
+    down)
+        wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%-
+        ;;
+    mute)
+        wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
+        ;;
+    *)
+        echo "Usage: $0 {up|down|mute}"
+        exit 1
+        ;;
+esac

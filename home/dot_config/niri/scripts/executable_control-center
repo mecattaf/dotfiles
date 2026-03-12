@@ -1,0 +1,8 @@
+#!/bin/bash
+case "${1:-open}" in
+    open)       quickshell ipc call controlCenter open ;;
+    close)      quickshell ipc call controlCenter close ;;
+    bluetooth)  quickshell ipc call controlCenter openBluetooth ;;
+    wifi)       quickshell ipc call controlCenter openWifi ;;
+    *)          echo "Usage: $0 {open|close|bluetooth|wifi}"; exit 1 ;;
+esac

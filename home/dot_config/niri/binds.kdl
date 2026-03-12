@@ -25,37 +25,12 @@ binds {
 
     // ── Quickshell (was DMS) ─────────────────────────────────────
 
-    // scroll: set $launcher dms ipc call spotlight toggle
-    // scroll: bindsym $mod+Shift+D exec $launcher
-    // QUICKSHELL TODO: app launcher
-    // Mod+Shift+D hotkey-overlay-title="App Launcher" { spawn "..." ; }
-
-    // scroll: set $clipboard dms ipc call clipboard toggle
-    // scroll: bindsym $mod+V exec $clipboard
-    // QUICKSHELL TODO: clipboard manager
-    // Mod+V hotkey-overlay-title="Clipboard" { spawn "..." ; }
-
-    // scroll: bindsym $mod+Shift+V exec rofimoji -a clipboard
+    Mod+Shift+D hotkey-overlay-title="Spotlight" { spawn-sh "~/.config/niri/scripts/spotlight"; }
+    Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.config/niri/scripts/clipboard"; }
     Mod+Shift+V hotkey-overlay-title="Emoji Picker" { spawn "rofimoji" "-a" "clipboard"; }
-
-    // scroll: set $bar dms ipc call bar toggle
-    // scroll: bindsym $mod+I exec $bar
-    // QUICKSHELL TODO: bar/panel toggle
-    // Mod+I hotkey-overlay-title="Toggle Bar" { spawn "..." ; }
-
-    // scroll: set $notif_dismiss dms ipc call notifications toggle
-    // scroll: bindsym $mod+O exec $notif_dismiss
-    // QUICKSHELL TODO: notification center
-    // Mod+O hotkey-overlay-title="Notifications" { spawn "..." ; }
-
-    // scroll: set $settings dms ipc call settings toggle
-    // scroll: bindsym $mod+comma exec $settings
-    // QUICKSHELL TODO: settings panel
-    // Mod+Comma hotkey-overlay-title="Settings" { spawn "..." ; }
-
-    // scroll: bindsym $mod+B exec dms ipc control-center toggle
-    // QUICKSHELL TODO: control center
-    // Mod+B hotkey-overlay-title="Control Center" { spawn "..." ; }
+    Mod+O hotkey-overlay-title="Notifications" { spawn-sh "~/.config/niri/scripts/dnd"; }
+    Mod+Comma hotkey-overlay-title="Settings" { spawn-sh "~/.config/niri/scripts/settings"; }
+    Mod+B hotkey-overlay-title="Control Center" { spawn-sh "~/.config/niri/scripts/control-center"; }
 
 
     // ── Screenshots ──────────────────────────────────────────────
@@ -89,35 +64,16 @@ binds {
 
     // ── Media & Hardware Keys (F1-F10) ───────────────────────────
 
-    // scroll: bindsym F1 exec dms ipc call brightness decrement 5
-    // scroll: bindsym F2 exec dms ipc call brightness increment 5
-    // QUICKSHELL TODO: brightness control
-    // F1 { spawn "..." ; }
-    // F2 { spawn "..." ; }
-
-    // scroll: bindsym F3 exec dms ipc call mpris playPause
-    // scroll: bindsym F4 exec dms ipc call mpris previous
-    // scroll: bindsym F5 exec dms ipc call mpris next
-    // QUICKSHELL TODO: media control
-    // F3 { spawn "..." ; }
-    // F4 { spawn "..." ; }
-    // F5 { spawn "..." ; }
-
-    // scroll: bindsym F6 exec dms ipc call audio mute
-    // scroll: bindsym F7 exec dms ipc call audio decrement 3
-    // scroll: bindsym F8 exec dms ipc call audio increment 3
-    // QUICKSHELL TODO: volume control
-    // F6 { spawn "..." ; }
-    // F7 { spawn "..." ; }
-    // F8 { spawn "..." ; }
-
-    // scroll: set $pomodoro-timer $scripts/pomodoro menu
-    // scroll: bindsym F9 exec $pomodoro-timer
+    F1 hotkey-overlay-title="Brightness Down" { spawn-sh "~/.config/niri/scripts/brightness down"; }
+    F2 hotkey-overlay-title="Brightness Up" { spawn-sh "~/.config/niri/scripts/brightness up"; }
+    F3 hotkey-overlay-title="Play/Pause" { spawn-sh "~/.config/niri/scripts/media play"; }
+    F4 hotkey-overlay-title="Previous" { spawn-sh "~/.config/niri/scripts/media prev"; }
+    F5 hotkey-overlay-title="Next" { spawn-sh "~/.config/niri/scripts/media next"; }
+    F6 hotkey-overlay-title="Mute" { spawn-sh "~/.config/niri/scripts/volume mute"; }
+    F7 hotkey-overlay-title="Volume Down" { spawn-sh "~/.config/niri/scripts/volume down"; }
+    F8 hotkey-overlay-title="Volume Up" { spawn-sh "~/.config/niri/scripts/volume up"; }
     F9 hotkey-overlay-title="Pomodoro" { spawn-sh "~/.config/niri/scripts/pomodoro menu"; }
-
-    // scroll: bindsym F10 exec dms ipc call powermenu toggle
-    // QUICKSHELL TODO: power menu
-    // F10 hotkey-overlay-title="Power Menu" { spawn "..." ; }
+    F10 hotkey-overlay-title="Power Menu" { spawn-sh "~/.config/niri/scripts/powermenu"; }
 
 
     // ── Chrome Webapps ───────────────────────────────────────────
@@ -155,9 +111,7 @@ binds {
     // ── Window Management ────────────────────────────────────────
 
     // scroll: bindsym $mod+Shift+Q kill
-    Mod+Q { close-window; }
-
-    // ^ quit takes Mod+Shift+Q (see niri-specific section below)
+    Mod+Shift+Q { close-window; }
 
     // scroll: bindsym $mod+Tab floating toggle
     Mod+Tab { toggle-window-floating; }
@@ -215,12 +169,12 @@ binds {
     // scroll: bindsym $mod+f        cycle_size h next
     Mod+F { switch-preset-column-width; }
     // scroll: bindsym $mod+Shift+f  cycle_size h prev
-    // ^ DROPPED: niri only cycles forward
+    Mod+Shift+F { switch-preset-column-width-back; }
 
     // scroll: bindsym $mod+g        cycle_size v next
     Mod+G { switch-preset-window-height; }
     // scroll: bindsym $mod+Shift+g  cycle_size v prev
-    // ^ DROPPED: niri only cycles forward
+    Mod+Shift+G { switch-preset-window-height-back; }
 
     Mod+Minus { set-column-width "-10%"; }
 
@@ -298,7 +252,6 @@ binds {
     Mod+Ctrl+R { reset-window-height; }
     Mod+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
     Mod+Shift+P { power-off-monitors; }
-    Mod+Shift+Q { quit; }
 
 
     // ── Dropped scroll-specific (no port) ────────────────────────

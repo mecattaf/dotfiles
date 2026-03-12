@@ -1,0 +1,7 @@
+#!/bin/bash
+# eqsh handles OSD display automatically
+case "$1" in
+    up)    quickshell ipc call display brighter 5 ;;
+    down)  quickshell ipc call display dimmer 5 ;;
+    *)     echo "Usage: $0 {up|down}"; exit 1 ;;
+esac
