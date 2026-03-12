@@ -58,15 +58,14 @@ require("lazy").setup({
   },
   {
     'nvim-treesitter/nvim-treesitter',
+    lazy = false,
+    build = ':TSUpdate',
     config = function()
-      require('nvim-treesitter.configs').setup({
-        ensure_installed = { "markdown", "markdown_inline" },
-        highlight = {
-          enable = true,
-          disable = { "markdown" }, -- This will disable Treesitter highlighting for markdown
-        },
+      require('nvim-treesitter').install({ 'markdown', 'markdown_inline' })
+      vim.api.nvim_create_autocmd('FileType', {
+        pattern = { 'markdown_inline' },
+        callback = function() vim.treesitter.start() end,
       })
-      vim.treesitter.language.register('markdown', 'markdown')
     end
   },
   {
