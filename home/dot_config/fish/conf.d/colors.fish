@@ -48,6 +48,10 @@ set -g fish_color_cwd $cwd
 set -g fish_color_user $user
 set -g fish_color_host $host
 set -g fish_color_host_remote $host_remote
+set -g fish_color_cwd_root red
+set -g fish_color_history_current --bold
+set -g fish_color_match --background=brblue
+set -g fish_color_valid_path --underline
 
 set -g fish_color_status f38ba8
 
@@ -56,4 +60,5 @@ set -g fish_pager_color_progress $pager_progress
 set -g fish_pager_color_prefix $pager_prefix
 set -g fish_pager_color_completion $pager_completion
 set -g fish_pager_color_description $pager_description
+set -g fish_pager_color_selected_background -r
 
