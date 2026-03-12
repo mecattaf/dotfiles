@@ -22,7 +22,7 @@ layout {
     border {
         on
         width 1
-        active-color "#b4befe"
+        active-color "#000000"
         inactive-color "#000000"
         urgent-color "#f38ba8"
     }

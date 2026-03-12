@@ -13,7 +13,7 @@ spawn-at-startup "kanshi"
 spawn-at-startup "vicinae" "server"
 
 // scroll: exec dms run
-spawn-at-startup "quickshell" "-p" "~/.config/quickshell/eqsh"
+spawn-at-startup "quickshell"
 
 // scroll: exec swaybg -c '#000000'
 // ^ DROPPED: niri uses layout { background-color "#000000" }
