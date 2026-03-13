@@ -126,33 +126,37 @@ Scope {
   Loader { active: Config.osd.enable; asynchronous: true; sourceComponent: BrightnessOSD {} }
   Launcher {}
   Popup {}
-  Notch {
-    id: notch
-    EdgeTrigger {
-      id: triggerNotch
-      position: "tlr"
-      height: 2
-      function toggle(monitor) {
-        if (triggerNotch.active && !notch.expanded) {
-          triggerNotch.active = false
-          triggerNotch.height = 2
-          notch.shown = false
-          triggerNotch.topMargin = 0
-          if (Config.notch.autohide) {
-            notch.forceHide = true
+  Loader {
+    active: Config.notch.enable
+    asynchronous: true
+    sourceComponent: Notch {
+      id: notch
+      EdgeTrigger {
+        id: triggerNotch
+        position: "tlr"
+        height: 2
+        function toggle(monitor) {
+          if (triggerNotch.active && !notch.expanded) {
+            triggerNotch.active = false
+            triggerNotch.height = 2
+            notch.shown = false
+            triggerNotch.topMargin = 0
+            if (Config.notch.autohide) {
+              notch.forceHide = true
+            }
+            return;
           }
-          return;
+          triggerNotch.active = true
+          triggerNotch.height = monitor.height - (Config.notch.height+(Config.notch.islandMode ? 8 : 3))
+          notch.shown = true
+          triggerNotch.topMargin = (Config.notch.height+(Config.notch.islandMode ? 8 : 3))
+          if (Config.notch.autohide) {
+            notch.forceHide = false
+          }
         }
-        triggerNotch.active = true
-        triggerNotch.height = monitor.height - (Config.notch.height+(Config.notch.islandMode ? 8 : 3))
-        notch.shown = true
-        triggerNotch.topMargin = (Config.notch.height+(Config.notch.islandMode ? 8 : 3))
-        if (Config.notch.autohide) {
-          notch.forceHide = false
-        }
+        onClicked: (monitor) => toggle(monitor);
+        onHovered: (monitor) => toggle(monitor);
       }
-      onClicked: (monitor) => toggle(monitor);
-      onHovered: (monitor) => toggle(monitor);
     }
   }
   Loader { active: Config.dialogs.enable; asynchronous: true; sourceComponent: Dialog {}}
