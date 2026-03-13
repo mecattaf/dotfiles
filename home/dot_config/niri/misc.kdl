@@ -9,9 +9,46 @@
 // scroll: }
 // ^ niri uses a completely different animation system.
 // See: https://github.com/YaLTeR/niri/wiki/Configuration:-Animations
-animations {}
+animations {
+    workspace-switch {
+        duration-ms 120
+        curve "cubic-bezier" 0.25 0.1 0.25 1.0
+    }
 
-hotkey-overlay {}
+    horizontal-view-movement {
+        duration-ms 120
+        curve "cubic-bezier" 0.25 0.1 0.25 1.0
+    }
+
+    window-open {
+        duration-ms 100
+        curve "cubic-bezier" 0.3 0.0 0.7 1.0
+    }
+
+    window-close {
+        duration-ms 100
+        curve "cubic-bezier" 0.3 0.0 0.7 1.0
+    }
+
+    window-movement {
+        duration-ms 120
+        curve "cubic-bezier" 0.25 0.1 0.25 1.0
+    }
+
+    window-resize {
+        duration-ms 120
+        curve "cubic-bezier" 0.25 0.1 0.25 1.0
+    }
+
+    config-notification-open-close {
+        duration-ms 120
+        curve "cubic-bezier" 0.25 0.1 0.25 1.0
+    }
+}
+
+hotkey-overlay {
+    skip-at-startup
+}
 
 // scroll: default_border pixel 1
 // scroll: default_floating_border normal
@@ -34,4 +71,14 @@ cursor {
 // scroll: exec hash dbus-update-activation-environment 2>/dev/null && \
 // scroll:         dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP=sway
 // ^ DELETE: niri-session handles env export and D-Bus activation natively
+overview {
+    backdrop-color "#000000"
+}
+
+gestures {
+    hot-corners {
+        off
+    }
+}
+
 environment {}

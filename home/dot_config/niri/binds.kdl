@@ -146,9 +146,9 @@ binds {
     // ── Window/Column Movement ───────────────────────────────────
 
     // scroll: bindsym $mod+Shift+h move left nomode
-    Mod+Shift+H { move-column-left; }
+    Mod+Shift+H { consume-or-expel-window-left; }
     // scroll: bindsym $mod+Shift+l move right nomode
-    Mod+Shift+L { move-column-right; }
+    Mod+Shift+L { consume-or-expel-window-right; }
 
     // scroll: bindsym $mod+Shift+j move container to output down; focus output down
     Mod+Shift+J { move-column-to-monitor-down; }
@@ -161,10 +161,9 @@ binds {
     Mod+Alt+K { move-window-up; }
 
     // scroll: bindsym $mod+Alt+h move left
-    // ^ closest niri equivalent: consume/expel (absorb into or eject from adjacent column)
-    Mod+Alt+H { consume-or-expel-window-left; }
+    Mod+Alt+H { move-column-left; }
     // scroll: bindsym $mod+Alt+l move right
-    Mod+Alt+L { consume-or-expel-window-right; }
+    Mod+Alt+L { move-column-right; }
 
 
     // ── Column/Window Sizing ─────────────────────────────────────
@@ -196,13 +195,8 @@ binds {
 
     // ── Gap Adjustment ───────────────────────────────────────────
 
-    // scroll: bindsym $mod+Page_Up scale_workspace incr 0.1
-    // scroll: bindsym $mod+Page_Down scale_workspace incr -0.1
-    // ^ scale_workspace has no niri equivalent.
-    // Repurposed for gap adjustment:
-    // TODO: niri has no built-in gap action — needs IPC script via niri msg
-    // Mod+Page_Up { ??? increase gaps 10px }
-    // Mod+Page_Down { ??? decrease gaps 10px }
+    Mod+Page_Up repeat=false { toggle-overview; }
+    Mod+Page_Down repeat=false { toggle-overview; }
 
     // scroll: bindsym $mod+Ctrl+Page_Up scale_workspace reset
     // ^ DROPPED
@@ -236,6 +230,7 @@ binds {
     Mod+Ctrl+9 { move-column-to-workspace 9; }
 
     Mod+U { focus-workspace-down; }
+    Mod+Shift+U { focus-workspace-up; }
 
     Mod+WheelScrollDown      cooldown-ms=150 { focus-workspace-down; }
     Mod+WheelScrollUp        cooldown-ms=150 { focus-workspace-up; }
