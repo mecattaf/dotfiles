@@ -18,6 +18,7 @@ import qs.ui.components.modal.polkit
 import qs.ui.components.notch
 import qs.ui.components.popup
 import qs.ui.components.spotlight
+import qs.ui.components.launcherv2
 import qs.ui.components.widgets
 import qs.ui.components.settings
 import qs.ui.components.background
@@ -125,6 +126,7 @@ Scope {
   Loader { active: Config.osd.enable; asynchronous: true; sourceComponent: VolumeOSD {} }
   Loader { active: Config.osd.enable; asynchronous: true; sourceComponent: BrightnessOSD {} }
   Launcher {}
+  qs.ui.components.launcherv2.Launcher {}
   Popup {}
   Loader {
     active: Config.notch.enable

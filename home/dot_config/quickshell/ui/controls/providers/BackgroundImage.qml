@@ -38,7 +38,7 @@ Loader {
     }
     property Component image: Image {
         source: root.source
-        fillMode: Image.PreserveAspectCrop
+        fillMode: Image.PreserveAspectFit
         sourceSize: Qt.size(parent.width, parent.height)
         anchors.fill: parent
         asynchronous: true
