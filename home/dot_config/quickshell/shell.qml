@@ -126,7 +126,7 @@ Scope {
   Loader { active: Config.osd.enable; asynchronous: true; sourceComponent: VolumeOSD {} }
   Loader { active: Config.osd.enable; asynchronous: true; sourceComponent: BrightnessOSD {} }
   Launcher {}
-  qs.ui.components.launcherv2.Launcher {}
+  DmsLauncher {}
   Popup {}
   Loader {
     active: Config.notch.enable
