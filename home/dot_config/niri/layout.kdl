@@ -22,7 +22,7 @@ layout {
     border {
         on
         width 1
-        active-color "#000000"
+        active-color "#070707"
         inactive-color "#000000"
         urgent-color "#f38ba8"
     }
@@ -63,6 +63,8 @@ layout {
 
     // scroll: exec swaybg -c '#000000'
     background-color "#000000"
+    // TODO
+    // add /usr/share/backgrounds/harness/wallpaper.jpg eithe through quickshell or if there's a built in niri command
 
     struts {}
 
