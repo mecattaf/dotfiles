@@ -16,6 +16,11 @@ priority: medium
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
 Already scoped target. Claude skill for browser automation. Ref: INTEL.md §2 (fgp-browser decision), §5 (fgp-browser repo).
+
+would revisit that 
+https://www.cmux.dev/docs/browser-automation
+
+key innovation: this is now working with quickshellx to be used
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
