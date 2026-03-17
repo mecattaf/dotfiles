@@ -6,3 +6,8 @@ https://impeccable.style/
 https://github.com/pbakaus/impeccable/blob/main/.claude/skills/distill/SKILL.md
 
 this would make us much better at front end design
+
+also merge some of the impeccable materials with
+https://github.com/cyxzdev/Uncodixfy
+
+investigate whether we need a pencil dev at all, given the tight control we have over the chromium 
