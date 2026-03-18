@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Set wallpaper via quickshell IPC
+# Usage: wallpaper [path]
+#   wallpaper /path/to/image.jpg   - set wallpaper
+#   wallpaper                      - set default wallpaper
+
+DEFAULT="/usr/share/backgrounds/harness/wallpaper.jpg"
+path="${1:-$DEFAULT}"
+
+if [[ ! -f "$path" ]]; then
+    echo "File not found: $path" >&2
+    exit 1
+fi
+
+qs ipc call wallpaper change "$path"

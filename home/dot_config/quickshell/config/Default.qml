@@ -264,7 +264,7 @@ Item {
 	component Wallpaper: JsonObject {
 		property bool   enable: true
 		property color  color: "#000000" // Only applies if path is empty
-		property string path: root.homeDirectory+"/.local/share/equora/wallpapers/Tahoe-City.jpeg"
+		property string path: "/usr/share/backgrounds/harness/wallpaper.jpg"
 		property string folder: root.homeDirectory+"/.local/share/equora/wallpapers/"
 		property bool   desktopEnable: true
 		property list<string> colors: [

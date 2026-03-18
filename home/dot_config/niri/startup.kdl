@@ -15,8 +15,7 @@ spawn-at-startup "vicinae" "server"
 // scroll: exec dms run
 spawn-at-startup "quickshell"
 
-// wallpaper
-spawn-at-startup "swaybg" "-i" "/usr/share/backgrounds/harness/wallpaper.jpg" "-m" "fill"
+// wallpaper is handled by quickshell (qs ipc call wallpaper change <path>)
 
 
 // ── gsettings ────────────────────────────────────────────────

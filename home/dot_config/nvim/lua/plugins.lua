@@ -171,29 +171,9 @@ require("lazy").setup({
       'nvim-tree/nvim-web-devicons'
     },
     ft = {'markdown'},
-    config = function()
-      local colors = require('catppuccin.palettes').get_palette('mocha')
-      local heading_colors = {
-        colors.blue,      -- H1
-        colors.peach,     -- H2
-        colors.green,     -- H3
-        colors.mauve,     -- H4
-        colors.teal,      -- H5
-        colors.flamingo,  -- H6
-      }
-      for i, color in ipairs(heading_colors) do
-        local r = tonumber(color:sub(2, 3), 16)
-        local g = tonumber(color:sub(4, 5), 16)
-        local b = tonumber(color:sub(6, 7), 16)
-        local bg = string.format('#%02x%02x%02x', math.floor(r * 0.1), math.floor(g * 0.1), math.floor(b * 0.1))
-        vim.api.nvim_set_hl(0, 'RenderMarkdownH' .. i, { fg = color, bold = true })
-        vim.api.nvim_set_hl(0, 'RenderMarkdownH' .. i .. 'Bg', { bg = bg })
-      end
-
-      require('render-markdown').setup({
-        file_types = { 'markdown' },
-      })
-    end
+    opts = {
+      file_types = { 'markdown' },
+    }
   },
   -- Git integration stack (ordered by dependency)
   {
@@ -311,7 +291,7 @@ require("lazy").setup({
   },
   {
     'nvim-lualine/lualine.nvim',
-    dependencies = { 'nvim-tree/nvim-web-devicons' },
+    dependencies = { 'nvim-tree/nvim-web-devicons', 'catppuccin/nvim' },
     config = function()
       require('plugins.lualine').setup()
     end,
