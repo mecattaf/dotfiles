@@ -12,8 +12,10 @@ profile Duo {
 }
 
 profile Desktop {
-    output DP-1 mode 5120x2880@60.000Hz scale 2 position 0,0 transform 180
-    output DP-4 mode 5120x2880@60.000Hz scale 2 position 0,1440
+#    output DP-1 mode 5120x2880@60.000Hz scale 2 position 0,0 transform 180
+#    output DP-4 mode 5120x2880@60.000Hz scale 2 position 0,1440
+    output DP-1 mode 5120x2880@60.000Hz scale 2.5 position 0,0 transform 180
+    output DP-4 mode 5120x2880@60.000Hz scale 2.5 position 0,1152
     exec busctl --user set-property rs.wl-gammarelay /outputs/DP_1 rs.wl.gammarelay Temperature q 4000
     exec busctl --user set-property rs.wl-gammarelay /outputs/DP_4 rs.wl.gammarelay Temperature q 4000
 }
