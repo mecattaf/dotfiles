@@ -27,7 +27,7 @@ layout {
         urgent-color "#f38ba8"
     }
 
-    center-focused-column "never"
+    center-focused-column "always"
 
     // scroll: layout_widths [0.33333333 0.5 0.66666667 1.0]
     preset-column-widths {
@@ -61,10 +61,7 @@ layout {
         color "#b4befe80"
     }
 
-    // scroll: exec swaybg -c '#000000'
     background-color "#000000"
-    // TODO
-    // add /usr/share/backgrounds/harness/wallpaper.jpg eithe through quickshell or if there's a built in niri command
 
     struts {}
 

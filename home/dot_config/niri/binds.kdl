@@ -35,23 +35,9 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.config/niri/scripts/clipbo
 
     // ── Screenshots ──────────────────────────────────────────────
 
-    // scroll: set $swappy-full $scripts/swappy full
-    // scroll: bindsym $mod+A exec $swappy-full
-    Mod+A hotkey-overlay-title="Swappy Full" { spawn-sh "~/.config/niri/scripts/swappy full"; }
-
-    // scroll: set $swappy-area $scripts/swappy area
-    // scroll: bindsym $mod+S exec $swappy-area
-    Mod+S hotkey-overlay-title="Swappy Area" { spawn-sh "~/.config/niri/scripts/swappy area"; }
-
-    // scroll: set $screenshot-full $scripts/screenshot full
-    // scroll: set $screenshot-area $scripts/screenshot area
-    // scroll: bindsym $mod+Shift+ exec $screenshot-full    (broken line: missing key)
-    // scroll: bindsym $mod+Shift+A exec $screenshot-area
-    // ^ Replaced by niri built-in screenshots:
-    Print { screenshot; }
-    Ctrl+Print { screenshot-screen; }
-    Alt+Print { screenshot-window; }
-    Mod+Shift+S { screenshot; }
+    Mod+S hotkey-overlay-title="Screenshot" { screenshot-screen; }
+    Mod+Shift+S hotkey-overlay-title="Screenshot Area" { screenshot; }
+    Mod+Alt+S hotkey-overlay-title="Screenshot Window" { screenshot-window; }
 
 
     // ── Color Picker ─────────────────────────────────────────────
@@ -59,7 +45,7 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.config/niri/scripts/clipbo
     // scroll: set $color-picker exec $scripts/colorpicker
     // scroll: bindsym $mod+C exec $color-picker
     // ^ Replaced by niri built-in:
-    Mod+C hotkey-overlay-title="Color Picker" { spawn "niri" "msg" "pick-color"; }
+    Mod+C hotkey-overlay-title="Color Picker" { pick-color; }
 
 
     // ── Media & Hardware Keys (F1-F10) ───────────────────────────
@@ -131,9 +117,9 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.config/niri/scripts/clipbo
     // scroll: bindsym $mod+h     focus  left
     Mod+H { focus-column-left; }
     // scroll: bindsym $mod+j     focus  down
-    Mod+J { focus-window-down; }
+    Mod+J { focus-monitor-down; }
     // scroll: bindsym $mod+k     focus  up
-    Mod+K { focus-window-up; }
+    Mod+K { focus-monitor-up; }
     // scroll: bindsym $mod+l     focus  right
     Mod+L { focus-column-right; }
 
@@ -245,7 +231,7 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.config/niri/scripts/clipbo
     Mod+W { toggle-column-tabbed-display; }
     Mod+BracketLeft  { consume-or-expel-window-left; }
     Mod+BracketRight { consume-or-expel-window-right; }
-    Mod+Ctrl+C { center-column; }
+
     Mod+Ctrl+O repeat=false { toggle-overview; }
     Mod+Ctrl+R { reset-window-height; }
     Mod+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }

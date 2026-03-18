@@ -1,9 +1,0 @@
-#!/bin/bash
-if [ "$1" == "full" ]; then
-    grim - | swappy -f -
-elif [ "$1" == "area" ]; then
-    grim -g "$(slurp)" - | swappy -f -
-else
-    echo "Usage: $0 {full|area}"
-    exit 1
-fi
