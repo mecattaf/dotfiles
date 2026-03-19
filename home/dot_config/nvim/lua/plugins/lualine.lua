@@ -141,7 +141,7 @@ components.location = {
 function M.setup()
   require('lualine').setup({
     options = {
-      theme = 'catppuccin',
+      theme = 'auto',
       component_separators = { left = '', right = '' },
       section_separators = { left = '', right = '' },
       disabled_filetypes = {

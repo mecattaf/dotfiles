@@ -124,6 +124,9 @@ require("lazy").setup({
            crust = "#000000",
          },
        },
+       integrations = {
+         render_markdown = true,
+       },
      })
      vim.cmd.colorscheme "catppuccin"
    end
