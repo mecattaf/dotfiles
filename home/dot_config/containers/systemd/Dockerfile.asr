@@ -1,0 +1,44 @@
+FROM registry.fedoraproject.org/fedora:43
+
+# ROCm 7.2 repo (AMD official, RHEL10-compatible, works on Fedora 43)
+RUN tee /etc/yum.repos.d/rocm.repo <<'EOF'
+[ROCm-7.2]
+name=ROCm7.2
+baseurl=https://repo.radeon.com/rocm/rhel10/7.2/main
+enabled=1
+priority=50
+gpgcheck=1
+gpgkey=https://repo.radeon.com/rocm/rocm.gpg.key
+EOF
+
+# ROCm runtime + Python 3.13 (PyTorch ROCm wheels max out at cp313)
+RUN dnf -y --nodocs --setopt=install_weak_deps=False \
+    install \
+    hip-runtime-amd rocblas hipblas rocminfo \
+    python3.13 python3.13-devel \
+    sudo procps-ng \
+    && dnf clean all
+
+# Bootstrap pip for Python 3.13
+RUN python3.13 -m ensurepip --upgrade
+
+# ROCm environment
+ENV ROCM_PATH=/opt/rocm \
+    HIP_PATH=/opt/rocm \
+    PATH=/opt/rocm/bin:$PATH \
+    LD_LIBRARY_PATH=/opt/rocm/lib:/opt/rocm/lib64
+
+# PyTorch ROCm — pre-built wheels target gfx1100; override to run on gfx1151
+ENV HSA_OVERRIDE_GFX_VERSION=11.0.0
+
+# WhisperLiveKit + PyTorch ROCm
+RUN python3.13 -m pip install --no-cache-dir \
+    torch torchaudio --index-url https://download.pytorch.org/whl/rocm6.2.4 \
+    && python3.13 -m pip install --no-cache-dir whisperlivekit python-multipart
+
+# Fix WhisperLiveKit attention mask bug with kv_cache (SimulStreaming + large-v3-turbo)
+# The mask must account for cached key positions, not just current query length
+RUN sed -i 's/qk = qk + mask\[:n_ctx, :n_ctx\]/n_kv = k.shape[2]; qk = qk + mask[n_kv - n_ctx:n_kv, :n_kv]/' \
+    /usr/local/lib/python3.13/site-packages/whisperlivekit/whisper/model.py
+
+CMD ["/bin/bash"]

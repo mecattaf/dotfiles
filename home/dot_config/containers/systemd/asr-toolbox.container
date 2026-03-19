@@ -1,0 +1,39 @@
+# ~/.config/containers/systemd/asr-toolbox.container
+[Unit]
+Description=WhisperLiveKit ASR Server (Whisper large-v3-turbo, ROCm)
+After=local-fs.target
+
+[Container]
+Image=asr-toolbox.build
+Exec=wlk \
+  --model large-v3-turbo \
+  --backend whisper \
+  --language en \
+  --frame-threshold 25 \
+  --pcm-input \
+  -l INFO
+Environment=HSA_OVERRIDE_GFX_VERSION=11.0.0
+Environment=HOME=%h
+Network=host
+UserNS=keep-id
+AddDevice=/dev/dri
+AddDevice=/dev/kfd
+GroupAdd=video
+GroupAdd=render
+SecurityLabelDisable=true
+PodmanArgs=--security-opt seccomp=unconfined
+Volume=%h/.cache/whisper:%h/.cache/whisper:z
+Volume=%h/.config/miopen:%h/.config/miopen:z
+Volume=%h/.cache/miopen:%h/.cache/miopen:z
+Volume=%h/.triton:/home/tom/.triton:z
+Volume=%h/.triton:%h/.triton:z
+Volume=%h/.cache/torch:/home/tom/.cache/torch:z
+
+[Service]
+ExecStartPre=mkdir -p %h/.cache/whisper %h/.cache/miopen %h/.cache/torch %h/.config/miopen %h/.triton
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=600
+
+[Install]
+WantedBy=default.target
