@@ -22,6 +22,7 @@ Scope {
   id: root
   property string customAppName: ""
   property bool   visible: true
+  property bool   barToggled: true
   property bool   shown: false
   property bool   appInFullscreen: HyprlandExt.appInFullscreen
   property bool   forceHide: Config.bar.autohide
@@ -31,7 +32,7 @@ Scope {
   IpcHandler {
     target: "bar"
     function toggle() {
-      root.visible = !root.visible;
+      root.barToggled = !root.barToggled;
     }
   }
 
@@ -80,7 +81,7 @@ Scope {
 
       implicitHeight: Config.bar.height
 
-      visible: Config.bar.enable
+      visible: Config.bar.enable && root.barToggled
 
       Barblock {
         screen: modelData
