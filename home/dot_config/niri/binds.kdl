@@ -44,8 +44,8 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.config/niri/scripts/clipbo
 
     // scroll: set $color-picker exec $scripts/colorpicker
     // scroll: bindsym $mod+C exec $color-picker
-    // ^ Replaced by niri built-in:
-    Mod+C hotkey-overlay-title="Color Picker" { pick-color; }
+    // ^ Use niri IPC for color picking:
+    Mod+C hotkey-overlay-title="Color Picker" { spawn "niri" "msg" "pick-color"; }
 
 
     // ── Media & Hardware Keys (F1-F10) ───────────────────────────
