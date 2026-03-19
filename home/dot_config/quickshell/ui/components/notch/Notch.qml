@@ -50,7 +50,8 @@ Scope {
     "charging": { path: "Charging.qml" },
     "dnd": { path: "DND.qml" },
     "lock": { path: "Lock.qml" },
-    "audio": { path: "Audio.qml" }
+    "audio": { path: "Audio.qml" },
+    "dictation": { path: "Dictation.qml" }
   }
 
   signal newNotchInstance(string code, string name, int id)
@@ -84,6 +85,23 @@ Scope {
     id: fileViewer
     path: Quickshell.shellDir + "/ui/components/notch/instances/Lock.qml"
     blockAllReads: true
+  }
+
+  // asr-rs dictation state: watches $XDG_RUNTIME_DIR/asr-rs/state
+  FileView {
+    id: asrStateFile
+    path: (Quickshell.env("XDG_RUNTIME_DIR") || "/run/user/1000") + "/asr-rs/state"
+    watchChanges: true
+    blockLoading: true
+    onFileChanged: {
+      reload()
+      let state = text().trim()
+      if (state === "active") {
+        if (!root.idIsRunning("dictation")) root.launchByRId("dictation")
+      } else {
+        root.closeNotchInstance("dictation")
+      }
+    }
   }
 
   onDndModeChanged: launchByRId("dnd")

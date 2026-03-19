@@ -93,6 +93,8 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.config/niri/scripts/clipbo
 
     Mod+I hotkey-overlay-title="Toggle Top Bar" { spawn-sh "~/.config/niri/scripts/bar-toggle"; }
 
+    Mod+Space hotkey-overlay-title="Toggle Dictation" { spawn "pkill" "-USR1" "asr-rs"; }
+    Mod+Shift+Space hotkey-overlay-title="Stop Dictation" { spawn "pkill" "-USR2" "asr-rs"; }
 
     Mod+Slash { show-hotkey-overlay; }
 

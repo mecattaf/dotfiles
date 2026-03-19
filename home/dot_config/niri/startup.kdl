@@ -15,6 +15,9 @@ spawn-at-startup "vicinae" "server"
 // scroll: exec dms run
 spawn-at-startup "quickshell"
 
+// streaming speech-to-text daemon (starts inactive, toggle with Mod+Space)
+spawn-at-startup "asr-rs"
+
 // wallpaper is handled by quickshell (qs ipc call wallpaper change <path>)
 
 
