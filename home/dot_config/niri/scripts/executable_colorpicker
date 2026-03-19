@@ -1,0 +1,5 @@
+#!/bin/bash
+output=$(niri msg pick-color) || exit 1
+hex=$(echo "$output" | grep -oP '#[0-9a-f]{6}')
+printf '%s' "$hex" | wl-copy
+notify-send "Color Picker" "$hex copied to clipboard"
