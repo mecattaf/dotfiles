@@ -27,7 +27,8 @@ layout {
         urgent-color "#f38ba8"
     }
 
-    center-focused-column "always"
+    center-focused-column "on-overflow"
+    always-center-single-column
 
     // scroll: layout_widths [0.33333333 0.5 0.66666667 1.0]
     preset-column-widths {
