@@ -1,0 +1,18 @@
+[Unit]
+Description=Immich Machine Learning
+After=network-online.target immich-network.service
+Requires=immich-network.service
+
+[Container]
+Image=ghcr.io/immich-app/immich-machine-learning:release
+ContainerName=immich-ml
+AutoUpdate=registry
+Network=systemd-immich
+Volume=immich-ml-cache:/cache:Z
+Environment=MACHINE_LEARNING_CACHE_FOLDER=/cache
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

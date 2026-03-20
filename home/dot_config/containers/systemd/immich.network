@@ -1,0 +1,8 @@
+[Unit]
+Description=Immich Container Network
+
+[Network]
+Subnet=10.89.10.0/24
+
+[Install]
+WantedBy=default.target
