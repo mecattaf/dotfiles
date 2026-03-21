@@ -1,0 +1,60 @@
+we can add on top of the microvm sandbox the ability to forward url s directly with caddy wrapping since it's already installed on fedora
+
+Caddyfile.tmpl
+```
+{{- /* ══════════════════════════════════════════════════════════ */ -}}
+{{- /* CADDY MAIN CONFIGURATION                                    */ -}}
+{{- /* Generated from: .chezmoi.yaml.tmpl                          */ -}}
+{{- /* Location: ~/.config/caddy/Caddyfile                         */ -}}
+{{- /* ══════════════════════════════════════════════════════════ */ -}}
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 🌐 GLOBAL OPTIONS
+# ═════════════════════════════════════════════════════════════════════════════
+{
+  # Disable automatic HTTPS (Tailscale handles TLS)
+  auto_https off
+  
+  # Disable admin API for security
+  admin off
+  
+  # Log level
+  log {
+    level ERROR
+  }
+}
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 📦 IMPORT SERVICE ROUTES
+# Each service has its own .caddy file that defines its route
+# Files are conditionally generated based on .chezmoi.yaml.tmpl settings
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Import all .caddy files from conf.d
+import /etc/caddy/conf.d/*.caddy
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 📝 ARCHITECTURE NOTES
+# ═════════════════════════════════════════════════════════════════════════════
+#
+# SERVICE FILES IMPORTED:
+{{- range $name, $service := .infrastructure.services }}
+{{- if and $service.enabled $service.external_subdomain }}
+#   - {{ $name }}.caddy → https://{{ $service.external_subdomain }}.{{ $.tailscale.full_hostname }}
+{{- end }}
+{{- end }}
+#
+# CONDITIONAL GENERATION:
+#   Service .caddy files are only generated when:
+#   - service.enabled = true
+#   - service.external_subdomain is defined
+#
+# ADD NEW ROUTES:
+#   1. Edit .chezmoi.yaml.tmpl (infrastructure.services)
+#   2. Set external_subdomain for the service
+#   3. Create [service].caddy.tmpl in ~/.config/caddy/
+#   4. Run: chezmoi apply
+#   5. Reload: systemctl --user reload caddy
+#
+# ═════════════════════════════════════════════════════════════════════════════
+`
