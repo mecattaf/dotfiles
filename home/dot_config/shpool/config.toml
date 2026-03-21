@@ -1,0 +1,11 @@
+[prompt]
+# Disable shpool's native prompt prefix — starship handles this
+enabled = false
+
+[env]
+# Shpool sessions don't inherit WAYLAND_DISPLAY, breaking wl-copy/wl-paste
+WAYLAND_DISPLAY = "wayland-1"
+
+[session]
+# 'screen' mode uses shpool's VT100 parser for better reattach fidelity
+session_restore_mode = "screen"

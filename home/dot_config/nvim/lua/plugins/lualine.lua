@@ -109,6 +109,21 @@ components.recording = {
   end,
 }
 
+-- Shpool session indicator
+components.shpool = {
+  function()
+    local name = vim.env.SHPOOL_SESSION_NAME
+    if name then
+      return 'shpool:' .. name
+    end
+    return ''
+  end,
+  cond = function()
+    return vim.env.SHPOOL_SESSION_NAME ~= nil
+  end,
+  color = { fg = '#6c7086' },
+}
+
 -- LSP diagnostics
 components.diagnostics = {
   'diagnostics',
@@ -174,6 +189,7 @@ function M.setup()
         components.recording,
       },
       lualine_x = {
+        components.shpool,
         components.diagnostics,
         components.filetype,
       },

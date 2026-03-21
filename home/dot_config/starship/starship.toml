@@ -6,6 +6,9 @@ $git_branch\
 $git_state\
 $git_status\
 $cmd_duration\
+${custom.shpool}\
+${custom.ssh}\
+${custom.network}\
 $line_break\
 $python\
 $character"""
@@ -50,3 +53,30 @@ style = "yellow"
 [python]
 format = "[$virtualenv]($style) "
 style = "bright-black"
+
+[custom.shpool]
+command = 'echo $SHPOOL_SESSION_NAME'
+when = 'test -n "$SHPOOL_SESSION_NAME"'
+format = '[$output]($style) '
+style = 'bright-black'
+shell = ['fish']
+
+[custom.ssh]
+command = 'echo "ssh"'
+when = 'test -n "$SSH_CONNECTION"'
+format = '[$output]($style) '
+style = 'yellow'
+shell = ['fish']
+
+[custom.network]
+command = '''
+if string match -q "100.*" (string split " " $SSH_CONNECTION)[1]
+    echo "tailscale"
+else
+    echo "lan"
+end
+'''
+when = 'test -n "$SSH_CONNECTION"'
+format = '[$output]($style) '
+style = 'bright-black'
+shell = ['fish']
