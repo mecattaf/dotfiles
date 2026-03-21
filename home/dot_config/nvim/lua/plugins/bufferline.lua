@@ -11,62 +11,62 @@ bufferline.setup {
   },
   highlights = {
     fill = {
-      fg = "#1e1e2e",
-      bg = "#1e1e2e",
+      fg = "#000000",
+      bg = "#000000",
     },
     background = {
       fg = "#45475a",
-      bg = "#1e1e2e",
+      bg = "#000000",
     },
 
     -- buffers
     buffer_selected = {
-      fg = "#cdd6f4",
-      bg = "#1e1e2e",
+      fg = "#EAECF0",
+      bg = "#000000",
       italic = false,
     },
     buffer_visible = {
       fg = "#45475a",
-      bg = "#1e1e2e",
+      bg = "#000000",
     },
 
     -- close buttons
     close_button = {
       fg = "#45475a",
-      bg = "#1e1e2e",
+      bg = "#000000",
     },
     close_button_visible = {
       fg = "#45475a",
-      bg = "#1e1e2e",
+      bg = "#000000",
     },
     close_button_selected = {
-      fg = "#f38ba8",
-      bg = "#1e1e2e",
+      fg = "#F47B85",
+      bg = "#000000",
     },
 
     indicator_selected = {
-      fg = "#1e1e2e",
-      bg = "#1e1e2e",
+      fg = "#000000",
+      bg = "#000000",
     },
 
     -- modified
     modified = {
       fg = "#45475a",
-      bg = "#1e1e2e",
+      bg = "#000000",
     },
     modified_visible = {
-      fg = "#1e1e2e",
-      bg = "#1e1e2e",
+      fg = "#000000",
+      bg = "#000000",
     },
     modified_selected = {
-      fg = "#a6e3a1",
-      bg = "#1e1e2e",
+      fg = "#9BE963",
+      bg = "#000000",
     },
 
     -- tabs
     tab_close = {
-      fg = "#1e1e2e",
-      bg = "#1e1e2e",
+      fg = "#000000",
+      bg = "#000000",
     },
   },
 }

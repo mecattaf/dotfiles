@@ -81,7 +81,7 @@ components.filename = {
 -- External changes indicator
 components.external_changes = {
   require('external-changes').lualine_component,
-  color = { fg = '#a6e3a1', gui = 'bold' },
+  color = { fg = '#9BE963', gui = 'bold' },
 }
 
 -- Search count
@@ -103,7 +103,7 @@ components.recording = {
     end
     return ' REC @' .. reg
   end,
-  color = { fg = '#f38ba8', gui = 'bold' },
+  color = { fg = '#F47B85', gui = 'bold' },
   cond = function()
     return vim.fn.reg_recording() ~= ''
   end,
@@ -121,7 +121,7 @@ components.shpool = {
   cond = function()
     return vim.env.SHPOOL_SESSION_NAME ~= nil
   end,
-  color = { fg = '#6c7086' },
+  color = { fg = '#818898' },
 }
 
 -- LSP diagnostics

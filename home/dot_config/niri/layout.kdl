@@ -24,7 +24,7 @@ layout {
         width 1
         active-color "#070707"
         inactive-color "#000000"
-        urgent-color "#f38ba8"
+        urgent-color "#F47B85"
     }
 
     center-focused-column "on-overflow"
@@ -53,13 +53,13 @@ layout {
     // ^ NO NIRI EQUIVALENT
 
     tab-indicator {
-        active-color "#b4befe"
-        inactive-color "#9399b2"
-        urgent-color "#f38ba8"
+        active-color "#CC7BF4"
+        inactive-color "#818898"
+        urgent-color "#F47B85"
     }
 
     insert-hint {
-        color "#b4befe80"
+        color "#CC7BF480"
     }
 
     background-color "#000000"
