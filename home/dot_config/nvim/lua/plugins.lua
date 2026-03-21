@@ -133,6 +133,39 @@ require("lazy").setup({
            teal = "#5EEDED",
          },
        },
+       custom_highlights = function(colors)
+         local function dim(hex, amount)
+           local r = math.floor(tonumber(hex:sub(2, 3), 16) * amount)
+           local g = math.floor(tonumber(hex:sub(4, 5), 16) * amount)
+           local b = math.floor(tonumber(hex:sub(6, 7), 16) * amount)
+           return string.format("#%02x%02x%02x", r, g, b)
+         end
+         local bg_amount = 0.12
+         return {
+           RenderMarkdownH1 = { fg = colors.red, bold = true },
+           RenderMarkdownH1Bg = { bg = dim(colors.red, bg_amount) },
+           RenderMarkdownH2 = { fg = colors.peach, bold = true },
+           RenderMarkdownH2Bg = { bg = dim(colors.peach, bg_amount) },
+           RenderMarkdownH3 = { fg = colors.green, bold = true },
+           RenderMarkdownH3Bg = { bg = dim(colors.green, bg_amount) },
+           RenderMarkdownH4 = { fg = colors.teal, bold = true },
+           RenderMarkdownH4Bg = { bg = dim(colors.teal, bg_amount) },
+           RenderMarkdownH5 = { fg = colors.blue, bold = true },
+           RenderMarkdownH5Bg = { bg = dim(colors.blue, bg_amount) },
+           RenderMarkdownH6 = { fg = colors.mauve, bold = true },
+           RenderMarkdownH6Bg = { bg = dim(colors.mauve, bg_amount) },
+           RenderMarkdownCode = { bg = dim(colors.text, 0.05) },
+           RenderMarkdownCodeInline = { fg = colors.peach },
+           RenderMarkdownBullet = { fg = colors.blue },
+           RenderMarkdownDash = { fg = colors.overlay1 },
+           RenderMarkdownQuote = { fg = colors.overlay1 },
+           RenderMarkdownLink = { fg = colors.blue },
+           RenderMarkdownChecked = { fg = colors.green },
+           RenderMarkdownUnchecked = { fg = colors.overlay1 },
+           RenderMarkdownTableHead = { fg = colors.blue },
+           RenderMarkdownTableRow = { fg = colors.subtext1 },
+         }
+       end,
        integrations = {
          render_markdown = true,
        },
