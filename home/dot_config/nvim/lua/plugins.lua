@@ -133,44 +133,45 @@ require("lazy").setup({
            teal = "#5EEDED",
          },
        },
-       custom_highlights = function(colors)
-         local function dim(hex, amount)
-           local r = math.floor(tonumber(hex:sub(2, 3), 16) * amount)
-           local g = math.floor(tonumber(hex:sub(4, 5), 16) * amount)
-           local b = math.floor(tonumber(hex:sub(6, 7), 16) * amount)
-           return string.format("#%02x%02x%02x", r, g, b)
-         end
-         local bg_amount = 0.12
-         return {
-           RenderMarkdownH1 = { fg = colors.red, bold = true },
-           RenderMarkdownH1Bg = { bg = dim(colors.red, bg_amount) },
-           RenderMarkdownH2 = { fg = colors.peach, bold = true },
-           RenderMarkdownH2Bg = { bg = dim(colors.peach, bg_amount) },
-           RenderMarkdownH3 = { fg = colors.green, bold = true },
-           RenderMarkdownH3Bg = { bg = dim(colors.green, bg_amount) },
-           RenderMarkdownH4 = { fg = colors.teal, bold = true },
-           RenderMarkdownH4Bg = { bg = dim(colors.teal, bg_amount) },
-           RenderMarkdownH5 = { fg = colors.blue, bold = true },
-           RenderMarkdownH5Bg = { bg = dim(colors.blue, bg_amount) },
-           RenderMarkdownH6 = { fg = colors.mauve, bold = true },
-           RenderMarkdownH6Bg = { bg = dim(colors.mauve, bg_amount) },
-           RenderMarkdownCode = { bg = dim(colors.text, 0.05) },
-           RenderMarkdownCodeInline = { fg = colors.peach },
-           RenderMarkdownBullet = { fg = colors.blue },
-           RenderMarkdownDash = { fg = colors.overlay1 },
-           RenderMarkdownQuote = { fg = colors.overlay1 },
-           RenderMarkdownLink = { fg = colors.blue },
-           RenderMarkdownChecked = { fg = colors.green },
-           RenderMarkdownUnchecked = { fg = colors.overlay1 },
-           RenderMarkdownTableHead = { fg = colors.blue },
-           RenderMarkdownTableRow = { fg = colors.subtext1 },
-         }
-       end,
        integrations = {
-         render_markdown = true,
+         render_markdown = false,
        },
      })
      vim.cmd.colorscheme "catppuccin"
+
+     vim.api.nvim_create_autocmd("ColorScheme", {
+       pattern = "catppuccin*",
+       callback = function()
+         local C = require("catppuccin.palettes").get_palette()
+         local darken = require("catppuccin.utils.colors").darken
+         local hl = vim.api.nvim_set_hl
+         local bg_amount = 0.095
+         local headings = {
+           { "H1", C.red },
+           { "H2", C.peach },
+           { "H3", C.yellow },
+           { "H4", C.green },
+           { "H5", C.teal },
+           { "H6", C.blue },
+         }
+         for _, h in ipairs(headings) do
+           hl(0, "RenderMarkdown" .. h[1], { fg = h[2], bold = true })
+           hl(0, "RenderMarkdown" .. h[1] .. "Bg", { bg = darken(h[2], bg_amount, C.base) })
+         end
+         hl(0, "RenderMarkdownCode", { bg = darken(C.text, 0.05, C.base) })
+         hl(0, "RenderMarkdownCodeInline", { fg = C.peach })
+         hl(0, "RenderMarkdownBullet", { fg = C.blue })
+         hl(0, "RenderMarkdownDash", { fg = C.overlay1 })
+         hl(0, "RenderMarkdownQuote", { fg = C.overlay1 })
+         hl(0, "RenderMarkdownLink", { fg = C.blue })
+         hl(0, "RenderMarkdownChecked", { fg = C.green })
+         hl(0, "RenderMarkdownUnchecked", { fg = C.overlay1 })
+         hl(0, "RenderMarkdownTableHead", { fg = C.blue })
+         hl(0, "RenderMarkdownTableRow", { fg = C.subtext1 })
+       end,
+     })
+     -- Fire the autocmd for the initial colorscheme load
+     vim.api.nvim_exec_autocmds("ColorScheme", { pattern = "catppuccin*" })
    end
   },
   {
