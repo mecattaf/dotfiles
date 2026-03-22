@@ -23,7 +23,7 @@ fish_style_pwd_dir_length = 1
 substitutions = { "/var/home/tom" = "~" }
 
 [character]
-success_symbol = "[❯](purple)"
+success_symbol = "[❯](#DA7756)"
 error_symbol = "[❯](red)"
 vicmd_symbol = "[❮](green)"
 

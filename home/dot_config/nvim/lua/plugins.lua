@@ -147,12 +147,12 @@ require("lazy").setup({
          local hl = vim.api.nvim_set_hl
          local bg_amount = 0.095
          local headings = {
-           { "H1", C.red },
-           { "H2", C.peach },
-           { "H3", C.yellow },
-           { "H4", C.green },
-           { "H5", C.teal },
-           { "H6", C.blue },
+           { "H1", C.blue },
+           { "H2", C.teal },
+           { "H3", C.green },
+           { "H4", C.peach },
+           { "H5", C.mauve },
+           { "H6", C.red },
          }
          for _, h in ipairs(headings) do
            hl(0, "RenderMarkdown" .. h[1], { fg = h[2], bold = true })
