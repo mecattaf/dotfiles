@@ -147,6 +147,7 @@ require("lazy").setup({
          local highlights = {}
          for i, color in ipairs(rainbow) do
            highlights["rainbow" .. i] = { fg = color }
+           highlights["RenderMarkdownH" .. i] = { fg = color, bold = true }
            highlights["RenderMarkdownH" .. i .. "Bg"] = { bg = U.darken(color, bg_amount, colors.base) }
          end
          highlights["RenderMarkdownCode"] = { bg = U.darken(colors.text, 0.05, colors.base) }
