@@ -217,8 +217,8 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.config/niri/scripts/clipbo
     Mod+Ctrl+8 { move-column-to-workspace 8; }
     Mod+Ctrl+9 { move-column-to-workspace 9; }
 
-    Mod+U { focus-workspace-down; }
-    Mod+Shift+U { focus-workspace-up; }
+    Mod+Down { focus-workspace-down; }
+    Mod+Up { focus-workspace-up; }
 
     Mod+WheelScrollDown      cooldown-ms=150 { focus-workspace-down; }
     Mod+WheelScrollUp        cooldown-ms=150 { focus-workspace-up; }
