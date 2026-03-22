@@ -136,20 +136,18 @@ require("lazy").setup({
        custom_highlights = function(colors)
          local U = require("catppuccin.utils.colors")
          local bg_amount = 0.095
-         local headings = {
-           { 1, colors.blue },
-           { 2, colors.peach },
-           { 3, colors.green },
-           { 4, colors.teal },
-           { 5, colors.yellow },
-           { 6, colors.mauve },
+         local rainbow = {
+           colors.blue,   -- rainbow1 (H1)
+           colors.peach,  -- rainbow2 (H2)
+           colors.green,  -- rainbow3 (H3)
+           colors.teal,   -- rainbow4 (H4)
+           colors.yellow, -- rainbow5 (H5)
+           colors.mauve,  -- rainbow6 (H6)
          }
          local highlights = {}
-         for _, h in ipairs(headings) do
-           local n, color = h[1], h[2]
-           highlights["@markup.heading." .. n .. ".markdown"] = { fg = color, bold = true }
-           highlights["RenderMarkdownH" .. n] = { fg = color, bold = true }
-           highlights["RenderMarkdownH" .. n .. "Bg"] = { bg = U.darken(color, bg_amount, colors.base) }
+         for i, color in ipairs(rainbow) do
+           highlights["rainbow" .. i] = { fg = color }
+           highlights["RenderMarkdownH" .. i .. "Bg"] = { bg = U.darken(color, bg_amount, colors.base) }
          end
          highlights["RenderMarkdownCode"] = { bg = U.darken(colors.text, 0.05, colors.base) }
          highlights["RenderMarkdownCodeInline"] = { fg = colors.peach }
@@ -164,7 +162,7 @@ require("lazy").setup({
          return highlights
        end,
        integrations = {
-         render_markdown = false,
+         render_markdown = true,
        },
      })
      vim.cmd.colorscheme "catppuccin"
