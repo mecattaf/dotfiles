@@ -133,47 +133,41 @@ require("lazy").setup({
            teal = "#5EEDED",
          },
        },
+       custom_highlights = function(colors)
+         local U = require("catppuccin.utils.colors")
+         local bg_amount = 0.095
+         local headings = {
+           { 1, colors.blue },
+           { 2, colors.peach },
+           { 3, colors.green },
+           { 4, colors.teal },
+           { 5, colors.yellow },
+           { 6, colors.mauve },
+         }
+         local highlights = {}
+         for _, h in ipairs(headings) do
+           local n, color = h[1], h[2]
+           highlights["@markup.heading." .. n .. ".markdown"] = { fg = color, bold = true }
+           highlights["RenderMarkdownH" .. n] = { fg = color, bold = true }
+           highlights["RenderMarkdownH" .. n .. "Bg"] = { bg = U.darken(color, bg_amount, colors.base) }
+         end
+         highlights["RenderMarkdownCode"] = { bg = U.darken(colors.text, 0.05, colors.base) }
+         highlights["RenderMarkdownCodeInline"] = { fg = colors.peach }
+         highlights["RenderMarkdownBullet"] = { fg = colors.blue }
+         highlights["RenderMarkdownDash"] = { fg = colors.overlay1 }
+         highlights["RenderMarkdownQuote"] = { fg = colors.overlay1 }
+         highlights["RenderMarkdownLink"] = { fg = colors.blue }
+         highlights["RenderMarkdownChecked"] = { fg = colors.green }
+         highlights["RenderMarkdownUnchecked"] = { fg = colors.overlay1 }
+         highlights["RenderMarkdownTableHead"] = { fg = colors.blue }
+         highlights["RenderMarkdownTableRow"] = { fg = colors.subtext1 }
+         return highlights
+       end,
        integrations = {
          render_markdown = false,
        },
      })
      vim.cmd.colorscheme "catppuccin"
-
-     vim.api.nvim_create_autocmd("ColorScheme", {
-       pattern = "catppuccin*",
-       callback = function()
-         local C = require("catppuccin.palettes").get_palette()
-         local darken = require("catppuccin.utils.colors").darken
-         local hl = vim.api.nvim_set_hl
-         local bg_amount = 0.095
-         local headings = {
-           { 1, C.blue },
-           { 2, C.peach },
-           { 3, C.green },
-           { 4, C.teal },
-           { 5, C.yellow },
-           { 6, C.mauve },
-         }
-         for _, h in ipairs(headings) do
-           local n, color = h[1], h[2]
-           hl(0, "@markup.heading." .. n .. ".markdown", { fg = color, bold = true })
-           hl(0, "RenderMarkdownH" .. n, { fg = color, bold = true })
-           hl(0, "RenderMarkdownH" .. n .. "Bg", { bg = darken(color, bg_amount, C.base) })
-         end
-         hl(0, "RenderMarkdownCode", { bg = darken(C.text, 0.05, C.base) })
-         hl(0, "RenderMarkdownCodeInline", { fg = C.peach })
-         hl(0, "RenderMarkdownBullet", { fg = C.blue })
-         hl(0, "RenderMarkdownDash", { fg = C.overlay1 })
-         hl(0, "RenderMarkdownQuote", { fg = C.overlay1 })
-         hl(0, "RenderMarkdownLink", { fg = C.blue })
-         hl(0, "RenderMarkdownChecked", { fg = C.green })
-         hl(0, "RenderMarkdownUnchecked", { fg = C.overlay1 })
-         hl(0, "RenderMarkdownTableHead", { fg = C.blue })
-         hl(0, "RenderMarkdownTableRow", { fg = C.subtext1 })
-       end,
-     })
-     -- Fire the autocmd for the initial colorscheme load
-     vim.api.nvim_exec_autocmds("ColorScheme", { pattern = "catppuccin*" })
    end
   },
   {
