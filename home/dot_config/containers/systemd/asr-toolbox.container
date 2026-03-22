@@ -11,6 +11,7 @@ Exec=wlk \
   --language en \
   --frame-threshold 25 \
   --pcm-input \
+  --port 8367 \
   -l INFO
 Environment=HSA_OVERRIDE_GFX_VERSION=11.0.0
 Environment=HOME=%h
