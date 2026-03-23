@@ -121,7 +121,7 @@ function pomo_notify_daemon {
 
 function pomo_ensure_services {
     if ! pgrep -f "pomodoro notify" >/dev/null; then
-        ~/.config/niri/scripts/pomodoro notify &
+        ~/.local/bin/pomodoro notify &
     fi
 }
 
