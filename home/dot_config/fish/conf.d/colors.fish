@@ -1,7 +1,7 @@
 # Color Palette (Claude-inspired, mapped from catppuccin mocha nvim overrides)
 set -l normal eaecf0
 set -l command 70b8ff
-#set -l param f2cdcd # catppuccin flamingo — no nvim override
+set -l param 9be963
 set -l keyword f47b85
 set -l quote 9be963
 #set -l redirection f5c2e7 # catppuccin pink — no nvim override
@@ -29,7 +29,7 @@ set -l pager_completion eaecf0
 # Syntax Highlighting Colors
 set -g fish_color_normal $normal
 set -g fish_color_command $command
-#set -g fish_color_param $param # no nvim override
+set -g fish_color_param $param
 set -g fish_color_keyword $keyword
 set -g fish_color_quote $quote
 #set -g fish_color_redirection $redirection # no nvim override
