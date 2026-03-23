@@ -12,8 +12,8 @@ binds {
     // ^ DROPPED: used scrollmsg (scroll-specific IPC)
 
     // scroll: bindsym $mod+D exec vicinae open
-    Mod+D hotkey-overlay-title="Launcher" { spawn-sh "~/.config/niri/scripts/launcher"; }
-    Mod+Shift+D hotkey-overlay-title="DMS Launcher" { spawn-sh "~/.config/niri/scripts/dms-launcher"; }
+    Mod+D hotkey-overlay-title="Launcher" { spawn-sh "~/.local/bin/launcher"; }
+    Mod+Shift+D hotkey-overlay-title="DMS Launcher" { spawn-sh "~/.local/bin/dms-launcher"; }
 
     // scroll: bindsym $mod+E exec thunar
     Mod+E hotkey-overlay-title="File Manager" { spawn "nautilus"; }
@@ -26,11 +26,11 @@ binds {
 
     // ── Quickshell (was DMS) ─────────────────────────────────────
 
-Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.config/niri/scripts/clipboard"; }
+Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.local/bin/clipboard"; }
     Mod+Shift+V hotkey-overlay-title="Emoji Picker" { spawn "rofimoji" "-a" "clipboard"; }
-    Mod+O hotkey-overlay-title="Notifications" { spawn-sh "~/.config/niri/scripts/dnd"; }
-    Mod+Comma hotkey-overlay-title="Settings" { spawn-sh "~/.config/niri/scripts/settings"; }
-    Mod+B hotkey-overlay-title="Control Center" { spawn-sh "~/.config/niri/scripts/control-center"; }
+    Mod+O hotkey-overlay-title="Notifications" { spawn-sh "~/.local/bin/dnd"; }
+    Mod+Comma hotkey-overlay-title="Settings" { spawn-sh "~/.local/bin/settings"; }
+    Mod+B hotkey-overlay-title="Control Center" { spawn-sh "~/.local/bin/control-center"; }
 
 
     // ── Screenshots ──────────────────────────────────────────────
@@ -45,21 +45,21 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.config/niri/scripts/clipbo
     // scroll: set $color-picker exec $scripts/colorpicker
     // scroll: bindsym $mod+C exec $color-picker
     // ^ Use niri IPC for color picking:
-    Mod+C hotkey-overlay-title="Color Picker" { spawn-sh "~/.config/niri/scripts/colorpicker"; }
+    Mod+C hotkey-overlay-title="Color Picker" { spawn-sh "~/.local/bin/colorpicker"; }
 
 
     // ── Media & Hardware Keys (F1-F10) ───────────────────────────
 
-    F1 hotkey-overlay-title="Brightness Down" { spawn-sh "~/.config/niri/scripts/brightness down"; }
-    F2 hotkey-overlay-title="Brightness Up" { spawn-sh "~/.config/niri/scripts/brightness up"; }
-    F3 hotkey-overlay-title="Play/Pause" { spawn-sh "~/.config/niri/scripts/media play"; }
-    F4 hotkey-overlay-title="Previous" { spawn-sh "~/.config/niri/scripts/media prev"; }
-    F5 hotkey-overlay-title="Next" { spawn-sh "~/.config/niri/scripts/media next"; }
-    F6 hotkey-overlay-title="Mute" { spawn-sh "~/.config/niri/scripts/volume mute"; }
-    F7 hotkey-overlay-title="Volume Down" { spawn-sh "~/.config/niri/scripts/volume down"; }
-    F8 hotkey-overlay-title="Volume Up" { spawn-sh "~/.config/niri/scripts/volume up"; }
-    F9 hotkey-overlay-title="Pomodoro" { spawn-sh "~/.config/niri/scripts/pomodoro menu"; }
-    F10 hotkey-overlay-title="Power Menu" { spawn-sh "~/.config/niri/scripts/powermenu"; }
+    F1 hotkey-overlay-title="Brightness Down" { spawn-sh "~/.local/bin/brightness down"; }
+    F2 hotkey-overlay-title="Brightness Up" { spawn-sh "~/.local/bin/brightness up"; }
+    F3 hotkey-overlay-title="Play/Pause" { spawn-sh "~/.local/bin/media play"; }
+    F4 hotkey-overlay-title="Previous" { spawn-sh "~/.local/bin/media prev"; }
+    F5 hotkey-overlay-title="Next" { spawn-sh "~/.local/bin/media next"; }
+    F6 hotkey-overlay-title="Mute" { spawn-sh "~/.local/bin/volume mute"; }
+    F7 hotkey-overlay-title="Volume Down" { spawn-sh "~/.local/bin/volume down"; }
+    F8 hotkey-overlay-title="Volume Up" { spawn-sh "~/.local/bin/volume up"; }
+    F9 hotkey-overlay-title="Pomodoro" { spawn-sh "~/.local/bin/pomodoro menu"; }
+    F10 hotkey-overlay-title="Power Menu" { spawn-sh "~/.local/bin/powermenu"; }
 
 
     // ── Chrome Webapps ───────────────────────────────────────────
@@ -91,7 +91,7 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.config/niri/scripts/clipbo
     // scroll: bindsym $mod+Shift+apostrophe exec $stop-wshowkeys
     Mod+Shift+Apostrophe { spawn-sh "pkill wshowkeys"; }
 
-    Mod+I hotkey-overlay-title="Toggle Top Bar" { spawn-sh "~/.config/niri/scripts/bar-toggle"; }
+    Mod+I hotkey-overlay-title="Toggle Top Bar" { spawn-sh "~/.local/bin/bar-toggle"; }
 
     Mod+Space hotkey-overlay-title="Toggle Dictation" { spawn "pkill" "-USR1" "asr-rs"; }
     Mod+Shift+Space hotkey-overlay-title="Stop Dictation" { spawn "pkill" "-USR2" "asr-rs"; }
