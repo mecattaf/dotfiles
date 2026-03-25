@@ -14,7 +14,7 @@ spawn-at-startup "vicinae" "server"
 
 // scroll: exec dms run
 // spawn-at-startup "quickshell"  // old shell — commented out during webshell migration
-spawn-at-startup "qs" "-c" "$HOME/.config/quickshell/webshell/shell.qml"
+spawn-at-startup "qs" "-c" "webshell"
 
 // streaming speech-to-text daemon (starts inactive, toggle with Mod+Space)
 spawn-at-startup "asr-rs"
