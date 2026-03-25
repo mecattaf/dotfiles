@@ -1,2 +1,5 @@
 #!/bin/bash
-quickshell ipc call notch toggle
+# DROPPED: notch is not part of webshell (was eqsh-specific macOS-style notch)
+# The bar serves as the top surface now. Use bar-toggle instead.
+echo "notch-toggle is deprecated in webshell. Use bar-toggle instead."
+~/.local/bin/bar-toggle

@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-
-# wifi-menu.sh - A rofi-based network menu using iwmenu
-# Uses custom black Catppuccin theme with Mauve accent
+# UNCHANGED: standalone rofi wifi menu using iwmenu, no quickshell IPC
 
 # Define Catppuccin custom colors
 BG="#000000"       # Base (modified black)

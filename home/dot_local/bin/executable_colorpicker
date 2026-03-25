@@ -1,4 +1,5 @@
 #!/bin/bash
+# UNCHANGED: uses niri native color picker, no quickshell IPC
 output=$(niri msg pick-color) || exit 1
 hex=$(echo "$output" | grep -oP '#[0-9a-f]{6}')
 printf '%s' "$hex" | wl-copy

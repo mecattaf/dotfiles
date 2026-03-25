@@ -1,4 +1,6 @@
 #!/bin/bash
+# UNCHANGED: music IPC commands stay the same
+# MprisBridge handles these
 case "$1" in
     play|toggle)  quickshell ipc call music togglePlay ;;
     next)         quickshell ipc call music next ;;

@@ -1,2 +1,4 @@
 #!/bin/bash
+# UNCHANGED: bar toggle IPC command stays the same
+# ShellBridge.qml handles this via IPC
 quickshell ipc call bar toggle

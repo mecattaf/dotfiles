@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Set wallpaper via quickshell IPC
+# UNCHANGED: wallpaper IPC uses qs (quickshellX) directly
 # Usage: wallpaper [path]
 #   wallpaper /path/to/image.jpg   - set wallpaper
 #   wallpaper                      - set default wallpaper

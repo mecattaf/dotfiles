@@ -1,2 +1,6 @@
 #!/bin/bash
-quickshell ipc call settings toggle
+# CHANGED: settings IPC target renamed to shell toggleCcd
+# Old: quickshell ipc call settings toggle
+# New: settings is now part of CCD sidebar
+# Toggle CCD which contains the settings panel
+quickshell ipc call shell toggleCcd

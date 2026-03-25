@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# UNCHANGED: standalone fzf-based NetworkManager TUI, no quickshell IPC
 
 """based off of firecat53's command line dmenu script.
 https://github.com/firecat53/networkmanager-dmenu
@@ -29,22 +30,16 @@ conns = client.get_connections()
 
 
 def run_fzf(alts, prompt="Settings", strip=True):
-    """TODO: Docstring for run_fzf.
-    :returns: Selected option or entered string
-    """
     fzf = Popen(["fzf", "--height=100%", "--prompt", prompt + ": "], stdout=PIPE, stdin=PIPE)
     selected = fzf.communicate("\n".join(alts).encode("utf-8"))[0].decode("utf-8")
 
     if strip:
         selected = selected.strip();
-    
+
     return selected;
 
 
 def choose_adapter(client):
-    """If there is more than one wifi adapter installed, ask which one to use
-
-    """
     devices = client.get_devices()
     devices = [i for i in devices if i.get_device_type() == NM.DeviceType.WIFI]
     if len(devices) == 0:
@@ -53,7 +48,7 @@ def choose_adapter(client):
         return devices[0]
 
     sel = run_fzf([d.get_iface() for d in devices], "Choose Adapter")
-    
+
     if not sel:
         sys.exit()
 
@@ -63,9 +58,6 @@ def choose_adapter(client):
 
 
 def create_other_actions(client):
-    """Return list of other actions that can be taken
-
-    """
     networking_enabled = client.networking_get_enabled()
     networking_action = "Disable" if networking_enabled else "Enable"
     wifi_enabled = client.wireless_get_enabled()
@@ -99,18 +91,13 @@ def ap_security(ap):
             (rsn_flags & getattr(NM, '80211ApSecurityFlags').KEY_MGMT_802_1X)):
         sec_str += " 802.1X"
 
-    # If there is no security use "--"
     if sec_str == "":
         sec_str = "--"
     return sec_str.lstrip()
 
 
 class Action(object):
-    def __init__(self,
-                 name,
-                 f,
-                 args=None,
-                 ):
+    def __init__(self, name, f, args=None):
         self.name = name
         self.f = f
         if args is None:
@@ -168,7 +155,7 @@ def create_ap_actions(aps, active_ap, active_connection):
     for ap, name, sec in zip(aps, names, secs):
         bars = NM.utils_wifi_strength_bars(ap.get_strength())
         is_active = ap.get_bssid() == active_ap_bssid
-        active_flag = "直" if is_active else "  "
+        active_flag = "直" if is_active else "  "
         action_name = "{} {:<{}s}  {:<{}s}  {}".format(active_flag, name,
                                                        max_len_name, sec,
                                                        max_len_sec, bars)
@@ -185,7 +172,6 @@ def create_vpn_actions(vpns, active):
     return _create_vpngsm_actions(vpns, active_vpns, "VPN")
 
 
-# TODO: Test this
 def create_gsm_actions(gsms, active):
     active_gsms = [i for i in active if
                    i.get_connection().is_type(NM.SETTING_GSM_SETTING_NAME)]
@@ -197,7 +183,7 @@ def _create_vpngsm_actions(cons, active_cons, label):
     actions = []
     for con in cons:
         is_active = con.get_id() in active_con_ids
-        active_flag = "嬨" if is_active else "  "
+        active_flag = "嬨" if is_active else "  "
         action_name = "{} {}:{}".format(active_flag, con.get_id(), label)
         if is_active:
             active_connection = [a for a in active_cons
@@ -216,14 +202,6 @@ def _create_vpngsm_actions(cons, active_cons, label):
 
 
 def get_selection(client, aps, vpns, gsms, others):
-    """Combine the arg lists and send to dmenu for selection.
-    Also executes the associated action.
-
-    Args: args - aps: list of Actions
-                 vpns: list of Actions
-                 gsms: list of Actions
-                 others: list of Actions
-    """
     formated_aps = [str(ap) for ap in aps]
     formated_vpns = [str(vpn) for vpn in vpns]
     formated_gsms = [str(gsm) for gsm in gsms]
@@ -238,9 +216,7 @@ def get_selection(client, aps, vpns, gsms, others):
         inp += formated_gsms + [""]
     inp += formated_others
 
-
-    inp_bytes = "\n".join([str(i) for i in inp]) 
-         
+    inp_bytes = "\n".join([str(i) for i in inp])
     inp_bytes = inp_bytes.encode(ENC)
     sel = run_fzf([str(i) for i in inp], strip=False)
 
@@ -254,48 +230,21 @@ def get_selection(client, aps, vpns, gsms, others):
 
 
 def toggle_networking(enable):
-    """Enable/disable networking
-
-    Args: enable - boolean
-
-    """
     client.networking_set_enabled(enable)
 
 
 def toggle_wifi(enable):
-    """Enable/disable Wifi
-
-    Args: enable - boolean
-
-    """
     client.wireless_set_enabled(enable)
 
 
 def get_passphrase():
-    """Get a password
-
-    Returns: string
-
-    """
     return run_fzf([], prompt="Passphrase")
 
 
 def set_new_connection(ssid, pw):
-    """Setup a new NetworkManager connection
-
-    Args: ssid - string
-          pw - string
-
-    """
     pw = str(pw).strip()
     new_conn = ["nmcli", "device", "wifi", "connect", ssid, "password", pw]
     res = Popen(new_conn, stdout=PIPE, env=ENV).communicate()
-    # Delete connection if it fails somehow.
-    # With nmcli 0.9.10, you occasionally get an error message:
-    # "Error: Failed to add/activate new connection: Unknown error", which
-    # doesn't always mean the connection failed, so test for 'activated' or
-    # 'activating' in the connection status as well
-    # Delete connections with errors
     if "activated" not in res[0].decode(ENC):
         delete = ["nmcli", "connection", "delete", ssid]
         Popen(delete, stdout=PIPE).communicate()
@@ -337,4 +286,3 @@ if __name__ == '__main__':
     run()
 
 # vim: set et ts=4 sw=4 :
-

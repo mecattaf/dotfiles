@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-
-# Power menu with battery info — standalone (no eqsh dependency)
+# UNCHANGED: standalone power menu, no quickshell IPC dependency
 
 get_battery_info() {
     local power_supply_dir="/sys/class/power_supply"
@@ -42,7 +41,7 @@ get_battery_info() {
     else icon="󰁺"
     fi
 
-    echo "$icon $capacity% • $time_info"
+    echo "$icon $capacity% - $time_info"
 }
 
 battery_display=$(get_battery_info)

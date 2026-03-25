@@ -1,5 +1,5 @@
 #!/bin/bash
-# Pomodoro Timer — adapted from scroll, waybar refs removed
+# UNCHANGED: standalone pomodoro timer with rofi menu, no quickshell IPC
 
 [[ -n $POMO_FILE ]] && POMO=$POMO_FILE || POMO=$HOME/.local/share/pomo
 [[ -n $POMO_WORK_TIME ]] && WORK_TIME=$POMO_WORK_TIME || WORK_TIME=25

@@ -1,2 +1,5 @@
 #!/bin/bash
-quickshell ipc call spotlight toggle
+# CHANGED: spotlight IPC target renamed to shell toggleOverlay
+# Old: quickshell ipc call spotlight toggle
+# New: quickshell ipc call shell toggleOverlay
+quickshell ipc call shell toggleOverlay

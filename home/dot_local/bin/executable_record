@@ -1,5 +1,5 @@
 #!/bin/bash
-# Screen recording — uses niri msg for focused output
+# UNCHANGED: screen recording uses niri msg + wf-recorder, no quickshell IPC
 
 get_focused_output() {
     niri msg -j outputs | jq -r 'to_entries[] | select(.value.current_mode != null) | .key' | head -1

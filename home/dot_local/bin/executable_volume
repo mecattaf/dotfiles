@@ -1,5 +1,6 @@
 #!/bin/bash
-# eqsh VolumeOSD auto-reacts to pipewire changes
+# UNCHANGED: volume control uses wpctl directly
+# webshell OSD auto-reacts to pipewire volume changes via AudioBridge
 case "$1" in
     up)
         wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%+
