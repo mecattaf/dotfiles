@@ -11,6 +11,7 @@ import Quickshell.Io
 
 QtObject {
     id: root
+    default property list<QtObject> _children
 
     // ======================================================================
     // Public properties: shell metadata

@@ -12,6 +12,7 @@ import Quickshell.Services.Mpris
 
 QtObject {
     id: root
+    default property list<QtObject> _children
 
     // ======================================================================
     // Public properties (os.media)

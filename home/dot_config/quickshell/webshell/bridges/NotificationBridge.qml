@@ -11,6 +11,7 @@ import Quickshell.Services.Notifications
 
 QtObject {
     id: root
+    default property list<QtObject> _children
 
     // ======================================================================
     // Public properties (os.notifications)

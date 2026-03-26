@@ -10,6 +10,7 @@ import Quickshell.Services.UPower
 
 QtObject {
     id: root
+    default property list<QtObject> _children
 
     // ======================================================================
     // Public properties (os.power)
