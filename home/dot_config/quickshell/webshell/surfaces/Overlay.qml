@@ -75,6 +75,15 @@ PanelWindow {
             settings.showScrollBars: false
             settings.linksIncludedInFocusChain: false
 
+            // Title-change signaling: JS sets document.title to "__DISMISS_OVERLAY__"
+            // when Escape is pressed. This fires synchronously in Qt (no WebChannel
+            // round-trip) and works even if WebChannel method calls fail.
+            onTitleChanged: {
+                if (title === "__DISMISS_OVERLAY__") {
+                    shellBridge.hideSurface("overlay")
+                }
+            }
+
             onTooltipRequested: function(request) { request.accepted = true }
             onContextMenuRequested: function(request) { request.accepted = true }
         }
