@@ -1,4 +1,4 @@
 #!/bin/bash
 # launcher -- toggle the overlay (launcher/spotlight) surface
 # IPC target: ShellBridge (target: "shell"), method: toggleOverlay
-quickshell ipc call shell toggleOverlay
+qs ipc --pid $(pgrep -f "qs.*webshell") call shell toggleOverlay

@@ -2,7 +2,7 @@
 # brightness -- adjust display brightness via IPC
 # IPC target: display (BrightnessBridge IpcHandler)
 case "$1" in
-    up)    quickshell ipc call display brighter 0.05 ;;
-    down)  quickshell ipc call display dimmer 0.05 ;;
+    up)    qs ipc --pid $(pgrep -f "qs.*webshell") call display brighter 0.05 ;;
+    down)  qs ipc --pid $(pgrep -f "qs.*webshell") call display dimmer 0.05 ;;
     *)     echo "Usage: $0 {up|down}"; exit 1 ;;
 esac

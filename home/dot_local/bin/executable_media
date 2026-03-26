@@ -2,8 +2,8 @@
 # media -- MPRIS playback control via IPC
 # IPC target: music (MprisBridge IpcHandler)
 case "$1" in
-    play|toggle)  quickshell ipc call music togglePlay ;;
-    next)         quickshell ipc call music next ;;
-    prev)         quickshell ipc call music previous ;;
+    play|toggle)  qs ipc --pid $(pgrep -f "qs.*webshell") call music togglePlay ;;
+    next)         qs ipc --pid $(pgrep -f "qs.*webshell") call music next ;;
+    prev)         qs ipc --pid $(pgrep -f "qs.*webshell") call music previous ;;
     *)            echo "Usage: $0 {play|next|prev}"; exit 1 ;;
 esac

@@ -1,4 +1,4 @@
 #!/bin/bash
 # control-center -- toggle the CCD (control center / dashboard) sidebar
 # IPC target: ShellBridge (target: "shell"), method: toggleCcd
-quickshell ipc call shell toggleCcd
+qs ipc --pid $(pgrep -f "qs.*webshell") call shell toggleCcd
