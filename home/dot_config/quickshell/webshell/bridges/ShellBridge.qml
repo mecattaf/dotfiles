@@ -265,7 +265,7 @@ Scope {
 
     function _rebuildApps() {
         var apps = []
-        var entries = DesktopEntries.entries.values
+        var entries = DesktopEntries.applications.values
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i]
             if (e.noDisplay) continue
@@ -293,7 +293,7 @@ Scope {
     }
 
     Connections {
-        target: DesktopEntries.entries
+        target: DesktopEntries.applications
         function onValuesChanged() { root._rebuildApps() }
     }
 

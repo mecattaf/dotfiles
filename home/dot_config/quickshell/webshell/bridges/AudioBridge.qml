@@ -134,6 +134,13 @@ Scope {
     property real _lastSetVolume: -1
     property real _lastSetSourceVolume: -1
 
+    // Intermediate binding properties — QML Connections.target does not
+    // reliably track dependency chains through optional-chain expressions
+    // like `Pipewire.defaultAudioSink?.audio`.  Splitting into an explicit
+    // property ensures the binding re-evaluates when the sink/source changes.
+    readonly property var _sinkAudio: Pipewire.defaultAudioSink ? Pipewire.defaultAudioSink.audio : null
+    readonly property var _sourceAudio: Pipewire.defaultAudioSource ? Pipewire.defaultAudioSource.audio : null
+
     // ======================================================================
     // CRITICAL: PwObjectTracker -- binds default sink/source so that
     // volume, muted, channels, volumes properties become valid.
@@ -386,7 +393,7 @@ Scope {
     }
 
     Connections {
-        target: Pipewire.defaultAudioSink?.audio ?? null
+        target: root._sinkAudio
         function onVolumesChanged() {
             root._syncSinkState()
             osdDebounce.restart()
@@ -398,7 +405,7 @@ Scope {
     }
 
     Connections {
-        target: Pipewire.defaultAudioSource?.audio ?? null
+        target: root._sourceAudio
         function onVolumesChanged() { root._syncSourceState() }
         function onMutedChanged() { root._syncSourceState() }
     }
