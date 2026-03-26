@@ -1,7 +1,6 @@
 // CommandBridge.qml -- Command execution and desktop app enumeration.
 // Provides execDetached() for fire-and-forget commands, and exposes
 // desktopApps as a property populated by scanning .desktop files.
-// The exec() method returns synchronous stdout via a Process pattern.
 
 pragma ComponentBehavior: Bound
 
@@ -19,7 +18,6 @@ Scope {
     // ======================================================================
 
     // Desktop apps list: populated by scanning .desktop files on startup.
-    // JSON-encoded array of { id, name, exec, icon, description, keywords }.
     // Frontend reads this reactively via os.command.desktopApps
     property var desktopApps: []
 
@@ -27,14 +25,7 @@ Scope {
     // Public methods
     // ======================================================================
 
-    // exec(): Run a command and return stdout as a string.
-    // For short-lived commands only. Uses the synchronous approach of
-    // starting a Process and collecting output via signal before returning.
-    // NOTE: Due to QML's event loop, the function itself returns
-    // the _lastExecResult which was populated by the previous exec call.
-    // For truly synchronous results, use desktopApps property instead.
     function exec(command) {
-        // Launch async -- result available via _lastExecResult property
         var cmdStr = ""
         if (Array.isArray(command)) {
             cmdStr = command.join(" ")
@@ -84,7 +75,10 @@ Scope {
 
     // ======================================================================
     // Private: desktop apps scanner
+    // Accumulates lines via SplitParser, parses on process exit.
     // ======================================================================
+
+    property var _appScanLines: []
 
     Process {
         id: appScanProc
@@ -122,26 +116,34 @@ Scope {
         ]
         stdout: SplitParser {
             onRead: data => {
-                var lines = data.trim().split("\n")
-                var apps = []
-                for (var i = 0; i < lines.length; i++) {
-                    var line = lines[i]
-                    if (!line) continue
-                    var parts = line.split("\t")
-                    if (parts.length < 3) continue
-                    var keywords = (parts[5] || "").split(",").filter(function(k) { return k.length > 0 })
-                    apps.push({
-                        id: parts[0],
-                        name: parts[1],
-                        exec: parts[2],
-                        icon: parts[3] || "",
-                        description: parts[4] || "",
-                        keywords: keywords
-                    })
-                }
-                root.desktopApps = apps
-                console.info("CommandBridge: scanned", apps.length, "desktop apps")
+                // Accumulate each line
+                var lines = root._appScanLines.slice()
+                lines.push(data)
+                root._appScanLines = lines
             }
+        }
+        onExited: {
+            // Parse accumulated lines into app objects
+            var lines = root._appScanLines
+            var apps = []
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i].trim()
+                if (!line) continue
+                var parts = line.split("\t")
+                if (parts.length < 3) continue
+                var keywords = (parts[5] || "").split(",").filter(function(k) { return k.length > 0 })
+                apps.push({
+                    id: parts[0],
+                    name: parts[1],
+                    exec: parts[2],
+                    icon: parts[3] || "",
+                    description: parts[4] || "",
+                    keywords: keywords
+                })
+            }
+            root.desktopApps = apps
+            root._appScanLines = []
+            console.info("CommandBridge: scanned", apps.length, "desktop apps")
         }
     }
 
@@ -151,6 +153,7 @@ Scope {
         running: true
         repeat: true
         onTriggered: {
+            root._appScanLines = []
             appScanProc.running = true
         }
     }

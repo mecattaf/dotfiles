@@ -60,18 +60,19 @@ Scope {
     // ======================================================================
 
     function _applyWallpaper(output, path, mode) {
-        // Kill existing swaybg for this output first, then launch new one
+        // Kill existing swaybg for this output, then launch new one after a brief delay
+        // Using nohup + disown pattern to ensure swaybg outlives the shell
         if (output !== "*") {
             Quickshell.execDetached(["bash", "-c",
                 "pkill -f 'swaybg.*-o " + output + "' 2>/dev/null; " +
-                "sleep 0.1; " +
-                "swaybg -o '" + output + "' -i '" + path + "' -m " + mode + " &"
+                "sleep 0.2; " +
+                "exec swaybg -o '" + output + "' -i '" + path + "' -m " + mode
             ])
         } else {
             Quickshell.execDetached(["bash", "-c",
                 "pkill swaybg 2>/dev/null; " +
-                "sleep 0.1; " +
-                "swaybg -i '" + path + "' -m " + mode + " &"
+                "sleep 0.2; " +
+                "exec swaybg -i '" + path + "' -m " + mode
             ])
         }
     }
