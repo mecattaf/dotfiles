@@ -285,6 +285,13 @@ Scope {
         console.info("ShellBridge: applications populated:", apps.length, "apps")
     }
 
+    // Pull-based alternative: returns applications as a JSON string.
+    // WebChannel property hydration can fail for arrays of JS objects,
+    // so the frontend can call this method as a reliable fallback.
+    function getApplications() {
+        return JSON.stringify(root.applications)
+    }
+
     function launchApp(desktopId) {
         var entry = DesktopEntries.heuristicLookup(desktopId)
         if (entry) {
