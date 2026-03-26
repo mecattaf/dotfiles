@@ -338,7 +338,7 @@ Scope {
             "$HOME/.local/share/icons/hicolor/256x256/apps " +
             "$HOME/.local/share/icons/hicolor/128x128/apps " +
             "/usr/share/pixmaps " +
-            "-maxdepth 1 -type f \\( -name '*.png' -o -name '*.svg' -o -name '*.svgz' \\) 2>/dev/null"
+            "-maxdepth 1 \\( -type f -o -type l \\) \\( -name '*.png' -o -name '*.svg' -o -name '*.svgz' \\) 2>/dev/null"
         ]
         running: true
         stdout: SplitParser {
