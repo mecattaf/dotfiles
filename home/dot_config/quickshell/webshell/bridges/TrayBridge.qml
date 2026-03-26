@@ -7,7 +7,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.SystemTray
 
-Scope {
+QtObject {
     id: root
 
     // ======================================================================

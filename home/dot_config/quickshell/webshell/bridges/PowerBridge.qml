@@ -8,7 +8,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.UPower
 
-Scope {
+QtObject {
     id: root
 
     // ======================================================================
@@ -63,15 +63,19 @@ Scope {
 
     function _initPowerProfiles() {
         try {
-            var qmlString = 'import QtQuick; import Quickshell.Services.UPower; PowerProfiles {}'
-            _powerProfilesObj = Qt.createQmlObject(qmlString, root, "PowerBridge.PowerProfiles")
-            _powerProfilesAvailable = true
-            _activeProfile = _powerProfilesObj.activeProfile ?? "balanced"
-            _profiles = _powerProfilesObj.profiles ?? []
-            console.info("PowerBridge: PowerProfiles initialized")
+            if (typeof PowerProfiles !== "undefined") {
+                _powerProfilesObj = PowerProfiles
+                _powerProfilesAvailable = true
+                _activeProfile = PowerProfiles.activeProfile ?? "balanced"
+                _profiles = PowerProfiles.profiles ?? []
+                console.info("PowerBridge: PowerProfiles initialized (singleton)")
+            } else {
+                _powerProfilesAvailable = false
+                console.info("PowerBridge: PowerProfiles not available on this system")
+            }
         } catch (e) {
             _powerProfilesAvailable = false
-            console.warn("PowerBridge: PowerProfiles not available:", e)
+            console.info("PowerBridge: PowerProfiles not available:", e)
         }
     }
 

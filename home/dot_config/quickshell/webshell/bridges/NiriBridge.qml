@@ -9,7 +9,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-Scope {
+QtObject {
     id: root
 
     readonly property string socketPath: Quickshell.env("NIRI_SOCKET") ?? ""

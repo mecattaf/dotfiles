@@ -6,7 +6,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 
-Scope {
+QtObject {
     id: root
 
     // ======================================================================

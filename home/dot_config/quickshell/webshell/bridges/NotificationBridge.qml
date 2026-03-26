@@ -9,7 +9,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Notifications
 
-Scope {
+QtObject {
     id: root
 
     // ======================================================================

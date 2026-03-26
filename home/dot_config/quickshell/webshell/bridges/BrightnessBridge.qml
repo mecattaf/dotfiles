@@ -9,7 +9,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-Scope {
+QtObject {
     id: root
 
     // ======================================================================
@@ -74,13 +74,13 @@ Scope {
 
     IpcHandler {
         target: "display"
-        function brighter(by) {
+        function brighter(by: real) {
             for (var i = 0; i < _monitorVariants.instances.length; i++) {
                 var m = _monitorVariants.instances[i]
                 m.setBrightness(m.brightness + (by || 0.01))
             }
         }
-        function dimmer(by) {
+        function dimmer(by: real) {
             for (var i = 0; i < _monitorVariants.instances.length; i++) {
                 var m = _monitorVariants.instances[i]
                 m.setBrightness(m.brightness - (by || 0.01))
