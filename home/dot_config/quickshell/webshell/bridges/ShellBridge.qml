@@ -288,6 +288,12 @@ Scope {
         console.info("ShellBridge: applications populated:", apps.length, "apps")
     }
 
+    // Pull-based app data: WebChannel method calls are synchronous RPC that
+    // always return the CURRENT value, bypassing stale property snapshots.
+    function getApplications() {
+        return root.applicationsJson
+    }
+
     function launchApp(desktopId) {
         var entry = DesktopEntries.heuristicLookup(desktopId)
         if (entry) {
