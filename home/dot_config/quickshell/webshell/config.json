@@ -1,6 +1,6 @@
 {
   "$schema": "./config-schema.json",
-  "version": "0.1.0",
+  "version": "0.2.0",
 
   "bar": {
     "enabled": true,
@@ -40,7 +40,14 @@
       "critical": 0
     },
     "groupByApp": true,
-    "historyLimit": 100
+    "historyLimit": 100,
+    "floodThreshold": 5,
+    "rules": [
+      { "app": "Spotify", "action": "mute" }
+    ],
+    "dnd": false,
+    "privacyMode": false,
+    "sounds": true
   },
 
   "overlay": {
@@ -60,6 +67,44 @@
   },
 
   "lockscreen": {
+    "enabled": true
+  },
+
+  "launcher": {
+    "prefixModes": {
+      ">": "commands",
+      "/": "files",
+      ":": "emoji",
+      "@": "calculator"
+    },
+    "frecency": true,
+    "viewMode": "list",
+    "blacklist": []
+  },
+
+  "wallpaper": {},
+
+  "fonts": {
+    "family": "SF Mono, JetBrains Mono, monospace",
+    "monoFamily": "SF Mono, JetBrains Mono, monospace",
+    "scale": 1.0
+  },
+
+  "transparency": {
+    "level": 85
+  },
+
+  "scratchpads": {},
+
+  "pomodoro": {
+    "workMinutes": 25,
+    "breakMinutes": 5,
+    "longBreakMinutes": 15,
+    "sessionsBeforeLongBreak": 4
+  },
+
+  "terminal": {
+    "command": "kitty",
     "enabled": true
   }
 }

@@ -39,6 +39,7 @@ ShellRoot {
         try { channel.registerObject("ShellBridge", shellBridge) } catch (e) { console.warn("shell: failed to register ShellBridge:", e) }
         try { channel.registerObject("InputBridge", inputBridge) } catch (e) { console.warn("shell: failed to register InputBridge:", e) }
         try { channel.registerObject("BrightnessBridge", brightnessBridge) } catch (e) { console.warn("shell: failed to register BrightnessBridge:", e) }
+        try { channel.registerObject("WallpaperBridge", wallpaperBridge) } catch (e) { console.warn("shell: failed to register WallpaperBridge:", e) }
 
         // NiriBridge is registered as both WorkspacesBridge and WindowsBridge so
         // bridge.ts can hydrate os.workspaces and os.windows from the same QObject.
@@ -71,6 +72,7 @@ ShellRoot {
     InputBridge        { id: inputBridge }
     NiriBridge         { id: niriBridge }
     BrightnessBridge   { id: brightnessBridge }
+    WallpaperBridge    { id: wallpaperBridge }
 
     // -- Surfaces --
     // Each surface is a PanelWindow + WebEngineView loading a SolidJS route.
@@ -114,6 +116,25 @@ ShellRoot {
     }
 
     CcdSidebar {
+        channel: channel
+        shellBridge: shellBridge
+        baseUrl: root.baseUrl
+    }
+
+    // v0.2.0 SHOULD: new surfaces
+    Settings {
+        channel: channel
+        shellBridge: shellBridge
+        baseUrl: root.baseUrl
+    }
+
+    Wallpaper {
+        channel: channel
+        shellBridge: shellBridge
+        baseUrl: root.baseUrl
+    }
+
+    Wizard {
         channel: channel
         shellBridge: shellBridge
         baseUrl: root.baseUrl

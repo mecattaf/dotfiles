@@ -21,6 +21,12 @@ Scope {
     property int unreadCount: 0
     property bool dnd: false
 
+    // v0.2.0 SHOULD: privacy mode (#79) — hides notification body
+    property bool privacyMode: false
+
+    // v0.2.0 SHOULD: notification sounds enabled (#75)
+    property bool soundsEnabled: true
+
     readonly property var groups: _buildGroups()
 
     // ======================================================================
@@ -29,6 +35,8 @@ Scope {
 
     signal notification(var notif)
     signal closed(int id, string reason)
+    // v0.2.0 SHOULD: notification sound trigger (#75)
+    signal playSound(string urgency)
 
     // ======================================================================
     // Public methods (os.notifications)
@@ -120,6 +128,15 @@ Scope {
 
     function setDnd(enabled) {
         root.dnd = enabled
+    }
+
+    // v0.2.0 SHOULD: privacy mode (#79)
+    function setPrivacyMode(enabled) {
+        root.privacyMode = enabled
+    }
+
+    function togglePrivacyMode() {
+        root.privacyMode = !root.privacyMode
     }
 
     function markRead(id) {
@@ -263,6 +280,10 @@ Scope {
 
             root.unreadCount++
             root.notification(_flattenNotif(newNotif))
+            // v0.2.0 SHOULD: trigger sound (#75)
+            if (root.soundsEnabled && !root.dnd) {
+                root.playSound(urgencyStr)
+            }
             _persistToFile()
         }
     }

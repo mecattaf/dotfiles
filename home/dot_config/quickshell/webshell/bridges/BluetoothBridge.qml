@@ -24,12 +24,19 @@ Scope {
     readonly property var pairedDevices: root.devices.filter(function(d) { return d.paired })
     readonly property var connectedDevices: root.devices.filter(function(d) { return d.connected })
 
+    // v0.2.0 SHOULD: pinned/favorite devices (#155)
+    property var pinnedDevices: []
+
+    // v0.2.0 SHOULD: pairing agent state (#152)
+    property var pairingRequest: null  // { address, pinCode, passkey, type: "pin"|"passkey"|"confirm" }
+
     // ======================================================================
     // Signals
     // ======================================================================
 
     signal deviceAdded(var device)
     signal deviceRemoved(string address)
+    signal pairingRequested(var request)
 
     // ======================================================================
     // Public methods (os.bluetooth)
@@ -85,6 +92,28 @@ Scope {
     function untrust(address) {
         var dev = _findQsDevice(address)
         if (dev) dev.trusted = false
+    }
+
+    // v0.2.0 SHOULD: device pinning (#155)
+    function pinDevice(address) {
+        if (!root.pinnedDevices.includes(address)) {
+            root.pinnedDevices = root.pinnedDevices.concat([address])
+        }
+    }
+
+    function unpinDevice(address) {
+        root.pinnedDevices = root.pinnedDevices.filter(function(a) { return a !== address })
+    }
+
+    // v0.2.0 SHOULD: pairing agent response (#152)
+    function respondPairing(address, accepted, pin) {
+        // Stub: real implementation needs BlueZ Agent1 D-Bus interface
+        root.pairingRequest = null
+        if (accepted) {
+            root.pair(address)
+        } else {
+            root.cancelPairing(address)
+        }
     }
 
     // ======================================================================
@@ -160,7 +189,11 @@ Scope {
             connected: dev.connected ?? false,
             connecting: dev.connecting ?? false,
             rssi: dev.rssi ?? null,
-            battery: dev.battery ?? null
+            battery: dev.battery ?? null,
+            // v0.2.0 SHOULD: audio codec detection (#154) — stub, real needs pactl
+            audioCodec: null,
+            // v0.2.0 SHOULD: pinned state (#155)
+            isPinned: root.pinnedDevices.includes(dev.address ?? "")
         }
     }
 

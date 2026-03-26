@@ -34,6 +34,12 @@ Scope {
         screenshareApps: []
     })
 
+    // v0.2.0 SHOULD: device aliases (#108) — stored as { nodeId: alias } map
+    property var deviceAliases: ({})
+
+    // v0.2.0 SHOULD: audio visualizer FFT data stub (#48)
+    property var audioVisualizerData: []
+
     // ======================================================================
     // Signals
     // ======================================================================
@@ -112,6 +118,13 @@ Scope {
     function setStreamMuted(streamId, muted) {
         var node = _findNode(streamId)
         if (node) node.audio.muted = muted
+    }
+
+    // v0.2.0 SHOULD: device alias/rename (#108)
+    function setDeviceAlias(nodeId, alias) {
+        var updated = Object.assign({}, root.deviceAliases)
+        updated[nodeId] = alias
+        root.deviceAliases = updated
     }
 
     // ======================================================================

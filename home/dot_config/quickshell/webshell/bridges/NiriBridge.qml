@@ -36,6 +36,12 @@ Scope {
     property var keyboardLayouts: []
     property int keyboardLayoutIndex: 0
 
+    // v0.2.0 SHOULD: scratchpads (#168) — piri-style
+    property var scratchpads: []
+
+    // v0.2.0 SHOULD: window swallow (#169) — PID-based
+    property bool swallowEnabled: false
+
     // ======================================================================
     // Signals: os.workspaces
     // ======================================================================
@@ -116,6 +122,16 @@ Scope {
         } else {
             Quickshell.execDetached(["niri", "msg", "action", "toggle-window-floating"])
         }
+    }
+
+    // v0.2.0 SHOULD: scratchpad toggle (#168) — sends niri IPC action
+    function toggleScratchpad(name) {
+        _sendAction({ ToggleScratchpad: { name: name } })
+    }
+
+    // v0.2.0 SHOULD: window swallow toggle (#169)
+    function setSwallowEnabled(enabled) {
+        root.swallowEnabled = enabled
     }
 
     // ======================================================================

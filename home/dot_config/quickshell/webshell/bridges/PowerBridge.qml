@@ -6,6 +6,7 @@ pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.UPower
 
 Scope {
@@ -29,6 +30,11 @@ Scope {
 
     readonly property string profile: _powerProfilesAvailable ? _activeProfile : "balanced"
     readonly property var profilesAvailable: _powerProfilesAvailable ? _profiles : []
+
+    // v0.2.0 SHOULD: hibernate detection (#219)
+    property bool canHibernate: false
+    // v0.2.0 SHOULD: suspend-then-hibernate (#220)
+    property bool canSuspendThenHibernate: false
 
     // ======================================================================
     // Signals
@@ -199,6 +205,19 @@ Scope {
     Connections {
         target: UPower.displayDevice ?? null
         function onPercentageChanged() { root._evaluateWarning() }
+    }
+
+    // v0.2.0 SHOULD: hibernate detection (#219)
+    Process {
+        command: ["cat", "/sys/power/state"]
+        running: true
+        stdout: SplitParser {
+            onRead: data => {
+                var states = data.trim().split(/\s+/)
+                root.canHibernate = states.indexOf("disk") >= 0
+                root.canSuspendThenHibernate = states.indexOf("disk") >= 0 && states.indexOf("mem") >= 0
+            }
+        }
     }
 
     Component.onCompleted: {

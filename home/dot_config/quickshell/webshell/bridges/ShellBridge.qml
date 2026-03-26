@@ -16,7 +16,7 @@ Scope {
     // Public properties: shell metadata
     // ======================================================================
 
-    readonly property string version: "0.1.0"
+    readonly property string version: "0.2.0"
     readonly property string configPath: {
         var xdg = Quickshell.env("XDG_CONFIG_HOME")
         return xdg ? xdg + "/quickshell/webshell" : Quickshell.env("HOME") + "/.config/quickshell/webshell"
@@ -52,6 +52,10 @@ Scope {
     property bool osdVisible: false
     property bool lockscreenVisible: false
     property bool ccdVisible: false
+    // v0.2.0 SHOULD: new surfaces
+    property bool settingsVisible: false
+    property bool wallpaperVisible: false
+    property bool wizardVisible: false
 
     readonly property var surfaces: _buildSurfaces()
 
@@ -73,6 +77,12 @@ Scope {
     // ======================================================================
 
     property bool launcherOpen: root.overlayVisible
+
+    // v0.2.0 SHOULD: OSD position from config (#127)
+    property string osdPosition: config.osd?.position ?? "bottom-center"
+
+    // v0.2.0 SHOULD: OSD suppressed when panel open (#129)
+    readonly property bool osdSuppressed: root.overlayVisible || root.ccdVisible
 
     // ======================================================================
     // Signals
@@ -123,6 +133,22 @@ Scope {
 
     function reloadConfig() {
         configFileView.reload()
+    }
+
+    // v0.2.0 SHOULD: IPC config changes (#199) — live config mutation
+    function updateConfig(key, value) {
+        var parts = key.split(".")
+        var cfg = JSON.parse(JSON.stringify(root.config))
+        var obj = cfg
+        for (var i = 0; i < parts.length - 1; i++) {
+            if (obj[parts[i]] === undefined) obj[parts[i]] = {}
+            obj = obj[parts[i]]
+        }
+        obj[parts[parts.length - 1]] = value
+        root.config = cfg
+        // Persist change
+        configFileView.setText(JSON.stringify(cfg, null, 2))
+        root.configReloaded()
     }
 
     // ======================================================================
@@ -197,7 +223,10 @@ Scope {
             "notifications": "notificationsVisible",
             "osd": "osdVisible",
             "lockscreen": "lockscreenVisible",
-            "ccd": "ccdVisible"
+            "ccd": "ccdVisible",
+            "settings": "settingsVisible",
+            "wallpaper": "wallpaperVisible",
+            "wizard": "wizardVisible"
         }
         return map[name] ?? ""
     }
@@ -210,7 +239,10 @@ Scope {
             { id: "notifications", kind: "notifications", visible: root.notificationsVisible },
             { id: "osd",           kind: "osd",           visible: root.osdVisible },
             { id: "lockscreen",    kind: "lockscreen",    visible: root.lockscreenVisible },
-            { id: "ccd",           kind: "ccd",           visible: root.ccdVisible }
+            { id: "ccd",           kind: "ccd",           visible: root.ccdVisible },
+            { id: "settings",      kind: "settings",      visible: root.settingsVisible },
+            { id: "wallpaper",     kind: "wallpaper",     visible: root.wallpaperVisible },
+            { id: "wizard",        kind: "wizard",        visible: root.wizardVisible }
         ]
     }
 
