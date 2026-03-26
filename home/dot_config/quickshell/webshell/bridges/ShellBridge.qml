@@ -337,6 +337,10 @@ Scope {
             "$HOME/.local/share/icons/hicolor/scalable/apps " +
             "$HOME/.local/share/icons/hicolor/256x256/apps " +
             "$HOME/.local/share/icons/hicolor/128x128/apps " +
+            "$HOME/.local/share/icons " +
+            "$HOME/.local/share/icons/distrobox " +
+            "/usr/share/icons/Adwaita/scalable/devices " +
+            "/usr/share/icons/AdwaitaLegacy/48x48/legacy " +
             "/usr/share/pixmaps " +
             "-maxdepth 1 \\( -type f -o -type l \\) \\( -name '*.png' -o -name '*.svg' -o -name '*.svgz' \\) 2>/dev/null"
         ]
