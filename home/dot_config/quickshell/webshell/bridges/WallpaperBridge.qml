@@ -1,13 +1,13 @@
-// WallpaperBridge.qml -- v0.2.0 SHOULD: Wallpaper management (#191, #192, #193)
-// Per-output wallpaper, fill modes, directory browsing.
-// Uses swaybg for setting wallpaper.
+// WallpaperBridge.qml -- Wallpaper state management.
+// Exposes path and mode properties. Actual rendering is done by
+// surfaces/Background.qml (a PanelWindow on WlrLayer.Background with a
+// native QML Image). No swaybg dependency.
 
 pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
 import Quickshell.Io
-
 
 Scope {
     id: root
@@ -17,6 +17,10 @@ Scope {
     // ======================================================================
 
     property bool ready: false
+
+    // Current wallpaper path and fill mode — consumed by Background.qml surface
+    property string path: "/usr/share/backgrounds/harness/wallpaper.jpg"
+    property string mode: "fill"  // "fill", "fit", "stretch", "center", "tile"
 
     // Per-output wallpaper map: { "eDP-1": { path: "/path/to/img", mode: "fill" }, ... }
     property var wallpapers: ({})
@@ -28,65 +32,59 @@ Scope {
     // Public methods
     // ======================================================================
 
-    function setWallpaper(output, path, mode) {
-        var updated = JSON.parse(JSON.stringify(root.wallpapers))
-        updated[output] = {
-            path: path,
-            mode: mode || "fill"
-        }
-        root.wallpapers = updated
-        _applyWallpaper(output, path, mode || "fill")
+    function change(newPath) {
+        root.path = newPath
         _persistWallpapers()
     }
 
-    function setWallpaperAll(path, mode) {
-        var screens = Quickshell.screens
-        for (var i = 0; i < screens.length; i++) {
-            setWallpaper(screens[i].name, path, mode || "fill")
+    function setMode(newMode) {
+        root.mode = newMode
+        _persistWallpapers()
+    }
+
+    function setWallpaper(output, wallpaperPath, wallpaperMode) {
+        var updated = JSON.parse(JSON.stringify(root.wallpapers))
+        updated[output] = {
+            path: wallpaperPath,
+            mode: wallpaperMode || "fill"
         }
+        root.wallpapers = updated
+        // Also update the global path/mode for the primary case
+        root.path = wallpaperPath
+        root.mode = wallpaperMode || "fill"
+        _persistWallpapers()
+    }
+
+    function setWallpaperAll(wallpaperPath, wallpaperMode) {
+        root.path = wallpaperPath
+        root.mode = wallpaperMode || "fill"
+        var screens = Quickshell.screens
+        var updated = {}
+        for (var i = 0; i < screens.length; i++) {
+            updated[screens[i].name] = {
+                path: wallpaperPath,
+                mode: wallpaperMode || "fill"
+            }
+        }
+        root.wallpapers = updated
+        _persistWallpapers()
     }
 
     function clearWallpaper(output) {
         var updated = JSON.parse(JSON.stringify(root.wallpapers))
         delete updated[output]
         root.wallpapers = updated
-        // Kill swaybg for this output
-        Quickshell.execDetached(["pkill", "-f", "swaybg.*-o " + output])
         _persistWallpapers()
     }
 
     // ======================================================================
-    // Private: apply wallpaper via swaybg
+    // IPC handler for wallpaper changes
     // ======================================================================
 
-    function _applyWallpaper(output, path, mode) {
-        // Kill existing swaybg for this output, then launch new one after a brief delay
-        // Using nohup + disown pattern to ensure swaybg outlives the shell
-        if (output !== "*") {
-            Quickshell.execDetached(["bash", "-c",
-                "pkill -f 'swaybg.*-o " + output + "' 2>/dev/null; " +
-                "sleep 0.2; " +
-                "exec swaybg -o '" + output + "' -i '" + path + "' -m " + mode
-            ])
-        } else {
-            Quickshell.execDetached(["bash", "-c",
-                "pkill swaybg 2>/dev/null; " +
-                "sleep 0.2; " +
-                "exec swaybg -i '" + path + "' -m " + mode
-            ])
-        }
-    }
-
-    // Apply all wallpapers from config
-    function _applyAllWallpapers() {
-        var outputs = Object.keys(root.wallpapers)
-        for (var i = 0; i < outputs.length; i++) {
-            var output = outputs[i]
-            var wp = root.wallpapers[output]
-            if (wp && wp.path) {
-                _applyWallpaper(output, wp.path, wp.mode || "fill")
-            }
-        }
+    IpcHandler {
+        target: "wallpaper"
+        function change(wallpaperPath: string): void { root.change(wallpaperPath) }
+        function setMode(wallpaperMode: string): void { root.setMode(wallpaperMode) }
     }
 
     // ======================================================================
@@ -105,65 +103,45 @@ Scope {
         onLoaded: {
             try {
                 var parsed = JSON.parse(wallpaperFileView.text())
-                root.wallpapers = parsed
-                console.info("WallpaperBridge: loaded wallpaper config")
-                root._applyAllWallpapers()
+                if (parsed.path) root.path = parsed.path
+                if (parsed.mode) root.mode = parsed.mode
+                if (parsed.wallpapers) root.wallpapers = parsed.wallpapers
+                console.info("WallpaperBridge: loaded wallpaper config, path:", root.path)
             } catch (e) {
                 console.warn("WallpaperBridge: failed to parse wallpaper config:", e)
             }
         }
         onLoadFailed: error => {
             if (error === FileViewError.FileNotFound) {
-                console.info("WallpaperBridge: no wallpaper config found, applying default")
-                root._applyDefaultWallpaper()
+                console.info("WallpaperBridge: no config found, using default:", root.path)
+            } else {
+                console.warn("WallpaperBridge: config load error:", error)
             }
         }
     }
 
     function _persistWallpapers() {
-        wallpaperFileView.setText(JSON.stringify(root.wallpapers, null, 2))
-    }
-
-    // ======================================================================
-    // Private: default wallpaper
-    // ======================================================================
-
-    function _applyDefaultWallpaper() {
-        // Check for common wallpaper locations
-        _defaultWallpaperProc.running = true
-    }
-
-    Process {
-        id: _defaultWallpaperProc
-        command: ["bash", "-c",
-            "for f in " +
-            "/usr/share/backgrounds/harness/wallpaper.jpg " +
-            "/usr/share/backgrounds/default.png " +
-            "/usr/share/backgrounds/f$(rpm -E %fedora)/default/f$(rpm -E %fedora)-01-day.png " +
-            "/usr/share/backgrounds/gnome/adwaita-l.jpg " +
-            "/usr/share/backgrounds/default.jpg; do " +
-            "[ -f \"$f\" ] && echo \"$f\" && exit 0; " +
-            "done; " +
-            "echo ''"
-        ]
-        stdout: SplitParser {
-            onRead: data => {
-                var wallpaperPath = data.trim()
-                if (wallpaperPath) {
-                    console.info("WallpaperBridge: using default wallpaper:", wallpaperPath)
-                    var screens = Quickshell.screens
-                    for (var i = 0; i < screens.length; i++) {
-                        root.setWallpaper(screens[i].name, wallpaperPath, "fill")
-                    }
-                } else {
-                    console.warn("WallpaperBridge: no default wallpaper found")
-                }
-            }
+        var data = {
+            path: root.path,
+            mode: root.mode,
+            wallpapers: root.wallpapers
         }
+        wallpaperFileView.setText(JSON.stringify(data, null, 2))
     }
 
     // ======================================================================
-    // Health check timer
+    // Pull-data fallback: getData(key)
+    // ======================================================================
+
+    function getData(key) {
+        if (key === "path") return root.path
+        if (key === "mode") return root.mode
+        if (key === "wallpapers") return JSON.stringify(root.wallpapers)
+        return "{}"
+    }
+
+    // ======================================================================
+    // Health check
     // ======================================================================
 
     Timer {
@@ -174,7 +152,7 @@ Scope {
             if (!root.ready) {
                 console.warn("WallpaperBridge: HEALTH CHECK -- not ready after 3s")
             } else {
-                console.info("WallpaperBridge: healthy")
+                console.info("WallpaperBridge: healthy, path:", root.path)
             }
         }
     }

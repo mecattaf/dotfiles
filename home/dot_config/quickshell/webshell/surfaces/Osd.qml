@@ -21,6 +21,8 @@ Variants {
 
         screen: modelData
 
+        // Anchor bottom only — wlr-layer-shell centers horizontally on the
+        // anchored edge when only one edge is specified.
         anchors {
             bottom: true
         }

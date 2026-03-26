@@ -257,6 +257,46 @@ Scope {
         ]
     }
 
+    // ======================================================================
+    // Public properties: installed applications (from DesktopEntries singleton)
+    // ======================================================================
+
+    property var applications: []
+
+    function _rebuildApps() {
+        var apps = []
+        var entries = DesktopEntries.entries.values
+        for (var i = 0; i < entries.length; i++) {
+            var e = entries[i]
+            if (e.noDisplay) continue
+            apps.push({
+                id: e.id,
+                name: e.name,
+                genericName: e.genericName ?? "",
+                comment: e.comment ?? "",
+                icon: e.icon ?? "",
+                execString: e.execString ?? "",
+                categories: e.categories ?? [],
+                keywords: e.keywords ?? []
+            })
+        }
+        root.applications = apps
+    }
+
+    function launchApp(desktopId) {
+        var entry = DesktopEntries.heuristicLookup(desktopId)
+        if (entry) {
+            entry.execute()
+        } else {
+            console.warn("ShellBridge: launchApp — no entry found for:", desktopId)
+        }
+    }
+
+    Connections {
+        target: DesktopEntries.entries
+        function onValuesChanged() { root._rebuildApps() }
+    }
+
     // Accept audioBridge as an explicit property for privacy aggregation.
     // Passed from shell.qml: ShellBridge { audioBridge: audioBridge }
     property var audioBridge: null
@@ -292,6 +332,8 @@ Scope {
         if (root.audioBridge && root.audioBridge.privacy) {
             root.privacy = root.audioBridge.privacy
         }
+        // Build initial app list from DesktopEntries
+        root._rebuildApps()
         // Ready after config loaded (will be set via onLoaded, but mark ready
         // even if config file doesn't exist -- defaults are valid)
         root.ready = true

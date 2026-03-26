@@ -80,6 +80,11 @@ ShellRoot {
     // Each surface is a PanelWindow + WebEngineView loading a SolidJS route.
     // Required properties are passed explicitly (QML id scoping does NOT cross file boundaries).
 
+    // Wallpaper: always-loaded native QML Image on Background layer (no WebEngine).
+    Background {
+        wallpaperBridge: wallpaperBridge
+    }
+
     Bar {
         id: barSurface
         channel: channel
