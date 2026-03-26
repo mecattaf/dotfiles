@@ -11,4 +11,5 @@ PowerBridge PowerBridge.qml
 SessionBridge SessionBridge.qml
 ShellBridge ShellBridge.qml
 TrayBridge TrayBridge.qml
+TrayMenuPopup TrayMenuPopup.qml
 WallpaperBridge WallpaperBridge.qml

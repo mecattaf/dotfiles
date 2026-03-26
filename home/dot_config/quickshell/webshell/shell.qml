@@ -63,9 +63,9 @@ ShellRoot {
     MprisBridge        { id: mprisBridge }
     PowerBridge        { id: powerBridge }
     NotificationBridge { id: notificationBridge }
-    TrayBridge         { id: trayBridge }
+    TrayBridge         { id: trayBridge; menuParentWindow: barSurface }
     PolkitBridge       { id: polkitBridge }
-    SessionBridge      { id: sessionBridge }
+    SessionBridge      { id: sessionBridge; lockscreen: lockscreenSurface }
     BluetoothBridge    { id: bluetoothBridge }
     NetworkBridge      { id: networkBridge }
     ShellBridge        { id: shellBridge; audioBridge: audioBridge }
@@ -79,18 +79,13 @@ ShellRoot {
     // Required properties are passed explicitly (QML id scoping does NOT cross file boundaries).
 
     Bar {
+        id: barSurface
         channel: channel
         shellBridge: shellBridge
         baseUrl: root.baseUrl
     }
 
     Dock {
-        channel: channel
-        shellBridge: shellBridge
-        baseUrl: root.baseUrl
-    }
-
-    Overlay {
         channel: channel
         shellBridge: shellBridge
         baseUrl: root.baseUrl
@@ -107,36 +102,75 @@ ShellRoot {
         channel: channel
         audioBridge: audioBridge
         brightnessBridge: brightnessBridge
-        baseUrl: root.baseUrl
-    }
-
-    Lockscreen {
-        channel: channel
-        baseUrl: root.baseUrl
-    }
-
-    CcdSidebar {
-        channel: channel
         shellBridge: shellBridge
         baseUrl: root.baseUrl
+    }
+
+    // -- Lockscreen: permanent instance (NOT in a Loader).
+    // WlSessionLock MUST exist for the lifetime of the shell. Destroying it
+    // while locked leaves the screen permanently locked by the compositor.
+    // The lock surfaces are only created when lockRequested is true.
+    Lockscreen {
+        id: lockscreenSurface
+        channel: channel
+        baseUrl: root.baseUrl
+    }
+
+    // -- LazyLoaded surfaces: only instantiated when visible --
+
+    Loader {
+        active: shellBridge.ccdVisible
+        sourceComponent: Component {
+            CcdSidebar {
+                channel: channel
+                shellBridge: shellBridge
+                baseUrl: root.baseUrl
+            }
+        }
+    }
+
+    Loader {
+        active: shellBridge.overlayVisible
+        sourceComponent: Component {
+            Overlay {
+                channel: channel
+                shellBridge: shellBridge
+                baseUrl: root.baseUrl
+            }
+        }
     }
 
     // v0.2.0 SHOULD: new surfaces
-    Settings {
-        channel: channel
-        shellBridge: shellBridge
-        baseUrl: root.baseUrl
+    Loader {
+        active: shellBridge.settingsVisible
+        sourceComponent: Component {
+            Settings {
+                channel: channel
+                shellBridge: shellBridge
+                baseUrl: root.baseUrl
+            }
+        }
     }
 
-    Wallpaper {
-        channel: channel
-        shellBridge: shellBridge
-        baseUrl: root.baseUrl
+    Loader {
+        active: shellBridge.wallpaperVisible
+        sourceComponent: Component {
+            Wallpaper {
+                channel: channel
+                shellBridge: shellBridge
+                baseUrl: root.baseUrl
+            }
+        }
     }
 
-    Wizard {
-        channel: channel
-        shellBridge: shellBridge
-        baseUrl: root.baseUrl
+    Loader {
+        active: shellBridge.wizardVisible
+        sourceComponent: Component {
+            Wizard {
+                channel: channel
+                shellBridge: shellBridge
+                baseUrl: root.baseUrl
+            }
+        }
     }
 }

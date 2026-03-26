@@ -1,5 +1,8 @@
 // SessionBridge.qml -- Power actions: suspend, poweroff, reboot, logout, lock.
 // Via loginctl/systemctl. Session info collection.
+//
+// Lock/unlock are implemented via WlSessionLock + PamContext in Lockscreen.qml.
+// SessionBridge drives the lock state and forwards unlock requests.
 
 pragma ComponentBehavior: Bound
 
@@ -13,6 +16,8 @@ Scope {
     // ======================================================================
     // Public properties (os.session)
     // ======================================================================
+
+    property bool ready: false
 
     property var info: ({
         user: Quickshell.env("USER") ?? "",
@@ -32,8 +37,19 @@ Scope {
 
     property var lock: ({
         locked: false,
-        lockTime: null
+        secure: false,
+        lockTime: null,
+        error: "",
+        message: "",
+        authActive: false
     })
+
+    // ======================================================================
+    // Required property: reference to Lockscreen surface
+    // Set by shell.qml: SessionBridge { lockscreen: lockscreenSurface }
+    // ======================================================================
+
+    property var lockscreen: null
 
     // ======================================================================
     // Signals
@@ -41,6 +57,9 @@ Scope {
 
     signal preparingSleep()
     signal wakeUp()
+    signal lockStateChanged()
+    signal lockError(string message)
+    signal lockSuccess()
 
     // ======================================================================
     // Public methods (os.session)
@@ -72,6 +91,10 @@ Scope {
             case "logout":
                 Quickshell.execDetached(["niri", "msg", "action", "quit", "--skip-confirmation"])
                 break
+            case "lock":
+                requestLock()
+                root._actionInProgress = false
+                return
             default:
                 root._actionInProgress = false
                 return
@@ -79,12 +102,122 @@ Scope {
         _actionGuardReset.restart()
     }
 
+    // requestLock: Acquire the Wayland session lock.
+    // This causes the Lockscreen's WlSessionLock to cover all screens.
     function requestLock() {
-        console.warn("SessionBridge: requestLock not yet implemented (needs WlSessionLock)")
+        if (!root.lockscreen) {
+            console.warn("SessionBridge: lockscreen reference not set -- cannot lock")
+            return
+        }
+        if (root.lockscreen.isLocked) {
+            console.info("SessionBridge: already locked")
+            return
+        }
+        root.lockscreen.lockRequested = true
+        root.lock = Object.assign({}, root.lock, {
+            locked: true,
+            lockTime: new Date().toISOString(),
+            error: "",
+            message: ""
+        })
+        root.lockStateChanged()
     }
 
+    // requestUnlock: Attempt to authenticate and release the session lock.
+    // The password is forwarded to PamContext inside Lockscreen.qml.
     function requestUnlock(password) {
-        console.warn("SessionBridge: requestUnlock not yet implemented (needs PamContext)")
+        if (!root.lockscreen) {
+            console.warn("SessionBridge: lockscreen reference not set -- cannot unlock")
+            return
+        }
+        if (!root.lockscreen.isLocked) {
+            console.info("SessionBridge: not locked, nothing to unlock")
+            return
+        }
+        if (!password || password === "") {
+            root.lock = Object.assign({}, root.lock, {
+                error: "Password required"
+            })
+            root.lockError("Password required")
+            return
+        }
+        root.lock = Object.assign({}, root.lock, {
+            authActive: true,
+            error: "",
+            message: ""
+        })
+        root.lockscreen.tryUnlock(password)
+    }
+
+    // ======================================================================
+    // Private: Lockscreen signal connections
+    // ======================================================================
+
+    Connections {
+        target: root.lockscreen ?? null
+
+        function onLockAcquired() {
+            root.lock = Object.assign({}, root.lock, {
+                locked: true,
+                secure: true,
+                lockTime: root.lock.lockTime || new Date().toISOString()
+            })
+            root.lockStateChanged()
+        }
+
+        function onLockReleased() {
+            root.lock = {
+                locked: false,
+                secure: false,
+                lockTime: null,
+                error: "",
+                message: "",
+                authActive: false
+            }
+            root.lockStateChanged()
+        }
+
+        function onAuthSucceeded() {
+            root.lock = Object.assign({}, root.lock, {
+                authActive: false,
+                error: "",
+                message: ""
+            })
+            root.lockSuccess()
+        }
+
+        function onAuthFailed(message) {
+            root.lock = Object.assign({}, root.lock, {
+                authActive: false,
+                error: message,
+                message: message
+            })
+            root.lockError(message)
+        }
+
+        function onAuthErrorChanged() {
+            if (root.lockscreen && root.lockscreen.authError !== "") {
+                root.lock = Object.assign({}, root.lock, {
+                    error: root.lockscreen.authError
+                })
+            }
+        }
+
+        function onAuthMessageChanged() {
+            if (root.lockscreen && root.lockscreen.authMessage !== "") {
+                root.lock = Object.assign({}, root.lock, {
+                    message: root.lockscreen.authMessage
+                })
+            }
+        }
+
+        function onAuthActiveChanged() {
+            if (root.lockscreen) {
+                root.lock = Object.assign({}, root.lock, {
+                    authActive: root.lockscreen.authActive
+                })
+            }
+        }
     }
 
     // ======================================================================
@@ -94,7 +227,7 @@ Scope {
     property bool _actionInProgress: false
 
     // ======================================================================
-    // Private: IPC handler for sleep/wake
+    // Private: IPC handler for sleep/wake/lock
     // ======================================================================
 
     IpcHandler {
@@ -112,6 +245,7 @@ Scope {
         function reboot(): void { root.executeAction("reboot") }
         function suspend(): void { root.executeAction("suspend") }
         function logout(): void { root.executeAction("logout") }
+        function lock(): void { root.requestLock() }
     }
 
     Timer {
@@ -189,11 +323,30 @@ Scope {
             { action: "suspend",                label: "Suspend",                icon: "system-suspend-symbolic",           available: root._canSuspend,    confirmRequired: false, holdDurationMs: 0,    shortcutKey: "u" },
             { action: "hibernate",              label: "Hibernate",              icon: "system-hibernate-symbolic",         available: root._canHibernate,  confirmRequired: true,  holdDurationMs: 1500, shortcutKey: "h" },
             { action: "suspend-then-hibernate", label: "Suspend then Hibernate", icon: "system-suspend-hibernate-symbolic", available: canSuspendHibernate, confirmRequired: false, holdDurationMs: 0,    shortcutKey: null },
-            { action: "logout",                 label: "Log Out",                icon: "system-log-out-symbolic",           available: true,                confirmRequired: true,  holdDurationMs: 1500, shortcutKey: "l" }
+            { action: "logout",                 label: "Log Out",                icon: "system-log-out-symbolic",           available: true,                confirmRequired: true,  holdDurationMs: 1500, shortcutKey: "l" },
+            { action: "lock",                   label: "Lock Screen",            icon: "system-lock-screen-symbolic",       available: true,                confirmRequired: false, holdDurationMs: 0,    shortcutKey: "k" }
         ]
+    }
+
+    // ======================================================================
+    // Health check timer
+    // ======================================================================
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: false
+        onTriggered: {
+            if (!root.ready) {
+                console.warn("SessionBridge: HEALTH CHECK -- not ready after 3s")
+            } else {
+                console.info("SessionBridge: healthy")
+            }
+        }
     }
 
     Component.onCompleted: {
         _rebuildPowerActions()
+        root.ready = true
     }
 }

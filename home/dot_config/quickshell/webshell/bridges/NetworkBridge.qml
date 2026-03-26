@@ -23,6 +23,8 @@ Scope {
     // Public properties (os.network)
     // ======================================================================
 
+    property bool ready: false
+
     property var networks: []
     property var networksKnown: []
     property var active: null
@@ -171,6 +173,7 @@ Scope {
         root.networks = allNetworks
         root.networksKnown = allNetworks.filter(function(n) { return n.known })
         root.active = activeNetwork
+        if (!root.ready) root.ready = true
         root.networkStatusChanged()
     }
 
@@ -253,10 +256,33 @@ Scope {
         }
     }
 
-    // Rebuild from native module periodically for signal strength updates
+    // Signal-driven rebuild: watch WiFi device networks for onValuesChanged
+    Connections {
+        id: _wifiDeviceNetworksConn
+        target: {
+            if (!root._nativeAvailable || !Networking.devices) return null
+            var devs = Networking.devices.values
+            for (var i = 0; i < devs.length; i++) {
+                if (devs[i].type === DeviceType.Wifi && devs[i].networks) {
+                    return devs[i].networks
+                }
+            }
+            return null
+        }
+        function onValuesChanged() { _nativeRebuildDebounce.restart() }
+    }
+
+    Timer {
+        id: _nativeRebuildDebounce
+        interval: 50
+        repeat: false
+        onTriggered: root._rebuildFromNative()
+    }
+
+    // 30s fallback poll for signal strength which doesn't fire signals
     Timer {
         id: _nativeRebuildTimer
-        interval: 5000
+        interval: 30000
         running: root._nativeAvailable
         repeat: true
         onTriggered: root._rebuildFromNative()
@@ -411,11 +437,50 @@ Scope {
         }
     }
 
+    // ======================================================================
+    // Pull-data fallback: getData(key)
+    // ======================================================================
+
+    function getData(key) {
+        if (key === "networks") return JSON.stringify(root.networks)
+        if (key === "networksKnown") return JSON.stringify(root.networksKnown)
+        if (key === "active") return JSON.stringify(root.active)
+        if (key === "status") return JSON.stringify({
+            wifiEnabled: root.wifiEnabled,
+            wifiHardwareEnabled: root.wifiHardwareEnabled,
+            scanning: root.scanning,
+            backend: root.backend
+        })
+        return "{}"
+    }
+
+    // ======================================================================
+    // Health check timer
+    // ======================================================================
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: false
+        onTriggered: {
+            if (!root.ready) {
+                console.warn("NetworkBridge: HEALTH CHECK — not ready after 3s")
+            } else {
+                console.info("NetworkBridge: healthy")
+            }
+        }
+    }
+
     Component.onCompleted: {
         // Try native first; if Networking.devices is available, use it
         if (Networking.devices) {
             _nativeAvailable = true
             _rebuildFromNative()
+            // Ready when networks list is populated or we've at least queried
+            root.ready = root.networks.length > 0
+            if (!root.ready) {
+                // Will become ready when first rebuild completes with data
+            }
             console.info("NetworkBridge: using native Quickshell.Networking module")
         } else {
             console.info("NetworkBridge: Quickshell.Networking not available, falling back to nmcli")

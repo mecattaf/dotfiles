@@ -15,6 +15,12 @@ Scope {
     readonly property string socketPath: Quickshell.env("NIRI_SOCKET") ?? ""
 
     // ======================================================================
+    // Public properties: readiness
+    // ======================================================================
+
+    property bool ready: false
+
+    // ======================================================================
     // Public properties: os.workspaces
     // ======================================================================
 
@@ -91,36 +97,35 @@ Scope {
     // ======================================================================
 
     function focusWindow(id) {
-        Quickshell.execDetached(["niri", "msg", "action", "focus-window", "--id", id.toString()])
+        _sendAction({ FocusWindow: { id: id } })
     }
 
     function closeWindow(id) {
-        Quickshell.execDetached(["niri", "msg", "action", "close-window", "--id", id.toString()])
+        _sendAction({ CloseWindow: { id: id } })
     }
 
     function moveToWorkspace(windowId, workspaceRef, follow) {
-        var wsIdx
+        var wsRef
         if (workspaceRef.id !== undefined) {
-            var ws = root.workspaces.find(function(w) { return w.id === workspaceRef.id })
-            wsIdx = ws ? ws.idx + 1 : workspaceRef.id
+            wsRef = { Id: workspaceRef.id }
         } else if (workspaceRef.idx !== undefined) {
-            wsIdx = workspaceRef.idx + 1
+            wsRef = { Index: workspaceRef.idx + 1 }
         } else if (workspaceRef.name !== undefined) {
-            var ws2 = root.workspaces.find(function(w) { return w.name === workspaceRef.name })
-            if (!ws2) return
-            wsIdx = ws2.idx + 1
+            var ws = root.workspaces.find(function(w) { return w.name === workspaceRef.name })
+            if (!ws) return
+            wsRef = { Id: ws.id }
         }
-        Quickshell.execDetached(["niri", "msg", "action", "move-window-to-workspace", "--window-id", windowId.toString(), wsIdx.toString()])
-        if (follow) {
-            Quickshell.execDetached(["niri", "msg", "action", "focus-workspace", wsIdx.toString()])
+        _sendAction({ MoveWindowToWorkspace: { window_id: windowId, reference: wsRef } })
+        if (follow && wsRef) {
+            _sendAction({ FocusWorkspace: { reference: wsRef } })
         }
     }
 
     function toggleFloating(windowId) {
         if (windowId !== undefined) {
-            Quickshell.execDetached(["niri", "msg", "action", "toggle-window-floating", "--id", windowId.toString()])
+            _sendAction({ ToggleWindowFloating: { id: windowId } })
         } else {
-            Quickshell.execDetached(["niri", "msg", "action", "toggle-window-floating"])
+            _sendAction({ ToggleWindowFloating: {} })
         }
     }
 
@@ -254,6 +259,7 @@ Scope {
         }
         root._workspaceCache = newCache
         root.workspaces = newWorkspaces
+        if (!root.ready) root.ready = true
         wsDebounce.restart()
     }
 
@@ -454,6 +460,23 @@ Scope {
             if (ws.windowCount !== count) return Object.assign({}, ws, { windowCount: count })
             return ws
         })
+    }
+
+    // ======================================================================
+    // Health check timer
+    // ======================================================================
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: false
+        onTriggered: {
+            if (!root.ready) {
+                console.warn("NiriBridge: HEALTH CHECK — not ready after 3s")
+            } else {
+                console.info("NiriBridge: healthy")
+            }
+        }
     }
 
     Component.onCompleted: {

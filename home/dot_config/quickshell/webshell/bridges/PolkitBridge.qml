@@ -20,6 +20,8 @@ Scope {
     // Public properties (os.polkit)
     // ======================================================================
 
+    property bool ready: false
+
     property string state: "idle"
     property var request: null
     readonly property bool isRegistered: agent.isRegistered
@@ -234,11 +236,30 @@ Scope {
         }
     }
 
+    // ======================================================================
+    // Health check timer
+    // ======================================================================
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: false
+        onTriggered: {
+            if (!root.ready) {
+                console.warn("PolkitBridge: HEALTH CHECK — not ready after 3s")
+            } else {
+                console.info("PolkitBridge: healthy")
+            }
+        }
+    }
+
     Component.onCompleted: {
         if (Quickshell.env("WEBSHELL_DISABLE_POLKIT") === "1") {
             console.info("PolkitBridge: disabled via WEBSHELL_DISABLE_POLKIT")
+            root.ready = true
             return
         }
+        root.ready = true
         console.info("PolkitBridge: initialized, isRegistered:", agent.isRegistered)
     }
 }

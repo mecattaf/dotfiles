@@ -20,6 +20,8 @@ Scope {
     // Public properties (os.power)
     // ======================================================================
 
+    property bool ready: false
+
     readonly property var source: ({
         onBattery: UPower.onBattery ?? false,
         displayPercentage: UPower.displayDevice ? UPower.displayDevice.percentage : 100,
@@ -268,7 +270,10 @@ Scope {
 
     Connections {
         target: UPower.displayDevice ?? null
-        function onPercentageChanged() { root._evaluateWarning() }
+        function onPercentageChanged() {
+            if (!root.ready) root.ready = true
+            root._evaluateWarning()
+        }
     }
 
     // v0.2.0 SHOULD: hibernate detection (#219)
@@ -284,9 +289,45 @@ Scope {
         }
     }
 
+    // ======================================================================
+    // Pull-data fallback: getData(key)
+    // ======================================================================
+
+    function getData(key) {
+        if (key === "source") return JSON.stringify(root.source)
+        if (key === "batteries") return JSON.stringify(root.batteries)
+        if (key === "peripherals") return JSON.stringify(root.peripherals)
+        if (key === "profile") return JSON.stringify({
+            profile: root.profile,
+            hasPerformanceProfile: root.hasPerformanceProfile,
+            profilesAvailable: root.profilesAvailable
+        })
+        return "{}"
+    }
+
+    // ======================================================================
+    // Health check timer
+    // ======================================================================
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: false
+        onTriggered: {
+            if (!root.ready) {
+                console.warn("PowerBridge: HEALTH CHECK — not ready after 3s")
+            } else {
+                console.info("PowerBridge: healthy")
+            }
+        }
+    }
+
     Component.onCompleted: {
         _rebuildDevices()
         _evaluateWarning()
         _initPowerProfiles()
+        if (UPower.displayDevice !== null) {
+            root.ready = true
+        }
     }
 }

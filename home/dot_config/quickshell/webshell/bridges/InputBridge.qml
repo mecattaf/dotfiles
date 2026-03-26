@@ -19,6 +19,8 @@ Scope {
     // Public properties (os.input)
     // ======================================================================
 
+    property bool ready: false
+
     property var keyboardLayout: ({
         name: "unknown",
         description: "Unknown",
@@ -58,7 +60,25 @@ Scope {
         }
     }
 
+    // ======================================================================
+    // Health check timer
+    // ======================================================================
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: false
+        onTriggered: {
+            if (!root.ready) {
+                console.warn("InputBridge: HEALTH CHECK — not ready after 3s")
+            } else {
+                console.info("InputBridge: healthy")
+            }
+        }
+    }
+
     Component.onCompleted: {
         _syncLayout()
+        root.ready = true
     }
 }

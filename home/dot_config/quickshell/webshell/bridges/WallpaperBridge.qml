@@ -16,6 +16,8 @@ Scope {
     // Public properties (os.wallpaper)
     // ======================================================================
 
+    property bool ready: false
+
     // Per-output wallpaper map: { "eDP-1": { path: "/path/to/img", mode: "fill" }, ... }
     property var wallpapers: ({})
 
@@ -98,7 +100,25 @@ Scope {
         wallpaperFileView.setText(JSON.stringify(root.wallpapers, null, 2))
     }
 
+    // ======================================================================
+    // Health check timer
+    // ======================================================================
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: false
+        onTriggered: {
+            if (!root.ready) {
+                console.warn("WallpaperBridge: HEALTH CHECK — not ready after 3s")
+            } else {
+                console.info("WallpaperBridge: healthy")
+            }
+        }
+    }
+
     Component.onCompleted: {
         wallpaperFileView.reload()
+        root.ready = true
     }
 }

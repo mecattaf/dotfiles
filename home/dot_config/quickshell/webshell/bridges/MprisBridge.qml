@@ -21,6 +21,8 @@ Scope {
     // Public properties (os.media)
     // ======================================================================
 
+    property bool ready: false
+
     property var players: []
     property var activePlayer: null
 
@@ -289,7 +291,47 @@ Scope {
         function onValuesChanged() { rebuildDebounce.restart() }
     }
 
+    // ======================================================================
+    // Pull-data fallback: getData(key)
+    // ======================================================================
+
+    function getData(key) {
+        if (key === "players") return JSON.stringify(root.players)
+        if (key === "activePlayer") return JSON.stringify(root.activePlayer)
+        if (key === "nowPlaying") return JSON.stringify({
+            title: root.title,
+            artist: root.artist,
+            album: root.album,
+            thumbnail: root.thumbnail,
+            isPlaying: root.isPlaying,
+            duration: root.duration,
+            position: root.position,
+            shuffle: root.shuffle,
+            loopStatus: root.loopStatus
+        })
+        return "{}"
+    }
+
+    // ======================================================================
+    // Health check timer
+    // ======================================================================
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: false
+        onTriggered: {
+            if (!root.ready) {
+                console.warn("MprisBridge: HEALTH CHECK — not ready after 3s")
+            } else {
+                console.info("MprisBridge: healthy")
+            }
+        }
+    }
+
     Component.onCompleted: {
         _rebuildPlayers()
+        // MPRIS is ready immediately -- there may be no players and that's valid
+        root.ready = true
     }
 }

@@ -26,6 +26,8 @@ Scope {
     // Public properties (os.notifications)
     // ======================================================================
 
+    property bool ready: false
+
     property var history: []
     property var popups: []
     property int unreadCount: 0
@@ -264,7 +266,7 @@ Scope {
         bodySupported: true
         imageSupported: true
         inlineReplySupported: true
-        keepOnReload: false
+        keepOnReload: true
         persistenceSupported: true
 
         onNotification: notification => {
@@ -454,7 +456,42 @@ Scope {
         notifFileView.setText(JSON.stringify(serialized, null, 2))
     }
 
+    // ======================================================================
+    // Pull-data fallback: getData(key)
+    // ======================================================================
+
+    function getData(key) {
+        if (key === "history") return JSON.stringify(root.history)
+        if (key === "popups") return JSON.stringify(root.popups)
+        if (key === "groups") return JSON.stringify(root.groups)
+        if (key === "status") return JSON.stringify({
+            unreadCount: root.unreadCount,
+            dnd: root.dnd,
+            privacyMode: root.privacyMode
+        })
+        return "{}"
+    }
+
+    // ======================================================================
+    // Health check timer
+    // ======================================================================
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: false
+        onTriggered: {
+            if (!root.ready) {
+                console.warn("NotificationBridge: HEALTH CHECK — not ready after 3s")
+            } else {
+                console.info("NotificationBridge: healthy")
+            }
+        }
+    }
+
     Component.onCompleted: {
         notifFileView.reload()
+        // Ready after server init (notification server is created inline, so it's ready)
+        root.ready = true
     }
 }

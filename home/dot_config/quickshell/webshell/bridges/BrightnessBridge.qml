@@ -16,6 +16,8 @@ Scope {
     // Public properties (os.brightness)
     // ======================================================================
 
+    property bool ready: false
+
     property var monitors: []
 
     // ======================================================================
@@ -386,8 +388,28 @@ Scope {
         root.monitors = result
     }
 
+    // ======================================================================
+    // Health check timer
+    // ======================================================================
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: false
+        onTriggered: {
+            if (!root.ready) {
+                console.warn("BrightnessBridge: HEALTH CHECK — not ready after 3s")
+            } else {
+                console.info("BrightnessBridge: healthy")
+            }
+        }
+    }
+
     Component.onCompleted: {
         ddcProc.running = true
-        Qt.callLater(root._rebuildMonitors)
+        Qt.callLater(function() {
+            root._rebuildMonitors()
+            root.ready = true
+        })
     }
 }

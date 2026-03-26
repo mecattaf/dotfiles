@@ -15,6 +15,8 @@ Scope {
     // Public properties (os.bluetooth)
     // ======================================================================
 
+    property bool ready: false
+
     property bool available: false
     property bool powered: false
     property bool discovering: false
@@ -237,6 +239,10 @@ Scope {
         target: Bluetooth
         function onDefaultAdapterChanged() {
             root._rebuildDevices()
+            if (!root.ready) {
+                // Ready when adapter exists (even if null -- means BT unavailable)
+                root.ready = true
+            }
         }
     }
 
@@ -247,16 +253,65 @@ Scope {
         onTriggered: root._rebuildDevices()
     }
 
-    // Poll for device list changes (signal strength, connection state changes)
+    // Signal-driven device list updates: watch adapter.devices for onValuesChanged
+    Connections {
+        target: Bluetooth.defaultAdapter?.devices ?? null
+        function onValuesChanged() { rebuildDebounce.restart() }
+    }
+
+    // 30s fallback poll for RSSI/battery which don't fire signals
     Timer {
-        interval: 2000
+        interval: 30000
         running: root.available
         repeat: true
         onTriggered: root._rebuildDevices()
     }
 
+    // ======================================================================
+    // Pull-data fallback: getData(key)
+    // ======================================================================
+
+    function getData(key) {
+        if (key === "devices") return JSON.stringify(root.devices)
+        if (key === "pairedDevices") return JSON.stringify(root.pairedDevices)
+        if (key === "connectedDevices") return JSON.stringify(root.connectedDevices)
+        if (key === "adapter") return JSON.stringify({
+            available: root.available,
+            powered: root.powered,
+            discovering: root.discovering,
+            discoverable: root.discoverable,
+            name: root.adapterName,
+            address: root.adapterAddress
+        })
+        return "{}"
+    }
+
+    // ======================================================================
+    // Health check timer
+    // ======================================================================
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: false
+        onTriggered: {
+            if (!root.ready) {
+                console.warn("BluetoothBridge: HEALTH CHECK — not ready after 3s")
+            } else {
+                console.info("BluetoothBridge: healthy")
+            }
+        }
+    }
+
     Component.onCompleted: {
         _rebuildDevices()
+        // Ready immediately: adapter may be null (BT unavailable) but we know the state
+        if (Bluetooth.defaultAdapter !== null) {
+            root.ready = true
+        } else {
+            // No adapter = BT unavailable, still mark ready (available=false is valid state)
+            root.ready = true
+        }
         console.info("BluetoothBridge: initialized, adapter available:", root.available)
     }
 }

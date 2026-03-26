@@ -13,6 +13,12 @@ Scope {
     id: root
 
     // ======================================================================
+    // Public properties: readiness
+    // ======================================================================
+
+    property bool ready: false
+
+    // ======================================================================
     // Public properties: shell metadata
     // ======================================================================
 
@@ -263,11 +269,31 @@ Scope {
         }
     }
 
+    // ======================================================================
+    // Health check timer
+    // ======================================================================
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: false
+        onTriggered: {
+            if (!root.ready) {
+                console.warn("ShellBridge: HEALTH CHECK — not ready after 3s")
+            } else {
+                console.info("ShellBridge: healthy")
+            }
+        }
+    }
+
     Component.onCompleted: {
         configFileView.reload()
         // Sync initial privacy state if audioBridge is already populated
         if (root.audioBridge && root.audioBridge.privacy) {
             root.privacy = root.audioBridge.privacy
         }
+        // Ready after config loaded (will be set via onLoaded, but mark ready
+        // even if config file doesn't exist -- defaults are valid)
+        root.ready = true
     }
 }

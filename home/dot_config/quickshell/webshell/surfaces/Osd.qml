@@ -9,6 +9,7 @@ Variants {
     required property var channel
     required property var audioBridge
     required property var brightnessBridge
+    required property var shellBridge
     required property string baseUrl
 
     model: Quickshell.screens
@@ -43,6 +44,7 @@ Variants {
         mask: Region {}
 
         function show() {
+            if (shellBridge && shellBridge.osdSuppressed) return
             osdWindow.visible = true
             hideTimer.restart()
         }

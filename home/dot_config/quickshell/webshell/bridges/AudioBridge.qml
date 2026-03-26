@@ -15,6 +15,8 @@ Scope {
     // Public properties (os.audio)
     // ======================================================================
 
+    property bool ready: false
+
     property real volume: 0.0
     property bool muted: false
     property real sourceVolume: 0.0
@@ -403,7 +405,12 @@ Scope {
 
     Connections {
         target: Pipewire
-        function onDefaultAudioSinkChanged() { root._syncSinkState() }
+        function onDefaultAudioSinkChanged() {
+            if (!root.ready && Pipewire.defaultAudioSink !== null) {
+                root.ready = true
+            }
+            root._syncSinkState()
+        }
         function onDefaultAudioSourceChanged() { root._syncSourceState() }
     }
 
@@ -427,10 +434,46 @@ Scope {
         function onValuesChanged() { rebuildDebounce.restart() }
     }
 
+    // ======================================================================
+    // Pull-data fallback: getData(key)
+    // ======================================================================
+
+    function getData(key) {
+        if (key === "sinks") return JSON.stringify(root.sinks)
+        if (key === "sources") return JSON.stringify(root.sources)
+        if (key === "streams") return JSON.stringify(root.streams)
+        if (key === "volume") return JSON.stringify({ volume: root.volume, muted: root.muted })
+        if (key === "sourceVolume") return JSON.stringify({ volume: root.sourceVolume, muted: root.sourceMuted })
+        if (key === "defaultSink") return JSON.stringify(root.defaultSink)
+        if (key === "defaultSource") return JSON.stringify(root.defaultSource)
+        if (key === "privacy") return JSON.stringify(root.privacy)
+        return "{}"
+    }
+
+    // ======================================================================
+    // Health check timer
+    // ======================================================================
+
+    Timer {
+        interval: 3000
+        running: true
+        repeat: false
+        onTriggered: {
+            if (!root.ready) {
+                console.warn("AudioBridge: HEALTH CHECK — not ready after 3s")
+            } else {
+                console.info("AudioBridge: healthy")
+            }
+        }
+    }
+
     Component.onCompleted: {
         _syncSinkState()
         _syncSourceState()
         _rebuildArrays()
         _rebuildPrivacy()
+        if (Pipewire.defaultAudioSink !== null) {
+            root.ready = true
+        }
     }
 }
