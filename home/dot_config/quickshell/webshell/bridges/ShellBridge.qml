@@ -330,6 +330,13 @@ Scope {
             "/usr/share/icons/hicolor/128x128/apps " +
             "/usr/share/icons/hicolor/64x64/apps " +
             "/usr/share/icons/hicolor/48x48/apps " +
+            "/var/lib/flatpak/exports/share/icons/hicolor/scalable/apps " +
+            "/var/lib/flatpak/exports/share/icons/hicolor/256x256/apps " +
+            "/var/lib/flatpak/exports/share/icons/hicolor/128x128/apps " +
+            "/var/lib/flatpak/exports/share/icons/hicolor/64x64/apps " +
+            "$HOME/.local/share/icons/hicolor/scalable/apps " +
+            "$HOME/.local/share/icons/hicolor/256x256/apps " +
+            "$HOME/.local/share/icons/hicolor/128x128/apps " +
             "/usr/share/pixmaps " +
             "-maxdepth 1 -type f \\( -name '*.png' -o -name '*.svg' -o -name '*.svgz' \\) 2>/dev/null"
         ]
