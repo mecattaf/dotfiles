@@ -1,0 +1,11 @@
+Background Background.qml
+Bar Bar.qml
+CcdSidebar CcdSidebar.qml
+Dock Dock.qml
+Lockscreen Lockscreen.qml
+Notifications Notifications.qml
+Osd Osd.qml
+Overlay Overlay.qml
+Settings Settings.qml
+Wallpaper Wallpaper.qml
+Wizard Wizard.qml

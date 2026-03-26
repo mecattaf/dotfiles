@@ -1,0 +1,16 @@
+AudioBridge AudioBridge.qml
+BluetoothBridge BluetoothBridge.qml
+CommandBridge CommandBridge.qml
+BrightnessBridge BrightnessBridge.qml
+InputBridge InputBridge.qml
+MprisBridge MprisBridge.qml
+NetworkBridge NetworkBridge.qml
+NiriBridge NiriBridge.qml
+NotificationBridge NotificationBridge.qml
+PolkitBridge PolkitBridge.qml
+PowerBridge PowerBridge.qml
+SessionBridge SessionBridge.qml
+ShellBridge ShellBridge.qml
+TrayBridge TrayBridge.qml
+TrayMenuPopup TrayMenuPopup.qml
+WallpaperBridge WallpaperBridge.qml
