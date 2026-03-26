@@ -30,6 +30,13 @@ PanelWindow {
     exclusiveZone: 0
     focusable: true
 
+    // Close overlay from QML directly — avoids WebChannel async round-trip
+    // that would leave the Exclusive-focus PanelWindow alive and trapping input.
+    Shortcut {
+        sequences: ["Escape"]
+        onActivated: shellBridge.hideSurface("overlay")
+    }
+
     Rectangle {
         anchors.fill: parent
         color: "transparent"

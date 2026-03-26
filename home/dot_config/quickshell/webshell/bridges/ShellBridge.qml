@@ -262,11 +262,13 @@ Scope {
     // ======================================================================
 
     property var applications: []
+    // JSON string of applications — WebChannel reliably serializes strings
+    // but fails on arrays of JS objects. Frontend reads this instead.
+    property string applicationsJson: "[]"
 
     function _rebuildApps() {
         var apps = []
         var entries = DesktopEntries.applications.values
-        console.info("ShellBridge: _rebuildApps — raw entries:", entries ? entries.length : "null")
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i]
             if (e.noDisplay) continue
@@ -282,14 +284,8 @@ Scope {
             })
         }
         root.applications = apps
+        root.applicationsJson = JSON.stringify(apps)
         console.info("ShellBridge: applications populated:", apps.length, "apps")
-    }
-
-    // Pull-based alternative: returns applications as a JSON string.
-    // WebChannel property hydration can fail for arrays of JS objects,
-    // so the frontend can call this method as a reliable fallback.
-    function getApplications() {
-        return JSON.stringify(root.applications)
     }
 
     function launchApp(desktopId) {
