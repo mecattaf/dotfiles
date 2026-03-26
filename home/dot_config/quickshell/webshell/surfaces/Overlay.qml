@@ -24,7 +24,7 @@ PanelWindow {
 
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "shell:overlay"
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
 
     exclusionMode: ExclusionMode.Ignore
     exclusiveZone: 0

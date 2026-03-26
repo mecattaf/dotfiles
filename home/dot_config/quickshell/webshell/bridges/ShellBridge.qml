@@ -266,6 +266,7 @@ Scope {
     function _rebuildApps() {
         var apps = []
         var entries = DesktopEntries.applications.values
+        console.info("ShellBridge: _rebuildApps — raw entries:", entries ? entries.length : "null")
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i]
             if (e.noDisplay) continue
@@ -281,6 +282,7 @@ Scope {
             })
         }
         root.applications = apps
+        console.info("ShellBridge: applications populated:", apps.length, "apps")
     }
 
     function launchApp(desktopId) {
