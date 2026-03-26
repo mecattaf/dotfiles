@@ -6,9 +6,8 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import Quickshell
 
-QtObject {
+Scope {
     id: root
-    default property list<QtObject> _children
 
     // ======================================================================
     // Public properties (os.bluetooth)

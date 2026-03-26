@@ -7,9 +7,8 @@ import QtQuick
 import Quickshell
 import Quickshell.Services.Pipewire
 
-QtObject {
+Scope {
     id: root
-    default property list<QtObject> _children
 
     // ======================================================================
     // Public properties (os.audio)

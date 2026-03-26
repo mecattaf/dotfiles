@@ -10,9 +10,8 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Mpris
 
-QtObject {
+Scope {
     id: root
-    default property list<QtObject> _children
 
     // ======================================================================
     // Public properties (os.media)

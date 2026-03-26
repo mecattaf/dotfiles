@@ -8,9 +8,8 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-QtObject {
+Scope {
     id: root
-    default property list<QtObject> _children
 
     // ======================================================================
     // Public properties (os.network)

@@ -9,9 +9,8 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Services.Notifications
 
-QtObject {
+Scope {
     id: root
-    default property list<QtObject> _children
 
     // ======================================================================
     // Public properties (os.notifications)
