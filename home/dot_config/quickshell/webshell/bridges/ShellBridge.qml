@@ -292,9 +292,11 @@ Scope {
         }
     }
 
+    // DMS pattern: watch the DesktopEntries singleton directly for the
+    // applicationsChanged signal, not the sub-object's valuesChanged.
     Connections {
-        target: DesktopEntries.applications
-        function onValuesChanged() { root._rebuildApps() }
+        target: DesktopEntries
+        function onApplicationsChanged() { root._rebuildApps() }
     }
 
     // Accept audioBridge as an explicit property for privacy aggregation.
