@@ -1,4 +1,4 @@
 #!/bin/bash
 # dnd -- toggle do-not-disturb / notification center
 # IPC target: ShellBridge (target: "shell"), method: toggleNotifications
-qs ipc --pid $(pgrep -f "qs.*webshell") call shell toggleNotifications
+qs ipc --pid $(pgrep -x qs) call shell toggleNotifications
