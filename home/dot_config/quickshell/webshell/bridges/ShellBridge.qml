@@ -285,13 +285,14 @@ Scope {
         }
         root.applications = apps
         root.applicationsJson = JSON.stringify(apps)
-        console.info("ShellBridge: applications populated:", apps.length, "apps")
+        // Write to file so WebEngineView can fetch directly (bypasses WebChannel)
+        _appsFileView.setText(root.applicationsJson)
+        console.info("ShellBridge: applications populated:", apps.length, "apps, written to", _appsFileView.path)
     }
 
-    // Pull-based app data: WebChannel method calls are synchronous RPC that
-    // always return the CURRENT value, bypassing stale property snapshots.
-    function getApplications() {
-        return root.applicationsJson
+    FileView {
+        id: _appsFileView
+        path: Quickshell.env("XDG_RUNTIME_DIR") + "/quickshell/applications.json"
     }
 
     function launchApp(desktopId) {
