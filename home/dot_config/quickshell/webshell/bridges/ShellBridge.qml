@@ -272,27 +272,8 @@ Scope {
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i]
             if (e.noDisplay) continue
-            // Resolve freedesktop icon name to a file path for the web frontend.
-            // Quickshell.iconPath(name, true) does theme lookup and returns a
-            // file:// URL (or empty string) that WebEngineView can load as <img src>.
             var iconName = e.icon ?? ""
-            var resolvedIcon = ""
-            if (iconName !== "") {
-                // If the icon field is already an absolute path, use it directly
-                if (iconName.startsWith("/")) {
-                    resolvedIcon = "file://" + iconName
-                } else {
-                    var looked = Quickshell.iconPath(iconName, true)
-                    if (looked && looked !== "") {
-                        // Quickshell.iconPath returns a string usable as QML Image source.
-                        // Ensure it has file:// prefix for the web <img> tag.
-                        resolvedIcon = looked.toString()
-                        if (!resolvedIcon.startsWith("file://") && resolvedIcon.startsWith("/")) {
-                            resolvedIcon = "file://" + resolvedIcon
-                        }
-                    }
-                }
-            }
+            var resolvedIcon = _resolveIconPath(iconName)
             apps.push({
                 id: e.id,
                 name: e.name,
@@ -323,6 +304,52 @@ Scope {
             entry.execute()
         } else {
             console.warn("ShellBridge: launchApp — no entry found for:", desktopId)
+        }
+    }
+
+    // Resolve a freedesktop icon name to a file:// URL.
+    // Quickshell.iconPath() returns image://icon/ URLs that WebEngineView can't use.
+    // We build an icon cache via a one-shot Process at startup.
+    property var _iconCache: ({})
+
+    function _resolveIconPath(iconName) {
+        if (!iconName || iconName === "") return ""
+        if (iconName.startsWith("/")) return "file://" + iconName
+        return root._iconCache[iconName] ?? ""
+    }
+
+    Process {
+        id: iconScanner
+        command: ["bash", "-c",
+            "find /usr/share/icons/hicolor/scalable/apps " +
+            "/usr/share/icons/hicolor/256x256/apps " +
+            "/usr/share/icons/hicolor/128x128/apps " +
+            "/usr/share/icons/hicolor/64x64/apps " +
+            "/usr/share/icons/hicolor/48x48/apps " +
+            "/usr/share/pixmaps " +
+            "-maxdepth 1 -type f \\( -name '*.png' -o -name '*.svg' -o -name '*.svgz' \\) 2>/dev/null"
+        ]
+        running: true
+        stdout: SplitParser {
+            onRead: line => {
+                var path = line.trim()
+                if (path === "") return
+                var slash = path.lastIndexOf("/")
+                var filename = path.substring(slash + 1)
+                var dot = filename.lastIndexOf(".")
+                var key = dot > 0 ? filename.substring(0, dot) : filename
+                // First match wins (scalable > 256 > 128 > ... > pixmaps)
+                if (!root._iconCache[key]) {
+                    var cache = root._iconCache
+                    cache[key] = "file://" + path
+                    root._iconCache = cache
+                }
+            }
+        }
+        onExited: (exitCode, exitStatus) => {
+            console.info("ShellBridge: icon cache built,", Object.keys(root._iconCache).length, "icons indexed")
+            // Rebuild apps now that icons are resolved
+            root._rebuildApps()
         }
     }
 
