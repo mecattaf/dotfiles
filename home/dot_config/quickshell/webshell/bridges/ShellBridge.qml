@@ -318,6 +318,10 @@ Scope {
         return root._iconCache[iconName] ?? ""
     }
 
+    // Build icon cache at startup via a one-shot Process.
+    // Accumulates results line-by-line, then rebuilds apps after a debounce.
+    property var _iconScanTemp: ({})
+
     Process {
         id: iconScanner
         command: ["bash", "-c",
@@ -338,17 +342,21 @@ Scope {
                 var filename = path.substring(slash + 1)
                 var dot = filename.lastIndexOf(".")
                 var key = dot > 0 ? filename.substring(0, dot) : filename
-                // First match wins (scalable > 256 > 128 > ... > pixmaps)
-                if (!root._iconCache[key]) {
-                    var cache = root._iconCache
-                    cache[key] = "file://" + path
-                    root._iconCache = cache
+                if (!root._iconScanTemp[key]) {
+                    root._iconScanTemp[key] = "file://" + path
                 }
+                iconRebuildTimer.restart()
             }
         }
-        onExited: (exitCode, exitStatus) => {
+    }
+
+    Timer {
+        id: iconRebuildTimer
+        interval: 200
+        repeat: false
+        onTriggered: {
+            root._iconCache = root._iconScanTemp
             console.info("ShellBridge: icon cache built,", Object.keys(root._iconCache).length, "icons indexed")
-            // Rebuild apps now that icons are resolved
             root._rebuildApps()
         }
     }
