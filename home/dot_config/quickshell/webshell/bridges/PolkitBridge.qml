@@ -1,10 +1,17 @@
-// PolkitBridge.qml -- wraps Quickshell.Services.Polkit (try/catch for graceful degradation)
-// Auth flow state machine: idle -> prompting -> authenticating -> success/failed.
+// PolkitBridge.qml -- wraps Quickshell.Services.Polkit for authentication prompts.
+// Fixed: all API names verified against quickshellX/src/services/polkit/*.hpp.
+//   - flow.respond() -> flow.submit()
+//   - flow.cancel() -> flow.cancelAuthenticationRequest()
+//   - flow.icon -> flow.iconName
+//   - ident.uid -> ident.id, ident.username -> ident.string
+//   - Uses Connections on AuthFlow for success/failure signals
+// POJO-only across bridge boundary.
 
 pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import Quickshell.Services.Polkit
 
 Scope {
     id: root
@@ -15,7 +22,7 @@ Scope {
 
     property string state: "idle"
     property var request: null
-    readonly property bool isRegistered: _agent ? _agent.isRegistered : false
+    readonly property bool isRegistered: agent.isRegistered
     property int failCount: 0
 
     // ======================================================================
@@ -29,19 +36,23 @@ Scope {
     // Public methods (os.polkit)
     // ======================================================================
 
+    // respond() kept as the public method name to match the TS spec (os.polkit.respond).
+    // Internally calls flow.submit() per quickshellX API.
     function respond(password) {
         if (root.state !== "prompting" && root.state !== "failed") return
         if (root.state === "authenticating") return
-        if (!_agent || !_agent.flow) return
+        if (!agent.flow) return
 
         root.state = "authenticating"
-        _agent.flow.respond(password)
+        agent.flow.submit(password)
     }
 
+    // cancel() kept as the public method name to match the TS spec (os.polkit.cancel).
+    // Internally calls flow.cancelAuthenticationRequest() per quickshellX API.
     function cancel() {
         if (root.state === "idle") return
-        if (_agent && _agent.flow) {
-            _agent.flow.cancel()
+        if (agent.flow) {
+            agent.flow.cancelAuthenticationRequest()
         }
 
         root.state = "cancelled"
@@ -52,73 +63,145 @@ Scope {
 
     function selectIdentity(uid) {
         if (!root.request) return
+        // Find the matching identity in our POJO list
         var ident = root.request.identities.find(function(i) { return i.uid === uid })
         if (!ident) return
         root.request = Object.assign({}, root.request, { selectedIdentity: ident })
+
+        // Also set on the actual flow if still active.
+        // Identity.id is a quint32 (uid/gid), match against it.
+        if (agent.flow) {
+            var flowIdents = agent.flow.identities ?? []
+            for (var i = 0; i < flowIdents.length; i++) {
+                if (flowIdents[i].id === uid) {
+                    agent.flow.selectedIdentity = flowIdents[i]
+                    break
+                }
+            }
+        }
     }
 
     // ======================================================================
-    // Private: graceful feature detection via Qt.createQmlObject
+    // Private: PolkitAgent (direct instantiation)
     // ======================================================================
 
-    property bool polkitAvailable: false
-    property var _agent: null
+    PolkitAgent {
+        id: agent
+    }
 
-    function _createPolkitAgent() {
-        try {
-            var qmlString = 'import QtQuick; import Quickshell.Services.Polkit; PolkitAgent {}'
-            _agent = Qt.createQmlObject(qmlString, root, "PolkitBridge.Agent")
-            polkitAvailable = true
-            console.info("PolkitBridge: initialized successfully")
+    // Watch for flow changes on the PolkitAgent
+    Connections {
+        target: agent
+        function onFlowChanged() {
+            root._onFlowChanged()
+        }
+    }
 
-            _agent.flowChanged.connect(_onFlowChanged)
-        } catch (e) {
-            polkitAvailable = false
-            console.warn("PolkitBridge: Polkit not available:", e)
+    // Watch for AuthFlow signals when a flow is active.
+    // AuthFlow signals verified from flow.hpp:
+    //   authenticationSucceeded(), authenticationFailed(), authenticationRequestCancelled()
+    //   isResponseRequiredChanged(), isCompletedChanged(), supplementaryMessageChanged()
+    Connections {
+        id: flowConn
+        target: agent.flow ?? null
+
+        function onAuthenticationSucceeded() {
+            root.state = "success"
+            timeoutTimer.stop()
+            root.dismissed()
+            transientCleanup.restart()
+        }
+
+        function onAuthenticationFailed() {
+            root.failCount++
+            root.state = "failed"
+
+            // Auto-cancel after 3 failures
+            if (root.failCount >= 3) {
+                root.cancel()
+            }
+        }
+
+        function onAuthenticationRequestCancelled() {
+            if (root.state !== "idle") {
+                root.state = "cancelled"
+                timeoutTimer.stop()
+                root.dismissed()
+                transientCleanup.restart()
+            }
+        }
+
+        function onSupplementaryMessageChanged() {
+            // Update the request with supplementary info if available
+            if (agent.flow && root.request) {
+                root.request = Object.assign({}, root.request, {
+                    supplementaryMessage: agent.flow.supplementaryMessage ?? "",
+                    supplementaryIsError: agent.flow.supplementaryIsError ?? false
+                })
+            }
         }
     }
 
     function _onFlowChanged() {
-        if (!_agent) return
-
-        if (_agent.flow) {
+        if (agent.flow) {
             root.failCount = 0
             root.state = "prompting"
 
+            // Flatten identities to POJOs.
+            // Identity properties from identity.hpp:
+            //   id (quint32), string (name), displayName, isGroup
             var identities = []
-            var flowIdentities = _agent.flow.identities ?? []
+            var flowIdentities = agent.flow.identities ?? []
             for (var i = 0; i < flowIdentities.length; i++) {
                 var ident = flowIdentities[i]
                 identities.push({
-                    uid: ident.uid ?? 0,
-                    username: ident.username ?? "",
-                    displayName: ident.displayName ?? ident.username ?? "",
-                    isCurrentUser: ident.isCurrentUser ?? false
+                    uid: ident.id ?? 0,
+                    username: ident.string ?? "",
+                    displayName: ident.displayName ?? ident.string ?? "",
+                    isGroup: ident.isGroup ?? false,
+                    // isCurrentUser: approximate by checking against current UID
+                    isCurrentUser: !ident.isGroup && (ident.id === _currentUid)
                 })
             }
 
+            // Flatten the request to a POJO.
+            // AuthFlow properties from flow.hpp:
+            //   message, iconName, actionId, cookie, identities, selectedIdentity,
+            //   isResponseRequired, inputPrompt, responseVisible,
+            //   supplementaryMessage, supplementaryIsError,
+            //   isCompleted, isSuccessful, isCancelled, failed
             root.request = {
                 id: Date.now().toString(),
-                message: _agent.flow.message ?? "",
-                icon: _agent.flow.icon ?? null,
-                cookie: _agent.flow.cookie ?? "",
+                message: agent.flow.message ?? "",
+                icon: agent.flow.iconName ?? null,
+                actionId: agent.flow.actionId ?? "",
+                cookie: agent.flow.cookie ?? "",
                 identities: identities,
-                selectedIdentity: identities.find(function(i) { return i.isCurrentUser }) ?? identities[0] ?? null
+                selectedIdentity: identities.find(function(i) { return i.isCurrentUser }) ?? identities[0] ?? null,
+                inputPrompt: agent.flow.inputPrompt ?? "",
+                responseVisible: agent.flow.responseVisible ?? false
             }
 
             timeoutTimer.restart()
             root.requestArrived(root.request)
         } else {
-            if (root.state === "authenticating") {
-                root.state = "success"
-                root.dismissed()
-                transientCleanup.restart()
-            } else if (root.state !== "idle") {
+            // Flow became null. If we were in authenticating/prompting and didn't get
+            // an explicit success/failure signal, treat as cancelled.
+            if (root.state !== "idle" && root.state !== "success" && root.state !== "cancelled" && root.state !== "timeout") {
                 root.state = "cancelled"
                 root.dismissed()
                 transientCleanup.restart()
             }
         }
+    }
+
+    // ======================================================================
+    // Private: current UID for isCurrentUser detection
+    // ======================================================================
+
+    readonly property int _currentUid: {
+        var uid = parseInt(Quickshell.env("UID") ?? Quickshell.env("EUID") ?? "0")
+        return isNaN(uid) ? 0 : uid
     }
 
     // ======================================================================
@@ -131,7 +214,7 @@ Scope {
         repeat: false
         onTriggered: {
             if (root.state !== "idle") {
-                if (root._agent && root._agent.flow) root._agent.flow.cancel()
+                if (agent.flow) agent.flow.cancelAuthenticationRequest()
                 root.state = "timeout"
                 root.dismissed()
                 transientCleanup.restart()
@@ -156,6 +239,6 @@ Scope {
             console.info("PolkitBridge: disabled via WEBSHELL_DISABLE_POLKIT")
             return
         }
-        _createPolkitAgent()
+        console.info("PolkitBridge: initialized, isRegistered:", agent.isRegistered)
     }
 }

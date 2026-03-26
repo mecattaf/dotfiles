@@ -1,6 +1,10 @@
 // PowerBridge.qml -- wraps Quickshell.Services.UPower
 // Exposes batteries, charging state, percentage. Battery warning state machine.
 // PowerProfiles (graceful: may not exist on all hardware).
+//
+// Fixed: removed UPower.lidIsClosed (doesn't exist in QS API),
+// fixed energyRate -> changeRate, activeProfile -> profile,
+// flattened battery/peripheral to POJOs with correct property names.
 
 pragma ComponentBehavior: Bound
 
@@ -18,17 +22,20 @@ Scope {
 
     readonly property var source: ({
         onBattery: UPower.onBattery ?? false,
-        displayPercentage: UPower.displayDevice?.percentage ?? 100,
-        displayState: _mapBatteryState(UPower.displayDevice?.state),
+        displayPercentage: UPower.displayDevice ? UPower.displayDevice.percentage : 100,
+        displayState: _mapBatteryState(UPower.displayDevice ? UPower.displayDevice.state : null),
         displayTimeRemaining: _computeTimeRemaining()
     })
 
     property var batteries: []
     property var peripherals: []
 
-    readonly property bool lidClosed: UPower.lidIsClosed ?? false
+    // NOTE: UPower.lidIsClosed does NOT exist in the QS UPower API.
+    // Lid state would need to come from logind D-Bus. Removed.
 
+    // PowerProfiles: property name is "profile" (not "activeProfile")
     readonly property string profile: _powerProfilesAvailable ? _activeProfile : "balanced"
+    readonly property bool hasPerformanceProfile: _powerProfilesAvailable ? _hasPerformance : false
     readonly property var profilesAvailable: _powerProfilesAvailable ? _profiles : []
 
     // v0.2.0 SHOULD: hibernate detection (#219)
@@ -47,9 +54,25 @@ Scope {
     // ======================================================================
 
     function setProfile(profileName) {
-        if (!_powerProfilesAvailable || !_powerProfilesObj) return
-        _powerProfilesObj.activeProfile = profileName
-        _activeProfile = profileName
+        if (!_powerProfilesAvailable) return
+        // PowerProfiles.profile is writable; accepts PowerProfile enum values.
+        // Map string to enum for safety.
+        switch (profileName) {
+            case "power-saver":
+                PowerProfiles.profile = PowerProfile.PowerSaver
+                _activeProfile = "power-saver"
+                break
+            case "balanced":
+                PowerProfiles.profile = PowerProfile.Balanced
+                _activeProfile = "balanced"
+                break
+            case "performance":
+                if (_hasPerformance) {
+                    PowerProfiles.profile = PowerProfile.Performance
+                    _activeProfile = "performance"
+                }
+                break
+        }
     }
 
     // ======================================================================
@@ -64,24 +87,51 @@ Scope {
 
     property bool _powerProfilesAvailable: false
     property string _activeProfile: "balanced"
+    property bool _hasPerformance: false
     property var _profiles: []
-    property var _powerProfilesObj: null
+
+    function _mapProfileEnum(enumVal) {
+        switch (enumVal) {
+            case PowerProfile.PowerSaver: return "power-saver"
+            case PowerProfile.Balanced: return "balanced"
+            case PowerProfile.Performance: return "performance"
+            default: return "balanced"
+        }
+    }
 
     function _initPowerProfiles() {
         try {
-            if (typeof PowerProfiles !== "undefined") {
-                _powerProfilesObj = PowerProfiles
-                _powerProfilesAvailable = true
-                _activeProfile = PowerProfiles.activeProfile ?? "balanced"
-                _profiles = PowerProfiles.profiles ?? []
-                console.info("PowerBridge: PowerProfiles initialized (singleton)")
-            } else {
-                _powerProfilesAvailable = false
-                console.info("PowerBridge: PowerProfiles not available on this system")
-            }
+            // PowerProfiles is a QML singleton from Quickshell.Services.UPower.
+            // It's always defined when the module is imported, but data may be
+            // invalid if power-profiles-daemon is not installed.
+            // Check if we get a valid profile value.
+            var p = PowerProfiles.profile
+            _powerProfilesAvailable = true
+            _activeProfile = _mapProfileEnum(p)
+            _hasPerformance = PowerProfiles.hasPerformanceProfile ?? false
+            _rebuildProfilesList()
+            console.info("PowerBridge: PowerProfiles initialized, profile:", _activeProfile)
         } catch (e) {
             _powerProfilesAvailable = false
             console.info("PowerBridge: PowerProfiles not available:", e)
+        }
+    }
+
+    function _rebuildProfilesList() {
+        var profiles = ["power-saver", "balanced"]
+        if (_hasPerformance) profiles.push("performance")
+        _profiles = profiles
+    }
+
+    // Watch for profile changes from PowerProfiles singleton
+    Connections {
+        target: _powerProfilesAvailable ? PowerProfiles : null
+        function onProfileChanged() {
+            root._activeProfile = root._mapProfileEnum(PowerProfiles.profile)
+        }
+        function onHasPerformanceProfileChanged() {
+            root._hasPerformance = PowerProfiles.hasPerformanceProfile ?? false
+            root._rebuildProfilesList()
         }
     }
 
@@ -92,26 +142,31 @@ Scope {
     function _mapBatteryState(state) {
         if (state === undefined || state === null) return "unknown"
         switch (state) {
-            case 1: return "charging"
-            case 2: return "discharging"
-            case 3: return "empty"
-            case 4: return "fully-charged"
-            case 5: return "pending-charge"
-            case 6: return "pending-discharge"
+            case UPowerDeviceState.Unknown: return "unknown"
+            case UPowerDeviceState.Charging: return "charging"
+            case UPowerDeviceState.Discharging: return "discharging"
+            case UPowerDeviceState.Empty: return "empty"
+            case UPowerDeviceState.FullyCharged: return "fully-charged"
+            case UPowerDeviceState.PendingCharge: return "pending-charge"
+            case UPowerDeviceState.PendingDischarge: return "pending-discharge"
             default: return "unknown"
         }
     }
 
-    function _mapPeripheralType(upowerType) {
+    function _mapDeviceType(upowerType) {
+        // UPowerDeviceType enum values from device.hpp
         switch (upowerType) {
-            case 5: return "mouse"
-            case 6: return "keyboard"
-            case 8: return "phone"
-            case 9: return "media-player"
-            case 10: return "tablet"
-            case 12: return "headphones"
-            case 13: return "headset"
-            case 14: return "gaming-input"
+            case UPowerDeviceType.Mouse: return "mouse"
+            case UPowerDeviceType.Keyboard: return "keyboard"
+            case UPowerDeviceType.Phone: return "phone"
+            case UPowerDeviceType.MediaPlayer: return "media-player"
+            case UPowerDeviceType.Tablet: return "tablet"
+            case UPowerDeviceType.GamingInput: return "gaming-input"
+            case UPowerDeviceType.Pen: return "pen"
+            case UPowerDeviceType.Touchpad: return "touchpad"
+            case UPowerDeviceType.Headset: return "headset"
+            case UPowerDeviceType.Speakers: return "speakers"
+            case UPowerDeviceType.Headphones: return "headphones"
             default: return "unknown"
         }
     }
@@ -126,13 +181,19 @@ Scope {
 
     function _flattenBattery(dev) {
         return {
-            id: dev.path ?? "",
+            // UPowerDevice has nativePath, not "path"
+            id: dev.nativePath ?? "",
             percentage: dev.percentage ?? 0,
             state: _mapBatteryState(dev.state),
             timeToEmpty: dev.timeToEmpty > 0 ? dev.timeToEmpty : null,
             timeToFull: dev.timeToFull > 0 ? dev.timeToFull : null,
-            energyRate: dev.energyRate ?? 0,
-            capacity: dev.capacity ?? 100,
+            // Property is "changeRate" (not "energyRate")
+            changeRate: dev.changeRate ?? 0,
+            energy: dev.energy ?? 0,
+            energyCapacity: dev.energyCapacity ?? 0,
+            // Health via healthPercentage (not "capacity")
+            healthPercentage: dev.healthPercentage ?? 0,
+            healthSupported: dev.healthSupported ?? false,
             isPresent: dev.isPresent ?? true,
             model: dev.model ?? "",
             icon: dev.iconName ?? "battery-missing-symbolic"
@@ -141,18 +202,18 @@ Scope {
 
     function _flattenPeripheral(dev) {
         return {
-            id: dev.path ?? "",
+            id: dev.nativePath ?? "",
             percentage: dev.percentage ?? 0,
             state: _mapBatteryState(dev.state),
             model: dev.model ?? "",
-            type: _mapPeripheralType(dev.type),
+            type: _mapDeviceType(dev.type),
             icon: dev.iconName ?? "battery-missing-symbolic",
             isPresent: dev.isPresent ?? true
         }
     }
 
     function _rebuildDevices() {
-        if (!UPower.devices?.values) {
+        if (!UPower.devices) {
             root.batteries = []
             root.peripherals = []
             return
@@ -163,9 +224,12 @@ Scope {
 
         for (var i = 0; i < devs.length; i++) {
             var dev = devs[i]
-            if (dev.type === 2) {
+            // Use UPowerDeviceType enum instead of magic numbers.
+            // isLaptopBattery = (type == Battery && powerSupply == true)
+            if (dev.isLaptopBattery) {
                 newBatteries.push(_flattenBattery(dev))
-            } else if (dev.type !== 1) {
+            } else if (dev.type !== UPowerDeviceType.LinePower && dev.type !== UPowerDeviceType.Battery) {
+                // Non-battery, non-line-power = peripheral
                 newPeripherals.push(_flattenPeripheral(dev))
             }
         }

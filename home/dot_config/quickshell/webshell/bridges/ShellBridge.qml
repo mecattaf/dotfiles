@@ -157,11 +157,16 @@ Scope {
 
     IpcHandler {
         target: "shell"
-        function toggleBar() { root.toggleSurface("bar") }
-        function toggleDock() { root.toggleSurface("dock") }
-        function toggleOverlay() { root.toggleSurface("overlay") }
-        function toggleNotifications() { root.toggleSurface("notifications") }
-        function toggleCcd() { root.toggleSurface("ccd") }
+        function toggleBar(): void { root.toggleSurface("bar") }
+        function toggleDock(): void { root.toggleSurface("dock") }
+        function toggleOverlay(): void { root.toggleSurface("overlay") }
+        function toggleNotifications(): void { root.toggleSurface("notifications") }
+        function toggleCcd(): void { root.toggleSurface("ccd") }
+        function toggleSettings(): void { root.toggleSurface("settings") }
+        function toggleWallpaper(): void { root.toggleSurface("wallpaper") }
+        function toggleWizard(): void { root.toggleSurface("wizard") }
+        function showSurface(name: string): void { root.showSurface(name) }
+        function hideSurface(name: string): void { root.hideSurface(name) }
     }
 
     // ======================================================================
@@ -246,17 +251,23 @@ Scope {
         ]
     }
 
-    // Connect privacy aggregation from AudioBridge when available
+    // Accept audioBridge as an explicit property for privacy aggregation.
+    // Passed from shell.qml: ShellBridge { audioBridge: audioBridge }
+    property var audioBridge: null
+
+    // Privacy aggregation: watch AudioBridge.privacy via Connections (no fragile signal.connect)
+    Connections {
+        target: root.audioBridge
+        function onPrivacyChanged() {
+            if (root.audioBridge) root.privacy = root.audioBridge.privacy
+        }
+    }
+
     Component.onCompleted: {
         configFileView.reload()
-        Qt.callLater(function() {
-            try {
-                if (typeof audioBridge !== "undefined" && audioBridge.privacyChanged) {
-                    audioBridge.privacyChanged.connect(function() {
-                        root.privacy = audioBridge.privacy
-                    })
-                }
-            } catch (e) {}
-        })
+        // Sync initial privacy state if audioBridge is already populated
+        if (root.audioBridge && root.audioBridge.privacy) {
+            root.privacy = root.audioBridge.privacy
+        }
     }
 }

@@ -2,6 +2,10 @@
 // Uses Quickshell.Services.Mpris. Exposes active player (last in list),
 // title, artist, album, thumbnail, isPlaying, duration, position.
 // IPC handler (target: "music", togglePlay/next/previous/getData).
+//
+// Fixed: position is in seconds (not microseconds), seek/setPosition
+// no longer multiply by 1_000_000. Added shuffle/loopStatus properties.
+// IPC getData() returns JSON string (IPC only supports primitives).
 
 pragma ComponentBehavior: Bound
 
@@ -25,9 +29,11 @@ Scope {
     property string album: ""
     property string thumbnail: ""
     property bool isPlaying: false
-    property int duration: 0
-    property int position: 0
+    property real duration: 0    // seconds, with ms precision
+    property real position: 0    // seconds, with ms precision
     property bool isAvailable: false
+    property bool shuffle: false
+    property string loopStatus: "none"  // "none", "track", "playlist"
 
     // ======================================================================
     // Signals
@@ -42,11 +48,7 @@ Scope {
     function togglePlay() {
         var qsPlayer = _getActiveQsPlayer()
         if (!qsPlayer) return
-        if (qsPlayer.playbackState === MprisPlaybackState.Playing) {
-            qsPlayer.pause()
-        } else {
-            qsPlayer.play()
-        }
+        qsPlayer.togglePlaying()
     }
 
     function play(playerId) {
@@ -74,19 +76,36 @@ Scope {
         if (p && p.canGoPrevious) p.previous()
     }
 
+    // QS MprisPlayer.seek() takes seconds (qreal), NOT microseconds.
     function seek(offsetSeconds, playerId) {
         var p = _resolvePlayer(playerId)
-        if (p && p.canSeek) p.seek(offsetSeconds * 1000000)
+        if (p && p.canSeek) p.seek(offsetSeconds)
     }
 
+    // QS MprisPlayer.position is in seconds (qreal), NOT microseconds.
     function setPosition(positionSeconds, playerId) {
         var p = _resolvePlayer(playerId)
-        if (p && p.canSeek) p.position = positionSeconds * 1000000
+        if (p && p.canSeek) p.position = positionSeconds
     }
 
     function setVolume(value, playerId) {
         var p = _resolvePlayer(playerId)
         if (p) p.volume = Math.min(Math.max(value, 0.0), 1.0)
+    }
+
+    function setShuffle(value, playerId) {
+        var p = _resolvePlayer(playerId)
+        if (p && p.shuffleSupported) p.shuffle = value
+    }
+
+    function setLoopState(state, playerId) {
+        var p = _resolvePlayer(playerId)
+        if (!p || !p.loopSupported) return
+        switch (state) {
+            case "none": p.loopState = MprisLoopState.None; break
+            case "track": p.loopState = MprisLoopState.Track; break
+            case "playlist": p.loopState = MprisLoopState.Playlist; break
+        }
     }
 
     // ======================================================================
@@ -95,19 +114,22 @@ Scope {
 
     IpcHandler {
         target: "music"
-        function togglePlay() { root.togglePlay() }
-        function next() { root.next() }
-        function previous() { root.previous() }
-        function getData() {
-            return {
+        function togglePlay(): void { root.togglePlay() }
+        function next(): void { root.next() }
+        function previous(): void { root.previous() }
+        // IPC only supports primitive return types. Return JSON string.
+        function getData(): string {
+            return JSON.stringify({
                 title: root.title,
                 artist: root.artist,
                 album: root.album,
                 thumbnail: root.thumbnail,
                 isPlaying: root.isPlaying,
                 duration: root.duration,
-                position: root.position
-            }
+                position: root.position,
+                shuffle: root.shuffle,
+                loopStatus: root.loopStatus
+            })
         }
     }
 
@@ -122,6 +144,10 @@ Scope {
         onTriggered: {
             var qsPlayer = root._getActiveQsPlayer()
             if (qsPlayer) {
+                // Manually emit positionChanged so we get an updated value.
+                // QS MprisPlayer.position only updates reactively on nonlinear
+                // changes; we need to poll per the QS docs.
+                qsPlayer.positionChanged()
                 root.position = qsPlayer.position ?? 0
             }
         }
@@ -135,21 +161,35 @@ Scope {
 
     function _getActiveQsPlayer() {
         var qsPlayers = Mpris.players?.values ?? []
+        // Prefer the last playing player; fall back to last in list.
+        for (var i = qsPlayers.length - 1; i >= 0; i--) {
+            if (qsPlayers[i].isPlaying) return qsPlayers[i]
+        }
         return qsPlayers.length > 0 ? qsPlayers[qsPlayers.length - 1] : null
     }
 
     function _resolvePlayer(playerId) {
         var qsPlayers = Mpris.players?.values ?? []
         if (playerId !== undefined && playerId !== null) {
-            return qsPlayers.find(function(p) {
-                return (p.identity ?? p.desktopEntry ?? "") === playerId
-            }) ?? null
+            for (var i = 0; i < qsPlayers.length; i++) {
+                if (_getPlayerId(qsPlayers[i]) === playerId) return qsPlayers[i]
+            }
+            return null
         }
         return _getActiveQsPlayer()
     }
 
     function _getPlayerId(qsPlayer) {
         return qsPlayer.identity ?? qsPlayer.desktopEntry ?? ""
+    }
+
+    function _mapLoopState(loopState) {
+        switch (loopState) {
+            case MprisLoopState.None: return "none"
+            case MprisLoopState.Track: return "track"
+            case MprisLoopState.Playlist: return "playlist"
+            default: return "none"
+        }
     }
 
     function _syncActivePlayer() {
@@ -163,6 +203,8 @@ Scope {
             root.duration = qsPlayer.length ?? 0
             root.position = qsPlayer.position ?? 0
             root.isAvailable = (qsPlayer.trackTitle ?? "") !== ""
+            root.shuffle = qsPlayer.shuffle ?? false
+            root.loopStatus = _mapLoopState(qsPlayer.loopState)
             root.activePlayer = _flattenPlayer(qsPlayer)
         } else {
             root.title = "Not Playing"
@@ -173,6 +215,8 @@ Scope {
             root.duration = 0
             root.position = 0
             root.isAvailable = false
+            root.shuffle = false
+            root.loopStatus = "none"
             root.activePlayer = null
         }
 
@@ -203,11 +247,16 @@ Scope {
             canSeek: p.canSeek ?? false,
             playbackStatus: status,
             volume: p.volume ?? 1.0,
+            shuffle: p.shuffle ?? false,
+            shuffleSupported: p.shuffleSupported ?? false,
+            loopStatus: _mapLoopState(p.loopState),
+            loopSupported: p.loopSupported ?? false,
             position: p.position ?? 0,
             metadata: {
                 title: p.trackTitle ?? "",
                 artist: p.trackArtist ?? "",
                 album: p.trackAlbum ?? "",
+                albumArtist: p.trackAlbumArtist ?? "",
                 artUrl: p.trackArtUrl ?? "",
                 length: p.length ?? 0
             }
@@ -216,7 +265,11 @@ Scope {
 
     function _rebuildPlayers() {
         var qsPlayers = Mpris.players?.values ?? []
-        root.players = qsPlayers.map(function(p) { return _flattenPlayer(p) })
+        var flatPlayers = []
+        for (var i = 0; i < qsPlayers.length; i++) {
+            flatPlayers.push(_flattenPlayer(qsPlayers[i]))
+        }
+        root.players = flatPlayers
         _syncActivePlayer()
     }
 

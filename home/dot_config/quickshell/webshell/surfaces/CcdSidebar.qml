@@ -49,7 +49,14 @@ PanelWindow {
 
             settings.javascriptCanAccessClipboard: false
             settings.localContentCanAccessRemoteUrls: false
+            settings.localContentCanAccessFileUrls: true
             settings.localStorageEnabled: true
+            settings.focusOnNavigationEnabled: false
+            settings.showScrollBars: false
+            settings.linksIncludedInFocusChain: false
+
+            onTooltipRequested: function(request) { request.accepted = true }
+            onContextMenuRequested: function(request) { request.accepted = true }
         }
     }
 }

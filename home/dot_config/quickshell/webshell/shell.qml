@@ -68,8 +68,8 @@ ShellRoot {
     SessionBridge      { id: sessionBridge }
     BluetoothBridge    { id: bluetoothBridge }
     NetworkBridge      { id: networkBridge }
-    ShellBridge        { id: shellBridge }
-    InputBridge        { id: inputBridge }
+    ShellBridge        { id: shellBridge; audioBridge: audioBridge }
+    InputBridge        { id: inputBridge; niriBridge: niriBridge }
     NiriBridge         { id: niriBridge }
     BrightnessBridge   { id: brightnessBridge }
     WallpaperBridge    { id: wallpaperBridge }

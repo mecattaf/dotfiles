@@ -10,6 +10,12 @@ Scope {
     id: root
 
     // ======================================================================
+    // Required: NiriBridge reference (passed from shell.qml)
+    // ======================================================================
+
+    required property var niriBridge
+
+    // ======================================================================
     // Public properties (os.input)
     // ======================================================================
 
@@ -26,34 +32,19 @@ Scope {
     })
 
     // ======================================================================
-    // Signals
+    // Private: watch NiriBridge keyboard properties via Connections
     // ======================================================================
 
-    signal layoutChanged(var layout)
-
-    // ======================================================================
-    // Private: watch NiriBridge keyboard properties
-    // ======================================================================
-
-    property var _niriBridge: null
-
-    function _connectToNiriBridge() {
-        try {
-            if (typeof niriBridge !== "undefined") {
-                _niriBridge = niriBridge
-                _niriBridge.keyboardLayoutsChanged.connect(_syncLayout)
-                _niriBridge.keyboardLayoutIndexChanged.connect(_syncLayout)
-                _syncLayout()
-            }
-        } catch (e) {
-            // niriBridge not yet available
-        }
+    Connections {
+        target: root.niriBridge
+        function onKeyboardLayoutsChanged() { root._syncLayout() }
+        function onKeyboardLayoutIndexChanged() { root._syncLayout() }
     }
 
     function _syncLayout() {
-        if (!_niriBridge) return
-        var layouts = _niriBridge.keyboardLayouts ?? []
-        var idx = _niriBridge.keyboardLayoutIndex ?? 0
+        if (!root.niriBridge) return
+        var layouts = root.niriBridge.keyboardLayouts ?? []
+        var idx = root.niriBridge.keyboardLayoutIndex ?? 0
         var name = layouts.length > idx ? layouts[idx] : "unknown"
 
         var newLayout = {
@@ -64,11 +55,10 @@ Scope {
 
         if (root.keyboardLayout.name !== newLayout.name || root.keyboardLayout.index !== newLayout.index) {
             root.keyboardLayout = newLayout
-            root.layoutChanged(newLayout)
         }
     }
 
     Component.onCompleted: {
-        Qt.callLater(_connectToNiriBridge)
+        _syncLayout()
     }
 }

@@ -1,5 +1,10 @@
 // TrayBridge.qml -- wraps Quickshell.Services.SystemTray
 // Flattens tray items for WebChannel serialization.
+//
+// Fixed: icon is a string (not object with sub-properties),
+// tooltipTitle/tooltipDescription are top-level properties (not tooltip.title),
+// category enum mapping corrected (was reversed),
+// scroll() passes bool for horizontal (not Qt.Horizontal enum).
 
 pragma ComponentBehavior: Bound
 
@@ -39,34 +44,21 @@ Scope {
     }
 
     function contextMenu(itemId) {
-        var qsItem = _findQsItem(itemId)
-        if (!qsItem || !qsItem.hasMenu) return null
-
-        var menu = _flattenMenu(qsItem.menu)
-        root._menuCache[itemId] = menu
-
-        root.items = root.items.map(function(item) {
-            if (item.id === itemId) {
-                return Object.assign({}, item, { menu: menu })
-            }
-            return item
-        })
-
-        return menu
-    }
-
-    function activateMenuItem(itemId, menuItemId) {
-        var qsItem = _findQsItem(itemId)
-        if (!qsItem) return
-
-        var menuItem = _findMenuItemDeep(qsItem.menu, menuItemId)
-        if (menuItem && menuItem.enabled) menuItem.activate()
+        // NOTE: DBusMenuHandle is a QObject, not directly serializable.
+        // Menu traversal via qsItem.menu.items is unreliable from QML.
+        // The proper way to display tray menus is via QsMenuAnchor or
+        // QsMenuOpener on the QML side. For WebChannel, we return null
+        // and let the frontend use activate() / display() instead.
+        // If full menu support is needed, it requires a QML-side popup.
+        return null
     }
 
     function scroll(itemId, delta, orientation) {
         var qsItem = _findQsItem(itemId)
         if (qsItem) {
-            qsItem.scroll(delta, orientation === "horizontal" ? Qt.Horizontal : Qt.Vertical)
+            // StatusNotifierItem.scroll(qint32 delta, bool horizontal)
+            // Pass a boolean, NOT Qt.Horizontal enum.
+            qsItem.scroll(delta, orientation === "horizontal")
         }
     }
 
@@ -75,93 +67,24 @@ Scope {
     // ======================================================================
 
     property var _lastItemIds: []
-    property var _menuCache: ({})
 
     function _findQsItem(itemId) {
-        if (!SystemTray.items?.values) return null
-        return SystemTray.items.values.find(function(i) { return _getItemId(i) === itemId }) ?? null
-    }
-
-    function _getItemId(qsItem) {
-        return (qsItem.id ?? "") + "/" + (qsItem.objectPath ?? "")
-    }
-
-    function _flattenIcon(icon) {
-        if (!icon) return { name: "", themePath: null, pixmap: null }
-        return {
-            name: icon.name ?? "",
-            themePath: icon.themePath ?? null,
-            pixmap: icon.pixmapData ? {
-                width: icon.pixmapData.width ?? 0,
-                height: icon.pixmapData.height ?? 0,
-                dataUrl: icon.pixmapData.dataUrl ?? ""
-            } : null
-        }
-    }
-
-    function _flattenTooltip(tooltip) {
-        if (!tooltip) return null
-        return {
-            title: tooltip.title ?? "",
-            description: tooltip.description ?? ""
-        }
-    }
-
-    function _flattenMenuItem(menuItem) {
-        if (!menuItem) return null
-        var children = []
-        if (menuItem.children) {
-            for (var i = 0; i < menuItem.children.length; i++) {
-                var child = _flattenMenuItem(menuItem.children[i])
-                if (child) children.push(child)
-            }
-        }
-
-        var type = "standard"
-        if (menuItem.isSeparator) type = "separator"
-        else if (menuItem.toggleType === "checkmark") type = "checkbox"
-        else if (menuItem.toggleType === "radio") type = "radio"
-
-        var toggleState = null
-        if (type === "checkbox" || type === "radio") {
-            toggleState = menuItem.toggleState === 1 ? "on" : (menuItem.toggleState === 0 ? "off" : "indeterminate")
-        }
-
-        return {
-            id: menuItem.id ?? 0,
-            type: type,
-            label: menuItem.label ?? "",
-            enabled: menuItem.enabled ?? true,
-            visible: menuItem.visible ?? true,
-            icon: menuItem.iconName ? { name: menuItem.iconName } : null,
-            toggleState: toggleState,
-            children: children
-        }
-    }
-
-    function _flattenMenu(menu) {
-        if (!menu || !menu.items) return null
-        var items = []
-        for (var i = 0; i < menu.items.length; i++) {
-            var item = _flattenMenuItem(menu.items[i])
-            if (item) items.push(item)
-        }
-        return { items: items }
-    }
-
-    function _findMenuItemDeep(menu, menuItemId) {
-        if (!menu || !menu.items) return null
-        for (var i = 0; i < menu.items.length; i++) {
-            if (menu.items[i].id === menuItemId) return menu.items[i]
-            if (menu.items[i].children) {
-                var found = _findMenuItemDeep({ items: menu.items[i].children }, menuItemId)
-                if (found) return found
-            }
+        if (!SystemTray.items) return null
+        var vals = SystemTray.items.values
+        for (var i = 0; i < vals.length; i++) {
+            if (_getItemId(vals[i]) === itemId) return vals[i]
         }
         return null
     }
 
+    function _getItemId(qsItem) {
+        // StatusNotifierItem has "id" property (Q_PROPERTY).
+        // There is no "objectPath" property. Use id alone as the identifier.
+        return qsItem.id ?? ""
+    }
+
     function _mapStatus(status) {
+        // Status enum: Passive=0, Active=1, NeedsAttention=2
         switch (status) {
             case 0: return "passive"
             case 1: return "active"
@@ -171,11 +94,14 @@ Scope {
     }
 
     function _mapCategory(category) {
+        // Category enum from item.hpp:
+        // Hardware=0, SystemServices=1, ApplicationStatus=2, Communications=3
+        // Previously this was reversed -- now corrected.
         switch (category) {
-            case 0: return "application"
-            case 1: return "communications"
-            case 2: return "system"
-            case 3: return "hardware"
+            case 0: return "hardware"
+            case 1: return "system"
+            case 2: return "application"
+            case 3: return "communications"
             default: return "application"
         }
     }
@@ -187,37 +113,48 @@ Scope {
             title: qsItem.title ?? "",
             status: _mapStatus(qsItem.status),
             category: _mapCategory(qsItem.category),
-            icon: _flattenIcon(qsItem.icon),
-            tooltip: _flattenTooltip(qsItem.tooltip),
-            menu: root._menuCache[itemId] ?? null,
-            hasMenu: qsItem.hasMenu ?? false
+            // icon is a QString (icon source string), NOT an object with sub-properties
+            icon: qsItem.icon ?? "",
+            // tooltipTitle and tooltipDescription are top-level Q_PROPERTYs,
+            // NOT qsItem.tooltip.title / qsItem.tooltip.description
+            tooltip: {
+                title: qsItem.tooltipTitle ?? "",
+                description: qsItem.tooltipDescription ?? ""
+            },
+            hasMenu: qsItem.hasMenu ?? false,
+            onlyMenu: qsItem.onlyMenu ?? false,
+            menu: null  // Menu data not serializable over WebChannel; use QsMenuAnchor
         }
     }
 
     function _rebuildItems() {
-        if (!SystemTray.items?.values) {
+        if (!SystemTray.items) {
             root.items = []
             return
         }
         var qsItems = SystemTray.items.values
-        var newItems = qsItems.map(function(i) { return _flattenItem(i) })
+        var newItems = []
+        for (var i = 0; i < qsItems.length; i++) {
+            newItems.push(_flattenItem(qsItems[i]))
+        }
         root.items = newItems
 
-        var newIds = newItems.map(function(i) { return i.id })
+        var newIds = []
+        for (var j = 0; j < newItems.length; j++) {
+            newIds.push(newItems[j].id)
+        }
         var oldIds = root._lastItemIds
 
-        for (var i = 0; i < newIds.length; i++) {
-            if (!oldIds.includes(newIds[i])) {
-                var item = newItems.find(function(it) { return it.id === newIds[i] })
-                if (item) root.itemAdded(item)
+        for (var k = 0; k < newIds.length; k++) {
+            if (oldIds.indexOf(newIds[k]) < 0) {
+                root.itemAdded(newItems[k])
             } else {
-                var item2 = newItems.find(function(it) { return it.id === newIds[i] })
-                if (item2) root.itemUpdated(item2)
+                root.itemUpdated(newItems[k])
             }
         }
-        for (var j = 0; j < oldIds.length; j++) {
-            if (!newIds.includes(oldIds[j])) {
-                root.itemRemoved(oldIds[j])
+        for (var m = 0; m < oldIds.length; m++) {
+            if (newIds.indexOf(oldIds[m]) < 0) {
+                root.itemRemoved(oldIds[m])
             }
         }
         root._lastItemIds = newIds

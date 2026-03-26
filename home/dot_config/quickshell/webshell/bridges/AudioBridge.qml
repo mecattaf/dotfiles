@@ -1,5 +1,6 @@
 // AudioBridge.qml -- wraps Quickshell.Services.Pipewire
 // Exposes nodes, default sink/source, volume, mute, privacy state.
+// CRITICAL: PwObjectTracker binds nodes so volume/muted are valid.
 
 pragma ComponentBehavior: Bound
 
@@ -34,11 +35,8 @@ Scope {
         screenshareApps: []
     })
 
-    // v0.2.0 SHOULD: device aliases (#108) — stored as { nodeId: alias } map
+    // v0.2.0 SHOULD: device aliases (#108) -- stored as { nodeId: alias } map
     property var deviceAliases: ({})
-
-    // v0.2.0 SHOULD: audio visualizer FFT data stub (#48)
-    property var audioVisualizerData: []
 
     // ======================================================================
     // Signals
@@ -52,7 +50,7 @@ Scope {
 
     function setVolume(value) {
         var sink = Pipewire.defaultAudioSink
-        if (!sink) return
+        if (!sink || !sink.audio) return
         var clamped = Math.min(Math.max(value, 0.0), 1.0)
         _lastSetVolume = clamped
         sink.audio.volume = clamped
@@ -60,13 +58,13 @@ Scope {
 
     function setMuted(muted) {
         var sink = Pipewire.defaultAudioSink
-        if (!sink) return
+        if (!sink || !sink.audio) return
         sink.audio.muted = muted
     }
 
     function setSourceVolume(value) {
         var source = Pipewire.defaultAudioSource
-        if (!source) return
+        if (!source || !source.audio) return
         var clamped = Math.min(Math.max(value, 0.0), 1.0)
         _lastSetSourceVolume = clamped
         source.audio.volume = clamped
@@ -74,19 +72,19 @@ Scope {
 
     function setSourceMuted(muted) {
         var source = Pipewire.defaultAudioSource
-        if (!source) return
+        if (!source || !source.audio) return
         source.audio.muted = muted
     }
 
     function toggleMute() {
         var sink = Pipewire.defaultAudioSink
-        if (!sink) return
+        if (!sink || !sink.audio) return
         sink.audio.muted = !sink.audio.muted
     }
 
     function toggleSourceMute() {
         var source = Pipewire.defaultAudioSource
-        if (!source) return
+        if (!source || !source.audio) return
         source.audio.muted = !source.audio.muted
     }
 
@@ -102,22 +100,22 @@ Scope {
 
     function setSinkVolume(sinkId, value) {
         var node = _findNode(sinkId)
-        if (node) node.audio.volume = Math.min(Math.max(value, 0.0), 1.0)
+        if (node && node.audio) node.audio.volume = Math.min(Math.max(value, 0.0), 1.0)
     }
 
     function setSinkMuted(sinkId, muted) {
         var node = _findNode(sinkId)
-        if (node) node.audio.muted = muted
+        if (node && node.audio) node.audio.muted = muted
     }
 
     function setStreamVolume(streamId, value) {
         var node = _findNode(streamId)
-        if (node) node.audio.volume = Math.min(Math.max(value, 0.0), 1.0)
+        if (node && node.audio) node.audio.volume = Math.min(Math.max(value, 0.0), 1.0)
     }
 
     function setStreamMuted(streamId, muted) {
         var node = _findNode(streamId)
-        if (node) node.audio.muted = muted
+        if (node && node.audio) node.audio.muted = muted
     }
 
     // v0.2.0 SHOULD: device alias/rename (#108)
@@ -134,9 +132,27 @@ Scope {
     property real _lastSetVolume: -1
     property real _lastSetSourceVolume: -1
 
+    // ======================================================================
+    // CRITICAL: PwObjectTracker -- binds default sink/source so that
+    // volume, muted, channels, volumes properties become valid.
+    // Without this, audio properties return garbage/zero.
+    // ======================================================================
+
+    PwObjectTracker {
+        objects: [Pipewire.defaultAudioSink, Pipewire.defaultAudioSource]
+    }
+
+    // ======================================================================
+    // Private: helpers
+    // ======================================================================
+
     function _findNode(nodeId) {
-        if (!Pipewire.nodes?.values) return null
-        return Pipewire.nodes.values.find(function(n) { return n.id === nodeId }) ?? null
+        if (!Pipewire.nodes) return null
+        var vals = Pipewire.nodes.values
+        for (var i = 0; i < vals.length; i++) {
+            if (vals[i].id === nodeId) return vals[i]
+        }
+        return null
     }
 
     function _flattenSink(node) {
@@ -145,10 +161,10 @@ Scope {
             id: node.id,
             name: node.name ?? "",
             description: node.description ?? "",
-            volume: Math.min(Math.max(node.audio?.volume ?? 0, 0.0), 1.0),
-            muted: node.audio?.muted ?? false,
+            volume: Math.min(Math.max(node.audio ? node.audio.volume : 0, 0.0), 1.0),
+            muted: node.audio ? node.audio.muted : false,
             isDefault: node === Pipewire.defaultAudioSink,
-            channels: node.audio?.channels ?? 2
+            channels: node.audio ? node.audio.channels.length : 0
         }
     }
 
@@ -158,27 +174,50 @@ Scope {
             id: node.id,
             name: node.name ?? "",
             description: node.description ?? "",
-            volume: Math.min(Math.max(node.audio?.volume ?? 0, 0.0), 1.0),
-            muted: node.audio?.muted ?? false,
+            volume: Math.min(Math.max(node.audio ? node.audio.volume : 0, 0.0), 1.0),
+            muted: node.audio ? node.audio.muted : false,
             isDefault: node === Pipewire.defaultAudioSource,
-            channels: node.audio?.channels ?? 2
+            channels: node.audio ? node.audio.channels.length : 0
         }
     }
 
     function _flattenStream(node) {
+        // Streams are audio nodes with the Stream flag set.
+        // node.properties requires PwObjectTracker binding -- use safe access.
+        var appName = ""
+        var iconName = null
+        var mediaClass = "Stream/Output/Audio"
+        if (node.properties) {
+            appName = node.properties["application.name"] ?? node.properties["media.name"] ?? ""
+            iconName = node.properties["application.icon-name"] ?? null
+            mediaClass = node.properties["media.class"] ?? "Stream/Output/Audio"
+        }
+
+        // Find the target sink by scanning linkGroups for connections from this stream.
+        var targetSinkId = null
+        if (Pipewire.linkGroups) {
+            var lgs = Pipewire.linkGroups.values
+            for (var i = 0; i < lgs.length; i++) {
+                if (lgs[i].source && lgs[i].source.id === node.id && lgs[i].target) {
+                    targetSinkId = lgs[i].target.id
+                    break
+                }
+            }
+        }
+
         return {
             id: node.id,
-            name: node.properties?.["application.name"] ?? node.properties?.["media.name"] ?? "",
-            icon: node.properties?.["application.icon_name"] ?? null,
-            volume: Math.min(Math.max(node.audio?.volume ?? 0, 0.0), 1.0),
-            muted: node.audio?.muted ?? false,
-            sinkId: node.target?.id ?? null,
-            mediaClass: node.properties?.["media.class"] ?? "Stream/Output/Audio"
+            name: appName,
+            icon: iconName,
+            volume: Math.min(Math.max(node.audio ? node.audio.volume : 0, 0.0), 1.0),
+            muted: node.audio ? node.audio.muted : false,
+            sinkId: targetSinkId,
+            mediaClass: mediaClass
         }
     }
 
     function _rebuildArrays() {
-        if (!Pipewire.nodes?.values) {
+        if (!Pipewire.nodes) {
             root.sinks = []
             root.sources = []
             root.streams = []
@@ -191,15 +230,32 @@ Scope {
 
         for (var i = 0; i < nodes.length; i++) {
             var node = nodes[i]
-            var mc = node.properties?.["media.class"] ?? ""
+            // Use PwNodeType flags instead of properties["media.class"]
+            // type flags are available without PwObjectTracker binding.
+            // PwNodeType.Audio = 0b1, PwNodeType.Sink = 0b10000,
+            // PwNodeType.Source = 0b1000, PwNodeType.Stream = 0b100
 
-            if (mc === "Audio/Sink") {
-                newSinks.push(_flattenSink(node))
-            } else if (mc === "Audio/Source") {
-                newSources.push(_flattenSource(node))
-            } else if (mc.startsWith("Stream/")) {
+            if (!node.audio) continue  // Skip non-audio nodes
+
+            var t = node.type
+            var isAudio = (t & PwNodeType.Audio) !== 0
+            var isSinkFlag = (t & PwNodeType.Sink) !== 0
+            var isSourceFlag = (t & PwNodeType.Source) !== 0
+            var isStreamFlag = (t & PwNodeType.Stream) !== 0
+
+            if (!isAudio) continue
+
+            if (isStreamFlag) {
+                // Audio stream (application playback or capture)
                 newStreams.push(_flattenStream(node))
+            } else if (isSinkFlag && !isSourceFlag) {
+                // Hardware audio sink (speaker, headphones)
+                newSinks.push(_flattenSink(node))
+            } else if (isSourceFlag && !isSinkFlag) {
+                // Hardware audio source (microphone)
+                newSources.push(_flattenSource(node))
             }
+            // Duplex nodes (Sink + Source, no Stream) are skipped for now
         }
 
         root.sinks = newSinks
@@ -208,7 +264,7 @@ Scope {
     }
 
     function _rebuildPrivacy() {
-        if (!Pipewire.nodes?.values) return
+        if (!Pipewire.nodes) return
 
         var micActive = false
         var camActive = false
@@ -217,34 +273,53 @@ Scope {
         var camApps = []
         var screenApps = []
 
-        if (Pipewire.linkGroups?.values) {
-            for (var i = 0; i < Pipewire.linkGroups.values.length; i++) {
-                var lg = Pipewire.linkGroups.values[i]
-                if (lg.source?.type === PwNodeType.AudioSource &&
-                    lg.target?.type === PwNodeType.AudioInStream) {
-                    var appName = lg.target?.properties?.["application.name"] ?? ""
-                    var combined = [lg.target?.name, appName].join(" ").toLowerCase()
-                    if (!/cava|monitor|system/.test(combined)) {
-                        micActive = true
-                        if (appName && !micApps.includes(appName)) micApps.push(appName)
+        // Check link groups for active mic capture
+        if (Pipewire.linkGroups) {
+            var lgs = Pipewire.linkGroups.values
+            for (var i = 0; i < lgs.length; i++) {
+                var lg = lgs[i]
+                // Mic detection: source is an AudioSource device, target is an AudioInStream
+                if (lg.source && lg.target) {
+                    var srcType = lg.source.type
+                    var tgtType = lg.target.type
+
+                    // AudioSource (hardware mic) -> AudioInStream (capture stream)
+                    if ((srcType & PwNodeType.Audio) && (srcType & PwNodeType.Source) && !(srcType & PwNodeType.Stream) &&
+                        (tgtType & PwNodeType.Audio) && (tgtType & PwNodeType.Source) && (tgtType & PwNodeType.Stream)) {
+                        var appName = ""
+                        if (lg.target.properties) {
+                            appName = lg.target.properties["application.name"] ?? ""
+                        }
+                        var combined = [lg.target.name ?? "", appName].join(" ").toLowerCase()
+                        if (!/cava|monitor|system/.test(combined)) {
+                            micActive = true
+                            if (appName && !micApps.includes(appName)) micApps.push(appName)
+                        }
                     }
-                }
-                if (lg.source?.type === PwNodeType.VideoSource) {
-                    screenActive = true
-                    var appName2 = lg.target?.properties?.["application.name"] ?? ""
-                    if (appName2 && !screenApps.includes(appName2)) screenApps.push(appName2)
+                    // Screenshare detection: source is a VideoSource
+                    if ((srcType & PwNodeType.Video) && (srcType & PwNodeType.Source)) {
+                        screenActive = true
+                        var appName2 = ""
+                        if (lg.target.properties) {
+                            appName2 = lg.target.properties["application.name"] ?? ""
+                        }
+                        if (appName2 && !screenApps.includes(appName2)) screenApps.push(appName2)
+                    }
                 }
             }
         }
 
+        // Camera detection: look for video input streams that are live
         var nodes = Pipewire.nodes.values
         for (var j = 0; j < nodes.length; j++) {
             var node = nodes[j]
-            var mc = node.properties?.["media.class"] ?? ""
-            if (mc === "Stream/Input/Video" && node.properties?.["stream.is-live"] === "true") {
-                camActive = true
-                var camApp = node.properties?.["application.name"] ?? ""
-                if (camApp && !camApps.includes(camApp)) camApps.push(camApp)
+            if (node.properties) {
+                var mc = node.properties["media.class"] ?? ""
+                if (mc === "Stream/Input/Video" && node.properties["stream.is-live"] === "true") {
+                    camActive = true
+                    var camApp = node.properties["application.name"] ?? ""
+                    if (camApp && !camApps.includes(camApp)) camApps.push(camApp)
+                }
             }
         }
 
@@ -260,7 +335,7 @@ Scope {
 
     function _syncSinkState() {
         var sink = Pipewire.defaultAudioSink
-        if (sink) {
+        if (sink && sink.audio) {
             root.volume = Math.min(Math.max(sink.audio.volume, 0.0), 1.0)
             root.muted = sink.audio.muted
             root.defaultSink = _flattenSink(sink)
@@ -273,7 +348,7 @@ Scope {
 
     function _syncSourceState() {
         var source = Pipewire.defaultAudioSource
-        if (source) {
+        if (source && source.audio) {
             root.sourceVolume = Math.min(Math.max(source.audio.volume, 0.0), 1.0)
             root.sourceMuted = source.audio.muted
             root.defaultSource = _flattenSource(source)
@@ -294,7 +369,7 @@ Scope {
         repeat: false
         onTriggered: {
             var sink = Pipewire.defaultAudioSink
-            if (!sink) return
+            if (!sink || !sink.audio) return
             var currentVol = Math.min(Math.max(sink.audio.volume, 0.0), 1.0)
             if (Math.abs(currentVol - root._lastSetVolume) > 0.001) {
                 root.volumeOsd({
@@ -310,7 +385,7 @@ Scope {
 
     Connections {
         target: Pipewire.defaultAudioSink?.audio ?? null
-        function onVolumeChanged() {
+        function onVolumesChanged() {
             root._syncSinkState()
             osdDebounce.restart()
         }
@@ -322,7 +397,7 @@ Scope {
 
     Connections {
         target: Pipewire.defaultAudioSource?.audio ?? null
-        function onVolumeChanged() { root._syncSourceState() }
+        function onVolumesChanged() { root._syncSourceState() }
         function onMutedChanged() { root._syncSourceState() }
     }
 

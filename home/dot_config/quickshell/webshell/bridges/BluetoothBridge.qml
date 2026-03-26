@@ -1,10 +1,12 @@
-// BluetoothBridge.qml -- wraps Quickshell.Bluetooth (try/catch for graceful degradation)
-// Exposes adapter, devices, powered state.
+// BluetoothBridge.qml -- wraps Quickshell.Bluetooth for adapter/device state.
+// Fixed: all API names verified against quickshellX/src/bluetooth/*.hpp.
+// POJO-only across bridge boundary. No QObject pointers in properties.
 
 pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
+import Quickshell.Bluetooth
 
 Scope {
     id: root
@@ -43,19 +45,23 @@ Scope {
     // ======================================================================
 
     function setPower(on) {
-        if (_btAdapter) _btAdapter.powered = on
+        var adapter = Bluetooth.defaultAdapter
+        if (adapter) adapter.enabled = on
     }
 
     function startDiscovery() {
-        if (_btAdapter && _btAdapter.powered) _btAdapter.startDiscovery()
+        var adapter = Bluetooth.defaultAdapter
+        if (adapter && adapter.enabled) adapter.discovering = true
     }
 
     function stopDiscovery() {
-        if (_btAdapter) _btAdapter.stopDiscovery()
+        var adapter = Bluetooth.defaultAdapter
+        if (adapter) adapter.discovering = false
     }
 
     function setDiscoverable(on) {
-        if (_btAdapter) _btAdapter.discoverable = on
+        var adapter = Bluetooth.defaultAdapter
+        if (adapter) adapter.discoverable = on
     }
 
     function connectDevice(address) {
@@ -75,13 +81,12 @@ Scope {
 
     function cancelPairing(address) {
         var dev = _findQsDevice(address)
-        if (dev) dev.cancelPairing()
+        if (dev) dev.cancelPair()
     }
 
     function removeDevice(address) {
-        if (!_btAdapter) return
         var dev = _findQsDevice(address)
-        if (dev) _btAdapter.removeDevice(dev)
+        if (dev) dev.forget()
     }
 
     function trust(address) {
@@ -107,7 +112,7 @@ Scope {
 
     // v0.2.0 SHOULD: pairing agent response (#152)
     function respondPairing(address, accepted, pin) {
-        // Stub: real implementation needs BlueZ Agent1 D-Bus interface
+        // Stub: real implementation needs BlueZ Agent1 D-Bus interface (Rust daemon)
         root.pairingRequest = null
         if (accepted) {
             root.pair(address)
@@ -117,55 +122,23 @@ Scope {
     }
 
     // ======================================================================
-    // Private: graceful Bluetooth module detection
+    // Private: device lookup
     // ======================================================================
 
-    property bool _btAvailable: false
-    property var _btAdapter: null
-    property var _btDevices: null
     property var _lastDeviceAddresses: []
 
-    function _initBluetooth() {
-        try {
-            var qmlString = 'import QtQuick; import Quickshell.Bluetooth; QtObject { property var adapter: Bluetooth.adapter; property var devices: Bluetooth.devices }'
-            var bt = Qt.createQmlObject(qmlString, root, "BluetoothBridge.BT")
-            _btAvailable = true
-            _btAdapter = Qt.binding(function() { return bt.adapter })
-            _btDevices = Qt.binding(function() { return bt.devices })
-            _syncAdapterState()
-            _rebuildDevices()
-            console.info("BluetoothBridge: initialized")
-        } catch (e) {
-            _btAvailable = false
-            console.warn("BluetoothBridge: Bluetooth module not available:", e)
-        }
-    }
-
-    function _syncAdapterState() {
-        if (!_btAvailable || !_btAdapter) {
-            root.available = false
-            root.powered = false
-            root.discovering = false
-            root.discoverable = false
-            root.adapterName = ""
-            root.adapterAddress = ""
-            return
-        }
-        root.available = _btAdapter !== null
-        root.powered = _btAdapter?.powered ?? false
-        root.discovering = _btAdapter?.discovering ?? false
-        root.discoverable = _btAdapter?.discoverable ?? false
-        root.adapterName = _btAdapter?.alias ?? ""
-        root.adapterAddress = _btAdapter?.address ?? ""
-    }
-
     function _findQsDevice(address) {
-        if (!_btDevices?.values) return null
-        return _btDevices.values.find(function(d) { return d.address === address }) ?? null
+        if (!Bluetooth.defaultAdapter) return null
+        var devs = Bluetooth.defaultAdapter.devices.values
+        for (var i = 0; i < devs.length; i++) {
+            if (devs[i].address === address) return devs[i]
+        }
+        return null
     }
 
-    function _classifyDeviceType(device) {
-        var icon = (device.icon ?? "").toLowerCase()
+    function _classifyDeviceType(dev) {
+        // icon from BlueZ via device.hpp Q_PROPERTY(QString icon ...)
+        var icon = (dev.icon ?? "").toLowerCase()
         if (icon.includes("headset")) return "audio-headset"
         if (icon.includes("headphone")) return "audio-headphones"
         if (icon.includes("speaker")) return "audio-speakers"
@@ -176,48 +149,80 @@ Scope {
         return "unknown"
     }
 
+    // Flatten BluetoothDevice QObject to POJO -- NEVER expose QObject pointers.
+    // Properties verified against quickshellX/src/bluetooth/device.hpp:
+    //   address, name (alias-aware), deviceName, icon, state, connected, paired,
+    //   bonded, pairing, trusted, blocked, wakeAllowed, batteryAvailable, battery
     function _flattenDevice(dev) {
         return {
             address: dev.address ?? "",
-            name: dev.alias || dev.name || dev.address || "",
-            alias: dev.alias ?? "",
+            name: dev.name || dev.deviceName || dev.address || "",
+            deviceName: dev.deviceName ?? "",
             icon: dev.icon ?? "",
             type: _classifyDeviceType(dev),
             paired: dev.paired ?? false,
             trusted: dev.trusted ?? false,
             blocked: dev.blocked ?? false,
             connected: dev.connected ?? false,
-            connecting: dev.connecting ?? false,
-            rssi: dev.rssi ?? null,
-            battery: dev.battery ?? null,
-            // v0.2.0 SHOULD: audio codec detection (#154) — stub, real needs pactl
-            audioCodec: null,
+            // state enum: Disconnected=0, Connected=1, Disconnecting=2, Connecting=3
+            connecting: dev.state === BluetoothDeviceState.Connecting,
+            pairing: dev.pairing ?? false,
+            batteryAvailable: dev.batteryAvailable ?? false,
+            battery: dev.batteryAvailable ? Math.round((dev.battery ?? 0) * 100) : null,
             // v0.2.0 SHOULD: pinned state (#155)
             isPinned: root.pinnedDevices.includes(dev.address ?? "")
         }
     }
 
-    function _rebuildDevices() {
-        if (!_btDevices?.values) {
-            root.devices = []
+    function _syncAdapterState() {
+        var adapter = Bluetooth.defaultAdapter
+        if (!adapter) {
+            root.available = false
+            root.powered = false
+            root.discovering = false
+            root.discoverable = false
+            root.adapterName = ""
+            root.adapterAddress = ""
             return
         }
-        var devs = _btDevices.values
-        var newDevices = devs.map(function(d) { return _flattenDevice(d) })
+        root.available = true
+        root.powered = adapter.enabled
+        root.discovering = adapter.discovering
+        root.discoverable = adapter.discoverable
+        root.adapterName = adapter.name ?? ""
+        // BluetoothAdapter has adapterId (e.g. "hci0") and dbusPath, but no MAC address property.
+        // Use adapterId as the identifier.
+        root.adapterAddress = adapter.adapterId ?? ""
+    }
+
+    function _rebuildDevices() {
+        var adapter = Bluetooth.defaultAdapter
+        if (!adapter) {
+            root.devices = []
+            _syncAdapterState()
+            return
+        }
+
+        var devs = adapter.devices.values
+        var newDevices = []
+        for (var i = 0; i < devs.length; i++) {
+            newDevices.push(_flattenDevice(devs[i]))
+        }
         root.devices = newDevices
 
+        // Emit deviceAdded/deviceRemoved signals
         var newAddrs = newDevices.map(function(d) { return d.address })
         var oldAddrs = root._lastDeviceAddresses
 
-        for (var i = 0; i < newAddrs.length; i++) {
-            if (!oldAddrs.includes(newAddrs[i])) {
-                var d = newDevices.find(function(dev) { return dev.address === newAddrs[i] })
+        for (var j = 0; j < newAddrs.length; j++) {
+            if (!oldAddrs.includes(newAddrs[j])) {
+                var d = newDevices.find(function(dev) { return dev.address === newAddrs[j] })
                 if (d) root.deviceAdded(d)
             }
         }
-        for (var j = 0; j < oldAddrs.length; j++) {
-            if (!newAddrs.includes(oldAddrs[j])) {
-                root.deviceRemoved(oldAddrs[j])
+        for (var k = 0; k < oldAddrs.length; k++) {
+            if (!newAddrs.includes(oldAddrs[k])) {
+                root.deviceRemoved(oldAddrs[k])
             }
         }
         root._lastDeviceAddresses = newAddrs
@@ -225,8 +230,15 @@ Scope {
     }
 
     // ======================================================================
-    // Private: watch for changes
+    // Private: watch for changes via Connections on Bluetooth singleton
     // ======================================================================
+
+    Connections {
+        target: Bluetooth
+        function onDefaultAdapterChanged() {
+            root._rebuildDevices()
+        }
+    }
 
     Timer {
         id: rebuildDebounce
@@ -235,14 +247,16 @@ Scope {
         onTriggered: root._rebuildDevices()
     }
 
+    // Poll for device list changes (signal strength, connection state changes)
     Timer {
         interval: 2000
-        running: root._btAvailable
+        running: root.available
         repeat: true
         onTriggered: root._rebuildDevices()
     }
 
     Component.onCompleted: {
-        _initBluetooth()
+        _rebuildDevices()
+        console.info("BluetoothBridge: initialized, adapter available:", root.available)
     }
 }

@@ -74,13 +74,13 @@ Scope {
 
     IpcHandler {
         target: "display"
-        function brighter(by: real) {
+        function brighter(by: real): void {
             for (var i = 0; i < _monitorVariants.instances.length; i++) {
                 var m = _monitorVariants.instances[i]
                 m.setBrightness(m.brightness + (by || 0.01))
             }
         }
-        function dimmer(by: real) {
+        function dimmer(by: real): void {
             for (var i = 0; i < _monitorVariants.instances.length; i++) {
                 var m = _monitorVariants.instances[i]
                 m.setBrightness(m.brightness - (by || 0.01))

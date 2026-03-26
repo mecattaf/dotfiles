@@ -1,12 +1,20 @@
 // NetworkBridge.qml -- Network status and control.
-// Uses Quickshell.Networking (native NM module) if available, falls back to nmcli.
-// Scorecard Gap 7: no more process-only -- use native module when present.
+// Fixed: direct import of Quickshell.Networking, no Qt.createQmlObject.
+// API verified against quickshellX/src/network/*.hpp:
+//   Networking singleton: devices (ObjectModel<NetworkDevice>), wifiEnabled, wifiHardwareEnabled
+//   NetworkDevice: type (DeviceType.Enum), name, address, connected, state
+//   WifiDevice extends NetworkDevice: networks (ObjectModel<WifiNetwork>), scannerEnabled
+//   WifiNetwork extends Network: signalStrength (0.0-1.0), known, security (WifiSecurityType.Enum)
+//   Network: name, connected, state (NetworkState.Enum)
+// Falls back to nmcli if native module not available.
+// POJO-only across bridge boundary.
 
 pragma ComponentBehavior: Bound
 
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Networking
 
 Scope {
     id: root
@@ -18,9 +26,10 @@ Scope {
     property var networks: []
     property var networksKnown: []
     property var active: null
-    property bool wifiEnabled: true
+    property bool wifiEnabled: _nativeAvailable ? Networking.wifiEnabled : _nmcliWifiEnabled
+    property bool wifiHardwareEnabled: _nativeAvailable ? Networking.wifiHardwareEnabled : true
     property bool scanning: false
-    property string backend: "none"
+    property string backend: _nativeAvailable ? "native" : "nmcli"
 
     // ======================================================================
     // Signals
@@ -33,8 +42,8 @@ Scope {
     // ======================================================================
 
     function enableWifi(enabled) {
-        if (_nativeAvailable && _nativeObj) {
-            _nativeObj.wifiEnabled = enabled
+        if (_nativeAvailable) {
+            Networking.wifiEnabled = enabled
         } else {
             _enableWifiProc.command = ["nmcli", "radio", "wifi", enabled ? "on" : "off"]
             _enableWifiProc.running = true
@@ -75,6 +84,13 @@ Scope {
         }
     }
 
+    function forgetNetwork(ssid) {
+        if (_nativeAvailable) {
+            _nativeForget(ssid)
+        }
+        // nmcli fallback: nmcli connection delete <ssid> -- not yet implemented
+    }
+
     function getWifiStatus() {
         if (!_nativeAvailable) {
             _wifiStatusProc.running = true
@@ -82,61 +98,64 @@ Scope {
     }
 
     // ======================================================================
-    // Private: native Quickshell.Networking module (try/catch)
+    // Private: native Quickshell.Networking
     // ======================================================================
 
-    property bool _nativeAvailable: false
-    property var _nativeObj: null
-    property var _nativeDevices: null
+    property bool _nativeAvailable: true  // assume available; set false if it fails
+    property bool _nmcliWifiEnabled: true
 
-    function _initNativeNetworking() {
-        try {
-            var qmlString = 'import QtQuick; import Quickshell.Networking; QtObject { '
-                + 'property var networking: Networking; '
-                + 'property var devices: Networking.devices; '
-                + 'property bool wifiEnabled: Networking.wifiEnabled; '
-                + 'property bool wifiHardwareEnabled: Networking.wifiHardwareEnabled '
-                + '}'
-            _nativeObj = Qt.createQmlObject(qmlString, root, "NetworkBridge.Native")
-            _nativeAvailable = true
-            root.backend = "native"
-
-            root.wifiEnabled = Qt.binding(function() { return _nativeObj.wifiEnabled })
-
-            _rebuildFromNative()
-            console.info("NetworkBridge: using native Quickshell.Networking module")
-        } catch (e) {
-            _nativeAvailable = false
-            root.backend = "nmcli"
-            console.info("NetworkBridge: Quickshell.Networking not available, falling back to nmcli:", e)
-            _initNmcliFallback()
+    // Map WifiSecurityType enum to human-readable string.
+    // Enum from wifi.hpp: Wpa3SuiteB192=0, Sae=1, Wpa2Eap=2, Wpa2Psk=3,
+    //   WpaEap=4, WpaPsk=5, StaticWep=6, DynamicWep=7, Leap=8, Owe=9, Open=10, Unknown=11
+    function _securityToString(securityEnum) {
+        switch (securityEnum) {
+            case 0: return "WPA3-Suite-B-192"
+            case 1: return "SAE"
+            case 2: return "WPA2-EAP"
+            case 3: return "WPA2-PSK"
+            case 4: return "WPA-EAP"
+            case 5: return "WPA-PSK"
+            case 6: return "WEP"
+            case 7: return "Dynamic-WEP"
+            case 8: return "LEAP"
+            case 9: return "OWE"
+            case 10: return "Open"
+            default: return "Unknown"
         }
     }
 
     function _rebuildFromNative() {
-        if (!_nativeObj || !_nativeObj.devices?.values) return
+        if (!Networking.devices) return
 
         var allNetworks = []
         var activeNetwork = null
 
-        var devs = _nativeObj.devices.values
+        var devs = Networking.devices.values
         for (var i = 0; i < devs.length; i++) {
             var dev = devs[i]
-            if (dev.type !== 1) continue // DeviceType.Wifi = 1 (from device.hpp enum)
+            // DeviceType.Wifi = 1 (from device.hpp)
+            if (dev.type !== DeviceType.Wifi) continue
 
-            if (dev.networks?.values) {
+            // WifiDevice has networks property (ObjectModel<WifiNetwork>)
+            if (dev.networks) {
                 var nets = dev.networks.values
                 for (var j = 0; j < nets.length; j++) {
                     var net = nets[j]
+                    var securityEnum = net.security ?? 11 // Unknown=11
                     var flat = {
                         ssid: net.name ?? "",
                         bssid: "",
+                        // signalStrength is 0.0-1.0 per wifi.hpp, scale to 0-100
                         strength: Math.round((net.signalStrength ?? 0) * 100),
                         frequency: 0,
                         active: net.connected ?? false,
-                        security: net.security !== undefined ? net.security.toString() : "",
-                        isSecure: (net.security ?? 10) !== 10, // WifiSecurityType.Open = 10
-                        known: net.known ?? false
+                        security: _securityToString(securityEnum),
+                        // WifiSecurityType.Open = 10
+                        isSecure: securityEnum !== 10,
+                        known: net.known ?? false,
+                        // NetworkState enum: Unknown=0, Connecting=1, Connected=2, Disconnecting=3, Disconnected=4
+                        state: net.state ?? 0,
+                        stateChanging: net.stateChanging ?? false
                     }
                     allNetworks.push(flat)
                     if (flat.active) activeNetwork = flat
@@ -156,10 +175,11 @@ Scope {
     }
 
     function _triggerNativeScan() {
-        if (!_nativeObj || !_nativeObj.devices?.values) return
-        var devs = _nativeObj.devices.values
+        if (!Networking.devices) return
+        var devs = Networking.devices.values
         for (var i = 0; i < devs.length; i++) {
-            if (devs[i].type === 1 && devs[i].scannerEnabled !== undefined) {
+            // WifiDevice has scannerEnabled property
+            if (devs[i].type === DeviceType.Wifi && devs[i].scannerEnabled !== undefined) {
                 devs[i].scannerEnabled = true
             }
         }
@@ -178,10 +198,10 @@ Scope {
     }
 
     function _nativeConnect(ssid) {
-        if (!_nativeObj || !_nativeObj.devices?.values) return
-        var devs = _nativeObj.devices.values
+        if (!Networking.devices) return
+        var devs = Networking.devices.values
         for (var i = 0; i < devs.length; i++) {
-            if (devs[i].type !== 1 || !devs[i].networks?.values) continue
+            if (devs[i].type !== DeviceType.Wifi || !devs[i].networks) continue
             var nets = devs[i].networks.values
             for (var j = 0; j < nets.length; j++) {
                 if (nets[j].name === ssid) {
@@ -193,10 +213,10 @@ Scope {
     }
 
     function _nativeDisconnect() {
-        if (!_nativeObj || !_nativeObj.devices?.values) return
-        var devs = _nativeObj.devices.values
+        if (!Networking.devices) return
+        var devs = Networking.devices.values
         for (var i = 0; i < devs.length; i++) {
-            if (devs[i].type !== 1 || !devs[i].networks?.values) continue
+            if (devs[i].type !== DeviceType.Wifi || !devs[i].networks) continue
             var nets = devs[i].networks.values
             for (var j = 0; j < nets.length; j++) {
                 if (nets[j].connected) {
@@ -204,6 +224,32 @@ Scope {
                     return
                 }
             }
+        }
+    }
+
+    function _nativeForget(ssid) {
+        if (!Networking.devices) return
+        var devs = Networking.devices.values
+        for (var i = 0; i < devs.length; i++) {
+            if (devs[i].type !== DeviceType.Wifi || !devs[i].networks) continue
+            var nets = devs[i].networks.values
+            for (var j = 0; j < nets.length; j++) {
+                if (nets[j].name === ssid) {
+                    nets[j].forget()
+                    return
+                }
+            }
+        }
+    }
+
+    // Watch Networking singleton for wifiEnabled changes
+    Connections {
+        target: Networking
+        function onWifiEnabledChanged() {
+            root._rebuildFromNative()
+        }
+        function onWifiHardwareEnabledChanged() {
+            root._rebuildFromNative()
         }
     }
 
@@ -217,10 +263,12 @@ Scope {
     }
 
     // ======================================================================
-    // Private: nmcli fallback (same as v0.0.1)
+    // Private: nmcli fallback
     // ======================================================================
 
     function _initNmcliFallback() {
+        _nativeAvailable = false
+        root.backend = "nmcli"
         _nmcliStartupProc.running = true
         _wifiStatusProc.running = true
     }
@@ -242,7 +290,7 @@ Scope {
         environment: ({ LANG: "C", LC_ALL: "C" })
         stdout: SplitParser {
             onRead: data => {
-                root.wifiEnabled = data.trim() === "enabled"
+                root._nmcliWifiEnabled = data.trim() === "enabled"
             }
         }
     }
@@ -328,7 +376,8 @@ Scope {
                         frequency: n.frequency,
                         active: n.active,
                         security: n.security,
-                        isSecure: n.security.length > 0
+                        isSecure: n.security.length > 0,
+                        known: false
                     }
                 })
 
@@ -363,6 +412,14 @@ Scope {
     }
 
     Component.onCompleted: {
-        _initNativeNetworking()
+        // Try native first; if Networking.devices is available, use it
+        if (Networking.devices) {
+            _nativeAvailable = true
+            _rebuildFromNative()
+            console.info("NetworkBridge: using native Quickshell.Networking module")
+        } else {
+            console.info("NetworkBridge: Quickshell.Networking not available, falling back to nmcli")
+            _initNmcliFallback()
+        }
     }
 }

@@ -1,6 +1,16 @@
 // NotificationBridge.qml -- Notification daemon using Quickshell.Services.Notifications.
+// Fixed: FileView API verified against quickshellX/src/io/fileview.hpp:
+//   - text() is Q_INVOKABLE (correct, it's a method not property)
+//   - setText() is Q_INVOKABLE (correct)
+//   - path accepts Qt.resolvedUrl() URLs
+//   - Signals: loaded(), loadFailed(error), saved(), saveFailed(error), fileChanged()
+// Notification properties verified against notification.hpp:
+//   id, tracked, appName, appIcon, summary, body, image, urgency, expireTimeout,
+//   actions (QList<NotificationAction*>), hasActionIcons, resident, transient,
+//   desktopEntry, hasInlineReply, inlineReplyPlaceholder, hints
+// NotificationAction: identifier, text, invoke()
 // Full JSON persistence, grouped by app, rate limiting (20/sec), per-urgency timeouts.
-// Scorecard Gap 7 fixes applied.
+// POJO-only across bridge boundary.
 
 pragma ComponentBehavior: Bound
 
@@ -21,7 +31,7 @@ Scope {
     property int unreadCount: 0
     property bool dnd: false
 
-    // v0.2.0 SHOULD: privacy mode (#79) — hides notification body
+    // v0.2.0 SHOULD: privacy mode (#79) -- hides notification body
     property bool privacyMode: false
 
     // v0.2.0 SHOULD: notification sounds enabled (#75)
@@ -109,6 +119,7 @@ Scope {
         var tracked = server.trackedNotifications?.values ?? []
         for (var i = 0; i < tracked.length; i++) {
             if (tracked[i].id + root._idOffset === notificationId) {
+                // NotificationAction: identifier (QString), text (QString), invoke()
                 var actions = tracked[i].actions ?? []
                 for (var j = 0; j < actions.length; j++) {
                     if (actions[j].identifier === actionIdentifier) {
@@ -120,6 +131,18 @@ Scope {
             }
         }
         root.close(notificationId)
+    }
+
+    function sendInlineReply(notificationId, replyText) {
+        var tracked = server.trackedNotifications?.values ?? []
+        for (var i = 0; i < tracked.length; i++) {
+            if (tracked[i].id + root._idOffset === notificationId) {
+                if (tracked[i].hasInlineReply) {
+                    tracked[i].sendInlineReply(replyText)
+                }
+                break
+            }
+        }
     }
 
     function toggleDnd() {
@@ -196,10 +219,13 @@ Scope {
         property string body: qsNotification?.body ?? ""
         property string image: qsNotification?.image ?? ""
         property string summary: qsNotification?.summary ?? ""
+        property string desktopEntry: qsNotification?.desktopEntry ?? ""
         property double time: 0
         property string urgency: "normal"
         property var actions: []
         property bool isRead: false
+        property bool hasInlineReply: qsNotification?.hasInlineReply ?? false
+        property string inlineReplyPlaceholder: qsNotification?.inlineReplyPlaceholder ?? ""
 
         // Per-urgency timeouts: critical stays indefinitely, low=3s, normal=5s
         readonly property Timer timer: Timer {
@@ -209,7 +235,7 @@ Scope {
                 if (notif.urgency === "low") return 3000
                 if (notif.qsNotification) {
                     var timeout = notif.qsNotification.expireTimeout
-                    return timeout > 0 ? timeout : 5000
+                    return timeout > 0 ? timeout * 1000 : 5000
                 }
                 return 5000
             }
@@ -237,6 +263,7 @@ Scope {
         bodyMarkupSupported: true
         bodySupported: true
         imageSupported: true
+        inlineReplySupported: true
         keepOnReload: false
         persistenceSupported: true
 
@@ -255,16 +282,20 @@ Scope {
 
             notification.tracked = true
 
+            // Map urgency enum to string. NotificationUrgency from notification.hpp: Low=0, Normal=1, Critical=2
             var urgencyStr = "normal"
             if (notification.urgency === NotificationUrgency.Low) urgencyStr = "low"
             else if (notification.urgency === NotificationUrgency.Critical) urgencyStr = "critical"
 
-            var actionsList = (notification.actions ?? []).map(function(action) {
-                return {
-                    identifier: action.identifier,
-                    text: action.text
-                }
-            })
+            // Flatten actions to POJO array. NotificationAction: identifier (QString), text (QString)
+            var actionsList = []
+            var rawActions = notification.actions ?? []
+            for (var i = 0; i < rawActions.length; i++) {
+                actionsList.push({
+                    identifier: rawActions[i].identifier ?? "",
+                    text: rawActions[i].text ?? ""
+                })
+            }
 
             var newNotif = notifComp.createObject(root, {
                 nid: notification.id + root._idOffset,
@@ -294,9 +325,9 @@ Scope {
 
     IpcHandler {
         target: "doNotDisturb"
-        function toggle() { root.toggleDnd() }
-        function enable() { root.dnd = true }
-        function disable() { root.dnd = false }
+        function toggle(): void { root.toggleDnd() }
+        function enable(): void { root.dnd = true }
+        function disable(): void { root.dnd = false }
     }
 
     // ======================================================================
@@ -314,7 +345,10 @@ Scope {
             urgency: wrapper.urgency,
             time: wrapper.time,
             actions: wrapper.actions,
-            isRead: wrapper.isRead
+            isRead: wrapper.isRead,
+            desktopEntry: wrapper.desktopEntry,
+            hasInlineReply: wrapper.hasInlineReply,
+            inlineReplyPlaceholder: wrapper.inlineReplyPlaceholder
         }
     }
 
@@ -362,6 +396,12 @@ Scope {
 
     // ======================================================================
     // Private: persistence
+    // FileView API from fileview.hpp:
+    //   path: QString (set via setPath or property)
+    //   text(): Q_INVOKABLE QString (method, not property)
+    //   setText(text: QString): Q_INVOKABLE void
+    //   reload(): Q_INVOKABLE void
+    //   Signals: loaded(), loadFailed(FileViewError::Enum), saved(), saveFailed(...)
     // ======================================================================
 
     FileView {
@@ -387,6 +427,7 @@ Scope {
                     wrapper.body = n.body || ""
                     wrapper.image = n.image || ""
                     wrapper.summary = n.summary || ""
+                    wrapper.desktopEntry = n.desktopEntry || ""
                     root._notifObjects.push(wrapper)
                     maxId = Math.max(maxId, n.id)
                 }

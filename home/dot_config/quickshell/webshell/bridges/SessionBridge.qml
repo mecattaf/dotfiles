@@ -99,15 +99,19 @@ Scope {
 
     IpcHandler {
         target: "session"
-        function prepareSleep() {
+        function prepareSleep(): void {
             root.sleep = Object.assign({}, root.sleep, { preparing: true, wakeReady: false })
             root.preparingSleep()
         }
-        function wake() {
+        function wake(): void {
             root.sleep = Object.assign({}, root.sleep, { preparing: false })
             root.wakeUp()
             _wakeReadyTimer.restart()
         }
+        function shutdown(): void { root.executeAction("shutdown") }
+        function reboot(): void { root.executeAction("reboot") }
+        function suspend(): void { root.executeAction("suspend") }
+        function logout(): void { root.executeAction("logout") }
     }
 
     Timer {
