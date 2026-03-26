@@ -44,7 +44,7 @@ Variants {
 
             WebEngineView {
                 anchors.fill: parent
-                backgroundColor: "transparent"
+                backgroundColor: "#000000"
                 webChannel: channel
 
                 Component.onCompleted: url = baseUrl + "#/bar?screen=" + barWindow.modelData.name
@@ -57,7 +57,7 @@ Variants {
                 settings.localContentCanAccessRemoteUrls: false
                 settings.localContentCanAccessFileUrls: true
                 settings.localStorageEnabled: true
-                settings.focusOnNavigationEnabled: false
+                settings.focusOnNavigationEnabled: true
                 settings.showScrollBars: false
                 settings.linksIncludedInFocusChain: false
 

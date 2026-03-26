@@ -51,7 +51,7 @@ PanelWindow {
             settings.localContentCanAccessRemoteUrls: false
             settings.localContentCanAccessFileUrls: true
             settings.localStorageEnabled: true
-            settings.focusOnNavigationEnabled: false
+            settings.focusOnNavigationEnabled: true
             settings.showScrollBars: false
             settings.linksIncludedInFocusChain: false
 
