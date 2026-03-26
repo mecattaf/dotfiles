@@ -1,5 +1,6 @@
 AudioBridge AudioBridge.qml
 BluetoothBridge BluetoothBridge.qml
+CommandBridge CommandBridge.qml
 BrightnessBridge BrightnessBridge.qml
 InputBridge InputBridge.qml
 MprisBridge MprisBridge.qml

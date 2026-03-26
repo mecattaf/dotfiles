@@ -41,7 +41,12 @@ Variants {
         exclusionMode: ExclusionMode.Ignore
         exclusiveZone: 0
         focusable: false
-        mask: Region {}
+
+        // NOTE: mask: Region {} was removed because an empty mask causes
+        // niri to skip rendering the window entirely. Without a mask,
+        // the window receives pointer events but CSS pointer-events:none
+        // on the OSD content + focusable:false + WlrKeyboardFocus.None
+        // ensure it doesn't interfere with user interaction.
 
         function show() {
             if (shellBridge && shellBridge.osdSuppressed) return
