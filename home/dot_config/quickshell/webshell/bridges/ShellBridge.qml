@@ -272,12 +272,34 @@ Scope {
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i]
             if (e.noDisplay) continue
+            // Resolve freedesktop icon name to a file path for the web frontend.
+            // Quickshell.iconPath(name, true) does theme lookup and returns a
+            // file:// URL (or empty string) that WebEngineView can load as <img src>.
+            var iconName = e.icon ?? ""
+            var resolvedIcon = ""
+            if (iconName !== "") {
+                // If the icon field is already an absolute path, use it directly
+                if (iconName.startsWith("/")) {
+                    resolvedIcon = "file://" + iconName
+                } else {
+                    var looked = Quickshell.iconPath(iconName, true)
+                    if (looked && looked !== "") {
+                        // Quickshell.iconPath returns a string usable as QML Image source.
+                        // Ensure it has file:// prefix for the web <img> tag.
+                        resolvedIcon = looked.toString()
+                        if (!resolvedIcon.startsWith("file://") && resolvedIcon.startsWith("/")) {
+                            resolvedIcon = "file://" + resolvedIcon
+                        }
+                    }
+                }
+            }
             apps.push({
                 id: e.id,
                 name: e.name,
                 genericName: e.genericName ?? "",
                 comment: e.comment ?? "",
-                icon: e.icon ?? "",
+                icon: iconName,
+                iconPath: resolvedIcon,
                 execString: e.execString ?? "",
                 categories: e.categories ?? [],
                 keywords: e.keywords ?? []

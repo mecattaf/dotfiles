@@ -34,6 +34,22 @@ PanelWindow {
     // listener → os.shell.closeLauncher()). QML Shortcut cannot reliably
     // intercept keypresses that WebEngineView/Chromium consumes first.
 
+    // Defence-in-depth: release exclusive keyboard focus before the surface is
+    // unmapped.  This ensures the compositor (niri) sees the focus release as a
+    // discrete event *before* the surface disappears, avoiding a race where the
+    // compositor never processes the focus-release because the surface is already
+    // gone.  Without this, JS-initiated dismissal (async WebChannel round-trip)
+    // can leave focus trapped.
+    //
+    // The Loader recreates this component each time overlayVisible goes true,
+    // so the static `WlrLayershell.keyboardFocus: Exclusive` declaration above
+    // is sufficient for the initial map — no need to re-set it here.
+    onVisibleChanged: {
+        if (!visible) {
+            WlrLayershell.keyboardFocus = WlrKeyboardFocus.None
+        }
+    }
+
     Rectangle {
         anchors.fill: parent
         color: "transparent"
