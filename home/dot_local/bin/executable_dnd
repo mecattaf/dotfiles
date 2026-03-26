@@ -1,5 +1,4 @@
 #!/bin/bash
-# CHANGED: notificationCenter IPC target renamed to shell toggleNotifications
-# Old: quickshell ipc call notificationCenter toggle
-# New: quickshell ipc call shell toggleNotifications
+# dnd -- toggle do-not-disturb / notification center
+# IPC target: ShellBridge (target: "shell"), method: toggleNotifications
 quickshell ipc call shell toggleNotifications

@@ -1,5 +1,6 @@
 #!/bin/bash
-# UNCHANGED: screen recording uses niri msg + wf-recorder, no quickshell IPC
+# record -- screen recording using wf-recorder + niri IPC
+# No quickshell IPC. Uses niri msg and wf-recorder directly.
 
 get_focused_output() {
     niri msg -j outputs | jq -r 'to_entries[] | select(.value.current_mode != null) | .key' | head -1
@@ -18,8 +19,17 @@ case "$1" in
         pkill -SIGINT wf-recorder
         notify-send -u low "Screen Recording Stopped" -t 0
         ;;
+    toggle)
+        if pgrep -x wf-recorder >/dev/null; then
+            pkill -SIGINT wf-recorder
+            notify-send -u low "Screen Recording Stopped" -t 0
+        else
+            notify-send -u critical "Screen Recording Started" -t 0
+            wf-recorder -a -o "$(get_focused_output)" -f ~/Videos/scrn-$(date +'%Y-%m-%d-%H:%M:%S').mp4 &>/dev/null
+        fi
+        ;;
     *)
-        echo "Usage: $0 {start|select|stop}"
+        echo "Usage: $0 {start|select|stop|toggle}"
         exit 1
         ;;
 esac

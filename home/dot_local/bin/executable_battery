@@ -1,5 +1,6 @@
 #!/bin/bash
-# UNCHANGED: standalone battery rofi applet, no quickshell IPC
+# battery -- rofi battery status applet
+# No quickshell IPC. Standalone utility.
 
 ROFI_DIR="$HOME/.config/rofi"
 THEME_FILE="$ROFI_DIR/battery/battery.rasi"

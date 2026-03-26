@@ -1,21 +1,9 @@
 #!/bin/bash
-# CHANGED: screenshot now uses niri native screenshot actions
-# Old: quickshell ipc call screenshot toggle
-# New: niri msg action screenshot / screenshot-screen / screenshot-window
-# Note: niri binds.kdl already uses screenshot-screen and screenshot directly,
-# so this script is mainly for manual/script usage.
+# screenshot -- take a screenshot using niri native actions
+# No quickshell IPC. Uses niri msg action.
 case "${1:-full}" in
-    full)
-        niri msg action screenshot-screen
-        ;;
-    area)
-        niri msg action screenshot
-        ;;
-    window)
-        niri msg action screenshot-window
-        ;;
-    *)
-        echo "Usage: $0 {full|area|window}"
-        exit 1
-        ;;
+    full)    niri msg action screenshot-screen ;;
+    area)    niri msg action screenshot ;;
+    window)  niri msg action screenshot-window ;;
+    *)       echo "Usage: $0 {full|area|window}"; exit 1 ;;
 esac

@@ -1,1 +1,0 @@
-import{t}from"./index-GmtsapJ-.js";var e=t("<div data-surface=lock style=width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-ghost)>Lockscreen (stub)");function a(){return e()}export{a as default};

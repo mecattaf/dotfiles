@@ -19,8 +19,7 @@ ShellRoot {
         var envUrl = Quickshell.env("WEBSHELL_URL")
         if (envUrl) return envUrl
         // Production: load from dist/ alongside this QML file
-        var distPath = Quickshell.shellDir + "/dist/index.html"
-        return "file://" + distPath
+        return "file://" + Quickshell.shellDir + "/dist/index.html"
     }
 
     Component.onCompleted: {
@@ -41,8 +40,8 @@ ShellRoot {
         try { channel.registerObject("InputBridge", inputBridge) } catch (e) { console.warn("shell: failed to register InputBridge:", e) }
         try { channel.registerObject("BrightnessBridge", brightnessBridge) } catch (e) { console.warn("shell: failed to register BrightnessBridge:", e) }
 
-        // NiriBridge: register as both "WorkspacesBridge" and "WindowsBridge"
-        // so bridge.ts can hydrate os.workspaces and os.windows from the same QObject.
+        // NiriBridge is registered as both WorkspacesBridge and WindowsBridge so
+        // bridge.ts can hydrate os.workspaces and os.windows from the same QObject.
         try {
             channel.registerObject("WorkspacesBridge", niriBridge)
             channel.registerObject("WindowsBridge", niriBridge)

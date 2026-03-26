@@ -1,5 +1,5 @@
-// BrightnessBridge.qml -- Port of current-dotfiles Brightness.qml
-// Handles DDC monitors via ddcutil, internal backlight via sysfs/brightnessctl,
+// BrightnessBridge.qml -- Real multi-backend brightness control.
+// DDC monitors via ddcutil, internal backlight via sysfs/brightnessctl,
 // Apple Display via asdbctl. FileView watcher for external brightness changes.
 // Debounced setBrightness with queued updates. IPC handler for display brighter/dimmer.
 
@@ -13,17 +13,10 @@ Scope {
     id: root
 
     // ======================================================================
-    // Reactive properties (os.brightness)
+    // Public properties (os.brightness)
     // ======================================================================
 
-    // Flattened array of all monitors with brightness state
     property var monitors: []
-
-    // DDC monitor info detected via ddcutil
-    property var _ddcMonitors: []
-
-    // Whether Apple Display support is available
-    property bool _appleDisplayPresent: false
 
     // ======================================================================
     // Signals
@@ -32,7 +25,7 @@ Scope {
     signal brightnessOsd(var event)
 
     // ======================================================================
-    // Methods (os.brightness)
+    // Public methods (os.brightness)
     // ======================================================================
 
     function setBrightness(monitorIndex, value) {
@@ -69,7 +62,14 @@ Scope {
     }
 
     // ======================================================================
-    // IPC handler (from current dotfiles)
+    // Private: DDC detection state
+    // ======================================================================
+
+    property var _ddcMonitors: []
+    property bool _appleDisplayPresent: false
+
+    // ======================================================================
+    // Private: IPC handler (from current dotfiles)
     // ======================================================================
 
     IpcHandler {
@@ -89,7 +89,7 @@ Scope {
     }
 
     // ======================================================================
-    // Detect Apple Display support
+    // Private: detect Apple Display support
     // ======================================================================
 
     Process {
@@ -103,7 +103,7 @@ Scope {
     }
 
     // ======================================================================
-    // Detect DDC monitors via ddcutil
+    // Private: detect DDC monitors via ddcutil
     // ======================================================================
 
     Process {
@@ -131,7 +131,6 @@ Scope {
         }
     }
 
-    // Redetect DDC when screens change
     Connections {
         target: Quickshell
         function onScreensChanged() {
@@ -140,7 +139,7 @@ Scope {
     }
 
     // ======================================================================
-    // Per-monitor Variants (from current dotfiles pattern)
+    // Private: per-monitor Variants
     // ======================================================================
 
     Variants {
@@ -165,13 +164,11 @@ Scope {
             property real queuedBrightness: NaN
             readonly property real stepSize: 1 / 100.0
 
-            // Internal backlight paths
             property string backlightDevice: ""
             property string brightnessPath: ""
             property string maxBrightnessPath: ""
             property int maxBrightness: 100
 
-            // Debounce timer for rapid changes
             readonly property Timer timer: Timer {
                 interval: 100
                 onTriggered: {
@@ -232,7 +229,6 @@ Scope {
                 })
             }
 
-            // Initialize brightness on creation
             readonly property Process initProc: Process {
                 stdout: SplitParser {
                     onRead: data => {
@@ -260,11 +256,11 @@ Scope {
                                 monitor.brightnessPath = monitor.backlightDevice + "/brightness"
                                 monitor.maxBrightnessPath = monitor.backlightDevice + "/max_brightness"
 
-                                var current = parseInt(lines[1])
-                                var max = parseInt(lines[2])
-                                if (!isNaN(current) && !isNaN(max) && max > 0) {
-                                    monitor.maxBrightness = max
-                                    monitor.brightness = current / max
+                                var current2 = parseInt(lines[1])
+                                var max2 = parseInt(lines[2])
+                                if (!isNaN(current2) && !isNaN(max2) && max2 > 0) {
+                                    monitor.maxBrightness = max2
+                                    monitor.brightness = current2 / max2
                                 }
                             }
                         }
@@ -273,22 +269,45 @@ Scope {
                 }
             }
 
-            // Refresh brightness from system (for external changes)
             readonly property Process refreshProc: Process {
                 stdout: SplitParser {
                     onRead: data => {
                         var dataText = data.trim()
                         if (dataText === "") return
 
-                        var lines = dataText.split("\n")
-                        if (lines.length >= 2) {
-                            var current = parseInt(lines[0].trim())
-                            var max = parseInt(lines[1].trim())
-                            if (!isNaN(current) && !isNaN(max) && max > 0) {
-                                var newBrightness = current / max
-                                if (Math.abs(newBrightness - monitor.brightness) > 0.01) {
-                                    monitor.brightness = newBrightness
+                        if (monitor.isDdc) {
+                            var parts = dataText.split(" ")
+                            if (parts.length >= 5) {
+                                var current = parseInt(parts[3])
+                                var max = parseInt(parts[4])
+                                if (!isNaN(current) && !isNaN(max) && max > 0) {
+                                    var newBrightness = current / max
+                                    if (Math.abs(newBrightness - monitor.brightness) > 0.01) {
+                                        monitor.brightness = newBrightness
+                                        root._rebuildMonitors()
+                                    }
+                                }
+                            }
+                        } else if (monitor.isAppleDisplay) {
+                            var val = parseInt(dataText)
+                            if (!isNaN(val)) {
+                                var newB = val / 101
+                                if (Math.abs(newB - monitor.brightness) > 0.01) {
+                                    monitor.brightness = newB
                                     root._rebuildMonitors()
+                                }
+                            }
+                        } else {
+                            var lines = dataText.split("\n")
+                            if (lines.length >= 2) {
+                                var c = parseInt(lines[0].trim())
+                                var m = parseInt(lines[1].trim())
+                                if (!isNaN(c) && !isNaN(m) && m > 0) {
+                                    var nb = c / m
+                                    if (Math.abs(nb - monitor.brightness) > 0.01) {
+                                        monitor.brightness = nb
+                                        root._rebuildMonitors()
+                                    }
                                 }
                             }
                         }
@@ -297,21 +316,20 @@ Scope {
             }
 
             function refreshBrightnessFromSystem() {
-                if (!monitor.isDdc && !monitor.isAppleDisplay && monitor.brightnessPath !== "") {
-                    refreshProc.command = ["sh", "-c",
-                        "cat " + monitor.brightnessPath + " && " +
-                        "cat " + monitor.maxBrightnessPath]
-                    refreshProc.running = true
-                } else if (monitor.isDdc) {
+                if (monitor.isDdc) {
                     refreshProc.command = ["ddcutil", "-b", monitor.busNum, "getvcp", "10", "--brief"]
                     refreshProc.running = true
                 } else if (monitor.isAppleDisplay) {
                     refreshProc.command = ["asdbctl", "get"]
                     refreshProc.running = true
+                } else if (monitor.brightnessPath !== "") {
+                    refreshProc.command = ["sh", "-c",
+                        "cat " + monitor.brightnessPath + " && " +
+                        "cat " + monitor.maxBrightnessPath]
+                    refreshProc.running = true
                 }
             }
 
-            // FileView watcher for internal displays
             readonly property FileView brightnessWatcher: FileView {
                 path: (!monitor.isDdc && !monitor.isAppleDisplay && monitor.brightnessPath !== "") ? monitor.brightnessPath : ""
                 watchChanges: path !== ""
@@ -347,7 +365,7 @@ Scope {
     }
 
     // ======================================================================
-    // Flatten monitor state for WebChannel
+    // Private: flatten monitor state for WebChannel
     // ======================================================================
 
     function _rebuildMonitors() {
@@ -370,7 +388,6 @@ Scope {
 
     Component.onCompleted: {
         ddcProc.running = true
-        // Defer initial rebuild to let Variants populate
         Qt.callLater(root._rebuildMonitors)
     }
 }

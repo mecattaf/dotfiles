@@ -1,5 +1,5 @@
 #!/bin/bash
-# DROPPED: notch is not part of webshell (was eqsh-specific macOS-style notch)
-# The bar serves as the top surface now. Use bar-toggle instead.
-echo "notch-toggle is deprecated in webshell. Use bar-toggle instead."
-~/.local/bin/bar-toggle
+# notch-toggle -- DROPPED: notch was eqsh-specific (macOS-style dynamic island)
+# Redirects to bar-toggle for backwards compatibility.
+echo "notch-toggle is deprecated in webshell. Use bar-toggle instead." >&2
+exec "$(dirname "$0")/bar-toggle"

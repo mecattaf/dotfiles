@@ -1,5 +1,6 @@
 // PowerBridge.qml -- wraps Quickshell.Services.UPower
 // Exposes batteries, charging state, percentage. Battery warning state machine.
+// PowerProfiles (graceful: may not exist on all hardware).
 
 pragma ComponentBehavior: Bound
 
@@ -11,7 +12,7 @@ Scope {
     id: root
 
     // ======================================================================
-    // Reactive properties (os.power)
+    // Public properties (os.power)
     // ======================================================================
 
     readonly property var source: ({
@@ -26,7 +27,6 @@ Scope {
 
     readonly property bool lidClosed: UPower.lidIsClosed ?? false
 
-    // Power profiles (graceful: may not exist on all hardware)
     readonly property string profile: _powerProfilesAvailable ? _activeProfile : "balanced"
     readonly property var profilesAvailable: _powerProfilesAvailable ? _profiles : []
 
@@ -37,13 +37,23 @@ Scope {
     signal batteryWarning(string level)
 
     // ======================================================================
-    // Battery warning state machine
+    // Public methods (os.power)
+    // ======================================================================
+
+    function setProfile(profileName) {
+        if (!_powerProfilesAvailable || !_powerProfilesObj) return
+        _powerProfilesObj.activeProfile = profileName
+        _activeProfile = profileName
+    }
+
+    // ======================================================================
+    // Private: battery warning state machine
     // ======================================================================
 
     property string _warningState: "above_20"
 
     // ======================================================================
-    // Power profiles (graceful feature detection)
+    // Private: power profiles (graceful feature detection)
     // ======================================================================
 
     property bool _powerProfilesAvailable: false
@@ -66,17 +76,7 @@ Scope {
     }
 
     // ======================================================================
-    // Methods (os.power)
-    // ======================================================================
-
-    function setProfile(profileName) {
-        if (!_powerProfilesAvailable || !_powerProfilesObj) return
-        _powerProfilesObj.activeProfile = profileName
-        _activeProfile = profileName
-    }
-
-    // ======================================================================
-    // Internal helpers
+    // Private: helpers
     // ======================================================================
 
     function _mapBatteryState(state) {
@@ -184,7 +184,7 @@ Scope {
     }
 
     // ======================================================================
-    // Connections
+    // Private: connections
     // ======================================================================
 
     Connections {

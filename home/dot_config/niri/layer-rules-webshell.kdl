@@ -1,52 +1,42 @@
-// ── WebShell Layer Rules ───────────────────────────────────────
-// Include this from config.kdl:  include "layer-rules.kdl"
+// -- WebShell Layer Rules --
+// Include from config.kdl:  include "layer-rules.kdl"
 //
-// All webshell surfaces use namespace prefix "shell:"
-// These replace the old HyprPersist.qml hyprctl layerrule calls.
+// All webshell surfaces use the namespace prefix "shell:"
+// Matches PanelWindow { WlrLayerShell.namespace: "shell:bar" } etc. in QML.
 
-// Global: ignore zero-alpha pixels on all layer surfaces (click-through
-// transparent regions). This matches eqsh's old `ignorezero ^.*$` rule.
-layer-rule {
-    match namespace=r#".*"#
-    opacity 1.0
-}
-
-// Bar surface — top panel, needs blur behind it
+// Bar -- top panel. Blocked from screen capture.
 layer-rule {
     match namespace="shell:bar"
     block-out-from "screen-capture"
 }
 
-// Dock surface — bottom dock, needs blur
+// Dock -- bottom dock. Blocked from screen capture.
 layer-rule {
     match namespace="shell:dock"
     block-out-from "screen-capture"
 }
 
-// OSD surfaces — volume/brightness overlays
-// Transient, no special rules needed beyond defaults
+// OSD -- transient volume/brightness overlays
 layer-rule {
     match namespace="shell:osd"
 }
 
-// Notification popups
+// Notifications -- popup overlays
 layer-rule {
     match namespace="shell:notifications"
 }
 
-// Overlay surface — launcher/spotlight, fullscreen translucent
+// Overlay -- launcher/spotlight, fullscreen translucent
 layer-rule {
     match namespace="shell:overlay"
 }
 
-// CCD (Control Center / Dashboard) sidebar
+// CCD sidebar -- control center / dashboard
 layer-rule {
     match namespace="shell:ccd"
 }
 
-// Lockscreen — must be above everything
-// Note: niri handles session lock separately via ext-session-lock-v1,
-// but if the lockscreen is a layer surface it needs these rules.
+// Lockscreen -- above all other surfaces
 layer-rule {
     match namespace="shell:lockscreen"
 }

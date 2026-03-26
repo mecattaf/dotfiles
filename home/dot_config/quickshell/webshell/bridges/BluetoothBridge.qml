@@ -1,6 +1,5 @@
-// BluetoothBridge.qml -- wraps Quickshell.Bluetooth (try/catch)
-// Exposes adapter, devices, powered state. Current dotfiles only use
-// Bluetooth.defaultAdapter in Runtime.qml.
+// BluetoothBridge.qml -- wraps Quickshell.Bluetooth (try/catch for graceful degradation)
+// Exposes adapter, devices, powered state.
 
 pragma ComponentBehavior: Bound
 
@@ -11,7 +10,7 @@ Scope {
     id: root
 
     // ======================================================================
-    // Reactive properties (os.bluetooth)
+    // Public properties (os.bluetooth)
     // ======================================================================
 
     property bool available: false
@@ -33,50 +32,7 @@ Scope {
     signal deviceRemoved(string address)
 
     // ======================================================================
-    // Internal: graceful Bluetooth module detection
-    // ======================================================================
-
-    property bool _btAvailable: false
-    property var _btAdapter: null
-    property var _btDevices: null
-    property var _lastDeviceAddresses: []
-
-    function _initBluetooth() {
-        try {
-            var qmlString = 'import QtQuick; import Quickshell.Bluetooth; QtObject { property var adapter: Bluetooth.adapter; property var devices: Bluetooth.devices }'
-            var bt = Qt.createQmlObject(qmlString, root, "BluetoothBridge.BT")
-            _btAvailable = true
-            _btAdapter = Qt.binding(function() { return bt.adapter })
-            _btDevices = Qt.binding(function() { return bt.devices })
-            _syncAdapterState()
-            _rebuildDevices()
-            console.info("BluetoothBridge: initialized")
-        } catch (e) {
-            _btAvailable = false
-            console.warn("BluetoothBridge: Bluetooth module not available:", e)
-        }
-    }
-
-    function _syncAdapterState() {
-        if (!_btAvailable || !_btAdapter) {
-            root.available = false
-            root.powered = false
-            root.discovering = false
-            root.discoverable = false
-            root.adapterName = ""
-            root.adapterAddress = ""
-            return
-        }
-        root.available = _btAdapter !== null
-        root.powered = _btAdapter?.powered ?? false
-        root.discovering = _btAdapter?.discovering ?? false
-        root.discoverable = _btAdapter?.discoverable ?? false
-        root.adapterName = _btAdapter?.alias ?? ""
-        root.adapterAddress = _btAdapter?.address ?? ""
-    }
-
-    // ======================================================================
-    // Methods (os.bluetooth)
+    // Public methods (os.bluetooth)
     // ======================================================================
 
     function setPower(on) {
@@ -132,8 +88,47 @@ Scope {
     }
 
     // ======================================================================
-    // Internal helpers
+    // Private: graceful Bluetooth module detection
     // ======================================================================
+
+    property bool _btAvailable: false
+    property var _btAdapter: null
+    property var _btDevices: null
+    property var _lastDeviceAddresses: []
+
+    function _initBluetooth() {
+        try {
+            var qmlString = 'import QtQuick; import Quickshell.Bluetooth; QtObject { property var adapter: Bluetooth.adapter; property var devices: Bluetooth.devices }'
+            var bt = Qt.createQmlObject(qmlString, root, "BluetoothBridge.BT")
+            _btAvailable = true
+            _btAdapter = Qt.binding(function() { return bt.adapter })
+            _btDevices = Qt.binding(function() { return bt.devices })
+            _syncAdapterState()
+            _rebuildDevices()
+            console.info("BluetoothBridge: initialized")
+        } catch (e) {
+            _btAvailable = false
+            console.warn("BluetoothBridge: Bluetooth module not available:", e)
+        }
+    }
+
+    function _syncAdapterState() {
+        if (!_btAvailable || !_btAdapter) {
+            root.available = false
+            root.powered = false
+            root.discovering = false
+            root.discoverable = false
+            root.adapterName = ""
+            root.adapterAddress = ""
+            return
+        }
+        root.available = _btAdapter !== null
+        root.powered = _btAdapter?.powered ?? false
+        root.discovering = _btAdapter?.discovering ?? false
+        root.discoverable = _btAdapter?.discoverable ?? false
+        root.adapterName = _btAdapter?.alias ?? ""
+        root.adapterAddress = _btAdapter?.address ?? ""
+    }
 
     function _findQsDevice(address) {
         if (!_btDevices?.values) return null
@@ -178,7 +173,6 @@ Scope {
         var newDevices = devs.map(function(d) { return _flattenDevice(d) })
         root.devices = newDevices
 
-        // Detect added/removed
         var newAddrs = newDevices.map(function(d) { return d.address })
         var oldAddrs = root._lastDeviceAddresses
 
@@ -198,7 +192,7 @@ Scope {
     }
 
     // ======================================================================
-    // Watch for changes
+    // Private: watch for changes
     // ======================================================================
 
     Timer {
@@ -208,7 +202,6 @@ Scope {
         onTriggered: root._rebuildDevices()
     }
 
-    // Polling fallback: 2s interval to catch missed signals
     Timer {
         interval: 2000
         running: root._btAvailable

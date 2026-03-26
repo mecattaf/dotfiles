@@ -1,3 +1,4 @@
 #!/bin/bash
-# UNCHANGED: no quickshell IPC, pure rofi+cliphist
+# clipboard -- rofi clipboard history via cliphist
+# No quickshell IPC. Standalone utility.
 cliphist list | rofi -dmenu -p "Clipboard" | cliphist decode | wl-copy

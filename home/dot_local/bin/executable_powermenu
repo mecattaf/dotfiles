@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# UNCHANGED: standalone power menu, no quickshell IPC dependency
+# powermenu -- rofi power menu with battery info
+# No quickshell IPC. Standalone utility.
 
 get_battery_info() {
     local power_supply_dir="/sys/class/power_supply"

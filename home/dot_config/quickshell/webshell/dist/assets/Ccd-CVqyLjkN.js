@@ -1,1 +1,0 @@
-import{t}from"./index-GmtsapJ-.js";var e=t("<div data-surface=ccd style=width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-ghost)>CCD Sidebar (stub)");function r(){return e()}export{r as default};

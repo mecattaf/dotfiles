@@ -1,5 +1,4 @@
 #!/bin/bash
-# CHANGED: launchpad IPC target renamed to shell toggleOverlay
-# Old: quickshell ipc call launchpad toggle
-# New: quickshell ipc call shell toggleOverlay
+# launchpad -- toggle the overlay surface (launchpad merged into overlay)
+# IPC target: ShellBridge (target: "shell"), method: toggleOverlay
 quickshell ipc call shell toggleOverlay

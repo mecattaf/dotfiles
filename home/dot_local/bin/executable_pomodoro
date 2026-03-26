@@ -1,5 +1,5 @@
 #!/bin/bash
-# UNCHANGED: standalone pomodoro timer with rofi menu, no quickshell IPC
+# pomodoro -- Pomodoro timer with rofi menu (no quickshell IPC)
 
 [[ -n $POMO_FILE ]] && POMO=$POMO_FILE || POMO=$HOME/.local/share/pomo
 [[ -n $POMO_WORK_TIME ]] && WORK_TIME=$POMO_WORK_TIME || WORK_TIME=25
@@ -79,7 +79,7 @@ function pomo_status {
         pomo_update
         local running=$(pomo_stat)
         local left=$(( WORK_TIME*60 - running ))
-        local prefix="Focus" icon="pomodoro"
+        local prefix="Focus"
         if [[ $left -lt 0 ]]; then
             left=$(( left + BREAK_TIME*60 ))
             prefix="Break"

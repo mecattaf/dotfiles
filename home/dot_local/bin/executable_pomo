@@ -1,7 +1,6 @@
 #!/bin/bash
-# UNCHANGED: standalone pomodoro timer, no quickshell IPC
+# pomo -- simple Pomodoro timer (file-based state, no quickshell IPC)
 
-#--- Check environment ---
 if [ "$(uname)" == "Darwin" ] || [ "${POMO_PREFIX_CMDS}" == "true" ]; then
     DATE_CMD="gdate"
     STAT_CMD="gstat"
@@ -10,14 +9,9 @@ else
     STAT_CMD="stat"
 fi
 
-#--- Configuration (can be set via environment variables) ---
-
 [[ -n $POMO_FILE ]] && POMO=$POMO_FILE || POMO=$HOME/.local/share/pomo
-
 [[ -n $POMO_WORK_TIME ]] && WORK_TIME=$POMO_WORK_TIME || WORK_TIME=25
 [[ -n $POMO_BREAK_TIME ]] && BREAK_TIME=$POMO_BREAK_TIME || BREAK_TIME=5
-
-#--- Pomodoro functions ---
 
 function pomo_start {
     test -e "$(dirname -- "$POMO")" || mkdir "$(dirname -- "$POMO")"
@@ -101,14 +95,11 @@ function pomo_emoji {
         running=$(pomo_stat)
         left=$(( WORK_TIME*60 - running ))
         if [[ $left -lt 0 ]]; then
-            left=$(( left + BREAK_TIME*60 ))
             prefix=$'\U0001F3D6'
         else
             prefix=$'\U0001F345'
         fi
         pomo_ispaused && prefix=$'\U000023F8'
-        min=$(( left / 60 ))
-        sec=$(( left - 60*min ))
         printf $prefix
     else
         printf "  --:--\n"
@@ -122,13 +113,8 @@ function pomo_minutes {
         left=$(( WORK_TIME*60 - running ))
         if [[ $left -lt 0 ]]; then
             left=$(( left + BREAK_TIME*60 ))
-            prefix=$'\U0001F3D6'
-        else
-            prefix=$'\U0001F345'
         fi
-        pomo_ispaused && prefix=$'\U000023F8'$prefix
         min=$(( left / 60 ))
-        sec=$(( left - 60*min ))
         printf $min
     else
         printf "  --:--\n"
@@ -142,11 +128,7 @@ function pomo_seconds {
         left=$(( WORK_TIME*60 - running ))
         if [[ $left -lt 0 ]]; then
             left=$(( left + BREAK_TIME*60 ))
-            prefix=$'\U0001F3D6'
-        else
-            prefix=$'\U0001F345'
         fi
-        pomo_ispaused && prefix=$'\U000023F8'$prefix
         min=$(( left / 60 ))
         sec=$(( left - 60*min ))
         printf $sec
@@ -211,57 +193,32 @@ function send_msg {
     fi
 }
 
-#--- Help ---
-
 function pomo_usage {
     cat <<END
-pomo.sh [-h] [start | stop | pause | clock | status | notify | usage]
+pomo [-h] [start | stop | pause | clock | status | notify | usage]
 
-pomo.sh - a simple Pomodoro timer.
-
-Options:
-
--h
-    Print this usage message.
+A simple Pomodoro timer.
 
 Actions:
-
-start
-    Start Pomodoro timer.
-stop
-    Stop Pomodoro timer.
-pause
-    Pause a running Pomodoro timer or restart a paused Pomodoro timer.
-clock
-    Print how much time (minutes and seconds) is remaining in the current
-    Pomodoro cycle.
-notify
-    Raise a notification at the end of every Pomodoro work and break block in
-    an infinite loop. Requires notify-send (linux) or osascript (OS X).
-status
-    Continuously print the current status of the Pomodoro timer once a second.
-usage
-    Print this usage message.
+  start    Start Pomodoro timer.
+  stop     Stop Pomodoro timer.
+  pause    Pause/resume the timer.
+  clock    Print time remaining in current cycle.
+  notify   Raise notifications at end of each work/break block (infinite loop).
+  status   Continuously print status once per second.
+  usage    Print this message.
 
 Environment variables:
-
-POMO_FILE
-    Location of the Pomodoro file. Default: \$HOME/.local/share/pomo.
-POMO_WORK_TIME
-    Duration of the work period in minutes. Default: 25.
-POMO_BREAK_TIME
-    Duration of the break period in minutes. Default: 5.
+  POMO_FILE        Location of pomo state file. Default: \$HOME/.local/share/pomo
+  POMO_WORK_TIME   Work period in minutes. Default: 25
+  POMO_BREAK_TIME  Break period in minutes. Default: 5
 END
 }
-
-#--- Command-line interface ---
 
 action=
 while getopts h arg; do
     case $arg in
-        h|?)
-            action=usage
-            ;;
+        h|?) action=usage ;;
     esac
 done
 shift $((OPTIND-1))

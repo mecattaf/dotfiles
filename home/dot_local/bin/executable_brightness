@@ -1,6 +1,6 @@
 #!/bin/bash
-# UNCHANGED: brightness IPC commands stay the same
-# BrightnessBridge (via display IPC target) handles OSD automatically
+# brightness -- adjust display brightness via IPC
+# IPC target: display (BrightnessBridge IpcHandler)
 case "$1" in
     up)    quickshell ipc call display brighter 0.05 ;;
     down)  quickshell ipc call display dimmer 0.05 ;;

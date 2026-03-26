@@ -1,9 +1,5 @@
 //@ pragma UseWebEngine
 
-// CcdSidebar -- STUB
-// Claude Code session sidebar. Right-anchored, full height.
-// Content pending kmux integration.
-
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
@@ -30,7 +26,6 @@ PanelWindow {
     WlrLayershell.namespace: "shell:ccd"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
 
-    // CcdSidebar claims exclusive zone per spec
     exclusionMode: ExclusionMode.Normal
     exclusiveZone: 400
     focusable: true

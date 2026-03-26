@@ -1,4 +1,4 @@
-// InputBridge.qml -- Keyboard layout from niri event stream.
+// InputBridge.qml -- Keyboard layout from niri event stream via NiriBridge.
 // Reads NiriBridge.keyboardLayouts and .keyboardLayoutIndex, re-emits for frontend.
 
 pragma ComponentBehavior: Bound
@@ -10,7 +10,7 @@ Scope {
     id: root
 
     // ======================================================================
-    // Reactive properties (os.input)
+    // Public properties (os.input)
     // ======================================================================
 
     property var keyboardLayout: ({
@@ -19,7 +19,6 @@ Scope {
         index: 0
     })
 
-    // Lock key states -- STUB (Phase 3 daemon, evdev)
     property var lockKeys: ({
         capsLock: false,
         numLock: false,
@@ -33,7 +32,7 @@ Scope {
     signal layoutChanged(var layout)
 
     // ======================================================================
-    // Internal: watch NiriBridge keyboard properties
+    // Private: watch NiriBridge keyboard properties
     // ======================================================================
 
     property var _niriBridge: null

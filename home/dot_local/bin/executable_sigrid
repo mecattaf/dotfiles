@@ -1,5 +1,4 @@
 #!/bin/bash
-# CHANGED: sigrid (AI assistant) IPC - now part of CCD sidebar
-# Old: quickshell ipc call sigrid toggle
-# New: AI features are integrated into the CCD sidebar
+# sigrid -- toggle the CCD sidebar (AI/sigrid panel is inside CCD)
+# IPC target: ShellBridge (target: "shell"), method: toggleCcd
 quickshell ipc call shell toggleCcd

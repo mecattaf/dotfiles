@@ -1,4 +1,4 @@
-// PolkitBridge.qml -- wraps Quickshell.Services.Polkit (try/catch)
+// PolkitBridge.qml -- wraps Quickshell.Services.Polkit (try/catch for graceful degradation)
 // Auth flow state machine: idle -> prompting -> authenticating -> success/failed.
 
 pragma ComponentBehavior: Bound
@@ -10,7 +10,7 @@ Scope {
     id: root
 
     // ======================================================================
-    // Reactive properties (os.polkit)
+    // Public properties (os.polkit)
     // ======================================================================
 
     property string state: "idle"
@@ -26,73 +26,7 @@ Scope {
     signal dismissed()
 
     // ======================================================================
-    // Internal: graceful feature detection via Qt.createQmlObject
-    // ======================================================================
-
-    property bool polkitAvailable: false
-    property var _agent: null
-
-    function _createPolkitAgent() {
-        try {
-            var qmlString = 'import QtQuick; import Quickshell.Services.Polkit; PolkitAgent {}'
-            _agent = Qt.createQmlObject(qmlString, root, "PolkitBridge.Agent")
-            polkitAvailable = true
-            console.info("PolkitBridge: initialized successfully")
-
-            _agent.flowChanged.connect(_onFlowChanged)
-        } catch (e) {
-            polkitAvailable = false
-            console.warn("PolkitBridge: Polkit not available:", e)
-        }
-    }
-
-    function _onFlowChanged() {
-        if (!_agent) return
-
-        if (_agent.flow) {
-            // New polkit request arrived
-            root.failCount = 0
-            root.state = "prompting"
-
-            var identities = []
-            var flowIdentities = _agent.flow.identities ?? []
-            for (var i = 0; i < flowIdentities.length; i++) {
-                var ident = flowIdentities[i]
-                identities.push({
-                    uid: ident.uid ?? 0,
-                    username: ident.username ?? "",
-                    displayName: ident.displayName ?? ident.username ?? "",
-                    isCurrentUser: ident.isCurrentUser ?? false
-                })
-            }
-
-            root.request = {
-                id: Date.now().toString(),
-                message: _agent.flow.message ?? "",
-                icon: _agent.flow.icon ?? null,
-                cookie: _agent.flow.cookie ?? "",
-                identities: identities,
-                selectedIdentity: identities.find(function(i) { return i.isCurrentUser }) ?? identities[0] ?? null
-            }
-
-            timeoutTimer.restart()
-            root.requestArrived(root.request)
-        } else {
-            // Flow completed or cancelled
-            if (root.state === "authenticating") {
-                root.state = "success"
-                root.dismissed()
-                transientCleanup.restart()
-            } else if (root.state !== "idle") {
-                root.state = "cancelled"
-                root.dismissed()
-                transientCleanup.restart()
-            }
-        }
-    }
-
-    // ======================================================================
-    // Methods (os.polkit)
+    // Public methods (os.polkit)
     // ======================================================================
 
     function respond(password) {
@@ -124,7 +58,71 @@ Scope {
     }
 
     // ======================================================================
-    // Timeout: 90 seconds for the entire request
+    // Private: graceful feature detection via Qt.createQmlObject
+    // ======================================================================
+
+    property bool polkitAvailable: false
+    property var _agent: null
+
+    function _createPolkitAgent() {
+        try {
+            var qmlString = 'import QtQuick; import Quickshell.Services.Polkit; PolkitAgent {}'
+            _agent = Qt.createQmlObject(qmlString, root, "PolkitBridge.Agent")
+            polkitAvailable = true
+            console.info("PolkitBridge: initialized successfully")
+
+            _agent.flowChanged.connect(_onFlowChanged)
+        } catch (e) {
+            polkitAvailable = false
+            console.warn("PolkitBridge: Polkit not available:", e)
+        }
+    }
+
+    function _onFlowChanged() {
+        if (!_agent) return
+
+        if (_agent.flow) {
+            root.failCount = 0
+            root.state = "prompting"
+
+            var identities = []
+            var flowIdentities = _agent.flow.identities ?? []
+            for (var i = 0; i < flowIdentities.length; i++) {
+                var ident = flowIdentities[i]
+                identities.push({
+                    uid: ident.uid ?? 0,
+                    username: ident.username ?? "",
+                    displayName: ident.displayName ?? ident.username ?? "",
+                    isCurrentUser: ident.isCurrentUser ?? false
+                })
+            }
+
+            root.request = {
+                id: Date.now().toString(),
+                message: _agent.flow.message ?? "",
+                icon: _agent.flow.icon ?? null,
+                cookie: _agent.flow.cookie ?? "",
+                identities: identities,
+                selectedIdentity: identities.find(function(i) { return i.isCurrentUser }) ?? identities[0] ?? null
+            }
+
+            timeoutTimer.restart()
+            root.requestArrived(root.request)
+        } else {
+            if (root.state === "authenticating") {
+                root.state = "success"
+                root.dismissed()
+                transientCleanup.restart()
+            } else if (root.state !== "idle") {
+                root.state = "cancelled"
+                root.dismissed()
+                transientCleanup.restart()
+            }
+        }
+    }
+
+    // ======================================================================
+    // Private: timeout (90 seconds for the entire request)
     // ======================================================================
 
     Timer {
@@ -141,7 +139,6 @@ Scope {
         }
     }
 
-    // Transient state cleanup: return to idle after 500ms
     Timer {
         id: transientCleanup
         interval: 500
@@ -153,10 +150,6 @@ Scope {
             timeoutTimer.stop()
         }
     }
-
-    // ======================================================================
-    // Init
-    // ======================================================================
 
     Component.onCompleted: {
         if (Quickshell.env("WEBSHELL_DISABLE_POLKIT") === "1") {

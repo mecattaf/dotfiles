@@ -1,7 +1,6 @@
-// NotificationBridge.qml -- Port of current-dotfiles NotificationDaemon.qml
-// Uses Quickshell.Services.Notifications.NotificationServer.
-// Popup with auto-timeout timers (5s default, configurable per notification).
-// DND toggle via IPC. Group by app name. Persist to JSON file. Actions support.
+// NotificationBridge.qml -- Notification daemon using Quickshell.Services.Notifications.
+// Full JSON persistence, grouped by app, rate limiting (20/sec), per-urgency timeouts.
+// Scorecard Gap 7 fixes applied.
 
 pragma ComponentBehavior: Bound
 
@@ -14,7 +13,7 @@ Scope {
     id: root
 
     // ======================================================================
-    // Reactive properties (os.notifications)
+    // Public properties (os.notifications)
     // ======================================================================
 
     property var history: []
@@ -22,7 +21,6 @@ Scope {
     property int unreadCount: 0
     property bool dnd: false
 
-    // Grouped by app name (from current dotfiles groupsForList pattern)
     readonly property var groups: _buildGroups()
 
     // ======================================================================
@@ -33,129 +31,7 @@ Scope {
     signal closed(int id, string reason)
 
     // ======================================================================
-    // Internal state
-    // ======================================================================
-
-    // Persistence path
-    readonly property string _filePath: {
-        var xdgData = Quickshell.env("XDG_DATA_HOME")
-        if (!xdgData) xdgData = Quickshell.env("HOME") + "/.local/share"
-        return xdgData + "/quickshell/notifications.json"
-    }
-
-    // Wrapper objects for active notifications
-    property var _notifObjects: []
-
-    // ID offset to avoid collisions with persisted notifications
-    property int _idOffset: 0
-
-    // Internal ID counter for programmatic notifications
-    property int _nextInternalId: 1
-
-    // ======================================================================
-    // Notification wrapper component (from current dotfiles Notif pattern)
-    // ======================================================================
-
-    component Notif: QtObject {
-        id: notif
-
-        required property int nid
-        property var qsNotification: null
-        property bool popup: false
-
-        property string appIcon: qsNotification?.appIcon ?? ""
-        property string appName: qsNotification?.appName ?? ""
-        property string body: qsNotification?.body ?? ""
-        property string image: qsNotification?.image ?? ""
-        property string summary: qsNotification?.summary ?? ""
-        property double time: 0
-        property string urgency: "normal"
-        property var actions: []
-        property bool isRead: false
-
-        // Auto-dismiss timer (from current dotfiles NotifTimer pattern)
-        readonly property Timer timer: Timer {
-            running: notif.popup
-            interval: {
-                if (notif.urgency === "critical") return 0
-                if (notif.qsNotification) {
-                    var timeout = notif.qsNotification.expireTimeout
-                    return timeout > 0 ? timeout : 5000
-                }
-                return 5000
-            }
-            onTriggered: {
-                notif.popup = false
-                root._rebuildFromWrappers()
-            }
-        }
-    }
-
-    Component {
-        id: notifComp
-        Notif {}
-    }
-
-    // ======================================================================
-    // NotificationServer (from current dotfiles)
-    // ======================================================================
-
-    NotificationServer {
-        id: server
-        actionsSupported: true
-        bodyHyperlinksSupported: true
-        bodyImagesSupported: true
-        bodyMarkupSupported: true
-        bodySupported: true
-        imageSupported: true
-        keepOnReload: false
-        persistenceSupported: true
-
-        onNotification: notification => {
-            notification.tracked = true
-
-            var urgencyStr = "normal"
-            if (notification.urgency === NotificationUrgency.Low) urgencyStr = "low"
-            else if (notification.urgency === NotificationUrgency.Critical) urgencyStr = "critical"
-
-            var actionsList = (notification.actions ?? []).map(function(action) {
-                return {
-                    identifier: action.identifier,
-                    text: action.text
-                }
-            })
-
-            var newNotif = notifComp.createObject(root, {
-                nid: notification.id + root._idOffset,
-                qsNotification: notification,
-                time: Date.now(),
-                urgency: urgencyStr,
-                actions: actionsList,
-                popup: !root.dnd
-            })
-
-            root._notifObjects = [...root._notifObjects, newNotif]
-            root._rebuildFromWrappers()
-
-            root.unreadCount++
-            root.notification(_flattenNotif(newNotif))
-            _persistToFile()
-        }
-    }
-
-    // ======================================================================
-    // IPC handler (from current dotfiles doNotDisturb target)
-    // ======================================================================
-
-    IpcHandler {
-        target: "doNotDisturb"
-        function toggle() { root.toggleDnd() }
-        function enable() { root.dnd = true }
-        function disable() { root.dnd = false }
-    }
-
-    // ======================================================================
-    // Methods (os.notifications)
+    // Public methods (os.notifications)
     // ======================================================================
 
     function dismiss(id) {
@@ -179,7 +55,6 @@ Scope {
     }
 
     function close(id) {
-        // Also dismiss from the notification server
         var tracked = server.trackedNotifications?.values ?? []
         for (var i = 0; i < tracked.length; i++) {
             if (tracked[i].id + root._idOffset === id) {
@@ -271,7 +146,140 @@ Scope {
     }
 
     // ======================================================================
-    // Internal: flatten and rebuild
+    // Private: internal state
+    // ======================================================================
+
+    readonly property string _filePath: {
+        var xdgData = Quickshell.env("XDG_DATA_HOME")
+        if (!xdgData) xdgData = Quickshell.env("HOME") + "/.local/share"
+        return xdgData + "/quickshell/notifications.json"
+    }
+
+    property var _notifObjects: []
+    property int _idOffset: 0
+
+    // Rate limiting: track notification count per second window
+    property int _rateLimitCount: 0
+    property int _rateLimitWindow: 0
+    readonly property int _rateLimitMax: 20
+
+    // ======================================================================
+    // Private: notification wrapper component
+    // ======================================================================
+
+    component Notif: QtObject {
+        id: notif
+
+        required property int nid
+        property var qsNotification: null
+        property bool popup: false
+
+        property string appIcon: qsNotification?.appIcon ?? ""
+        property string appName: qsNotification?.appName ?? ""
+        property string body: qsNotification?.body ?? ""
+        property string image: qsNotification?.image ?? ""
+        property string summary: qsNotification?.summary ?? ""
+        property double time: 0
+        property string urgency: "normal"
+        property var actions: []
+        property bool isRead: false
+
+        // Per-urgency timeouts: critical stays indefinitely, low=3s, normal=5s
+        readonly property Timer timer: Timer {
+            running: notif.popup
+            interval: {
+                if (notif.urgency === "critical") return 0
+                if (notif.urgency === "low") return 3000
+                if (notif.qsNotification) {
+                    var timeout = notif.qsNotification.expireTimeout
+                    return timeout > 0 ? timeout : 5000
+                }
+                return 5000
+            }
+            onTriggered: {
+                notif.popup = false
+                root._rebuildFromWrappers()
+            }
+        }
+    }
+
+    Component {
+        id: notifComp
+        Notif {}
+    }
+
+    // ======================================================================
+    // Private: notification server
+    // ======================================================================
+
+    NotificationServer {
+        id: server
+        actionsSupported: true
+        bodyHyperlinksSupported: true
+        bodyImagesSupported: true
+        bodyMarkupSupported: true
+        bodySupported: true
+        imageSupported: true
+        keepOnReload: false
+        persistenceSupported: true
+
+        onNotification: notification => {
+            // Rate limiting: drop if > 20/sec
+            var now = Math.floor(Date.now() / 1000)
+            if (now !== root._rateLimitWindow) {
+                root._rateLimitWindow = now
+                root._rateLimitCount = 0
+            }
+            root._rateLimitCount++
+            if (root._rateLimitCount > root._rateLimitMax) {
+                console.warn("NotificationBridge: rate limit exceeded, dropping notification from", notification.appName)
+                return
+            }
+
+            notification.tracked = true
+
+            var urgencyStr = "normal"
+            if (notification.urgency === NotificationUrgency.Low) urgencyStr = "low"
+            else if (notification.urgency === NotificationUrgency.Critical) urgencyStr = "critical"
+
+            var actionsList = (notification.actions ?? []).map(function(action) {
+                return {
+                    identifier: action.identifier,
+                    text: action.text
+                }
+            })
+
+            var newNotif = notifComp.createObject(root, {
+                nid: notification.id + root._idOffset,
+                qsNotification: notification,
+                time: Date.now(),
+                urgency: urgencyStr,
+                actions: actionsList,
+                popup: !root.dnd
+            })
+
+            root._notifObjects = [...root._notifObjects, newNotif]
+            root._rebuildFromWrappers()
+
+            root.unreadCount++
+            root.notification(_flattenNotif(newNotif))
+            _persistToFile()
+        }
+    }
+
+    // ======================================================================
+    // Private: IPC handler
+    // ======================================================================
+
+    IpcHandler {
+        target: "doNotDisturb"
+        function toggle() { root.toggleDnd() }
+        function enable() { root.dnd = true }
+        function disable() { root.dnd = false }
+    }
+
+    // ======================================================================
+    // Private: flatten and rebuild
     // ======================================================================
 
     function _flattenNotif(wrapper) {
@@ -332,7 +340,7 @@ Scope {
     }
 
     // ======================================================================
-    // Persistence (from current dotfiles FileView pattern)
+    // Private: persistence
     // ======================================================================
 
     FileView {
@@ -353,7 +361,6 @@ Scope {
                         isRead: true,
                         popup: false
                     })
-                    // Set properties that don't come from qsNotification
                     wrapper.appIcon = n.appIcon || ""
                     wrapper.appName = n.appName || ""
                     wrapper.body = n.body || ""

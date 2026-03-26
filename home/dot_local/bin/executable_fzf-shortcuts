@@ -1,9 +1,8 @@
 #!/bin/bash
-# UNCHANGED: standalone fzf shortcut viewer, no quickshell IPC
+# fzf-shortcuts -- fzf shortcut viewer with glow rendering (no quickshell IPC)
 
 markdown_dir="$HOME/.config/niri/scripts/shortcuts"
 
-# Create an associative array to map display names to file names
 declare -A file_map=(
     ["nvim"]="nvim.md"
     ["niri"]="niri.md"
@@ -12,14 +11,10 @@ declare -A file_map=(
     ["fish"]="fish.md"
 )
 
-# Use fzf for selection with customized options
 selection=$(printf "%s\n" "${!file_map[@]}" | fzf --reverse --header "Shortcut Menu")
 
-# Check if a selection was made
 if [ -n "$selection" ]; then
     file="$markdown_dir/${file_map[$selection]}"
-
-    # Check if the file exists and pass it to glow
     if [ -f "$file" ]; then
         glow -p "$file"
     else

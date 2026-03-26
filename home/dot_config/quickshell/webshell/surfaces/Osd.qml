@@ -42,10 +42,6 @@ Variants {
         focusable: false
         mask: Region {}
 
-        // ======================================================================
-        // Auto-show/hide logic
-        // ======================================================================
-
         function show() {
             osdWindow.visible = true
             hideTimer.restart()
@@ -62,7 +58,6 @@ Variants {
             onTriggered: osdWindow.hide()
         }
 
-        // Connect to AudioBridge OSD signal
         Connections {
             target: audioBridge
             function onVolumeOsd(event) {
@@ -70,7 +65,6 @@ Variants {
             }
         }
 
-        // Connect to BrightnessBridge OSD signal
         Connections {
             target: brightnessBridge
             function onBrightnessOsd(event) {

@@ -1,18 +1,9 @@
 #!/bin/bash
-# UNCHANGED: volume control uses wpctl directly
-# webshell OSD auto-reacts to pipewire volume changes via AudioBridge
+# volume -- PipeWire volume control via wpctl
+# No quickshell IPC: AudioBridge auto-reacts to PipeWire events
 case "$1" in
-    up)
-        wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%+
-        ;;
-    down)
-        wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%-
-        ;;
-    mute)
-        wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle
-        ;;
-    *)
-        echo "Usage: $0 {up|down|mute}"
-        exit 1
-        ;;
+    up)    wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%+ ;;
+    down)  wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%- ;;
+    mute)  wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+    *)     echo "Usage: $0 {up|down|mute}"; exit 1 ;;
 esac

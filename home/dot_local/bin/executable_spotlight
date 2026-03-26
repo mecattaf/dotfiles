@@ -1,5 +1,4 @@
 #!/bin/bash
-# CHANGED: spotlight IPC target renamed to shell toggleOverlay
-# Old: quickshell ipc call spotlight toggle
-# New: quickshell ipc call shell toggleOverlay
+# spotlight -- toggle the overlay (launcher/spotlight) surface
+# IPC target: ShellBridge (target: "shell"), method: toggleOverlay
 quickshell ipc call shell toggleOverlay

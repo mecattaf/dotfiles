@@ -1,6 +1,6 @@
 #!/bin/bash
-# UNCHANGED: music IPC commands stay the same
-# MprisBridge handles these
+# media -- MPRIS playback control via IPC
+# IPC target: music (MprisBridge IpcHandler)
 case "$1" in
     play|toggle)  quickshell ipc call music togglePlay ;;
     next)         quickshell ipc call music next ;;

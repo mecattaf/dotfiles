@@ -1,0 +1,391 @@
+// NotificationBridge.qml -- Port of current-dotfiles NotificationDaemon.qml
+// Uses Quickshell.Services.Notifications.NotificationServer.
+// Popup with auto-timeout timers (5s default, configurable per notification).
+// DND toggle via IPC. Group by app name. Persist to JSON file. Actions support.
+
+pragma ComponentBehavior: Bound
+
+import QtQuick
+import Quickshell
+import Quickshell.Io
+import Quickshell.Services.Notifications
+
+Scope {
+    id: root
+
+    // ======================================================================
+    // Reactive properties (os.notifications)
+    // ======================================================================
+
+    property var history: []
+    property var popups: []
+    property int unreadCount: 0
+    property bool dnd: false
+
+    // Grouped by app name (from current dotfiles groupsForList pattern)
+    readonly property var groups: _buildGroups()
+
+    // ======================================================================
+    // Signals
+    // ======================================================================
+
+    signal notification(var notif)
+    signal closed(int id, string reason)
+
+    // ======================================================================
+    // Internal state
+    // ======================================================================
+
+    // Persistence path
+    readonly property string _filePath: {
+        var xdgData = Quickshell.env("XDG_DATA_HOME")
+        if (!xdgData) xdgData = Quickshell.env("HOME") + "/.local/share"
+        return xdgData + "/quickshell/notifications.json"
+    }
+
+    // Wrapper objects for active notifications
+    property var _notifObjects: []
+
+    // ID offset to avoid collisions with persisted notifications
+    property int _idOffset: 0
+
+    // Internal ID counter for programmatic notifications
+    property int _nextInternalId: 1
+
+    // ======================================================================
+    // Notification wrapper component (from current dotfiles Notif pattern)
+    // ======================================================================
+
+    component Notif: QtObject {
+        id: notif
+
+        required property int nid
+        property var qsNotification: null
+        property bool popup: false
+
+        property string appIcon: qsNotification?.appIcon ?? ""
+        property string appName: qsNotification?.appName ?? ""
+        property string body: qsNotification?.body ?? ""
+        property string image: qsNotification?.image ?? ""
+        property string summary: qsNotification?.summary ?? ""
+        property double time: 0
+        property string urgency: "normal"
+        property var actions: []
+        property bool isRead: false
+
+        // Auto-dismiss timer (from current dotfiles NotifTimer pattern)
+        readonly property Timer timer: Timer {
+            running: notif.popup
+            interval: {
+                if (notif.urgency === "critical") return 0
+                if (notif.qsNotification) {
+                    var timeout = notif.qsNotification.expireTimeout
+                    return timeout > 0 ? timeout : 5000
+                }
+                return 5000
+            }
+            onTriggered: {
+                notif.popup = false
+                root._rebuildFromWrappers()
+            }
+        }
+    }
+
+    Component {
+        id: notifComp
+        Notif {}
+    }
+
+    // ======================================================================
+    // NotificationServer (from current dotfiles)
+    // ======================================================================
+
+    NotificationServer {
+        id: server
+        actionsSupported: true
+        bodyHyperlinksSupported: true
+        bodyImagesSupported: true
+        bodyMarkupSupported: true
+        bodySupported: true
+        imageSupported: true
+        keepOnReload: false
+        persistenceSupported: true
+
+        onNotification: notification => {
+            notification.tracked = true
+
+            var urgencyStr = "normal"
+            if (notification.urgency === NotificationUrgency.Low) urgencyStr = "low"
+            else if (notification.urgency === NotificationUrgency.Critical) urgencyStr = "critical"
+
+            var actionsList = (notification.actions ?? []).map(function(action) {
+                return {
+                    identifier: action.identifier,
+                    text: action.text
+                }
+            })
+
+            var newNotif = notifComp.createObject(root, {
+                nid: notification.id + root._idOffset,
+                qsNotification: notification,
+                time: Date.now(),
+                urgency: urgencyStr,
+                actions: actionsList,
+                popup: !root.dnd
+            })
+
+            root._notifObjects = [...root._notifObjects, newNotif]
+            root._rebuildFromWrappers()
+
+            root.unreadCount++
+            root.notification(_flattenNotif(newNotif))
+            _persistToFile()
+        }
+    }
+
+    // ======================================================================
+    // IPC handler (from current dotfiles doNotDisturb target)
+    // ======================================================================
+
+    IpcHandler {
+        target: "doNotDisturb"
+        function toggle() { root.toggleDnd() }
+        function enable() { root.dnd = true }
+        function disable() { root.dnd = false }
+    }
+
+    // ======================================================================
+    // Methods (os.notifications)
+    // ======================================================================
+
+    function dismiss(id) {
+        for (var i = 0; i < root._notifObjects.length; i++) {
+            if (root._notifObjects[i].nid === id) {
+                root._notifObjects[i].popup = false
+                root._notifObjects[i].isRead = true
+                break
+            }
+        }
+        root.unreadCount = Math.max(0, root.unreadCount - 1)
+        _rebuildFromWrappers()
+    }
+
+    function dismissAll() {
+        for (var i = 0; i < root._notifObjects.length; i++) {
+            root._notifObjects[i].popup = false
+        }
+        root.popups = []
+        _rebuildFromWrappers()
+    }
+
+    function close(id) {
+        // Also dismiss from the notification server
+        var tracked = server.trackedNotifications?.values ?? []
+        for (var i = 0; i < tracked.length; i++) {
+            if (tracked[i].id + root._idOffset === id) {
+                tracked[i].dismiss()
+                break
+            }
+        }
+
+        root._notifObjects = root._notifObjects.filter(function(w) { return w.nid !== id })
+        _rebuildFromWrappers()
+        _persistToFile()
+        root.closed(id, "dismissed")
+    }
+
+    function clearHistory() {
+        var tracked = server.trackedNotifications?.values ?? []
+        for (var i = 0; i < tracked.length; i++) {
+            tracked[i].dismiss()
+        }
+        root._notifObjects = []
+        root.history = []
+        root.popups = []
+        root.unreadCount = 0
+        _persistToFile()
+    }
+
+    function clearApp(appName) {
+        var toRemove = root._notifObjects.filter(function(w) { return w.appName === appName })
+        for (var i = 0; i < toRemove.length; i++) {
+            var tracked = server.trackedNotifications?.values ?? []
+            for (var j = 0; j < tracked.length; j++) {
+                if (tracked[j].id + root._idOffset === toRemove[i].nid) {
+                    tracked[j].dismiss()
+                    break
+                }
+            }
+        }
+        root._notifObjects = root._notifObjects.filter(function(w) { return w.appName !== appName })
+        _rebuildFromWrappers()
+        _persistToFile()
+    }
+
+    function invokeAction(notificationId, actionIdentifier) {
+        var tracked = server.trackedNotifications?.values ?? []
+        for (var i = 0; i < tracked.length; i++) {
+            if (tracked[i].id + root._idOffset === notificationId) {
+                var actions = tracked[i].actions ?? []
+                for (var j = 0; j < actions.length; j++) {
+                    if (actions[j].identifier === actionIdentifier) {
+                        actions[j].invoke()
+                        break
+                    }
+                }
+                break
+            }
+        }
+        root.close(notificationId)
+    }
+
+    function toggleDnd() {
+        root.dnd = !root.dnd
+    }
+
+    function setDnd(enabled) {
+        root.dnd = enabled
+    }
+
+    function markRead(id) {
+        var changed = false
+        for (var i = 0; i < root._notifObjects.length; i++) {
+            if (root._notifObjects[i].nid === id && !root._notifObjects[i].isRead) {
+                root._notifObjects[i].isRead = true
+                changed = true
+                break
+            }
+        }
+        if (changed) {
+            root.unreadCount = Math.max(0, root.unreadCount - 1)
+            _rebuildFromWrappers()
+        }
+    }
+
+    function markAllRead() {
+        for (var i = 0; i < root._notifObjects.length; i++) {
+            root._notifObjects[i].isRead = true
+        }
+        root.unreadCount = 0
+        _rebuildFromWrappers()
+    }
+
+    // ======================================================================
+    // Internal: flatten and rebuild
+    // ======================================================================
+
+    function _flattenNotif(wrapper) {
+        return {
+            id: wrapper.nid,
+            appName: wrapper.appName,
+            appIcon: wrapper.appIcon,
+            summary: wrapper.summary,
+            body: wrapper.body,
+            image: wrapper.image,
+            urgency: wrapper.urgency,
+            time: wrapper.time,
+            actions: wrapper.actions,
+            isRead: wrapper.isRead
+        }
+    }
+
+    function _rebuildFromWrappers() {
+        var newHistory = []
+        var newPopups = []
+
+        for (var i = root._notifObjects.length - 1; i >= 0; i--) {
+            var wrapper = root._notifObjects[i]
+            var flat = _flattenNotif(wrapper)
+            newHistory.push(flat)
+            if (wrapper.popup) {
+                newPopups.push(flat)
+            }
+        }
+
+        root.history = newHistory
+        root.popups = newPopups
+    }
+
+    function _buildGroups() {
+        var groups = {}
+        for (var i = 0; i < root.history.length; i++) {
+            var n = root.history[i]
+            var key = n.appName || "Unknown"
+            if (!groups[key]) {
+                groups[key] = {
+                    appName: key,
+                    appIcon: n.appIcon || "",
+                    notifications: [],
+                    unreadCount: 0,
+                    latestTime: 0
+                }
+            }
+            groups[key].notifications.push(n)
+            if (!n.isRead) groups[key].unreadCount++
+            if (n.time > groups[key].latestTime) {
+                groups[key].latestTime = n.time
+            }
+        }
+        var result = Object.values(groups)
+        result.sort(function(a, b) { return b.latestTime - a.latestTime })
+        return result
+    }
+
+    // ======================================================================
+    // Persistence (from current dotfiles FileView pattern)
+    // ======================================================================
+
+    FileView {
+        id: notifFileView
+        path: Qt.resolvedUrl(root._filePath)
+        onLoaded: {
+            try {
+                var fileContents = notifFileView.text()
+                var saved = JSON.parse(fileContents)
+                var maxId = 0
+                for (var i = 0; i < saved.length; i++) {
+                    var n = saved[i]
+                    var wrapper = notifComp.createObject(root, {
+                        nid: n.id,
+                        time: n.time,
+                        urgency: n.urgency || "normal",
+                        actions: n.actions || [],
+                        isRead: true,
+                        popup: false
+                    })
+                    // Set properties that don't come from qsNotification
+                    wrapper.appIcon = n.appIcon || ""
+                    wrapper.appName = n.appName || ""
+                    wrapper.body = n.body || ""
+                    wrapper.image = n.image || ""
+                    wrapper.summary = n.summary || ""
+                    root._notifObjects.push(wrapper)
+                    maxId = Math.max(maxId, n.id)
+                }
+                root._idOffset = maxId
+                root._rebuildFromWrappers()
+                console.info("NotificationBridge: loaded", saved.length, "persisted notifications")
+            } catch (e) {
+                console.warn("NotificationBridge: failed to parse saved notifications:", e)
+            }
+        }
+        onLoadFailed: error => {
+            if (error === FileViewError.FileNotFound) {
+                console.info("NotificationBridge: no saved notifications file, starting fresh")
+                root._notifObjects = []
+                _persistToFile()
+            } else {
+                console.warn("NotificationBridge: load error:", error)
+            }
+        }
+    }
+
+    function _persistToFile() {
+        var serialized = root._notifObjects.map(function(w) { return _flattenNotif(w) })
+        notifFileView.setText(JSON.stringify(serialized, null, 2))
+    }
+
+    Component.onCompleted: {
+        notifFileView.reload()
+    }
+}

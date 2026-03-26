@@ -1,0 +1,42 @@
+#!/bin/bash
+# vpn-status -- query VPN/Tailscale connection status
+# No quickshell IPC. Outputs JSON for bar widget consumption.
+# Checks: Tailscale, WireGuard, NM VPN connections.
+
+status_json() {
+    local vpn_type="$1" vpn_name="$2" vpn_connected="$3" vpn_ip="$4"
+    printf '{"type":"%s","name":"%s","connected":%s,"ip":"%s"}\n' \
+        "$vpn_type" "$vpn_name" "$vpn_connected" "$vpn_ip"
+}
+
+# Tailscale (preferred)
+if command -v tailscale &>/dev/null; then
+    ts_status=$(tailscale status --json 2>/dev/null)
+    if [[ $? -eq 0 && -n "$ts_status" ]]; then
+        ts_ip=$(echo "$ts_status" | jq -r '.Self.TailscaleIPs[0] // ""')
+        ts_online=$(echo "$ts_status" | jq -r '.Self.Online // false')
+        if [[ "$ts_online" == "true" ]]; then
+            status_json "tailscale" "Tailscale" "true" "$ts_ip"
+            exit 0
+        fi
+    fi
+fi
+
+# WireGuard interfaces
+wg_iface=$(ip link show type wireguard 2>/dev/null | grep -oP '^\d+: \K[^:]+' | head -1)
+if [[ -n "$wg_iface" ]]; then
+    wg_ip=$(ip -4 addr show "$wg_iface" 2>/dev/null | grep -oP 'inet \K[0-9.]+' | head -1)
+    status_json "wireguard" "$wg_iface" "true" "${wg_ip:-unknown}"
+    exit 0
+fi
+
+# NetworkManager VPN connections
+nm_vpn=$(nmcli -t -f TYPE,NAME,STATE connection show --active 2>/dev/null | grep '^vpn:' | head -1)
+if [[ -n "$nm_vpn" ]]; then
+    vpn_name=$(echo "$nm_vpn" | cut -d: -f2)
+    status_json "nm-vpn" "$vpn_name" "true" ""
+    exit 0
+fi
+
+# No VPN active
+status_json "none" "" "false" ""

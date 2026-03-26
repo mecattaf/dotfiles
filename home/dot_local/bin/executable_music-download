@@ -1,5 +1,5 @@
 #!/bin/bash
-# UNCHANGED: standalone music downloader, no quickshell IPC
+# music-download -- yt-dlp audio downloader (no quickshell IPC)
 
 SCRIPTNAME=$(basename "$0")
 SCRIPTPATH="$(cd -- "$(dirname "$0")" >/dev/null 2>&1; pwd -P)"

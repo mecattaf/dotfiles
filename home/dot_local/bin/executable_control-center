@@ -1,12 +1,4 @@
 #!/bin/bash
-# CHANGED: controlCenter IPC target renamed to shell toggleCcd
-# Old: quickshell ipc call controlCenter open/close
-# New: quickshell ipc call shell toggleCcd
-# Sub-panels (bluetooth/wifi) are handled inside the CCD UI now
-case "${1:-open}" in
-    open)       quickshell ipc call shell toggleCcd ;;
-    close)      quickshell ipc call shell toggleCcd ;;
-    bluetooth)  quickshell ipc call shell toggleCcd ;;
-    wifi)       quickshell ipc call shell toggleCcd ;;
-    *)          echo "Usage: $0 {open|close|bluetooth|wifi}"; exit 1 ;;
-esac
+# control-center -- toggle the CCD (control center / dashboard) sidebar
+# IPC target: ShellBridge (target: "shell"), method: toggleCcd
+quickshell ipc call shell toggleCcd

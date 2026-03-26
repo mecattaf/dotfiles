@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
-# UNCHANGED: standalone fzf-based NetworkManager TUI, no quickshell IPC
+# fzf-nmcli -- fzf-based NetworkManager TUI (no quickshell IPC)
+# Based on firecat53's networkmanager-dmenu.
 
 """based off of firecat53's command line dmenu script.
 https://github.com/firecat53/networkmanager-dmenu
-
-To add new connections or enable/disable networking requires policykit
-permissions setup per:
-https://wiki.archlinux.org/index.php/NetworkManager#Set_up_PolicyKit_permissions
-
 """
 import gi
 import itertools
@@ -32,11 +28,9 @@ conns = client.get_connections()
 def run_fzf(alts, prompt="Settings", strip=True):
     fzf = Popen(["fzf", "--height=100%", "--prompt", prompt + ": "], stdout=PIPE, stdin=PIPE)
     selected = fzf.communicate("\n".join(alts).encode("utf-8"))[0].decode("utf-8")
-
     if strip:
-        selected = selected.strip();
-
-    return selected;
+        selected = selected.strip()
+    return selected
 
 
 def choose_adapter(client):
@@ -46,12 +40,9 @@ def choose_adapter(client):
         return None
     elif len(devices) == 1:
         return devices[0]
-
     sel = run_fzf([d.get_iface() for d in devices], "Choose Adapter")
-
     if not sel:
         sys.exit()
-
     devices = [i for i in devices if i.get_iface() == sel]
     assert len(devices) == 1
     return devices[0]
@@ -90,7 +81,6 @@ def ap_security(ap):
     if ((wpa_flags & getattr(NM, '80211ApSecurityFlags').KEY_MGMT_802_1X) or
             (rsn_flags & getattr(NM, '80211ApSecurityFlags').KEY_MGMT_802_1X)):
         sec_str += " 802.1X"
-
     if sec_str == "":
         sec_str = "--"
     return sec_str.lstrip()
@@ -124,7 +114,6 @@ def process_ap(ap, is_active):
         con = ap.filter_connections(conns)
         if len(con) > 1:
             raise ValueError("There are multiple connections possible")
-
         if len(con) == 1:
             client.activate_connection_async(con[0])
         else:
@@ -144,14 +133,11 @@ def process_vpngsm(con, activate):
 
 def create_ap_actions(aps, active_ap, active_connection):
     active_ap_bssid = active_ap.get_bssid() if active_ap is not None else ""
-
     names = [ssid_to_utf8(ap) for ap in aps]
     max_len_name = max([len(name) for name in names]) if names else 0
     secs = [ap_security(ap) for ap in aps]
     max_len_sec = max([len(sec) for sec in secs]) if secs else 0
-
     ap_actions = []
-
     for ap, name, sec in zip(aps, names, secs):
         bars = NM.utils_wifi_strength_bars(ap.get_strength())
         is_active = ap.get_bssid() == active_ap_bssid
@@ -192,7 +178,6 @@ def _create_vpngsm_actions(cons, active_cons, label):
                 raise ValueError("Multiple active connections match"
                                  " the connection: %s" % con.get_id())
             active_connection = active_connection[0]
-
             actions.append(Action(action_name, process_vpngsm,
                                   [active_connection, False]))
         else:
@@ -202,27 +187,17 @@ def _create_vpngsm_actions(cons, active_cons, label):
 
 
 def get_selection(client, aps, vpns, gsms, others):
-    formated_aps = [str(ap) for ap in aps]
-    formated_vpns = [str(vpn) for vpn in vpns]
-    formated_gsms = [str(gsm) for gsm in gsms]
-    formated_others = [str(other) for other in others]
-
     inp = []
-    if formated_aps:
-        inp += formated_aps + [""]
+    if aps:
+        inp += [str(ap) for ap in aps] + [""]
     if vpns:
-        inp += formated_vpns + [""]
+        inp += [str(vpn) for vpn in vpns] + [""]
     if gsms:
-        inp += formated_gsms + [""]
-    inp += formated_others
-
-    inp_bytes = "\n".join([str(i) for i in inp])
-    inp_bytes = inp_bytes.encode(ENC)
-    sel = run_fzf([str(i) for i in inp], strip=False)
-
+        inp += [str(gsm) for gsm in gsms] + [""]
+    inp += [str(other) for other in others]
+    sel = run_fzf(inp, strip=False)
     if not sel.strip():
         sys.exit()
-
     action = [i for i in aps + vpns + gsms + others
               if str(i) == sel.rstrip("\n")]
     assert len(action) == 1, "Selection was ambiguous: {}, {}".format(str(sel), str(action))
@@ -252,9 +227,7 @@ def set_new_connection(ssid, pw):
 
 def run():
     active = client.get_active_connections()
-
     adapter = choose_adapter(client)
-
     if adapter:
         aps = sorted(adapter.get_access_points(),
                      key=lambda a: a.get_strength(), reverse=True)
@@ -263,8 +236,7 @@ def run():
                          i.get_connection_type() ==
                          NM.SETTING_WIRELESS_SETTING_NAME]
         if len(active_ap_con) > 1:
-            raise ValueError("Multiple connections match"
-                             " the wireless connection")
+            raise ValueError("Multiple connections match the wireless connection")
         active_ap_con = active_ap_con[0] if active_ap_con else None
         ap_actions = create_ap_actions(aps, active_ap, active_ap_con)
     else:
@@ -272,17 +244,12 @@ def run():
 
     vpns = [i for i in conns if i.is_type(NM.SETTING_VPN_SETTING_NAME)]
     gsms = [i for i in conns if i.is_type(NM.SETTING_GSM_SETTING_NAME)]
-
     vpn_actions = create_vpn_actions(vpns, active)
     gsm_actions = create_gsm_actions(gsms, active)
     other_actions = create_other_actions(client)
-
-    sel = get_selection(client, ap_actions, vpn_actions,
-                        gsm_actions, other_actions)
+    sel = get_selection(client, ap_actions, vpn_actions, gsm_actions, other_actions)
     sel()
 
 
 if __name__ == '__main__':
     run()
-
-# vim: set et ts=4 sw=4 :

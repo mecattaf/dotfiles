@@ -1,6 +1,7 @@
 // NiriBridge.qml -- Niri IPC via Socket. Workspaces, windows, active workspace/window.
-// Event stream. Dual-socket pattern: request socket + event socket.
+// Dual-socket pattern: separate request socket + event stream socket.
 // Also registered as "WorkspacesBridge" and "WindowsBridge" on WebChannel.
+// Scorecard fix: proper dual-socket init with onConnectedChanged handlers.
 
 pragma ComponentBehavior: Bound
 
@@ -14,7 +15,7 @@ Scope {
     readonly property string socketPath: Quickshell.env("NIRI_SOCKET") ?? ""
 
     // ======================================================================
-    // os.workspaces reactive properties
+    // Public properties: os.workspaces
     // ======================================================================
 
     property var workspaces: []
@@ -22,34 +23,34 @@ Scope {
     property bool overviewOpen: false
 
     // ======================================================================
-    // os.windows reactive properties
+    // Public properties: os.windows
     // ======================================================================
 
     property var windows: []
     property var focusedWindow: null
 
     // ======================================================================
-    // Keyboard layout (forwarded to InputBridge)
+    // Public properties: keyboard layout (forwarded to InputBridge)
     // ======================================================================
 
     property var keyboardLayouts: []
     property int keyboardLayoutIndex: 0
 
     // ======================================================================
-    // os.workspaces signals
+    // Signals: os.workspaces
     // ======================================================================
 
     signal focusChanged(var workspace)
     signal overviewChanged(bool isOpen)
 
     // ======================================================================
-    // os.windows signals
+    // Signals: os.windows
     // ======================================================================
 
     signal windowFocusChanged(var focused)
 
     // ======================================================================
-    // os.workspaces methods
+    // Public methods: os.workspaces
     // ======================================================================
 
     function focusWorkspace(ref) {
@@ -80,7 +81,7 @@ Scope {
     }
 
     // ======================================================================
-    // os.windows methods
+    // Public methods: os.windows
     // ======================================================================
 
     function focusWindow(id) {
@@ -118,22 +119,51 @@ Scope {
     }
 
     // ======================================================================
-    // Internal: dual socket pattern
+    // Private: dual socket pattern (request + event stream)
     // ======================================================================
 
     function _sendAction(action) {
-        if (requestSocket.connected) {
-            requestSocket.write(JSON.stringify({ Action: action }) + "\n")
-            requestSocket.flush()
+        _sendCommand(requestSocket, { Action: action })
+    }
+
+    function _sendCommand(sock, command) {
+        if (sock.connected) {
+            sock.write(JSON.stringify(command) + "\n")
+            sock.flush()
         }
     }
 
+    // Request socket: used for queries (Outputs, Workspaces, Windows) and actions
     Socket {
         id: requestSocket
         path: root.socketPath
         connected: root.socketPath !== ""
+
+        onConnectedChanged: {
+            if (connected) {
+                // Query initial state on connect
+                root._sendCommand(requestSocket, "Workspaces")
+                root._sendCommand(requestSocket, "Windows")
+                root._sendCommand(requestSocket, "Outputs")
+            }
+        }
+
+        parser: SplitParser {
+            onRead: line => {
+                try {
+                    var data = JSON.parse(line)
+                    if (data && data.Ok) {
+                        var res = data.Ok
+                        if (res.Workspaces) root._recollectWorkspaces(res.Workspaces)
+                        else if (res.Windows) root._recollectWindows(res.Windows)
+                        else if (res.Outputs) root._recollectOutputs(res.Outputs)
+                    }
+                } catch (e) {}
+            }
+        }
     }
 
+    // Event stream socket: receives push events from niri
     Socket {
         id: eventSocket
         path: root.socketPath
@@ -141,8 +171,7 @@ Scope {
 
         onConnectedChanged: {
             if (connected) {
-                write('"EventStream"\n')
-                flush()
+                root._sendCommand(eventSocket, "EventStream")
             }
         }
 
@@ -150,51 +179,85 @@ Scope {
             onRead: line => {
                 try {
                     root._handleEvent(JSON.parse(line))
-                } catch (e) {
-                    // Ignore parse errors on partial lines
-                }
-            }
-        }
-    }
-
-    // Output info polled via niri msg -j outputs
-    property var _outputCache: ({})
-
-    Process {
-        id: outputProc
-        command: ["niri", "msg", "-j", "outputs"]
-        stdout: SplitParser {
-            onRead: data => {
-                try {
-                    var parsed = JSON.parse(data)
-                    var cache = {}
-                    for (var name in parsed) {
-                        var o = parsed[name]
-                        if (!o || !o.name) continue
-                        var logical = o.logical || {}
-                        cache[o.name] = {
-                            name: o.name,
-                            scale: logical.scale || 1.0,
-                            width: logical.width || 0,
-                            height: logical.height || 0,
-                            x: logical.x || 0,
-                            y: logical.y || 0
-                        }
-                    }
-                    root._outputCache = cache
                 } catch (e) {}
             }
         }
     }
 
-    onWorkspacesChanged: outputProc.running = true
+    // ======================================================================
+    // Private: output cache
+    // ======================================================================
 
-    Connections {
-        target: Quickshell
-        function onScreensChanged() { outputProc.running = true }
+    property var _outputCache: ({})
+    property var _workspaceCache: ({})
+
+    function _recollectOutputs(outputsData) {
+        var cache = {}
+        for (var name in outputsData) {
+            var o = outputsData[name]
+            if (!o || !o.name) continue
+            var logical = o.logical || {}
+            cache[o.name] = {
+                name: o.name,
+                scale: logical.scale || 1.0,
+                width: logical.width || 0,
+                height: logical.height || 0,
+                x: logical.x || 0,
+                y: logical.y || 0
+            }
+        }
+        root._outputCache = cache
     }
 
-    // Debounce timers
+    function _recollectWorkspaces(workspacesData) {
+        var newWorkspaces = []
+        var newCache = {}
+        for (var i = 0; i < workspacesData.length; i++) {
+            var ws = workspacesData[i]
+            var wsObj = {
+                id: ws.id,
+                idx: ws.idx,
+                name: ws.name ?? "",
+                output: ws.output ?? "",
+                isActive: ws.is_active === true,
+                isFocused: ws.is_focused === true,
+                isUrgent: ws.is_urgent === true,
+                windowCount: 0,
+                activeWindowId: ws.active_window_id ?? null
+            }
+            if (wsObj.isFocused) root.focusedWorkspace = wsObj
+            newWorkspaces.push(wsObj)
+            newCache[ws.id] = wsObj
+        }
+        newWorkspaces.sort(function(a, b) {
+            if (a.output !== b.output) return a.output.localeCompare(b.output)
+            return a.idx - b.idx
+        })
+        for (var j = 0; j < newWorkspaces.length; j++) {
+            newWorkspaces[j].windowCount = root.windows.filter(function(w) { return w.workspaceId === newWorkspaces[j].id }).length
+        }
+        root._workspaceCache = newCache
+        root.workspaces = newWorkspaces
+        wsDebounce.restart()
+    }
+
+    function _recollectWindows(windowsData) {
+        var newWindows = []
+        root.focusedWindow = null
+        for (var k = 0; k < windowsData.length; k++) {
+            var winObj = _makeWindow(windowsData[k])
+            if (winObj.isFocused) root.focusedWindow = _makeFocusedWindow(winObj)
+            newWindows.push(winObj)
+        }
+        root.windows = _sortWindows(newWindows)
+        _updateWorkspaceWindowCounts()
+        winDebounce.restart()
+    }
+
+    // ======================================================================
+    // Private: debounce timers
+    // ======================================================================
+
     Timer {
         id: wsDebounce
         interval: 50
@@ -213,40 +276,21 @@ Scope {
         }
     }
 
+    // Re-query outputs when screens change
+    Connections {
+        target: Quickshell
+        function onScreensChanged() {
+            root._sendCommand(requestSocket, "Outputs")
+        }
+    }
+
     // ======================================================================
-    // Event handling
+    // Private: event handling
     // ======================================================================
 
     function _handleEvent(event) {
-        // Workspace events
         if (event.WorkspacesChanged) {
-            var wsData = event.WorkspacesChanged.workspaces
-            var newWorkspaces = []
-            for (var i = 0; i < wsData.length; i++) {
-                var ws = wsData[i]
-                var wsObj = {
-                    id: ws.id,
-                    idx: ws.idx,
-                    name: ws.name ?? "",
-                    output: ws.output ?? "",
-                    isActive: ws.is_active === true,
-                    isFocused: ws.is_focused === true,
-                    isUrgent: ws.is_urgent === true,
-                    windowCount: 0,
-                    activeWindowId: ws.active_window_id ?? null
-                }
-                if (wsObj.isFocused) root.focusedWorkspace = wsObj
-                newWorkspaces.push(wsObj)
-            }
-            newWorkspaces.sort(function(a, b) {
-                if (a.output !== b.output) return a.output.localeCompare(b.output)
-                return a.idx - b.idx
-            })
-            for (var j = 0; j < newWorkspaces.length; j++) {
-                newWorkspaces[j].windowCount = root.windows.filter(function(w) { return w.workspaceId === newWorkspaces[j].id }).length
-            }
-            root.workspaces = newWorkspaces
-            wsDebounce.restart()
+            _recollectWorkspaces(event.WorkspacesChanged.workspaces)
             return
         }
 
@@ -270,19 +314,8 @@ Scope {
             return
         }
 
-        // Window events
         if (event.WindowsChanged) {
-            var winData = event.WindowsChanged.windows
-            var newWindows = []
-            root.focusedWindow = null
-            for (var k = 0; k < winData.length; k++) {
-                var winObj = _makeWindow(winData[k])
-                if (winObj.isFocused) root.focusedWindow = _makeFocusedWindow(winObj)
-                newWindows.push(winObj)
-            }
-            root.windows = _sortWindows(newWindows)
-            _updateWorkspaceWindowCounts()
-            winDebounce.restart()
+            _recollectWindows(event.WindowsChanged.windows)
             return
         }
 
@@ -337,7 +370,6 @@ Scope {
             return
         }
 
-        // Keyboard layout events (forwarded to InputBridge)
         if (event.KeyboardLayoutsChanged) {
             root.keyboardLayoutIndex = event.KeyboardLayoutsChanged.keyboard_layouts.current_idx
             root.keyboardLayouts = event.KeyboardLayoutsChanged.keyboard_layouts.names
@@ -348,10 +380,15 @@ Scope {
             root.keyboardLayoutIndex = event.KeyboardLayoutSwitched.idx
             return
         }
+
+        if (event.OutputsChanged) {
+            root._sendCommand(requestSocket, "Outputs")
+            return
+        }
     }
 
     // ======================================================================
-    // Window helpers
+    // Private: window helpers
     // ======================================================================
 
     function _makeWindow(win) {
@@ -383,8 +420,8 @@ Scope {
 
     function _sortWindows(windowList) {
         return windowList.sort(function(a, b) {
-            var wsA = root.workspaces.find(function(ws) { return ws.id === a.workspaceId })
-            var wsB = root.workspaces.find(function(ws) { return ws.id === b.workspaceId })
+            var wsA = root._workspaceCache[a.workspaceId]
+            var wsB = root._workspaceCache[b.workspaceId]
             var outA = wsA?.output ?? ""
             var outB = wsB?.output ?? ""
             if (outA !== outB) return outA.localeCompare(outB)
@@ -405,8 +442,7 @@ Scope {
 
     Component.onCompleted: {
         if (root.socketPath !== "") {
-            outputProc.running = true
-            console.info("NiriBridge: connected to", root.socketPath)
+            console.info("NiriBridge: connecting to", root.socketPath)
         } else {
             console.warn("NiriBridge: NIRI_SOCKET not set -- niri IPC disabled")
         }

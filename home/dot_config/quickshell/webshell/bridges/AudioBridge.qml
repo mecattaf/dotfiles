@@ -1,6 +1,5 @@
 // AudioBridge.qml -- wraps Quickshell.Services.Pipewire
 // Exposes nodes, default sink/source, volume, mute, privacy state.
-// Not in current dotfiles (volume was wpctl from bin scripts), ported from first-pass.
 
 pragma ComponentBehavior: Bound
 
@@ -12,7 +11,7 @@ Scope {
     id: root
 
     // ======================================================================
-    // Reactive properties (os.audio)
+    // Public properties (os.audio)
     // ======================================================================
 
     property real volume: 0.0
@@ -26,7 +25,6 @@ Scope {
     property var sources: []
     property var streams: []
 
-    // Privacy indicators
     property var privacy: ({
         microphoneActive: false,
         cameraActive: false,
@@ -43,7 +41,7 @@ Scope {
     signal volumeOsd(var event)
 
     // ======================================================================
-    // Methods (os.audio)
+    // Public methods (os.audio)
     // ======================================================================
 
     function setVolume(value) {
@@ -117,24 +115,16 @@ Scope {
     }
 
     // ======================================================================
-    // Internal: OSD dedup tracking
+    // Private: OSD dedup tracking
     // ======================================================================
 
     property real _lastSetVolume: -1
     property real _lastSetSourceVolume: -1
 
-    // ======================================================================
-    // Internal: node lookup
-    // ======================================================================
-
     function _findNode(nodeId) {
         if (!Pipewire.nodes?.values) return null
         return Pipewire.nodes.values.find(function(n) { return n.id === nodeId }) ?? null
     }
-
-    // ======================================================================
-    // Flatten helpers
-    // ======================================================================
 
     function _flattenSink(node) {
         if (!node) return null
@@ -174,10 +164,6 @@ Scope {
         }
     }
 
-    // ======================================================================
-    // Rebuild arrays from PipeWire ObjectModel
-    // ======================================================================
-
     function _rebuildArrays() {
         if (!Pipewire.nodes?.values) {
             root.sinks = []
@@ -208,10 +194,6 @@ Scope {
         root.streams = newStreams
     }
 
-    // ======================================================================
-    // Privacy detection
-    // ======================================================================
-
     function _rebuildPrivacy() {
         if (!Pipewire.nodes?.values) return
 
@@ -222,7 +204,6 @@ Scope {
         var camApps = []
         var screenApps = []
 
-        // Check linkGroups for active mic/screenshare
         if (Pipewire.linkGroups?.values) {
             for (var i = 0; i < Pipewire.linkGroups.values.length; i++) {
                 var lg = Pipewire.linkGroups.values[i]
@@ -243,7 +224,6 @@ Scope {
             }
         }
 
-        // Check nodes for camera
         var nodes = Pipewire.nodes.values
         for (var j = 0; j < nodes.length; j++) {
             var node = nodes[j]
@@ -265,8 +245,34 @@ Scope {
         }
     }
 
+    function _syncSinkState() {
+        var sink = Pipewire.defaultAudioSink
+        if (sink) {
+            root.volume = Math.min(Math.max(sink.audio.volume, 0.0), 1.0)
+            root.muted = sink.audio.muted
+            root.defaultSink = _flattenSink(sink)
+        } else {
+            root.volume = 0.0
+            root.muted = false
+            root.defaultSink = null
+        }
+    }
+
+    function _syncSourceState() {
+        var source = Pipewire.defaultAudioSource
+        if (source) {
+            root.sourceVolume = Math.min(Math.max(source.audio.volume, 0.0), 1.0)
+            root.sourceMuted = source.audio.muted
+            root.defaultSource = _flattenSource(source)
+        } else {
+            root.sourceVolume = 0.0
+            root.sourceMuted = false
+            root.defaultSource = null
+        }
+    }
+
     // ======================================================================
-    // OSD: debounced, fires for external volume changes
+    // Private: OSD debounced, fires for external volume changes
     // ======================================================================
 
     Timer {
@@ -289,7 +295,6 @@ Scope {
         }
     }
 
-    // Track default sink volume/muted changes
     Connections {
         target: Pipewire.defaultAudioSink?.audio ?? null
         function onVolumeChanged() {
@@ -302,23 +307,17 @@ Scope {
         }
     }
 
-    // Track default source volume/muted changes
     Connections {
         target: Pipewire.defaultAudioSource?.audio ?? null
         function onVolumeChanged() { root._syncSourceState() }
         function onMutedChanged() { root._syncSourceState() }
     }
 
-    // Track when default sink/source device changes
     Connections {
         target: Pipewire
         function onDefaultAudioSinkChanged() { root._syncSinkState() }
         function onDefaultAudioSourceChanged() { root._syncSourceState() }
     }
-
-    // ======================================================================
-    // Rebuild on PipeWire graph changes
-    // ======================================================================
 
     Timer {
         id: rebuildDebounce
@@ -338,34 +337,6 @@ Scope {
     Connections {
         target: Pipewire.linkGroups ?? null
         function onValuesChanged() { rebuildDebounce.restart() }
-    }
-
-    // Sync default sink state
-    function _syncSinkState() {
-        var sink = Pipewire.defaultAudioSink
-        if (sink) {
-            root.volume = Math.min(Math.max(sink.audio.volume, 0.0), 1.0)
-            root.muted = sink.audio.muted
-            root.defaultSink = _flattenSink(sink)
-        } else {
-            root.volume = 0.0
-            root.muted = false
-            root.defaultSink = null
-        }
-    }
-
-    // Sync default source state
-    function _syncSourceState() {
-        var source = Pipewire.defaultAudioSource
-        if (source) {
-            root.sourceVolume = Math.min(Math.max(source.audio.volume, 0.0), 1.0)
-            root.sourceMuted = source.audio.muted
-            root.defaultSource = _flattenSource(source)
-        } else {
-            root.sourceVolume = 0.0
-            root.sourceMuted = false
-            root.defaultSource = null
-        }
     }
 
     Component.onCompleted: {

@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
-# UNCHANGED: wallpaper IPC uses qs (quickshellX) directly
-# Usage: wallpaper [path]
-#   wallpaper /path/to/image.jpg   - set wallpaper
-#   wallpaper                      - set default wallpaper
-
+# wallpaper -- set desktop wallpaper via IPC
+# IPC target: wallpaper (WallpaperBridge IpcHandler), method: change <path>
 DEFAULT="/usr/share/backgrounds/harness/wallpaper.jpg"
 path="${1:-$DEFAULT}"
 

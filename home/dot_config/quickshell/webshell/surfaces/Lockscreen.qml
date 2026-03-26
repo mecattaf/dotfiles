@@ -1,9 +1,5 @@
 //@ pragma UseWebEngine
 
-// Lockscreen -- STUB
-// Uses ext-session-lock-v1 via WlSessionLock.
-// Implementation deferred until WlSessionLock + PamContext integration is ready.
-
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
@@ -28,6 +24,10 @@ WlSessionLock {
                 webChannel: channel
 
                 Component.onCompleted: url = baseUrl + "#/lock"
+
+                onNewWindowRequested: function(request) {
+                    Qt.openUrlExternally(request.requestedUrl)
+                }
 
                 settings.javascriptCanAccessClipboard: false
                 settings.localContentCanAccessRemoteUrls: false

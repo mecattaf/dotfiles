@@ -1,0 +1,65 @@
+{
+  "$schema": "./config-schema.json",
+  "version": "0.1.0",
+
+  "bar": {
+    "enabled": true,
+    "position": "top",
+    "height": 40,
+    "zones": {
+      "left": ["workspaces", "active-window"],
+      "center": ["clock"],
+      "right": ["tray", "media", "vpn", "network", "bluetooth", "audio", "battery", "power-menu"]
+    },
+    "autoHide": false,
+    "showOnAllScreens": true
+  },
+
+  "dock": {
+    "enabled": true,
+    "position": "bottom",
+    "iconSize": 48,
+    "pinnedApps": [
+      "org.mozilla.firefox",
+      "org.gnome.Nautilus",
+      "kitty",
+      "code"
+    ],
+    "autoHide": true,
+    "showRunning": true
+  },
+
+  "notifications": {
+    "enabled": true,
+    "position": "top-right",
+    "maxPopups": 5,
+    "popupTimeout": 5000,
+    "urgencyTimeouts": {
+      "low": 3000,
+      "normal": 5000,
+      "critical": 0
+    },
+    "groupByApp": true,
+    "historyLimit": 100
+  },
+
+  "overlay": {
+    "enabled": true
+  },
+
+  "osd": {
+    "enabled": true,
+    "position": "bottom-center",
+    "timeout": 1500
+  },
+
+  "ccd": {
+    "enabled": true,
+    "position": "right",
+    "width": 380
+  },
+
+  "lockscreen": {
+    "enabled": true
+  }
+}

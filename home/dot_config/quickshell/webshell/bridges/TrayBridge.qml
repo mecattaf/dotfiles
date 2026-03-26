@@ -11,7 +11,7 @@ Scope {
     id: root
 
     // ======================================================================
-    // Reactive properties (os.tray)
+    // Public properties (os.tray)
     // ======================================================================
 
     property var items: []
@@ -25,14 +25,7 @@ Scope {
     signal itemUpdated(var item)
 
     // ======================================================================
-    // Internal tracking
-    // ======================================================================
-
-    property var _lastItemIds: []
-    property var _menuCache: ({})
-
-    // ======================================================================
-    // Methods (os.tray)
+    // Public methods (os.tray)
     // ======================================================================
 
     function activate(itemId) {
@@ -78,8 +71,11 @@ Scope {
     }
 
     // ======================================================================
-    // Internal helpers
+    // Private: tracking state
     // ======================================================================
+
+    property var _lastItemIds: []
+    property var _menuCache: ({})
 
     function _findQsItem(itemId) {
         if (!SystemTray.items?.values) return null
@@ -228,7 +224,7 @@ Scope {
     }
 
     // ======================================================================
-    // Watch for changes
+    // Private: watch for changes
     // ======================================================================
 
     Timer {

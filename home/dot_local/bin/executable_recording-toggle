@@ -1,0 +1,12 @@
+#!/bin/bash
+# recording-toggle -- toggle screen recording and notify the shell
+# Wraps the record script with toggle semantics for keybind use.
+# Also signals the shell so the recording indicator updates.
+
+RECORD_SCRIPT="$(dirname "$0")/record"
+
+if pgrep -x wf-recorder >/dev/null; then
+    "$RECORD_SCRIPT" stop
+else
+    "$RECORD_SCRIPT" start
+fi

@@ -11,7 +11,7 @@ Scope {
     id: root
 
     // ======================================================================
-    // Reactive properties (os.session)
+    // Public properties (os.session)
     // ======================================================================
 
     property var info: ({
@@ -25,7 +25,6 @@ Scope {
 
     property var powerActions: []
 
-    // Sleep/wake state
     property var sleep: ({
         preparing: false,
         wakeReady: true
@@ -44,10 +43,8 @@ Scope {
     signal wakeUp()
 
     // ======================================================================
-    // Methods (os.session)
+    // Public methods (os.session)
     // ======================================================================
-
-    property bool _actionInProgress: false
 
     function executeAction(action) {
         if (root._actionInProgress) return
@@ -79,7 +76,7 @@ Scope {
                 root._actionInProgress = false
                 return
         }
-        actionGuardReset.restart()
+        _actionGuardReset.restart()
     }
 
     function requestLock() {
@@ -91,7 +88,13 @@ Scope {
     }
 
     // ======================================================================
-    // IPC handler for sleep/wake
+    // Private: action guard
+    // ======================================================================
+
+    property bool _actionInProgress: false
+
+    // ======================================================================
+    // Private: IPC handler for sleep/wake
     // ======================================================================
 
     IpcHandler {
@@ -103,26 +106,26 @@ Scope {
         function wake() {
             root.sleep = Object.assign({}, root.sleep, { preparing: false })
             root.wakeUp()
-            wakeReadyTimer.restart()
+            _wakeReadyTimer.restart()
         }
     }
 
     Timer {
-        id: wakeReadyTimer
+        id: _wakeReadyTimer
         interval: 3000
         repeat: false
         onTriggered: root.sleep = Object.assign({}, root.sleep, { wakeReady: true })
     }
 
     Timer {
-        id: actionGuardReset
+        id: _actionGuardReset
         interval: 3000
         repeat: false
         onTriggered: root._actionInProgress = false
     }
 
     // ======================================================================
-    // Session info collection
+    // Private: session info collection
     // ======================================================================
 
     Process {
@@ -146,7 +149,7 @@ Scope {
     }
 
     // ======================================================================
-    // Power action availability probing
+    // Private: power action availability probing
     // ======================================================================
 
     property bool _canSuspend: false
@@ -177,12 +180,12 @@ Scope {
     function _rebuildPowerActions() {
         var canSuspendHibernate = root._canSuspend && root._canHibernate
         root.powerActions = [
-            { action: "shutdown",               label: "Shut Down",              icon: "system-shutdown-symbolic",          available: true,               confirmRequired: true,  holdDurationMs: 1500, shortcutKey: "s" },
-            { action: "reboot",                 label: "Reboot",                 icon: "system-reboot-symbolic",            available: true,               confirmRequired: true,  holdDurationMs: 1500, shortcutKey: "r" },
-            { action: "suspend",                label: "Suspend",                icon: "system-suspend-symbolic",           available: root._canSuspend,   confirmRequired: false, holdDurationMs: 0,    shortcutKey: "u" },
-            { action: "hibernate",              label: "Hibernate",              icon: "system-hibernate-symbolic",         available: root._canHibernate, confirmRequired: true,  holdDurationMs: 1500, shortcutKey: "h" },
+            { action: "shutdown",               label: "Shut Down",              icon: "system-shutdown-symbolic",          available: true,                confirmRequired: true,  holdDurationMs: 1500, shortcutKey: "s" },
+            { action: "reboot",                 label: "Reboot",                 icon: "system-reboot-symbolic",            available: true,                confirmRequired: true,  holdDurationMs: 1500, shortcutKey: "r" },
+            { action: "suspend",                label: "Suspend",                icon: "system-suspend-symbolic",           available: root._canSuspend,    confirmRequired: false, holdDurationMs: 0,    shortcutKey: "u" },
+            { action: "hibernate",              label: "Hibernate",              icon: "system-hibernate-symbolic",         available: root._canHibernate,  confirmRequired: true,  holdDurationMs: 1500, shortcutKey: "h" },
             { action: "suspend-then-hibernate", label: "Suspend then Hibernate", icon: "system-suspend-hibernate-symbolic", available: canSuspendHibernate, confirmRequired: false, holdDurationMs: 0,    shortcutKey: null },
-            { action: "logout",                 label: "Log Out",                icon: "system-log-out-symbolic",           available: true,               confirmRequired: true,  holdDurationMs: 1500, shortcutKey: "l" }
+            { action: "logout",                 label: "Log Out",                icon: "system-log-out-symbolic",           available: true,                confirmRequired: true,  holdDurationMs: 1500, shortcutKey: "l" }
         ]
     }
 

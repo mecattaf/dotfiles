@@ -1,5 +1,4 @@
 #!/bin/bash
-# CHANGED: launcher IPC target renamed to shell toggleOverlay
-# Old: quickshell ipc call launcher toggle
-# New: quickshell ipc call shell toggleOverlay
+# dms-launcher -- toggle the overlay (launcher) surface
+# IPC target: ShellBridge (target: "shell"), method: toggleOverlay
 quickshell ipc call shell toggleOverlay

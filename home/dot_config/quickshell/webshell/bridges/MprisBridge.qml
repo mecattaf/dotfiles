@@ -14,16 +14,12 @@ Scope {
     id: root
 
     // ======================================================================
-    // Reactive properties (os.media)
+    // Public properties (os.media)
     // ======================================================================
 
-    // All players flattened for WebChannel
     property var players: []
-
-    // Active player: last in Mpris.players list (current dotfiles pattern)
     property var activePlayer: null
 
-    // Convenience properties (matching current dotfiles API)
     property string title: ""
     property string artist: ""
     property string album: ""
@@ -40,7 +36,7 @@ Scope {
     signal trackChanged(var event)
 
     // ======================================================================
-    // Methods (os.media)
+    // Public methods (os.media)
     // ======================================================================
 
     function togglePlay() {
@@ -94,7 +90,7 @@ Scope {
     }
 
     // ======================================================================
-    // IPC handler (from current dotfiles)
+    // Private: IPC handler
     // ======================================================================
 
     IpcHandler {
@@ -116,7 +112,7 @@ Scope {
     }
 
     // ======================================================================
-    // Position polling timer (1s, from current dotfiles)
+    // Private: position polling timer (1s)
     // ======================================================================
 
     Timer {
@@ -132,14 +128,13 @@ Scope {
     }
 
     // ======================================================================
-    // Internal: player resolution
+    // Private: player resolution
     // ======================================================================
 
     property string _lastTrackTitle: ""
 
     function _getActiveQsPlayer() {
         var qsPlayers = Mpris.players?.values ?? []
-        // Current dotfiles pattern: last player in list
         return qsPlayers.length > 0 ? qsPlayers[qsPlayers.length - 1] : null
     }
 
@@ -156,10 +151,6 @@ Scope {
     function _getPlayerId(qsPlayer) {
         return qsPlayer.identity ?? qsPlayer.desktopEntry ?? ""
     }
-
-    // ======================================================================
-    // Sync convenience properties from active player
-    // ======================================================================
 
     function _syncActivePlayer() {
         var qsPlayer = _getActiveQsPlayer()
@@ -185,7 +176,6 @@ Scope {
             root.activePlayer = null
         }
 
-        // Track change detection
         if (root.title !== root._lastTrackTitle && root.title !== "Not Playing") {
             root._lastTrackTitle = root.title
             root.trackChanged({
@@ -195,10 +185,6 @@ Scope {
             })
         }
     }
-
-    // ======================================================================
-    // Flatten player for WebChannel
-    // ======================================================================
 
     function _flattenPlayer(p) {
         if (!p) return null
@@ -228,10 +214,6 @@ Scope {
         }
     }
 
-    // ======================================================================
-    // Rebuild players array from ObjectModel
-    // ======================================================================
-
     function _rebuildPlayers() {
         var qsPlayers = Mpris.players?.values ?? []
         root.players = qsPlayers.map(function(p) { return _flattenPlayer(p) })
@@ -239,7 +221,7 @@ Scope {
     }
 
     // ======================================================================
-    // Watch for changes
+    // Private: watch for changes
     // ======================================================================
 
     Timer {
