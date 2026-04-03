@@ -36,6 +36,10 @@ alias l.="eza -a | grep -E \"^\.\""
 alias cd='z'
 # zi command 
 
+# Claude Code
+alias cc='claude --dangerously-skip-permissions'
+alias cac='claude --continue --dangerously-skip-permissions'
+
 # Bind Ctrl+E to Atuin search
 bind \ce "atuin search -i"
 # Restore default Fish up-arrow behavior
