@@ -153,6 +153,10 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.local/bin/clipboard"; }
     // scroll: bindsym $mod+Alt+l move right monitor
     Mod+Alt+L { move-column-to-monitor-right; }
 
+    // addon: monitor movement
+    Alt+H { focus-monitor-left }
+    Alt+L { focus-monitor-right }
+
 
     // ── Column/Window Sizing ─────────────────────────────────────
 
