@@ -88,13 +88,13 @@ shell = ['fish']
 [custom.prompt_local]
 command = 'echo "❯"'
 when = 'test -z "$SSH_CONNECTION"'
-format = '[$output]($style)'
+format = '[$output]($style) '
 style = '#DA7756'
 shell = ['fish']
 
 [custom.prompt_ssh]
 command = 'echo "❯"'
 when = 'test -n "$SSH_CONNECTION"'
-format = '[$output]($style)'
+format = '[$output]($style) '
 style = 'bold green'
 shell = ['fish']
