@@ -1,6 +1,7 @@
 set -g fish_greeting
 set -g fish_key_bindings fish_default_key_bindings
 set -Ua fish_user_paths $HOME/.local/bin
+set -e SSH_ASKPASS
 
 export MICRO_TRUECOLOR=1
 printf '\033[?1h\033=' >/dev/tty
