@@ -1,3 +1,9 @@
+# Forward the ssh client's session-scoped vars into the shpool session so
+# starship (and anything else) can detect "I'm on the remote" via SSH_CONNECTION.
+# Without this, these vars are empty inside shpool and the green-arrow prompt
+# never fires. Top-level key, must stay above any [section].
+forward_env = ["SSH_CONNECTION", "SSH_TTY", "SSH_CLIENT", "SSH_AUTH_SOCK"]
+
 [prompt]
 # Disable shpool's native prompt prefix — starship handles this
 enabled = false
