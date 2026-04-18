@@ -11,7 +11,8 @@ ${custom.ssh}\
 ${custom.network}\
 $line_break\
 $python\
-$character"""
+${custom.prompt_local}\
+${custom.prompt_ssh}"""
 
 [directory]
 style = "blue"
@@ -79,4 +80,21 @@ end
 when = 'test -n "$SSH_CONNECTION"'
 format = '[$output]($style) '
 style = 'bright-black'
+shell = ['fish']
+
+# Prompt char: orange ❯ locally, green ❯ over SSH so the remote shell is
+# unmistakable. Replaces the [character] module in $format; [character] is
+# kept below as reference but isn't rendered anymore.
+[custom.prompt_local]
+command = 'echo "❯"'
+when = 'test -z "$SSH_CONNECTION"'
+format = '[$output]($style)'
+style = '#DA7756'
+shell = ['fish']
+
+[custom.prompt_ssh]
+command = 'echo "❯"'
+when = 'test -n "$SSH_CONNECTION"'
+format = '[$output]($style)'
+style = 'bold green'
 shell = ['fish']

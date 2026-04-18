@@ -9,7 +9,7 @@ window-rule {
 window-rule {
     match app-id="kitty" title="remote"
     border {
-        width 3
+        width 2
         active-color "#ffffff"
         inactive-color "#ffffff"
     }
