@@ -4,6 +4,16 @@ window-rule {
     clip-to-geometry true
 }
 
+// White border when desk SSH session is active
+window-rule {
+    match app-id="kitty" title="remote"
+    border {
+        width 1
+        active-color "#ffffff"
+        inactive-color "#ffffff"
+    }
+}
+
 // scroll: for_window [app_id="^chrome-.*"] shortcuts_inhibitor disable
 // ^ NO NIRI EQUIVALENT: use Mod+Escape to toggle keyboard-shortcuts-inhibit
 
