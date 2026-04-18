@@ -9,7 +9,10 @@ binds {
     Mod+Return hotkey-overlay-title="Terminal" { spawn "kitty" "-e" "fish"; }
 
     // scroll: bindsym $mod+Shift+Return exec $scripts/nvim-terminal.sh
-    // ^ DROPPED: used scrollmsg (scroll-specific IPC)
+    // niri: same script, ported to shell + niri msg; host-aware
+    //   desktop: new kitty in focused kitty/nvim's cwd
+    //   laptop:  new kitty that SSHs to harness-desktop via `desk`
+    Mod+Shift+Return hotkey-overlay-title="Terminal (smart)" { spawn-sh "~/.local/bin/new-terminal"; }
 
     // scroll: bindsym $mod+D exec vicinae open
     Mod+D hotkey-overlay-title="Launcher" { spawn-sh "~/.local/bin/launcher"; }

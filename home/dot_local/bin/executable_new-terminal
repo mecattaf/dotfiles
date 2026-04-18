@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# niri Mod+Shift+Return:
+#   - harness-desktop: open a new kitty in the cwd of whatever's running in
+#     the focused kitty — prefer a descendant nvim's cwd, fall back to the
+#     shell's cwd, fall back to kitty's cwd. Mirrors the old scroll
+#     nvim-terminal.lua philosophy (without the Lua or IDE-split gymnastics).
+#   - elsewhere (laptop): open a new kitty that immediately SSHs to
+#     harness-desktop via the `desk` fish function; niri's window-rule
+#     renders the white "remote" border once desk sets the window title.
+
+set -u
+
+host="$(hostname)"
+
+if [[ "$host" != "harness-desktop" ]]; then
+    exec kitty fish -ic desk
+fi
+
+focused=$(niri msg -j focused-window 2>/dev/null || true)
+app_id=$(printf '%s' "$focused" | jq -r '.app_id // empty' 2>/dev/null)
+pid=$(printf '%s' "$focused" | jq -r '.pid // empty' 2>/dev/null)
+
+cwd=""
+
+# Recursively find a nvim descendant of the kitty pid and return its cwd.
+find_nvim_cwd() {
+    local parent=$1 child comm
+    for child in $(pgrep -P "$parent" 2>/dev/null); do
+        comm=$(ps -p "$child" -o comm= 2>/dev/null)
+        if [[ "$comm" =~ ^n?vim$ ]]; then
+            readlink "/proc/$child/cwd" 2>/dev/null
+            return 0
+        fi
+        if find_nvim_cwd "$child"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+if [[ "$app_id" == "kitty" && -n "$pid" ]]; then
+    cwd=$(find_nvim_cwd "$pid" || true)
+    if [[ -z "$cwd" ]]; then
+        shell_pid=$(pgrep -P "$pid" 2>/dev/null | head -n1)
+        [[ -n "$shell_pid" ]] && cwd=$(readlink "/proc/$shell_pid/cwd" 2>/dev/null || true)
+    fi
+    [[ -z "$cwd" ]] && cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null || true)
+fi
+
+if [[ -n "$cwd" && -d "$cwd" ]]; then
+    exec kitty --directory "$cwd" -e fish
+fi
+
+exec kitty -e fish
