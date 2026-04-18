@@ -6,7 +6,9 @@ window-rule {
 
 // White border when desk SSH session is active
 // Matches window title set by `desk` via `kitty @ set-window-title remote`
-window-rule {
+// Disabled: green starship arrow + "ssh/tailscale/shpool" prompt segments
+// are enough visual indication. Remove the leading `/-` to re-enable.
+/-window-rule {
     match app-id="kitty" title="remote"
     border {
         width 2
