@@ -4,13 +4,14 @@ window-rule {
     clip-to-geometry true
 }
 
-// TEST: yellow border on every kitty window (to verify border rules apply at all)
+// White border when desk SSH session is active
+// Matches window title set by `desk` via `kitty @ set-window-title remote`
 window-rule {
-    match app-id="kitty"
+    match app-id="kitty" title="remote"
     border {
-        width 8
-        active-color "#ffff00"
-        inactive-color "#ffff00"
+        width 3
+        active-color "#ffffff"
+        inactive-color "#ffffff"
     }
 }
 
