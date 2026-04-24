@@ -122,9 +122,9 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.local/bin/clipboard"; }
     // scroll: bindsym $mod+h     focus  left
     Mod+H { focus-column-left; }
     // scroll: bindsym $mod+j     focus  down
-    Mod+J { focus-monitor-down; }
+    Mod+J { focus-window-down; }
     // scroll: bindsym $mod+k     focus  up
-    Mod+K { focus-monitor-up; }
+    Mod+K { focus-window-up; }
     // scroll: bindsym $mod+l     focus  right
     Mod+L { focus-column-right; }
 
