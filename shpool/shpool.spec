@@ -1,5 +1,5 @@
 Name:           shpool
-Version:        0.9.6
+Version:        0.9.7
 Release:        1%{?dist}
 Summary:        Terminal session multiplexer for persistent shell sessions
 
