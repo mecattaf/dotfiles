@@ -12,3 +12,9 @@ enable systemd-resolved.service
 enable systemd-timesyncd.service
 enable tailscaled.service
 enable uupd.timer
+
+# Containerised network services (quadlet-generated)
+enable adguard.service
+enable dns-hijack.service
+enable immich-server.service
+enable navidrome.service

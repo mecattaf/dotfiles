@@ -1,0 +1,15 @@
+[Unit]
+Description=DNS hijack for BE550 LAN to AdGuard Home
+Documentation=file:///etc/nftables/dns-hijack.nft
+After=NetworkManager-wait-online.service firewalld.service
+Wants=NetworkManager-wait-online.service
+ConditionPathExists=/etc/nftables/dns-hijack.nft
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/nftables/dns-hijack.nft
+ExecStop=/usr/sbin/nft delete table inet dns_hijack
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,25 @@
+#!/usr/sbin/nft -f
+# dns-hijack.nft — transparently redirect :53 from BE550 LAN to AdGuard.
+#
+# Catches devices that ignore DHCP option 6 and hardcode 8.8.8.8 / 1.1.1.1
+# (Chromecasts, smart TVs, some IoT). Any UDP/TCP :53 traffic sourced from
+# 10.42.0.0/24 and not already aimed at the gateway is DNAT'd to 10.42.0.1.
+#
+# Lives in its own table (`dns_hijack`) so firewalld's table is untouched.
+# Loaded by dns-hijack.service.
+
+table inet dns_hijack
+delete table inet dns_hijack
+
+table inet dns_hijack {
+    chain prerouting {
+        type nat hook prerouting priority dstnat; policy accept;
+
+        # Already aimed at AdGuard — leave alone.
+        ip daddr 10.42.0.1 return
+
+        # Anything else from the BE550 LAN with dport 53: send it to AdGuard.
+        ip saddr 10.42.0.0/24 udp dport 53 dnat ip to 10.42.0.1
+        ip saddr 10.42.0.0/24 tcp dport 53 dnat ip to 10.42.0.1
+    }
+}
