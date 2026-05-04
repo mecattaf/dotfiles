@@ -1,0 +1,17 @@
+[Unit]
+Description=Mount NAS share from BE550 USB storage
+After=network-online.target
+Requires=network-online.target
+
+[Mount]
+# IP and share name are placeholders pending first BE550 USB-share configuration.
+# After enabling USB Storage Device on the BE550, update What= to
+# //<be550-ip>/<share-name> — discover with `ip neigh show dev enp191s0`
+# and `smbclient -L //<be550-ip> -N`.
+What=//10.0.0.2/share
+Where=/var/mnt/nas
+Type=cifs
+Options=guest,uid=1000,gid=1000,file_mode=0775,dir_mode=0775,nofail,_netdev,vers=3.1.1
+
+[Install]
+WantedBy=multi-user.target

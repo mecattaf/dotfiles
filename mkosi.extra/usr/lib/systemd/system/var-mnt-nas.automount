@@ -1,8 +1,8 @@
 [Unit]
-Description=Automount NAS share from router SSD
+Description=Automount NAS share from BE550 USB storage
 
 [Automount]
-Where=/mnt/nas
+Where=/var/mnt/nas
 TimeoutIdleSec=0
 
 [Install]

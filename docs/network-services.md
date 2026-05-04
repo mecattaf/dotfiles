@@ -8,7 +8,7 @@ as **root podman quadlets** under `/usr/share/containers/systemd/`.
 |---|---|---|
 | `adguard.service` | 53/tcp+udp, 853/tcp, 784/udp, 3000, 8443, 8844 | `adguard-config`, `adguard-work`, `adguard-logs` |
 | `immich-server.service` (+ postgres/redis/ml) | 2283 | `immich-pgdata`, `immich-redis`, `immich-ml-cache`, `immich-upload` |
-| `navidrome.service` | 4533 | `navidrome-data`, bind: `/mnt/nas/music` |
+| `navidrome.service` | 4533 | `navidrome-data`, bind: `/var/mnt/nas/music` |
 | `dns-hijack.service` | n/a (nftables) | n/a |
 
 ## DNS architecture
@@ -76,7 +76,7 @@ admin account. After that, log in and:
 
 - **Administration → External Libraries → Add Library**
   - Path inside container: `/mnt/photos`
-  - This corresponds to the host bind mount `/mnt/nas/photos`.
+  - This corresponds to the host bind mount `/var/mnt/nas/photos`.
 - Trigger an initial scan.
 
 ML model cache (`immich-ml-cache` volume) starts empty and downloads ~1–2 GB
@@ -85,7 +85,7 @@ of models on first face-detection / smart-search run. Expect some delay.
 ### 3. Navidrome
 
 Open `http://localhost:4533`. First-load screen creates the admin user.
-Music library is bind-mounted at `/music` from `/mnt/nas/music`. Library
+Music library is bind-mounted at `/music` from `/var/mnt/nas/music`. Library
 scan runs every hour (`ND_SCANSCHEDULE=1h`); first scan happens at startup.
 
 ### 4. BE550 (TP-Link Archer) AP setup
