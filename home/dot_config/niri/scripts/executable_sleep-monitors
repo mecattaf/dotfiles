@@ -14,7 +14,7 @@ choice=$(printf '%s\n' \
     '  No — cancel' \
 | fzf \
     --prompt='> ' \
-    --header='Sleep monitors? (system stays awake — DNS/AdGuard/NAS continue)' \
+    --header='Sleep monitors?' \
     --height=100% \
     --reverse \
     --no-info \
