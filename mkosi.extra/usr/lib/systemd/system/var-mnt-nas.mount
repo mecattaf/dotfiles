@@ -1,14 +1,22 @@
 [Unit]
-Description=Mount NAS share from BE550 USB storage
+Description=Mount BE550-attached LaCie 4TB NAS share
 After=network-online.target
 Requires=network-online.target
 
 [Mount]
-# IP and share name are placeholders pending first BE550 USB-share configuration.
-# After enabling USB Storage Device on the BE550, update What= to
-# //<be550-ip>/<share-name> — discover with `ip neigh show dev enp191s0`
-# and `smbclient -L //<be550-ip> -N`.
-What=//10.0.0.2/share
+# BE550 (TP-Link Archer in AP mode) exposes its USB-attached LaCie via SMB.
+# The router is pinned to 10.42.0.2 by dnsmasq-shared.d/01-be550-pin.conf
+# (MAC 98:03:8e:6b:61:e2). Power-cycle the BE550 once after the pin is
+# applied to force a DHCP renewal onto the pinned IP.
+#
+# Auth: guest. Requires "Secure Sharing" to be DISABLED in TP-Link Tether
+# (Advanced → USB → File Sharing → Secure Sharing OFF). If you prefer to
+# keep credentials on the BE550, switch this line to:
+#   Options=credentials=/etc/cifs.creds,uid=1000,gid=1000,...
+# and deploy /etc/cifs.creds (mode 0600, NOT committed to git) with:
+#   username=admin
+#   password=<your-password>
+What=//10.42.0.2/LaCie
 Where=/var/mnt/nas
 Type=cifs
 Options=guest,uid=1000,gid=1000,file_mode=0775,dir_mode=0775,nofail,_netdev,vers=3.1.1

@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<zone>
-  <short>External</short>
-  <description>NAT masquerade zone for the wireless uplink.</description>
-  <interface name="wlan0"/>
-  <masquerade/>
-</zone>

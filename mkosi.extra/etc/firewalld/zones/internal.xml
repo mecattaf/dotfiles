@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<zone>
-  <short>Internal</short>
-  <description>Trusted LAN zone for the wired link to the router.</description>
-  <interface name="eth0"/>
-  <service name="dns"/>
-  <service name="dhcp"/>
-  <service name="samba"/>
-</zone>
