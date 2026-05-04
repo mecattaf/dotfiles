@@ -26,6 +26,16 @@ window-rule {
     open-floating true
 }
 
+// F10 sleep-monitors prompt: small floating kitty popup, focused on open.
+// Spawned by niri/binds.kdl F10 binding running niri/scripts/sleep-monitors.
+window-rule {
+    match app-id="sleep-monitors-prompt"
+    open-floating true
+    open-focused true
+    default-column-width { fixed 640; }
+    default-window-height { fixed 200; }
+}
+
 // scroll: for_window [app_id="blueman-manager"] border pixel 0, floating enable, resize 35% 35%, move 63% 60%
 window-rule {
     match app-id="blueman-manager"

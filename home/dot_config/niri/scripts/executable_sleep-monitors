@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# F10 → "Sleep monitors?" prompt. Powers the displays off via niri without
+# suspending the system — the gateway, DNS, AdGuard, NAS frontend, Immich,
+# Navidrome, and shpool sessions all keep running. Move the mouse or press
+# any key to wake the displays.
+#
+# Spawned in a small floating kitty popup by niri/binds.kdl (F10), with
+# size + float behavior set in niri/window-rules.kdl (app-id matches the
+# --class flag below).
+set -euo pipefail
+
+choice=$(printf '%s\n' \
+    '  Yes — sleep monitors' \
+    '  No — cancel' \
+| fzf \
+    --prompt='> ' \
+    --header='Sleep monitors? (system stays awake — DNS/AdGuard/NAS continue)' \
+    --height=100% \
+    --reverse \
+    --no-info \
+    --pointer='›' \
+    --color='prompt:bold:8,header:italic:7,pointer:5')
+
+case "$choice" in
+    *'Yes'*) niri msg action power-off-monitors ;;
+esac
