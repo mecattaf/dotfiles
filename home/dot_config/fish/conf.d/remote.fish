@@ -8,4 +8,12 @@ if test (hostname) != "harness-desktop"
         kitten ssh harness-desktop -t shpool attach -c fish $session
         kitty @ set-window-title
     end
+
+    function desk-resume
+        # Mod+Ctrl+Shift+Return counterpart to `desk`: pick an existing remote
+        # shpool session via fzf running on harness-desktop, then attach.
+        kitty @ set-window-title "remote"
+        kitten ssh harness-desktop -t shpool-resume
+        kitty @ set-window-title
+    end
 end

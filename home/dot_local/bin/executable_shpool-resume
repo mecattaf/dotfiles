@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# fzf-pick an existing shpool session and attach to it.
+# Run locally on harness-desktop; also invoked over ssh by desk-resume.
+# Companion to `desk`, which always spawns a fresh session.
+
+set -u
+
+if ! command -v shpool >/dev/null 2>&1; then
+    echo "shpool not found on $(hostname)" >&2
+    exit 1
+fi
+
+if ! command -v fzf >/dev/null 2>&1; then
+    echo "fzf not found on $(hostname)" >&2
+    exit 1
+fi
+
+# shpool list is tab-separated: NAME<TAB>STARTED_AT<TAB>STATUS
+sess=$(shpool list | tail -n +2 | fzf --prompt='resume> ' --no-sort | cut -f1)
+[[ -n "$sess" ]] || exit 0
+
+exec shpool attach -c fish "$sess"

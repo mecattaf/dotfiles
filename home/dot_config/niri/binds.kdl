@@ -14,6 +14,10 @@ binds {
     //   laptop:  new kitty that SSHs to harness-desktop via `desk`
     Mod+Shift+Return hotkey-overlay-title="Terminal (smart)" { spawn-sh "~/.local/bin/new-terminal"; }
 
+    // Resume an existing shpool session via fzf picker; runs locally on
+    // harness-desktop, sshes to harness-desktop on remotes (laptop).
+    Mod+Ctrl+Shift+Return hotkey-overlay-title="Terminal (resume)" { spawn-sh "~/.local/bin/resume-terminal"; }
+
     // scroll: bindsym $mod+D exec vicinae open
     Mod+D hotkey-overlay-title="Launcher" { spawn-sh "~/.local/bin/launcher"; }
     Mod+Shift+D hotkey-overlay-title="DMS Launcher" { spawn-sh "~/.local/bin/dms-launcher"; }
