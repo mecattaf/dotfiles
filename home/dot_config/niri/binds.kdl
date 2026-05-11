@@ -79,6 +79,7 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.local/bin/clipboard"; }
     Mod+Shift+C { spawn "flatpak" "run" "com.google.Chrome" "--app=https://claude.ai/"; }
     // scroll: bindsym $mod+Shift+M exec $chrome --app=https://soundcloud.com
     Mod+Shift+M { spawn "flatpak" "run" "com.google.Chrome" "--app=https://soundcloud.com"; }
+    Mod+M hotkey-overlay-title="YouTube Music" { spawn-sh "niri msg -j windows | jq -re 'map(select(.app_id == \"chrome-music.youtube.com__-Default\"))[0].id // empty' | xargs --no-run-if-empty -I{} niri msg action focus-window --id {}"; }
     // scroll: bindsym $mod+Shift+W exec $chrome --app=https://mail.google.com/
     Mod+Shift+W { spawn "flatpak" "run" "com.google.Chrome" "--app=https://mail.google.com/"; }
     // scroll: bindsym $mod+Shift+semicolon exec flatpak run com.obsproject.Studio
