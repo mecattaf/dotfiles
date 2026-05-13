@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timedatectl set-timezone:*)",
+      "Bash(sudo timedatectl:*)",
+      "Bash(pactl list:*)",
+      "Bash(wpctl status:*)",
+      "Bash(pi version:*)",
+      "Bash(rpm:*)",
+      "Bash(rpm-ostree status:*)",
+      "Bash(dnf repolist:*)",
+      "Bash(dnf copr:*)",
+      "Read(//etc/yum.repos.d/**)",
+      "Bash(dnf:*)",
+      "Bash(curl -s 'https://copr.fedorainfracloud.org/api_3/build/list?ownername=mecattaf&projectname=harnessRPM&limit=5')",
+      "Bash(python3 -m json.tool)",
+      "Bash(find /tmp/harness -name *.spec -o -name *spec*)",
+      "Bash(ls /var/home/tom/mecattaf/harness/Containerfile*)",
+      "Bash(ls /var/home/tom/mecattaf/harness/*.yml)",
+      "Bash(ls /var/home/tom/mecattaf/harness/*.yaml)",
+      "Bash(grep -oP '[0-9]+\\\\.[0-9]+\\(?=\\\\s*\\($$MUTED$$\\)?\\)')",
+      "Bash(git config *)"
+    ]
+  }
+}
