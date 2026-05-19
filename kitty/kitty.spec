@@ -6,7 +6,7 @@
 %global goipath kitty
 
 Name:           kitty
-Version:        0.46.2
+Version:        0.47.0
 Release:        1%{?dist}
 Summary:        Cross-platform, fast, feature full, GPU based terminal emulator
 
