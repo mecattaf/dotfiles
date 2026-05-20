@@ -1,5 +1,5 @@
 Name:           wl-gammarelay-rs
-Version:        1.0.1
+Version:        null
 Release:        %autorelease
 Summary:        Wayland display temperature and brightness control via DBus
 
