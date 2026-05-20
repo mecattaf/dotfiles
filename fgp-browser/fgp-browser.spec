@@ -1,5 +1,5 @@
 Name:           fgp-browser
-Version:        0.1.0
+Version:        null
 Release:        2%{?dist}
 Summary:        FGP daemon for browser automation via Chrome DevTools Protocol
 
