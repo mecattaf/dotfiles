@@ -5,7 +5,7 @@
 # https://github.com/sentriz/cliphist
 %global goipath         go.senan.xyz/cliphist
 %global forgeurl        https://github.com/sentriz/cliphist
-Version:                null
+Version:                0.7.0
 
 %gometa -L -f
 
