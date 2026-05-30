@@ -1,0 +1,820 @@
+{
+  "clusters": [
+    {
+      "dimension": "VERB SURFACE & CLI SHAPE — which verb names/structures recur across the 16 reference tools, and which are idiosyncratic",
+      "shared_patterns": [
+        {
+          "pattern": "The Docker/OCI core verb set: run / create / start / stop / exec / list(ls/ps) / rm(delete/remove) / inspect / logs. This vocabulary is so dominant it is effectively the lingua franca of the space.",
+          "repos_exhibiting": [
+            "crun (krun) [create/start/run/exec/kill/delete/state/list/ps]",
+            "podman [run/create/start/stop/kill/rm/ps/exec/inspect]",
+            "krunvm [create/start/list/inspect/delete]",
+            "microsandbox [run/create/start/stop/list(ls)/status(ps)/remove(rm)/exec/cp/logs/inspect]",
+            "smolvm [machine run/exec/create/start/stop/delete(rm)/status/ls(list)/shell(sh)/cp]",
+            "ERA [vm create/run/exec/shell/list/stop/clean]",
+            "arrakis [start/stop/destroy/list/run]",
+            "gh-runner-krunvm microvm.sh [list/run/wait/stop/delete/pull/cleanup]",
+            "claude-code-sandbox [start/attach/list(ls)/stop/logs/clean/purge/config]",
+            "sbx [run/create/ls/stop/rm/exec/cp/ports/policy]"
+          ],
+          "why_it_recurs": "Every tool wraps a container/VM engine and inherits or deliberately mimics Docker's mental model so users transfer knowledge with zero learning cost. crun and podman literally ARE the OCI spec; the wrappers (microsandbox, smolvm, sbx) copy it on purpose using visible_alias for ls/ps/rm/cp. It recurs because it is the lowest-friction surface for anyone who has used Docker/Podman.",
+          "adopt_for_us": "partial — adopt the recognizable subset only. Our ephemeral-by-default, no-state-file, single-user design means we do NOT need the full create/start two-phase split (that exists for persistent/detached lifecycles). Adopt: run (our core verb), exec/shell (enter), ls/list, rm/reap, logs, inspect. Skip: separate create+start (collapse into run), pause/resume/kill-as-verb. Use podman's verbs underneath but expose our own thin set."
+        },
+        {
+          "pattern": "run = create+start collapsed into one foreground, ephemeral one-shot verb (vs a separate create that is detached/persistent).",
+          "repos_exhibiting": [
+            "crun (run = create+start in one shot)",
+            "podman (run = create+start)",
+            "microsandbox (unnamed `run` = ephemeral, auto-removed; `create` = background persistent)",
+            "smolvm (`machine run` ephemeral default, `-d` detaches; `create` = named persistent)",
+            "sbx (`run` = create+attach; `create` = detached)",
+            "ERA (`vm temp` = create+run+cleanup one-shot)"
+          ],
+          "why_it_recurs": "The one-shot foreground run maps naturally onto the libkrun/krun_start_enter execution model where the host process IS the VM and blocks until the workload exits — there is nothing to detach unless you explicitly background it. So `run`-as-ephemeral and `create`-as-persistent is the natural cleavage the engine imposes.",
+          "adopt_for_us": "yes — this is the single most important verb-shape lesson and it directly validates our locked decision. Make `run` the core ephemeral verb (--rm + trap + foreground-blocking, propagate the workload exit code). Make persistence an explicit opt-in flag (--keep/--persist that stamps a label and skips --rm), NOT a separate create verb, to keep the surface minimal."
+        },
+        {
+          "pattern": "doctor / preconditions verb-zero (or its conspicuous ABSENCE flagged as a bug).",
+          "repos_exhibiting": [
+            "agent-sandbox (`doctor` checks host tooling, image presence, in-image security dep, ssh-agent)",
+            "krunvm (check_unshare precondition)",
+            "sbx (documents `usermod -aG kvm` as a first-run requirement)",
+            "gh-runner-krunvm (NO KVM preflight — explicitly called out as a cautionary gotcha)",
+            "ERA (NO preflight — late cryptic failures flagged)",
+            "libkrun (capability-probe API: krun_has_feature/krun_check_nested_virt/krun_get_max_vcpus)"
+          ],
+          "why_it_recurs": "KVM access, the right runtime build (+LIBKRUN), group membership, and image presence are the exact things that fail late and cryptically if unchecked. Tools that have a doctor verb earned it; tools that lack it (ERA, gh-runner-krunvm) are explicitly documented as failing badly. libkrun even exposes capability probes for precisely this.",
+          "adopt_for_us": "yes — adopt `doctor` as verb-zero, name it `doctor` (agent-sandbox precedent). It must check: /dev/kvm exists+accessible, `crun --version` shows +LIBKRUN, crun-krun handler present, libkrun/libkrunfw loadable+ABI-matched. This is a precondition tied to a guarantee, and the absence-as-gotcha findings make it non-optional."
+        },
+        {
+          "pattern": "A graduated cleanup/reaper verb ladder: gentle stop < remove-stopped < nuclear-purge, plus engine-level prune.",
+          "repos_exhibiting": [
+            "claude-code-sandbox (stop < clean < purge severity ladder)",
+            "sbx (stop = pause, rm = destroy)",
+            "ERA (stop = delete-but-keep-record, clean = delete+purge-storage)",
+            "microsandbox (stop vs remove, --force escalation)",
+            "podman (rm vs container prune)",
+            "gh-runner-krunvm (prefix-driven reaper backstop)"
+          ],
+          "why_it_recurs": "Persistent-by-default tools accumulate state, so they need an explicit cleanup ladder; the severity gradient (pause / remove-clean / destroy-everything) gives users a safe-to-aggressive escalation. Tools without a reaper (claude-code-sandbox in-memory map, ERA, sbx) all silently leak.",
+          "adopt_for_us": "partial — we do NOT need the full ladder because ephemeral --rm is the default. Adopt a single `reap` backstop verb (label-driven sweep of orphaned/dead managed sandboxes) and rely on --rm + trap for the common case. The severity-ladder lesson is mostly a cautionary tale that persistent-by-default forces this complexity; we sidestep it."
+        },
+        {
+          "pattern": "Wrapper invents ZERO verbs and rides the engine's surface entirely via --runtime (the pure-OCI-shim shape).",
+          "repos_exhibiting": [
+            "crun-vm (no verbs; selected via --runtime crun-vm, intercepts create/delete/exec, passes start/state/kill through)",
+            "crun/krun (no krun-specific subcommand; it IS crun + a flag)",
+            "agent-sandbox (no run verb — run is implicit via presence of --agent)"
+          ],
+          "why_it_recurs": "If you are an OCI runtime, the engine (podman/k8s) already owns the verbs, so inventing your own is redundant and breaks compatibility. crun-vm proves you can ship a whole VM tool with zero bespoke verbs.",
+          "adopt_for_us": "no (for the verb surface) — we deliberately go the opposite way: a single wrapper script with our OWN flag-preceded verbs so we control UX, labeling, and cleanup. But adopt the underlying lesson that podman/krun add nothing to track, validating podman-as-source-of-truth. Our verbs sit ABOVE podman; we still call `podman run --runtime=krun` underneath."
+        },
+        {
+          "pattern": "Resource caps expressed as small integer --cpus/--cpu/-c and --mem/--memory/-m flags, normalized at create-time.",
+          "repos_exhibiting": [
+            "krunvm (--cpus/--mem, hard caps cpus<=8 mem<=16384)",
+            "microsandbox (-c/--cpus, -m/--memory)",
+            "smolvm (--cpus/--mem, validated at create)",
+            "ERA (--cpu/--mem, defaults 1/256MiB)",
+            "gh-runner-krunvm (podman-native --cpus/--memory)",
+            "crun-vm (derives from podman --cpus/--memory)",
+            "podman (--cpus/--memory)",
+            "libkrun (krun_set_vm_config(vcpus,ram_mib))"
+          ],
+          "why_it_recurs": "These two knobs are the universal blast-radius levers and map directly onto krun_set_vm_config; every tool surfaces them with near-identical names.",
+          "adopt_for_us": "yes — expose conservative --cpus and --memory flags, validate them as integers in bash (krun treats malformed annotation values as fatal), and route them through krun.cpus/krun.ram_mib annotations on `podman run --runtime=krun`. Pick small defaults (1-2 vCPU / 512-1024 MiB), NOT the dev-sized 4 vCPU/8 GiB smolvm uses. Validate at birth, not launch (smolvm bug-fix lesson)."
+        },
+        {
+          "pattern": "The `--` separator passing everything after it verbatim to the in-guest workload command.",
+          "repos_exhibiting": [
+            "microsandbox (`msb run IMAGE -- cmd...`)",
+            "smolvm (`machine run IMAGE -- CMD...`)",
+            "agent-sandbox (`-- [agent args...]`)",
+            "gh-runner-krunvm (`-- <runner.sh opts>` and `-- <loop-id>`)",
+            "ERA (effectively via --cmd, base64-wrapped)"
+          ],
+          "why_it_recurs": "Cleanly separates the tool's own flags from the arbitrary command/args handed to the guest, avoiding ambiguity when the workload has its own flags. It is the standard exec-wrapper idiom.",
+          "adopt_for_us": "yes — use `--` to delimit our flags from the workload command. Pair with ERA's base64 command-transport trick to pass arbitrary agent-written code through `podman run ... -- bash -c` without shell-quoting bugs."
+        }
+      ],
+      "unique_contributions": [
+        {
+          "repo": "agent-sandbox",
+          "what": "Splits image lifecycle into THREE distinct verbs: `doctor` (preconditions), `update-image` (rebuild the sandbox image with checksum-verified tool tags), and `update-agents` (refill persistent volumes). Run itself is implicit (no run verb — selected by presence of --agent).",
+          "worth_stealing": "Partly. The doctor / update-image split is genuinely useful prior art for separating 'check preconditions' from 'refresh the base image'. We likely want one `doctor` and possibly a `build`/`update-image` verb for our Fedora base image. The implicit-run-via-flag shape is NOT worth stealing — we want an explicit `run` verb for a scriptable tool."
+        },
+        {
+          "repo": "gh-runner-krunvm",
+          "what": "A self-documenting usage() that greps the script's own `letter) # comment` arg-parser lines and reformats them into help text, plus a clean internal microvm.sh verb-abstraction layer (list/run/wait/stop/delete/pull/cleanup) dispatched to either podman or krunvm.",
+          "worth_stealing": "Yes (the self-documenting help) — for a single auditable bash script, generating help from the arg-parser comments means zero drift between flags and docs. The runtime-abstraction seam is over-engineering for us (engine is fixed at podman --runtime=krun); skip it."
+        },
+        {
+          "repo": "sbx + Docker/Codex field convention",
+          "what": "Network egress as first-class VERBS: `sbx policy allow|deny network [-g] <domain>` with three named presets (Open / Balanced / Locked Down) and a hard 'deny beats allow' rule. The field (wincent survey) also cites Codex CLI's `read-only` / `workspace-write` / `danger-full-access` access-tier naming.",
+          "worth_stealing": "Mostly no for our threat model (accident, not adversary) — building an allowlist DSL / policy verb is explicit scope-creep we reject; --network none default suffices. BUT the NAMED access-tier vocabulary (read-only / workspace-write / danger-full-access) is excellent prior art if we ever expose a single isolation-tier flag; far better than inventing words."
+        },
+        {
+          "repo": "smolvm",
+          "what": "A detached, verification-gated ephemeral reaper exposed as a HIDDEN internal subcommand (`_cleanup-ephemeral <name> <pid> <start_time> <ephemeral_name>`) that the parent CLI spawns so it can return the guest exit code immediately while teardown runs async. Also `machine data-dir NAME` to print the hash-derived on-disk path for scripting.",
+          "worth_stealing": "Yes (conceptually) — the pattern of a hidden internal subcommand that does the out-of-process, ordering-gated reap (kill only after PID+start_time verification, rm only after path-safety check) is a clean model for our reap backstop, letting the user get the exit code instantly. We implement it label-driven over podman rather than over a DB."
+        },
+        {
+          "repo": "arrakis",
+          "what": "A `list` (single VM) vs `list-all` verb split, and a full snapshot/restore/pause/resume/upload/download verb family for agent backtracking.",
+          "worth_stealing": "No. The list/list-all split is explicitly clunky (prefer one `list` with optional name + --json). snapshot/restore/pause/resume/upload/download are all out of scope for an accident-threat-model disposable sandbox — they exist for a persistent daemon-owned platform we are deliberately not building."
+        },
+        {
+          "repo": "microsandbox",
+          "what": "A global `--tree` flag that dumps the entire command tree even when required args are missing (for discoverability/agent introspection), plus `msb install <image>` that turns a sandbox into a host command alias.",
+          "worth_stealing": "Partial. `--tree`-style full-surface dump is nice for agent/skill discoverability and pairs with our planned --json; a lightweight equivalent (or just good `--help`) is worth it. `msb install`-as-alias is a neat trick but out of scope for our minimal single-script tool."
+        },
+        {
+          "repo": "claude-code-sandbox",
+          "what": "A read-only `config` introspection verb that pretty-prints the effective merged config, and a graduated stop<clean<purge cleanup ladder with confirmation + -y bypass.",
+          "worth_stealing": "Partial. The read-only introspection verb idea is good — fold it into our `doctor`/`--json` surface rather than a separate `config` verb (we have no config file; podman labels are the truth). The cleanup ladder is mostly a cautionary tale of their persistent-by-default leak; we need only one `reap`."
+        }
+      ],
+      "recommendation_for_us": "Keep a deliberately TINY, flat, flag-preceded verb set — roughly: `doctor` (verb-zero preconditions: KVM, crun +LIBKRUN, crun-krun, libkrunfw ABI), `run` (the core verb: ephemeral one-shot, --rm + trap + foreground-blocking, propagate the workload exit code, accept `--` then the workload command), `ls`/`list` (label-filtered, with --json/stable-columns), `reap` (label-driven backstop sweep of orphaned/dead managed sandboxes), and optionally `exec`/`shell` (enter a running sandbox) and `logs`. This is the recurring Docker/OCI core intersected down to what a single-user ephemeral tool actually needs.\n\nConcrete verb-shape decisions backed by the findings: (1) Collapse create+start into `run` and make persistence an explicit `--keep`/`--persist` FLAG that stamps a label and skips --rm — every tool that split create/start did so only to support persistent/detached lifecycles we default away from (microsandbox/smolvm/sbx all confirm run=ephemeral, create=persistent). (2) Name the preconditions verb `doctor` (agent-sandbox precedent); the tools that lacked it (ERA, gh-runner-krunvm) are documented failure cases. (3) Select EXCLUSIVELY by a mandatory managed-by label, never by name-substring — claude-code-sandbox and gh-runner-krunvm both filter by name/prefix and that is explicitly flagged as collision-prone; podman `--filter label=` gives reconciliation for free with no state file. (4) Use `--` + ERA's base64 command transport to pass arbitrary workload code without quoting bugs. (5) Expose conservative integer `--cpus`/`--memory` flags routed through krun.cpus/krun.ram_mib annotations, validated at birth (smolvm's validate-at-create lesson; krun's fatal-on-malformed-annotation gotcha). \n\nExplicitly REJECT, as scope-creep the verb surfaces tempt us toward: a network-policy verb/DSL (sbx policy allow/deny — wrong threat model; --network none suffices), snapshot/restore/pause/resume/upload/download (arrakis — persistent-platform features), a separate `config` verb (we have no config file; labels are truth), the pure-OCI-shim no-verbs shape (crun-vm — we want to own UX), and pluggable-backend abstraction (ERA/gh-runner — engine is fixed at podman --runtime=krun). Borrow two single-script ergonomics: gh-runner-krunvm's self-documenting usage() (generate help from arg-parser comments, zero drift) and smolvm's hidden-internal-subcommand reaper that returns the exit code immediately while teardown runs async. The ONE access-tier vocabulary worth importing if we ever add an isolation-level flag is Codex CLI's read-only / workspace-write / danger-full-access naming."
+    },
+    {
+      "dimension": "LIFECYCLE & CLEANUP — ephemeral vs persistent defaults, teardown, reapers, orphan prevention, naming/identity",
+      "shared_patterns": [
+        {
+          "pattern": "Ephemeral-by-default for the one-shot run path: the VM/container is destroyed automatically when its workload command exits, with persistence as an explicit opt-in",
+          "repos_exhibiting": [
+            "crun/krun (run = create+start, podman --rm)",
+            "agent-sandbox/ags (unconditional --rm)",
+            "gh-runner-krunvm (RUNNER_EPHEMERAL=1, no off-switch)",
+            "smolvm (machine run ephemeral default, -d to persist)",
+            "microsandbox (unnamed msb run auto-removed)",
+            "ERA (vm temp create+run+clean)",
+            "awesome-agent-sandboxes (E2B/Sprites/Vercel/Modal all tagged ephemeral)",
+            "wincent-gist (Modal/Cloudflare/treebeard ephemeral-by-default)"
+          ],
+          "why_it_recurs": "For disposable code execution the natural unit of work is one command; tying VM lifetime to that command's exit gives clean teardown for free and prevents accumulation. Persistence is the rarer, more dangerous case (disk bloat, drift), so the serious tools make you ask for it. This is the dominant field pattern, not a niche choice.",
+          "adopt_for_us": "yes — this is our locked decision and the prior art overwhelmingly validates it. Primary `run` verb = ephemeral via podman `--rm`; persistence is an explicit flag that stamps a label and skips --rm."
+        },
+        {
+          "pattern": "Persistent-by-default with manual-only teardown is the explicit ANTI-pattern: tools that default persistent leak containers/VMs/disk silently until the operator manually reaps",
+          "repos_exhibiting": [
+            "krunvm (create persists, manual delete only, no --rm)",
+            "arrakis (daemon-owned persistent VMs, explicit destroy)",
+            "sbx (persistent, disk grows via per-VM Docker daemon, manual rm)",
+            "textcortex/claude-code-sandbox (AutoRemove:false, name-scan cleanup)",
+            "ERA (BoltDB-tracked persistent VMs)"
+          ],
+          "why_it_recurs": "These tools optimize for reconnect/reuse of a named long-lived workspace (agent harness or dev box), so persistence is intentional — but every one of them documents disk bloat, orphan accumulation, or drift as a consequence, and several have no reaper at all. It recurs because reuse is convenient short-term but the cleanup debt is deferred onto the user.",
+          "adopt_for_us": "no — adopt as the cautionary case. Cite sbx (silent disk growth) and claude-code-sandbox (orphans on CLI crash, name-scan recovery) as exactly the failure modes our ephemeral+reaper design prevents."
+        },
+        {
+          "pattern": "Multi-layer teardown: a clean-exit auto-remove layer PLUS a signal/trap layer PLUS a backstop sweep that catches crashes the normal path missed",
+          "repos_exhibiting": [
+            "gh-runner-krunvm (--rm + EXIT/INT/TERM traps + prefix reaper)",
+            "smolvm (detached _cleanup-ephemeral + per-command orphan sweep)",
+            "microsandbox (per-invocation spawn_reaper reconciles DB vs live PID)",
+            "crun/krun (start_enter never returns, so cleanup MUST be trap/parent-side)",
+            "libkrun (start_enter exit()s, proving in-process post-launch cleanup is impossible)"
+          ],
+          "why_it_recurs": "No daemon means no supervisor watching for crashes; a SIGKILLed launcher orphans state. So robust no-daemon tools converge on three layers because each covers a different failure: --rm handles clean exit, traps handle Ctrl-C/SIGTERM, and the sweep handles the SIGKILL/SIGSEGV case that bypassed both. libkrun's start_enter-never-returns is the architectural proof that post-launch cleanup must live in the parent/trap, not in-process.",
+          "adopt_for_us": "yes — this is our locked three-layer plan (--rm + bash trap + label-driven reap backstop). Steal gh-runner-krunvm's detail of DISARMING the trap first (trap '' EXIT; trap - INT TERM EXIT) to avoid double-cleanup re-entrancy."
+        },
+        {
+          "pattern": "Reconcile-on-invocation reaper instead of a long-running background daemon: each CLI run cheaply sweeps for stale/orphaned sandboxes at startup",
+          "repos_exhibiting": [
+            "microsandbox (spawn_reaper guarded by Once, reconciles DB Running-claims vs pid_is_alive)",
+            "smolvm (cleanup_orphaned_ephemeral_vms per-command, skipped on the ephemeral path)",
+            "ERA (lazy reconcile in vm list: krunvm list vs cached records)",
+            "gh-runner-krunvm (orchestrator cleanup() reaps all prefix-matched VMs)"
+          ],
+          "why_it_recurs": "It gives self-healing without a persistent process to supervise — the inherent tension of daemonless design is 'who cleans up crashes?', and the answer is 'the next invocation does'. It's cheap and stateless-ish.",
+          "adopt_for_us": "yes — run a cheap label-query reap at the top of every script invocation. Crucially, because podman labels are our source of truth (not a SQLite DB), we get reconciliation for FREE — microsandbox/ERA need their reaper specifically to fix DB-vs-reality drift, a class of bug we sidestep entirely by having no state file."
+        },
+        {
+          "pattern": "Verification-gated / path-safe teardown ordering: kill only after PID+identity verification, delete files only after the process is confirmed dead and the path passes a strict safety check, deregister last",
+          "repos_exhibiting": [
+            "smolvm (PID+start_time check to avoid reused-PID kills; is_safe_cache_path before rm; DB deregister only after dir removal)",
+            "arrakis (reapProcess graceful signal then SIGKILL after 20s)",
+            "podman (stop = SIGTERM then SIGKILL after --time)"
+          ],
+          "why_it_recurs": "A reaper that rm -rf's a path or SIGKILLs a PID is itself dangerous — a reused PID or a symlinked/empty path turns cleanup into collateral damage. Tools that take crash-recovery seriously gate every destructive step behind a verification it's safe.",
+          "adopt_for_us": "partial — we do NOT delete worktrees on reap (unpushed-commit data-loss risk, see sbx), and podman owns container removal so we don't hand-roll rm. But if our reaper ever removes any host path, adopt smolvm's is_safe_cache_path guard (non-empty, strictly inside managed root, not equal to root, not a symlink) verbatim, and use SIGTERM-then-SIGKILL grace."
+        },
+        {
+          "pattern": "Identity/selection by name or substring is the fragile choice; the robust tools that select by structured metadata are safer than those that grep names",
+          "repos_exhibiting": [
+            "gh-runner-krunvm (grep -E ^PREFIX- — flagged as unsafe vs labels)",
+            "textcortex/claude-code-sandbox (name-substring 'claude-code-sandbox' for ALL list/stop/clean/purge)",
+            "krunvm (name->VmConfig in confy file)",
+            "arrakis (freeform VM name in daemon map)",
+            "podman (--filter label=k=v exclusive-AND, the structured alternative)"
+          ],
+          "why_it_recurs": "Tools without an engine-native metadata store fall back to names because that's all they have; this is collision-prone (any container with the magic substring gets swept). Only podman offers first-class label filtering as the engine's own state, so tools built directly on podman can be safe while krunvm/Docker-socket tools cannot.",
+          "adopt_for_us": "yes (the label side) — select EXCLUSIVELY by a mandatory label set (sandbox.managed-by/.created/.id/.worktree) via podman --filter label=, never by name substring. The name-grep approaches are explicitly the unsafe versions we reject."
+        },
+        {
+          "pattern": "Engine/podman as the only source of truth vs a separate state file/DB that must be reconciled — the latter exists only to be drift-prone",
+          "repos_exhibiting": [
+            "krunvm (confy file + buildah store = two sources that drift)",
+            "microsandbox (SQLite msb.db + reaper to reconcile)",
+            "smolvm (local DB + hash-derived data dir + orphan sweep)",
+            "ERA (BoltDB + lazy reconcile)",
+            "arrakis (state_dir + in-memory maps)",
+            "podman (labels/annotations ARE the state, queryable via ps --filter)"
+          ],
+          "why_it_recurs": "Tools that bypass the container engine (krunvm/buildah, cloud-hypervisor, Docker socket) must invent their own registry, which then drifts from reality and needs reconciliation machinery (the reaper exists largely to fix this). Tools built on podman get the registry for free.",
+          "adopt_for_us": "yes — no state file, no DB. podman labels are the single source of truth. This eliminates the entire drift/reconcile bug class that krunvm, microsandbox, smolvm, ERA, and arrakis all carry."
+        }
+      ],
+      "unique_contributions": [
+        {
+          "repo": "smolvm",
+          "what": "Detached out-of-process ephemeral reaper (hidden `_cleanup-ephemeral` subcommand): the parent CLI returns the workload's exit code IMMEDIATELY while a spawned detached helper does kill+rm+deregister asynchronously, with strict PID+start_time identity verification before signalling.",
+          "worth_stealing": "yes — the 'return exit code now, teardown async' split is a real UX win (caller isn't blocked on VM shutdown). For us this can be a backgrounded reap after the foreground podman run returns, plus the PID/identity-verification discipline if we ever signal processes directly."
+        },
+        {
+          "repo": "gh-runner-krunvm",
+          "what": "Sentinel-file IPC over a shared mount (.tkn/.trm/.brk) to coordinate host loop <-> in-guest process lifecycle (token-ready / terminate-request matched against a random secret / break-the-loop) with NO daemon or socket; plus self-disarming traps (trap '' EXIT first) to prevent double-cleanup.",
+          "worth_stealing": "partial — sentinel-file IPC is clever but more than our single-shot accident model needs; the self-disarming-trap detail IS worth stealing verbatim for our trap layer to avoid re-entrant double-cleanup."
+        },
+        {
+          "repo": "agent-sandbox/ags",
+          "what": "PSP sidecar teardown with SIGTERM-then-SIGKILL-after-5s to clean the sidecar's CHILD containers, and --psp-keep retention that is swept on the NEXT start — i.e. opt-out retention reaped lazily on next launch.",
+          "worth_stealing": "partial — the 'retained-thing gets swept on next start' lazy-GC idiom is a clean backstop pattern, but our scope (no sidecars) makes the specific machinery irrelevant; keep the lazy-sweep-on-next-invocation idea (already covered by our reaper)."
+        },
+        {
+          "repo": "microsandbox",
+          "what": "Self-expiring sandboxes via --max-duration (hard kill at a wall-clock cap) and --idle-timeout (stop after inactivity) as lifecycle backstops layered on top of the normal teardown.",
+          "worth_stealing": "yes (optional) — a TTL/max-duration flag is a cheap accident backstop for the long-lived-persistent opt-in case (e.g. an agent webapp left running); an age check against our .created label gives the same effect in the reaper without a timer process."
+        },
+        {
+          "repo": "textcortex/claude-code-sandbox",
+          "what": "Graduated-severity cleanup verb ladder: stop (pause) < clean (remove stopped) < purge (stop+remove ALL, with confirmation/-y), each printing what it will remove before acting.",
+          "worth_stealing": "partial — the stop<clean<purge severity ladder with a confirmation gate is good UX prior art for our reap/cleanup verb surface, but their underlying name-substring selection is the part to reject."
+        },
+        {
+          "repo": "arrakis",
+          "what": "Aggressive global host-state reset on daemon startup (deletes ALL tap* interfaces, br0 bridge, flushes iptables) as its 'cleanup' — co-tenant-hostile, stomps unrelated host networking.",
+          "worth_stealing": "no — explicit anti-pattern. The lesson is the inverse: our tool must touch ONLY resources it has labelled as its own and NEVER perform host-global mutations during cleanup."
+        },
+        {
+          "repo": "sbx",
+          "what": "Per-workspace-PATH identity enabling automatic reconnect (re-running the same workspace path reattaches to the existing sandbox rather than creating a new one), and the documented footgun that `rm` of a clone-mode sandbox silently destroys unfetched commits.",
+          "worth_stealing": "partial — the path-keyed-reconnect idea is interesting for a persistent mode but conflicts with our random-id+label simplicity; the data-loss footgun is the load-bearing lesson: NEVER let reap/teardown silently destroy a worktree with unpushed commits."
+        }
+      ],
+      "recommendation_for_us": "Lock in the three-layer, ephemeral-by-default model with podman labels as the sole source of truth — the prior art is nearly unanimous and the divergent tools demonstrate the exact failures we avoid. Concretely: (1) Primary `run` verb is ephemeral via `podman run --rm`; persistence is an explicit flag (e.g. --keep/--persist) that skips --rm and stamps a persistence label. Validated by crun/krun, ags, gh-runner-krunvm, smolvm, microsandbox, ERA, and both list repos. (2) Three teardown layers: --rm (clean exit) + bash trap on INT/TERM/EXIT calling `podman rm -f -v <id>` (disarm the trap FIRST, per gh-runner-krunvm, to avoid double-cleanup) + a label-driven reap backstop run cheaply at the top of every invocation (`podman ps -a -q --filter label=sandbox.managed-by=<us> --filter status=exited` then `podman rm -f -v`). This is microsandbox's reconcile-on-invocation reaper, but WITHOUT their SQLite DB — podman labels give us reconciliation for free, eliminating the DB-drift bug class that krunvm/microsandbox/smolvm/ERA/arrakis all carry. (3) Identity is a mandatory label set queried via --filter label=, NEVER name-substring (the explicit failure mode of claude-code-sandbox and gh-runner-krunvm). (4) Two hard safety rules from the cautionary repos: NEVER perform host-global mutations during cleanup (arrakis anti-pattern — only touch our own labelled resources), and NEVER silently destroy a worktree with unpushed commits on reap (sbx data-loss footgun) — our reaper removes the podman container but leaves the host worktree to the user/git. (5) Optional steals: a TTL/--max-duration backstop (microsandbox) implemented as an age check against the .created label for the persistent opt-in case; smolvm's 'return the workload exit code immediately, reap asynchronously in the background' split; and smolvm's is_safe_cache_path guard IF we ever rm any host path. Keep teardown scoped to labelled persistent sandboxes only — like ags, the ephemeral --rm path needs no reaper because nothing survives."
+    },
+    {
+      "dimension": "ISOLATION, NETWORK & RESOURCES — mount posture, network defaults, resource caps/annotations, egress policy, security model",
+      "shared_patterns": [
+        {
+          "pattern": "Network-OFF / deny-by-default egress as the safe posture (the SERIOUS tools converge here; the permissive ones are flagged as footguns)",
+          "repos_exhibiting": [
+            "crun (krun handler)",
+            "libkrun (only via disabling implicit vsock)",
+            "smolvm (--net required to enable any outbound)",
+            "podman (--network none = namespace, no interfaces)",
+            "sbx-releases (Balanced/Locked-Down presets, default-blocked, deny>allow)",
+            "microsandbox (egress default deny)",
+            "awesome-agent-sandboxes (Matchlock allowlisting)",
+            "wincent-gist (Cleanroom/treebeard/Greywall/srt deny-by-default)"
+          ],
+          "why_it_recurs": "Untrusted/agent-generated code phoning home is the single most-cited hazard, so the well-designed tools make outbound a deliberate opt-in. Note the split: krun's NATIVE default is no-NIC (passt opt-in) and libkrun is fail-OPEN (TSI on by default, port_map(NULL) exposes all) — so isolation must be asserted at the podman layer (--network none), not trusted from the engine. krunvm/crun-vm/arrakis/era/claude-code-sandbox/agent-sandbox all default network ON because they sandbox an agent that must reach APIs; that is the opposite scoping from ours.",
+          "adopt_for_us": "yes — make --network none the centralized default in the birth function and have doctor assert it. ERA is the cautionary tale: its --network none was stored-but-never-wired and was a silent no-op. Never ship an isolation flag that isn't enforced by an engine that actually enforces it (podman does)."
+        },
+        {
+          "pattern": "Read-only mounts as the desired posture, but most tools default READ-WRITE and bolt RO on as a per-mount suffix",
+          "repos_exhibiting": [
+            "libkrun (read_only only via virtiofs3; krun_set_root is RW)",
+            "podman (-v default rw; :ro/:Z opts)",
+            "krunvm (RW bind mounts, NO :ro option — a gap)",
+            "smolvm (-v host:guest[:ro], default rw)",
+            "microsandbox (CliMountOptions readonly/noexec)",
+            "gh-runner-krunvm (auto-appends :Z,rw — RW default)",
+            "sbx-releases (path:ro suffix)",
+            "claude-code-sandbox (mounts[] {readonly})",
+            "wincent-gist (yolobox leaves home unmounted)"
+          ],
+          "why_it_recurs": "virtiofs/bind passthrough is inherently RW unless explicitly constrained, and library-level there is NO path jail (libkrun explicitly disclaims any containment). The accident threat model makes a clumsy `rm -rf` over a RW host mount the prime blast-radius risk. sbx's `path:ro` and microsandbox's per-mount readonly/noexec are the clean expressions; krunvm having no :ro at all is the named gap.",
+          "adopt_for_us": "yes — invert the default: mount everything read-only, make RW the narrow explicit opt-in for ONLY the tool-created worktree. Use podman -v with :Z (SELinux relabel) for the worktree; steal sbx's `path:ro` suffix syntax. The worktree is a host bind-mount (not a volume) so --rm never deletes it — desired."
+        },
+        {
+          "pattern": "Conservative resource caps stamped at birth; never leave CPU/RAM unset (unset defaults are dangerously generous)",
+          "repos_exhibiting": [
+            "crun (krun.cpus capped 16, krun.ram_mib>128 else falls to 1024)",
+            "libkrun (krun_set_vm_config + krun_set_rlimits)",
+            "krunvm (cpus<=8, mem<=16384, defaults 2/1024)",
+            "crun-vm (UNSET = ALL host CPUs + 2GiB — the footgun)",
+            "smolvm (defaults 4 vCPU / 8 GiB — too big)",
+            "microsandbox (-c/-m + --rlimit nofile/nproc/as)",
+            "arrakis (mem = percent-of-host)",
+            "era (cpu=1, mem=256MiB defaults)",
+            "gh-runner-krunvm (2 vCPU/1024MB via podman-native --cpus/--memory)",
+            "claude-code-sandbox (NO caps at all — a gap)"
+          ],
+          "why_it_recurs": "libkrun derives vCPUs from host affinity (up to 16) and crun-vm defaults to ALL host CPUs when unset — so 'do nothing' yields a sandbox that can starve the host. The disciplined tools clamp small (era 1/256, krunvm 2/1024). microsandbox adds the key insight that cgroup cpu/ram caps alone don't stop an inode/fd/proc blowup — POSIX rlimits (nofile/nproc) are a second, cheap cap layer.",
+          "adopt_for_us": "yes — centralized birth function always stamps conservative krun.cpus / krun.ram_mib annotations (validate as integers in bash first; krun treats a malformed value as a FATAL error, and ram_mib<=128 is silently ignored). Prefer small defaults (era's 1/256 or krunvm's 2/1024). Add a conservative rlimit set as the second cap layer. Note gh-runner-krunvm proves bare --runtime krun + podman-native --cpus/--memory works without annotations, but annotations are the krun-native, filterable knob and survive cgroup-v1-rootless where --cpus/--memory silently don't."
+        },
+        {
+          "pattern": "Single shared security context: guest == VMM == the user; containment must come from the HOST OS layer, never the library",
+          "repos_exhibiting": [
+            "libkrun (explicit README: guest and VMM are ONE security context; virtio-fs + TSI are the leak surfaces)",
+            "crun (krun handler hardened against CVE-2025-24965 because rootfs is attacker-controlled)",
+            "libkrunfw (generic kernel, no SEV/TDX = trusts the host)",
+            "podman (--security-opt no-new-privileges, cap-drop, userns, SELinux :Z)",
+            "agent-sandbox (label=disable turns SELinux OFF — anti-pattern on Fedora)"
+          ],
+          "why_it_recurs": "A microVM gives a hardware boundary around the workload but the VMM process runs as the user; libkrun provides no path jail, so anything the user can reach the guest can potentially reach via a RW virtiofs share. Every serious tool therefore layers host-OS controls (namespaces, SELinux, cap-drop, no-new-privileges) on top. agent-sandbox disabling SELinux (label=disable) is the named Fedora anti-pattern.",
+          "adopt_for_us": "yes (partial) — for our accident-not-adversary model the microVM boundary + minimal RW exposure is the core. KEEP SELinux on (use :Z/:z labeled mounts; do NOT copy agent-sandbox's label=disable). Add --security-opt no-new-privileges and a conservative --cap-drop in the birth function. Skip SEV/TDX entirely (they defend against an untrusted host, which we trust). The 'one security context' fact is also the proof that secrets must stay on the host (justifies SSH-agent forwarding, keys never in guest)."
+        },
+        {
+          "pattern": "Keys/secrets never enter the guest — forward an agent or proxy credentials from the host",
+          "repos_exhibiting": [
+            "smolvm (--ssh-agent forwarded over vsock; keys never cross)",
+            "agent-sandbox (dedicated per-session ssh-agent, SSH_AUTH_SOCK forwarded)",
+            "gh-runner-krunvm (ephemeral .env sourced-then-rm'd; PAT never in process table)",
+            "sbx-releases (host egress proxy injects creds)",
+            "claude-code-sandbox (no SSH mount; GitHub token via url.insteadOf)",
+            "wincent-gist (Cleanroom/srt credential proxy)"
+          ],
+          "why_it_recurs": "Because guest==VMM==user, any key copied into the guest is one careless command from exfiltration or accidental commit; multiple independent designs converged on forwarding a socket/agent rather than copying material. arrakis baking user=elara/password=elara0000 into the image is the named cautionary opposite.",
+          "adopt_for_us": "yes — forward the host ssh-agent: bind-mount $SSH_AUTH_SOCK into the container and set SSH_AUTH_SOCK inside (podman path, simpler than smolvm's vsock bridge). The carry-over lesson from smolvm: inject BOTH the socket AND the env var because the container namespace is separate. Hard-fail with an actionable message if no agent is running. Stay orthogonal to network remoting/Tailscale."
+        }
+      ],
+      "unique_contributions": [
+        {
+          "repo": "sbx-releases (Docker sbx)",
+          "what": "Three NAMED egress presets (Open / Balanced / Locked-Down) plus a simple `policy allow|deny network <domain>` grammar with a hard 'deny beats allow' rule, all enforced by a host-side HTTP/HTTPS proxy (UDP/ICMP permanently blocked).",
+          "worth_stealing": "The naming vocabulary is worth borrowing as positioning language (our --network none == their Locked Down), but the proxy/allowlist DSL is an anti-exfiltration control for an ADVERSARY model — explicitly out of scope for accident-not-adversary. Do NOT build the proxy or the allowlist grammar; keep --network none + explicit localhost publish."
+        },
+        {
+          "repo": "microsandbox",
+          "what": "A full egress-policy DSL (--net-rule action:dir@target:proto:ports, --net-default deny), TLS interception with a custom CA (--tls-intercept), and explicit anti-exfiltration tooling (--secret ENV@HOST, --on-secret-violation block/terminate). Also per-exec POSIX rlimits (nofile/nproc/as) as a cheap second cap layer.",
+          "worth_stealing": "Steal ONLY the rlimits idea (cheap blast-radius control that cgroup caps miss). The net-rule DSL, MITM TLS CA and secret-violation detector are textbook scope creep for our threat model and are the concrete graduation-signal — resist all of it."
+        },
+        {
+          "repo": "smolvm",
+          "what": "SSH-agent forwarding implemented end-to-end over vsock with keys never crossing into the guest, plus a hostname egress allowlist where DNS resolution failure is a HARD ERROR (refuses to silently weaken policy), and a three-step verification-gated reaper with a strict is_safe_cache_path guard before any rm.",
+          "worth_stealing": "Steal the key-never-in-guest invariant (via podman bind-mount of the agent socket, not the vsock bridge) and the is_safe_cache_path guard pattern for any rm in our reaper. Skip the DNS-filter allowlist (out of threat model) and the forked libkrun/libkrunfw (non-Fedora-canon)."
+        },
+        {
+          "repo": "arrakis",
+          "what": "Memory cap as a PERCENTAGE of host RAM (guest_mem_percentage reads /proc and allocates a fraction) — a self-scaling conservative default — but also the cautionary global host mutation: restserver deletes ALL tap* interfaces, br0, and flushes iptables on boot.",
+          "worth_stealing": "The percent-of-host memory idea is conceptually neat but introspection-heavy; prefer absolute conservative krun.ram_mib for auditability. The strong lesson is the anti-pattern: our tool must touch ONLY resources it labels as its own and never perform host-global network mutations."
+        },
+        {
+          "repo": "era (ERA)",
+          "what": "--network none, ReadOnlyRoot, and a fixed guest UID 65532 were all RECORDED in the VM metadata but NEVER wired to an enforcing krunvm flag — pure aspirational metadata.",
+          "worth_stealing": "Nothing to adopt — it is the single most important cautionary tale in the set: never let an isolation flag exist as metadata only. Every isolation flag we expose must reach an engine arg that actually enforces it, and doctor should be able to assert the enforced state."
+        },
+        {
+          "repo": "agent-sandbox (ags)",
+          "what": "--lockdown as a single, well-defined hardened profile (sanitized ephemeral home + tmpfs /tmp nosuid,nodev,noexec sized, sidecars off) vs --root that nukes ALL hardening at once (drops keep-id, cap-drop, no-new-privileges).",
+          "worth_stealing": "The named-profile idea is good; the escape-hatch-hygiene lesson is the keeper — if we ever add an escape hatch that relaxes isolation, make it loud, single-run, and STAMPED IN A LABEL so doctor/reaper can see it. Also: do NOT copy their SELinux label=disable default."
+        },
+        {
+          "repo": "podman",
+          "what": "--read-only-tmpfs defaults to TRUE, so a --read-only container still has writable /tmp,/run,/var/tmp unless explicitly set false; and --publish silently no-ops under --network none.",
+          "worth_stealing": "Worth knowing as concrete gotchas to guard: decide deliberately whether the workload needs writable /tmp (set --read-only-tmpfs false for a fully-RO posture), and never combine --publish with --network none (guard it in the script). These are enforcement details, not features to add."
+        }
+      ],
+      "recommendation_for_us": "Lock the isolation posture into ONE centralized birth function in the bash script that always stamps, with no per-call discretion: (1) NETWORK — --network none by default (krun's own default is already no-NIC, so we are reinforcing it; doctor asserts it). Network is the explicit, labelled exception, opened only by publishing to localhost via podman -p on a bridge/pasta net when a sandbox must serve — NEVER --network host (podman docs call it a vulnerability), NEVER an egress allowlist DSL/proxy (that is an adversary-model control, out of scope; ERA's no-op --network none and sbx/microsandbox's proxies bound the two failure directions). (2) MOUNTS — read-only is the DEFAULT; the only RW mount is the tool-created git worktree, bound -v with :Z for SELinux. Keep SELinux ON (reject agent-sandbox's label=disable); the worktree is a host bind-mount so --rm never deletes it. Steal sbx's `path:ro` suffix ergonomics for any extra mounts. (3) RESOURCES — always stamp conservative krun.cpus / krun.ram_mib annotations (validate as integers in bash first: malformed is FATAL, ram_mib<=128 is silently ignored, cpus capped at 16); pick small defaults (≈1 vCPU / 256–1024 MiB, not smolvm's 4/8GiB). Add a second cap layer via a conservative rlimit set (nofile/nproc) since cgroup caps don't stop fd/proc blowups (microsandbox's insight). (4) PRIVILEGE — --security-opt no-new-privileges + conservative --cap-drop; forward the host ssh-agent (bind socket + set env, keys never in guest) and hard-fail if no agent — because guest==VMM==user makes any in-guest secret a leak. (5) SECURITY MODEL — accept the microVM hardware boundary as the core containment and skip SEV/TDX (they defend against an untrusted host we trust). The overarching rule, learned from ERA: every isolation flag must reach an enforcing podman/krun arg, and doctor (verb zero) must be able to verify the enforced state (KVM access, --network none, RO mounts) — never ship isolation as metadata."
+    },
+    {
+      "dimension": "GOTCHAS & ANTI-PATTERNS — recurring pitfalls (worktree/.git, KVM/SELinux, --rm-vs-crash, fail-open isolation flags) and the platform-creep warning",
+      "shared_patterns": [
+        {
+          "pattern": "FAIL-OPEN isolation flags — an isolation knob exists as metadata/default but is silently not enforced, so the operator believes they are isolated when they are not",
+          "repos_exhibiting": [
+            "ERA (--network none stored in record but NEVER passed to krunvm; ReadOnlyRoot and UID 65532 are recorded-but-not-enforced metadata)",
+            "libkrun (TSI networking ON by default when no net device added; krun_set_port_map(NULL) exposes ALL guest ports; default krun_set_root is read-WRITE)",
+            "krun (krun.ram_mib<=128 silently ignored; krun.cpus defaults up to 16 from affinity; passt opt-in but rootless path unverified)",
+            "microsandbox (ingress network default is ALLOW — only egress defaults to deny, so published ports are unfiltered unless ingress rules added)",
+            "agent-sandbox (--security-opt=label=disable turns SELinux OFF by default on Fedora; network is slirp4netns-on, not none; guards 'fail open' if dcg absent outside lockdown)",
+            "gh-runner-krunvm (default volume posture is :Z,rw read-write; in-guest containers forced to --network host)"
+          ],
+          "why_it_recurs": "Isolation defaults are generous because the authors optimize for 'it works out of the box' (dev ergonomics) rather than blast-radius containment, and because the underlying engines (libkrun TSI, krunvm) themselves default permissive. A flag that is plumbed but not wired to an enforcing engine arg is the worst case: it produces false confidence. ERA is the canonical cautionary tale — the headline security flag was a no-op.",
+          "adopt_for_us": "AVOID (this is the anti-pattern). Our centralized birth function must pass --network none to podman, which actually enforces it, and our doctor verb must ASSERT the enforcement (smoke-test that the runtime honored it). Never ship an isolation flag that is only metadata. Default mounts read-only; writability is a narrow explicit opt-in. Be fail-CLOSED everywhere libkrun/krunvm are fail-open."
+        },
+        {
+          "pattern": "STATE-FILE / DB drift requiring a reconciliation reaper — keeping a state DB or in-memory map separate from the real container/VM store, which inevitably drifts and forces lazy reconcile or an orphan-sweep to paper over it",
+          "repos_exhibiting": [
+            "krunvm (confy TOML config file AND buildah's container store = two sources of truth, no reconciliation)",
+            "microsandbox (SQLite DB ~/.microsandbox/db/msb.db; reaper-on-every-invocation exists precisely to reconcile DB drift from real PID state)",
+            "smolvm (local state DB + hash-derived data dirs + an orphan-sweep cleanup_orphaned_ephemeral_vms)",
+            "ERA (BoltDB at /var/lib/agent/agent.db; lazy status reconcile in vm list papers over drift)",
+            "arrakis (in-memory server maps + state_dir, daemon-owned; global host-state wipe on startup)",
+            "claude-code-sandbox (in-memory container Map lost if CLI crashes; orphans re-findable only by name scan)",
+            "textcortex/claude-code-sandbox (same name-scan recovery, no state persistence)"
+          ],
+          "why_it_recurs": "Once a tool wants named/persistent sandboxes and richer metadata than the engine exposes, the path of least resistance is a sidecar DB. But the DB and the real process/container state diverge on every crash, SIGKILL, or external mutation — so each of these tools then has to build a reconciliation/reaper layer whose ENTIRE job is to fix the drift the DB introduced.",
+          "adopt_for_us": "AVOID. This whole class of bug is exactly what our 'podman labels are the only source of truth, no state file, no daemon' decision sidesteps. We get reconciliation for free via `podman ps --filter label=sandbox.managed-by=...`. We still want a label-driven reap BACKSTOP (microsandbox/smolvm prove crashes orphan things), but with zero DB to drift."
+        },
+        {
+          "pattern": "--rm / clean-exit teardown does NOT cover the crash/SIGKILL path — a killed supervisor orphans containers/VMs because nothing reaps them",
+          "repos_exhibiting": [
+            "podman (no daemon = no automatic reaper; a SIGKILLed `podman run` leaves an Exited container row; label-sweep backstop is mandatory not optional)",
+            "krunvm (no --rm, no trap, no reaper; an agent loop accumulates buildah containers + config entries indefinitely)",
+            "ERA (no signal trap, no reaper; killed `agent` orphans krunvm VMs and BoltDB rows)",
+            "claude-code-sandbox (in-memory Map lost on CLI crash; no reaper backstop)",
+            "textcortex/claude-code-sandbox (persistent-by-default AutoRemove:false; leaks accumulate until manual clean/purge)",
+            "sbx (persistent-by-default, no TTL/reaper documented; disk silently grows)",
+            "gh-runner-krunvm (HAS the three-layer answer: --rm + per-process EXIT/INT/TERM traps + prefix reaper backstop)"
+          ],
+          "why_it_recurs": "--rm and process-tree teardown only fire on a CLEAN exit. SIGKILL, OOM, segfault, or a killed parent bypass them entirely. Tools that only rely on --rm (or worse, on an in-memory map) have no answer for the crash case, so orphans accumulate. gh-runner-krunvm and smolvm independently arrived at the same three-layer fix.",
+          "adopt_for_us": "ADOPT the three-layer model: layer1 = --rm (clean exit), layer2 = bash trap on INT/TERM/EXIT calling `podman rm -f -v`, layer3 = label-driven reap sweep as the crash backstop. Steal gh-runner-krunvm's detail of DISARMING the trap first (`trap '' EXIT`) to avoid double-cleanup re-entrancy, and smolvm's verification-gated ordering."
+        },
+        {
+          "pattern": "NAME / PREFIX substring matching for sandbox selection instead of labels — collision-prone and can sweep unrelated containers",
+          "repos_exhibiting": [
+            "gh-runner-krunvm (prefix reaper is a `grep -E ^PREFIX-` regex match; a sloppy prefix matches unrelated containers)",
+            "claude-code-sandbox (list/stop/clean/purge select by NAME SUBSTRING 'claude-code-sandbox'; ERA's ps|grep agent single-instance lock false-positives on any path containing 'agent')",
+            "textcortex/claude-code-sandbox (selection by name substring 'claude-code-sandbox' — fragile, collision-prone)",
+            "ERA (single-instance lock is a ps -eo command | grep agent substring match, false-positives)"
+          ],
+          "why_it_recurs": "Name-prefix matching needs no metadata system and works with any engine, so it's the cheapest selection mechanism. But names are uncontrolled and human-chosen, so substring matches catch unrelated processes/containers — and a reaper using it can DELETE things it shouldn't.",
+          "adopt_for_us": "AVOID name matching. ADOPT podman `--filter label=sandbox.managed-by=<us>` (exclusive AND) for all list/reap operations. This is strictly safer than every name-grep in the corpus and is the entire reason labels are our source of truth."
+        },
+        {
+          "pattern": "GENEROUS / DEV-SIZED resource defaults (or NO resource caps) when left unset — large blast radius silently",
+          "repos_exhibiting": [
+            "crun-vm (default RAM 2 GiB and default vCPU = ALL host CPUs when --memory/--cpus unset)",
+            "krun (krun.cpus defaults to up to 16 from CPU affinity; krun.ram_mib falls back to 1024 MiB)",
+            "smolvm (defaults 4 vCPU / 8 GiB RAM — dev-machine-sized)",
+            "claude-code-sandbox/textcortex (NO --memory/--cpus/pids caps at all)",
+            "sbx (resource caps exist but specific defaults undocumented)"
+          ],
+          "why_it_recurs": "Authors target interactive dev workloads where bigger = smoother, so the unset default is host-generous. For an accident-containment tool this is a footgun: a runaway workload gets the whole machine.",
+          "adopt_for_us": "ADOPT conservative explicit caps. Our centralized birth function must ALWAYS stamp small krun.cpus/krun.ram_mib (krunvm's 2 vCPU/1024 MiB or ERA's 1 vCPU/256 MiB are saner starting points than smolvm's 4/8192). Validate integers in bash before stamping (krun treats malformed annotations as a FATAL error). Add per-exec rlimits (NOFILE/NPROC) since cpu/ram caps don't stop an fd/proc/inode blowup."
+        },
+        {
+          "pattern": "DESTRUCTIVE-GIT / worktree footguns — the sandbox's partial view of host worktrees lets a git command orphan valid worktrees, or removing a sandbox silently destroys unpushed commits",
+          "repos_exhibiting": [
+            "agent-sandbox (THE named gotcha: `git worktree prune` from inside treats unseen host worktrees as stale and deletes their .git/worktrees metadata, orphaning valid worktrees; blocked via dcg regex policy)",
+            "sbx (`sbx rm` on a clone-mode sandbox SILENTLY destroys unfetched commits — data-loss footgun)",
+            "textcortex/claude-code-sandbox (has a commented-out in-container git wrapper blocking checkout/switch after first branch to protect main)",
+            "crun-vm (--persistent can CORRUPT the image if used by two VMs at once)"
+          ],
+          "why_it_recurs": "Agents run arbitrary git commands; the guest only sees a slice of the host's git topology, so any git operation that reasons globally (prune, gc) misfires. And sandbox teardown that owns the only copy of commits (clone-mode) is inherently lossy. The threat is accident, not malice — exactly our model.",
+          "adopt_for_us": "ADOPT both guards. The TOOL must create the worktree on the HOST (so commits live host-side, never destroyed on reap), resolve and mount the shared .git common dir (agent-sandbox's git.rs lesson), and GUARD `git worktree prune` (and gc/destructive git) inside the guest via a regex/wrapper. Never reap a worktree with unpushed commits silently."
+        },
+        {
+          "pattern": "SELINUX relabel / disable footguns on the bind-mount path (Fedora-specific)",
+          "repos_exhibiting": [
+            "podman (bind mounts on Fedora often need :z/:Z or are denied; :Z is private-label and can clobber shared host dirs)",
+            "gh-runner-krunvm (default :Z,rw relabel can MUTATE host-dir SELinux labels as a surprising side effect on shared dirs)",
+            "agent-sandbox (--security-opt=label=disable turns SELinux OFF entirely by default — discards a real Fedora host-protection layer)"
+          ],
+          "why_it_recurs": "On Fedora, SELinux denies unlabeled bind mounts, so tools either (a) relabel with :Z (which mutates the host dir's label, clobbering shared dirs) or (b) disable SELinux confinement wholesale to make mounts 'just work'. Both trade away protection for convenience.",
+          "adopt_for_us": "Do NOT disable SELinux (agent-sandbox's anti-pattern). Use :Z/:z labeling but be aware :Z is private and clobbers shared dirs — prefer :z (shared) for the worktree if it's ever shared, and only relabel the per-sandbox worktree we created (never a shared host dir). Keep the host MAC layer intact."
+        },
+        {
+          "pattern": "MISSING KVM / precondition preflight — failures surface late and cryptically because no doctor check runs first",
+          "repos_exhibiting": [
+            "gh-runner-krunvm (NO /dev/kvm preflight; check_command only verifies binaries are on PATH; failures surface late and cryptically)",
+            "krun (dies at exec time with '`/dev/kvm` unavailable' if KVM missing; annotation parse errors are fatal)",
+            "sbx (install requires `usermod -aG kvm $USER` + `newgrp kvm` — KVM-group membership is a real first-run failure)",
+            "libkrun (start_enter only returns on pre-boot -EINVAL; otherwise exits — capability probes exist precisely to preflight)"
+          ],
+          "why_it_recurs": "KVM access (device present + group membership), crun-built-with-+LIBKRUN, and crun-krun presence are all easy to assume and fail deep in the engine with opaque messages. Tools that skip the preflight push the failure to runtime.",
+          "adopt_for_us": "ADOPT doctor as verb-zero (agent-sandbox names it exactly). Check: /dev/kvm exists and is accessible (the sbx usermod case), crun built with +LIBKRUN, crun-krun handler present, libkrun/libkrunfw loadable and ABI-compatible. Validate annotation integers in bash before passing (krun fatals on malformed). This directly fixes gh-runner-krunvm's cautionary late-failure."
+        }
+      ],
+      "unique_contributions": [
+        {
+          "repo": "arrakis",
+          "what": "The clearest single embodiment of PLATFORM CREEP: a root host daemon (arrakis-restserver) + in-guest daemons (cmdserver, guestinit/vsockserver) + Go CLI + Python SDK + external MCP server, PLUS it performs destructive GLOBAL host mutation on startup (deletes ALL tap* interfaces, deletes br0 bridge, flushes iptables) — co-tenant-hostile.",
+          "worth_stealing": "Steal NOTHING — steal the WARNING. This repo is the platform-creep anti-pattern made concrete: it builds a daemon+REST+SDK+MCP stack to do what `podman run --runtime=krun` already does. Our entire value proposition (one bash script + thin SKILL.md, podman as only source of truth, no daemon) is the negative of arrakis. The global-host-mutation footgun is also a hard rule for us: touch ONLY resources we labeled as ours, never mutate host-global state (bridges, iptables, all-tap-devices)."
+        },
+        {
+          "repo": "microsandbox",
+          "what": "Reaper-on-every-invocation guarded by std::sync::Once: every CLI command fires a one-shot reap_stale_sandboxes() that reconciles DB records against actual PID liveness (pid_is_alive) and marks dead ones Crashed.",
+          "worth_stealing": "Steal the PATTERN, not the DB. Run a cheap label-query reconcile sweep at the top of every invocation of our script — but because podman labels are our truth, we do it with `podman ps --filter` and need NO SQLite (sidestepping the exact drift their reaper exists to fix). Their net DSL (--net-rule grammar), TLS-intercept MITM CA, and --secret/--on-secret-violation are explicitly OUT of our accident-not-adversary scope — note them as scope-creep to resist."
+        },
+        {
+          "repo": "smolvm",
+          "what": "Verification-gated detached reaper (_cleanup-ephemeral): (1) SIGKILL ONLY after PID+start_time verification (refuses to signal a reused PID), (2) delete data dir ONLY after process confirmed dead AND path passes is_safe_cache_path (non-empty, strictly inside cache root, not equal to root, not a symlink), (3) deregister last; any failed step intentionally leaves state for the orphan-sweep backstop.",
+          "worth_stealing": "Steal the ORDERING and the PATH-SAFETY GUARD. Any `rm -rf` in our reaper MUST pass a strict path check (inside our managed root, not a symlink, not empty/root) — this is mandatory for a bash tool where a bad variable expansion is catastrophic. The PID-reuse guard (verify identity before kill) and detached-so-exit-code-returns-immediately pattern are both worth mirroring. (But do NOT adopt smolvm's FORKED libkrun/libkrunfw — non-Fedora-canon, off-mission.)"
+        },
+        {
+          "repo": "ERA",
+          "what": "Two compounding footguns: (a) the headline --network none flag was a complete NO-OP (stored in the record, never passed to krunvm), and (b) base64 command-transport into the guest (echo <base64> | base64 -d | bash) to dodge shell-quoting bugs.",
+          "worth_stealing": "From (a): steal the LESSON — never ship an isolation flag that isn't wired to an enforcing engine arg; assert enforcement in doctor. From (b): steal the TRICK — base64-encode arbitrary agent-written code host-side and decode in-guest to pass it through `podman run ... -- bash -c` without quoting/escaping bugs. Genuinely useful and cheap."
+        },
+        {
+          "repo": "gh-runner-krunvm",
+          "what": "POSIX-sh `set -eu` WITHOUT pipefail (pipefail isn't POSIX in /bin/sh), so pipelines that grep/cut can mask upstream failures; plus a 30s-sleep startup mutex serializing the whole tool as a crude concurrency guard.",
+          "worth_stealing": "Steal the CONTRAST: we are bash, not /bin/sh, so we CAN and MUST use the stronger `set -euo pipefail` — their constraint is our opportunity. The 30s-sleep mutex is the concrete 'concurrency-safe allocation' GRADUATION SIGNAL: if we ever need parallel sandboxes with port/worktree allocation, that crude-mutex pain is the signal to leave bash for Rust. Also steal the trap-disarm-first idiom and self-documenting usage() (grep the script's own option-comment lines)."
+        },
+        {
+          "repo": "crun-vm",
+          "what": "Flag-PLACEMENT footgun unique to the OCI-runtime form factor: crun-vm-specific flags must come AFTER the image ref (in the command slot), and podman exec often needs `--` before them (e.g. `podman exec --latest -- --as fedora`); Docker needs an empty \"\" arg if the image has no entrypoint.",
+          "worth_stealing": "Steal it as JUSTIFICATION for our form factor. crun-vm's 'opts after the image, sometimes needing --' wart is a direct consequence of being an OCI runtime riding podman's verb surface. Our single flag-preceded wrapper script avoids this entirely — a concrete reason our form factor beats the runtime-shim approach for a single-user tool."
+        },
+        {
+          "repo": "krunvm",
+          "what": "Ships DEAD FLAGS: start --cpus/--mem, list -d, and top-level -v are all declared-but-unimplemented TODOs (no-ops); changevm silently ignores --volume when --remove-volumes is also passed.",
+          "worth_stealing": "Steal the discipline rule: don't ship flags you don't wire up. Our one disciplined bash script should only expose flags that actually map to podman behavior — a dead/no-op flag is worse than a missing one because it creates false expectations (and on isolation flags, false security)."
+        }
+      ],
+      "recommendation_for_us": "Treat this dimension as a checklist of failure modes our locked design already dodges, plus a few concrete guards to wire in. The single biggest recurring anti-pattern is FAIL-OPEN isolation: ERA's --network none was literally a no-op, libkrun's TSI and port_map(NULL) are on-by-default, microsandbox's ingress defaults to allow, agent-sandbox disables SELinux. Rule: every isolation flag we expose must be wired to an enforcing podman arg AND asserted by doctor — never ship metadata-only isolation, and never ship a dead flag (krunvm's lesson). Be fail-CLOSED where the engines are fail-open: --network none (podman actually enforces it), mounts read-only by default with narrow rw opt-in, conservative explicit krun.cpus/krun.ram_mib caps (NOT the dev-sized 4vCPU/8GiB or all-host-CPU defaults), plus rlimits for fd/proc/inode blowups.\\n\\nThe second cluster — state-file/DB drift (krunvm, microsandbox, smolvm, ERA, arrakis) and crash-orphans (podman, krunvm, ERA, both claude-code-sandboxes, sbx) — is exactly why we keep podman labels as the ONLY source of truth (no DB to drift) and select by `--filter label=sandbox.managed-by` (never name-substring, which collision-traps gh-runner-krunvm/claude-code-sandbox/ERA). Adopt the three-layer cleanup (--rm + trap + label-reap backstop) that gh-runner-krunvm and smolvm independently converged on; steal smolvm's verification-gated ordering and strict path-safety guard for any rm -rf, and the trap-disarm-first idiom.\\n\\nWire in the concrete guards: doctor as verb-zero checking KVM access (the sbx usermod case + krun's late '/dev/kvm unavailable'), crun+LIBKRUN, crun-krun, libkrunfw ABI; create the worktree HOST-side and GUARD `git worktree prune`/destructive git inside the guest (agent-sandbox's named footgun; sbx's silent-commit-loss); use :Z/:z labeling without disabling SELinux but only on worktrees we created (podman/gh-runner-krunvm clobber warning); use `set -euo pipefail` (we can, gh-runner-krunvm couldn't); steal ERA's base64 command-transport trick. Finally, arrakis IS the platform-creep warning incarnate (daemon + REST + SDK + MCP + global host mutation to do what `podman run --runtime=krun` already does) — resist every pull toward a daemon, state DB, network DSL, or SDK; the crude concurrency mutex (gh-runner-krunvm's 30s sleep) and the volume of hand-rolled arg-parsing (agent-sandbox's ~400 lines) are our named GRADUATION signals to leave bash, not features to import early."
+    },
+    {
+      "dimension": "LLM/SKILL INTEGRATION & UX — how tools expose themselves to coding agents (skills, doctor checks, parseable/JSON output, config files, exit codes, self-documenting help)",
+      "shared_patterns": [
+        {
+          "pattern": "`doctor`/preconditions-as-verb-zero: a dedicated command that checks host prerequisites (KVM access, runtime presence, image presence, in-image security deps) and reports actionable failures BEFORE any run",
+          "repos_exhibiting": [
+            "agent-sandbox (ags doctor)",
+            "crun (krun handler — '`/dev/kvm` unavailable' / +LIBKRUN feature string)",
+            "libkrun (krun_check_nested_virt / krun_has_feature / krun_get_max_vcpus capability probes)",
+            "sbx-releases (usermod -aG kvm install step)",
+            "gh-runner-krunvm (LACKS it — cited as cautionary tale of late cryptic failures)"
+          ],
+          "why_it_recurs": "microVM stacks fail late and cryptically when KVM/runtime/permissions are wrong, and an LLM driving the tool cannot diagnose a deep C-level error. A single up-front check that maps each precondition to a remediation string is the cheapest way to make the tool legible to both humans and agents. libkrun even ships the probe functions as a library API, proving the pattern is canonical at every layer.",
+          "adopt_for_us": "yes — `doctor` is verb-zero. Check exactly: /dev/kvm accessible, crun built with +LIBKRUN (feature string), crun-krun symlink/handler present, libkrun/libkrunfw loadable + ABI-compatible. Emit actionable remediation per failure (e.g. 'run: sudo usermod -aG kvm $USER'). Steal ags's idea of tying a check to a guarantee (it warns guards 'fail open' if dcg missing)."
+        },
+        {
+          "pattern": "Machine-readable output mode: `--format json` / `--json` / stable columns for status/list, separate from human tables, plus a read-only `config` introspection verb",
+          "repos_exhibiting": [
+            "microsandbox (status --format json)",
+            "smolvm (cp progress to stderr so stdout redirects stay clean)",
+            "textcortex/claude-code-sandbox (config verb pretty-prints merged config)",
+            "sbx-releases (ls shows status/CPU/mem/ports)",
+            "podman (--format Go-templates everywhere; ps/inspect)",
+            "ERA (LACKS it — only tabwriter table + file-logged stdout, cited as gap)"
+          ],
+          "why_it_recurs": "An LLM agent composing with a tool needs to parse state without scraping human tables; tools that only emit pretty tables (ERA) force fragile parsing. Routing diagnostics/progress to stderr keeps stdout clean for piping. podman already gives this for free via --format, so a wrapper inherits it.",
+          "adopt_for_us": "yes — implement `--json`/stable-columns derived directly from `podman ps --filter label=sandbox.managed-by --format '{{.ID}} {{.Labels}}'`; never parse human tables. Send progress/logs to stderr. Add a read-only introspection verb (config/status) for the SKILL.md to query."
+        },
+        {
+          "pattern": "Agent integration kept OUT of the core tool — skills/MCP live in separate repos/submodules, wrapping a stable CLI rather than reaching into engine internals",
+          "repos_exhibiting": [
+            "microsandbox (skills/ and mcp/ are external submodules: superradcompany/skills, microsandbox-mcp)",
+            "arrakis (MCP server is a separate repo; REST + Python SDK layered on one engine)",
+            "agent-sandbox (sandboxes the harness but keeps dcg policy packs as declarative .yaml files in-repo, not code)",
+            "awesome-agent-sandboxes (documents MCP servers as separate offerings across the field)"
+          ],
+          "why_it_recurs": "Coupling the agent-facing layer (MCP/skill) to engine internals creates churn and breaks the audit boundary; a stable CLI contract lets the skill be thin and the core stay single-purpose. Every serious platform converges on 'core CLI/SDK, agent glue separate'.",
+          "adopt_for_us": "yes — matches our no-plugin philosophy exactly. The thin Claude SKILL.md wraps the bash script's stable CLI + stable exit codes, never reaches into podman/krun internals. Keep agent integration a wrapper over verbs."
+        },
+        {
+          "pattern": "Stable, distinct exit codes + verbatim forwarding of the workload's own exit code (vs collapsing everything to one error code)",
+          "repos_exhibiting": [
+            "microsandbox (run forwards guest exit code; structured boot-error vs exec-failed renderers)",
+            "libkrun (init exit codes 125/126/127 distinct = setup/cannot-exec/not-found; krun_start_enter exits with guest code)",
+            "podman (container exists 0/1; documented filter exit semantics)",
+            "krunvm (LACKS it — returns -1/255 for every error, cited as poor for scripting)",
+            "ERA (timeout/error handling but muddy run-vs-exec output)"
+          ],
+          "why_it_recurs": "An agent branching on tool results needs to distinguish 'sandbox setup failed' from 'my code exited nonzero'. Tools that collapse to one code (krunvm) are unscriptable; libkrun deliberately preserves init's distinct codes so callers can tell setup failure from workload failure.",
+          "adopt_for_us": "yes — reserve distinct exit codes for doctor/precondition failure vs not-found vs runtime-launch failure, and forward the workload's exit code verbatim. Document the scheme in SKILL.md so the agent can branch on it."
+        },
+        {
+          "pattern": "Config = flags + env-var duality (flags win), with NO runtime state file; configuration is declarative and discoverable, runtime state lives in the engine",
+          "repos_exhibiting": [
+            "gh-runner-krunvm (every var ${VAR:-default}, flags override, fully headless-scriptable)",
+            "smolvm (Smolfile TOML mergeable with CLI flags)",
+            "agent-sandbox (config.toml + flags, --defaults to keep wrappers in sync)",
+            "textcortex/claude-code-sandbox (JSON config file merged with flags)",
+            "podman (labels/annotations ARE the state; daemonless, no broker)"
+          ],
+          "why_it_recurs": "Headless agents drive tools non-interactively, so flags+env with sane ${VAR:-default} defaults make the whole surface scriptable. Tools that put RUNTIME state in a file/DB (krunvm confy, ERA BoltDB, microsandbox/smolvm SQLite) all then need reaper machinery to reconcile drift — the cost is visible across the set.",
+          "adopt_for_us": "partial — adopt flags+env duality and conservative ${VAR:-default}s for CONFIG. But reject any runtime state FILE: podman labels (sandbox.managed-by/.created/.id/.worktree) are the single source of truth, queryable via --filter label=. This sidesteps the exact drift/reaper-reconcile pain microsandbox/smolvm/ERA/krunvm all pay."
+        },
+        {
+          "pattern": "Self-documenting / discoverable command surface (command-tree dump, grep-own-comments help, shell completions)",
+          "repos_exhibiting": [
+            "microsandbox (--tree global flag dumps full command tree even with missing args)",
+            "gh-runner-krunvm (usage() greps the script's own `letter) # comment` lines — zero duplication)",
+            "agent-sandbox (completions verb for bash/zsh/fish)"
+          ],
+          "why_it_recurs": "Agents discover capabilities by reading help/tree output; a self-describing surface (especially one generated from the source so it can't drift) makes the tool legible without external docs. microsandbox's --tree explicitly exists for 'discoverability/testing'.",
+          "adopt_for_us": "partial — for a single bash script the high-value version is gh-runner-krunvm's grep-own-option-comments usage() (no drift between parser and help). A --tree-style full-surface dump is nice for the SKILL.md to introspect; completions are optional polish."
+        }
+      ],
+      "unique_contributions": [
+        {
+          "repo": "agent-sandbox (ags)",
+          "what": "doctor probes whether a specific in-IMAGE security dependency (`dcg` guard binary) exists and explicitly warns that guards 'fail open' if it's missing — a precondition check wired directly to a stated security guarantee, not just 'is the binary on PATH'.",
+          "worth_stealing": "yes, conceptually. Our doctor should not just check 'KVM present' but assert the guarantee it underwrites (e.g. confirm --network none is actually enforced by the runtime, confirm the worktree git-guard is in place) and warn loudly when a safety property degrades to fail-open. ERA's unenforced `--network none` is the cautionary inverse."
+        },
+        {
+          "repo": "wincent-gist / awesome-agent-sandboxes",
+          "what": "Names the field's canonical agent-facing ACCESS-TIER vocabulary — Codex CLI's `read-only` / `workspace-write` / `danger-full-access` — as the most-cited naming for an escalating filesystem/network permission flag.",
+          "worth_stealing": "partial. If we ever expose a single tier knob to the agent, reuse this established vocabulary rather than inventing words — an LLM already 'knows' these terms from training. For v1 our --network none + read-only-mount default ~= read-only; an explicit publish/rw flag ~= workspace-write. Don't build a third danger tier unless asked."
+        },
+        {
+          "repo": "microsandbox",
+          "what": "`msb install <image>` turns a sandbox into a host command alias, AND a reaper-on-every-invocation (fire-once via std::sync::Once) that reconciles DB state against live PIDs at the top of every CLI call — self-healing without a daemon.",
+          "worth_stealing": "partial. The reaper-at-startup pattern is the model for our label-driven reap backstop, but because podman labels are our source of truth we get reconciliation for FREE (podman ps --filter label) with no DB — a design win to call out. The `install`-as-alias UX is neat for humans but orthogonal to agent integration; skip for v1."
+        },
+        {
+          "repo": "gh-runner-krunvm",
+          "what": "Poor-Man's-Logging: leveled (trace/debug/verbose/info/warn/error) logging to a configurable fd with [bin][LVL][timestamp] prefix, plus sublog() that tails the guest log and re-stamps each line through the same formatter for unified host-side logs — all in pure POSIX sh.",
+          "worth_stealing": "yes. A single leveled-log-to-fd helper makes the script's output legible and greppable for both humans and an agent reading logs, and keeps diagnostics off stdout (which carries machine-readable output). Cheap to port to bash."
+        },
+        {
+          "repo": "textcortex/claude-code-sandbox",
+          "what": "Ordered engine auto-detection by probing known socket paths (DOCKER_HOST > config > /run/user/<uid>/podman/podman.sock > ...) with isPodman()=path-contains-'podman' — zero-config engine selection.",
+          "worth_stealing": "no (as-is). It assumes the socket/daemon model we reject. The transferable lesson is only that zero-config detection reduces agent friction — but our daemonless path means doctor just verifies `podman --runtime crun-krun` works directly; no socket probing."
+        }
+      ],
+      "recommendation_for_us": "Make the tool legible to a coding agent through four cheap, high-leverage moves, all sitting on podman + a thin SKILL.md:\n\n1) `doctor` is verb-zero and is the agent's first call. Check /dev/kvm access, crun +LIBKRUN feature string, crun-krun handler present, libkrun/libkrunfw loadable+ABI-matched. Emit one actionable remediation line per failure (steal sbx's `usermod -aG kvm` precedent and ags's 'tie the check to the guarantee, warn loudly on fail-open'). Distinct exit code so the agent can branch on 'environment not ready' vs 'workload failed'. ERA's unenforced `--network none` is the cautionary tale: doctor should assert isolation is actually enforced, not merely configured.\n\n2) Stable machine-readable contract. `--json`/stable-columns (id, status, ports, worktree) derived straight from `podman ps --filter label=sandbox.managed-by --format`; never parse human tables (ERA's gap). Forward the workload's exit code verbatim and reserve distinct codes for doctor/not-found/launch-failure (krunvm collapsing everything to 255 is the anti-pattern; libkrun's preserved 125/126/127 is the model). Diagnostics and progress to stderr (smolvm) so stdout stays clean for the agent to pipe.\n\n3) Config = flags + env-var duality with conservative ${VAR:-default}s (gh-runner-krunvm), and NO runtime state file. Podman labels are the single source of truth — this is the design win that lets us skip the SQLite/BoltDB/confy + reaper-reconcile machinery that microsandbox, smolvm, ERA, and krunvm all pay for. Our reap backstop becomes a free `podman ps --filter label` sweep instead of a DB reconciler.\n\n4) Keep agent integration thin and external to the engine (microsandbox/arrakis pattern, and our no-plugin philosophy): the Claude SKILL.md wraps the script's stable verbs + documented exit codes only. Make the script self-documenting via gh-runner-krunvm's grep-own-option-comments usage() so help can't drift from the parser. If we ever surface a single permission tier to the agent, reuse Codex's `read-only`/`workspace-write`/`danger-full-access` vocabulary rather than inventing terms. Add a leveled log-to-fd helper for greppable, off-stdout diagnostics. Explicitly DO NOT build an MCP server, REST/SDK layer, network-policy DSL, or credential proxy — those are the platform-creep graduation signals (arrakis/microsandbox/sbx), not v1 of a single-user bash tool."
+    }
+  ],
+  "condensed": {
+    "condensed_narrative": "The 16 reference tools converge on a remarkably consistent shape, and our locked design sits squarely inside that consensus while deliberately shedding the machinery the others accreted. First, the verb surface: everyone speaks the Docker/OCI dialect (run/exec/ls/rm/inspect/logs), and the single most load-bearing lesson is that `run` should collapse create+start into one foreground, ephemeral, auto-removing one-shot — with persistence as an explicit opt-in FLAG, never a separate verb. Tools that split create/start (microsandbox, smolvm, sbx) did so only to serve the persistent/detached lifecycles we default away from. We adopt a tiny flat set — doctor, run, ls/list, reap, optionally exec/shell and logs — and own our own flag-preceded verbs above podman rather than riding podman's surface as a pure OCI shim (crun-vm) or selecting-by-flag-presence (agent-sandbox).\n\nSecond, lifecycle and cleanup show near-unanimous agreement on ephemeral-by-default plus a layered teardown, and the divergent tools demonstrate exactly the failures we avoid. Persistent-by-default (krunvm, sbx, claude-code-sandbox, arrakis, ERA) silently leaks containers and disk until manual reaping. The robust answer, independently reached by gh-runner-krunvm and smolvm, is three layers: --rm for clean exit, a signal trap for the SIGINT/TERM path, and a backstop sweep for crashes. The deepest design win is that podman labels are our ONLY source of truth: every tool that kept a separate state file or DB (krunvm's confy, microsandbox's SQLite, smolvm's local DB, ERA's BoltDB, arrakis's in-memory maps) had to build a reconcile-on-invocation reaper purely to paper over DB-vs-reality drift — a whole bug class we delete by having no state file. Selection must be by mandatory `--filter label=sandbox.managed-by`, never by name substring (the explicit collision footgun in gh-runner-krunvm, claude-code-sandbox, and ERA's grep-based lock).\n\nThird, isolation/network/resources: the serious tools all converge on network-off and conservative caps, while the permissive ones are flagged as footguns. We make --network none the centralized default (podman actually enforces it, unlike ERA where it was metadata-only no-op), mount read-only by default with the tool-created worktree as the only RW :Z bind-mount, always stamp small krun.cpus/krun.ram_mib annotations (validated as integers since krun fatals on malformed and silently ignores ram_mib<=128), and add rlimits as a second cap layer. Crucially, our threat model is accident-not-adversary, so we explicitly REJECT the egress-policy DSLs, TLS-intercept CAs, credential proxies, and secret-violation detectors that sbx and microsandbox build — those defend against an adversary and are the field's clearest scope-creep signal. We keep SELinux ON (rejecting agent-sandbox's label=disable) and skip SEV/TDX (they defend against an untrusted host we trust). The single governing rule, learned from ERA: every isolation flag must reach an enforcing engine arg and be assertable by doctor.\n\nThe uniquenesses worth lifting are few and cheap. From ERA: base64-encode arbitrary agent-written code host-side and decode in-guest to pass it through `podman run ... -- bash -c` without shell-quoting bugs. From smolvm: the detached reaper that returns the workload exit code immediately while teardown runs async, plus the strict is_safe_cache_path guard (non-empty, inside managed root, not root, not a symlink) for any rm. From gh-runner-krunvm: the self-documenting usage() that greps the script's own option-comment lines (zero help/parser drift), the trap-disarm-first idiom (trap '' EXIT) to avoid re-entrant double-cleanup, and a leveled log-to-fd helper keeping diagnostics off stdout. From agent-sandbox: name the preconditions verb `doctor` and tie each check to the guarantee it underwrites (warn loudly on fail-open). From libkrun: distinct exit codes (125/126/127) as the model versus krunvm collapsing everything to 255. If we ever add a single isolation-tier knob, reuse Codex CLI's read-only / workspace-write / danger-full-access vocabulary rather than inventing terms.\n\nFinally, the strongest negative lesson is arrakis as platform-creep incarnate: a root daemon plus in-guest daemons plus Go CLI plus Python SDK plus external MCP server plus destructive global host mutation (deletes all tap* interfaces, br0, flushes iptables) to do what `podman run --runtime=krun` already does. Our entire value proposition — one disciplined bash script plus a thin SKILL.md, podman labels as sole source of truth, no daemon — is the negative of arrakis. Its global-host-mutation is also our hard rule: touch ONLY resources we labelled as ours. The named graduation signals to leave bash, not import early, are gh-runner-krunvm's crude 30s-sleep concurrency mutex (the moment we need parallel port/worktree allocation) and agent-sandbox's ~400 lines of hand-rolled arg-parsing.",
+    "consensus": [
+      {
+        "pattern": "Docker/OCI core verb vocabulary (run/exec/ls/rm/inspect/logs) is the lingua franca of the space",
+        "strength": "near-universal (all 16 tools draw from this set)",
+        "implication_for_us": "Adopt the recognizable subset only: run (core), exec/shell, ls/list, reap, logs, inspect. Expose our own thin flag-preceded verbs ABOVE podman; do not invent idiosyncratic names."
+      },
+      {
+        "pattern": "run = create+start collapsed into one foreground ephemeral one-shot; persistence is an explicit opt-in, not a separate verb",
+        "strength": "near-universal among the run-path tools (crun, podman, microsandbox, smolvm, sbx, ERA)",
+        "implication_for_us": "Make `run` the core ephemeral verb (--rm + trap + foreground-blocking, propagate workload exit code). Make persistence a --keep/--persist FLAG that stamps a label and skips --rm. This is the single most important verb-shape lesson."
+      },
+      {
+        "pattern": "Ephemeral-by-default for the one-shot path; persistent-by-default is the explicit anti-pattern that silently leaks containers/disk",
+        "strength": "near-universal (every serious run-path tool is ephemeral; krunvm/sbx/claude-code-sandbox/arrakis are the cautionary leakers)",
+        "implication_for_us": "Primary run = ephemeral via podman --rm. Cite sbx (silent disk growth) and claude-code-sandbox (orphans on CLI crash) as the exact failures our design prevents."
+      },
+      {
+        "pattern": "Multi-layer teardown: clean-exit auto-remove + signal/trap layer + crash backstop sweep (because --rm alone never covers SIGKILL/crash)",
+        "strength": "common; independently converged on by gh-runner-krunvm and smolvm",
+        "implication_for_us": "Lock the three-layer plan: --rm + bash trap on INT/TERM/EXIT calling podman rm -f -v + label-driven reap backstop at top of every invocation. Disarm the trap first to avoid re-entrant double-cleanup."
+      },
+      {
+        "pattern": "Engine/podman as the only source of truth; a separate state file/DB exists only to drift and force a reconcile reaper",
+        "strength": "common (krunvm, microsandbox, smolvm, ERA, arrakis all carry a DB + reconciler; podman labels are the structured alternative)",
+        "implication_for_us": "No state file, no DB. Podman labels (sandbox.managed-by/.created/.id/.worktree) are the single source of truth, giving reconciliation for free and deleting the entire drift bug class."
+      },
+      {
+        "pattern": "Select sandboxes by structured metadata/labels, never by name or prefix substring",
+        "strength": "common (name-grep flagged unsafe in gh-runner-krunvm, claude-code-sandbox, ERA; podman --filter label= is the safe form)",
+        "implication_for_us": "Select EXCLUSIVELY via podman --filter label=sandbox.managed-by=<us> (exclusive AND) for all list/reap. Strictly safer than every name-grep in the corpus."
+      },
+      {
+        "pattern": "Network-off / deny-by-default egress as the safe posture (serious tools converge; permissive ones flagged as footguns)",
+        "strength": "common among serious tools (smolvm, podman none, sbx, microsandbox, several in the surveys)",
+        "implication_for_us": "Make --network none the centralized default in the birth function; doctor asserts it is actually enforced. ERA's stored-but-unwired --network none is the cautionary no-op."
+      },
+      {
+        "pattern": "Conservative resource caps stamped at birth; unset/dev-sized defaults are dangerously generous",
+        "strength": "common (krun, krunvm, era conservative; crun-vm all-host-CPUs, smolvm 4vCPU/8GiB, claude-code-sandbox no caps are the footguns)",
+        "implication_for_us": "Always stamp small krun.cpus/krun.ram_mib (~1 vCPU / 256-1024 MiB), validated as integers in bash (krun fatals on malformed, silently ignores ram_mib<=128). Add rlimits (nofile/nproc) as a second layer."
+      },
+      {
+        "pattern": "Read-only mounts are the desired posture (though most tools default RW and bolt :ro on per-mount)",
+        "strength": "common as aspiration; few default to it",
+        "implication_for_us": "Invert the common default: mount read-only by default; the only RW mount is the tool-created git worktree, bound -v with :Z. Borrow sbx's path:ro suffix ergonomics for extra mounts."
+      },
+      {
+        "pattern": "Single shared security context (guest==VMM==user); containment comes from the HOST OS layer, and secrets must never enter the guest",
+        "strength": "common (libkrun explicit; smolvm/agent-sandbox/sbx/gh-runner all forward creds rather than embed)",
+        "implication_for_us": "Forward the host ssh-agent (bind $SSH_AUTH_SOCK + set the env var, keys never cross); hard-fail if no agent. Keep SELinux on, add no-new-privileges + cap-drop. Skip SEV/TDX (untrusted-host defense we don't need)."
+      },
+      {
+        "pattern": "doctor / preconditions-as-verb-zero checking host prerequisites with actionable remediation before any run",
+        "strength": "common (agent-sandbox names it; crun/libkrun/sbx imply it; gh-runner-krunvm and ERA are cautionary for lacking it)",
+        "implication_for_us": "Make `doctor` verb-zero: check /dev/kvm accessible, crun +LIBKRUN feature string, crun-krun handler present, libkrun/libkrunfw loadable+ABI-matched. One remediation line per failure; distinct exit code; tie each check to the guarantee it underwrites."
+      },
+      {
+        "pattern": "Machine-readable output (--json/stable columns) separate from human tables; diagnostics/progress to stderr; never parse human tables",
+        "strength": "common (microsandbox/sbx/podman; smolvm stderr discipline; ERA cited as gap for lacking it)",
+        "implication_for_us": "Derive --json/stable columns straight from podman ps --filter label --format. Send logs/progress to stderr so stdout stays pipeable for the agent."
+      },
+      {
+        "pattern": "Stable distinct exit codes + verbatim forwarding of the workload's own exit code",
+        "strength": "common (libkrun 125/126/127 model; krunvm collapsing all to 255 is the anti-pattern)",
+        "implication_for_us": "Forward the workload exit code verbatim; reserve distinct codes for doctor/precondition-failure vs not-found vs launch-failure. Document the scheme in SKILL.md so the agent can branch."
+      },
+      {
+        "pattern": "Agent integration kept thin and EXTERNAL to the engine — skills/MCP wrap a stable CLI, never reach into engine internals",
+        "strength": "common (microsandbox/arrakis external submodules; matches our no-plugin philosophy)",
+        "implication_for_us": "The Claude SKILL.md wraps the script's stable verbs + documented exit codes only. Do NOT build an MCP server, REST/SDK, or reach into podman/krun internals."
+      },
+      {
+        "pattern": "Config = flags + env-var duality (flags win) with conservative defaults; no runtime state file",
+        "strength": "common (gh-runner-krunvm ${VAR:-default}, smolvm/agent-sandbox/claude-code-sandbox file+flag merge; podman labels are the state)",
+        "implication_for_us": "Adopt flags+env duality with ${VAR:-default}s, but reject any runtime state FILE; labels are the truth, queryable via --filter."
+      }
+    ],
+    "per_repo_unique": [
+      {
+        "repo": "crun / krun handler",
+        "unique_value": "Proves run=create+start in one shot and that krun is just crun + a flag (no krun-specific verbs); also the krun.cpus/krun.ram_mib annotation knobs with fatal-on-malformed and ram_mib<=128-silently-ignored semantics.",
+        "use_or_ignore": "USE: it is our underlying engine. Route caps through krun.cpus/krun.ram_mib annotations, validate integers in bash first."
+      },
+      {
+        "repo": "libkrun / libkrunfw",
+        "unique_value": "The explicit 'guest and VMM are ONE security context' statement plus capability-probe API (krun_has_feature/krun_check_nested_virt); also the fail-open defaults (TSI on, port_map(NULL) exposes all ports, root RW).",
+        "use_or_ignore": "USE the security-context fact (justifies keys-never-in-guest) and the distinct-exit-code model; IGNORE forking it. Treat its fail-open defaults as the be-fail-closed warning."
+      },
+      {
+        "repo": "krunvm",
+        "unique_value": "Cautionary trio: persistent-by-default with no --rm/trap/reaper, a confy state file + buildah store that drift, and DEAD declared-but-unimplemented flags (start --cpus/--mem, list -d, top-level -v).",
+        "use_or_ignore": "IGNORE the architecture; USE the discipline rules: never ship a dead/no-op flag, and persistent-by-default is the leak we avoid."
+      },
+      {
+        "repo": "podman",
+        "unique_value": "The daemonless engine whose labels/annotations ARE the state (queryable via ps --filter label=); plus concrete gotchas (--read-only-tmpfs defaults TRUE, --publish silently no-ops under --network none).",
+        "use_or_ignore": "USE as our source of truth and enforcement layer; guard the documented gotchas (decide /tmp writability deliberately, never combine --publish with --network none)."
+      },
+      {
+        "repo": "crun-vm",
+        "unique_value": "The pure-OCI-shim shape (no verbs, selected via --runtime crun-vm) and its flag-placement wart (flags must come AFTER the image, often need -- before them); --persistent can corrupt an image used by two VMs.",
+        "use_or_ignore": "IGNORE the shim shape; USE it as justification that our flag-preceded wrapper avoids the placement wart for a single-user tool."
+      },
+      {
+        "repo": "agent-sandbox (ags)",
+        "unique_value": "doctor that probes an in-IMAGE security dependency and warns guards 'fail open' if missing (check tied to guarantee); named the THE git-worktree-prune footgun; --lockdown profile vs escape-hatch hygiene.",
+        "use_or_ignore": "USE the doctor-ties-check-to-guarantee idea and the worktree-prune guard. IGNORE its SELinux label=disable default (anti-pattern on Fedora)."
+      },
+      {
+        "repo": "microsandbox",
+        "unique_value": "Reaper-on-every-invocation (Once-guarded) reconciling SQLite DB vs live PIDs; plus a full egress DSL, TLS-intercept CA, --secret/--on-secret-violation, and per-exec rlimits.",
+        "use_or_ignore": "USE the reconcile-on-invocation PATTERN (but free via labels, no DB) and the rlimits idea. IGNORE/RESIST the net DSL, MITM CA, secret detector as adversary-model scope creep."
+      },
+      {
+        "repo": "smolvm",
+        "unique_value": "Detached out-of-process reaper (_cleanup-ephemeral) returning the exit code immediately while teardown runs async, with PID+start_time identity verification and a strict is_safe_cache_path guard before any rm.",
+        "use_or_ignore": "USE the return-exit-code-now/reap-async split, the PID-reuse guard, and is_safe_cache_path verbatim for any host rm. IGNORE its forked libkrun and DNS-allowlist (off-mission)."
+      },
+      {
+        "repo": "ERA",
+        "unique_value": "Two compounding lessons: (a) --network none was a complete NO-OP (stored, never wired to krunvm) — the headline fail-open; (b) base64 command-transport into the guest to dodge shell-quoting bugs.",
+        "use_or_ignore": "USE the base64 command-transport trick and the never-ship-metadata-only-isolation lesson. IGNORE its BoltDB and pluggable-backend abstraction."
+      },
+      {
+        "repo": "arrakis",
+        "unique_value": "Platform-creep incarnate: root daemon + in-guest daemons + Go CLI + Python SDK + external MCP, plus destructive GLOBAL host mutation on boot (deletes all tap*, br0, flushes iptables).",
+        "use_or_ignore": "STEAL NOTHING — steal the warning. It is the exact negative of our one-script/no-daemon design and the hard rule: never mutate host-global state, touch only labelled-as-ours resources."
+      },
+      {
+        "repo": "gh-runner-krunvm",
+        "unique_value": "The complete three-layer teardown reference (--rm + EXIT/INT/TERM traps + prefix reaper), trap-disarm-first idiom, self-documenting usage() that greps its own option-comment lines, leveled log-to-fd helper; cautionary 30s-sleep concurrency mutex and missing KVM preflight.",
+        "use_or_ignore": "USE the trap-disarm-first idiom, self-documenting usage(), and leveled logging. IGNORE the runtime-abstraction seam; treat the 30s-sleep mutex as our graduation-to-Rust signal."
+      },
+      {
+        "repo": "sbx (Docker sbx)",
+        "unique_value": "Three named egress presets (Open/Balanced/Locked-Down) + policy allow|deny network DSL with deny>allow, host-proxy-enforced; documented footgun that rm of a clone-mode sandbox silently destroys unfetched commits; usermod -aG kvm first-run step.",
+        "use_or_ignore": "USE the path:ro suffix ergonomics, the named-tier vocabulary as positioning language, the usermod KVM precedent for doctor, and the silent-commit-loss as a hard rule. IGNORE the proxy/allowlist DSL (adversary model)."
+      },
+      {
+        "repo": "claude-code-sandbox (textcortex)",
+        "unique_value": "Graduated stop<clean<purge cleanup ladder with confirmation/-y, but selection by NAME SUBSTRING for all list/stop/clean/purge and in-memory container Map lost on CLI crash (orphans only re-findable by name scan); a read-only config introspection verb.",
+        "use_or_ignore": "USE the read-only introspection idea (fold into doctor/--json). IGNORE the name-substring selection (our explicit anti-pattern) and the severity ladder (ephemeral default makes one reap enough)."
+      },
+      {
+        "repo": "awesome-agent-sandboxes",
+        "unique_value": "A field survey documenting that ephemeral-by-default (E2B/Sprites/Vercel/Modal), allowlisting (Matchlock), and separate-repo MCP servers are the field norm.",
+        "use_or_ignore": "USE as corroboration that ephemeral-by-default and external/thin agent integration are field consensus; no code to lift."
+      },
+      {
+        "repo": "wincent-gist",
+        "unique_value": "Survey naming the canonical agent-facing access-tier vocabulary — Codex CLI's read-only / workspace-write / danger-full-access — and citing deny-by-default tools (Cleanroom/treebeard/Greywall/srt) with credential proxies.",
+        "use_or_ignore": "USE the access-tier vocabulary IF we ever expose a single isolation-tier flag; otherwise corroborates deny-by-default + credential-proxy-not-keys-in-guest."
+      }
+    ],
+    "contested": [
+      {
+        "question": "Single `run` verb (collapse create+start) vs a two-phase create/start split?",
+        "positions": "microsandbox/smolvm/sbx split create (detached/persistent) from run (ephemeral); crun/podman/ERA treat run as create+start in one shot.",
+        "our_call": "Single `run` verb; persistence is an explicit --keep/--persist FLAG that stamps a label and skips --rm. The split exists only to serve persistent/detached lifecycles we default away from."
+      },
+      {
+        "question": "Own thin verb set vs ride the engine surface as a pure OCI shim (no verbs)?",
+        "positions": "crun-vm/crun and agent-sandbox add zero verbs (selected by --runtime or flag presence); most others expose their own CLI.",
+        "our_call": "Own our own flag-preceded verbs above podman so we control UX, labeling, and cleanup — but still call podman run --runtime=krun underneath. The shim shape causes crun-vm's flag-placement wart."
+      },
+      {
+        "question": "Egress control: network-policy DSL / allowlist proxy vs simple --network none?",
+        "positions": "sbx (named presets + proxy) and microsandbox (net-rule DSL + TLS-intercept) build adversary-grade egress control; smolvm uses a DNS allowlist; podman/krun default to no-NIC.",
+        "our_call": "--network none only (publish to localhost as the labelled exception). Our threat model is accident-not-adversary, so the proxy/allowlist DSL is explicit scope creep we reject; we borrow only the named-tier vocabulary as positioning."
+      },
+      {
+        "question": "Separate runtime state file/DB vs engine labels as the single source of truth?",
+        "positions": "krunvm (confy), microsandbox (SQLite), smolvm (local DB), ERA (BoltDB), arrakis (in-memory maps) all keep state + a reconcile reaper; podman exposes labels as queryable state.",
+        "our_call": "Podman labels are the ONLY source of truth — no DB. This deletes the drift bug class that forced every DB-keeping tool to build a reconcile reaper; our reap becomes a free podman ps --filter sweep."
+      },
+      {
+        "question": "Cleanup verb surface: graduated stop<clean<purge ladder vs a single reap backstop?",
+        "positions": "claude-code-sandbox/ERA expose a multi-step severity ladder (driven by persistent-by-default); ags/gh-runner rely on --rm + a single reaper.",
+        "our_call": "One `reap` backstop. The ladder is mostly a cautionary tale of persistent-by-default leaks; ephemeral --rm default means nothing survives the common case."
+      },
+      {
+        "question": "Conservative vs dev-sized default resource caps?",
+        "positions": "era (1 vCPU/256MiB) and krunvm (2/1024) are conservative; smolvm (4 vCPU/8 GiB) is dev-sized; crun-vm (all host CPUs/2GiB unset) and claude-code-sandbox (no caps) are footguns.",
+        "our_call": "Conservative: ~1 vCPU / 256-1024 MiB stamped at birth via krun annotations, plus rlimits. Reject smolvm's dev-sizing and the never-leave-unset footgun."
+      },
+      {
+        "question": "SELinux: keep MAC layer on (with :Z/:z relabel) vs disable it for convenience?",
+        "positions": "agent-sandbox defaults --security-opt=label=disable (SELinux off); podman/gh-runner use :Z/:z relabel (with the caveat :Z is private and can clobber shared dirs).",
+        "our_call": "Keep SELinux ON. Use :Z/:z only on the per-sandbox worktree we created (never a shared host dir); reject agent-sandbox's label=disable on Fedora."
+      }
+    ]
+  }
+}

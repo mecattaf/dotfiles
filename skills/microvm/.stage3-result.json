@@ -1,0 +1,486 @@
+{
+  "A": {
+    "file_written": "/var/home/tom/mecattaf/dotfiles/skills/microvm/findings/build/A-full.sh",
+    "verbs_implemented": [
+      "doctor",
+      "run",
+      "keep",
+      "start",
+      "exec",
+      "logs",
+      "ls",
+      "inspect",
+      "stop",
+      "rm",
+      "reap"
+    ],
+    "functions": [
+      {
+        "name": "_log/trace/debug/info/warn/err/die",
+        "purpose": "Leveled logging to a configurable fd (default stderr) so stdout stays pipeable; die forwards a distinct exit code."
+      },
+      {
+        "name": "usage",
+        "purpose": "Self-documenting help that greps the script's own `# VERB:` doc-comment lines, so help can never drift from the dispatch table (gh-runner idiom)."
+      },
+      {
+        "name": "is_uint/clamp/require_uint/duration_to_secs",
+        "purpose": "Integer validation + clamping for krun.cpus/ram_mib (krun fatals on malformed values) and duration parsing for --timeout/--until."
+      },
+      {
+        "name": "our_filter/resolve_managed/is_managed/container_state",
+        "purpose": "Label-EXCLUSIVE selection helpers; resolve_managed AND-combines managed-by + sandbox.name, never name substring."
+      },
+      {
+        "name": "probe_kvm/probe_podman/probe_runtime_registered/probe_crun_libkrun/probe_libkrun_so/probe_smoke",
+        "purpose": "doctor's individual capability probes; each records a PASS/FAIL row with an actionable fix message."
+      },
+      {
+        "name": "run_doctor/precheck/doctor_emit/json_escape",
+        "purpose": "Full verbose verb-zero gate (exits EX_PRECONDITION on any fail) plus the cheap silent subset run atop every birth/lifecycle verb; emits a PASS/FAIL table or valid JSON."
+      },
+      {
+        "name": "is_safe_cache_path/has_unpushed_commits/create_worktree/remove_worktree",
+        "purpose": "The tool creates the per-sandbox git worktree; removal is path-safety-gated (inside managed root, not symlink, not root) AND unpushed-commit-guarded."
+      },
+      {
+        "name": "build_birth_argv",
+        "purpose": "THE centralized birth function: validates/clamps caps, stamps the mandatory label set, applies safe-by-default isolation, creates the worktree, wires net/mounts/env/ssh-agent, base64-transports the workload cmd, and assembles the full podman argv."
+      },
+      {
+        "name": "ephemeral_trap/arm_trap/disarm_trap",
+        "purpose": "Layer-2 teardown: trap on EXIT/INT/TERM/ERR using the trap-disarm-first idiom; rolls back a partially-born ephemeral sandbox + its worktree, never touches kept sandboxes."
+      },
+      {
+        "name": "reap_core/reap_sweep_quiet/verb_reap",
+        "purpose": "Layer-3 label-driven backstop: removes exited ephemeral leaks (and aged kept sandboxes with --until), guarded worktree teardown; runs verbosely as a verb and cheaply at the top of every birth verb."
+      },
+      {
+        "name": "verb_run/verb_keep/verb_start/verb_exec/verb_logs/verb_ls/verb_inspect/verb_stop/verb_rm",
+        "purpose": "The 9 non-doctor/non-reap verb bodies, each label-scoped; run is unconditionally --rm, keep omits it + stamps persist, exec fails closed on a stopped target (no auto-start)."
+      },
+      {
+        "name": "parse_birth_args/reset_opts/emit_kv/main",
+        "purpose": "Shared birth-verb flag parser (flags-before-image, workload after --), per-invocation option reset, stable key:value emitter, and top-level verb dispatch."
+      }
+    ],
+    "line_count": 1234,
+    "bash_n_passed": true,
+    "summary": "Wrote the complete single-file `sandbox` spine to /var/home/tom/mecattaf/dotfiles/skills/microvm/findings/build/A-full.sh (1234 lines, passes `bash -n`; shellcheck unavailable on host). All 11 verbs implemented with small single-purpose functions so B/C/D can swap sections. Spine covers: `set -euo pipefail`; the centralized `build_birth_argv` (the only container-creation path) stamping the mandatory label set (managed-by/.created/.id/.worktree, plus persist/name for keep) and the safe-by-default posture (--network none, --read-only rootfs with the tool-created worktree as the only rw :Z mount, --security-opt no-new-privileges, --cap-drop ALL, --ulimit nofile/nproc, integer-validated+clamped run.oci.krun.cpus/ram_mib annotations); three-layer teardown (--rm + trap-disarm-first ephemeral_trap + label-driven reap); EXCLUSIVE label selection via resolve_managed (never name substring); ssh-agent socket forwarding (keys never enter guest); base64 command transport; machine-readable ls/inspect/doctor/reap (--json validated by python3, TSV stable columns by default, diagnostics to stderr fd); a distinct documented exit-code scheme (64/69/70/71/72, never 255, workload codes forwarded verbatim); doctor probes (kvm/podman/runtime/crun+LIBKRUN/libkrun.so/smoke) with a cheap precheck atop every verb; self-documenting usage() that greps its own `# VERB:` comments. Runtime-tested help, version, ls, unknown-verb, missing-image, not-found, doctor --json, and reap --dry-run --json with a fake podman — all exit codes and JSON correct.",
+    "self_review_notes": [
+      "base64 in-guest decode wrapper `/bin/sh -c \"echo <b64> | base64 -d | exec bash -s\"` is unverified against a real guest: `exec bash -s` reads the decoded script from a pipe via stdin but the pipe is the b64 stream, not a fresh fd — Agent D should harden the exact decode/dispatch (likely a heredoc or fd juggling) and confirm bash is present in the base image (fedora-minimal may only have /bin/sh).",
+      "--network loopback maps to `--network pasta` and forces `127.0.0.1:HOST:GUEST` publish, but the exact passt/pasta behavior under krun and whether podman accepts that publish spec is an open question (BUILD-BRIEF) — Agent C must verify it reaches a real enforced binding and that doctor can assert it.",
+      "krun annotation keys are guessed as `run.oci.krun.cpus`/`run.oci.krun.ram_mib`; STAGE2 per-repo findings have the exact annotation namespace — Agent C should confirm against crun's krun handler source (could be `com.github.containers.krun.*` or similar) or the annotations silently no-op (the ERA fail-open we must not repeat).",
+      "`--read-only` rootfs may break workloads expecting writable /tmp; BUILD-BRIEF flags the --read-only-tmpfs decision as open. Did not add a tmpfs /tmp — Agent C/B should decide and wire it.",
+      "doctor's libkrun probe only checks file presence on a hardcoded lib path list and accepts any libkrunfw.so.* — the real ABI/soname acceptance matrix is unresolved (open question); probe_crun_libkrun greps `crun --version` but the runtime podman actually uses is SANDBOX_RUNTIME=krun, so the crun-vs-krun handler relationship needs Agent C's confirmation.",
+      "reap-on-every-invocation has no lock (documented as intentional no-lock concurrency) — two concurrent `run`s could both sweep; `podman rm -f` racing is idempotent-ish but worktree removal could race. Flagged as the graduation-to-Rust signal but Agent B should sanity-check the worktree race.",
+      "create_worktree always branches `sandbox/<id>` off HEAD when inside a repo; the branch/checkout contract (detached? from which ref? naming by name vs id?) is an open question and may not match how a coding agent expects to push work out.",
+      "has_unpushed_commits treats 'no upstream + any HEAD commit' as unpushed (fail-safe), which means a fresh worktree branched off HEAD will almost always look 'unpushed' and block non-forced rm/reap — may be too aggressive; Agent B should refine to compare against the base ref the worktree was cut from.",
+      "verb_keep uses `-d` (detached) for persistence which the STAGE2 keep signature implies but BUILD-BRIEF doesn't explicitly mandate; interaction of -d with -it and with the foreground exit-code contract needs review.",
+      "OPT_TIMEOUT is parsed for run/keep/exec but never wired to an actual timeout mechanism (no `timeout` command wrapping podman) — currently a metadata-only no-op, which violates discipline #8. Agent C/D must wire it to a real `timeout` invocation or remove the flag."
+    ]
+  },
+  "experts": [
+    {
+      "expert": "B (LIFECYCLE & CLEANUP)",
+      "file_written": "/var/home/tom/mecattaf/dotfiles/skills/microvm/findings/build/B-section.sh",
+      "functions_provided": [
+        {
+          "name": "worktree_path",
+          "signature": "worktree_path <id> -> stdout: absolute managed path",
+          "purpose": "Canonical per-sandbox worktree path under WORKTREE_ROOT (unchanged from A)."
+        },
+        {
+          "name": "base_marker_path",
+          "signature": "base_marker_path <worktree> -> stdout: '<worktree>.base'",
+          "purpose": "NEW helper: path of the fork-point SIDECAR file kept BESIDE the worktree (never inside it) so it cannot pollute the worktree's git status."
+        },
+        {
+          "name": "is_safe_cache_path",
+          "signature": "is_safe_cache_path <path> -> 0 if safe to remove, else 1",
+          "purpose": "smolvm guard, hardened: fails closed if WORKTREE_ROOT is unresolvable; rejects empty/non-dir/symlink/root-itself/outside-root after pwd -P canonicalization. Unit-tested vs traversal and symlink-out escapes."
+        },
+        {
+          "name": "_worktree_base_ref",
+          "signature": "_worktree_base_ref <worktree> -> stdout: base commit or empty",
+          "purpose": "NEW helper: reads the recorded fork-point so the unpushed guard can tell new agent work from pre-existing branch history."
+        },
+        {
+          "name": "has_unpushed_commits",
+          "signature": "has_unpushed_commits <worktree> -> 0 if there is work to lose",
+          "purpose": "Data-loss guard, BUG-FIXED: compares HEAD against upstream, else against the recorded base ref (not empty), so a freshly-branched worktree with no new work no longer always refuses removal. Fail-safe when base is unknowable."
+        },
+        {
+          "name": "create_worktree",
+          "signature": "create_worktree <id> -> stdout: absolute worktree path",
+          "purpose": "Tool-creates the worktree; refuses to clobber an existing path; records the base commit in a sidecar marker for the guard."
+        },
+        {
+          "name": "remove_worktree",
+          "signature": "remove_worktree <worktree> <force 0|1> -> 0 removed/absent, EX_GUARD refused",
+          "purpose": "Path-safety-gated AND unpushed-commit-guarded teardown; prefers git worktree remove with prune fallback; cleans the sidecar marker."
+        },
+        {
+          "name": "build_birth_argv",
+          "signature": "build_birth_argv <persist 0|1> <image> -> sets BIRTH_ID/BIRTH_NAME/BIRTH_WORKTREE/BIRTH_ARGV",
+          "purpose": "THE single birth funnel: clamps caps, stamps mandatory labels (+ new sandbox.base), assigns a DETERMINISTIC name to ephemeral runs so the trap can address them, applies safe isolation, wires net/mounts/env/ssh-agent, base64-transports the workload."
+        },
+        {
+          "name": "ephemeral_trap",
+          "signature": "ephemeral_trap (EXIT/INT/TERM/ERR handler)",
+          "purpose": "Trap-disarm-FIRST teardown; force-removes a half-born container + guard-removes its worktree; re-exits with the faithful triggering code; never touches a fully-born kept sandbox (TRAP_PERSIST)."
+        },
+        {
+          "name": "arm_trap",
+          "signature": "arm_trap",
+          "purpose": "Install ephemeral_trap on EXIT INT TERM ERR (unchanged interface)."
+        },
+        {
+          "name": "disarm_trap",
+          "signature": "disarm_trap",
+          "purpose": "Clear the trap (unchanged interface)."
+        },
+        {
+          "name": "verb_run",
+          "signature": "verb_run <args...>",
+          "purpose": "Unconditionally ephemeral one-shot; arms the trap with the now-known BIRTH_NAME; propagates the workload exit code verbatim; guard-removes the worktree on clean exit."
+        },
+        {
+          "name": "verb_keep",
+          "signature": "verb_keep <args...>",
+          "purpose": "Explicit persistence verb; pre-checks for a name collision; rolls back fully on partial birth; flips TRAP_PERSIST=1 only after confirmed birth; emits id/name/worktree."
+        },
+        {
+          "name": "reap_core",
+          "signature": "reap_core <dry 0|1> <until-secs ''|N> <emit 0|1> -> TSV rows on stdout",
+          "purpose": "Layer-3 sweep over the label-scoped set only; reaps exited ephemeral leaks always and aged non-running kept sandboxes under --until; guarded never-forced worktree teardown; emits 'reaped'/'would-reap' rows for JSON."
+        },
+        {
+          "name": "reap_sweep_quiet",
+          "signature": "reap_sweep_quiet",
+          "purpose": "Cheap silent reconcile at the top of every birth verb; no-lock-by-design with a documented graduation signal."
+        },
+        {
+          "name": "verb_reap",
+          "signature": "verb_reap [--until DUR] [--dry-run] [--json]",
+          "purpose": "Verbose reap verb; disarms inherited trap first; JSON mode reports exactly what was/would be acted on via a dry pass then performs the real sweep."
+        }
+      ],
+      "functions_consumed": [
+        "die",
+        "warn",
+        "info",
+        "debug",
+        "trace",
+        "require_uint",
+        "clamp",
+        "gen_id",
+        "podman_q",
+        "our_filter",
+        "resolve_managed",
+        "container_state",
+        "precheck",
+        "parse_birth_args (PARSED_IMAGE)",
+        "reset_opts",
+        "emit_kv",
+        "json_escape",
+        "duration_to_secs",
+        "usage"
+      ],
+      "key_decisions": [
+        "Fixed the has_unpushed_commits false-refusal bug: A's no-upstream branch ran `git rev-list HEAD` which is non-empty for ANY repo with history (the worktree is branched off HEAD), so EVERY worktree would refuse removal. Now compares against a recorded base ref (sandbox.base) instead, distinguishing new agent work from pre-existing history. Unit-tested: fresh worktree=CLEAN, untracked file=UNPUSHED, new commit=UNPUSHED.",
+        "Stored the fork-point base in a SIDECAR file beside the worktree (<id>.base), NOT inside it, because an in-worktree marker shows up in `git status --porcelain` and falsely trips the unpushed guard (caught and fixed during unit testing). Also stamped as the sandbox.base label.",
+        "Closed the ephemeral orphan window: A left TRAP_CONTAINER empty for run, relying on --rm+reap. I assign a deterministic name (sandbox-<id>) to ephemeral containers too, so the trap can force-remove a half-born container even if podman is SIGKILLed before --rm fires.",
+        "ephemeral_trap now re-`exit $rc` after disarm (instead of `return $rc`), so a signal-derived 130/143 is faithfully surfaced as the script exit code; an EXIT-handler `return` would lose it.",
+        "verb_keep now flips TRAP_PERSIST=1 only AFTER confirmed birth and explicitly rolls back the container+worktree on partial birth; added a name-collision pre-check (EX_GUARD) so keep can't silently shadow an existing managed sandbox.",
+        "reap_core hardened: explicit non-running-only age cut, guarded never-forced worktree teardown, emits both 'reaped' and 'would-reap' verdict rows so verb_reap --json reports exactly what was acted on; reap_sweep_quiet documented as the named no-lock graduation signal.",
+        "is_safe_cache_path fails closed when WORKTREE_ROOT can't be resolved and after pwd -P canonicalization; verified against symlink-pointing-out and ../.. traversal-escape attacks.",
+        "Verified clean integration by splicing all 14 same-named B functions into a copy of A's spine plus the new LBL_BASE constant; merged whole passes bash -n."
+      ],
+      "deviations_from_A": [
+        "NEW CONSTANT REQUIRED: integrator must add `readonly LBL_BASE=\"${LABEL_NS}.base\"` to A's constants block (records the git fork-point as a label, parallel to .worktree).",
+        "build_birth_argv now sets a NEW global BIRTH_NAME (the container name actually passed to podman) in addition to A's BIRTH_ID/BIRTH_WORKTREE. Ephemeral runs now ALWAYS get `--name sandbox-<id>` (A passed no --name for ephemeral). Downstream label-only selection is unaffected since LBL_NAME is also stamped to this value.",
+        "verb_run sets TRAP_CONTAINER=\"$BIRTH_NAME\" (A set it to empty for ephemeral). The trap therefore now actively force-removes ephemeral containers on crash.",
+        "verb_keep success path sets TRAP_PERSIST=1 (A left it 0). Semantics: a fully-born kept sandbox is never torn down by a later trap firing in the same process. Integrator should confirm no other code relies on TRAP_PERSIST staying 0 after keep.",
+        "Two NEW helper functions added (_worktree_base_ref already existed in A's listing context but base_marker_path is new). create_worktree/remove_worktree/_worktree_base_ref now read/write a `<worktree>.base` sidecar; integrator must ensure WORKTREE_ROOT is writable (it already is, A's create_worktree mkdir -p's it).",
+        "verb_reap now calls precheck() before sweeping (A did not). If the integrator wants reap to work on a host where krun is unusable (pure cleanup), this precheck should be relaxed to the podman-only subset; flagged for Stage 4.",
+        "base64 workload transport simplified to `printf '%s' '<b64>' | base64 -d | bash` (A had `echo ... | base64 -d | exec bash -s` which mis-uses exec/stdin). The exact in-guest wrapper is Expert D's domain; this is only the spine shape and should be reconciled with D."
+      ]
+    },
+    {
+      "expert": "C — Isolation & krun",
+      "file_written": "/var/home/tom/mecattaf/dotfiles/skills/microvm/findings/build/C-section.sh",
+      "functions_provided": [
+        {
+          "name": "is_uint",
+          "signature": "is_uint <value> -> 0 iff non-empty unsigned base-10 integer",
+          "purpose": "Strict integer gate (case-glob, no sign/whitespace) because krun fatals on a malformed krun.cpus/krun.ram_mib annotation rather than degrading."
+        },
+        {
+          "name": "require_uint",
+          "signature": "require_uint <value> <flag-name> -> dies EX_USAGE on non-integer",
+          "purpose": "Fail-fast validation before any value can reach the engine as an annotation/ulimit/tail count."
+        },
+        {
+          "name": "clamp",
+          "signature": "clamp <value> <min> <max> -> prints bounded value",
+          "purpose": "Pure-arithmetic bound; re-guards non-integers to min for safety."
+        },
+        {
+          "name": "krun_cpus",
+          "signature": "krun_cpus <requested> -> prints validated+clamped vCPU count",
+          "purpose": "Validates and clamps to 1..16 (LIBKRUN_MAX_VCPUS); warns on clamp. NEW helper (split out of A's inline logic)."
+        },
+        {
+          "name": "krun_ram_mib",
+          "signature": "krun_ram_mib <requested> -> prints validated+clamped MiB",
+          "purpose": "Validates and floors at 256 (above krun's silent-ignore <=128) up to 16384; explicitly warns that a <=128 request would be silently ignored. NEW helper."
+        },
+        {
+          "name": "apply_isolation_flags",
+          "signature": "apply_isolation_flags <argv-array-name> (nameref append)",
+          "purpose": "Centralized safe posture: --security-opt no-new-privileges, --cap-drop ALL, --read-only, --read-only-tmpfs=true (pins /tmp writability via discarded tmpfs); SELinux deliberately stays on. NEW helper."
+        },
+        {
+          "name": "apply_krun_annotations",
+          "signature": "apply_krun_annotations <argv-array-name> <cpus> <ram_mib>",
+          "purpose": "Stamps run.oci.krun.cpus / run.oci.krun.ram_mib (the real krun_set_vm_config knobs). NEW helper."
+        },
+        {
+          "name": "apply_rlimits",
+          "signature": "apply_rlimits <argv-array-name>",
+          "purpose": "Second cap layer beyond cpu/ram: --ulimit nofile=4096:8192 and nproc=1024:2048 (fd/fork-bomb backstop). NEW helper."
+        },
+        {
+          "name": "apply_ssh_agent",
+          "signature": "apply_ssh_agent <argv-array-name>",
+          "purpose": "Binds $SSH_AUTH_SOCK to /run/ssh-agent.sock :Z + sets env; keys never enter guest; hard-fails EX_GUARD if no usable agent. NEW helper."
+        },
+        {
+          "name": "build_birth_argv",
+          "signature": "build_birth_argv <persist 0|1> <image> (sets BIRTH_ARGV, BIRTH_ID, BIRTH_WORKTREE)",
+          "purpose": "THE centralized birth assembler; same name/signature/globals as A. Routes caps through krun_cpus/krun_ram_mib, calls the apply_* helpers, fail-closed network, ro-default extra mounts with :rw opt-in, and count-aware base64 command transport."
+        },
+        {
+          "name": "_dr",
+          "signature": "_dr <name> <ok 0|1> <message>",
+          "purpose": "Record one doctor PASS/FAIL row into parallel accumulator arrays."
+        },
+        {
+          "name": "probe_kvm",
+          "signature": "probe_kvm -> 0/1, records row",
+          "purpose": "Asserts /dev/kvm is a char device, readable AND writable; actionable usermod fix."
+        },
+        {
+          "name": "probe_podman",
+          "signature": "probe_podman -> 0/1, records row",
+          "purpose": "Asserts podman binary present and 'podman info' succeeds."
+        },
+        {
+          "name": "probe_runtime_registered",
+          "signature": "probe_runtime_registered -> 0/1, records row",
+          "purpose": "Asserts the krun runtime is resolvable (podman OCIRuntimes map, or krun/crun-krun on PATH)."
+        },
+        {
+          "name": "probe_crun_libkrun",
+          "signature": "probe_crun_libkrun -> 0/1, records row",
+          "purpose": "Asserts crun reports the +LIBKRUN feature string in --version (krun mode is crun+libkrun)."
+        },
+        {
+          "name": "probe_libkrun_so",
+          "signature": "probe_libkrun_so -> 0/1, records row",
+          "purpose": "Asserts libkrun.so.1 + any libkrunfw.so.* are loadable, via ldconfig -p then a lib-dir scan fallback."
+        },
+        {
+          "name": "probe_smoke",
+          "signature": "probe_smoke -> 0/1, records row",
+          "purpose": "Decisive end-to-end gate: --rm --network none + safe flags running 'true' under the runtime."
+        },
+        {
+          "name": "json_escape",
+          "signature": "json_escape <string> -> prints escaped",
+          "purpose": "Minimal JSON string escaping (now also escapes newlines/tabs)."
+        },
+        {
+          "name": "doctor_emit",
+          "signature": "doctor_emit <table|json>",
+          "purpose": "Renders accumulated rows as a stderr PASS/FAIL table or a single JSON object."
+        },
+        {
+          "name": "run_doctor",
+          "signature": "run_doctor [--json] -> exits EX_PRECONDITION on any hard fail",
+          "purpose": "Full verbose verb-zero gate; runs smoke only after cheap gates pass."
+        },
+        {
+          "name": "precheck",
+          "signature": "precheck -> dies EX_PRECONDITION on fail",
+          "purpose": "Cheap silent subset (kvm/podman/runtime, no smoke) run atop every birth/lifecycle verb."
+        }
+      ],
+      "functions_consumed": [
+        "die (A) — exit-with-code on validation/guard failure",
+        "warn/info/debug/err (A) — leveled logging to the configured fd",
+        "gen_id (A) — short random sandbox id",
+        "create_worktree (A/B) — creates the single rw :Z worktree surface",
+        "podman_q (A) — logged podman wrapper used by all probes and the smoke test",
+        "EX_USAGE/EX_PRECONDITION/EX_GUARD (A) — exit-code constants",
+        "OPT_CPUS/OPT_MEMORY/OPT_NETWORK/OPT_WORKDIR/OPT_NAME/OPT_TTY/OPT_SSH_AGENT (A) — parsed option globals",
+        "EXTRA_MOUNTS/EXTRA_ENV/PUBLISH_PORTS/WORKLOAD_CMD (A) — parsed option arrays",
+        "LBL_MANAGED/LBL_CREATED/LBL_ID/LBL_WORKTREE/LBL_PERSIST/LBL_NAME, MANAGED_BY, SANDBOX_RUNTIME, SANDBOX_BASE_IMAGE, SANDBOX_VERSION, PODMAN, PROG (A) — identity/label constants",
+        "BIRTH_ARGV/BIRTH_ID/BIRTH_WORKTREE (A) — outputs the trap layer reads"
+      ],
+      "key_decisions": [
+        "Every isolation flag reaches a real engine arg (no metadata-only no-ops): no-new-privileges, cap-drop ALL, --read-only, --read-only-tmpfs=true, krun annotations, --ulimit, --network, --volume:Z, ssh-agent socket bind — all assertable by doctor; the ERA fail-open lesson.",
+        "krun annotation keys are run.oci.krun.cpus / run.oci.krun.ram_mib (crun-krun reads run.oci.krun.*); values are strict integers validated in bash BEFORE stamping because crun fatals on malformed.",
+        "RAM floored at 256 MiB (krun silently ignores <=128) and explicitly warns when the request would have been ignored; vCPUs clamped to 1..16 (LIBKRUN_MAX_VCPUS). Conservative defaults 1 vCPU / 1024 MiB.",
+        "Split A's monolithic safe-flags into named apply_* nameref helpers (apply_isolation_flags / apply_krun_annotations / apply_rlimits / apply_ssh_agent) so each isolation decision has one auditable home; build_birth_argv keeps A's exact name/signature/globals.",
+        "Resolved the open /tmp question: --read-only-tmpfs=true (podman default, pinned explicitly) so workloads get a scratch /tmp that is discarded with the VM and does not widen host blast radius.",
+        "Resolved the libkrunfw ABI matrix open question: accept libkrun.so.1 + any libkrunfw.so.* major (via ldconfig then dir scan), letting the smoke test be the decisive compatibility arbiter rather than red-lining on a Fedora major bump.",
+        "Raised rlimits above A's tiny values to build-workload-appropriate ceilings (nofile 4096:8192, nproc 1024:2048) — still a real fork-bomb/fd backstop, the libkrun 'caps cover cpu/ram, rlimits cover the rest' lesson.",
+        "ssh-agent binds the socket :Z and hard-fails EX_GUARD if $SSH_AUTH_SOCK is unset or not a socket — never a silent no-op; keys never cross (guest==VMM==user is one security context).",
+        "Network is fail-closed: --network none default with a --publish no-op warning; loopback maps to --network pasta with publish forced to 127.0.0.1 and HOST:GUEST shape validation.",
+        "Extra mounts default to :ro; :rw is the explicit narrow opt-in, with mode validation that dies on anything other than ro/rw (accident-model ergonomics).",
+        "Hardened the base64 command transport against the argv-vs-script ambiguity: a single WORKLOAD_CMD element is treated as a shell-script body (the agent 'run this code' case), multiple elements are %q-quoted and joined as an argv; verified both round-trip correctly through sh->base64 -d->bash -c.",
+        "Fixed a latent set -u bug pattern: precheck no longer save/restores DOCTOR_* via \"${arr[@]:-}\" (which injects a spurious empty element into non-empty arrays); it owns and resets the accumulators outright."
+      ],
+      "deviations_from_A": [
+        "Caps validation/clamping is extracted from build_birth_argv into krun_cpus/krun_ram_mib helpers; build_birth_argv now calls them instead of inlining require_uint+clamp. Integrator: ensure these two helpers are spliced in (they replace A's inline cpus/mem block).",
+        "Safe-flags are emitted by four NEW apply_* nameref helpers rather than inline argv+= lines. They must be present alongside build_birth_argv. (A had no such helpers.)",
+        "build_birth_argv now appends --read-only-tmpfs=true (A appended only --read-only). Minor podman-version note: --read-only-tmpfs is long-standing; if a target podman rejects the =true form, drop to bare --read-only (default is already true).",
+        "Extra-mount parsing changed semantics: A defaulted unknown modes to :ro silently; C dies EX_USAGE on a malformed --mount (missing :GUEST or a non-ro/rw mode) and only accepts explicit ro/rw. Slightly stricter UX — confirm D's usage text matches (HOST:GUEST[:ro|:rw]).",
+        "ssh-agent socket is now bound with a :Z relabel (A bound it unlabelled). If the host agent socket lives somewhere SELinux refuses to relabel, this could need :z or no label; acceptable for the user's own runtime socket.",
+        "rlimit values raised vs A (nofile 1024:1024 -> 4096:8192, nproc 512:512 -> 1024:2048). Cosmetic policy choice; reconcile if D documents specific limits.",
+        "Base64 transport wrapper differs from A's '/bin/sh -c \"echo b64 | base64 -d | exec bash -s\"' (which was broken for argv). C uses count-aware quoting + 'exec bash -c \"$(... base64 -d)\"'. Integrator should adopt C's version in BOTH build_birth_argv and A's verb_exec for consistency (verb_exec is D/A territory but shares the bug).",
+        "probe_runtime_registered uses the .Host.OCIRuntime.Runtimes map template plus a 'krun' grep and a PATH fallback (A used .Host.OCIRuntime.Name). More tolerant; if a podman version lacks that field the PATH fallback still passes.",
+        "probe_kvm requires a character device ([ -c ]) not just [ -e ]; negligibly stricter and more correct."
+      ]
+    },
+    {
+      "expert": "D (CLI/UX & DISPATCH)",
+      "file_written": "/var/home/tom/mecattaf/dotfiles/skills/microvm/findings/build/D-section.sh",
+      "functions_provided": [
+        {
+          "name": "_log/trace/debug/info/warn/err/die",
+          "signature": "_log <LVL> <msg...>; trace/debug/info/warn/err <msg...>; die <exit-code> <msg...>",
+          "purpose": "Leveled logging to a configurable fd (SANDBOX_LOG_FD, default stderr) so stdout stays pipeable. Level gates use explicit if-blocks (not [ ]&&...||true, which is set -e-fragile). die forwards a distinct exit code verbatim, never 255."
+        },
+        {
+          "name": "usage",
+          "signature": "usage [exit-code] [verb]",
+          "purpose": "Self-documenting help. Greps the script's own # VERB: AND # FLAG: comment lines so help can never drift from the dispatch table OR the parser. Optional verb arg scopes verb help. All help text goes to stderr; renders the full ENV duality + exit-code scheme."
+        },
+        {
+          "name": "encode_workload",
+          "signature": "encode_workload <word...>  -> prints 3 lines: /bin/sh, -c, <decode-script> (read with mapfile)",
+          "purpose": "base64 command-transport for arbitrary agent-written code. Encodes host-side with printf %s (byte-faithful), decodes in-guest and pipes to bash -s. Fixes A's `echo ... | base64 -d | exec bash -s` (echo mangles data; exec-after-pipe is fragile)."
+        },
+        {
+          "name": "emit_kv",
+          "signature": "emit_kv k v k v ...",
+          "purpose": "Stable key<TAB>value lines to stdout for single-object machine output (keep/start)."
+        },
+        {
+          "name": "json_escape",
+          "signature": "json_escape <string>",
+          "purpose": "Minimal JSON string-body escaping (backslash, quote, TAB, CR/LF) for hand-rolled JSON in doctor/ls/reap output."
+        },
+        {
+          "name": "is_uint/clamp/require_uint/duration_to_secs",
+          "signature": "is_uint <v>; clamp <v> <lo> <hi>; require_uint <v> <flag>; duration_to_secs <dur>",
+          "purpose": "Integer validation/clamping for krun caps and duration parsing for --timeout/--until. Same signatures as A; clamp uses if-blocks instead of (( ))&&-chains for set -e safety."
+        },
+        {
+          "name": "need_arg",
+          "signature": "need_arg <count-remaining> <flag>   (call as: need_arg \"$#\" --cpus  BEFORE touching $2)",
+          "purpose": "Bounds guard for option-arguments: dies EX_USAGE if a flag is at end-of-args (prevents $2 tripping set -u). Validate-only (does NOT print the value) because a die inside $(...) is swallowed by set -e."
+        },
+        {
+          "name": "reset_opts",
+          "signature": "reset_opts",
+          "purpose": "Per-invocation option reset. THE flags+env duality point: seeds every OPT_* from ${SANDBOX_*:-default} (env is the default), which parse_birth_args later overwrites so flags win."
+        },
+        {
+          "name": "parse_birth_args",
+          "signature": "parse_birth_args <verb> <args...>  -> sets OPT_*, EXTRA_*, PUBLISH_PORTS, PARSED_IMAGE, WORKLOAD_CMD",
+          "purpose": "Shared run/keep parser: flags-before-image grammar, -- passes everything after VERBATIM to the guest (not re-parsed), bounds-safe arg consumption via need_arg, plus --flag=value re-dispatch and short aliases (-e/-v/-p/-w)."
+        },
+        {
+          "name": "verb_ls",
+          "signature": "verb_ls <args...>",
+          "purpose": "Machine-readable-by-default listing. --json defers to podman's own per-line JSON template; default emits stable TSV columns; header suppressed under --json. Selection EXCLUSIVELY via our_filter (managed-by label)."
+        },
+        {
+          "name": "main",
+          "signature": "main <args...>",
+          "purpose": "Top-level dispatch. Forwards full \"$@\" to each verb (fixes A dropping all-but-first arg to doctor), routes --version to stdout (capturable data) and --help to stderr, dies EX_USAGE on unknown verb (never 255)."
+        }
+      ],
+      "functions_consumed": [
+        "our_filter (A) — label-exclusive ps filter, used by verb_ls",
+        "podman_q (A) — logged podman wrapper, used by verb_ls",
+        "run_doctor/verb_run/verb_keep/verb_start/verb_exec/verb_logs/verb_inspect/verb_stop/verb_rm/verb_reap (A) — dispatched by main",
+        "LBL_NAME/LBL_CREATED/LBL_WORKTREE/LBL_PERSIST (A) — label keys in verb_ls --format templates",
+        "EX_USAGE/EX_PRECONDITION/EX_LAUNCH/EX_GUARD/EX_NOTFOUND (A) — exit-code constants",
+        "DEF_CPUS/DEF_MEMORY (A) — built-in defaults in reset_opts",
+        "PROG/SANDBOX_VERSION/SANDBOX_VERBOSE/SANDBOX_LOG_FD (A) — logging+usage identity",
+        "# VERB: comment block (A's spine) — grepped by usage()"
+      ],
+      "key_decisions": [
+        "need_arg is validate-ONLY (returns nothing, caller reads $2 directly). I discovered and fixed a real set -e bug: A's pattern of plucking a value through a command substitution would SWALLOW a die() — `x=\"$(need_arg ...)\"` does not fail under set -e even when the substitution exits non-zero, so a missing option-argument would silently produce an empty value instead of EX_USAGE. Verified with a minimal repro.",
+        "Self-documenting usage() extended beyond A: A only grepped # VERB: lines and HARD-CODED the COMMON FLAGS block (latent drift). I added a # FLAG: comment block that the parser and usage() share, so flag help is now also greppable from source — true zero help/parser drift, matching the gh-runner idiom fully.",
+        "flags+env duality implemented in reset_opts via ${SANDBOX_CPUS:-$DEF_CPUS} etc.; the parser overwrites afterward so flags always win. Added SANDBOX_CPUS/SANDBOX_MEMORY/SANDBOX_NETWORK env vars and documented them in usage().",
+        "base64 transport rewritten to be byte-faithful: printf %s (not echo) host-side; in-guest `printf %s '<b64>' | base64 -d | bash -s` (no exec, no echo). Verified a payload with embedded TAB and literal %s\\n survives intact through encode -> base64 -d.",
+        "Logging level predicates use explicit if-blocks instead of A's `[ ... ] && _log || true`, removing a set -e footgun where the last-command status could leak out of a function.",
+        "main() forwards full \"$@\" to every verb (A dropped all but $1 for doctor and passed an empty arg); --version prints to stdout (script-capturable), help to stderr.",
+        "ls header row suppressed under --json so a JSON-lines consumer is never corrupted by the TSV header."
+      ],
+      "deviations_from_A": [
+        "need_arg signature CHANGED: A had no such helper; my version is `need_arg <count-remaining> <flag>` and is validate-only. Integrator must call it as `need_arg \"$#\" --cpus` immediately before reading $2 (the call sites in my parse_birth_args already do this). Do NOT capture its output.",
+        "usage() now requires a `# FLAG:` comment block to exist in the final script (I include it in D-section.sh near the parser). The integrator must keep BOTH the # VERB: block (A's) and the # FLAG: block (mine) in the single file, otherwise the COMMON FLAGS section renders empty. usage() also now takes an optional 2nd arg (verb) to scope help.",
+        "reset_opts now reads SANDBOX_CPUS/SANDBOX_MEMORY/SANDBOX_NETWORK env vars (new env surface). A's reset_opts hard-coded defaults with no env duality. Integrator should ensure these env names don't collide with anything in C's isolation code.",
+        "encode_workload is a NEW helper replacing A's inline base64 block inside build_birth_argv and verb_exec. Integrator should replace those two inline blocks with: `mapfile -t _wl < <(encode_workload \"${WORKLOAD_CMD[@]}\"); argv+=(\"${_wl[@]}\")`. The decode wrapper string differs from A's (printf instead of echo, no exec) — this is the load-bearing fix, adopt mine.",
+        "parse_birth_args adds short aliases (-e/-v/-p/-w/-i/-t) and --flag=value support not present in A. If C or B expect a flag name I aliased, reconcile (e.g. -v here means --mount/volume, consistent with podman; ensure no conflict with a verbosity -v).",
+        "main() dispatch passes \"$@\" to doctor (was \"${1:-}\"); run_doctor must therefore parse its own args (A's run_doctor already accepts --json as $1, which still works since --json arrives as $1)."
+      ]
+    }
+  ],
+  "integrated": {
+    "final_path": "/var/home/tom/mecattaf/dotfiles/skills/microvm/findings/build/sandbox.draft.sh",
+    "final_line_count": 1566,
+    "bash_n_passed": true,
+    "shellcheck_status": "clean (shellcheck run via docker.io/koalaman/shellcheck:stable container since host lacks it; exit 0, no warnings). 6 justified inline disables: 4x SC2178 on apply_* array namerefs, 2x SC2016 on podman Go-template --format strings.",
+    "merge_decisions": [
+      "Spine = A; replaced A's sections wholesale with B (lifecycle/worktree/trap/run/keep/reap), C (isolation/krun/doctor/precheck/caps), D (logging/usage/parse/reset_opts/encode_workload/emit_kv/json_escape/verb_ls/main).",
+      "build_birth_argv: ONE function = B's structure (BIRTH_NAME deterministic sandbox-<id> for ephemeral, LBL_BASE label, base sidecar) spliced with C's isolation body (apply_isolation_flags/apply_krun_annotations/apply_rlimits/apply_ssh_agent helpers, krun_cpus/krun_ram_mib clamping, strict --mount ro/rw validation, --publish HOST:GUEST shape check). Workload transport uses D's encode_workload via mapfile, replacing B's and C's inline base64 forms.",
+      "Added required new constant readonly LBL_BASE per B's deviation note; added C's KRUN_MIN_VCPU + libkrun soname/search-dir constants; dropped A's duplicate KRUN bounds block in favor of C's.",
+      "Validators: kept ONE is_uint/require_uint (D's regex form) + ONE clamp (C's, which re-guards via is_uint); duration_to_secs from D. json_escape: D's (handles \\r,\\n,\\t) — used by both doctor_emit and reap JSON.",
+      "Logging: D's _log/trace/debug/info/warn/err/die (explicit-if predicates, set -e safe).",
+      "reset_opts: D's env-duality version (SANDBOX_CPUS/MEMORY/NETWORK) but trimmed to only the OPT_* the birth path consumes (removed dead OPT_FORCE/KEEP_WORKTREE/ALL/FOLLOW/TAIL/DRYRUN/UNTIL/JSON) to eliminate SC2034 legitimately rather than by disable.",
+      "parse_birth_args + need_arg from D (validate-only need_arg, --flag=value split, short aliases). Dropped the dead --json/OPT_JSON branch from parse_birth_args (run/keep do not emit JSON).",
+      "verb_run/keep/reap + worktree guards + 3-layer trap from B verbatim. verb_ls/main/usage from D. verb_start/exec/logs/inspect/stop/rm from A, reconciled to use need_arg, usage(0,<verb>), and (verb_exec) encode_workload+mapfile instead of A's broken echo|base64|exec bash -s.",
+      "Wired --timeout: verb_run now bounds the foreground launch with coreutils `timeout --signal=TERM` (124 on timeout). Previously parsed-but-ignored in every draft; this satisfies discipline #8 (every flag reaches a real effect). exec/keep parse --timeout into OPT_TIMEOUT but do not yet apply it.",
+      "SANDBOX_ROOT/SANDBOX_RUNTIME/SANDBOX_BASE_IMAGE made readonly after env-seeding (were mutable in A)."
+    ],
+    "conflicts_resolved": [
+      "Two build_birth_argv (B vs C) -> merged into one (B structure + C isolation helpers + D transport).",
+      "Three base64 transports (A broken, B simplified, C count-aware %q, D printf|bash -s) -> adopted D's encode_workload everywhere (build_birth_argv + verb_exec).",
+      "Duplicate is_uint/require_uint/clamp (C vs D) -> single set (D validators + C clamp).",
+      "Duplicate json_escape (C vs D) -> D's superset.",
+      "Duplicate logging/_dr/doctor (A vs C/D) -> C owns doctor, D owns logging; A's removed.",
+      "Ephemeral container name: A left TRAP_CONTAINER empty -> adopted B's deterministic sandbox-<id> name set on argv and used by trap.",
+      "keep success TRAP_PERSIST: A left 0, B sets 1 -> adopted B (durable kept sandbox not torn down by a later same-process trap).",
+      "precheck DOCTOR_* handling: adopted C's own-and-reset (no \"${arr[@]:-}\" round-trip) over A's."
+    ],
+    "unresolved": [
+      "--timeout is honored only for `run` (foreground timeout). `keep` is detached (-d) so a runtime bound there would need a separate mechanism; `exec` parses --timeout but does not apply it. Stage 4 should decide whether exec/keep need real timeout enforcement or whether the flag should be rejected for those verbs.",
+      "The `# FLAG: --json` help line remains, but run/keep no longer parse --json (it is honored by read/doctor/reap only, matching the FLAG text 'machine-readable output (read/doctor/reap verbs)'). Confirm this is the intended UX and that no caller passes --json to run/keep expecting an effect.",
+      "B noted verb_reap calls precheck() (krun subset) before sweeping; on a host where krun is unusable, pure cleanup `reap` will fail EX_PRECONDITION. Left as-is per B; Stage 4 may want to relax reap's precheck to a podman-only subset.",
+      "apply_ssh_agent binds $SSH_AUTH_SOCK with :Z relabel; if the agent socket lives where SELinux refuses relabel this could need :z or no label (C's flag).",
+      "--read-only-tmpfs=true is pinned explicitly; if a target podman rejects the =true form, drop to bare --read-only (C's note).",
+      "loopback maps to --network pasta; krun/passt localhost-publish semantics under --network pasta with `--publish 127.0.0.1:HOST:GUEST` are assumed, not verified (no podman/krun execution permitted in this stage).",
+      "verb_exec --ssh-agent only sets SSH_AUTH_SOCK env in the exec session; the socket bind must already exist from the original keep launch — exec cannot add a new bind mount to a running container. Confirm UX expectation.",
+      "No test could exercise actual launch (krun handler not run per instructions); only bash -n + shellcheck + structural greps were possible."
+    ],
+    "summary": "Merged Agent A's spine with B/C/D hardened sections into a single self-consistent 1566-line `sandbox` script at findings/build/sandbox.draft.sh. One centralized birth function (build_birth_argv: B's lifecycle structure + C's isolation helpers + D's base64 transport), one teardown path (B's trap-disarm-first ephemeral_trap + --rm + reap), label-exclusive selection throughout, and a self-documenting usage() reading both the # VERB: and # FLAG: comment blocks. Reconciled all flagged interface deviations: added LBL_BASE + C's krun constants, unified the duplicate validators/json_escape/build_birth_argv/base64-transport, adopted D's env-dual reset_opts (trimmed to live OPT_* to kill SC2034 cleanly) and need_arg parser, and routed verb_exec through encode_workload. Also wired the previously-ignored --timeout into verb_run via coreutils timeout. bash -n passes; shellcheck (run in a container, host lacks it) is clean with 6 justified inline disables (SC2178 namerefs, SC2016 podman Go templates). chmod +x applied. NOT installed to ~/.local/bin. Key items for Stage 4 scrutiny: --timeout only enforced for run; reap requires krun precheck; loopback/passt publish semantics unverified (no krun execution permitted)."
+  }
+}
