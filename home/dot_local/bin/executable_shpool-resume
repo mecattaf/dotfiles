@@ -1,22 +1,238 @@
 #!/usr/bin/env bash
-# fzf-pick an existing shpool session and attach to it.
-# Run locally on harness-desktop; also invoked over ssh by desk-resume.
-# Companion to `desk`, which always spawns a fresh session.
+# fzf-pick a shell session to resume, then attach.
+#
+# Two groups are shown:
+#   ● live shpool sessions  — annotated with their cwd and the program running
+#                             inside (claude / nvim / shell) instead of a bare
+#                             UUID, so you can tell them apart.
+#   ○ closed Claude sessions — recent Claude Code conversations from
+#                             $CLAUDE_CONFIG_DIR that are NOT currently live in
+#                             any shpool session. Selecting one spawns a fresh
+#                             shpool session that `claude --resume`s it in the
+#                             right directory.
+#
+# Run locally on harness-desktop; also invoked over ssh by the `desk-resume`
+# fish function. Companion to `desk`, which always spawns a fresh session.
+#
+# Why the closed group exists: shpool only tracks *live* sessions, so a Claude
+# session whose terminal was closed (or whose laptop rebooted, dropping the
+# ssh attach) vanishes from `shpool list` even though its transcript is fully
+# resumable. Surfacing those makes an accidental close one keypress to recover.
 
 set -u
 
-if ! command -v shpool >/dev/null 2>&1; then
-    echo "shpool not found on $(hostname)" >&2
-    exit 1
+die() { echo "$*" >&2; exit 1; }
+command -v shpool >/dev/null 2>&1 || die "shpool not found on $(hostname)"
+command -v fzf   >/dev/null 2>&1 || die "fzf not found on $(hostname)"
+
+# Where Claude Code keeps its transcripts, and the flags sessions are launched
+# with (mirrors the `cc` alias in fish: env CLAUDE_CONFIG_DIR=… claude …).
+CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude-main}"
+CLAUDE_FLAGS="--dangerously-skip-permissions"
+# How many recent closed Claude sessions to surface, and how far back to look.
+CLOSED_LIMIT="${SHPOOL_RESUME_CLOSED_LIMIT:-8}"
+CLOSED_DAYS="${SHPOOL_RESUME_CLOSED_DAYS:-3}"
+
+TAB=$'\t'
+NOW=$(date +%s)
+
+# ---- helpers ---------------------------------------------------------------
+
+# "3m" / "5h" / "2d" for an epoch in the past; "?" if unknown.
+ago() {
+    local t=$1 d
+    [ -n "$t" ] || { printf '?'; return; }
+    d=$(( NOW - t ))
+    (( d < 0 )) && d=0
+    if   (( d < 3600 ));  then printf '%dm' $(( d / 60 ))
+    elif (( d < 86400 )); then printf '%dh' $(( d / 3600 ))
+    else printf '%dd' $(( d / 86400 )); fi
+}
+
+# Collapse $HOME to ~ for compactness.
+tilde() { case "$1" in "$HOME"*) printf '~%s' "${1#"$HOME"}";; *) printf '%s' "$1";; esac; }
+
+# Echo every descendant process's comm under a pid (one per line).
+descendant_comms() {
+    local pid=$1 child
+    for child in $(pgrep -P "$pid" 2>/dev/null); do
+        ps -o comm= -p "$child" 2>/dev/null
+        descendant_comms "$child"
+    done
+}
+
+# The most interesting program in a process tree: claude > editor > other >
+# shell. Considers the leader's own comm too, since a session whose -c command
+# exec'd straight into claude (e.g. a recovery session) has no shell child.
+leaf_program() {
+    local root=$1 comms
+    comms=$(printf '%s\n%s\n' "$(ps -o comm= -p "$root" 2>/dev/null)" "$(descendant_comms "$root")")
+    comms=$(grep -v '^$' <<<"$comms")
+    [ -n "$comms" ] || { printf 'shell'; return; }
+    if grep -qx claude <<<"$comms"; then printf 'claude'; return; fi
+    if grep -qxE 'n?vim' <<<"$comms"; then printf '%s' "$(grep -m1 -xE 'n?vim' <<<"$comms")"; return; fi
+    local other; other=$(grep -vxE 'fish|bash|zsh|sh|env|' <<<"$comms" | head -n1)
+    if [ -n "$other" ]; then printf '%s' "$other"; else printf 'shell'; fi
+}
+
+# ---- 1. live shpool sessions ----------------------------------------------
+# Map each session (NAME<TAB>STARTED_AT<TAB>STATUS) to its shell process by
+# matching STARTED_AT against the start time of the daemon's child processes,
+# then read that process's cwd and the program running inside it.
+
+declare -A used_pid
+daemon=$(pgrep -x shpool | head -n1)
+
+# pid<TAB>start_epoch for every direct child of the daemon (the session leaders).
+shell_table=""
+if [ -n "${daemon:-}" ]; then
+    for pid in $(pgrep -P "$daemon" 2>/dev/null); do
+        s=$(date -d "$(ps -o lstart= -p "$pid" 2>/dev/null)" +%s 2>/dev/null) || continue
+        shell_table+="${pid}${TAB}${s}"$'\n'
+    done
 fi
 
-if ! command -v fzf >/dev/null 2>&1; then
-    echo "fzf not found on $(hostname)" >&2
-    exit 1
+# Find the (unused) leader pid whose start epoch is closest to a target epoch.
+match_pid() {
+    local target=$1 best="" bestdiff=999999 pid s diff
+    [ -n "$target" ] || return 1
+    while IFS=$TAB read -r pid s; do
+        [ -n "$pid" ] || continue
+        [ -n "${used_pid[$pid]:-}" ] && continue
+        diff=$(( target > s ? target - s : s - target ))
+        if (( diff < bestdiff )); then bestdiff=$diff; best=$pid; fi
+    done <<<"$shell_table"
+    (( bestdiff <= 5 )) && { echo "$best"; return 0; }
+    return 1
+}
+
+lines=""          # fzf candidate lines: TYPE<TAB>ARG1<TAB>ARG2<TAB>DISPLAY
+
+while IFS=$TAB read -r name started status; do
+    [ -n "$name" ] || continue
+    epoch=$(date -d "$started" +%s 2>/dev/null)
+    cwd=""; prog="shell"
+    if pid=$(match_pid "$epoch"); then
+        used_pid[$pid]=1
+        cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null)
+        prog=$(leaf_program "$pid")
+    fi
+    # Bare UUID names get abbreviated; human-named sessions shown in full.
+    if [[ $name =~ ^[0-9a-f]{8}-[0-9a-f]{4}- ]]; then label="${name:0:8}…"; else label="$name"; fi
+    mark=" "; [ "$status" = "attached" ] && mark="*"
+    disp=$(printf '\033[32m●\033[0m %s %-10s \033[36m%-28s\033[0m \033[33m%s\033[0m %s' \
+        "$mark" "$prog" "$(tilde "${cwd:-?}")" "$(ago "$epoch")" "$label")
+    lines+="live${TAB}${name}${TAB}${TAB}${disp}"$'\n'
+done < <(shpool list | tail -n +2)
+
+# ---- 2. recently-closed Claude sessions ------------------------------------
+# Scan transcripts under $CFG/projects, drop any whose session id is currently
+# running (live in a shpool session), and surface the most recent few.
+
+if [ -d "$CFG/projects" ] && command -v python3 >/dev/null 2>&1; then
+    # session ids that are live right now (claude --resume <id> processes)
+    live_ids=$(pgrep -af claude 2>/dev/null \
+        | grep -oE 'resume [0-9a-f-]{36}' | awk '{print $2}' | sort -u)
+
+    closed=$(python3 - "$CFG" "$CLOSED_DAYS" "$CLOSED_LIMIT" <<'PY'
+import os, sys, json, glob, time
+cfg, days, limit = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+cutoff = time.time() - days * 86400
+rows = []
+for proj in glob.glob(os.path.join(cfg, "projects", "*")):
+    if not os.path.isdir(proj):
+        continue
+    # depth-1 *.jsonl only -> excludes subagents/*.jsonl
+    for f in glob.glob(os.path.join(proj, "*.jsonl")):
+        try:
+            mt = os.path.getmtime(f)
+        except OSError:
+            continue
+        if mt < cutoff:
+            continue
+        sid = os.path.basename(f)[:-6]
+        cwd, prompt = "", ""
+        try:
+            with open(f, encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    if cwd and prompt:
+                        break
+                    try:
+                        o = json.loads(line)
+                    except Exception:
+                        continue
+                    if not cwd and o.get("cwd"):
+                        cwd = o["cwd"]
+                    if not prompt and o.get("type") == "user":
+                        c = o.get("message", {}).get("content")
+                        if isinstance(c, str):
+                            t = c
+                        elif isinstance(c, list):
+                            t = " ".join(x.get("text", "") for x in c
+                                         if isinstance(x, dict) and x.get("type") == "text")
+                        else:
+                            t = ""
+                        t = " ".join(t.split())
+                        # skip command/system noise, keep first real prompt
+                        if t and not t.startswith("<"):
+                            prompt = t
+        except OSError:
+            continue
+        if not cwd:
+            continue
+        rows.append((mt, sid, cwd, prompt[:48]))
+rows.sort(reverse=True)
+for mt, sid, cwd, prompt in rows[:limit]:
+    print(f"{int(mt)}\t{sid}\t{cwd}\t{prompt}")
+PY
+)
+
+    while IFS=$TAB read -r mt sid cwd prompt; do
+        [ -n "$sid" ] || continue
+        grep -qx "$sid" <<<"$live_ids" && continue          # already running live
+        disp=$(printf '\033[2m○\033[0m   %-10s \033[36m%-28s\033[0m \033[33m%s\033[0m \033[2m«%s»\033[0m' \
+            "claude" "$(tilde "$cwd")" "$(ago "$mt")" "${prompt:-?}")
+        lines+="claude${TAB}${sid}${TAB}${cwd}${TAB}${disp}"$'\n'
+    done <<<"$closed"
 fi
 
-# shpool list is tab-separated: NAME<TAB>STARTED_AT<TAB>STATUS
-sess=$(shpool list | tail -n +2 | fzf --prompt='resume> ' --no-sort | cut -f1)
-[[ -n "$sess" ]] || exit 0
+# ---- 3. pick + act ---------------------------------------------------------
 
-exec shpool attach -c fish "$sess"
+# Strip trailing blank line.
+lines=$(printf '%s' "$lines")
+[ -n "$lines" ] || die "no live shpool sessions and no recent Claude sessions to resume"
+
+# Debugging / scripting hook: print candidate lines and exit.
+if [ -n "${SHPOOL_RESUME_LIST_ONLY:-}" ]; then
+    printf '%s\n' "$lines"
+    exit 0
+fi
+
+sel=$(printf '%s\n' "$lines" | fzf --ansi --no-sort --prompt='resume> ' \
+        --delimiter="$TAB" --with-nth=4.. \
+        --header='enter: resume   ● live   ○ closed Claude (resumes in a new session)')
+[ -n "$sel" ] || exit 0
+
+type=$(cut -d"$TAB" -f1 <<<"$sel")
+arg1=$(cut -d"$TAB" -f2 <<<"$sel")
+arg2=$(cut -d"$TAB" -f3 <<<"$sel")
+
+case "$type" in
+    live)
+        exec shpool attach -f "$arg1"
+        ;;
+    claude)
+        # Name the recovery session after its directory + short id so it is
+        # recognisable in this picker next time.
+        name="cc-$(basename "$arg2")-${arg1:0:8}"
+        name=${name//[^A-Za-z0-9_-]/-}
+        # bash -lc 'exec …' keeps the Claude TUI alive across shpool detaches
+        # (running claude as the bare -c command exits on detach).
+        exec shpool attach -f -d "$arg2" \
+            -c "bash -lc 'exec env CLAUDE_CONFIG_DIR=$CFG claude $CLAUDE_FLAGS --resume $arg1'" \
+            "$name"
+        ;;
+    *)
+        die "unknown selection type: $type"
+        ;;
+esac

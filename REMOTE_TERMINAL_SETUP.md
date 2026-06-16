@@ -52,8 +52,31 @@ fish <name>` creates the session if it doesn't exist, attaches if it does
 |----------------------|--------------------------------------|
 | New remote shell     | `Mod+Shift+Return` (or `desk`)       |
 | Resume a shell       | `desk <uuid>`                        |
+| Pick a session to resume | `Mod+Ctrl+Shift+Return` (or `desk-resume`) |
 | List live sessions   | `ssh harness-desktop shpool list`    |
 | Kill a session       | `ssh harness-desktop shpool kill <uuid>` |
+
+### The resume picker (`shpool-resume`)
+
+`Mod+Ctrl+Shift+Return` runs `~/.local/bin/shpool-resume` on the desktop
+through an fzf picker. It lists two groups:
+
+- **● live shpool sessions**, each annotated with its working directory and
+  the program running inside (`claude` / `nvim` / `shell`) plus an age and an
+  `*` if a client is already attached — so bare-UUID names are identifiable.
+  Selecting one does `shpool attach -f`.
+- **○ recently-closed Claude sessions** — Claude Code conversations under
+  `$CLAUDE_CONFIG_DIR` (default `~/.claude-main`) that are *not* currently live
+  in any shpool session, shown with their directory and opening prompt.
+  Selecting one spawns a fresh shpool session that `claude --resume`s it in the
+  right directory.
+
+The closed group exists because shpool only tracks *live* sessions: a Claude
+session whose terminal was closed (or whose laptop rebooted, dropping the ssh
+attach) disappears from `shpool list` even though its transcript is fully
+resumable. This surfaces those so an accidental close is one keypress to
+recover. Tunables: `SHPOOL_RESUME_CLOSED_DAYS` (default 3),
+`SHPOOL_RESUME_CLOSED_LIMIT` (default 8).
 
 ## Supporting config (already in place before this fix)
 
