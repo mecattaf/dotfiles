@@ -72,7 +72,7 @@
       };
 
       packages.${system} = {
-        # mactahoe-oled lands next increment (lifted from the proven ~/mecattaf/mactahoe-oled/).
+        inherit (pkgs) mactahoe-gtk-theme mactahoe-icon-theme;
       };
 
       formatter.${system} = pkgs.nixfmt-rfc-style;
