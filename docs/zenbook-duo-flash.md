@@ -9,6 +9,30 @@ No secrets are needed for this install.
 
 ---
 
+## How to drive the install (pick one)
+
+- **A — On the Duo directly.** Type the steps below at the Duo's installer console.
+  Simplest; fine for a one-off.
+- **B — Puppeteer from `harness` over SSH (RECOMMENDED).** Boot the Duo installer, do ONE
+  thing at its console (network + authorize SSH — unavoidable; there's no pure-software way
+  into a box that doesn't trust you yet), then run every step below over `ssh` from harness.
+  No disko needed. Comfortable keyboard, copy-paste, logs on your main screen.
+  ```bash
+  # at the Duo installer console, ONCE:
+  sudo su; passwd            # set a root password  (or: mkdir -p /root/.ssh && curl/paste your pubkey)
+  systemctl start sshd
+  ip -brief addr             # note the Duo's IP (use an ethernet/USB-C dongle, or iwctl for wifi)
+  # then from harness:
+  ssh root@<duo-ip>          # now run steps 3-7 here
+  ```
+- **C — Fully automated re-flashes via `nixos-anywhere`.** One command from harness
+  partitions + installs. **Needs a `disko` config** (deliberately deferred — we can add a
+  `hosts/zenbook-duo/disko.nix` once the manual install proves the flake). Best for
+  repeatable wipes, overkill for the first boot.
+
+Recommendation: **B for the first install** (validates the flake, no new code), then add
+disko + switch to **C** if you want one-command re-flashes.
+
 ## 0. Before you start (on another computer)
 
 - A USB stick (≥2 GB), and a second computer to write it.
