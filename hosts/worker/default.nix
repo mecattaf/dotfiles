@@ -6,7 +6,7 @@
   imports = [
     ./hardware.nix
     ../../modules/strix.nix
-    # ./sunshine.nix   # added in task #7
+    ./sunshine.nix
   ];
 
   networking.hostName = "worker";

@@ -14,7 +14,10 @@
   boot.plymouth.enable = true; # boot splash — decided: keep
 
   nix.settings = {
-    experimental-features = [ "nix-command" "flakes" ];
+    experimental-features = [
+      "nix-command"
+      "flakes"
+    ];
     auto-optimise-store = true;
   };
 
@@ -22,7 +25,13 @@
   users.users.tom = {
     isNormalUser = true;
     description = "tom";
-    extraGroups = [ "wheel" "video" "input" "render" "networkmanager" ];
+    extraGroups = [
+      "wheel"
+      "video"
+      "input"
+      "render"
+      "networkmanager"
+    ];
     shell = pkgs.fish;
     linger = true;
   };

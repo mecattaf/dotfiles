@@ -10,7 +10,10 @@
 
   options.myCluster = {
     role = lib.mkOption {
-      type = lib.types.enum [ "coordinator" "worker" ];
+      type = lib.types.enum [
+        "coordinator"
+        "worker"
+      ];
       description = "Role on the AMD Strix Halo Thunderbolt cluster.";
     };
     tbHostId = lib.mkOption {
