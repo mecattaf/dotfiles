@@ -11,4 +11,6 @@
   # Intel Arc/Xe VA-API — deliberately iHD (not legacy i965).
   hardware.graphics.extraPackages = [ pkgs.intel-media-driver ];
   environment.sessionVariables.LIBVA_DRIVER_NAME = "iHD";
+
+  services.thermald.enable = true; # Intel thermal throttling protection (decided: Intel-only)
 }

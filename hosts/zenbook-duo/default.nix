@@ -18,4 +18,5 @@
   environment.sessionVariables.LIBVA_DRIVER_NAME = "iHD";
 
   services.asusd.enable = true; # kbd backlight, charge-limit, platform-profile
+  services.thermald.enable = true; # Intel thermal throttling protection (decided: Intel-only)
 }

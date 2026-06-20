@@ -11,6 +11,7 @@
   boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
   boot.loader.systemd-boot.enable = lib.mkDefault true;
   boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
+  boot.plymouth.enable = true; # boot splash — decided: keep
 
   nix.settings = {
     experimental-features = [ "nix-command" "flakes" ];
@@ -55,6 +56,8 @@
   services.gvfs.enable = true;
   services.udisks2.enable = true;
   services.power-profiles-daemon.enable = true;
+  services.fprintd.enable = true; # fingerprint — decided: all devices
+  services.fwupd.enable = true; # firmware updates — decided: keep
   programs.ydotool.enable = true;
   xdg.portal = {
     enable = true;
@@ -109,6 +112,17 @@
 
   # GONE by decision: flatpak, YubiKey/pcscd, fcitx5/ibus, bar/notification daemon,
   # just/hjust/gum, ramalama, valent, iio-niri, VM guest agents.
+  #
+  # DEFERRED — decided-keep, land in the Layer 1 home bridge or on the coordinator.
+  # TRACK, do NOT silently drop (build Layer 1 from harness-sweep §Packages, not a sketch):
+  #   - codecs: ffmpeg-full + gst_all_1.{base,good,bad} + ffmpegthumbnailer + libjxl
+  #   - python3.withPackages bundle (cairo/gobject/pillow/psutil/pywayland/… ) — backs the
+  #     niri helper bin/ scripts (wifi-menu, fzf-nmcli, vpn-status); they fail without it
+  #   - nautilus (+ nautilus-open-any-terminal + xdg-terminal-exec), shpool
+  #   - the full SAME-bucket app set (acpi, brightnessctl, pamixer, kanshi, zathura, imv,
+  #     yt-dlp, wl-mirror, wmctrl, wtype, xarchiver, xwayland-satellite, …)
+  #   - agent stack: gcloud (google-cloud-sdk), gh, pi.nix, llm-agents.nix
+  #   Coordinator-only: cockpit, cloudflared, cifs-utils+NAS mount, cups/NM-VPN, quadlets.
 
-  system.stateVersion = "25.11";
+  system.stateVersion = "26.05"; # current stable line (fresh install, honest value)
 }
