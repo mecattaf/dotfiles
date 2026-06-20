@@ -27,7 +27,7 @@ profile Laptop {
     exec busctl --user set-property rs.wl-gammarelay /outputs/eDP_1 rs.wl.gammarelay Temperature q 4000
 }
 
-profile sodimo {
+profile Triple {
     output DP-4 mode 5120x2880@60.000Hz scale 2 position 0,0    transform normal
     output DP-1 mode 5120x2880@60.000Hz scale 2 position 2560,0 transform normal
     output HDMI-A-1 mode 1920x1080@100.000Hz scale 1 position 5120,0 transform 270
