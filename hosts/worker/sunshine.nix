@@ -1,20 +1,17 @@
 { config, pkgs, lib, ... }:
+# ░░ DEFERRED STUB — NOT imported (rolled back 2026-06-20). "I'll use that later." ░░
+# Activate by uncommenting `./sunshine.nix` in hosts/worker/default.nix.
+#
 # Sunshine (host) + Moonlight (client) on the HEADLESS worker, niri-compatible.
-# Design + sources: ~/mecattaf/sunshine-moonlight-research.md.
+# Full design + sources + the headless-display analysis: ~/mecattaf/sunshine-moonlight-research.md.
 #
-# Uses STOCK niri (from common.nix). The stable pieces — the Sunshine service, uinput,
-# AMD VA-API, greetd autologin — are configured here. The HEADLESS DISPLAY itself is the
-# one hardware-dependent open item (see below); the worker is not this session's flash
-# target, so it doesn't gate anything.
-#
-# HEADLESS DISPLAY — two paths:
-#   • NOW (interim): fake a connector so niri lights an output — a ~$8 HDMI/DP EDID dummy
-#     dongle (zero config), OR the commented kernelParams below (needs the REAL connector
-#     name from `niri msg outputs` + a real EDID blob shipped via hardware.firmware).
-#   • LATER (clean): niri PR #3800 adds DYNAMIC virtual outputs
-#     (`niri msg create-virtual-output`), letting Sunshine size a VD to the Moonlight
-#     client per-connection. **DEFERRED until that PR merges** — we don't pin an unmerged
-#     PR (build proved flaky). Revisit once it lands in niri/niri-flake.
+# This file holds THREE stubs to pick up later:
+#   (1) sunshine/moonlight — the stable service config below (ready; uses stock niri).
+#   (2) niri PR #3800 — dynamic virtual outputs (the clean headless path). Pinned build
+#       hashes kept in the commented block below. NOT used until the PR merges (its build
+#       proved flaky on rebuild).
+#   (3) the corresponding "Sunlight" PR/project — pairs with #3800 on the streaming side.
+#       TODO(me): fill the exact repo/PR ref when activating.
 let
   user = "tom";
 in
@@ -25,16 +22,6 @@ in
     inherit user;
   };
   systemd.user.services.niri.enableDefaultPath = false; # documented niri+greetd PATH gotcha
-
-  # --- (interim) declarative faked connector — FILL connector name + ship the EDID blob ---
-  # boot.kernelParams = [
-  #   "drm.edid_firmware=DP-1:edid/headless-1080p.bin" # real connector + blob in initrd
-  #   "video=DP-1:e"                                    # force-enable even with nothing plugged
-  # ];
-  # hardware.firmware = [ (pkgs.runCommand "edid-fw" {} ''
-  #   mkdir -p $out/lib/firmware/edid
-  #   cp ${./edid/headless-1080p.bin} $out/lib/firmware/edid/headless-1080p.bin
-  # '') ];
 
   # --- AMD VA-API encode stack (gfx1151 / RDNA3.5; radeonsi VAAPI ships in mesa) ---
   hardware.graphics.extraPackages = with pkgs; [
@@ -62,6 +49,35 @@ in
     };
   };
 
-  # Client side: install `moonlight-qt` on the coordinator/laptop, pair via the PIN at
-  # https://<worker>:47990.
+  # ── STUB (2): headless display ────────────────────────────────────────────────────
+  # INTERIM (works now): EDID dummy dongle, OR kernel EDID —
+  #   boot.kernelParams = [ "drm.edid_firmware=DP-1:edid/headless-1080p.bin" "video=DP-1:e" ];
+  #   hardware.firmware = [ (pkgs.runCommand "edid-fw" {} '' … cp ${./edid/headless-1080p.bin} … '') ];
+  #
+  # CLEAN (when niri PR #3800 merges): build the PR niri + Sunshine virtual-output prep-cmd.
+  # Pinned hashes (prefetched 2026-06-20, ready to drop in):
+  #   niriSrc = pkgs.fetchFromGitHub {
+  #     owner = "niri-wm"; repo = "niri";
+  #     rev = "38e760e6daf64f9223f197800d6069262cbc4374";   # pull/3800/head
+  #     hash = "sha256-tcjX4u+lc90IE8HFVsYgVLLOLo/9DugHUizv3dh3tHQ=";
+  #   };
+  #   niriVirtualOutput = pkgs.niri.overrideAttrs (_: {
+  #     src = niriSrc;
+  #     cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
+  #       src = niriSrc; name = "niri-pr3800-cargo-vendor";
+  #       hash = "sha256-gfnalA3qI3a9h3PvsxgQLCrzapfjLLkxhTMJpwRh+ro=";
+  #     };
+  #   });
+  #   # then: programs.niri.package = niriVirtualOutput;
+  #   #       services.sunshine.settings.output_name = "sunshine";
+  #   #       services.sunshine.applications.apps = [ { name = "Desktop (niri VD)";
+  #   #         "prep-cmd" = [ { do = "${lib.getExe niriVirtualOutput} msg create-virtual-output
+  #   #           --name sunshine --width \${SUNSHINE_CLIENT_WIDTH} --height \${SUNSHINE_CLIENT_HEIGHT}
+  #   #           --refresh-rate \${SUNSHINE_CLIENT_FPS}";
+  #   #           undo = "${lib.getExe niriVirtualOutput} msg remove-virtual-output sunshine"; } ]; } ];
+  #
+  # ── STUB (3): the corresponding "Sunlight" PR/project ─────────────────────────────
+  #   TODO(me): record the exact repo/PR that pairs with niri #3800 on the streaming side.
+  #
+  # Client: install `moonlight-qt` on the coordinator/laptop; pair at https://<worker>:47990.
 }

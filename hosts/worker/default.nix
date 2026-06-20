@@ -6,7 +6,8 @@
   imports = [
     ./hardware.nix
     ../../modules/strix.nix
-    ./sunshine.nix
+    # ./sunshine.nix   # ROLLED BACK 2026-06-20 — kept as a deferred STUB (see the file).
+    #                    Uncomment to activate sunshine/moonlight later. "I'll use that later."
   ];
 
   networking.hostName = "worker";
