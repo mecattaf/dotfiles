@@ -79,6 +79,9 @@ in
   # icons for the PWA launchers (referenced by absolute path above).
   home.file.".local/share/icons/_repo".source = link "dot_local/share/icons";
 
+  # wallpapers — whole-dir at ~/.local/share/wallpapers (wallpaper.jpg + placeholder).
+  home.file.".local/share/wallpapers".source = link "dot_local/share/wallpapers";
+
   # bash login files (RAW). NB: dot_bashrc sources ~/.env (secrets) — deferred to the
   # secrets session; until then it's a harmless missing-file warning.
   home.file.".bashrc".source = link "dot_bashrc";
@@ -132,6 +135,20 @@ in
       name = "Bibata-Modern-Classic";
       package = pkgs.bibata-cursors;
     };
+  };
+
+  # ---------------------------------------------------------------------------
+  # OBS Studio — nix-native replacement for the harness flatpaks
+  # (com.obsproject.Studio + …Plugin.OBSVkCapture). The module wraps OBS so the
+  # plugin loads; obs-vkcapture is ALSO listed in home.packages below so the
+  # Vulkan/GL capture layer + `obs-gamecapture` helper land on the user profile
+  # (XDG_DATA_DIRS / PATH) for capturing other Wayland apps, not just OBS itself.
+  # ---------------------------------------------------------------------------
+  programs.obs-studio = {
+    enable = true;
+    plugins = with pkgs.obs-studio-plugins; [
+      obs-vkcapture
+    ];
   };
 
   # ---------------------------------------------------------------------------
@@ -189,6 +206,10 @@ in
     zathura
     ffmpeg-full
     ffmpegthumbnailer
+
+    # screen/game recording (OBS itself is wired via programs.obs-studio above);
+    # this exposes the vkcapture host layer + obs-gamecapture launcher on PATH.
+    obs-studio-plugins.obs-vkcapture
 
     # files / nautilus + open-any-terminal (decided keep)
     nautilus
