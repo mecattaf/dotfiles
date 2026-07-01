@@ -1,5 +1,5 @@
 Name:           wl-clip-persist
-Version:        null
+Version:        0.5.0
 Release:        %autorelease
 Summary:        Keep Wayland clipboard content alive after the source app closes
 
