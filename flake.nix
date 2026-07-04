@@ -1,8 +1,8 @@
 {
   description = "mecattaf — one flake for the whole distribution (NixOS + home-manager). Coordinator/worker AMD Strix Halo cluster + Intel laptops. Supersedes harness(bootc) + harnessRPM(copr) + dotfiles(chezmoi).";
 
-  # NOTE: nix branch only. `main` stays chezmoi until this is fully validated.
-  # Scoping/decisions live in ~/mecattaf/*.md (nix-decisions.md is the system of record).
+  # Canonical branch since 2026-07-04 (old `main` retired as `chezmoi`).
+  # Scoping/decisions live in docs/migration-journal/ (nix-decisions.md is the system of record).
 
   inputs = {
     # Unstable: Strix Halo (gfx1151) wants fresh kernels + Mesa. Revisit pinning later.

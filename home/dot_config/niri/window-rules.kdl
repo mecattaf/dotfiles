@@ -82,3 +82,19 @@ window-rule {
     match app-id=r#"^org\.wezfurlong\.wezterm$"#
     default-column-width {}
 }
+
+// NIX-MIGRATION: drift-port of the deployed 2026-06-27 frosted-glass edit
+// (was live on this desktop only, in neither branch). Pairs with kitty.conf's
+// background_opacity 0.8. COMMENTED OUT: `background-effect`/blur is NOT in
+// the pinned upstream niri 25.11 (vendored wiki has no such node; FAQ points
+// at unmerged PR niri-wm/niri#1634) — the desktop ran a git/blur build (26.04).
+// An unknown node is a parse error and niri then discards the ENTIRE config,
+// so this stays disabled until the niri pin gains blur. Re-enable then.
+// Frosted kitty: kitty's own background_opacity (0.8) makes the bg translucent;
+// niri blur frosts the wallpaper behind it while text stays crisp.
+// window-rule {
+//     match app-id="kitty"
+//     background-effect {
+//         blur true
+//     }
+// }

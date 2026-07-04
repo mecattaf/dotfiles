@@ -2,4 +2,19 @@
 // hot-reload. Candidate to port to typed programs.niri.settings (niri-flake)
 // later. Decision + rationale: ~/mecattaf/nix-decisions.md (D1).
 
-// Machine-specific overrides (not shared across machines)
+// Machine-specific overrides. NB: under home-manager this file is deployed by
+// the SAME whole-dir out-of-store symlink on every host (home.nix xdg.configFile
+// "niri"), so anything uncommented here applies fleet-wide — keep per-host
+// blocks commented out until a real per-host slot exists (post-first-boot niri
+// nixification / programs.niri.settings is the candidate home for these).
+
+// NIX-MIGRATION: drift-port of a deployed 2026-06-27 edit that lived directly in
+// this machine's ~/.config/niri/config.kdl (in neither branch). HOST-SPECIFIC to
+// the coordinator (this Framework desktop) ONLY — its DP-4 monitor is physically
+// mounted inverted. Kept commented out because local.kdl is shared across all
+// hosts (see note above); uncomment on the coordinator after flashing, or fold
+// into its per-host nix config when niri gets nixified.
+// output "DP-4" {
+//     scale 2.0
+//     transform "180"
+// }

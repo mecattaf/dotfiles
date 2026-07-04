@@ -50,13 +50,17 @@ let
   );
 
   # 11 Chrome PWAs (antigravity DROPPED). flatpak chrome → google-chrome-stable --app.
+  # pwaIcon: entry name ≠ icon filename for 4 PWAs (chatgpt→openai, claude→anthropic,
+  # gcloud→drive, photos→images) — reference the icon that actually exists in
+  # dot_local/share/icons/ instead of dangling on <name>.png.
   chrome = "${pkgs.google-chrome}/bin/google-chrome-stable";
-  pwa = name: url: {
+  pwaIcon = name: icon: url: {
     inherit name;
     exec = "${chrome} --profile-directory=Default --app=${url}";
-    icon = "${dots}/dot_local/share/icons/${name}.png";
+    icon = "${dots}/dot_local/share/icons/${icon}.png";
     categories = [ "Network" ];
   };
+  pwa = name: pwaIcon name name;
 in
 {
   imports = [ ./nvim.nix ];
@@ -65,12 +69,27 @@ in
   home.homeDirectory = "/home/tom";
   programs.home-manager.enable = true;
 
+  # nvim-sweep.md §1.3 (A): every home.packages tool must be on the SESSION PATH
+  # (niri-session runs the login shell; dot_bash_profile sources hm-session-vars.sh)
+  # so niri spawns + kitty-daemon `kitty @ launch` children find Nix-provided binaries.
+  home.sessionPath = [ "$HOME/.nix-profile/bin" ];
+
   # ---------------------------------------------------------------------------
   # RAW configs (whole-dir per ~/.config/<name>) — hot-reload scaffolding.
   # ---------------------------------------------------------------------------
-  xdg.configFile = lib.genAttrs configDirs (d: {
-    source = link "dot_config/${d}";
-  });
+  xdg.configFile =
+    lib.genAttrs configDirs (d: {
+      source = link "dot_config/${d}";
+    })
+    // {
+      # nvim-sweep.md §9 fallback: kitty/ is a whole-dir out-of-store symlink, so
+      # the store-path fragment can't be nested inside it — emit at a neutral path;
+      # kitty.conf includes it by absolute (env-expanded) path.
+      "kitty-scrollback-nix.conf".text = ''
+        # GENERATED — Nix-store path for kitty-scrollback.nvim kittens (offline-safe).
+        action_alias kitty_scrollback_nvim kitten ${pkgs.vimPlugins.kitty-scrollback-nvim}/python/kitty_scrollback_nvim.py
+      '';
+    };
 
   # bin/ scripts: whole-dir (the repo OWNS ~/.local/bin). EVENTUAL nix-native =
   # writeShellApplication with declared deps; RAW only as interim.
@@ -91,13 +110,13 @@ in
   # PWA launchers (TYPED via xdg.desktopEntries; google-chrome, not flatpak).
   # ---------------------------------------------------------------------------
   xdg.desktopEntries = {
-    chatgpt = pwa "chatgpt" "https://chat.openai.com/";
-    claude = pwa "claude" "https://claude.ai/";
-    gcloud = pwa "gcloud" "https://drive.google.com/drive/u/0/";
+    chatgpt = pwaIcon "chatgpt" "openai" "https://chat.openai.com/";
+    claude = pwaIcon "claude" "anthropic" "https://claude.ai/";
+    gcloud = pwaIcon "gcloud" "drive" "https://drive.google.com/drive/u/0/";
     github = pwa "github" "https://github.com/mecattaf";
     "open-webui" = pwa "open-webui" "http://localhost:8080/";
     perplexity = pwa "perplexity" "https://perplexity.ai/";
-    photos = pwa "photos" "https://photos.google.com/";
+    photos = pwaIcon "photos" "images" "https://photos.google.com/";
     railway = pwa "railway" "https://railway.app/dashboard";
     soundcloud = pwa "soundcloud" "https://soundcloud.com";
     whatsapp = pwa "whatsapp" "https://web.whatsapp.com/";
@@ -109,12 +128,46 @@ in
   # ---------------------------------------------------------------------------
   programs.git = {
     enable = true;
+    # lfs: the deployed ~/.gitconfig on the live device carries the [filter "lfs"]
+    # block (clean/smudge/process/required) the RPM git-lfs wrote; lfs.enable
+    # restores it declaratively AND puts git-lfs itself on the user profile
+    # (harness-sweep §devtools lists git-lfs as decided-keep).
+    lfs.enable = true;
     settings = {
       user.name = "mecattaf";
       user.email = "thomas@mecattaf.dev";
       init.defaultBranch = "main";
       credential.helper = "${pkgs.gh}/bin/gh auth git-credential";
     };
+  };
+
+  # ---------------------------------------------------------------------------
+  # shpool — socket-activated session daemon. The harnessRPM shipped
+  # /usr/lib/systemd/user/shpool.{service,socket} (enabled on the live device);
+  # the nix package only delivers the binary, so replicate the units 1:1 here or
+  # `shpool attach` has no daemon/socket on a fresh host.
+  # ---------------------------------------------------------------------------
+  systemd.user.services.shpool = {
+    Unit = {
+      Description = "Shpool - Shell Session Pool";
+      Requires = [ "shpool.socket" ];
+    };
+    Service = {
+      Type = "simple";
+      ExecStart = "${pkgs.shpool}/bin/shpool daemon";
+      KillMode = "mixed";
+      TimeoutStopSec = "2s";
+      SendSIGHUP = "yes";
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
+  systemd.user.sockets.shpool = {
+    Unit.Description = "Shpool Shell Session Pooler";
+    Socket = {
+      ListenStream = "%t/shpool/shpool.socket";
+      SocketMode = "0600";
+    };
+    Install.WantedBy = [ "sockets.target" ];
   };
 
   # ---------------------------------------------------------------------------
@@ -175,7 +228,10 @@ in
     glow
 
     # niri / wayland desktop tooling + D2 native re-point (brightnessctl/playerctl/
-    # swaybg; NO rofi by decision)
+    # swaybg; NO rofi by decision). xwayland-satellite: niri's X11 path — X11 apps and
+    # Chrome fallbacks need it on the session PATH (harness-sweep SAME bucket, decided keep).
+    xwayland-satellite
+    acpi
     brightnessctl
     playerctl
     swaybg
@@ -213,10 +269,11 @@ in
     # this exposes the vkcapture host layer + obs-gamecapture launcher on PATH.
     obs-studio-plugins.obs-vkcapture
 
-    # files / nautilus + open-any-terminal (decided keep)
+    # files / nautilus + open-any-terminal (decided keep) + archive GUI
     nautilus
     nautilus-open-any-terminal
     xdg-terminal-exec
+    xarchiver
 
     # session persistence + terminal
     shpool
@@ -231,10 +288,13 @@ in
     # cursors (theme dep)
     bibata-cursors
 
-    # codecs/gstreamer plugins for thumbnailers + portals
+    # codecs/gstreamer plugins for thumbnailers + portals (harness-sweep codecs bucket:
+    # base/good/bad + libjxl, decided keep)
     gst_all_1.gstreamer
     gst_all_1.gst-plugins-base
     gst_all_1.gst-plugins-good
+    gst_all_1.gst-plugins-bad
+    libjxl
   ];
 
   # nvim → implemented in ./nvim.nix (imported above): programs.neovim + lazy-nix-helper

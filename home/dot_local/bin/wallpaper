@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# wallpaper -- set desktop wallpaper via IPC
-# IPC target: wallpaper (WallpaperBridge IpcHandler), method: change <path>
-DEFAULT="/usr/share/backgrounds/harness/wallpaper.jpg"
+# wallpaper -- set desktop wallpaper
+# NIX-MIGRATION: D2/D3 native re-point (ratified 2026-06-20, nix-decisions.md /
+# dotfiles-sweep.md). quickshell is GONE; the old `qs ipc wallpaper change`
+# bridge becomes swaybg. Default = the repo wallpaper.jpg, deployed to
+# ~/.local/share/wallpapers by home-manager (home.nix). Startup spawn lives in
+# ~/.config/niri/startup.kdl (D3); this script re-points at runtime.
+DEFAULT="$HOME/.local/share/wallpapers/wallpaper.jpg"
 path="${1:-$DEFAULT}"
 
 if [[ ! -f "$path" ]]; then
@@ -9,4 +13,5 @@ if [[ ! -f "$path" ]]; then
     exit 1
 fi
 
-qs ipc --pid $(pgrep -x qs) call wallpaper change "$path"
+pkill -x swaybg
+setsid -f swaybg -i "$path" -m fill

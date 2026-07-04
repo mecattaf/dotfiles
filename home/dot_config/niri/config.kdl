@@ -38,5 +38,9 @@ include "layer-rules-webshell.kdl"
 include "misc.kdl"
 include "startup.kdl"
 
-// local overrides (not tracked in dotfiles)
-include optional=true "local.kdl"
+// local overrides (tracked in-repo; per-host blocks stay commented out there)
+// NIX-MIGRATION: was `include optional=true "local.kdl"` — the pinned niri 25.11
+// does not know `optional=true` and a parse error makes niri silently discard the
+// ENTIRE config (defaults-only boot). local.kdl exists in-repo and is deployed by
+// the same whole-dir home-manager symlink, so optionality is not needed.
+include "local.kdl"

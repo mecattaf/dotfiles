@@ -7,14 +7,15 @@
 # nvim → Nix, implementing nvim-sweep.md. Keep lazy.nvim; ZERO functionality loss.
 # Nix provides the binary + every LSP/formatter/tool (mason removed) + the plugins as
 # /nix/store paths resolved by lazy-nix-helper. Most nvim files stay RAW (live-edit);
-# only lua/plugins.lua is rendered (it carries store paths).
+# only lua/plugins.lua + lua/mappings.lua are rendered (they carry store paths —
+# mappings.lua per nvim-sweep.md §1.3 (B): absolute lazygit/nvim for kitty launches).
 let
   repoDir = "${config.home.homeDirectory}/mecattaf/dotfiles";
   ndir = "${repoDir}/home/dot_config/nvim";
   link = p: config.lib.file.mkOutOfStoreSymlink "${ndir}/${p}";
   vp = pkgs.vimPlugins;
 
-  # --- the three source-built plugins (REAL pinned hashes, prefetched in-container) ---
+  # --- the five source-built plugins (REAL pinned hashes, prefetched in-container) ---
   lazy-nix-helper-nvim = pkgs.vimUtils.buildVimPlugin {
     pname = "lazy-nix-helper.nvim";
     version = "0-unstable-2026-06-20";
@@ -153,11 +154,21 @@ let
       (builtins.readFile ./nvim/plugins.lua.in)
   );
 
-  # nvim files that stay RAW (live-edit) — everything except the rendered plugins.lua
+  # mappings.lua rendered too (nvim-sweep.md §1.3 (B)): `kitty @ launch` children spawn
+  # from the kitty daemon (niri's env), NOT from wrapped nvim, so extraPackages' PATH
+  # never reaches <leader>kg lazygit / <leader>ko nested nvim — bake absolute store paths.
+  mappingsLua = pkgs.writeText "mappings.lua" (
+    builtins.replaceStrings
+      [ "@lazygit@" "@nvim@" ]
+      [ "${pkgs.lazygit}/bin/lazygit" "${config.programs.neovim.finalPackage}/bin/nvim" ]
+      (builtins.readFile ./nvim/mappings.lua.in)
+  );
+
+  # nvim files that stay RAW (live-edit) — everything except the rendered
+  # plugins.lua + mappings.lua
   nvimRaw = [
     "init.lua"
     "lua/options.lua"
-    "lua/mappings.lua"
     "lua/yank.lua"
     "lua/hotreload.lua"
     "lua/external-changes.lua"
@@ -224,8 +235,10 @@ in
         };
       }) nvimRaw
     ))
-    # the ONE rendered file: lua/plugins.lua (store-path plugin table)
+    # the rendered files: lua/plugins.lua (store-path plugin table) +
+    # lua/mappings.lua (absolute lazygit/nvim, nvim-sweep.md §1.3 (B))
     // {
       "nvim/lua/plugins.lua".source = pluginsLua;
+      "nvim/lua/mappings.lua".source = mappingsLua;
     };
 }

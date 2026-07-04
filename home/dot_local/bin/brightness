@@ -1,8 +1,11 @@
 #!/bin/bash
-# brightness -- adjust display brightness via IPC
-# IPC target: display (BrightnessBridge IpcHandler)
+# brightness -- adjust display brightness
+# NIX-MIGRATION: D2 native re-point (ratified 2026-06-20, nix-decisions.md /
+# dotfiles-sweep.md D2). quickshell is GONE; the old `qs ipc display
+# brighter/dimmer 0.05` (5% steps) becomes brightnessctl. Interim scaffolding —
+# eventual nix-native shape is writeShellApplication with declared deps.
 case "$1" in
-    up)    qs ipc --pid $(pgrep -x qs) call display brighter 0.05 ;;
-    down)  qs ipc --pid $(pgrep -x qs) call display dimmer 0.05 ;;
+    up)    brightnessctl set 5%+ ;;
+    down)  brightnessctl set 5%- ;;
     *)     echo "Usage: $0 {up|down}"; exit 1 ;;
 esac

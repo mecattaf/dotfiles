@@ -12,6 +12,10 @@
   boot.loader.systemd-boot.enable = lib.mkDefault true;
   boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
   boot.plymouth.enable = true; # boot splash — decided: keep
+  # Issue #33: shpool session leak exhausted the default 128 inotify instances.
+  # Bump ports the headroom; the session-naming fix itself is tracked in notes
+  # (dotfiles-pass / remote-terminal capture).
+  boot.kernel.sysctl."fs.inotify.max_user_instances" = 512;
 
   nix.settings = {
     experimental-features = [
@@ -109,6 +113,10 @@
   # --- env (qt theming; bar-less / notification-less by decision) ---
   environment.sessionVariables = {
     QT_QPA_PLATFORMTHEME = "qt6ct";
+    # Chromium/Electron (google-chrome + the 11 PWA launchers) run native Wayland on
+    # NixOS only with this set; without it they fall back to X11 and fail/blur under
+    # niri (audit: "no NIXOS_OZONE_WL, no xwayland-satellite").
+    NIXOS_OZONE_WL = "1";
   };
 
   # --- base system packages (the rest are user packages in home/) ---
@@ -122,16 +130,12 @@
   # GONE by decision: flatpak, YubiKey/pcscd, fcitx5/ibus, bar/notification daemon,
   # just/hjust/gum, ramalama, valent, iio-niri, VM guest agents.
   #
-  # DEFERRED — decided-keep, land in the Layer 1 home bridge or on the coordinator.
-  # TRACK, do NOT silently drop (build Layer 1 from harness-sweep §Packages, not a sketch):
-  #   - codecs: ffmpeg-full + gst_all_1.{base,good,bad} + ffmpegthumbnailer + libjxl
-  #   - python3.withPackages bundle (cairo/gobject/pillow/psutil/pywayland/… ) — backs the
-  #     niri helper bin/ scripts (wifi-menu, fzf-nmcli, vpn-status); they fail without it
-  #   - nautilus (+ nautilus-open-any-terminal + xdg-terminal-exec), shpool
-  #   - the full SAME-bucket app set (acpi, brightnessctl, pamixer, kanshi, zathura, imv,
-  #     yt-dlp, wl-mirror, wmctrl, wtype, xarchiver, xwayland-satellite, …)
-  #   - agent stack: gcloud (google-cloud-sdk), gh, pi.nix, llm-agents.nix
-  #   Coordinator-only: cockpit, cloudflared, cifs-utils+NAS mount, cups/NM-VPN, quadlets.
+  # DEFERRED — genuinely outstanding ONLY (issue #35 pruned the already-landed items:
+  # codecs, pythonForNiri, nautilus set, shpool, the SAME-bucket apps, gh/gcloud —
+  # all live in home/home.nix now):
+  #   - agent stack MODULES: pi.nix + llm-agents.nix flake inputs (binaries gh/gcloud landed)
+  #   Coordinator-only: cockpit, cloudflared tunnel service, cifs-utils+NAS mount,
+  #   cups/NM-VPN, quadlets.
 
   system.stateVersion = "26.05"; # current stable line (fresh install, honest value)
 }

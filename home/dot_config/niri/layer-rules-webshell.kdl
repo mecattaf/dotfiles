@@ -44,3 +44,27 @@ layer-rule {
 layer-rule {
     match namespace="shell:lockscreen"
 }
+
+// NIX-MIGRATION: drift-port of the deployed 2026-06-27 frosted-glass edits
+// (were live on this desktop only, in neither branch — erased at flash time
+// otherwise). COMMENTED OUT: `background-effect`/blur is NOT in the pinned
+// upstream niri 25.11 (the vendored wiki documents no such node; FAQ points at
+// unmerged PR niri-wm/niri#1634) — the desktop ran a git/blur build (26.04).
+// An unknown node is a parse error and niri then discards the ENTIRE config,
+// so these stay disabled until the niri pin gains blur. Re-enable then.
+
+// Frosted-glass blur behind the cowl ccd left sidebar (transparent surface).
+// layer-rule {
+//     match namespace="^cowl-ccd$"
+//     background-effect {
+//         blur true
+//     }
+// }
+
+// Frosted-glass blur behind the cowl top bar (thin strip surface).
+// layer-rule {
+//     match namespace="^cowl-bar$"
+//     background-effect {
+//         blur true
+//     }
+// }

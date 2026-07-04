@@ -20,8 +20,9 @@ animations {
     }
 
     horizontal-view-movement {
-        duration-ms 120
-        curve "cubic-bezier" 0.25 0.1 0.25 1.0
+        // NIX-MIGRATION: drift-port of the deployed 2026-06-27 perf edit.
+        // off: instant re-tile (no smooth scroll) — perf win for surface toggle/collapse (Agent 1)
+        off
     }
 
     window-open {
@@ -35,8 +36,9 @@ animations {
     }
 
     window-movement {
-        duration-ms 120
-        curve "cubic-bezier" 0.25 0.1 0.25 1.0
+        // NIX-MIGRATION: drift-port of the deployed 2026-06-27 perf edit.
+        // off: instant exclusive-zone reclaim / re-tile when a surface hides (Agent 1 toggle-speed win)
+        off
     }
 
     window-resize {

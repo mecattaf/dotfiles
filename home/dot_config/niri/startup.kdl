@@ -23,7 +23,12 @@ spawn-at-startup "qs" "-p" "$HOME/.config/quickshell/webshell/shell.qml"
 // streaming speech-to-text daemon (starts inactive, toggle with Mod+Space)
 spawn-at-startup "asr-rs"
 
-// wallpaper was handled by quickshell (qs ipc call wallpaper change <path>) — disabled during webshell migration
+// wallpaper was handled by quickshell (qs ipc call wallpaper change <path>) — dead
+// NIX-MIGRATION: D3 (ratified 2026-06-20, dotfiles-sweep.md / nix-decisions.md):
+// wallpaper = swaybg spawned from niri startup, pointing at the repo wallpaper.jpg
+// (deployed to ~/.local/share/wallpapers by home-manager; swaybg in home.packages).
+// Runtime changes go through ~/.local/bin/wallpaper (same swaybg re-point).
+spawn-sh-at-startup "swaybg -i $HOME/.local/share/wallpapers/wallpaper.jpg -m fill"
 
 
 // ── gsettings ────────────────────────────────────────────────

@@ -30,9 +30,14 @@ binds {
     Mod+E hotkey-overlay-title="File Manager" { spawn "nautilus"; }
 
     // scroll: bindsym Ctrl+N exec flatpak run com.google.Chrome
-    Ctrl+N { spawn "flatpak" "run" "com.google.Chrome"; }
     // scroll: bindsym Ctrl+Shift+N exec flatpak run com.google.Chrome --incognito
-    Ctrl+Shift+N { spawn "flatpak" "run" "com.google.Chrome" "--incognito"; }
+    // NIX-MIGRATION: flatpak is GONE (nix-decisions.md: google-chrome from
+    // nixpkgs, no flatpak). The bare Ctrl+N / Ctrl+Shift+N compositor grabs were
+    // flatpak-era global launchers that swallowed Chrome's own new-window /
+    // incognito shortcuts (and Ctrl+N in every focused app). Remapped to the Mod
+    // layer; Chrome regains its native Ctrl+N / Ctrl+Shift+N when focused.
+    Mod+N hotkey-overlay-title="Chrome" { spawn "google-chrome-stable"; }
+    Mod+Ctrl+N hotkey-overlay-title="Chrome (incognito)" { spawn "google-chrome-stable" "--incognito"; }
 
 
     // ── Quickshell (was DMS) ─────────────────────────────────────
@@ -76,20 +81,23 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.local/bin/clipboard"; }
     // ── Chrome Webapps ───────────────────────────────────────────
 
     // scroll: set $chrome flatpak run com.google.Chrome
+    // NIX-MIGRATION: flatpak is GONE (nix-decisions.md: google-chrome from
+    // nixpkgs, unfree; OBS via programs.obs-studio). All `flatpak run
+    // com.google.Chrome` → google-chrome-stable, com.obsproject.Studio → obs.
 
     // scroll: bindsym $mod+Shift+N exec $chrome --app=https://chat.openai.com/
-    Mod+Shift+N { spawn "flatpak" "run" "com.google.Chrome" "--app=https://chat.openai.com/"; }
+    Mod+Shift+N { spawn "google-chrome-stable" "--app=https://chat.openai.com/"; }
     // scroll: bindsym $mod+Shift+C exec $chrome --app=https://claude.ai/
-    Mod+Shift+C { spawn "flatpak" "run" "com.google.Chrome" "--app=https://claude.ai/"; }
+    Mod+Shift+C { spawn "google-chrome-stable" "--app=https://claude.ai/"; }
     // scroll: bindsym $mod+Shift+M exec $chrome --app=https://soundcloud.com
-    Mod+Shift+M { spawn "flatpak" "run" "com.google.Chrome" "--app=https://soundcloud.com"; }
+    Mod+Shift+M { spawn "google-chrome-stable" "--app=https://soundcloud.com"; }
     Mod+M hotkey-overlay-title="YouTube Music" { spawn-sh "niri msg -j windows | jq -re 'map(select(.app_id == \"chrome-music.youtube.com__-Default\"))[0].id // empty' | xargs --no-run-if-empty -I{} niri msg action focus-window --id {}"; }
     // scroll: bindsym $mod+Shift+W exec $chrome --app=https://mail.google.com/
-    Mod+Shift+W { spawn "flatpak" "run" "com.google.Chrome" "--app=https://mail.google.com/"; }
+    Mod+Shift+W { spawn "google-chrome-stable" "--app=https://mail.google.com/"; }
     // scroll: bindsym $mod+Shift+semicolon exec flatpak run com.obsproject.Studio
-    Mod+Shift+Semicolon { spawn "flatpak" "run" "com.obsproject.Studio"; }
+    Mod+Shift+Semicolon { spawn "obs"; }
     // scroll: bindsym $mod+Shift+period exec $chrome --app=https://calendar.notion.so/
-    Mod+Shift+Period { spawn "flatpak" "run" "com.google.Chrome" "--app=https://calendar.notion.so/"; }
+    Mod+Shift+Period { spawn "google-chrome-stable" "--app=https://calendar.notion.so/"; }
     // scroll: bindsym $mod+Shift+E exec $chrome --app=https://drive.google.com/drive/u/0/
     // ^ DROPPED: conflicts with quit
 

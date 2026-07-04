@@ -6,6 +6,7 @@
     "defaultMode": "auto"
   },
   "model": "opus",
+  "tui": "fullscreen",
   "effortLevel": "high",
   "skipDangerousModePermissionPrompt": true,
   "skipAutoPermissionPrompt": true,
