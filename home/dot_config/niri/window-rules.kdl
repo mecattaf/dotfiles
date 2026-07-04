@@ -1,3 +1,7 @@
+// NIX-MIGRATION: placed RAW (home-manager out-of-store symlink) to keep niri
+// hot-reload. Candidate to port to typed programs.niri.settings (niri-flake)
+// later. Decision + rationale: ~/mecattaf/nix-decisions.md (D1).
+
 // Global rounded corners
 window-rule {
     geometry-corner-radius 4

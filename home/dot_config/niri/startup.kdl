@@ -1,3 +1,7 @@
+// NIX-MIGRATION: placed RAW (home-manager out-of-store symlink) to keep niri
+// hot-reload. Candidate to port to typed programs.niri.settings (niri-flake)
+// later. Decision + rationale: ~/mecattaf/nix-decisions.md (D1).
+
 // scroll: exec wl-gammarelay-rs run
 spawn-at-startup "wl-gammarelay-rs" "run"
 
@@ -33,14 +37,15 @@ spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "cursor-size" "
 // scroll:         gsettings set $gnome-schema text-scaling-factor '1.0'
 spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "text-scaling-factor" "1.0"
 // scroll:         gsettings set $gnome-schema gtk-theme 'Catppuccin-Noir-Standard-Green-Dark'
-spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "gtk-theme" "Catppuccin-Noir-Standard-Green-Dark"
+// ^ scroll-era catppuccin dropped 2026-07-04 — MacTahoe OLED end-to-end, matching home.nix gtk.theme
+spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "gtk-theme" "MacTahoe-Dark-grey"
 // scroll:         gsettings set org.gnome.desktop.interface.wm.preferences theme 'Catppuccin-Noir-Standard-Green-Dark'
 // ^ corrected schema: org.gnome.desktop.wm.preferences (not .interface.wm.preferences)
-spawn-at-startup "gsettings" "set" "org.gnome.desktop.wm.preferences" "theme" "Catppuccin-Noir-Standard-Green-Dark"
+spawn-at-startup "gsettings" "set" "org.gnome.desktop.wm.preferences" "theme" "MacTahoe-Dark-grey"
 // scroll:         gsettings set org.gnome.desktop.wm.preferences button-layout ""
 spawn-at-startup "gsettings" "set" "org.gnome.desktop.wm.preferences" "button-layout" ""
 // scroll:         #gsettings set $gnome-schema icon-theme 'Your icon theme'
-spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "icon-theme" "MacTahoe-grey"
+spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "icon-theme" "MacTahoe-dark"
 // scroll: }
 // ^ note: exec_always re-ran on reload. spawn-at-startup runs once. gsettings persist, so fine.
 

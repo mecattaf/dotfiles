@@ -1,1 +1,5 @@
+// NIX-MIGRATION: placed RAW (home-manager out-of-store symlink) to keep niri
+// hot-reload. Candidate to port to typed programs.niri.settings (niri-flake)
+// later. Decision + rationale: ~/mecattaf/nix-decisions.md (D1).
+
 // Machine-specific overrides (not shared across machines)
