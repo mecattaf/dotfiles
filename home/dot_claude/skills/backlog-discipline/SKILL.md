@@ -231,7 +231,17 @@ backlog draft create "WhatsApp order-acknowledgment bot" \
   -l ai,sodimo
 backlog draft promote 24      # convert draft → task
 backlog task demote 24        # convert task → draft
+backlog draft archive 24      # supersede / kill
 ```
+
+`backlog draft` exposes only `list`, `create`, `archive`, `promote`, `view` — there is **no** `edit` / `--append-notes` / description-update flag. To honor the no-bare-archive rule (Hard rule #9), append a supersession block directly to the draft body file, then archive:
+
+```bash
+# 1. Append "## Archive note" block to drafts/draft-9 - ... .md (direct body edit; no CLI flag exists)
+# 2. backlog draft archive 9
+```
+
+The same applies to drafts you want to *keep* but narrow in scope (e.g., splitting a 2-thing draft into 1) — direct-edit the body, since no description-update flag exists. Cite "Tom YYYY-MM-DD <context>" in the note for traceability. This is a CLI-surface gap, not a discipline relaxation: every other artifact type still goes through the CLI exclusively.
 
 ### Read / inspect
 
@@ -304,7 +314,7 @@ backlog completion install --shell bash       # install tab-completion (per-shel
 
 ## Hard rules
 
-1. **CLI only.** If a field can't be set via flag, create via CLI first, then surgically edit one line. Never `cat > task-N.md`.
+1. **CLI only.** If a field can't be set via flag, create via CLI first, then surgically edit. For tasks/decisions/docs/milestones this means one-line YAML edits at most. **Exception: drafts.** Because `backlog draft` exposes no body-edit / append-notes / description-update flag, multi-line body edits to draft `.md` files are permitted (and required to honor rule #9 on archive). Never `cat > task-N.md` for tasks.
 2. **`--append-notes`, not `--notes`** when adding to existing notes — the bare form overwrites.
 3. **`--ac` repeats**, not `\n` separators.
 4. **`--plain` for inspection** — without it the CLI opens a TUI that hangs an agent.
