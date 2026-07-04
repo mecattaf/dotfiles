@@ -9,5 +9,9 @@ final: _prev: {
   mactahoe-gtk-theme = final.callPackage ../pkgs/mactahoe-gtk-theme.nix { };
   mactahoe-icon-theme = final.callPackage ../pkgs/mactahoe-icon-theme.nix { };
 
+  # Backlog.md — markdown-native task manager CLI (`backlog`). Not in nixpkgs;
+  # packaged from the upstream release binary (Bun compile). See pkgs/backlog-md.nix.
+  backlog-md = final.callPackage ../pkgs/backlog-md.nix { };
+
   # DEFERRED bespoke pkgs: asr-rs (v2 not in first push), cliamp, gws, fgp-browser.
 }

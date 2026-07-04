@@ -226,6 +226,7 @@ in
     gh
     google-cloud-sdk
     cloudflared
+    backlog-md # bespoke pkg via overlay — see pkgs/backlog-md.nix
 
     # cursors (theme dep)
     bibata-cursors
