@@ -16,7 +16,7 @@ Requires=network-online.target
 # and deploy /etc/cifs.creds (mode 0600, NOT committed to git) with:
 #   username=admin
 #   password=<your-password>
-What=//10.42.0.2/LaCie
+What=//10.42.0.2/G
 Where=/var/mnt/nas
 Type=cifs
 Options=guest,uid=1000,gid=1000,file_mode=0775,dir_mode=0775,nofail,_netdev,vers=3.1.1
