@@ -1,13 +1,14 @@
-# MacTahoe icon theme — grey variant.
+# MacTahoe icon theme — stock default (blue folders).
 #
-# 100% STOCK. Investigation (2026-06-19) confirmed your grey icons are NOT
-# custom: `grey` is a built-in `install.sh -t grey` variant and the grey folder
-# color (#686868) comes straight from upstream colors/color-grey/*.svg. The only
-# reason it wasn't already available is that MacTahoe (unlike its siblings
-# whitesur-icon-theme / colloid-icon-theme) simply isn't in nixpkgs yet.
+# 100% STOCK, zero flags beyond --name. Previously this built the `-t grey`
+# variant (grey #686868 folders, itself also stock upstream); reverted to the
+# default blue folder color 2026-07-04. The only reason this derivation exists
+# at all is that MacTahoe (unlike its siblings whitesur-icon-theme /
+# colloid-icon-theme) isn't in nixpkgs yet — re-check occasionally and drop
+# this file when it lands.
 #
-# `install.sh -t grey` emits all three dirs you use: MacTahoe-grey,
-# MacTahoe-grey-dark, MacTahoe-grey-light (COLOR_VARIANTS=('' '-light' '-dark')).
+# The default build emits all three dirs (COLOR_VARIANTS=('' '-light' '-dark')):
+# MacTahoe, MacTahoe-light, MacTahoe-dark.
 #
 # Modeled on nixpkgs' whitesur-icon-theme derivation (same upstream author /
 # same install.sh). No patch — so this could even be upstreamed to nixpkgs.
@@ -21,7 +22,7 @@
 }:
 
 stdenvNoCC.mkDerivation {
-  pname = "mactahoe-icon-theme-grey";
+  pname = "mactahoe-icon-theme";
   version = "0-unstable-2026-06-19";
 
   src = fetchFromGitHub {
@@ -50,11 +51,8 @@ stdenvNoCC.mkDerivation {
   installPhase = ''
     runHook preInstall
     # --name is required: without it the theme dirs inherit the build-dir name.
-    ./install.sh --dest $out/share/icons --name MacTahoe --theme grey
-    # install.sh always also emits the default (blue) base theme; the grey
-    # variants are self-contained (no symlinks into it), and your config only
-    # uses MacTahoe-grey*. Drop the unused base to match the old RPM's 3 dirs.
-    rm -rf $out/share/icons/MacTahoe $out/share/icons/MacTahoe-dark $out/share/icons/MacTahoe-light
+    # No --theme flag: default = blue folders.
+    ./install.sh --dest $out/share/icons --name MacTahoe
     jdupes --link-soft --recurse $out/share
     runHook postInstall
   '';
@@ -65,7 +63,7 @@ stdenvNoCC.mkDerivation {
   '';
 
   meta = {
-    description = "MacTahoe grey icon theme (stock vinceliuice build)";
+    description = "MacTahoe icon theme (stock vinceliuice build, default blue folders)";
     homepage = "https://github.com/vinceliuice/MacTahoe-icon-theme";
     license = lib.licenses.gpl3Plus;
     platforms = lib.platforms.linux;

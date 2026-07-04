@@ -118,17 +118,19 @@ in
   };
 
   # ---------------------------------------------------------------------------
-  # gtk/icon/cursor theming — the proven mactahoe (overlay). Theme dir names are
-  # install.sh outputs; verify exact names on first build (cosmetic if slightly off).
+  # gtk/icon/cursor theming — the proven mactahoe (overlay). Theme dir names
+  # verified against install.sh naming + the old RPM tarball: GTK dirs are
+  # MacTahoe-<Color>[-solid]-grey[-(x)hdpi], icon dirs MacTahoe[-light|-dark]
+  # (icons are the stock default = blue folders since 2026-07-04).
   # ---------------------------------------------------------------------------
   gtk = {
     enable = true;
     theme = {
-      name = "MacTahoe-grey-dark";
+      name = "MacTahoe-Dark-grey";
       package = pkgs.mactahoe-gtk-theme;
     };
     iconTheme = {
-      name = "MacTahoe-grey-dark";
+      name = "MacTahoe-dark";
       package = pkgs.mactahoe-icon-theme;
     };
     cursorTheme = {

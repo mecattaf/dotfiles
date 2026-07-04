@@ -1,12 +1,14 @@
-# MacTahoe GTK theme — dark + grey accent, with the custom OLED-black surfaces.
+# MacTahoe GTK theme — light + dark, grey accent, with the custom OLED-black
+# surfaces on the dark variants.
 #
 # Built from upstream source (vinceliuice/MacTahoe-gtk-theme), NOT vendored.
 # The ONLY customization is OLED black: upstream's dark surface colors in
 # src/sass/_colors.scss (#242424 base/backdrop, #333333 bg/headerbar) forced to
 # pure black, exactly the change behind the old harnessRPM `mactahoe-oled`
 # tarball (changelog: "rgba(5,5,5,0.96) → #000000 for true OLED black"). The
-# grey accent and the solid opacity variant are STOCK install.sh flags, not
-# customizations.
+# swapped values sit in the dark-only branch of the if(...)s, so the Light
+# variants are 100% stock. The grey accent and the solid opacity variant are
+# STOCK install.sh flags, not customizations.
 #
 # Modeled on nixpkgs' whitesur-gtk-theme derivation — MacTahoe's install.sh is a
 # direct fork of WhiteSur's, so the same sudo/$HOME/shebang fixups apply.
@@ -29,8 +31,10 @@
 stdenvNoCC.mkDerivation {
   pname = "mactahoe-gtk-theme-oled-grey";
   # Pinned rev (2026-06-19); bump deliberately to take upstream updates — then
-  # `nix build` prints the new hash to paste below. Build-verified in a nixos/nix
-  # container 2026-06-19: produces all 6 variants with OLED-black surfaces.
+  # `nix build` prints the new hash to paste below. The dark-only build was
+  # verified in a nixos/nix container 2026-06-19 (6 variants, OLED-black
+  # surfaces); the Light variants were added 2026-07-04 via the stock repeatable
+  # --color flag and have not been build-verified yet.
   version = "0-unstable-2026-06-19";
 
   src = fetchFromGitHub {
@@ -83,19 +87,21 @@ stdenvNoCC.mkDerivation {
   installPhase = ''
     runHook preInstall
     mkdir -p $out/share/themes
-    # -c dark : dark only   -t grey : grey accent   -o normal/solid : both
-    # opacities. install.sh also emits the -hdpi/-xhdpi variants automatically,
-    # so all 6 dirs the old RPM shipped are produced.
+    # -c light/dark : both colors   -t grey : grey accent   -o normal/solid :
+    # both opacities. install.sh also emits the -hdpi/-xhdpi variants
+    # automatically, so the 6 dark dirs the old RPM shipped are produced
+    # (MacTahoe-Dark-grey, -Dark-solid-grey, each + -hdpi/-xhdpi) plus the
+    # matching 6 Light dirs.
     # MacTahoe's no-gnome-shell branch leaves SHELL_VERSION empty (upstream bug),
     # generating invalid SCSS ($GNOME_SHELL: ;). gnome-shell is never present in a
     # build sandbox, so set it explicitly — the overwriting line is gated behind
     # `command -v gnome-shell`, so this survives. (You run niri; the gnome-shell
     # theme produced is unused but must still compile for install.sh to finish.)
     export SHELL_VERSION=48
-    # NB: --opacity takes ONE value per flag (install.sh does `shift 2`), so the
-    # two opacity variants must be passed as repeated flags, not space-listed.
+    # NB: --opacity/--color take ONE value per flag (install.sh does `shift 2`),
+    # so multi-value variants must be passed as repeated flags, not space-listed.
     ./install.sh \
-      --color dark \
+      --color light --color dark \
       --theme grey \
       --opacity normal --opacity solid \
       --dest $out/share/themes
@@ -104,7 +110,7 @@ stdenvNoCC.mkDerivation {
   '';
 
   meta = {
-    description = "MacTahoe GTK theme, dark + grey accent, custom OLED-black surfaces";
+    description = "MacTahoe GTK theme, light + dark, grey accent, custom OLED-black dark surfaces";
     homepage = "https://github.com/vinceliuice/MacTahoe-gtk-theme";
     license = lib.licenses.gpl3Only;
     platforms = lib.platforms.linux;
