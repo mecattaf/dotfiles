@@ -53,6 +53,46 @@ let
     doCheck = false;
   };
 
+  filemention-nvim = pkgs.vimUtils.buildVimPlugin {
+    pname = "filemention.nvim";
+    version = "0-unstable-2026-05-30";
+    # not in nixpkgs (verified 2026-07-04) — @-mention file completion (Claude Code style).
+    # Completion-engine source only (cmp/blink, no native fallback) → blink.cmp added below.
+    src = pkgs.fetchFromGitHub {
+      owner = "not-manu";
+      repo = "filemention.nvim";
+      rev = "d8aa9116fa441d0529c53bb5cb2c321f30d9544d";
+      hash = "sha256-XeLy1GlSSD3xg5KZWQKJH+riTdcN8e2iIpF7dbGl2MY=";
+    };
+    doCheck = false;
+  };
+
+  web-clipper-nvim = pkgs.vimUtils.buildVimPlugin {
+    pname = "web-clipper.nvim";
+    version = "0-unstable-2026-05-25";
+    # not in nixpkgs (verified 2026-07-04) — URL → cleaned Markdown clippings.
+    # Upstream says `build = "npm install --prefix bin"` but bin/node_modules is
+    # vendored in-repo, so no npm at build time; only node itself is needed —
+    # pinned via the shebang so clipping works regardless of runtime PATH.
+    src = pkgs.fetchFromGitHub {
+      owner = "jbuck95";
+      repo = "web-clipper.nvim";
+      rev = "f08924133465b670d9c7248b483d82a979e6fda9";
+      hash = "sha256-It2jYLHm6PhFIQ/LamO9Br4uddK/ksQ/vmGjPmyy5ek=";
+    };
+    postPatch = ''
+      substituteInPlace bin/defuddle-clip.mjs \
+        --replace-fail "#!/usr/bin/env node" "#!${lib.getExe pkgs.nodejs}"
+      # upstream doc bug: *web-clipper-health* is defined twice, which fails
+      # buildVimPlugin's help-tag generation (E154) — drop the second tag.
+      # Also drop the committed pre-generated doc/tags; the build regenerates it.
+      substituteInPlace doc/web-clipper.txt \
+        --replace-fail ":checkhealth web-clipper  *web-clipper-health*" ":checkhealth web-clipper"
+      rm doc/tags
+    '';
+    doCheck = false;
+  };
+
   # tree-sitter with grammars Nix-prebuilt (withPlugins patches install_dir → no runtime install)
   treesitterWithGrammars = vp.nvim-treesitter.withPlugins (
     p: with p; [
@@ -96,6 +136,9 @@ let
     "pipeline.nvim" = pipeline-nvim;
     "diagram.nvim" = vp.diagram-nvim;
     "nvim-lspconfig" = vp.nvim-lspconfig;
+    "filemention.nvim" = filemention-nvim;
+    "blink.cmp" = vp.blink-cmp; # nixpkgs build ships the compiled rust fuzzy lib
+    "web-clipper.nvim" = web-clipper-nvim;
   };
 
   pluginTableLua = lib.concatStrings (

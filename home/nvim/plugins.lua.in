@@ -413,6 +413,54 @@ require("lazy").setup({
     end,
   },
 
+  -- filemention.nvim — @-mention files (Claude Code style). Completion-source
+  -- only, so blink.cmp below is its engine; fd/rg finders are Nix-provided.
+  {
+    "not-manu/filemention.nvim",
+    dir = dir('filemention.nvim'),
+    event = "InsertEnter",
+    opts = {},
+  },
+  {
+    "saghen/blink.cmp",
+    dir = dir('blink.cmp'),
+    event = "InsertEnter",
+    dependencies = { { "not-manu/filemention.nvim", dir = dir('filemention.nvim') } },
+    opts = {
+      -- filemention is the ONLY source: the menu appears solely on `@` in
+      -- markdown/text/gitcommit (filemention gates by filetype) — no general
+      -- autocomplete noise. <C-y> accepts, <C-n>/<C-p> navigate (default preset).
+      keymap = { preset = "default" },
+      cmdline = { enabled = false },
+      fuzzy = {
+        implementation = "prefer_rust_with_warning", -- rust lib is Nix-prebuilt in the plugin dir
+        prebuilt_binaries = { download = false },    -- never fetch at runtime
+      },
+      sources = {
+        default = { "filemention" },
+        providers = {
+          filemention = { name = "filemention", module = "filemention.sources.blink" },
+        },
+      },
+    },
+  },
+
+  -- web-clipper.nvim — URL → cleaned Markdown in ~/Documents/clippings/.
+  -- Upstream's `build = "npm install --prefix bin"` is skipped: node_modules is
+  -- vendored in the plugin and node is pinned via Nix shebang patch (nvim.nix).
+  {
+    "jbuck95/web-clipper.nvim",
+    dir = dir('web-clipper.nvim'),
+    build = false,
+    cmd = "WebClipper",
+    keys = {
+      -- <leader>w* chosen over upstream's <leader>m* (taken by Minimal())
+      { "<leader>wc", "<Plug>(WebClipperClip)", mode = { "n", "v" }, desc = "Web clip: URL (selection/clipboard/prompt)" },
+      { "<leader>ws", "<Plug>(WebClipperClipSite)", desc = "Web clip: pick configured site" },
+    },
+    opts = {},
+  },
+
 }, {
   install = { missing = false }, -- never auto-install at startup
   pkg = { enable = false },
@@ -430,6 +478,7 @@ if vim.uv.fs_stat("@lazyNixHelperPath@") then
     "twilight.nvim","zen-mode.nvim","render-markdown.nvim","nvim-web-devicons",
     "diffview.nvim","neogit","octo.nvim","img-clip.nvim","image.nvim","neoscroll.nvim",
     "lualine.nvim","pipeline.nvim","diagram.nvim","nvim-lspconfig",
+    "filemention.nvim","blink.cmp","web-clipper.nvim",
   }
   local cfg = require("lazy.core.config").plugins
   for _, name in ipairs(expected) do
