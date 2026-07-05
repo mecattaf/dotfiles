@@ -40,6 +40,14 @@ in
   # --- laptop tier (wifi PSK) ---
   "secrets/wifi.age".publicKeys = editors ++ laptops;
 
+  # --- operator vault (admin USB key ONLY — a tar.gz of everything that is not
+  # otherwise in git: pre-generated host keys + wifi profiles (staging), tom's ssh
+  # private keys, the tailscale OAuth client. Disaster-recovery bundle; NEVER
+  # declared in modules/secrets.nix, no host can decrypt it. Regenerate + re-commit
+  # when staging changes:  tar czf - --exclude=nix-secrets-staging/installer-iso \
+  #   nix-secrets-staging -C ~ .ssh tailscale.md | age -r <admin> -o <this file> ---
+  "secrets/vault/operator-vault-20260705.age".publicKeys = [ admin ];
+
   # --- coordinator-only tier (quadlet service creds; worker deliberately excluded) ---
   # (cloudflare-tunnel + twenty/openwebui slots removed 2026-07-05 — deprecated per Tom.
   # nas-credentials stays as the option for BE550 Secure Sharing, unused while the
