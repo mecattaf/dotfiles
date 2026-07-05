@@ -69,6 +69,12 @@ in
   # kitty-daemon `kitty @ launch` children find Nix-provided binaries.
   home.sessionPath = [ "$HOME/.nix-profile/bin" ];
 
+  # Claude Code reads its config/creds from $CLAUDE_CONFIG_DIR (defaults to ~/.claude).
+  # modules/secrets.nix seeds the OAuth credential to ~/.claude-main, so point Claude
+  # Code there — otherwise the seeded cred lands where nothing reads it and Claude Code
+  # re-prompts for OAuth on a fresh box despite the secret being delivered.
+  home.sessionVariables.CLAUDE_CONFIG_DIR = "${config.home.homeDirectory}/.claude-main";
+
   # ---------------------------------------------------------------------------
   # RAW configs (whole-dir per ~/.config/<name>).
   # ---------------------------------------------------------------------------
@@ -119,6 +125,14 @@ in
   # warning until that file exists.
   home.file.".bashrc".source = link "dot_bashrc";
   home.file.".bash_profile".source = link "dot_bash_profile";
+
+  # Claude Code skills + settings (CLAUDE_CONFIG_DIR = ~/.claude-main, set above).
+  # Deployed as individual out-of-store symlinks — NOT a whole-dir link — so
+  # ~/.claude-main stays a real, writable directory that modules/secrets.nix can seed
+  # .credentials.json into (a whole-dir symlink would push the credential into the
+  # PUBLIC repo tree). Without this, a fresh box has zero skills/settings.
+  home.file.".claude-main/skills".source = link "dot_claude/skills";
+  home.file.".claude-main/settings.json".source = link "dot_claude/settings.json";
 
   # ---------------------------------------------------------------------------
   # PWA launchers (TYPED via xdg.desktopEntries; google-chrome, not flatpak).

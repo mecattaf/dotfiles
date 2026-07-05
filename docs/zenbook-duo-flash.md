@@ -1,4 +1,14 @@
-# Flashing NixOS on the Asus Zenbook Duo — runbook
+> ⚠️ **SUPERSEDED (2026-07-05). Do NOT follow this document to flash anything.**
+> It predates the nixos-anywhere + disko + `--extra-files` flow the fleet now uses,
+> and its manual-USB path delivers NO offline ssh host key — a host flashed this way
+> gets an unregistered key and agenix decryption breaks when `mySecrets.enable` flips.
+> **Canonical laptop runbook: [`dell-xps-flash.md`](./dell-xps-flash.md).** The duo's
+> actual jul5 flash + fixes: `notes/july-fable/july5-duo-flash/flash-log.md`.
+> Kept only for historical context below this line.
+
+---
+
+# Flashing NixOS on the Asus Zenbook Duo — runbook (HISTORICAL)
 
 The first real NixOS install (Layer 2 / the "first boot" milestone). Done **manually
 from a USB stick** (disko/secure-boot are deferred, so no `nixos-anywhere` yet). Do NOT

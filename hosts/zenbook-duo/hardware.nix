@@ -7,7 +7,11 @@
   imports = [ (modulesPath + "/installer/scan/not-detected.nix") ];
 
   boot.initrd.availableKernelModules = [ "xhci_pci" "thunderbolt" "vmd" "nvme" "usbhid" "usb_storage" "sd_mod" ];
-  boot.initrd.kernelModules = [ ];
+  # Force early-KMS for i915 in the initrd. The Duo has TWO internal eDP panels and
+  # niri hung on next-boot output init (jul5); the model-specific NixOS Discourse
+  # thread (UX8406MA) reports reliable dual-eDP mode-setting needs early i915 + kernel
+  # ≥6.7 (satisfied via linuxPackages_latest). NEEDS LIVE VERIFY on next power-on.
+  boot.initrd.kernelModules = [ "i915" ];
   boot.kernelModules = [ "kvm-intel" ];
   boot.extraModulePackages = [ ];
 

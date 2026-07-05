@@ -1,28 +1,11 @@
 { pkgs, lib, config, ... }:
 # Device-agnostic layer — every host imports this. Use lib.mkDefault for
 # anything a host or nixos-hardware module may override.
-let
-  # See services.greetd.settings.initial_session below. On a fresh flash, tom's
-  # out-of-store config symlinks dangle until the dotfiles checkout exists; this
-  # wrapper clones the PUBLIC repo (best-effort, bounded) then execs the real
-  # niri-session, so first boot comes up with the real config and zero manual steps.
-  ensureDotfilesSession = pkgs.writeShellScript "niri-session-ensure-dotfiles" ''
-    set -u
-    repo="$HOME/mecattaf/dotfiles"
-    if [ ! -e "$repo/home/dot_config/niri/config.kdl" ]; then
-      echo "ensure-dotfiles: checkout missing at $repo — cloning github.com/mecattaf/dotfiles" >&2
-      ${pkgs.coreutils}/bin/mkdir -p "$(${pkgs.coreutils}/bin/dirname "$repo")"
-      ${pkgs.coreutils}/bin/timeout 180 ${pkgs.git}/bin/git clone \
-        https://github.com/mecattaf/dotfiles.git "$repo" \
-        || echo "ensure-dotfiles: clone failed (offline?) — niri will use default config" >&2
-    fi
-    exec ${config.programs.niri.package}/bin/niri-session
-  '';
-in
 {
   imports = [
     ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
+    ./dotfiles-bootstrap.nix # ensure ~/mecattaf/dotfiles exists before the session
   ];
 
   # --- identity / base ---
@@ -68,25 +51,21 @@ in
   programs.niri.enable = true;
   services.greetd = {
     enable = true;
-    settings.default_session = {
+    settings.default_session = lib.mkDefault {
       command = "${pkgs.greetd}/bin/agreety --cmd niri-session";
       user = "greeter";
     };
     # Autologin tom → niri at boot on every host (fleet-wide, moved here from the
     # worker's headless-display.nix). tom is a locked/key-only account: passwordless
     # login + passwordless sudo (wheelNeedsPassword=false) means no password is ever
-    # prompted. Subsequent logins after logout fall back to default_session (agreety).
+    # prompted. The out-of-store config checkout is guaranteed present before this
+    # runs by ./dotfiles-bootstrap.nix (ordered before greetd).
     #
-    # The session command is NOT bare niri-session: home-manager deploys tom's
-    # ~/.config/* (niri, kitty, fish, kanshi, ~/.local/bin) as OUT-OF-STORE symlinks
-    # into ${repoDir} (see home/home.nix `mkOutOfStoreSymlink`). On a freshly-flashed
-    # box that checkout does not exist yet, so every config would dangle and niri would
-    # boot with defaults (this bit the jul5 duo flash). ensure-dotfiles clones the
-    # PUBLIC repo (best-effort, bounded) before handing off to niri, so a fresh flash
-    # comes up with the real config with zero manual steps. Idempotent: instant once
-    # the checkout is present (e.g. the operator's primary box, or any 2nd boot).
-    settings.initial_session = {
-      command = "${ensureDotfilesSession}";
+    # NB: there is NO usable interactive fallback — default_session (agreety) prompts
+    # for a password tom does not have, so it cannot log him in. Real recovery if this
+    # session fails is the VT2-6 getty autologin below (Ctrl+Alt+F2) or a reboot.
+    settings.initial_session = lib.mkDefault {
+      command = "${config.programs.niri.package}/bin/niri-session";
       user = "tom";
     };
   };
@@ -97,6 +76,7 @@ in
   # guaranteed console shell (Ctrl+Alt+F2). Secret-free and consistent with the fleet's
   # security model — physical access already implies full access (autologin + nopasswd
   # sudo); `login -f` works even though the account is password-locked.
+  # (greetd is hardwired to VT1 in this nixpkgs, so getty keeps VT2-6 for recovery.)
   services.getty.autologinUser = lib.mkDefault "tom";
 
   # --- audio ---
