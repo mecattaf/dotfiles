@@ -50,6 +50,15 @@
       ];
     };
 
+    # The scripted one-shot that assigns the static IP races the TB XDomain
+    # handshake: if thunderbolt0 appears after systemd's 90s device timeout, the
+    # job fails and never re-runs → headless box with no address until a lucky
+    # power cycle. Hooking the service onto the device unit re-fires it whenever
+    # the link (re)appears — idempotent, the script uses `ip addr replace`.
+    systemd.services."network-addresses-thunderbolt0".wantedBy = [
+      "sys-subsystem-net-devices-thunderbolt0.device"
+    ];
+
     # Naming fabric: both nodes resolve both TB endpoints by role name
     # (-tb suffix so LAN/tailscale resolution of the plain hostnames is untouched).
     networking.hosts = {

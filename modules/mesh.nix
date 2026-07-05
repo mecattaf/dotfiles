@@ -16,6 +16,10 @@ let
   operatorKeys = [
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHuyYcI6TtVr2UBvyFXySczeRX+1tnaU3lJ8BdyVvw9s flasher@harness-20260427"
   ];
+
+  meshKeys = lib.unique (
+    lib.filter nonEmpty (lib.mapAttrsToList (_: h: h.userKey) registry) ++ operatorKeys
+  );
 in
 {
   programs.ssh.knownHosts = lib.mapAttrs (_: h: {
@@ -23,7 +27,11 @@ in
     publicKey = h.hostKey;
   }) (lib.filterAttrs (_: h: nonEmpty h.hostKey) registry);
 
-  users.users.tom.openssh.authorizedKeys.keys = lib.unique (
-    lib.filter nonEmpty (lib.mapAttrsToList (_: h: h.userKey) registry) ++ operatorKeys
-  );
+  users.users.tom.openssh.authorizedKeys.keys = meshKeys;
+
+  # Root gets the same keys. On a headless key-only mesh, sudo is a single point
+  # of failure (tom's account has no password); key-based root ssh is the recovery
+  # path and what `nixos-rebuild --target-host root@…` drives. sshd's NixOS default
+  # PermitRootLogin = "prohibit-password" keeps this key-only.
+  users.users.root.openssh.authorizedKeys.keys = meshKeys;
 }

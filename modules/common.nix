@@ -42,6 +42,9 @@
     linger = true;
   };
   programs.fish.enable = true;
+  # Key-only mesh: tom has no password (locked account), so password-sudo would leave
+  # every headless box with no root path at all. Wheel sudos without a password.
+  security.sudo.wheelNeedsPassword = false;
 
   # --- session: greetd → niri ---
   programs.niri.enable = true;

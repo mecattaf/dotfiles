@@ -12,9 +12,11 @@ let
   registry = import ../modules/mesh-registry.nix;
   hostName = if osConfig != null then osConfig.networking.hostName else null;
 
-  # The headless worker captures the EDID-injected connector; everywhere else wayvnc
-  # binds the single active output automatically.
-  vncOutput = if hostName == "worker" then "DP-1" else null;
+  # wayvnc binds the single active output automatically — everywhere, including the
+  # headless worker. Pinning the worker to a guessed connector name (--output DP-1)
+  # was a crash-loop waiting to happen; headless-display.nix now force-enables
+  # several candidate connectors and whichever lights up is the one to capture.
+  vncOutput = null;
   outputArg = lib.optionalString (vncOutput != null) " --output ${vncOutput}";
 
   # A Remmina VNC profile for each host other than this one → any box reaches any box.
