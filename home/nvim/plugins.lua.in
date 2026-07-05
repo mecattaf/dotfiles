@@ -403,13 +403,15 @@ require("lazy").setup({
   },
 
   -- mason REMOVED (imperative runtime installs — forbidden). marksman is Nix-provided
-  -- on PATH; lspconfig drives it directly.
+  -- on PATH; nvim-lspconfig just ships the lsp/marksman.lua definition, enabled via
+  -- the native Nvim 0.11 API (require('lspconfig').<server>.setup{} is deprecated as
+  -- of nvim-lspconfig 2.10 — see :help lspconfig-nvim-0.11).
   {
     "neovim/nvim-lspconfig",
     dir = dir('nvim-lspconfig'),
     ft = { "markdown", "md" },
     config = function()
-      require("lspconfig").marksman.setup({})
+      vim.lsp.enable("marksman")
     end,
   },
 
