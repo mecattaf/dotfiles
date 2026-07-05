@@ -1,21 +1,17 @@
-{ lib, modulesPath, ... }:
-# ⚠️ PLACEHOLDER — regenerate ON the real machine (this is the first flash target, so
-# generating a REAL hardware.nix here is step 1 of the Duo flash runbook). Evaluates only.
+{ config, lib, pkgs, modulesPath, ... }:
+# Generated on the live Zenbook Duo (UX8406) via `nixos-generate-config --no-filesystems`
+# during the jul5 flash — real, not a placeholder. Filesystems come from ./disko.nix,
+# so no fileSystems entries here (worker pattern). Note the `vmd` initrd module (Intel
+# VMD — the NVMe hides behind it) and the Meteor Lake NPU.
 {
   imports = [ (modulesPath + "/installer/scan/not-detected.nix") ];
 
-  boot.initrd.availableKernelModules = [
-    "nvme"
-    "xhci_pci"
-    "thunderbolt"
-    "usbhid"
-    "usb_storage"
-    "sd_mod"
-  ];
+  boot.initrd.availableKernelModules = [ "xhci_pci" "thunderbolt" "vmd" "nvme" "usbhid" "usb_storage" "sd_mod" ];
+  boot.initrd.kernelModules = [ ];
   boot.kernelModules = [ "kvm-intel" ];
-  hardware.cpu.intel.updateMicrocode = lib.mkDefault true;
-
-  # Filesystems come from ./disko.nix (worker pattern).
+  boot.extraModulePackages = [ ];
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
+  hardware.cpu.intel.npu.enable = true;
+  hardware.cpu.intel.updateMicrocode = lib.mkDefault config.hardware.enableRedistributableFirmware;
 }
