@@ -58,16 +58,18 @@
     };
   };
 
-  # This host's own DNS goes through AdGuard too (loopback reaches the
-  # rootless container via its published 0.0.0.0:53).
-  # DNSStubListener MUST be off: resolved's stubs (127.0.0.53/54:53) hold the
+  # AdGuard serves the BE550 wifi clients ONLY (Tom's ruling 2026-07-05 flash
+  # night: "ad-free internet for devices like my phone, nothing else"). This
+  # host resolves through its normal uplink DNS (Freebox via wifi DHCP) — the
+  # original port wrongly chained the host's own lookups to AdGuard, which made
+  # coordinator DNS dead until the AdGuard wizard ran.
+  # DNSStubListener stays off: resolved's stubs (127.0.0.53/54:53) hold the
   # port and AdGuard's wildcard 0.0.0.0:53 bind gets EADDRINUSE — found as a
-  # crashloop on the coordinator's first NixOS boot (2026-07-05). Host lookups
-  # still route through resolved via nss-resolve, so MagicDNS keeps working.
+  # crashloop on first NixOS boot. Host lookups go via nss-resolve → resolved
+  # → link DNS, so MagicDNS keeps working.
   services.resolved.enable = true;
   environment.etc."systemd/resolved.conf.d/50-adguard.conf".text = ''
     [Resolve]
-    DNS=127.0.0.1
     DNSStubListener=no
   '';
 
