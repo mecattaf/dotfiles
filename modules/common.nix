@@ -51,7 +51,10 @@
   programs.niri.enable = true;
   services.greetd = {
     enable = true;
-    settings.default_session = lib.mkDefault {
+    # NB: do NOT wrap these session blocks in lib.mkDefault — greetd's freeform TOML
+    # settings replace (not deep-merge) the attrset, and a whole-attrset mkDefault
+    # loses the command, producing "default_session contains no command" (jul5).
+    settings.default_session = {
       command = "${pkgs.greetd}/bin/agreety --cmd niri-session";
       user = "greeter";
     };
@@ -64,7 +67,7 @@
     # NB: there is NO usable interactive fallback — default_session (agreety) prompts
     # for a password tom does not have, so it cannot log him in. Real recovery if this
     # session fails is the VT2-6 getty autologin below (Ctrl+Alt+F2) or a reboot.
-    settings.initial_session = lib.mkDefault {
+    settings.initial_session = {
       command = "${config.programs.niri.package}/bin/niri-session";
       user = "tom";
     };
