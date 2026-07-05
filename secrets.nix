@@ -1,9 +1,10 @@
 # agenix recipients — the crypto-enforced ACL (analogue of sops .sops.yaml
 # creation_rules). Read ONLY by the `agenix` CLI, never imported into a NixOS eval.
 #
-# Public keys come from the mesh registry (single source of truth); the admin key is
-# the portable age key kept on a USB stick (its private half lets you edit any secret
-# from anywhere). Tiers are enforced by cryptography — a host not listed for a secret
+# Public keys come from the mesh registry (single source of truth); the admin key's
+# private half (AGE-SECRET-KEY-1… line) lives in Tom's Google Password Manager —
+# recovery on any machine is Google login + paste. It lets you edit any secret from
+# anywhere. Tiers are enforced by cryptography — a host not listed for a secret
 # holds no key that can decrypt it.
 #
 # Edit a secret:   nix develop -c agenix -e secrets/<name>.age   (needs the admin key)
@@ -13,7 +14,8 @@ let
   names = builtins.attrNames registry;
   nonEmpty = builtins.filter (k: k != "");
 
-  # Portable USB age key — always a recipient so editing works before/after any flash.
+  # Admin age key (private half in Google Password Manager) — always a recipient so
+  # editing works before/after any flash.
   admin = "age159pyyqqnrxwv3d7f758u5xtzv53fu2nwc85x3sur63g3p29jnegq9tf47w";
 
   hostKeys = nonEmpty (map (h: registry.${h}.hostKey) names);
@@ -40,7 +42,7 @@ in
   # --- laptop tier (wifi PSK) ---
   "secrets/wifi.age".publicKeys = editors ++ laptops;
 
-  # --- operator vault (admin USB key ONLY — a tar.gz of everything that is not
+  # --- operator vault (admin key ONLY — a tar.gz of everything that is not
   # otherwise in git: pre-generated host keys + wifi profiles (staging), tom's ssh
   # private keys, the tailscale OAuth client. Disaster-recovery bundle; NEVER
   # declared in modules/secrets.nix, no host can decrypt it. Regenerate + re-commit
