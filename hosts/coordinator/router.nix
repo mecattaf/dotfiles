@@ -60,10 +60,15 @@
 
   # This host's own DNS goes through AdGuard too (loopback reaches the
   # rootless container via its published 0.0.0.0:53).
+  # DNSStubListener MUST be off: resolved's stubs (127.0.0.53/54:53) hold the
+  # port and AdGuard's wildcard 0.0.0.0:53 bind gets EADDRINUSE — found as a
+  # crashloop on the coordinator's first NixOS boot (2026-07-05). Host lookups
+  # still route through resolved via nss-resolve, so MagicDNS keeps working.
   services.resolved.enable = true;
   environment.etc."systemd/resolved.conf.d/50-adguard.conf".text = ''
     [Resolve]
     DNS=127.0.0.1
+    DNSStubListener=no
   '';
 
   # LaCie 4TB, attached DIRECTLY to this box via USB (Tom's ruling 2026-07-05;
