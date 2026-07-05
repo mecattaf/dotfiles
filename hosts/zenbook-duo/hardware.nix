@@ -15,14 +15,7 @@
   boot.kernelModules = [ "kvm-intel" ];
   hardware.cpu.intel.updateMicrocode = lib.mkDefault true;
 
-  fileSystems."/" = {
-    device = "/dev/disk/by-label/nixos";
-    fsType = "ext4";
-  };
-  fileSystems."/boot" = {
-    device = "/dev/disk/by-label/ESP";
-    fsType = "vfat";
-  };
+  # Filesystems come from ./disko.nix (worker pattern).
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 }

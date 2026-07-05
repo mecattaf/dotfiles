@@ -3,6 +3,7 @@
 {
   imports = [
     ./hardware.nix
+    ./disko.nix
     inputs.nixos-hardware.nixosModules.dell-xps-13-9315
   ];
 

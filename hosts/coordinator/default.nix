@@ -4,6 +4,7 @@
 {
   imports = [
     ./hardware.nix
+    ./disko.nix
     ../../modules/strix.nix
   ];
 
