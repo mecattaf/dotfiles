@@ -20,14 +20,18 @@
 let
   repoDir = "/home/tom/mecattaf/dotfiles";
   repoUrl = "https://github.com/mecattaf/dotfiles.git";
+  # The Nix consolidation lives on the `nix` branch (not the repo default, which is
+  # still the pre-Nix chezmoi tree). Clone that branch or the out-of-store configs
+  # resolve to the wrong content. Update when `nix` becomes the default branch.
+  repoBranch = "nix";
   cloneScript = pkgs.writeShellScript "dotfiles-bootstrap-clone" ''
     set -u
     repo="${repoDir}"
     tmp="$repo.bootstrap-tmp"
     ${pkgs.coreutils}/bin/rm -rf "$tmp"
     ${pkgs.coreutils}/bin/mkdir -p "$(${pkgs.coreutils}/bin/dirname "$repo")"
-    echo "dotfiles-bootstrap: cloning ${repoUrl} -> $repo" >&2
-    if ${pkgs.git}/bin/git clone "${repoUrl}" "$tmp"; then
+    echo "dotfiles-bootstrap: cloning ${repoUrl} (branch ${repoBranch}) -> $repo" >&2
+    if ${pkgs.git}/bin/git clone --branch "${repoBranch}" "${repoUrl}" "$tmp"; then
       ${pkgs.coreutils}/bin/rm -rf "$repo"
       ${pkgs.coreutils}/bin/mv "$tmp" "$repo"
       echo "dotfiles-bootstrap: checkout ready" >&2

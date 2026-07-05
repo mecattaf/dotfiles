@@ -57,7 +57,8 @@ The `nixflash` container pattern (no native nix on this box):
 - Wifi auto-connects via the delivered NM profile (no console step — laptops get no
   wired/tether, ever).
 - `dotfiles-bootstrap.service` (in `modules/dotfiles-bootstrap.nix`) clones
-  `github.com/mecattaf/dotfiles` → `~/mecattaf/dotfiles` **before greetd**, so niri
+  `github.com/mecattaf/dotfiles` (**branch `nix`**) → `~/mecattaf/dotfiles` **before
+  greetd**, so niri
   reads the real config (the out-of-store symlinks resolve). Idempotent; skips once
   `.git` exists. *(Optional optimization: stage a full clone into a second
   `--extra-files` tree with `--chown /home/tom/mecattaf/dotfiles 1000:100` to skip the
