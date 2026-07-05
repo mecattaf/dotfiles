@@ -21,7 +21,6 @@ let
   editors = [ admin ] ++ userKeys;
 
   laptops = nonEmpty [
-    registry.dell-xps.hostKey
     registry.zenbook-duo.hostKey
   ];
   coordinatorOnly = nonEmpty [ registry.coordinator.hostKey ];
@@ -37,7 +36,6 @@ in
   "secrets/tailscale-authkey-coordinator.age".publicKeys = editors ++ coordinatorOnly;
   "secrets/tailscale-authkey-worker.age".publicKeys = editors ++ nonEmpty [ registry.worker.hostKey ];
   "secrets/tailscale-authkey-zenbook-duo.age".publicKeys = editors ++ nonEmpty [ registry.zenbook-duo.hostKey ];
-  "secrets/tailscale-authkey-dell-xps.age".publicKeys = editors ++ nonEmpty [ registry.dell-xps.hostKey ];
 
   # --- laptop tier (wifi PSK) ---
   "secrets/wifi.age".publicKeys = editors ++ laptops;

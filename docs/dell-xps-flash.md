@@ -1,5 +1,10 @@
 # dell-xps flash runbook (device 3 of 4)
 
+> [!CAUTION]
+> **RETIRED 2026-07-05.** The dell-xps 13 will never run NixOS — Tom retired the
+> device; its only remaining role is steering the coordinator flash from its
+> current Fedora install. Host config, registry entry, and secrets were removed.
+
 Canonical laptop-flash procedure, distilled from the jul5 worker + zenbook-duo flashes.
 The XPS 13 9315 is deliberately identical in process to the duo. Supersedes the stale
 `zenbook-duo-flash.md` (which predates nixos-anywhere/disko/extra-files).

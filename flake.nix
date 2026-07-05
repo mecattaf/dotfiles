@@ -76,7 +76,6 @@
       nixosConfigurations = {
         coordinator = mkHost ./hosts/coordinator;
         worker = mkHost ./hosts/worker;
-        dell-xps = mkHost ./hosts/dell-xps;
         zenbook-duo = mkHost ./hosts/zenbook-duo;
       };
 

@@ -23,11 +23,6 @@
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9xaf+UX4cjDEme+Ath3EZYLiUJla/+3QlG4TvCzwLO root@worker";
     userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAlTzKx0n2pQ4/1qv3mThyyh1+QCuT/Qcg+/40Nr1JB6 tom@mesh";
   };
-  dell-xps = {
-    aliases = [ "dell-xps" ];
-    hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK85/2ca7shgaRjb+uHRSif0WjaC8Os+N5oeaF1CPELB root@dell-xps";
-    userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAlTzKx0n2pQ4/1qv3mThyyh1+QCuT/Qcg+/40Nr1JB6 tom@mesh";
-  };
   zenbook-duo = {
     aliases = [ "zenbook-duo" ];
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKvikHKjh49tlT9PDlG47hcRWyz8NX7uWw2ZhQoQJxxP root@zenbook-duo";
