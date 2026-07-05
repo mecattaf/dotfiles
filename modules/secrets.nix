@@ -15,7 +15,7 @@ in
 {
   options.mySecrets.enable = lib.mkEnableOption "agenix secret delivery on this host";
 
-  config = lib.mkIf cfg.enable {
+  config = lib.mkIf cfg.enable (lib.mkMerge [ {
     age.secrets.claude-credentials = {
       file = ../secrets/claude-credentials.age;
       owner = "tom";
@@ -56,5 +56,39 @@ in
       after = [ "run-agenix.d.mount" ];
       wants = [ "run-agenix.d.mount" ];
     };
-  };
+  }
+
+  # Operator CLI credentials — coordinator ONLY (the ciphertexts aren't decryptable
+  # by other hosts, and declaring an undecryptable secret fails activation, so the
+  # whole block must be host-gated). Same copy-don't-link pattern as the claude
+  # cred: both CLIs rewrite their file on token refresh.
+  (lib.mkIf (config.networking.hostName == "coordinator") {
+    age.secrets.gh-hosts = {
+      file = ../secrets/gh-hosts.age;
+      owner = "tom";
+      group = "users";
+      mode = "600";
+    };
+    age.secrets.wrangler-config = {
+      file = ../secrets/wrangler-config.age;
+      owner = "tom";
+      group = "users";
+      mode = "600";
+    };
+
+    system.userActivationScripts.seedOperatorCreds.text = ''
+      gh="$HOME/.config/gh/hosts.yml"
+      if [ ! -e "$gh" ] && [ -r "${config.age.secrets.gh-hosts.path}" ]; then
+        mkdir -p "$HOME/.config/gh"
+        cp "${config.age.secrets.gh-hosts.path}" "$gh"
+        chmod 600 "$gh"
+      fi
+      wr="$HOME/.config/.wrangler/config/default.toml"
+      if [ ! -e "$wr" ] && [ -r "${config.age.secrets.wrangler-config.path}" ]; then
+        mkdir -p "$HOME/.config/.wrangler/config"
+        cp "${config.age.secrets.wrangler-config.path}" "$wr"
+        chmod 600 "$wr"
+      fi
+    '';
+  }) ]);
 }

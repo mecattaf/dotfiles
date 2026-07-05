@@ -56,4 +56,9 @@ in
   # share is guest-mode; moot entirely once the LaCie attaches directly via USB.)
   "secrets/immich-db.age".publicKeys = editors ++ coordinatorOnly;
   "secrets/nas-credentials.age".publicKeys = editors ++ coordinatorOnly;
+
+  # Operator CLI credentials (Tom's ruling: the coordinator is the fleet's only
+  # authenticated operator box — gh + wrangler stay off the worker/laptops).
+  "secrets/gh-hosts.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/wrangler-config.age".publicKeys = editors ++ coordinatorOnly;
 }
