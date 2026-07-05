@@ -20,10 +20,10 @@
 let
   repoDir = "/home/tom/mecattaf/dotfiles";
   repoUrl = "https://github.com/mecattaf/dotfiles.git";
-  # The Nix consolidation lives on the `nix` branch (not the repo default, which is
-  # still the pre-Nix chezmoi tree). Clone that branch or the out-of-store configs
-  # resolve to the wrong content. Update when `nix` becomes the default branch.
-  repoBranch = "nix";
+  # `main` IS the Nix consolidation since the 2026-07-05 rename of `nix` -> `main`
+  # (the pre-Nix chezmoi tree is archived at archive/chezmoi/main). Pinned explicitly
+  # anyway so a future default-branch change can't silently redirect provisioning.
+  repoBranch = "main";
   cloneScript = pkgs.writeShellScript "dotfiles-bootstrap-clone" ''
     set -u
     repo="${repoDir}"

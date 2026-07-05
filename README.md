@@ -27,10 +27,11 @@ docs/migration-journal/   the working log: ratified decisions (nix-decisions.md 
 
 ## Branches
 
-- **`nix`** — canonical (this branch, the default).
-- **`chezmoi`** — the retired Fedora-era world (bootc + COPR + chezmoi
-  templating), formerly `main`. Kept read-only for reference until every
-  device is flashed.
+- **`main`** — canonical (this branch, the default; named `nix` until the
+  2026-07-05 consolidation).
+- **`archive/*`** — everything else, read-only: `archive/chezmoi/main` is the
+  retired Fedora-era world (bootc + COPR + chezmoi templating, the pre-Nix
+  `main`); the rest are the old per-device image repos and stray PR branches.
 
 ## Usage
 
