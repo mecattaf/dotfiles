@@ -29,8 +29,15 @@ in
 {
   # --- common tier (every host may decrypt) ---
   "secrets/claude-credentials.age".publicKeys = editors ++ hostKeys;
-  "secrets/tailscale-authkey.age".publicKeys = editors ++ hostKeys;
   "secrets/env.age".publicKeys = editors ++ hostKeys;
+
+  # --- per-host tier (tailscale pre-auth keys: single-use, non-ephemeral,
+  # preauthorized, tag:mesh — minted 2026-07-05 via the fleet OAuth client;
+  # only the owning host can decrypt its key) ---
+  "secrets/tailscale-authkey-coordinator.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/tailscale-authkey-worker.age".publicKeys = editors ++ nonEmpty [ registry.worker.hostKey ];
+  "secrets/tailscale-authkey-zenbook-duo.age".publicKeys = editors ++ nonEmpty [ registry.zenbook-duo.hostKey ];
+  "secrets/tailscale-authkey-dell-xps.age".publicKeys = editors ++ nonEmpty [ registry.dell-xps.hostKey ];
 
   # --- laptop tier (wifi PSK) ---
   "secrets/wifi.age".publicKeys = editors ++ laptops;

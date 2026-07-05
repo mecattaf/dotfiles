@@ -34,5 +34,29 @@ in
         chmod 600 "$cred"
       fi
     '';
+
+    # Tailscale: join the tailnet on first boot with this host's own pre-auth key
+    # (per-host .age; single-use, non-ephemeral, preauthorized, tag:mesh — tagged
+    # nodes get key expiry disabled on first auth, so the device never logs out).
+    # The autoconnect unit only runs `tailscale up` while BackendState=NeedsLogin,
+    # so an already-joined node never re-auths on rebuilds, and rotating the .age
+    # ciphertext is a no-op until a `tailscale logout`.
+    age.secrets.tailscale-authkey.file =
+      ../secrets + "/tailscale-authkey-${config.networking.hostName}.age";
+
+    services.tailscale = {
+      authKeyFile = config.age.secrets.tailscale-authkey.path;
+      authKeyParameters = {
+        ephemeral = false;
+        preauthorized = true;
+      };
+    };
+
+    # The stock autoconnect unit orders only after tailscaled; make it wait for
+    # agenix's /run/agenix.d mount too, or it can race the key's decryption at boot.
+    systemd.services.tailscaled-autoconnect = {
+      after = [ "run-agenix.d.mount" ];
+      wants = [ "run-agenix.d.mount" ];
+    };
   };
 }
