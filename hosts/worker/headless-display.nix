@@ -26,8 +26,5 @@
   # heals if the kernel's firmware-load retry path cooperates. Ship it in stage 1.
   boot.initrd.extraFirmwarePaths = [ "edid/1920x1080.bin" ];
 
-  services.greetd.settings.initial_session = {
-    command = "${config.programs.niri.package}/bin/niri-session";
-    user = "tom";
-  };
+  # Autologin (initial_session) now lives fleet-wide in modules/common.nix.
 }

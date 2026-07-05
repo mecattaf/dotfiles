@@ -1,4 +1,4 @@
-{ pkgs, lib, ... }:
+{ pkgs, lib, config, ... }:
 # Device-agnostic layer — every host imports this. Use lib.mkDefault for
 # anything a host or nixos-hardware module may override.
 {
@@ -53,6 +53,14 @@
     settings.default_session = {
       command = "${pkgs.greetd}/bin/agreety --cmd niri-session";
       user = "greeter";
+    };
+    # Autologin tom → niri at boot on every host (fleet-wide, moved here from the
+    # worker's headless-display.nix). tom is a locked/key-only account: passwordless
+    # login + passwordless sudo (wheelNeedsPassword=false) means no password is ever
+    # prompted. Subsequent logins after logout fall back to default_session (agreety).
+    settings.initial_session = {
+      command = "${config.programs.niri.package}/bin/niri-session";
+      user = "tom";
     };
   };
 
