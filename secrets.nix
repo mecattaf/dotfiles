@@ -43,7 +43,9 @@ in
   "secrets/wifi.age".publicKeys = editors ++ laptops;
 
   # --- coordinator-only tier (quadlet service creds; worker deliberately excluded) ---
+  # (cloudflare-tunnel + twenty/openwebui slots removed 2026-07-05 — deprecated per Tom.
+  # nas-credentials stays as the option for BE550 Secure Sharing, unused while the
+  # share is guest-mode; moot entirely once the LaCie attaches directly via USB.)
   "secrets/immich-db.age".publicKeys = editors ++ coordinatorOnly;
-  "secrets/cloudflare-tunnel.age".publicKeys = editors ++ coordinatorOnly;
   "secrets/nas-credentials.age".publicKeys = editors ++ coordinatorOnly;
 }

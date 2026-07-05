@@ -1,0 +1,27 @@
+[Unit]
+Description=Immich Photo Server
+After=network-online.target immich-postgres.service immich-redis.service
+Requires=immich-postgres.service immich-redis.service
+Wants=immich-ml.service
+
+[Container]
+Image=ghcr.io/immich-app/immich-server:release
+ContainerName=immich-server
+AutoUpdate=registry
+Network=systemd-immich
+PublishPort=2283:2283
+Volume=immich-upload:/usr/src/app/upload:Z
+Volume=/mnt/nas/Pictures:/mnt/photos:z
+Environment=DB_HOSTNAME=immich-postgres
+Environment=DB_USERNAME=immich
+Environment=DB_DATABASE_NAME=immich
+EnvironmentFile=/run/agenix/immich-db
+Environment=REDIS_HOSTNAME=immich-redis
+Environment=REDIS_PORT=6379
+Environment=IMMICH_MACHINE_LEARNING_URL=http://immich-ml:3003
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

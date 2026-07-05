@@ -1,0 +1,17 @@
+[Unit]
+Description=Redis for Immich
+After=network-online.target immich-network.service
+Requires=immich-network.service
+
+[Container]
+Image=docker.io/valkey/valkey:latest
+ContainerName=immich-redis
+AutoUpdate=registry
+Network=systemd-immich
+Volume=immich-redis:/data:Z
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
