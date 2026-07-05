@@ -44,13 +44,11 @@ in
     age.secrets.tailscale-authkey.file =
       ../secrets + "/tailscale-authkey-${config.networking.hostName}.age";
 
-    services.tailscale = {
-      authKeyFile = config.age.secrets.tailscale-authkey.path;
-      authKeyParameters = {
-        ephemeral = false;
-        preauthorized = true;
-      };
-    };
+    # No authKeyParameters: they append `?ephemeral=…&preauthorized=…` to the key,
+    # which the control plane accepts only for OAuth client secrets used as auth
+    # keys — a pre-minted tskey-auth key gets rejected as "invalid key" (bit the
+    # worker live, jul5). Our keys carry those properties from mint time.
+    services.tailscale.authKeyFile = config.age.secrets.tailscale-authkey.path;
 
     # The stock autoconnect unit orders only after tailscaled; make it wait for
     # agenix's /run/agenix.d mount too, or it can race the key's decryption at boot.
