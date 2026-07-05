@@ -4,11 +4,10 @@
   pkgs,
   ...
 }:
-# nvim → Nix, implementing nvim-sweep.md. Keep lazy.nvim; ZERO functionality loss.
-# Nix provides the binary + every LSP/formatter/tool (mason removed) + the plugins as
-# /nix/store paths resolved by lazy-nix-helper. Most nvim files stay RAW (live-edit);
-# only lua/plugins.lua + lua/mappings.lua are rendered (they carry store paths —
-# mappings.lua per nvim-sweep.md §1.3 (B): absolute lazygit/nvim for kitty launches).
+# nvim → Nix. Keep lazy.nvim; zero functionality loss. Nix provides the binary +
+# every LSP/formatter/tool (mason removed) + the plugins as /nix/store paths resolved
+# by lazy-nix-helper. Most nvim files stay RAW (live-edit); only lua/plugins.lua +
+# lua/mappings.lua are rendered (they carry store paths).
 let
   repoDir = "${config.home.homeDirectory}/mecattaf/dotfiles";
   ndir = "${repoDir}/home/dot_config/nvim";
@@ -154,9 +153,9 @@ let
       (builtins.readFile ./nvim/plugins.lua.in)
   );
 
-  # mappings.lua rendered too (nvim-sweep.md §1.3 (B)): `kitty @ launch` children spawn
-  # from the kitty daemon (niri's env), NOT from wrapped nvim, so extraPackages' PATH
-  # never reaches <leader>kg lazygit / <leader>ko nested nvim — bake absolute store paths.
+  # mappings.lua rendered too: `kitty @ launch` children spawn from the kitty daemon
+  # (niri's env), NOT from wrapped nvim, so extraPackages' PATH never reaches
+  # <leader>kg lazygit / <leader>ko nested nvim — bake absolute store paths.
   mappingsLua = pkgs.writeText "mappings.lua" (
     builtins.replaceStrings
       [ "@lazygit@" "@nvim@" ]
@@ -236,7 +235,7 @@ in
       }) nvimRaw
     ))
     # the rendered files: lua/plugins.lua (store-path plugin table) +
-    # lua/mappings.lua (absolute lazygit/nvim, nvim-sweep.md §1.3 (B))
+    # lua/mappings.lua (absolute lazygit/nvim)
     // {
       "nvim/lua/plugins.lua".source = pluginsLua;
       "nvim/lua/mappings.lua".source = mappingsLua;

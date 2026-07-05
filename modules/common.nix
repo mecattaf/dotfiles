@@ -1,8 +1,12 @@
 { pkgs, lib, ... }:
-# Device-agnostic layer — every host imports this. No custom option namespace here.
-# Reflects nix-decisions.md. RAW configs / home-manager live in home/home.nix.
-# Use lib.mkDefault for anything a host or nixos-hardware module may override.
+# Device-agnostic layer — every host imports this. Use lib.mkDefault for
+# anything a host or nixos-hardware module may override.
 {
+  imports = [
+    ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)
+    ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
+  ];
+
   # --- identity / base ---
   networking.networkmanager.enable = true;
   time.timeZone = lib.mkDefault "America/New_York";
@@ -11,10 +15,8 @@
   boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
   boot.loader.systemd-boot.enable = lib.mkDefault true;
   boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
-  boot.plymouth.enable = true; # boot splash — decided: keep
-  # Issue #33: shpool session leak exhausted the default 128 inotify instances.
-  # Bump ports the headroom; the session-naming fix itself is tracked in notes
-  # (dotfiles-pass / remote-terminal capture).
+  boot.plymouth.enable = true;
+  # shpool sessions exhaust the default 128 inotify instances; raise the ceiling.
   boot.kernel.sysctl."fs.inotify.max_user_instances" = 512;
 
   nix.settings = {
@@ -41,7 +43,7 @@
   };
   programs.fish.enable = true;
 
-  # --- session: greetd → niri (RAW config via home-manager; niri-flake comes later) ---
+  # --- session: greetd → niri ---
   programs.niri.enable = true;
   services.greetd = {
     enable = true;
@@ -66,18 +68,19 @@
   services.gnome.gnome-keyring.enable = true;
   security.pam.services.greetd.enableGnomeKeyring = true;
   security.polkit.enable = true;
+  programs.dconf.enable = true; # so home-manager dconf theme keys apply
   services.gvfs.enable = true;
   services.udisks2.enable = true;
   services.power-profiles-daemon.enable = true;
-  services.fprintd.enable = true; # fingerprint — decided: all devices
-  services.fwupd.enable = true; # firmware updates — decided: keep
+  services.fprintd.enable = true; # fingerprint
+  services.fwupd.enable = true; # firmware updates
   programs.ydotool.enable = true;
   xdg.portal = {
     enable = true;
     extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
   };
 
-  # --- containers (quadlets land on the coordinator later) ---
+  # --- containers ---
   virtualisation.podman = {
     enable = true;
     dockerCompat = true;
@@ -91,6 +94,9 @@
   services.tailscale.enable = true;
   services.resolved.enable = true;
   networking.firewall.enable = true;
+  # wayvnc (port 5900) is reachable ONLY over the tailnet — never the LAN/wifi. The
+  # direct Thunderbolt link is already a trusted interface (see modules/strix.nix).
+  networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 5900 ];
 
   # --- zram (cap at 8 GiB; bare enable would balloon on the 128 GB boxes) ---
   zramSwap = {
@@ -110,12 +116,16 @@
     noto-fonts-color-emoji
   ];
 
-  # --- env (qt theming; bar-less / notification-less by decision) ---
+  # --- env (qt + gtk theming) ---
   environment.sessionVariables = {
     QT_QPA_PLATFORMTHEME = "qt6ct";
-    # Chromium/Electron (google-chrome + the 11 PWA launchers) run native Wayland on
-    # NixOS only with this set; without it they fall back to X11 and fail/blur under
-    # niri (audit: "no NIXOS_OZONE_WL, no xwayland-satellite").
+    # GTK reads GTK_THEME with the highest priority. niri has no XSettings/settings
+    # daemon, so this system-wide export (reaching GUI apps via the PAM session) is
+    # what makes GTK3 apps like Remmina honor the theme without nwg-look. It must be
+    # here, not home.sessionVariables (which only reaches interactive shells).
+    GTK_THEME = "MacTahoe-Dark-grey";
+    # Chromium/Electron (google-chrome + PWA launchers) only run native Wayland
+    # under niri with this set; otherwise they fall back to X11 and blur/fail.
     NIXOS_OZONE_WL = "1";
   };
 
@@ -124,18 +134,8 @@
     git
     vim
     wl-clipboard
-    age # secrets tooling kept; sops itself is a later session
+    age
   ];
 
-  # GONE by decision: flatpak, YubiKey/pcscd, fcitx5/ibus, bar/notification daemon,
-  # just/hjust/gum, ramalama, valent, iio-niri, VM guest agents.
-  #
-  # DEFERRED — genuinely outstanding ONLY (issue #35 pruned the already-landed items:
-  # codecs, pythonForNiri, nautilus set, shpool, the SAME-bucket apps, gh/gcloud —
-  # all live in home/home.nix now):
-  #   - agent stack MODULES: pi.nix + llm-agents.nix flake inputs (binaries gh/gcloud landed)
-  #   Coordinator-only: cockpit, cloudflared tunnel service, cifs-utils+NAS mount,
-  #   cups/NM-VPN, quadlets.
-
-  system.stateVersion = "26.05"; # current stable line (fresh install, honest value)
+  system.stateVersion = "26.05";
 }

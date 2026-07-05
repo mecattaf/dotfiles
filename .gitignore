@@ -1,3 +1,11 @@
 home/dot_config/DankMaterialShell/
 home/dot_config/quickshell/webshell/dist/
 home/dot_config/quickshell/webshell-v0.0.1-archived/dist/
+
+# Never commit secret key material / plaintext
+*.age.key
+*_ed25519
+admin-age.key
+secrets-staging/
+install-files/
+plaintext/

@@ -33,7 +33,7 @@ Sweep progress (human-driven, item-by-item; mactahoe was the proof loop):
     loss; lazy-nix-helper + mason→Nix + tree-sitter pre-seed). Plan only — not built.
 - ✅ **BUILT 2026-06-20 — Layer 0 + Layer 1 done, validated, PUSHED to `origin/nix`.**
   flake (4 hosts) + common/strix modules + mactahoe overlay + home-manager bridge +
-  nvim (full nvim-sweep, lazy-nix-helper, real pinned hashes) + worker sunshine +
+  nvim (full nvim-sweep, lazy-nix-helper, real pinned hashes) +
   Duo flash runbook (`dotfiles/docs/zenbook-duo-flash.md`). Validated in a disposable
   `nixos/nix` container (harness host untouched, no Nix on it): **home generation
   BUILDS**, zenbook-duo toplevel **dry-run realizable**, `nix flake check` all-pass,

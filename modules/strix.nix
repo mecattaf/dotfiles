@@ -5,8 +5,6 @@
   ...
 }:
 # AMD Strix Halo layer — imported by `coordinator` + `worker` ONLY.
-# NAMING RULE: the AMD pair is `coordinator` (main) + `worker` (compute). The names
-# `companion` and `sodimo` NEVER appear. (See nix-decisions.md.)
 {
   imports = [
     # Framework Desktop / Ryzen AI Max 300 series (gfx1151). Pulls amd cpu+gpu+ssd tuning.
@@ -34,22 +32,13 @@
     boot.kernelParams = [
       "amd_iommu=off"
       "ttm.pages_limit=33554432"
-      # ttm.page_pool_size dropped — non-canonical (per the strix-halo research).
     ];
 
-    # -------------------------------------------------------------------------
-    # Thunderbolt cluster fabric — CONSUME myCluster (nix-test-compare WRONG list:
-    # "myCluster.role/tbHostId declared but barely consumed … the TB /30 link is
-    # comment-only. Adopt the option *and actually gate on it*"). Must exist from
-    # first boot: ds4-dual-node-lessons.md burned days on NM link-local IPs +
-    # firewall zones ("Headless-access saga collapses under … TB static IPs",
-    # hosts/coordinator/default.nix). authorized_keys deliberately NOT declared
-    # here (reserved for Tom).
-    # -------------------------------------------------------------------------
+    # --- Thunderbolt cluster fabric (direct coordinator↔worker cable) ---
     boot.kernelModules = [ "thunderbolt-net" ]; # host-to-host TB networking (thunderbolt0)
 
     # Deterministic static /30 on the direct TB cable; keep NetworkManager's hands
-    # off it (the old NM-assigned 169.254.* link-local IPs were the fragile part).
+    # off it (NM-assigned link-local IPs were the fragile part).
     networking.networkmanager.unmanaged = [ "interface-name:thunderbolt0" ];
     networking.interfaces.thunderbolt0 = {
       useDHCP = false;

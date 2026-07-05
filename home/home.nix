@@ -4,23 +4,17 @@
   pkgs,
   ...
 }:
-# home-manager — Layer 1 bridge.
+# home-manager.
 #
-# GOVERNING PRINCIPLE: maximal nix-native is the END-STATE. The RAW out-of-store
-# symlinks below are TEMPORARY scaffolding to reach a first boot (hot-reload, no
-# rebuild). Do NOT overbuild around them.
-#
-# REPO PRESENCE: the out-of-store symlinks point at a *cloned checkout* of this repo
-# at `repoDir`. On a fresh machine the Duo runbook clones the repo there BEFORE the
-# first `home-manager switch` (else the symlinks dangle until cloned).
+# The RAW out-of-store symlinks below point at a *cloned checkout* of this repo at
+# `repoDir`, enabling hot-reload without a rebuild. A fresh machine must clone the
+# repo there BEFORE the first `home-manager switch`, else the symlinks dangle.
 let
   repoDir = "${config.home.homeDirectory}/mecattaf/dotfiles";
   dots = "${repoDir}/home";
   link = path: config.lib.file.mkOutOfStoreSymlink "${dots}/${path}";
 
-  # RAW config dirs (dotfiles-sweep RAW set, minus GONE: scroll/waybar/quickshell*/
-  # containers; minus asr-rs until v2 binary ships). niri is RAW *for now* — typed
-  # programs.niri.settings + niri-flake is the post-first-boot nixification.
+  # Whole-dir RAW config dirs, one per ~/.config/<name>.
   configDirs = [
     "niri"
     "kitty"
@@ -49,10 +43,9 @@ let
     ]
   );
 
-  # 11 Chrome PWAs (antigravity DROPPED). flatpak chrome → google-chrome-stable --app.
-  # pwaIcon: entry name ≠ icon filename for 4 PWAs (chatgpt→openai, claude→anthropic,
-  # gcloud→drive, photos→images) — reference the icon that actually exists in
-  # dot_local/share/icons/ instead of dangling on <name>.png.
+  # Chrome PWAs via google-chrome-stable --app. pwaIcon lets the entry name differ
+  # from the icon filename (chatgpt→openai, claude→anthropic, gcloud→drive,
+  # photos→images) so it references an icon that exists in dot_local/share/icons/.
   chrome = "${pkgs.google-chrome}/bin/google-chrome-stable";
   pwaIcon = name: icon: url: {
     inherit name;
@@ -63,36 +56,57 @@ let
   pwa = name: pwaIcon name name;
 in
 {
-  imports = [ ./nvim.nix ];
+  imports = [
+    ./nvim.nix
+    ./remote.nix
+  ];
 
   home.username = "tom";
   home.homeDirectory = "/home/tom";
   programs.home-manager.enable = true;
 
-  # nvim-sweep.md §1.3 (A): every home.packages tool must be on the SESSION PATH
-  # (niri-session runs the login shell; dot_bash_profile sources hm-session-vars.sh)
-  # so niri spawns + kitty-daemon `kitty @ launch` children find Nix-provided binaries.
+  # Every home.packages tool must be on the SESSION PATH so niri spawns and
+  # kitty-daemon `kitty @ launch` children find Nix-provided binaries.
   home.sessionPath = [ "$HOME/.nix-profile/bin" ];
 
   # ---------------------------------------------------------------------------
-  # RAW configs (whole-dir per ~/.config/<name>) — hot-reload scaffolding.
+  # RAW configs (whole-dir per ~/.config/<name>).
   # ---------------------------------------------------------------------------
   xdg.configFile =
     lib.genAttrs configDirs (d: {
       source = link "dot_config/${d}";
     })
     // {
-      # nvim-sweep.md §9 fallback: kitty/ is a whole-dir out-of-store symlink, so
-      # the store-path fragment can't be nested inside it — emit at a neutral path;
-      # kitty.conf includes it by absolute (env-expanded) path.
+      # kitty/ is a whole-dir out-of-store symlink, so the store-path fragment can't
+      # nest inside it — emit at a neutral path; kitty.conf includes it by absolute
+      # (env-expanded) path.
       "kitty-scrollback-nix.conf".text = ''
         # GENERATED — Nix-store path for kitty-scrollback.nvim kittens (offline-safe).
         action_alias kitty_scrollback_nvim kitten ${pkgs.vimPlugins.kitty-scrollback-nvim}/python/kitty_scrollback_nvim.py
       '';
-    };
+    }
+    // (
+      # GTK4 / libadwaita apps (Nautilus) ignore gtk-theme-name; the only override
+      # they honor is user CSS at ~/.config/gtk-4.0/. Link MacTahoe's gtk-4.0 assets
+      # there so Nautilus renders the theme from first boot — home-manager's gtk
+      # module does not do this, which is why nwg-look was needed before.
+      let
+        theme4 = "${pkgs.mactahoe-gtk-theme}/share/themes/MacTahoe-Dark-grey/gtk-4.0";
+      in
+      {
+        "gtk-4.0/gtk.css".source = "${theme4}/gtk.css";
+        "gtk-4.0/gtk-dark.css".source = "${theme4}/gtk-dark.css";
+        "gtk-4.0/assets".source = "${theme4}/assets";
+      }
+    );
 
-  # bin/ scripts: whole-dir (the repo OWNS ~/.local/bin). EVENTUAL nix-native =
-  # writeShellApplication with declared deps; RAW only as interim.
+  # Belt-and-suspenders for any gsettings-aware app (agrees with GTK_THEME env).
+  dconf.settings."org/gnome/desktop/interface" = {
+    gtk-theme = "MacTahoe-Dark-grey";
+    color-scheme = "prefer-dark";
+  };
+
+  # bin/ scripts: whole-dir (the repo owns ~/.local/bin).
   home.file.".local/bin".source = link "dot_local/bin";
 
   # icons for the PWA launchers (referenced by absolute path above).
@@ -101,8 +115,8 @@ in
   # wallpapers — whole-dir at ~/.local/share/wallpapers (wallpaper.jpg + placeholder).
   home.file.".local/share/wallpapers".source = link "dot_local/share/wallpapers";
 
-  # bash login files (RAW). NB: dot_bashrc sources ~/.env (secrets) — deferred to the
-  # secrets session; until then it's a harmless missing-file warning.
+  # bash login files. dot_bashrc sources ~/.env (secrets) — harmless missing-file
+  # warning until that file exists.
   home.file.".bashrc".source = link "dot_bashrc";
   home.file.".bash_profile".source = link "dot_bash_profile";
 
@@ -124,15 +138,12 @@ in
   };
 
   # ---------------------------------------------------------------------------
-  # git — the ONE typed config (replaces the chezmoi dot_gitconfig.tmpl).
+  # git — the one typed config.
   # ---------------------------------------------------------------------------
   programs.git = {
     enable = true;
-    # lfs: the deployed ~/.gitconfig on the live device carries the [filter "lfs"]
-    # block (clean/smudge/process/required) the RPM git-lfs wrote; lfs.enable
-    # restores it declaratively AND puts git-lfs itself on the user profile
-    # (harness-sweep §devtools lists git-lfs as decided-keep).
-    lfs.enable = true;
+    lfs.enable = true; # restores the [filter "lfs"] block + puts git-lfs on PATH
+
     settings = {
       user.name = "mecattaf";
       user.email = "thomas@mecattaf.dev";
@@ -142,10 +153,8 @@ in
   };
 
   # ---------------------------------------------------------------------------
-  # shpool — socket-activated session daemon. The harnessRPM shipped
-  # /usr/lib/systemd/user/shpool.{service,socket} (enabled on the live device);
-  # the nix package only delivers the binary, so replicate the units 1:1 here or
-  # `shpool attach` has no daemon/socket on a fresh host.
+  # shpool — socket-activated session daemon. The nix package ships only the
+  # binary, so the daemon/socket units are declared here.
   # ---------------------------------------------------------------------------
   systemd.user.services.shpool = {
     Unit = {
@@ -171,10 +180,8 @@ in
   };
 
   # ---------------------------------------------------------------------------
-  # gtk/icon/cursor theming — the proven mactahoe (overlay). Theme dir names
-  # verified against install.sh naming + the old RPM tarball: GTK dirs are
-  # MacTahoe-<Color>[-solid]-grey[-(x)hdpi], icon dirs MacTahoe[-light|-dark]
-  # (icons are the stock default = blue folders since 2026-07-04).
+  # gtk/icon/cursor theming — mactahoe (overlay). GTK dirs are
+  # MacTahoe-<Color>[-solid]-grey[-(x)hdpi]; icon dirs MacTahoe[-light|-dark].
   # ---------------------------------------------------------------------------
   gtk = {
     enable = true;
@@ -193,11 +200,9 @@ in
   };
 
   # ---------------------------------------------------------------------------
-  # OBS Studio — nix-native replacement for the harness flatpaks
-  # (com.obsproject.Studio + …Plugin.OBSVkCapture). The module wraps OBS so the
-  # plugin loads; obs-vkcapture is ALSO listed in home.packages below so the
-  # Vulkan/GL capture layer + `obs-gamecapture` helper land on the user profile
-  # (XDG_DATA_DIRS / PATH) for capturing other Wayland apps, not just OBS itself.
+  # OBS Studio — the module wraps OBS so the plugin loads. obs-vkcapture is also
+  # in home.packages so its Vulkan/GL capture layer + `obs-gamecapture` helper
+  # land on the user profile for capturing other Wayland apps, not just OBS.
   # ---------------------------------------------------------------------------
   programs.obs-studio = {
     enable = true;
@@ -207,8 +212,7 @@ in
   };
 
   # ---------------------------------------------------------------------------
-  # user packages — built from harness-sweep §Packages + harnessRPM ledger +
-  # dotfiles-sweep bin/ deps (the SAME-bucket set + the daily drivers).
+  # user packages.
   # ---------------------------------------------------------------------------
   home.packages = with pkgs; [
     # browser
@@ -227,9 +231,8 @@ in
     yq-go
     glow
 
-    # niri / wayland desktop tooling + D2 native re-point (brightnessctl/playerctl/
-    # swaybg; NO rofi by decision). xwayland-satellite: niri's X11 path — X11 apps and
-    # Chrome fallbacks need it on the session PATH (harness-sweep SAME bucket, decided keep).
+    # niri / wayland desktop tooling. xwayland-satellite: niri's X11 path — X11 apps
+    # and Chrome fallbacks need it on the session PATH.
     xwayland-satellite
     acpi
     brightnessctl
@@ -265,11 +268,10 @@ in
     ffmpeg-full
     ffmpegthumbnailer
 
-    # screen/game recording (OBS itself is wired via programs.obs-studio above);
-    # this exposes the vkcapture host layer + obs-gamecapture launcher on PATH.
+    # screen/game recording — exposes the vkcapture host layer + obs-gamecapture on PATH.
     obs-studio-plugins.obs-vkcapture
 
-    # files / nautilus + open-any-terminal (decided keep) + archive GUI
+    # files / nautilus + open-any-terminal + archive GUI
     nautilus
     nautilus-open-any-terminal
     xdg-terminal-exec
@@ -279,7 +281,7 @@ in
     shpool
     kitty
 
-    # agent / dev tooling (pi.nix + llm-agents.nix come in the agent session)
+    # agent / dev tooling
     gh
     google-cloud-sdk
     cloudflared
@@ -288,8 +290,7 @@ in
     # cursors (theme dep)
     bibata-cursors
 
-    # codecs/gstreamer plugins for thumbnailers + portals (harness-sweep codecs bucket:
-    # base/good/bad + libjxl, decided keep)
+    # codecs/gstreamer plugins for thumbnailers + portals
     gst_all_1.gstreamer
     gst_all_1.gst-plugins-base
     gst_all_1.gst-plugins-good
@@ -297,13 +298,7 @@ in
     libjxl
   ];
 
-  # nvim → implemented in ./nvim.nix (imported above): programs.neovim + lazy-nix-helper
-  # store-resolution + mason→Nix marksman + treesitter pre-seed.
-  #
-  # DEFERRED (own sessions / post-boot, tracked — NOT dropped):
-  #   - Claude Code + pi config → the AI-agent nix flake (llm-agents.nix / pi.nix), NOT
-  #     hand-rolled COPY (per the ratified refinement)
-  #   - asr-rs v2, the ~/.env secrets, skills/ → their own sessions
+  # nvim → implemented in ./nvim.nix (imported above).
 
   home.stateVersion = "26.05";
 }

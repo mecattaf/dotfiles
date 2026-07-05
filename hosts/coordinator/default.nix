@@ -1,8 +1,6 @@
 { ... }:
-# coordinator — AMD Strix Halo (gfx1151), the MAIN device: NAS / LAN-router / quadlets.
-# Router plane, NAS CIFS mount, quadlets (adguard/immich/navidrome), and the Thunderbolt
-# cluster fabric land here incrementally (see harness-sweep.md). Headless-access saga
-# collapses under declarative authorized_keys + TB static IPs.
+# coordinator — AMD Strix Halo (gfx1151), the main device. Router plane, NAS CIFS
+# mount, and quadlets (adguard/immich/navidrome) land here incrementally.
 {
   imports = [
     ./hardware.nix

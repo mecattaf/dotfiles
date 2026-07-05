@@ -37,10 +37,9 @@ research, handoff notes).
 - **[nix-ouverture.md](nix-ouverture.md)** (Jun 20) — forward-looking
   companion to `nix-decisions.md`; the thesis that the migration converges
   on one shape (typed options → CLI/daemon + config, à la microvm.nix).
-- **[sunshine-moonlight-research.md](sunshine-moonlight-research.md)**
-  (Jun 20) — Sunshine + Moonlight headless streaming design for the
-  `worker` host (AMD Strix Halo, no monitor); deferred on niri PR #3800
-  (dynamic virtual outputs).
+- **[remote-access-mesh.md](remote-access-mesh.md)** (Jul 5) — wayvnc +
+  Remmina + SSH mesh design (supersedes the abandoned Sunshine/Moonlight
+  plan); declarative any-device-to-any-device access on mainline niri.
 - **[nix-build-handoff.md](nix-build-handoff.md)** (Jun 20) — handoff
   snapshot: Layer 1 built/validated/pushed on `nix`, next action is
   flashing the Zenbook Duo per `../zenbook-duo-flash.md`.

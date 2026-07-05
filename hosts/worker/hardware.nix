@@ -1,5 +1,7 @@
 { lib, modulesPath, ... }:
-# ⚠️ PLACEHOLDER — regenerate ON the real machine. Evaluates only; will NOT boot as-is.
+# Worker hardware. Filesystems come from ./disko.nix (nixos-anywhere partitions the
+# NVMe). initrd modules cover the WD_BLACK NVMe + TB3; verified over TB3 pre-flight
+# 2026-07-05. Confirm the module set against `nixos-generate-config` after first boot.
 {
   imports = [ (modulesPath + "/installer/scan/not-detected.nix") ];
 
@@ -14,15 +16,6 @@
   ];
   boot.kernelModules = [ "kvm-amd" ];
   hardware.cpu.amd.updateMicrocode = lib.mkDefault true;
-
-  fileSystems."/" = {
-    device = "/dev/disk/by-label/nixos";
-    fsType = "ext4";
-  };
-  fileSystems."/boot" = {
-    device = "/dev/disk/by-label/ESP";
-    fsType = "vfat";
-  };
 
   nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
 }
