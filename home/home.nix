@@ -295,7 +295,9 @@ in
     shpool
     kitty
 
-    # agent / dev tooling
+    # agent / dev tooling. claude-code from nixpkgs — the Fedora-era native installer
+    # (~/.local/bin ELF) doesn't exist on NixOS; creds seed via modules/secrets.nix.
+    claude-code
     gh
     google-cloud-sdk
     cloudflared
