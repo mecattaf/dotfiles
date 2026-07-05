@@ -66,23 +66,17 @@
     DNS=127.0.0.1
   '';
 
-  # LaCie 4TB on the BE550's USB, guest SMB (Secure Sharing OFF in Tether).
-  # Automount so boot never blocks on the router; first access triggers it.
-  # PLANNED (Tom, 2026-07-05): attach the LaCie directly to this box via USB —
-  # when that happens, replace this cifs entry with the local filesystem at the
-  # SAME /mnt/nas path and the immich/navidrome binds keep working unchanged.
+  # LaCie 4TB, attached DIRECTLY to this box via USB (Tom's ruling 2026-07-05;
+  # the old BE550-SMB path is retired). nofail + automount keep boot clean when
+  # the drive is unplugged. The drive didn't enumerate at write time — if the
+  # label differs, fix it from `lsblk -o LABEL,UUID` with the drive present.
   fileSystems."/mnt/nas" = {
-    device = "//10.42.0.2/G";
-    fsType = "cifs";
+    device = "/dev/disk/by-label/LaCie";
+    fsType = "auto";
     options = [
-      "guest"
       "uid=1000"
       "gid=100"
-      "file_mode=0775"
-      "dir_mode=0775"
       "nofail"
-      "_netdev"
-      "vers=3.1.1"
       "noauto"
       "x-systemd.automount"
     ];
