@@ -2,11 +2,11 @@
 
 local M = {}
 
--- Git branch component 
+-- Git branch component (reads from gitsigns to avoid spawning a git process)
 local function git_branch()
-  local branch = vim.fn.system("git branch --show-current 2>/dev/null"):gsub('\n', '')
-  if branch and branch ~= '' then
-    return '  ' .. branch
+  local gs = vim.b.gitsigns_status_dict
+  if gs and gs.head and gs.head ~= '' then
+    return '  ' .. gs.head
   end
   return ''
 end

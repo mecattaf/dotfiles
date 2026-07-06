@@ -1,5 +1,8 @@
 local api = vim.api
 
+-- Prevent git from opening /dev/tty for credential prompts inside nvim
+vim.env.GIT_TERMINAL_PROMPT = "0"
+
 local modules = {
   'options',
   'mappings',
