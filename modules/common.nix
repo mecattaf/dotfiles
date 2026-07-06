@@ -137,12 +137,23 @@
   hardware.enableRedistributableFirmware = true;
   hardware.graphics.enable = true;
 
-  # --- fonts (the rule: maple-mono + jetbrains nerd + google-fonts + noto-emoji) ---
+  # --- fonts (the rule: maple-mono + jetbrains nerd + google-fonts + noto-emoji
+  #     + the Apple families) ---
+  # Apple SF/NY come from the apple-fonts flake overlay: built at nix-build time
+  # from Apple's own CDN DMGs, nothing redistributed. sfmono-liga (pkgs/) is the
+  # ligaturized+nerd-patched SF Mono. The apple-fonts -nerd variants are skipped
+  # on purpose: nerd-font-patcher OOMs constrained builders and sfmono-liga
+  # already carries the terminal glyphs.
   fonts.packages = with pkgs; [
     maple-mono.NF
     nerd-fonts.jetbrains-mono
     google-fonts
     noto-fonts-color-emoji
+    sf-pro # GTK interface font ("SF Pro Display 11" — dconf in home/home.nix)
+    sf-compact
+    sf-mono
+    ny
+    sfmono-liga
   ];
 
   # --- env (qt + gtk theming) ---

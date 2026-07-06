@@ -110,6 +110,13 @@ in
   dconf.settings."org/gnome/desktop/interface" = {
     gtk-theme = "MacTahoe-Dark-grey";
     color-scheme = "prefer-dark";
+    # Interface fonts, mirroring the Fedora box exactly (Nautilus, Remmina and
+    # every other GTK app read font-name). sf-pro ships system-wide via
+    # modules/common.nix fonts.packages; before this nothing set the key, so
+    # GTK fell back to Adwaita Sans — the "odd Nautilus font" on first boot.
+    font-name = "SF Pro Display 11";
+    document-font-name = "Adwaita Sans 12";
+    monospace-font-name = "Adwaita Mono 11";
   };
 
   # bin/ scripts: whole-dir (the repo owns ~/.local/bin).

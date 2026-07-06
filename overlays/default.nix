@@ -1,6 +1,8 @@
 final: prev: {
   # Add-only overlay + a single scoped upstream override (niri, below).
   # Everything else from the old COPR is already in nixpkgs (referenced directly).
+  # NB: sfmono-liga (pkgs/sfmono-liga.nix) is wired in flake.nix, not here —
+  # it needs the sfmono-liga flake input as src, and this file has no inputs.
 
   # Silence the upstream niri-session deprecation warning that prints (orange) at
   # every session start: "Calling 'import-environment' without a list of variable

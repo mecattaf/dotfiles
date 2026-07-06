@@ -26,6 +26,23 @@
       url = "github:nix-community/disko";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # Apple SF/NY fonts (sf-pro, sf-compact, sf-mono, ny), built at nix-build
+    # time from Apple's own CDN DMGs — nothing redistributed. Replaces the old
+    # Fedora-image url-fonts Apple-SF zip (its mecattaf/San-Francisco-family
+    # release no longer exists; repo deleted).
+    apple-fonts = {
+      url = "github:Lyndeno/apple-fonts.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # Liga SF Mono: SF Mono ligaturized AND nerd-patched upstream — a different
+    # derived font from apple-fonts' sf-mono-nerd (glyphs only, no ligatures).
+    # Plain repo of OTFs, not a flake; consumed by pkgs/sfmono-liga.nix.
+    sfmono-liga = {
+      url = "github:shaunsingh/SFMono-Nerd-Font-Ligaturized";
+      flake = false;
+    };
   };
 
   outputs =
@@ -39,9 +56,19 @@
     let
       system = "x86_64-linux";
 
+      # One overlay list everywhere (top-level pkgs + every host): bespoke pkgs,
+      # the apple-fonts families, and sfmono-liga — wired inline because it
+      # needs the flake input as src (overlays/default.nix has no inputs).
+      overlays = [
+        self.overlays.default
+        inputs.apple-fonts.overlays.default
+        (final: _prev: {
+          sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { src = inputs.sfmono-liga; };
+        })
+      ];
+
       pkgs = import nixpkgs {
-        inherit system;
-        overlays = [ self.overlays.default ];
+        inherit system overlays;
         config.allowUnfree = true; # google-chrome
       };
 
@@ -53,7 +80,7 @@
           specialArgs = { inherit inputs; };
           modules = [
             {
-              nixpkgs.overlays = [ self.overlays.default ];
+              nixpkgs.overlays = overlays;
               nixpkgs.config.allowUnfree = true;
             }
             ./modules/common.nix
@@ -88,7 +115,7 @@
       };
 
       packages.${system} = {
-        inherit (pkgs) mactahoe-gtk-theme mactahoe-icon-theme;
+        inherit (pkgs) mactahoe-gtk-theme mactahoe-icon-theme sfmono-liga;
       };
 
       formatter.${system} = pkgs.nixfmt-rfc-style;
