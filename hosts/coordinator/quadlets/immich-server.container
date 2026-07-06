@@ -3,6 +3,7 @@ Description=Immich Photo Server
 After=network-online.target immich-postgres.service immich-redis.service
 Requires=immich-postgres.service immich-redis.service
 Wants=immich-ml.service
+RequiresMountsFor=/mnt/nas
 
 [Container]
 Image=ghcr.io/immich-app/immich-server:release
@@ -11,7 +12,7 @@ AutoUpdate=registry
 Network=systemd-immich
 PublishPort=2283:2283
 Volume=immich-upload:/usr/src/app/upload:Z
-Volume=/mnt/nas/Pictures:/mnt/photos:z
+Volume=/mnt/nas/photos:/mnt/photos:z
 Environment=DB_HOSTNAME=immich-postgres
 Environment=DB_USERNAME=immich
 Environment=DB_DATABASE_NAME=immich

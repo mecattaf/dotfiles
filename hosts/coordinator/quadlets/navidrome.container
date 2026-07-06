@@ -2,6 +2,7 @@
 Description=Navidrome Music Server
 After=network-online.target
 Wants=network-online.target
+RequiresMountsFor=/mnt/nas
 
 [Container]
 Image=docker.io/deluan/navidrome:latest

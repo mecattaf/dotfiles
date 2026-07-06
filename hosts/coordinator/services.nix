@@ -18,7 +18,7 @@
 # DATA: named volumes live in ~/.local/share/containers/storage/volumes and
 # ALL regenerate from scratch — immich never held data (Tom, 2026-07-05); it
 # starts fresh with the random DB password in immich-db.age and its photo
-# library is the drive's Pictures folder bind (/mnt/nas/Pictures).
+# library is the drive's photos folder bind (/mnt/nas/photos).
 let
   quadletFiles = [
     "adguard.container"
@@ -47,6 +47,13 @@ in
       name = "containers/systemd/users/1000/${f}";
       value.source = ./quadlets/${f};
     }) quadletFiles);
+
+    # adguard publishes 53:53, and netavark's rootless hostport DNAT
+    # (`udp dport 53 dnat ip to <adguard>`) hijacks the other networks'
+    # queries to aardvark-dns on <gateway>:53 — immich-server then dies with
+    # EAI_AGAIN on immich-postgres. Move aardvark off port 53; netavark
+    # DNATs container DNS to it before the hostport rules (found 2026-07-06).
+    virtualisation.containers.containersConf.settings.network.dns_bind_port = 10053;
 
     # Quadlet's user generator only runs for logged-in/lingering users; tom
     # lingers so adguard/immich/navidrome come up at boot, headless.
