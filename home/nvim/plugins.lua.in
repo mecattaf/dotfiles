@@ -411,6 +411,19 @@ require("lazy").setup({
     dir = dir('nvim-lspconfig'),
     ft = { "markdown", "md" },
     config = function()
+      -- The ~/mecattaf/notes vault is ~10k markdown files / 5.4G. marksman roots
+      -- to its .git and tries to index the whole tree, times out
+      -- (MailboxProcessor.PostAndAsyncReply) and crashes on every open. Skip
+      -- attaching inside the vault; marksman still works in normal md projects.
+      local vault = vim.env.HOME .. "/mecattaf/notes"
+      vim.lsp.config("marksman", {
+        root_dir = function(bufnr, on_dir)
+          local fname = vim.api.nvim_buf_get_name(bufnr)
+          if fname:sub(1, #vault + 1) == vault .. "/" then return end
+          on_dir(vim.fs.root(bufnr, { ".marksman.toml", ".git" })
+            or vim.fs.dirname(fname))
+        end,
+      })
       vim.lsp.enable("marksman")
     end,
   },
