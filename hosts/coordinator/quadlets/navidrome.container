@@ -15,6 +15,8 @@ Environment=ND_MUSICFOLDER=/music
 Environment=ND_DATAFOLDER=/data
 Environment=ND_SCANSCHEDULE=1h
 Environment=ND_LOGLEVEL=info
+Environment=ND_SESSIONTIMEOUT=168
+Environment=ND_AUTOIMPORTPLAYLISTS=true
 
 [Service]
 Restart=on-failure

@@ -1,0 +1,12 @@
+volume   = 70
+repeat   = "off"
+shuffle  = false
+theme    = "catppuccin-noir"
+provider = "navidrome"
+
+[navidrome]
+url         = "http://localhost:4533"
+user        = "${NAVIDROME_USER}"
+password    = "${NAVIDROME_PASSWORD}"
+browse_sort = "alphabeticalByName"
+scrobble    = true

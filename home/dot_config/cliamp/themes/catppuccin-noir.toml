@@ -1,0 +1,11 @@
+# catppuccin-noir — catppuccin mocha on pure OLED black (#000000),
+# with Claude Code accent colors layered on top.
+# Mirrors the exact overrides in dot_config/nvim/lua/plugins.lua
+# and the kitty palette in dot_config/kitty/kitty.conf.
+
+accent    = "#70B8FF"  # blue   — titles, seek bar, selection, interactive
+bright_fg = "#EAECF0"  # text   — primary text, time display
+fg        = "#818898"  # overlay1 — muted labels, help bar, inactive
+green     = "#9BE963"  # green  — playing indicator, volume bar, spectrum low
+yellow    = "#f9e2af"  # yellow — spectrum middle
+red       = "#F47B85"  # red    — spectrum high, errors

@@ -12,8 +12,9 @@
 #   deliberately not ported.)
 #
 # Secrets arrive via agenix (owner tom so the user manager can read them):
-# /run/agenix/immich-db. The quadlet files reference that path, so the stack
-# needs mySecrets.enable — gate everything on it.
+# /run/agenix/immich-db and /run/agenix/navidrome-credentials. The quadlet
+# files and cliamp shell wrapper reference those paths, so the stack needs
+# mySecrets.enable — gate everything on it.
 #
 # DATA: named volumes live in ~/.local/share/containers/storage/volumes and
 # ALL regenerate from scratch — immich never held data (Tom, 2026-07-05); it
@@ -38,6 +39,16 @@ in
   config = lib.mkIf config.mySecrets.enable {
     age.secrets.immich-db = {
       file = ../../secrets/immich-db.age;
+      owner = "tom";
+      group = "users";
+      mode = "400";
+    };
+
+    # navidrome admin credentials — sourced by cliamp at launch via
+    # `set -a && source /run/agenix/navidrome-credentials && set +a`.
+    # Format: NAVIDROME_USER=… / NAVIDROME_PASSWORD=… (env file).
+    age.secrets.navidrome-credentials = {
+      file = ../../secrets/navidrome-credentials.age;
       owner = "tom";
       group = "users";
       mode = "400";
