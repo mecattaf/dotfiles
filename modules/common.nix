@@ -10,7 +10,7 @@
 
   # --- identity / base ---
   networking.networkmanager.enable = true;
-  time.timeZone = lib.mkDefault "America/New_York";
+  time.timeZone = lib.mkDefault "Europe/Paris";
   i18n.defaultLocale = lib.mkDefault "en_US.UTF-8";
   system.nixos.distroName = "Harness";
   boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
@@ -155,6 +155,22 @@
     ny
     sfmono-liga
   ];
+
+  # Map the fontconfig generic aliases to the Apple families. Installing the
+  # fonts (above) is not enough: apps that ask for the *generic* families —
+  # google-chrome's web content (sans-serif/serif/monospace), plus most GTK/Qt
+  # fallbacks — resolve through these aliases, which otherwise default to
+  # DejaVu. That DejaVu fallback is the "weird font" Chrome renders with. The
+  # family strings are the real names the DMG-built OTFs expose (verified with
+  # fc-scan): "SF Pro Display", "New York", "Liga SFMono Nerd Font" — NOT
+  # "SF Mono". NixOS appends its own DejaVu/Noto fallbacks after these, so
+  # missing glyphs (CJK, symbols) still resolve.
+  fonts.fontconfig.defaultFonts = {
+    sansSerif = [ "SF Pro Display" "SF Pro Text" ];
+    serif = [ "New York" ];
+    monospace = [ "Liga SFMono Nerd Font" ];
+    emoji = [ "Noto Color Emoji" ];
+  };
 
   # --- env (qt + gtk theming) ---
   environment.sessionVariables = {
