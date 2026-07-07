@@ -68,7 +68,7 @@ in
 
   # Every home.packages tool must be on the SESSION PATH so niri spawns and
   # kitty-daemon `kitty @ launch` children find Nix-provided binaries.
-  home.sessionPath = [ "$HOME/.nix-profile/bin" ];
+  home.sessionPath = [ "$HOME/.nix-profile/bin" "$HOME/.local/bin" ];
 
   # Claude Code reads its config/creds from $CLAUDE_CONFIG_DIR (defaults to ~/.claude).
   # modules/secrets.nix seeds the OAuth credential to ~/.claude-main, so point Claude
