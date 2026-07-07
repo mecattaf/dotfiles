@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # niri Mod+Ctrl+Shift+Return:
-#   - harness-desktop: open a new kitty, fzf-pick a local shpool session, attach.
-#   - elsewhere (laptop): open a new kitty that SSHes to harness-desktop and
-#     runs the same picker remotely; niri's window-rule renders the white
-#     "remote" border once desk-resume sets the window title.
+#   - harness-desktop: open a new kitty, fzf-pick a local zmosh session, attach.
+#   - elsewhere (laptop): open a new kitty whose `desk-resume` lists the
+#     coordinator's sessions over ssh, fzf-picks one, and projects it via
+#     `zmosh attach -r`; niri's window-rule renders the white "remote" border
+#     once desk-resume sets the window title.
 #
 # Companion to Mod+Shift+Return (`new-terminal` / `desk`), which always spawns
-# a *fresh* shpool session. Use this binding to resume an existing one.
+# a *fresh* session. Use this binding to resume/project an existing one.
 
 set -u
 
@@ -16,4 +17,4 @@ if [[ "$host" != "harness-desktop" ]]; then
     exec kitty fish -ic desk-resume
 fi
 
-exec kitty -e shpool-resume
+exec kitty -e zmosh-resume

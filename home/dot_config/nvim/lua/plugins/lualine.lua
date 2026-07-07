@@ -109,17 +109,17 @@ components.recording = {
   end,
 }
 
--- Shpool session indicator
-components.shpool = {
+-- zmosh session indicator (ZMX_SESSION is set inside any zmosh session)
+components.zmosh = {
   function()
-    local name = vim.env.SHPOOL_SESSION_NAME
+    local name = vim.env.ZMX_SESSION
     if name then
-      return 'shpool:' .. name
+      return '⧉ ' .. name
     end
     return ''
   end,
   cond = function()
-    return vim.env.SHPOOL_SESSION_NAME ~= nil
+    return vim.env.ZMX_SESSION ~= nil
   end,
   color = { fg = '#818898' },
 }
@@ -189,7 +189,7 @@ function M.setup()
         components.recording,
       },
       lualine_x = {
-        components.shpool,
+        components.zmosh,
         components.diagnostics,
         components.filetype,
       },

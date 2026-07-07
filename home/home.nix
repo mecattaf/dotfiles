@@ -24,9 +24,9 @@ let
     "yt-dlp"
     "kanshi"
     "qt6ct"
-    "shpool"
     "cliamp"
   ];
+  # NB: zmosh has no config file (unlike shpool) — nothing to symlink here.
 
   # Python interpreter backing the niri helper bin/ scripts (wifi-menu, fzf-nmcli, …).
   pythonForNiri = pkgs.python3.withPackages (
@@ -175,31 +175,13 @@ in
   };
 
   # ---------------------------------------------------------------------------
-  # shpool — socket-activated session daemon. The nix package ships only the
-  # binary, so the daemon/socket units are declared here.
+  # zmosh — session persistence. No systemd plumbing: unlike shpool's single
+  # socket-activated daemon, zmosh is daemon-PER-session, forked from the CLI on
+  # first `attach` (setsid + XDG_RUNTIME_DIR socket). `loginctl enable-linger
+  # tom` (already set on the coordinator) keeps those per-session daemons alive
+  # across logout, which is what makes remote reattach work. See home.packages
+  # below for the binary, and home/dot_local/bin/zmosh-resume for the picker.
   # ---------------------------------------------------------------------------
-  systemd.user.services.shpool = {
-    Unit = {
-      Description = "Shpool - Shell Session Pool";
-      Requires = [ "shpool.socket" ];
-    };
-    Service = {
-      Type = "simple";
-      ExecStart = "${pkgs.shpool}/bin/shpool daemon";
-      KillMode = "mixed";
-      TimeoutStopSec = "2s";
-      SendSIGHUP = "yes";
-    };
-    Install.WantedBy = [ "default.target" ];
-  };
-  systemd.user.sockets.shpool = {
-    Unit.Description = "Shpool Shell Session Pooler";
-    Socket = {
-      ListenStream = "%t/shpool/shpool.socket";
-      SocketMode = "0600";
-    };
-    Install.WantedBy = [ "sockets.target" ];
-  };
 
   # ---------------------------------------------------------------------------
   # gtk/icon/cursor theming — mactahoe (overlay). GTK dirs are
@@ -299,8 +281,9 @@ in
     xdg-terminal-exec
     xarchiver
 
-    # session persistence + terminal
-    shpool
+    # session persistence + terminal. zmosh (overlay pkg via flake input) is the
+    # projector primitive — persistent sessions + encrypted-UDP remote reattach.
+    zmosh
     kitty
 
     # agent / dev tooling. claude-code from nixpkgs — the Fedora-era native installer

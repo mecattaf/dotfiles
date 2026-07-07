@@ -36,6 +36,15 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # zmosh — terminal session persistence with encrypted-UDP auto-reconnect.
+    # THE projector primitive (jul7 ruling, tally morning-annotation §12): every
+    # kitty is a persistent zmosh session on the coordinator; any laptop on the
+    # tailnet reattaches it via `zmosh attach -r`, surviving IP changes / sleep-
+    # wake. Supersedes shpool fleet-wide. Fork of zmx; ships its own zig2nix flake
+    # + build.zig.zon2json-lock, so we consume its package directly. Its only
+    # input is zig2nix (no nixpkgs to follow).
+    zmosh.url = "github:mmonad/zmosh";
+
     # Liga SF Mono: SF Mono ligaturized AND nerd-patched upstream — a different
     # derived font from apple-fonts' sf-mono-nerd (glyphs only, no ligatures).
     # Plain repo of OTFs, not a flake; consumed by pkgs/sfmono-liga.nix.
@@ -64,6 +73,9 @@
         inputs.apple-fonts.overlays.default
         (final: _prev: {
           sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { src = inputs.sfmono-liga; };
+          # zmosh's own flake builds the `zmosh` binary (zig2nix). Its package is
+          # exposed as .default; pull it straight onto the fleet-wide pkgs set.
+          zmosh = inputs.zmosh.packages.${system}.default;
         })
       ];
 

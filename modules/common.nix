@@ -17,7 +17,8 @@
   boot.loader.systemd-boot.enable = lib.mkDefault true;
   boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
   boot.plymouth.enable = true;
-  # shpool sessions exhaust the default 128 inotify instances; raise the ceiling.
+  # Many long-lived per-user watchers (persistent terminal sessions, file
+  # watchers, dev tooling) exhaust the default 128 inotify instances; raise it.
   boot.kernel.sysctl."fs.inotify.max_user_instances" = 512;
 
   nix.settings = {
