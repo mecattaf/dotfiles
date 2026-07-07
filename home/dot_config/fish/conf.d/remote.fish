@@ -1,29 +1,31 @@
 if test (hostname) != "harness-desktop"
     # The coordinator (harness-desktop) is where sessions live. On any other box
-    # (laptops), a terminal is a *projector*: zmosh bootstraps over SSH then
-    # switches to encrypted UDP, so the session survives Wi-Fi/cellular/VPN
-    # changes and sleep-wake — no reconnect, no lost state. This supersedes the
-    # old `kitten ssh harness-desktop -t shpool attach` (plain TCP, died on any
-    # network change). Tailnet just provides the stable host + SSH reach.
+    # (laptops), a terminal is a *projector*: it reaches a persistent LOCAL zmx
+    # session on the coordinator via `kitten ssh ... -t zmx attach`. kitten ssh
+    # (over the tailnet) gives reliable kitty terminfo/graphics/clipboard while
+    # attached. There is no UDP roaming — that was zmosh's only addition, and
+    # zmosh is unmaintained; zmx is local-only. If the network drops, the client
+    # dies but the session keeps running server-side — re-fire the keybinding to
+    # re-attach with full state. (Unchanged since the shpool era but shpool→zmx.)
     function desk
-        # No arg → fresh session (timestamp name). Arg → project that session id.
+        # No arg → fresh session (timestamp name). Arg → attach that session id.
         set session (if test (count $argv) -gt 0; echo $argv[1]; else; date +term-%m%d-%H%M%S; end)
         kitty @ set-window-title "remote"
-        # `zmosh serve` (remote side) attaches to an EXISTING daemon socket — it
-        # does NOT create one — so ensure the session exists first (`run` creates
-        # it with a login shell, then returns), then project it over UDP.
-        ssh harness-desktop zmosh run $session true >/dev/null 2>&1
-        zmosh attach -r harness-desktop $session
+        # `zmx attach` creates the session if it doesn't exist, so no pre-create.
+        kitten ssh harness-desktop -t zmx attach $session fish
         kitty @ set-window-title
     end
 
     function desk-resume
         # Mod+Ctrl+Shift+Return counterpart to `desk`: list the coordinator's
-        # live sessions, fzf-pick one locally (snappier than a remote picker),
-        # then project it over UDP.
+        # live sessions over ssh, fzf-pick one locally (snappier than a remote
+        # picker), then attach over kitten ssh.
         kitty @ set-window-title "remote"
-        set session (ssh harness-desktop zmosh list --short | fzf --prompt='project> ' --no-sort)
-        test -n "$session"; and zmosh attach -r harness-desktop $session
+        # login shell (bash -lc) so the home-manager nix profile (where zmx
+        # lives) is on PATH; a bare `ssh host zmx …` runs non-login and may not
+        # find it. Plain ssh (no -t) keeps the list clean for fzf.
+        set session (ssh harness-desktop 'bash -lc "zmx list --short"' | fzf --prompt='attach> ' --no-sort)
+        test -n "$session"; and kitten ssh harness-desktop -t zmx attach $session fish
         kitty @ set-window-title
     end
 end

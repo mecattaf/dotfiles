@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # F10 → "Sleep monitors?" prompt. Powers the displays off via niri without
 # suspending the system — the gateway, DNS, AdGuard, NAS frontend, Immich,
-# Navidrome, and zmosh sessions all keep running. Move the mouse or press
+# Navidrome, and zmx sessions all keep running. Move the mouse or press
 # any key to wake the displays.
 #
 # Spawned in a small floating kitty popup by niri/binds.kdl (F10), with

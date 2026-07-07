@@ -8,9 +8,9 @@ window-rule {
     clip-to-geometry true
 }
 
-// White border when a desk (projected zmosh) session is active
+// White border when a desk (projected zmx) session is active
 // Matches window title set by `desk` via `kitty @ set-window-title remote`
-// Disabled: green starship arrow + ssh/tailscale/zmosh (⧉) prompt segments
+// Disabled: green starship arrow + ssh/tailscale/zmx (⧉) prompt segments
 // are enough visual indication. Remove the leading `/-` to re-enable.
 /-window-rule {
     match app-id="kitty" title="remote"

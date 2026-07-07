@@ -109,8 +109,8 @@ components.recording = {
   end,
 }
 
--- zmosh session indicator (ZMX_SESSION is set inside any zmosh session)
-components.zmosh = {
+-- zmx session indicator (ZMX_SESSION is set inside any zmx session)
+components.zmx = {
   function()
     local name = vim.env.ZMX_SESSION
     if name then
@@ -189,7 +189,7 @@ function M.setup()
         components.recording,
       },
       lualine_x = {
-        components.zmosh,
+        components.zmx,
         components.diagnostics,
         components.filetype,
       },

@@ -4,10 +4,10 @@
 #     the focused kitty — prefer a descendant nvim's cwd, fall back to the
 #     shell's cwd, fall back to kitty's cwd. Mirrors the old scroll
 #     nvim-terminal.lua philosophy (without the Lua or IDE-split gymnastics).
-#     Every local terminal is a persistent zmosh session (jul7 "every kitty is
-#     a projector" ruling) — so it can be reattached from any laptop over UDP.
-#     Session name is interim (cwd-basename + time); richer LLM-titled naming is
-#     scoped in GitHub issue #38.
+#     Every local terminal is a persistent zmx session (jul7 "every kitty is a
+#     projector" ruling) — so it can be reattached from any laptop via
+#     `kitten ssh harness-desktop -t zmx attach`. Session name is interim
+#     (cwd-basename + time); richer LLM-titled naming is scoped in issue #38.
 #   - elsewhere (laptop): open a new kitty that immediately SSHs to
 #     harness-desktop via the `desk` fish function; niri's window-rule
 #     renders the white "remote" border once desk sets the window title.
@@ -56,7 +56,7 @@ fi
 sess="$(basename "${cwd:-$HOME}")-$(date +%H%M%S)"
 
 if [[ -n "$cwd" && -d "$cwd" ]]; then
-    exec kitty --directory "$cwd" -e zmosh attach "$sess" fish
+    exec kitty --directory "$cwd" -e zmx attach "$sess" fish
 fi
 
-exec kitty -e zmosh attach "$sess" fish
+exec kitty -e zmx attach "$sess" fish

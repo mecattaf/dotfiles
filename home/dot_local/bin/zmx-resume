@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# fzf-pick an existing local zmx session and attach to it. Runs on the
+# coordinator (harness-desktop). Companion to `new-terminal` / `desk`, which
+# always spawn a *fresh* session. The laptop's remote equivalent lives in
+# remote.fish (`desk-resume`), which lists over ssh and attaches over kitten ssh.
+
+set -u
+
+command -v zmx >/dev/null 2>&1 || { echo "zmx not found on $(hostname)" >&2; exit 1; }
+command -v fzf >/dev/null 2>&1 || { echo "fzf not found on $(hostname)" >&2; exit 1; }
+
+# `zmx list --short` prints one session name per line.
+sess=$(zmx list --short | fzf --prompt='resume> ' --no-sort)
+[[ -n "$sess" ]] || exit 0
+
+exec zmx attach "$sess"

@@ -18,8 +18,8 @@ binds {
     //   laptop:  new kitty that SSHs to harness-desktop via `desk`
     Mod+Shift+Return hotkey-overlay-title="Terminal (smart)" { spawn-sh "~/.local/bin/new-terminal"; }
 
-    // Resume/project an existing zmosh session via fzf picker; runs locally on
-    // harness-desktop, projects the coordinator's sessions over UDP on remotes.
+    // Resume an existing zmx session via fzf picker; runs locally on
+    // harness-desktop, attaches the coordinator's sessions over kitten ssh on remotes.
     Mod+Ctrl+Shift+Return hotkey-overlay-title="Terminal (resume)" { spawn-sh "~/.local/bin/resume-terminal"; }
 
     // scroll: bindsym $mod+D exec vicinae open

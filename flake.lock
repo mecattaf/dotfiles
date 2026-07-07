@@ -232,11 +232,11 @@
     },
     "nixpkgs_3": {
       "locked": {
-        "lastModified": 1764635402,
-        "narHash": "sha256-6rYcajRLe2C5ZYnV1HYskJl+QAkhvseWTzbdQiTN9OI=",
+        "lastModified": 1778556142,
+        "narHash": "sha256-n6P0m0ahFtMMkubMcHe4ole6N01B2Ywhz8ROq6ncSxk=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "5f53b0d46d320352684242d000b36dcfbbf7b0bc",
+        "rev": "dcddeceb5be51a26d1d4440c50c591bea424073f",
         "type": "github"
       },
       "original": {
@@ -266,7 +266,7 @@
         "nixos-hardware": "nixos-hardware",
         "nixpkgs": "nixpkgs_2",
         "sfmono-liga": "sfmono-liga",
-        "zmosh": "zmosh"
+        "zmx": "zmx"
       }
     },
     "sf-arabic": {
@@ -405,11 +405,11 @@
         "nixpkgs": "nixpkgs_3"
       },
       "locked": {
-        "lastModified": 1764678235,
-        "narHash": "sha256-NNQWR3DAufaH7fs6ZplfAv1xPHEc0Ne3Z0v4MNHCqSw=",
+        "lastModified": 1778610364,
+        "narHash": "sha256-0rhkhp+Vi2gfwblOB138lOpfHTKOvR0xHZYWnRcA0DU=",
         "owner": "Cloudef",
         "repo": "zig2nix",
-        "rev": "8b6ec85bccdf6b91ded19e9ef671205937e271e6",
+        "rev": "4541f97bd2f114e304c518fc058d1ebc45440315",
         "type": "github"
       },
       "original": {
@@ -418,21 +418,21 @@
         "type": "github"
       }
     },
-    "zmosh": {
+    "zmx": {
       "inputs": {
         "zig2nix": "zig2nix"
       },
       "locked": {
-        "lastModified": 1771789171,
-        "narHash": "sha256-25hOpgcB98+qBe7tV++Ze/FWEG5K0w43t1i2XUcP9/0=",
-        "owner": "mmonad",
-        "repo": "zmosh",
-        "rev": "71eba23416bfb443df755ad89d6d06e665ebcd95",
+        "lastModified": 1782656076,
+        "narHash": "sha256-f8iLBDOekXS/sgYeH16OvCgPgRq3m6o48OBTikXlVx4=",
+        "owner": "neurosnap",
+        "repo": "zmx",
+        "rev": "6fabec06141d9e4bcda22c982df34166cfe506ee",
         "type": "github"
       },
       "original": {
-        "owner": "mmonad",
-        "repo": "zmosh",
+        "owner": "neurosnap",
+        "repo": "zmx",
         "type": "github"
       }
     }

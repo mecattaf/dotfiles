@@ -20,35 +20,36 @@ kitten ssh tom@harness-desktop
 First time: type the `tom` login password when prompted. After step
 "Going passwordless" below, no password.
 
-## Projecting a session (zmosh) — the primary workflow
+## Attaching a session (zmx) — the primary workflow
 
-`kitten ssh` (above) is a plain, network-fragile shell — it dies on any
-IP change. Day to day you don't use it directly; you **project** a
-persistent session off the coordinator with **zmosh**, which supersedes
-the old shpool setup.
-
-Every terminal on `harness-desktop` is already a persistent `zmosh`
-session. From a laptop, reattach one over encrypted UDP that survives
-Wi-Fi↔cellular, VPN toggles, and sleep/wake:
+Day to day you don't use a bare `kitten ssh` shell (it dies on
+disconnect and loses state). Instead, every terminal on
+`harness-desktop` is a persistent **local zmx session**, and you attach
+one over `kitten ssh`. zmx supersedes the old shpool setup; persistence
+is entirely server-side.
 
 ```sh
-zmosh attach -r harness-desktop <session>   # project an existing session
-zmosh a -r harness-desktop <session>        # short form
+kitten ssh harness-desktop -t zmx attach <session>   # attach an existing session
+kitten ssh harness-desktop -t zmx a <session>        # short form
 ```
 
-zmosh bootstraps over SSH (so passwordless login above still matters),
-negotiates an XChaCha20 key, then switches to UDP — no reconnect, no lost
-state when the network changes. In niri this is wired to keys:
+kitten ssh (over the tailnet) gives kitty terminfo, the graphics
+protocol, and clipboard reliably while attached — unlike a raw `ssh` +
+`zmx`. There is **no UDP roaming** (that was zmosh's addition, and zmosh
+is unmaintained; zmx is local-only): if the network drops, the client
+dies but the session keeps running on the coordinator — just re-run the
+keybinding to re-attach, with full scrollback/state intact. In niri:
 
-- **Mod+Shift+Return** → `desk`: fresh projected session (timestamp name)
+- **Mod+Shift+Return** → `desk`: fresh session (timestamp name; `zmx
+  attach` creates it)
 - **Mod+Ctrl+Shift+Return** → `desk-resume`: fzf-pick one of the
-  coordinator's live sessions (`zmosh list --short` over ssh), then project it
+  coordinator's live sessions (`zmx list --short` over ssh), then attach
+  over kitten ssh
 
 The seam: any laptop on the tailnet recovers any terminal session —
-terminal windows behave like browser tabs, with full session state. Note
-`zmosh` must be on `PATH` on both ends (it is — `home.packages`), and
-remote-session clipboard falls back to OSC52 rather than kitten ssh's
-forwarding.
+terminal windows behave like browser tabs, with full session state.
+`zmx` must be on `PATH` on the coordinator (it is — `home.packages`);
+the laptop only needs `kitten ssh`.
 
 ## Going passwordless (do this once, after first login)
 
@@ -105,8 +106,8 @@ Already in place on `harness-desktop`:
 - `tailscaled` active + enabled, hostname `harness-desktop`
 - `tom` has a login password set
 - `loginctl enable-linger tom` set (user processes survive logout —
-  this is what keeps zmosh's per-session daemons alive so they can be
-  reattached/projected later)
+  this is what keeps zmx's per-session daemons alive so they can be
+  re-attached over kitten ssh later)
 
 One change made during prep:
 
