@@ -14,41 +14,60 @@
 // ^ niri uses a completely different animation system.
 // See: https://github.com/YaLTeR/niri/wiki/Configuration:-Animations
 animations {
+    // Workspace vertical navigation — tuned for 120Hz (~35ms feel)
     workspace-switch {
-        duration-ms 120
-        curve "cubic-bezier" 0.25 0.1 0.25 1.0
+        spring damping-ratio=1.0 stiffness=3000 epsilon=0.001
     }
 
+    // Synchronized movement group — all three must be identical (niri drives them together
+    // when a resize causes a view scroll, or window-open causes columns to reflow).
+    // stiffness=5000 epsilon=0.001: ~25ms feel, 3 frames @ 120Hz
     horizontal-view-movement {
-        // NIX-MIGRATION: drift-port of the deployed 2026-06-27 perf edit.
-        // off: instant re-tile (no smooth scroll) — perf win for surface toggle/collapse (Agent 1)
-        off
-    }
-
-    window-open {
-        duration-ms 100
-        curve "cubic-bezier" 0.3 0.0 0.7 1.0
-    }
-
-    window-close {
-        duration-ms 100
-        curve "cubic-bezier" 0.3 0.0 0.7 1.0
+        spring damping-ratio=1.0 stiffness=5000 epsilon=0.001
     }
 
     window-movement {
-        // NIX-MIGRATION: drift-port of the deployed 2026-06-27 perf edit.
-        // off: instant exclusive-zone reclaim / re-tile when a surface hides (Agent 1 toggle-speed win)
-        off
+        spring damping-ratio=1.0 stiffness=5000 epsilon=0.001
     }
 
     window-resize {
-        duration-ms 120
-        curve "cubic-bezier" 0.25 0.1 0.25 1.0
+        spring damping-ratio=1.0 stiffness=5000 epsilon=0.001
     }
 
+    // Overview zoom — deliberately slower: dramatic zoom benefits from ~80ms feel
+    overview-open-close {
+        spring damping-ratio=1.0 stiffness=1500 epsilon=0.001
+    }
+
+    // Window open/close — 25ms: 3 frames @ 120Hz, ease-out for snappy feel
+    window-open {
+        duration-ms 25
+        curve "ease-out-expo"
+    }
+
+    window-close {
+        duration-ms 25
+        curve "ease-out-quad"
+    }
+
+    // Screenshot UI
+    screenshot-ui-open {
+        duration-ms 25
+        curve "ease-out-quad"
+    }
+
+    // Overlay notifications — bouncy spring (damping-ratio=0.6) draws attention, niri design intent
     config-notification-open-close {
-        duration-ms 120
-        curve "cubic-bezier" 0.25 0.1 0.25 1.0
+        spring damping-ratio=0.6 stiffness=1000 epsilon=0.001
+    }
+
+    exit-confirmation-open-close {
+        spring damping-ratio=0.6 stiffness=500 epsilon=0.01
+    }
+
+    // Recent windows switcher
+    recent-windows-close {
+        spring damping-ratio=1.0 stiffness=3000 epsilon=0.001
     }
 }
 
