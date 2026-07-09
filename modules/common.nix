@@ -27,6 +27,15 @@
       "flakes"
     ];
     auto-optimise-store = true;
+
+    # numtide binary cache — serves the llm-agents.nix catalog (flake input) as
+    # prebuilt binaries. Without it, installing the ~100-agent set would build
+    # each from source; with it they're fetched. Key from the upstream flake's
+    # nixConfig.
+    extra-substituters = [ "https://cache.numtide.com" ];
+    extra-trusted-public-keys = [
+      "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
+    ];
   };
 
   # --- user ---

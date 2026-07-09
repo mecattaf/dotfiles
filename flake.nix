@@ -50,6 +50,18 @@
     # while attached, and a persistent session survives disconnects server-side.
     zmx.url = "github:neurosnap/zmx";
 
+    # llm-agents.nix — numtide's daily-rebuilt catalog of ~100 AI coding agents
+    # and tooling (claude-code, codex, gemini-cli, opencode, crush, goose, amp,
+    # ...). Its `overlays.default` exposes the whole set, prebuilt against its OWN
+    # fresh nixpkgs-unstable, under the namespaced `pkgs.llm-agents.*` — so it
+    # neither re-evaluates our nixpkgs nor collides with it. This is how we get
+    # newest claude-code DECOUPLED from our (deliberately lagging) nixpkgs pin:
+    # `nix flake update llm-agents` bumps agents without touching kernel/Mesa.
+    # Deliberately NO inputs.nixpkgs.follows — following our pin would rebuild
+    # against stale deps and miss the numtide cache (substituter added in
+    # modules/common.nix). home/home.nix installs the entire set via buildEnv.
+    llm-agents.url = "github:numtide/llm-agents.nix";
+
     # Liga SF Mono: SF Mono ligaturized AND nerd-patched upstream — a different
     # derived font from apple-fonts' sf-mono-nerd (glyphs only, no ligatures).
     # Plain repo of OTFs, not a flake; consumed by pkgs/sfmono-liga.nix.
@@ -76,6 +88,10 @@
       overlays = [
         self.overlays.default
         inputs.apple-fonts.overlays.default
+        # Whole llm-agents catalog under `pkgs.llm-agents.*` (prebuilt from its
+        # own nixpkgs — no second eval of ours). Maximalist: home/home.nix pulls
+        # every buildable package out of this set. See the input comment above.
+        inputs.llm-agents.overlays.default
         (final: _prev: {
           sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { src = inputs.sfmono-liga; };
           # zmx's own flake builds the `zmx` binary (zig2nix, valid lock — builds
