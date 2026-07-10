@@ -329,6 +329,7 @@ in
     llmAgentsAll
     gh
     google-cloud-sdk
+    gws # Google Workspace CLI (Gmail/Calendar/Drive/Sheets/Docs/...), Discovery-doc-backed
     cloudflared
     backlog-md # bespoke pkg via overlay — see pkgs/backlog-md.nix
     cliamp # terminal music player → navidrome. overlay pkg, see pkgs/cliamp.nix
