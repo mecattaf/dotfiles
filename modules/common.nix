@@ -131,6 +131,15 @@
     startWhenNeeded = true;
   };
   services.tailscale.enable = true;
+  # Tailscale SSH: any mesh node can reach any other over the tailnet in ANY
+  # situation (LAN, remote, or when the TB3 fabric is down), authenticated by
+  # tailnet identity — no user keypair needed for this path. extraSetFlags runs
+  # `tailscale set --ssh` on every activation, so it also enables SSH on nodes
+  # already joined to the tailnet (the autoconnect unit only runs `up` while
+  # BackendState=NeedsLogin, so extraUpFlags alone would never re-fire).
+  # NB: requires an `ssh` rule in the tailnet ACL allowing tag:mesh → tag:mesh
+  # for users [autogroup:nonroot, root] — added in the Tailscale admin console.
+  services.tailscale.extraSetFlags = [ "--ssh" ];
   services.resolved.enable = true;
   networking.firewall.enable = true;
   # wayvnc (port 5900) is reachable ONLY over the tailnet — never the LAN/wifi. The
