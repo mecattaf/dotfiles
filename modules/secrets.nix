@@ -1,4 +1,4 @@
-{ config, lib, ... }:
+{ config, lib, pkgs, ... }:
 # agenix secret DELIVERY on a host.
 #
 # Gated behind `mySecrets.enable` (default OFF) so a fresh flash can NEVER fail
@@ -32,6 +32,29 @@ in
         mkdir -p "$HOME/.claude-main"
         cp "${config.age.secrets.claude-credentials.path}" "$cred"
         chmod 600 "$cred"
+      fi
+    '';
+
+    # Mesh SSH user key (the shared `tom@mesh` private half). mesh.nix already
+    # authorizes this key + seeds known_hosts on every host; this delivers the
+    # PRIVATE key so each box can also SSH *out* (any box → any box), and so
+    # `nixos-rebuild --target-host` works from anywhere. Encrypted to every host
+    # key (common tier), so a reflash restores it automatically — no more manual
+    # ~/.ssh provisioning. Copy-not-link: ssh wants a real 600 file tom owns.
+    age.secrets.ssh-user-key = {
+      file = ../secrets/ssh-user-key.age;
+      owner = "tom";
+      group = "users";
+      mode = "600";
+    };
+    system.userActivationScripts.seedSshUserKey.text = ''
+      key="$HOME/.ssh/id_ed25519"
+      if [ ! -e "$key" ] && [ -r "${config.age.secrets.ssh-user-key.path}" ]; then
+        mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"
+        cp "${config.age.secrets.ssh-user-key.path}" "$key"
+        chmod 600 "$key"
+        ${pkgs.openssh}/bin/ssh-keygen -y -f "$key" > "$key.pub" 2>/dev/null || true
+        chmod 644 "$key.pub" 2>/dev/null || true
       fi
     '';
 

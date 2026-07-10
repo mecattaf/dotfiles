@@ -31,6 +31,9 @@ in
   # --- common tier (every host may decrypt) ---
   "secrets/claude-credentials.age".publicKeys = editors ++ hostKeys;
   "secrets/env.age".publicKeys = editors ++ hostKeys;
+  # Shared `tom@mesh` SSH user key — delivered to every host so mutual SSH works
+  # both directions (mesh.nix wires the authorized_keys/known_hosts side).
+  "secrets/ssh-user-key.age".publicKeys = editors ++ hostKeys;
 
   # --- per-host tier (tailscale pre-auth keys: single-use, non-ephemeral,
   # preauthorized, tag:mesh — minted 2026-07-05 via the fleet OAuth client;
