@@ -185,6 +185,10 @@ require("lazy").setup({
          highlights["RenderMarkdownUnchecked"] = { fg = colors.overlay1 }
          highlights["RenderMarkdownTableHead"] = { fg = colors.blue }
          highlights["RenderMarkdownTableRow"] = { fg = colors.subtext1 }
+         -- catppuccin's default Underlined has no fg (just the underline style),
+         -- so man pages, :help tags, etc. render in plain text color instead of
+         -- the Claude-blue used everywhere else for links/URLs.
+         highlights["Underlined"] = { fg = colors.blue, style = { "underline" } }
          return highlights
        end,
        integrations = {
