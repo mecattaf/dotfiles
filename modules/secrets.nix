@@ -35,6 +35,24 @@ in
       fi
     '';
 
+    # hermes-agent (Nous Research AI harness) OAuth state — single JSON file
+    # covering access/refresh tokens + agent_key. Copy-not-link: hermes rewrites
+    # it on token refresh, same reasoning as claude-credentials above.
+    age.secrets.hermes-credentials = {
+      file = ../secrets/hermes-credentials.age;
+      owner = "tom";
+      group = "users";
+      mode = "600";
+    };
+    system.userActivationScripts.seedHermesCreds.text = ''
+      cred="$HOME/.hermes/auth.json"
+      if [ ! -e "$cred" ] && [ -r "${config.age.secrets.hermes-credentials.path}" ]; then
+        mkdir -p "$HOME/.hermes"
+        cp "${config.age.secrets.hermes-credentials.path}" "$cred"
+        chmod 600 "$cred"
+      fi
+    '';
+
     # Mesh SSH user key (the shared `tom@mesh` private half). mesh.nix already
     # authorizes this key + seeds known_hosts on every host; this delivers the
     # PRIVATE key so each box can also SSH *out* (any box → any box), and so
@@ -111,6 +129,59 @@ in
         mkdir -p "$HOME/.config/.wrangler/config"
         cp "${config.age.secrets.wrangler-config.path}" "$wr"
         chmod 600 "$wr"
+      fi
+    '';
+
+    # gws (Google Workspace CLI, personal account) — coordinator-only, same
+    # ruling as gh/wrangler above. Four files, copy-not-link throughout: gws
+    # rewrites credentials.enc + token_cache.json on token refresh, and
+    # client_secret.json/.encryption_key travel alongside them for consistency.
+    # See ~/.config/gws/HANDOFF.md (2026-07-10) for full provenance/rationale.
+    age.secrets.gws-client-secret = {
+      file = ../secrets/gws-client-secret.age;
+      owner = "tom";
+      group = "users";
+      mode = "600";
+    };
+    age.secrets.gws-credentials = {
+      file = ../secrets/gws-credentials.age;
+      owner = "tom";
+      group = "users";
+      mode = "600";
+    };
+    age.secrets.gws-encryption-key = {
+      file = ../secrets/gws-encryption-key.age;
+      owner = "tom";
+      group = "users";
+      mode = "600";
+    };
+    age.secrets.gws-token-cache = {
+      file = ../secrets/gws-token-cache.age;
+      owner = "tom";
+      group = "users";
+      mode = "600";
+    };
+    system.userActivationScripts.seedGwsCreds.text = ''
+      mkdir -p "$HOME/.config/gws"
+      dst="$HOME/.config/gws/client_secret.json"
+      if [ ! -e "$dst" ] && [ -r "${config.age.secrets.gws-client-secret.path}" ]; then
+        cp "${config.age.secrets.gws-client-secret.path}" "$dst"
+        chmod 600 "$dst"
+      fi
+      dst="$HOME/.config/gws/credentials.enc"
+      if [ ! -e "$dst" ] && [ -r "${config.age.secrets.gws-credentials.path}" ]; then
+        cp "${config.age.secrets.gws-credentials.path}" "$dst"
+        chmod 600 "$dst"
+      fi
+      dst="$HOME/.config/gws/.encryption_key"
+      if [ ! -e "$dst" ] && [ -r "${config.age.secrets.gws-encryption-key.path}" ]; then
+        cp "${config.age.secrets.gws-encryption-key.path}" "$dst"
+        chmod 600 "$dst"
+      fi
+      dst="$HOME/.config/gws/token_cache.json"
+      if [ ! -e "$dst" ] && [ -r "${config.age.secrets.gws-token-cache.path}" ]; then
+        cp "${config.age.secrets.gws-token-cache.path}" "$dst"
+        chmod 600 "$dst"
       fi
     '';
   }) ]);

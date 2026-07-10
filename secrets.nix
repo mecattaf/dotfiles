@@ -30,6 +30,7 @@ in
 {
   # --- common tier (every host may decrypt) ---
   "secrets/claude-credentials.age".publicKeys = editors ++ hostKeys;
+  "secrets/hermes-credentials.age".publicKeys = editors ++ hostKeys;
   "secrets/env.age".publicKeys = editors ++ hostKeys;
   # Shared `tom@mesh` SSH user key — delivered to every host so mutual SSH works
   # both directions (mesh.nix wires the authorized_keys/known_hosts side).
@@ -65,4 +66,13 @@ in
   # authenticated operator box — gh + wrangler stay off the worker/laptops).
   "secrets/gh-hosts.age".publicKeys = editors ++ coordinatorOnly;
   "secrets/wrangler-config.age".publicKeys = editors ++ coordinatorOnly;
+
+  # gws (Google Workspace CLI, personal account thomasmecattaf@gmail.com) — same
+  # operator-box ruling as gh/wrangler above. client_secret identifies the OAuth
+  # app; credentials.enc + .encryption_key + token_cache.json are the actual
+  # logged-in state (see ~/.config/gws/HANDOFF.md for full provenance, 2026-07-10).
+  "secrets/gws-client-secret.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/gws-credentials.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/gws-encryption-key.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/gws-token-cache.age".publicKeys = editors ++ coordinatorOnly;
 }

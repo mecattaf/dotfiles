@@ -108,6 +108,10 @@ in
   # Code there — otherwise the seeded cred lands where nothing reads it and Claude Code
   # re-prompts for OAuth on a fresh box despite the secret being delivered.
   home.sessionVariables.CLAUDE_CONFIG_DIR = "${config.home.homeDirectory}/.claude-main";
+  # Force the file backend explicitly so gws never guesses between it and an
+  # OS keyring (GNOME keyring/kwallet) — the agenix-delivered .encryption_key
+  # only makes sense if gws is always in file mode. See gws-*.age in secrets.nix.
+  home.sessionVariables.GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND = "file";
 
   # ---------------------------------------------------------------------------
   # RAW configs (whole-dir per ~/.config/<name>).
