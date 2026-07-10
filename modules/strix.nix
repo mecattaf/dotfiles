@@ -28,9 +28,13 @@
   };
 
   config = {
-    # Strix Halo unified-memory tuning (128 GiB pinnable for the iGPU; iommu off = lower latency).
+    # Strix Halo unified-memory tuning (128 GiB pinnable for the iGPU).
+    # IOMMU is the ONE per-role knob: the coordinator runs the NPU, whose amdxdna
+    # driver binds via IOMMU SVA/PASID and needs IOMMU ON in translated mode
+    # (hardware.amd-npu additionally pins iommu.passthrough=0). The worker keeps
+    # the NPU off and takes amd_iommu=off for lower GPU-memory latency / max iGPU.
     boot.kernelParams = [
-      "amd_iommu=off"
+      (if config.myCluster.role == "coordinator" then "amd_iommu=on" else "amd_iommu=off")
       "ttm.pages_limit=33554432"
     ];
 

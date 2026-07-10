@@ -84,6 +84,14 @@
       url = "github:mecattaf/tally";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # nix-amd-ai — AMD Ryzen AI NPU stack (amdxdna driver + XRT + FastFlowLM).
+    # COORDINATOR ONLY: the conductor turns the NPU on (needs IOMMU in translated
+    # mode); the worker keeps the NPU off for max iGPU (iommu off). Deliberately
+    # NO inputs.nixpkgs.follows — the overlay is built against its OWN pinned
+    # nixpkgs so its Cachix (nix-amd-ai.cachix.org, substituter added in
+    # modules/common.nix) serves prebuilt XRT/FastFlowLM instead of source builds.
+    nix-amd-ai.url = "github:noamsto/nix-amd-ai";
   };
 
   outputs =

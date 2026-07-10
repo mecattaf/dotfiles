@@ -32,9 +32,16 @@
     # prebuilt binaries. Without it, installing the ~100-agent set would build
     # each from source; with it they're fetched. Key from the upstream flake's
     # nixConfig.
-    extra-substituters = [ "https://cache.numtide.com" ];
+    # numtide → the llm-agents catalog; nix-amd-ai → prebuilt XRT/FastFlowLM for
+    # the coordinator's NPU (its overlay is pinned to its own nixpkgs, so this
+    # Cachix — NOT flake nixConfig — is what avoids building XRT from source).
+    extra-substituters = [
+      "https://cache.numtide.com"
+      "https://nix-amd-ai.cachix.org"
+    ];
     extra-trusted-public-keys = [
       "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
+      "nix-amd-ai.cachix.org-1:F4OU4vw/lV2oiG6SBHZ+nqjl4EFJuqI4X9A7pvaBmhQ="
     ];
   };
 
