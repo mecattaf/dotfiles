@@ -28,11 +28,17 @@ let
   # (wrapped in tryEval since evaluating meta can itself throw). claude-code now
   # comes FROM this set, so the standalone entry is gone from home.packages.
   alreadyInstalled = [ "backlog-md" ];
+  # `pkgs.llm-agents.flake-inputs` is a passthru MANIFEST derivation (a single
+  # file, not a package tree). It's a derivation with meta.available, so it slips
+  # past the isDerivation filter below — but buildEnv can only merge directory
+  # outputs and aborts on a file ("... is a file and can't be merged into an
+  # environment"). It's the only non-package attr in the ~139-member set. Drop it.
+  nonPackages = [ "flake-inputs" ];
   llmAgentsAll = pkgs.buildEnv {
     name = "llm-agents-all";
     ignoreCollisions = true;
     paths = lib.pipe pkgs.llm-agents [
-      (lib.filterAttrs (n: _: !(builtins.elem n alreadyInstalled)))
+      (lib.filterAttrs (n: _: !(builtins.elem n (alreadyInstalled ++ nonPackages))))
       (lib.filterAttrs (
         _: v: (builtins.tryEval (lib.isDerivation v && (v.meta.available or true))).value
       ))
@@ -86,6 +92,7 @@ in
   imports = [
     ./nvim.nix
     ./remote.nix
+    ./tally.nix
   ];
 
   home.username = "tom";

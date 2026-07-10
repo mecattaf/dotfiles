@@ -69,6 +69,21 @@
       url = "github:shaunsingh/SFMono-Nerd-Font-Ligaturized";
       flake = false;
     };
+
+    # tally — agent-session orchestration (one Bun-compiled daemon + CLI). THE
+    # packaging channel is this flake input + `homeManagerModules.tally` (tally
+    # DECISIONS Q1: the module is load-bearing — systemd user units + the pls
+    # broker/pool config — which a bare pkg can't deliver; NO bespoke
+    # pkgs/tally.nix). home/tally.nix imports the module and enables it on the
+    # coordinator (conductor role); other hosts leave it off. Composes onto the
+    # dotfiles-owned zmx substrate — tally ships none of it (V0.1-PATH step 1).
+    # follows nixpkgs so the Bun/bun2nix build resolves against our one pin
+    # rather than dragging a second nixpkgs into the lock. `nix flake update
+    # tally` bumps to the latest pushed commit (and, post-release, the tag).
+    tally = {
+      url = "github:mecattaf/tally";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
