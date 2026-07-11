@@ -132,3 +132,5 @@ loadout plan's model inventory (§1 of that note).
   `github.com/mecattaf/asr-rs`.
 - **ds4 dual-node runbook** (both-GPUs-exclusive job class):
   `migration-journal/ds4-dual-node-lessons.md` in this directory.
+- **Community digest** (deep-pass baseline of the §2 watch list, pinned SHAs +
+  delta-refresh recipes, 2026-07-11): `strix-halo-community-digest.md` in this directory.
