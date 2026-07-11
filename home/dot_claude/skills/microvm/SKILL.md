@@ -144,6 +144,10 @@ microvm.nix ships **no** teardown verb. `systemctl stop` releases the process, n
 ### Destroy one VM (full teardown — run in order)
 
 ```bash
+# 0. revoke exposures FIRST (publish-artifact skill): a destroyed origin with a
+#    live route is a dangling exposure. Check the coordinator's drop-dir for
+#    reverse_proxy blocks targeting this VM's forwarded port:
+#      grep -l "worker:<port>" /var/lib/artifacts/*.caddy   # then unpublish
 systemctl stop microvm@<name>.service                                  # graceful; hard-kills if no socket
 rm -rf /var/lib/microvms/<name>                                        # runner symlinks, flake, auto-created volumes, sockets
 rm -f /nix/var/nix/gcroots/microvm/<name> \
@@ -178,6 +182,7 @@ Treat `/var/lib/microvms/` + `microvm@` unit state as the **single source of tru
 - **Volumes** (`lib/volumes.nix`) — block images under the state dir; `autoCreate` runs at every start (`truncate` → `chattr +C` → `mkfs`). **Persistent by default.** For disposable workloads, don't add a volume — keep writable state in tmpfs, or delete the volume after shutdown.
 - **Shares** — `9p` (built-in, slower) or `virtiofs` (needs the `microvm-virtiofsd@` service). Share the host `/nix/store` read-only to shrink the guest closure. Writable `/nix/store` overlay needs a *volume* (not a share) and, per upstream, "delete and recreate the overlay after shutdown."
 - **Networking** (`nixos-modules/microvm/interfaces.nix`) — `tap`, `macvtap`, `bridge`, or qemu `user`. TAP/macvtap devices are set up by generated `tap-up`/`macvtap-up` scripts and **torn down automatically** on `systemctl stop` via `tap-down` (`ip link delete`). Egress control lives here — for a sandbox, prefer `user`/loopback or no network.
+- **Publishing a port out of a VM** (the publish-artifact seam) — qemu `user`-net guests are NOT tailnet-reachable: forward the guest port to `worker:<port>` (qemu hostfwd / the runner's forwardPorts), picking from the designated window **8000–8099** (open on tailscale0 via `myArtifacts.livePortRange`), then hand `worker:<port>` to the publish-artifact skill. A live exposure means the VM must outlive the exposure TTL ⇒ use the durable `microvm -c` path, never a foreground ephemeral VM.
 
 ## Gotchas & security posture
 
