@@ -12,7 +12,7 @@
   networking.networkmanager.enable = true;
   time.timeZone = lib.mkDefault "Europe/Paris";
   i18n.defaultLocale = lib.mkDefault "en_US.UTF-8";
-  system.nixos.distroName = "Harness";
+  system.nixos.distroName = "tombionix";
   boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
   boot.loader.systemd-boot.enable = lib.mkDefault true;
   boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
