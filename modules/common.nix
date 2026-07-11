@@ -47,10 +47,25 @@
     extra-substituters = [
       "https://cache.numtide.com"
       "https://nix-amd-ai.cachix.org"
+      # Fleet binary cache — atticd on the coordinator (hosts/coordinator/attic.nix),
+      # over the Tailscale mesh (MagicDNS `coordinator`; the Strix pair could also
+      # use the TB3 fast lane `coordinator-tb`). The `fleet` cache is made public at
+      # bootstrap so pulls need no per-client token/netrc — only the signing key
+      # below. A cold host substitutes the ~7,744 llm-agents paths from here instead
+      # of the ~8h from-source build. refs #42.
+      "http://coordinator:8080/fleet"
     ];
     extra-trusted-public-keys = [
       "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
       "nix-amd-ai.cachix.org-1:F4OU4vw/lV2oiG6SBHZ+nqjl4EFJuqI4X9A7pvaBmhQ="
+      # fleet cache signing key — the `fleet:...=` line from `attic cache info fleet`.
+      # RUNTIME BOOTSTRAP: unknown until the cache is created on first server boot
+      # (attic generates the keypair server-side), so it is added here once, after:
+      #   attic cache create fleet && attic cache configure fleet --public
+      #   attic cache info fleet   # copy the public key line below, then rebuild
+      # Until then the substituter above is inert (nix won't trust its signatures) —
+      # safe: hosts just fall back to building. See hosts/coordinator/attic.nix.
+      # "fleet:REPLACE_WITH_PUBLIC_KEY_FROM_attic_cache_info="
     ];
   };
 
@@ -235,6 +250,10 @@
     # sox provides `rec`/`play` — Claude Code's /voice records through sox on
     # Linux; without it voice input fails ("check your microphone").
     sox
+    # attic client — `attic login`/`attic push` against the fleet cache (#42).
+    # Present fleet-wide so any host can pull-login and the designated builder
+    # (worker) can push built closures. Server pkg is pulled by hosts/coordinator.
+    attic-client
   ];
 
   system.stateVersion = "26.05";
