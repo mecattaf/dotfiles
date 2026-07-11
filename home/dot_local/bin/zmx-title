@@ -23,7 +23,7 @@
 #   FLM_TITLE_MODEL  (default gemma4-it:e4b)
 #   FLM_URL          (default http://$FLM_HOST:$FLM_PORT/v1/chat/completions)
 #   ZMX_TITLE        (set to 0 to disable titling entirely)
-#   ZMX_TITLE_TIMEOUT (default 2 — hard wall-clock cap, seconds)
+#   ZMX_TITLE_TIMEOUT (default 3 — hard wall-clock cap, seconds)
 set -u
 
 fallback="${1-}"
@@ -40,7 +40,7 @@ host="${FLM_HOST:-127.0.0.1}"
 port="${FLM_PORT:-52625}"
 model="${FLM_TITLE_MODEL:-gemma4-it:e4b}"
 url="${FLM_URL:-http://$host:$port/v1/chat/completions}"
-timeout="${ZMX_TITLE_TIMEOUT:-2}"
+timeout="${ZMX_TITLE_TIMEOUT:-3}"
 
 # Gather content: positional args, plus stdin if something is piped in. Bounded
 # so a huge scrollback can't blow up the request.
