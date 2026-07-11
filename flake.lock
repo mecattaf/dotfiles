@@ -800,11 +800,11 @@
         "process-compose-flake": "process-compose-flake"
       },
       "locked": {
-        "lastModified": 1783638031,
-        "narHash": "sha256-8t/955Ccw4KATfOkFoxTqkOYgzRwOILynvuBTq4ntqU=",
+        "lastModified": 1783752449,
+        "narHash": "sha256-MEvU3kdVwJ5PMdWAnSKQs8hwYeCw61R6D/j01ipqAd8=",
         "owner": "mecattaf",
         "repo": "tally",
-        "rev": "1061a3f6bfee0c7250b1355fc1066e70f1e500e0",
+        "rev": "1a26688199a677ea11b233b1e9564dda0a3957ea",
         "type": "github"
       },
       "original": {
