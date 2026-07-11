@@ -65,7 +65,7 @@
       #   attic cache info fleet   # copy the public key line below, then rebuild
       # Until then the substituter above is inert (nix won't trust its signatures) —
       # safe: hosts just fall back to building. See hosts/coordinator/attic.nix.
-      # "fleet:REPLACE_WITH_PUBLIC_KEY_FROM_attic_cache_info="
+      "fleet:G5pAUpKmPtVsYbhFZAQsUUcuKHGsrHo9CFAJG7x5jNM="
     ];
   };
 
