@@ -13,6 +13,8 @@
     # max iGPU). Brings the amdxdna driver + XRT + FastFlowLM; requires IOMMU in
     # translated mode, set via amd_iommu=on for this role in modules/strix.nix.
     inputs.nix-amd-ai.nixosModules.default
+    # Declarative `flm serve` unit + the coordinator's preloaded NPU model choice.
+    ../../modules/npu-llm.nix
   ];
 
   networking.hostName = "coordinator";
@@ -36,6 +38,17 @@
     enableLemonade = false;
     enableROCm = false;
     lemonade.user = "tom";
+  };
+
+  # Preload a small model on the NPU and keep `flm serve` warm so the local
+  # OpenAI-compatible endpoint (127.0.0.1:52625) is always available to on-box
+  # consumers — zmx session titling, and the memory-flush path. `model` is the
+  # ONE place to swap which model the coordinator warms; runs as tom so the pull
+  # lands in ~/.config/flm/models (weights stay out of the nix store).
+  services.npu-llm = {
+    enable = true;
+    model = "gemma4-it:e4b";
+    user = "tom";
   };
 
   # asr-rs dual-Parakeet engine: this box hosts the models and serves inference
