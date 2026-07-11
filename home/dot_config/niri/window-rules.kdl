@@ -83,11 +83,24 @@ window-rule {
     default-column-width {}
 }
 
-// Frosted kitty: kitty's background_opacity (0.8) makes the bg translucent;
+// Frosted kitty: kitty's background_opacity (0.9) makes the bg translucent;
 // niri blur frosts the wallpaper behind it while text stays crisp.
 // Enabled in niri 26.04 (Nixpkgs) — blur was not in 25.11.
 window-rule {
     match app-id="kitty"
+    background-effect {
+        blur true
+    }
+}
+
+// Frosted Nautilus: MacTahoe's "normal" (non -solid) gtk-4.0 variant already
+// ships semi-transparent headerbar/sidebar surfaces meant for compositor blur
+// behind them (home.nix links MacTahoe-Dark-grey's gtk-4.0 CSS) — this rule
+// supplies that blur. Same app-id also matches the GTK file-chooser portal
+// dialog (confirmed via `niri msg windows`: a Chrome PWA's "Open Files" picker
+// reports App ID "org.gnome.Nautilus" too), so this covers both for free.
+window-rule {
+    match app-id="org.gnome.Nautilus"
     background-effect {
         blur true
     }
