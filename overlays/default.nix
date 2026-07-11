@@ -44,5 +44,7 @@ final: prev: {
   # packaging/download_models.sh once on engine hosts (~2.5 GB).
   asr-rs = final.callPackage ../pkgs/asr-rs.nix { };
 
-  # DEFERRED bespoke pkgs: gws, fgp-browser.
+  # fgp-browser: intentionally NOT packaged here — picked up as part of the
+  # agency agency browser project (custom Chromium surface). Tracked in issue #45.
+  # (asr-rs is wired above; gws ships as a home package + agenix creds, no overlay.)
 }
