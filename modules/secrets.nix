@@ -93,9 +93,17 @@ in
 
     # The stock autoconnect unit orders only after tailscaled; make it wait for
     # agenix's /run/agenix.d mount too, or it can race the key's decryption at boot.
+    # It also raced the uplink on the coordinator's first boot (the boot-time
+    # `tailscale up` predated wifi, so the join needed a manual restart, refs #37):
+    # order after network-online.target and retry with backoff so a late uplink
+    # (wifi associating after the unit fired) self-heals instead of staying down.
     systemd.services.tailscaled-autoconnect = {
-      after = [ "run-agenix.d.mount" ];
-      wants = [ "run-agenix.d.mount" ];
+      after = [ "run-agenix.d.mount" "network-online.target" ];
+      wants = [ "run-agenix.d.mount" "network-online.target" ];
+      serviceConfig = {
+        Restart = "on-failure";
+        RestartSec = "10s";
+      };
     };
   }
 
