@@ -43,8 +43,10 @@ in
   "secrets/tailscale-authkey-worker.age".publicKeys = editors ++ nonEmpty [ registry.worker.hostKey ];
   "secrets/tailscale-authkey-zenbook-duo.age".publicKeys = editors ++ nonEmpty [ registry.zenbook-duo.hostKey ];
 
-  # --- laptop tier (wifi PSK) ---
-  "secrets/wifi.age".publicKeys = editors ++ laptops;
+  # --- wifi PSK tier: the laptops PLUS the coordinator, whose Freebox uplink
+  # (wlp192s0) is now declarative too (was imperative, copied off the worker on
+  # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r
+  "secrets/wifi.age".publicKeys = editors ++ laptops ++ coordinatorOnly;
 
   # --- operator vault (admin key ONLY — a tar.gz of everything that is not
   # otherwise in git: pre-generated host keys + wifi profiles (staging), tom's ssh

@@ -1,4 +1,10 @@
-{ ... }:
+{ config, lib, ... }:
+let
+  # The Freebox uplink PSK ships as an agenix secret (secrets/wifi.age). Until
+  # that ciphertext is committed the whole declarative-wifi block stays inert so
+  # nothing here can break eval or clobber the live imperative connection.
+  wifiReady = builtins.pathExists ../../secrets/wifi.age;
+in
 # The coordinator's LAN router plane. The TP-Link BE550 runs in AP mode (dumb
 # layer-2 bridge + USB NAS); THIS box is the gateway, DHCP and DNS for the
 # 10.42.0.0/24 wifi segment on enp191s0, with internet uplink over wifi
@@ -26,6 +32,36 @@
     };
     ipv6.method = "disabled";
   };
+
+  # Internet uplink: the Freebox AP over wifi (wlp192s0). Ported from the live
+  # imperative NM profile that was hand-copied off the worker on flash night
+  # (refs #37); field-for-field mirror of `nmcli connection show Freebox-AB3ACE`
+  # (2026-07-11), minus the PSK, which comes from secrets/wifi.age via
+  # `environmentFiles` `$FREEBOX_PSK` substitution. Both halves are gated on
+  # `wifiReady` so this never lands a half-substituted profile that would fight
+  # the live connection.
+  networking.networkmanager.ensureProfiles.profiles.freebox-uplink =
+    lib.mkIf wifiReady {
+      connection = {
+        id = "Freebox-AB3ACE";
+        type = "wifi";
+        interface-name = "wlp192s0";
+        autoconnect = true;
+        autoconnect-priority = 100;
+      };
+      wifi = {
+        mode = "infrastructure";
+        ssid = "Freebox-AB3ACE";
+      };
+      wifi-security = {
+        key-mgmt = "wpa-psk";
+        psk = "$FREEBOX_PSK";
+      };
+      ipv4.method = "auto";
+      ipv6.method = "auto";
+    };
+  networking.networkmanager.ensureProfiles.environmentFiles =
+    lib.mkIf wifiReady [ config.age.secrets.wifi.path ];
 
   environment.etc."NetworkManager/dnsmasq-shared.d/00-adguard.conf".text = ''
     # AdGuard owns :53 — NM's dnsmasq does DHCP only.
