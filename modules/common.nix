@@ -28,6 +28,15 @@
     ];
     auto-optimise-store = true;
 
+    # Trusted Nix users (fleet-wide). Lets `tom` (via @wheel) copy in
+    # worker-built, unsigned store paths (`nix copy` / `nixos-rebuild
+    # --build-host` copy-back) and pass client-specified substituters — both of
+    # which the daemon otherwise refuses for a non-trusted user ("lacks a
+    # signature by a trusted key" / "you are not a trusted user"). Also what the
+    # fleet binary cache (#42) needs to push/pull unsigned paths as tom.
+    # Acceptable on this single-operator fleet: tom already has passwordless sudo.
+    trusted-users = [ "root" "@wheel" ];
+
     # numtide binary cache — serves the llm-agents.nix catalog (flake input) as
     # prebuilt binaries. Without it, installing the ~100-agent set would build
     # each from source; with it they're fetched. Key from the upstream flake's
