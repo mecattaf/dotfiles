@@ -51,6 +51,47 @@ terminal windows behave like browser tabs, with full session state.
 `zmx` must be on `PATH` on the coordinator (it is — `home.packages`);
 the client only needs `kitten ssh`.
 
+## Session naming — LLM auto-titling (with deterministic fallback)
+
+Session names are what the fzf resume picker (`zmx-resume` / `desk-resume`)
+shows. The floor is a deterministic `<cwd-basename>-<HHMMSS>` (local) or
+`term-<mmdd-HHMMSS>` (remote) name. On top of that floor, `~/.local/bin/zmx-title`
+makes a best-effort attempt to generate a richer, human-readable title (e.g.
+`🔧 fix niri clipboard`) from the coordinator's local **FastFlowLM** task model
+(NPU-backed `flm serve`, model `gemma4-it:e4b`), reached over its
+OpenAI-compatible HTTP API.
+
+The titling is a pure enrichment — it can **never** break terminal spawning:
+
+- `zmx-title <fallback-name> [context…]` prints exactly one line: a sanitized
+  title on full success, or the `<fallback-name>` **byte-for-byte** on ANY
+  failure (flm absent, service down, model not pulled, HTTP error, ~2s timeout,
+  junk output, `curl`/`jq` missing).
+- "titling off" therefore === today's shipped deterministic naming. When flm is
+  not listening (e.g. on the worker / zenbook, or before the model finishes
+  downloading) the attempt fast-fails in ~15 ms, so spawn latency is unchanged.
+- The title is sanitized to a single safe line: reasoning `<think>…</think>`
+  blocks dropped, quotes and shell/path metacharacters (`/ ; $ \` " '` …)
+  stripped, a leading emoji and non-ASCII letters kept, length capped at 48.
+
+Wired into `new-terminal` (local, on the coordinator, where flm is local) and
+`desk` (remote fresh sessions). Overridable via env:
+
+| Var | Default | Purpose |
+|-----|---------|---------|
+| `ZMX_TITLE` | `1` | Set `0` to disable titling (pure deterministic naming). |
+| `FLM_HOST` | `127.0.0.1` | flm host. Set `coordinator` on the worker/zenbook to title fresh **remote** sessions against the coordinator's NPU. |
+| `FLM_PORT` | `52625` | flm server port (`flm port`). |
+| `FLM_TITLE_MODEL` | `gemma4-it:e4b` | Task model tag. |
+| `FLM_URL` | `http://$FLM_HOST:$FLM_PORT/v1/chat/completions` | Full endpoint override. |
+| `ZMX_TITLE_TIMEOUT` | `2` | Hard wall-clock cap (seconds). |
+
+Requires the npu lane's `flm serve` systemd service running on the coordinator
+and the `gemma4-it:e4b` model pulled (`flm list`). Until then, every session
+simply keeps its deterministic name. Titling from live scrollback via
+`zmx history <name>` after first activity (rather than from the cwd at creation)
+is the natural next step — see issue #38.
+
 ## Going passwordless (do this once, after first login)
 
 The coordinator has an empty `~/.ssh/authorized_keys` ready to receive

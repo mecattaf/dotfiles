@@ -51,9 +51,18 @@ if [[ "$app_id" == "kitty" && -n "$pid" ]]; then
     [[ -z "$cwd" ]] && cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null || true)
 fi
 
-# Interim session name: cwd basename + wallclock. Superseded by LLM-titled
-# naming — see GitHub issue #38.
-sess="$(basename "${cwd:-$HOME}")-$(date +%H%M%S)"
+# Deterministic session name: cwd basename + wallclock. This is the FLOOR — it
+# is always a valid, immediately-usable name.
+fallback_sess="$(basename "${cwd:-$HOME}")-$(date +%H%M%S)"
+
+# Best-effort LLM auto-title (issue #38): ask the coordinator's local
+# FastFlowLM (NPU) for a richer name, keyed off the working directory. zmx-title
+# enforces a hard ~2s timeout and, on ANY failure (flm absent, service down,
+# model not pulled, timeout, junk output), prints `fallback_sess` byte-for-byte
+# — so this line degrades to exactly the deterministic name above. When flm is
+# not listening (today's default), it fails in ~15ms, so spawn latency is
+# unchanged. Set ZMX_TITLE=0 to skip the attempt entirely.
+sess="$("$(dirname "$0")/zmx-title" "$fallback_sess" "working directory: ${cwd:-$HOME}")"
 
 if [[ -n "$cwd" && -d "$cwd" ]]; then
     exec kitty --directory "$cwd" -e zmx attach "$sess" fish

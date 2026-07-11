@@ -1,0 +1,96 @@
+#!/usr/bin/env bash
+# zmx-title — best-effort LLM auto-title for a zmx session, with a strictly
+# deterministic fallback.
+#
+#   Usage:  zmx-title <fallback-name> [context words...]
+#           <content on stdin>  |  zmx-title <fallback-name>
+#
+# Prints exactly ONE line to stdout:
+#   - a sanitized LLM-generated title  (only on full success), OR
+#   - the <fallback-name> byte-for-byte (on ANY failure).
+#
+# "ANY failure" = titling disabled, curl/jq missing, endpoint down, model not
+# pulled, HTTP error, timeout, empty/junk output. In every one of those cases
+# the output is IDENTICAL to the caller's deterministic name, so wiring this in
+# can never change behavior when the task-model is unavailable — "titling off"
+# === today's shipped `<cwd-basename>-<HHMMSS>` naming.
+#
+# Task model: the coordinator's local FastFlowLM (`flm serve`, NPU-backed),
+# reached over its OpenAI-compatible HTTP API. Host/port/model/URL are all
+# overridable via env vars (defaults match `flm`'s own defaults):
+#   FLM_HOST         (default 127.0.0.1)
+#   FLM_PORT         (default 52625 — `flm port`)
+#   FLM_TITLE_MODEL  (default gemma4-it:e4b)
+#   FLM_URL          (default http://$FLM_HOST:$FLM_PORT/v1/chat/completions)
+#   ZMX_TITLE        (set to 0 to disable titling entirely)
+#   ZMX_TITLE_TIMEOUT (default 2 — hard wall-clock cap, seconds)
+set -u
+
+fallback="${1-}"
+shift 2>/dev/null || true
+
+emit_fallback() { printf '%s\n' "$fallback"; exit 0; }
+
+# Kill switch + hard dependencies. Any miss → deterministic name.
+[ "${ZMX_TITLE:-1}" = "1" ] || emit_fallback
+command -v curl >/dev/null 2>&1 || emit_fallback
+command -v jq   >/dev/null 2>&1 || emit_fallback
+
+host="${FLM_HOST:-127.0.0.1}"
+port="${FLM_PORT:-52625}"
+model="${FLM_TITLE_MODEL:-gemma4-it:e4b}"
+url="${FLM_URL:-http://$host:$port/v1/chat/completions}"
+timeout="${ZMX_TITLE_TIMEOUT:-2}"
+
+# Gather content: positional args, plus stdin if something is piped in. Bounded
+# so a huge scrollback can't blow up the request.
+content="$*"
+if [ ! -t 0 ]; then
+    stdin_content="$(head -c 4000 2>/dev/null)"
+    content="${content}
+${stdin_content}"
+fi
+content="$(printf '%s' "$content" | head -c 4000)"
+# Nothing meaningful to title → fallback.
+case "$content" in
+    *[![:space:]]*) : ;;
+    *) emit_fallback ;;
+esac
+
+sys='You name terminal sessions. Reply with ONLY a 2-4 word title. Optionally start with a single emoji. No quotes, no trailing punctuation, no explanation.'
+usr="Generate a short title for a terminal working session with this context:
+${content}"
+
+payload="$(jq -n --arg m "$model" --arg s "$sys" --arg u "$usr" \
+    '{model:$m, max_tokens:24, temperature:0.2, stream:false,
+      messages:[{role:"system",content:$s},{role:"user",content:$u}]}' 2>/dev/null)" \
+    || emit_fallback
+
+# Strict wall-clock cap: connect fast-fails when nothing is listening; --max-time
+# bounds a slow/hung server. curl -f makes any non-2xx an error → fallback.
+resp="$(curl -fsS --connect-timeout 1 --max-time "$timeout" \
+    -H 'Content-Type: application/json' \
+    -d "$payload" "$url" 2>/dev/null)" || emit_fallback
+
+title="$(printf '%s' "$resp" | jq -r '.choices[0].message.content // empty' 2>/dev/null)"
+[ -n "$title" ] || emit_fallback
+
+# Sanitize → one safe line:
+#   - drop <think>…</think> reasoning blocks (some models emit them)
+#   - collapse newlines/tabs to spaces, strip control chars
+#   - whitelist charset in a byte-wise (LC_ALL=C) pass: keep ASCII
+#     alnum/space/dash/underscore AND all high bytes (0x80-0xFF) so multibyte
+#     UTF-8 emoji survive while shell/path metacharacters (/ ; $ ` " ' …) are
+#     removed
+#   - squeeze spaces, trim, cap length
+title="$(printf '%s' "$title" | sed -e ':a' -e 's/<think>[^<]*<\/think>//g;ta' 2>/dev/null)"
+title="$(printf '%s' "$title" | tr '\n\r\t' '   ' | tr -d '\000-\037')"
+title="$(printf '%s' "$title" | LC_ALL=C sed -e 's/[^0-9A-Za-z _\x80-\xff-]//g' 2>/dev/null)"
+title="$(printf '%s' "$title" | sed -e 's/  */ /g' -e 's/^ *//' -e 's/ *$//')"
+title="$(printf '%s' "$title" | cut -c1-48)"
+title="$(printf '%s' "$title" | sed -e 's/ *$//')"
+
+case "$title" in
+    *[![:space:]]*) printf '%s\n' "$title" ;;
+    *) emit_fallback ;;
+esac

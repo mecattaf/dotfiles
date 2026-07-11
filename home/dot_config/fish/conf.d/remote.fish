@@ -9,8 +9,18 @@ if test (hostname) != "coordinator"
     # dies but the session keeps running server-side — re-fire the keybinding to
     # re-attach with full state. (Unchanged since the shpool era but shpool→zmx.)
     function desk
-        # No arg → fresh session (timestamp name). Arg → attach that session id.
-        set session (if test (count $argv) -gt 0; echo $argv[1]; else; date +term-%m%d-%H%M%S; end)
+        # Arg → attach that exact session id. No arg → fresh session: a
+        # deterministic `term-<mmdd-HHMMSS>` name, best-effort upgraded to an
+        # LLM title by zmx-title. zmx-title hits flm at $FLM_HOST (default
+        # 127.0.0.1) with a hard ~2s cap and, on ANY failure, prints the
+        # timestamp name byte-for-byte — so on a box with no local flm this
+        # stays exactly `term-…`. Set FLM_HOST=coordinator to title fresh
+        # remote sessions against the coordinator's NPU.
+        if test (count $argv) -gt 0
+            set session $argv[1]
+        else
+            set session (~/.local/bin/zmx-title (date +term-%m%d-%H%M%S) "remote terminal session")
+        end
         kitty @ set-window-title "remote"
         # `zmx attach` creates the session if it doesn't exist, so no pre-create.
         kitten ssh coordinator -t zmx attach $session fish
