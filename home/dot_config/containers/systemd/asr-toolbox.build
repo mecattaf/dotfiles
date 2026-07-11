@@ -1,4 +1,0 @@
-[Build]
-File=Dockerfile.asr
-SetWorkingDirectory=unit
-ImageTag=localhost/asr-toolbox

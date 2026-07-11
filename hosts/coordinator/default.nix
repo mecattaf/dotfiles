@@ -37,4 +37,10 @@
     enableROCm = false;
     lemonade.user = "tom";
   };
+
+  # asr-rs dual-Parakeet engine: this box hosts the models and serves inference
+  # to tailnet thin clients (zenbook-duo dictates against it). Same trust model
+  # as wayvnc:5900 — the port is open ONLY on tailscale0; the daemon binds
+  # 0.0.0.0 and the interface-scoped firewall is the boundary.
+  networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 8762 ];
 }

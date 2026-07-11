@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  osConfig,
   ...
 }:
 # home-manager.
@@ -128,6 +129,48 @@ in
         # GENERATED — Nix-store path for kitty-scrollback.nvim kittens (offline-safe).
         action_alias kitty_scrollback_nvim kitten ${pkgs.vimPlugins.kitty-scrollback-nvim}/python/kitty_scrollback_nvim.py
       '';
+
+      # asr-rs dictation — the ONE per-host config in this file (branching on
+      # hostname, same pattern as remote.nix). The coordinator hosts the
+      # Parakeet models and serves the engine to the tailnet (firewalled to
+      # tailscale0:8762 in hosts/coordinator); the zenbook-duo is a thin client
+      # dictating against it over MagicDNS; everything else defaults to
+      # loopback. Hold-SPACE push-to-talk everywhere (needs hardware.uinput,
+      # modules/common.nix). Mic pinned to the iContact USB webcam on the
+      # coordinator only (device-specific, so it lives here, not in the repo).
+      "asr-rs/config.toml".text =
+        let
+          host = osConfig.networking.hostName;
+          ptt = ''
+            [push_to_talk]
+            enabled = true
+            key = "SPACE"
+
+            # Claude Code (in kitty) has its own voice mode and its own use for
+            # a held space bar — don't fight it. Matched against window title.
+            [focus_guard]
+            disable_for = ["claude"]
+          '';
+        in
+        if host == "coordinator" then
+          ''
+            [engine]
+            bind = "0.0.0.0:8762"   # scoped by the tailscale0-only firewall rule
+
+            [audio]
+            device = "iContact"     # USB webcam mic (high-quality intake)
+
+          ''
+          + ptt
+        else if host == "zenbook-duo" then
+          ''
+            [engine]
+            url = "ws://coordinator:8762"   # models run on the coordinator
+
+          ''
+          + ptt
+        else
+          ptt;
     }
     // (
       # GTK4 / libadwaita apps (Nautilus) ignore gtk-theme-name; the only override
@@ -257,6 +300,10 @@ in
   # user packages.
   # ---------------------------------------------------------------------------
   home.packages = with pkgs; [
+    # dictation — dual-Parakeet STT daemon (spawn-at-startup in niri/startup.kdl;
+    # binds in niri/binds.kdl; per-host config generated above)
+    asr-rs
+
     # browser
     google-chrome
 

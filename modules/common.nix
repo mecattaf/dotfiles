@@ -53,6 +53,7 @@
       "wheel"
       "video"
       "input"
+      "uinput" # asr-rs hold-space PTT: typing-key grab replays through /dev/uinput
       "render"
       "networkmanager"
     ];
@@ -98,6 +99,11 @@
   # sudo); `login -f` works even though the account is password-locked.
   # (greetd is hardwired to VT1 in this nixpkgs, so getty keeps VT2-6 for recovery.)
   services.getty.autologinUser = lib.mkDefault "tom";
+
+  # asr-rs global push-to-talk on a typing key (hold SPACE): the keyboard is
+  # EVIOCGRAB-ed and re-emitted through a /dev/uinput passthrough, which needs
+  # the uinput device + group (tom is in it above).
+  hardware.uinput.enable = true;
 
   # --- audio ---
   security.rtkit.enable = true;
@@ -217,6 +223,9 @@
     vim
     wl-clipboard
     age
+    # sox provides `rec`/`play` — Claude Code's /voice records through sox on
+    # Linux; without it voice input fails ("check your microphone").
+    sox
   ];
 
   system.stateVersion = "26.05";

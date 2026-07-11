@@ -37,5 +37,12 @@ final: prev: {
   # CGO on Linux via ebitengine/oto → ALSA. See pkgs/cliamp.nix.
   cliamp = final.callPackage ../pkgs/cliamp.nix { };
 
-  # DEFERRED bespoke pkgs: asr-rs (v2 not in first push), gws, fgp-browser.
+  # asr-rs — fully-local dual-Parakeet streaming STT daemon (v3: engine/client
+  # split; the coordinator serves models on :8762 over tailscale0, thin clients
+  # dictate against it). Source-built; onnxruntime static lib pinned as a FOD
+  # (see pkgs/asr-rs.nix). Models are NOT packaged: run asr-rs's
+  # packaging/download_models.sh once on engine hosts (~2.5 GB).
+  asr-rs = final.callPackage ../pkgs/asr-rs.nix { };
+
+  # DEFERRED bespoke pkgs: gws, fgp-browser.
 }
