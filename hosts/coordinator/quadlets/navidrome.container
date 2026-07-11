@@ -3,6 +3,10 @@ Description=Navidrome Music Server
 After=network-online.target
 Wants=network-online.target
 RequiresMountsFor=/mnt/nas
+# Survive /mnt/nas flaps: 2026-07-10 a failing mount crash-looped this unit
+# into a permanent start-limit-hit. Wide window + slow retries instead.
+StartLimitIntervalSec=300
+StartLimitBurst=10
 
 [Container]
 Image=docker.io/deluan/navidrome:latest
@@ -15,11 +19,13 @@ Environment=ND_MUSICFOLDER=/music
 Environment=ND_DATAFOLDER=/data
 Environment=ND_SCANSCHEDULE=1h
 Environment=ND_LOGLEVEL=info
-Environment=ND_SESSIONTIMEOUT=168
+# 0.62.0+ rejects unit-less durations ("missing unit in duration").
+Environment=ND_SESSIONTIMEOUT=168h
 Environment=ND_AUTOIMPORTPLAYLISTS=true
 
 [Service]
 Restart=on-failure
+RestartSec=10
 
 [Install]
 WantedBy=default.target
