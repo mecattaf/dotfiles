@@ -1,0 +1,15 @@
+/* BRAND KIT HOOK — deliberately empty (Tom's ruling 2026-07-11).
+ *
+ * What the brand kit IS is undecided; it's an orthogonal design-token layer
+ * applied at the very end. Both authoring lanes (md-artifact docs via
+ * house.html, presentation-beta decks via the deck template) import this file
+ * LAST, so anything defined here wins over the neutral structural defaults.
+ *
+ * When the kit is ruled, it lands here as custom properties, e.g.:
+ *   :root { --art-font-body: ...; --art-bg: ...; --art-fg: ...; --art-accent: ...; }
+ *   @media (prefers-color-scheme: dark) { :root { ... } }
+ *
+ * house.css consumes ONLY var(--art-*, fallback) — never hardcode brand values
+ * anywhere but here. (A claude-look candidate kit was extracted 2026-07-11 —
+ * open-font substitutes only — but it is a CANDIDATE, not the ruling.)
+ */

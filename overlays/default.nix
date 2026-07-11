@@ -47,4 +47,14 @@ final: prev: {
   # fgp-browser: intentionally NOT packaged here — picked up as part of the
   # agency agency browser project (custom Chromium surface). Tracked in issue #45.
   # (asr-rs is wired above; gws ships as a home package + agenix creds, no overlay.)
+
+  # Artifact system toolchain (sovereign replacement for claude.ai Artifacts;
+  # skills: md-artifact / presentation-beta / publish-artifact). Identity knobs
+  # come from modules/artifacts-defaults.nix — the one edit point — passed in
+  # here because an overlay can't read NixOS `config`.
+  artifact-render = final.callPackage ../pkgs/artifact-render { };
+  artifact-view = final.callPackage ../pkgs/artifact-view.nix {
+    inherit (import ../modules/artifacts-defaults.nix) namespace;
+  };
+  artifact-deck = final.callPackage ../pkgs/artifact-deck { };
 }

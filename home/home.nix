@@ -390,8 +390,17 @@ in
     google-cloud-sdk
     gws # Google Workspace CLI (Gmail/Calendar/Drive/Sheets/Docs/...), Discovery-doc-backed
     cloudflared
+    wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (coordinator-only cred, binary fleet-wide)
     backlog-md # bespoke pkg via overlay — see pkgs/backlog-md.nix
     cliamp # terminal music player → navidrome. overlay pkg, see pkgs/cliamp.nix
+
+    # artifact system (md-artifact / presentation-beta / publish-artifact skills;
+    # knobs in modules/artifacts-defaults.nix). render = md→snapshot dir;
+    # view = bounded chrome --app window (rung 0, no publish); deck-init =
+    # scaffold reveal deck with nix-vendored assets (no CDN).
+    artifact-render
+    artifact-view
+    artifact-deck
 
     # cursors (theme dep)
     bibata-cursors

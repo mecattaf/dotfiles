@@ -1,0 +1,84 @@
+/* Neutral STRUCTURAL stylesheet for md-artifact docs. Layout, rhythm, and
+ * readability only — every aesthetic decision routes through var(--art-*, ...)
+ * hooks so the (currently empty) brand kit in tokens.css owns the look.
+ * color-scheme + system color keywords give correct light/dark for free until
+ * the kit says otherwise. Must render perfectly from file:// (rung 0). */
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  background: var(--art-bg, Canvas);
+  color: var(--art-fg, CanvasText);
+  font-family: var(--art-font-body, system-ui, sans-serif);
+  line-height: var(--art-line-height, 1.6);
+  font-size: var(--art-font-size, 1rem);
+}
+
+main.artifact {
+  max-width: var(--art-measure, 48rem);
+  margin-inline: auto;
+  padding: var(--art-pad-block, 2.75rem) var(--art-pad-inline, 1.5rem);
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--art-font-heading, inherit);
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+a {
+  color: var(--art-accent, LinkText);
+}
+
+pre {
+  overflow-x: auto;
+  padding: 0.75rem 1rem;
+  border-radius: var(--art-radius, 0.5rem);
+  border: 1px solid var(--art-border, color-mix(in srgb, CanvasText 15%, transparent));
+}
+
+code {
+  font-family: var(--art-font-mono, ui-monospace, monospace);
+  font-size: 0.9em;
+}
+
+table {
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+th, td {
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+}
+
+th {
+  border-bottom: 1px solid var(--art-border, color-mix(in srgb, CanvasText 35%, transparent));
+}
+
+tr + tr td {
+  border-top: 1px solid var(--art-border, color-mix(in srgb, CanvasText 12%, transparent));
+}
+
+blockquote {
+  margin-inline: 0;
+  padding-inline-start: 1rem;
+  border-inline-start: 4px solid var(--art-border, color-mix(in srgb, CanvasText 20%, transparent));
+  opacity: 0.9;
+}
+
+img, video {
+  max-width: 100%;
+}
+
+/* mermaid renders inline SVG; keep diagrams inside the measure */
+pre.mermaid {
+  border: none;
+  background: none;
+  text-align: center;
+}

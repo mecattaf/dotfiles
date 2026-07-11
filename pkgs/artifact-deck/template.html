@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>presentation</title>
+<!-- ALL assets local (nix-vendored reveal 5.2.1): the snapshot must render
+     from file:// (rung 0) and outlive any CDN. Never hot-link cdnjs — that
+     was the umbrella deck's one defect. -->
+<link rel="stylesheet" href="assets/reveal/reset.css">
+<link rel="stylesheet" href="assets/reveal/reveal.css">
+<link rel="stylesheet" href="assets/reveal/theme/black.css">
+<!-- brand kit LAST so its tokens win (deliberately empty for now) -->
+<link rel="stylesheet" href="assets/tokens.css">
+</head>
+<body>
+<div class="reveal">
+  <div class="slides">
+    <section class="title-slide">
+      <h1>Title</h1>
+      <h2>Subtitle</h2>
+      <h4>Author — date</h4>
+    </section>
+    <section>
+      <h3>First section</h3>
+      <ul>
+        <li>Replace these slides; keep speaker notes in a sibling .md.</li>
+      </ul>
+    </section>
+  </div>
+</div>
+<script src="assets/reveal/reveal.js"></script>
+<script>
+Reveal.initialize({ hash: true });
+</script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>$if(title)$$title$$else$artifact$endif$</title>
+<link rel="stylesheet" href="assets/house.css">
+<!-- brand kit LAST so its tokens win over structural defaults -->
+<link rel="stylesheet" href="assets/tokens.css">
+</head>
+<body>
+<main class="artifact">
+$body$
+</main>
+<!-- Vendored IIFE build: ES modules are CORS-blocked from file:// (rung 0). -->
+<script src="assets/mermaid.min.js"></script>
+<script>
+(function () {
+  // pandoc emits fenced mermaid blocks in a few shapes depending on options;
+  // normalize any of them to the bare <pre class="mermaid"> mermaid expects.
+  var candidates = document.querySelectorAll(
+    'pre.mermaid > code, code.language-mermaid, div.sourceCode pre.mermaid code'
+  );
+  var hosts = [];
+  candidates.forEach(function (n) {
+    var host = n.closest('div.sourceCode') || n.closest('pre') || n;
+    if (hosts.indexOf(host) === -1) hosts.push(host);
+  });
+  hosts.forEach(function (host) {
+    var out = document.createElement('pre');
+    out.className = 'mermaid';
+    out.textContent = host.textContent;
+    host.replaceWith(out);
+  });
+  if (window.mermaid && document.querySelector('pre.mermaid')) {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark' : 'default'
+    });
+    mermaid.run({ querySelector: 'pre.mermaid' });
+  }
+})();
+</script>
+</body>
+</html>
