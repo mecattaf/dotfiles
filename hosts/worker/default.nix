@@ -5,6 +5,7 @@
     ./hardware.nix
     ./disko.nix
     ./headless-display.nix
+    ./cache-push.nix
     ../../modules/strix.nix
   ];
 
