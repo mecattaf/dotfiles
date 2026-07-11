@@ -8,6 +8,7 @@
     ./disko.nix
     ./router.nix
     ./services.nix
+    ./attic.nix # fleet binary-cache server (atticd over the tailscale mesh) — refs #42
     ../../modules/strix.nix
     # AMD Ryzen AI NPU stack — coordinator ONLY (the worker keeps the NPU off for
     # max iGPU). Brings the amdxdna driver + XRT + FastFlowLM; requires IOMMU in

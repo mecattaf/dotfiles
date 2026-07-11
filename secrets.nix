@@ -60,6 +60,10 @@ in
   # (cloudflare-tunnel + twenty/openwebui slots removed 2026-07-05 — deprecated per Tom.
   # nas-credentials stays as the option for BE550 Secure Sharing, unused while the
   # share is guest-mode; moot entirely once the LaCie attaches directly via USB.)
+  # atticd RS256 JWT signing secret — the fleet binary-cache server runs on the
+  # coordinator only (hosts/coordinator/attic.nix), so only it may decrypt (#42).
+  "secrets/atticd-server-token.age".publicKeys = editors ++ coordinatorOnly;
+
   "secrets/immich-db.age".publicKeys = editors ++ coordinatorOnly;
   "secrets/nas-credentials.age".publicKeys = editors ++ coordinatorOnly;
   "secrets/navidrome-credentials.age".publicKeys = editors ++ coordinatorOnly;
