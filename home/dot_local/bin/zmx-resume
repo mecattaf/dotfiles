@@ -9,8 +9,31 @@ set -u
 command -v zmx >/dev/null 2>&1 || { echo "zmx not found on $(hostname)" >&2; exit 1; }
 command -v fzf >/dev/null 2>&1 || { echo "fzf not found on $(hostname)" >&2; exit 1; }
 
-# `zmx list --short` prints one session name per line.
-sess=$(zmx list --short | fzf --prompt='resume> ' --no-sort)
+# Session names are now unique, self-contained identities (cwd-basename +
+# HHMMSS + random) rather than LLM titles, so we enrich the PICKER instead:
+# show each session's start_dir alongside its name (zmx records start_dir for
+# free — no LLM, instant). This is where richer context actually helps you pick
+# (issue #38's real point), without any of the latency it wrongly put on the
+# launch path. fzf shows "name  ⟶  start_dir"; we attach by the name (field 1).
+#
+# `zmx list` (long form) is TAB-separated `key=value` fields; a session name may
+# contain spaces but never a tab, so field-splitting on tabs is safe. If parsing
+# yields nothing (format drift), fall back to the plain `--short` name list.
+picker="$(zmx list 2>/dev/null | awk -F'\t' '
+    {
+        name = ""; dir = ""
+        for (i = 1; i <= NF; i++) {
+            f = $i; sub(/^[[:space:]]+/, "", f)
+            if (f ~ /^name=/)            name = substr(f, 6)
+            else if (f ~ /^start_dir=/)  dir  = substr(f, 11)
+        }
+        if (name != "") printf "%s\t%s\n", name, dir
+    }')"
+[[ -n "$picker" ]] || picker="$(zmx list --short 2>/dev/null)"
+
+sess=$(printf '%s\n' "$picker" \
+    | fzf --prompt='resume> ' --no-sort --delimiter='\t' --with-nth='1,2' \
+    | cut -f1)
 [[ -n "$sess" ]] || exit 0
 
 exec zmx attach "$sess"
