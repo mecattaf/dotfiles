@@ -9,6 +9,9 @@
     ./router.nix
     ./services.nix
     ./attic.nix # fleet binary-cache server (atticd over the tailscale mesh) — refs #42
+    # Artifact serving plane: Caddy drop-dir + TTL reaper (publish-artifact
+    # skill's tailnet rung). Coordinator = fleet front door; origins on worker.
+    ../../modules/caddy-artifacts.nix
     ../../modules/strix.nix
     # AMD Ryzen AI NPU stack — coordinator ONLY (the worker keeps the NPU off for
     # max iGPU). Brings the amdxdna driver + XRT + FastFlowLM; requires IOMMU in

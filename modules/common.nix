@@ -6,6 +6,7 @@
     ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
     ./dotfiles-bootstrap.nix # ensure ~/mecattaf/dotfiles exists before the session
+    ./artifacts.nix # myArtifacts options (+ worker VM-port window); serving plane is coordinator-only (caddy-artifacts.nix)
   ];
 
   # --- identity / base ---
