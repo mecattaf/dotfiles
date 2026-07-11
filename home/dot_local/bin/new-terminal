@@ -6,8 +6,19 @@
 #     nvim-terminal.lua philosophy (without the Lua or IDE-split gymnastics).
 #     Every local terminal is a persistent zmx session (jul7 "every kitty is a
 #     projector" ruling) — so it can be reattached from any other box via
-#     `kitten ssh coordinator -t zmx attach`. Session name is interim
-#     (cwd-basename + time); richer LLM-titled naming is scoped in issue #38.
+#     `kitten ssh coordinator -t zmx attach`.
+#
+#     LATENCY + UNIQUENESS (fixed after #38's botched titling): the session
+#     name is derived SELF-CONTAINED and UNIQUE per invocation
+#     (cwd-basename + HHMMSS + random) — no flm, no network, no blocking
+#     subprocess in the spawn path, so every Mod+Shift+Return is instant and
+#     always a BRAND-NEW independent session (two presses in the same second
+#     never collide, so kitty never mirrors an existing session). The richer
+#     LLM title (#38) is now applied ASYNCHRONOUSLY and purely COSMETICALLY by
+#     `zmx-retitle` after the window is already up: it retitles the kitty
+#     window only (zmx has no rename/display-name concept — the session name
+#     IS its identity) and silently no-ops on any failure. It NEVER changes
+#     the session name and NEVER delays the launch.
 #   - elsewhere (worker / zenbook thin-client): open a new kitty that
 #     immediately SSHs to coordinator via the `desk` fish function; niri's
 #     window-rule renders the white "remote" border once desk sets the title.
@@ -51,21 +62,41 @@ if [[ "$app_id" == "kitty" && -n "$pid" ]]; then
     [[ -z "$cwd" ]] && cwd=$(readlink "/proc/$pid/cwd" 2>/dev/null || true)
 fi
 
-# Deterministic session name: cwd basename + wallclock. This is the FLOOR — it
-# is always a valid, immediately-usable name.
-fallback_sess="$(basename "${cwd:-$HOME}")-$(date +%H%M%S)"
+# Unique, self-contained session identity: cwd basename + wallclock + random.
+# NO flm, NO network, NO blocking subprocess — this is the whole point of the
+# fix. The basename is sanitised to a safe token (also used verbatim as the
+# kitty remote-control socket name below). The random suffix (6 hex from the
+# kernel RNG) guarantees a fresh, independent session even when two launches
+# land in the same second from the same directory.
+base="$(basename "${cwd:-$HOME}")"
+base="$(printf '%s' "$base" | LC_ALL=C sed 's/[^A-Za-z0-9._-]/_/g')"
+[[ -n "$base" ]] || base="term"
+rand="$(cut -c1-6 /proc/sys/kernel/random/uuid 2>/dev/null || printf '%s' "$$")"
+sess="${base}-$(date +%H%M%S)-${rand}"
 
-# Best-effort LLM auto-title (issue #38): ask the coordinator's local
-# FastFlowLM (NPU) for a richer name, keyed off the working directory. zmx-title
-# enforces a hard ~2s timeout and, on ANY failure (flm absent, service down,
-# model not pulled, timeout, junk output), prints `fallback_sess` byte-for-byte
-# — so this line degrades to exactly the deterministic name above. When flm is
-# not listening (today's default), it fails in ~15ms, so spawn latency is
-# unchanged. Set ZMX_TITLE=0 to skip the attempt entirely.
-sess="$("$(dirname "$0")/zmx-title" "$fallback_sess" "working directory: ${cwd:-$HOME}")"
+# Per-window kitty remote-control socket, keyed off the unique session name, so
+# the async titler can target THIS window (and only this one). kitty.conf sets
+# `allow_remote_control yes` globally; --listen-on overrides the per-instance
+# socket. We deliberately do NOT pass --title (that would FIX the wayland/OS
+# title and block the cosmetic retitle from ever showing in niri).
+sock="unix:@zmx-${sess}"
 
-if [[ -n "$cwd" && -d "$cwd" ]]; then
-    exec kitty --directory "$cwd" -e zmx attach "$sess" fish
+# Fire-and-forget the ASYNC cosmetic titler. `setsid` + redirected stdio fully
+# detaches it so it survives the `exec kitty` below, never holds a terminal,
+# and cannot delay the launch. It polls the socket, asks flm for a nicer name
+# (via zmx-title, with its own hard timeout) and, only if flm actually enriches
+# the name, retitles the kitty window. On ANY failure — flm down, ZMX_TITLE=0,
+# no kitten — it silently no-ops, leaving the natural terminal title. It NEVER
+# touches the zmx session name.
+if [[ "${ZMX_TITLE:-1}" == "1" ]]; then
+    setsid "$(dirname "$0")/zmx-retitle" "$sock" "$sess" "${cwd:-$HOME}" \
+        </dev/null >/dev/null 2>&1 &
 fi
 
-exec kitty -e zmx attach "$sess" fish
+if [[ -n "$cwd" && -d "$cwd" ]]; then
+    exec kitty -o allow_remote_control=yes --listen-on "$sock" \
+        --directory "$cwd" -e zmx attach "$sess" fish
+fi
+
+exec kitty -o allow_remote_control=yes --listen-on "$sock" \
+    -e zmx attach "$sess" fish

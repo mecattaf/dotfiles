@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# zmx-retitle — ASYNC, purely COSMETIC kitty-window retitle for a freshly
+# launched local zmx session. Detached from the interactive launch path (see
+# `new-terminal`), so it can NEVER:
+#   - delay the terminal spawn (it runs after `exec kitty`, under setsid),
+#   - change the zmx session identity (zmx has no rename concept — the session
+#     name IS its identity; this only touches the kitty *window* title),
+#   - surface an error (it silently no-ops on ANY failure).
+#
+#   Usage:  zmx-retitle <kitty-listen-socket> <fallback-name> <cwd>
+#
+# It waits (bounded) for kitty's remote-control socket, asks `zmx-title` (local
+# flm / NPU, with its own hard timeout) for a nicer name, and — only if flm
+# actually produced something richer than the deterministic fallback — sets the
+# kitty window title. `set-window-title` is PERMANENT (no --temporary), so the
+# shell won't stomp it, and it propagates to the wayland/OS title niri shows.
+#
+# Env: ZMX_TITLE=0 disables titling entirely (matches `new-terminal`).
+set -u
+
+sock="${1-}"
+fallback="${2-}"
+cwd="${3:-$HOME}"
+
+[ -n "$sock" ] || exit 0
+[ "${ZMX_TITLE:-1}" = "1" ] || exit 0
+command -v kitten >/dev/null 2>&1 || exit 0
+
+here="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || exit 0
+
+# Wait for kitty's per-window control socket to come up (bounded ~3s). If the
+# window never appears (launch failed, user closed it), just give up quietly.
+up=0
+for _ in $(seq 1 30); do
+    if kitten @ --to "$sock" ls >/dev/null 2>&1; then up=1; break; fi
+    sleep 0.1
+done
+[ "$up" = 1 ] || exit 0
+
+# Best-effort rich name. zmx-title prints <fallback> byte-for-byte on ANY
+# failure (flm absent/down/slow/junk), so `title == fallback` means "no
+# enrichment happened" → leave the terminal's natural title untouched, keeping
+# the flm-off experience identical to a plain terminal.
+title="$("$here/zmx-title" "$fallback" "working directory: $cwd" 2>/dev/null)" || exit 0
+[ -n "$title" ] || exit 0
+[ "$title" = "$fallback" ] && exit 0
+
+# Cosmetic only. Failure here is a no-op (window may have closed meanwhile).
+kitten @ --to "$sock" set-window-title "$title" >/dev/null 2>&1 || exit 0
