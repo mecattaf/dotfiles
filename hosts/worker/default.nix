@@ -8,6 +8,7 @@
     ./cache-push.nix
     ./gpu-cooldown.nix
     ../../modules/strix.nix
+    ../../modules/microvm-host.nix
   ];
 
   networking.hostName = "worker";

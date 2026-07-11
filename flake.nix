@@ -92,6 +92,20 @@
     # nixpkgs so its Cachix (nix-amd-ai.cachix.org, substituter added in
     # modules/common.nix) serves prebuilt XRT/FastFlowLM instead of source builds.
     nix-amd-ai.url = "github:noamsto/nix-amd-ai";
+
+    # microvm.nix — declarative microVMs (astro → microvm-nix/microvm.nix). The
+    # instrument behind the /microvm skill: it exports nixosModules.{microvm,host}
+    # and, per guest, a `config.microvm.declaredRunner` package. DEFAULT USAGE is
+    # EPHEMERAL — `nix run <guest>.config.microvm.declaredRunner` needs only this
+    # input, no host module, so it works fleet-wide. The DURABLE path (the imperative
+    # `microvm` CLI + `microvm@<name>` systemd units) is opt-in via
+    # modules/microvm-host.nix, enabled on the WORKER only (the Strix Halo compute
+    # node — keeps the coordinator light per the no-heavy-build doctrine). follows
+    # nixpkgs so the runner builds against our one pin.
+    microvm = {
+      url = "github:microvm-nix/microvm.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
