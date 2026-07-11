@@ -16,6 +16,18 @@ in
 # services.nix) owns :53; an nftables DNAT catches clients that hardcode
 # 8.8.8.8; this host's own resolved also points at AdGuard. Tailscale MagicDNS
 # keeps winning for *.ts.net via per-link DNS.
+#
+# refs #46: the DNAT above only ever catches PLAINTEXT port 53. Verified live
+# 2026-07-11 that AdGuard's querylog has zero entries from real LAN clients
+# despite a valid DHCP lease (Pixel-8 got 10.42.0.19 fine) — every logged
+# query was container-internal (10.89.0.2). That's the signature of a client
+# using encrypted DNS (Android "Private DNS" over DoT/853, or DoH/443 to a
+# fixed provider) which sails straight past a plaintext-only hijack. The
+# forward-chain rules below drop outbound DoT and DoH-to-known-DNS-IPs from
+# the LAN segment so "Automatic"/opportunistic Private DNS on the client
+# falls back to plaintext 53, which the DNAT above then redirects to AdGuard.
+# This does NOT help a client with Private DNS pinned to a hostname (strict
+# mode) — that's a phone-side setting, see the issue for the manual step.
 {
   # Gateway profile for the BE550 segment. ipv4.method=shared = NM runs dnsmasq
   # (DHCP+NAT) on this interface — same profile the Fedora box ran imperatively.
@@ -89,6 +101,24 @@ in
           ip daddr 10.42.0.1 return
           ip saddr 10.42.0.0/24 udp dport 53 dnat ip to 10.42.0.1
           ip saddr 10.42.0.0/24 tcp dport 53 dnat ip to 10.42.0.1
+        }
+
+        # refs #46: force encrypted-DNS bypass back onto plaintext 53 (above).
+        # DoT (853) has no legitimate destination on this segment — AdGuard's
+        # own DoT listener is disabled (tls.enabled=false in its runtime
+        # config), so dropping 853 outright costs nothing today and closes
+        # the "Automatic" Private DNS escape hatch. DoH shares 443 with
+        # ordinary HTTPS, so only known DNS-only provider IPs are dropped,
+        # not all of 443 — regular browsing on this segment is unaffected.
+        chain forward {
+          type filter hook forward priority filter; policy accept;
+          ip saddr 10.42.0.0/24 tcp dport 853 drop
+          ip saddr 10.42.0.0/24 ip daddr {
+            8.8.8.8, 8.8.4.4,
+            1.1.1.1, 1.0.0.1,
+            9.9.9.9, 149.112.112.112,
+            208.67.222.222, 208.67.220.220
+          } tcp dport 443 drop
         }
       '';
     };
