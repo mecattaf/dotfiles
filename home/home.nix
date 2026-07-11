@@ -222,6 +222,14 @@ in
   home.file.".claude-main/skills".source = link "dot_claude/skills";
   home.file.".claude-main/settings.json".source = link "dot_claude/settings.json";
 
+  # Same canonical skill tree, exposed to the `pi` agent (earendil-works/pi) via
+  # its vendor-neutral, always-trusted Agent-Skills dir (~/.agents/skills). pi
+  # reads SKILL.md in the identical agentskills.io format (name/description
+  # frontmatter, symlinks followed), so ONE tree feeds both harnesses — the C9
+  # "discoverable by both .claude and .pi" ruling, realized declaratively. pi
+  # selects on `description` only (ignores `when_to_use`), so keep triggers there.
+  home.file.".agents/skills".source = link "dot_claude/skills";
+
   # ---------------------------------------------------------------------------
   # PWA launchers (TYPED via xdg.desktopEntries; google-chrome, not flatpak).
   # ---------------------------------------------------------------------------
