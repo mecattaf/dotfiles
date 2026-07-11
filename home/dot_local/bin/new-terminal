@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
 # niri Mod+Shift+Return:
-#   - harness-desktop: open a new kitty in the cwd of whatever's running in
+#   - coordinator: open a new kitty in the cwd of whatever's running in
 #     the focused kitty — prefer a descendant nvim's cwd, fall back to the
 #     shell's cwd, fall back to kitty's cwd. Mirrors the old scroll
 #     nvim-terminal.lua philosophy (without the Lua or IDE-split gymnastics).
 #     Every local terminal is a persistent zmx session (jul7 "every kitty is a
-#     projector" ruling) — so it can be reattached from any laptop via
-#     `kitten ssh harness-desktop -t zmx attach`. Session name is interim
+#     projector" ruling) — so it can be reattached from any other box via
+#     `kitten ssh coordinator -t zmx attach`. Session name is interim
 #     (cwd-basename + time); richer LLM-titled naming is scoped in issue #38.
-#   - elsewhere (laptop): open a new kitty that immediately SSHs to
-#     harness-desktop via the `desk` fish function; niri's window-rule
-#     renders the white "remote" border once desk sets the window title.
+#   - elsewhere (worker / zenbook thin-client): open a new kitty that
+#     immediately SSHs to coordinator via the `desk` fish function; niri's
+#     window-rule renders the white "remote" border once desk sets the title.
 
 set -u
 
 host="$(hostname)"
 
-if [[ "$host" != "harness-desktop" ]]; then
+if [[ "$host" != "coordinator" ]]; then
     exec kitty fish -ic desk
 fi
 

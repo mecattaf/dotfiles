@@ -1,7 +1,8 @@
-if test (hostname) != "harness-desktop"
-    # The coordinator (harness-desktop) is where sessions live. On any other box
-    # (laptops), a terminal is a *projector*: it reaches a persistent LOCAL zmx
-    # session on the coordinator via `kitten ssh ... -t zmx attach`. kitten ssh
+if test (hostname) != "coordinator"
+    # The coordinator is where sessions live. On any other box (worker, the
+    # zenbook thin-client), a terminal is a *projector*: it reaches a persistent
+    # LOCAL zmx session on the coordinator via `kitten ssh ... -t zmx attach`.
+    # kitten ssh
     # (over the tailnet) gives reliable kitty terminfo/graphics/clipboard while
     # attached. There is no UDP roaming — that was zmosh's only addition, and
     # zmosh is unmaintained; zmx is local-only. If the network drops, the client
@@ -12,7 +13,7 @@ if test (hostname) != "harness-desktop"
         set session (if test (count $argv) -gt 0; echo $argv[1]; else; date +term-%m%d-%H%M%S; end)
         kitty @ set-window-title "remote"
         # `zmx attach` creates the session if it doesn't exist, so no pre-create.
-        kitten ssh harness-desktop -t zmx attach $session fish
+        kitten ssh coordinator -t zmx attach $session fish
         kitty @ set-window-title
     end
 
@@ -24,8 +25,8 @@ if test (hostname) != "harness-desktop"
         # login shell (bash -lc) so the home-manager nix profile (where zmx
         # lives) is on PATH; a bare `ssh host zmx …` runs non-login and may not
         # find it. Plain ssh (no -t) keeps the list clean for fzf.
-        set session (ssh harness-desktop 'bash -lc "zmx list --short"' | fzf --prompt='attach> ' --no-sort)
-        test -n "$session"; and kitten ssh harness-desktop -t zmx attach $session fish
+        set session (ssh coordinator 'bash -lc "zmx list --short"' | fzf --prompt='attach> ' --no-sort)
+        test -n "$session"; and kitten ssh coordinator -t zmx attach $session fish
         kitty @ set-window-title
     end
 end

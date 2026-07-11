@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # fzf-pick an existing local zmx session and attach to it. Runs on the
-# coordinator (harness-desktop). Companion to `new-terminal` / `desk`, which
-# always spawn a *fresh* session. The laptop's remote equivalent lives in
+# coordinator. Companion to `new-terminal` / `desk`, which always spawn a
+# *fresh* session. The remote equivalent (worker / zenbook thin-client) lives in
 # remote.fish (`desk-resume`), which lists over ssh and attaches over kitten ssh.
 
 set -u

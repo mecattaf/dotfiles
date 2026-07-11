@@ -39,7 +39,7 @@
     # zmx — LOCAL terminal session persistence (neurosnap/zmx, built on
     # ghostty-vt). THE projector primitive (jul7 ruling, tally morning-annotation
     # §12): every kitty on the coordinator is a persistent local zmx session
-    # (`zmx attach <name>`); laptops reach it via `kitten ssh harness-desktop -t
+    # (`zmx attach <name>`); other boxes reach it via `kitten ssh coordinator -t
     # zmx attach <session>` over the tailnet. Supersedes shpool fleet-wide.
     #
     # We tried zmosh (a zmx fork adding encrypted-UDP roaming) but it is

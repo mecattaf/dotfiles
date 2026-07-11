@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # niri Mod+Ctrl+Shift+Return:
-#   - harness-desktop: open a new kitty, fzf-pick a local zmx session, attach.
-#   - elsewhere (laptop): open a new kitty whose `desk-resume` lists the
-#     coordinator's sessions over ssh, fzf-picks one, and attaches over
-#     `kitten ssh ... -t zmx attach`; niri's window-rule renders the white
-#     "remote" border once desk-resume sets the window title.
+#   - coordinator: open a new kitty, fzf-pick a local zmx session, attach.
+#   - elsewhere (worker / zenbook thin-client): open a new kitty whose
+#     `desk-resume` lists the coordinator's sessions over ssh, fzf-picks one,
+#     and attaches over `kitten ssh ... -t zmx attach`; niri's window-rule
+#     renders the white "remote" border once desk-resume sets the window title.
 #
 # Companion to Mod+Shift+Return (`new-terminal` / `desk`), which always spawns
 # a *fresh* session. Use this binding to resume/project an existing one.
@@ -13,7 +13,7 @@ set -u
 
 host="$(hostname)"
 
-if [[ "$host" != "harness-desktop" ]]; then
+if [[ "$host" != "coordinator" ]]; then
     exec kitty fish -ic desk-resume
 fi
 
