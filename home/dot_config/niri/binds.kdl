@@ -32,10 +32,13 @@ binds {
     // scroll: bindsym Ctrl+N exec flatpak run com.google.Chrome
     // scroll: bindsym Ctrl+Shift+N exec flatpak run com.google.Chrome --incognito
     // NIX-MIGRATION: flatpak is GONE (nix-decisions.md: google-chrome from
-    // nixpkgs, no flatpak). The bare Ctrl+N / Ctrl+Shift+N compositor grabs were
-    // flatpak-era global launchers that swallowed Chrome's own new-window /
-    // incognito shortcuts (and Ctrl+N in every focused app). Remapped to the Mod
-    // layer; Chrome regains its native Ctrl+N / Ctrl+Shift+N when focused.
+    // nixpkgs, no flatpak). flatpak run com.google.Chrome → google-chrome-stable.
+    // NOTE: the bare Ctrl+N / Ctrl+Shift+N grabs are global compositor launchers
+    // (restored by request). They shadow the focused app's own Ctrl+N — nvim
+    // completion, Chrome's native new-window/incognito, etc. — everywhere. The
+    // Mod-layer bindings below are kept as a conflict-free alternative.
+    Ctrl+N hotkey-overlay-title="Chrome" { spawn "google-chrome-stable"; }
+    Ctrl+Shift+N hotkey-overlay-title="Chrome (incognito)" { spawn "google-chrome-stable" "--incognito"; }
     Mod+N hotkey-overlay-title="Chrome" { spawn "google-chrome-stable"; }
     Mod+Ctrl+N hotkey-overlay-title="Chrome (incognito)" { spawn "google-chrome-stable" "--incognito"; }
 
