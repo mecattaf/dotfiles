@@ -6,12 +6,17 @@
     ./disko.nix
     ./headless-display.nix
     ./cache-push.nix
+    ./gpu-cooldown.nix
     ../../modules/strix.nix
   ];
 
   networking.hostName = "worker";
   myCluster.role = "worker";
   myCluster.tbHostId = 2;
+
+  # GPU thermal cooldown tripwire — poll junction/Tctl, and on a sustained trip
+  # enqueue a 30-min worker-gpu cooldown lease through tally on the coordinator.
+  services.gpuCooldownTripwire.enable = true;
 
   # Flipped ON after the 2026-07-05 first boot proved the nixos-anywhere host-key
   # delivery: the same /etc/ssh/ssh_host_ed25519_key that authenticated the box
