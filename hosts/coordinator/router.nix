@@ -75,11 +75,14 @@
 
   # LaCie 4TB, attached DIRECTLY to this box via USB (Tom's ruling 2026-07-05;
   # the old BE550-SMB path is retired). nofail + automount keep boot clean when
-  # the drive is unplugged. The drive didn't enumerate at write time — if the
-  # label differs, fix it from `lsblk -o LABEL,UUID` with the drive present.
+  # the drive is unplugged. Label/device confirmed live 2026-07-11:
+  # `lsblk -f` → sda2, LABEL=LaCie, NTFS. The old `fsType = "auto"` failed every
+  # boot because no NTFS driver was configured; the in-kernel ntfs3 driver
+  # (mature on kernel 7.1, built in — `ntfs3` in /proc/filesystems) mounts it
+  # natively with no ntfs-3g/FUSE dependency. uid/gid are honoured by ntfs3.
   fileSystems."/mnt/nas" = {
     device = "/dev/disk/by-label/LaCie";
-    fsType = "auto";
+    fsType = "ntfs3";
     options = [
       "uid=1000"
       "gid=100"
