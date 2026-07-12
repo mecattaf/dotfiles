@@ -152,16 +152,18 @@ in
             key = "SPACE"
 
             # Claude Code (in kitty) has its own voice mode and its own use for
-            # a held space bar — don't fight it. Matched against window title.
-            # Claude Code titles its window "✳ Claude Code" when idle and
-            # "<braille spinner> <summary>" while busy; neither contains
-            # "claude", hence the title-prefix regex (U+2733 sparkle or a
-            # U+2800–U+28FF braille cell, then a space). The substring entry
-            # stays for e.g. kitty windows launched with an explicit claude
-            # app-id.
+            # a held space bar — don't fight it. disable_for_process matches
+            # the exact process name against the focused window's local /proc
+            # subtree, so it fires only for a real local "claude" process:
+            # Claude-Code-only (pi title-prefixes with the same sparkle/spinner
+            # glyphs but is a different binary, so it keeps dictation), and
+            # local-only (claude reached over kitten ssh/zmx keeps dictation
+            # too, since Claude Code's own /voice works only locally). The
+            # title-substring entry stays for e.g. kitty windows launched with
+            # an explicit claude app-id.
             [focus_guard]
             disable_for = ["claude"]
-            disable_for_regex = ["^[✳⠀-⣿] "]
+            disable_for_process = ["claude"]
           '';
         in
         if host == "coordinator" then
