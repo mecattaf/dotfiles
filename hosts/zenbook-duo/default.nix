@@ -37,6 +37,13 @@
   # KMS in hardware.nix and check `journalctl --user -u niri -b` on next boot.
   systemd.user.services.niri.serviceConfig.TimeoutStartSec = lib.mkForce "120";
 
+  # Dual-touchscreen: this host ALONE runs the PR #1856 niri (per-device touch →
+  # output mapping); the Strix desktops stay on stock `pkgs.niri`. The fork build
+  # is a lazy overlay attr, so only this override triggers it. Per-device blocks
+  # ship via ~/.config/niri-local.kdl (home.nix, host-gated). See overlays/default.nix
+  # and dotfiles#67. Drop this line + the niri-local blocks once #1856 lands upstream.
+  programs.niri.package = pkgs.niri-pr1856;
+
   hardware.graphics.extraPackages = [ pkgs.intel-media-driver ];
   environment.sessionVariables.LIBVA_DRIVER_NAME = "iHD";
 

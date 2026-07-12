@@ -107,7 +107,10 @@ in
 
   # Every home.packages tool must be on the SESSION PATH so niri spawns and
   # kitty-daemon `kitty @ launch` children find Nix-provided binaries.
-  home.sessionPath = [ "$HOME/.nix-profile/bin" "$HOME/.local/bin" ];
+  home.sessionPath = [
+    "$HOME/.nix-profile/bin"
+    "$HOME/.local/bin"
+  ];
 
   # Claude Code reads its config/creds from $CLAUDE_CONFIG_DIR (defaults to ~/.claude).
   # modules/secrets.nix seeds the OAuth credential to ~/.claude-main, so point Claude
@@ -134,6 +137,34 @@ in
         # GENERATED — Nix-store path for kitty-scrollback.nvim kittens (offline-safe).
         action_alias kitty_scrollback_nvim kitten ${pkgs.vimPlugins.kitty-scrollback-nvim}/python/kitty_scrollback_nvim.py
       '';
+
+      # Per-HOST niri config — the real per-host slot niri/local.kdl never had (that
+      # file is shared by the whole-dir symlink). Emitted at a neutral ~/.config path
+      # (niri/ is a whole-dir symlink, can't nest a generated file inside) and pulled
+      # in by an ABSOLUTE include in niri/config.kdl (niri expands neither ~ nor $HOME).
+      # Written on EVERY host (no `optional` include on the pinned niri): the Strix
+      # desktops get an inert file; the zenbook-duo gets per-device touch → output
+      # blocks — PR #1856 syntax, understood ONLY by its niri-pr1856 build. Confirm the
+      # panel↔device pairing on-device and swap the two map-to-output lines if crossed
+      # (dotfiles#67). NB: this is store-managed (read-only, re-emitted on switch), not
+      # hot-reload RAW like the rest of niri/ — fine for a rarely-touched host slot.
+      "niri-local.kdl".text =
+        if osConfig.networking.hostName == "zenbook-duo" then
+          ''
+            // GENERATED per-host (home.nix). Zenbook Duo dual-touchscreen mapping.
+            input {
+                touch "ELAN9008:00 04F3:425B" {
+                    map-to-output "eDP-1"
+                }
+                touch "ELAN9009:00 04F3:425A" {
+                    map-to-output "eDP-2"
+                }
+            }
+          ''
+        else
+          ''
+            // GENERATED per-host (home.nix). No host-specific niri config on ${osConfig.networking.hostName}.
+          '';
 
       # asr-rs dictation — the ONE per-host config in this file (branching on
       # hostname, same pattern as remote.nix). The coordinator hosts the
