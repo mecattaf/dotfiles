@@ -25,6 +25,11 @@
 
 set -u
 
+# One session universe regardless of entry path (see zmx-annotate header):
+# pin zmx's socket dir so local niri spawns (XDG_RUNTIME_DIR set) land in the
+# same /tmp/zmx-$UID universe as kitten-ssh desk attaches (XDG unset there).
+export ZMX_DIR="${ZMX_DIR:-/tmp/zmx-$(id -u)}"
+
 host="$(hostname)"
 
 if [[ "$host" != "coordinator" ]]; then
