@@ -153,8 +153,15 @@ in
 
             # Claude Code (in kitty) has its own voice mode and its own use for
             # a held space bar — don't fight it. Matched against window title.
+            # Claude Code titles its window "✳ Claude Code" when idle and
+            # "<braille spinner> <summary>" while busy; neither contains
+            # "claude", hence the title-prefix regex (U+2733 sparkle or a
+            # U+2800–U+28FF braille cell, then a space). The substring entry
+            # stays for e.g. kitty windows launched with an explicit claude
+            # app-id.
             [focus_guard]
             disable_for = ["claude"]
+            disable_for_regex = ["^[✳⠀-⣿] "]
           '';
         in
         if host == "coordinator" then
