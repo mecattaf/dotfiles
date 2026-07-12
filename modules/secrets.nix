@@ -22,7 +22,12 @@ in
 
   config = lib.mkIf cfg.enable (
     lib.mkMerge [
-      {
+      # Claude Code OAuth credential — every host EXCEPT the zenbook (jul12 ruling:
+      # the laptop is a standalone backup operator for when the coordinator is
+      # unreachable, so it logs in with its OWN fresh OAuth session instead of
+      # inheriting the coordinator's token — two devices refreshing one shared
+      # token can race and sign each other out).
+      (lib.mkIf (config.networking.hostName != "zenbook-duo") {
         age.secrets.claude-credentials = {
           file = ../secrets/claude-credentials.age;
           owner = "tom";
@@ -41,7 +46,9 @@ in
             chmod 600 "$cred"
           fi
         '';
+      })
 
+      {
         # hermes-agent (Nous Research AI harness) OAuth state — single JSON file
         # covering access/refresh tokens + agent_key. Copy-not-link: hermes rewrites
         # it on token refresh, same reasoning as claude-credentials above.
