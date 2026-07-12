@@ -29,16 +29,17 @@ input {
 
     trackpoint {}
 
-    // Zenbook Duo dual-touchscreen STOPGAP.
-    // niri (through 26.04 / current main) has NO per-device input config: its touch
-    // router `output_for_touch()` takes no device argument, so ALL touchscreens
-    // (ELAN9008 04F3:425B + ELAN9009 04F3:425A) map to a SINGLE output. Without this
-    // block the default is the first output (eDP-1, top). We pin it to eDP-2 (bottom)
-    // — the panel we actually touch. The other panel's touches also land here; niri
-    // cannot map each panel to its own screen yet (upstream: per-device input "planned").
-    // Sway did this per-device via `input <id> map_to_output`; niri lost that on migration.
-    // Revisit if upstream lands per-device touch mapping.
-    touch {
+    // Zenbook Duo dual-touchscreen: per-device touch → output mapping.
+    // REQUIRES the PR #1856 niri build (overlays/default.nix) — stock niri has no
+    // per-device input config and REJECTS this syntax. If you ever revert the overlay
+    // to stock niri, replace both blocks with a single global `touch { map-to-output
+    // "eDP-2" }` stopgap (only one panel touchable then). Device names from
+    // `niri msg`/sysfs; verify with evtest if a panel maps to the wrong screen.
+    // Tracking: repo issue #67, upstream niri-wm/niri #1856.
+    touch "ELAN9008:00 04F3:425B" {
+        map-to-output "eDP-1"
+    }
+    touch "ELAN9009:00 04F3:425A" {
         map-to-output "eDP-2"
     }
 
