@@ -116,7 +116,9 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.local/bin/clipboard"; }
 
     Mod+I hotkey-overlay-title="Toggle Top Bar" { spawn-sh "~/.local/bin/bar-toggle"; }
 
-    Mod+Space hotkey-overlay-title="Toggle Dictation" { spawn "pkill" "-USR1" "asr-rs"; }
+    // Mod+Space is deliberately UNBOUND: asr-rs watches the chord passively
+    // at the evdev layer (hold Mod+Space = push-to-talk), and a niri bind
+    // would fire alongside it. Mod+Shift+Space stays as the escape hatch.
     Mod+Shift+Space hotkey-overlay-title="Stop Dictation" { spawn "pkill" "-USR2" "asr-rs"; }
 
     Mod+Slash { show-hotkey-overlay; }

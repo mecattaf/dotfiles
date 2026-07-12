@@ -20,7 +20,7 @@ spawn-at-startup "vicinae" "server"
 // spawn-at-startup "quickshell"  // old shell — commented out during webshell migration
 spawn-at-startup "qs" "-p" "$HOME/.config/quickshell/webshell/shell.qml"
 
-// streaming speech-to-text daemon (starts inactive, toggle with Mod+Space)
+// streaming speech-to-text daemon (hold Mod+Space to dictate; Mod+Shift+Space = stop)
 spawn-at-startup "asr-rs"
 
 // wallpaper was handled by quickshell (qs ipc call wallpaper change <path>) — dead

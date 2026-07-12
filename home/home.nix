@@ -140,30 +140,26 @@ in
       # Parakeet models and serves the engine to the tailnet (firewalled to
       # tailscale0:8762 in hosts/coordinator); the zenbook-duo is a thin client
       # dictating against it over MagicDNS; everything else defaults to
-      # loopback. Hold-SPACE push-to-talk everywhere (needs hardware.uinput,
-      # modules/common.nix). Mic pinned to the iContact USB webcam on the
-      # coordinator only (device-specific, so it lives here, not in the repo).
+      # loopback. Hold-SUPER+SPACE push-to-talk everywhere: a chord is watched
+      # passively (no EVIOCGRAB, no passthrough, no tap-vs-hold timer), so
+      # asr-rs is entirely out of the plain-typing path — bare hold-SPACE
+      # needed a device grab that buffered every space press and mangled fast
+      # typing. Mic pinned to the iContact USB webcam on the coordinator only
+      # (device-specific, so it lives here, not in the repo).
+      #
+      # No focus_guard: it existed to keep hold-SPACE from fighting Claude
+      # Code's own held-space voice mode, but it also silently ate dictation
+      # in any window running a local claude. A deliberate SUPER+SPACE chord
+      # can't collide with plain space, so dictation now works everywhere.
+      # niri must NOT bind Mod+Space (asr-rs is passive, both would fire) —
+      # see niri/binds.kdl.
       "asr-rs/config.toml".text =
         let
           host = osConfig.networking.hostName;
           ptt = ''
             [push_to_talk]
             enabled = true
-            key = "SPACE"
-
-            # Claude Code (in kitty) has its own voice mode and its own use for
-            # a held space bar — don't fight it. disable_for_process matches
-            # the exact process name against the focused window's local /proc
-            # subtree, so it fires only for a real local "claude" process:
-            # Claude-Code-only (pi title-prefixes with the same sparkle/spinner
-            # glyphs but is a different binary, so it keeps dictation), and
-            # local-only (claude reached over kitten ssh/zmx keeps dictation
-            # too, since Claude Code's own /voice works only locally). The
-            # title-substring entry stays for e.g. kitty windows launched with
-            # an explicit claude app-id.
-            [focus_guard]
-            disable_for = ["claude"]
-            disable_for_process = ["claude"]
+            key = "SUPER+SPACE"
           '';
         in
         if host == "coordinator" then
