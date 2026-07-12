@@ -93,6 +93,28 @@ window-rule {
     }
 }
 
+// Remmina — VNC client for the mesh (profiles generated per host in
+// home/remote.nix; one per OTHER box, so any device reaches any device). Both of
+// Remmina's windows share app-id "org.remmina.Remmina", told apart by title:
+//   • Connection manager  → title "Remmina Remote Desktop Client"
+//   • A live remote session → title = profile name, e.g. "coordinator (VNC)"
+// The manager floats at a comfortable size; a connected desktop opens MAXIMIZED
+// (full niri column) and focused, so global binds (SUPER+SPACE asr-rs, Mod+D,
+// overview) still fire and you can scroll to other columns. Remmina's own F11
+// still gives true fullscreen on demand.
+window-rule {
+    match app-id=r#"^org\.remmina\.Remmina$"# title="Remmina Remote Desktop Client"
+    open-floating true
+    default-column-width { fixed 1000; }
+    default-window-height { fixed 700; }
+}
+window-rule {
+    match app-id=r#"^org\.remmina\.Remmina$"#
+    exclude title="Remmina Remote Desktop Client"
+    open-maximized true
+    open-focused true
+}
+
 // Frosted Nautilus: MacTahoe's "normal" (non -solid) gtk-4.0 variant already
 // ships semi-transparent headerbar/sidebar surfaces meant for compositor blur
 // behind them (home.nix links MacTahoe-Dark-grey's gtk-4.0 CSS) — this rule
