@@ -140,19 +140,22 @@ in
       # Parakeet models and serves the engine to the tailnet (firewalled to
       # tailscale0:8762 in hosts/coordinator); the zenbook-duo is a thin client
       # dictating against it over MagicDNS; everything else defaults to
-      # loopback. Hold-SUPER+SPACE push-to-talk everywhere: a chord is watched
-      # passively (no EVIOCGRAB, no passthrough, no tap-vs-hold timer), so
-      # asr-rs is entirely out of the plain-typing path — bare hold-SPACE
-      # needed a device grab that buffered every space press and mangled fast
-      # typing. Mic pinned to the iContact USB webcam on the coordinator only
-      # (device-specific, so it lives here, not in the repo).
+      # loopback. Hold-SUPER+SPACE push-to-talk everywhere: while IDLE the
+      # chord is watched passively (no grab, no timers), so asr-rs is
+      # entirely out of the plain-typing path — bare hold-SPACE needed a
+      # permanent grab that buffered every space press and mangled fast
+      # typing. WHILE DICTATING asr-rs grabs the keyboard and synthesizes the
+      # chord's release to niri, so TDT-finalized segments STREAM into the
+      # focused window at each speech pause, mid-hold, without becoming
+      # Mod+letter binds. Mic pinned to the iContact USB webcam on the
+      # coordinator only (device-specific, so it lives here, not the repo;
+      # resolved via the ALSA card table — the card id is "Pro").
       #
       # No focus_guard: it existed to keep hold-SPACE from fighting Claude
       # Code's own held-space voice mode, but it also silently ate dictation
       # in any window running a local claude. A deliberate SUPER+SPACE chord
       # can't collide with plain space, so dictation now works everywhere.
-      # niri must NOT bind Mod+Space (asr-rs is passive, both would fire) —
-      # see niri/binds.kdl.
+      # niri's Mod+Space is a consume-only no-op bind (see niri/binds.kdl).
       "asr-rs/config.toml".text =
         let
           host = osConfig.networking.hostName;
