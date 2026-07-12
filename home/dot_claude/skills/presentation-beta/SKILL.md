@@ -42,5 +42,4 @@ artifact-view ~/decks/q3-allhands           # rehearse, file://
 ## References
 
 - `references/figma-slide-design.md` — design principles for varied, design-literate slides (color, type, density, layout, composition, what to avoid).
-- `references/figma-slide-grid.md` — Figma SlideNode 2D grid API notes (source-of-origin plumbing; not reveal.js layout guidance).
 - `references/takahashi.md` — Takahashi-method decks (one huge word per slide, notes carry the talk) and how to author them in reveal.js.
