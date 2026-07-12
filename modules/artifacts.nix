@@ -38,7 +38,10 @@ in
   # Worker only: let the coordinator's Caddy reach forwarded guest ports over
   # the tailnet. The range is deliberately small — one publishable port per
   # concurrently-exposed VM, not a general hole.
-  config = lib.mkIf (config.myCluster.role == "worker") {
+  # `or null`: myCluster is defined only on the Strix pair (modules/strix.nix);
+  # this module is fleet-wide (via common.nix), so guard the reference or the
+  # zenbook (no myCluster option) fails to evaluate at all.
+  config = lib.mkIf ((config.myCluster.role or null) == "worker") {
     networking.firewall.interfaces.tailscale0.allowedTCPPorts =
       lib.range cfg.livePortRange.from cfg.livePortRange.to;
   };
