@@ -6,6 +6,7 @@
     ./disko.nix
     ./headless-display.nix
     ./cache-push.nix
+    ./fleet-prebuild.nix # 02:00 cache warmer for fleet auto-update (builds all hosts → attic)
     ./gpu-cooldown.nix
     ../../modules/strix.nix
     ../../modules/microvm-host.nix

@@ -13,6 +13,9 @@
     # skill's tailnet rung). Coordinator = fleet front door; origins on worker.
     ../../modules/caddy-artifacts.nix
     ../../modules/strix.nix
+    # Distributed builds — offload heavy compiles to the worker over the TB3 fast
+    # lane; the result is cached (attic) so no other host rebuilds it. refs #42.
+    ../../modules/build-offload.nix
     # AMD Ryzen AI NPU stack — coordinator ONLY (the worker keeps the NPU off for
     # max iGPU). Brings the amdxdna driver + XRT + FastFlowLM; requires IOMMU in
     # translated mode, set via amd_iommu=on for this role in modules/strix.nix.

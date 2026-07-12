@@ -1,4 +1,9 @@
-{ pkgs, lib, config, ... }:
+{
+  pkgs,
+  lib,
+  config,
+  ...
+}:
 # Device-agnostic layer — every host imports this. Use lib.mkDefault for
 # anything a host or nixos-hardware module may override.
 {
@@ -7,6 +12,8 @@
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
     ./dotfiles-bootstrap.nix # ensure ~/mecattaf/dotfiles exists before the session
     ./artifacts.nix # myArtifacts options (+ worker VM-port window); serving plane is coordinator-only (caddy-artifacts.nix)
+    ./auto-update.nix # fleet auto-update: staggered daily nixos-upgrade off main (#42)
+    ./fleet-notify.nix # push a failure banner (marker + coordinator mirror) when an upgrade fails (#42)
   ];
 
   # --- identity / base ---
@@ -29,6 +36,13 @@
     ];
     auto-optimise-store = true;
 
+    # Auto-update hardening (modules/auto-update.nix): a dead substituter (coordinator
+    # down, zenbook off-tailnet) must delay an unattended build by seconds, not hang
+    # it; and a substitution that dies mid-transfer must fall back to building rather
+    # than fail the upgrade. Keeps the nightly nixos-upgrade robust off-network.
+    connect-timeout = 5;
+    fallback = true;
+
     # Trusted Nix users (fleet-wide). Lets `tom` (via @wheel) copy in
     # worker-built, unsigned store paths (`nix copy` / `nixos-rebuild
     # --build-host` copy-back) and pass client-specified substituters — both of
@@ -36,7 +50,10 @@
     # signature by a trusted key" / "you are not a trusted user"). Also what the
     # fleet binary cache (#42) needs to push/pull unsigned paths as tom.
     # Acceptable on this single-operator fleet: tom already has passwordless sudo.
-    trusted-users = [ "root" "@wheel" ];
+    trusted-users = [
+      "root"
+      "@wheel"
+    ];
 
     # numtide binary cache — serves the llm-agents.nix catalog (flake input) as
     # prebuilt binaries. Without it, installing the ~100-agent set would build
@@ -223,7 +240,10 @@
   # "SF Mono". NixOS appends its own DejaVu/Noto fallbacks after these, so
   # missing glyphs (CJK, symbols) still resolve.
   fonts.fontconfig.defaultFonts = {
-    sansSerif = [ "SF Pro Display" "SF Pro Text" ];
+    sansSerif = [
+      "SF Pro Display"
+      "SF Pro Text"
+    ];
     serif = [ "New York" ];
     monospace = [ "Liga SFMono Nerd Font" ];
     emoji = [ "Noto Color Emoji" ];
