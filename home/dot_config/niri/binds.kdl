@@ -223,6 +223,8 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.local/bin/clipboard"; }
 
     Mod+Page_Up repeat=false { toggle-overview; }
     Mod+Page_Down repeat=false { toggle-overview; }
+    Mod+Alt+Up repeat=false { toggle-overview; }
+    Mod+Alt+Down repeat=false { toggle-overview; }
 
     // scroll: bindsym $mod+Ctrl+Page_Up scale_workspace reset
     // ^ DROPPED
