@@ -837,11 +837,11 @@
         "process-compose-flake": "process-compose-flake"
       },
       "locked": {
-        "lastModified": 1783752449,
-        "narHash": "sha256-MEvU3kdVwJ5PMdWAnSKQs8hwYeCw61R6D/j01ipqAd8=",
+        "lastModified": 1783860071,
+        "narHash": "sha256-Esppyi2OR9aMhA74GJPnFC/ARv7YZPU3mM2dQEUWLww=",
         "owner": "mecattaf",
         "repo": "tally",
-        "rev": "1a26688199a677ea11b233b1e9564dda0a3957ea",
+        "rev": "1668b6db2eeec6ee6f624f5daf9a7d2d64517596",
         "type": "github"
       },
       "original": {
