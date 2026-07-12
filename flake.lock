@@ -574,6 +574,26 @@
         "type": "github"
       }
     },
+    "ntm": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1783890923,
+        "narHash": "sha256-6uAt6wSXT7cy+0i5DQt95RphCmlpYLSvWNMswOe+xI4=",
+        "owner": "mecattaf",
+        "repo": "ntm",
+        "rev": "6dc5cd1f173d9680e0ba570c30cb0ed67842e3c1",
+        "type": "github"
+      },
+      "original": {
+        "owner": "mecattaf",
+        "repo": "ntm",
+        "type": "github"
+      }
+    },
     "ny": {
       "flake": false,
       "locked": {
@@ -644,6 +664,7 @@
         "nix-amd-ai": "nix-amd-ai",
         "nixos-hardware": "nixos-hardware",
         "nixpkgs": "nixpkgs_4",
+        "ntm": "ntm",
         "sfmono-liga": "sfmono-liga",
         "tally": "tally",
         "zmx": "zmx"

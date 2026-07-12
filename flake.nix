@@ -85,6 +85,23 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # ntm — niri tablet management (github.com/mecattaf/ntm): one Rust daemon
+    # for edge-initiated multi-finger touchscreen gestures + accelerometer
+    # rotation via iio-sensor-proxy. ZENBOOK-DUO ONLY — the one host with touch
+    # panels + an accelerometer; the Strix pair and the bridge never see it.
+    # Consumed like tally (same author, same channel: flake input pinned in
+    # flake.lock, follows nixpkgs so the Rust build resolves against our one
+    # pin) — but ntm ships no home-manager module, only packages.*.ntm, so
+    # home/ntm.nix does the module work: package + config + manual-start user
+    # service, hostname-gated. Complements the PR #1856 niri fork's per-device
+    # touch→output mapping (overlays/default.nix, niri-local.kdl): niri routes
+    # each panel's touches, ntm layers bezel gestures + rotation on top.
+    # `nix flake update ntm` bumps to the latest pushed commit.
+    ntm = {
+      url = "github:mecattaf/ntm";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # nix-amd-ai — AMD Ryzen AI NPU stack (amdxdna driver + XRT + FastFlowLM).
     # COORDINATOR ONLY: the conductor turns the NPU on (needs IOMMU in translated
     # mode); the worker keeps the NPU off for max iGPU (iommu off). Deliberately

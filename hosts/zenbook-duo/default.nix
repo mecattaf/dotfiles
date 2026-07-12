@@ -6,7 +6,9 @@
 }:
 # zenbook-duo — Intel Asus Zenbook Duo UX8406 (dual-screen). The FIRST flash target.
 # No dedicated nixos-hardware module → compose generics. Second display + IPU6 webcam +
-# the zenbook-duo-daemon / titdb touchpad bits are follow-ups (niri / out-of-nixpkgs).
+# the titdb touchpad bits are follow-ups (niri / out-of-nixpkgs). The old
+# "zenbook-duo-daemon" slot is now filled by ntm (mecattaf/ntm, home/ntm.nix): bezel
+# gestures + accelerometer rotation, fed by hardware.sensor.iio below.
 {
   imports = [
     ./hardware.nix
@@ -46,6 +48,11 @@
 
   hardware.graphics.extraPackages = [ pkgs.intel-media-driver ];
   environment.sessionVariables.LIBVA_DRIVER_NAME = "iHD";
+
+  # ntm rotation feed: iio-sensor-proxy on the system bus (net.hadess.SensorProxy).
+  # NB: NixOS spells this hardware.sensor.iio, not services.iio-sensor-proxy (the
+  # option ntm's README suggests). The ntm daemon itself is home-side: home/ntm.nix.
+  hardware.sensor.iio.enable = true;
 
   services.asusd.enable = true; # kbd backlight, charge-limit, platform-profile
   services.thermald.enable = true; # Intel thermal throttling protection (decided: Intel-only)

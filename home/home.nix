@@ -96,6 +96,7 @@ let
 in
 {
   imports = [
+    ./ntm.nix
     ./nvim.nix
     ./remote.nix
     ./tally.nix
