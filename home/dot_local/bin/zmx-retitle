@@ -45,5 +45,15 @@ title="$("$here/zmx-title" "$fallback" "working directory: $cwd" 2>/dev/null)" |
 [ -n "$title" ] || exit 0
 [ "$title" = "$fallback" ] && exit 0
 
+# Persist the enriched title to the sidecar store so the resume pickers
+# (zmx-annotate → zmx-resume / desk-resume) can show it — zmx itself has no
+# rename, so this store is the ONLY place a title outlives this window.
+# <fallback> is the session name; zmx-annotate prunes files for dead sessions.
+state="${XDG_STATE_HOME:-$HOME/.local/state}/zmx/titles"
+case "$fallback" in
+    */*|.*) : ;;
+    *) mkdir -p "$state" 2>/dev/null && printf '%s' "$title" > "$state/$fallback" 2>/dev/null || true ;;
+esac
+
 # Cosmetic only. Failure here is a no-op (window may have closed meanwhile).
 kitten @ --to "$sock" set-window-title "$title" >/dev/null 2>&1 || exit 0
