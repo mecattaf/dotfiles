@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# zmx-annotate — annotated `zmx list` for the resume pickers (`zmx-resume`
+# locally on the coordinator, `desk-resume` over ssh from worker/zenbook).
+# Prints one TAB-separated line per session:
+#
+#   <name>\t<title-or-name> · <~dir> · <age> · <attached|dormant>
+#
+# Field 1 is the exact session name (the attach key); field 2 is display-only —
+# pickers run `fzf --delimiter='\t' --with-nth=2..` and attach by field 1.
+#
+# INTERACTIVE-PATH RULE (issue #38): this never blocks on flm/network. It joins
+# `zmx list` with the sidecar title store that `zmx-retitle` persists to
+# ~/.local/state/zmx/titles/<session>. Sessions with no stored title (e.g.
+# `term-…` ones spawned remotely via `desk`, which never ran the titler) show
+# their raw name now and get a DETACHED `--backfill` pass: title each from its
+# own scrollback (`zmx history` tail → zmx-title → sidecar), refresh titles
+# older than 30min, and prune sidecar files for dead sessions. So the *next*
+# picker invocation shows real names — the current one is never delayed.
+set -u
+
+# One session universe regardless of entry path: zmx falls back to
+# /tmp/zmx-$UID only when XDG_RUNTIME_DIR is unset (true inside session
+# daemons and the kitten-ssh attach env, false in niri/login shells), which
+# silently split sessions across two socket dirs (found 2026-07-12). Pin the
+# fallback dir explicitly; conf.d/zmx.fish + remote.fish pin the same one.
+export ZMX_DIR="${ZMX_DIR:-/tmp/zmx-$(id -u)}"
+
+state="${XDG_STATE_HOME:-$HOME/.local/state}/zmx/titles"
+here="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || exit 0
+
+command -v zmx >/dev/null 2>&1 || exit 1
+mkdir -p "$state" 2>/dev/null || true
+
+# Parse `zmx list` (long form): TAB-separated key=value fields; the current
+# session's line carries a leading "→ " marker glued to its first field. A
+# session name may contain spaces but never a tab or "/" (see new-terminal's
+# sanitiser / desk's term-… scheme); anything else is skipped defensively.
+# Emits: <name>\t<start_dir>\t<created>\t<clients>
+sessions() {
+    zmx list 2>/dev/null | while IFS=$'\t' read -r -a fields; do
+        local name="" dir="" created="" clients="" f
+        for f in "${fields[@]}"; do
+            f="${f#"${f%%[![:space:]]*}"}"
+            f="${f#→}"
+            f="${f#"${f%%[![:space:]]*}"}"
+            case "$f" in
+                name=*)      name="${f#name=}" ;;
+                start_dir=*) dir="${f#start_dir=}" ;;
+                created=*)   created="${f#created=}" ;;
+                clients=*)   clients="${f#clients=}" ;;
+            esac
+        done
+        [[ -n "$name" && "$name" != */* ]] || continue
+        printf '%s\t%s\t%s\t%s\n' "$name" "$dir" "$created" "$clients"
+    done
+}
+
+humanize() {
+    local s=$1
+    if   (( s < 3600 ));  then printf '%dm' $(( s / 60 ))
+    elif (( s < 86400 )); then printf '%dh' $(( s / 3600 ))
+    else                       printf '%dd' $(( s / 86400 ))
+    fi
+}
+
+now="$(date +%s)"
+
+if [[ "${1-}" == "--backfill" ]]; then
+    declare -A live=()
+    while IFS=$'\t' read -r name dir created clients; do
+        live["$name"]=1
+        marker="$state/.attempt-$name"
+        # Refresh candidates: no title yet, or title older than 30min (long
+        # -lived sessions drift). Cooldown marker stops picker-spam stampedes.
+        if [[ -s "$state/$name" && -n "$(find "$state/$name" -mmin -30 2>/dev/null)" ]]; then continue; fi
+        if [[ -f "$marker" && -n "$(find "$marker" -mmin -10 2>/dev/null)" ]]; then continue; fi
+        touch "$marker" 2>/dev/null || true
+        # zmx-title prints the fallback (here: the raw name) on ANY failure —
+        # only a genuinely enriched result is persisted, never a fallback.
+        t="$(zmx history "$name" 2>/dev/null | tail -c 3500 \
+             | "$here/zmx-title" "$name" "working directory: ${dir:-$HOME}" 2>/dev/null)"
+        if [[ -n "$t" && "$t" != "$name" ]]; then
+            printf '%s' "$t" > "$state/$name" 2>/dev/null || true
+        fi
+    done < <(sessions)
+    # Prune sidecar files (titles + attempt markers) for dead sessions.
+    for f in "$state"/* "$state"/.attempt-*; do
+        [[ -e "$f" ]] || continue
+        b="$(basename "$f")"
+        n="${b#.attempt-}"
+        [[ -n "${live[$n]-}" ]] || rm -f "$f"
+    done
+    exit 0
+fi
+
+count=0
+while IFS=$'\t' read -r name dir created clients; do
+    count=$(( count + 1 ))
+    title=""
+    [[ -s "$state/$name" ]] && title="$(head -c 96 "$state/$name" 2>/dev/null)"
+    [[ -n "$title" ]] || title="$name"
+    age=""
+    [[ "$created" =~ ^[0-9]+$ ]] && age="$(humanize $(( now - created )))"
+    attach="dormant"
+    [[ "${clients:-0}" =~ ^[0-9]+$ ]] && (( clients > 0 )) && attach="attached"
+    printf '%s\t%s · %s · %s · %s\n' \
+        "$name" "$title" "${dir/#$HOME/\~}" "${age:-?}" "$attach"
+done < <(sessions)
+
+# Fire-and-forget the backfill/refresh/prune pass (same detachment pattern as
+# zmx-retitle in new-terminal): survives our exit, can never delay the picker.
+if (( count > 0 )); then
+    setsid "$here/zmx-annotate" --backfill </dev/null >/dev/null 2>&1 &
+fi
