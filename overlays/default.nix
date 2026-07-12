@@ -12,14 +12,48 @@ final: prev: {
   # behaviour change, only the deprecation text is dropped. --replace-fail makes a
   # future upstream rename fail the build loudly instead of silently no-op'ing.
   # Flows fleet-wide via programs.niri.package. NB: makes niri a from-source rebuild.
-  niri = prev.niri.overrideAttrs (old: {
-    postPatch = (old.postPatch or "") + ''
-      substituteInPlace resources/niri-session \
-        --replace-fail \
-          'systemctl --user import-environment' \
-          'systemctl --user import-environment 2>/dev/null'
-    '';
-  });
+  #
+  # ── Zenbook Duo dual-touchscreen (PR #1856) ──────────────────────────────────
+  # Stock niri has NO per-device input config: output_for_touch() takes no device
+  # arg, so BOTH ELAN panels map to a single output (see input.kdl). niri-wm/niri
+  # PR #1856 ("Per-device touch and tablet config") adds `touch "<name>" {…}` /
+  # `tablet "<name>" {…}` blocks — proven on the Zenbook Duo (incl. NixOS) by its
+  # author + others. Not merged upstream (open ~1yr, conflicts with main), so we
+  # build from the PR-head fork commit rather than wait. Pinned to a SPECIFIC
+  # commit (the branch is a moving target). Per-device blocks live in niri/input.kdl.
+  # Revert to stock `prev.niri` + global `touch { map-to-output }` once #1856 lands.
+  #   PR:   https://github.com/niri-wm/niri/pull/1856  (head 3b75b96, 2026-06-19)
+  #   fork: stefanboca/niri
+  # The PR touches only Rust source (no Cargo.lock), but the fork's base ≠ v26.04,
+  # so cargoHash is recomputed for the fork tree.
+  # cargoHash is captured by buildRustPackage at call time, so overrideAttrs can't
+  # change it — we override cargoDeps (the fetchCargoVendor FOD) directly instead.
+  niri =
+    let
+      niriSrc = final.fetchFromGitHub {
+        owner = "stefanboca";
+        repo = "niri";
+        rev = "3b75b9613a762f3022083e74fc47a66b7da79b6e";
+        hash = "sha256-CeTJ7Fm6qoTPK+acIrj/fd1bQ7HENHnQo0wKRxezpDE=";
+      };
+    in
+    prev.niri.overrideAttrs (old: {
+      version = "26.04-pr1856-3b75b96";
+      # versionCheckHook asserts `niri --version` contains our version string; the
+      # fork binary self-reports its own upstream version, so skip that check.
+      doInstallCheck = false;
+      src = niriSrc;
+      cargoDeps = final.rustPlatform.fetchCargoVendor {
+        src = niriSrc;
+        hash = "sha256-XbKhPJ/VxcLf4J2I6dekKnUvCnmoXndvQsLx2B04ihE=";
+      };
+      postPatch = (old.postPatch or "") + ''
+        substituteInPlace resources/niri-session \
+          --replace-fail \
+            'systemctl --user import-environment' \
+            'systemctl --user import-environment 2>/dev/null'
+      '';
+    });
 
   # mactahoe — the PROVEN source-build + OLED postPatch (NOT nix-test's prebuilt
   # tarball). Built/verified in a nixos/nix container 2026-06-19. Originated in
