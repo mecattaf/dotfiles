@@ -38,3 +38,9 @@ artifact-view ~/decks/q3-allhands           # rehearse, file://
 3. Diagrams get real design care (see the diagram-design reference in the old corpus notes) — no ASCII dumps on slides.
 4. Don't restyle reveal per deck; brand goes in tokens.css when ruled.
 5. Publishing and its TTL discipline belong to publish-artifact — this skill ends at a finished snapshot dir.
+
+## References
+
+- `references/figma-slide-design.md` — design principles for varied, design-literate slides (color, type, density, layout, composition, what to avoid).
+- `references/figma-slide-grid.md` — Figma SlideNode 2D grid API notes (source-of-origin plumbing; not reveal.js layout guidance).
+- `references/takahashi.md` — Takahashi-method decks (one huge word per slide, notes carry the talk) and how to author them in reveal.js.
