@@ -20,8 +20,10 @@ spawn-at-startup "vicinae" "server"
 // spawn-at-startup "quickshell"  // old shell — commented out during webshell migration
 spawn-at-startup "qs" "-p" "$HOME/.config/quickshell/webshell/shell.qml"
 
-// streaming speech-to-text daemon (hold Mod+Space to dictate; Mod+Shift+Space = stop)
-spawn-at-startup "asr-rs"
+// streaming speech-to-text daemon (hold Mod+Space to dictate; Mod+Shift+Space = stop).
+// Logs persisted: a plain spawn discards stdout/stderr, which made every
+// dictation issue undiagnosable until the daemon was restarted by hand.
+spawn-sh-at-startup "asr-rs >> $HOME/.local/state/asr-rs.log 2>&1"
 
 // wallpaper was handled by quickshell (qs ipc call wallpaper change <path>) — dead
 // NIX-MIGRATION: D3 (ratified 2026-06-20, dotfiles-sweep.md / nix-decisions.md):
