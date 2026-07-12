@@ -116,9 +116,13 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.local/bin/clipboard"; }
 
     Mod+I hotkey-overlay-title="Toggle Top Bar" { spawn-sh "~/.local/bin/bar-toggle"; }
 
-    // Mod+Space is deliberately UNBOUND: asr-rs watches the chord passively
-    // at the evdev layer (hold Mod+Space = push-to-talk), and a niri bind
-    // would fire alongside it. Mod+Shift+Space stays as the escape hatch.
+    // Hold Mod+Space = push-to-talk: asr-rs watches the chord passively at
+    // the evdev layer, BELOW niri. This bind is a consume-only no-op — it
+    // must do nothing (asr-rs handles activation), but it must EXIST so niri
+    // swallows the chord and its auto-repeat: apps that treat Super+Space as
+    // plain space (browsers; kitty ignores it) would otherwise get spaces
+    // typed into them for the whole hold.
+    Mod+Space repeat=false hotkey-overlay-title="Dictate (hold)" { spawn "true"; }
     Mod+Shift+Space hotkey-overlay-title="Stop Dictation" { spawn "pkill" "-USR2" "asr-rs"; }
 
     Mod+Slash { show-hotkey-overlay; }
