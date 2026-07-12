@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # media -- MPRIS playback control
 # NIX-MIGRATION: D2 native re-point (ratified 2026-06-20, nix-decisions.md /
 # dotfiles-sweep.md D2). quickshell is GONE; the old `qs ipc music` bridge

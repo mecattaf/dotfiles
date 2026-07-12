@@ -71,6 +71,11 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.local/bin/clipboard"; }
 
     F1 hotkey-overlay-title="Brightness Down" { spawn-sh "~/.local/bin/brightness down"; }
     F2 hotkey-overlay-title="Brightness Up" { spawn-sh "~/.local/bin/brightness up"; }
+    // Shift = adjust ONLY the focused screen's backlight (zenbook-duo dual eDP;
+    // `focused` maps niri's focused output -> its backlight generically, so this
+    // is harmless/degrades to default on single-screen hosts).
+    Shift+F1 hotkey-overlay-title="Brightness Down (focused screen)" { spawn-sh "~/.local/bin/brightness down focused"; }
+    Shift+F2 hotkey-overlay-title="Brightness Up (focused screen)" { spawn-sh "~/.local/bin/brightness up focused"; }
     F3 hotkey-overlay-title="Play/Pause" { spawn-sh "~/.local/bin/media play"; }
     F4 hotkey-overlay-title="Previous" { spawn-sh "~/.local/bin/media prev"; }
     F5 hotkey-overlay-title="Next" { spawn-sh "~/.local/bin/media next"; }

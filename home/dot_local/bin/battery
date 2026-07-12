@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # battery -- rofi battery status applet
 # No quickshell IPC. Standalone utility.
 

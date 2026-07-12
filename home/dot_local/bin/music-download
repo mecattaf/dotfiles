@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # music-download -- yt-dlp audio downloader (no quickshell IPC)
 
 SCRIPTNAME=$(basename "$0")

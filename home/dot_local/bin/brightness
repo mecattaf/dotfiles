@@ -1,11 +1,67 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # brightness -- adjust display brightness
 # NIX-MIGRATION: D2 native re-point (ratified 2026-06-20, nix-decisions.md /
 # dotfiles-sweep.md D2). quickshell is GONE; the old `qs ipc display
-# brighter/dimmer 0.05` (5% steps) becomes brightnessctl. Interim scaffolding —
+# brighter/dimmer 0.05` (5% steps) becomes brightnessctl. Interim scaffolding --
 # eventual nix-native shape is writeShellApplication with declared deps.
-case "$1" in
-    up)    brightnessctl set 5%+ ;;
-    down)  brightnessctl set 5%- ;;
-    *)     echo "Usage: $0 {up|down}"; exit 1 ;;
+#
+# Usage:
+#   brightness up|down            adjust ALL internal (DRM/eDP) backlights together
+#   brightness up|down focused    adjust ONLY the niri-focused output's backlight
+#
+# The `focused` mode exists for the zenbook-duo's two eDP panels: it reads
+# `niri msg focused-output`, then finds the backlight whose sysfs path carries
+# that connector name (e.g. eDP-2 -> .../card1-eDP-2/card1-eDP-2-backlight,
+# eDP-1 -> .../card1-eDP-1/intel_backlight). Fully generic -- no per-host device
+# names -- so it is harmless on single-screen hosts (falls back to all-internal).
+
+set -euo pipefail
+
+case "${1:-}" in
+    up)   op="5%+" ;;
+    down) op="5%-" ;;
+    *)    echo "Usage: $0 {up|down} [focused]"; exit 1 ;;
 esac
+
+# All backlights whose sysfs device is a real DRM connector (skips
+# asus_screenpad, DDC-less externals, LEDs). Prints device basenames.
+drm_backlights() {
+    local b
+    for b in /sys/class/backlight/*; do
+        [ -e "$b" ] || continue
+        case "$(readlink -f "$b")" in
+            */drm/*) basename "$b" ;;
+        esac
+    done
+}
+
+# Backlight device whose sysfs path matches niri connector $1 (e.g. "eDP-2").
+backlight_for_output() {
+    local out="$1" b
+    for b in /sys/class/backlight/*; do
+        [ -e "$b" ] || continue
+        case "$(readlink -f "$b")" in
+            *-"$out"/*) basename "$b"; return ;;
+        esac
+    done
+}
+
+if [ "${2:-}" = "focused" ]; then
+    out="$(niri msg -j focused-output | jq -r '.name // empty')"
+    dev="$(backlight_for_output "$out")"
+    if [ -n "$dev" ]; then
+        brightnessctl -d "$dev" set "$op"
+    else
+        # Unknown/external focused output -- fall back to brightnessctl default.
+        brightnessctl set "$op"
+    fi
+else
+    mapfile -t devs < <(drm_backlights)
+    if [ "${#devs[@]}" -eq 0 ]; then
+        brightnessctl set "$op"
+    else
+        for dev in "${devs[@]}"; do
+            brightnessctl -d "$dev" set "$op"
+        done
+    fi
+fi

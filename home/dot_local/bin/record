@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # record -- screen recording using wf-recorder + niri IPC
 # No quickshell IPC. Uses niri msg and wf-recorder directly.
 

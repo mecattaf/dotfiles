@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # recording-toggle -- toggle screen recording and notify the shell
 # Wraps the record script with toggle semantics for keybind use.
 # Also signals the shell so the recording indicator updates.

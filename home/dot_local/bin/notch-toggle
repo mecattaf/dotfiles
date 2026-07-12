@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # notch-toggle -- DROPPED: notch was eqsh-specific (macOS-style dynamic island)
 # Redirects to bar-toggle for backwards compatibility.
 echo "notch-toggle is deprecated in webshell. Use bar-toggle instead." >&2

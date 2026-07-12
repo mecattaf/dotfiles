@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # fzf-shortcuts -- fzf shortcut viewer with glow rendering (no quickshell IPC)
 
 markdown_dir="$HOME/.config/niri/scripts/shortcuts"

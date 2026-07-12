@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # colorpicker -- pick a color from screen using niri native, copy hex to clipboard
 # No quickshell IPC. Uses niri msg pick-color.
 output=$(niri msg pick-color) || exit 1

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # volume -- PipeWire volume control via wpctl
 # No quickshell IPC: AudioBridge auto-reacts to PipeWire events
 case "$1" in

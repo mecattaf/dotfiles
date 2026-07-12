@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # pomo -- simple Pomodoro timer (file-based state, no quickshell IPC)
 
 if [ "$(uname)" == "Darwin" ] || [ "${POMO_PREFIX_CMDS}" == "true" ]; then

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # vpn-status -- query VPN/Tailscale connection status
 # No quickshell IPC. Outputs JSON for bar widget consumption.
 # Checks: Tailscale, WireGuard, NM VPN connections.

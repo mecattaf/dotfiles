@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # screenshot -- take a screenshot using niri native actions
 # No quickshell IPC. Uses niri msg action.
 case "${1:-full}" in

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # spotlight -- toggle the overlay (launcher/spotlight) surface
 # IPC target: ShellBridge (target: "shell"), method: toggleOverlay
 qs ipc --pid $(pgrep -x qs) call shell toggleOverlay
