@@ -1,20 +1,27 @@
 # llm-agents.nix — installed product sweep
 
-Every package the maximalist `llmAgentsAll` buildEnv installs on the fleet
-(`home/home.nix`, sourced from the `llm-agents.nix` flake input's
-`overlays.default` → `pkgs.llm-agents.*`).
+The `llm-agents.nix` flake input (`overlays.default` → `pkgs.llm-agents.*`)
+exposes a ~139-product catalog. It was first adopted as a **maximalist sweep**
+— install every buildable member — but that surfaced a great many programs
+neither wanted nor needed on the desktop.
 
-**139 products** (18 unfree). Auto-generated from `meta` — this is
-the full catalog we pull in wholesale; the install is programmatic (every
-buildable member), so this list is a *snapshot* and will grow as upstream
-adds agents on the next `nix flake update llm-agents`.
+**Pruned to an allowlist (2026-07-12).** `home/home.nix` now installs only the
+handful below via the `llmAgentsSelected` buildEnv; `keepFromLlmAgents` is the
+allowlist. Agents upstream adds no longer land automatically — adding one is a
+deliberate edit to that list. To keep/cut, edit `keepFromLlmAgents`, not a
+denylist.
 
-This is a deliberate comprehensive sweep — most of these are expected to be
-pruned later. Use the checkboxes to mark keepers vs. cuts; to actually drop
-one, add its name to `alreadyInstalled`/a denylist in `home/home.nix` or
-narrow the buildEnv filter.
+**Kept from the catalog (6):** `claude-code`, `ccusage`, `ck`,
+`claude-agent-acp`, `qmd`, `pi`.
 
-`†` = unfree.
+**Kept, but NOT from this catalog:** `backlog-md` — built from our bespoke
+`pkgs/backlog-md.nix` (bin `backlog`) and deliberately excluded from
+`keepFromLlmAgents` so it isn't double-loaded / colliding on the same binary.
+
+Everything else below is **cut**. The full list is retained as a snapshot of
+what the catalog offered at adoption time.
+
+`†` = unfree. `✅` = kept.
 
 | Keep? | Product | Version | Description |
 |:-:|---|---|---|
@@ -29,7 +36,7 @@ narrow the buildEnv filter.
 | ☐ | `aperant` | 2.7.6 | Autonomous multi-agent coding framework powered by Claude AI |
 | ☐ | `apm` | 0.24.0 | Agent Package Manager — dependency manager for AI agents |
 | ☐ | `auto-claude` | 2.7.6 | Autonomous multi-agent coding framework powered by Claude AI |
-| ☐ | `backlog-md` | 1.47.1 | Backlog.md - A tool for managing project collaboration between humans and AI Agents in a git ecosystem |
+| ✅ | `backlog-md` | 1.47.1 | Backlog.md - A tool for managing project collaboration between humans and AI Agents in a git ecosystem — **kept via bespoke `pkgs/backlog-md.nix`, NOT from this catalog** |
 | ☐ | `beads` | 1.1.0 | A distributed issue tracker designed for AI-supervised coding workflows |
 | ☐ | `beads-rust` | 0.2.16 | Fast Rust port of beads - a local-first issue tracker for git repositories |
 | ☐ | `beads-viewer` | 0.18.0 | Graph-aware TUI for the Beads issue tracker |
@@ -41,11 +48,11 @@ narrow the buildEnv filter.
 | ☐ | `cc-sdd` | 3.0.2 | Spec-driven development framework for AI coding agents |
 | ☐ | `cc-switch-cli` | 5.9.0 | CLI version of CC Switch - All-in-One Assistant for Claude Code, Codex & Gemini CLI |
 | ☐ | `ccstatusline` | 2.2.22 | A highly customizable status line formatter for Claude Code CLI |
-| ☐ | `ccusage` | 20.0.14 | Analyze coding agent CLI token usage and costs from local data |
+| ✅ | `ccusage` | 20.0.14 | Analyze coding agent CLI token usage and costs from local data |
 | ☐ | `chainlink` | 1.6.0 | Simple, lean issue tracker CLI designed for AI-assisted development |
-| ☐ | `ck` | 0.7.11 | Local first semantic and hybrid BM25 grep / search tool for use by AI and humans! |
-| ☐ | `claude-agent-acp` | 0.57.0 | An ACP-compatible coding agent powered by the Claude Code SDK (TypeScript) |
-| ☐ | `claude-code †` | 2.1.205 | Agentic coding tool that lives in your terminal, understands your codebase, and helps you code faster |
+| ✅ | `ck` | 0.7.11 | Local first semantic and hybrid BM25 grep / search tool for use by AI and humans! |
+| ✅ | `claude-agent-acp` | 0.57.0 | An ACP-compatible coding agent powered by the Claude Code SDK (TypeScript) |
+| ✅ | `claude-code †` | 2.1.205 | Agentic coding tool that lives in your terminal, understands your codebase, and helps you code faster |
 | ☐ | `claude-code-router` | 3.0.0 | Use Claude Code without an Anthropics account and route it to another LLM provider |
 | ☐ | `claude-desktop †` | 1.18286.2 | Desktop application for Claude.ai |
 | ☐ | `claude-plugins` | 0.2.0 | CLI tool for managing Claude Code plugins |
@@ -124,10 +131,10 @@ narrow the buildEnv filter.
 | ☐ | `openspecui` | 5.0.0 | Visual interface for spec-driven development |
 | ☐ | `parallel-cli` | 0.7.1 | AI-powered web search, extraction, and research CLI from Parallel |
 | ☐ | `paseo-desktop` | 0.1.104 | Voice-controlled desktop development environment for AI coding agents |
-| ☐ | `pi` | 0.80.3 | A terminal-based coding agent with multi-model support |
+| ✅ | `pi` | 0.80.3 | A terminal-based coding agent with multi-model support |
 | ☐ | `picoclaw` | 0.3.1 | Tiny, fast, and deployable anywhere — automate the mundane, unleash your creativity |
 | ☐ | `plannotator` | 0.22.0 | Interactive plan and code review tool for AI coding agents |
-| ☐ | `qmd` | 2.5.3 | mini cli search engine for your docs, knowledge bases, meeting notes, whatever. Tracking current sota approaches while being all local |
+| ✅ | `qmd` | 2.5.3 | mini cli search engine for your docs, knowledge bases, meeting notes, whatever. Tracking current sota approaches while being all local |
 | ☐ | `qoder-cli †` | 1.0.40 | Qoder AI CLI tool - Terminal-based AI assistant for code development |
 | ☐ | `qwen-code` | 0.19.8 | Command-line AI workflow tool for Qwen3-Coder models |
 | ☐ | `ralph-tui` | 0.12.0 | AI Agent Loop Orchestrator TUI |

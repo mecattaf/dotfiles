@@ -15,31 +15,36 @@ let
   dots = "${repoDir}/home";
   link = path: config.lib.file.mkOutOfStoreSymlink "${dots}/${path}";
 
-  # Maximalist llm-agents.nix install. `pkgs.llm-agents` (from the flake input's
-  # overlay) is the entire ~100-agent catalog, prebuilt against upstream's own
-  # nixpkgs. We install EVERY buildable member rather than hand-listing names —
-  # so agents added upstream appear automatically on the next `nix flake update
-  # llm-agents`. Two hazards handled here:
-  #   1. Many members ship the same binary name (bin/claude, bin/code, ...) and
-  #      buildEnv would abort on the clash → ignoreCollisions (first path wins).
-  #   2. `alreadyInstalled` names are dropped because we install our own build of
-  #      them at top level (below), and profile-level file collisions are hard
-  #      errors — e.g. our bespoke pkgs/backlog-md.nix vs llm-agents.backlog-md.
-  # `meta.available` filtering skips broken / wrong-platform / disallowed members
-  # (wrapped in tryEval since evaluating meta can itself throw). claude-code now
-  # comes FROM this set, so the standalone entry is gone from home.packages.
-  alreadyInstalled = [ "backlog-md" ];
-  # `pkgs.llm-agents.flake-inputs` is a passthru MANIFEST derivation (a single
-  # file, not a package tree). It's a derivation with meta.available, so it slips
-  # past the isDerivation filter below — but buildEnv can only merge directory
-  # outputs and aborts on a file ("... is a file and can't be merged into an
-  # environment"). It's the only non-package attr in the ~139-member set. Drop it.
-  nonPackages = [ "flake-inputs" ];
-  llmAgentsAll = pkgs.buildEnv {
-    name = "llm-agents-all";
+  # Curated llm-agents.nix install. `pkgs.llm-agents` (from the flake input's
+  # overlay) is the entire ~139-agent catalog, prebuilt against upstream's own
+  # nixpkgs. The maximalist "install every buildable member" sweep (see
+  # docs/llm-agents-catalog.md) surfaced a lot we neither want nor need on the
+  # desktop, so we've pruned to an explicit ALLOWLIST — only these names are
+  # pulled from the catalog. Adding an agent is now a deliberate edit here, and
+  # agents upstream adds no longer land automatically on `nix flake update`.
+  #
+  # backlog-md is DELIBERATELY absent from this list: we build our own at top
+  # level (pkgs/backlog-md.nix, bin/backlog) and pulling it from the catalog too
+  # would double-load and collide on the same binary. One source only.
+  #
+  # `meta.available` filtering (wrapped in tryEval, since evaluating meta can
+  # itself throw) skips any keeper that's broken / wrong-platform on this host.
+  # claude-code comes FROM this set, so it has no standalone home.packages entry.
+  keepFromLlmAgents = [
+    "claude-code"
+    "ccusage"
+    "ck"
+    "claude-agent-acp"
+    "qmd"
+    "pi"
+  ];
+  llmAgentsSelected = pkgs.buildEnv {
+    name = "llm-agents-selected";
+    # Curated set is small, but a couple of members still share share/ paths;
+    # keep ignoreCollisions so the profile merges deterministically (first wins).
     ignoreCollisions = true;
     paths = lib.pipe pkgs.llm-agents [
-      (lib.filterAttrs (n: _: !(builtins.elem n (alreadyInstalled ++ nonPackages))))
+      (lib.filterAttrs (n: _: builtins.elem n keepFromLlmAgents))
       (lib.filterAttrs (
         _: v: (builtins.tryEval (lib.isDerivation v && (v.meta.available or true))).value
       ))
@@ -380,12 +385,13 @@ in
     zmx
     kitty
 
-    # agent / dev tooling. The whole llm-agents.nix catalog (claude-code, codex,
-    # gemini-cli, opencode, crush, goose, amp, ...) lands via llmAgentsAll — see
-    # the buildEnv in the `let` block above. claude-code comes from there now
-    # (newest, decoupled from nixpkgs); creds still seed via modules/secrets.nix,
-    # and DISABLE_UPDATES=1 keeps the native updater from clobbering ~/.local/bin.
-    llmAgentsAll
+    # agent / dev tooling. A curated slice of the llm-agents.nix catalog
+    # (claude-code, ccusage, ck, claude-agent-acp, qmd, pi) lands via
+    # llmAgentsSelected — see the allowlist buildEnv in the `let` block above.
+    # claude-code comes from there (newest, decoupled from nixpkgs); creds still
+    # seed via modules/secrets.nix, and DISABLE_UPDATES=1 keeps the native
+    # updater from clobbering ~/.local/bin.
+    llmAgentsSelected
     gh
     google-cloud-sdk
     gws # Google Workspace CLI (Gmail/Calendar/Drive/Sheets/Docs/...), Discovery-doc-backed
