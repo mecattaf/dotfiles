@@ -24,7 +24,11 @@ if test (hostname) != "coordinator"
         end
         kitty @ set-window-title "remote"
         # `zmx attach` creates the session if it doesn't exist, so no pre-create.
-        kitten ssh coordinator -t zmx attach $session fish
+        # bash -lc + explicit ZMX_DIR pins the coordinator's canonical socket
+        # dir (see conf.d/zmx.fish) — the raw kitten-ssh env lacks
+        # XDG_RUNTIME_DIR while login shells have it, which used to split
+        # sessions across two socket dirs.
+        kitten ssh coordinator -t 'bash -lc "ZMX_DIR=/tmp/zmx-$(id -u) zmx attach '$session' fish"'
         kitty @ set-window-title
     end
 
@@ -33,11 +37,35 @@ if test (hostname) != "coordinator"
         # live sessions over ssh, fzf-pick one locally (snappier than a remote
         # picker), then attach over kitten ssh.
         kitty @ set-window-title "remote"
-        # login shell (bash -lc) so the home-manager nix profile (where zmx
-        # lives) is on PATH; a bare `ssh host zmx …` runs non-login and may not
-        # find it. Plain ssh (no -t) keeps the list clean for fzf.
-        set session (ssh coordinator 'bash -lc "zmx list --short"' | fzf --prompt='attach> ' --no-sort)
-        test -n "$session"; and kitten ssh coordinator -t zmx attach $session fish
+        # zmx-annotate (repo-owned ~/.local/bin, on the coordinator) emits
+        # `name\t<flm-title · ~dir · age · attached|dormant>` per session —
+        # the same annotated list zmx-resume shows locally, so both devices
+        # see identical pickers. fzf shows only the display field; we attach
+        # by field 1. login shell (bash -lc) so the home-manager profile
+        # (zmx) and ~/.local/bin (zmx-annotate) are on PATH; a bare
+        # `ssh host …` runs non-login and may not find them. Plain ssh (no
+        # -t) keeps the list clean for fzf.
+        set lines (ssh coordinator 'bash -lc "zmx-annotate"' 2>/dev/null)
+        # Fallback for a coordinator that predates zmx-annotate: plain name
+        # list (ZMX_DIR pinned — see conf.d/zmx.fish), duplicated into both
+        # fields so the same fzf still renders.
+        if test -z "$lines"
+            set lines (ssh coordinator 'bash -lc "ZMX_DIR=/tmp/zmx-$(id -u) zmx list --short"' | awk '{printf "%s\t%s\n", $0, $0}')
+        end
+        set line (printf '%s\n' $lines | fzf --prompt='attach> ' --no-sort --delimiter='\t' --with-nth='2..')
+        if test -n "$line"
+            set parts (string split \t -- $line)
+            set session $parts[1]
+            # Carry the flm title into this window's identity (cosmetic; the
+            # session name is untouched). Keep the "remote" prefix so the
+            # (currently disabled) white-border rule in window-rules.kdl —
+            # an unanchored regex on "remote" — still matches if re-enabled.
+            if test (count $parts) -ge 2
+                set title (string split ' · ' -- $parts[2])[1]
+                test -n "$title"; and kitty @ set-window-title "remote: $title"
+            end
+            kitten ssh coordinator -t 'bash -lc "ZMX_DIR=/tmp/zmx-$(id -u) zmx attach '$session' fish"'
+        end
         kitty @ set-window-title
     end
 end
