@@ -1,0 +1,333 @@
+#!/usr/bin/env python3
+"""Resume builder: constrained markdown -> HTML -> PDF (via headless Chrome).
+
+Replicates the look of the hand-maintained docx resume (Garamond, small-caps
+ruled section heads, right-aligned dates) without the docx. All metrics were
+extracted from the original file: US Letter, 0.5in margins (0.4in bottom),
+11pt body, 15pt name, 12pt section heads, line-height 1.125 (Word "single"
+for this font, from its hhea table), 0.25in hanging bullets, link #0563c1.
+
+Usage:
+    resume-pdf INPUT.md [-o OUTPUT.pdf] [--keep-html]
+
+Markdown grammar (see the resume-builder skill, ~/.claude-main/skills/resume-builder/SKILL.md):
+    # NAME                          -> centered small-caps title
+    first plain line                -> centered contact line, split on " | "
+    ## SECTION                      -> ruled small-caps section heading
+    **Company,** City -- DateRange  -> entry header, date right-aligned
+    *Role*                          -> italic role line
+    *Role* -- DateRange             -> role line with right-aligned date
+    - bullet / (2 spaces)- bullet   -> level 1 / level 2 bullets
+    anything else                   -> plain paragraph
+    inline: **b**  *i*  __u__  [text](url)
+    (the -- above is an em dash surrounded by spaces)
+HTML comments are stripped. Trailing "(...)" in a date renders at 10pt.
+"""
+
+import argparse
+import html
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+def _find_fonts():
+    """Fonts live in dot_local/share/resume-builder/fonts, a sibling of bin/.
+
+    ~/.local/bin is an out-of-store symlink into the dotfiles repo, so
+    resolving this script's own path lands next to the share/ tree in both
+    the deployed and in-repo cases. Env var wins for ad-hoc overrides.
+    """
+    candidates = [
+        os.environ.get("RESUME_PDF_FONTS"),
+        Path(__file__).resolve().parent.parent / "share" / "resume-builder" / "fonts",
+        Path.home() / ".local" / "share" / "resume-builder" / "fonts",
+    ]
+    for c in candidates:
+        if c and Path(c).is_dir():
+            return Path(c)
+    sys.exit("error: font dir not found (looked for share/resume-builder/fonts; "
+             "set RESUME_PDF_FONTS to override)")
+
+
+FONT_DIR = _find_fonts()
+
+EMDASH_SEP = " — "  # " — " : splits left part from right-aligned date
+
+CSS = """
+@font-face {{ font-family: Garamond; src: url("{fonts}/Garamond-regular.ttf"); }}
+@font-face {{ font-family: Garamond; font-weight: bold; src: url("{fonts}/Garamond-bold.ttf"); }}
+@font-face {{ font-family: Garamond; font-style: italic; src: url("{fonts}/Garamond-italic.ttf"); }}
+@font-face {{ font-family: Garamond; font-weight: bold; font-style: italic;
+             src: url("{fonts}/Garamond-boldItalic.ttf"); }}
+@font-face {{ font-family: "Noto Sans Symbols"; src: url("{fonts}/NotoSansSymbols-regular.ttf"); }}
+
+@page {{ size: Letter; margin: 0.5in 0.5in 0.4in 0.5in; }}
+
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+
+body {{
+  font-family: Garamond, serif;
+  font-size: 11pt;
+  line-height: 1.125;
+  color: #000;
+}}
+
+/* one blank 11pt line, as the docx used between entries */
+:root {{ --gap: 12.375pt; }}
+
+a {{ color: #0563c1; text-decoration: underline; }}
+sup {{ font-size: 0.62em; vertical-align: super; line-height: 0; }}
+.small {{ font-size: 10pt; }}
+
+header {{ text-align: center; }}
+h1 {{
+  font-size: 15pt;
+  font-weight: bold;
+  font-variant-caps: small-caps;
+}}
+.contact {{ font-size: 10pt; }}
+.contact .sep {{ font-weight: bold; font-size: 11pt; }}
+
+h2 {{
+  font-size: 12pt;
+  font-weight: bold;
+  font-variant-caps: small-caps;
+  border-bottom: 0.75pt solid #000;
+  padding-bottom: 1pt;
+  margin-top: var(--gap);
+}}
+
+.entry {{ margin-top: var(--gap); }}
+h2 + .entry {{ margin-top: 0; }}
+
+.line {{ display: flex; justify-content: space-between; align-items: baseline; }}
+.line .right {{ white-space: nowrap; padding-left: 1em; }}
+/* italics come from the markdown *...* markers, not the .role class,
+   so mixed lines like "*Degree,* GPA: 3.86/4.0" keep GPA roman */
+
+/* Hanging bullets stay in normal flow on purpose: positioned elements (and
+   floats) are painted by Chrome in a separate pass, which scrambles the PDF
+   text layer that ATS parsers read. Do not reintroduce position/float here. */
+ul {{ list-style: none; }}
+li {{ padding-left: 0.25in; text-indent: -0.25in; }}
+li::before {{
+  content: "\\25CF";  /* ● */
+  font-family: "Noto Sans Symbols";
+  display: inline-block;
+  width: 0.25in;
+  text-indent: 0;
+}}
+li.l2 {{ margin-left: 0.5in; }}
+li.l2::before {{ content: "o"; font-family: "Courier New", monospace; }}
+
+p {{ margin: 0; }}
+"""
+
+HTML_PAGE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{title}</title>
+<style>{css}</style>
+</head>
+<body>
+{body}
+</body>
+</html>
+"""
+
+
+def _emphasis(text):
+    text = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"__([^_]+)__", r"<u>\1</u>", text)
+    text = re.sub(r"\*([^*]+)\*", r"<i>\1</i>", text)
+    return text
+
+
+def inline(text):
+    """Escape HTML, then render the inline markdown subset.
+
+    Links are rendered first and stashed behind placeholder tokens so the
+    emphasis regexes can never touch a URL (underscores and asterisks are
+    common in real hrefs and must pass through byte-for-byte).
+    """
+    text = html.escape(text, quote=False)
+    stash = []
+
+    def link(m):
+        label, url = m.group(1), m.group(2)
+        stash.append(f'<a href="{html.escape(url, quote=True)}">{_emphasis(label)}</a>')
+        return f"\x00{len(stash) - 1}\x01"
+
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", link, text)
+    text = _emphasis(text)
+    for i, anchor in enumerate(stash):
+        text = text.replace(f"\x00{i}\x01", anchor)
+    return text
+
+
+def date_html(date):
+    """Render a date range; a trailing parenthetical drops to 10pt."""
+    m = re.match(r"^(.*?)(\([^()]*\))$", date.strip())
+    if m and m.group(1):
+        return inline(m.group(1)) + '<span class="small">' + inline(m.group(2)) + "</span>"
+    return inline(date.strip())
+
+
+def split_date(line):
+    """Split on the LAST ' <emdash> ' -> (left, date) or (line, None)."""
+    if EMDASH_SEP in line:
+        left, date = line.rsplit(EMDASH_SEP, 1)
+        return left, date
+    return line, None
+
+
+def contact_html(line):
+    line = re.sub(r"(\d)(st|nd|rd|th)\b", r"\1<<SUP>>\2<</SUP>>", line)
+    parts = [inline(p.strip()) for p in line.split(" | ")]
+    joined = ' <span class="sep">|</span> '.join(parts)
+    return joined.replace("&lt;&lt;SUP&gt;&gt;", "<sup>").replace("&lt;&lt;/SUP&gt;&gt;", "</sup>")
+
+
+def parse(md):
+    """Parse the constrained markdown into (name, contact, sections)."""
+    md = re.sub(r"<!--.*?-->", "", md, flags=re.S)
+    name = contact = None
+    sections = []   # [{title, blocks}] ; block = ('entry', lines) with grouped bullets
+    entry = None    # current entry: list of ('head'|'role'|'para', html) / ('ul', [(lvl, html)])
+
+    def close_entry():
+        nonlocal entry
+        if entry:
+            sections[-1]["entries"].append(entry)
+            entry = None
+
+    for raw in md.splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+        if not stripped:
+            close_entry()
+            continue
+
+        if stripped.startswith("## "):
+            close_entry()
+            sections.append({"title": stripped[3:].strip(), "entries": []})
+            continue
+        if stripped.startswith("# "):
+            name = stripped[2:].strip()
+            continue
+        if name is not None and contact is None and not sections:
+            contact = stripped
+            continue
+        if not sections:
+            print(f"warning: text before first section ignored: {stripped[:60]!r}", file=sys.stderr)
+            continue
+
+        m = re.match(r"^(\s*)- (.*)$", line)
+        if m:
+            lvl = 2 if len(m.group(1)) >= 2 else 1
+            if entry is None:
+                entry = []
+            if not entry or entry[-1][0] != "ul":
+                entry.append(("ul", []))
+            entry[-1][1].append((lvl, inline(m.group(2))))
+            continue
+
+        if entry is None:
+            entry = []
+        left, date = split_date(stripped)
+        if stripped.startswith("**"):
+            entry.append(("head", inline(left), date_html(date) if date else None))
+        elif stripped.startswith("*"):
+            entry.append(("role", inline(left), date_html(date) if date else None))
+        else:
+            entry.append(("para", inline(stripped), None))
+
+    close_entry()
+    if not name or not sections:
+        sys.exit("error: input needs a '# NAME' line and at least one '## SECTION'")
+    return name, contact, sections
+
+
+def render(name, contact, sections):
+    out = ["<header>", f"<h1>{inline(name)}</h1>"]
+    if contact:
+        out.append(f'<div class="contact">{contact_html(contact)}</div>')
+    out.append("</header>")
+
+    for sec in sections:
+        out.append(f"<section><h2>{inline(sec['title'])}</h2>")
+        for entry in sec["entries"]:
+            out.append('<div class="entry">')
+            for block in entry:
+                kind = block[0]
+                if kind == "ul":
+                    out.append("<ul>")
+                    for lvl, text in block[1]:
+                        cls = ' class="l2"' if lvl == 2 else ""
+                        out.append(f"<li{cls}>{text}</li>")
+                    out.append("</ul>")
+                else:
+                    text, date = block[1], block[2]
+                    cls = "line role" if kind == "role" else ("line" if kind == "head" else "")
+                    if kind == "para":
+                        out.append(f"<p>{text}</p>")
+                    elif date:
+                        out.append(f'<div class="{cls}"><span>{text}</span>'
+                                   f'<span class="right">{date}</span></div>')
+                    else:
+                        out.append(f'<div class="{cls}"><span>{text}</span></div>')
+            out.append("</div>")
+        out.append("</section>")
+    return "\n".join(out)
+
+
+def find_chrome():
+    for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser"):
+        path = shutil.which(name)
+        if path:
+            return path
+    sys.exit("error: no Chrome/Chromium found on PATH")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("input", type=Path, help="resume markdown file")
+    ap.add_argument("-o", "--output", type=Path, help="output PDF (default: input with .pdf)")
+    ap.add_argument("--keep-html", action="store_true", help="write the .html next to the .pdf")
+    args = ap.parse_args()
+
+    out_pdf = args.output or args.input.with_suffix(".pdf")
+    out_pdf.parent.mkdir(parents=True, exist_ok=True)
+    name, contact, sections = parse(args.input.read_text(encoding="utf-8"))
+    body = render(name, contact, sections)
+    page = HTML_PAGE.format(title=name, css=CSS.format(fonts=FONT_DIR.as_uri()), body=body)
+
+    if args.keep_html:
+        html_path = out_pdf.with_suffix(".html")
+        html_path.write_text(page, encoding="utf-8")
+    else:
+        tmp = tempfile.NamedTemporaryFile(suffix=".html", delete=False, mode="w", encoding="utf-8")
+        tmp.write(page)
+        tmp.close()
+        html_path = Path(tmp.name)
+
+    chrome = find_chrome()
+    res = subprocess.run(
+        [chrome, "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
+         f"--print-to-pdf={out_pdf}", html_path.as_uri()],
+        capture_output=True, text=True)
+    if not args.keep_html:
+        html_path.unlink(missing_ok=True)
+    if res.returncode != 0 or not out_pdf.exists():
+        sys.exit(f"error: chrome pdf export failed:\n{res.stderr}")
+    print(f"wrote {out_pdf}")
+
+
+if __name__ == "__main__":
+    main()
