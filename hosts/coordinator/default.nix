@@ -1,9 +1,11 @@
 { inputs, ... }:
 # coordinator — AMD Strix Halo (gfx1151), the main device. Freebox wifi uplink +
-# directly-attached NAS (uplink-nas.nix) and rootless quadlets (services.nix:
-# immich/navidrome + sodimo demos, gated on mySecrets). DNS ad/tracker filtering
-# is per-box now (../../modules/adguardhome.nix, a loopback resolver) — the old
-# LAN-serving AdGuard quadlet went with the retired BE550 router (2026-07-13).
+# directly-attached NAS (uplink-nas.nix) and the native media services
+# (services.nix: services.immich + services.navidrome, on /mnt/nas). DNS
+# ad/tracker filtering is per-box (../../modules/adguardhome.nix, a loopback
+# resolver). The old rootless podman quadlet stack — AdGuard, Immich, Navidrome —
+# was retired 2026-07-13 (AdGuard with the BE550 router; Immich/Navidrome moved
+# to native modules), leaving this host container-free.
 {
   imports = [
     ./hardware.nix

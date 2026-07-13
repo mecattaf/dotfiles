@@ -58,14 +58,13 @@ in
 
   # --- coordinator-only tier (quadlet service creds; worker deliberately excluded) ---
   # (cloudflare-tunnel + twenty/openwebui slots removed 2026-07-05 — deprecated per Tom.
-  # nas-credentials stays as the option for BE550 Secure Sharing, unused while the
-  # share is guest-mode; moot entirely once the LaCie attaches directly via USB.)
+  # immich-db removed 2026-07-13: services.immich now uses a unix-socket postgres
+  # with peer auth, so no DB password secret is needed. nas-credentials removed
+  # with the BE550 (SMB share retired for the direct-USB LaCie).)
   # atticd RS256 JWT signing secret — the fleet binary-cache server runs on the
   # coordinator only (hosts/coordinator/attic.nix), so only it may decrypt (#42).
   "secrets/atticd-server-token.age".publicKeys = editors ++ coordinatorOnly;
 
-  "secrets/immich-db.age".publicKeys = editors ++ coordinatorOnly;
-  "secrets/nas-credentials.age".publicKeys = editors ++ coordinatorOnly;
   "secrets/navidrome-credentials.age".publicKeys = editors ++ coordinatorOnly;
 
   # Operator CLI credentials (Tom's ruling: the coordinator is the fleet's only

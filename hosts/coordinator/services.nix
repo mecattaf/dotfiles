@@ -1,70 +1,90 @@
 { config, lib, ... }:
-# The coordinator's containerised services, as ROOTLESS podman quadlets
-# (ported 2026-07-05 from tom's live ~/.config/containers/systemd on harness).
+# The coordinator's media services — Immich (photos) and Navidrome (music) — as
+# NATIVE NixOS modules. Migrated 2026-07-13 from the rootless podman quadlets
+# they were ported to on 2026-07-05 (see git history for the old .container
+# stack). This removes the last containers from the coordinator entirely: no
+# podman network, no aardvark DNS workaround, no user lingering for quadlets,
+# and updates now ride the one fleet flake-rebuild path instead of a second
+# AutoUpdate=registry mechanism.
 #
-# Delivery: /etc/containers/systemd/users/1000/ — podman's system-wide user
-# quadlet dir — instead of home/dot_config, so the stack stays coordinator-only
-# (home-manager's config tree deploys to EVERY host). tom lingers, so
-# default.target units start at boot without a login.
+# LaCie access — the crux. Both libraries live on the directly-attached LaCie
+# USB NAS at /mnt/nas (see uplink-nas.nix), which is ntfs3-mounted with EVERY
+# file forced to uid=1000/gid=100 and the on-disk dirs at 0755 (owner-write
+# only). So both services run as tom:users — uid 1000 is the only identity that
+# can write the library, and it owns every file on the mount by construction.
+# The native modules assume a local mediaLocation and add no mount ordering, so
+# each unit gets RequiresMountsFor=/mnt/nas to fire the x-systemd.automount
+# before the service (and, for navidrome, before its sandbox bind-mounts the
+# music folder read-only). A future ext4 reformat of the LaCie (parked GH issue)
+# would restore normal POSIX ownership and let these move to dedicated system
+# users — revisit user/group then.
 #
-#   auto-started — immich (+pg/redis/ml), navidrome.
-#   (twenty / openwebui / cloudflare-tunnel: DEPRECATED per Tom 2026-07-05,
-#   deliberately not ported. adguard: RETIRED with the BE550 router 2026-07-13 —
-#   DNS filtering is now per-box in modules/adguardhome.nix, not a LAN quadlet.)
+# No secrets: services.immich provisions its own postgresql over a unix socket
+# (peer auth, database.host=/run/postgresql), so the module's assertion is
+# satisfied WITHOUT a password file and the old immich-db.age secret is retired.
+# services.immich also subsumes the redis + machine-learning sidecars natively.
+# The navidrome-credentials secret is unrelated to the server — it is consumed
+# client-side by the cliamp fish function — and is still delivered below, gated
+# on mySecrets.
 #
-# Secrets arrive via agenix (owner tom so the user manager can read them):
-# /run/agenix/immich-db and /run/agenix/navidrome-credentials. The quadlet
-# files and cliamp shell wrapper reference those paths, so the stack needs
-# mySecrets.enable — gate everything on it.
-#
-# DATA: named volumes live in ~/.local/share/containers/storage/volumes and
-# ALL regenerate from scratch — immich never held data (Tom, 2026-07-05); it
-# starts fresh with the random DB password in immich-db.age and its photo
-# library is the drive's photos folder bind (/mnt/nas/photos).
-let
-  quadletFiles = [
-    "immich.network"
-    "immich-server.container"
-    "immich-postgres.container"
-    "immich-redis.container"
-    "immich-ml.container"
-    "navidrome.container"
-  ];
-in
+# Reachability: both bind 0.0.0.0, but the firewall opens their ports ONLY on
+# tailscale0 (same trust model as wayvnc:5900), so they are reachable across the
+# tailnet — e.g. Tom's phone — but never the raw LAN/wifi. This restores the
+# phone access that went away with the retired BE550 LAN segment.
 {
-  config = lib.mkIf config.mySecrets.enable {
-    age.secrets.immich-db = {
-      file = ../../secrets/immich-db.age;
-      owner = "tom";
-      group = "users";
-      mode = "400";
+  services.immich = {
+    enable = true;
+    mediaLocation = "/mnt/nas/photos";
+    host = "0.0.0.0"; # tailnet-reachable; firewall below scopes it to tailscale0
+    port = 2283;
+    user = "tom";
+    group = "users";
+    # The postgres it provisions is reached over a unix socket with PEER auth,
+    # which maps the OS user to a same-named DB role — so the DB role must be
+    # "tom" too. And the module's ensureDBOwnership couples the role name to the
+    # database name, so the DB is named "tom" as well. (Immich doesn't care what
+    # the database is called; it just needs to own it.) This is the price of
+    # running as tom, which we must do for LaCie write access — see header.
+    database.user = "tom";
+    database.name = "tom";
+    # machine-learning stays enabled (module default) for face/object search.
+  };
+  # The LaCie is an x-systemd.automount; pull the real mount in before the server
+  # touches mediaLocation (uses the .automount, so the drive still spins down).
+  systemd.services.immich-server.unitConfig.RequiresMountsFor = [ "/mnt/nas" ];
+
+  services.navidrome = {
+    enable = true;
+    user = "tom";
+    group = "users";
+    settings = {
+      MusicFolder = "/mnt/nas/music";
+      Address = "0.0.0.0"; # tailnet-reachable; scoped to tailscale0 by firewall
+      Port = 4533;
+      # @daily, not hourly: an hourly rescan walks /music and wakes the LaCie
+      # from standby (hd-idle parks it after 20 min — see uplink-nas.nix),
+      # defeating the power-down suite. New media appears after the nightly scan
+      # or a manual "Scan" in the UI.
+      ScanSchedule = "@daily";
+      LogLevel = "info";
+      # 0.62.0+ rejects unit-less durations ("missing unit in duration").
+      SessionTimeout = "168h";
+      AutoImportPlaylists = true;
     };
+  };
+  systemd.services.navidrome.unitConfig.RequiresMountsFor = [ "/mnt/nas" ];
 
-    # navidrome admin credentials — sourced by cliamp at launch via
-    # `set -a && source /run/agenix/navidrome-credentials && set +a`.
-    # Format: NAVIDROME_USER=… / NAVIDROME_PASSWORD=… (env file).
-    age.secrets.navidrome-credentials = {
-      file = ../../secrets/navidrome-credentials.age;
-      owner = "tom";
-      group = "users";
-      mode = "400";
-    };
+  # Immich (2283) + Navidrome (4533) reachable across the tailnet ONLY. Merges
+  # with the tailscale0 ports declared in default.nix (asr) and common.nix (vnc).
+  networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 2283 4533 ];
 
-    environment.etc = lib.listToAttrs (map (f: {
-      name = "containers/systemd/users/1000/${f}";
-      value.source = ./quadlets/${f};
-    }) quadletFiles);
-
-    # Keep aardvark-dns (rootless container DNS) off port 53. Originally forced
-    # because the retired adguard quadlet published 53:53 and netavark's hostport
-    # DNAT (`udp dport 53 dnat ip to <adguard>`) hijacked container DNS, killing
-    # immich-server with EAI_AGAIN on immich-postgres (found 2026-07-06). AdGuard
-    # is gone (2026-07-13) so the DNAT no longer exists, but moving aardvark to
-    # 10053 is harmless and keeps container DNS clear of anything else on :53.
-    virtualisation.containers.containersConf.settings.network.dns_bind_port = 10053;
-
-    # Quadlet's user generator only runs for logged-in/lingering users; tom
-    # lingers so adguard/immich/navidrome come up at boot, headless.
-    users.users.tom.linger = true;
+  # navidrome-credentials: NOT consumed by the navidrome server — read
+  # client-side by the cliamp fish function. Delivered here (owner tom) so cliamp
+  # can source it; still gated on mySecrets since it's an agenix secret.
+  age.secrets.navidrome-credentials = lib.mkIf config.mySecrets.enable {
+    file = ../../secrets/navidrome-credentials.age;
+    owner = "tom";
+    group = "users";
+    mode = "400";
   };
 }

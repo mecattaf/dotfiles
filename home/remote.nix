@@ -65,16 +65,20 @@ lib.mkIf (osConfig != null) {
     Install.WantedBy = [ "graphical-session.target" ];
   };
 
-  # wayvnc config + the Remmina mesh profiles. wayvnc runs with no auth — access is
-  # gated at the network layer (firewalled to the tailnet + the trusted Thunderbolt
-  # link; see modules/common.nix + modules/strix.nix). Remmina passwords are left
-  # blank on purpose — Remmina's per-user encryption key can't be reproduced
-  # declaratively, so the first connect prompts once and (if saved) stores it in
-  # gnome-keyring. Launch: `remmina -c ~/.config/remmina/<host>.remmina`.
-  xdg.configFile = lib.listToAttrs (map mkProfile others) // {
-    "wayvnc/config".text = ''
-      address=0.0.0.0
-      port=5900
-    '';
-  };
+  # wayvnc config. wayvnc runs with no auth — access is gated at the network layer
+  # (firewalled to the tailnet + the trusted Thunderbolt link; see modules/common.nix
+  # + modules/strix.nix).
+  xdg.configFile."wayvnc/config".text = ''
+    address=0.0.0.0
+    port=5900
+  '';
+
+  # Remmina mesh profiles. These are connection *data*, not app config — Remmina scans
+  # $XDG_DATA_HOME/remmina (~/.local/share/remmina) for .remmina files, while
+  # ~/.config/remmina only holds remmina.pref (app preferences). Putting these under
+  # xdg.configFile silently produces files Remmina's main window never lists. Remmina
+  # passwords are left blank on purpose — Remmina's per-user encryption key can't be
+  # reproduced declaratively, so the first connect prompts once and (if saved) stores
+  # it in gnome-keyring. Launch: `remmina -c ~/.local/share/remmina/<host>.remmina`.
+  xdg.dataFile = lib.listToAttrs (map mkProfile others);
 }
