@@ -226,6 +226,19 @@ in
         '';
       })
 
+      # navidrome-credentials: NOT consumed by the navidrome server (which runs
+      # coordinator-only, hosts/coordinator/services.nix) — read client-side by
+      # the cliamp fish function, on whichever box cliamp runs from. Delivered
+      # to coordinator + zenbook-duo, matching the recipient tier in secrets.nix.
+      (lib.mkIf (config.networking.hostName == "coordinator" || config.networking.hostName == "zenbook-duo") {
+        age.secrets.navidrome-credentials = {
+          file = ../secrets/navidrome-credentials.age;
+          owner = "tom";
+          group = "users";
+          mode = "400";
+        };
+      })
+
       # Coordinator's Freebox wifi uplink (wlp192s0) PSK — delivered as a root-owned
       # NetworkManager environment file that uplink-nas.nix's ensureProfiles reads
       # via `$FREEBOX_PSK`. Guarded on the ciphertext EXISTING so eval/activation

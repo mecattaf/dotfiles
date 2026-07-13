@@ -24,8 +24,8 @@
 # satisfied WITHOUT a password file and the old immich-db.age secret is retired.
 # services.immich also subsumes the redis + machine-learning sidecars natively.
 # The navidrome-credentials secret is unrelated to the server — it is consumed
-# client-side by the cliamp fish function — and is still delivered below, gated
-# on mySecrets.
+# client-side by the cliamp fish function — and is delivered in
+# modules/secrets.nix (coordinator + zenbook-duo both run cliamp).
 #
 # Reachability: both bind 0.0.0.0, but the firewall opens their ports ONLY on
 # tailscale0 (same trust model as wayvnc:5900), so they are reachable across the
@@ -78,13 +78,8 @@
   # with the tailscale0 ports declared in default.nix (asr) and common.nix (vnc).
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 2283 4533 ];
 
-  # navidrome-credentials: NOT consumed by the navidrome server — read
-  # client-side by the cliamp fish function. Delivered here (owner tom) so cliamp
-  # can source it; still gated on mySecrets since it's an agenix secret.
-  age.secrets.navidrome-credentials = lib.mkIf config.mySecrets.enable {
-    file = ../../secrets/navidrome-credentials.age;
-    owner = "tom";
-    group = "users";
-    mode = "400";
-  };
+  # navidrome-credentials delivery moved to modules/secrets.nix (2026-07-13):
+  # it's NOT consumed by the navidrome server here — only read client-side by
+  # the cliamp fish function — and cliamp now also runs from zenbook-duo, so a
+  # single host-agnostic block covers both recipients instead of duplicating it.
 }

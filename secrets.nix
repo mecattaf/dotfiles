@@ -65,7 +65,9 @@ in
   # coordinator only (hosts/coordinator/attic.nix), so only it may decrypt (#42).
   "secrets/atticd-server-token.age".publicKeys = editors ++ coordinatorOnly;
 
-  "secrets/navidrome-credentials.age".publicKeys = editors ++ coordinatorOnly;
+  # cliamp (client) needs this on both boxes it runs from — coordinator (where
+  # navidrome itself lives) and zenbook-duo (laptops tier).
+  "secrets/navidrome-credentials.age".publicKeys = editors ++ coordinatorOnly ++ laptops;
 
   # Operator CLI credentials (Tom's ruling: the coordinator is the fleet's only
   # authenticated operator box — gh + wrangler stay off the worker/laptops).

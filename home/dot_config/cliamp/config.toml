@@ -5,8 +5,24 @@ theme    = "catppuccin-noir"
 provider = "navidrome"
 
 [navidrome]
-url         = "http://localhost:4533"
+# Tailnet MagicDNS name, not localhost: this config is shared fleet-wide
+# (coordinator + zenbook-duo), and only the coordinator could reach localhost.
+url         = "http://coordinator.tail8dd1.ts.net:4533"
 user        = "${NAVIDROME_USER}"
 password    = "${NAVIDROME_PASSWORD}"
 browse_sort = "alphabeticalByName"
 scrobble    = true
+
+# SoundCloud: off by default upstream. yt-dlp-backed (no client_id/secret model —
+# SoundCloud closed OAuth signups in 2014). `user` swaps the curated genre browse
+# list for lemurisback's own Tracks/Likes/Reposts.
+[soundcloud]
+enabled = true
+user    = "lemurisback"
+
+# YouTube / YouTube Music: no config needed — works out of the box with cliamp's
+# built-in fallback OAuth client. Just select it in the provider browser (Esc/b).
+#
+# Bandcamp: no dedicated provider/config section exists in cliamp. It plays only
+# via direct yt-dlp URL handling — paste a bandcamp.com URL with `u` in the TUI,
+# or `cliamp https://artist.bandcamp.com/album/x` from the shell.
