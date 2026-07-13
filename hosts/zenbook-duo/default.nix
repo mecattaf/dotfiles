@@ -20,6 +20,9 @@
     # the result is cached (attic) so this weak laptop rarely compiles from source.
     # INERT until mySecrets.enable is flipped on below (needs the mesh SSH key).
     ../../modules/build-offload.nix
+    # Per-machine AdGuard Home DNS filter (loopback 127.0.0.1:53, resolved
+    # forwards to it). Same module proven on the worker first (2026-07-13).
+    ../../modules/adguardhome.nix
   ];
 
   networking.hostName = "zenbook-duo";

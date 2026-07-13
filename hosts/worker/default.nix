@@ -10,6 +10,11 @@
     ./gpu-cooldown.nix
     ../../modules/strix.nix
     ../../modules/microvm-host.nix
+    # Per-machine AdGuard Home DNS filter (loopback 127.0.0.1:53, resolved
+    # forwards to it). Proving ground for the fleet-wide rollout — enabled here
+    # FIRST because the worker is headless, so a DNS misstep can't lock Tom out
+    # of Claude Code. Coordinator + zenbook get the same import once proven.
+    ../../modules/adguardhome.nix
   ];
 
   networking.hostName = "worker";

@@ -1,13 +1,19 @@
 { inputs, ... }:
-# coordinator — AMD Strix Halo (gfx1151), the main device. Router plane
-# (router.nix: BE550 gateway/DHCP/DNS + NAS) and rootless quadlets
-# (services.nix: adguard/immich/navidrome + sodimo demos, gated on mySecrets).
+# coordinator — AMD Strix Halo (gfx1151), the main device. Freebox wifi uplink +
+# directly-attached NAS (uplink-nas.nix) and rootless quadlets (services.nix:
+# immich/navidrome + sodimo demos, gated on mySecrets). DNS ad/tracker filtering
+# is per-box now (../../modules/adguardhome.nix, a loopback resolver) — the old
+# LAN-serving AdGuard quadlet went with the retired BE550 router (2026-07-13).
 {
   imports = [
     ./hardware.nix
     ./disko.nix
-    ./router.nix
+    ./uplink-nas.nix
     ./services.nix
+    # Per-machine AdGuard Home DNS filter (loopback 127.0.0.1:53, resolved
+    # forwards to it). Proven on the worker first (2026-07-13) before landing on
+    # this main device. Same import on worker + zenbook-duo.
+    ../../modules/adguardhome.nix
     ./attic.nix # fleet binary-cache server (atticd over the tailscale mesh) — refs #42
     # Artifact serving plane: Caddy drop-dir + TTL reaper (publish-artifact
     # skill's tailnet rung). Coordinator = fleet front door; origins on worker.

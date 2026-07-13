@@ -7,9 +7,10 @@
 # (home-manager's config tree deploys to EVERY host). tom lingers, so
 # default.target units start at boot without a login.
 #
-#   auto-started — adguard (LAN DNS), immich (+pg/redis/ml), navidrome.
+#   auto-started — immich (+pg/redis/ml), navidrome.
 #   (twenty / openwebui / cloudflare-tunnel: DEPRECATED per Tom 2026-07-05,
-#   deliberately not ported.)
+#   deliberately not ported. adguard: RETIRED with the BE550 router 2026-07-13 —
+#   DNS filtering is now per-box in modules/adguardhome.nix, not a LAN quadlet.)
 #
 # Secrets arrive via agenix (owner tom so the user manager can read them):
 # /run/agenix/immich-db and /run/agenix/navidrome-credentials. The quadlet
@@ -22,11 +23,6 @@
 # library is the drive's photos folder bind (/mnt/nas/photos).
 let
   quadletFiles = [
-    "adguard.container"
-    "adguard.network"
-    "adguard-config.volume"
-    "adguard-work.volume"
-    "adguard-logs.volume"
     "immich.network"
     "immich-server.container"
     "immich-postgres.container"
@@ -59,11 +55,12 @@ in
       value.source = ./quadlets/${f};
     }) quadletFiles);
 
-    # adguard publishes 53:53, and netavark's rootless hostport DNAT
-    # (`udp dport 53 dnat ip to <adguard>`) hijacks the other networks'
-    # queries to aardvark-dns on <gateway>:53 — immich-server then dies with
-    # EAI_AGAIN on immich-postgres. Move aardvark off port 53; netavark
-    # DNATs container DNS to it before the hostport rules (found 2026-07-06).
+    # Keep aardvark-dns (rootless container DNS) off port 53. Originally forced
+    # because the retired adguard quadlet published 53:53 and netavark's hostport
+    # DNAT (`udp dport 53 dnat ip to <adguard>`) hijacked container DNS, killing
+    # immich-server with EAI_AGAIN on immich-postgres (found 2026-07-06). AdGuard
+    # is gone (2026-07-13) so the DNAT no longer exists, but moving aardvark to
+    # 10053 is harmless and keeps container DNS clear of anything else on :53.
     virtualisation.containers.containersConf.settings.network.dns_bind_port = 10053;
 
     # Quadlet's user generator only runs for logged-in/lingering users; tom
