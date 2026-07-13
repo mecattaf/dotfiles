@@ -227,13 +227,10 @@ in
       })
 
       # Coordinator's Freebox wifi uplink (wlp192s0) PSK — delivered as a root-owned
-      # NetworkManager environment file that router.nix's ensureProfiles reads via
-      # `$FREEBOX_PSK`. Guarded on the ciphertext EXISTING so eval/activation never
-      # break while secrets/wifi.age is still absent (it is NOT committed yet — the
-      # recipient ACL is in place but the encrypted PSK has to be minted from the
-      # live NM profile; see refs #37 and the blocker note). Once the operator
-      # commits secrets/wifi.age this delivery + the router.nix profile go live with
-      # no further code change.
+      # NetworkManager environment file that uplink-nas.nix's ensureProfiles reads
+      # via `$FREEBOX_PSK`. Guarded on the ciphertext EXISTING so eval/activation
+      # never break if secrets/wifi.age is ever absent; it is committed (since
+      # 2026-07-11, refs #37) so this delivery + the freebox-uplink profile are live.
       (lib.mkIf (config.networking.hostName == "coordinator" && builtins.pathExists ../secrets/wifi.age) {
         age.secrets.wifi.file = ../secrets/wifi.age;
       })
