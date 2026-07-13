@@ -196,7 +196,10 @@ def contact_html(line):
 
 def parse(md):
     """Parse the constrained markdown into (name, contact, sections)."""
-    md = re.sub(r"<!--.*?-->", "", md, flags=re.S)
+    # Replace comments with a marker so a line that was ONLY a comment can be
+    # dropped outright — stripping it to "" would read as a blank line, which
+    # splits entries and inserts a 12.4pt gap mid-list.
+    md = re.sub(r"<!--.*?-->", "\x00", md, flags=re.S)
     name = contact = None
     sections = []   # [{title, blocks}] ; block = ('entry', lines) with grouped bullets
     entry = None    # current entry: list of ('head'|'role'|'para', html) / ('ul', [(lvl, html)])
@@ -209,6 +212,10 @@ def parse(md):
 
     for raw in md.splitlines():
         line = raw.rstrip()
+        if "\x00" in line:
+            line = line.replace("\x00", "").rstrip()
+            if not line.strip():
+                continue  # comment-only line: drop, never treat as blank
         stripped = line.strip()
         if not stripped:
             close_entry()

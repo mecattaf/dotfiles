@@ -52,7 +52,9 @@ Rules the parser enforces / assumes:
   but has no date will mis-split — rephrase or use a hyphen there.
 - Blank lines separate entries (they become the 12.375pt gap). No blank line
   between a `##` heading and its first entry.
-- HTML comments `<!-- ... -->` are stripped — use them freely for draft notes.
+- HTML comments `<!-- ... -->` are stripped — use them freely for draft notes
+  and confirm-before-sending flags, on their own line or trailing a line. A
+  comment-only line does NOT count as a blank line (it won't split an entry).
 - Lines starting `**` = entry header; starting `*` = role line; `- ` = bullet;
   anything else = plain paragraph. There is no other structure.
 - A trailing parenthetical in a *date* (e.g. `(part-time)`) automatically
