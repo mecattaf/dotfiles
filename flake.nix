@@ -5,6 +5,27 @@
     # Unstable: Strix Halo (gfx1151) wants fresh kernels + Mesa.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
+    # nixpkgs-fresh — a second nixpkgs, tracking the SAME nixos-unstable branch, used
+    # ONLY to keep a handful of fast-moving user packages (currently just
+    # google-chrome, see overlays list below) current independent of the `nixpkgs`
+    # pin above. That pin is deliberately lagging — modules/auto-update.nix explains
+    # it's the only door kernel/Mesa churn enters through, bumped as a manual act.
+    # Browser point releases carry none of that risk, so they shouldn't have to wait
+    # on it.
+    #
+    # This input's OWN locked rev is never what actually builds: every real build
+    # (modules/auto-update.nix `system.autoUpgrade.flags`, hosts/worker/fleet-prebuild.nix)
+    # passes `--override-input nixpkgs-fresh github:NixOS/nixpkgs/nixos-unstable`,
+    # which re-resolves it to nixos-unstable HEAD at build time without writing
+    # anything to flake.lock — true "always latest" for just this input, no git-push
+    # automation or new credentials needed (only the coordinator holds a
+    # GitHub-authenticated `gh`; the worker, which builds nightly at 02:00, doesn't).
+    # Same decoupling trick the llm-agents.nix input comment describes for
+    # claude-code, inlined here instead of via a whole separate flake. A local build
+    # that omits the override flag just falls back to whatever's locked — bump it
+    # manually with `nix flake update nixpkgs-fresh` if that ever goes noticeably stale.
+    nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable";
+
     home-manager = {
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -152,6 +173,16 @@
           # offline under nixos-rebuild). Exposed as .default; pull it straight
           # onto the fleet-wide pkgs set.
           zmx = inputs.zmx.packages.${system}.default;
+        })
+        # Pin-decoupled "hot" packages — see the nixpkgs-fresh input comment above.
+        # Cherry-picked, not a wholesale pkgs swap: only packages named here track
+        # nixos-unstable HEAD independent of the main nixpkgs pin.
+        (_final: _prev: {
+          google-chrome =
+            (import inputs.nixpkgs-fresh {
+              inherit system;
+              config.allowUnfree = true;
+            }).google-chrome;
         })
       ];
 

@@ -19,7 +19,12 @@ let
     status=0
     for h in coordinator worker zenbook-duo; do
       echo "fleet-prebuild: building $h" >&2
+      # Same nixpkgs-fresh override as modules/auto-update.nix's autoUpgrade.flags —
+      # keeps the cache warmed with the SAME fresh-chrome build the 03:30/04:30/06:00
+      # switches will substitute, instead of each host resolving a slightly different
+      # nixos-unstable HEAD and rebuilding from source.
       if out="$(${config.nix.package}/bin/nix build --refresh --no-link --print-out-paths \
+            --override-input nixpkgs-fresh github:NixOS/nixpkgs/nixos-unstable \
             "${flakeRef}#nixosConfigurations.$h.config.system.build.toplevel")"; then
         ${pkgs.attic-client}/bin/attic push fleet $out >&2 || status=1
       else

@@ -72,6 +72,15 @@ in
     flake = "github:mecattaf/dotfiles/main";
     operation = "switch"; # live activation — no reboot except kernel/initrd changes.
     upgrade = false; # `--upgrade` is channel machinery; meaningless in flake mode.
+    # Re-resolve nixpkgs-fresh to nixos-unstable HEAD on every run (flake.nix input
+    # comment) — the "hot" overlay packages (google-chrome) get whatever's newest
+    # each night, without a flake.lock bump touching the deliberately-lagging main
+    # nixpkgs pin.
+    flags = [
+      "--override-input"
+      "nixpkgs-fresh"
+      "github:NixOS/nixpkgs/nixos-unstable"
+    ];
     dates = policy.dates;
     persistent = true; # laptop asleep/off at its time → fires on next wake/boot.
     randomizedDelaySec = "0"; # the stagger above is deliberate; jitter would defeat it.
