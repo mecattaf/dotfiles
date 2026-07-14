@@ -50,7 +50,7 @@ if test (hostname) != "coordinator"
         # list (ZMX_DIR pinned — see conf.d/zmx.fish), duplicated into both
         # fields so the same fzf still renders.
         if test -z "$lines"
-            set lines (ssh coordinator 'bash -lc "ZMX_DIR=/tmp/zmx-$(id -u) zmx list --short"' | awk '{printf "%s\t%s\n", $0, $0}')
+            set lines (ssh coordinator 'bash -lc "ZMX_DIR=/tmp/zmx-$(id -u) zmx list --short"' | awk '!/^annex-/{printf "%s\t%s\n", $0, $0}')
         end
         set line (printf '%s\n' $lines | fzf --prompt='attach> ' --no-sort --delimiter='\t' --with-nth='2..')
         if test -n "$line"

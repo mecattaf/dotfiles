@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# annex-cmd — the shared substrate for both kitty "annex" mechanisms
+# (Ctrl+B sidebar picker, Ctrl+G composer). One script owns:
+#   * the ZMX_DIR pin (one session universe, see zmx-annotate header),
+#   * the hidden-name convention (`annex-*` = hidden modal split; `term-*` =
+#     visible roamable window),
+#   * the coordinator-vs-thin-client host branch (the ONLY place it lives —
+#     copied from new-terminal / conf.d/remote.fish's `desk`),
+#   * idempotent reaping of the one leak path (dotfiles#33).
+#
+# Both keybinds call this; neither re-implements host-awareness. A zmx session
+# self-reaps when its foreground command exits (verified), so `exec`ing nvim
+# self-terminates the annex on :wq/:qa for free (ruling 1.2). The only leak is
+# the split being force-closed while server-side nvim still runs — `kill`
+# handles that, and is a safe no-op after a self-reap.
+#
+# Subcommands:
+#   annex-cmd name <prefix>          -> "<prefix>-<HHMMSS>-<6hex>" (self-contained)
+#   annex-cmd exec <session> <cmd..> -> zmx attach the payload (host-aware)
+#   annex-cmd kill <session>         -> host-aware, idempotent reap
+set -u
+
+# One session universe regardless of entry path. zmx falls back to
+# /tmp/zmx-$UID only when XDG_RUNTIME_DIR is unset (true inside kitten-ssh
+# attach env, false in login shells) — pin it so local and remote agree.
+export ZMX_DIR="${ZMX_DIR:-/tmp/zmx-$(id -u)}"
+
+cmd="${1:-}"
+shift 2>/dev/null || true
+
+case "$cmd" in
+    name)
+        # Self-contained, unique per invocation (mirrors new-terminal 76-80):
+        # prefix + wallclock + 6 hex from the kernel RNG. No flm, no network,
+        # no blocking call — safe in the interactive launch path.
+        prefix="${1:-annex}"
+        rand="$(cut -c1-6 /proc/sys/kernel/random/uuid 2>/dev/null || printf '%s' "$$")"
+        printf '%s-%s-%s\n' "$prefix" "$(date +%H%M%S)" "$rand"
+        ;;
+
+    exec)
+        sess="${1:?annex-cmd exec: session name required}"
+        shift
+        if [[ "$(hostname)" == "coordinator" ]]; then
+            # Local: run the payload directly. zmx attach creates if missing and
+            # self-reaps when the foreground command (nvim) exits.
+            exec zmx attach "$sess" "$@"
+        fi
+        # Thin-client (worker / zenbook): reach the coordinator over the same
+        # kitten-ssh path everything else uses, so a compose survives a net blip
+        # (ruling 2). Shell-quote the payload argv for the remote bash -lc; the
+        # remote login shell (fish 3.4+) forwards it, $(id -u) evaluates there.
+        # Thread ANNEX_PICK to the coordinator when set (Ctrl+B picker): kitty's
+        # --env stamps it into THIS local split only, and plain ssh does not
+        # forward arbitrary env, so without this the coordinator-side nvim sees
+        # an empty ANNEX_PICK and file-selection signals nothing. The pick path
+        # string is uid-anchored (/tmp/zmx-$uid/…) so it names the SAME path on
+        # both hosts. UNVERIFIED thin-client gap that remains: annex_watcher.py
+        # reads the pick file on the LOCAL (kitty) host, while nvim writes it on
+        # the coordinator — completing the loop needs a host-aware, non-blocking
+        # read in the watcher; see the issue writeup.
+        inner="ZMX_DIR=/tmp/zmx-\$(id -u)"
+        [[ -n "${ANNEX_PICK:-}" ]] && inner+=" ANNEX_PICK=$(printf '%q' "$ANNEX_PICK")"
+        inner+=" zmx attach $(printf '%q' "$sess")"
+        for a in "$@"; do
+            inner+=" $(printf '%q' "$a")"
+        done
+        exec kitten ssh coordinator -t "bash -lc \"$inner\""
+        ;;
+
+    kill)
+        sess="${1:?annex-cmd kill: session name required}"
+        # Idempotent: --force so a still-running nvim in a force-closed split is
+        # reaped; a no-op (exit 0) when the session already self-reaped.
+        if [[ "$(hostname)" == "coordinator" ]]; then
+            zmx kill "$sess" --force >/dev/null 2>&1 || true
+        else
+            ssh coordinator "bash -lc \"ZMX_DIR=/tmp/zmx-\$(id -u) zmx kill $(printf '%q' "$sess") --force\"" >/dev/null 2>&1 || true
+        fi
+        ;;
+
+    *)
+        printf 'usage: annex-cmd {name <prefix>|exec <session> <cmd...>|kill <session>}\n' >&2
+        exit 2
+        ;;
+esac

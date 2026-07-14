@@ -22,7 +22,7 @@ export ZMX_DIR="${ZMX_DIR:-/tmp/zmx-$(id -u)}"
 # (format drift), fall back to the plain `--short` name list, duplicated into
 # both fields so the fzf invocation below still renders it.
 picker="$("$(dirname "$0")/zmx-annotate" 2>/dev/null)"
-[[ -n "$picker" ]] || picker="$(zmx list --short 2>/dev/null | awk '{printf "%s\t%s\n", $0, $0}')"
+[[ -n "$picker" ]] || picker="$(zmx list --short 2>/dev/null | awk '!/^annex-/{printf "%s\t%s\n", $0, $0}')"
 
 sess=$(printf '%s\n' "$picker" \
     | fzf --prompt='resume> ' --no-sort --delimiter='\t' --with-nth='2..' \
