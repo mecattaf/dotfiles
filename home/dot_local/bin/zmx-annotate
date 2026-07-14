@@ -50,7 +50,11 @@ sessions() {
                 clients=*)   clients="${f#clients=}" ;;
             esac
         done
-        [[ -n "$name" && "$name" != */* ]] || continue
+        # Drop the hidden annex class (annex-*): modal Ctrl+B/Ctrl+G splits must
+        # never surface in any picker (ruling 2). This one guard covers all
+        # three consumers — zmx-resume (local), desk-resume (over ssh), and any
+        # other desk-resume client — since they all read zmx-annotate.
+        [[ -n "$name" && "$name" != */* && "$name" != annex-* ]] || continue
         printf '%s\t%s\t%s\t%s\n' "$name" "$dir" "$created" "$clients"
     done
 }
