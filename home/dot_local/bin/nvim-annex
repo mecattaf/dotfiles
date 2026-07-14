@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# nvim-annex — Ctrl+G externalized composer wrapper (dotfiles#49).
+#
+# Claude Code's "edit prompt in external editor" spawns $EDITOR/$VISUAL
+# SYNCHRONOUSLY (spawnSync, stdio inherited) and reads the tempfile back on
+# exit. That blocking contract is Claude's own — this wrapper IS the
+# synchronization; there is no polling.
+#
+# The basename `nvim-annex` is LOAD-BEARING: Claude classifies the editor by
+# basename against /\b(vi|vim|nvim|nano|emacs|...)\b/. `nvim-annex` matches
+# \bnvim\b, so Claude takes the BLOCKING alt-screen spawnSync branch (an
+# unmatched name would make Claude spawn the editor DETACHED and read the
+# unchanged file back, losing the compose).
+#
+# Flow: open nvim on the harness tempfile in a hidden, zmx-backed NEW OS-WINDOW
+# (niri tiles it beside the harness; conversation stays visible) that BLOCKS
+# until nvim exits (kitten @ launch --type=os-window --wait-for-child-to-exit).
+# On :wq the zmx session self-reaps and the window closes. Tom 2026-07-15: Ctrl+G
+# is a modal WINDOW, not a split — the ~25-col vsplit style is ONLY for Ctrl+B's
+# picker sidebar.
+#
+# HARNESS-AGNOSTIC: this wrapper is the $EDITOR/$VISUAL for BOTH Claude Code and
+# pi (earendil-works/pi), scoped per-harness via functions/_annex_editor.fish.
+# Both spawn $EDITOR and re-read the tempfile ONLY on a clean (exit 0) editor
+# exit — Claude via spawnSync + `c.status!==0 -> content:null`, pi via
+# `if(status===0) editor.setText(...)` (verified in each bundle). So the exit
+# code this wrapper returns (below) is the single cross-harness safety signal.
+#
+# EXIT CODE — why it is NOT the child's: the exit status can NOT survive the zmx
+# layer. Verified: `zmx attach x bash -c 'exit 9'` returns 0, and
+# `kitten @ launch --wait-for-child-to-exit` reports that (masked) status. So a
+# killed/dropped compose is indistinguishable from a clean :wq by exit code
+# alone. Instead we signal out-of-band via the tempfile's OWN mtime: nvim writes
+# it ONLY on an explicit :w/:wq (never on open, never continuously — verified),
+# so its mtime bumps iff the user saved; a crash/kill/drop/:q! leaves it
+# untouched. mtime CHANGED -> user saved -> exit 0 (harness applies the edit).
+# mtime UNCHANGED -> nothing written -> exit nonzero -> harness KEEPS the original
+# prompt (graceful degradation). This is STRICTLY BETTER than a "clean :wq only"
+# sentinel: a :w followed by a crash still applies the content the user
+# deliberately saved, rather than silently discarding it. And because nvim never
+# leaves the file mid-write outside the sub-millisecond :w window, a stale read is
+# always last-saved-or-original, never a partial/garbage prompt. Nanosecond mtime
+# (stat %y) avoids the same-second collision that integer-second %Y would hit for
+# a fast edit.
+set -u
+
+export ZMX_DIR="${ZMX_DIR:-/tmp/zmx-$(id -u)}"
+
+self_dir="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || self_dir="$HOME/.local/bin"
+annex_cmd="$self_dir/annex-cmd"
+
+sess="$("$annex_cmd" name annex)"
+
+# Reap on ANY exit — including SIGINT/TERM/HUP if the user interrupts or quits
+# Claude mid-compose. Without this, an interrupt between launch and cleanup
+# orphans the coordinator-side annex zmx session (server-side nvim keeps
+# running) — the exact unreaped per-keypress spawn dotfiles#33 guards against.
+# Idempotent + guarded so it runs exactly once (no-op after the :wq self-reap).
+_reaped=""
+cleanup() {
+    [[ -n "$_reaped" ]] && return
+    _reaped=1
+    "$annex_cmd" kill "$sess" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+trap 'cleanup; exit 130' INT TERM HUP
+
+# The tempfile Claude hands us (last arg). Snapshot its mtime for the out-of-band
+# success signal described in the header. Guard $# so an argless call can't fall
+# back to $0 (a bash negative-slice quirk).
+file=""
+(( $# >= 1 )) && file="${@: -1}"
+before=""
+[[ -n "$file" && -e "$file" ]] && before="$(stat -c %y "$file" 2>/dev/null || true)"
+
+# Reach the kitty that spawned Claude (and thus this editor child). #53:
+# listen_on unix:@kitty-{kitty_pid}, allow_remote_control yes; KITTY_LISTEN_ON
+# is inherited by Claude's child env. Pass --to explicitly so the kitten reaches
+# the right socket even if inheritance is imperfect. LIMITATION (roaming): the
+# inherited KITTY_LISTEN_ON is frozen into the zmx session at CREATE time, so a
+# session re-attached in a different kitty window targets the original socket;
+# if that window is gone, the launch fails fast -> tempfile untouched -> we exit
+# nonzero -> Claude keeps the prompt (fails safe). Full roaming resolution is the
+# roaming work-package's job; see the issue writeup.
+to_args=()
+[[ -n "${KITTY_LISTEN_ON:-}" ]] && to_args=(--to "$KITTY_LISTEN_ON")
+
+# --type=os-window: niri tiles the composer nvim as its OWN window beside the
+# harness (Tom 2026-07-15), NOT an in-kitty split. --wait-for-child-to-exit
+# blocks this wrapper until that nvim exits — the synchronization the harness's
+# blocking editor contract relies on (works under Claude's spawnSync AND pi's
+# async-spawn-and-wait: both just wait for THIS process to exit). --cwd=current =
+# fish/kitty-derived cwd; the tempfile "$@" is absolute so cwd is irrelevant to
+# the edit. NOT combined with --no-response (freezes kitty). stdout -> /dev/null
+# so the exit-code digit kitten prints never lands on the harness's paused pane.
+kitten @ "${to_args[@]}" launch \
+    --type=os-window \
+    --cwd=current \
+    --wait-for-child-to-exit \
+    -- "$annex_cmd" exec "$sess" nvim "$@" >/dev/null 2>&1
+
+cleanup
+
+# Out-of-band success signal: did nvim write the tempfile? (see header)
+after=""
+[[ -n "$file" && -e "$file" ]] && after="$(stat -c %y "$file" 2>/dev/null || true)"
+if [[ -n "$file" && "$before" == "$after" ]]; then
+    exit 1  # nothing saved (crash / kill / drop / :q!) -> harness keeps original
+fi
+exit 0
