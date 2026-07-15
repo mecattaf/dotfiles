@@ -90,6 +90,28 @@ in
           fi
         '';
 
+        # atuin's shared fleet-wide history-encryption key (hosts/coordinator/services.nix
+        # runs the sync server; home.nix's programs.atuin points every host at it).
+        # Unlike the OAuth creds above, atuin's client NEVER rewrites this file once it
+        # exists (`load_key` only writes if the path is absent) — there's no local
+        # mutable state to protect, so force-copy on every activation rather than
+        # seed-once. That also closes the gap a copy-if-absent seed would leave open: a
+        # host that already had its own locally-generated key (from ordinary use before
+        # this was wired up) always ends up on the one declared fleet key instead.
+        age.secrets.atuin-key = {
+          file = ../secrets/atuin-key.age;
+          owner = "tom";
+          group = "users";
+          mode = "600";
+        };
+        system.userActivationScripts.seedAtuinKey.text = ''
+          if [ -r "${config.age.secrets.atuin-key.path}" ]; then
+            mkdir -p "$HOME/.local/share/atuin"
+            cp "${config.age.secrets.atuin-key.path}" "$HOME/.local/share/atuin/key"
+            chmod 600 "$HOME/.local/share/atuin/key"
+          fi
+        '';
+
         # A ROOT-owned copy of the same tom@mesh private key, for the nix-daemon (root)
         # and other root-context clients that must SSH OUT across the mesh: distributed
         # builds (modules/build-offload.nix) and the fleet-update failure mirror
@@ -230,14 +252,17 @@ in
       # coordinator-only, hosts/coordinator/services.nix) — read client-side by
       # the cliamp fish function, on whichever box cliamp runs from. Delivered
       # to coordinator + zenbook-duo, matching the recipient tier in secrets.nix.
-      (lib.mkIf (config.networking.hostName == "coordinator" || config.networking.hostName == "zenbook-duo") {
-        age.secrets.navidrome-credentials = {
-          file = ../secrets/navidrome-credentials.age;
-          owner = "tom";
-          group = "users";
-          mode = "400";
-        };
-      })
+      (lib.mkIf
+        (config.networking.hostName == "coordinator" || config.networking.hostName == "zenbook-duo")
+        {
+          age.secrets.navidrome-credentials = {
+            file = ../secrets/navidrome-credentials.age;
+            owner = "tom";
+            group = "users";
+            mode = "400";
+          };
+        }
+      )
 
       # Coordinator's Freebox wifi uplink (wlp192s0) PSK — delivered as a root-owned
       # NetworkManager environment file that uplink-nas.nix's ensureProfiles reads

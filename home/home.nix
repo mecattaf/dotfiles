@@ -15,6 +15,11 @@ let
   dots = "${repoDir}/home";
   link = path: config.lib.file.mkOutOfStoreSymlink "${dots}/${path}";
 
+  # osConfig is null on the standalone `tom@bridge` config (not a NixOS host —
+  # see home-manager.lib.homeManagerConfiguration in flake.nix); same fallback
+  # idiom as ntm.nix/remote.nix/tally.nix.
+  hostName = if osConfig == null then "bridge" else osConfig.networking.hostName;
+
   # Curated llm-agents.nix install. `pkgs.llm-agents` (from the flake input's
   # overlay) is the entire ~139-agent catalog, prebuilt against upstream's own
   # nixpkgs. The maximalist "install every buildable member" sweep (see
@@ -308,6 +313,33 @@ in
   };
 
   # ---------------------------------------------------------------------------
+  # atuin — shell history, synced fleet-wide through a self-hosted server on the
+  # coordinator (hosts/coordinator/services.nix), tailnet-only. The package here
+  # replaces the old bare `atuin` entry in home.packages; fish's own init call +
+  # the Ctrl+E rebind stay in dot_config/fish/config.fish untouched
+  # (enableFishIntegration = false avoids home-manager wiring a second one).
+  #
+  # sync_address: the coordinator talks to its own server over localhost; every
+  # other host reaches it via MagicDNS (`coordinator`, tailnet-only — see the
+  # firewall rule on the server side). auto_sync is off on the standalone
+  # `tom@bridge` Fedora config (osConfig == null there — it isn't in the mesh,
+  # doesn't get the shared key delivered, and has no server to reach).
+  #
+  # The encryption key itself is fleet state, not per-host state: it's minted
+  # once, delivered via agenix (secrets/atuin-key.age, common tier — see
+  # secrets.nix), and force-copied into ~/.local/share/atuin/key on every
+  # activation (modules/secrets.nix) so every host decrypts the same history.
+  programs.atuin = {
+    enable = true;
+    enableFishIntegration = false;
+    settings = {
+      auto_sync = hostName != "bridge";
+      sync_address =
+        if hostName == "coordinator" then "http://localhost:8888" else "http://coordinator:8888";
+    };
+  };
+
+  # ---------------------------------------------------------------------------
   # zmx — LOCAL session persistence. No systemd plumbing: unlike shpool's single
   # socket-activated daemon, zmx is daemon-PER-session, forked from the CLI on
   # first `attach` (setsid + XDG_RUNTIME_DIR socket). `loginctl enable-linger
@@ -363,7 +395,6 @@ in
     # fish init + shell
     eza
     zoxide
-    atuin
     starship
     fzf
     bat

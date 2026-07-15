@@ -74,9 +74,35 @@
   };
   systemd.services.navidrome.unitConfig.RequiresMountsFor = [ "/mnt/nas" ];
 
-  # Immich (2283) + Navidrome (4533) reachable across the tailnet ONLY. Merges
-  # with the tailscale0 ports declared in default.nix (asr) and common.nix (vnc).
-  networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 2283 4533 ];
+  # atuin — self-hosted shell-history sync server, same tailnet-only posture as
+  # Immich/Navidrome above (no extra app-level auth; the tailnet IS the trust
+  # boundary). Postgres is auto-provisioned by the module (database.createLocally
+  # defaults true). The encryption key that makes cross-device history readable
+  # is fleet state, delivered via agenix — see secrets.nix + modules/secrets.nix.
+  #
+  # One-time enrollment per device (interactive, cannot be scripted — needs a
+  # password): on THIS host, `atuin register -u <user> -e <email>` (silently
+  # reuses the agenix-delivered key already at ~/.local/share/atuin/key, since
+  # `register` never prompts for one). On every OTHER host, `atuin login -u
+  # <user> -p <password>` and hit Enter (blank) at the key prompt — same reason.
+  #
+  # openRegistration stays on so enrollment above doesn't need a second rebuild
+  # cycle; flip to false once every device is registered if you'd rather close it.
+  services.atuin = {
+    enable = true;
+    host = "0.0.0.0"; # tailnet-reachable; firewall below scopes it to tailscale0
+    port = 8888;
+    openRegistration = true;
+  };
+
+  # Immich (2283) + Navidrome (4533) + atuin (8888) reachable across the tailnet
+  # ONLY. Merges with the tailscale0 ports declared in default.nix (asr) and
+  # common.nix (vnc).
+  networking.firewall.interfaces.tailscale0.allowedTCPPorts = [
+    2283
+    4533
+    8888
+  ];
 
   # navidrome-credentials delivery moved to modules/secrets.nix (2026-07-13):
   # it's NOT consumed by the navidrome server here — only read client-side by

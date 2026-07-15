@@ -35,13 +35,20 @@ in
   # Shared `tom@mesh` SSH user key — delivered to every host so mutual SSH works
   # both directions (mesh.nix wires the authorized_keys/known_hosts side).
   "secrets/ssh-user-key.age".publicKeys = editors ++ hostKeys;
+  # atuin's shared encryption key — every host needs it to decrypt each other's
+  # synced history against the self-hosted server (hosts/coordinator/services.nix).
+  # Minted once from the coordinator's pre-existing local key (it already had one
+  # from ordinary local use, predating this sync setup); force-copied on every
+  # activation, not seed-once — see modules/secrets.nix.
+  "secrets/atuin-key.age".publicKeys = editors ++ hostKeys;
 
   # --- per-host tier (tailscale pre-auth keys: single-use, non-ephemeral,
   # preauthorized, tag:mesh — minted 2026-07-05 via the fleet OAuth client;
   # only the owning host can decrypt its key) ---
   "secrets/tailscale-authkey-coordinator.age".publicKeys = editors ++ coordinatorOnly;
   "secrets/tailscale-authkey-worker.age".publicKeys = editors ++ nonEmpty [ registry.worker.hostKey ];
-  "secrets/tailscale-authkey-zenbook-duo.age".publicKeys = editors ++ nonEmpty [ registry.zenbook-duo.hostKey ];
+  "secrets/tailscale-authkey-zenbook-duo.age".publicKeys =
+    editors ++ nonEmpty [ registry.zenbook-duo.hostKey ];
 
   # --- wifi PSK tier: the laptops PLUS the coordinator, whose Freebox uplink
   # (wlp192s0) is now declarative too (was imperative, copied off the worker on
