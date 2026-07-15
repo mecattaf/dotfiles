@@ -334,8 +334,9 @@ in
     enableFishIntegration = false;
     settings = {
       auto_sync = hostName != "bridge";
+      # port must match services.atuin.port in hosts/coordinator/services.nix.
       sync_address =
-        if hostName == "coordinator" then "http://localhost:8888" else "http://coordinator:8888";
+        if hostName == "coordinator" then "http://localhost:27321" else "http://coordinator:27321";
     };
   };
 

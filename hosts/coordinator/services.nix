@@ -88,20 +88,24 @@
   #
   # openRegistration stays on so enrollment above doesn't need a second rebuild
   # cycle; flip to false once every device is registered if you'd rather close it.
+  #
+  # port: NOT the atuin default (8888) — that's Jupyter's well-known default too
+  # and gets scanned/guessed reflexively; picked something off the beaten path
+  # instead, tailnet-only exposure or not.
   services.atuin = {
     enable = true;
     host = "0.0.0.0"; # tailnet-reachable; firewall below scopes it to tailscale0
-    port = 8888;
+    port = 27321;
     openRegistration = true;
   };
 
-  # Immich (2283) + Navidrome (4533) + atuin (8888) reachable across the tailnet
-  # ONLY. Merges with the tailscale0 ports declared in default.nix (asr) and
-  # common.nix (vnc).
+  # Immich (2283) + Navidrome (4533) + atuin (27321) reachable across the
+  # tailnet ONLY. Merges with the tailscale0 ports declared in default.nix (asr)
+  # and common.nix (vnc).
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [
     2283
     4533
-    8888
+    27321
   ];
 
   # navidrome-credentials delivery moved to modules/secrets.nix (2026-07-13):
