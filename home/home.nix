@@ -103,6 +103,7 @@ in
   imports = [
     ./ntm.nix
     ./nvim.nix
+    ./piri.nix
     ./remote.nix
     ./tally.nix
   ];

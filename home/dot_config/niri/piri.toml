@@ -1,0 +1,43 @@
+# piri configuration — https://github.com/Asthestarsfalll/piri
+#
+# Delivered RAW to ~/.config/niri/piri.toml through the niri whole-dir
+# out-of-store symlink (home/home.nix configDirs "niri"), so edits here
+# hot-reload live (piri watches this file, debounced ~300ms) — same reason the
+# rest of the niri config is placed RAW rather than store-managed.
+#
+# The daemon is run by home/piri.nix (systemd --user service `piri`).
+# Keybinds that drive it live in home/dot_config/niri/binds.kdl.
+
+[niri]
+# socket auto-discovered from $XDG_RUNTIME_DIR/niri (default); no override.
+
+# Only the plugins we actually use are enabled (all default off).
+[piri.plugins]
+scratchpads = true
+mark = true
+
+# ── Scratchpads ─────────────────────────────────────────────────────────────
+# Floating, precisely-positioned windows toggled on demand. Global defaults:
+[piri.scratchpad]
+default_size = "40% 100%"
+default_margin = 0
+
+# "music" — the right-side music pane (Mod+M toggles it; see binds.kdl).
+# First toggle with no captured window spawns `command` and pins it to the
+# right; subsequent toggles show/hide it. Today that's the SoundCloud PWA
+# (app_id confirmed live: chrome-soundcloud.com__-Default). Later this becomes a
+# cliamp-in-kitty pane — swap `command`/`app_id` here (hot-reloads), or capture
+# any focused window into it at runtime with `piri scratchpads music add
+# fromRight` (bound to Mod+Shift+M).
+[scratchpads.music]
+direction = "fromRight"
+command = "google-chrome-stable --app=https://soundcloud.com"
+app_id = "chrome-soundcloud.com__-Default"
+size = "40% 100%"
+margin = 0
+
+# ── Marks ───────────────────────────────────────────────────────────────────
+# Runtime-only named marks for quick focus (no config table needed) — driven
+# entirely via the CLI: `piri mark {name} toggle|add|delete`. Kept enabled as
+# the lightweight "jump to a remembered window" primitive alongside the music
+# scratchpad.

@@ -123,6 +123,21 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # piri — niri IPC extension daemon (github.com/Asthestarsfalll/piri): one
+    # Rust daemon that tails niri's event stream and layers plugins on top —
+    # scratchpads, marks, window/workspace rules. We use it for the "music"
+    # auto-scratchpad (Mod+M toggles a right-side SoundCloud/cliamp pane).
+    # Third-party but consumed exactly like ntm/tally: flake input pinned in
+    # flake.lock, follows nixpkgs so the Rust build resolves against our one pin.
+    # piri ships packages.default + a NixOS module, but NOT a home-manager
+    # module, so home/piri.nix does the module work: package + user service, with
+    # piri.toml delivered RAW through the niri whole-dir symlink for hot-reload.
+    # `nix flake update piri` bumps to the latest pushed commit.
+    piri = {
+      url = "github:Asthestarsfalll/piri";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # nix-amd-ai — AMD Ryzen AI NPU stack (amdxdna driver + XRT + FastFlowLM).
     # COORDINATOR ONLY: the conductor turns the NPU on (needs IOMMU in translated
     # mode); the worker keeps the NPU off for max iGPU (iommu off). Deliberately
