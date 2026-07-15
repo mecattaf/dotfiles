@@ -23,6 +23,12 @@ let
   others = lib.filter (h: h != hostName) (lib.attrNames registry);
   mkProfile = h: {
     name = "remmina/${h}.remmina";
+    # force: Remmina rewrites its own profiles at runtime (window geometry, keyboard
+    # grab, etc.), replacing HM's store symlink with a plain file. Without force the
+    # next activation aborts with "would be clobbered", failing home-manager-tom.service
+    # and the whole nixos-upgrade switch. The template is authoritative here — geometry
+    # is niri's job (viewmode=1/scale=1) — so overwrite Remmina's runtime scribbles.
+    value.force = true;
     value.text = ''
       [remmina]
       name=${h} (VNC)
