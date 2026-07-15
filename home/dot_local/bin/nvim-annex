@@ -42,6 +42,17 @@
 # always last-saved-or-original, never a partial/garbage prompt. Nanosecond mtime
 # (stat %y) avoids the same-second collision that integer-second %Y would hit for
 # a fast edit.
+#
+# OPTION 2 (fast-return, ANNEX_FAST=1, dotfiles#49 follow-up): opt-in via env
+# var so the SAME basename still drives Claude's \bnvim\b classification
+# either way — no second editor name to introduce/re-verify. Instead of
+# blocking on the composer, this branch TRUNCATES the tempfile (clearing the
+# harness's input box on the immediate exit-0 read-back), opens the composer
+# on a SEPARATE seeded scratch file, and returns 0 immediately — the real
+# content is delivered later, out-of-band, via `kitten @ send-text` from
+# inside the composer nvim itself (annex-deliver.lua), never through this
+# tempfile or this process's exit code again. See the branch below for the
+# full rationale and the zmx-kitty loose ends it has to route around.
 set -u
 
 export ZMX_DIR="${ZMX_DIR:-/tmp/zmx-$(id -u)}"
@@ -51,6 +62,107 @@ annex_cmd="$self_dir/annex-cmd"
 
 sess="$("$annex_cmd" name annex)"
 
+# The tempfile Claude/pi hands us (last arg). Needed by BOTH the fast
+# (ANNEX_FAST) and blocking branches below. Guard $# so an argless call can't
+# fall back to $0 (a bash negative-slice quirk).
+file=""
+(( $# >= 1 )) && file="${@: -1}"
+
+# Reach the kitty that spawned Claude (and thus this editor child). #53:
+# listen_on unix:@kitty-{kitty_pid}, allow_remote_control yes; KITTY_LISTEN_ON
+# is inherited by Claude's child env. Pass --to explicitly so the kitten reaches
+# the right socket even if inheritance is imperfect. LIMITATION (roaming): the
+# inherited KITTY_LISTEN_ON is frozen into the zmx session at CREATE time, so a
+# session re-attached in a different kitty window targets the original socket;
+# if that window is gone, the launch fails fast -> tempfile untouched -> we exit
+# nonzero -> Claude keeps the prompt (fails safe). Full roaming resolution is the
+# roaming work-package's job; see the issue writeup. Shared by both branches.
+to_args=()
+[[ -n "${KITTY_LISTEN_ON:-}" ]] && to_args=(--to "$KITTY_LISTEN_ON")
+
+if [[ "${ANNEX_FAST:-0}" == "1" ]]; then
+    # ── Option 2: fast-return send-text composer (dotfiles#49 follow-up) ───
+    #
+    # Seed = whatever Claude/pi wrote into the tempfile (the draft, plus —
+    # with /config 'Show last response in external editor' — the '#'-commented
+    # last response). Snapshot it BEFORE truncating: the composer needs it,
+    # the harness's own tempfile does not (next step empties that one).
+    seed=""
+    [[ -n "$file" && -e "$file" ]] && seed="$(cat "$file" 2>/dev/null || true)"
+
+    # The composer edits a SEPARATE scratch file seeded with the original
+    # draft — NOT the harness tempfile — so the user keeps editing their actual
+    # draft. We do NOT truncate the harness tempfile yet: that happens only once
+    # the composer window is CONFIRMED launched (see the if/then below). This is
+    # the fail-safe fix for the draft-loss race — truncating up-front then
+    # hitting a failed launch would clear the box with nowhere for the draft to
+    # go (dotfiles#49 follow-up).
+    composer_file="$(mktemp "${TMPDIR:-/tmp}/annex-compose.XXXXXX")"
+    printf '%s' "$seed" > "$composer_file"
+
+    # Handles for the RETURN leg (scout §2): unlike KITTY_LISTEN_ON (used above
+    # for the forward leg), NEITHER KITTY_WINDOW_ID nor KITTY_LISTEN_ON is
+    # automatically visible inside the composer's own process — kitty only
+    # copies env into a launched child via --copy-env (opt-in, unused here) or
+    # explicit --env. Thread them through so annex-deliver.lua (loaded into the
+    # composer nvim below) can send-text back to the exact window that spawned
+    # this compose. KITTY_HARNESS_HOST records the host THIS wrapper runs on —
+    # i.e. the harness's host, since Claude/pi spawn this wrapper in-place.
+    # annex-deliver compares it against the composer's own host to decide
+    # whether send-text can physically reach the harness kitty (dotfiles#72):
+    # the composer nvim ALWAYS runs on the coordinator via `annex-cmd exec`, so
+    # the composer's own hostname() can never reveal a thin-client harness — the
+    # wrapper's host is the only correct discriminator.
+    harness_window="${KITTY_WINDOW_ID:-}"
+    harness_listen="${KITTY_LISTEN_ON:-}"
+    harness_host="$(hostname 2>/dev/null || echo unknown)"
+
+    # NO --wait-for-child-to-exit (fast-return: this call must not block) and
+    # NO trap-cleanup reaper (unlike the blocking branch below) — registering
+    # `trap cleanup EXIT` here would fire it the instant THIS process exits,
+    # i.e. almost immediately, force-killing the composer's zmx session out
+    # from under the user before they've typed a single key (scout report §3:
+    # "detaching breaks the *wrapper's* reaper, not zmx's own self-reap"). A
+    # `--watcher` (annex_composer_watcher.py) becomes the SOLE reaper instead,
+    # firing on the composer window's on_close — exactly the pattern Ctrl+B's
+    # annex_watcher.py already uses for the sidebar picker.
+    #
+    # Launch FIRST; only truncate the harness tempfile if the launch SUCCEEDS.
+    # `kitten @ launch` returns as soon as the window is created (no
+    # --wait-for-child-to-exit), so its exit status is a clean "was the composer
+    # window created?" signal. On failure (stale KITTY_LISTEN_ON after roaming,
+    # remote-control down, ...) we leave the harness tempfile UNTOUCHED and exit
+    # nonzero, so the harness re-reads it and KEEPS the draft — the same
+    # fail-safe contract the blocking branch relies on.
+    if kitten @ "${to_args[@]}" launch \
+        --type=os-window \
+        --cwd=current \
+        --watcher annex_composer_watcher.py \
+        --var annex_session="$sess" \
+        --var annex_composer_file="$composer_file" \
+        --env "KITTY_HARNESS_WINDOW_ID=$harness_window" \
+        --env "KITTY_HARNESS_LISTEN_ON=$harness_listen" \
+        --env "KITTY_HARNESS_HOST=$harness_host" \
+        -- "$annex_cmd" exec "$sess" nvim -c "luafile $self_dir/annex-deliver.lua" "$composer_file" \
+        >/dev/null 2>&1
+    then
+        # Composer window created. NOW truncate the harness tempfile so
+        # Claude's/pi's spawnSync-completion read-back (fired the instant this
+        # process exits 0) CLEARS the visible input box; the real content
+        # arrives later, out-of-band, via send-text from inside the composer.
+        : > "$file" 2>/dev/null || true
+        exit 0
+    else
+        # Launch failed: harness tempfile untouched -> draft preserved. Remove
+        # the orphaned scratch file and exit nonzero so the harness keeps the
+        # prompt (fail-safe, matching the blocking branch).
+        rm -f "$composer_file" 2>/dev/null || true
+        exit 1
+    fi
+fi
+
+# ── Option 1: blocking composer (unchanged) ─────────────────────────────────
+#
 # Reap on ANY exit — including SIGINT/TERM/HUP if the user interrupts or quits
 # Claude mid-compose. Without this, an interrupt between launch and cleanup
 # orphans the coordinator-side annex zmx session (server-side nvim keeps
@@ -65,25 +177,10 @@ cleanup() {
 trap cleanup EXIT
 trap 'cleanup; exit 130' INT TERM HUP
 
-# The tempfile Claude hands us (last arg). Snapshot its mtime for the out-of-band
-# success signal described in the header. Guard $# so an argless call can't fall
-# back to $0 (a bash negative-slice quirk).
-file=""
-(( $# >= 1 )) && file="${@: -1}"
+# Snapshot the tempfile's mtime for the out-of-band success signal described
+# in the header.
 before=""
 [[ -n "$file" && -e "$file" ]] && before="$(stat -c %y "$file" 2>/dev/null || true)"
-
-# Reach the kitty that spawned Claude (and thus this editor child). #53:
-# listen_on unix:@kitty-{kitty_pid}, allow_remote_control yes; KITTY_LISTEN_ON
-# is inherited by Claude's child env. Pass --to explicitly so the kitten reaches
-# the right socket even if inheritance is imperfect. LIMITATION (roaming): the
-# inherited KITTY_LISTEN_ON is frozen into the zmx session at CREATE time, so a
-# session re-attached in a different kitty window targets the original socket;
-# if that window is gone, the launch fails fast -> tempfile untouched -> we exit
-# nonzero -> Claude keeps the prompt (fails safe). Full roaming resolution is the
-# roaming work-package's job; see the issue writeup.
-to_args=()
-[[ -n "${KITTY_LISTEN_ON:-}" ]] && to_args=(--to "$KITTY_LISTEN_ON")
 
 # --type=os-window: niri tiles the composer nvim as its OWN window beside the
 # harness (Tom 2026-07-15), NOT an in-kitty split. --wait-for-child-to-exit

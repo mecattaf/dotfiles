@@ -59,8 +59,25 @@ case "$cmd" in
         # reads the pick file on the LOCAL (kitty) host, while nvim writes it on
         # the coordinator — completing the loop needs a host-aware, non-blocking
         # read in the watcher; see the issue writeup.
+        #
+        # Same threading for KITTY_HARNESS_WINDOW_ID/KITTY_HARNESS_LISTEN_ON
+        # (Ctrl+G Option 2 fast-return composer, dotfiles#49 follow-up): nvim-
+        # annex's ANNEX_FAST branch sets these via kitten's --env into the
+        # LOCAL composer process only, same as ANNEX_PICK above, so they need
+        # the same explicit re-export into the remote bash -lc for the
+        # coordinator-side composer nvim (annex-deliver.lua) to see them at
+        # all. This alone does NOT make cross-host delivery reachable — the
+        # abstract socket named by KITTY_HARNESS_LISTEN_ON still lives on the
+        # ORIGINATING host and is not ssh-forwarded (#72) — it only keeps the
+        # values present so nothing silently vanishes, and so the values are
+        # already there whenever #72's ssh.conf/non-abstract-socket fix lands.
+        # annex-deliver.lua gates the actual send-text call on
+        # hostname()=="coordinator" for exactly this reason: fail safe, don't
+        # pretend to have fixed #72 here.
         inner="ZMX_DIR=/tmp/zmx-\$(id -u)"
         [[ -n "${ANNEX_PICK:-}" ]] && inner+=" ANNEX_PICK=$(printf '%q' "$ANNEX_PICK")"
+        [[ -n "${KITTY_HARNESS_WINDOW_ID:-}" ]] && inner+=" KITTY_HARNESS_WINDOW_ID=$(printf '%q' "$KITTY_HARNESS_WINDOW_ID")"
+        [[ -n "${KITTY_HARNESS_LISTEN_ON:-}" ]] && inner+=" KITTY_HARNESS_LISTEN_ON=$(printf '%q' "$KITTY_HARNESS_LISTEN_ON")"
         inner+=" zmx attach $(printf '%q' "$sess")"
         for a in "$@"; do
             inner+=" $(printf '%q' "$a")"
