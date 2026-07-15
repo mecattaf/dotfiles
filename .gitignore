@@ -2,6 +2,9 @@ home/dot_config/DankMaterialShell/
 home/dot_config/quickshell/webshell/dist/
 home/dot_config/quickshell/webshell-v0.0.1-archived/dist/
 
+# Python bytecode cache (kitty kittens under home/dot_config/kitty)
+__pycache__/
+
 # Never commit secret key material / plaintext
 *.age.key
 *_ed25519

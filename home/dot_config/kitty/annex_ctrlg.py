@@ -1,6 +1,25 @@
-# annex_ctrlg.py — Ctrl+G kitty-level interceptor, Option 3 (supersedes the
-# per-keypress $EDITOR round trip for the Ctrl+G composer, dotfiles#49
-# follow-up #2).
+# annex_ctrlg.py — Ctrl+SHIFT+G kitty-level composer, Option 3 (an ALTERNATIVE
+# to — no longer a replacement of — the $EDITOR round trip for the Ctrl+G
+# composer, dotfiles#49 follow-up #2).
+#
+# DEMOTED from plain Ctrl+G to Ctrl+Shift+G (Tom 2026-07-15). The two composers
+# are now interchangeable, split by chord: plain Ctrl+G is left UNBOUND at the
+# kitty layer and reaches the harness natively (Claude's/pi's own
+# Ctrl+G->$EDITOR = nvim-annex, blocking); Ctrl+Shift+G is this kitten. See the
+# PLACEHOLDER LIMITATION note below for why the split exists.
+#
+# PLACEHOLDER LIMITATION (the reason plain Ctrl+G was freed): this kitten
+# reconstructs the draft by SCREEN-SCRAPING the visible input box (Window
+# .as_text() -> parse_draft) and re-delivers it via `kitten @ send-text`. Claude
+# Code does not render pasted text or clipboard images inline — it shows only a
+# placeholder TOKEN ("[Pasted text #N +M lines]", "[Image #N]") that indexes
+# content held in its own memory. A screen-scrape sees only the token; send-text
+# re-types the token as literal characters, which Claude does NOT re-associate
+# with the stored bytes -> the paste/image content is LOST. This is structural,
+# not a bug here: ONLY an in-place edit of Claude's OWN tempfile (the native
+# Ctrl+G->nvim-annex path) round-trips the tokens so Claude re-maps them. Use
+# plain Ctrl+G for drafts containing pastes/images; Ctrl+Shift+G for quick
+# plain-text edits with no alt-screen blank.
 #
 # A no-UI kitten mapped in kitty.conf, modeled 1:1 on annex_toggle.py (the
 # Ctrl+B sidebar picker): main() is a no-op, all work happens in
@@ -20,15 +39,15 @@
 # annex-deliver.lua, REUSED UNCHANGED) directly via call_remote_control —
 # Claude/pi's internal $EDITOR handling is bypassed, not merely mirrored.
 #
-# INTENTIONAL SHADOW (recorded, same precedent as annex_toggle.py's Ctrl+B
-# shadow, its header lines 24-25): once `map ctrl+g kitten annex_ctrlg.py`
-# exists in kitty.conf, kitty is the SOLE arbiter of every Ctrl+G press in
-# EVERY window — nvim, shell, fzf, bash reverse-search, and Claude/pi's own
-# native Ctrl+G->$EDITOR keybinding. None of them see the raw 0x07 byte
-# unless this kitten's pass-through/fallback path fires. Correctness of
-# "Ctrl+G keeps working everywhere else" rests entirely on _is_harness()
-# being accurate and on the pass-through/fallback below always executing on
-# every non-harness or error path.
+# SHADOW (narrow, since the demotion): `map ctrl+shift+g kitten annex_ctrlg.py`
+# makes kitty the sole arbiter of Ctrl+SHIFT+G only — a chord nothing else binds
+# in nvim/shell/fzf/bash. Plain Ctrl+G is NO LONGER touched by this kitten, so
+# it reaches every program (including Claude's/pi's native Ctrl+G->$EDITOR)
+# exactly as if this file did not exist. The non-harness fallback therefore
+# SWALLOWS Ctrl+Shift+G (emitting nothing) rather than forwarding 0x07 — see
+# handle_result: a stray BEL on a Ctrl+SHIFT+G press would be a spurious
+# reverse-search abort / nvim bell, whereas the old plain-Ctrl+G shadow could
+# safely forward 0x07 because Ctrl+G is meaningful everywhere.
 #
 # FAIL-SAFE ORDERING (mirrors nvim-annex's ANNEX_FAST branch: "launch first,
 # truncate the harness box only on success", nvim-annex:130-136): the
@@ -323,21 +342,31 @@ def _act(w, boss):
 @result_handler(no_ui=True)
 def handle_result(args, answer, target_window_id, boss):
     w = None
+    is_harness = False
     try:
         w = boss.window_id_map.get(target_window_id)
-        if w is not None and _is_harness(w):
+        if w is not None:
+            is_harness = _is_harness(w)
+        if is_harness:
             _act(w, boss)
             return
     except Exception:
         pass
 
-    # PASS-THROUGH / FALLBACK: not the harness, w is None, or _act() raised
-    # (remote control down, mktemp failed, launch failed, ...) — forward the
-    # raw Ctrl+G byte (BEL, 0x07) so whatever is really focused (nvim, a
-    # plain shell, or the harness's own native Ctrl+G->$EDITOR handling)
-    # behaves exactly as if this kitten were never installed.
+    # FALLBACK — chord-aware since the demotion to Ctrl+Shift+G (Tom 2026-07-15):
+    #   * HARNESS window but _act() raised (remote control down, mktemp failed,
+    #     launch failed, ...) -> forward raw Ctrl+G (BEL, 0x07) so Claude's/pi's
+    #     OWN native Ctrl+G->$EDITOR composer fires as graceful degradation. The
+    #     user pressed Ctrl+Shift+G, but the intent ("give me a composer") is
+    #     honored, and the native path additionally PRESERVES paste/image
+    #     placeholders that this screen-scrape kitten cannot (see module header).
+    #   * NON-harness window (nvim, a plain shell, fzf, bash reverse-search), or
+    #     w is None -> Ctrl+Shift+G means nothing there; SWALLOW it. We must NOT
+    #     emit 0x07 here: on plain Ctrl+G the shadow was harmless because Ctrl+G
+    #     IS meaningful everywhere, but injecting BEL for a Ctrl+SHIFT+G press
+    #     would abort a bash reverse-search / ring nvim's bell out of nowhere.
     try:
-        if w is not None:
+        if w is not None and is_harness:
             w.write_to_child(b"\x07")
     except Exception:
         pass
