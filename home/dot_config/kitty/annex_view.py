@@ -442,6 +442,21 @@ def _niri_max_id(app_id):
         return 0
 
 
+def _niri_focused_id():
+    """niri id (string) of the currently-focused window — the harness the Ctrl+G
+    was pressed in, which becomes the in-place composer — or "" on failure."""
+    try:
+        out = subprocess.check_output(
+            ["niri", "msg", "-j", "windows"], stderr=subprocess.DEVNULL, timeout=1
+        )
+        for win in json.loads(out):
+            if win.get("is_focused"):
+                return str(win.get("id", ""))
+    except Exception:
+        pass
+    return ""
+
+
 def _fire_place(args):
     """Fire annex-place detached (start_new_session) + silenced so it outlives
     this kitten callback and never blocks kitty. Best-effort."""
@@ -585,20 +600,20 @@ def handle_result(args, answer, target_window_id, boss):
     try:
         if w is not None and _is_harness(w):
             if compose:
-                # COMPOSE: launch/dedup the viewer, then place the composer +
-                # viewer via annex-place. Baselines are snapshotted HERE — before
-                # the viewer launches (via _act) and before the composer launches
-                # (later, when the Ctrl+G forwarded below reaches nvim-annex) — so
-                # annex-place's `stack` acts ONLY on the genuinely-new windows and
-                # never disturbs/reaps a pre-existing viewer: a swallow or dedup
-                # (no new viewer) degrades to placing the composer solo. This is
-                # why compose geometry lives here and NOT in nvim-annex — only this
-                # point sees both baselines pre-launch. Forwarding of Ctrl+G still
-                # happens unconditionally below so the native composer always fires.
-                cbase = _niri_max_id("annex-composer")
+                # COMPOSE (Tom's model): the harness window TRANSFORMS INTO the
+                # nvim composer in place (bottom half) when the Ctrl+G forwarded
+                # below reaches Claude/pi -> nvim-annex; here we launch the single
+                # read-only transcript viewer and stack it ABOVE the harness (top
+                # half). So there is ONE spawned window (the viewer), no separate
+                # composer, no blank. Resolve the harness niri id (the focused
+                # window) and baseline the viewer BEFORE _act launches it, so
+                # annex-place stacks only the genuinely-new viewer. Ctrl+G is still
+                # forwarded unconditionally below so the in-place composer fires.
+                harness_nid = _niri_focused_id()
                 vbase = _niri_max_id("annex-viewer")
                 _act(w, boss)
-                _fire_place(["stack", cbase, vbase])
+                if harness_nid:
+                    _fire_place(["stackabove", harness_nid, vbase])
             else:
                 # VIEW-ONLY: press-again-in-viewer-tab dismisses (tab-scoped);
                 # else launch and place it as a right-half. Baseline snapshotted

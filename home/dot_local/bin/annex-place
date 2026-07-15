@@ -35,19 +35,19 @@
 #       window when that parent closes ("the file view dies with its parent
 #       Claude chat").
 #
-#   annex-place stack <composer_baseline> <viewer_baseline>
-#       The Ctrl+G case, owned by annex_view.py (which can snapshot both
-#       baselines before EITHER window launches). Wait for the composer
-#       (annex-composer, id>composer_baseline). Briefly wait for a NEW viewer
-#       (annex-viewer, id>viewer_baseline). If both: stack them (viewer top 50% /
-#       composer bottom 50%, right-half column, harness left) and close the
-#       viewer when the composer closes. If no new viewer (annex_view swallowed
-#       or deduped — an existing viewer is left untouched): place the composer as
-#       a plain right half. Either way, restore the harness width on close.
+#   annex-place stackabove <harness_niri_id> <viewer_baseline>
+#       The Ctrl+G case, owned by annex_view.py. Wait for the new transcript
+#       viewer (annex-viewer, id>viewer_baseline) and stack it ABOVE the harness
+#       IN the harness's own column (viewer top 50% / harness bottom 50%). The
+#       harness is what Claude turns into the in-place nvim composer, so it lands
+#       in the bottom half with the read-only viewer above — one column, no
+#       separate composer window, no blank. No restore needed: niri auto-refills
+#       the harness to full height when the viewer closes (nvim-annex closes it on
+#       composer exit).
 #
 # Everything is best-effort: any failure exits quietly (a mis-timed placement is
 # a cosmetic annoyance, never a crash). Tune the "50%" split ratios in
-# place_right_half()/stack().
+# place_right_half()/stackabove().
 
 set -u
 
@@ -125,49 +125,45 @@ place_right_half() {
 	printf '%s' "$hinfo"
 }
 
-# Stack viewer (top) + composer (bottom) 50/50 in a right-half column, harness
-# left. Robust to open order: reads real column indices and shuffles the composer
-# column until it is immediately right of the viewer, then consumes it in. Bails
-# to place_right_half(composer) rather than consuming a WRONG window if the two
-# are on different workspaces, or the columns can't be made adjacent, or any
-# index read fails.
-stack() {
-	local vid="$1" cid="$2" vcol ccol vws cws guard
-	vws="$(_ws_of "$vid")"; cws="$(_ws_of "$cid")"
-	if [ -z "$vws" ] || [ -z "$cws" ] || [ "$vws" != "$cws" ]; then
-		place_right_half "$cid"; return
-	fi
-	vcol="$(_col_of "$vid")"; ccol="$(_col_of "$cid")"
-	if [ -z "$vcol" ] || [ -z "$ccol" ]; then place_right_half "$cid"; return; fi
+# Stack the transcript viewer <vid> ABOVE the harness <hid>, IN the harness's own
+# column (viewer top 50% / harness bottom 50%). The harness is the window Claude
+# turns into the in-place nvim composer, so it ends up in the bottom half with the
+# read-only viewer above it — Tom's Ctrl+G model, one column, no separate composer
+# window. Robust to open order: lines the viewer's column up immediately right of
+# the harness before consuming, so a user window is never consumed by mistake;
+# bails (leaving the viewer as its own column) if they are on different
+# workspaces, can't be made adjacent, or any index read fails. No harness-width
+# restore is needed: niri auto-refills the harness to full height when the viewer
+# (the column's top window) is closed — nvim-annex closes it when the composer
+# exits.
+stackabove() {
+	local hid="$1" vid="$2" hcol vcol hws vws guard
+	hws="$(_ws_of "$hid")"; vws="$(_ws_of "$vid")"
+	if [ -z "$hws" ] || [ -z "$vws" ] || [ "$hws" != "$vws" ]; then return 0; fi
+	hcol="$(_col_of "$hid")"; vcol="$(_col_of "$vid")"
+	if [ -z "$hcol" ] || [ -z "$vcol" ]; then return 0; fi
 
 	guard=8
-	while [ "$ccol" != "$((vcol + 1))" ] && [ "$guard" -gt 0 ]; do
-		_focus "$cid"
-		if [ "$ccol" -gt "$((vcol + 1))" ]; then
+	while [ "$vcol" != "$((hcol + 1))" ] && [ "$guard" -gt 0 ]; do
+		_focus "$vid"
+		if [ "$vcol" -gt "$((hcol + 1))" ]; then
 			_na move-column-left
 		else
 			_na move-column-right
 		fi
-		vcol="$(_col_of "$vid")"; ccol="$(_col_of "$cid")"
-		if [ -z "$vcol" ] || [ -z "$ccol" ]; then place_right_half "$cid"; return; fi
+		hcol="$(_col_of "$hid")"; vcol="$(_col_of "$vid")"
+		if [ -z "$hcol" ] || [ -z "$vcol" ]; then return 0; fi
 		guard=$((guard - 1))
 	done
 	# Convergence gate: never consume a window we didn't line up.
-	if [ "$ccol" != "$((vcol + 1))" ]; then place_right_half "$cid"; return; fi
+	if [ "$vcol" != "$((hcol + 1))" ]; then return 0; fi
 
-	local hinfo=""
-	_focus "$vid"
-	_na consume-window-into-column          # pull the composer into the viewer column
-	_na set-column-width "50%"              # merged column to 50% width
-	vcol="$(_col_of "$vid")"
-	if [ -n "$vcol" ] && [ "$vcol" != "1" ]; then
-		_na focus-column-left
-		hinfo="$(_focused_harness)"         # harness id + width, before shrinking it
-		_na set-column-width "50%"          # harness to 50%
-	fi
-	_na set-window-height --id "$vid" "50%" # viewer top 50%; composer fills the rest
-	_focus "$cid"
-	printf '%s' "$hinfo"
+	_focus "$hid"
+	_na consume-window-into-column          # viewer joins the harness column (bottom)
+	_na focus-window --id "$vid"
+	_na move-window-up                      # flip: viewer -> top row, harness -> bottom
+	_na set-window-height --id "$vid" "50%" # viewer top 50%; harness fills the rest
+	_focus "$hid"                           # leave focus on the harness (the composer)
 }
 
 # Serialize the focus-driven geometry across concurrent placers: set-column-width
@@ -209,7 +205,7 @@ _watch() {
 	done
 }
 
-# Split "<hid> <hw>" (place_right_half/stack output) into hid/hw, clearing both
+# Split "<hid> <hw>" (place_right_half output) into hid/hw, clearing both
 # when it is empty or a single malformed token (so no bogus restore fires).
 _split_harness() { # sets globals hid, hw
 	hid="${1%% *}"; hw="${1##* }"
@@ -227,23 +223,16 @@ solo)
 	_split_harness "$hinfo"
 	_watch "$id" "$parent" "" "$hid" "$hw"
 	;;
-stack)
-	cbase="${2:-0}"; vbase="${3:-0}"
-	cid="$(_wait_for annex-composer "$cbase" 120)" || exit 0
-	# The viewer is launched by annex_view slightly before the composer; give it
-	# a short window, but don't hang the composer's placement if it never comes
-	# (swallow/dedup). vid stays empty in that case -> plain right-half, and NO
-	# pre-existing viewer is ever touched (baseline newness guarantees it).
-	vid="$(_wait_for annex-viewer "$vbase" 40)" || vid=""
-	if [ -n "$vid" ]; then
-		hinfo="$(_locked stack "$vid" "$cid")"
-		_split_harness "$hinfo"
-		_watch "$cid" "" "$vid" "$hid" "$hw"
-	else
-		hinfo="$(_locked place_right_half "$cid")"
-		_split_harness "$hinfo"
-		_watch "$cid" "" "" "$hid" "$hw"
-	fi
+stackabove)
+	# Ctrl+G compose: stack the new transcript viewer ABOVE the harness (which
+	# Claude turns into the in-place nvim composer). <harness_niri_id> is the
+	# focused window at Ctrl+G time; <viewer_baseline> lets us wait for only the
+	# genuinely-new viewer. No _watch: nvim-annex closes the viewer when the
+	# composer exits, and niri auto-refills the harness to full height then.
+	harness="${2:-}"; vbase="${3:-0}"
+	[ -z "$harness" ] && exit 0
+	vid="$(_wait_for annex-viewer "$vbase")" || exit 0
+	_locked stackabove "$harness" "$vid"
 	;;
 *)
 	exit 0
