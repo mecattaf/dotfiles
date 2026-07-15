@@ -227,6 +227,11 @@
               home-manager.useUserPackages = true;
               home-manager.extraSpecialArgs = { inherit inputs; };
               home-manager.users.tom = import ./home/home.nix;
+              # A pre-existing unmanaged dotfile (e.g. atuin's 14 KB first-run
+              # config.toml) otherwise makes HM activation HARD-FAIL the whole
+              # switch (exit 4) — which silently broke the daily auto-upgrade
+              # fleet-wide. Back the stray file aside instead of aborting.
+              home-manager.backupFileExtension = "hm-bak";
             }
           ];
         };
