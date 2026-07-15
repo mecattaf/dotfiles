@@ -1,0 +1,208 @@
+#!/usr/bin/env bash
+# annex-place — niri-native geometry + lifecycle for annex-spawned windows.
+#
+# The niri port of the old scroll `nvim-terminal.lua` view_map callback
+# (home/dot_config/scroll/scripts/nvim-terminal.lua): scroll had a SYNCHRONOUS
+# "window just mapped" hook to size a freshly-spawned window; niri's spawn is
+# async with no such hook, so we bridge the gap by POLLING niri's window list for
+# the new window (matched by a distinguishing app_id the annex launches stamp via
+# `kitten @ launch --os-window-class …`) and then issuing niri actions.
+#
+# piri deliberately can't do this: its window_rule only moves windows to
+# workspaces / runs a throttled non-window-targeted focus_command (verified
+# against piri v0.1.8 source). So geometry is niri-native here; piri stays for the
+# music scratchpad only.
+#
+# ── NEWNESS via a BASELINE ──────────────────────────────────────────────────
+# A distinguishing app_id is not enough: a lingering same-class window (e.g. a
+# view-only transcript viewer from an earlier Ctrl+Shift+O) would be matched by
+# app_id alone, and the placer would grab/stack/CLOSE it. So every entry point
+# takes a BASELINE = the highest window id of that class that existed BEFORE the
+# launch (snapshotted synchronously by the caller). The placer only ever acts on
+# a window whose id is strictly greater than the baseline — the one genuinely
+# just launched. If no such window appears (swallow / dedup — no new window), the
+# placer does nothing, so it can never disturb an unrelated pre-existing window.
+#
+# Modes:
+#   annex-place solo <app_id> <baseline> [<parent_niri_id>]
+#       Place the newest <app_id> window with id>baseline as the RIGHT half
+#       (50/50 beside the column to its left = the harness). If <parent_niri_id>
+#       is given, then close this window when that parent window closes ("the
+#       file view dies with its parent Claude chat").
+#
+#   annex-place stack <composer_baseline> <viewer_baseline>
+#       The Ctrl+G case, owned by annex_view.py (which can snapshot both
+#       baselines before EITHER window launches). Wait for the composer
+#       (annex-composer, id>composer_baseline). Briefly wait for a NEW viewer
+#       (annex-viewer, id>viewer_baseline). If both: stack them (viewer top 50% /
+#       composer bottom 50%, right-half column, harness left) and close the
+#       viewer when the composer closes. If no new viewer (annex_view swallowed
+#       or deduped — an existing viewer is left untouched): place the composer as
+#       a plain right half.
+#
+# Everything is best-effort: any failure exits quietly (a mis-timed placement is
+# a cosmetic annoyance, never a crash). Tune the "50%" split ratios in
+# place_right_half()/stack().
+
+set -u
+
+LOCK="${XDG_RUNTIME_DIR:-/tmp}/annex-place.lock"
+
+# ── niri helpers ────────────────────────────────────────────────────────────
+
+_na() { niri msg action "$@" >/dev/null 2>&1; }
+_focus() { _na focus-window --id "$1"; }
+
+# Newest window (highest id) of <app_id> with id strictly greater than <baseline>
+# (default 0). `// empty` => NO stdout on no-match (a bare `.id` on null would
+# print the literal string "null", which callers would mistake for a real id and
+# drive geometry against the wrong/no window — the exact trap this guards).
+_newest_id() {
+	niri msg -j windows 2>/dev/null \
+		| jq -re --arg a "$1" --argjson b "${2:-0}" \
+			'map(select(.app_id==$a and .id > $b)) | max_by(.id) | .id // empty' 2>/dev/null
+}
+
+# Column index (1-based pos_in_scrolling_layout[0]) of <id>, or empty. `// empty`
+# again so a floating/unplaced/absent window yields "" (the [ -z ] guards below
+# fire) instead of the literal "null" (which would sneak past the guards and be
+# treated as 0 in arithmetic).
+_col_of() {
+	niri msg -j windows 2>/dev/null \
+		| jq -re --argjson id "$1" \
+			'map(select(.id==$id))[0].layout.pos_in_scrolling_layout[0] // empty' 2>/dev/null
+}
+
+# Workspace id of <id>, or empty.
+_ws_of() {
+	niri msg -j windows 2>/dev/null \
+		| jq -re --argjson id "$1" 'map(select(.id==$id))[0].workspace_id // empty' 2>/dev/null
+}
+
+# Poll up to <tries>×50ms for the newest <app_id> window with id>baseline.
+_wait_for() {
+	local app_id="$1" baseline="${2:-0}" tries="${3:-120}" id
+	while [ "$tries" -gt 0 ]; do
+		id="$(_newest_id "$app_id" "$baseline")"
+		[ -n "$id" ] && { printf '%s' "$id"; return 0; }
+		sleep 0.05
+		tries=$((tries - 1))
+	done
+	return 1
+}
+
+# ── geometry (run under the global lock via _locked) ────────────────────────
+
+# Size <id>'s column to 50%, and its left neighbour (the harness) to 50% too, for
+# a side-by-side split. Leaves focus on <id>. Skips the left resize when <id> is
+# the leftmost column (no neighbour to size).
+place_right_half() {
+	local id="$1" col
+	_focus "$id"
+	_na set-column-width "50%"
+	col="$(_col_of "$id")"
+	if [ -n "$col" ] && [ "$col" != "1" ]; then
+		_na focus-column-left
+		_na set-column-width "50%"
+		_focus "$id"
+	fi
+}
+
+# Stack viewer (top) + composer (bottom) 50/50 in a right-half column, harness
+# left. Robust to open order: reads real column indices and shuffles the composer
+# column until it is immediately right of the viewer, then consumes it in. Bails
+# to place_right_half(composer) rather than consuming a WRONG window if the two
+# are on different workspaces, or the columns can't be made adjacent, or any
+# index read fails.
+stack() {
+	local vid="$1" cid="$2" vcol ccol vws cws guard
+	vws="$(_ws_of "$vid")"; cws="$(_ws_of "$cid")"
+	if [ -z "$vws" ] || [ -z "$cws" ] || [ "$vws" != "$cws" ]; then
+		place_right_half "$cid"; return
+	fi
+	vcol="$(_col_of "$vid")"; ccol="$(_col_of "$cid")"
+	if [ -z "$vcol" ] || [ -z "$ccol" ]; then place_right_half "$cid"; return; fi
+
+	guard=8
+	while [ "$ccol" != "$((vcol + 1))" ] && [ "$guard" -gt 0 ]; do
+		_focus "$cid"
+		if [ "$ccol" -gt "$((vcol + 1))" ]; then
+			_na move-column-left
+		else
+			_na move-column-right
+		fi
+		vcol="$(_col_of "$vid")"; ccol="$(_col_of "$cid")"
+		if [ -z "$vcol" ] || [ -z "$ccol" ]; then place_right_half "$cid"; return; fi
+		guard=$((guard - 1))
+	done
+	# Convergence gate: never consume a window we didn't line up.
+	if [ "$ccol" != "$((vcol + 1))" ]; then place_right_half "$cid"; return; fi
+
+	_focus "$vid"
+	_na consume-window-into-column          # pull the composer into the viewer column
+	_na set-column-width "50%"              # merged column to 50% width
+	vcol="$(_col_of "$vid")"
+	if [ -n "$vcol" ] && [ "$vcol" != "1" ]; then
+		_na focus-column-left; _na set-column-width "50%"   # harness to 50%
+	fi
+	_na set-window-height --id "$vid" "50%" # viewer top 50%; composer fills the rest
+	_focus "$cid"
+}
+
+# Serialize the focus-driven geometry across concurrent placers: set-column-width
+# / consume-window-into-column / focus-column-left all act on niri's GLOBAL
+# focused column, so two placers interleaving their focus→act pairs could resize
+# or consume each other's (or a user's) window. flock makes only one placer touch
+# the layout at a time. The read-only poll and the reap tail run OUTSIDE the lock.
+_locked() { ( flock 9; "$@" ) 9>"$LOCK"; }
+
+# ── lifecycle: close <close_id> once <watch_id> closes ──────────────────────
+# Tails niri's event stream for WindowClosed{id==watch_id}. The connect-time
+# snapshot burst contains no WindowClosed, so there is no false trigger; a line
+# whose title merely contains the substring is null-guarded by jq (id!="number").
+_reap_on_close() {
+	local watch_id="$1" close_id="$2" cid
+	niri msg -j event-stream 2>/dev/null | while IFS= read -r line; do
+		case "$line" in
+		*'"WindowClosed"'*)
+			cid="$(printf '%s' "$line" | jq -re '.WindowClosed.id' 2>/dev/null)"
+			if [ "$cid" = "$watch_id" ]; then
+				_na close-window --id "$close_id"
+				break
+			fi
+			;;
+		esac
+	done
+}
+
+# ── entry points ────────────────────────────────────────────────────────────
+
+case "${1:-}" in
+solo)
+	app_id="${2:-}"; baseline="${3:-0}"; parent="${4:-}"
+	[ -z "$app_id" ] && exit 0
+	id="$(_wait_for "$app_id" "$baseline")" || exit 0
+	_locked place_right_half "$id"
+	[ -n "$parent" ] && _reap_on_close "$parent" "$id"
+	;;
+stack)
+	cbase="${2:-0}"; vbase="${3:-0}"
+	cid="$(_wait_for annex-composer "$cbase" 120)" || exit 0
+	# The viewer is launched by annex_view slightly before the composer; give it
+	# a short window, but don't hang the composer's placement if it never comes
+	# (swallow/dedup). vid stays empty in that case -> plain right-half, and NO
+	# pre-existing viewer is ever touched (baseline newness guarantees it).
+	vid="$(_wait_for annex-viewer "$vbase" 40)" || vid=""
+	if [ -n "$vid" ]; then
+		_locked stack "$vid" "$cid"
+		_reap_on_close "$cid" "$vid"
+	else
+		_locked place_right_half "$cid"
+	fi
+	;;
+*)
+	exit 0
+	;;
+esac
+
+exit 0

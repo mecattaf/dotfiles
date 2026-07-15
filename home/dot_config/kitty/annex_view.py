@@ -418,6 +418,38 @@ def _resolve_session_id(w, boss):
     return resolve_session(resolvable, target_cwd, None)
 
 
+def _niri_max_id(app_id):
+    """Highest niri window id currently carrying <app_id>, or 0. This is the
+    BASELINE annex-place needs to tell a genuinely-new window from a lingering
+    same-class one (a view-only viewer from an earlier Ctrl+Shift+O, say): snapshot
+    it BEFORE launching, so the about-to-open window is strictly greater and
+    annex-place acts on it alone — never on the pre-existing one. See annex-place's
+    header."""
+    try:
+        out = subprocess.check_output(
+            ["niri", "msg", "-j", "windows"], stderr=subprocess.DEVNULL, timeout=1
+        )
+        ids = [w.get("id", 0) for w in json.loads(out) if w.get("app_id") == app_id]
+        return max(ids) if ids else 0
+    except Exception:
+        return 0
+
+
+def _fire_place(args):
+    """Fire annex-place detached (start_new_session) + silenced so it outlives
+    this kitten callback and never blocks kitty. Best-effort."""
+    try:
+        place = os.path.join(os.path.expanduser("~"), ".local", "bin", "annex-place")
+        subprocess.Popen(
+            [place] + [str(a) for a in args],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except Exception:
+        pass
+
+
 def _act(w, boss):
     """Resolve + launch (or, if a viewer for this session is already open, leave)
     the viewer os-window. Returns the resolved sessionId on success else None;
@@ -472,6 +504,13 @@ def _act(w, boss):
     argv = (
         "launch",
         "--type=os-window",
+        # Distinguishing niri app_id (kitty maps --os-window-class to the Wayland
+        # app_id) so annex-place can match/position this viewer: right-half on its
+        # own (Ctrl+Shift+O), or stacked above the composer (Ctrl+G, arranged by
+        # nvim-annex's compose placer, which also reaps this viewer on composer
+        # close).
+        "--os-window-class",
+        "annex-viewer",
         "--cwd=current",
         "--watcher",
         "annex_view_watcher.py",
@@ -517,17 +556,32 @@ def handle_result(args, answer, target_window_id, boss):
     try:
         if w is not None and _is_harness(w):
             if compose:
-                # COMPOSE: launch/dedup the viewer; forwarding of Ctrl+G happens
-                # unconditionally below so the native composer always fires.
+                # COMPOSE: launch/dedup the viewer, then place the composer +
+                # viewer via annex-place. Baselines are snapshotted HERE — before
+                # the viewer launches (via _act) and before the composer launches
+                # (later, when the Ctrl+G forwarded below reaches nvim-annex) — so
+                # annex-place's `stack` acts ONLY on the genuinely-new windows and
+                # never disturbs/reaps a pre-existing viewer: a swallow or dedup
+                # (no new viewer) degrades to placing the composer solo. This is
+                # why compose geometry lives here and NOT in nvim-annex — only this
+                # point sees both baselines pre-launch. Forwarding of Ctrl+G still
+                # happens unconditionally below so the native composer always fires.
+                cbase = _niri_max_id("annex-composer")
+                vbase = _niri_max_id("annex-viewer")
                 _act(w, boss)
+                _fire_place(["stack", cbase, vbase])
             else:
                 # VIEW-ONLY: press-again-in-viewer-tab dismisses (tab-scoped);
-                # else launch.
+                # else launch and place it as a right-half. Baseline snapshotted
+                # BEFORE _act so a dedup-hit (no new window) is a safe no-op in
+                # annex-place (nothing newer than the baseline appears).
                 existing = _view_window_in_tab(w, boss)
                 if existing is not None:
                     boss.mark_window_for_close(existing)
                 else:
+                    vbase = _niri_max_id("annex-viewer")
                     _act(w, boss)
+                    _fire_place(["solo", "annex-viewer", vbase])
     except Exception:
         # Any error -> fall through. In compose mode we still forward Ctrl+G
         # (the composer must never be lost to a viewer-launch failure); in

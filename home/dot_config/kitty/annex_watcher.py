@@ -65,6 +65,38 @@ def on_close(boss, window, data):
         return
 
     directory = os.path.dirname(path) or home
+
+    # Harness niri window id = the focused niri window right now. The Ctrl+B
+    # sidebar was an in-kitty vsplit INSIDE the harness's own kitty os-window, so
+    # closing it returns focus to the harness within that same niri window —
+    # `niri msg` reports it as focused here. Captured so annex-place can reap the
+    # file view when the harness chat is later closed (the "file view dies with
+    # its parent Claude chat" contract). Best-effort: empty on any failure, in
+    # which case annex-place just skips the reap and still does the geometry.
+    # One niri query yields both handles annex-place needs:
+    #   harness_id — the reap parent (see above).
+    #   fbase      — the file-view BASELINE: highest existing annex-fileview id, so
+    #                annex-place acts only on the window we launch below (id>fbase),
+    #                never a lingering earlier file view. Snapshot BEFORE the launch.
+    harness_id = ""
+    fbase = 0
+    try:
+        out = subprocess.check_output(
+            ["niri", "msg", "-j", "windows"],
+            stderr=subprocess.DEVNULL,
+            timeout=1,
+        )
+        import json as _json
+
+        for w in _json.loads(out):
+            if w.get("is_focused"):
+                harness_id = str(w.get("id", ""))
+            if w.get("app_id") == "annex-fileview":
+                fbase = max(fbase, w.get("id", 0))
+    except Exception:
+        harness_id = ""
+        fbase = 0
+
     vsess = _name("term")
     try:
         boss.call_remote_control(
@@ -72,6 +104,11 @@ def on_close(boss, window, data):
             (
                 "launch",
                 "--type=os-window",
+                # Distinguishing niri app_id so annex-place (and any future
+                # niri/piri rule) can match this window; kitty maps
+                # --os-window-class to the Wayland app_id.
+                "--os-window-class",
+                "annex-fileview",
                 "--cwd",
                 directory,
                 "--",
@@ -81,6 +118,21 @@ def on_close(boss, window, data):
                 "nvim",
                 path,
             ),
+        )
+    except Exception:
+        pass
+
+    # Fire the niri-native placer: right-half split beside the harness, then reap
+    # this file view when the harness (harness_id) closes. Detached + silenced so
+    # it outlives this watcher callback and never blocks kitty.
+    try:
+        place = os.path.join(home, ".local", "bin", "annex-place")
+        subprocess.Popen(
+            [place, "solo", "annex-fileview", str(fbase)]
+            + ([harness_id] if harness_id else []),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
         )
     except Exception:
         pass

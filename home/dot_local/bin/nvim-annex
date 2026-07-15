@@ -134,8 +134,14 @@ if [[ "${ANNEX_FAST:-0}" == "1" ]]; then
     # remote-control down, ...) we leave the harness tempfile UNTOUCHED and exit
     # nonzero, so the harness re-reads it and KEEPS the draft — the same
     # fail-safe contract the blocking branch relies on.
+    # --os-window-class stamps a distinguishing niri app_id (kitty maps it to the
+    # Wayland app_id) so annex-place can find + place this composer. The geometry
+    # itself is driven by annex_view.py's compose placer (it owns the Ctrl+G
+    # stacking because it can baseline both windows before either launches — see
+    # home/dot_local/bin/annex-place `stack`), so nothing is fired here.
     if kitten @ "${to_args[@]}" launch \
         --type=os-window \
+        --os-window-class annex-composer \
         --cwd=current \
         --watcher annex_composer_watcher.py \
         --var annex_session="$sess" \
@@ -190,8 +196,12 @@ before=""
 # fish/kitty-derived cwd; the tempfile "$@" is absolute so cwd is irrelevant to
 # the edit. NOT combined with --no-response (freezes kitty). stdout -> /dev/null
 # so the exit-code digit kitten prints never lands on the harness's paused pane.
+# --os-window-class = a distinguishing niri app_id so annex_view.py's compose
+# placer can find + place this composer (geometry is owned there, not fired here
+# — see the fast-path note above and home/dot_local/bin/annex-place `stack`).
 kitten @ "${to_args[@]}" launch \
     --type=os-window \
+    --os-window-class annex-composer \
     --cwd=current \
     --wait-for-child-to-exit \
     -- "$annex_cmd" exec "$sess" nvim "$@" >/dev/null 2>&1
