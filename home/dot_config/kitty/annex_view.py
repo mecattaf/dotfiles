@@ -128,6 +128,7 @@ import glob
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import time
@@ -314,28 +315,15 @@ def _snapshot_transcript(root, session_id):
     project_dir = os.path.dirname(src)
     snap_id = str(uuid.uuid4())
     dst = os.path.join(project_dir, snap_id + ".jsonl")
-    # CRITICAL (dotfiles: "No conversation found with session ID"): `claude
-    # --resume <id>` resolves the session by the sessionId RECORDED INSIDE the
-    # jsonl (every record carries a "sessionId" field), NOT by the filename. A
-    # plain copy leaves the internal id as the ORIGINAL, so `--resume <snap_id>`
-    # finds no session with that internal id and dies with "No conversation
-    # found with session ID: <snap_id>" — the exact failure seen live. So rewrite
-    # the id in the copy to match its new filename. session_id is a uuid, unique
-    # in the file, so a plain string replace is safe (it also fixes any internal
-    # cross-references), and this only ever touches the throwaway copy — the live
-    # original is never read-modified, preserving the write-safety guarantee.
+    # `claude --resume <id>` resolves the session by FILENAME within the current
+    # cwd's project slug (verified live: a plain copy resumes fine by its new
+    # name; the internal sessionId field is NOT what it matches on). So a straight
+    # copy into the same project dir is resumable — the load-bearing half of the
+    # fix is cd-ing the viewer into that cwd (see _act's payload). This only ever
+    # writes the throwaway copy; the live original is never touched.
     try:
-        with open(src, "r") as fh:
-            data = fh.read()
-        data = data.replace(session_id, snap_id)
-        with open(dst, "w") as fh:
-            fh.write(data)
+        shutil.copy2(src, dst)
     except Exception:
-        try:
-            if os.path.exists(dst):
-                os.unlink(dst)
-        except Exception:
-            pass
         return None, None
     return snap_id, dst
 
@@ -512,8 +500,30 @@ def _act(w, boss):
     #      Ctrl+O once). Degrades safely: an unset/empty KITTY_WINDOW_ID makes
     #      `--match id:` match nothing (harmless). Cross-host auto-Ctrl+O + env
     #      threading is deferred (#78/#72).
+    #   3. cd into the SESSION's cwd first. `claude --resume` resolves the session
+    #      by scanning ONLY the current cwd's project slug
+    #      (~/.claude/projects/<cwd-slug>/<id>.jsonl) — verified live: the SAME
+    #      snapshot resumes from the repo cwd but errors "No conversation found
+    #      with session ID" from $HOME or /tmp. The viewer runs claude through
+    #      `annex-cmd exec` -> `zmx attach`, and the kitty `--cwd=current` does NOT
+    #      survive that zmx hop, so claude was landing in the wrong cwd and never
+    #      finding the snapshot (the exact failure Tom hit). The harness/session
+    #      cwd's slug is exactly the snapshot's project dir, so cd-ing there makes
+    #      the resume resolve. Best-effort: no cd if the cwd can't be resolved.
+    try:
+        target_cwd = harness_cwd(w.child.foreground_processes)
+    except Exception:
+        target_cwd = None
+    if not target_cwd:
+        try:
+            target_cwd = w.cwd_of_child
+        except Exception:
+            target_cwd = None
+    cd_prefix = ("cd " + shlex.quote(target_cwd) + " 2>/dev/null; ") if target_cwd else ""
+
     payload_sh = (
-        '(sleep 1.3 && kitten @ send-text --match id:"$KITTY_WINDOW_ID" '
+        cd_prefix
+        + '(sleep 1.3 && kitten @ send-text --match id:"$KITTY_WINDOW_ID" '
         '"$(printf \'\\017\')") >/dev/null 2>&1 & '
         "exec env CLAUDE_CODE_RESUME_TOKEN_THRESHOLD=999999999 "
         "claude --resume " + snap_id
