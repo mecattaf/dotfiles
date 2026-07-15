@@ -23,12 +23,17 @@
 # just launched. If no such window appears (swallow / dedup — no new window), the
 # placer does nothing, so it can never disturb an unrelated pre-existing window.
 #
+# The harness's original column WIDTH is captured before it is shrunk to 50%, and
+# RESTORED when the annex window closes, so the spawning window returns to its
+# full size instead of being left at half width.
+#
 # Modes:
 #   annex-place solo <app_id> <baseline> [<parent_niri_id>]
 #       Place the newest <app_id> window with id>baseline as the RIGHT half
-#       (50/50 beside the column to its left = the harness). If <parent_niri_id>
-#       is given, then close this window when that parent window closes ("the
-#       file view dies with its parent Claude chat").
+#       (50/50 beside the column to its left = the harness). When it closes,
+#       restore the harness width. If <parent_niri_id> is given, also close this
+#       window when that parent closes ("the file view dies with its parent
+#       Claude chat").
 #
 #   annex-place stack <composer_baseline> <viewer_baseline>
 #       The Ctrl+G case, owned by annex_view.py (which can snapshot both
@@ -38,7 +43,7 @@
 #       composer bottom 50%, right-half column, harness left) and close the
 #       viewer when the composer closes. If no new viewer (annex_view swallowed
 #       or deduped — an existing viewer is left untouched): place the composer as
-#       a plain right half.
+#       a plain right half. Either way, restore the harness width on close.
 #
 # Everything is best-effort: any failure exits quietly (a mis-timed placement is
 # a cosmetic annoyance, never a crash). Tune the "50%" split ratios in
@@ -79,6 +84,14 @@ _ws_of() {
 		| jq -re --argjson id "$1" 'map(select(.id==$id))[0].workspace_id // empty' 2>/dev/null
 }
 
+# "<id> <width_px>" of the currently-focused window (the harness, when called
+# right after focus-column-left), or empty. Captured BEFORE we shrink it so the
+# original width can be restored when the annex window later closes.
+_focused_harness() {
+	niri msg -j windows 2>/dev/null | jq -re \
+		'map(select(.is_focused))[0] | "\(.id) \(.layout.tile_size[0] // 0 | floor)"' 2>/dev/null
+}
+
 # Poll up to <tries>×50ms for the newest <app_id> window with id>baseline.
 _wait_for() {
 	local app_id="$1" baseline="${2:-0}" tries="${3:-120}" id
@@ -95,17 +108,21 @@ _wait_for() {
 
 # Size <id>'s column to 50%, and its left neighbour (the harness) to 50% too, for
 # a side-by-side split. Leaves focus on <id>. Skips the left resize when <id> is
-# the leftmost column (no neighbour to size).
+# the leftmost column (no neighbour to size). Echoes "<harness_id> <orig_px>" —
+# the harness id and its ORIGINAL width in px, captured before the shrink — so the
+# caller can restore the harness when <id> later closes; echoes nothing if there
+# is no harness to the left.
 place_right_half() {
-	local id="$1" col
+	local id="$1" col hinfo
 	_focus "$id"
 	_na set-column-width "50%"
 	col="$(_col_of "$id")"
-	if [ -n "$col" ] && [ "$col" != "1" ]; then
-		_na focus-column-left
-		_na set-column-width "50%"
-		_focus "$id"
-	fi
+	if [ -z "$col" ] || [ "$col" = "1" ]; then return 0; fi
+	_na focus-column-left
+	hinfo="$(_focused_harness)"   # harness id + width, BEFORE shrinking it
+	_na set-column-width "50%"
+	_focus "$id"
+	printf '%s' "$hinfo"
 }
 
 # Stack viewer (top) + composer (bottom) 50/50 in a right-half column, harness
@@ -138,15 +155,19 @@ stack() {
 	# Convergence gate: never consume a window we didn't line up.
 	if [ "$ccol" != "$((vcol + 1))" ]; then place_right_half "$cid"; return; fi
 
+	local hinfo=""
 	_focus "$vid"
 	_na consume-window-into-column          # pull the composer into the viewer column
 	_na set-column-width "50%"              # merged column to 50% width
 	vcol="$(_col_of "$vid")"
 	if [ -n "$vcol" ] && [ "$vcol" != "1" ]; then
-		_na focus-column-left; _na set-column-width "50%"   # harness to 50%
+		_na focus-column-left
+		hinfo="$(_focused_harness)"         # harness id + width, before shrinking it
+		_na set-column-width "50%"          # harness to 50%
 	fi
 	_na set-window-height --id "$vid" "50%" # viewer top 50%; composer fills the rest
 	_focus "$cid"
+	printf '%s' "$hinfo"
 }
 
 # Serialize the focus-driven geometry across concurrent placers: set-column-width
@@ -156,23 +177,43 @@ stack() {
 # the layout at a time. The read-only poll and the reap tail run OUTSIDE the lock.
 _locked() { ( flock 9; "$@" ) 9>"$LOCK"; }
 
-# ── lifecycle: close <close_id> once <watch_id> closes ──────────────────────
-# Tails niri's event stream for WindowClosed{id==watch_id}. The connect-time
-# snapshot burst contains no WindowClosed, so there is no false trigger; a line
-# whose title merely contains the substring is null-guarded by jq (id!="number").
-_reap_on_close() {
-	local watch_id="$1" close_id="$2" cid
+_do_restore() { _na focus-window --id "$1"; _na set-column-width "$2"; }
+
+# Lifecycle watcher over niri's event stream. On WindowClosed:
+#   • if <parent> is given and IT closes  -> close <self> (the file view dies with
+#     its parent Claude chat);
+#   • when <self> closes                  -> reap <reap> if given (close the viewer
+#     paired with a composer) AND restore the harness (<hid>) to its original
+#     width <hw>, so the spawning window returns to full size — then stop.
+# The connect-time snapshot burst carries no WindowClosed (no false trigger); a
+# line whose title merely contains the substring is null-guarded by jq
+# (id != a numeric window id). The restore runs under the geometry lock.
+_watch() {
+	local self="$1" parent="$2" reap="$3" hid="$4" hw="$5" cid
 	niri msg -j event-stream 2>/dev/null | while IFS= read -r line; do
 		case "$line" in
 		*'"WindowClosed"'*)
 			cid="$(printf '%s' "$line" | jq -re '.WindowClosed.id' 2>/dev/null)"
-			if [ "$cid" = "$watch_id" ]; then
-				_na close-window --id "$close_id"
+			if [ -n "$parent" ] && [ "$cid" = "$parent" ]; then
+				_na close-window --id "$self"
+			fi
+			if [ "$cid" = "$self" ]; then
+				[ -n "$reap" ] && _na close-window --id "$reap"
+				if [ -n "$hid" ] && [ -n "$hw" ] && [ "$hw" != "0" ]; then
+					_locked _do_restore "$hid" "$hw"
+				fi
 				break
 			fi
 			;;
 		esac
 	done
+}
+
+# Split "<hid> <hw>" (place_right_half/stack output) into hid/hw, clearing both
+# when it is empty or a single malformed token (so no bogus restore fires).
+_split_harness() { # sets globals hid, hw
+	hid="${1%% *}"; hw="${1##* }"
+	[ "$hid" = "$hw" ] && { hid=""; hw=""; }
 }
 
 # ── entry points ────────────────────────────────────────────────────────────
@@ -182,8 +223,9 @@ solo)
 	app_id="${2:-}"; baseline="${3:-0}"; parent="${4:-}"
 	[ -z "$app_id" ] && exit 0
 	id="$(_wait_for "$app_id" "$baseline")" || exit 0
-	_locked place_right_half "$id"
-	[ -n "$parent" ] && _reap_on_close "$parent" "$id"
+	hinfo="$(_locked place_right_half "$id")"
+	_split_harness "$hinfo"
+	_watch "$id" "$parent" "" "$hid" "$hw"
 	;;
 stack)
 	cbase="${2:-0}"; vbase="${3:-0}"
@@ -194,10 +236,13 @@ stack)
 	# pre-existing viewer is ever touched (baseline newness guarantees it).
 	vid="$(_wait_for annex-viewer "$vbase" 40)" || vid=""
 	if [ -n "$vid" ]; then
-		_locked stack "$vid" "$cid"
-		_reap_on_close "$cid" "$vid"
+		hinfo="$(_locked stack "$vid" "$cid")"
+		_split_harness "$hinfo"
+		_watch "$cid" "" "$vid" "$hid" "$hw"
 	else
-		_locked place_right_half "$cid"
+		hinfo="$(_locked place_right_half "$cid")"
+		_split_harness "$hinfo"
+		_watch "$cid" "" "" "$hid" "$hw"
 	fi
 	;;
 *)

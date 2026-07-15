@@ -314,9 +314,28 @@ def _snapshot_transcript(root, session_id):
     project_dir = os.path.dirname(src)
     snap_id = str(uuid.uuid4())
     dst = os.path.join(project_dir, snap_id + ".jsonl")
+    # CRITICAL (dotfiles: "No conversation found with session ID"): `claude
+    # --resume <id>` resolves the session by the sessionId RECORDED INSIDE the
+    # jsonl (every record carries a "sessionId" field), NOT by the filename. A
+    # plain copy leaves the internal id as the ORIGINAL, so `--resume <snap_id>`
+    # finds no session with that internal id and dies with "No conversation
+    # found with session ID: <snap_id>" — the exact failure seen live. So rewrite
+    # the id in the copy to match its new filename. session_id is a uuid, unique
+    # in the file, so a plain string replace is safe (it also fixes any internal
+    # cross-references), and this only ever touches the throwaway copy — the live
+    # original is never read-modified, preserving the write-safety guarantee.
     try:
-        shutil.copy2(src, dst)
+        with open(src, "r") as fh:
+            data = fh.read()
+        data = data.replace(session_id, snap_id)
+        with open(dst, "w") as fh:
+            fh.write(data)
     except Exception:
+        try:
+            if os.path.exists(dst):
+                os.unlink(dst)
+        except Exception:
+            pass
         return None, None
     return snap_id, dst
 
