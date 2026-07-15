@@ -1,0 +1,404 @@
+#!/usr/bin/env python3
+"""claude-slash-enum — build ~/.cache/claude-slash/palette.json for the '/'
+blink.cmp source (claude_slash.lua) used by nvim.
+
+Enumeration ladder (cheapest/most-complete first, per dotfiles issue research):
+
+  1. ACP (zero cost, zero billed turn, full descriptions). Spawns
+     claude-agent-acp and speaks newline-delimited JSON-RPC 2.0 over stdio:
+     initialize -> session/new, then waits for the unsolicited
+     session/update notification carrying availableCommands. session/prompt
+     is NEVER sent, so no transcript is persisted and nothing is billed.
+     REQUIRES CLAUDE_CODE_EXECUTABLE pointed at a real, working `claude`
+     binary — on NixOS the vendored native binary bundled with
+     claude-agent-acp cannot exec (stub-ld rejects it) and the whole process
+     dies with EPIPE on session/new without this override.
+
+  2. stream-json fallback (ONE real billed turn — OPT-IN, default OFF): only
+     runs when CLAUDE_SLASH_BILLED_FALLBACK=1 is set, since the user's standing
+     preference is to never spend a billed turn on enumeration. When enabled:
+     `claude -p x --output-format stream-json --max-turns 1`, parsed for
+     `.slash_commands[]` / `.skills[]`. Names only, no descriptions. With it
+     off (the default), an ACP failure falls straight through to rung 3.
+
+  3. Filesystem scan (free, offline, always run in addition to 1/2 to enrich
+     + catch project-local commands): SKILL.md frontmatter under
+     $CLAUDE_CONFIG_DIR/skills and this repo's home/dot_claude/skills, plus
+     *.md under $CLAUDE_CONFIG_DIR/commands and ./.claude/commands (cwd).
+
+Results are merged (filesystem descriptions win on name collision — they are
+generally more current than whatever a deployed copy reports) and written
+atomically to ~/.cache/claude-slash/palette.json as:
+    {"ts": <epoch int>, "commands": [{"name","kind","description"}, ...]}
+
+Usage:
+    claude-slash-enum [--refresh] [--ttl SECONDS] [--quiet]
+
+Without --refresh, a fresh cache (younger than --ttl, default 24h) is left
+alone and the script exits immediately — this is what makes it cheap to call
+opportunistically (e.g. kicked in the background by claude_slash.lua when the
+cache is missing). Every subprocess call is timeout-bounded; failures at any
+ladder rung fall through to the next rather than hanging or aborting.
+"""
+
+import argparse
+import json
+import os
+import re
+import select
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+CACHE_DIR = Path.home() / ".cache" / "claude-slash"
+CACHE_PATH = CACHE_DIR / "palette.json"
+DEFAULT_TTL = 24 * 60 * 60  # 24h
+
+ACP_TIMEOUT = 8       # seconds to wait for available_commands_update
+STREAMJSON_TIMEOUT = 25  # a real model turn — slower, budget generously
+
+
+def log(quiet, *a):
+    if not quiet:
+        print(*a, file=sys.stderr)
+
+
+# --------------------------------------------------------------------------
+# Rung 1: ACP (no billed turn)
+# --------------------------------------------------------------------------
+
+def acp_enumerate(quiet):
+    acp_bin = shutil.which("claude-agent-acp")
+    claude_bin = os.environ.get("CLAUDE_CODE_EXECUTABLE") or shutil.which("claude")
+    if not acp_bin or not claude_bin:
+        log(quiet, "claude-slash-enum: acp skipped (claude-agent-acp/claude not on PATH)")
+        return None
+
+    env = dict(os.environ)
+    # Mandatory on NixOS: the vendored native binary claude-agent-acp spawns
+    # internally cannot exec via stub-ld; this makes it shell out to the real,
+    # working `claude` instead. Harmless elsewhere.
+    env["CLAUDE_CODE_EXECUTABLE"] = claude_bin
+
+    try:
+        proc = subprocess.Popen(
+            [acp_bin],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            env=env, text=True, bufsize=1,
+        )
+    except OSError as e:
+        log(quiet, f"claude-slash-enum: acp spawn failed: {e}")
+        return None
+
+    def send(obj):
+        proc.stdin.write(json.dumps(obj) + "\n")
+        proc.stdin.flush()
+
+    commands = None
+    try:
+        send({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": {
+                "protocolVersion": 1,
+                "clientInfo": {"name": "claude-slash-enum", "version": "1.0"},
+                "clientCapabilities": {"fs": {"readTextFile": False, "writeTextFile": False}, "terminal": False},
+            },
+        })
+        send({
+            "jsonrpc": "2.0", "id": 2, "method": "session/new",
+            "params": {"cwd": os.getcwd(), "mcpServers": {}},
+        })
+        # session/prompt is intentionally never sent — available_commands_update
+        # arrives unsolicited from session bootstrap alone.
+
+        deadline = time.time() + ACP_TIMEOUT
+        while time.time() < deadline:
+            remaining = max(0.0, deadline - time.time())
+            r, _, _ = select.select([proc.stdout], [], [], min(0.5, remaining))
+            if proc.stdout in r:
+                line = proc.stdout.readline()
+                if not line:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    continue
+                if msg.get("method") == "session/update":
+                    upd = msg.get("params", {}).get("update", {})
+                    if upd.get("sessionUpdate") == "available_commands_update":
+                        commands = upd.get("availableCommands") or []
+                        break
+            if proc.poll() is not None:
+                break
+    except Exception as e:
+        log(quiet, f"claude-slash-enum: acp handshake error: {e}")
+    finally:
+        try:
+            proc.terminate()
+            proc.wait(timeout=2)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+    if not commands:
+        log(quiet, "claude-slash-enum: acp yielded no available_commands_update")
+        return None
+
+    out = []
+    for c in commands:
+        name = c.get("name")
+        if not name:
+            continue
+        out.append({"name": name, "kind": "builtin", "description": c.get("description") or ""})
+    log(quiet, f"claude-slash-enum: acp -> {len(out)} commands")
+    return out
+
+
+# --------------------------------------------------------------------------
+# Rung 2: stream-json fallback (bills one real turn — used sparingly)
+# --------------------------------------------------------------------------
+
+def streamjson_enumerate(quiet):
+    # Opt-IN only: this rung bills one real model turn (it persists a transcript
+    # with token usage), which the user explicitly wants to avoid. Default OFF —
+    # on ACP failure we fall straight through to the free filesystem scan
+    # (rung 3, no built-ins). Set CLAUDE_SLASH_BILLED_FALLBACK=1 to allow it.
+    if not os.environ.get("CLAUDE_SLASH_BILLED_FALLBACK"):
+        log(quiet, "claude-slash-enum: stream-json fallback skipped (would bill a turn; set CLAUDE_SLASH_BILLED_FALLBACK=1 to enable)")
+        return None
+    claude_bin = shutil.which("claude")
+    if not claude_bin:
+        return None
+    try:
+        proc = subprocess.run(
+            [claude_bin, "-p", "x", "--output-format", "stream-json", "--verbose", "--max-turns", "1"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, timeout=STREAMJSON_TIMEOUT,
+        )
+    except (subprocess.TimeoutExpired, OSError) as e:
+        log(quiet, f"claude-slash-enum: stream-json fallback failed: {e}")
+        return None
+
+    first_line = ""
+    for line in proc.stdout.splitlines():
+        if line.strip():
+            first_line = line
+            break
+    if not first_line:
+        return None
+    try:
+        data = json.loads(first_line)
+    except ValueError:
+        return None
+
+    names = list(data.get("slash_commands") or []) + list(data.get("skills") or [])
+    if not names:
+        return None
+    seen = set()
+    out = []
+    for name in names:
+        if name in seen:
+            continue
+        seen.add(name)
+        out.append({"name": name, "kind": "builtin", "description": ""})
+    log(quiet, f"claude-slash-enum: stream-json -> {len(out)} names (no descriptions)")
+    return out
+
+
+# --------------------------------------------------------------------------
+# Rung 3: filesystem scan (free, offline)
+# --------------------------------------------------------------------------
+
+_FRONTMATTER_KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*):\s*(.*)$")
+
+
+def parse_frontmatter(text):
+    """Minimal YAML-frontmatter reader: plain `key: value` and folded/literal
+    block scalars (`key: >-`, `key: >`, `key: |-`, `key: |`) as used by this
+    repo's SKILL.md files. Not a general YAML parser — good enough for the
+    flat, hand-written frontmatter these files actually contain.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}
+    end = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            end = i
+            break
+    if end is None:
+        return {}
+    body = lines[1:end]
+    result = {}
+    i = 0
+    while i < len(body):
+        m = _FRONTMATTER_KEY.match(body[i])
+        if not m:
+            i += 1
+            continue
+        key, rest = m.group(1), m.group(2).strip()
+        if rest in (">-", ">", "|-", "|"):
+            fold = rest.startswith(">")
+            j = i + 1
+            collected = []
+            while j < len(body) and (body[j].startswith((" ", "\t")) or body[j].strip() == ""):
+                collected.append(body[j].strip())
+                j += 1
+            value = " ".join(c for c in collected if c) if fold else "\n".join(collected)
+            result[key] = value.strip()
+            i = j
+            continue
+        if len(rest) >= 2 and rest[0] == rest[-1] and rest[0] in ("'", '"'):
+            rest = rest[1:-1]
+        result[key] = rest
+        i += 1
+    return result
+
+
+def scan_skill_dirs(dirs):
+    out = []
+    for d in dirs:
+        if not d or not d.is_dir():
+            continue
+        for skill_md in sorted(d.glob("*/SKILL.md")):
+            try:
+                fm = parse_frontmatter(skill_md.read_text(errors="replace"))
+            except OSError:
+                continue
+            name = fm.get("name") or skill_md.parent.name
+            desc = fm.get("description", "")
+            out.append({"name": name, "kind": "skill", "description": desc})
+    return out
+
+
+def scan_command_dirs(dirs, kind):
+    out = []
+    for d in dirs:
+        if not d or not d.is_dir():
+            continue
+        for md in sorted(d.rglob("*.md")):
+            try:
+                text = md.read_text(errors="replace")
+            except OSError:
+                continue
+            fm = parse_frontmatter(text)
+            rel = md.relative_to(d).with_suffix("")
+            name = fm.get("name") or ":".join(rel.parts)
+            desc = fm.get("description", "")
+            if not desc:
+                # Fall back to the first non-empty, non-frontmatter body line.
+                body = text
+                if text.lstrip().startswith("---"):
+                    parts = text.split("---", 2)
+                    body = parts[2] if len(parts) >= 3 else ""
+                for line in body.splitlines():
+                    line = line.strip().lstrip("#").strip()
+                    if line:
+                        desc = line
+                        break
+            out.append({"name": name, "kind": kind, "description": desc})
+    return out
+
+
+def repo_root_from_here():
+    """This script is deployed as an out-of-store whole-dir symlink straight
+    into the repo (home.nix: home.file.".local/bin".source = link
+    "dot_local/bin"), so its own resolved path IS the in-repo path both
+    in-repo and deployed — walk up from home/dot_local/bin to the repo root.
+    """
+    here = Path(__file__).resolve()
+    # here = <repo>/home/dot_local/bin/claude-slash-enum
+    return here.parent.parent.parent.parent
+
+
+def filesystem_scan(quiet):
+    config_dir = Path(os.environ.get("CLAUDE_CONFIG_DIR") or (Path.home() / ".claude"))
+    repo_root = repo_root_from_here()
+    repo_skills = repo_root / "home" / "dot_claude" / "skills"
+
+    skills = scan_skill_dirs([config_dir / "skills", repo_skills])
+    commands = scan_command_dirs([config_dir / "commands"], "command")
+    project_commands = scan_command_dirs([Path.cwd() / ".claude" / "commands"], "project-command")
+
+    out = skills + commands + project_commands
+    log(quiet, f"claude-slash-enum: fs scan -> {len(out)} entries "
+               f"({len(skills)} skills, {len(commands)} commands, {len(project_commands)} project-commands)")
+    return out
+
+
+# --------------------------------------------------------------------------
+# Merge + write
+# --------------------------------------------------------------------------
+
+def merge(base, overlay):
+    """overlay entries win: they replace base's description (and kind) when
+    non-empty, and add brand-new names outright. base entries not touched by
+    overlay are kept as-is.
+    """
+    by_name = {c["name"]: dict(c) for c in base}
+    for c in overlay:
+        existing = by_name.get(c["name"])
+        if existing is None:
+            by_name[c["name"]] = dict(c)
+            continue
+        if c.get("description"):
+            existing["description"] = c["description"]
+        existing["kind"] = c["kind"]
+    return list(by_name.values())
+
+
+def write_cache(commands, quiet):
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    commands = sorted(commands, key=lambda c: c["name"])
+    payload = {"ts": int(time.time()), "commands": commands}
+    tmp = CACHE_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, indent=2) + "\n")
+    os.replace(tmp, CACHE_PATH)
+    log(quiet, f"claude-slash-enum: wrote {len(commands)} commands -> {CACHE_PATH}")
+
+
+def is_fresh(ttl):
+    try:
+        st = CACHE_PATH.stat()
+    except OSError:
+        return False
+    return (time.time() - st.st_mtime) < ttl
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--refresh", action="store_true", help="ignore TTL, re-enumerate now")
+    ap.add_argument("--ttl", type=int, default=DEFAULT_TTL, help="cache staleness TTL in seconds (default 24h)")
+    ap.add_argument("--quiet", action="store_true", help="suppress status lines on stderr")
+    args = ap.parse_args()
+
+    if not args.refresh and is_fresh(args.ttl):
+        log(args.quiet, f"claude-slash-enum: cache fresh ({CACHE_PATH}), nothing to do")
+        return 0
+
+    commands = acp_enumerate(args.quiet)
+    if commands is None:
+        commands = streamjson_enumerate(args.quiet)
+    if commands is None:
+        commands = []
+
+    fs = filesystem_scan(args.quiet)
+    merged = merge(commands, fs)
+
+    if not merged:
+        log(args.quiet, "claude-slash-enum: nothing enumerated from any rung; leaving existing cache untouched")
+        return 1
+
+    write_cache(merged, args.quiet)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

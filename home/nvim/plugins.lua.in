@@ -31,6 +31,12 @@ vim.opt.rtp:prepend(lazypath)
 
 vim.g.mapleader = " "
 
+-- claude_slash blink.cmp source lives outside the Nix-rendered lua/ tree so its
+-- LOGIC is live-editable with no rebuild (same whole-dir-symlink trick as
+-- ~/.local/bin/annex-pick.lua — see home.nix's `home.file.".local/bin"`).
+-- Only this one path line needs a rebuild if it ever moves.
+package.path = package.path .. ";" .. vim.env.HOME .. "/.local/bin/nvim-lua/?.lua"
+
 local function dir(name) return lnh.get_plugin_path(name) end
 
 require("lazy").setup({
@@ -446,9 +452,10 @@ require("lazy").setup({
     event = "InsertEnter",
     dependencies = { { "not-manu/filemention.nvim", dir = dir('filemention.nvim') } },
     opts = {
-      -- filemention is the ONLY source: the menu appears solely on `@` in
-      -- markdown/text/gitcommit (filemention gates by filetype) — no general
-      -- autocomplete noise. <C-y> accepts, <C-n>/<C-p> navigate (default preset).
+      -- filemention (`@`) and claude_slash (`/`) are the ONLY sources: the menu
+      -- appears solely on those triggers in markdown/text/gitcommit (both gate
+      -- by filetype internally) — no general autocomplete noise. <C-y> accepts,
+      -- <C-n>/<C-p> navigate (default preset).
       keymap = { preset = "default" },
       cmdline = { enabled = false },
       fuzzy = {
@@ -456,9 +463,13 @@ require("lazy").setup({
         prebuilt_binaries = { download = false },    -- never fetch at runtime
       },
       sources = {
-        default = { "filemention" },
+        default = { "filemention", "claude_slash" },
         providers = {
           filemention = { name = "filemention", module = "filemention.sources.blink" },
+          -- claude_slash is a module on package.path (see above), NOT a lazy
+          -- plugin dir — it must stay out of nvim.nix's lazyPlugins/expected
+          -- allowlist below (those enumerate real /nix/store plugin dirs).
+          claude_slash = { name = "claude_slash", module = "claude_slash" },
         },
       },
     },
