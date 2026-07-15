@@ -18,8 +18,15 @@
 # Adding a harness = one thin wrapper: `function <h>; _annex_editor <h> $argv; end`.
 # `command` runs the real binary, bypassing the same-named wrapper function (no
 # recursion). Interactive-pure: no LLM/network/blocking work here.
+#
+# ABSOLUTE path (not the bare name): ~/.local/bin is NOT on the login PATH here,
+# so the harness's editor spawn resolved `nvim-annex` via PATH and failed
+# ("Executable not found in $PATH"). An absolute path sidesteps PATH entirely and
+# matches the repo convention (niri calls ~/.local/bin/* by absolute path too).
+# The basename stays `nvim-annex`, which is what Claude's terminal-editor regex
+# classifies on — so the blocking spawnSync branch is still taken.
 function _annex_editor --description 'Run a harness with EDITOR/VISUAL scoped to the nvim-annex Ctrl+G composer'
-    set -lx EDITOR nvim-annex
-    set -lx VISUAL nvim-annex
+    set -lx EDITOR $HOME/.local/bin/nvim-annex
+    set -lx VISUAL $HOME/.local/bin/nvim-annex
     command $argv
 end
