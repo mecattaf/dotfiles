@@ -70,6 +70,13 @@ map("i", "<C-E>", "<End>")
 map("i", "<C-A>", "<Home>")
 map("i", "<S-TAB>", "<ESC><<<Ins>")
 
+-- Insert mode word deletion (text-box muscle memory)
+-- <C-w>'s notion of a word follows 'iskeyword', so punctuation boundaries
+-- differ slightly from a browser text box.
+map("i", "<C-BS>", "<C-w>")
+map("i", "<C-H>", "<C-w>")
+map("i", "<C-Del>", "<C-o>dw")
+
 -- ============================================================================
 -- UI & DISPLAY TOGGLES
 -- ============================================================================
