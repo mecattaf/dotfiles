@@ -49,6 +49,10 @@ opt.showmatch = true
 opt.smartcase = true
 opt.whichwrap:append "<>[]hl"
 
+-- shift-arrow text selection (text-box muscle memory)
+opt.selectmode = 'key'
+opt.keymodel = 'startsel,stopsel'
+
 -- remove intro
 opt.shortmess:append "sI"
 
