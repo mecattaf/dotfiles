@@ -40,6 +40,22 @@ in
       wifi = {
         mode = "infrastructure";
         ssid = "Freebox-AB3ACE";
+        # Pinned HARD to the Freebox's 5GHz radio (2026-07-16). The mt7925e
+        # driver has a wcid list-corruption race on the same-SSID band-steering
+        # roam path (2.4↔5GHz hop): `list_add corruption` → `kernel BUG at
+        # lib/list_debug.c:32` inside a locked section → instant full lockup,
+        # no oops, no video, no network, power-cycle required. It killed this
+        # box TWICE in 12h (boots ending 2026-07-16 01:06 and 13:17, journal
+        # -2/-1), both times at the exact instant of a roam to this BSSID.
+        # Kernel 7.1 already carries the known upstream fixes for this bug
+        # class (double-wcid-init + wcid_cleanup poll_list, verified in-tree),
+        # so this is a remaining unfixed race; BIOS 3.05 (2026-07-14) armed it:
+        # 11 roams / 8 days / 0 crashes on 3.02 vs 9 roams / 2 crashes on 3.05.
+        # No roam, no crash. Trade-off: no 2.4GHz fallback if the 5GHz radio
+        # drops — fine for a stationary desktop; see also the disable_aspm +
+        # watchdog hardening in modules/strix.nix.
+        bssid = "8C:97:EA:FE:FA:E0";
+        band = "a";
       };
       wifi-security = {
         key-mgmt = "wpa-psk";

@@ -38,6 +38,29 @@
       "ttm.pages_limit=33554432"
     ];
 
+    # --- mt7925e (RZ717 wifi) crash hardening, 2026-07-16 ---
+    # The MT7925 driver has a remaining wcid list-corruption race on the STA
+    # teardown/setup path (kernel BUG at lib/list_debug.c:32 → instant hard
+    # lockup: LEDs on, zero video, zero network, manual power-cycle needed).
+    # Fired twice on the coordinator within 12h of the BIOS 3.02→3.05 update
+    # after weeks of silence on 3.02 — prime suspect is 3.05 changing PCIe
+    # ASPM/power-state timing. Kernel 7.1 already has the upstream fixes for
+    # the KNOWN instances of this bug class (zbowling v7 series), so until the
+    # remaining race is fixed upstream we keep the card out of ASPM low-power
+    # states via the driver's own escape hatch. Cost: ~1W idle. Both nodes
+    # carry the same RZ717 card. The roam TRIGGER is separately removed by the
+    # BSSID pin in hosts/coordinator/uplink-nas.nix.
+    boot.extraModprobeConfig = "options mt7925e disable_aspm=1";
+
+    # Hardware watchdog (sp5100_tco, /dev/watchdog0 — present but unfed until
+    # now): systemd pets it at runtime; if the kernel ever hard-locks again
+    # (this bug or the next one) the chip force-resets the box after 30s
+    # instead of it sitting "on but dead" overnight until someone finds it —
+    # the exact 2026-07-16 failure mode, twice. rebootTime bounds a hung
+    # reboot/shutdown the same way.
+    systemd.watchdog.runtimeTime = "30s";
+    systemd.watchdog.rebootTime = "2m";
+
     # --- Thunderbolt cluster fabric (direct coordinator↔worker cable) ---
     boot.kernelModules = [ "thunderbolt-net" ]; # host-to-host TB networking (thunderbolt0)
 
