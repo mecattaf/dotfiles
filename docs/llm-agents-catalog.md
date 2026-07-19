@@ -11,8 +11,8 @@ allowlist. Agents upstream adds no longer land automatically — adding one is a
 deliberate edit to that list. To keep/cut, edit `keepFromLlmAgents`, not a
 denylist.
 
-**Kept from the catalog (7):** `claude-code`, `ccusage`, `ck`,
-`claude-agent-acp`, `qmd`, `pi`, `codex`.
+**Kept from the catalog (8):** `claude-code`, `ccusage`, `ck`,
+`claude-agent-acp`, `qmd`, `pi`, `codex`, `spec-kit`.
 
 **Kept, but NOT from this catalog:** `backlog-md` — built from our bespoke
 `pkgs/backlog-md.nix` (bin `backlog`) and deliberately excluded from
@@ -146,7 +146,7 @@ what the catalog offered at adoption time.
 | ☐ | `sidecar` | 0.86.0 | Terminal-based development companion for AI coding agents |
 | ☐ | `skills` | 1.5.15 | The open agent skills tool for installing and managing skills across AI coding agents |
 | ☐ | `skills-installer` | 0.3.1 | Install agent skills across multiple AI coding clients |
-| ☐ | `spec-kit` | 0.12.8 | Specify CLI, part of GitHub Spec Kit. A tool to bootstrap your projects for Spec-Driven Development (SDD) |
+| ✅ | `spec-kit` | 0.12.8 | Specify CLI, part of GitHub Spec Kit. A tool to bootstrap your projects for Spec-Driven Development (SDD) |
 | ☐ | `td` | 0.51.0 | A minimalist CLI for tracking tasks across AI coding sessions. |
 | ☐ | `terminal-use` | 1.2.0 | Headless virtual terminal for AI agents |
 | ☐ | `toon` | 0.5.0 | Rust implementation of TOON - Token-Oriented Object Notation for LLM prompts |

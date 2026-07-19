@@ -21,7 +21,7 @@
     # skill's tailnet rung). Coordinator = fleet front door; origins on worker.
     ../../modules/caddy-artifacts.nix
     ../../modules/strix.nix
-    # Distributed builds — offload heavy compiles to the worker over the TB3 fast
+    # Distributed builds — offload heavy compiles to the worker over the TB5 fast
     # lane; the result is cached (attic) so no other host rebuilds it. refs #42.
     ../../modules/build-offload.nix
     # AMD Ryzen AI NPU stack — coordinator ONLY (the worker keeps the NPU off for

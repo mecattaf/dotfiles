@@ -6,8 +6,8 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # nixpkgs-fresh — a second nixpkgs, tracking the SAME nixos-unstable branch, used
-    # ONLY to keep a handful of fast-moving user packages (currently just
-    # google-chrome, see overlays list below) current independent of the `nixpkgs`
+    # ONLY to keep a handful of fast-moving user packages (currently
+    # google-chrome and uv, see overlays list below) current independent of the `nixpkgs`
     # pin above. That pin is deliberately lagging — modules/auto-update.nix explains
     # it's the only door kernel/Mesa churn enters through, bumped as a manual act.
     # Browser point releases carry none of that risk, so they shouldn't have to wait
@@ -178,11 +178,11 @@
       overlays = [
         self.overlays.default
         inputs.apple-fonts.overlays.default
-        # Whole llm-agents catalog under `pkgs.llm-agents.*` (prebuilt from its
-        # own nixpkgs — no second eval of ours). Maximalist: home/home.nix pulls
-        # every buildable package out of this set. See the input comment above.
-        inputs.llm-agents.overlays.default
         (final: _prev: {
+          # Whole llm-agents catalog under `pkgs.llm-agents.*` (prebuilt from its
+          # own nixpkgs — no second eval of ours). home/home.nix pulls an
+          # allowlisted set out of this namespace. See the input comment above.
+          llm-agents = inputs.llm-agents.packages.${system};
           sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { src = inputs.sfmono-liga; };
           # zmx's own flake builds the `zmx` binary (zig2nix, valid lock — builds
           # offline under nixos-rebuild). Exposed as .default; pull it straight
@@ -192,13 +192,21 @@
         # Pin-decoupled "hot" packages — see the nixpkgs-fresh input comment above.
         # Cherry-picked, not a wholesale pkgs swap: only packages named here track
         # nixos-unstable HEAD independent of the main nixpkgs pin.
-        (_final: _prev: {
-          google-chrome =
-            (import inputs.nixpkgs-fresh {
+        (_final: _prev:
+          let
+            fresh = import inputs.nixpkgs-fresh {
               inherit system;
               config.allowUnfree = true;
-            }).google-chrome;
-        })
+            };
+          in
+          {
+            google-chrome = fresh.google-chrome;
+            # uv — Astral's Python package/project manager. Point releases land
+            # weekly; riding nixpkgs-fresh HEAD keeps it current without waiting on
+            # the deliberately-lagging main pin (which exists only to gate kernel/
+            # Mesa churn — uv carries none of that risk).
+            uv = fresh.uv;
+          })
       ];
 
       pkgs = import nixpkgs {

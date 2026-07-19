@@ -67,7 +67,7 @@
       "https://nix-amd-ai.cachix.org"
       # Fleet binary cache — atticd on the coordinator (hosts/coordinator/attic.nix),
       # over the Tailscale mesh (MagicDNS `coordinator`; the Strix pair could also
-      # use the TB3 fast lane `coordinator-tb`). The `fleet` cache is made public at
+      # use the TB5 fast lane `coordinator-tb`). The `fleet` cache is made public at
       # bootstrap so pulls need no per-client token/netrc — only the signing key
       # below. A cold host substitutes the ~7,744 llm-agents paths from here instead
       # of the ~8h from-source build. refs #42.
@@ -187,7 +187,7 @@
   };
   services.tailscale.enable = true;
   # Tailscale SSH: any mesh node can reach any other over the tailnet in ANY
-  # situation (LAN, remote, or when the TB3 fabric is down), authenticated by
+  # situation (LAN, remote, or when the TB5 fabric is down), authenticated by
   # tailnet identity — no user keypair needed for this path. extraSetFlags runs
   # `tailscale set --ssh` on every activation, so it also enables SSH on nodes
   # already joined to the tailnet (the autoconnect unit only runs `up` while

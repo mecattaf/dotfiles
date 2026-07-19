@@ -3,7 +3,7 @@
 # The ~7,744 llm-agents derivations build once on the designated builder (worker)
 # and land here; every host then substitutes the prebuilt paths instead of the
 # ~8h from-source rebuild. Reachable over the Tailscale mesh (pull from anywhere,
-# no same-wifi requirement) and the TB3 fast lane for the Strix pair. refs #42.
+# no same-wifi requirement) and the TB5 fast lane for the Strix pair. refs #42.
 #
 # Gated on mySecrets.enable: atticd needs its RS256 JWT signing secret, delivered
 # as an agenix EnvironmentFile (secrets/atticd-server-token.age, coordinator-only).
@@ -53,6 +53,6 @@
     networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 8080 ];
     # thunderbolt0 is already a fully trusted interface (modules/strix.nix), so
     # 8080 is reachable there without an explicit per-port rule; listed here for
-    # intent/documentation of the TB3 fast lane.
+    # intent/documentation of the TB5 fast lane.
   };
 }

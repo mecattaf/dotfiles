@@ -73,7 +73,7 @@ in
     operation = "switch"; # live activation — no reboot except kernel/initrd changes.
     upgrade = false; # `--upgrade` is channel machinery; meaningless in flake mode.
     # Re-resolve nixpkgs-fresh to nixos-unstable HEAD on every run (flake.nix input
-    # comment) — the "hot" overlay packages (google-chrome) get whatever's newest
+    # comment) — the "hot" overlay packages (google-chrome, uv) get whatever's newest
     # each night, without a flake.lock bump touching the deliberately-lagging main
     # nixpkgs pin.
     flags = [

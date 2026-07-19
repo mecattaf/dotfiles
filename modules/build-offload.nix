@@ -10,7 +10,7 @@
 # or the always-on coordinator and the actual `gcc`/`rustc` work lands on the
 # worker, then the closure is cached for the next host. refs #42.
 #
-# Transport: the coordinator reaches the worker over the always-on TB3 fast lane
+# Transport: the coordinator reaches the worker over the always-on TB5 fast lane
 # (worker-tb → 10.77.0.2, modules/strix.nix); the zenbook over the tailscale mesh
 # (worker, MagicDNS). Root's nix-daemon authenticates with the shared tom@mesh
 # key as `tom` — a trusted Nix user on the worker (@wheel), so it may run

@@ -43,6 +43,7 @@ let
     "qmd"
     "pi"
     "codex"
+    "spec-kit" # bin: `specify` — GitHub Spec-Kit, spec-driven development bootstrapper
   ];
   llmAgentsSelected = pkgs.buildEnv {
     name = "llm-agents-selected";
@@ -460,7 +461,7 @@ in
     kitty
 
     # agent / dev tooling. A curated slice of the llm-agents.nix catalog
-    # (claude-code, ccusage, ck, claude-agent-acp, qmd, pi, codex) lands via
+    # (claude-code, ccusage, ck, claude-agent-acp, qmd, pi, codex, spec-kit) lands via
     # llmAgentsSelected — see the allowlist buildEnv in the `let` block above.
     # claude-code comes from there (newest, decoupled from nixpkgs); creds still
     # seed via modules/secrets.nix, and DISABLE_UPDATES=1 keeps the native
@@ -473,6 +474,7 @@ in
     wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (coordinator-only cred, binary fleet-wide)
     backlog-md # bespoke pkg via overlay — see pkgs/backlog-md.nix
     cliamp # terminal music player → navidrome. overlay pkg, see pkgs/cliamp.nix
+    uv # Astral Python pkg/project manager. "hot" overlay pkg — rides nixpkgs-fresh HEAD (flake.nix), so it stays latest independent of the main pin.
 
     # artifact system (md-artifact / presentation-beta / publish-artifact skills;
     # knobs in modules/artifacts-defaults.nix). render = md→snapshot dir;
