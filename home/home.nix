@@ -42,6 +42,7 @@ let
     "claude-agent-acp"
     "qmd"
     "pi"
+    "codex"
   ];
   llmAgentsSelected = pkgs.buildEnv {
     name = "llm-agents-selected";
@@ -459,7 +460,7 @@ in
     kitty
 
     # agent / dev tooling. A curated slice of the llm-agents.nix catalog
-    # (claude-code, ccusage, ck, claude-agent-acp, qmd, pi) lands via
+    # (claude-code, ccusage, ck, claude-agent-acp, qmd, pi, codex) lands via
     # llmAgentsSelected — see the allowlist buildEnv in the `let` block above.
     # claude-code comes from there (newest, decoupled from nixpkgs); creds still
     # seed via modules/secrets.nix, and DISABLE_UPDATES=1 keeps the native

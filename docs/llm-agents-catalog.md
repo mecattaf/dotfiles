@@ -11,8 +11,8 @@ allowlist. Agents upstream adds no longer land automatically — adding one is a
 deliberate edit to that list. To keep/cut, edit `keepFromLlmAgents`, not a
 denylist.
 
-**Kept from the catalog (6):** `claude-code`, `ccusage`, `ck`,
-`claude-agent-acp`, `qmd`, `pi`.
+**Kept from the catalog (7):** `claude-code`, `ccusage`, `ck`,
+`claude-agent-acp`, `qmd`, `pi`, `codex`.
 
 **Kept, but NOT from this catalog:** `backlog-md` — built from our bespoke
 `pkgs/backlog-md.nix` (bin `backlog`) and deliberately excluded from
@@ -63,7 +63,7 @@ what the catalog offered at adoption time.
 | ☐ | `code-review-graph` | 2.3.6 | Local knowledge graph for AI coding agents — builds persistent map of your codebase for token-efficient code reviews |
 | ☐ | `codegraph` | 1.3.1 | Semantic code intelligence for AI coding agents |
 | ☐ | `coderabbit-cli †` | 0.6.5 | AI-powered code review CLI tool |
-| ☐ | `codex` | 0.143.0 | OpenAI Codex CLI - a coding agent that runs locally on your computer |
+| ✅ | `codex` | 0.143.0 | OpenAI Codex CLI - a coding agent that runs locally on your computer |
 | ☐ | `codex-acp` | 0.16.0 | An ACP-compatible coding agent powered by Codex |
 | ☐ | `codex-auth` | 0.2.10 | CLI tool for switching Codex accounts |
 | ☐ | `context-hub` | 0.1.4 | CLI for Context Hub - search and retrieve LLM-optimized docs and skills |
