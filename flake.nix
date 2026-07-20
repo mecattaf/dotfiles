@@ -97,9 +97,10 @@
     # load-bearing — it generates the systemd user units, the producer
     # timers/services and the build-time `checkedConfig` validator, which a bare
     # pkg can't deliver; NO bespoke pkgs/tally.nix. home/tally.nix imports the
-    # module and enables it on the coordinator only; other hosts leave it off
-    # (everything is under `mkIf cfg.enable`, so a disabled import builds
-    # nothing). Composes onto the dotfiles-owned zmx substrate — tally ships
+    # module and enables the daemon on the coordinator only. worker carries the
+    # same binary solely for the daemonless SSH executor helper; no queue or
+    # lease engine runs there. Other hosts leave the module off. Composes onto
+    # the dotfiles-owned zmx substrate — tally ships
     # none of it. follows nixpkgs so the Rust build resolves against our one pin
     # rather than dragging a second nixpkgs into the lock. `nix flake update
     # tally` bumps to the latest pushed commit (and, post-release, the tag).
@@ -199,7 +200,8 @@
         # Pin-decoupled "hot" packages — see the nixpkgs-fresh input comment above.
         # Cherry-picked, not a wholesale pkgs swap: only packages named here track
         # nixos-unstable HEAD independent of the main nixpkgs pin.
-        (_final: _prev:
+        (
+          _final: _prev:
           let
             fresh = import inputs.nixpkgs-fresh {
               inherit system;
@@ -213,7 +215,8 @@
             # the deliberately-lagging main pin (which exists only to gate kernel/
             # Mesa churn — uv carries none of that risk).
             uv = fresh.uv;
-          })
+          }
+        )
       ];
 
       pkgs = import nixpkgs {

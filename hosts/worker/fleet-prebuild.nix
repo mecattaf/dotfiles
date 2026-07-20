@@ -1,7 +1,10 @@
 { config, pkgs, ... }:
-# Cache warmer — the "build ONCE" half of fleet auto-update (modules/auto-update.nix).
-# Nightly at 02:00, BEFORE any host's nixos-upgrade timer, build every host's toplevel
-# from main and push the full closures to the fleet cache. The post-build-hook
+# Cache warmer — the "build ONCE" half of the Tally-owned fleet update.
+# This file defines only the root execution unit. coordinator's 02:00 calendar
+# producer in home/tally.nix dispatches it through Tally's daemonless worker
+# executor while holding the central `build` pool; there is no worker-local timer.
+#
+# Build every host's toplevel from main and push the full closures to the fleet cache. The post-build-hook
 # (cache-push.nix) already pushes what gets COMPILED here; this explicit push also
 # covers substituted deps, so the 04:30 coordinator and 06:00 zenbook runs are pure
 # eval + substitution. Best-effort per host: one broken host config must not starve
@@ -40,7 +43,6 @@ in
     description = "Build all fleet hosts' toplevels from main and push to the fleet cache";
     after = [ "network-online.target" ];
     wants = [ "network-online.target" ];
-    startAt = "02:00";
     # Same failure banner as nixos-upgrade (modules/fleet-notify.nix): a cold cache
     # (unwarmed builds) is worth surfacing, and this box is headless.
     unitConfig = {
@@ -54,6 +56,8 @@ in
       Nice = 10; # yield to interactive offloaded builds
     };
   };
-  # Fire on next boot if the box was down at 02:00.
-  systemd.timers.fleet-prebuild.timerConfig.Persistent = true;
+
+  # Belt-and-suspenders: an old generation had a Persistent local timer. The
+  # current unit is manual/Tally-dispatched only.
+  systemd.timers.fleet-prebuild.enable = false;
 }

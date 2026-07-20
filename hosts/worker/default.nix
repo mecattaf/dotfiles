@@ -1,4 +1,4 @@
-{ ... }:
+{ inputs, pkgs, ... }:
 # worker — AMD Strix Halo, headless compute node. No NAS/router/quadlets.
 {
   imports = [
@@ -6,7 +6,7 @@
     ./disko.nix
     ./headless-display.nix
     ./cache-push.nix
-    ./fleet-prebuild.nix # 02:00 cache warmer for fleet auto-update (builds all hosts → attic)
+    ./fleet-prebuild.nix # Tally-dispatched cache warmer (builds all hosts → attic)
     ./gpu-cooldown.nix
     ../../modules/strix.nix
     ../../modules/microvm-host.nix
@@ -21,8 +21,17 @@
   myCluster.role = "worker";
   myCluster.tbHostId = 2;
 
+  # No Tally daemon or user-visible command runs here. The merged central-executor
+  # protocol requires the same binary only as a fixed, short-lived
+  # `__remote-executor` helper reached by coordinator over SSH. Root it in the
+  # system closure without adding it to PATH; all queues, leases, and witnesses
+  # remain coordinator-side.
+  system.extraDependencies = [
+    inputs.tally.packages.${pkgs.stdenv.hostPlatform.system}.tally
+  ];
+
   # GPU thermal cooldown tripwire — poll junction/Tctl, and on a sustained trip
-  # enqueue a 30-min hold into the worker-local tally worker-gpu pool.
+  # ask coordinator to enqueue a non-preemptive 30-min worker-gpu hold.
   services.gpuCooldownTripwire.enable = true;
 
   # Flipped ON after the 2026-07-05 first boot proved the nixos-anywhere host-key

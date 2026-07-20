@@ -4,7 +4,7 @@
   pkgs,
   ...
 }:
-# Fleet auto-update failure NOTIFIER (modules/auto-update.nix companion). A nightly
+# Fleet update failure NOTIFIER (modules/auto-update.nix companion). A Tally-dispatched
 # nixos-upgrade / fleet-prebuild that fails must not fail silently — especially on the
 # headless worker, the box whose builds everything else depends on.
 #
@@ -20,8 +20,8 @@
 #     atomically with the rebuild, unlike the out-of-store fish checkout) prints any
 #     active markers on every new interactive shell / zmx pane.
 #
-# Wired onto nixos-upgrade here (fleet-wide); fleet-prebuild wires its own OnFailure in
-# hosts/worker/fleet-prebuild.nix. refs #42.
+# Wired onto the manual nixos-upgrade execution unit here (fleet-wide); fleet-prebuild
+# wires its own OnFailure in hosts/worker/fleet-prebuild.nix. refs #42.
 let
   host = config.networking.hostName;
   markerDir = "/var/lib/fleet-update";
@@ -61,7 +61,7 @@ let
         ;;
       clear)
         # Only touch the mirror if we actually cleared something locally — avoids a
-        # nightly SSH to the coordinator on every ordinary success.
+        # an SSH to the coordinator on every ordinary success.
         if [ -e "$marker" ]; then
           rm -f "$marker"
           mirror "rm -f '$marker'"
@@ -93,8 +93,8 @@ in
     };
   };
 
-  # Wire the native nixos-upgrade unit (autoUpgrade, fleet-wide). %n expands to this
-  # unit's own name, becoming the template instance.
+  # Wire the fleet-wide nixos-upgrade execution unit. %n expands to this unit's own
+  # name, becoming the template instance.
   systemd.services.nixos-upgrade.unitConfig = {
     OnFailure = "fleet-update-alert@%n.service";
     OnSuccess = "fleet-update-clear@%n.service";

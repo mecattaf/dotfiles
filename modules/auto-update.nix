@@ -4,49 +4,33 @@
   pkgs,
   ...
 }:
-# Fleet auto-update — PULL model. Every host re-fetches github:mecattaf/dotfiles/main
-# on a daily timer and switches to it; the trigger is simply YOUR push to main. The
-# committed flake.lock pins all inputs, so nothing here bumps nixpkgs/kernel/etc —
-# lock bumps stay a deliberate manual act (that is the only door kernel churn enters
-# through, so you always know a worker reboot is coming). Native `system.autoUpgrade`
-# (a systemd timer + nixos-rebuild wrapper) rather than a bespoke script: it already
-# handles flake --refresh, Persistent catch-up, and the kernel-diff reboot dance.
+# Fleet update EXECUTION units. The coordinator's tally calendar producers own the
+# schedule and admission; this module retains NixOS's proven `nixos-upgrade.service`
+# implementation on each target but deliberately disables its native timer.
 #
-# STAGGER (Europe/Paris) so the heavy build happens ONCE and the rest substitute:
-#   02:00  worker      fleet-prebuild  — builds all 3 hosts' toplevels, pushes to attic
-#                                        (hosts/worker/fleet-prebuild.nix)
-#   03:30  worker      nixos-upgrade   — toplevel already in store → near-instant switch;
-#                                        reboots ONLY on a kernel change, window 03:00–05:00
-#   04:30  coordinator nixos-upgrade   — substitutes from the fleet cache; never reboots
-#   06:00  zenbook     nixos-upgrade   — substitutes; battery-gated; never reboots
-# Any straggler compile still offloads to the worker via modules/build-offload.nix.
+# Every invocation re-fetches github:mecattaf/dotfiles/main and switches to it. The
+# committed flake.lock pins ordinary inputs, while nixpkgs-fresh is deliberately
+# re-resolved for the small hot-package overlay below. Lock bumps remain an operator
+# decision and are the only door through which kernel churn enters the fleet.
+#
+# TALLY CALENDAR (Europe/Paris), declared centrally in home/tally.nix:
+#   02:00  worker prebuild       build
+#   03:30  worker activation     build + worker-gpu (atomic)
+#   04:30  coordinator activation build + coordinator-gpu (atomic)
+#   06:00  zenbook activation    build; best-effort only when online
+#
+# Low priority makes an activation wait for existing work. hardPreempt=false on the
+# pools means it cannot kill a running job, and the shared build gate preserves the
+# old prebuild→activation ordering even when an earlier stage runs long. Unattended
+# reboot is disabled: releasing a lease before a delayed reboot would admit a fresh
+# task only to kill it a minute later. Kernel activation is a separate queued action.
 #
 # Not gated on mySecrets: needs only the PUBLIC repo and the PUBLIC-pull fleet cache.
 # Degrades safely everywhere — a failed fetch/eval/build/switch leaves the running
-# generation untouched and the next day's timer retries. See common.nix
+# generation untouched and the next Tally calendar firing retries. See common.nix
 # nix.settings.{connect-timeout,fallback} for the dead-substituter degradation.
 let
   host = config.networking.hostName;
-
-  # Per-host policy. Only the headless worker may auto-reboot (and only for a kernel
-  # change): the coordinator's persistent zmx/tally sessions must survive, and a
-  # laptop reboots naturally often enough.
-  policy =
-    {
-      worker = {
-        dates = "03:30";
-        allowReboot = true;
-      };
-      coordinator = {
-        dates = "04:30";
-        allowReboot = false;
-      };
-      zenbook-duo = {
-        dates = "06:00";
-        allowReboot = false;
-      };
-    }
-    .${host};
 
   # zenbook power gate: proceed on AC, OR on battery ≥ 50%. ExecCondition contract:
   # exit 0 → run the unit; non-zero → SKIP it cleanly (not a failure). Reads sysfs
@@ -70,7 +54,7 @@ in
     # Branch pinned explicitly (same rationale as dotfiles-bootstrap.nix). The module
     # appends `--refresh --flake <this>` itself, so each run re-resolves main's head.
     flake = "github:mecattaf/dotfiles/main";
-    operation = "switch"; # live activation — no reboot except kernel/initrd changes.
+    operation = "switch"; # live activation; a new kernel awaits a separately queued reboot.
     upgrade = false; # `--upgrade` is channel machinery; meaningless in flake mode.
     # Re-resolve nixpkgs-fresh to nixos-unstable HEAD on every run (flake.nix input
     # comment) — the "hot" overlay packages (google-chrome, uv) get whatever's newest
@@ -81,18 +65,13 @@ in
       "nixpkgs-fresh"
       "github:NixOS/nixpkgs/nixos-unstable"
     ];
-    dates = policy.dates;
-    persistent = true; # laptop asleep/off at its time → fires on next wake/boot.
-    randomizedDelaySec = "0"; # the stagger above is deliberate; jitter would defeat it.
-    allowReboot = policy.allowReboot;
-    # worker only: nixos-rebuild boot, then reboot IFF the booted kernel/initrd/modules
-    # differ from the new generation, and only inside this window. The 03:30 run lands
-    # inside it, so a kernel bump reboots the same night.
-    rebootWindow = lib.mkIf policy.allowReboot {
-      lower = "03:00";
-      upper = "05:00";
-    };
+    allowReboot = false;
   };
+
+  # Keep the service generated above, but remove both paths by which the NixOS
+  # module would make it autonomous. Tally is the sole fleet-update clock.
+  systemd.services.nixos-upgrade.startAt = lib.mkForce [ ];
+  systemd.timers.nixos-upgrade.enable = false;
 
   # Battery/power gate — zenbook only.
   systemd.services.nixos-upgrade.serviceConfig.ExecCondition =
