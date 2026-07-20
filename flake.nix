@@ -91,18 +91,25 @@
       flake = false;
     };
 
-    # tally — agent-session orchestration (one Bun-compiled daemon + CLI). THE
-    # packaging channel is this flake input + `homeManagerModules.tally` (tally
-    # DECISIONS Q1: the module is load-bearing — systemd user units + the pls
-    # broker/pool config — which a bare pkg can't deliver; NO bespoke
-    # pkgs/tally.nix). home/tally.nix imports the module and enables it on the
-    # coordinator (conductor role); other hosts leave it off. Composes onto the
-    # dotfiles-owned zmx substrate — tally ships none of it (V0.1-PATH step 1).
-    # follows nixpkgs so the Bun/bun2nix build resolves against our one pin
+    # tally — contention and proof for agent sessions (a Rust workspace: one
+    # daemon + CLI, embedded taskchampion, witness ledger). THE packaging
+    # channel is this flake input + `homeManagerModules.tally`: the module is
+    # load-bearing — it generates the systemd user units, the producer
+    # timers/services and the build-time `checkedConfig` validator, which a bare
+    # pkg can't deliver; NO bespoke pkgs/tally.nix. home/tally.nix imports the
+    # module and enables it on the coordinator only; other hosts leave it off
+    # (everything is under `mkIf cfg.enable`, so a disabled import builds
+    # nothing). Composes onto the dotfiles-owned zmx substrate — tally ships
+    # none of it. follows nixpkgs so the Rust build resolves against our one pin
     # rather than dragging a second nixpkgs into the lock. `nix flake update
     # tally` bumps to the latest pushed commit (and, post-release, the tag).
+    #
+    # Repo is mecattaf/tally.nix (NOT mecattaf/tally, which is the pre-rebuild
+    # spec history). It is public, so use the native `github:` fetcher: worker
+    # and fleet auto-upgrades need no GitHub credential helper or access token.
+    # tally's one law: contention and proof, never content or control.
     tally = {
-      url = "github:mecattaf/tally";
+      url = "github:mecattaf/tally.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 

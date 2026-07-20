@@ -1,22 +1,37 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  inputs,
+  lib,
+  pkgs,
+  ...
+}:
 # GPU thermal cooldown tripwire (worker-only).
 #
 # A systemd timer polls the worker's amdgpu junction temperature every 30s
 # (falling back to k10temp Tctl where junction is absent — the live case on this
 # box, whose amdgpu hwmon exposes only `edge`). On a SUSTAINED over-threshold
-# reading it enqueues a fixed 30-minute "cooldown" job through tally on the
-# conductor; that job holds the single pls `worker-gpu` lease for the whole rest
-# window, so every other GPU consumer sees the pool as busy and backs off while
-# the GPU cools. The 30-minute rest applies ONLY to the worker-gpu pool.
+# reading it enqueues a fixed 30-minute job through the worker-local tally
+# daemon. That job holds the single `worker-gpu` lease for the whole rest window,
+# so every other local GPU consumer sees the pool as busy and backs off while the
+# GPU cools. The 30-minute rest applies ONLY to the worker-gpu pool.
 #
 # Two layers (see the .sh files):
 #   LAYER 1  gpu-cooldown-poll.sh    — sensor read + trip logic + hysteresis.
 #   LAYER 2  gpu-cooldown-enqueue.sh — the tally seam; loud no-op fallback.
 #
-# Runs as `tom` (User=tom) so `ssh <conductor> tally enqueue …` uses tom's keys
-# and known_hosts — the same reach the box already uses for `ssh coordinator`.
+# Runs as `tom` (User=tom), matching the Home Manager tally daemon and its
+# private socket under /run/user/$UID/tally.
 let
   cfg = config.services.gpuCooldownTripwire;
+
+  holdScript = pkgs.writeShellApplication {
+    name = "gpu-cooldown-hold";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.util-linux
+    ];
+    text = builtins.readFile ./gpu-cooldown-hold.sh;
+  };
 
   pollScript = pkgs.writeShellApplication {
     name = "gpu-cooldown-poll";
@@ -26,7 +41,10 @@ let
 
   enqueueScript = pkgs.writeShellApplication {
     name = "gpu-cooldown-enqueue";
-    runtimeInputs = [ pkgs.coreutils pkgs.openssh ];
+    runtimeInputs = [
+      pkgs.coreutils
+      inputs.tally.packages.${pkgs.stdenv.hostPlatform.system}.tally
+    ];
     text = builtins.readFile ./gpu-cooldown-enqueue.sh;
   };
 in
@@ -37,13 +55,7 @@ in
     user = lib.mkOption {
       type = lib.types.str;
       default = "tom";
-      description = "User the poller runs as (needs ssh reach to the conductor).";
-    };
-
-    conductorHost = lib.mkOption {
-      type = lib.types.str;
-      default = "coordinator";
-      description = "Host running the tally daemon, reached over ssh for enqueue.";
+      description = "User the poller runs as; must own the local tally daemon.";
     };
 
     pollSeconds = lib.mkOption {
@@ -94,7 +106,7 @@ in
         Environment = [
           "HOME=/home/${cfg.user}"
           "COOLDOWN_ADAPTER=${enqueueScript}/bin/gpu-cooldown-enqueue"
-          "TALLY_CONDUCTOR_HOST=${cfg.conductorHost}"
+          "COOLDOWN_HOLDER=${holdScript}/bin/gpu-cooldown-hold"
           "JUNCTION_THRESHOLD_C=${toString cfg.junctionThresholdC}"
           "TCTL_THRESHOLD_C=${toString cfg.tctlThresholdC}"
           "REARM_THRESHOLD_C=${toString cfg.rearmThresholdC}"
