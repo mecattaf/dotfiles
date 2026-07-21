@@ -2,6 +2,7 @@
   inputs,
   lib,
   config,
+  pkgs,
   ...
 }:
 # AMD Strix Halo layer — imported by `coordinator` + `worker` ONLY.
@@ -28,6 +29,9 @@
   };
 
   config = {
+    # One TUI for CPU, Radeon iGPU, and (on the coordinator) XDNA NPU telemetry.
+    environment.systemPackages = [ pkgs.amdtop ];
+
     # Strix Halo unified-memory tuning (128 GiB pinnable for the iGPU).
     # IOMMU is the ONE per-role knob: the coordinator runs the NPU, whose amdxdna
     # driver binds via IOMMU SVA/PASID and needs IOMMU ON in translated mode
