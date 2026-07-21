@@ -13,6 +13,8 @@
     # Shared accelerated inference/tooling packages from nix-strix-halo plus the
     # one noamsto-only GPU backend. Host-role details stay in that module.
     ./strix-ai.nix
+    # Native local-model proxy/control plane on coordinator + worker only.
+    ./llama-swap.nix
   ];
 
   options.myCluster = {
