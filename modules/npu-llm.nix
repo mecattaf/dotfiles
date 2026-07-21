@@ -10,10 +10,10 @@
 # single obvious place that names the model the coordinator preloads on its XDNA2
 # NPU (today gemma4-it:e4b — Q4_1, 128k max ctx). Changing which model gets
 # warmed later = edit that one string. `flm serve` runs as a warm systemd unit so
-# the local OpenAI-compatible endpoint (FastFlowLM's default port 52625, bound to
-# localhost) is always up for on-box consumers: zmx session titling depends on
-# it, and this same always-on NPU small-model endpoint is what unblocks the
-# "memory flush" functionality.
+# the local OpenAI-compatible backend (FastFlowLM's default port 52625, bound to
+# localhost) stays warm behind llama-swap. zmx session titling and every other
+# consumer enter through llama-swap's port 9292; the NPU endpoint is never a
+# public application-facing route.
 #
 # The amdxdna driver, XRT userspace, and the `flm` binary itself all come from
 # hardware.amd-npu (nix-amd-ai) — upstream ships no serve unit or model option,
