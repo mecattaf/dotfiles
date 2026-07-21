@@ -81,6 +81,10 @@ final: prev: {
   # CGO on Linux via ebitengine/oto → ALSA. See pkgs/cliamp.nix.
   cliamp = final.callPackage ../pkgs/cliamp.nix { };
 
+  # amdtop — AMD GPU/CPU/XDNA NPU monitor. Not yet in our pinned nixpkgs;
+  # source-built from the latest stable upstream release for the Strix pair.
+  amdtop = final.callPackage ../pkgs/amdtop.nix { };
+
   # asr-rs — fully-local dual-Parakeet streaming STT daemon (v3: engine/client
   # split; the coordinator serves models on :8762 over tailscale0, thin clients
   # dictate against it). Source-built; onnxruntime static lib pinned as a FOD
