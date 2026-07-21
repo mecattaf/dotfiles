@@ -2,6 +2,7 @@
   config,
   lib,
   pkgs,
+  rollingInputOverrides,
   ...
 }:
 # Fleet update EXECUTION units. The coordinator's tally calendar producers own the
@@ -9,9 +10,10 @@
 # implementation on each target but deliberately disables its native timer.
 #
 # Every invocation re-fetches github:mecattaf/dotfiles/main and switches to it. The
-# committed flake.lock pins ordinary inputs, while nixpkgs-fresh is deliberately
-# re-resolved for the small hot-package overlay below. Lock bumps remain an operator
-# decision and are the only door through which kernel churn enters the fleet.
+# committed flake.lock pins ordinary inputs, while the package-only inputs declared
+# as rollingInputOverrides in flake.nix are deliberately re-resolved at build time.
+# Lock bumps remain an operator decision and are the only door through which main
+# nixpkgs/kernel/Mesa churn enters the fleet.
 #
 # TALLY CALENDAR (Europe/Paris), declared centrally in home/tally.nix:
 #   02:00  worker prebuild       build
@@ -31,6 +33,11 @@
 # nix.settings.{connect-timeout,fallback} for the dead-substituter degradation.
 let
   host = config.networking.hostName;
+  rollingInputFlags = lib.concatMap (input: [
+    "--override-input"
+    input.name
+    input.url
+  ]) rollingInputOverrides;
 
   # zenbook power gate: proceed on AC, OR on battery ≥ 50%. ExecCondition contract:
   # exit 0 → run the unit; non-zero → SKIP it cleanly (not a failure). Reads sysfs
@@ -56,15 +63,10 @@ in
     flake = "github:mecattaf/dotfiles/main";
     operation = "switch"; # live activation; a new kernel awaits a separately queued reboot.
     upgrade = false; # `--upgrade` is channel machinery; meaningless in flake mode.
-    # Re-resolve nixpkgs-fresh to nixos-unstable HEAD on every run (flake.nix input
-    # comment) — the "hot" overlay packages (google-chrome, uv) get whatever's newest
-    # each night, without a flake.lock bump touching the deliberately-lagging main
-    # nixpkgs pin.
-    flags = [
-      "--override-input"
-      "nixpkgs-fresh"
-      "github:NixOS/nixpkgs/nixos-unstable"
-    ];
+    # Re-resolve the isolated rolling package inputs at HEAD on every run. This
+    # keeps llm-agents and both accelerator catalogs fresh without using the same
+    # door for the deliberately-reviewed main nixpkgs/kernel/Mesa pin.
+    flags = rollingInputFlags;
     allowReboot = false;
   };
 

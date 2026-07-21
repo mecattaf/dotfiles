@@ -1,4 +1,10 @@
-{ config, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  rollingInputOverrides,
+  ...
+}:
 # Cache warmer — the "build ONCE" half of the Tally-owned fleet update.
 # This file defines only the root execution unit. coordinator's 02:00 calendar
 # producer in home/tally.nix dispatches it through Tally's daemonless worker
@@ -15,6 +21,13 @@
 # login was never done, this fails visibly at 02:00 (the earliest warning you get).
 let
   flakeRef = "github:mecattaf/dotfiles/main";
+  rollingInputFlags = lib.escapeShellArgs (
+    lib.concatMap (input: [
+      "--override-input"
+      input.name
+      input.url
+    ]) rollingInputOverrides
+  );
   prebuild = pkgs.writeShellScript "fleet-prebuild" ''
     set -u
     # attic login state lives in root's config; nix-daemon gives a sparse env.
@@ -22,12 +35,11 @@ let
     status=0
     for h in coordinator worker zenbook-duo; do
       echo "fleet-prebuild: building $h" >&2
-      # Same nixpkgs-fresh override as modules/auto-update.nix's autoUpgrade.flags —
-      # keeps the cache warmed with the SAME fresh-chrome build the 03:30/04:30/06:00
-      # switches will substitute, instead of each host resolving a slightly different
-      # nixos-unstable HEAD and rebuilding from source.
+      # Same centralized rolling-input overrides as modules/auto-update.nix — keeps
+      # the cache warmed with the SAME fresh agents/accelerator/browser packages the
+      # later switches request. Main nixpkgs remains locked and review-gated.
       if out="$(${config.nix.package}/bin/nix build --refresh --no-link --print-out-paths \
-            --override-input nixpkgs-fresh github:NixOS/nixpkgs/nixos-unstable \
+            ${rollingInputFlags} \
             "${flakeRef}#nixosConfigurations.$h.config.system.build.toplevel")"; then
         ${pkgs.attic-client}/bin/attic push fleet $out >&2 || status=1
       else

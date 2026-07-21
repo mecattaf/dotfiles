@@ -13,17 +13,10 @@
     # Browser point releases carry none of that risk, so they shouldn't have to wait
     # on it.
     #
-    # This input's OWN locked rev is never what actually builds: every real build
-    # (modules/auto-update.nix `system.autoUpgrade.flags`, hosts/worker/fleet-prebuild.nix)
-    # passes `--override-input nixpkgs-fresh github:NixOS/nixpkgs/nixos-unstable`,
-    # which re-resolves it to nixos-unstable HEAD at build time without writing
-    # anything to flake.lock — true "always latest" for just this input, no git-push
-    # automation or new credentials needed (only the coordinator holds a
-    # GitHub-authenticated `gh`; the worker, which builds nightly at 02:00, doesn't).
-    # Same decoupling trick the llm-agents.nix input comment describes for
-    # claude-code, inlined here instead of via a whole separate flake. A local build
-    # that omits the override flag just falls back to whatever's locked — bump it
-    # manually with `nix flake update nixpkgs-fresh` if that ever goes noticeably stale.
+    # Its lock entry is a reproducible fallback. Fleet prebuilds and switches use
+    # the centralized `rollingInputOverrides` list below to re-resolve it (alongside
+    # llm-agents and the two isolated AMD catalogs) at HEAD without writing the
+    # lock. A plain local build intentionally uses the reviewed fallback revision.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     home-manager = {
@@ -76,8 +69,10 @@
     # ...). Its `overlays.default` exposes the whole set, prebuilt against its OWN
     # fresh nixpkgs-unstable, under the namespaced `pkgs.llm-agents.*` — so it
     # neither re-evaluates our nixpkgs nor collides with it. This is how we get
-    # newest claude-code DECOUPLED from our (deliberately lagging) nixpkgs pin:
-    # `nix flake update llm-agents` bumps agents without touching kernel/Mesa.
+    # newest claude-code DECOUPLED from our (deliberately lagging) nixpkgs pin.
+    # Nightly fleet builds re-resolve this input at HEAD via
+    # `rollingInputOverrides`; `nix flake update llm-agents` updates the local and
+    # failure-fallback lock without touching kernel/Mesa.
     # Deliberately NO inputs.nixpkgs.follows — following our pin would rebuild
     # against stale deps and miss the numtide cache (substituter added in
     # modules/common.nix). home/home.nix installs the entire set via buildEnv.
@@ -194,6 +189,32 @@
     let
       system = "x86_64-linux";
 
+      # Inputs whose PACKAGE CONTENT may move independently of the committed
+      # flake.lock during the nightly fleet build. Centralized here so the worker's
+      # cache warmer and each host's later switch resolve the exact same set.
+      #
+      # This is intentionally NOT the main nixpkgs input: kernel/Mesa remain behind
+      # an explicit lock-file review. These inputs are isolated package catalogs or
+      # accelerator flakes that carry their own nixpkgs/provider pins and caches.
+      rollingInputOverrides = [
+        {
+          name = "nixpkgs-fresh";
+          url = "github:NixOS/nixpkgs/nixos-unstable";
+        }
+        {
+          name = "llm-agents";
+          url = "github:numtide/llm-agents.nix";
+        }
+        {
+          name = "nix-amd-ai";
+          url = "github:noamsto/nix-amd-ai";
+        }
+        {
+          name = "nix-strix-halo";
+          url = "github:hellas-ai/nix-strix-halo";
+        }
+      ];
+
       # One overlay list everywhere (top-level pkgs + every host): bespoke pkgs,
       # the apple-fonts families, and sfmono-liga — wired inline because it
       # needs the flake input as src (overlays/default.nix has no inputs).
@@ -243,7 +264,7 @@
         hostModule:
         nixpkgs.lib.nixosSystem {
           inherit system;
-          specialArgs = { inherit inputs; };
+          specialArgs = { inherit inputs rollingInputOverrides; };
           modules = [
             {
               nixpkgs.overlays = overlays;
