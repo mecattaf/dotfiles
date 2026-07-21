@@ -85,6 +85,10 @@ final: prev: {
   # source-built from the latest stable upstream release for the Strix pair.
   amdtop = final.callPackage ../pkgs/amdtop.nix { };
 
+  # llama-swap — nixos-unstable is still on v224; pin the current official v240
+  # static release while retaining nixpkgs' first-class services.llama-swap module.
+  llama-swap = final.callPackage ../pkgs/llama-swap.nix { };
+
   # asr-rs — fully-local dual-Parakeet streaming STT daemon (v3: engine/client
   # split; the coordinator serves models on :8762 over tailscale0, thin clients
   # dictate against it). Source-built; onnxruntime static lib pinned as a FOD

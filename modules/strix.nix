@@ -10,6 +10,8 @@
   imports = [
     # Framework Desktop / Ryzen AI Max 300 series (gfx1151). Pulls amd cpu+gpu+ssd tuning.
     inputs.nixos-hardware.nixosModules.framework-desktop-amd-ai-max-300-series
+    # Native local-model proxy/control plane on coordinator + worker only.
+    ./llama-swap.nix
   ];
 
   options.myCluster = {
