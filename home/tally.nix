@@ -27,7 +27,10 @@ let
   knownHosts = "/etc/ssh/ssh_known_hosts";
 
   systemService = unit: [
-    "/run/current-system/sw/bin/sudo"
+    # NixOS installs sudo's setuid entry point in security.wrapperDir. The
+    # package symlink under /run/current-system/sw/bin is deliberately not
+    # setuid, so it cannot be used by Tally's unprivileged local/SSH executors.
+    "${osConfig.security.wrapperDir}/sudo"
     "-n"
     "/run/current-system/sw/bin/systemctl"
     "--wait"
