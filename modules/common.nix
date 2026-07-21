@@ -60,11 +60,13 @@
     # each from source; with it they're fetched. Key from the upstream flake's
     # nixConfig.
     # numtide → the llm-agents catalog; nix-amd-ai → prebuilt XRT/FastFlowLM for
-    # the coordinator's NPU (its overlay is pinned to its own nixpkgs, so this
-    # Cachix — NOT flake nixConfig — is what avoids building XRT from source).
+    # the coordinator's NPU; hellas → its gfx1151/TheRock package graph. Both AMD
+    # flakes keep their own nixpkgs/provider pins, so daemon-level cache trust —
+    # NOT a flake-local nixConfig — is what avoids multi-hour source builds.
     extra-substituters = [
       "https://cache.numtide.com"
       "https://nix-amd-ai.cachix.org"
+      "https://cache.hellas.ai"
       # Fleet binary cache — atticd on the coordinator (hosts/coordinator/attic.nix),
       # over the Tailscale mesh (MagicDNS `coordinator`; the Strix pair could also
       # use the TB5 fast lane `coordinator-tb`). The `fleet` cache is made public at
@@ -76,6 +78,7 @@
     extra-trusted-public-keys = [
       "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
       "nix-amd-ai.cachix.org-1:F4OU4vw/lV2oiG6SBHZ+nqjl4EFJuqI4X9A7pvaBmhQ="
+      "cache.hellas.ai-1:PYolh95U/Ms5fKE+NQTcNZUHyEv4QikaNocg9I9iy0g="
       # fleet cache signing key — the `fleet:...=` line from `attic cache info fleet`.
       # RUNTIME BOOTSTRAP: unknown until the cache is created on first server boot
       # (attic generates the keypair server-side), so it is added here once, after:

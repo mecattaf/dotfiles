@@ -10,6 +10,9 @@
   imports = [
     # Framework Desktop / Ryzen AI Max 300 series (gfx1151). Pulls amd cpu+gpu+ssd tuning.
     inputs.nixos-hardware.nixosModules.framework-desktop-amd-ai-max-300-series
+    # Shared accelerated inference/tooling packages from nix-strix-halo plus the
+    # one noamsto-only GPU backend. Host-role details stay in that module.
+    ./strix-ai.nix
   ];
 
   options.myCluster = {

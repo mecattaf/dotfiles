@@ -146,13 +146,27 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # nix-amd-ai — AMD Ryzen AI NPU stack (amdxdna driver + XRT + FastFlowLM).
-    # COORDINATOR ONLY: the conductor turns the NPU on (needs IOMMU in translated
-    # mode); the worker keeps the NPU off for max iGPU (iommu off). Deliberately
+    # nix-amd-ai — the proven coordinator NPU plane (hardware.amd-npu: amdxdna,
+    # XRT plugin discovery, udev/memlock, FastFlowLM) plus the one accelerator
+    # package nix-strix-halo does not expose: stable-diffusion-cpp-rocm.
+    # COORDINATOR ONLY for the NPU module: the conductor turns the NPU on (needs
+    # IOMMU in translated mode); the worker keeps it off for max iGPU. Deliberately
     # NO inputs.nixpkgs.follows — the overlay is built against its OWN pinned
     # nixpkgs so its Cachix (nix-amd-ai.cachix.org, substituter added in
     # modules/common.nix) serves prebuilt XRT/FastFlowLM instead of source builds.
     nix-amd-ai.url = "github:noamsto/nix-amd-ai";
+
+    # nix-strix-halo — the broad gfx1151 package plane for BOTH Framework Desktop
+    # nodes: llama.cpp ROCm/Vulkan, ds4-rocm, vLLM, MLX, tokenizers, MES firmware,
+    # the two-host benchmark driver, and a buildable live ISO. Consume its package
+    # outputs directly rather than applying its global overlay: that preserves its
+    # own TheRock/Python provider graph and avoids replacing the already-live
+    # nix-amd-ai XRT/FastFlowLM pair. The two flakes currently pin identical XRT +
+    # amdxdna revisions, so a second XRT in /run/current-system/sw would only create
+    # colliding binaries. All NPU components remain exclusively sourced from
+    # nix-amd-ai. No nixpkgs.follows: upstream's Hydra artifacts are keyed to its
+    # own nixpkgs and provider pins (cache configured in common.nix).
+    nix-strix-halo.url = "github:hellas-ai/nix-strix-halo";
 
     # microvm.nix — declarative microVMs (astro → microvm-nix/microvm.nix). The
     # instrument behind the /microvm skill: it exports nixosModules.{microvm,host}
@@ -271,9 +285,32 @@
         modules = [ ./home/home.nix ];
       };
 
-      packages.${system} = {
-        inherit (pkgs) mactahoe-gtk-theme mactahoe-icon-theme sfmono-liga;
-      };
+      packages.${system} =
+        let
+          amdAi = inputs.nix-amd-ai.packages.${system};
+          strixAi = inputs.nix-strix-halo.packages.${system};
+        in
+        {
+          inherit (pkgs) mactahoe-gtk-theme mactahoe-icon-theme sfmono-liga;
+
+          # Explicit accelerator escape hatches. The host module installs the
+          # operational subset safely; these aliases also make every requested
+          # upstream output directly buildable with `nix build .#<name>` without
+          # applying either upstream overlay to the fleet's global pkgs fixpoint.
+          stable-diffusion-cpp-rocm = amdAi.stable-diffusion-cpp-rocm;
+          inherit (strixAi)
+            ds4-rocm
+            ec-su-axb35-monitor
+            llama-cpp-rocm
+            llama-cpp-vulkan
+            mlx-rocm
+            strix-halo-mes-firmware
+            strix-halo-vllm-pair-bench-gfx1151
+            tokenizers-cpp
+            vllm-rocm
+            ;
+          live-iso = strixAi.live-iso;
+        };
 
       formatter.${system} = pkgs.nixfmt-rfc-style;
 
