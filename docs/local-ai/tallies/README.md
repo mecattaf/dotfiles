@@ -5,10 +5,11 @@ changes. [`2026-07-22.md`](2026-07-22.md) is the one-time anchor; later files
 should report deltas against the previous accepted catalog rather than
 rediscovering the field.
 
-A future deterministic scheduler may prepare one bounded repository delta at a
-time and render a proposed tally here. It may not download weights, change
+The deterministic monthly appliance prepares one bounded repository delta at a
+time and renders a draft tally here. It may not download weights, change
 `downloadAllModels`, promote a row, or mutate installed services. Acceptance is
-a human-reviewed catalog change.
+a human-reviewed catalog change. Its procedure and Tally/Pi boundary are in
+[`../monthly-workflow.md`](../monthly-workflow.md).
 
 Each report must include:
 

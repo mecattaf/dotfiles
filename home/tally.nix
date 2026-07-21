@@ -110,7 +110,10 @@ in
 {
   imports = [ inputs.tally.homeManagerModules.tally ];
 
-  home.packages = lib.optionals isCoordinator [ cooldownReceiver ];
+  home.packages = lib.optionals isCoordinator [
+    cooldownReceiver
+    pkgs.local-ai-monthly
+  ];
 
   services.tally = {
     enable = isCoordinator;
@@ -155,6 +158,27 @@ in
     # hosts/worker/fleet-prebuild.nix. Equal low-priority jobs serialize on build;
     # worker/coordinator activation also atomically waits for that host's GPU lane.
     producers = lib.optionalAttrs isCoordinator {
+      # First distilled local-model appliance workflow. The executable owns the
+      # content lifecycle; Tally contributes only calendar admission, the remote
+      # GPU lease, a runtime bound, and proof. It executes on coordinator so Git,
+      # Pi, and gh stay there; Pi reaches worker's llama-swap over worker-tb.
+      monthly-local-ai-review = {
+        kind = "calendar";
+        onCalendar = "*-*-01 00:30:00";
+        enqueue = {
+          argv = [ "${pkgs.local-ai-monthly}/bin/local-ai-monthly-tally" ];
+          pool = "worker-gpu";
+          priority = "low";
+          dedupKey = "monthly-local-ai-review-%Y-%m";
+          evidence = [
+            "exit:0"
+            "artifact:/home/tom/.local/state/local-ai-monthly/last-run.json"
+          ];
+          runtimeMaxSec = 43200;
+          noEnqueue = true;
+        };
+      };
+
       nightly-fleet-prebuild = {
         kind = "calendar";
         onCalendar = "02:00";

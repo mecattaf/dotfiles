@@ -45,10 +45,9 @@ ports are implementation details and are not caller APIs. Modality-specific
 speech services get their own declared endpoints because they are not chat
 completion servers.
 
-Tally is the eventual scheduling, serialization, and report-production layer;
-this roster pass does not retrofit Tally onto historical pre-Nix notes and does
-not add a scheduler. It only creates the first append-only monthly tally and the
-metadata that a later deterministic job can update.
+Tally schedules, serializes, and proves the monthly community review described
+in [`monthly-workflow.md`](monthly-workflow.md). It does not retrofit historical
+pre-Nix notes into the current architecture.
 
 ## Sources of truth
 

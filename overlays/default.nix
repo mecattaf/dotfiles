@@ -109,4 +109,8 @@ final: prev: {
     inherit (import ../modules/artifacts-defaults.nix) namespace;
   };
   artifact-deck = final.callPackage ../pkgs/artifact-deck { };
+
+  # Monthly local-AI community review: deterministic Git/HF mechanics with Pi
+  # as the narrow judgment appliance. Tally owns only cadence, leases, and proof.
+  local-ai-monthly = final.callPackage ../pkgs/local-ai-monthly { };
 }

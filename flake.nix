@@ -297,6 +297,11 @@
         };
     in
     {
+      # Evaluation-only metadata surface for deterministic local-AI workflows.
+      # This serializes the accepted catalog without instantiating model FODs or
+      # changing the independent downloadAllModels gate.
+      lib.localModelCatalog = localModelCatalog;
+
       overlays.default = import ./overlays;
 
       nixosConfigurations = {
@@ -319,7 +324,12 @@
           strixAi = inputs.nix-strix-halo.packages.${system};
         in
         {
-          inherit (pkgs) mactahoe-gtk-theme mactahoe-icon-theme sfmono-liga;
+          inherit (pkgs)
+            local-ai-monthly
+            mactahoe-gtk-theme
+            mactahoe-icon-theme
+            sfmono-liga
+            ;
 
           # Explicit accelerator escape hatches. The host module installs the
           # operational subset safely; these aliases also make every requested

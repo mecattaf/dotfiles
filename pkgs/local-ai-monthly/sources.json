@@ -1,0 +1,378 @@
+{
+  "schema_version": 1,
+  "accepted_through": "2026-07-21",
+  "inference": {
+    "provider": "llama-swap",
+    "url": "http://worker-tb:9292",
+    "model_class": "strongest",
+    "fallback_classes": ["fast"],
+    "classes": {
+      "strongest": {
+        "role_order": ["quality", "general"],
+        "ram_order": "descending"
+      },
+      "fast": {
+        "role_order": ["utility", "general"],
+        "ram_order": "ascending"
+      }
+    },
+    "execution_host": "coordinator",
+    "compute_host": "worker",
+    "tally_pool": "worker-gpu"
+  },
+  "limits": {
+    "commit_log": 80,
+    "evidence_files": 12,
+    "excerpt_chars": 4000,
+    "total_evidence_chars": 50000,
+    "hf_inspections": 4,
+    "baseline_rationale_chars": 40000,
+    "git_timeout_seconds": 300,
+    "model_timeout_seconds": 1800
+  },
+  "hardware_context": {
+    "nodes": [
+      {
+        "name": "coordinator",
+        "hardware": "AMD Ryzen AI MAX+ 395, Radeon 8060S gfx1151, 128 GiB unified RAM",
+        "policy": "XDNA NPU enabled; IOMMU enabled in translated mode",
+        "roles": ["Tally coordinator", "Pi harness", "Git and PR mechanics"]
+      },
+      {
+        "name": "worker",
+        "hardware": "AMD Ryzen AI MAX+ 395, Radeon 8060S gfx1151, 128 GiB unified RAM",
+        "policy": "NPU disabled; IOMMU disabled for iGPU and DS4 performance",
+        "roles": ["llama-swap model host", "primary GPU inference"]
+      }
+    ],
+    "runtime_policy": "Every local LLM call goes through llama-swap; stable diffusion is outside this route.",
+    "change_policy": "The monthly workflow proposes catalog and source-pin changes only. It never downloads, installs, removes, or activates models."
+  },
+  "llm_agents_allowlist": [
+    "claude-code",
+    "ccusage",
+    "ck",
+    "claude-agent-acp",
+    "qmd",
+    "pi",
+    "codex",
+    "spec-kit"
+  ],
+  "sources": [
+    {
+      "slug": "ciru-ai/benchmarks",
+      "url": "https://github.com/ciru-ai/benchmarks.git",
+      "category": "canonical-monthly",
+      "cadence": "monthly",
+      "enabled": true,
+      "baseline": "202072d2227d2452e0c41f26f7b05d2491eab44e",
+      "baseline_authority": "2026-07 dry run, reviewed from the 2026-07-11 manifest pin",
+      "processor": "generic",
+      "partition": "top-level",
+      "watched_paths": [
+        "BENCHMARK_HISTORY*.md",
+        "agents.md",
+        "benchmarks/**",
+        "benchv2/data/*.json",
+        "benchv2/scripts/**",
+        "chadrock-rocmfpx/**",
+        "coding-quality/**",
+        "dflash/**",
+        "invoicesandbox/**",
+        "research/**"
+      ],
+      "evidence_paths": [
+        "*.md",
+        "**/*.md",
+        "**/*.json",
+        "**/*.csv",
+        "**/*.tsv",
+        "**/*.html",
+        "**/*.py",
+        "**/*.mjs"
+      ]
+    },
+    {
+      "slug": "ciru-ai/ciru-ai-site",
+      "url": "https://github.com/ciru-ai/ciru-ai-site.git",
+      "category": "canonical-monthly",
+      "cadence": "monthly",
+      "enabled": true,
+      "baseline": "a4228d9dad1f7ab5b06a8e383b25a9fe0ce1bc0b",
+      "baseline_authority": "2026-07 path-filtered inception review",
+      "processor": "generic",
+      "partition": "top-level",
+      "watched_paths": ["public/aime26/**", "public/project/**"],
+      "evidence_paths": ["**/*.json", "**/*.md", "**/*.html", "**/*.js", "**/*.ts", "**/*.tsx"]
+    },
+    {
+      "slug": "sypherin/strix-halo-setup",
+      "url": "https://github.com/sypherin/strix-halo-setup.git",
+      "category": "canonical-monthly",
+      "cadence": "monthly",
+      "enabled": true,
+      "baseline": "23a8112569c277e29dbfef5815e70707dd4cfbde",
+      "baseline_authority": "2026-07 dry run",
+      "processor": "generic",
+      "partition": "files",
+      "watched_paths": [
+        "README.md",
+        "PERFORMANCE_NOTES.md",
+        "docs/**",
+        "systemd/**",
+        "bin/strix-llm-switch.sh",
+        "configs/claude-code-router.config.json"
+      ]
+    },
+    {
+      "slug": "boxwrench/tesla_agent",
+      "url": "https://github.com/boxwrench/tesla_agent.git",
+      "category": "canonical-monthly",
+      "cadence": "monthly",
+      "enabled": true,
+      "baseline": "6b7881275e967982e4cd8268655f53de1c972bef",
+      "baseline_authority": "2026-07 dry run; unchanged from 2026-07-11 manifest",
+      "processor": "generic",
+      "partition": "files",
+      "watched_paths": [
+        "README.md",
+        "CHANGELOG.md",
+        "reference/reproducibility-matrix.md",
+        "guide/07*",
+        "guide/08*",
+        "docs/app.js"
+      ]
+    },
+    {
+      "slug": "hogeheer499-commits/strix-halo-guide",
+      "url": "https://github.com/hogeheer499-commits/strix-halo-guide.git",
+      "category": "canonical-monthly",
+      "cadence": "monthly",
+      "enabled": true,
+      "baseline": "c86deb0292f87735499a4ab8859f776ab46a9724",
+      "baseline_authority": "2026-07 campaign-split dry run",
+      "processor": "generic",
+      "partition": "campaign",
+      "watched_paths": [
+        "CURRENT_MODELS.md",
+        "README.md",
+        "COMMUNITY_RESULTS.md",
+        "ROCMFP4_CHADROCK.md",
+        "data/headline_claims.csv",
+        "data/raw/**"
+      ],
+      "evidence_paths": [
+        "*.md",
+        "data/headline_claims.csv",
+        "data/raw/**/README.md",
+        "data/raw/**/*.md",
+        "data/raw/**/*.csv",
+        "data/raw/**/*summary.json",
+        "data/raw/**/*results.json"
+      ]
+    },
+    {
+      "slug": "kyuz0/amd-strix-halo-gfx1151-toolboxes",
+      "url": "https://github.com/kyuz0/amd-strix-halo-gfx1151-toolboxes.git",
+      "category": "canonical-monthly",
+      "cadence": "monthly",
+      "enabled": true,
+      "baseline": "117214036570e29caf6a860d20e253dce5287ae7",
+      "baseline_authority": "2026-07 dry run",
+      "processor": "generic",
+      "partition": "files",
+      "watched_paths": ["README.md", "docs/index.html"]
+    },
+    {
+      "slug": "kyuz0/amd-strix-halo-toolboxes",
+      "url": "https://github.com/kyuz0/amd-strix-halo-toolboxes.git",
+      "category": "canonical-monthly",
+      "cadence": "monthly",
+      "enabled": true,
+      "baseline": "a7c71e91917234c44eb81b7fc64dc704db14879c",
+      "baseline_authority": "2026-07 dry run",
+      "processor": "generic",
+      "partition": "top-level",
+      "watched_paths": [
+        "README.md",
+        "docs/**",
+        "toolboxes/**",
+        "scripts/run_distributed_llama.py",
+        "refresh-toolboxes.sh",
+        "benchmark/**"
+      ],
+      "evidence_paths": ["**/*.md", "**/*.json", "**/*.csv", "**/*.py", "**/Dockerfile*", "*.sh", "**/*.sh"]
+    },
+    {
+      "slug": "kyuz0/strix-halo-ds4-toolbox",
+      "url": "https://github.com/kyuz0/strix-halo-ds4-toolbox.git",
+      "category": "canonical-monthly",
+      "cadence": "monthly",
+      "enabled": true,
+      "baseline": "9de18f7e426b4cab65edeb1bd73cc2d950dab17d",
+      "baseline_authority": "2026-07 dry run",
+      "processor": "generic",
+      "partition": "top-level",
+      "watched_paths": [
+        "README.md",
+        "AGENTS.md",
+        "toolboxes/**",
+        "refresh-toolboxes.sh",
+        "benchmark/**",
+        "docs/results.json",
+        "ds4-strix-halo-cockpit/src/assets/*.json",
+        "ds4-strix-halo-cockpit/src/config.py",
+        "ds4-strix-halo-cockpit/src/server_runner.py"
+      ],
+      "ignore_paths": ["ds4-strix-halo-cockpit/pyproject.toml"]
+    },
+    {
+      "slug": "antirez/ds4",
+      "aliases": ["kyuz0/ds4"],
+      "url": "https://github.com/antirez/ds4.git",
+      "category": "canonical-monthly",
+      "cadence": "monthly",
+      "enabled": true,
+      "baseline": "efdadd41e20134af4f3381e1ed90e96fe4faef6f",
+      "baseline_authority": "2026-07 dry run; Kyuz0 mirror matched this commit and the toolbox follows antirez/ds4",
+      "processor": "generic",
+      "partition": "top-level",
+      "watched_paths": ["README.md", "docs/**", "src/**", "*.c", "*.h", "ds4-agent/**", "ds4-eval/**"]
+    },
+    {
+      "slug": "numtide/llm-agents.nix",
+      "url": "https://github.com/numtide/llm-agents.nix.git",
+      "category": "canonical-monthly",
+      "cadence": "monthly",
+      "enabled": true,
+      "baseline": "ba8c89d5b4836d46f7bdbffd2df34c66dadef725",
+      "baseline_authority": "2026-07 dry run; research pin independent of flake.lock",
+      "processor": "llm-agents-nix",
+      "partition": "top-level",
+      "watched_paths": ["AGENTS.md", "README.md", "packages/**"]
+    },
+    {
+      "slug": "kyuz0/amd-strix-halo-vllm-toolboxes",
+      "url": "https://github.com/kyuz0/amd-strix-halo-vllm-toolboxes.git",
+      "category": "canonical-monthly",
+      "cadence": "monthly",
+      "enabled": true,
+      "baseline": "6446b9595273f289e11586c3c7d3e1e6f2945888",
+      "baseline_authority": "2026-07 dry run; unchanged from manifest",
+      "processor": "generic",
+      "partition": "top-level",
+      "watched_paths": [
+        "README.md",
+        "Dockerfile",
+        "docs/results.json",
+        "benchmarks/**",
+        "scripts/models.py",
+        "scripts/patch_strix.py",
+        "scripts/start_vllm*.py",
+        "rdma_cluster/**"
+      ],
+      "evidence_paths": ["**/*.md", "**/*.json", "Dockerfile", "**/*.py", "**/*.sh"]
+    },
+    {
+      "slug": "kyuz0/local-agent-builder",
+      "url": "https://github.com/kyuz0/local-agent-builder.git",
+      "category": "supporting-on-change",
+      "cadence": "on-change",
+      "enabled": true,
+      "baseline": "e5b048925acbf9a981ddb28bf61a72a46f60e34a",
+      "baseline_authority": "2026-07 dry run; unchanged from manifest",
+      "processor": "generic",
+      "partition": "files",
+      "watched_paths": [
+        "skills/local-agent-builder/SKILL.md",
+        "skills/local-agent-builder/resources/docs/**",
+        "skills/local-agent-builder/EXAMPLE_PROMPTS.txt",
+        "skills/local-agent-builder/resources/examples/**"
+      ]
+    },
+    {
+      "slug": "kyuz0/deep-research-agent",
+      "url": "https://github.com/kyuz0/deep-research-agent.git",
+      "category": "supporting-on-change",
+      "cadence": "on-change",
+      "enabled": true,
+      "baseline": "75671f51e8e61f668464d2246722f030891a8a60",
+      "baseline_authority": "2026-07 dry run; unchanged from manifest",
+      "processor": "generic",
+      "partition": "files",
+      "watched_paths": ["README.md", "src/prompts.py", "src/config_template.yaml", "eval/**"]
+    },
+    {
+      "slug": "kyuz0/amd-strix-halo-voice-toolbox",
+      "url": "https://github.com/kyuz0/amd-strix-halo-voice-toolbox.git",
+      "category": "supporting-on-demand",
+      "cadence": "on-demand",
+      "enabled": false,
+      "baseline": "ab13312787f8c81d9527495abafeefed91051df2",
+      "baseline_authority": "2026-07 dry run",
+      "processor": "generic",
+      "partition": "files",
+      "watched_paths": ["README.md", "Dockerfile", "scripts/vibevoice/**"]
+    },
+    {
+      "slug": "kyuz0/amd-strix-halo-comfyui-toolboxes",
+      "url": "https://github.com/kyuz0/amd-strix-halo-comfyui-toolboxes.git",
+      "category": "supporting-on-demand",
+      "cadence": "on-demand",
+      "enabled": false,
+      "baseline": "c2ef528b05e474491845fe27715315cec287d80c",
+      "baseline_authority": "2026-07 dry run",
+      "processor": "generic",
+      "partition": "top-level",
+      "watched_paths": ["README.md", "Dockerfile", "scripts/**", "docs/benchmark_results*.json", "refresh-toolbox.sh"]
+    },
+    {
+      "slug": "kyuz0/amd-strix-halo-llm-finetuning",
+      "url": "https://github.com/kyuz0/amd-strix-halo-llm-finetuning.git",
+      "category": "supporting-on-demand",
+      "cadence": "on-demand",
+      "enabled": false,
+      "baseline": "093a23c0d49418aef08e5053aa19faf65b35236a",
+      "baseline_authority": "2026-07 dry run",
+      "processor": "generic",
+      "partition": "top-level",
+      "watched_paths": ["README.md", "Dockerfile", "workspace/**", "custom_libs/**"]
+    },
+    {
+      "slug": "kyuz0/amd-strix-halo-pytorch-gfx1151-aotriton",
+      "url": "https://github.com/kyuz0/amd-strix-halo-pytorch-gfx1151-aotriton.git",
+      "category": "supporting-on-demand",
+      "cadence": "on-demand",
+      "enabled": false,
+      "baseline": "6965ae5b1e441a1fef8ec235e3fe4125727c981a",
+      "baseline_authority": "2026-07 dry run",
+      "processor": "generic",
+      "partition": "files",
+      "watched_paths": ["Dockerfile*", "scripts/therock-env.sh"]
+    },
+    {
+      "slug": "ciru-ai/strix-halo-evo-x2-evidence",
+      "url": "https://github.com/ciru-ai/strix-halo-evo-x2-evidence.git",
+      "category": "supporting-on-demand",
+      "cadence": "on-demand",
+      "enabled": false,
+      "baseline": "0d51b66e4c50950b31544702c5878fef14262682",
+      "baseline_authority": "2026-07 dry run",
+      "processor": "generic",
+      "partition": "top-level",
+      "watched_paths": ["**"]
+    },
+    {
+      "slug": "kyuz0/amd-strix-halo-image-video-toolboxes",
+      "url": "https://github.com/kyuz0/amd-strix-halo-image-video-toolboxes.git",
+      "category": "retired",
+      "cadence": "never",
+      "enabled": false,
+      "baseline": "b833ec30eb90e314bfad275ad68c0c690e6e2d53",
+      "baseline_authority": "terminal pin; superseded by amd-strix-halo-comfyui-toolboxes",
+      "processor": "generic",
+      "partition": "files",
+      "watched_paths": []
+    }
+  ]
+}
