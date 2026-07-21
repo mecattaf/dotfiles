@@ -3,6 +3,7 @@
 let
   inherit (lib) mkOption types;
 
+  backendKinds = import ./local-model-backends.nix;
   nullableString = types.nullOr types.str;
 
   checkpointType = types.submodule {
@@ -199,15 +200,7 @@ let
         ];
       };
       backend = mkOption {
-        type = types.enum [
-          "rocm"
-          "vulkan"
-          "ds4"
-          "vllm"
-          "mlx"
-          "sd-rocm"
-          "npu"
-        ];
+        type = types.enum (backendKinds.local ++ backendKinds.peers);
       };
       hosts = mkOption {
         type = types.nonEmptyListOf (
@@ -305,5 +298,6 @@ let
   };
 in
 {
+  inherit backendKinds;
   inherit (evaluated.config) artifacts deployments;
 }

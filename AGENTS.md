@@ -1,1 +1,1 @@
-All local-AI model calls must go through llama-swap; never call a backend directly.
+All local LLM calls must go through llama-swap; stable diffusion is outside this LLM route.

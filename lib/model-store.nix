@@ -22,16 +22,13 @@ let
         inherit (file) path;
         derivation = fetchFile artifactId artifact.source file;
       }) artifact.source.files;
-      package =
-        if builtins.length fetched == 1 then
-          (builtins.head fetched).derivation
-        else
-          pkgs.linkFarm "local-model-${safeName artifactId}" (
-            map (file: {
-              name = builtins.baseNameOf file.path;
-              path = file.derivation;
-            }) fetched
-          );
+      directory = pkgs.linkFarm "local-model-${safeName artifactId}" (
+        map (file: {
+          name = builtins.baseNameOf file.path;
+          path = file.derivation;
+        }) fetched
+      );
+      package = if builtins.length fetched == 1 then (builtins.head fetched).derivation else directory;
       primary =
         if builtins.length fetched == 1 then
           package
@@ -39,7 +36,7 @@ let
           "${package}/${builtins.baseNameOf artifact.source.primary}";
     in
     {
-      inherit package primary;
+      inherit directory package primary;
     };
 
   materialized = lib.mapAttrs materializeArtifact catalog.artifacts;

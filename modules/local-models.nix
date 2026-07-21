@@ -40,6 +40,18 @@ let
     lib.filter (unit: unit != null) (map (deployment: deployment.peer.systemdUnit) peerDeployments)
   );
 
+  modelRenderers = import ../lib/local-model-runtime.nix {
+    inherit lib;
+    packages = {
+      llamaRocm = strixAi.llama-cpp-rocm;
+      llamaVulkan = strixAi.llama-cpp-vulkan;
+      ds4 = strixAi.ds4-rocm;
+      vllm = strixAi.vllm-rocm;
+      mlxLm = strixAi.mlx-lm;
+    };
+  };
+  rendererBackends = builtins.attrNames modelRenderers;
+
   referencedArtifactIds =
     deployment: lib.filter (artifactId: artifactId != null) (builtins.attrValues deployment.artifacts);
   hostArtifactIds = lib.unique (
@@ -75,24 +87,23 @@ let
     deploymentName: deployment:
     let
       resolved = resolveArtifacts deployment;
-      modelPath = resolved.model;
+      modelArtifact = modelStore.materialized.${deployment.artifacts.model};
+      modelPath = modelArtifact.primary;
+      modelDirectory = modelArtifact.directory;
       runtimeArgs = map (expandRuntimeArg deploymentName resolved) deployment.runtime.args;
       extraArgs = lib.concatMapStringsSep " " lib.escapeShellArg runtimeArgs;
-      command =
-        if deployment.backend == "rocm" then
-          "${strixAi.llama-cpp-rocm}/bin/llama-server --port \${PORT} -m ${lib.escapeShellArg (toString modelPath)}"
-        else if deployment.backend == "vulkan" then
-          "${strixAi.llama-cpp-vulkan}/bin/llama-server --port \${PORT} -m ${lib.escapeShellArg (toString modelPath)}"
-        else if deployment.backend == "ds4" then
-          "${strixAi.ds4-rocm}/bin/ds4-server --host 127.0.0.1 --port \${PORT} -m ${lib.escapeShellArg (toString modelPath)}"
+      renderer = modelRenderers.${deployment.backend} or null;
+      rendered =
+        if renderer == null then
+          throw "local-model deployment ${deploymentName}: backend ${deployment.backend} has no llama-swap command renderer"
         else
-          throw "local-model deployment ${deploymentName}: backend ${deployment.backend} has no llama-swap command renderer yet";
+          renderer { inherit deployment modelDirectory modelPath; };
     in
     {
       name = deployment.model;
-      value = {
+      value = rendered // {
         name = deployment.model;
-        cmd = command + lib.optionalString (runtimeArgs != [ ]) " ${extraArgs}";
+        cmd = rendered.cmd + lib.optionalString (runtimeArgs != [ ]) " ${extraArgs}";
       };
     };
 
@@ -111,6 +122,22 @@ let
   manifest = (pkgs.formats.json { }).generate "local-model-catalog.json" catalog;
 
   catalogAssertions = [
+    {
+      assertion =
+        lib.sort builtins.lessThan rendererBackends
+        == lib.sort builtins.lessThan catalog.backendKinds.local;
+      message = "Every local-model backend must have exactly one llama-swap command renderer.";
+    }
+    {
+      assertion = lib.all (
+        deployment:
+        if deployment.peer == null then
+          lib.elem deployment.backend catalog.backendKinds.local
+        else
+          lib.elem deployment.backend catalog.backendKinds.peers
+      ) deploymentList;
+      message = "Local deployments must use rendered backends and peers must use peer-only backends.";
+    }
     {
       assertion = lib.all (
         artifact: lib.elem artifact.source.primary (map (file: file.path) artifact.source.files)

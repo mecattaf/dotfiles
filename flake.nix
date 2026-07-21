@@ -331,6 +331,7 @@
             ec-su-axb35-monitor
             llama-cpp-rocm
             llama-cpp-vulkan
+            mlx-lm
             mlx-rocm
             strix-halo-mes-firmware
             strix-halo-vllm-pair-bench-gfx1151
@@ -376,6 +377,24 @@
             modelPackagePaths = map toString (builtins.attrValues localModelStore.packages);
             coordinatorExtraDependencies = map toString coordinator.system.extraDependencies;
             workerExtraDependencies = map toString worker.system.extraDependencies;
+            testRenderers = import ./lib/local-model-runtime.nix {
+              lib = nixpkgs.lib;
+              packages = {
+                llamaRocm = "/runtime/rocm";
+                llamaVulkan = "/runtime/vulkan";
+                ds4 = "/runtime/ds4";
+                vllm = "/runtime/vllm";
+                mlxLm = "/runtime/mlx-lm";
+              };
+            };
+            testRender =
+              renderer:
+              renderer {
+                deployment.model = "test-model";
+                modelPath = "/models/model.gguf";
+                modelDirectory = "/models/model-directory";
+              };
+            renderedBackends = nixpkgs.lib.mapAttrs (_: testRender) testRenderers;
           in
           assert
             builtins.attrNames self.nixosConfigurations.coordinator.options.services.local-models == [
@@ -397,6 +416,44 @@
           assert workerSettings.peers == { };
           assert !(nixpkgs.lib.hasInfix "-hf" (builtins.toJSON coordinatorSettings));
           assert !(nixpkgs.lib.hasInfix "-hf" (builtins.toJSON workerSettings));
+          assert
+            localModelCatalog.backendKinds == {
+              local = [
+                "rocm"
+                "vulkan"
+                "ds4"
+                "vllm"
+                "mlx"
+              ];
+              peers = [ "npu" ];
+            };
+          assert
+            builtins.attrNames renderedBackends == [
+              "ds4"
+              "mlx"
+              "rocm"
+              "vllm"
+              "vulkan"
+            ];
+          assert
+            renderedBackends.rocm.cmd == "/runtime/rocm/bin/llama-server --port \${PORT} -m /models/model.gguf";
+          assert
+            renderedBackends.vulkan.cmd
+            == "/runtime/vulkan/bin/llama-server --port \${PORT} -m /models/model.gguf";
+          assert
+            renderedBackends.ds4.cmd
+            == "/runtime/ds4/bin/ds4-server --host 127.0.0.1 --port \${PORT} -m /models/model.gguf";
+          assert
+            renderedBackends.vllm.cmd
+            == "/runtime/vllm/bin/vllm serve /models/model-directory --host 127.0.0.1 --port \${PORT} --served-model-name test-model";
+          assert renderedBackends.vllm.useModelName == "test-model";
+          assert nixpkgs.lib.elem "HF_HUB_OFFLINE=1" renderedBackends.vllm.env;
+          assert
+            renderedBackends.mlx.cmd
+            == "/runtime/mlx-lm/bin/mlx_lm.server --model /models/model-directory --host 127.0.0.1 --port \${PORT}";
+          assert renderedBackends.mlx.useModelName == "default_model";
+          assert nixpkgs.lib.elem "HF_HUB_OFFLINE=1" renderedBackends.mlx.env;
+          assert builtins.hasAttr "mlx-lm" inputs.nix-strix-halo.packages.${system};
           pkgs.runCommand "local-model-routing" { } ''
             touch "$out"
           '';
