@@ -41,7 +41,9 @@ let
     "ck"
     "claude-agent-acp"
     "qmd"
-    "pi"
+    # NB: `pi` is intentionally absent — home/pi.nix ships a wrapped `pi` (real
+    # binary + declarative extension roster) as the sole `pi` on PATH. Keeping it
+    # here too would double-provide bin/pi and collide in the profile.
     "codex"
     "spec-kit" # bin: `specify` — GitHub Spec-Kit, spec-driven development bootstrapper
   ];
@@ -105,6 +107,7 @@ in
   imports = [
     ./ntm.nix
     ./nvim.nix
+    ./pi.nix
     ./piri.nix
     ./remote.nix
     ./tally.nix
