@@ -259,6 +259,13 @@
         config.allowUnfree = true; # google-chrome
       };
 
+      localModelCatalog = import ./lib/local-models.nix { lib = nixpkgs.lib; };
+      localModelStore = import ./lib/model-store.nix {
+        inherit pkgs;
+        lib = nixpkgs.lib;
+        catalog = localModelCatalog;
+      };
+
       # Single host-wiring point. Every host = common.nix + its own module + HM.
       mkHost =
         hostModule:
@@ -333,6 +340,10 @@
           live-iso = strixAi.live-iso;
         };
 
+      # Artifact rows are individually buildable as `nix build .#models.<id>`.
+      # This operator escape hatch does not change the one NixOS install switch.
+      legacyPackages.${system}.models = localModelStore.packages;
+
       formatter.${system} = pkgs.nixfmt-rfc-style;
 
       devShells.${system}.default = pkgs.mkShell {
@@ -352,9 +363,43 @@
       checks.${system} = {
         deadnix = pkgs.runCommand "deadnix" { } ''
           ${pkgs.deadnix}/bin/deadnix --fail --no-lambda-pattern-names \
-            ${./flake.nix} ${./modules} ${./hosts} ${./overlays} ${./home} > $out 2>&1 \
+            ${./flake.nix} ${./lib} ${./modules} ${./hosts} ${./overlays} ${./home} > $out 2>&1 \
             || (cat $out; exit 1)
         '';
+
+        local-model-routing =
+          let
+            coordinator = self.nixosConfigurations.coordinator.config;
+            worker = self.nixosConfigurations.worker.config;
+            coordinatorSettings = coordinator.services.llama-swap.settings;
+            workerSettings = worker.services.llama-swap.settings;
+            modelPackagePaths = map toString (builtins.attrValues localModelStore.packages);
+            coordinatorExtraDependencies = map toString coordinator.system.extraDependencies;
+            workerExtraDependencies = map toString worker.system.extraDependencies;
+          in
+          assert
+            builtins.attrNames self.nixosConfigurations.coordinator.options.services.local-models == [
+              "downloadAllModels"
+            ];
+          assert !coordinator.services.local-models.downloadAllModels;
+          assert !worker.services.local-models.downloadAllModels;
+          assert nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies == [ ];
+          assert nixpkgs.lib.intersectLists modelPackagePaths workerExtraDependencies == [ ];
+          assert coordinatorSettings.models == { };
+          assert workerSettings.models == { };
+          assert
+            coordinatorSettings.peers == {
+              flm = {
+                proxy = "http://127.0.0.1:52625";
+                models = [ "gemma4-it:e4b" ];
+              };
+            };
+          assert workerSettings.peers == { };
+          assert !(nixpkgs.lib.hasInfix "-hf" (builtins.toJSON coordinatorSettings));
+          assert !(nixpkgs.lib.hasInfix "-hf" (builtins.toJSON workerSettings));
+          pkgs.runCommand "local-model-routing" { } ''
+            touch "$out"
+          '';
       };
     };
 }

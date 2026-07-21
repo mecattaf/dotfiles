@@ -6,11 +6,11 @@
 }:
 # Native llama-swap control plane for the two Strix Halo nodes.
 #
-# Part 1 of 2: this module owns only the proxy package, lifecycle, state, and
-# network boundary. The next session owns the model roster, backend commands,
-# groups, and weight materialization. The proxy itself is a small, always-on Go
+# This module owns only the proxy package, lifecycle, state, and network
+# boundary. local-models.nix owns the typed roster, backend commands, peers, and
+# guarded weight materialization. The proxy itself is a small, always-on Go
 # process and consumes no GPU. Tally remains the admission controller for the
-# per-box GPU pools; llama-swap supplies the stable API door and load/unload
+# per-box GPU pools; llama-swap supplies the one stable API door and load/unload
 # mechanism.
 let
   cfg = config.services.llama-swap;
@@ -51,10 +51,6 @@ in
       # independent global timer evict a model during an admitted batch job.
       globalTTL = 0;
       unloadTimeout = 60;
-
-      # The serving plane is live now; declarative per-role model definitions land
-      # here as their backend/weight choices are promoted from the loadout plan.
-      models = { };
     };
   };
 
@@ -68,11 +64,11 @@ in
   systemd.services.llama-swap = {
     wants = [ "network-online.target" ];
     after = [ "network-online.target" ];
-    environment.LLAMA_CACHE = "/var/cache/llama-swap";
     serviceConfig = {
       # The upstream NixOS module uses DynamicUser + ProtectSystem=strict. Add
-      # systemd-managed writable paths for v240's activity store and llama.cpp's
-      # on-demand `-hf` downloads (the same LLAMA_CACHE seam qmx's module uses).
+      # systemd-managed writable paths for v240's activity store and backend
+      # scratch state. Model weights are immutable store paths; runtime downloads
+      # are forbidden by modules/local-models.nix.
       StateDirectory = "llama-swap";
       StateDirectoryMode = "0750";
       CacheDirectory = "llama-swap";

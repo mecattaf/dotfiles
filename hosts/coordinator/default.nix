@@ -56,10 +56,10 @@
   };
 
   # Preload a small model on the NPU and keep `flm serve` warm so the local
-  # OpenAI-compatible endpoint (127.0.0.1:52625) is always available to on-box
-  # consumers — zmx session titling, and the memory-flush path. `model` is the
-  # ONE place to swap which model the coordinator warms; runs as tom so the pull
-  # lands in ~/.config/flm/models (weights stay out of the nix store).
+  # OpenAI-compatible backend (127.0.0.1:52625) stays warm behind llama-swap.
+  # zmx titling and every other local consumer use llama-swap on :9292. `model`
+  # is the ONE place to swap which model the coordinator warms; runs as tom so
+  # the pull lands in ~/.config/flm/models (weights stay out of the nix store).
   services.npu-llm = {
     enable = true;
     model = "gemma4-it:e4b";

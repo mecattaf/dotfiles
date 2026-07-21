@@ -15,6 +15,8 @@
     ./strix-ai.nix
     # Native local-model proxy/control plane on coordinator + worker only.
     ./llama-swap.nix
+    # Typed model catalog, guarded store materialization, and host projections.
+    ./local-models.nix
   ];
 
   options.myCluster = {
@@ -34,6 +36,10 @@
   };
 
   config = {
+    # THE one model-install switch. Keep false until the reviewed roster and the
+    # external cold-storage migration are ready; false roots zero model weights.
+    services.local-models.downloadAllModels = false;
+
     # One TUI for CPU, Radeon iGPU, and (on the coordinator) XDNA NPU telemetry.
     environment.systemPackages = [ pkgs.amdtop ];
 

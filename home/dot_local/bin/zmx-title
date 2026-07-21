@@ -15,13 +15,12 @@
 # can never change behavior when the task-model is unavailable — "titling off"
 # === today's shipped `<cwd-basename>-<HHMMSS>` naming.
 #
-# Task model: the coordinator's local FastFlowLM (`flm serve`, NPU-backed),
-# reached over its OpenAI-compatible HTTP API. Host/port/model/URL are all
-# overridable via env vars (defaults match `flm`'s own defaults):
-#   FLM_HOST         (default 127.0.0.1)
-#   FLM_PORT         (default 52625 — `flm port`)
-#   FLM_TITLE_MODEL  (default gemma4-it:e4b)
-#   FLM_URL          (default http://$FLM_HOST:$FLM_PORT/v1/chat/completions)
+# Task model: the coordinator's NPU-backed FastFlowLM model, reached only
+# through llama-swap's OpenAI-compatible API. Host/port/model/URL are overridable:
+#   LLAMA_SWAP_HOST  (default 127.0.0.1)
+#   LLAMA_SWAP_PORT  (default 9292)
+#   FLM_TITLE_MODEL  (default gemma4-it:e4b, the llama-swap peer model ID)
+#   LLAMA_SWAP_URL   (default http://$LLAMA_SWAP_HOST:$LLAMA_SWAP_PORT/v1/chat/completions)
 #   ZMX_TITLE        (set to 0 to disable titling entirely)
 #   ZMX_TITLE_TIMEOUT (default 3 — hard wall-clock cap, seconds)
 set -u
@@ -36,10 +35,10 @@ emit_fallback() { printf '%s\n' "$fallback"; exit 0; }
 command -v curl >/dev/null 2>&1 || emit_fallback
 command -v jq   >/dev/null 2>&1 || emit_fallback
 
-host="${FLM_HOST:-127.0.0.1}"
-port="${FLM_PORT:-52625}"
+host="${LLAMA_SWAP_HOST:-127.0.0.1}"
+port="${LLAMA_SWAP_PORT:-9292}"
 model="${FLM_TITLE_MODEL:-gemma4-it:e4b}"
-url="${FLM_URL:-http://$host:$port/v1/chat/completions}"
+url="${LLAMA_SWAP_URL:-http://$host:$port/v1/chat/completions}"
 timeout="${ZMX_TITLE_TIMEOUT:-3}"
 
 # Gather content: positional args, plus stdin if something is piped in. Bounded

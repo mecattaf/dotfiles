@@ -88,6 +88,7 @@ loadout plan's model inventory (§1 of that note).
 - **Loadout row**: **2** (VibeVoice-ASR-7B on the worker, kyuz0 voice-toolbox image).
 
 ### 4.3 Live streaming STT (asr-rs)
+# ! UPDATED: will migrate to voxtype utility, still to be decided if installed from official repo or from llm-agents.nix (prefferred)
 
 - **What**: instant dictation on the coordinator — live grey preview plus offline
   finalize. Tom's active workstream; described here, not prescribed.
