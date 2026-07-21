@@ -11,7 +11,7 @@ image), harnessRPM (COPR packages), chezmoi-templated dotfiles, and zirconium.
 | `coordinator` | Framework Desktop, AMD Strix Halo | controller node, daily driver |
 | `worker` | Framework Desktop, AMD Strix Halo | headless LLM runner (TB4-linked to coordinator) |
 | `dell-xps` | Dell XPS 13 (2022), Intel | thin-client laptop |
-| `zenbook-duo` | ASUS Zenbook Duo, Intel | thin-client laptop (first flash — runbook: [docs/zenbook-duo-flash.md](docs/zenbook-duo-flash.md)) |
+| `zenbook-duo` | ASUS Zenbook Duo, Intel | thin-client laptop (historical first-flash runbook: [docs/old/zenbook-duo-flash.md](docs/old/zenbook-duo-flash.md)) |
 
 ```
 flake.nix        four hosts wired through one mkHost; tom@bridge = home-manager-only
@@ -21,8 +21,8 @@ hosts/           one module per machine
 home/            home-manager: typed nix (home.nix, nvim.nix) + RAW out-of-store
                  configs (niri KDL, kitty, fish, nvim lua) linked via mkOutOfStoreSymlink
 overlays/ pkgs/  custom packages (mactahoe themes, backlog-md, …)
-docs/migration-journal/   the working log: ratified decisions (nix-decisions.md is
-                 the system of record), per-area sweeps, flash runbooks
+docs/local-ai/  current local-AI appliance docs, model roster, monthly tallies
+docs/old/       reference-only documentation retained for later mining
 ```
 
 ## Branches

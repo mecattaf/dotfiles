@@ -108,7 +108,8 @@
       "10.77.0.2" = [ "worker-tb" ];
     };
 
-    # ds4-dual-node-lessons.md Lesson #5 + Appendix A: an untrusted TB interface
+    # docs/old/migration-journal/ds4-dual-node-lessons.md Lesson #5 + Appendix A:
+    # an untrusted TB interface
     # REJECTs cluster traffic ("No route to host") — coordinator :8081 inbound AND
     # worker inbound KV staging. Trust the point-to-point link on BOTH nodes.
     networking.firewall.trustedInterfaces = [ "thunderbolt0" ];
