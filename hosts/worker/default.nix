@@ -6,7 +6,6 @@
     ./disko.nix
     ./headless-display.nix
     ./cache-push.nix
-    ./fleet-prebuild.nix # Tally-dispatched cache warmer (builds all hosts → attic)
     ./gpu-cooldown.nix
     ../../modules/strix.nix
     ../../modules/microvm-host.nix

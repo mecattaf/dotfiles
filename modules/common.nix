@@ -12,8 +12,6 @@
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
     ./dotfiles-bootstrap.nix # ensure ~/mecattaf/dotfiles exists before the session
     ./artifacts.nix # myArtifacts options (+ worker VM-port window); serving plane is coordinator-only (caddy-artifacts.nix)
-    ./auto-update.nix # fleet auto-update: staggered daily nixos-upgrade off main (#42)
-    ./fleet-notify.nix # push a failure banner (marker + coordinator mirror) when an upgrade fails (#42)
   ];
 
   # --- identity / base ---
@@ -36,10 +34,9 @@
     ];
     auto-optimise-store = true;
 
-    # Auto-update hardening (modules/auto-update.nix): a dead substituter (coordinator
-    # down, zenbook off-tailnet) must delay an unattended build by seconds, not hang
-    # it; and a substitution that dies mid-transfer must fall back to building rather
-    # than fail the upgrade. Keeps the nightly nixos-upgrade robust off-network.
+    # Fleet-deploy hardening: a dead substituter (coordinator down, Zenbook
+    # off-tailnet) must delay an unattended build by seconds, not hang it; and a
+    # transfer that dies midway must fall back to building rather than fail closed.
     connect-timeout = 5;
     fallback = true;
 
@@ -88,6 +85,14 @@
       # safe: hosts just fall back to building. See hosts/coordinator/attic.nix.
       "fleet:G5pAUpKmPtVsYbhFZAQsUUcuKHGsrHo9CFAJG7x5jNM="
     ];
+  };
+
+  # A nightly candidate creates one generation per participating host. Keep two
+  # weeks of local rollback depth, including deploy-rs' immediately prior target.
+  nix.gc = {
+    automatic = true;
+    dates = "weekly";
+    options = "--delete-older-than 14d";
   };
 
   # --- user ---

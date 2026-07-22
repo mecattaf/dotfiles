@@ -113,10 +113,10 @@ in
         '';
 
         # A ROOT-owned copy of the same tom@mesh private key, for the nix-daemon (root)
-        # and other root-context clients that must SSH OUT across the mesh: distributed
-        # builds (modules/build-offload.nix) and the fleet-update failure mirror
-        # (modules/fleet-notify.nix). Same ciphertext, delivered 0400 root — ssh refuses
-        # a key it can't cleanly own, which a tom-owned /run/agenix path would trip.
+        # and other root-context clients that must SSH OUT across the mesh, principally
+        # distributed builds (modules/build-offload.nix). Same ciphertext, delivered
+        # 0400 root — ssh refuses a key it can't cleanly own, which a tom-owned
+        # /run/agenix path would trip.
         age.secrets.ssh-root-key = {
           file = ../secrets/ssh-user-key.age;
           owner = "root";

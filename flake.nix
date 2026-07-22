@@ -8,15 +8,15 @@
     # nixpkgs-fresh — a second nixpkgs, tracking the SAME nixos-unstable branch, used
     # ONLY to keep a handful of fast-moving user packages (currently
     # google-chrome and uv, see overlays list below) current independent of the `nixpkgs`
-    # pin above. That pin is deliberately lagging — modules/auto-update.nix explains
-    # it's the only door kernel/Mesa churn enters through, bumped as a manual act.
+    # pin above. That pin is deliberately lagging — the exact-candidate fleet deploy
+    # keeps it as the only door kernel/Mesa churn enters through, bumped manually.
     # Browser point releases carry none of that risk, so they shouldn't have to wait
     # on it.
     #
-    # Its lock entry is a reproducible fallback. Fleet prebuilds and switches use
-    # the centralized `rollingInputOverrides` list below to re-resolve it (alongside
-    # llm-agents and the two isolated AMD catalogs) at HEAD without writing the
-    # lock. A plain local build intentionally uses the reviewed fallback revision.
+    # Its lock entry is a reproducible fallback. The nightly fleet transaction uses
+    # `rollingInputOverrides` below to resolve it (with llm-agents and the two AMD
+    # catalogs) exactly once, then builds and deploys those immutable URLs without
+    # writing the lock. A plain local build uses the reviewed fallback revision.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     home-manager = {
@@ -109,6 +109,16 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # deploy-rs — the fleet's one NixOS activation engine. Tally remains the
+    # scheduler/admission/proof plane; deploy-rs runs inside that one durable job
+    # and contributes target copy, activation, SSH confirmation, and automatic
+    # rollback. Following our nixpkgs avoids a second package universe.
+    deploy-rs = {
+      url = "github:serokell/deploy-rs";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.utils.follows = "tally/flake-utils";
+    };
+
     # ntm — niri tablet management (github.com/mecattaf/ntm): one Rust daemon
     # for edge-initiated multi-finger touchscreen gestures + accelerometer
     # rotation via iio-sensor-proxy. ZENBOOK-DUO ONLY — the one host with touch
@@ -190,8 +200,8 @@
       system = "x86_64-linux";
 
       # Inputs whose PACKAGE CONTENT may move independently of the committed
-      # flake.lock during the nightly fleet build. Centralized here so the worker's
-      # cache warmer and each host's later switch resolve the exact same set.
+      # flake.lock during the nightly fleet transaction. The coordinator resolves
+      # each once and passes the same immutable URLs to every build and activation.
       #
       # This is intentionally NOT the main nixpkgs input: kernel/Mesa remain behind
       # an explicit lock-file review. These inputs are isolated package catalogs or
@@ -213,6 +223,42 @@
           name = "nix-strix-halo";
           url = "github:hellas-ai/nix-strix-halo";
         }
+      ];
+
+      # One hardened operational SSH path for deploy-rs and the Zenbook preflight.
+      # Use the tailnet names (rather than localhost / worker-tb) so magic rollback
+      # confirms the connectivity the fleet actually depends on after activation.
+      fleetDeploySshOpts = [
+        "-F"
+        "/dev/null"
+        "-o"
+        "BatchMode=yes"
+        "-o"
+        "PasswordAuthentication=no"
+        "-o"
+        "KbdInteractiveAuthentication=no"
+        "-o"
+        "IdentitiesOnly=yes"
+        "-o"
+        "IdentityAgent=none"
+        "-o"
+        "ForwardAgent=no"
+        "-o"
+        "ClearAllForwardings=yes"
+        "-o"
+        "StrictHostKeyChecking=yes"
+        "-o"
+        "UserKnownHostsFile=/etc/ssh/ssh_known_hosts"
+        "-o"
+        "ConnectTimeout=10"
+        "-o"
+        "ConnectionAttempts=1"
+        "-o"
+        "ServerAliveInterval=15"
+        "-o"
+        "ServerAliveCountMax=3"
+        "-i"
+        "/run/agenix/ssh-user-key"
       ];
 
       # One overlay list everywhere (top-level pkgs + every host): bespoke pkgs,
@@ -271,7 +317,9 @@
         hostModule:
         nixpkgs.lib.nixosSystem {
           inherit system;
-          specialArgs = { inherit inputs rollingInputOverrides; };
+          specialArgs = {
+            inherit inputs rollingInputOverrides fleetDeploySshOpts;
+          };
           modules = [
             {
               nixpkgs.overlays = overlays;
@@ -303,6 +351,35 @@
         coordinator = mkHost ./hosts/coordinator;
         worker = mkHost ./hosts/worker;
         zenbook-duo = mkHost ./hosts/zenbook-duo;
+      };
+
+      # deploy-rs owns HOW a selected generation reaches and activates on a node.
+      # Tally still owns WHEN this graph may run and atomically leases every
+      # affected build/GPU resource around the complete nightly transaction.
+      deploy = {
+        sshUser = "root";
+        user = "root";
+        sshOpts = fleetDeploySshOpts;
+        autoRollback = true;
+        magicRollback = true;
+        remoteBuild = false; # coordinator's Nix daemon already offloads to worker
+        fastConnection = false; # let each destination substitute from Attic
+        activationTimeout = 1200;
+        confirmTimeout = 90;
+
+        nodes =
+          nixpkgs.lib.genAttrs
+            [
+              "worker"
+              "coordinator"
+              "zenbook-duo"
+            ]
+            (host: {
+              hostname = host;
+              profiles.system.path =
+                inputs.deploy-rs.lib.${system}.activate.nixos
+                  self.nixosConfigurations.${host};
+            });
       };
 
       # Standalone home-manager bridge for the live Fedora host (coexists with Fedora):
@@ -400,6 +477,7 @@
           pkgs.runCommand "local-model-routing" { } ''
             touch "$out"
           '';
-      };
+      }
+      // inputs.deploy-rs.lib.${system}.deployChecks self.deploy;
     };
 }
