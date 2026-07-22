@@ -58,7 +58,8 @@ pre-Nix notes into the current architecture.
    true.
 3. [`model-roster.md`](model-roster.md) is the human-readable view, including
    speech appliances that do not belong in the llama-swap catalog.
-4. [`tallies/`](tallies/) records why the roster changed and the exact source
-   pins reviewed each month.
+4. [`tallies/`](tallies/) records accepted roster rationale. The monthly update
+   bot advances its exact research-source pins in `sources.json`; its advisory
+   summary remains visible in the corresponding pull request.
 
 The old documentation under [`../old/`](../old/) is evidence, not authority.

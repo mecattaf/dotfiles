@@ -1,22 +1,16 @@
-# Monthly local-AI tallies
+# Local-AI roster rationale
 
-This directory is an append-only record of model, runtime, and Strix Halo
-changes. [`2026-07-22.md`](2026-07-22.md) is the one-time anchor; later files
-should report deltas against the previous accepted catalog rather than
-rediscovering the field.
+[`2026-07-22.md`](2026-07-22.md) is the reviewed anchor for the current typed
+model roster. Add another file here only when a human-approved roster decision
+needs durable rationale alongside `lib/local-models.nix`.
 
-The deterministic monthly appliance prepares one bounded repository delta at a
-time and renders a draft tally here. It may not download weights, change
-`downloadAllModels`, promote a row, or mutate installed services. Acceptance is
-a human-reviewed catalog change. Its procedure and Tally/Pi boundary are in
-[`../monthly-workflow.md`](../monthly-workflow.md).
+The monthly source-review bot does not generate files in this directory. It
+commits only mechanically advanced pins in
+`pkgs/local-ai-monthly/sources.json`; exact intervals, checks, and Pi's advisory
+recommendations live in the pull-request body. Rejecting or abandoning that PR
+therefore leaves the next comparison interval unchanged.
 
-Each report must include:
-
-1. cutoff, previous pins, and reviewed source commits;
-2. exact model tuple changes: checkpoint, artifact, auxiliaries, runtime,
-   backend, topology, and serving policy;
-3. immutable HF revision, every selected filename, bytes, LFS OID, and SRI;
-4. benchmark run ID and evidence class, or an explicit provenance gap;
-5. additions, removals, unchanged champions, and negative results;
-6. gate state and a statement that no model blob was downloaded by the tally.
+Any future roster edit remains a separate human change. It must preserve exact
+artifact identity, immutable HF revision, selected files and sizes, LFS
+SHA-256/Nix SRI, runtime provenance, evidence class, and the independent
+`downloadAllModels = false` gate.

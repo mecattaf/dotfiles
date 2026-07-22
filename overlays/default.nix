@@ -110,7 +110,16 @@ final: prev: {
   };
   artifact-deck = final.callPackage ../pkgs/artifact-deck { };
 
-  # Monthly local-AI community review: deterministic Git/HF mechanics with Pi
-  # as the narrow judgment appliance. Tally owns only cadence, leases, and proof.
+  # One immutable provider source is shared by interactive Pi and the monthly
+  # appliance. Explicit `-e` loading needs no npm install or mutable Pi state.
+  pi-llama-swap-extension = final.fetchFromGitHub {
+    owner = "danielmeneses";
+    repo = "pi-llama-swap";
+    rev = "915861a1fc2dfd01991720d1c8854bc974cb5322"; # v0.1.1
+    hash = "sha256-z0KJYGrl5QF+IRdTXQv1mS/v4XC/XdslEjJ2WI2Xmyk=";
+  };
+
+  # Monthly local-AI update bot: deterministic Git/HF preparation, one Pi
+  # judgment, deterministic verification/publication. Tally leases only Pi.
   local-ai-monthly = final.callPackage ../pkgs/local-ai-monthly { };
 }

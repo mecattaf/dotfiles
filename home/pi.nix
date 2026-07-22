@@ -48,18 +48,18 @@ let
     # first-class provider. https://pi.dev/packages/@danielmeneses/pi-llama-swap
     pi-llama-swap = {
       enable = true;
-      src = pkgs.fetchFromGitHub {
-        owner = "danielmeneses";
-        repo = "pi-llama-swap";
-        rev = "915861a1fc2dfd01991720d1c8854bc974cb5322"; # v0.1.1
-        hash = "sha256-z0KJYGrl5QF+IRdTXQv1mS/v4XC/XdslEjJ2WI2Xmyk=";
-      };
+      src = pkgs.pi-llama-swap-extension;
     };
   };
 
   # Enabled specs → a flat `-e <store-path>` argv the wrapper prepends.
   enabled = lib.filterAttrs (_: e: e.enable) extensions;
-  loadArgs = lib.concatLists (lib.mapAttrsToList (_: e: [ "-e" (toString e.src) ]) enabled);
+  loadArgs = lib.concatLists (
+    lib.mapAttrsToList (_: e: [
+      "-e"
+      (toString e.src)
+    ]) enabled
+  );
 
   pi = pkgs.llm-agents.pi;
 

@@ -139,6 +139,12 @@ in
         enforce = "cooperative";
         hardPreempt = false;
       };
+      local-ai-review = {
+        resource = "mutex";
+        capacity = 1;
+        enforce = "cooperative";
+        hardPreempt = false;
+      };
     };
 
     # worker runs only tally's short-lived remote helper under tom's user systemd
@@ -158,24 +164,30 @@ in
     # hosts/worker/fleet-prebuild.nix. Equal low-priority jobs serialize on build;
     # worker/coordinator activation also atomically waits for that host's GPU lane.
     producers = lib.optionalAttrs isCoordinator {
-      # First distilled local-model appliance workflow. The executable owns the
-      # content lifecycle; Tally contributes only calendar admission, the remote
-      # GPU lease, a runtime bound, and proof. It executes on coordinator so Git,
-      # Pi, and gh stay there; Pi reaches worker's llama-swap over worker-tb.
+      # The parent serializes one monthly review but does not reserve the GPU.
+      # After deterministic Git/Nix/HF preparation it enqueues one low-priority
+      # worker-gpu child for Pi, waits for the commentary, then verifies and
+      # publishes without a GPU lease. noEnqueue=false is the deliberate child
+      # capability; Tally injects the parent identity and socket for that call.
       monthly-local-ai-review = {
         kind = "calendar";
         onCalendar = "*-*-01 00:30:00";
         enqueue = {
-          argv = [ "${pkgs.local-ai-monthly}/bin/local-ai-monthly-tally" ];
-          pool = "worker-gpu";
+          argv = [
+            "${pkgs.local-ai-monthly}/bin/local-ai-monthly-tally"
+            "--tally"
+            "${tallyPackage}/bin/tally"
+          ];
+          pool = "local-ai-review";
           priority = "low";
           dedupKey = "monthly-local-ai-review-%Y-%m";
           evidence = [
             "exit:0"
             "artifact:/home/tom/.local/state/local-ai-monthly/last-run.json"
+            "hash:sha256"
           ];
           runtimeMaxSec = 43200;
-          noEnqueue = true;
+          noEnqueue = false;
         };
       };
 

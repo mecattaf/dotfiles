@@ -5,8 +5,10 @@ dotfiles. A frontier model authors and refines inspectable procedural memory;
 replaceable local models execute it through Pi and llama-swap. Tally sees one
 top-level executable and contributes scheduling, resource admission, and proof.
 
-The monthly community tally is the first implementation. The academic-OCR
-workflow is the likely first pooled implementation.
+The monthly source-review bot is the deliberately smaller first implementation:
+one tool-less Pi judgment over fully prepared evidence. The patterns below are
+design guidance for future workflows that genuinely require tools, repair, or
+multiple model members; they are not complexity the monthly bot carries.
 
 ## One atomic member
 
@@ -117,11 +119,13 @@ briefing, but it must say which members or stages failed.
 
 ## Tally and compute ownership
 
-Tally still schedules one executable. The producer declares the full resource
-set the workflow may consume before admission. A pool sharing one worker GPU
-runs members sequentially under one `worker-gpu` lease unless declared capacity
-proves concurrency safe. A multi-host workflow acquires every relevant Tally
-pool atomically; an inner Pi agent does not enqueue surprise child work.
+Tally still schedules one executable. A workflow that consumes one fixed
+resource set declares it before admission. A linear workflow with substantial
+non-GPU work may instead hold its own workflow mutex and enqueue a declared,
+bounded child for the GPU-only stage, as the monthly source review does. The
+parent identity, dedup key, depth/fanout caps, and `noEnqueue` capability make
+that child explicit; an inner Pi agent never receives Tally access or enqueues
+surprise work.
 
 Git, deterministic transforms, Pi processes, validation, and publication run on
 the coordinator unless a workflow explicitly declares another execution host.

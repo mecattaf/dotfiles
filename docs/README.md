@@ -6,8 +6,8 @@ The current documentation starts here.
 |---|---|
 | [`local-ai/README.md`](local-ai/README.md) | Current local-AI appliance boundaries, routing, and deployment gate. |
 | [`local-ai/model-roster.md`](local-ai/model-roster.md) | Selected local model and inference roster, with pinned pull sources. |
-| [`local-ai/tallies/`](local-ai/tallies/) | Append-only monthly model and runtime tallies; July 2026 is the anchor. |
-| [`local-ai/monthly-workflow.md`](local-ai/monthly-workflow.md) | Distilled Pi/llama-swap workflow, deterministic boundary, Tally schedule, and proposal-card lifecycle. |
+| [`local-ai/tallies/`](local-ai/tallies/) | Reviewed model-roster rationale; July 2026 is the accepted anchor. |
+| [`local-ai/monthly-workflow.md`](local-ai/monthly-workflow.md) | Evidence-first Git update bot, single Pi judgment, nested Tally GPU lease, and merge-only pin advancement. |
 | [`local-ai/pi-appliance-pattern.md`](local-ai/pi-appliance-pattern.md) | Reusable single, pooled, aggregator, and typed-swarm mechanism for durable local-model appliances. |
 | [`old/`](old/) | Reference-only documentation retained for later mining. |
 

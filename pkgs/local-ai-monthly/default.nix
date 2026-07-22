@@ -1,72 +1,133 @@
 {
   lib,
   stdenvNoCC,
-  makeWrapper,
-  python3,
-  git,
-  gh,
-  nix,
+  symlinkJoin,
+  writeShellApplication,
+  bash,
   coreutils,
+  curl,
+  diffutils,
+  findutils,
+  gawk,
+  gh,
+  git,
+  gnugrep,
+  gnused,
   jq,
+  nix,
+  tinyxxd,
+  llm-agents,
+  pi-llama-swap-extension,
 }:
 let
-  python = python3.withPackages (ps: [ ps.jsonschema ]);
-in
-stdenvNoCC.mkDerivation {
-  pname = "local-ai-monthly";
-  version = "1.0.0";
-  src = ./.;
-
-  nativeBuildInputs = [ makeWrapper ];
-  nativeCheckInputs = [
+  shellRuntime = [
+    bash
+    coreutils
+    diffutils
+    findutils
+    gawk
     git
+    gnugrep
+    gnused
     jq
+    tinyxxd
   ];
-  dontBuild = true;
-  doCheck = true;
 
-  checkPhase = ''
-    runHook preCheck
-    ${python}/bin/python -m py_compile workflow.py
-    ${jq}/bin/jq -e . sources.json schema/brief.schema.json >/dev/null
-    ${python}/bin/python -m unittest discover -s tests -v
-    runHook postCheck
-  '';
+  pureStage = writeShellApplication {
+    name = "local-ai-monthly-pure-stage";
+    runtimeInputs = shellRuntime;
+    # Markdown code spans are intentionally single-quoted printf literals.
+    excludeShellChecks = [ "SC2016" ];
+    text = builtins.readFile ./lib/pure-stage.sh;
+  };
 
-  installPhase = ''
-    runHook preInstall
-    install -Dm755 workflow.py "$out/libexec/local-ai-monthly/workflow.py"
-    install -Dm444 extension.ts "$out/libexec/local-ai-monthly/extension.ts"
-    install -Dm444 sources.json "$out/libexec/local-ai-monthly/sources.json"
-    install -Dm444 skill/SKILL.md "$out/libexec/local-ai-monthly/skill/SKILL.md"
-    install -Dm444 schema/brief.schema.json "$out/libexec/local-ai-monthly/schema/brief.schema.json"
+  capture = writeShellApplication {
+    name = "local-ai-monthly-capture";
+    runtimeInputs = shellRuntime;
+    text = builtins.readFile ./lib/capture.sh;
+  };
 
-    makeWrapper ${python}/bin/python "$out/bin/local-ai-monthly" \
-      --add-flags "$out/libexec/local-ai-monthly/workflow.py" \
-      --prefix PATH : ${
-        lib.makeBinPath [
-          git
-          gh
-          nix
-          coreutils
-        ]
-      }
-    makeWrapper ${python}/bin/python "$out/bin/local-ai-monthly-tally" \
-      --add-flags "$out/libexec/local-ai-monthly/workflow.py" \
-      --add-flags "--publish" \
-      --prefix PATH : ${
-        lib.makeBinPath [
-          git
-          gh
-          nix
-          coreutils
-        ]
-      }
-    runHook postInstall
+  hfCapture = writeShellApplication {
+    name = "local-ai-monthly-hf-capture";
+    runtimeInputs = [
+      coreutils
+      curl
+      jq
+    ];
+    text = builtins.readFile ./lib/hf-capture.sh;
+  };
+
+  judge = writeShellApplication {
+    name = "local-ai-monthly-judge";
+    runtimeInputs = [
+      coreutils
+      llm-agents.pi
+    ];
+    text = ''
+      export LOCAL_AI_PI=${lib.escapeShellArg "${llm-agents.pi}/bin/pi"}
+      export LOCAL_AI_PI_PROVIDER_EXTENSION=${pi-llama-swap-extension}
+      exec ${bash}/bin/bash ${./lib/judge.sh} "$@"
+    '';
+  };
+
+  supervisor = writeShellApplication {
+    name = "local-ai-monthly";
+    runtimeInputs = [
+      coreutils
+      curl
+      gh
+      git
+      jq
+      nix
+    ];
+    text = ''
+      export LOCAL_AI_CAPTURE=${lib.escapeShellArg "${capture}/bin/local-ai-monthly-capture"}
+      export LOCAL_AI_HF_CAPTURE=${lib.escapeShellArg "${hfCapture}/bin/local-ai-monthly-hf-capture"}
+      export LOCAL_AI_JUDGE=${lib.escapeShellArg "${judge}/bin/local-ai-monthly-judge"}
+      export LOCAL_AI_PROMPT=${./prompt/review.md}
+      export LOCAL_AI_PURE_STAGE=${pureStage}
+      export LOCAL_AI_STAGES=${./stages.nix}
+      export LOCAL_AI_STAGE_BASH=${bash}
+      export LOCAL_AI_STAGE_SYSTEM=${lib.escapeShellArg stdenvNoCC.hostPlatform.system}
+      exec ${bash}/bin/bash ${./supervisor.sh} "$@"
+    '';
+  };
+
+  tallyEntry = writeShellApplication {
+    name = "local-ai-monthly-tally";
+    runtimeInputs = [ supervisor ];
+    text = ''
+      exec local-ai-monthly --publish "$@"
+    '';
+  };
+
+  tests = writeShellApplication {
+    name = "local-ai-monthly-tests";
+    runtimeInputs = shellRuntime;
+    text = ''
+      export LOCAL_AI_CAPTURE=${lib.escapeShellArg "${capture}/bin/local-ai-monthly-capture"}
+      export LOCAL_AI_PURE_STAGE=${lib.escapeShellArg "${pureStage}/bin/local-ai-monthly-pure-stage"}
+      export LOCAL_AI_SUPERVISOR_SOURCE=${./supervisor.sh}
+      export LOCAL_AI_CAPTURE_SOURCE=${./lib/capture.sh}
+      export LOCAL_AI_HF_CAPTURE_SOURCE=${./lib/hf-capture.sh}
+      export LOCAL_AI_JUDGE_SOURCE=${./lib/judge.sh}
+      export LOCAL_AI_PURE_STAGE_SOURCE=${./lib/pure-stage.sh}
+      exec ${bash}/bin/bash ${./tests/test-workflow.sh}
+    '';
+  };
+in
+symlinkJoin {
+  name = "local-ai-monthly-2.0.0";
+  paths = [
+    supervisor
+    tallyEntry
+  ];
+  postBuild = ''
+    ${tests}/bin/local-ai-monthly-tests
   '';
 
   meta = {
-    description = "Deterministic monthly local-AI review executed through Pi and llama-swap";
+    description = "Evidence-first monthly local-AI update bot scheduled by Tally";
     license = lib.licenses.mit;
     platforms = lib.platforms.linux;
     mainProgram = "local-ai-monthly";

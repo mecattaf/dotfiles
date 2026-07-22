@@ -22,10 +22,15 @@
   },
   "limits": {
     "commit_log": 80,
+    "evidence_commits_per_source": 12,
     "evidence_files": 12,
     "excerpt_chars": 4000,
     "total_evidence_chars": 50000,
-    "hf_inspections": 4,
+    "hf_metadata_repositories": 32,
+    "hf_files_per_repository": 200,
+    "hf_metadata_response_bytes": 5000000,
+    "max_diff_blob_bytes": 2000000,
+    "max_raw_diff_bytes": 8000000,
     "baseline_rationale_chars": 40000,
     "git_timeout_seconds": 300,
     "model_timeout_seconds": 1800
@@ -337,6 +342,24 @@
       "processor": "generic",
       "partition": "top-level",
       "watched_paths": ["README.md", "Dockerfile", "workspace/**", "custom_libs/**"]
+    },
+    {
+      "slug": "kyuz0/amd-strix-halo-benchmarking-scripts",
+      "url": "https://github.com/kyuz0/amd-strix-halo-benchmarking-scripts.git",
+      "category": "supporting-on-demand",
+      "cadence": "on-demand",
+      "enabled": false,
+      "baseline": "bc276dbc3c13c8b7946434e541a780721b7be692",
+      "baseline_authority": "2026-07 dry run; quarterly supporting source",
+      "processor": "generic",
+      "partition": "top-level",
+      "watched_paths": [
+        "README.md",
+        "scripts/**",
+        "results/**",
+        "*.py",
+        "*.sh"
+      ]
     },
     {
       "slug": "kyuz0/amd-strix-halo-pytorch-gfx1151-aotriton",
