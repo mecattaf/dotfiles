@@ -40,6 +40,16 @@
     # external cold-storage migration are ready; false roots zero model weights.
     services.local-models.downloadAllModels = false;
 
+    # The gfx1151 ROCm graph contains several split Composable Kernel derivations,
+    # each of which honors NIX_BUILD_CORES internally. Leaving both knobs at the
+    # 32-thread defaults allowed up to 32 derivations with 32 compiler processes
+    # apiece and exhausted 128 GiB during the first MLX build. Four eight-core
+    # jobs keep all 32 hardware threads useful without multiplying parallelism.
+    nix.settings = {
+      max-jobs = 4;
+      cores = 8;
+    };
+
     # One TUI for CPU, Radeon iGPU, and (on the coordinator) XDNA NPU telemetry.
     environment.systemPackages = [ pkgs.amdtop ];
 

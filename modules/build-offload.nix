@@ -50,9 +50,11 @@ in
         sshUser = "tom";
         sshKey = config.age.secrets.ssh-root-key.path; # root's outbound mesh key (modules/secrets.nix)
         systems = [ "x86_64-linux" ];
-        # Strix Halo Ryzen AI Max (16C/32T): let it run many derivations at once;
+        # Match the worker daemon's four-job ceiling. ROCm derivations use eight
+        # cores each, filling the 16C/32T CPU without recreating the 2026-07-22
+        # Composable Kernel OOM through nested derivation/compiler parallelism.
         # speedFactor > 1 makes nix prefer it over the local (weaker) builder.
-        maxJobs = 16;
+        maxJobs = 4;
         speedFactor = 2;
         # kvm: the worker is the microvm host (modules/microvm-host.nix), so it can
         # take derivations that need /dev/kvm. big-parallel: heavy multi-core builds.
