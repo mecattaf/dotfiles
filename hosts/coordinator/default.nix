@@ -10,6 +10,7 @@
   imports = [
     ./hardware.nix
     ./disko.nix
+    ./fleet-deploy.nix # one Tally-owned deploy-rs transaction for the whole fleet
     ./uplink-nas.nix
     ./services.nix
     # Per-machine AdGuard Home DNS filter (loopback 127.0.0.1:53, resolved

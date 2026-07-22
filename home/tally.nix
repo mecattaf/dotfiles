@@ -10,12 +10,13 @@
 # home/home.nix is shared by the fleet and the standalone bridge, but the daemon,
 # logical pools, remote executor, and calendar producers exist ONLY on coordinator.
 # worker contributes execution/GPU capacity through the daemonless SSH executor;
-# zenbook-duo merely accepts a best-effort SSH-dispatched update when it is online.
+# zenbook-duo remains a best-effort target of the coordinator-owned deploy workflow.
 #
 # The calendar remains systemd's clock, while tally owns admission, ordering,
-# execution, and proof. Nightly work is low priority and atomically leases every
-# affected resource, so an upgrade waits for active builds/LLM jobs and cannot
-# admit a new conflicting job halfway through acquisition.
+# execution, and proof. One nightly item now replaces the old staggered prebuild +
+# three per-host switches. It atomically leases build and both core GPU lanes for
+# the complete deploy-rs transaction, so it waits for active builds/LLM jobs and
+# cannot admit conflicting work between worker and coordinator activation.
 let
   hostName = if osConfig == null then "bridge" else osConfig.networking.hostName;
   isCoordinator = hostName == "coordinator";
@@ -71,41 +72,6 @@ let
     '';
   };
 
-  # The laptop intentionally has no tally daemon or remote helper. An offline
-  # probe is a successful skip; once the probe succeeds, a dropped update SSH is
-  # a real failure and is retained in tally's witness rather than disguised.
-  zenbookUpgrade = pkgs.writeShellApplication {
-    name = "tally-zenbook-upgrade";
-    runtimeInputs = [ pkgs.openssh ];
-    text = ''
-      ssh_args=(
-        -F /dev/null
-        -n
-        -o BatchMode=yes
-        -o PasswordAuthentication=no
-        -o KbdInteractiveAuthentication=no
-        -o IdentitiesOnly=yes
-        -o IdentityAgent=none
-        -o ForwardAgent=no
-        -o ClearAllForwardings=yes
-        -o StrictHostKeyChecking=yes
-        -o UserKnownHostsFile=${knownHosts}
-        -o ConnectTimeout=10
-        -o ConnectionAttempts=1
-        -o ServerAliveInterval=15
-        -o ServerAliveCountMax=3
-        -i ${meshIdentity}
-      )
-
-      if ! ssh "''${ssh_args[@]}" root@zenbook-duo /run/current-system/sw/bin/true; then
-        echo "tally fleet update: zenbook-duo offline at its nightly window; skipping"
-        exit 0
-      fi
-
-      exec ssh "''${ssh_args[@]}" root@zenbook-duo \
-        /run/current-system/sw/bin/systemctl --wait start nixos-upgrade.service
-    '';
-  };
 in
 {
   imports = [ inputs.tally.homeManagerModules.tally ];
@@ -160,9 +126,10 @@ in
       };
     };
 
-    # The old native timers are disabled in modules/auto-update.nix and
-    # hosts/worker/fleet-prebuild.nix. Equal low-priority jobs serialize on build;
-    # worker/coordinator activation also atomically waits for that host's GPU lane.
+    # One low-priority durable row replaces the old 02:00/03:30/04:30/06:00 chain.
+    # It is intentionally conservative: all three real contention lanes are held
+    # end-to-end, making build + worker→coordinator rollback one maintenance window.
+    # The system service handles Zenbook's successful offline/low-power skip internally.
     producers = lib.optionalAttrs isCoordinator {
       # The parent serializes one monthly review but does not reserve the GPU.
       # After deterministic Git/Nix/HF preparation it enqueues one low-priority
@@ -191,61 +158,18 @@ in
         };
       };
 
-      nightly-fleet-prebuild = {
+      nightly-fleet-deploy = {
         kind = "calendar";
         onCalendar = "02:00";
         enqueue = {
-          argv = systemService "fleet-prebuild.service";
-          pool = "build";
-          executor = "worker";
-          priority = "low";
-          dedupKey = "nightly-fleet-prebuild-%Y-%m-%d";
-          evidence = [ "exit:0" ];
-          noEnqueue = true;
-        };
-      };
-
-      nightly-worker-upgrade = {
-        kind = "calendar";
-        onCalendar = "03:30";
-        enqueue = {
-          argv = systemService "nixos-upgrade.service";
-          pool = [
-            "build"
-            "worker-gpu"
-          ];
-          executor = "worker";
-          priority = "low";
-          dedupKey = "nightly-worker-upgrade-%Y-%m-%d";
-          evidence = [ "exit:0" ];
-          noEnqueue = true;
-        };
-      };
-
-      nightly-coordinator-upgrade = {
-        kind = "calendar";
-        onCalendar = "04:30";
-        enqueue = {
-          argv = systemService "nixos-upgrade.service";
           pool = [
             "build"
             "coordinator-gpu"
+            "worker-gpu"
           ];
+          argv = systemService "fleet-deploy.service";
           priority = "low";
-          dedupKey = "nightly-coordinator-upgrade-%Y-%m-%d";
-          evidence = [ "exit:0" ];
-          noEnqueue = true;
-        };
-      };
-
-      nightly-zenbook-upgrade = {
-        kind = "calendar";
-        onCalendar = "06:00";
-        enqueue = {
-          argv = [ "${zenbookUpgrade}/bin/tally-zenbook-upgrade" ];
-          pool = "build";
-          priority = "low";
-          dedupKey = "nightly-zenbook-upgrade-%Y-%m-%d";
+          dedupKey = "nightly-fleet-deploy-%Y-%m-%d";
           evidence = [ "exit:0" ];
           noEnqueue = true;
         };
