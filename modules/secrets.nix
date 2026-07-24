@@ -16,6 +16,7 @@
 # already exists are declared here; add the rest as they are encrypted.
 let
   cfg = config.mySecrets;
+  hfTokenCiphertext = ../secrets/huggingface-token.age;
 in
 {
   options.mySecrets.enable = lib.mkEnableOption "agenix secret delivery on this host";
@@ -248,6 +249,20 @@ in
             chmod 600 "$dst"
           fi
         '';
+      })
+
+      # Hugging Face read token — coordinator-only operator credential. The
+      # ciphertext is deliberately optional so adding the declarative CLI does
+      # not require or manufacture a credential. Once provisioned with agenix,
+      # the wrapper reads this /run path directly; no activation copy or
+      # Hugging Face login cache is involved.
+      (lib.mkIf (config.networking.hostName == "coordinator" && builtins.pathExists hfTokenCiphertext) {
+        age.secrets.huggingface-token = {
+          file = hfTokenCiphertext;
+          owner = "tom";
+          group = "users";
+          mode = "400";
+        };
       })
 
       # navidrome-credentials: NOT consumed by the navidrome server (which runs

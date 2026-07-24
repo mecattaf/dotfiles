@@ -529,6 +529,158 @@
             || (cat $out; exit 1)
         '';
 
+        huggingface-cli-smoke =
+          let
+            hf = pkgs.huggingface-cli;
+            expectedVersion = "1.10.2";
+            smokeRevision = "0123456789abcdef0123456789abcdef01234567";
+            mockHub = pkgs.writeText "huggingface-metadata-mock.py" ''
+              import json
+              import sys
+              from http.server import BaseHTTPRequestHandler, HTTPServer
+              from pathlib import Path
+              from urllib.parse import parse_qs, urlsplit
+
+              PORT_FILE = Path(sys.argv[1])
+              REQUEST_FILE = Path(sys.argv[2])
+              REVISION = "${smokeRevision}"
+
+
+              class Handler(BaseHTTPRequestHandler):
+                  def do_GET(self):
+                      parsed = urlsplit(self.path)
+                      query = parse_qs(parsed.query)
+                      expand = [
+                          item
+                          for value in query.get("expand", [])
+                          for item in value.split(",")
+                      ]
+                      expected_path = (
+                          "/api/models/smoke/model/revision/" + REVISION
+                      )
+                      valid = (
+                          parsed.path == expected_path
+                          and sorted(expand) == ["sha", "siblings"]
+                          and "blobs" not in query
+                          and self.headers.get("Authorization")
+                          == "Bearer smoke-fixture-token"
+                      )
+                      REQUEST_FILE.write_text(
+                          json.dumps(
+                              {
+                                  "path": parsed.path,
+                                  "expand": sorted(expand),
+                                  "has_blobs": "blobs" in query,
+                                  "authenticated": self.headers.get("Authorization")
+                                  == "Bearer smoke-fixture-token",
+                              },
+                              sort_keys=True,
+                          )
+                      )
+
+                      if not valid:
+                          self.send_error(400)
+                          return
+
+                      payload = json.dumps(
+                          {
+                              "id": "smoke/model",
+                              "sha": REVISION,
+                              "siblings": [{"rfilename": "config.json"}],
+                          }
+                      ).encode()
+                      self.send_response(200)
+                      self.send_header("Content-Type", "application/json")
+                      self.send_header("Content-Length", str(len(payload)))
+                      self.end_headers()
+                      self.wfile.write(payload)
+
+                  def log_message(self, _format, *_args):
+                      pass
+
+
+              server = HTTPServer(("127.0.0.1", 0), Handler)
+              PORT_FILE.write_text(str(server.server_port))
+              server.handle_request()
+              server.server_close()
+            '';
+            coordinatorPackages =
+              self.nixosConfigurations.coordinator.config.home-manager.users.tom.home.packages;
+          in
+          assert hf.version == expectedVersion;
+          assert builtins.elem hf coordinatorPackages;
+          pkgs.runCommand "huggingface-cli-smoke"
+            {
+              nativeBuildInputs = [
+                hf
+                pkgs.jq
+                pkgs.python3
+              ];
+              # stdenv otherwise installs /no-cert-file.crt for pure builds.
+              # httpx constructs an SSL context even for the loopback HTTP
+              # fixture, so make the locked CA bundle an explicit remote input.
+              SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
+              NIX_SSL_CERT_FILE = "${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt";
+            }
+            ''
+              set -euo pipefail
+
+              export HOME="$TMPDIR/home"
+              export HF_HOME="$TMPDIR/huggingface"
+              mkdir -p "$HOME" "$HF_HOME"
+
+              # Suppress the CLI's unrelated PyPI update probe. This marker is
+              # included in both manifests, so any additional cache write fails.
+              touch "$HF_HOME/.check_for_update_done"
+              find "$HF_HOME" -mindepth 1 -printf '%P\t%y\t%s\n' \
+                | sort > "$TMPDIR/cache-before"
+
+              printf '%s\n' smoke-fixture-token > "$TMPDIR/hf-token"
+              chmod 600 "$TMPDIR/hf-token"
+              export HF_TOKEN_FILE="$TMPDIR/hf-token"
+
+              hf --version > "$TMPDIR/version"
+              grep -Fx '${expectedVersion}' "$TMPDIR/version"
+
+              python ${mockHub} "$TMPDIR/port" "$TMPDIR/request.json" &
+              server_pid=$!
+              trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+              for _ in $(seq 1 200); do
+                if [[ -s "$TMPDIR/port" ]]; then
+                  break
+                fi
+                sleep 0.01
+              done
+              test -s "$TMPDIR/port"
+
+              export HF_ENDPOINT="http://127.0.0.1:$(<"$TMPDIR/port")"
+              hf models info smoke/model \
+                --revision '${smokeRevision}' \
+                --expand sha,siblings \
+                --format json > "$TMPDIR/metadata.json"
+              wait "$server_pid"
+              trap - EXIT
+
+              jq -e \
+                --arg revision '${smokeRevision}' \
+                '.id == "smoke/model"
+                  and .sha == $revision
+                  and (.siblings | map(.rfilename)) == ["config.json"]' \
+                "$TMPDIR/metadata.json" > /dev/null
+              jq -e \
+                '.expand == ["sha", "siblings"]
+                  and (.has_blobs | not)
+                  and .authenticated' \
+                "$TMPDIR/request.json" > /dev/null
+
+              find "$HF_HOME" -mindepth 1 -printf '%P\t%y\t%s\n' \
+                | sort > "$TMPDIR/cache-after"
+              cmp "$TMPDIR/cache-before" "$TMPDIR/cache-after"
+              test ! -e "$HF_HOME/hub"
+
+              touch "$out"
+            '';
+
         local-model-routing =
           let
             coordinator = self.nixosConfigurations.coordinator.config;
