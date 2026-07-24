@@ -143,8 +143,10 @@ in
         # agenix's /run/agenix.d mount too, or it can race the key's decryption at boot.
         # It also raced the uplink on the coordinator's first boot (the boot-time
         # `tailscale up` predated wifi, so the join needed a manual restart, refs #37):
-        # order after network-online.target and retry with backoff so a late uplink
-        # (wifi associating after the unit fired) self-heals instead of staying down.
+        # order after network-online.target and retry so a late uplink (wifi
+        # associating after the unit fired) self-heals instead of staying down.
+        # A minute keeps permanent auth/config failures from creating a tight
+        # restart storm while still recovering promptly from a late network.
         systemd.services.tailscaled-autoconnect = {
           after = [
             "run-agenix.d.mount"
@@ -156,7 +158,7 @@ in
           ];
           serviceConfig = {
             Restart = "on-failure";
-            RestartSec = "10s";
+            RestartSec = "1min";
           };
         };
       }

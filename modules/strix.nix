@@ -111,12 +111,14 @@
       "sys-subsystem-net-devices-thunderbolt0.device"
     ];
 
-    # Naming fabric: both nodes resolve both TB endpoints by role name
-    # (-tb suffix so LAN/tailscale resolution of the plain hostnames is untouched).
-    networking.hosts = {
-      "10.77.0.1" = [ "coordinator-tb" ];
-      "10.77.0.2" = [ "worker-tb" ];
-    };
+    # Split-horizon naming: each Strix node resolves its peer's canonical name
+    # over the direct TB link. The node's own canonical name remains local, and
+    # devices without this module resolve the same names through MagicDNS.
+    networking.hosts =
+      if config.myCluster.role == "coordinator" then
+        { "10.77.0.2" = [ "worker" ]; }
+      else
+        { "10.77.0.1" = [ "coordinator" ]; };
 
     # docs/old/migration-journal/ds4-dual-node-lessons.md Lesson #5 + Appendix A:
     # an untrusted TB interface

@@ -14,12 +14,18 @@
 # on the operator box + USB). See the agenix handoff.
 {
   coordinator = {
-    aliases = [ "coordinator" "coordinator-tb" "10.77.0.1" ];
+    aliases = [
+      "coordinator"
+      "10.77.0.1"
+    ];
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFPCZFlnHQSNH3D0R1/qs9A/W498f8xTNUNBtLWZgU2A root@coordinator";
     userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAlTzKx0n2pQ4/1qv3mThyyh1+QCuT/Qcg+/40Nr1JB6 tom@mesh";
   };
   worker = {
-    aliases = [ "worker" "worker-tb" "10.77.0.2" ];
+    aliases = [
+      "worker"
+      "10.77.0.2"
+    ];
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9xaf+UX4cjDEme+Ath3EZYLiUJla/+3QlG4TvCzwLO root@worker";
     userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAlTzKx0n2pQ4/1qv3mThyyh1+QCuT/Qcg+/40Nr1JB6 tom@mesh";
   };

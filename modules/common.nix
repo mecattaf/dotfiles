@@ -64,12 +64,11 @@
       "https://cache.numtide.com"
       "https://nix-amd-ai.cachix.org"
       "https://cache.hellas.ai"
-      # Fleet binary cache — atticd on the coordinator (hosts/coordinator/attic.nix),
-      # over the Tailscale mesh (MagicDNS `coordinator`; the Strix pair could also
-      # use the TB5 fast lane `coordinator-tb`). The `fleet` cache is made public at
-      # bootstrap so pulls need no per-client token/netrc — only the signing key
-      # below. A cold host substitutes the ~7,744 llm-agents paths from here instead
-      # of the ~8h from-source build. refs #42.
+      # Fleet binary cache — atticd on the coordinator (hosts/coordinator/attic.nix).
+      # Split-horizon naming sends the worker over the TB5 fast lane and other
+      # remote hosts over the Tailscale mesh. The cache is public, so pulls need
+      # only the signing key below. A cold host substitutes the ~7,744 llm-agents
+      # paths instead of rebuilding them. refs #42.
       "http://coordinator:8080/fleet"
     ];
     extra-trusted-public-keys = [
@@ -196,12 +195,14 @@
   services.tailscale.enable = true;
   # Tailscale SSH: any mesh node can reach any other over the tailnet in ANY
   # situation (LAN, remote, or when the TB5 fabric is down), authenticated by
-  # tailnet identity — no user keypair needed for this path. extraSetFlags runs
-  # `tailscale set --ssh` on every activation, so it also enables SSH on nodes
-  # already joined to the tailnet (the autoconnect unit only runs `up` while
-  # BackendState=NeedsLogin, so extraUpFlags alone would never re-fire).
+  # tailnet identity — no user keypair needed for this path. Keep the flag on
+  # BOTH paths: `extraUpFlags` lets the autoconnect unit recover a stopped node
+  # whose stored preferences already have SSH enabled (tailscale up requires all
+  # non-default preferences), while `extraSetFlags` also repairs already-running
+  # nodes on every activation.
   # NB: requires an `ssh` rule in the tailnet ACL allowing tag:mesh → tag:mesh
   # for users [autogroup:nonroot, root] — added in the Tailscale admin console.
+  services.tailscale.extraUpFlags = [ "--ssh" ];
   services.tailscale.extraSetFlags = [ "--ssh" ];
   services.resolved.enable = true;
   networking.firewall.enable = true;

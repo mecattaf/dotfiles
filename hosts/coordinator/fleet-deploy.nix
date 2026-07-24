@@ -71,8 +71,9 @@ let
       sed 's/^/fleet-deploy:   /' "$candidate"
 
       # Build the same deploy-rs-wrapped profile that will be copied and activated.
-      # Coordinator's Nix daemon retains its worker-tb distributed builder; the
-      # explicit Attic push preserves the former cache warmer's full-closure mirror.
+      # Coordinator's Nix daemon retains its worker distributed builder; local
+      # split-horizon resolution keeps that traffic on Thunderbolt. The explicit
+      # Attic push preserves the former cache warmer's full-closure mirror.
       build_profile() {
         local host="$1"
         local out

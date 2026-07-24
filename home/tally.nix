@@ -117,7 +117,7 @@ in
     # manager. Lease ownership and the durable row never leave coordinator.
     executors = lib.optionalAttrs isCoordinator {
       worker = {
-        host = "worker-tb";
+        host = "worker";
         user = "tom";
         identityFile = meshIdentity;
         knownHostsFile = knownHosts;

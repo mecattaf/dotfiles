@@ -3,7 +3,7 @@
   "accepted_through": "2026-07-21",
   "inference": {
     "provider": "llama-swap",
-    "url": "http://worker-tb:9292",
+    "url": "http://worker:9292",
     "model_class": "strongest",
     "fallback_classes": ["fast"],
     "classes": {

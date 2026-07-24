@@ -233,7 +233,7 @@ drop fcitx5.sh). resolved-default tmpfiles → `services.resolved`.
   `//10.42.0.2/G`, nix-test wrongly had `/LaCie`).
 - **Thunderbolt cluster** (from report-thunderbolt-connection.md +
   ds4-dual-node-lessons.md): static `thunderbolt0` IPs 10.77.0.1/.2 (NM profile,
-  persistent) + `networking.hosts` (coordinator-tb/worker-tb) +
+  persistent) + split-horizon `networking.hosts` (`coordinator`/`worker`) +
   `networking.firewall.trustedInterfaces = ["thunderbolt0"]` **on BOTH nodes**
   (kv-disk offload dials inbound bidirectionally) + bolt auto-auth.
 - **ds4 / LLM cluster** → quadlet-nix units (the docs' "TODO: systemd units").
