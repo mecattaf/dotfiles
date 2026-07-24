@@ -226,8 +226,6 @@
       ];
 
       # One hardened operational SSH path for deploy-rs and the Zenbook preflight.
-      # Use the tailnet names (rather than localhost / worker-tb) so magic rollback
-      # confirms the connectivity the fleet actually depends on after activation.
       fleetDeploySshOpts = [
         "-F"
         "/dev/null"
@@ -249,6 +247,11 @@
         "StrictHostKeyChecking=yes"
         "-o"
         "UserKnownHostsFile=/etc/ssh/ssh_known_hosts"
+        "-o"
+        # Bootstrap the first unattended deploy from a tailnet-down coordinator:
+        # before split-horizon /etc/hosts is activated, LLMNR also advertises an
+        # unusable link-local AAAA answer for the worker's direct connection.
+        "AddressFamily=inet"
         "-o"
         "ConnectTimeout=10"
         "-o"
@@ -380,7 +383,17 @@
               "zenbook-duo"
             ]
             (host: {
+              # Canonical names are split-horizon: the Strix peers resolve each
+              # other over Thunderbolt; hosts without that link use MagicDNS.
+              # Pin the worker's transport here as well so the first deployment
+              # can bootstrap before the new /etc/hosts has been activated.
               hostname = host;
+              sshOpts =
+                fleetDeploySshOpts
+                ++ nixpkgs.lib.optionals (host == "worker") [
+                  "-o"
+                  "HostName=10.77.0.2"
+                ];
               profiles.system.path =
                 inputs.deploy-rs.lib.${system}.activate.nixos
                   self.nixosConfigurations.${host};
@@ -449,6 +462,46 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        fleet-connectivity =
+          let
+            coordinator = self.nixosConfigurations.coordinator.config;
+            worker = self.nixosConfigurations.worker.config;
+            retiredAliases = nixpkgs.lib.concatStringsSep "|" [
+              ("worker-" + "tb")
+              ("coordinator-" + "tb")
+            ];
+            monthlySources = builtins.fromJSON (builtins.readFile ./pkgs/local-ai-monthly/sources.json);
+          in
+          assert coordinator.networking.hosts."10.77.0.2" == [ "worker" ];
+          assert worker.networking.hosts."10.77.0.1" == [ "coordinator" ];
+          assert self.deploy.nodes.worker.hostname == "worker";
+          assert self.deploy.nodes.coordinator.hostname == "coordinator";
+          assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
+          assert nixpkgs.lib.elem "HostName=10.77.0.2" self.deploy.nodes.worker.sshOpts;
+          assert coordinator.services.tailscale.extraUpFlags == [ "--ssh" ];
+          assert coordinator.systemd.services.tailscaled-autoconnect.serviceConfig.RestartSec == "1min";
+          assert (builtins.head coordinator.nix.buildMachines).hostName == "worker";
+          assert coordinator.home-manager.users.tom.services.tally.executors.worker.host == "worker";
+          assert
+            coordinator.programs.ssh.knownHosts.worker.hostNames == [
+              "worker"
+              "10.77.0.2"
+            ];
+          assert
+            worker.programs.ssh.knownHosts.coordinator.hostNames == [
+              "coordinator"
+              "10.77.0.1"
+            ];
+          assert nixpkgs.lib.elem "http://coordinator:8080/fleet" worker.nix.settings.extra-substituters;
+          assert monthlySources.inference.url == "http://worker:9292";
+          pkgs.runCommand "fleet-connectivity" { } ''
+            if ${pkgs.ripgrep}/bin/rg --line-number '${retiredAliases}' ${self}; then
+              echo "retired mesh alias found" >&2
+              exit 1
+            fi
+            touch "$out"
+          '';
+
         deadnix = pkgs.runCommand "deadnix" { } ''
           ${pkgs.deadnix}/bin/deadnix --fail --no-lambda-pattern-names \
             ${./flake.nix} ${./lib} ${./modules} ${./hosts} ${./overlays} ${./home} > $out 2>&1 \
