@@ -24,6 +24,14 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Voxtype — coordinator-only local streaming dictation. Consume the upstream
+    # Home Manager module and canonical AMD ONNX/MIGraphX package; model weights
+    # remain mutable user data outside both Git and the Nix store.
+    voxtype = {
+      url = "github:peteonrails/voxtype/dev";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # Per-device hardware quirks. No nixpkgs.follows — it's just module files.
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
 

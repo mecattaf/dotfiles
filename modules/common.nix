@@ -102,7 +102,6 @@
       "wheel"
       "video"
       "input"
-      "uinput" # asr-rs hold-space PTT: typing-key grab replays through /dev/uinput
       "render"
       "networkmanager"
     ];
@@ -149,11 +148,6 @@
   # (greetd is hardwired to VT1 in this nixpkgs, so getty keeps VT2-6 for recovery.)
   services.getty.autologinUser = lib.mkDefault "tom";
 
-  # asr-rs global push-to-talk on a typing key (hold SPACE): the keyboard is
-  # EVIOCGRAB-ed and re-emitted through a /dev/uinput passthrough, which needs
-  # the uinput device + group (tom is in it above).
-  hardware.uinput.enable = true;
-
   # --- audio ---
   security.rtkit.enable = true;
   services.pipewire = {
@@ -175,7 +169,6 @@
   services.power-profiles-daemon.enable = true;
   services.fprintd.enable = true; # fingerprint
   services.fwupd.enable = true; # firmware updates
-  programs.ydotool.enable = true;
   xdg.portal = {
     enable = true;
     extraPortals = [ pkgs.xdg-desktop-portal-gtk ];

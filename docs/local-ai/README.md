@@ -16,7 +16,7 @@ roster edits are never allowed to lift it.
 
 | Appliance | Selected implementation | Serving boundary | State |
 |---|---|---|---|
-| Streaming speech-to-text | `asr-rs` dual Parakeet ONNX pipeline | Native dictation service; CPU-only | Existing source and model pins; Nix service reconciliation remains separate. |
+| Streaming speech-to-text | Voxtype with streaming-capable Parakeet TDT v3 family | Coordinator-only systemd user service; local ONNX Runtime/MIGraphX on gfx1151 | Declarative package, config, and service are pinned; model bootstrap and live acceptance remain operator gates. |
 | Document OCR/RAG | Qwen3-VL 8B primary, 32B refine, Qwen3 Embedding 8B | llama.cpp ROCm behind llama-swap | Selected and cataloged; weights gated off. |
 | Code generation | Qwen3-Coder-Next + Qwopus + Gemma 4 opinion pool | llama.cpp Vulkan behind llama-swap | Selected and cataloged; weights gated off. |
 | General text | FastFlowLM Gemma 4 E4B, Qwen 3.6 35B, DeepSeek V4 Flash | llama-swap only; DS4 is the fleet-wide escalation lane | Selected and cataloged; DS4 orchestration still needs its deployment pass. |

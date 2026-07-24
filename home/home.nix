@@ -111,6 +111,7 @@ in
     ./piri.nix
     ./remote.nix
     ./tally.nix
+    ./voxtype.nix
   ];
 
   home.username = "tom";
@@ -161,7 +162,7 @@ in
       # (dotfiles#67). NB: this is store-managed (read-only, re-emitted on switch), not
       # hot-reload RAW like the rest of niri/ — fine for a rarely-touched host slot.
       "niri-local.kdl".text =
-        if osConfig.networking.hostName == "zenbook-duo" then
+        if hostName == "zenbook-duo" then
           ''
             // GENERATED per-host (home.nix). Zenbook Duo dual-touchscreen mapping.
             input {
@@ -175,58 +176,8 @@ in
           ''
         else
           ''
-            // GENERATED per-host (home.nix). No host-specific niri config on ${osConfig.networking.hostName}.
+            // GENERATED per-host (home.nix). No host-specific niri config on ${hostName}.
           '';
-
-      # asr-rs dictation — the ONE per-host config in this file (branching on
-      # hostname, same pattern as remote.nix). The coordinator hosts the
-      # Parakeet models and serves the engine to the tailnet (firewalled to
-      # tailscale0:8762 in hosts/coordinator); the zenbook-duo is a thin client
-      # dictating against it over MagicDNS; everything else defaults to
-      # loopback. Hold-SUPER+SPACE push-to-talk everywhere: while IDLE the
-      # chord is watched passively (no grab, no timers), so asr-rs is
-      # entirely out of the plain-typing path — bare hold-SPACE needed a
-      # permanent grab that buffered every space press and mangled fast
-      # typing. WHILE DICTATING asr-rs grabs the keyboard and synthesizes the
-      # chord's release to niri, so TDT-finalized segments STREAM into the
-      # focused window at each speech pause, mid-hold, without becoming
-      # Mod+letter binds. Mic pinned to the iContact USB webcam on the
-      # coordinator only (device-specific, so it lives here, not the repo;
-      # resolved via the ALSA card table — the card id is "Pro").
-      #
-      # No focus_guard: it existed to keep hold-SPACE from fighting Claude
-      # Code's own held-space voice mode, but it also silently ate dictation
-      # in any window running a local claude. A deliberate SUPER+SPACE chord
-      # can't collide with plain space, so dictation now works everywhere.
-      # niri's Mod+Space is a consume-only no-op bind (see niri/binds.kdl).
-      "asr-rs/config.toml".text =
-        let
-          host = osConfig.networking.hostName;
-          ptt = ''
-            [push_to_talk]
-            enabled = true
-            key = "SUPER+SPACE"
-          '';
-        in
-        if host == "coordinator" then
-          ''
-            [engine]
-            bind = "0.0.0.0:8762"   # scoped by the tailscale0-only firewall rule
-
-            [audio]
-            device = "iContact"     # USB webcam mic (high-quality intake)
-
-          ''
-          + ptt
-        else if host == "zenbook-duo" then
-          ''
-            [engine]
-            url = "ws://coordinator:8762"   # models run on the coordinator
-
-          ''
-          + ptt
-        else
-          ptt;
     }
     // (
       # GTK4 / libadwaita apps (Nautilus) ignore gtk-theme-name; the only override
@@ -392,10 +343,6 @@ in
   # user packages.
   # ---------------------------------------------------------------------------
   home.packages = with pkgs; [
-    # dictation — dual-Parakeet STT daemon (spawn-at-startup in niri/startup.kdl;
-    # binds in niri/binds.kdl; per-host config generated above)
-    asr-rs
-
     # browser
     google-chrome
 

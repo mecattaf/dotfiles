@@ -10,7 +10,7 @@ dated, pins are recorded, nothing here is a task list.
 Local clones (blob-filtered, full history): `~/Downloads/local-ai-june11-references/`,
 baseline manifest `MANIFEST.json` in that directory.
 
-## 1. Production truth — what is actually running (2026-07-11)
+## 1. Production truth — what is actually declared (2026-07-24)
 
 The line between HAVE and PLANNED, stated once so no later reader confuses the two:
 
@@ -18,8 +18,10 @@ The line between HAVE and PLANNED, stated once so no later reader confuses the t
 
 - **tally v0.1.0 daemon + two `pls` brokers** on the coordinator — the queue/lease
   substrate is live (spec + CLI: `github.com/mecattaf/tally` `docs/`).
-- **asr-rs** — Tom's active workstream: CPU-only streaming STT on the coordinator
-  (dual-Parakeet, fp32 ONNX, branch `v2-parakeet`). Never takes a GPU lease by design.
+- **Voxtype** — coordinator-only live Parakeet dictation is declared through the
+  upstream Home Manager module and canonical ONNX/MIGraphX package. Weights stay
+  outside the Nix store; model bootstrap and live gfx1151 acceptance are separate
+  operator gates.
 - **The daily academic-sidecar OCR drain** — the ~4.7k paper sidecars drain daily, but
   today that drain is **manual/supervised**. The Qwen3-VL suite that will own it
   (8B fast pass + 32B refine + Embedding-8B, ~35 GB resident — loadout rows 9–10, spec
@@ -27,9 +29,10 @@ The line between HAVE and PLANNED, stated once so no later reader confuses the t
 
 **Not running — nothing else is:**
 
-- **NO local model servers are currently live.** No llama-server, no kyuz0 toolbox
-  container resident, no vLLM, no ds4, no voice stack, no NPU workload. Every model in
-  the loadout plan's 10-row inventory except row 1 (asr-rs) is planned, not deployed.
+- **NO general-purpose local model servers are described as live here.** No
+  llama-server, kyuz0 toolbox container, vLLM, or ds4 state is implied. Every model in
+  the loadout plan's 10-row inventory except the declared row 1 Voxtype path remains
+  separate from this archived digest.
 - Everything in §3 below marked "applies now" means *transfers when we stand the lane
   up* — it is community knowledge banked against the P0–P7 phases, not a description
   of our boxes.
@@ -428,9 +431,9 @@ line each on why, and where our canonical material lives:
 - **Call diarization/transcription** — zero content anywhere; Whisper is only ever
   namechecked as a hypothetical NPU workload. Ours: the transcription/diarization
   comparison note (§2) + loadout row 2 + `strix-halo-llm.md` §4.2.
-- **Streaming STT** — nothing resembling asr-rs exists in the corpus; the community is
-  GPU-serving-centric and this lane is CPU-only by design. Ours:
-  `github.com/mecattaf/asr-rs` branch `v2-parakeet` + loadout row 1 +
+- **Streaming STT** — the Strix-Halo corpus does not cover desktop dictation. The
+  deployed design instead consumes `github.com/peteonrails/voxtype` with local
+  Parakeet TDT-v3-family streaming over MIGraphX; see loadout row 1 and
   `strix-halo-llm.md` §4.3.
 - **Video editing/captioning** — the corpus covers video *generation* (3.10) only;
   no NLE-adjacent, subtitle, or existing-footage workflow anywhere. Ours: no canonical
