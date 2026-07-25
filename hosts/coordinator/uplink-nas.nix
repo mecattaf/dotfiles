@@ -69,49 +69,20 @@ in
 
   # LaCie 4TB, attached DIRECTLY to this box via USB (Tom's ruling 2026-07-05;
   # the old BE550-SMB path is retired). nofail + automount keep boot clean when
-  # the drive is unplugged. Label/device confirmed live 2026-07-11:
-  # `lsblk -f` → sda2, LABEL=LaCie, NTFS. The old `fsType = "auto"` failed every
-  # boot because no NTFS driver was configured; the in-kernel ntfs3 driver
-  # (mature on kernel 7.1, built in — `ntfs3` in /proc/filesystems) mounts it
-  # natively with no ntfs-3g/FUSE dependency. uid/gid are honoured by ntfs3.
+  # the drive is unplugged. Partition 2 was migrated from NTFS to Btrfs on
+  # 2026-07-23 while retaining the GPT and partition boundaries. Pin the new
+  # filesystem UUID rather than the reusable label, and use conservative
+  # single-rotating-disk options. POSIX ownership now lives on disk.
   fileSystems."/mnt/nas" = {
-    device = "/dev/disk/by-label/LaCie";
-    fsType = "ntfs3";
+    device = "/dev/disk/by-uuid/20e38790-a639-4ffc-8f1a-3921d1aedb97";
+    fsType = "btrfs";
     options = [
-      "uid=1000"
-      "gid=100"
+      "noatime"
+      "compress=zstd:3"
       "nofail"
       "noauto"
       "x-systemd.automount"
-      # Requires= + After= on the dirty-flag cleaner below, so every mount
-      # attempt (incl. automount triggers) self-heals first.
-      "x-systemd.requires=ntfsfix-lacie.service"
     ];
-  };
-
-  # Self-heal the NTFS dirty flag before every mount. An unclean unmount
-  # (power cut, USB yank) sets the volume dirty bit and ntfs3 then refuses to
-  # mount at all — found live 2026-07-12 as a silently empty /mnt/nas with
-  # mnt-nas.mount stuck in start-limit-hit. We deliberately do NOT mount with
-  # `force`: that would also rw-mount a genuinely inconsistent volume.
-  # ntfsfix -d verifies/repairs $MFT/$MFTMirr and the boot sector, resets the
-  # journal and clears the dirty flag; on a clean volume it is a verified
-  # no-op (exit 0). If the fix itself fails the mount stays down — correct,
-  # since that means real corruption needing a Windows chkdsk.
-  systemd.services.ntfsfix-lacie = {
-    description = "ntfsfix — clear NTFS dirty flag on the LaCie before mounting";
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = pkgs.writeShellScript "ntfsfix-lacie" ''
-        set -eu
-        dev=/dev/disk/by-label/LaCie
-        # Drive unplugged → nothing to fix; the nofail mount handles absence.
-        [ -b "$dev" ] || exit 0
-        # Already mounted (manual/test mount) → ntfsfix would refuse; skip.
-        ${pkgs.util-linux}/bin/findmnt -S "$dev" >/dev/null && exit 0
-        ${pkgs.ntfs3g}/bin/ntfsfix -d "$dev"
-      '';
-    };
   };
 
   # ── LaCie thermal + power suite ─────────────────────────────────────────────

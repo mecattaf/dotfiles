@@ -8,16 +8,15 @@
 # AutoUpdate=registry mechanism.
 #
 # LaCie access — the crux. Both libraries live on the directly-attached LaCie
-# USB NAS at /mnt/nas (see uplink-nas.nix), which is ntfs3-mounted with EVERY
-# file forced to uid=1000/gid=100 and the on-disk dirs at 0755 (owner-write
-# only). So both services run as tom:users — uid 1000 is the only identity that
-# can write the library, and it owns every file on the mount by construction.
+# USB NAS at /mnt/nas (see uplink-nas.nix), migrated to Btrfs on 2026-07-23.
+# The media subvolumes have ordinary on-disk POSIX ownership as tom:users and
+# mode 0755, so both services continue to run as that identity during the
+# verified restore and later integration.
 # The native modules assume a local mediaLocation and add no mount ordering, so
 # each unit gets RequiresMountsFor=/mnt/nas to fire the x-systemd.automount
 # before the service (and, for navidrome, before its sandbox bind-mounts the
-# music folder read-only). A future ext4 reformat of the LaCie (parked GH issue)
-# would restore normal POSIX ownership and let these move to dedicated system
-# users — revisit user/group then.
+# music folder read-only). Moving these services to dedicated system users is a
+# separate post-restore decision; it is not coupled to the filesystem anymore.
 #
 # No secrets: services.immich provisions its own postgresql over a unix socket
 # (peer auth, database.host=/run/postgresql), so the module's assertion is
