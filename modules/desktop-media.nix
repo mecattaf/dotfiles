@@ -3,7 +3,7 @@
 #
 # The Freebox wifi carries two appliances this box should "just work" with:
 #   - a JBL Authentics 200  — AirPlay 2 + Chromecast, 192.168.1.40
-#   - a Brother printer     — driverless IPP (currently powered off, see below)
+#   - a Brother HL-L2445DW  — driverless IPP, 192.168.1.38
 # Both are found over mDNS / DNS-SD: a multicast query to 224.0.0.251:5353.
 #
 # Why nothing worked before this module (diagnosed 2026-07-24):
@@ -51,11 +51,54 @@
   # --- printing (Brother) ---
   # Modern Brother printers speak driverless IPP Everywhere, which CUPS
   # auto-configures once avahi is up — no per-model driver needed. brlaser covers
-  # the older mono-laser models as a fallback. The printer was NOT on the wifi
-  # when this landed (a full subnet sweep found only the JBL, the Freebox, a
-  # phone and the worker); power it on and it should appear at http://localhost:631.
+  # the older mono-laser models as a fallback.
   services.printing = {
     enable = true;
     drivers = [ pkgs.brlaser ];
+  };
+
+  # The printer came online after the 2026-07-24 module landed: a Brother
+  # HL-L2445DW at 192.168.1.38, advertising _ipp._tcp with rp=ipp/print and
+  # URF/PWG raster, i.e. fully driverless. Discovery is NOT the problem any more —
+  # avahi sees it and cups-browsed is running.
+  #
+  # But Chrome's print dialog was still empty (2026-07-25), because discovery only
+  # produced a CUPS *temporary* queue — the on-demand kind CUPS materialises per
+  # job and tears down again. The split is visible in CUPS itself: `lpstat -e`
+  # listed Brother_HL_L2445DW while `lpstat -t` answered "No destinations added".
+  # Chrome enumerates permanent destinations, so it had nothing to show.
+  #
+  # ensurePrinters runs lpadmin to create a real, persistent queue, so the printer
+  # is there at dialog-open instead of depending on discovery timing.
+  # model = "everywhere" is driverless IPP: CUPS pulls capabilities off the
+  # printer itself, so no PPD or vendor driver is pinned. Addressed by its mDNS
+  # hostname rather than the current DHCP lease so a new address cannot silently
+  # break the queue (nssmdns4 above is what resolves it).
+  hardware.printers = {
+    ensureDefaultPrinter = "Brother_HL_L2445DW";
+    ensurePrinters = [
+      {
+        name = "Brother_HL_L2445DW";
+        description = "Brother HL-L2445DW";
+        location = "Home";
+        deviceUri = "ipp://BRW08F97E55F396.local:631/ipp/print";
+        model = "everywhere";
+        ppdOptions.PageSize = "A4";
+      }
+    ];
+  };
+
+  # `lpadmin -m everywhere` has to TALK to the printer to fetch its capabilities,
+  # so nixpkgs' ensure-printers oneshot fails whenever the printer is powered off —
+  # which for a household printer is most of the time, including during the nightly
+  # fleet deploy. Retry on a slow cadence instead of leaving a failed unit behind
+  # (the 2026-07-15 auto-upgrade breakage was exactly this shape: one unrelated
+  # non-zero exit poisoning the whole fleet update).
+  systemd.services.ensure-printers = {
+    startLimitIntervalSec = 0; # never latch into start-limit-hit
+    serviceConfig = {
+      Restart = "on-failure";
+      RestartSec = "5min";
+    };
   };
 }
