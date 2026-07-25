@@ -9,14 +9,19 @@
 #
 # LaCie access — the crux. Both libraries live on the directly-attached LaCie
 # USB NAS at /mnt/nas (see uplink-nas.nix), migrated to Btrfs on 2026-07-23.
-# The media subvolumes have ordinary on-disk POSIX ownership as tom:users and
-# mode 0755, so both services continue to run as that identity during the
-# verified restore and later integration.
+# The media subvolumes have ordinary on-disk POSIX ownership as tom:users, so
+# both services continue to run as that identity during the verified restore
+# and later integration. Preserve each accepted tree's existing mode.
 # The native modules assume a local mediaLocation and add no mount ordering, so
 # each unit gets RequiresMountsFor=/mnt/nas to fire the x-systemd.automount
 # before the service (and, for navidrome, before its sandbox bind-mounts the
 # music folder read-only). Moving these services to dedicated system users is a
 # separate post-restore decision; it is not coupled to the filesystem anymore.
+#
+# Media activation remains deferred to issue #104. Require an ephemeral,
+# operator-created approval file on every consumer so a reboot cannot erase the
+# restore-era runtime guards and start the stack implicitly. Issue #104 removes
+# this condition only when the canonical import and service checks are ready.
 #
 # No secrets: services.immich provisions its own postgresql over a unix socket
 # (peer auth, database.host=/run/postgresql), so the module's assertion is
@@ -50,7 +55,16 @@
   };
   # The LaCie is an x-systemd.automount; pull the real mount in before the server
   # touches mediaLocation (uses the .automount, so the drive still spins down).
-  systemd.services.immich-server.unitConfig.RequiresMountsFor = [ "/mnt/nas" ];
+  systemd.services.immich-server.unitConfig = {
+    RequiresMountsFor = [ "/mnt/nas" ];
+    ConditionPathExists = [ "/run/lacie-media-services-approved" ];
+  };
+  systemd.services.immich-machine-learning.unitConfig.ConditionPathExists = [
+    "/run/lacie-media-services-approved"
+  ];
+  systemd.services.redis-immich.unitConfig.ConditionPathExists = [
+    "/run/lacie-media-services-approved"
+  ];
 
   services.navidrome = {
     enable = true;
@@ -71,7 +85,10 @@
       AutoImportPlaylists = true;
     };
   };
-  systemd.services.navidrome.unitConfig.RequiresMountsFor = [ "/mnt/nas" ];
+  systemd.services.navidrome.unitConfig = {
+    RequiresMountsFor = [ "/mnt/nas" ];
+    ConditionPathExists = [ "/run/lacie-media-services-approved" ];
+  };
 
   # atuin — self-hosted shell-history sync server, same tailnet-only posture as
   # Immich/Navidrome above (no extra app-level auth; the tailnet IS the trust
