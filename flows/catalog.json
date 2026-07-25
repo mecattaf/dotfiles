@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "members": [
+    {
+      "id": "qwen-general",
+      "family": "qwen",
+      "maker": "alibaba",
+      "classes": ["errata-review"],
+      "adapter": "pi",
+      "pools": ["worker-gpu"],
+      "launch": {
+        "model": "qwen3.6-35b-a3b"
+      }
+    },
+    {
+      "id": "gemma-coding",
+      "family": "gemma",
+      "maker": "google",
+      "classes": ["errata-review"],
+      "adapter": "pi",
+      "pools": ["worker-gpu"],
+      "launch": {
+        "model": "gemma4-26b-a4b-qat"
+      }
+    },
+    {
+      "id": "glm-flash",
+      "family": "glm",
+      "maker": "zhipu",
+      "classes": ["errata-review"],
+      "adapter": "pi",
+      "pools": ["worker-gpu"],
+      "launch": {
+        "model": "glm-4.7-flash-uncensored"
+      }
+    }
+  ]
+}
