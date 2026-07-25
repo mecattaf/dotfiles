@@ -31,6 +31,10 @@
     inputs.nix-amd-ai.nixosModules.default
     # Declarative `flm serve` unit + the coordinator's preloaded NPU model choice.
     ../../modules/npu-llm.nix
+    # Desktop-only local-media plane: mDNS discovery (avahi) + AirPlay output for
+    # the JBL Authentics 200 + CUPS/driverless printing for the Brother. refs the
+    # 2026-07-24 "Chrome can't find the JBL" fix (mDNS was firewalled off).
+    ../../modules/desktop-media.nix
   ];
 
   networking.hostName = "coordinator";
