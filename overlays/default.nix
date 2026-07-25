@@ -89,16 +89,9 @@ final: prev: {
   # static release while retaining nixpkgs' first-class services.llama-swap module.
   llama-swap = final.callPackage ../pkgs/llama-swap.nix { };
 
-  # asr-rs — fully-local dual-Parakeet streaming STT daemon (v3: engine/client
-  # split; the coordinator serves models on :8762 over tailscale0, thin clients
-  # dictate against it). Source-built; onnxruntime static lib pinned as a FOD
-  # (see pkgs/asr-rs.nix). Models are NOT packaged: run asr-rs's
-  # packaging/download_models.sh once on engine hosts (~2.5 GB).
-  asr-rs = final.callPackage ../pkgs/asr-rs.nix { };
-
   # fgp-browser: intentionally NOT packaged here — picked up as part of the
   # agency agency browser project (custom Chromium surface). Tracked in issue #45.
-  # (asr-rs is wired above; gws ships as a home package + agenix creds, no overlay.)
+  # gws ships as a home package + agenix credentials, with no overlay.
 
   # Artifact system toolchain (sovereign replacement for claude.ai Artifacts;
   # skills: md-artifact / presentation-beta / publish-artifact). Identity knobs

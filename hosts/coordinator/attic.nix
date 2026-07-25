@@ -41,7 +41,7 @@
       mode = "monolithic";
       settings = {
         # Bind all interfaces; the firewall (below) restricts reachability to the
-        # trusted mesh transports only — same trust model as wayvnc:5900 / asr:8762.
+        # trusted mesh transports only — the same boundary used for wayvnc:5900.
         listen = "[::]:8080";
         # Let the substituter serve directly (clients hit /<cache>/nar/...); keep
         # the default sqlite DB + local storage under the atticd StateDirectory.

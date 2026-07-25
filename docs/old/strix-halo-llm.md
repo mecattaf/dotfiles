@@ -87,17 +87,18 @@ loadout plan's model inventory (§1 of that note).
   WhisperX for timestamp precision.
 - **Loadout row**: **2** (VibeVoice-ASR-7B on the worker, kyuz0 voice-toolbox image).
 
-### 4.3 Live streaming STT (asr-rs)
-# ! UPDATED: will migrate to voxtype utility, still to be decided if installed from official repo or from llm-agents.nix (prefferred)
+### 4.3 Live streaming STT (Voxtype)
 
-- **What**: instant dictation on the coordinator — live grey preview plus offline
-  finalize. Tom's active workstream; described here, not prescribed.
-- **Models**: dual-Parakeet (EOU-120M + TDT-0.6b-v2), fp32 ONNX, 0.9% WER at 38.75x RT.
-- **CPU-only by design** — the iGPU is 3.6x *slower* for streaming ASR, so this lane
-  never takes a GPU lease and is always-on. It is also the lane most invisible to the
-  community repos, which are GPU-serving-centric.
-- **Loadout row**: **1** (coordinator, native nix-packaged Rust binary, branch
-  `v2-parakeet` of the asr-rs repo).
+- **What**: instant coordinator-only dictation with live partial text at the focused
+  cursor and toggle-to-finalize Niri controls.
+- **Model/runtime**: the streaming-compatible Parakeet TDT v3 family model through
+  Voxtype's canonical `onnx-migraphx` package. Inference runs locally on the Strix
+  Halo gfx1151 GPU; there is no engine/client or remote-transcription path.
+- **Ownership**: the upstream Home Manager module owns the package, generated TOML,
+  and sole systemd user service. Model weights remain under
+  `~/.local/share/voxtype/models/`, outside Git and the Nix store.
+- **Loadout row**: **1** (coordinator only; `peteonrails/voxtype` pinned as a flake
+  input).
 
 ### 4.4 Decensored hypothesis-generator pool
 
@@ -129,8 +130,8 @@ loadout plan's model inventory (§1 of that note).
 - **tally** (queue/lease/witness substrate; Seam A = `tally enqueue`):
   `github.com/mecattaf/tally` — spec + CLI surface under its `docs/`.
 - **academic-rag** (the §4.1 OCR/RAG pipeline): `github.com/mecattaf/academic-rag`.
-- **asr-rs** (the §4.3 streaming STT engine, branch `v2-parakeet`):
-  `github.com/mecattaf/asr-rs`.
+- **Voxtype** (the §4.3 local streaming STT path):
+  `github.com/peteonrails/voxtype`.
 - **ds4 dual-node runbook** (both-GPUs-exclusive job class):
   `migration-journal/ds4-dual-node-lessons.md` in this directory.
 - **Community digest** (deep-pass baseline of the §2 watch list, pinned SHAs +

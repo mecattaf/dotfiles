@@ -40,16 +40,41 @@ arguments, benchmark IDs, and evidence classes in
 
 ## Speech appliances outside llama-swap
 
-These are selected pre-deployment identities. They do not enter the GGUF store
-or llama-swap because their APIs and runtimes are modality-specific. Their Nix
-services must be implemented and validated separately before any weight fetch.
+These identities do not enter the GGUF store or llama-swap because their APIs
+and runtimes are modality-specific. Each service and weight bootstrap has its
+own deployment gate.
 
-| Appliance | Model and immutable source | Inference | State |
+| Appliance | Model and source | Inference | State |
 |---|---|---|---|
-| Streaming preview / end-of-utterance | `realtime_eou_120m-v1-onnx` in [`altunenes/parakeet-rs@a61d281`](https://huggingface.co/altunenes/parakeet-rs/tree/a61d2818df4659c956b9661a9447f46e98c15126) | [`mecattaf/asr-rs@38c638a`](https://github.com/mecattaf/asr-rs/commit/38c638a6f50947a053e6799b4465cad793d91534), ONNX Runtime on CPU | Selected existing streaming lane |
-| Final dictation | [`istupakov/parakeet-tdt-0.6b-v2-onnx@0bbb45a`](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v2-onnx/tree/0bbb45a3365852604aef28b538a8f066f4ccaa85) | Same `asr-rs` process; ONNX Runtime on CPU | Selected existing finalize lane |
+| Live cursor dictation | [`parakeet-unified-en-0.6b`](https://huggingface.co/bobNight/parakeet-unified-en-0.6b-onnx), the streaming-compatible TDT v3 family model selected by the pinned Voxtype registry | [`peteonrails/voxtype@f972766`](https://github.com/peteonrails/voxtype/commit/f97276661d9b723aa3236f03879650a2a06c3ec3), canonical `onnx-migraphx` package | Declared on coordinator only; one-time weight bootstrap and live gfx1151 validation pending |
 | Call transcription + diarization | [`microsoft/VibeVoice-ASR-HF@f22241c`](https://huggingface.co/microsoft/VibeVoice-ASR-HF/tree/f22241c2062b3b25272bf117397e03d73381037a) | [`microsoft/VibeVoice@303b283`](https://github.com/microsoft/VibeVoice/commit/303b2833e01cff4578ec278bbfe536da54bd19fe), PyTorch/Transformers on ROCm | Selected, service and matched Strix run pending |
 | Text-to-speech | [`aoi-ot/VibeVoice-Large@1b81fec`](https://huggingface.co/aoi-ot/VibeVoice-Large/tree/1b81fecc784a076dcd935678db551871f4598ebf) | [`kyuz0/amd-strix-halo-voice-toolbox@ab13312`](https://github.com/kyuz0/amd-strix-halo-voice-toolbox/commit/ab13312787f8c81d9527495abafeefed91051df2), PyTorch ROCm | Selected pre-deployment; community mirror of retracted Microsoft weights, so provenance risk remains explicit |
+
+### Voxtype bootstrap and live gate
+
+Home Manager owns the Voxtype package, generated config, and one user service.
+Weights remain mutable user data. After activating the coordinator generation,
+run the one-time bootstrap as `tom`:
+
+```console
+$ voxtype setup model
+# Select: parakeet-unified-en-0.6b
+```
+
+The pinned Voxtype setup path verifies each downloaded file against the
+Voxtype model manifest and writes the model beneath
+`~/.local/share/voxtype/models/parakeet-unified-en-0.6b/`; neither the weights
+nor generated artifacts belong in Git or the Nix store. Current upstream
+explicitly rejects `parakeet-tdt-0.6b-v3` with `streaming = true`: that
+similarly named model is batch-only, while the selected unified model is the
+supported cache-aware TDT v3 streaming path.
+
+The first MIGraphX graph compile may be slow. Later starts should reuse
+`$XDG_CACHE_HOME/voxtype/migraphx` (normally
+`~/.cache/voxtype/migraphx`). Acceptance requires the journal to show the
+MIGraphX execution provider initializing on gfx1151 without a CPU fallback;
+`voxtype status --extended --format json` identifies the configured ONNX
+MIGraphX variant but does not replace that journal check.
 
 ## Operating rules
 

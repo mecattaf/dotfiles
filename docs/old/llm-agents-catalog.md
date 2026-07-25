@@ -17,6 +17,9 @@ denylist.
 **Kept, but NOT from this catalog:** `backlog-md` — built from our bespoke
 `pkgs/backlog-md.nix` (bin `backlog`) and deliberately excluded from
 `keepFromLlmAgents` so it isn't double-loaded / colliding on the same binary.
+Voxtype is likewise deployed outside this catalog: its dedicated upstream flake
+input supplies the canonical `onnx-migraphx` package and Home Manager module on
+the coordinator only.
 
 Everything else below is **cut**. The full list is retained as a snapshot of
 what the catalog offered at adoption time.
@@ -159,9 +162,8 @@ what the catalog offered at adoption time.
 | ☐ | `vibe-kanban` | 0.1.44 | Kanban board to orchestrate AI coding agents like Claude Code, Codex, and Gemini CLI |
 | ☐ | `vix` | 0.5.3 | Sleek, Fast and Token Efficient AI Coding Agent |
 | ☐ | `voxterm` | 0.3.0 | Local real-time voice transcription TUI with speaker diarization |
-| ☐ | `voxtype` | 0.7.5 | Push-to-talk voice-to-text for Wayland |
+| ☐ | `voxtype` | 0.7.5 | Deployed from its dedicated upstream flake, not this catalog |
 | ☐ | `workmux` | 0.1.218 | Git worktrees + tmux windows for zero-friction parallel dev |
 | ☐ | `wrapBuddy` | 26.05pre-git | Setup hook that patches ELF binaries with stub loader |
 | ☐ | `zat` | 0.5.4 | Code outline viewer for LLM coding agents — shows exported symbols with line numbers |
 | ☐ | `zeroclaw` | 0.8.2 | Fast, small, and fully autonomous AI assistant infrastructure |
-

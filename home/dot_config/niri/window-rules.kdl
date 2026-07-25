@@ -99,7 +99,7 @@ window-rule {
 //   • Connection manager  → title "Remmina Remote Desktop Client"
 //   • A live remote session → title = profile name, e.g. "coordinator (VNC)"
 // The manager floats at a comfortable size; a connected desktop opens MAXIMIZED
-// (full niri column) and focused, so global binds (SUPER+SPACE asr-rs, Mod+D,
+// (full niri column) and focused, so global binds (Mod+Space dictation, Mod+D,
 // overview) still fire and you can scroll to other columns. Remmina's own F11
 // still gives true fullscreen on demand.
 window-rule {
