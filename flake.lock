@@ -433,6 +433,31 @@
         "type": "github"
       }
     },
+    "git-ai": {
+      "inputs": {
+        "flake-utils": [
+          "tally",
+          "flake-utils"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": "rust-overlay"
+      },
+      "locked": {
+        "lastModified": 1784867825,
+        "narHash": "sha256-DX6miCunjNnQ35IZgfe3gg2fvokIChhDq78CbSmPNk8=",
+        "owner": "git-ai-project",
+        "repo": "git-ai",
+        "rev": "16ebfc032814a1acb5286508c3fb3194d61d9983",
+        "type": "github"
+      },
+      "original": {
+        "owner": "git-ai-project",
+        "repo": "git-ai",
+        "type": "github"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -917,6 +942,7 @@
         "apple-fonts": "apple-fonts",
         "deploy-rs": "deploy-rs",
         "disko": "disko",
+        "git-ai": "git-ai",
         "home-manager": "home-manager",
         "llm-agents": "llm-agents",
         "microvm": "microvm",
@@ -930,6 +956,27 @@
         "sfmono-liga": "sfmono-liga",
         "tally": "tally",
         "zmx": "zmx"
+      }
+    },
+    "rust-overlay": {
+      "inputs": {
+        "nixpkgs": [
+          "git-ai",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1770174315,
+        "narHash": "sha256-GUaMxDmJB1UULsIYpHtfblskVC6zymAaQ/Zqfo+13jc=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "095c394bb91342882f27f6c73f64064fb9de9f2a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
       }
     },
     "sf-arabic": {

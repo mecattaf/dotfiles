@@ -1,5 +1,6 @@
 {
   config,
+  inputs,
   lib,
   pkgs,
   osConfig,
@@ -470,6 +471,9 @@ in
     # seed via modules/secrets.nix, and DISABLE_UPDATES=1 keeps the native
     # updater from clobbering ~/.local/bin.
     llmAgentsSelected
+    # Upstream's minimal flake output: git-ai + git-og, while programs.git below
+    # remains the sole provider of the real git binary.
+    inputs.git-ai.packages.${pkgs.stdenv.hostPlatform.system}.minimal
     gh
     google-cloud-sdk
     gws # Google Workspace CLI (Gmail/Calendar/Drive/Sheets/Docs/...), Discovery-doc-backed
