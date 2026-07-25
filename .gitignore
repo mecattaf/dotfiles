@@ -12,3 +12,6 @@ admin-age.key
 secrets-staging/
 install-files/
 plaintext/
+
+# Nix build output symlink
+/result
