@@ -421,6 +421,7 @@ in
     # Upstream's minimal flake output: git-ai + git-og, while programs.git below
     # remains the sole provider of the real git binary.
     inputs.git-ai.packages.${pkgs.stdenv.hostPlatform.system}.minimal
+    huggingface-cli # metadata CLI; agenix authentication is coordinator-only
     gh
     google-cloud-sdk
     gws # Google Workspace CLI (Gmail/Calendar/Drive/Sheets/Docs/...), Discovery-doc-backed

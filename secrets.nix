@@ -80,6 +80,9 @@ in
   # authenticated operator box — gh + wrangler stay off the worker/laptops).
   "secrets/gh-hosts.age".publicKeys = editors ++ coordinatorOnly;
   "secrets/wrangler-config.age".publicKeys = editors ++ coordinatorOnly;
+  # Optional Hugging Face read token. The rule is declared now; ciphertext is
+  # created with agenix only when Tom supplies the credential.
+  "secrets/huggingface-token.age".publicKeys = editors ++ coordinatorOnly;
 
   # gws (Google Workspace CLI, personal account thomasmecattaf@gmail.com) — same
   # operator-box ruling as gh/wrangler above. client_secret identifies the OAuth

@@ -12,6 +12,56 @@ sizes, LFS object IDs, and Nix SRI hashes, but does not fetch or root weights.
 Tom manually lifts that gate in a later deployment pass. Monthly research and
 roster edits are never allowed to lift it.
 
+## Hugging Face metadata CLI
+
+Tom's declarative Home Manager profile provides `hf` through
+`pkgs.huggingface-cli`; authenticated access remains coordinator-only. Its
+underlying `huggingface-hub` package is version 1.10.2 from the locked
+`nixpkgs` input, and the flake smoke pins that expected version so a future
+lock update requires an intentional review.
+
+Public repository metadata needs no credential. This example requests only the
+pinned revision record and sibling names:
+
+```console
+hf models info unsloth/Qwen3.6-35B-A3B-GGUF \
+  --revision a483e9e6cbd595906af30beda3187c2663a1118c \
+  --expand sha,siblings \
+  --format json
+```
+
+For gated or private metadata, create a read-only token and enter the raw token
+as an agenix secret:
+
+```console
+nix develop -c agenix -e secrets/huggingface-token.age
+```
+
+`secrets.nix` limits that secret to the coordinator recipients, and
+`modules/secrets.nix` decrypts it as
+`/run/agenix/huggingface-token`. The `hf` wrapper reads that file into
+`HF_TOKEN` only for the child process. It does not run the CLI login flow or
+copy plaintext into the Nix store, repository, activation output, or
+`$HF_HOME`. This change intentionally carries no token or ciphertext; the
+secret declaration becomes active only after the operator provisions the
+encrypted file.
+
+Metadata inspection stops at API records such as revisions, tags, sibling
+names, and LFS metadata. The CLI's file-transfer operation is outside this
+workflow. Any future weight transfer requires a separately authorized,
+explicit manual deployment action; package installation, evaluation,
+activation, and monthly Tally work do not perform one. The Nix materialization
+boundary remains the unchanged
+`services.local-models.downloadAllModels = false`.
+
+The targeted smoke check runs `hf --version` and the metadata command against a
+local API fixture, then compares the complete isolated `$HF_HOME` manifest
+before and after:
+
+```console
+nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
+```
+
 ## Appliance map
 
 | Appliance | Selected implementation | Serving boundary | State |

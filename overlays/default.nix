@@ -93,6 +93,10 @@ final: prev: {
   # agency agency browser project (custom Chromium surface). Tracked in issue #45.
   # gws ships as a home package + agenix credentials, with no overlay.
 
+  # Hugging Face Hub CLI — the Python package comes from the locked nixpkgs
+  # input; this wrapper reads the coordinator's agenix token only at runtime.
+  huggingface-cli = final.callPackage ../pkgs/huggingface-cli.nix { };
+
   # Artifact system toolchain (sovereign replacement for claude.ai Artifacts;
   # skills: md-artifact / presentation-beta / publish-artifact). Identity knobs
   # come from modules/artifacts-defaults.nix — the one edit point — passed in
