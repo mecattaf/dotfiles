@@ -24,14 +24,14 @@
       }
     },
     {
-      "id": "glm-flash",
-      "family": "glm",
-      "maker": "zhipu",
+      "id": "deepseek-quality",
+      "family": "deepseek",
+      "maker": "deepseek",
       "classes": ["errata-review"],
       "adapter": "pi",
-      "pools": ["worker-gpu"],
+      "pools": ["worker-gpu", "coordinator-gpu"],
       "launch": {
-        "model": "glm-4.7-flash-uncensored"
+        "model": "deepseek-v4-flash"
       }
     }
   ]

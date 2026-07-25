@@ -3,12 +3,6 @@
 # one-shot (onCalendar = null): registered and flake-check-validated, invoked
 # manually with `tally flow run`. Args here are the defaults; override per run
 # with --args.
-#
-# NOTE: glm-flash in flows/catalog.json references an uncensored deployment used
-# purely as a family-diverse reviewer; it is cataloged regardless of the
-# materialization allowlist, but errata-map cannot run until its weights exist —
-# revisit member choice at T0 if the allowlist ruling (heretic-only) should also
-# govern reviewer members.
 { ... }:
 let
   dotfiles = "/home/tom/mecattaf/dotfiles";

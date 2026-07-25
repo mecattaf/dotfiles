@@ -1,7 +1,7 @@
 export const meta = {
   name: "errata-map",
   description: "Map every errata candidate in the reshaped notes (annex + weak-claims + discovery sweep), quorum-verify each, emit a decision ledger for Tom",
-  pools: ["codex-window", "worker-gpu", "build"],
+  pools: ["codex-window", "worker-gpu", "coordinator-gpu", "build"],
   argsSchema: {
     type: "object",
     required: ["notesRepo", "outDir", "maxRows"],
