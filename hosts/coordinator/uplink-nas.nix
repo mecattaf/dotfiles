@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   # The Freebox uplink PSK ships as an agenix secret (secrets/wifi.age). Until
   # that ciphertext is committed the whole declarative-wifi block stays inert so
@@ -28,44 +33,44 @@ in
   # `environmentFiles` `$FREEBOX_PSK` substitution. Both halves are gated on
   # `wifiReady` so this never lands a half-substituted profile that would fight
   # the live connection.
-  networking.networkmanager.ensureProfiles.profiles.freebox-uplink =
-    lib.mkIf wifiReady {
-      connection = {
-        id = "Freebox-AB3ACE";
-        type = "wifi";
-        interface-name = "wlp192s0";
-        autoconnect = true;
-        autoconnect-priority = 100;
-      };
-      wifi = {
-        mode = "infrastructure";
-        ssid = "Freebox-AB3ACE";
-        # Pinned HARD to the Freebox's 5GHz radio (2026-07-16). The mt7925e
-        # driver has a wcid list-corruption race on the same-SSID band-steering
-        # roam path (2.4↔5GHz hop): `list_add corruption` → `kernel BUG at
-        # lib/list_debug.c:32` inside a locked section → instant full lockup,
-        # no oops, no video, no network, power-cycle required. It killed this
-        # box TWICE in 12h (boots ending 2026-07-16 01:06 and 13:17, journal
-        # -2/-1), both times at the exact instant of a roam to this BSSID.
-        # Kernel 7.1 already carries the known upstream fixes for this bug
-        # class (double-wcid-init + wcid_cleanup poll_list, verified in-tree),
-        # so this is a remaining unfixed race; BIOS 3.05 (2026-07-14) armed it:
-        # 11 roams / 8 days / 0 crashes on 3.02 vs 9 roams / 2 crashes on 3.05.
-        # No roam, no crash. Trade-off: no 2.4GHz fallback if the 5GHz radio
-        # drops — fine for a stationary desktop; see also the disable_aspm +
-        # watchdog hardening in modules/strix.nix.
-        bssid = "8C:97:EA:FE:FA:E0";
-        band = "a";
-      };
-      wifi-security = {
-        key-mgmt = "wpa-psk";
-        psk = "$FREEBOX_PSK";
-      };
-      ipv4.method = "auto";
-      ipv6.method = "auto";
+  networking.networkmanager.ensureProfiles.profiles.freebox-uplink = lib.mkIf wifiReady {
+    connection = {
+      id = "Freebox-AB3ACE";
+      type = "wifi";
+      interface-name = "wlp192s0";
+      autoconnect = true;
+      autoconnect-priority = 100;
     };
-  networking.networkmanager.ensureProfiles.environmentFiles =
-    lib.mkIf wifiReady [ config.age.secrets.wifi.path ];
+    wifi = {
+      mode = "infrastructure";
+      ssid = "Freebox-AB3ACE";
+      # Pinned HARD to the Freebox's 5GHz radio (2026-07-16). The mt7925e
+      # driver has a wcid list-corruption race on the same-SSID band-steering
+      # roam path (2.4↔5GHz hop): `list_add corruption` → `kernel BUG at
+      # lib/list_debug.c:32` inside a locked section → instant full lockup,
+      # no oops, no video, no network, power-cycle required. It killed this
+      # box TWICE in 12h (boots ending 2026-07-16 01:06 and 13:17, journal
+      # -2/-1), both times at the exact instant of a roam to this BSSID.
+      # Kernel 7.1 already carries the known upstream fixes for this bug
+      # class (double-wcid-init + wcid_cleanup poll_list, verified in-tree),
+      # so this is a remaining unfixed race; BIOS 3.05 (2026-07-14) armed it:
+      # 11 roams / 8 days / 0 crashes on 3.02 vs 9 roams / 2 crashes on 3.05.
+      # No roam, no crash. Trade-off: no 2.4GHz fallback if the 5GHz radio
+      # drops — fine for a stationary desktop; see also the disable_aspm +
+      # watchdog hardening in modules/strix.nix.
+      bssid = "8C:97:EA:FE:FA:E0";
+      band = "a";
+    };
+    wifi-security = {
+      key-mgmt = "wpa-psk";
+      psk = "$FREEBOX_PSK";
+    };
+    ipv4.method = "auto";
+    ipv6.method = "auto";
+  };
+  networking.networkmanager.ensureProfiles.environmentFiles = lib.mkIf wifiReady [
+    config.age.secrets.wifi.path
+  ];
 
   # LaCie 4TB, attached DIRECTLY to this box via USB (Tom's ruling 2026-07-05;
   # the old BE550-SMB path is retired). nofail + automount keep boot clean when
