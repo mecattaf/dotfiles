@@ -1,9 +1,10 @@
 { pkgs, ... }:
 # Local-network media + printing plane for the desktop (coordinator only).
 #
-# The Freebox wifi carries two appliances this box should "just work" with:
-#   - a JBL Authentics 200  — AirPlay 2 + Chromecast, 192.168.1.40
-#   - a Brother HL-L2445DW  — driverless IPP, 192.168.1.38
+# The two appliances this box should "just work" with:
+#   - a JBL Authentics 200  — AirPlay 2 + Chromecast, wired to enp191s0 as
+#     10.42.0.56 (see hosts/coordinator/uplink-nas.nix for the dedicated link)
+#   - a Brother HL-L2445DW  — driverless IPP, 192.168.1.38 (wifi)
 # Both are found over mDNS / DNS-SD: a multicast query to 224.0.0.251:5353.
 #
 # Why nothing worked before this module (diagnosed 2026-07-24):
@@ -16,18 +17,51 @@
 #      not be selected as an output sink.
 #   3. No CUPS, so there was nothing to print to.
 #
-# AirPlay is the chosen path for the JBL, not Chromecast. Chromecast has no
-# native PipeWire sink — routing system audio to it needs a separate bridge
-# daemon (mkchromecast/pulseaudio-dlna) and still can't be a system default.
-# RAOP exposes the JBL as an ordinary PipeWire sink, so it sits in the normal
-# audio menu next to the USB INZONE headset and WirePlumber remembers it as the
-# default when present, falling back to the headset when it's gone. Chrome can
-# still cast a tab over the same open :5353 if ever wanted.
+# --- Why the JBL is driven through OwnTone and not PipeWire's RAOP ---
+# (diagnosed 2026-07-25) PipeWire's libpipewire-module-raop-sink speaks the
+# 2011-era AirPlay 1 protocol: plaintext RTSP with ANNOUNCE/SDP. This JBL
+# firmware (srcvers 366.0) is AirPlay-2-only and rejects every mode the module
+# can produce — plain ANNOUNCE gets "403 Forbidden", auth_setup's POST gets
+# "400 Bad Request", RSA gets 403 again. Worse, the module unloads itself after
+# the RTSP failure, so the discovered sink silently vanishes the moment
+# anything plays to it — that was the "sink flaps in and out of existence"
+# symptom. AirPlay 2 needs a HomeKit-style transient SRP pairing, an encrypted
+# control channel, binary-plist SETUP and PTP timing; verified working against
+# this speaker with pyatv, which is how OwnTone talks to it too.
+#
+# The audio path is therefore:
+#   apps -> "Office speaker" null sink -> pw-record (user service) ->
+#   FIFO in /var/lib/owntone/music -> owntone (system service, autostarts the
+#   pipe on data) -> AirPlay 2 -> JBL
+# Latency is a few seconds (AirPlay 2 buffered mode + pipe buffering): fine for
+# music, useless for lip-sync video. The bridge streams continuously, which
+# also means the JBL is held by an active AirPlay session while this box is up;
+# `systemctl --user stop office-speaker-bridge` releases it for e.g. a phone.
+# OwnTone's web UI (volume, output selection) is at http://localhost:3689.
+let
+  musicDir = "/var/lib/owntone/music";
+  pipePath = "${musicDir}/office-speaker-pipe";
+  # OwnTone expects raw PCM 44100/16/2 on library pipes — keep the bridge's
+  # pw-record format in sync with this.
+  owntoneConf = pkgs.writeText "owntone.conf" ''
+    general {
+      uid = "owntone"
+      db_path = "/var/lib/owntone/songs3.db"
+      cache_dir = "/var/lib/owntone/cache"
+      logfile = "/var/lib/owntone/owntone.log"
+      loglevel = "info"
+    }
+    library {
+      name = "Office speaker bridge"
+      directories = { "${musicDir}" }
+    }
+  '';
+in
 {
   # --- mDNS / DNS-SD discovery (the shared root cause) ---
-  # avahi owns :5353 and browses the wifi; openFirewall punches UDP 5353 so
-  # multicast replies reach us. Chrome does its own mDNS and only needs the port
-  # open; PipeWire + CUPS talk to the avahi daemon over D-Bus.
+  # avahi owns :5353 and browses both interfaces; openFirewall punches UDP 5353
+  # so multicast replies reach us. Chrome does its own mDNS and only needs the
+  # port open; OwnTone + CUPS talk to the avahi daemon over D-Bus.
   services.avahi = {
     enable = true;
     nssmdns4 = true; # resolve <device>.local (e.g. the printer's web UI)
@@ -39,13 +73,121 @@
   # unicast app → resolved → AdGuard → DoH path in modules/adguardhome.nix intact.
   services.resolved.settings.Resolve.MulticastDNS = false;
 
-  # --- AirPlay output for the JBL ---
-  # RAOP discover turns AirPlay speakers into native PipeWire sinks. ~1-2s latency
-  # (fine for the lofi/piano listening this speaker is for; not lip-sync for video).
-  services.pipewire.extraConfig.pipewire."10-airplay" = {
-    "context.modules" = [
-      { name = "libpipewire-module-raop-discover"; }
+  # --- "Office speaker" sink (front half of the bridge) ---
+  # A null sink so the speaker shows up in the normal audio menu and WirePlumber
+  # can remember it as default. Everything played here is captured off its
+  # monitor by the office-speaker-bridge user service below.
+  # monitor.channel-volumes makes the desktop volume slider actually attenuate
+  # what the monitor (and so the speaker) receives.
+  services.pipewire.extraConfig.pipewire."10-office-speaker" = {
+    "context.objects" = [
+      {
+        factory = "adapter";
+        args = {
+          "factory.name" = "support.null-audio-sink";
+          "node.name" = "office_speaker";
+          "node.description" = "Office speaker";
+          "media.class" = "Audio/Sink";
+          "audio.position" = [ "FL" "FR" ];
+          "audio.rate" = 44100;
+          "monitor.channel-volumes" = true;
+        };
+      }
     ];
+  };
+  # NOTE: libpipewire-module-raop-discover is deliberately NOT loaded any more.
+  # It only ever produced the self-destructing AirPlay 1 sink described above
+  # (plus a Freebox sink nobody plays to) and its flapping was a trap: streams
+  # routed there died silently. Re-add it here if an actual AirPlay 1 receiver
+  # ever joins the network.
+
+  # --- OwnTone (back half of the bridge) ---
+  users.users.owntone = {
+    isSystemUser = true;
+    group = "owntone";
+  };
+  users.groups.owntone = { };
+
+  # The FIFO is reader owntone / writer tom's user session. tmpfiles was
+  # observed ignoring a non-owntone owner here (it created the pipe
+  # owntone:owntone regardless), so instead of fighting ownership the pipe is
+  # other-writable: 0662 lets any local writer feed it, which on this
+  # single-user desktop is exactly tom. The `z` line repairs an existing pipe's
+  # mode in place, not just on first creation.
+  systemd.tmpfiles.rules = [
+    "d ${musicDir} 0755 owntone owntone -"
+    "p ${pipePath} 0662 owntone owntone -"
+    "z ${pipePath} 0662 owntone owntone -"
+  ];
+
+  systemd.services.owntone = {
+    description = "OwnTone media server (AirPlay 2 bridge to the JBL)";
+    wantedBy = [ "multi-user.target" ];
+    wants = [ "network-online.target" ];
+    after = [
+      "network-online.target"
+      "avahi-daemon.service"
+    ];
+    requires = [ "avahi-daemon.service" ];
+    serviceConfig = {
+      User = "owntone";
+      Group = "owntone";
+      StateDirectory = "owntone";
+      ExecStart = "${pkgs.owntone}/bin/owntone -f -c ${owntoneConf}";
+      Restart = "on-failure";
+      RestartSec = 5;
+    };
+  };
+
+  # A fresh OwnTone database starts with no outputs selected, so a rebuild or
+  # state wipe would silently unroute the speaker. Idempotently select the JBL
+  # (by name + protocol, not id — ids are per-database) once it shows up.
+  # Selection then persists in OwnTone's own state; volume is left alone so a
+  # user-set level survives restarts.
+  systemd.services.owntone-select-speaker = {
+    description = "Select the JBL AirPlay 2 output in OwnTone";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "owntone.service" ];
+    requires = [ "owntone.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = pkgs.writeShellScript "owntone-select-speaker" ''
+        for _ in $(seq 60); do
+          id=$(${pkgs.curl}/bin/curl -sf localhost:3689/api/outputs \
+               | ${pkgs.jq}/bin/jq -r '.outputs[]
+                   | select(.type == "AirPlay 2" and .name == "Office speaker")
+                   | .id')
+          if [ -n "$id" ]; then
+            ${pkgs.curl}/bin/curl -sf -X PUT "localhost:3689/api/outputs/$id" \
+              -H 'Content-Type: application/json' -d '{"selected": true}'
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "JBL AirPlay 2 output never appeared in OwnTone" >&2
+        exit 1
+      '';
+    };
+  };
+
+  # Front half -> back half: capture the null sink's monitor as raw PCM into
+  # OwnTone's pipe. open() on the FIFO blocks until owntone has it open for
+  # reading, so ordering against the system service is handled by the kernel.
+  systemd.user.services.office-speaker-bridge = {
+    description = "Feed the Office speaker sink into OwnTone's pipe";
+    after = [ "pipewire.service" ];
+    wants = [ "pipewire.service" ];
+    wantedBy = [ "default.target" ];
+    serviceConfig = {
+      ExecStart = pkgs.writeShellScript "office-speaker-bridge" ''
+        exec ${pkgs.pipewire}/bin/pw-record --target office_speaker \
+          -P '{ stream.capture.sink = true }' \
+          --format s16 --rate 44100 --channels 2 - > ${pipePath}
+      '';
+      Restart = "always";
+      RestartSec = 2;
+    };
   };
 
   # --- printing (Brother) ---
@@ -68,12 +210,25 @@
   # listed Brother_HL_L2445DW while `lpstat -t` answered "No destinations added".
   # Chrome enumerates permanent destinations, so it had nothing to show.
   #
+  # (2026-07-25, later) With a permanent queue in place Chrome's dialog can STILL
+  # come up empty when the printer is deep-asleep: Chrome re-checks destinations
+  # at dialog-open and the sleeping Brother answers too slowly (~300ms+ RTT and
+  # sometimes not at all). Waking the printer makes it appear. If this bites too
+  # often, disable Deep Sleep in the Brother's web UI at
+  # http://BRW08F97E55F396.local.
+  #
   # ensurePrinters runs lpadmin to create a real, persistent queue, so the printer
   # is there at dialog-open instead of depending on discovery timing.
   # model = "everywhere" is driverless IPP: CUPS pulls capabilities off the
   # printer itself, so no PPD or vendor driver is pinned. Addressed by its mDNS
   # hostname rather than the current DHCP lease so a new address cannot silently
   # break the queue (nssmdns4 above is what resolves it).
+  #
+  # CAVEAT (2026-07-25, unresolved): ensure-printers has been observed to run,
+  # report success, and create nothing — the current permanent queue on
+  # coordinator was created by hand with the exact lpadmin invocation the unit
+  # should have run. On a fresh machine, verify the queue actually exists
+  # (`lpstat -t`) before trusting the unit.
   hardware.printers = {
     ensureDefaultPrinter = "Brother_HL_L2445DW";
     ensurePrinters = [
