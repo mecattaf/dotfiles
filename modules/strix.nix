@@ -77,65 +77,6 @@
     # BSSID pin in hosts/coordinator/uplink-nas.nix.
     boot.extraModprobeConfig = "options mt7925e disable_aspm=1";
 
-    # --- mt7925e latency: keep the radio awake, 2026-07-25 ---
-    # Measured on the coordinator while debugging stuttering audio to the JBL:
-    # ping to the LAN gateway averaged 108ms with 600ms spikes on a link that was
-    # otherwise pristine (-64 dBm, 526 Mbit/s VHT, clean 5GHz ch40, 0 beacon loss,
-    # 0 tx failures, no scans, no roams). The floor was 1.0ms, so the link CAN do
-    # 1ms — it just spent most of its time asleep: /sys/kernel/debug/.../mt76
-    # reported runtime-pm=1, deep-sleep=1 and a doze/awake ratio of 1462744/210114,
-    # i.e. the card dozing ~87% of the time behind an 83ms idle timeout. Every
-    # packet arriving into a doze paid a wake-up.
-    #
-    # Same-window control measurements proved it is the radio and nothing else:
-    # loopback 0.10ms max 0.20, thunderbolt0 0.88ms max 1.28, wifi 105ms max 521.
-    # CPU was idle, the firewall logged no drops, and blocking Bluetooth (which
-    # shares this combo chip's antenna) changed nothing.
-    #
-    # Two layers have to be turned off, because they are independent:
-    #   - mac80211/NetworkManager 802.11 power save (the PM bit in frames), and
-    #   - the mt76 driver's OWN firmware-level runtime PM / deep sleep, which is
-    #     debugfs-only on this driver — there is no module parameter for it, so a
-    #     oneshot writes it. `disable_aspm=1` above is a THIRD, separate layer
-    #     (PCIe link state) and does not cover either of these.
-    # Both nodes are mains-powered desktops, so the few idle watts are irrelevant;
-    # this only makes the existing "keep the card out of low-power states" stance
-    # (see the crash hardening above) complete rather than half-applied.
-    #
-    # Effect, measured: doze time froze (1462744 → 1462770) while awake climbed
-    # (210114 → 1207670), and average gateway latency halved (121ms → 64ms).
-    # It does NOT fix the stuttering audio that led here — with the radio
-    # confirmed awake and the link at -62 dBm / 780 Mbit/s the stutter returned,
-    # so that fault lies elsewhere (the JBL is driven over AirPlay/RAOP instead;
-    # see modules/desktop-media.nix). Keep this anyway: it removes a real source
-    # of latency variance on a box with no reason to save power.
-    networking.networkmanager.wifi.powersave = false;
-
-    systemd.services.mt76-disable-runtime-pm = {
-      description = "Disable mt76 firmware runtime PM / deep sleep (wifi latency)";
-      wantedBy = [ "multi-user.target" ];
-      after = [ "NetworkManager.service" ];
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-      };
-      # debugfs only materialises once the driver has probed the phy, which can lag
-      # multi-user.target; poll briefly rather than racing it. Never fail the unit
-      # (`|| true`, `exit 0`) — a box with no mt76 card, or a kernel that renamed
-      # these knobs, must not leave a failed unit behind for the nightly deploy to
-      # trip over (refs the 2026-07-15 auto-upgrade breakage).
-      script = ''
-        for _ in $(seq 1 30); do
-          for knob in /sys/kernel/debug/ieee80211/*/mt76/runtime-pm /sys/kernel/debug/ieee80211/*/mt76/deep-sleep; do
-            [ -w "$knob" ] && echo 0 > "$knob" || true
-          done
-          [ -e /sys/kernel/debug/ieee80211/phy0/mt76/runtime-pm ] && exit 0
-          sleep 1
-        done
-        exit 0
-      '';
-    };
-
     # Hardware watchdog (sp5100_tco, /dev/watchdog0 — present but unfed until
     # now): systemd pets it at runtime; if the kernel ever hard-locks again
     # (this bug or the next one) the chip force-resets the box after 30s
