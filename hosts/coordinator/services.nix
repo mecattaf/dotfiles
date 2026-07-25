@@ -18,11 +18,6 @@
 # music folder read-only). Moving these services to dedicated system users is a
 # separate post-restore decision; it is not coupled to the filesystem anymore.
 #
-# Media activation remains deferred to issue #104. Require an ephemeral,
-# operator-created approval file on every consumer so a reboot cannot erase the
-# restore-era runtime guards and start the stack implicitly. Issue #104 removes
-# this condition only when the canonical import and service checks are ready.
-#
 # No secrets: services.immich provisions its own postgresql over a unix socket
 # (peer auth, database.host=/run/postgresql), so the module's assertion is
 # satisfied WITHOUT a password file and the old immich-db.age secret is retired.
@@ -53,18 +48,29 @@
     database.name = "tom";
     # machine-learning stays enabled (module default) for face/object search.
   };
+  # Originals remain on LaCie under mediaLocation. Generated/rebuildable Immich
+  # state stays on the internal disk and is overlaid onto Immich's expected
+  # mediaLocation paths inside the service mount namespace. This avoids filling
+  # the archive disk with thumbnails/transcodes while keeping upstream's fixed
+  # directory layout intact.
+  systemd.tmpfiles.rules = [
+    "d /var/lib/immich/generated 0700 tom users -"
+    "d /var/lib/immich/generated/thumbs 0700 tom users -"
+    "d /var/lib/immich/generated/encoded-video 0700 tom users -"
+    "d /var/lib/immich/generated/profile 0700 tom users -"
+    "d /var/lib/immich/generated/backups 0700 tom users -"
+  ];
   # The LaCie is an x-systemd.automount; pull the real mount in before the server
   # touches mediaLocation (uses the .automount, so the drive still spins down).
-  systemd.services.immich-server.unitConfig = {
-    RequiresMountsFor = [ "/mnt/nas" ];
-    ConditionPathExists = [ "/run/lacie-media-services-approved" ];
+  systemd.services.immich-server = {
+    unitConfig.RequiresMountsFor = [ "/mnt/nas" ];
+    serviceConfig.BindPaths = [
+      "/var/lib/immich/generated/thumbs:/mnt/nas/photos/thumbs"
+      "/var/lib/immich/generated/encoded-video:/mnt/nas/photos/encoded-video"
+      "/var/lib/immich/generated/profile:/mnt/nas/photos/profile"
+      "/var/lib/immich/generated/backups:/mnt/nas/photos/backups"
+    ];
   };
-  systemd.services.immich-machine-learning.unitConfig.ConditionPathExists = [
-    "/run/lacie-media-services-approved"
-  ];
-  systemd.services.redis-immich.unitConfig.ConditionPathExists = [
-    "/run/lacie-media-services-approved"
-  ];
 
   services.navidrome = {
     enable = true;
@@ -85,10 +91,7 @@
       AutoImportPlaylists = true;
     };
   };
-  systemd.services.navidrome.unitConfig = {
-    RequiresMountsFor = [ "/mnt/nas" ];
-    ConditionPathExists = [ "/run/lacie-media-services-approved" ];
-  };
+  systemd.services.navidrome.unitConfig.RequiresMountsFor = [ "/mnt/nas" ];
 
   # atuin — self-hosted shell-history sync server, same tailnet-only posture as
   # Immich/Navidrome above (no extra app-level auth; the tailnet IS the trust
