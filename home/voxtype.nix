@@ -40,6 +40,12 @@ in
         model = parakeetModel;
         model_type = "tdt";
         streaming = true;
+        # Voxtype 0.7.5's implicit 0.5/1.5/0.5-second defaults do not pass
+        # parakeet-rs's mel-frame divisibility check. These are the pinned
+        # upstream streaming values: 32/560/32 frames, each divisible by 8.
+        streaming_chunk_secs = 0.32;
+        streaming_left_context_secs = 5.6;
+        streaming_right_context_secs = 0.32;
         on_demand_loading = false;
       };
 
