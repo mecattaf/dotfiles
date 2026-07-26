@@ -16,6 +16,7 @@ Halo machines. The executable source of truth is the per-host allowlists in
 | `qwen3-embedding-8b` | Q8_0 text embedder | ROCm through llama-swap | 8,047,105,824 |
 | `qwen3-vl-embedding-8b` | Q8_0 multimodal embedder plus F16 vision projector | ROCm through llama-swap | 9,207,325,472 |
 | `qwen3.6-35b-a3b` | UD-Q8_K_XL GGUF with integrated matched MTP block | Vulkan through llama-swap | 39,099,447,584 |
+| `qwen3.6-27b` | Stock UD-Q8_K_XL GGUF with integrated matched MTP block | Vulkan through llama-swap | 35,776,484,480 |
 | `gemma4-26b-a4b-it` | Q8_0 GGUF plus matched Q8_0 MTP head | Vulkan through llama-swap | 27,321,628,544 |
 | `fara1.5-27b` | Q8_0 GGUF plus BF16 vision projector | ROCm through llama-swap | 29,596,213,728 |
 | `gemma4-it:e4b` | FastFlowLM Gemma4 E4B NPU2 snapshot | NPU peer through llama-swap | 9,087,470,597 |
@@ -25,8 +26,8 @@ Halo machines. The executable source of truth is the per-host allowlists in
 | VibeVoice Large | Full BF16 multi-speaker TTS snapshot | Nix-rooted appliance payload; runtime service is future work | 18,686,995,855 |
 | Qwen 2.5 7B tokenizer | Shared VibeVoice tokenizer payload | Nix-rooted appliance dependency | 11,487,545 |
 
-Total model download payload: **221,285,787,244 bytes**, or **221.29 GB
-(206.09 GiB)**. Nix derivation metadata, runtime caches, and MIGraphX compiler
+Total model download payload: **257,062,271,724 bytes**, or **257.06 GB
+(239.41 GiB)**. Nix derivation metadata, runtime caches, and MIGraphX compiler
 caches are not included. The Nix-rooted subset is byte-exact; runtime-owned
 FastFlowLM and Voxtype figures are the manifests observed on 2026-07-26 and can
 change when their upstream model tags advance.
@@ -42,14 +43,18 @@ normalized 4,096-dimensional embedding on the coordinator.
 | Model | Payload | Backend / boundary | Download bytes |
 |---|---|---|---:|
 | `qwen3.6-35b-a3b` | UD-Q8_K_XL GGUF with integrated matched MTP block | Vulkan through llama-swap | 39,099,447,584 |
+| `qwen3.6-27b` | Stock UD-Q8_K_XL GGUF with integrated matched MTP block | Vulkan through llama-swap | 35,776,484,480 |
 | `gemma4-26b-a4b-it` | Q8_0 GGUF plus matched Q8_0 MTP head | Vulkan through llama-swap | 27,321,628,544 |
 | `fara1.5-27b` | Q8_0 GGUF plus BF16 vision projector | ROCm through llama-swap | 29,596,213,728 |
 | `gemma4-it:e4b` | FastFlowLM Gemma4 E4B NPU2 snapshot | NPU peer through llama-swap | 9,087,470,597 |
 | `gpt-oss:20b` | FastFlowLM GPT-OSS 20B NPU2 snapshot | NPU peer through llama-swap | 14,474,616,866 |
 
-Total model download payload: **119,579,377,319 bytes**, or **119.58 GB
-(111.37 GiB)**. Runtime caches are not included. The same runtime-tag caveat
-applies to the two FastFlowLM rows.
+Total model download payload: **155,355,861,799 bytes**, or **155.36 GB
+(144.69 GiB)**. Runtime caches are not included. The same runtime-tag caveat
+applies to the two FastFlowLM rows. Qwen 3.6 27B is fetched and hash-verified
+once in the coordinator's Nix store, then its immutable NAR is copied to the
+worker over the directly connected Thunderbolt interface; the worker does not
+download a second copy from Hugging Face.
 
 ## Precision policy and special cases
 

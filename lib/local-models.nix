@@ -357,6 +357,22 @@ let
               notes = "Operator-selected high-fidelity Q8 tier with a matched MTP block integrated in the same GGUF.";
             };
 
+            qwen36-27b-mtp-ud-q8-k-xl = mkSingleFileArtifact {
+              maker = "Qwen";
+              baseCheckpoint = {
+                url = "https://huggingface.co/Qwen/Qwen3.6-27B";
+                revision = "6a9e13bd6fc8f0983b9b99948120bc37f49c13e9";
+              };
+              hfUrl = "https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF";
+              revision = "5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace";
+              path = "Qwen3.6-27B-UD-Q8_K_XL.gguf";
+              bytes = 35776484480;
+              oid = "3d6ff16be3258f910eac4dcec7142edc7a7100d8400fe363035c8cfedc151164";
+              hash = "sha256-PW/xa+Mlj5EOrE3OxxQu3HpxANhAD+NjA1yM/twVEWQ=";
+              quantization = "UD-Q8_K_XL";
+              notes = "Stock Qwen checkpoint, not a fine-tune; operator-selected high-fidelity Q8 tier with its matched MTP block integrated in the GGUF.";
+            };
+
             qwen3-coder-next-ud-q4-k-xl = mkSingleFileArtifact {
               maker = "Qwen";
               baseCheckpoint = {
@@ -917,6 +933,33 @@ let
               evidence = "upstream-measured";
               hardware = "Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
               notes = "Default daily text generator. The Q8 GGUF contains its matched MTP block; llama.cpp self-speculation is enabled without a separate draft file.";
+            };
+
+            qwen36-27b-mtp-ud-q8-k-xl = {
+              model = "qwen3.6-27b";
+              role = "coding";
+              status = "canonical";
+              backend = "vulkan";
+              hosts = [
+                "coordinator"
+                "worker"
+              ];
+              ramTierGb = 40;
+              artifacts.model = "qwen36-27b-mtp-ud-q8-k-xl";
+              runtime = llamaCppRuntime (
+                commonLlamaArgs
+                ++ [
+                  "--spec-type"
+                  "draft-mtp"
+                  "--spec-draft-n-max"
+                  "2"
+                  "--parallel"
+                  "1"
+                ]
+              );
+              evidence = "matched-local";
+              hardware = "Ryzen AI MAX+ 395 / Radeon 8060S gfx1151 / 128 GB unified memory; Vulkan/RADV";
+              notes = "Stock dense Qwen 3.6 coding and agent model, locally matched through Pi and llama-swap on both Strix hosts. The Q8 GGUF contains its matched MTP block; 32K context and a single parallel slot bound memory use. This route is text-only because the pinned quantizer's MTP guidance does not support combining MTP with mmproj.";
             };
 
             qwen3-coder-next-ud-q4-k-xl = {

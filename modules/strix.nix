@@ -43,6 +43,7 @@
         "flm-gemma4-it-e4b"
         "flm-gpt-oss-20b"
         "qwen36-35b-a3b-mtp-ud-q8-k-xl"
+        "qwen36-27b-mtp-ud-q8-k-xl"
         "gemma4-26b-a4b-it-mtp-q8-0"
         "fara15-27b-q8-0"
       ]

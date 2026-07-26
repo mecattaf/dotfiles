@@ -743,6 +743,7 @@
               "flm-gemma4-it-e4b"
               "flm-gpt-oss-20b"
               "qwen36-35b-a3b-mtp-ud-q8-k-xl"
+              "qwen36-27b-mtp-ud-q8-k-xl"
               "gemma4-26b-a4b-it-mtp-q8-0"
               "fara15-27b-q8-0"
               "qwen3-vl-8b-ocr"
@@ -755,6 +756,7 @@
               "flm-gemma4-it-e4b"
               "flm-gpt-oss-20b"
               "qwen36-35b-a3b-mtp-ud-q8-k-xl"
+              "qwen36-27b-mtp-ud-q8-k-xl"
               "gemma4-26b-a4b-it-mtp-q8-0"
               "fara15-27b-q8-0"
             ];
@@ -766,8 +768,8 @@
             ];
           assert worker.services.local-models.artifacts == [ ];
           assert
-            builtins.length (nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies) == 15;
-          assert builtins.length (nixpkgs.lib.intersectLists modelPackagePaths workerExtraDependencies) == 5;
+            builtins.length (nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies) == 16;
+          assert builtins.length (nixpkgs.lib.intersectLists modelPackagePaths workerExtraDependencies) == 6;
           assert nixpkgs.lib.all (
             quantization:
             nixpkgs.lib.elem quantization [
@@ -783,12 +785,14 @@
               "qwen3-vl-32b-ocr"
               "qwen3-vl-8b-ocr"
               "qwen3-vl-embedding-8b"
+              "qwen3.6-27b"
               "qwen3.6-35b-a3b"
             ];
           assert
             builtins.attrNames workerSettings.models == [
               "fara1.5-27b"
               "gemma4-26b-a4b-it"
+              "qwen3.6-27b"
               "qwen3.6-35b-a3b"
             ];
           assert

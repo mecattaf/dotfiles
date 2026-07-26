@@ -4,8 +4,8 @@ Anchor: 2026-07-26. “Canonical” marks an accepted catalog identity. Actual
 download authority comes only from each host's explicit deployment and artifact
 allowlists.
 
-The Nix catalog contains 14 deployment rows, 21 artifacts, and 46 pinned files
-totaling 469,353,750,249 bytes (437.12 GiB), including deferred and historical
+The Nix catalog contains 15 deployment rows, 22 artifacts, and 47 pinned files
+totaling 505,130,234,729 bytes (470.44 GiB), including deferred and historical
 entries. The active split is intentionally much narrower: see the
 [final deployment decision](deployment-decisions-2026-07-26.md) for exact host
 membership and totals. In particular, the coder-next, uncensored, and retired
@@ -23,6 +23,7 @@ that its artifacts are selected on either host.
 | Small / fast | `gemma4-it:e4b` | FastFlowLM runtime tag; no HF artifact is owned by this catalog | FastFlowLM NPU peer at `fd371409…`; callers enter through llama-swap | Active on both Strix NPUs |
 | Small / fast | `gpt-oss:20b` | [`FastFlowLM/GPT-OSS-20B-NPU2@12ce92d`](https://huggingface.co/FastFlowLM/GPT-OSS-20B-NPU2/tree/12ce92d2bfa031761ab876b3b845a7dabeab1d98) via FastFlowLM runtime pull | FastFlowLM NPU peer; callers enter through llama-swap | Active on both Strix NPUs |
 | General | `qwen3.6-35b-a3b` | [`unsloth/Qwen3.6-35B-A3B-MTP-GGUF@5bc3e23`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/tree/5bc3e238d916f48a861bac2f8a1990a0e9b7e98d), `Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf` | llama.cpp Vulkan with integrated matched MTP | Exact Strix Halo benchmark: 46.33 tok/s decode and 1045 tok/s 512-token prefill |
+| Coding | `qwen3.6-27b` | stock [`Qwen/Qwen3.6-27B@6a9e13b`](https://huggingface.co/Qwen/Qwen3.6-27B/tree/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9), quantized by [`unsloth/Qwen3.6-27B-MTP-GGUF@5cb35eb`](https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/tree/5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace) as `Qwen3.6-27B-UD-Q8_K_XL.gguf` | llama.cpp Vulkan with integrated matched MTP | Pi chat locally matched on both Strix Halo hosts with active MTP draft acceptance and RADV render-node use; stock checkpoint, not a fine-tune |
 | Coding candidate | `qwen3-coder-next` | [`unsloth/Qwen3-Coder-Next-GGUF@ce09c67`](https://huggingface.co/unsloth/Qwen3-Coder-Next-GGUF/tree/ce09c67b53bc8739eef83fe67b2f5d293c270632), `Qwen3-Coder-Next-UD-Q4_K_XL.gguf` | llama.cpp Vulkan | Catalog-only historical candidate; its low-bit artifact is excluded from both hosts by the active Q8 policy |
 | Coding | `gemma4-26b-a4b-it` | [`unsloth/gemma-4-26B-A4B-it-GGUF@c099eb4`](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/tree/c099eb48e663fd284577b04978a94ffccb261841), `gemma-4-26B-A4B-it-Q8_0.gguf` plus `MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf` | llama.cpp Vulkan with matched Q8 MTP | Active non-QAT instruction checkpoint; Google's QAT identity was dropped because that release is Q4_0-only |
 | Computer use | `fara1.5-27b` | [`bartowski/Fara1.5-27B-GGUF@dd7cba9`](https://huggingface.co/bartowski/Fara1.5-27B-GGUF/tree/dd7cba968d1a9c8feab0c2b85d93b117e6cc16fe), **Q8_0** plus BF16 projector | llama.cpp ROCm | Explicit Q8 choice; active on both hosts |
