@@ -10,7 +10,7 @@ for this font, from its hhea table), 0.25in hanging bullets, link #0563c1.
 Usage:
     resume-pdf INPUT.md [-o OUTPUT.pdf] [--keep-html]
 
-Markdown grammar (see the resume-builder skill, ~/.claude-main/skills/resume-builder/SKILL.md):
+Markdown grammar (see the resume-builder skill, ~/.claude/skills/resume-builder/SKILL.md):
     # NAME                          -> centered small-caps title
     first plain line                -> centered contact line, split on " | "
     ## SECTION                      -> ruled small-caps section heading
