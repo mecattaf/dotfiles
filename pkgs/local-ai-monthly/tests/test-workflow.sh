@@ -27,9 +27,10 @@ cat > "$registry" <<'JSON'
   "accepted_through": "2026-07-01",
   "inference": {
     "provider": "llama-swap",
-    "url": "http://worker:9292",
+    "url": "http://coordinator:9292",
     "model_class": "strongest",
     "fallback_classes": [],
+    "tally_pool": "coordinator-gpu",
     "classes": {
       "strongest": {"role_order": ["quality", "general"], "ram_order": "descending"}
     }

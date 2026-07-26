@@ -16,7 +16,7 @@ roster edits are never allowed to lift it.
 
 Tom's declarative Home Manager profile provides `hf` through
 `pkgs.huggingface-cli`; authenticated access remains coordinator-only. Its
-underlying `huggingface-hub` package is version 1.10.2 from the locked
+underlying `huggingface-hub` package is version 1.16.0 from the locked
 `nixpkgs` input, and the flake smoke pins that expected version so a future
 lock update requires an intentional review.
 
@@ -69,7 +69,8 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 | Streaming speech-to-text | Voxtype with streaming-capable Parakeet TDT v3 family | Coordinator-only systemd user service; local ONNX Runtime/MIGraphX on gfx1151 | Declarative package, config, and service are pinned; model bootstrap and live acceptance remain operator gates. |
 | Document OCR/RAG | Qwen3-VL 8B primary, 32B refine, Qwen3 Embedding 8B | llama.cpp ROCm behind llama-swap | Selected and cataloged; weights gated off. |
 | Code generation | Qwen3-Coder-Next + Qwopus + Gemma 4 opinion pool | llama.cpp Vulkan behind llama-swap | Selected and cataloged; weights gated off. |
-| General text | FastFlowLM Gemma 4 E4B, Qwen 3.6 35B, DeepSeek V4 Flash | llama-swap only; DS4 is the fleet-wide escalation lane | Selected and cataloged; DS4 orchestration still needs its deployment pass. |
+| General text | FastFlowLM Gemma 4 E4B, Qwen 3.6 35B | llama-swap on the coordinator, with optional parallel inference on the tailnet worker | Selected and cataloged; weights remain gated off. |
+| Historical SOTA | DeepSeek V4 Flash Q4 imatrix + MTP | Retired dual-node DS4 topology | Exact artifacts and benchmark evidence remain cataloged, but the deployment is retired and its roughly 157 GiB of weights are excluded from materialization. |
 | Call transcription + diarization | Microsoft VibeVoice-ASR-HF | Dedicated PyTorch/ROCm batch service | Selected pre-deployment; not yet a Nix service. |
 | Text-to-speech | VibeVoice Large community mirror | Dedicated PyTorch/ROCm batch service | Selected pre-deployment; mirror and runtime risk recorded. |
 | Audio, image, and video generation | None | None | Parked. Stable Diffusion is explicitly outside the local-LLM route. |
@@ -79,8 +80,8 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 - **Small and fast:** `gemma4-it:e4b` on the coordinator NPU. FastFlowLM owns
   these weights; llama-swap exposes it as a peer.
 - **Daily general:** Qwen 3.6 35B-A3B MXFP4 on Vulkan.
-- **SOTA escalation:** DeepSeek V4 Flash Q4 imatrix plus MTP through DS4 across
-  both Strix Halo nodes.
+- **Historical SOTA:** DeepSeek V4 Flash Q4 imatrix plus MTP through dual-node
+  DS4 is retained as evidence only; it is no longer an installable deployment.
 - **Coder/swarm:** three separately addressable models. A caller may request
   pooled opinions, but the catalog does not hide them behind a synthetic model
   name or silently vote on results.

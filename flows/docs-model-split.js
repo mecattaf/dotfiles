@@ -1,6 +1,6 @@
 export const meta = {
   name: "docs-model-split",
-  description: "Refresh docs/local-ai to the allowlist reality, mine ds4 lessons out of docs/old, sunset the stale set",
+  description: "Refresh docs/local-ai to the allowlist reality, preserve retired DS4 evidence, sunset the stale set",
   pools: ["codex-window", "build"],
   argsSchema: {
     type: "object",
@@ -31,10 +31,10 @@ export const meta = {
       "the post-allowlist reality: which deployments are materialized per host",
       "(allowlist), which are cataloged-only, the parakeet/voxtype entries, and",
       "the NPU utility model — one authoritative model-split table. Uncensored",
-      "ruling: only qwen3.6-35b-heretic materializes. (2) Mine",
-      "docs/old/migration-journal/ds4-dual-node-lessons.md into a current",
-      "docs/local-ai/ runbook page BEFORE sunsetting — it is still cited from",
-      "lib/local-models.nix:730-739; update that citation to the new location.",
+      "ruling: only qwen3.6-35b-heretic materializes. (2) Keep",
+      "docs/old/migration-journal/ds4-dual-node-lessons.md as historical evidence",
+      "for the retired deployment. Current docs may summarize its measured result",
+      "but must not turn it back into an active runbook or materialization target.",
       "(3) Sunset docs/old/: it is already self-declared non-normative; collapse",
       "it to an archival README stub (or prune files whose content is now",
       "superseded and cited nowhere), and update docs/README.md's index. Do not",

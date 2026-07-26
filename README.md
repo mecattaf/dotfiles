@@ -9,7 +9,7 @@ image), harnessRPM (COPR packages), chezmoi-templated dotfiles, and zirconium.
 | Host | Hardware | Role |
 |---|---|---|
 | `coordinator` | Framework Desktop, AMD Strix Halo | controller node, daily driver |
-| `worker` | Framework Desktop, AMD Strix Halo | headless LLM runner (TB4-linked to coordinator) |
+| `worker` | Framework Desktop, AMD Strix Halo | soft-retired tailnet worker; optional LLM and microVM capacity |
 | `dell-xps` | Dell XPS 13 (2022), Intel | thin-client laptop |
 | `zenbook-duo` | ASUS Zenbook Duo, Intel | thin-client laptop (historical first-flash runbook: [docs/old/zenbook-duo-flash.md](docs/old/zenbook-duo-flash.md)) |
 

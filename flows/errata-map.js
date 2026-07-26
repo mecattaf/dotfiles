@@ -1,7 +1,7 @@
 export const meta = {
   name: "errata-map",
   description: "Map every errata candidate in the reshaped notes (annex + weak-claims + discovery sweep), quorum-verify each, emit a decision ledger for Tom",
-  pools: ["codex-window", "worker-gpu", "coordinator-gpu", "build"],
+  pools: ["codex-window", "coordinator-gpu", "build"],
   argsSchema: {
     type: "object",
     required: ["notesRepo", "outDir", "maxRows"],
@@ -61,8 +61,9 @@ export const meta = {
   const bounded = rows.slice(0, args.maxRows);
   log(`errata-map: ${rows.length} candidate rows, inspecting ${bounded.length}`);
 
-  // Per-row verdicts from three family-diverse local members on worker-gpu.
-  const selected = members("errata-review", { count: 3, diversity: "family" });
+  // Per-row verdicts from the remaining family-diverse local members on the
+  // coordinator. The retired dual-node DS4 member is deliberately absent.
+  const selected = members("errata-review", { count: 2, diversity: "family" });
   const verdictSchema = {
     type: "object",
     required: ["verdict", "rationale"],

@@ -8,10 +8,10 @@
   ...
 }:
 # One exact-candidate fleet transaction. Tally owns its calendar, durable row,
-# proof, and the atomic build + two-GPU admission window; this oneshot owns
-# only the deployment content. deploy-rs couples worker → coordinator activation
-# with magic rollback. The Zenbook remains a later best-effort leg so an offline
-# or low-battery laptop can never block the core pair.
+# proof, and the build + coordinator-GPU admission window; this oneshot owns only
+# the deployment content. The coordinator is the nightly core, while the Zenbook
+# remains a later best-effort leg. The soft-retired worker stays an explicit
+# deploy-rs target for operator-invoked maintenance, outside the nightly path.
 let
   system = pkgs.stdenv.hostPlatform.system;
   deployPackage = inputs.deploy-rs.packages.${system}.deploy-rs;
@@ -71,9 +71,9 @@ let
       sed 's/^/fleet-deploy:   /' "$candidate"
 
       # Build the same deploy-rs-wrapped profile that will be copied and activated.
-      # Coordinator's Nix daemon retains its worker distributed builder; local
-      # split-horizon resolution keeps that traffic on Thunderbolt. The explicit
-      # Attic push preserves the former cache warmer's full-closure mirror.
+      # Compilation is local on the coordinator; its measured clean Chromium build
+      # fits safely in RAM and thermal limits. The explicit Attic push preserves
+      # the full-closure mirror for other hosts.
       build_profile() {
         local host="$1"
         local out
@@ -95,7 +95,6 @@ let
         fi
       }
 
-      build_profile worker
       build_profile coordinator
 
       # Preserve the old cache warmer's all-host behavior. A broken laptop build
@@ -106,13 +105,11 @@ let
         echo "fleet-deploy: zenbook-duo build failed; continuing with the core" >&2
       fi
 
-      echo "fleet-deploy: activating rollback-coupled core (worker -> coordinator)"
-      deploy --skip-checks \
-        --targets "$main_ref#worker" "$main_ref#coordinator" \
-        -- "''${override_args[@]}"
+      echo "fleet-deploy: activating coordinator"
+      deploy --skip-checks --targets "$main_ref#coordinator" -- "''${override_args[@]}"
 
       if (( ! zenbook_build_ok )); then
-        echo "fleet-deploy: core deployed, but the prebuilt laptop candidate failed" >&2
+        echo "fleet-deploy: coordinator deployed, but the prebuilt laptop candidate failed" >&2
         exit 1
       fi
 
@@ -121,7 +118,7 @@ let
       # failures are real failures retained by the one parent Tally witness.
       ssh_args=( ${lib.escapeShellArgs fleetDeploySshOpts} )
       if ! ssh "''${ssh_args[@]}" -n root@zenbook-duo /run/current-system/sw/bin/true; then
-        echo "fleet-deploy: zenbook-duo offline; core deployed, laptop skipped"
+        echo "fleet-deploy: zenbook-duo offline; coordinator deployed, laptop skipped"
         exit 0
       fi
 
@@ -147,7 +144,7 @@ let
       case "$power_status" in
         0) ;;
         10)
-          echo "fleet-deploy: zenbook-duo on battery below 50%; core deployed, laptop skipped"
+          echo "fleet-deploy: zenbook-duo on battery below 50%; coordinator deployed, laptop skipped"
           exit 0
           ;;
         *)

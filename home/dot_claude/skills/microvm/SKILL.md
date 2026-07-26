@@ -32,7 +32,7 @@ Upstream: `astro/microvm.nix` (redirects to `microvm-nix/microvm.nix`). Local cl
 **WIRED IN (2026-07-11).** `flake.nix` carries the `microvm` input; the durable host platform (`microvm.host.enable`) is enabled on the **worker** via `modules/microvm-host.nix`. So:
 
 - **Ephemeral default** — `nix run …config.microvm.declaredRunner` works from **any** host (needs only the input; no host module). This is the default and matches the old krun `run` verb's disposability.
-- **Durable path** — the `microvm` CLI + `microvm@` units + `microvm.vms` live on the **worker** (the Strix Halo compute box; keeps the coordinator light per the no-heavy-build doctrine). Run/manage long-lived VMs there. Move the `modules/microvm-host.nix` import if the sandbox-execution target changes.
+- **Durable path** — the `microvm` CLI + `microvm@` units + `microvm.vms` live on the **worker** (the soft-retired, tailnet-only Strix Halo compute box). Run/manage long-lived VMs there whenever it is online. Move the `modules/microvm-host.nix` import if the sandbox-execution target changes.
 
 ## Path decision — pick before you build
 

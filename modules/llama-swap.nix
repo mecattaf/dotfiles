@@ -21,8 +21,8 @@ in
     package = pkgs.llama-swap;
 
     # One conventional endpoint on both nodes. Binding all IPv4 interfaces makes
-    # it reachable over Tailscale and the direct TB link; the interface-scoped
-    # firewall below keeps it closed on raw LAN/wifi.
+    # it reachable over Tailscale; the interface-scoped firewall below keeps it
+    # closed on raw LAN/wifi.
     listenAddress = "0.0.0.0";
     port = 9292;
     openFirewall = false;
@@ -57,8 +57,7 @@ in
   # Keep the operator CLI on PATH as well as in the service closure.
   environment.systemPackages = [ cfg.package ];
 
-  # Tailnet-only remote API, matching the fleet's VNC/media/ASR posture. The
-  # direct thunderbolt0 interface is already trusted in modules/strix.nix.
+  # Tailnet-only remote API, matching the fleet's VNC/media/ASR posture.
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ cfg.port ];
 
   systemd.services.llama-swap = {

@@ -16,10 +16,6 @@
     inputs.nixos-hardware.nixosModules.common-cpu-intel
     inputs.nixos-hardware.nixosModules.common-pc-laptop
     inputs.nixos-hardware.nixosModules.common-pc-laptop-ssd
-    # Distributed builds — offload heavy compiles to the worker over the tailnet;
-    # the result is cached (attic) so this weak laptop rarely compiles from source.
-    # INERT until mySecrets.enable is flipped on below (needs the mesh SSH key).
-    ../../modules/build-offload.nix
     # Per-machine AdGuard Home DNS filter (loopback 127.0.0.1:53, resolved
     # forwards to it). Same module proven on the worker first (2026-07-13).
     ../../modules/adguardhome.nix
@@ -29,8 +25,7 @@
 
   # agenix secret delivery ON — same post-flash two-step the Strix pair went through
   # (the delivered /etc/ssh/ssh_host_ed25519_key matches mesh-registry.nix, so agenix
-  # decrypts against it). Delivers the shared tom@mesh SSH key, which is what makes
-  # build offloading to the worker (modules/build-offload.nix) live on the laptop.
+  # decrypts against it). Delivers the shared tom@mesh SSH key for fleet access.
   mySecrets.enable = true;
 
   boot.kernelParams = [ "i915.enable_psr=0" ]; # eDP PSR flicker

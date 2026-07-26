@@ -22,10 +22,10 @@ Tally calendar: local-ai-review mutex
   -> Nix build: prepare immutable evidence + exact HF request set
   -> fetch those HF metadata API responses (blobs=true metadata, never blobs)
   -> Nix build: validate and fold metadata into the evidence bundle
-  -> Tally child waits for worker-gpu
+  -> Tally child waits for coordinator-gpu
        -> invoke Pi once through llama-swap, without tools
        -> write advisory PR commentary
-  -> release worker-gpu
+  -> release coordinator-gpu
   -> Nix build: validate commentary and render the complete PR body
   -> disposable Git worktree: replace only sources.json, build, commit, push
   -> create or update the month's PR
@@ -34,7 +34,7 @@ Tally calendar: local-ai-review mutex
 
 The calendar parent holds only the `local-ai-review` mutex. Deterministic Git,
 Nix, HTTP, and publication work therefore does not reserve VRAM. The parent is
-allowed one child enqueue; that low-priority child alone holds `worker-gpu` for
+allowed one child enqueue; that low-priority child alone holds `coordinator-gpu` for
 the Pi process and releases it immediately afterward. This uses the same Tally
 calendar-to-opaque-argv shape as the nightly fleet updates, with a nested lease
 because only one stage consumes the scarce resource.

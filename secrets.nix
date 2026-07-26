@@ -26,6 +26,7 @@ let
     registry.zenbook-duo.hostKey
   ];
   coordinatorOnly = nonEmpty [ registry.coordinator.hostKey ];
+  workerOnly = nonEmpty [ registry.worker.hostKey ];
 in
 {
   # --- common tier (every host may decrypt) ---
@@ -46,7 +47,7 @@ in
   # preauthorized, tag:mesh — minted 2026-07-05 via the fleet OAuth client;
   # only the owning host can decrypt its key) ---
   "secrets/tailscale-authkey-coordinator.age".publicKeys = editors ++ coordinatorOnly;
-  "secrets/tailscale-authkey-worker.age".publicKeys = editors ++ nonEmpty [ registry.worker.hostKey ];
+  "secrets/tailscale-authkey-worker.age".publicKeys = editors ++ workerOnly;
   "secrets/tailscale-authkey-zenbook-duo.age".publicKeys =
     editors ++ nonEmpty [ registry.zenbook-duo.hostKey ];
 
@@ -54,6 +55,16 @@ in
   # (wlp192s0) is now declarative too (was imperative, copied off the worker on
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r
   "secrets/wifi.age".publicKeys = editors ++ laptops ++ coordinatorOnly;
+
+  # Preserve the worker's existing home connection as well as its new fixed-
+  # location connection. Separate ciphertexts keep each host's recipient set
+  # explicit without widening the coordinator/laptop Freebox secret.
+  "secrets/wifi-freebox-worker.age".publicKeys = editors ++ workerOnly;
+
+  # The soft-retired worker's new fixed-location uplink. It remains a declared
+  # tailnet worker, but only that host (plus the operator/editor keys) may decrypt
+  # the Sodimo PSK.
+  "secrets/wifi-sodimo-worker.age".publicKeys = editors ++ workerOnly;
 
   # --- operator vault (admin key ONLY — a tar.gz of everything that is not
   # otherwise in git: pre-generated host keys + wifi profiles (staging), tom's ssh

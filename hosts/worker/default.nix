@@ -1,5 +1,16 @@
-{ inputs, pkgs, ... }:
-# worker — AMD Strix Halo, headless compute node. No NAS/router/quadlets.
+{
+  config,
+  inputs,
+  lib,
+  pkgs,
+  ...
+}:
+# worker — AMD Strix Halo, soft-retired headless worker. It remains a fully
+# declared host and optional compute target, reached exclusively over Tailscale.
+let
+  freeboxWifiReady = builtins.pathExists ../../secrets/wifi-freebox-worker.age;
+  sodimoWifiReady = builtins.pathExists ../../secrets/wifi-sodimo-worker.age;
+in
 {
   imports = [
     ./hardware.nix
@@ -18,7 +29,70 @@
 
   networking.hostName = "worker";
   myCluster.role = "worker";
-  myCluster.tbHostId = 2;
+
+  # Persist both the current home uplink and the new fixed-location uplink so a
+  # rebuild never depends on NetworkManager's mutable keyfiles. Freebox keeps the
+  # higher priority while it is in range; elsewhere the worker joins sodimo_wifi.
+  # Both ciphertexts are worker-only, and ensureProfiles substitutes their PSKs
+  # without placing either one in the Nix store.
+  age.secrets.wifi-freebox-worker = lib.mkIf freeboxWifiReady {
+    file = ../../secrets/wifi-freebox-worker.age;
+    mode = "400";
+  };
+  age.secrets.wifi-sodimo-worker = lib.mkIf sodimoWifiReady {
+    file = ../../secrets/wifi-sodimo-worker.age;
+    mode = "400";
+  };
+  networking.networkmanager.ensureProfiles.environmentFiles =
+    lib.optionals freeboxWifiReady [ config.age.secrets.wifi-freebox-worker.path ]
+    ++ lib.optionals sodimoWifiReady [ config.age.secrets.wifi-sodimo-worker.path ];
+  networking.networkmanager.ensureProfiles.profiles = {
+    "Freebox-AB3ACE" = lib.mkIf freeboxWifiReady {
+      connection = {
+        id = "Freebox-AB3ACE";
+        type = "wifi";
+        interface-name = "wlp192s0";
+        autoconnect = true;
+        autoconnect-priority = 100;
+      };
+      wifi = {
+        mode = "infrastructure";
+        ssid = "Freebox-AB3ACE";
+      };
+      wifi-security = {
+        key-mgmt = "wpa-psk";
+        psk = "$FREEBOX_PSK";
+      };
+      ipv4.method = "auto";
+      ipv6.method = "auto";
+    };
+    sodimo_wifi = lib.mkIf sodimoWifiReady {
+      connection = {
+        id = "sodimo_wifi";
+        type = "wifi";
+        interface-name = "wlp192s0";
+        autoconnect = true;
+        autoconnect-priority = 50;
+      };
+      wifi = {
+        mode = "infrastructure";
+        ssid = "sodimo_wifi";
+      };
+      wifi-security = {
+        key-mgmt = "wpa-psk";
+        psk = "$SODIMO_PSK";
+      };
+      ipv4.method = "auto";
+      ipv6.method = "auto";
+    };
+  };
+
+  # Every worker service is tailnet-only at the firewall. Tailscale SSH remains
+  # enabled fleet-wide, and ordinary key-based OpenSSH remains available on the
+  # tailnet for deploy-rs/nixos-rebuild recovery without exposing :22 to the new
+  # raw Wi-Fi LAN.
+  services.openssh.openFirewall = false;
+  networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 22 ];
 
   # No Tally daemon or user-visible command runs here. The merged central-executor
   # protocol requires the same binary only as a fixed, short-lived

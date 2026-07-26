@@ -72,8 +72,7 @@ lib.mkIf (osConfig != null) {
   };
 
   # wayvnc config. wayvnc runs with no auth — access is gated at the network layer
-  # (firewalled to the tailnet + the trusted Thunderbolt link; see modules/common.nix
-  # + modules/strix.nix).
+  # and firewalled to the tailnet (see modules/common.nix).
   xdg.configFile."wayvnc/config".text = ''
     address=0.0.0.0
     port=5900

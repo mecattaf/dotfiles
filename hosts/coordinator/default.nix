@@ -22,9 +22,6 @@
     # skill's tailnet rung). Coordinator = fleet front door; origins on worker.
     ../../modules/caddy-artifacts.nix
     ../../modules/strix.nix
-    # Distributed builds — offload heavy compiles to the worker over the TB5 fast
-    # lane; the result is cached (attic) so no other host rebuilds it. refs #42.
-    ../../modules/build-offload.nix
     # AMD Ryzen AI NPU stack — coordinator ONLY (the worker keeps the NPU off for
     # max iGPU). Brings the amdxdna driver + XRT + FastFlowLM; requires IOMMU in
     # translated mode, set via amd_iommu=on for this role in modules/strix.nix.
@@ -39,7 +36,6 @@
 
   networking.hostName = "coordinator";
   myCluster.role = "coordinator";
-  myCluster.tbHostId = 1;
 
   # Flipped post-flash after the zero-TOFU host-key check (2026-07-05): the
   # delivered /etc/ssh/ssh_host_ed25519_key matched mesh-registry.nix, so

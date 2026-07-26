@@ -202,6 +202,7 @@ fi
 nix eval --json --no-write-lock-file "path:$dotfiles#lib.localModelCatalog" \
   > "$capture/catalog.json"
 endpoint="$(jq -r '.inference.url' "$registry")"
+tally_pool="$(jq -er '.inference.tally_pool | select(type == "string" and length > 0)' "$registry")"
 models_url="${endpoint%/}"
 if [[ "$models_url" != */v1 ]]; then
   models_url="$models_url/v1"
@@ -263,7 +264,7 @@ if [[ -z "${TALLY_SOCKET:-}" || -z "${TALLY_JOB_ID:-}" ]]; then
 fi
 "$tally_program" --socket "$TALLY_SOCKET" enqueue \
   --source orchestrator \
-  --pool worker-gpu \
+  --pool "$tally_pool" \
   --priority low \
   --dedup-key "local-ai-judge-$period-${evidence_digest:0:20}" \
   --runtime-max-sec "$model_timeout" \
