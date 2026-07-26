@@ -1,142 +1,143 @@
 ---
 name: steer-codex
-description: Orchestrate codex CLI agents as the sole writer on a multi-wave build while you act as judge, not implementer. Use when driving a long build/refactor sequence through codex exec, when a handoff says "codex writes all code", when running detached codex sessions that outlive a tool timeout, or when you need to objectively accept/reject work an AI agent claims is done. Covers yolo mode (--dangerously-bypass-approvals-and-sandbox), reasoning-effort tiers, brief authoring, stall recovery via resume, and cross-model audits.
+description: Orchestrate long-running, fully autonomous Codex CLI workers from Claude, including one worker per GitHub issue, detached execution, full-access mode, parallel isolated worktrees, exact-session resume, monitoring, and outcome verification. Use when Codex should own the complete task and its external prompt already defines the scope; this skill must not add task-level constraints.
 ---
 
-# Steering codex agents
+# Steer Codex without taking away its steering
 
-You are the orchestrator. **Codex writes all code. You write none.** Your job is to brief
-precisely, judge objectively, and drive a sequence to completion. Your value is being a
-*different model* reading the same artifacts — not being a second implementer.
+## Operating contract
 
-## 1. Mechanism
+Codex owns the task from investigation through delivery. Claude is the control plane: launch
+the worker, preserve its session, observe it, and return concrete outcomes or blockers. Claude
+does not implement the task or prescribe how Codex must implement it.
 
-Use `codex exec` directly. Never the Codex plugin for Claude Code — it speaks JSON-RPC to
-`codex app-server` and hardcodes `sandbox: workspace-write | read-only` with no bypass, so
-network-dependent and remote-builder gates fail.
+The external task prompt, user instructions, and repository instructions are the complete task
+contract. Pass the task prompt materially unchanged. Do not silently narrow it, expand it, or
+wrap it in another project-management framework.
 
-```bash
-setsid nohup codex exec --dangerously-bypass-approvals-and-sandbox "$(cat brief.md)" \
-  > run.log 2>&1 < /dev/null &
-```
+Within that contract, leave Codex free to:
 
-**Yolo mode.** `--dangerously-bypass-approvals-and-sandbox` gives full disk + network with
-no approval prompts. It is correct here and not a shortcut: gates like
-`nix flake check --builders 'ssh://host'`, remote builds, and live multi-host scenarios
-cannot run sandboxed. The user's machine is the sandbox. Confirm the user already runs
-codex this way before assuming the authority.
+- inspect the repository, issue tracker, documentation, history, and relevant external systems;
+- choose its own plan, tools, files, architecture, commands, and debugging strategy;
+- run whatever validation it considers appropriate;
+- self-review and correct its work;
+- commit, push, open or update a PR, update an issue, or perform other delivery steps when the
+  task prompt authorizes them;
+- continue until it has completed the task or reached a genuine external blocker.
 
-Always `setsid nohup ... < /dev/null &`. A foreground call caps at ~10 minutes; heavy waves
-run 1–2 hours. Redirect stdin from `/dev/null` or codex may block reading it.
+Full machine access does not expand the task's scope. Conversely, do not add confirmation gates
+for actions the prompt already authorizes.
 
-**Verify cwd.** `codex exec` runs where it is invoked. Shell cwd persists between tool
-calls — check the log's `workdir:` line rather than assuming. Kill by exact PID, never
-`pkill -f "codex"`; the user likely has interactive codex sessions running.
+## Launch with full capability
 
-## 2. Reasoning effort and model
+Use `codex exec` directly, not the Codex plugin for Claude Code. Preserve the user's configured
+model and reasoning effort: do not pass `-m` or an effort override unless the user asks for one.
+Do not use `--ephemeral`, because the session must remain resumable.
 
-Valid `model_reasoning_effort` values (confirmed from the API's own enum error):
-`none, minimal, low, medium, high, xhigh, max`.
-
-Check `~/.codex/config.toml` first. If it already pins e.g. `model = "gpt-5.6-sol"` and
-`model_reasoning_effort = "max"`, **keep briefs lean and pass no `-m` or effort flags** —
-the config already selects the strongest configuration and flags only risk overriding it
-downward. Override per-run only to go *cheaper* on mechanical work:
-`-c model_reasoning_effort=low`.
-
-Also check `[projects."<path>"] trust_level = "trusted"` for the repo.
-
-## 3. Polling
-
-Poll coarsely. Never sit in a tight loop watching a log — that is pure wasted budget.
-Prefer a process-exit watcher over timed polling:
+Use full-access mode for these workers:
 
 ```bash
-while kill -0 <PID> 2>/dev/null; do sleep 60; done; echo EXITED; git log --oneline -3
+setsid nohup codex exec \
+  --dangerously-bypass-approvals-and-sandbox \
+  --dangerously-bypass-hook-trust \
+  --json \
+  -C /absolute/path/to/worktree \
+  - \
+  < /absolute/path/to/task-prompt.md \
+  > /absolute/path/to/run.jsonl \
+  2> /absolute/path/to/run.stderr &
+run_pid=$!
 ```
 
-## 4. Briefs
+Feeding the prompt on stdin avoids shell argument limits and gives Codex EOF after the prompt.
+Use a unique run directory and log files for every worker. Record the task or issue key,
+worktree, branch, PID, prompt path, log paths, and the thread ID emitted by the JSONL
+`thread.started` event.
 
-One brief per genuinely new unit of work. A good brief carries:
+The two bypass flags grant unrestricted disk and network access and allow configured repository
+hooks without an additional trust prompt. If the user has already authorized full-capability
+Codex orchestration for the requested sequence, treat that as standing authority and do not ask
+again for every worker or resume. Otherwise confirm it once before the first launch.
 
-- **The spec by reference**, not retyped: "your spec is `SPEC.md` §4, implement exactly that".
-- **A resume check**: `git log --oneline`, `git status`, then the state file — "assume no
-  conversational context survived."
-- **Precedence**: which file wins when documents disagree.
-- **Explicit negative scope.** Name what must *not* be built and say **absence is the
-  correct implementation** — no placeholder branches, feature flags, or reserved enum
-  slots. "Rejecting an unknown option because it was never declared is the mechanism."
-- **Protected files by hash**, so drift is detectable.
-- **The exact evidence gate**, command by command.
-- **The honesty law**: "a gate you could not run is recorded as NOT RUN, never as passed."
-- **The exact commit subject.**
+Verify the worktree path before launch and set it explicitly with `-C`; never assume shell cwd.
+Never stop workers with a broad command such as `pkill -f codex`; target the recorded PID.
 
-**Never ask codex whether it finished, and never mention handoffs or context limits in a
-brief.** Prompting about them invites them.
+## One worker per task, parallel when useful
 
-**Inoculate against contaminated prose.** If the repo contains frozen docs that predate a
-scope cut, enumerate the contaminated lines *in the brief*. Also check what codex reads
-*first* — a stale "next-session handoff" paragraph at the bottom of a state file is read
-during the resume check, before it ever reaches your correction. Name it explicitly.
+Parallel workers are allowed. Do not serialize independent issues merely because this skill is
+active.
 
-## 5. Judging — the crux
+For concurrent writers in one repository, give every worker its own branch, git worktree,
+session, and run directory. Never point two writers at the same working tree. Serialize only
+tasks with a real dependency or a shared external resource that cannot safely be used
+concurrently.
 
-**Completion is judged from artifacts. Codex's closing prose is not evidence.** A wave is
-done only when: the commit exists under the prescribed subject, the state file marks it DONE
-with pasted evidence, and **you re-ran the cheap gates yourself**.
+Maintain this mapping for each task:
 
-Re-run them. Do not trust pasted output — not because codex lies, but because a run can get
-a *lucky pass*. A test that fails 50% of the time will paste a genuine PASS.
+```text
+issue/task -> worktree -> branch -> thread ID -> PID -> logs
+```
 
-Cheap and worth always re-running: `fmt --check`, `clippy -D warnings`, the test suite,
-no-stubs greps, protected-file hashes, and any golden/regression oracle.
+Codex may complete the entire issue workflow allowed by its prompt. If completed branches need
+integration or conflict resolution, make that another Codex-owned task rather than editing the
+implementation from Claude.
 
-**Repetition for flakes.** A flaky test is only proven fixed by repetition — demand 10
-consecutive clean full-suite runs, and verify them yourself.
+## Observe without micromanaging
 
-**Interrogate green gates.** A gate can pass vacuously: a remote-builder check that builds
-nothing on a cache hit (`running 0 flake checks`) proves only that the store was warm. A
-VM test that manually starts the unit it claims fires automatically proves nothing. Ask of
-every passing gate: *would this fail if the behavior were absent?*
+Let long workers run. A foreground tool timeout is not a task deadline, which is why workers are
+detached. Poll coarsely or wait for the recorded PID to exit; do not consume context by tailing
+the log continuously. Do not impose an artificial turn, token, or wall-clock budget unless the
+user or external prompt supplies one.
 
-## 6. Cross-model audit — where your tokens belong
+When a worker exits:
 
-Spend Claude tokens in three places only:
+1. Read its final response, exit status, repository state, and produced artifacts.
+2. Judge completion only against the external task prompt and applicable repository rules.
+3. If complete, report the outcome. Do not reject it for omitting rituals the prompt never
+   required.
+4. If incomplete, resume the same thread with concise, evidence-based observations. State the
+   missing outcome or failure, not a replacement implementation plan, and let Codex choose the
+   repair.
+5. Continue until the requested outcome exists or Codex identifies a genuine blocker requiring
+   user input or new authority.
 
-1. **A scope-law audit after the highest-risk wave.** Do this with a Claude subagent, never
-   codex — codex auditing its own transcription of forbidden prose is exactly the blind spot.
-2. **Verifying pasted evidence at gates.**
-3. **Work outside codex's context fence** (e.g. a separate dotfiles repo).
+Independent verification is useful when proportional to the task, but it must not become an
+invented acceptance contract. Codex's prose alone is not proof of a code change, and a diff alone
+is not proof of runtime behavior; inspect the evidence relevant to what the prompt requested.
 
-Make the audit subagent **read-only** and adversarial. Give it: the exact diff range, the
-struck list, the required surface, and explicit "verify against code, not against comments,
-commit messages, or the state file." Ask for a PASS/FAIL verdict with file:line citations.
+## Resume the exact worker
 
-Expect two flavors of contamination. A scope-correction list catches forbidden *features*.
-It does **not** catch prose prescribing *mechanisms that don't work* — those transcribe in
-good faith and pass every scope check. Audits must test behavior, not just scope.
+Resume by recorded thread ID, especially when more than one worker exists:
 
-## 7. Rejection and stalls
+```bash
+setsid nohup codex exec resume \
+  --dangerously-bypass-approvals-and-sandbox \
+  --dangerously-bypass-hook-trust \
+  --json \
+  "$codex_thread_id" \
+  - \
+  < /absolute/path/to/follow-up.md \
+  > /absolute/path/to/resume.jsonl \
+  2> /absolute/path/to/resume.stderr &
+resume_pid=$!
+```
 
-- **On a stall, resume — never re-brief.** `codex exec resume --last "<pointed note>"`
-  continues the thread with context intact. Re-briefing a half-finished wave causes
-  double-applied edits and a dirty tree.
-- **On a rejection, resume with the findings**, itemized and prioritized, marked BLOCKING vs
-  MUST FIX vs RECORD-DO-NOT-BUILD.
-- **Some findings must not be fixed.** If closing a finding requires building deferred or
-  forbidden scope, say so explicitly and have it *recorded as a known limitation* instead.
-  Fixing an audit finding by violating the scope law is the failure the audit exists to
-  prevent.
-- If nothing is pushed, amend to keep one-commit-per-wave. Check with
-  `git merge-base --is-ancestor origin/main HEAD` before assuming.
+Invoke the resume from the same worktree and give it its own output log. Do not use `--last` in a
+multi-worker sequence. Prefer resuming for follow-up, failures, review findings, and new user
+instructions so the worker retains its reasoning and discoveries. Start over only when the
+existing session is unusable or the user requests a fresh agent.
 
-## 8. Hard rules
+## Do not inject these constraints
 
-- **Sole writer. No wave parallelism, ever.** One codex writer at a time; review agents are
-  read-only.
-- Respect the context fence — anything outside it (other repos, notes, issues) is *yours*.
-- Report honestly to the user: a gate that passed vacuously is not a pass, and say so.
-- Before an irreversible step (publishing a repo, force-push, deletion), verify yourself and
-  confirm with the user. Check for secrets *and* infrastructure topology — hostnames, user
-  accounts, key paths, and builder configs are a map of the user's fleet even when no
-  credential leaks.
+Unless the external task prompt or repository instructions require them, do not impose:
+
+- a state file, handoff document, prescribed plan, or spec-by-reference format;
+- protected-file hashes, a fixed command list, exact test repetitions, or an exact commit subject;
+- one commit per task, a mandatory commit, or a mandatory PR;
+- negative-scope lists, context fences, or restrictions on reading issues and related repositories;
+- a Claude subagent audit or any other fixed review ceremony;
+- a global one-writer rule when workers have isolated worktrees;
+- extra stopping points, approval checks, or delivery restrictions.
+
+Those choices belong to the task prompt or to Codex's own execution judgment. This skill exists
+to keep Codex capable, durable, and steerable—not to decide the work for it.
