@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Shift+F10 → audio-output picker. PipeWire node ids are ephemeral, so build
+# the menu from the live graph every time instead of naming either destination
+# here. Prefer external and virtual sinks (USB headphones, network bridges,
+# etc.); on a machine with none, fall back to every available sink.
+set -euo pipefail
+
+sink_rows=$(pw-dump | jq -r '
+    .[]
+    | select(
+        .type == "PipeWire:Interface:Node"
+        and .info.props["media.class"] == "Audio/Sink"
+      )
+    | .info.props as $props
+    | [
+        (.id | tostring),
+        ($props["node.description"] // $props["node.nick"] // $props["node.name"]),
+        ($props["device.bus"] // "")
+      ]
+    | @tsv
+')
+
+if [[ -z "$sink_rows" ]]; then
+    printf '%s\n' 'No audio outputs are available.'
+    read -r -t 2 || true
+    exit 1
+fi
+
+mapfile -t all_sinks <<< "$sink_rows"
+external_sinks=()
+
+for row in "${all_sinks[@]}"; do
+    IFS=$'\t' read -r _ _ bus <<< "$row"
+    if [[ "$bus" != 'pci' ]]; then
+        external_sinks+=("$row")
+    fi
+done
+
+if ((${#external_sinks[@]})); then
+    candidates=("${external_sinks[@]}")
+else
+    candidates=("${all_sinks[@]}")
+fi
+
+default_id=$(wpctl list audio sinks | awk '$NF == "*" { print $1; exit }')
+menu=()
+
+for row in "${candidates[@]}"; do
+    IFS=$'\t' read -r sink_id description _ <<< "$row"
+    marker=' '
+    if [[ "$sink_id" == "$default_id" ]]; then
+        marker='●'
+    fi
+    menu+=("${sink_id}"$'\t'"  ${marker}  ${description}")
+done
+
+choice=$(printf '%s\n' "${menu[@]}" \
+| fzf \
+    --delimiter=$'\t' \
+    --with-nth='2..' \
+    --prompt='> ' \
+    --header='Audio output' \
+    --height=100% \
+    --reverse \
+    --no-info \
+    --pointer='›' \
+    --color='prompt:bold:8,header:italic:7,pointer:5') || exit 0
+
+sink_id=${choice%%$'\t'*}
+[[ "$sink_id" =~ ^[0-9]+$ ]] || exit 1
+
+# Selection means "send sound here", so wake a destination that retained an
+# old per-sink mute state as well as making it the default for live streams.
+wpctl set-mute "$sink_id" 0
+wpctl set-default "$sink_id"
+
+# Keep an already-running, pre-rebuild coordinator bridge pinned too. Once the
+# declarative node.dont-move property is active, this restart is still harmless.
+if systemctl --user --quiet is-active office-speaker-bridge.service; then
+    systemctl --user restart office-speaker-bridge.service
+fi

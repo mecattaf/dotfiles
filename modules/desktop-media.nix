@@ -174,6 +174,10 @@ in
   # Front half -> back half: capture the null sink's monitor as raw PCM into
   # OwnTone's pipe. open() on the FIFO blocks until owntone has it open for
   # reading, so ordering against the system service is handled by the kernel.
+  # node.dont-move matters because WirePlumber otherwise moves a client stream
+  # that initially targets the default sink whenever that default changes. This
+  # capture must remain on office_speaker while normal app streams follow the
+  # output selected by the user.
   systemd.user.services.office-speaker-bridge = {
     description = "Feed the Office speaker sink into OwnTone's pipe";
     after = [ "pipewire.service" ];
@@ -182,7 +186,7 @@ in
     serviceConfig = {
       ExecStart = pkgs.writeShellScript "office-speaker-bridge" ''
         exec ${pkgs.pipewire}/bin/pw-record --target office_speaker \
-          -P '{ stream.capture.sink = true }' \
+          -P '{ stream.capture.sink = true node.dont-move = true }' \
           --format s16 --rate 44100 --channels 2 - > ${pipePath}
       '';
       Restart = "always";

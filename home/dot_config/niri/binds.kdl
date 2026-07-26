@@ -84,6 +84,7 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.local/bin/clipboard"; }
     F8 hotkey-overlay-title="Volume Up" { spawn-sh "~/.local/bin/volume up"; }
     F9 hotkey-overlay-title="Pomodoro" { spawn-sh "~/.local/bin/pomodoro menu"; }
     F10 hotkey-overlay-title="Sleep Monitors" { spawn-sh "kitty --class sleep-monitors-prompt -e ~/.config/niri/scripts/sleep-monitors"; }
+    Shift+F10 hotkey-overlay-title="Audio Output" { spawn-sh "kitty --class audio-output-prompt -e ~/.config/niri/scripts/audio-output"; }
 
 
     // ── Chrome Webapps ───────────────────────────────────────────
