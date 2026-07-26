@@ -40,9 +40,9 @@ in
         # agenix delivers a read-only /run/agenix symlink, but Claude must rewrite the
         # file on token refresh, so copy rather than link, and only if absent.
         system.userActivationScripts.seedClaudeCreds.text = ''
-          cred="$HOME/.claude-main/.credentials.json"
+          cred="$HOME/.claude/.credentials.json"
           if [ ! -e "$cred" ] && [ -r "${config.age.secrets.claude-credentials.path}" ]; then
-            mkdir -p "$HOME/.claude-main"
+            mkdir -p "$HOME/.claude"
             cp "${config.age.secrets.claude-credentials.path}" "$cred"
             chmod 600 "$cred"
           fi
