@@ -60,7 +60,15 @@ in
   # intentional runtime-pull boundary used by FastFlowLM.
   systemd.user.services.voxtype = lib.mkIf (hostName == "coordinator") {
     Service = {
-      ExecStartPre = "${package}/bin/voxtype setup --download --model ${parakeetModel} --quiet";
+      # `setup --download` also persists its selected model to the default
+      # config path. Home Manager owns that path with an immutable store
+      # symlink, so give setup a throw-away XDG config root while leaving
+      # XDG_DATA_HOME untouched: the model still lands in Voxtype's canonical
+      # ~/.local/share/voxtype/models directory and the daemon continues to use
+      # the declarative config generated above.
+      ExecStartPre = "${pkgs.coreutils}/bin/env XDG_CONFIG_HOME=%t/voxtype-bootstrap ${package}/bin/voxtype setup --download --model ${parakeetModel} --quiet";
+      RuntimeDirectory = "voxtype-bootstrap";
+      RuntimeDirectoryMode = "0700";
       TimeoutStartSec = "infinity";
     };
   };
