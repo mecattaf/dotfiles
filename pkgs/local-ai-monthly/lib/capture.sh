@@ -132,6 +132,53 @@ while IFS= read -r encoded; do
   mapfile -t watched_paths < <(jq -r '.watched_paths[]? // empty' <<<"$source_json")
   mapfile -t ignored_paths < <(jq -r '.ignore_paths[]? // empty' <<<"$source_json")
   mapfile -t evidence_paths < <(jq -r '.evidence_paths[]? // empty' <<<"$source_json")
+  mapfile -t inventory_patterns < <(jq -r '.inventory_paths[]? // empty' <<<"$source_json")
+
+  : > "$source_dir/inventory-paths.txt"
+  : > "$source_dir/inventory.txt"
+  if ((${#inventory_patterns[@]} > 0)); then
+    inventory_file_limit="$(jq -r '.limits.inventory_files_per_source // 16' "$registry")"
+    inventory_char_limit="$(jq -r '.limits.inventory_chars_per_source // 24000' "$registry")"
+    max_inventory_blob_bytes="$(jq -r '.limits.max_inventory_blob_bytes // 2000000' "$registry")"
+    [[ "$inventory_file_limit" =~ ^[1-9][0-9]*$ ]]
+    [[ "$inventory_char_limit" =~ ^[1-9][0-9]*$ ]]
+    [[ "$max_inventory_blob_bytes" =~ ^[1-9][0-9]*$ ]]
+
+    inventory_candidates="$source_dir/inventory-candidates.tsv"
+    : > "$inventory_candidates"
+    while IFS= read -r path; do
+      [[ "$path" != *$'\n'* && "$path" != *$'\r'* ]]
+      if ! matches_any "$path" "${inventory_patterns[@]}"; then
+        continue
+      fi
+      size="$(git -C "$repository" cat-file -s "$head:$path" 2>/dev/null || printf '0')"
+      [[ "$size" =~ ^[0-9]+$ ]]
+      if ((size == 0 || size > max_inventory_blob_bytes)); then
+        continue
+      fi
+      priority=1
+      if [[ "$path" =~ (Q8|q8|8bit|8-bit) ]]; then
+        priority=0
+      fi
+      printf '%s\t%s\n' "$priority" "$path" >> "$inventory_candidates"
+    done < <(git -C "$repository" ls-tree -r --name-only "$head")
+
+    sort -t $'\t' -k1,1n -k2,2 "$inventory_candidates" \
+      | sed -n "1,${inventory_file_limit}p" \
+      | cut -f2- > "$source_dir/inventory-paths.txt"
+    inventory_count="$(grep -c . "$source_dir/inventory-paths.txt" || true)"
+    if ((inventory_count > 0)); then
+      per_inventory_file=$((inventory_char_limit / inventory_count))
+      while IFS= read -r path; do
+        printf '\n### `%s` at `%s`\n\n' "$path" "${head:0:12}" >> "$source_dir/inventory.txt"
+        git -C "$repository" show "$head:$path" > "$source_dir/inventory-blob.tmp"
+        head -c "$per_inventory_file" "$source_dir/inventory-blob.tmp" \
+          | sed 's/^/    /' >> "$source_dir/inventory.txt"
+        printf '\n' >> "$source_dir/inventory.txt"
+      done < "$source_dir/inventory-paths.txt"
+      rm -f "$source_dir/inventory-blob.tmp"
+    fi
+  fi
 
   for path in "${changed_paths[@]}"; do
     if [[ "$path" == *$'\n'* || "$path" == *$'\r'* ]]; then
@@ -206,11 +253,14 @@ while IFS= read -r encoded; do
       fi
     fi
 
-    {
-      rg -o 'https://huggingface\.co/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+' \
-        "$source_dir/diff.patch" 2>/dev/null || true
-    } | sed -E 's#^https://huggingface\.co/##; s#\.git$##' | sort -u \
-      > "$source_dir/hf-repositories.txt"
+  fi
+
+  {
+    rg -o 'https://huggingface\.co/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+' \
+      "$source_dir/diff.patch" "$source_dir/inventory.txt" 2>/dev/null || true
+  } | sed -E 's#^[^:]+:##; s#^https://huggingface\.co/##; s#\.git$##' | sort -u \
+    > "$source_dir/hf-repositories.txt"
+  if [[ "$status" == relevant || "$status" == needs-split ]]; then
     while IFS= read -r hf_repository; do
       [[ -n "$hf_repository" ]] || continue
       while IFS= read -r commit_row; do
@@ -246,6 +296,7 @@ while IFS= read -r encoded; do
     --argjson commit_count "$commit_count" \
     --argjson changed_paths "$(json_lines "$source_dir/changed.txt")" \
     --argjson relevant_paths "$(json_lines "$source_dir/relevant.txt")" \
+    --argjson inventory_paths "$(json_lines "$source_dir/inventory-paths.txt")" \
     '{
       slug: $slug,
       url: $url,
@@ -257,7 +308,8 @@ while IFS= read -r encoded; do
       dir: $dir,
       commit_count: $commit_count,
       changed_paths: $changed_paths,
-      relevant_paths: $relevant_paths
+      relevant_paths: $relevant_paths,
+      inventory_paths: $inventory_paths
     }')"
   jq --argjson row "$row" '.sources += [$row]' "$capture_dir/manifest.json" \
     > "$manifest_tmp"

@@ -484,6 +484,7 @@
               ("worker-" + "tb")
               ("coordinator-" + "tb")
             ];
+            removedModel = "qwo" + "pus";
             monthlySources = builtins.fromJSON (builtins.readFile ./pkgs/local-ai-monthly/sources.json);
           in
           assert !(coordinator.networking.hosts ? "10.77.0.2");
@@ -519,6 +520,10 @@
           pkgs.runCommand "fleet-connectivity" { } ''
             if ${pkgs.ripgrep}/bin/rg --line-number '${retiredAliases}' ${self}; then
               echo "retired mesh alias found" >&2
+              exit 1
+            fi
+            if ${pkgs.ripgrep}/bin/rg --ignore-case --line-number '${removedModel}' ${self}; then
+              echo "removed local-model identity found" >&2
               exit 1
             fi
             touch "$out"
@@ -691,6 +696,24 @@
             modelPackagePaths = map toString (builtins.attrValues localModelStore.packages);
             coordinatorExtraDependencies = map toString coordinator.system.extraDependencies;
             workerExtraDependencies = map toString worker.system.extraDependencies;
+            selectedDeploymentIds = nixpkgs.lib.unique (
+              coordinator.services.local-models.allow ++ worker.services.local-models.allow
+            );
+            selectedWeightArtifactIds = nixpkgs.lib.unique (
+              nixpkgs.lib.concatMap (
+                deploymentId:
+                let
+                  refs = localModelCatalog.deployments.${deploymentId}.artifacts;
+                in
+                nixpkgs.lib.filter (artifactId: artifactId != null) [
+                  refs.model
+                  refs.mtpHead
+                ]
+              ) selectedDeploymentIds
+            );
+            selectedWeightQuantizations = map (
+              artifactId: localModelCatalog.artifacts.${artifactId}.quantization
+            ) selectedWeightArtifactIds;
             testRenderers = import ./lib/local-model-runtime.nix {
               lib = nixpkgs.lib;
               packages = {
@@ -719,21 +742,20 @@
             coordinator.services.local-models.allow == [
               "flm-gemma4-it-e4b"
               "flm-gpt-oss-20b"
-              "qwen36-35b-a3b-mxfp4"
-              "qwopus36-27b-v2-q5-k-m"
-              "gemma4-26b-a4b-qat-mtp"
+              "qwen36-35b-a3b-mtp-ud-q8-k-xl"
+              "gemma4-26b-a4b-it-mtp-q8-0"
               "fara15-27b-q8-0"
               "qwen3-vl-8b-ocr"
               "qwen3-vl-32b-ocr-refine"
-              "qwen3-embedding-8b-q5-0"
+              "qwen3-embedding-8b-q8-0"
+              "qwen3-vl-embedding-8b-q8-0"
             ];
           assert
             worker.services.local-models.allow == [
               "flm-gemma4-it-e4b"
               "flm-gpt-oss-20b"
-              "qwen36-35b-a3b-mxfp4"
-              "qwopus36-27b-v2-q5-k-m"
-              "gemma4-26b-a4b-qat-mtp"
+              "qwen36-35b-a3b-mtp-ud-q8-k-xl"
+              "gemma4-26b-a4b-it-mtp-q8-0"
               "fara15-27b-q8-0"
             ];
           assert
@@ -744,24 +766,30 @@
             ];
           assert worker.services.local-models.artifacts == [ ];
           assert
-            builtins.length (nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies) == 14;
-          assert builtins.length (nixpkgs.lib.intersectLists modelPackagePaths workerExtraDependencies) == 6;
+            builtins.length (nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies) == 15;
+          assert builtins.length (nixpkgs.lib.intersectLists modelPackagePaths workerExtraDependencies) == 5;
+          assert nixpkgs.lib.all (
+            quantization:
+            nixpkgs.lib.elem quantization [
+              "Q8_0"
+              "UD-Q8_K_XL"
+            ]
+          ) selectedWeightQuantizations;
           assert
             builtins.attrNames coordinatorSettings.models == [
               "fara1.5-27b"
-              "gemma4-26b-a4b-qat"
+              "gemma4-26b-a4b-it"
               "qwen3-embedding-8b"
               "qwen3-vl-32b-ocr"
               "qwen3-vl-8b-ocr"
+              "qwen3-vl-embedding-8b"
               "qwen3.6-35b-a3b"
-              "qwopus3.6-27b-v2"
             ];
           assert
             builtins.attrNames workerSettings.models == [
               "fara1.5-27b"
-              "gemma4-26b-a4b-qat"
+              "gemma4-26b-a4b-it"
               "qwen3.6-35b-a3b"
-              "qwopus3.6-27b-v2"
             ];
           assert
             coordinatorSettings.peers == {
@@ -775,6 +803,8 @@
               };
             };
           assert workerSettings.peers == coordinatorSettings.peers;
+          assert coordinator.systemd.services.llama-swap.environment.LLAMA_MEDIA_MARKER == "<__media__>";
+          assert worker.systemd.services.llama-swap.environment.LLAMA_MEDIA_MARKER == "<__media__>";
           assert coordinator.hardware.amd-npu.enableNPU;
           assert worker.hardware.amd-npu.enableNPU;
           assert nixpkgs.lib.elem "amd_iommu=on" coordinator.boot.kernelParams;

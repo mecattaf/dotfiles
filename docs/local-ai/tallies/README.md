@@ -1,6 +1,6 @@
 # Local-AI roster rationale
 
-[`2026-07-22.md`](2026-07-22.md) is the reviewed anchor for the current typed
+[`2026-07-26.md`](2026-07-26.md) is the reviewed anchor for the current typed
 model roster. Add another file here only when a human-approved roster decision
 needs durable rationale alongside `lib/local-models.nix`.
 
@@ -12,5 +12,5 @@ therefore leaves the next comparison interval unchanged.
 
 Any future roster edit remains a separate human change. It must preserve exact
 artifact identity, immutable HF revision, selected files and sizes, LFS
-SHA-256/Nix SRI, runtime provenance, evidence class, and the independent
-`downloadAllModels = false` gate.
+SHA-256/Nix SRI, runtime provenance, evidence class, Q8 precision policy, and
+explicit per-host allowlists.

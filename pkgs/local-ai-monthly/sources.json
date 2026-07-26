@@ -28,6 +28,10 @@
     "total_evidence_chars": 50000,
     "hf_metadata_repositories": 32,
     "hf_files_per_repository": 200,
+    "inventory_files_per_source": 16,
+    "inventory_chars_per_source": 24000,
+    "inventory_total_chars": 60000,
+    "max_inventory_blob_bytes": 2000000,
     "hf_metadata_response_bytes": 5000000,
     "max_diff_blob_bytes": 2000000,
     "max_raw_diff_bytes": 8000000,
@@ -46,12 +50,24 @@
       {
         "name": "worker",
         "hardware": "AMD Ryzen AI MAX+ 395, Radeon 8060S gfx1151, 128 GiB unified RAM",
-        "policy": "NPU disabled; IOMMU disabled for maximum iGPU performance",
-        "roles": ["optional tailnet worker", "parallel GPU inference", "microVM host"]
+        "policy": "XDNA NPU enabled; IOMMU enabled in translated mode",
+        "roles": ["tailnet worker", "parallel GPU inference", "NPU inference", "microVM host"]
       }
     ],
     "runtime_policy": "Every local LLM call goes through llama-swap; stable diffusion is outside this route.",
     "change_policy": "The monthly workflow proposes catalog and source-pin changes only. It never downloads, installs, removes, or activates models."
+  },
+  "model_selection_policy": {
+    "active_llama_cpp_weight_target": "Q8",
+    "preferred_quantizations": ["UD-Q8_K_XL", "Q8_0"],
+    "active_lower_bit_exceptions": [],
+    "native_format_exceptions": [
+      "FastFlowLM NPU2 runtime snapshots",
+      "F16/BF16 vision projectors",
+      "speech and tokenizer artifacts"
+    ],
+    "rationale": "Both AMD Strix Halo nodes have 128 GiB unified RAM; active llama.cpp model and MTP weights prioritize fidelity over low-bit throughput.",
+    "monthly_census": "Resurface stronger Q8 candidates and newly published Q8 variants even when the watched Git source has no new commit."
   },
   "llm_agents_allowlist": [
     "claude-code",
@@ -86,6 +102,14 @@
         "invoicesandbox/**",
         "research/**"
       ],
+      "inventory_paths": [
+        "BENCHMARK_HISTORY*.md",
+        "agents.md",
+        "benchv2/data/*.json",
+        "coding-quality/**/*.md",
+        "dflash/**/*.md",
+        "research/**/*.md"
+      ],
       "evidence_paths": [
         "*.md",
         "**/*.md",
@@ -108,6 +132,7 @@
       "processor": "generic",
       "partition": "top-level",
       "watched_paths": ["public/aime26/**", "public/project/**"],
+      "inventory_paths": ["public/project/**/*.json", "public/project/**/*.md"],
       "evidence_paths": ["**/*.json", "**/*.md", "**/*.html", "**/*.js", "**/*.ts", "**/*.tsx"]
     },
     {
@@ -127,7 +152,8 @@
         "systemd/**",
         "bin/strix-llm-switch.sh",
         "configs/claude-code-router.config.json"
-      ]
+      ],
+      "inventory_paths": ["README.md", "PERFORMANCE_NOTES.md", "docs/**/*.md"]
     },
     {
       "slug": "boxwrench/tesla_agent",
@@ -146,6 +172,12 @@
         "guide/07*",
         "guide/08*",
         "docs/app.js"
+      ],
+      "inventory_paths": [
+        "README.md",
+        "reference/reproducibility-matrix.md",
+        "guide/07*",
+        "guide/08*"
       ]
     },
     {
@@ -165,6 +197,14 @@
         "ROCMFP4_CHADROCK.md",
         "data/headline_claims.csv",
         "data/raw/**"
+      ],
+      "inventory_paths": [
+        "CURRENT_MODELS.md",
+        "COMMUNITY_RESULTS.md",
+        "README.md",
+        "data/headline_claims.csv",
+        "data/raw/**/*summary.json",
+        "data/raw/**/*results.json"
       ],
       "evidence_paths": [
         "*.md",
@@ -186,7 +226,8 @@
       "baseline_authority": "2026-07 dry run",
       "processor": "generic",
       "partition": "files",
-      "watched_paths": ["README.md", "docs/index.html"]
+      "watched_paths": ["README.md", "docs/index.html"],
+      "inventory_paths": ["README.md", "docs/index.html"]
     },
     {
       "slug": "kyuz0/amd-strix-halo-toolboxes",
@@ -205,6 +246,14 @@
         "scripts/run_distributed_llama.py",
         "refresh-toolboxes.sh",
         "benchmark/**"
+      ],
+      "inventory_paths": [
+        "README.md",
+        "docs/**/*.md",
+        "benchmark/results/*Q8*",
+        "benchmark/results/*q8*",
+        "benchmark/results/*.json",
+        "benchmark/results/*.md"
       ],
       "evidence_paths": ["**/*.md", "**/*.json", "**/*.csv", "**/*.py", "**/Dockerfile*", "*.sh", "**/*.sh"]
     },
@@ -275,6 +324,13 @@
         "scripts/patch_strix.py",
         "scripts/start_vllm*.py",
         "rdma_cluster/**"
+      ],
+      "inventory_paths": [
+        "README.md",
+        "docs/results.json",
+        "benchmarks/**/*Q8*",
+        "benchmarks/**/*q8*",
+        "scripts/models.py"
       ],
       "evidence_paths": ["**/*.md", "**/*.json", "Dockerfile", "**/*.py", "**/*.sh"]
     },

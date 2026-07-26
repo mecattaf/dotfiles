@@ -8,7 +8,8 @@ before you were invoked:
 
 - `evidence.md` is a bounded, mechanically selected account of exact Git
   intervals and watched-path diffs;
-- `context.md` is the accepted local roster and its prior human rationale;
+- `context.md` is the accepted local roster, exact weight/quant identities,
+  uniform 128 GiB fleet policy, and prior human rationale;
 - `hf-metadata.md` is preloaded Hugging Face metadata for every exact HF
   repository URL found in the evidence, within the reviewed safety bound.
 
@@ -24,12 +25,21 @@ Start with `## Local-model review`. Then:
 1. state whether the interval contains anything materially relevant to this
    fleet;
 2. describe only the strongest new model, runtime, benchmark, or tooling
-   findings, with the source repository and exact evidence named;
+   findings, with the source repository and exact evidence named; the bounded
+   current-head inventory is deliberately present so an overlooked candidate
+   can resurface even without a new Git commit;
 3. compare any model recommendation against the accepted roster by served
    model or deployment ID;
 4. use an explicit recommendation such as “consider adding”, “watch”, “retain
    the current roster”, or “needs local verification”;
-5. identify missing provenance or compatibility evidence rather than filling
+5. include a compact candidate table for any relevant model finding with model,
+   exact quant/file, immutable HF revision when supplied, bytes, backend, and
+   recommendation;
+6. enforce the operator's Q8 policy: an active llama.cpp model or MTP weight
+   must be Q8 (`UD-Q8_K_XL` or `Q8_0`) unless `context.md` lists an explicit
+   lower-bit exception. FastFlowLM NPU2 snapshots, F16/BF16 projectors, and
+   speech artifacts are native-format exceptions, not GGUF counterexamples;
+7. identify missing provenance or compatibility evidence rather than filling
    gaps with general knowledge.
 
 This pull request advances source pins. It does not edit the roster, install a

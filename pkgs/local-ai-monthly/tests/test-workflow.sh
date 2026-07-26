@@ -43,7 +43,22 @@ cat > "$registry" <<'JSON'
     "total_evidence_chars": 10000,
     "baseline_rationale_chars": 10000,
     "hf_metadata_repositories": 4,
-    "hf_files_per_repository": 20
+    "hf_files_per_repository": 1,
+    "inventory_total_chars": 10000
+  },
+  "hardware_context": {
+    "nodes": [
+      {"name":"coordinator","hardware":"128 GiB test host","policy":"NPU and IOMMU enabled"},
+      {"name":"worker","hardware":"128 GiB test host","policy":"NPU and IOMMU enabled"}
+    ]
+  },
+  "model_selection_policy": {
+    "active_llama_cpp_weight_target": "Q8",
+    "preferred_quantizations": ["UD-Q8_K_XL", "Q8_0"],
+    "active_lower_bit_exceptions": [],
+    "native_format_exceptions": ["FastFlowLM NPU2 runtime snapshots"],
+    "rationale": "test quality policy",
+    "monthly_census": "rescan current heads"
   },
   "sources": [{
     "slug": "example/repo",
@@ -79,14 +94,22 @@ cat > "$capture/manifest.json" <<'JSON'
 JSON
 cat > "$capture/catalog.json" <<'JSON'
 {
+  "artifacts": {
+    "best-q8": {
+      "kind": "model", "quantization": "Q8_0",
+      "source": {"primary": "best-Q8_0.gguf"}
+    }
+  },
   "deployments": {
     "best": {
       "status": "canonical", "role": "quality", "ramTierGb": 64,
-      "model": "best-model", "backend": "vulkan", "evidence": "matched-local"
+      "model": "best-model", "backend": "vulkan", "evidence": "matched-local",
+      "hosts": ["coordinator", "worker"], "artifacts": {"model": "best-q8"}
     },
     "fallback": {
       "status": "canonical", "role": "general", "ramTierGb": 16,
-      "model": "fallback-model", "backend": "vulkan", "evidence": "unverified"
+      "model": "fallback-model", "backend": "vulkan", "evidence": "unverified",
+      "hosts": ["coordinator"], "artifacts": {"model": "best-q8"}
     }
   }
 }
@@ -119,6 +142,9 @@ jq -e 'length == 1 and .[0].repository == "example/new-model"' "$prepared/hf-req
 jq -e '.sources[0].baseline == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
   "$prepared/next-sources.json" >/dev/null
 grep -q 'Add candidate model' "$prepared/evidence.md"
+grep -q 'Active llama.cpp model/MTP target: \*\*Q8\*\*' "$prepared/context.md"
+grep -q 'best-Q8_0.gguf \[Q8_0\]' "$prepared/context.md"
+grep -q 'NPU and IOMMU enabled' "$prepared/context.md"
 
 cat > "$hf_capture/responses/001.json" <<'JSON'
 {
@@ -126,7 +152,15 @@ cat > "$hf_capture/responses/001.json" <<'JSON'
   "sha": "dddddddddddddddddddddddddddddddddddddddd",
   "lastModified": "2026-08-01T00:00:00Z",
   "siblings": [{
-    "rfilename": "model.gguf",
+    "rfilename": "A-Q4_0.gguf",
+    "size": 4,
+    "lfs": {
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "size": 4,
+      "pointerSize": 127
+    }
+  }, {
+    "rfilename": "zz-Q8_0.gguf",
     "size": 4,
     "lfs": {
       "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -152,7 +186,8 @@ jq -n --arg sha "$response_sha" '{
 "$LOCAL_AI_PURE_STAGE" enrich "$registry" "$prepared" "$hf_capture" "$enriched"
 jq -e '.[0].revision == "dddddddddddddddddddddddddddddddddddddddd"' \
   "$enriched/hf-metadata.json" >/dev/null
-jq -e '.[0].files[0].sri == "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="' \
+jq -e '.[0].files | length == 1 and .[0].path == "zz-Q8_0.gguf"
+  and .[0].sri == "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="' \
   "$enriched/hf-metadata.json" >/dev/null
 
 cat > "$work/commentary.md" <<'EOF'

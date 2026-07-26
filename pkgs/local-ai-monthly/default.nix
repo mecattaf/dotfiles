@@ -44,6 +44,8 @@ let
   capture = writeShellApplication {
     name = "local-ai-monthly-capture";
     runtimeInputs = shellRuntime;
+    # Markdown code spans are intentionally single-quoted printf literals.
+    excludeShellChecks = [ "SC2016" ];
     text = builtins.readFile ./lib/capture.sh;
   };
 

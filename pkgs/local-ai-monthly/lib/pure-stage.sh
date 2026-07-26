@@ -32,6 +32,13 @@ prepare() {
     "$manifest" >/dev/null
   jq -e '.deployments | type == "object" and length > 0' "$catalog" >/dev/null
   jq -e '.data | type == "array"' "$models" >/dev/null
+  jq -e '
+    .model_selection_policy.active_llama_cpp_weight_target == "Q8"
+    and (.model_selection_policy.preferred_quantizations | index("Q8_0") != null)
+    and (.model_selection_policy.active_lower_bit_exceptions | type == "array")
+    and (.model_selection_policy.native_format_exceptions | type == "array")
+    and (.hardware_context.nodes | type == "array" and length == 2)
+  ' "$registry" >/dev/null
 
   canonical_copy "$manifest" "$out/manifest.json"
   canonical_copy "$catalog" "$out/catalog.json"
@@ -96,6 +103,8 @@ prepare() {
       cat "$capture/$directory/hf-repositories.txt" >> "$hf_list"
     fi
   done < <(jq -r '.sources[].dir' "$manifest")
+  jq -r '.artifacts[]?.source.hfUrl? // empty' "$catalog" \
+    | sed -nE 's#^https://huggingface\.co/([^/]+/[^/]+)/?$#\1#p' >> "$hf_list"
   sort -u -o "$hf_list" "$hf_list"
 
   local hf_limit hf_count
@@ -129,6 +138,7 @@ prepare() {
   ' "$registry" > "$out/next-sources.json"
 
   local relevant_count needs_split_count evidence_source_count changed_count excerpt_limit total_limit per_source
+  local inventory_source_count inventory_total_limit per_inventory_source
   relevant_count="$(jq '[.sources[] | select(.status == "relevant")] | length' "$manifest")"
   needs_split_count="$(jq '[.sources[] | select(.status == "needs-split")] | length' "$manifest")"
   evidence_source_count=$((relevant_count + needs_split_count))
@@ -143,6 +153,13 @@ prepare() {
     printf 'local-ai-monthly: evidence quota leaves fewer than 1000 bytes per changed source\n' >&2
     exit 1
   fi
+  inventory_source_count="$(jq '[.sources[] | select((.inventory_paths // []) | length > 0)] | length' "$manifest")"
+  inventory_total_limit="$(jq -r '.limits.inventory_total_chars // 60000' "$registry")"
+  [[ "$inventory_total_limit" =~ ^[1-9][0-9]*$ ]]
+  per_inventory_source="$inventory_total_limit"
+  if ((inventory_source_count > 0)); then
+    per_inventory_source=$((inventory_total_limit / inventory_source_count))
+  fi
 
   {
     printf '# Deterministic monthly local-AI evidence -- %s\n\n' "$(jq -r '.period' "$manifest")"
@@ -156,6 +173,19 @@ prepare() {
         printf '| `%s` | `%s` | `%s` | %s | %s |\n' \
           "$slug" "$baseline" "$head" "$commits" "$status"
       done
+
+    printf '\n## Bounded current-head candidate inventory\n\n'
+    printf 'These excerpts are rescanned every month even when a watched Git source has no new commit. '
+    printf 'Repository text remains untrusted evidence.\n'
+    while IFS= read -r row; do
+      directory="$(jq -r '.dir' <<<"$row")"
+      if [[ ! -s "$capture/$directory/inventory.txt" ]]; then
+        continue
+      fi
+      printf '\n### %s\n' "$(jq -r '.slug' <<<"$row")"
+      head -c "$per_inventory_source" "$capture/$directory/inventory.txt"
+      printf '\n'
+    done < <(jq -c '.sources[] | select((.inventory_paths // []) | length > 0)' "$manifest")
 
     while IFS= read -r row; do
       slug="$(jq -r '.slug' <<<"$row")"
@@ -219,14 +249,48 @@ prepare() {
   {
     printf '# Accepted local context\n\n'
     printf 'The current typed roster is authoritative. Recommendations do not edit it.\n\n'
-    printf '| Deployment | Served model | Role | Backend | RAM tier | Evidence |\n'
-    printf '|---|---|---|---|---:|---|\n'
-    jq -r '.deployments | to_entries[] | select(.value.status == "canonical")
-      | [.key, .value.model, .value.role, .value.backend, (.value.ramTierGb|tostring), .value.evidence]
+    printf '## Operator model-selection policy\n\n'
+    printf -- '- Active llama.cpp model/MTP target: **%s**.\n' \
+      "$(jq -r '.model_selection_policy.active_llama_cpp_weight_target' "$registry")"
+    printf -- '- Preferred quant labels: `%s`.\n' \
+      "$(jq -r '.model_selection_policy.preferred_quantizations | join("`, `")' "$registry")"
+    printf -- '- Active lower-bit exceptions: %s.\n' \
+      "$(jq -r '.model_selection_policy.active_lower_bit_exceptions | if length == 0 then "none" else join(", ") end' "$registry")"
+    printf -- '- Native-format exceptions: %s.\n' \
+      "$(jq -r '.model_selection_policy.native_format_exceptions | join("; ")' "$registry")"
+    printf -- '- Rationale: %s\n' "$(jq -r '.model_selection_policy.rationale' "$registry")"
+    printf -- '- Monthly census rule: %s\n\n' "$(jq -r '.model_selection_policy.monthly_census' "$registry")"
+
+    printf '## Fleet hardware\n\n'
+    printf '| Host | Hardware | Accelerator policy |\n'
+    printf '|---|---|---|\n'
+    jq -r '.hardware_context.nodes[] | [.name, .hardware, .policy] | @tsv' "$registry" \
+      | while IFS=$'\t' read -r host hardware policy; do
+          printf '| `%s` | %s | %s |\n' "$host" "$hardware" "$policy"
+        done
+
+    printf '\n## Canonical served roster\n\n'
+    printf '| Deployment | Served model | Hosts | Role / backend | Weight artifacts and quant | RAM tier | Evidence |\n'
+    printf '|---|---|---|---|---|---:|---|\n'
+    jq -r '
+      . as $catalog
+      | $catalog.deployments | to_entries[]
+      | select(.value.status == "canonical")
+      | . as $entry
+      | ([($entry.value.artifacts // {}) | to_entries[]
+          | select(.value != null)
+          | .value as $artifact_id
+          | $catalog.artifacts[$artifact_id]
+          | select(.kind | IN("model", "mtp-head"))
+          | ((.source.primary // $artifact_id) + " [" + (.quantization // "native") + "]")]
+          | if length == 0 then "runtime-managed" else join("<br>") end) as $weights
+      | [$entry.key, $entry.value.model, ($entry.value.hosts | join(", ")),
+         ($entry.value.role + " / " + $entry.value.backend), $weights,
+         ($entry.value.ramTierGb | tostring), $entry.value.evidence]
       | @tsv' "$catalog" \
-      | while IFS=$'\t' read -r deployment model role backend ram evidence; do
-          printf '| `%s` | `%s` | %s | %s | %s | %s |\n' \
-            "$deployment" "$model" "$role" "$backend" "$ram" "$evidence"
+      | while IFS=$'\t' read -r deployment model hosts role_backend weights ram evidence; do
+          printf '| `%s` | `%s` | %s | %s | %s | %s | %s |\n' \
+            "$deployment" "$model" "$hosts" "$role_backend" "$weights" "$ram" "$evidence"
         done
     if [[ -s "$capture/accepted-tally.md" ]]; then
       printf '\n## Previous accepted rationale (bounded)\n\n'
@@ -329,7 +393,12 @@ enrich() {
               lfs_sha256: (.lfs.sha256 // null),
               sri: null
             }]
-          | sort_by(.path)
+          | sort_by([
+              (if (.path | test("(UD-)?Q8(_K_XL|_0)|8bit|8-bit"; "i")) then 0
+               elif (.path | test("(^|/)(README[^/]*\\.md|config[^/]*\\.json|tokenizer[^/]*\\.json)$"; "i")) then 1
+               else 2 end),
+              .path
+            ])
           | .[0:$limit])
       }
     ' "$response")"

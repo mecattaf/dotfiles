@@ -194,9 +194,7 @@ manifest_path="$capture/manifest.json"
 
 changed_count="$(jq '[.sources[] | select(.head != .baseline)] | length' "$manifest_path")"
 if ((changed_count == 0)); then
-  status=no-delta
-  printf 'local-ai-monthly: every source is already at its accepted pin\n'
-  exit 0
+  printf 'local-ai-monthly: source pins are unchanged; continuing with the bounded model census\n'
 fi
 
 nix eval --json --no-write-lock-file "path:$dotfiles#lib.localModelCatalog" \
@@ -290,6 +288,13 @@ finalized="$(nix build --offline --no-link --print-out-paths \
   --arg capture "$enriched" \
   --arg commentary "$commentary")"
 [[ -d "$finalized" ]]
+
+if ((changed_count == 0)); then
+  status=census
+  printf 'commentary: %s\n' "$commentary"
+  printf 'local-ai-monthly: census complete; no source-pin PR is needed\n'
+  exit 0
+fi
 
 if [[ "$publish" != true ]]; then
   status=preview

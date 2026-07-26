@@ -18,6 +18,7 @@ let
       bytes,
       oid,
       hash,
+      quantization ? null,
       notes ? "",
     }:
     {
@@ -26,6 +27,7 @@ let
         maker
         baseCheckpoint
         fineTune
+        quantization
         notes
         ;
       source = {
@@ -140,6 +142,14 @@ let
       notes = mkOption {
         type = types.str;
         default = "";
+      };
+      quantization = mkOption {
+        type = nullableString;
+        default = null;
+        description = ''
+          Declared weight precision for model and MTP GGUFs. Runtime-owned
+          model snapshots and non-weight sidecars leave this null.
+        '';
       };
     };
   };
@@ -327,23 +337,24 @@ let
         };
 
         config = {
-          # This is a metadata roster. modules/strix.nix deliberately keeps
-          # downloadAllModels=false, so none of these fixed-output artifacts is
-          # fetched or rooted until Tom manually lifts that gate.
+          # This is a metadata roster. modules/strix.nix roots only its explicit
+          # per-host allowlists, so catalog candidates never download merely by
+          # existing here.
           artifacts = {
-            qwen36-35b-a3b-mxfp4 = mkSingleFileArtifact {
+            qwen36-35b-a3b-mtp-ud-q8-k-xl = mkSingleFileArtifact {
               maker = "Qwen";
               baseCheckpoint = {
                 url = "https://huggingface.co/Qwen/Qwen3.6-35B-A3B";
                 revision = "995ad96eacd98c81ed38be0c5b274b04031597b0";
               };
-              hfUrl = "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF";
-              revision = "a483e9e6cbd595906af30beda3187c2663a1118c";
-              path = "Qwen3.6-35B-A3B-MXFP4_MOE.gguf";
-              bytes = 21706144736;
-              oid = "2fdd20997c4d88ee25f70f500c61f8b999378d92ab055f9d450fc70d617158d3";
-              hash = "sha256-L90gmXxNiO4l9w9QDGH4uZk3jZKrBV+dRQ/HDWFxWNM=";
-              notes = "Exact artifact measured in the tesla_agent stable workhorse row.";
+              hfUrl = "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF";
+              revision = "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d";
+              path = "Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf";
+              bytes = 39099447584;
+              oid = "6c6b816537abad90b250a0972b345466028d861ddfe316d5f0de31ca6440f781";
+              hash = "sha256-bGuBZTerrZCyUKCXKzRUZgKNhh3f4xbV8N4xymRA94E=";
+              quantization = "UD-Q8_K_XL";
+              notes = "Operator-selected high-fidelity Q8 tier with a matched MTP block integrated in the same GGUF.";
             };
 
             qwen3-coder-next-ud-q4-k-xl = mkSingleFileArtifact {
@@ -360,57 +371,37 @@ let
               hash = "sha256-S7k/CgIh70/5Y8qQlN9inI39+rw7T92FwaLkwGJPzjY=";
             };
 
-            qwopus36-27b-v2-q5-k-m = mkSingleFileArtifact {
-              maker = "Jackrong";
+            gemma4-26b-a4b-it-q8-0 = mkSingleFileArtifact {
+              maker = "Google / Unsloth";
               baseCheckpoint = {
-                url = "https://huggingface.co/Qwen/Qwen3.6-27B";
-                revision = "6a9e13bd6fc8f0983b9b99948120bc37f49c13e9";
+                url = "https://huggingface.co/google/gemma-4-26B-A4B-it";
+                revision = "4d7ae4984b7db7de8f8457170b3f1a419ee76d52";
               };
-              fineTune = {
-                url = "https://huggingface.co/Jackrong/Qwopus3.6-27B-v2";
-                revision = "d0d82f4ccc9d41d4fe9595e96be4595327bb5de7";
-              };
-              hfUrl = "https://huggingface.co/Jackrong/Qwopus3.6-27B-v2-GGUF";
-              revision = "ef90e98f127675cd5457c71fb30ff184f751e963";
-              path = "Qwopus3.6-27B-v2-Q5_K_M.gguf";
-              bytes = 19231097088;
-              oid = "9ca652ecafef6f59ecc206ef399ac66179acd63268a66159381d18cc323473e7";
-              hash = "sha256-nKZS7K/vb1nswgbvOZrGYXms1jJopmFZOB0YzDI0c+c=";
+              hfUrl = "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF";
+              revision = "c099eb48e663fd284577b04978a94ffccb261841";
+              path = "gemma-4-26B-A4B-it-Q8_0.gguf";
+              bytes = 26859861728;
+              oid = "5f7cbd0f4564e84342fc34321a09acb54b1a3da9215124e5bf444baa6dda152c";
+              hash = "sha256-X3y9D0Vk6ENC/DQyGgmstUsaPakhUSTlv0RLqm3aFSw=";
+              quantization = "Q8_0";
+              notes = "Non-QAT instruction checkpoint selected because Google's QAT release is Q4_0-only.";
             };
 
-            gemma4-26b-a4b-qat-q4-0 = mkSingleFileArtifact {
-              maker = "Google";
-              baseCheckpoint = {
-                url = "https://huggingface.co/google/gemma-4-26B-A4B";
-                revision = "24548b62aa021d562695c04aaf7758a1ea47990b";
-              };
-              fineTune = {
-                url = "https://huggingface.co/google/gemma-4-26B-A4B-it-qat-q4_0-unquantized";
-                revision = "f1e06dc520982d9b9edd76859fdb7ab209449949";
-              };
-              hfUrl = "https://huggingface.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf";
-              revision = "d1c082be9cf3c8a514acf63b8761f4b41935842e";
-              path = "gemma-4-26B_q4_0-it.gguf";
-              bytes = 14439363584;
-              oid = "3eca3b8f6d7baf218a7dd6bba5fb59a56ee25fe2d567b6f5f589b4f697eca51d";
-              hash = "sha256-Pso7j217ryGKfda7pftZpW7iX+LVZ7b19Ym09pfspR0=";
-              notes = "Corrected-vocabulary upstream revision from 2026-07-17; it supersedes the older bitstream used by the published Strix benchmark and needs a matched local recheck.";
-            };
-
-            gemma4-26b-a4b-qat-mtp-q4-0 = mkSingleFileArtifact {
+            gemma4-26b-a4b-it-mtp-q8-0 = mkSingleFileArtifact {
               kind = "mtp-head";
-              maker = "Google";
+              maker = "Google / Unsloth";
               baseCheckpoint = {
-                url = "https://huggingface.co/google/gemma-4-26B-A4B-it-qat-q4_0-unquantized-assistant";
-                revision = "9537141506fe8875b3ed45b264af13580cb29166";
+                url = "https://huggingface.co/google/gemma-4-26B-A4B-it";
+                revision = "4d7ae4984b7db7de8f8457170b3f1a419ee76d52";
               };
-              hfUrl = "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF";
-              revision = "7b92b5b28818151e8669af2e45e88d6086f490dd";
-              path = "mtp-gemma-4-26B-A4B-it.gguf";
-              bytes = 251939328;
-              oid = "7272d97595f0d4c74bd7b623492b7dbdaafd8b7c72f329a8270ba4eca68f768a";
-              hash = "sha256-cnLZdZXw1MdL17YjSSt9var9i3xy8ymoJwuk7KaPdoo=";
-              notes = "QAT-matched MTP head; keep coupled to the corrected QAT model row.";
+              hfUrl = "https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF";
+              revision = "c099eb48e663fd284577b04978a94ffccb261841";
+              path = "MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf";
+              bytes = 461766816;
+              oid = "6326fb9f5e487aa8dcdd313a091e3c67724cb2a666ec3b7d2895b5b26d93ed1b";
+              hash = "sha256-Yyb7n15Ieqjc3TE6CR48Z3JMsqZm7Dt9KJW1sm2T7Rs=";
+              quantization = "Q8_0";
+              notes = "Matched Q8 MTP head for the non-QAT Gemma 4 26B A4B instruction model.";
             };
 
             fara15-27b-q8-0 = mkSingleFileArtifact {
@@ -425,6 +416,7 @@ let
               bytes = 28665067328;
               oid = "77578ded07b855c90b154abbb3c1c7f4669b29fa19afc27412a2940a51cf634d";
               hash = "sha256-d1eN7Qe4VckLFUq7s8HH9GabKfoZr8J0EqKUClHPY00=";
+              quantization = "Q8_0";
               notes = "Q8_0 is an explicit operator choice for the browser-computer-use appliance; do not silently down-quantize it.";
             };
 
@@ -541,6 +533,7 @@ let
               bytes = 8709520224;
               oid = "cb8616bf6ed228982d9e47d7b72b42195342efa26044b0ee1873e61d9e78d3d7";
               hash = "sha256-y4YWv27SKJgtnkfXtytCGVNC76JgRLDuGHPmHZ5409c=";
+              quantization = "Q8_0";
             };
 
             qwen3-vl-8b-mmproj-bf16 = mkSingleFileArtifact {
@@ -558,7 +551,7 @@ let
               hash = "sha256-ZRa7ZLrhUDoPzX7J+jllX4xIFYC+CgoGY5eUHZdhyfQ=";
             };
 
-            qwen3-vl-32b-instruct-q4-k-m = mkSingleFileArtifact {
+            qwen3-vl-32b-instruct-q8-0 = mkSingleFileArtifact {
               maker = "Qwen";
               baseCheckpoint = {
                 url = "https://huggingface.co/Qwen/Qwen3-VL-32B-Instruct";
@@ -566,10 +559,11 @@ let
               };
               hfUrl = "https://huggingface.co/unsloth/Qwen3-VL-32B-Instruct-GGUF";
               revision = "b9262a359f54dead8e2609f6146e2fc3398fd0d9";
-              path = "Qwen3-VL-32B-Instruct-Q4_K_M.gguf";
-              bytes = 19762151200;
-              oid = "92d605566f8661b296251c535ed028ecf81c32e14e06948a3d8bef829e96a804";
-              hash = "sha256-ktYFVm+GYbKWJRxTXtAo7PgcMuFOBpSKPYvvgp6WqAQ=";
+              path = "Qwen3-VL-32B-Instruct-Q8_0.gguf";
+              bytes = 34817721120;
+              oid = "968ac869a67c8fde33a2f5fd497c5fb03223bbdc3afc113e0a8f322e581b52e7";
+              hash = "sha256-lorIaaZ8j94zovX9SXxfsDIju9w6/BE+Co8yLlgbUuc=";
+              quantization = "Q8_0";
             };
 
             qwen3-vl-32b-mmproj-bf16 = mkSingleFileArtifact {
@@ -587,7 +581,7 @@ let
               hash = "sha256-9CQA3rhwhfHnYVmpKu3SdgUMZlxyQjWXQT00HDbBjHE=";
             };
 
-            qwen3-embedding-8b-q5-0 = mkSingleFileArtifact {
+            qwen3-embedding-8b-q8-0 = mkSingleFileArtifact {
               maker = "Qwen";
               baseCheckpoint = {
                 url = "https://huggingface.co/Qwen/Qwen3-Embedding-8B";
@@ -595,11 +589,44 @@ let
               };
               hfUrl = "https://huggingface.co/Qwen/Qwen3-Embedding-8B-GGUF";
               revision = "69d0e58a13e463cd99a9b83e3f5fee7c10265fab";
-              path = "Qwen3-Embedding-8B-Q5_0.gguf";
-              bytes = 5291991360;
-              oid = "5de04c970746c64ddd21434a5eb21ff10a2ec247c9e78ef6d48e73a81c3672ce";
-              hash = "sha256-XeBMlwdGxk3dIUNKXrIf8QouwkfJ54721I5zqBw2cs4=";
-              notes = "Q5_0 is the executable academic-rag configuration; this resolves the stale q8_0 label found in older ledgers.";
+              path = "Qwen3-Embedding-8B-Q8_0.gguf";
+              bytes = 8047105824;
+              oid = "d20ddc71e8a5c4344f2343481e242233a997dc5eaff442427a945836c97b4deb";
+              hash = "sha256-0g3cceilxDRPI0NIHiQiM6mX3F6v9EJCepRYNsl7Tes=";
+              quantization = "Q8_0";
+              notes = "High-fidelity embedding companion selected for the 128 GiB coordinator.";
+            };
+
+            qwen3-vl-embedding-8b-q8-0 = mkSingleFileArtifact {
+              maker = "Qwen / mradermacher";
+              baseCheckpoint = {
+                url = "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B";
+                revision = "2c4565515e0f265c6511776e7193b22c0968ddc7";
+              };
+              hfUrl = "https://huggingface.co/mradermacher/Qwen3-VL-Embedding-8B-GGUF";
+              revision = "ffa49879fdb91ed1a436fbc84f37b123f714bb13";
+              path = "Qwen3-VL-Embedding-8B.Q8_0.gguf";
+              bytes = 8048295168;
+              oid = "c77299abab613f121ff918f17d085704952b21e986c73a71ec6cdc8a6e43e34b";
+              hash = "sha256-x3KZq6thPxIf+RjxfQhXBJUrIemGxzpx7Gzcim5D40s=";
+              quantization = "Q8_0";
+              notes = "Q8_0 multimodal embedder selected for text, image, screenshot, and video retrieval on the coordinator.";
+            };
+
+            qwen3-vl-embedding-8b-mmproj-f16 = mkSingleFileArtifact {
+              kind = "mmproj";
+              maker = "Qwen / mradermacher";
+              baseCheckpoint = {
+                url = "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B";
+                revision = "2c4565515e0f265c6511776e7193b22c0968ddc7";
+              };
+              hfUrl = "https://huggingface.co/mradermacher/Qwen3-VL-Embedding-8B-GGUF";
+              revision = "ffa49879fdb91ed1a436fbc84f37b123f714bb13";
+              path = "Qwen3-VL-Embedding-8B.mmproj-f16.gguf";
+              bytes = 1159030304;
+              oid = "c507828405f645670c829be93fa57fb890af5b7abbe2583435f4a8042d1f8ba8";
+              hash = "sha256-xQeChAX2RWcMgpvpP6V/uJCvW3q74lg0NfSoBC0fi6g=";
+              notes = "F16 vision projector paired with the Q8_0 multimodal embedding model.";
             };
 
             vibevoice-qwen25-7b-tokenizer = {
@@ -857,7 +884,7 @@ let
               notes = "Second NPU reasoning lane on both Strix hosts; FastFlowLM tag gpt-oss:20b, Q4_1 NPU2 snapshot.";
             };
 
-            qwen36-35b-a3b-mxfp4 = {
+            qwen36-35b-a3b-mtp-ud-q8-k-xl = {
               model = "qwen3.6-35b-a3b";
               role = "general";
               status = "canonical";
@@ -866,27 +893,36 @@ let
                 "coordinator"
                 "worker"
               ];
-              ramTierGb = 24;
-              artifacts.model = "qwen36-35b-a3b-mxfp4";
-              runtime = llamaCppRuntime commonLlamaArgs;
+              ramTierGb = 44;
+              artifacts.model = "qwen36-35b-a3b-mtp-ud-q8-k-xl";
+              runtime = llamaCppRuntime (
+                commonLlamaArgs
+                ++ [
+                  "--spec-type"
+                  "draft-mtp"
+                  "--spec-draft-n-max"
+                  "2"
+                  "--parallel"
+                  "1"
+                ]
+              );
               benchmark = {
-                sourceRepo = "https://github.com/boxwrench/tesla_agent";
-                sourceCommit = "6b7881275e967982e4cd8268655f53de1c972bef";
-                runId = "stable/2026-06-02:qwen36-35b-mxfp4";
-                name = "CODE/general workhorse";
-                score = "82/84; nonce gate 3/3";
-                speed = "58.5 tok/s decode; 932.1 tok/s prefill";
-                context = "Vulkan/RADV stable lane";
+                sourceRepo = "https://github.com/kyuz0/amd-strix-halo-toolboxes";
+                sourceCommit = "5aa1e8155d9a1ce339b94fea9b00e3abecad8939";
+                runId = "benchmark/results/Qwen3.6-35B-A3B-UD-Q8_K_XL__vulkan_radv__fa1.log";
+                name = "llama-bench pp512/tg128";
+                speed = "46.33 tok/s decode; 1045 tok/s prefill";
+                context = "Radeon 8060S Vulkan/RADV; flash attention";
               };
               evidence = "upstream-measured";
               hardware = "Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
-              notes = "Default daily text generator; exact HF bitstream matches the benchmark manifest.";
+              notes = "Default daily text generator. The Q8 GGUF contains its matched MTP block; llama.cpp self-speculation is enabled without a separate draft file.";
             };
 
             qwen3-coder-next-ud-q4-k-xl = {
               model = "qwen3-coder-next";
               role = "coding";
-              status = "canonical";
+              status = "candidate";
               backend = "vulkan";
               hosts = [
                 "coordinator"
@@ -909,8 +945,8 @@ let
               notes = "Purpose-built first member of the coding-opinion pool.";
             };
 
-            qwopus36-27b-v2-q5-k-m = {
-              model = "qwopus3.6-27b-v2";
+            gemma4-26b-a4b-it-mtp-q8-0 = {
+              model = "gemma4-26b-a4b-it";
               role = "coding";
               status = "canonical";
               backend = "vulkan";
@@ -918,35 +954,10 @@ let
                 "coordinator"
                 "worker"
               ];
-              ramTierGb = 22;
-              artifacts.model = "qwopus36-27b-v2-q5-k-m";
-              runtime = llamaCppRuntime commonLlamaArgs;
-              benchmark = {
-                sourceRepo = "https://github.com/ciru-ai/benchmarks";
-                sourceCommit = "202072d2227d2452e0c41f26f7b05d2491eab44e";
-                runId = "20260527T065900Z-standard-coding-test-medium";
-                name = "BigCodeBench-Hard instruct";
-                score = "42/148 pass@1";
-                context = "profile qwopus3.6-27b-v2-q5-k-m";
-              };
-              evidence = "upstream-measured";
-              hardware = "Ciru Strix Halo benchmark host";
-              notes = "Fine-tuned second coding opinion; preserve as a separate row from stock Qwen3.6 27B.";
-            };
-
-            gemma4-26b-a4b-qat-mtp = {
-              model = "gemma4-26b-a4b-qat";
-              role = "coding";
-              status = "canonical";
-              backend = "vulkan";
-              hosts = [
-                "coordinator"
-                "worker"
-              ];
-              ramTierGb = 18;
+              ramTierGb = 32;
               artifacts = {
-                model = "gemma4-26b-a4b-qat-q4-0";
-                mtpHead = "gemma4-26b-a4b-qat-mtp-q4-0";
+                model = "gemma4-26b-a4b-it-q8-0";
+                mtpHead = "gemma4-26b-a4b-it-mtp-q8-0";
               };
               runtime = llamaCppRuntime (
                 commonLlamaArgs
@@ -961,7 +972,7 @@ let
               );
               evidence = "unverified";
               hardware = "Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
-              notes = "Cross-family coding-panel member. Google replaced the measured GGUF with a corrected-vocabulary bitstream; rerun the matched local quality/speed witness before lifting the gate.";
+              notes = "Cross-family coding model. The former QAT identity was dropped because Google's QAT checkpoint is Q4_0-only; this is the ordinary instruction checkpoint with a matched Q8 MTP head.";
             };
 
             fara15-27b-q8-0 = {
@@ -1031,13 +1042,13 @@ let
               };
               evidence = "matched-local";
               hardware = "two Ryzen AI MAX+ 395 nodes over point-to-point Thunderbolt";
-              notes = "Retired with the physical dual-node topology on 2026-07-26. Historical artifact, runtime, and benchmark evidence remain reproducible, but this row is no longer projected to either host, so its roughly 157 GiB of weights are not materialized even if downloadAllModels is later enabled. The DS4 runtime package remains installed.";
+              notes = "Retired with the physical dual-node topology on 2026-07-26. Historical artifact, runtime, and benchmark evidence remain reproducible, but this row is no longer projected to either host, so its roughly 157 GiB of weights are not materialized. The DS4 runtime package remains installed.";
             };
 
             qwen36-35b-abliterated-heretic = {
               model = "qwen3.6-35b-heretic";
               role = "uncensored";
-              status = "canonical";
+              status = "candidate";
               backend = "vulkan";
               hosts = [ "worker" ];
               ramTierGb = 24;
@@ -1051,7 +1062,7 @@ let
             supergemma4-26b-uncensored = {
               model = "supergemma4-26b-uncensored";
               role = "uncensored";
-              status = "canonical";
+              status = "candidate";
               backend = "vulkan";
               hosts = [ "worker" ];
               ramTierGb = 20;
@@ -1073,7 +1084,7 @@ let
             glm47-flash-uncensored-aggressive = {
               model = "glm-4.7-flash-uncensored";
               role = "uncensored";
-              status = "canonical";
+              status = "candidate";
               backend = "vulkan";
               hosts = [ "worker" ];
               ramTierGb = 22;
@@ -1140,7 +1151,7 @@ let
               hosts = [ "coordinator" ];
               ramTierGb = 24;
               artifacts = {
-                model = "qwen3-vl-32b-instruct-q4-k-m";
+                model = "qwen3-vl-32b-instruct-q8-0";
                 mmproj = "qwen3-vl-32b-mmproj-bf16";
               };
               runtime = llamaCppRuntime [
@@ -1160,21 +1171,21 @@ let
                 runId = "eval-2026-06-22:qwen3vl-32b";
                 name = "table/math reconciliation pass";
                 score = "selected table-fidelity winner";
-                context = "llama.cpp ROCm; Q4_K_M + BF16 projector";
+                context = "llama.cpp ROCm; Q8_0 + BF16 projector";
               };
               evidence = "matched-local";
               hardware = "coordinator Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
               notes = "Targeted second pass for table- and math-heavy pages, not the default drainer.";
             };
 
-            qwen3-embedding-8b-q5-0 = {
+            qwen3-embedding-8b-q8-0 = {
               model = "qwen3-embedding-8b";
               role = "embedding";
               status = "canonical";
               backend = "rocm";
               hosts = [ "coordinator" ];
-              ramTierGb = 8;
-              artifacts.model = "qwen3-embedding-8b-q5-0";
+              ramTierGb = 12;
+              artifacts.model = "qwen3-embedding-8b-q8-0";
               runtime = llamaCppRuntime [
                 "--embeddings"
                 "--pooling"
@@ -1187,7 +1198,37 @@ let
               ];
               evidence = "matched-local";
               hardware = "coordinator Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
-              notes = "Embedding companion for the OCR/RAG appliance; retain Q5_0 to match the executable pipeline configuration.";
+              notes = "High-fidelity Q8 embedding companion for the OCR/RAG appliance; re-embed any persisted vectors before comparing with the retired Q5 pipeline.";
+            };
+
+            qwen3-vl-embedding-8b-q8-0 = {
+              model = "qwen3-vl-embedding-8b";
+              role = "embedding";
+              status = "canonical";
+              backend = "rocm";
+              hosts = [ "coordinator" ];
+              ramTierGb = 12;
+              artifacts = {
+                model = "qwen3-vl-embedding-8b-q8-0";
+                mmproj = "qwen3-vl-embedding-8b-mmproj-f16";
+              };
+              runtime = llamaCppRuntime [
+                "--mmproj"
+                "@mmproj@"
+                "--embeddings"
+                "--pooling"
+                "last"
+                "--embd-normalize"
+                "2"
+                "--ctx-size"
+                "32768"
+                "--gpu-layers"
+                "999"
+                "--no-mmap"
+              ];
+              evidence = "api-only";
+              hardware = "coordinator Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
+              notes = "Coordinator-only multimodal retrieval route. The pinned llama.cpp supports Qwen3-VL pooling and multimodal embedding requests; a local text/image smoke remains part of rollout acceptance.";
             };
           };
         };

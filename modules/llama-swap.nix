@@ -63,6 +63,10 @@ in
   systemd.services.llama-swap = {
     wants = [ "network-online.target" ];
     after = [ "network-online.target" ];
+    # Backend children inherit one stable multimodal placeholder. This keeps
+    # OpenAI embedding clients from having to discover llama.cpp's otherwise
+    # randomized marker through each transient backend's /props endpoint.
+    environment.LLAMA_MEDIA_MARKER = "<__media__>";
     serviceConfig = {
       # The upstream NixOS module uses DynamicUser + ProtectSystem=strict. Add
       # systemd-managed writable paths for v240's activity store and backend

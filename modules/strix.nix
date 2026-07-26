@@ -42,15 +42,15 @@
       allow = [
         "flm-gemma4-it-e4b"
         "flm-gpt-oss-20b"
-        "qwen36-35b-a3b-mxfp4"
-        "qwopus36-27b-v2-q5-k-m"
-        "gemma4-26b-a4b-qat-mtp"
+        "qwen36-35b-a3b-mtp-ud-q8-k-xl"
+        "gemma4-26b-a4b-it-mtp-q8-0"
         "fara15-27b-q8-0"
       ]
       ++ lib.optionals (config.myCluster.role == "coordinator") [
         "qwen3-vl-8b-ocr"
         "qwen3-vl-32b-ocr-refine"
-        "qwen3-embedding-8b-q5-0"
+        "qwen3-embedding-8b-q8-0"
+        "qwen3-vl-embedding-8b-q8-0"
       ];
       artifacts = lib.optionals (config.myCluster.role == "coordinator") [
         "vibevoice-asr-bf16"

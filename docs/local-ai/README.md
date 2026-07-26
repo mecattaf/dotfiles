@@ -25,8 +25,8 @@ Public repository metadata needs no credential. This example requests only the
 pinned revision record and sibling names:
 
 ```console
-hf models info unsloth/Qwen3.6-35B-A3B-GGUF \
-  --revision a483e9e6cbd595906af30beda3187c2663a1118c \
+hf models info unsloth/Qwen3.6-35B-A3B-MTP-GGUF \
+  --revision 5bc3e238d916f48a861bac2f8a1990a0e9b7e98d \
   --expand sha,siblings \
   --format json
 ```
@@ -65,8 +65,8 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 | Appliance | Selected implementation | Serving boundary | State |
 |---|---|---|---|
 | Streaming speech-to-text | Voxtype with `parakeet-unified-en-0.6b` | Coordinator-only systemd user service; local ONNX Runtime/MIGraphX on gfx1151 | Model download is an idempotent service pre-start step. |
-| Document OCR/RAG | Qwen3-VL 8B primary, 32B refine, Qwen3 Embedding 8B | Coordinator llama.cpp ROCm behind llama-swap | Active coordinator allowlist. |
-| Shared text and coding | Qwen 3.6 35B, Qwopus 27B v2, Gemma 4 26B QAT+MTP | Vulkan behind llama-swap on both hosts | Active on both hosts. Qwen3-Coder-Next remains cataloged only. |
+| Document OCR/RAG | Qwen3-VL 8B primary, 32B refine, Qwen3 Embedding 8B, Qwen3-VL Embedding 8B | Coordinator llama.cpp ROCm behind llama-swap | Active coordinator allowlist; text and multimodal embedders are complementary. |
+| Shared text and coding | Qwen 3.6 35B Q8 with integrated MTP, Gemma 4 26B Q8 with matched MTP | Vulkan behind llama-swap on both hosts | Active on both hosts. Qwen3-Coder-Next remains cataloged only. |
 | Computer use | Fara 1.5 27B Q8_0 plus BF16 projector | ROCm behind llama-swap on both hosts | Active on both hosts. |
 | NPU utility | FastFlowLM Gemma 4 E4B and GPT-OSS 20B | Dedicated loopback peers behind llama-swap | Active on both hosts. |
 | Historical SOTA | DeepSeek V4 Flash Q4 imatrix + MTP | Retired dual-node DS4 topology | Exact artifacts and benchmark evidence remain cataloged, but the deployment is retired and its roughly 157 GiB of weights are excluded from materialization. |
@@ -78,11 +78,12 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 
 - **Small and fast:** `gemma4-it:e4b` and `gpt-oss:20b` on both NPUs.
   FastFlowLM owns these weights; llama-swap exposes both as peers.
-- **Daily general:** Qwen 3.6 35B-A3B MXFP4 on Vulkan.
+- **Daily general:** Qwen 3.6 35B-A3B UD-Q8_K_XL with integrated MTP on
+  Vulkan.
 - **Historical SOTA:** DeepSeek V4 Flash Q4 imatrix plus MTP through dual-node
   DS4 is retained as evidence only; it is no longer an installable deployment.
-- **Coder:** Qwopus and Gemma 4 are active on both machines. Qwen3-Coder-Next is
-  retained only as catalog metadata.
+- **Coder:** Gemma 4 26B A4B IT Q8_0 plus its Q8_0 MTP head is active on both
+  machines. Qwen3-Coder-Next is retained only as catalog metadata.
 - **Uncensored:** all rows are deferred and remain catalog-only.
 
 ## Routing and scheduling boundaries
