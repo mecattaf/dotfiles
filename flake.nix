@@ -805,6 +805,9 @@
           assert workerSettings.peers == coordinatorSettings.peers;
           assert coordinator.systemd.services.llama-swap.environment.LLAMA_MEDIA_MARKER == "<__media__>";
           assert worker.systemd.services.llama-swap.environment.LLAMA_MEDIA_MARKER == "<__media__>";
+          assert
+            coordinator.systemd.services.llama-swap.environment.XDG_CACHE_HOME == "/var/cache/llama-swap";
+          assert worker.systemd.services.llama-swap.environment.XDG_CACHE_HOME == "/var/cache/llama-swap";
           assert coordinator.hardware.amd-npu.enableNPU;
           assert worker.hardware.amd-npu.enableNPU;
           assert nixpkgs.lib.elem "amd_iommu=on" coordinator.boot.kernelParams;

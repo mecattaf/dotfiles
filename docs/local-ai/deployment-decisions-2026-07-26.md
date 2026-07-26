@@ -81,6 +81,9 @@ applies to the two FastFlowLM rows.
 - All local LLM and VLM calls enter through llama-swap. A deterministic
   `<__media__>` marker is inherited by llama.cpp children so multimodal
   embedding clients can address transient backends consistently.
+- llama-swap's systemd-managed cache directory is exported as `XDG_CACHE_HOME`.
+  Mesa/RADV shader caches therefore persist across on-demand model swaps without
+  granting the dynamic service user a general writable home directory.
 - GGUF and VibeVoice payloads are immutable, hash-checked Nix store paths. Only
   explicit per-host selections root them; catalog-only candidates do not
   download.

@@ -66,7 +66,12 @@ in
     # Backend children inherit one stable multimodal placeholder. This keeps
     # OpenAI embedding clients from having to discover llama.cpp's otherwise
     # randomized marker through each transient backend's /props endpoint.
-    environment.LLAMA_MEDIA_MARKER = "<__media__>";
+    environment = {
+      LLAMA_MEDIA_MARKER = "<__media__>";
+      # DynamicUser has no ordinary home. Point Mesa/RADV at the writable
+      # systemd-managed cache below so Vulkan pipelines survive model swaps.
+      XDG_CACHE_HOME = "/var/cache/llama-swap";
+    };
     serviceConfig = {
       # The upstream NixOS module uses DynamicUser + ProtectSystem=strict. Add
       # systemd-managed writable paths for v240's activity store and backend
