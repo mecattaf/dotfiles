@@ -63,7 +63,9 @@ applies to the two FastFlowLM rows.
   `~/.config/flm/models`. In particular, GPT-OSS is an upstream Q4_1 NPU2
   package; it is an explicit runtime-format exception, not a low-bit GGUF
   selection. Both loopback-only NPU servers remain exposed to callers solely
-  as llama-swap peers.
+  as llama-swap peers. Their download and serve units require the live XDNA
+  device at `/dev/accel/accel0`, so an IOMMU-changing deployment boots the new
+  kernel before FastFlowLM materializes its runtime-owned snapshots.
 - Voxtype owns and verifies its Parakeet snapshot as mutable user data. Voxtype
   0.7.5 lists larger nominally 0.6B variants, but those are batch-only;
   `parakeet-unified-en-0.6b` is the largest registry entry compatible with the

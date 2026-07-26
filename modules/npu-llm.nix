@@ -119,6 +119,10 @@ in
         description = "Download the declared FastFlowLM NPU models";
         after = [ "network-online.target" ];
         wants = [ "network-online.target" ];
+        # A switch cannot retrofit IOMMU state into the running kernel. Defer
+        # both downloads and serving until the XDNA device is actually usable;
+        # the condition is evaluated again normally on the next boot.
+        unitConfig.ConditionPathExists = "/dev/accel/accel0";
         environment = runtimeEnvironment;
         path = [
           pkgs.fastflowlm
@@ -141,6 +145,7 @@ in
           after = [ "flm-model-bootstrap.service" ];
           requires = [ "flm-model-bootstrap.service" ];
           wantedBy = [ "multi-user.target" ];
+          unitConfig.ConditionPathExists = "/dev/accel/accel0";
           # `flm` and XRT reach the system profile via hardware.amd-npu.
           path = [
             pkgs.fastflowlm
