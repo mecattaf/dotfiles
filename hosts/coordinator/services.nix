@@ -1,4 +1,24 @@
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  socketProxyd = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd";
+  waitForHttp =
+    name: url:
+    pkgs.writeShellScript "${name}-wait-for-http" ''
+      for _ in $(${pkgs.coreutils}/bin/seq 1 90); do
+        if ${pkgs.curl}/bin/curl --fail --silent --max-time 1 ${lib.escapeShellArg url} >/dev/null; then
+          exit 0
+        fi
+        ${pkgs.coreutils}/bin/sleep 1
+      done
+      echo "${name} did not become ready within 90 seconds" >&2
+      exit 1
+    '';
+in
 # The coordinator's media services — Immich (photos) and Navidrome (music) — as
 # NATIVE NixOS modules. Migrated 2026-07-13 from the rootless podman quadlets
 # they were ported to on 2026-07-05 (see git history for the old .container
@@ -34,8 +54,10 @@
   services.immich = {
     enable = true;
     mediaLocation = "/mnt/nas/photos";
-    host = "0.0.0.0"; # tailnet-reachable; firewall below scopes it to tailscale0
-    port = 2283;
+    # The public 2283 listener is the socket-activated proxy below. Immich stays
+    # private on 2284 and only runs while someone is actually using it.
+    host = "127.0.0.1";
+    port = 2284;
     user = "tom";
     group = "users";
     # The postgres it provisions is reached over a unix socket with PEER auth,
@@ -63,6 +85,20 @@
   # The LaCie is an x-systemd.automount; pull the real mount in before the server
   # touches mediaLocation (uses the .automount, so the drive still spins down).
   systemd.services.immich-server = {
+    # The proxy is the only long-lived entry point. The three Immich workers are
+    # deliberately absent from multi-user.target and stop when the proxy has
+    # seen no connections for 15 minutes. This releases Node's post-job heap and
+    # lets the LaCie return to standby instead of keeping a rarely-used gallery
+    # resident around the clock.
+    wantedBy = lib.mkForce [ ];
+    requires = [ "redis-immich.service" ];
+    wants = [ "immich-machine-learning.service" ];
+    after = [
+      "redis-immich.service"
+      "immich-machine-learning.service"
+    ];
+    environment.CPU_CORES = "4";
+    unitConfig.StopWhenUnneeded = true;
     unitConfig.RequiresMountsFor = [ "/mnt/nas" ];
     serviceConfig.BindPaths = [
       "/var/lib/immich/generated/thumbs:/mnt/nas/photos/thumbs"
@@ -71,6 +107,44 @@
       "/var/lib/immich/generated/backups:/mnt/nas/photos/backups"
     ];
   };
+  systemd.services.immich-machine-learning = {
+    wantedBy = lib.mkForce [ ];
+    unitConfig.StopWhenUnneeded = true;
+  };
+  systemd.services.redis-immich = {
+    wantedBy = lib.mkForce [ ];
+    unitConfig.StopWhenUnneeded = true;
+  };
+
+  systemd.sockets.immich-access = {
+    description = "Wake Immich on the first client connection";
+    wantedBy = [ "sockets.target" ];
+    socketConfig = {
+      ListenStream = "0.0.0.0:2283";
+      NoDelay = true;
+    };
+  };
+  systemd.services.immich-access = {
+    description = "On-demand proxy for Immich";
+    requires = [ "immich-server.service" ];
+    after = [ "immich-server.service" ];
+    serviceConfig = {
+      ExecStartPre = waitForHttp "Immich" "http://127.0.0.1:2284/api/server/ping";
+      ExecStart = "${socketProxyd} --exit-idle-time=15min 127.0.0.1:2284";
+      DynamicUser = true;
+      NoNewPrivileges = true;
+      PrivateDevices = true;
+      PrivateTmp = true;
+      ProtectHome = true;
+      ProtectSystem = "strict";
+      RestrictAddressFamilies = [
+        "AF_INET"
+        "AF_INET6"
+        "AF_UNIX"
+      ];
+      TimeoutStartSec = "2min";
+    };
+  };
 
   services.navidrome = {
     enable = true;
@@ -78,8 +152,9 @@
     group = "users";
     settings = {
       MusicFolder = "/mnt/nas/music";
-      Address = "0.0.0.0"; # tailnet-reachable; scoped to tailscale0 by firewall
-      Port = 4533;
+      # As with Immich, the stable public port belongs to the on-demand proxy.
+      Address = "127.0.0.1";
+      Port = 4534;
       # @daily, not hourly: an hourly rescan walks /music and wakes the LaCie
       # from standby (hd-idle parks it after 20 min — see uplink-nas.nix),
       # defeating the power-down suite. New media appears after the nightly scan
@@ -91,7 +166,43 @@
       AutoImportPlaylists = true;
     };
   };
-  systemd.services.navidrome.unitConfig.RequiresMountsFor = [ "/mnt/nas" ];
+  systemd.services.navidrome = {
+    wantedBy = lib.mkForce [ ];
+    unitConfig = {
+      RequiresMountsFor = [ "/mnt/nas" ];
+      StopWhenUnneeded = true;
+    };
+  };
+
+  systemd.sockets.navidrome-access = {
+    description = "Wake Navidrome on the first client connection";
+    wantedBy = [ "sockets.target" ];
+    socketConfig = {
+      ListenStream = "0.0.0.0:4533";
+      NoDelay = true;
+    };
+  };
+  systemd.services.navidrome-access = {
+    description = "On-demand proxy for Navidrome";
+    requires = [ "navidrome.service" ];
+    after = [ "navidrome.service" ];
+    serviceConfig = {
+      ExecStartPre = waitForHttp "Navidrome" "http://127.0.0.1:4534/";
+      ExecStart = "${socketProxyd} --exit-idle-time=15min 127.0.0.1:4534";
+      DynamicUser = true;
+      NoNewPrivileges = true;
+      PrivateDevices = true;
+      PrivateTmp = true;
+      ProtectHome = true;
+      ProtectSystem = "strict";
+      RestrictAddressFamilies = [
+        "AF_INET"
+        "AF_INET6"
+        "AF_UNIX"
+      ];
+      TimeoutStartSec = "2min";
+    };
+  };
 
   # atuin — self-hosted shell-history sync server, same tailnet-only posture as
   # Immich/Navidrome above (no extra app-level auth; the tailnet IS the trust
