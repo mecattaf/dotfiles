@@ -33,9 +33,9 @@ change when their upstream model tags advance.
 
 The text-only and VL embedders are complementary. Qwen3-Embedding-8B remains
 the stronger supplied text benchmark choice; Qwen3-VL-Embedding-8B adds
-text/image/screenshot/video and mixed-modal retrieval. The VL route starts at
-`api-only` evidence and must pass a text-plus-image smoke before promotion to a
-locally verified evidence class.
+text/image/screenshot/video and mixed-modal retrieval. The VL route is locally
+matched: text and image smoke requests through llama-swap each returned one
+normalized 4,096-dimensional embedding on the coordinator.
 
 ## Worker
 

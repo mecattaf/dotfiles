@@ -1226,9 +1226,9 @@ let
                 "999"
                 "--no-mmap"
               ];
-              evidence = "api-only";
+              evidence = "matched-local";
               hardware = "coordinator Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
-              notes = "Coordinator-only multimodal retrieval route. The pinned llama.cpp supports Qwen3-VL pooling and multimodal embedding requests; a local text/image smoke remains part of rollout acceptance.";
+              notes = "Coordinator-only multimodal retrieval route. Verified locally on 2026-07-26 through llama-swap with both text and image inputs: each returned one normalized 4096-dimensional embedding; the image request consumed 64 prompt/media tokens.";
             };
           };
         };
