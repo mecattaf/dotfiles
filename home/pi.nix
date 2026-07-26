@@ -1,5 +1,6 @@
 {
   lib,
+  osConfig,
   pkgs,
   ...
 }:
@@ -35,8 +36,14 @@
 # (`packages`/`extensions` arrays, loaded only in trusted project dirs). Reach for
 # the latter to scope an extension to one repo instead of the whole fleet.
 #
-# NOT host-gated: like claude-code, pi is a general dev tool every host runs.
 let
+  # Embedded home-manager exposes the host's evaluated NixOS config here. Only
+  # load the local provider where that host actually runs llama-swap; Pi itself
+  # remains available everywhere. The standalone bridge has no osConfig.
+  llamaSwap =
+    if osConfig == null then null else lib.attrByPath [ "services" "llama-swap" ] null osConfig;
+  hasLocalLlamaSwap = llamaSwap != null && llamaSwap.enable;
+
   # ── extension roster ─────────────────────────────────────────────────────
   # One entry per extension — the whole "standard": a name, an `enable` toggle,
   # and an immutable `src`. Add a package by adding a stanza; disable one by
@@ -47,7 +54,7 @@ let
     # roster served on this box (see modules/llama-swap.nix) into pi as a
     # first-class provider. https://pi.dev/packages/@danielmeneses/pi-llama-swap
     pi-llama-swap = {
-      enable = true;
+      enable = hasLocalLlamaSwap;
       src = pkgs.pi-llama-swap-extension;
     };
   };
@@ -72,6 +79,14 @@ let
         exec ${pi}/bin/pi "$@"
         ;;
     esac
+    # The extension's upstream default is :8080; our one caller-facing local
+    # LLM endpoint comes from this host's service config. Preserve an explicit
+    # caller override for diagnostics and remote endpoints.
+    ${lib.optionalString hasLocalLlamaSwap ''
+      if test -z "''${LLAMA_SWAP_URL-}" && test -z "''${LLAMA_SWAP_PORT-}"; then
+        export LLAMA_SWAP_PORT=${toString llamaSwap.port}
+      fi
+    ''}
     exec ${pi}/bin/pi ${lib.escapeShellArgs loadArgs} "$@"
   '';
 in
