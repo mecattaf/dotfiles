@@ -1,8 +1,8 @@
 { pkgs, ... }:
-# worker → fleet cache AUTO-PUSH (refs #42). The worker is the designated
-# builder; wire nix-daemon's post-build-hook so every closure it builds lands on
-# the coordinator's atticd (http://coordinator:8080/fleet) the instant it is
-# built. Cold hosts then substitute the prebuilt paths instead of the ~8h
+# worker → fleet cache AUTO-PUSH (refs #42). The worker is no longer the
+# coordinator's default builder, but optional work executed there should still
+# land in the coordinator's atticd (http://coordinator:8080/fleet) the instant it
+# is built. Cold hosts then substitute the prebuilt paths instead of the ~8h
 # from-source rebuild of the llm-agents catalog. Counterpart to the SERVER half
 # in hosts/coordinator/attic.nix and the substituter/trusted-key wiring in
 # modules/common.nix.

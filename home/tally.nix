@@ -9,14 +9,14 @@
 #
 # home/home.nix is shared by the fleet and the standalone bridge, but the daemon,
 # logical pools, remote executor, and calendar producers exist ONLY on coordinator.
-# worker contributes execution/GPU capacity through the daemonless SSH executor;
-# zenbook-duo remains a best-effort target of the coordinator-owned deploy workflow.
+# worker remains optional execution/GPU capacity through the daemonless SSH
+# executor; zenbook-duo remains a best-effort target of the coordinator-owned
+# deploy workflow. Neither is required for coordinator maintenance.
 #
 # The calendar remains systemd's clock, while tally owns admission, ordering,
-# execution, and proof. One nightly item now replaces the old staggered prebuild +
-# three per-host switches. It atomically leases build and both core GPU lanes for
-# the complete deploy-rs transaction, so it waits for active builds/LLM jobs and
-# cannot admit conflicting work between worker and coordinator activation.
+# execution, and proof. One nightly item leases the build lane and coordinator GPU
+# for the complete local build/deploy transaction, so it waits for active work
+# without making the soft-retired worker part of the maintenance critical path.
 let
   hostName = if osConfig == null then "bridge" else osConfig.networking.hostName;
   isCoordinator = hostName == "coordinator";
@@ -127,13 +127,13 @@ in
     };
 
     # One low-priority durable row replaces the old 02:00/03:30/04:30/06:00 chain.
-    # It is intentionally conservative: all three real contention lanes are held
-    # end-to-end, making build + worker→coordinator rollback one maintenance window.
+    # It holds the build and coordinator GPU lanes end-to-end, making the measured
+    # single-node build plus activation one exclusive maintenance window.
     # The system service handles Zenbook's successful offline/low-power skip internally.
     producers = lib.optionalAttrs isCoordinator {
       # The parent serializes one monthly review but does not reserve the GPU.
       # After deterministic Git/Nix/HF preparation it enqueues one low-priority
-      # worker-gpu child for Pi, waits for the commentary, then verifies and
+      # coordinator-gpu child for Pi, waits for the commentary, then verifies and
       # publishes without a GPU lease. noEnqueue=false is the deliberate child
       # capability; Tally injects the parent identity and socket for that call.
       monthly-local-ai-review = {
@@ -165,7 +165,6 @@ in
           pool = [
             "build"
             "coordinator-gpu"
-            "worker-gpu"
           ];
           argv = systemService "fleet-deploy.service";
           priority = "low";

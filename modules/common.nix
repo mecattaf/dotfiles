@@ -40,10 +40,9 @@
     connect-timeout = 5;
     fallback = true;
 
-    # Trusted Nix users (fleet-wide). Lets `tom` (via @wheel) copy in
-    # worker-built, unsigned store paths (`nix copy` / `nixos-rebuild
-    # --build-host` copy-back) and pass client-specified substituters — both of
-    # which the daemon otherwise refuses for a non-trusted user ("lacks a
+    # Trusted Nix users (fleet-wide). Lets `tom` (via @wheel) copy unsigned store
+    # paths and pass client-specified substituters — both of which the daemon
+    # otherwise refuses for a non-trusted user ("lacks a
     # signature by a trusted key" / "you are not a trusted user"). Also what the
     # fleet binary cache (#42) needs to push/pull unsigned paths as tom.
     # Acceptable on this single-operator fleet: tom already has passwordless sudo.
@@ -65,8 +64,7 @@
       "https://nix-amd-ai.cachix.org"
       "https://cache.hellas.ai"
       # Fleet binary cache — atticd on the coordinator (hosts/coordinator/attic.nix).
-      # Split-horizon naming sends the worker over the TB5 fast lane and other
-      # remote hosts over the Tailscale mesh. The cache is public, so pulls need
+      # Every remote host reaches it over the Tailscale mesh. The cache is public, so pulls need
       # only the signing key below. A cold host substitutes the ~7,744 llm-agents
       # paths instead of rebuilding them. refs #42.
       "http://coordinator:8080/fleet"
@@ -159,7 +157,7 @@
 
   # --- desktop plumbing ---
   hardware.bluetooth.enable = true;
-  services.hardware.bolt.enable = true; # USB4/Thunderbolt authorization (cluster link)
+  services.hardware.bolt.enable = true; # ordinary USB4/Thunderbolt device authorization
   services.gnome.gnome-keyring.enable = true;
   security.pam.services.greetd.enableGnomeKeyring = true;
   security.polkit.enable = true;
@@ -186,8 +184,8 @@
     startWhenNeeded = true;
   };
   services.tailscale.enable = true;
-  # Tailscale SSH: any mesh node can reach any other over the tailnet in ANY
-  # situation (LAN, remote, or when the TB5 fabric is down), authenticated by
+  # Tailscale SSH: any mesh node can reach any other over the tailnet from any
+  # underlying network, authenticated by
   # tailnet identity — no user keypair needed for this path. Keep the flag on
   # BOTH paths: `extraUpFlags` lets the autoconnect unit recover a stopped node
   # whose stored preferences already have SSH enabled (tailscale up requires all
@@ -199,8 +197,7 @@
   services.tailscale.extraSetFlags = [ "--ssh" ];
   services.resolved.enable = true;
   networking.firewall.enable = true;
-  # wayvnc (port 5900) is reachable ONLY over the tailnet — never the LAN/wifi. The
-  # direct Thunderbolt link is already a trusted interface (see modules/strix.nix).
+  # wayvnc (port 5900) is reachable ONLY over the tailnet — never the raw LAN/wifi.
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 5900 ];
 
   # --- zram (cap at 8 GiB; bare enable would balloon on the 128 GB boxes) ---
@@ -274,8 +271,8 @@
     # Linux; without it voice input fails ("check your microphone").
     sox
     # attic client — `attic login`/`attic push` against the fleet cache (#42).
-    # Present fleet-wide so any host can pull-login and the designated builder
-    # (worker) can push built closures. Server pkg is pulled by hosts/coordinator.
+    # Present fleet-wide so any host can pull-login or explicitly push a built
+    # closure. Server pkg is pulled by hosts/coordinator.
     attic-client
   ];
 

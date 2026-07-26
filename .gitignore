@@ -5,6 +5,10 @@ home/dot_config/quickshell/webshell-v0.0.1-archived/dist/
 # Python bytecode cache (kitty kittens under home/dot_config/kitty)
 __pycache__/
 
+# Claude Code writes host-local permission grants beside whichever directory it
+# is operating in. They are mutable machine state, not shared configuration.
+**/.claude/settings.local.json
+
 # Never commit secret key material / plaintext
 *.age.key
 *_ed25519

@@ -24,6 +24,16 @@ export const meta = {
 };
 
 (async () => {
+  const retiredModels = new Set([
+    "deepseek-v4-flash-q4-imatrix",
+    "deepseek-v4-flash-mtp"
+  ]);
+  for (const model of [...args.coordinatorModels, ...args.workerModels]) {
+    if (retiredModels.has(model)) {
+      throw new Error(`retired DS4 artifact is not a materialization target: ${model}`);
+    }
+  }
+
   // The whole campaign is armed but inert until the LaCie post-restore umbrella
   // closes and the SSD space is real. This node IS the gate: it fails until then.
   await sh(

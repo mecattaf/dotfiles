@@ -703,7 +703,7 @@ let
             deepseek-v4-flash-q4-dual = {
               model = "deepseek-v4-flash";
               role = "quality";
-              status = "canonical";
+              status = "retired";
               backend = "ds4";
               hosts = [
                 "coordinator"
@@ -736,7 +736,7 @@ let
               };
               evidence = "matched-local";
               hardware = "two Ryzen AI MAX+ 395 nodes over point-to-point Thunderbolt";
-              notes = "SOTA escalation lane. The artifact identity is final, but the current generic renderer does not yet encode coordinator/worker layer roles; downloadAllModels must remain false until fleet orchestration is added.";
+              notes = "Retired with the physical dual-node topology on 2026-07-26. Historical artifact, runtime, and benchmark evidence remain reproducible, but this row is no longer projected to either host, so its roughly 157 GiB of weights are not materialized even if downloadAllModels is later enabled. The DS4 runtime package remains installed.";
             };
 
             qwen36-35b-abliterated-heretic = {

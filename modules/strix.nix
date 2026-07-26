@@ -5,7 +5,9 @@
   pkgs,
   ...
 }:
-# AMD Strix Halo layer — imported by `coordinator` + `worker` ONLY.
+# AMD Strix Halo layer — imported by `coordinator` + `worker` ONLY. The role
+# remains meaningful after soft retirement: it selects per-machine accelerator
+# policy, not a requirement for a physical two-node fabric.
 {
   imports = [
     # Framework Desktop / Ryzen AI Max 300 series (gfx1151). Pulls amd cpu+gpu+ssd tuning.
@@ -25,13 +27,7 @@
         "coordinator"
         "worker"
       ];
-      description = "Role on the AMD Strix Halo Thunderbolt cluster.";
-    };
-    tbHostId = lib.mkOption {
-      type = lib.types.int;
-      # coordinator=1, worker=2 → static thunderbolt0 IPs 10.77.0.{1,2}
-      default = if config.myCluster.role == "coordinator" then 1 else 2;
-      description = "Host id on the deterministic Thunderbolt link (drives the static /30).";
+      description = "Hardware-policy role in the AMD Strix Halo fleet.";
     };
   };
 
@@ -83,47 +79,10 @@
     # instead of it sitting "on but dead" overnight until someone finds it —
     # the exact 2026-07-16 failure mode, twice. rebootTime bounds a hung
     # reboot/shutdown the same way.
-    systemd.watchdog.runtimeTime = "30s";
-    systemd.watchdog.rebootTime = "2m";
-
-    # --- Thunderbolt cluster fabric (direct coordinator↔worker cable) ---
-    boot.kernelModules = [ "thunderbolt-net" ]; # host-to-host TB networking (thunderbolt0)
-
-    # Deterministic static /30 on the direct TB cable; keep NetworkManager's hands
-    # off it (NM-assigned link-local IPs were the fragile part).
-    networking.networkmanager.unmanaged = [ "interface-name:thunderbolt0" ];
-    networking.interfaces.thunderbolt0 = {
-      useDHCP = false;
-      ipv4.addresses = [
-        {
-          address = "10.77.0.${toString config.myCluster.tbHostId}";
-          prefixLength = 30;
-        }
-      ];
+    systemd.settings.Manager = {
+      RuntimeWatchdogSec = "30s";
+      RebootWatchdogSec = "2m";
     };
 
-    # The scripted one-shot that assigns the static IP races the TB XDomain
-    # handshake: if thunderbolt0 appears after systemd's 90s device timeout, the
-    # job fails and never re-runs → headless box with no address until a lucky
-    # power cycle. Hooking the service onto the device unit re-fires it whenever
-    # the link (re)appears — idempotent, the script uses `ip addr replace`.
-    systemd.services."network-addresses-thunderbolt0".wantedBy = [
-      "sys-subsystem-net-devices-thunderbolt0.device"
-    ];
-
-    # Split-horizon naming: each Strix node resolves its peer's canonical name
-    # over the direct TB link. The node's own canonical name remains local, and
-    # devices without this module resolve the same names through MagicDNS.
-    networking.hosts =
-      if config.myCluster.role == "coordinator" then
-        { "10.77.0.2" = [ "worker" ]; }
-      else
-        { "10.77.0.1" = [ "coordinator" ]; };
-
-    # docs/old/migration-journal/ds4-dual-node-lessons.md Lesson #5 + Appendix A:
-    # an untrusted TB interface
-    # REJECTs cluster traffic ("No route to host") — coordinator :8081 inbound AND
-    # worker inbound KV staging. Trust the point-to-point link on BOTH nodes.
-    networking.firewall.trustedInterfaces = [ "thunderbolt0" ];
   };
 }

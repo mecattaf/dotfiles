@@ -1,5 +1,5 @@
 {
-  description = "mecattaf — one flake for the whole distribution (NixOS + home-manager). Coordinator/worker AMD Strix Halo cluster + Intel laptops.";
+  description = "mecattaf — one flake for the whole distribution (NixOS + home-manager). AMD Strix Halo coordinator + tailnet worker + Intel laptops.";
 
   inputs = {
     # Unstable: Strix Halo (gfx1151) wants fresh kernels + Mesa.
@@ -200,8 +200,8 @@
     # EPHEMERAL — `nix run <guest>.config.microvm.declaredRunner` needs only this
     # input, no host module, so it works fleet-wide. The DURABLE path (the imperative
     # `microvm` CLI + `microvm@<name>` systemd units) is opt-in via
-    # modules/microvm-host.nix, enabled on the WORKER only (the Strix Halo compute
-    # node — keeps the coordinator light per the no-heavy-build doctrine). follows
+    # modules/microvm-host.nix, enabled on the WORKER only (its optional compute
+    # role survives soft retirement and is reached over the tailnet). follows
     # nixpkgs so the runner builds against our one pin.
     microvm = {
       url = "github:microvm-nix/microvm.nix";
@@ -269,9 +269,8 @@
         "-o"
         "UserKnownHostsFile=/etc/ssh/ssh_known_hosts"
         "-o"
-        # Bootstrap the first unattended deploy from a tailnet-down coordinator:
-        # before split-horizon /etc/hosts is activated, LLMNR also advertises an
-        # unusable link-local AAAA answer for the worker's direct connection.
+        # Fleet hostnames resolve through Tailscale MagicDNS. Force its stable IPv4
+        # address so deploy-rs never selects an unrelated link-local AAAA record.
         "AddressFamily=inet"
         "-o"
         "ConnectTimeout=10"
@@ -391,7 +390,7 @@
         sshOpts = fleetDeploySshOpts;
         autoRollback = true;
         magicRollback = true;
-        remoteBuild = false; # coordinator's Nix daemon already offloads to worker
+        remoteBuild = false; # every selected profile is built locally on coordinator
         fastConnection = false; # let each destination substitute from Attic
         activationTimeout = 1200;
         confirmTimeout = 90;
@@ -404,17 +403,10 @@
               "zenbook-duo"
             ]
             (host: {
-              # Canonical names are split-horizon: the Strix peers resolve each
-              # other over Thunderbolt; hosts without that link use MagicDNS.
-              # Pin the worker's transport here as well so the first deployment
-              # can bootstrap before the new /etc/hosts has been activated.
+              # Canonical names resolve through Tailscale MagicDNS. `worker` stays
+              # a first-class deploy target, but no physical link is required.
               hostname = host;
-              sshOpts =
-                fleetDeploySshOpts
-                ++ nixpkgs.lib.optionals (host == "worker") [
-                  "-o"
-                  "HostName=10.77.0.2"
-                ];
+              sshOpts = fleetDeploySshOpts;
               profiles.system.path =
                 inputs.deploy-rs.lib.${system}.activate.nixos
                   self.nixosConfigurations.${host};
@@ -466,14 +458,14 @@
       # This operator escape hatch does not change the one NixOS install switch.
       legacyPackages.${system}.models = localModelStore.packages;
 
-      formatter.${system} = pkgs.nixfmt-rfc-style;
+      formatter.${system} = pkgs.nixfmt;
 
       devShells.${system}.default = pkgs.mkShell {
         packages = [
           inputs.agenix.packages.${system}.default # `agenix -e/-r`
         ]
         ++ (with pkgs; [
-          nixfmt-rfc-style
+          nixfmt
           deadnix
           statix
           nil
@@ -493,28 +485,36 @@
             ];
             monthlySources = builtins.fromJSON (builtins.readFile ./pkgs/local-ai-monthly/sources.json);
           in
-          assert coordinator.networking.hosts."10.77.0.2" == [ "worker" ];
-          assert worker.networking.hosts."10.77.0.1" == [ "coordinator" ];
+          assert !(coordinator.networking.hosts ? "10.77.0.2");
+          assert !(worker.networking.hosts ? "10.77.0.1");
           assert self.deploy.nodes.worker.hostname == "worker";
           assert self.deploy.nodes.coordinator.hostname == "coordinator";
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
-          assert nixpkgs.lib.elem "HostName=10.77.0.2" self.deploy.nodes.worker.sshOpts;
+          assert !(nixpkgs.lib.elem "HostName=10.77.0.2" self.deploy.nodes.worker.sshOpts);
           assert coordinator.services.tailscale.extraUpFlags == [ "--ssh" ];
           assert coordinator.systemd.services.tailscaled-autoconnect.serviceConfig.RestartSec == "1min";
-          assert (builtins.head coordinator.nix.buildMachines).hostName == "worker";
+          assert !coordinator.nix.distributedBuilds;
+          assert coordinator.nix.buildMachines == [ ];
           assert coordinator.home-manager.users.tom.services.tally.executors.worker.host == "worker";
+          assert coordinator.programs.ssh.knownHosts.worker.hostNames == [ "worker" ];
+          assert worker.programs.ssh.knownHosts.coordinator.hostNames == [ "coordinator" ];
+          assert worker.myCluster.role == "worker";
+          assert !worker.services.openssh.openFirewall;
+          assert nixpkgs.lib.elem 22 worker.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
+          assert !(nixpkgs.lib.elem "thunderbolt0" worker.networking.firewall.trustedInterfaces);
+          assert worker.networking.networkmanager.ensureProfiles.profiles ? "Freebox-AB3ACE";
+          assert worker.networking.networkmanager.ensureProfiles.profiles ? "sodimo_wifi";
           assert
-            coordinator.programs.ssh.knownHosts.worker.hostNames == [
-              "worker"
-              "10.77.0.2"
-            ];
+            worker.networking.networkmanager.ensureProfiles.profiles."Freebox-AB3ACE".connection.autoconnect-priority
+            == 100;
           assert
-            worker.programs.ssh.knownHosts.coordinator.hostNames == [
-              "coordinator"
-              "10.77.0.1"
-            ];
+            worker.networking.networkmanager.ensureProfiles.profiles.sodimo_wifi.connection.autoconnect-priority
+            == 50;
           assert nixpkgs.lib.elem "http://coordinator:8080/fleet" worker.nix.settings.extra-substituters;
-          assert monthlySources.inference.url == "http://worker:9292";
+          assert monthlySources.inference.url == "http://coordinator:9292";
+          assert monthlySources.inference.compute_host == "coordinator";
+          assert monthlySources.inference.tally_pool == "coordinator-gpu";
+          assert localModelCatalog.deployments."deepseek-v4-flash-q4-dual".status == "retired";
           pkgs.runCommand "fleet-connectivity" { } ''
             if ${pkgs.ripgrep}/bin/rg --line-number '${retiredAliases}' ${self}; then
               echo "retired mesh alias found" >&2
@@ -532,7 +532,7 @@
         huggingface-cli-smoke =
           let
             hf = pkgs.huggingface-cli;
-            expectedVersion = "1.10.2";
+            expectedVersion = "1.16.0";
             smokeRevision = "0123456789abcdef0123456789abcdef01234567";
             mockHub = pkgs.writeText "huggingface-metadata-mock.py" ''
               import json

@@ -75,7 +75,7 @@ in
   # --- JBL Authentics 200 on a dedicated wire (enp191s0), 2026-07-25 ---
   # The speaker is cabled DIRECTLY to this box's RTL8126 port. This is not a
   # revival of the BE550 router plane above: it is a point-to-point segment with
-  # exactly one appliance on it, the same shape as the Thunderbolt cluster link.
+  # exactly one appliance on it.
   #
   # Why the cable exists: audio to the JBL stuttered badly over wifi, and the
   # coordinator's own uplink is an mt7925e that has hard-locked this box twice
@@ -93,8 +93,8 @@ in
   #   - trustedInterfaces: common.nix's firewall dropped the DHCP broadcast
   #     before dnsmasq ever saw it. RAOP also needs the speaker's timing/control
   #     packets back on unsolicited UDP ports, which RELATED,ESTABLISHED does not
-  #     cover. Trusting a dedicated one-appliance cable is exactly the precedent
-  #     already set for thunderbolt0 in modules/strix.nix;
+  #     cover. Trusting a dedicated one-appliance cable keeps that exception
+  #     constrained to a physical point-to-point segment;
   #   - NAT: without it the speaker reaches this box and nothing else — no
   #     firmware updates, no streaming services, no app control.
   #

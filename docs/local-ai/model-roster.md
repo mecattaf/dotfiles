@@ -1,15 +1,17 @@
 # Local model roster
 
-Anchor: 2026-07-22. “Canonical” means selected roster identity, not permission
+Anchor: 2026-07-26. “Canonical” means selected roster identity, not permission
 to fetch or run it. The manual `downloadAllModels = false` gate remains the
 deployment authority.
 
 The Nix catalog contains 12 deployment rows and 15 pinned files totaling
-365,900,189,792 bytes (340.77 GiB). If the global gate were lifted without a
-placement change, the current projection would root 273,678,128,448 bytes on
-the coordinator and 365,900,189,792 bytes on the exhaustive worker. Those
-figures exclude FastFlowLM-owned NPU weights and the speech appliances. This is
-one reason the gate must remain closed until the deployment pass.
+365,900,189,792 bytes (340.77 GiB), including the retained historical DS4
+artifacts. If the global gate were lifted without a placement change, the current
+canonical projection would root 105,237,023,456 bytes (98.01 GiB) on the
+coordinator and 197,459,084,800 bytes (183.90 GiB) on the exhaustive worker. The
+retired DS4 pair is excluded. Those figures also exclude FastFlowLM-owned NPU
+weights and the speech appliances, so the gate remains closed until the later
+deployment pass.
 
 ## llama-swap catalog
 
@@ -25,7 +27,7 @@ produce it.
 | Coding pool 1 | `qwen3-coder-next` | [`unsloth/Qwen3-Coder-Next-GGUF@ce09c67`](https://huggingface.co/unsloth/Qwen3-Coder-Next-GGUF/tree/ce09c67b53bc8739eef83fe67b2f5d293c270632), `Qwen3-Coder-Next-UD-Q4_K_XL.gguf` | llama.cpp Vulkan | Exact benchmark bitstream: four-stage coding PASS, nonce 3/3, 44.4 tok/s decode |
 | Coding pool 2 | `qwopus3.6-27b-v2` | [`Jackrong/Qwopus3.6-27B-v2-GGUF@ef90e98`](https://huggingface.co/Jackrong/Qwopus3.6-27B-v2-GGUF/tree/ef90e98f127675cd5457c71fb30ff184f751e963), `Qwopus3.6-27B-v2-Q5_K_M.gguf` | llama.cpp Vulkan | Exact Ciru profile: 42/148 BigCodeBench-Hard; kept distinct from stock Qwen 27B |
 | Coding pool 3 | `gemma4-26b-a4b-qat` | [`google/gemma-4-26B-A4B-it-qat-q4_0-gguf@d1c082b`](https://huggingface.co/google/gemma-4-26B-A4B-it-qat-q4_0-gguf/tree/d1c082be9cf3c8a514acf63b8761f4b41935842e), `gemma-4-26B_q4_0-it.gguf`; MTP: [`unsloth/gemma-4-26B-A4B-it-qat-GGUF@7b92b5b`](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-qat-GGUF/tree/7b92b5b28818151e8669af2e45e88d6086f490dd), `mtp-gemma-4-26B-A4B-it.gguf` | llama.cpp Vulkan, QAT-matched MTP | Current corrected-vocabulary bitstream is selected but unverified locally; prior benchmark used an older OID |
-| SOTA | `deepseek-v4-flash` | [`antirez/deepseek-v4-gguf@a88c423`](https://huggingface.co/antirez/deepseek-v4-gguf/tree/a88c423b511666d7ff7a4dcaee651669312bea97), full Q4 imatrix model + `DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf` | [`ejpir/ds4-hip@3490c2e`](https://github.com/ejpir/ds4-hip/commit/3490c2e46c91331323dc0f2bfb7d3018e227fdff), dual node | Exact weight identity matched locally at about 11 tok/s; Nix coordinator/worker launch orchestration is not implemented yet |
+| Retired SOTA | `deepseek-v4-flash` | [`antirez/deepseek-v4-gguf@a88c423`](https://huggingface.co/antirez/deepseek-v4-gguf/tree/a88c423b511666d7ff7a4dcaee651669312bea97), full Q4 imatrix model + `DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf` | Historical [`ejpir/ds4-hip@3490c2e`](https://github.com/ejpir/ds4-hip/commit/3490c2e46c91331323dc0f2bfb7d3018e227fdff) dual-node run | Exact identity and roughly 11 tok/s witness retained; deployment retired on 2026-07-26, so its roughly 157 GiB weights are excluded from materialization |
 | Uncensored / Heretic | `qwen3.6-35b-heretic` | [`Youssofal/Qwen3.6-35B-A3B-Abliterated-Heretic-GGUF@4c22107`](https://huggingface.co/Youssofal/Qwen3.6-35B-A3B-Abliterated-Heretic-GGUF/tree/4c22107061e656fb2a87a3ec2491bb61975eb581), Q4_K_M | llama.cpp Vulkan | Artifact provenance resolved; local behavior/quality run pending |
 | Uncensored / tuned | `supergemma4-26b-uncensored` | [`Jiunsong/supergemma4-26b-uncensored-gguf-v2@3ea8c45`](https://huggingface.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2/tree/3ea8c452a2b136875c0c8b529612bed39c81e27a), Q4_K_M | llama.cpp Vulkan | Exact Ciru throughput row: 66.07 tok/s decode |
 | Uncensored / aggressive | `glm-4.7-flash-uncensored` | [`tripolskypetr/GLM-4.7-Flash-Uncensored-Aggressive-GGUF@5ad26dd`](https://huggingface.co/tripolskypetr/GLM-4.7-Flash-Uncensored-Aggressive-GGUF/tree/5ad26ddb3ea7d64bc56ba1dab20bc52e776439cd), Q4_K_M | llama.cpp Vulkan | Different family and refusal-removal route; local run pending |
@@ -84,6 +86,6 @@ MIGraphX variant but does not replace that journal check.
   caller and must preserve each response and attribution.
 - The 8B OCR model drains by default. The 32B model is conditional refinement,
   not a permanently co-resident second server.
-- DeepSeek V4 is fleet-exclusive. Both nodes must drain other GPU work before a
-  DS4 session.
+- DeepSeek V4's dual-node DS4 row is historical evidence, not a runnable roster
+  member. The DS4 package remains installed, but its weights are not materialized.
 - Audio, image, and video generation remain parked and have no roster entries.

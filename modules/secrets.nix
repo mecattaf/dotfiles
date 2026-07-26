@@ -113,18 +113,6 @@ in
           fi
         '';
 
-        # A ROOT-owned copy of the same tom@mesh private key, for the nix-daemon (root)
-        # and other root-context clients that must SSH OUT across the mesh, principally
-        # distributed builds (modules/build-offload.nix). Same ciphertext, delivered
-        # 0400 root — ssh refuses a key it can't cleanly own, which a tom-owned
-        # /run/agenix path would trip.
-        age.secrets.ssh-root-key = {
-          file = ../secrets/ssh-user-key.age;
-          owner = "root";
-          group = "root";
-          mode = "400";
-        };
-
         # Tailscale: join the tailnet on first boot with this host's own pre-auth key
         # (per-host .age; single-use, non-ephemeral, preauthorized, tag:mesh — tagged
         # nodes get key expiry disabled on first auth, so the device never logs out).

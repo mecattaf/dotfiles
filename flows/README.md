@@ -8,7 +8,7 @@ flow runs until dotfiles issue #104 (LaCie post-restore) closes and T0 below is 
 
 Codex is the agentic harness for all implementation nodes (ruled 2026-07-25);
 Claude Code is not used as a flow node. Local quorum work goes through `local()`
-members on worker llama-swap.
+members on coordinator llama-swap; the soft-retired worker remains optional.
 
 ## T0 — flow-era readiness (babysat, daylight; tracked as its own issue)
 
@@ -57,7 +57,7 @@ Args defaults live in `tally-flows.nix`; override per run with `--args`.
 ## Notes
 
 - Pool names reference the live coordinator daemon config (`home/tally.nix`):
-  `build`, `worker-gpu`, plus `codex-window` added at T0. Weight downloads
+  `build`, `coordinator-gpu`, plus `codex-window` added at T0. Weight downloads
   serialize through `build` deliberately — one WAN link, and it keeps the lane
   honest against the nightly deploy.
 - `materialize-model-weights` builds `.#models.<artifactId>` store paths; get the

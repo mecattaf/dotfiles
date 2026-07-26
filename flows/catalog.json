@@ -7,7 +7,7 @@
       "maker": "alibaba",
       "classes": ["errata-review"],
       "adapter": "pi",
-      "pools": ["worker-gpu"],
+      "pools": ["coordinator-gpu"],
       "launch": {
         "model": "qwen3.6-35b-a3b"
       }
@@ -18,20 +18,9 @@
       "maker": "google",
       "classes": ["errata-review"],
       "adapter": "pi",
-      "pools": ["worker-gpu"],
+      "pools": ["coordinator-gpu"],
       "launch": {
         "model": "gemma4-26b-a4b-qat"
-      }
-    },
-    {
-      "id": "deepseek-quality",
-      "family": "deepseek",
-      "maker": "deepseek",
-      "classes": ["errata-review"],
-      "adapter": "pi",
-      "pools": ["worker-gpu", "coordinator-gpu"],
-      "launch": {
-        "model": "deepseek-v4-flash"
       }
     }
   ]

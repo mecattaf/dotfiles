@@ -1,6 +1,6 @@
 { config, lib, pkgs, ... }:
 # Artifact serving plane — COORDINATOR only (fleet front door; Caddy is
-# featherweight, so this honors the no-heavy-build doctrine; origins run on the
+# featherweight, while optional live origins can still run on the tailnet
 # worker). Realizes the publish-artifact skill's tailnet rung:
 #
 #   /var/lib/artifacts/<slug>.until-YYYYMMDD.caddy   TTL in the FILENAME

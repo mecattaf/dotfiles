@@ -3,7 +3,7 @@
   "accepted_through": "2026-07-21",
   "inference": {
     "provider": "llama-swap",
-    "url": "http://worker:9292",
+    "url": "http://coordinator:9292",
     "model_class": "strongest",
     "fallback_classes": ["fast"],
     "classes": {
@@ -17,8 +17,8 @@
       }
     },
     "execution_host": "coordinator",
-    "compute_host": "worker",
-    "tally_pool": "worker-gpu"
+    "compute_host": "coordinator",
+    "tally_pool": "coordinator-gpu"
   },
   "limits": {
     "commit_log": 80,
@@ -41,13 +41,13 @@
         "name": "coordinator",
         "hardware": "AMD Ryzen AI MAX+ 395, Radeon 8060S gfx1151, 128 GiB unified RAM",
         "policy": "XDNA NPU enabled; IOMMU enabled in translated mode",
-        "roles": ["Tally coordinator", "Pi harness", "Git and PR mechanics"]
+        "roles": ["Tally coordinator", "Pi harness", "primary GPU inference", "Git and PR mechanics"]
       },
       {
         "name": "worker",
         "hardware": "AMD Ryzen AI MAX+ 395, Radeon 8060S gfx1151, 128 GiB unified RAM",
-        "policy": "NPU disabled; IOMMU disabled for iGPU and DS4 performance",
-        "roles": ["llama-swap model host", "primary GPU inference"]
+        "policy": "NPU disabled; IOMMU disabled for maximum iGPU performance",
+        "roles": ["optional tailnet worker", "parallel GPU inference", "microVM host"]
       }
     ],
     "runtime_policy": "Every local LLM call goes through llama-swap; stable diffusion is outside this route.",
@@ -215,7 +215,7 @@
       "cadence": "monthly",
       "enabled": true,
       "baseline": "9de18f7e426b4cab65edeb1bd73cc2d950dab17d",
-      "baseline_authority": "2026-07 dry run",
+      "baseline_authority": "2026-07 dry run; deployment retired on 2026-07-26, source remains monitored",
       "processor": "generic",
       "partition": "top-level",
       "watched_paths": [
@@ -239,7 +239,7 @@
       "cadence": "monthly",
       "enabled": true,
       "baseline": "efdadd41e20134af4f3381e1ed90e96fe4faef6f",
-      "baseline_authority": "2026-07 dry run; Kyuz0 mirror matched this commit and the toolbox follows antirez/ds4",
+      "baseline_authority": "2026-07 dry run; Kyuz0 mirror matched this commit; deployment retired on 2026-07-26, source remains monitored",
       "processor": "generic",
       "partition": "top-level",
       "watched_paths": ["README.md", "docs/**", "src/**", "*.c", "*.h", "ds4-agent/**", "ds4-eval/**"]

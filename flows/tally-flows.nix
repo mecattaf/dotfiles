@@ -43,9 +43,9 @@ in
         coordinatorFlake = dotfiles;
         # worker builds from its own checkout via the SSH executor
         workerFlake = "/home/tom/dotfiles";
-        # Populate from: nix eval .#legacyPackages.x86_64-linux.models
-        #   --apply builtins.attrNames
-        # after the allowlist lands; uncensored = heretic artifacts only.
+        # Populate only from the accepted canonical allowlist after it lands;
+        # uncensored = heretic artifacts only. Never include the retired
+        # deepseek-v4-flash model or MTP artifact.
         coordinatorModels = [ ];
         workerModels = [ ];
       };
