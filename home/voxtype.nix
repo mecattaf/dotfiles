@@ -1,4 +1,5 @@
 {
+  config,
   inputs,
   lib,
   pkgs,
@@ -12,6 +13,7 @@
 let
   hostName = if osConfig == null then "bridge" else osConfig.networking.hostName;
   package = inputs.voxtype.packages.${pkgs.stdenv.hostPlatform.system}.onnx-migraphx;
+  osdPackage = inputs.voxtype.packages.${pkgs.stdenv.hostPlatform.system}.osd-gtk4;
   parakeetModel = "parakeet-unified-en-0.6b";
 in
 {
@@ -31,7 +33,16 @@ in
         mode = "toggle";
       };
 
-      audio.device = "iContact";
+      # CPAL exposes this host's PipeWire/ALSA bridge as `default`, while the
+      # selected USB microphone's friendly name ("iContact") is not a CPAL
+      # device identifier. Follow PipeWire's selected source so recording also
+      # keeps working when the preferred microphone is temporarily absent.
+      audio.device = "default";
+
+      # The launcher is part of the main package, but upstream ships each GUI
+      # frontend separately. Keep the selected frontend and installed package
+      # paired so recording state is visible under niri.
+      osd.frontend = "gtk4";
 
       parakeet = {
         # Current upstream's streaming-capable TDT-v3-family model. The similarly
@@ -60,11 +71,15 @@ in
     };
   };
 
+  home.packages = lib.optionals (hostName == "coordinator") [ osdPackage ];
+
   # The selected model is the only entry in Voxtype 0.7.5's registry marked as
   # compatible with its cache-aware live-streaming pipeline. Bootstrap it through
   # Voxtype's own idempotent downloader before the daemon starts, mirroring the
   # intentional runtime-pull boundary used by FastFlowLM.
   systemd.user.services.voxtype = lib.mkIf (hostName == "coordinator") {
+    Unit.X-Restart-Triggers = [ config.xdg.configFile."voxtype/config.toml".source ];
+
     Service = {
       # `setup --download` also persists its selected model to the default
       # config path. Home Manager owns that path with an immutable store
