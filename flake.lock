@@ -433,6 +433,24 @@
         "type": "github"
       }
     },
+    "flake-utils_3": {
+      "inputs": {
+        "systems": "systems_6"
+      },
+      "locked": {
+        "lastModified": 1731533236,
+        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
     "git-ai": {
       "inputs": {
         "flake-utils": [
@@ -455,24 +473,6 @@
       "original": {
         "owner": "git-ai-project",
         "repo": "git-ai",
-        "type": "github"
-      }
-    },
-    "flake-utils_3": {
-      "inputs": {
-        "systems": "systems_6"
-      },
-      "locked": {
-        "lastModified": 1731533236,
-        "narHash": "sha256-l0KFg5HjrsfsO/JpG+r7fRrqm12kzFHyUHqHCVpMMbI=",
-        "owner": "numtide",
-        "repo": "flake-utils",
-        "rev": "11707dc2f618dd54ca8739b309ec4fc024de578b",
-        "type": "github"
-      },
-      "original": {
-        "owner": "numtide",
-        "repo": "flake-utils",
         "type": "github"
       }
     },
@@ -1231,11 +1231,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784576728,
-        "narHash": "sha256-wR9mIm9kYOvaT5JQ4ZmbuS95MFpOWwwb6pGB5UOw+Pc=",
+        "lastModified": 1784957750,
+        "narHash": "sha256-bwCduiLLJlHJsns5CWtCudNdwmurgJ4JDVEwRgagTiI=",
         "owner": "mecattaf",
         "repo": "tally.nix",
-        "rev": "4423a610bd56f506289811d8ce24c431064d44ab",
+        "rev": "f029be980d1cbec987b6ee01fb036d57317acf3b",
         "type": "github"
       },
       "original": {
