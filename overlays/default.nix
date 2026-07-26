@@ -81,6 +81,10 @@ final: prev: {
   # CGO on Linux via ebitengine/oto → ALSA. See pkgs/cliamp.nix.
   cliamp = final.callPackage ../pkgs/cliamp.nix { };
 
+  # CLI-Anything — pinned cli-hub Python app plus immutable Codex/Claude/Pi
+  # integrations. Upstream has no flake; see modules/cli-anything.nix.
+  cli-anything-hub = final.callPackage ../pkgs/cli-anything-hub.nix { };
+
   # amdtop — AMD GPU/CPU/XDNA NPU monitor. Not yet in our pinned nixpkgs;
   # source-built from the latest stable upstream release for the Strix pair.
   amdtop = final.callPackage ../pkgs/amdtop.nix { };

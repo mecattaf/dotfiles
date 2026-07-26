@@ -18,6 +18,7 @@ in
     ./headless-display.nix
     ./cache-push.nix
     ./gpu-cooldown.nix
+    ../../modules/cli-anything.nix
     ../../modules/strix.nix
     ../../modules/microvm-host.nix
     # Per-machine AdGuard Home DNS filter (loopback 127.0.0.1:53, resolved

@@ -21,6 +21,7 @@
     # Artifact serving plane: Caddy drop-dir + TTL reaper (publish-artifact
     # skill's tailnet rung). Coordinator = fleet front door; origins on worker.
     ../../modules/caddy-artifacts.nix
+    ../../modules/cli-anything.nix
     ../../modules/strix.nix
     # Desktop-only local-media plane: mDNS discovery (avahi) + AirPlay output for
     # the JBL Authentics 200 + CUPS/driverless printing for the Brother. refs the

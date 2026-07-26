@@ -78,7 +78,9 @@ let
 
   # Python interpreter backing the niri helper bin/ scripts (wifi-menu, fzf-nmcli, …).
   pythonForNiri = pkgs.python3.withPackages (
-    ps: with ps; [
+    ps:
+    with ps;
+    [
       pycairo
       pygobject3
       pillow
@@ -90,6 +92,18 @@ let
       numpy
       ijson
     ]
+    ++
+      lib.optionals
+        (builtins.elem hostName [
+          "coordinator"
+          "worker"
+        ])
+        [
+          # CLI-Anything's generated harnesses and validation workflow assume these
+          # are importable from the ordinary `python3`, not only inside cli-hub.
+          click
+          pytest
+        ]
   );
 
   # Chrome PWAs via google-chrome-stable --app. pwaIcon lets the entry name differ

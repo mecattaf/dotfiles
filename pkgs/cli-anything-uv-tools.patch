@@ -1,0 +1,84 @@
+diff --git a/cli_hub/installer.py b/cli_hub/installer.py
+index a125963..2b236f4 100644
+--- a/cli_hub/installer.py
++++ b/cli_hub/installer.py
+@@ -7 +6,0 @@
+-import sys
+@@ -184,32 +183,45 @@
+-def _pip_install(cli):
+-    install_cmd = cli["install_cmd"]
+-    result = subprocess.run(
+-        [sys.executable, "-m", "pip", "install"] + install_cmd.replace("pip install ", "").split(),
+-        capture_output=True, text=True
+-    )
+-    if result.returncode == 0:
+-        return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
+-    return False, f"pip install failed:\n{result.stderr}"
+-
+-
+-def _pip_uninstall(cli):
+-    pkg_name = f"cli-anything-{cli['name']}"
+-    result = subprocess.run(
+-        [sys.executable, "-m", "pip", "uninstall", "-y", pkg_name],
+-        capture_output=True, text=True
+-    )
+-    if result.returncode == 0:
+-        return True, f"Uninstalled {cli['display_name']}"
+-    return False, f"pip uninstall failed:\n{result.stderr}"
+-
+-
+-def _pip_update(cli):
+-    install_cmd = cli["install_cmd"]
+-    result = subprocess.run(
+-        [sys.executable, "-m", "pip", "install", "--upgrade", "--force-reinstall"]
+-        + install_cmd.replace("pip install ", "").split(),
+-        capture_output=True, text=True
+-    )
+-    if result.returncode == 0:
+-        return True, f"Updated {cli['display_name']} to {cli['version']}"
+-    return False, f"Update failed:\n{result.stderr}"
++def _pip_package_args(install_cmd):
++    """Translate a registry ``pip install ...`` payload for ``uv tool``."""
++    args = shlex.split(install_cmd)
++    if args[:2] != ["pip", "install"] or len(args) < 3:
++        raise ValueError(f"Unsupported harness install command: {install_cmd}")
++    return args[2:]
++
++
++def _pip_install(cli):
++    install_cmd = cli["install_cmd"]
++    try:
++        package_args = _pip_package_args(install_cmd)
++    except ValueError as exc:
++        return False, str(exc)
++    result = subprocess.run(["@uv@", "tool", "install"] + package_args,
++                            capture_output=True, text=True)
++    if result.returncode == 0:
++        return True, f"Installed {cli['display_name']} ({cli['entry_point']})"
++    return False, f"uv tool install failed:\n{result.stderr}"
++
++
++def _pip_uninstall(cli):
++    pkg_name = f"cli-anything-{cli['name']}"
++    result = subprocess.run(
++        ["@uv@", "tool", "uninstall", pkg_name],
++        capture_output=True, text=True
++    )
++    if result.returncode == 0:
++        return True, f"Uninstalled {cli['display_name']}"
++    return False, f"uv tool uninstall failed:\n{result.stderr}"
++
++
++def _pip_update(cli):
++    install_cmd = cli["install_cmd"]
++    try:
++        package_args = _pip_package_args(install_cmd)
++    except ValueError as exc:
++        return False, str(exc)
++    result = subprocess.run(
++        ["@uv@", "tool", "install", "--force", "--upgrade"] + package_args,
++        capture_output=True, text=True
++    )
++    if result.returncode == 0:
++        return True, f"Updated {cli['display_name']} to {cli['version']}"
++    return False, f"uv tool update failed:\n{result.stderr}"
