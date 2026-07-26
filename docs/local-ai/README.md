@@ -4,13 +4,14 @@ The fleet provides a set of bounded appliances, not one undifferentiated LLM
 daemon. Each appliance owns a workload, an inference implementation, immutable
 model identity, resource class, and an explicit caller boundary.
 
-## Safety state
+## Deployment state
 
-`services.local-models.downloadAllModels` remains `false` on the Strix hosts.
-The catalog is metadata only: evaluating it exposes names, revisions, file
-sizes, LFS object IDs, and Nix SRI hashes, but does not fetch or root weights.
-Tom manually lifts that gate in a later deployment pass. Monthly research and
-roster edits are never allowed to lift it.
+The old all-or-nothing `downloadAllModels` gate is gone. Each Strix host has an
+explicit `services.local-models.allow` deployment list and a separate list for
+non-llama speech artifacts. Only those selections enter the system closure and
+llama-swap configuration; every other catalog row remains metadata-only. See
+the [final two-node decision](deployment-decisions-2026-07-26.md) for the exact
+placement and storage totals.
 
 ## Hugging Face metadata CLI
 
@@ -47,12 +48,9 @@ secret declaration becomes active only after the operator provisions the
 encrypted file.
 
 Metadata inspection stops at API records such as revisions, tags, sibling
-names, and LFS metadata. The CLI's file-transfer operation is outside this
-workflow. Any future weight transfer requires a separately authorized,
-explicit manual deployment action; package installation, evaluation,
-activation, and monthly Tally work do not perform one. The Nix materialization
-boundary remains the unchanged
-`services.local-models.downloadAllModels = false`.
+names, and LFS metadata. Monthly Tally research may update catalog candidates,
+but it cannot add them to either host allowlist or initiate downloads. Host
+activation materializes only the separately reviewed selections.
 
 The targeted smoke check runs `hf --version` and the metadata command against a
 local API fixture, then compares the complete isolated `$HF_HOME` manifest
@@ -66,28 +64,26 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 
 | Appliance | Selected implementation | Serving boundary | State |
 |---|---|---|---|
-| Streaming speech-to-text | Voxtype with streaming-capable Parakeet TDT v3 family | Coordinator-only systemd user service; local ONNX Runtime/MIGraphX on gfx1151 | Declarative package, config, and service are pinned; model bootstrap and live acceptance remain operator gates. |
-| Document OCR/RAG | Qwen3-VL 8B primary, 32B refine, Qwen3 Embedding 8B | llama.cpp ROCm behind llama-swap | Selected and cataloged; weights gated off. |
-| Code generation | Qwen3-Coder-Next + Qwopus + Gemma 4 opinion pool | llama.cpp Vulkan behind llama-swap | Selected and cataloged; weights gated off. |
-| General text | FastFlowLM Gemma 4 E4B, Qwen 3.6 35B | llama-swap on the coordinator, with optional parallel inference on the tailnet worker | Selected and cataloged; weights remain gated off. |
+| Streaming speech-to-text | Voxtype with `parakeet-unified-en-0.6b` | Coordinator-only systemd user service; local ONNX Runtime/MIGraphX on gfx1151 | Model download is an idempotent service pre-start step. |
+| Document OCR/RAG | Qwen3-VL 8B primary, 32B refine, Qwen3 Embedding 8B | Coordinator llama.cpp ROCm behind llama-swap | Active coordinator allowlist. |
+| Shared text and coding | Qwen 3.6 35B, Qwopus 27B v2, Gemma 4 26B QAT+MTP | Vulkan behind llama-swap on both hosts | Active on both hosts. Qwen3-Coder-Next remains cataloged only. |
+| Computer use | Fara 1.5 27B Q8_0 plus BF16 projector | ROCm behind llama-swap on both hosts | Active on both hosts. |
+| NPU utility | FastFlowLM Gemma 4 E4B and GPT-OSS 20B | Dedicated loopback peers behind llama-swap | Active on both hosts. |
 | Historical SOTA | DeepSeek V4 Flash Q4 imatrix + MTP | Retired dual-node DS4 topology | Exact artifacts and benchmark evidence remain cataloged, but the deployment is retired and its roughly 157 GiB of weights are excluded from materialization. |
-| Call transcription + diarization | Microsoft VibeVoice-ASR-HF | Dedicated PyTorch/ROCm batch service | Selected pre-deployment; not yet a Nix service. |
-| Text-to-speech | VibeVoice Large community mirror | Dedicated PyTorch/ROCm batch service | Selected pre-deployment; mirror and runtime risk recorded. |
+| Call transcription + diarization | Microsoft VibeVoice-ASR | Future dedicated PyTorch/ROCm batch service | BF16 payload and tokenizer are Nix-rooted on coordinator; service remains future work. |
+| Text-to-speech | VibeVoice Large community mirror | Future dedicated PyTorch/ROCm batch service | BF16 payload and tokenizer are Nix-rooted on coordinator; mirror risk remains recorded. |
 | Audio, image, and video generation | None | None | Parked. Stable Diffusion is explicitly outside the local-LLM route. |
 
 ## Text classes
 
-- **Small and fast:** `gemma4-it:e4b` on the coordinator NPU. FastFlowLM owns
-  these weights; llama-swap exposes it as a peer.
+- **Small and fast:** `gemma4-it:e4b` and `gpt-oss:20b` on both NPUs.
+  FastFlowLM owns these weights; llama-swap exposes both as peers.
 - **Daily general:** Qwen 3.6 35B-A3B MXFP4 on Vulkan.
 - **Historical SOTA:** DeepSeek V4 Flash Q4 imatrix plus MTP through dual-node
   DS4 is retained as evidence only; it is no longer an installable deployment.
-- **Coder/swarm:** three separately addressable models. A caller may request
-  pooled opinions, but the catalog does not hide them behind a synthetic model
-  name or silently vote on results.
-- **Uncensored:** three manually addressed, cross-family/refusal-removal routes.
-  They are high-recall hypothesis generators, never arbiters, and must not enter
-  automatic routing.
+- **Coder:** Qwopus and Gemma 4 are active on both machines. Qwen3-Coder-Next is
+  retained only as catalog metadata.
+- **Uncensored:** all rows are deferred and remain catalog-only.
 
 ## Routing and scheduling boundaries
 
@@ -105,11 +101,13 @@ pre-Nix notes into the current architecture.
 1. [`../../lib/local-models.nix`](../../lib/local-models.nix) owns immutable
    artifact and deployment metadata.
 2. [`../../modules/local-models.nix`](../../modules/local-models.nix) projects
-   canonical rows into the Nix store and llama-swap only when the manual gate is
-   true.
-3. [`model-roster.md`](model-roster.md) is the human-readable view, including
+   only the explicit host allowlists into the Nix store and llama-swap.
+3. [`deployment-decisions-2026-07-26.md`](deployment-decisions-2026-07-26.md)
+   is the authoritative active split and storage ledger.
+4. [`model-roster.md`](model-roster.md) is the broader human-readable catalog,
+   including deferred rows and
    speech appliances that do not belong in the llama-swap catalog.
-4. [`tallies/`](tallies/) records accepted roster rationale. The monthly update
+5. [`tallies/`](tallies/) records accepted roster rationale. The monthly update
    bot advances its exact research-source pins in `sources.json`; its advisory
    summary remains visible in the corresponding pull request.
 

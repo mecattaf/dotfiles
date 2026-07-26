@@ -11,6 +11,8 @@
 # import the options but leave the complete integration disabled.
 let
   hostName = if osConfig == null then "bridge" else osConfig.networking.hostName;
+  package = inputs.voxtype.packages.${pkgs.stdenv.hostPlatform.system}.onnx-migraphx;
+  parakeetModel = "parakeet-unified-en-0.6b";
 in
 {
   imports = [ inputs.voxtype.homeManagerModules.default ];
@@ -18,7 +20,7 @@ in
   programs.voxtype = lib.mkIf (hostName == "coordinator") {
     enable = true;
     engine = "parakeet";
-    package = inputs.voxtype.packages.${pkgs.stdenv.hostPlatform.system}.onnx-migraphx;
+    inherit package;
     service.enable = true;
 
     settings = {
@@ -35,7 +37,7 @@ in
         # Current upstream's streaming-capable TDT-v3-family model. The similarly
         # named parakeet-tdt-0.6b-v3 model is batch-only and is rejected when
         # streaming is enabled.
-        model = "parakeet-unified-en-0.6b";
+        model = parakeetModel;
         model_type = "tdt";
         streaming = true;
         on_demand_loading = false;
@@ -49,6 +51,17 @@ in
           "clipboard"
         ];
       };
+    };
+  };
+
+  # The selected model is the only entry in Voxtype 0.7.5's registry marked as
+  # compatible with its cache-aware live-streaming pipeline. Bootstrap it through
+  # Voxtype's own idempotent downloader before the daemon starts, mirroring the
+  # intentional runtime-pull boundary used by FastFlowLM.
+  systemd.user.services.voxtype = lib.mkIf (hostName == "coordinator") {
+    Service = {
+      ExecStartPre = "${package}/bin/voxtype setup --download --model ${parakeetModel} --quiet";
+      TimeoutStartSec = "infinity";
     };
   };
 }

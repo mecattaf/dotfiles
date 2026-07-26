@@ -9,8 +9,8 @@
 #
 # Source split (deliberate, after inspecting both upstreams at their 2026-07-21
 # heads):
-#   * nix-amd-ai remains the coordinator's proven hardware.amd-npu/FastFlowLM
-#     plane and supplies stable-diffusion-cpp-rocm, which hellas does not package.
+#   * nix-amd-ai supplies the uniform hardware.amd-npu/FastFlowLM plane and
+#     stable-diffusion-cpp-rocm, which hellas does not package.
 #   * nix-strix-halo supplies every other GPU/runtime package below. Its gfx1151
 #     DS4 build uses the targeted TheRock ROCm provider; do not also install
 #     nix-amd-ai's older, manually-pinned ds4 package under the same bin names.
@@ -55,8 +55,7 @@ in
   ];
 
   # User-facing engines and launchers on BOTH GPU nodes. FLM is not repeated here:
-  # coordinator already receives it from hardware.amd-npu; worker deliberately has
-  # no NPU runtime while amd_iommu=off preserves maximum iGPU bandwidth.
+  # Both hosts already receive it from the shared hardware.amd-npu module.
   environment.systemPackages = [
     llamaRocmCommands
     llamaVulkanCommands

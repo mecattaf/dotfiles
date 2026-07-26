@@ -175,8 +175,9 @@
     # nix-amd-ai — the proven coordinator NPU plane (hardware.amd-npu: amdxdna,
     # XRT plugin discovery, udev/memlock, FastFlowLM) plus the one accelerator
     # package nix-strix-halo does not expose: stable-diffusion-cpp-rocm.
-    # COORDINATOR ONLY for the NPU module: the conductor turns the NPU on (needs
-    # IOMMU in translated mode); the worker keeps it off for max iGPU. Deliberately
+    # BOTH Strix hosts consume the NPU module and run IOMMU in translated mode.
+    # This trades the worker's former iGPU-only tuning for a uniform NPU surface.
+    # Deliberately
     # NO inputs.nixpkgs.follows — the overlay is built against its OWN pinned
     # nixpkgs so its Cachix (nix-amd-ai.cachix.org, substituter added in
     # modules/common.nix) serves prebuilt XRT/FastFlowLM instead of source builds.
@@ -369,8 +370,8 @@
     in
     {
       # Evaluation-only metadata surface for deterministic local-AI workflows.
-      # This serializes the accepted catalog without instantiating model FODs or
-      # changing the independent downloadAllModels gate.
+      # This serializes the accepted catalog without independently changing the
+      # explicit per-host deployment/artifact allowlists.
       lib.localModelCatalog = localModelCatalog;
 
       overlays.default = import ./overlays;
@@ -711,22 +712,80 @@
           in
           assert
             builtins.attrNames self.nixosConfigurations.coordinator.options.services.local-models == [
-              "downloadAllModels"
+              "allow"
+              "artifacts"
             ];
-          assert !coordinator.services.local-models.downloadAllModels;
-          assert !worker.services.local-models.downloadAllModels;
-          assert nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies == [ ];
-          assert nixpkgs.lib.intersectLists modelPackagePaths workerExtraDependencies == [ ];
-          assert coordinatorSettings.models == { };
-          assert workerSettings.models == { };
+          assert
+            coordinator.services.local-models.allow == [
+              "flm-gemma4-it-e4b"
+              "flm-gpt-oss-20b"
+              "qwen36-35b-a3b-mxfp4"
+              "qwopus36-27b-v2-q5-k-m"
+              "gemma4-26b-a4b-qat-mtp"
+              "fara15-27b-q8-0"
+              "qwen3-vl-8b-ocr"
+              "qwen3-vl-32b-ocr-refine"
+              "qwen3-embedding-8b-q5-0"
+            ];
+          assert
+            worker.services.local-models.allow == [
+              "flm-gemma4-it-e4b"
+              "flm-gpt-oss-20b"
+              "qwen36-35b-a3b-mxfp4"
+              "qwopus36-27b-v2-q5-k-m"
+              "gemma4-26b-a4b-qat-mtp"
+              "fara15-27b-q8-0"
+            ];
+          assert
+            coordinator.services.local-models.artifacts == [
+              "vibevoice-asr-bf16"
+              "vibevoice-large-bf16"
+              "vibevoice-qwen25-7b-tokenizer"
+            ];
+          assert worker.services.local-models.artifacts == [ ];
+          assert
+            builtins.length (nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies) == 14;
+          assert builtins.length (nixpkgs.lib.intersectLists modelPackagePaths workerExtraDependencies) == 6;
+          assert
+            builtins.attrNames coordinatorSettings.models == [
+              "fara1.5-27b"
+              "gemma4-26b-a4b-qat"
+              "qwen3-embedding-8b"
+              "qwen3-vl-32b-ocr"
+              "qwen3-vl-8b-ocr"
+              "qwen3.6-35b-a3b"
+              "qwopus3.6-27b-v2"
+            ];
+          assert
+            builtins.attrNames workerSettings.models == [
+              "fara1.5-27b"
+              "gemma4-26b-a4b-qat"
+              "qwen3.6-35b-a3b"
+              "qwopus3.6-27b-v2"
+            ];
           assert
             coordinatorSettings.peers == {
-              flm = {
+              flm-gemma4 = {
                 proxy = "http://127.0.0.1:52625";
                 models = [ "gemma4-it:e4b" ];
               };
+              flm-gpt-oss = {
+                proxy = "http://127.0.0.1:52626";
+                models = [ "gpt-oss:20b" ];
+              };
             };
-          assert workerSettings.peers == { };
+          assert workerSettings.peers == coordinatorSettings.peers;
+          assert coordinator.hardware.amd-npu.enableNPU;
+          assert worker.hardware.amd-npu.enableNPU;
+          assert nixpkgs.lib.elem "amd_iommu=on" coordinator.boot.kernelParams;
+          assert nixpkgs.lib.elem "amd_iommu=on" worker.boot.kernelParams;
+          assert !(nixpkgs.lib.elem "amd_iommu=off" worker.boot.kernelParams);
+          assert coordinator.systemd.services ? "flm-model-bootstrap";
+          assert worker.systemd.services ? "flm-model-bootstrap";
+          assert coordinator.systemd.services ? "flm-serve-gemma4-it-e4b";
+          assert coordinator.systemd.services ? "flm-serve-gpt-oss-20b";
+          assert worker.systemd.services ? "flm-serve-gemma4-it-e4b";
+          assert worker.systemd.services ? "flm-serve-gpt-oss-20b";
           assert !(nixpkgs.lib.hasInfix "-hf" (builtins.toJSON coordinatorSettings));
           assert !(nixpkgs.lib.hasInfix "-hf" (builtins.toJSON workerSettings));
           assert

@@ -4,35 +4,61 @@
   pkgs,
   ...
 }:
-# NPU-served small-LLM runtime on the coordinator.
+# NPU-served local-LLM runtimes on both Strix Halo hosts.
 #
-# Makes the FastFlowLM model choice DECLARATIVE: `services.npu-llm.model` is the
-# single obvious place that names the model the coordinator preloads on its XDNA2
-# NPU (today gemma4-it:e4b — Q4_1, 128k max ctx). Changing which model gets
-# warmed later = edit that one string. `flm serve` runs as a warm systemd unit so
-# the local OpenAI-compatible backend (FastFlowLM's default port 52625, bound to
-# localhost) stays warm behind llama-swap. zmx session titling and every other
-# consumer enter through llama-swap's port 9292; the NPU endpoint is never a
-# public application-facing route.
+# Each declared FastFlowLM tag gets its own loopback-only `flm serve` unit and
+# fixed port. llama-swap is the only caller-facing endpoint; these native peers
+# stay implementation details. Separate units are necessary because one FLM
+# server accepts exactly one model tag.
 #
 # The amdxdna driver, XRT userspace, and the `flm` binary itself all come from
 # hardware.amd-npu (nix-amd-ai) — upstream ships no serve unit or model option,
-# so this module only adds the model choice, the serve unit, and a declarative
-# pre-start pull. Weights are multi-GB and are pulled at RUNTIME into the serving
+# so this module only adds model choices, serve units, and a declarative
+# bootstrap. Weights are multi-GB and are pulled at RUNTIME into the serving
 # user's ~/.config/flm/models — deliberately NEVER into the nix store.
 let
   cfg = config.services.npu-llm;
-  inherit (lib) mkEnableOption mkOption mkIf types;
-in {
+  inherit (lib)
+    mkEnableOption
+    mkOption
+    mkIf
+    types
+    ;
+  safeUnitName = tag: lib.replaceStrings [ ":" "." "/" ] [ "-" "-" "-" ] tag;
+  modelType = types.submodule {
+    options = {
+      tag = mkOption {
+        type = types.str;
+        description = "FastFlowLM model tag, as printed by `flm list`.";
+      };
+      port = mkOption {
+        type = types.port;
+        description = "Loopback port for this model's dedicated FLM server.";
+      };
+    };
+  };
+  runtimeEnvironment = {
+    # System units do not inherit login-session plugin-discovery paths.
+    XILINX_XRT = config.environment.sessionVariables.XILINX_XRT or "";
+    XRT_PATH = config.environment.sessionVariables.XRT_PATH or "";
+    FLM_DISABLE_UPDATE_CHECK = "1";
+  };
+  bootstrap = pkgs.writeShellScript "flm-model-bootstrap" (
+    lib.concatMapStringsSep "\n" (
+      model: "${pkgs.fastflowlm}/bin/flm pull ${lib.escapeShellArg model.tag}"
+    ) cfg.models
+  );
+in
+{
   options.services.npu-llm = {
     enable = mkEnableOption "the FastFlowLM `flm serve` NPU model runtime";
 
-    model = mkOption {
-      type = types.str;
-      default = "gemma4-it:e4b";
+    models = mkOption {
+      type = types.listOf modelType;
+      default = [ ];
       description = ''
-        FastFlowLM model tag to preload and serve on the NPU (see `flm list`).
-        THE one place to change which small model the coordinator warms.
+        FastFlowLM model tags to download and serve on the NPU. Every entry gets
+        an idempotent runtime pull and a dedicated loopback endpoint.
       '';
     };
 
@@ -49,12 +75,6 @@ in {
       type = types.str;
       default = "127.0.0.1";
       description = "Bind address for `flm serve`. Localhost keeps it on-box only.";
-    };
-
-    port = mkOption {
-      type = types.port;
-      default = 52625;
-      description = "Bind port for `flm serve` (FastFlowLM's default server port).";
     };
 
     powerMode = mkOption {
@@ -75,47 +95,73 @@ in {
         assertion = config.hardware.amd-npu.enable && config.hardware.amd-npu.enableFastFlowLM;
         message = "services.npu-llm requires hardware.amd-npu.enable + enableFastFlowLM (which provide the amdxdna NPU stack, XRT, and the `flm` binary).";
       }
+      {
+        assertion = cfg.models != [ ];
+        message = "services.npu-llm.models must contain at least one model.";
+      }
+      {
+        assertion =
+          builtins.length cfg.models == builtins.length (lib.unique (map (model: model.tag) cfg.models));
+        message = "services.npu-llm.models must use unique model tags.";
+      }
+      {
+        assertion =
+          builtins.length cfg.models == builtins.length (lib.unique (map (model: model.port) cfg.models));
+        message = "services.npu-llm.models must use unique ports.";
+      }
     ];
 
-    systemd.services.flm-serve = {
-      description = "FastFlowLM NPU model server (${cfg.model})";
-      after = [ "network-online.target" ];
-      wants = [ "network-online.target" ];
-      wantedBy = [ "multi-user.target" ];
-      # `flm` and the XRT userspace reach the system profile via hardware.amd-npu.
-      path = [
-        pkgs.fastflowlm
-        "/run/current-system/sw"
-      ];
-      environment = {
-        # systemd units don't inherit login-session vars, so re-export the XRT
-        # plugin-discovery paths hardware.amd-npu publishes as sessionVariables —
-        # without them XRT can't dlopen the amdxdna driver plugin. `or ""` guards
-        # against the (asserted-against) NPU-off misconfig at eval time.
-        XILINX_XRT = config.environment.sessionVariables.XILINX_XRT or "";
-        XRT_PATH = config.environment.sessionVariables.XRT_PATH or "";
-        # Silence FLM's per-run auto-update probe against the read-only nix binary.
-        FLM_DISABLE_UPDATE_CHECK = "1";
-      };
-      serviceConfig = {
-        Type = "simple";
-        User = cfg.user;
-        SupplementaryGroups = [
-          "video"
-          "render"
+    systemd.services = {
+      # Pull sequentially so first boot never has two FLM writers racing in the
+      # same per-user model registry. Re-evaluation is cheap because pull is
+      # idempotent and validates already-present snapshots.
+      flm-model-bootstrap = {
+        description = "Download the declared FastFlowLM NPU models";
+        after = [ "network-online.target" ];
+        wants = [ "network-online.target" ];
+        environment = runtimeEnvironment;
+        path = [
+          pkgs.fastflowlm
+          "/run/current-system/sw"
         ];
-        # Ensure the model is present before serving. `flm pull` is idempotent (a
-        # no-op once the weights are on disk) and downloads multi-GB files into
-        # the user's ~/.config/flm at RUNTIME — never the nix store. First boot
-        # can take a while, hence the disabled start timeout.
-        ExecStartPre = "${pkgs.fastflowlm}/bin/flm pull ${cfg.model}";
-        ExecStart = "${pkgs.fastflowlm}/bin/flm serve ${cfg.model} --host ${cfg.host} --port ${toString cfg.port} --pmode ${cfg.powerMode}";
-        TimeoutStartSec = "infinity";
-        Restart = "on-failure";
-        RestartSec = "5s";
-        KillSignal = "SIGINT";
-        LimitMEMLOCK = "infinity";
+        serviceConfig = {
+          Type = "oneshot";
+          User = cfg.user;
+          ExecStart = bootstrap;
+          RemainAfterExit = true;
+          TimeoutStartSec = "infinity";
+        };
       };
-    };
+    }
+    // lib.listToAttrs (
+      map (model: {
+        name = "flm-serve-${safeUnitName model.tag}";
+        value = {
+          description = "FastFlowLM NPU model server (${model.tag})";
+          after = [ "flm-model-bootstrap.service" ];
+          requires = [ "flm-model-bootstrap.service" ];
+          wantedBy = [ "multi-user.target" ];
+          # `flm` and XRT reach the system profile via hardware.amd-npu.
+          path = [
+            pkgs.fastflowlm
+            "/run/current-system/sw"
+          ];
+          environment = runtimeEnvironment;
+          serviceConfig = {
+            Type = "simple";
+            User = cfg.user;
+            SupplementaryGroups = [
+              "video"
+              "render"
+            ];
+            ExecStart = "${pkgs.fastflowlm}/bin/flm serve ${model.tag} --host ${cfg.host} --port ${toString model.port} --pmode ${cfg.powerMode}";
+            Restart = "on-failure";
+            RestartSec = "5s";
+            KillSignal = "SIGINT";
+            LimitMEMLOCK = "infinity";
+          };
+        };
+      }) cfg.models
+    );
   };
 }

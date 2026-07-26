@@ -413,6 +413,37 @@ let
               notes = "QAT-matched MTP head; keep coupled to the corrected QAT model row.";
             };
 
+            fara15-27b-q8-0 = mkSingleFileArtifact {
+              maker = "Microsoft / bartowski";
+              baseCheckpoint = {
+                url = "https://huggingface.co/microsoft/Fara1.5-27B";
+                revision = "448c9aed38954323b05042783e43f1a15979b3c3";
+              };
+              hfUrl = "https://huggingface.co/bartowski/Fara1.5-27B-GGUF";
+              revision = "dd7cba968d1a9c8feab0c2b85d93b117e6cc16fe";
+              path = "Fara1.5-27B-Q8_0.gguf";
+              bytes = 28665067328;
+              oid = "77578ded07b855c90b154abbb3c1c7f4669b29fa19afc27412a2940a51cf634d";
+              hash = "sha256-d1eN7Qe4VckLFUq7s8HH9GabKfoZr8J0EqKUClHPY00=";
+              notes = "Q8_0 is an explicit operator choice for the browser-computer-use appliance; do not silently down-quantize it.";
+            };
+
+            fara15-27b-mmproj-bf16 = mkSingleFileArtifact {
+              kind = "mmproj";
+              maker = "Microsoft / bartowski";
+              baseCheckpoint = {
+                url = "https://huggingface.co/microsoft/Fara1.5-27B";
+                revision = "448c9aed38954323b05042783e43f1a15979b3c3";
+              };
+              hfUrl = "https://huggingface.co/bartowski/Fara1.5-27B-GGUF";
+              revision = "dd7cba968d1a9c8feab0c2b85d93b117e6cc16fe";
+              path = "mmproj-Fara1.5-27B-bf16.gguf";
+              bytes = 931146400;
+              oid = "20f332c2723575797d9ba07cf09a2ca019c89409e4ee250f91305279b19b2bea";
+              hash = "sha256-IPMywnI1dXl9m6B88JosoBnIlAnk7iUPkTBSebGbK+o=";
+              notes = "BF16 vision projector paired with the Q8_0 Fara deployment.";
+            };
+
             deepseek-v4-flash-q4-imatrix = mkSingleFileArtifact {
               maker = "DeepSeek";
               baseCheckpoint = {
@@ -570,6 +601,213 @@ let
               hash = "sha256-XeBMlwdGxk3dIUNKXrIf8QouwkfJ54721I5zqBw2cs4=";
               notes = "Q5_0 is the executable academic-rag configuration; this resolves the stale q8_0 label found in older ledgers.";
             };
+
+            vibevoice-qwen25-7b-tokenizer = {
+              kind = "tokenizer";
+              maker = "Qwen";
+              notes = "Pinned tokenizer payload required by both VibeVoice appliances; the ASR integration derives its extra audio-token metadata from these files.";
+              source = {
+                hfUrl = "https://huggingface.co/Qwen/Qwen2.5-7B";
+                revision = "d149729398750b98c0af14eb82c78cfe92750796";
+                primary = "tokenizer.json";
+                files = [
+                  {
+                    path = "merges.txt";
+                    bytes = 1671839;
+                    oid = "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3";
+                    hash = "sha256-WZurVAdQiHdLFzP96GXVvXR8vMelR8W8EmEOh04m9eM=";
+                  }
+                  {
+                    path = "tokenizer.json";
+                    bytes = 7031645;
+                    oid = "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539";
+                    hash = "sha256-wDghF+oynN8JcEETL21zWSS2l5JNb2/DlFcT6WzodTk=";
+                  }
+                  {
+                    path = "tokenizer_config.json";
+                    bytes = 7228;
+                    oid = "c91efca15ceff6e9ee9424db58a6f59cd41294e550a86cbd07e3c1fb500b34f9";
+                    hash = "sha256-yR78oVzv9unulCTbWKb1nNQSlOVQqGy9B+PB+1ALNPk=";
+                  }
+                  {
+                    path = "vocab.json";
+                    bytes = 2776833;
+                    oid = "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910";
+                    hash = "sha256-yhDX6fs+0YV13R4neiV5wW0QjjLydDloSvoOELFECRA=";
+                  }
+                ];
+              };
+            };
+
+            vibevoice-asr-bf16 = {
+              kind = "model";
+              maker = "Microsoft";
+              notes = "Full BF16 long-form ASR, timestamping, and diarization snapshot; coordinator-only appliance artifact.";
+              source = {
+                hfUrl = "https://huggingface.co/microsoft/VibeVoice-ASR";
+                revision = "d0c9efdb8d614685062c04425d91e01b6f37d944";
+                primary = "config.json";
+                files = [
+                  {
+                    path = "config.json";
+                    bytes = 3520;
+                    oid = "1798906d016a625ffa0100182cad152e055bfee53fb228a45ffe25d8179b9b24";
+                    hash = "sha256-F5iQbQFqYl/6AQAYLK0VLgVb/uU/siikX/4l2BebmyQ=";
+                  }
+                  {
+                    path = "model.safetensors.index.json";
+                    bytes = 120151;
+                    oid = "1468c7b7c74fe27831d8db57871fbf15efd270c747f3f99caf689119ace658ba";
+                    hash = "sha256-FGjHt8dP4ngx2NtXhx+/Fe/ScMdH8/mcr2iRGazmWLo=";
+                  }
+                  {
+                    path = "model-00001-of-00008.safetensors";
+                    bytes = 2488346272;
+                    oid = "5548c67885d423ba184bc8c33f2e9f81b582a6d119cef79907e19a274b916637";
+                    hash = "sha256-VUjGeIXUI7oYS8jDPy6fgbWCptEZzveZB+GaJ0uRZjc=";
+                  }
+                  {
+                    path = "model-00002-of-00008.safetensors";
+                    bytes = 2389315976;
+                    oid = "163023c61a3fb047745cbaf53ed41c1e27e515e9786a376e122bfac2ea6e687e";
+                    hash = "sha256-FjAjxho/sEd0XLr1PtQcHiflFel4ajduEiv6wupuaH4=";
+                  }
+                  {
+                    path = "model-00003-of-00008.safetensors";
+                    bytes = 2466376368;
+                    oid = "4e021702dfac2c52e8fdd6688de82c118be7bb7ad9b5c7988725ec63c44a64fb";
+                    hash = "sha256-TgIXAt+sLFLo/dZojegsEYvnu3rZtceYhyXsY8RKZPs=";
+                  }
+                  {
+                    path = "model-00004-of-00008.safetensors";
+                    bytes = 2466376400;
+                    oid = "b17657bb151daa117a5a4671374ac1b248acb696691a2a67ac227a1115925e30";
+                    hash = "sha256-sXZXuxUdqhF6WkZxN0rBskistpZpGipnrCJ6ERWSXjA=";
+                  }
+                  {
+                    path = "model-00005-of-00008.safetensors";
+                    bytes = 2499431136;
+                    oid = "0ed4e457268f7b02dda5cffe16b3a32614ccc2ccfe5de2db39bdd79700836406";
+                    hash = "sha256-DtTkVyaPewLdpc/+FrOjJhTMwsz+XeLbOb3XlwCDZAY=";
+                  }
+                  {
+                    path = "model-00006-of-00008.safetensors";
+                    bytes = 2483469928;
+                    oid = "6de8246bb042fd853b57d40995efd289ea44e4d1b611cec2e122570b8d2122bd";
+                    hash = "sha256-begka7BC/YU7V9QJle/SiepE5NG2Ec7C4SJXC40hIr0=";
+                  }
+                  {
+                    path = "model-00007-of-00008.safetensors";
+                    bytes = 1464887482;
+                    oid = "a2ba6960d994dc7598efc6796f85ab097da7708f4dd56095f7fccf4df8dc00e5";
+                    hash = "sha256-orppYNmU3HWY78Z5b4WrCX2ncI9N1WCV9/zPTfjcAOU=";
+                  }
+                  {
+                    path = "model-00008-of-00008.safetensors";
+                    bytes = 1089994848;
+                    oid = "1b9d9b328f85a25b4efca712d31513c6eed9e178152cc8cf4a6f0c2cd2bb623f";
+                    hash = "sha256-G52bMo+FoltO/KcS0xUTxu7Z4XgVLMjPSm8MLNK7Yj8=";
+                  }
+                ];
+              };
+            };
+
+            vibevoice-large-bf16 = {
+              kind = "model";
+              maker = "Microsoft / aoi-ot mirror";
+              notes = "Full BF16 long-form multi-speaker TTS snapshot; coordinator-only with the mirror provenance warning retained.";
+              source = {
+                hfUrl = "https://huggingface.co/aoi-ot/VibeVoice-Large";
+                revision = "1b81fecc784a076dcd935678db551871f4598ebf";
+                primary = "config.json";
+                files = [
+                  {
+                    path = "config.json";
+                    bytes = 2785;
+                    oid = "695598158e43b44227bc7aa6fd851e410f7ce30b21a5ea5c3fe22983961e500a";
+                    hash = "sha256-aVWYFY5DtEInvHqm/YUeQQ984wshpepcP+Ipg5YeUAo=";
+                  }
+                  {
+                    path = "configuration.json";
+                    bytes = 72;
+                    oid = "30458d769bcf25aa4e8fd30bbde901f817e382a49f7c7da8c4380dd97b616876";
+                    hash = "sha256-MEWNdpvPJapOj9MLvekB+BfjgqSffH2oxDgN2XthaHY=";
+                  }
+                  {
+                    path = "preprocessor_config.json";
+                    bytes = 349;
+                    oid = "5a26081a18cd60f48d7ed36b904e68c24271ba9711d6328b53f7ad3eed446cce";
+                    hash = "sha256-WiYIGhjNYPSNftNrkE5owkJxupcR1jKLU/etPu1EbM4=";
+                  }
+                  {
+                    path = "model.safetensors.index.json";
+                    bytes = 122675;
+                    oid = "dbcfc6e307494bc87684471872f3d8b785cb68b3589b6b306c43fde629b88ebd";
+                    hash = "sha256-28/G4wdJS8h2hEcYcvPYt4XLaLNYm2swbEP95im4jr0=";
+                  }
+                  {
+                    path = "model-00001-of-00010.safetensors";
+                    bytes = 1886424044;
+                    oid = "ae28d5c8f3587b518c7e371e96ebb69f74d854a854119acf433952bbc1926325";
+                    hash = "sha256-rijVyPNYe1GMfjceluu2n3TYVKhUEZrPQzlSu8GSYyU=";
+                  }
+                  {
+                    path = "model-00002-of-00010.safetensors";
+                    bytes = 1864468520;
+                    oid = "c56b1ca707e31e435ded8b03baa4938d88275bf0ba7033935a16d8173a99ff85";
+                    hash = "sha256-xWscpwfjHkNd7YsDuqSTjYgnW/C6cDOTWhbYFzqZ/4U=";
+                  }
+                  {
+                    path = "model-00003-of-00010.safetensors";
+                    bytes = 1864468520;
+                    oid = "48bfb4af453d45e488050e90d3f39da0189f1c10a77d75223c2c2ced8b035baa";
+                    hash = "sha256-SL+0r0U9ReSIBQ6Q0/OdoBifHBCnfXUiPCws7YsDW6o=";
+                  }
+                  {
+                    path = "model-00004-of-00010.safetensors";
+                    bytes = 1864468544;
+                    oid = "b4893be477be68e53b8a9616422b99065f3d1431cce9efe0a1653495e9cf4df6";
+                    hash = "sha256-tIk75He+aOU7ipYWQiuZBl89FDHM6e/goWU0lenPTfY=";
+                  }
+                  {
+                    path = "model-00005-of-00010.safetensors";
+                    bytes = 1864468568;
+                    oid = "471690e9846e791def400fefa3d2103c9839dc8a3e987b175f6539c7412422d6";
+                    hash = "sha256-RxaQ6YRueR3vQA/vo9IQPJg53Io+mHsXX2U5x0EkItY=";
+                  }
+                  {
+                    path = "model-00006-of-00010.safetensors";
+                    bytes = 1864468568;
+                    oid = "a7918d400ba895b15a1126fde242028e5d05b37bab0c0427944de81df80f901f";
+                    hash = "sha256-p5GNQAuolbFaESb94kICjl0Fs3urDAQnlE3oHfgPkB8=";
+                  }
+                  {
+                    path = "model-00007-of-00010.safetensors";
+                    bytes = 1864468568;
+                    oid = "b4f00ebea5a9f76eea891b3457621955433149ae603d921afa1498e46683ba37";
+                    hash = "sha256-tPAOvqWp927qiRs0V2IZVUMxSa5gPZIa+hSY5GaDujc=";
+                  }
+                  {
+                    path = "model-00008-of-00010.safetensors";
+                    bytes = 1972552744;
+                    oid = "cc4b6fce97b76e847c742b59ab9463fd04b6d9fa69fc33e747ff722c2ab8cc28";
+                    hash = "sha256-zEtvzpe3boR8dCtZq5Rj/QS22fpp/DPnR/9yLCq4zCg=";
+                  }
+                  {
+                    path = "model-00009-of-00010.safetensors";
+                    bytes = 1959739938;
+                    oid = "824db8970518950117f0d6ed859740d973b9436718c24f29bc78854c4587a4b2";
+                    hash = "sha256-gk24lwUYlQEX8NbthZdA2XO5Q2cYwk8pvHiFTEWHpLI=";
+                  }
+                  {
+                    path = "model-00010-of-00010.safetensors";
+                    bytes = 1681341960;
+                    oid = "bc76bba7a46a0a748cc169efb6ccfb7617881e0fc3b533f67887d5957e1836e3";
+                    hash = "sha256-vHa7p6RqCnSMwWnvtsz7dheIHg/DtTP2eIfVlX4YNuM=";
+                  }
+                ];
+              };
+            };
           };
 
           deployments = {
@@ -578,19 +816,45 @@ let
               role = "utility";
               status = "canonical";
               backend = "npu";
-              hosts = [ "coordinator" ];
+              hosts = [
+                "coordinator"
+                "worker"
+              ];
               runtime = {
                 repository = "https://github.com/FastFlowLM/FastFlowLM";
                 commit = "fd371409897d7c0abb4de4dbc5098b9b43c094ff";
               };
               peer = {
-                name = "flm";
+                name = "flm-gemma4";
                 proxy = "http://127.0.0.1:52625";
-                systemdUnit = "flm-serve.service";
+                systemdUnit = "flm-serve-gemma4-it-e4b.service";
               };
               evidence = "matched-local";
-              hardware = "coordinator XDNA2 NPU; amdxdna/XRT from nix-amd-ai";
-              notes = "Small/fast utility lane. FastFlowLM owns these weights via runtime flm pull; callers still enter through llama-swap.";
+              hardware = "Strix Halo XDNA2 NPU; amdxdna/XRT from nix-amd-ai";
+              notes = "Multimodal utility lane on both Strix hosts. FastFlowLM owns these weights via runtime flm pull; callers still enter through llama-swap.";
+            };
+
+            flm-gpt-oss-20b = {
+              model = "gpt-oss:20b";
+              role = "utility";
+              status = "canonical";
+              backend = "npu";
+              hosts = [
+                "coordinator"
+                "worker"
+              ];
+              runtime = {
+                repository = "https://huggingface.co/FastFlowLM/GPT-OSS-20B-NPU2";
+                commit = "12ce92d2bfa031761ab876b3b845a7dabeab1d98";
+              };
+              peer = {
+                name = "flm-gpt-oss";
+                proxy = "http://127.0.0.1:52626";
+                systemdUnit = "flm-serve-gpt-oss-20b.service";
+              };
+              evidence = "api-only";
+              hardware = "Strix Halo XDNA2 NPU; amdxdna/XRT from nix-amd-ai";
+              notes = "Second NPU reasoning lane on both Strix hosts; FastFlowLM tag gpt-oss:20b, Q4_1 NPU2 snapshot.";
             };
 
             qwen36-35b-a3b-mxfp4 = {
@@ -700,6 +964,37 @@ let
               notes = "Cross-family coding-panel member. Google replaced the measured GGUF with a corrected-vocabulary bitstream; rerun the matched local quality/speed witness before lifting the gate.";
             };
 
+            fara15-27b-q8-0 = {
+              model = "fara1.5-27b";
+              role = "vision";
+              status = "canonical";
+              backend = "rocm";
+              hosts = [
+                "coordinator"
+                "worker"
+              ];
+              ramTierGb = 32;
+              artifacts = {
+                model = "fara15-27b-q8-0";
+                mmproj = "fara15-27b-mmproj-bf16";
+              };
+              runtime = llamaCppRuntime [
+                "--mmproj"
+                "@mmproj@"
+                "--ctx-size"
+                "32768"
+                "--gpu-layers"
+                "999"
+                "--flash-attn"
+                "on"
+                "--no-mmap"
+                "--jinja"
+              ];
+              evidence = "unverified";
+              hardware = "Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
+              notes = "Browser-computer-use VLM on both Strix hosts. Q8_0 is an explicit quality decision; the BF16 projector is mandatory.";
+            };
+
             deepseek-v4-flash-q4-dual = {
               model = "deepseek-v4-flash";
               role = "quality";
@@ -806,7 +1101,7 @@ let
               role = "vision";
               status = "canonical";
               backend = "rocm";
-              hosts = [ "worker" ];
+              hosts = [ "coordinator" ];
               ramTierGb = 12;
               artifacts = {
                 model = "qwen3-vl-8b-instruct-q8-0";
@@ -833,7 +1128,7 @@ let
                 context = "llama.cpp ROCm; Q8_0 + BF16 projector";
               };
               evidence = "matched-local";
-              hardware = "worker Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
+              hardware = "coordinator Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
               notes = "Primary academic-document drainer.";
             };
 
@@ -842,7 +1137,7 @@ let
               role = "vision";
               status = "canonical";
               backend = "rocm";
-              hosts = [ "worker" ];
+              hosts = [ "coordinator" ];
               ramTierGb = 24;
               artifacts = {
                 model = "qwen3-vl-32b-instruct-q4-k-m";
@@ -868,7 +1163,7 @@ let
                 context = "llama.cpp ROCm; Q4_K_M + BF16 projector";
               };
               evidence = "matched-local";
-              hardware = "worker Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
+              hardware = "coordinator Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
               notes = "Targeted second pass for table- and math-heavy pages, not the default drainer.";
             };
 
@@ -877,7 +1172,7 @@ let
               role = "embedding";
               status = "canonical";
               backend = "rocm";
-              hosts = [ "worker" ];
+              hosts = [ "coordinator" ];
               ramTierGb = 8;
               artifacts.model = "qwen3-embedding-8b-q5-0";
               runtime = llamaCppRuntime [
@@ -891,7 +1186,7 @@ let
                 "--no-mmap"
               ];
               evidence = "matched-local";
-              hardware = "worker Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
+              hardware = "coordinator Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
               notes = "Embedding companion for the OCR/RAG appliance; retain Q5_0 to match the executable pipeline configuration.";
             };
           };

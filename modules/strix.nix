@@ -12,6 +12,8 @@
   imports = [
     # Framework Desktop / Ryzen AI Max 300 series (gfx1151). Pulls amd cpu+gpu+ssd tuning.
     inputs.nixos-hardware.nixosModules.framework-desktop-amd-ai-max-300-series
+    # Uniform XDNA2 NPU stack on both Strix Halo hosts.
+    inputs.nix-amd-ai.nixosModules.default
     # Shared accelerated inference/tooling packages from nix-strix-halo plus the
     # one noamsto-only GPU backend. Host-role details stay in that module.
     ./strix-ai.nix
@@ -19,6 +21,8 @@
     ./llama-swap.nix
     # Typed model catalog, guarded store materialization, and host projections.
     ./local-models.nix
+    # FastFlowLM peers and their idempotent runtime model pulls.
+    ./npu-llm.nix
   ];
 
   options.myCluster = {
@@ -32,9 +36,55 @@
   };
 
   config = {
-    # THE one model-install switch. Keep false until the reviewed roster and the
-    # external cold-storage migration are ready; false roots zero model weights.
-    services.local-models.downloadAllModels = false;
+    # Explicit deployment authority. The catalog may remain broad; only these
+    # per-host rows enter the system closure and llama-swap configuration.
+    services.local-models = {
+      allow = [
+        "flm-gemma4-it-e4b"
+        "flm-gpt-oss-20b"
+        "qwen36-35b-a3b-mxfp4"
+        "qwopus36-27b-v2-q5-k-m"
+        "gemma4-26b-a4b-qat-mtp"
+        "fara15-27b-q8-0"
+      ]
+      ++ lib.optionals (config.myCluster.role == "coordinator") [
+        "qwen3-vl-8b-ocr"
+        "qwen3-vl-32b-ocr-refine"
+        "qwen3-embedding-8b-q5-0"
+      ];
+      artifacts = lib.optionals (config.myCluster.role == "coordinator") [
+        "vibevoice-asr-bf16"
+        "vibevoice-large-bf16"
+        "vibevoice-qwen25-7b-tokenizer"
+      ];
+    };
+
+    # Both identical Strix Halo systems expose the XDNA2 NPU. This intentionally
+    # gives back the roughly 10% iGPU-only tuning advantage previously reserved
+    # for the worker in exchange for a uniform accelerator surface.
+    hardware.amd-npu = {
+      enable = true;
+      enableNPU = true;
+      enableFastFlowLM = true;
+      enableLemonade = false;
+      enableROCm = false;
+      lemonade.user = "tom";
+    };
+
+    services.npu-llm = {
+      enable = true;
+      user = "tom";
+      models = [
+        {
+          tag = "gemma4-it:e4b";
+          port = 52625;
+        }
+        {
+          tag = "gpt-oss:20b";
+          port = 52626;
+        }
+      ];
+    };
 
     # The gfx1151 ROCm graph contains several split Composable Kernel derivations,
     # each of which honors NIX_BUILD_CORES internally. Leaving both knobs at the
@@ -50,12 +100,10 @@
     environment.systemPackages = [ pkgs.amdtop ];
 
     # Strix Halo unified-memory tuning (128 GiB pinnable for the iGPU).
-    # IOMMU is the ONE per-role knob: the coordinator runs the NPU, whose amdxdna
-    # driver binds via IOMMU SVA/PASID and needs IOMMU ON in translated mode
-    # (hardware.amd-npu additionally pins iommu.passthrough=0). The worker keeps
-    # the NPU off and takes amd_iommu=off for lower GPU-memory latency / max iGPU.
+    # amdxdna binds through IOMMU SVA/PASID and needs translated mode on both
+    # machines (hardware.amd-npu additionally pins iommu.passthrough=0).
     boot.kernelParams = [
-      (if config.myCluster.role == "coordinator" then "amd_iommu=on" else "amd_iommu=off")
+      "amd_iommu=on"
       "ttm.pages_limit=33554432"
     ];
 

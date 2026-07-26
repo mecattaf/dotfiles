@@ -22,8 +22,10 @@ let
   ) catalog.deployments;
   canonicalList = builtins.attrValues canonicalForHost;
   canonicalModelIds = map (deployment: deployment.model) canonicalList;
-  peerDeployments = lib.filter (deployment: deployment.peer != null) canonicalList;
-  gpuDeployments = lib.filterAttrs (_: deployment: deployment.peer == null) canonicalForHost;
+  selectedDeployments = lib.filterAttrs (name: _: lib.elem name cfg.allow) catalog.deployments;
+  selectedList = builtins.attrValues selectedDeployments;
+  peerDeployments = lib.filter (deployment: deployment.peer != null) selectedList;
+  gpuDeployments = lib.filterAttrs (_: deployment: deployment.peer == null) selectedDeployments;
 
   peerNames = lib.unique (map (deployment: deployment.peer.name) peerDeployments);
   peers = lib.genAttrs peerNames (
@@ -54,9 +56,10 @@ let
 
   referencedArtifactIds =
     deployment: lib.filter (artifactId: artifactId != null) (builtins.attrValues deployment.artifacts);
-  hostArtifactIds = lib.unique (
+  deploymentArtifactIds = lib.unique (
     lib.concatMap referencedArtifactIds (builtins.attrValues gpuDeployments)
   );
+  hostArtifactIds = lib.unique (deploymentArtifactIds ++ cfg.artifacts);
   hostArtifactPackages = map (
     artifactId: modelStore.materialized.${artifactId}.package
   ) hostArtifactIds;
@@ -120,6 +123,12 @@ let
       )
     );
   manifest = (pkgs.formats.json { }).generate "local-model-catalog.json" catalog;
+  artifactEtc = lib.listToAttrs (
+    map (artifactId: {
+      name = "local-models/artifacts/${artifactId}";
+      value.source = modelStore.materialized.${artifactId}.directory;
+    }) cfg.artifacts
+  );
 
   catalogAssertions = [
     {
@@ -171,13 +180,6 @@ let
       message = "Local GPU deployments require a model artifact; external peers must not root artifacts.";
     }
     {
-      assertion = lib.all (
-        deployment:
-        deployment.status != "canonical" || deployment.peer != null || lib.elem "worker" deployment.hosts
-      ) deploymentList;
-      message = "Every canonical GPU deployment must be assigned to the exhaustive worker roster.";
-    }
-    {
       assertion = builtins.length canonicalModelIds == builtins.length (lib.unique canonicalModelIds);
       message = "Canonical llama-swap model IDs must be unique per host.";
     }
@@ -199,38 +201,72 @@ let
       ) deploymentList;
       message = "Local-model lineage must reference another deployment row.";
     }
+    {
+      assertion = builtins.length cfg.allow == builtins.length (lib.unique cfg.allow);
+      message = "services.local-models.allow must not contain duplicate deployment IDs.";
+    }
+    {
+      assertion = lib.all (deploymentId: lib.elem deploymentId deploymentIds) cfg.allow;
+      message = "services.local-models.allow references an unknown deployment ID.";
+    }
+    {
+      assertion = lib.all (
+        deployment: deployment.status == "canonical" && lib.elem host deployment.hosts
+      ) selectedList;
+      message = "Every allowed local-model deployment must be canonical and assigned to this host.";
+    }
+    {
+      assertion = builtins.length cfg.artifacts == builtins.length (lib.unique cfg.artifacts);
+      message = "services.local-models.artifacts must not contain duplicate artifact IDs.";
+    }
+    {
+      assertion = lib.all (artifactId: lib.elem artifactId artifactIds) cfg.artifacts;
+      message = "services.local-models.artifacts references an unknown artifact ID.";
+    }
   ];
   failedCatalogAssertion = lib.findFirst (entry: !entry.assertion) null catalogAssertions;
   catalogValid =
     if failedCatalogAssertion == null then true else throw failedCatalogAssertion.message;
 in
 {
-  options.services.local-models.downloadAllModels = lib.mkOption {
-    type = lib.types.bool;
-    default = false;
-    description = ''
-      Materialize every canonical model artifact assigned to this host and
-      expose it through llama-swap. False evaluates metadata only and roots no
-      roster weights in the NixOS closure.
-    '';
+  options.services.local-models = {
+    allow = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        Canonical deployment IDs to materialize and expose through llama-swap
+        on this host. Catalog entries not named here remain metadata-only.
+      '';
+    };
+
+    artifacts = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        Additional artifact IDs to materialize without adding a llama-swap
+        model row. This is for modality-specific appliances such as ASR/TTS.
+      '';
+    };
   };
 
   config = {
     assertions = catalogAssertions;
 
-    # Metadata is generational and inspectable even while downloads are disabled.
-    environment.etc."local-models/catalog.json".source = manifest;
+    # Metadata stays generational and inspectable alongside the selected artifacts.
+    environment.etc = {
+      "local-models/catalog.json".source = manifest;
+    }
+    // artifactEtc;
 
     services.llama-swap.settings =
       assert catalogValid;
       {
         inherit peers;
-        models = if cfg.downloadAllModels then gpuModels else { };
+        models = gpuModels;
       };
 
-    # This is the only branch that roots weight FODs. With the committed false
-    # setting, Nix never needs to resolve or fetch any catalog artifact.
-    system.extraDependencies = lib.optionals cfg.downloadAllModels hostArtifactPackages;
+    # Only the explicit per-host deployment/artifact lists root weight FODs.
+    system.extraDependencies = hostArtifactPackages;
 
     systemd.services.llama-swap = lib.mkIf (peerUnits != [ ]) {
       wants = peerUnits;

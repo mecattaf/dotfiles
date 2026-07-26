@@ -4,7 +4,8 @@ The current documentation starts here.
 
 | Path | Purpose |
 |---|---|
-| [`local-ai/README.md`](local-ai/README.md) | Current local-AI appliance boundaries, routing, and deployment gate. |
+| [`local-ai/deployment-decisions-2026-07-26.md`](local-ai/deployment-decisions-2026-07-26.md) | Final active model placement, exact download totals, and exclusions for coordinator and worker. |
+| [`local-ai/README.md`](local-ai/README.md) | Current local-AI appliance boundaries and routing. |
 | [`local-ai/model-roster.md`](local-ai/model-roster.md) | Selected local model and inference roster, with pinned pull sources. |
 | [`local-ai/tallies/`](local-ai/tallies/) | Reviewed model-roster rationale; July 2026 is the accepted anchor. |
 | [`local-ai/monthly-workflow.md`](local-ai/monthly-workflow.md) | Evidence-first Git update bot, single Pi judgment, nested Tally GPU lease, and merge-only pin advancement. |
