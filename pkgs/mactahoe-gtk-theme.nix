@@ -4,8 +4,7 @@
 # Built from upstream source (vinceliuice/MacTahoe-gtk-theme), NOT vendored.
 # The ONLY customization is OLED black: upstream's dark surface colors in
 # src/sass/_colors.scss (#242424 base/backdrop, #333333 bg/headerbar) forced to
-# pure black, exactly the change behind the old harnessRPM `mactahoe-oled`
-# tarball (changelog: "rgba(5,5,5,0.96) → #000000 for true OLED black"). The
+# pure black ("rgba(5,5,5,0.96) → #000000 for true OLED black"). The
 # swapped values sit in the dark-only branch of the if(...)s, so the Light
 # variants are 100% stock. The grey accent and the solid opacity variant are
 # STOCK install.sh flags, not customizations.
@@ -89,7 +88,7 @@ stdenvNoCC.mkDerivation {
     mkdir -p $out/share/themes
     # -c light/dark : both colors   -t grey : grey accent   -o normal/solid :
     # both opacities. install.sh also emits the -hdpi/-xhdpi variants
-    # automatically, so the 6 dark dirs the old RPM shipped are produced
+    # automatically, so all 6 dark directories are produced
     # (MacTahoe-Dark-grey, -Dark-solid-grey, each + -hdpi/-xhdpi) plus the
     # matching 6 Light dirs.
     # MacTahoe's no-gnome-shell branch leaves SHELL_VERSION empty (upstream bug),

@@ -4,8 +4,6 @@ The main way of testing niri during development is running it as a nested window
 
 Once a feature or fix is reasonably complete, you generally want to run a local build as your main compositor for proper testing. The easiest way to do that is to install niri normally (from a distro package for example), then overwrite the binary with `sudo cp ./target/release/niri /usr/bin/niri`. Do make sure that you know how to revert to a working version in case everything breaks though.
 
-If you use an RPM-based distro, you can generate an RPM package for a local build with `cargo generate-rpm`.
-
 ## Logging Levels
 
 Niri uses [`tracing`](https://lib.rs/crates/tracing) for logging. This is how logging levels are used:

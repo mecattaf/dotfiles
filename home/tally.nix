@@ -1,14 +1,14 @@
 {
   inputs,
   lib,
-  osConfig ? null,
+  osConfig,
   pkgs,
   ...
 }:
 # tally — the single coordinator for user-decided impure work.
 #
-# home/home.nix is shared by the fleet and the standalone bridge, but the daemon,
-# logical pools, local executor, and calendar producers exist ONLY on coordinator.
+# home/home.nix is shared by the fleet, but the daemon, logical pools, local
+# executor, and calendar producers exist ONLY on coordinator.
 # zenbook-duo remains a best-effort target of the coordinator-owned deploy
 # workflow and is not required for coordinator maintenance.
 #
@@ -17,7 +17,7 @@
 # for the complete local build/deploy transaction, so it waits for active work
 # while keeping maintenance local to the coordinator.
 let
-  hostName = if osConfig == null then "bridge" else osConfig.networking.hostName;
+  hostName = osConfig.networking.hostName;
   isCoordinator = hostName == "coordinator";
   tallyPackage = inputs.tally.packages.${pkgs.stdenv.hostPlatform.system}.tally;
 

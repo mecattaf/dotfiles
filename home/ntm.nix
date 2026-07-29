@@ -2,7 +2,7 @@
   inputs,
   lib,
   pkgs,
-  osConfig ? null,
+  osConfig,
   ...
 }:
 # ntm — niri tablet management (github.com/mecattaf/ntm): edge-initiated
@@ -11,8 +11,8 @@
 # input pinned in flake.lock — but ntm ships no home-manager module (only
 # packages.*.ntm), so this file IS the module: package + config + user
 # service, all gated to the zenbook-duo. home/home.nix imports it on every
-# host, but everywhere else (coordinator, standalone bridge) the mkIf leaves
-# it inert, same shape as tally's conductor gate.
+# host, but the coordinator's mkIf leaves it inert, same shape as tally's
+# conductor gate.
 #
 # Division of labor with the PR #1856 niri fork (hosts/zenbook-duo +
 # niri-local.kdl): niri maps each panel's raw touches to the right output;
@@ -22,7 +22,7 @@
 # spelling of iio-sensor-proxy). Raw libinput access rides on the fleet-wide
 # "input" group membership (modules/common.nix).
 let
-  hostName = if osConfig == null then "bridge" else osConfig.networking.hostName;
+  hostName = osConfig.networking.hostName;
   isZenbook = hostName == "zenbook-duo";
   ntm = inputs.ntm.packages.${pkgs.stdenv.hostPlatform.system}.ntm;
 in

@@ -1,6 +1,4 @@
-// NIX-MIGRATION: placed RAW (home-manager out-of-store symlink) to keep niri
-// hot-reload. Candidate to port to typed programs.niri.settings (niri-flake)
-// later. Decision + rationale: ~/mecattaf/nix-decisions.md (D1).
+// Managed as a raw Home Manager out-of-store symlink so niri can hot-reload it.
 
 // scroll: exec wl-gammarelay-rs run
 spawn-at-startup "wl-gammarelay-rs" "run"
@@ -16,10 +14,8 @@ spawn-at-startup "sh" "-c" "sleep 0.5 && kanshi"
 // scroll: exec vicinae server
 spawn-at-startup "vicinae" "server"
 
-// NIX-MIGRATION: D3 (ratified 2026-06-20, dotfiles-sweep.md / nix-decisions.md):
-// wallpaper = swaybg spawned from niri startup, pointing at the repo wallpaper.jpg
-// (deployed to ~/.local/share/wallpapers by home-manager; swaybg in home.packages).
-// Runtime changes go through ~/.local/bin/wallpaper (same swaybg re-point).
+// Home Manager deploys the repository wallpaper under ~/.local/share/wallpapers.
+// Runtime changes go through ~/.local/bin/wallpaper, which re-points swaybg.
 spawn-sh-at-startup "swaybg -i $HOME/.local/share/wallpapers/wallpaper.jpg -m fill"
 
 

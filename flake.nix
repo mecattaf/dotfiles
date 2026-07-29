@@ -50,9 +50,7 @@
     };
 
     # Apple SF/NY fonts (sf-pro, sf-compact, sf-mono, ny), built at nix-build
-    # time from Apple's own CDN DMGs — nothing redistributed. Replaces the old
-    # Fedora-image url-fonts Apple-SF zip (its mecattaf/San-Francisco-family
-    # release no longer exists; repo deleted).
+    # time from Apple's own CDN DMGs — nothing redistributed.
     apple-fonts = {
       url = "github:Lyndeno/apple-fonts.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -142,7 +140,7 @@
     # ntm — niri tablet management (github.com/mecattaf/ntm): one Rust daemon
     # for edge-initiated multi-finger touchscreen gestures + accelerometer
     # rotation via iio-sensor-proxy. ZENBOOK-DUO ONLY — the one host with touch
-    # panels + an accelerometer; the coordinator and bridge never see it.
+    # panels + an accelerometer; the coordinator never sees it.
     # Consumed like tally (same author, same channel: flake input pinned in
     # flake.lock, follows nixpkgs so the Rust build resolves against our one
     # pin) — but ntm ships no home-manager module, only packages.*.ntm, so
@@ -409,14 +407,6 @@
             });
       };
 
-      # Standalone home-manager bridge for the live Fedora host (coexists with Fedora):
-      #   nix run home-manager -- switch --flake .#tom@bridge
-      homeConfigurations."tom@bridge" = home-manager.lib.homeManagerConfiguration {
-        inherit pkgs;
-        extraSpecialArgs = { inherit inputs; };
-        modules = [ ./home/home.nix ];
-      };
-
       packages.${system} =
         let
           amdAi = inputs.nix-amd-ai.packages.${system};
@@ -471,29 +461,35 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
-        home-bridge =
+        home-profiles =
           let
-            bridge = self.homeConfigurations."tom@bridge";
-            bridgeConfig = bridge.config;
+            coordinatorHome = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
+            zenbookHome = self.nixosConfigurations.zenbook-duo.config.home-manager.users.tom;
           in
-          assert bridgeConfig.home.username == "tom";
-          assert bridgeConfig.programs.atuin.settings.auto_sync == false;
-          assert nixpkgs.lib.hasInfix "No host-specific niri config on bridge."
-            bridgeConfig.xdg.configFile."niri-local.kdl".text;
-          assert bridgeConfig.services.tally.enable == false;
-          assert bridgeConfig.programs.voxtype.enable == false;
-          assert !(bridgeConfig.systemd.user.services ? ntm);
-          assert !(bridgeConfig.systemd.user.services ? wayvnc);
-          bridge.activationPackage;
+          assert coordinatorHome.home.username == "tom";
+          assert coordinatorHome.programs.atuin.settings.auto_sync;
+          assert coordinatorHome.services.tally.enable;
+          assert coordinatorHome.programs.voxtype.enable;
+          assert !(coordinatorHome.systemd.user.services ? ntm);
+          assert coordinatorHome.systemd.user.services ? wayvnc;
+          assert zenbookHome.home.username == "tom";
+          assert zenbookHome.programs.atuin.settings.auto_sync;
+          assert !zenbookHome.services.tally.enable;
+          assert !zenbookHome.programs.voxtype.enable;
+          assert zenbookHome.systemd.user.services ? ntm;
+          assert zenbookHome.systemd.user.services ? wayvnc;
+          pkgs.runCommand "home-profiles" { } ''
+            touch "$out"
+          '';
 
         ai-memory =
           let
-            bridgeConfig = self.homeConfigurations."tom@bridge".config;
+            homeConfig = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
             expectedJournal = "/home/tom/mecattaf/notes/journal";
           in
-          assert bridgeConfig.programs.ai-memory.journalDir == expectedJournal;
+          assert homeConfig.programs.ai-memory.journalDir == expectedJournal;
           assert
-            (builtins.fromJSON bridgeConfig.xdg.configFile."ai-memory/config.json".text) == {
+            (builtins.fromJSON homeConfig.xdg.configFile."ai-memory/config.json".text) == {
               schema = 1;
               journal_dir = expectedJournal;
             };
@@ -550,6 +546,35 @@
               ${pkgs.diffutils}/bin/cmp \
                 "$TMPDIR/note.before" "$HOME/journal/note.md"
 
+              touch "$out"
+            '';
+
+        nixos-only =
+          let
+            retiredPlatformPattern = nixpkgs.lib.concatStringsSep "|" [
+              ("fed" + "ora")
+              ("rpm-o" + "stree")
+              ("d" + "nf")
+              ("c" + "opr")
+              ("boot" + "c")
+              ("yum.repos." + "d")
+              ("harness" + "RPM")
+              ("chez" + "moi")
+              ("k" + "run")
+              ("tom@" + "bridge")
+              ("/usr/share/backgrounds/" + "harness")
+              ("osConfig" + "[[:space:]]*\\?[[:space:]]*null")
+            ];
+          in
+          pkgs.runCommand "nixos-only"
+            {
+              nativeBuildInputs = [ pkgs.ripgrep ];
+            }
+            ''
+              if rg --ignore-case --line-number '${retiredPlatformPattern}' ${self}; then
+                echo "retired platform residue found in the canonical NixOS tree" >&2
+                exit 1
+              fi
               touch "$out"
             '';
 

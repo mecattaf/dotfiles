@@ -1,6 +1,4 @@
-// NIX-MIGRATION: placed RAW (home-manager out-of-store symlink) to keep niri
-// hot-reload. Candidate to port to typed programs.niri.settings (niri-flake)
-// later. Decision + rationale: ~/mecattaf/nix-decisions.md (D1).
+// Managed as a raw Home Manager out-of-store symlink so niri can hot-reload it.
 
 binds {
     // scroll: floating_modifier $mod normal
@@ -31,8 +29,7 @@ binds {
 
     // scroll: bindsym Ctrl+N exec flatpak run com.google.Chrome
     // scroll: bindsym Ctrl+Shift+N exec flatpak run com.google.Chrome --incognito
-    // NIX-MIGRATION: flatpak is GONE (nix-decisions.md: google-chrome from
-    // nixpkgs, no flatpak). flatpak run com.google.Chrome → google-chrome-stable.
+    // Chrome is installed from nixpkgs; invoke its stable binary directly.
     // NOTE: the bare Ctrl+N / Ctrl+Shift+N grabs are global compositor launchers
     // (restored by request). They shadow the focused app's own Ctrl+N — nvim
     // completion, Chrome's native new-window/incognito, etc. — everywhere. The
@@ -90,9 +87,7 @@ binds {
     // ── Chrome Webapps ───────────────────────────────────────────
 
     // scroll: set $chrome flatpak run com.google.Chrome
-    // NIX-MIGRATION: flatpak is GONE (nix-decisions.md: google-chrome from
-    // nixpkgs, unfree; OBS via programs.obs-studio). All `flatpak run
-    // com.google.Chrome` → google-chrome-stable, com.obsproject.Studio → obs.
+    // Chrome and OBS are installed through NixOS; invoke their binaries directly.
 
     // scroll: bindsym $mod+Shift+N exec $chrome --app=https://chat.openai.com/
     Mod+Shift+N { spawn "google-chrome-stable" "--app=https://chat.openai.com/"; }

@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # media -- MPRIS playback control
-# NIX-MIGRATION: D2 native re-point (ratified 2026-06-20, nix-decisions.md /
-# dotfiles-sweep.md D2). Uses playerctl (MPRIS). Interim scaffolding — eventual nix-native shape is
-# writeShellApplication with declared deps.
+# Uses playerctl over MPRIS.
 case "$1" in
     play|toggle)  playerctl play-pause ;;
     next)         playerctl next ;;

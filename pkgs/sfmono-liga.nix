@@ -1,7 +1,5 @@
 # Liga SF Mono Nerd Font — SF Mono ligaturized + nerd-patched upstream
 # (shaunsingh/SFMono-Nerd-Font-Ligaturized, prebuilt OTFs committed to git).
-# Was: url-fonts/SFMono-Nerd-Font-Ligaturized in the Fedora image, via the
-# now-deleted mecattaf/San-Francisco-family release zip (SFMono-Liga.zip).
 # Distinct from apple-fonts' sf-mono-nerd, which has no programming ligatures.
 # src is the sfmono-liga flake input (flake = false) so flake.lock pins it;
 # wired in flake.nix (not overlays/default.nix — that file has no inputs).

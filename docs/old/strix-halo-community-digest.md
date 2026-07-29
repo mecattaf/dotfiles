@@ -86,8 +86,7 @@ upstream authors' measurements on their own gfx1151 boxes, not ours.
   belongs in any NixOS wrapper we write; their `llama-surya2` OCR service is far below
   our academic-OCR bar (confirms §5).
 - **Not covered**: serious academic OCR, diarization, streaming STT, video editing,
-  deterministic builds, any scheduler (manual switch script only). Fedora-family paths
-  — translate, don't copy.
+  deterministic builds, or any scheduler (manual switch script only).
 
 ### 3.2 boxwrench/tesla_agent — teaching guide + reproducibility ledger
 
@@ -153,7 +152,7 @@ upstream authors' measurements on their own gfx1151 boxes, not ours.
   ruling; per-model KV-cache quant defaults (q8_0 default, q4_0 for very large MoE) are
   a memory lever for tally job configs.
 - **Not covered**: all five §5 lanes; no scheduler beyond the single-node router; no
-  agent harness; Fedora-shaped (our NixOS port table lives in the loadout plan §3).
+  agent harness (our NixOS port table lives in the loadout plan §3).
 
 ### 3.5 kyuz0/amd-strix-halo-voice-toolbox — the TTS lane's image
 
@@ -161,7 +160,7 @@ upstream authors' measurements on their own gfx1151 boxes, not ours.
   gfx1151. This is the image loadout row 3 names.
 - **Rhythm**: bursty, 14 commits total; manual workflow_dispatch builds; watch for
   torch/ROCm-nightly bumps and segfault fixes, not a cadence.
-- **Latest (ab13312)**: Fedora 42 + TheRock gfx1151 nightly wheels; flash-attention
+- **Latest (ab13312)**: TheRock gfx1151 nightly wheels; flash-attention
   built via Triton AMD backend; VibeVoice from kyuz0's own fork, weights from the
   community mirror `aoi-ot/VibeVoice-Large` (Microsoft retracted the originals — the
   mirror-fetch ruling in loadout §6 now has a concrete pointer). Root-caused the

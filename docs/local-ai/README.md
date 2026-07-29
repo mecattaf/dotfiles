@@ -97,8 +97,8 @@ and there is no persistent FLM endpoint. Modality-specific speech services keep
 their own declared endpoints.
 
 Tally schedules, serializes, and proves the monthly community review described
-in [`monthly-workflow.md`](monthly-workflow.md). It does not retrofit historical
-pre-Nix notes into the current architecture.
+in [`monthly-workflow.md`](monthly-workflow.md). Historical notes do not define
+the current architecture.
 
 ## Sources of truth
 

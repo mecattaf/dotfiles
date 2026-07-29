@@ -20,9 +20,8 @@
 let
   repoDir = "/home/tom/mecattaf/dotfiles";
   repoUrl = "https://github.com/mecattaf/dotfiles.git";
-  # `main` IS the Nix consolidation since the 2026-07-05 rename of `nix` -> `main`
-  # (the pre-Nix chezmoi tree is archived at archive/chezmoi/main). Pinned explicitly
-  # anyway so a future default-branch change can't silently redirect provisioning.
+  # Pin the canonical branch explicitly so a future default-branch change cannot
+  # silently redirect provisioning.
   repoBranch = "main";
   cloneScript = pkgs.writeShellScript "dotfiles-bootstrap-clone" ''
     set -u

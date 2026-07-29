@@ -33,14 +33,6 @@ If you do not want to install `nautilus` (say you use `nemo` instead), you can s
 
 Required when apps need to ask for root permissions. Something like `plasma-polkit-agent` works fine. Start it [with systemd](./Example-systemd-Setup.md) or with [`spawn-at-startup`](./Configuration:-Miscellaneous.md#spawn-at-startup).
 
-Note that to start `plasma-polkit-agent` with systemd on Fedora, you'll need to override its systemd service to add the correct dependency. Run:
-
-```
-systemctl --user edit --full plasma-polkit-agent.service
-```
-
-Then add `After=graphical-session.target`.
-
 ### Xwayland
 
 To run X11 apps like Steam or Discord, you can use [xwayland-satellite].

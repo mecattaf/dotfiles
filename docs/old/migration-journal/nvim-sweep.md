@@ -2,7 +2,7 @@
 
 **Scope:** This is a written plan only. Nothing is built yet (Nix is not installed on the
 host). The acceptance contract is **zero functionality loss** vs. the live config at
-`/var/home/tom/mecattaf/dotfiles/home/dot_config/nvim`. The prior `nix-test` port is **not**
+`/home/tom/mecattaf/dotfiles/home/dot_config/nvim`. The prior `nix-test` port is **not**
 trusted — it merely symlinks the nvim dir, ships a bare `neovim` package, and leaves
 `mason.nvim` live (the forbidden imperative-install pattern).
 
@@ -167,7 +167,7 @@ in
     extraLuaPackages = ps: [ ps.magick ];
     # DO NOT set extraConfig/extraLuaConfig: leaving them empty means HM writes NO
     # ~/.config/nvim/init.lua (it only writes when generated content is non-empty, wrapRc=false),
-    # so the chezmoi-managed hand-written init.lua + lua/ modules are used verbatim.
+    # so the repository's hand-written init.lua + lua/ modules are used verbatim.
     defaultEditor = true;
   };
 
@@ -190,7 +190,7 @@ or `open-actions.conf` nvim launches. `niri-session` runs the **login shell** an
 env to systemd → niri → kitty inherit it; but `dot_bashrc`/`dot_bash_profile` source no
 nix/HM vars today. Fix the SESSION PATH at the login entry (do both layers):
 
-**(A) Primary — source HM session vars from the chezmoi login file.** In
+**(A) Primary — source HM session vars from the login file.** In
 `home/dot_bash_profile`, before niri starts:
 
 ```sh
@@ -206,7 +206,7 @@ This is the systemic fix — it also repairs every niri `spawn`/`spawn-at-startu
 `kitty -e fish` shell that expects Nix-provided binaries (`wl-clipboard`, `cliphist`, etc.).
 
 **(B) Defense-in-depth for the three nvim/lazygit launches — absolute store paths so PATH is
-irrelevant.** Render these files via home-manager (substituted text), not verbatim chezmoi:
+irrelevant.** Render these files via Home Manager with substituted text:
 
 - `mappings.lua` `<leader>kg`: `... launch ... @lazygit@` ← `${pkgs.lazygit}/bin/lazygit`
 - `mappings.lua` `<leader>ko` nested nvim: `... launch ... @nvim@ -- ...` ← wrapped-nvim path

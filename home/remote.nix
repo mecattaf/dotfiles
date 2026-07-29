@@ -2,7 +2,7 @@
   config,
   lib,
   pkgs,
-  osConfig ? null,
+  osConfig,
   ...
 }:
 # Remote-access stack: wayvnc (VNC server, so any device can be viewed) + Remmina
@@ -10,7 +10,7 @@
 # NixOS host with a niri session.
 let
   registry = import ../modules/mesh-registry.nix;
-  hostName = if osConfig != null then osConfig.networking.hostName else null;
+  hostName = osConfig.networking.hostName;
 
   # wayvnc binds the single active output automatically. Avoid pinning a guessed
   # connector name; whichever active output lights up is the one to capture.
@@ -47,7 +47,7 @@ let
     '';
   };
 in
-lib.mkIf (osConfig != null) {
+{
   home.packages = [
     pkgs.wayvnc
     pkgs.remmina

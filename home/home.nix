@@ -16,10 +16,7 @@ let
   dots = "${repoDir}/home";
   link = path: config.lib.file.mkOutOfStoreSymlink "${dots}/${path}";
 
-  # osConfig is null on the standalone `tom@bridge` config (not a NixOS host —
-  # see home-manager.lib.homeManagerConfiguration in flake.nix); same fallback
-  # idiom as ntm.nix/remote.nix/tally.nix.
-  hostName = if osConfig == null then "bridge" else osConfig.networking.hostName;
+  hostName = osConfig.networking.hostName;
 
   # Curated llm-agents.nix install. `pkgs.llm-agents` (from the flake input's
   # overlay) is the entire ~139-agent catalog, prebuilt against upstream's own
@@ -203,8 +200,8 @@ in
   dconf.settings."org/gnome/desktop/interface" = {
     gtk-theme = "MacTahoe-Dark-grey";
     color-scheme = "prefer-dark";
-    # Interface fonts, mirroring the Fedora box exactly (Nautilus, Remmina and
-    # every other GTK app read font-name). sf-pro ships system-wide via
+    # Interface fonts for Nautilus, Remmina, and every other GTK app that reads
+    # font-name. sf-pro ships system-wide via
     # modules/common.nix fonts.packages; before this nothing set the key, so
     # GTK fell back to Adwaita Sans — the "odd Nautilus font" on first boot.
     font-name = "SF Pro Display 11";
@@ -283,9 +280,7 @@ in
   #
   # sync_address: the coordinator talks to its own server over localhost; every
   # other host reaches it via MagicDNS (`coordinator`, tailnet-only — see the
-  # firewall rule on the server side). auto_sync is off on the standalone
-  # `tom@bridge` Fedora config (osConfig == null there — it isn't in the mesh,
-  # doesn't get the shared key delivered, and has no server to reach).
+  # firewall rule on the server side).
   #
   # The encryption key itself is fleet state, not per-host state: it's minted
   # once, delivered via agenix (secrets/atuin-key.age, common tier — see
@@ -295,7 +290,7 @@ in
     enable = true;
     enableFishIntegration = false;
     settings = {
-      auto_sync = hostName != "bridge";
+      auto_sync = true;
       # port must match services.atuin.port in hosts/coordinator/services.nix.
       sync_address =
         if hostName == "coordinator" then "http://localhost:27321" else "http://coordinator:27321";

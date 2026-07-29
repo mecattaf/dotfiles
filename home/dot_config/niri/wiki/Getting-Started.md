@@ -2,13 +2,6 @@
 
 Use these commands to install niri with [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell) for a fairly out-of-the-box experience.
 
-Fedora:
-```
-sudo dnf copr enable avengemedia/dms
-sudo dnf install niri dms
-systemctl --user add-wants niri.service dms
-```
-
 Arch Linux (via [paru](https://github.com/morganamilo/paru)):
 ```
 sudo pacman -Syu niri xwayland-satellite xdg-desktop-portal-gnome xdg-desktop-portal-gtk alacritty
@@ -34,7 +27,8 @@ Check the DankMaterialShell's [compositor setup page](https://danklinux.com/docs
 ## Slower and more considered start
 
 The easiest way to get niri is to install one of the distribution packages.
-Here are some of them: [Fedora COPR](https://copr.fedorainfracloud.org/coprs/yalter/niri/) and [nightly COPR](https://copr.fedorainfracloud.org/coprs/yalter/niri-git/) (which I maintain myself), [NixOS Flake](https://github.com/sodiboo/niri-flake), and some more from repology below, including a [pacstall package](https://pacstall.dev/packages/niri/) for Debian-based distros.
+See the [NixOS Flake](https://github.com/sodiboo/niri-flake) and the additional
+packages indexed by repology below.
 See the [Building](#building) section if you'd like to compile niri yourself and the [Packaging niri](./Packaging-niri.md) page if you want to package niri.
 
 [![Packaging status](https://repology.org/badge/vertical-allrepos/niri.svg)](https://repology.org/project/niri/versions)
@@ -175,12 +169,6 @@ First, install the dependencies for your distribution.
 
     ```sh
     sudo apt-get install -y gcc clang libudev-dev libgbm-dev libxkbcommon-dev libegl1-mesa-dev libwayland-dev libinput-dev libdbus-1-dev libsystemd-dev libseat-dev libpipewire-0.3-dev libpango1.0-dev libdisplay-info-dev
-    ```
-
-- Fedora:
-
-    ```sh
-    sudo dnf install gcc libudev-devel libgbm-devel libxkbcommon-devel wayland-devel libinput-devel dbus-devel systemd-devel libseat-devel pipewire-devel pango-devel cairo-gobject-devel clang libdisplay-info-devel
     ```
 
 Next, get latest stable Rust: https://rustup.rs/

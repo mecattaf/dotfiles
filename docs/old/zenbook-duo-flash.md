@@ -2,8 +2,9 @@
 > It predates the nixos-anywhere + disko + `--extra-files` flow the fleet now uses,
 > and its manual-USB path delivers NO offline ssh host key — a host flashed this way
 > gets an unregistered key and agenix decryption breaks when `mySecrets.enable` flips.
-> **Canonical laptop runbook: [`dell-xps-flash.md`](./dell-xps-flash.md).** The duo's
-> actual jul5 flash + fixes: `notes/july-fable/july5-duo-flash/flash-log.md`.
+> The current disk and host definitions live under `hosts/zenbook-duo/`. The duo's
+> actual jul5 flash + fixes are recorded in
+> `notes/july-fable/july5-duo-flash/flash-log.md`.
 > Kept only for historical context below this line.
 
 ---

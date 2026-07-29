@@ -3,15 +3,15 @@
   inputs,
   lib,
   pkgs,
-  osConfig ? null,
+  osConfig,
   ...
 }:
 # Voxtype — local streaming dictation on the interactive AMD Strix Halo
 # coordinator. The upstream Home Manager module owns the package, generated
-# TOML, and sole systemd user service. Other NixOS hosts and standalone bridge
-# import the options but leave the complete integration disabled.
+# TOML, and sole systemd user service. Other NixOS hosts import the options but
+# leave the complete integration disabled.
 let
-  hostName = if osConfig == null then "bridge" else osConfig.networking.hostName;
+  hostName = osConfig.networking.hostName;
   package = inputs.voxtype.packages.${pkgs.stdenv.hostPlatform.system}.onnx-migraphx;
   osdPackage = inputs.voxtype.packages.${pkgs.stdenv.hostPlatform.system}.osd-gtk4;
   parakeetModel = "parakeet-unified-en-0.6b";

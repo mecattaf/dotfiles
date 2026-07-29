@@ -4,11 +4,11 @@
 # with --args.
 {
   lib,
-  osConfig ? null,
+  osConfig,
   ...
 }:
 let
-  hostName = if osConfig == null then "bridge" else osConfig.networking.hostName;
+  hostName = osConfig.networking.hostName;
   isCoordinator = hostName == "coordinator";
   dotfiles = "/home/tom/mecattaf/dotfiles";
   notes = "/home/tom/mecattaf/notes";

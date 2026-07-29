@@ -1,18 +1,17 @@
 ---
 name: microvm
-description: Operating manual for microVMs on NixOS via astro/microvm.nix — the declarative flake toolkit that replaced the Fedora podman+krun `sandbox` tool. Use when creating, running, listing, entering, updating, stopping, and (critically) TEARING DOWN microVMs; when an agent needs a disposable VM to run/test untrusted code; when wiring `microvm.nix` into the flake; or when the user mentions microvm, microVM, `microvm@`, `/var/lib/microvms`, `declaredRunner`, a VM sandbox, or a per-agent VM. Prime directive — microvm.nix KEEPS VMs and ships NO teardown verb; cleanup is manual and it is the reason this skill exists.
-when_to_use: agent needs an isolated/disposable VM; "spin up a microVM", "sandbox this build", "run this in a VM"; create/run/list/ssh/stop a microVM; a leaked `/var/lib/microvms/*` dir or dangling gcroot; wiring microvm.nix into the host flake; deciding declarative-service-VM vs ephemeral-sandbox.
+description: Operating manual for microVMs on NixOS via astro/microvm.nix. Use when creating, running, listing, entering, updating, stopping, and (critically) TEARING DOWN microVMs; when an agent needs a disposable VM to run or test untrusted code; when wiring `microvm.nix` into the flake; or when the user mentions microvm, microVM, `microvm@`, `/var/lib/microvms`, `declaredRunner`, a VM sandbox, or a per-agent VM. Prime directive — microvm.nix KEEPS VMs and ships NO teardown verb; cleanup is manual and it is the reason this skill exists.
 ---
 
 # microvm.nix — declarative microVMs on NixOS
 
-Upstream: `astro/microvm.nix` (redirects to `microvm-nix/microvm.nix`). Local clone for reading source: `~/Downloads/microvm.nix`. This skill supersedes the Fedora `podman run --runtime=krun` `sandbox` tool (research corpus at `~/mecattaf/dotfiles/skills/microvm/`); the Fedora COPR/krun packaging tax is gone — on Nix the instrument is a flake output, `git clone` = export, `nixos-rebuild` = import.
+Upstream: `astro/microvm.nix` (redirects to `microvm-nix/microvm.nix`). Local clone for reading source: `~/Downloads/microvm.nix`. On NixOS, the instrument is a flake output: `git clone` exports a VM definition and `nixos-rebuild` imports it into a host configuration.
 
 ## Mental model (read first)
 
 - **It is not a daemon.** microvm.nix is a Nix flake that exports `nixosModules` (`nixos-modules/{microvm,host}`). A microVM is a full para-virtualized guest — a **NixOS system built from the store**, running on a type-2 hypervisor. Each managed VM becomes **its own systemd service** `microvm@<name>`. There is no central microvm process.
 - **The guest rootfs is content-addressed and pinned by the flake** — byte-identical, no drift, trivial rollback. Sharing the host `/nix/store` read-only over virtiofs means a new sandbox flavour is a new closure, not a new image to build/pull.
-- **microvm.nix is persistent-by-design.** It is built to *keep* VMs, not dispose of them. **There is no `remove`, no `-x`, no `reap`.** This is the exact inversion of the old krun `sandbox` tool, whose whole value was ephemeral-by-default disposal. **Teardown is on you** — see [Cleanup](#cleanup--teardown--reap-the-crux). Treat this as the skill's prime directive.
+- **microvm.nix is persistent-by-design.** It is built to *keep* VMs, not dispose of them. **There is no `remove`, no `-x`, no `reap`.** **Teardown is on you** — see [Cleanup](#cleanup--teardown--reap-the-crux). Treat this as the skill's prime directive.
 - **Threat model** (carried from the notes): *sandbox the workload, not the agent.* The VM isolates the code-under-test; egress is the thing to gate.
 
 ## Live facts (verify before acting)
@@ -31,7 +30,7 @@ Upstream: `astro/microvm.nix` (redirects to `microvm-nix/microvm.nix`). Local cl
 
 **WIRED IN (updated 2026-07-29).** `flake.nix` carries the `microvm` input; the durable host platform (`microvm.host.enable`) is enabled on the **coordinator** via `modules/microvm-host.nix`. So:
 
-- **Ephemeral default** — `nix run …config.microvm.declaredRunner` works from **any** host (needs only the input; no host module). This is the default and matches the old krun `run` verb's disposability.
+- **Ephemeral default** — `nix run …config.microvm.declaredRunner` works from **any** host (needs only the input; no host module). This is the default for disposable workloads.
 - **Durable path** — the `microvm` CLI + `microvm@` units + `microvm.vms` live on the **coordinator**. Live-artifact guest ports forward to coordinator loopback, where local Caddy consumes them.
 
 ## Path decision — pick before you build
@@ -48,7 +47,7 @@ A hand-managed VM you update on its own cadence on a host?
   YES → IMPERATIVE: microvm -c / -Ru on a host with the module enabled
 ```
 
-In doubt for an agent workload: **ephemeral `declaredRunner`**. It is the closest analogue to the krun tool and needs nothing wired into the host.
+In doubt for an agent workload: **ephemeral `declaredRunner`**. It needs nothing wired into the host.
 
 ## How it's wired (reference)
 
@@ -139,7 +138,7 @@ systemctl stop microvm@<name>.service   # runs microvm-shutdown (socket-gated), 
 
 ## Cleanup / teardown / reap (THE crux)
 
-microvm.nix ships **no** teardown verb. `systemctl stop` releases the process, network devices, and machined registration — but **leaves the state dir and the gcroots behind**. Left unmanaged, every `microvm -c` leaks `/var/lib/microvms/<name>` **and** dangling closure-pinning gcroots forever. Run the sequences below explicitly. (This is exactly the disposal discipline the old krun `sandbox` tool automated in 3 layers; upstream automates none of it.)
+microvm.nix ships **no** teardown verb. `systemctl stop` releases the process, network devices, and machined registration — but **leaves the state dir and the gcroots behind**. Left unmanaged, every `microvm -c` leaks `/var/lib/microvms/<name>` **and** dangling closure-pinning gcroots forever. Run the sequences below explicitly.
 
 ### Destroy one VM (full teardown — run in order)
 
@@ -159,7 +158,7 @@ nix-collect-garbage                                                    # reclaim
 
 The official "Removing MicroVMs" doc stops after `rm -rf /var/lib/microvms/$NAME` — it does **not** prune the gcroots. Skipping the `rm -f …/gcroots/microvm/*` step silently pins dead closures against `nix store gc`. Always do it.
 
-### Reap orphans (backstop — porting the krun `reap` verb)
+### Reap orphans
 
 ```bash
 # report state dirs whose systemd unit is dead (candidate leaks):
@@ -172,7 +171,7 @@ done
 find /nix/var/nix/gcroots/microvm -xtype l -print -delete
 ```
 
-Treat `/var/lib/microvms/` + `microvm@` unit state as the **single source of truth** (the Nix analogue of the krun tool's "podman labels only" rule) — never track VMs in a side file.
+Treat `/var/lib/microvms/` + `microvm@` unit state as the **single source of truth** — never track VMs in a side file.
 
 ### Shutdown caveat by hypervisor
 
@@ -189,7 +188,7 @@ Treat `/var/lib/microvms/` + `microvm@` unit state as the **single source of tru
 
 - **firecracker has NO virtiofs/9p shares, no device passthrough, no balloon** (`lib/runners/firecracker.nix` throws). If you need host shares, use qemu or cloud-hypervisor.
 - **No clean shutdown on kvmtool/stratovirt/alioth** — see the caveat table above.
-- **Signature enforcement differs from Fedora.** The old bootc/podman flow signature-enforced image pulls; NixOS default policy is `insecureAcceptAnything`. Any in-guest OCI pulls are unverified unless you configure a policy. Don't assume the Fedora posture carried over (`references/devlogs/1h26/nix-test-rescue/audit/round2-obsolete-refutation.md:127`).
+- **OCI signature enforcement is not automatic.** NixOS defaults to the `insecureAcceptAnything` containers policy. Configure an explicit policy before relying on in-guest OCI pulls.
 - **Ephemeral ≠ automatic.** microvm.nix has no ephemeral-VM concept; "disposable" means *you* chose the `nix run` path with no persistent volume. Persistence is the default everywhere else.
 
 ## Hard rules
@@ -205,6 +204,4 @@ Treat `/var/lib/microvms/` + `microvm@` unit state as the **single source of tru
 ## Reference paths
 
 - **Upstream source (read here):** `~/Downloads/microvm.nix` — CLI `pkgs/microvm-command.nix`; runners `lib/runners/*.nix`; host module `nixos-modules/host/default.nix` + `options.nix`; interfaces/volumes/shares under `nixos-modules/microvm/` and `lib/`; docs `doc/src/{microvm-command,declarative,shares,packages}.md`.
-- **Old krun `sandbox` corpus (disposal discipline this skill ports):** `~/mecattaf/dotfiles/skills/microvm/` — `sandbox.sh` (`ephemeral_trap`, `verb_rm`, `reap_core`, `remove_worktree`), `OUVERTURE.md`, `CADDYFILE`.
-- **Design lineage (why microvm.nix won):** `notes/references/devlogs/1h26/june18-nix-learnings.md` (the flake-module architecture Tom fell for), `.../june24-openclaw-research.md` (the "Fedora tax dissolved" retrospective), `.../nix-test-rescue/strix-halo-cluster.md` (deepest technical case), `notes/references/archive/july26-fable-first/july6-consolidation/CONSOLIDATION-PROPOSAL.md:264` (the ruling that settled it on architecture alone).
 - **Board thread this closes:** `notes/backlog/tasks/task-45 - Check-microvm.nix-claude-skill-exists-or-write-a-simple-one.md`; supersession record `notes/areas/dotfiles-skills-pipeline.md:38`.

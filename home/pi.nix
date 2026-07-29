@@ -1,6 +1,6 @@
 {
   lib,
-  osConfig ? null,
+  osConfig,
   pkgs,
   ...
 }:
@@ -39,9 +39,8 @@
 let
   # Embedded home-manager exposes the host's evaluated NixOS config here. Only
   # load the local provider where that host actually runs llama-swap; Pi itself
-  # remains available everywhere. The standalone bridge has no osConfig.
-  llamaSwap =
-    if osConfig == null then null else lib.attrByPath [ "services" "llama-swap" ] null osConfig;
+  # remains available everywhere.
+  llamaSwap = lib.attrByPath [ "services" "llama-swap" ] null osConfig;
   hasLocalLlamaSwap = llamaSwap != null && llamaSwap.enable;
 
   # ── extension roster ─────────────────────────────────────────────────────
