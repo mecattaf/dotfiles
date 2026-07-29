@@ -127,4 +127,8 @@ final: prev: {
   # Monthly local-AI update bot: deterministic Git/HF preparation, one Pi
   # judgment, deterministic verification/publication. Tally leases only Pi.
   local-ai-monthly = final.callPackage ../pkgs/local-ai-monthly { };
+
+  # Bounded academic OCR appliance: deterministic PDF mechanics, the tally
+  # mutation-ladder driver, and canonical/chunk/embed/index receipt stages.
+  academic-ocr = final.callPackage ../pkgs/academic-ocr { };
 }

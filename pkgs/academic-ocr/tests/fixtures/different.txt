@@ -1,0 +1,4 @@
+Vector databases organize numerical representations for similarity search across
+large collections. Index construction balances memory, latency, recall, update
+frequency, quantization, filtering, and operational complexity. Benchmark results
+must compare identical queries and documents before selecting a storage engine.

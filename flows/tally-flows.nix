@@ -3,8 +3,10 @@
 # manually with `tally flow run`. Args here are the defaults; override per run
 # with --args.
 {
+  inputs,
   lib,
   osConfig,
+  pkgs,
   ...
 }:
 let
@@ -13,6 +15,69 @@ let
   dotfiles = "/home/tom/mecattaf/dotfiles";
   notes = "/home/tom/mecattaf/notes";
   worktrees = "/home/tom/.local/state/tally-worktrees";
+
+  academicState = "/home/tom/.local/state/academic-ocr";
+  fixedPapers = builtins.fromJSON (builtins.readFile ../pkgs/academic-ocr/fixed-papers.json);
+  turner = fixedPapers.turner;
+  turnerId = turner.paperId;
+  turnerSha = turner.sourceSha256;
+  turnerBlob = "${academicState}/blobs/sha256/${turnerSha}.pdf";
+  turnerRun = "${academicState}/runs/${turnerId}-${builtins.substring 0 12 turnerSha}";
+  turnerPages = map (pageNumber: {
+    paperId = turnerId;
+    inherit pageNumber;
+    sourcePath = turnerBlob;
+  }) (lib.range 1 5);
+  academicProtocols = [
+    {
+      id = "poppler-text";
+      tier = "cheap";
+    }
+    {
+      id = "mupdf-text";
+      tier = "cheap";
+    }
+    {
+      id = "qwen3-vl-8b-ocr";
+      tier = "standard";
+    }
+    {
+      id = "qwen3-vl-32b-ocr";
+      tier = "specialist";
+    }
+  ];
+  academicDriver = {
+    adapter = "ocr-driver";
+    program = "${pkgs.academic-ocr}/bin/academic-ocr-driver";
+    runtimeMaxSec = 1800;
+  };
+
+  # Keep the pinned upstream control program. Only the ruled physical pool name
+  # changes at build time; no forked JavaScript source lives in dotfiles.
+  academicOcrFlow = pkgs.runCommand "academic-ocr-flow.js" { } ''
+    substitute ${inputs.tally}/examples/flows/academic-ocr.js "$out" \
+      --replace-fail '"ocr-gpu"' '"coordinator-gpu"'
+  '';
+
+  sampleSelections = map (pageNumber: {
+    paperId = turnerId;
+    inherit pageNumber;
+    status = "converged";
+    resolution = "tier";
+    inputVariant = "original";
+    chosenArtifactPath = "${turnerRun}/ocr/${turnerId}/page-${toString pageNumber}/qwen3-vl-8b-ocr/original.json";
+    textDigest = "sha256:${builtins.hashString "sha256" "turner-page-${toString pageNumber}-sample"}";
+    disagreementPermille = 0;
+    agreementProtocols = [
+      "qwen3-vl-32b-ocr"
+      "qwen3-vl-8b-ocr"
+    ];
+    attemptCount = 4;
+    proof = {
+      taskUuid = "00000000-0000-4000-8000-000000000124";
+      witnessSeq = pageNumber;
+    };
+  }) (lib.range 1 5);
 in
 {
   services.tally.flows = lib.optionalAttrs isCoordinator {
@@ -88,6 +153,47 @@ in
         notesRepo = notes;
         outDir = "${notes}/july23-notes-reshape";
         maxRows = 60;
+      };
+    };
+
+    academic-ocr = {
+      script = academicOcrFlow;
+      onCalendar = null;
+      maxNodes = 1700;
+      args = {
+        pages = turnerPages;
+        protocols = academicProtocols;
+        driver = academicDriver;
+        outputDir = "${turnerRun}/ocr";
+        rasterDpi = 400;
+        maxMutationIterations = 3;
+        maxDisagreementPermille = 375;
+      };
+    };
+
+    academic-assemble = {
+      script = ./academic-assemble.js;
+      onCalendar = null;
+      maxNodes = 6;
+      args = {
+        paper = {
+          paperId = turnerId;
+          title = turner.title;
+          sourceUrl = turner.sourceUrl;
+          sourceSha256 = turnerSha;
+        };
+        pages = sampleSelections;
+        protocols = academicProtocols;
+        driver = academicDriver;
+        outputDir = "${turnerRun}/package";
+        receiptPath = "${turnerRun}/receipt.json";
+        chunkWords = 512;
+        embedding = {
+          endpoint = "http://localhost:9292";
+          model = "qwen3-embedding-8b";
+          batchSize = 16;
+          dimensions = 4096;
+        };
       };
     };
   };
