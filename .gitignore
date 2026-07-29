@@ -17,3 +17,4 @@ plaintext/
 
 # Nix build output symlink
 /result
+.wrangler/
