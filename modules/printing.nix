@@ -58,8 +58,24 @@
     };
   };
 
+  # Print-document faces are explicit even though google-fonts already covers
+  # part of this set in common.nix. These names are the stable profiles used by
+  # the print skill: book (Garamond/Baskerville), editorial (Source Serif),
+  # Times-compatible academic, LaTeX/Computer Modern, and Apple-like sans.
+  fonts.packages = with pkgs; [
+    eb-garamond
+    libre-baskerville
+    source-serif
+    liberation_ttf
+    lmodern
+    inter
+  ];
+
   # Claude Code's bounded raw-9100 path for trivial text. It defaults to the
   # printer's DHCP-reserved address and appends CRLF + form feed; rendered
   # documents continue through CUPS (`lp`) instead.
-  environment.systemPackages = [ pkgs.brother-print-text ];
+  environment.systemPackages = [
+    pkgs.brother-print-text
+    pkgs.poppler-utils # pdfinfo/pdftoppm: enforce page count and inspect before lp
+  ];
 }
