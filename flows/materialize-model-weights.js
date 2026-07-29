@@ -1,7 +1,7 @@
 export const meta = {
   name: "materialize-model-weights",
   description: "Gate on #104 closing, then materialize allowlisted model weights on coordinator and worker; replay-safe per artifact",
-  pools: ["build"],
+  pools: ["flow-build"],
   argsSchema: {
     type: "object",
     required: ["coordinatorFlake", "workerFlake", "coordinatorModels", "workerModels"],
@@ -42,7 +42,7 @@ export const meta = {
       "-c",
       'test "$(gh issue view 104 -R mecattaf/dotfiles --json state -q .state)" = "CLOSED"'
     ],
-    { pools: ["build"], key: "gate-issue-104", evidence: ["exit:0"], label: "gate-issue-104" }
+    { pools: ["flow-build"], key: "gate-issue-104", evidence: ["exit:0"], label: "gate-issue-104" }
   );
 
   // Weight downloads serialize through the build lane (capacity 1) on purpose:
@@ -54,7 +54,7 @@ export const meta = {
     const built = await sh(
       ["nix", "build", `${args.coordinatorFlake}#models.${model}`, "--no-link", "--print-out-paths"],
       {
-        pools: ["build"],
+        pools: ["flow-build"],
         key: `coordinator-${model}`,
         evidence: ["exit:0"],
         label: `coordinator:${model}`
@@ -68,7 +68,7 @@ export const meta = {
     const built = await sh(
       ["nix", "build", `${args.workerFlake}#models.${model}`, "--no-link", "--print-out-paths"],
       {
-        pools: ["build"],
+        pools: ["flow-build"],
         executor: "worker",
         key: `worker-${model}`,
         evidence: ["exit:0"],
@@ -83,7 +83,7 @@ export const meta = {
   return sh(
     ["nix", "build", `${args.coordinatorFlake}#nixosConfigurations.coordinator.config.system.build.toplevel`, "--no-link"],
     {
-      pools: ["build"],
+      pools: ["flow-build"],
       key: "closure-proof",
       brief: { coordinator: coordinatorBuilt, worker: workerBuilt },
       evidence: ["exit:0"],

@@ -1,16 +1,21 @@
-# DRAFT — NOT IMPORTED YET. Wired in at T0 (see flows/README.md) after the
-# flow-era tally input bump, next to home/tally.nix on coordinator. Every flow is
-# one-shot (onCalendar = null): registered and flake-check-validated, invoked
+# Imported by home/tally.nix and populated on coordinator only. Every flow is
+# one-shot (onCalendar = null): registered and generation-validated, then invoked
 # manually with `tally flow run`. Args here are the defaults; override per run
 # with --args.
-{ ... }:
+{
+  lib,
+  osConfig ? null,
+  ...
+}:
 let
+  hostName = if osConfig == null then "bridge" else osConfig.networking.hostName;
+  isCoordinator = hostName == "coordinator";
   dotfiles = "/home/tom/mecattaf/dotfiles";
   notes = "/home/tom/mecattaf/notes";
   worktrees = "/home/tom/.local/state/tally-worktrees";
 in
 {
-  services.tally.flows = {
+  services.tally.flows = lib.optionalAttrs isCoordinator {
     allowlist-implementation = {
       script = ./allowlist-implementation.js;
       onCalendar = null;

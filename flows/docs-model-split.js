@@ -1,7 +1,7 @@
 export const meta = {
   name: "docs-model-split",
   description: "Refresh docs/local-ai to the allowlist reality, preserve retired DS4 evidence, sunset the stale set",
-  pools: ["codex-window", "build"],
+  pools: ["codex-window", "flow-build"],
   argsSchema: {
     type: "object",
     required: ["repository", "baseRev", "branch", "worktree"],
@@ -46,7 +46,7 @@ export const meta = {
   return sh(
     ["bash", "-c", 'cd "$1" && ! grep -rn "docs/old/migration-journal/ds4-dual-node-lessons" lib/ modules/', "citation-check", args.worktree],
     {
-      pools: ["build"],
+      pools: ["flow-build"],
       key: "citation-check",
       brief: { implementation: implementation.result },
       evidence: ["exit:0"],

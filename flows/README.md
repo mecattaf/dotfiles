@@ -1,33 +1,33 @@
 # Tally flows — waves 1+2 campaign (authored 2026-07-25)
 
 Flow scripts for the post-LaCie campaign: local-model materialization (lane A) and
-the notes-reshape/drain arc (lane B), run concurrently. Authored against the
-flow-era tally.nix on its `main` (e7ae081, FS-1…FS-7 landed). **Nothing here is
-wired or scheduled yet** — `tally-flows.nix` is deliberately NOT imported, and no
-flow runs until dotfiles issue #104 (LaCie post-restore) closes and T0 below is done.
+the notes-reshape/drain arc (lane B), run concurrently. They are registered on
+coordinator against tally.nix 0.1.0 (`6b250541`) but remain unscheduled: every
+entry has `onCalendar = null` and runs only through an explicit
+`tally flow run`. Dotfiles issue #104 is closed; its materialization gate remains
+in the script as witnessed proof rather than an active blocker.
 
 Codex is the agentic harness for all implementation nodes (ruled 2026-07-25);
 Claude Code is not used as a flow node. Local quorum work goes through `local()`
-members on coordinator llama-swap; the soft-retired worker remains optional.
+members on coordinator llama-swap.
 
-## T0 — flow-era readiness (babysat, daylight; tracked as its own issue)
+## T0 — flow-era readiness record
 
-1. Bump `inputs.tally` to the flow-era rev (>= e7ae081): `nix flake lock --update-input tally`.
-2. Deploy **worker first, then coordinator**, with a manual rollback path staged.
-   Caveat #106: `nixos-rebuild --rollback` is currently broken — babysit, do not
-   let the nightly producer take this generation unattended.
-3. Add the `codex-window` pool (resource `subscription`, capacity 1, cooperative)
-   to `home/tally.nix` pools; flows here declare it.
-4. Import `flows/tally-flows.nix` next to `home/tally.nix` and verify the
-   `services.tally.flows` option surface exists on the HM module (surveyed in
-   tally.nix `nix/modules/common.nix` ~1493; confirm HM export).
-5. `tally flow check flows/<each>.js` (also runs under `nix flake check` once
-   wired). All six flows + the selector catalog already passed flow check
-   against the flow-era binary on 2026-07-25; re-run after any edit.
-6. Reconcile the 9 ORACLE-DELTAS listed in tally.nix `legacy-docs/campaign/MORNING-REPORT.md`
-   (non-blocking).
-7. Normalize the repo: resolve the uncommitted `hosts/coordinator/services.nix`
-   drift and stray `result` symlink before the input bump lands.
+- The worktree was clean, had no stray `result` symlink, and passed
+  `nix flake check` before the input bump.
+- `inputs.tally` is pinned to tally.nix 0.1.0 at `6b250541`, past the original
+  flow-era minimum `e7ae081`.
+- The Home Manager module exports `services.tally.flows`; `home/tally.nix`
+  imports this registry on coordinator only.
+- `codex-window` is a cooperative capacity-one mutex. Tally 0.1.0 has no
+  `subscription` resource class, and flows deliberately cannot lease
+  windowed-consumption budget pools.
+- Tally 0.1.0 reserves `build` for `drv()` nodes. Shell nodes use
+  `flow-build`; the nightly deploy leases both lanes to retain exclusivity.
+- The returned worker is being retired under #117. There is no worker-first
+  activation; the operator performs the coordinator switch and test drive
+  manually. This change does not deploy or switch a host.
+- The ORACLE-DELTAS reconciliation remains Tom's separate, non-blocking item.
 
 ## Run order and gating
 
@@ -35,7 +35,7 @@ members on coordinator llama-swap; the soft-retired worker remains optional.
 |---|---|---|---|
 | `allowlist-implementation` | A1 | T0 | codex |
 | `parakeet-determinism` | A2 | T0 | codex |
-| `materialize-model-weights` | A3 | #104 CLOSED (in-flow gate node) + A1 | none (pure sh) |
+| `materialize-model-weights` | A3 | A1; #104 is closed (in-flow proof remains) | none (pure sh) |
 | `docs-model-split` | A4 | A1 landed (roster reflects allowlist) | codex |
 | `issue-96-drain` | B2 | T0; final acceptance gates on notes cutover (prompt A) | codex |
 | `errata-map` | B3 | notes cutover (in-flow gate node) + A3 (local members need weights) | codex + local quorum |
@@ -57,9 +57,9 @@ Args defaults live in `tally-flows.nix`; override per run with `--args`.
 ## Notes
 
 - Pool names reference the live coordinator daemon config (`home/tally.nix`):
-  `build`, `coordinator-gpu`, plus `codex-window` added at T0. Weight downloads
-  serialize through `build` deliberately — one WAN link, and it keeps the lane
-  honest against the nightly deploy.
+  `flow-build`, `coordinator-gpu`, and `codex-window`. Weight downloads
+  serialize through `flow-build` deliberately — one WAN link — and the nightly
+  deploy leases that lane as well.
 - `materialize-model-weights` builds `.#models.<artifactId>` store paths; get the
   current id list with
   `nix eval .#legacyPackages.x86_64-linux.models --apply builtins.attrNames`.

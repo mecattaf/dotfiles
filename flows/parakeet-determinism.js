@@ -1,7 +1,7 @@
 export const meta = {
   name: "parakeet-determinism",
   description: "Pin 2-3 parakeet models as deterministic Nix fetches and add the voxtype bootstrap gate (#107, then #84 acceptance)",
-  pools: ["codex-window", "build"],
+  pools: ["codex-window", "flow-build"],
   argsSchema: {
     type: "object",
     required: ["repository", "baseRev", "branch", "worktree"],
@@ -46,13 +46,13 @@ export const meta = {
     { key: "implementation", workspace, label: "implementation" }
   );
   await sh(["nix", "flake", "check", "--no-build", args.worktree], {
-    pools: ["build"],
+    pools: ["flow-build"],
     key: "flake-check",
     evidence: ["exit:0"],
     label: "flake-check"
   });
   return sh(["git", "-C", args.worktree, "log", "--oneline", `${args.baseRev}..HEAD`], {
-    pools: ["build"],
+    pools: ["flow-build"],
     key: "commit-proof",
     brief: { implementation: implementation.result },
     evidence: ["exit:0"],

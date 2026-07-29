@@ -74,7 +74,10 @@ let
 
 in
 {
-  imports = [ inputs.tally.homeManagerModules.tally ];
+  imports = [
+    inputs.tally.homeManagerModules.tally
+    ../flows/tally-flows.nix
+  ];
 
   home.packages = lib.optionals isCoordinator [
     cooldownReceiver
@@ -84,10 +87,24 @@ in
   services.tally = {
     enable = isCoordinator;
 
+    # errata-map deliberately permits a bounded 400-node review wave. Tally
+    # v0.1.0 checks declared flow width against this daemon guardrail while
+    # building the generation.
+    enqueue.fanoutCap = 400;
+
     # These are real contention lanes, not synthetic maintenance pools. All are
     # centrally owned even when their physical resource is on worker.
     pools = lib.optionalAttrs isCoordinator {
       build = {
+        resource = "build-slot";
+        capacity = 1;
+        enforce = "cooperative";
+        hardPreempt = false;
+      };
+      # "build" is reserved by Tally v0.1.0 for drv() nodes. Shell nodes in
+      # these flows use a distinct lane, and the nightly deploy leases both so
+      # it remains exclusive with either kind of flow build.
+      flow-build = {
         resource = "build-slot";
         capacity = 1;
         enforce = "cooperative";
@@ -106,6 +123,15 @@ in
         hardPreempt = false;
       };
       local-ai-review = {
+        resource = "mutex";
+        capacity = 1;
+        enforce = "cooperative";
+        hardPreempt = false;
+      };
+      # Tally v0.1.0 models a capacity-one subscription concurrency lane as a
+      # mutex; windowed-consumption budget pools are intentionally unavailable
+      # to flow nodes.
+      codex-window = {
         resource = "mutex";
         capacity = 1;
         enforce = "cooperative";
@@ -164,6 +190,7 @@ in
         enqueue = {
           pool = [
             "build"
+            "flow-build"
             "coordinator-gpu"
           ];
           argv = systemService "fleet-deploy.service";
