@@ -12,7 +12,15 @@ let
     pkgs.fetchurl {
       url = "${lib.removeSuffix "/" source.hfUrl}/resolve/${source.revision}/${file.path}";
       hash = file.hash;
-      name = "${safeName artifactId}-${builtins.baseNameOf file.path}";
+      # Snapshot members use a content-derived name, so byte-identical files
+      # get the same fixed-output store path even when repositories place them
+      # at different relative paths. Flat artifacts retain their
+      # artifact-qualified names for backwards compatibility.
+      name =
+        if source.layout == "snapshot" then
+          "hf-snapshot-sha256-${file.oid}"
+        else
+          "${safeName artifactId}-${builtins.baseNameOf file.path}";
     };
 
   materializeArtifact =
@@ -24,16 +32,25 @@ let
       }) artifact.source.files;
       directory = pkgs.linkFarm "local-model-${safeName artifactId}" (
         map (file: {
-          name = builtins.baseNameOf file.path;
+          name = if artifact.source.layout == "snapshot" then file.path else builtins.baseNameOf file.path;
           path = file.derivation;
         }) fetched
       );
-      package = if builtins.length fetched == 1 then (builtins.head fetched).derivation else directory;
+      package =
+        if artifact.source.layout == "flat" && builtins.length fetched == 1 then
+          (builtins.head fetched).derivation
+        else
+          directory;
       primary =
-        if builtins.length fetched == 1 then
+        if artifact.source.layout == "flat" && builtins.length fetched == 1 then
           package
         else
-          "${package}/${builtins.baseNameOf artifact.source.primary}";
+          "${package}/${
+            if artifact.source.layout == "snapshot" then
+              artifact.source.primary
+            else
+              builtins.baseNameOf artifact.source.primary
+          }";
     in
     {
       inherit directory package primary;

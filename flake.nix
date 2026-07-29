@@ -915,6 +915,21 @@
             modelPackagePaths = map toString (builtins.attrValues localModelStore.packages);
             coordinatorExtraDependencies = map toString coordinator.system.extraDependencies;
             selectedDeploymentIds = coordinator.services.local-models.allow;
+            mageArtifactIds = [
+              "mage-vl-bf16"
+              "mage-flow-4b-turbo-bf16"
+              "mage-flow-edit-4b-turbo-bf16"
+            ];
+            mageArtifacts = map (artifactId: localModelCatalog.artifacts.${artifactId}) mageArtifactIds;
+            mageFiles = nixpkgs.lib.concatMap (artifact: artifact.source.files) mageArtifacts;
+            mageUniqueFiles = builtins.attrValues (
+              nixpkgs.lib.listToAttrs (
+                map (file: {
+                  name = file.oid;
+                  value = file;
+                }) mageFiles
+              )
+            );
             selectedWeightArtifactIds = nixpkgs.lib.unique (
               nixpkgs.lib.concatMap (
                 deploymentId:
@@ -972,12 +987,19 @@
             ];
           assert
             coordinator.services.local-models.artifacts == [
+              "mage-vl-bf16"
+              "mage-flow-4b-turbo-bf16"
+              "mage-flow-edit-4b-turbo-bf16"
               "vibevoice-asr-bf16"
               "vibevoice-large-bf16"
               "vibevoice-qwen25-7b-tokenizer"
             ];
           assert
-            builtins.length (nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies) == 16;
+            builtins.length (nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies) == 19;
+          assert nixpkgs.lib.all (artifact: artifact.source.layout == "snapshot") mageArtifacts;
+          assert builtins.length mageFiles == 164;
+          assert nixpkgs.lib.foldl' (total: file: total + file.bytes) 0 mageFiles == 45863017994;
+          assert nixpkgs.lib.foldl' (total: file: total + file.bytes) 0 mageUniqueFiles == 36583914927;
           assert nixpkgs.lib.all (
             quantization:
             nixpkgs.lib.elem quantization [

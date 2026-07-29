@@ -36,6 +36,14 @@
         "qwen3-vl-embedding-8b-q8-0"
       ];
       artifacts = [
+        # Priority Mage family: the unified VLM and the low-latency generation
+        # and editing variants. Base and RL checkpoints are intentionally
+        # omitted; their quality gain does not justify 5-7.5x more steps here.
+        # These are immutable snapshot payloads; runtime services stay gated on
+        # a proven ROCm package and do not become fake llama-swap rows.
+        "mage-vl-bf16"
+        "mage-flow-4b-turbo-bf16"
+        "mage-flow-edit-4b-turbo-bf16"
         "vibevoice-asr-bf16"
         "vibevoice-large-bf16"
         "vibevoice-qwen25-7b-tokenizer"

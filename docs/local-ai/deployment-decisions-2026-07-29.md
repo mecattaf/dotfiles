@@ -1,7 +1,9 @@
 # Coordinator local-AI deployment decisions
 
-Status: coordinator-only placement regenerated on 2026-07-29; model selection
-and FastFlowLM lifecycle remain unchanged.
+Status: coordinator-only placement regenerated on 2026-07-29; Mage's Turbo and
+unified VLM inference snapshots are now selected as immutable appliance
+payloads. Existing LLM/VLM serving selection and the FastFlowLM lifecycle
+remain unchanged.
 
 This is the authoritative human-readable placement decision for the Strix Halo
 coordinator. The executable source of truth is the llama-swap allowlist and
@@ -12,6 +14,9 @@ artifact and runtime metadata in `lib/local-models.nix`.
 
 | Model | Payload | Backend / boundary | Download bytes |
 |---|---|---|---:|
+| Mage-Flow 4B Turbo | Full BF16 self-contained snapshot | Direct upstream MageFlow pipeline; runtime pending ROCm proof | 17,507,371,477 |
+| Mage-Flow-Edit 4B Turbo | Full BF16 self-contained snapshot | Direct upstream MageFlow editing pipeline; runtime pending ROCm proof | 17,507,371,487 |
+| Mage-VL | Full BF16 checkpoint, remote code, streaming gate, and neural codec payload | Offline Transformers; future custom Mage-VL SGLang behind llama-swap | 10,848,275,030 |
 | `qwen3-vl-8b-ocr` | Q8_0 GGUF plus BF16 vision projector | ROCm through llama-swap | 9,872,089,504 |
 | `qwen3-vl-32b-ocr` | Q8_0 GGUF plus BF16 vision projector | ROCm through llama-swap | 36,018,055,616 |
 | `qwen3-embedding-8b` | Q8_0 text embedder | ROCm through llama-swap | 8,047,105,824 |
@@ -27,11 +32,15 @@ artifact and runtime metadata in `lib/local-models.nix`.
 | VibeVoice Large | Full BF16 multi-speaker TTS snapshot | Nix-rooted appliance payload; runtime service is future work | 18,686,995,855 |
 | Qwen 2.5 7B tokenizer | Shared VibeVoice tokenizer payload | Nix-rooted appliance dependency | 11,487,545 |
 
-Total model download payload: **257,062,271,724 bytes**, or **257.06 GB
-(239.41 GiB)**. Nix derivation metadata, runtime caches, and MIGraphX compiler
-caches are not included. The Nix-rooted subset is byte-exact; runtime-owned
-FastFlowLM and Voxtype figures are the manifests observed on 2026-07-26 and can
-change when their upstream model tags advance.
+The row-level logical total is **302,925,289,718 bytes**, or **302.93 GB
+(282.12 GiB)**. This counts both complete Mage-Flow repositories independently.
+They share byte-identical components, and the Nix fixed-output layout reuses
+those store paths. The three Mage rows therefore add **36,583,914,927 unique
+bytes (36.58 GB / 34.07 GiB)** rather than their 45,863,017,994-byte logical
+sum. Nix derivation metadata, runtime caches, and MIGraphX/compiler caches are
+not included. The Nix-rooted subset is byte-exact;
+runtime-owned FastFlowLM and Voxtype figures are the manifests observed on
+2026-07-26 and can change when their upstream model tags advance.
 
 The text-only and VL embedders are complementary. Qwen3-Embedding-8B remains
 the stronger supplied text benchmark choice; Qwen3-VL-Embedding-8B adds
@@ -46,7 +55,9 @@ normalized 4,096-dimensional embedding on the coordinator.
   enforcing that invariant.
 - Vision projectors are separate encoder/merger sidecars, not the LLM quant
   tier. They remain F16/BF16 for fidelity. VibeVoice speech snapshots likewise
-  retain their upstream BF16 format.
+  retain their upstream BF16 format. The Mage snapshots also retain upstream
+  BF16 because no accepted GGUF or lower-precision release implements their
+  full Diffusers/codec-native runtime contracts.
 - FastFlowLM owns its NPU2 snapshots as native runtime data under
   `~/.config/flm/models`. In particular, GPT-OSS is an upstream Q4_1 NPU2
   package; it is an explicit runtime-format exception, not a low-bit GGUF
@@ -74,6 +85,16 @@ normalized 4,096-dimensional embedding on the coordinator.
 - GGUF and VibeVoice payloads are immutable, hash-checked Nix store paths. Only
   explicit per-host selections root them; catalog-only candidates do not
   download.
+- The Turbo Mage-Flow generation/editing pair and the unified Mage-VL snapshot
+  are explicit coordinator artifact selections. Base and RL snapshots are
+  absent. The selected snapshots' nested Hub layouts, example assets, custom
+  code, and weights are immutable and hash-checked. Stable aliases under
+  `/etc/local-models/snapshots` match upstream repository basenames.
+- Mage-Flow remains outside llama-swap because upstream exposes a Python
+  diffusion pipeline, CLI, and Gradio app rather than an OpenAI-compatible
+  server. Mage-VL's online mode does use an OpenAI-compatible custom SGLang
+  branch; it gets a llama-swap row only after that exact branch is packaged and
+  proven on gfx1151/ROCm. No stock vLLM or llama.cpp substitution is valid.
 - VibeVoice ASR and TTS weights, configurations, indexes, and shared tokenizer
   are downloaded now. Their dedicated ROCm services remain separate future
   work because they are not OpenAI-compatible LLMs and do not belong behind
@@ -82,4 +103,6 @@ normalized 4,096-dimensional embedding on the coordinator.
   candidates only. None enter the active allowlist or download boundary.
 - The former DeepSeek V4/DS4 topology is absent from the active catalog; its
   benchmark and runbook evidence remains under `docs/old/`.
-- Stable Diffusion remains outside the local-LLM route.
+- Stable Diffusion remains outside the local-LLM route. Mage-Flow is also an
+  image-generation appliance, but uses its own upstream pipeline rather than
+  the stable-diffusion.cpp command set.

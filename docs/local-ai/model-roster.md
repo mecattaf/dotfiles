@@ -4,12 +4,15 @@ Anchor: 2026-07-29. “Canonical” marks an accepted catalog identity. Actual
 download authority comes only from the coordinator's explicit deployment and
 artifact allowlists.
 
-The Nix catalog contains 14 deployment rows, 20 artifacts, and 45 pinned files
-totaling 336,689,129,737 bytes (313.57 GiB), including deferred and catalog-only
-entries. The active set is intentionally much narrower: see the
+The Nix catalog contains 15 deployment rows, 23 artifacts, and 209 pinned files
+totaling 382,552,147,731 logical bytes (356.28 GiB), including deferred and
+catalog-only entries. The active set is intentionally much narrower: see the
 [current deployment decision](deployment-decisions-2026-07-29.md) for exact
-coordinator membership and totals. In particular, the coder-next and uncensored
-weights are not materialized, and the retired DS4 artifacts are absent entirely.
+coordinator membership and totals. Mage's two highly overlapping Flow
+snapshots account for logical bytes per complete repository; Nix reuses their
+identical fixed-output files, as detailed in [`mage.md`](mage.md). In particular,
+the coder-next and uncensored weights are not materialized, and the retired DS4
+artifacts are absent entirely.
 
 ## Model and appliance catalog
 
@@ -41,14 +44,21 @@ LFS SHA-256/OIDs, SRI hashes, base/fine-tune revisions, host placement, runtime
 arguments, benchmark IDs, and evidence classes in
 [`../../lib/local-models.nix`](../../lib/local-models.nix).
 
-## Other appliances outside llama-swap
+## Other appliances and snapshots outside the current llama-swap roster
 
-These identities do not enter llama-swap because their APIs and runtimes are
-modality-specific. VibeVoice payloads are hash-pinned in the Nix store;
-Voxtype owns its mutable model directory and verified bootstrap.
+These identities are not current llama-swap rows because their APIs and
+runtimes are modality-specific or not yet proven on gfx1151. Mage-Flow is a
+direct diffusion pipeline. Mage-VL's future online boundary is upstream's
+custom OpenAI-compatible SGLang branch; only that server, once packaged and
+verified on ROCm, belongs behind llama-swap. Mage and VibeVoice payloads are
+hash-pinned in the Nix store; Voxtype owns its mutable model directory and
+verified bootstrap.
 
 | Appliance | Model and source | Inference | State |
 |---|---|---|---|
+| Text-to-image | Mage-Flow 4B [`Turbo`](https://huggingface.co/mage-flow-community/Mage-Flow-Turbo) community duplicate | Upstream `MageFlowPipeline` / `mage-flow` / Gradio | Four-step BF16 snapshot is Nix-rooted; Base and RL are intentionally absent |
+| Instruction image editing | Mage-Flow-Edit 4B [`Turbo`](https://huggingface.co/mage-flow-community/Mage-Flow-Edit-Turbo) community duplicate | Upstream `MageFlowPipeline.edit` / `mage-flow-edit` / Gradio | Four-step BF16 snapshot is Nix-rooted; same runtime gate as generation |
+| Image/video understanding + proactive streaming | [`microsoft/Mage-VL@5c78cab`](https://huggingface.co/microsoft/Mage-VL/tree/5c78cab61938e73859b63724d9bf5cb88c477eaa) | Offline Transformers; online custom `feat/mage-vl` SGLang | Complete BF16 checkpoint, gate, codec code, and DCVC weights are Nix-rooted; runtime service pending ROCm proof |
 | Live cursor dictation | [`parakeet-unified-en-0.6b`](https://huggingface.co/bobNight/parakeet-unified-en-0.6b-onnx), the streaming-compatible TDT v3 family model selected by the pinned Voxtype registry | [`peteonrails/voxtype@f972766`](https://github.com/peteonrails/voxtype/commit/f97276661d9b723aa3236f03879650a2a06c3ec3), canonical `onnx-migraphx` package | Coordinator service downloads and verifies it automatically before start |
 | Call transcription + diarization | [`microsoft/VibeVoice-ASR@d0c9efd`](https://huggingface.co/microsoft/VibeVoice-ASR/tree/d0c9efdb8d614685062c04425d91e01b6f37d944) | PyTorch/Transformers on ROCm | Full BF16 payload and pinned Qwen tokenizer are rooted on coordinator; service pending |
 | Text-to-speech | [`aoi-ot/VibeVoice-Large@1b81fec`](https://huggingface.co/aoi-ot/VibeVoice-Large/tree/1b81fecc784a076dcd935678db551871f4598ebf) | [`kyuz0/amd-strix-halo-voice-toolbox@ab13312`](https://github.com/kyuz0/amd-strix-halo-voice-toolbox/commit/ab13312787f8c81d9527495abafeefed91051df2), PyTorch ROCm | Full BF16 payload and pinned Qwen tokenizer are rooted on coordinator; service pending; mirror provenance risk remains explicit |
@@ -90,6 +100,10 @@ MIGraphX variant but does not replace that journal check.
   can choose benchmark strength or mixed-modal retrieval explicitly.
 - FastFlowLM models are ad-hoc CLI workloads. Do not configure `flm serve`
   units or add their model IDs as llama-swap peers.
+- Mage-Flow snapshots are direct diffusion workloads and never llama-swap
+  rows. Mage-VL gets a row only with the upstream-compatible custom SGLang
+  backend, never by relabeling it as llama.cpp or stock vLLM.
 - The former DeepSeek V4/DS4 topology is not an active catalog row. Its useful
   benchmark and runbook evidence remains in `docs/old/`.
-- Audio, image, and video generation remain parked and have no roster entries.
+- Audio and video generation remain parked. Mage-Flow now owns the selected
+  image-generation and image-editing lanes.

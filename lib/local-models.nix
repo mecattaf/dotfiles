@@ -4,6 +4,7 @@ let
   inherit (lib) mkOption types;
 
   backendKinds = import ./local-model-backends.nix;
+  mageArtifacts = import ./mage-models.nix;
   nullableString = types.nullOr types.str;
 
   mkSingleFileArtifact =
@@ -92,12 +93,12 @@ let
         description = "Path below the pinned Hugging Face revision.";
       };
       bytes = mkOption {
-        type = types.ints.positive;
+        type = types.ints.unsigned;
         description = "Exact byte size.";
       };
       oid = mkOption {
         type = types.str;
-        description = "Upstream LFS object ID.";
+        description = "Exact content SHA-256 (the upstream LFS OID when present).";
       };
       hash = mkOption {
         type = types.str;
@@ -131,6 +132,27 @@ let
         default = null;
       };
       source = {
+        layout = mkOption {
+          type = types.enum [
+            "flat"
+            "snapshot"
+          ];
+          default = "flat";
+          description = ''
+            Flat artifacts expose files by basename for single-file runtimes.
+            Snapshot artifacts preserve the Hugging Face repository tree for
+            Transformers and Diffusers loaders.
+          '';
+        };
+        localName = mkOption {
+          type = types.nullOr types.str;
+          default = null;
+          description = ''
+            Optional upstream-compatible directory name exposed below
+            /etc/local-models/snapshots for loaders that select sibling
+            checkpoints by repository basename.
+          '';
+        };
         hfUrl = mkOption {
           type = types.str;
           description = "Canonical Hugging Face repository URL.";
@@ -322,7 +344,7 @@ let
           # This is a metadata roster. modules/strix.nix roots only its explicit
           # per-host allowlists, so catalog candidates never download merely by
           # existing here.
-          artifacts = {
+          artifacts = mageArtifacts // {
             qwen36-35b-a3b-mtp-ud-q8-k-xl = mkSingleFileArtifact {
               maker = "Qwen";
               baseCheckpoint = {

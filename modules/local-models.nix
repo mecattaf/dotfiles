@@ -15,6 +15,13 @@ let
   system = pkgs.stdenv.hostPlatform.system;
   strixAi = inputs.nix-strix-halo.packages.${system};
   host = config.networking.hostName;
+  isSafeArtifactPath =
+    path:
+    path != ""
+    && !(lib.hasPrefix "/" path)
+    && lib.all (component: component != "" && component != "." && component != "..") (
+      lib.splitString "/" path
+    );
 
   deploymentList = builtins.attrValues catalog.deployments;
   canonicalForHost = lib.filterAttrs (
@@ -103,6 +110,18 @@ let
       value.source = modelStore.materialized.${artifactId}.directory;
     }) cfg.artifacts
   );
+  snapshotAliasArtifacts = lib.filterAttrs (
+    artifactId: artifact: lib.elem artifactId cfg.artifacts && artifact.source.localName != null
+  ) catalog.artifacts;
+  snapshotAliasNames = map (artifact: artifact.source.localName) (
+    builtins.attrValues snapshotAliasArtifacts
+  );
+  snapshotAliasEtc = lib.mapAttrs' (
+    artifactId: artifact:
+    lib.nameValuePair "local-models/snapshots/${artifact.source.localName}" {
+      source = modelStore.materialized.${artifactId}.directory;
+    }
+  ) snapshotAliasArtifacts;
 
   catalogAssertions = [
     {
@@ -126,13 +145,30 @@ let
     }
     {
       assertion = lib.all (
+        artifact: lib.all (file: isSafeArtifactPath file.path) artifact.source.files
+      ) artifactRows;
+      message = "Local-model artifact paths must be safe repository-relative paths.";
+    }
+    {
+      assertion = lib.all (
+        artifact:
+        let
+          paths = map (file: file.path) artifact.source.files;
+        in
+        builtins.length paths == builtins.length (lib.unique paths)
+      ) artifactRows;
+      message = "Local-model artifacts must not repeat a repository-relative path.";
+    }
+    {
+      assertion = lib.all (
         artifact:
         let
           basenames = map (file: builtins.baseNameOf file.path) artifact.source.files;
         in
-        builtins.length basenames == builtins.length (lib.unique basenames)
+        artifact.source.layout == "snapshot"
+        || builtins.length basenames == builtins.length (lib.unique basenames)
       ) artifactRows;
-      message = "Split local-model artifact files must have unique basenames.";
+      message = "Flat local-model artifact files must have unique basenames.";
     }
     {
       assertion = lib.all (
@@ -193,6 +229,16 @@ let
       assertion = lib.all (artifactId: lib.elem artifactId artifactIds) cfg.artifacts;
       message = "services.local-models.artifacts references an unknown artifact ID.";
     }
+    {
+      assertion = lib.all (
+        name: isSafeArtifactPath name && builtins.baseNameOf name == name
+      ) snapshotAliasNames;
+      message = "Local-model snapshot aliases must be safe single directory names.";
+    }
+    {
+      assertion = builtins.length snapshotAliasNames == builtins.length (lib.unique snapshotAliasNames);
+      message = "Selected local-model snapshot aliases must be unique.";
+    }
   ];
   failedCatalogAssertion = lib.findFirst (entry: !entry.assertion) null catalogAssertions;
   catalogValid =
@@ -215,7 +261,8 @@ in
       default = [ ];
       description = ''
         Additional artifact IDs to materialize without adding a llama-swap
-        model row. This is for modality-specific appliances such as ASR/TTS.
+        model row. This is for complete snapshots and modality-specific
+        appliances such as Mage, ASR, and TTS.
       '';
     };
   };
@@ -227,7 +274,8 @@ in
     environment.etc = {
       "local-models/catalog.json".source = manifest;
     }
-    // artifactEtc;
+    // artifactEtc
+    // snapshotAliasEtc;
 
     services.llama-swap.settings =
       assert catalogValid;
