@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pomodoro -- Pomodoro timer with rofi menu (no quickshell IPC)
+# pomodoro -- Pomodoro timer with rofi menu
 
 [[ -n $POMO_FILE ]] && POMO=$POMO_FILE || POMO=$HOME/.local/share/pomo
 [[ -n $POMO_WORK_TIME ]] && WORK_TIME=$POMO_WORK_TIME || WORK_TIME=25

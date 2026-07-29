@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pomo -- simple Pomodoro timer (file-based state, no quickshell IPC)
+# pomo -- simple Pomodoro timer with file-based state
 
 if [ "$(uname)" == "Darwin" ] || [ "${POMO_PREFIX_CMDS}" == "true" ]; then
     DATE_CMD="gdate"

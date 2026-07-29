@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# wifi-menu.sh -- rofi wifi menu using iwmenu (no quickshell IPC)
+# wifi-menu.sh -- rofi wifi menu using iwmenu
 
 BG="#000000"
 BG_ALT="#010101"

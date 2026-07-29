@@ -23,8 +23,8 @@ binds {
     Mod+Ctrl+Shift+Return hotkey-overlay-title="Terminal (resume)" { spawn-sh "~/.local/bin/resume-terminal"; }
 
     // scroll: bindsym $mod+D exec vicinae open
-    Mod+D hotkey-overlay-title="Launcher" { spawn-sh "~/.local/bin/launcher"; }
-    Mod+Shift+D hotkey-overlay-title="DMS Launcher" { spawn-sh "~/.local/bin/dms-launcher"; }
+    Mod+D hotkey-overlay-title="Launcher" { spawn "vicinae" "open"; }
+    // Reserved: Mod+Shift+D — secondary launcher
 
     // scroll: bindsym $mod+E exec thunar
     Mod+E hotkey-overlay-title="File Manager" { spawn "nautilus"; }
@@ -43,13 +43,13 @@ binds {
     Mod+Ctrl+N hotkey-overlay-title="Chrome (incognito)" { spawn "google-chrome-stable" "--incognito"; }
 
 
-    // ── Quickshell (was DMS) ─────────────────────────────────────
+    // ── Desktop Utilities ─────────────────────────────────────────
 
-Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.local/bin/clipboard"; }
+    Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.local/bin/clipboard"; }
     Mod+Shift+V hotkey-overlay-title="Emoji Picker" { spawn "rofimoji" "-a" "clipboard"; }
-    Mod+O hotkey-overlay-title="Notifications" { spawn-sh "~/.local/bin/dnd"; }
-    Mod+Comma hotkey-overlay-title="Settings" { spawn-sh "~/.local/bin/settings"; }
-    Mod+B hotkey-overlay-title="Control Center" { spawn-sh "~/.local/bin/control-center"; }
+    // Reserved: Mod+O — notifications
+    // Reserved: Mod+Comma — settings
+    // Reserved: Mod+B — control center
 
 
     // ── Screenshots ──────────────────────────────────────────────
@@ -130,7 +130,7 @@ Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.local/bin/clipboard"; }
     // scroll: bindsym $mod+Shift+apostrophe exec $stop-wshowkeys
     Mod+Shift+Apostrophe { spawn-sh "pkill wshowkeys"; }
 
-    Mod+I hotkey-overlay-title="Toggle Top Bar" { spawn-sh "~/.local/bin/bar-toggle"; }
+    // Reserved: Mod+I — toggle top bar
 
     // Voxtype streams with toggle activation: press once to start dictating,
     // then press again to finish. The shifted chord cancels without insertion.

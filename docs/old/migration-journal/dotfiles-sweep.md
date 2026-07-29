@@ -42,20 +42,19 @@ kitty · fish · starship · zathura · yt-dlp · asr-rs · shpool · kanshi · 
 - **scroll/** — legacy sway/scroll compositor; scripts already migrated to
   niri/scripts (verify none missing, then delete).
 - **waybar/** — bar-less decision.
-- **quickshell/webshell/** + **quickshell-backup/** — abandoned.
-- loose `.md` notes in dot_config/ (LATEST, FINAL-status-report, EQSH-NIRI-PORT,
-  NIRI-BINDS-HANDOFF, WM-MIGRATION*, webshell-march13) — stale handoff docs
+- **abandoned shell UI trees** — delete outright.
+- loose dated status, port, and handoff notes in dot_config/ — stale documents
   chezmoi happened to deploy. Drop (the "~/.config must not change" invariant in
   nix-test was itself a chezmoi artifact).
 - **dot_config/.claude/settings.local.json** — WIP work-artifact (52 perms for
-  niri/quickshell hacking), not a real dotfile.
+  niri/shell UI hacking), not a real dotfile.
 - launcher **antigravity.desktop** (+icon) — antigravity dropped.
 
 ### Per-file RAW (NOT whole-dir — other tools write here)
 - `~/.local/share/applications/*.desktop` (12 Chrome-PWA launchers) + matching
   icons. Verify URLs for open-webui/photos/gcloud; drop antigravity.
 
-### bin/ (~31 scripts) — whole-dir RAW, EXCEPT the quickshell ones (see discussion)
+### bin/ (~31 scripts) — whole-dir RAW, except retired shell wrappers (see discussion)
 - Viable now (niri-native + CLI tools): volume (wpctl), screenshot (niri native),
   record, recording-toggle, colorpicker (niri pick-color), clipboard (cliphist),
   fzf-shortcuts, wifi-menu, vpn-status, fzf-nmcli (python+pygobject), new-terminal,
@@ -77,25 +76,21 @@ the schema lags upstream niri. Your earlier "most-nix-native" was a general lean
 **niri is the one config where RAW is the better engineering call.** Recommend
 making niri the explicit RAW exception. ← your call.
 
-### D2 — eqsh + the ~9 quickshell-dependent scripts  ⬅ tied to "my own shell"
-`quickshell/eqsh/` is **your shell project** (currently Hyprland-bound; niri port
-planned in EQSH-NIRI-PORT.md) — i.e. the "I'll build my own Linux shell after Nix"
-thing. It is NOT part of this migration → **HOLD as a separate project** (keep in
-repo/reference, don't deploy).
-But ~9 bin scripts call `qs ipc` and die without it: **brightness, media,
+### D2 — retired shell UI + its dependent scripts  ⬅ tied to "my own shell"
+The old shell project is abandoned and must not be deployed. Several bin scripts
+call its IPC and die without it: **brightness, media,
 launcher, dms-launcher, spotlight, dnd, control-center, settings, sigrid,
 wallpaper, bar-toggle** (+ notch-toggle/launchpad). These are real functions.
 Options:
 - (a) **Interim native re-point**: brightness→brightnessctl, media→playerctl,
   launcher→rofi, wallpaper→swaybg, dnd/bar/control-center→drop (bar-less). Gets a
-  working desktop now; eqsh supersedes later.
-- (b) **Leave dead** until eqsh lands (accept no brightness/media/launcher keys
-  meanwhile).
+  working desktop now.
+- (b) **Leave dead** (accept no brightness/media/launcher keys meanwhile).
 Recommend (a) for the keys you actually press daily (brightness, media, launcher,
 wallpaper); drop the bar/notification/panel ones (bar-less). ← your call.
 
 ### D3 — wallpaper mechanism
-niri has no built-in; old mechanism was `qs ipc wallpaper` (dead). Pick:
+niri has no built-in; the old shell IPC bridge is dead. Pick:
 **swaybg** spawned from niri startup pointing at the repo `wallpaper.jpg` (simple,
 home-manager-managed) — recommended. ← confirm.
 
@@ -106,7 +101,7 @@ keys to an env file or per-service). ← confirms the secrets layer feeds the sh
 ### Minor
 - kanshi profiles carry stale `scrollmsg` (sway IPC) lines — harmless on niri;
   modernize to `niri msg` later or accept layout-only.
-- startup.kdl cleanup: delete the catppuccin gtk-theme lines, the dead webshell
+- startup.kdl cleanup: delete the catppuccin gtk-theme lines, the dead shell UI
   spawn, the dangling wallpaper comment.
 
 ---
@@ -117,12 +112,12 @@ keys to an env file or per-service). ← confirms the secrets layer feeds the sh
 - ✅ **D1 niri** — **RAW for now** (ratified). All 9 niri `*.kdl` annotated with a
   `// NIX-MIGRATION:` note (candidate to port to typed `programs.niri.settings`
   later — not committed). Overrides the harness-sweep typed call.
-- ✅ **D2 quickshell scripts** — **native interim re-point, NO rofi** (ratified
-  2026-06-20). There is no quickshell; the `qs ipc` callers are dead, so:
+- ✅ **D2 retired shell scripts** — **native interim re-point, NO rofi** (ratified
+  2026-06-20). The IPC callers are dead, so:
   - **brightness → brightnessctl**, **media → playerctl**, **wallpaper → swaybg**
     (the daily keys — re-point these).
   - **launcher + every rofi-dependent script (dms-launcher, spotlight, …) → LEAVE
-    DEAD.** No rofi wanted; not re-pointed, not deleted (eqsh may supersede later).
+    DEAD.** No rofi wanted; not re-pointed.
   - **bar-toggle / notch-toggle / dnd / control-center / settings / sigrid /
     launchpad → drop** (bar-less, notification-less).
 - ☑️ **D4 env secrets (`~/.env`)** — **intentionally deferred** to the sops layer

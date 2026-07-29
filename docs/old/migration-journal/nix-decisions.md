@@ -22,7 +22,7 @@ Sweep progress (human-driven, item-by-item; mactahoe was the proof loop):
   - ✅ **niri → RAW for now** (home-manager `mkOutOfStoreSymlink`, hot-reload).
     *Could change to typed `programs.niri.settings` later* — annotated as a
     candidate, not committed. **Supersedes** the harness-sweep "typed" ratification.
-  - ✅ **D2 qs ipc scripts → native re-point, NO rofi.** brightness→brightnessctl,
+  - ✅ **D2 shell IPC scripts → native re-point, NO rofi.** brightness→brightnessctl,
     media→playerctl, wallpaper→swaybg. **launcher + every rofi-dependent script
     (dms-launcher, spotlight, …) LEFT DEAD — no rofi wanted.** bar/panel/
     notification scripts dropped (bar-less).
@@ -119,7 +119,7 @@ Nothing is built yet beyond mactahoe (Nix not installed on the host).
 ## The three buckets (what the transition actually is)
 
 - **GONE** — just delete; the only work is confidence. (flatpak, brew, chezmoi,
-  mkosi/bootc/ostree, quickshell.)
+  mkosi/bootc/ostree, retired shell UI.)
 - **SAME** — mechanical port chezmoi→home-manager. (packages, niri/kitty/fish.)
 - **NEW** — the real project; Fedora couldn't do these. (secrets, per-device,
   my own flake-modules.) ← where the deliberate discussion lives.
@@ -135,7 +135,7 @@ Nothing is built yet beyond mactahoe (Nix not installed on the host).
 - ❌ **brew** — not used; nix devshells cover per-repo toolchains.
 - ❌ **chezmoi** — replaced by home-manager.
 - ❌ **mkosi / bootc / ostree / rechunk / cosign** — the whole image pipeline.
-- ❌ **quickshell / quickshellX** — shell not used; already dropped in harness.
+- ❌ **retired shell UI packages** — not used; already dropped in harness.
 
 ### NEW (the Nix-native unlocks)
 - 🤔 **Secrets — partially decided, TOOL open (own session).** Confirmed:
@@ -233,7 +233,7 @@ Nothing is built yet beyond mactahoe (Nix not installed on the host).
 - nixpkgs: atuin, cliphist, eza, lisgd, nwg-look, shpool, starship,
   wl-gammarelay-rs, bibata-cursors, kitty.
 - overlay source-build: asr-rs, cliamp, mactahoe ✅.
-- pi → pi.nix/llm-agents.nix. dropped: quickshellX, antigravity.
+- pi → pi.nix/llm-agents.nix. dropped: retired shell package, antigravity.
 - ☑️ **microsandbox → microvm.nix** (nix-native).
 - ⏸️ **DEFERRED until first boot (want both, revisit then):** **gws** (Google
   Workspace CLI — NOT nixpkgs `gws` which is a different tool; source-build vs

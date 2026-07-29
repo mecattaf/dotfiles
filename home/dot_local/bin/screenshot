@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # screenshot -- take a screenshot using niri native actions
-# No quickshell IPC. Uses niri msg action.
+# Uses niri msg actions directly.
 case "${1:-full}" in
     full)    niri msg action screenshot-screen ;;
     area)    niri msg action screenshot ;;

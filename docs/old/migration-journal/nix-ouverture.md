@@ -74,7 +74,7 @@ slides-skill); google (task-6.4 == google-workspace-cli).
 
 ## The third pillar: CUBS (the browser-shell) — same lesson, biggest stakes
 
-Lineage (`june16-cowl-revived.md`): **quickshellX** (abandoned QML webshell) →
+Lineage (`june16-cowl-revived.md`): **abandoned shell UI prototype** →
 **COWL** (Chromium·Ozone·Wayland·Layer — the substrate tier) → **CADE** (Chromium
 Aura Desktop Environment — the *overshoot*: a compositor, "NO MORE NIRI") →
 **CUBS** (Chromium Unified Browser-Shell — where you netted out).
@@ -111,9 +111,9 @@ Nix isn't a sibling project to CUBS — it's the foundation that makes daily pat
 Chromium painless.
 
 **Open read (confirm):** CUBS *is* "the own Linux shell" you said you'd build —
-which means **eqsh/quickshell is its abandoned predecessor**, not a HOLD to
-resume. The bar-less/notification-less interim is "bar-less until CUBS surfaces
-exist," and the dying quickshell `qs ipc` scripts are predecessors CUBS replaces.
+which means the earlier shell prototype is its abandoned predecessor, not a HOLD
+to resume. The bar-less/notification-less interim is "bar-less until CUBS surfaces
+exist," and the dead shell IPC scripts are predecessors CUBS replaces.
 
 ## What this opens — the 2-month picture
 

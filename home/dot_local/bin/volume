@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # volume -- PipeWire volume control via wpctl
-# No quickshell IPC: AudioBridge auto-reacts to PipeWire events
+# Uses PipeWire directly.
 case "$1" in
     up)    wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%+ ;;
     down)  wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%- ;;

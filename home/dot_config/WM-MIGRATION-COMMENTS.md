@@ -62,4 +62,4 @@ Your gained features list is incomplete. Niri also has: `toggle-window-floating`
 
 **Summary of what to change:**
 
-The biggest miss is the reverse-cycle preset actions — those exist and should be bound, removing three items from the "lost features" list. The `Mod+V` floating toggle conflict needs addressing before the Quickshell clipboard manager goes in. The script difficulty ratings are too pessimistic for the window-switcher scripts given niri's JSON IPC. And for any bar/indicator work, the event stream is the idiomatic approach over polling.
+The biggest miss is the reverse-cycle preset actions — those exist and should be bound, removing three items from the "lost features" list. The `Mod+V` floating toggle conflict needs addressing before a clipboard manager goes in. The script difficulty ratings are too pessimistic for the window-switcher scripts given niri's JSON IPC. And for any bar/indicator work, the event stream is the idiomatic approach over polling.

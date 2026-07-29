@@ -5,7 +5,7 @@ Here are all of these options at a glance:
 ```kdl
 spawn-at-startup "waybar"
 spawn-at-startup "alacritty"
-spawn-sh-at-startup "qs -c ~/source/qs/MyAwesomeShell"
+spawn-sh-at-startup "my-daemon --config ~/source/my-daemon/config"
 
 prefer-no-csd
 
@@ -85,7 +85,7 @@ See detailed description in the docs for the [`spawn-sh` key binding action](./C
 
 ```kdl
 // Pass all arguments in the same string.
-spawn-sh-at-startup "qs -c ~/source/qs/MyAwesomeShell"
+spawn-sh-at-startup "my-daemon --config ~/source/my-daemon/config"
 ```
 
 ### `prefer-no-csd`

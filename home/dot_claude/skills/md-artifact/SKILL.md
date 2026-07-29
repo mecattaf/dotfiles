@@ -46,4 +46,4 @@ Title = first `# h1` (else filename). Local images referenced by the doc must be
 
 - Renderer + template + hook: `pkgs/artifact-render/` (this repo).
 - Evidence for the tool choices: md-renderer-pick workflow 2026-07-11 (gh-markdown-preview = AJAX shell + API upload, CONFIRMED; pi-markdown-preview = no CLI, theme baked; both rejected as render step).
-- Lineage: `skills/md-artifact-skill.md` corpus (deleted 2026-07-11 — its quickshellX-viewer idea is superseded by the chrome --app bounded window; its two candidate repos were evaluated and rejected).
+- Lineage: `skills/md-artifact-skill.md` corpus (deleted 2026-07-11 — its earlier viewer idea is superseded by the chrome --app bounded window; its two candidate repos were evaluated and rejected).

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # colorpicker -- pick a color from screen using niri native, copy hex to clipboard
-# No quickshell IPC. Uses niri msg pick-color.
+# Uses niri msg pick-color directly.
 output=$(niri msg pick-color) || exit 1
 hex=$(echo "$output" | grep -oP '#[0-9a-f]{6}')
 printf '%s' "$hex" | wl-copy

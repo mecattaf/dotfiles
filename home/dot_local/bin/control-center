@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# control-center -- toggle the CCD (control center / dashboard) sidebar
-# IPC target: ShellBridge (target: "shell"), method: toggleCcd
-qs ipc --pid $(pgrep -x qs) call shell toggleCcd

@@ -162,7 +162,7 @@ bindsym $mod+Shift+semicolon exec flatpak run com.obsproject.Studio
 bindsym $mod+Shift+period exec $chrome --app=https://calendar.notion.so/
 bindsym $mod+Shift+E exec $chrome --app=https://drive.google.com/drive/u/0/
 
-# TODO: transition to quickshell
+# Legacy shell controls
 # Old brightness controls
 # bindsym F1 exec $brightness-down
 # bindsym F2 exec $brightness-up

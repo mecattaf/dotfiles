@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# fzf-nmcli -- fzf-based NetworkManager TUI (no quickshell IPC)
+# fzf-nmcli -- fzf-based NetworkManager TUI
 # Based on firecat53's networkmanager-dmenu.
 
 """based off of firecat53's command line dmenu script.

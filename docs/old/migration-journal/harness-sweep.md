@@ -88,7 +88,7 @@ run a notification daemon / launcher at all" is a real `⏳` (see niri config la
 - `🔧` → overlay source-builds (the genuinely bespoke): **mactahoe-oled ✅ DONE**,
   asr-rs, cliamp, gws.
 - `pi` → via `lukasl-dev/pi.nix` / `numtide/llm-agents.nix` (decided).
-- `❌` quickshellX-git — shell not used.
+- `❌` retired shell UI package — not used.
 
 ## `mkosi.conf.d/harness-extra-repos.conf`
 - `✅` cloudflared (nixpkgs).
