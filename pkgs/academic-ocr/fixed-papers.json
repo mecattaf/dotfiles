@@ -1,0 +1,16 @@
+{
+  "turner": {
+    "paperId": "fa3c575a-3089-4d27-957f-ba7d697b8737",
+    "title": "Betwixt and Between: The Liminal Period in Rites de Passage",
+    "sourceUrl": "https://assets.mecattaf.dev/pdf/Victor-Turner-Betwixt-and-Between_fa3c575a-3089-4d27-957f-ba7d697b8737.pdf",
+    "sourceSha256": "aa9db49df2216d7455fe0e81af561e05682e8fb68fe72a7e0de00a45b3af6265",
+    "expectedPages": 5
+  },
+  "fosfuri": {
+    "paperId": "96b65260-610c-4404-a08f-98b0e3ebc6d9",
+    "title": "The Licensing Dilemma: Understanding the Determinants of the Rate of Technology Licensing",
+    "sourceUrl": "https://assets.mecattaf.dev/pdf/Strategic%20Management%20Journal%20-%202006%20-%20Fosfuri%20-%20The%20licensing%20dilemma%20%20understanding%20the%20determinants%20of%20the%20rate%20of_491cfaeb-197d-4b1f-a510-261c480a7d22.pdf",
+    "sourceSha256": "909a82261bc9e0c3b2feaf9b9e93bcefc969919d935fd96734e215d002fdeb2b",
+    "expectedPages": 18
+  }
+}

@@ -414,6 +414,7 @@
         in
         {
           inherit (pkgs)
+            academic-ocr
             brother-print-text
             local-ai-monthly
             mactahoe-gtk-theme

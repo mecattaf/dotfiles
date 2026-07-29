@@ -74,6 +74,7 @@ in
   ];
 
   home.packages = lib.optionals isCoordinator [
+    pkgs.academic-ocr
     cooldownReceiver
     pkgs.local-ai-monthly
   ];
@@ -81,10 +82,11 @@ in
   services.tally = {
     enable = isCoordinator;
 
-    # errata-map deliberately permits a bounded 400-node review wave. Tally
-    # v0.1.0 checks declared flow width against this daemon guardrail while
-    # building the generation.
-    enqueue.fanoutCap = 400;
+    # The upstream academic OCR mutation ladder has a ruled 1,700-node ceiling:
+    # 100 pages × four protocols × four inputs, plus 100 arbiters. The fixed
+    # supervised Turner and Fosfuri runs are only 5 and 18 pages respectively,
+    # but the checked script keeps that complete schema bound as its fail-safe.
+    enqueue.fanoutCap = 1700;
 
     # These are real contention lanes, not synthetic maintenance pools.
     pools = lib.optionalAttrs isCoordinator {
@@ -109,6 +111,12 @@ in
         enforce = "cooperative";
         hardPreempt = false;
       };
+      academic-ocr-cpu = {
+        resource = "cpu-slot";
+        capacity = 2;
+        enforce = "cooperative";
+        hardPreempt = false;
+      };
       local-ai-review = {
         resource = "mutex";
         capacity = 1;
@@ -129,6 +137,15 @@ in
     # All jobs execute locally on coordinator; no daemonless SSH executor is
     # part of the active topology.
     executors = { };
+
+    adapters = lib.optionalAttrs isCoordinator {
+      ocr-driver = inputs.tally.lib.adapters.mkAdapter {
+        argv = [ ];
+        scrape.finalMessage = inputs.tally.lib.adapters.mkScrapeCapture {
+          pattern = "^TALLY_FINAL_MESSAGE=(.*)$";
+        };
+      };
+    };
 
     # One low-priority durable row replaces the old 02:00/03:30/04:30/06:00 chain.
     # It holds the build and coordinator GPU lanes end-to-end, making the measured
