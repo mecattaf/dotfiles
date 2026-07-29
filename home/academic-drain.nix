@@ -1,44 +1,45 @@
 {
+  inputs,
   lib,
   pkgs,
   osConfig,
   ...
 }:
-# Nightly academic-OCR drain on the coordinator. Walks the NAS corpus
-# work-list shortest-first through the paper-e2e mutation-ladder flow, one
-# paper at a time, resuming per-paper via persisted flow-run-ids. The driver
-# and work-list live in the appliance state root (~/.local/state/academic-ocr);
-# this unit only provides the nightly cadence and the morning cutoff. The
-# drain is idempotent — papers with a canonical receipt are skipped — so an
-# overlapping manual run is safe (the driver holds a flock).
+# Always-on academic-OCR drain on the coordinator (ruled 24/7, 2026-07-29):
+# walks the NAS corpus work-list all-Bocconi-first through the paper-e2e
+# mutation-ladder flow, one paper at a time, resuming per-paper via persisted
+# flow-run-ids, then absorbs finished papers into the notes repo as its
+# epilogue. GPU nodes hold coordinator-gpu at low priority, so interactive
+# work and the thermal tripwire preempt between pages; a night-window revert
+# is one ExecStart flag (--stop-at HH:MM) plus a timer.
+#
+# Code ships from the store (pkgs/academic-ocr-drain); all mutable state
+# stays in ~/.local/state/academic-ocr. The drain is idempotent (receipted
+# papers skip; flock refuses overlap), so Restart=always is safe: when the
+# corpus is fully drained each restart is a cheap no-op scan.
 let
   hostName = osConfig.networking.hostName;
-  stateRoot = "/home/tom/.local/state/academic-ocr";
+  drainPkg = pkgs.callPackage ../pkgs/academic-ocr-drain {
+    tally = inputs.tally.packages.${pkgs.stdenv.hostPlatform.system}.tally;
+  };
 in
 {
+  home.packages = lib.optionals (hostName == "coordinator") [ drainPkg ];
+
   systemd.user.services.academic-drain = lib.mkIf (hostName == "coordinator") {
     Unit = {
-      Description = "academic-ocr nightly corpus drain";
+      Description = "academic-ocr corpus drain (24/7, low-priority GPU)";
       # The NAS holds the source PDFs; without it the driver would burn its
       # consecutive-failure fuse on fetch errors.
       ConditionPathIsDirectory = "/mnt/nas/documents/academic-papers";
     };
     Service = {
-      Type = "oneshot";
-      ExecStart = "${pkgs.bash}/bin/bash ${stateRoot}/tools/drain.sh --stop-at 07:00";
-      # A full night is the intended runtime; the stop-at wall clock is the
-      # real bound, TimeoutStartSec just refuses to let a hung flow run past
-      # breakfast.
-      TimeoutStartSec = "11h";
+      ExecStart = "${drainPkg}/bin/academic-drain";
+      Restart = "always";
+      # Pause between passes once the work-list is dry (or after the
+      # 3-consecutive-failure fuse) instead of spinning.
+      RestartSec = 600;
     };
-  };
-
-  systemd.user.timers.academic-drain = lib.mkIf (hostName == "coordinator") {
-    Unit.Description = "start the academic-ocr drain every night";
-    Timer = {
-      OnCalendar = "*-*-* 22:00:00";
-      Persistent = false;
-    };
-    Install.WantedBy = [ "timers.target" ];
+    Install.WantedBy = [ "default.target" ];
   };
 }

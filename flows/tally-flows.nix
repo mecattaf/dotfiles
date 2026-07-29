@@ -21,63 +21,16 @@ let
   turner = fixedPapers.turner;
   turnerId = turner.paperId;
   turnerSha = turner.sourceSha256;
-  turnerBlob = "${academicState}/blobs/sha256/${turnerSha}.pdf";
-  turnerRun = "${academicState}/runs/${turnerId}-${builtins.substring 0 12 turnerSha}";
-  turnerPages = map (pageNumber: {
-    paperId = turnerId;
-    inherit pageNumber;
-    sourcePath = turnerBlob;
-  }) (lib.range 1 5);
-  academicProtocols = [
-    {
-      id = "poppler-text";
-      tier = "cheap";
-    }
-    {
-      id = "mupdf-text";
-      tier = "cheap";
-    }
-    {
-      id = "qwen3-vl-8b-ocr";
-      tier = "standard";
-    }
-    {
-      id = "qwen3-vl-32b-ocr";
-      tier = "specialist";
-    }
-  ];
-  academicDriver = {
-    adapter = "ocr-driver";
-    program = "${pkgs.academic-ocr}/bin/academic-ocr-driver";
-    runtimeMaxSec = 1800;
+
+  # The production drain flow + tools (home/academic-drain.nix runs the same
+  # package 24/7; this registry entry generation-validates the flow and keeps
+  # it invocable by name). Default args are the 5-page Turner acceptance
+  # paper read from its NAS mirror — the per-paper drain overrides them.
+  academicDrain = pkgs.callPackage ../pkgs/academic-ocr-drain {
+    tally = inputs.tally.packages.${pkgs.stdenv.hostPlatform.system}.tally;
   };
+  academicDrainLib = "${academicDrain}/libexec/academic-ocr-drain";
 
-  # Keep the pinned upstream control program. Only the ruled physical pool name
-  # changes at build time; no forked JavaScript source lives in dotfiles.
-  academicOcrFlow = pkgs.runCommand "academic-ocr-flow.js" { } ''
-    substitute ${inputs.tally}/examples/flows/academic-ocr.js "$out" \
-      --replace-fail '"ocr-gpu"' '"coordinator-gpu"'
-  '';
-
-  sampleSelections = map (pageNumber: {
-    paperId = turnerId;
-    inherit pageNumber;
-    status = "converged";
-    resolution = "tier";
-    inputVariant = "original";
-    chosenArtifactPath = "${turnerRun}/ocr/${turnerId}/page-${toString pageNumber}/qwen3-vl-8b-ocr/original.json";
-    textDigest = "sha256:${builtins.hashString "sha256" "turner-page-${toString pageNumber}-sample"}";
-    disagreementPermille = 0;
-    agreementProtocols = [
-      "qwen3-vl-32b-ocr"
-      "qwen3-vl-8b-ocr"
-    ];
-    attemptCount = 4;
-    proof = {
-      taskUuid = "00000000-0000-4000-8000-000000000124";
-      witnessSeq = pageNumber;
-    };
-  }) (lib.range 1 5);
 in
 {
   services.tally.flows = lib.optionalAttrs isCoordinator {
@@ -156,44 +109,27 @@ in
       };
     };
 
-    academic-ocr = {
-      script = academicOcrFlow;
+    # The production per-paper flow (replaces the retired academic-ocr /
+    # academic-assemble Turner samples, 2026-07-29). R2 is purged: sources
+    # are file:// paths into the NAS corpus of record.
+    academic-paper-e2e = {
+      script = "${academicDrainLib}/paper-e2e.js";
       onCalendar = null;
-      maxNodes = 1700;
+      maxNodes = 10000;
       args = {
-        pages = turnerPages;
-        protocols = academicProtocols;
-        driver = academicDriver;
-        outputDir = "${turnerRun}/ocr";
-        rasterDpi = 400;
-        maxMutationIterations = 3;
-        maxDisagreementPermille = 375;
-      };
-    };
-
-    academic-assemble = {
-      script = ./academic-assemble.js;
-      onCalendar = null;
-      maxNodes = 6;
-      args = {
-        paper = {
-          paperId = turnerId;
-          title = turner.title;
-          sourceUrl = turner.sourceUrl;
-          sourceSha256 = turnerSha;
-        };
-        pages = sampleSelections;
-        protocols = academicProtocols;
-        driver = academicDriver;
-        outputDir = "${turnerRun}/package";
-        receiptPath = "${turnerRun}/receipt.json";
-        chunkWords = 512;
-        embedding = {
-          endpoint = "http://localhost:9292";
-          model = "qwen3-embedding-8b";
-          batchSize = 16;
-          dimensions = 4096;
-        };
+        paperId = turnerId;
+        title = turner.title;
+        sourceUrl = "file:///mnt/nas/documents/academic-papers/originals/knowledge/psychology/mythopoetic/Victor-Turner-Betwixt-and-Between.pdf";
+        sha256 = turnerSha;
+        pageCount = 5;
+        dataRoot = academicState;
+        tools = academicDrainLib;
+        bash = "${pkgs.bash}/bin/bash";
+        dpi = 200;
+        ocrModel = "qwen3-vl-8b-ocr";
+        refineModel = "qwen3-vl-32b-ocr";
+        embedModel = "qwen3-embedding-8b";
+        minAgreementPermille = 700;
       };
     };
   };
