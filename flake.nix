@@ -486,6 +486,73 @@
           assert !(bridgeConfig.systemd.user.services ? wayvnc);
           bridge.activationPackage;
 
+        ai-memory =
+          let
+            bridgeConfig = self.homeConfigurations."tom@bridge".config;
+            expectedJournal = "/home/tom/mecattaf/notes/journal";
+          in
+          assert bridgeConfig.programs.ai-memory.journalDir == expectedJournal;
+          assert
+            (builtins.fromJSON bridgeConfig.xdg.configFile."ai-memory/config.json".text) == {
+              schema = 1;
+              journal_dir = expectedJournal;
+            };
+          pkgs.runCommand "ai-memory"
+            {
+              nativeBuildInputs = [
+                pkgs.jq
+                pkgs.llm-agents.qmd
+                pkgs.python3
+              ];
+            }
+            ''
+              set -euo pipefail
+
+              export HOME="$TMPDIR/home"
+              export XDG_CACHE_HOME="$TMPDIR/cache"
+              export XDG_CONFIG_HOME="$TMPDIR/config"
+              export XDG_RUNTIME_DIR="$TMPDIR/runtime"
+              export PYTHONDONTWRITEBYTECODE=1
+              export AI_MEMORY_ENGINE=${./home/dot_claude/skills/drain/scripts/ai_memory.py}
+              export AI_MEMORY_DRAIN_SKILL=${./home/dot_claude/skills/drain/SKILL.md}
+              export AI_MEMORY_HANDOFF_SKILL=${./home/dot_claude/skills/handoff/SKILL.md}
+              export AI_MEMORY_PICKUP_SKILL=${./home/dot_claude/skills/pickup/SKILL.md}
+              export AI_MEMORY_UTILITY_OWNER=${./pkgs/utility-model/utility_model.py}
+              export AI_MEMORY_ZMX_TITLE=${./home/dot_local/bin/zmx-title}
+              mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_RUNTIME_DIR"
+
+              python3 -m unittest discover \
+                -s ${./tests/ai-memory} \
+                -p 'test_*.py' \
+                -v
+              ${pkgs.bash}/bin/bash -n \
+                ${./home/dot_local/bin/zmx-title} \
+                ${./home/dot_local/bin/zmx-retitle} \
+                ${./home/dot_local/bin/new-terminal}
+
+              mkdir -p "$HOME/journal"
+              qmd --index ai-memory-check \
+                collection add "$HOME/journal" --name journal >/dev/null
+              printf '%s\n' \
+                '# Synthetic journal result' \
+                "" \
+                'UNIQUE_MEMORY_BOUNDARY_SENTINEL' \
+                > "$HOME/journal/note.md"
+              cp "$HOME/journal/note.md" "$TMPDIR/note.before"
+              qmd --index ai-memory-check update >/dev/null
+              qmd --index ai-memory-check \
+                search UNIQUE_MEMORY_BOUNDARY_SENTINEL --format json \
+                > "$TMPDIR/search.json"
+              jq -e '
+                length == 1
+                and .[0].file == "qmd://journal/note.md?index=ai-memory-check"
+              ' "$TMPDIR/search.json" >/dev/null
+              ${pkgs.diffutils}/bin/cmp \
+                "$TMPDIR/note.before" "$HOME/journal/note.md"
+
+              touch "$out"
+            '';
+
         fleet-connectivity =
           let
             coordinator = self.nixosConfigurations.coordinator.config;
@@ -815,6 +882,10 @@
             coordinatorPi = findPiWrapper coordinator;
             zenbookPi = findPiWrapper zenbook;
             coordinatorFlmManifest = coordinator.environment.etc."local-models/fastflowlm.json".source;
+            canonicalUtilityDeployments = nixpkgs.lib.filterAttrs (
+              _deploymentId: deployment:
+              deployment.status == "canonical" && deployment.backend == "npu" && deployment.model == "qwen3:4b"
+            ) localModelCatalog.deployments;
             modelPackagePaths = map toString (builtins.attrValues localModelStore.packages);
             coordinatorExtraDependencies = map toString coordinator.system.extraDependencies;
             selectedDeploymentIds = coordinator.services.local-models.allow;
@@ -922,8 +993,22 @@
           assert nixpkgs.lib.any (
             package: nixpkgs.lib.getName package == "fastflowlm"
           ) coordinator.environment.systemPackages;
+          assert nixpkgs.lib.any (
+            package: nixpkgs.lib.getName package == "utility-model"
+          ) coordinator.environment.systemPackages;
+          assert
+            localModelCatalog.utility == {
+              stableId = "utility";
+              deployment = "flm-qwen3-4b-utility";
+              contextTokens = 32768;
+            };
+          assert builtins.length (builtins.attrNames canonicalUtilityDeployments) == 1;
+          assert canonicalUtilityDeployments ? "flm-qwen3-4b-utility";
+          assert localModelCatalog.deployments."flm-qwen3-4b-utility".hosts == [ "coordinator" ];
+          assert !(localModelCatalog.deployments."flm-qwen3-4b-utility" ? peer);
           assert !(localModelCatalog.deployments."flm-gemma4-it-e4b" ? peer);
           assert !(localModelCatalog.deployments."flm-gpt-oss-20b" ? peer);
+          assert !(nixpkgs.lib.hasInfix "qwen3:4b" (builtins.toJSON coordinatorSettings));
           assert !(nixpkgs.lib.hasInfix "-hf" (builtins.toJSON coordinatorSettings));
           assert
             localModelCatalog.backendKinds == {
@@ -965,15 +1050,28 @@
           assert builtins.hasAttr "mlx-lm" inputs.nix-strix-halo.packages.${system};
           pkgs.runCommand "local-model-routing" { } ''
             ${pkgs.jq}/bin/jq -e '
-              .schema == 1
+              .schema == 2
               and .runtime == "fastflowlm"
               and .lifecycle == "ad-hoc"
               and .persistentServer == false
-              and (.models | map(.tag)) == ["gemma4-it:e4b", "gpt-oss:20b"]
+              and (.models | map(.tag)) == [
+                "gemma4-it:e4b",
+                "gpt-oss:20b",
+                "qwen3:4b"
+              ]
               and (.models | map(.command)) == [
                 ["flm", "run", "gemma4-it:e4b"],
-                ["flm", "run", "gpt-oss:20b"]
+                ["flm", "run", "gpt-oss:20b"],
+                ["flm", "run", "qwen3:4b"]
               ]
+              and .utility == {
+                "id": "utility",
+                "model": "qwen3:4b",
+                "owner": "utility-model",
+                "lifecycle": "request-scoped",
+                "contextTokens": 32768,
+                "command": ["utility-model"]
+              }
             ' ${coordinatorFlmManifest} >/dev/null
 
             ${pkgs.gnugrep}/bin/grep -F 'export LLAMA_SWAP_PORT=9292' ${coordinatorPi}/bin/pi >/dev/null

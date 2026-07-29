@@ -10,7 +10,7 @@
 #   Usage:  zmx-retitle <kitty-listen-socket> <fallback-name> <cwd>
 #
 # It waits (bounded) for kitty's remote-control socket, asks `zmx-title` (local
-# flm / NPU, with its own hard timeout) for a nicer name, and — only if flm
+# utility NPU slot, with its own hard timeout) for a nicer name, and — only if it
 # actually produced something richer than the deterministic fallback — sets the
 # kitty window title. `set-window-title` is PERMANENT (no --temporary), so the
 # shell won't stomp it, and it propagates to the wayland/OS title niri shows.
@@ -38,9 +38,9 @@ done
 [ "$up" = 1 ] || exit 0
 
 # Best-effort rich name. zmx-title prints <fallback> byte-for-byte on ANY
-# failure (flm absent/down/slow/junk), so `title == fallback` means "no
+# failure (utility slot absent/down/slow/junk), so `title == fallback` means "no
 # enrichment happened" → leave the terminal's natural title untouched, keeping
-# the flm-off experience identical to a plain terminal.
+# the utility-off experience identical to a plain terminal.
 title="$("$here/zmx-title" "$fallback" "working directory: $cwd" 2>/dev/null)" || exit 0
 [ -n "$title" ] || exit 0
 [ "$title" = "$fallback" ] && exit 0

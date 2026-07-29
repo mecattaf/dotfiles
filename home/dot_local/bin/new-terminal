@@ -90,9 +90,9 @@ sock="unix:@zmx-${sess}"
 
 # Fire-and-forget the ASYNC cosmetic titler. `setsid` + redirected stdio fully
 # detaches it so it survives the `exec kitty` below, never holds a terminal,
-# and cannot delay the launch. It polls the socket, asks flm for a nicer name
-# (via zmx-title, with its own hard timeout) and, only if flm actually enriches
-# the name, retitles the kitty window. On ANY failure — flm down, ZMX_TITLE=0,
+# and cannot delay the launch. It polls the socket, asks the local utility slot
+# for a nicer name (via zmx-title, with its own hard timeout) and, only if it
+# enriches the name, retitles the kitty window. On ANY failure — NPU unavailable, ZMX_TITLE=0,
 # no kitten — it silently no-ops, leaving the natural terminal title. It NEVER
 # touches the zmx session name.
 if [[ "${ZMX_TITLE:-0}" == "1" ]]; then

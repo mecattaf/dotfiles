@@ -63,6 +63,15 @@ let
     "--jinja"
   ];
 
+  # One canonical application-facing utility slot.  Consumers name only
+  # stableId; services.npu-llm owns the request-scoped rewrite to this
+  # FastFlowLM deployment.
+  utility = {
+    stableId = "utility";
+    deployment = "flm-qwen3-4b-utility";
+    contextTokens = 32768;
+  };
+
   checkpointType = types.submodule {
     options = {
       url = mkOption {
@@ -798,6 +807,21 @@ let
           };
 
           deployments = {
+            flm-qwen3-4b-utility = {
+              model = "qwen3:4b";
+              role = "utility";
+              status = "canonical";
+              backend = "npu";
+              hosts = [ "coordinator" ];
+              runtime = {
+                repository = "https://github.com/FastFlowLM/FastFlowLM";
+                commit = "fd371409897d7c0abb4de4dbc5098b9b43c094ff";
+              };
+              evidence = "api-only";
+              hardware = "coordinator Strix Halo XDNA2 NPU; amdxdna/XRT from nix-amd-ai";
+              notes = "Canonical utility slot. A request-scoped owner rewrites `utility` to `qwen3:4b`, starts and stops FastFlowLM around the request, and never registers an FLM peer in llama-swap.";
+            };
+
             flm-gemma4-it-e4b = {
               model = "gemma4-it:e4b";
               role = "utility";
@@ -1154,6 +1178,6 @@ let
   };
 in
 {
-  inherit backendKinds;
+  inherit backendKinds utility;
   inherit (evaluated.config) artifacts deployments;
 }

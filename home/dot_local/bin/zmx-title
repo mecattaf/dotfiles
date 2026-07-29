@@ -9,22 +9,18 @@
 #   - a sanitized LLM-generated title  (only on full success), OR
 #   - the <fallback-name> byte-for-byte (on ANY failure).
 #
-# "ANY failure" = titling disabled, curl/jq missing, endpoint down, model not
-# pulled, HTTP error, timeout, empty/junk output. In every one of those cases
-# the output is IDENTICAL to the caller's deterministic name, so wiring this in
-# can never change behavior when the task-model is unavailable — "titling off"
+# "ANY failure" = titling disabled, utility-model/jq missing, NPU unavailable,
+# model not pulled, timeout, empty/junk output. In every one of those cases the
+# output is IDENTICAL to the caller's deterministic name, so wiring this in can
+# never change behavior when the utility slot is unavailable — "titling off"
 # === today's shipped `<cwd-basename>-<HHMMSS>` naming.
 #
-# Automatic NPU titling is disabled by default: FastFlowLM models are no longer
-# persistent llama-swap peers. Ad-hoc inference uses `flm run <model>`. An
-# operator may temporarily run `flm serve gemma4-it:e4b --port 52625` and opt
-# this cosmetic client in with ZMX_TITLE=1. Host/port/model/URL are overridable:
-#   FLM_TITLE_HOST   (default 127.0.0.1)
-#   FLM_TITLE_PORT   (default 52625)
-#   FLM_TITLE_MODEL  (default gemma4-it:e4b)
-#   FLM_TITLE_URL    (default http://$FLM_TITLE_HOST:$FLM_TITLE_PORT/v1/chat/completions)
-#   ZMX_TITLE        (set to 1 only while a short-lived FLM server is intended)
-#   ZMX_TITLE_TIMEOUT (default 3 — hard wall-clock cap, seconds)
+# Automatic NPU titling is disabled by default. With ZMX_TITLE=1, the
+# Nix-managed `utility-model` command exclusively owns one short-lived
+# FastFlowLM start/request/stop cycle. This consumer knows only the stable
+# `utility` ID: there is no consumer model, URL, port, or provider override.
+#   ZMX_TITLE         (set to 1 to opt this cosmetic consumer in)
+#   ZMX_TITLE_TIMEOUT (default 45 — total local-NPU deadline, seconds)
 set -u
 
 fallback="${1-}"
@@ -32,16 +28,12 @@ shift 2>/dev/null || true
 
 emit_fallback() { printf '%s\n' "$fallback"; exit 0; }
 
-# Kill switch + hard dependencies. Any miss → deterministic name.
+# Kill switch + hard dependencies. Any miss -> deterministic name.
 [ "${ZMX_TITLE:-0}" = "1" ] || emit_fallback
-command -v curl >/dev/null 2>&1 || emit_fallback
-command -v jq   >/dev/null 2>&1 || emit_fallback
+command -v utility-model >/dev/null 2>&1 || emit_fallback
+command -v jq >/dev/null 2>&1 || emit_fallback
 
-host="${FLM_TITLE_HOST:-127.0.0.1}"
-port="${FLM_TITLE_PORT:-52625}"
-model="${FLM_TITLE_MODEL:-gemma4-it:e4b}"
-url="${FLM_TITLE_URL:-http://$host:$port/v1/chat/completions}"
-timeout="${ZMX_TITLE_TIMEOUT:-3}"
+timeout="${ZMX_TITLE_TIMEOUT:-45}"
 
 # Gather content: positional args, plus stdin if something is piped in. Bounded
 # so a huge scrollback can't blow up the request.
@@ -62,16 +54,15 @@ sys='You name terminal sessions. Reply with ONLY a 2-4 word title. Optionally st
 usr="Generate a short title for a terminal working session with this context:
 ${content}"
 
-payload="$(jq -n --arg m "$model" --arg s "$sys" --arg u "$usr" \
-    '{model:$m, max_tokens:24, temperature:0.2, stream:false,
+payload="$(jq -n --arg s "$sys" --arg u "$usr" \
+    '{model:"utility", max_tokens:24, temperature:0.2, stream:false, think:false,
       messages:[{role:"system",content:$s},{role:"user",content:$u}]}' 2>/dev/null)" \
     || emit_fallback
 
-# Strict wall-clock cap: connect fast-fails when nothing is listening; --max-time
-# bounds a slow/hung server. curl -f makes any non-2xx an error → fallback.
-resp="$(curl -fsS --connect-timeout 1 --max-time "$timeout" \
-    -H 'Content-Type: application/json' \
-    -d "$payload" "$url" 2>/dev/null)" || emit_fallback
+# The owner enforces the deadline and always tears its FLM child down before
+# returning. Any non-zero exit becomes this consumer's deterministic fallback.
+resp="$(printf '%s' "$payload" \
+    | utility-model --timeout "$timeout" 2>/dev/null)" || emit_fallback
 
 title="$(printf '%s' "$resp" | jq -r '.choices[0].message.content // empty' 2>/dev/null)"
 [ -n "$title" ] || emit_fallback
@@ -84,8 +75,8 @@ title="$(printf '%s' "$resp" | jq -r '.choices[0].message.content // empty' 2>/d
 #     UTF-8 emoji survive while shell/path metacharacters (/ ; $ ` " ' …) are
 #     removed
 #   - squeeze spaces, trim, cap length
-title="$(printf '%s' "$title" | sed -e ':a' -e 's/<think>[^<]*<\/think>//g;ta' 2>/dev/null)"
 title="$(printf '%s' "$title" | tr '\n\r\t' '   ' | tr -d '\000-\037')"
+title="$(printf '%s' "$title" | sed -e ':a' -e 's/<think>.*<\/think>//g;ta' 2>/dev/null)"
 title="$(printf '%s' "$title" | LC_ALL=C sed -e 's/[^0-9A-Za-z _\x80-\xff-]//g' 2>/dev/null)"
 title="$(printf '%s' "$title" | sed -e 's/  */ /g' -e 's/^ *//' -e 's/ *$//')"
 title="$(printf '%s' "$title" | cut -c1-48)"

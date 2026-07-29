@@ -1,0 +1,2 @@
+{"timestamp":"2026-07-22T20:00:10Z","type":"session_meta","payload":{"id":"019f0000-0000-7000-8000-bbbbbbbb0002","thread_source":"subagent","parent_thread_id":"019f0000-0000-7000-8000-a1b2c3d40001","source":{"subagent":{"thread_spawn":{"parent_thread_id":"019f0000-0000-7000-8000-a1b2c3d40001","depth":1,"agent_path":"/root/synthetic"}}},"originator":"codex-tui"}}
+{"timestamp":"2026-07-22T20:00:11Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"SECRET_SUBAGENT_TRANSCRIPT"}]}}
