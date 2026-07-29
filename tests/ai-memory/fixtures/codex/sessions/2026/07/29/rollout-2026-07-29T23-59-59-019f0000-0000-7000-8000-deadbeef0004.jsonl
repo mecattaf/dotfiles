@@ -1,0 +1,2 @@
+{"timestamp":"2026-07-29T23:59:59Z","type":"session_meta","payload":{"id":"019f0000-0000-7000-8000-deadbeef0004","thread_source":"user","source":"cli","originator":"codex-tui"}}
+{"timestamp":"2026-07-30T00:00:00Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"This newer unrelated rollout must never be selected."}]}}

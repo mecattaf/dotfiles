@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"22222222-2222-4222-8222-222222222222","isSidechain":true,"timestamp":"2026-07-22T22:00:00+02:00","message":{"role":"user","content":"SECRET_CHILD_TRANSCRIPT"}}
+{"type":"assistant","sessionId":"22222222-2222-4222-8222-222222222222","isSidechain":true,"timestamp":"2026-07-22T22:00:01+02:00","message":{"role":"assistant","content":"Child result."}}
