@@ -16,6 +16,20 @@ its source filename contains the unrelated UUID `491cfaeb-…`.
 
 ## Programs
 
+- `academic-paper-archive` creates an index-preserving LaCie mirror of the
+  Cloudflare paper corpus. Its `init` command imports an untouched D1 SQL
+  export, frozen sidecars, prior purge records, and OCR provenance into a
+  local SQLite catalog keyed by the original `db_id`; `mirror` copies genuine
+  PDFs and recovers PDFs linked by mislabeled HTML landing pages;
+  `recover-history` indexes LaCie candidates and restores prior purges with
+  hash/path provenance; `reconstruct-facsimiles` creates explicitly labeled
+  image PDFs only where the OCR corpus retained every rendered page;
+  `recover-web` uses landing-page DOIs, Crossref, and Unpaywall to locate
+  title-checked open copies; `recover-live-library` retries exact-title links
+  from the live Effectuation catalog; `recover-url` attaches a manually found
+  public-repository PDF to its existing D1 ID. PDF identity is checked against
+  the first three pages, with OCR fallback for scanned or corrupt text layers;
+  `verify` checks the catalog/file invariants. It never deletes from D1 or R2.
 - `academic-ocr-prepare` fetches and verifies the PDF, performs the page
   census, renders the immutable 200 DPI page inputs, and prints the absolute
   path of the OCR flow-args manifest.

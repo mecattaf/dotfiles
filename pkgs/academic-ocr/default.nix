@@ -15,8 +15,10 @@
   jq,
   mupdf-headless,
   poppler-utils,
+  python3,
   sqlite,
   sqlite-vec,
+  tesseract,
 }:
 let
   chunkAwk = builtins.path {
@@ -87,6 +89,18 @@ let
     '';
   };
 
+  archive = writeShellApplication {
+    name = "academic-paper-archive";
+    runtimeInputs = [
+      imagemagick
+      poppler-utils
+      tesseract
+    ];
+    text = ''
+      exec ${python3}/bin/python ${./archive.py} "$@"
+    '';
+  };
+
   fakeCurl = writeShellApplication {
     name = "academic-ocr-fake-curl";
     runtimeInputs = shellRuntime;
@@ -116,17 +130,19 @@ in
 symlinkJoin {
   name = "academic-ocr-1.0.0";
   paths = [
+    archive
     driver
     planAssemble
     prepare
     signature
   ];
   postBuild = ''
+    ${python3}/bin/python -c 'compile(open("${./archive.py}", encoding="utf-8").read(), "archive.py", "exec")'
     ${tests}/bin/academic-ocr-tests
   '';
 
   passthru = {
-    inherit tests;
+    inherit archive tests;
   };
 
   meta = {
