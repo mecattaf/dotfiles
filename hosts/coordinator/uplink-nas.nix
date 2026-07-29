@@ -169,6 +169,7 @@ in
       "nofail"
       "noauto"
       "x-systemd.automount"
+      "x-gvfs-show"
     ];
   };
 
