@@ -7,7 +7,7 @@
 }:
 # Remote-access stack: wayvnc (VNC server, so any device can be viewed) + Remmina
 # (VNC client, pre-loaded with a profile for every OTHER host). Only meaningful on a
-# real NixOS host with a niri session — skipped on the standalone Fedora bridge.
+# NixOS host with a niri session.
 let
   registry = import ../modules/mesh-registry.nix;
   hostName = if osConfig != null then osConfig.networking.hostName else null;
