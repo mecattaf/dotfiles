@@ -111,6 +111,7 @@ let
 in
 {
   imports = [
+    ./academic-drain.nix
     ./ai-memory.nix
     ./ntm.nix
     ./nvim.nix
