@@ -45,14 +45,11 @@ in
       onCalendar = null;
       maxNodes = 64;
       args = {
-        coordinatorFlake = dotfiles;
-        # worker builds from its own checkout via the SSH executor
-        workerFlake = "/home/tom/dotfiles";
+        flake = dotfiles;
         # Populate only from the accepted canonical allowlist after it lands;
         # uncensored = heretic artifacts only. Never include the retired
         # deepseek-v4-flash model or MTP artifact.
-        coordinatorModels = [ ];
-        workerModels = [ ];
+        models = [ ];
       };
     };
 

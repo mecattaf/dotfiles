@@ -1,18 +1,13 @@
 export const meta = {
   name: "materialize-model-weights",
-  description: "Gate on #104 closing, then materialize allowlisted model weights on coordinator and worker; replay-safe per artifact",
+  description: "Gate on #104 closing, then materialize allowlisted model weights on coordinator; replay-safe per artifact",
   pools: ["flow-build"],
   argsSchema: {
     type: "object",
-    required: ["coordinatorFlake", "workerFlake", "coordinatorModels", "workerModels"],
+    required: ["flake", "models"],
     properties: {
-      coordinatorFlake: { type: "string", minLength: 1 },
-      workerFlake: { type: "string", minLength: 1 },
-      coordinatorModels: {
-        type: "array",
-        items: { type: "string", minLength: 1 }
-      },
-      workerModels: {
+      flake: { type: "string", minLength: 1 },
+      models: {
         type: "array",
         items: { type: "string", minLength: 1 }
       }
@@ -28,7 +23,8 @@ export const meta = {
     "deepseek-v4-flash-q4-imatrix",
     "deepseek-v4-flash-mtp"
   ]);
-  for (const model of [...args.coordinatorModels, ...args.workerModels]) {
+  const models = [...new Set(args.models)];
+  for (const model of models) {
     if (retiredModels.has(model)) {
       throw new Error(`retired DS4 artifact is not a materialization target: ${model}`);
     }
@@ -50,9 +46,9 @@ export const meta = {
   // Interrupted runs replay cheaply — each artifact node is keyed, so completed
   // downloads collapse to Reused on re-run.
   const coordinatorBuilt = [];
-  for (const model of args.coordinatorModels) {
+  for (const model of models) {
     const built = await sh(
-      ["nix", "build", `${args.coordinatorFlake}#models.${model}`, "--no-link", "--print-out-paths"],
+      ["nix", "build", `${args.flake}#models.${model}`, "--no-link", "--print-out-paths"],
       {
         pools: ["flow-build"],
         key: `coordinator-${model}`,
@@ -63,29 +59,14 @@ export const meta = {
     coordinatorBuilt.push({ model, result: built.result });
   }
 
-  const workerBuilt = [];
-  for (const model of args.workerModels) {
-    const built = await sh(
-      ["nix", "build", `${args.workerFlake}#models.${model}`, "--no-link", "--print-out-paths"],
-      {
-        pools: ["flow-build"],
-        executor: "worker",
-        key: `worker-${model}`,
-        evidence: ["exit:0"],
-        label: `worker:${model}`
-      }
-    );
-    workerBuilt.push({ model, result: built.result });
-  }
-
   // Post-materialization smoke: the coordinator rebuild must now see every
   // allowlisted deployment resolvable without any network fetch.
   return sh(
-    ["nix", "build", `${args.coordinatorFlake}#nixosConfigurations.coordinator.config.system.build.toplevel`, "--no-link"],
+    ["nix", "build", `${args.flake}#nixosConfigurations.coordinator.config.system.build.toplevel`, "--no-link"],
     {
       pools: ["flow-build"],
       key: "closure-proof",
-      brief: { coordinator: coordinatorBuilt, worker: workerBuilt },
+      brief: { coordinator: coordinatorBuilt },
       evidence: ["exit:0"],
       label: "closure-proof"
     }

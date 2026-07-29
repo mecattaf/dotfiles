@@ -6,14 +6,14 @@ model identity, resource class, and an explicit caller boundary.
 
 ## Deployment state
 
-The old all-or-nothing `downloadAllModels` gate is gone. Each Strix host has an
+The old all-or-nothing `downloadAllModels` gate is gone. The coordinator has an
 explicit `services.local-models.allow` list for command-managed llama-swap
 deployments and a separate list for non-llama speech artifacts. FastFlowLM NPU
 rows remain runtime-appliance metadata: their existing files may stay under
 `~/.config/flm/models`, but no NixOS service starts or retains them. The exact
-per-host FLM roster is still declared in `services.npu-llm.models` and rendered
+FLM roster is declared in `services.npu-llm.models` and rendered
 to `/etc/local-models/fastflowlm.json`. See the
-[final two-node decision](deployment-decisions-2026-07-26.md) for placement and
+[current coordinator decision](deployment-decisions-2026-07-29.md) for placement and
 storage totals.
 
 ## Hugging Face metadata CLI
@@ -52,7 +52,7 @@ encrypted file.
 
 Metadata inspection stops at API records such as revisions, tags, sibling
 names, and LFS metadata. Monthly Tally research may update catalog candidates,
-but it cannot add them to either host allowlist or initiate downloads. Host
+but it cannot add them to the coordinator allowlist or initiate downloads. Host
 activation materializes only the separately reviewed selections.
 
 The targeted smoke check runs `hf --version` and the metadata command against a
@@ -69,10 +69,9 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 |---|---|---|---|
 | Streaming speech-to-text | Voxtype with `parakeet-unified-en-0.6b` | Coordinator-only systemd user service; local ONNX Runtime/MIGraphX on gfx1151 | Model download is an idempotent service pre-start step. |
 | Document OCR/RAG | Qwen3-VL 8B primary, 32B refine, Qwen3 Embedding 8B, Qwen3-VL Embedding 8B | Coordinator llama.cpp ROCm behind llama-swap | Active coordinator allowlist; text and multimodal embedders are complementary. |
-| Shared text and coding | Qwen 3.6 35B-A3B and stock 27B, both UD-Q8_K_XL with integrated MTP; Gemma 4 26B Q8 with matched MTP | Vulkan behind llama-swap on both hosts | Active on both hosts. Qwen3-Coder-Next remains cataloged only. |
-| Computer use | Fara 1.5 27B Q8_0 plus BF16 projector | ROCm behind llama-swap on both hosts | Active on both hosts. |
-| NPU utility | FastFlowLM Gemma 4 E4B and GPT-OSS 20B | Direct, ad-hoc `flm run <model>` | FastFlowLM is installed on both hosts; no model server starts at boot and idle residency is zero. |
-| Historical SOTA | DeepSeek V4 Flash Q4 imatrix + MTP | Retired dual-node DS4 topology | Exact artifacts and benchmark evidence remain cataloged, but the deployment is retired and its roughly 157 GiB of weights are excluded from materialization. |
+| Shared text and coding | Qwen 3.6 35B-A3B and stock 27B, both UD-Q8_K_XL with integrated MTP; Gemma 4 26B Q8 with matched MTP | Coordinator Vulkan behind llama-swap | Active coordinator allowlist. Qwen3-Coder-Next remains cataloged only. |
+| Computer use | Fara 1.5 27B Q8_0 plus BF16 projector | Coordinator ROCm behind llama-swap | Active coordinator allowlist. |
+| NPU utility | FastFlowLM Gemma 4 E4B and GPT-OSS 20B | Direct, ad-hoc `flm run <model>` | Installed on coordinator; no model server starts at boot and idle residency is zero. |
 | Call transcription + diarization | Microsoft VibeVoice-ASR | Future dedicated PyTorch/ROCm batch service | BF16 payload and tokenizer are Nix-rooted on coordinator; service remains future work. |
 | Text-to-speech | VibeVoice Large community mirror | Future dedicated PyTorch/ROCm batch service | BF16 payload and tokenizer are Nix-rooted on coordinator; mirror risk remains recorded. |
 | Audio, image, and video generation | None | None | Parked. Stable Diffusion is explicitly outside the local-LLM route. |
@@ -80,14 +79,12 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 ## Text classes
 
 - **Small and fast:** `gemma4-it:e4b` and `gpt-oss:20b` remain available on
-  both NPUs through an explicit `flm run <model>`. FastFlowLM owns the runtime
+  the coordinator NPU through an explicit `flm run <model>`. FastFlowLM owns the runtime
   files and releases model residency when the command exits.
 - **Daily general:** Qwen 3.6 35B-A3B UD-Q8_K_XL with integrated MTP on
   Vulkan.
-- **Historical SOTA:** DeepSeek V4 Flash Q4 imatrix plus MTP through dual-node
-  DS4 is retained as evidence only; it is no longer an installable deployment.
 - **Coder:** stock Qwen 3.6 27B UD-Q8_K_XL with integrated MTP and Gemma 4
-  26B A4B IT Q8_0 plus its Q8_0 MTP head are active on both machines.
+  26B A4B IT Q8_0 plus its Q8_0 MTP head are active on coordinator.
   Qwen3-Coder-Next is retained only as catalog metadata.
 - **Uncensored:** all rows are deferred and remain catalog-only.
 
@@ -108,12 +105,12 @@ pre-Nix notes into the current architecture.
 1. [`../../lib/local-models.nix`](../../lib/local-models.nix) owns immutable
    artifact and deployment metadata.
 2. [`../../modules/local-models.nix`](../../modules/local-models.nix) projects
-   only command-managed host allowlists into the Nix store and llama-swap;
+   only the command-managed coordinator allowlist into the Nix store and llama-swap;
    runtime appliances never become proxy peers.
 3. [`../../modules/npu-llm.nix`](../../modules/npu-llm.nix) validates the
    explicit FastFlowLM roster and writes its non-resident runtime manifest.
-4. [`deployment-decisions-2026-07-26.md`](deployment-decisions-2026-07-26.md)
-   is the authoritative active split and storage ledger.
+4. [`deployment-decisions-2026-07-29.md`](deployment-decisions-2026-07-29.md)
+   is the authoritative active placement and storage ledger.
 5. [`model-roster.md`](model-roster.md) is the broader human-readable catalog,
    including deferred rows and
    runtime and speech appliances that do not belong in the llama-swap catalog.

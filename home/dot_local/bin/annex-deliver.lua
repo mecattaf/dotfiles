@@ -37,7 +37,7 @@
 --   * #72's abstract-socket-over-ssh gap: `unix:@kitty-{pid}` is host-local
 --     and is NOT ssh-forwarded. On a thin client, annex-cmd's ssh branch runs
 --     THIS composer nvim on the coordinator while the harness's kitty socket
---     lives on the originating host (zenbook/worker) — send-text physically
+--     lives on the originating host (for example, zenbook) — send-text physically
 --     cannot reach it with today's tooling. The composer's OWN hostname() is
 --     therefore useless as a discriminator (it is always "coordinator"); the
 --     correct signal is the harness's host, threaded in as KITTY_HARNESS_HOST

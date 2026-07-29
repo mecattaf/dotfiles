@@ -1,7 +1,13 @@
-{ config, lib, pkgs, ... }:
-# Artifact serving plane — COORDINATOR only (fleet front door; Caddy is
-# featherweight, while optional live origins can still run on the tailnet
-# worker). Realizes the publish-artifact skill's tailnet rung:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+# Artifact serving plane — COORDINATOR only. Static snapshots live in the
+# drop-dir and optional live origins bind to coordinator loopback, so Caddy
+# never depends on a remote origin. Realizes the publish-artifact skill's
+# tailnet rung:
 #
 #   /var/lib/artifacts/<slug>.until-YYYYMMDD.caddy   TTL in the FILENAME
 #   /var/lib/artifacts/<slug>/                       static snapshot (if static)

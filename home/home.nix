@@ -92,18 +92,12 @@ let
       numpy
       ijson
     ]
-    ++
-      lib.optionals
-        (builtins.elem hostName [
-          "coordinator"
-          "worker"
-        ])
-        [
-          # CLI-Anything's generated harnesses and validation workflow assume these
-          # are importable from the ordinary `python3`, not only inside cli-hub.
-          click
-          pytest
-        ]
+    ++ lib.optionals (hostName == "coordinator") [
+      # CLI-Anything's generated harnesses and validation workflow assume these
+      # are importable from the ordinary `python3`, not only inside cli-hub.
+      click
+      pytest
+    ]
   );
 
   # Chrome PWAs via google-chrome-stable --app. pwaIcon lets the entry name differ
@@ -165,8 +159,8 @@ in
       # file is shared by the whole-dir symlink). Emitted at a neutral ~/.config path
       # (niri/ is a whole-dir symlink, can't nest a generated file inside) and pulled
       # in by an ABSOLUTE include in niri/config.kdl (niri expands neither ~ nor $HOME).
-      # Written on EVERY host (no `optional` include on the pinned niri): the Strix
-      # desktops get an inert file; the zenbook-duo gets per-device touch → output
+      # Written on EVERY host (no `optional` include on the pinned niri): the
+      # coordinator gets an inert file; the zenbook-duo gets per-device touch → output
       # blocks — PR #1856 syntax, understood ONLY by its niri-pr1856 build. Confirm the
       # panel↔device pairing on-device and swap the two map-to-output lines if crossed
       # (dotfiles#67). NB: this is store-managed (read-only, re-emitted on switch), not

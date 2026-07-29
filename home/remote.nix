@@ -12,10 +12,8 @@ let
   registry = import ../modules/mesh-registry.nix;
   hostName = if osConfig != null then osConfig.networking.hostName else null;
 
-  # wayvnc binds the single active output automatically — everywhere, including the
-  # headless worker. Pinning the worker to a guessed connector name (--output DP-1)
-  # was a crash-loop waiting to happen; headless-display.nix now force-enables
-  # several candidate connectors and whichever lights up is the one to capture.
+  # wayvnc binds the single active output automatically. Avoid pinning a guessed
+  # connector name; whichever active output lights up is the one to capture.
   vncOutput = null;
   outputArg = lib.optionalString (vncOutput != null) " --output ${vncOutput}";
 

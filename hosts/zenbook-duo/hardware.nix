@@ -1,12 +1,26 @@
-{ config, lib, pkgs, modulesPath, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  modulesPath,
+  ...
+}:
 # Generated on the live Zenbook Duo (UX8406) via `nixos-generate-config --no-filesystems`
 # during the jul5 flash — real, not a placeholder. Filesystems come from ./disko.nix,
-# so no fileSystems entries here (worker pattern). Note the `vmd` initrd module (Intel
+# so no fileSystems entries here. Note the `vmd` initrd module (Intel
 # VMD — the NVMe hides behind it) and the Meteor Lake NPU.
 {
   imports = [ (modulesPath + "/installer/scan/not-detected.nix") ];
 
-  boot.initrd.availableKernelModules = [ "xhci_pci" "thunderbolt" "vmd" "nvme" "usbhid" "usb_storage" "sd_mod" ];
+  boot.initrd.availableKernelModules = [
+    "xhci_pci"
+    "thunderbolt"
+    "vmd"
+    "nvme"
+    "usbhid"
+    "usb_storage"
+    "sd_mod"
+  ];
   # Force early-KMS for i915 in the initrd. The Duo has TWO internal eDP panels and
   # niri hung on next-boot output init (jul5); the model-specific NixOS Discourse
   # thread (UX8406MA) reports reliable dual-eDP mode-setting needs early i915 + kernel

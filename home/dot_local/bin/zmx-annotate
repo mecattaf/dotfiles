@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # zmx-annotate — annotated `zmx list` for the resume pickers (`zmx-resume`
-# locally on the coordinator, `desk-resume` over ssh from worker/zenbook).
+# locally on the coordinator, `desk-resume` over ssh from zenbook).
 # Prints one TAB-separated line per session:
 #
 #   <name>\t<title-or-name> · <~dir> · <age> · <attached|dormant>

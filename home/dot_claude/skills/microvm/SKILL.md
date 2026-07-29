@@ -29,10 +29,10 @@ Upstream: `astro/microvm.nix` (redirects to `microvm-nix/microvm.nix`). Local cl
 | Hypervisors | `qemu`, `cloud-hypervisor`, `firecracker`, `crosvm`, `kvmtool`, `stratovirt`, `alioth`, `vfkit`(macOS) |
 | Clean-shutdown support | qemu / cloud-hypervisor / firecracker = **yes** (control socket). kvmtool / stratovirt / alioth = **NO** (hard kill only) |
 
-**WIRED IN (2026-07-11).** `flake.nix` carries the `microvm` input; the durable host platform (`microvm.host.enable`) is enabled on the **worker** via `modules/microvm-host.nix`. So:
+**WIRED IN (updated 2026-07-29).** `flake.nix` carries the `microvm` input; the durable host platform (`microvm.host.enable`) is enabled on the **coordinator** via `modules/microvm-host.nix`. So:
 
 - **Ephemeral default** — `nix run …config.microvm.declaredRunner` works from **any** host (needs only the input; no host module). This is the default and matches the old krun `run` verb's disposability.
-- **Durable path** — the `microvm` CLI + `microvm@` units + `microvm.vms` live on the **worker** (the soft-retired, tailnet-only Strix Halo compute box). Run/manage long-lived VMs there whenever it is online. Move the `modules/microvm-host.nix` import if the sandbox-execution target changes.
+- **Durable path** — the `microvm` CLI + `microvm@` units + `microvm.vms` live on the **coordinator**. Live-artifact guest ports forward to coordinator loopback, where local Caddy consumes them.
 
 ## Path decision — pick before you build
 
@@ -52,7 +52,7 @@ In doubt for an agent workload: **ephemeral `declaredRunner`**. It is the closes
 
 ## How it's wired (reference)
 
-Already done — the input is in `flake.nix` and the host platform is enabled on the worker (`modules/microvm-host.nix`). Shown here for enabling on another host or declaring a guest.
+Already done — the input is in `flake.nix` and the host platform is enabled on the coordinator (`modules/microvm-host.nix`). Shown here for declaring a guest.
 
 ```nix
 # flake.nix (present)
@@ -61,7 +61,7 @@ inputs.microvm.inputs.nixpkgs.follows = "nixpkgs";
 ```
 
 ```nix
-# modules/microvm-host.nix (imported by hosts/worker/default.nix)
+# modules/microvm-host.nix (imported by hosts/coordinator/default.nix)
 { inputs, ... }: {
   imports = [ inputs.microvm.nixosModules.host ];
   microvm.host.enable = true;                 # installs the `microvm` CLI + state dir + tmpfiles; boots no VM
@@ -147,7 +147,8 @@ microvm.nix ships **no** teardown verb. `systemctl stop` releases the process, n
 # 0. revoke exposures FIRST (publish-artifact skill): a destroyed origin with a
 #    live route is a dangling exposure. Check the coordinator's drop-dir for
 #    reverse_proxy blocks targeting this VM's forwarded port:
-#      grep -l "worker:<port>" /var/lib/artifacts/*.caddy   # then unpublish
+#      grep -l "reverse_proxy 127.0.0.1:<port>" /var/lib/artifacts/*.caddy
+#      # then unpublish
 systemctl stop microvm@<name>.service                                  # graceful; hard-kills if no socket
 rm -rf /var/lib/microvms/<name>                                        # runner symlinks, flake, auto-created volumes, sockets
 rm -f /nix/var/nix/gcroots/microvm/<name> \
@@ -182,7 +183,7 @@ Treat `/var/lib/microvms/` + `microvm@` unit state as the **single source of tru
 - **Volumes** (`lib/volumes.nix`) — block images under the state dir; `autoCreate` runs at every start (`truncate` → `chattr +C` → `mkfs`). **Persistent by default.** For disposable workloads, don't add a volume — keep writable state in tmpfs, or delete the volume after shutdown.
 - **Shares** — `9p` (built-in, slower) or `virtiofs` (needs the `microvm-virtiofsd@` service). Share the host `/nix/store` read-only to shrink the guest closure. Writable `/nix/store` overlay needs a *volume* (not a share) and, per upstream, "delete and recreate the overlay after shutdown."
 - **Networking** (`nixos-modules/microvm/interfaces.nix`) — `tap`, `macvtap`, `bridge`, or qemu `user`. TAP/macvtap devices are set up by generated `tap-up`/`macvtap-up` scripts and **torn down automatically** on `systemctl stop` via `tap-down` (`ip link delete`). Egress control lives here — for a sandbox, prefer `user`/loopback or no network.
-- **Publishing a port out of a VM** (the publish-artifact seam) — qemu `user`-net guests are NOT tailnet-reachable: forward the guest port to `worker:<port>` (qemu hostfwd / the runner's forwardPorts), picking from the designated window **8000–8099** (open on tailscale0 via `myArtifacts.livePortRange`), then hand `worker:<port>` to the publish-artifact skill. A live exposure means the VM must outlive the exposure TTL ⇒ use the durable `microvm -c` path, never a foreground ephemeral VM.
+- **Publishing a port out of a VM** (the publish-artifact seam) — qemu `user`-net guests are not host-reachable without an explicit forward. Bind the runner's `forwardPorts` host side to `127.0.0.1:<port>` on coordinator, then hand that loopback origin to the publish-artifact skill. Never bind it to a LAN or tailnet address. A live exposure means the VM must outlive the exposure TTL ⇒ use the durable `microvm -c` path, never a foreground ephemeral VM.
 
 ## Gotchas & security posture
 
@@ -199,7 +200,7 @@ Treat `/var/lib/microvms/` + `microvm@` unit state as the **single source of tru
 4. **Pick a socket-capable hypervisor** (qemu/cloud-hypervisor/firecracker) for anything with writable state, so `systemctl stop` flushes cleanly.
 5. **Gate egress deliberately.** Sandbox the workload; default a sandbox VM to no network or `user`-net + loopback, and gate any public ingress (Caddy/Tailscale) behind access control.
 6. **Don't `microvm -u` a `microvm.vms.<name>.config` VM** — it's fully declarative; rebuild the host instead. Use `flake=`/`updateFlake=` VMs for imperative updates.
-7. **The `microvm` CLI + `microvm@` units live on the worker** (host module there). Use them from the worker; from the coordinator, target the worker (ssh / microvm.nix's ssh-deploy) rather than enabling the host module on the conductor.
+7. **The `microvm` CLI + `microvm@` units live on the coordinator.** Live guest origins bind only to coordinator loopback and are consumed by local Caddy.
 
 ## Reference paths
 

@@ -1,7 +1,7 @@
 # agenix recipients — the crypto-enforced ACL (analogue of sops .sops.yaml
 # creation_rules). Read ONLY by the `agenix` CLI, never imported into a NixOS eval.
 #
-# Public keys come from the mesh registry (single source of truth); the admin key's
+# Host public keys come from the mesh registry (single source of truth); the admin key's
 # private half (AGE-SECRET-KEY-1… line) lives in Tom's Google Password Manager —
 # recovery on any machine is Google login + paste. It lets you edit any secret from
 # anywhere. Tiers are enforced by cryptography — a host not listed for a secret
@@ -19,22 +19,23 @@ let
   admin = "age159pyyqqnrxwv3d7f758u5xtzv53fu2nwc85x3sur63g3p29jnegq9tf47w";
 
   hostKeys = nonEmpty (map (h: registry.${h}.hostKey) names);
-  userKeys = nonEmpty (map (h: registry.${h}.userKey) names);
-  editors = [ admin ] ++ userKeys;
+  # Editing authority is deliberately operator-only. Fleet-delivered SSH user
+  # keys must never be recipients: compromise of one host must not unlock Git
+  # history or future ciphertext.
+  editors = [ admin ];
 
   laptops = nonEmpty [
     registry.zenbook-duo.hostKey
   ];
   coordinatorOnly = nonEmpty [ registry.coordinator.hostKey ];
-  workerOnly = nonEmpty [ registry.worker.hostKey ];
 in
 {
   # --- common tier (every host may decrypt) ---
   "secrets/claude-credentials.age".publicKeys = editors ++ hostKeys;
   "secrets/hermes-credentials.age".publicKeys = editors ++ hostKeys;
   "secrets/env.age".publicKeys = editors ++ hostKeys;
-  # Shared `tom@mesh` SSH user key — delivered to every host so mutual SSH works
-  # both directions (mesh.nix wires the authorized_keys/known_hosts side).
+  # Rotated fleet SSH user key — delivered only to the remaining hosts so mutual
+  # SSH works. It is not an editor recipient for itself or any other ciphertext.
   "secrets/ssh-user-key.age".publicKeys = editors ++ hostKeys;
   # atuin's shared encryption key — every host needs it to decrypt each other's
   # synced history against the self-hosted server (hosts/coordinator/services.nix).
@@ -47,24 +48,13 @@ in
   # preauthorized, tag:mesh — minted 2026-07-05 via the fleet OAuth client;
   # only the owning host can decrypt its key) ---
   "secrets/tailscale-authkey-coordinator.age".publicKeys = editors ++ coordinatorOnly;
-  "secrets/tailscale-authkey-worker.age".publicKeys = editors ++ workerOnly;
   "secrets/tailscale-authkey-zenbook-duo.age".publicKeys =
     editors ++ nonEmpty [ registry.zenbook-duo.hostKey ];
 
   # --- wifi PSK tier: the laptops PLUS the coordinator, whose Freebox uplink
-  # (wlp192s0) is now declarative too (was imperative, copied off the worker on
+  # (wlp192s0) is now declarative too (migrated from an imperative profile on
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r
   "secrets/wifi.age".publicKeys = editors ++ laptops ++ coordinatorOnly;
-
-  # Preserve the worker's existing home connection as well as its new fixed-
-  # location connection. Separate ciphertexts keep each host's recipient set
-  # explicit without widening the coordinator/laptop Freebox secret.
-  "secrets/wifi-freebox-worker.age".publicKeys = editors ++ workerOnly;
-
-  # The soft-retired worker's new fixed-location uplink. It remains a declared
-  # tailnet worker, but only that host (plus the operator/editor keys) may decrypt
-  # the Sodimo PSK.
-  "secrets/wifi-sodimo-worker.age".publicKeys = editors ++ workerOnly;
 
   # --- operator vault (admin key ONLY — a tar.gz of everything that is not
   # otherwise in git: pre-generated host keys + wifi profiles (staging), tom's ssh
@@ -74,7 +64,7 @@ in
   #   nix-secrets-staging -C ~ .ssh tailscale.md | age -r <admin> -o <this file> ---
   "secrets/vault/operator-vault-20260705.age".publicKeys = [ admin ];
 
-  # --- coordinator-only tier (quadlet service creds; worker deliberately excluded) ---
+  # --- coordinator-only tier (service credentials) ---
   # (cloudflare-tunnel + twenty/openwebui slots removed 2026-07-05 — deprecated per Tom.
   # immich-db removed 2026-07-13: services.immich now uses a unix-socket postgres
   # with peer auth, so no DB password secret is needed. nas-credentials removed
@@ -88,7 +78,7 @@ in
   "secrets/navidrome-credentials.age".publicKeys = editors ++ coordinatorOnly ++ laptops;
 
   # Operator CLI credentials (Tom's ruling: the coordinator is the fleet's only
-  # authenticated operator box — gh + wrangler stay off the worker/laptops).
+  # authenticated operator box — gh + wrangler stay off the laptops).
   "secrets/gh-hosts.age".publicKeys = editors ++ coordinatorOnly;
   "secrets/wrangler-config.age".publicKeys = editors ++ coordinatorOnly;
   # Optional Hugging Face read token. The rule is declared now; ciphertext is

@@ -14,13 +14,17 @@
     ./uplink-nas.nix
     ./services.nix
     # Per-machine AdGuard Home DNS filter (loopback 127.0.0.1:53, resolved
-    # forwards to it). Proven on the worker first (2026-07-13) before landing on
-    # this main device. Same import on worker + zenbook-duo.
+    # forwards to it). The Zenbook Duo imports the same module.
     ../../modules/adguardhome.nix
     ./attic.nix # fleet binary-cache server (atticd over the tailscale mesh) — refs #42
     # Artifact serving plane: Caddy drop-dir + TTL reaper (publish-artifact
-    # skill's tailnet rung). Coordinator = fleet front door; origins on worker.
+    # skill's tailnet rung). Live origins stay local on 127.0.0.1.
     ../../modules/caddy-artifacts.nix
+    # Durable microVM host. Guest ports used as live-artifact origins are
+    # forwarded to coordinator loopback and consumed locally by Caddy.
+    ../../modules/microvm-host.nix
+    # Local GPU temperature tripwire; its Tally hold targets coordinator-gpu.
+    ../../modules/gpu-cooldown.nix
     ../../modules/cli-anything.nix
     ../../modules/strix.nix
     # Desktop-only AirPlay output for the JBL Authentics 200. Shared mDNS and
@@ -29,11 +33,11 @@
   ];
 
   networking.hostName = "coordinator";
-  myCluster.role = "coordinator";
+  services.gpuCooldownTripwire.enable = true;
 
   # Flipped post-flash after the zero-TOFU host-key check (2026-07-05): the
   # delivered /etc/ssh/ssh_host_ed25519_key matched mesh-registry.nix, so
-  # agenix may now decrypt against it (same two-step as the worker).
+  # agenix may now decrypt against it.
   mySecrets.enable = true;
 
 }

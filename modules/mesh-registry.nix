@@ -1,4 +1,4 @@
-# The device mesh — ONE source of truth for the three NixOS hosts, consumed by
+# The device mesh — ONE source of truth for the two NixOS hosts, consumed by
 # both the SSH trust plumbing (modules/mesh.nix) and the Remmina VNC profiles
 # (home/remote.nix).
 #
@@ -10,23 +10,19 @@
 # tom on this host can reach the others. Empty keys are simply skipped, so the config
 # stays valid while a host is still un-flashed.
 # Host keys were generated offline (2026-07-05); the private halves live in the
-# secrets-staging install-files/ tree and are delivered at install via
-# `nixos-anywhere --extra-files`. userKey is the shared `tom@mesh` key (private half
-# on the operator box + USB). See the agenix handoff.
+# operator recovery bundle and are delivered at install via
+# `nixos-anywhere --extra-files`. userKey is the fleet SSH key rotated on
+# 2026-07-29 after the previous key was exposed on a returned device. It is an SSH
+# login key only, never an agenix editor recipient; see ../secrets.nix.
 {
   coordinator = {
     aliases = [ "coordinator" ];
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFPCZFlnHQSNH3D0R1/qs9A/W498f8xTNUNBtLWZgU2A root@coordinator";
-    userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAlTzKx0n2pQ4/1qv3mThyyh1+QCuT/Qcg+/40Nr1JB6 tom@mesh";
-  };
-  worker = {
-    aliases = [ "worker" ];
-    hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9xaf+UX4cjDEme+Ath3EZYLiUJla/+3QlG4TvCzwLO root@worker";
-    userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAlTzKx0n2pQ4/1qv3mThyyh1+QCuT/Qcg+/40Nr1JB6 tom@mesh";
+    userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729";
   };
   zenbook-duo = {
     aliases = [ "zenbook-duo" ];
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKvikHKjh49tlT9PDlG47hcRWyz8NX7uWw2ZhQoQJxxP root@zenbook-duo";
-    userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAlTzKx0n2pQ4/1qv3mThyyh1+QCuT/Qcg+/40Nr1JB6 tom@mesh";
+    userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729";
   };
 }

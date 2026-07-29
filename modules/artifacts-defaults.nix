@@ -4,7 +4,7 @@
 # the package layer (overlays/default.nix passes values to pkgs/artifact-*),
 # because an overlay cannot read NixOS `config`. Change the namespace/zone here
 # and everything follows on the next rebuild: Caddy import dir, reaper sweep,
-# artifact-view URL scheme, worker port range. The skills' live-facts tables
+# artifact-view URL scheme. The skills' live-facts tables
 # point HERE as their verify-before-acting source — keep this file boring.
 {
   # Cloudflare zone the namespace lives in (same CF account wrangler is
@@ -22,12 +22,4 @@
 
   # "In doubt: 7 days." Never publish without a TTL — durable = git.
   defaultTtlDays = 7;
-
-  # Worker tcp range (tailscale0 only) for publishing ports OUT of microVMs
-  # (qemu user-net guests aren't tailnet-reachable; forward to worker:PORT and
-  # hand that to publish-artifact). Bounded so the firewall stays auditable.
-  livePortRange = {
-    from = 8000;
-    to = 8099;
-  };
 }

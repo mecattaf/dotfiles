@@ -1,11 +1,11 @@
-# Two-node local-AI deployment decisions
+# Coordinator local-AI deployment decisions
 
-Status: final selection and authorized rollout as of 2026-07-26; FastFlowLM
-lifecycle corrected on 2026-07-29.
+Status: coordinator-only placement regenerated on 2026-07-29; model selection
+and FastFlowLM lifecycle remain unchanged.
 
-This is the authoritative human-readable placement decision for the two Strix
-Halo machines. The executable source of truth is the per-host llama-swap
-allowlists and FastFlowLM roster in `modules/strix.nix`, plus the immutable
+This is the authoritative human-readable placement decision for the Strix Halo
+coordinator. The executable source of truth is the llama-swap allowlist and
+FastFlowLM roster in `modules/strix.nix`, plus the immutable
 artifact and runtime metadata in `lib/local-models.nix`.
 
 ## Coordinator
@@ -39,24 +39,6 @@ text/image/screenshot/video and mixed-modal retrieval. The VL route is locally
 matched: text and image smoke requests through llama-swap each returned one
 normalized 4,096-dimensional embedding on the coordinator.
 
-## Worker
-
-| Model | Payload | Backend / boundary | Download bytes |
-|---|---|---|---:|
-| `qwen3.6-35b-a3b` | UD-Q8_K_XL GGUF with integrated matched MTP block | Vulkan through llama-swap | 39,099,447,584 |
-| `qwen3.6-27b` | Stock UD-Q8_K_XL GGUF with integrated matched MTP block | Vulkan through llama-swap | 35,776,484,480 |
-| `gemma4-26b-a4b-it` | Q8_0 GGUF plus matched Q8_0 MTP head | Vulkan through llama-swap | 27,321,628,544 |
-| `fara1.5-27b` | Q8_0 GGUF plus BF16 vision projector | ROCm through llama-swap | 29,596,213,728 |
-| `gemma4-it:e4b` | FastFlowLM Gemma4 E4B NPU2 snapshot | Ad-hoc `flm run gemma4-it:e4b` | 9,087,470,597 |
-| `gpt-oss:20b` | FastFlowLM GPT-OSS 20B NPU2 snapshot | Ad-hoc `flm run gpt-oss:20b` | 14,474,616,866 |
-
-Total model download payload: **155,355,861,799 bytes**, or **155.36 GB
-(144.69 GiB)**. Runtime caches are not included. The same runtime-tag caveat
-applies to the two FastFlowLM rows. Qwen 3.6 27B is fetched and hash-verified
-once in the coordinator's Nix store, then its immutable NAR is copied to the
-worker over the directly connected Thunderbolt interface; the worker does not
-download a second copy from Hugging Face.
-
 ## Precision policy and special cases
 
 - Every active llama.cpp model and external MTP weight is Q8: `Q8_0` or the
@@ -80,10 +62,8 @@ download a second copy from Hugging Face.
 
 ## Hardware and operational decisions
 
-- NPU support is uniform. Both machines use translated IOMMU mode with
-  `amd_iommu=on`; the worker no longer takes the former iGPU-only
-  `amd_iommu=off` optimization. The worker must reboot when this generation is
-  first activated so amdxdna can bind with the new kernel command line.
+- The coordinator uses translated IOMMU mode with `amd_iommu=on` so amdxdna
+  can bind alongside the Radeon GPU.
 - Managed local LLM and VLM calls enter through llama-swap. A deterministic
   `<__media__>` marker is inherited by llama.cpp children so multimodal
   embedding clients can address transient backends consistently.
@@ -98,6 +78,8 @@ download a second copy from Hugging Face.
   are downloaded now. Their dedicated ROCm services remain separate future
   work because they are not OpenAI-compatible LLMs and do not belong behind
   llama-swap.
-- Qwen3-Coder-Next, all uncensored models, and the retired DeepSeek V4/DS4
-  payload remain catalog-only. None are downloaded by this deployment.
+- Qwen3-Coder-Next and all uncensored models remain coordinator catalog
+  candidates only. None enter the active allowlist or download boundary.
+- The former DeepSeek V4/DS4 topology is absent from the active catalog; its
+  benchmark and runbook evidence remains under `docs/old/`.
 - Stable Diffusion remains outside the local-LLM route.

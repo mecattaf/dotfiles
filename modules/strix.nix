@@ -1,39 +1,25 @@
 {
   inputs,
-  lib,
-  config,
   pkgs,
   ...
 }:
-# AMD Strix Halo layer — imported by `coordinator` + `worker` ONLY. The role
-# remains meaningful after soft retirement: it selects per-machine accelerator
-# policy, not a requirement for a physical two-node fabric.
+# AMD Strix Halo layer for the coordinator.
 {
   imports = [
     # Framework Desktop / Ryzen AI Max 300 series (gfx1151). Pulls amd cpu+gpu+ssd tuning.
     inputs.nixos-hardware.nixosModules.framework-desktop-amd-ai-max-300-series
-    # Uniform XDNA2 NPU stack on both Strix Halo hosts.
+    # XDNA2 NPU stack.
     inputs.nix-amd-ai.nixosModules.default
-    # Shared accelerated inference/tooling packages from nix-strix-halo plus the
-    # one noamsto-only GPU backend. Host-role details stay in that module.
+    # Accelerated inference/tooling packages from nix-strix-halo plus the one
+    # noamsto-only GPU backend.
     ./strix-ai.nix
-    # Native local-model proxy/control plane on coordinator + worker only.
+    # Native local-model proxy/control plane.
     ./llama-swap.nix
     # Typed model catalog, guarded store materialization, and host projections.
     ./local-models.nix
     # Deterministic FastFlowLM roster only; ad-hoc `flm run`, with no daemon.
     ./npu-llm.nix
   ];
-
-  options.myCluster = {
-    role = lib.mkOption {
-      type = lib.types.enum [
-        "coordinator"
-        "worker"
-      ];
-      description = "Hardware-policy role in the AMD Strix Halo fleet.";
-    };
-  };
 
   config = {
     # Explicit deployment authority. The catalog may remain broad; only these
@@ -44,23 +30,19 @@
         "qwen36-27b-mtp-ud-q8-k-xl"
         "gemma4-26b-a4b-it-mtp-q8-0"
         "fara15-27b-q8-0"
-      ]
-      ++ lib.optionals (config.myCluster.role == "coordinator") [
         "qwen3-vl-8b-ocr"
         "qwen3-vl-32b-ocr-refine"
         "qwen3-embedding-8b-q8-0"
         "qwen3-vl-embedding-8b-q8-0"
       ];
-      artifacts = lib.optionals (config.myCluster.role == "coordinator") [
+      artifacts = [
         "vibevoice-asr-bf16"
         "vibevoice-large-bf16"
         "vibevoice-qwen25-7b-tokenizer"
       ];
     };
 
-    # Both identical Strix Halo systems expose the XDNA2 NPU. This intentionally
-    # gives back the roughly 10% iGPU-only tuning advantage previously reserved
-    # for the worker in exchange for a uniform accelerator surface.
+    # The coordinator exposes the XDNA2 NPU alongside its Radeon GPU.
     hardware.amd-npu = {
       enable = true;
       enableNPU = true;
@@ -88,12 +70,12 @@
       cores = 8;
     };
 
-    # One TUI for CPU, Radeon iGPU, and (on the coordinator) XDNA NPU telemetry.
+    # One TUI for CPU, Radeon iGPU, and XDNA NPU telemetry.
     environment.systemPackages = [ pkgs.amdtop ];
 
     # Strix Halo unified-memory tuning (128 GiB pinnable for the iGPU).
-    # amdxdna binds through IOMMU SVA/PASID and needs translated mode on both
-    # machines (hardware.amd-npu additionally pins iommu.passthrough=0).
+    # amdxdna binds through IOMMU SVA/PASID and needs translated mode
+    # (hardware.amd-npu additionally pins iommu.passthrough=0).
     boot.kernelParams = [
       "amd_iommu=on"
       "ttm.pages_limit=33554432"
@@ -108,9 +90,8 @@
     # ASPM/power-state timing. Kernel 7.1 already has the upstream fixes for
     # the KNOWN instances of this bug class (zbowling v7 series), so until the
     # remaining race is fixed upstream we keep the card out of ASPM low-power
-    # states via the driver's own escape hatch. Cost: ~1W idle. Both nodes
-    # carry the same RZ717 card. The roam TRIGGER is separately removed by the
-    # BSSID pin in hosts/coordinator/uplink-nas.nix.
+    # states via the driver's own escape hatch. Cost: ~1W idle. The roam trigger
+    # is separately removed by the BSSID pin in hosts/coordinator/uplink-nas.nix.
     boot.extraModprobeConfig = "options mt7925e disable_aspm=1";
 
     # Hardware watchdog (sp5100_tco, /dev/watchdog0 — present but unfed until

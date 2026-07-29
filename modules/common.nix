@@ -11,7 +11,7 @@
     ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
     ./dotfiles-bootstrap.nix # ensure ~/mecattaf/dotfiles exists before the session
-    ./artifacts.nix # myArtifacts options (+ worker VM-port window); serving plane is coordinator-only (caddy-artifacts.nix)
+    ./artifacts.nix # myArtifacts options; serving plane is coordinator-only (caddy-artifacts.nix)
     ./printing.nix # CUPS + Brother IPP/raw-text path (active fleet + future hosts)
   ];
 
@@ -124,7 +124,7 @@
       user = "greeter";
     };
     # Autologin tom → niri at boot on every host (fleet-wide, moved here from the
-    # worker's headless-display.nix). tom is a locked/key-only account: passwordless
+    # headless sessions). tom is a locked/key-only account: passwordless
     # login + passwordless sudo (wheelNeedsPassword=false) means no password is ever
     # prompted. The out-of-store config checkout is guaranteed present before this
     # runs by ./dotfiles-bootstrap.nix (ordered before greetd).

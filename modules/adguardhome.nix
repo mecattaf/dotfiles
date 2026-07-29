@@ -1,9 +1,9 @@
 { ... }:
 # Per-machine AdGuard Home — the fleet's DNS ad/tracker filter, ONE loopback
 # instance per box. This replaces the old coordinator-only LAN quadlet that
-# filtered DNS for the now-retired BE550 wifi segment; every host (coordinator,
-# worker, zenbook-duo) now filters its OWN queries. Imported fleet-wide from
-# modules/common.nix.
+# filtered DNS for the now-retired BE550 wifi segment; both remaining NixOS
+# hosts (coordinator and zenbook-duo) now filter their OWN queries. Imported
+# fleet-wide from modules/common.nix.
 #
 # Fully declarative: mutableSettings = false, so the entire config lives here in
 # git and AdGuard NEVER runs its web setup wizard. AdGuardHome.yaml is
@@ -41,7 +41,7 @@
       # some hotel/guest LANs) would stall the resolver until bootstrap gives
       # up. An IP-literal endpoint connects straight to <ip>:443 with no :53
       # lookup at all — one less thing that can break on an unfamiliar network,
-      # which matters for the roaming laptops. Verified live on the worker
+      # which matters for the roaming laptop. Verified live before fleet rollout
       # 2026-07-13: resolves + filters through this exact config. bootstrap_dns
       # is kept only to satisfy the mutableSettings=false assertion (must be a
       # non-empty list) and as a fallback if a hostname endpoint is ever added;

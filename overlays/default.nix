@@ -12,7 +12,7 @@ final: prev: {
   # behaviour change, only the deprecation text is dropped. --replace-fail makes a
   # future upstream rename fail the build loudly instead of silently no-op'ing.
   # Flows fleet-wide via programs.niri.package. NB: makes niri a from-source rebuild.
-  # This stock+patch niri is what the Strix desktops (coordinator, worker) run.
+  # This stock+patch niri is what the Strix coordinator runs.
   niri = prev.niri.overrideAttrs (old: {
     postPatch = (old.postPatch or "") + ''
       substituteInPlace resources/niri-session \
@@ -34,7 +34,7 @@ final: prev: {
   #
   # SEPARATE attr (not the fleet `niri`) so it's LAZY: only the zenbook, which sets
   # programs.niri.package = pkgs.niri-pr1856 (hosts/zenbook-duo), builds this fork.
-  # The desktops never evaluate it. Based on `final.niri` so it inherits the
+  # The coordinator never evaluates it. Based on `final.niri` so it inherits the
   # niri-session deprecation patch above. Revert: drop the zenbook's package
   # override + the per-host niri-local.kdl once #1856 lands upstream.
   #   PR:   https://github.com/niri-wm/niri/pull/1856  (head 3b75b96, 2026-06-19)
@@ -86,7 +86,7 @@ final: prev: {
   cli-anything-hub = final.callPackage ../pkgs/cli-anything-hub.nix { };
 
   # amdtop — AMD GPU/CPU/XDNA NPU monitor. Not yet in our pinned nixpkgs;
-  # source-built from the latest stable upstream release for the Strix pair.
+  # source-built from the latest stable upstream release for the coordinator.
   amdtop = final.callPackage ../pkgs/amdtop.nix { };
 
   # llama-swap — nixos-unstable is still on v224; pin the current official v240

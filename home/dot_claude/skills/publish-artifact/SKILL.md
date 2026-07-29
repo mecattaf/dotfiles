@@ -18,13 +18,13 @@ when_to_use: something rendered/built/running needs a URL; sharing with a device
 
 | Field | Value |
 |---|---|
-| Config edit point | `modules/artifacts-defaults.nix` — namespace `art.mecattaf.dev`, zone `mecattaf.dev`, stateDir, TTL 7d, port range |
+| Config edit point | `modules/artifacts-defaults.nix` — namespace `art.mecattaf.dev`, zone `mecattaf.dev`, stateDir, TTL 7d |
 | Publish host | coordinator ONLY (gh + wrangler creds live there — operator-box ruling, secrets.nix) |
 | Drop-dir | `/var/lib/artifacts/` — `<slug>.until-YYYYMMDD.caddy` + `<slug>/` snapshot; owned by tom, read by caddy |
 | Reaper | `artifact-reaper.timer` daily on coordinator — LOCAL sweep only for now; CF-side sweep pending API wiring |
 | Tailnet serving | Caddy :80 on tailscale0, plain HTTP v1 (TLS via caddy-dns/cloudflare DNS-01 = pending follow-up) |
 | Public live | PENDING: cloudflared tunnel credential must be re-minted (deliberate reversal of the 2026-07-05 removal, ruled 2026-07-11) — one static wildcard ingress `*.art.mecattaf.dev` → localhost Caddy |
-| Live origins | worker ports 8000–8099 (open on tailscale0; see microvm skill "publishing a port out of a VM") |
+| Live origins | coordinator loopback only (`127.0.0.1:PORT`; see microvm skill "publishing a port out of a VM") |
 | Inventory | `wrangler pages project list --json` (Git Provider column: git-integrated = durable, direct-upload = transient) + `ls /var/lib/artifacts/` |
 
 ## Path decision — pick before you publish
@@ -37,8 +37,9 @@ STATIC (snapshot dir) → audience?
                   unless Tom says otherwise (the capability URL is the password)
   forever       → GRADUATE: gh repo create + Pages git integration.
                   Exits this skill; per-repo doctrine takes over.
-LIVE (host:port) → origin must outlive the TTL (⇒ durable `microvm -c` on the
-                   worker — never a foreground ephemeral VM). Audience?
+LIVE (host:port) → origin must be coordinator-local and outlive the TTL
+                   (⇒ durable `microvm -c`, never a foreground ephemeral VM).
+                   Audience?
   tailnet → drop a reverse_proxy block, TTL
   public  → NEEDS the tunnel (see Live facts: pending credential)
   forever → declare a service in nix. Exits this skill.
@@ -65,7 +66,10 @@ sudo systemctl reload caddy
 
 ### Publish live origin to tailnet
 
-Same drop-file with `reverse_proxy worker:PORT` instead of root/file_server.
+Same drop-file with `reverse_proxy 127.0.0.1:PORT` instead of
+`root`/`file_server`. Reject non-loopback live origins: Caddy and the durable VM
+host share the coordinator, so no tailnet firewall hole or remote dependency is
+needed.
 
 ### Publish static public (Pages)
 

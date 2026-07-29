@@ -10,8 +10,7 @@
 # One exact-candidate fleet transaction. Tally owns its calendar, durable row,
 # proof, and the build + coordinator-GPU admission window; this oneshot owns only
 # the deployment content. The coordinator is the nightly core, while the Zenbook
-# remains a later best-effort leg. The soft-retired worker stays an explicit
-# deploy-rs target for operator-invoked maintenance, outside the nightly path.
+# remains a later best-effort leg.
 let
   system = pkgs.stdenv.hostPlatform.system;
   deployPackage = inputs.deploy-rs.packages.${system}.deploy-rs;

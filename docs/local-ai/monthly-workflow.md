@@ -98,8 +98,8 @@ worktree and cannot call Git or GitHub. A final Nix derivation checks the output
 shape and combines it with mechanical facts. Pi's prose is therefore an
 unverified recommendation, never an instruction or state transition.
 
-The accepted context names each canonical model/MTP file and quantization,
-both 128 GiB hosts' NPU/IOMMU policy, and the rule that active llama.cpp model
+The accepted context names each canonical model/MTP file and quantization, the
+128 GiB coordinator's NPU/IOMMU policy, and the rule that active llama.cpp model
 and MTP weights must be Q8. Native FastFlowLM NPU2 snapshots, F16/BF16 vision
 projectors, and speech/tokenizer artifacts are explicit format exceptions. Any
 relevant finding must include an exact candidate/quant table.

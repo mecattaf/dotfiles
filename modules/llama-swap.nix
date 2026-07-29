@@ -4,14 +4,14 @@
   pkgs,
   ...
 }:
-# Native llama-swap control plane for the two Strix Halo nodes.
+# Native llama-swap control plane for the Strix Halo coordinator.
 #
 # This module owns only the proxy package, lifecycle, state, and network
 # boundary. local-models.nix owns the typed roster, backend commands, and
 # guarded weight materialization. Runtime appliances such as FastFlowLM stay
 # outside this control plane. The proxy itself is a small, always-on Go
 # process and consumes no GPU. Tally remains the admission controller for the
-# per-box GPU pools; llama-swap supplies the one stable API door and load/unload
+# coordinator GPU pool; llama-swap supplies the one stable API door and load/unload
 # mechanism.
 let
   cfg = config.services.llama-swap;
@@ -21,7 +21,7 @@ in
     enable = true;
     package = pkgs.llama-swap;
 
-    # One conventional endpoint on both nodes. Binding all IPv4 interfaces makes
+    # One conventional endpoint on coordinator. Binding all IPv4 interfaces makes
     # it reachable over Tailscale; the interface-scoped firewall below keeps it
     # closed on raw LAN/wifi.
     listenAddress = "0.0.0.0";

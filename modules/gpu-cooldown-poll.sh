@@ -1,21 +1,7 @@
 #!/usr/bin/env bash
-# gpu-cooldown-poll — LAYER 1 (sensor + trigger logic).
-#
-# Polled every ~30s by the gpu-cooldown-tripwire.timer. Reads the amdgpu junction
-# temperature (falling back to k10temp Tctl when junction is absent — the case on
-# this worker, whose amdgpu hwmon only exposes `edge`), and on a SUSTAINED over-
-# threshold reading fires LAYER 2 (the enqueue adapter). Never touches tally
-# itself; the adapter owns that seam.
-#
-# Hysteresis / suppression (all persisted in $STATE):
-#   * armed      — a fresh trip is only allowed after the temp has dropped below
-#                  REARM_THRESHOLD_C since the last trip (disarm-on-fire).
-#   * first_over — epoch of the first consecutive over-threshold poll; the trip
-#                  needs (now - first_over) >= SUSTAIN_SECONDS (~2-3 polls).
-#   * cooldown_until — while now < this, a cooldown is active/pending: suppressed.
-#
-# Test hook: set FAKE_TEMP_C to override the reading (real sensor still selected)
-# so the trip path can be exercised without a hot GPU.
+# Sensor and trigger logic. State is persisted under $STATE_DIRECTORY so
+# hysteresis, sustained-temperature tracking, and the cooldown window survive
+# each oneshot poll.
 set -euo pipefail
 
 state_dir="${STATE_DIRECTORY:-/var/lib/gpu-cooldown}"
@@ -26,12 +12,11 @@ rearm_c="${REARM_THRESHOLD_C:-75}"
 sustain_s="${SUSTAIN_SECONDS:-60}"
 cooldown_min="${COOLDOWN_MINUTES:-30}"
 adapter="${COOLDOWN_ADAPTER:?COOLDOWN_ADAPTER must point at the enqueue adapter}"
+hwmon_root="${HWMON_ROOT:-/sys/class/hwmon}"
 
-# --- sensor discovery: match by hwmon NAME + temp LABEL at runtime (never a
-#     hardcoded hwmonN). Prefer amdgpu junction; fall back to k10temp Tctl. ---
-find_label() { # $1=hwmon name  $2=temp label  -> prints matching *_input path
+find_label() {
   local want_name="$1" want_label="$2" h nm lf
-  for h in /sys/class/hwmon/hwmon*; do
+  for h in "$hwmon_root"/hwmon*; do
     [ -r "$h/name" ] || continue
     nm="$(cat "$h/name")"
     [ "$nm" = "$want_name" ] || continue
@@ -46,13 +31,13 @@ find_label() { # $1=hwmon name  $2=temp label  -> prints matching *_input path
   return 1
 }
 
-sensor_input="" ; sensor_kind="" ; threshold=""
+sensor_input=""; sensor_kind=""; threshold=""
 if sensor_input="$(find_label amdgpu junction)"; then
-  sensor_kind="amdgpu:junction" ; threshold="$junction_c"
+  sensor_kind="amdgpu:junction"; threshold="$junction_c"
 elif sensor_input="$(find_label k10temp Tctl)"; then
-  sensor_kind="k10temp:Tctl" ; threshold="$tctl_c"
+  sensor_kind="k10temp:Tctl"; threshold="$tctl_c"
 else
-  echo "gpu-cooldown: FATAL: no amdgpu 'junction' nor k10temp 'Tctl' hwmon node found; sensor layout changed — refusing to run blind" >&2
+  echo "gpu-cooldown: FATAL: no amdgpu 'junction' nor k10temp 'Tctl' hwmon node found; refusing to run blind" >&2
   exit 1
 fi
 [ -r "$sensor_input" ] || { echo "gpu-cooldown: FATAL: sensor input $sensor_input unreadable" >&2; exit 1; }
@@ -65,8 +50,7 @@ if [ -n "${FAKE_TEMP_C:-}" ]; then
 fi
 now="$(date +%s)"
 
-# --- load persisted state ---
-armed=1 ; first_over=0 ; cooldown_until=0
+armed=1; first_over=0; cooldown_until=0
 if [ -f "$state" ]; then
   # shellcheck disable=SC1090
   . "$state"
@@ -75,12 +59,10 @@ fi
 [ -n "${first_over:-}" ] || first_over=0
 [ -n "${cooldown_until:-}" ] || cooldown_until=0
 
-# --- hysteresis: only re-arm once we cool below the re-arm threshold ---
 if [ "$temp_c" -lt "$rearm_c" ]; then
   armed=1
 fi
 
-# --- sustained over-threshold tracking ---
 over=0
 [ "$temp_c" -ge "$threshold" ] && over=1
 if [ "$over" -eq 1 ]; then
@@ -113,7 +95,6 @@ if [ "$decision" = "trigger" ]; then
   fi
 fi
 
-# --- persist ---
 {
   echo "armed=${armed}"
   echo "first_over=${first_over}"

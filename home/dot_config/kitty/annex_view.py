@@ -118,7 +118,7 @@
 # its coordinator-vs-thin-client host branch for free. But session
 # RESOLUTION in THIS file (the sessions/*.json registry + projects/*.jsonl
 # glob) only ever runs on the LOCAL kitty host, reading local paths — on a
-# thin client (worker/zenbook) that registry lives on the coordinator, not
+# thin client (zenbook) that registry lives on the coordinator, not
 # locally, so resolve_session() will legitimately find zero candidates and
 # this kitten SWALLOWS. That matches every other annex feature's fail-safe
 # default for v1: no cross-host registry read exists yet, so thin-client
