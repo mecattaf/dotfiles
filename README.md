@@ -6,16 +6,21 @@ image), harnessRPM (COPR packages), chezmoi-templated dotfiles, and zirconium.
 
 ## Hosts
 
+The flake exports exactly three NixOS host configurations:
+
 | Host | Hardware | Role |
 |---|---|---|
 | `coordinator` | Framework Desktop, AMD Strix Halo | controller node, daily driver |
 | `worker` | Framework Desktop, AMD Strix Halo | soft-retired tailnet worker; optional LLM and microVM capacity |
-| `dell-xps` | Dell XPS 13 (2022), Intel | thin-client laptop |
 | `zenbook-duo` | ASUS Zenbook Duo, Intel | thin-client laptop (historical first-flash runbook: [docs/old/zenbook-duo-flash.md](docs/old/zenbook-duo-flash.md)) |
 
+The two Framework desktops have a direct TB5 link; active fleet routing uses
+their tailnet hostnames. `tom@bridge` is a separate standalone Home Manager
+output for a live Fedora host, not a fourth NixOS host.
+
 ```
-flake.nix        four hosts wired through one mkHost; tom@bridge = home-manager-only
-                 bridge for a live Fedora host (Phase 0)
+flake.nix        three NixOS hosts wired through one mkHost; tom@bridge is a
+                 separate standalone Home Manager output for live Fedora
 modules/         common.nix (every host) + strix.nix (AMD Strix Halo pair)
 hosts/           one module per machine
 home/            home-manager: typed nix (home.nix, nvim.nix) + RAW out-of-store

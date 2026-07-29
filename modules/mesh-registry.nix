@@ -1,5 +1,6 @@
-# The device mesh — ONE source of truth for the hosts, consumed by both the SSH
-# trust plumbing (modules/mesh.nix) and the Remmina VNC profiles (home/remote.nix).
+# The device mesh — ONE source of truth for the three NixOS hosts, consumed by
+# both the SSH trust plumbing (modules/mesh.nix) and the Remmina VNC profiles
+# (home/remote.nix).
 #
 # Per host: `aliases` (every name/IP the host answers to) and two PUBLIC keys that
 # are safe to commit. Fill them in once, AFTER a host's first boot:

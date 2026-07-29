@@ -476,6 +476,21 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        home-bridge =
+          let
+            bridge = self.homeConfigurations."tom@bridge";
+            bridgeConfig = bridge.config;
+          in
+          assert bridgeConfig.home.username == "tom";
+          assert bridgeConfig.programs.atuin.settings.auto_sync == false;
+          assert nixpkgs.lib.hasInfix "No host-specific niri config on bridge."
+            bridgeConfig.xdg.configFile."niri-local.kdl".text;
+          assert bridgeConfig.services.tally.enable == false;
+          assert bridgeConfig.programs.voxtype.enable == false;
+          assert !(bridgeConfig.systemd.user.services ? ntm);
+          assert !(bridgeConfig.systemd.user.services ? wayvnc);
+          bridge.activationPackage;
+
         fleet-connectivity =
           let
             coordinator = self.nixosConfigurations.coordinator.config;
