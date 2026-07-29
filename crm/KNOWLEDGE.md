@@ -6,7 +6,7 @@ Companion files: `SPEC.md` (frozen v0.1 surface), `schema.sql` (frozen DDL).
 ## Decisions of record (Tom-ratified)
 
 - **Tool in dotfiles, data in notes.** CLI source lives here
-  (`dotfiles/pkgs/crm/`), the database lives at
+  (`dotfiles/crm/`), the database lives at
   `~/mecattaf/notes/crm/crm.db`. `mecattaf/notes` is private and "will remain
   so forever" — **no git-crypt, no encryption** (ruled 2026-07-29; supersedes
   the earlier git-crypt-in-public-dotfiles plan).
