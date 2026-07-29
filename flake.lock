@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "advisory-db": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1785173221,
+        "narHash": "sha256-S9GKKXql6KlBZM6lV2aTP1ZOzqDte31b8PfS9fDiWdI=",
+        "owner": "rustsec",
+        "repo": "advisory-db",
+        "rev": "0bfde9d6a469ae503f8a6147c2dd552856cd5999",
+        "type": "github"
+      },
+      "original": {
+        "owner": "rustsec",
+        "repo": "advisory-db",
+        "type": "github"
+      }
+    },
     "agenix": {
       "inputs": {
         "darwin": "darwin",
@@ -1225,6 +1241,7 @@
     },
     "tally": {
       "inputs": {
+        "advisory-db": "advisory-db",
         "flake-utils": "flake-utils",
         "home-manager": "home-manager_2",
         "nixpkgs": [
@@ -1232,11 +1249,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784957750,
-        "narHash": "sha256-bwCduiLLJlHJsns5CWtCudNdwmurgJ4JDVEwRgagTiI=",
+        "lastModified": 1785302640,
+        "narHash": "sha256-kOssdUEIgsbEUh3pm8wsy0rIDKCAt7ZYICUAjJ40uYo=",
         "owner": "mecattaf",
         "repo": "tally.nix",
-        "rev": "f029be980d1cbec987b6ee01fb036d57317acf3b",
+        "rev": "6b250541af5dc11943e9f4f834c854621f9a91f9",
         "type": "github"
       },
       "original": {

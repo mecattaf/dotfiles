@@ -1,7 +1,7 @@
 export const meta = {
   name: "issue-96-drain",
   description: "Pointer-run HANDOFF-PROMPT-B: implement the drain/handoff/pickup skills on the utility-model seam (#96)",
-  pools: ["codex-window", "build"],
+  pools: ["codex-window", "flow-build"],
   argsSchema: {
     type: "object",
     required: ["repository", "baseRev", "branch", "worktree", "promptPath", "notesRepo"],
@@ -41,7 +41,7 @@ export const meta = {
     { key: "implementation", workspace, label: "implementation" }
   );
   await sh(["nix", "flake", "check", "--no-build", args.worktree], {
-    pools: ["build"],
+    pools: ["flow-build"],
     key: "flake-check",
     evidence: ["exit:0"],
     label: "flake-check"
@@ -51,7 +51,7 @@ export const meta = {
   const cutover = await sh(
     ["bash", "-c", 'test -d "$1/journal/2026/07" && git -C "$1" rev-parse --verify HEAD', "cutover-gate", args.notesRepo],
     {
-      pools: ["build"],
+      pools: ["flow-build"],
       key: "cutover-gate",
       settle: true,
       evidence: ["exit:0"],
@@ -59,7 +59,7 @@ export const meta = {
     }
   );
   return sh(["git", "-C", args.worktree, "log", "--oneline", `${args.baseRev}..HEAD`], {
-    pools: ["build"],
+    pools: ["flow-build"],
     key: "commit-proof",
     brief: {
       implementation: implementation.result,

@@ -1,7 +1,7 @@
 export const meta = {
   name: "errata-map",
   description: "Map every errata candidate in the reshaped notes (annex + weak-claims + discovery sweep), quorum-verify each, emit a decision ledger for Tom",
-  pools: ["codex-window", "coordinator-gpu", "build"],
+  pools: ["codex-window", "coordinator-gpu", "flow-build"],
   argsSchema: {
     type: "object",
     required: ["notesRepo", "outDir", "maxRows"],
@@ -21,7 +21,7 @@ export const meta = {
   // against the live tree, never the snapshot.
   await sh(
     ["bash", "-c", 'test -d "$1/journal/2026/07" && git -C "$1" rev-parse --verify HEAD', "cutover-gate", args.notesRepo],
-    { pools: ["build"], key: "cutover-gate", evidence: ["exit:0"], label: "cutover-gate" }
+    { pools: ["flow-build"], key: "cutover-gate", evidence: ["exit:0"], label: "cutover-gate" }
   );
 
   // Discovery: the errata annex is the STARTING POINT, not the boundary
@@ -138,7 +138,7 @@ export const meta = {
 
   await sh(
     ["bash", "-c", 'mkdir -p "$2" && printf %s "$1" > "$2/ERRATA-LEDGER.tsv"', "ledger-writer", tsv, args.outDir],
-    { pools: ["build"], key: "write-ledger", evidence: ["exit:0"], label: "write-ledger" }
+    { pools: ["flow-build"], key: "write-ledger", evidence: ["exit:0"], label: "write-ledger" }
   );
 
   const contested = judged.filter(item => item.consensus === "CONTESTED" || item.consensus === "finish-work");
