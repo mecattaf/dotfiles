@@ -1,11 +1,12 @@
 # Two-node local-AI deployment decisions
 
-Status: final selection and authorized rollout as of 2026-07-26.
+Status: final selection and authorized rollout as of 2026-07-26; FastFlowLM
+lifecycle corrected on 2026-07-29.
 
 This is the authoritative human-readable placement decision for the two Strix
-Halo machines. The executable source of truth is the per-host allowlists in
-`modules/strix.nix` and the immutable artifact metadata in
-`lib/local-models.nix`.
+Halo machines. The executable source of truth is the per-host llama-swap
+allowlists and FastFlowLM roster in `modules/strix.nix`, plus the immutable
+artifact and runtime metadata in `lib/local-models.nix`.
 
 ## Coordinator
 
@@ -19,8 +20,8 @@ Halo machines. The executable source of truth is the per-host allowlists in
 | `qwen3.6-27b` | Stock UD-Q8_K_XL GGUF with integrated matched MTP block | Vulkan through llama-swap | 35,776,484,480 |
 | `gemma4-26b-a4b-it` | Q8_0 GGUF plus matched Q8_0 MTP head | Vulkan through llama-swap | 27,321,628,544 |
 | `fara1.5-27b` | Q8_0 GGUF plus BF16 vision projector | ROCm through llama-swap | 29,596,213,728 |
-| `gemma4-it:e4b` | FastFlowLM Gemma4 E4B NPU2 snapshot | NPU peer through llama-swap | 9,087,470,597 |
-| `gpt-oss:20b` | FastFlowLM GPT-OSS 20B NPU2 snapshot | NPU peer through llama-swap | 14,474,616,866 |
+| `gemma4-it:e4b` | FastFlowLM Gemma4 E4B NPU2 snapshot | Ad-hoc `flm run gemma4-it:e4b` | 9,087,470,597 |
+| `gpt-oss:20b` | FastFlowLM GPT-OSS 20B NPU2 snapshot | Ad-hoc `flm run gpt-oss:20b` | 14,474,616,866 |
 | Parakeet unified English 0.6B | Voxtype-managed ONNX/MIGraphX snapshot | Coordinator Voxtype user service | 2,515,028,028 |
 | VibeVoice ASR | Full BF16 long-form ASR/diarization snapshot | Nix-rooted appliance payload; runtime service is future work | 17,348,322,081 |
 | VibeVoice Large | Full BF16 multi-speaker TTS snapshot | Nix-rooted appliance payload; runtime service is future work | 18,686,995,855 |
@@ -46,8 +47,8 @@ normalized 4,096-dimensional embedding on the coordinator.
 | `qwen3.6-27b` | Stock UD-Q8_K_XL GGUF with integrated matched MTP block | Vulkan through llama-swap | 35,776,484,480 |
 | `gemma4-26b-a4b-it` | Q8_0 GGUF plus matched Q8_0 MTP head | Vulkan through llama-swap | 27,321,628,544 |
 | `fara1.5-27b` | Q8_0 GGUF plus BF16 vision projector | ROCm through llama-swap | 29,596,213,728 |
-| `gemma4-it:e4b` | FastFlowLM Gemma4 E4B NPU2 snapshot | NPU peer through llama-swap | 9,087,470,597 |
-| `gpt-oss:20b` | FastFlowLM GPT-OSS 20B NPU2 snapshot | NPU peer through llama-swap | 14,474,616,866 |
+| `gemma4-it:e4b` | FastFlowLM Gemma4 E4B NPU2 snapshot | Ad-hoc `flm run gemma4-it:e4b` | 9,087,470,597 |
+| `gpt-oss:20b` | FastFlowLM GPT-OSS 20B NPU2 snapshot | Ad-hoc `flm run gpt-oss:20b` | 14,474,616,866 |
 
 Total model download payload: **155,355,861,799 bytes**, or **155.36 GB
 (144.69 GiB)**. Runtime caches are not included. The same runtime-tag caveat
@@ -67,10 +68,10 @@ download a second copy from Hugging Face.
 - FastFlowLM owns its NPU2 snapshots as native runtime data under
   `~/.config/flm/models`. In particular, GPT-OSS is an upstream Q4_1 NPU2
   package; it is an explicit runtime-format exception, not a low-bit GGUF
-  selection. Both loopback-only NPU servers remain exposed to callers solely
-  as llama-swap peers. Their download and serve units require the live XDNA
-  device at `/dev/accel/accel0`, so an IOMMU-changing deployment boots the new
-  kernel before FastFlowLM materializes its runtime-owned snapshots.
+  selection. Neither model has a NixOS serve unit or llama-swap peer. The
+  ordinary `flm run <model>` CLI is the activation boundary: it loads one model
+  for the interactive command and releases it on exit. Existing runtime files
+  remain local; a missing model is fetched explicitly with `flm pull <model>`.
 - Voxtype owns and verifies its Parakeet snapshot as mutable user data. Voxtype
   0.7.5 lists larger nominally 0.6B variants, but those are batch-only;
   `parakeet-unified-en-0.6b` is the largest registry entry compatible with the
@@ -83,12 +84,13 @@ download a second copy from Hugging Face.
   `amd_iommu=on`; the worker no longer takes the former iGPU-only
   `amd_iommu=off` optimization. The worker must reboot when this generation is
   first activated so amdxdna can bind with the new kernel command line.
-- All local LLM and VLM calls enter through llama-swap. A deterministic
+- Managed local LLM and VLM calls enter through llama-swap. A deterministic
   `<__media__>` marker is inherited by llama.cpp children so multimodal
   embedding clients can address transient backends consistently.
 - llama-swap's systemd-managed cache directory is exported as `XDG_CACHE_HOME`.
   Mesa/RADV shader caches therefore persist across on-demand model swaps without
   granting the dynamic service user a general writable home directory.
+- Ad-hoc NPU inference uses FastFlowLM's CLI directly and never starts at boot.
 - GGUF and VibeVoice payloads are immutable, hash-checked Nix store paths. Only
   explicit per-host selections root them; catalog-only candidates do not
   download.

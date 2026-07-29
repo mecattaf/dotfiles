@@ -200,24 +200,6 @@ let
     };
   };
 
-  peerType = types.submodule {
-    options = {
-      name = mkOption {
-        type = types.str;
-        description = "llama-swap peer ID.";
-      };
-      proxy = mkOption {
-        type = types.str;
-        description = "OpenAI-compatible upstream base URL.";
-      };
-      systemdUnit = mkOption {
-        type = nullableString;
-        default = null;
-        description = "Optional local backend unit ordered before llama-swap.";
-      };
-    };
-  };
-
   benchmarkType = types.submodule {
     options = {
       sourceRepo = mkOption { type = types.str; };
@@ -243,7 +225,7 @@ let
     options = {
       model = mkOption {
         type = types.str;
-        description = "Model ID presented through llama-swap.";
+        description = "Public model ID exposed by the selected runtime.";
       };
       role = mkOption {
         type = types.enum [
@@ -267,7 +249,7 @@ let
         ];
       };
       backend = mkOption {
-        type = types.enum (backendKinds.local ++ backendKinds.peers);
+        type = types.enum (backendKinds.local ++ backendKinds.appliances);
       };
       hosts = mkOption {
         type = types.nonEmptyListOf (
@@ -287,10 +269,6 @@ let
         default = { };
       };
       runtime = mkOption { type = runtimeType; };
-      peer = mkOption {
-        type = types.nullOr peerType;
-        default = null;
-      };
       benchmark = mkOption {
         type = types.nullOr benchmarkType;
         default = null;
@@ -867,14 +845,9 @@ let
                 repository = "https://github.com/FastFlowLM/FastFlowLM";
                 commit = "fd371409897d7c0abb4de4dbc5098b9b43c094ff";
               };
-              peer = {
-                name = "flm-gemma4";
-                proxy = "http://127.0.0.1:52625";
-                systemdUnit = "flm-serve-gemma4-it-e4b.service";
-              };
               evidence = "matched-local";
               hardware = "Strix Halo XDNA2 NPU; amdxdna/XRT from nix-amd-ai";
-              notes = "Multimodal utility lane on both Strix hosts. FastFlowLM owns these weights via runtime flm pull; callers still enter through llama-swap.";
+              notes = "Ad-hoc multimodal utility model on both Strix hosts. FastFlowLM owns these weights; `flm run gemma4-it:e4b` loads them only for the interactive command.";
             };
 
             flm-gpt-oss-20b = {
@@ -890,14 +863,9 @@ let
                 repository = "https://huggingface.co/FastFlowLM/GPT-OSS-20B-NPU2";
                 commit = "12ce92d2bfa031761ab876b3b845a7dabeab1d98";
               };
-              peer = {
-                name = "flm-gpt-oss";
-                proxy = "http://127.0.0.1:52626";
-                systemdUnit = "flm-serve-gpt-oss-20b.service";
-              };
               evidence = "api-only";
               hardware = "Strix Halo XDNA2 NPU; amdxdna/XRT from nix-amd-ai";
-              notes = "Second NPU reasoning lane on both Strix hosts; FastFlowLM tag gpt-oss:20b, Q4_1 NPU2 snapshot.";
+              notes = "Ad-hoc NPU reasoning model on both Strix hosts; `flm run gpt-oss:20b` loads the Q4_1 NPU2 snapshot only for the interactive command.";
             };
 
             qwen36-35b-a3b-mtp-ud-q8-k-xl = {

@@ -7,8 +7,9 @@
 # Native llama-swap control plane for the two Strix Halo nodes.
 #
 # This module owns only the proxy package, lifecycle, state, and network
-# boundary. local-models.nix owns the typed roster, backend commands, peers, and
-# guarded weight materialization. The proxy itself is a small, always-on Go
+# boundary. local-models.nix owns the typed roster, backend commands, and
+# guarded weight materialization. Runtime appliances such as FastFlowLM stay
+# outside this control plane. The proxy itself is a small, always-on Go
 # process and consumes no GPU. Tally remains the admission controller for the
 # per-box GPU pools; llama-swap supplies the one stable API door and load/unload
 # mechanism.

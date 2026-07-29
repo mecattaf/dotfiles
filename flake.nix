@@ -691,8 +691,18 @@
           let
             coordinator = self.nixosConfigurations.coordinator.config;
             worker = self.nixosConfigurations.worker.config;
+            zenbook = self.nixosConfigurations.zenbook-duo.config;
             coordinatorSettings = coordinator.services.llama-swap.settings;
             workerSettings = worker.services.llama-swap.settings;
+            findPiWrapper =
+              hostConfig:
+              nixpkgs.lib.findFirst (package: nixpkgs.lib.getName package == "pi")
+                (throw "evaluated host has no declarative Pi wrapper")
+                hostConfig.home-manager.users.tom.home.packages;
+            coordinatorPi = findPiWrapper coordinator;
+            zenbookPi = findPiWrapper zenbook;
+            coordinatorFlmManifest = coordinator.environment.etc."local-models/fastflowlm.json".source;
+            workerFlmManifest = worker.environment.etc."local-models/fastflowlm.json".source;
             modelPackagePaths = map toString (builtins.attrValues localModelStore.packages);
             coordinatorExtraDependencies = map toString coordinator.system.extraDependencies;
             workerExtraDependencies = map toString worker.system.extraDependencies;
@@ -739,9 +749,12 @@
               "artifacts"
             ];
           assert
+            builtins.attrNames self.nixosConfigurations.coordinator.options.services.npu-llm == [
+              "enable"
+              "models"
+            ];
+          assert
             coordinator.services.local-models.allow == [
-              "flm-gemma4-it-e4b"
-              "flm-gpt-oss-20b"
               "qwen36-35b-a3b-mtp-ud-q8-k-xl"
               "qwen36-27b-mtp-ud-q8-k-xl"
               "gemma4-26b-a4b-it-mtp-q8-0"
@@ -753,8 +766,6 @@
             ];
           assert
             worker.services.local-models.allow == [
-              "flm-gemma4-it-e4b"
-              "flm-gpt-oss-20b"
               "qwen36-35b-a3b-mtp-ud-q8-k-xl"
               "qwen36-27b-mtp-ud-q8-k-xl"
               "gemma4-26b-a4b-it-mtp-q8-0"
@@ -795,17 +806,7 @@
               "qwen3.6-27b"
               "qwen3.6-35b-a3b"
             ];
-          assert
-            coordinatorSettings.peers == {
-              flm-gemma4 = {
-                proxy = "http://127.0.0.1:52625";
-                models = [ "gemma4-it:e4b" ];
-              };
-              flm-gpt-oss = {
-                proxy = "http://127.0.0.1:52626";
-                models = [ "gpt-oss:20b" ];
-              };
-            };
+          assert coordinatorSettings.peers == { };
           assert workerSettings.peers == coordinatorSettings.peers;
           assert coordinator.systemd.services.llama-swap.environment.LLAMA_MEDIA_MARKER == "<__media__>";
           assert worker.systemd.services.llama-swap.environment.LLAMA_MEDIA_MARKER == "<__media__>";
@@ -817,16 +818,34 @@
           assert nixpkgs.lib.elem "amd_iommu=on" coordinator.boot.kernelParams;
           assert nixpkgs.lib.elem "amd_iommu=on" worker.boot.kernelParams;
           assert !(nixpkgs.lib.elem "amd_iommu=off" worker.boot.kernelParams);
-          assert coordinator.systemd.services ? "flm-model-bootstrap";
-          assert worker.systemd.services ? "flm-model-bootstrap";
-          assert coordinator.systemd.services ? "flm-serve-gemma4-it-e4b";
-          assert coordinator.systemd.services ? "flm-serve-gpt-oss-20b";
-          assert worker.systemd.services ? "flm-serve-gemma4-it-e4b";
-          assert worker.systemd.services ? "flm-serve-gpt-oss-20b";
+          assert
+            coordinator.services.npu-llm.models == [
+              "gemma4-it:e4b"
+              "gpt-oss:20b"
+            ];
+          assert worker.services.npu-llm.models == coordinator.services.npu-llm.models;
+          assert nixpkgs.lib.all (unit: !(nixpkgs.lib.hasPrefix "flm-" unit)) (
+            builtins.attrNames coordinator.systemd.services
+          );
+          assert nixpkgs.lib.all (unit: !(nixpkgs.lib.hasPrefix "flm-" unit)) (
+            builtins.attrNames worker.systemd.services
+          );
+          assert nixpkgs.lib.all (
+            unit: !(nixpkgs.lib.hasPrefix "flm-" unit)
+          ) coordinator.systemd.services.llama-swap.wants;
+          assert nixpkgs.lib.all (
+            unit: !(nixpkgs.lib.hasPrefix "flm-" unit)
+          ) coordinator.systemd.services.llama-swap.after;
+          assert nixpkgs.lib.any (
+            package: nixpkgs.lib.getName package == "fastflowlm"
+          ) coordinator.environment.systemPackages;
+          assert !(localModelCatalog.deployments."flm-gemma4-it-e4b" ? peer);
+          assert !(localModelCatalog.deployments."flm-gpt-oss-20b" ? peer);
           assert !(nixpkgs.lib.hasInfix "-hf" (builtins.toJSON coordinatorSettings));
           assert !(nixpkgs.lib.hasInfix "-hf" (builtins.toJSON workerSettings));
           assert
             localModelCatalog.backendKinds == {
+              appliances = [ "npu" ];
               local = [
                 "rocm"
                 "vulkan"
@@ -834,7 +853,6 @@
                 "vllm"
                 "mlx"
               ];
-              peers = [ "npu" ];
             };
           assert
             builtins.attrNames renderedBackends == [
@@ -864,6 +882,27 @@
           assert nixpkgs.lib.elem "HF_HUB_OFFLINE=1" renderedBackends.mlx.env;
           assert builtins.hasAttr "mlx-lm" inputs.nix-strix-halo.packages.${system};
           pkgs.runCommand "local-model-routing" { } ''
+            ${pkgs.jq}/bin/jq -e '
+              .schema == 1
+              and .runtime == "fastflowlm"
+              and .lifecycle == "ad-hoc"
+              and .persistentServer == false
+              and (.models | map(.tag)) == ["gemma4-it:e4b", "gpt-oss:20b"]
+              and (.models | map(.command)) == [
+                ["flm", "run", "gemma4-it:e4b"],
+                ["flm", "run", "gpt-oss:20b"]
+              ]
+            ' ${coordinatorFlmManifest} >/dev/null
+            ${pkgs.diffutils}/bin/cmp ${coordinatorFlmManifest} ${workerFlmManifest}
+
+            ${pkgs.gnugrep}/bin/grep -F 'export LLAMA_SWAP_PORT=9292' ${coordinatorPi}/bin/pi >/dev/null
+            ${pkgs.gnugrep}/bin/grep -F -- '-e ${pkgs.pi-llama-swap-extension}' \
+              ${coordinatorPi}/bin/pi >/dev/null
+            if ${pkgs.gnugrep}/bin/grep -F -- '${pkgs.pi-llama-swap-extension}' \
+              ${zenbookPi}/bin/pi >/dev/null; then
+              echo "Pi loaded the llama-swap provider on a host without llama-swap" >&2
+              exit 1
+            fi
             touch "$out"
           '';
       }

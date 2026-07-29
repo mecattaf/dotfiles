@@ -11,17 +11,18 @@ entries. The active split is intentionally much narrower: see the
 membership and totals. In particular, the coder-next, uncensored, and retired
 DS4 weights are not materialized.
 
-## llama-swap catalog
+## Model and appliance catalog
 
 All llama.cpp rows use the dotfiles-pinned
 [`ggml-org/llama.cpp@571d0d5`](https://github.com/ggml-org/llama.cpp/commit/571d0d540df04f25298d0e159e520d9fc62ed121).
 The table links immutable Hugging Face revisions. A catalog row is not evidence
-that its artifacts are selected on either host.
+that its artifacts are selected on either host. The FastFlowLM rows are direct
+runtime appliances, not llama-swap deployments.
 
 | Class | Public model ID | Exact artifact source | Inference | Evidence at anchor |
 |---|---|---|---|---|
-| Small / fast | `gemma4-it:e4b` | FastFlowLM runtime tag; no HF artifact is owned by this catalog | FastFlowLM NPU peer at `fd371409…`; callers enter through llama-swap | Active on both Strix NPUs |
-| Small / fast | `gpt-oss:20b` | [`FastFlowLM/GPT-OSS-20B-NPU2@12ce92d`](https://huggingface.co/FastFlowLM/GPT-OSS-20B-NPU2/tree/12ce92d2bfa031761ab876b3b845a7dabeab1d98) via FastFlowLM runtime pull | FastFlowLM NPU peer; callers enter through llama-swap | Active on both Strix NPUs |
+| Small / fast | `gemma4-it:e4b` | FastFlowLM runtime tag; no HF artifact is owned by this catalog | Ad-hoc `flm run gemma4-it:e4b` | Available on both Strix NPUs with zero boot residency |
+| Small / fast | `gpt-oss:20b` | [`FastFlowLM/GPT-OSS-20B-NPU2@12ce92d`](https://huggingface.co/FastFlowLM/GPT-OSS-20B-NPU2/tree/12ce92d2bfa031761ab876b3b845a7dabeab1d98) via FastFlowLM runtime pull | Ad-hoc `flm run gpt-oss:20b` | Available on both Strix NPUs with zero boot residency |
 | General | `qwen3.6-35b-a3b` | [`unsloth/Qwen3.6-35B-A3B-MTP-GGUF@5bc3e23`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/tree/5bc3e238d916f48a861bac2f8a1990a0e9b7e98d), `Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf` | llama.cpp Vulkan with integrated matched MTP | Exact Strix Halo benchmark: 46.33 tok/s decode and 1045 tok/s 512-token prefill |
 | Coding | `qwen3.6-27b` | stock [`Qwen/Qwen3.6-27B@6a9e13b`](https://huggingface.co/Qwen/Qwen3.6-27B/tree/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9), quantized by [`unsloth/Qwen3.6-27B-MTP-GGUF@5cb35eb`](https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/tree/5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace) as `Qwen3.6-27B-UD-Q8_K_XL.gguf` | llama.cpp Vulkan with integrated matched MTP | Pi chat locally matched on both Strix Halo hosts with active MTP draft acceptance and RADV render-node use; stock checkpoint, not a fine-tune |
 | Coding candidate | `qwen3-coder-next` | [`unsloth/Qwen3-Coder-Next-GGUF@ce09c67`](https://huggingface.co/unsloth/Qwen3-Coder-Next-GGUF/tree/ce09c67b53bc8739eef83fe67b2f5d293c270632), `Qwen3-Coder-Next-UD-Q4_K_XL.gguf` | llama.cpp Vulkan | Catalog-only historical candidate; its low-bit artifact is excluded from both hosts by the active Q8 policy |
@@ -41,7 +42,7 @@ LFS SHA-256/OIDs, SRI hashes, base/fine-tune revisions, host placement, runtime
 arguments, benchmark IDs, and evidence classes in
 [`../../lib/local-models.nix`](../../lib/local-models.nix).
 
-## Speech appliances outside llama-swap
+## Other appliances outside llama-swap
 
 These identities do not enter llama-swap because their APIs and runtimes are
 modality-specific. VibeVoice payloads are hash-pinned in the Nix store;
@@ -88,6 +89,8 @@ MIGraphX variant but does not replace that journal check.
   not a permanently co-resident second server.
 - The text-only and multimodal embedders remain separate model IDs so callers
   can choose benchmark strength or mixed-modal retrieval explicitly.
+- FastFlowLM models are ad-hoc CLI workloads. Do not configure `flm serve`
+  units or add their model IDs as llama-swap peers.
 - DeepSeek V4's dual-node DS4 row is historical evidence, not a runnable roster
   member. The DS4 package remains installed, but its weights are not materialized.
 - Audio, image, and video generation remain parked and have no roster entries.

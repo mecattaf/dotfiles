@@ -21,7 +21,7 @@
     ./llama-swap.nix
     # Typed model catalog, guarded store materialization, and host projections.
     ./local-models.nix
-    # FastFlowLM peers and their idempotent runtime model pulls.
+    # Deterministic FastFlowLM roster only; ad-hoc `flm run`, with no daemon.
     ./npu-llm.nix
   ];
 
@@ -40,8 +40,6 @@
     # per-host rows enter the system closure and llama-swap configuration.
     services.local-models = {
       allow = [
-        "flm-gemma4-it-e4b"
-        "flm-gpt-oss-20b"
         "qwen36-35b-a3b-mtp-ud-q8-k-xl"
         "qwen36-27b-mtp-ud-q8-k-xl"
         "gemma4-26b-a4b-it-mtp-q8-0"
@@ -74,16 +72,9 @@
 
     services.npu-llm = {
       enable = true;
-      user = "tom";
       models = [
-        {
-          tag = "gemma4-it:e4b";
-          port = 52625;
-        }
-        {
-          tag = "gpt-oss:20b";
-          port = 52626;
-        }
+        "gemma4-it:e4b"
+        "gpt-oss:20b"
       ];
     };
 
