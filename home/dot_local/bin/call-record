@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# call-record — capture both sides of a call (INZONE Buds) into per-speaker
+# WAVs plus a mixed track for diarization testing.
+#
+#   call-record start <slug>   begin capturing far (call audio) + near (mic)
+#   call-record stop           finish, mix, print file paths
+#   call-record status         show current session, levels sanity
+#
+# Far side  = monitor of the INZONE Buds sink (what you hear).
+# Near side = INZONE Buds mono mic (what you say).
+# Both mono s16 48 kHz; mix.wav is the diarization test input, the split
+# tracks are per-speaker ground truth. Evidence files, keep all three.
+set -euo pipefail
+
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/call-record"
+CURRENT="$STATE_DIR/current"
+OUT_ROOT="$HOME/Recordings/calls"
+RATE=48000
+
+find_node() { # $1 = media.class, $2 = case-insensitive description/name pattern
+    pw-dump | jq -r --arg class "$1" --arg pat "$2" '
+        .[] | select(.info.props["media.class"] == $class)
+            | select((.info.props["node.name"] + " " + (.info.props["node.description"] // "")) | test($pat; "i"))
+            | .info.props["node.name"]' | head -n1
+}
+
+case "${1:-}" in
+start)
+    slug="${2:?usage: call-record start <slug>}"
+    [[ "$slug" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "slug: letters/digits/._- only" >&2; exit 1; }
+    if [[ -e "$CURRENT" ]]; then
+        echo "a session is already running ($(cat "$CURRENT")); run 'call-record stop' first" >&2
+        exit 1
+    fi
+
+    sink="$(find_node Audio/Sink 'INZONE')"
+    source="$(find_node Audio/Source 'INZONE')"
+    [[ -n "$sink" ]] || { echo "INZONE Buds sink not found — dongle plugged in?" >&2; exit 1; }
+    [[ -n "$source" ]] || { echo "INZONE Buds mic source not found" >&2; exit 1; }
+
+    dir="$OUT_ROOT/$(date +%F)-$slug"
+    mkdir -p "$dir" "$STATE_DIR"
+
+    pw-record --target "$sink" -P '{ stream.capture.sink = true }' \
+        --format s16 --rate "$RATE" --channels 1 "$dir/far.wav" &
+    far_pid=$!
+    pw-record --target "$source" \
+        --format s16 --rate "$RATE" --channels 1 "$dir/near.wav" &
+    near_pid=$!
+
+    printf '%s\n%s\n%s\n' "$dir" "$far_pid" "$near_pid" > "$CURRENT"
+    echo "recording -> $dir"
+    echo "  far  (call audio): $sink"
+    echo "  near (your mic):   $source"
+    echo "stop with: call-record stop"
+    ;;
+
+stop)
+    [[ -e "$CURRENT" ]] || { echo "no session running" >&2; exit 1; }
+    { read -r dir; read -r far_pid; read -r near_pid; } < "$CURRENT"
+
+    for pid in "$far_pid" "$near_pid"; do
+        kill -INT "$pid" 2>/dev/null || true
+    done
+    for pid in "$far_pid" "$near_pid"; do
+        while kill -0 "$pid" 2>/dev/null; do sleep 0.2; done
+    done
+    rm -f "$CURRENT"
+
+    if [[ -s "$dir/far.wav" && -s "$dir/near.wav" ]]; then
+        sox -m "$dir/far.wav" "$dir/near.wav" "$dir/mix.wav" gain -n -1
+    else
+        echo "warning: one track is empty; skipping mix" >&2
+    fi
+    echo "session closed:"
+    for f in far near mix; do
+        [[ -f "$dir/$f.wav" ]] && printf '  %-8s %s  (%s)\n' "$f.wav" "$dir/$f.wav" "$(soxi -d "$dir/$f.wav" 2>/dev/null || echo '?')"
+    done
+    ;;
+
+status)
+    if [[ -e "$CURRENT" ]]; then
+        { read -r dir; read -r far_pid; read -r near_pid; } < "$CURRENT"
+        echo "recording in progress -> $dir (far pid $far_pid, near pid $near_pid)"
+        du -h "$dir"/*.wav 2>/dev/null || true
+    else
+        echo "idle"
+    fi
+    ;;
+
+*)
+    echo "usage: call-record start <slug> | stop | status" >&2
+    exit 1
+    ;;
+esac

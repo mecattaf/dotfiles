@@ -1,0 +1,4 @@
+interface:
+  display_name: "Print Paper"
+  short_description: "Render and print readable A4 documents"
+  default_prompt: "Use $print to render this Markdown as a readable A4 PDF and print it."
