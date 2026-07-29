@@ -8,7 +8,7 @@
 # as an agenix EnvironmentFile (secrets/atticd-server-token.age, coordinator-only).
 #
 # sqlite + local storage under /var/lib/atticd (systemd StateDirectory) — no
-# Postgres/object-store dependency; fine for a 3-host fleet.
+# Postgres/object-store dependency; fine for this small fleet.
 #
 # RUNTIME BOOTSTRAP (once, after the first switch that brings atticd up):
 #   1. Create the cache:   atticd-atticadm ... OR from a logged-in client:
@@ -20,7 +20,7 @@
 #   3. Capture the cache's public signing key and append it to
 #      modules/common.nix nix.settings.extra-trusted-public-keys:
 #        attic cache info fleet     # → the `fleet:...=` public key line
-#   4. Mint a push token for the builder(s) and log them in (see common.nix).
+#   4. Mint a push token for the coordinator builder and log it in (see common.nix).
 {
   config = lib.mkIf config.mySecrets.enable {
     # RS256 JWT secret: EnvironmentFile with ATTIC_SERVER_TOKEN_RS256_SECRET_BASE64

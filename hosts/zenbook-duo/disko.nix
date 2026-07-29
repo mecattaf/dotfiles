@@ -1,5 +1,5 @@
 {
-  # Zenbook Duo install target. Same layout as the worker (1G ESP + ext4 root) —
+  # Zenbook Duo install target: 1G ESP + ext4 root —
   # nixos-anywhere runs this to partition + format (option C of the flash runbook).
   # ⚠️ DESTRUCTIVE: wipes the disk below. Device name is the near-universal laptop
   # default but UNVERIFIED on this machine — confirm with `lsblk` from the booted

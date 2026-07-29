@@ -252,12 +252,7 @@ let
         type = types.enum (backendKinds.local ++ backendKinds.appliances);
       };
       hosts = mkOption {
-        type = types.nonEmptyListOf (
-          types.enum [
-            "coordinator"
-            "worker"
-          ]
-        );
+        type = types.nonEmptyListOf (types.enum [ "coordinator" ]);
         description = "Hosts on which this canonical deployment is installed.";
       };
       ramTierGb = mkOption {
@@ -428,35 +423,6 @@ let
               oid = "20f332c2723575797d9ba07cf09a2ca019c89409e4ee250f91305279b19b2bea";
               hash = "sha256-IPMywnI1dXl9m6B88JosoBnIlAnk7iUPkTBSebGbK+o=";
               notes = "BF16 vision projector paired with the Q8_0 Fara deployment.";
-            };
-
-            deepseek-v4-flash-q4-imatrix = mkSingleFileArtifact {
-              maker = "DeepSeek";
-              baseCheckpoint = {
-                url = "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash";
-                revision = "60d8d70770c6776ff598c94bb586a859a38244f1";
-              };
-              hfUrl = "https://huggingface.co/antirez/deepseek-v4-gguf";
-              revision = "a88c423b511666d7ff7a4dcaee651669312bea97";
-              path = "DeepSeek-V4-Flash-Q4KExperts-F16HC-F16Compressor-F16Indexer-Q8Attn-Q8Shared-Q8Out-chat-v2-imatrix.gguf";
-              bytes = 164633502592;
-              oid = "a2a3b31eca06344b93d32b2095511c4d36f92739a68a599b22047b4b2335d859";
-              hash = "sha256-oqOzHsoGNEuT0ysglVEcTTb5JzmmilmbIgR7SyM12Fk=";
-            };
-
-            deepseek-v4-flash-mtp = mkSingleFileArtifact {
-              kind = "mtp-head";
-              maker = "DeepSeek";
-              baseCheckpoint = {
-                url = "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash";
-                revision = "60d8d70770c6776ff598c94bb586a859a38244f1";
-              };
-              hfUrl = "https://huggingface.co/antirez/deepseek-v4-gguf";
-              revision = "a88c423b511666d7ff7a4dcaee651669312bea97";
-              path = "DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf";
-              bytes = 3807602400;
-              oid = "afd481ee689dce9037f70f39085fcdae5a5b096d521cdad43b19fa52bf8f4083";
-              hash = "sha256-r9SB7midzpA39w85CF/NrlpbCW1SHNrUOxn6Ur+PQIM=";
             };
 
             qwen36-35b-a3b-abliterated-heretic-q4-k-m = mkSingleFileArtifact {
@@ -837,17 +803,14 @@ let
               role = "utility";
               status = "canonical";
               backend = "npu";
-              hosts = [
-                "coordinator"
-                "worker"
-              ];
+              hosts = [ "coordinator" ];
               runtime = {
                 repository = "https://github.com/FastFlowLM/FastFlowLM";
                 commit = "fd371409897d7c0abb4de4dbc5098b9b43c094ff";
               };
               evidence = "matched-local";
               hardware = "Strix Halo XDNA2 NPU; amdxdna/XRT from nix-amd-ai";
-              notes = "Ad-hoc multimodal utility model on both Strix hosts. FastFlowLM owns these weights; `flm run gemma4-it:e4b` loads them only for the interactive command.";
+              notes = "Ad-hoc multimodal utility model on coordinator. FastFlowLM owns these weights; `flm run gemma4-it:e4b` loads them only for the interactive command.";
             };
 
             flm-gpt-oss-20b = {
@@ -855,17 +818,14 @@ let
               role = "utility";
               status = "canonical";
               backend = "npu";
-              hosts = [
-                "coordinator"
-                "worker"
-              ];
+              hosts = [ "coordinator" ];
               runtime = {
                 repository = "https://huggingface.co/FastFlowLM/GPT-OSS-20B-NPU2";
                 commit = "12ce92d2bfa031761ab876b3b845a7dabeab1d98";
               };
               evidence = "api-only";
               hardware = "Strix Halo XDNA2 NPU; amdxdna/XRT from nix-amd-ai";
-              notes = "Ad-hoc NPU reasoning model on both Strix hosts; `flm run gpt-oss:20b` loads the Q4_1 NPU2 snapshot only for the interactive command.";
+              notes = "Ad-hoc NPU reasoning model on coordinator; `flm run gpt-oss:20b` loads the Q4_1 NPU2 snapshot only for the interactive command.";
             };
 
             qwen36-35b-a3b-mtp-ud-q8-k-xl = {
@@ -873,10 +833,7 @@ let
               role = "general";
               status = "canonical";
               backend = "vulkan";
-              hosts = [
-                "coordinator"
-                "worker"
-              ];
+              hosts = [ "coordinator" ];
               ramTierGb = 44;
               artifacts.model = "qwen36-35b-a3b-mtp-ud-q8-k-xl";
               runtime = llamaCppRuntime (
@@ -908,10 +865,7 @@ let
               role = "coding";
               status = "canonical";
               backend = "vulkan";
-              hosts = [
-                "coordinator"
-                "worker"
-              ];
+              hosts = [ "coordinator" ];
               ramTierGb = 40;
               artifacts.model = "qwen36-27b-mtp-ud-q8-k-xl";
               runtime = llamaCppRuntime (
@@ -927,7 +881,7 @@ let
               );
               evidence = "matched-local";
               hardware = "Ryzen AI MAX+ 395 / Radeon 8060S gfx1151 / 128 GB unified memory; Vulkan/RADV";
-              notes = "Stock dense Qwen 3.6 coding and agent model, locally matched through Pi and llama-swap on both Strix hosts. The Q8 GGUF contains its matched MTP block; 32K context and a single parallel slot bound memory use. This route is text-only because the pinned quantizer's MTP guidance does not support combining MTP with mmproj.";
+              notes = "Stock dense Qwen 3.6 coding and agent model, locally matched through Pi and llama-swap on coordinator. The Q8 GGUF contains its matched MTP block; 32K context and a single parallel slot bound memory use. This route is text-only because the pinned quantizer's MTP guidance does not support combining MTP with mmproj.";
             };
 
             qwen3-coder-next-ud-q4-k-xl = {
@@ -935,10 +889,7 @@ let
               role = "coding";
               status = "candidate";
               backend = "vulkan";
-              hosts = [
-                "coordinator"
-                "worker"
-              ];
+              hosts = [ "coordinator" ];
               ramTierGb = 52;
               artifacts.model = "qwen3-coder-next-ud-q4-k-xl";
               runtime = llamaCppRuntime commonLlamaArgs;
@@ -961,10 +912,7 @@ let
               role = "coding";
               status = "canonical";
               backend = "vulkan";
-              hosts = [
-                "coordinator"
-                "worker"
-              ];
+              hosts = [ "coordinator" ];
               ramTierGb = 32;
               artifacts = {
                 model = "gemma4-26b-a4b-it-q8-0";
@@ -991,10 +939,7 @@ let
               role = "vision";
               status = "canonical";
               backend = "rocm";
-              hosts = [
-                "coordinator"
-                "worker"
-              ];
+              hosts = [ "coordinator" ];
               ramTierGb = 32;
               artifacts = {
                 model = "fara15-27b-q8-0";
@@ -1014,46 +959,7 @@ let
               ];
               evidence = "unverified";
               hardware = "Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
-              notes = "Browser-computer-use VLM on both Strix hosts. Q8_0 is an explicit quality decision; the BF16 projector is mandatory.";
-            };
-
-            deepseek-v4-flash-q4-dual = {
-              model = "deepseek-v4-flash";
-              role = "quality";
-              status = "retired";
-              backend = "ds4";
-              hosts = [
-                "coordinator"
-                "worker"
-              ];
-              ramTierGb = 128;
-              artifacts = {
-                model = "deepseek-v4-flash-q4-imatrix";
-                mtpHead = "deepseek-v4-flash-mtp";
-              };
-              runtime = {
-                repository = "https://github.com/ejpir/ds4-hip";
-                commit = "3490c2e46c91331323dc0f2bfb7d3018e227fdff";
-                args = [
-                  "--mtp"
-                  "@mtpHead@"
-                  "--mtp-draft"
-                  "1"
-                  "--ctx"
-                  "131072"
-                ];
-              };
-              benchmark = {
-                sourceRepo = "https://github.com/mecattaf/dotfiles";
-                sourceCommit = "96fba30a6465d411ec8fee7b4bf5d5cb0d82432f";
-                runId = "legacy-ds4-dual-node-lessons";
-                name = "matched dual-node completion";
-                speed = "approximately 11 tok/s generation";
-                context = "Q4 imatrix + MTP; coordinator 0:21, worker 22:output";
-              };
-              evidence = "matched-local";
-              hardware = "two Ryzen AI MAX+ 395 nodes over point-to-point Thunderbolt";
-              notes = "Retired with the physical dual-node topology on 2026-07-26. Historical artifact, runtime, and benchmark evidence remain reproducible, but this row is no longer projected to either host, so its roughly 157 GiB of weights are not materialized. The DS4 runtime package remains installed.";
+              notes = "Browser-computer-use VLM on coordinator. Q8_0 is an explicit quality decision; the BF16 projector is mandatory.";
             };
 
             qwen36-35b-abliterated-heretic = {
@@ -1061,13 +967,13 @@ let
               role = "uncensored";
               status = "candidate";
               backend = "vulkan";
-              hosts = [ "worker" ];
+              hosts = [ "coordinator" ];
               ramTierGb = 24;
               artifacts.model = "qwen36-35b-a3b-abliterated-heretic-q4-k-m";
               runtime = llamaCppRuntime commonLlamaArgs;
               evidence = "unverified";
-              hardware = "worker Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
-              notes = "Manual high-recall hypothesis generator only; never an arbiter and excluded from automatic routing.";
+              hardware = "coordinator Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
+              notes = "Coordinator catalog candidate only: manual high-recall hypothesis generator, never an arbiter and excluded from the active allowlist and automatic routing.";
             };
 
             supergemma4-26b-uncensored = {
@@ -1075,7 +981,7 @@ let
               role = "uncensored";
               status = "candidate";
               backend = "vulkan";
-              hosts = [ "worker" ];
+              hosts = [ "coordinator" ];
               ramTierGb = 20;
               artifacts.model = "supergemma4-26b-uncensored-q4-k-m";
               runtime = llamaCppRuntime commonLlamaArgs;
@@ -1089,7 +995,7 @@ let
               };
               evidence = "upstream-measured";
               hardware = "Ciru Strix Halo benchmark host";
-              notes = "Different model family and tuning path from the Heretic row; manual use only.";
+              notes = "Coordinator catalog candidate only. Different model family and tuning path from the Heretic row; excluded from the active allowlist and manual use only.";
             };
 
             glm47-flash-uncensored-aggressive = {
@@ -1097,7 +1003,7 @@ let
               role = "uncensored";
               status = "candidate";
               backend = "vulkan";
-              hosts = [ "worker" ];
+              hosts = [ "coordinator" ];
               ramTierGb = 22;
               artifacts.model = "glm47-flash-uncensored-aggressive-q4-k-m";
               runtime = llamaCppRuntime (
@@ -1114,8 +1020,8 @@ let
                 ]
               );
               evidence = "unverified";
-              hardware = "worker Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
-              notes = "Non-Heretic aggressive refusal-removal route for method and training-family diversity; manual use only.";
+              hardware = "coordinator Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
+              notes = "Coordinator catalog candidate only. Non-Heretic aggressive refusal-removal route for method and training-family diversity; excluded from the active allowlist and manual use only.";
             };
 
             qwen3-vl-8b-ocr = {

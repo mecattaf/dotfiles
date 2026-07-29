@@ -68,12 +68,13 @@ in
           fi
         '';
 
-        # Mesh SSH user key (the shared `tom@mesh` private half). mesh.nix already
+        # Fleet SSH user key. mesh.nix already
         # authorizes this key + seeds known_hosts on every host; this delivers the
         # PRIVATE key so each box can also SSH *out* (any box → any box), and so
         # `nixos-rebuild --target-host` works from anywhere. Encrypted to every host
         # key (common tier), so a reflash restores it automatically — no more manual
-        # ~/.ssh provisioning. Copy-not-link: ssh wants a real 600 file tom owns.
+        # ~/.ssh provisioning. The key is deliberately not an agenix editor
+        # recipient. Copy-not-link: ssh wants a real 600 file tom owns.
         age.secrets.ssh-user-key = {
           file = ../secrets/ssh-user-key.age;
           owner = "tom";
@@ -82,7 +83,7 @@ in
         };
         system.userActivationScripts.seedSshUserKey.text = ''
           key="$HOME/.ssh/id_ed25519"
-          if [ ! -e "$key" ] && [ -r "${config.age.secrets.ssh-user-key.path}" ]; then
+          if [ -r "${config.age.secrets.ssh-user-key.path}" ]; then
             mkdir -p "$HOME/.ssh"; chmod 700 "$HOME/.ssh"
             cp "${config.age.secrets.ssh-user-key.path}" "$key"
             chmod 600 "$key"
@@ -124,8 +125,8 @@ in
 
         # No authKeyParameters: they append `?ephemeral=…&preauthorized=…` to the key,
         # which the control plane accepts only for OAuth client secrets used as auth
-        # keys — a pre-minted tskey-auth key gets rejected as "invalid key" (bit the
-        # worker live, jul5). Our keys carry those properties from mint time.
+        # keys — a pre-minted tskey-auth key gets rejected as "invalid key" (bit a
+        # first-boot host live, Jul 5). Our keys carry those properties from mint time.
         services.tailscale.authKeyFile = config.age.secrets.tailscale-authkey.path;
 
         # The stock autoconnect unit orders only after tailscaled; make it wait for

@@ -1,5 +1,5 @@
 {
-  description = "mecattaf — one flake for the whole distribution (NixOS + home-manager). AMD Strix Halo coordinator + tailnet worker + Intel laptops.";
+  description = "mecattaf — one flake for the whole distribution (NixOS + home-manager). AMD Strix Halo coordinator + Intel laptop.";
 
   inputs = {
     # Unstable: Strix Halo (gfx1151) wants fresh kernels + Mesa.
@@ -113,17 +113,16 @@
     # load-bearing — it generates the systemd user units, the producer
     # timers/services and the build-time `checkedConfig` validator, which a bare
     # pkg can't deliver; NO bespoke pkgs/tally.nix. home/tally.nix imports the
-    # module and enables the daemon on the coordinator only. worker carries the
-    # same binary solely for the daemonless SSH executor helper; no queue or
-    # lease engine runs there. Other hosts leave the module off. Composes onto
+    # module and enables the daemon on the coordinator only. Other hosts leave
+    # the module off. Composes onto
     # the dotfiles-owned zmx substrate — tally ships
     # none of it. follows nixpkgs so the Rust build resolves against our one pin
     # rather than dragging a second nixpkgs into the lock. `nix flake update
     # tally` bumps to the latest pushed commit (and, post-release, the tag).
     #
     # Repo is mecattaf/tally.nix (NOT mecattaf/tally, which is the pre-rebuild
-    # spec history). It is public, so use the native `github:` fetcher: worker
-    # and fleet auto-upgrades need no GitHub credential helper or access token.
+    # spec history). It is public, so use the native `github:` fetcher: fleet
+    # auto-upgrades need no GitHub credential helper or access token.
     # tally's one law: contention and proof, never content or control.
     tally = {
       url = "github:mecattaf/tally.nix";
@@ -143,7 +142,7 @@
     # ntm — niri tablet management (github.com/mecattaf/ntm): one Rust daemon
     # for edge-initiated multi-finger touchscreen gestures + accelerometer
     # rotation via iio-sensor-proxy. ZENBOOK-DUO ONLY — the one host with touch
-    # panels + an accelerometer; the Strix pair and the bridge never see it.
+    # panels + an accelerometer; the coordinator and bridge never see it.
     # Consumed like tally (same author, same channel: flake input pinned in
     # flake.lock, follows nixpkgs so the Rust build resolves against our one
     # pin) — but ntm ships no home-manager module, only packages.*.ntm, so
@@ -175,17 +174,16 @@
     # nix-amd-ai — the proven coordinator NPU plane (hardware.amd-npu: amdxdna,
     # XRT plugin discovery, udev/memlock, FastFlowLM) plus the one accelerator
     # package nix-strix-halo does not expose: stable-diffusion-cpp-rocm.
-    # BOTH Strix hosts consume the NPU module and run IOMMU in translated mode.
-    # This trades the worker's former iGPU-only tuning for a uniform NPU surface.
+    # The coordinator consumes the NPU module and runs IOMMU in translated mode.
     # Deliberately
     # NO inputs.nixpkgs.follows — the overlay is built against its OWN pinned
     # nixpkgs so its Cachix (nix-amd-ai.cachix.org, substituter added in
     # modules/common.nix) serves prebuilt XRT/FastFlowLM instead of source builds.
     nix-amd-ai.url = "github:noamsto/nix-amd-ai";
 
-    # nix-strix-halo — the broad gfx1151 package plane for BOTH Framework Desktop
-    # nodes: llama.cpp ROCm/Vulkan, ds4-rocm, vLLM, MLX, tokenizers, MES firmware,
-    # the two-host benchmark driver, and a buildable live ISO. Consume its package
+    # nix-strix-halo — the broad gfx1151 package plane for the Framework Desktop:
+    # llama.cpp ROCm/Vulkan, ds4-rocm, vLLM, MLX, tokenizers, MES firmware, and a
+    # buildable live ISO. Consume its package
     # outputs directly rather than applying its global overlay: that preserves its
     # own TheRock/Python provider graph and avoids replacing the already-live
     # nix-amd-ai XRT/FastFlowLM pair. The two flakes currently pin identical XRT +
@@ -201,8 +199,8 @@
     # EPHEMERAL — `nix run <guest>.config.microvm.declaredRunner` needs only this
     # input, no host module, so it works fleet-wide. The DURABLE path (the imperative
     # `microvm` CLI + `microvm@<name>` systemd units) is opt-in via
-    # modules/microvm-host.nix, enabled on the WORKER only (its optional compute
-    # role survives soft retirement and is reached over the tailnet). follows
+    # modules/microvm-host.nix, enabled on the coordinator alongside the local
+    # artifact front door. follows
     # nixpkgs so the runner builds against our one pin.
     microvm = {
       url = "github:microvm-nix/microvm.nix";
@@ -378,7 +376,6 @@
 
       nixosConfigurations = {
         coordinator = mkHost ./hosts/coordinator;
-        worker = mkHost ./hosts/worker;
         zenbook-duo = mkHost ./hosts/zenbook-duo;
       };
 
@@ -399,13 +396,11 @@
         nodes =
           nixpkgs.lib.genAttrs
             [
-              "worker"
               "coordinator"
               "zenbook-duo"
             ]
             (host: {
-              # Canonical names resolve through Tailscale MagicDNS. `worker` stays
-              # a first-class deploy target, but no physical link is required.
+              # Canonical names resolve through Tailscale MagicDNS.
               hostname = host;
               sshOpts = fleetDeploySshOpts;
               profiles.system.path =
@@ -449,7 +444,6 @@
             mlx-lm
             mlx-rocm
             strix-halo-mes-firmware
-            strix-halo-vllm-pair-bench-gfx1151
             tokenizers-cpp
             vllm-rocm
             ;
@@ -495,44 +489,56 @@
         fleet-connectivity =
           let
             coordinator = self.nixosConfigurations.coordinator.config;
-            worker = self.nixosConfigurations.worker.config;
+            meshRegistry = import ./modules/mesh-registry.nix;
+            retiredHost = "work" + "er";
+            retiredPool = retiredHost + "-gpu";
+            retiredExecutionPattern = nixpkgs.lib.concatStringsSep "|" [
+              retiredHost
+              retiredPool
+              (retiredHost + "Flake")
+              (retiredHost + "Models")
+            ];
+            retiredDeployment = "deepseek-v4-flash-q4-dual";
+            activeHostSets = [
+              (builtins.attrNames self.nixosConfigurations)
+              (builtins.attrNames self.deploy.nodes)
+              (builtins.attrNames meshRegistry)
+            ];
             retiredAliases = nixpkgs.lib.concatStringsSep "|" [
-              ("worker-" + "tb")
+              (retiredHost + "-tb")
               ("coordinator-" + "tb")
             ];
             removedModel = "qwo" + "pus";
             monthlySources = builtins.fromJSON (builtins.readFile ./pkgs/local-ai-monthly/sources.json);
+            cooldownReceiver =
+              nixpkgs.lib.findFirst (package: nixpkgs.lib.getName package == "tally-gpu-cooldown")
+                (throw "coordinator has no Tally GPU cooldown receiver")
+                coordinator.home-manager.users.tom.home.packages;
           in
+          # Regression guard: the NixOS, deploy-rs, and mesh registries must agree
+          # on the retired host's absence.
+          assert nixpkgs.lib.all (hosts: !(nixpkgs.lib.elem retiredHost hosts)) activeHostSets;
           assert !(coordinator.networking.hosts ? "10.77.0.2");
-          assert !(worker.networking.hosts ? "10.77.0.1");
-          assert self.deploy.nodes.worker.hostname == "worker";
           assert self.deploy.nodes.coordinator.hostname == "coordinator";
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
-          assert !(nixpkgs.lib.elem "HostName=10.77.0.2" self.deploy.nodes.worker.sshOpts);
           assert coordinator.services.tailscale.extraUpFlags == [ "--ssh" ];
           assert coordinator.systemd.services.tailscaled-autoconnect.serviceConfig.RestartSec == "1min";
           assert !coordinator.nix.distributedBuilds;
           assert coordinator.nix.buildMachines == [ ];
-          assert coordinator.home-manager.users.tom.services.tally.executors.worker.host == "worker";
-          assert coordinator.programs.ssh.knownHosts.worker.hostNames == [ "worker" ];
-          assert worker.programs.ssh.knownHosts.coordinator.hostNames == [ "coordinator" ];
-          assert worker.myCluster.role == "worker";
-          assert !worker.services.openssh.openFirewall;
-          assert nixpkgs.lib.elem 22 worker.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
-          assert !(nixpkgs.lib.elem "thunderbolt0" worker.networking.firewall.trustedInterfaces);
-          assert worker.networking.networkmanager.ensureProfiles.profiles ? "Freebox-AB3ACE";
-          assert worker.networking.networkmanager.ensureProfiles.profiles ? "sodimo_wifi";
-          assert
-            worker.networking.networkmanager.ensureProfiles.profiles."Freebox-AB3ACE".connection.autoconnect-priority
-            == 100;
-          assert
-            worker.networking.networkmanager.ensureProfiles.profiles.sodimo_wifi.connection.autoconnect-priority
-            == 50;
-          assert nixpkgs.lib.elem "http://coordinator:8080/fleet" worker.nix.settings.extra-substituters;
+          assert !(builtins.hasAttr retiredHost coordinator.home-manager.users.tom.services.tally.executors);
+          assert !(builtins.hasAttr retiredPool coordinator.home-manager.users.tom.services.tally.pools);
+          assert !(builtins.hasAttr retiredHost coordinator.programs.ssh.knownHosts);
+          assert !(self.nixosConfigurations.coordinator.options ? myCluster);
+          assert coordinator.microvm.host.enable;
+          assert !(self.nixosConfigurations.coordinator.options.myArtifacts ? livePortRange);
+          assert !coordinator.home-manager.users.tom.services.tally.pools.coordinator-gpu.hardPreempt;
+          assert coordinator.systemd.timers.gpu-cooldown-tripwire.timerConfig.OnUnitActiveSec == "30s";
+          assert coordinator.systemd.services.gpu-cooldown-tripwire.environment.SUSTAIN_SECONDS == "60";
+          assert coordinator.systemd.services.gpu-cooldown-tripwire.environment.COOLDOWN_MINUTES == "30";
           assert monthlySources.inference.url == "http://coordinator:9292";
           assert monthlySources.inference.compute_host == "coordinator";
           assert monthlySources.inference.tally_pool == "coordinator-gpu";
-          assert localModelCatalog.deployments."deepseek-v4-flash-q4-dual".status == "retired";
+          assert !(builtins.hasAttr retiredDeployment localModelCatalog.deployments);
           pkgs.runCommand "fleet-connectivity" { } ''
             if ${pkgs.ripgrep}/bin/rg --line-number '${retiredAliases}' ${self}; then
               echo "retired mesh alias found" >&2
@@ -542,8 +548,55 @@
               echo "removed local-model identity found" >&2
               exit 1
             fi
+            if ${pkgs.ripgrep}/bin/rg --line-number '${retiredExecutionPattern}' \
+              ${./home/tally.nix} ${./flows}; then
+              echo "retired Tally executor or pool found" >&2
+              exit 1
+            fi
+            ${pkgs.gnugrep}/bin/grep -F -- '--pool coordinator-gpu' \
+              ${cooldownReceiver}/bin/tally-gpu-cooldown >/dev/null
+            ${pkgs.gnugrep}/bin/grep -F -- '--priority interrupt' \
+              ${cooldownReceiver}/bin/tally-gpu-cooldown >/dev/null
+            ${pkgs.gnugrep}/bin/grep -F -- '--no-enqueue' \
+              ${cooldownReceiver}/bin/tally-gpu-cooldown >/dev/null
+            ${pkgs.gnugrep}/bin/grep -F -- '--evidence exit:0' \
+              ${cooldownReceiver}/bin/tally-gpu-cooldown >/dev/null
             touch "$out"
           '';
+
+        gpu-cooldown-parity = pkgs.runCommand "gpu-cooldown-parity" { } ''
+          mkdir -p "$TMPDIR/hwmon/hwmon0" "$TMPDIR/state"
+          echo k10temp > "$TMPDIR/hwmon/hwmon0/name"
+          echo Tctl > "$TMPDIR/hwmon/hwmon0/temp1_label"
+          echo 86000 > "$TMPDIR/hwmon/hwmon0/temp1_input"
+
+          cat > "$TMPDIR/adapter" <<EOF
+          #!${pkgs.runtimeShell}
+          printf '%s\n' "\$*" > "$TMPDIR/adapter.args"
+          EOF
+          chmod +x "$TMPDIR/adapter"
+
+          STATE_DIRECTORY="$TMPDIR/state" \
+            HWMON_ROOT="$TMPDIR/hwmon" \
+            SUSTAIN_SECONDS=0 \
+            COOLDOWN_ADAPTER="$TMPDIR/adapter" \
+            ${pkgs.bash}/bin/bash ${./modules/gpu-cooldown-poll.sh}
+
+          ${pkgs.gnugrep}/bin/grep -Fx '86 k10temp:Tctl 85' "$TMPDIR/adapter.args"
+          ${pkgs.gnugrep}/bin/grep -Fx 'armed=0' "$TMPDIR/state/state"
+
+          cat > "$TMPDIR/receiver" <<EOF
+          #!${pkgs.runtimeShell}
+          printf '%s\n' "\$*" > "$TMPDIR/receiver.args"
+          EOF
+          chmod +x "$TMPDIR/receiver"
+
+          TALLY_COOLDOWN_RECEIVER="$TMPDIR/receiver" \
+            ${pkgs.bash}/bin/bash ${./modules/gpu-cooldown-enqueue.sh} \
+              91 amdgpu:junction 90
+          ${pkgs.gnugrep}/bin/grep -Fx '91 amdgpu:junction 90 1800' "$TMPDIR/receiver.args"
+          touch "$out"
+        '';
 
         deadnix = pkgs.runCommand "deadnix" { } ''
           ${pkgs.deadnix}/bin/deadnix --fail --no-lambda-pattern-names \
@@ -752,10 +805,8 @@
         local-model-routing =
           let
             coordinator = self.nixosConfigurations.coordinator.config;
-            worker = self.nixosConfigurations.worker.config;
             zenbook = self.nixosConfigurations.zenbook-duo.config;
             coordinatorSettings = coordinator.services.llama-swap.settings;
-            workerSettings = worker.services.llama-swap.settings;
             findPiWrapper =
               hostConfig:
               nixpkgs.lib.findFirst (package: nixpkgs.lib.getName package == "pi")
@@ -764,13 +815,9 @@
             coordinatorPi = findPiWrapper coordinator;
             zenbookPi = findPiWrapper zenbook;
             coordinatorFlmManifest = coordinator.environment.etc."local-models/fastflowlm.json".source;
-            workerFlmManifest = worker.environment.etc."local-models/fastflowlm.json".source;
             modelPackagePaths = map toString (builtins.attrValues localModelStore.packages);
             coordinatorExtraDependencies = map toString coordinator.system.extraDependencies;
-            workerExtraDependencies = map toString worker.system.extraDependencies;
-            selectedDeploymentIds = nixpkgs.lib.unique (
-              coordinator.services.local-models.allow ++ worker.services.local-models.allow
-            );
+            selectedDeploymentIds = coordinator.services.local-models.allow;
             selectedWeightArtifactIds = nixpkgs.lib.unique (
               nixpkgs.lib.concatMap (
                 deploymentId:
@@ -827,22 +874,13 @@
               "qwen3-vl-embedding-8b-q8-0"
             ];
           assert
-            worker.services.local-models.allow == [
-              "qwen36-35b-a3b-mtp-ud-q8-k-xl"
-              "qwen36-27b-mtp-ud-q8-k-xl"
-              "gemma4-26b-a4b-it-mtp-q8-0"
-              "fara15-27b-q8-0"
-            ];
-          assert
             coordinator.services.local-models.artifacts == [
               "vibevoice-asr-bf16"
               "vibevoice-large-bf16"
               "vibevoice-qwen25-7b-tokenizer"
             ];
-          assert worker.services.local-models.artifacts == [ ];
           assert
             builtins.length (nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies) == 16;
-          assert builtins.length (nixpkgs.lib.intersectLists modelPackagePaths workerExtraDependencies) == 6;
           assert nixpkgs.lib.all (
             quantization:
             nixpkgs.lib.elem quantization [
@@ -861,36 +899,19 @@
               "qwen3.6-27b"
               "qwen3.6-35b-a3b"
             ];
-          assert
-            builtins.attrNames workerSettings.models == [
-              "fara1.5-27b"
-              "gemma4-26b-a4b-it"
-              "qwen3.6-27b"
-              "qwen3.6-35b-a3b"
-            ];
           assert coordinatorSettings.peers == { };
-          assert workerSettings.peers == coordinatorSettings.peers;
           assert coordinator.systemd.services.llama-swap.environment.LLAMA_MEDIA_MARKER == "<__media__>";
-          assert worker.systemd.services.llama-swap.environment.LLAMA_MEDIA_MARKER == "<__media__>";
           assert
             coordinator.systemd.services.llama-swap.environment.XDG_CACHE_HOME == "/var/cache/llama-swap";
-          assert worker.systemd.services.llama-swap.environment.XDG_CACHE_HOME == "/var/cache/llama-swap";
           assert coordinator.hardware.amd-npu.enableNPU;
-          assert worker.hardware.amd-npu.enableNPU;
           assert nixpkgs.lib.elem "amd_iommu=on" coordinator.boot.kernelParams;
-          assert nixpkgs.lib.elem "amd_iommu=on" worker.boot.kernelParams;
-          assert !(nixpkgs.lib.elem "amd_iommu=off" worker.boot.kernelParams);
           assert
             coordinator.services.npu-llm.models == [
               "gemma4-it:e4b"
               "gpt-oss:20b"
             ];
-          assert worker.services.npu-llm.models == coordinator.services.npu-llm.models;
           assert nixpkgs.lib.all (unit: !(nixpkgs.lib.hasPrefix "flm-" unit)) (
             builtins.attrNames coordinator.systemd.services
-          );
-          assert nixpkgs.lib.all (unit: !(nixpkgs.lib.hasPrefix "flm-" unit)) (
-            builtins.attrNames worker.systemd.services
           );
           assert nixpkgs.lib.all (
             unit: !(nixpkgs.lib.hasPrefix "flm-" unit)
@@ -904,7 +925,6 @@
           assert !(localModelCatalog.deployments."flm-gemma4-it-e4b" ? peer);
           assert !(localModelCatalog.deployments."flm-gpt-oss-20b" ? peer);
           assert !(nixpkgs.lib.hasInfix "-hf" (builtins.toJSON coordinatorSettings));
-          assert !(nixpkgs.lib.hasInfix "-hf" (builtins.toJSON workerSettings));
           assert
             localModelCatalog.backendKinds == {
               appliances = [ "npu" ];
@@ -955,7 +975,6 @@
                 ["flm", "run", "gpt-oss:20b"]
               ]
             ' ${coordinatorFlmManifest} >/dev/null
-            ${pkgs.diffutils}/bin/cmp ${coordinatorFlmManifest} ${workerFlmManifest}
 
             ${pkgs.gnugrep}/bin/grep -F 'export LLAMA_SWAP_PORT=9292' ${coordinatorPi}/bin/pi >/dev/null
             ${pkgs.gnugrep}/bin/grep -F -- '-e ${pkgs.pi-llama-swap-extension}' \

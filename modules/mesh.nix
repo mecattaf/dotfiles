@@ -1,7 +1,7 @@
 { lib, ... }:
 # SSH mesh trust, derived from the single-source registry. Every host with a
 # recorded host key is pre-seeded into known_hosts (no TOFU prompt); every recorded
-# user key is authorized for tom on every host (any box → any box).
+# user key is authorized for tom on every remaining host (any box → any box).
 #
 # Deterministic host *identity* (so known_hosts can be trusted before a host's first
 # boot) comes from the secrets layer wiring the private host keys — see the agenix

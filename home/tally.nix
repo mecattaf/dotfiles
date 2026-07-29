@@ -8,24 +8,18 @@
 # tally — the single coordinator for user-decided impure work.
 #
 # home/home.nix is shared by the fleet and the standalone bridge, but the daemon,
-# logical pools, remote executor, and calendar producers exist ONLY on coordinator.
-# worker remains optional execution/GPU capacity through the daemonless SSH
-# executor; zenbook-duo remains a best-effort target of the coordinator-owned
-# deploy workflow. Neither is required for coordinator maintenance.
+# logical pools, local executor, and calendar producers exist ONLY on coordinator.
+# zenbook-duo remains a best-effort target of the coordinator-owned deploy
+# workflow and is not required for coordinator maintenance.
 #
 # The calendar remains systemd's clock, while tally owns admission, ordering,
 # execution, and proof. One nightly item leases the build lane and coordinator GPU
 # for the complete local build/deploy transaction, so it waits for active work
-# without making the soft-retired worker part of the maintenance critical path.
+# while keeping maintenance local to the coordinator.
 let
   hostName = if osConfig == null then "bridge" else osConfig.networking.hostName;
   isCoordinator = hostName == "coordinator";
   tallyPackage = inputs.tally.packages.${pkgs.stdenv.hostPlatform.system}.tally;
-
-  # The coordinator reads the declaratively delivered mesh key directly. The
-  # mutable ~/.ssh seed remains useful interactively but is not a daemon input.
-  meshIdentity = if isCoordinator then osConfig.age.secrets.ssh-user-key.path else "/dev/null";
-  knownHosts = "/etc/ssh/ssh_known_hosts";
 
   systemService = unit: [
     # NixOS installs sudo's setuid entry point in security.wrapperDir. The
@@ -39,8 +33,8 @@ let
     unit
   ];
 
-  # Fixed receiver used by worker's hardware tripwire. The sleep runs locally on
-  # coordinator: it needs only to hold the logical worker-gpu gate for 30 minutes.
+  # Fixed receiver used by the coordinator's hardware tripwire. The sleep holds
+  # the logical coordinator-gpu gate for 30 minutes.
   # Interrupt priority makes it next, while hardPreempt=false means it never kills
   # the current GPU holder.
   cooldownReceiver = pkgs.writeShellApplication {
@@ -58,12 +52,12 @@ let
       [[ "$sensor_kind" =~ ^[A-Za-z0-9:_-]+$ ]]
 
       stamp="$(${pkgs.coreutils}/bin/date -u +%Y%m%dT%H%M%SZ)"
-      dedup="gpu-cooldown-worker-''${sensor_kind}-''${temp_c}C-''${stamp}"
+      dedup="gpu-cooldown-coordinator-''${sensor_kind}-''${temp_c}C-''${stamp}"
       socket="/run/user/$(id -u)/tally/tally.sock"
 
       exec ${tallyPackage}/bin/tally --socket "$socket" enqueue \
         --source calendar \
-        --pool worker-gpu \
+        --pool coordinator-gpu \
         --priority interrupt \
         --dedup-key "$dedup" \
         --no-enqueue \
@@ -92,8 +86,7 @@ in
     # building the generation.
     enqueue.fanoutCap = 400;
 
-    # These are real contention lanes, not synthetic maintenance pools. All are
-    # centrally owned even when their physical resource is on worker.
+    # These are real contention lanes, not synthetic maintenance pools.
     pools = lib.optionalAttrs isCoordinator {
       build = {
         resource = "build-slot";
@@ -116,12 +109,6 @@ in
         enforce = "cooperative";
         hardPreempt = false;
       };
-      worker-gpu = {
-        resource = "vram";
-        capacity = 1;
-        enforce = "cooperative";
-        hardPreempt = false;
-      };
       local-ai-review = {
         resource = "mutex";
         capacity = 1;
@@ -139,18 +126,9 @@ in
       };
     };
 
-    # worker runs only tally's short-lived remote helper under tom's user systemd
-    # manager. Lease ownership and the durable row never leave coordinator.
-    executors = lib.optionalAttrs isCoordinator {
-      worker = {
-        host = "worker";
-        user = "tom";
-        identityFile = meshIdentity;
-        knownHostsFile = knownHosts;
-        program = "${tallyPackage}/bin/tally";
-        stateDir = "/home/tom/.local/state/tally-remote";
-      };
-    };
+    # All jobs execute locally on coordinator; no daemonless SSH executor is
+    # part of the active topology.
+    executors = { };
 
     # One low-priority durable row replaces the old 02:00/03:30/04:30/06:00 chain.
     # It holds the build and coordinator GPU lanes end-to-end, making the measured

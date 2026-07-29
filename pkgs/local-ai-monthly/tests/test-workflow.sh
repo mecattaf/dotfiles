@@ -48,8 +48,7 @@ cat > "$registry" <<'JSON'
   },
   "hardware_context": {
     "nodes": [
-      {"name":"coordinator","hardware":"128 GiB test host","policy":"NPU and IOMMU enabled"},
-      {"name":"worker","hardware":"128 GiB test host","policy":"NPU and IOMMU enabled"}
+      {"name":"coordinator","hardware":"128 GiB test host","policy":"NPU and IOMMU enabled"}
     ]
   },
   "model_selection_policy": {
@@ -104,7 +103,7 @@ cat > "$capture/catalog.json" <<'JSON'
     "best": {
       "status": "canonical", "role": "quality", "ramTierGb": 64,
       "model": "best-model", "backend": "vulkan", "evidence": "matched-local",
-      "hosts": ["coordinator", "worker"], "artifacts": {"model": "best-q8"}
+      "hosts": ["coordinator"], "artifacts": {"model": "best-q8"}
     },
     "fallback": {
       "status": "canonical", "role": "general", "ramTierGb": 16,

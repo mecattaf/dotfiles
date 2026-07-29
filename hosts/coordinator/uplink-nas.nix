@@ -27,7 +27,7 @@ in
 #   - the LaCie 4TB USB NAS (/mnt/nas) + its thermal/power suite.
 {
   # Internet uplink: the Freebox AP over wifi (wlp192s0). Ported from the live
-  # imperative NM profile that was hand-copied off the worker on flash night
+  # imperative NM profile that was hand-copied during flash night
   # (refs #37); field-for-field mirror of `nmcli connection show Freebox-AB3ACE`
   # (2026-07-11), minus the PSK, which comes from secrets/wifi.age via
   # `environmentFiles` `$FREEBOX_PSK` substitution. Both halves are gated on

@@ -1,11 +1,9 @@
 {
-  config,
   inputs,
-  lib,
   pkgs,
   ...
 }:
-# Accelerated AI package plane shared by the two Strix Halo nodes.
+# Accelerated AI package plane for the coordinator.
 #
 # Source split (deliberate, after inspecting both upstreams at their 2026-07-21
 # heads):
@@ -47,27 +45,14 @@ let
   stableDiffusionRocmCommands = commandsOnly "strix-stable-diffusion-cpp-rocm-commands" amdAi.stable-diffusion-cpp-rocm;
 in
 {
-  assertions = [
-    {
-      assertion = config.myCluster.role == "coordinator" || config.myCluster.role == "worker";
-      message = "modules/strix-ai.nix is only valid on a Strix cluster role";
-    }
-  ];
-
-  # User-facing engines and launchers on BOTH GPU nodes. FLM is not repeated here:
-  # Both hosts already receive it from the shared hardware.amd-npu module.
+  # User-facing engines and launchers. FLM is not repeated here: the
+  # hardware.amd-npu module already provides it.
   environment.systemPackages = [
     llamaRocmCommands
     llamaVulkanCommands
     stableDiffusionRocmCommands
     strixAi.ds4-rocm
     strixAi.vllm-rocm
-  ]
-  ++ lib.optionals (config.myCluster.role == "coordinator") [
-    # This program SSHes to both boxes and gathers the result, so only the
-    # orchestrating node needs it in PATH; its vLLM/Ray closure is still shared
-    # through the fleet cache with the worker's vLLM package.
-    strixAi.strix-halo-vllm-pair-bench-gfx1151
   ];
 
   # Development/runtime libraries have no useful standalone command. Root them in
@@ -83,12 +68,12 @@ in
   # upstream's 80 GiB default and enable unrelated tmpfs/TuneD policy.
   hardware.firmware = [ strixAi.strix-halo-mes-firmware ];
 
-  # Not installed: ec-su-axb35-monitor is for Sixunited AXB35 boards. Both nodes
-  # identify as Framework Desktop / FRANMFCP06, so its matching kernel driver would
+  # Not installed: ec-su-axb35-monitor is for Sixunited AXB35 boards. This host
+  # identifies as Framework Desktop / FRANMFCP06, so its matching kernel driver would
   # no-op and the monitor would have no sysfs endpoint. It remains buildable as
   # `.#ec-su-axb35-monitor` for a future compatible machine.
   #
   # Also not a system dependency: `.#live-iso`. Rooting an installer ISO in every
   # generation would force a multi-GiB image build on each nightly switch; keeping it
-  # as a flake package gives either node a reproducible on-demand build instead.
+  # as a flake package gives the coordinator a reproducible on-demand build instead.
 }

@@ -24,9 +24,9 @@ members on coordinator llama-swap.
   windowed-consumption budget pools.
 - Tally 0.1.0 reserves `build` for `drv()` nodes. Shell nodes use
   `flow-build`; the nightly deploy leases both lanes to retain exclusivity.
-- The returned worker is being retired under #117. There is no worker-first
+- The returned compute host is removed under #117. There is no remote-first
   activation; the operator performs the coordinator switch and test drive
-  manually. This change does not deploy or switch a host.
+  manually. This repository change does not deploy or switch a host.
 - The ORACLE-DELTAS reconciliation remains Tom's separate, non-blocking item.
 
 ## Run order and gating

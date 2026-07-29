@@ -4,12 +4,11 @@
 # state dir + tmpfiles, and the `microvm` system user — i.e. the DURABLE path
 # from the /microvm skill (declarative `microvm.vms` + `microvm -c/-Ru`).
 #
-# Enabled on the WORKER only: soft retirement does not remove its optional
-# compute role, so durable microVM execution remains available there whenever
-# the tailnet worker is online. The EPHEMERAL default path
+# Enabled on the coordinator, the durable execution and artifact front door.
+# Guests are recreated from their declarative source; no mutable VM state is
+# imported from another host. The EPHEMERAL default path
 # (`nix run …config.microvm.declaredRunner`) needs none of this — only the flake
-# input — so it works fleet-wide regardless of this module. Move this import to
-# another host if the sandbox-execution target changes.
+# input — so it works on any capable machine regardless of this module.
 #
 # Enabling the module boots NO VM: it only installs the platform. A guest exists
 # only once you `microvm -c <name>` or declare `microvm.vms.<name>`. Teardown is

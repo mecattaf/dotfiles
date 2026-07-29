@@ -1,6 +1,6 @@
 # Local-AI roster rationale
 
-[`2026-07-26.md`](2026-07-26.md) is the reviewed anchor for the current typed
+[`2026-07-29.md`](2026-07-29.md) is the reviewed anchor for the current typed
 model roster. Add another file here only when a human-approved roster decision
 needs durable rationale alongside `lib/local-models.nix`.
 
@@ -13,4 +13,7 @@ therefore leaves the next comparison interval unchanged.
 Any future roster edit remains a separate human change. It must preserve exact
 artifact identity, immutable HF revision, selected files and sizes, LFS
 SHA-256/Nix SRI, runtime provenance, evidence class, Q8 precision policy, and
-explicit per-host allowlists.
+explicit coordinator allowlist.
+
+Superseded topology-era tallies live under [`../../old/local-ai/tallies/`](../../old/local-ai/tallies/)
+and are evidence only.

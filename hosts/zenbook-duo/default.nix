@@ -17,13 +17,13 @@
     inputs.nixos-hardware.nixosModules.common-pc-laptop
     inputs.nixos-hardware.nixosModules.common-pc-laptop-ssd
     # Per-machine AdGuard Home DNS filter (loopback 127.0.0.1:53, resolved
-    # forwards to it). Same module proven on the worker first (2026-07-13).
+    # forwards to it).
     ../../modules/adguardhome.nix
   ];
 
   networking.hostName = "zenbook-duo";
 
-  # agenix secret delivery ON — same post-flash two-step the Strix pair went through
+  # agenix secret delivery ON — same post-flash two-step used by the coordinator
   # (the delivered /etc/ssh/ssh_host_ed25519_key matches mesh-registry.nix, so agenix
   # decrypts against it). Delivers the shared tom@mesh SSH key for fleet access.
   mySecrets.enable = true;
@@ -38,7 +38,7 @@
   systemd.user.services.niri.serviceConfig.TimeoutStartSec = lib.mkForce "120";
 
   # Dual-touchscreen: this host ALONE runs the PR #1856 niri (per-device touch →
-  # output mapping); the Strix desktops stay on stock `pkgs.niri`. The fork build
+  # output mapping); the coordinator stays on stock `pkgs.niri`. The fork build
   # is a lazy overlay attr, so only this override triggers it. Per-device blocks
   # ship via ~/.config/niri-local.kdl (home.nix, host-gated). See overlays/default.nix
   # and dotfiles#67. Drop this line + the niri-local blocks once #1856 lands upstream.

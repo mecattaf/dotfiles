@@ -37,7 +37,8 @@ prepare() {
     and (.model_selection_policy.preferred_quantizations | index("Q8_0") != null)
     and (.model_selection_policy.active_lower_bit_exceptions | type == "array")
     and (.model_selection_policy.native_format_exceptions | type == "array")
-    and (.hardware_context.nodes | type == "array" and length == 2)
+    and (.hardware_context.nodes | type == "array" and length == 1)
+    and (.hardware_context.nodes[0].name == "coordinator")
   ' "$registry" >/dev/null
 
   canonical_copy "$manifest" "$out/manifest.json"

@@ -11,7 +11,7 @@
 # input pinned in flake.lock — but ntm ships no home-manager module (only
 # packages.*.ntm), so this file IS the module: package + config + user
 # service, all gated to the zenbook-duo. home/home.nix imports it on every
-# host, but everywhere else (Strix pair, standalone bridge) the mkIf leaves
+# host, but everywhere else (coordinator, standalone bridge) the mkIf leaves
 # it inert, same shape as tally's conductor gate.
 #
 # Division of labor with the PR #1856 niri fork (hosts/zenbook-duo +

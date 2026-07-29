@@ -1,34 +1,33 @@
 # Local model roster
 
-Anchor: 2026-07-26. “Canonical” marks an accepted catalog identity. Actual
-download authority comes only from each host's explicit deployment and artifact
-allowlists.
+Anchor: 2026-07-29. “Canonical” marks an accepted catalog identity. Actual
+download authority comes only from the coordinator's explicit deployment and
+artifact allowlists.
 
-The Nix catalog contains 15 deployment rows, 22 artifacts, and 47 pinned files
-totaling 505,130,234,729 bytes (470.44 GiB), including deferred and historical
-entries. The active split is intentionally much narrower: see the
-[final deployment decision](deployment-decisions-2026-07-26.md) for exact host
-membership and totals. In particular, the coder-next, uncensored, and retired
-DS4 weights are not materialized.
+The Nix catalog contains 14 deployment rows, 20 artifacts, and 45 pinned files
+totaling 336,689,129,737 bytes (313.57 GiB), including deferred and catalog-only
+entries. The active set is intentionally much narrower: see the
+[current deployment decision](deployment-decisions-2026-07-29.md) for exact
+coordinator membership and totals. In particular, the coder-next and uncensored
+weights are not materialized, and the retired DS4 artifacts are absent entirely.
 
 ## Model and appliance catalog
 
 All llama.cpp rows use the dotfiles-pinned
 [`ggml-org/llama.cpp@571d0d5`](https://github.com/ggml-org/llama.cpp/commit/571d0d540df04f25298d0e159e520d9fc62ed121).
 The table links immutable Hugging Face revisions. A catalog row is not evidence
-that its artifacts are selected on either host. The FastFlowLM rows are direct
+that its artifacts are selected by the coordinator. The FastFlowLM rows are direct
 runtime appliances, not llama-swap deployments.
 
 | Class | Public model ID | Exact artifact source | Inference | Evidence at anchor |
 |---|---|---|---|---|
-| Small / fast | `gemma4-it:e4b` | FastFlowLM runtime tag; no HF artifact is owned by this catalog | Ad-hoc `flm run gemma4-it:e4b` | Available on both Strix NPUs with zero boot residency |
-| Small / fast | `gpt-oss:20b` | [`FastFlowLM/GPT-OSS-20B-NPU2@12ce92d`](https://huggingface.co/FastFlowLM/GPT-OSS-20B-NPU2/tree/12ce92d2bfa031761ab876b3b845a7dabeab1d98) via FastFlowLM runtime pull | Ad-hoc `flm run gpt-oss:20b` | Available on both Strix NPUs with zero boot residency |
+| Small / fast | `gemma4-it:e4b` | FastFlowLM runtime tag; no HF artifact is owned by this catalog | Ad-hoc `flm run gemma4-it:e4b` | Available on the coordinator NPU with zero boot residency |
+| Small / fast | `gpt-oss:20b` | [`FastFlowLM/GPT-OSS-20B-NPU2@12ce92d`](https://huggingface.co/FastFlowLM/GPT-OSS-20B-NPU2/tree/12ce92d2bfa031761ab876b3b845a7dabeab1d98) via FastFlowLM runtime pull | Ad-hoc `flm run gpt-oss:20b` | Available on the coordinator NPU with zero boot residency |
 | General | `qwen3.6-35b-a3b` | [`unsloth/Qwen3.6-35B-A3B-MTP-GGUF@5bc3e23`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/tree/5bc3e238d916f48a861bac2f8a1990a0e9b7e98d), `Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf` | llama.cpp Vulkan with integrated matched MTP | Exact Strix Halo benchmark: 46.33 tok/s decode and 1045 tok/s 512-token prefill |
-| Coding | `qwen3.6-27b` | stock [`Qwen/Qwen3.6-27B@6a9e13b`](https://huggingface.co/Qwen/Qwen3.6-27B/tree/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9), quantized by [`unsloth/Qwen3.6-27B-MTP-GGUF@5cb35eb`](https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/tree/5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace) as `Qwen3.6-27B-UD-Q8_K_XL.gguf` | llama.cpp Vulkan with integrated matched MTP | Pi chat locally matched on both Strix Halo hosts with active MTP draft acceptance and RADV render-node use; stock checkpoint, not a fine-tune |
-| Coding candidate | `qwen3-coder-next` | [`unsloth/Qwen3-Coder-Next-GGUF@ce09c67`](https://huggingface.co/unsloth/Qwen3-Coder-Next-GGUF/tree/ce09c67b53bc8739eef83fe67b2f5d293c270632), `Qwen3-Coder-Next-UD-Q4_K_XL.gguf` | llama.cpp Vulkan | Catalog-only historical candidate; its low-bit artifact is excluded from both hosts by the active Q8 policy |
+| Coding | `qwen3.6-27b` | stock [`Qwen/Qwen3.6-27B@6a9e13b`](https://huggingface.co/Qwen/Qwen3.6-27B/tree/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9), quantized by [`unsloth/Qwen3.6-27B-MTP-GGUF@5cb35eb`](https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/tree/5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace) as `Qwen3.6-27B-UD-Q8_K_XL.gguf` | llama.cpp Vulkan with integrated matched MTP | Pi chat locally matched on coordinator with active MTP draft acceptance and RADV render-node use; stock checkpoint, not a fine-tune |
+| Coding candidate | `qwen3-coder-next` | [`unsloth/Qwen3-Coder-Next-GGUF@ce09c67`](https://huggingface.co/unsloth/Qwen3-Coder-Next-GGUF/tree/ce09c67b53bc8739eef83fe67b2f5d293c270632), `Qwen3-Coder-Next-UD-Q4_K_XL.gguf` | llama.cpp Vulkan | Catalog-only historical candidate; its low-bit artifact is excluded from the active coordinator allowlist by the Q8 policy |
 | Coding | `gemma4-26b-a4b-it` | [`unsloth/gemma-4-26B-A4B-it-GGUF@c099eb4`](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/tree/c099eb48e663fd284577b04978a94ffccb261841), `gemma-4-26B-A4B-it-Q8_0.gguf` plus `MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf` | llama.cpp Vulkan with matched Q8 MTP | Active non-QAT instruction checkpoint; Google's QAT identity was dropped because that release is Q4_0-only |
-| Computer use | `fara1.5-27b` | [`bartowski/Fara1.5-27B-GGUF@dd7cba9`](https://huggingface.co/bartowski/Fara1.5-27B-GGUF/tree/dd7cba968d1a9c8feab0c2b85d93b117e6cc16fe), **Q8_0** plus BF16 projector | llama.cpp ROCm | Explicit Q8 choice; active on both hosts |
-| Retired SOTA | `deepseek-v4-flash` | [`antirez/deepseek-v4-gguf@a88c423`](https://huggingface.co/antirez/deepseek-v4-gguf/tree/a88c423b511666d7ff7a4dcaee651669312bea97), full Q4 imatrix model + `DeepSeek-V4-Flash-MTP-Q4K-Q8_0-F32.gguf` | Historical [`ejpir/ds4-hip@3490c2e`](https://github.com/ejpir/ds4-hip/commit/3490c2e46c91331323dc0f2bfb7d3018e227fdff) dual-node run | Exact identity and roughly 11 tok/s witness retained; deployment retired on 2026-07-26, so its roughly 157 GiB weights are excluded from materialization |
+| Computer use | `fara1.5-27b` | [`bartowski/Fara1.5-27B-GGUF@dd7cba9`](https://huggingface.co/bartowski/Fara1.5-27B-GGUF/tree/dd7cba968d1a9c8feab0c2b85d93b117e6cc16fe), **Q8_0** plus BF16 projector | llama.cpp ROCm | Explicit Q8 choice; active on coordinator |
 | Uncensored / Heretic | `qwen3.6-35b-heretic` | [`Youssofal/Qwen3.6-35B-A3B-Abliterated-Heretic-GGUF@4c22107`](https://huggingface.co/Youssofal/Qwen3.6-35B-A3B-Abliterated-Heretic-GGUF/tree/4c22107061e656fb2a87a3ec2491bb61975eb581), Q4_K_M | llama.cpp Vulkan | Artifact provenance resolved; local behavior/quality run pending |
 | Uncensored / tuned | `supergemma4-26b-uncensored` | [`Jiunsong/supergemma4-26b-uncensored-gguf-v2@3ea8c45`](https://huggingface.co/Jiunsong/supergemma4-26b-uncensored-gguf-v2/tree/3ea8c452a2b136875c0c8b529612bed39c81e27a), Q4_K_M | llama.cpp Vulkan | Exact Ciru throughput row: 66.07 tok/s decode |
 | Uncensored / aggressive | `glm-4.7-flash-uncensored` | [`tripolskypetr/GLM-4.7-Flash-Uncensored-Aggressive-GGUF@5ad26dd`](https://huggingface.co/tripolskypetr/GLM-4.7-Flash-Uncensored-Aggressive-GGUF/tree/5ad26ddb3ea7d64bc56ba1dab20bc52e776439cd), Q4_K_M | llama.cpp Vulkan | Different family and refusal-removal route; local run pending |
@@ -91,6 +90,6 @@ MIGraphX variant but does not replace that journal check.
   can choose benchmark strength or mixed-modal retrieval explicitly.
 - FastFlowLM models are ad-hoc CLI workloads. Do not configure `flm serve`
   units or add their model IDs as llama-swap peers.
-- DeepSeek V4's dual-node DS4 row is historical evidence, not a runnable roster
-  member. The DS4 package remains installed, but its weights are not materialized.
+- The former DeepSeek V4/DS4 topology is not an active catalog row. Its useful
+  benchmark and runbook evidence remains in `docs/old/`.
 - Audio, image, and video generation remain parked and have no roster entries.
