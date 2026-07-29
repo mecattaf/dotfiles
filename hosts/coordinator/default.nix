@@ -23,9 +23,8 @@
     ../../modules/caddy-artifacts.nix
     ../../modules/cli-anything.nix
     ../../modules/strix.nix
-    # Desktop-only local-media plane: mDNS discovery (avahi) + AirPlay output for
-    # the JBL Authentics 200 + CUPS/driverless printing for the Brother. refs the
-    # 2026-07-24 "Chrome can't find the JBL" fix (mDNS was firewalled off).
+    # Desktop-only AirPlay output for the JBL Authentics 200. Shared mDNS and
+    # Brother printing now live fleet-wide in modules/printing.nix.
     ../../modules/desktop-media.nix
   ];
 

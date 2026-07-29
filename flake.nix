@@ -429,6 +429,7 @@
         in
         {
           inherit (pkgs)
+            brother-print-text
             local-ai-monthly
             mactahoe-gtk-theme
             mactahoe-icon-theme
@@ -549,6 +550,52 @@
             ${./flake.nix} ${./lib} ${./modules} ${./hosts} ${./overlays} ${./home} > $out 2>&1 \
             || (cat $out; exit 1)
         '';
+
+        printing =
+          let
+            coordinator = self.nixosConfigurations.coordinator.config;
+            zenbook = self.nixosConfigurations.zenbook-duo.config;
+            activeHosts = [
+              coordinator
+              zenbook
+            ];
+            expectedPrinter = {
+              name = "Brother_HL_L2445DW";
+              description = "Brother HL-L2445DW";
+              location = "Home";
+              deviceUri = "ipp://BRW08F97E55F396.local:631/ipp/print";
+              model = "everywhere";
+              ppdOptions.PageSize = "A4";
+            };
+          in
+          assert nixpkgs.lib.all (host: host.services.printing.enable) activeHosts;
+          assert nixpkgs.lib.all (host: host.services.avahi.enable) activeHosts;
+          assert nixpkgs.lib.all (host: host.services.avahi.nssmdns4) activeHosts;
+          assert nixpkgs.lib.all (host: host.services.avahi.openFirewall) activeHosts;
+          assert nixpkgs.lib.all (
+            host: host.services.resolved.settings.Resolve.MulticastDNS == false
+          ) activeHosts;
+          assert nixpkgs.lib.all (
+            host: host.hardware.printers.ensureDefaultPrinter == expectedPrinter.name
+          ) activeHosts;
+          assert nixpkgs.lib.all (
+            host: host.hardware.printers.ensurePrinters == [ expectedPrinter ]
+          ) activeHosts;
+          assert nixpkgs.lib.all (
+            host: builtins.elem pkgs.brother-print-text host.environment.systemPackages
+          ) activeHosts;
+          pkgs.runCommand "printing"
+            {
+              nativeBuildInputs = [
+                pkgs.brother-print-text
+                pkgs.gnugrep
+              ];
+            }
+            ''
+              brother-print-text --help \
+                | grep -F 'usage: brother-print-text [--] <text...>' >/dev/null
+              touch "$out"
+            '';
 
         huggingface-cli-smoke =
           let

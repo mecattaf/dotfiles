@@ -101,6 +101,10 @@ final: prev: {
   # input; this wrapper reads the coordinator's agenix token only at runtime.
   huggingface-cli = final.callPackage ../pkgs/huggingface-cli.nix { };
 
+  # Direct Brother JetDirect path for trivial text. CUPS remains the rendered
+  # document path; modules/printing.nix installs this only on the active fleet.
+  brother-print-text = final.callPackage ../pkgs/brother-print-text.nix { };
+
   # Artifact system toolchain (sovereign replacement for claude.ai Artifacts;
   # skills: md-artifact / presentation-beta / publish-artifact). Identity knobs
   # come from modules/artifacts-defaults.nix — the one edit point — passed in

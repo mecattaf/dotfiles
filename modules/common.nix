@@ -12,6 +12,7 @@
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
     ./dotfiles-bootstrap.nix # ensure ~/mecattaf/dotfiles exists before the session
     ./artifacts.nix # myArtifacts options (+ worker VM-port window); serving plane is coordinator-only (caddy-artifacts.nix)
+    ./printing.nix # CUPS + Brother IPP/raw-text path (active fleet + future hosts)
   ];
 
   # --- identity / base ---
