@@ -14,11 +14,13 @@
 #     subprocess in the spawn path, so every Mod+Shift+Return is instant and
 #     always a BRAND-NEW independent session (two presses in the same second
 #     never collide, so kitty never mirrors an existing session). The richer
-#     LLM title (#38) is now applied ASYNCHRONOUSLY and purely COSMETICALLY by
-#     `zmx-retitle` after the window is already up: it retitles the kitty
+#     Optional LLM title enrichment (#38) is applied ASYNCHRONOUSLY and purely
+#     COSMETICALLY by `zmx-retitle` after the window is already up: it retitles the kitty
 #     window only (zmx has no rename/display-name concept — the session name
 #     IS its identity) and silently no-ops on any failure. It NEVER changes
-#     the session name and NEVER delays the launch.
+#     the session name and NEVER delays the launch. It is disabled by default
+#     now that FastFlowLM models are ad-hoc `flm run` workloads rather than
+#     persistent llama-swap peers.
 #   - elsewhere (worker / zenbook thin-client): open a new kitty that
 #     immediately SSHs to coordinator via the `desk` fish function; niri's
 #     window-rule renders the white "remote" border once desk sets the title.
@@ -93,7 +95,7 @@ sock="unix:@zmx-${sess}"
 # the name, retitles the kitty window. On ANY failure — flm down, ZMX_TITLE=0,
 # no kitten — it silently no-ops, leaving the natural terminal title. It NEVER
 # touches the zmx session name.
-if [[ "${ZMX_TITLE:-1}" == "1" ]]; then
+if [[ "${ZMX_TITLE:-0}" == "1" ]]; then
     setsid "$(dirname "$0")/zmx-retitle" "$sock" "$sess" "${cwd:-$HOME}" \
         </dev/null >/dev/null 2>&1 &
 fi

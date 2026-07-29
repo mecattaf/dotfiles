@@ -24,23 +24,6 @@ let
   canonicalModelIds = map (deployment: deployment.model) canonicalList;
   selectedDeployments = lib.filterAttrs (name: _: lib.elem name cfg.allow) catalog.deployments;
   selectedList = builtins.attrValues selectedDeployments;
-  peerDeployments = lib.filter (deployment: deployment.peer != null) selectedList;
-  gpuDeployments = lib.filterAttrs (_: deployment: deployment.peer == null) selectedDeployments;
-
-  peerNames = lib.unique (map (deployment: deployment.peer.name) peerDeployments);
-  peers = lib.genAttrs peerNames (
-    peerName:
-    let
-      members = lib.filter (deployment: deployment.peer.name == peerName) peerDeployments;
-    in
-    {
-      proxy = (builtins.head members).peer.proxy;
-      models = map (deployment: deployment.model) members;
-    }
-  );
-  peerUnits = lib.unique (
-    lib.filter (unit: unit != null) (map (deployment: deployment.peer.systemdUnit) peerDeployments)
-  );
 
   modelRenderers = import ../lib/local-model-runtime.nix {
     inherit lib;
@@ -56,9 +39,7 @@ let
 
   referencedArtifactIds =
     deployment: lib.filter (artifactId: artifactId != null) (builtins.attrValues deployment.artifacts);
-  deploymentArtifactIds = lib.unique (
-    lib.concatMap referencedArtifactIds (builtins.attrValues gpuDeployments)
-  );
+  deploymentArtifactIds = lib.unique (lib.concatMap referencedArtifactIds selectedList);
   hostArtifactIds = lib.unique (deploymentArtifactIds ++ cfg.artifacts);
   hostArtifactPackages = map (
     artifactId: modelStore.materialized.${artifactId}.package
@@ -110,18 +91,11 @@ let
       };
     };
 
-  gpuModels = lib.mapAttrs' renderModel gpuDeployments;
+  localModels = lib.mapAttrs' renderModel selectedDeployments;
 
   artifactIds = builtins.attrNames catalog.artifacts;
   deploymentIds = builtins.attrNames catalog.deployments;
   artifactRows = builtins.attrValues catalog.artifacts;
-  peerProxyFor =
-    peerName:
-    lib.unique (
-      map (deployment: deployment.peer.proxy) (
-        lib.filter (deployment: deployment.peer != null && deployment.peer.name == peerName) deploymentList
-      )
-    );
   manifest = (pkgs.formats.json { }).generate "local-model-catalog.json" catalog;
   artifactEtc = lib.listToAttrs (
     map (artifactId: {
@@ -140,12 +114,9 @@ let
     {
       assertion = lib.all (
         deployment:
-        if deployment.peer == null then
-          lib.elem deployment.backend catalog.backendKinds.local
-        else
-          lib.elem deployment.backend catalog.backendKinds.peers
+        lib.elem deployment.backend (catalog.backendKinds.local ++ catalog.backendKinds.appliances)
       ) deploymentList;
-      message = "Local deployments must use rendered backends and peers must use peer-only backends.";
+      message = "Every deployment must use a declared local or appliance backend.";
     }
     {
       assertion = lib.all (
@@ -172,26 +143,22 @@ let
     {
       assertion = lib.all (
         deployment:
-        if deployment.peer == null then
+        if lib.elem deployment.backend catalog.backendKinds.local then
           deployment.artifacts.model != null
         else
           referencedArtifactIds deployment == [ ]
       ) deploymentList;
-      message = "Local GPU deployments require a model artifact; external peers must not root artifacts.";
+      message = "Managed local deployments require a model artifact; runtime appliances must not root artifacts.";
     }
     {
       assertion = builtins.length canonicalModelIds == builtins.length (lib.unique canonicalModelIds);
-      message = "Canonical llama-swap model IDs must be unique per host.";
+      message = "Canonical public model IDs must be unique per host.";
     }
     {
       assertion = lib.all (
         deployment: lib.all (arg: !(lib.hasInfix "-hf" arg)) deployment.runtime.args
       ) deploymentList;
       message = "Runtime model downloads (-hf) are forbidden; use pinned store artifacts.";
-    }
-    {
-      assertion = lib.all (peerName: builtins.length (peerProxyFor peerName) == 1) peerNames;
-      message = "All deployments on one llama-swap peer must use the same proxy URL.";
     }
     {
       assertion = lib.all (
@@ -211,9 +178,12 @@ let
     }
     {
       assertion = lib.all (
-        deployment: deployment.status == "canonical" && lib.elem host deployment.hosts
+        deployment:
+        deployment.status == "canonical"
+        && lib.elem host deployment.hosts
+        && lib.elem deployment.backend catalog.backendKinds.local
       ) selectedList;
-      message = "Every allowed local-model deployment must be canonical and assigned to this host.";
+      message = "Every allowed local-model deployment must be a canonical managed backend assigned to this host.";
     }
     {
       assertion = builtins.length cfg.artifacts == builtins.length (lib.unique cfg.artifacts);
@@ -235,7 +205,8 @@ in
       default = [ ];
       description = ''
         Canonical deployment IDs to materialize and expose through llama-swap
-        on this host. Catalog entries not named here remain metadata-only.
+        on this host. Runtime appliances such as FastFlowLM stay outside this
+        list and are invoked through their own explicit CLI.
       '';
     };
 
@@ -261,16 +232,13 @@ in
     services.llama-swap.settings =
       assert catalogValid;
       {
-        inherit peers;
-        models = gpuModels;
+        models = localModels;
+        # Runtime appliances are deliberately not represented as proxy peers.
+        peers = { };
       };
 
     # Only the explicit per-host deployment/artifact lists root weight FODs.
     system.extraDependencies = hostArtifactPackages;
 
-    systemd.services.llama-swap = lib.mkIf (peerUnits != [ ]) {
-      wants = peerUnits;
-      after = peerUnits;
-    };
   };
 }

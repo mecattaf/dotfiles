@@ -6,5 +6,5 @@
     "vllm"
     "mlx"
   ];
-  peers = [ "npu" ];
+  appliances = [ "npu" ];
 }

@@ -63,7 +63,7 @@ in
   # The selected model is the only entry in Voxtype 0.7.5's registry marked as
   # compatible with its cache-aware live-streaming pipeline. Bootstrap it through
   # Voxtype's own idempotent downloader before the daemon starts, mirroring the
-  # intentional runtime-pull boundary used by FastFlowLM.
+  # runtime-owned model-data boundary used by FastFlowLM.
   systemd.user.services.voxtype = lib.mkIf (hostName == "coordinator") {
     Service = {
       # `setup --download` also persists its selected model to the default

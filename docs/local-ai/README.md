@@ -7,11 +7,14 @@ model identity, resource class, and an explicit caller boundary.
 ## Deployment state
 
 The old all-or-nothing `downloadAllModels` gate is gone. Each Strix host has an
-explicit `services.local-models.allow` deployment list and a separate list for
-non-llama speech artifacts. Only those selections enter the system closure and
-llama-swap configuration; every other catalog row remains metadata-only. See
-the [final two-node decision](deployment-decisions-2026-07-26.md) for the exact
-placement and storage totals.
+explicit `services.local-models.allow` list for command-managed llama-swap
+deployments and a separate list for non-llama speech artifacts. FastFlowLM NPU
+rows remain runtime-appliance metadata: their existing files may stay under
+`~/.config/flm/models`, but no NixOS service starts or retains them. The exact
+per-host FLM roster is still declared in `services.npu-llm.models` and rendered
+to `/etc/local-models/fastflowlm.json`. See the
+[final two-node decision](deployment-decisions-2026-07-26.md) for placement and
+storage totals.
 
 ## Hugging Face metadata CLI
 
@@ -68,7 +71,7 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 | Document OCR/RAG | Qwen3-VL 8B primary, 32B refine, Qwen3 Embedding 8B, Qwen3-VL Embedding 8B | Coordinator llama.cpp ROCm behind llama-swap | Active coordinator allowlist; text and multimodal embedders are complementary. |
 | Shared text and coding | Qwen 3.6 35B Q8 with integrated MTP, Gemma 4 26B Q8 with matched MTP | Vulkan behind llama-swap on both hosts | Active on both hosts. Qwen3-Coder-Next remains cataloged only. |
 | Computer use | Fara 1.5 27B Q8_0 plus BF16 projector | ROCm behind llama-swap on both hosts | Active on both hosts. |
-| NPU utility | FastFlowLM Gemma 4 E4B and GPT-OSS 20B | Dedicated loopback peers behind llama-swap | Active on both hosts. |
+| NPU utility | FastFlowLM Gemma 4 E4B and GPT-OSS 20B | Direct, ad-hoc `flm run <model>` | FastFlowLM is installed on both hosts; no model server starts at boot and idle residency is zero. |
 | Historical SOTA | DeepSeek V4 Flash Q4 imatrix + MTP | Retired dual-node DS4 topology | Exact artifacts and benchmark evidence remain cataloged, but the deployment is retired and its roughly 157 GiB of weights are excluded from materialization. |
 | Call transcription + diarization | Microsoft VibeVoice-ASR | Future dedicated PyTorch/ROCm batch service | BF16 payload and tokenizer are Nix-rooted on coordinator; service remains future work. |
 | Text-to-speech | VibeVoice Large community mirror | Future dedicated PyTorch/ROCm batch service | BF16 payload and tokenizer are Nix-rooted on coordinator; mirror risk remains recorded. |
@@ -76,8 +79,9 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 
 ## Text classes
 
-- **Small and fast:** `gemma4-it:e4b` and `gpt-oss:20b` on both NPUs.
-  FastFlowLM owns these weights; llama-swap exposes both as peers.
+- **Small and fast:** `gemma4-it:e4b` and `gpt-oss:20b` remain available on
+  both NPUs through an explicit `flm run <model>`. FastFlowLM owns the runtime
+  files and releases model residency when the command exits.
 - **Daily general:** Qwen 3.6 35B-A3B UD-Q8_K_XL with integrated MTP on
   Vulkan.
 - **Historical SOTA:** DeepSeek V4 Flash Q4 imatrix plus MTP through dual-node
@@ -88,10 +92,11 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 
 ## Routing and scheduling boundaries
 
-Every OpenAI-compatible local LLM or VLM call enters through llama-swap. Backend
-ports are implementation details and are not caller APIs. Modality-specific
-speech services get their own declared endpoints because they are not chat
-completion servers.
+Managed OpenAI-compatible LLM and VLM calls enter through llama-swap. Its
+command-managed GPU backends retain the normal load/unload boundary. FastFlowLM
+is deliberately separate: ad-hoc NPU work invokes `flm run <model>` directly,
+and there is no persistent FLM endpoint. Modality-specific speech services keep
+their own declared endpoints.
 
 Tally schedules, serializes, and proves the monthly community review described
 in [`monthly-workflow.md`](monthly-workflow.md). It does not retrofit historical
@@ -102,13 +107,16 @@ pre-Nix notes into the current architecture.
 1. [`../../lib/local-models.nix`](../../lib/local-models.nix) owns immutable
    artifact and deployment metadata.
 2. [`../../modules/local-models.nix`](../../modules/local-models.nix) projects
-   only the explicit host allowlists into the Nix store and llama-swap.
-3. [`deployment-decisions-2026-07-26.md`](deployment-decisions-2026-07-26.md)
+   only command-managed host allowlists into the Nix store and llama-swap;
+   runtime appliances never become proxy peers.
+3. [`../../modules/npu-llm.nix`](../../modules/npu-llm.nix) validates the
+   explicit FastFlowLM roster and writes its non-resident runtime manifest.
+4. [`deployment-decisions-2026-07-26.md`](deployment-decisions-2026-07-26.md)
    is the authoritative active split and storage ledger.
-4. [`model-roster.md`](model-roster.md) is the broader human-readable catalog,
+5. [`model-roster.md`](model-roster.md) is the broader human-readable catalog,
    including deferred rows and
-   speech appliances that do not belong in the llama-swap catalog.
-5. [`tallies/`](tallies/) records accepted roster rationale. The monthly update
+   runtime and speech appliances that do not belong in the llama-swap catalog.
+6. [`tallies/`](tallies/) records accepted roster rationale. The monthly update
    bot advances its exact research-source pins in `sources.json`; its advisory
    summary remains visible in the corresponding pull request.
 

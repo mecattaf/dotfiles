@@ -15,7 +15,7 @@
 # kitty window title. `set-window-title` is PERMANENT (no --temporary), so the
 # shell won't stomp it, and it propagates to the wayland/OS title niri shows.
 #
-# Env: ZMX_TITLE=0 disables titling entirely (matches `new-terminal`).
+# Env: ZMX_TITLE=1 opts into a separately started, short-lived FLM server.
 set -u
 
 sock="${1-}"
@@ -23,7 +23,7 @@ fallback="${2-}"
 cwd="${3:-$HOME}"
 
 [ -n "$sock" ] || exit 0
-[ "${ZMX_TITLE:-1}" = "1" ] || exit 0
+[ "${ZMX_TITLE:-0}" = "1" ] || exit 0
 command -v kitten >/dev/null 2>&1 || exit 0
 
 here="$(cd "$(dirname "$0")" 2>/dev/null && pwd)" || exit 0
