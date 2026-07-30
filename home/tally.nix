@@ -82,11 +82,19 @@ in
   services.tally = {
     enable = isCoordinator;
 
-    # The upstream academic OCR mutation ladder has a ruled 1,700-node ceiling:
-    # 100 pages × four protocols × four inputs, plus 100 arbiters. The fixed
-    # supervised Turner and Fosfuri runs are only 5 and 18 pages respectively,
-    # but the checked script keeps that complete schema bound as its fail-safe.
-    enqueue.fanoutCap = 1700;
+    # A declaratively deployed flow runner is itself a job, so every node it
+    # enqueues is a child bounded by this cap — it is the whole-flow ceiling,
+    # not just a build-time check. The retired mutation ladder's 1,700 (100
+    # pages × four protocols × four inputs, plus 100 arbiters) died with the
+    # Turner/Fosfuri sample flows in e61f906b; academic-paper-e2e replaced it
+    # and spends 6 nodes per page (raster, mech, 8B, compare, 32B, compare)
+    # plus 6 fixed (fetch, assemble, chunk, embed, index, receipt). Its
+    # argsSchema admits 1,500 pages = 9,006 nodes, which is what its
+    # meta.maxNodes 10000 declares, so the host must admit that much or the
+    # drain dies on long papers at 2am. The NAS corpus of record currently
+    # tops out at 1,215 pages (7,296 nodes) with 231 papers above the 282
+    # pages a 1,700 cap would have allowed.
+    enqueue.fanoutCap = 10000;
 
     # These are real contention lanes, not synthetic maintenance pools.
     pools = lib.optionalAttrs isCoordinator {
