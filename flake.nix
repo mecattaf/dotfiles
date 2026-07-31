@@ -626,8 +626,8 @@
           assert !(self.nixosConfigurations.coordinator.options.myArtifacts ? livePortRange);
           assert !coordinator.home-manager.users.tom.services.tally.pools.coordinator-gpu.hardPreempt;
           assert coordinator.systemd.timers.gpu-cooldown-tripwire.timerConfig.OnUnitActiveSec == "30s";
-          assert coordinator.systemd.services.gpu-cooldown-tripwire.environment.SUSTAIN_SECONDS == "60";
-          assert coordinator.systemd.services.gpu-cooldown-tripwire.environment.COOLDOWN_MINUTES == "30";
+          assert coordinator.systemd.services.gpu-cooldown-tripwire.environment.SUSTAIN_SECONDS == "120";
+          assert coordinator.systemd.services.gpu-cooldown-tripwire.environment.COOLDOWN_MINUTES == "8";
           assert monthlySources.inference.url == "http://coordinator:9292";
           assert monthlySources.inference.compute_host == "coordinator";
           assert monthlySources.inference.tally_pool == "coordinator-gpu";
