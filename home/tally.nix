@@ -184,6 +184,25 @@ in
 
         agent = "codex";
 
+        # The module's defaults (workspace-write + on-request) do not work for
+        # a codex *exec* agent, proven by hand against the real binary:
+        #   - `--ask-for-approval` is a top-level codex flag, not an exec flag;
+        #     the adapter's approvalPolicies render it anyway and exec exits 2
+        #     with "unexpected argument". null omits it. A non-interactive run
+        #     has nobody to approve an escalation regardless.
+        #   - under `--sandbox workspace-write` codex writes files fine but
+        #     `.git` is mounted read-only, so `git add`/`git commit` fail on
+        #     .git/index.lock. The publish node requires at least one commit
+        #     descended from the prepared base, so a campaign agent that cannot
+        #     commit is useless. `danger-full-access` writes and commits
+        #     cleanly.
+        # This grants codex unsandboxed access inside its assigned worktree,
+        # which is the same capability this estate already gives every codex
+        # session it dispatches. The gates remain independent witnessed nodes.
+        # Reported upstream as tally.nix#244.
+        agentSandboxPolicy = "danger-full-access";
+        agentApprovalPolicy = null;
+
         # The four AGENTS.md gates verbatim, as direct argv. Go is not on
         # PATH; every command goes through nix. The race detector is
         # cgo-backed, hence nixpkgs#gcc in the test gate. These are the merge
