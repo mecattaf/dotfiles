@@ -52,9 +52,10 @@ export const meta = {
       "mecattaf/crm --comments — that issue text is your complete scope;",
       "implement exactly its acceptance criteria and nothing beyond it. Read",
       "the reference source files the issue and the style-transfer map point",
-      "at before writing code. Run the three gates yourself (nix shell",
-      "nixpkgs#go -c go build ./... / go vet ./... / go test ./...) until",
-      "green. Commit atomically on the branch with imperative subjects; do",
+      "at before writing code. Run the four gates from AGENTS.md yourself",
+      "(go build, go vet, race-enabled go test, golangci-lint — exact nix",
+      "invocations in AGENTS.md) until green. Commit atomically on the",
+      "branch with imperative subjects; do",
       "not push and do not touch git config. Never create or commit a",
       "database file or -wal/-shm sidecar."
     ].join(" "),
@@ -68,14 +69,17 @@ export const meta = {
 
   // Deterministic gates: codex's own runs prove nothing; these witnessed
   // nodes are what the PR merge waits on.
+  // The four gates, exactly as AGENTS.md declares them (race-enabled test is
+  // cgo-backed, hence gcc; lint runs the repo's golangci-lint set).
   const gates = [
-    ["build", "go build ./..."],
-    ["vet", "go vet ./..."],
-    ["test", "go test ./..."]
+    ["build", "nix shell nixpkgs#go -c go build ./..."],
+    ["vet", "nix shell nixpkgs#go -c go vet ./..."],
+    ["test", "nix shell nixpkgs#go nixpkgs#gcc -c go test -race ./..."],
+    ["lint", "nix shell nixpkgs#golangci-lint -c golangci-lint run ./..."]
   ];
   for (const [name, cmd] of gates) {
     await sh(
-      ["bash", "-lc", `set -euo pipefail; cd ${worktree}; nix shell nixpkgs#go -c ${cmd}`],
+      ["bash", "-lc", `set -euo pipefail; cd ${worktree}; ${cmd}`],
       {
         pools: ["flow-build"],
         key: `gate-${name}-${issue}`,
@@ -94,7 +98,7 @@ export const meta = {
       `set -euo pipefail; cd ${worktree}; git push -u origin ${branch}; ` +
         `gh pr create --repo mecattaf/crm --head ${branch} --base main ` +
         `--title "$(git log -1 --pretty=%s)" ` +
-        `--body "Closes #${issue}. Implemented by codex under tally flow crm-issue; go build/vet/test passed as witnessed gate nodes." ` +
+        `--body "Closes #${issue}. Implemented by codex under tally flow crm-issue; build, vet, race-enabled test, and lint passed as witnessed gate nodes." ` +
         `|| gh pr view ${branch} --repo mecattaf/crm --json url -q .url`
     ],
     {
