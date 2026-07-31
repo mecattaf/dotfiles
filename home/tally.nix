@@ -169,7 +169,10 @@ in
         # public anchors for the decomposition, never triggers. Exactly one
         # open issue carries "campaign", and it is the doorbell.
         label = "campaign";
-        mention = "@tally build";
+        # NOT "@tally ..." — @tally is a real, unrelated GitHub user and the
+        # mention token is a live ping on a public repo (tally.nix#246). The
+        # operator's own handle pings only themselves.
+        mention = "@mecattaf build";
         # The operator posts the mention from the account gh is authenticated
         # as, so the trigger actor and tally's own identity are the same and
         # the default loop-breaker would filter every mention as
@@ -203,18 +206,22 @@ in
         agentSandboxPolicy = "danger-full-access";
         agentApprovalPolicy = null;
 
-        # The four AGENTS.md gates verbatim, as direct argv. Go is not on
-        # PATH; every command goes through nix. The race detector is
-        # cgo-backed, hence nixpkgs#gcc in the test gate. These are the merge
-        # criterion — witnessed here, not re-reviewed by an agent.
+        # The four AGENTS.md gates, as direct argv. Go is not on PATH; every
+        # command goes through nix. nixpkgs' go defaults to CGO_ENABLED=1
+        # with CC=gcc, so on a gcc-less host every gate that compiles must
+        # either pin CGO_ENABLED=0 (build/vet/lint — the shipped binary is
+        # pure Go) or bring gcc (test, where the race detector is
+        # cgo-backed). All four verified live in the t01 worktree 2026-07-31
+        # before this shape landed. These are the merge criterion — witnessed
+        # here, not re-reviewed by an agent.
         gates = [
           {
             id = "build";
-            argv = [ "nix" "shell" "nixpkgs#go" "-c" "go" "build" "./..." ];
+            argv = [ "nix" "shell" "nixpkgs#go" "-c" "env" "CGO_ENABLED=0" "go" "build" "./..." ];
           }
           {
             id = "vet";
-            argv = [ "nix" "shell" "nixpkgs#go" "-c" "go" "vet" "./..." ];
+            argv = [ "nix" "shell" "nixpkgs#go" "-c" "env" "CGO_ENABLED=0" "go" "vet" "./..." ];
           }
           {
             id = "test";
@@ -222,7 +229,7 @@ in
           }
           {
             id = "lint";
-            argv = [ "nix" "shell" "nixpkgs#golangci-lint" "-c" "golangci-lint" "run" "./..." ];
+            argv = [ "nix" "shell" "nixpkgs#golangci-lint" "nixpkgs#go" "-c" "env" "CGO_ENABLED=0" "golangci-lint" "run" "./..." ];
           }
         ];
 
