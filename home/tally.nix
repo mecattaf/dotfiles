@@ -217,6 +217,19 @@ in
       # dispatches one crm-issue flow run for that issue number. Receipts,
       # evidence, and the gate summary go back onto the issue; closing the
       # issue and merging the PR stay with the orchestrator.
+      #
+      # SUPERSEDED SHAPE — kept deployed, not current practice. tally.nix#235
+      # (merged 2026-07-31, aa5c152) makes campaigns a module surface:
+      # services.tally.campaigns.<name> renders the flow, the scoped gh
+      # producer, the mutex pool, and the receipt/evidence effects from one
+      # attrset. This block plus crmIssueDispatch, the crm-campaign pool, and
+      # flows/crm-{issue,campaign}.js are the hand-authored prototype that
+      # motivated it. Do not copy them for a new campaign; declare a campaign
+      # instead. Migrating crm needs one prerequisite the prototype never had:
+      # specs/001-crm/tasks.json in mecattaf/crm — a versioned JSON worklist of
+      # per-task briefs, which the module witnesses in place of GitHub issues
+      # (tasks.md is the current artifact). Rationale and the role split:
+      # JULY31-LEARNINGS.md in tally.nix.
       crm-build = {
         kind = "gh";
         enable = true;
