@@ -170,6 +170,12 @@ in
         # open issue carries "campaign", and it is the doorbell.
         label = "campaign";
         mention = "@tally build";
+        # The operator posts the mention from the account gh is authenticated
+        # as, so the trigger actor and tally's own identity are the same and
+        # the default loop-breaker would filter every mention as
+        # self-trigger-disabled. Opt in (tally.nix#240); allowedActors still
+        # applies independently.
+        allowSelfTriggered = true;
         allowedActors = [ "mecattaf" ];
 
         worklist = "specs/001-crm/tasks.json";
