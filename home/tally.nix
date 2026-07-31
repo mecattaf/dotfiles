@@ -66,20 +66,6 @@ let
     '';
   };
 
-  # Receiver for the crm-build gh producer: one accepted "@tally build"
-  # mention on a mecattaf/crm build issue becomes one crm-issue flow run.
-  # The wrapper is the enqueued job; the flow's nodes are its children
-  # (noEnqueue = false on the producer is what authorizes them).
-  crmIssueDispatch = pkgs.writeShellApplication {
-    name = "crm-issue-dispatch";
-    text = ''
-      issue="''${1:?usage: crm-issue-dispatch <issue-number>}"
-      [[ "$issue" =~ ^[1-9][0-9]*$ ]]
-      exec ${tallyPackage}/bin/tally flow run ${../flows/crm-issue.js} \
-        --args "{\"issue\":$issue}"
-    '';
-  };
-
 in
 {
   imports = [
@@ -154,16 +140,71 @@ in
         enforce = "cooperative";
         hardPreempt = false;
       };
-      # Serializes the crm build campaign: the dispatch wrapper holds this
-      # lane for a whole per-issue flow run, so a second accepted mention
-      # queues instead of interleaving. Deliberately NOT flow-build — the
-      # wrapper's own gate nodes lease that lane and a shared mutex would
-      # self-deadlock.
-      crm-campaign = {
-        resource = "mutex";
-        capacity = 1;
-        enforce = "cooperative";
-        hardPreempt = false;
+      # crm-campaign is NOT declared here: services.tally.campaigns.crm
+      # renders it as the capacity-1 runner mutex, together with the
+      # campaign-agent and campaign-control node lanes.
+    };
+
+    # The crm build campaign, the first consumer of tally.nix#235. One attrset
+    # renders everything the hand-rolled prototype needed six pieces for: the
+    # shipped spec-build flow, the scoped gh mention producer, the capacity-1
+    # runner mutex, the campaign node lanes, and the driver adapter. The work
+    # graph is NOT here and not on GitHub — it is specs/001-crm/tasks.json in
+    # mecattaf/crm, witnessed by the flow's first node and projected into one
+    # per-task brief. GitHub keeps intake (the labeled campaign issue and its
+    # exact mention), steering (comments read at every agent attempt), and
+    # projection (receipts, evidence, per-task PRs). Doctrine and the role
+    # split: JULY31-LEARNINGS.md in tally.nix.
+    campaigns = lib.optionalAttrs isCoordinator {
+      crm = {
+        enable = true;
+
+        repositories."mecattaf/crm" = {
+          checkout = "/home/tom/mecattaf/crm";
+          baseBranch = "main";
+          remote = "origin";
+        };
+
+        # Deliberately NOT "build": issues #1–#19 carry that label and are
+        # public anchors for the decomposition, never triggers. Exactly one
+        # open issue carries "campaign", and it is the doorbell.
+        label = "campaign";
+        mention = "@tally build";
+        allowedActors = [ "mecattaf" ];
+
+        worklist = "specs/001-crm/tasks.json";
+        # The frozen graph is 19 tasks; the cap refuses a worklist that grew.
+        maxTasks = 19;
+
+        agent = "codex";
+
+        # The four AGENTS.md gates verbatim, as direct argv. Go is not on
+        # PATH; every command goes through nix. The race detector is
+        # cgo-backed, hence nixpkgs#gcc in the test gate. These are the merge
+        # criterion — witnessed here, not re-reviewed by an agent.
+        gates = [
+          {
+            id = "build";
+            argv = [ "nix" "shell" "nixpkgs#go" "-c" "go" "build" "./..." ];
+          }
+          {
+            id = "vet";
+            argv = [ "nix" "shell" "nixpkgs#go" "-c" "go" "vet" "./..." ];
+          }
+          {
+            id = "test";
+            argv = [ "nix" "shell" "nixpkgs#go" "nixpkgs#gcc" "-c" "go" "test" "-race" "./..." ];
+          }
+          {
+            id = "lint";
+            argv = [ "nix" "shell" "nixpkgs#golangci-lint" "-c" "golangci-lint" "run" "./..." ];
+          }
+        ];
+
+        # Held by the runner for the whole campaign, so a second accepted
+        # mention queues instead of interleaving two task chains against the
+        # same base.
+        pool.name = "crm-campaign";
       };
     };
 
@@ -208,60 +249,6 @@ in
             "hash:sha256"
           ];
           runtimeMaxSec = 43200;
-          noEnqueue = false;
-        };
-      };
-
-      # The crm build campaign's at-mention intake: an explicit "@tally build"
-      # comment by the operator on an open, build-labeled mecattaf/crm issue
-      # dispatches one crm-issue flow run for that issue number. Receipts,
-      # evidence, and the gate summary go back onto the issue; closing the
-      # issue and merging the PR stay with the orchestrator.
-      #
-      # SUPERSEDED SHAPE — kept deployed, not current practice. tally.nix#235
-      # (merged 2026-07-31, aa5c152) makes campaigns a module surface:
-      # services.tally.campaigns.<name> renders the flow, the scoped gh
-      # producer, the mutex pool, and the receipt/evidence effects from one
-      # attrset. This block plus crmIssueDispatch, the crm-campaign pool, and
-      # flows/crm-{issue,campaign}.js are the hand-authored prototype that
-      # motivated it. Do not copy them for a new campaign; declare a campaign
-      # instead. Migrating crm needs one prerequisite the prototype never had:
-      # specs/001-crm/tasks.json in mecattaf/crm — a versioned JSON worklist of
-      # per-task briefs, which the module witnesses in place of GitHub issues
-      # (tasks.md is the current artifact). Rationale and the role split:
-      # JULY31-LEARNINGS.md in tally.nix.
-      crm-build = {
-        kind = "gh";
-        enable = true;
-        sources = [
-          {
-            search = {
-              repo = "mecattaf/crm";
-              labels = [ "build" ];
-              state = "open";
-              kinds = [ "issue" ];
-            };
-          }
-        ];
-        triggers.mentions = [ "@tally build" ];
-        # The operator's own account posts the trigger comments.
-        allowSelfTriggered = true;
-        pollIntervalSec = 60;
-        postReceipt = true;
-        postEvidence = true;
-        # Gate proof lives in the flow's witnessed go build/vet/test nodes and
-        # the PR; postGateSummary would require a gateManifest on this wrapper
-        # job, which has none.
-        postGateSummary = false;
-        enqueue = {
-          argv = [
-            "${crmIssueDispatch}/bin/crm-issue-dispatch"
-            "\${gh.number}"
-          ];
-          pool = "crm-campaign";
-          priority = "medium";
-          evidence = [ "exit:0" ];
-          runtimeMaxSec = 21600;
           noEnqueue = false;
         };
       };
