@@ -109,6 +109,19 @@ in
       };
     };
 
+    # One mecattaf/crm build issue end-to-end: worktree prep, codex
+    # implementation, deterministic go gates, push + PR. Invoked per issue by
+    # the crm-build gh producer's dispatch job (home/tally.nix); the default
+    # issue number below only satisfies generation validation.
+    crm-issue = {
+      script = ./crm-issue.js;
+      onCalendar = null;
+      maxNodes = 8;
+      args = {
+        issue = 1;
+      };
+    };
+
     # The production per-paper flow (replaces the retired academic-ocr /
     # academic-assemble Turner samples, 2026-07-29). R2 is purged: sources
     # are file:// paths into the NAS corpus of record.
