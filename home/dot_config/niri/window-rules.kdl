@@ -44,9 +44,9 @@ window-rule {
     }
 }
 
-// Shift+F10 audio-output picker: the same compact floating prompt as F10.
+// Shift+F10 call recorder: the same compact floating prompt as F10.
 window-rule {
-    match app-id="audio-output-prompt"
+    match app-id="call-record-prompt"
     open-floating true
     open-focused true
     default-column-width { fixed 640; }

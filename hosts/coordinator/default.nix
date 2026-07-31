@@ -27,9 +27,6 @@
     ../../modules/gpu-cooldown.nix
     ../../modules/cli-anything.nix
     ../../modules/strix.nix
-    # Desktop-only AirPlay output for the JBL Authentics 200. Shared mDNS and
-    # Brother printing now live fleet-wide in modules/printing.nix.
-    ../../modules/desktop-media.nix
   ];
 
   networking.hostName = "coordinator";

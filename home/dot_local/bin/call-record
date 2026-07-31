@@ -41,12 +41,28 @@ start)
     dir="$OUT_ROOT/$(date +%F)-$slug"
     mkdir -p "$dir" "$STATE_DIR"
 
-    pw-record --target "$sink" -P '{ stream.capture.sink = true }' \
-        --format s16 --rate "$RATE" --channels 1 "$dir/far.wav" &
+    # The Shift+F10 controller runs in a short-lived kitty popup. Start each
+    # capture in its own session with no terminal file descriptors so closing
+    # that popup cannot send the recorders SIGHUP or hold the window open.
+    : > "$dir/capture.log"
+    setsid pw-record --target "$sink" -P '{ stream.capture.sink = true }' \
+        --format s16 --rate "$RATE" --channels 1 "$dir/far.wav" \
+        </dev/null >> "$dir/capture.log" 2>&1 &
     far_pid=$!
-    pw-record --target "$source" \
-        --format s16 --rate "$RATE" --channels 1 "$dir/near.wav" &
+    setsid pw-record --target "$source" \
+        --format s16 --rate "$RATE" --channels 1 "$dir/near.wav" \
+        </dev/null >> "$dir/capture.log" 2>&1 &
     near_pid=$!
+
+    # Do not publish an active session if either PipeWire stream rejected its
+    # node or format immediately. The log remains beside the partial tracks for
+    # diagnosis.
+    sleep 0.2
+    if ! kill -0 "$far_pid" 2>/dev/null || ! kill -0 "$near_pid" 2>/dev/null; then
+        kill -INT "$far_pid" "$near_pid" 2>/dev/null || true
+        echo "capture failed to start; see $dir/capture.log" >&2
+        exit 1
+    fi
 
     printf '%s\n%s\n%s\n' "$dir" "$far_pid" "$near_pid" > "$CURRENT"
     echo "recording -> $dir"
