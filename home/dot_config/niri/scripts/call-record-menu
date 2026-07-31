@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Shift+F10 → state-aware call recording picker. The capture implementation is
+# ~/.local/bin/call-record; this wrapper only supplies a compact fzf controller.
+set -euo pipefail
+
+recorder="$HOME/.local/bin/call-record"
+current="${XDG_STATE_HOME:-$HOME/.local/state}/call-record/current"
+
+if [[ ! -x "$recorder" ]]; then
+    printf 'Call recorder not found: %s\n' "$recorder" >&2
+    read -r || true
+    exit 1
+fi
+
+if [[ -e "$current" ]]; then
+    IFS= read -r recording_dir < "$current" || recording_dir='unknown session'
+    header="Recording — $(basename "$recording_dir")"
+    choices=$'stop\t  ■  Stop and save\ncancel\t     Cancel'
+else
+    header='Call recording — idle'
+    choices=$'start\t  ●  Start recording\ncancel\t     Cancel'
+fi
+
+choice=$(printf '%s\n' "$choices" \
+| fzf \
+    --delimiter=$'\t' \
+    --with-nth='2..' \
+    --prompt='> ' \
+    --header="$header" \
+    --height=100% \
+    --reverse \
+    --no-info \
+    --pointer='›' \
+    --color='prompt:bold:8,header:italic:7,pointer:5') || exit 0
+
+action=${choice%%$'\t'*}
+case "$action" in
+start)
+    slug="call-$(date +%H%M%S)"
+    if "$recorder" start "$slug"; then
+        printf '\nRecording started. Shift+F10 stops and saves it.\n'
+        read -r -t 2 || true
+    else
+        printf '\nPress Enter to close.\n'
+        read -r || true
+        exit 1
+    fi
+    ;;
+stop)
+    if "$recorder" stop; then
+        printf '\nSaved in %s\n' "$recording_dir"
+        read -r -t 3 || true
+    else
+        printf '\nPress Enter to close.\n'
+        read -r || true
+        exit 1
+    fi
+    ;;
+esac

@@ -72,87 +72,9 @@ in
     config.age.secrets.wifi.path
   ];
 
-  # --- JBL Authentics 200 on a dedicated wire (enp191s0), 2026-07-25 ---
-  # The speaker is cabled DIRECTLY to this box's RTL8126 port. This is not a
-  # revival of the BE550 router plane above: it is a point-to-point segment with
-  # exactly one appliance on it.
-  #
-  # Why the cable exists: audio to the JBL stuttered badly over wifi, and the
-  # coordinator's own uplink is an mt7925e that has hard-locked this box twice
-  # (see modules/strix.nix). Measured on the wire vs the wifi path: 0.465ms RTT
-  # / 0.088ms jitter against 7.06ms / 4.94ms — ~15x the latency and ~55x the
-  # jitter removed, and the audio no longer crosses the flaky radio at all.
-  #
-  # Why each piece is needed (all four were established empirically 2026-07-25;
-  # the speaker sat unusable with any one of them missing):
-  #   - an address on our end: nothing else serves this segment;
-  #   - dnsmasq: the JBL broadcasts a DHCP request every ~60s and had nobody to
-  #     answer it, so it never obtained an IPv4 and AirPlay could not run. It is
-  #     DHCP-ONLY (port = 0) — AdGuard owns DNS on 127.0.0.1:53 and must not be
-  #     fought with (see modules/adguardhome.nix);
-  #   - trustedInterfaces: common.nix's firewall dropped the DHCP broadcast
-  #     before dnsmasq ever saw it. RAOP also needs the speaker's timing/control
-  #     packets back on unsolicited UDP ports, which RELATED,ESTABLISHED does not
-  #     cover. Trusting a dedicated one-appliance cable keeps that exception
-  #     constrained to a physical point-to-point segment;
-  #   - NAT: without it the speaker reaches this box and nothing else — no
-  #     firmware updates, no streaming services, no app control.
-  #
-  # NB: the JBL must have its OWN wifi turned off (JBL One app). While it was on
-  # both networks it advertised the SAME mDNS service name from both interfaces,
-  # avahi could not resolve it, and PipeWire tore the sink down on a loop
-  # ("mod.raop-discover: Resolving of 'E809590727EA@Office speaker' failed:
-  # Timeout reached") — which is what made the speaker vanish from the audio
-  # menu. One interface, one service, stable sink.
-  # NM keeps ownership of the NIC and carries the static address itself. The
-  # first cut of this marked enp191s0 `unmanaged` and set the address through
-  # networking.interfaces instead; that FAILED on activation 2026-07-25 — NM
-  # released the link, nothing else brought it back up, so the interface sat
-  # DOWN with no carrier and dnsmasq died with "unknown interface enp191s0".
-  # network-addresses-<iface>.service only adds an address, it never does
-  # `ip link set up`, and with NM enabled there is no network-link unit to do it.
-  # Letting NM own the interface keeps link-up and addressing in one place.
-  # never-default: this segment must never become a default route — the internet
-  # uplink is the wifi profile above.
-  networking.networkmanager.ensureProfiles.profiles.jbl-wire = {
-    connection = {
-      id = "jbl-wire";
-      type = "ethernet";
-      interface-name = "enp191s0";
-      autoconnect = true;
-      autoconnect-priority = 50;
-    };
-    ipv4 = {
-      method = "manual";
-      address1 = "10.42.0.1/24";
-      never-default = true;
-    };
-    ipv6.method = "ignore";
-  };
-
-  services.dnsmasq = {
-    enable = true;
-    settings = {
-      port = 0; # DHCP only; never bind :53 (AdGuard owns it on loopback)
-      interface = "enp191s0";
-      # bind-dynamic, NOT bind-interfaces: dnsmasq starts before NM has finished
-      # bringing enp191s0 up, and bind-interfaces makes that a hard startup
-      # failure ("unknown interface"). bind-dynamic watches for the interface
-      # appearing instead, so a cold boot — or the cable being unplugged and
-      # replugged — cannot leave a failed unit behind for the nightly deploy.
-      bind-dynamic = true;
-      dhcp-range = "10.42.0.50,10.42.0.150,12h";
-      dhcp-authoritative = true;
-    };
-  };
-
-  networking.nat = {
-    enable = true;
-    internalInterfaces = [ "enp191s0" ];
-    externalInterface = "wlp192s0";
-  };
-
-  networking.firewall.trustedInterfaces = [ "enp191s0" ];
+  # enp191s0 deliberately has no declarative profile here. The retired speaker
+  # plane no longer owns it; it is free for the separate NixOS NAS appliance
+  # once that device's addressing is known.
 
   # LaCie 4TB, attached DIRECTLY to this box via USB (Tom's ruling 2026-07-05;
   # the old BE550-SMB path is retired). nofail + automount keep boot clean when
