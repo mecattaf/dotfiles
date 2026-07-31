@@ -109,8 +109,22 @@ in
       };
     };
 
+    # The whole crm build, autonomous start-to-finish: per issue in order —
+    # prep from current main, codex, four gates, push + PR, merge on green
+    # (gates are the merge criterion; ruled 2026-07-31). Fail-fast; replay
+    # reuses the witnessed prefix, so a stopped run continues where it died.
+    crm-campaign = {
+      script = ./crm-campaign.js;
+      onCalendar = null;
+      maxNodes = 168;
+      args = {
+        issues = [ 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 ];
+      };
+    };
+
     # One mecattaf/crm build issue end-to-end: worktree prep, codex
-    # implementation, deterministic go gates, push + PR. Invoked per issue by
+    # implementation, deterministic go gates, push + PR (no merge — the
+    # surgical single-issue re-entry after steering). Invoked per issue by
     # the crm-build gh producer's dispatch job (home/tally.nix); the default
     # issue number below only satisfies generation validation.
     crm-issue = {
