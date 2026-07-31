@@ -126,30 +126,33 @@ in
   # state wipe would silently unroute the speaker. Idempotently select the JBL
   # (by name + protocol, not id — ids are per-database) once it shows up.
   # Selection then persists in OwnTone's own state; volume is left alone so a
-  # user-set level survives restarts.
+  # user-set level survives restarts. The speaker may be powered off during a
+  # boot or switch, so this must remain an asynchronous waiter rather than gate
+  # system activation on external hardware discovery.
   systemd.services.owntone-select-speaker = {
     description = "Select the JBL AirPlay 2 output in OwnTone";
     wantedBy = [ "multi-user.target" ];
     after = [ "owntone.service" ];
     requires = [ "owntone.service" ];
     serviceConfig = {
-      Type = "oneshot";
+      Type = "simple";
       RemainAfterExit = true;
+      Restart = "on-failure";
+      RestartSec = 2;
       ExecStart = pkgs.writeShellScript "owntone-select-speaker" ''
-        for _ in $(seq 60); do
+        while true; do
           id=$(${pkgs.curl}/bin/curl -sf localhost:3689/api/outputs \
                | ${pkgs.jq}/bin/jq -r '.outputs[]
                    | select(.type == "AirPlay 2" and .name == "Office speaker")
                    | .id')
           if [ -n "$id" ]; then
-            ${pkgs.curl}/bin/curl -sf -X PUT "localhost:3689/api/outputs/$id" \
-              -H 'Content-Type: application/json' -d '{"selected": true}'
-            exit 0
+            if ${pkgs.curl}/bin/curl -sf -X PUT "localhost:3689/api/outputs/$id" \
+              -H 'Content-Type: application/json' -d '{"selected": true}'; then
+              exit 0
+            fi
           fi
           sleep 2
         done
-        echo "JBL AirPlay 2 output never appeared in OwnTone" >&2
-        exit 1
       '';
     };
   };
