@@ -1,12 +1,12 @@
-{ lib, ... }:
+{ ... }:
 {
-  # UNVERIFIED PLACEHOLDER: the DXP2800 GT is specified with internal eMMC, but
-  # its Linux device name must be confirmed with lsblk before nixos-anywhere is
-  # allowed to run. The associated issue treats that confirmation as a hard,
-  # destructive-action gate.
+  # VERIFIED LIVE 2026-08-01 (issue #131 destructive-action gate): 58.3GiB
+  # internal eMMC, confirmed by lsblk/by-id on the running vendor OS with the
+  # HDD bays empty. Wipe signed off by Tom ("wipe both") before the first
+  # nixos-anywhere run.
   disko.devices.disk.system = {
     type = "disk";
-    device = lib.mkDefault "/dev/mmcblk0";
+    device = "/dev/disk/by-id/mmc-CG1051_0xd755b207";
     content = {
       type = "gpt";
       partitions = {
@@ -32,14 +32,14 @@
     };
   };
 
-  # UNVERIFIED PLACEHOLDER, same discipline as the eMMC above: confirm the live
-  # device name before nixos-anywhere runs. 256GB NVMe (Fanxiang S500 Pro,
-  # issue #135): the journald-remote home. Journal writeback belongs on this
-  # SSD — it would be wear on the eMMC and spin-up poison for the future HDD.
-  # Formatting it in the same disko run means the first flash is the only flash.
+  # VERIFIED LIVE 2026-08-01, same sign-off as the eMMC above: factory-blank
+  # 238.5GiB NVMe. Journald-remote home (issue #135) — journal writeback
+  # belongs on this SSD; it would be wear on the eMMC and spin-up poison for
+  # the future HDD. Formatted in the same disko run so the first flash is the
+  # only flash.
   disko.devices.disk.journal = {
     type = "disk";
-    device = lib.mkDefault "/dev/nvme0n1";
+    device = "/dev/disk/by-id/nvme-Fanxiang_S500Pro_256GB_26040259615000015";
     content = {
       type = "gpt";
       partitions.journal = {

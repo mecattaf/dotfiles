@@ -1,12 +1,13 @@
 { ... }:
 {
-  # One cable, one fixed private fast lane. Omitting interface-name is
-  # deliberate until the live hardware config records UGREEN's NIC name; this
-  # is the only physical Ethernet profile on the appliance.
+  # One cable, one fixed private fast lane. enp1s0 is the live predictable
+  # name of the sole onboard NIC (Aquantia AQC113 10GbE at PCI 01:00.0),
+  # recorded in the kexec installer 2026-08-01.
   networking.networkmanager.ensureProfiles.profiles.coordinator-fast-lane = {
     connection = {
       id = "coordinator-fast-lane";
       type = "ethernet";
+      interface-name = "enp1s0";
       autoconnect = true;
       autoconnect-priority = 100;
     };
