@@ -44,30 +44,25 @@ in
 
     zramSwap.memoryMax = lib.mkForce (4 * 1024 * 1024 * 1024);
 
-    environment.systemPackages = lib.mkForce (
-      with pkgs;
-      [
-        # mkForce also strips the bash the NixOS bash module contributes, but
-        # /run/current-system/sw/bin/bash is every user's login shell and the
-        # interpreter nixos-install's bootloader chroot runs. Without it the
-        # install aborts (chroot: .../sw/bin/bash: No such file or directory,
-        # hit live 2026-08-01) and getty/SSH logins would fail the same way.
-        bashInteractive
-        age
-        attic-client
-        btrfs-progs
-        ethtool
-        git
-        hdparm
-        iperf3
-        libva-utils
-        nvme-cli
-        pciutils
-        rsync
-        smartmontools
-        usbutils
-        vim
-      ]
-    );
+    # Appliance tooling is ADDED, never mkForce'd: forcing this option also
+    # discards the packages the NixOS module system itself contributes —
+    # bashInteractive (every login shell and nixos-install's bootloader-chroot
+    # interpreter) and the util-linux/coreutils required base. Both bit live
+    # during the first DXP2800 GT install (chroot: sw/bin/bash missing, then
+    # 'mount: command not found'). The desktop surface is already excluded by
+    # the option forces above; common.nix only adds a handful of small CLI
+    # tools, which is an acceptable price for a standard, bootable base.
+    environment.systemPackages = with pkgs; [
+      btrfs-progs
+      ethtool
+      hdparm
+      iperf3
+      libva-utils
+      nvme-cli
+      pciutils
+      rsync
+      smartmontools
+      usbutils
+    ];
   };
 }
