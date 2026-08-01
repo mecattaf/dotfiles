@@ -31,4 +31,29 @@
       };
     };
   };
+
+  # UNVERIFIED PLACEHOLDER, same discipline as the eMMC above: confirm the live
+  # device name before nixos-anywhere runs. 256GB NVMe (Fanxiang S500 Pro,
+  # issue #135): the journald-remote home. Journal writeback belongs on this
+  # SSD — it would be wear on the eMMC and spin-up poison for the future HDD.
+  # Formatting it in the same disko run means the first flash is the only flash.
+  disko.devices.disk.journal = {
+    type = "disk";
+    device = lib.mkDefault "/dev/nvme0n1";
+    content = {
+      type = "gpt";
+      partitions.journal = {
+        size = "100%";
+        content = {
+          type = "filesystem";
+          format = "ext4";
+          mountpoint = "/var/log/journal/remote";
+          mountOptions = [
+            "noatime"
+            "nofail"
+          ];
+        };
+      };
+    };
+  };
 }

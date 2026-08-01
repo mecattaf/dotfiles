@@ -19,6 +19,15 @@
     # writing the lock. A plain local build uses the reviewed fallback revision.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable";
 
+    # nixpkgs-stable — pins ONLY nixosConfigurations.nas (issue #135 ruling):
+    # the NAS is a frozen self-sustaining appliance on standard stable nixpkgs,
+    # maintained manually every few years. It never rides the unstable
+    # kernel/Mesa churn the coordinator's pin exists to gate, and it accepts
+    # EOL-pin CVE exposure because it is reachable only from the coordinator
+    # over the private /30. Bump deliberately with
+    # `nix flake update nixpkgs-stable` on the same few-years cadence.
+    nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
+
     home-manager = {
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -338,8 +347,12 @@
         {
           hostModule,
           withHomeManager ? true,
+          # The nixpkgs universe this host's system closure evaluates from.
+          # Interactive hosts ride the main unstable pin; the NAS passes
+          # inputs.nixpkgs-stable (see that input's comment).
+          hostNixpkgs ? nixpkgs,
         }:
-        nixpkgs.lib.nixosSystem {
+        hostNixpkgs.lib.nixosSystem {
           inherit system;
           specialArgs = {
             inherit inputs rollingInputOverrides fleetDeploySshOpts;
@@ -404,6 +417,7 @@
         nas = mkHost {
           hostModule = ./hosts/nas;
           withHomeManager = false;
+          hostNixpkgs = inputs.nixpkgs-stable;
         };
         zenbook-duo = mkHost { hostModule = ./hosts/zenbook-duo; };
       };
