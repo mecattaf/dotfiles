@@ -12,6 +12,7 @@
     ./disko.nix
     ./fleet-deploy.nix # one Tally-owned deploy-rs transaction for the whole fleet
     ./uplink-nas.nix
+    ./journal-upload.nix # fleet journald substrate sender — refs #135
     ./nas-client.nix
     ./services.nix
     ./immich-ml.nix

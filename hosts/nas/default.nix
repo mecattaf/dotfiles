@@ -8,6 +8,7 @@
     ./hardware.nix
     ./disko.nix
     ./network.nix
+    ./journal.nix
     ./storage.nix
     ./media.nix
     ../../modules/adguardhome.nix

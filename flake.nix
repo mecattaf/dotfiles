@@ -729,6 +729,11 @@
           assert nixpkgs.lib.all (hosts: hosts == expectedHosts) activeHostSets;
           assert coordinator.networking.hosts."10.77.0.2" == [ "nas" ];
           assert nas.networking.hosts."10.77.0.1" == [ "coordinator" ];
+          # journald substrate (#135): coordinator is the sole sender, the NAS
+          # receives on the NVMe, and the local journal stays bounded.
+          assert nas.services.journald.remote.enable;
+          assert coordinator.services.journald.upload.settings.Upload.URL == "http://10.77.0.2:19532";
+          assert coordinator.services.journald.storage == "persistent";
           assert self.deploy.nodes.coordinator.hostname == "coordinator";
           assert self.deploy.nodes.nas.hostname == "nas";
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;

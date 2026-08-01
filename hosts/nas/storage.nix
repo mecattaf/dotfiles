@@ -66,25 +66,52 @@ in
       ];
     };
 
-    # NFSv4 exports the data root only to the coordinator on the dedicated /30.
-    # Other clients reach coordinator over Tailscale; it relays the applications
-    # over Ethernet. The filesystem itself never leaves this /30.
+    # ── Subvolume layout (the #130 "decide before data lands" decision) ──────
+    # The four data roots are BTRFS SUBVOLUMES, not plain directories, created
+    # by the Day-2 runbook right after mkfs:
+    #
+    #   btrfs subvolume create /mnt/nas/photos     # 0700 tom
+    #   btrfs subvolume create /mnt/nas/music      # 0750 tom
+    #   btrfs subvolume create /mnt/nas/documents  # 0750 tom
+    #   btrfs subvolume create /mnt/nas/services   # 0711 root
+    #   btrfs subvolume create /mnt/nas/.snapshots # 0700 root, NEVER exported
+    #
+    # Why: snapshots are per-subvolume, so future btrbk retention (#130 §2a)
+    # needs these boundaries to exist before the LaCie data arrives — cheap
+    # now, a full re-migration later. .snapshots stays containment-safe with
+    # zero effort: NFSv4 does not cross a subvolume boundary without its own
+    # export entry, and it never gets one.
+    #
+    # NFSv4 exports use EXPLICIT UNIQUE fsids per #131: subvolumes below a
+    # lone fsid=0 export are a known sharp edge (each subvolume has its own
+    # st_dev), so every crossing point is exported deliberately. Only the
+    # coordinator on the /30 is admitted; other clients reach the relays over
+    # Tailscale and the filesystem itself never leaves this cable.
     services.nfs.server = {
       enable = true;
       hostName = "10.77.0.2";
       exports = ''
         ${storageRoot} 10.77.0.1(rw,sync,fsid=0,no_subtree_check,no_root_squash)
+        ${storageRoot}/photos 10.77.0.1(rw,sync,fsid=1,no_subtree_check,no_root_squash)
+        ${storageRoot}/music 10.77.0.1(rw,sync,fsid=2,no_subtree_check,no_root_squash)
+        ${storageRoot}/documents 10.77.0.1(rw,sync,fsid=3,no_subtree_check,no_root_squash)
+        ${storageRoot}/services 10.77.0.1(rw,sync,fsid=4,no_subtree_check,no_root_squash)
       '';
     };
     networking.firewall.extraInputRules = ''
       ip saddr 10.77.0.1 tcp dport 2049 accept comment "NFSv4 from coordinator"
     '';
 
+    # 'z' (adjust-only), deliberately not 'd': if a runbook step were skipped,
+    # 'd' would silently create plain DIRECTORIES where subvolumes belong and
+    # the data migration would land unsnapshottable. 'z' only enforces
+    # ownership/mode on what the runbook created.
     systemd.tmpfiles.rules = [
-      "d ${storageRoot}/music 0750 tom users -"
-      "d ${storageRoot}/photos 0700 tom users -"
-      "d ${storageRoot}/documents 0750 tom users -"
-      "d ${storageRoot}/services 0711 root root -"
+      "z ${storageRoot}/music 0750 tom users -"
+      "z ${storageRoot}/photos 0700 tom users -"
+      "z ${storageRoot}/documents 0750 tom users -"
+      "z ${storageRoot}/services 0711 root root -"
+      "z ${storageRoot}/.snapshots 0700 root root -"
     ];
   };
 }
