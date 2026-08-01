@@ -536,6 +536,10 @@
               }).config;
           in
           assert !nas.services.tailscale.enable;
+          # The NAS admits SSH/NFS via networking.firewall.extraInputRules,
+          # which only renders under the nftables backend — with iptables the
+          # appliance seals itself shut (hit live 2026-08-01).
+          assert nas.networking.nftables.enable;
           assert !nas.programs.niri.enable;
           assert !nas.services.greetd.enable;
           assert !(nas.systemd.services ? wayvnc);
