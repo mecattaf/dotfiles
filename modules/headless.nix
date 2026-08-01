@@ -47,6 +47,12 @@ in
     environment.systemPackages = lib.mkForce (
       with pkgs;
       [
+        # mkForce also strips the bash the NixOS bash module contributes, but
+        # /run/current-system/sw/bin/bash is every user's login shell and the
+        # interpreter nixos-install's bootloader chroot runs. Without it the
+        # install aborts (chroot: .../sw/bin/bash: No such file or directory,
+        # hit live 2026-08-01) and getty/SSH logins would fail the same way.
+        bashInteractive
         age
         attic-client
         btrfs-progs
