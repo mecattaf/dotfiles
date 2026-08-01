@@ -1,4 +1,4 @@
-# The device mesh — ONE source of truth for the two NixOS hosts, consumed by
+# The device mesh — ONE source of truth for the three NixOS hosts, consumed by
 # both the SSH trust plumbing (modules/mesh.nix) and the Remmina VNC profiles
 # (home/remote.nix).
 #
@@ -19,6 +19,17 @@
     aliases = [ "coordinator" ];
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFPCZFlnHQSNH3D0R1/qs9A/W498f8xTNUNBtLWZgU2A root@coordinator";
     userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729";
+  };
+  nas = {
+    aliases = [
+      "nas"
+      "10.77.0.2"
+    ];
+    # Filled from the first installed boot before this draft can merge. Empty
+    # means deploy-rs correctly refuses TOFU rather than trusting a guessed key.
+    hostKey = "";
+    # The appliance is inbound-only; coordinator deploys to it over the cable.
+    userKey = "";
   };
   zenbook-duo = {
     aliases = [ "zenbook-duo" ];

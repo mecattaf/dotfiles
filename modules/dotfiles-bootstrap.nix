@@ -1,4 +1,9 @@
-{ pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 # Ensure tom's dotfiles checkout exists at ~/mecattaf/dotfiles before the graphical
 # session starts. home-manager deploys ~/.config/* and ~/.local/bin as OUT-OF-STORE
 # symlinks into that path (home/home.nix `mkOutOfStoreSymlink`, for niri hot-reload);
@@ -41,7 +46,7 @@ let
     fi
   '';
 in
-{
+lib.mkIf (!config.myHeadless.enable) {
   systemd.services.dotfiles-bootstrap = {
     description = "Ensure ${repoDir} checkout exists (home-manager out-of-store configs need it)";
     wantedBy = [ "multi-user.target" ];

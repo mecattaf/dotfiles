@@ -1,9 +1,9 @@
 { ... }:
 # Per-machine AdGuard Home — the fleet's DNS ad/tracker filter, ONE loopback
 # instance per box. This replaces the old coordinator-only LAN quadlet that
-# filtered DNS for the now-retired BE550 wifi segment; both remaining NixOS
-# hosts (coordinator and zenbook-duo) now filter their OWN queries. Imported
-# fleet-wide from modules/common.nix.
+# filtered DNS for the now-retired BE550 wifi segment; coordinator, zenbook-duo,
+# and the Ethernet-only NAS now filter their OWN queries. Each host imports this
+# module explicitly.
 #
 # Fully declarative: mutableSettings = false, so the entire config lives here in
 # git and AdGuard NEVER runs its web setup wizard. AdGuardHome.yaml is

@@ -12,7 +12,10 @@
     ./disko.nix
     ./fleet-deploy.nix # one Tally-owned deploy-rs transaction for the whole fleet
     ./uplink-nas.nix
+    ./nas-client.nix
     ./services.nix
+    ./immich-ml.nix
+    ./atuin.nix
     # Per-machine AdGuard Home DNS filter (loopback 127.0.0.1:53, resolved
     # forwards to it). The Zenbook Duo imports the same module.
     ../../modules/adguardhome.nix
@@ -30,6 +33,11 @@
   ];
 
   networking.hostName = "coordinator";
+  # Both stay on their proven pre-migration side until the real HDD and service
+  # state have passed the associated issue's cutover checklist.
+  myCoordinatorMedia.enable = true;
+  myNasClient.useRemoteStorage = false;
+  myNasClient.relayMedia = false;
   services.gpuCooldownTripwire = {
     enable = true;
     # Retuned 2026-07-29 after the academic-ocr supervised run: sustained VLM

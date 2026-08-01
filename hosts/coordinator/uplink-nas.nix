@@ -23,8 +23,9 @@ in
 # in modules/adguardhome.nix (loopback resolver) instead of a LAN service here.
 #
 # What remains is genuinely BE550-independent:
-#   - the Freebox wifi uplink (wlp192s0), this box's actual internet, and
-#   - the LaCie 4TB USB NAS (/mnt/nas) + its thermal/power suite.
+#   - the Freebox wifi uplink (wlp192s0), this box's actual internet,
+#   - a private routed fast lane to the headless NixOS host `nas`, and
+#   - the LaCie 4TB USB NAS (/mnt/nas) until the verified cutover gate flips.
 {
   # Internet uplink: the Freebox AP over wifi (wlp192s0). Ported from the live
   # imperative NM profile that was hand-copied during flash night
@@ -72,9 +73,51 @@ in
     config.age.secrets.wifi.path
   ];
 
-  # enp191s0 deliberately has no declarative profile here. The retired speaker
-  # plane no longer owns it; it is free for the separate NixOS NAS appliance
-  # once that device's addressing is known.
+  # Dedicated point-to-point link to the new NAS. This deliberately follows the
+  # proven wired-speaker arrangement: NetworkManager owns and raises the NIC,
+  # dnsmasq is DHCP-only for factory/installer boots, the /30 is trusted, and
+  # NAT relays the appliance to the internet through the coordinator's wifi.
+  networking.networkmanager.ensureProfiles.profiles.nas-fast-lane = {
+    connection = {
+      id = "nas-fast-lane";
+      type = "ethernet";
+      interface-name = "enp191s0";
+      autoconnect = true;
+      autoconnect-priority = 50;
+    };
+    ipv4 = {
+      method = "manual";
+      address1 = "10.77.0.1/30";
+      never-default = true;
+    };
+    ipv6.method = "ignore";
+  };
+
+  # One downstream lease on the only other usable address. Once NixOS is
+  # installed it uses the same address statically, so canonical routing never
+  # depends on DHCP. port=0 prevents any collision with loopback AdGuard :53.
+  services.dnsmasq = {
+    enable = true;
+    settings = {
+      port = 0;
+      interface = "enp191s0";
+      bind-dynamic = true;
+      dhcp-range = "10.77.0.2,10.77.0.2,255.255.255.252,12h";
+      dhcp-option = [
+        "option:router,10.77.0.1"
+        "option:dns-server,1.1.1.1,9.9.9.9"
+      ];
+      dhcp-authoritative = true;
+    };
+  };
+
+  networking.nat = {
+    enable = true;
+    internalInterfaces = [ "enp191s0" ];
+    externalInterface = "wlp192s0";
+  };
+  networking.firewall.trustedInterfaces = [ "enp191s0" ];
+  networking.hosts."10.77.0.2" = [ "nas" ];
 
   # LaCie 4TB, attached DIRECTLY to this box via USB (Tom's ruling 2026-07-05;
   # the old BE550-SMB path is retired). nofail + automount keep boot clean when
@@ -82,7 +125,7 @@ in
   # 2026-07-23 while retaining the GPT and partition boundaries. Pin the new
   # filesystem UUID rather than the reusable label, and use conservative
   # single-rotating-disk options. POSIX ownership now lives on disk.
-  fileSystems."/mnt/nas" = {
+  fileSystems."/mnt/nas" = lib.mkIf (!config.myNasClient.useRemoteStorage) {
     device = "/dev/disk/by-uuid/20e38790-a639-4ffc-8f1a-3921d1aedb97";
     fsType = "btrfs";
     options = [
@@ -117,7 +160,7 @@ in
   # (`journalctl -u smartd`) — that is where future thermal tripwires read from.
   # autodetect=false is deliberate: a DEVICESCAN line would re-add /dev/sda with
   # the default `-a` and NO `-n standby,q`, waking the drive on every poll.
-  services.smartd = {
+  services.smartd = lib.mkIf (!config.myNasClient.useRemoteStorage) {
     enable = true;
     autodetect = false;
     extraOptions = [ "-i 1800" ]; # poll every 30 min (also smartd's default)
@@ -147,7 +190,7 @@ in
   #   -i 0            : default idle 0 (disabled) for every other disk.
   #   -c ata          : issue ATA STANDBY (the command the bridge honours).
   #   -a <dev> -i 1200: park THIS disk after 20 min (1200 s) idle.
-  systemd.services.hd-idle = {
+  systemd.services.hd-idle = lib.mkIf (!config.myNasClient.useRemoteStorage) {
     description = "hd-idle — spin down the LaCie NAS drive after 20 min idle";
     documentation = [ "man:hd-idle(8)" ];
     after = [ "mnt-nas.mount" ];
