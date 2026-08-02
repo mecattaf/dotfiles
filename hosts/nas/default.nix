@@ -32,10 +32,14 @@
   hardware.graphics.enable = true;
   environment.sessionVariables.LIBVA_DRIVER_NAME = "radeonsi";
 
-  # The appliance is safe to flash onto eMMC before the data disk arrives.
-  # Both gates stay false until the plug-in runbook records real device IDs,
-  # migrates state, and validates the result.
-  myNas.storage.enable = false;
+  # Device identity recorded by the Day-2 runbook (#131) from the live disk:
+  # WD Red Plus 4TB, SMART-verified 2026-08-02, short self-test clean.
+  myNas.storage = {
+    enable = true;
+    filesystemUuid = "2345893a-8769-492c-90cb-23b79984a559";
+    smartDevice = "/dev/disk/by-id/ata-WDC_WD40EFZZ-68CPAN0_WD-WXB2D166SAR7";
+  };
+  # Media stays gated until the migration validates and the atomic cutover runs.
   myNas.media.enable = false;
 
   system.stateVersion = "26.05";
