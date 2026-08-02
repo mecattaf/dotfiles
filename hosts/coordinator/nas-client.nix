@@ -94,11 +94,39 @@ in
         };
       };
 
+      systemd.sockets.plex-relay = {
+        description = "Coordinator front door for Ethernet-only NAS Plex";
+        wantedBy = [ "sockets.target" ];
+        socketConfig = {
+          ListenStream = "0.0.0.0:32400";
+          NoDelay = true;
+        };
+      };
+      systemd.services.plex-relay = {
+        description = "Relay Plex to nas:32400 over the private link";
+        after = [ "network-online.target" ];
+        wants = [ "network-online.target" ];
+        serviceConfig = {
+          ExecStart = "${socketProxyd} nas:32400";
+          DynamicUser = true;
+          NoNewPrivileges = true;
+          PrivateDevices = true;
+          PrivateTmp = true;
+          ProtectHome = true;
+          ProtectSystem = "strict";
+          RestrictAddressFamilies = [
+            "AF_INET"
+            "AF_INET6"
+          ];
+        };
+      };
+
       # Existing clients keep coordinator.tail8dd1.ts.net; only coordinator has
       # a Tailscale identity, and these sockets relay across the private cable.
       networking.firewall.interfaces.tailscale0.allowedTCPPorts = [
         2283
         4533
+        32400
       ];
     })
   ];

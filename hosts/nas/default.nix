@@ -39,8 +39,10 @@
     filesystemUuid = "2345893a-8769-492c-90cb-23b79984a559";
     smartDevice = "/dev/disk/by-id/ata-WDC_WD40EFZZ-68CPAN0_WD-WXB2D166SAR7";
   };
-  # Media stays gated until the migration validates and the atomic cutover runs.
-  myNas.media.enable = false;
+  # Flipped by the Day-2 runbook once the LaCie data landed on the verified
+  # disk; deployment order (NAS restore first, then the coordinator cutover)
+  # is sequenced manually in #131.
+  myNas.media.enable = true;
 
   system.stateVersion = "26.05";
 }

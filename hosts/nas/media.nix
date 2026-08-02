@@ -1,11 +1,24 @@
 {
   config,
+  inputs,
   lib,
   pkgs,
   ...
 }:
 let
   cfg = config.myNas.media;
+  # The NAS base system rides nixpkgs-stable (#135), but the Immich database
+  # was created by the coordinator's unstable Immich (3.0.3 at migration time)
+  # and its schema must never run under an older server (stable had 2.7.5).
+  # So the media stack's version-coupled piece — Immich module + package —
+  # comes from the main unstable input and keeps riding it through the daily
+  # fleet auto-update, exactly like the data expects. Navidrome, Plex,
+  # PostgreSQL 17 and vectorchord were identical across both pins when this
+  # was wired (2026-08-02); they stay stable-sourced.
+  unstablePkgs = import inputs.nixpkgs {
+    inherit (pkgs.stdenv.hostPlatform) system;
+    config.allowUnfree = true;
+  };
   # Deliberately identical to the coordinator's historical media root. Immich
   # and Navidrome can then retain every stored absolute path after restore.
   storageRoot = "/mnt/nas";
@@ -26,7 +39,12 @@ let
     '';
 in
 {
-  options.myNas.media.enable = lib.mkEnableOption "Immich and Navidrome on the verified NAS data disk";
+  # Swap in the unstable Immich module unconditionally (imports cannot depend
+  # on cfg.enable); it stays inert while services.immich.enable is false.
+  disabledModules = [ "services/web-apps/immich.nix" ];
+  imports = [ "${inputs.nixpkgs}/nixos/modules/services/web-apps/immich.nix" ];
+
+  options.myNas.media.enable = lib.mkEnableOption "Immich, Navidrome, and Plex on the verified NAS data disk";
 
   config = lib.mkIf cfg.enable {
     assertions = [
@@ -38,6 +56,7 @@ in
 
     services.immich = {
       enable = true;
+      package = unstablePkgs.immich;
       mediaLocation = "${storageRoot}/photos";
       host = "127.0.0.1";
       port = 2284;
@@ -69,6 +88,7 @@ in
       "d ${storageRoot}/services/postgresql 0700 postgres postgres -"
       "d ${navidromeRoot} 0700 tom users -"
       "d ${navidromeRoot}/cache 0700 tom users -"
+      "d ${storageRoot}/services/plex 0700 tom users -"
     ];
 
     systemd.services.immich-server = {
@@ -175,8 +195,22 @@ in
       };
     };
 
+    # Plex serves the videos subvolume (Tom's 2026-08-02 call: Plex over
+    # Jellyfin). Unlike Immich/Navidrome it stays resident — Plex keeps
+    # long-lived plex.tv sessions and library state that socket activation
+    # would thrash. Reachable only through the coordinator's 32400 relay.
+    # No hardware-transcode config until a Plex Pass exists (precondition
+    # not true yet); CPU direct-play/remux is the baseline.
+    services.plex = {
+      enable = true;
+      user = "tom";
+      group = "users";
+      dataDir = "${storageRoot}/services/plex";
+    };
+    systemd.services.plex.unitConfig.RequiresMountsFor = [ storageRoot ];
+
     networking.firewall.extraInputRules = ''
-      ip saddr 10.77.0.1 tcp dport { 2283, 4533 } accept comment "media from coordinator"
+      ip saddr 10.77.0.1 tcp dport { 2283, 4533, 32400 } accept comment "media from coordinator"
     '';
   };
 }

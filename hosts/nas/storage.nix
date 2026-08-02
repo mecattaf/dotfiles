@@ -73,6 +73,9 @@ in
     #   btrfs subvolume create /mnt/nas/photos     # 0700 tom
     #   btrfs subvolume create /mnt/nas/music      # 0750 tom
     #   btrfs subvolume create /mnt/nas/documents  # 0750 tom
+    #   btrfs subvolume create /mnt/nas/videos     # 0750 tom (added Day 2: the
+    #                                              # LaCie's 545 GiB library, now
+    #                                              # served by NAS-local Plex)
     #   btrfs subvolume create /mnt/nas/services   # 0711 root
     #   btrfs subvolume create /mnt/nas/.snapshots # 0700 root, NEVER exported
     #
@@ -96,6 +99,7 @@ in
         ${storageRoot}/music 10.77.0.1(rw,sync,fsid=2,no_subtree_check,no_root_squash)
         ${storageRoot}/documents 10.77.0.1(rw,sync,fsid=3,no_subtree_check,no_root_squash)
         ${storageRoot}/services 10.77.0.1(rw,sync,fsid=4,no_subtree_check,no_root_squash)
+        ${storageRoot}/videos 10.77.0.1(rw,sync,fsid=5,no_subtree_check,no_root_squash)
       '';
     };
     networking.firewall.extraInputRules = ''
@@ -110,6 +114,7 @@ in
       "z ${storageRoot}/music 0750 tom users -"
       "z ${storageRoot}/photos 0700 tom users -"
       "z ${storageRoot}/documents 0750 tom users -"
+      "z ${storageRoot}/videos 0750 tom users -"
       "z ${storageRoot}/services 0711 root root -"
       "z ${storageRoot}/.snapshots 0700 root root -"
     ];
