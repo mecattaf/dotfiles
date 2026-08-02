@@ -513,27 +513,6 @@
           let
             nas = self.nixosConfigurations.nas.config;
             coordinator = self.nixosConfigurations.coordinator.config;
-            nasCutover =
-              (self.nixosConfigurations.nas.extendModules {
-                modules = [
-                  {
-                    myNas.storage.enable = nixpkgs.lib.mkForce true;
-                    myNas.storage.filesystemUuid = "TEST-UUID";
-                    myNas.storage.smartDevice = "/dev/disk/by-id/ata-TEST";
-                    myNas.media.enable = nixpkgs.lib.mkForce true;
-                  }
-                ];
-              }).config;
-            coordinatorCutover =
-              (self.nixosConfigurations.coordinator.extendModules {
-                modules = [
-                  {
-                    myCoordinatorMedia.enable = nixpkgs.lib.mkForce false;
-                    myNasClient.useRemoteStorage = nixpkgs.lib.mkForce true;
-                    myNasClient.relayMedia = nixpkgs.lib.mkForce true;
-                  }
-                ];
-              }).config;
           in
           assert !nas.services.tailscale.enable;
           # The NAS admits SSH/NFS via networking.firewall.extraInputRules,
@@ -545,28 +524,35 @@
           assert !(nas.systemd.services ? wayvnc);
           assert !(nas.systemd.user.services ? wayvnc);
           assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
-          assert !nas.myNas.storage.enable;
-          assert !nas.myNas.media.enable;
-          assert !nas.services.immich.enable;
-          assert !nas.services.navidrome.enable;
-          assert nasCutover.services.immich.enable;
-          assert nasCutover.services.navidrome.enable;
-          assert nasCutover.fileSystems."/mnt/nas".fsType == "btrfs";
-          assert nasCutover.services.immich.mediaLocation == "/mnt/nas/photos";
-          assert nasCutover.services.navidrome.settings.MusicFolder == "/mnt/nas/music";
-          assert !nasCutover.services.immich.machine-learning.enable;
-          assert
-            nasCutover.services.immich.environment.IMMICH_MACHINE_LEARNING_URL == "http://coordinator:3003";
-          assert nasCutover.services.immich.accelerationDevices == [ "/dev/dri/renderD128" ];
-          assert coordinator.myCoordinatorMedia.enable;
-          assert !coordinator.myNasClient.useRemoteStorage;
-          assert !coordinator.myNasClient.relayMedia;
-          assert !coordinatorCutover.services.immich.enable;
-          assert !coordinatorCutover.services.navidrome.enable;
-          assert coordinatorCutover.fileSystems."/mnt/nas".fsType == "nfs4";
-          assert coordinatorCutover.systemd.sockets ? immich-relay;
-          assert coordinatorCutover.systemd.sockets ? navidrome-relay;
-          assert coordinatorCutover.systemd.sockets ? immich-ml-access;
+          # Post-cutover topology (live since 2026-08-02, #131): the verified
+          # data disk and the media stack run on the NAS; the coordinator only
+          # relays. The pre-cutover extendModules simulation this check used
+          # to carry became the real configuration and was retired.
+          assert nas.myNas.storage.enable;
+          assert nas.myNas.media.enable;
+          assert nas.services.immich.enable;
+          assert nas.services.navidrome.enable;
+          assert nas.services.plex.enable;
+          assert nas.fileSystems."/mnt/nas".fsType == "btrfs";
+          assert nas.services.immich.mediaLocation == "/mnt/nas/photos";
+          assert nas.services.navidrome.settings.MusicFolder == "/mnt/nas/music";
+          assert !nas.services.immich.machine-learning.enable;
+          assert nas.services.immich.environment.IMMICH_MACHINE_LEARNING_URL == "http://coordinator:3003";
+          assert nas.services.immich.accelerationDevices == [ "/dev/dri/renderD128" ];
+          # The stable-pinned NAS must keep running the SAME Immich the
+          # unstable-riding coordinator would — the database schema follows
+          # unstable (media.nix pulls module+package from inputs.nixpkgs).
+          assert nas.services.immich.package.version == coordinator.services.immich.package.version;
+          assert !coordinator.myCoordinatorMedia.enable;
+          assert coordinator.myNasClient.useRemoteStorage;
+          assert coordinator.myNasClient.relayMedia;
+          assert !coordinator.services.immich.enable;
+          assert !coordinator.services.navidrome.enable;
+          assert coordinator.fileSystems."/mnt/nas".fsType == "nfs4";
+          assert coordinator.systemd.sockets ? immich-relay;
+          assert coordinator.systemd.sockets ? navidrome-relay;
+          assert coordinator.systemd.sockets ? plex-relay;
+          assert coordinator.systemd.sockets ? immich-ml-access;
           pkgs.runCommand "nas-topology" { } ''
             touch "$out"
           '';
@@ -748,13 +734,13 @@
           assert !nas.services.pipewire.enable;
           assert nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [ ];
           assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
-          assert !nas.myNas.storage.enable;
-          assert !nas.myNas.media.enable;
-          assert !nas.services.immich.enable;
-          assert !nas.services.navidrome.enable;
-          assert coordinator.myCoordinatorMedia.enable;
-          assert !coordinator.myNasClient.useRemoteStorage;
-          assert !coordinator.myNasClient.relayMedia;
+          assert nas.myNas.storage.enable;
+          assert nas.myNas.media.enable;
+          assert nas.services.immich.enable;
+          assert nas.services.navidrome.enable;
+          assert !coordinator.myCoordinatorMedia.enable;
+          assert coordinator.myNasClient.useRemoteStorage;
+          assert coordinator.myNasClient.relayMedia;
           assert coordinator.systemd.sockets ? immich-ml-access;
           assert coordinator.systemd.services.tailscaled-autoconnect.serviceConfig.RestartSec == "1min";
           assert !coordinator.nix.distributedBuilds;

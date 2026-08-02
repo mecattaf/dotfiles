@@ -36,9 +36,13 @@
   networking.hostName = "coordinator";
   # Both stay on their proven pre-migration side until the real HDD and service
   # state have passed the associated issue's cutover checklist.
-  myCoordinatorMedia.enable = true;
-  myNasClient.useRemoteStorage = false;
-  myNasClient.relayMedia = false;
+  # The 2026-08-02 atomic cutover (#131): media core and its PostgreSQL now
+  # live on the NAS; the coordinator keeps only the tailnet identity, the
+  # socket relays (2283/4533/32400), the on-demand ML backend, and the NFS
+  # client mount at the immutable /mnt/nas path.
+  myCoordinatorMedia.enable = false;
+  myNasClient.useRemoteStorage = true;
+  myNasClient.relayMedia = true;
   services.gpuCooldownTripwire = {
     enable = true;
     # Retuned 2026-07-29 after the academic-ocr supervised run: sustained VLM

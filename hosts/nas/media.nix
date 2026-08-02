@@ -85,7 +85,11 @@ in
       "d ${generatedRoot}/encoded-video 0700 tom users -"
       "d ${generatedRoot}/profile 0700 tom users -"
       "d ${generatedRoot}/backups 0700 tom users -"
+      # Both levels must pre-exist: the unit mount-namespaces the versioned
+      # dataDir before ExecStartPre can initdb it, and fails NAMESPACE if the
+      # directory is absent.
       "d ${storageRoot}/services/postgresql 0700 postgres postgres -"
+      "d ${config.services.postgresql.dataDir} 0700 postgres postgres -"
       "d ${navidromeRoot} 0700 tom users -"
       "d ${navidromeRoot}/cache 0700 tom users -"
       "d ${storageRoot}/services/plex 0700 tom users -"
