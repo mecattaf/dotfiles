@@ -21,6 +21,9 @@ let
       ]
     }
     mkdir -p /mnt/lacie /var/lib/lacie-mirror
+    # Local-path bisync needs no real config, but without HOME rclone hunts
+    # for one (and threatens to drop rclone.conf in the CWD). Pin it.
+    export RCLONE_CONFIG=/var/lib/lacie-mirror/rclone.conf
     if mountpoint -q /mnt/lacie; then
       # A read-only mount means a manual job (e.g. a verify pass) owns the
       # drive right now; bail quietly rather than fight over it.
