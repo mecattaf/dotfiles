@@ -111,6 +111,10 @@ in
     # the data migration would land unsnapshottable. 'z' only enforces
     # ownership/mode on what the runbook created.
     systemd.tmpfiles.rules = [
+      # Plain directory INSIDE the services subvolume (not a subvolume root, so
+      # 'd' is safe here): destination of the coordinator-driven weekly journal
+      # archive (#135). Never NFS-exported.
+      "d ${storageRoot}/services/journal-archive 0700 root root -"
       "z ${storageRoot}/music 0750 tom users -"
       "z ${storageRoot}/photos 0700 tom users -"
       "z ${storageRoot}/documents 0750 tom users -"
