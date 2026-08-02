@@ -10,6 +10,18 @@
 # Ungated by design: the substrate is not user-facing, costs nothing while
 # idle, and has no device-ID dependency beyond the NVMe disko already asserts.
 {
+  # The NVMe mounts at /mnt/fast since the 2026-08-02 role widening
+  # (disko.nix); journal-remote keeps its default output path via this bind.
+  # systemd's fstab generator orders the bind after mnt-fast.mount on its own.
+  fileSystems."/var/log/journal/remote" = {
+    device = "/mnt/fast/journal-remote";
+    fsType = "none";
+    options = [
+      "bind"
+      "nofail"
+    ];
+  };
+
   services.journald.remote = {
     enable = true;
     # Plaintext HTTP is a settled #135 decision: nixpkgs systemd is built

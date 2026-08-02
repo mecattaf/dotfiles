@@ -22,8 +22,15 @@ let
   # Deliberately identical to the coordinator's historical media root. Immich
   # and Navidrome can then retain every stored absolute path after restore.
   storageRoot = "/mnt/nas";
-  generatedRoot = "${storageRoot}/services/immich-generated";
-  navidromeRoot = "${storageRoot}/services/navidrome";
+  # The NVMe fast tier (disko.nix, 2026-08-02 role widening): database and
+  # regenerable state live here for random-I/O speed and so the HDD only
+  # works when actual media moves. Everything under fastRoot is either
+  # rebuildable (thumbs, caches) or dump-protected onto the HDD nightly
+  # (PostgreSQL via Immich's backups, Navidrome via its Backup settings) —
+  # losing the budget NVMe must never cost more than a day of metadata.
+  fastRoot = "/mnt/fast";
+  generatedRoot = "${fastRoot}/immich-generated";
+  navidromeRoot = "${fastRoot}/navidrome";
   socketProxyd = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd";
   waitForHttp =
     name: url:
@@ -71,27 +78,35 @@ in
       accelerationDevices = [ "/dev/dri/renderD128" ];
     };
 
-    # Database and rebuildable media state belong on the HDD, not the 64 GB eMMC.
-    services.postgresql.dataDir = "${storageRoot}/services/postgresql/${config.services.postgresql.package.psqlSchema}";
-    systemd.services.postgresql.unitConfig.RequiresMountsFor = [ storageRoot ];
+    # The database lives on the NVMe: Immich's queries (timeline, vector
+    # search) are random-I/O and the HDD serviced them at rotating-disk IOPS.
+    # Safety net: Immich's nightly pg_dump lands on the HDD (photos/backups,
+    # see the BindPaths note below), so NVMe loss costs at most a day.
+    services.postgresql.dataDir = "${fastRoot}/postgresql/${config.services.postgresql.package.psqlSchema}";
+    systemd.services.postgresql.unitConfig.RequiresMountsFor = [ fastRoot ];
 
     systemd.tmpfiles.rules = [
       "d ${storageRoot}/photos/thumbs 0700 tom users -"
       "d ${storageRoot}/photos/encoded-video 0700 tom users -"
       "d ${storageRoot}/photos/profile 0700 tom users -"
-      "d ${storageRoot}/photos/backups 0700 tom users -"
+      # REAL directory in the photos subvolume, not a bind target: DB dumps
+      # write here, stay on the HDD, and ride the quarterly LaCie mirror with
+      # the rest of photos/. 0755 so the postgres-owned db/ subdir (the
+      # nas-db-dump target) is reachable.
+      "d ${storageRoot}/photos/backups 0755 tom users -"
+      "d ${storageRoot}/photos/backups/db 0700 postgres postgres -"
       "d ${generatedRoot} 0700 tom users -"
       "d ${generatedRoot}/thumbs 0700 tom users -"
       "d ${generatedRoot}/encoded-video 0700 tom users -"
       "d ${generatedRoot}/profile 0700 tom users -"
-      "d ${generatedRoot}/backups 0700 tom users -"
       # Both levels must pre-exist: the unit mount-namespaces the versioned
       # dataDir before ExecStartPre can initdb it, and fails NAMESPACE if the
       # directory is absent.
-      "d ${storageRoot}/services/postgresql 0700 postgres postgres -"
+      "d ${fastRoot}/postgresql 0700 postgres postgres -"
       "d ${config.services.postgresql.dataDir} 0700 postgres postgres -"
       "d ${navidromeRoot} 0700 tom users -"
       "d ${navidromeRoot}/cache 0700 tom users -"
+      "d ${storageRoot}/services/navidrome-backups 0700 tom users -"
       "d ${storageRoot}/services/plex 0700 tom users -"
     ];
 
@@ -102,13 +117,19 @@ in
       environment.CPU_CORES = "4";
       unitConfig = {
         StopWhenUnneeded = true;
-        RequiresMountsFor = [ storageRoot ];
+        RequiresMountsFor = [
+          storageRoot
+          fastRoot
+        ];
       };
+      # Rebuildable generated media overlays onto the photos tree from the
+      # NVMe. photos/backups is deliberately NOT bound: the nightly DB dump
+      # must land on the real HDD directory (and thence the LaCie mirror),
+      # not on the same NVMe it is the safety net for.
       serviceConfig.BindPaths = [
         "${generatedRoot}/thumbs:${storageRoot}/photos/thumbs"
         "${generatedRoot}/encoded-video:${storageRoot}/photos/encoded-video"
         "${generatedRoot}/profile:${storageRoot}/photos/profile"
-        "${generatedRoot}/backups:${storageRoot}/photos/backups"
       ];
     };
     systemd.services.redis-immich = {
@@ -160,12 +181,22 @@ in
         LogLevel = "info";
         SessionTimeout = "168h";
         AutoImportPlaylists = true;
+        # State is on the NVMe; the nightly SQLite backup is its HDD safety
+        # net, same doctrine as the Immich dump.
+        Backup = {
+          Path = "${storageRoot}/services/navidrome-backups";
+          Schedule = "@daily";
+          Count = 14;
+        };
       };
     };
     systemd.services.navidrome = {
       wantedBy = lib.mkForce [ ];
       unitConfig = {
-        RequiresMountsFor = [ storageRoot ];
+        RequiresMountsFor = [
+          storageRoot
+          fastRoot
+        ];
         StopWhenUnneeded = true;
       };
     };
@@ -196,6 +227,41 @@ in
           "AF_UNIX"
         ];
         TimeoutStartSec = "2min";
+      };
+    };
+
+    # Independent nightly DB dump to the HDD. Immich has its own nightly
+    # backup, but it runs inside immich-server — which is socket-activated
+    # and asleep most nights, so it cannot be the safety net for the NVMe
+    # dataDir. This timer talks straight to PostgreSQL. Dumps land in the
+    # real photos/backups (HDD + quarterly LaCie mirror); 14 kept, matching
+    # Immich's own retention.
+    systemd.services.nas-db-dump = {
+      description = "Nightly pg_dump of the media database to the HDD";
+      requires = [ "postgresql.service" ];
+      after = [ "postgresql.service" ];
+      unitConfig.RequiresMountsFor = [ storageRoot ];
+      # Root, not User=postgres: photos/ is tom 0700 and the dump target must
+      # stay inside the mirrored photos tree, so the shell runs as root (which
+      # traverses) and only the pg_dump itself drops to postgres for peer auth.
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = pkgs.writeShellScript "nas-db-dump" ''
+          set -eu
+          out="${storageRoot}/photos/backups/db/nas-pg-dump-$(date +%Y%m%dT%H%M%S).sql.gz"
+          ${pkgs.util-linux}/bin/runuser -u postgres -- \
+            ${config.services.postgresql.package}/bin/pg_dump --clean --if-exists tom \
+            | ${pkgs.gzip}/bin/gzip > "$out"
+          ls -1t ${storageRoot}/photos/backups/db/nas-pg-dump-*.sql.gz \
+            | tail -n +15 | ${pkgs.findutils}/bin/xargs -r rm --
+        '';
+      };
+    };
+    systemd.timers.nas-db-dump = {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "*-*-* 02:15:00";
+        Persistent = true;
       };
     };
 
