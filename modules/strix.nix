@@ -104,12 +104,19 @@
 
     # Hardware watchdog (sp5100_tco, /dev/watchdog0 — present but unfed until
     # now): systemd pets it at runtime; if the kernel ever hard-locks again
-    # (this bug or the next one) the chip force-resets the box after 30s
+    # (this bug or the next one) the chip force-resets the box after 2m
     # instead of it sitting "on but dead" overnight until someone finds it —
     # the exact 2026-07-16 failure mode, twice. rebootTime bounds a hung
     # reboot/shutdown the same way.
+    #
+    # 2m, not 30s: on 2026-08-02 a hung NFS mount stalled PID 1 mid
+    # `nixos-rebuild switch` past the old 30s window and the TCO hard-reset a
+    # live, recoverable box. The mount is soft-bounded now (~15s worst case,
+    # hosts/coordinator/nas-client.nix), so 2m keeps every plausible transient
+    # stall inside the window while still catching real lockups within minutes,
+    # not hours.
     systemd.settings.Manager = {
-      RuntimeWatchdogSec = "30s";
+      RuntimeWatchdogSec = "2m";
       RebootWatchdogSec = "2m";
     };
 

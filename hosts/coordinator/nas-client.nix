@@ -17,6 +17,15 @@ in
   config = lib.mkMerge [
     (lib.mkIf cfg.useRemoteStorage {
       boot.supportedFilesystems = [ "nfs" ];
+      # soft/timeo/retrans are the load-bearing options: with the default hard
+      # mount, a dead NAS makes every I/O on /mnt/nas retry FOREVER in the
+      # kernel, and on 2026-08-02 that wedged PID 1 mid `nixos-rebuild switch`
+      # long enough for the 30s hardware watchdog (modules/strix.nix) to reset
+      # the box. soft + timeo=50 (5s/try, deciseconds) + retrans=2 bounds any
+      # NFS op to ~15s worst case — an eternity on the dedicated /30 cable, so
+      # EIO only ever surfaces when the NAS is genuinely down, where failing
+      # beats hanging. No x-systemd.device-timeout: 'nas:/' is not a device
+      # path, so systemd ignores it with a warning on every generator run.
       fileSystems."/mnt/nas" = {
         device = "nas:/";
         fsType = "nfs4";
@@ -24,8 +33,10 @@ in
           "noatime"
           "nofail"
           "noauto"
+          "soft"
+          "timeo=50"
+          "retrans=2"
           "x-systemd.automount"
-          "x-systemd.device-timeout=10s"
           "x-systemd.mount-timeout=30s"
           "_netdev"
         ];
