@@ -1,7 +1,6 @@
 {
   config,
   lib,
-  pkgs,
   ...
 }:
 let
@@ -23,9 +22,16 @@ in
 # in modules/adguardhome.nix (loopback resolver) instead of a LAN service here.
 #
 # What remains is genuinely BE550-independent:
-#   - the Freebox wifi uplink (wlp192s0), this box's actual internet,
-#   - a private routed fast lane to the headless NixOS host `nas`, and
-#   - the LaCie 4TB USB NAS (/mnt/nas) until the verified cutover gate flips.
+#   - the Freebox wifi uplink (wlp192s0), this box's actual internet, and
+#   - a private routed fast lane to the headless NixOS host `nas`.
+#
+# The LaCie 4TB USB plane that used to live here (the /mnt/nas automount, the
+# SAT smartd thermal watch, the hd-idle spin-down suite) was RETIRED 2026-08-02
+# with the NAS cutover (#131): the real NAS owns /mnt/nas now, the LaCie hangs
+# off the NAS as the rollback copy, and if it ever mounts anywhere again the
+# path is /mnt/lacie — never /mnt/nas — with no monitoring attached. See git
+# history for the retired blocks (they carried the probed USB-bridge lore:
+# `-n standby,q`, `-c ata`, kernel-name resolution for hd-idle).
 {
   # Internet uplink: the Freebox AP over wifi (wlp192s0). Ported from the live
   # imperative NM profile that was hand-copied during flash night
@@ -118,93 +124,4 @@ in
   };
   networking.firewall.trustedInterfaces = [ "enp191s0" ];
   networking.hosts."10.77.0.2" = [ "nas" ];
-
-  # LaCie 4TB, attached DIRECTLY to this box via USB (Tom's ruling 2026-07-05;
-  # the old BE550-SMB path is retired). nofail + automount keep boot clean when
-  # the drive is unplugged. Partition 2 was migrated from NTFS to Btrfs on
-  # 2026-07-23 while retaining the GPT and partition boundaries. Pin the new
-  # filesystem UUID rather than the reusable label, and use conservative
-  # single-rotating-disk options. POSIX ownership now lives on disk.
-  fileSystems."/mnt/nas" = lib.mkIf (!config.myNasClient.useRemoteStorage) {
-    device = "/dev/disk/by-uuid/20e38790-a639-4ffc-8f1a-3921d1aedb97";
-    fsType = "btrfs";
-    options = [
-      "noatime"
-      "compress=zstd:3"
-      "nofail"
-      "noauto"
-      "x-systemd.automount"
-      "x-gvfs-show"
-    ];
-  };
-
-  # ── LaCie thermal + power suite ─────────────────────────────────────────────
-  # Health/temperature monitoring and idle spin-down for the LaCie 4TB above.
-  # The drive is a Seagate BarraCuda ST4000LM024 (2.5" SMR, 5526 rpm) behind a
-  # USB-SATA bridge (TRAN usb), so it exposes NO SATA hwmon node — drivetemp is
-  # SATA-only — and its own firmware idle timer is NOT honoured through the
-  # bridge (probed live 2026-07-11: `hdparm -S 12` accepted but the platters
-  # never parked after 80s of zero I/O). Both facts shape the choices below.
-  # Stable handle: /dev/disk/by-id/ata-…_WCK19ZT3 (serial WCK19ZT3), which the
-  # bridge passes through so smartctl auto-detects the SAT layer.
-
-  # smartd — declarative SMART monitoring of the LaCie ONLY.
-  #   -d sat        : talk ATA through the USB bridge's SCSI/ATA translation.
-  #   -a            : full attribute + self-test-log monitoring.
-  #   -n standby,q  : NON-NEGOTIABLE. Never issue a poll that would spin a parked
-  #                   drive back up; `q` also suppresses the "skipped, standby"
-  #                   log line so journald isn't spammed every 30 min.
-  #   -W 4,45,50    : warn on a 4°C jump, log INFO at 45°C, CRIT at 50°C. Worst
-  #                   ever seen is 55°C; 45/50 sit just above the ~45°C idle temp.
-  # Consumer surface: smartd writes these temperature/health events to journald
-  # (`journalctl -u smartd`) — that is where future thermal tripwires read from.
-  # autodetect=false is deliberate: a DEVICESCAN line would re-add /dev/sda with
-  # the default `-a` and NO `-n standby,q`, waking the drive on every poll.
-  services.smartd = lib.mkIf (!config.myNasClient.useRemoteStorage) {
-    enable = true;
-    autodetect = false;
-    extraOptions = [ "-i 1800" ]; # poll every 30 min (also smartd's default)
-    devices = [
-      {
-        device = "/dev/disk/by-id/ata-ST4000LM024-2AN17V_WCK19ZT3";
-        options = "-a -d sat -n standby,q -W 4,45,50";
-      }
-    ];
-  };
-
-  # Spin-down after ~20 min idle. The drive's internal -S timer is ignored by
-  # the bridge (see above) and hd-idle's default SCSI STOP command is a no-op on
-  # it too (probed: exit 0 but platters stay spinning), so we drive hd-idle in
-  # `-c ata` mode — ATA STANDBY through the SAT layer, the ONE command this
-  # bridge honours (`hdparm -y` parks it in ~0s; a cold read wakes it in ~3.3s).
-  # hd-idle watches /proc/diskstats and parks the disk after -i seconds of no
-  # I/O; NixOS ships no services.hd-idle module, hence this hand-rolled unit.
-  #
-  # hd-idle keys its per-disk idle timer on the KERNEL name as it appears in
-  # /proc/diskstats ("sda"); its symlink handling does NOT feed that match, so
-  # `-a <by-id>` silently falls back to the default timer and never fires
-  # (probed live 2026-07-11). We therefore resolve the stable by-id → current
-  # kernel name at start and hand hd-idle that. On this box the LaCie is the
-  # only sd* block device (the system disk is NVMe), but resolving keeps the
-  # unit correct even if the kernel name ever shifts (sdb, …).
-  #   -i 0            : default idle 0 (disabled) for every other disk.
-  #   -c ata          : issue ATA STANDBY (the command the bridge honours).
-  #   -a <dev> -i 1200: park THIS disk after 20 min (1200 s) idle.
-  systemd.services.hd-idle = lib.mkIf (!config.myNasClient.useRemoteStorage) {
-    description = "hd-idle — spin down the LaCie NAS drive after 20 min idle";
-    documentation = [ "man:hd-idle(8)" ];
-    after = [ "mnt-nas.mount" ];
-    wantedBy = [ "multi-user.target" ];
-    serviceConfig = {
-      Type = "simple";
-      ExecStart = pkgs.writeShellScript "hd-idle-lacie" ''
-        set -eu
-        dev=$(${pkgs.coreutils}/bin/basename \
-          "$(${pkgs.coreutils}/bin/readlink -f /dev/disk/by-id/ata-ST4000LM024-2AN17V_WCK19ZT3)")
-        exec ${pkgs.hd-idle}/bin/hd-idle -i 0 -c ata -a "$dev" -i 1200
-      '';
-      Restart = "on-failure";
-      RestartSec = 30;
-    };
-  };
 }
