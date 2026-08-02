@@ -90,9 +90,14 @@ in
     # st_dev), so every crossing point is exported deliberately. Only the
     # coordinator on the /30 is admitted; other clients reach the relays over
     # Tailscale and the filesystem itself never leaves this cable.
+    # No hostName bind: nfsd listening on the wildcard is fine on a box whose
+    # only network is the /30 cable, and binding 10.77.0.2 raced address
+    # assignment at boot even behind network-online.target (NM reports online
+    # before the static address exists — hit live on the first two
+    # post-cutover reboots: "nfsdctl: Cannot assign requested address").
+    # nftables scoping 2049 to 10.77.0.1 is the actual access control.
     services.nfs.server = {
       enable = true;
-      hostName = "10.77.0.2";
       exports = ''
         ${storageRoot} 10.77.0.1(rw,sync,fsid=0,no_subtree_check,no_root_squash)
         ${storageRoot}/photos 10.77.0.1(rw,sync,fsid=1,no_subtree_check,no_root_squash)
@@ -105,6 +110,17 @@ in
     networking.firewall.extraInputRules = ''
       ip saddr 10.77.0.1 tcp dport 2049 accept comment "NFSv4 from coordinator"
     '';
+
+    # With the wildcard bind the address race is gone, but nfsd must still not
+    # start before the exported tree is mounted — exporting the bare mountpoint
+    # directory would hand clients an empty fsid=0 root. network-online stays
+    # as ordering hygiene only; it is NOT sufficient for address availability
+    # (see the hostName retirement above) and nothing here depends on it being.
+    systemd.services.nfs-server = {
+      wants = [ "network-online.target" ];
+      after = [ "network-online.target" ];
+      unitConfig.RequiresMountsFor = [ storageRoot ];
+    };
 
     # 'z' (adjust-only), deliberately not 'd': if a runbook step were skipped,
     # 'd' would silently create plain DIRECTORIES where subvolumes belong and
