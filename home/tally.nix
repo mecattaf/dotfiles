@@ -140,6 +140,16 @@ in
         enforce = "cooperative";
         hardPreempt = false;
       };
+      # The NAS data spindle as a contention lane (#135): the weekly journal
+      # archive leases it now; future borg backups and supervised LaCie mirror
+      # runs against /mnt/nas must lease it too so bursts never overlap on the
+      # same disk.
+      nas-hdd = {
+        resource = "mutex";
+        capacity = 1;
+        enforce = "cooperative";
+        hardPreempt = false;
+      };
       # crm-campaign is NOT declared here: services.tally.campaigns.crm
       # renders it as the capacity-1 runner mutex, together with the
       # campaign-agent and campaign-control node lanes.
@@ -282,6 +292,24 @@ in
           ];
           runtimeMaxSec = 43200;
           noEnqueue = false;
+        };
+      };
+
+      # #135 workstream 1, final piece: one weekly burst moves rotated remote
+      # journal files NVMe→HDD on the NAS. The verdict carries the liveness
+      # dead-man's switch — the service exits nonzero when no new journal
+      # bytes arrived since the previous run, so "uploads quietly stopped"
+      # surfaces as a failed tally job instead of silence.
+      weekly-journal-archive = {
+        kind = "calendar";
+        onCalendar = "Sun 03:30";
+        enqueue = {
+          pool = "nas-hdd";
+          argv = systemService "journal-archive.service";
+          priority = "low";
+          dedupKey = "weekly-journal-archive-%Y-%W";
+          evidence = [ "exit:0" ];
+          noEnqueue = true;
         };
       };
 

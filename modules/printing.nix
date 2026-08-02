@@ -1,11 +1,13 @@
 {
+  config,
+  lib,
   pkgs,
   ...
 }:
 
-# Shared home-printer plane. common.nix imports this for the active NixOS fleet
-# and future hosts.
-{
+# Shared home-printer plane. common.nix imports it fleet-wide; headless.nix
+# force-disables it on appliances such as `nas`.
+lib.mkIf (!config.myHeadless.enable) {
   # CUPS supplies Chrome's system print dialog and the lp/lpr CLI. The Brother
   # HL-L2445DW speaks IPP Everywhere, so the permanent queue is driverless;
   # brlaser remains installed only as the already-proven fallback.

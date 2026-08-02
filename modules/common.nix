@@ -8,6 +8,7 @@
 # anything a host or nixos-hardware module may override.
 {
   imports = [
+    ./headless.nix # opt-in appliance profile; NAS has no HM, niri, greetd, or WayVNC
     ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
     ./dotfiles-bootstrap.nix # ensure ~/mecattaf/dotfiles exists before the session
@@ -199,7 +200,9 @@
   services.resolved.enable = true;
   networking.firewall.enable = true;
   # wayvnc (port 5900) is reachable ONLY over the tailnet — never the raw LAN/wifi.
-  networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 5900 ];
+  networking.firewall.interfaces.tailscale0.allowedTCPPorts = lib.mkIf (!config.myHeadless.enable) [
+    5900
+  ];
 
   # --- zram (cap at 8 GiB; bare enable would balloon on the 128 GB boxes) ---
   zramSwap = {

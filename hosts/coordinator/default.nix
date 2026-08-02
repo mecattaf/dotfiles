@@ -12,7 +12,11 @@
     ./disko.nix
     ./fleet-deploy.nix # one Tally-owned deploy-rs transaction for the whole fleet
     ./uplink-nas.nix
+    ./journal-upload.nix # fleet journald substrate sender — refs #135
+    ./nas-client.nix
     ./services.nix
+    ./immich-ml.nix
+    ./atuin.nix
     # Per-machine AdGuard Home DNS filter (loopback 127.0.0.1:53, resolved
     # forwards to it). The Zenbook Duo imports the same module.
     ../../modules/adguardhome.nix
@@ -30,6 +34,15 @@
   ];
 
   networking.hostName = "coordinator";
+  # Both stay on their proven pre-migration side until the real HDD and service
+  # state have passed the associated issue's cutover checklist.
+  # The 2026-08-02 atomic cutover (#131): media core and its PostgreSQL now
+  # live on the NAS; the coordinator keeps only the tailnet identity, the
+  # socket relays (2283/4533/32400), the on-demand ML backend, and the NFS
+  # client mount at the immutable /mnt/nas path.
+  myCoordinatorMedia.enable = false;
+  myNasClient.useRemoteStorage = true;
+  myNasClient.relayMedia = true;
   services.gpuCooldownTripwire = {
     enable = true;
     # Retuned 2026-07-29 after the academic-ocr supervised run: sustained VLM

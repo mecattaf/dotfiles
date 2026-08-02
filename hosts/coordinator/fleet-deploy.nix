@@ -9,8 +9,8 @@
 }:
 # One exact-candidate fleet transaction. Tally owns its calendar, durable row,
 # proof, and the build + coordinator-GPU admission window; this oneshot owns only
-# the deployment content. The coordinator is the nightly core, while the Zenbook
-# remains a later best-effort leg.
+# the deployment content. The coordinator and always-on NAS are the nightly core,
+# while the Zenbook remains a later best-effort leg.
 let
   system = pkgs.stdenv.hostPlatform.system;
   deployPackage = inputs.deploy-rs.packages.${system}.deploy-rs;
@@ -95,6 +95,7 @@ let
       }
 
       build_profile coordinator
+      build_profile nas
 
       # Preserve the old cache warmer's all-host behavior. A broken laptop build
       # is remembered but cannot prevent the already-built core from deploying.
@@ -107,8 +108,13 @@ let
       echo "fleet-deploy: activating coordinator"
       deploy --skip-checks --targets "$main_ref#coordinator" -- "''${override_args[@]}"
 
+      # Coordinator goes first because it owns the route, NAT, known_hosts, and
+      # private ML endpoint used by the appliance.
+      echo "fleet-deploy: activating nas"
+      deploy --skip-checks --targets "$main_ref#nas" -- "''${override_args[@]}"
+
       if (( ! zenbook_build_ok )); then
-        echo "fleet-deploy: coordinator deployed, but the prebuilt laptop candidate failed" >&2
+        echo "fleet-deploy: coordinator and nas deployed, but the prebuilt laptop candidate failed" >&2
         exit 1
       fi
 
@@ -117,7 +123,7 @@ let
       # failures are real failures retained by the one parent Tally witness.
       ssh_args=( ${lib.escapeShellArgs fleetDeploySshOpts} )
       if ! ssh "''${ssh_args[@]}" -n root@zenbook-duo /run/current-system/sw/bin/true; then
-        echo "fleet-deploy: zenbook-duo offline; coordinator deployed, laptop skipped"
+        echo "fleet-deploy: zenbook-duo offline; coordinator and nas deployed, laptop skipped"
         exit 0
       fi
 
@@ -143,7 +149,7 @@ let
       case "$power_status" in
         0) ;;
         10)
-          echo "fleet-deploy: zenbook-duo on battery below 50%; coordinator deployed, laptop skipped"
+          echo "fleet-deploy: zenbook-duo on battery below 50%; coordinator and nas deployed, laptop skipped"
           exit 0
           ;;
         *)

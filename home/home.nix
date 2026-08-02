@@ -326,6 +326,27 @@ in
       name = "Bibata-Modern-Classic";
       package = pkgs.bibata-cursors;
     };
+    # Photos gets a plain bookmark, not an XDG dir (see xdg.userDirs below):
+    # XDG_PICTURES_DIR is where screenshot tools save, and /mnt/nas/photos is
+    # Immich's library root — stray screenshots must not land inside it.
+    gtk3.bookmarks = lib.optionals (hostName == "coordinator") [
+      "file:///mnt/nas/photos Photos"
+    ];
+  };
+
+  # ---------------------------------------------------------------------------
+  # NAS media in the Nautilus sidebar (coordinator only). Music/Videos become
+  # the REAL XDG user dirs pointing into the NFS automount, so Nautilus (and
+  # anything using g_get_user_special_dir) treats the NAS library as native
+  # local folders; first click triggers the automount. createDirectories stays
+  # off — the dirs live on the NAS and mkdir through a dead mount at HM
+  # activation would hang or spray errors.
+  # ---------------------------------------------------------------------------
+  xdg.userDirs = lib.mkIf (hostName == "coordinator") {
+    enable = true;
+    createDirectories = false;
+    music = "/mnt/nas/music";
+    videos = "/mnt/nas/videos";
   };
 
   # ---------------------------------------------------------------------------

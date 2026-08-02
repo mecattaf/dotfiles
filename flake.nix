@@ -1,5 +1,5 @@
 {
-  description = "mecattaf — one flake for the whole distribution (NixOS + home-manager). AMD Strix Halo coordinator + Intel laptop.";
+  description = "mecattaf — one flake for the whole distribution: Strix Halo coordinator, headless AMD NAS, and Intel laptop.";
 
   inputs = {
     # Unstable: Strix Halo (gfx1151) wants fresh kernels + Mesa.
@@ -18,6 +18,15 @@
     # catalogs) exactly once, then builds and deploys those immutable URLs without
     # writing the lock. A plain local build uses the reviewed fallback revision.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable";
+
+    # nixpkgs-stable — pins ONLY nixosConfigurations.nas (issue #135 ruling):
+    # the NAS is a frozen self-sustaining appliance on standard stable nixpkgs,
+    # maintained manually every few years. It never rides the unstable
+    # kernel/Mesa churn the coordinator's pin exists to gate, and it accepts
+    # EOL-pin CVE exposure because it is reachable only from the coordinator
+    # over the private /30. Bump deliberately with
+    # `nix flake update nixpkgs-stable` on the same few-years cadence.
+    nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
 
     home-manager = {
       url = "github:nix-community/home-manager";
@@ -266,8 +275,8 @@
         "-o"
         "UserKnownHostsFile=/etc/ssh/ssh_known_hosts"
         "-o"
-        # Fleet hostnames resolve through Tailscale MagicDNS. Force its stable IPv4
-        # address so deploy-rs never selects an unrelated link-local AAAA record.
+        # Fleet hostnames resolve through MagicDNS or the NAS's direct /etc/hosts
+        # mapping. Force IPv4 so deploy-rs never selects a link-local AAAA record.
         "AddressFamily=inet"
         "-o"
         "ConnectTimeout=10"
@@ -332,10 +341,18 @@
         catalog = localModelCatalog;
       };
 
-      # Single host-wiring point. Every host = common.nix + its own module + HM.
+      # Single host-wiring point. Interactive machines add Home Manager; the NAS
+      # deliberately stops at NixOS so no user compositor or WayVNC unit exists.
       mkHost =
-        hostModule:
-        nixpkgs.lib.nixosSystem {
+        {
+          hostModule,
+          withHomeManager ? true,
+          # The nixpkgs universe this host's system closure evaluates from.
+          # Interactive hosts ride the main unstable pin; the NAS passes
+          # inputs.nixpkgs-stable (see that input's comment).
+          hostNixpkgs ? nixpkgs,
+        }:
+        hostNixpkgs.lib.nixosSystem {
           inherit system;
           specialArgs = {
             inherit inputs rollingInputOverrides fleetDeploySshOpts;
@@ -349,6 +366,8 @@
             hostModule
             inputs.agenix.nixosModules.default
             inputs.disko.nixosModules.default
+          ]
+          ++ nixpkgs.lib.optionals withHomeManager [
             home-manager.nixosModules.home-manager
             {
               home-manager.useGlobalPkgs = true;
@@ -363,6 +382,27 @@
             }
           ];
         };
+
+      # DHCP + operator-key installer used only to put the NAS on 10.77.0.2 so
+      # nixos-anywhere can perform the reviewed eMMC installation over Ethernet.
+      nasInstaller = nixpkgs.lib.nixosSystem {
+        inherit system;
+        modules = [
+          (nixpkgs + "/nixos/modules/installer/cd-dvd/installation-cd-minimal.nix")
+          {
+            nixpkgs.overlays = overlays;
+            nixpkgs.config.allowUnfree = true;
+            networking.hostName = "nas-installer";
+            services.openssh.enable = true;
+            services.openssh.settings.PermitRootLogin = "prohibit-password";
+            users.users.root.openssh.authorizedKeys.keys = [
+              "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHuyYcI6TtVr2UBvyFXySczeRX+1tnaU3lJ8BdyVvw9s flasher@harness-20260427"
+              "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729"
+            ];
+            image.baseName = nixpkgs.lib.mkForce "nixos-nas-installer";
+          }
+        ];
+      };
     in
     {
       # Evaluation-only metadata surface for deterministic local-AI workflows.
@@ -373,8 +413,13 @@
       overlays.default = import ./overlays;
 
       nixosConfigurations = {
-        coordinator = mkHost ./hosts/coordinator;
-        zenbook-duo = mkHost ./hosts/zenbook-duo;
+        coordinator = mkHost { hostModule = ./hosts/coordinator; };
+        nas = mkHost {
+          hostModule = ./hosts/nas;
+          withHomeManager = false;
+          hostNixpkgs = inputs.nixpkgs-stable;
+        };
+        zenbook-duo = mkHost { hostModule = ./hosts/zenbook-duo; };
       };
 
       # deploy-rs owns HOW a selected generation reaches and activates on a node.
@@ -395,10 +440,11 @@
           nixpkgs.lib.genAttrs
             [
               "coordinator"
+              "nas"
               "zenbook-duo"
             ]
             (host: {
-              # Canonical names resolve through Tailscale MagicDNS.
+              # Canonical names resolve through MagicDNS or the direct NAS map.
               hostname = host;
               sshOpts = fleetDeploySshOpts;
               profiles.system.path =
@@ -439,6 +485,7 @@
             vllm-rocm
             ;
           live-iso = strixAi.live-iso;
+          nas-installer-iso = nasInstaller.config.system.build.isoImage;
         };
 
       # Artifact rows are individually buildable as `nix build .#models.<id>`.
@@ -462,6 +509,54 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        nas-topology =
+          let
+            nas = self.nixosConfigurations.nas.config;
+            coordinator = self.nixosConfigurations.coordinator.config;
+          in
+          assert !nas.services.tailscale.enable;
+          # The NAS admits SSH/NFS via networking.firewall.extraInputRules,
+          # which only renders under the nftables backend — with iptables the
+          # appliance seals itself shut (hit live 2026-08-01).
+          assert nas.networking.nftables.enable;
+          assert !nas.programs.niri.enable;
+          assert !nas.services.greetd.enable;
+          assert !(nas.systemd.services ? wayvnc);
+          assert !(nas.systemd.user.services ? wayvnc);
+          assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
+          # Post-cutover topology (live since 2026-08-02, #131): the verified
+          # data disk and the media stack run on the NAS; the coordinator only
+          # relays. The pre-cutover extendModules simulation this check used
+          # to carry became the real configuration and was retired.
+          assert nas.myNas.storage.enable;
+          assert nas.myNas.media.enable;
+          assert nas.services.immich.enable;
+          assert nas.services.navidrome.enable;
+          assert nas.services.plex.enable;
+          assert nas.fileSystems."/mnt/nas".fsType == "btrfs";
+          assert nas.services.immich.mediaLocation == "/mnt/nas/photos";
+          assert nas.services.navidrome.settings.MusicFolder == "/mnt/nas/music";
+          assert !nas.services.immich.machine-learning.enable;
+          assert nas.services.immich.environment.IMMICH_MACHINE_LEARNING_URL == "http://coordinator:3003";
+          assert nas.services.immich.accelerationDevices == [ "/dev/dri/renderD128" ];
+          # The stable-pinned NAS must keep running the SAME Immich the
+          # unstable-riding coordinator would — the database schema follows
+          # unstable (media.nix pulls module+package from inputs.nixpkgs).
+          assert nas.services.immich.package.version == coordinator.services.immich.package.version;
+          assert !coordinator.myCoordinatorMedia.enable;
+          assert coordinator.myNasClient.useRemoteStorage;
+          assert coordinator.myNasClient.relayMedia;
+          assert !coordinator.services.immich.enable;
+          assert !coordinator.services.navidrome.enable;
+          assert coordinator.fileSystems."/mnt/nas".fsType == "nfs4";
+          assert coordinator.systemd.sockets ? immich-relay;
+          assert coordinator.systemd.sockets ? navidrome-relay;
+          assert coordinator.systemd.sockets ? plex-relay;
+          assert coordinator.systemd.sockets ? immich-ml-access;
+          pkgs.runCommand "nas-topology" { } ''
+            touch "$out"
+          '';
+
         home-profiles =
           let
             coordinatorHome = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
@@ -582,6 +677,7 @@
         fleet-connectivity =
           let
             coordinator = self.nixosConfigurations.coordinator.config;
+            nas = self.nixosConfigurations.nas.config;
             meshRegistry = import ./modules/mesh-registry.nix;
             retiredHost = "work" + "er";
             retiredPool = retiredHost + "-gpu";
@@ -597,6 +693,11 @@
               (builtins.attrNames self.deploy.nodes)
               (builtins.attrNames meshRegistry)
             ];
+            expectedHosts = [
+              "coordinator"
+              "nas"
+              "zenbook-duo"
+            ];
             retiredAliases = nixpkgs.lib.concatStringsSep "|" [
               (retiredHost + "-tb")
               ("coordinator-" + "tb")
@@ -611,10 +712,36 @@
           # Regression guard: the NixOS, deploy-rs, and mesh registries must agree
           # on the retired host's absence.
           assert nixpkgs.lib.all (hosts: !(nixpkgs.lib.elem retiredHost hosts)) activeHostSets;
-          assert !(coordinator.networking.hosts ? "10.77.0.2");
+          assert nixpkgs.lib.all (hosts: hosts == expectedHosts) activeHostSets;
+          assert coordinator.networking.hosts."10.77.0.2" == [ "nas" ];
+          assert nas.networking.hosts."10.77.0.1" == [ "coordinator" ];
+          # journald substrate (#135): coordinator is the sole sender, the NAS
+          # receives on the NVMe, and the local journal stays bounded.
+          assert nas.services.journald.remote.enable;
+          assert coordinator.services.journald.upload.settings.Upload.URL == "http://10.77.0.2:19532";
+          assert coordinator.services.journald.storage == "persistent";
           assert self.deploy.nodes.coordinator.hostname == "coordinator";
+          assert self.deploy.nodes.nas.hostname == "nas";
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
           assert coordinator.services.tailscale.extraUpFlags == [ "--ssh" ];
+          assert !nas.services.tailscale.enable;
+          assert nas.services.tailscale.extraUpFlags == [ ];
+          assert nas.services.tailscale.extraSetFlags == [ ];
+          assert !nas.programs.niri.enable;
+          assert !nas.services.greetd.enable;
+          assert !nas.services.printing.enable;
+          assert !nas.services.avahi.enable;
+          assert !nas.services.pipewire.enable;
+          assert nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [ ];
+          assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
+          assert nas.myNas.storage.enable;
+          assert nas.myNas.media.enable;
+          assert nas.services.immich.enable;
+          assert nas.services.navidrome.enable;
+          assert !coordinator.myCoordinatorMedia.enable;
+          assert coordinator.myNasClient.useRemoteStorage;
+          assert coordinator.myNasClient.relayMedia;
+          assert coordinator.systemd.sockets ? immich-ml-access;
           assert coordinator.systemd.services.tailscaled-autoconnect.serviceConfig.RestartSec == "1min";
           assert !coordinator.nix.distributedBuilds;
           assert coordinator.nix.buildMachines == [ ];
