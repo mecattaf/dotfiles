@@ -150,104 +150,11 @@ in
         enforce = "cooperative";
         hardPreempt = false;
       };
-      # crm-campaign is NOT declared here: services.tally.campaigns.crm
-      # renders it as the capacity-1 runner mutex, together with the
-      # campaign-agent and campaign-control node lanes.
-    };
-
-    # The crm build campaign, the first consumer of tally.nix#235. One attrset
-    # renders everything the hand-rolled prototype needed six pieces for: the
-    # shipped spec-build flow, the scoped gh mention producer, the capacity-1
-    # runner mutex, the campaign node lanes, and the driver adapter. The work
-    # graph is NOT here and not on GitHub — it is specs/001-crm/tasks.json in
-    # mecattaf/crm, witnessed by the flow's first node and projected into one
-    # per-task brief. GitHub keeps intake (the labeled campaign issue and its
-    # exact mention), steering (comments read at every agent attempt), and
-    # projection (receipts, evidence, per-task PRs). Doctrine and the role
-    # split: JULY31-LEARNINGS.md in tally.nix.
-    campaigns = lib.optionalAttrs isCoordinator {
-      crm = {
-        enable = true;
-
-        repositories."mecattaf/crm" = {
-          checkout = "/home/tom/mecattaf/crm";
-          baseBranch = "main";
-          remote = "origin";
-        };
-
-        # Deliberately NOT "build": issues #1–#19 carry that label and are
-        # public anchors for the decomposition, never triggers. Exactly one
-        # open issue carries "campaign", and it is the doorbell.
-        label = "campaign";
-        # NOT "@tally ..." — @tally is a real, unrelated GitHub user and the
-        # mention token is a live ping on a public repo (tally.nix#246). The
-        # operator's own handle pings only themselves.
-        mention = "@mecattaf build";
-        # The operator posts the mention from the account gh is authenticated
-        # as, so the trigger actor and tally's own identity are the same and
-        # the default loop-breaker would filter every mention as
-        # self-trigger-disabled. Opt in (tally.nix#240); allowedActors still
-        # applies independently.
-        allowSelfTriggered = true;
-        allowedActors = [ "mecattaf" ];
-
-        worklist = "specs/001-crm/tasks.json";
-        # The frozen graph is 19 tasks; the cap refuses a worklist that grew.
-        maxTasks = 19;
-
-        agent = "codex";
-
-        # The module's defaults (workspace-write + on-request) do not work for
-        # a codex *exec* agent, proven by hand against the real binary:
-        #   - `--ask-for-approval` is a top-level codex flag, not an exec flag;
-        #     the adapter's approvalPolicies render it anyway and exec exits 2
-        #     with "unexpected argument". null omits it. A non-interactive run
-        #     has nobody to approve an escalation regardless.
-        #   - under `--sandbox workspace-write` codex writes files fine but
-        #     `.git` is mounted read-only, so `git add`/`git commit` fail on
-        #     .git/index.lock. The publish node requires at least one commit
-        #     descended from the prepared base, so a campaign agent that cannot
-        #     commit is useless. `danger-full-access` writes and commits
-        #     cleanly.
-        # This grants codex unsandboxed access inside its assigned worktree,
-        # which is the same capability this estate already gives every codex
-        # session it dispatches. The gates remain independent witnessed nodes.
-        # Reported upstream as tally.nix#244.
-        agentSandboxPolicy = "danger-full-access";
-        agentApprovalPolicy = null;
-
-        # The four AGENTS.md gates, as direct argv. Go is not on PATH; every
-        # command goes through nix. nixpkgs' go defaults to CGO_ENABLED=1
-        # with CC=gcc, so on a gcc-less host every gate that compiles must
-        # either pin CGO_ENABLED=0 (build/vet/lint — the shipped binary is
-        # pure Go) or bring gcc (test, where the race detector is
-        # cgo-backed). All four verified live in the t01 worktree 2026-07-31
-        # before this shape landed. These are the merge criterion — witnessed
-        # here, not re-reviewed by an agent.
-        gates = [
-          {
-            id = "build";
-            argv = [ "nix" "shell" "nixpkgs#go" "-c" "env" "CGO_ENABLED=0" "go" "build" "./..." ];
-          }
-          {
-            id = "vet";
-            argv = [ "nix" "shell" "nixpkgs#go" "-c" "env" "CGO_ENABLED=0" "go" "vet" "./..." ];
-          }
-          {
-            id = "test";
-            argv = [ "nix" "shell" "nixpkgs#go" "nixpkgs#gcc" "-c" "go" "test" "-race" "./..." ];
-          }
-          {
-            id = "lint";
-            argv = [ "nix" "shell" "nixpkgs#golangci-lint" "nixpkgs#go" "-c" "env" "CGO_ENABLED=0" "golangci-lint" "run" "./..." ];
-          }
-        ];
-
-        # Held by the runner for the whole campaign, so a second accepted
-        # mention queues instead of interleaving two task chains against the
-        # same base.
-        pool.name = "crm-campaign";
-      };
+      # crm-campaign is no longer declared anywhere: the declarative crm
+      # build campaign was removed 2026-08-02 (wave-3 estate step E1 — it
+      # predated the mandatory per-gate kind/preflightArgv schema and would
+      # fail HM eval on the next tally pin advance). The full block is
+      # archived at mecattaf/crm:specs/001-crm/tally-campaign.nix.
     };
 
     # All jobs execute locally on coordinator; no daemonless SSH executor is
