@@ -11,6 +11,7 @@
     ./journal.nix
     ./storage.nix
     ./media.nix
+    ./lacie-mirror.nix
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc
