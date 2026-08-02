@@ -128,6 +128,27 @@ in
         4533
         32400
       ];
+
+      # Memorable intranet front doors ADDED on top of the port URLs, never
+      # replacing them: photos/music/videos.internal resolve fleet-wide via
+      # the per-box AdGuard rewrites (modules/adguardhome.nix) to this host's
+      # tailnet IP, and Caddy (:80, tailscale0-only — see caddy-artifacts.nix)
+      # hands them to the same socket relays the port URLs use. Plain HTTP by
+      # the same v1 posture as the artifact plane: WireGuard is the transport
+      # security and `.internal` never resolves publicly.
+      services.caddy.virtualHosts = {
+        "http://photos.internal".extraConfig = ''
+          reverse_proxy 127.0.0.1:2283
+        '';
+        "http://music.internal".extraConfig = ''
+          reverse_proxy 127.0.0.1:4533
+        '';
+        "http://videos.internal".extraConfig = ''
+          # Plex answers 401 on its bare API root; the human entrance is /web.
+          redir / /web/ 302
+          reverse_proxy 127.0.0.1:32400
+        '';
+      };
     })
   ];
 }

@@ -64,6 +64,31 @@
       filtering = {
         protection_enabled = true;
         filtering_enabled = true;
+
+        # Fleet-internal names under the ICANN-reserved private-use TLD
+        # `.internal` (deliberately NOT mecattaf.dev — that zone is real and
+        # public on Cloudflare; these names must scream intranet). Every box
+        # running this filter resolves them to the coordinator's stable
+        # tailnet IP, where Caddy (hosts/coordinator/nas-client.nix) routes
+        # them onto the NAS media relays. Phones don't use these resolvers,
+        # so phone apps keep the coordinator.tail8dd1.ts.net port URLs.
+        rewrites = [
+          {
+            enabled = true;
+            domain = "photos.internal";
+            answer = "100.105.121.73";
+          }
+          {
+            enabled = true;
+            domain = "music.internal";
+            answer = "100.105.121.73";
+          }
+          {
+            enabled = true;
+            domain = "videos.internal";
+            answer = "100.105.121.73";
+          }
+        ];
       };
 
       # Blocklists. AdGuard DNS filter is the network-level analog of the
