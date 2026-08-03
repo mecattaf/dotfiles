@@ -270,6 +270,29 @@ in
         }
       )
 
+      # soundcloud-cookies: consumed by the music-consolidation drain's yt-dlp
+      # invocations (systemd user units, coordinator-only). NOT for cliamp — see
+      # secrets.nix for why cliamp needs no secret here.
+      (lib.mkIf (config.networking.hostName == "coordinator") {
+        age.secrets.soundcloud-cookies = {
+          file = ../secrets/soundcloud-cookies.age;
+          owner = "tom";
+          group = "users";
+          mode = "400";
+        };
+      })
+
+      # youtube-music-cookies: parked for the music-consolidation YT-Music-fallback
+      # work (dotfiles secret only — no consumer wired up yet).
+      (lib.mkIf (config.networking.hostName == "coordinator") {
+        age.secrets.youtube-music-cookies = {
+          file = ../secrets/youtube-music-cookies.age;
+          owner = "tom";
+          group = "users";
+          mode = "400";
+        };
+      })
+
       # Coordinator's Freebox wifi uplink (wlp192s0) PSK — delivered as a root-owned
       # NetworkManager environment file that uplink-nas.nix's ensureProfiles reads
       # via `$FREEBOX_PSK`. Guarded on the ciphertext EXISTING so eval/activation

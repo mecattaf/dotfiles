@@ -1,7 +1,7 @@
 volume   = 70
 repeat   = "off"
 shuffle  = false
-theme    = "catppuccin-noir"
+theme = "catppuccin-noir"
 provider = "navidrome"
 
 [navidrome]
@@ -19,6 +19,14 @@ scrobble    = true
 [soundcloud]
 enabled = true
 user    = "lemurisback"
+# Go+ restored 2026-08-03 (dotfiles#70). cliamp shells to
+# `yt-dlp --cookies-from-browser chrome`, so Chrome must be signed into
+# SoundCloud as lemurisback on whichever box runs cliamp (coordinator +
+# zenbook-duo). Note: SoundCloud now serves major-label/monetized catalog
+# over DRM-encrypted HLS that yt-dlp cannot decrypt (won't-fix upstream,
+# yt-dlp#17335) -- this unlocks the non-DRM Go+ subset (most indie/DJ
+# uploads), not the whole catalog.
+cookies_from = "chrome"
 
 # YouTube / YouTube Music: no config needed — works out of the box with cliamp's
 # built-in fallback OAuth client. Just select it in the provider browser (Esc/b).

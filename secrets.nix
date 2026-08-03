@@ -81,6 +81,19 @@ in
   # coordinator only (hosts/coordinator/attic.nix), so only it may decrypt (#42).
   "secrets/atticd-server-token.age".publicKeys = editors ++ coordinatorOnly;
 
+  # SoundCloud Go+ cookies.txt (Netscape format), consumed by the music-consolidation
+  # drain's yt-dlp invocations (systemd user units on coordinator only — see that
+  # repo's docs/SPEC-2026-07-06-original.md). NOT for cliamp: cliamp shells to
+  # `yt-dlp --cookies-from-browser chrome` directly against a live signed-in browser
+  # and has no file-based cookie mode, so it needs no secret at all (dotfiles#70).
+  "secrets/soundcloud-cookies.age".publicKeys = editors ++ coordinatorOnly;
+
+  # YouTube Music cookies.txt (Netscape format), exported same sitting as the
+  # SoundCloud ones (2026-08-03) for the parked YouTube-Music-library issue in
+  # music-consolidation — that repo's fallback for SoundCloud Go+ tracks blocked
+  # by DRM. Coordinator-only, same reasoning as soundcloud-cookies.
+  "secrets/youtube-music-cookies.age".publicKeys = editors ++ coordinatorOnly;
+
   # cliamp (client) needs this on both boxes it runs from — coordinator (where
   # navidrome itself lives) and zenbook-duo (laptops tier).
   "secrets/navidrome-credentials.age".publicKeys = editors ++ coordinatorOnly ++ laptops;
