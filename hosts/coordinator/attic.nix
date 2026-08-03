@@ -1,4 +1,9 @@
-{ config, lib, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 # Fleet binary cache SERVER — atticd on the coordinator (conductor role, always-on).
 # Built closures land here so every host can substitute them instead of repeating
 # expensive source builds. Reachable over the Tailscale mesh, with no same-wifi
@@ -49,5 +54,41 @@
 
     # Cache reachable ONLY over the Tailscale mesh — never the raw LAN/wifi.
     networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 8080 ];
+
+    # Cache-health tripwire. On 2026-07-26 the atticd DB was recreated
+    # schema-only (cache record + server-side signing keypair lost) and the
+    # fleet ran a whole week on 401s + cache.nixos.org fallback before anyone
+    # noticed — pulls fail soft and the nightly push failure is a warning, so
+    # nothing surfaced it. This probes what a client actually does: an
+    # anonymous nix-cache-info fetch. Anything but 200 fires a marker into the
+    # fleet-deploy channel (printed on interactive login).
+    myTripwire.attic-cache-health = {
+      description = "fleet binary cache answers anonymous pulls";
+      intervalSeconds = 3600;
+      onBootSec = "10min";
+      threshold = 1;
+      comparison = "ge";
+      rearm = 0;
+      # A persistent outage re-marks at most every 6h; recovery (a 200) re-arms.
+      refractorySeconds = 21600;
+      valueField = "CACHE_DOWN";
+      sensorPath = [ pkgs.curl ];
+      sensor = ''
+        code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 \
+          http://127.0.0.1:8080/fleet/nix-cache-info || echo 000)
+        if [ "$code" = "200" ]; then
+          echo "0 attic:fleet 1"
+        else
+          echo "1 attic:fleet 1"
+        fi
+      '';
+      onFirePath = [ pkgs.coreutils ];
+      onFire = ''
+        mkdir -p /var/lib/fleet-deploy/failed
+        printf '%s — fleet binary cache is not answering anonymous pulls (episode %s)\n  check: curl -s http://coordinator:8080/fleet/nix-cache-info ; journalctl -u atticd\n' \
+          "$(date '+%Y-%m-%d %H:%M')" "$4" \
+          > /var/lib/fleet-deploy/failed/attic-cache-health
+      '';
+    };
   };
 }

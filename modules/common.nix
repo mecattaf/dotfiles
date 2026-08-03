@@ -98,7 +98,12 @@
       #   attic cache info fleet   # copy the public key line below, then rebuild
       # Until then the substituter above is inert (nix won't trust its signatures) —
       # safe: hosts just fall back to building. See hosts/coordinator/attic.nix.
-      "fleet:G5pAUpKmPtVsYbhFZAQsUUcuKHGsrHo9CFAJG7x5jNM="
+      # Rotated 2026-08-03: the atticd DB was recreated schema-only at the
+      # Jul 26 12:02 restart, losing the cache AND its server-side keypair —
+      # every pull 401'd and every nightly push failed for a week, silently.
+      # The old key (fleet:G5pAUpKmPtVsYbhFZAQsUUcuKHGsrHo9CFAJG7x5jNM=) signs
+      # nothing that still exists; the storage was empty.
+      "fleet:igImm/3XfdWs2g7L0j94HKcCh9ndv1WtJ5fVK6Svwz4="
     ];
   };
 
