@@ -342,6 +342,11 @@ in
   # local folders; first click triggers the automount. createDirectories stays
   # off — the dirs live on the NAS and mkdir through a dead mount at HM
   # activation would hang or spray errors.
+  #
+  # These entries (and the Photos bookmark above) only survive into the sidebar
+  # because hosts/coordinator/nas-client.nix warms the automount before
+  # graphical-session.target: a path that isn't there when the session starts is
+  # silently dropped, which is #139.
   # ---------------------------------------------------------------------------
   xdg.userDirs = lib.mkIf (hostName == "coordinator") {
     enable = true;

@@ -7,6 +7,24 @@
 let
   cfg = config.myNasClient;
   socketProxyd = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd";
+
+  # #139. One poke below the mountpoint is the whole fix; everything else here
+  # is the bound on how long that poke may cost a login. Budget: each attempt
+  # gets 5s (one soft-mount round of timeo=50/retrans=2 plus slack), and the
+  # retry loop gives up 10s in — the retries exist only for the cold-boot case,
+  # where greetd autologins tom→niri (modules/common.nix) while enp191s0 or the
+  # NAS itself is still a couple of seconds behind. Success is checked against
+  # the kernel, not against `ls`: a failed automount leaves the empty autofs
+  # trigger directory in place, which `ls` reports as an ordinary empty dir.
+  warmNasAutomount = pkgs.writeShellScript "nas-automount-warm" ''
+    deadline=$(( $(${pkgs.coreutils}/bin/date +%s) + 10 ))
+    while :; do
+      ${pkgs.coreutils}/bin/timeout 5s ${pkgs.coreutils}/bin/ls /mnt/nas/ >/dev/null 2>&1 || :
+      ${pkgs.util-linux}/bin/findmnt --type nfs4 --mountpoint /mnt/nas >/dev/null 2>&1 && exit 0
+      [ "$(${pkgs.coreutils}/bin/date +%s)" -ge "$deadline" ] && exit 0
+      ${pkgs.coreutils}/bin/sleep 1
+    done
+  '';
 in
 {
   options.myNasClient = {
@@ -43,6 +61,45 @@ in
           "x-systemd.mount-timeout=30s"
           "_netdev"
         ];
+      };
+
+      # ── #139: warm the automount before the graphical session ──────────────
+      # home/home.nix points the Music/Videos XDG user dirs and the Photos
+      # bookmark at /mnt/nas. When the automount is still cold at session start
+      # those paths do not resolve, GLib drops them, and the Nautilus sidebar
+      # comes up without them — `nautilus -q` plus a relaunch on a warm mount
+      # was the manual workaround. Nothing sets TimeoutIdleSec on the automount,
+      # so mounting it once at session start keeps it up for the rest of the
+      # boot and every later-launched app sees real directories.
+      #
+      # Ordered Before= but only Wants=/WantedBy= graphical-session.target: niri
+      # itself is likewise Before= that target, so the compositor comes up in
+      # parallel and even the worst case delays session-scoped services (portals,
+      # piri), never the desktop appearing. A dead NAS therefore degrades to
+      # exactly today's behaviour — sidebar entries absent — bounded by the
+      # script's own 10s deadline, with TimeoutStartSec as the hard backstop for
+      # the pathological case where the poke is stuck in the kernel (a start-job
+      # timeout completes the job, so the target is never held past it). The
+      # soft-mount options above stay untouched: this only touches the mount, it
+      # does not change what happens when the touch fails.
+      #
+      # The "-" prefix keeps a cold NAS from marking the unit failed: an
+      # unreachable NAS is a normal outcome here, not something worth a marker
+      # in modules/failure-surfacing.nix (which watches per-user units too).
+      systemd.user.services.nas-automount-warm = {
+        description = "Warm the /mnt/nas automount before the graphical session";
+        before = [ "graphical-session.target" ];
+        # PartOf so a logout resets this oneshot and the next session warms the
+        # mount again; the user manager lingers, so without it a second login in
+        # the same boot would skip the poke.
+        partOf = [ "graphical-session.target" ];
+        wantedBy = [ "graphical-session.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = "-${warmNasAutomount}";
+          TimeoutStartSec = "20s";
+        };
       };
     })
 
