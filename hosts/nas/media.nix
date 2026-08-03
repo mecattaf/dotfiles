@@ -31,19 +31,13 @@ let
   fastRoot = "/mnt/fast";
   generatedRoot = "${fastRoot}/immich-generated";
   navidromeRoot = "${fastRoot}/navidrome";
-  socketProxyd = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd";
-  waitForHttp =
-    name: url:
-    pkgs.writeShellScript "${name}-wait-for-http" ''
-      for _ in $(${pkgs.coreutils}/bin/seq 1 90); do
-        if ${pkgs.curl}/bin/curl --fail --silent --max-time 1 ${lib.escapeShellArg url} >/dev/null; then
-          exit 0
-        fi
-        ${pkgs.coreutils}/bin/sleep 1
-      done
-      echo "${name} did not become ready within 90 seconds" >&2
-      exit 1
-    '';
+  # Shared with video.nix (#130 ws1); the definitions moved verbatim, so the
+  # Immich/Navidrome wait scripts keep their pre-refactor store paths.
+  inherit (import ./wake-helpers.nix { inherit lib pkgs; })
+    socketProxyd
+    waitForHttp
+    proxyHardening
+    ;
 in
 {
   # Swap in the unstable Immich module unconditionally (imports cannot depend
@@ -149,21 +143,9 @@ in
       description = "On-demand proxy for NAS Immich";
       requires = [ "immich-server.service" ];
       after = [ "immich-server.service" ];
-      serviceConfig = {
+      serviceConfig = proxyHardening // {
         ExecStartPre = waitForHttp "Immich" "http://127.0.0.1:2284/api/server/ping";
         ExecStart = "${socketProxyd} --exit-idle-time=15min 127.0.0.1:2284";
-        DynamicUser = true;
-        NoNewPrivileges = true;
-        PrivateDevices = true;
-        PrivateTmp = true;
-        ProtectHome = true;
-        ProtectSystem = "strict";
-        RestrictAddressFamilies = [
-          "AF_INET"
-          "AF_INET6"
-          "AF_UNIX"
-        ];
-        TimeoutStartSec = "2min";
       };
     };
 
@@ -212,21 +194,9 @@ in
       description = "On-demand proxy for NAS Navidrome";
       requires = [ "navidrome.service" ];
       after = [ "navidrome.service" ];
-      serviceConfig = {
+      serviceConfig = proxyHardening // {
         ExecStartPre = waitForHttp "Navidrome" "http://127.0.0.1:4534/";
         ExecStart = "${socketProxyd} --exit-idle-time=15min 127.0.0.1:4534";
-        DynamicUser = true;
-        NoNewPrivileges = true;
-        PrivateDevices = true;
-        PrivateTmp = true;
-        ProtectHome = true;
-        ProtectSystem = "strict";
-        RestrictAddressFamilies = [
-          "AF_INET"
-          "AF_INET6"
-          "AF_UNIX"
-        ];
-        TimeoutStartSec = "2min";
       };
     };
 

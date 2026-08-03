@@ -12,6 +12,10 @@ in
   options.myNasClient = {
     useRemoteStorage = lib.mkEnableOption "mounting the NAS NFS export at the historical /mnt/nas path";
     relayMedia = lib.mkEnableOption "relaying tailnet Immich and Navidrome traffic to the Ethernet-only NAS";
+    # Separate gates, not additions to relayMedia: relayMedia is LIVE, and each
+    # of these turns on with its own NAS-side gate in its own commit.
+    relayVideo = lib.mkEnableOption "relaying tailnet Jellyfin traffic to the Ethernet-only NAS (#130 ws1)";
+    relayAttic = lib.mkEnableOption "relaying the fleet binary cache to atticd on the NAS (#130 ws5)";
   };
 
   config = lib.mkMerge [
@@ -160,6 +164,102 @@ in
           reverse_proxy 127.0.0.1:32400
         '';
       };
+    })
+
+    # ── #130 ws1: Jellyfin relay ─────────────────────────────────────────────
+    # Gated separately from relayMedia because Jellyfin is an ALTERNATIVE to the
+    # Plex above, not an addition to the stack — see the long header in
+    # hosts/nas/video.nix. Both can run at once while they are being compared;
+    # the ports do not collide.
+    (lib.mkIf cfg.relayVideo {
+      systemd.sockets.jellyfin-relay = {
+        description = "Coordinator front door for Ethernet-only NAS Jellyfin";
+        wantedBy = [ "sockets.target" ];
+        socketConfig = {
+          # 8096 is what a human types; the NAS-side wake proxy answers on 8095
+          # because jellyfin itself occupies 8096 there and its port is not a
+          # NixOS option. See the PORTS note in hosts/nas/video.nix.
+          ListenStream = "0.0.0.0:8096";
+          NoDelay = true;
+        };
+      };
+      systemd.services.jellyfin-relay = {
+        description = "Relay Jellyfin to nas:8095 over the private link";
+        after = [ "network-online.target" ];
+        wants = [ "network-online.target" ];
+        serviceConfig = {
+          ExecStart = "${socketProxyd} nas:8095";
+          DynamicUser = true;
+          NoNewPrivileges = true;
+          PrivateDevices = true;
+          PrivateTmp = true;
+          ProtectHome = true;
+          ProtectSystem = "strict";
+          RestrictAddressFamilies = [
+            "AF_INET"
+            "AF_INET6"
+          ];
+        };
+      };
+
+      networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 8096 ];
+
+      # Its own name, deliberately NOT taking over videos.internal: while both
+      # servers are up, each keeps a distinct front door so a comparison is a
+      # matter of changing the URL. If Jellyfin wins, THAT commit moves
+      # videos.internal here and retires the Plex block above.
+      services.caddy.virtualHosts."http://jellyfin.internal".extraConfig = ''
+        reverse_proxy 127.0.0.1:8096
+      '';
+    })
+
+    # ── #130 ws5: binary-cache relay ─────────────────────────────────────────
+    # Keeps every host's substituter URL at http://coordinator:8080/fleet
+    # (modules/common.nix) while atticd itself moves to the NAS. Unlike the
+    # media relays there is no wake proxy on the far side: the cache is in the
+    # substituter hot path and must answer immediately (hosts/nas/attic.nix).
+    (lib.mkIf cfg.relayAttic {
+      assertions = [
+        {
+          # Both want tcp/8080 on this box. The coordinator's own atticd must be
+          # off in the SAME commit that turns this on, or the relay socket
+          # cannot bind — add `services.atticd.enable = lib.mkForce false;` to
+          # hosts/coordinator/default.nix. Full sequence: the runbook header in
+          # hosts/nas/attic.nix.
+          assertion = !config.services.atticd.enable;
+          message = "myNasClient.relayAttic and the coordinator's own atticd cannot both own port 8080; disable hosts/coordinator/attic.nix in the same commit (see the runbook in hosts/nas/attic.nix)";
+        }
+      ];
+
+      systemd.sockets.attic-relay = {
+        description = "Coordinator front door for the NAS-hosted fleet binary cache";
+        wantedBy = [ "sockets.target" ];
+        socketConfig = {
+          ListenStream = "0.0.0.0:8080";
+          NoDelay = true;
+        };
+      };
+      systemd.services.attic-relay = {
+        description = "Relay the fleet binary cache to nas:8080 over the private link";
+        after = [ "network-online.target" ];
+        wants = [ "network-online.target" ];
+        serviceConfig = {
+          ExecStart = "${socketProxyd} nas:8080";
+          DynamicUser = true;
+          NoNewPrivileges = true;
+          PrivateDevices = true;
+          PrivateTmp = true;
+          ProtectHome = true;
+          ProtectSystem = "strict";
+          RestrictAddressFamilies = [
+            "AF_INET"
+            "AF_INET6"
+          ];
+        };
+      };
+
+      # Same boundary hosts/coordinator/attic.nix used: mesh only, never wifi.
+      networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 8080 ];
     })
   ];
 }

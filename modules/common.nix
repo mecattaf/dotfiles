@@ -11,9 +11,13 @@
     ./headless.nix # opt-in appliance profile; NAS has no HM, niri, greetd, or WayVNC
     ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
+    ./user-password.nix # tom's login password via agenix hashedPasswordFile (#54)
+    ./rollback-offline.nix # network-free `rollback-offline` command (#106)
+    ./gc-retention.nix # nix.gc + keep-last-K-plus-booted generation retention (#133)
     ./dotfiles-bootstrap.nix # ensure ~/mecattaf/dotfiles exists before the session
     ./artifacts.nix # myArtifacts options; serving plane is coordinator-only (caddy-artifacts.nix)
     ./printing.nix # CUPS + Brother IPP/raw-text path (active fleet + future hosts)
+    ./failure-surfacing.nix # OnFailure + coredump surfacing, fleet-wide — refs #134
   ];
 
   # --- identity / base ---
@@ -23,6 +27,9 @@
   system.nixos.distroName = "tombionix";
   boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
   boot.loader.systemd-boot.enable = lib.mkDefault true;
+  # #133 item 6: bound the boot menu to the same depth as the generation
+  # retention in modules/gc-retention.nix (keep-last-20 + booted).
+  boot.loader.systemd-boot.configurationLimit = lib.mkDefault 20;
   boot.loader.efi.canTouchEfiVariables = lib.mkDefault true;
   boot.plymouth.enable = true;
   # Many long-lived per-user watchers (persistent terminal sessions, file
@@ -35,6 +42,15 @@
       "flakes"
     ];
     auto-optimise-store = true;
+
+    # Never fetch the global flake registry. Refs #106: leaving this at its
+    # upstream default made EVERY nix invocation try
+    # https://channels.nixos.org/flake-registry.json first — five retries against
+    # `connect-timeout` below with no uplink, i.e. a guaranteed stall at exactly
+    # the moment a box is already broken and you are trying to recover it.
+    # Nothing on this fleet resolves a flakeref through the global registry;
+    # every input is pinned in flake.lock.
+    flake-registry = "";
 
     # Fleet-deploy hardening: a dead substituter (coordinator down, Zenbook
     # off-tailnet) must delay an unattended build by seconds, not hang it; and a
@@ -86,13 +102,21 @@
     ];
   };
 
-  # A nightly candidate creates one generation per participating host. Keep two
-  # weeks of local rollback depth, including deploy-rs' immediately prior target.
-  nix.gc = {
-    automatic = true;
-    dates = "weekly";
-    options = "--delete-older-than 14d";
-  };
+  # #106 proposed also setting `nix.registry.nixpkgs.flake` and `nix.nixPath`
+  # here. Deliberately NOT done: nixpkgs' own misc/nixpkgs-flake.nix already
+  # pins both to `nixpkgs.flake.source` (mkDefault) for any flake-built system,
+  # so `nixpkgs` as a flakeref and `<nixpkgs>` already resolve from the store
+  # with no network. Redeclaring them here conflicts with those definitions and
+  # would point the NAS — which evaluates from inputs.nixpkgs-stable, see
+  # mkHost's hostNixpkgs — at the wrong nixpkgs. What is missing offline is only
+  # the global registry fetch, disabled in nix.settings above.
+  # None of this makes `nixos-rebuild --rollback` work: that needs
+  # `<nixpkgs/nixos>` AND a resolvable `nixos-config`, which a pure-flake fleet
+  # has no reason to provide. Use `rollback-offline` (modules/rollback-offline.nix).
+
+  # `nix.gc` and system-generation retention live in ./gc-retention.nix — the
+  # old `--delete-older-than 14d` was replaced with keep-last-K-plus-booted
+  # (#133), which needs enough shell to be worth its own file.
 
   # --- user ---
   users.users.tom = {
@@ -109,8 +133,11 @@
     linger = true;
   };
   programs.fish.enable = true;
-  # Key-only mesh: tom has no password (locked account), so password-sudo would leave
-  # every headless box with no root path at all. Wheel sudos without a password.
+  # tom's password is delivered declaratively by ./user-password.nix (#54), but
+  # sudo stays passwordless on purpose: the mesh is key-only, unattended
+  # deploy-rs activations and the nightly auto-upgrade sudo without a tty, and a
+  # host whose secret delivery is off (the NAS) would otherwise have no root
+  # path at all.
   security.sudo.wheelNeedsPassword = false;
 
   # --- session: greetd → niri ---
@@ -203,6 +230,18 @@
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = lib.mkIf (!config.myHeadless.enable) [
     5900
   ];
+
+  # --- coredumps: bounded, but generously (refs #133 item 5, #134) ---
+  # 3.5G accumulated in 26 days with no bound at all. Cores are *evidence* in the
+  # #133 taxonomy, not byproducts — a tight cap would have deleted the
+  # tally-daemon SIGABRT burst that #134 is still investigating — so this is a
+  # ceiling that stops unbounded growth rather than a retention policy. Default
+  # compression (zstd) is kept; the option is `settings.Coredump`, not the
+  # renamed-away `extraConfig`.
+  systemd.coredump.settings.Coredump = {
+    MaxUse = "10G";
+    KeepFree = "20G";
+  };
 
   # --- zram (cap at 8 GiB; bare enable would balloon on the 128 GB boxes) ---
   zramSwap = {

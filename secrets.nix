@@ -43,6 +43,14 @@ in
   # from ordinary local use, predating this sync setup); force-copied on every
   # activation, not seed-once — see modules/secrets.nix.
   "secrets/atuin-key.age".publicKeys = editors ++ hostKeys;
+  # tom's login password, as a yescrypt hash from `mkpasswd -m yescrypt` — never
+  # the password itself, and never in git in plaintext. Consumed as
+  # `users.users.tom.hashedPasswordFile` by modules/user-password.nix (#54).
+  # Common tier: any host that creates the account needs to read it, and a
+  # reflash of any box should restore the login without operator intervention.
+  # The rule is declared now; the ciphertext is created with agenix only when
+  # Tom supplies the hash (the module is gated on the file existing).
+  "secrets/tom-password-hash.age".publicKeys = editors ++ hostKeys;
 
   # --- per-host tier (tailscale pre-auth keys: single-use, non-ephemeral,
   # preauthorized, tag:mesh — minted 2026-07-05 via the fleet OAuth client;
@@ -84,6 +92,10 @@ in
   # Optional Hugging Face read token. The rule is declared now; ciphertext is
   # created with agenix only when Tom supplies the credential.
   "secrets/huggingface-token.age".publicKeys = editors ++ coordinatorOnly;
+  # Borg passphrase for the coordinator's push job to the NAS append-only repo
+  # (#130 ws2b, hosts/coordinator/backups.nix). Rule declared now; ciphertext
+  # lands via the runbook before myCoordinatorBackups.enable flips.
+  "secrets/borg-passphrase.age".publicKeys = editors ++ coordinatorOnly;
 
   # gws (Google Workspace CLI, personal account thomasmecattaf@gmail.com) — same
   # operator-box ruling as gh/wrangler above. client_secret identifies the OAuth

@@ -1,4 +1,9 @@
-{ config, lib, modulesPath, ... }:
+{
+  config,
+  lib,
+  modulesPath,
+  ...
+}:
 # Live hardware config, captured on the DXP2800 GT via
 # `nixos-generate-config --no-filesystems --show-hardware-config` in the
 # kexec installer on 2026-08-01 (issue #131). Two deliberate additions to the

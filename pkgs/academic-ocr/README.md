@@ -104,7 +104,31 @@ empty or near-empty extraction. The standard and specialist tiers are
 `qwen3-embedding-8b`. Every model request goes through the OpenAI-compatible
 llama-swap endpoint at `http://localhost:9292`, with temperature zero for OCR.
 
+## Truncation
+
+A visual transcription that hits the `max_tokens` cap returns a plausible
+prefix. Its signature still agrees with the mechanical extraction closely
+enough for the flow to converge, so the page would assemble with its tail
+silently missing. Two gates fail such a page closed, both with exit code 20:
+
+- `finish_reason=length` from llama-swap is rejected outright. This is the
+  server's own report and the only signal available for a scanned page, which
+  has no mechanical extraction to measure against.
+- A transcription shorter than 600 permille of the longest mechanical
+  extraction of the same page is rejected, but only where that extraction runs
+  to at least 200 words and can therefore vouch for the page. Lengths are
+  whitespace words, the unit the substance gate and the chunker already count.
+
+`recognize` applies both, reading the mechanical vouchers written beside its
+own artifact. The arbiter repeats the length check over its candidate basis,
+because a truncated candidate outranks every mechanical extraction and reads as
+the longest transcription on offer; a page whose whole basis is truncated is
+disputed rather than resolved. Recognitions carry `wordCount` and
+`provenance.finishReason` so the flow can route on length without re-reading
+text.
+
 Package builds run ShellCheck and generated fixture tests entirely offline.
 The tests cover both mechanical engines, fail-closed scan handling, signature
-agreement/disagreement, a stubbed VLM/embedding boundary, canonical assembly,
+agreement/disagreement, both truncation gates and the arbiter's rejection of a
+truncated candidate, a stubbed VLM/embedding boundary, canonical assembly,
 chunking, SQLite index construction, receipt emission, and args planning.

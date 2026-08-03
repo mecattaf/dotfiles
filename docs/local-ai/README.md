@@ -6,17 +6,25 @@ model identity, resource class, and an explicit caller boundary.
 
 ## Deployment state
 
-The old all-or-nothing `downloadAllModels` gate is gone. The coordinator has an
-explicit `services.local-models.allow` list for command-managed llama-swap
-deployments and a separate list for non-llama snapshot artifacts. That second
-list now roots the selected Mage inference set and the speech payloads without
-misrepresenting their modality-specific runtimes as llama-swap models.
-FastFlowLM NPU rows remain runtime-appliance metadata: their existing files may
-stay under `~/.config/flm/models`, but no NixOS service starts or retains them.
-The exact FLM roster is declared in `services.npu-llm.models` and rendered
-to `/etc/local-models/fastflowlm.json`. See the
-[current coordinator decision](deployment-decisions-2026-07-29.md) for placement and
-storage totals.
+The old all-or-nothing `downloadAllModels` gate is gone. A model reaches a host
+through exactly one of four mechanisms, and only the coordinator uses any of
+them:
+
+1. `services.local-models.allow` — **served**: the row is rooted in the Nix
+   store and gets a llama-swap model.
+2. `services.local-models.artifacts` — **rooted**: the payload is rooted in the
+   store with no llama-swap row, for the selected Mage inference set and the
+   speech snapshots whose modality-specific runtimes would be misrepresented as
+   llama-swap models.
+3. Runtime-owned rosters — FastFlowLM's ad-hoc tags plus the request-scoped
+   `utility` slot, and Voxtype's Parakeet snapshot. Nix declares the allowed
+   identity; the tool owns the files. No NixOS service starts or retains an FLM
+   model, and the exact roster renders to `/etc/local-models/fastflowlm.json`.
+4. Everything else in the catalog is **cataloged only** and downloads nothing.
+
+[`model-roster.md`](model-roster.md) is the authoritative split across those
+four states; the [coordinator decision](deployment-decisions-2026-07-29.md)
+carries the placement ledger and storage totals.
 
 ## Hugging Face metadata CLI
 
@@ -73,7 +81,8 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 | Document OCR/RAG | Qwen3-VL 8B primary, 32B refine, Qwen3 Embedding 8B, Qwen3-VL Embedding 8B | Coordinator llama.cpp ROCm behind llama-swap | Active coordinator allowlist; text and multimodal embedders are complementary. |
 | Shared text and coding | Qwen 3.6 35B-A3B and stock 27B, both UD-Q8_K_XL with integrated MTP; Gemma 4 26B Q8 with matched MTP | Coordinator Vulkan behind llama-swap | Active coordinator allowlist. Qwen3-Coder-Next remains cataloged only. |
 | Computer use | Fara 1.5 27B Q8_0 plus BF16 projector | Coordinator ROCm behind llama-swap | Active coordinator allowlist. |
-| NPU utility | FastFlowLM Gemma 4 E4B and GPT-OSS 20B | Direct, ad-hoc `flm run <model>` | Installed on coordinator; no model server starts at boot and idle residency is zero. |
+| Application utility slot | FastFlowLM Qwen3 4B behind the stable ID `utility` | `utility-model` wrapper; one start/request/stop cycle per request | Callers never name the concrete model. Projected from the catalog, not from `services.npu-llm.models`. |
+| Ad-hoc NPU inference | FastFlowLM Gemma 4 E4B and GPT-OSS 20B | Direct, ad-hoc `flm run <model>` | Installed on coordinator; no model server starts at boot and idle residency is zero. |
 | Call transcription + diarization | Microsoft VibeVoice-ASR | Future dedicated PyTorch/ROCm batch service | BF16 payload and tokenizer are Nix-rooted on coordinator; service remains future work. |
 | Text-to-speech | VibeVoice Large community mirror | Future dedicated PyTorch/ROCm batch service | BF16 payload and tokenizer are Nix-rooted on coordinator; mirror risk remains recorded. |
 | Image generation and editing | Mage-Flow 4B Turbo generation/editing pair | Direct upstream `MageFlowPipeline`, CLI, or Gradio boundary | Four-step snapshots are selected; Base and RL are omitted. gfx1151/ROCm runtime packaging and smoke remain pending. |
@@ -81,6 +90,8 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 
 ## Text classes
 
+- **Utility:** the stable ID `utility` resolves to FastFlowLM Qwen3 4B at 32768
+  context, started and stopped around each request.
 - **Small and fast:** `gemma4-it:e4b` and `gpt-oss:20b` remain available on
   the coordinator NPU through an explicit `flm run <model>`. FastFlowLM owns the runtime
   files and releases model residency when the command exits.
@@ -89,7 +100,9 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 - **Coder:** stock Qwen 3.6 27B UD-Q8_K_XL with integrated MTP and Gemma 4
   26B A4B IT Q8_0 plus its Q8_0 MTP head are active on coordinator.
   Qwen3-Coder-Next is retained only as catalog metadata.
-- **Uncensored:** all rows are deferred and remain catalog-only.
+- **Uncensored:** none are materialized. All three rows are `candidate` and
+  absent from the allowlist; see the operating rules in
+  [`model-roster.md`](model-roster.md) for the standing disposition.
 
 ## Routing and scheduling boundaries
 
@@ -121,11 +134,15 @@ the current architecture.
    storage cost, upstream invocation contract, and serving boundary.
 5. [`deployment-decisions-2026-07-29.md`](deployment-decisions-2026-07-29.md)
    is the authoritative active placement and storage ledger.
-6. [`model-roster.md`](model-roster.md) is the broader human-readable catalog,
-   including deferred rows and
-   runtime and speech appliances that do not belong in the llama-swap catalog.
+6. [`model-roster.md`](model-roster.md) is the authoritative human-readable
+   split: served, rooted, runtime-owned, and cataloged-only, including the
+   speech and NPU appliances that do not belong in the llama-swap catalog.
 7. [`tallies/`](tallies/) records accepted roster rationale. The monthly update
    bot advances its exact research-source pins in `sources.json`; its advisory
    summary remains visible in the corresponding pull request.
+8. [`dual-node-inference-lessons.md`](dual-node-inference-lessons.md) preserves
+   the operational lessons from the retired dual-node ds4 cluster. It is
+   history, not a deployment target.
 
-The old documentation under [`../old/`](../old/) is evidence, not authority.
+[`../old/`](../old/) is now an archival stub. The material it held is
+recoverable from Git history, and the stub records how.

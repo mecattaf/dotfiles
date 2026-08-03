@@ -14,6 +14,7 @@
     ./uplink-nas.nix
     ./journal-upload.nix # fleet journald substrate sender — refs #135
     ./nas-client.nix
+    ./backups.nix # #130 ws2b: nightly borg push to the NAS append-only repo
     ./services.nix
     ./immich-ml.nix
     ./atuin.nix

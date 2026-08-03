@@ -1,19 +1,17 @@
 # Documentation
 
-The current documentation starts here.
+The current documentation starts here. Every page describes code that exists;
+where a page makes a claim about deployment, it names the Nix file that decides
+it.
 
 | Path | Purpose |
 |---|---|
-| [`local-ai/deployment-decisions-2026-07-29.md`](local-ai/deployment-decisions-2026-07-29.md) | Active coordinator model placement, exact download total, and exclusions. |
-| [`local-ai/README.md`](local-ai/README.md) | Current local-AI appliance boundaries and routing. |
-| [`local-ai/model-roster.md`](local-ai/model-roster.md) | Selected local model and inference roster, with pinned pull sources. |
-| [`local-ai/mage.md`](local-ai/mage.md) | Selected Mage-Flow Turbo and Mage-VL snapshots, exact and deduplicated sizes, paths, and correct runtime boundaries. |
+| [`local-ai/README.md`](local-ai/README.md) | Current local-AI appliance boundaries, deployment mechanisms, and routing. |
+| [`local-ai/model-roster.md`](local-ai/model-roster.md) | **The authoritative model split** — served, rooted, runtime-owned, and cataloged-only — with pinned sources and per-host placement. |
+| [`local-ai/deployment-decisions-2026-07-29.md`](local-ai/deployment-decisions-2026-07-29.md) | Coordinator placement ledger: exact download totals, precision policy, and exclusions. |
+| [`local-ai/mage.md`](local-ai/mage.md) | Selected Mage-Flow Turbo and Mage-VL snapshots, exact and deduplicated sizes, paths, and runtime boundaries. |
 | [`local-ai/tallies/`](local-ai/tallies/) | Reviewed model-roster rationale; the July 29 coordinator-only tally is the accepted anchor. |
 | [`local-ai/monthly-workflow.md`](local-ai/monthly-workflow.md) | Evidence-first Git update bot, single Pi judgment, nested Tally GPU lease, and merge-only pin advancement. |
 | [`local-ai/pi-appliance-pattern.md`](local-ai/pi-appliance-pattern.md) | Reusable single, pooled, aggregator, and typed-swarm mechanism for durable local-model appliances. |
-| [`old/`](old/) | Reference-only documentation retained for later mining. |
-
-Files under `old/` are not current operating instructions. They preserve useful
-history, including assumptions that predate the NixOS fleet, the local-model
-store, llama-swap routing, and the later Tally design. New work must cite the
-current Nix modules and the `local-ai/` documents instead.
+| [`local-ai/dual-node-inference-lessons.md`](local-ai/dual-node-inference-lessons.md) | Preserved operational lessons from the retired dual-node ds4 cluster. History, not a deployment target. |
+| [`old/`](old/) | Archival stub: an index of the retired documentation set and how to read it back from Git history. |

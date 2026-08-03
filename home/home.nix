@@ -20,8 +20,8 @@ let
 
   # Curated llm-agents.nix install. `pkgs.llm-agents` (from the flake input's
   # overlay) is the entire ~139-agent catalog, prebuilt against upstream's own
-  # nixpkgs. The maximalist "install every buildable member" sweep (see
-  # docs/old/llm-agents-catalog.md) surfaced a lot we neither want nor need on the
+  # nixpkgs. The maximalist "install every buildable member" sweep (write-up
+  # retired to Git history; see docs/old/README.md) surfaced a lot we neither want nor need on the
   # desktop, so we've pruned to an explicit ALLOWLIST — only these names are
   # pulled from the catalog. Adding an agent is now a deliberate edit here, and
   # agents upstream adds no longer land automatically on `nix flake update`.
@@ -118,6 +118,7 @@ in
     ./pi.nix
     ./piri.nix
     ./remote.nix
+    ./ssh.nix
     ./tally.nix
     ./voxtype.nix
   ];

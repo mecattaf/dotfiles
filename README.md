@@ -21,7 +21,7 @@ home/            home-manager: typed nix (home.nix, nvim.nix) + RAW out-of-store
                  configs (niri KDL, kitty, fish, nvim lua) linked via mkOutOfStoreSymlink
 overlays/ pkgs/  custom packages (mactahoe themes, backlog-md, …)
 docs/local-ai/  current local-AI appliance docs, model roster, monthly tallies
-docs/old/       reference-only documentation retained for later mining
+docs/old/       archival stub indexing retired docs in Git history
 ```
 
 ## Branches

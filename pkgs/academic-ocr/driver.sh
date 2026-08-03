@@ -2,6 +2,16 @@ set -euo pipefail
 
 ocr_prompt='Transcribe this scanned academic page to clean GitHub-flavored Markdown. Preserve heading levels, paragraphs, footnotes, and tables (as markdown tables). Use $...$ / $$...$$ for math. Do not add commentary. If part is illegible write [illegible].'
 llama_swap_url=${ACADEMIC_OCR_LLAMA_SWAP_URL:-http://localhost:9292}
+
+# A visual transcription that hits the cap comes back as a plausible prefix, so
+# its signature still agrees with the mechanical extraction well enough for the
+# flow to converge on a page that has silently lost its tail. Fail closed below
+# 600 permille of the longest mechanical extraction of the same page, and only
+# where that extraction is long enough to vouch for the page at all. Lengths are
+# counted in the whitespace words the rest of the pipeline counts.
+vlm_max_tokens=4096
+voucher_min_words=200
+voucher_min_permille=600
 curl_cmd=${ACADEMIC_OCR_CURL:-curl}
 chunk_awk=${ACADEMIC_OCR_CHUNK_AWK:?ACADEMIC_OCR_CHUNK_AWK is not set}
 sqlite_vec=${ACADEMIC_OCR_SQLITE_VEC:?ACADEMIC_OCR_SQLITE_VEC is not set}
@@ -239,6 +249,54 @@ require_local_llama_swap() {
   esac
 }
 
+count_words() {
+  local words
+  words=$(wc -w < "$1")
+  printf '%s\n' "$words"
+}
+
+# The longest mechanical extraction of this page, or 0 when none is on hand.
+# Both ruled mechanical engines refuse raster mutations, so a voucher can only
+# ever be the original input, and a scanned page has no voucher at all.
+mechanical_voucher_words() {
+  local page_dir=$1 paper_id=$2 page_number=$3
+  local protocol voucher_path words best=0
+  for protocol in poppler-text mupdf-text; do
+    voucher_path="$page_dir/$protocol/original.json"
+    [[ -f $voucher_path ]] || continue
+    jq -e \
+      --arg paper "$paper_id" \
+      --argjson page "$page_number" \
+      --arg protocol "$protocol" \
+      '.action == "recognize"
+        and .paperId == $paper
+        and .pageNumber == $page
+        and .protocolId == $protocol
+        and .inputVariant == "original"
+        and (.text | type == "string" and length > 0)' \
+      "$voucher_path" >/dev/null || continue
+    jq -jr '.text' "$voucher_path" > "$work_dir/voucher-$protocol.md"
+    words=$(count_words "$work_dir/voucher-$protocol.md")
+    if (( words > best )); then
+      best=$words
+    fi
+  done
+  printf '%s\n' "$best"
+}
+
+require_untruncated_vlm() {
+  local text_file=$1 protocol=$2 artifact_path=$3 paper_id=$4 page_number=$5
+  local page_dir voucher_words candidate_words floor_words
+  page_dir=$(dirname "$(dirname "$artifact_path")")
+  voucher_words=$(mechanical_voucher_words "$page_dir" "$paper_id" "$page_number")
+  (( voucher_words >= voucher_min_words )) || return 0
+  candidate_words=$(count_words "$text_file")
+  floor_words=$(( voucher_words * voucher_min_permille / 1000 ))
+  if (( candidate_words < floor_words )); then
+    die_code 20 "$protocol transcribed $candidate_words words against a $voucher_words-word mechanical voucher, under the $floor_words-word floor: the page is truncated"
+  fi
+}
+
 run_vlm() {
   local raster=$1 model=$2 output=$3
   local b64_file payload response content
@@ -250,10 +308,11 @@ run_vlm() {
   jq -Rs \
     --arg model "$model" \
     --arg prompt "$ocr_prompt" \
+    --argjson maxTokens "$vlm_max_tokens" \
     '{
       model: $model,
       temperature: 0,
-      max_tokens: 4096,
+      max_tokens: $maxTokens,
       messages: [{
         role: "user",
         content: [
@@ -275,6 +334,11 @@ run_vlm() {
     || die "llama-swap request failed for $model"
   jq -e '.choices[0].message.content | type == "string" and length > 0' "$response" >/dev/null \
     || die "llama-swap returned no text content for $model"
+  vlm_finish_reason=$(jq -r '.choices[0].finish_reason // ""' "$response")
+  # The cap is the one truncation the server reports outright. It is the only
+  # signal available for a scanned page, which has no mechanical voucher.
+  [[ $vlm_finish_reason != length ]] \
+    || die_code 20 "$model stopped at the $vlm_max_tokens-token cap (finish_reason=length): the page is truncated"
   content="$work_dir/vlm-content.md"
   jq -jr '.choices[0].message.content' "$response" > "$content"
   strip_markdown_fence "$content" "$work_dir/vlm-unfenced.md"
@@ -308,6 +372,7 @@ recognize() {
   raster_path=''
   engine_input=$source_path
   engine_page=$page_number
+  vlm_finish_reason=''
 
   if [[ $protocol_id == qwen3-vl-* || $input_id != original ]]; then
     raster_path=$(prepare_raster "$source_path" "$page_number" "$artifact_path")
@@ -334,6 +399,7 @@ recognize() {
   else
     run_vlm "$raster_path" "$protocol_id" "$text_file"
     require_substantive_text "$text_file" "$protocol_id"
+    require_untruncated_vlm "$text_file" "$protocol_id" "$artifact_path" "$paper_id" "$page_number"
     engine_version=$protocol_id
     if [[ $protocol_id == qwen3-vl-8b-ocr ]]; then
       confidence=900
@@ -368,6 +434,8 @@ recognize() {
     --arg engineVersion "$engine_version" \
     --arg endpoint "$llama_swap_url" \
     --arg promptDigest "$prompt_digest" \
+    --arg finishReason "$vlm_finish_reason" \
+    --argjson wordCount "$(count_words "$text_file")" \
     --argjson signature "$signature" \
     --argjson confidencePermille "$confidence" \
     --argjson input "$(jq -c '.input' "$brief_path")" \
@@ -387,6 +455,7 @@ recognize() {
       text: $text,
       textDigest: $textDigest,
       signature: $signature,
+      wordCount: $wordCount,
       confidencePermille: $confidencePermille,
       hotZones: [],
       skewMilliDegrees: 0,
@@ -395,7 +464,8 @@ recognize() {
         inputDigest: $inputDigest,
         engine: $engineVersion,
         endpoint: (if ($protocolId | startswith("qwen3-vl-")) then $endpoint else null end),
-        promptDigest: (if ($protocolId | startswith("qwen3-vl-")) then $promptDigest else null end)
+        promptDigest: (if ($protocolId | startswith("qwen3-vl-")) then $promptDigest else null end),
+        finishReason: (if ($finishReason | length > 0) then $finishReason else null end)
       }
     }' > "$artifact_tmp"
   atomic_move "$artifact_tmp" "$artifact_path"
@@ -407,6 +477,7 @@ recognize() {
     artifactPath,
     textDigest,
     signature,
+    wordCount,
     confidencePermille,
     hotZones,
     skewMilliDegrees
@@ -450,6 +521,38 @@ arbitrate() {
   done
   (( ${#basis_paths[@]} > 0 )) || die 'arbiter has no successful artifact basis'
 
+  # The ladder can still hand the arbiter a truncated visual candidate when the
+  # mechanical voucher was not yet on disk at recognition time. Such a candidate
+  # outranks every mechanical extraction and, being a prefix, reads as the
+  # longest plausible transcription, so drop it before ranking rather than
+  # after. A page whose whole basis is truncated is disputed, not resolved.
+  voucher_words=0
+  for candidate in "${basis_paths[@]}"; do
+    jq -e '.protocolId == "poppler-text" or .protocolId == "mupdf-text"' "$candidate" >/dev/null || continue
+    jq -jr '.text' "$candidate" > "$work_dir/basis-text.md"
+    candidate_words=$(count_words "$work_dir/basis-text.md")
+    if (( candidate_words > voucher_words )); then
+      voucher_words=$candidate_words
+    fi
+  done
+  floor_words=$(( voucher_words * voucher_min_permille / 1000 ))
+  ranked_paths=()
+  truncated_paths=()
+  for candidate in "${basis_paths[@]}"; do
+    if (( voucher_words >= voucher_min_words )) \
+      && jq -e '.protocolId | startswith("qwen3-vl-")' "$candidate" >/dev/null; then
+      jq -jr '.text' "$candidate" > "$work_dir/basis-text.md"
+      candidate_words=$(count_words "$work_dir/basis-text.md")
+      if (( candidate_words < floor_words )); then
+        truncated_paths+=("$candidate")
+        continue
+      fi
+    fi
+    ranked_paths+=("$candidate")
+  done
+  (( ${#ranked_paths[@]} > 0 )) \
+    || die_code 20 "every arbiter candidate falls under the $floor_words-word floor of a $voucher_words-word mechanical voucher: the page is truncated"
+
   selected_path=$(jq -sr '
     def rank:
       if .protocolId == "qwen3-vl-32b-ocr" then 0
@@ -458,14 +561,19 @@ arbitrate() {
       elif .protocolId == "mupdf-text" then 3
       else 4 end;
     sort_by([rank, -(.text | length), .artifactPath]) | .[0].artifactPath
-  ' "${basis_paths[@]}")
+  ' "${ranked_paths[@]}")
   [[ -f $selected_path ]] || die 'arbiter selection did not resolve to an artifact'
   jq -jr '.text' "$selected_path" > "$work_dir/arbitrated.md"
   require_substantive_text "$work_dir/arbitrated.md" arbiter
   text_digest=$(sha_prefixed "$work_dir/arbitrated.md")
   selected_digest=$(jq -er '.textDigest' "$selected_path")
   [[ $text_digest == "$selected_digest" ]] || die 'selected artifact text digest does not verify'
-  basis_json=$(printf '%s\n' "${basis_paths[@]}" | jq -Rsc 'split("\n")[:-1]')
+  basis_json=$(printf '%s\n' "${ranked_paths[@]}" | jq -Rsc 'split("\n")[:-1]')
+  if (( ${#truncated_paths[@]} > 0 )); then
+    truncated_json=$(printf '%s\n' "${truncated_paths[@]}" | jq -Rsc 'split("\n")[:-1]')
+  else
+    truncated_json='[]'
+  fi
 
   artifact_tmp=$(mktemp "$(dirname "$artifact_path")/.arbiter.XXXXXX")
   jq -n \
@@ -475,6 +583,8 @@ arbitrate() {
     --arg selectedArtifactPath "$selected_path" \
     --arg textDigest "$text_digest" \
     --argjson basis "$basis_json" \
+    --argjson truncated "$truncated_json" \
+    --argjson voucherWords "$voucher_words" \
     --rawfile text "$work_dir/arbitrated.md" \
     '{
       schemaVersion: 1,
@@ -485,11 +595,16 @@ arbitrate() {
       text: $text,
       textDigest: $textDigest,
       basis: $basis,
+      truncatedArtifactPaths: $truncated,
       selectedArtifactPath: $selectedArtifactPath,
-      provenance: {strategy: "specialist-first-then-longest"}
+      provenance: {
+        strategy: "specialist-first-then-longest",
+        voucherWords: $voucherWords
+      }
     }' > "$artifact_tmp"
   atomic_move "$artifact_tmp" "$artifact_path"
-  emit_artifact_fields "$artifact_path" '{paperId, pageNumber, artifactPath, textDigest, basis}'
+  emit_artifact_fields "$artifact_path" \
+    '{paperId, pageNumber, artifactPath, textDigest, basis, truncatedArtifactPaths}'
 }
 
 assemble() {

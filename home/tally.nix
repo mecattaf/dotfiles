@@ -33,36 +33,39 @@ let
     unit
   ];
 
-  # Fixed receiver used by the coordinator's hardware tripwire. The sleep holds
-  # the logical coordinator-gpu gate for 30 minutes.
-  # Interrupt priority makes it next, while hardPreempt=false means it never kills
-  # the current GPU holder.
-  cooldownReceiver = pkgs.writeShellApplication {
-    name = "tally-gpu-cooldown";
-    runtimeInputs = [ pkgs.coreutils ];
+  # The GPU cooldown enqueue moved into the tripwire's onFire adapter
+  # (modules/gpu-cooldown-enqueue.sh, #135 ws2): the dedup key must be the
+  # episode identity the state machine persists, which a fixed receiver here
+  # could never see. tally is touched only by that adapter.
+
+  # Steward narration shim (wave-3 estate E6, dotfiles#138). The publish node
+  # hands a JSON narration request on stdin and reads the proposal back from
+  # the one TALLY_FINAL_MESSAGE= line; the proposal is text only —
+  # {type, scope, subject, body} — validated by the driver's commitlint-shaped
+  # gate, so a malformed answer (or a nonzero exit here) falls back to the
+  # brief-derived template and never blocks a merge. Sonnet per the AUGUST-01
+  # ruling ("start with Sonnet while the mechanism stabilizes"); credentials
+  # are the fleet's seeded Claude OAuth state (modules/secrets.nix), so
+  # nothing secret lives here. The narrator is a direct-argv subprocess of the
+  # publish node: no launch policy, no hardening, no writable paths — the
+  # steward seam refuses adapters that declare them.
+  narratorShim = pkgs.writeShellApplication {
+    name = "tally-narrator";
+    runtimeInputs = [
+      pkgs.jq
+      pkgs.gnused
+      pkgs.coreutils
+    ];
     text = ''
-      temp_c="''${1:?usage: tally-gpu-cooldown <temp_c> <sensor_kind> <threshold_c> <seconds>}"
-      sensor_kind="''${2:?}"
-      threshold="''${3:?}"
-      seconds="''${4:?}"
-
-      [[ "$temp_c" =~ ^[0-9]+$ ]]
-      [[ "$threshold" =~ ^[0-9]+$ ]]
-      [[ "$seconds" =~ ^[1-9][0-9]*$ ]]
-      [[ "$sensor_kind" =~ ^[A-Za-z0-9:_-]+$ ]]
-
-      stamp="$(${pkgs.coreutils}/bin/date -u +%Y%m%dT%H%M%SZ)"
-      dedup="gpu-cooldown-coordinator-''${sensor_kind}-''${temp_c}C-''${stamp}"
-      socket="/run/user/$(id -u)/tally/tally.sock"
-
-      exec ${tallyPackage}/bin/tally --socket "$socket" enqueue \
-        --source calendar \
-        --pool coordinator-gpu \
-        --priority interrupt \
-        --dedup-key "$dedup" \
-        --no-enqueue \
-        --evidence exit:0 \
-        -- ${pkgs.coreutils}/bin/sleep "$seconds"
+      request="$(cat)"
+      proposal="$(printf '%s\n' "$request" | /etc/profiles/per-user/tom/bin/claude \
+        -p --model sonnet --output-format text \
+        "Narrate this campaign publication. The JSON on stdin describes a merged task: derive one conventional commit message from it. Reply with EXACTLY one JSON object, no code fences, no prose: {\"type\": <conventional type>, \"scope\": <short lowercase scope or null>, \"subject\": <imperative, <=60 chars, no leading capital, no trailing period>, \"body\": <plain prose wrapped at 100 columns, under 4000 chars>}. Never include closing keywords (Closes/Fixes #n) or @mentions anywhere.")"
+      # Strip accidental fences, then require a single valid object with the
+      # four expected fields; jq failing exits the shim nonzero -> template.
+      printf 'TALLY_FINAL_MESSAGE=%s\n' "$(
+        printf '%s\n' "$proposal" | sed '/^```/d' | jq -c '{type, scope, subject, body}'
+      )"
     '';
   };
 
@@ -75,7 +78,6 @@ in
 
   home.packages = lib.optionals isCoordinator [
     pkgs.academic-ocr
-    cooldownReceiver
     pkgs.local-ai-monthly
   ];
 
@@ -168,6 +170,27 @@ in
           pattern = "^TALLY_FINAL_MESSAGE=(.*)$";
         };
       };
+      # The steward catalog role (E6): campaigns bind it via `steward =
+      # "narrator"`. Which model answers, where, and with which credentials
+      # live HERE, never in campaign options — swapping narrators is an
+      # adapter change.
+      narrator = inputs.tally.lib.adapters.mkAdapter {
+        argv = [ (lib.getExe narratorShim) ];
+        scrape.finalMessage = inputs.tally.lib.adapters.mkScrapeCapture {
+          pattern = "^TALLY_FINAL_MESSAGE=(.*)$";
+        };
+      };
+    };
+
+    # E5 (dotfiles#138): bind code-result revisions to git-ai authorship
+    # notes, advisory posture first — an unprovisioned host and a squash that
+    # lost its attribution produce identical evidence, so advisory is how the
+    # binding proves itself before anything is allowed to fail on it. git-ai
+    # 1.6.17 is externally provisioned (verified on the estate 2026-08-03);
+    # tally.nix does not ship the binary.
+    gitAi = {
+      enable = true;
+      mode = "advisory";
     };
 
     # One low-priority durable row replaces the old 02:00/03:30/04:30/06:00 chain.

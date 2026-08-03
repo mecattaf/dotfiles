@@ -130,6 +130,43 @@ def inline_markup(value: str) -> str:
     return escaped
 
 
+HR_PATTERN = re.compile(r"^\s*([-*_])(?:\s*\1){2,}\s*$")
+LIST_ITEM_PATTERN = re.compile(r"^(\s*)([-+*]|\d{1,9}[.)])(\s+|\s*$)(.*)$")
+
+
+@dataclass(frozen=True)
+class ListMarker:
+    indent: int
+    delimiter: str
+    ordered: bool
+    number: int
+    content_indent: int
+    content: str
+
+
+def list_marker(line: str) -> ListMarker | None:
+    if HR_PATTERN.match(line):
+        return None
+    match = LIST_ITEM_PATTERN.match(line.expandtabs(4))
+    if not match:
+        return None
+    lead, token, gap, content = match.groups()
+    ordered = token[0].isdigit()
+    # CommonMark: five or more spaces after the marker open an indented code
+    # block, and the item content column falls back to a single space.
+    spaces = len(gap) if content.strip() else 1
+    if not 1 <= spaces <= 4:
+        spaces = 1
+    return ListMarker(
+        indent=len(lead),
+        delimiter=token[-1] if ordered else token,
+        ordered=ordered,
+        number=int(token[:-1]) if ordered else 0,
+        content_indent=len(lead) + len(token) + spaces,
+        content=content,
+    )
+
+
 def split_table_row(line: str) -> list[str]:
     line = line.strip().strip("|")
     return [cell.strip() for cell in re.split(r"(?<!\\)\|", line)]
@@ -151,7 +188,7 @@ def is_block_start(lines: list[str], index: int) -> bool:
         return True
     if re.match(r"^([-*_])(?:\s*\1){2,}\s*$", stripped):
         return True
-    if re.match(r"^\s*([-+*]|\d+[.)])\s+", value):
+    if list_marker(value) is not None:
         return True
     if stripped.startswith(">"):
         return True
@@ -160,8 +197,73 @@ def is_block_start(lines: list[str], index: int) -> bool:
     return False
 
 
+def parse_list(lines: list[str], index: int) -> tuple[str, int]:
+    """Consume one CommonMark list, returning its HTML and the next line index."""
+    marker = list_marker(lines[index])
+    if marker is None:
+        raise ValueError("parse_list called off a list marker")
+    ordered = marker.ordered
+    delimiter = marker.delimiter
+    start = marker.number
+    items: list[list[str]] = []
+    loose = False
+
+    while True:
+        content_indent = marker.content_indent
+        item: list[str] = [marker.content]
+        index += 1
+        blank_seen = False
+        while index < len(lines):
+            raw = lines[index].expandtabs(4)
+            if not raw.strip():
+                blank_seen = True
+                index += 1
+                continue
+            indent = len(raw) - len(raw.lstrip())
+            if indent >= content_indent:
+                if blank_seen:
+                    item.append("")
+                    loose = True
+                    blank_seen = False
+                item.append(raw[content_indent:])
+                index += 1
+                continue
+            if blank_seen or list_marker(raw) is not None:
+                break
+            # Lazy continuation: an 80-column hard wrap stays in this item
+            # instead of becoming a sibling paragraph and splitting the list.
+            item.append(raw.strip())
+            index += 1
+        items.append(item)
+
+        following = list_marker(lines[index]) if index < len(lines) else None
+        if (
+            following is None
+            or following.indent >= content_indent
+            or following.ordered != ordered
+            or following.delimiter != delimiter
+        ):
+            break
+        loose = loose or blank_seen
+        marker = following
+
+    tag = "ol" if ordered else "ul"
+    attributes = f' start="{start}"' if ordered and start != 1 else ""
+    rendered = [f"<{tag}{attributes}>"]
+    for item in items:
+        body, _ = render_blocks(item, tight=not loose)
+        rendered.append(f"<li>{body}</li>")
+    rendered.append(f"</{tag}>")
+    return "\n".join(rendered), index
+
+
 def markdown_to_html(source: str) -> tuple[str, str | None]:
     lines = strip_frontmatter(source.replace("\r\n", "\n").replace("\r", "\n").split("\n"))
+    return render_blocks(lines)
+
+
+def render_blocks(lines: list[str], *, tight: bool = False) -> tuple[str, str | None]:
+    """Render a block sequence; tight suppresses <p> around list-item text."""
     out: list[str] = []
     title: str | None = None
     index = 0
@@ -220,20 +322,9 @@ def markdown_to_html(source: str) -> tuple[str, str | None]:
             out.append("</tbody></table>")
             continue
 
-        list_match = re.match(r"^\s*([-+*]|\d+[.)])\s+(.+)$", line)
-        if list_match:
-            ordered = list_match.group(1)[0].isdigit()
-            tag = "ol" if ordered else "ul"
-            items: list[str] = []
-            while index < len(lines):
-                match = re.match(r"^\s*([-+*]|\d+[.)])\s+(.+)$", lines[index])
-                if not match or match.group(1)[0].isdigit() != ordered:
-                    break
-                items.append(match.group(2).strip())
-                index += 1
-            out.append(f"<{tag}>")
-            out.extend(f"<li>{inline_markup(item)}</li>" for item in items)
-            out.append(f"</{tag}>")
+        if list_marker(line) is not None:
+            block, index = parse_list(lines, index)
+            out.append(block)
             continue
 
         if stripped.startswith(">"):
@@ -256,16 +347,49 @@ def markdown_to_html(source: str) -> tuple[str, str | None]:
             hard_break = part.endswith("  ")
             joined += part.rstrip() + ("\x00BR\x01" if hard_break else " ")
         rendered = inline_markup(joined.strip()).replace("\x00BR\x01", "<br>")
-        out.append(f"<p>{rendered}</p>")
+        out.append(rendered if tight else f"<p>{rendered}</p>")
 
     return "\n".join(out), title
 
 
-def print_css(profile: Profile) -> str:
+def css_string(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def print_css(profile: Profile, *, label: bool = False) -> str:
+    caption = (
+        f"{profile.label} · {profile.size_pt:g} pt · {profile.line_height:g} line height"
+    )
+    label_box = (
+        f"""
+  @bottom-center {{
+    content: {css_string(caption)};
+    color: #555;
+    font-family: "SF Pro Text", sans-serif;
+    font-size: 7.5pt;
+    letter-spacing: 0.025em;
+    line-height: 1;
+  }}"""
+        if label
+        else ""
+    )
     return f"""
 @page {{
   size: A4 portrait;
   margin: 20mm 30mm 21mm;
+  /* Chrome runs with --no-pdf-header-footer, so these margin boxes are the
+     only page furniture. Both sit in the reserved bottom margin, outside the
+     content box: the bare folio at the right, the optional profile caption
+     centered well clear of it. */
+  @bottom-right {{
+    content: counter(page);
+    color: #666;
+    font-family: "SF Pro Text", sans-serif;
+    font-size: 7pt;
+    font-weight: 400;
+    letter-spacing: 0.02em;
+    line-height: 1;
+  }}{label_box}
 }}
 
 * {{ box-sizing: border-box; }}
@@ -363,20 +487,6 @@ img {{
   max-height: 205mm;
   max-width: 100%;
 }}
-.print-profile-label {{
-  bottom: 0;
-  color: #555;
-  font-family: "SF Pro Text", sans-serif;
-  font-size: 7.5pt;
-  font-style: normal;
-  font-weight: 400;
-  left: 0;
-  letter-spacing: 0.025em;
-  line-height: 1;
-  position: fixed;
-  right: 0;
-  text-align: center;
-}}
 """
 
 
@@ -388,14 +498,6 @@ def document_html(
     profile: Profile,
     label: bool,
 ) -> str:
-    footer = ""
-    if label:
-        footer = (
-            '<footer class="print-profile-label">'
-            f"{html.escape(profile.label)} · {profile.size_pt:g} pt · "
-            f"{profile.line_height:g} line height"
-            "</footer>"
-        )
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -403,13 +505,12 @@ def document_html(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <base href="{html.escape(base_uri, quote=True)}">
 <title>{html.escape(title)}</title>
-<style>{print_css(profile)}</style>
+<style>{print_css(profile, label=label)}</style>
 </head>
 <body>
 <main>
 {body}
 </main>
-{footer}
 </body>
 </html>
 """
@@ -433,7 +534,7 @@ def html_input_document(
         )
     additions = (
         f'<base href="{html.escape(base_uri, quote=True)}">\n'
-        f"<style>{print_css(profile)}</style>\n"
+        f"<style>{print_css(profile, label=label)}</style>\n"
     )
     if re.search(r"</head\s*>", source, flags=re.I):
         source = re.sub(r"</head\s*>", additions + "</head>", source, count=1, flags=re.I)
@@ -445,14 +546,6 @@ def html_input_document(
             count=1,
             flags=re.I,
         )
-    if label:
-        footer = (
-            '<footer class="print-profile-label">'
-            f"{html.escape(profile.label)} · {profile.size_pt:g} pt · "
-            f"{profile.line_height:g} line height"
-            "</footer>"
-        )
-        source = re.sub(r"</body\s*>", footer + "</body>", source, count=1, flags=re.I)
     return source
 
 
@@ -621,8 +714,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sides",
         choices=("one-sided", "long-edge", "short-edge"),
-        default="one-sided",
-        help="CUPS duplex mode",
+        default="long-edge",
+        help="CUPS duplex mode (default: long-edge duplex, to save paper)",
     )
     args = parser.parse_args()
     if args.copies < 1:

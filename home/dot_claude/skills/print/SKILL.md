@@ -41,6 +41,12 @@ faces into one nominal metric. Page geometry remains constant: A4 portrait,
 30 mm side margins, restrained black-on-white styling, widow/orphan control,
 and no browser headers or footers.
 
+Every page carries a bare 7 pt page number at the bottom right, set in the
+reserved bottom margin through a CSS **@page** margin box. Chrome's own URL,
+date, and title furniture stays disabled. The **--label** and **--compare**
+profile caption shares that margin as a centered margin box, so it neither
+overprints the last line of text nor reaches the page number.
+
 Render all four comparison sheets:
 
     ~/.claude/skills/print/scripts/print-paper.py specimen.md \
@@ -65,8 +71,11 @@ Use **--list-profiles** for the exact face, point size, and leading values.
 - Documents go through CUPS as already-rendered A4 PDFs. Do not use raw TCP
   9100 for formatted material; **brother-print-text** remains only for trivial
   plain text.
-- Default to one-sided output. Use **--sides long-edge** only when duplex was
-  requested or clearly suits a multi-page document.
+- Printing is duplex long-edge by default, which halves the paper a multi-page
+  document costs. Pass **--sides one-sided** when the sheets must be single
+  sided (posting, scanning, single-sided forms), or **--sides short-edge** for
+  landscape-flip binding. A one-page job may carry the duplex option; it costs
+  no extra sheet.
 - Never add **--force** merely for convenience. Use it only when replacing the
   named generated files is intended.
 - Do not claim physical completion from queue submission alone. Report that
@@ -79,3 +88,9 @@ Markdown supports headings, paragraphs, emphasis, links, images, blockquotes,
 ordered and unordered lists, fenced code, rules, and simple GFM tables. Relative
 image paths resolve from the source file directory. HTML documents retain their
 content and receive the print stylesheet as the final style block.
+
+Lists follow CommonMark continuation rules, so repository Markdown written in
+the house 80-column style prints as authored: a hard-wrapped line stays inside
+its list item, nested items stay nested, and ordered numbering runs unbroken.
+Never make an unwrapped print-only copy of a document to work around list
+rendering.

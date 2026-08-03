@@ -248,7 +248,151 @@ jq -e '
   and .confidencePermille == 900
   and .provenance.endpoint == "http://localhost:9292"
   and (.provenance.promptDigest | test("^sha256:[0-9a-f]{64}$"))
+  and .provenance.finishReason == "stop"
+  and (.wordCount | type == "number" and . > 0)
 ' "$vlm_artifact" >/dev/null
+
+# The fixture page is deliberately shorter than the voucher floor, so the
+# length ratio never applies to it and the transcription above is judged on
+# substance alone. Fattening the fixture would silently change that.
+poppler_words=$(jq -r '.wordCount' "$poppler_artifact")
+(( poppler_words < 200 )) || fail "fixture voucher assumption broke at $poppler_words words"
+
+# A page that stops at the token cap fails on the server's own signal, with no
+# mechanical voucher anywhere in reach.
+capped_artifact="$run_dir/ocr/capped-fixture/page-1/qwen3-vl-8b-ocr/original.json"
+jq -n \
+  --arg sourcePath "$source_path" \
+  --arg artifactPath "$capped_artifact" '{
+    action: "recognize",
+    page: {paperId: "capped-fixture", pageNumber: 1, sourcePath: $sourcePath},
+    protocol: {id: "qwen3-vl-8b-ocr", tier: "standard"},
+    input: {id: "original", mutation: {kind: "none"}},
+    artifactPath: $artifactPath
+  }' > "$work/capped-brief.json"
+if TALLY_BRIEF="$work/capped-brief.json" \
+  ACADEMIC_OCR_CURL="$fake_curl" \
+  ACADEMIC_OCR_STATE_ROOT="$state" \
+  ACADEMIC_OCR_FAKE_FINISH_REASON=length \
+  academic-ocr-driver recognize > "$work/capped.out" 2> "$work/capped.err"; then
+  fail 'a transcription stopped at the token cap unexpectedly passed'
+fi
+[[ ! -e $capped_artifact ]] || fail 'a capped transcription wrote a passing artifact'
+grep -q 'finish_reason=length' "$work/capped.err" \
+  || fail 'the cap rejection did not name the signal it acted on'
+
+# A page whose mechanical extraction is long enough to vouch for it rejects a
+# visual transcription that returns only a fraction of that length, even when
+# the server claims it stopped cleanly.
+voucher_page_dir="$run_dir/ocr/voucher-fixture/page-1"
+voucher_text=$(seq -f 'mechanical%g' 1 240 | tr '\n' ' ')
+short_content=$(seq -f 'transcribed%g' 1 20 | tr '\n' ' ')
+
+# Hand-built recognitions stand in for attempts the ladder would have produced.
+# The digest is over the exact text the arbiter re-derives, with no trailing
+# newline, which is what `jq -jr` yields.
+write_recognition() {
+  local protocol=$1 text=$2 destination="$voucher_page_dir/$3/original.json"
+  mkdir -p "$(dirname "$destination")"
+  jq -n \
+    --arg protocol "$protocol" \
+    --arg text "$text" \
+    --arg artifactPath "$destination" \
+    --arg digest "$(printf '%s' "$text" | sha256sum | awk '{print "sha256:" $1}')" '{
+      schemaVersion: 1,
+      action: "recognize",
+      paperId: "voucher-fixture",
+      pageNumber: 1,
+      protocolId: $protocol,
+      inputVariant: "original",
+      artifactPath: $artifactPath,
+      text: $text,
+      textDigest: $digest
+    }' > "$destination"
+}
+
+write_recognition poppler-text "$voucher_text" poppler-text
+
+voucher_artifact="$voucher_page_dir/qwen3-vl-8b-ocr/original.json"
+jq -n \
+  --arg sourcePath "$source_path" \
+  --arg artifactPath "$voucher_artifact" '{
+    action: "recognize",
+    page: {paperId: "voucher-fixture", pageNumber: 1, sourcePath: $sourcePath},
+    protocol: {id: "qwen3-vl-8b-ocr", tier: "standard"},
+    input: {id: "original", mutation: {kind: "none"}},
+    artifactPath: $artifactPath
+  }' > "$work/voucher-brief.json"
+if TALLY_BRIEF="$work/voucher-brief.json" \
+  ACADEMIC_OCR_CURL="$fake_curl" \
+  ACADEMIC_OCR_STATE_ROOT="$state" \
+  ACADEMIC_OCR_FAKE_VLM_CONTENT="$short_content" \
+  academic-ocr-driver recognize > "$work/voucher.out" 2> "$work/voucher.err"; then
+  fail 'a transcription far under its mechanical voucher unexpectedly passed'
+fi
+[[ ! -e $voucher_artifact ]] || fail 'a truncated transcription wrote a passing artifact'
+grep -q 'mechanical voucher' "$work/voucher.err" \
+  || fail 'the voucher rejection did not explain the length it compared'
+
+# The same voucher accepts a transcription that clears the floor, so the guard
+# is a length ratio and not a blanket refusal of visual protocols.
+full_content=$(seq -f 'transcribed%g' 1 200 | tr '\n' ' ')
+TALLY_BRIEF="$work/voucher-brief.json" \
+  ACADEMIC_OCR_CURL="$fake_curl" \
+  ACADEMIC_OCR_STATE_ROOT="$state" \
+  ACADEMIC_OCR_FAKE_VLM_CONTENT="$full_content" \
+  academic-ocr-driver recognize > "$work/voucher-pass.out"
+summary_from_output "$work/voucher-pass.out" >/dev/null
+jq -e '.wordCount == 200 and .provenance.finishReason == "stop"' "$voucher_artifact" >/dev/null \
+  || fail 'a transcription clearing the voucher floor did not record its length'
+
+# The arbiter drops a truncated visual candidate rather than ranking it first,
+# which it otherwise would: the specialist tier outranks every mechanical
+# extraction before length is even considered.
+write_recognition qwen3-vl-32b-ocr "$short_content" qwen3-vl-32b-ocr
+truncated_path="$voucher_page_dir/qwen3-vl-32b-ocr/original.json"
+truncated_digest=$(jq -r '.textDigest' "$truncated_path")
+voucher_poppler="$voucher_page_dir/poppler-text/original.json"
+voucher_poppler_digest=$(jq -r '.textDigest' "$voucher_poppler")
+voucher_arbiter="$voucher_page_dir/arbiter/final.json"
+jq -n \
+  --arg sourcePath "$source_path" \
+  --arg truncatedPath "$truncated_path" \
+  --arg truncatedDigest "$truncated_digest" \
+  --arg voucherPath "$voucher_poppler" \
+  --arg voucherDigest "$voucher_poppler_digest" \
+  --arg artifactPath "$voucher_arbiter" '{
+    action: "arbitrate",
+    page: {paperId: "voucher-fixture", pageNumber: 1, sourcePath: $sourcePath},
+    attempts: [{
+      taskUuid: "00000000-0000-4000-8000-000000000131",
+      witnessSeq: 1,
+      verdict: "pass",
+      protocolId: "qwen3-vl-32b-ocr",
+      inputVariant: "original",
+      artifactPath: $truncatedPath,
+      textDigest: $truncatedDigest
+    }, {
+      taskUuid: "00000000-0000-4000-8000-000000000132",
+      witnessSeq: 2,
+      verdict: "pass",
+      protocolId: "poppler-text",
+      inputVariant: "original",
+      artifactPath: $voucherPath,
+      textDigest: $voucherDigest
+    }],
+    artifactPath: $artifactPath
+  }' > "$work/voucher-arbiter-brief.json"
+run_action arbitrate "$work/voucher-arbiter-brief.json" "$work/voucher-arbiter.out"
+jq -e \
+  --arg truncatedPath "$truncated_path" \
+  --arg voucherPath "$voucher_poppler" '
+  .selectedArtifactPath == $voucherPath
+  and (.basis == [$voucherPath])
+  and (.truncatedArtifactPaths == [$truncatedPath])
+  and .provenance.voucherWords == 240
+' "$voucher_arbiter" >/dev/null \
+  || fail 'the arbiter ranked a truncated visual candidate over its mechanical voucher'
 
 vlm_digest=$(jq -r '.textDigest' "$vlm_artifact")
 selection=$(jq -n \

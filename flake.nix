@@ -553,6 +553,41 @@
           assert coordinator.systemd.sockets ? navidrome-relay;
           assert coordinator.systemd.sockets ? plex-relay;
           assert coordinator.systemd.sockets ? immich-ml-access;
+          # ── #130 expansion gates: all OFF, and the pairs agree ─────────────
+          # These assert the STAGED shape, i.e. that today's switch is a no-op
+          # on the NAS's running services. Each gate flips with its own runbook
+          # (the header comment of the module named beside it); when one does,
+          # invert the assertion here in the same commit rather than deleting
+          # it — a gate that nothing checks is a gate that drifts.
+          assert !nas.myNas.video.enable; # ws1  hosts/nas/video.nix
+          assert !nas.myNas.snapshots.enable; # ws2a hosts/nas/snapshots.nix
+          assert !nas.myNas.backups.enable; # ws2b hosts/nas/backups.nix
+          assert !nas.myNas.archive.enable; # ws4  hosts/nas/archive.nix
+          assert !nas.myNas.attic.enable; # ws5  hosts/nas/attic.nix
+          assert !coordinator.myNasClient.relayVideo;
+          assert !coordinator.myNasClient.relayAttic;
+          # `or false` because hosts/coordinator/backups.nix is not in
+          # hosts/coordinator/default.nix's imports yet — that one line is
+          # listed in the #130 handoff and this check goes strict the moment it
+          # lands. Until then the option does not exist and a bare read throws.
+          assert !(coordinator.myCoordinatorBackups.enable or false);
+          # Plex is the LIVE video server (Tom's 2026-08-02 ruling, asserted
+          # above). Jellyfin in video.nix is a staged alternative, so it must
+          # stay off while Plex is on unless someone deliberately runs both.
+          assert !nas.services.jellyfin.enable;
+          # Cross-host invariants. Each relay and its backend must flip
+          # together: a relay pointing at a service that is off is a black
+          # hole, and a backend with no relay is unreachable from the tailnet.
+          assert nas.myNas.video.enable == coordinator.myNasClient.relayVideo;
+          assert nas.myNas.attic.enable == coordinator.myNasClient.relayAttic;
+          # The binary cache can only live in one place: moving it to the NAS
+          # requires the coordinator's own atticd to go away in the same
+          # commit, because both bind tcp/8080 on the coordinator (the relay
+          # socket there, the server here). Enforced host-locally too, by an
+          # assertion in hosts/coordinator/nas-client.nix.
+          assert nas.myNas.attic.enable -> !coordinator.services.atticd.enable;
+          # The borg client is useless without the repo server it pushes to.
+          assert (coordinator.myCoordinatorBackups.enable or false) -> nas.myNas.backups.enable;
           pkgs.runCommand "nas-topology" { } ''
             touch "$out"
           '';
@@ -645,6 +680,28 @@
               touch "$out"
             '';
 
+        print-paper =
+          pkgs.runCommand "print-paper"
+            {
+              nativeBuildInputs = [ pkgs.python3 ];
+            }
+            ''
+              set -euo pipefail
+
+              export HOME="$TMPDIR/home"
+              export PYTHONDONTWRITEBYTECODE=1
+              export PRINT_PAPER_SCRIPT=${./home/dot_claude/skills/print/scripts/print-paper.py}
+              export PRINT_PAPER_SKILL=${./home/dot_claude/skills/print/SKILL.md}
+              mkdir -p "$HOME"
+
+              python3 -m unittest discover \
+                -s ${./tests/print} \
+                -p 'test_*.py' \
+                -v
+
+              touch "$out"
+            '';
+
         nixos-only =
           let
             retiredPlatformPattern = nixpkgs.lib.concatStringsSep "|" [
@@ -704,10 +761,6 @@
             ];
             removedModel = "qwo" + "pus";
             monthlySources = builtins.fromJSON (builtins.readFile ./pkgs/local-ai-monthly/sources.json);
-            cooldownReceiver =
-              nixpkgs.lib.findFirst (package: nixpkgs.lib.getName package == "tally-gpu-cooldown")
-                (throw "coordinator has no Tally GPU cooldown receiver")
-                coordinator.home-manager.users.tom.home.packages;
           in
           # Regression guard: the NixOS, deploy-rs, and mesh registries must agree
           # on the retired host's absence.
@@ -752,9 +805,15 @@
           assert coordinator.microvm.host.enable;
           assert !(self.nixosConfigurations.coordinator.options.myArtifacts ? livePortRange);
           assert !coordinator.home-manager.users.tom.services.tally.pools.coordinator-gpu.hardPreempt;
-          assert coordinator.systemd.timers.gpu-cooldown-tripwire.timerConfig.OnUnitActiveSec == "30s";
-          assert coordinator.systemd.services.gpu-cooldown-tripwire.environment.SUSTAIN_SECONDS == "120";
-          assert coordinator.systemd.services.gpu-cooldown-tripwire.environment.COOLDOWN_MINUTES == "8";
+          assert coordinator.systemd.timers.tripwire-gpu-cooldown.timerConfig.OnUnitActiveSec == "30s";
+          assert coordinator.systemd.services.tripwire-gpu-cooldown.environment.TRIPWIRE_SUSTAIN == "120";
+          assert coordinator.systemd.services.tripwire-gpu-cooldown.environment.COOLDOWN_MINUTES == "8";
+          assert
+            coordinator.systemd.services.tripwire-gpu-cooldown.environment.TRIPWIRE_VALUE_FIELD == "TEMP_C";
+          # Crash surfacing (#134): the blanket OnFailure handler and both journal watchers exist.
+          assert coordinator.systemd.services."failure-notify@".serviceConfig.Type == "oneshot";
+          assert coordinator.systemd.timers ? tripwire-coredump;
+          assert coordinator.systemd.timers ? tripwire-user-unit-failure;
           assert monthlySources.inference.url == "http://coordinator:9292";
           assert monthlySources.inference.compute_host == "coordinator";
           assert monthlySources.inference.tally_pool == "coordinator-gpu";
@@ -773,48 +832,71 @@
               echo "retired Tally executor or pool found" >&2
               exit 1
             fi
-            ${pkgs.gnugrep}/bin/grep -F -- '--pool coordinator-gpu' \
-              ${cooldownReceiver}/bin/tally-gpu-cooldown >/dev/null
-            ${pkgs.gnugrep}/bin/grep -F -- '--priority interrupt' \
-              ${cooldownReceiver}/bin/tally-gpu-cooldown >/dev/null
-            ${pkgs.gnugrep}/bin/grep -F -- '--no-enqueue' \
-              ${cooldownReceiver}/bin/tally-gpu-cooldown >/dev/null
-            ${pkgs.gnugrep}/bin/grep -F -- '--evidence exit:0' \
-              ${cooldownReceiver}/bin/tally-gpu-cooldown >/dev/null
             touch "$out"
           '';
 
         gpu-cooldown-parity = pkgs.runCommand "gpu-cooldown-parity" { } ''
+          export PATH=${
+            nixpkgs.lib.makeBinPath [
+              pkgs.coreutils
+              pkgs.util-linux
+            ]
+          }:$PATH
           mkdir -p "$TMPDIR/hwmon/hwmon0" "$TMPDIR/state"
           echo k10temp > "$TMPDIR/hwmon/hwmon0/name"
           echo Tctl > "$TMPDIR/hwmon/hwmon0/temp1_label"
           echo 86000 > "$TMPDIR/hwmon/hwmon0/temp1_input"
 
-          cat > "$TMPDIR/adapter" <<EOF
+          # The sensor reports the trip point belonging to whichever node it read.
+          HWMON_ROOT="$TMPDIR/hwmon" \
+            ${pkgs.bash}/bin/bash ${./modules/tripwire-gpu-sensor.sh} > "$TMPDIR/sample"
+          ${pkgs.gnugrep}/bin/grep -Fx '86 k10temp:Tctl 85' "$TMPDIR/sample"
+
+          echo 0 > "$TMPDIR/onfire.exit"
+          cat > "$TMPDIR/sensor" <<EOF
           #!${pkgs.runtimeShell}
-          printf '%s\n' "\$*" > "$TMPDIR/adapter.args"
+          cat "$TMPDIR/sample"
           EOF
-          chmod +x "$TMPDIR/adapter"
+          cat > "$TMPDIR/onfire" <<EOF
+          #!${pkgs.runtimeShell}
+          printf '%s\n' "\$*" >> "$TMPDIR/onfire.args"
+          exit \$(cat "$TMPDIR/onfire.exit")
+          EOF
+          chmod +x "$TMPDIR/sensor" "$TMPDIR/onfire"
 
-          STATE_DIRECTORY="$TMPDIR/state" \
-            HWMON_ROOT="$TMPDIR/hwmon" \
-            SUSTAIN_SECONDS=0 \
-            COOLDOWN_ADAPTER="$TMPDIR/adapter" \
-            ${pkgs.bash}/bin/bash ${./modules/gpu-cooldown-poll.sh}
+          poll() {
+            STATE_DIRECTORY="$TMPDIR/state" \
+              TRIPWIRE_NAME=gpu-cooldown \
+              TRIPWIRE_SENSOR="$TMPDIR/sensor" \
+              TRIPWIRE_ONFIRE="$TMPDIR/onfire" \
+              TRIPWIRE_THRESHOLD=95 TRIPWIRE_REARM=75 \
+              TRIPWIRE_SUSTAIN=0 TRIPWIRE_REFRACTORY=540 \
+              TRIPWIRE_COMPARISON=ge TRIPWIRE_VALUE_FIELD=TEMP_C \
+              ${pkgs.bash}/bin/bash ${./modules/tripwire-poll.sh}
+          }
 
-          ${pkgs.gnugrep}/bin/grep -Fx '86 k10temp:Tctl 85' "$TMPDIR/adapter.args"
+          # A failed onFire must fail the poll and leave the tripwire armed on the
+          # SAME episode, so the retry presents an identical dedup key. That identity
+          # — the label set, never a sample value or the current time — is the #135 fix.
+          echo 1 > "$TMPDIR/onfire.exit"
+          if poll; then echo "a failing onFire must fail the poll" >&2; exit 1; fi
+          ${pkgs.gnugrep}/bin/grep -Fx 'armed=1' "$TMPDIR/state/state"
+
+          echo 0 > "$TMPDIR/onfire.exit"
+          poll
           ${pkgs.gnugrep}/bin/grep -Fx 'armed=0' "$TMPDIR/state/state"
 
-          cat > "$TMPDIR/receiver" <<EOF
-          #!${pkgs.runtimeShell}
-          printf '%s\n' "\$*" > "$TMPDIR/receiver.args"
-          EOF
-          chmod +x "$TMPDIR/receiver"
+          test "$(${pkgs.coreutils}/bin/wc -l < "$TMPDIR/onfire.args")" = 2
+          test "$(${pkgs.coreutils}/bin/sort -u "$TMPDIR/onfire.args" | ${pkgs.coreutils}/bin/wc -l)" = 1
+          ${pkgs.gnugrep}/bin/grep -qE '^86 k10temp:Tctl 85 k10temp:Tctl-[0-9]+$' "$TMPDIR/onfire.args"
 
-          TALLY_COOLDOWN_RECEIVER="$TMPDIR/receiver" \
-            ${pkgs.bash}/bin/bash ${./modules/gpu-cooldown-enqueue.sh} \
-              91 amdgpu:junction 90
-          ${pkgs.gnugrep}/bin/grep -Fx '91 amdgpu:junction 90 1800' "$TMPDIR/receiver.args"
+          # The adapter keys tally's dedup on that episode id, and still takes the
+          # non-preemptive interrupt-priority hold on coordinator-gpu.
+          for needle in 'COOLDOWN_POOL:-coordinator-gpu' 'COOLDOWN_PRIORITY:-interrupt' \
+                        '--no-enqueue' '--evidence exit:0' \
+                        'dedup="gpu-cooldown-coordinator-''${episode_id}"'; do
+            ${pkgs.gnugrep}/bin/grep -F -- "$needle" ${./modules/gpu-cooldown-enqueue.sh} > /dev/null
+          done
           touch "$out"
         '';
 

@@ -102,7 +102,7 @@ normalized 4,096-dimensional embedding on the coordinator.
 - Qwen3-Coder-Next and all uncensored models remain coordinator catalog
   candidates only. None enter the active allowlist or download boundary.
 - The former DeepSeek V4/DS4 topology is absent from the active catalog; its
-  benchmark and runbook evidence remains under `docs/old/`.
+  preserved operational lessons are in `docs/local-ai/dual-node-inference-lessons.md`.
 - Stable Diffusion remains outside the local-LLM route. Mage-Flow is also an
   image-generation appliance, but uses its own upstream pipeline rather than
   the stable-diffusion.cpp command set.

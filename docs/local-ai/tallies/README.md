@@ -15,5 +15,6 @@ artifact identity, immutable HF revision, selected files and sizes, LFS
 SHA-256/Nix SRI, runtime provenance, evidence class, Q8 precision policy, and
 explicit coordinator allowlist.
 
-Superseded topology-era tallies live under [`../../old/local-ai/tallies/`](../../old/local-ai/tallies/)
-and are evidence only.
+The superseded topology-era tallies (2026-07-22 and 2026-07-26) were removed on
+2026-08-03 and are readable from Git history; [`../../old/README.md`](../../old/README.md)
+indexes them. They are evidence only.
