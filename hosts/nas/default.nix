@@ -12,6 +12,7 @@
     ./journal.nix
     ./storage.nix
     ./media.nix
+    ./phone-ingest.nix
     ./lacie-mirror.nix
     # #130 expansion workstreams. All four land with their gates OFF; each has
     # a runbook in its own header and flips on its own, later, after that
@@ -53,6 +54,10 @@
   # disk; deployment order (NAS restore first, then the coordinator cutover)
   # is sequenced manually in #131.
   myNas.media.enable = true;
+  # Operator tooling only — adb, the Immich CLI, and a staging directory (#143).
+  # Nothing here starts on its own; the first camera-roll pull is driven by hand
+  # so its failure modes get observed before any of it is automated.
+  myNas.phoneIngest.enable = true;
 
   system.stateVersion = "26.05";
 }
