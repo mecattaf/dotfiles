@@ -456,6 +456,70 @@ let
               notes = "BF16 vision projector paired with the Q8_0 Fara deployment.";
             };
 
+            fara15-9b-q8-0 = mkSingleFileArtifact {
+              maker = "Microsoft / bartowski";
+              baseCheckpoint = {
+                url = "https://huggingface.co/microsoft/Fara1.5-9B";
+                revision = "1a93677cd89d5601bc2ed759791e981f3a520032";
+              };
+              hfUrl = "https://huggingface.co/bartowski/Fara1.5-9B-GGUF";
+              revision = "153cb27ac91d4a2b9391ecf278542e610d040178";
+              path = "Fara1.5-9B-Q8_0.gguf";
+              bytes = 9545983104;
+              oid = "a2e30cca7aec006266308153ae781347505af16baa514bbd4e0e3f4a79ea3a22";
+              hash = "sha256-ouMMynrsAGJmMIFTrngTR1Ba8WuqUUu9Tg4/SnnqOiI=";
+              quantization = "Q8_0";
+              notes = "Q8_0 is an explicit operator choice for the mid-tier browser-computer-use appliance; do not silently down-quantize it.";
+            };
+
+            fara15-9b-mmproj-bf16 = mkSingleFileArtifact {
+              kind = "mmproj";
+              maker = "Microsoft / bartowski";
+              baseCheckpoint = {
+                url = "https://huggingface.co/microsoft/Fara1.5-9B";
+                revision = "1a93677cd89d5601bc2ed759791e981f3a520032";
+              };
+              hfUrl = "https://huggingface.co/bartowski/Fara1.5-9B-GGUF";
+              revision = "153cb27ac91d4a2b9391ecf278542e610d040178";
+              path = "mmproj-Fara1.5-9B-bf16.gguf";
+              bytes = 921704992;
+              oid = "42ff0ff38666cefc4b1594a05c1644fe9bfc49edfed587ec551e471e0dd8b61d";
+              hash = "sha256-Qv8P84ZmzvxLFZSgXBZE/pv8Se3+1YfsVR5HHg3Yth0=";
+              notes = "BF16 vision projector paired with the Q8_0 Fara-9B deployment.";
+            };
+
+            fara15-4b-q8-0 = mkSingleFileArtifact {
+              maker = "Microsoft / bartowski";
+              baseCheckpoint = {
+                url = "https://huggingface.co/microsoft/Fara1.5-4B";
+                revision = "776a33ae5b2ad503796a97ae20fdc66f61d2feea";
+              };
+              hfUrl = "https://huggingface.co/bartowski/Fara1.5-4B-GGUF";
+              revision = "b97f335231e01efbbad37bb89b5310340fc10735";
+              path = "Fara1.5-4B-Q8_0.gguf";
+              bytes = 4493954144;
+              oid = "943b76f8ff6893c465de5c841e5116941fe87c8863dbb759d386697faa723880";
+              hash = "sha256-lDt2+P9ok8Rl3lyEHlEWlB/ofIhj27dZ04Zpf6pyOIA=";
+              quantization = "Q8_0";
+              notes = "Q8_0 is an explicit operator choice for the small browser-computer-use appliance; do not silently down-quantize it.";
+            };
+
+            fara15-4b-mmproj-bf16 = mkSingleFileArtifact {
+              kind = "mmproj";
+              maker = "Microsoft / bartowski";
+              baseCheckpoint = {
+                url = "https://huggingface.co/microsoft/Fara1.5-4B";
+                revision = "776a33ae5b2ad503796a97ae20fdc66f61d2feea";
+              };
+              hfUrl = "https://huggingface.co/bartowski/Fara1.5-4B-GGUF";
+              revision = "b97f335231e01efbbad37bb89b5310340fc10735";
+              path = "mmproj-Fara1.5-4B-bf16.gguf";
+              bytes = 675569312;
+              oid = "703176d1c7afe714d5e323d5fbf5f62314e46c808de44d9cc99abb963039a60d";
+              hash = "sha256-cDF20cev5xTV4yPV+/X2IxTkbICN5E2cyZq7ljA5pg0=";
+              notes = "BF16 vision projector paired with the Q8_0 Fara-4B deployment.";
+            };
+
             qwen36-35b-a3b-abliterated-heretic-q4-k-m = mkSingleFileArtifact {
               maker = "Youssofal";
               baseCheckpoint = {
@@ -1006,6 +1070,62 @@ let
               evidence = "unverified";
               hardware = "Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
               notes = "Browser-computer-use VLM on coordinator. Q8_0 is an explicit quality decision; the BF16 projector is mandatory.";
+            };
+
+            fara15-9b-q8-0 = {
+              model = "fara1.5-9b";
+              role = "vision";
+              status = "canonical";
+              backend = "rocm";
+              hosts = [ "coordinator" ];
+              ramTierGb = 16;
+              artifacts = {
+                model = "fara15-9b-q8-0";
+                mmproj = "fara15-9b-mmproj-bf16";
+              };
+              runtime = llamaCppRuntime [
+                "--mmproj"
+                "@mmproj@"
+                "--ctx-size"
+                "32768"
+                "--gpu-layers"
+                "999"
+                "--flash-attn"
+                "on"
+                "--no-mmap"
+                "--jinja"
+              ];
+              evidence = "unverified";
+              hardware = "Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
+              notes = "Mid-tier browser-computer-use VLM on coordinator, same family and serving shape as fara1.5-27b at lower latency/RAM cost. Q8_0 is an explicit quality decision; the BF16 projector is mandatory.";
+            };
+
+            fara15-4b-q8-0 = {
+              model = "fara1.5-4b";
+              role = "vision";
+              status = "canonical";
+              backend = "rocm";
+              hosts = [ "coordinator" ];
+              ramTierGb = 8;
+              artifacts = {
+                model = "fara15-4b-q8-0";
+                mmproj = "fara15-4b-mmproj-bf16";
+              };
+              runtime = llamaCppRuntime [
+                "--mmproj"
+                "@mmproj@"
+                "--ctx-size"
+                "32768"
+                "--gpu-layers"
+                "999"
+                "--flash-attn"
+                "on"
+                "--no-mmap"
+                "--jinja"
+              ];
+              evidence = "unverified";
+              hardware = "Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
+              notes = "Smallest browser-computer-use VLM on coordinator, same family and serving shape as fara1.5-27b/9b at the lowest latency/RAM cost. Q8_0 is an explicit quality decision; the BF16 projector is mandatory.";
             };
 
             qwen36-35b-abliterated-heretic = {

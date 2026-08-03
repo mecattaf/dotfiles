@@ -131,4 +131,9 @@ final: prev: {
   # Bounded academic OCR appliance: deterministic PDF mechanics, the tally
   # mutation-ladder driver, and canonical/chunk/embed/index receipt stages.
   academic-ocr = final.callPackage ../pkgs/academic-ocr { };
+
+  # Reference CLI for Microsoft's Fara1.5 computer-use-agent models. Not in
+  # nixpkgs; upstream ships no release tags, so this pins the exact commit
+  # cloned 2026-08-03. See pkgs/fara-cli.nix.
+  fara-cli = final.callPackage ../pkgs/fara-cli.nix { };
 }
