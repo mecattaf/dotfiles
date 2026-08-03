@@ -10,9 +10,10 @@
 # The nightly runs at 02:00 and treats an offline zenbook-duo as a successful
 # skip — correct for the core, but Tom does not leave the laptop on overnight,
 # so in practice it NEVER caught the train and drifted weeks behind (observed
-# 2026-08-03: a June generation). This timer closes that gap: every 30 minutes,
-# if the laptop is reachable and behind the last built candidate, push that
-# exact candidate to it.
+# 2026-08-03: a June generation). This timer is the daytime retry: ONCE a day
+# (Tom's 2026-08-03 cadence ruling — a 30-minute poll was overkill), if the
+# laptop happens to be reachable and behind the last built candidate, push
+# that exact candidate to it; otherwise it simply waits for tomorrow.
 #
 # Doctrine constraints, deliberately kept:
 #   - EXACT CANDIDATE: the wanted profile comes from the newest
@@ -134,9 +135,12 @@ in
     systemd.timers.zenbook-catchup = {
       wantedBy = [ "timers.target" ];
       timerConfig = {
-        OnBootSec = "10min";
-        OnUnitActiveSec = "30min";
-        RandomizedDelaySec = "2min";
+        # One daytime attempt; unreachable postpones to the next day. The
+        # hour is a guess at when the laptop is plausibly awake — adjust
+        # freely, nothing else keys off it.
+        OnCalendar = "11:00";
+        RandomizedDelaySec = "30min";
+        Persistent = true;
       };
     };
   };
