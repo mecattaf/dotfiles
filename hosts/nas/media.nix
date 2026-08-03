@@ -3,6 +3,7 @@
   inputs,
   lib,
   pkgs,
+  unstablePkgs,
   ...
 }:
 let
@@ -11,14 +12,12 @@ let
   # was created by the coordinator's unstable Immich (3.0.3 at migration time)
   # and its schema must never run under an older server (stable had 2.7.5).
   # So the media stack's version-coupled piece — Immich module + package —
-  # comes from the main unstable input and keeps riding it through the daily
-  # fleet auto-update, exactly like the data expects. Navidrome, Plex,
-  # PostgreSQL 17 and vectorchord were identical across both pins when this
-  # was wired (2026-08-02); they stay stable-sourced.
-  unstablePkgs = import inputs.nixpkgs {
-    inherit (pkgs.stdenv.hostPlatform) system;
-    config.allowUnfree = true;
-  };
+  # comes from the main unstable input (`unstablePkgs`, see
+  # ./unstable-pkgs.nix) and keeps riding it through the daily fleet
+  # auto-update, exactly like the data expects. Navidrome, Plex, PostgreSQL 17
+  # and vectorchord were identical across both pins when this was wired
+  # (2026-08-02); they stay stable-sourced.
+  #
   # Deliberately identical to the coordinator's historical media root. Immich
   # and Navidrome can then retain every stored absolute path after restore.
   storageRoot = "/mnt/nas";
