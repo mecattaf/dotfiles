@@ -72,9 +72,18 @@ while IFS= read -r line; do
 
   log "start $db_id pages=$pages run_id=$run_id"
   max_nodes=$((6 * pages + 30))
-  if tally flow run "$FLOW" --args "$("$CORE/cat" "$args_file")" \
-       --flow-run-id "$run_id" --max-nodes "$max_nodes" \
-       >>"$DRAIN/logs/$db_id.log" 2>&1; then
+  # One file per attempt, appended to the paper's log afterwards: the
+  # supersede check below must only ever see THIS attempt's output, or a
+  # historical args-changed error in the accumulated log would rotate the
+  # run id on every later unrelated failure.
+  attempt_log="$DRAIN/logs/$db_id.attempt"
+  ok=0
+  tally flow run "$FLOW" --args "$("$CORE/cat" "$args_file")" \
+    --flow-run-id "$run_id" --max-nodes "$max_nodes" \
+    >"$attempt_log" 2>&1 && ok=1
+  "$CORE/cat" "$attempt_log" >>"$DRAIN/logs/$db_id.log"
+  if [ "$ok" = 1 ]; then
+    "$CORE/rm" -f "$attempt_log"
     ran=$((ran + 1)); consecutive_failures=0
     sha=$("$JQ" -r .sha256 <<<"$line")
     "$CORE/rm" -f "$DATA_ROOT/blobs/$sha.pdf"
@@ -82,6 +91,17 @@ while IFS= read -r line; do
       >>"$DRAIN/completed.jsonl"
     log "done $db_id ($ran this session)"
   else
+    # A tally pin advance can change the flow-args canonicalization, making
+    # every in-flight run's recorded pin unresolvable (FlowReplayError
+    # args-changed-mid-run, resolution "supersede" — first seen 2026-08-03,
+    # tally.nix#371 class). That is not a systemic failure: rotate the run id
+    # so the paper restarts fresh next time, and keep draining.
+    if "$GREP" -q '"code":"args-changed-mid-run"' "$attempt_log"; then
+      log "SUPERSEDE $db_id: flow-run pin invalidated by a tally pin advance; rotating run id"
+      "$CORE/rm" -f "$run_id_file" "$attempt_log"
+      continue
+    fi
+    "$CORE/rm" -f "$attempt_log"
     consecutive_failures=$((consecutive_failures + 1))
     log "FAIL $db_id (consecutive: $consecutive_failures) — see logs/$db_id.log"
     echo "$line" >>"$DRAIN/failed.jsonl"

@@ -10,6 +10,7 @@
   bash,
   coreutils,
   curl,
+  gnugrep,
   gawk,
   git,
   jq,
@@ -43,6 +44,7 @@ stdenvNoCC.mkDerivation {
     JQ=${jq}/bin/jq
     CURL=${curl}/bin/curl
     CORE=${coreutils}/bin
+    GREP=${gnugrep}/bin/grep
     AWK=${gawk}/bin/gawk
     LLAMA_SWAP=http://127.0.0.1:9292
     EOF
