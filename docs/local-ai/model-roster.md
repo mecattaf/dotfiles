@@ -63,6 +63,8 @@ advances.
 | `qwen3.6-27b` | coding | canonical | llama.cpp Vulkan, integrated MTP | **Served** | 35,776,484,480 |
 | `gemma4-26b-a4b-it` | coding | canonical | llama.cpp Vulkan, matched Q8 MTP head | **Served** | 27,321,628,544 |
 | `fara1.5-27b` | vision | canonical | llama.cpp ROCm, BF16 projector | **Served** | 29,596,213,728 |
+| `fara1.5-9b` | vision | canonical | llama.cpp ROCm, BF16 projector | **Served** | 10,467,688,096 |
+| `fara1.5-4b` | vision | canonical | llama.cpp ROCm, BF16 projector | **Served** | 5,169,523,456 |
 | `qwen3-vl-8b-ocr` | vision | canonical | llama.cpp ROCm, BF16 projector | **Served** | 9,872,089,504 |
 | `qwen3-vl-32b-ocr` | vision | canonical | llama.cpp ROCm, BF16 projector | **Served** | 36,018,055,616 |
 | `qwen3-embedding-8b` | embedding | canonical | llama.cpp ROCm, last pooling | **Served** | 8,047,105,824 |
@@ -84,26 +86,28 @@ advances.
 
 ### Reconciling the totals
 
-The catalog holds **15 deployment rows** (11 `canonical`, 4 `candidate`) and
-**23 artifacts** across **209 pinned files** totalling **382,552,147,731 bytes
-(356.28 GiB)**. That figure is the whole catalog including rows that never
+The catalog holds **17 deployment rows** (13 `canonical`, 4 `candidate`) and
+**27 artifacts** across **213 pinned files** totalling **398,189,359,283 bytes
+(370.84 GiB)**. That figure is the whole catalog including rows that never
 download.
 
-Of it, **19 artifacts / 205 files / 276,848,174,227 bytes (257.83 GiB)** are
+Of it, **23 artifacts / 209 files / 292,485,385,779 bytes (272.40 GiB)** are
 actually rooted on the coordinator — the count `flake.nix` asserts. Because the
 two Mage-Flow repositories share byte-identical components and Nix reuses those
-fixed-output paths, the real on-disk figure is **267,564,622,488 bytes
-(249.19 GiB)**; see [`mage.md`](mage.md).
+fixed-output paths, the real on-disk figure is **283,201,834,040 bytes
+(263.75 GiB)**; see [`mage.md`](mage.md).
 
 The four **Cataloged** rows account for the remaining **105,703,973,504 bytes
 (98.44 GiB)** that are never fetched.
 
 Adding the runtime-owned FastFlowLM and Voxtype payloads to the Nix-rooted
-logical total gives the 302,925,289,718-byte coordinator ledger in
-[`deployment-decisions-2026-07-29.md`](deployment-decisions-2026-07-29.md).
-That ledger predates this page's accounting of the `utility` slot and does not
-include a figure for `qwen3:4b`; FastFlowLM owns those files and the repository
-records no size for them.
+logical total gives a 318,562,501,270-byte coordinator ledger, up from the
+302,925,289,718-byte figure in
+[`deployment-decisions-2026-07-29.md`](deployment-decisions-2026-07-29.md)
+before `fara15-9b-q8-0`/`fara15-4b-q8-0` were added. That earlier ledger also
+predates this page's accounting of the `utility` slot and does not include a
+figure for `qwen3:4b`; FastFlowLM owns those files and the repository records
+no size for them.
 
 ## Pinned artifact provenance
 
@@ -118,6 +122,8 @@ revisions live in the catalog.
 | `qwen3.6-27b` | stock [`Qwen/Qwen3.6-27B@6a9e13b`](https://huggingface.co/Qwen/Qwen3.6-27B/tree/6a9e13bd6fc8f0983b9b99948120bc37f49c13e9), quantized by [`unsloth/Qwen3.6-27B-MTP-GGUF@5cb35eb`](https://huggingface.co/unsloth/Qwen3.6-27B-MTP-GGUF/tree/5cb35eb3dcbf52dbce5f87dbc64df6aaffadcace) |
 | `gemma4-26b-a4b-it` | [`unsloth/gemma-4-26B-A4B-it-GGUF@c099eb4`](https://huggingface.co/unsloth/gemma-4-26B-A4B-it-GGUF/tree/c099eb48e663fd284577b04978a94ffccb261841) → `gemma-4-26B-A4B-it-Q8_0.gguf` + `MTP/mtp-gemma-4-26B-A4B-it-Q8_0.gguf` |
 | `fara1.5-27b` | [`bartowski/Fara1.5-27B-GGUF@dd7cba9`](https://huggingface.co/bartowski/Fara1.5-27B-GGUF/tree/dd7cba968d1a9c8feab0c2b85d93b117e6cc16fe) → Q8_0 + BF16 projector |
+| `fara1.5-9b` | [`bartowski/Fara1.5-9B-GGUF@153cb27`](https://huggingface.co/bartowski/Fara1.5-9B-GGUF/tree/153cb27ac91d4a2b9391ecf278542e610d040178) → Q8_0 + BF16 projector |
+| `fara1.5-4b` | [`bartowski/Fara1.5-4B-GGUF@b97f335`](https://huggingface.co/bartowski/Fara1.5-4B-GGUF/tree/b97f335231e01efbbad37bb89b5310340fc10735) → Q8_0 + BF16 projector |
 | `qwen3-vl-8b-ocr` | [`unsloth/Qwen3-VL-8B-Instruct-GGUF@b93a7ee`](https://huggingface.co/unsloth/Qwen3-VL-8B-Instruct-GGUF/tree/b93a7ee713758252c555be4210c00540df954dc2) → Q8_0 + `mmproj-BF16.gguf` |
 | `qwen3-vl-32b-ocr` | [`unsloth/Qwen3-VL-32B-Instruct-GGUF@b9262a3`](https://huggingface.co/unsloth/Qwen3-VL-32B-Instruct-GGUF/tree/b9262a359f54dead8e2609f6146e2fc3398fd0d9) → Q8_0 + `mmproj-BF16.gguf` |
 | `qwen3-embedding-8b` | [`Qwen/Qwen3-Embedding-8B-GGUF@69d0e58`](https://huggingface.co/Qwen/Qwen3-Embedding-8B-GGUF/tree/69d0e58a13e463cd99a9b83e3f5fee7c10265fab) → Q8_0 |

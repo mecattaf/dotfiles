@@ -80,7 +80,7 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 | Streaming speech-to-text | Voxtype with `parakeet-unified-en-0.6b` | Coordinator-only systemd user service; local ONNX Runtime/MIGraphX on gfx1151 | Model download is an idempotent service pre-start step. |
 | Document OCR/RAG | Qwen3-VL 8B primary, 32B refine, Qwen3 Embedding 8B, Qwen3-VL Embedding 8B | Coordinator llama.cpp ROCm behind llama-swap | Active coordinator allowlist; text and multimodal embedders are complementary. |
 | Shared text and coding | Qwen 3.6 35B-A3B and stock 27B, both UD-Q8_K_XL with integrated MTP; Gemma 4 26B Q8 with matched MTP | Coordinator Vulkan behind llama-swap | Active coordinator allowlist. Qwen3-Coder-Next remains cataloged only. |
-| Computer use | Fara 1.5 27B Q8_0 plus BF16 projector | Coordinator ROCm behind llama-swap | Active coordinator allowlist. |
+| Computer use | Fara 1.5 27B/9B/4B, each Q8_0 plus matched BF16 projector | Coordinator ROCm behind llama-swap | Active coordinator allowlist; three sizes for the latency/quality tradeoff. |
 | Application utility slot | FastFlowLM Qwen3 4B behind the stable ID `utility` | `utility-model` wrapper; one start/request/stop cycle per request | Callers never name the concrete model. Projected from the catalog, not from `services.npu-llm.models`. |
 | Ad-hoc NPU inference | FastFlowLM Gemma 4 E4B and GPT-OSS 20B | Direct, ad-hoc `flm run <model>` | Installed on coordinator; no model server starts at boot and idle residency is zero. |
 | Call transcription + diarization | Microsoft VibeVoice-ASR | Future dedicated PyTorch/ROCm batch service | BF16 payload and tokenizer are Nix-rooted on coordinator; service remains future work. |

@@ -38,6 +38,7 @@ let
     "ccusage"
     "ck"
     "claude-agent-acp"
+    "claude-code-router" # bin: `ccr` — routes Claude Code requests to other model backends/providers
     "qmd"
     # NB: `pi` is intentionally absent — home/pi.nix ships a wrapped `pi` (real
     # binary + declarative extension roster) as the sole `pi` on PATH. Keeping it
@@ -475,6 +476,13 @@ in
     gst_all_1.gst-plugins-good
     gst_all_1.gst-plugins-bad
     libjxl
+  ]
+  ++ lib.optionals (hostName == "coordinator") [
+    # Reference CLI for the local Fara1.5 computer-use models (overlay pkg,
+    # see pkgs/fara-cli.nix). Drives a real Chromium tab via Playwright;
+    # point it at the coordinator's own llama-swap server, e.g.:
+    #   fara-cli --base_url http://localhost:9292/v1 --model fara1.5-9b --task "..."
+    fara-cli
   ];
 
   # nvim → implemented in ./nvim.nix (imported above).

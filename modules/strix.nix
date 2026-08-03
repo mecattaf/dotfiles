@@ -30,6 +30,8 @@
         "qwen36-27b-mtp-ud-q8-k-xl"
         "gemma4-26b-a4b-it-mtp-q8-0"
         "fara15-27b-q8-0"
+        "fara15-9b-q8-0"
+        "fara15-4b-q8-0"
         "qwen3-vl-8b-ocr"
         "qwen3-vl-32b-ocr-refine"
         "qwen3-embedding-8b-q8-0"
