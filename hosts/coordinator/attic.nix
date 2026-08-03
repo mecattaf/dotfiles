@@ -49,6 +49,18 @@
         listen = "[::]:8080";
         # Let the substituter serve directly (clients hit /<cache>/nar/...); keep
         # the default sqlite DB + local storage under the atticd StateDirectory.
+
+        # Retention bound (#133 doctrine: accumulating artifact, declared
+        # policy; 2026-08-03 ruling: the cache STAYS on the coordinator, so it
+        # must not be allowed to eat the NVMe toward its ~200G worst case).
+        # Attic tracks last-accessed time, so this is keep-what-is-USED — a
+        # closure the fleet still substitutes never expires; only paths nothing
+        # has asked about in a month do. The staged hosts/nas/attic.nix
+        # relocation remains the escape hatch if NVMe pressure returns.
+        garbage-collection = {
+          interval = "12 hours";
+          default-retention-period = "1 month";
+        };
       };
     };
 
