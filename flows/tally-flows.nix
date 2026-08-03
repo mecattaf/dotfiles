@@ -109,11 +109,6 @@ in
       };
     };
 
-    # crm-campaign and crm-issue are retired here (2026-07-31): the crm build
-    # is now services.tally.campaigns.crm in home/tally.nix, which renders the
-    # shipped generic spec-build flow. A campaign needs no per-repository flow
-    # script, so nothing about crm belongs in this registry.
-
     # The production per-paper flow (replaces the retired academic-ocr /
     # academic-assemble Turner samples, 2026-07-29). R2 is purged: sources
     # are file:// paths into the NAS corpus of record.

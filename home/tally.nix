@@ -152,11 +152,6 @@ in
         enforce = "cooperative";
         hardPreempt = false;
       };
-      # crm-campaign is no longer declared anywhere: the declarative crm
-      # build campaign was removed 2026-08-02 (wave-3 estate step E1 — it
-      # predated the mandatory per-gate kind/preflightArgv schema and would
-      # fail HM eval on the next tally pin advance). The full block is
-      # archived at mecattaf/crm:specs/001-crm/tally-campaign.nix.
     };
 
     # All jobs execute locally on coordinator; no daemonless SSH executor is
