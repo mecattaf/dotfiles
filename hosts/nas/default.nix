@@ -5,6 +5,7 @@
 }:
 {
   imports = [
+    ./unstable-pkgs.nix
     ./hardware.nix
     ./disko.nix
     ./network.nix
