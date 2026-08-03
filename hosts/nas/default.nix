@@ -16,7 +16,6 @@
     # a runbook in its own header and flips on its own, later, after that
     # runbook has been walked on the real hardware. ./wake-helpers.nix is
     # deliberately absent — it is a plain function file, not a module.
-    ./video.nix # ws1  Jellyfin (ALTERNATIVE to the live Plex in media.nix)
     ./snapshots.nix # ws2a btrbk snapshots of the data subvolumes
     ./backups.nix # ws2b append-only borg repo server
     ./archive.nix # ws4  cold archive subvolume for retired model weights

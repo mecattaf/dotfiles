@@ -31,7 +31,7 @@ let
   fastRoot = "/mnt/fast";
   generatedRoot = "${fastRoot}/immich-generated";
   navidromeRoot = "${fastRoot}/navidrome";
-  # Shared with video.nix (#130 ws1); the definitions moved verbatim, so the
+  # Shared helpers (#130); the definitions moved verbatim, so the
   # Immich/Navidrome wait scripts keep their pre-refactor store paths.
   inherit (import ./wake-helpers.nix { inherit lib pkgs; })
     socketProxyd

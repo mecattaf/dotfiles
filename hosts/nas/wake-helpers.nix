@@ -6,9 +6,9 @@
 # This is a PLAIN FUNCTION FILE, not a NixOS module: it must never appear in
 # hosts/nas/default.nix's `imports`. Each consumer calls
 #   inherit (import ./wake-helpers.nix { inherit lib pkgs; }) waitForHttp ...;
-# from its own `let`. Factored out of media.nix when video.nix became the second
-# consumer (#130 ws1) — the definitions are byte-identical to the originals, so
-# the existing Immich/Navidrome units keep their exact store paths.
+# from its own `let`. Factored out of media.nix for reuse by future wake pairs
+# (#130) — the definitions are byte-identical to the originals, so the
+# existing Immich/Navidrome units keep their exact store paths.
 { lib, pkgs }:
 {
   socketProxyd = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd";

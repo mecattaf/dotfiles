@@ -559,26 +559,23 @@
           # (the header comment of the module named beside it); when one does,
           # invert the assertion here in the same commit rather than deleting
           # it — a gate that nothing checks is a gate that drifts.
-          assert !nas.myNas.video.enable; # ws1  hosts/nas/video.nix
           assert !nas.myNas.snapshots.enable; # ws2a hosts/nas/snapshots.nix
           assert !nas.myNas.backups.enable; # ws2b hosts/nas/backups.nix
           assert !nas.myNas.archive.enable; # ws4  hosts/nas/archive.nix
           assert !nas.myNas.attic.enable; # ws5  hosts/nas/attic.nix
-          assert !coordinator.myNasClient.relayVideo;
           assert !coordinator.myNasClient.relayAttic;
           # `or false` because hosts/coordinator/backups.nix is not in
           # hosts/coordinator/default.nix's imports yet — that one line is
           # listed in the #130 handoff and this check goes strict the moment it
           # lands. Until then the option does not exist and a bare read throws.
           assert !(coordinator.myCoordinatorBackups.enable or false);
-          # Plex is the LIVE video server (Tom's 2026-08-02 ruling, asserted
-          # above). Jellyfin in video.nix is a staged alternative, so it must
-          # stay off while Plex is on unless someone deliberately runs both.
+          # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
+          # 2026-08-03: the staged Jellyfin alternative was deleted, not kept
+          # as a decoy). It must never be silently displaced.
           assert !nas.services.jellyfin.enable;
           # Cross-host invariants. Each relay and its backend must flip
           # together: a relay pointing at a service that is off is a black
           # hole, and a backend with no relay is unreachable from the tailnet.
-          assert nas.myNas.video.enable == coordinator.myNasClient.relayVideo;
           assert nas.myNas.attic.enable == coordinator.myNasClient.relayAttic;
           # The binary cache can only live in one place: moving it to the NAS
           # requires the coordinator's own atticd to go away in the same
