@@ -31,7 +31,6 @@ let
 in
 {
   # --- common tier (every host may decrypt) ---
-  "secrets/claude-credentials.age".publicKeys = editors ++ hostKeys;
   "secrets/hermes-credentials.age".publicKeys = editors ++ hostKeys;
   "secrets/env.age".publicKeys = editors ++ hostKeys;
   # Rotated fleet SSH user key — delivered only to the remaining hosts so mutual
@@ -97,6 +96,15 @@ in
   # cliamp (client) needs this on both boxes it runs from — coordinator (where
   # navidrome itself lives) and zenbook-duo (laptops tier).
   "secrets/navidrome-credentials.age".publicKeys = editors ++ coordinatorOnly ++ laptops;
+
+  # Claude Code OAuth credential. Demoted from the common tier to coordinator-only
+  # (2026-08-04, Tom's ruling): the nas holds no `claude` binary and never ran an
+  # agent, so it had no use for the token; zenbook-duo was already excluded from
+  # delivery (jul12 ruling — it logs in with its OWN session, since two devices
+  # refreshing one shared token race and sign each other out). That left the
+  # coordinator as the only real consumer, so the recipient tier now says so —
+  # a token this wide should not be decryptable by boxes that never spend it.
+  "secrets/claude-credentials.age".publicKeys = editors ++ coordinatorOnly;
 
   # Operator CLI credentials (Tom's ruling: the coordinator is the fleet's only
   # authenticated operator box — gh + wrangler stay off the laptops).

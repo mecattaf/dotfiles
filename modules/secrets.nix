@@ -23,12 +23,16 @@ in
 
   config = lib.mkIf cfg.enable (
     lib.mkMerge [
-      # Claude Code OAuth credential — every host EXCEPT the zenbook (jul12 ruling:
+      # Claude Code OAuth credential — coordinator ONLY, and the recipient tier in
+      # ../secrets.nix now matches (aug04 ruling), so this MUST stay host-gated:
+      # no other host can decrypt the ciphertext, and declaring an undecryptable
+      # secret fails activation. The zenbook was already excluded (jul12 ruling:
       # the laptop is a standalone backup operator for when the coordinator is
       # unreachable, so it logs in with its OWN fresh OAuth session instead of
       # inheriting the coordinator's token — two devices refreshing one shared
-      # token can race and sign each other out).
-      (lib.mkIf (config.networking.hostName != "zenbook-duo") {
+      # token can race and sign each other out); the nas joined it aug04 for the
+      # simpler reason that it has no `claude` and never spent the token.
+      (lib.mkIf (config.networking.hostName == "coordinator") {
         age.secrets.claude-credentials = {
           file = ../secrets/claude-credentials.age;
           owner = "tom";
