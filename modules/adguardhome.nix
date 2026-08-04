@@ -88,6 +88,13 @@
             domain = "videos.internal";
             answer = "100.105.121.73";
           }
+          # #136: resolves fleet-wide now, but answers only once the
+          # myNas.paperless / myNasClient.relayPaperless pair flips on.
+          {
+            enabled = true;
+            domain = "paperless.internal";
+            answer = "100.105.121.73";
+          }
         ];
       };
 

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "comment": "Controlled tagging vocabulary for the Paperless projection (dotfiles#136). This file is the authority for stable slugs; Paperless numeric tag IDs are only a projection of it. AI writes only into ai-candidate/*; humans accept by retagging into the owning namespace, and sync-tags exports accepted tags to durable sidecars.",
+  "namespaces": {
+    "kind": "document genre; owned by the file/academic catalogs",
+    "topic": "controlled subject taxonomy; human-owned",
+    "course": "academic/course context; owned by the academic catalog",
+    "status": "reading workflow state; human-owned in Paperless",
+    "source": "provenance of the canonical file; machine-owned",
+    "personal": "durable personal curation; human-owned",
+    "ai-candidate": "proposed classifications awaiting human review; machine-owned"
+  },
+  "tags": [
+    { "slug": "kind/paper", "definition": "peer-reviewed or working academic paper" },
+    { "slug": "kind/book", "definition": "book or book chapter" },
+    { "slug": "kind/manual", "definition": "product or equipment manual" },
+    { "slug": "kind/invoice", "definition": "invoice or receipt" },
+    { "slug": "kind/administrative", "definition": "administrative or legal record" },
+    { "slug": "kind/article", "definition": "non-academic article or report" },
+    { "slug": "status/inbox", "definition": "not yet triaged" },
+    { "slug": "status/unread", "definition": "triaged, not yet read" },
+    { "slug": "status/reading", "definition": "currently reading" },
+    { "slug": "status/reviewed", "definition": "read and reviewed" },
+    { "slug": "source/academic", "definition": "from the academic corpus catalog" },
+    { "slug": "source/legacy", "definition": "from the pre-NAS legacy tree" },
+    { "slug": "source/scan", "definition": "digitized from paper by us" },
+    { "slug": "personal/favorite", "definition": "durable personal favorite" }
+  ]
+}

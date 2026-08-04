@@ -28,6 +28,17 @@
     # `nix flake update nixpkgs-stable` on the same few-years cadence.
     nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
 
+    # nixpkgs-paperless — pins ONLY the NAS Paperless v3 module+package
+    # (#136, hosts/nas/paperless.nix): the stable-pinned NAS needs v3 (stable
+    # has 2.20.15, and 2.x is ruled out), the main pin deliberately lags, and
+    # nixpkgs-fresh is a nightly ROLLING resolver — the wrong risk profile
+    # for a database with schema migrations. A fixed rev makes Paperless
+    # upgrades a deliberate one-line bump reviewed like any other change.
+    # Pinned rev = nixos-unstable on 2026-08-04, paperless-ngx 3.0.4
+    # (upstream latest stable is 3.0.5, 2026-08-01, not yet in nixpkgs; bump
+    # this rev when it lands).
+    nixpkgs-paperless.url = "github:NixOS/nixpkgs/e72e4f299401a3689d4b3d5fc6496b11db7064eb";
+
     home-manager = {
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -563,6 +574,8 @@
           assert !nas.myNas.backups.enable; # ws2b hosts/nas/backups.nix
           assert !nas.myNas.archive.enable; # ws4  hosts/nas/archive.nix
           assert !nas.myNas.attic.enable; # ws5  hosts/nas/attic.nix
+          assert !nas.myNas.paperless.enable; # #136 hosts/nas/paperless.nix
+          assert !nas.services.paperless.enable;
           assert !coordinator.myNasClient.relayAttic;
           # `or false` because hosts/coordinator/backups.nix is not in
           # hosts/coordinator/default.nix's imports yet — that one line is
@@ -577,6 +590,8 @@
           # together: a relay pointing at a service that is off is a black
           # hole, and a backend with no relay is unreachable from the tailnet.
           assert nas.myNas.attic.enable == coordinator.myNasClient.relayAttic;
+          # Paperless backend and its tailnet relay flip together (#136).
+          assert nas.myNas.paperless.enable == coordinator.myNasClient.relayPaperless;
           # The binary cache can only live in one place: moving it to the NAS
           # requires the coordinator's own atticd to go away in the same
           # commit, because both bind tcp/8080 on the coordinator (the relay
@@ -586,6 +601,35 @@
           # The borg client is useless without the repo server it pushes to.
           assert (coordinator.myCoordinatorBackups.enable or false) -> nas.myNas.backups.enable;
           pkgs.runCommand "nas-topology" { } ''
+            touch "$out"
+          '';
+
+        # #136 gate-then-verify: evaluate the ENABLED Paperless shape without
+        # deploying it, so the gate flip is an eval-proven one-liner. Same
+        # extendModules simulation technique the NAS cutover used pre-#131.
+        nas-paperless-staged =
+          let
+            nasOn =
+              (self.nixosConfigurations.nas.extendModules {
+                modules = [ { myNas.paperless.enable = true; } ];
+              }).config;
+          in
+          assert nasOn.services.paperless.enable;
+          # v3 only — a 2.x here means the nixpkgs-paperless input regressed.
+          assert pkgs.lib.versionAtLeast nasOn.services.paperless.package.version "3";
+          # PDFs only: no Tika/Gotenberg, no persistent PDF/A twin, no NAS AI.
+          assert !nasOn.services.paperless.configureTika;
+          assert nasOn.services.paperless.settings.PAPERLESS_ARCHIVE_FILE_GENERATION == "never";
+          assert nasOn.services.paperless.settings.PAPERLESS_OCR_MODE == "auto";
+          assert nasOn.services.paperless.settings.PAPERLESS_AI_ENABLED == false;
+          # Same-subvolume storage contract for the hardlink projection.
+          assert nasOn.services.paperless.consumptionDir == "/mnt/nas/documents/.paperless-consume";
+          assert nasOn.services.paperless.mediaDir == "/mnt/nas/services/paperless/media";
+          assert nasOn.fileSystems ? "/mnt/nas/services/paperless/media/documents/originals";
+          # Enabling Paperless must not grow the NAS a Tailscale identity.
+          assert !nasOn.services.tailscale.enable;
+          assert nasOn.services.paperless.database.createLocally;
+          pkgs.runCommand "nas-paperless-staged" { } ''
             touch "$out"
           '';
 
