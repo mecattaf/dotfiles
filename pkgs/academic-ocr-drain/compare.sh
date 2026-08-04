@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# compare.sh <mech-txt> <vlm-md> <out-verdict-json> <min-agreement-permille>
+# compare.sh <ref-txt> <cand-txt> <out-verdict-json> <min-agreement-permille> [min-words]
 # Dice coefficient over normalized word multisets. Exit 3 when below threshold —
 # the failed verdict is the flow's routing signal to the specialist lane.
+# min-words (default 0) additionally fails any side under the floor; the
+# mech-first shortcut (dotfiles#147) uses it to route sparse-text-layer pages
+# (figures, covers) to the VLM lane even when both engines agree.
 set -euo pipefail
 . "$(dirname "$0")/env.sh"
-mech="$1"; vlm="$2"; out="$3"; min="$4"
+mech="$1"; vlm="$2"; out="$3"; min="$4"; minwords="${5:-0}"
 mkdir -p "$(dirname "$out")"
 norm() { "$CORE/tr" '[:upper:]' '[:lower:]' < "$1" | "$CORE/tr" -cs '[:alnum:]' '\n' | "$AWK" 'length($0)>=2' | "$CORE/sort"; }
 norm "$mech" > "$out.a.$$"
@@ -24,6 +27,10 @@ if [ "$na" -ge 200 ] && [ $((nb * 1000)) -lt $((600 * na)) ]; then
 fi
 "$JQ" -n --argjson a "$agree" --argjson na "$na" --argjson nb "$nb" --argjson c "$common" --argjson t "$truncated" \
   '{agreementPermille: $a, refWords: $na, candWords: $nb, commonWords: $c, truncationSuspected: $t}' > "$out"
+if [ "$na" -lt "$minwords" ] || [ "$nb" -lt "$minwords" ]; then
+  echo "word floor: ref=$na cand=$nb below min-words $minwords" >&2
+  exit 3
+fi
 if [ "$truncated" = true ]; then
   echo "candidate $nb words < 60% of reference $na words: truncation suspected" >&2
   exit 3

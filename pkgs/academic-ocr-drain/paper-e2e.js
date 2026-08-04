@@ -1,7 +1,7 @@
 export const meta = {
   name: "paper-e2e",
   description:
-    "One paper end-to-end: fetch, per-page mechanical + VLM consensus OCR, assemble, chunk, embed, index, receipt",
+    "One paper end-to-end: fetch, per-page mech-first OCR with VLM consensus fallback, assemble, chunk, embed, index, receipt",
   pools: ["coordinator-gpu", "flow-build"],
   argsSchema: {
     type: "object",
@@ -18,7 +18,9 @@ export const meta = {
       "ocrModel",
       "refineModel",
       "embedModel",
-      "minAgreementPermille"
+      "minAgreementPermille",
+      "mechSelfAgreementPermille",
+      "mechMinWords"
     ],
     properties: {
       paperId: { type: "string", pattern: "^[0-9a-f-]{36}$" },
@@ -33,12 +35,14 @@ export const meta = {
       ocrModel: { type: "string", minLength: 1 },
       refineModel: { type: "string", minLength: 1 },
       embedModel: { type: "string", minLength: 1 },
-      minAgreementPermille: { type: "integer", minimum: 0, maximum: 1000 }
+      minAgreementPermille: { type: "integer", minimum: 0, maximum: 1000 },
+      mechSelfAgreementPermille: { type: "integer", minimum: 0, maximum: 1000 },
+      mechMinWords: { type: "integer", minimum: 0 }
     },
     additionalProperties: false
   },
-  maxNodes: 10000,
-  iterationCap: 10000,
+  maxNodes: 11000,
+  iterationCap: 11000,
   selectors: []
 };
 
@@ -61,13 +65,6 @@ async function resolvePage(page) {
   const vlm8b = `${root}/vlm/${p}.md`;
   const vlm32b = `${root}/refine/${p}.md`;
 
-  await run("raster", [blob, String(page), String(args.dpi), png], {
-    pools: ["flow-build"],
-    key: `raster-${p}`,
-    label: `raster-${p}`,
-    evidence: ["exit:0", `artifact:${png}`, "hash:sha256"]
-  });
-
   const mech = await run("mech", [blob, String(page), mechDir], {
     pools: ["flow-build"],
     key: `mech-${p}`,
@@ -77,6 +74,45 @@ async function resolvePage(page) {
   });
   const mechOk = mech.verdict === "pass" && !mech.error;
   const mechRef = `${mechDir}/poppler.txt`;
+
+  // Mech-first shortcut (dotfiles#147): when the two mechanical engines agree
+  // with each other AND both cleared the word floor, the digital text layer is
+  // the page — resolve without rendering or any GPU node. The floor, not the
+  // Dice gate, is what excludes sparse-layer pages (figures, covers, UI-chrome
+  // print-to-PDFs) whose engines agree perfectly on text that doesn't cover
+  // the visual content; compare.sh's truncation guard stays live because the
+  // floor keeps every shortcut reference voucher-eligible.
+  if (mechOk) {
+    const self = await run(
+      "compare",
+      [
+        mechRef,
+        `${mechDir}/mupdf.txt`,
+        `${root}/verdicts/${p}-mech.json`,
+        String(args.mechSelfAgreementPermille),
+        String(args.mechMinWords)
+      ],
+      {
+        pools: ["flow-build"],
+        key: `cmpmech-${p}`,
+        label: `cmpmech-${p}`,
+        evidence: ["exit:0", `artifact:${root}/verdicts/${p}-mech.json`, "hash:sha256"],
+        settle: true
+      }
+    );
+    if (self.verdict === "pass" && !self.error) {
+      return { page, source: "mech" };
+    }
+  }
+
+  // VLM lane: mech failed closed (scanned page) or the engines disagreed.
+  // Only now is the page render needed.
+  await run("raster", [blob, String(page), String(args.dpi), png], {
+    pools: ["flow-build"],
+    key: `raster-${p}`,
+    label: `raster-${p}`,
+    evidence: ["exit:0", `artifact:${png}`, "hash:sha256"]
+  });
 
   const ocr = await run("vlm", [png, args.ocrModel, vlm8b], {
     pools: ["coordinator-gpu"],
