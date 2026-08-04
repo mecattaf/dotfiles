@@ -18,11 +18,21 @@ let
   # editing works before/after any flash.
   admin = "age159pyyqqnrxwv3d7f758u5xtzv53fu2nwc85x3sur63g3p29jnegq9tf47w";
 
-  hostKeys = nonEmpty (map (h: registry.${h}.hostKey) names);
   # Editing authority is deliberately operator-only. Fleet-delivered SSH user
   # keys must never be recipients: compromise of one host must not unlock Git
   # history or future ciphertext.
   editors = [ admin ];
+
+  # Hosts that actually run agenix delivery, and therefore the widest tier any
+  # secret gets. There is deliberately no every-host tier: hosts/nas/default.nix
+  # sets `mySecrets.enable = false` ("NO SECRET LIVES ON THIS BOX" —
+  # hosts/nas/backups.nix), so the appliance is delivered nothing and must not
+  # hold standing decryption authority over ciphertext it never reads (2026-08-04
+  # ruling — it had been a recipient of the whole common tier, including tom's
+  # password hash and the fleet SSH private key). If the nas ever flips
+  # mySecrets.enable on (ws5 attic is the likely trigger — hosts/nas/attic.nix),
+  # add its key back here for the specific secrets it consumes, not wholesale.
+  delivered = nonEmpty (map (h: registry.${h}.hostKey) (builtins.filter (h: h != "nas") names));
 
   laptops = nonEmpty [
     registry.zenbook-duo.hostKey
@@ -30,26 +40,28 @@ let
   coordinatorOnly = nonEmpty [ registry.coordinator.hostKey ];
 in
 {
-  # --- common tier (every host may decrypt) ---
-  "secrets/hermes-credentials.age".publicKeys = editors ++ hostKeys;
-  "secrets/env.age".publicKeys = editors ++ hostKeys;
+  # --- delivered tier (every host that runs agenix — i.e. all but the nas) ---
+  # (hermes-credentials removed 2026-08-04: the Nous Research harness is no longer
+  # in use anywhere in the fleet — no package, no service, no consumer left.)
+  "secrets/env.age".publicKeys = editors ++ delivered;
   # Rotated fleet SSH user key — delivered only to the remaining hosts so mutual
   # SSH works. It is not an editor recipient for itself or any other ciphertext.
-  "secrets/ssh-user-key.age".publicKeys = editors ++ hostKeys;
-  # atuin's shared encryption key — every host needs it to decrypt each other's
-  # synced history against the self-hosted server (hosts/coordinator/services.nix).
-  # Minted once from the coordinator's pre-existing local key (it already had one
-  # from ordinary local use, predating this sync setup); force-copied on every
-  # activation, not seed-once — see modules/secrets.nix.
-  "secrets/atuin-key.age".publicKeys = editors ++ hostKeys;
+  "secrets/ssh-user-key.age".publicKeys = editors ++ delivered;
+  # atuin's shared encryption key — every host with a shell history to sync needs
+  # it to decrypt the others' against the self-hosted server
+  # (hosts/coordinator/services.nix). Minted once from the coordinator's
+  # pre-existing local key (it already had one from ordinary local use, predating
+  # this sync setup); force-copied on every activation, not seed-once — see
+  # modules/secrets.nix.
+  "secrets/atuin-key.age".publicKeys = editors ++ delivered;
   # tom's login password, as a yescrypt hash from `mkpasswd -m yescrypt` — never
   # the password itself, and never in git in plaintext. Consumed as
   # `users.users.tom.hashedPasswordFile` by modules/user-password.nix (#54).
-  # Common tier: any host that creates the account needs to read it, and a
-  # reflash of any box should restore the login without operator intervention.
-  # The rule is declared now; the ciphertext is created with agenix only when
-  # Tom supplies the hash (the module is gated on the file existing).
-  "secrets/tom-password-hash.age".publicKeys = editors ++ hostKeys;
+  # Delivered tier: any host that creates the account THROUGH agenix needs to read
+  # it, and a reflash of those boxes should restore the login without operator
+  # intervention. modules/user-password.nix is itself gated on mySecrets.enable,
+  # so the nas never consumed this — it sets its account up without the hash.
+  "secrets/tom-password-hash.age".publicKeys = editors ++ delivered;
 
   # --- per-host tier (tailscale pre-auth keys: single-use, non-ephemeral,
   # preauthorized, tag:mesh — minted 2026-07-05 via the fleet OAuth client;

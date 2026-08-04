@@ -54,23 +54,10 @@ in
       })
 
       {
-        # hermes-agent (Nous Research AI harness) OAuth state — single JSON file
-        # covering access/refresh tokens + agent_key. Copy-not-link: hermes rewrites
-        # it on token refresh, same reasoning as claude-credentials above.
-        age.secrets.hermes-credentials = {
-          file = ../secrets/hermes-credentials.age;
-          owner = "tom";
-          group = "users";
-          mode = "600";
-        };
-        system.userActivationScripts.seedHermesCreds.text = ''
-          cred="$HOME/.hermes/auth.json"
-          if [ ! -e "$cred" ] && [ -r "${config.age.secrets.hermes-credentials.path}" ]; then
-            mkdir -p "$HOME/.hermes"
-            cp "${config.age.secrets.hermes-credentials.path}" "$cred"
-            chmod 600 "$cred"
-          fi
-        '';
+        # (hermes-credentials — the Nous Research AI harness's OAuth state — was
+        # delivered here until 2026-08-04. The harness is no longer in use fleet-wide,
+        # so the secret, its ciphertext, and its recipient rule are all gone. Any
+        # already-seeded ~/.hermes/auth.json is stale local state, not managed here.)
 
         # Fleet SSH user key. mesh.nix already
         # authorizes this key + seeds known_hosts on every host; this delivers the
