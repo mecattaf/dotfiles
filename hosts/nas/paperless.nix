@@ -53,6 +53,12 @@
 #      identical st_dev:st_ino for canonical + projected paths.
 #   5. measure idle/import RSS + disk wakeups alongside Immich/Navidrome
 #      before bulk admission; bulk-ingest in bounded batches afterwards.
+#   6. (future AI phase only) llama-swap's firewall admits tailscale0 ONLY
+#      (modules/llama-swap.nix) — the NAS cannot reach 10.77.0.1:9292 until
+#      a coordinator-side rule admits the /30 cable source. Nothing in this
+#      v1 needs it (PAPERLESS_AI_ENABLED=false, enrich reads files + the
+#      local API); open that hole deliberately with the #136 AI-batching
+#      admission design, not before.
 let
   cfg = config.myNas.paperless;
   storageRoot = "/mnt/nas";
