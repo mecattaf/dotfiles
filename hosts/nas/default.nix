@@ -22,6 +22,7 @@
     ./backups.nix # ws2b append-only borg repo server
     ./archive.nix # ws4  cold archive subvolume for retired model weights
     ./attic.nix # ws5  fleet binary cache, relayed by the coordinator
+    ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate OFF
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc

@@ -33,6 +33,7 @@ in
     # Separate gates, not additions to relayMedia: relayMedia is LIVE, and each
     # of these turns on with its own NAS-side gate in its own commit.
     relayAttic = lib.mkEnableOption "relaying the fleet binary cache to atticd on the NAS (#130 ws5)";
+    relayPaperless = lib.mkEnableOption "relaying tailnet Paperless traffic to the Ethernet-only NAS (#136)";
   };
 
   config = lib.mkMerge [
@@ -269,6 +270,48 @@ in
 
       # Same boundary hosts/coordinator/attic.nix used: mesh only, never wifi.
       networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 8080 ];
+    })
+
+    # ── #136: Paperless relay ───────────────────────────────────────────────
+    # The durable tailnet front door for the NAS-hosted Paperless backend:
+    # a declarative Caddy route (paperless.internal, same .internal doctrine
+    # as the media front doors above) plus a port relay. Like attic, no wake
+    # proxy — Paperless is always-on on the NAS (consumer + scheduler; see
+    # the exception note in hosts/nas/paperless.nix). Deliberately NOT a TTL
+    # artifact drop-dir entry: this route outlives any artifact sweep.
+    (lib.mkIf cfg.relayPaperless {
+      systemd.sockets.paperless-relay = {
+        description = "Coordinator front door for NAS Paperless";
+        wantedBy = [ "sockets.target" ];
+        socketConfig = {
+          ListenStream = "0.0.0.0:28981";
+          NoDelay = true;
+        };
+      };
+      systemd.services.paperless-relay = {
+        description = "Relay Paperless to nas:28981 over the private link";
+        after = [ "network-online.target" ];
+        wants = [ "network-online.target" ];
+        serviceConfig = {
+          ExecStart = "${socketProxyd} nas:28981";
+          DynamicUser = true;
+          NoNewPrivileges = true;
+          PrivateDevices = true;
+          PrivateTmp = true;
+          ProtectHome = true;
+          ProtectSystem = "strict";
+          RestrictAddressFamilies = [
+            "AF_INET"
+            "AF_INET6"
+          ];
+        };
+      };
+
+      networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 28981 ];
+
+      services.caddy.virtualHosts."http://paperless.internal".extraConfig = ''
+        reverse_proxy 127.0.0.1:28981
+      '';
     })
   ];
 }
