@@ -261,6 +261,19 @@ in
         }
       )
 
+      # immich-api-key: full-permissions Immich key (photos.internal), read
+      # client-side by agent sessions on the coordinator for indexing/dedup
+      # passes. Delivered to /run/agenix/immich-api-key; replaces the loose
+      # ~/immichkey file so the credential survives reflash without re-minting.
+      (lib.mkIf (config.networking.hostName == "coordinator") {
+        age.secrets.immich-api-key = {
+          file = ../secrets/immich-api-key.age;
+          owner = "tom";
+          group = "users";
+          mode = "400";
+        };
+      })
+
       # soundcloud-cookies: consumed by the music-consolidation drain's yt-dlp
       # invocations (systemd user units, coordinator-only). NOT for cliamp — see
       # secrets.nix for why cliamp needs no secret here.

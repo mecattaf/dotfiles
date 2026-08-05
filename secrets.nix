@@ -109,6 +109,12 @@ in
   # navidrome itself lives) and zenbook-duo (laptops tier).
   "secrets/navidrome-credentials.age".publicKeys = editors ++ coordinatorOnly ++ laptops;
 
+  # Immich full-permissions API key (photos.internal), read client-side by agent
+  # sessions on the coordinator for indexing/dedup/library passes. Replaces the
+  # loose ~/immichkey file, which was once world-readable and then lost in the
+  # cleanup — as agenix ciphertext it survives reflash and never needs re-minting.
+  "secrets/immich-api-key.age".publicKeys = editors ++ coordinatorOnly;
+
   # Claude Code OAuth credential. Demoted from the common tier to coordinator-only
   # (2026-08-04, Tom's ruling): the nas holds no `claude` binary and never ran an
   # agent, so it had no use for the token; zenbook-duo was already excluded from
