@@ -290,6 +290,19 @@ let
         type = types.ints.unsigned;
         default = 0;
       };
+      ttl = mkOption {
+        type = types.ints.unsigned;
+        default = 600;
+        description = ''
+          Idle seconds before llama-swap unloads the model (per-model ttl,
+          overriding the deliberate globalTTL = 0). The timer is
+          last-request-based and never fires with a request in flight, so
+          Tally-admitted batch jobs are only affected if they go quiet for
+          longer than this window — and then pay one transparent cold reload,
+          not an error (#149). 0 opts a deployment back into
+          resident-until-restart.
+        '';
+      };
       artifacts = mkOption {
         type = artifactRefsType;
         default = { };

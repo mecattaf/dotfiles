@@ -15,6 +15,16 @@
 # mechanism.
 let
   cfg = config.services.llama-swap;
+
+  # Explicit "stop using it now", separate from the roster's idle ttl (#149):
+  # unload one model by id, or everything when called bare.
+  llamaSwapUnload = pkgs.writeShellApplication {
+    name = "llama-swap-unload";
+    runtimeInputs = [ pkgs.curl ];
+    text = ''
+      exec curl -fsS -X POST "http://localhost:${toString cfg.port}/api/models/unload''${1:+/$1}"
+    '';
+  };
 in
 {
   services.llama-swap = {
@@ -48,15 +58,20 @@ in
       startPort = 10001;
       sendLoadingState = true;
 
-      # Tally owns residency and the explicit unload boundary. Do not let an
-      # independent global timer evict a model during an admitted batch job.
+      # Fallback only: every roster deployment carries a per-model idle ttl
+      # (lib/local-models.nix, #149) which overrides this. Tally admission is
+      # orthogonal — it leases job dispatch, not backend residency, and the
+      # ttl timer never fires with a request in flight.
       globalTTL = 0;
       unloadTimeout = 60;
     };
   };
 
   # Keep the operator CLI on PATH as well as in the service closure.
-  environment.systemPackages = [ cfg.package ];
+  environment.systemPackages = [
+    cfg.package
+    llamaSwapUnload
+  ];
 
   # Tailnet-only remote API, matching the fleet's VNC/media/ASR posture.
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ cfg.port ];

@@ -95,6 +95,7 @@ let
       value = rendered // {
         name = deployment.model;
         cmd = rendered.cmd + lib.optionalString (runtimeArgs != [ ]) " ${extraArgs}";
+        ttl = deployment.ttl;
       };
     };
 
