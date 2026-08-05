@@ -48,6 +48,19 @@ in
     settings.Upload.URL = "http://10.77.0.2:19532";
   };
 
+  # journald-remote drops the upload connection whenever it rotates its
+  # receiving journal file (NAS side: "microhttpd: Application reported
+  # internal error"); the uploader exits 1 and reconnects seconds later. That
+  # ~daily blip is not a signal — sustained upload loss is what matters, and
+  # the archive liveness dead-man's switch above is the detection for it — so
+  # keep the blip off the failure markers. fleet-deploy.service is restated
+  # because option definitions replace the default, and fleet-deploy writes
+  # its own richer marker.
+  myFailureSurfacing.excludeUnits = [
+    "fleet-deploy.service"
+    "systemd-journal-upload.service"
+  ];
+
   # The local journal stays persistent and bounded (#135, closing #133 item
   # 4 for journald): volatile storage would lose the final pre-lockup window
   # in an mt7925e-class hard freeze — the exact forensic case that motivates
