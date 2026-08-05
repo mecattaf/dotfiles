@@ -90,13 +90,14 @@ in
     # pages × four protocols × four inputs, plus 100 arbiters) died with the
     # Turner/Fosfuri sample flows in e61f906b; academic-paper-e2e replaced it
     # and spends 6 nodes per page (raster, mech, 8B, compare, 32B, compare)
-    # plus 6 fixed (fetch, assemble, chunk, embed, index, receipt). Its
-    # argsSchema admits 1,500 pages = 9,006 nodes, which is what its
-    # meta.maxNodes 10000 declares, so the host must admit that much or the
-    # drain dies on long papers at 2am. The NAS corpus of record currently
-    # tops out at 1,215 pages (7,296 nodes) with 231 papers above the 282
-    # pages a 1,700 cap would have allowed.
-    enqueue.fanoutCap = 10000;
+    # plus 6 fixed (fetch, assemble, chunk, embed, index, receipt). The
+    # mech-first shortcut (#147, PR #150) added a second mechanical engine and
+    # agreement gate per page, so the script's meta.maxNodes rose to 11,000;
+    # the host must admit that much or the drain dies on long papers at 2am —
+    # the new tally pin refuses the config outright when this cap is below the
+    # script meta. The NAS corpus of record currently tops out at 1,215 pages
+    # with 231 papers above the 282 pages a 1,700 cap would have allowed.
+    enqueue.fanoutCap = 11000;
 
     # These are real contention lanes, not synthetic maintenance pools.
     pools = lib.optionalAttrs isCoordinator {

@@ -210,6 +210,10 @@ def current_identity(
         return current_identity("claude-code", env)
     if codex_id:
         return current_identity("codex", env)
+    if env.get("CLAUDE_CODE_CHILD_SESSION") == "1" and (
+        env.get("CLAUDE_CODE_SESSION_ID") or env.get("CLAUDE_SESSION_ID")
+    ):
+        raise MemoryError("drain is only available in a root Claude Code session")
     raise MemoryError(
         "no current session identity found (expected CLAUDE_CODE_SESSION_ID or CODEX_THREAD_ID)"
     )

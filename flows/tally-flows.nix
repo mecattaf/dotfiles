@@ -115,7 +115,9 @@ in
     academic-paper-e2e = {
       script = "${academicDrainLib}/paper-e2e.js";
       onCalendar = null;
-      maxNodes = 10000;
+      # Must cover the script's meta.maxNodes (11,000 since the mech-first
+      # second engine + gate, PR #150); the checked-config build refuses less.
+      maxNodes = 11000;
       args = {
         paperId = turnerId;
         title = turner.title;
@@ -130,6 +132,13 @@ in
         refineModel = "qwen3-vl-32b-ocr";
         embedModel = "qwen3-embedding-8b";
         minAgreementPermille = 700;
+        # Mech-first shortcut gates (PR #150), data-calibrated on 2,374
+        # drained pages: both mechanical engines must clear the word floor
+        # AND self-agree at this Dice level to resolve without the GPU. The
+        # word floor is the safety-critical half — sparse-layer pages
+        # self-agree perfectly, so don't tighten Dice instead.
+        mechSelfAgreementPermille = 930;
+        mechMinWords = 200;
       };
     };
   };

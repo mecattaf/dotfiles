@@ -18,6 +18,7 @@
     ./services.nix
     ./immich-ml.nix
     ./atuin.nix
+    ./audio.nix # pins the webcam mic as the default PipeWire source
     # Per-machine AdGuard Home DNS filter (loopback 127.0.0.1:53, resolved
     # forwards to it). The Zenbook Duo imports the same module.
     ../../modules/adguardhome.nix
