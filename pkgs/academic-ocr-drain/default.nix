@@ -22,7 +22,7 @@
 }:
 stdenvNoCC.mkDerivation {
   pname = "academic-ocr-drain";
-  version = "2026-07-29";
+  version = "2026-08-04";
   src = builtins.path {
     path = ./.;
     name = "academic-ocr-drain-src";
