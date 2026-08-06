@@ -67,11 +67,33 @@ until [ -r "$CORPUS/catalog/papers.sqlite" ]; do
   "$CORE/sleep" 5
 done
 
+# ── #157: the tally daemon is a dependency of the same kind as the corpus ────
+# A switch restarts this unit and tally-daemon together; the drain wins the
+# race, the socket does not exist yet, and three instant daemon-unreachable
+# failures — an error tally itself marks transient/retry — blew the systemic
+# fuse (2026-08-06 11:15, restart backoff for 10 min). Waiting is this
+# process's job, same reasoning as the corpus wait above; After= ordering
+# would only cover boot, not a daemon crash or redeploy mid-drain, so the
+# same wait is re-entered from the paper loop whenever the daemon drops.
+TALLY_SOCK="${TALLY_SOCK:-${XDG_RUNTIME_DIR:-/run/user/$("$CORE/id" -u)}/tally/tally.sock}"
+DAEMON_WAIT_SEC="${DAEMON_WAIT_SEC:-300}"
+wait_for_daemon() {
+  local deadline=$(( $("$CORE/date" +%s) + DAEMON_WAIT_SEC ))
+  until [ -S "$TALLY_SOCK" ]; do
+    if [ "$("$CORE/date" +%s)" -ge "$deadline" ]; then
+      log "tally daemon socket $TALLY_SOCK absent after ${DAEMON_WAIT_SEC}s; exiting for a systemd restart"
+      exit 69
+    fi
+    "$CORE/sleep" 2
+  done
+}
+wait_for_daemon
+
 # Bootstrap: build the work-list from the NAS catalog if absent (fresh state
 # root or post-wipe). Rebuilds are cheap afterwards thanks to the page cache.
 [ -f "$DRAIN/worklist.jsonl" ] || python3 "$SELF/drain-worklist.py"
 
-ran=0 consecutive_failures=0
+ran=0 consecutive_failures=0 daemon_drops=0
 while IFS= read -r line; do
   db_id=$("$JQ" -r .db_id <<<"$line")
   pages=$("$JQ" -r .pages <<<"$line")
@@ -124,7 +146,7 @@ while IFS= read -r line; do
   "$CORE/cat" "$attempt_log" >>"$DRAIN/logs/$db_id.log"
   if [ "$ok" = 1 ]; then
     "$CORE/rm" -f "$attempt_log"
-    ran=$((ran + 1)); consecutive_failures=0
+    ran=$((ran + 1)); consecutive_failures=0 daemon_drops=0
     sha=$("$JQ" -r .sha256 <<<"$line")
     "$CORE/rm" -f "$DATA_ROOT/blobs/$sha.pdf"
     "$JQ" -c --arg at "$("$CORE/date" -Is)" '. + {completed_at: $at}' <<<"$line" \
@@ -140,6 +162,23 @@ while IFS= read -r line; do
     if "$GREP" -qE '"code":"(args|script)-changed-mid-run"' "$attempt_log"; then
       log "SUPERSEDE $db_id: flow-run pin invalidated (flow script or args changed); rotating run id"
       "$CORE/rm" -f "$run_id_file" "$attempt_log"
+      continue
+    fi
+    # A daemon drop mid-drain (redeploy, crash) is tally's transient/retry
+    # error, not the paper's fault and not systemic breakage: never feed it to
+    # the fuse (#157). Wait the socket back and move on — the paper's receipt
+    # is absent, so the next session retries it with the same run id. A socket
+    # that exists while the daemon stays unreachable is real breakage; three
+    # of those in a row exit restartable (69), not fuse-blown (2).
+    if "$GREP" -q '"code":"daemon-unreachable"' "$attempt_log"; then
+      "$CORE/rm" -f "$attempt_log"
+      daemon_drops=$((daemon_drops + 1))
+      if [ "$daemon_drops" -ge 3 ]; then
+        log "daemon unreachable 3x with socket checks passing; exiting for a systemd restart"
+        exit 69
+      fi
+      log "DAEMON-DROP $db_id: tally daemon unreachable; waiting for the socket"
+      wait_for_daemon
       continue
     fi
     "$CORE/rm" -f "$attempt_log"
