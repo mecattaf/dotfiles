@@ -73,8 +73,18 @@ in
     llamaSwapUnload
   ];
 
-  # Tailnet-only remote API, matching the fleet's VNC/media/ASR posture.
+  # Two remote doors, both interface-scoped; nothing on raw LAN/wifi.
+  #
+  # tailnet: roaming clients (zenbook, phone), matching the fleet's VNC/media/
+  # ASR posture.
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ cfg.port ];
+  # private /30 cable to the NAS: the NAS has NO tailnet identity by design
+  # (services.tailscale.enable = mkForce false, hosts/nas/default.nix), so its
+  # only path to this endpoint is the Ethernet cable the coordinator owns
+  # (hosts/coordinator/uplink-nas.nix). This is a first-class door, not a
+  # fallback — NAS-side consumers such as the Paperless AI phase (#136) depend
+  # on it, and nothing about the LLM endpoint should require Tailscale.
+  networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ cfg.port ];
 
   systemd.services.llama-swap = {
     wants = [ "network-online.target" ];

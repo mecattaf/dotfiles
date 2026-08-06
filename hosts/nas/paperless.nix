@@ -53,12 +53,16 @@
 #      identical st_dev:st_ino for canonical + projected paths.
 #   5. measure idle/import RSS + disk wakeups alongside Immich/Navidrome
 #      before bulk admission; bulk-ingest in bounded batches afterwards.
-#   6. (future AI phase only) llama-swap's firewall admits tailscale0 ONLY
-#      (modules/llama-swap.nix) — the NAS cannot reach 10.77.0.1:9292 until
-#      a coordinator-side rule admits the /30 cable source. Nothing in this
-#      v1 needs it (PAPERLESS_AI_ENABLED=false, enrich reads files + the
-#      local API); open that hole deliberately with the #136 AI-batching
-#      admission design, not before.
+#   6. (future AI phase only) the coordinator's llama-swap endpoint is already
+#      reachable from here at http://coordinator:9292 over the /30 cable —
+#      modules/llama-swap.nix admits enp191s0 explicitly. An earlier revision
+#      of this comment claimed the opposite ("tailnet0 ONLY ... the NAS cannot
+#      reach 10.77.0.1:9292"); that was never true — the cable was blanket-
+#      trusted then and is explicitly admitted now — and it misled readers into
+#      believing the LLM plane had a Tailscale dependency. Nothing in v1 uses
+#      it regardless (PAPERLESS_AI_ENABLED=false, enrich reads files + the
+#      local API); turn it on with the #136 AI-batching admission design, but
+#      the firewall is not what is stopping you.
 let
   cfg = config.myNas.paperless;
   storageRoot = "/mnt/nas";

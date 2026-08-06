@@ -74,8 +74,13 @@ in
     "f ${cfg.stateDir}/00-placeholder.caddy 0644 tom users -"
   ];
 
-  # Tailnet-only ingress; nothing opens on LAN/WAN interfaces.
+  # Trusted-transport ingress only; nothing opens on LAN/WAN interfaces.
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 80 ];
+  # The NAS reaches the .internal front doors over the private /30 cable rather
+  # than hairpinning through this box's tailnet address (split horizon, see
+  # modules/adguardhome.nix). Without this the NAS resolves photos.internal to
+  # 10.77.0.1 and gets a closed port.
+  networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 80 ];
 
   systemd.services.artifact-reaper = {
     description = "Reap expired artifacts (drop-dir TTL sweep)";

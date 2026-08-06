@@ -1,4 +1,4 @@
-{ ... }:
+{ config, ... }:
 # Per-machine AdGuard Home — the fleet's DNS ad/tracker filter, ONE loopback
 # instance per box. This replaces the old coordinator-only LAN quadlet that
 # filtered DNS for the now-retired BE550 wifi segment; coordinator, zenbook-duo,
@@ -22,6 +22,29 @@
 # into resolved, so MagicDNS keeps winning for the tailnet — the reason we route
 # through resolved instead of the naive `nameservers = [ "127.0.0.1" ]`, which
 # would bypass resolved and break split-DNS across the mesh.
+let
+  # SPLIT-HORIZON `.internal` (2026-08-06). Every box used to get the same
+  # hardcoded answer — the coordinator's TAILNET address, 100.105.121.73. That
+  # made Tailscale load-bearing for traffic that never leaves the building:
+  # the coordinator resolved its OWN service names to an address on tailscale0
+  # and hairpinned out and back, and the NAS reached them only because the /30
+  # cable happened to be blanket-trusted (the packet is for a local address, so
+  # the kernel's weak host model accepts it off the wrong interface). Stop
+  # tailscaled on the coordinator and photos.internal died on two hosts that
+  # are physically wired together.
+  #
+  # The answer is now simply "the coordinator, as seen from THIS host", so the
+  # tailnet is used only by the host that actually needs it:
+  #   coordinator  loopback   — its own Caddy, never touches an interface
+  #   nas          /30 cable  — hosts/coordinator/uplink-nas.nix
+  #   zenbook-duo  tailnet    — genuinely remote and roaming; correct here
+  coordinatorAddr =
+    {
+      coordinator = "127.0.0.1";
+      nas = "10.77.0.1";
+    }
+    .${config.networking.hostName} or "100.105.121.73";
+in
 {
   services.adguardhome = {
     enable = true;
@@ -68,32 +91,33 @@
         # Fleet-internal names under the ICANN-reserved private-use TLD
         # `.internal` (deliberately NOT mecattaf.dev — that zone is real and
         # public on Cloudflare; these names must scream intranet). Every box
-        # running this filter resolves them to the coordinator's stable
-        # tailnet IP, where Caddy (hosts/coordinator/nas-client.nix) routes
-        # them onto the NAS media relays. Phones don't use these resolvers,
-        # so phone apps keep the coordinator.tail8dd1.ts.net port URLs.
+        # running this filter resolves them to the coordinator over its
+        # shortest path (`coordinatorAddr` above), where Caddy
+        # (hosts/coordinator/nas-client.nix) routes them onto the NAS media
+        # relays. Phones don't use these resolvers, so phone apps keep the
+        # coordinator.tail8dd1.ts.net port URLs.
         rewrites = [
           {
             enabled = true;
             domain = "photos.internal";
-            answer = "100.105.121.73";
+            answer = coordinatorAddr;
           }
           {
             enabled = true;
             domain = "music.internal";
-            answer = "100.105.121.73";
+            answer = coordinatorAddr;
           }
           {
             enabled = true;
             domain = "videos.internal";
-            answer = "100.105.121.73";
+            answer = coordinatorAddr;
           }
           # #136: resolves fleet-wide now, but answers only once the
           # myNas.paperless / myNasClient.relayPaperless pair flips on.
           {
             enabled = true;
             domain = "paperless.internal";
-            answer = "100.105.121.73";
+            answer = coordinatorAddr;
           }
         ];
       };

@@ -64,8 +64,17 @@
       };
     };
 
-    # Cache reachable ONLY over the Tailscale mesh — never the raw LAN/wifi.
+    # Cache reachable over the two trusted transports only — never raw LAN/wifi.
     networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 8080 ];
+    # The NAS is a substituter client like every other host (modules/common.nix
+    # puts http://coordinator:8080/fleet in extra-substituters fleet-wide) but
+    # has no tailnet identity, so it pulls over the private /30 cable. Losing
+    # this would silently drop an 8 GB appliance back to building from source.
+    # Scoped inside this mkIf on purpose: if the cache ever relocates to the NAS
+    # (myNas.attic.enable + relayAttic, hosts/nas/attic.nix), atticd here goes
+    # away and so does this rule — at which point the NAS serves 8080 rather
+    # than dialing it, and the relay in nas-client.nix owns the tailnet door.
+    networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 8080 ];
 
     # Cache-health tripwire. On 2026-07-26 the atticd DB was recreated
     # schema-only (cache record + server-side signing keypair lost) and the

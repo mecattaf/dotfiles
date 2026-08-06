@@ -564,6 +564,34 @@
           assert coordinator.systemd.sockets ? navidrome-relay;
           assert coordinator.systemd.sockets ? plex-relay;
           assert coordinator.systemd.sockets ? immich-ml-access;
+          # ── cable admission (2026-08-06) ───────────────────────────────────
+          # The NAS has NO tailnet identity (asserted above), so the /30 cable
+          # is its only path to the coordinator. Two failure modes to hold off:
+          # re-blanket-trusting the interface (which is how the coordinator
+          # ended up open on every port while the NAS scoped every listener of
+          # its own), and anyone concluding these flows need Tailscale.
+          assert !(builtins.elem "enp191s0" coordinator.networking.firewall.trustedInterfaces);
+          assert builtins.all
+            (p: builtins.elem p coordinator.networking.firewall.interfaces.enp191s0.allowedTCPPorts)
+            [
+              80 # caddy .internal front doors
+              3003 # immich-ml, dialled by nas.services.immich above
+              8080 # attic; without it the NAS builds from source
+              9292 # llama-swap
+            ];
+          # dnsmasq for a factory/installer boot — the one moment nobody wants
+          # to discover the appliance was firewalled off.
+          assert builtins.elem 67 coordinator.networking.firewall.interfaces.enp191s0.allowedUDPPorts;
+          # Split-horizon .internal: each box resolves the coordinator over its
+          # shortest path, so stopping tailscaled cannot break traffic between
+          # two hosts joined by a cable. A 100.x answer on either of these is
+          # the regression this catches.
+          assert builtins.all (
+            r: r.answer == "10.77.0.1"
+          ) nas.services.adguardhome.settings.filtering.rewrites;
+          assert builtins.all (
+            r: r.answer == "127.0.0.1"
+          ) coordinator.services.adguardhome.settings.filtering.rewrites;
           # ── #130 expansion gates: all OFF, and the pairs agree ─────────────
           # These assert the STAGED shape, i.e. that today's switch is a no-op
           # on the NAS's running services. Each gate flips with its own runbook

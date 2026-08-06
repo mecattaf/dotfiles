@@ -122,6 +122,36 @@ in
     internalInterfaces = [ "enp191s0" ];
     externalInterface = "wlp192s0";
   };
-  networking.firewall.trustedInterfaces = [ "enp191s0" ];
+  # CABLE ADMISSION DOCTRINE (2026-08-06). This used to be
+  # `networking.firewall.trustedInterfaces = [ "enp191s0" ]`, which accepted
+  # EVERY port on this box from the cable. That was the mirror image of how the
+  # NAS treats us: every NAS module scopes its own listener to `ip saddr
+  # 10.77.0.1` in its own file (storage.nix, media.nix, attic.nix, journal.nix,
+  # paperless.nix). The coordinator now owes the same discipline in the same
+  # shape — each module declares `interfaces.enp191s0.allowedTCPPorts` next to
+  # the `interfaces.tailscale0.allowedTCPPorts` line it already carries:
+  #
+  #     80  caddy-artifacts.nix  the .internal front doors (see split horizon
+  #                              in modules/adguardhome.nix)
+  #   3003  immich-ml.nix   NAS Immich → coordinator ML (hosts/nas/media.nix)
+  #   8080  attic.nix       NAS substituter http://coordinator:8080/fleet
+  #   9292  llama-swap.nix  NAS → coordinator LLM endpoint
+  #
+  # Interface scoping is exactly as narrow as a source-IP match here: the /30
+  # holds only 10.77.0.1 and 10.77.0.2, so nothing else can ever arrive on it.
+  # (extraInputRules, the option the NAS uses, is nftables-only and this host
+  # runs the default iptables backend — see hosts/nas/network.nix:26.)
+  #
+  # Unaffected by this change, because none of it came from
+  # trustedInterfaces: sshd (opened on all interfaces), allowPing, NAT
+  # forwarding for the NAS's internet (networking.nat → nixos-filter-forward),
+  # and all coordinator-initiated return traffic incl. the NFSv4.2 backchannel,
+  # which rides the client's own connection and is matched by conntrack.
+  networking.firewall.interfaces.enp191s0.allowedUDPPorts = [
+    # dnsmasq's DHCP server above. The NAS is statically addressed, so this is
+    # only for factory/installer boots (nixos-anywhere), which is precisely the
+    # moment nobody wants to discover it was firewalled off.
+    67
+  ];
   networking.hosts."10.77.0.2" = [ "nas" ];
 }
