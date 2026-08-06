@@ -61,6 +61,13 @@ in
     "systemd-journal-upload.service"
   ];
 
+  # Under sustained academic-drain load the daemon can miss queue.drain's fixed
+  # 60s RPC deadline; the ~7s drain tick then fails and self-heals on the next
+  # run (~50 times/day at peak). The producer event files are durable, so a
+  # missed tick loses nothing. Remove once tally.nix#427 makes the drain client
+  # treat deadline-exceeded as a retryable skip, like #411 did for Unreachable.
+  myFailureSurfacing.userUnitExcludeUnits = [ "tally-drain.service" ];
+
   # The local journal stays persistent and bounded (#135, closing #133 item
   # 4 for journald): volatile storage would lose the final pre-lockup window
   # in an mt7925e-class hard freeze — the exact forensic case that motivates

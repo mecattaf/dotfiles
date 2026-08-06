@@ -20,6 +20,12 @@
     ./failure-surfacing.nix # OnFailure + coredump surfacing, fleet-wide — refs #134
   ];
 
+  # Chrome renderer crashes (SIGILL/SIGTRAP bursts, seen across chrome 150 and
+  # 151) recover through Chrome's own crash handling; each dump rewrote the
+  # coredump marker and kept the failure channel permanently red. Anything
+  # else that dumps core still surfaces.
+  myFailureSurfacing.coredumpExcludeComms = [ "chrome" ];
+
   # --- identity / base ---
   networking.networkmanager.enable = true;
   time.timeZone = lib.mkDefault "Europe/Paris";

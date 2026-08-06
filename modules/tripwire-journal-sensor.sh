@@ -43,9 +43,27 @@ fi
 # journalctl writes the cursor only after it has finished emitting, so the
 # output is collected whole and truncated afterwards; piping into head would
 # SIGPIPE it into re-reporting the same burst on every poll.
+exclude_field="${JOURNAL_EXCLUDE_FIELD:-}"
+read -r -a exclude_values <<<"${JOURNAL_EXCLUDE_VALUES:-}"
+
 journalctl --merge --quiet --no-pager --all --cursor-file="$cursor" \
-  --output=json --output-fields=MESSAGE,SYSLOG_IDENTIFIER,_HOSTNAME \
+  --output=json \
+  --output-fields="MESSAGE,SYSLOG_IDENTIFIER,_HOSTNAME${exclude_field:+,$exclude_field}" \
   "${match[@]}" > "$raw" 2>/dev/null || true
+
+# Exclusions subtract from the COUNT, not just the digest: an entry whose
+# $exclude_field value is listed must not trip the threshold at all. journalctl
+# matches cannot express negation, so this is the one place it can happen. A jq
+# failure keeps the unfiltered set — an alarm channel fails open, never silent.
+if [ -n "$exclude_field" ] && [ "${#exclude_values[@]}" -gt 0 ]; then
+  if jq -c --arg field "$exclude_field" --arg values "${exclude_values[*]}" \
+    'select((.[$field] // "") as $v | ($values | split(" ") | index($v)) | not)' \
+    "$raw" > "$raw.kept" 2>/dev/null; then
+    mv "$raw.kept" "$raw"
+  else
+    rm -f "$raw.kept"
+  fi
+fi
 
 count="$(wc -l < "$raw")"
 

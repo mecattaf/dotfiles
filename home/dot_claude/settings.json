@@ -6,6 +6,7 @@
   "permissions": {
     "defaultMode": "auto"
   },
+  "autoMemoryEnabled": false,
   "model": "opus",
   "tui": "fullscreen",
   "effortLevel": "high",

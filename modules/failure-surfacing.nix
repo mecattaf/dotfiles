@@ -81,6 +81,8 @@ let
       label,
       match,
       description,
+      excludeField ? null,
+      excludeValues ? [ ],
     }:
     {
       inherit description;
@@ -106,12 +108,17 @@ let
       onFirePath = [ pkgs.coreutils ];
       onFire = builtins.readFile ./tripwire-journal-onfire.sh;
 
-      environment = {
-        JOURNAL_KIND = kind;
-        JOURNAL_LABEL = label;
-        JOURNAL_MATCH = match;
-        FAILURE_MARKER_DIR = cfg.markerDir;
-      };
+      environment =
+        {
+          JOURNAL_KIND = kind;
+          JOURNAL_LABEL = label;
+          JOURNAL_MATCH = match;
+          FAILURE_MARKER_DIR = cfg.markerDir;
+        }
+        // lib.optionalAttrs (excludeField != null && excludeValues != [ ]) {
+          JOURNAL_EXCLUDE_FIELD = excludeField;
+          JOURNAL_EXCLUDE_VALUES = lib.concatStringsSep " " excludeValues;
+        };
     };
 
   # systemd catalog message IDs, both verified live on the coordinator journal.
@@ -155,10 +162,32 @@ in
       description = "Surface new coredumps, which are journal events no OnFailure= can catch.";
     };
 
+    coredumpExcludeComms = lib.mkOption {
+      type = with lib.types; listOf str;
+      default = [ ];
+      description = ''
+        Process names (COREDUMP_COMM) whose coredumps are not surfaced. For a
+        process that crashes routinely and recovers on its own, every dump
+        rewrites the marker and the channel goes permanently red — burying the
+        one-off crashes this watcher exists to catch.
+      '';
+    };
+
     watchUserUnitFailures = lib.mkOption {
       type = lib.types.bool;
       default = true;
       description = "Surface failures of per-user units, which the system-manager drop-in cannot reach.";
+    };
+
+    userUnitExcludeUnits = lib.mkOption {
+      type = with lib.types; listOf str;
+      default = [ ];
+      description = ''
+        Per-user units (USER_UNIT) whose failures are not surfaced. Meant for a
+        high-cadence tick that self-heals on its next run, where the sustained
+        condition has its own detection; each entry should cite the issue
+        tracking the fix that lets it come back off this list.
+      '';
     };
 
     userManagerUids = lib.mkOption {
@@ -194,6 +223,8 @@ in
         label = "coredump(s)";
         match = "MESSAGE_ID=${coredumpMessageId}";
         description = "Surface coredumps recorded since the last check";
+        excludeField = "COREDUMP_COMM";
+        excludeValues = cfg.coredumpExcludeComms;
       }
       // {
         enable = cfg.watchCoredumps;
@@ -211,6 +242,8 @@ in
           ++ map (uid: "_SYSTEMD_UNIT=user@${toString uid}.service") cfg.userManagerUids
         );
         description = "Surface per-user unit failures recorded since the last check";
+        excludeField = "USER_UNIT";
+        excludeValues = cfg.userUnitExcludeUnits;
       }
       // {
         enable = cfg.watchUserUnitFailures;
