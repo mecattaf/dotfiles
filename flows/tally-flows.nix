@@ -139,6 +139,9 @@ in
         # self-agree perfectly, so don't tighten Dice instead.
         mechSelfAgreementPermille = 930;
         mechMinWords = 200;
+        # 4 consecutive bare-numeric lines = the column-major linearization
+        # fingerprint; calibration in pkgs/academic-ocr-drain/tables.sh (9b7e37ac).
+        tableMinNumericRun = 4;
       };
     };
   };
