@@ -29,15 +29,25 @@ in
   systemd.user.services.academic-drain = lib.mkIf (hostName == "coordinator") {
     Unit = {
       Description = "academic-ocr corpus drain (24/7, low-priority GPU)";
-      # The NAS holds the source PDFs; without it the driver would burn its
-      # consecutive-failure fuse on fetch errors.
-      ConditionPathIsDirectory = "/mnt/nas/documents/academic-papers";
+      # NO ConditionPathIsDirectory on the NAS corpus here (#154). The corpus
+      # is still a hard precondition — without it the driver would burn its
+      # consecutive-failure fuse on fetch errors — but a *start condition* is
+      # the one way to state it that cannot recover: an unmet condition makes
+      # systemd skip the job, and a job that never started is never restarted,
+      # so a reboot that beat the /mnt/nas automount left the drain dead until
+      # a human noticed (2026-08-05, 2h). drain.sh now waits for the corpus
+      # itself and exits 69 when it stays absent, which Restart=always retries
+      # on the RestartSec cadence until the NAS comes back.
     };
     Service = {
       ExecStart = "${drainPkg}/bin/academic-drain";
+      # Covers every exit: work-list dry, stop-at, the failure fuse, and the
+      # corpus-absent exit 69 that replaced the start condition.
       Restart = "always";
       # Pause between passes once the work-list is dry (or after the
-      # 3-consecutive-failure fuse) instead of spinning.
+      # 3-consecutive-failure fuse) instead of spinning. A cold automount is
+      # absorbed by drain.sh's own 300s wait, so this cadence only ever paces
+      # the genuinely-NAS-down case.
       RestartSec = 600;
     };
     Install.WantedBy = [ "default.target" ];

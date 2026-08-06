@@ -35,11 +35,41 @@ mkdir -p "$DRAIN/args" "$DRAIN/run-ids" "$DRAIN/logs"
 exec 9>"$DRAIN/lock"
 if ! flock -n 9; then echo "another drain is running" >&2; exit 75; fi
 
+log() { echo "$("$CORE/date" -Is) $*" | "$CORE/tee" -a "$DRAIN/drain.log" >&2; }
+
+# ── #154: waiting for the corpus is THIS process's job, never systemd's ──────
+# The unit used to carry ConditionPathIsDirectory on the corpus root. A start
+# condition is evaluated once, and an unmet one marks the job *skipped* — the
+# unit never starts, so Restart=always never applies and nothing retries. The
+# 2026-08-05 18:33 reboot hit exactly that: /mnt/nas is an x-systemd.automount
+# (hosts/coordinator/nas-client.nix), it was still cold at user-manager start,
+# and the 24/7 ruling silently degraded to 'until the next reboot' for 2h.
+#
+# So the condition moves in here, where failing is a *restartable* outcome:
+# poke the autofs trigger (the mount only materializes when something touches
+# it — a path unit would not help, since inotify on a cold automount never
+# fires), wait out the boot race, and exit non-zero if the corpus never shows.
+# Restart=always then brings the next attempt around on RestartSec, forever,
+# which is what 24/7 has to mean across a cold mount or a NAS that is simply
+# down. Success is checked against a file the drain actually reads, not against
+# the mountpoint: a failed automount leaves an empty trigger directory behind
+# that every -d test happily passes.
+CORPUS="${CORPUS_ROOT:-/mnt/nas/documents/academic-papers}"
+CORPUS_WAIT_SEC="${CORPUS_WAIT_SEC:-300}"
+corpus_deadline=$(( $("$CORE/date" +%s) + CORPUS_WAIT_SEC ))
+until [ -r "$CORPUS/catalog/papers.sqlite" ]; do
+  "$CORE/timeout" 10s "$CORE/ls" "$CORPUS/" >/dev/null 2>&1 || :
+  [ -r "$CORPUS/catalog/papers.sqlite" ] && break
+  if [ "$("$CORE/date" +%s)" -ge "$corpus_deadline" ]; then
+    log "corpus $CORPUS unreadable after ${CORPUS_WAIT_SEC}s (cold automount or NAS down); exiting for a systemd restart"
+    exit 69
+  fi
+  "$CORE/sleep" 5
+done
+
 # Bootstrap: build the work-list from the NAS catalog if absent (fresh state
 # root or post-wipe). Rebuilds are cheap afterwards thanks to the page cache.
 [ -f "$DRAIN/worklist.jsonl" ] || python3 "$SELF/drain-worklist.py"
-
-log() { echo "$("$CORE/date" -Is) $*" | "$CORE/tee" -a "$DRAIN/drain.log" >&2; }
 
 ran=0 consecutive_failures=0
 while IFS= read -r line; do
