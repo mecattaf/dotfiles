@@ -181,6 +181,18 @@ while IFS= read -r line; do
       wait_for_daemon
       continue
     fi
+    # #145: a cancelled flow is the operator stopping work, not the paper
+    # failing. Racing ahead to the next paper is exactly the incident that
+    # filed the issue; feeding the fuse or failed.jsonl would punish the paper
+    # for the operator's decision. Exit cleanly instead — the canonical stop
+    # (academic-drain-stop) has already stopped this unit before cancelling,
+    # and a bare `tally flow cancel` without it gets a RestartSec pause rather
+    # than an immediate third paper.
+    if "$GREP" -q '#145-cancelled' "$attempt_log"; then
+      "$CORE/rm" -f "$attempt_log"
+      log "CANCELLED $db_id by operator; ending this session (receipt absent, paper retries next session)"
+      exit 0
+    fi
     "$CORE/rm" -f "$attempt_log"
     consecutive_failures=$((consecutive_failures + 1))
     log "FAIL $db_id (consecutive: $consecutive_failures) — see logs/$db_id.log"

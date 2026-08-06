@@ -49,7 +49,7 @@ stdenvNoCC.mkDerivation {
     LLAMA_SWAP=http://127.0.0.1:9292
     EOF
 
-    for entry in academic-drain:drain.sh academic-drain-backfill-tables:backfill-tables.sh; do
+    for entry in academic-drain:drain.sh academic-drain-stop:drain-stop.sh academic-drain-backfill-tables:backfill-tables.sh; do
       makeWrapper ${bash}/bin/bash $out/bin/''${entry%%:*} \
         --add-flags $lib/''${entry##*:} \
         --prefix PATH : ${

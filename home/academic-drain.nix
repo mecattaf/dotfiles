@@ -17,6 +17,13 @@
 # stays in ~/.local/state/academic-ocr. The drain is idempotent (receipted
 # papers skip; flock refuses overlap), so Restart=always is safe: when the
 # corpus is fully drained each restart is a cheap no-op scan.
+#
+# STOPPING (#145): `academic-drain-stop` is the one canonical verb — it stops
+# this unit first (so the loop cannot advance and Restart= cannot respawn),
+# then cancels the in-flight flow run to terminal (repeated snapshot cancels;
+# tally has no terminal-kill verb), then removes any receipt the cancel raced.
+# A bare `systemctl --user stop` leaves the flow run live; a bare `tally flow
+# cancel` leaves the driver racing to the next paper. Use the verb.
 let
   hostName = osConfig.networking.hostName;
   drainPkg = pkgs.callPackage ../pkgs/academic-ocr-drain {

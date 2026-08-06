@@ -60,6 +60,21 @@ function run(name, argvTail, opts) {
   return sh([args.bash, tool(name), ...argvTail], opts);
 }
 
+// #145: a cancelled node is an operator instruction, never OCR evidence. The
+// settled verdicts below otherwise make `tally flow cancel` indistinguishable
+// from a genuine disagreement: the 2026-08-03 incident cancelled in-flight
+// vlm32b refines and the fallback accepted vlm8b-disputed for those pages,
+// then wrote the receipt — freezing the paper at degraded quality forever
+// (receipted papers are never retried). A cancelled node instead aborts the
+// page, and one cancelled page aborts the paper before assembly, so no
+// receipt exists and the next drain session redoes the paper in full.
+const CANCELLED_MARK = "#145-cancelled";
+function guardCancelled(result, page, node) {
+  if (result.verdict === "cancelled") {
+    throw new Error(`page ${page}: ${node} cancelled by operator (${CANCELLED_MARK})`);
+  }
+}
+
 async function resolvePage(page) {
   const p = pad3(page);
   const png = `${root}/renders/${p}.png`;
@@ -74,6 +89,7 @@ async function resolvePage(page) {
     evidence: ["exit:0", `artifact:${mechDir}/mech.json`, "hash:sha256"],
     settle: true
   });
+  guardCancelled(mech, page, "mech");
   const mechOk = mech.verdict === "pass" && !mech.error;
   const mechRef = `${mechDir}/poppler.txt`;
 
@@ -102,6 +118,7 @@ async function resolvePage(page) {
         settle: true
       }
     );
+    guardCancelled(self, page, "cmpmech");
     if (self.verdict === "pass" && !self.error) {
       // Table gate (Tom's ruling, 2026-08-06: tables route to the VLM lane).
       // The agreement gate above is structurally blind to this one failure:
@@ -130,6 +147,7 @@ async function resolvePage(page) {
           settle: true
         }
       );
+      guardCancelled(tbl, page, "tables");
       if (tbl.verdict === "pass" && !tbl.error) {
         return { page, source: "mech" };
       }
@@ -158,6 +176,7 @@ async function resolvePage(page) {
     evidence: ["exit:0", `artifact:${vlm8b}`, "hash:sha256"],
     settle: true
   });
+  guardCancelled(ocr, page, "vlm8b");
   const ocrOk = ocr.verdict === "pass" && !ocr.error;
 
   if (ocrOk && mechOk) {
@@ -172,6 +191,7 @@ async function resolvePage(page) {
         settle: true
       }
     );
+    guardCancelled(cmp, page, "cmp8b");
     if (cmp.verdict === "pass" && !cmp.error) {
       return { page, source: "vlm8b" };
     }
@@ -187,6 +207,7 @@ async function resolvePage(page) {
     evidence: ["exit:0", `artifact:${vlm32b}`, "hash:sha256"],
     settle: true
   });
+  guardCancelled(refine, page, "vlm32b");
   const refineOk = refine.verdict === "pass" && !refine.error;
 
   if (!refineOk) {
@@ -212,6 +233,7 @@ async function resolvePage(page) {
         settle: true
       }
     );
+    guardCancelled(cmp, page, "cmp32b");
     if (cmp.verdict === "pass" && !cmp.error) {
       return { page, source: "vlm32b" };
     }
@@ -247,6 +269,19 @@ async function resolvePage(page) {
       failedPages.push(pageNumbers[index]);
     }
   });
+  // #145: one cancelled page means the operator is stopping this run. A page
+  // that fails for its own reasons is recorded and the paper completes
+  // without it; a cancelled page must instead abort the paper here, before
+  // assembly, because a written receipt is the one thing that makes the
+  // drain never look at this paper again.
+  const cancelled = settled.some(
+    o => !o.ok && String((o.error && o.error.message) || o.error).includes("#145-cancelled")
+  );
+  if (cancelled) {
+    throw new Error(
+      "operator cancelled page work mid-run; aborting before assembly so no receipt locks in a partial result (#145-cancelled)"
+    );
+  }
   if (resolved.length === 0) {
     throw new Error("no page resolved; refusing to assemble an empty paper");
   }
