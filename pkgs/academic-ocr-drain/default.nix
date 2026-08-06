@@ -22,7 +22,7 @@
 }:
 stdenvNoCC.mkDerivation {
   pname = "academic-ocr-drain";
-  version = "2026-08-04";
+  version = "2026-08-06";
   src = builtins.path {
     path = ./.;
     name = "academic-ocr-drain-src";
@@ -49,19 +49,21 @@ stdenvNoCC.mkDerivation {
     LLAMA_SWAP=http://127.0.0.1:9292
     EOF
 
-    makeWrapper ${bash}/bin/bash $out/bin/academic-drain \
-      --add-flags $lib/drain.sh \
-      --prefix PATH : ${
-        lib.makeBinPath [
-          bash
-          coreutils
-          git
-          jq
-          python3
-          util-linux
-          tally
-        ]
-      }
+    for entry in academic-drain:drain.sh academic-drain-backfill-tables:backfill-tables.sh; do
+      makeWrapper ${bash}/bin/bash $out/bin/''${entry%%:*} \
+        --add-flags $lib/''${entry##*:} \
+        --prefix PATH : ${
+          lib.makeBinPath [
+            bash
+            coreutils
+            git
+            jq
+            python3
+            util-linux
+            tally
+          ]
+        }
+    done
   '';
   meta = {
     description = "tally paper-e2e OCR flow with drain, work-list, and notes-absorption drivers";

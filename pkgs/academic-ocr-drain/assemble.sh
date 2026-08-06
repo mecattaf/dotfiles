@@ -7,7 +7,7 @@ dir="$1"; uuid="$2"; sha="$3"; title="$4"; out="$5"; shift 5
 mkdir -p "$(dirname "$out")"
 tmp="$out.tmp.$$"
 {
-  printf -- '---\nuuid: %s\ntitle: "%s"\nsha256: %s\npipeline: tally-flow-e2e-2026-08-04\n---\n' "$uuid" "$title" "$sha"
+  printf -- '---\nuuid: %s\ntitle: "%s"\nsha256: %s\npipeline: tally-flow-e2e-2026-08-06\n---\n' "$uuid" "$title" "$sha"
   for spec in "$@"; do
     page="${spec%%:*}"; src="${spec#*:}"
     case "$src" in

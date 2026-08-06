@@ -92,13 +92,16 @@ while IFS= read -r line; do
   # pages (2026-08-04, dotfiles#147): 930/200 shortcuts 78% of pages with 0.3%
   # residual mech-vs-VLM disagreement — the floor, not the Dice gate, is the
   # safety-critical half.
+  # tableMinNumericRun calibrated on 2,181 already-drained pages (2026-08-06):
+  # 4 consecutive bare-numeric lines is the column-major linearization
+  # fingerprint; see tables.sh for the full recall/false-positive table.
   args_file="$DRAIN/args/$db_id.json"
   "$JQ" --arg dataRoot "$DATA_ROOT" --arg tools "$SELF" --arg bash "$BASH_BIN" '{
     paperId: .db_id, title: .title, sourceUrl: .file_url, sha256: .sha256,
     pageCount: .pages, dataRoot: $dataRoot, tools: $tools, bash: $bash,
     dpi: 200, ocrModel: "qwen3-vl-8b-ocr", refineModel: "qwen3-vl-32b-ocr",
     embedModel: "qwen3-embedding-8b", minAgreementPermille: 700,
-    mechSelfAgreementPermille: 930, mechMinWords: 200
+    mechSelfAgreementPermille: 930, mechMinWords: 200, tableMinNumericRun: 4
   }' <<<"$line" >"$args_file"
 
   run_id_file="$DRAIN/run-ids/$db_id"
@@ -106,9 +109,9 @@ while IFS= read -r line; do
   run_id=$("$CORE/cat" "$run_id_file")
 
   log "start $db_id pages=$pages run_id=$run_id"
-  # Worst case per page since the mech-first shortcut (dotfiles#147):
-  # mech + cmpmech + raster + vlm8b + cmp8b + vlm32b + cmp32b = 7 nodes.
-  max_nodes=$((7 * pages + 30))
+  # Worst case per page since the table gate (2026-08-06): mech + cmpmech +
+  # tables + raster + vlm8b + cmp8b + vlm32b + cmp32b = 8 nodes.
+  max_nodes=$((8 * pages + 30))
   # One file per attempt, appended to the paper's log afterwards: the
   # supersede check below must only ever see THIS attempt's output, or a
   # historical args-changed error in the accumulated log would rotate the

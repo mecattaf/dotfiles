@@ -20,7 +20,8 @@ export const meta = {
       "embedModel",
       "minAgreementPermille",
       "mechSelfAgreementPermille",
-      "mechMinWords"
+      "mechMinWords",
+      "tableMinNumericRun"
     ],
     properties: {
       paperId: { type: "string", pattern: "^[0-9a-f-]{36}$" },
@@ -37,7 +38,8 @@ export const meta = {
       embedModel: { type: "string", minLength: 1 },
       minAgreementPermille: { type: "integer", minimum: 0, maximum: 1000 },
       mechSelfAgreementPermille: { type: "integer", minimum: 0, maximum: 1000 },
-      mechMinWords: { type: "integer", minimum: 0 }
+      mechMinWords: { type: "integer", minimum: 0 },
+      tableMinNumericRun: { type: "integer", minimum: 2 }
     },
     additionalProperties: false
   },
@@ -101,12 +103,45 @@ async function resolvePage(page) {
       }
     );
     if (self.verdict === "pass" && !self.error) {
-      return { page, source: "mech" };
+      // Table gate (Tom's ruling, 2026-08-06: tables route to the VLM lane).
+      // The agreement gate above is structurally blind to this one failure:
+      // the text layer linearizes a table column-major, poppler and mupdf
+      // linearize it identically, so two engines agree perfectly on a reading
+      // in which every value survives and every row/column association is
+      // lost. Nothing downstream can recover it, and a scrambled table reads
+      // as authoritative — so the page goes to the lane that sees it as a
+      // picture and emits a real GFM table.
+      //
+      // Forward cost, measured 2026-08-06 over every page that has resolved
+      // source:mech to date: 463 of 2,662, i.e. 17.4% of would-be-shortcut
+      // pages now take the VLM lane. That is above the ~12% quoted when the
+      // ruling was made — the caption signal alone is 15.6% on this corpus,
+      // not 12%, and the numeric-run signal adds the other 1.8 points.
+      // tables.sh carries the detector calibration (85% recall, 3.6% false
+      // positives) and the reasoning for spending those points.
+      const tbl = await run(
+        "tables",
+        [mechRef, `${root}/verdicts/${p}-tables.json`, String(args.tableMinNumericRun)],
+        {
+          pools: ["flow-build"],
+          key: `tables-${p}`,
+          label: `tables-${p}`,
+          evidence: ["exit:0", `artifact:${root}/verdicts/${p}-tables.json`, "hash:sha256"],
+          settle: true
+        }
+      );
+      if (tbl.verdict === "pass" && !tbl.error) {
+        return { page, source: "mech" };
+      }
     }
   }
 
-  // VLM lane: mech failed closed (scanned page) or the engines disagreed.
-  // Only now is the page render needed.
+  // VLM lane: mech failed closed (scanned page), the engines disagreed, or the
+  // page carries a table. Only now is the page render needed. A rerouted table
+  // page is not bounced straight back by the cmp8b gate below: Dice runs over
+  // word multisets, so the linearized mechanical reference still agrees with a
+  // properly tabulated VLM transcription of the same cells — the reference is
+  // only ever a check on *which words* are present, never on their order.
   await run("raster", [blob, String(page), String(args.dpi), png], {
     pools: ["flow-build"],
     key: `raster-${p}`,
