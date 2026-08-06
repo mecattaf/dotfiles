@@ -257,4 +257,15 @@ in
       };
     };
   };
+
+  # The module's 90s TimeoutStartSec is a per-phase budget, but the unit-facts
+  # startup phase probes systemd once per non-terminal durable event row — an
+  # O(corpus) cost inside one phase, with no extension until the phase ends. At
+  # this host's ~25k-row academic-drain corpus that is ~90-95s, so daemon
+  # restarts sit right on the budget and can loop through several timed-out
+  # attempts (2026-08-06 pin advance: two 92s failures, then success). Ceiling
+  # raised until tally.nix#428 extends the budget inside the loop.
+  systemd.user.services.tally-daemon = lib.mkIf isCoordinator {
+    Service.TimeoutStartSec = lib.mkForce "10min";
+  };
 }
