@@ -98,6 +98,7 @@ let
 
       sensorPath = [
         pkgs.coreutils
+        pkgs.jq # counts entries, not lines, and reduces each to its first line
         pkgs.systemd
       ];
       sensor = builtins.readFile ./tripwire-journal-sensor.sh;
