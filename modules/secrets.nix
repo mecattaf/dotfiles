@@ -261,6 +261,23 @@ in
         }
       )
 
+      # qwencloud-token: Qwen Token Plan API key, read client-side by pi through
+      # the `!cat` apiKey in ~/.pi/agent/models.json (home/pi.nix). Same shape as
+      # huggingface-token — delivered read-only under /run and never copied into a
+      # mutable dotfile, because nothing ever rewrites it (unlike the OAuth creds
+      # above, which refresh in place). Deliberately NOT exported as
+      # QWEN_TOKEN_PLAN_API_KEY in pi's environment: that would hand the key to
+      # every subprocess pi's bash tool spawns. models.json resolves it per
+      # request instead, so it never enters the agent's process environment.
+      (lib.mkIf (config.networking.hostName == "coordinator") {
+        age.secrets.qwencloud-token = {
+          file = ../secrets/qwencloud-token.age;
+          owner = "tom";
+          group = "users";
+          mode = "400";
+        };
+      })
+
       # immich-api-key: full-permissions Immich key (photos.internal), read
       # client-side by agent sessions on the coordinator for indexing/dedup
       # passes. Delivered to /run/agenix/immich-api-key; replaces the loose

@@ -131,6 +131,13 @@ in
   # Optional Hugging Face read token. The rule is declared now; ciphertext is
   # created with agenix only when Tom supplies the credential.
   "secrets/huggingface-token.age".publicKeys = editors ++ coordinatorOnly;
+
+  # Qwen Token Plan API key (Alibaba MaaS, ap-southeast-1 — the OpenAI-compatible
+  # subscription endpoint pi ships as the built-in `qwen-token-plan` provider).
+  # Coordinator-only for the same reason as claude-credentials: it is a metered
+  # subscription, not a per-token bill, so every box that can decrypt it can burn
+  # the shared 7-day credit pool. The coordinator is the only agent host.
+  "secrets/qwencloud-token.age".publicKeys = editors ++ coordinatorOnly;
   # Borg passphrase for the coordinator's push job to the NAS append-only repo
   # (#130 ws2b, hosts/coordinator/backups.nix). Rule declared now; ciphertext
   # lands via the runbook before myCoordinatorBackups.enable flips.
