@@ -195,7 +195,11 @@ in
         ExecStart = "${fleetDeploy}/bin/fleet-deploy";
         StateDirectory = "fleet-deploy";
         StateDirectoryMode = "0755";
-        TimeoutStartSec = "infinity";
+        # Hard ceiling on the whole nightly transaction (#162). Normal runs are
+        # ~7-9 min with a 21-min historical outlier; the 2026-08-07 run hung
+        # 11.5h in a dead fixed-output fetch without ever failing, so OnFailure
+        # never fired. The timeout converts a hang into the alertable failure.
+        TimeoutStartSec = "45min";
         Nice = 10;
       };
     };
