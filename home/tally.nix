@@ -268,4 +268,14 @@ in
   systemd.user.services.tally-daemon = lib.mkIf isCoordinator {
     Service.TimeoutStartSec = lib.mkForce "10min";
   };
+
+  # sd-switch, which home-manager activation uses to restart changed user
+  # units, waits only 120s per job by default — less than the daemon's real
+  # ~2m15s time-to-ready on this corpus. The 2026-08-08 nightly deploy failed
+  # exactly there: the daemon started clean in 130.9s (#428 renewing the
+  # per-phase budget in-loop) while sd-switch had already given up ("timed out
+  # waiting on channel"), failing home-manager-tom.service and rolling back an
+  # otherwise-good generation. Match the daemon's 10min start ceiling; this is
+  # a maximum wait, not a delay.
+  systemd.user.servicesStartTimeoutMs = lib.mkIf isCoordinator 600000;
 }
