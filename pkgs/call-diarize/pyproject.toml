@@ -7,4 +7,3 @@ dependencies = []
 
 [tool.uv]
 package = false
-
