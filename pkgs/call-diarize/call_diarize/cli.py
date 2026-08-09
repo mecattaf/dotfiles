@@ -7,8 +7,10 @@ import gc
 import hashlib
 import math
 import os
+import shutil
 import sys
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -150,6 +152,36 @@ def _ensure_run_config(raw_root: Path, expected: dict[str, Any]) -> None:
             )
         return
     write_json_exclusive(path, expected)
+
+
+def _prepare_raw_root(call_dir: Path) -> Path:
+    """Start incomplete reruns with a clean evidence directory.
+
+    Evidence from a run that reached its final transcript remains protected. If
+    no transcript was published, preserve the interrupted run wholesale under
+    a timestamped sibling before creating the new run's evidence root.
+    """
+
+    raw_root = call_dir / "asr-raw"
+    transcript_path = call_dir / "transcript.md"
+    raw_root_exists = raw_root.exists() or raw_root.is_symlink()
+    if raw_root_exists and not transcript_path.exists():
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+        quarantine_base = call_dir / f"asr-raw.stale-{timestamp}"
+        quarantine = quarantine_base
+        suffix = 2
+        while quarantine.exists() or quarantine.is_symlink():
+            quarantine = quarantine_base.with_name(
+                f"{quarantine_base.name}-{suffix}"
+            )
+            suffix += 1
+        shutil.move(str(raw_root), str(quarantine))
+        print(
+            f"call-diarize: quarantined partial evidence: {raw_root} -> {quarantine}",
+            flush=True,
+        )
+    raw_root.mkdir(parents=True, exist_ok=True)
+    return raw_root
 
 
 def _load_or_transcribe(
@@ -431,8 +463,7 @@ def execute(args: argparse.Namespace) -> int:
         flush=True,
     )
 
-    raw_root = call_dir / "asr-raw"
-    raw_root.mkdir(parents=True, exist_ok=True)
+    raw_root = _prepare_raw_root(call_dir)
     _ensure_run_config(raw_root, _run_config(call_dir, hotwords))
 
     selected_by_track: dict[str, list[tuple[Window, dict[str, Any], str]]] = {
