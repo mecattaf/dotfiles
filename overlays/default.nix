@@ -1,3 +1,4 @@
+{ torchRocm }:
 final: prev: {
   # Add-only overlay + a single scoped upstream override (niri, below).
   # Everything else is already in nixpkgs and referenced directly.
@@ -78,6 +79,12 @@ final: prev: {
 
   # Personal git-backed CRM CLI, vendored with its package definition.
   crm = final.callPackage ../pkgs/crm/nix/package.nix { };
+
+  # VibeVoice call transcription. Torch is the gfx1151 ROCm wheel bundle from
+  # nix-strix-halo; pure-Python runtime pieces stay on this flake's Python pin.
+  call-diarize = final.callPackage ../pkgs/call-diarize {
+    inherit torchRocm;
+  };
 
   # cliamp — terminal music player (Winamp-inspired TUI). Not in nixpkgs (2026-07-06).
   # Connects to navidrome via Subsonic API. Config at home/dot_config/cliamp/.

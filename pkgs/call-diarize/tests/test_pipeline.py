@@ -1,0 +1,138 @@
+from __future__ import annotations
+
+import tempfile
+import unittest
+from pathlib import Path
+
+from call_diarize.cleanup import extract_json_object, reduce_consensus, validate_decisions
+from call_diarize.pipeline import (
+    Window,
+    candidate_shards,
+    decoder_loop_reason,
+    lexical_duplicate_target,
+    validate_asr_result,
+)
+
+
+def window(seconds: float = 30.0) -> Window:
+    return Window("near", 0.0, 30, seconds, Path("unused.wav"))
+
+
+def support(value: float = 0.8):
+    return lambda _track, _start, _end: {"near": value, "far": 0.0, "selected": value}
+
+
+def row(source_id: str, text: str, start: float, end: float) -> dict:
+    return {
+        "source_id": source_id,
+        "track": "near",
+        "speaker": "Thomas",
+        "start": start,
+        "end": end,
+        "text": text,
+        "kind": "speech",
+    }
+
+
+class StructuralValidationTests(unittest.TestCase):
+    def test_accepts_strict_supported_segments(self) -> None:
+        result = {
+            "segments": [
+                {"start_time": 0.0, "end_time": 2.0, "speaker_id": 7, "text": "Hello there."},
+                {"start_time": 2.0, "end_time": 30.0, "text": "[Silence]"},
+            ]
+        }
+        validation = validate_asr_result(result, window(), support())
+        self.assertTrue(validation.accepted)
+        self.assertEqual(validation.reasons, ())
+
+    def test_rejects_timestamp_outside_actual_tail(self) -> None:
+        result = {"segments": [{"start_time": 0.0, "end_time": 6.1, "text": "Hello."}]}
+        validation = validate_asr_result(result, window(6.0), support())
+        self.assertFalse(validation.accepted)
+        self.assertIn("violates", validation.reasons[0])
+
+    def test_rejects_decoder_loop(self) -> None:
+        text = "where " * 12
+        self.assertIsNotNone(decoder_loop_reason(text))
+        validation = validate_asr_result(
+            {"segments": [{"start_time": 0.0, "end_time": 2.0, "text": text}]},
+            window(),
+            support(),
+        )
+        self.assertFalse(validation.accepted)
+        self.assertTrue(any("decoder loop" in reason for reason in validation.reasons))
+
+    def test_rejects_low_channel_support(self) -> None:
+        result = {"segments": [{"start_time": 0.0, "end_time": 2.0, "text": "Real words."}]}
+        validation = validate_asr_result(result, window(), support(0.05))
+        self.assertFalse(validation.accepted)
+        self.assertEqual(len(validation.low_support_rows), 1)
+
+
+class CleanupContractTests(unittest.TestCase):
+    def test_shards_never_exceed_ten(self) -> None:
+        rows = [row(f"s{index}", "words", index, index + 1) for index in range(23)]
+        shards = candidate_shards(rows)
+        self.assertEqual([item["candidate_count"] for item in shards], [10, 10, 3])
+
+    def test_extracts_object_with_best_source_accounting(self) -> None:
+        text = (
+            'example {"shard_id":"000","decisions":[]}\n'
+            'answer {"shard_id":"000","decisions":['
+            '{"source_id":"a","action":"keep","duplicate_of":null},'
+            '{"source_id":"b","action":"keep","duplicate_of":null}]}'
+        )
+        value = extract_json_object(text, {"a", "b"})
+        self.assertEqual(len(value["decisions"]), 2)
+
+    def test_decisions_are_exact_and_non_mergeable(self) -> None:
+        shard = {
+            "shard_id": "000",
+            "candidates": [row("a", "one", 0, 1), row("b", "two", 1, 2)],
+        }
+        value = {
+            "shard_id": "000",
+            "decisions": [
+                {"source_id": "a", "action": "keep", "duplicate_of": None},
+                {"source_id": "b", "action": "duplicate", "duplicate_of": "a"},
+            ],
+        }
+        normalized = validate_decisions(value, shard, {"a": 0, "b": 1})
+        self.assertEqual([item["source_id"] for item in normalized], ["a", "b"])
+
+    def test_drop_requires_both_models_and_lexical_match(self) -> None:
+        first = row("a", "This is an unmistakable repeated sentence.", 0, 3)
+        second = row("b", "This is an unmistakable repeated sentence.", 3, 6)
+        keep = {"source_id": "a", "action": "keep", "duplicate_of": None, "reason": ""}
+        duplicate = {"source_id": "b", "action": "duplicate", "duplicate_of": "a", "reason": ""}
+        decisions = {
+            "gemma": {"a": keep, "b": duplicate},
+            "qwen": {"a": keep, "b": duplicate},
+        }
+        kept, dropped, _ = reduce_consensus([first, second], decisions)
+        self.assertEqual([item["source_id"] for item in kept], ["a"])
+        self.assertEqual([item["source_id"] for item in dropped], ["b"])
+
+        decisions["qwen"]["b"] = {
+            "source_id": "b",
+            "action": "keep",
+            "duplicate_of": None,
+            "reason": "",
+        }
+        kept, dropped, disagreements = reduce_consensus([first, second], decisions)
+        self.assertEqual(len(kept), 2)
+        self.assertEqual(dropped, [])
+        self.assertEqual(len(disagreements), 1)
+
+    def test_lexical_match_is_same_channel_and_nearby(self) -> None:
+        prior = row("a", "This is an unmistakable repeated sentence.", 0, 3)
+        current = row("b", "This is an unmistakable repeated sentence.", 3, 6)
+        self.assertEqual(lexical_duplicate_target(current, [prior]), "a")
+        current["track"] = "far"
+        self.assertIsNone(lexical_duplicate_target(current, [prior]))
+
+
+if __name__ == "__main__":
+    unittest.main()
+
