@@ -1,0 +1,4 @@
+interface:
+  display_name: "CRM"
+  short_description: "Operate the local CRM safely from an agent"
+  default_prompt: "Use $crm to capture a conversation and update the relationship dossier."

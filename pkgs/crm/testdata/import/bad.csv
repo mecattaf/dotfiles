@@ -1,0 +1,4 @@
+first_name,last_name,category,org_name,job_title,email,phone,linkedin,twitter,website,location,context,relationship_hint,provenance_sources,provenance_details
+Valid,Before,,,Analyst,valid.before@example.com,,,,,,,,,
+,,, ,Missing name,not-an-email,,,,,,,,,
+Valid,After,,,Partner,valid.after@example.com,,,,,,,,,

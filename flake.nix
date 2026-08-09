@@ -473,6 +473,7 @@
           inherit (pkgs)
             academic-ocr
             brother-print-text
+            crm
             local-ai-monthly
             mactahoe-gtk-theme
             mactahoe-icon-theme

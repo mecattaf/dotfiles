@@ -76,6 +76,9 @@ final: prev: {
   # packaged from the upstream release binary (Bun compile). See pkgs/backlog-md.nix.
   backlog-md = final.callPackage ../pkgs/backlog-md.nix { };
 
+  # Personal git-backed CRM CLI, vendored with its package definition.
+  crm = final.callPackage ../pkgs/crm/nix/package.nix { };
+
   # cliamp — terminal music player (Winamp-inspired TUI). Not in nixpkgs (2026-07-06).
   # Connects to navidrome via Subsonic API. Config at home/dot_config/cliamp/.
   # CGO on Linux via ebitengine/oto → ALSA. See pkgs/cliamp.nix.
