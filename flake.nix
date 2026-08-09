@@ -874,11 +874,6 @@
           assert coordinator.microvm.host.enable;
           assert !(self.nixosConfigurations.coordinator.options.myArtifacts ? livePortRange);
           assert !coordinator.home-manager.users.tom.services.tally.pools.coordinator-gpu.hardPreempt;
-          assert coordinator.systemd.timers.tripwire-gpu-cooldown.timerConfig.OnUnitActiveSec == "30s";
-          assert coordinator.systemd.services.tripwire-gpu-cooldown.environment.TRIPWIRE_SUSTAIN == "120";
-          assert coordinator.systemd.services.tripwire-gpu-cooldown.environment.COOLDOWN_MINUTES == "8";
-          assert
-            coordinator.systemd.services.tripwire-gpu-cooldown.environment.TRIPWIRE_VALUE_FIELD == "TEMP_C";
           # Crash surfacing (#134): the blanket OnFailure handler and both journal watchers exist.
           assert coordinator.systemd.services."failure-notify@".serviceConfig.Type == "oneshot";
           assert coordinator.systemd.timers ? tripwire-coredump;
@@ -903,71 +898,6 @@
             fi
             touch "$out"
           '';
-
-        gpu-cooldown-parity = pkgs.runCommand "gpu-cooldown-parity" { } ''
-          export PATH=${
-            nixpkgs.lib.makeBinPath [
-              pkgs.coreutils
-              pkgs.util-linux
-            ]
-          }:$PATH
-          mkdir -p "$TMPDIR/hwmon/hwmon0" "$TMPDIR/state"
-          echo k10temp > "$TMPDIR/hwmon/hwmon0/name"
-          echo Tctl > "$TMPDIR/hwmon/hwmon0/temp1_label"
-          echo 86000 > "$TMPDIR/hwmon/hwmon0/temp1_input"
-
-          # The sensor reports the trip point belonging to whichever node it read.
-          HWMON_ROOT="$TMPDIR/hwmon" \
-            ${pkgs.bash}/bin/bash ${./modules/tripwire-gpu-sensor.sh} > "$TMPDIR/sample"
-          ${pkgs.gnugrep}/bin/grep -Fx '86 k10temp:Tctl 85' "$TMPDIR/sample"
-
-          echo 0 > "$TMPDIR/onfire.exit"
-          cat > "$TMPDIR/sensor" <<EOF
-          #!${pkgs.runtimeShell}
-          cat "$TMPDIR/sample"
-          EOF
-          cat > "$TMPDIR/onfire" <<EOF
-          #!${pkgs.runtimeShell}
-          printf '%s\n' "\$*" >> "$TMPDIR/onfire.args"
-          exit \$(cat "$TMPDIR/onfire.exit")
-          EOF
-          chmod +x "$TMPDIR/sensor" "$TMPDIR/onfire"
-
-          poll() {
-            STATE_DIRECTORY="$TMPDIR/state" \
-              TRIPWIRE_NAME=gpu-cooldown \
-              TRIPWIRE_SENSOR="$TMPDIR/sensor" \
-              TRIPWIRE_ONFIRE="$TMPDIR/onfire" \
-              TRIPWIRE_THRESHOLD=95 TRIPWIRE_REARM=75 \
-              TRIPWIRE_SUSTAIN=0 TRIPWIRE_REFRACTORY=540 \
-              TRIPWIRE_COMPARISON=ge TRIPWIRE_VALUE_FIELD=TEMP_C \
-              ${pkgs.bash}/bin/bash ${./modules/tripwire-poll.sh}
-          }
-
-          # A failed onFire must fail the poll and leave the tripwire armed on the
-          # SAME episode, so the retry presents an identical dedup key. That identity
-          # — the label set, never a sample value or the current time — is the #135 fix.
-          echo 1 > "$TMPDIR/onfire.exit"
-          if poll; then echo "a failing onFire must fail the poll" >&2; exit 1; fi
-          ${pkgs.gnugrep}/bin/grep -Fx 'armed=1' "$TMPDIR/state/state"
-
-          echo 0 > "$TMPDIR/onfire.exit"
-          poll
-          ${pkgs.gnugrep}/bin/grep -Fx 'armed=0' "$TMPDIR/state/state"
-
-          test "$(${pkgs.coreutils}/bin/wc -l < "$TMPDIR/onfire.args")" = 2
-          test "$(${pkgs.coreutils}/bin/sort -u "$TMPDIR/onfire.args" | ${pkgs.coreutils}/bin/wc -l)" = 1
-          ${pkgs.gnugrep}/bin/grep -qE '^86 k10temp:Tctl 85 k10temp:Tctl-[0-9]+$' "$TMPDIR/onfire.args"
-
-          # The adapter keys tally's dedup on that episode id, and still takes the
-          # non-preemptive interrupt-priority hold on coordinator-gpu.
-          for needle in 'COOLDOWN_POOL:-coordinator-gpu' 'COOLDOWN_PRIORITY:-interrupt' \
-                        '--no-enqueue' '--evidence exit:0' \
-                        'dedup="gpu-cooldown-coordinator-''${episode_id}"'; do
-            ${pkgs.gnugrep}/bin/grep -F -- "$needle" ${./modules/gpu-cooldown-enqueue.sh} > /dev/null
-          done
-          touch "$out"
-        '';
 
         deadnix = pkgs.runCommand "deadnix" { } ''
           ${pkgs.deadnix}/bin/deadnix --fail --no-lambda-pattern-names \

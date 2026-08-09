@@ -33,11 +33,6 @@ let
     unit
   ];
 
-  # The GPU cooldown enqueue moved into the tripwire's onFire adapter
-  # (modules/gpu-cooldown-enqueue.sh, #135 ws2): the dedup key must be the
-  # episode identity the state machine persists, which a fixed receiver here
-  # could never see. tally is touched only by that adapter.
-
   # Steward narration shim (wave-3 estate E6, dotfiles#138). The publish node
   # hands a JSON narration request on stdin and reads the proposal back from
   # the one TALLY_FINAL_MESSAGE= line; the proposal is text only —

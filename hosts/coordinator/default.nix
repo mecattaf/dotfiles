@@ -29,8 +29,6 @@
     # Durable microVM host. Guest ports used as live-artifact origins are
     # forwarded to coordinator loopback and consumed locally by Caddy.
     ../../modules/microvm-host.nix
-    # Local GPU temperature tripwire; its Tally hold targets coordinator-gpu.
-    ../../modules/gpu-cooldown.nix
     ../../modules/cli-anything.nix
     ../../modules/strix.nix
   ];
@@ -45,20 +43,6 @@
   myCoordinatorMedia.enable = false;
   myNasClient.useRemoteStorage = true;
   myNasClient.relayMedia = true;
-  services.gpuCooldownTripwire = {
-    enable = true;
-    # Retuned 2026-07-29 after the academic-ocr supervised run: sustained VLM
-    # inference sits near the old 85C Tctl default, so the tripwire fired
-    # mid-run and then held coordinator-gpu for 30 minutes while the die sat
-    # at 52C. Strix Halo firmware self-throttles near 100C; the tripwire is a
-    # backstop, not the primary governor. Trip later, hold briefly: the die
-    # returns to ambient-idle temperature within a couple of minutes.
-    tctlThresholdC = 93;
-    junctionThresholdC = 95;
-    sustainSeconds = 120;
-    cooldownMinutes = 8;
-  };
-
   # Flipped post-flash after the zero-TOFU host-key check (2026-07-05): the
   # delivered /etc/ssh/ssh_host_ed25519_key matched mesh-registry.nix, so
   # agenix may now decrypt against it.
