@@ -48,7 +48,9 @@ def _http_json(
     headers = {"Accept": "application/json"}
     if body is not None:
         headers["Content-Type"] = "application/json"
-    request = urllib.request.Request(url, data=body, headers=headers, method="GET" if body is None else "POST")
+    request = urllib.request.Request(
+        url, data=body, headers=headers, method="GET" if body is None else "POST"
+    )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             value = json.loads(response.read().decode("utf-8"))
@@ -71,7 +73,9 @@ def preflight_models(endpoint: str, timeout: int = 10) -> list[str]:
     )
     missing = sorted(set(MODELS.values()) - set(advertised))
     if missing:
-        raise RuntimeError(f"llama-swap does not advertise required cleanup models: {missing}")
+        raise RuntimeError(
+            f"llama-swap does not advertise required cleanup models: {missing}"
+        )
     return advertised
 
 
@@ -105,14 +109,22 @@ def validate_decisions(
 ) -> list[dict[str, Any]]:
     shard_id = str(shard["shard_id"])
     if str(value.get("shard_id", "")).zfill(len(shard_id)) != shard_id:
-        raise ValueError(f"wrong shard_id {value.get('shard_id')!r}; expected {shard_id}")
+        raise ValueError(
+            f"wrong shard_id {value.get('shard_id')!r}; expected {shard_id}"
+        )
     expected = [str(candidate["source_id"]) for candidate in shard["candidates"]]
     decisions = value.get("decisions")
     if not isinstance(decisions, list) or len(decisions) != len(expected):
-        raise ValueError(f"expected {len(expected)} decisions, got {len(decisions or [])}")
-    actual = [item.get("source_id") if isinstance(item, dict) else None for item in decisions]
+        raise ValueError(
+            f"expected {len(expected)} decisions, got {len(decisions or [])}"
+        )
+    actual = [
+        item.get("source_id") if isinstance(item, dict) else None for item in decisions
+    ]
     if actual != expected:
-        raise ValueError("decision IDs are missing, duplicated, invented, or out of order")
+        raise ValueError(
+            "decision IDs are missing, duplicated, invented, or out of order"
+        )
     normalized: list[dict[str, Any]] = []
     for item, source_id in zip(decisions, expected, strict=True):
         action = item.get("action")
@@ -121,7 +133,9 @@ def validate_decisions(
         duplicate_of = item.get("duplicate_of")
         if action == "duplicate":
             if not isinstance(duplicate_of, str) or duplicate_of not in global_order:
-                raise ValueError(f"invalid duplicate target for {source_id}: {duplicate_of!r}")
+                raise ValueError(
+                    f"invalid duplicate target for {source_id}: {duplicate_of!r}"
+                )
             if global_order[duplicate_of] >= global_order[source_id]:
                 raise ValueError(f"duplicate target is not earlier for {source_id}")
         elif duplicate_of is not None:
@@ -190,7 +204,9 @@ def run_model_shard(
     correction = ""
     errors: list[str] = []
     for attempt in range(1, retries + 1):
-        user_text = json.dumps(candidate_payload, ensure_ascii=False, separators=(",", ":"))
+        user_text = json.dumps(
+            candidate_payload, ensure_ascii=False, separators=(",", ":")
+        )
         if correction:
             user_text += f"\nYour prior response was rejected: {correction}. Return a complete corrected object."
         request_payload = {
@@ -226,7 +242,9 @@ def run_model_shard(
         except Exception as exc:
             correction = str(exc)
             errors.append(correction)
-            attempt_path = output_dir / f"shard-{shard['shard_id']}.attempt-{attempt:02d}.json"
+            attempt_path = (
+                output_dir / f"shard-{shard['shard_id']}.attempt-{attempt:02d}.json"
+            )
             write_json_exclusive(
                 attempt_path,
                 {
@@ -330,4 +348,3 @@ def reduce_consensus(
                 }
             )
     return kept, dropped, disagreements
-

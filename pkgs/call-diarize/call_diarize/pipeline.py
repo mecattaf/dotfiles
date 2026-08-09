@@ -83,6 +83,32 @@ def is_unavailable(text: str) -> bool:
     return lowered in UNAVAILABLE_TEXT or "decoder repetition" in lowered
 
 
+def normalize_asr_segments(value: object) -> object:
+    """Normalize the native v5 parser shape to the proven legacy contract."""
+
+    if not isinstance(value, list):
+        return value
+    normalized: list[object] = []
+    for segment in value:
+        if not isinstance(segment, dict):
+            normalized.append(segment)
+            continue
+        native_keys = {"Start", "End", "Content"}
+        legacy_keys = {"start_time", "end_time", "text"}
+        if native_keys <= segment.keys() and not (legacy_keys & segment.keys()):
+            item = {
+                "start_time": segment["Start"],
+                "end_time": segment["End"],
+                "text": segment["Content"],
+            }
+            if "Speaker" in segment:
+                item["speaker_id"] = segment["Speaker"]
+            normalized.append(item)
+        else:
+            normalized.append(segment)
+    return normalized
+
+
 def decoder_loop_reason(text: str) -> str | None:
     """Detect unmistakable decoder loops while leaving ordinary stutters alone."""
 
@@ -129,11 +155,15 @@ def validate_capture_files(call_dir: Path) -> dict[str, float]:
             raise ValueError(f"missing required recording: {path}")
         durations[track] = wav_seconds(path, expected_rate=48_000)
     if max(durations.values()) - min(durations.values()) > 1.0:
-        raise ValueError(f"recording track durations differ by more than one second: {durations}")
+        raise ValueError(
+            f"recording track durations differ by more than one second: {durations}"
+        )
     return durations
 
 
-def segment_track(source: Path, track: str, seconds: int, output_dir: Path) -> list[Window]:
+def segment_track(
+    source: Path, track: str, seconds: int, output_dir: Path
+) -> list[Window]:
     """Use ffmpeg's segment muxer to make aligned 24 kHz model inputs."""
 
     track_dir = output_dir / f"{track}-{seconds:02d}s"
@@ -259,9 +289,9 @@ class AudioActivity:
         first = max(0, min(handle.getnframes(), round(start * self.rate)))
         last = max(first + 1, min(handle.getnframes(), round(end * self.rate)))
         handle.setpos(first)
-        values = self._np.frombuffer(handle.readframes(last - first), dtype="<i2").astype(
-            self._np.float32
-        )
+        values = self._np.frombuffer(
+            handle.readframes(last - first), dtype="<i2"
+        ).astype(self._np.float32)
         if not len(values):
             return 0.0
         values /= 32768.0
@@ -277,7 +307,9 @@ class AudioActivity:
     def support(self, track: str, start: float, end: float) -> dict[str, float]:
         near = self.activity_fraction("near", start, end)
         far = self.activity_fraction("far", start, end)
-        selected = near if track == "near" else far if track == "far" else max(near, far)
+        selected = (
+            near if track == "near" else far if track == "far" else max(near, far)
+        )
         return {
             "near": round(near, 4),
             "far": round(far, 4),
@@ -301,9 +333,11 @@ def validate_asr_result(
 
     reasons: list[str] = []
     low_support: list[dict[str, Any]] = []
-    segments = result.get("segments")
+    segments = normalize_asr_segments(result.get("segments"))
     if not isinstance(segments, list) or not segments:
-        return Validation(False, ("ASR output was not a non-empty strict segment list",), ())
+        return Validation(
+            False, ("ASR output was not a non-empty strict segment list",), ()
+        )
 
     previous_start = 0.0
     previous_end = 0.0
@@ -363,7 +397,12 @@ def segments_to_rows(
     support: Callable[[str, float, float], dict[str, float]],
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for ordinal, segment in enumerate(result["segments"]):
+    segments = normalize_asr_segments(result["segments"])
+    if not isinstance(segments, list):
+        raise ValueError("ASR segments were not a list")
+    for ordinal, segment in enumerate(segments):
+        if not isinstance(segment, dict):
+            raise ValueError(f"ASR segment {ordinal} was not an object")
         text = str(segment["text"]).strip()
         if is_non_speech(text):
             continue
@@ -391,7 +430,9 @@ def segments_to_rows(
     return rows
 
 
-def unavailable_row(window: Window, raw_path: str, reasons: Iterable[str]) -> dict[str, Any]:
+def unavailable_row(
+    window: Window, raw_path: str, reasons: Iterable[str]
+) -> dict[str, Any]:
     return {
         "source_id": (
             f"{window.track}-{round(window.start * 1000):012d}-"
@@ -432,7 +473,9 @@ def lexical_duplicate_target(
     if len(current) < 12:
         return None
     for previous in reversed(list(prior_rows)):
-        if previous.get("kind") != "speech" or previous.get("track") != candidate.get("track"):
+        if previous.get("kind") != "speech" or previous.get("track") != candidate.get(
+            "track"
+        ):
             continue
         if float(candidate["start"]) - float(previous["end"]) > 12.0:
             break
@@ -440,10 +483,9 @@ def lexical_duplicate_target(
         if len(prior) < 12:
             continue
         similarity = SequenceMatcher(None, prior, current).ratio()
-        containment = (
-            min(len(prior), len(current)) / max(len(prior), len(current)) >= 0.60
-            and (prior in current or current in prior)
-        )
+        containment = min(len(prior), len(current)) / max(
+            len(prior), len(current)
+        ) >= 0.60 and (prior in current or current in prior)
         if similarity >= 0.92 or containment:
             return str(previous["source_id"])
     return None
@@ -490,7 +532,9 @@ def mixed_lexical_conflicts(
     return conflicts
 
 
-def candidate_shards(rows: list[dict[str, Any]], limit: int = 10) -> list[dict[str, Any]]:
+def candidate_shards(
+    rows: list[dict[str, Any]], limit: int = 10
+) -> list[dict[str, Any]]:
     if limit < 1 or limit > 10:
         raise ValueError("cleanup shard limit must be between one and ten")
     return [
@@ -545,4 +589,3 @@ def write_text_final(path: Path, text: str, force: bool) -> None:
     finally:
         if temporary.exists():
             temporary.unlink()
-

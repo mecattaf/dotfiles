@@ -1,15 +1,20 @@
 from __future__ import annotations
 
-import tempfile
 import unittest
 from pathlib import Path
 
-from call_diarize.cleanup import extract_json_object, reduce_consensus, validate_decisions
+from call_diarize.asr import map_legacy_key
+from call_diarize.cleanup import (
+    extract_json_object,
+    reduce_consensus,
+    validate_decisions,
+)
 from call_diarize.pipeline import (
     Window,
     candidate_shards,
     decoder_loop_reason,
     lexical_duplicate_target,
+    normalize_asr_segments,
     validate_asr_result,
 )
 
@@ -35,16 +40,46 @@ def row(source_id: str, text: str, start: float, end: float) -> dict:
 
 
 class StructuralValidationTests(unittest.TestCase):
+    def test_official_checkpoint_mapping_chains_rewrites(self) -> None:
+        old_key = (
+            "model.acoustic_tokenizer.encoder.stages.3.0.mixer.conv.conv.conv.weight"
+        )
+        self.assertEqual(
+            map_legacy_key(old_key),
+            "acoustic_tokenizer_encoder.conv_layers.2.stage.0.mixer.conv.weight",
+        )
+        self.assertEqual(
+            map_legacy_key(
+                "model.semantic_tokenizer.encoder."
+                "downsample_layers.1.0.conv.conv.weight"
+            ),
+            "semantic_tokenizer_encoder.conv_layers.0.conv.conv.weight",
+        )
+
     def test_accepts_strict_supported_segments(self) -> None:
         result = {
             "segments": [
-                {"start_time": 0.0, "end_time": 2.0, "speaker_id": 7, "text": "Hello there."},
+                {
+                    "start_time": 0.0,
+                    "end_time": 2.0,
+                    "speaker_id": 7,
+                    "text": "Hello there.",
+                },
                 {"start_time": 2.0, "end_time": 30.0, "text": "[Silence]"},
             ]
         }
         validation = validate_asr_result(result, window(), support())
         self.assertTrue(validation.accepted)
         self.assertEqual(validation.reasons, ())
+
+    def test_normalizes_transformers_v5_segment_shape(self) -> None:
+        value = [{"Start": 0.0, "End": 2.0, "Speaker": 4, "Content": "Hello."}]
+        self.assertEqual(
+            normalize_asr_segments(value),
+            [{"start_time": 0.0, "end_time": 2.0, "speaker_id": 4, "text": "Hello."}],
+        )
+        validation = validate_asr_result({"segments": value}, window(), support())
+        self.assertTrue(validation.accepted)
 
     def test_rejects_timestamp_outside_actual_tail(self) -> None:
         result = {"segments": [{"start_time": 0.0, "end_time": 6.1, "text": "Hello."}]}
@@ -64,7 +99,9 @@ class StructuralValidationTests(unittest.TestCase):
         self.assertTrue(any("decoder loop" in reason for reason in validation.reasons))
 
     def test_rejects_low_channel_support(self) -> None:
-        result = {"segments": [{"start_time": 0.0, "end_time": 2.0, "text": "Real words."}]}
+        result = {
+            "segments": [{"start_time": 0.0, "end_time": 2.0, "text": "Real words."}]
+        }
         validation = validate_asr_result(result, window(), support(0.05))
         self.assertFalse(validation.accepted)
         self.assertEqual(len(validation.low_support_rows), 1)
@@ -105,7 +142,12 @@ class CleanupContractTests(unittest.TestCase):
         first = row("a", "This is an unmistakable repeated sentence.", 0, 3)
         second = row("b", "This is an unmistakable repeated sentence.", 3, 6)
         keep = {"source_id": "a", "action": "keep", "duplicate_of": None, "reason": ""}
-        duplicate = {"source_id": "b", "action": "duplicate", "duplicate_of": "a", "reason": ""}
+        duplicate = {
+            "source_id": "b",
+            "action": "duplicate",
+            "duplicate_of": "a",
+            "reason": "",
+        }
         decisions = {
             "gemma": {"a": keep, "b": duplicate},
             "qwen": {"a": keep, "b": duplicate},
@@ -135,4 +177,3 @@ class CleanupContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

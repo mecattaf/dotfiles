@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import gc
 import hashlib
-import json
 import math
 import os
 import sys
@@ -31,7 +30,6 @@ from .pipeline import (
     unavailable_row,
     validate_asr_result,
     validate_capture_files,
-    words,
     write_json_exclusive,
     write_text_final,
 )
@@ -90,7 +88,9 @@ def parser() -> argparse.ArgumentParser:
         default=1024,
         help=argparse.SUPPRESS,
     )
-    result.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    result.add_argument(
+        "--version", action="version", version=f"%(prog)s {__version__}"
+    )
     return result
 
 
@@ -165,7 +165,10 @@ def _load_or_transcribe(
         value = load_json(path)
         if value.get("request") != expected:
             raise RuntimeError(f"cached ASR request identity mismatch: {path}")
-        print(f"ASR cached {window.track} {window.start:.2f}s/{window.nominal_seconds}s", flush=True)
+        print(
+            f"ASR cached {window.track} {window.start:.2f}s/{window.nominal_seconds}s",
+            flush=True,
+        )
         return value, str(relative)
     print(
         f"ASR {window.track} {window.start:.2f}s/{window.nominal_seconds}s "
@@ -283,6 +286,13 @@ def _render_transcript(rows: list[dict[str, Any]], manifest: dict[str, Any]) -> 
                 "",
             ]
         )
+    if not rows:
+        lines.extend(
+            [
+                "_No speech was detected in the near or far recording channels._",
+                "",
+            ]
+        )
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -390,14 +400,18 @@ def execute(args: argparse.Namespace) -> int:
     transcript_path = call_dir / "transcript.md"
     review_path = call_dir / "review-queue.md"
     if transcript_path.exists() and not args.force:
-        print(f"call-diarize: transcript already exists, nothing to do: {transcript_path}")
+        print(
+            f"call-diarize: transcript already exists, nothing to do: {transcript_path}"
+        )
         return 0
     if not call_dir.is_dir():
         raise ValueError(f"call directory does not exist: {call_dir}")
     if review_path.exists() and not args.force:
         # A matching partial publication is accepted later; an unrelated file
         # remains protected by the final content comparison.
-        print(f"call-diarize: found partial review artifact; it will be verified: {review_path}")
+        print(
+            f"call-diarize: found partial review artifact; it will be verified: {review_path}"
+        )
 
     durations = validate_capture_files(call_dir)
     hotwords = collect_hotwords(args.hotwords, args.hotwords_file)
@@ -474,12 +488,6 @@ def execute(args: argparse.Namespace) -> int:
             mixed = _rows_from_selected(selected_by_track["mix"], activity)
             lexical_conflicts = mixed_lexical_conflicts(isolated, mixed)
 
-    speech_rows = [row for row in isolated if row["kind"] == "speech"]
-    if not speech_rows or sum(len(words(str(row["text"]))) for row in speech_rows) < 2:
-        raise RuntimeError(
-            "VibeVoice produced no plausible speech; refusing to publish an empty transcript"
-        )
-
     shards = candidate_shards(isolated, limit=10)
     row_index = {row["source_id"]: index for index, row in enumerate(isolated)}
     for shard in shards:
@@ -509,7 +517,9 @@ def execute(args: argparse.Namespace) -> int:
             leaf_counts[str(window.nominal_seconds)] += 1
             if isinstance(result.get("runtime"), dict):
                 runtime_records.append(result["runtime"])
-    generation_seconds = sum(float(item.get("generation_seconds", 0)) for item in runtime_records)
+    generation_seconds = sum(
+        float(item.get("generation_seconds", 0)) for item in runtime_records
+    )
     audio_seconds = sum(float(item.get("audio_seconds", 0)) for item in runtime_records)
     manifest = {
         "schema": 1,
@@ -530,7 +540,9 @@ def execute(args: argparse.Namespace) -> int:
         "asr_audio_seconds": round(audio_seconds, 3),
         "asr_realtime_factor": round(generation_seconds / max(audio_seconds, 0.001), 3),
         "all_inference_gpu_backed": bool(runtime_records)
-        and all(item.get("device_name") == gpu["device_name"] for item in runtime_records),
+        and all(
+            item.get("device_name") == gpu["device_name"] for item in runtime_records
+        ),
     }
     if not manifest["all_inference_gpu_backed"]:
         raise RuntimeError("ASR runtime evidence did not prove GPU-backed inference")
@@ -538,7 +550,9 @@ def execute(args: argparse.Namespace) -> int:
     manifest_path = raw_root / "manifest.json"
     if manifest_path.exists():
         if load_json(manifest_path) != manifest:
-            raise RuntimeError(f"refusing to overwrite different run manifest: {manifest_path}")
+            raise RuntimeError(
+                f"refusing to overwrite different run manifest: {manifest_path}"
+            )
     else:
         write_json_exclusive(manifest_path, manifest)
 
@@ -574,4 +588,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

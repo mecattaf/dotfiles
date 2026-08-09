@@ -35,6 +35,9 @@ fi
 # this setup hook. It is immutable and part of the package closure.
 source "${CALL_DIARIZE_TORCH_ROOT}/nix-support/setup-hook"
 export CALL_DIARIZE_STATE_ROOT="${call_diarize_state}"
+# Bound cold-cache host staging to one shard read at a time before the complete
+# model moves into Strix Halo's unified GTT allocation.
+export HF_DEACTIVATE_ASYNC_LOAD=1
 export HF_DATASETS_OFFLINE=1
 export HF_HUB_OFFLINE=1
 export PYTHONNOUSERSITE=1
@@ -43,4 +46,3 @@ export TOKENIZERS_PARALLELISM=false
 export TRANSFORMERS_OFFLINE=1
 
 exec "${call_diarize_venv}/bin/python" -m call_diarize.cli "$@"
-
