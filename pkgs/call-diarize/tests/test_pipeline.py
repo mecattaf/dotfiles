@@ -45,7 +45,7 @@ def row(source_id: str, text: str, start: float, end: float) -> dict:
 
 
 class SegmentExtractionTests(unittest.TestCase):
-    def test_initial_and_retry_extraction_overwrite_existing_files(self) -> None:
+    def test_initial_and_retry_extraction_replace_interrupted_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             source = root / "mix.wav"
@@ -56,6 +56,7 @@ class SegmentExtractionTests(unittest.TestCase):
                 handle.writeframes(b"\0\0" * 48_000)
 
             first_segments = segment_track(source, "mix", 1, root)
+            first_segments[0].audio_path.write_bytes(b"interrupted initial extraction")
             second_segments = segment_track(source, "mix", 1, root)
             self.assertEqual(
                 [window.audio_path for window in second_segments],
@@ -64,6 +65,7 @@ class SegmentExtractionTests(unittest.TestCase):
             self.assertAlmostEqual(second_segments[0].actual_seconds, 1.0)
 
             first_retry = slice_track(source, "mix", 0.0, 1, root)
+            first_retry.audio_path.write_bytes(b"interrupted retry extraction")
             second_retry = slice_track(source, "mix", 0.0, 1, root)
             self.assertEqual(second_retry.audio_path, first_retry.audio_path)
             self.assertAlmostEqual(second_retry.actual_seconds, 1.0)
