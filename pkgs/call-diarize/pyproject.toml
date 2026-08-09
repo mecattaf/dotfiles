@@ -1,0 +1,9 @@
+[project]
+name = "call-diarize"
+version = "1.0.0"
+description = "GPU-backed VibeVoice transcription for split call recordings"
+requires-python = "==3.13.*"
+dependencies = []
+
+[tool.uv]
+package = false

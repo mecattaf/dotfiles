@@ -421,7 +421,9 @@
       # explicit per-host deployment/artifact allowlists.
       lib.localModelCatalog = localModelCatalog;
 
-      overlays.default = import ./overlays;
+      overlays.default = import ./overlays {
+        torchRocm = inputs.nix-strix-halo.packages.${system}.torch-rocm;
+      };
 
       nixosConfigurations = {
         coordinator = mkHost { hostModule = ./hosts/coordinator; };
@@ -473,6 +475,7 @@
           inherit (pkgs)
             academic-ocr
             brother-print-text
+            call-diarize
             crm
             local-ai-monthly
             mactahoe-gtk-theme
