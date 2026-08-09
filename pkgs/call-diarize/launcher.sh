@@ -8,7 +8,7 @@ else
 fi
 
 call_diarize_venv="${call_diarize_state}/venv"
-call_diarize_marker="${call_diarize_state}/venv.lock-id"
+call_diarize_marker="${call_diarize_state}/venv.environment-id"
 mkdir -p "${call_diarize_state}"
 
 call_diarize_current_marker=""
@@ -17,7 +17,7 @@ if [[ -f "${call_diarize_marker}" ]]; then
 fi
 
 if [[ ! -x "${call_diarize_venv}/bin/python" ]] ||
-   [[ "${call_diarize_current_marker}" != "${CALL_DIARIZE_LOCK_ID}" ]]; then
+   [[ "${call_diarize_current_marker}" != "${CALL_DIARIZE_ENVIRONMENT_ID}" ]]; then
   echo "call-diarize: materializing pinned Python environment in ${call_diarize_venv}" >&2
   UV_NO_PROGRESS=1 \
     UV_PROJECT_ENVIRONMENT="${call_diarize_venv}" \
@@ -28,7 +28,7 @@ if [[ ! -x "${call_diarize_venv}/bin/python" ]] ||
       --offline \
       --no-install-project \
       --python "${CALL_DIARIZE_PYTHON}"
-  printf '%s\n' "${CALL_DIARIZE_LOCK_ID}" >"${call_diarize_marker}"
+  printf '%s\n' "${CALL_DIARIZE_ENVIRONMENT_ID}" >"${call_diarize_marker}"
 fi
 
 # nix-strix-halo's ROCm wheel bundle carries an exact loader search path in

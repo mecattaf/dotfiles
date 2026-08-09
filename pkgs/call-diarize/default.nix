@@ -20,7 +20,13 @@ let
     python313Packages.transformers
   ];
   runtimePythonPath = "${torchRocm}/lib/python3.13/site-packages:${purePythonPath}";
-  lockId = builtins.hashFile "sha256" ./uv.lock;
+  environmentId = builtins.hashString "sha256" (
+    builtins.concatStringsSep ":" [
+      (builtins.hashFile "sha256" ./uv.lock)
+      (builtins.hashFile "sha256" ./pyproject.toml)
+      (toString python)
+    ]
+  );
 in
 stdenvNoCC.mkDerivation {
   pname = "call-diarize";
@@ -67,7 +73,7 @@ stdenvNoCC.mkDerivation {
           uv
         ]
       } \
-      --set CALL_DIARIZE_LOCK_ID ${lib.escapeShellArg lockId} \
+      --set CALL_DIARIZE_ENVIRONMENT_ID ${lib.escapeShellArg environmentId} \
       --set CALL_DIARIZE_MODEL_SUPPORT "$out/libexec/call-diarize/model-support" \
       --set CALL_DIARIZE_PROJECT "$out/libexec/call-diarize" \
       --set CALL_DIARIZE_PYTHON ${lib.escapeShellArg "${python}/bin/python3"} \
