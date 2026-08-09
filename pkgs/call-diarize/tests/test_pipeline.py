@@ -87,6 +87,26 @@ class StructuralValidationTests(unittest.TestCase):
         self.assertFalse(validation.accepted)
         self.assertIn("violates", validation.reasons[0])
 
+    def test_malformed_segment_is_rejected_without_activity_probe(self) -> None:
+        def unexpected_support(_track: str, _start: float, _end: float) -> dict:
+            raise AssertionError("structurally invalid rows have no valid activity span")
+
+        bad_text = validate_asr_result(
+            {"segments": [{"start_time": 0.0, "end_time": 1.0, "text": 7}]},
+            window(),
+            unexpected_support,
+        )
+        self.assertFalse(bad_text.accepted)
+        self.assertIn("non-string text", bad_text.reasons[0])
+
+        bad_time = validate_asr_result(
+            {"segments": [{"start_time": 0.0, "end_time": 31.0, "text": "Hello."}]},
+            window(),
+            unexpected_support,
+        )
+        self.assertFalse(bad_time.accepted)
+        self.assertIn("violates", bad_time.reasons[0])
+
     def test_rejects_decoder_loop(self) -> None:
         text = "where " * 12
         self.assertIsNotNone(decoder_loop_reason(text))

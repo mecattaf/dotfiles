@@ -354,15 +354,20 @@ def validate_asr_result(
         if not isinstance(text, str):
             reasons.append(f"segment {ordinal} has non-string text")
             continue
+
+        timestamps_valid = True
         if start < 0 or end < start or end > window.actual_seconds:
             reasons.append(
                 f"segment {ordinal} violates 0 <= start <= end <= {window.actual_seconds:.6f} "
                 f"({start:.6f}, {end:.6f})"
             )
+            timestamps_valid = False
         if ordinal and start < previous_start:
             reasons.append(f"segment {ordinal} start timestamp regresses")
+            timestamps_valid = False
         if ordinal and end < previous_end:
             reasons.append(f"segment {ordinal} end timestamp regresses")
+            timestamps_valid = False
         previous_start = max(previous_start, start)
         previous_end = max(previous_end, end)
 
@@ -370,7 +375,12 @@ def validate_asr_result(
         if loop:
             reasons.append(f"segment {ordinal} contains decoder loop: {loop}")
 
-        if not is_non_speech(text) and not is_unavailable(text) and end > start:
+        if (
+            timestamps_valid
+            and not is_non_speech(text)
+            and not is_unavailable(text)
+            and end > start
+        ):
             global_start = window.start + start
             global_end = window.start + end
             evidence = support(window.track, global_start, global_end)

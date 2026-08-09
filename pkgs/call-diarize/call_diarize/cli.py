@@ -198,11 +198,16 @@ def _process_tree(
     selected: list[tuple[Window, dict[str, Any], str]],
     unavailable: list[tuple[Window, str, Validation]],
     rejections: list[dict[str, Any]],
+    runtime_records: list[dict[str, Any]],
 ) -> None:
     level_index = levels.index(initial.nominal_seconds)
 
     def visit(window: Window, index: int) -> None:
         result, raw_path = _load_or_transcribe(engine, window, hotwords, raw_root)
+        runtime = result.get("runtime")
+        if not isinstance(runtime, dict):
+            raise RuntimeError(f"ASR result lacks GPU runtime evidence: {raw_path}")
+        runtime_records.append(runtime)
         validation = validate_asr_result(result, window, activity.support)
         if validation.accepted:
             selected.append((window, result, raw_path))
@@ -468,6 +473,7 @@ def execute(args: argparse.Namespace) -> int:
                             selected_by_track[track],
                             unavailable_by_track[track],
                             rejections,
+                            runtime_records,
                         )
             finally:
                 engine.close()
@@ -513,10 +519,8 @@ def execute(args: argparse.Namespace) -> int:
 
     leaf_counts = {"60": 0, "30": 0, "15": 0}
     for selected in selected_by_track.values():
-        for window, result, _ in selected:
+        for window, _, _ in selected:
             leaf_counts[str(window.nominal_seconds)] += 1
-            if isinstance(result.get("runtime"), dict):
-                runtime_records.append(result["runtime"])
     generation_seconds = sum(
         float(item.get("generation_seconds", 0)) for item in runtime_records
     )
