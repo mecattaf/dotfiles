@@ -5,6 +5,8 @@
   bash,
   coreutils,
   ffmpeg,
+  findutils,
+  jq,
   python313,
   python313Packages,
   uv,
@@ -26,11 +28,26 @@ stdenvNoCC.mkDerivation {
   src = ./.;
 
   nativeBuildInputs = [ makeWrapper ];
-  nativeCheckInputs = [ python313 ];
+  nativeCheckInputs = [
+    bash
+    coreutils
+    findutils
+    jq
+    python313
+  ];
   doCheck = true;
 
   checkPhase = ''
     runHook preCheck
+    ${bash}/bin/bash -n launcher.sh backfill.sh tests/test_backfill.sh
+    PATH=${
+      lib.makeBinPath [
+        coreutils
+        findutils
+        jq
+      ]
+    }:$PATH \
+      ${bash}/bin/bash tests/test_backfill.sh
     PYTHONPATH=$PWD ${python313}/bin/python -m unittest discover -s tests -v
     ${python313}/bin/python -m compileall -q call_diarize
     runHook postCheck
@@ -40,7 +57,7 @@ stdenvNoCC.mkDerivation {
     runHook preInstall
     mkdir -p $out/bin $out/libexec/call-diarize
     cp -R call_diarize model-support tests $out/libexec/call-diarize/
-    cp launcher.sh pyproject.toml uv.lock $out/libexec/call-diarize/
+    cp launcher.sh backfill.sh pyproject.toml uv.lock $out/libexec/call-diarize/
     makeWrapper ${bash}/bin/bash $out/bin/call-diarize \
       --add-flags "$out/libexec/call-diarize/launcher.sh" \
       --prefix PATH : ${
@@ -56,6 +73,15 @@ stdenvNoCC.mkDerivation {
       --set CALL_DIARIZE_PYTHON ${lib.escapeShellArg "${python}/bin/python3"} \
       --set CALL_DIARIZE_PYTHONPATH "$out/libexec/call-diarize:${runtimePythonPath}" \
       --set CALL_DIARIZE_TORCH_ROOT ${lib.escapeShellArg (toString torchRocm)}
+    makeWrapper ${bash}/bin/bash $out/bin/call-diarize-backfill \
+      --add-flags "$out/libexec/call-diarize/backfill.sh" \
+      --prefix PATH : ${
+        lib.makeBinPath [
+          coreutils
+          findutils
+          jq
+        ]
+      }
     runHook postInstall
   '';
 

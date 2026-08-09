@@ -83,11 +83,30 @@ stop)
     done
     rm -f "$CURRENT"
 
+    mix_written=false
     if [[ -s "$dir/far.wav" && -s "$dir/near.wav" ]]; then
         sox -m "$dir/far.wav" "$dir/near.wav" "$dir/mix.wav" gain -n -1
+        mix_written=true
     else
         echo "warning: one track is empty; skipping mix" >&2
     fi
+
+    # The shared helper writes the same atomic, full-submission event as the
+    # historical backfill command. Queue only after mix.wav is finalized. An
+    # unavailable package, events directory, or tally daemon must never turn a
+    # successfully closed recording into a failed `stop`.
+    if [[ "$mix_written" == true ]]; then
+        if command -v call-diarize-backfill >/dev/null 2>&1; then
+            if ! call-diarize-backfill --enqueue "$dir"; then
+                echo "warning: diarization was not queued; run call-diarize-backfill later" >&2
+            fi
+        else
+            echo "warning: call-diarize-backfill is unavailable; diarization was not queued" >&2
+        fi
+    else
+        echo "warning: diarization was not queued because mix.wav was not produced" >&2
+    fi
+
     echo "session closed:"
     for f in far near mix; do
         [[ -f "$dir/$f.wav" ]] && printf '  %-8s %s  (%s)\n' "$f.wav" "$dir/$f.wav" "$(soxi -d "$dir/$f.wav" 2>/dev/null || echo '?')"

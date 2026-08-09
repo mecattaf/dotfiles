@@ -71,7 +71,10 @@ in
     ../flows/tally-flows.nix
   ];
 
-  home.packages = lib.optionals isCoordinator [ pkgs.local-ai-monthly ];
+  home.packages = lib.optionals isCoordinator [
+    pkgs.call-diarize
+    pkgs.local-ai-monthly
+  ];
 
   services.tally = {
     enable = isCoordinator;
@@ -168,6 +171,15 @@ in
     # single-node build plus activation one exclusive maintenance window.
     # The system service handles Zenbook's successful offline/low-power skip internally.
     producers = lib.optionalAttrs isCoordinator {
+      # call-record and call-diarize-backfill drop complete EnqueuePayload files
+      # into tally's shared events directory. tally-drain.timer already claims
+      # that directory every five seconds, so this entry declares the producer
+      # contract without rendering a competing drain unit or timer.
+      call-diarization = {
+        kind = "events-dir";
+        selfDrain = false;
+      };
+
       # The parent serializes one monthly review but does not reserve the GPU.
       # After deterministic Git/Nix/HF preparation it enqueues one low-priority
       # coordinator-gpu child for Pi, waits for the commentary, then verifies and
