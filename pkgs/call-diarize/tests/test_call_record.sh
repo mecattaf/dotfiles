@@ -121,3 +121,28 @@ jq -e --arg directory "$call_dir" '
 [[ "$(<"$stop_stderr")" == \
   "warning: tally daemon is unavailable; event is queued for a later drain" ]]
 [[ "$(<"$stop_stdout")" == queued\ diarization:*session\ closed:* ]]
+
+# Exercise the real helper's failure path too: a non-directory parent makes
+# the events directory unusable, but a finalized recording must still close.
+blocked_events="$temporary/events-not-directory"
+: >"$blocked_events"
+call_dir="$test_home/Recordings/calls/2026-08-09-unavailable-events"
+stop_stdout="$temporary/stop-unavailable-events.out"
+stop_stderr="$temporary/stop-unavailable-events.err"
+mkdir -p "$call_dir"
+printf 'far audio\n' >"$call_dir/far.wav"
+printf 'near audio\n' >"$call_dir/near.wav"
+printf '%s\n99999998\n99999999\n' "$call_dir" >"$current"
+
+HOME="$test_home" \
+  XDG_STATE_HOME="$state_home" \
+  PATH="$fake_bin:$PATH" \
+  TALLY_EVENTS_DIR="$blocked_events/events" \
+  TALLY_SOCKET="$temporary/missing-tally.sock" \
+  "$test_bash" "$call_record" stop >"$stop_stdout" 2>"$stop_stderr"
+
+[[ ! -e "$current" ]]
+[[ "$(<"$call_dir/mix.wav")" == "finalized mix" ]]
+[[ "$(<"$stop_stderr")" == \
+  *"warning: diarization was not queued; run call-diarize-backfill later"* ]]
+[[ "$(<"$stop_stdout")" == session\ closed:* ]]
