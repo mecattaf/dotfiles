@@ -14,6 +14,7 @@
 }:
 let
   version = "1.0.0";
+  callRecord = ../../home/dot_local/bin/call-record;
   python = torchRocm.pythonModule;
   purePythonPath = python313Packages.makePythonPath [
     python313Packages.accelerate
@@ -45,7 +46,12 @@ stdenvNoCC.mkDerivation {
 
   checkPhase = ''
     runHook preCheck
-    ${bash}/bin/bash -n launcher.sh backfill.sh tests/test_backfill.sh
+    ${bash}/bin/bash -n \
+      ${callRecord} \
+      launcher.sh \
+      backfill.sh \
+      tests/test_backfill.sh \
+      tests/test_call_record.sh
     PATH=${
       lib.makeBinPath [
         coreutils
@@ -54,6 +60,10 @@ stdenvNoCC.mkDerivation {
       ]
     }:$PATH \
       ${bash}/bin/bash tests/test_backfill.sh
+    ${bash}/bin/bash tests/test_call_record.sh \
+      ${callRecord} \
+      ${bash}/bin/bash \
+      $PWD/backfill.sh
     PYTHONPATH=$PWD ${python313}/bin/python -m unittest discover -s tests -v
     ${python313}/bin/python -m compileall -q call_diarize
     runHook postCheck
