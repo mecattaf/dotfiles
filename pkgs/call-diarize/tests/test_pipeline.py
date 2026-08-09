@@ -60,12 +60,15 @@ class SegmentExtractionTests(unittest.TestCase):
                 handle.writeframes(b"\0\0" * 48_000)
 
             first_segments = segment_track(source, "mix", 1, root)
+            stale_segment = first_segments[0].audio_path.with_name("mix-999999.wav")
+            stale_segment.write_bytes(first_segments[0].audio_path.read_bytes())
             first_segments[0].audio_path.write_bytes(b"interrupted initial extraction")
             second_segments = segment_track(source, "mix", 1, root)
             self.assertEqual(
                 [window.audio_path for window in second_segments],
                 [window.audio_path for window in first_segments],
             )
+            self.assertFalse(stale_segment.exists())
             self.assertAlmostEqual(second_segments[0].actual_seconds, 1.0)
 
             first_retry = slice_track(source, "mix", 0.0, 1, root)

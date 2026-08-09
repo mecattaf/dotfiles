@@ -7,6 +7,7 @@ import json
 import math
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import wave
@@ -167,6 +168,12 @@ def segment_track(
     """Use ffmpeg's segment muxer to make aligned 24 kHz model inputs."""
 
     track_dir = output_dir / f"{track}-{seconds:02d}s"
+    # The muxer overwrites only the indexes it emits. Rebuild the directory so
+    # an old high-numbered chunk cannot survive into the new window list.
+    if track_dir.is_symlink() or track_dir.is_file():
+        track_dir.unlink()
+    elif track_dir.exists():
+        shutil.rmtree(track_dir)
     track_dir.mkdir(parents=True, exist_ok=True)
     pattern = track_dir / f"{track}-%06d.wav"
     subprocess.run(
