@@ -123,7 +123,7 @@ def decoder_loop_reason(text: str) -> str | None:
     tokens = words(text)
     # Catch multi-token cycles that evade the single-token expression. Eight
     # adjacent repetitions is intentionally far above conversational emphasis.
-    for width in range(2, min(7, len(tokens) // 8 + 1)):
+    for width in range(2, min(7, len(tokens) // 8) + 1):
         for offset in range(0, len(tokens) - width * 8 + 1):
             phrase = tokens[offset : offset + width]
             repeats = 1
@@ -445,13 +445,16 @@ def segments_to_rows(
 def unavailable_row(
     window: Window, raw_path: str, reasons: Iterable[str]
 ) -> dict[str, Any]:
+    speaker = {"near": "Thomas", "far": "Remote", "mix": "Mixed"}.get(
+        window.track, "Unknown"
+    )
     return {
         "source_id": (
             f"{window.track}-{round(window.start * 1000):012d}-"
             f"{window.nominal_seconds:02d}-unavailable"
         ),
         "track": window.track,
-        "speaker": "Thomas" if window.track == "near" else "Remote",
+        "speaker": speaker,
         "start": round(window.start, 3),
         "end": round(window.start + window.actual_seconds, 3),
         "text": "[Speech unavailable; see review queue]",

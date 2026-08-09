@@ -19,6 +19,7 @@ from call_diarize.pipeline import (
     normalize_asr_segments,
     segment_track,
     slice_track,
+    unavailable_row,
     validate_asr_result,
 )
 
@@ -146,6 +147,16 @@ class StructuralValidationTests(unittest.TestCase):
         )
         self.assertFalse(validation.accepted)
         self.assertTrue(any("decoder loop" in reason for reason in validation.reasons))
+
+    def test_rejects_seven_token_decoder_cycle(self) -> None:
+        phrase = "alpha bravo charlie delta echo foxtrot golf"
+        text = " ".join([phrase] * 8)
+        self.assertIsNotNone(decoder_loop_reason(text))
+
+    def test_mixed_unavailable_span_is_not_attributed_to_remote(self) -> None:
+        mixed = Window("mix", 30.0, 15, 15.0, Path("unused.wav"))
+        item = unavailable_row(mixed, "mix/15s/000030000.json", ["bad JSON"])
+        self.assertEqual(item["speaker"], "Mixed")
 
     def test_rejects_low_channel_support(self) -> None:
         result = {

@@ -484,10 +484,11 @@ def execute(args: argparse.Namespace) -> int:
                 selected_by_track["near"] + selected_by_track["far"], activity
             )
             final_unavailable = []
-            for track in ("near", "far"):
+            for track in ("near", "far", "mix"):
                 for window, raw_path, validation in unavailable_by_track[track]:
                     row = unavailable_row(window, raw_path, validation.reasons)
-                    isolated.append(row)
+                    if track != "mix":
+                        isolated.append(row)
                     final_unavailable.append(row)
             isolated = sort_rows(isolated)
 
