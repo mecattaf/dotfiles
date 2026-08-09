@@ -1,0 +1,6 @@
+/crm
+*.db
+*.db.pre-migrate-*
+*.db-wal
+*.db-shm
+result

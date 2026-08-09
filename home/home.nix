@@ -455,6 +455,7 @@ in
     cloudflared
     wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (coordinator-only cred, binary fleet-wide)
     backlog-md # bespoke pkg via overlay — see pkgs/backlog-md.nix
+    pkgs.crm # vendored personal CRM CLI; data stays at its built-in notes path
     cliamp # terminal music player → navidrome. overlay pkg, see pkgs/cliamp.nix
     uv # Astral Python pkg/project manager. "hot" overlay pkg — rides nixpkgs-fresh HEAD (flake.nix), so it stays latest independent of the main pin.
 

@@ -1,0 +1,3 @@
+first_name,last_name,category,org_name,job_title,email,phone,linkedin,twitter,website,location,context,relationship_hint,provenance_sources,provenance_details
+Anaïs,Martin,investor,Élan Ventures,Partner,ANAIS@ELAN.EXAMPLE,+33 6 12 34 56 78,anais-martin,,,Paris,"Prefers concise follow-ups.",Met through a founder,legacy-export,Anonymized fixture
+Björn,Keller,founder,Northstar Labs,Founder,bjorn@northstar.example,,bjorn-keller,,,Berlin,,,legacy-export,
