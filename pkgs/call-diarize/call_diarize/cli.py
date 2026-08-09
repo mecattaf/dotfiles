@@ -154,18 +154,38 @@ def _ensure_run_config(raw_root: Path, expected: dict[str, Any]) -> None:
     write_json_exclusive(path, expected)
 
 
-def _prepare_raw_root(call_dir: Path) -> Path:
-    """Start incomplete reruns with a clean evidence directory.
+def _prepare_raw_root(
+    call_dir: Path, expected_config: dict[str, Any] | None = None
+) -> Path:
+    """Resume compatible evidence or preserve an incompatible partial run.
 
-    Evidence from a run that reached its final transcript remains protected. If
-    no transcript was published, preserve the interrupted run wholesale under
-    a timestamped sibling before creating the new run's evidence root.
+    Successful chunk and cleanup records are expensive, immutable checkpoints.
+    Reuse them only when their run configuration exactly matches the current
+    sources and options. Evidence without that proof is preserved wholesale
+    under a timestamped sibling before a new evidence root is created.
     """
 
     raw_root = call_dir / "asr-raw"
     transcript_path = call_dir / "transcript.md"
     raw_root_exists = raw_root.exists() or raw_root.is_symlink()
-    if raw_root_exists and not transcript_path.exists():
+    resume = False
+    if (
+        raw_root_exists
+        and not transcript_path.exists()
+        and expected_config is not None
+    ):
+        config_path = raw_root / "run-config.json"
+        if raw_root.is_dir() and config_path.is_file():
+            try:
+                resume = load_json(config_path) == expected_config
+            except (OSError, ValueError):
+                resume = False
+    if resume:
+        print(
+            f"call-diarize: resuming compatible partial evidence: {raw_root}",
+            flush=True,
+        )
+    elif raw_root_exists and not transcript_path.exists():
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
         quarantine_base = call_dir / f"asr-raw.stale-{timestamp}"
         quarantine = quarantine_base
@@ -463,8 +483,9 @@ def execute(args: argparse.Namespace) -> int:
         flush=True,
     )
 
-    raw_root = _prepare_raw_root(call_dir)
-    _ensure_run_config(raw_root, _run_config(call_dir, hotwords))
+    run_config = _run_config(call_dir, hotwords)
+    raw_root = _prepare_raw_root(call_dir, run_config)
+    _ensure_run_config(raw_root, run_config)
 
     selected_by_track: dict[str, list[tuple[Window, dict[str, Any], str]]] = {
         "near": [],
