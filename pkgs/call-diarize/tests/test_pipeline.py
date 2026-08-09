@@ -273,6 +273,36 @@ class CleanupContractTests(unittest.TestCase):
         normalized = validate_decisions(value, shard, {"a": 0, "b": 1})
         self.assertEqual([item["source_id"] for item in normalized], ["a", "b"])
 
+    def test_unavailable_row_ignores_non_earlier_duplicate_target(self) -> None:
+        unavailable = unavailable_row(
+            Window("near", 480.0, 15, 15.0, Path("unused.wav")),
+            "near/15s/000000480000.json",
+            ["forced unavailable"],
+        )
+        source_id = "near-000000480000-15-unavailable"
+        self.assertEqual(unavailable["source_id"], source_id)
+        shard = {
+            "shard_id": "006",
+            "candidate_count": 1,
+            "candidates": [unavailable],
+        }
+        value = {
+            "shard_id": "006",
+            "decisions": [
+                {
+                    "source_id": source_id,
+                    "action": "duplicate",
+                    "duplicate_of": source_id,
+                    "reason": "model confused fixed availability with duplication",
+                }
+            ],
+        }
+
+        normalized = validate_decisions(value, shard, {source_id: 0})
+
+        self.assertEqual(normalized[0]["action"], "unavailable")
+        self.assertIsNone(normalized[0]["duplicate_of"])
+
     def test_drop_requires_both_models_and_lexical_match(self) -> None:
         first = row("a", "This is an unmistakable repeated sentence.", 0, 3)
         second = row("b", "This is an unmistakable repeated sentence.", 3, 6)

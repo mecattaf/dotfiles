@@ -332,8 +332,22 @@ def _render_transcript(rows: list[dict[str, Any]], manifest: dict[str, Any]) -> 
         ),
         "",
     ]
+    marked_failure_shards: set[str] = set()
     for row in rows:
-        label = "unavailable" if row["kind"] == "unavailable" else "speech"
+        cleanup_failures = row.get("cleanup_failures", [])
+        failed_shards = sorted(
+            {str(failure["shard_id"]) for failure in cleanup_failures}
+        )
+        for shard_id in failed_shards:
+            if shard_id not in marked_failure_shards:
+                lines.extend([f"<!-- cleanup-failed shard-{shard_id} -->", ""])
+                marked_failure_shards.add(shard_id)
+        if failed_shards:
+            label = "raw; cleanup-failed " + ",".join(
+                f"shard-{shard_id}" for shard_id in failed_shards
+            )
+        else:
+            label = "unavailable" if row["kind"] == "unavailable" else "speech"
         lines.extend(
             [
                 (
@@ -367,6 +381,7 @@ def _review_item(prefix: str, item: dict[str, Any]) -> list[str]:
 def _render_review(
     rejections: list[dict[str, Any]],
     final_unavailable: list[dict[str, Any]],
+    cleanup_failures: list[dict[str, Any]],
     disagreements: list[dict[str, Any]],
     lexical_conflicts: list[dict[str, Any]],
     dropped: list[dict[str, Any]],
@@ -376,6 +391,7 @@ def _render_review(
         for rejection in rejections
         for row in rejection["low_channel_support_rows"]
     ]
+    failed_shards = {str(failure["shard_id"]) for failure in cleanup_failures}
     lines = [
         "# Call transcript review queue",
         "",
@@ -385,6 +401,8 @@ def _render_review(
         "",
         f"- Rejected ASR windows across all retry levels: {len(rejections)}",
         f"- Final unavailable spans: {len(final_unavailable)}",
+        f"- Cleanup model/shard failures: {len(cleanup_failures)}",
+        f"- Raw-ASR fallback shards: {len(failed_shards)}",
         f"- Low-channel-support rows seen in rejected windows: {len(low_support)}",
         f"- Gemma/Qwen decision disagreements: {len(disagreements)}",
         f"- Near/far versus mixed lexical conflicts: {len(lexical_conflicts)}",
@@ -396,6 +414,22 @@ def _render_review(
     if final_unavailable:
         for item in final_unavailable:
             lines.extend(_review_item("unavailable", item))
+    else:
+        lines.append("None.")
+
+    lines.extend(["", "## Cleanup raw-ASR fallbacks", ""])
+    if cleanup_failures:
+        for failure in cleanup_failures:
+            lines.extend(
+                [
+                    (
+                        f"- shard-{failure['shard_id']} `{failure['label']}` "
+                        f"({failure['model']}): kept {len(failure['candidate_ids'])} "
+                        "raw candidate(s)."
+                    ),
+                    f"  - Evidence: `{failure['evidence_path']}`",
+                ]
+            )
     else:
         lines.append("None.")
 
@@ -561,14 +595,16 @@ def execute(args: argparse.Namespace) -> int:
             if previous
             else None
         )
-    decisions = run_both_models(
+    decisions, cleanup_failures = run_both_models(
         shards,
         isolated,
         raw_root,
         args.llama_swap_endpoint,
         args.llama_timeout,
     )
-    cleaned, dropped, disagreements = reduce_consensus(isolated, decisions)
+    cleaned, dropped, disagreements = reduce_consensus(
+        isolated, decisions, cleanup_failures
+    )
 
     leaf_counts = {"60": 0, "30": 0, "15": 0}
     for selected in selected_by_track.values():
@@ -578,6 +614,14 @@ def execute(args: argparse.Namespace) -> int:
         float(item.get("generation_seconds", 0)) for item in runtime_records
     )
     audio_seconds = sum(float(item.get("audio_seconds", 0)) for item in runtime_records)
+    raw_fallback_shards = {
+        str(failure["shard_id"]) for failure in cleanup_failures
+    }
+    raw_fallback_candidates = {
+        str(source_id)
+        for failure in cleanup_failures
+        for source_id in failure["candidate_ids"]
+    }
     manifest = {
         "schema": 1,
         "pipeline_version": __version__,
@@ -593,6 +637,10 @@ def execute(args: argparse.Namespace) -> int:
         "isolated_candidate_count": len(isolated),
         "published_row_count": len(cleaned),
         "consensus_duplicate_drop_count": len(dropped),
+        "cleanup_failure_count": len(cleanup_failures),
+        "raw_fallback_shard_count": len(raw_fallback_shards),
+        "raw_fallback_candidate_count": len(raw_fallback_candidates),
+        "cleanup_failures": cleanup_failures,
         "asr_generation_seconds": round(generation_seconds, 3),
         "asr_audio_seconds": round(audio_seconds, 3),
         "asr_realtime_factor": round(generation_seconds / max(audio_seconds, 0.001), 3),
@@ -616,6 +664,7 @@ def execute(args: argparse.Namespace) -> int:
     review = _render_review(
         rejections,
         final_unavailable,
+        cleanup_failures,
         disagreements,
         lexical_conflicts,
         dropped,

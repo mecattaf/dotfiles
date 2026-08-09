@@ -32,6 +32,14 @@ action is exactly keep, duplicate, or unavailable. duplicate_of is an earlier so
 only for duplicate; otherwise it is null. Do not add prose or Markdown fences."""
 
 
+class CleanupShardFailure(RuntimeError):
+    """A cleanup model exhausted its retry budget for one bounded shard."""
+
+    def __init__(self, report: dict[str, Any]) -> None:
+        self.report = report
+        super().__init__(str(report["error"]))
+
+
 def _models_url(endpoint: str) -> str:
     marker = "/v1/chat/completions"
     if marker in endpoint:
@@ -125,13 +133,22 @@ def validate_decisions(
         raise ValueError(
             "decision IDs are missing, duplicated, invented, or out of order"
         )
+    candidates_by_id = {
+        str(candidate["source_id"]): candidate for candidate in shard["candidates"]
+    }
     normalized: list[dict[str, Any]] = []
     for item, source_id in zip(decisions, expected, strict=True):
         action = item.get("action")
-        if action not in ALLOWED_ACTIONS:
-            raise ValueError(f"invalid action for {source_id}: {action!r}")
         duplicate_of = item.get("duplicate_of")
-        if action == "duplicate":
+        if candidates_by_id[source_id].get("kind") == "unavailable":
+            # Availability is fixed by deterministic ASR validation before cleanup.
+            # A model cannot make this row removable, so its proposed action and
+            # duplicate target carry no ordering invariant to validate.
+            action = "unavailable"
+            duplicate_of = None
+        elif action not in ALLOWED_ACTIONS:
+            raise ValueError(f"invalid action for {source_id}: {action!r}")
+        elif action == "duplicate":
             if not isinstance(duplicate_of, str) or duplicate_of not in global_order:
                 raise ValueError(
                     f"invalid duplicate target for {source_id}: {duplicate_of!r}"
@@ -273,10 +290,77 @@ def run_model_shard(
                     "error": correction,
                 },
             )
-    raise RuntimeError(
+    message = (
         f"{model} failed cleanup shard {shard['shard_id']} after {retries} attempts: "
         + " | ".join(errors)
     )
+    raise CleanupShardFailure(
+        {
+            "schema": 1,
+            "status": "cleanup-failed",
+            "nonfatal": True,
+            "fallback": "raw-asr",
+            "label": label,
+            "model": model,
+            "shard_id": shard["shard_id"],
+            "candidate_ids": [
+                str(candidate["source_id"]) for candidate in shard["candidates"]
+            ],
+            "attempt_count": len(errors),
+            "attempts": [
+                {"attempt": first_attempt + index, "error": error}
+                for index, error in enumerate(errors)
+            ],
+            "error": message,
+        }
+    )
+
+
+def _cached_failure_report(
+    label: str,
+    model: str,
+    shard: dict[str, Any],
+    raw_root: Path,
+) -> tuple[Path, dict[str, Any] | None]:
+    path = raw_root / "cleanup" / label / f"shard-{shard['shard_id']}.failed.json"
+    if not path.exists():
+        return path, None
+    report = load_json(path)
+    expected_ids = [str(candidate["source_id"]) for candidate in shard["candidates"]]
+    expected_path = str(path.relative_to(raw_root))
+    if (
+        not isinstance(report, dict)
+        or report.get("status") != "cleanup-failed"
+        or report.get("nonfatal") is not True
+        or report.get("fallback") != "raw-asr"
+        or report.get("label") != label
+        or report.get("model") != model
+        or str(report.get("shard_id")) != str(shard["shard_id"])
+        or report.get("candidate_ids") != expected_ids
+        or report.get("evidence_path") != expected_path
+    ):
+        raise RuntimeError(f"cached cleanup failure mismatch: {path}")
+    return path, report
+
+
+def _raw_fallback_decisions(
+    shard: dict[str, Any], report: dict[str, Any]
+) -> list[dict[str, Any]]:
+    reason = (
+        f"raw-ASR fallback after {report['label']} cleanup failed "
+        f"shard {report['shard_id']}"
+    )
+    return [
+        {
+            "source_id": str(candidate["source_id"]),
+            "action": (
+                "unavailable" if candidate.get("kind") == "unavailable" else "keep"
+            ),
+            "duplicate_of": None,
+            "reason": reason,
+        }
+        for candidate in shard["candidates"]
+    ]
 
 
 def run_both_models(
@@ -285,38 +369,75 @@ def run_both_models(
     raw_root: Path,
     endpoint: str,
     timeout: int,
-) -> dict[str, dict[str, dict[str, Any]]]:
+) -> tuple[
+    dict[str, dict[str, dict[str, Any]]],
+    list[dict[str, Any]],
+]:
+    shard_list = list(shards)
     global_order = {str(row["source_id"]): index for index, row in enumerate(rows)}
     decisions_by_model: dict[str, dict[str, dict[str, Any]]] = {}
+    failures: list[dict[str, Any]] = []
     for label, model in MODELS.items():
         by_id: dict[str, dict[str, Any]] = {}
-        for shard in shards:
+        for shard in shard_list:
             print(
                 f"cleanup {label} shard {shard['shard_id']} "
                 f"({shard['candidate_count']} candidates)",
                 flush=True,
             )
-            for decision in run_model_shard(
-                label,
-                model,
-                shard,
-                raw_root,
-                endpoint,
-                global_order,
-                timeout,
-            ):
+            failure_path, failure = _cached_failure_report(
+                label, model, shard, raw_root
+            )
+            if failure is None:
+                try:
+                    model_decisions = run_model_shard(
+                        label,
+                        model,
+                        shard,
+                        raw_root,
+                        endpoint,
+                        global_order,
+                        timeout,
+                    )
+                except CleanupShardFailure as exc:
+                    failure = {
+                        **exc.report,
+                        "evidence_path": str(failure_path.relative_to(raw_root)),
+                    }
+                    write_json_exclusive(failure_path, failure)
+            if failure is not None:
+                failures.append(failure)
+                print(
+                    f"call-diarize: warning: cleanup {label} shard "
+                    f"{shard['shard_id']} exhausted retries; using raw ASR",
+                    flush=True,
+                )
+                model_decisions = _raw_fallback_decisions(shard, failure)
+            for decision in model_decisions:
                 by_id[decision["source_id"]] = decision
         if set(by_id) != set(global_order):
             raise RuntimeError(f"{model} did not account for every source candidate")
         decisions_by_model[label] = by_id
-    return decisions_by_model
+    return decisions_by_model, failures
 
 
 def reduce_consensus(
     rows: list[dict[str, Any]],
     decisions: dict[str, dict[str, dict[str, Any]]],
+    cleanup_failures: Iterable[dict[str, Any]] = (),
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     """Keep by default; drop only two-model duplicate consensus plus lexical proof."""
+
+    failures_by_source: dict[str, list[dict[str, Any]]] = {}
+    for failure in cleanup_failures:
+        summary = {
+            "label": failure["label"],
+            "model": failure["model"],
+            "shard_id": str(failure["shard_id"]),
+            "evidence_path": failure["evidence_path"],
+        }
+        for source_id in failure["candidate_ids"]:
+            failures_by_source.setdefault(str(source_id), []).append(summary)
 
     kept: list[dict[str, Any]] = []
     dropped: list[dict[str, Any]] = []
@@ -342,9 +463,11 @@ def reduce_consensus(
                 }
             )
 
+        row_failures = failures_by_source.get(source_id, [])
         lexical_target = lexical_duplicate_target(row, kept)
         consensus_duplicate = (
-            row.get("kind") == "speech"
+            not row_failures
+            and row.get("kind") == "speech"
             and gemma["action"] == "duplicate"
             and qwen["action"] == "duplicate"
             and lexical_target is not None
@@ -359,10 +482,11 @@ def reduce_consensus(
                 }
             )
         else:
-            kept.append(
-                {
-                    **row,
-                    "cleanup_decisions": {"gemma": gemma, "qwen": qwen},
-                }
-            )
+            kept_row = {
+                **row,
+                "cleanup_decisions": {"gemma": gemma, "qwen": qwen},
+            }
+            if row_failures:
+                kept_row["cleanup_failures"] = row_failures
+            kept.append(kept_row)
     return kept, dropped, disagreements
