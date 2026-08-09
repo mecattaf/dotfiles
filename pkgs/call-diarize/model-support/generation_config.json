@@ -2,7 +2,6 @@
   "_from_model_config": true,
   "do_sample": false,
   "eos_token_id": 151643,
-  "max_length": 32768,
   "max_new_tokens": 32768,
   "output_attentions": false,
   "output_hidden_states": false,

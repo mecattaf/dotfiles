@@ -38,6 +38,7 @@ stdenvNoCC.mkDerivation {
   nativeCheckInputs = [
     bash
     coreutils
+    ffmpeg
     findutils
     jq
     python313

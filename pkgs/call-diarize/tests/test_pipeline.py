@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+import wave
 from pathlib import Path
 
 from call_diarize.asr import map_legacy_key
@@ -15,6 +17,8 @@ from call_diarize.pipeline import (
     decoder_loop_reason,
     lexical_duplicate_target,
     normalize_asr_segments,
+    segment_track,
+    slice_track,
     validate_asr_result,
 )
 
@@ -37,6 +41,31 @@ def row(source_id: str, text: str, start: float, end: float) -> dict:
         "text": text,
         "kind": "speech",
     }
+
+
+class SegmentExtractionTests(unittest.TestCase):
+    def test_initial_and_retry_extraction_overwrite_existing_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "mix.wav"
+            with wave.open(str(source), "wb") as handle:
+                handle.setnchannels(1)
+                handle.setsampwidth(2)
+                handle.setframerate(48_000)
+                handle.writeframes(b"\0\0" * 48_000)
+
+            first_segments = segment_track(source, "mix", 1, root)
+            second_segments = segment_track(source, "mix", 1, root)
+            self.assertEqual(
+                [window.audio_path for window in second_segments],
+                [window.audio_path for window in first_segments],
+            )
+            self.assertAlmostEqual(second_segments[0].actual_seconds, 1.0)
+
+            first_retry = slice_track(source, "mix", 0.0, 1, root)
+            second_retry = slice_track(source, "mix", 0.0, 1, root)
+            self.assertEqual(second_retry.audio_path, first_retry.audio_path)
+            self.assertAlmostEqual(second_retry.actual_seconds, 1.0)
 
 
 class StructuralValidationTests(unittest.TestCase):

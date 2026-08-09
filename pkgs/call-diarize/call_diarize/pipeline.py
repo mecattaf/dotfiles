@@ -172,6 +172,7 @@ def segment_track(
     subprocess.run(
         [
             "ffmpeg",
+            "-y",
             "-nostdin",
             "-hide_banner",
             "-loglevel",
@@ -227,6 +228,7 @@ def slice_track(
     subprocess.run(
         [
             "ffmpeg",
+            "-y",
             "-nostdin",
             "-hide_banner",
             "-loglevel",
