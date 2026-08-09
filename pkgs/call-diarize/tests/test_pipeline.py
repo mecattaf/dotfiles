@@ -24,7 +24,6 @@ from call_diarize.pipeline import (
     slice_track,
     unavailable_row,
     validate_asr_result,
-    write_json_exclusive,
 )
 
 
@@ -192,11 +191,12 @@ class CleanupContractTests(unittest.TestCase):
         value = extract_json_object(text, {"a", "b"})
         self.assertEqual(len(value["decisions"]), 2)
 
-    def test_resumed_cleanup_uses_new_attempt_evidence_names(self) -> None:
+    def test_failed_cleanup_invocation_can_resume_without_attempt_collision(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temporary:
-            raw_root = Path(temporary)
-            prior_attempt = raw_root / "cleanup/gemma/shard-000.attempt-01.json"
-            write_json_exclusive(prior_attempt, {"error": "interrupted"})
+            call_dir = Path(temporary) / "call"
+            raw_root = call_dir / "asr-raw"
             shard = {
                 "shard_id": "000",
                 "candidate_count": 1,
@@ -218,7 +218,29 @@ class CleanupContractTests(unittest.TestCase):
 
             with mock.patch(
                 "call_diarize.cleanup._http_json",
-                side_effect=[RuntimeError("transient failure"), response],
+                side_effect=RuntimeError("interrupted cleanup"),
+            ):
+                with self.assertRaisesRegex(RuntimeError, "interrupted cleanup"):
+                    run_model_shard(
+                        "gemma",
+                        "test-model",
+                        shard,
+                        raw_root,
+                        "http://unused.invalid/v1/chat/completions",
+                        {"a": 0},
+                        timeout=1,
+                        retries=1,
+                    )
+
+            first_attempt = raw_root / "cleanup/gemma/shard-000.attempt-01.json"
+            self.assertTrue(first_attempt.is_file())
+            first_evidence = load_json(first_attempt)
+            self.assertEqual(first_evidence["error"], "interrupted cleanup")
+            self.assertFalse((call_dir / "transcript.md").exists())
+
+            with mock.patch(
+                "call_diarize.cleanup._http_json",
+                return_value=response,
             ):
                 decisions = run_model_shard(
                     "gemma",
@@ -228,15 +250,13 @@ class CleanupContractTests(unittest.TestCase):
                     "http://unused.invalid/v1/chat/completions",
                     {"a": 0},
                     timeout=1,
-                    retries=2,
+                    retries=1,
                 )
 
             self.assertEqual(decisions[0]["action"], "keep")
-            self.assertTrue(
-                (raw_root / "cleanup/gemma/shard-000.attempt-02.json").is_file()
-            )
             final = load_json(raw_root / "cleanup/gemma/shard-000.json")
-            self.assertEqual(final["attempt"], 3)
+            self.assertEqual(final["attempt"], 2)
+            self.assertEqual(load_json(first_attempt), first_evidence)
 
     def test_decisions_are_exact_and_non_mergeable(self) -> None:
         shard = {
