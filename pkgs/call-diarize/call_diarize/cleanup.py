@@ -181,6 +181,23 @@ def _content(response: dict[str, Any]) -> str:
     return content
 
 
+def _next_attempt_number(output_dir: Path, shard_id: str) -> int:
+    """Continue immutable retry evidence after an interrupted invocation."""
+
+    if not output_dir.is_dir():
+        return 1
+    prefix = f"shard-{shard_id}.attempt-"
+    numbers: list[int] = []
+    for path in output_dir.iterdir():
+        name = path.name
+        if not name.startswith(prefix) or not name.endswith(".json"):
+            continue
+        suffix = name[len(prefix) : -len(".json")]
+        if suffix.isdigit():
+            numbers.append(int(suffix))
+    return max(numbers, default=0) + 1
+
+
 def run_model_shard(
     label: str,
     model: str,
@@ -203,7 +220,8 @@ def run_model_shard(
     expected_ids = {str(item["source_id"]) for item in shard["candidates"]}
     correction = ""
     errors: list[str] = []
-    for attempt in range(1, retries + 1):
+    first_attempt = _next_attempt_number(output_dir, str(shard["shard_id"]))
+    for attempt in range(first_attempt, first_attempt + retries):
         user_text = json.dumps(
             candidate_payload, ensure_ascii=False, separators=(",", ":")
         )

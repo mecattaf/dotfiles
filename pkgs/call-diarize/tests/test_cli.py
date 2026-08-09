@@ -33,6 +33,23 @@ class EvidenceRerunTests(unittest.TestCase):
             write_json_exclusive(rerun_attempt, {"result": "fresh rerun"})
             self.assertEqual(load_json(rerun_attempt), {"result": "fresh rerun"})
 
+    def test_rerun_resumes_partial_evidence_with_matching_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            call_dir = Path(temporary)
+            raw_root = call_dir / "asr-raw"
+            expected = {"schema": 1, "source": "same recording"}
+            write_json_exclusive(raw_root / "run-config.json", expected)
+            chunk = raw_root / "near/60s/000000000000.json"
+            write_json_exclusive(chunk, {"result": "expensive GPU checkpoint"})
+
+            with redirect_stdout(io.StringIO()) as stdout:
+                prepared = _prepare_raw_root(call_dir, expected)
+
+            self.assertEqual(prepared, raw_root)
+            self.assertIn("resuming compatible partial evidence", stdout.getvalue())
+            self.assertEqual(load_json(chunk), {"result": "expensive GPU checkpoint"})
+            self.assertEqual(list(call_dir.glob("asr-raw.stale-*")), [])
+
     def test_completed_transcript_leaves_evidence_protected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             call_dir = Path(temporary)

@@ -4,11 +4,13 @@ import tempfile
 import unittest
 import wave
 from pathlib import Path
+from unittest import mock
 
 from call_diarize.asr import map_legacy_key
 from call_diarize.cleanup import (
     extract_json_object,
     reduce_consensus,
+    run_model_shard,
     validate_decisions,
 )
 from call_diarize.pipeline import (
@@ -16,11 +18,13 @@ from call_diarize.pipeline import (
     candidate_shards,
     decoder_loop_reason,
     lexical_duplicate_target,
+    load_json,
     normalize_asr_segments,
     segment_track,
     slice_track,
     unavailable_row,
     validate_asr_result,
+    write_json_exclusive,
 )
 
 
@@ -184,6 +188,52 @@ class CleanupContractTests(unittest.TestCase):
         )
         value = extract_json_object(text, {"a", "b"})
         self.assertEqual(len(value["decisions"]), 2)
+
+    def test_resumed_cleanup_uses_new_attempt_evidence_names(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw_root = Path(temporary)
+            prior_attempt = raw_root / "cleanup/gemma/shard-000.attempt-01.json"
+            write_json_exclusive(prior_attempt, {"error": "interrupted"})
+            shard = {
+                "shard_id": "000",
+                "candidate_count": 1,
+                "candidates": [row("a", "Real speech.", 0, 1)],
+            }
+            response = {
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                '{"shard_id":"000","decisions":['
+                                '{"source_id":"a","action":"keep",'
+                                '"duplicate_of":null,"reason":""}]}'
+                            )
+                        }
+                    }
+                ]
+            }
+
+            with mock.patch(
+                "call_diarize.cleanup._http_json",
+                side_effect=[RuntimeError("transient failure"), response],
+            ):
+                decisions = run_model_shard(
+                    "gemma",
+                    "test-model",
+                    shard,
+                    raw_root,
+                    "http://unused.invalid/v1/chat/completions",
+                    {"a": 0},
+                    timeout=1,
+                    retries=2,
+                )
+
+            self.assertEqual(decisions[0]["action"], "keep")
+            self.assertTrue(
+                (raw_root / "cleanup/gemma/shard-000.attempt-02.json").is_file()
+            )
+            final = load_json(raw_root / "cleanup/gemma/shard-000.json")
+            self.assertEqual(final["attempt"], 3)
 
     def test_decisions_are_exact_and_non_mergeable(self) -> None:
         shard = {
