@@ -71,28 +71,13 @@ in
     ../flows/tally-flows.nix
   ];
 
-  home.packages = lib.optionals isCoordinator [
-    pkgs.academic-ocr
-    pkgs.local-ai-monthly
-  ];
+  home.packages = lib.optionals isCoordinator [ pkgs.local-ai-monthly ];
 
   services.tally = {
     enable = isCoordinator;
 
-    # A declaratively deployed flow runner is itself a job, so every node it
-    # enqueues is a child bounded by this cap — it is the whole-flow ceiling,
-    # not just a build-time check. The retired mutation ladder's 1,700 (100
-    # pages × four protocols × four inputs, plus 100 arbiters) died with the
-    # Turner/Fosfuri sample flows in e61f906b; academic-paper-e2e replaced it
-    # and spends 6 nodes per page (raster, mech, 8B, compare, 32B, compare)
-    # plus 6 fixed (fetch, assemble, chunk, embed, index, receipt). The
-    # mech-first shortcut (#147, PR #150) added a second mechanical engine and
-    # agreement gate per page, so the script's meta.maxNodes rose to 11,000;
-    # the host must admit that much or the drain dies on long papers at 2am —
-    # the new tally pin refuses the config outright when this cap is below the
-    # script meta. The NAS corpus of record currently tops out at 1,215 pages
-    # with 231 papers above the 282 pages a 1,700 cap would have allowed.
-    enqueue.fanoutCap = 11000;
+    # The largest registered coordinator flow is errata-map.
+    enqueue.fanoutCap = 400;
 
     # These are real contention lanes, not synthetic maintenance pools.
     pools = lib.optionalAttrs isCoordinator {
@@ -114,12 +99,6 @@ in
       coordinator-gpu = {
         resource = "vram";
         capacity = 1;
-        enforce = "cooperative";
-        hardPreempt = false;
-      };
-      academic-ocr-cpu = {
-        resource = "cpu-slot";
-        capacity = 2;
         enforce = "cooperative";
         hardPreempt = false;
       };
@@ -253,24 +232,4 @@ in
     };
   };
 
-  # The module's 90s TimeoutStartSec is a per-phase budget, but the unit-facts
-  # startup phase probes systemd once per non-terminal durable event row — an
-  # O(corpus) cost inside one phase, with no extension until the phase ends. At
-  # this host's ~25k-row academic-drain corpus that is ~90-95s, so daemon
-  # restarts sit right on the budget and can loop through several timed-out
-  # attempts (2026-08-06 pin advance: two 92s failures, then success). Ceiling
-  # raised until tally.nix#428 extends the budget inside the loop.
-  systemd.user.services.tally-daemon = lib.mkIf isCoordinator {
-    Service.TimeoutStartSec = lib.mkForce "10min";
-  };
-
-  # sd-switch, which home-manager activation uses to restart changed user
-  # units, waits only 120s per job by default — less than the daemon's real
-  # ~2m15s time-to-ready on this corpus. The 2026-08-08 nightly deploy failed
-  # exactly there: the daemon started clean in 130.9s (#428 renewing the
-  # per-phase budget in-loop) while sd-switch had already given up ("timed out
-  # waiting on channel"), failing home-manager-tom.service and rolling back an
-  # otherwise-good generation. Match the daemon's 10min start ceiling; this is
-  # a maximum wait, not a delay.
-  systemd.user.servicesStartTimeoutMs = lib.mkIf isCoordinator 600000;
 }

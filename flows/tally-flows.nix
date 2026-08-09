@@ -3,10 +3,8 @@
 # manually with `tally flow run`. Args here are the defaults; override per run
 # with --args.
 {
-  inputs,
   lib,
   osConfig,
-  pkgs,
   ...
 }:
 let
@@ -15,22 +13,6 @@ let
   dotfiles = "/home/tom/mecattaf/dotfiles";
   notes = "/home/tom/mecattaf/notes";
   worktrees = "/home/tom/.local/state/tally-worktrees";
-
-  academicState = "/home/tom/.local/state/academic-ocr";
-  fixedPapers = builtins.fromJSON (builtins.readFile ../pkgs/academic-ocr/fixed-papers.json);
-  turner = fixedPapers.turner;
-  turnerId = turner.paperId;
-  turnerSha = turner.sourceSha256;
-
-  # The production drain flow + tools (home/academic-drain.nix runs the same
-  # package 24/7; this registry entry generation-validates the flow and keeps
-  # it invocable by name). Default args are the 5-page Turner acceptance
-  # paper read from its NAS mirror — the per-paper drain overrides them.
-  academicDrain = pkgs.callPackage ../pkgs/academic-ocr-drain {
-    tally = inputs.tally.packages.${pkgs.stdenv.hostPlatform.system}.tally;
-  };
-  academicDrainLib = "${academicDrain}/libexec/academic-ocr-drain";
-
 in
 {
   services.tally.flows = lib.optionalAttrs isCoordinator {
@@ -106,42 +88,6 @@ in
         notesRepo = notes;
         outDir = "${notes}/july23-notes-reshape";
         maxRows = 60;
-      };
-    };
-
-    # The production per-paper flow (replaces the retired academic-ocr /
-    # academic-assemble Turner samples, 2026-07-29). R2 is purged: sources
-    # are file:// paths into the NAS corpus of record.
-    academic-paper-e2e = {
-      script = "${academicDrainLib}/paper-e2e.js";
-      onCalendar = null;
-      # Must cover the script's meta.maxNodes (11,000 since the mech-first
-      # second engine + gate, PR #150); the checked-config build refuses less.
-      maxNodes = 11000;
-      args = {
-        paperId = turnerId;
-        title = turner.title;
-        sourceUrl = "file:///mnt/nas/documents/academic-papers/originals/knowledge/psychology/mythopoetic/Victor-Turner-Betwixt-and-Between.pdf";
-        sha256 = turnerSha;
-        pageCount = 5;
-        dataRoot = academicState;
-        tools = academicDrainLib;
-        bash = "${pkgs.bash}/bin/bash";
-        dpi = 200;
-        ocrModel = "qwen3-vl-8b-ocr";
-        refineModel = "qwen3-vl-32b-ocr";
-        embedModel = "qwen3-embedding-8b";
-        minAgreementPermille = 700;
-        # Mech-first shortcut gates (PR #150), data-calibrated on 2,374
-        # drained pages: both mechanical engines must clear the word floor
-        # AND self-agree at this Dice level to resolve without the GPU. The
-        # word floor is the safety-critical half — sparse-layer pages
-        # self-agree perfectly, so don't tighten Dice instead.
-        mechSelfAgreementPermille = 930;
-        mechMinWords = 200;
-        # 4 consecutive bare-numeric lines = the column-major linearization
-        # fingerprint; calibration in pkgs/academic-ocr-drain/tables.sh (9b7e37ac).
-        tableMinNumericRun = 4;
       };
     };
   };
