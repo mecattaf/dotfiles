@@ -95,6 +95,35 @@ func (p *Provider) DeleteEvent(ctx context.Context, cal calendar.Calendar, ev ca
 	}
 }
 
+// ReplaceEvents atomically rewrites a single-file local calendar from a full
+// managed snapshot. It is intentionally outside calendar.Provider: ordinary
+// callers mutate events one at a time, while source adapters such as tally own
+// the complete contents of their read-only projection.
+func (p *Provider) ReplaceEvents(cal calendar.Calendar, events []calendar.Event) error {
+	source, err := p.calendarPath(cal)
+	if err != nil {
+		return err
+	}
+	if strings.HasPrefix(cal.RemoteID, "dir:") {
+		return errors.New("replace events requires a single-file local calendar")
+	}
+
+	doc := icalconv.NewCalendar()
+	seen := make(map[string]struct{}, len(events))
+	for i := range events {
+		uid := strings.TrimSpace(events[i].UID)
+		if uid == "" {
+			return errors.New("replace events: event missing UID")
+		}
+		if _, ok := seen[uid]; ok {
+			return fmt.Errorf("replace events: duplicate UID %q", uid)
+		}
+		seen[uid] = struct{}{}
+		doc.Children = append(doc.Children, icalconv.BuildEvent(&events[i], uid).Component)
+	}
+	return writeAtomic(source, doc)
+}
+
 func createInDirectory(dir, uid string, ev *calendar.Event) error {
 	path := filepath.Join(dir, filenameSanitizer.Replace(uid)+".ics")
 	switch _, err := os.Stat(path); {
