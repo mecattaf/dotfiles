@@ -10,9 +10,9 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	dcalconfig "github.com/mecattaf/dcal/config"
 	"github.com/mecattaf/dcal/ent/account"
 	"github.com/mecattaf/dcal/ent/calendar"
-	"github.com/mecattaf/dcal/internal/settings"
 )
 
 // Calendar is the model entity for the Calendar schema.
@@ -39,7 +39,7 @@ type Calendar struct {
 	// SyncDisabled holds the value of the "sync_disabled" field.
 	SyncDisabled bool `json:"sync_disabled,omitempty"`
 	// ReminderOverrides holds the value of the "reminder_overrides" field.
-	ReminderOverrides *settings.ReminderOverride `json:"reminder_overrides,omitempty"`
+	ReminderOverrides *dcalconfig.ReminderOverride `json:"reminder_overrides,omitempty"`
 	// SyncToken holds the value of the "sync_token" field.
 	SyncToken string `json:"sync_token,omitempty"`
 	// SupportedComponents holds the value of the "supported_components" field.

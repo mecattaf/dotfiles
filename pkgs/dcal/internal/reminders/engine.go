@@ -16,11 +16,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mecattaf/dcal/config"
 	"github.com/mecattaf/dcal/ent"
 	entevent "github.com/mecattaf/dcal/ent/event"
 	"github.com/mecattaf/dcal/internal/calendar"
 	"github.com/mecattaf/dcal/internal/notify"
-	"github.com/mecattaf/dcal/internal/settings"
 	"github.com/mecattaf/dcal/internal/support/boottimer"
 	"github.com/mecattaf/dcal/internal/support/log"
 	"github.com/mecattaf/dcal/repo"
@@ -90,7 +90,7 @@ type Engine struct {
 	repo     *repo.Repo
 	sender   Sender
 	publish  Publisher
-	settings func() settings.UISettings
+	settings func() config.Config
 	now      func() time.Time
 	loc      *time.Location
 	open     func()
@@ -118,7 +118,7 @@ func NewEngine(r *repo.Repo, sender Sender, maxWake time.Duration) *Engine {
 	return &Engine{
 		repo:     r,
 		sender:   sender,
-		settings: settings.Load,
+		settings: config.Current,
 		now:      time.Now,
 		loc:      time.Local,
 		open:     openApp,
@@ -471,13 +471,13 @@ func (e *Engine) HandleClosed(id uint32) {
 // candidates returns non-cancelled occurrences from visible calendars that
 // have not ended, expanded over the lookahead window. The window starts in
 // the recent past so occurrences that just began still expand.
-func (e *Engine) candidates(ctx context.Context, now time.Time, base settings.UISettings) ([]*ent.Event, map[string]settings.UISettings, error) {
+func (e *Engine) candidates(ctx context.Context, now time.Time, base config.Config) ([]*ent.Event, map[string]config.Config, error) {
 	cals, err := e.repo.ListCalendars(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 	hidden := make(map[string]struct{})
-	resolved := make(map[string]settings.UISettings, len(cals))
+	resolved := make(map[string]config.Config, len(cals))
 	for _, c := range cals {
 		if c.Hidden {
 			hidden[c.ID] = struct{}{}
@@ -510,7 +510,7 @@ func (e *Engine) candidates(ctx context.Context, now time.Time, base settings.UI
 // taskCandidates returns unfinished tasks with a start or due time from visible
 // calendars. Task lists are normally small, so nullable time filtering stays
 // here instead of adding provider-specific logic to repository queries.
-func (e *Engine) taskCandidates(ctx context.Context, resolved map[string]settings.UISettings) ([]*ent.Task, error) {
+func (e *Engine) taskCandidates(ctx context.Context, resolved map[string]config.Config) ([]*ent.Task, error) {
 	tasks, _, err := e.repo.ListTasks(ctx, repo.ListTasksParams{})
 	if err != nil {
 		return nil, err
@@ -530,7 +530,7 @@ func (e *Engine) taskCandidates(ctx context.Context, resolved map[string]setting
 
 // resolvedFor returns the calendar's resolved settings, falling back to the
 // global base when the calendar is unknown.
-func resolvedFor(resolved map[string]settings.UISettings, calID string, base settings.UISettings) settings.UISettings {
+func resolvedFor(resolved map[string]config.Config, calID string, base config.Config) config.Config {
 	if cs, ok := resolved[calID]; ok {
 		return cs
 	}
@@ -549,7 +549,7 @@ func (e *Engine) stateMap(ctx context.Context, now time.Time) (map[stateKey]*ent
 	return out, nil
 }
 
-func (e *Engine) fire(ctx context.Context, ev *ent.Event, key stateKey, s settings.UISettings, now time.Time) {
+func (e *Engine) fire(ctx context.Context, ev *ent.Event, key stateKey, s config.Config, now time.Time) {
 	actions := make([]notify.Action, 0, 5)
 	if ev.MeetingURL != "" {
 		actions = append(actions, notify.Action{Key: "join", Label: "Join"})
@@ -601,7 +601,7 @@ func (e *Engine) fire(ctx context.Context, ev *ent.Event, key stateKey, s settin
 	}
 }
 
-func (e *Engine) fireTask(ctx context.Context, task *ent.Task, timed taskTrigger, key stateKey, s settings.UISettings, now time.Time) {
+func (e *Engine) fireTask(ctx context.Context, task *ent.Task, timed taskTrigger, key stateKey, s config.Config, now time.Time) {
 	actions := []notify.Action{
 		{Key: "default", Label: "Open"},
 		{Key: "snooze", Label: fmt.Sprintf("Snooze %d min", s.SnoozeMinutes)},
@@ -639,7 +639,7 @@ type taskTrigger struct {
 	trigger trigger
 }
 
-func taskTriggersFor(task *ent.Task, s settings.UISettings, loc *time.Location) []taskTrigger {
+func taskTriggersFor(task *ent.Task, s config.Config, loc *time.Location) []taskTrigger {
 	var times []struct {
 		at   time.Time
 		kind string
@@ -712,7 +712,7 @@ func taskUrgency(priority int) byte {
 	}
 }
 
-func taskBody(task *ent.Task, timed taskTrigger, now time.Time, s settings.UISettings, loc *time.Location) string {
+func taskBody(task *ent.Task, timed taskTrigger, now time.Time, s config.Config, loc *time.Location) string {
 	when := dayPhrase(timed.base.In(loc), now.In(loc))
 	if !task.AllDay {
 		when += " at " + s.Clock(timed.base.In(loc))
@@ -742,7 +742,7 @@ func due(tr trigger, ev *ent.Event, now time.Time) bool {
 // fires with it off (issue #75). All-day triggers are computed against local
 // midnight of the start date so "09:00 the day before" means wall-clock time,
 // not UTC.
-func triggersFor(ev *ent.Event, s settings.UISettings, loc *time.Location) []trigger {
+func triggersFor(ev *ent.Event, s config.Config, loc *time.Location) []trigger {
 	explicit := popupMinutes(ev.Reminders)
 	if ev.AllDay && !s.AllDayReminders && len(explicit) == 0 {
 		return nil
@@ -813,7 +813,7 @@ func eventTitle(ev *ent.Event) string {
 	return ev.Summary
 }
 
-func eventBody(ev *ent.Event, now time.Time, s settings.UISettings, loc *time.Location) string {
+func eventBody(ev *ent.Event, now time.Time, s config.Config, loc *time.Location) string {
 	var when string
 	switch {
 	case ev.AllDay:

@@ -16,7 +16,11 @@ func ResolveMicrosoftClient(explicit oauth.MicrosoftAppCredentials) (oauth.Micro
 	if explicit.ClientID != "" {
 		return explicit, nil
 	}
-	if clientID := config.New().MicrosoftClientID; clientID != "" {
+	cfg, err := config.Load()
+	if err != nil {
+		return oauth.MicrosoftAppCredentials{}, err
+	}
+	if clientID := cfg.MicrosoftClientID; clientID != "" {
 		explicit.ClientID = clientID
 		return explicit, nil
 	}

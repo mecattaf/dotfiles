@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -18,7 +19,6 @@ import (
 	"github.com/mecattaf/dcal/internal/ipc"
 	dcalkeyring "github.com/mecattaf/dcal/internal/keyring"
 	"github.com/mecattaf/dcal/internal/oauth"
-	"github.com/mecattaf/dcal/internal/paths"
 	"github.com/mecattaf/dcal/repo"
 )
 
@@ -30,9 +30,10 @@ var accountCmd = &cobra.Command{
 var accountRemoveYes bool
 
 var accountListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List configured accounts",
-	Args:  cobra.NoArgs,
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List configured accounts",
+	Args:    cobra.NoArgs,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		ctx := context.Background()
 		st, closer, err := openStores(ctx)
@@ -69,11 +70,6 @@ var accountListCmd = &cobra.Command{
 				})
 			}
 			return printJSON(out)
-		}
-
-		if len(items) == 0 {
-			fmt.Println("No accounts configured. Run `dcal account add --help` to see providers.")
-			return nil
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
@@ -233,17 +229,15 @@ type cliStores struct {
 // openStores gives the CLI the same storage the daemon uses: the sqlite
 // database plus the keyring-backed secret store, so both can run side by side.
 func openStores(ctx context.Context) (*cliStores, func(), error) {
-	cfg := config.New()
-	dbPath := cfg.DatabasePath
-	if dbPath == "" {
-		path, err := paths.DatabasePath()
-		if err != nil {
-			return nil, nil, err
-		}
-		dbPath = path
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.DatabasePath), 0o700); err != nil {
+		return nil, nil, fmt.Errorf("create database directory: %w", err)
 	}
 
-	client, err := repo.OpenFile(ctx, dbPath)
+	client, err := repo.OpenFile(ctx, cfg.DatabasePath)
 	if err != nil {
 		return nil, nil, err
 	}

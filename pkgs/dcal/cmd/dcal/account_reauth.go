@@ -58,7 +58,11 @@ func reauthGoogle(ctx context.Context, st *cliStores, accountID string) (account
 		return accounts.Result{}, err
 	}
 
-	flow, err := oauth.StartGoogleLoopbackFlow(ctx, creds, config.New().OAuthBindAddr)
+	cfg, err := config.Load()
+	if err != nil {
+		return accounts.Result{}, err
+	}
+	flow, err := oauth.StartGoogleLoopbackFlow(ctx, creds, cfg.OAuthBindAddr)
 	if err != nil {
 		return accounts.Result{}, err
 	}
@@ -76,7 +80,11 @@ func reauthMicrosoft(ctx context.Context, st *cliStores, accountID string) (acco
 		return accounts.Result{}, err
 	}
 
-	flow, err := oauth.StartMicrosoftLoopbackFlow(ctx, creds, config.New().OAuthBindAddr)
+	cfg, err := config.Load()
+	if err != nil {
+		return accounts.Result{}, err
+	}
+	flow, err := oauth.StartMicrosoftLoopbackFlow(ctx, creds, cfg.OAuthBindAddr)
 	if err != nil {
 		return accounts.Result{}, err
 	}

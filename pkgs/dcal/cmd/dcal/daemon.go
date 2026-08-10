@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -25,7 +26,6 @@ import (
 	dcalkeyring "github.com/mecattaf/dcal/internal/keyring"
 	"github.com/mecattaf/dcal/internal/notify"
 	"github.com/mecattaf/dcal/internal/oauth"
-	"github.com/mecattaf/dcal/internal/paths"
 	"github.com/mecattaf/dcal/internal/providers/caldav"
 	"github.com/mecattaf/dcal/internal/providers/evolution"
 	"github.com/mecattaf/dcal/internal/providers/google"
@@ -34,7 +34,6 @@ import (
 	"github.com/mecattaf/dcal/internal/providers/microsoft"
 	"github.com/mecattaf/dcal/internal/reminders"
 	"github.com/mecattaf/dcal/internal/rsvp"
-	"github.com/mecattaf/dcal/internal/settings"
 	"github.com/mecattaf/dcal/internal/support/errdefs/humaerr"
 	"github.com/mecattaf/dcal/internal/support/httpapi"
 	"github.com/mecattaf/dcal/internal/support/httpapi/middleware"
@@ -101,18 +100,15 @@ func (s *daemonServices) Close() {
 }
 
 func bootDaemonServices(ctx context.Context) (*daemonServices, error) {
-	cfg := config.New()
-
-	dbPath := cfg.DatabasePath
-	if dbPath == "" {
-		path, err := paths.DatabasePath()
-		if err != nil {
-			return nil, err
-		}
-		dbPath = path
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.DatabasePath), 0o700); err != nil {
+		return nil, fmt.Errorf("create database directory: %w", err)
 	}
 
-	client, err := repo.OpenFile(ctx, dbPath)
+	client, err := repo.OpenFile(ctx, cfg.DatabasePath)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +130,7 @@ func bootDaemonServices(ctx context.Context) (*daemonServices, error) {
 
 	syncEngine := sync.NewEngine(r, registry, secrets, 30*time.Minute)
 	syncEngine.SetIntervalFunc(func() time.Duration {
-		return time.Duration(settings.Load().SyncIntervalMinutes) * time.Minute
+		return time.Duration(config.Current().SyncIntervalMinutes) * time.Minute
 	})
 	bus := ipc.NewEventBus()
 	syncEngine.SetNotifier(bus.Publish)

@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mecattaf/dcal/config"
 	"github.com/mecattaf/dcal/ent"
 	"github.com/mecattaf/dcal/internal/calendar"
 	"github.com/mecattaf/dcal/internal/eventconv"
 	"github.com/mecattaf/dcal/internal/rsvp"
-	"github.com/mecattaf/dcal/internal/settings"
 	"github.com/mecattaf/dcal/internal/support/log"
 )
 
@@ -334,8 +334,8 @@ func handleCalendarSetReminders(ctx context.Context, w *ConnWriter, req Request,
 
 // reminderOverrideFromParam reads the override object: only the keys present
 // become overrides, everything else inherits the global value.
-func reminderOverrideFromParam(raw any) *settings.ReminderOverride {
-	o := &settings.ReminderOverride{}
+func reminderOverrideFromParam(raw any) *config.ReminderOverride {
+	o := &config.ReminderOverride{}
 	m, ok := raw.(map[string]any)
 	if !ok {
 		return o

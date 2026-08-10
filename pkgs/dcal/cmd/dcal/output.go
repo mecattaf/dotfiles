@@ -7,6 +7,7 @@ import (
 )
 
 var jsonOutput bool
+var outputFormat string
 
 func printJSON(v any) error {
 	enc := json.NewEncoder(os.Stdout)
@@ -14,12 +15,7 @@ func printJSON(v any) error {
 	return enc.Encode(v)
 }
 
-// infof prints progress/instructions; in --json mode they move to stderr so
-// stdout carries only the JSON result.
+// infof prints progress, prompts, and notices. Stdout is reserved for data.
 func infof(format string, args ...any) {
-	w := os.Stdout
-	if jsonOutput {
-		w = os.Stderr
-	}
-	fmt.Fprintf(w, format+"\n", args...)
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
 }

@@ -16,12 +16,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mecattaf/dcal/config"
 	"github.com/mecattaf/dcal/ent"
 	entevent "github.com/mecattaf/dcal/ent/event"
 	"github.com/mecattaf/dcal/internal/calendar"
 	"github.com/mecattaf/dcal/internal/notify"
 	"github.com/mecattaf/dcal/internal/rsvp"
-	"github.com/mecattaf/dcal/internal/settings"
 	"github.com/mecattaf/dcal/internal/support/log"
 	"github.com/mecattaf/dcal/repo"
 )
@@ -54,7 +54,7 @@ type Engine struct {
 	stores   rsvp.Stores
 	sender   Sender
 	publish  Publisher
-	settings func() settings.UISettings
+	settings func() config.Config
 	now      func() time.Time
 	loc      *time.Location
 	open     func()
@@ -81,7 +81,7 @@ func NewEngine(r *repo.Repo, stores rsvp.Stores, sender Sender, maxWake time.Dur
 		repo:     r,
 		stores:   stores,
 		sender:   sender,
-		settings: settings.Load,
+		settings: config.Current,
 		now:      time.Now,
 		loc:      time.Local,
 		open:     openApp,
@@ -378,7 +378,7 @@ func eventTitle(ev *ent.Event) string {
 	return ev.Summary
 }
 
-func invitationBody(ev *ent.Event, s settings.UISettings, loc *time.Location) string {
+func invitationBody(ev *ent.Event, s config.Config, loc *time.Location) string {
 	start := ev.Start.In(loc)
 	var when string
 	switch {
