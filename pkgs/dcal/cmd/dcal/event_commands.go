@@ -16,6 +16,8 @@ import (
 
 type addOptions struct {
 	calendar    string
+	crm         string
+	kind        string
 	start       string
 	end         string
 	description string
@@ -27,10 +29,10 @@ type addOptions struct {
 var addFlags addOptions
 
 var addCmd = &cobra.Command{
-	Use:   "add <title>",
+	Use:   "add [title]",
 	Short: "Create an event",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(_ *cobra.Command, args []string) error {
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
 		start, err := parseRFC3339("start", addFlags.start)
 		if err != nil {
 			return err
@@ -47,6 +49,35 @@ var addCmd = &cobra.Command{
 				return err
 			}
 		}
+		title := ""
+		if len(args) == 1 {
+			title = strings.TrimSpace(args[0])
+		}
+		crmRef := strings.TrimSpace(addFlags.crm)
+		kind := strings.TrimSpace(addFlags.kind)
+		if cmd.Flags().Changed("crm") && crmRef == "" {
+			return errors.New("--crm must not be empty")
+		}
+		if kind != "" && kind != "call" {
+			return fmt.Errorf("kind must be call")
+		}
+		if crmRef != "" {
+			contact, err := resolveCRMContact(cmd.Context(), crmRef)
+			if err != nil {
+				return err
+			}
+			crmRef = contact.Ref
+			if kind == "" {
+				kind = "call"
+			}
+			if title == "" {
+				title = "call with " + contact.Name
+			}
+		}
+		if title == "" {
+			return errors.New("title is required unless --crm supplies a contact")
+		}
+
 		cfg, err := config.Load()
 		if err != nil {
 			return err
@@ -63,12 +94,15 @@ var addCmd = &cobra.Command{
 		}
 		params := map[string]any{
 			"calendarId": cal.ID,
-			"summary":    strings.TrimSpace(args[0]),
+			"summary":    title,
 			"start":      start.Format(time.RFC3339),
 			"end":        end.Format(time.RFC3339),
 		}
-		if params["summary"] == "" {
-			return errors.New("title is required")
+		if crmRef != "" {
+			params["crmRef"] = crmRef
+		}
+		if kind != "" {
+			params["crmKind"] = kind
 		}
 		setOptionalEventParams(params, addFlags.description, addFlags.location, addFlags.status, addFlags.allDay)
 
@@ -321,6 +355,8 @@ var removeCmd = &cobra.Command{
 
 func init() {
 	addCmd.Flags().StringVar(&addFlags.calendar, "calendar", "", "Calendar name or id (defaults from config)")
+	addCmd.Flags().StringVar(&addFlags.crm, "crm", "", "CRM contact ref")
+	addCmd.Flags().StringVar(&addFlags.kind, "kind", "", "Event kind (call)")
 	addCmd.Flags().StringVar(&addFlags.start, "start", "", "Start time (RFC3339)")
 	addCmd.Flags().StringVar(&addFlags.end, "end", "", "End time (RFC3339)")
 	addCmd.Flags().StringVar(&addFlags.description, "description", "", "Description")
@@ -456,6 +492,12 @@ func printEvent(event eventRecord) error {
 	}
 	if event.Status != "" {
 		fmt.Fprintf(w, "Status:\t%s\n", event.Status)
+	}
+	if event.CRMRef != "" {
+		fmt.Fprintf(w, "CRM Ref:\t%s\n", event.CRMRef)
+	}
+	if event.CRMKind != "" {
+		fmt.Fprintf(w, "CRM Kind:\t%s\n", event.CRMKind)
 	}
 	return w.Flush()
 }

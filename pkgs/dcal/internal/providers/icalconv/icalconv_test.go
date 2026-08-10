@@ -65,6 +65,25 @@ func TestRoundTripCoreFields(t *testing.T) {
 	assert.Equal(t, "accepted", got.Attendees[0].Status)
 }
 
+func TestCRMPropertiesRoundTrip(t *testing.T) {
+	src := &cal.Event{
+		Summary: "Call with Nick Dupont",
+		Start:   time.Date(2026, 8, 10, 13, 0, 0, 0, time.UTC),
+		End:     time.Date(2026, 8, 10, 14, 0, 0, 0, time.UTC),
+		CRMRef:  "c42",
+		CRMKind: "call",
+	}
+
+	got := roundTrip(t, src, "crm-42")
+	assert.Equal(t, "c42", got.CRMRef)
+	assert.Equal(t, "call", got.CRMKind)
+
+	var buf bytes.Buffer
+	require.NoError(t, ical.NewEncoder(&buf).Encode(CalendarFromEvent(src, "crm-42")))
+	assert.Contains(t, buf.String(), "X-CRM-REF:c42")
+	assert.Contains(t, buf.String(), "X-CRM-KIND:call")
+}
+
 func TestRoundTripAllDay(t *testing.T) {
 	src := &cal.Event{
 		Summary: "Conference",

@@ -48,6 +48,14 @@ func handleEventCreate(ctx context.Context, w *ConnWriter, req Request, deps Dep
 		RespondError(w, req.ID, fmt.Sprintf("create event: %v", err))
 		return
 	}
+	// Providers without a custom-property surface must not make the local CRM
+	// linkage disappear from the event returned by a successful write.
+	if created.CRMRef == "" {
+		created.CRMRef = ev.CRMRef
+	}
+	if created.CRMKind == "" {
+		created.CRMKind = ev.CRMKind
+	}
 
 	stored, err := persistEvent(ctx, deps, domCal.ID, created)
 	if err != nil {
@@ -103,6 +111,12 @@ func handleEventUpdate(ctx context.Context, w *ConnWriter, req Request, deps Dep
 	if err != nil {
 		RespondError(w, req.ID, fmt.Sprintf("update event: %v", err))
 		return
+	}
+	if updated.CRMRef == "" {
+		updated.CRMRef = ev.CRMRef
+	}
+	if updated.CRMKind == "" {
+		updated.CRMKind = ev.CRMKind
 	}
 
 	stored, err := persistEvent(ctx, deps, domCal.ID, updated)
@@ -471,6 +485,12 @@ func eventFromParams(base calendar.Event, p map[string]any) (calendar.Event, err
 			base.Status = calendar.EventConfirmed
 		}
 	}
+	if _, ok := p["crmRef"]; ok {
+		base.CRMRef = strings.TrimSpace(ParamString(p, "crmRef"))
+	}
+	if _, ok := p["crmKind"]; ok {
+		base.CRMKind = strings.TrimSpace(ParamString(p, "crmKind"))
+	}
 
 	if raw, ok := p["reminders"]; ok {
 		rems, err := remindersFromParam(raw)
@@ -564,6 +584,8 @@ func domainEventFromEnt(e *ent.Event) calendar.Event {
 		Recurrence:    calendar.RecurrenceFromMap(e.Recurrence),
 		RecurringID:   e.RecurringID,
 		Reminders:     calendar.RemindersFromMaps(e.Reminders),
+		CRMRef:        e.CrmRef,
+		CRMKind:       e.CrmKind,
 	}
 	if e.OriginalStart != nil {
 		ev.OriginalStart = *e.OriginalStart

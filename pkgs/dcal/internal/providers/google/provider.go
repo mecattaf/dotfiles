@@ -16,6 +16,7 @@ import (
 
 	cal "github.com/mecattaf/dcal/internal/calendar"
 	"github.com/mecattaf/dcal/internal/oauth"
+	"github.com/mecattaf/dcal/internal/providers/icalconv"
 	"github.com/mecattaf/dcal/internal/providers/oauthbase"
 	"github.com/mecattaf/dcal/internal/support/log"
 	"github.com/mecattaf/dcal/internal/tzcache"
@@ -347,6 +348,10 @@ func fromGoogleEvent(c cal.Calendar, item *calendar.Event) *cal.Event {
 		Transparency: item.Transparency,
 		Visibility:   item.Visibility,
 	}
+	if item.ExtendedProperties != nil {
+		ev.CRMRef = item.ExtendedProperties.Private[icalconv.PropCRMRef]
+		ev.CRMKind = item.ExtendedProperties.Private[icalconv.PropCRMKind]
+	}
 
 	ev.Start, ev.AllDay, ev.StartTimeZone = fromGoogleTime(item.Start)
 	ev.End, _, ev.EndTimeZone = fromGoogleTime(item.End)
@@ -517,6 +522,15 @@ func toGoogleEvent(ev *cal.Event) *calendar.Event {
 		Description: ev.Description,
 		Location:    ev.Location,
 		Status:      string(ev.Status),
+	}
+	if ev.CRMRef != "" || ev.CRMKind != "" {
+		out.ExtendedProperties = &calendar.EventExtendedProperties{Private: map[string]string{}}
+		if ev.CRMRef != "" {
+			out.ExtendedProperties.Private[icalconv.PropCRMRef] = ev.CRMRef
+		}
+		if ev.CRMKind != "" {
+			out.ExtendedProperties.Private[icalconv.PropCRMKind] = ev.CRMKind
+		}
 	}
 
 	if ev.AllDay {

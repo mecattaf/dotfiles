@@ -66,6 +66,10 @@ func (Event) Fields() []ent.Field {
 			Optional(),
 		field.String("visibility").
 			Optional(),
+		field.String("crm_ref").
+			Optional(),
+		field.String("crm_kind").
+			Optional(),
 		field.Text("raw_ics").
 			Optional(),
 		field.Time("created").

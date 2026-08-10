@@ -150,6 +150,16 @@ func Visibility(v string) predicate.Event {
 	return predicate.Event(sql.FieldEQ(FieldVisibility, v))
 }
 
+// CrmRef applies equality check predicate on the "crm_ref" field. It's identical to CrmRefEQ.
+func CrmRef(v string) predicate.Event {
+	return predicate.Event(sql.FieldEQ(FieldCrmRef, v))
+}
+
+// CrmKind applies equality check predicate on the "crm_kind" field. It's identical to CrmKindEQ.
+func CrmKind(v string) predicate.Event {
+	return predicate.Event(sql.FieldEQ(FieldCrmKind, v))
+}
+
 // RawIcs applies equality check predicate on the "raw_ics" field. It's identical to RawIcsEQ.
 func RawIcs(v string) predicate.Event {
 	return predicate.Event(sql.FieldEQ(FieldRawIcs, v))
@@ -1328,6 +1338,156 @@ func VisibilityEqualFold(v string) predicate.Event {
 // VisibilityContainsFold applies the ContainsFold predicate on the "visibility" field.
 func VisibilityContainsFold(v string) predicate.Event {
 	return predicate.Event(sql.FieldContainsFold(FieldVisibility, v))
+}
+
+// CrmRefEQ applies the EQ predicate on the "crm_ref" field.
+func CrmRefEQ(v string) predicate.Event {
+	return predicate.Event(sql.FieldEQ(FieldCrmRef, v))
+}
+
+// CrmRefNEQ applies the NEQ predicate on the "crm_ref" field.
+func CrmRefNEQ(v string) predicate.Event {
+	return predicate.Event(sql.FieldNEQ(FieldCrmRef, v))
+}
+
+// CrmRefIn applies the In predicate on the "crm_ref" field.
+func CrmRefIn(vs ...string) predicate.Event {
+	return predicate.Event(sql.FieldIn(FieldCrmRef, vs...))
+}
+
+// CrmRefNotIn applies the NotIn predicate on the "crm_ref" field.
+func CrmRefNotIn(vs ...string) predicate.Event {
+	return predicate.Event(sql.FieldNotIn(FieldCrmRef, vs...))
+}
+
+// CrmRefGT applies the GT predicate on the "crm_ref" field.
+func CrmRefGT(v string) predicate.Event {
+	return predicate.Event(sql.FieldGT(FieldCrmRef, v))
+}
+
+// CrmRefGTE applies the GTE predicate on the "crm_ref" field.
+func CrmRefGTE(v string) predicate.Event {
+	return predicate.Event(sql.FieldGTE(FieldCrmRef, v))
+}
+
+// CrmRefLT applies the LT predicate on the "crm_ref" field.
+func CrmRefLT(v string) predicate.Event {
+	return predicate.Event(sql.FieldLT(FieldCrmRef, v))
+}
+
+// CrmRefLTE applies the LTE predicate on the "crm_ref" field.
+func CrmRefLTE(v string) predicate.Event {
+	return predicate.Event(sql.FieldLTE(FieldCrmRef, v))
+}
+
+// CrmRefContains applies the Contains predicate on the "crm_ref" field.
+func CrmRefContains(v string) predicate.Event {
+	return predicate.Event(sql.FieldContains(FieldCrmRef, v))
+}
+
+// CrmRefHasPrefix applies the HasPrefix predicate on the "crm_ref" field.
+func CrmRefHasPrefix(v string) predicate.Event {
+	return predicate.Event(sql.FieldHasPrefix(FieldCrmRef, v))
+}
+
+// CrmRefHasSuffix applies the HasSuffix predicate on the "crm_ref" field.
+func CrmRefHasSuffix(v string) predicate.Event {
+	return predicate.Event(sql.FieldHasSuffix(FieldCrmRef, v))
+}
+
+// CrmRefIsNil applies the IsNil predicate on the "crm_ref" field.
+func CrmRefIsNil() predicate.Event {
+	return predicate.Event(sql.FieldIsNull(FieldCrmRef))
+}
+
+// CrmRefNotNil applies the NotNil predicate on the "crm_ref" field.
+func CrmRefNotNil() predicate.Event {
+	return predicate.Event(sql.FieldNotNull(FieldCrmRef))
+}
+
+// CrmRefEqualFold applies the EqualFold predicate on the "crm_ref" field.
+func CrmRefEqualFold(v string) predicate.Event {
+	return predicate.Event(sql.FieldEqualFold(FieldCrmRef, v))
+}
+
+// CrmRefContainsFold applies the ContainsFold predicate on the "crm_ref" field.
+func CrmRefContainsFold(v string) predicate.Event {
+	return predicate.Event(sql.FieldContainsFold(FieldCrmRef, v))
+}
+
+// CrmKindEQ applies the EQ predicate on the "crm_kind" field.
+func CrmKindEQ(v string) predicate.Event {
+	return predicate.Event(sql.FieldEQ(FieldCrmKind, v))
+}
+
+// CrmKindNEQ applies the NEQ predicate on the "crm_kind" field.
+func CrmKindNEQ(v string) predicate.Event {
+	return predicate.Event(sql.FieldNEQ(FieldCrmKind, v))
+}
+
+// CrmKindIn applies the In predicate on the "crm_kind" field.
+func CrmKindIn(vs ...string) predicate.Event {
+	return predicate.Event(sql.FieldIn(FieldCrmKind, vs...))
+}
+
+// CrmKindNotIn applies the NotIn predicate on the "crm_kind" field.
+func CrmKindNotIn(vs ...string) predicate.Event {
+	return predicate.Event(sql.FieldNotIn(FieldCrmKind, vs...))
+}
+
+// CrmKindGT applies the GT predicate on the "crm_kind" field.
+func CrmKindGT(v string) predicate.Event {
+	return predicate.Event(sql.FieldGT(FieldCrmKind, v))
+}
+
+// CrmKindGTE applies the GTE predicate on the "crm_kind" field.
+func CrmKindGTE(v string) predicate.Event {
+	return predicate.Event(sql.FieldGTE(FieldCrmKind, v))
+}
+
+// CrmKindLT applies the LT predicate on the "crm_kind" field.
+func CrmKindLT(v string) predicate.Event {
+	return predicate.Event(sql.FieldLT(FieldCrmKind, v))
+}
+
+// CrmKindLTE applies the LTE predicate on the "crm_kind" field.
+func CrmKindLTE(v string) predicate.Event {
+	return predicate.Event(sql.FieldLTE(FieldCrmKind, v))
+}
+
+// CrmKindContains applies the Contains predicate on the "crm_kind" field.
+func CrmKindContains(v string) predicate.Event {
+	return predicate.Event(sql.FieldContains(FieldCrmKind, v))
+}
+
+// CrmKindHasPrefix applies the HasPrefix predicate on the "crm_kind" field.
+func CrmKindHasPrefix(v string) predicate.Event {
+	return predicate.Event(sql.FieldHasPrefix(FieldCrmKind, v))
+}
+
+// CrmKindHasSuffix applies the HasSuffix predicate on the "crm_kind" field.
+func CrmKindHasSuffix(v string) predicate.Event {
+	return predicate.Event(sql.FieldHasSuffix(FieldCrmKind, v))
+}
+
+// CrmKindIsNil applies the IsNil predicate on the "crm_kind" field.
+func CrmKindIsNil() predicate.Event {
+	return predicate.Event(sql.FieldIsNull(FieldCrmKind))
+}
+
+// CrmKindNotNil applies the NotNil predicate on the "crm_kind" field.
+func CrmKindNotNil() predicate.Event {
+	return predicate.Event(sql.FieldNotNull(FieldCrmKind))
+}
+
+// CrmKindEqualFold applies the EqualFold predicate on the "crm_kind" field.
+func CrmKindEqualFold(v string) predicate.Event {
+	return predicate.Event(sql.FieldEqualFold(FieldCrmKind, v))
+}
+
+// CrmKindContainsFold applies the ContainsFold predicate on the "crm_kind" field.
+func CrmKindContainsFold(v string) predicate.Event {
+	return predicate.Event(sql.FieldContainsFold(FieldCrmKind, v))
 }
 
 // RawIcsEQ applies the EQ predicate on the "raw_ics" field.

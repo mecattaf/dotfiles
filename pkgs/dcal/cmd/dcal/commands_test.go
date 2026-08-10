@@ -119,6 +119,83 @@ func TestDaemonBackedEventRoundTrip(t *testing.T) {
 	assert.Equal(t, exitNotFound, code, stderr)
 }
 
+func TestAddCRMContactUsesStubAndPersistsICSProperties(t *testing.T) {
+	root := shortTempRoot(t)
+	setCLIEnv(t, root)
+	t.Setenv("DCAL_DISABLE_HTTP", "true")
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "config", "dcal"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "config", "dcal", "config.json"), []byte(`{"default_calendar":"Work"}`), 0o600))
+
+	fakeCRM := filepath.Join(root, "fake-crm")
+	crmLog := filepath.Join(root, "crm-argv.log")
+	fake := `#!/bin/sh
+printf '%s\n' "$*" >>"$DCAL_CRM_FAKE_LOG"
+case "$2" in
+  c42) printf '%s\n' '[{"ref":"c42","name":"Nick Dupont"}]' ;;
+  c404) printf '%s\n' 'crm: error: contact not found: c404' >&2; exit 2 ;;
+  c3) printf '%s\n' 'crm: error: ambiguous contact: c3' >&2; exit 3 ;;
+  *) printf '%s\n' 'unexpected fake crm invocation' >&2; exit 1 ;;
+esac
+`
+	require.NoError(t, os.WriteFile(fakeCRM, []byte(fake), 0o700))
+	t.Setenv("DCAL_CRM_BIN", fakeCRM)
+	t.Setenv("DCAL_CRM_FAKE_LOG", crmLog)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	services, err := bootDaemonServices(ctx)
+	require.NoError(t, err)
+	t.Cleanup(services.Close)
+
+	_, stderr, code := runCLI(t, services.SocketPath(), "calendar", "add", "Work")
+	require.Equal(t, 0, code, stderr)
+
+	stdout, stderr, code := runCLI(t, services.SocketPath(),
+		"add",
+		"--calendar", "Work",
+		"--crm", "c42",
+		"--start", "2026-08-10T15:00:00+02:00",
+		"--end", "2026-08-10T16:00:00+02:00",
+	)
+	require.Equal(t, 0, code, stderr)
+	eventRef := strings.TrimSpace(stdout)
+	require.NotEmpty(t, eventRef)
+
+	stdout, stderr, code = runCLI(t, services.SocketPath(), "show", eventRef, "--format", "json")
+	require.Equal(t, 0, code, stderr)
+	var event eventRecord
+	require.NoError(t, json.Unmarshal([]byte(stdout), &event))
+	assert.Equal(t, "call with Nick Dupont", event.Summary)
+	assert.Equal(t, "c42", event.CRMRef)
+	assert.Equal(t, "call", event.CRMKind)
+
+	argv, err := os.ReadFile(crmLog)
+	require.NoError(t, err)
+	assert.Equal(t, "show c42 --format json\n", string(argv))
+
+	ics, err := os.ReadFile(filepath.Join(root, "data", "dcal", "collections", "Work.ics"))
+	require.NoError(t, err)
+	assert.Contains(t, string(ics), "SUMMARY:call with Nick Dupont")
+	assert.Contains(t, string(ics), "X-CRM-REF:c42")
+	assert.Contains(t, string(ics), "X-CRM-KIND:call")
+
+	_, stderr, code = runCLI(t, services.SocketPath(),
+		"add", "missing",
+		"--calendar", "Work", "--crm", "c404",
+		"--start", "2026-08-10T17:00:00+02:00", "--end", "2026-08-10T18:00:00+02:00",
+	)
+	assert.Equal(t, exitNotFound, code)
+	assert.Contains(t, stderr, "contact not found: c404")
+
+	_, stderr, code = runCLI(t, services.SocketPath(),
+		"add", "ambiguous",
+		"--calendar", "Work", "--crm", "c3",
+		"--start", "2026-08-10T17:00:00+02:00", "--end", "2026-08-10T18:00:00+02:00",
+	)
+	assert.Equal(t, exitAmbiguous, code)
+	assert.Contains(t, stderr, "ambiguous contact: c3")
+}
+
 func TestFreshSyncAndStatusAreCleanNoOps(t *testing.T) {
 	root := shortTempRoot(t)
 	setCLIEnv(t, root)

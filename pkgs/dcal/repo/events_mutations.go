@@ -35,6 +35,8 @@ type UpsertEventInput struct {
 	Categories    []string
 	Transparency  string
 	Visibility    string
+	CRMRef        string
+	CRMKind       string
 	RawICS        string
 }
 
@@ -75,6 +77,8 @@ func (r *Repo) UpsertEvent(ctx context.Context, in UpsertEventInput) (*ent.Event
 		SetRecurringID(in.RecurringID).
 		SetTransparency(in.Transparency).
 		SetVisibility(in.Visibility).
+		SetCrmRef(in.CRMRef).
+		SetCrmKind(in.CRMKind).
 		SetRawIcs(in.RawICS)
 
 	if in.Status != "" {
@@ -128,6 +132,8 @@ func (r *Repo) applyEventUpdate(ctx context.Context, id string, in UpsertEventIn
 		SetRecurringID(in.RecurringID).
 		SetTransparency(in.Transparency).
 		SetVisibility(in.Visibility).
+		SetCrmRef(in.CRMRef).
+		SetCrmKind(in.CRMKind).
 		SetRawIcs(in.RawICS)
 
 	if in.Status != "" {

@@ -37,6 +37,8 @@ func FromEnt(e *ent.Event) calendar.Event {
 		Categories:    e.Categories,
 		Transparency:  e.Transparency,
 		Visibility:    e.Visibility,
+		CRMRef:        e.CrmRef,
+		CRMKind:       e.CrmKind,
 		RawICS:        e.RawIcs,
 	}
 	if e.OriginalStart != nil {
@@ -76,6 +78,8 @@ func UpsertInput(calendarID string, ev *calendar.Event) repo.UpsertEventInput {
 		Categories:    ev.Categories,
 		Transparency:  ev.Transparency,
 		Visibility:    ev.Visibility,
+		CRMRef:        ev.CRMRef,
+		CRMKind:       ev.CRMKind,
 		RawICS:        ev.RawICS,
 	}
 }

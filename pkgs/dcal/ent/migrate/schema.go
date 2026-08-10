@@ -100,6 +100,8 @@ var (
 		{Name: "categories", Type: field.TypeJSON, Nullable: true},
 		{Name: "transparency", Type: field.TypeString, Nullable: true},
 		{Name: "visibility", Type: field.TypeString, Nullable: true},
+		{Name: "crm_ref", Type: field.TypeString, Nullable: true},
+		{Name: "crm_kind", Type: field.TypeString, Nullable: true},
 		{Name: "raw_ics", Type: field.TypeString, Nullable: true, Size: 2147483647},
 		{Name: "created", Type: field.TypeTime},
 		{Name: "updated", Type: field.TypeTime},
@@ -113,7 +115,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "events_calendars_events",
-				Columns:    []*schema.Column{EventsColumns[27]},
+				Columns:    []*schema.Column{EventsColumns[29]},
 				RefColumns: []*schema.Column{CalendarsColumns[0]},
 				OnDelete:   schema.Cascade,
 			},
@@ -122,7 +124,7 @@ var (
 			{
 				Name:    "event_uid_calendar_events",
 				Unique:  true,
-				Columns: []*schema.Column{EventsColumns[1], EventsColumns[27]},
+				Columns: []*schema.Column{EventsColumns[1], EventsColumns[29]},
 			},
 			{
 				Name:    "event_start",

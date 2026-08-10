@@ -116,6 +116,8 @@ type Event struct {
 	Categories    []string    `json:"categories,omitempty"`
 	Transparency  string      `json:"transparency,omitempty"`
 	Visibility    string      `json:"visibility,omitempty"`
+	CRMRef        string      `json:"crmRef,omitempty"`
+	CRMKind       string      `json:"crmKind,omitempty"`
 	RawICS        string      `json:"-"`
 	Created       time.Time   `json:"created,omitempty"`
 	Updated       time.Time   `json:"updated,omitempty"`

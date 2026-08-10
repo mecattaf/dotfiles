@@ -274,6 +274,34 @@ func (_c *EventCreate) SetNillableVisibility(v *string) *EventCreate {
 	return _c
 }
 
+// SetCrmRef sets the "crm_ref" field.
+func (_c *EventCreate) SetCrmRef(v string) *EventCreate {
+	_c.mutation.SetCrmRef(v)
+	return _c
+}
+
+// SetNillableCrmRef sets the "crm_ref" field if the given value is not nil.
+func (_c *EventCreate) SetNillableCrmRef(v *string) *EventCreate {
+	if v != nil {
+		_c.SetCrmRef(*v)
+	}
+	return _c
+}
+
+// SetCrmKind sets the "crm_kind" field.
+func (_c *EventCreate) SetCrmKind(v string) *EventCreate {
+	_c.mutation.SetCrmKind(v)
+	return _c
+}
+
+// SetNillableCrmKind sets the "crm_kind" field if the given value is not nil.
+func (_c *EventCreate) SetNillableCrmKind(v *string) *EventCreate {
+	if v != nil {
+		_c.SetCrmKind(*v)
+	}
+	return _c
+}
+
 // SetRawIcs sets the "raw_ics" field.
 func (_c *EventCreate) SetRawIcs(v string) *EventCreate {
 	_c.mutation.SetRawIcs(v)
@@ -557,6 +585,14 @@ func (_c *EventCreate) createSpec() (*Event, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Visibility(); ok {
 		_spec.SetField(event.FieldVisibility, field.TypeString, value)
 		_node.Visibility = value
+	}
+	if value, ok := _c.mutation.CrmRef(); ok {
+		_spec.SetField(event.FieldCrmRef, field.TypeString, value)
+		_node.CrmRef = value
+	}
+	if value, ok := _c.mutation.CrmKind(); ok {
+		_spec.SetField(event.FieldCrmKind, field.TypeString, value)
+		_node.CrmKind = value
 	}
 	if value, ok := _c.mutation.RawIcs(); ok {
 		_spec.SetField(event.FieldRawIcs, field.TypeString, value)
@@ -1014,6 +1050,42 @@ func (u *EventUpsert) UpdateVisibility() *EventUpsert {
 // ClearVisibility clears the value of the "visibility" field.
 func (u *EventUpsert) ClearVisibility() *EventUpsert {
 	u.SetNull(event.FieldVisibility)
+	return u
+}
+
+// SetCrmRef sets the "crm_ref" field.
+func (u *EventUpsert) SetCrmRef(v string) *EventUpsert {
+	u.Set(event.FieldCrmRef, v)
+	return u
+}
+
+// UpdateCrmRef sets the "crm_ref" field to the value that was provided on create.
+func (u *EventUpsert) UpdateCrmRef() *EventUpsert {
+	u.SetExcluded(event.FieldCrmRef)
+	return u
+}
+
+// ClearCrmRef clears the value of the "crm_ref" field.
+func (u *EventUpsert) ClearCrmRef() *EventUpsert {
+	u.SetNull(event.FieldCrmRef)
+	return u
+}
+
+// SetCrmKind sets the "crm_kind" field.
+func (u *EventUpsert) SetCrmKind(v string) *EventUpsert {
+	u.Set(event.FieldCrmKind, v)
+	return u
+}
+
+// UpdateCrmKind sets the "crm_kind" field to the value that was provided on create.
+func (u *EventUpsert) UpdateCrmKind() *EventUpsert {
+	u.SetExcluded(event.FieldCrmKind)
+	return u
+}
+
+// ClearCrmKind clears the value of the "crm_kind" field.
+func (u *EventUpsert) ClearCrmKind() *EventUpsert {
+	u.SetNull(event.FieldCrmKind)
 	return u
 }
 
@@ -1545,6 +1617,48 @@ func (u *EventUpsertOne) UpdateVisibility() *EventUpsertOne {
 func (u *EventUpsertOne) ClearVisibility() *EventUpsertOne {
 	return u.Update(func(s *EventUpsert) {
 		s.ClearVisibility()
+	})
+}
+
+// SetCrmRef sets the "crm_ref" field.
+func (u *EventUpsertOne) SetCrmRef(v string) *EventUpsertOne {
+	return u.Update(func(s *EventUpsert) {
+		s.SetCrmRef(v)
+	})
+}
+
+// UpdateCrmRef sets the "crm_ref" field to the value that was provided on create.
+func (u *EventUpsertOne) UpdateCrmRef() *EventUpsertOne {
+	return u.Update(func(s *EventUpsert) {
+		s.UpdateCrmRef()
+	})
+}
+
+// ClearCrmRef clears the value of the "crm_ref" field.
+func (u *EventUpsertOne) ClearCrmRef() *EventUpsertOne {
+	return u.Update(func(s *EventUpsert) {
+		s.ClearCrmRef()
+	})
+}
+
+// SetCrmKind sets the "crm_kind" field.
+func (u *EventUpsertOne) SetCrmKind(v string) *EventUpsertOne {
+	return u.Update(func(s *EventUpsert) {
+		s.SetCrmKind(v)
+	})
+}
+
+// UpdateCrmKind sets the "crm_kind" field to the value that was provided on create.
+func (u *EventUpsertOne) UpdateCrmKind() *EventUpsertOne {
+	return u.Update(func(s *EventUpsert) {
+		s.UpdateCrmKind()
+	})
+}
+
+// ClearCrmKind clears the value of the "crm_kind" field.
+func (u *EventUpsertOne) ClearCrmKind() *EventUpsertOne {
+	return u.Update(func(s *EventUpsert) {
+		s.ClearCrmKind()
 	})
 }
 
@@ -2250,6 +2364,48 @@ func (u *EventUpsertBulk) UpdateVisibility() *EventUpsertBulk {
 func (u *EventUpsertBulk) ClearVisibility() *EventUpsertBulk {
 	return u.Update(func(s *EventUpsert) {
 		s.ClearVisibility()
+	})
+}
+
+// SetCrmRef sets the "crm_ref" field.
+func (u *EventUpsertBulk) SetCrmRef(v string) *EventUpsertBulk {
+	return u.Update(func(s *EventUpsert) {
+		s.SetCrmRef(v)
+	})
+}
+
+// UpdateCrmRef sets the "crm_ref" field to the value that was provided on create.
+func (u *EventUpsertBulk) UpdateCrmRef() *EventUpsertBulk {
+	return u.Update(func(s *EventUpsert) {
+		s.UpdateCrmRef()
+	})
+}
+
+// ClearCrmRef clears the value of the "crm_ref" field.
+func (u *EventUpsertBulk) ClearCrmRef() *EventUpsertBulk {
+	return u.Update(func(s *EventUpsert) {
+		s.ClearCrmRef()
+	})
+}
+
+// SetCrmKind sets the "crm_kind" field.
+func (u *EventUpsertBulk) SetCrmKind(v string) *EventUpsertBulk {
+	return u.Update(func(s *EventUpsert) {
+		s.SetCrmKind(v)
+	})
+}
+
+// UpdateCrmKind sets the "crm_kind" field to the value that was provided on create.
+func (u *EventUpsertBulk) UpdateCrmKind() *EventUpsertBulk {
+	return u.Update(func(s *EventUpsert) {
+		s.UpdateCrmKind()
+	})
+}
+
+// ClearCrmKind clears the value of the "crm_kind" field.
+func (u *EventUpsertBulk) ClearCrmKind() *EventUpsertBulk {
+	return u.Update(func(s *EventUpsert) {
+		s.ClearCrmKind()
 	})
 }
 
