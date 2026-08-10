@@ -74,6 +74,12 @@ func Open(ctx context.Context, dsn string) (*ent.Client, error) {
 }
 
 func OpenFile(ctx context.Context, path string) (*ent.Client, error) {
+	lock, err := acquireMigrationLock(ctx, path+".migrate.lock")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = releaseMigrationLock(lock) }()
+
 	dsn := fmt.Sprintf("file:%s?cache=shared&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)", path)
 	return Open(ctx, dsn)
 }
