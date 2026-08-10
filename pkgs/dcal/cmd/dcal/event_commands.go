@@ -58,6 +58,9 @@ var addCmd = &cobra.Command{
 		if cmd.Flags().Changed("crm") && crmRef == "" {
 			return errors.New("--crm must not be empty")
 		}
+		if cmd.Flags().Changed("kind") && kind == "" {
+			return errors.New("--kind must be call")
+		}
 		if kind != "" && kind != "call" {
 			return fmt.Errorf("kind must be call")
 		}

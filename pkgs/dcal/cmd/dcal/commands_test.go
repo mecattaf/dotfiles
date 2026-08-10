@@ -35,7 +35,7 @@ func TestCLIHelperProcess(t *testing.T) {
 	}
 	rootCmd.SetArgs(os.Args[separator+1:])
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "dcal: %v\n", err)
+		printCommandError(os.Stderr, err)
 		os.Exit(exitCode(err))
 	}
 	os.Exit(0)
@@ -168,6 +168,10 @@ esac
 	assert.Equal(t, "call with Nick Dupont", event.Summary)
 	assert.Equal(t, "c42", event.CRMRef)
 	assert.Equal(t, "call", event.CRMKind)
+	stdout, stderr, code = runCLI(t, services.SocketPath(), "show", eventRef)
+	require.Equal(t, 0, code, stderr)
+	assert.Contains(t, stdout, "CRM Ref:")
+	assert.Contains(t, stdout, "CRM Kind:")
 
 	argv, err := os.ReadFile(crmLog)
 	require.NoError(t, err)
