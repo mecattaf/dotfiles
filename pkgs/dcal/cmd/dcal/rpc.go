@@ -20,7 +20,7 @@ func dialDaemon() (*daemonClient, error) {
 	socketPath := os.Getenv("DCAL_SOCKET")
 	var err error
 	if socketPath == "" {
-		socketPath, err = ipc.FindRunningSocket()
+		socketPath, err = ipc.WaitForRunningSocket()
 		if err != nil {
 			return nil, fmt.Errorf("dcal daemon is not running: %w", err)
 		}

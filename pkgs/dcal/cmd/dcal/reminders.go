@@ -76,7 +76,7 @@ func init() {
 func remindersCall(method string, params map[string]any) (any, error) {
 	socketPath := os.Getenv("DCAL_SOCKET")
 	if socketPath == "" {
-		path, err := ipc.FindRunningSocket()
+		path, err := ipc.WaitForRunningSocket()
 		if err != nil {
 			return nil, fmt.Errorf("dcal daemon not running: %w", err)
 		}

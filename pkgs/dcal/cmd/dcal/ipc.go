@@ -33,7 +33,7 @@ Method names and param keys complete with the shell (see 'dcal completion').`,
 
 		socketPath := os.Getenv("DCAL_SOCKET")
 		if socketPath == "" {
-			socketPath, err = ipc.FindRunningSocket()
+			socketPath, err = ipc.WaitForRunningSocket()
 			if err != nil {
 				return fmt.Errorf("dcal daemon not running: %w", err)
 			}

@@ -19,6 +19,8 @@ type Client struct {
 	r    *bufio.Reader
 }
 
+const socketDiscoveryPollInterval = 100 * time.Millisecond
+
 func Dial(socketPath string) (*Client, error) {
 	conn, err := net.Dial("unix", socketPath)
 	if err != nil {
@@ -81,4 +83,31 @@ func FindRunningSocket(appName string) (string, error) {
 		return path, nil
 	}
 	return "", errors.New("no running " + appName + " socket found")
+}
+
+// WaitForRunningSocket retries discovery for gracePeriod after an initial
+// lookup fails. The initial lookup preserves the existing no-wait fast path
+// when a daemon is already listening.
+func WaitForRunningSocket(appName string, gracePeriod time.Duration) (string, error) {
+	path, err := FindRunningSocket(appName)
+	if err == nil || gracePeriod <= 0 {
+		return path, err
+	}
+
+	ticker := time.NewTicker(socketDiscoveryPollInterval)
+	defer ticker.Stop()
+	timer := time.NewTimer(gracePeriod)
+	defer timer.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			path, err = FindRunningSocket(appName)
+			if err == nil {
+				return path, nil
+			}
+		case <-timer.C:
+			return FindRunningSocket(appName)
+		}
+	}
 }
