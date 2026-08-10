@@ -11,6 +11,7 @@ import (
 
 	"entgo.io/ent"
 	"entgo.io/ent/dialect/sql"
+	dcalconfig "github.com/mecattaf/dcal/config"
 	"github.com/mecattaf/dcal/ent/account"
 	"github.com/mecattaf/dcal/ent/calendar"
 	"github.com/mecattaf/dcal/ent/event"
@@ -19,7 +20,6 @@ import (
 	"github.com/mecattaf/dcal/ent/reminderstate"
 	"github.com/mecattaf/dcal/ent/secret"
 	"github.com/mecattaf/dcal/ent/task"
-	"github.com/mecattaf/dcal/internal/settings"
 )
 
 const (
@@ -1001,7 +1001,7 @@ type CalendarMutation struct {
 	read_only                  *bool
 	hidden                     *bool
 	sync_disabled              *bool
-	reminder_overrides         **settings.ReminderOverride
+	reminder_overrides         **dcalconfig.ReminderOverride
 	sync_token                 *string
 	supported_components       *[]string
 	appendsupported_components []string
@@ -1502,12 +1502,12 @@ func (m *CalendarMutation) ResetSyncDisabled() {
 }
 
 // SetReminderOverrides sets the "reminder_overrides" field.
-func (m *CalendarMutation) SetReminderOverrides(so *settings.ReminderOverride) {
+func (m *CalendarMutation) SetReminderOverrides(so *dcalconfig.ReminderOverride) {
 	m.reminder_overrides = &so
 }
 
 // ReminderOverrides returns the value of the "reminder_overrides" field in the mutation.
-func (m *CalendarMutation) ReminderOverrides() (r *settings.ReminderOverride, exists bool) {
+func (m *CalendarMutation) ReminderOverrides() (r *dcalconfig.ReminderOverride, exists bool) {
 	v := m.reminder_overrides
 	if v == nil {
 		return
@@ -1518,7 +1518,7 @@ func (m *CalendarMutation) ReminderOverrides() (r *settings.ReminderOverride, ex
 // OldReminderOverrides returns the old "reminder_overrides" field's value of the Calendar entity.
 // If the Calendar object wasn't provided to the builder, the object is fetched from the database.
 // An error is returned if the mutation operation is not UpdateOne, or the database query fails.
-func (m *CalendarMutation) OldReminderOverrides(ctx context.Context) (v *settings.ReminderOverride, err error) {
+func (m *CalendarMutation) OldReminderOverrides(ctx context.Context) (v *dcalconfig.ReminderOverride, err error) {
 	if !m.op.Is(OpUpdateOne) {
 		return v, errors.New("OldReminderOverrides is only allowed on UpdateOne operations")
 	}
@@ -2106,7 +2106,7 @@ func (m *CalendarMutation) SetField(name string, value ent.Value) error {
 		m.SetSyncDisabled(v)
 		return nil
 	case calendar.FieldReminderOverrides:
-		v, ok := value.(*settings.ReminderOverride)
+		v, ok := value.(*dcalconfig.ReminderOverride)
 		if !ok {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}

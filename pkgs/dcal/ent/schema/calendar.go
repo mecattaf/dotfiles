@@ -9,7 +9,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 
-	"github.com/mecattaf/dcal/internal/settings"
+	"github.com/mecattaf/dcal/config"
 )
 
 type Calendar struct {
@@ -47,7 +47,7 @@ func (Calendar) Fields() []ent.Field {
 			Default(false),
 		// Per-calendar reminder overrides; owned locally like hidden,
 		// nil means the calendar follows the global reminder settings.
-		field.JSON("reminder_overrides", &settings.ReminderOverride{}).
+		field.JSON("reminder_overrides", &config.ReminderOverride{}).
 			Optional(),
 		field.String("sync_token").
 			Optional(),

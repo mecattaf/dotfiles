@@ -12,12 +12,12 @@ import (
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
+	dcalconfig "github.com/mecattaf/dcal/config"
 	"github.com/mecattaf/dcal/ent/account"
 	"github.com/mecattaf/dcal/ent/calendar"
 	"github.com/mecattaf/dcal/ent/event"
 	"github.com/mecattaf/dcal/ent/predicate"
 	"github.com/mecattaf/dcal/ent/task"
-	"github.com/mecattaf/dcal/internal/settings"
 )
 
 // CalendarUpdate is the builder for updating Calendar entities.
@@ -185,7 +185,7 @@ func (_u *CalendarUpdate) SetNillableSyncDisabled(v *bool) *CalendarUpdate {
 }
 
 // SetReminderOverrides sets the "reminder_overrides" field.
-func (_u *CalendarUpdate) SetReminderOverrides(v *settings.ReminderOverride) *CalendarUpdate {
+func (_u *CalendarUpdate) SetReminderOverrides(v *dcalconfig.ReminderOverride) *CalendarUpdate {
 	_u.mutation.SetReminderOverrides(v)
 	return _u
 }
@@ -763,7 +763,7 @@ func (_u *CalendarUpdateOne) SetNillableSyncDisabled(v *bool) *CalendarUpdateOne
 }
 
 // SetReminderOverrides sets the "reminder_overrides" field.
-func (_u *CalendarUpdateOne) SetReminderOverrides(v *settings.ReminderOverride) *CalendarUpdateOne {
+func (_u *CalendarUpdateOne) SetReminderOverrides(v *dcalconfig.ReminderOverride) *CalendarUpdateOne {
 	_u.mutation.SetReminderOverrides(v)
 	return _u
 }

@@ -206,7 +206,11 @@ var accountAddGoogleCmd = &cobra.Command{
 		ctx, cancel := oauthContext()
 		defer cancel()
 
-		flow, err := oauth.StartGoogleLoopbackFlow(ctx, creds, config.New().OAuthBindAddr)
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+		flow, err := oauth.StartGoogleLoopbackFlow(ctx, creds, cfg.OAuthBindAddr)
 		if err != nil {
 			return err
 		}
@@ -246,7 +250,11 @@ var accountAddMicrosoftCmd = &cobra.Command{
 		ctx, cancel := oauthContext()
 		defer cancel()
 
-		flow, err := oauth.StartMicrosoftLoopbackFlow(ctx, creds, config.New().OAuthBindAddr)
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+		flow, err := oauth.StartMicrosoftLoopbackFlow(ctx, creds, cfg.OAuthBindAddr)
 		if err != nil {
 			return err
 		}

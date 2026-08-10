@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -18,7 +19,6 @@ import (
 	"github.com/mecattaf/dcal/internal/ipc"
 	dcalkeyring "github.com/mecattaf/dcal/internal/keyring"
 	"github.com/mecattaf/dcal/internal/oauth"
-	"github.com/mecattaf/dcal/internal/paths"
 	"github.com/mecattaf/dcal/repo"
 )
 
@@ -233,17 +233,15 @@ type cliStores struct {
 // openStores gives the CLI the same storage the daemon uses: the sqlite
 // database plus the keyring-backed secret store, so both can run side by side.
 func openStores(ctx context.Context) (*cliStores, func(), error) {
-	cfg := config.New()
-	dbPath := cfg.DatabasePath
-	if dbPath == "" {
-		path, err := paths.DatabasePath()
-		if err != nil {
-			return nil, nil, err
-		}
-		dbPath = path
+	cfg, err := config.Load()
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.DatabasePath), 0o700); err != nil {
+		return nil, nil, fmt.Errorf("create database directory: %w", err)
 	}
 
-	client, err := repo.OpenFile(ctx, dbPath)
+	client, err := repo.OpenFile(ctx, cfg.DatabasePath)
 	if err != nil {
 		return nil, nil, err
 	}

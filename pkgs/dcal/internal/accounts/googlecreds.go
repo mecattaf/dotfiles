@@ -17,7 +17,10 @@ func ResolveGoogleClient(explicit oauth.GoogleAppCredentials) (oauth.GoogleAppCr
 		return oauth.GoogleAppCredentials{}, errors.New("custom google oauth clients need both a client ID and a client secret")
 	}
 
-	cfg := config.New()
+	cfg, err := config.Load()
+	if err != nil {
+		return oauth.GoogleAppCredentials{}, err
+	}
 	env := oauth.GoogleAppCredentials{ClientID: cfg.GoogleClientID, ClientSecret: cfg.GoogleSecret}
 	switch {
 	case env.ClientID != "" && env.ClientSecret != "":

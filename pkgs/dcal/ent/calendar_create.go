@@ -12,11 +12,11 @@ import (
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
 	"entgo.io/ent/schema/field"
+	dcalconfig "github.com/mecattaf/dcal/config"
 	"github.com/mecattaf/dcal/ent/account"
 	"github.com/mecattaf/dcal/ent/calendar"
 	"github.com/mecattaf/dcal/ent/event"
 	"github.com/mecattaf/dcal/ent/task"
-	"github.com/mecattaf/dcal/internal/settings"
 )
 
 // CalendarCreate is the builder for creating a Calendar entity.
@@ -138,7 +138,7 @@ func (_c *CalendarCreate) SetNillableSyncDisabled(v *bool) *CalendarCreate {
 }
 
 // SetReminderOverrides sets the "reminder_overrides" field.
-func (_c *CalendarCreate) SetReminderOverrides(v *settings.ReminderOverride) *CalendarCreate {
+func (_c *CalendarCreate) SetReminderOverrides(v *dcalconfig.ReminderOverride) *CalendarCreate {
 	_c.mutation.SetReminderOverrides(v)
 	return _c
 }
@@ -662,7 +662,7 @@ func (u *CalendarUpsert) UpdateSyncDisabled() *CalendarUpsert {
 }
 
 // SetReminderOverrides sets the "reminder_overrides" field.
-func (u *CalendarUpsert) SetReminderOverrides(v *settings.ReminderOverride) *CalendarUpsert {
+func (u *CalendarUpsert) SetReminderOverrides(v *dcalconfig.ReminderOverride) *CalendarUpsert {
 	u.Set(calendar.FieldReminderOverrides, v)
 	return u
 }
@@ -933,7 +933,7 @@ func (u *CalendarUpsertOne) UpdateSyncDisabled() *CalendarUpsertOne {
 }
 
 // SetReminderOverrides sets the "reminder_overrides" field.
-func (u *CalendarUpsertOne) SetReminderOverrides(v *settings.ReminderOverride) *CalendarUpsertOne {
+func (u *CalendarUpsertOne) SetReminderOverrides(v *dcalconfig.ReminderOverride) *CalendarUpsertOne {
 	return u.Update(func(s *CalendarUpsert) {
 		s.SetReminderOverrides(v)
 	})
@@ -1382,7 +1382,7 @@ func (u *CalendarUpsertBulk) UpdateSyncDisabled() *CalendarUpsertBulk {
 }
 
 // SetReminderOverrides sets the "reminder_overrides" field.
-func (u *CalendarUpsertBulk) SetReminderOverrides(v *settings.ReminderOverride) *CalendarUpsertBulk {
+func (u *CalendarUpsertBulk) SetReminderOverrides(v *dcalconfig.ReminderOverride) *CalendarUpsertBulk {
 	return u.Update(func(s *CalendarUpsert) {
 		s.SetReminderOverrides(v)
 	})

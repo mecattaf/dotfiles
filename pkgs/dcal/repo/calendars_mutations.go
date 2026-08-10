@@ -3,11 +3,11 @@ package repo
 import (
 	"context"
 
+	"github.com/mecattaf/dcal/config"
 	"github.com/mecattaf/dcal/ent"
 	"github.com/mecattaf/dcal/ent/calendar"
 	"github.com/mecattaf/dcal/ent/event"
 	"github.com/mecattaf/dcal/ent/task"
-	"github.com/mecattaf/dcal/internal/settings"
 )
 
 type UpsertCalendarInput struct {
@@ -133,7 +133,7 @@ func (r *Repo) SetCalendarNameOverride(ctx context.Context, id, name string) err
 
 // SetCalendarReminders stores per-calendar reminder overrides. A nil or empty
 // override clears the field, reverting the calendar to the global settings.
-func (r *Repo) SetCalendarReminders(ctx context.Context, id string, o *settings.ReminderOverride) error {
+func (r *Repo) SetCalendarReminders(ctx context.Context, id string, o *config.ReminderOverride) error {
 	upd := r.client.Calendar.UpdateOneID(id)
 	if o.IsEmpty() {
 		upd.ClearReminderOverrides()

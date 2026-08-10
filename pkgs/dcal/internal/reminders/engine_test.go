@@ -9,13 +9,13 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	"github.com/mecattaf/dcal/config"
 	"github.com/mecattaf/dcal/ent"
 	"github.com/mecattaf/dcal/ent/account"
 	"github.com/mecattaf/dcal/ent/event"
 	"github.com/mecattaf/dcal/ent/task"
 	"github.com/mecattaf/dcal/internal/mocks"
 	"github.com/mecattaf/dcal/internal/notify"
-	"github.com/mecattaf/dcal/internal/settings"
 	"github.com/mecattaf/dcal/repo"
 )
 
@@ -27,7 +27,7 @@ type EngineSuite struct {
 	repo   *repo.Repo
 	sender *mocks.MockSender
 	engine *Engine
-	cfg    settings.UISettings
+	cfg    config.Config
 	clock  time.Time
 }
 
@@ -58,12 +58,12 @@ func (s *EngineSuite) SetupTest() {
 	})
 	s.Require().NoError(err)
 
-	s.cfg = settings.Defaults()
+	s.cfg = config.Defaults()
 	s.clock = t0
 
 	s.sender = mocks.NewMockSender(s.T())
 	s.engine = NewEngine(s.repo, s.sender, time.Minute)
-	s.engine.settings = func() settings.UISettings { return s.cfg }
+	s.engine.settings = func() config.Config { return s.cfg }
 	s.engine.now = func() time.Time { return s.clock }
 	s.engine.loc = time.UTC
 	s.engine.open = func() {}
@@ -478,7 +478,7 @@ func (s *EngineSuite) TestNotificationCarriesSettings() {
 }
 
 func TestTriggersFor(t *testing.T) {
-	cfg := settings.Defaults()
+	cfg := config.Defaults()
 	cfg.AllDayReminders = true
 
 	dayBefore := cfg
@@ -488,7 +488,7 @@ func TestTriggersFor(t *testing.T) {
 	noDefault := cfg
 	noDefault.DefaultReminderMinutes = -1
 
-	allDayOff := settings.Defaults()
+	allDayOff := config.Defaults()
 
 	timed := &ent.Event{
 		Start: time.Date(2026, 6, 12, 15, 0, 0, 0, time.UTC),
@@ -509,7 +509,7 @@ func TestTriggersFor(t *testing.T) {
 	tests := []struct {
 		name string
 		ev   *ent.Event
-		cfg  settings.UISettings
+		cfg  config.Config
 		want []trigger
 	}{
 		{
