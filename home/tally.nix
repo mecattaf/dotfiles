@@ -180,6 +180,24 @@ in
         selfDrain = false;
       };
 
+      # Local CLI writes are immediate; this low-priority pass only refreshes
+      # inbound Google changes and re-projects Tally's producer schedules.
+      dcal-sync = {
+        kind = "calendar";
+        onCalendar = "*-*-* *:07:00";
+        enqueue = {
+          argv = [
+            "${lib.getExe pkgs.dcal}"
+            "sync"
+          ];
+          pool = "local-ai-review";
+          priority = "low";
+          dedupKey = "dcal-sync-%Y-%m-%d-%H";
+          evidence = [ "exit:0" ];
+          noEnqueue = true;
+        };
+      };
+
       # The parent serializes one monthly review but does not reserve the GPU.
       # After deterministic Git/Nix/HF preparation it enqueues one low-priority
       # coordinator-gpu child for Pi, waits for the commentary, then verifies and
