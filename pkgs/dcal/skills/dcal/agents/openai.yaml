@@ -1,0 +1,4 @@
+interface:
+  display_name: "dcal"
+  short_description: "Operate calendars and CRM-linked calls"
+  default_prompt: "Use $dcal to show my agenda and schedule a CRM-linked call."
