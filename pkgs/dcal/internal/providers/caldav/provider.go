@@ -1,0 +1,490 @@
+package caldav
+
+import (
+	"context"
+	"crypto/tls"
+	"encoding/xml"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
+	"slices"
+	"strings"
+	"time"
+
+	ical "github.com/emersion/go-ical"
+	"github.com/emersion/go-webdav"
+	"github.com/emersion/go-webdav/caldav"
+	"github.com/google/uuid"
+
+	cal "github.com/mecattaf/dcal/internal/calendar"
+	"github.com/mecattaf/dcal/internal/providers/icalconv"
+	"github.com/mecattaf/dcal/internal/support/log"
+)
+
+type Provider struct {
+	account    cal.Account
+	client     *caldav.Client
+	httpClient webdav.HTTPClient
+	endpoint   *url.URL
+	homeSet    string
+	username   string
+	notices    []string
+}
+
+func (p *Provider) Notices() []string { return p.notices }
+
+func New(ctx context.Context, account cal.Account, secrets cal.SecretStore, baseURL, username string) (*Provider, error) {
+	password, err := secrets.Get(ctx, account.ID, SecretKeyPassword)
+	if err != nil {
+		return nil, fmt.Errorf("caldav password not stored for %q: %w", account.ID, err)
+	}
+
+	endpoint, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse caldav url: %w", err)
+	}
+
+	httpClient := webdav.HTTPClientWithBasicAuth(baseHTTPClient(account), username, string(password))
+	client, err := caldav.NewClient(httpClient, baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("init caldav client: %w", err)
+	}
+
+	principal, err := client.FindCurrentUserPrincipal(ctx)
+	if err != nil {
+		fbClient, fbEndpoint, fbPrincipal, fbErr := wellKnownFallback(ctx, httpClient, endpoint)
+		if fbErr != nil {
+			log.Debugf("caldav: well-known fallback for %q failed: %v", baseURL, fbErr)
+			return nil, fmt.Errorf("find caldav principal: %w", err)
+		}
+		log.Debugf("caldav: principal lookup at %q failed (%v), discovered %q via well-known", baseURL, err, fbEndpoint)
+		client, endpoint, principal = fbClient, fbEndpoint, fbPrincipal
+	}
+	homeSet, err := client.FindCalendarHomeSet(ctx, principal)
+	if err != nil {
+		return nil, fmt.Errorf("find caldav home set: %w", err)
+	}
+
+	return &Provider{
+		account:    account,
+		client:     client,
+		httpClient: httpClient,
+		endpoint:   endpoint,
+		homeSet:    homeSet,
+		username:   username,
+	}, nil
+}
+
+// baseHTTPClient returns the HTTP client the caldav client is built on. Servers
+// with self-signed certificates opt out of TLS verification via the
+// SettingInsecureSkipVerify account setting; everything else uses the default.
+func baseHTTPClient(account cal.Account) *http.Client {
+	insecure, _ := account.Settings[SettingInsecureSkipVerify].(bool)
+	if !insecure {
+		return http.DefaultClient
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	return &http.Client{Transport: transport}
+}
+
+func (p *Provider) Kind() cal.AccountKind { return cal.AccountCalDAV }
+func (p *Provider) Account() cal.Account  { return p.account }
+
+func (p *Provider) ListCalendars(ctx context.Context) ([]cal.Calendar, error) {
+	p.notices = nil
+	calendars, err := p.client.FindCalendars(ctx, p.homeSet)
+	if err != nil {
+		return nil, fmt.Errorf("find caldav calendars: %w", err)
+	}
+
+	colors, err := p.calendarColors(ctx)
+	if err != nil {
+		log.Debugf("caldav: calendar-color lookup on %q failed: %v", p.homeSet, err)
+	}
+
+	out := make([]cal.Calendar, 0, len(calendars))
+	for _, c := range calendars {
+		out = append(out, cal.Calendar{
+			AccountID:           p.account.ID,
+			RemoteID:            c.Path,
+			Name:                c.Name,
+			Description:         c.Description,
+			Color:               colors[strings.TrimSuffix(c.Path, "/")],
+			SupportedComponents: c.SupportedComponentSet,
+		})
+	}
+	return out, nil
+}
+
+// go-webdav's FindCalendars has no notion of the Apple calendar-color
+// extension (emersion/go-webdav#150), so colors come from a separate raw
+// PROPFIND. Servers without the property answer with 404 propstats, which
+// simply yield no map entry.
+const calendarColorsBody = `<?xml version="1.0" encoding="UTF-8"?>
+<d:propfind xmlns:d="DAV:" xmlns:a="http://apple.com/ns/ical/"><d:prop><a:calendar-color/></d:prop></d:propfind>`
+
+func (p *Provider) calendarColors(ctx context.Context) (map[string]string, error) {
+	target := p.endpoint.ResolveReference(&url.URL{Path: p.homeSet})
+	req, err := http.NewRequestWithContext(ctx, "PROPFIND", target.String(), strings.NewReader(calendarColorsBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Depth", "1")
+	req.Header.Set("Content-Type", "text/xml; charset=utf-8")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMultiStatus {
+		return nil, fmt.Errorf("propfind %q: %s", p.homeSet, resp.Status)
+	}
+
+	var ms struct {
+		Responses []struct {
+			Href  string `xml:"DAV: href"`
+			Props []struct {
+				Color string `xml:"http://apple.com/ns/ical/ calendar-color"`
+			} `xml:"DAV: propstat>prop"`
+		} `xml:"DAV: response"`
+	}
+	if err := xml.NewDecoder(resp.Body).Decode(&ms); err != nil {
+		return nil, fmt.Errorf("decode propfind response: %w", err)
+	}
+
+	colors := make(map[string]string, len(ms.Responses))
+	for _, r := range ms.Responses {
+		href := strings.TrimSpace(r.Href)
+		if href == "" {
+			continue
+		}
+		if u, err := url.Parse(href); err == nil {
+			href = u.Path
+		}
+		if unescaped, err := url.PathUnescape(href); err == nil {
+			href = unescaped
+		}
+		for _, prop := range r.Props {
+			color := strings.TrimSpace(prop.Color)
+			if color == "" {
+				continue
+			}
+			colors[strings.TrimSuffix(href, "/")] = color
+			break
+		}
+	}
+	return colors, nil
+}
+
+func (p *Provider) Sync(ctx context.Context, c cal.Calendar, cursor cal.SyncCursor) (*cal.SyncResult, error) {
+	result := &cal.SyncResult{
+		Cursor:       cal.SyncCursor{CalendarID: cursor.CalendarID},
+		FullSnapshot: true,
+	}
+
+	if c.HoldsEvents() {
+		objects, err := p.queryComponents(ctx, c.RemoteID, ical.CompEvent, time.Time{}, time.Time{})
+		if err != nil {
+			return nil, fmt.Errorf("query caldav events %q: %w", c.RemoteID, err)
+		}
+		for _, obj := range objects {
+			for _, ev := range eventsFromObject(c, obj) {
+				result.Changes = append(result.Changes, cal.EventChange{Type: cal.ChangeUpsert, Event: &ev})
+			}
+		}
+	}
+
+	if c.HoldsTasks() {
+		objects, err := p.queryComponents(ctx, c.RemoteID, ical.CompToDo, time.Time{}, time.Time{})
+		if err != nil {
+			return nil, fmt.Errorf("query caldav tasks %q: %w", c.RemoteID, err)
+		}
+		for _, obj := range objects {
+			for _, t := range tasksFromObject(c, obj) {
+				p.noticeUpgradedReminders(t)
+				result.TaskChanges = append(result.TaskChanges, cal.TaskChange{Type: cal.ChangeUpsert, Task: &t})
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// noticeUpgradedReminders flags Apple's placeholder VTODO ("The creator of
+// this list has upgraded these reminders.") that iCloud serves instead of
+// Reminders lists upgraded past CalDAV access. The support URL in the
+// description is the locale-independent marker.
+func (p *Provider) noticeUpgradedReminders(t cal.Task) {
+	switch {
+	case !strings.HasSuffix(p.endpoint.Hostname(), "icloud.com"):
+		return
+	case !strings.Contains(t.Description, "support.apple.com/HT210220"):
+		return
+	case slices.Contains(p.notices, cal.NoticeICloudRemindersUpgraded):
+		return
+	}
+	p.notices = append(p.notices, cal.NoticeICloudRemindersUpgraded)
+}
+
+func (p *Provider) ListEvents(ctx context.Context, c cal.Calendar, opts cal.ListEventsOptions) ([]cal.Event, error) {
+	objects, err := p.queryComponents(ctx, c.RemoteID, ical.CompEvent, opts.Start, opts.End)
+	if err != nil {
+		return nil, fmt.Errorf("query caldav calendar %q: %w", c.RemoteID, err)
+	}
+
+	var events []cal.Event
+	for _, obj := range objects {
+		events = append(events, eventsFromObject(c, obj)...)
+	}
+	if opts.Limit > 0 && len(events) > opts.Limit {
+		events = events[:opts.Limit]
+	}
+	return events, nil
+}
+
+func (p *Provider) CreateEvent(ctx context.Context, c cal.Calendar, ev *cal.Event) (*cal.Event, error) {
+	uid := ev.UID
+	if uid == "" {
+		uid = uuid.NewString()
+	}
+
+	path := objectPath(c.RemoteID, uid)
+	obj, err := p.client.PutCalendarObject(ctx, path, icalconv.CalendarFromEvent(ev, uid))
+	if err != nil {
+		return nil, fmt.Errorf("put caldav object %q: %w", path, err)
+	}
+
+	out := *ev
+	out.UID = uid
+	out.RemoteID = path
+	out.Etag = obj.ETag
+	return &out, nil
+}
+
+func (p *Provider) UpdateEvent(ctx context.Context, c cal.Calendar, ev *cal.Event) (*cal.Event, error) {
+	if ev.RemoteID == "" {
+		return nil, errors.New("caldav update requires remote id")
+	}
+
+	obj, err := p.client.PutCalendarObject(ctx, ev.RemoteID, icalconv.CalendarFromEvent(ev, ev.UID))
+	if err != nil {
+		return nil, fmt.Errorf("put caldav object %q: %w", ev.RemoteID, err)
+	}
+
+	out := *ev
+	out.Etag = obj.ETag
+	return &out, nil
+}
+
+func (p *Provider) DeleteEvent(ctx context.Context, c cal.Calendar, ev cal.Event) error {
+	if ev.RemoteID == "" {
+		return errors.New("caldav delete requires remote id")
+	}
+	if err := p.client.RemoveAll(ctx, ev.RemoteID); err != nil {
+		return fmt.Errorf("delete caldav object %q: %w", ev.RemoteID, err)
+	}
+	return nil
+}
+
+func (p *Provider) CreateTask(ctx context.Context, c cal.Calendar, t *cal.Task) (*cal.Task, error) {
+	uid := t.UID
+	if uid == "" {
+		uid = uuid.NewString()
+	}
+
+	path := objectPath(c.RemoteID, uid)
+	obj, err := p.client.PutCalendarObject(ctx, path, icalconv.CalendarFromTask(t, uid))
+	if err != nil {
+		return nil, fmt.Errorf("put caldav task %q: %w", path, err)
+	}
+
+	out := *t
+	out.UID = uid
+	out.RemoteID = path
+	out.Etag = obj.ETag
+	return &out, nil
+}
+
+func (p *Provider) UpdateTask(ctx context.Context, c cal.Calendar, t *cal.Task) (*cal.Task, error) {
+	if t.RemoteID == "" {
+		return nil, errors.New("caldav update requires remote id")
+	}
+
+	obj, err := p.client.PutCalendarObject(ctx, t.RemoteID, icalconv.CalendarFromTask(t, t.UID))
+	if err != nil {
+		return nil, fmt.Errorf("put caldav task %q: %w", t.RemoteID, err)
+	}
+
+	out := *t
+	out.Etag = obj.ETag
+	return &out, nil
+}
+
+func (p *Provider) DeleteTask(ctx context.Context, c cal.Calendar, t cal.Task) error {
+	if t.RemoteID == "" {
+		return errors.New("caldav delete requires remote id")
+	}
+	if err := p.client.RemoveAll(ctx, t.RemoteID); err != nil {
+		return fmt.Errorf("delete caldav task %q: %w", t.RemoteID, err)
+	}
+	return nil
+}
+
+func (p *Provider) queryComponents(ctx context.Context, calendarPath, comp string, start, end time.Time) ([]caldav.CalendarObject, error) {
+	compFilter := caldav.CompFilter{Name: comp}
+	if !start.IsZero() {
+		compFilter.Start = start
+	}
+	if !end.IsZero() {
+		compFilter.End = end
+	}
+
+	query := &caldav.CalendarQuery{
+		CompRequest: caldav.CalendarCompRequest{Name: ical.CompCalendar, AllProps: true, AllComps: true},
+		CompFilter:  caldav.CompFilter{Name: ical.CompCalendar, Comps: []caldav.CompFilter{compFilter}},
+	}
+
+	objects, queryErr := p.client.QueryCalendar(ctx, calendarPath, query)
+	if queryErr == nil {
+		return objects, nil
+	}
+
+	// Some servers (notably iCloud) refuse to return calendar-data from a
+	// calendar-query REPORT; list the collection and multiget instead.
+	objects, err := p.multiGetAll(ctx, calendarPath)
+	if err != nil {
+		return nil, errors.Join(queryErr, err)
+	}
+
+	filtered, err := caldav.Filter(query, objects)
+	if err != nil {
+		return objects, nil
+	}
+	return filtered, nil
+}
+
+func (p *Provider) multiGetAll(ctx context.Context, calendarPath string) ([]caldav.CalendarObject, error) {
+	paths, err := p.listObjectPaths(ctx, calendarPath)
+	if err != nil {
+		return nil, fmt.Errorf("list caldav objects: %w", err)
+	}
+	if len(paths) == 0 {
+		return nil, nil
+	}
+
+	req := caldav.CalendarCompRequest{Name: ical.CompCalendar, AllProps: true, AllComps: true}
+	var out []caldav.CalendarObject
+	for chunk := range slices.Chunk(paths, 50) {
+		objs, err := p.client.MultiGetCalendar(ctx, calendarPath, &caldav.CalendarMultiGet{
+			Paths:       chunk,
+			CompRequest: req,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("multiget caldav objects: %w", err)
+		}
+		out = append(out, objs...)
+	}
+	return out, nil
+}
+
+// Raw PROPFIND asking only for hrefs: go-webdav's higher-level helpers error
+// on iCloud's 404 propstats for props we don't even need.
+const listObjectsBody = `<?xml version="1.0" encoding="UTF-8"?>
+<d:propfind xmlns:d="DAV:"><d:prop><d:getetag/></d:prop></d:propfind>`
+
+func (p *Provider) listObjectPaths(ctx context.Context, calendarPath string) ([]string, error) {
+	target := p.endpoint.ResolveReference(&url.URL{Path: calendarPath})
+	req, err := http.NewRequestWithContext(ctx, "PROPFIND", target.String(), strings.NewReader(listObjectsBody))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Depth", "1")
+	req.Header.Set("Content-Type", "text/xml; charset=utf-8")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMultiStatus {
+		return nil, fmt.Errorf("propfind %q: %s", calendarPath, resp.Status)
+	}
+
+	var ms struct {
+		Responses []struct {
+			Href string `xml:"DAV: href"`
+		} `xml:"DAV: response"`
+	}
+	if err := xml.NewDecoder(resp.Body).Decode(&ms); err != nil {
+		return nil, fmt.Errorf("decode propfind response: %w", err)
+	}
+
+	normalizedCal := strings.TrimSuffix(calendarPath, "/")
+	paths := make([]string, 0, len(ms.Responses))
+	for _, r := range ms.Responses {
+		href := strings.TrimSpace(r.Href)
+		if href == "" || strings.HasSuffix(href, "/") {
+			continue
+		}
+		if u, err := url.Parse(href); err == nil {
+			href = u.Path
+		}
+		if unescaped, err := url.PathUnescape(href); err == nil {
+			href = unescaped
+		}
+		if strings.TrimSuffix(href, "/") == normalizedCal {
+			continue
+		}
+		paths = append(paths, href)
+	}
+	return paths, nil
+}
+
+// wellKnownFallback retries principal discovery through the RFC 6764
+// well-known URI. Servers like OpenCloud reject PROPFIND at arbitrary paths
+// (405 Method Not Allowed) but redirect /.well-known/caldav to their CalDAV
+// root, so a bare host URL still connects (#38). The GET follows redirects,
+// making the response's request URL the resolved CalDAV context path.
+func wellKnownFallback(ctx context.Context, hc webdav.HTTPClient, endpoint *url.URL) (*caldav.Client, *url.URL, string, error) {
+	wk := url.URL{Scheme: endpoint.Scheme, Host: endpoint.Host, Path: "/.well-known/caldav"}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wk.String(), nil)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	resp.Body.Close()
+
+	target := *resp.Request.URL
+	if target.Path == wk.Path && resp.StatusCode >= http.StatusBadRequest {
+		return nil, nil, "", fmt.Errorf("well-known caldav lookup: %s", resp.Status)
+	}
+	if strings.TrimSuffix(target.Path, "/") == strings.TrimSuffix(endpoint.Path, "/") && target.Host == endpoint.Host {
+		return nil, nil, "", errors.New("well-known caldav resolves to the failing url")
+	}
+
+	client, err := caldav.NewClient(hc, target.String())
+	if err != nil {
+		return nil, nil, "", err
+	}
+	principal, err := client.FindCurrentUserPrincipal(ctx)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	return client, &target, principal, nil
+}
+
+func objectPath(calendarPath, uid string) string {
+	if !strings.HasSuffix(calendarPath, "/") {
+		calendarPath += "/"
+	}
+	return calendarPath + uid + ".ics"
+}
+
+func (p *Provider) Close() error { return nil }
