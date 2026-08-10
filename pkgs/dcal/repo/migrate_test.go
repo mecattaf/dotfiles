@@ -4,10 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
+
+	entmigrate "github.com/mecattaf/dcal/ent/migrate"
 )
 
 func openRaw(t *testing.T, name string) (*sql.DB, string) {
@@ -34,6 +38,62 @@ func TestMigrateFreshDatabase(t *testing.T) {
 		if err != nil || !ok {
 			t.Fatalf("column %q missing on fresh db: ok=%v err=%v", col, ok, err)
 		}
+	}
+}
+
+func TestOpenFileSerializesConcurrentFreshMigrations(t *testing.T) {
+	const workers = 16
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	path := filepath.Join(t.TempDir(), "concurrent.db")
+	start := make(chan struct{})
+	results := make(chan error, workers)
+
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			client, err := OpenFile(ctx, path)
+			if err == nil {
+				err = client.Close()
+			}
+			results <- err
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+
+	for err := range results {
+		if err != nil {
+			t.Errorf("concurrent open: %v", err)
+		}
+	}
+	if t.Failed() {
+		return
+	}
+
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	entries, err := entmigrate.Migrations.ReadDir(migrationsDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var applied int
+	if err := db.QueryRowContext(ctx,
+		"SELECT count(*) FROM goose_db_version WHERE version_id > 0 AND is_applied = 1;",
+	).Scan(&applied); err != nil {
+		t.Fatal(err)
+	}
+	if applied != len(entries) {
+		t.Fatalf("applied migration rows = %d, want exactly one for each of %d migrations", applied, len(entries))
 	}
 }
 
