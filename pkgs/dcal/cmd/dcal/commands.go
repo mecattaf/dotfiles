@@ -7,10 +7,22 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "dcal",
-	Short: "dcal CLI",
-	Long:  "dcal — local, Google, Microsoft, CalDAV, and iCloud calendars in one standalone app.",
-	Args:  cobra.NoArgs,
+	Use:           "dcal",
+	Short:         "dcal CLI",
+	Long:          "dcal — local and synced calendars from one ergonomic command line.",
+	Args:          cobra.NoArgs,
+	SilenceErrors: true,
+	SilenceUsage:  true,
+	PersistentPreRunE: func(_ *cobra.Command, _ []string) error {
+		switch outputFormat {
+		case "", "text":
+		case "json":
+			jsonOutput = true
+		default:
+			return fmt.Errorf("unsupported format %q (expected text or json)", outputFormat)
+		}
+		return nil
+	},
 }
 
 var versionCmd = &cobra.Command{
@@ -30,7 +42,9 @@ var versionCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output JSON for programmatic usage (where supported)")
+	rootCmd.PersistentFlags().StringVar(&outputFormat, "format", "text", "Output format for read commands: text or json")
+	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output JSON (deprecated: use --format json)")
+	_ = rootCmd.PersistentFlags().MarkDeprecated("json", "use --format json")
 
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(daemonCmd)
@@ -39,4 +53,12 @@ func init() {
 	rootCmd.AddCommand(syncCmd)
 	rootCmd.AddCommand(remindersCmd)
 	rootCmd.AddCommand(eventsCmd)
+	rootCmd.AddCommand(calendarCmd)
+	rootCmd.AddCommand(addCmd)
+	rootCmd.AddCommand(listCmd)
+	rootCmd.AddCommand(agendaCmd)
+	rootCmd.AddCommand(showCmd)
+	rootCmd.AddCommand(editCmd)
+	rootCmd.AddCommand(removeCmd)
+	rootCmd.AddCommand(statusCmd)
 }

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -24,12 +23,12 @@ var accountAddCmd = &cobra.Command{
 }
 
 var accountAddLocalCmd = &cobra.Command{
-	Use:   "local <dir>",
-	Short: "Add a local ICS account (a directory of .ics files)",
-	Long:  "Point at a directory of .ics files. Each subdirectory or .ics file becomes a calendar — compatible with vdirsyncer/khal layouts.",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		root, err := filepath.Abs(args[0])
+	Use:   "local",
+	Short: "Add the local ICS account configured by ics_dir",
+	Long:  "Register the single ICS collection root from $XDG_CONFIG_HOME/dcal/config.json.",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		cfg, err := config.Load()
 		if err != nil {
 			return err
 		}
@@ -42,7 +41,7 @@ var accountAddLocalCmd = &cobra.Command{
 		}
 		defer closer()
 
-		res, err := accounts.AddLocal(ctx, st.repo, accounts.LocalInput{Root: root, DisplayName: name})
+		res, err := accounts.AddLocal(ctx, st.repo, accounts.LocalInput{Root: cfg.ICSDir, DisplayName: name})
 		if err != nil {
 			return err
 		}

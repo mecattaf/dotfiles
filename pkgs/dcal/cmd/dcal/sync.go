@@ -33,7 +33,7 @@ var syncCmd = &cobra.Command{
 			if jsonOutput {
 				return printJSON(syncResult("started", true, accountID))
 			}
-			fmt.Println("sync started in the running dcal daemon")
+			infof("sync started in the running dcal daemon")
 			return nil
 		}
 

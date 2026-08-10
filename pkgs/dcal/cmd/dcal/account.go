@@ -30,9 +30,10 @@ var accountCmd = &cobra.Command{
 var accountRemoveYes bool
 
 var accountListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List configured accounts",
-	Args:  cobra.NoArgs,
+	Use:     "list",
+	Aliases: []string{"ls"},
+	Short:   "List configured accounts",
+	Args:    cobra.NoArgs,
 	RunE: func(_ *cobra.Command, _ []string) error {
 		ctx := context.Background()
 		st, closer, err := openStores(ctx)
@@ -69,11 +70,6 @@ var accountListCmd = &cobra.Command{
 				})
 			}
 			return printJSON(out)
-		}
-
-		if len(items) == 0 {
-			fmt.Println("No accounts configured. Run `dcal account add --help` to see providers.")
-			return nil
 		}
 
 		w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)

@@ -2,9 +2,12 @@ package ipc
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/mecattaf/dcal/config"
 	"github.com/mecattaf/dcal/internal/accounts"
 	"github.com/mecattaf/dcal/internal/oauth"
 	"github.com/mecattaf/dcal/internal/support/log"
@@ -165,18 +168,40 @@ func handleICalAdd(ctx context.Context, w *ConnWriter, req Request, deps Deps) {
 }
 
 func handleLocalAdd(ctx context.Context, w *ConnWriter, req Request, deps Deps) {
+	cfg, err := config.Load()
+	if err != nil {
+		RespondError(w, req.ID, err.Error())
+		return
+	}
+	if requested := strings.TrimSpace(ParamString(req.Params, "root")); requested != "" && filepath.Clean(requested) != filepath.Clean(cfg.ICSDir) {
+		RespondError(w, req.ID, "local storage root is controlled by the ics_dir config value")
+		return
+	}
 	res, err := accounts.AddLocal(ctx, deps.Repo, accounts.LocalInput{
-		Root:        ParamString(req.Params, "root"),
-		DisplayName: ParamString(req.Params, "displayName"),
+		Root:            cfg.ICSDir,
+		DisplayName:     ParamString(req.Params, "displayName"),
+		DefaultCalendar: ParamString(req.Params, "defaultCalendar"),
+		SkipSeed:        ParamBool(req.Params, "skipSeed"),
 	})
 	if err != nil {
 		RespondError(w, req.ID, err.Error())
 		return
 	}
 
+	if deps.Sync != nil {
+		acc, err := deps.Repo.GetAccount(ctx, res.AccountID)
+		if err != nil {
+			RespondError(w, req.ID, err.Error())
+			return
+		}
+		if err := deps.Sync.SyncAccount(ctx, acc); err != nil {
+			RespondError(w, req.ID, fmt.Sprintf("sync local account: %v", err))
+			return
+		}
+	}
+
 	publishAccountsChanged(deps, res.AccountID)
 	Respond(w, req.ID, map[string]any{"accountId": res.AccountID, "displayName": res.DisplayName})
-	kickAccountSync(deps, res.AccountID)
 }
 
 func handleEvolutionAdd(ctx context.Context, w *ConnWriter, req Request, deps Deps) {

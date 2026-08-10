@@ -43,6 +43,9 @@ func HandleEvents(ctx context.Context, w *ConnWriter, req Request, deps Deps) {
 			Query:            ParamString(req.Params, "query"),
 			IncludeRecurring: true,
 		}
+		if calendarID := ParamString(req.Params, "calendarId"); calendarID != "" {
+			filter.CalendarIDs = []string{calendarID}
+		}
 		if from := ParamString(req.Params, "from"); from != "" {
 			if t, err := time.Parse(time.RFC3339, from); err == nil {
 				filter.From = &t
@@ -65,12 +68,21 @@ func HandleEvents(ctx context.Context, w *ConnWriter, req Request, deps Deps) {
 		}
 		Respond(w, req.ID, map[string]any{"events": mapEvents(events), "total": total})
 	case "events.get":
+		id := ParamString(req.Params, "id")
 		uid := ParamString(req.Params, "uid")
-		if uid == "" {
-			RespondError(w, req.ID, "events.get requires a uid")
+		if id == "" && uid == "" {
+			RespondError(w, req.ID, "events.get requires an id or uid")
 			return
 		}
-		e, err := deps.Repo.GetEventByUID(ctx, uid, ParamString(req.Params, "calendarId"))
+		var (
+			e   *ent.Event
+			err error
+		)
+		if id != "" {
+			e, err = deps.Repo.GetEvent(ctx, id)
+		} else {
+			e, err = deps.Repo.GetEventByUID(ctx, uid, ParamString(req.Params, "calendarId"))
+		}
 		if err != nil {
 			RespondError(w, req.ID, err.Error())
 			return

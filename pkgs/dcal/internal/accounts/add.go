@@ -146,8 +146,10 @@ func AddICal(ctx context.Context, r *repo.Repo, secrets calendar.SecretStore, in
 }
 
 type LocalInput struct {
-	Root        string
-	DisplayName string
+	Root            string
+	DisplayName     string
+	DefaultCalendar string
+	SkipSeed        bool
 }
 
 func AddLocal(ctx context.Context, r *repo.Repo, in LocalInput) (Result, error) {
@@ -170,8 +172,10 @@ func AddLocal(ctx context.Context, r *repo.Repo, in LocalInput) (Result, error) 
 	if err := Ensure(ctx, r, accountID, account.KindLocal, displayName, settings); err != nil {
 		return Result{}, err
 	}
-	if err := local.SeedDefaultCalendar(root, ""); err != nil {
-		return Result{}, fmt.Errorf("seed default calendar: %w", err)
+	if !in.SkipSeed {
+		if err := local.SeedDefaultCalendar(root, in.DefaultCalendar); err != nil {
+			return Result{}, fmt.Errorf("seed default calendar: %w", err)
+		}
 	}
 	return Result{AccountID: accountID, DisplayName: displayName}, nil
 }
