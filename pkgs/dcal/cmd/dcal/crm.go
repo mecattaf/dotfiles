@@ -18,6 +18,10 @@ type crmContact struct {
 	Name string `json:"name"`
 }
 
+type crmInteraction struct {
+	OccurredOn string `json:"occurred_on"`
+}
+
 func crmBinary() string {
 	if configured := strings.TrimSpace(os.Getenv("DCAL_CRM_BIN")); configured != "" {
 		return configured
@@ -62,6 +66,23 @@ func resolveCRMContact(ctx context.Context, ref string) (crmContact, error) {
 		return crmContact{}, fmt.Errorf("decode crm show output: %w", err)
 	}
 	return contact, nil
+}
+
+func crmCallLogged(ctx context.Context, ref, date string) (bool, error) {
+	raw, err := runCRM(ctx, "interaction", "ls", "--with", ref, "--kind", "call", "--format", "json")
+	if err != nil {
+		return false, err
+	}
+	var interactions []crmInteraction
+	if err := json.Unmarshal(raw, &interactions); err != nil {
+		return false, fmt.Errorf("decode crm interaction list: %w", err)
+	}
+	for _, interaction := range interactions {
+		if strings.TrimSpace(interaction.OccurredOn) == date {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // CRM's JSON record format is an array. Accepting a single object as well

@@ -60,5 +60,6 @@ func init() {
 	rootCmd.AddCommand(showCmd)
 	rootCmd.AddCommand(editCmd)
 	rootCmd.AddCommand(removeCmd)
+	rootCmd.AddCommand(doneCmd)
 	rootCmd.AddCommand(statusCmd)
 }
