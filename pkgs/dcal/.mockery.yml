@@ -1,0 +1,16 @@
+dir: internal/mocks
+structname: Mock{{.InterfaceName}}
+pkgname: mocks
+filename: 'mock_{{.InterfaceName | snakecase}}.go'
+template: testify
+template-data:
+  unroll-variadic: true
+packages:
+  github.com/mecattaf/dcal/internal/calendar:
+    interfaces:
+      Provider: {}
+      ProviderFactory: {}
+      SecretStore: {}
+  github.com/mecattaf/dcal/internal/reminders:
+    interfaces:
+      Sender: {}
