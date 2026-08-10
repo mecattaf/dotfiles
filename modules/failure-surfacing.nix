@@ -27,7 +27,8 @@
 # Everything lands in one marker directory, extending the fleet-deploy failure
 # marker that already exists rather than inventing a second channel: one file
 # per failing unit (so a flapping unit rewrites its own marker instead of
-# accumulating), surfaced on interactive fish login.
+# accumulating). A new marker episode is surfaced once per user on interactive
+# fish login; a durable marker is not repeated in every later terminal.
 let
   cfg = config.myFailureSurfacing;
 
@@ -61,6 +62,8 @@ let
     when="$(${pkgs.coreutils}/bin/date '+%Y-%m-%d %H:%M')"
 
     ${pkgs.coreutils}/bin/install -d -m 0755 "$dir"
+    exec 9>"$dir/.failure-marker-reconcile.lock"
+    ${pkgs.util-linux}/bin/flock 9
     ${pkgs.coreutils}/bin/printf '%s failed at %s — journalctl -u %s -b\n' \
       "$unit" "$when" "$unit" > "$dir/$safe"
     ${pkgs.coreutils}/bin/chmod 0644 "$dir/$safe"
@@ -74,6 +77,26 @@ let
       "FAILED_UNIT=$unit" \
       "DECISION=marker-written" | ${pkgs.util-linux}/bin/logger --journald || true
   '';
+
+  markerReconciler = pkgs.writeShellApplication {
+    name = "failure-marker-reconcile";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.systemd
+      pkgs.util-linux
+    ];
+    text = builtins.readFile ./failure-marker-reconcile.sh;
+  };
+
+  markerReporter = pkgs.writeShellApplication {
+    name = "failure-marker-report";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.gnugrep
+      pkgs.util-linux
+    ];
+    text = builtins.readFile ./failure-marker-report.sh;
+  };
 
   journalWatcher =
     {
@@ -105,7 +128,10 @@ let
       ];
       sensor = builtins.readFile ./tripwire-journal-sensor.sh;
 
-      onFirePath = [ pkgs.coreutils ];
+      onFirePath = [
+        pkgs.coreutils
+        pkgs.util-linux
+      ];
       onFire = builtins.readFile ./tripwire-journal-onfire.sh;
 
       environment =
@@ -217,6 +243,35 @@ in
       };
     };
 
+    systemd.services."failure-marker-reconcile" = {
+      description = "Clear recovered unit-failure markers";
+      after = map (uid: "user@${toString uid}.service") cfg.userManagerUids;
+      environment = {
+        FAILURE_MARKER_DIR = cfg.markerDir;
+        USER_MANAGER_UIDS = lib.concatMapStringsSep " " toString cfg.userManagerUids;
+      };
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${markerReconciler}/bin/failure-marker-reconcile";
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectSystem = "strict";
+        ReadWritePaths = [ "-${cfg.markerDir}" ];
+        RestrictAddressFamilies = [ "AF_UNIX" ];
+        TimeoutStartSec = "30s";
+      };
+    };
+
+    systemd.timers."failure-marker-reconcile" = {
+      description = "Reconcile recovered unit-failure markers";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnBootSec = "7min";
+        OnUnitActiveSec = "${toString cfg.checkSeconds}s";
+        AccuracySec = "30s";
+      };
+    };
+
     myTripwire.coredump =
       journalWatcher {
         kind = "coredump";
@@ -251,13 +306,14 @@ in
 
     programs.fish.interactiveShellInit = lib.mkAfter ''
       if status is-interactive
-          set -l __failure_markers (command ls -1 ${cfg.markerDir} 2>/dev/null)
-          if test (count $__failure_markers) -gt 0
-              set_color -o red; echo "⚠  failures recorded:"; set_color normal
-              for __marker in $__failure_markers
-                  echo "   • "(command head -n 1 ${cfg.markerDir}/$__marker)
+          set -l __new_failure_episodes \
+              (${markerReporter}/bin/failure-marker-report ${lib.escapeShellArg cfg.markerDir} 2>/dev/null)
+          if test $status -eq 0; and test (count $__new_failure_episodes) -gt 0
+              set_color -o red; echo "⚠  new failure episode(s):"; set_color normal
+              for __episode in $__new_failure_episodes
+                  echo "   • "$__episode
               end
-              echo "   clear with: sudo rm -f ${cfg.markerDir}/*"
+              echo "   shown once; details remain in journalctl"
           end
       end
     '';

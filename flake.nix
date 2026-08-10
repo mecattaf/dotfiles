@@ -882,6 +882,7 @@
           assert coordinator.systemd.services."failure-notify@".serviceConfig.Type == "oneshot";
           assert coordinator.systemd.timers ? tripwire-coredump;
           assert coordinator.systemd.timers ? tripwire-user-unit-failure;
+          assert coordinator.systemd.timers ? failure-marker-reconcile;
           assert monthlySources.inference.url == "http://coordinator:9292";
           assert monthlySources.inference.compute_host == "coordinator";
           assert monthlySources.inference.tally_pool == "coordinator-gpu";
@@ -908,6 +909,38 @@
             ${./flake.nix} ${./lib} ${./modules} ${./hosts} ${./overlays} ${./home} > $out 2>&1 \
             || (cat $out; exit 1)
         '';
+
+        failure-marker-reconcile =
+          pkgs.runCommand "failure-marker-reconcile"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.util-linux
+              ];
+              FAILURE_MARKER_RECONCILER = ./modules/failure-marker-reconcile.sh;
+            }
+            ''
+              bash ${./tests/failure-marker-reconcile.sh}
+              touch "$out"
+            '';
+
+        failure-marker-report =
+          pkgs.runCommand "failure-marker-report"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.gawk
+                pkgs.gnugrep
+                pkgs.util-linux
+              ];
+              FAILURE_MARKER_REPORTER = ./modules/failure-marker-report.sh;
+            }
+            ''
+              bash ${./tests/failure-marker-report.sh}
+              touch "$out"
+            '';
 
         printing =
           let

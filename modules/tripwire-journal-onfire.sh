@@ -22,6 +22,8 @@ quote_lines="${JOURNAL_MARKER_LINES:-10}"
 [[ "$kind" =~ ^[A-Za-z0-9:_.-]+$ ]]
 
 install -d -m 0755 "$marker_dir"
+exec 9>"$marker_dir/.failure-marker-reconcile.lock"
+flock 9
 marker="$marker_dir/$kind"
 
 {
