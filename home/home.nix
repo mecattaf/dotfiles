@@ -367,6 +367,21 @@ in
     ];
   };
 
+  # dcal keeps the local calendar database warm for CLI reads. Its IPC socket
+  # is PID-qualified directly beneath XDG_RUNTIME_DIR; do not add a nested
+  # RuntimeDirectory here because unix socket paths are limited to 108 chars.
+  systemd.user.services.dcal-daemon = {
+    Unit = {
+      Description = "dcal calendar daemon";
+      After = [ "graphical-session.target" ];
+    };
+    Service = {
+      ExecStart = "${lib.getExe pkgs.dcal} daemon";
+      Restart = "on-failure";
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
+
   # ---------------------------------------------------------------------------
   # user packages.
   # ---------------------------------------------------------------------------
