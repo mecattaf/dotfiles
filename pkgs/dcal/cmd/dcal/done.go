@@ -26,15 +26,22 @@ type doneOptions struct {
 }
 
 type donePlan struct {
-	EventRef         string   `json:"eventRef"`
-	CRMRef           string   `json:"crmRef"`
-	Date             string   `json:"date"`
-	RecordingDir     string   `json:"recordingDir"`
-	TranscriptSource string   `json:"transcriptSource"`
-	TranscriptTarget string   `json:"transcriptTarget"`
-	DiarizeArgv      []string `json:"diarizeArgv"`
-	CRMLogArgv       []string `json:"crmLogArgv"`
-	DryRun           bool     `json:"dryRun"`
+	EventRef         string         `json:"eventRef"`
+	CRMRef           string         `json:"crmRef"`
+	Date             string         `json:"date"`
+	RecordingDir     string         `json:"recordingDir"`
+	TranscriptSource string         `json:"transcriptSource"`
+	TranscriptTarget string         `json:"transcriptTarget"`
+	DiarizeArgv      []string       `json:"diarizeArgv"`
+	CRMLogArgv       []string       `json:"crmLogArgv"`
+	DryRun           bool           `json:"dryRun"`
+	Steps            []donePlanStep `json:"steps,omitempty"`
+}
+
+type donePlanStep struct {
+	Action string `json:"action"`
+	Status string `json:"status"`
+	Detail string `json:"detail"`
 }
 
 var doneFlags doneOptions
@@ -54,14 +61,16 @@ var doneCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		if event.CRMKind != "call" {
-			return fmt.Errorf("event %s is not a CRM call", event.ID)
-		}
-		if event.CRMRef == "" {
-			return fmt.Errorf("event %s has no CRM ref", event.ID)
-		}
-		if !event.End.Before(timeNow()) {
-			return fmt.Errorf("event %s has not ended yet", event.ID)
+		if !doneFlags.dryRun {
+			if event.CRMKind != "call" {
+				return fmt.Errorf("event %s is not a CRM call", event.ID)
+			}
+			if event.CRMRef == "" {
+				return fmt.Errorf("event %s has no CRM ref", event.ID)
+			}
+			if !event.End.Before(timeNow()) {
+				return fmt.Errorf("event %s has not ended yet", event.ID)
+			}
 		}
 
 		plan, err := buildDonePlan(event, doneFlags.dryRun)
@@ -86,60 +95,173 @@ var timeNow = func() time.Time { return time.Now() }
 
 func buildDonePlan(event eventRecord, dryRun bool) (donePlan, error) {
 	date := callEventDate(event.Start)
-	recordings, err := recordingsRoot()
-	if err != nil {
-		return donePlan{}, err
-	}
 	subject := callSubject(event.Summary)
-	recordingDir, err := locateCallRecording(recordings, date, event.Summary, subject, event.CRMRef)
-	if err != nil {
-		return donePlan{}, err
+	plan := donePlan{
+		EventRef: event.ID,
+		CRMRef:   event.CRMRef,
+		Date:     date,
+		DryRun:   dryRun,
 	}
-	crmBase, err := crmBaseDir()
-	if err != nil {
-		return donePlan{}, err
+
+	recordings, recordingErr := recordingsRoot()
+	if recordingErr == nil {
+		plan.RecordingDir, recordingErr = locateCallRecording(recordings, date, event.Summary, subject, event.CRMRef)
+	}
+	if recordingErr != nil && !dryRun {
+		return donePlan{}, recordingErr
+	}
+	if recordingErr == nil {
+		plan.TranscriptSource = filepath.Join(plan.RecordingDir, "transcript.md")
+		plan.DiarizeArgv = []string{callDiarizeBinary(), plan.RecordingDir}
+	}
+
+	crmBase, targetErr := crmBaseDir()
+	if targetErr != nil && !dryRun {
+		return donePlan{}, targetErr
 	}
 	nameSlug := callSlug(subject)
 	if nameSlug == "" {
 		nameSlug = event.CRMRef
 	}
+	if nameSlug == "" {
+		nameSlug = "call"
+	}
 	relative := filepath.Join("transcripts", date[:4], date+"-"+nameSlug+"-call.md")
-	target := filepath.Join(crmBase, relative)
-	summary := shortCallSummary(event.Summary)
-	return donePlan{
-		EventRef:         event.ID,
-		CRMRef:           event.CRMRef,
-		Date:             date,
-		RecordingDir:     recordingDir,
-		TranscriptSource: filepath.Join(recordingDir, "transcript.md"),
-		TranscriptTarget: target,
-		DiarizeArgv:      []string{callDiarizeBinary(), recordingDir},
-		CRMLogArgv: []string{
+	if targetErr == nil {
+		plan.TranscriptTarget = filepath.Join(crmBase, relative)
+	}
+	if event.CRMRef != "" {
+		plan.CRMLogArgv = []string{
 			crmBinary(), "log",
 			"--kind", "call",
 			"--transcript", filepath.ToSlash(relative),
 			"--refs", event.CRMRef,
 			"--date", date,
-			"--summary", summary,
-		},
-		DryRun: dryRun,
-	}, nil
+			"--summary", shortCallSummary(event.Summary),
+		}
+	}
+	if dryRun {
+		plan.Steps = buildDonePreviewSteps(event, recordings, recordingErr, targetErr, plan)
+	}
+	return plan, nil
+}
+
+func buildDonePreviewSteps(event eventRecord, recordings string, recordingErr, targetErr error, plan donePlan) []donePlanStep {
+	var steps []donePlanStep
+	if recordingErr == nil {
+		steps = append(steps, readyDoneStep("search recording", plan.RecordingDir))
+	} else {
+		steps = append(steps, missingDoneStep("search recording", previewRecordingMissing(recordings, recordingErr)))
+	}
+
+	var actionMissing []string
+	if recordingErr != nil {
+		actionMissing = append(actionMissing, "matching recording is missing")
+	}
+	if len(actionMissing) == 0 {
+		steps = append(steps, readyDoneStep("run call-diarize", formatArgv(plan.DiarizeArgv)))
+	} else {
+		steps = append(steps, missingDoneStep("run call-diarize", actionMissing...))
+	}
+
+	copyMissing := append([]string(nil), actionMissing...)
+	if targetErr != nil {
+		copyMissing = append(copyMissing, "CRM transcript root is unavailable: "+targetErr.Error())
+	}
+	if len(copyMissing) == 0 {
+		detail := fmt.Sprintf("%s -> %s (source produced by call-diarize)", plan.TranscriptSource, plan.TranscriptTarget)
+		steps = append(steps, readyDoneStep("copy transcript", detail))
+	} else {
+		steps = append(steps, missingDoneStep("copy transcript", copyMissing...))
+	}
+	logMissing := doneEventPrerequisites(event, timeNow())
+	logMissing = append(logMissing, copyMissing...)
+	if len(logMissing) == 0 {
+		steps = append(steps, readyDoneStep("run crm log", formatArgv(plan.CRMLogArgv)))
+	} else {
+		steps = append(steps, missingDoneStep("run crm log", logMissing...))
+	}
+	return steps
+}
+
+func doneEventPrerequisites(event eventRecord, now time.Time) []string {
+	var missing []string
+	if event.CRMKind != "call" {
+		if event.CRMKind == "" {
+			missing = append(missing, "CRM call kind is missing")
+		} else {
+			missing = append(missing, fmt.Sprintf("CRM call kind is %q, not %q", event.CRMKind, "call"))
+		}
+	}
+	if event.CRMRef == "" {
+		missing = append(missing, "CRM linkage is missing")
+	}
+	if !event.End.Before(now) {
+		missing = append(missing, "event has not ended yet")
+	}
+	return missing
+}
+
+func previewRecordingMissing(root string, err error) string {
+	if root == "" {
+		return "recordings root is unavailable: " + err.Error()
+	}
+	if errors.Is(err, os.ErrNotExist) || strings.Contains(err.Error(), "no call recording found") {
+		return "none found under " + root
+	}
+	return err.Error()
+}
+
+func readyDoneStep(action, detail string) donePlanStep {
+	return donePlanStep{Action: action, Status: "ready", Detail: detail}
+}
+
+func missingDoneStep(action string, missing ...string) donePlanStep {
+	if len(missing) == 0 {
+		missing = []string{"prerequisite is missing"}
+	}
+	return donePlanStep{Action: action, Status: "missing", Detail: strings.Join(missing, "; ")}
+}
+
+func formatArgv(argv []string) string {
+	encoded, _ := json.Marshal(argv)
+	return string(encoded)
 }
 
 func printDonePlan(plan donePlan) error {
 	if jsonOutput {
 		return printJSON(plan)
 	}
-	diarize, _ := json.Marshal(plan.DiarizeArgv)
-	crmLog, _ := json.Marshal(plan.CRMLogArgv)
 	fmt.Fprintf(os.Stdout, "Event:\t%s\n", plan.EventRef)
-	fmt.Fprintf(os.Stdout, "CRM ref:\t%s\n", plan.CRMRef)
+	if plan.CRMRef == "" {
+		fmt.Fprintln(os.Stdout, "CRM ref:\t(missing)")
+	} else {
+		fmt.Fprintf(os.Stdout, "CRM ref:\t%s\n", plan.CRMRef)
+	}
 	fmt.Fprintf(os.Stdout, "Date:\t%s\n", plan.Date)
-	fmt.Fprintf(os.Stdout, "Recording dir:\t%s\n", plan.RecordingDir)
-	fmt.Fprintf(os.Stdout, "Transcript source:\t%s\n", plan.TranscriptSource)
-	fmt.Fprintf(os.Stdout, "Transcript target:\t%s\n", plan.TranscriptTarget)
-	fmt.Fprintf(os.Stdout, "call-diarize argv:\t%s\n", diarize)
-	fmt.Fprintf(os.Stdout, "crm log argv:\t%s\n", crmLog)
+	fmt.Fprintln(os.Stdout, "Plan:")
+	for _, step := range plan.Steps {
+		if step.Status == "ready" {
+			fmt.Fprintf(os.Stdout, "would %s: ready — %s\n", step.Action, step.Detail)
+			continue
+		}
+		fmt.Fprintf(os.Stdout, "would %s: %s (missing)\n", step.Action, step.Detail)
+	}
+	if plan.RecordingDir != "" {
+		fmt.Fprintf(os.Stdout, "Recording dir:\t%s\n", plan.RecordingDir)
+	}
+	if plan.TranscriptSource != "" {
+		fmt.Fprintf(os.Stdout, "Transcript source:\t%s\n", plan.TranscriptSource)
+	}
+	if plan.TranscriptTarget != "" {
+		fmt.Fprintf(os.Stdout, "Transcript target:\t%s\n", plan.TranscriptTarget)
+	}
+	if len(plan.DiarizeArgv) > 0 {
+		fmt.Fprintf(os.Stdout, "call-diarize argv:\t%s\n", formatArgv(plan.DiarizeArgv))
+	}
+	if len(plan.CRMLogArgv) > 0 {
+		fmt.Fprintf(os.Stdout, "crm log argv:\t%s\n", formatArgv(plan.CRMLogArgv))
+	}
 	return nil
 }
 

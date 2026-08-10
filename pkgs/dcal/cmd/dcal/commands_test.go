@@ -207,8 +207,15 @@ func TestDoneDryRunAndPendingStatusUseOnlyStubs(t *testing.T) {
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "config", "dcal"), 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(root, "config", "dcal", "config.json"), []byte(`{"default_calendar":"Calls"}`), 0o600))
 
-	crmArgvLog := filepath.Join(root, "crm-argv.log")
-	loggedDate := filepath.Join(root, "logged-date")
+	effectsRoot := filepath.Join(root, "effects")
+	recordings := filepath.Join(effectsRoot, "recordings")
+	crmBase := filepath.Join(effectsRoot, "crm")
+	require.NoError(t, os.MkdirAll(recordings, 0o700))
+	t.Setenv("DCAL_RECORDINGS_ROOT", recordings)
+	t.Setenv("DCAL_CRM_BASE", crmBase)
+
+	crmArgvLog := filepath.Join(effectsRoot, "crm-argv.log")
+	loggedDate := filepath.Join(effectsRoot, "logged-date")
 	fakeCRM := filepath.Join(root, "fake-crm")
 	fakeCRMScript := `#!/bin/sh
 printf '%s\n' "$*" >>"$DCAL_CRM_FAKE_LOG"
@@ -245,7 +252,7 @@ esac
 	t.Setenv("DCAL_CRM_FAKE_LOG", crmArgvLog)
 	t.Setenv("DCAL_CRM_LOGGED_DATE", loggedDate)
 
-	diarizeArgvLog := filepath.Join(root, "diarize-argv.log")
+	diarizeArgvLog := filepath.Join(effectsRoot, "diarize-argv.log")
 	fakeDiarize := filepath.Join(root, "fake-call-diarize")
 	fakeDiarizeScript := `#!/bin/sh
 printf '%s\n' "$*" >>"$DCAL_DIARIZE_FAKE_LOG"
@@ -258,8 +265,7 @@ printf '%s\n' '# Call transcript' '' '[00:00] Nick: Hello.' >"$1/transcript.md"
 	start := time.Now().Add(-2 * time.Hour).Truncate(time.Second)
 	end := start.Add(time.Hour)
 	date := callEventDate(start)
-	recordingDir := filepath.Join(root, "Recordings", "calls", date+"-nick-dupont")
-	require.NoError(t, os.MkdirAll(recordingDir, 0o700))
+	recordingDir := filepath.Join(recordings, date+"-nick-dupont")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -283,15 +289,43 @@ printf '%s\n' '# Call transcript' '' '[00:00] Nick: Hello.' >"$1/transcript.md"
 	assert.Contains(t, stdout, "dcal done "+eventRef)
 	crmBeforeDryRun, err := os.ReadFile(crmArgvLog)
 	require.NoError(t, err)
+	transcriptRelative := filepath.Join("transcripts", date[:4], date+"-nick-dupont-call.md")
+	transcriptTarget := filepath.Join(crmBase, transcriptRelative)
+	effectsBeforeDryRun := snapshotTree(t, effectsRoot)
 
 	stdout, stderr, code = runCLI(t, services.SocketPath(), "done", eventRef, "--dry-run")
 	require.Equal(t, 0, code, stderr)
-	transcriptRelative := filepath.Join("transcripts", date[:4], date+"-nick-dupont-call.md")
-	transcriptTarget := filepath.Join(root, "mecattaf", "notes", "crm", transcriptRelative)
+	assert.Contains(t, stdout, "would search recording: none found under "+recordings)
+	assert.Contains(t, stdout, "would run call-diarize: matching recording is missing")
+	assert.Contains(t, stdout, "would copy transcript: matching recording is missing")
+	assert.Contains(t, stdout, "would run crm log: matching recording is missing")
+	assert.Equal(t, effectsBeforeDryRun, snapshotTree(t, effectsRoot), "dry-run must not change any prerequisite or output path")
+	require.NoDirExists(t, recordingDir)
+	require.NoDirExists(t, crmBase)
+	require.NoFileExists(t, diarizeArgvLog)
+	require.NoFileExists(t, loggedDate)
+
+	stdout, stderr, code = runCLI(t, services.SocketPath(), "done", eventRef, "--dry-run", "--format", "json")
+	require.Equal(t, 0, code, stderr)
+	var preview donePlan
+	require.NoError(t, json.Unmarshal([]byte(stdout), &preview))
+	require.Len(t, preview.Steps, 4)
+	assert.Equal(t, donePlanStep{Action: "search recording", Status: "missing", Detail: "none found under " + recordings}, preview.Steps[0])
+	assert.Equal(t, effectsBeforeDryRun, snapshotTree(t, effectsRoot), "JSON dry-run must also be side-effect-free")
+
+	_, stderr, code = runCLI(t, services.SocketPath(), "done", eventRef)
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr, "no call recording found for "+date+" under "+recordings)
+
+	require.NoError(t, os.Mkdir(recordingDir, 0o700))
+	effectsBeforeReadyPreview := snapshotTree(t, effectsRoot)
+	stdout, stderr, code = runCLI(t, services.SocketPath(), "done", eventRef, "--dry-run")
+	require.Equal(t, 0, code, stderr)
 	assert.Contains(t, stdout, "Recording dir:\t"+recordingDir)
 	assert.Contains(t, stdout, "Transcript target:\t"+transcriptTarget)
 	assert.Contains(t, stdout, `"--refs","c42"`)
 	assert.Contains(t, stdout, `"--date","`+date+`"`)
+	assert.Equal(t, effectsBeforeReadyPreview, snapshotTree(t, effectsRoot), "ready dry-run must also be side-effect-free")
 	require.NoFileExists(t, transcriptTarget)
 	require.NoFileExists(t, diarizeArgvLog)
 	require.NoFileExists(t, loggedDate)
@@ -320,6 +354,20 @@ printf '%s\n' '# Call transcript' '' '[00:00] Nick: Hello.' >"$1/transcript.md"
 	require.Equal(t, 0, code, stderr)
 	assert.NotContains(t, stdout, "PENDING CALLS")
 	assert.NotContains(t, stdout, eventRef)
+
+	stdout, stderr, code = runCLI(t, services.SocketPath(),
+		"add", "Unlinked call", "--calendar", "Calls",
+		"--start", start.Format(time.RFC3339), "--end", end.Format(time.RFC3339),
+	)
+	require.Equal(t, 0, code, stderr)
+	stdout, stderr, code = runCLI(t, services.SocketPath(), "done", strings.TrimSpace(stdout), "--dry-run")
+	require.Equal(t, 0, code, stderr)
+	assert.Contains(t, stdout, "CRM call kind is missing")
+	assert.Contains(t, stdout, "CRM linkage is missing")
+
+	_, stderr, code = runCLI(t, services.SocketPath(), "done", "not-an-event", "--dry-run")
+	assert.NotEqual(t, 0, code)
+	assert.Contains(t, stderr, "not found")
 }
 
 func TestFreshSyncAndStatusAreCleanNoOps(t *testing.T) {
@@ -404,6 +452,31 @@ func shortTempRoot(t *testing.T) string {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, os.RemoveAll(root)) })
 	return root
+}
+
+func snapshotTree(t *testing.T, root string) map[string]string {
+	t.Helper()
+	state := make(map[string]string)
+	require.NoError(t, filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		value := fmt.Sprintf("%s|%d|%d", info.Mode(), info.Size(), info.ModTime().UnixNano())
+		if info.Mode().IsRegular() {
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			value += "|" + string(content)
+		}
+		state[relative] = value
+		return nil
+	}))
+	return state
 }
 
 func setCLIEnv(t *testing.T, root string) {
