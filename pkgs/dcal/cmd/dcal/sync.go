@@ -59,7 +59,7 @@ var syncCmd = &cobra.Command{
 		// Fixtures are a synchronous test seam even when a daemon happens to be
 		// running. Live sync retains the existing asynchronous daemon behavior
 		// after the tally projection has been committed locally.
-		if tallyFixture == "" && notifyDaemon(accountID, true) {
+		if tallyFixture == "" && waitForDaemonAndNotify(accountID, true) {
 			if jsonOutput {
 				return printJSON(syncResult("started", true, accountID))
 			}

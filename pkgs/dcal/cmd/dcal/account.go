@@ -249,7 +249,15 @@ func openStores(ctx context.Context) (*cliStores, func(), error) {
 // notifyDaemon tells a running daemon (if any) that accounts changed so the
 // GUI updates, optionally asking it to sync the account. Best-effort.
 func notifyDaemon(accountID string, refresh bool) bool {
-	socketPath, err := ipc.FindRunningSocket()
+	return notifyDaemonFoundBy(ipc.FindRunningSocket, accountID, refresh)
+}
+
+func waitForDaemonAndNotify(accountID string, refresh bool) bool {
+	return notifyDaemonFoundBy(ipc.WaitForRunningSocket, accountID, refresh)
+}
+
+func notifyDaemonFoundBy(findSocket func() (string, error), accountID string, refresh bool) bool {
+	socketPath, err := findSocket()
 	if err != nil {
 		return false
 	}

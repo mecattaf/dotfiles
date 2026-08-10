@@ -1,11 +1,16 @@
 package ipc
 
 import (
+	"time"
+
 	dcalipc "github.com/mecattaf/dcal/internal/support/ipc"
 	"github.com/mecattaf/dcal/internal/support/ipc/params"
 )
 
-const APIVersion = 1
+const (
+	APIVersion                 = 1
+	socketDiscoveryGracePeriod = 3 * time.Second
+)
 
 type (
 	Request         = dcalipc.Request
@@ -27,6 +32,10 @@ func Respond[T any](w *ConnWriter, id int, result T) { dcalipc.Respond(w, id, re
 func RespondError(w *ConnWriter, id int, msg string) { dcalipc.RespondError(w, id, msg) }
 
 func FindRunningSocket() (string, error) { return dcalipc.FindRunningSocket("dcal") }
+
+func WaitForRunningSocket() (string, error) {
+	return dcalipc.WaitForRunningSocket("dcal", socketDiscoveryGracePeriod)
+}
 
 func ParamString(p map[string]any, key string) string { return params.StringOpt(p, key, "") }
 

@@ -154,6 +154,38 @@ func TestFindRunningSocket(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestWaitForRunningSocketFindsConcurrentlyStartingServer(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+
+	srv := ipc.NewServer(ipc.Config{AppName: "dcaltest", APIVersion: 1}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	t.Cleanup(func() { _ = srv.Close() })
+
+	listenErr := make(chan error, 1)
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		err := srv.Listen()
+		listenErr <- err
+		if err == nil {
+			_ = srv.Serve(ctx)
+		}
+	}()
+
+	path, err := ipc.WaitForRunningSocket("dcaltest", time.Second)
+	require.NoError(t, err)
+	require.NoError(t, <-listenErr)
+	assert.Equal(t, srv.SocketPath(), path)
+}
+
+func TestWaitForRunningSocketKeepsExistingSocketFastPath(t *testing.T) {
+	srv := startServer(t, ipc.Config{AppName: "dcaltest", APIVersion: 1}, nil)
+
+	path, err := ipc.WaitForRunningSocket("dcaltest", 0)
+	require.NoError(t, err)
+	assert.Equal(t, srv.SocketPath(), path)
+}
+
 func TestMux(t *testing.T) {
 	mux := ipc.NewMux()
 	mux.Handle("version", func(ctx context.Context, w *ipc.ConnWriter, req ipc.Request, sub *ipc.Subscriber) {
