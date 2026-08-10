@@ -20,6 +20,8 @@ type Event struct {
 	Recurrence    []string   `json:"recurrence,omitempty"`
 	Attendees     []Attendee `json:"attendees,omitempty"`
 	Categories    []string   `json:"categories,omitempty"`
+	CRMRef        string     `json:"crmRef,omitempty"`
+	CRMKind       string     `json:"crmKind,omitempty"`
 }
 
 type Attendee struct {
@@ -37,6 +39,8 @@ type EventCreate struct {
 	End         time.Time `json:"end"`
 	AllDay      bool      `json:"allDay,omitempty"`
 	Recurrence  []string  `json:"recurrence,omitempty"`
+	CRMRef      string    `json:"crmRef,omitempty"`
+	CRMKind     string    `json:"crmKind,omitempty"`
 }
 
 type EventUpdate struct {
@@ -46,6 +50,8 @@ type EventUpdate struct {
 	Start       *time.Time `json:"start,omitempty"`
 	End         *time.Time `json:"end,omitempty"`
 	AllDay      *bool      `json:"allDay,omitempty"`
+	CRMRef      *string    `json:"crmRef,omitempty"`
+	CRMKind     *string    `json:"crmKind,omitempty"`
 }
 
 type EventList struct {

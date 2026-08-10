@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 )
 
@@ -18,6 +19,13 @@ type codedError struct {
 	err  error
 }
 
+// reportedError marks an external-command failure whose stderr has already
+// been copied verbatim to dcal's stderr. The top-level runner must preserve the
+// exit code without adding another prefixed error line.
+type reportedError struct {
+	*codedError
+}
+
 func (e *codedError) Error() string { return e.err.Error() }
 func (e *codedError) Unwrap() error { return e.err }
 
@@ -25,12 +33,28 @@ func withCode(code int, format string, args ...any) error {
 	return &codedError{code: code, err: fmt.Errorf(format, args...)}
 }
 
+func reportedWithCode(code int, err error) error {
+	return &reportedError{codedError: &codedError{code: code, err: err}}
+}
+
 func exitCode(err error) int {
+	var reported *reportedError
+	if errors.As(err, &reported) {
+		return reported.code
+	}
 	var coded *codedError
 	if errors.As(err, &coded) {
 		return coded.code
 	}
 	return exitFailure
+}
+
+func printCommandError(w io.Writer, err error) {
+	var reported *reportedError
+	if errors.As(err, &reported) {
+		return
+	}
+	fmt.Fprintf(w, "dcal: %v\n", err)
 }
 
 func remoteError(message string) error {

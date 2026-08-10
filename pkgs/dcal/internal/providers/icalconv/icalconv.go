@@ -14,6 +14,11 @@ import (
 
 const prodID = "-//dcal//dcal//EN"
 
+const (
+	PropCRMRef  = "X-CRM-REF"
+	PropCRMKind = "X-CRM-KIND"
+)
+
 // NewCalendar returns an empty VCALENDAR carrying the required VERSION and
 // PRODID properties.
 func NewCalendar() *ical.Calendar {
@@ -73,6 +78,8 @@ func EventFromComponent(calID string, comp *ical.Component, tz *TZResolver) (cal
 		Description: propText(comp, ical.PropDescription),
 		Location:    propText(comp, ical.PropLocation),
 		Status:      statusFromComponent(comp),
+		CRMRef:      strings.TrimSpace(propValue(comp, PropCRMRef)),
+		CRMKind:     strings.TrimSpace(propValue(comp, PropCRMKind)),
 	}
 
 	if rid := comp.Props.Get(ical.PropRecurrenceID); rid != nil {
@@ -327,6 +334,12 @@ func BuildEvent(ev *cal.Event, uid string) *ical.Event {
 	}
 	if status := statusValue(ev.Status); status != "" {
 		props.SetText(ical.PropStatus, status)
+	}
+	if ev.CRMRef != "" {
+		setRaw(props, PropCRMRef, ev.CRMRef)
+	}
+	if ev.CRMKind != "" {
+		setRaw(props, PropCRMKind, ev.CRMKind)
 	}
 
 	setEventTimes(props, ev)

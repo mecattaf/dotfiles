@@ -65,6 +65,10 @@ type Event struct {
 	Transparency string `json:"transparency,omitempty"`
 	// Visibility holds the value of the "visibility" field.
 	Visibility string `json:"visibility,omitempty"`
+	// CrmRef holds the value of the "crm_ref" field.
+	CrmRef string `json:"crm_ref,omitempty"`
+	// CrmKind holds the value of the "crm_kind" field.
+	CrmKind string `json:"crm_kind,omitempty"`
 	// RawIcs holds the value of the "raw_ics" field.
 	RawIcs string `json:"raw_ics,omitempty"`
 	// Created holds the value of the "created" field.
@@ -107,7 +111,7 @@ func (*Event) scanValues(columns []string) ([]any, error) {
 			values[i] = new([]byte)
 		case event.FieldAllDay:
 			values[i] = new(sql.NullBool)
-		case event.FieldID, event.FieldUID, event.FieldRemoteID, event.FieldEtag, event.FieldSummary, event.FieldDescription, event.FieldLocation, event.FieldURL, event.FieldMeetingURL, event.FieldStatus, event.FieldStartTz, event.FieldEndTz, event.FieldRecurringID, event.FieldTransparency, event.FieldVisibility, event.FieldRawIcs:
+		case event.FieldID, event.FieldUID, event.FieldRemoteID, event.FieldEtag, event.FieldSummary, event.FieldDescription, event.FieldLocation, event.FieldURL, event.FieldMeetingURL, event.FieldStatus, event.FieldStartTz, event.FieldEndTz, event.FieldRecurringID, event.FieldTransparency, event.FieldVisibility, event.FieldCrmRef, event.FieldCrmKind, event.FieldRawIcs:
 			values[i] = new(sql.NullString)
 		case event.FieldStart, event.FieldEnd, event.FieldOriginalStart, event.FieldCreated, event.FieldUpdated:
 			values[i] = new(sql.NullTime)
@@ -283,6 +287,18 @@ func (_m *Event) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Visibility = value.String
 			}
+		case event.FieldCrmRef:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field crm_ref", values[i])
+			} else if value.Valid {
+				_m.CrmRef = value.String
+			}
+		case event.FieldCrmKind:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field crm_kind", values[i])
+			} else if value.Valid {
+				_m.CrmKind = value.String
+			}
 		case event.FieldRawIcs:
 			if value, ok := values[i].(*sql.NullString); !ok {
 				return fmt.Errorf("unexpected type %T for field raw_ics", values[i])
@@ -419,6 +435,12 @@ func (_m *Event) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("visibility=")
 	builder.WriteString(_m.Visibility)
+	builder.WriteString(", ")
+	builder.WriteString("crm_ref=")
+	builder.WriteString(_m.CrmRef)
+	builder.WriteString(", ")
+	builder.WriteString("crm_kind=")
+	builder.WriteString(_m.CrmKind)
 	builder.WriteString(", ")
 	builder.WriteString("raw_ics=")
 	builder.WriteString(_m.RawIcs)

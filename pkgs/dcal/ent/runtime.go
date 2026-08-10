@@ -118,11 +118,11 @@ func init() {
 	// event.DefaultAllDay holds the default value on creation for the all_day field.
 	event.DefaultAllDay = eventDescAllDay.Default.(bool)
 	// eventDescCreated is the schema descriptor for created field.
-	eventDescCreated := eventFields[25].Descriptor()
+	eventDescCreated := eventFields[27].Descriptor()
 	// event.DefaultCreated holds the default value on creation for the created field.
 	event.DefaultCreated = eventDescCreated.Default.(func() time.Time)
 	// eventDescUpdated is the schema descriptor for updated field.
-	eventDescUpdated := eventFields[26].Descriptor()
+	eventDescUpdated := eventFields[28].Descriptor()
 	// event.DefaultUpdated holds the default value on creation for the updated field.
 	event.DefaultUpdated = eventDescUpdated.Default.(func() time.Time)
 	// event.UpdateDefaultUpdated holds the default value on update for the updated field.

@@ -433,6 +433,46 @@ func (_u *EventUpdate) ClearVisibility() *EventUpdate {
 	return _u
 }
 
+// SetCrmRef sets the "crm_ref" field.
+func (_u *EventUpdate) SetCrmRef(v string) *EventUpdate {
+	_u.mutation.SetCrmRef(v)
+	return _u
+}
+
+// SetNillableCrmRef sets the "crm_ref" field if the given value is not nil.
+func (_u *EventUpdate) SetNillableCrmRef(v *string) *EventUpdate {
+	if v != nil {
+		_u.SetCrmRef(*v)
+	}
+	return _u
+}
+
+// ClearCrmRef clears the value of the "crm_ref" field.
+func (_u *EventUpdate) ClearCrmRef() *EventUpdate {
+	_u.mutation.ClearCrmRef()
+	return _u
+}
+
+// SetCrmKind sets the "crm_kind" field.
+func (_u *EventUpdate) SetCrmKind(v string) *EventUpdate {
+	_u.mutation.SetCrmKind(v)
+	return _u
+}
+
+// SetNillableCrmKind sets the "crm_kind" field if the given value is not nil.
+func (_u *EventUpdate) SetNillableCrmKind(v *string) *EventUpdate {
+	if v != nil {
+		_u.SetCrmKind(*v)
+	}
+	return _u
+}
+
+// ClearCrmKind clears the value of the "crm_kind" field.
+func (_u *EventUpdate) ClearCrmKind() *EventUpdate {
+	_u.mutation.ClearCrmKind()
+	return _u
+}
+
 // SetRawIcs sets the "raw_ics" field.
 func (_u *EventUpdate) SetRawIcs(v string) *EventUpdate {
 	_u.mutation.SetRawIcs(v)
@@ -701,6 +741,18 @@ func (_u *EventUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.VisibilityCleared() {
 		_spec.ClearField(event.FieldVisibility, field.TypeString)
+	}
+	if value, ok := _u.mutation.CrmRef(); ok {
+		_spec.SetField(event.FieldCrmRef, field.TypeString, value)
+	}
+	if _u.mutation.CrmRefCleared() {
+		_spec.ClearField(event.FieldCrmRef, field.TypeString)
+	}
+	if value, ok := _u.mutation.CrmKind(); ok {
+		_spec.SetField(event.FieldCrmKind, field.TypeString, value)
+	}
+	if _u.mutation.CrmKindCleared() {
+		_spec.ClearField(event.FieldCrmKind, field.TypeString)
 	}
 	if value, ok := _u.mutation.RawIcs(); ok {
 		_spec.SetField(event.FieldRawIcs, field.TypeString, value)
@@ -1167,6 +1219,46 @@ func (_u *EventUpdateOne) ClearVisibility() *EventUpdateOne {
 	return _u
 }
 
+// SetCrmRef sets the "crm_ref" field.
+func (_u *EventUpdateOne) SetCrmRef(v string) *EventUpdateOne {
+	_u.mutation.SetCrmRef(v)
+	return _u
+}
+
+// SetNillableCrmRef sets the "crm_ref" field if the given value is not nil.
+func (_u *EventUpdateOne) SetNillableCrmRef(v *string) *EventUpdateOne {
+	if v != nil {
+		_u.SetCrmRef(*v)
+	}
+	return _u
+}
+
+// ClearCrmRef clears the value of the "crm_ref" field.
+func (_u *EventUpdateOne) ClearCrmRef() *EventUpdateOne {
+	_u.mutation.ClearCrmRef()
+	return _u
+}
+
+// SetCrmKind sets the "crm_kind" field.
+func (_u *EventUpdateOne) SetCrmKind(v string) *EventUpdateOne {
+	_u.mutation.SetCrmKind(v)
+	return _u
+}
+
+// SetNillableCrmKind sets the "crm_kind" field if the given value is not nil.
+func (_u *EventUpdateOne) SetNillableCrmKind(v *string) *EventUpdateOne {
+	if v != nil {
+		_u.SetCrmKind(*v)
+	}
+	return _u
+}
+
+// ClearCrmKind clears the value of the "crm_kind" field.
+func (_u *EventUpdateOne) ClearCrmKind() *EventUpdateOne {
+	_u.mutation.ClearCrmKind()
+	return _u
+}
+
 // SetRawIcs sets the "raw_ics" field.
 func (_u *EventUpdateOne) SetRawIcs(v string) *EventUpdateOne {
 	_u.mutation.SetRawIcs(v)
@@ -1465,6 +1557,18 @@ func (_u *EventUpdateOne) sqlSave(ctx context.Context) (_node *Event, err error)
 	}
 	if _u.mutation.VisibilityCleared() {
 		_spec.ClearField(event.FieldVisibility, field.TypeString)
+	}
+	if value, ok := _u.mutation.CrmRef(); ok {
+		_spec.SetField(event.FieldCrmRef, field.TypeString, value)
+	}
+	if _u.mutation.CrmRefCleared() {
+		_spec.ClearField(event.FieldCrmRef, field.TypeString)
+	}
+	if value, ok := _u.mutation.CrmKind(); ok {
+		_spec.SetField(event.FieldCrmKind, field.TypeString, value)
+	}
+	if _u.mutation.CrmKindCleared() {
+		_spec.ClearField(event.FieldCrmKind, field.TypeString)
 	}
 	if value, ok := _u.mutation.RawIcs(); ok {
 		_spec.SetField(event.FieldRawIcs, field.TypeString, value)

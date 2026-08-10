@@ -61,6 +61,10 @@ const (
 	FieldTransparency = "transparency"
 	// FieldVisibility holds the string denoting the visibility field in the database.
 	FieldVisibility = "visibility"
+	// FieldCrmRef holds the string denoting the crm_ref field in the database.
+	FieldCrmRef = "crm_ref"
+	// FieldCrmKind holds the string denoting the crm_kind field in the database.
+	FieldCrmKind = "crm_kind"
 	// FieldRawIcs holds the string denoting the raw_ics field in the database.
 	FieldRawIcs = "raw_ics"
 	// FieldCreated holds the string denoting the created field in the database.
@@ -106,6 +110,8 @@ var Columns = []string{
 	FieldCategories,
 	FieldTransparency,
 	FieldVisibility,
+	FieldCrmRef,
+	FieldCrmKind,
 	FieldRawIcs,
 	FieldCreated,
 	FieldUpdated,
@@ -270,6 +276,16 @@ func ByTransparency(opts ...sql.OrderTermOption) OrderOption {
 // ByVisibility orders the results by the visibility field.
 func ByVisibility(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldVisibility, opts...).ToFunc()
+}
+
+// ByCrmRef orders the results by the crm_ref field.
+func ByCrmRef(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCrmRef, opts...).ToFunc()
+}
+
+// ByCrmKind orders the results by the crm_kind field.
+func ByCrmKind(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCrmKind, opts...).ToFunc()
 }
 
 // ByRawIcs orders the results by the raw_ics field.

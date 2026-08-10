@@ -104,6 +104,8 @@ type eventRecord struct {
 	Attendees    []map[string]any `json:"attendees,omitempty"`
 	Organizer    map[string]any   `json:"organizer,omitempty"`
 	Reminders    []map[string]any `json:"reminders,omitempty"`
+	CRMRef       string           `json:"crmRef,omitempty"`
+	CRMKind      string           `json:"crmKind,omitempty"`
 }
 
 type eventListResponse struct {

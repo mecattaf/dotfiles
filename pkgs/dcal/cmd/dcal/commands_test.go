@@ -35,7 +35,7 @@ func TestCLIHelperProcess(t *testing.T) {
 	}
 	rootCmd.SetArgs(os.Args[separator+1:])
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "dcal: %v\n", err)
+		printCommandError(os.Stderr, err)
 		os.Exit(exitCode(err))
 	}
 	os.Exit(0)
@@ -117,6 +117,209 @@ func TestDaemonBackedEventRoundTrip(t *testing.T) {
 
 	_, stderr, code = runCLI(t, services.SocketPath(), "show", eventRef)
 	assert.Equal(t, exitNotFound, code, stderr)
+}
+
+func TestAddCRMContactUsesStubAndPersistsICSProperties(t *testing.T) {
+	root := shortTempRoot(t)
+	setCLIEnv(t, root)
+	t.Setenv("DCAL_DISABLE_HTTP", "true")
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "config", "dcal"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "config", "dcal", "config.json"), []byte(`{"default_calendar":"Work"}`), 0o600))
+
+	fakeCRM := filepath.Join(root, "fake-crm")
+	crmLog := filepath.Join(root, "crm-argv.log")
+	fake := `#!/bin/sh
+printf '%s\n' "$*" >>"$DCAL_CRM_FAKE_LOG"
+case "$2" in
+  c42) printf '%s\n' '[{"ref":"c42","name":"Nick Dupont"}]' ;;
+  c404) printf '%s\n' 'crm: error: contact not found: c404' >&2; exit 2 ;;
+  c3) printf '%s\n' 'crm: error: ambiguous contact: c3' >&2; exit 3 ;;
+  *) printf '%s\n' 'unexpected fake crm invocation' >&2; exit 1 ;;
+esac
+`
+	require.NoError(t, os.WriteFile(fakeCRM, []byte(fake), 0o700))
+	t.Setenv("DCAL_CRM_BIN", fakeCRM)
+	t.Setenv("DCAL_CRM_FAKE_LOG", crmLog)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	services, err := bootDaemonServices(ctx)
+	require.NoError(t, err)
+	t.Cleanup(services.Close)
+
+	_, stderr, code := runCLI(t, services.SocketPath(), "calendar", "add", "Work")
+	require.Equal(t, 0, code, stderr)
+
+	stdout, stderr, code := runCLI(t, services.SocketPath(),
+		"add",
+		"--calendar", "Work",
+		"--crm", "c42",
+		"--start", "2026-08-10T15:00:00+02:00",
+		"--end", "2026-08-10T16:00:00+02:00",
+	)
+	require.Equal(t, 0, code, stderr)
+	eventRef := strings.TrimSpace(stdout)
+	require.NotEmpty(t, eventRef)
+
+	stdout, stderr, code = runCLI(t, services.SocketPath(), "show", eventRef, "--format", "json")
+	require.Equal(t, 0, code, stderr)
+	var event eventRecord
+	require.NoError(t, json.Unmarshal([]byte(stdout), &event))
+	assert.Equal(t, "call with Nick Dupont", event.Summary)
+	assert.Equal(t, "c42", event.CRMRef)
+	assert.Equal(t, "call", event.CRMKind)
+	stdout, stderr, code = runCLI(t, services.SocketPath(), "show", eventRef)
+	require.Equal(t, 0, code, stderr)
+	assert.Contains(t, stdout, "CRM Ref:")
+	assert.Contains(t, stdout, "CRM Kind:")
+
+	argv, err := os.ReadFile(crmLog)
+	require.NoError(t, err)
+	assert.Equal(t, "show c42 --format json\n", string(argv))
+
+	ics, err := os.ReadFile(filepath.Join(root, "data", "dcal", "collections", "Work.ics"))
+	require.NoError(t, err)
+	assert.Contains(t, string(ics), "SUMMARY:call with Nick Dupont")
+	assert.Contains(t, string(ics), "X-CRM-REF:c42")
+	assert.Contains(t, string(ics), "X-CRM-KIND:call")
+
+	_, stderr, code = runCLI(t, services.SocketPath(),
+		"add", "missing",
+		"--calendar", "Work", "--crm", "c404",
+		"--start", "2026-08-10T17:00:00+02:00", "--end", "2026-08-10T18:00:00+02:00",
+	)
+	assert.Equal(t, exitNotFound, code)
+	assert.Contains(t, stderr, "contact not found: c404")
+
+	_, stderr, code = runCLI(t, services.SocketPath(),
+		"add", "ambiguous",
+		"--calendar", "Work", "--crm", "c3",
+		"--start", "2026-08-10T17:00:00+02:00", "--end", "2026-08-10T18:00:00+02:00",
+	)
+	assert.Equal(t, exitAmbiguous, code)
+	assert.Contains(t, stderr, "ambiguous contact: c3")
+}
+
+func TestDoneDryRunAndPendingStatusUseOnlyStubs(t *testing.T) {
+	root := shortTempRoot(t)
+	setCLIEnv(t, root)
+	t.Setenv("DCAL_DISABLE_HTTP", "true")
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "config", "dcal"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "config", "dcal", "config.json"), []byte(`{"default_calendar":"Calls"}`), 0o600))
+
+	crmArgvLog := filepath.Join(root, "crm-argv.log")
+	loggedDate := filepath.Join(root, "logged-date")
+	fakeCRM := filepath.Join(root, "fake-crm")
+	fakeCRMScript := `#!/bin/sh
+printf '%s\n' "$*" >>"$DCAL_CRM_FAKE_LOG"
+case "$1" in
+  show)
+    printf '%s\n' '[{"ref":"c42","name":"Nick Dupont"}]'
+    ;;
+  interaction)
+    if [ -s "$DCAL_CRM_LOGGED_DATE" ]; then
+      date=$(sed -n '1p' "$DCAL_CRM_LOGGED_DATE")
+      printf '[{"occurred_on":"%s"}]\n' "$date"
+    else
+      printf '%s\n' '[]'
+    fi
+    ;;
+  log)
+    previous=
+    for argument in "$@"; do
+      if [ "$previous" = date ]; then
+        printf '%s\n' "$argument" >"$DCAL_CRM_LOGGED_DATE"
+      fi
+      if [ "$argument" = --date ]; then previous=date; else previous=; fi
+    done
+    printf '%s\n' '[{"ref":"i1"}]'
+    ;;
+  *)
+    printf '%s\n' 'unexpected fake crm invocation' >&2
+    exit 1
+    ;;
+esac
+`
+	require.NoError(t, os.WriteFile(fakeCRM, []byte(fakeCRMScript), 0o700))
+	t.Setenv("DCAL_CRM_BIN", fakeCRM)
+	t.Setenv("DCAL_CRM_FAKE_LOG", crmArgvLog)
+	t.Setenv("DCAL_CRM_LOGGED_DATE", loggedDate)
+
+	diarizeArgvLog := filepath.Join(root, "diarize-argv.log")
+	fakeDiarize := filepath.Join(root, "fake-call-diarize")
+	fakeDiarizeScript := `#!/bin/sh
+printf '%s\n' "$*" >>"$DCAL_DIARIZE_FAKE_LOG"
+printf '%s\n' '# Call transcript' '' '[00:00] Nick: Hello.' >"$1/transcript.md"
+`
+	require.NoError(t, os.WriteFile(fakeDiarize, []byte(fakeDiarizeScript), 0o700))
+	t.Setenv("DCAL_CALL_DIARIZE_BIN", fakeDiarize)
+	t.Setenv("DCAL_DIARIZE_FAKE_LOG", diarizeArgvLog)
+
+	start := time.Now().Add(-2 * time.Hour).Truncate(time.Second)
+	end := start.Add(time.Hour)
+	date := callEventDate(start)
+	recordingDir := filepath.Join(root, "Recordings", "calls", date+"-nick-dupont")
+	require.NoError(t, os.MkdirAll(recordingDir, 0o700))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	services, err := bootDaemonServices(ctx)
+	require.NoError(t, err)
+	t.Cleanup(services.Close)
+
+	_, stderr, code := runCLI(t, services.SocketPath(), "calendar", "add", "Calls")
+	require.Equal(t, 0, code, stderr)
+	stdout, stderr, code := runCLI(t, services.SocketPath(),
+		"add", "--calendar", "Calls", "--crm", "c42",
+		"--start", start.Format(time.RFC3339), "--end", end.Format(time.RFC3339),
+	)
+	require.Equal(t, 0, code, stderr)
+	eventRef := strings.TrimSpace(stdout)
+
+	stdout, stderr, code = runCLI(t, "", "status")
+	require.Equal(t, 0, code, stderr)
+	assert.Contains(t, stdout, "PENDING CALLS")
+	assert.Contains(t, stdout, eventRef)
+	assert.Contains(t, stdout, "dcal done "+eventRef)
+	crmBeforeDryRun, err := os.ReadFile(crmArgvLog)
+	require.NoError(t, err)
+
+	stdout, stderr, code = runCLI(t, services.SocketPath(), "done", eventRef, "--dry-run")
+	require.Equal(t, 0, code, stderr)
+	transcriptRelative := filepath.Join("transcripts", date[:4], date+"-nick-dupont-call.md")
+	transcriptTarget := filepath.Join(root, "mecattaf", "notes", "crm", transcriptRelative)
+	assert.Contains(t, stdout, "Recording dir:\t"+recordingDir)
+	assert.Contains(t, stdout, "Transcript target:\t"+transcriptTarget)
+	assert.Contains(t, stdout, `"--refs","c42"`)
+	assert.Contains(t, stdout, `"--date","`+date+`"`)
+	require.NoFileExists(t, transcriptTarget)
+	require.NoFileExists(t, diarizeArgvLog)
+	require.NoFileExists(t, loggedDate)
+
+	argvBefore, err := os.ReadFile(crmArgvLog)
+	require.NoError(t, err)
+	assert.Equal(t, string(crmBeforeDryRun), string(argvBefore), "dry-run must not invoke the CRM")
+	assert.NotContains(t, string(argvBefore), "\nlog ")
+
+	stdout, stderr, code = runCLI(t, services.SocketPath(), "done", eventRef)
+	require.Equal(t, 0, code, stderr)
+	assert.JSONEq(t, `[{"ref":"i1"}]`, stdout)
+	require.FileExists(t, transcriptTarget)
+	transcript, err := os.ReadFile(transcriptTarget)
+	require.NoError(t, err)
+	assert.Contains(t, string(transcript), "Nick: Hello")
+
+	diarizeArgv, err := os.ReadFile(diarizeArgvLog)
+	require.NoError(t, err)
+	assert.Equal(t, recordingDir+"\n", string(diarizeArgv))
+	crmArgv, err := os.ReadFile(crmArgvLog)
+	require.NoError(t, err)
+	assert.Contains(t, string(crmArgv), "log --kind call --transcript "+filepath.ToSlash(transcriptRelative)+" --refs c42 --date "+date+" --summary call with Nick Dupont\n")
+
+	stdout, stderr, code = runCLI(t, "", "status")
+	require.Equal(t, 0, code, stderr)
+	assert.NotContains(t, stdout, "PENDING CALLS")
+	assert.NotContains(t, stdout, eventRef)
 }
 
 func TestFreshSyncAndStatusAreCleanNoOps(t *testing.T) {
@@ -206,6 +409,11 @@ func shortTempRoot(t *testing.T) string {
 func setCLIEnv(t *testing.T, root string) {
 	t.Helper()
 	for _, key := range []string{
+		"CALL_RECORDINGS_ROOT",
+		"CRM_DB",
+		"DCAL_CALL_DIARIZE_BIN",
+		"DCAL_CRM_BASE",
+		"DCAL_CRM_BIN",
 		"DCAL_ICS_DIR",
 		"DCAL_DEFAULT_CALENDAR",
 		"DCAL_DB_PATH",
@@ -213,6 +421,7 @@ func setCLIEnv(t *testing.T, root string) {
 		"DCAL_GOOGLE_CLIENT_ID",
 		"DCAL_GOOGLE_CLIENT_SECRET",
 		"DCAL_MICROSOFT_CLIENT_ID",
+		"DCAL_RECORDINGS_ROOT",
 		"TALLY_SOCKET",
 	} {
 		unsetEnv(t, key)

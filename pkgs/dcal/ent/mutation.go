@@ -2440,6 +2440,8 @@ type EventMutation struct {
 	appendcategories []string
 	transparency     *string
 	visibility       *string
+	crm_ref          *string
+	crm_kind         *string
 	raw_ics          *string
 	created          *time.Time
 	updated          *time.Time
@@ -3652,6 +3654,104 @@ func (m *EventMutation) ResetVisibility() {
 	delete(m.clearedFields, event.FieldVisibility)
 }
 
+// SetCrmRef sets the "crm_ref" field.
+func (m *EventMutation) SetCrmRef(s string) {
+	m.crm_ref = &s
+}
+
+// CrmRef returns the value of the "crm_ref" field in the mutation.
+func (m *EventMutation) CrmRef() (r string, exists bool) {
+	v := m.crm_ref
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCrmRef returns the old "crm_ref" field's value of the Event entity.
+// If the Event object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EventMutation) OldCrmRef(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCrmRef is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCrmRef requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCrmRef: %w", err)
+	}
+	return oldValue.CrmRef, nil
+}
+
+// ClearCrmRef clears the value of the "crm_ref" field.
+func (m *EventMutation) ClearCrmRef() {
+	m.crm_ref = nil
+	m.clearedFields[event.FieldCrmRef] = struct{}{}
+}
+
+// CrmRefCleared returns if the "crm_ref" field was cleared in this mutation.
+func (m *EventMutation) CrmRefCleared() bool {
+	_, ok := m.clearedFields[event.FieldCrmRef]
+	return ok
+}
+
+// ResetCrmRef resets all changes to the "crm_ref" field.
+func (m *EventMutation) ResetCrmRef() {
+	m.crm_ref = nil
+	delete(m.clearedFields, event.FieldCrmRef)
+}
+
+// SetCrmKind sets the "crm_kind" field.
+func (m *EventMutation) SetCrmKind(s string) {
+	m.crm_kind = &s
+}
+
+// CrmKind returns the value of the "crm_kind" field in the mutation.
+func (m *EventMutation) CrmKind() (r string, exists bool) {
+	v := m.crm_kind
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCrmKind returns the old "crm_kind" field's value of the Event entity.
+// If the Event object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *EventMutation) OldCrmKind(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCrmKind is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCrmKind requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCrmKind: %w", err)
+	}
+	return oldValue.CrmKind, nil
+}
+
+// ClearCrmKind clears the value of the "crm_kind" field.
+func (m *EventMutation) ClearCrmKind() {
+	m.crm_kind = nil
+	m.clearedFields[event.FieldCrmKind] = struct{}{}
+}
+
+// CrmKindCleared returns if the "crm_kind" field was cleared in this mutation.
+func (m *EventMutation) CrmKindCleared() bool {
+	_, ok := m.clearedFields[event.FieldCrmKind]
+	return ok
+}
+
+// ResetCrmKind resets all changes to the "crm_kind" field.
+func (m *EventMutation) ResetCrmKind() {
+	m.crm_kind = nil
+	delete(m.clearedFields, event.FieldCrmKind)
+}
+
 // SetRawIcs sets the "raw_ics" field.
 func (m *EventMutation) SetRawIcs(s string) {
 	m.raw_ics = &s
@@ -3846,7 +3946,7 @@ func (m *EventMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *EventMutation) Fields() []string {
-	fields := make([]string, 0, 26)
+	fields := make([]string, 0, 28)
 	if m.uid != nil {
 		fields = append(fields, event.FieldUID)
 	}
@@ -3916,6 +4016,12 @@ func (m *EventMutation) Fields() []string {
 	if m.visibility != nil {
 		fields = append(fields, event.FieldVisibility)
 	}
+	if m.crm_ref != nil {
+		fields = append(fields, event.FieldCrmRef)
+	}
+	if m.crm_kind != nil {
+		fields = append(fields, event.FieldCrmKind)
+	}
 	if m.raw_ics != nil {
 		fields = append(fields, event.FieldRawIcs)
 	}
@@ -3979,6 +4085,10 @@ func (m *EventMutation) Field(name string) (ent.Value, bool) {
 		return m.Transparency()
 	case event.FieldVisibility:
 		return m.Visibility()
+	case event.FieldCrmRef:
+		return m.CrmRef()
+	case event.FieldCrmKind:
+		return m.CrmKind()
 	case event.FieldRawIcs:
 		return m.RawIcs()
 	case event.FieldCreated:
@@ -4040,6 +4150,10 @@ func (m *EventMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldTransparency(ctx)
 	case event.FieldVisibility:
 		return m.OldVisibility(ctx)
+	case event.FieldCrmRef:
+		return m.OldCrmRef(ctx)
+	case event.FieldCrmKind:
+		return m.OldCrmKind(ctx)
 	case event.FieldRawIcs:
 		return m.OldRawIcs(ctx)
 	case event.FieldCreated:
@@ -4216,6 +4330,20 @@ func (m *EventMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetVisibility(v)
 		return nil
+	case event.FieldCrmRef:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCrmRef(v)
+		return nil
+	case event.FieldCrmKind:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCrmKind(v)
+		return nil
 	case event.FieldRawIcs:
 		v, ok := value.(string)
 		if !ok {
@@ -4318,6 +4446,12 @@ func (m *EventMutation) ClearedFields() []string {
 	if m.FieldCleared(event.FieldVisibility) {
 		fields = append(fields, event.FieldVisibility)
 	}
+	if m.FieldCleared(event.FieldCrmRef) {
+		fields = append(fields, event.FieldCrmRef)
+	}
+	if m.FieldCleared(event.FieldCrmKind) {
+		fields = append(fields, event.FieldCrmKind)
+	}
 	if m.FieldCleared(event.FieldRawIcs) {
 		fields = append(fields, event.FieldRawIcs)
 	}
@@ -4385,6 +4519,12 @@ func (m *EventMutation) ClearField(name string) error {
 		return nil
 	case event.FieldVisibility:
 		m.ClearVisibility()
+		return nil
+	case event.FieldCrmRef:
+		m.ClearCrmRef()
+		return nil
+	case event.FieldCrmKind:
+		m.ClearCrmKind()
 		return nil
 	case event.FieldRawIcs:
 		m.ClearRawIcs()
@@ -4465,6 +4605,12 @@ func (m *EventMutation) ResetField(name string) error {
 		return nil
 	case event.FieldVisibility:
 		m.ResetVisibility()
+		return nil
+	case event.FieldCrmRef:
+		m.ResetCrmRef()
+		return nil
+	case event.FieldCrmKind:
+		m.ResetCrmKind()
 		return nil
 	case event.FieldRawIcs:
 		m.ResetRawIcs()

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/mecattaf/dcal/internal/support/log"
@@ -16,7 +15,7 @@ var (
 func main() {
 	log.SetEnvPrefix("DCAL")
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "dcal: %v\n", err)
+		printCommandError(os.Stderr, err)
 		os.Exit(exitCode(err))
 	}
 }
