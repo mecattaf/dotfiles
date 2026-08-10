@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": 5,
+  "items": [
+    {
+      "name": "nightly-eval",
+      "kind": "calendar",
+      "configured": true,
+      "enabled": true,
+      "unit": {
+        "service": "tally-producer-nightly-eval.service",
+        "timer": "tally-producer-nightly-eval.timer"
+      },
+      "schedule": {
+        "calendarExpression": "*-*-* 03:00:00",
+        "pollCadenceSec": null,
+        "nextTrigger": null,
+        "nextTriggerUnavailableReason": "systemd-calendar-next-trigger-is-not-available-to-the-daemon"
+      },
+      "enqueue": [
+        {
+          "action": "calendar",
+          "pool": "sample",
+          "executor": null,
+          "priority": "low",
+          "adapter": "shell",
+          "source": "calendar"
+        }
+      ],
+      "runtime": {
+        "state": "unknown",
+        "stateReason": "last-dispatch-succeeded-but-unit-active-state-is-not-observed",
+        "lastTrigger": "2026-08-10T01:00:00Z",
+        "lastEmission": "2026-08-10T01:00:01Z",
+        "lastOutcome": {
+          "emitted": "synthetic-event"
+        },
+        "lastError": null,
+        "authority": "tally-lifecycle-observation"
+      },
+      "configurationAuthority": "nix-declarative-configuration"
+    },
+    {
+      "name": "poll-sample",
+      "kind": "poll",
+      "configured": true,
+      "enabled": true,
+      "unit": {
+        "service": "tally-producer-poll-sample.service",
+        "timer": null
+      },
+      "schedule": {
+        "calendarExpression": null,
+        "pollCadenceSec": 300,
+        "nextTrigger": "2026-08-10T12:05:00Z",
+        "nextTriggerUnavailableReason": null
+      },
+      "enqueue": [],
+      "runtime": {
+        "state": "unknown",
+        "stateReason": "last-dispatch-succeeded-but-unit-active-state-is-not-observed",
+        "lastTrigger": "2026-08-10T12:00:00Z",
+        "lastEmission": null,
+        "lastOutcome": null,
+        "lastError": null,
+        "authority": "tally-lifecycle-observation"
+      },
+      "configurationAuthority": "nix-declarative-configuration"
+    }
+  ],
+  "nextCursor": null,
+  "snapshot": {
+    "createdAt": "2026-08-10T12:00:00Z",
+    "cursor": null,
+    "configurationAuthority": "nix-effective-declarative-registry",
+    "runtimeAuthority": "tally-lifecycle-observation"
+  }
+}

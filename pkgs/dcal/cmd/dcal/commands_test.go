@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -124,6 +126,7 @@ func TestFreshSyncAndStatusAreCleanNoOps(t *testing.T) {
 	stdout, stderr, code := runCLI(t, "", "sync")
 	require.Equal(t, 0, code, stderr)
 	assert.Empty(t, stdout)
+	assert.Contains(t, stderr, "tally source skipped")
 
 	stdout, stderr, code = runCLI(t, "", "status", "--format", "json")
 	require.Equal(t, 0, code, stderr)
@@ -132,6 +135,64 @@ func TestFreshSyncAndStatusAreCleanNoOps(t *testing.T) {
 	stdout, stderr, code = runCLI(t, "", "account", "ls", "--format", "json")
 	require.Equal(t, 0, code, stderr)
 	assert.JSONEq(t, `[]`, stdout)
+}
+
+func TestTallyFixtureSyncIsIdempotentAndReadOnly(t *testing.T) {
+	root := shortTempRoot(t)
+	setCLIEnv(t, root)
+	t.Setenv("DCAL_DISABLE_HTTP", "true")
+	fixture, err := filepath.Abs(filepath.Join("..", "..", "testdata", "tally-producers.json"))
+	require.NoError(t, err)
+
+	_, stderr, code := runCLI(t, "", "sync", "--tally-fixture", fixture)
+	require.Equal(t, 0, code, stderr)
+	first := cliStatus(t)
+	require.Len(t, first.Calendars, 1)
+	assert.Equal(t, "tally", first.Calendars[0].Name)
+	require.Greater(t, first.Events, 0)
+
+	_, stderr, code = runCLI(t, "", "sync", "--tally-fixture", fixture)
+	require.Equal(t, 0, code, stderr)
+	second := cliStatus(t)
+	assert.Equal(t, first.Events, second.Events)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	services, err := bootDaemonServices(ctx)
+	require.NoError(t, err)
+	t.Cleanup(services.Close)
+
+	stdout, stderr, code := runCLI(t, services.SocketPath(), "ls", "--calendar", "tally", "--format", "json")
+	require.Equal(t, 0, code, stderr)
+	var events []eventRecord
+	require.NoError(t, json.Unmarshal([]byte(stdout), &events))
+	require.NotEmpty(t, events)
+	assert.True(t, hasFutureEvent(events, time.Now()))
+
+	_, stderr, code = runCLI(t, services.SocketPath(), "edit", events[0].ID, "--title", "changed")
+	assert.NotEqual(t, 0, code)
+	assert.Contains(t, stderr, "read-only")
+	_, stderr, code = runCLI(t, services.SocketPath(), "rm", events[0].ID)
+	assert.NotEqual(t, 0, code)
+	assert.Contains(t, stderr, "read-only")
+}
+
+func cliStatus(t *testing.T) statusResult {
+	t.Helper()
+	stdout, stderr, code := runCLI(t, "", "status", "--format", "json")
+	require.Equal(t, 0, code, stderr)
+	var result statusResult
+	require.NoError(t, json.Unmarshal([]byte(stdout), &result))
+	return result
+}
+
+func hasFutureEvent(events []eventRecord, now time.Time) bool {
+	for _, event := range events {
+		if event.Start.After(now) {
+			return true
+		}
+	}
+	return false
 }
 
 func shortTempRoot(t *testing.T) string {
@@ -152,6 +213,7 @@ func setCLIEnv(t *testing.T, root string) {
 		"DCAL_GOOGLE_CLIENT_ID",
 		"DCAL_GOOGLE_CLIENT_SECRET",
 		"DCAL_MICROSOFT_CLIENT_ID",
+		"TALLY_SOCKET",
 	} {
 		unsetEnv(t, key)
 	}

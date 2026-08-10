@@ -16,8 +16,11 @@ import (
 	"github.com/mecattaf/dcal/internal/providers/microsoft"
 	"github.com/mecattaf/dcal/internal/support/log"
 	"github.com/mecattaf/dcal/internal/sync"
+	"github.com/mecattaf/dcal/internal/tallysource"
 	"github.com/mecattaf/dcal/repo"
 )
+
+var tallyFixture string
 
 var syncCmd = &cobra.Command{
 	Use:   "sync [account-id]",
@@ -28,13 +31,8 @@ var syncCmd = &cobra.Command{
 		if len(args) == 1 {
 			accountID = args[0]
 		}
-
-		if notifyDaemon(accountID, true) {
-			if jsonOutput {
-				return printJSON(syncResult("started", true, accountID))
-			}
-			infof("sync started in the running dcal daemon")
-			return nil
+		if accountID != "" && tallyFixture != "" {
+			return fmt.Errorf("--tally-fixture cannot be combined with an account id")
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -45,6 +43,29 @@ var syncCmd = &cobra.Command{
 			return err
 		}
 		defer closer()
+
+		if accountID == "" {
+			inventory, source, skipped, err := tallysource.Load(ctx, tallyFixture)
+			if err != nil {
+				return err
+			}
+			if skipped {
+				infof("tally source skipped: socket %s is unavailable", source)
+			} else if _, err := tallysource.NewProjector(st.repo).Sync(ctx, inventory); err != nil {
+				return fmt.Errorf("project tally calendar: %w", err)
+			}
+		}
+
+		// Fixtures are a synchronous test seam even when a daemon happens to be
+		// running. Live sync retains the existing asynchronous daemon behavior
+		// after the tally projection has been committed locally.
+		if tallyFixture == "" && notifyDaemon(accountID, true) {
+			if jsonOutput {
+				return printJSON(syncResult("started", true, accountID))
+			}
+			infof("sync started in the running dcal daemon")
+			return nil
+		}
 
 		switch accountID {
 		case "":
@@ -66,6 +87,10 @@ var syncCmd = &cobra.Command{
 		log.Info("sync complete")
 		return nil
 	},
+}
+
+func init() {
+	syncCmd.Flags().StringVar(&tallyFixture, "tally-fixture", "", "Read a recorded query.producers JSON response instead of the live tally socket")
 }
 
 func syncResult(status string, daemon bool, accountID string) map[string]any {

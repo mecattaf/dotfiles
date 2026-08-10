@@ -11,9 +11,15 @@ import (
 )
 
 type Provider struct {
-	account calendar.Account
-	root    string
+	account  calendar.Account
+	root     string
+	readOnly bool
 }
+
+// SettingReadOnly marks every calendar exposed by a local account read-only.
+// Managed projections use this so normal local-account syncs preserve their
+// write policy instead of rediscovering the backing ICS file as writable.
+const SettingReadOnly = "readOnly"
 
 func New(account calendar.Account, root string) (*Provider, error) {
 	abs, err := filepath.Abs(root)
@@ -31,7 +37,8 @@ func New(account calendar.Account, root string) (*Provider, error) {
 	case !info.IsDir():
 		return nil, fmt.Errorf("local root %q is not a directory", abs)
 	}
-	return &Provider{account: account, root: abs}, nil
+	readOnly, _ := account.Settings[SettingReadOnly].(bool)
+	return &Provider{account: account, root: abs, readOnly: readOnly}, nil
 }
 
 func (p *Provider) Kind() calendar.AccountKind { return calendar.AccountLocal }
@@ -87,6 +94,7 @@ func (p *Provider) directoryCalendar(name string) calendar.Calendar {
 		AccountID:           p.account.ID,
 		RemoteID:            "dir:" + name,
 		Name:                name,
+		ReadOnly:            p.readOnly,
 		SupportedComponents: localComponents,
 	}
 }
@@ -96,6 +104,7 @@ func (p *Provider) fileCalendar(name string) calendar.Calendar {
 		AccountID:           p.account.ID,
 		RemoteID:            "file:" + name,
 		Name:                strings.TrimSuffix(name, filepath.Ext(name)),
+		ReadOnly:            p.readOnly,
 		SupportedComponents: localComponents,
 	}
 }
