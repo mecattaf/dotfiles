@@ -80,6 +80,9 @@ final: prev: {
   # Personal git-backed CRM CLI, vendored with its package definition.
   crm = final.callPackage ../pkgs/crm/nix/package.nix { };
 
+  # Headless calendar CLI, vendored with its package definition.
+  dcal = final.callPackage ../pkgs/dcal/nix/package.nix { };
+
   # VibeVoice call transcription. Torch is the gfx1151 ROCm wheel bundle from
   # nix-strix-halo; pure-Python runtime pieces stay on this flake's Python pin.
   call-diarize = final.callPackage ../pkgs/call-diarize {

@@ -477,6 +477,7 @@
             brother-print-text
             call-diarize
             crm
+            dcal
             local-ai-monthly
             mactahoe-gtk-theme
             mactahoe-icon-theme
