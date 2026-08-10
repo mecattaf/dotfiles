@@ -1283,11 +1283,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786330798,
-        "narHash": "sha256-RIQqpzMaknDSgRwIxAl9XNCuaC3lnGuQH6N01NfUCzM=",
+        "lastModified": 1786337566,
+        "narHash": "sha256-JOUQNxx6A/V51KNYzTWQke90tPRtAU6yvttEsAwfHSI=",
         "owner": "mecattaf",
         "repo": "tally.nix",
-        "rev": "40bd3ef0aaf0c3dfbfdd93cce9b74c1e2028f025",
+        "rev": "089d00065a425bb3d00c6c17d489d557a08fd78a",
         "type": "github"
       },
       "original": {
