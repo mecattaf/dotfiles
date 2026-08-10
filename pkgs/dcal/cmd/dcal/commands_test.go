@@ -119,6 +119,51 @@ func TestDaemonBackedEventRoundTrip(t *testing.T) {
 	assert.Equal(t, exitNotFound, code, stderr)
 }
 
+func TestCalendarAddWaitsForConcurrentlyStartingDaemon(t *testing.T) {
+	for run := 1; run <= 5; run++ {
+		t.Run(fmt.Sprintf("run-%d", run), func(t *testing.T) {
+			root := shortTempRoot(t)
+			setCLIEnv(t, root)
+			t.Setenv("DCAL_DISABLE_HTTP", "true")
+
+			args := []string{"-test.run=^TestCLIHelperProcess$", "--", "daemon"}
+			daemon := exec.Command(os.Args[0], args...)
+			daemon.Env = append(os.Environ(), helperEnv+"=1")
+			var daemonStdout, daemonStderr bytes.Buffer
+			daemon.Stdout = &daemonStdout
+			daemon.Stderr = &daemonStderr
+			require.NoError(t, daemon.Start())
+
+			daemonDone := make(chan error, 1)
+			go func() { daemonDone <- daemon.Wait() }()
+			var stopErr error
+			stopped := false
+			stopDaemon := func() {
+				if stopped {
+					return
+				}
+				stopped = true
+				_ = daemon.Process.Signal(os.Interrupt)
+				select {
+				case stopErr = <-daemonDone:
+				case <-time.After(5 * time.Second):
+					_ = daemon.Process.Kill()
+					<-daemonDone
+					stopErr = fmt.Errorf("daemon did not stop after interrupt")
+				}
+			}
+			t.Cleanup(stopDaemon)
+
+			stdout, stderr, code := runCLI(t, "", "calendar", "add", "x")
+			stopDaemon()
+
+			require.NoError(t, stopErr, "daemon stdout:\n%s\ndaemon stderr:\n%s", daemonStdout.String(), daemonStderr.String())
+			require.Equal(t, 0, code, "command stderr:\n%s\ndaemon stderr:\n%s", stderr, daemonStderr.String())
+			assert.Equal(t, "x", strings.TrimSpace(stdout))
+		})
+	}
+}
+
 func TestAddCRMContactUsesStubAndPersistsICSProperties(t *testing.T) {
 	root := shortTempRoot(t)
 	setCLIEnv(t, root)
