@@ -3,6 +3,7 @@
 # resolve the stable PipeWire names from the live graph on every invocation.
 set -euo pipefail
 
+readonly SPEAKER_SINK='alsa_output.usb-Creative_Technology_Ltd_Sound_Blaster_GS3_1120050704030604-01.analog-stereo'
 readonly WEBCAM_SOURCE='alsa_input.usb-DCX-241206-FAY_iContact_Camera_Pro_01.00.00-02.analog-stereo'
 readonly INZONE_SINK='alsa_output.usb-Sony_INZONE_Buds-00.analog-stereo'
 readonly INZONE_SOURCE='alsa_input.usb-Sony_INZONE_Buds-00.mono-fallback'
@@ -38,33 +39,7 @@ default_id() {
         | sed -n '1s/^id \([0-9][0-9]*\),.*/\1/p'
 }
 
-aux_sink_row=$(jq -er --arg inzone_sink "$INZONE_SINK" '
-    [
-      .[]
-      | select(
-          .type == "PipeWire:Interface:Node"
-          and .info.props["media.class"] == "Audio/Sink"
-          and .info.props["device.bus"] == "usb"
-          and .info.props["node.name"] != $inzone_sink
-        )
-      | [
-          (.id | tostring),
-          (
-            .info.props["node.description"]
-            // .info.props["node.nick"]
-            // .info.props["node.name"]
-          )
-        ]
-    ]
-    | select(length == 1)
-    | .[0]
-    | @tsv
-' <<< "$graph" 2>/dev/null || true)
-aux_sink_id=''
-aux_sink_description='USB-C adapter'
-if [[ -n "$aux_sink_row" ]]; then
-    IFS=$'\t' read -r aux_sink_id aux_sink_description <<< "$aux_sink_row"
-fi
+speaker_sink_id=$(node_id Audio/Sink "$SPEAKER_SINK" 2>/dev/null || true)
 webcam_source_id=$(node_id Audio/Source "$WEBCAM_SOURCE" 2>/dev/null || true)
 inzone_sink_id=$(node_id Audio/Sink "$INZONE_SINK" 2>/dev/null || true)
 inzone_source_id=$(node_id Audio/Source "$INZONE_SOURCE" 2>/dev/null || true)
@@ -80,8 +55,8 @@ marker() {
 }
 
 menu=()
-if [[ -n "$aux_sink_id" && -n "$webcam_source_id" ]]; then
-    menu+=("aux"$'\t'"  $(marker "$aux_sink_id" "$webcam_source_id")  AUX via ${aux_sink_description}  ·  webcam mic")
+if [[ -n "$speaker_sink_id" && -n "$webcam_source_id" ]]; then
+    menu+=("speaker"$'\t'"  $(marker "$speaker_sink_id" "$webcam_source_id")  Sound Blaster GS3  ·  webcam mic")
 fi
 if [[ -n "$inzone_sink_id" && -n "$inzone_source_id" ]]; then
     menu+=("inzone"$'\t'"  $(marker "$inzone_sink_id" "$inzone_source_id")  Sony INZONE  ·  INZONE mic")
@@ -89,13 +64,13 @@ fi
 
 if ((${#menu[@]} == 0)); then
     printf '%s\n' 'Neither complete audio route is available.' >&2
-    printf '%s\n' 'Check the USB-C adapter, webcam, and INZONE dongle.' >&2
+    printf '%s\n' 'Check the USB-C speaker, webcam, and INZONE dongle.' >&2
     read -r -t 3 || true
     exit 1
 fi
 
 case "${1:-menu}" in
-aux|inzone)
+speaker|inzone)
     choice=$1
     ;;
 menu)
@@ -113,16 +88,16 @@ menu)
     choice=${choice%%$'\t'*}
     ;;
 *)
-    printf 'Usage: %s [aux|inzone|menu]\n' "${0##*/}" >&2
+    printf 'Usage: %s [speaker|inzone|menu]\n' "${0##*/}" >&2
     exit 2
     ;;
 esac
 
 case "$choice" in
-aux)
-    sink_id=$aux_sink_id
+speaker)
+    sink_id=$speaker_sink_id
     source_id=$webcam_source_id
-    label="AUX via ${aux_sink_description} + webcam mic"
+    label='Sound Blaster GS3 + webcam mic'
     ;;
 inzone)
     sink_id=$inzone_sink_id
