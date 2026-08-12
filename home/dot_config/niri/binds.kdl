@@ -80,6 +80,7 @@ binds {
     F7 hotkey-overlay-title="Volume Down" { spawn-sh "~/.local/bin/volume down"; }
     F8 hotkey-overlay-title="Volume Up" { spawn-sh "~/.local/bin/volume up"; }
     F9 hotkey-overlay-title="Pomodoro" { spawn-sh "~/.local/bin/pomodoro menu"; }
+    Shift+F9 hotkey-overlay-title="Audio Route" { spawn-sh "kitty --class audio-route-prompt -e ~/.config/niri/scripts/audio-route"; }
     F10 hotkey-overlay-title="Sleep Monitors" { spawn-sh "kitty --class sleep-monitors-prompt -e ~/.config/niri/scripts/sleep-monitors"; }
     Shift+F10 hotkey-overlay-title="Call Recording" { spawn-sh "kitty --class call-record-prompt -e ~/.config/niri/scripts/call-record-menu"; }
 
