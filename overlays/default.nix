@@ -92,6 +92,11 @@ final: prev: {
     inherit torchRocm;
   };
 
+  # Paper-loop scan queue: intake collector + OCR processor for the Brother
+  # ADS-1800W. Enqueues one tally shell job per settled batch (events-dir
+  # producer, same contract as call-diarize). See home/paper.nix.
+  paper-intake = final.callPackage ../pkgs/paper-intake { };
+
   # cliamp — terminal music player (Winamp-inspired TUI). Not in nixpkgs (2026-07-06).
   # Connects to navidrome via Subsonic API. Config at home/dot_config/cliamp/.
   # CGO on Linux via ebitengine/oto → ALSA. See pkgs/cliamp.nix.

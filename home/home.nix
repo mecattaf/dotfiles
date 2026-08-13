@@ -115,6 +115,7 @@ in
     ./ai-memory.nix
     ./ntm.nix
     ./nvim.nix
+    ./paper.nix
     ./pi.nix
     ./piri.nix
     ./remote.nix

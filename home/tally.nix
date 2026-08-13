@@ -180,6 +180,13 @@ in
         selfDrain = false;
       };
 
+      # paper-intake-collect (home/paper.nix path unit + sweep timer) drops
+      # the same shape of full-submission EnqueuePayload per scanned batch.
+      paper-intake = {
+        kind = "events-dir";
+        selfDrain = false;
+      };
+
       # Local CLI writes are immediate; this low-priority pass only refreshes
       # inbound Google changes and re-projects Tally's producer schedules.
       dcal-sync = {
