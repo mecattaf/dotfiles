@@ -14,6 +14,7 @@
 let
   system = pkgs.stdenv.hostPlatform.system;
   deployPackage = inputs.deploy-rs.packages.${system}.deploy-rs;
+  tallyPackage = inputs.tally.packages.${system}.tally;
   failureMarker = "/var/lib/fleet-deploy/fleet-deploy.service.fail";
   rollingResolution = lib.concatMapStringsSep "\n" (input: ''
     resolved="$(resolve_flake ${lib.escapeShellArg input.url})"
@@ -192,6 +193,9 @@ in
         Type = "oneshot";
         User = "tom";
         Group = "users";
+        # Re-check at activation time as well as producer admission so a queued
+        # or manually started deploy cannot move the pin under an armed campaign.
+        ExecCondition = "${tallyPackage}/bin/tally --config /home/tom/.config/tally/config.json campaign quiescent --state-dir /home/tom/.local/state/tally";
         ExecStart = "${fleetDeploy}/bin/fleet-deploy";
         StateDirectory = "fleet-deploy";
         StateDirectoryMode = "0755";

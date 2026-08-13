@@ -251,4 +251,12 @@ in
     };
   };
 
+  # Freeze the nightly deploy at its admission boundary while any campaign is
+  # registered. This replaces the dated, hand-maintained ExecCondition
+  # drop-ins used during the silent-factory ladder.
+  systemd.user.services = lib.optionalAttrs isCoordinator {
+    "tally-producer-nightly-fleet-deploy".Service.ExecCondition =
+      "${tallyPackage}/bin/tally --config /home/tom/.config/tally/config.json campaign quiescent --state-dir /home/tom/.local/state/tally";
+  };
+
 }
