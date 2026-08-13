@@ -155,17 +155,6 @@ in
       };
     };
 
-    # E5 (dotfiles#138): bind code-result revisions to git-ai authorship
-    # notes, advisory posture first — an unprovisioned host and a squash that
-    # lost its attribution produce identical evidence, so advisory is how the
-    # binding proves itself before anything is allowed to fail on it. git-ai
-    # 1.6.17 is externally provisioned (verified on the estate 2026-08-03);
-    # tally.nix does not ship the binary.
-    gitAi = {
-      enable = true;
-      mode = "advisory";
-    };
-
     # One low-priority durable row replaces the old 02:00/03:30/04:30/06:00 chain.
     # It holds the build and coordinator GPU lanes end-to-end, making the measured
     # single-node build plus activation one exclusive maintenance window.
@@ -260,6 +249,14 @@ in
         };
       };
     };
+  };
+
+  # Freeze the nightly deploy at its admission boundary while any campaign is
+  # registered. This replaces the dated, hand-maintained ExecCondition
+  # drop-ins used during the silent-factory ladder.
+  systemd.user.services = lib.optionalAttrs isCoordinator {
+    "tally-producer-nightly-fleet-deploy".Service.ExecCondition =
+      "${tallyPackage}/bin/tally --config /home/tom/.config/tally/config.json campaign quiescent --state-dir /home/tom/.local/state/tally";
   };
 
 }

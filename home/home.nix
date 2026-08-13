@@ -460,9 +460,6 @@ in
     # seed via modules/secrets.nix, and DISABLE_UPDATES=1 keeps the native
     # updater from clobbering ~/.local/bin.
     llmAgentsSelected
-    # Upstream's minimal flake output: git-ai + git-og, while programs.git below
-    # remains the sole provider of the real git binary.
-    inputs.git-ai.packages.${pkgs.stdenv.hostPlatform.system}.minimal
     huggingface-cli # metadata CLI; agenix authentication is coordinator-only
     gh
     google-cloud-sdk
@@ -472,6 +469,7 @@ in
     backlog-md # bespoke pkg via overlay — see pkgs/backlog-md.nix
     pkgs.crm # vendored personal CRM CLI; data stays at its built-in notes path
     pkgs.dcal # vendored calendar CLI; data lives under XDG, nothing in git
+    music-acquire # evidence-gated SoundCloud → YouTube → capture acquisition
     cliamp # terminal music player → navidrome. overlay pkg, see pkgs/cliamp.nix
     uv # Astral Python pkg/project manager. "hot" overlay pkg — rides nixpkgs-fresh HEAD (flake.nix), so it stays latest independent of the main pin.
 
