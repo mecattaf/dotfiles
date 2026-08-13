@@ -4,6 +4,7 @@
   makeWrapper,
   bash,
   coreutils,
+  cups,
   findutils,
   imagemagick,
   jq,
@@ -27,6 +28,7 @@ stdenvNoCC.mkDerivation {
     runHook preInstall
     install -Dm755 ${./process.py} $out/libexec/paper-intake-process.py
     install -Dm755 ${./collect.sh} $out/libexec/paper-intake-collect.sh
+    install -Dm755 ${./flush.sh} $out/libexec/paper-print-flush.sh
 
     makeWrapper ${lib.getExe python3} $out/bin/paper-intake \
       --add-flags $out/libexec/paper-intake-process.py \
@@ -43,6 +45,16 @@ stdenvNoCC.mkDerivation {
         lib.makeBinPath [
           coreutils
           findutils
+          jq
+        ]
+      }
+
+    makeWrapper ${lib.getExe bash} $out/bin/paper-print-flush \
+      --add-flags $out/libexec/paper-print-flush.sh \
+      --prefix PATH : ${
+        lib.makeBinPath [
+          coreutils
+          cups
           jq
         ]
       }

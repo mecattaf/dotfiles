@@ -126,6 +126,8 @@ def main() -> int:
     ap.add_argument("input", type=Path)
     ap.add_argument("--intent", choices=["brief", "document", "form", "specimen"])
     ap.add_argument("--print", dest="do_print", action="store_true")
+    ap.add_argument("--force", action="store_true",
+                    help="print immediately even during quiet hours (00-06)")
     ap.add_argument("--output-dir", type=Path)
     args = ap.parse_args()
 
@@ -150,21 +152,45 @@ def main() -> int:
         shutil.copy2(args.input, source)
     outpath = jobdir / decision["filename"]
 
+    # Quiet hours: physical printing sleeps between 00:00 and 06:00 so
+    # overnight tally runs can queue their completion one-pagers without
+    # waking the printer; a Persistent 06:05 user timer flushes
+    # ~/Paper/outbox. --force ("/print force") bypasses the window.
+    quiet = 0 <= datetime.datetime.now().hour < 6
+    spool = args.do_print and quiet and not args.force
+
     cmd = [sys.executable, str(PRINT_PAPER), str(source),
            "--profile", decision["profile"], "-o", str(outpath)]
     if decision["require_one_page"]:
         cmd.append("--require-one-page")
     if decision["sides"] == "one-sided":
         cmd += ["--sides", "one-sided"]
-    if args.do_print:
+    if args.do_print and not spool:
         cmd.append("--print")
     rc = subprocess.run(cmd).returncode
     if rc == 0:
+        if spool:
+            outbox = Path.home() / "Paper" / "outbox"
+            outbox.mkdir(parents=True, exist_ok=True)
+            sides_lp = ("one-sided" if decision["sides"] == "one-sided"
+                        else "two-sided-long-edge")
+            entry = {"pdf": str(outpath), "sides": sides_lp,
+                     "job_dir": str(jobdir),
+                     "queued_at": datetime.datetime.now().isoformat(
+                         timespec="seconds")}
+            tmp = outbox / f".{jobdir.name}.tmp"
+            tmp.write_text(json.dumps(entry, indent=2) + "\n")
+            tmp.replace(outbox / f"{jobdir.name}.json")
         receipt = {"decision": decision, "provenance": provenance,
                    "source": str(source), "original_input": str(args.input),
-                   "pdf": str(outpath), "printed": args.do_print}
+                   "pdf": str(outpath),
+                   "printed": args.do_print and not spool,
+                   "print_spooled": spool}
         (jobdir / "decision.json").write_text(
             json.dumps(receipt, indent=2) + "\n")
+        if spool:
+            print(f"print-auto: quiet hours — spooled for the 06:05 flush "
+                  f"({jobdir.name}); use --force to print now")
         print(f"print-auto: {provenance} decision -> {outpath}")
     return rc
 

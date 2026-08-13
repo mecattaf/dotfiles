@@ -14,11 +14,19 @@ filename, title) and drives the renderer:
     ~/.claude/skills/print/scripts/print-auto.py INPUT.md \
       [--intent brief|document|form|specimen] [--print] [--output-dir DIR]
 
-The session should not deliberate typography when using this path. A
-`<name>.decision.json` receipt records the decision and its provenance
-(npu, npu-retry, or fallback). Fall back to direct print-paper.py below
-only when the user explicitly asks for a specific profile or layout
+The session should not deliberate typography when using this path. Every
+print becomes a dated job directory under ~/Paper/jobs (markdown archived
+as source.md, rendered PDF, decision.json receipt recording npu /
+npu-retry / fallback provenance). Fall back to direct print-paper.py
+below only when the user explicitly asks for a specific profile or layout
 comparison.
+
+**Quiet hours.** Between 00:00 and 06:00 physical printing sleeps:
+--print still renders and validates, but the submission is spooled to
+~/Paper/outbox and a persistent 06:05 timer flushes it to CUPS. When the
+user says "print force" (or the situation genuinely demands paper at
+night), pass **--force** to print immediately. Report honestly which
+happened: submitted to CUPS now, or spooled for the morning flush.
 
 ## Manual rendering
 
