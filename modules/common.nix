@@ -17,6 +17,7 @@
     ./dotfiles-bootstrap.nix # ensure ~/mecattaf/dotfiles exists before the session
     ./artifacts.nix # myArtifacts options; serving plane is coordinator-only (caddy-artifacts.nix)
     ./printing.nix # CUPS + Brother IPP/raw-text path (active fleet + future hosts)
+    ./scanning.nix # SANE + Brother ADS-1800W (eSCL primary, brscan5 fallback)
     ./failure-surfacing.nix # OnFailure + coredump surfacing, fleet-wide — refs #134
   ];
 
