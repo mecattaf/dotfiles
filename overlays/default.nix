@@ -80,6 +80,9 @@ final: prev: {
   # Personal git-backed CRM CLI, vendored with its package definition.
   crm = final.callPackage ../pkgs/crm/nix/package.nix { };
 
+  # Evidence-gated, resumable front door over the music acquisition campaign.
+  music-acquire = final.callPackage ../pkgs/music-acquire { };
+
   # Headless calendar CLI, vendored with its package definition.
   dcal = final.callPackage ../pkgs/dcal/nix/package.nix { };
 

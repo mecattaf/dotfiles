@@ -481,6 +481,7 @@
             local-ai-monthly
             mactahoe-gtk-theme
             mactahoe-icon-theme
+            music-acquire
             sfmono-liga
             ;
 
@@ -525,6 +526,8 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        music-acquire = pkgs.music-acquire;
+
         nas-topology =
           let
             nas = self.nixosConfigurations.nas.config;
