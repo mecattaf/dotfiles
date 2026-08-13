@@ -90,19 +90,6 @@
     # while attached, and a persistent session survives disconnects server-side.
     zmx.url = "github:neurosnap/zmx";
 
-    # git-ai — AI-authorship tracking CLI (github.com/git-ai-project/git-ai).
-    # Consume its flake package directly and pin it in flake.lock. The Home
-    # Manager profile installs upstream's `minimal` output, which provides
-    # `git-ai` and `git-og` without replacing the `git` binary already owned
-    # by programs.git. Following nixpkgs keeps the Rust build on our one package
-    # pin instead of adding another nixpkgs universe to the lock.
-    # `nix flake update git-ai` bumps to the latest pushed commit.
-    git-ai = {
-      url = "github:git-ai-project/git-ai";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-utils.follows = "tally/flake-utils";
-    };
-
     # llm-agents.nix — numtide's daily-rebuilt catalog of ~100 AI coding agents
     # and tooling (claude-code, codex, gemini-cli, opencode, crush, goose, amp,
     # ...). Its `overlays.default` exposes the whole set, prebuilt against its OWN

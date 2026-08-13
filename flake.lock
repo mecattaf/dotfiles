@@ -467,31 +467,6 @@
         "type": "github"
       }
     },
-    "git-ai": {
-      "inputs": {
-        "flake-utils": [
-          "tally",
-          "flake-utils"
-        ],
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "rust-overlay": "rust-overlay"
-      },
-      "locked": {
-        "lastModified": 1785028852,
-        "narHash": "sha256-qbc3xEHIG2SSDU66Bc7xqHJw6JailMGVDBs9i41gP9w=",
-        "owner": "git-ai-project",
-        "repo": "git-ai",
-        "rev": "e78d10d8e2139cb0981d707a5f9f247d4cd8512e",
-        "type": "github"
-      },
-      "original": {
-        "owner": "git-ai-project",
-        "repo": "git-ai",
-        "type": "github"
-      }
-    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -1008,7 +983,6 @@
         "apple-fonts": "apple-fonts",
         "deploy-rs": "deploy-rs",
         "disko": "disko",
-        "git-ai": "git-ai",
         "home-manager": "home-manager",
         "llm-agents": "llm-agents",
         "microvm": "microvm",
@@ -1025,27 +999,6 @@
         "tally": "tally",
         "voxtype": "voxtype",
         "zmx": "zmx"
-      }
-    },
-    "rust-overlay": {
-      "inputs": {
-        "nixpkgs": [
-          "git-ai",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1770174315,
-        "narHash": "sha256-GUaMxDmJB1UULsIYpHtfblskVC6zymAaQ/Zqfo+13jc=",
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "rev": "095c394bb91342882f27f6c73f64064fb9de9f2a",
-        "type": "github"
-      },
-      "original": {
-        "owner": "oxalica",
-        "repo": "rust-overlay",
-        "type": "github"
       }
     },
     "sf-arabic": {
@@ -1283,11 +1236,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786552755,
-        "narHash": "sha256-Zc7pohM+S0m2HjEo2X7ZKMBjxdQWbs9xmJhyDjr75Tk=",
+        "lastModified": 1786622428,
+        "narHash": "sha256-9NVSU3JuYBJ+mi9TXZQVTLFg5BfdxdHlVYzqj+RFKro=",
         "owner": "mecattaf",
         "repo": "tally.nix",
-        "rev": "78dd4871c97b72fa87c9bc12083392780675c8d1",
+        "rev": "52eff4db28b2b3f06c096715d1a9c1de8559ed92",
         "type": "github"
       },
       "original": {
