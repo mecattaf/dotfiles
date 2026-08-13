@@ -5,6 +5,23 @@ description: Render Markdown, plain text, or HTML into restrained, readable A4 P
 
 # Print
 
+## Autopilot rendering (preferred)
+
+Hand over ONLY the markdown; the request-scoped NPU utility model makes
+every typesetting decision (profile, one-page enforcement, duplex,
+filename, title) and drives the renderer:
+
+    ~/.claude/skills/print/scripts/print-auto.py INPUT.md \
+      [--intent brief|document|form|specimen] [--print] [--output-dir DIR]
+
+The session should not deliberate typography when using this path. A
+`<name>.decision.json` receipt records the decision and its provenance
+(npu, npu-retry, or fallback). Fall back to direct print-paper.py below
+only when the user explicitly asks for a specific profile or layout
+comparison.
+
+## Manual rendering
+
 Use the bundled script for deterministic local rendering:
 
     ~/.claude/skills/print/scripts/print-paper.py INPUT.md [options]
