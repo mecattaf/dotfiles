@@ -39,4 +39,17 @@ lib.mkIf (!config.myHeadless.enable) {
     "scanner"
     "lp"
   ];
+
+  # The ADS-1800W's embedded scan-to-SFTP client negotiates only legacy
+  # ssh-rsa (SHA-1) signatures, both when verifying our RSA host key and
+  # when signing with its own RSA client key. OpenSSH disables SHA-1
+  # signatures by default, so every push died in KEX with "no matching
+  # host key type found. Their offer: ssh-rsa" (coordinator journal,
+  # 2026-08-13). Re-admit the signature scheme over the existing RSA keys.
+  # HostKeyAlgorithms is negotiated before authentication, so neither knob
+  # can live in a Match block; modern clients still prefer
+  # ed25519/rsa-sha2 and are unaffected, and the scanner's key remains
+  # `restrict`-prefixed in tom's authorized_keys.
+  services.openssh.settings.HostKeyAlgorithms = "+ssh-rsa";
+  services.openssh.settings.PubkeyAcceptedAlgorithms = "+ssh-rsa";
 }
