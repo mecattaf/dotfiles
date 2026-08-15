@@ -21,11 +21,21 @@
     ./failure-surfacing.nix # OnFailure + coredump surfacing, fleet-wide — refs #134
   ];
 
-  # Chrome renderer crashes (SIGILL/SIGTRAP bursts, seen across chrome 150 and
-  # 151) recover through Chrome's own crash handling; each dump rewrote the
-  # coredump marker and kept the failure channel permanently red. Anything
-  # else that dumps core still surfaces.
-  myFailureSurfacing.coredumpExcludeComms = [ "chrome" ];
+  myFailureSurfacing = {
+    # Chrome renderer crashes (SIGILL/SIGTRAP bursts, seen across chrome 150
+    # and 151) recover through Chrome's own crash handling; each dump rewrote
+    # the coredump marker and kept the failure channel permanently red.
+    coredumpExcludeComms = [ "chrome" ];
+
+    # Tally's release-idempotency test deliberately aborts three isolated
+    # children and asserts SIGABRT. Cargo hashes the test executable name on
+    # every source change, so match the complete Nix-build argv instead of
+    # hiding all tally-* coredumps. A live daemon can never match this path or
+    # the exact test selector and remains visible to the watcher.
+    coredumpExcludeCmdlinePatterns = [
+      "^/build/source/target/[^ ]+/release/deps/tally-[0-9a-f]+ --exact cli::campaign::tests::release_execute_crash_child --nocapture --test-threads=1$"
+    ];
+  };
 
   # --- identity / base ---
   networking.networkmanager.enable = true;

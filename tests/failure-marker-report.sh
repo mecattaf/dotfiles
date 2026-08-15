@@ -2,6 +2,7 @@
 set -euo pipefail
 
 reporter="${FAILURE_MARKER_REPORTER:?FAILURE_MARKER_REPORTER must be set}"
+sensor="${JOURNAL_SENSOR:?JOURNAL_SENSOR must be set}"
 root="$(mktemp -d)"
 marker_dir="$root/markers"
 export XDG_STATE_HOME="$root/state"
@@ -42,3 +43,62 @@ wait "$pid_b"
 test "$(grep -Fhc 'example.service failed' "$root"/concurrent-* | awk '{ total += $1 } END { print total }')" -eq 1
 
 test "$(stat -c '%a' "$XDG_STATE_HOME/fleet-deploy/failure-episodes.seen")" = 600
+
+# Coredump exclusions remove known-recovering process names and one narrowly
+# matched intentional crash test without hiding a live daemon or an unrelated
+# process. A fake journal keeps the cursor/filter behavior deterministic.
+fake_bin="$root/bin"
+sensor_state="$root/sensor-state"
+fixture="$root/journal.json"
+mkdir -p "$fake_bin" "$sensor_state"
+printf 'seed\n' > "$sensor_state/coredump.cursor"
+printf '%s\n' \
+  "#!$(command -v bash)" \
+  'exec cat "$JOURNAL_FIXTURE"' > "$fake_bin/journalctl"
+chmod +x "$fake_bin/journalctl"
+
+printf '%s\n' \
+  '{"__REALTIME_TIMESTAMP":"1786715301893875","MESSAGE":"intentional tally test abort","SYSLOG_IDENTIFIER":"systemd-coredump","_HOSTNAME":"coordinator","COREDUMP_COMM":"tally-5a1153098","COREDUMP_CMDLINE":"/build/source/target/x86_64-unknown-linux-gnu/release/deps/tally-5a11530984080fbb --exact cli::campaign::tests::release_execute_crash_child --nocapture --test-threads=1"}' \
+  '{"__REALTIME_TIMESTAMP":"1786715301893876","MESSAGE":"live tally daemon abort","SYSLOG_IDENTIFIER":"systemd-coredump","_HOSTNAME":"coordinator","COREDUMP_COMM":"tally","COREDUMP_CMDLINE":"/nix/store/example-tally/bin/tally daemon run"}' \
+  '{"__REALTIME_TIMESTAMP":"1786715301893877","MESSAGE":"chrome renderer abort","SYSLOG_IDENTIFIER":"systemd-coredump","_HOSTNAME":"coordinator","COREDUMP_COMM":"chrome","COREDUMP_CMDLINE":"/nix/store/example-chrome/bin/chrome --type=renderer"}' \
+  '{"__REALTIME_TIMESTAMP":"1786715301893878","MESSAGE":"unrelated process abort","SYSLOG_IDENTIFIER":"systemd-coredump","_HOSTNAME":"coordinator","COREDUMP_COMM":"other","COREDUMP_CMDLINE":"/nix/store/example/bin/other"}' \
+  > "$fixture"
+
+pattern='^/build/source/target/[^ ]+/release/deps/tally-[0-9a-f]+ --exact cli::campaign::tests::release_execute_crash_child --nocapture --test-threads=1$'
+patterns_json="$(jq -cn --arg pattern "$pattern" '[$pattern]')"
+sensor_output="$(
+  PATH="$fake_bin:$PATH" \
+  TZ=UTC \
+  STATE_DIRECTORY="$sensor_state" \
+  JOURNAL_FIXTURE="$fixture" \
+  JOURNAL_KIND=coredump \
+  JOURNAL_MATCH='MESSAGE_ID=fc2e22bc6ee647b6b90729ab34a250b1' \
+  JOURNAL_EXCLUDE_FIELD=COREDUMP_COMM \
+  JOURNAL_EXCLUDE_VALUES=chrome \
+  JOURNAL_EXCLUDE_REGEX_FIELD=COREDUMP_CMDLINE \
+  JOURNAL_EXCLUDE_REGEX_PATTERNS="$patterns_json" \
+    bash "$sensor"
+)"
+
+[[ "$sensor_output" == "2 coredump" ]]
+grep -Fqx '2026-08-14T13:48:21+0000 coordinator systemd-coredump: live tally daemon abort' "$sensor_state/coredump.new"
+grep -Fqx '2026-08-14T13:48:21+0000 coordinator systemd-coredump: unrelated process abort' "$sensor_state/coredump.new"
+! grep -Fq 'intentional tally test abort' "$sensor_state/coredump.new"
+! grep -Fq 'chrome renderer abort' "$sensor_state/coredump.new"
+
+# Invalid regexes fail open for that filter while preserving the exact COMM
+# exclusion already applied: three non-Chrome events remain visible.
+sensor_output="$(
+  PATH="$fake_bin:$PATH" \
+  TZ=UTC \
+  STATE_DIRECTORY="$sensor_state" \
+  JOURNAL_FIXTURE="$fixture" \
+  JOURNAL_KIND=coredump \
+  JOURNAL_MATCH='MESSAGE_ID=fc2e22bc6ee647b6b90729ab34a250b1' \
+  JOURNAL_EXCLUDE_FIELD=COREDUMP_COMM \
+  JOURNAL_EXCLUDE_VALUES=chrome \
+  JOURNAL_EXCLUDE_REGEX_FIELD=COREDUMP_CMDLINE \
+  JOURNAL_EXCLUDE_REGEX_PATTERNS='["["]' \
+    bash "$sensor"
+)"
+[[ "$sensor_output" == "3 coredump" ]]

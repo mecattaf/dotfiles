@@ -45,10 +45,12 @@ fi
 # SIGPIPE it into re-reporting the same burst on every poll.
 exclude_field="${JOURNAL_EXCLUDE_FIELD:-}"
 read -r -a exclude_values <<<"${JOURNAL_EXCLUDE_VALUES:-}"
+exclude_regex_field="${JOURNAL_EXCLUDE_REGEX_FIELD:-}"
+exclude_regex_patterns="${JOURNAL_EXCLUDE_REGEX_PATTERNS:-[]}"
 
 journalctl --merge --quiet --no-pager --all --cursor-file="$cursor" \
   --output=json \
-  --output-fields="MESSAGE,SYSLOG_IDENTIFIER,_HOSTNAME${exclude_field:+,$exclude_field}" \
+  --output-fields="MESSAGE,SYSLOG_IDENTIFIER,_HOSTNAME${exclude_field:+,$exclude_field}${exclude_regex_field:+,$exclude_regex_field}" \
   "${match[@]}" > "$raw" 2>/dev/null || true
 
 # Exclusions subtract from the COUNT, not just the digest: an entry whose
@@ -59,6 +61,23 @@ if [ -n "$exclude_field" ] && [ "${#exclude_values[@]}" -gt 0 ]; then
   if jq -c --arg field "$exclude_field" --arg values "${exclude_values[*]}" \
     'select((.[$field] // "") as $v | ($values | split(" ") | index($v)) | not)' \
     "$raw" > "$raw.kept" 2>/dev/null; then
+    mv "$raw.kept" "$raw"
+  else
+    rm -f "$raw.kept"
+  fi
+fi
+
+# Generated test binaries do not have a stable COREDUMP_COMM, so a second,
+# regex-based exclusion can match a complete command line instead. Patterns
+# arrive as JSON to preserve spaces and metacharacters. As above, malformed
+# JSON or an invalid expression leaves the current set untouched.
+if [ -n "$exclude_regex_field" ] && [ "$exclude_regex_patterns" != "[]" ]; then
+  if jq -c --arg field "$exclude_regex_field" --argjson patterns "$exclude_regex_patterns" '
+      select(
+        (.[$field] // "") as $value
+        | ($patterns | map(. as $pattern | $value | test($pattern)) | any | not)
+      )
+    ' "$raw" > "$raw.kept" 2>/dev/null; then
     mv "$raw.kept" "$raw"
   else
     rm -f "$raw.kept"

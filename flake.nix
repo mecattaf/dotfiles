@@ -937,9 +937,11 @@
                 pkgs.coreutils
                 pkgs.gawk
                 pkgs.gnugrep
+                pkgs.jq
                 pkgs.util-linux
               ];
               FAILURE_MARKER_REPORTER = ./modules/failure-marker-report.sh;
+              JOURNAL_SENSOR = ./modules/tripwire-journal-sensor.sh;
             }
             ''
               bash ${./tests/failure-marker-report.sh}

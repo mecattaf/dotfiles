@@ -106,6 +106,8 @@ let
       description,
       excludeField ? null,
       excludeValues ? [ ],
+      excludeRegexField ? null,
+      excludeRegexPatterns ? [ ],
     }:
     {
       inherit description;
@@ -144,6 +146,10 @@ let
         // lib.optionalAttrs (excludeField != null && excludeValues != [ ]) {
           JOURNAL_EXCLUDE_FIELD = excludeField;
           JOURNAL_EXCLUDE_VALUES = lib.concatStringsSep " " excludeValues;
+        }
+        // lib.optionalAttrs (excludeRegexField != null && excludeRegexPatterns != [ ]) {
+          JOURNAL_EXCLUDE_REGEX_FIELD = excludeRegexField;
+          JOURNAL_EXCLUDE_REGEX_PATTERNS = builtins.toJSON excludeRegexPatterns;
         };
     };
 
@@ -196,6 +202,17 @@ in
         process that crashes routinely and recovers on its own, every dump
         rewrites the marker and the channel goes permanently red — burying the
         one-off crashes this watcher exists to catch.
+      '';
+    };
+
+    coredumpExcludeCmdlinePatterns = lib.mkOption {
+      type = with lib.types; listOf str;
+      default = [ ];
+      description = ''
+        Regular expressions matched against COREDUMP_CMDLINE. Use this for a
+        deliberately crashing test whose generated process name is unstable;
+        keep the expression narrow enough that a production process cannot
+        match it. Invalid expressions fail open and surface the coredump.
       '';
     };
 
@@ -280,6 +297,8 @@ in
         description = "Surface coredumps recorded since the last check";
         excludeField = "COREDUMP_COMM";
         excludeValues = cfg.coredumpExcludeComms;
+        excludeRegexField = "COREDUMP_CMDLINE";
+        excludeRegexPatterns = cfg.coredumpExcludeCmdlinePatterns;
       }
       // {
         enable = cfg.watchCoredumps;

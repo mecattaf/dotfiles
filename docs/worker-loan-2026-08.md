@@ -26,6 +26,28 @@ qwen3-vl-8b-ocr), drain resumed the in-flight paper on its persisted run-id,
 and tier-3 captured a full 213.5 s track, fingerprint-aligned vs the SoundCloud
 preview (BER 0.013) — login works headless.
 
+## Space offload 2026-08-13 (drain was restart-looping on the free-space floor)
+
+The worker hit 45 G free against the drain's 50 G floor and spent the night in a
+60 s restart loop draining nothing. Two fixes, both documented in full at
+`coordinator:~/academic-ocr-offload/README.md`:
+
+1. **50.6 G of finished OCR output moved to the coordinator** over TB —
+   `canonical/embeddings.json` + `canonical/index.jsonl` for all 1,325 receipted
+   papers, verified byte-for-byte against the sha256 in each `receipt.json`
+   (2650/2650, zero mismatches) before the originals were deleted.
+   Worker: 45 G → 92 G free; state root 53 G → 5.3 G.
+   **`receipt.json` and `paper.md` deliberately stayed** — the receipt is the
+   drain's only skip authority, so moving paper *directories* would silently
+   re-queue 1,325 completed papers. Move files, never paper dirs.
+2. **Floor lowered 50 G → 10 G** via drop-in
+   `~/.config/systemd/user/academic-drain.service.d/floor.conf`
+   (`Environment=MIN_FREE_GB=10`), leaving `academic-direct-drain.sh` unpatched.
+   Thin on purpose and only safe because of (1) — **raise it back before
+   restoring the offload to the worker.**
+
+Expect to repeat (1) around the ¾ mark: the remaining papers regrow ~75–80 G.
+
 ## Worker-local patches (drift vs the repos, on purpose)
 
 1. `~/mecattaf/music-consolidation/scripts/tier3-run.sh` — `OUT` is now
@@ -99,6 +121,10 @@ before the nix round lands (or just don't — nothing needs it day-to-day).
 3. Academic: worker's `/home/tom/nas-local/documents/academic-papers/` (catalog
    sqlite + receipts changed) → NAS `documents/academic-papers/`; worker's
    `~/.local/state/academic-ocr` → wherever the drain lives next.
+   **The worker's state root is only half the state since 2026-08-13** — the
+   bulk artifacts live on the coordinator at `~/academic-ocr-offload/` and must
+   travel with it. See `academic-ocr-offload/README.md` (self-contained: what
+   moved, why, verification, restore commands).
 4. Notes: `git -C ~/mecattaf/notes push` (worker's clone holds the absorb
    commits; or rsync the repo back and push from coordinator).
 5. Cookies masters in `/root/worker-loan/` — shred before returning the box:
