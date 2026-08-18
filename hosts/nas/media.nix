@@ -158,7 +158,32 @@ in
         CacheFolder = "${navidromeRoot}/cache";
         Address = "127.0.0.1";
         Port = 4534;
-        ScanSchedule = "@daily";
+        # No automatic scanning at all: ~34k tracks that change maybe once a
+        # year, on a spinning disk that hd-idle parks after 20 min. Every scan
+        # is a full walk of the library and buys nothing on a static
+        # collection, so both triggers are turned off and scans are requested
+        # by hand — `mscan` (the navidrome-scan fish function, which calls
+        # /rest/startScan) or the Scan button in the web UI, after a beets run.
+        Scanner = {
+          # Cron for periodic rescans. "0" disables; it is also upstream's
+          # default. This spent 2026-07-13..2026-08-18 written as the
+          # top-level `ScanSchedule = "@daily"`, which is not a key Navidrome
+          # has — there is no such alias in its deprecation map — so it was
+          # silently ignored and the schedule sat at the default the whole
+          # time. Spelled correctly here, and set to the value we actually
+          # want rather than relying on the default.
+          Schedule = "0";
+          # THE ONE THAT WAS ACTUALLY FIRING. Upstream defaults this to true,
+          # and cmd/root.go rescans ~2s after every process start. Navidrome
+          # here is socket-activated, StopWhenUnneeded, behind a proxy that
+          # exits after 15 min idle — so it starts constantly, and every
+          # cliamp launch or web-UI visit following a quiet spell kicked off
+          # a full 34k-file walk and spun the HDD back up. Observed taking
+          # 9+ minutes on 2026-08-18. Scans on a resumed-interrupted scan, a
+          # PID-config change, or a post-migration flag still happen
+          # regardless of this setting, which is the behaviour we want.
+          ScanOnStartup = false;
+        };
         LogLevel = "info";
         SessionTimeout = "168h";
         AutoImportPlaylists = true;

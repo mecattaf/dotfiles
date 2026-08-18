@@ -1,10 +1,9 @@
 function navidrome-scan --description "Trigger a Navidrome library rescan and watch it finish"
-    # Run this after a beets pass. Navidrome's own ScanSchedule = "@daily"
-    # (hosts/nas/media.nix) is an INTERNAL cron inside the navidrome process,
-    # but that process is socket-activated with StopWhenUnneeded=true and its
-    # proxy exits after 15 min idle — so it is asleep at almost every scheduled
-    # tick and the daily scan mostly never fires. Until that is restructured,
-    # this is the reliable way to make new/retagged media show up.
+    # Run this after a beets pass. It is the ONLY thing that reindexes the
+    # library now: hosts/nas/media.nix sets Scanner.Schedule = "0" and
+    # Scanner.ScanOnStartup = false, because ~34k tracks that change about
+    # once a year do not justify re-walking a parked HDD on every service
+    # start. Nothing rescans unless asked.
     #
     # --full rescans every file regardless of mtime, which is what a beets run
     # that rewrote tags in place actually needs; the default quick scan keys off
