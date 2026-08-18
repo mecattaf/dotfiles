@@ -33,17 +33,29 @@ let
     unit
   ];
 
-  # Steward narration shim (wave-3 estate E6, dotfiles#138). The publish node
-  # hands a JSON narration request on stdin and reads the proposal back from
-  # the one TALLY_FINAL_MESSAGE= line; the proposal is text only —
-  # {type, scope, subject, body} — validated by the driver's commitlint-shaped
-  # gate, so a malformed answer (or a nonzero exit here) falls back to the
-  # brief-derived template and never blocks a merge. Sonnet per the AUGUST-01
-  # ruling ("start with Sonnet while the mechanism stabilizes"); credentials
-  # are the fleet's seeded Claude OAuth state (modules/secrets.nix), so
-  # nothing secret lives here. The narrator is a direct-argv subprocess of the
-  # publish node: no launch policy, no hardening, no writable paths — the
-  # steward seam refuses adapters that declare them.
+  # Steward shim (wave-3 estate E6, dotfiles#138; made role-aware at the eta
+  # chapter-4 sitting, 2026-08-18). Two delivery channels, one per role: the
+  # publish node hands a JSON narration request on STDIN (the narrator is a
+  # direct-argv subprocess of the publish node), while a diagnosis dispatch
+  # arrives as a daemon job unit whose brief is a FILE named by TALLY_BRIEF —
+  # job units have no stdin, which is why the pre-2026-08-18 stdin-only shim
+  # answered every diagnosis with the narration schema (result-schema-mismatch
+  # on every auto-diagnosis; eta run-log, carried finding at the C2 close).
+  # The brief's role field is the discriminator: only the diagnosis brief
+  # carries role:"diagnosis" (spec-build.js diagnosisBrief; the narration
+  # request has no role key).
+  #   - narration: {type, scope, subject, body}, validated by the driver's
+  #     commitlint-shaped gate; malformed answer or nonzero exit falls back to
+  #     the brief-derived template and never blocks a merge. Sonnet per the
+  #     AUGUST-01 ruling ("start with Sonnet while the mechanism stabilizes").
+  #   - diagnosis: {verdict, diagnosis[, proposal]} per the flow's
+  #     diagnosisResultSchema; the brief's own mission text is the complete
+  #     instruction set. Opus (evaluator tier stays off the metered rail, E5
+  #     rule 7; operator adapter ruling 2026-08-18). A shape-invalid answer
+  #     exits nonzero -> a legible node failure, never a schema-mismatch.
+  # Credentials are the fleet's seeded Claude OAuth state (modules/secrets.nix),
+  # so nothing secret lives here. No launch policy, no hardening, no writable
+  # paths — the steward seam refuses adapters that declare them.
   narratorShim = pkgs.writeShellApplication {
     name = "tally-narrator";
     runtimeInputs = [
@@ -52,15 +64,37 @@ let
       pkgs.coreutils
     ];
     text = ''
-      request="$(cat)"
-      proposal="$(printf '%s\n' "$request" | /etc/profiles/per-user/tom/bin/claude \
-        -p --model sonnet --output-format text \
-        "Narrate this campaign publication. The JSON on stdin describes a merged task: derive one conventional commit message from it. Reply with EXACTLY one JSON object, no code fences, no prose: {\"type\": <conventional type>, \"scope\": <short lowercase scope or null>, \"subject\": <imperative, <=60 chars, no leading capital, no trailing period>, \"body\": <plain prose wrapped at 100 columns, under 4000 chars>}. Never include closing keywords (Closes/Fixes #n) or @mentions anywhere.")"
-      # Strip accidental fences, then require a single valid object with the
-      # four expected fields; jq failing exits the shim nonzero -> template.
-      printf 'TALLY_FINAL_MESSAGE=%s\n' "$(
-        printf '%s\n' "$proposal" | sed '/^```/d' | jq -c '{type, scope, subject, body}'
-      )"
+      if [ -n "''${TALLY_BRIEF:-}" ] && [ -r "''${TALLY_BRIEF}" ]; then
+        request="$(cat "''${TALLY_BRIEF}")"
+      else
+        request="$(cat)"
+      fi
+      role="$(printf '%s\n' "$request" | jq -r '.role // empty' 2>/dev/null || true)"
+      if [ "$role" = "diagnosis" ]; then
+        answer="$(printf '%s\n' "$request" | /etc/profiles/per-user/tom/bin/claude \
+          -p --model opus --output-format text \
+          "You are the diagnosis steward for a tally campaign. The JSON on stdin is a diagnosis brief; its mission field is your complete instruction set — execute it against the evidence in the brief's task, failure, gateOutputs, taskBrief, diff, and previousDiagnoses fields. Reply with EXACTLY one JSON object, no code fences, no prose: {\"verdict\": \"retry\"|\"blocked\"|\"transient\", \"diagnosis\": <string per the brief's contract>}, adding \"proposal\" only when verdict is blocked and the brief's contract calls for one.")"
+        # Enforce the diagnosis result shape; jq error() exits nonzero -> the
+        # node fails legibly instead of answering with the wrong schema.
+        printf 'TALLY_FINAL_MESSAGE=%s\n' "$(
+          printf '%s\n' "$answer" | sed '/^```/d' | jq -c '
+            if ((.verdict=="retry" or .verdict=="blocked" or .verdict=="transient")
+                and (.diagnosis|type=="string" and length>0))
+            then (if .verdict=="blocked" and has("proposal")
+                  then {verdict, diagnosis, proposal}
+                  else {verdict, diagnosis} end)
+            else error("diagnosis result shape invalid") end'
+        )"
+      else
+        proposal="$(printf '%s\n' "$request" | /etc/profiles/per-user/tom/bin/claude \
+          -p --model sonnet --output-format text \
+          "Narrate this campaign publication. The JSON on stdin describes a merged task: derive one conventional commit message from it. Reply with EXACTLY one JSON object, no code fences, no prose: {\"type\": <conventional type>, \"scope\": <short lowercase scope or null>, \"subject\": <imperative, <=60 chars, no leading capital, no trailing period>, \"body\": <plain prose wrapped at 100 columns, under 4000 chars>}. Never include closing keywords (Closes/Fixes #n) or @mentions anywhere.")"
+        # Strip accidental fences, then require a single valid object with the
+        # four expected fields; jq failing exits the shim nonzero -> template.
+        printf 'TALLY_FINAL_MESSAGE=%s\n' "$(
+          printf '%s\n' "$proposal" | sed '/^```/d' | jq -c '{type, scope, subject, body}'
+        )"
+      fi
     '';
   };
 
