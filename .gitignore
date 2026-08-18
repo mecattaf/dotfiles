@@ -18,3 +18,10 @@ plaintext/
 # Nix build output symlink
 /result
 .wrangler/
+
+# cliamp writes its log, control socket and pidfile beside its config, and
+# ~/.config/cliamp is an out-of-store symlink straight into this repo — so
+# these runtime files land in the working tree on every run.
+home/dot_config/cliamp/cliamp.log
+home/dot_config/cliamp/cliamp.sock
+home/dot_config/cliamp/cliamp.sock.pid

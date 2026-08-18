@@ -1,9 +1,19 @@
 #!/usr/bin/env bash
-# media -- MPRIS playback control
-# Uses playerctl over MPRIS.
+# media -- MPRIS playback control (bound to F1-F10 in niri/binds.kdl)
+#
+# Prefer cliamp when it is running. Bare `playerctl` acts on the first player it
+# enumerates, and Chrome registers an MPRIS player too — so with a browser open
+# the media keys would drive a background tab instead of the music player.
+# Falls back to playerctl's default pick when cliamp is not running.
+# ^cliamp, not an exact match: MPRIS names may carry an .instanceNNN suffix.
+player=()
+if playerctl -l 2>/dev/null | grep -q '^cliamp'; then
+    player=(-p cliamp)
+fi
+
 case "$1" in
-    play|toggle)  playerctl play-pause ;;
-    next)         playerctl next ;;
-    prev)         playerctl previous ;;
+    play|toggle)  playerctl "${player[@]}" play-pause ;;
+    next)         playerctl "${player[@]}" next ;;
+    prev)         playerctl "${player[@]}" previous ;;
     *)            echo "Usage: $0 {play|next|prev}"; exit 1 ;;
 esac

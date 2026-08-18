@@ -245,10 +245,14 @@ in
         };
       })
 
-      # navidrome-credentials: NOT consumed by the navidrome server (which runs
-      # coordinator-only, hosts/coordinator/services.nix) — read client-side by
-      # the cliamp fish function, on whichever box cliamp runs from. Delivered
-      # to coordinator + zenbook-duo, matching the recipient tier in secrets.nix.
+      # navidrome-credentials: NOT consumed by the navidrome server (which now
+      # runs on the NAS, hosts/nas/media.nix, reached through the coordinator's
+      # navidrome-relay) — read client-side by the cliamp fish function, on
+      # whichever box cliamp runs from. Delivered to coordinator + zenbook-duo,
+      # matching the recipient tier in secrets.nix. The wrapper exports the
+      # file's NAVIDROME_PASSWORD under both that name (which config.toml's
+      # ${NAVIDROME_PASSWORD} placeholder interpolates) and NAVIDROME_PASS
+      # (which cliamp's config-less env fallback reads).
       (lib.mkIf
         (config.networking.hostName == "coordinator" || config.networking.hostName == "zenbook-duo")
         {

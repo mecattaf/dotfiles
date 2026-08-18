@@ -1,4 +1,15 @@
-volume   = 70
+# Requires cliamp >= 1.10 (we ship 1.63.2, pkgs/cliamp.nix). The v1.9.0 this
+# repo pinned until 2026-08-18 parsed config.toml with a flat key=value
+# scanner over ten hardcoded keys: it skipped [section] headers, matched
+# nothing below them, and did no ${VAR} expansion — so every section in this
+# file was silently inert on that build.
+#
+# GAIN IN dB, NOT PERCENT — 0 is the "100%" setting: unity gain, samples pass
+# through untouched, and the system mixer alone decides how loud things are.
+# Negative attenuates, positive boosts; the range is [-30, +6] and is clamped.
+# This read 70 until 2026-08-18, which clamped to +6 — a 2x boost applied
+# before the system volume ever saw the signal, with clipping on loud masters.
+volume   = 0
 repeat   = "off"
 shuffle  = false
 theme = "catppuccin-noir"

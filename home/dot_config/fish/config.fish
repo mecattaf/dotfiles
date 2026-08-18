@@ -43,6 +43,27 @@ alias cd='z'
 alias cc='claude --dangerously-skip-permissions'
 alias cac='claude --continue --dangerously-skip-permissions'
 
+# ── Music ────────────────────────────────────────────────────────────────
+# The library lives on the NAS and is served by Navidrome; cliamp is the client.
+# `cliamp` here is the wrapper function in functions/cliamp.fish, which injects
+# the server and credentials from agenix — so bare cliamp opens straight into
+# the Navidrome browser (artists/albums/playlists) with no argument needed.
+alias m='cliamp'
+alias music='cliamp'
+alias mshuffle='cliamp --shuffle --auto-play'
+
+# Transport control from outside the TUI. cliamp registers MPRIS as
+# org.mpris.MediaPlayer2.cliamp, so -p cliamp addresses it specifically rather
+# than whatever player playerctl happens to enumerate first (Chrome also
+# registers, and would otherwise swallow these).
+alias mp='playerctl -p cliamp play-pause'
+alias mn='playerctl -p cliamp next'
+alias mb='playerctl -p cliamp previous'
+alias mnow='playerctl -p cliamp metadata --format "{{artist}} — {{title}}"'
+
+# After a beets pass: reindex the NAS library (--full for tag-only rewrites).
+alias mscan='navidrome-scan'
+
 type -q atuin || exit
 set -gx ATUIN_NOBIND "true"
 atuin init fish | source
