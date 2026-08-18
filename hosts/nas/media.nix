@@ -30,6 +30,13 @@ let
   fastRoot = "/mnt/fast";
   generatedRoot = "${fastRoot}/immich-generated";
   navidromeRoot = "${fastRoot}/navidrome";
+  # The nixpkgs module generates this inline inside its own ExecStart, so it
+  # is not exposed anywhere reusable. Rebuilding it from the same settings and
+  # the same formatter keeps the backup timer's view of DataFolder/Backup.Path
+  # identical to the server's by construction.
+  navidromeConfigFile =
+    (pkgs.formats.json { }).generate "navidrome.json"
+      config.services.navidrome.settings;
   # Shared helpers (#130); the definitions moved verbatim, so the
   # Immich/Navidrome wait scripts keep their pre-refactor store paths.
   inherit (import ./wake-helpers.nix { inherit lib pkgs; })
@@ -159,39 +166,61 @@ in
         Address = "127.0.0.1";
         Port = 4534;
         # No automatic scanning at all: ~34k tracks that change maybe once a
-        # year, on a spinning disk that hd-idle parks after 20 min. Every scan
-        # is a full walk of the library and buys nothing on a static
-        # collection, so both triggers are turned off and scans are requested
-        # by hand — `mscan` (the navidrome-scan fish function, which calls
-        # /rest/startScan) or the Scan button in the web UI, after a beets run.
+        # year, on a spinning disk hd-idle parks after 20 min. Scans are
+        # requested by hand — `mscan` (the navidrome-scan fish function, which
+        # calls /rest/startScan) or the web UI's Scan button — after a beets run.
         Scanner = {
-          # Cron for periodic rescans. "0" disables; it is also upstream's
-          # default. This spent 2026-07-13..2026-08-18 written as the
-          # top-level `ScanSchedule = "@daily"`, which is not a key Navidrome
-          # has — there is no such alias in its deprecation map — so it was
-          # silently ignored and the schedule sat at the default the whole
-          # time. Spelled correctly here, and set to the value we actually
-          # want rather than relying on the default.
+          # The master switch, and the only one that is strictly necessary:
+          # cmd/root.go:92-97 wraps BOTH startScanWatcher and
+          # schedulePeriodicScan in `if conf.Server.Scanner.Enabled`, logging
+          # "Automatic Scanning is DISABLED" instead. Manual scans are
+          # unaffected — the /rest/startScan handler in
+          # server/subsonic/library_scanning.go never consults this flag (nor
+          # does anything under scanner/), so `mscan` keeps working.
+          Enabled = false;
+          # The three individual triggers, set explicitly as well. Redundant
+          # while Enabled is false, but each is the thing that actually has to
+          # be off, and spelling them out means a future upstream change to the
+          # Enabled gate cannot quietly re-enable one of them.
+          #
+          # Periodic rescan cron; "0" disables. This was written as a top-level
+          # `ScanSchedule = "@daily"` from 2026-07-13 to 2026-08-18 — not a key
+          # Navidrome has, and absent from its deprecation map, so it was
+          # dropped on the floor and the schedule sat at its default the entire
+          # time. The daily scan that comment described never once ran.
           Schedule = "0";
-          # THE ONE THAT WAS ACTUALLY FIRING. Upstream defaults this to true,
-          # and cmd/root.go rescans ~2s after every process start. Navidrome
-          # here is socket-activated, StopWhenUnneeded, behind a proxy that
-          # exits after 15 min idle — so it starts constantly, and every
-          # cliamp launch or web-UI visit following a quiet spell kicked off
-          # a full 34k-file walk and spun the HDD back up. Observed taking
-          # 9+ minutes on 2026-08-18. Scans on a resumed-interrupted scan, a
-          # PID-config change, or a post-migration flag still happen
-          # regardless of this setting, which is the behaviour we want.
+          # Rescan ~2s after every process start (cmd/root.go:197, gated on
+          # Enabled && ScanOnStartup). Upstream defaults this to TRUE, and this
+          # is what was actually firing: the service is socket-activated,
+          # StopWhenUnneeded, behind a proxy that exits after 15 min idle, so
+          # it restarts constantly and every cliamp launch or web-UI visit
+          # after a quiet spell triggered a full 34k-file walk. One was watched
+          # taking 9+ minutes on 2026-08-18.
           ScanOnStartup = false;
+          # Live inotify watcher over MusicFolder, debouncing filesystem events
+          # into automatic scans (scanner/watcher.go). Gated ONLY on this
+          # duration being zero (cmd/root.go:229-232); upstream's default is
+          # consts.DefaultWatcherWait = 5s, i.e. ON. Pointless on a static tree
+          # and it holds watches across a disk meant to stay spun down.
+          WatcherWait = "0s";
         };
         LogLevel = "info";
         SessionTimeout = "168h";
         AutoImportPlaylists = true;
         # State is on the NVMe; the nightly SQLite backup is its HDD safety
-        # net, same doctrine as the Immich dump.
+        # net, same doctrine as the Immich dump. Path and Count stay — the
+        # navidrome-backup timer below reads both — but Schedule is empty on
+        # purpose. Navidrome registers it with an in-process robfig/cron
+        # instance (cmd/root.go schedulePeriodicBackup) that only ticks while
+        # the process is alive, and this one is socket-activated with
+        # StopWhenUnneeded behind a proxy that exits after 15 min idle. It was
+        # therefore asleep at essentially every firing and the "nightly"
+        # backup had no catch-up, so it silently almost never ran — the exact
+        # failure the nas-db-dump timer below already exists to avoid for
+        # Postgres. Driven by systemd now, for the same reason.
         Backup = {
           Path = "${storageRoot}/services/navidrome-backups";
-          Schedule = "@daily";
+          Schedule = "";
           Count = 14;
         };
       };
@@ -221,6 +250,40 @@ in
       serviceConfig = proxyHardening // {
         ExecStartPre = waitForHttp "Navidrome" "http://127.0.0.1:4534/";
         ExecStart = "${socketProxyd} --exit-idle-time=15min 127.0.0.1:4534";
+      };
+    };
+
+    # Nightly Navidrome SQLite backup, driven by systemd rather than by the
+    # server's own scheduler — see the Backup block above for why that one
+    # could not be relied on. `backup create` then `backup prune` mirrors what
+    # the in-process job did (create ignores Count; prune is what applies it).
+    # Same --configfile expression the module builds for the server, so the
+    # two can never disagree about DataFolder or Backup.Path.
+    systemd.services.navidrome-backup = {
+      description = "Nightly Navidrome database backup to the HDD";
+      unitConfig.RequiresMountsFor = [
+        storageRoot
+        fastRoot
+      ];
+      serviceConfig = {
+        Type = "oneshot";
+        # Same identity as the server: DataFolder on the NVMe and the backup
+        # directory are both tom-owned 0700.
+        User = "tom";
+        Group = "users";
+        ExecStart = [
+          "${lib.getExe config.services.navidrome.finalPackage} --configfile ${navidromeConfigFile} backup create"
+          "${lib.getExe config.services.navidrome.finalPackage} --configfile ${navidromeConfigFile} backup prune"
+        ];
+      };
+    };
+    systemd.timers.navidrome-backup = {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        # Offset from nas-db-dump's 02:15 so the two do not contend for the
+        # HDD, and Persistent so a powered-off night is caught up on boot.
+        OnCalendar = "*-*-* 02:45:00";
+        Persistent = true;
       };
     };
 
