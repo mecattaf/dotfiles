@@ -106,10 +106,6 @@ final: prev: {
   # integrations. Upstream has no flake; see modules/cli-anything.nix.
   cli-anything-hub = final.callPackage ../pkgs/cli-anything-hub.nix { };
 
-  # amdtop — AMD GPU/CPU/XDNA NPU monitor. Not yet in our pinned nixpkgs;
-  # source-built from the latest stable upstream release for the coordinator.
-  amdtop = final.callPackage ../pkgs/amdtop.nix { };
-
   # llama-swap — nixos-unstable is still on v224; pin the current official v240
   # static release while retaining nixpkgs' first-class services.llama-swap module.
   llama-swap = final.callPackage ../pkgs/llama-swap.nix { };

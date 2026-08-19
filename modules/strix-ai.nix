@@ -53,6 +53,11 @@ in
     stableDiffusionRocmCommands
     strixAi.ds4-rocm
     strixAi.vllm-rocm
+
+    # One TUI for CPU, Radeon iGPU, and XDNA NPU telemetry. Upstream packaged it
+    # (hellas-ai/nix-strix-halo#161) after we carried a local pkgs/amdtop.nix;
+    # sourcing it here retires that copy and puts it on the same gfx1151 plane.
+    strixAi.amdtop
   ];
 
   # Development/runtime libraries have no useful standalone command. Root them in

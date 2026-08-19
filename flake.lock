@@ -763,11 +763,11 @@
         "xrt-src": "xrt-src"
       },
       "locked": {
-        "lastModified": 1784760779,
-        "narHash": "sha256-6Us9uzRYlLVjXFz1xd1FoPtDMvad8QX+37uiFv6Voec=",
+        "lastModified": 1787040186,
+        "narHash": "sha256-2HKCQel/UbZkxV6/IiLBhbXV32x8ImRvRmrBM0MOoAs=",
         "owner": "hellas-ai",
         "repo": "nix-strix-halo",
-        "rev": "4c5919aa0705f3ea7711f09517942bbc840fbed2",
+        "rev": "f0f2048ff842749b363ea3562a98fb0a04bb2e61",
         "type": "github"
       },
       "original": {

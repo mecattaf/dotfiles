@@ -1,6 +1,5 @@
 {
   inputs,
-  pkgs,
   ...
 }:
 # AMD Strix Halo layer for the coordinator.
@@ -79,9 +78,6 @@
       max-jobs = 4;
       cores = 8;
     };
-
-    # One TUI for CPU, Radeon iGPU, and XDNA NPU telemetry.
-    environment.systemPackages = [ pkgs.amdtop ];
 
     # Strix Halo unified-memory tuning (128 GiB pinnable for the iGPU).
     # amdxdna binds through IOMMU SVA/PASID and needs translated mode
