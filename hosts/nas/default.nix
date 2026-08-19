@@ -1,6 +1,7 @@
 {
   inputs,
   lib,
+  pkgs,
   ...
 }:
 {
@@ -59,6 +60,22 @@
   # Nothing here starts on its own; the first camera-roll pull is driven by hand
   # so its failure modes get observed before any of it is automated.
   myNas.phoneIngest.enable = true;
+
+  # amdtop — the same telemetry TUI the coordinator runs (modules/strix-ai.nix).
+  # This box is AMD on both halves: common-cpu-amd/kvm-amd, plus the radeonsi
+  # iGPU already driving Immich's VA-API transcodes above, so the GPU pane is
+  # live here rather than empty. The XDNA pane stays empty — no NPU on this
+  # board — which amdtop handles by omission.
+  #
+  # Sourced from nix-strix-halo because amdtop is in NEITHER nixpkgs pin, stable
+  # or unstable, so unstablePkgs is not an option. That input is a rolling one
+  # (rollingInputOverrides), which means this single leaf TUI moves nightly while
+  # the appliance's stable base does not. Accepted deliberately: nothing on the
+  # host depends on it, it is operator tooling reached over SSH. It also brings
+  # its own ~62 MB glibc/libdrm chain, shared with nothing else in this closure.
+  environment.systemPackages = [
+    inputs.nix-strix-halo.packages.${pkgs.stdenv.hostPlatform.system}.amdtop
+  ];
 
   system.stateVersion = "26.05";
 }
