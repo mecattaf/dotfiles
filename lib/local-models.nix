@@ -939,7 +939,9 @@ let
             flm-gpt-oss-20b = {
               model = "gpt-oss:20b";
               role = "utility";
-              status = "canonical";
+              # Retired 2026-08-20 (dotfiles#229): old and outdated; the NPU
+              # reasoning slot moves to flm-qwen36-35b-a3b-npu2.
+              status = "retired";
               backend = "npu";
               hosts = [ "coordinator" ];
               runtime = {

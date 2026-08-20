@@ -1246,9 +1246,9 @@
               "gemma4-26b-a4b-it-mtp-q8-0"
               "fara15-27b-q8-0"
               "fara15-9b-q8-0"
-              "fara15-4b-q8-0"
+              # fara15-4b-q8-0 and qwen3-vl-32b-ocr-refine ruled out 2026-08-20
+              # (#229); qwen3-vl-8b-ocr exits with the NPU2 OCR flip.
               "qwen3-vl-8b-ocr"
-              "qwen3-vl-32b-ocr-refine"
               "qwen3-embedding-8b-q8-0"
               "qwen3-vl-embedding-8b-q8-0"
             ];
@@ -1262,7 +1262,7 @@
               "vibevoice-qwen25-7b-tokenizer"
             ];
           assert
-            builtins.length (nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies) == 23;
+            builtins.length (nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies) == 19;
           assert nixpkgs.lib.all (artifact: artifact.source.layout == "snapshot") mageArtifacts;
           assert builtins.length mageFiles == 164;
           assert nixpkgs.lib.foldl' (total: file: total + file.bytes) 0 mageFiles == 45863017994;
@@ -1277,11 +1277,9 @@
           assert
             builtins.attrNames coordinatorSettings.models == [
               "fara1.5-27b"
-              "fara1.5-4b"
               "fara1.5-9b"
               "gemma4-26b-a4b-it"
               "qwen3-embedding-8b"
-              "qwen3-vl-32b-ocr"
               "qwen3-vl-8b-ocr"
               "qwen3-vl-embedding-8b"
               "qwen3.6-27b"
@@ -1296,7 +1294,6 @@
           assert
             coordinator.services.npu-llm.models == [
               "gemma4-it:e4b"
-              "gpt-oss:20b"
             ];
           assert nixpkgs.lib.all (unit: !(nixpkgs.lib.hasPrefix "flm-" unit)) (
             builtins.attrNames coordinator.systemd.services
@@ -1373,12 +1370,10 @@
               and .persistentServer == false
               and (.models | map(.tag)) == [
                 "gemma4-it:e4b",
-                "gpt-oss:20b",
                 "qwen3:4b"
               ]
               and (.models | map(.command)) == [
                 ["flm", "run", "gemma4-it:e4b"],
-                ["flm", "run", "gpt-oss:20b"],
                 ["flm", "run", "qwen3:4b"]
               ]
               and .utility == {

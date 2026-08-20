@@ -30,9 +30,15 @@
         "gemma4-26b-a4b-it-mtp-q8-0"
         "fara15-27b-q8-0"
         "fara15-9b-q8-0"
-        "fara15-4b-q8-0"
+        # Ruled out 2026-08-20 (notes ACTION-PLAN §2b / dotfiles#229): rows stay
+        # in the catalog; recovery is uncommenting a line here.
+        # "fara15-4b-q8-0"
+        # qwen3-vl-8b-ocr stays UNTIL the FastFlowLM Qwen 3.6 35B NPU2 build is
+        # validated on OCR: pkgs/paper-intake/process.py drives this llama-swap
+        # route on the coordinator today (PAPER_INTAKE_MODEL default). It exits
+        # in the same flip that re-points the worker drain.
         "qwen3-vl-8b-ocr"
-        "qwen3-vl-32b-ocr-refine"
+        # "qwen3-vl-32b-ocr-refine"
         "qwen3-embedding-8b-q8-0"
         "qwen3-vl-embedding-8b-q8-0"
       ];
@@ -65,7 +71,9 @@
       enable = true;
       models = [
         "gemma4-it:e4b"
-        "gpt-oss:20b"
+        # gpt-oss:20b ruled out 2026-08-20 (old and outdated; dotfiles#229).
+        # The catalog row is status = "retired"; the ~14G runtime-owned snapshot
+        # under ~/.config/flm/models is freed by an explicit `flm remove`, not GC.
       ];
     };
 
