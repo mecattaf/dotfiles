@@ -1,64 +1,60 @@
 {
   catalog,
   lib,
-  pkgs,
 }:
-
+# ─── The runtime model store: paths and manifests, never derivations ─────────
+#
+# REWRITTEN 2026-08-21 (Tom, decisive): "model weights are static items, like
+# a large pdf doc that we read — they need NO movement on the nix nightly
+# side." The previous version of this file turned every catalog artifact into
+# a fetchurl fixed-output derivation rooted via system.extraDependencies,
+# which made every host closure carry hundreds of GB of weights. That design
+# died the day the update-center tried to build the fleet on the NAS's 57G
+# eMMC (2026-08-21, first observed run).
+#
+# Now this file computes only DATA:
+#   - where an artifact's files live at runtime on a device
+#     (/var/lib/local-models/<artifactId>/…, reconciled by the
+#     local-models-sync oneshot in modules/local-models.nix), and
+#   - the per-file facts (target name, HF-relative path, bytes, sha256 oid)
+#     that the sync and the NAS library-fetch units need.
+#
+# Nix evaluates descriptions; systemd moves bytes. Same paradigm NixOS uses
+# for OCI images (declared by digest, pulled at service start) and secrets.
+# Weights flow HF → NAS Library (/mnt/nas/models/weights) exactly once, then
+# Library → declared node — and an unchanged catalog moves ZERO bytes.
 let
-  safeName = name: lib.replaceStrings [ "/" ":" " " ] [ "-" "-" "-" ] name;
+  runtimeRoot = "/var/lib/local-models";
 
-  fetchFile =
-    artifactId: source: file:
-    pkgs.fetchurl {
-      url = "${lib.removeSuffix "/" source.hfUrl}/resolve/${source.revision}/${file.path}";
-      hash = file.hash;
-      # Snapshot members use a content-derived name, so byte-identical files
-      # get the same fixed-output store path even when repositories place them
-      # at different relative paths. Flat artifacts retain their
-      # artifact-qualified names for backwards compatibility.
-      name =
-        if source.layout == "snapshot" then
-          "hf-snapshot-sha256-${file.oid}"
-        else
-          "${safeName artifactId}-${builtins.baseNameOf file.path}";
-    };
+  # Flat artifacts collapse to basenames (unique by catalog assertion);
+  # snapshot artifacts keep their repository-relative tree.
+  targetName =
+    layout: path: if layout == "snapshot" then path else builtins.baseNameOf path;
 
-  materializeArtifact =
-    artifactId: artifact:
-    let
-      fetched = map (file: {
-        inherit (file) path;
-        derivation = fetchFile artifactId artifact.source file;
-      }) artifact.source.files;
-      directory = pkgs.linkFarm "local-model-${safeName artifactId}" (
-        map (file: {
-          name = if artifact.source.layout == "snapshot" then file.path else builtins.baseNameOf file.path;
-          path = file.derivation;
-        }) fetched
-      );
-      package =
-        if artifact.source.layout == "flat" && builtins.length fetched == 1 then
-          (builtins.head fetched).derivation
-        else
-          directory;
-      primary =
-        if artifact.source.layout == "flat" && builtins.length fetched == 1 then
-          package
-        else
-          "${package}/${
-            if artifact.source.layout == "snapshot" then
-              artifact.source.primary
-            else
-              builtins.baseNameOf artifact.source.primary
-          }";
-    in
-    {
-      inherit directory package primary;
-    };
+  materializeArtifact = artifactId: artifact: rec {
+    directory = "${runtimeRoot}/${artifactId}";
+    primary = "${directory}/${targetName artifact.source.layout artifact.source.primary}";
+    files = map (file: {
+      # `name` is the path relative to `directory`; `path` is the
+      # HF-repository-relative path (what the NAS fetches); `oid` is the
+      # git-lfs sha256 in hex — exactly what `sha256sum` verifies against.
+      name = targetName artifact.source.layout file.path;
+      inherit (file) path bytes oid;
+      url = "${lib.removeSuffix "/" artifact.source.hfUrl}/resolve/${artifact.source.revision}/${file.path}";
+    }) artifact.source.files;
+  };
 
   materialized = lib.mapAttrs materializeArtifact catalog.artifacts;
+
+  # Manifest rows for a set of artifact ids — the JSON contract shared by the
+  # device-side sync (name/bytes/oid) and the NAS library-fetch (plus url).
+  manifestFor =
+    artifactIds:
+    map (artifactId: {
+      id = artifactId;
+      files = materialized.${artifactId}.files;
+    }) artifactIds;
 in
 {
-  inherit materialized;
-  packages = lib.mapAttrs (_: artifact: artifact.package) materialized;
+  inherit runtimeRoot materialized manifestFor;
 }

@@ -105,8 +105,11 @@ in
     serviceConfig = {
       # The upstream NixOS module uses DynamicUser + ProtectSystem=strict. Add
       # systemd-managed writable paths for v240's activity store and backend
-      # scratch state. Model weights are immutable store paths; runtime downloads
-      # are forbidden by modules/local-models.nix.
+      # scratch state. Model weights are world-readable working copies under
+      # /var/lib/local-models (borrowed from the NAS Library by
+      # local-models-sync, 2026-08-21 ruling — visible read-only through the
+      # strict sandbox); runtime downloads are forbidden by
+      # modules/local-models.nix.
       StateDirectory = "llama-swap";
       StateDirectoryMode = "0750";
       CacheDirectory = "llama-swap";

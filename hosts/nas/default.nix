@@ -15,9 +15,9 @@
     # be a smarter way"): with the CUPS queue dialing the printer's pinned IP
     # (modules/printing.nix), a print job itself wakes the Brother from Deep
     # Sleep — the timer was belt-and-suspenders for a failure mode the IP
-    # queue already killed. Partially verified: an IPP status query at the
-    # pinned IP answers instantly after hours idle (2026-08-21); the full
-    # Deep-Sleep-to-paper test rides the next organic print job.
+    # queue already killed. VERIFIED 2026-08-21: after ~4h idle in Deep
+    # Sleep, CUPS job 88 (model census) woke the printer via the pinned-IP
+    # queue and printed — no keepalive anywhere.
     ./journal.nix
     ./storage.nix
     ./discovery.nix # Avahi + read-only SMB so the NAS shows up in Nautilus (2026-08-21)

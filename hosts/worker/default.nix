@@ -139,6 +139,32 @@
         ipv6.method = "ignore";
       };
 
+  # ── Borrowing model weights from the NAS Library (2026-08-21 ruling) ──────
+  # The NAS exports its models tree read-only + root-squashed to this host
+  # (hosts/nas/models.nix, fsid=6); local-models-sync borrows this host's
+  # wanted set from here into /var/lib/local-models before llama-swap starts.
+  # Mounted at /mnt/library because /mnt/nas is TAKEN on this box — it is a
+  # local ext4 data partition from the pre-retirement worker role, unrelated
+  # to the NAS. soft+nofail, same hardening rationale as the coordinator's
+  # nas-client mount: a dead NAS must never hang this box's boot or I/O
+  # forever — sync just fails visibly and llama-swap serves what is local.
+  boot.supportedFilesystems = [ "nfs" ];
+  fileSystems."/mnt/library" = {
+    device = "nas:/models";
+    fsType = "nfs4";
+    options = [
+      "ro"
+      "soft"
+      "timeo=30"
+      "retrans=3"
+      "nofail"
+      "_netdev"
+      "x-systemd.automount"
+      "x-systemd.idle-timeout=10min"
+    ];
+  };
+  services.local-models.libraryPath = "/mnt/library/weights";
+
   # NM at INFO for the same reason the coordinator pins it: on cutover day this
   # fleet's wifi incidents were forensically blind because NetworkManager had
   # logged nothing for weeks. The journal now leaves the box (./journal-upload.nix),
