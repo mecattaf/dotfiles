@@ -81,13 +81,28 @@
     # family locks (sf-compact, sf-mono, ny, …) sit inert and cannot rot a
     # build. WHEN the nightly fails here again with "mismatch in field
     # 'narHash'", the fix is one line: `nix flake update apple-fonts`,
-    # commit, push. The rest of the 2026-08-21 font sweep stands: sf-compact/
-    # sf-mono/ny uninstalled, sfmono-liga deleted outright ("i don't care
-    # about that either" — browser code blocks now match the terminal's
-    # Maple Mono), serif alias moved to Source Serif 4.
+    # commit, push. The rest of the 2026-08-21 font sweep stands in part:
+    # sf-compact/sf-mono/ny uninstalled, serif alias moved to Source Serif 4.
     apple-fonts = {
       url = "github:Lyndeno/apple-fonts.nix";
       inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # Liga SF Mono: SF Mono ligaturized AND nerd-patched upstream — a
+    # different derived font from apple-fonts' sf-mono-nerd (glyphs only, no
+    # ligatures). Plain repo of OTFs, not a flake; consumed by
+    # pkgs/sfmono-liga.nix. DELETED in the 2026-08-21 sweep, RESTORED the
+    # same evening: the sweep's premise ("no terminal ever used it") was
+    # false — kitty.conf had named the nonexistent family "Maple Mono
+    # Normal NF" since 2026-03-03 and silently rode the fontconfig
+    # monospace alias, which pointed HERE, so this was the terminal face
+    # the whole time (proven from the old kitty process's /proc maps).
+    # Tom, on seeing real Maple: "i like whatever font was in use before
+    # this afternoon's pushes." kitty.conf now names this family
+    # EXPLICITLY, so no future sweep can silently swap the terminal again.
+    sfmono-liga = {
+      url = "github:shaunsingh/SFMono-Nerd-Font-Ligaturized";
+      flake = false;
     };
 
     # zmx — LOCAL terminal session persistence (neurosnap/zmx, built on
@@ -327,6 +342,7 @@
           # own nixpkgs — no second eval of ours). home/home.nix pulls an
           # allowlisted set out of this namespace. See the input comment above.
           llm-agents = inputs.llm-agents.packages.${system};
+          sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { src = inputs.sfmono-liga; };
           # zmx built by our own pkgs/zmx.nix from the non-flake source input:
           # nixpkgs zig + upstream's committed dependency lock, no zig2nix IFD
           # (see the input comment).
@@ -536,6 +552,7 @@
             mactahoe-gtk-theme
             mactahoe-icon-theme
             music-acquire
+            sfmono-liga
             ;
 
           # Explicit accelerator escape hatches. The host module installs the

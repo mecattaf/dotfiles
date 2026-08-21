@@ -314,6 +314,7 @@
     google-fonts
     noto-fonts-color-emoji
     sf-pro # GTK interface font ("SF Pro Display 11" — dconf in home/home.nix)
+    sfmono-liga # THE terminal face — named explicitly in kitty.conf; see flake.nix input comment
   ];
 
   # Map the fontconfig generic aliases. Installing the fonts (above) is not
@@ -321,19 +322,22 @@
   # content (sans-serif/serif/monospace), plus most GTK/Qt fallbacks —
   # resolve through these aliases, which otherwise default to DejaVu. That
   # DejaVu fallback is the "weird font" Chrome renders with. SF Pro keeps
-  # the sans alias (kept by ruling, see above); Source Serif 4 and Maple
-  # Mono replace New York / Liga SFMono (2026-08-21 sweep) — the house
-  # print serif and the kitty terminal face respectively, so browser code
-  # blocks match the terminal. Family names verified with fc-scan/fc-list.
-  # NixOS appends its own DejaVu/Noto fallbacks after these, so missing
-  # glyphs (CJK, symbols) still resolve.
+  # the sans alias (kept by ruling, see above); Source Serif 4 replaces
+  # New York (2026-08-21 sweep) as the house print serif. monospace is
+  # Liga SFMono — swept to Maple the same day on the false premise that no
+  # terminal used it, and RESTORED hours later when the /proc maps of the
+  # running kitty proved it WAS the terminal face (see the sfmono-liga
+  # input comment in flake.nix); browser code blocks therefore match the
+  # terminal, as they always silently did. Family names verified with
+  # fc-scan/fc-list. NixOS appends its own DejaVu/Noto fallbacks after
+  # these, so missing glyphs (CJK, symbols) still resolve.
   fonts.fontconfig.defaultFonts = {
     sansSerif = [
       "SF Pro Display"
       "SF Pro Text"
     ];
     serif = [ "Source Serif 4" ];
-    monospace = [ "Maple Mono NF" ];
+    monospace = [ "Liga SFMono Nerd Font" ];
     emoji = [ "Noto Color Emoji" ];
   };
 
