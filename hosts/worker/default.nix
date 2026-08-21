@@ -276,7 +276,8 @@
       addresses = "10.99.1.2/30";
       never-default = true;
       ignore-auto-dns = true;
-      routes = "10.99.9.1/32 10.99.1.1 200";
+      # Keyfile routeN syntax — see hosts/coordinator/eth-fleet.nix.
+      route1 = "10.99.9.1/32,10.99.1.1,200";
     };
     ipv6.method = "disabled";
   };

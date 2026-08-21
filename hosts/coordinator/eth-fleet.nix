@@ -60,7 +60,9 @@
       ignore-auto-dns = true;
       # Peer fleet-IP fallback route, deliberately expensive (metric 200)
       # so the tb-fleet route (metric 50) always wins while it exists.
-      routes = "10.99.9.2/32 10.99.1.2 200";
+      # Keyfile syntax (routeN=dest,next-hop,metric) — a nmcli-style
+      # `routes` key is silently ignored by the keyfile parser.
+      route1 = "10.99.9.2/32,10.99.1.2,200";
     };
     ipv6.method = "disabled";
   };
