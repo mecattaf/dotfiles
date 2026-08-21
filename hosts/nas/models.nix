@@ -97,10 +97,9 @@ in
     # .snapshots and backups stay contained); this one is exported ON PURPOSE,
     # because the retire procedure copies store paths from the coordinator and
     # a plain `cp` over the mount is far less error-prone than an
-    # rsync-over-ssh incantation typed at 11pm. Both coordinator rails
-    # admitted until the /30 retires in the cleanup commit.
+    # rsync-over-ssh incantation typed at 11pm.
     services.nfs.server.exports = ''
-      ${modelsRoot} 10.77.0.1(rw,sync,fsid=6,no_subtree_check,no_root_squash) 10.42.0.2(rw,sync,fsid=6,no_subtree_check,no_root_squash)
+      ${modelsRoot} 10.42.0.2(rw,sync,fsid=6,no_subtree_check,no_root_squash)
     '';
   };
 }

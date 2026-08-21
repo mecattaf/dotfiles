@@ -261,7 +261,7 @@ in
     # Backend admitted only from the coordinator's end of the /30 cable; the
     # tailnet reaches it through the coordinator relay + Caddy front door.
     networking.firewall.extraInputRules = ''
-      ip saddr { 10.77.0.1, 10.42.0.2 } tcp dport 28981 accept comment "paperless from coordinator (legacy /30 + LAN)"
+      ip saddr 10.42.0.2 tcp dport 28981 accept comment "paperless from coordinator (LAN; /30 retired 2026-08-21)"
     '';
   };
 }

@@ -106,7 +106,7 @@ in
           # (hosts/nas/router.nix dhcp-host). Nothing else — the export ACL
           # stays exactly as narrow as the nftables rule below, and the
           # legacy client dies with the /30 in the cleanup commit.
-          clients = opts: "10.77.0.1(${opts}) 10.42.0.2(${opts})";
+          clients = opts: "10.42.0.2(${opts})";
         in
         ''
           ${storageRoot} ${clients "rw,sync,fsid=0,no_subtree_check,no_root_squash"}
@@ -118,7 +118,7 @@ in
         '';
     };
     networking.firewall.extraInputRules = ''
-      ip saddr { 10.77.0.1, 10.42.0.2 } tcp dport 2049 accept comment "NFSv4 from coordinator (legacy /30 + LAN)"
+      ip saddr 10.42.0.2 tcp dport 2049 accept comment "NFSv4 from coordinator (LAN; /30 retired 2026-08-21)"
     '';
 
     # With the wildcard bind the address race is gone, but nfsd must still not

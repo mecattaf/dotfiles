@@ -182,7 +182,7 @@ in
     };
 
     networking.firewall.extraInputRules = ''
-      ip saddr { 10.77.0.1, 10.42.0.2 } tcp dport 8080 accept comment "attic binary cache from coordinator (legacy /30 + LAN)"
+      ip saddr 10.42.0.2 tcp dport 8080 accept comment "attic binary cache from coordinator (LAN; /30 retired 2026-08-21)"
     '';
   };
 }

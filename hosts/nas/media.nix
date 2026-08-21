@@ -288,7 +288,7 @@ in
     systemd.services.plex.unitConfig.RequiresMountsFor = [ storageRoot ];
 
     networking.firewall.extraInputRules = ''
-      ip saddr { 10.77.0.1, 10.42.0.2 } tcp dport { 2283, 4533, 32400 } accept comment "media from coordinator (legacy /30 + LAN)"
+      ip saddr 10.42.0.2 tcp dport { 2283, 4533, 32400 } accept comment "media from coordinator (LAN; /30 retired 2026-08-21)"
     '';
   };
 }

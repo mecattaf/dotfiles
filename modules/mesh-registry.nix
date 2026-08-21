@@ -20,6 +20,21 @@
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFPCZFlnHQSNH3D0R1/qs9A/W498f8xTNUNBtLWZgU2A root@coordinator";
     userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729";
   };
+  # PERMANENTLY BACK (Tom's ruling 2026-08-21: "the worker is FULLY BACK to
+  # my device list. not a lease"). This is the very device whose 2026-07-29
+  # departure forced the fleet key rotation; it still runs a pre-rotation
+  # closure holding the OLD user key, which the fleet rightly refuses.
+  # hostKey read live from the running box on ruling day (so known_hosts and
+  # future secret tiers are ready); userKey stays EMPTY until the #229
+  # reintegration ships it a fresh closure with the rotated key — do not
+  # authorize the old key back in the interim. LAN identity: 10.42.0.5
+  # (pinned in hosts/nas/router.nix); Thunderbolt link to the coordinator
+  # (10.99.0.1 <-> 10.99.0.2).
+  worker = {
+    aliases = [ "worker" ];
+    hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9xaf+UX4cjDEme+Ath3EZYLiUJla/+3QlG4TvCzwLO root@worker";
+    userKey = "";
+  };
   nas = {
     aliases = [
       "nas"

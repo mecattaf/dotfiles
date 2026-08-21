@@ -331,9 +331,20 @@ in
       # same shape and guard as the Freebox PSK above. Minted at cutover
       # phase 3 of the 2026-08-20 NAS-router rewire, once the BE550's live
       # SSID/PSK are read off its admin page; inert until then.
-      (lib.mkIf (config.networking.hostName == "coordinator" && builtins.pathExists ../secrets/wifi-lan.age) {
-        age.secrets.wifi-lan.file = ../secrets/wifi-lan.age;
-      })
+      (lib.mkIf
+        (
+          builtins.elem config.networking.hostName [
+            "coordinator"
+            # + the zenbook since 2026-08-21 ("6ghz fleet wide"): its
+            # thomas-6ghz profile substitutes the same $BE550_SSID/$BE550_PSK.
+            "zenbook-duo"
+          ]
+          && builtins.pathExists ../secrets/wifi-lan.age
+        )
+        {
+          age.secrets.wifi-lan.file = ../secrets/wifi-lan.age;
+        }
+      )
     ]
   );
 }

@@ -1,4 +1,5 @@
 {
+  config,
   inputs,
   lib,
   pkgs,
@@ -16,9 +17,13 @@
     inputs.nixos-hardware.nixosModules.common-cpu-intel
     inputs.nixos-hardware.nixosModules.common-pc-laptop
     inputs.nixos-hardware.nixosModules.common-pc-laptop-ssd
-    # Per-machine AdGuard Home DNS filter (loopback 127.0.0.1:53, resolved
-    # forwards to it).
-    ../../modules/adguardhome.nix
+    # AdGuard REMOVED 2026-08-21 (audit finding: live landmine). Same DoH
+    # collision as the coordinator's removal that day: the loopback
+    # instance's upstreams (1.1.1.1/1.0.0.1/9.9.9.9:443) are exactly what
+    # the NAS dns_hijack drops, so this laptop's DNS would go dark the
+    # moment it joined the home LAN. On thomas-6ghz it gets the NAS
+    # resolver (filtered); on foreign networks it uses their DHCP DNS,
+    # unfiltered — the roaming trade, accepted.
   ];
 
   networking.hostName = "zenbook-duo";
@@ -27,6 +32,39 @@
   # (the delivered /etc/ssh/ssh_host_ed25519_key matches mesh-registry.nix, so agenix
   # decrypts against it). Delivers the shared tom@mesh SSH key for fleet access.
   mySecrets.enable = true;
+
+  # thomas-6ghz — the home LAN's fleet band (2026-08-21 "6ghz fleet wide"
+  # ruling). Same shape as the coordinator's profile in
+  # hosts/coordinator/uplink-nas.nix: SSID/PSK substituted from wifi-lan.age
+  # (this host joined the recipients that day), WPA3-SAE + PMF as 6GHz
+  # mandates, no BSSID pin (single-radio SSID — no roam surface; and this
+  # Intel AX211 laptop never had the mt7925 crash class anyway), and no
+  # interface-name so the profile survives an iface rename. DHCP on
+  # purpose: a roaming laptop takes a pool lease (.10-.200), unlike the
+  # coordinator's load-bearing static .2. Priority sits above any imperative
+  # foreign-network profiles so home always wins when in range.
+  networking.networkmanager.ensureProfiles.environmentFiles =
+    lib.optional (builtins.pathExists ../../secrets/wifi-lan.age) config.age.secrets.wifi-lan.path;
+  networking.networkmanager.ensureProfiles.profiles.thomas-6ghz =
+    lib.mkIf (builtins.pathExists ../../secrets/wifi-lan.age) {
+      connection = {
+        id = "thomas-6ghz";
+        type = "wifi";
+        autoconnect = true;
+        autoconnect-priority = 110;
+      };
+      wifi = {
+        mode = "infrastructure";
+        ssid = "$BE550_SSID";
+      };
+      wifi-security = {
+        key-mgmt = "sae";
+        pmf = 3;
+        psk = "$BE550_PSK";
+      };
+      ipv4.method = "auto";
+      ipv6.method = "ignore";
+    };
 
   boot.kernelParams = [ "i915.enable_psr=0" ]; # eDP PSR flicker
 

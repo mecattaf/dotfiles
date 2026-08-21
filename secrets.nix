@@ -74,13 +74,11 @@ in
   # (wlp192s0) is now declarative too (migrated from an imperative profile on
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r
   "secrets/wifi.age".publicKeys = editors ++ laptops ++ coordinatorOnly;
-  # BE550 repeated-LAN credentials ($BE550_SSID / $BE550_PSK), minted at cutover
-  # phase 3 (2026-08-21) for the coordinator's thomas-6ghz profile
-  # (hosts/coordinator/uplink-nas.nix). Coordinator-only for now — extend to the
-  # laptops tier when the zenbook gets its own be550 profile (it also needs its
-  # loopback-AdGuard DoH story resolved first; see the dns_hijack drop list in
-  # hosts/nas/router.nix).
-  "secrets/wifi-lan.age".publicKeys = editors ++ coordinatorOnly;
+  # BE550 repeated-LAN credentials ($BE550_SSID / $BE550_PSK) — the
+  # thomas-6ghz profile on the coordinator (hosts/coordinator/uplink-nas.nix)
+  # AND the zenbook (its AdGuard-DoH landmine was defused the same day the
+  # laptops tier joined, 2026-08-21). Re-minted with both recipients.
+  "secrets/wifi-lan.age".publicKeys = editors ++ coordinatorOnly ++ laptops;
 
   # --- operator vault (admin key ONLY — a tar.gz of everything that is not
   # otherwise in git: pre-generated host keys + wifi profiles (staging), tom's ssh

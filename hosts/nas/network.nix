@@ -49,12 +49,12 @@
   # now asserts this stays on.
   networking.nftables.enable = true;
 
-  # SSH admission — transitional dual-rail: the coordinator's old /30 address
-  # and its pinned LAN lease are both welcome until the cleanup commit.
+  # SSH admission — the coordinator's static LAN address only (/30 rail
+  # swept 2026-08-21 along with every other 10.77.0.1 admission fleet-wide).
   # This one rule also carries borg (forced-command key, backups.nix) and the
   # coordinator's journal-archive ssh (journal-upload.nix). Everything else
   # SSH-shaped stays closed: headless.nix forces openssh.openFirewall=false.
   networking.firewall.extraInputRules = ''
-    ip saddr { 10.77.0.1, 10.42.0.2 } tcp dport 22 accept comment "coordinator SSH (legacy /30 + LAN)"
+    ip saddr 10.42.0.2 tcp dport 22 accept comment "coordinator SSH (LAN; /30 retired 2026-08-21)"
   '';
 }
