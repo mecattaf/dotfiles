@@ -94,7 +94,18 @@ in
         # nfsd did (hosts/nas/storage.nix lore); the ExecStartPre wait below
         # is the fix. Port 53 admission is scoped to the LAN interface in
         # hosts/nas/router.nix, not opened here.
-        bind_hosts = [ "127.0.0.1" ] ++ lib.optional isLanResolver "10.42.0.1";
+        bind_hosts =
+          [ "127.0.0.1" ]
+          ++ lib.optionals isLanResolver [
+            "10.42.0.1"
+            # The NAS's tailnet address (2026-08-21, "NAS is the tailscale
+            # sink"): the admin console's split-DNS entry sends every tailnet
+            # device's `.internal` queries here, so photos.internal works
+            # from anywhere. Stable for the lifetime of the node key (which
+            # is expiry-disabled); if the NAS ever re-registers, update this
+            # and the console entry together.
+            "100.89.54.51"
+          ];
         port = 53;
         upstream_dns = [
           "https://1.1.1.1/dns-query"
@@ -182,14 +193,30 @@ in
   # itself, not for a target that lies about it; 30s bound, then start anyway
   # and let Restart handle a genuinely late interface.
   systemd.services.adguardhome = lib.mkIf isLanResolver {
-    serviceConfig.ExecStartPre = pkgs.writeShellScript "wait-lan-addr" ''
-      for _ in $(${pkgs.coreutils}/bin/seq 30); do
-        ${pkgs.iproute2}/bin/ip -4 addr show dev enp1s0 | ${pkgs.gnugrep}/bin/grep -q '10\.42\.0\.1/' && exit 0
-        ${pkgs.coreutils}/bin/sleep 1
+    # The tailnet bind additionally needs tailscaled to have brought
+    # tailscale0 up with the node address; same wait-for-the-address-itself
+    # doctrine, same 30s bound per address.
+    after = [ "tailscaled.service" ];
+    wants = [ "tailscaled.service" ];
+    serviceConfig.ExecStartPre = pkgs.writeShellScript "wait-bind-addrs" ''
+      for addr in "enp1s0 10\.42\.0\.1/" "tailscale0 100\.89\.54\.51/"; do
+        set -- $addr
+        for _ in $(${pkgs.coreutils}/bin/seq 30); do
+          ${pkgs.iproute2}/bin/ip -4 addr show dev "$1" 2>/dev/null | ${pkgs.gnugrep}/bin/grep -q "$2" && break
+          ${pkgs.coreutils}/bin/sleep 1
+        done
       done
       exit 0
     '';
     # RestartSec: upstream module already sets 10 — good enough for the
     # late-interface case; do not fight it.
+  };
+
+  # Tailnet devices query the split-DNS entry directly at the node address:
+  # admit :53 on the tailnet interface (NAS only). LAN admission lives in
+  # hosts/nas/router.nix; this is its roaming twin.
+  networking.firewall.interfaces.tailscale0 = lib.mkIf isLanResolver {
+    allowedUDPPorts = [ 53 ];
+    allowedTCPPorts = [ 53 ];
   };
 }
