@@ -122,7 +122,21 @@ in
       pmf = 3;
       psk = "$BE550_PSK";
     };
-    ipv4.method = "auto";
+    # STATIC addressing (2026-08-21 hardening ruling: "anything dns/dhcp
+    # related must never bite"). This box's 10.42.0.2 is load-bearing — NAS
+    # firewall admissions, NFS export ACLs, and AdGuard's .internal answers
+    # all name it — so its most important client must not depend on the
+    # DHCP round-trip at association time or lease renewal. The dnsmasq
+    # dhcp-host pin (hosts/nas/router.nix) stays as the guard that keeps
+    # the pool from ever handing .2 to anyone else. DNS is the NAS resolver,
+    # stated here rather than learned, with ignore-auto-dns for good measure.
+    ipv4 = {
+      method = "manual";
+      address1 = "10.42.0.2/24";
+      gateway = "10.42.0.1";
+      dns = "10.42.0.1";
+      ignore-auto-dns = true;
+    };
     ipv6.method = "ignore";
   };
 

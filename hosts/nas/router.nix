@@ -166,13 +166,22 @@ in
       # MACs verified live 2026-08-20 (wlp192s0) / recorded in git pre-
       # retirement (BE550, ip neigh 2026-07).
       dhcp-host = [
+        # The coordinator self-assigns .2 statically since the 2026-08-21
+        # hardening (uplink-nas.nix); this pin remains as the guard that
+        # keeps the pool from ever offering .2 to another MAC.
         "ac:f2:3c:35:1e:d1,coordinator,10.42.0.2,infinite"
         "98:03:8e:6b:61:e2,be550,10.42.0.3,infinite"
         # Brother HL-L2445DW — MAC from its mDNS hostname (BRW08F97E55F396),
         # confirmed via ARP from the coordinator on the Freebox segment
-        # (2026-08-21, 192.168.1.38). CUPS reaches it by that mDNS name, so
-        # the pin is for firewall/admin-UI stability, not for printing.
+        # (2026-08-21, 192.168.1.38). The pin is LOAD-BEARING for printing
+        # since the same-day hardening: in Deep Sleep the printer's mDNS
+        # responder goes mute, so CUPS dials ipp://10.42.0.4 directly
+        # (modules/printing.nix) and this address must never move.
         "08:f9:7e:55:f3:96,printer,10.42.0.4,infinite"
+        # Worker — permanent fleet member (2026-08-21 ruling). Pinned ahead
+        # of its full reintegration (#229) so its identity is stable for
+        # firewall/SSH admissions from day one.
+        "44:f7:9f:da:bd:1d,worker,10.42.0.5,infinite"
       ];
     };
   };

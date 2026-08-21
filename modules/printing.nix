@@ -28,7 +28,18 @@ lib.mkIf (!config.myHeadless.enable) {
 
   # Discovery alone creates an on-demand temporary queue, which Chrome does
   # not reliably enumerate. Keep one persistent A4 queue with the name already
-  # used on coordinator. The mDNS hostname survives DHCP lease changes.
+  # used on coordinator.
+  #
+  # The queue dials the printer's PINNED LAN ADDRESS, not its mDNS name
+  # (2026-08-21): in Deep Sleep the Brother's mDNS responder goes fully mute
+  # (avahi-resolve times out even while the IP answers pings), so a .local
+  # deviceUri strands jobs exactly when the printer has been idle a while —
+  # which is always, for a home printer. The address is safe to hardcode
+  # because the NAS pins it by MAC (hosts/nas/router.nix dhcp-host:
+  # 10.42.0.4,infinite); an IPP connect to the IP wakes the printer from
+  # Deep Sleep reliably. On any network where 10.42.0.4 isn't this printer
+  # (laptops roaming), the queue simply errors instead of printing somewhere
+  # unexpected — acceptable.
   hardware.printers = {
     ensureDefaultPrinter = "Brother_HL_L2445DW";
     ensurePrinters = [
@@ -36,7 +47,7 @@ lib.mkIf (!config.myHeadless.enable) {
         name = "Brother_HL_L2445DW";
         description = "Brother HL-L2445DW";
         location = "Home";
-        deviceUri = "ipp://BRW08F97E55F396.local:631/ipp/print";
+        deviceUri = "ipp://10.42.0.4:631/ipp/print";
         model = "everywhere";
         ppdOptions.PageSize = "A4";
       }

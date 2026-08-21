@@ -11,6 +11,7 @@
     ./disko.nix
     ./network.nix
     ./router.nix # 2026-08-20: NAS is the house router (A8500 uplink + BE550 LAN)
+    ./printer-keepalive.nix # keeps the Brother out of mDNS-muting Deep Sleep
     ./journal.nix
     ./storage.nix
     ./discovery.nix # Avahi + read-only SMB so the NAS shows up in Nautilus (2026-08-21)
