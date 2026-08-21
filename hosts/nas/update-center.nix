@@ -19,8 +19,10 @@
 #   - a deploy mechanism. There are no SSH keys here, no push path, no
 #     fleet-deploy resurrection. A broken nightly build costs nothing but a
 #     stale cache; devices keep pulling whatever was last good.
-#   - a self-update. The NAS builds its OWN closure too, but never activates
-#     it — the operator does, on the pinned ~6-month cadence.
+#   - a self-update. The NAS is not even in the build list (Tom's ruling,
+#     2026-08-21: "i asked that we do not build nas nightly, since i will not
+#     be updating nas nightly") — its closure is built on demand at the
+#     pinned ~6-month manual bump, by the operator, and never before.
 #
 # Source trust: the repo is public, fetched by commit over https — no repo
 # key on the appliance (doctrine holds). Push trust: the attic token is
@@ -41,7 +43,7 @@ let
   cfg = config.myNas.updateCenter;
   hosts = [
     "coordinator"
-    "nas"
+    "worker" # reintegrated 2026-08-21 (#229) — missed on the first pass
     "zenbook-duo"
   ];
   build = pkgs.writeShellScript "update-center-build" ''
