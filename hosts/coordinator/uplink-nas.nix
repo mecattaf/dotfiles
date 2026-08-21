@@ -8,6 +8,8 @@ let
   # that ciphertext is committed the whole declarative-wifi block stays inert so
   # nothing here can break eval or clobber the live imperative connection.
   wifiReady = builtins.pathExists ../../secrets/wifi.age;
+  # BE550-LAN credentials, minted at cutover phase 3 (2026-08-20 rewire).
+  lanReady = builtins.pathExists ../../secrets/wifi-lan.age;
 in
 # The coordinator's internet uplink + directly-attached NAS.
 #
@@ -24,6 +26,13 @@ in
 # What remains is genuinely BE550-independent:
 #   - the Freebox wifi uplink (wlp192s0), this box's actual internet, and
 #   - a private routed fast lane to the headless NixOS host `nas`.
+#
+# 2026-08-20 REWIRE (in progress): the BE550 is coming BACK, but the router
+# plane is not coming back here — the NAS ingests the Freebox on a USB A8500
+# and is the LAN's gateway/DHCP/DNS (hosts/nas/router.nix); this box becomes
+# an ordinary client of the repeated wifi (be550-lan profile below). The
+# nas-fast-lane + installer dnsmasq + NAT blocks below are TRANSITIONAL
+# rails for the cutover and retire with the /30 in the cleanup commit.
 #
 # The LaCie 4TB USB plane that used to live here (the /mnt/nas automount, the
 # SAT smartd thermal watch, the hd-idle spin-down suite) was RETIRED 2026-08-02
@@ -75,83 +84,65 @@ in
     ipv4.method = "auto";
     ipv6.method = "auto";
   };
-  networking.networkmanager.ensureProfiles.environmentFiles = lib.mkIf wifiReady [
-    config.age.secrets.wifi.path
-  ];
+  networking.networkmanager.ensureProfiles.environmentFiles =
+    lib.optional wifiReady config.age.secrets.wifi.path
+    ++ lib.optional lanReady config.age.secrets.wifi-lan.path;
 
-  # Dedicated point-to-point link to the new NAS. This deliberately follows the
-  # proven wired-speaker arrangement: NetworkManager owns and raises the NIC,
-  # dnsmasq is DHCP-only for factory/installer boots, the /30 is trusted, and
-  # NAT relays the appliance to the internet through the coordinator's wifi.
-  networking.networkmanager.ensureProfiles.profiles.nas-fast-lane = {
+  # The repeated LAN (2026-08-20 rewire): once the NAS routes the house and
+  # the BE550 rebroadcasts at the TV corner, this box becomes an ordinary
+  # wifi client of that segment — its pinned lease is 10.42.0.2
+  # (hosts/nas/router.nix dhcp-host). Higher autoconnect-priority than the
+  # freebox-uplink above, which stays as the fallback rail: if the repeated
+  # LAN is down (NAS rebuild, BE550 unplugged), NM falls back to the Freebox
+  # and this box keeps internet + tailnet, including its SSH path to the
+  # NAS's uplink leg.
+  #
+  networking.networkmanager.ensureProfiles.profiles.be550-lan = lib.mkIf lanReady {
     connection = {
-      id = "nas-fast-lane";
-      type = "ethernet";
-      interface-name = "enp191s0";
+      id = "be550-lan";
+      type = "wifi";
+      interface-name = "wlp192s0";
       autoconnect = true;
-      autoconnect-priority = 50;
+      autoconnect-priority = 110;
     };
-    ipv4 = {
-      method = "manual";
-      address1 = "10.77.0.1/30";
-      never-default = true;
+    wifi = {
+      mode = "infrastructure";
+      ssid = "$BE550_SSID";
+      # Pinned to the BE550's 5GHz radio, captured live from a coordinator scan
+      # at cutover (2026-08-21: 2.4GHz 98:03:8E:6B:61:E4, 5GHz …:E5). Same
+      # doctrine as the freebox-uplink pin above: the mt7925e same-SSID
+      # band-steering roam is a wcid-corruption hard-lock, and the BE550
+      # broadcasts one SSID on both bands, so without this pin NM could roam.
+      # The flake check (be550-lan bssid assertion) enforces that this pin
+      # exists the moment wifi-lan.age does.
+      bssid = "98:03:8E:6B:61:E5";
+      band = "a";
     };
+    wifi-security = {
+      key-mgmt = "wpa-psk";
+      psk = "$BE550_PSK";
+    };
+    ipv4.method = "auto";
     ipv6.method = "ignore";
   };
 
-  # One downstream lease on the only other usable address. Once NixOS is
-  # installed it uses the same address statically, so canonical routing never
-  # depends on DHCP. port=0 prevents any collision with loopback AdGuard :53.
-  services.dnsmasq = {
-    enable = true;
-    settings = {
-      port = 0;
-      interface = "enp191s0";
-      bind-dynamic = true;
-      dhcp-range = "10.77.0.2,10.77.0.2,255.255.255.252,12h";
-      dhcp-option = [
-        "option:router,10.77.0.1"
-        "option:dns-server,1.1.1.1,9.9.9.9"
-      ];
-      dhcp-authoritative = true;
-    };
-  };
-
-  networking.nat = {
-    enable = true;
-    internalInterfaces = [ "enp191s0" ];
-    externalInterface = "wlp192s0";
-  };
-  # CABLE ADMISSION DOCTRINE (2026-08-06). This used to be
-  # `networking.firewall.trustedInterfaces = [ "enp191s0" ]`, which accepted
-  # EVERY port on this box from the cable. That was the mirror image of how the
-  # NAS treats us: every NAS module scopes its own listener to `ip saddr
-  # 10.77.0.1` in its own file (storage.nix, media.nix, attic.nix, journal.nix,
-  # paperless.nix). The coordinator now owes the same discipline in the same
-  # shape — each module declares `interfaces.enp191s0.allowedTCPPorts` next to
-  # the `interfaces.tailscale0.allowedTCPPorts` line it already carries:
+  # nas-fast-lane RETIRED 2026-08-21 (Tom: "no longer desired at all
+  # whatsoever"): the /30 point-to-point rail (nas-fast-lane NM profile,
+  # installer dnsmasq, NAT relay, enp191s0 admissions here and in
+  # attic/caddy-artifacts/llama-swap/immich-ml) is gone — the physical cable
+  # was unplugged at the TV-corner move and the NAS reaches the internet
+  # through its own wan0 now. The NAS-SIDE dual-rail leftovers (10.77.0.2
+  # address, 10.77.0.1 export/admission entries across the NAS modules)
+  # retire in the post-soak cleanup commit. NOTE: ensureProfiles never
+  # deletes a profile it stopped ensuring — `nmcli connection delete
+  # nas-fast-lane` was run by hand at retirement.
   #
-  #     80  caddy-artifacts.nix  the .internal front doors (see split horizon
-  #                              in modules/adguardhome.nix)
-  #   3003  immich-ml.nix   NAS Immich → coordinator ML (hosts/nas/media.nix)
-  #   8080  attic.nix       NAS substituter http://coordinator:8080/fleet
-  #   9292  llama-swap.nix  NAS → coordinator LLM endpoint
-  #
-  # Interface scoping is exactly as narrow as a source-IP match here: the /30
-  # holds only 10.77.0.1 and 10.77.0.2, so nothing else can ever arrive on it.
-  # (extraInputRules, the option the NAS uses, is nftables-only and this host
-  # runs the default iptables backend — see hosts/nas/network.nix:26.)
-  #
-  # Unaffected by this change, because none of it came from
-  # trustedInterfaces: sshd (opened on all interfaces), allowPing, NAT
-  # forwarding for the NAS's internet (networking.nat → nixos-filter-forward),
-  # and all coordinator-initiated return traffic incl. the NFSv4.2 backchannel,
-  # which rides the client's own connection and is matched by conntrack.
-  networking.firewall.interfaces.enp191s0.allowedUDPPorts = [
-    # dnsmasq's DHCP server above. The NAS is statically addressed, so this is
-    # only for factory/installer boots (nixos-anywhere), which is precisely the
-    # moment nobody wants to discover it was firewalled off.
-    67
-  ];
-  networking.hosts."10.77.0.2" = [ "nas" ];
+  # The NAS as seen from this host: its LAN identity (2026-08-20 rewire).
+  # This one line re-points the NFS mount, all five socket-proxyd relays,
+  # borg, and the journal-archive ssh — everything dials the NAME `nas`.
+  # 10.42.0.1 is reachable over the /30 cable too while it is still plugged
+  # (both addresses ride the NAS's one NIC), so this is safe to deploy the
+  # moment the NAS's phase-1 deploy has landed, and survives the physical
+  # move unchanged. DEPLOY ORDER: NAS first, then this box.
+  networking.hosts."10.42.0.1" = [ "nas" ];
 }

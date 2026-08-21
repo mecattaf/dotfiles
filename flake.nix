@@ -377,7 +377,12 @@
         hostNixpkgs.lib.nixosSystem {
           inherit system;
           specialArgs = {
-            inherit inputs rollingInputOverrides fleetDeploySshOpts;
+            # rollingInputOverrides/fleetDeploySshOpts left this set 2026-08-21
+            # with hosts/coordinator/fleet-deploy.nix, their only consumer;
+            # both still exist at flake level (deploy nodes use the SSH opts,
+            # and the NAS update-center will inherit the rolling-override
+            # mechanic).
+            inherit inputs;
           };
           modules = [
             {
@@ -447,8 +452,10 @@
       };
 
       # deploy-rs owns HOW a selected generation reaches and activates on a node.
-      # Tally still owns WHEN this graph may run and atomically leases every
-      # affected build/GPU resource around the complete nightly transaction.
+      # Since 2026-08-21 this graph is MANUAL-ONLY (`deploy .#<host>`): the
+      # nightly Tally-owned fleet transaction (fleet-deploy.service) is dead,
+      # superseded by the NAS update-center where devices pull instead of
+      # being pushed. Manual pushes remain the operator's escape hatch.
       deploy = {
         sshUser = "root";
         user = "root";
@@ -583,15 +590,22 @@
           assert coordinator.systemd.sockets ? navidrome-relay;
           assert coordinator.systemd.sockets ? plex-relay;
           assert coordinator.systemd.sockets ? immich-ml-access;
-          # ── cable admission (2026-08-06) ───────────────────────────────────
-          # The NAS has NO tailnet identity (asserted above), so the /30 cable
-          # is its only path to the coordinator. Two failure modes to hold off:
-          # re-blanket-trusting the interface (which is how the coordinator
-          # ended up open on every port while the NAS scoped every listener of
-          # its own), and anyone concluding these flows need Tailscale.
+          # ── cable admission (2026-08-06) + LAN admission (2026-08-20) ──────
+          # The NAS has NO tailnet identity (asserted above). Its path to the
+          # coordinator was the /30 cable; during the 2026-08-20 rewire
+          # transition it is BOTH rails — the cable (enp191s0) and the BE550
+          # LAN over the coordinator's wifi (wlp192s0). Failure modes held
+          # off: re-blanket-trusting an interface, and anyone concluding
+          # these flows need Tailscale. The enp191s0 half retires with the
+          # /30 cleanup commit; drop those asserts in that same commit.
           assert !(builtins.elem "enp191s0" coordinator.networking.firewall.trustedInterfaces);
+          assert !(builtins.elem "wlp192s0" coordinator.networking.firewall.trustedInterfaces);
           assert builtins.all
-            (p: builtins.elem p coordinator.networking.firewall.interfaces.enp191s0.allowedTCPPorts)
+            (
+              p:
+              builtins.elem p coordinator.networking.firewall.interfaces.enp191s0.allowedTCPPorts
+              && builtins.elem p coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts
+            )
             [
               80 # caddy .internal front doors
               3003 # immich-ml, dialled by nas.services.immich above
@@ -601,12 +615,42 @@
           # dnsmasq for a factory/installer boot — the one moment nobody wants
           # to discover the appliance was firewalled off.
           assert builtins.elem 67 coordinator.networking.firewall.interfaces.enp191s0.allowedUDPPorts;
-          # Split-horizon .internal: each box resolves the coordinator over its
-          # shortest path, so stopping tailscaled cannot break traffic between
-          # two hosts joined by a cable. A 100.x answer on either of these is
-          # the regression this catches.
+          # ── the NAS router plane (2026-08-20 rewire) ───────────────────────
+          # The NAS is the house's gateway/DHCP/DNS (hosts/nas/router.nix).
+          assert nas.services.dnsmasq.enable;
+          # AdGuard owns :53 (the settings type lifts scalars into lists).
+          assert nixpkgs.lib.toList nas.services.dnsmasq.settings.port == [ 0 ];
+          assert nas.networking.nat.enable;
+          assert nas.networking.nat.externalInterface == "wan0";
+          assert nas.networking.nat.internalInterfaces == [ "enp1s0" ];
+          assert nas.networking.nftables.tables ? dns_hijack;
+          assert builtins.elem "10.42.0.1" nas.services.adguardhome.settings.dns.bind_hosts;
+          # Never 0.0.0.0: resolved's stub holds 127.0.0.53:53 and a wildcard
+          # bind EADDRINUSEs against it (26d4afdf lore).
+          assert !(builtins.elem "0.0.0.0" nas.services.adguardhome.settings.dns.bind_hosts);
+          # ── Strix Halo hard-lock protections must outlive the rewire ──────
+          # The mt7925e wcid roam crash bricked the coordinator twice
+          # (2026-07-16); the standing fixes are the ASPM escape hatch + the
+          # sp5100_tco watchdog (modules/strix.nix) + never roaming: any wifi
+          # profile this box could associate to must pin a single BSSID. The
+          # be550-lan profile is minted at cutover; the moment it exists it
+          # must carry its pin — this assert is what forces that.
+          assert nixpkgs.lib.hasInfix "mt7925e disable_aspm=1" coordinator.boot.extraModprobeConfig;
+          assert
+            let
+              profiles = coordinator.networking.networkmanager.ensureProfiles.profiles;
+            in
+            builtins.all (p: p.wifi ? bssid) (
+              builtins.filter (p: (p.connection.type or "") == "wifi") (builtins.attrValues profiles)
+            );
+          # Split-horizon .internal: each box resolves the coordinator over
+          # its shortest path, so stopping tailscaled cannot break traffic
+          # between two hosts on the same LAN. The NAS's answer is the
+          # coordinator's PINNED lease (hosts/nas/router.nix dhcp-host) and
+          # since 2026-08-20 it also serves every LAN phone. A 100.x answer
+          # on either of these is the regression this catches.
           assert builtins.all (
-            r: r.answer == "10.77.0.1"
+            r: r.answer == "10.42.0.2"
           ) nas.services.adguardhome.settings.filtering.rewrites;
           assert builtins.all (
             r: r.answer == "127.0.0.1"
@@ -619,15 +663,18 @@
           # it — a gate that nothing checks is a gate that drifts.
           assert !nas.myNas.snapshots.enable; # ws2a hosts/nas/snapshots.nix
           assert !nas.myNas.backups.enable; # ws2b hosts/nas/backups.nix
-          assert !nas.myNas.archive.enable; # ws4  hosts/nas/archive.nix
+          # ws4 flipped ON 2026-08-20 (the Library's cold store): subvolume
+          # created live with compression=none, gate + export + receipt
+          # discipline landed together, per this block's own instructions.
+          assert nas.myNas.models.enable; # model Library (was ws4 archive) hosts/nas/models.nix
           assert !nas.myNas.attic.enable; # ws5  hosts/nas/attic.nix
           assert !nas.myNas.paperless.enable; # #136 hosts/nas/paperless.nix
           assert !nas.services.paperless.enable;
           assert !coordinator.myNasClient.relayAttic;
-          # `or false` because hosts/coordinator/backups.nix is not in
-          # hosts/coordinator/default.nix's imports yet — that one line is
-          # listed in the #130 handoff and this check goes strict the moment it
-          # lands. Until then the option does not exist and a bare read throws.
+          # backups.nix IS imported (hosts/coordinator/default.nix) — the
+          # earlier claim here that it wasn't was stale. The `or false` is
+          # kept as harmless belt-and-braces only; the gate itself is real
+          # and OFF.
           assert !(coordinator.myCoordinatorBackups.enable or false);
           # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
           # 2026-08-03: the staged Jellyfin alternative was deleted, not kept
@@ -857,12 +904,16 @@
           # on the retired host's absence.
           assert nixpkgs.lib.all (hosts: !(nixpkgs.lib.elem retiredHost hosts)) activeHostSets;
           assert nixpkgs.lib.all (hosts: hosts == expectedHosts) activeHostSets;
-          assert coordinator.networking.hosts."10.77.0.2" == [ "nas" ];
-          assert nas.networking.hosts."10.77.0.1" == [ "coordinator" ];
+          # 2026-08-20 rewire: names resolve to the LAN identities — the NAS
+          # at its gateway address, the coordinator at its pinned lease. Both
+          # are reachable over the legacy /30 cable too until the cleanup
+          # commit, so these hold across the whole transition.
+          assert coordinator.networking.hosts."10.42.0.1" == [ "nas" ];
+          assert nas.networking.hosts."10.42.0.2" == [ "coordinator" ];
           # journald substrate (#135): coordinator is the sole sender, the NAS
           # receives on the NVMe, and the local journal stays bounded.
           assert nas.services.journald.remote.enable;
-          assert coordinator.services.journald.upload.settings.Upload.URL == "http://10.77.0.2:19532";
+          assert coordinator.services.journald.upload.settings.Upload.URL == "http://10.42.0.1:19532";
           assert coordinator.services.journald.storage == "persistent";
           assert self.deploy.nodes.coordinator.hostname == "coordinator";
           assert self.deploy.nodes.nas.hostname == "nas";
@@ -1251,6 +1302,8 @@
               "qwen3-vl-8b-ocr"
               "qwen3-embedding-8b-q8-0"
               "qwen3-vl-embedding-8b-q8-0"
+              "qwen38-27b-mtp-q8-0"
+              "ornith-15-35b-q8-0"
             ];
           assert
             coordinator.services.local-models.artifacts == [
@@ -1262,7 +1315,7 @@
               "vibevoice-qwen25-7b-tokenizer"
             ];
           assert
-            builtins.length (nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies) == 19;
+            builtins.length (nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies) == 22;
           assert nixpkgs.lib.all (artifact: artifact.source.layout == "snapshot") mageArtifacts;
           assert builtins.length mageFiles == 164;
           assert nixpkgs.lib.foldl' (total: file: total + file.bytes) 0 mageFiles == 45863017994;
@@ -1272,6 +1325,9 @@
             nixpkgs.lib.elem quantization [
               "Q8_0"
               "UD-Q8_K_XL"
+              # Qwen 3.8's MTP head: Q4_0 is the only published MTP asset;
+              # the base model itself stays Q8_0.
+              "Q4_0"
             ]
           ) selectedWeightQuantizations;
           assert
@@ -1279,11 +1335,13 @@
               "fara1.5-27b"
               "fara1.5-9b"
               "gemma4-26b-a4b-it"
+              "ornith-1.5-35b"
               "qwen3-embedding-8b"
               "qwen3-vl-8b-ocr"
               "qwen3-vl-embedding-8b"
               "qwen3.6-27b"
               "qwen3.6-35b-a3b"
+              "qwen3.8-27b"
             ];
           assert coordinatorSettings.peers == { };
           assert coordinator.systemd.services.llama-swap.environment.LLAMA_MEDIA_MARKER == "<__media__>";
@@ -1294,6 +1352,7 @@
           assert
             coordinator.services.npu-llm.models == [
               "gemma4-it:e4b"
+              "qwen3.6-moe:35b-a3b"
             ];
           assert nixpkgs.lib.all (unit: !(nixpkgs.lib.hasPrefix "flm-" unit)) (
             builtins.attrNames coordinator.systemd.services
@@ -1370,10 +1429,12 @@
               and .persistentServer == false
               and (.models | map(.tag)) == [
                 "gemma4-it:e4b",
+                "qwen3.6-moe:35b-a3b",
                 "qwen3:4b"
               ]
               and (.models | map(.command)) == [
                 ["flm", "run", "gemma4-it:e4b"],
+                ["flm", "run", "qwen3.6-moe:35b-a3b"],
                 ["flm", "run", "qwen3:4b"]
               ]
               and .utility == {

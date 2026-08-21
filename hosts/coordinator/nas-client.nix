@@ -10,7 +10,9 @@ let
 
   # #139. One poke below the mountpoint is the whole fix; everything else here
   # is the bound on how long that poke may cost a login. Budget: each attempt
-  # gets 5s (one soft-mount round of timeo=50/retrans=2 plus slack), and the
+  # gets 5s (enough to fire the automount trigger; a cold soft-mount round is
+  # timeo=100 now and may outlive the poke — fine, findmnt below is what
+  # decides), and the
   # retry loop gives up 10s in — the retries exist only for the cold-boot case,
   # where greetd autologins tom→niri (modules/common.nix) while enp191s0 or the
   # NAS itself is still a couple of seconds behind. Success is checked against
@@ -43,11 +45,17 @@ in
       # mount, a dead NAS makes every I/O on /mnt/nas retry FOREVER in the
       # kernel, and on 2026-08-02 that wedged PID 1 mid `nixos-rebuild switch`
       # long enough for the 30s hardware watchdog (modules/strix.nix) to reset
-      # the box. soft + timeo=50 (5s/try, deciseconds) + retrans=2 bounds any
-      # NFS op to ~15s worst case — an eternity on the dedicated /30 cable, so
-      # EIO only ever surfaces when the NAS is genuinely down, where failing
-      # beats hanging. No x-systemd.device-timeout: 'nas:/' is not a device
-      # path, so systemd ignores it with a warning on every generator run.
+      # the box. soft stays; timeo/retrans were retuned for the 2026-08-20
+      # rewire: the original timeo=50/retrans=2 (~15s worst case) was sized
+      # for the dedicated /30 cable, where any retry meant the NAS was
+      # genuinely down. This mount now rides wifi (this box → BE550 → wire →
+      # NAS), where multi-second stalls are ordinary contention, not death —
+      # timeo=100 (10s/try, deciseconds) + retrans=3 (~70s worst case with
+      # backoff) keeps EIO for real outages without surfacing it on every
+      # busy-airtime moment. Mind the 2m hardware watchdog (strix.nix:128):
+      # a single op still bounds well inside it. No x-systemd.device-timeout:
+      # 'nas:/' is not a device path, so systemd ignores it with a warning on
+      # every generator run.
       fileSystems."/mnt/nas" = {
         device = "nas:/";
         fsType = "nfs4";
@@ -56,8 +64,8 @@ in
           "nofail"
           "noauto"
           "soft"
-          "timeo=50"
-          "retrans=2"
+          "timeo=100"
+          "retrans=3"
           "x-systemd.automount"
           "x-systemd.mount-timeout=30s"
           "_netdev"

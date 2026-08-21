@@ -88,8 +88,9 @@ in
     # NFSv4 exports use EXPLICIT UNIQUE fsids per #131: subvolumes below a
     # lone fsid=0 export are a known sharp edge (each subvolume has its own
     # st_dev), so every crossing point is exported deliberately. Only the
-    # coordinator on the /30 is admitted; other clients reach the relays over
-    # Tailscale and the filesystem itself never leaves this cable.
+    # coordinator is admitted (legacy /30 address + pinned LAN lease during
+    # the 2026-08-20 cutover transition); other clients reach the relays over
+    # Tailscale and the filesystem itself never leaves that one client.
     # No hostName bind: nfsd listening on the wildcard is fine on a box whose
     # only network is the /30 cable, and binding 10.77.0.2 raced address
     # assignment at boot even behind network-online.target (NM reports online
@@ -98,17 +99,26 @@ in
     # nftables scoping 2049 to 10.77.0.1 is the actual access control.
     services.nfs.server = {
       enable = true;
-      exports = ''
-        ${storageRoot} 10.77.0.1(rw,sync,fsid=0,no_subtree_check,no_root_squash)
-        ${storageRoot}/photos 10.77.0.1(rw,sync,fsid=1,no_subtree_check,no_root_squash)
-        ${storageRoot}/music 10.77.0.1(rw,sync,fsid=2,no_subtree_check,no_root_squash)
-        ${storageRoot}/documents 10.77.0.1(rw,sync,fsid=3,no_subtree_check,no_root_squash)
-        ${storageRoot}/services 10.77.0.1(rw,sync,fsid=4,no_subtree_check,no_root_squash)
-        ${storageRoot}/videos 10.77.0.1(rw,sync,fsid=5,no_subtree_check,no_root_squash)
-      '';
+      exports =
+        let
+          # The coordinator, on both transitional rails (2026-08-20 cutover):
+          # its legacy /30 address and its pinned LAN lease
+          # (hosts/nas/router.nix dhcp-host). Nothing else — the export ACL
+          # stays exactly as narrow as the nftables rule below, and the
+          # legacy client dies with the /30 in the cleanup commit.
+          clients = opts: "10.77.0.1(${opts}) 10.42.0.2(${opts})";
+        in
+        ''
+          ${storageRoot} ${clients "rw,sync,fsid=0,no_subtree_check,no_root_squash"}
+          ${storageRoot}/photos ${clients "rw,sync,fsid=1,no_subtree_check,no_root_squash"}
+          ${storageRoot}/music ${clients "rw,sync,fsid=2,no_subtree_check,no_root_squash"}
+          ${storageRoot}/documents ${clients "rw,sync,fsid=3,no_subtree_check,no_root_squash"}
+          ${storageRoot}/services ${clients "rw,sync,fsid=4,no_subtree_check,no_root_squash"}
+          ${storageRoot}/videos ${clients "rw,sync,fsid=5,no_subtree_check,no_root_squash"}
+        '';
     };
     networking.firewall.extraInputRules = ''
-      ip saddr 10.77.0.1 tcp dport 2049 accept comment "NFSv4 from coordinator"
+      ip saddr { 10.77.0.1, 10.42.0.2 } tcp dport 2049 accept comment "NFSv4 from coordinator (legacy /30 + LAN)"
     '';
 
     # With the wildcard bind the address race is gone, but nfsd must still not

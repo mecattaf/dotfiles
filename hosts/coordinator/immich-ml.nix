@@ -56,13 +56,13 @@ in
   };
 
   # ML has no application-layer authentication. Port 3003 is deliberately NOT
-  # opened on the LAN/wifi or Tailscale zones; only localhost and the private
-  # /30 cable to the NAS can reach it — the NAS's Immich points at
-  # http://coordinator:3003 (hosts/nas/media.nix). Until 2026-08-06 that worked
-  # via a blanket trustedInterfaces on enp191s0; the rule below is the same
-  # boundary said out loud. The proxy wakes the backend for a batch and retires
-  # after 15 idle minutes.
-  networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 3003 ];
+  # opened on Tailscale; the NAS's Immich points at http://coordinator:3003
+  # (hosts/nas/media.nix) and its requests arrive over the BE550 LAN on
+  # wlp192s0 (2026-08-21: the /30 cable and its enp191s0 admission are
+  # retired). The wifi admission is LAN-wide by interface; every LAN client is
+  # a pinned house device. The proxy wakes the backend for a batch and
+  # retires after 15 idle minutes.
+  networking.firewall.interfaces.wlp192s0.allowedTCPPorts = [ 3003 ];
   systemd.sockets.immich-ml-access = {
     description = "Wake coordinator Immich ML on the first private request";
     wantedBy = [ "sockets.target" ];

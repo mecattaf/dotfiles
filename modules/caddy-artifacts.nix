@@ -80,7 +80,10 @@ in
   # than hairpinning through this box's tailnet address (split horizon, see
   # modules/adguardhome.nix). Without this the NAS resolves photos.internal to
   # 10.77.0.1 and gets a closed port.
-  networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 80 ];
+  # (+ wlp192s0 since the 2026-08-20 rewire: LAN clients — the NAS included —
+  # reach the .internal front doors over the BE550 segment once the /30 cable
+  # retires. Inert on hosts without that interface name.)
+  networking.firewall.interfaces.wlp192s0.allowedTCPPorts = [ 80 ];
 
   systemd.services.artifact-reaper = {
     description = "Reap expired artifacts (drop-dir TTL sweep)";

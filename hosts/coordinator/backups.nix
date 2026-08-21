@@ -14,8 +14,10 @@
 # or a re-download regenerates byte-for-byte.
 #   IN   /home/tom      — the notes repo, the dotfiles checkout, ~/.claude, ssh
 #                         keys, shell state. The actual irreplaceable material.
-#   IN   /var/lib       — service state: tally, adguardhome, fleet-deploy,
-#                         tailscale, systemd machine identity.
+#   IN   /var/lib       — service state: tally, failure-markers, tailscale,
+#                         systemd machine identity. (adguardhome and
+#                         fleet-deploy state gone 2026-08-21 with their
+#                         services; stale dirs may linger until removed.)
 #   OUT  /nix/store     — not under either path, and reproducible from the flake
 #                         by definition. Backing up a store is a category error.
 #   OUT  /var/lib/atticd — the fleet binary cache. Hundreds of GB whose entire

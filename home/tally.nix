@@ -154,11 +154,15 @@ in
         enforce = "cooperative";
         hardPreempt = false;
       };
-      # The NAS data spindle as a contention lane (#135): the weekly journal
-      # archive leases it now; future borg backups and supervised LaCie mirror
-      # runs against /mnt/nas must lease it too so bursts never overlap on the
-      # same disk.
-      nas-hdd = {
+      # nas-hdd mutex REMOVED 2026-08-21 (Tom: "it's fiction"). It claimed to
+      # model the NAS data spindle, but once the NAS runs its own overnight
+      # builds/GC/backups, most spindle contention is NAS-originated and
+      # invisible to a coordinator-side lease. If a real interlock is ever
+      # needed it must live on the NAS. What remains below is deliberately
+      # narrower: tally requires every enqueue to name a non-empty pool set,
+      # and this one arbitrates only COORDINATOR-INITIATED NAS I/O against
+      # itself (one weekly job today) — it promises nothing about the disk.
+      coordinator-nas-io = {
         resource = "mutex";
         capacity = 1;
         enforce = "cooperative";
@@ -169,6 +173,13 @@ in
     # All jobs execute locally on coordinator; no daemonless SSH executor is
     # part of the active topology.
     executors = { };
+
+    # Native journald datagrams so TALLY_EVENT / TALLY_TASK_UUID /
+    # TALLY_EXIT_CODE are real journal FIELDS, not keys inside a JSON blob in
+    # MESSAGE. This is what makes the NAS-side journal archive queryable —
+    # `journalctl SYSLOG_IDENTIFIER=tally TALLY_EVENT=failed` works on the
+    # uploaded stream (2026-08-21, from the tally-vs-rewire review).
+    journald.native = true;
 
     adapters = lib.optionalAttrs isCoordinator {
       ocr-driver = inputs.tally.lib.adapters.mkAdapter {
@@ -199,13 +210,6 @@ in
       # that directory every five seconds, so this entry declares the producer
       # contract without rendering a competing drain unit or timer.
       call-diarization = {
-        kind = "events-dir";
-        selfDrain = false;
-      };
-
-      # paper-intake-collect (home/paper.nix path unit + sweep timer) drops
-      # the same shape of full-submission EnqueuePayload per scanned batch.
-      paper-intake = {
         kind = "events-dir";
         selfDrain = false;
       };
@@ -264,7 +268,7 @@ in
         kind = "calendar";
         onCalendar = "Sun 03:30";
         enqueue = {
-          pool = "nas-hdd";
+          pool = "coordinator-nas-io";
           argv = systemService "journal-archive.service";
           priority = "low";
           dedupKey = "weekly-journal-archive-%Y-%W";
@@ -273,23 +277,27 @@ in
         };
       };
 
-      nightly-fleet-deploy = {
-        kind = "calendar";
-        onCalendar = "02:00";
-        enqueue = {
-          pool = [
-            "build"
-            "flow-build"
-            "coordinator-gpu"
-          ];
-          argv = systemService "fleet-deploy.service";
-          priority = "low";
-          dedupKey = "nightly-fleet-deploy-%Y-%m-%d";
-          evidence = [ "exit:0" ];
-          noEnqueue = true;
-        };
-      };
+      # nightly-fleet-deploy REMOVED 2026-08-21 with fleet-deploy.service
+      # itself (see hosts/coordinator/default.nix) — superseded by the NAS
+      # update-center. The future coordinator-side "pull when published"
+      # producer should be a build-effect or pool-reachability kind, not a
+      # calendar racing the NAS's build window.
     };
   };
+
+  # Journal-noise filter for the 5s drain tick (2026-08-21). Measured on a
+  # live 24h window: the drain's lifecycle lines ("Started"/"Finished", two
+  # per tick, 17,280 ticks/day) were ~35k of the coordinator's ~43k daily
+  # journal lines — ~10x everything else COMBINED (next talkers: system
+  # manager 3.3k, kernel 1.0k, resolved 0.4k). Tom's criterion: "if tally is
+  # exceptionally noisy, we will add the filter" — it is, so: LogLevelMax
+  # caps this one unit at notice, dropping the info-level lifecycle chatter
+  # from journald (and therefore from the NAS upload stream) while errors and
+  # warnings still land. Tally's own job-event records are emitted by the
+  # DAEMON with SYSLOG_IDENTIFIER=tally and are untouched. The interval
+  # itself is hardcoded upstream (home-manager.nix OnUnitActiveSec=5s); the
+  # eventual real fix is a systemd .path unit on the events dir instead of
+  # polling — an upstream tally design change, tracked there, not here.
+  systemd.user.services.tally-drain.Service.LogLevelMax = "notice";
 
 }

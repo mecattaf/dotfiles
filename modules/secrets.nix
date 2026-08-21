@@ -326,6 +326,14 @@ in
       (lib.mkIf (config.networking.hostName == "coordinator" && builtins.pathExists ../secrets/wifi.age) {
         age.secrets.wifi.file = ../secrets/wifi.age;
       })
+
+      # Coordinator's BE550-LAN wifi credentials ($BE550_SSID/$BE550_PSK) —
+      # same shape and guard as the Freebox PSK above. Minted at cutover
+      # phase 3 of the 2026-08-20 NAS-router rewire, once the BE550's live
+      # SSID/PSK are read off its admin page; inert until then.
+      (lib.mkIf (config.networking.hostName == "coordinator" && builtins.pathExists ../secrets/wifi-lan.age) {
+        age.secrets.wifi-lan.file = ../secrets/wifi-lan.age;
+      })
     ]
   );
 }

@@ -147,6 +147,6 @@ in
     environment.systemPackages = [ pkgs.borgbackup ];
 
     # No new firewall rule: borg rides SSH, and network.nix already admits
-    # tcp/22 from 10.77.0.1 only.
+    # tcp/22 from the coordinator only (legacy /30 + pinned LAN lease).
   };
 }

@@ -74,6 +74,13 @@ in
   # (wlp192s0) is now declarative too (migrated from an imperative profile on
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r
   "secrets/wifi.age".publicKeys = editors ++ laptops ++ coordinatorOnly;
+  # BE550 repeated-LAN credentials ($BE550_SSID / $BE550_PSK), minted at cutover
+  # phase 3 (2026-08-21) for the coordinator's be550-lan profile
+  # (hosts/coordinator/uplink-nas.nix). Coordinator-only for now — extend to the
+  # laptops tier when the zenbook gets its own be550 profile (it also needs its
+  # loopback-AdGuard DoH story resolved first; see the dns_hijack drop list in
+  # hosts/nas/router.nix).
+  "secrets/wifi-lan.age".publicKeys = editors ++ coordinatorOnly;
 
   # --- operator vault (admin key ONLY — a tar.gz of everything that is not
   # otherwise in git: pre-generated host keys + wifi profiles (staging), tom's ssh
@@ -123,6 +130,14 @@ in
   # coordinator as the only real consumer, so the recipient tier now says so —
   # a token this wide should not be decryptable by boxes that never spend it.
   "secrets/claude-credentials.age".publicKeys = editors ++ coordinatorOnly;
+
+  # Brother HL-L2445DW Web Based Management admin password, set 2026-08-21 when
+  # the printer's forced default-password change gated its move onto the thomas
+  # LAN. Operator recall secret — no service consumes it; CUPS speaks IPP with
+  # no auth. Minted with `age -R` directly (not agenix -e), same ciphertext
+  # format. Recall on the coordinator without the admin key:
+  #   sudo age -d -i /etc/ssh/ssh_host_ed25519_key secrets/printer-admin.age
+  "secrets/printer-admin.age".publicKeys = editors ++ coordinatorOnly;
 
   # Operator CLI credentials (Tom's ruling: the coordinator is the fleet's only
   # authenticated operator box — gh + wrangler stay off the laptops).

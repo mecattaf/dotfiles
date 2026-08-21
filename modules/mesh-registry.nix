@@ -23,6 +23,9 @@
   nas = {
     aliases = [
       "nas"
+      # Both transitional rails of the 2026-08-20 rewire: the LAN identity
+      # and the legacy /30 (retires with the cleanup commit).
+      "10.42.0.1"
       "10.77.0.2"
     ];
     # Generated on the appliance's first installed boot (2026-08-01) and read

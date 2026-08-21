@@ -113,6 +113,7 @@ let
         type = types.enum [
           "model"
           "mtp-head"
+          "draft"
           "mmproj"
           "tokenizer"
           "template"
@@ -192,6 +193,12 @@ let
         default = null;
       };
       mtpHead = mkOption {
+        type = nullableString;
+        default = null;
+      };
+      # Separate small-model speculative drafter (a full GGUF, not an MTP
+      # block), e.g. Gemma 4 E2B drafting for the 31B dense model.
+      draft = mkOption {
         type = nullableString;
         default = null;
       };
@@ -279,11 +286,28 @@ let
           "retired"
         ];
       };
+      # Archive receipt: where the weights physically survive after retirement
+      # (NAS archive path + date). A `retired` row without one fails eval —
+      # asserted in modules/local-models.nix — so "I meant to archive it"
+      # becomes a build failure, not a regret. Convention set 2026-08-20 after
+      # exactly that regret; runbook: docs/nas/model-archive.md.
+      archived = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+      };
       backend = mkOption {
         type = types.enum (backendKinds.local ++ backendKinds.appliances);
       };
       hosts = mkOption {
-        type = types.nonEmptyListOf (types.enum [ "coordinator" ]);
+        # Widened beyond ["coordinator"] for the worker-node reintegration
+        # (dotfiles#229): worker-assigned rows are inert until hosts/worker
+        # returns to the flake and its allow list selects them.
+        type = types.nonEmptyListOf (
+          types.enum [
+            "coordinator"
+            "worker"
+          ]
+        );
         description = "Hosts on which this canonical deployment is installed.";
       };
       ramTierGb = mkOption {
@@ -390,6 +414,69 @@ let
               notes = "Stock Qwen checkpoint, not a fine-tune; operator-selected high-fidelity Q8 tier with its matched MTP block integrated in the GGUF.";
             };
 
+            qwen38-27b-q8-0 = mkSingleFileArtifact {
+              maker = "Qwen";
+              baseCheckpoint = {
+                url = "https://huggingface.co/Qwen/Qwen3.8-27B";
+                revision = "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0";
+              };
+              hfUrl = "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF";
+              revision = "27af057ecb382ddfea5d12837360a8980560e3ed";
+              path = "Qwen3.8-27B-Q8_0.gguf";
+              bytes = 29047086048;
+              oid = "a680f44a06920e5d689774823782006aa3acc8db95750323373b24139b67e348";
+              hash = "sha256-poD0SgaSDl1ol3SCN4IAaqOsyNuVdQMjNzskE5tn40g=";
+              quantization = "Q8_0";
+              notes = "Qwen MELS lane primary (#229). Q8-for-fidelity ruling; thinking is capped per-lane in the deployment because the model defaults to unbounded reasoning (evidence: 6-12K plateau, >12K pays up to 4.5x for nothing).";
+            };
+
+            qwen38-27b-mtp-q4-0 = mkSingleFileArtifact {
+              kind = "mtp-head";
+              maker = "Qwen / Unsloth";
+              baseCheckpoint = {
+                url = "https://huggingface.co/Qwen/Qwen3.8-27B";
+                revision = "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0";
+              };
+              hfUrl = "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF";
+              revision = "27af057ecb382ddfea5d12837360a8980560e3ed";
+              path = "MTP/mtp-Qwen3.8-27B-Q4_0.gguf";
+              bytes = 1369590656;
+              oid = "50d9ce5a6da381bbcfb31061cf73df94a90e6faf8efeddee379a9cb8f1501c6e";
+              hash = "sha256-UNnOWm2jgbvPsxBhz3PflKkOb6+O/t3uN5qcuPFQHG4=";
+              quantization = "Q4_0";
+              notes = "Q4_0 is the only MTP asset the quantizer publishes for this model; the base stays Q8_0.";
+            };
+
+            qwen38-27b-dflash2 = {
+              kind = "draft";
+              maker = "Inco AI";
+              baseCheckpoint = {
+                url = "https://huggingface.co/Qwen/Qwen3.8-27B";
+                revision = "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0";
+              };
+              notes = "DFlash2 speculative drafter for Qwen 3.8 27B, safetensors as shipped (vLLM/SGLang mainline; llama.cpp needs a GGUF conversion or the draft-dflash path). Declared for the serving-path decision in ACTION-PLAN §8.2; not yet referenced by a deployment.";
+              source = {
+                layout = "snapshot";
+                hfUrl = "https://huggingface.co/incoai/Qwen3.8-27B-DFlash2";
+                revision = "dedf8df68adfb1afeaf7b7480c0a0243108177b4";
+                primary = "model.safetensors";
+                files = [
+                  {
+                    path = "config.json";
+                    bytes = 1239;
+                    oid = "873e3556509b0da06e29654ba00d4944888d4b5e8a33afde25f7eb27d321e980";
+                    hash = "sha256-hz41VlCbDaBuKWVLoA1JRIiNS16KM6/eJffrJ9Mh6YA=";
+                  }
+                  {
+                    path = "model.safetensors";
+                    bytes = 3848817896;
+                    oid = "67fc76d68dc5a9415511a4f394ef744d67510cd20e93b37cc2cc7d28e4bab65c";
+                    hash = "sha256-Z/x21o3FqUFVEaTzlO90TWdRDNIOk7N8wsx9KOS6tlw=";
+                  }
+                ];
+              };
+            };
+
             qwen3-coder-next-ud-q4-k-xl = mkSingleFileArtifact {
               maker = "Qwen";
               baseCheckpoint = {
@@ -435,6 +522,97 @@ let
               hash = "sha256-Yyb7n15Ieqjc3TE6CR48Z3JMsqZm7Dt9KJW1sm2T7Rs=";
               quantization = "Q8_0";
               notes = "Matched Q8 MTP head for the non-QAT Gemma 4 26B A4B instruction model.";
+            };
+
+            gemma4-31b-it-q8-0 = mkSingleFileArtifact {
+              maker = "Google / Unsloth";
+              baseCheckpoint = {
+                url = "https://huggingface.co/google/gemma-4-31B-it";
+                revision = "842da3794eaa0b77d5f08bae87a17459d91ff475";
+              };
+              hfUrl = "https://huggingface.co/unsloth/gemma-4-31B-it-GGUF";
+              revision = "c1ac76e99d5513b141e8adde7288b85c3f9c32ec";
+              path = "gemma-4-31B-it-Q8_0.gguf";
+              bytes = 32635677632;
+              oid = "d5808e5874e660a85ab45b2da00c9e3b4a003621249a333772232d1a703e4d67";
+              hash = "sha256-1YCOWHTmYKhatFstoAyeO0oANiEkmjM3ciMtGnA+TWc=";
+              quantization = "Q8_0";
+              notes = "Google MELS lane heavy model, operator-pinned Q8_0 (Zetaphor benchmarked UD-Q8_K_XL — same weight class, numbers expected to transfer).";
+            };
+
+            gemma4-31b-it-mmproj-bf16 = mkSingleFileArtifact {
+              kind = "mmproj";
+              maker = "Google / Unsloth";
+              baseCheckpoint = {
+                url = "https://huggingface.co/google/gemma-4-31B-it";
+                revision = "842da3794eaa0b77d5f08bae87a17459d91ff475";
+              };
+              hfUrl = "https://huggingface.co/unsloth/gemma-4-31B-it-GGUF";
+              revision = "c1ac76e99d5513b141e8adde7288b85c3f9c32ec";
+              path = "mmproj-BF16.gguf";
+              bytes = 1200726496;
+              oid = "7a4601b12ec680f706a7e0c7e1f78f579b1db64d485a9e352ee87d4b9daa45e4";
+              hash = "sha256-ekYBsS7GgPcGp+DH4fePV5sdtk1IWp41Luh9S52qReQ=";
+              notes = "Vision projector for the SEPARATE gemma4-31b-it-vl entry only: llama.cpp refuses speculative decoding with a projector loaded, so the spec-decode entry must never gain --mmproj.";
+            };
+
+            gemma4-e2b-it-draft-ud-q8-k-xl = mkSingleFileArtifact {
+              kind = "draft";
+              maker = "Google / Unsloth";
+              baseCheckpoint = {
+                url = "https://huggingface.co/google/gemma-4-E2B-it";
+                revision = "3e22461f65e89153144f8adb70e3b8c2cc9845a7";
+              };
+              hfUrl = "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF";
+              revision = "0314792d7f1f7e229411f620751375812bb9faf2";
+              path = "gemma-4-E2B-it-UD-Q8_K_XL.gguf";
+              bytes = 5282807904;
+              oid = "ea689103802cf7edb3b3e7d606f96ee649d7e693d1bfb23a9ab507005dae4b8b";
+              hash = "sha256-6miRA4As9+2zs+fWBvlu5knX5pPRv7I6mrUHAF2uS4s=";
+              quantization = "UD-Q8_K_XL";
+              notes = "Speculative drafter for gemma4-31b-it per the Zetaphor recipe (measured +103% avg / +139% code on this hardware class at draft-n-max 4).";
+            };
+
+            ornith-15-35b-q8-0 = mkSingleFileArtifact {
+              maker = "Ornith AI";
+              hfUrl = "https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B-GGUF";
+              revision = "fbbaed45c2f0e200276ffa51701a24d45dc7f57e";
+              path = "Ornith-1.5-35B-Q8_0.gguf";
+              bytes = 37802149120;
+              oid = "854cf83f80cd37a061ed86df1fa7201162e4e1fb820b91068cc12a11d2746c9e";
+              hash = "sha256-hUz4P4DNN6Bh7YbfH6cgEWLk4fuCC5EGjMEqEdJ0bJ4=";
+              quantization = "Q8_0";
+              notes = "Cross-family finetune (Qwen 3.5 + Gemma 4 post-train, MIT); no single baseCheckpoint. Operator swapped in for Ornith 1.0 (2026-08-21 ruling) — 1.0's independently verified 72% pi-bench score does NOT transfer to 1.5. The repo also ships an mmproj (undeclared here, no ruling).";
+            };
+
+            muse-glimmer-30b-dflash2 = {
+              kind = "draft";
+              maker = "Inco AI";
+              baseCheckpoint = {
+                url = "https://huggingface.co/meta-models/Muse-Glimmer-30B";
+                revision = "a4e59da52a7bc87ae7251dd5545c0dd437c44b68";
+              };
+              notes = "DFlash2 speculative drafter for Muse Glimmer 30B (Meta MELS lane). The BASE model is deliberately undeclared: no Q8 GGUF exists (verified 2026-08-20) and the quant envelope is Tom's open decision, ACTION-PLAN §8.1. The drafter ruling stands either way.";
+              source = {
+                layout = "snapshot";
+                hfUrl = "https://huggingface.co/incoai/Muse-Glimmer-30B-DFlash2";
+                revision = "8336acb8dc9b8bf9c25f12d7785ee6df26703119";
+                primary = "model.safetensors";
+                files = [
+                  {
+                    path = "config.json";
+                    bytes = 1326;
+                    oid = "cb684d6f688a22619a63ea1debe7d30c139c195bf3141fd86a763763ab34b5d9";
+                    hash = "sha256-y2hNb2iKImGaY+od6+fTDBOcGVvzFB/YanY3Y6s0tdk=";
+                  }
+                  {
+                    path = "model.safetensors";
+                    bytes = 5544328424;
+                    oid = "6613c1523c785a804f6bd6e9d523da8d198e3795fe35a935da380e6f01d0defa";
+                    hash = "sha256-ZhPBUjx4WoBPa9bp1SPajRmON5X+Nak12jgObwHQ3vo=";
+                  }
+                ];
+              };
             };
 
             fara15-27b-q8-0 = mkSingleFileArtifact {
@@ -587,6 +765,339 @@ let
               oid = "cb4126a4c668091a89672ca02c63c86c24fd13b55abb119ad0533de5887395d0";
               hash = "sha256-y0EmpMZoCRqJZyygLGPIbCT9E7VauxGa0FM95YhzldA=";
               notes = "Aggressive refusal-removal route selected to diversify the pool beyond Heretic/abliteration.";
+            };
+
+            deepseek-v4-flash-0731-bf16 = {
+              kind = "model";
+              maker = "DeepSeek";
+              notes = "DeepSeek MELS judge lane: full BF16 checkpoint (~167G), REQUIRED IN FULL ON EACH BOX for the ds4-vllm-public TP=2 bring-up (ACTION-PLAN §5) — TP shards compute, not the on-disk checkpoint. Deliberately NOT in any services.local-models allow/artifacts list yet: materialization is gated on per-box disk rulings; download explicitly via nix build .#models.deepseek-v4-flash-0731-bf16. Served by vLLM/Ray as NixOS services, never as a llama-swap row. MIT.";
+              source = {
+                layout = "snapshot";
+                localName = "DeepSeek-V4-Flash-0731";
+                hfUrl = "https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731";
+                revision = "7872f01b1d1fe23eabc4c98b48bffcef5a386062";
+                primary = "config.json";
+                files = [
+                  {
+                    path = "config.json";
+                    bytes = 1888;
+                    oid = "6c8f3d2d3b48707541b88f32f22ef3f0f8a6b57d8523281e2b8d3cdb0ae9a023";
+                    hash = "sha256-bI89LTtIcHVBuI8y8i7z8PimtX2FIygeK4082wrpoCM=";
+                  }
+                  {
+                    path = "generation_config.json";
+                    bytes = 170;
+                    oid = "5fccff80f55a4d455bbe516bdd552edf3e9623df95e99fbf2a3c3389fdf91af0";
+                    hash = "sha256-X8z/gPVaTUVbvlFr3VUu3z6WI9+V6Z+/Kjwzif35GvA=";
+                  }
+                  {
+                    path = "model-00001-of-00048.safetensors";
+                    bytes = 1059061856;
+                    oid = "f3668ba4cccf1ca6a7eb84e888fb92c1cdc7204d472ba9db771e6fd3abf6b874";
+                    hash = "sha256-82aLpMzPHKan64ToiPuSwc3HIE1HK6nbdx5v06v2uHQ=";
+                  }
+                  {
+                    path = "model-00002-of-00048.safetensors";
+                    bytes = 3566321192;
+                    oid = "77b26c939a0e25b3113c8d6bb04e1901a748bd4a7d2589e3bfdaabdf1e9bba14";
+                    hash = "sha256-d7Jsk5oOJbMRPI1rsE4ZAadIvUp9JYnjv9qr3x6buhQ=";
+                  }
+                  {
+                    path = "model-00003-of-00048.safetensors";
+                    bytes = 3566321192;
+                    oid = "412abf4c906faadc221ef0cb50f90fe20bde8454a08ad4dc2364b6b79e7fda5c";
+                    hash = "sha256-QSq/TJBvqtwiHvDLUPkP4gvehFSgitTcI2S2t55/2lw=";
+                  }
+                  {
+                    path = "model-00004-of-00048.safetensors";
+                    bytes = 3596229272;
+                    oid = "9610f56bc587fb0ff9a8b68a60299482ee8c433fe5b5587e4257aca98add4a2e";
+                    hash = "sha256-lhD1a8WH+w/5qLaKYCmUgu6MQz/ltVh+QlesqYrdSi4=";
+                  }
+                  {
+                    path = "model-00005-of-00048.safetensors";
+                    bytes = 3568768976;
+                    oid = "f87a5ac7b8becc31f9c3169afd3a6f33fb82b4af9e21022e3755a10bc28f0180";
+                    hash = "sha256-+Hpax7i+zDH5wxaa/TpvM/uCtK+eIQIuN1WhC8KPAYA=";
+                  }
+                  {
+                    path = "model-00006-of-00048.safetensors";
+                    bytes = 3590024776;
+                    oid = "4a4f3764e3fc772b9fba67f0a44ef68e18f178b6f00faa80b75db549e51894cd";
+                    hash = "sha256-Sk83ZOP8dyufumfwpE72jhjxeLbwD6qAt121SeUYlM0=";
+                  }
+                  {
+                    path = "model-00007-of-00048.safetensors";
+                    bytes = 3568768976;
+                    oid = "df81bb80e27a689e01fa579eebd6499f86e0b6105f7fea18961aa5eebbbee9bc";
+                    hash = "sha256-34G7gOJ6aJ4B+lee69ZJn4bgthBff+oYlhql7ru+6bw=";
+                  }
+                  {
+                    path = "model-00008-of-00048.safetensors";
+                    bytes = 3590024776;
+                    oid = "224968d2b27f8669365ec08657a768dfec40da0585f85f302a31495931f6a526";
+                    hash = "sha256-Iklo0rJ/hmk2XsCGV6do3+xA2gWF+F8wKjFJWTH2pSY=";
+                  }
+                  {
+                    path = "model-00009-of-00048.safetensors";
+                    bytes = 3568768976;
+                    oid = "04d69ef1071fff8721c62968c200a5583122b59b015e9ef9b2978bfed271b2b7";
+                    hash = "sha256-BNae8Qcf/4chxilowgClWDEitZsBXp75speL/tJxsrc=";
+                  }
+                  {
+                    path = "model-00010-of-00048.safetensors";
+                    bytes = 3590024776;
+                    oid = "627145f4ebeb1cc3f5bdd03416b8cb7370b3c96974853cbeb8e5516ad5713e49";
+                    hash = "sha256-YnFF9OvrHMP1vdA0FrjLc3CzyWl0hTy+uOVRatVxPkk=";
+                  }
+                  {
+                    path = "model-00011-of-00048.safetensors";
+                    bytes = 3568768976;
+                    oid = "e4b8e601dcbebe902e0102e7b098b670a121cb8b9564dd719fc41d782c8416e0";
+                    hash = "sha256-5LjmAdy+vpAuAQLnsJi2cKEhy4uVZN1xn8QdeCyEFuA=";
+                  }
+                  {
+                    path = "model-00012-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "64ed4e5f6126ba029c462c9d5fca0fc907c5f855b4ba01194d79560f6db16e42";
+                    hash = "sha256-ZO1OX2EmugKcRiydX8oPyQfF+FW0ugEZTXlWD22xbkI=";
+                  }
+                  {
+                    path = "model-00013-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "8dfe199d07c07ddd141c2c0136a2237f1161250a1a03ebe8deaabac93440da1d";
+                    hash = "sha256-jf4ZnQfAfd0UHCwBNqIjfxFhJQoaA+vo3qq6yTRA2h0=";
+                  }
+                  {
+                    path = "model-00014-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "45db2f540f825f92453c50335e49aede58cca56bc578d1787c12a0fbca6593e5";
+                    hash = "sha256-RdsvVA+CX5JFPFAzXkmu3ljMpWvFeNF4fBKg+8plk+U=";
+                  }
+                  {
+                    path = "model-00015-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "5810381a0f05b7381c002d299ed6ac19e42eba8070dd17e2703546944d84f292";
+                    hash = "sha256-WBA4Gg8FtzgcAC0pntasGeQuuoBw3RficDVGlE2E8pI=";
+                  }
+                  {
+                    path = "model-00016-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "e0530b7024771b0ce2df9b40bcc2232578f3300178487ec216863b0b2835617b";
+                    hash = "sha256-4FMLcCR3Gwzi35tAvMIjJXjzMAF4SH7CFoY7Cyg1YXs=";
+                  }
+                  {
+                    path = "model-00017-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "ed11130247118b185ade893c0109bad896dd394cb1e066ce4fce044176261d94";
+                    hash = "sha256-7RETAkcRixha3ok8AQm62JbdOUyx4GbOT84EQXYmHZQ=";
+                  }
+                  {
+                    path = "model-00018-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "e393fea96da2a3414ef089354fc32e1c8891954de40958c84d2c2ecf80365b25";
+                    hash = "sha256-45P+qW2io0FO8Ik1T8MuHIiRlU3kCVjITSwuz4A2WyU=";
+                  }
+                  {
+                    path = "model-00019-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "a74ca4d3e8e82ce20c458bb8b1900110b753793ad4c58d08f38995f719c616f7";
+                    hash = "sha256-p0yk0+joLOIMRYu4sZABELdTeTrUxY0I84mV9xnGFvc=";
+                  }
+                  {
+                    path = "model-00020-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "9f556769926e60309e8defe45ab59fc8b26ae460d30c190cd746a3d78c11e2c2";
+                    hash = "sha256-n1VnaZJuYDCeje/kWrWfyLJq5GDTDBkM10aj14wR4sI=";
+                  }
+                  {
+                    path = "model-00021-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "1671cce7f90d781f796b5ca6bf32dd1aeb740abcb2735e41ffd28f62485ce005";
+                    hash = "sha256-FnHM5/kNeB95a1ymvzLdGut0Cryyc15B/9KPYkhc4AU=";
+                  }
+                  {
+                    path = "model-00022-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "decd67a4bd97a75fa36861d2ad3067afeefa6a04a20da997fe6c19f171e70132";
+                    hash = "sha256-3s1npL2Xp1+jaGHSrTBnr+76agSiDamX/mwZ8XHnATI=";
+                  }
+                  {
+                    path = "model-00023-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "c61a3e179cdbee19bfb8cbc4e111928ce2f1e1f0f4729d7c0cd5634354a4689d";
+                    hash = "sha256-xho+F5zb7hm/uMvE4RGSjOLx4fD0cp18DNVjQ1SkaJ0=";
+                  }
+                  {
+                    path = "model-00024-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "fc27aeb4233534f6f7781dcfe57127a3908ae10fc025c5d86dc0682057f8b2fe";
+                    hash = "sha256-/CeutCM1NPb3eB3P5XEno5CK4Q/AJcXYbcBoIFf4sv4=";
+                  }
+                  {
+                    path = "model-00025-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "a66b6b8d5821b68f5b511e4f91e12025cd07d0fa6d0b71e722d825a2d6d878ca";
+                    hash = "sha256-pmtrjVghto9bUR5PkeEgJc0H0PptC3HnItglotbYeMo=";
+                  }
+                  {
+                    path = "model-00026-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "657b89314fbaf6eee4acce24b3baf7e5fd2c5986a96ad85b08d90539cde869fe";
+                    hash = "sha256-ZXuJMU+69u7krM4ks7r35f0sWYapathbCNkFOc3oaf4=";
+                  }
+                  {
+                    path = "model-00027-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "fb01f21a0da0446b0bdf25a127ab19a6b06006acd8735f06a9ebfe34423fd7f5";
+                    hash = "sha256-+wHyGg2gRGsL3yWhJ6sZprBgBqzYc18Gqev+NEI/1/U=";
+                  }
+                  {
+                    path = "model-00028-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "b2fd5cbbb639f16e673bc484e5cca16b52a58bf2ab4bd62592e0c5408712ad7c";
+                    hash = "sha256-sv1cu7Y58W5nO8SE5cyha1Kli/KrS9YlkuDFQIcSrXw=";
+                  }
+                  {
+                    path = "model-00029-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "9ec2fdf900275daeac0980490c5c731cc7868b151ce1de5698f48418de4fa5f0";
+                    hash = "sha256-nsL9+QAnXa6sCYBJDFxzHMeGixUc4d5WmPSEGN5PpfA=";
+                  }
+                  {
+                    path = "model-00030-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "9ed3c317bf967d32133ad3a068ee4c56aae9784bc8b7da694482437f37dc1782";
+                    hash = "sha256-ntPDF7+WfTITOtOgaO5MVqrpeEvIt9ppRIJDfzfcF4I=";
+                  }
+                  {
+                    path = "model-00031-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "d5078c3fca3e6370043606ead7856e0b8fe67a9aab52c415769f29934c4d7f5d";
+                    hash = "sha256-1QeMP8o+Y3AENgbq14VuC4/mepqrUsQVdp8pk0xNf10=";
+                  }
+                  {
+                    path = "model-00032-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "163653848f002718d3deaa6ce48885483fc1f2e12e50e44a47477c73ccd91393";
+                    hash = "sha256-FjZThI8AJxjT3qps5IiFSD/B8uEuUORKR0d8c8zZE5M=";
+                  }
+                  {
+                    path = "model-00033-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "f2cffd43f2a5f491f4691f8694e6bc08239158e143ae7063dc04f0eb0259214a";
+                    hash = "sha256-8s/9Q/Kl9JH0aR+GlOa8CCORWOFDrnBj3ATw6wJZIUo=";
+                  }
+                  {
+                    path = "model-00034-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "0f94945121474cfdb6a9ab175914d3811ffbf08e6cc54082e14e473c755d18d8";
+                    hash = "sha256-D5SUUSFHTP22qasXWRTTgR/78I5sxUCC4U5HPHVdGNg=";
+                  }
+                  {
+                    path = "model-00035-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "9cb6a316989f7c7385e3ec2bd42ffe766ee126c70ef3466742849982ee1b0f0f";
+                    hash = "sha256-nLajFpiffHOF4+wr1C/+dm7hJscO80ZnQoSZgu4bDw8=";
+                  }
+                  {
+                    path = "model-00036-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "7e6761421fe944c2143eb897b983085891b421c148c6c17fb5cd8eaa9bdaa497";
+                    hash = "sha256-fmdhQh/pRMIUPriXuYMIWJG0IcFIxsF/tc2OqpvapJc=";
+                  }
+                  {
+                    path = "model-00037-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "a59d662f1143596d56c452a1230b717ce43edf678207398c573a2503b0f72c91";
+                    hash = "sha256-pZ1mLxFDWW1WxFKhIwtxfOQ+32eCBzmMVzolA7D3LJE=";
+                  }
+                  {
+                    path = "model-00038-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "137fa617a74ba8e73fd76bb1010c7a85d791aaa150006cb66faa04a83e9e730f";
+                    hash = "sha256-E3+mF6dLqOc/12uxAQx6hdeRqqFQAGy2b6oEqD6ecw8=";
+                  }
+                  {
+                    path = "model-00039-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "a29af1aa519d7ce726235ea2c2b38146d756290cda7a82d90c4d4438155b53e4";
+                    hash = "sha256-oprxqlGdfOcmI16iwrOBRtdWKQzaeoLZDE1EOBVbU+Q=";
+                  }
+                  {
+                    path = "model-00040-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "8bc93d8a7d1987dc86b14e22b1d8f42ec31da92c56edd9f312daf43f33a6a206";
+                    hash = "sha256-i8k9in0Zh9yGsU4isdj0LsMdqSxW7dnzEtr0PzOmogY=";
+                  }
+                  {
+                    path = "model-00041-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "fd312e7fdd6cb5796df356a7f0314f124851dc149991e9fb02c5bed45cc4ba05";
+                    hash = "sha256-/TEuf91stXlt81an8DFPEkhR3BSZken7AsW+1FzEugU=";
+                  }
+                  {
+                    path = "model-00042-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "4d19bf368083c9a183cb0849f316ec17b62f859ca824c0586e779657efb6e6a6";
+                    hash = "sha256-TRm/NoCDyaGDywhJ8xbsF7YvhZyoJMBYbneWV++25qY=";
+                  }
+                  {
+                    path = "model-00043-of-00048.safetensors";
+                    bytes = 3568770544;
+                    oid = "b7103842ceb70848f9804f55c193d6a57f43174a587cba42b61b5c1bc4e1303d";
+                    hash = "sha256-txA4Qs63CEj5gE9VwZPWpX9DF0pYfLpCthtcG8ThMD0=";
+                  }
+                  {
+                    path = "model-00044-of-00048.safetensors";
+                    bytes = 3590026352;
+                    oid = "422d3889fa20c238b7f97464c14df0bcf3328f189c294f41a3a334421dc560c7";
+                    hash = "sha256-Qi04ifogwji3+XRkwU3wvPMyjxicKU9Bo6M0Qh3FYMc=";
+                  }
+                  {
+                    path = "model-00045-of-00048.safetensors";
+                    bytes = 1059332516;
+                    oid = "a5be6aed7b84fc87ec42b5d24ba0b0d67f253a3906fcd99c13f4f7be5958fc00";
+                    hash = "sha256-pb5q7XuE/IfsQrXSS6Cw1n8lOjkG/NmcE/T3vllY/AA=";
+                  }
+                  {
+                    path = "model-00046-of-00048.safetensors";
+                    bytes = 3610455184;
+                    oid = "5db924ca907e0d93acd975bd5079c3662717f9ac709f23d079bd8f816d29d9dd";
+                    hash = "sha256-XbkkypB+DZOs2XW9UHnDZicX+axwnyPQeb2PgW0p2d0=";
+                  }
+                  {
+                    path = "model-00047-of-00048.safetensors";
+                    bytes = 3560111960;
+                    oid = "62816173f9f6e136b20b48e3b6f16613ac9ea02b5603f636928b253244a548bd";
+                    hash = "sha256-YoFhc/n24TayC0jjtvFmE6yeoCtWA/Y2koslMkSlSL0=";
+                  }
+                  {
+                    path = "model-00048-of-00048.safetensors";
+                    bytes = 3692775244;
+                    oid = "cc43742bd24ae6bcdea343a91442f6f66aed2cfebcc6b235470204851ce2f8a9";
+                    hash = "sha256-zEN0K9JK5rzeo0OpFEL29mrtLP68xrI1RwIEhRzi+Kk=";
+                  }
+                  {
+                    path = "model.safetensors.index.json";
+                    bytes = 5602871;
+                    oid = "98efab455cf08dfbbbaaba6f570e1bf10bf927d2b4c3c453a59c2f6f0e3be92b";
+                    hash = "sha256-mO+rRVzwjfu7qrpvVw4b8Qv5J9K0w8RTpZwvbw476Ss=";
+                  }
+                  {
+                    path = "tokenizer.json";
+                    bytes = 6367146;
+                    oid = "8f9f37ca37fdc4f5fd36d5cf4d3b0e8392edb4e894fd10cc0d70b4957c8633cf";
+                    hash = "sha256-j583yjf9xPX9NtXPTTsOg5LttOiU/RDMDXC0lXyGM88=";
+                  }
+                  {
+                    path = "tokenizer_config.json";
+                    bytes = 801;
+                    oid = "6ac8c8dc065ed118161d02dd532749ae3f52c243deac27872134fae2f50d8547";
+                    hash = "sha256-asjI3AZe0RgWHQLdUydJrj9SwkPerCeHITT64vUNhUc=";
+                  }
+                ];
+              };
             };
 
             qwen3-vl-8b-instruct-q8-0 = mkSingleFileArtifact {
@@ -942,6 +1453,7 @@ let
               # Retired 2026-08-20 (dotfiles#229): old and outdated; the NPU
               # reasoning slot moves to flm-qwen36-35b-a3b-npu2.
               status = "retired";
+              archived = "/mnt/nas/models/weights/flm/GPT-OSS-20B-NPU2 (2026-08-20, cp -a of the runtime-owned tree; no store hash exists for FLM weights)";
               backend = "npu";
               hosts = [ "coordinator" ];
               runtime = {
@@ -951,6 +1463,24 @@ let
               evidence = "api-only";
               hardware = "Strix Halo XDNA2 NPU; amdxdna/XRT from nix-amd-ai";
               notes = "Ad-hoc NPU reasoning model on coordinator; `flm run gpt-oss:20b` loads the Q4_1 NPU2 snapshot only for the interactive command.";
+            };
+
+            flm-qwen36-35b-a3b-npu2 = {
+              model = "qwen3.6-moe:35b-a3b";
+              role = "vision";
+              status = "canonical";
+              backend = "npu";
+              hosts = [
+                "coordinator"
+                "worker"
+              ];
+              runtime = {
+                repository = "https://huggingface.co/FastFlowLM/Qwen3.6-35B-A3B-NPU2";
+                commit = "0cad6285baf6f37adf2c4e9696372c0140078fe0";
+              };
+              evidence = "unverified";
+              hardware = "Strix Halo XDNA2 NPU; amdxdna/XRT from nix-amd-ai";
+              notes = "The drain's next OCR engine (#229): model.q4nx 23.2G + vision_weight.q4nx 1.0G, runtime-owned via `flm pull qwen3.6-moe:35b-a3b`. Must be validated on OCR BEFORE qwen3-vl-8b-ocr leaves the coordinator allow list, the worker drain is re-pointed, and the GPU qwen36-35b copy retires from both boxes.";
             };
 
             qwen36-35b-a3b-mtp-ud-q8-k-xl = {
@@ -1009,6 +1539,46 @@ let
               notes = "Stock dense Qwen 3.6 coding and agent model, locally matched through Pi and llama-swap on coordinator. The Q8 GGUF contains its matched MTP block; 32K context and a single parallel slot bound memory use. This route is text-only because the pinned quantizer's MTP guidance does not support combining MTP with mmproj.";
             };
 
+            qwen38-27b-mtp-q8-0 = {
+              model = "qwen3.8-27b";
+              role = "general";
+              status = "canonical";
+              backend = "vulkan";
+              hosts = [ "coordinator" ];
+              ramTierGb = 40;
+              artifacts = {
+                model = "qwen38-27b-q8-0";
+                mtpHead = "qwen38-27b-mtp-q4-0";
+              };
+              runtime = llamaCppRuntime (
+                commonLlamaArgs
+                ++ [
+                  "--spec-draft-model"
+                  "@mtpHead@"
+                  "--spec-type"
+                  "draft-mtp"
+                  "--spec-draft-n-max"
+                  "2"
+                  "--parallel"
+                  "1"
+                  "--cache-type-k"
+                  "q8_0"
+                  "--cache-type-v"
+                  "q8_0"
+                  # The model defaults to unbounded thinking; evidence puts the
+                  # useful plateau at 6-12K tokens (>12K costs up to 4.5x for
+                  # nothing, <5K breaks output). Single-source evidence —
+                  # treat 8192 as directional and revisit after local use.
+                  "--reasoning-budget"
+                  "8192"
+                ]
+              );
+              evidence = "unverified";
+              hardware = "Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
+              supersedes = "qwen36-27b-mtp-ud-q8-k-xl";
+              notes = "Qwen MELS lane primary (#229). MTP head is a separate Q4_0 file (the only published MTP asset); KV q8_0 both sides per the measured 4-6% free gain, and -np stays 1 because parallel slots silently divide the context.";
+            };
+
             qwen3-coder-next-ud-q4-k-xl = {
               model = "qwen3-coder-next";
               role = "coding";
@@ -1057,6 +1627,103 @@ let
               evidence = "unverified";
               hardware = "Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
               notes = "Cross-family coding model. The former QAT identity was dropped because Google's QAT checkpoint is Q4_0-only; this is the ordinary instruction checkpoint with a matched Q8 MTP head.";
+            };
+
+            gemma4-31b-it-q8-0 = {
+              model = "gemma4-31b-it";
+              role = "general";
+              status = "canonical";
+              backend = "vulkan";
+              hosts = [ "worker" ];
+              ramTierGb = 44;
+              artifacts = {
+                model = "gemma4-31b-it-q8-0";
+                draft = "gemma4-e2b-it-draft-ud-q8-k-xl";
+              };
+              runtime = llamaCppRuntime (
+                commonLlamaArgs
+                ++ [
+                  # Zetaphor recipe, measured on this exact hardware class:
+                  # +103% avg / +139% code at identical output quality. n-max 4,
+                  # NOT the discrete-GPU 8 — unified memory peaks at 4 then
+                  # regresses. NO --mmproj here ever: llama.cpp blocks spec
+                  # decode with vision loaded (gemma4-31b-it-vl is the
+                  # multimodal entry).
+                  "--spec-draft-model"
+                  "@draft@"
+                  "--spec-type"
+                  "draft-simple"
+                  "--spec-draft-n-max"
+                  "4"
+                  "--spec-draft-n-min"
+                  "1"
+                  "--gpu-layers-draft"
+                  "999"
+                  "--parallel"
+                  "1"
+                  "--cache-type-k"
+                  "q8_0"
+                  "--cache-type-v"
+                  "q8_0"
+                ]
+              );
+              evidence = "upstream-measured";
+              hardware = "worker Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory; Vulkan/RADV";
+              notes = "Google MELS lane heavy model on the worker. Q8_0 pinned by operator; the benchmark ran UD-Q8_K_XL (same weight class). Inert until hosts/worker returns (#229 §C).";
+            };
+
+            gemma4-31b-it-vl = {
+              model = "gemma4-31b-it-vl";
+              role = "vision";
+              status = "canonical";
+              backend = "vulkan";
+              hosts = [ "worker" ];
+              ramTierGb = 40;
+              artifacts = {
+                model = "gemma4-31b-it-q8-0";
+                mmproj = "gemma4-31b-it-mmproj-bf16";
+              };
+              runtime = llamaCppRuntime [
+                "--mmproj"
+                "@mmproj@"
+                "--ctx-size"
+                "32768"
+                "--gpu-layers"
+                "999"
+                "--flash-attn"
+                "on"
+                "--no-mmap"
+                "--jinja"
+                "--parallel"
+                "1"
+              ];
+              evidence = "unverified";
+              hardware = "worker Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory; Vulkan/RADV";
+              notes = "The multimodal twin of gemma4-31b-it: same Q8_0 weights plus the BF16 projector, no speculative decoding (llama.cpp forbids the combination). Inert until hosts/worker returns.";
+            };
+
+            ornith-15-35b-q8-0 = {
+              model = "ornith-1.5-35b";
+              role = "general";
+              status = "canonical";
+              backend = "vulkan";
+              hosts = [ "coordinator" ];
+              ramTierGb = 46;
+              artifacts.model = "ornith-15-35b-q8-0";
+              runtime = llamaCppRuntime (
+                commonLlamaArgs
+                ++ [
+                  "--parallel"
+                  "1"
+                  "--cache-type-k"
+                  "q8_0"
+                  "--cache-type-v"
+                  "q8_0"
+                ]
+              );
+              evidence = "unverified";
+              hardware = "Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
+              notes = "Wildcard fast daily-driver companion (cross-family Qwen 3.5 + Gemma 4 post-train, MIT) — not a clean single-provider MELS lane member. Swapped from Ornith 1.0 to 1.5 by operator ruling 2026-08-21; 1.0's independently verified 72% pi-bench score does not transfer.";
             };
 
             fara15-27b-q8-0 = {

@@ -21,6 +21,16 @@
 # running from. So the booted generation is excluded by name, and K just sets
 # how much *extra* history to keep.
 #
+# INCIDENT (2026-08-20): found the coordinator holding exactly ONE system
+# generation — rollback depth zero on the daily driver. Cause: a hand-run
+# `nix-collect-garbage -d` against the 90%-full disk. `-d` deletes every
+# non-current generation FIRST and only then collects, silently defeating
+# everything this module argues for. Runbook rule: when the disk is full,
+# reap roots and run PLAIN `nix store gc` (or wait for this module's timer);
+# never reach for `-d` on a machine you might need to roll back. Depth
+# restores itself as switches accumulate — nothing to repair, only to stop
+# repeating.
+#
 # Note what this is and is not protecting. /run/booted-system and
 # /run/current-system are GC roots, so nix-collect-garbage can never free the
 # running closure's store paths no matter what happens here — the store is safe

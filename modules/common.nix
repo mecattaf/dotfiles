@@ -14,10 +14,10 @@
     ./user-password.nix # tom's login password via agenix hashedPasswordFile (#54)
     ./rollback-offline.nix # network-free `rollback-offline` command (#106)
     ./gc-retention.nix # nix.gc + keep-last-K-plus-booted generation retention (#133)
+    ./gc-root-reaper.nix # daily reap of stale agent-session auto GC roots (#133)
     ./dotfiles-bootstrap.nix # ensure ~/mecattaf/dotfiles exists before the session
     ./artifacts.nix # myArtifacts options; serving plane is coordinator-only (caddy-artifacts.nix)
     ./printing.nix # CUPS + Brother IPP/raw-text path (active fleet + future hosts)
-    ./scanning.nix # SANE + Brother ADS-1800W (eSCL primary, brscan5 fallback)
     ./failure-surfacing.nix # OnFailure + coredump surfacing, fleet-wide — refs #134
   ];
 

@@ -84,7 +84,9 @@ in
   # (hosts/coordinator/uplink-nas.nix). This is a first-class door, not a
   # fallback — NAS-side consumers such as the Paperless AI phase (#136) depend
   # on it, and nothing about the LLM endpoint should require Tailscale.
-  networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ cfg.port ];
+  # (+ wlp192s0 since the 2026-08-20 rewire: NAS-side consumers dial from the
+  # BE550 LAN once the /30 cable retires. Inert where the interface is absent.)
+  networking.firewall.interfaces.wlp192s0.allowedTCPPorts = [ cfg.port ];
 
   systemd.services.llama-swap = {
     wants = [ "network-online.target" ];

@@ -19,6 +19,9 @@ shuffle  = false
 theme = ""
 provider = "navidrome"
 
+eq_preset = "Custom"
+eq = [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+speed = 1.00
 [navidrome]
 # Tailnet MagicDNS name, not localhost: this config is shared fleet-wide
 # (coordinator + zenbook-duo), and only the coordinator could reach localhost.

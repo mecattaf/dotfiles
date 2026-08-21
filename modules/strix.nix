@@ -34,13 +34,18 @@
         # in the catalog; recovery is uncommenting a line here.
         # "fara15-4b-q8-0"
         # qwen3-vl-8b-ocr stays UNTIL the FastFlowLM Qwen 3.6 35B NPU2 build is
-        # validated on OCR: pkgs/paper-intake/process.py drives this llama-swap
-        # route on the coordinator today (PAPER_INTAKE_MODEL default). It exits
-        # in the same flip that re-points the worker drain.
+        # validated on OCR. Its former primary consumer — the paper-intake OCR
+        # processor — was removed 2026-08-20 with the returned ADS-1800W
+        # scanner, so only the academic-ocr drain lane still dials this route;
+        # weigh that when deciding whether it exits with the worker-drain flip.
         "qwen3-vl-8b-ocr"
         # "qwen3-vl-32b-ocr-refine"
         "qwen3-embedding-8b-q8-0"
         "qwen3-vl-embedding-8b-q8-0"
+        # MELS fleet additions (#229): Qwen lane primary + wildcard companion.
+        # Materialized at the next switch (~68G on the coordinator).
+        "qwen38-27b-mtp-q8-0"
+        "ornith-15-35b-q8-0"
       ];
       artifacts = [
         # Priority Mage family: the unified VLM and the low-latency generation
@@ -74,6 +79,11 @@
         # gpt-oss:20b ruled out 2026-08-20 (old and outdated; dotfiles#229).
         # The catalog row is status = "retired"; the ~14G runtime-owned snapshot
         # under ~/.config/flm/models is freed by an explicit `flm remove`, not GC.
+        #
+        # The drain's next OCR engine (24.3G, runtime-owned): download is the
+        # explicit operator action `flm pull qwen3.6-moe:35b-a3b`, then validate
+        # on OCR before any qwen3-vl / GPU-35B removal that depends on it.
+        "qwen3.6-moe:35b-a3b"
       ];
     };
 

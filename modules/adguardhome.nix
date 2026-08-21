@@ -1,4 +1,9 @@
-{ config, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 # Per-machine AdGuard Home — the fleet's DNS ad/tracker filter, ONE loopback
 # instance per box. This replaces the old coordinator-only LAN quadlet that
 # filtered DNS for the now-retired BE550 wifi segment; coordinator, zenbook-duo,
@@ -41,9 +46,20 @@ let
   coordinatorAddr =
     {
       coordinator = "127.0.0.1";
-      nas = "10.77.0.1";
+      # 2026-08-20 rewire: the coordinator's pinned lease on the BE550 LAN
+      # (hosts/nas/router.nix dhcp-host), replacing its /30 address. On the
+      # NAS this answer also serves every LAN client (phones included) now
+      # that AdGuard fronts the whole segment: media keeps flowing through
+      # the coordinator's Caddy + relays in phase 1, so .internal must keep
+      # answering with the COORDINATOR until the phase-2 direct-serving
+      # decision moves the front doors here.
+      nas = "10.42.0.2";
     }
     .${config.networking.hostName} or "100.105.121.73";
+
+  # The NAS is the only host whose AdGuard serves more than loopback: it is
+  # the resolver for the whole BE550 LAN (2026-08-20 rewire).
+  isLanResolver = config.networking.hostName == "nas";
 in
 {
   services.adguardhome = {
@@ -70,7 +86,15 @@ in
       # non-empty list) and as a fallback if a hostname endpoint is ever added;
       # it is not on the hot path today.
       dns = {
-        bind_hosts = [ "127.0.0.1" ];
+        # LAN resolver (NAS only): bind the LAN address EXPLICITLY alongside
+        # loopback, never 0.0.0.0 — resolved's stub holds 127.0.0.53:53, and
+        # a wildcard :53 bind EADDRINUSEs against it (found as a crashloop on
+        # first NixOS boot, recorded in the 26d4afdf retirement message). The
+        # specific-address bind races address assignment at boot exactly like
+        # nfsd did (hosts/nas/storage.nix lore); the ExecStartPre wait below
+        # is the fix. Port 53 admission is scoped to the LAN interface in
+        # hosts/nas/router.nix, not opened here.
+        bind_hosts = [ "127.0.0.1" ] ++ lib.optional isLanResolver "10.42.0.1";
         port = 53;
         upstream_dns = [
           "https://1.1.1.1/dns-query"
@@ -149,5 +173,23 @@ in
   services.resolved.settings.Resolve = {
     DNS = "127.0.0.1";
     Domains = "~.";
+  };
+
+  # LAN-resolver boot ordering (NAS only): the explicit 10.42.0.1 bind above
+  # fails if AdGuard starts before NM has the static address up — the same
+  # race that broke nfsd's hostName bind behind network-online.target (NM
+  # reports online before the static address exists). Wait for the address
+  # itself, not for a target that lies about it; 30s bound, then start anyway
+  # and let Restart handle a genuinely late interface.
+  systemd.services.adguardhome = lib.mkIf isLanResolver {
+    serviceConfig.ExecStartPre = pkgs.writeShellScript "wait-lan-addr" ''
+      for _ in $(${pkgs.coreutils}/bin/seq 30); do
+        ${pkgs.iproute2}/bin/ip -4 addr show dev enp1s0 | ${pkgs.gnugrep}/bin/grep -q '10\.42\.0\.1/' && exit 0
+        ${pkgs.coreutils}/bin/sleep 1
+      done
+      exit 0
+    '';
+    # RestartSec: upstream module already sets 10 — good enough for the
+    # late-interface case; do not fight it.
   };
 }

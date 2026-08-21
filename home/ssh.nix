@@ -47,10 +47,12 @@ let
 
   unknownTargets = lib.filter (t: !(registry ? ${t})) (lib.attrValues operatorAliases);
 
-  # The NAS sits on the direct /30 cable and is reachable ONLY from the
-  # coordinator, which resolves `nas` → 10.77.0.2 via networking.hosts. From any
-  # other fleet host the same nickname has to hop through the coordinator; the
-  # pinned host key checked at the far end is still `nas`, so no trust changes.
+  # The NAS has no tailnet identity (phase 1 of the 2026-08-20 rewire keeps it
+  # that way), so from a roaming host the nickname still has to hop through the
+  # coordinator, which resolves `nas` → 10.42.0.1 via networking.hosts (the
+  # BE550 LAN; formerly the /30 cable). The pinned host key checked at the far
+  # end is still `nas`, so no trust changes. Revisit if the phase-2
+  # tailnet-direct decision ever lands.
   needsJump = target: target == "nas" && hostName != "nas" && hostName != "coordinator";
 
   mkBlock =

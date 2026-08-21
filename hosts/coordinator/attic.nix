@@ -74,7 +74,9 @@
     # (myNas.attic.enable + relayAttic, hosts/nas/attic.nix), atticd here goes
     # away and so does this rule — at which point the NAS serves 8080 rather
     # than dialing it, and the relay in nas-client.nix owns the tailnet door.
-    networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 8080 ];
+    # (+ wlp192s0 since the 2026-08-20 rewire: the NAS dials from the BE550
+    # LAN once the /30 cable retires; see immich-ml.nix for the rationale.)
+    networking.firewall.interfaces.wlp192s0.allowedTCPPorts = [ 8080 ];
 
     # Cache-health tripwire. On 2026-07-26 the atticd DB was recreated
     # schema-only (cache record + server-side signing keypair lost) and the
@@ -82,7 +84,7 @@
     # noticed — pulls fail soft and the nightly push failure is a warning, so
     # nothing surfaced it. This probes what a client actually does: an
     # anonymous nix-cache-info fetch. Anything but 200 fires a marker into the
-    # fleet-deploy channel (printed on interactive login).
+    # failure-marker channel (printed on interactive login).
     myTripwire.attic-cache-health = {
       description = "fleet binary cache answers anonymous pulls";
       intervalSeconds = 3600;
@@ -105,10 +107,10 @@
       '';
       onFirePath = [ pkgs.coreutils ];
       onFire = ''
-        mkdir -p /var/lib/fleet-deploy/failed
+        mkdir -p /var/lib/failure-markers
         printf '%s — fleet binary cache is not answering anonymous pulls (episode %s)\n  check: curl -s http://coordinator:8080/fleet/nix-cache-info ; journalctl -u atticd\n' \
           "$(date '+%Y-%m-%d %H:%M')" "$4" \
-          > /var/lib/fleet-deploy/failed/attic-cache-health
+          > /var/lib/failure-markers/attic-cache-health
       '';
     };
   };

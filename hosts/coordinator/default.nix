@@ -2,15 +2,22 @@
 # coordinator — AMD Strix Halo (gfx1151), the main device. Freebox wifi uplink +
 # directly-attached NAS (uplink-nas.nix) and the native media services
 # (services.nix: services.immich + services.navidrome, on /mnt/nas). DNS
-# ad/tracker filtering is per-box (../../modules/adguardhome.nix, a loopback
-# resolver). The old rootless podman quadlet stack — AdGuard, Immich, Navidrome —
+# ad/tracker filtering comes from the NAS LAN resolver (10.42.0.1) since the
+# 2026-08-21 cutover — see the removal note in the imports list below.
+# The old rootless podman quadlet stack — AdGuard, Immich, Navidrome —
 # was retired 2026-07-13 (AdGuard with the BE550 router; Immich/Navidrome moved
 # to native modules), leaving this host container-free.
 {
   imports = [
     ./hardware.nix
     ./disko.nix
-    ./fleet-deploy.nix # one Tally-owned deploy-rs transaction for the whole fleet
+    # ./fleet-deploy.nix DELETED 2026-08-21 (Tom: "fleet-deploy is DEAD…the
+    # nas-centricity supersedes that fully"). The nightly coordinator-builds-
+    # and-pushes transaction — including its push-activation of the NAS and
+    # its own ⚠ failure-marker fish hook — is replaced by the update-center
+    # model: the NAS builds nightly and publishes to attic; every device,
+    # including this one, pulls and activates on its own schedule. Manual
+    # deploys still work via the flake's deploy-rs nodes (`deploy .#nas`).
     ./uplink-nas.nix
     ./journal-upload.nix # fleet journald substrate sender — refs #135
     ./nas-client.nix
@@ -19,9 +26,16 @@
     ./immich-ml.nix
     ./atuin.nix
     ./audio.nix # pins the webcam mic as the default PipeWire source
-    # Per-machine AdGuard Home DNS filter (loopback 127.0.0.1:53, resolved
-    # forwards to it). The Zenbook Duo imports the same module.
-    ../../modules/adguardhome.nix
+    # AdGuard REMOVED from this host at cutover phase 3 (2026-08-21, Tom's
+    # ruling: "adguard shall now run only on the NAS"). Not just redundant —
+    # actively incompatible with the repeated LAN: the loopback instance's
+    # upstreams are DoH to 1.1.1.1/1.0.0.1/9.9.9.9, exactly the IPs the NAS's
+    # dns_hijack drops on tcp/443 (hosts/nas/router.nix), so DNS would go dark
+    # the moment this box joined `thomas`. Filtering now comes from the LAN
+    # resolver (10.42.0.1) via DHCP; on the freebox-uplink fallback rail DNS is
+    # the Freebox's, unfiltered — accepted. The Zenbook Duo still imports the
+    # module and must shed it (or be exempted from the DoH drop list) before it
+    # ever gets a be550 profile.
     ./attic.nix # fleet binary-cache server (atticd over the tailscale mesh) — refs #42
     # Artifact serving plane: Caddy drop-dir + TTL reaper (publish-artifact
     # skill's tailnet rung). Live origins stay local on 127.0.0.1.

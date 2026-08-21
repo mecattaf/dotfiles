@@ -43,12 +43,20 @@
 #      the archived one into place — never `btrfs subvolume delete` the live
 #      subvolume while Immich/Navidrome/Plex hold open files in it.
 #
-# COST, stated honestly: hourly snapshots wake the disk ~24x/day for a metadata
-# write of a second or two. That is real friction against the spin-down design
-# (#130 convention 2) and it is the first knob to turn if the drive never seems
-# to park — `onCalendar = "*:0/6"` (every 6h) with `6h` retention keeps the
-# shape and cuts the wakes to 4/day. Started at hourly because "I overwrote it
-# an hour ago" is the case snapshots exist for.
+# COST, stated honestly: a snapshot is a metadata write of a second or two —
+# nothing on RAM or CPU — but every run wakes the disk, which is real friction
+# against the spin-down design (#130 convention 2). Cadence history, all on
+# day one-and-two: hourly (default) → daily noon (Tom: "too intense") →
+# MONTHLY, first Saturday 08:00 (Tom's ruling 2026-08-21 afternoon: "NAS
+# items genuinely don't get updated that often … this buys me nothing
+# honestly, let's not overbuild"). The media trees are near-static and the
+# real protection is the redundancy stack — RAID 1 mirror (coming), monthly
+# LaCie cold dump, borg (ws2b) — so the snapshot tier is a light convenience,
+# not a load-bearing layer. 08:00 keeps it clear of the overnight
+# update-center build window (Tom asked for "after the nightly build
+# finishes composing"; 2am risked landing mid-build on this slow CPU) and
+# the disk is usually awake by then anyway. Oops window: up to a month —
+# accepted explicitly.
 let
   cfg = config.myNas.snapshots;
   storageRoot = "/mnt/nas";
@@ -69,7 +77,9 @@ in
       niceness = 15;
       ioSchedulingClass = "idle";
       instances.nas = {
-        onCalendar = "hourly";
+        # First Saturday of the month (a day-of-month range ANDs with the
+        # weekday in systemd calendar syntax), 08:00 — see the COST paragraph.
+        onCalendar = "Sat *-*-1..7 08:00:00";
         settings = {
           # ISO-ish suffixes, so `btrbk.photos.20260803T1500` sorts lexically
           # and reads unambiguously in `ls`.
@@ -78,11 +88,11 @@ in
           # are borg (ws2b) and the LaCie (ws3), both of which have their own
           # schedule and their own failure modes.
           snapshot_preserve_min = "latest";
-          # #130's stated retention: hourly for a day, daily for a month,
-          # monthly for a year. Snapshots of mostly-static media are nearly
-          # free — only changed extents are pinned — so the cost of the long
-          # tail is small and the budget line in #130 allows 200 GB for it.
-          snapshot_preserve = "24h 30d 12m";
+          # Twelve monthlies — one year of restore points at monthly cadence
+          # (the hourly and daily tiers died with their cadences, see COST).
+          # Snapshots of mostly-static media are nearly free — only changed
+          # extents are pinned.
+          snapshot_preserve = "12m";
           volume.${storageRoot} = {
             # Relative to the volume: /mnt/nas/.snapshots, the never-exported
             # subvolume described in the comment block above.

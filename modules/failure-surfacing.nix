@@ -169,22 +169,25 @@ in
 
     markerDir = lib.mkOption {
       type = lib.types.str;
-      default = "/var/lib/fleet-deploy/failed";
+      default = "/var/lib/failure-markers";
       description = ''
-        Where failure markers land, one file per failing unit or watcher. Shares
-        the fleet-deploy state directory deliberately: that marker is the
-        established "something needs your attention" channel on this fleet.
+        Where failure markers land, one file per failing unit or watcher.
+        (Until 2026-08-21 this was /var/lib/fleet-deploy/failed, piggybacking
+        on the nightly fleet-deploy's marker channel; that service is gone —
+        superseded by the NAS update-center — and this module is now the one
+        and only "something needs your attention" channel on the fleet. The
+        old directory may linger on hosts deployed before the rename; remove
+        it by hand.)
       '';
     };
 
     excludeUnits = lib.mkOption {
       type = with lib.types; listOf str;
-      default = [ "fleet-deploy.service" ];
+      default = [ ];
       description = ''
         Units that opt out of the blanket OnFailure=, by full unit name. A
         top-level drop-in is additive, so a unit with its own OnFailure= would
-        otherwise report twice; fleet-deploy already writes a richer marker of
-        its own.
+        otherwise report twice.
       '';
     };
 

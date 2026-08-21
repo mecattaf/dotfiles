@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wake detection vs NPU Gemma — latency decision</title>
+  <style>
+    section.face {
+      break-after: page;
+      page-break-after: always;
+    }
+    section.face:last-of-type {
+      break-after: auto;
+      page-break-after: auto;
+    }
+    .kicker {
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.78em;
+    }
+    .decision {
+      border-left: 3px solid #222;
+      padding: 0.15em 0 0.15em 1em;
+      margin: 1.2em 0 1.4em;
+    }
+    .decision p {
+      margin: 0.35em 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1em 0 1.4em;
+    }
+    th, td {
+      text-align: left;
+      vertical-align: top;
+      padding: 0.5em 0.6em;
+      border-bottom: 1px solid #bbb;
+    }
+    th {
+      border-top: 1px solid #777;
+    }
+    pre {
+      white-space: pre-wrap;
+      border: 1px solid #aaa;
+      padding: 0.8em 1em;
+      line-height: 1.45;
+    }
+    .small {
+      font-size: 0.88em;
+    }
+    .compact {
+      font-size: 0.95em;
+      line-height: 1.34;
+    }
+    .compact h2 {
+      margin-top: 1em;
+    }
+    .compact table {
+      margin-bottom: 0.8em;
+    }
+    .compact pre {
+      margin: 0.65em 0;
+    }
+  </style>
+</head>
+<body>
+  <section class="face">
+    <p class="kicker">Speech stack · latency note · 14 August 2026</p>
+    <h1>Wake detection vs NPU Gemma</h1>
+    <p><em>Where each belongs in the local speech pipeline on Strix Halo.</em></p>
+
+    <div class="decision">
+      <h2>Decision</h2>
+      <p><strong>Keep the always-listening “Hey Jarvis” detector on CPU.</strong></p>
+      <p>Use Gemma 4 E4B on the NPU only after wake-up, as an optional audio-understanding and fast-command branch.</p>
+    </div>
+
+    <h2>The latency reason</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Path</th>
+          <th>Known timing</th>
+          <th>Meaning</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>CPU wake detector</td>
+          <td>OpenWakeWord scores every 80 ms; the sherpa verifier adds about 160 ms.</td>
+          <td>Expected phrase-end-to-chime is roughly 250–500 ms on the proposed two-stage path.</td>
+        </tr>
+        <tr>
+          <td>Warm NPU Gemma E4B</td>
+          <td>Measured text-only time to first token: 1.48 s.</td>
+          <td>This is before audio preprocessing and generation. It is already slower than the whole wake decision budget.</td>
+        </tr>
+        <tr>
+          <td>Cold NPU Gemma E4B</td>
+          <td>Measured startup: about 31 s.</td>
+          <td>Cold/request-scoped execution is not an interactive speech path.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>The primary path</h2>
+    <pre>CPU wake detector
+        ↓ immediately
+stream command into resident Parakeet
+        ↓
+Pi / Codex / Claude prepares the answer
+        ↓
+Qwen TTS renders and speaks</pre>
+
+    <p>The wake stage is tiny, continuous, and latency-sensitive. A multimodal reasoning model is much larger than the job requires. Keeping wake detection on one CPU thread also leaves the GPU free for Parakeet and Qwen TTS, and the NPU free for work that can actually exploit semantic reasoning.</p>
+  </section>
+
+  <section class="face compact">
+    <p class="kicker">Routing and benchmark</p>
+    <h1>Where NPU Gemma can win</h1>
+
+    <p>Gemma E4B is interesting <em>after</em> activation because it can potentially collapse hearing and reasoning into one model. A completed command clip can go directly to a warm NPU session and produce either a short answer or a tool call.</p>
+
+    <pre>command audio ─┬→ warm NPU Gemma → answer / tool call
+               └→ Parakeet → smart agent → answer</pre>
+
+    <p>During evaluation, these are parallel candidates—not serial stages. Running Gemma after Parakeet would add latency while duplicating understanding. The NPU route matters only if it returns a useful result sooner for a clearly defined command class.</p>
+
+    <h2>Routing model</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Workload</th>
+          <th>Preferred route</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Always-on wake detection</td>
+          <td>CPU: OpenWakeWord candidate plus sherpa-onnx verifier.</td>
+        </tr>
+        <tr>
+          <td>General agent conversation</td>
+          <td>Resident Parakeet → Pi/Codex/Claude → Qwen TTS.</td>
+        </tr>
+        <tr>
+          <td>Short, self-contained local commands</td>
+          <td>Potentially warm NPU Gemma, if measured end-to-end latency wins.</td>
+        </tr>
+        <tr>
+          <td>Audio understanding or translation</td>
+          <td>NPU Gemma is a useful specialist candidate.</td>
+        </tr>
+        <tr>
+          <td>Cold or request-scoped Gemma</td>
+          <td>Exclude from interactive routing.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>The decisive benchmark</h2>
+    <pre>A · command end → Parakeet final → first safe clause<br>B · command end → E4B audio → valid answer / tool call</pre>
+
+    <p>Measure <strong>endpoint-to-first-useful-result</strong>, not model-only token speed. Include audio transfer, preprocessing, endpointing, decoding, validation, and the point at which playback can safely begin.</p>
+
+    <h2>Promotion rule</h2>
+    <ol>
+      <li>Keep Gemma warm during the benchmark; cold latency is already disqualifying.</li>
+      <li>Run A and B on the same spoken commands and the same endpoint timestamps.</li>
+      <li>Route a command class to the NPU only if B wins reliably and preserves answer/tool-call quality.</li>
+      <li>Otherwise retain Gemma as an audio-understanding specialist, not a mandatory stage.</li>
+    </ol>
+
+  </section>
+</body>
+</html>

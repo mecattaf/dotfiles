@@ -10,10 +10,14 @@
     ./hardware.nix
     ./disko.nix
     ./network.nix
+    ./router.nix # 2026-08-20: NAS is the house router (A8500 uplink + BE550 LAN)
     ./journal.nix
     ./storage.nix
+    ./discovery.nix # Avahi + read-only SMB so the NAS shows up in Nautilus (2026-08-21)
     ./media.nix
-    ./phone-ingest.nix
+    # ./phone-ingest.nix DELETED 2026-08-21 (Tom: "DEAD and no longer needed
+    # ever again") — the adb camera-roll pull was superseded by the Immich
+    # mobile app's own background backup. See git history for the tooling.
     ./lacie-mirror.nix
     # #130 expansion workstreams. All four land with their gates OFF; each has
     # a runbook in its own header and flips on its own, later, after that
@@ -21,7 +25,7 @@
     # deliberately absent — it is a plain function file, not a module.
     ./snapshots.nix # ws2a btrbk snapshots of the data subvolumes
     ./backups.nix # ws2b append-only borg repo server
-    ./archive.nix # ws4  cold archive subvolume for retired model weights
+    ./models.nix # the model Library: weights forever-collection + static cache (was ws4 archive.nix)
     ./attic.nix # ws5  fleet binary cache, relayed by the coordinator
     ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate OFF
     ../../modules/adguardhome.nix
@@ -56,10 +60,20 @@
   # disk; deployment order (NAS restore first, then the coordinator cutover)
   # is sequenced manually in #131.
   myNas.media.enable = true;
-  # Operator tooling only — adb, the Immich CLI, and a staging directory (#143).
-  # Nothing here starts on its own; the first camera-roll pull is driven by hand
-  # so its failure modes get observed before any of it is automated.
-  myNas.phoneIngest.enable = true;
+  # The model Library (was ws4 archive, renamed 2026-08-21 — migration runbook
+  # in models.nix): weights/ holds the forever collection (first residents:
+  # the rescued FastFlowLM trees, moved from archive/models/flm), cache/ is
+  # the nightly static binary cache. compression=none subvolume, created live
+  # 2026-08-20. docs/nas/model-archive.md is the retire/restore runbook, and
+  # retired catalog rows must carry an `archived` receipt (asserted in
+  # modules/local-models.nix).
+  myNas.models.enable = true;
+  # ws2a snapshots — flipped 2026-08-21 per the runbook in ./snapshots.nix:
+  # subvolume layout verified live (photos/music/documents/videos/services/
+  # .snapshots all real subvolumes), dry-run + coordinator containment check
+  # done at deploy time. Cadence: MONTHLY, first Saturday 08:00 (see the COST
+  # paragraph in snapshots.nix for the ruling trail).
+  myNas.snapshots.enable = true;
 
   # amdtop — the same telemetry TUI the coordinator runs (modules/strix-ai.nix).
   # This box is AMD on both halves: common-cpu-amd/kvm-amd, plus the radeonsi

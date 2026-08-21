@@ -39,6 +39,6 @@
   # Same admit pattern as SSH: the coordinator is the only sender. This
   # renders because the NAS runs the nftables backend (see network.nix).
   networking.firewall.extraInputRules = ''
-    ip saddr 10.77.0.1 tcp dport 19532 accept comment "journald-remote upload from coordinator"
+    ip saddr { 10.77.0.1, 10.42.0.2 } tcp dport 19532 accept comment "journald-remote upload from coordinator (legacy /30 + LAN)"
   '';
 }

@@ -28,14 +28,14 @@ manifest.
 
 ## Where the archive lives
 
-`/mnt/nas/archive/models/<artifact-id>/`, on the NAS, provisioned by
+`/mnt/nas/models/weights/<artifact-id>/`, on the NAS, provisioned by
 `hosts/nas/archive.nix` behind `myNas.archive.enable`. Read that file's header
 before the first use: `archive` must be its own Btrfs subvolume with
 `compression=none` (GGUF weights are already quantised and do not compress), and
 the gate only turns on after the subvolume exists.
 
 From the coordinator it is a plain path under the NFS mount:
-`/mnt/nas/archive/models`.
+`/mnt/nas/models/weights`.
 
 **It is not in the LaCie disaster mirror.** `hosts/nas/lacie-mirror.nix` mirrors
 `photos music documents videos` and nothing else. The reasoning, which is a
@@ -93,9 +93,9 @@ Do this **before** the next GC, not after. There is no recovery step after.
    so the tree mirrors what the catalog describes:
 
    ```sh
-   mkdir -p /mnt/nas/archive/models/<artifact-id>
+   mkdir -p /mnt/nas/models/weights/<artifact-id>
    cp -L --no-preserve=mode /nix/store/...-<file> \
-      /mnt/nas/archive/models/<artifact-id>/<catalog path>
+      /mnt/nas/models/weights/<artifact-id>/<catalog path>
    ```
 
    `-L` because you are copying through symlinks; `--no-preserve=mode` because
@@ -105,13 +105,13 @@ Do this **before** the next GC, not after. There is no recovery step after.
    manifest — it carries the hash that makes step 3 of the restore verifiable.
 
    ```sh
-   $EDITOR /mnt/nas/archive/models/<artifact-id>/catalog-entry.nix
+   $EDITOR /mnt/nas/models/weights/<artifact-id>/catalog-entry.nix
    ```
 
    Paste the artifact's block from `lib/local-models.nix` verbatim.
 
 5. **Record the date.** Append one line to
-   `/mnt/nas/archive/models/<artifact-id>/ARCHIVED`:
+   `/mnt/nas/models/weights/<artifact-id>/ARCHIVED`:
 
    ```
    2026-08-03  retired from services.local-models.allow on coordinator; superseded by <what>
@@ -125,7 +125,7 @@ Do this **before** the next GC, not after. There is no recovery step after.
    notice:
 
    ```sh
-   nix hash file --type sha256 --base32 /mnt/nas/archive/models/<artifact-id>/<file>
+   nix hash file --type sha256 --base32 /mnt/nas/models/weights/<artifact-id>/<file>
    ```
 
 7. Only now drop the artifact from `services.local-models.allow` and deploy.
@@ -142,7 +142,7 @@ re-downloaded and nothing needs to be re-hashed.
 2. Add the archived file back to the store under its fixed hash:
 
    ```sh
-   nix-store --add-fixed sha256 /mnt/nas/archive/models/<artifact-id>/<file>
+   nix-store --add-fixed sha256 /mnt/nas/models/weights/<artifact-id>/<file>
    ```
 
    This prints the store path. It must equal the path the catalog's `hash`
@@ -161,7 +161,7 @@ re-downloaded and nothing needs to be re-hashed.
 For a multi-file artifact, a loop over the archive directory is fine:
 
 ```sh
-find /mnt/nas/archive/models/<artifact-id> -type f ! -name 'catalog-entry.nix' ! -name 'ARCHIVED' \
+find /mnt/nas/models/weights/<artifact-id> -type f ! -name 'catalog-entry.nix' ! -name 'ARCHIVED' \
   -exec nix-store --add-fixed sha256 {} \;
 ```
 

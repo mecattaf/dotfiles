@@ -1,8 +1,12 @@
 { pkgs, ... }:
 # Fleet journald substrate, sender side (issue #135, workstream 1). Star
-# topology with a single sender: zenbook/bridge are thin clients and do not
-# upload. Plaintext over the point-to-point /30 (settled decision — nixpkgs
-# systemd has no GnuTLS; same trust domain as NFSv4 on the same cable).
+# topology; senders are the STRIX HALO BOXES ONLY (Tom's ruling 2026-08-21:
+# coordinator + worker live in the same room as the NAS; the zenbook is
+# de-facto mobile and never uploads — a roaming laptop streaming its journal
+# home over arbitrary networks is the wrong trade). When hosts/worker lands,
+# it gets this same sender module; zenbook/bridge stay thin clients.
+# Plaintext over the LAN (settled decision — nixpkgs systemd has no GnuTLS;
+# same trust domain as NFSv4 on the same segment).
 let
   # Weekly NVMe→HDD archive on the NAS (#135 workstream 1, final checkbox).
   # Runs coordinator-side because only the coordinator holds credentials and
@@ -45,7 +49,10 @@ in
 {
   services.journald.upload = {
     enable = true;
-    settings.Upload.URL = "http://10.77.0.2:19532";
+    # The NAS's LAN identity (2026-08-20 rewire); reachable over the legacy
+    # /30 cable AND the BE550 LAN during the transition — same address on
+    # both wires, so the physical move never touches this line.
+    settings.Upload.URL = "http://10.42.0.1:19532";
   };
 
   # journald-remote drops the upload connection whenever it rotates its
@@ -53,11 +60,8 @@ in
   # internal error"); the uploader exits 1 and reconnects seconds later. That
   # ~daily blip is not a signal — sustained upload loss is what matters, and
   # the archive liveness dead-man's switch above is the detection for it — so
-  # keep the blip off the failure markers. fleet-deploy.service is restated
-  # because option definitions replace the default, and fleet-deploy writes
-  # its own richer marker.
+  # keep the blip off the failure markers.
   myFailureSurfacing.excludeUnits = [
-    "fleet-deploy.service"
     "systemd-journal-upload.service"
   ];
 

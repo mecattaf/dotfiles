@@ -126,6 +126,13 @@ let
 
   catalogAssertions = [
     {
+      # Archive-before-delete, made mechanical (2026-08-20): a retirement is
+      # only real once the bytes survive somewhere. The `archived` receipt on
+      # the row is the proof; without it the retirement does not evaluate.
+      assertion = lib.all (deployment: deployment.status != "retired" || deployment.archived != null) deploymentList;
+      message = "Every retired deployment must carry an `archived` receipt (NAS path + date) — archive the weights before retiring the row (docs/nas/model-archive.md).";
+    }
+    {
       assertion =
         lib.sort builtins.lessThan rendererBackends
         == lib.sort builtins.lessThan catalog.backendKinds.local;
