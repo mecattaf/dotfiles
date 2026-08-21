@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 let
@@ -155,6 +156,42 @@ in
   # nothing since Aug 05 — every wifi incident of cutover day was forensically
   # blind. Whatever suppressed it, pin the level so it cannot regress.
   networking.networkmanager.logLevel = "INFO";
+
+  # ── Boot-time rail reconciler (2026-08-21, first coordinator reboot) ──────
+  # Observed live: at boot NM missed the 6GHz beacon in its first scan (6GHz
+  # discovery is slow), associated to the Freebox fallback (priority 100),
+  # and — correctly, per NM semantics — never preempted back to thomas-6ghz
+  # (110). Result: internet fine, but the ENTIRE 10.42.0.x world silently
+  # unreachable — printer "Host is down", NAS "No route to host", failure
+  # episodes on every retry. This oneshot runs ONCE, ~2 min after boot: if
+  # the box finds itself on the fallback while the preferred SSID is
+  # visible, switch back. Deliberately never periodic — a daytime
+  # auto-switch would kill live Claude sessions (the wifi-switch freeze
+  # rule: rail changes happen at boot or by Tom's hand between prompts).
+  systemd.services.uplink-rail-reconcile = {
+    description = "Return to thomas-6ghz if boot landed on the Freebox fallback rail";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = pkgs.writeShellScript "uplink-rail-reconcile" ''
+        PATH=${lib.makeBinPath [ pkgs.networkmanager pkgs.gnugrep ]}
+        nmcli -t -f NAME connection show --active | grep -qx "Freebox-AB3ACE" || exit 0
+        if nmcli -t -f SSID device wifi list --rescan yes | grep -qx "thomas-6ghz"; then
+          echo "on fallback rail with thomas-6ghz visible; switching back"
+          nmcli connection up thomas-6ghz
+        else
+          echo "on fallback rail; thomas-6ghz not visible — staying (BE550 down?)"
+        fi
+      '';
+    };
+  };
+  systemd.timers.uplink-rail-reconcile = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "2min";
+      AccuracySec = "30s";
+      # once per boot, never recurring (see comment above)
+    };
+  };
 
   # The `nas` hosts pin moved to modules/common.nix (fleet-wide) at the
   # 2026-08-21 attic move — every host dials the substituter by that name.

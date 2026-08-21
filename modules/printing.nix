@@ -68,6 +68,24 @@ lib.mkIf (!config.myHeadless.enable) {
     serviceConfig = {
       Restart = "on-failure";
       RestartSec = "5min";
+      # Boot race, observed 2026-08-21 21:26:06 (seven seconds into the
+      # boot): network-online.target says yes before the wifi has even
+      # associated, lpadmin gets "Host is down", and the failure tripwire
+      # screams on every reboot — even though the 5-min retry above then
+      # quietly heals it. House doctrine: wait for the printer's reality,
+      # not a target's word (the adguardhome wait-bind-addrs pattern). Up
+      # to 90s for the IPP port, then proceed regardless — the `-` prefix
+      # means a genuinely offline printer degrades to the retry loop, not
+      # a louder failure.
+      ExecStartPre = "-${pkgs.writeShellScript "wait-printer-reachable" ''
+        for _ in $(${pkgs.coreutils}/bin/seq 90); do
+          if ${pkgs.bash}/bin/bash -c 'exec 3<>/dev/tcp/10.42.0.4/631' 2>/dev/null; then
+            exit 0
+          fi
+          ${pkgs.coreutils}/bin/sleep 1
+        done
+        echo "printer 10.42.0.4:631 unreachable after 90s; letting lpadmin try anyway" >&2
+      ''}";
     };
   };
 
