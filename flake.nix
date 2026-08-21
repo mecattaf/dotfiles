@@ -69,15 +69,26 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # apple-fonts RETIRED 2026-08-21 (Tom: "let's get rid of apple fonts, i'm
-    # not using apple fonts anyway"). Its sf-pro/sf-compact/sf-mono/ny came
-    # from `type = "file"` locks of Apple's CDN DMGs — Apple re-released
-    # SF-Pro.dmg and the narHash mismatch broke every fleet build on the very
-    # first update-center run (only boxes with the old DMG already in store
-    # never noticed). Inter (google-fonts) is the UI face now. sfmono-liga
-    # (the ligaturized SF Mono from a plain GitHub repo) went in the same
-    # sweep — Tom: "i don't care about that either"; browser code blocks now
-    # match the terminal's Maple Mono.
+    # Apple SF Pro — kept by explicit ruling (2026-08-21: "it's too good to
+    # have, let's not skip it"), with eyes open about the failure mode this
+    # input carries: it locks Apple's CDN DMGs as `type = "file"` inputs, and
+    # Apple re-releases those DMGs in place, changing the bytes under the
+    # locked narHash. The very first update-center run failed all three
+    # fleet builds on exactly that (a box with the old DMG already in store
+    # never notices; a cold fetch — the NAS, or any fresh machine — dies).
+    # Containment: ONLY sf-pro is consumed anywhere (fonts.packages in
+    # modules/common.nix), so only SF-Pro.dmg is ever fetched; the sibling
+    # family locks (sf-compact, sf-mono, ny, …) sit inert and cannot rot a
+    # build. WHEN the nightly fails here again with "mismatch in field
+    # 'narHash'", the fix is one line: `nix flake update apple-fonts`,
+    # commit, push. The rest of the 2026-08-21 font sweep stands: sf-compact/
+    # sf-mono/ny uninstalled, sfmono-liga deleted outright ("i don't care
+    # about that either" — browser code blocks now match the terminal's
+    # Maple Mono), serif alias moved to Source Serif 4.
+    apple-fonts = {
+      url = "github:Lyndeno/apple-fonts.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
 
     # zmx — LOCAL terminal session persistence (neurosnap/zmx, built on
     # ghostty-vt). THE projector primitive (jul7 ruling, tally morning-annotation
@@ -310,6 +321,7 @@
       # One overlay list everywhere (top-level pkgs + every host).
       overlays = [
         self.overlays.default
+        inputs.apple-fonts.overlays.default
         (final: _prev: {
           # Whole llm-agents catalog under `pkgs.llm-agents.*` (prebuilt from its
           # own nixpkgs — no second eval of ours). home/home.nix pulls an

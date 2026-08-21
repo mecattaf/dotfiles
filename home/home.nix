@@ -204,11 +204,11 @@ in
     gtk-theme = "MacTahoe-Dark-grey";
     color-scheme = "prefer-dark";
     # Interface fonts for Nautilus, Remmina, and every other GTK app that reads
-    # font-name. Inter ships system-wide via modules/common.nix fonts.packages
-    # (SF Pro retired with the apple-fonts input, 2026-08-21); before this key
-    # was set at all, GTK fell back to Adwaita Sans — the "odd Nautilus font"
-    # on first boot.
-    font-name = "Inter 11";
+    # font-name. sf-pro ships system-wide via modules/common.nix fonts.packages
+    # (the one apple-fonts family kept in the 2026-08-21 sweep — "too good to
+    # have"); before this key was set at all, GTK fell back to Adwaita Sans —
+    # the "odd Nautilus font" on first boot.
+    font-name = "SF Pro Display 11";
     document-font-name = "Adwaita Sans 12";
     monospace-font-name = "Adwaita Mono 11";
   };
