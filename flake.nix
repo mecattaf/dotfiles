@@ -632,16 +632,26 @@
           # The mt7925e wcid roam crash bricked the coordinator twice
           # (2026-07-16); the standing fixes are the ASPM escape hatch + the
           # sp5100_tco watchdog (modules/strix.nix) + never roaming: any wifi
-          # profile this box could associate to must pin a single BSSID. The
-          # be550-lan profile is minted at cutover; the moment it exists it
-          # must carry its pin — this assert is what forces that.
+          # profile this box could associate to must either pin a single
+          # BSSID or name an SSID that only ever exists on ONE radio. The
+          # sole exemption is thomas-6ghz since the 2026-08-21 6GHz ruling: it
+          # joins thomas-6ghz, which broadcasts from exactly one radio (the
+          # BE550's 5GHz radio is DISABLED — Tom's ruling, same day — and the
+          # 2.4/5 SSID is distinct), so no roam surface exists. A pin there
+          # is actively harmful: the 6GHz BSSID is an MLD address that
+          # differs between scan and association (seen live: …6b:61:e6 in
+          # scans, …6a:61:e6 on assoc) and pinning it broke activation on
+          # the worker. If the BE550's 5GHz radio is EVER re-enabled with
+          # the same SSID as 6GHz, this exemption must be revisited first.
           assert nixpkgs.lib.hasInfix "mt7925e disable_aspm=1" coordinator.boot.extraModprobeConfig;
           assert
             let
               profiles = coordinator.networking.networkmanager.ensureProfiles.profiles;
             in
-            builtins.all (p: p.wifi ? bssid) (
-              builtins.filter (p: (p.connection.type or "") == "wifi") (builtins.attrValues profiles)
+            builtins.all (name: (profiles.${name}.wifi ? bssid) || name == "thomas-6ghz") (
+              builtins.filter (
+                name: (profiles.${name}.connection.type or "") == "wifi"
+              ) (builtins.attrNames profiles)
             );
           # Split-horizon .internal: each box resolves the coordinator over
           # its shortest path, so stopping tailscaled cannot break traffic

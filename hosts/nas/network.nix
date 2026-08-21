@@ -1,21 +1,16 @@
 { ... }:
 {
-  # One NIC, two rails (2026-08-20 router cutover, transitional). enp1s0 is
-  # the live predictable name of the sole onboard NIC (Aquantia AQC113 10GbE
-  # at PCI 01:00.0), recorded in the kexec installer 2026-08-01.
+  # One NIC, one rail. enp1s0 is the live predictable name of the sole
+  # onboard NIC (Aquantia AQC113 10GbE at PCI 01:00.0), recorded in the
+  # kexec installer 2026-08-01.
   #
-  # address1 is this box's LAN identity: gateway + DNS for the BE550 segment
-  # (hosts/nas/router.nix). address2 keeps the old /30 alive so the
-  # coordinator's cable still works before AND during the physical move —
-  # the move re-plugs the same port from the coordinator's NIC into the
-  # BE550's switch, and because both addresses ride the one interface,
-  # nothing about addressing changes when the wire does. The /30 (and its
-  # transitional gateway below) dies in the post-cutover cleanup commit.
-  #
-  # gateway on the /30 with a deliberately BAD metric (700 > NM's wifi 600):
-  # while the cable is plugged and wan0 is down, internet still arrives via
-  # the coordinator's NAT exactly as today; the moment the A8500 associates,
-  # its default route wins. Fail-safe in both directions during phase 1.
+  # The sole address is this box's LAN identity: gateway + DNS for the BE550
+  # segment (hosts/nas/router.nix). The transitional /30 second rail
+  # (10.77.0.2 + gateway-via-coordinator, the pre-move tether) was RETIRED
+  # 2026-08-21 evening: the physical cable is gone, wan0 owns the default
+  # route, and — the bug that forced the timing — Avahi was announcing
+  # 10.77.0.2 as this box's mDNS address, so every `nas.local` click from
+  # Nautilus dialed a dead rail. One address, no ambiguity.
   # The profile KEEPS its historical id on purpose: ensureProfiles only
   # creates/updates profiles it names — it never deletes others. A renamed id
   # would leave the old coordinator-fast-lane profile alive beside this one,
@@ -35,9 +30,6 @@
     ipv4 = {
       method = "manual";
       address1 = "10.42.0.1/24";
-      address2 = "10.77.0.2/30";
-      gateway = "10.77.0.1";
-      route-metric = 700;
       # Own DNS plane (AdGuard via resolved, modules/adguardhome.nix); never
       # accept resolvers from anyone else.
       ignore-auto-dns = true;

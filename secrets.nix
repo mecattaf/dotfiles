@@ -75,7 +75,7 @@ in
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r
   "secrets/wifi.age".publicKeys = editors ++ laptops ++ coordinatorOnly;
   # BE550 repeated-LAN credentials ($BE550_SSID / $BE550_PSK), minted at cutover
-  # phase 3 (2026-08-21) for the coordinator's be550-lan profile
+  # phase 3 (2026-08-21) for the coordinator's thomas-6ghz profile
   # (hosts/coordinator/uplink-nas.nix). Coordinator-only for now — extend to the
   # laptops tier when the zenbook gets its own be550 profile (it also needs its
   # loopback-AdGuard DoH story resolved first; see the dns_hijack drop list in

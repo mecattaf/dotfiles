@@ -63,6 +63,23 @@ in
     };
   };
 
+  # ── USB power management OFF for the uplink radio (2026-08-21) ────────────
+  # Two distinct doze mechanisms can add 100-400ms wake latency to this
+  # radio, and a house router's uplink must never doze:
+  #   1. 802.11 power-save — the mt76 SOFTWARE power-save pathology (the
+  #      driver disables it for USB mt7925u since Dec 2023, but the
+  #      supplicant/NM layer can still request it) → wifi.powersave = 2 on
+  #      the freebox-uplink profile below. Diagnosed live: 114-370ms idle
+  #      RTT before, ~15ms after.
+  #   2. USB autosuspend — the USB core suspending the whole device link,
+  #      independent of 802.11 PS. Mains-powered always-on box: no upside.
+  #      Kernel param covers boot; the scoped udev rule is the per-device
+  #      belt-and-suspenders (applies on enumeration).
+  boot.kernelParams = [ "usbcore.autosuspend=-1" ];
+  services.udev.extraRules = lib.mkIf (a8500Known && a8500.usbVid != null) ''
+    ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="${a8500.usbVid}", ATTR{idProduct}=="${a8500.usbPid}", TEST=="power/control", ATTR{power/control}="on"
+  '';
+
   # ── Internet uplink: the Freebox AP over the A8500 ───────────────────────
   # Field-for-field port of the coordinator's freebox-uplink profile
   # (hosts/coordinator/uplink-nas.nix), including the 5GHz BSSID pin: the
@@ -96,6 +113,13 @@ in
       # first plug-in (seen live: e2:d5:2b:...), so pin the association to
       # the permanent MAC explicitly.
       cloned-mac-address = "permanent";
+      # Wifi power-save OFF (2 = disable; NM default let the mt7925u doze).
+      # Diagnosed live 2026-08-21: idle-inbound RTT to this radio was
+      # 114-370ms (classic power-save wake latency) while NAS-originated
+      # traffic ran at 1-2ms; a house ROUTER's uplink must never doze.
+      # Applied at runtime the same day (nmcli modify + connection bounce:
+      # 227ms avg -> 15ms avg from a Freebox-side client).
+      powersave = 2;
     };
     wifi-security = {
       key-mgmt = "wpa-psk";

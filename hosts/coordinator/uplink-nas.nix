@@ -30,7 +30,7 @@ in
 # 2026-08-20 REWIRE (in progress): the BE550 is coming BACK, but the router
 # plane is not coming back here — the NAS ingests the Freebox on a USB A8500
 # and is the LAN's gateway/DHCP/DNS (hosts/nas/router.nix); this box becomes
-# an ordinary client of the repeated wifi (be550-lan profile below). The
+# an ordinary client of the repeated wifi (thomas-6ghz profile below). The
 # nas-fast-lane + installer dnsmasq + NAT blocks below are TRANSITIONAL
 # rails for the cutover and retire with the /30 in the cleanup commit.
 #
@@ -97,9 +97,9 @@ in
   # and this box keeps internet + tailnet, including its SSH path to the
   # NAS's uplink leg.
   #
-  networking.networkmanager.ensureProfiles.profiles.be550-lan = lib.mkIf lanReady {
+  networking.networkmanager.ensureProfiles.profiles.thomas-6ghz = lib.mkIf lanReady {
     connection = {
-      id = "be550-lan";
+      id = "thomas-6ghz";
       type = "wifi";
       interface-name = "wlp192s0";
       autoconnect = true;
@@ -107,19 +107,19 @@ in
     };
     wifi = {
       mode = "infrastructure";
+      # thomas-6ghz since the 2026-08-21 6GHz ruling (via wifi-lan.age).
+      # Deliberately NO bssid pin and NO band: this SSID exists on exactly
+      # one radio (the BE550's 6GHz; its 5GHz radio is disabled and 2.4
+      # carries a different SSID), so the mt7925 same-SSID roam crash has no
+      # surface here — and the 6GHz MLD BSSID differs between scan and
+      # association (seen live), so a pin actively breaks activation. The
+      # flake check carries a matching by-name exemption for this profile.
       ssid = "$BE550_SSID";
-      # Pinned to the BE550's 5GHz radio, captured live from a coordinator scan
-      # at cutover (2026-08-21: 2.4GHz 98:03:8E:6B:61:E4, 5GHz …:E5). Same
-      # doctrine as the freebox-uplink pin above: the mt7925e same-SSID
-      # band-steering roam is a wcid-corruption hard-lock, and the BE550
-      # broadcasts one SSID on both bands, so without this pin NM could roam.
-      # The flake check (be550-lan bssid assertion) enforces that this pin
-      # exists the moment wifi-lan.age does.
-      bssid = "98:03:8E:6B:61:E5";
-      band = "a";
     };
     wifi-security = {
-      key-mgmt = "wpa-psk";
+      # WPA3-SAE — mandatory on 6GHz, with protected management frames.
+      key-mgmt = "sae";
+      pmf = 3;
       psk = "$BE550_PSK";
     };
     ipv4.method = "auto";
@@ -137,6 +137,11 @@ in
   # deletes a profile it stopped ensuring — `nmcli connection delete
   # nas-fast-lane` was run by hand at retirement.
   #
+  # NM at INFO explicitly (2026-08-21): this box's NetworkManager had logged
+  # nothing since Aug 05 — every wifi incident of cutover day was forensically
+  # blind. Whatever suppressed it, pin the level so it cannot regress.
+  networking.networkmanager.logLevel = "INFO";
+
   # The NAS as seen from this host: its LAN identity (2026-08-20 rewire).
   # This one line re-points the NFS mount, all five socket-proxyd relays,
   # borg, and the journal-archive ssh — everything dials the NAME `nas`.
