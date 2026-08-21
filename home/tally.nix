@@ -298,6 +298,14 @@ in
   # itself is hardcoded upstream (home-manager.nix OnUnitActiveSec=5s); the
   # eventual real fix is a systemd .path unit on the events dir instead of
   # polling — an upstream tally design change, tracked there, not here.
-  systemd.user.services.tally-drain.Service.LogLevelMax = "notice";
+  #
+  # Coordinator-gated like the drain itself (2026-08-21): ungated, this
+  # override was home-manager's ONLY definition of tally-drain.service on
+  # the worker, so HM shipped an override-only unit there — "Service has no
+  # ExecStart=, Refusing" at every boot (found in the worker's reboot
+  # journal the same evening).
+  systemd.user.services.tally-drain = lib.mkIf isCoordinator {
+    Service.LogLevelMax = "notice";
+  };
 
 }

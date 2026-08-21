@@ -143,14 +143,18 @@
   # The NAS exports its models tree read-only + root-squashed to this host
   # (hosts/nas/models.nix, fsid=6); local-models-sync borrows this host's
   # wanted set from here into /var/lib/local-models before llama-swap starts.
-  # Mounted at /mnt/library, NOT /mnt/nas: at reintegration /mnt/nas here was
-  # a loan-era runtime bind of /home/tom/nas-local (recreated at every boot by
-  # /root/worker-loan/reassert.sh — the machinery that also kept resurrecting
-  # the OCR llama-swap drop-in; the whole plane was found and RETIRED
-  # 2026-08-21 evening, archived under /root/worker-loan-RETIRED-2026-08-21).
-  # The corpus data itself persists at /home/tom/nas-local. /mnt/library stays
-  # the name regardless: a read-only Library-only view deserves a distinct
-  # path from the coordinator's full rw /mnt/nas.
+  # Mounted at /mnt/library, NOT /mnt/nas — because /mnt/nas has a real
+  # history on this box (Tom: "/mnt/nas WAS taken — i am no longer using it,
+  # since i moved the NAS away from ethernet"): it was this host's genuine
+  # NAS path in the ethernet-NAS era, then the worker loan repurposed it as a
+  # runtime bind of /home/tom/nas-local (recreated at every boot by
+  # /root/worker-loan/reassert.sh — the same machinery that kept resurrecting
+  # the OCR llama-swap drop-in; whole plane RETIRED 2026-08-21 evening,
+  # archived under /root/worker-loan-RETIRED-2026-08-21, corpus data intact
+  # at /home/tom/nas-local). Now that the NAS is the house's wifi router
+  # rather than an ethernet peer, the path is deliberately NOT resurrected:
+  # this host's only NAS view is the read-only Library, and a distinct name
+  # says so — /mnt/nas remains free for whatever history does next.
   # soft+nofail, same hardening rationale as the coordinator's
   # nas-client mount: a dead NAS must never hang this box's boot or I/O
   # forever — sync just fails visibly and llama-swap serves what is local.
