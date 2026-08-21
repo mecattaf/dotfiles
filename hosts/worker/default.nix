@@ -195,14 +195,19 @@
             pkgs.coreutils
             pkgs.gnugrep
             pkgs.networkmanager
+            pkgs.framework-tool
           ]
         }
-        ping -c 1 -W 3 10.99.0.1 >/dev/null 2>&1 && exit 0
+        STATE=/var/lib/tb-link-heal
+        if ping -c 1 -W 3 10.99.0.1 >/dev/null 2>&1; then
+          rm -f "$STATE/pd-reset-stamp"
+          exit 0
+        fi
         if ls /sys/bus/thunderbolt/devices/ | grep -qE '^[0-9]+-[1-9]'; then
           echo "peer device present but 10.99.0.1 dark — re-activating tb-fleet"
           nmcli connection up tb-fleet || true
-        else
-          echo "no XDomain peer — rebinding USB4 NHIs (software replug attempt)"
+        elif ls /sys/bus/thunderbolt/devices/ | grep -qE '^[0-9]+-[0-9]+:'; then
+          echo "retimers present but no XDomain peer — rebinding USB4 NHIs"
           for d in 0000:c4:00.5 0000:c4:00.6; do
             echo "$d" > /sys/bus/pci/drivers/thunderbolt/unbind 2>/dev/null || true
           done
@@ -210,8 +215,26 @@
           for d in 0000:c4:00.5 0000:c4:00.6; do
             echo "$d" > /sys/bus/pci/drivers/thunderbolt/bind 2>/dev/null || true
           done
+        else
+          # PD-blind signature (no retimers at all): CCGx reset, the fix
+          # proven on the coordinator 2026-08-21 — see tb-fleet.nix doctrine.
+          # Rate-limited: also bounces the other rear USB-C port.
+          now=$(date +%s)
+          stamp=$(stat -c %Y "$STATE/pd-reset-stamp" 2>/dev/null || echo 0)
+          if [ $((now - stamp)) -gt 1800 ]; then
+            echo "no retimers on the bus — PD-blind signature; resetting CCGx PD controller"
+            framework_tool --pd-reset 2 || true
+            sleep 5
+            echo USBC000:00 > /sys/bus/platform/drivers/ucsi_acpi/unbind 2>/dev/null || true
+            sleep 2
+            echo USBC000:00 > /sys/bus/platform/drivers/ucsi_acpi/bind 2>/dev/null || true
+            touch "$STATE/pd-reset-stamp"
+          else
+            echo "PD-blind but CCGx reset already fired recently — holding"
+          fi
         fi
       '';
+      StateDirectory = "tb-link-heal";
     };
   };
   systemd.timers.tb-link-heal = {
