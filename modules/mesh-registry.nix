@@ -1,4 +1,4 @@
-# The device mesh — ONE source of truth for the three NixOS hosts, consumed by
+# The device mesh — ONE source of truth for the fleet's NixOS hosts, consumed by
 # both the SSH trust plumbing (modules/mesh.nix) and the Remmina VNC profiles
 # (home/remote.nix).
 #
@@ -22,18 +22,36 @@
   };
   # PERMANENTLY BACK (Tom's ruling 2026-08-21: "the worker is FULLY BACK to
   # my device list. not a lease"). This is the very device whose 2026-07-29
-  # departure forced the fleet key rotation; it still runs a pre-rotation
-  # closure holding the OLD user key, which the fleet rightly refuses.
-  # hostKey read live from the running box on ruling day (so known_hosts and
-  # future secret tiers are ready); userKey stays EMPTY until the #229
-  # reintegration ships it a fresh closure with the rotated key — do not
-  # authorize the old key back in the interim. LAN identity: 10.42.0.5
-  # (pinned in hosts/nas/router.nix); Thunderbolt link to the coordinator
-  # (10.99.0.1 <-> 10.99.0.2).
+  # departure forced the fleet key rotation.
+  #
+  # hostKey was read live from the running box on ruling day and is UNCHANGED
+  # by the #229 reintegration — that is deliberate and load-bearing: because the
+  # box keeps its host key, agenix keeps decrypting (the host key IS the agenix
+  # identity) and every other host's known_hosts stays valid, which is why the
+  # reintegration is a `nixos-rebuild switch --target-host` and not a reflash.
+  #
+  # userKey was held EMPTY from 2026-08-21 until this commit, on purpose: the
+  # box was still running the pre-rotation closure that holds the OLD tom@mesh
+  # key, and authorizing that key anywhere would have undone the rotation its
+  # own departure forced. It now carries the SHARED ROTATED key —
+  # byte-identical to the coordinator's and the zenbook's rows — because the
+  # closure that ships with this commit delivers exactly that key to the box
+  # (modules/secrets.nix, ssh-user-key.age, re-minted here to include this
+  # host). The old tom@mesh key is never to reappear in this file.
+  #
+  # Aliases carry both rails so neither path needs a TOFU prompt: the LAN
+  # identity 10.42.0.5 (static in hosts/worker/default.nix, pinned in
+  # hosts/nas/router.nix) and the Thunderbolt fallback 10.99.0.2 (tb-fleet,
+  # coordinator side 10.99.0.1) — the rail the reintegration deploy itself
+  # travels over.
   worker = {
-    aliases = [ "worker" ];
+    aliases = [
+      "worker"
+      "10.42.0.5"
+      "10.99.0.2"
+    ];
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9xaf+UX4cjDEme+Ath3EZYLiUJla/+3QlG4TvCzwLO root@worker";
-    userKey = "";
+    userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729";
   };
   nas = {
     aliases = [

@@ -437,6 +437,20 @@
       # explicit per-host deployment/artifact allowlists.
       lib.localModelCatalog = localModelCatalog;
 
+      # The reviewed rolling-input list, exposed the same evaluation-only way and
+      # for the same reason. It lost its last CONSUMER when
+      # hosts/coordinator/fleet-deploy.nix was deleted on 2026-08-21, but it did
+      # not lose its MEANING: it is the reviewed set of inputs allowed to move
+      # without a flake.lock review, and hosts/nas/default.nix cites it by name
+      # as the reason a single leaf TUI (amdtop) moves nightly while the
+      # appliance's stable base does not. Deleting it to satisfy deadnix would
+      # have orphaned that prose and thrown away the reviewed URLs the NAS
+      # update-center is expected to inherit; leaving it as a bare `let` binding
+      # failed the deadnix check, which had been red at build time since that
+      # deletion. Publishing it resolves both — the list stays reviewed, stays
+      # cited, and is now inspectable by whatever wires the rolling resolution.
+      lib.rollingInputOverrides = rollingInputOverrides;
+
       overlays.default = import ./overlays {
         torchRocm = inputs.nix-strix-halo.packages.${system}.torch-rocm;
       };
@@ -448,6 +462,12 @@
           withHomeManager = false;
           hostNixpkgs = inputs.nixpkgs-stable;
         };
+        # PERMANENT fleet member again since 2026-08-21 (#229). Plain mkHost with
+        # every default: it rides the same unstable pin as its twin (the two are
+        # identical Strix Halo silicon and the pin exists to gate exactly that
+        # kernel/Mesa churn) and it keeps Home Manager, because unlike the NAS it
+        # is an ordinary interactive NixOS box that happens to be headless.
+        worker = mkHost { hostModule = ./hosts/worker; };
         zenbook-duo = mkHost { hostModule = ./hosts/zenbook-duo; };
       };
 
@@ -472,6 +492,12 @@
             [
               "coordinator"
               "nas"
+              # Reachable by name through the fleet-wide 10.42.0.5 pin
+              # (modules/common.nix). If the LAN is ever down, deploy by address
+              # over the Thunderbolt rail instead — the registry authorizes
+              # 10.99.0.2 as one of this host's aliases, so the host key is
+              # pinned either way.
+              "worker"
               "zenbook-duo"
             ]
             (host: {
@@ -550,8 +576,29 @@
           let
             nas = self.nixosConfigurations.nas.config;
             coordinator = self.nixosConfigurations.coordinator.config;
+            worker = self.nixosConfigurations.worker.config;
           in
-          assert !nas.services.tailscale.enable;
+          # ── the tailnet sink (2026-08-21 ws5 pivot) ────────────────────────
+          # This assertion used to read `!nas.services.tailscale.enable` and was
+          # left inverted when the pivot landed — the NAS became the fleet's
+          # tailscale SINK and subnet router in commit 33fb9a15 while the check
+          # still demanded it have no tailnet identity, so `nix flake check` had
+          # been failing here ever since. Corrected with the #229 work, in the
+          # direction the architecture actually went: the appliance IS the
+          # tailnet node, it advertises the house LAN, and it does so with an
+          # interactive login rather than an authkey secret (the NAS holds no
+          # secrets — mySecrets.enable = false).
+          assert nas.services.tailscale.enable;
+          assert nas.services.tailscale.useRoutingFeatures == "server";
+          assert builtins.elem "--advertise-routes=10.42.0.0/24" nas.services.tailscale.extraUpFlags;
+          assert builtins.elem "--advertise-routes=10.42.0.0/24" nas.services.tailscale.extraSetFlags;
+          # The worker is the counter-example that keeps the sink meaningful: a
+          # LAN compute node reached over ordinary SSH, with no node of its own.
+          # All three knobs, because enable alone leaves the fleet-wide
+          # up/set flags from modules/common.nix defined and readable as intent.
+          assert !worker.services.tailscale.enable;
+          assert worker.services.tailscale.extraUpFlags == [ ];
+          assert worker.services.tailscale.extraSetFlags == [ ];
           # The NAS admits SSH/NFS via networking.firewall.extraInputRules,
           # which only renders under the nftables backend — with iptables the
           # appliance seals itself shut (hit live 2026-08-01).
@@ -574,12 +621,22 @@
           assert nas.services.immich.mediaLocation == "/mnt/nas/photos";
           assert nas.services.navidrome.settings.MusicFolder == "/mnt/nas/music";
           assert !nas.services.immich.machine-learning.enable;
-          assert nas.services.immich.environment.IMMICH_MACHINE_LEARNING_URL == "http://coordinator:3003";
+          # Immich ML MOVED coordinator -> worker 2026-08-21 (#229). The URL, the
+          # endpoint, and the name resolution behind it must agree, so all three
+          # are asserted together: a repoint without the pin is a black hole, and
+          # a pin without the endpoint is a connection refused.
+          assert nas.services.immich.environment.IMMICH_MACHINE_LEARNING_URL == "http://worker:3003";
+          assert nas.networking.hosts."10.42.0.5" == [ "worker" ];
           assert nas.services.immich.accelerationDevices == [ "/dev/dri/renderD128" ];
           # The stable-pinned NAS must keep running the SAME Immich the
           # unstable-riding coordinator would — the database schema follows
           # unstable (media.nix pulls module+package from inputs.nixpkgs).
           assert nas.services.immich.package.version == coordinator.services.immich.package.version;
+          # And since 2026-08-21 the server and its ML backend live on DIFFERENT
+          # boxes (#229), so their version coupling is now a cross-host
+          # invariant rather than an implicit local one. hosts/worker/immich-ml.nix
+          # takes its package from this same option for exactly this assert.
+          assert nas.services.immich.package.version == worker.services.immich.package.version;
           assert !coordinator.myCoordinatorMedia.enable;
           assert coordinator.myNasClient.useRemoteStorage;
           assert coordinator.myNasClient.relayMedia;
@@ -589,32 +646,48 @@
           assert coordinator.systemd.sockets ? immich-relay;
           assert coordinator.systemd.sockets ? navidrome-relay;
           assert coordinator.systemd.sockets ? plex-relay;
-          assert coordinator.systemd.sockets ? immich-ml-access;
-          # ── cable admission (2026-08-06) + LAN admission (2026-08-20) ──────
-          # The NAS has NO tailnet identity (asserted above). Its path to the
-          # coordinator was the /30 cable; during the 2026-08-20 rewire
-          # transition it is BOTH rails — the cable (enp191s0) and the BE550
-          # LAN over the coordinator's wifi (wlp192s0). Failure modes held
-          # off: re-blanket-trusting an interface, and anyone concluding
-          # these flows need Tailscale. The enp191s0 half retires with the
-          # /30 cleanup commit; drop those asserts in that same commit.
-          assert !(builtins.elem "enp191s0" coordinator.networking.firewall.trustedInterfaces);
+          # ML is the one endpoint that is NOT a coordinator relay any more: the
+          # socket must exist on the worker and must be GONE from the
+          # coordinator. Asserting both directions is deliberate — a half-move
+          # that left both boxes listening on :3003 would work by accident and
+          # then rot.
+          assert worker.systemd.sockets ? immich-ml-access;
+          assert !(coordinator.systemd.sockets ? immich-ml-access);
+          # ── LAN admission (2026-08-20 rewire; /30 half retired 2026-08-21) ──
+          # The enp191s0 half of this block is GONE, as its own instructions
+          # said it should be: the /30 cable was unplugged at the TV-corner
+          # move and every module-side admission for it was deleted on cutover
+          # day. What was NOT deleted was these asserts, which kept naming
+          # `coordinator.networking.firewall.interfaces.enp191s0` — an
+          # attribute that no longer exists, so the whole check threw. Squared
+          # up here with the #229 work. The installer-dnsmasq :67 assert dies
+          # with it for the same reason (no cable, no factory boot over it).
+          #
+          # Failure modes still held off: re-blanket-trusting an interface, and
+          # anyone concluding these LAN flows need Tailscale.
           assert !(builtins.elem "wlp192s0" coordinator.networking.firewall.trustedInterfaces);
+          assert !(builtins.elem "wlp192s0" worker.networking.firewall.trustedInterfaces);
+          # Coordinator LAN doors: the .internal front doors and the LLM
+          # endpoint. :3003 is deliberately ABSENT — it left with Immich ML.
           assert builtins.all
-            (
-              p:
-              builtins.elem p coordinator.networking.firewall.interfaces.enp191s0.allowedTCPPorts
-              && builtins.elem p coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts
-            )
+            (p: builtins.elem p coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts)
             [
               80 # caddy .internal front doors
-              3003 # immich-ml, dialled by nas.services.immich above
-              8080 # attic; without it the NAS builds from source
               9292 # llama-swap
             ];
-          # dnsmasq for a factory/installer boot — the one moment nobody wants
-          # to discover the appliance was firewalled off.
-          assert builtins.elem 67 coordinator.networking.firewall.interfaces.enp191s0.allowedUDPPorts;
+          assert !(builtins.elem 3003 coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts);
+          # Worker LAN doors: Immich ML (dialled by nas.services.immich above)
+          # and its own llama-swap. Nothing else — and no tailnet to hide behind,
+          # which is exactly why these stay interface-scoped rather than global.
+          assert builtins.all
+            (p: builtins.elem p worker.networking.firewall.interfaces.wlp192s0.allowedTCPPorts)
+            [
+              3003 # immich-ml
+              9292 # llama-swap
+            ];
+          # Attic moved to the NAS at ws5 — the coordinator serves no :8080 and
+          # every host, worker included, dials http://nas:8080/fleet instead.
+          assert builtins.elem "http://nas:8080/fleet" worker.nix.settings.extra-substituters;
           # ── the NAS router plane (2026-08-20 rewire) ───────────────────────
           # The NAS is the house's gateway/DHCP/DNS (hosts/nas/router.nix).
           assert nas.services.dnsmasq.enable;
@@ -643,35 +716,87 @@
           # scans, …6a:61:e6 on assoc) and pinning it broke activation on
           # the worker. If the BE550's 5GHz radio is EVER re-enabled with
           # the same SSID as 6GHz, this exemption must be revisited first.
+          #
+          # BOTH Strix boxes are checked since 2026-08-21 (#229): the worker is
+          # the same silicon with the same mt7925e RZ717 on the same SSID, and
+          # it is in fact the box where the 6GHz BSSID pin was proven to break
+          # activation. A hardening rule that covered only the machine Tom sits
+          # at would have missed the headless one that cannot report a lockup.
           assert nixpkgs.lib.hasInfix "mt7925e disable_aspm=1" coordinator.boot.extraModprobeConfig;
+          assert nixpkgs.lib.hasInfix "mt7925e disable_aspm=1" worker.boot.extraModprobeConfig;
           assert
             let
-              profiles = coordinator.networking.networkmanager.ensureProfiles.profiles;
+              wifiProfilesArePinnedOrExempt =
+                hostConfig:
+                let
+                  profiles = hostConfig.networking.networkmanager.ensureProfiles.profiles;
+                in
+                builtins.all (name: (profiles.${name}.wifi ? bssid) || name == "thomas-6ghz") (
+                  builtins.filter (name: (profiles.${name}.connection.type or "") == "wifi") (
+                    builtins.attrNames profiles
+                  )
+                );
             in
-            builtins.all (name: (profiles.${name}.wifi ? bssid) || name == "thomas-6ghz") (
-              builtins.filter (
-                name: (profiles.${name}.connection.type or "") == "wifi"
-              ) (builtins.attrNames profiles)
-            );
-          # Split-horizon .internal: each box resolves the coordinator over
-          # its shortest path, so stopping tailscaled cannot break traffic
-          # between two hosts on the same LAN. The NAS's answer is the
-          # coordinator's PINNED lease (hosts/nas/router.nix dhcp-host) and
-          # since 2026-08-20 it also serves every LAN phone. A 100.x answer
-          # on either of these is the regression this catches.
+            builtins.all wifiProfilesArePinnedOrExempt [
+              coordinator
+              worker
+            ];
+          # The worker's thomas-6ghz is its ONLY wifi profile: no Freebox
+          # fallback rail exists on that box (its fallback is the Thunderbolt
+          # link), so a second SSID appearing here would be a silent roam
+          # surface on the machine least able to report the resulting lockup.
+          assert
+            builtins.filter (
+              name:
+              (worker.networking.networkmanager.ensureProfiles.profiles.${name}.connection.type or "") == "wifi"
+            ) (builtins.attrNames worker.networking.networkmanager.ensureProfiles.profiles)
+            == [ "thomas-6ghz" ];
+          # Static, lease-free LAN identity — the property every cross-host
+          # reference to this box depends on (NAS ML URL, NAS journal ACL, the
+          # fleet-wide hosts pin). A silent revert to DHCP breaks all three.
+          assert
+            worker.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4 == {
+              method = "manual";
+              address1 = "10.42.0.5/24";
+              gateway = "10.42.0.1";
+              dns = "10.42.0.1";
+              ignore-auto-dns = true;
+            };
+          # .internal resolution: the NAS's AdGuard is the ONE resolver that
+          # answers these names, and it answers with the coordinator's PINNED
+          # lease (hosts/nas/router.nix dhcp-host); since 2026-08-20 it serves
+          # every LAN phone the same way. A 100.x answer here is the regression
+          # this catches.
           assert builtins.all (
             r: r.answer == "10.42.0.2"
           ) nas.services.adguardhome.settings.filtering.rewrites;
-          assert builtins.all (
-            r: r.answer == "127.0.0.1"
-          ) coordinator.services.adguardhome.settings.filtering.rewrites;
+          # The second half of this pair used to assert the COORDINATOR's own
+          # loopback AdGuard rewrote .internal to 127.0.0.1. That instance was
+          # deleted on cutover day (2026-08-21, phase 3) and the assert was left
+          # behind, reading `settings.filtering.rewrites` off a module that is no
+          # longer imported — `settings` is null there, so the check threw
+          # "expected a set but found null" rather than failing an assertion.
+          # Squared up with the #229 work, and re-pointed at the thing that
+          # actually matters now: per-device AdGuard is FORBIDDEN on this LAN
+          # (its DoH upstreams are exactly what the NAS's dns_hijack drops), so
+          # the invariant is that NO client runs one. The worker — the box that
+          # collision was first proven on — is included.
+          assert !coordinator.services.adguardhome.enable;
+          assert !worker.services.adguardhome.enable;
+          assert !self.nixosConfigurations.zenbook-duo.config.services.adguardhome.enable;
+          assert nas.services.adguardhome.enable;
           # ── #130 expansion gates: all OFF, and the pairs agree ─────────────
           # These assert the STAGED shape, i.e. that today's switch is a no-op
           # on the NAS's running services. Each gate flips with its own runbook
           # (the header comment of the module named beside it); when one does,
           # invert the assertion here in the same commit rather than deleting
           # it — a gate that nothing checks is a gate that drifts.
-          assert !nas.myNas.snapshots.enable; # ws2a hosts/nas/snapshots.nix
+          # ws2a FLIPPED ON 2026-08-21 per the runbook in hosts/nas/snapshots.nix
+          # (btrbk over the data subvolumes). The gate moved in that day's commit
+          # but this assertion did not, against this block's own standing
+          # instruction to invert it in the same commit — so it had been failing.
+          # Inverted here with the #229 work; the gate discipline is intact again.
+          assert nas.myNas.snapshots.enable; # ws2a hosts/nas/snapshots.nix
           # ws4 flipped ON 2026-08-20 (the Library's cold store): subvolume
           # created live with compression=none, gate + export + receipt
           # discipline landed together, per this block's own instructions.
@@ -711,6 +836,7 @@
         # extendModules simulation technique the NAS cutover used pre-#131.
         nas-paperless-staged =
           let
+            nasOff = self.nixosConfigurations.nas.config;
             nasOn =
               (self.nixosConfigurations.nas.extendModules {
                 modules = [ { myNas.paperless.enable = true; } ];
@@ -728,8 +854,20 @@
           assert nasOn.services.paperless.consumptionDir == "/mnt/nas/documents/.paperless-consume";
           assert nasOn.services.paperless.mediaDir == "/mnt/nas/services/paperless/media";
           assert nasOn.fileSystems ? "/mnt/nas/services/paperless/media/documents/originals";
-          # Enabling Paperless must not grow the NAS a Tailscale identity.
-          assert !nasOn.services.tailscale.enable;
+          # Enabling Paperless must not CHANGE the NAS's tailnet posture. This
+          # read `!nasOn.services.tailscale.enable` until 2026-08-21, expressing
+          # the same intent back when the answer was "the NAS has no tailnet at
+          # all"; the ws5 pivot made the appliance the fleet's tailscale sink and
+          # left this assert unconditionally false, so the gate-then-verify check
+          # had been failing. Stated as an equality against the gate-OFF
+          # configuration, it now says the thing that was always meant: this gate
+          # is orthogonal to the tailnet, whichever way the tailnet is set.
+          assert nasOn.services.tailscale.enable == nasOff.services.tailscale.enable;
+          assert nasOn.services.tailscale.extraUpFlags == nasOff.services.tailscale.extraUpFlags;
+          # And it must not grow the appliance a secret: "NO SECRET LIVES ON
+          # THIS BOX" is the standing ruling, and Paperless is exactly the kind
+          # of service that would want one.
+          assert !nasOn.mySecrets.enable;
           assert nasOn.services.paperless.database.createLocally;
           pkgs.runCommand "nas-paperless-staged" { } ''
             touch "$out"
@@ -739,6 +877,7 @@
           let
             coordinatorHome = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
             zenbookHome = self.nixosConfigurations.zenbook-duo.config.home-manager.users.tom;
+            workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
           in
           assert coordinatorHome.home.username == "tom";
           assert coordinatorHome.programs.atuin.settings.auto_sync;
@@ -752,6 +891,24 @@
           assert !zenbookHome.programs.voxtype.enable;
           assert zenbookHome.systemd.user.services ? ntm;
           assert zenbookHome.systemd.user.services ? wayvnc;
+          # The worker keeps Home Manager (unlike the NAS, which stops at NixOS):
+          # it is an ordinary interactive box that merely has nobody sitting at
+          # it, so the shell, atuin sync and niri session are all real. What it
+          # must NOT pick up are the things gated on being the coordinator — the
+          # Tally daemon and voxtype — or the zenbook's dual-screen ntm daemon.
+          assert workerHome.home.username == "tom";
+          assert workerHome.programs.atuin.settings.auto_sync;
+          assert !workerHome.services.tally.enable;
+          assert !workerHome.programs.voxtype.enable;
+          assert !(workerHome.systemd.user.services ? ntm);
+          # wayvnc's unit exists and is deliberately unreachable — this host has
+          # no tailnet and :5900 is admitted on tailscale0 only, fleet-wide. The
+          # unit stays so the screen becomes viewable the day that changes; see
+          # hosts/worker/headless-display.nix.
+          assert workerHome.systemd.user.services ? wayvnc;
+          assert builtins.elem 5900
+            self.nixosConfigurations.worker.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
+          assert !self.nixosConfigurations.worker.config.services.tailscale.enable;
           pkgs.runCommand "home-profiles" { } ''
             touch "$out"
           '';
@@ -867,9 +1024,38 @@
               nativeBuildInputs = [ pkgs.ripgrep ];
             }
             ''
-              # go.sum lines are base64 hashes; the case-insensitive sweep
-              # otherwise false-positives on three-letter substrings of them.
-              if rg --ignore-case --line-number --glob '!go.sum' \
+              # Two exclusions, both narrow and both earned:
+              #
+              #   go.sum   — base64 hashes, on which a case-insensitive sweep for
+              #              three-letter substrings false-positives endlessly.
+              #
+              #   docs/**/*.md — RESEARCH PROSE, not tree content that runs. Added
+              #              2026-08-21 (#229) after this check turned out to have
+              #              been failing at build time since cutover day. The
+              #              speech-aug26 notes describe an UPSTREAM project
+              #              (kyuz0/amd-strix-halo-voice-toolbox) that ships a
+              #              toolbox built on the retired distro, and one flagged
+              #              line is literally an instruction NOT to copy that
+              #              project's IOMMU advice — doctrine being preserved,
+              #              i.e. the exact opposite of residue. Banning the NAME
+              #              in prose about other people's systems protects
+              #              nothing and costs the ability to write down why we
+              #              don't do what they do. Everything that actually runs
+              #              — flake, modules, hosts, home, pkgs, overlays, flows,
+              #              scripts — stays swept.
+              #
+              # NB the failure was invisible to `nix flake check --no-build`,
+              # which evaluates a runCommand's derivation without ever running its
+              # builder. Sweeps like this one only assert when BUILT.
+              #
+              # NB2 the glob is anchored with a leading **/ because the search
+              # root is an absolute /nix/store path, against which a bare
+              # `docs/...` glob never matches. And this comment deliberately does
+              # not spell the retired platform's name — the sweep reads its own
+              # source tree, which is why the pattern list above is assembled from
+              # split string literals.
+              if rg --ignore-case --line-number \
+                --glob '!go.sum' --glob '!**/docs/**/*.md' \
                 '${retiredPlatformPattern}' ${self}; then
                 echo "retired platform residue found in the canonical NixOS tree" >&2
                 exit 1
@@ -881,14 +1067,25 @@
           let
             coordinator = self.nixosConfigurations.coordinator.config;
             nas = self.nixosConfigurations.nas.config;
+            worker = self.nixosConfigurations.worker.config;
             meshRegistry = import ./modules/mesh-registry.nix;
-            retiredHost = "work" + "er";
-            retiredPool = retiredHost + "-gpu";
+            # `worker` is spelled by concatenation throughout this check for one
+            # narrow reason that SURVIVES its reinstatement: the ripgrep sweep at
+            # the bottom greps the flake's own source tree, and a literal here
+            # would match itself. It is no longer a "retired host" — see below.
+            strixWorker = "work" + "er";
+            # What stayed retired (Tom's ruling, unchanged by #229): the worker
+            # is a HOST again, never a Tally executor or a Tally pool. All jobs
+            # execute locally on the coordinator; home/tally.nix declares
+            # `executors = { }` and no worker-gpu lane. hosts/worker/gpu-cooldown.nix
+            # was rewritten rather than restored precisely to honour this — its
+            # old Layer 2 SSH'd here to take a worker-gpu lease.
+            retiredPool = strixWorker + "-gpu";
             retiredExecutionPattern = nixpkgs.lib.concatStringsSep "|" [
-              retiredHost
+              strixWorker
               retiredPool
-              (retiredHost + "Flake")
-              (retiredHost + "Models")
+              (strixWorker + "Flake")
+              (strixWorker + "Models")
             ];
             retiredDeployment = "deepseek-v4-flash-q4-dual";
             activeHostSets = [
@@ -899,43 +1096,107 @@
             expectedHosts = [
               "coordinator"
               "nas"
+              strixWorker
               "zenbook-duo"
             ];
             retiredAliases = nixpkgs.lib.concatStringsSep "|" [
-              (retiredHost + "-tb")
+              (strixWorker + "-tb")
               ("coordinator-" + "tb")
             ];
             removedModel = "qwo" + "pus";
             monthlySources = builtins.fromJSON (builtins.readFile ./pkgs/local-ai-monthly/sources.json);
           in
-          # Regression guard: the NixOS, deploy-rs, and mesh registries must agree
-          # on the retired host's absence.
-          assert nixpkgs.lib.all (hosts: !(nixpkgs.lib.elem retiredHost hosts)) activeHostSets;
+          # ── the fleet roll call ────────────────────────────────────────────
+          # This assertion pair used to demand the worker's ABSENCE from all
+          # three registries. It was already failing at HEAD: the 2026-08-21
+          # audit added the worker's row to mesh-registry.nix (host key live,
+          # user key deliberately empty) without touching this guard, so
+          # `nix flake check` had been red here too.
+          #
+          # Inverted with #229, and deliberately kept as a three-way agreement
+          # rather than deleted. The registries drifting apart is the actual
+          # failure mode this catches, in either direction: a host in the flake
+          # but not in deploy-rs cannot be pushed to in an emergency; a host in
+          # the mesh registry but not in the flake is a set of authorized keys
+          # for a machine nobody builds. Both happened to this very host.
+          assert nixpkgs.lib.all (hosts: nixpkgs.lib.elem strixWorker hosts) activeHostSets;
           assert nixpkgs.lib.all (hosts: hosts == expectedHosts) activeHostSets;
+          # Permanence, in config rather than prose (Tom: "not a lease"). The
+          # worker's registry row must carry BOTH keys: the host key is agenix's
+          # decryption identity and the reason the reintegration is a switch and
+          # not a reflash, and the user key must be the SHARED rotated key — the
+          # same string the coordinator carries. The old tom@mesh key that left
+          # on this device in July must never reappear; any value other than the
+          # coordinator's fails here.
+          assert meshRegistry.${strixWorker}.hostKey != "";
+          assert meshRegistry.${strixWorker}.userKey == meshRegistry.coordinator.userKey;
+          assert nixpkgs.lib.hasInfix "tom@mesh-20260729" meshRegistry.${strixWorker}.userKey;
+          # Both rails addressable without TOFU: the LAN identity and the
+          # Thunderbolt fallback the reintegration deploy itself travelled over.
+          assert nixpkgs.lib.elem "10.42.0.5" meshRegistry.${strixWorker}.aliases;
+          assert nixpkgs.lib.elem "10.99.0.2" meshRegistry.${strixWorker}.aliases;
           # 2026-08-20 rewire: names resolve to the LAN identities — the NAS
           # at its gateway address, the coordinator at its pinned lease. Both
           # are reachable over the legacy /30 cable too until the cleanup
           # commit, so these hold across the whole transition.
           assert coordinator.networking.hosts."10.42.0.1" == [ "nas" ];
           assert nas.networking.hosts."10.42.0.2" == [ "coordinator" ];
-          # journald substrate (#135): coordinator is the sole sender, the NAS
-          # receives on the NVMe, and the local journal stays bounded.
+          # journald substrate (#135): the NAS receives on the NVMe, and the
+          # senders are the STRIX HALO BOXES ONLY (Tom's 2026-08-21 ruling) —
+          # the worker joined as the second sender with #229. Each sender keeps
+          # its own bounded persistent local journal, which is the half that
+          # actually matters in an mt7925e hard lockup: the upload is best-effort
+          # and the local ring is the forensic record.
           assert nas.services.journald.remote.enable;
           assert coordinator.services.journald.upload.settings.Upload.URL == "http://10.42.0.1:19532";
           assert coordinator.services.journald.storage == "persistent";
+          assert worker.services.journald.upload.enable;
+          assert worker.services.journald.upload.settings.Upload.URL == "http://10.42.0.1:19532";
+          assert worker.services.journald.storage == "persistent";
+          # A sender the receiver does not admit is a silent hole: journald-remote
+          # would simply never see it. Assert the NAS's nftables ACL names both.
+          assert nixpkgs.lib.hasInfix "ip saddr 10.42.0.2 tcp dport 19532 accept"
+            nas.networking.firewall.extraInputRules;
+          assert nixpkgs.lib.hasInfix "ip saddr 10.42.0.5 tcp dport 19532 accept"
+            nas.networking.firewall.extraInputRules;
+          # The zenbook stays a thin client on purpose — mobile, so it never
+          # streams its journal home over arbitrary networks.
+          assert !self.nixosConfigurations.zenbook-duo.config.services.journald.upload.enable;
           assert self.deploy.nodes.coordinator.hostname == "coordinator";
           assert self.deploy.nodes.nas.hostname == "nas";
+          assert self.deploy.nodes.${strixWorker}.hostname == strixWorker;
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
           assert coordinator.services.tailscale.extraUpFlags == [ "--ssh" ];
-          assert !nas.services.tailscale.enable;
-          assert nas.services.tailscale.extraUpFlags == [ ];
-          assert nas.services.tailscale.extraSetFlags == [ ];
+          # The NAS is the tailnet SINK since the 2026-08-21 ws5 pivot; the
+          # worker has no node at all. (This assertion was inverted for the NAS
+          # here too, and failing — see the matching note in nas-topology.)
+          assert nas.services.tailscale.enable;
+          assert nixpkgs.lib.elem "--advertise-routes=10.42.0.0/24" nas.services.tailscale.extraUpFlags;
+          assert !worker.services.tailscale.enable;
+          assert worker.services.tailscale.extraUpFlags == [ ];
+          assert worker.services.tailscale.extraSetFlags == [ ];
+          # No tailnet means no authkey secret may be declared for this host —
+          # the guard added to modules/secrets.nix with #229. A stale key here
+          # would silently re-join the box on its next flash.
+          assert !(worker.age.secrets ? tailscale-authkey);
           assert !nas.programs.niri.enable;
           assert !nas.services.greetd.enable;
           assert !nas.services.printing.enable;
-          assert !nas.services.avahi.enable;
           assert !nas.services.pipewire.enable;
-          assert nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [ ];
+          # Avahi is ON since cutover day and that is deliberate — it is how the
+          # NAS announces its read-only SMB trees so GNOME's Network pane can
+          # list them (hosts/nas/discovery.nix, Tom's "show its files in
+          # Network" ask). The old `!enable` assert here predates that module and
+          # had been failing; it is replaced by the property that actually
+          # matters, which is that the announcement never leaks onto the Freebox
+          # segment: LAN leg only, never wan0.
+          assert nas.services.avahi.enable;
+          assert nas.services.avahi.allowInterfaces == [ "enp1s0" ];
+          # The tailnet door is no longer empty either: the NAS became the fleet's
+          # tailscale sink at ws5 and now answers DNS on it (the 2026-08-21
+          # split-DNS server-side change, so tailnet clients resolve .internal).
+          # Asserting the exact set keeps that door from quietly widening.
+          assert nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [ 53 ];
           assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
           assert nas.myNas.storage.enable;
           assert nas.myNas.media.enable;
@@ -944,14 +1205,56 @@
           assert !coordinator.myCoordinatorMedia.enable;
           assert coordinator.myNasClient.useRemoteStorage;
           assert coordinator.myNasClient.relayMedia;
-          assert coordinator.systemd.sockets ? immich-ml-access;
+          # ML is the one endpoint that is NOT a coordinator relay any more: the
+          # socket must exist on the worker and must be GONE from the
+          # coordinator. Asserting both directions is deliberate — a half-move
+          # that left both boxes listening on :3003 would work by accident and
+          # then rot.
+          assert worker.systemd.sockets ? immich-ml-access;
+          assert !(coordinator.systemd.sockets ? immich-ml-access);
           assert coordinator.systemd.services.tailscaled-autoconnect.serviceConfig.RestartSec == "1min";
+          # Distributed builds stay OFF. The worker being back does NOT make it a
+          # build farm: the fleet's build story is the NAS update-center (build
+          # nightly on the appliance, pull everywhere), which is why
+          # hosts/worker/cache-push.nix was dropped rather than restored.
           assert !coordinator.nix.distributedBuilds;
           assert coordinator.nix.buildMachines == [ ];
-          assert !(builtins.hasAttr retiredHost coordinator.home-manager.users.tom.services.tally.executors);
+          assert !worker.nix.distributedBuilds;
+          assert worker.nix.buildMachines == [ ];
+          assert !(worker.nix.settings ? post-build-hook);
+          assert nixpkgs.lib.elem "http://nas:8080/fleet" worker.nix.settings.extra-substituters;
+          # Still retired, and asserted in the NEGATIVE on purpose: a host, never
+          # a Tally executor or pool. hosts/worker/gpu-cooldown.nix was rewritten
+          # rather than restored precisely so nothing here needs to come back.
+          assert !(builtins.hasAttr strixWorker coordinator.home-manager.users.tom.services.tally.executors);
           assert !(builtins.hasAttr retiredPool coordinator.home-manager.users.tom.services.tally.pools);
-          assert !(builtins.hasAttr retiredHost coordinator.programs.ssh.knownHosts);
+          assert coordinator.home-manager.users.tom.services.tally.executors == { };
+          assert !worker.home-manager.users.tom.services.tally.enable;
+          # ...but very much present in the SSH mesh, in both directions. This
+          # assertion was the inverse until #229 and was failing at HEAD, since
+          # the audit had already added the registry row.
+          assert builtins.hasAttr strixWorker coordinator.programs.ssh.knownHosts;
+          assert builtins.hasAttr "coordinator" worker.programs.ssh.knownHosts;
+          assert nixpkgs.lib.elem meshRegistry.coordinator.userKey
+            worker.users.users.tom.openssh.authorizedKeys.keys;
+          # myCluster died with the role option; per-host policy in
+          # modules/strix.nix is selected by hostname on BOTH Strix boxes now.
           assert !(self.nixosConfigurations.coordinator.options ? myCluster);
+          assert !(self.nixosConfigurations.${strixWorker}.options ? myCluster);
+          # The worker's roster is its own: the two gemma4-31b rows, and nothing
+          # mirrored from the coordinator (128 GB each, not 256 GB shared).
+          assert
+            worker.services.local-models.allow == [
+              "gemma4-31b-it-q8-0"
+              "gemma4-31b-it-vl"
+            ];
+          assert worker.services.local-models.artifacts == [ ];
+          # AdGuard is FORBIDDEN per-device on this LAN (DoH vs the NAS's
+          # dns_hijack). The worker is the box that collision was first proven
+          # on, so its closure must not carry the service at all.
+          assert !worker.services.adguardhome.enable;
+          assert !coordinator.services.adguardhome.enable;
+          assert !self.nixosConfigurations.zenbook-duo.config.services.adguardhome.enable;
           assert coordinator.microvm.host.enable;
           assert !(self.nixosConfigurations.coordinator.options.myArtifacts ? livePortRange);
           assert !coordinator.home-manager.users.tom.services.tally.pools.coordinator-gpu.hardPreempt;
@@ -1033,7 +1336,14 @@
               name = "Brother_HL_L2445DW";
               description = "Brother HL-L2445DW";
               location = "Home";
-              deviceUri = "ipp://BRW08F97E55F396.local:631/ipp/print";
+              # The PINNED address, not the mDNS name. modules/printing.nix moved
+              # to ipp://10.42.0.4 on 2026-08-21 after a job was stranded by the
+              # Brother's Deep Sleep: its mDNS responder goes fully mute in that
+              # state (avahi-resolve times out while the IP still pings), so a
+              # .local deviceUri fails exactly when the printer has been idle a
+              # while — which is most of the time. This expectation was left
+              # behind on the old name in that commit and had been failing since.
+              deviceUri = "ipp://10.42.0.4:631/ipp/print";
               model = "everywhere";
               ppdOptions.PageSize = "A4";
             };

@@ -105,44 +105,71 @@ in
           fi
         '';
 
-        # Tailscale: join the tailnet on first boot with this host's own pre-auth key
-        # (per-host .age; single-use, non-ephemeral, preauthorized, tag:mesh — tagged
-        # nodes get key expiry disabled on first auth, so the device never logs out).
-        # The autoconnect unit only runs `tailscale up` while BackendState=NeedsLogin,
-        # so an already-joined node never re-auths on rebuilds, and rotating the .age
-        # ciphertext is a no-op until a `tailscale logout`.
-        age.secrets.tailscale-authkey.file =
-          ../secrets + "/tailscale-authkey-${config.networking.hostName}.age";
-
-        # No authKeyParameters: they append `?ephemeral=…&preauthorized=…` to the key,
-        # which the control plane accepts only for OAuth client secrets used as auth
-        # keys — a pre-minted tskey-auth key gets rejected as "invalid key" (bit a
-        # first-boot host live, Jul 5). Our keys carry those properties from mint time.
-        services.tailscale.authKeyFile = config.age.secrets.tailscale-authkey.path;
-
-        # The stock autoconnect unit orders only after tailscaled; make it wait for
-        # agenix's /run/agenix.d mount too, or it can race the key's decryption at boot.
-        # It also raced the uplink on the coordinator's first boot (the boot-time
-        # `tailscale up` predated wifi, so the join needed a manual restart, refs #37):
-        # order after network-online.target and retry so a late uplink (wifi
-        # associating after the unit fired) self-heals instead of staying down.
-        # A minute keeps permanent auth/config failures from creating a tight
-        # restart storm while still recovering promptly from a late network.
-        systemd.services.tailscaled-autoconnect = {
-          after = [
-            "run-agenix.d.mount"
-            "network-online.target"
-          ];
-          wants = [
-            "run-agenix.d.mount"
-            "network-online.target"
-          ];
-          serviceConfig = {
-            Restart = "on-failure";
-            RestartSec = "1min";
-          };
-        };
       }
+
+      # Tailscale: join the tailnet on first boot with this host's own pre-auth key
+      # (per-host .age; single-use, non-ephemeral, preauthorized, tag:mesh — tagged
+      # nodes get key expiry disabled on first auth, so the device never logs out).
+      # The autoconnect unit only runs `tailscale up` while BackendState=NeedsLogin,
+      # so an already-joined node never re-auths on rebuilds, and rotating the .age
+      # ciphertext is a no-op until a `tailscale logout`.
+      #
+      # GATED, since 2026-08-21 (#229). This block used to be unconditional inside
+      # the delivered tier, which silently assumed every agenix host is a tailnet
+      # host. That stopped being true when the NAS became the fleet's single
+      # tailscale sink and the worker came back with
+      # `services.tailscale.enable = mkForce false`: the unconditional line
+      # `../secrets + "/tailscale-authkey-worker.age"` would have referenced a
+      # ciphertext that does not exist (it was deleted with the 2026-07-29
+      # retirement and is deliberately not re-minted), failing EVAL of the whole
+      # host — the reintegration's first and most boring wall.
+      #
+      # Both halves of the guard are meaningful and neither alone is enough:
+      #   * services.tailscale.enable — intent. A host that has been taken off the
+      #     tailnet must not keep an authkey declared, or a stale key silently
+      #     re-joins it on the next flash.
+      #   * pathExists — reality. Declaring an agenix secret whose ciphertext is
+      #     absent fails eval, and declaring one this host cannot decrypt fails
+      #     activation; both are worse than having no tailnet.
+      (lib.mkIf
+        (
+          config.services.tailscale.enable
+          && builtins.pathExists (../secrets + "/tailscale-authkey-${config.networking.hostName}.age")
+        )
+        {
+          age.secrets.tailscale-authkey.file =
+            ../secrets + "/tailscale-authkey-${config.networking.hostName}.age";
+
+          # No authKeyParameters: they append `?ephemeral=…&preauthorized=…` to the key,
+          # which the control plane accepts only for OAuth client secrets used as auth
+          # keys — a pre-minted tskey-auth key gets rejected as "invalid key" (bit a
+          # first-boot host live, Jul 5). Our keys carry those properties from mint time.
+          services.tailscale.authKeyFile = config.age.secrets.tailscale-authkey.path;
+
+          # The stock autoconnect unit orders only after tailscaled; make it wait for
+          # agenix's /run/agenix.d mount too, or it can race the key's decryption at boot.
+          # It also raced the uplink on the coordinator's first boot (the boot-time
+          # `tailscale up` predated wifi, so the join needed a manual restart, refs #37):
+          # order after network-online.target and retry so a late uplink (wifi
+          # associating after the unit fired) self-heals instead of staying down.
+          # A minute keeps permanent auth/config failures from creating a tight
+          # restart storm while still recovering promptly from a late network.
+          systemd.services.tailscaled-autoconnect = {
+            after = [
+              "run-agenix.d.mount"
+              "network-online.target"
+            ];
+            wants = [
+              "run-agenix.d.mount"
+              "network-online.target"
+            ];
+            serviceConfig = {
+              Restart = "on-failure";
+              RestartSec = "1min";
+            };
+          };
+        }
+      )
 
       # Operator CLI credentials — coordinator ONLY (the ciphertexts aren't decryptable
       # by other hosts, and declaring an undecryptable secret fails activation, so the
@@ -338,6 +365,13 @@ in
             # + the zenbook since 2026-08-21 ("6ghz fleet wide"): its
             # thomas-6ghz profile substitutes the same $BE550_SSID/$BE550_PSK.
             "zenbook-duo"
+            # + the worker with its reintegration the same day (#229). Its
+            # thomas-6ghz profile is the only way it reaches the house LAN at
+            # all — there is no Freebox fallback profile on that box and no
+            # tailnet behind it, so this delivery is load-bearing, not a
+            # convenience. wifi-lan.age was re-minted in the same commit to add
+            # the worker host key to its recipients.
+            "worker"
           ]
           && builtins.pathExists ../secrets/wifi-lan.age
         )

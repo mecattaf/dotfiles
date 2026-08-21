@@ -25,7 +25,16 @@
     # NAS-side repo server — Tom ruled the borg layer redundant against the
     # physical-redundancy stack (RAID 1 + LaCie + snapshots).
     ./services.nix
-    ./immich-ml.nix
+    # ./immich-ml.nix MOVED to hosts/worker 2026-08-21 (#229, Tom's ruling: he
+    # uses Immich's ML rarely, so its batches belong on the box he is not typing
+    # on). The module moved wholesale — socket-activated :3003, 15-minute idle
+    # retirement, standalone from services.immich (which is on the NAS since the
+    # 2026-08-02 cutover) — with only the admitting interface and the box's name
+    # changed. The NAS now dials http://worker:3003 (hosts/nas/media.nix), which
+    # resolves via the fleet-wide 10.42.0.5 pin in modules/common.nix. Deploy
+    # order matters and is recorded here because getting it wrong is a visible
+    # outage: worker first (so the endpoint exists), then the NAS (so it starts
+    # dialling the new one), then this box (which stops answering :3003).
     ./atuin.nix
     ./audio.nix # pins the webcam mic as the default PipeWire source
     # AdGuard REMOVED from this host at cutover phase 3 (2026-08-21, Tom's

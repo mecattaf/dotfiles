@@ -43,6 +43,13 @@ let
     coordinator = "coordinator";
     zenbook = "zenbook-duo";
     nas = "nas";
+    # Back since 2026-08-21 (#229). Plain name like every other fleet host: it
+    # resolves through the fleet-wide 10.42.0.5 pin in modules/common.nix, and
+    # the registry authorizes that name plus both addresses behind it, so there
+    # is no TOFU prompt whichever rail answers. If the LAN is ever down, the
+    # Thunderbolt address 10.99.0.2 is the documented fallback and is a registry
+    # alias too — reach it explicitly rather than by this nickname.
+    worker = "worker";
   };
 
   unknownTargets = lib.filter (t: !(registry ? ${t})) (lib.attrValues operatorAliases);

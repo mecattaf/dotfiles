@@ -136,6 +136,15 @@
   # hosts/coordinator/uplink-nas.nix at the 2026-08-21 attic move).
   networking.hosts."10.42.0.1" = [ "nas" ];
 
+  # The worker by name, fleet-wide, for exactly the same reason (#229,
+  # 2026-08-21). The NAS's Immich dials http://worker:3003 for every ML batch
+  # (hosts/nas/media.nix) and the NAS is a stable-pinned appliance with no mDNS
+  # and no bare-hostname resolution, so without this pin that URL is a black
+  # hole. The address is the worker's STATIC lease-free identity — declared in
+  # hosts/worker/default.nix, guarded by the dnsmasq dhcp-host pin in
+  # hosts/nas/router.nix — not a DHCP outcome.
+  networking.hosts."10.42.0.5" = [ "worker" ];
+
   # #106 proposed also setting `nix.registry.nixpkgs.flake` and `nix.nixPath`
   # here. Deliberately NOT done: nixpkgs' own misc/nixpkgs-flake.nix already
   # pins both to `nixpkgs.flake.source` (mkDefault) for any flake-built system,

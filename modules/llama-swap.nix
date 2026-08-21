@@ -31,9 +31,9 @@ in
     enable = true;
     package = pkgs.llama-swap;
 
-    # One conventional endpoint on coordinator. Binding all IPv4 interfaces makes
-    # it reachable over Tailscale; the interface-scoped firewall below keeps it
-    # closed on raw LAN/wifi.
+    # One conventional endpoint per host. Binding all IPv4 interfaces makes it
+    # reachable over Tailscale where a tailnet exists; the interface-scoped
+    # firewall below is what actually decides who may dial it.
     listenAddress = "0.0.0.0";
     port = 9292;
     openFirewall = false;
@@ -73,19 +73,21 @@ in
     llamaSwapUnload
   ];
 
-  # Two remote doors, both interface-scoped; nothing on raw LAN/wifi.
+  # Two doors, both interface-scoped. Neither is global: llama-swap has no
+  # application-layer authentication, so "which interface" IS the access control.
   #
   # tailnet: roaming clients (zenbook, phone), matching the fleet's VNC/media/
-  # ASR posture.
+  # ASR posture. INERT on the worker, which has no tailnet by design — that box
+  # is a LAN compute node, not a tailnet service.
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ cfg.port ];
-  # private /30 cable to the NAS: the NAS has NO tailnet identity by design
-  # (services.tailscale.enable = mkForce false, hosts/nas/default.nix), so its
-  # only path to this endpoint is the Ethernet cable the coordinator owns
-  # (hosts/coordinator/uplink-nas.nix). This is a first-class door, not a
-  # fallback — NAS-side consumers such as the Paperless AI phase (#136) depend
-  # on it, and nothing about the LLM endpoint should require Tailscale.
-  # (+ wlp192s0 since the 2026-08-20 rewire: NAS-side consumers dial from the
-  # BE550 LAN once the /30 cable retires. Inert where the interface is absent.)
+  # The house LAN. This comment used to read "the private /30 cable to the NAS,
+  # because the NAS has NO tailnet identity" — both halves of which have since
+  # stopped being true: the /30 was retired 2026-08-21 and the NAS became the
+  # fleet's tailscale sink at ws5 the same day. What survives is the substance,
+  # and it is still a first-class door rather than a fallback: LAN-side
+  # consumers (the Paperless AI phase, #136) dial this endpoint over the
+  # repeated wifi, and nothing about a local LLM endpoint should require
+  # Tailscale to work. Every client on this segment is a pinned house device.
   networking.firewall.interfaces.wlp192s0.allowedTCPPorts = [ cfg.port ];
 
   systemd.services.llama-swap = {

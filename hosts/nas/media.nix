@@ -67,9 +67,17 @@ in
       database.user = "tom";
       database.name = "tom";
       machine-learning.enable = false;
-      # Keep Smart Search and Face Detection on the much faster coordinator.
-      # This endpoint is reachable only over the dedicated private link.
-      environment.IMMICH_MACHINE_LEARNING_URL = lib.mkForce "http://coordinator:3003";
+      # Keep Smart Search and Face Detection off this appliance and on a Strix
+      # Halo box. That box is the WORKER since 2026-08-21 (#229): it is the same
+      # silicon as the coordinator and nobody is typing on it, so the ML batches
+      # land where they cost nothing. `worker` resolves through the fleet-wide
+      # networking.hosts pin (modules/common.nix -> 10.42.0.5, the worker's
+      # static LAN identity, guarded by the dhcp-host pin in ./router.nix); the
+      # endpoint itself is hosts/worker/immich-ml.nix, socket activated, waking
+      # on the first request and retiring after 15 idle minutes. It admits only
+      # its LAN interface and has no tailnet door, so the reachable path is this
+      # segment — the same trust boundary the old private link gave it.
+      environment.IMMICH_MACHINE_LEARNING_URL = lib.mkForce "http://worker:3003";
       accelerationDevices = [ "/dev/dri/renderD128" ];
     };
 

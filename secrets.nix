@@ -31,12 +31,26 @@ let
   # password hash and the fleet SSH private key). If the nas ever flips
   # mySecrets.enable on (ws5 attic is the likely trigger — hosts/nas/attic.nix),
   # add its key back here for the specific secrets it consumes, not wholesale.
+  #
+  # DERIVED, not enumerated — which is why the worker's 2026-08-21 reintegration
+  # (#229) needed no edit here: adding its row to the registry put it in this
+  # tier automatically. What that does NOT do is rewrite the ciphertexts, which
+  # are encrypted to a fixed recipient list at mint time. Every delivered-tier
+  # secret was re-minted in that same commit (`age -R` over this list) so the
+  # box can actually decrypt what this file says it may decrypt. Adding a host
+  # here without re-minting yields a config that evaluates and an activation
+  # that fails.
   delivered = nonEmpty (map (h: registry.${h}.hostKey) (builtins.filter (h: h != "nas") names));
 
   laptops = nonEmpty [
     registry.zenbook-duo.hostKey
   ];
   coordinatorOnly = nonEmpty [ registry.coordinator.hostKey ];
+  # The reintegrated worker (#229, 2026-08-21). It joins the `delivered` tier
+  # automatically above — that list is derived from the registry, so its row
+  # landing was enough — but wifi credentials are their own tier and have to say
+  # so explicitly.
+  workerOnly = nonEmpty [ registry.worker.hostKey ];
 in
 {
   # --- delivered tier (every host that runs agenix — i.e. all but the nas) ---
@@ -74,10 +88,19 @@ in
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r
   "secrets/wifi.age".publicKeys = editors ++ laptops ++ coordinatorOnly;
   # BE550 repeated-LAN credentials ($BE550_SSID / $BE550_PSK) — the
-  # thomas-6ghz profile on the coordinator (hosts/coordinator/uplink-nas.nix)
-  # AND the zenbook (its AdGuard-DoH landmine was defused the same day the
-  # laptops tier joined, 2026-08-21). Re-minted with both recipients.
-  "secrets/wifi-lan.age".publicKeys = editors ++ coordinatorOnly ++ laptops;
+  # thomas-6ghz profile on the coordinator (hosts/coordinator/uplink-nas.nix),
+  # the zenbook (its AdGuard-DoH landmine was defused the same day the laptops
+  # tier joined, 2026-08-21), AND the worker since its reintegration later that
+  # day (#229). Every host that joins `thomas-6ghz` needs it, and for the worker
+  # it is the only path onto the house LAN at all — no Freebox fallback profile,
+  # no tailnet behind it. Re-minted with all three recipients.
+  #
+  # NB this is now the same recipient set as the delivered tier, but it is
+  # deliberately still written out rather than reusing `delivered`: the two mean
+  # different things (one is "every agenix host", the other is "every host that
+  # associates to this SSID") and they will diverge again the moment a host
+  # exists that runs agenix but is not on this wifi.
+  "secrets/wifi-lan.age".publicKeys = editors ++ coordinatorOnly ++ laptops ++ workerOnly;
 
   # --- operator vault (admin key ONLY — a tar.gz of everything that is not
   # otherwise in git: pre-generated host keys + wifi profiles (staging), tom's ssh

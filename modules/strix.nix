@@ -1,13 +1,25 @@
 {
+  config,
   inputs,
+  lib,
   ...
 }:
-# AMD Strix Halo layer for the coordinator.
+# AMD Strix Halo layer — imported by `coordinator` and `worker`, the two
+# identical Ryzen AI MAX+ 395 (gfx1151) boxes. Everything above the roster is
+# uniform: same silicon, same accelerator stack, same crash hardening, same
+# unified-memory tuning. Only WHICH models each box is authorized to materialize
+# differs, and that is selected below by networking.hostName.
+#
+# It used to be selected by `myCluster.role`, a bespoke enum option this module
+# declared. That option is GONE (the flake asserts its absence) — it duplicated
+# the hostname with an extra failure mode, namely a host whose role and name
+# disagreed. Reading the hostname is the same pattern modules/secrets.nix uses
+# for its per-host tiers, so the fleet now has one idiom instead of two.
 {
   imports = [
     # Framework Desktop / Ryzen AI Max 300 series (gfx1151). Pulls amd cpu+gpu+ssd tuning.
     inputs.nixos-hardware.nixosModules.framework-desktop-amd-ai-max-300-series
-    # XDNA2 NPU stack.
+    # XDNA2 NPU stack — both boxes expose it.
     inputs.nix-amd-ai.nixosModules.default
     # Accelerated inference/tooling packages from nix-strix-halo plus the one
     # noamsto-only GPU backend.
@@ -23,36 +35,58 @@
   config = {
     # Explicit deployment authority. The catalog may remain broad; only these
     # per-host rows enter the system closure and llama-swap configuration.
+    # modules/local-models.nix asserts that every ID listed here is canonical,
+    # locally-backed, AND assigned to THIS host in lib/local-models.nix — so a
+    # roster line on the wrong box is a build failure, not a runtime surprise.
     services.local-models = {
-      allow = [
-        "qwen36-35b-a3b-mtp-ud-q8-k-xl"
-        "qwen36-27b-mtp-ud-q8-k-xl"
-        "gemma4-26b-a4b-it-mtp-q8-0"
-        "fara15-27b-q8-0"
-        "fara15-9b-q8-0"
-        # Ruled out 2026-08-20 (notes ACTION-PLAN §2b / dotfiles#229): rows stay
-        # in the catalog; recovery is uncommenting a line here.
-        # "fara15-4b-q8-0"
-        # qwen3-vl-8b-ocr stays UNTIL the FastFlowLM Qwen 3.6 35B NPU2 build is
-        # validated on OCR. Its former primary consumer — the paper-intake OCR
-        # processor — was removed 2026-08-20 with the returned ADS-1800W
-        # scanner, so only the academic-ocr drain lane still dials this route;
-        # weigh that when deciding whether it exits with the worker-drain flip.
-        "qwen3-vl-8b-ocr"
-        # "qwen3-vl-32b-ocr-refine"
-        "qwen3-embedding-8b-q8-0"
-        "qwen3-vl-embedding-8b-q8-0"
-        # MELS fleet additions (#229): Qwen lane primary + wildcard companion.
-        # Materialized at the next switch (~68G on the coordinator).
-        "qwen38-27b-mtp-q8-0"
-        "ornith-15-35b-q8-0"
-      ];
-      artifacts = [
+      allow =
+        lib.optionals (config.networking.hostName == "coordinator") [
+          "qwen36-35b-a3b-mtp-ud-q8-k-xl"
+          "qwen36-27b-mtp-ud-q8-k-xl"
+          "gemma4-26b-a4b-it-mtp-q8-0"
+          "fara15-27b-q8-0"
+          "fara15-9b-q8-0"
+          # Ruled out 2026-08-20 (notes ACTION-PLAN §2b / dotfiles#229): rows stay
+          # in the catalog; recovery is uncommenting a line here.
+          # "fara15-4b-q8-0"
+          # qwen3-vl-8b-ocr stays UNTIL the FastFlowLM Qwen 3.6 35B NPU2 build is
+          # validated on OCR. Its former primary consumer — the paper-intake OCR
+          # processor — was removed 2026-08-20 with the returned ADS-1800W
+          # scanner, so only the academic-ocr drain lane still dials this route;
+          # weigh that when deciding whether it exits with the worker-drain flip.
+          "qwen3-vl-8b-ocr"
+          # "qwen3-vl-32b-ocr-refine"
+          "qwen3-embedding-8b-q8-0"
+          "qwen3-vl-embedding-8b-q8-0"
+          # MELS fleet additions (#229): Qwen lane primary + wildcard companion.
+          # Materialized at the next switch (~68G on the coordinator).
+          "qwen38-27b-mtp-q8-0"
+          "ornith-15-35b-q8-0"
+        ]
+        # ── the worker's lane (#229, live 2026-08-21) ─────────────────────────
+        # The two gemma4-31b rows have carried `hosts = [ "worker" ]` since the
+        # MELS work and were inert for exactly as long as this host was absent
+        # from the flake. They are the whole worker roster: the Google MELS lane
+        # heavy model and its multimodal twin, sharing one Q8_0 weight set (the
+        # -vl entry adds only the BF16 projector, and forgoes speculative
+        # decoding because llama.cpp refuses to combine it with vision).
+        #
+        # Deliberately NOT mirrored from the coordinator: the twins have 128 GB
+        # each, not 256 GB between them, and duplicating the qwen/fara rosters
+        # would spend the worker's disk on weights the coordinator already
+        # serves over the LAN for nothing in return. The split is the point.
+        ++ lib.optionals (config.networking.hostName == "worker") [
+          "gemma4-31b-it-q8-0"
+          "gemma4-31b-it-vl"
+        ];
+      artifacts = lib.optionals (config.networking.hostName == "coordinator") [
         # Priority Mage family: the unified VLM and the low-latency generation
         # and editing variants. Base and RL checkpoints are intentionally
         # omitted; their quality gain does not justify 5-7.5x more steps here.
         # These are immutable snapshot payloads; runtime services stay gated on
         # a proven ROCm package and do not become fake llama-swap rows.
+        # Coordinator-only: every one of these is consumed by an interactive
+        # or agent-side workflow that runs where Tom sits.
         "mage-vl-bf16"
         "mage-flow-4b-turbo-bf16"
         "mage-flow-edit-4b-turbo-bf16"
@@ -62,7 +96,8 @@
       ];
     };
 
-    # The coordinator exposes the XDNA2 NPU alongside its Radeon GPU.
+    # Both identical Strix Halo systems expose the XDNA2 NPU alongside their
+    # Radeon iGPU, and both get the uniform accelerator surface.
     hardware.amd-npu = {
       enable = true;
       enableNPU = true;
@@ -72,19 +107,28 @@
       lemonade.user = "tom";
     };
 
+    # modules/npu-llm.nix asserts that this list, plus the utility slot when the
+    # host owns it, EXACTLY equals the host's canonical NPU catalog rows — so
+    # these two branches are not a preference, they are the only lists that
+    # evaluate. The utility deployment (qwen3:4b) is coordinator-only and is
+    # projected automatically, which is why it is absent from both.
     services.npu-llm = {
       enable = true;
-      models = [
-        "gemma4-it:e4b"
-        # gpt-oss:20b ruled out 2026-08-20 (old and outdated; dotfiles#229).
-        # The catalog row is status = "retired"; the ~14G runtime-owned snapshot
-        # under ~/.config/flm/models is freed by an explicit `flm remove`, not GC.
-        #
-        # The drain's next OCR engine (24.3G, runtime-owned): download is the
-        # explicit operator action `flm pull qwen3.6-moe:35b-a3b`, then validate
-        # on OCR before any qwen3-vl / GPU-35B removal that depends on it.
-        "qwen3.6-moe:35b-a3b"
-      ];
+      models =
+        lib.optionals (config.networking.hostName == "coordinator") [
+          "gemma4-it:e4b"
+          # gpt-oss:20b ruled out 2026-08-20 (old and outdated; dotfiles#229).
+          # The catalog row is status = "retired"; the ~14G runtime-owned snapshot
+          # under ~/.config/flm/models is freed by an explicit `flm remove`, not GC.
+        ]
+        ++ [
+          # The drain's next OCR engine (24.3G, runtime-owned), carried on BOTH
+          # boxes since its catalog row names both. Download stays the explicit
+          # operator action `flm pull qwen3.6-moe:35b-a3b` — this module never
+          # pulls — and it must be validated on OCR before any qwen3-vl / GPU-35B
+          # removal that depends on it.
+          "qwen3.6-moe:35b-a3b"
+        ];
     };
 
     # The gfx1151 ROCm graph contains several split Composable Kernel derivations,

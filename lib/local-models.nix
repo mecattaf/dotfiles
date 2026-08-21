@@ -300,8 +300,9 @@ let
       };
       hosts = mkOption {
         # Widened beyond ["coordinator"] for the worker-node reintegration
-        # (dotfiles#229): worker-assigned rows are inert until hosts/worker
-        # returns to the flake and its allow list selects them.
+        # (dotfiles#229). As of 2026-08-21 hosts/worker is back in the flake and
+        # modules/strix.nix selects its rows, so worker-assigned entries are LIVE
+        # rather than aspirational — a row named here is a row that materializes.
         type = types.nonEmptyListOf (
           types.enum [
             "coordinator"
@@ -1669,7 +1670,7 @@ let
               );
               evidence = "upstream-measured";
               hardware = "worker Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory; Vulkan/RADV";
-              notes = "Google MELS lane heavy model on the worker. Q8_0 pinned by operator; the benchmark ran UD-Q8_K_XL (same weight class). Inert until hosts/worker returns (#229 §C).";
+              notes = "Google MELS lane heavy model on the worker. Q8_0 pinned by operator; the benchmark ran UD-Q8_K_XL (same weight class). LIVE since 2026-08-21: hosts/worker returned and modules/strix.nix selects this row (#229 §C).";
             };
 
             gemma4-31b-it-vl = {
@@ -1699,7 +1700,7 @@ let
               ];
               evidence = "unverified";
               hardware = "worker Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory; Vulkan/RADV";
-              notes = "The multimodal twin of gemma4-31b-it: same Q8_0 weights plus the BF16 projector, no speculative decoding (llama.cpp forbids the combination). Inert until hosts/worker returns.";
+              notes = "The multimodal twin of gemma4-31b-it: same Q8_0 weights plus the BF16 projector, no speculative decoding (llama.cpp forbids the combination). LIVE since 2026-08-21 with the worker's return; shares the model artifact with gemma4-31b-it-q8-0, so the pair costs one weight set.";
             };
 
             ornith-15-35b-q8-0 = {
