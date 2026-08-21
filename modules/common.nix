@@ -98,11 +98,16 @@
       "https://cache.numtide.com"
       "https://nix-amd-ai.cachix.org"
       "https://cache.hellas.ai"
-      # Fleet binary cache — atticd on the coordinator (hosts/coordinator/attic.nix).
-      # Every remote host reaches it over the Tailscale mesh. The cache is public, so pulls need
-      # only the signing key below. A cold host substitutes the ~7,744 llm-agents
-      # paths instead of rebuilding them. refs #42.
-      "http://coordinator:8080/fleet"
+      # Fleet binary cache — atticd on the NAS since 2026-08-21 (ws5,
+      # hosts/nas/attic.nix; state MOVED from the coordinator, signing key
+      # intact). `nas` resolves via the fleet-wide hosts pin below. On the
+      # home LAN every device pulls directly at 2.5GbE/6GHz speed; a host
+      # away from home finds this substituter dead and falls back to the
+      # public caches (the connect-timeout hardening above makes that cheap).
+      # The cache is public, so pulls need only the signing key below. A cold
+      # host substitutes the ~7,744 llm-agents paths instead of rebuilding
+      # them. refs #42.
+      "http://nas:8080/fleet"
     ];
     extra-trusted-public-keys = [
       "niks3.numtide.com-1:DTx8wZduET09hRmMtKdQDxNNthLQETkc/yaX7M4qK0g="
@@ -123,6 +128,13 @@
       "fleet:igImm/3XfdWs2g7L0j94HKcCh9ndv1WtJ5fVK6Svwz4="
     ];
   };
+
+  # The NAS by name, fleet-wide: the substituter URL above and every service
+  # that dials `nas` must resolve it identically on all hosts — the LAN
+  # resolver doesn't serve bare hostnames and mDNS isn't universal, so a
+  # static pin is the boring, correct answer (moved here from
+  # hosts/coordinator/uplink-nas.nix at the 2026-08-21 attic move).
+  networking.hosts."10.42.0.1" = [ "nas" ];
 
   # #106 proposed also setting `nix.registry.nixpkgs.flake` and `nix.nixPath`
   # here. Deliberately NOT done: nixpkgs' own misc/nixpkgs-flake.nix already

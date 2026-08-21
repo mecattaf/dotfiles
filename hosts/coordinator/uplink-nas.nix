@@ -156,12 +156,6 @@ in
   # blind. Whatever suppressed it, pin the level so it cannot regress.
   networking.networkmanager.logLevel = "INFO";
 
-  # The NAS as seen from this host: its LAN identity (2026-08-20 rewire).
-  # This one line re-points the NFS mount, all five socket-proxyd relays,
-  # borg, and the journal-archive ssh — everything dials the NAME `nas`.
-  # 10.42.0.1 is reachable over the /30 cable too while it is still plugged
-  # (both addresses ride the NAS's one NIC), so this is safe to deploy the
-  # moment the NAS's phase-1 deploy has landed, and survives the physical
-  # move unchanged. DEPLOY ORDER: NAS first, then this box.
-  networking.hosts."10.42.0.1" = [ "nas" ];
+  # The `nas` hosts pin moved to modules/common.nix (fleet-wide) at the
+  # 2026-08-21 attic move — every host dials the substituter by that name.
 }

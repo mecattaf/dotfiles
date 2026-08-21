@@ -677,7 +677,9 @@
           # created live with compression=none, gate + export + receipt
           # discipline landed together, per this block's own instructions.
           assert nas.myNas.models.enable; # model Library (was ws4 archive) hosts/nas/models.nix
-          assert !nas.myNas.attic.enable; # ws5  hosts/nas/attic.nix
+          # ws5 EXECUTED 2026-08-21: atticd runs on the NAS M.2, no relay —
+          # every host dials http://nas:8080/fleet directly.
+          assert nas.myNas.attic.enable; # ws5  hosts/nas/attic.nix
           assert !nas.myNas.paperless.enable; # #136 hosts/nas/paperless.nix
           assert !nas.services.paperless.enable;
           assert !coordinator.myNasClient.relayAttic;
@@ -693,7 +695,9 @@
           # Cross-host invariants. Each relay and its backend must flip
           # together: a relay pointing at a service that is off is a black
           # hole, and a backend with no relay is unreachable from the tailnet.
-          assert nas.myNas.attic.enable == coordinator.myNasClient.relayAttic;
+          # (The attic relay pairing died with the 2026-08-21 direct-serve
+          # move: the NAS serves 8080 itself and relayAttic must stay off.)
+          assert nas.myNas.attic.enable && !coordinator.myNasClient.relayAttic;
           # Paperless backend and its tailnet relay flip together (#136).
           assert nas.myNas.paperless.enable == coordinator.myNasClient.relayPaperless;
           # The binary cache can only live in one place: moving it to the NAS

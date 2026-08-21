@@ -37,13 +37,30 @@
   networking.hostName = "nas";
   myHeadless.enable = true;
 
-  # No shared agenix payload or overlay network is needed on this appliance.
-  # The coordinator is its only peer and tailnet-facing relay; deploy-rs reaches
-  # SSH directly on 10.77.0.2.
+  # No shared agenix payload on this appliance (doctrine holds — the attic
+  # RS256 secret is a runbook-placed file, see ./attic.nix).
   mySecrets.enable = false;
-  services.tailscale.enable = lib.mkForce false;
-  services.tailscale.extraUpFlags = lib.mkForce [ ];
-  services.tailscale.extraSetFlags = lib.mkForce [ ];
+
+  # TAILSCALE ON — Tom's ruling 2026-08-21: "everything at home goes through
+  # the NAS! so let's have the NAS be the tailscale sink." Reverses the
+  # 2026-08-04-era mkForce-disables (which belonged to the world where the
+  # coordinator was the only door to the internet). The NAS joins the tailnet
+  # as a SUBNET ROUTER advertising the whole LAN, so a roaming laptop reaches
+  # every home device — NAS services, printer, coordinator — through one
+  # node. Login is interactive (`tailscale up` prints a URL; no authkey
+  # secret lands on the appliance), and the advertised route must be
+  # APPROVED once in the Tailscale admin console. The coordinator keeps its
+  # own tailnet identity until this is proven, then decommissions per the
+  # same ruling ("i'm fine with no tailscale on the coordinator").
+  services.tailscale.useRoutingFeatures = "server";
+  services.tailscale.extraUpFlags = lib.mkForce [
+    "--ssh"
+    "--advertise-routes=10.42.0.0/24"
+  ];
+  services.tailscale.extraSetFlags = lib.mkForce [
+    "--ssh"
+    "--advertise-routes=10.42.0.0/24"
+  ];
 
   # Preserve graphics/VA-API for headless Immich video transcoding. This does
   # not install or start a display server, compositor, or graphical login.
@@ -75,6 +92,10 @@
   # done at deploy time. Cadence: MONTHLY, first Saturday 08:00 (see the COST
   # paragraph in snapshots.nix for the ruling trail).
   myNas.snapshots.enable = true;
+  # ws5 — flipped 2026-08-21 per the runbook in ./attic.nix: state rsynced
+  # from the coordinator with atticd stopped, signing key verified intact,
+  # env file placed on the root NVMe.
+  myNas.attic.enable = true;
 
   # amdtop — the same telemetry TUI the coordinator runs (modules/strix-ai.nix).
   # This box is AMD on both halves: common-cpu-amd/kvm-amd, plus the radeonsi
