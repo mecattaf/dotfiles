@@ -143,9 +143,15 @@
   # The NAS exports its models tree read-only + root-squashed to this host
   # (hosts/nas/models.nix, fsid=6); local-models-sync borrows this host's
   # wanted set from here into /var/lib/local-models before llama-swap starts.
-  # Mounted at /mnt/library because /mnt/nas is TAKEN on this box — it is a
-  # local ext4 data partition from the pre-retirement worker role, unrelated
-  # to the NAS. soft+nofail, same hardening rationale as the coordinator's
+  # Mounted at /mnt/library, NOT /mnt/nas: at reintegration /mnt/nas here was
+  # a loan-era runtime bind of /home/tom/nas-local (recreated at every boot by
+  # /root/worker-loan/reassert.sh — the machinery that also kept resurrecting
+  # the OCR llama-swap drop-in; the whole plane was found and RETIRED
+  # 2026-08-21 evening, archived under /root/worker-loan-RETIRED-2026-08-21).
+  # The corpus data itself persists at /home/tom/nas-local. /mnt/library stays
+  # the name regardless: a read-only Library-only view deserves a distinct
+  # path from the coordinator's full rw /mnt/nas.
+  # soft+nofail, same hardening rationale as the coordinator's
   # nas-client mount: a dead NAS must never hang this box's boot or I/O
   # forever — sync just fails visibly and llama-swap serves what is local.
   boot.supportedFilesystems = [ "nfs" ];
