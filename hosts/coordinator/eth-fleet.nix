@@ -92,7 +92,7 @@
     onFirePath = [ pkgs.coreutils ];
     onFire = ''
       mkdir -p /var/lib/failure-markers
-      printf '%s — the worker has not answered on the 5GbE fallback rail for ~1 h (episode %s)\n  The TB rail may still be fine; this marker means the SAFETY NET is gone: check the cable in both rear 5GbE ports and `nmcli connection up eth-fleet` on both ends (see hosts/coordinator/eth-fleet.nix)\n' \
+      printf '%s — the worker has not answered on the 5GbE fallback rail for ~1 h (episode %s)\n  The TB rail may still be fine; this marker means the SAFETY NET is gone: check the cable in both rear 5GbE ports and run "nmcli connection up eth-fleet" on both ends (see hosts/coordinator/eth-fleet.nix)\n' \
         "$(date '+%Y-%m-%d %H:%M')" "$4" \
         > /var/lib/failure-markers/eth-fleet-reachability
     '';
