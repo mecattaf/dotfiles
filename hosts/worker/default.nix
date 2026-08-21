@@ -246,6 +246,42 @@
     };
   };
 
+  # ── eth-fleet, worker half (doctrine: hosts/coordinator/eth-fleet.nix) ────
+  # The 5GbE port cabled directly to the coordinator's twin: the fallback
+  # rail that shares nothing with USB-C/PD. Fleet identity 10.99.9.2 on lo;
+  # peer fleet route via ethernet at metric 200 loses to the tb-fleet route
+  # (metric 50, on the imperative tb-fleet profile) whenever TB is alive.
+  # Oneshot rather than networking.localCommands — that unit is masked
+  # under NetworkManager (see hosts/coordinator/eth-fleet.nix).
+  systemd.services.fleet-identity = {
+    description = "Stable fleet identity 10.99.9.2/32 on loopback";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "network-pre.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = "${pkgs.iproute2}/bin/ip addr replace 10.99.9.2/32 dev lo";
+    };
+  };
+  networking.networkmanager.ensureProfiles.profiles.eth-fleet = {
+    connection = {
+      id = "eth-fleet";
+      type = "ethernet";
+      interface-name = "enp191s0";
+      autoconnect = true;
+      autoconnect-priority = 50;
+    };
+    ipv4 = {
+      method = "manual";
+      addresses = "10.99.1.2/30";
+      never-default = true;
+      ignore-auto-dns = true;
+      routes = "10.99.9.1/32 10.99.1.1 200";
+    };
+    ipv6.method = "disabled";
+  };
+  networking.firewall.trustedInterfaces = [ "enp191s0" ];
+
   # NM at INFO for the same reason the coordinator pins it: on cutover day this
   # fleet's wifi incidents were forensically blind because NetworkManager had
   # logged nothing for weeks. The journal now leaves the box (./journal-upload.nix),

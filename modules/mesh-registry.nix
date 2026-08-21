@@ -16,7 +16,12 @@
 # login key only, never an agenix editor recipient; see ../secrets.nix.
 {
   coordinator = {
-    aliases = [ "coordinator" ];
+    aliases = [
+      "coordinator"
+      # eth-fleet rail + stable fleet identity (2026-08-21, eth-fleet.nix)
+      "10.99.1.1"
+      "10.99.9.1"
+    ];
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFPCZFlnHQSNH3D0R1/qs9A/W498f8xTNUNBtLWZgU2A root@coordinator";
     userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729";
   };
@@ -49,6 +54,9 @@
       "worker"
       "10.42.0.5"
       "10.99.0.2"
+      # eth-fleet rail + stable fleet identity (2026-08-21, eth-fleet.nix)
+      "10.99.1.2"
+      "10.99.9.2"
     ];
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9xaf+UX4cjDEme+Ath3EZYLiUJla/+3QlG4TvCzwLO root@worker";
     userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729";

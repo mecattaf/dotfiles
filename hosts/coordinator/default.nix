@@ -20,6 +20,7 @@
     # deploys still work via the flake's deploy-rs nodes (`deploy .#nas`).
     ./uplink-nas.nix
     ./tb-fleet.nix # the worker cable: module pin + heal loop + tripwire (2026-08-21)
+    ./eth-fleet.nix # the wired fallback rail under it: 5GbE + stable fleet IPs (2026-08-21)
     ./journal-upload.nix # fleet journald substrate sender — refs #135
     ./nas-client.nix
     # backups.nix (ws2b borg client) DELETED 2026-08-21 unbuilt, with the
