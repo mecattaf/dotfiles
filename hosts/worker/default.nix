@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 # worker — AMD Strix Halo (gfx1151), the coordinator's identical twin, and since
@@ -176,6 +177,51 @@
     ];
   };
   services.local-models.libraryPath = "/mnt/library/weights";
+
+  # ── Thunderbolt link durability, worker half (2026-08-21 ruling: the
+  # coordinator↔worker cable MUST always work — full doctrine and the
+  # dual-reboot/replug lore in hosts/coordinator/tb-fleet.nix). This end
+  # pins the net module and runs the same heal loop against the
+  # coordinator's /30 address; the loud tripwire lives coordinator-side.
+  boot.kernelModules = [ "thunderbolt-net" ];
+  systemd.services.tb-link-heal = {
+    description = "Heal the worker-coordinator Thunderbolt link where software can";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = pkgs.writeShellScript "tb-link-heal" ''
+        PATH=${
+          lib.makeBinPath [
+            pkgs.iputils
+            pkgs.coreutils
+            pkgs.gnugrep
+            pkgs.networkmanager
+          ]
+        }
+        ping -c 1 -W 3 10.99.0.1 >/dev/null 2>&1 && exit 0
+        if ls /sys/bus/thunderbolt/devices/ | grep -qE '^[0-9]+-[1-9]'; then
+          echo "peer device present but 10.99.0.1 dark — re-activating tb-fleet"
+          nmcli connection up tb-fleet || true
+        else
+          echo "no XDomain peer — rebinding USB4 NHIs (software replug attempt)"
+          for d in 0000:c4:00.5 0000:c4:00.6; do
+            echo "$d" > /sys/bus/pci/drivers/thunderbolt/unbind 2>/dev/null || true
+          done
+          sleep 2
+          for d in 0000:c4:00.5 0000:c4:00.6; do
+            echo "$d" > /sys/bus/pci/drivers/thunderbolt/bind 2>/dev/null || true
+          done
+        fi
+      '';
+    };
+  };
+  systemd.timers.tb-link-heal = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "2min";
+      OnUnitActiveSec = "2min";
+      AccuracySec = "30s";
+    };
+  };
 
   # NM at INFO for the same reason the coordinator pins it: on cutover day this
   # fleet's wifi incidents were forensically blind because NetworkManager had
