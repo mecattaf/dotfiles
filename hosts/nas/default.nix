@@ -38,6 +38,7 @@
     ./attic.nix # ws5  fleet binary cache, served directly (executed 2026-08-21)
     ./update-center.nix # nightly fleet builds -> attic (the App Store model)
     ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate OFF
+    ./tv.nix # niri TV session on the HDMI corner + wayvnc (2026-08-21)
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc

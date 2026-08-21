@@ -9,18 +9,25 @@ let
 in
 {
   options.myHeadless.enable = lib.mkEnableOption "the fleet's minimal headless appliance profile";
+  # TV-endpoint carve-out (2026-08-21, Tom: "since it now has hdmi … might as
+  # well do it now"): re-admits ONLY the display stack — niri + greetd
+  # autologin, pipewire for HDMI audio, a minimal font set — while every other
+  # appliance hardening below stands. The host supplies the rest (EDID pin,
+  # wayvnc, admissions): see hosts/nas/tv.nix.
+  options.myHeadless.tv.enable = lib.mkEnableOption "a niri TV/VNC session on an otherwise headless appliance";
 
   config = lib.mkIf cfg.enable {
     # A headless appliance still has the getty from common.nix for local recovery,
-    # but it never starts a compositor, greeter, remote desktop, or user session.
+    # but (unless the tv carve-out is on) it never starts a compositor, greeter,
+    # remote desktop, or user session.
     boot.plymouth.enable = lib.mkForce false;
-    programs.niri.enable = lib.mkForce false;
-    services.greetd.enable = lib.mkForce false;
+    programs.niri.enable = lib.mkIf (!cfg.tv.enable) (lib.mkForce false);
+    services.greetd.enable = lib.mkIf (!cfg.tv.enable) (lib.mkForce false);
     services.getty.autologinUser = "tom";
     users.users.tom.linger = lib.mkForce false;
 
-    security.rtkit.enable = lib.mkForce false;
-    services.pipewire.enable = lib.mkForce false;
+    security.rtkit.enable = lib.mkIf (!cfg.tv.enable) (lib.mkForce false);
+    services.pipewire.enable = lib.mkIf (!cfg.tv.enable) (lib.mkForce false);
     hardware.bluetooth.enable = lib.mkForce false;
     services.hardware.bolt.enable = lib.mkForce false;
     services.gnome.gnome-keyring.enable = lib.mkForce false;
@@ -34,9 +41,21 @@ in
     xdg.portal.enable = lib.mkForce false;
     virtualisation.podman.enable = lib.mkForce false;
 
-    # Household desktop fonts have no place on the NAS. The printer module and
-    # dotfiles bootstrap are wholly gated off for this profile.
-    fonts.packages = lib.mkForce [ ];
+    # Household desktop fonts have no place on the NAS — except the TV session,
+    # which gets a deliberately tiny set (terminal face + tofu-free text/emoji),
+    # NOT the fleet list from common.nix (google-fonts alone would bloat the
+    # appliance by hundreds of MB). The printer module and dotfiles bootstrap
+    # are wholly gated off for this profile either way.
+    fonts.packages = lib.mkForce (
+      lib.optionals cfg.tv.enable (
+        with pkgs;
+        [
+          maple-mono.NF
+          noto-fonts
+          noto-fonts-color-emoji
+        ]
+      )
+    );
 
     # SSH is admitted explicitly by each appliance's interface-specific rules.
     # Never open it indiscriminately on every future interface.

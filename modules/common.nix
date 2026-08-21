@@ -8,7 +8,7 @@
 # anything a host or nixos-hardware module may override.
 {
   imports = [
-    ./headless.nix # opt-in appliance profile; NAS has no HM, niri, greetd, or WayVNC
+    ./headless.nix # opt-in appliance profile; no HM/desktop — except the myHeadless.tv carve-out (NAS TV session)
     ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
     ./user-password.nix # tom's login password via agenix hashedPasswordFile (#54)
