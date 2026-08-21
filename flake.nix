@@ -492,17 +492,24 @@
             [
               "coordinator"
               "nas"
-              # Reachable by name through the fleet-wide 10.42.0.5 pin
-              # (modules/common.nix). If the LAN is ever down, deploy by address
-              # over the Thunderbolt rail instead — the registry authorizes
-              # 10.99.0.2 as one of this host's aliases, so the host key is
-              # pinned either way.
+              # Dialled over the Thunderbolt cable, not the LAN — see the
+              # hostname branch below.
               "worker"
               "zenbook-duo"
             ]
             (host: {
-              # Canonical names resolve through MagicDNS or the direct NAS map.
-              hostname = host;
+              # Canonical names resolve through MagicDNS or the direct NAS map —
+              # except the worker, which is dialled by its THUNDERBOLT address.
+              # Every manual deploy is run from the coordinator, which is the one
+              # box holding the other end of that cable, and a deploy is the
+              # single most bandwidth-hungry thing the fleet does: the #229
+              # reintegration pushed ~39GB of model weights to this host. The
+              # cable measured 0.6ms rtt against 105ms (mdev 54ms) over the 6GHz
+              # LAN, and it depends on no AP, no lease and no router plane.
+              # 10.99.0.2 is a registry alias, so the host key stays pinned.
+              # The LAN identity 10.42.0.5 remains the fleet-facing one — it is
+              # what the NAS dials for Immich ML and what the journal ACL admits.
+              hostname = if host == "worker" then "10.99.0.2" else host;
               sshOpts = fleetDeploySshOpts;
               profiles.system.path =
                 inputs.deploy-rs.lib.${system}.activate.nixos
@@ -1077,9 +1084,9 @@
             # What stayed retired (Tom's ruling, unchanged by #229): the worker
             # is a HOST again, never a Tally executor or a Tally pool. All jobs
             # execute locally on the coordinator; home/tally.nix declares
-            # `executors = { }` and no worker-gpu lane. hosts/worker/gpu-cooldown.nix
-            # was rewritten rather than restored precisely to honour this — its
-            # old Layer 2 SSH'd here to take a worker-gpu lease.
+            # `executors = { }` and no worker-gpu lane. The GPU cooldown tripwire
+            # that used to reach across for a worker-gpu lease is DEAD and
+            # deleted, so nothing is left that would want one.
             retiredPool = strixWorker + "-gpu";
             retiredExecutionPattern = nixpkgs.lib.concatStringsSep "|" [
               strixWorker
@@ -1164,7 +1171,15 @@
           assert !self.nixosConfigurations.zenbook-duo.config.services.journald.upload.enable;
           assert self.deploy.nodes.coordinator.hostname == "coordinator";
           assert self.deploy.nodes.nas.hostname == "nas";
-          assert self.deploy.nodes.${strixWorker}.hostname == strixWorker;
+          # Deliberately the cable, not the name — see the deploy node comment.
+          # Asserted against the registry so this can never drift into an address
+          # that carries no pinned host key.
+          assert self.deploy.nodes.${strixWorker}.hostname == "10.99.0.2";
+          assert nixpkgs.lib.elem self.deploy.nodes.${strixWorker}.hostname
+            meshRegistry.${strixWorker}.aliases;
+          # ...while the LAN identity stays the fleet-facing one.
+          assert nixpkgs.lib.elem "10.42.0.5" meshRegistry.${strixWorker}.aliases;
+          assert coordinator.networking.hosts."10.42.0.5" == [ strixWorker ];
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
           assert coordinator.services.tailscale.extraUpFlags == [ "--ssh" ];
           # The NAS is the tailnet SINK since the 2026-08-21 ws5 pivot; the
@@ -1224,8 +1239,8 @@
           assert !(worker.nix.settings ? post-build-hook);
           assert nixpkgs.lib.elem "http://nas:8080/fleet" worker.nix.settings.extra-substituters;
           # Still retired, and asserted in the NEGATIVE on purpose: a host, never
-          # a Tally executor or pool. hosts/worker/gpu-cooldown.nix was rewritten
-          # rather than restored precisely so nothing here needs to come back.
+          # a Tally executor or pool. The one thing that ever wanted a worker-gpu
+          # lease — the GPU cooldown tripwire — is deleted outright.
           assert !(builtins.hasAttr strixWorker coordinator.home-manager.users.tom.services.tally.executors);
           assert !(builtins.hasAttr retiredPool coordinator.home-manager.users.tom.services.tally.pools);
           assert coordinator.home-manager.users.tom.services.tally.executors == { };

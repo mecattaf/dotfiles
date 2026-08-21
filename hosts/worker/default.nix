@@ -42,8 +42,14 @@
 #   * not a microVM host — modules/microvm-host.nix stays coordinator-only by
 #     its own header ("the durable execution and artifact front door").
 #   * not a Tally executor or pool — all jobs still execute locally on the
-#     coordinator. See ./gpu-cooldown.nix for what replaced the old cross-host
-#     tally seam.
+#     coordinator, and nothing here reaches across to that daemon.
+#   * not thermally policed — the GPU cooldown tripwire is DEAD (Tom's ruling
+#     2026-08-21, at the end of this reintegration). Its two scripts and module
+#     are deleted, not carried forward: the sensor/hysteresis layer and the
+#     llama-swap shed adapter both go. The tripwire's original Layer 2 SSH'd to
+#     the coordinator for a `worker-gpu` Tally lease that no longer exists, and
+#     rather than keep a rewritten reflex nobody asked for, the whole thing is
+#     retired. The hardware's own thermal management owns this now.
 #
 # myCluster.role is gone with modules/strix.nix's option (the flake asserts its
 # absence); per-host policy is selected by networking.hostName there instead.
@@ -52,7 +58,6 @@
     ./hardware.nix
     ./disko.nix
     ./headless-display.nix
-    ./gpu-cooldown.nix
     ./immich-ml.nix # moved here from the coordinator 2026-08-21 (#229)
     ./journal-upload.nix # sender half of the #135 substrate — Strix boxes only
     ../../modules/cli-anything.nix
@@ -193,12 +198,6 @@
   services.tailscale.enable = lib.mkForce false;
   services.tailscale.extraUpFlags = lib.mkForce [ ];
   services.tailscale.extraSetFlags = lib.mkForce [ ];
-
-  # GPU thermal tripwire. It matters more now than it did in the old topology:
-  # this box is where the local-model roster and Immich ML actually run, and
-  # nobody is sitting at it to notice a hot fan. Its Layer 2 was rewritten for
-  # the reintegration — see ./gpu-cooldown.nix.
-  services.gpuCooldownTripwire.enable = true;
 
   # agenix delivery. The host key at /etc/ssh/ssh_host_ed25519_key is UNCHANGED
   # across the retirement (verified live 2026-08-21 against the registry row), so

@@ -21,7 +21,7 @@
 # Deliberately NOT touched here:
 #   - ~/.ssh/known_hosts stays mutable and user-owned (GitHub, LAN IPs, …); fleet
 #     trust keeps arriving through /etc/ssh/ssh_known_hosts (modules/mesh.nix).
-#   - automation (deploy-rs, the zenbook preflight, GPU cooldown) passes
+#   - automation (deploy-rs, the zenbook preflight) passes
 #     -F /dev/null precisely so these preferences can never steer a deploy or a
 #     rollback. Nothing below is on an operational path.
 #
@@ -43,12 +43,9 @@ let
     coordinator = "coordinator";
     zenbook = "zenbook-duo";
     nas = "nas";
-    # Back since 2026-08-21 (#229). Plain name like every other fleet host: it
-    # resolves through the fleet-wide 10.42.0.5 pin in modules/common.nix, and
-    # the registry authorizes that name plus both addresses behind it, so there
-    # is no TOFU prompt whichever rail answers. If the LAN is ever down, the
-    # Thunderbolt address 10.99.0.2 is the documented fallback and is a registry
-    # alias too — reach it explicitly rather than by this nickname.
+    # Back since 2026-08-21 (#229). The right-hand side is the registry name;
+    # mkBlock rewrites its HostName to the Thunderbolt address on the
+    # coordinator — see `workerRail` above for the measurements behind that.
     worker = "worker";
   };
 
@@ -62,10 +59,40 @@ let
   # tailnet-direct decision ever lands.
   needsJump = target: target == "nas" && hostName != "nas" && hostName != "coordinator";
 
+  # The worker has TWO rails, and which one the nickname should use is not a
+  # matter of taste. From the coordinator it is the THUNDERBOLT CABLE, always:
+  #
+  #   TB   10.99.0.2 : rtt min/avg/max/mdev = 0.109/0.625/0.803/0.260 ms
+  #   wifi 10.42.0.5 : rtt min/avg/max/mdev = 42.115/104.817/197.654/54.229 ms
+  #
+  # (measured 2026-08-21, both boxes idle). ~170x the latency, and a mdev of
+  # 54ms against 0.26ms — the wifi path is not merely slower, it is jittery,
+  # because it is a 6GHz association bounced through the AP and the NAS's router
+  # plane. The cable is a dedicated point-to-point link between these two boxes
+  # that depends on no AP, no DHCP lease, no dnsmasq and no router: it is up
+  # whenever both machines are, which is exactly what you want underneath an
+  # interactive shell and underneath multi-gigabyte closure copies (the
+  # reintegration itself pushed ~39GB of model weights across it).
+  #
+  # This is a COORDINATOR-ONLY preference. The cable has exactly two ends, so
+  # from the zenbook or the NAS the nickname must use the LAN identity, which is
+  # also the fleet-facing one every other consumer uses — the NAS's Immich ML
+  # URL, the journal ACL, the networking.hosts pin. Both addresses are registry
+  # aliases, so the pinned host key is checked whichever rail answers and no
+  # TOFU prompt appears either way.
+  #
+  # NB an earlier revision of this file routed here for a WRONG reason (a
+  # misdiagnosed "AP client isolation"; see hosts/worker/default.nix for the
+  # retraction). The rail choice survived the retraction on its own merits,
+  # which are the numbers above — not any claim that wifi is broken. It works
+  # fine; it is just the slow, indirect way to reach a box on the other end of a
+  # cable.
+  workerRail = if hostName == "coordinator" then "10.99.0.2" else "worker";
+
   mkBlock =
     _alias: target:
     {
-      HostName = target;
+      HostName = if target == "worker" then workerRail else target;
       User = "tom";
       # The fleet key delivered by agenix (modules/secrets.nix seeds it here).
       # IdentitiesOnly keeps a loaded agent from offering unrelated keys first.
