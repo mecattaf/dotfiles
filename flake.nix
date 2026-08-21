@@ -69,12 +69,15 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Apple SF/NY fonts (sf-pro, sf-compact, sf-mono, ny), built at nix-build
-    # time from Apple's own CDN DMGs — nothing redistributed.
-    apple-fonts = {
-      url = "github:Lyndeno/apple-fonts.nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    # apple-fonts RETIRED 2026-08-21 (Tom: "let's get rid of apple fonts, i'm
+    # not using apple fonts anyway"). Its sf-pro/sf-compact/sf-mono/ny came
+    # from `type = "file"` locks of Apple's CDN DMGs — Apple re-released
+    # SF-Pro.dmg and the narHash mismatch broke every fleet build on the very
+    # first update-center run (only boxes with the old DMG already in store
+    # never noticed). Inter (google-fonts) is the UI face now. sfmono-liga
+    # (the ligaturized SF Mono from a plain GitHub repo) went in the same
+    # sweep — Tom: "i don't care about that either"; browser code blocks now
+    # match the terminal's Maple Mono.
 
     # zmx — LOCAL terminal session persistence (neurosnap/zmx, built on
     # ghostty-vt). THE projector primitive (jul7 ruling, tally morning-annotation
@@ -127,14 +130,6 @@
     # against stale deps and miss the numtide cache (substituter added in
     # modules/common.nix). home/home.nix installs the entire set via buildEnv.
     llm-agents.url = "github:numtide/llm-agents.nix";
-
-    # Liga SF Mono: SF Mono ligaturized AND nerd-patched upstream — a different
-    # derived font from apple-fonts' sf-mono-nerd (glyphs only, no ligatures).
-    # Plain repo of OTFs, not a flake; consumed by pkgs/sfmono-liga.nix.
-    sfmono-liga = {
-      url = "github:shaunsingh/SFMono-Nerd-Font-Ligaturized";
-      flake = false;
-    };
 
     # tally — contention and proof for agent sessions (a Rust workspace: one
     # daemon + CLI, embedded taskchampion, witness ledger). THE packaging
@@ -312,18 +307,14 @@
         "/run/agenix/ssh-user-key"
       ];
 
-      # One overlay list everywhere (top-level pkgs + every host): bespoke pkgs,
-      # the apple-fonts families, and sfmono-liga — wired inline because it
-      # needs the flake input as src (overlays/default.nix has no inputs).
+      # One overlay list everywhere (top-level pkgs + every host).
       overlays = [
         self.overlays.default
-        inputs.apple-fonts.overlays.default
         (final: _prev: {
           # Whole llm-agents catalog under `pkgs.llm-agents.*` (prebuilt from its
           # own nixpkgs — no second eval of ours). home/home.nix pulls an
           # allowlisted set out of this namespace. See the input comment above.
           llm-agents = inputs.llm-agents.packages.${system};
-          sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { src = inputs.sfmono-liga; };
           # zmx built by our own pkgs/zmx.nix from the non-flake source input:
           # nixpkgs zig + upstream's committed dependency lock, no zig2nix IFD
           # (see the input comment).
@@ -533,7 +524,6 @@
             mactahoe-gtk-theme
             mactahoe-icon-theme
             music-acquire
-            sfmono-liga
             ;
 
           # Explicit accelerator escape hatches. The host module installs the

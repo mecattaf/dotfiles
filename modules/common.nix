@@ -297,40 +297,38 @@
   hardware.graphics.enable = true;
 
   # --- fonts (the rule: maple-mono + jetbrains nerd + google-fonts + noto-emoji
-  #     + the Apple families) ---
-  # Apple SF/NY come from the apple-fonts flake overlay: built at nix-build time
-  # from Apple's own CDN DMGs, nothing redistributed. sfmono-liga (pkgs/) is the
-  # ligaturized+nerd-patched SF Mono. The apple-fonts -nerd variants are skipped
-  # on purpose: nerd-font-patcher OOMs constrained builders and sfmono-liga
-  # already carries the terminal glyphs.
+  #     + inter) ---
+  # The Apple families (SF Pro/Compact/Mono, New York, and the ligaturized
+  # sfmono-liga) were ALL RETIRED 2026-08-21 — see the tombstone in flake.nix:
+  # the apple-fonts CDN-DMG locks rotted the moment Apple re-released
+  # SF-Pro.dmg and took every fleet build down with them, and Tom swept
+  # sfmono-liga in the same ruling. Inter (pinned explicitly below so a
+  # google-fonts subsetting change can never silently drop the UI face)
+  # replaces SF Pro as the interface font; Maple Mono — already the kitty
+  # terminal face — takes the monospace alias.
   fonts.packages = with pkgs; [
     maple-mono.NF
     nerd-fonts.jetbrains-mono
     google-fonts
     noto-fonts-color-emoji
-    sf-pro # GTK interface font ("SF Pro Display 11" — dconf in home/home.nix)
-    sf-compact
-    sf-mono
-    ny
-    sfmono-liga
+    inter # GTK interface font ("Inter 11" — dconf in home/home.nix)
   ];
 
-  # Map the fontconfig generic aliases to the Apple families. Installing the
-  # fonts (above) is not enough: apps that ask for the *generic* families —
-  # google-chrome's web content (sans-serif/serif/monospace), plus most GTK/Qt
-  # fallbacks — resolve through these aliases, which otherwise default to
-  # DejaVu. That DejaVu fallback is the "weird font" Chrome renders with. The
-  # family strings are the real names the DMG-built OTFs expose (verified with
-  # fc-scan): "SF Pro Display", "New York", "Liga SFMono Nerd Font" — NOT
-  # "SF Mono". NixOS appends its own DejaVu/Noto fallbacks after these, so
-  # missing glyphs (CJK, symbols) still resolve.
+  # Map the fontconfig generic aliases. Installing the fonts (above) is not
+  # enough: apps that ask for the *generic* families — google-chrome's web
+  # content (sans-serif/serif/monospace), plus most GTK/Qt fallbacks —
+  # resolve through these aliases, which otherwise default to DejaVu. That
+  # DejaVu fallback is the "weird font" Chrome renders with. Inter, Source
+  # Serif 4 and Maple Mono replace SF Pro Display / New York / Liga SFMono
+  # (Apple-fonts retirement, 2026-08-21); Source Serif 4 is already the
+  # house serif in the print pipeline, and Maple Mono makes browser code
+  # blocks match the kitty terminal. Family names verified with fc-list.
+  # NixOS appends its own DejaVu/Noto fallbacks after these, so missing
+  # glyphs (CJK, symbols) still resolve.
   fonts.fontconfig.defaultFonts = {
-    sansSerif = [
-      "SF Pro Display"
-      "SF Pro Text"
-    ];
-    serif = [ "New York" ];
-    monospace = [ "Liga SFMono Nerd Font" ];
+    sansSerif = [ "Inter" ];
+    serif = [ "Source Serif 4" ];
+    monospace = [ "Maple Mono NF" ];
     emoji = [ "Noto Color Emoji" ];
   };
 
