@@ -75,8 +75,8 @@ in
   '';
 
   # Started exclusively by the tally weekly producer (home/tally.nix), which
-  # holds the nas-hdd pool lease so archives never race a future borg backup
-  # or scrub against the same spindle.
+  # runs it as a tally job (coordinator-nas-io pool) so the run carries a
+  # witnessed verdict — including the liveness FAIL described above.
   systemd.services.journal-archive = {
     description = "Move rotated remote journal files from NAS NVMe to HDD";
     serviceConfig = {

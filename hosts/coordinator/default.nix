@@ -21,7 +21,9 @@
     ./uplink-nas.nix
     ./journal-upload.nix # fleet journald substrate sender — refs #135
     ./nas-client.nix
-    ./backups.nix # #130 ws2b: nightly borg push to the NAS append-only repo
+    # backups.nix (ws2b borg client) DELETED 2026-08-21 unbuilt, with the
+    # NAS-side repo server — Tom ruled the borg layer redundant against the
+    # physical-redundancy stack (RAID 1 + LaCie + snapshots).
     ./services.nix
     ./immich-ml.nix
     ./atuin.nix

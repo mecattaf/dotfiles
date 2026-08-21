@@ -5,8 +5,9 @@
 # near-free, and they make an oops ("I deleted the wrong folder", "the scanner
 # rewrote every tag") a copy-out rather than a restore-from-backup. They are NOT
 # a backup — they live on the same disk as the data they snapshot and die with
-# it. The actual backup is #130 ws2b (borg, ./backups.nix) and the disaster copy
-# is the quarterly LaCie mirror (./lacie-mirror.nix). All three, on purpose.
+# it. The durable copies are the RAID 1 mirror (docs/nas/raid1-expansion.md)
+# and the LaCie cold dump (./lacie-mirror.nix). (The once-planned ws2b borg
+# layer was deleted unbuilt 2026-08-21 — ruled redundant.)
 #
 # The subvolume layout this needs ALREADY EXISTS — photos / music / documents /
 # videos / services / .snapshots were created as real subvolumes by the Day-2
@@ -51,7 +52,7 @@
 # items genuinely don't get updated that often … this buys me nothing
 # honestly, let's not overbuild"). The media trees are near-static and the
 # real protection is the redundancy stack — RAID 1 mirror (coming), monthly
-# LaCie cold dump, borg (ws2b) — so the snapshot tier is a light convenience,
+# LaCie cold dump — so the snapshot tier is a light convenience,
 # not a load-bearing layer. 08:00 keeps it clear of the overnight
 # update-center build window (Tom asked for "after the nightly build
 # finishes composing"; 2am risked landing mid-build on this slow CPU) and
@@ -85,8 +86,7 @@ in
           # and reads unambiguously in `ls`.
           timestamp_format = "long";
           # Local snapshots only — no send/receive target. The off-box copies
-          # are borg (ws2b) and the LaCie (ws3), both of which have their own
-          # schedule and their own failure modes.
+          # are the LaCie (ws3) and, once converted, the RAID 1 mirror.
           snapshot_preserve_min = "latest";
           # Twelve monthlies — one year of restore points at monthly cadence
           # (the hourly and daily tiers died with their cadences, see COST).

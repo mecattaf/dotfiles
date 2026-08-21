@@ -34,7 +34,10 @@ in
     relayMedia = lib.mkEnableOption "relaying tailnet Immich and Navidrome traffic to the Ethernet-only NAS";
     # Separate gates, not additions to relayMedia: relayMedia is LIVE, and each
     # of these turns on with its own NAS-side gate in its own commit.
-    relayAttic = lib.mkEnableOption "relaying the fleet binary cache to atticd on the NAS (#130 ws5)";
+    # relayAttic stays declared solely so the flake's topology check can
+    # assert it is FALSE forever (the 2026-08-21 direct-serve move made a
+    # relay architecturally wrong, not merely unused).
+    relayAttic = lib.mkEnableOption "DEAD OPTION — never enable; the NAS serves the cache directly since 2026-08-21";
     relayPaperless = lib.mkEnableOption "relaying tailnet Paperless traffic to the Ethernet-only NAS (#136)";
   };
 
@@ -233,54 +236,47 @@ in
       };
     })
 
-    # ── #130 ws5: binary-cache relay ─────────────────────────────────────────
-    # Keeps every host's substituter URL at http://coordinator:8080/fleet
-    # (modules/common.nix) while atticd itself moves to the NAS. Unlike the
-    # media relays there is no wake proxy on the far side: the cache is in the
-    # substituter hot path and must answer immediately (hosts/nas/attic.nix).
-    (lib.mkIf cfg.relayAttic {
-      assertions = [
-        {
-          # Both want tcp/8080 on this box. The coordinator's own atticd must be
-          # off in the SAME commit that turns this on, or the relay socket
-          # cannot bind — add `services.atticd.enable = lib.mkForce false;` to
-          # hosts/coordinator/default.nix. Full sequence: the runbook header in
-          # hosts/nas/attic.nix.
-          assertion = !config.services.atticd.enable;
-          message = "myNasClient.relayAttic and the coordinator's own atticd cannot both own port 8080; disable hosts/coordinator/attic.nix in the same commit (see the runbook in hosts/nas/attic.nix)";
-        }
-      ];
-
-      systemd.sockets.attic-relay = {
-        description = "Coordinator front door for the NAS-hosted fleet binary cache";
-        wantedBy = [ "sockets.target" ];
-        socketConfig = {
-          ListenStream = "0.0.0.0:8080";
-          NoDelay = true;
-        };
+    # ── NAS reachability tripwire (2026-08-21, "who watches the watcher") ──
+    # The NAS is the house's router, DNS, cache, and archive; if it goes dark
+    # the failure smells like "the internet is broken", not "the NAS died".
+    # This box is the only always-on witness with its own escape hatch (the
+    # Freebox fallback rail), so it carries the watch: a ping probe every
+    # 5 minutes, a failure marker (shown at next interactive login) after
+    # sustained silence. Marker-based like everything else — no paging.
+    {
+      myTripwire.nas-reachability = {
+        description = "the NAS answers pings on its LAN address";
+        intervalSeconds = 300;
+        onBootSec = "5min";
+        threshold = 1;
+        comparison = "ge";
+        # Sustained silence, not a single lost probe: ~15 min dark before
+        # the marker fires (three consecutive failed 5-min probes).
+        sustainSeconds = 900;
+        rearm = 0;
+        refractorySeconds = 21600;
+        valueField = "NAS_DARK";
+        sensorPath = [ pkgs.iputils ];
+        sensor = ''
+          if ping -c 2 -W 3 10.42.0.1 >/dev/null 2>&1; then
+            echo "0 nas 1"
+          else
+            echo "1 nas 1"
+          fi
+        '';
+        onFirePath = [ pkgs.coreutils ];
+        onFire = ''
+          mkdir -p /var/lib/failure-markers
+          printf '%s — the NAS has not answered pings for ~15 min (episode %s)\n  the house router may be down: check TV-corner HDMI console, power, BE550\n' \
+            "$(date '+%Y-%m-%d %H:%M')" "$4" \
+            > /var/lib/failure-markers/nas-reachability
+        '';
       };
-      systemd.services.attic-relay = {
-        description = "Relay the fleet binary cache to nas:8080 over the private link";
-        after = [ "network-online.target" ];
-        wants = [ "network-online.target" ];
-        serviceConfig = {
-          ExecStart = "${socketProxyd} nas:8080";
-          DynamicUser = true;
-          NoNewPrivileges = true;
-          PrivateDevices = true;
-          PrivateTmp = true;
-          ProtectHome = true;
-          ProtectSystem = "strict";
-          RestrictAddressFamilies = [
-            "AF_INET"
-            "AF_INET6"
-          ];
-        };
-      };
+    }
 
-      # Same boundary hosts/coordinator/attic.nix used: mesh only, never wifi.
-      networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 8080 ];
-    })
+    # (The #130 ws5 binary-cache relay that lived here was DELETED 2026-08-21:
+    # the direct-serve move made it dead code — every host dials
+    # http://nas:8080/fleet itself. See hosts/nas/attic.nix.)
 
     # ── #136: Paperless relay ───────────────────────────────────────────────
     # The durable tailnet front door for the NAS-hosted Paperless backend:

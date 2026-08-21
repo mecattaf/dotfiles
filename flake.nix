@@ -672,7 +672,6 @@
           # invert the assertion here in the same commit rather than deleting
           # it — a gate that nothing checks is a gate that drifts.
           assert !nas.myNas.snapshots.enable; # ws2a hosts/nas/snapshots.nix
-          assert !nas.myNas.backups.enable; # ws2b hosts/nas/backups.nix
           # ws4 flipped ON 2026-08-20 (the Library's cold store): subvolume
           # created live with compression=none, gate + export + receipt
           # discipline landed together, per this block's own instructions.
@@ -683,11 +682,6 @@
           assert !nas.myNas.paperless.enable; # #136 hosts/nas/paperless.nix
           assert !nas.services.paperless.enable;
           assert !coordinator.myNasClient.relayAttic;
-          # backups.nix IS imported (hosts/coordinator/default.nix) — the
-          # earlier claim here that it wasn't was stale. The `or false` is
-          # kept as harmless belt-and-braces only; the gate itself is real
-          # and OFF.
-          assert !(coordinator.myCoordinatorBackups.enable or false);
           # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
           # 2026-08-03: the staged Jellyfin alternative was deleted, not kept
           # as a decoy). It must never be silently displaced.
@@ -706,8 +700,8 @@
           # socket there, the server here). Enforced host-locally too, by an
           # assertion in hosts/coordinator/nas-client.nix.
           assert nas.myNas.attic.enable -> !coordinator.services.atticd.enable;
-          # The borg client is useless without the repo server it pushes to.
-          assert (coordinator.myCoordinatorBackups.enable or false) -> nas.myNas.backups.enable;
+          # (ws2b borg deleted 2026-08-21 — Tom ruled it redundant against
+          # the physical-redundancy stack; its asserts died with it.)
           pkgs.runCommand "nas-topology" { } ''
             touch "$out"
           '';

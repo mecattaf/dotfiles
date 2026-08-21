@@ -27,12 +27,12 @@ in
 #   - the Freebox wifi uplink (wlp192s0), this box's actual internet, and
 #   - a private routed fast lane to the headless NixOS host `nas`.
 #
-# 2026-08-20 REWIRE (in progress): the BE550 is coming BACK, but the router
-# plane is not coming back here — the NAS ingests the Freebox on a USB A8500
-# and is the LAN's gateway/DHCP/DNS (hosts/nas/router.nix); this box becomes
-# an ordinary client of the repeated wifi (thomas-6ghz profile below). The
-# nas-fast-lane + installer dnsmasq + NAT blocks below are TRANSITIONAL
-# rails for the cutover and retire with the /30 in the cleanup commit.
+# 2026-08-20/21 REWIRE, COMPLETE: the BE550 came back as a dumb AP, but the
+# router plane did not come back here — the NAS ingests the Freebox on a USB
+# A8500 and is the LAN's gateway/DHCP/DNS (hosts/nas/router.nix); this box is
+# an ordinary client of the repeated wifi (thomas-6ghz profile below, static
+# .2). Every transitional rail (nas-fast-lane, installer dnsmasq, NAT,
+# enp191s0 admissions, the /30 itself) was deleted on cutover day.
 #
 # The LaCie 4TB USB plane that used to live here (the /mnt/nas automount, the
 # SAT smartd thermal watch, the hd-idle spin-down suite) was RETIRED 2026-08-02

@@ -11,7 +11,11 @@
     ./disko.nix
     ./network.nix
     ./router.nix # 2026-08-20: NAS is the house router (A8500 uplink + BE550 LAN)
-    ./printer-keepalive.nix # keeps the Brother out of mDNS-muting Deep Sleep
+    # printer-keepalive.nix DELETED same-day it was born (Tom: "there has to
+    # be a smarter way"): with the CUPS queue dialing the printer's pinned IP
+    # (modules/printing.nix), a print job itself wakes the Brother from Deep
+    # Sleep — the timer was belt-and-suspenders for a failure mode the IP
+    # queue already killed. Verified with an idle-hours wake test.
     ./journal.nix
     ./storage.nix
     ./discovery.nix # Avahi + read-only SMB so the NAS shows up in Nautilus (2026-08-21)
@@ -25,9 +29,12 @@
     # runbook has been walked on the real hardware. ./wake-helpers.nix is
     # deliberately absent — it is a plain function file, not a module.
     ./snapshots.nix # ws2a btrbk snapshots of the data subvolumes
-    ./backups.nix # ws2b append-only borg repo server
+    # backups.nix (ws2b borg) DELETED 2026-08-21 unbuilt — Tom's ruling:
+    # "real backups are physical redundancy, not a backup sitting on the
+    # same device." The protection stack is snapshots + RAID 1 + LaCie.
     ./models.nix # the model Library: weights forever-collection + static cache (was ws4 archive.nix)
-    ./attic.nix # ws5  fleet binary cache, relayed by the coordinator
+    ./attic.nix # ws5  fleet binary cache, served directly (executed 2026-08-21)
+    ./update-center.nix # nightly fleet builds -> attic (the App Store model)
     ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate OFF
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
@@ -96,6 +103,9 @@
   # from the coordinator with atticd stopped, signing key verified intact,
   # env file placed on the root NVMe.
   myNas.attic.enable = true;
+  # The App Store's build half — nightly 01:30, capped to the bottom of every
+  # scheduler, publishes to the local attic. Devices pull; nothing is pushed.
+  myNas.updateCenter.enable = true;
 
   # amdtop — the same telemetry TUI the coordinator runs (modules/strix-ai.nix).
   # This box is AMD on both halves: common-cpu-amd/kvm-amd, plus the radeonsi

@@ -25,8 +25,7 @@ let
 
   # Hosts that actually run agenix delivery, and therefore the widest tier any
   # secret gets. There is deliberately no every-host tier: hosts/nas/default.nix
-  # sets `mySecrets.enable = false` ("NO SECRET LIVES ON THIS BOX" —
-  # hosts/nas/backups.nix), so the appliance is delivered nothing and must not
+  # sets `mySecrets.enable = false` ("NO SECRET LIVES ON THIS BOX"), so the appliance is delivered nothing and must not
   # hold standing decryption authority over ciphertext it never reads (2026-08-04
   # ruling — it had been a recipient of the whole common tier, including tom's
   # password hash and the fleet SSH private key). If the nas ever flips
@@ -151,11 +150,6 @@ in
   # subscription, not a per-token bill, so every box that can decrypt it can burn
   # the shared 7-day credit pool. The coordinator is the only agent host.
   "secrets/qwencloud-token.age".publicKeys = editors ++ coordinatorOnly;
-  # Borg passphrase for the coordinator's push job to the NAS append-only repo
-  # (#130 ws2b, hosts/coordinator/backups.nix). Rule declared now; ciphertext
-  # lands via the runbook before myCoordinatorBackups.enable flips.
-  "secrets/borg-passphrase.age".publicKeys = editors ++ coordinatorOnly;
-
   # gws (Google Workspace CLI, personal account thomasmecattaf@gmail.com) — same
   # operator-box ruling as gh/wrangler above. client_secret identifies the OAuth
   # app; credentials.enc + .encryption_key + token_cache.json are the actual

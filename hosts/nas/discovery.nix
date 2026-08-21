@@ -20,8 +20,8 @@
 # READ-ONLY, guest, no Samba passwords: the write path stays NFS (the
 # coordinator's mounts), so smbd holds no credential state and cannot be a
 # second mutation path to the data. This also honors the appliance doctrine —
-# no new secrets on this box (hosts/nas/backups.nix: "NO SECRET LIVES ON THIS
-# BOX"; an smbpasswd database is exactly the kind of standing state that
+# no new secrets on this box ("NO SECRET LIVES ON THIS BOX" — the 2026-08-04
+# ruling recorded in secrets.nix; an smbpasswd database is exactly the kind of standing state that
 # ruling exists to keep off the appliance).
 #
 # SMB admission is LAN-WIDE (10.42.0.0/24) — Tom's ruling, 2026-08-21: "only
