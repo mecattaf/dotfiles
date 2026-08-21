@@ -69,4 +69,11 @@
     enp1s0.allowedTCPPorts = [ 5900 ];
     tailscale0.allowedTCPPorts = [ 5900 ];
   };
+
+  # greetd installs as WantedBy=graphical.target, but this appliance never
+  # reaches graphical.target (the desktop hosts get there via their display
+  # manager plumbing; found dead-on-arrival at first deploy — greetd
+  # inactive, getty autologin holding tty1). Want it from multi-user.target
+  # so the TV session rises with the appliance's normal boot.
+  systemd.services.greetd.wantedBy = [ "multi-user.target" ];
 }

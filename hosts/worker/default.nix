@@ -150,7 +150,9 @@
   # forever — sync just fails visibly and llama-swap serves what is local.
   boot.supportedFilesystems = [ "nfs" ];
   fileSystems."/mnt/library" = {
-    device = "nas:/models";
+    # `nas:/` — the models tree is this host's whole NFSv4 pseudo-root (its
+    # export line carries fsid=0; see hosts/nas/models.nix).
+    device = "nas:/";
     fsType = "nfs4";
     options = [
       "ro"

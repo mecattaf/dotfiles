@@ -155,8 +155,15 @@ in
     # local-models-sync borrows weights from here (mounted at /mnt/library,
     # hosts/worker/default.nix). The ACL still names hosts explicitly, per
     # the storage.nix doctrine; the nftables admission below is its twin.
+    # NB the worker line carries fsid=0: NFSv4 clients resolve mount paths
+    # against THEIR OWN pseudo-root, and the worker deliberately has no entry
+    # on the storage-root export — so the models tree IS its pseudo-root and
+    # it mounts `nas:/` (found live at first worker deploy: "nas:/models
+    # failed: No such file or directory"). The coordinator's view is
+    # unchanged (fsid=6 under its fsid=0 storage root).
     services.nfs.server.exports = ''
-      ${modelsRoot} 10.42.0.2(rw,sync,fsid=6,no_subtree_check,no_root_squash) 10.42.0.5(ro,sync,fsid=6,no_subtree_check,root_squash)
+      ${modelsRoot} 10.42.0.2(rw,sync,fsid=6,no_subtree_check,no_root_squash)
+      ${modelsRoot} 10.42.0.5(ro,sync,fsid=0,no_subtree_check,root_squash)
     '';
     networking.firewall.extraInputRules = ''
       ip saddr 10.42.0.5 tcp dport 2049 accept comment "NFSv4 from worker (models export, read-only)"
