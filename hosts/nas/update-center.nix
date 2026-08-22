@@ -86,26 +86,6 @@ let
       fi
     done
 
-    # ── Flush the day's build, keep nothing (Tom's rule, 2026-08-22) ────────
-    # "we only keep the latest armed update on disk, and yesterday's one gets
-    # flushed." Once a closure is pushed above, the LOCAL copy is pure
-    # garbage: attic on this same box holds the authoritative bytes, and
-    # that is the only copy any device ever pulls. Leaving it in the store
-    # means every night's three closures pile up until the weekly sweep,
-    # which is precisely the accumulation that filled the eMMC twice.
-    #
-    # Nothing is lost by collecting immediately. These paths are unrooted the
-    # moment the build ends (--no-link, so not even a result symlink), and
-    # tomorrow's run re-substitutes anything still current from attic over
-    # localhost at memory speed rather than rebuilding it.
-    #
-    # PLAIN gc, never -d: the -d ban in ../../modules/gc-retention.nix is
-    # fleet doctrine, and it applies with full force on the box that is also
-    # the house router. This removes unreachable paths only and cannot touch
-    # a live generation or the running system.
-    echo "update-center: flushing the day's build (attic holds the bytes)"
-    nix-store --gc 2>&1 | tail -2 || echo "update-center: gc did not complete cleanly" >&2
-
     exit $fail
   '';
 in
@@ -135,6 +115,30 @@ in
         # ceiling exists so a hung fetch becomes a failure, not a zombie
         # (the fleet-deploy 11.5h-hang lesson).
         TimeoutStartSec = "8h";
+        # ── Flush the day's build, however the job ended (Tom's rule) ───────
+        # "we only keep the latest armed update on disk, and yesterday's one
+        # gets flushed." This lived at the END of the build script until
+        # 2026-08-22, which quietly did not work: the first real run under the
+        # new layout hit TimeoutStartSec and was SIGTERMed mid-push, so the
+        # script never reached its last line and nothing was collected.
+        # Timeout is not the exceptional path here — a cold three-host night
+        # genuinely approaches 8h — so the cleanup has to be owned by systemd,
+        # not by the script's happy path. ExecStopPost runs on success, on
+        # failure, and on timeout alike.
+        #
+        # Once a closure is pushed, the local copy is garbage: attic on this
+        # same box holds the authoritative bytes and is the only copy any
+        # device pulls. Plain gc, never -d (../../modules/gc-retention.nix),
+        # and it removes unreachable paths only — it cannot touch a live
+        # generation or the running system.
+        ExecStopPost = "${pkgs.writeShellScript "update-center-flush" ''
+          echo "update-center: flushing the build (attic holds the bytes)"
+          ${config.nix.package}/bin/nix-store --gc 2>&1 | tail -2 \
+            || echo "update-center: gc did not complete cleanly" >&2
+        ''}";
+        # The sweep must be allowed to finish; the default stop timeout would
+        # kill it partway and leave exactly the accumulation it exists to stop.
+        TimeoutStopSec = "1h";
         # Bottom of every queue: the house router's day job always wins.
         Nice = 19;
         CPUWeight = 20;
