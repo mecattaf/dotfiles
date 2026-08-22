@@ -376,8 +376,13 @@
       };
 
       localModelCatalog = import ./lib/local-models.nix { lib = nixpkgs.lib; };
+      # `pkgs` was dropped from this call 2026-08-22: the 2026-08-21 rewrite of
+      # model-store.nix (weights stopped being fetchurl FODs and became plain
+      # runtime paths) narrowed its signature to { catalog, lib }, and a
+      # module that builds no derivations has no use for a package set. The
+      # call site kept passing it, so evaluating the local-model-routing check
+      # died with "unexpected argument 'pkgs'".
       localModelStore = import ./lib/model-store.nix {
-        inherit pkgs;
         lib = nixpkgs.lib;
         catalog = localModelCatalog;
       };
@@ -629,10 +634,36 @@
           # which only renders under the nftables backend — with iptables the
           # appliance seals itself shut (hit live 2026-08-01).
           assert nas.networking.nftables.enable;
-          assert !nas.programs.niri.enable;
-          assert !nas.services.greetd.enable;
+          # ── the TV endpoint (2026-08-21) ───────────────────────────────────
+          # The same class of staleness as the tailscale block above, and found
+          # the same way: these four read `!niri`, `!greetd` and no wayvnc on
+          # either bus, encoding "this appliance has no graphical session at
+          # all". True until hosts/nas/tv.nix landed a niri session on the
+          # HDMI corner with a wayvnc mirror, after which `nix flake check` was
+          # red on the niri line — so the tailscale correction that fixed this
+          # check never actually turned it green.
+          #
+          # Corrected in the direction the architecture went, rather than by
+          # deletion: the appliance now HAS a session, and what is worth
+          # pinning is its SHAPE, because every part of that shape was a bug
+          # once. myHeadless.tv is the deliberate carve-out in
+          # modules/headless.nix — asserting it keeps the session from ever
+          # arriving by accident through a stray graphical import.
+          assert nas.myHeadless.tv.enable;
+          assert nas.programs.niri.enable;
+          assert nas.services.greetd.enable;
+          # greetd ships WantedBy=graphical.target, which this appliance never
+          # reaches — tv.nix adds multi-user.target and the two MERGE rather
+          # than replace, so membership is the only correct test here. This is
+          # the "found dead-on-arrival at first deploy" lesson from tv.nix,
+          # pinned so a refactor cannot quietly drop the working half.
+          assert builtins.elem "multi-user.target" nas.systemd.services.greetd.wantedBy;
+          # wayvnc lives on the USER bus, defined system-side because this box
+          # has no home-manager (asserted just below). Both halves matter: a
+          # SYSTEM wayvnc unit would have no session to mirror and is the
+          # wrong-bus mistake this pins against.
+          assert nas.systemd.user.services ? wayvnc;
           assert !(nas.systemd.services ? wayvnc);
-          assert !(nas.systemd.user.services ? wayvnc);
           assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
           # Post-cutover topology (live since 2026-08-02, #131): the verified
           # data disk and the media stack run on the NAS; the coordinator only
@@ -1213,10 +1244,25 @@
           # the guard added to modules/secrets.nix with #229. A stale key here
           # would silently re-join the box on its next flash.
           assert !(worker.age.secrets ? tailscale-authkey);
-          assert !nas.programs.niri.enable;
-          assert !nas.services.greetd.enable;
+          # ── the TV endpoint, again (2026-08-21) ────────────────────────────
+          # A SECOND copy of the stale "no graphical session" assertions, which
+          # is why fixing the nas-topology block alone left this check red. The
+          # appliance profile did not disappear when tv.nix landed — it grew a
+          # deliberate carve-out (modules/headless.nix), and these three moved
+          # with it. The session's exact shape is pinned once, in nas-topology;
+          # here we only record that it is expected to exist.
+          assert nas.programs.niri.enable;
+          assert nas.services.greetd.enable;
+          # pipewire rides the SAME carve-out and for a concrete reason: it
+          # carries HDMI audio to the TV. headless.nix mkForce-disables it for
+          # every non-tv appliance, so this asserts the carve-out is reaching
+          # it — `!enable` here had been failing since tv.nix.
+          assert nas.services.pipewire.enable;
+          # Printing is NOT part of the carve-out and stays off: the Brother is
+          # driven by the coordinator's CUPS queue at its pinned IP
+          # (modules/printing.nix), never by this box. Still true, still worth
+          # holding — a graphical session is an easy way to drag CUPS in.
           assert !nas.services.printing.enable;
-          assert !nas.services.pipewire.enable;
           # Avahi is ON since cutover day and that is deliberate — it is how the
           # NAS announces its read-only SMB trees so GNOME's Network pane can
           # list them (hosts/nas/discovery.nix, Tom's "show its files in
@@ -1230,7 +1276,16 @@
           # tailscale sink at ws5 and now answers DNS on it (the 2026-08-21
           # split-DNS server-side change, so tailnet clients resolve .internal).
           # Asserting the exact set keeps that door from quietly widening.
-          assert nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [ 53 ];
+          # 5900 joined 53 with tv.nix: wayvnc is reachable over the tailnet so
+          # the TV session can be driven from a roaming host, which is the same
+          # LAN-and-tailnet-but-never-WAN doctrine the rest of the fleet uses
+          # (home/remote.nix). Kept as an EXACT set on purpose — the point of
+          # this assert is that the tailnet door cannot widen unnoticed, so a
+          # third port here must be a deliberate edit, not a surprise.
+          assert nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [
+            53
+            5900
+          ];
           assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
           assert nas.myNas.storage.enable;
           assert nas.myNas.media.enable;
@@ -1632,10 +1687,17 @@
               };
             renderedBackends = nixpkgs.lib.mapAttrs (_: testRender) testRenderers;
           in
+          # libraryPath arrived with the 2026-08-21 "weights leave nix" ruling
+          # (3f941c02): model weights are no longer nix FODs — they live in the
+          # NAS Library and are pulled by library-fetch — so the module needs to
+          # be told where that Library is mounted. This exact-list assert was
+          # not updated with it and had been failing since, masked behind the
+          # stale tv.nix asserts above which tripped first.
           assert
             builtins.attrNames self.nixosConfigurations.coordinator.options.services.local-models == [
               "allow"
               "artifacts"
+              "libraryPath"
             ];
           assert
             builtins.attrNames self.nixosConfigurations.coordinator.options.services.npu-llm == [
