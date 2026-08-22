@@ -96,8 +96,77 @@ in
       };
     };
 
+    # ── THE eMMC/NVMe CONFLATION, corrected 2026-08-22 ──────────────────────
+    # Ruling 1 in the header above says this state "lives at /var/lib/atticd on
+    # the NAS root NVMe", and the retention comment bounds the cache "against
+    # the 256GB M.2 it now shares with the OS". Both sentences are false about
+    # this machine and always were. Per ./disko.nix, `/` is the 57G eMMC
+    # (mmcblk0p2); the 256G M.2 is NOT the root — it is /mnt/fast. So ws5 put
+    # an accumulating, fleet-wide binary cache on the smallest and slowest
+    # device in the box, beside the nix store that ./update-center.nix fills
+    # nightly with three host closures.
+    #
+    # Found 2026-08-22 with / at 100% and ZERO bytes free, update-center in
+    # failed state ("error: write of 26 bytes: No space left on device", build
+    # FAILED for worker and zenbook-duo), and 18G of the 57G being this
+    # service's own state. The intent in the header was right all along; only
+    # the disk was wrong. This mount makes the sentence true.
+    #
+    # A BIND MOUNT, not a custom storage path, because the DynamicUser shape
+    # documented above must not change: /var/lib/atticd stays the
+    # systemd-managed symlink into /var/lib/private/atticd, StateDirectory
+    # still owns and chowns that dir on every start, and the "unable to open
+    # database file" sandbox trap stays avoided. All we change is which
+    # spindle backs it.
+    fileSystems."/var/lib/private/atticd" = {
+      device = "/mnt/fast/atticd";
+      fsType = "none";
+      options = [
+        "bind"
+        # NOFAIL IS LOAD-BEARING AND IS NOT ABOUT CONVENIENCE. Without it a
+        # fileSystems entry becomes REQUIRED by local-fs.target, so a bind
+        # whose source is missing does not merely skip — it fails the target
+        # and drops the machine into EMERGENCY MODE at boot. On the box that
+        # is the house router, DNS and the tailnet subnet router, that is an
+        # unreachable brick and a household with no internet, i.e. strictly
+        # worse than the full disk this whole commit exists to fix.
+        #
+        # `nofail` costs nothing here because it does NOT reopen the
+        # fresh-signing-key hole: the mount unit still exists and still fails
+        # loudly, and atticd's RequiresMountsFor below keeps the service down
+        # rather than letting StateDirectory conjure an empty state tree. So
+        # the failure mode is "the binary cache is offline until someone
+        # looks", which is a Tuesday, instead of either a brick or a silently
+        # re-keyed fleet.
+        "nofail"
+      ];
+      depends = [ "/mnt/fast" ];
+    };
+
+    # ── THE SIGNING-KEY TRAP, SECOND EDITION ────────────────────────────────
+    # The one law in the header is about `rm`. This is the same catastrophe
+    # reached by mounting. /mnt/fast is `nofail` (./disko.nix) — correct for a
+    # budget NVMe holding regenerable state, lethal here: if that disk ever
+    # fails to mount, the bind above silently does not happen, StateDirectory
+    # cheerfully creates a fresh EMPTY /var/lib/private/atticd, and atticd
+    # generates a BRAND NEW keypair. server.db carries the fleet's signing key,
+    # so every signature ../../modules/common.nix trusts is invalidated at once
+    # and every device on the LAN silently starts building from source.
+    #
+    # RequiresMountsFor turns that into a service that refuses to start, which
+    # is a Tuesday rather than a fleet-wide outage. If atticd is ever found
+    # dead with "Unit var-lib-private-atticd.mount not found", the answer is to
+    # fix the NVMe — never to let it start without its state.
+    systemd.services.atticd.unitConfig.RequiresMountsFor = [ "/var/lib/private/atticd" ];
+
     systemd.tmpfiles.rules = [
       "d /var/lib/atticd-secrets 0700 root root -"
+      # NB deliberately no rule for /mnt/fast/atticd: the move is a runbook
+      # step (stop atticd, `mv /var/lib/private/atticd /mnt/fast/atticd`,
+      # rebuild) and a tmpfiles rule would race it by creating an empty
+      # directory for the bind to find — which is exactly the fresh-key
+      # scenario above. If the source is missing the mount fails and the
+      # service stays down. That is the intended behaviour.
     ];
 
     # Every fleet device substitutes: coordinator .2, worker .5, zenbook and

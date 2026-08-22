@@ -18,6 +18,7 @@
     # queue already killed. VERIFIED 2026-08-21: after ~4h idle in Deep
     # Sleep, CUPS job 88 (model census) woke the printer via the pinned-IP
     # queue and printed — no keepalive anywhere.
+    ./nix-builds.nix # 2026-08-22: build scratch off the eMMC + in-build auto-GC
     ./journal.nix
     ./storage.nix
     ./discovery.nix # Avahi + read-only SMB so the NAS shows up in Nautilus (2026-08-21)

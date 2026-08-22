@@ -23,7 +23,9 @@ let
   storageRoot = "/mnt/nas";
   # The NVMe fast tier (disko.nix, 2026-08-02 role widening): database and
   # regenerable state live here for random-I/O speed and so the HDD only
-  # works when actual media moves. Everything under fastRoot is either
+  # works when actual media moves. Plex's library DB joined them 2026-08-22
+  # (see its block below) — it was the last chatty random-I/O resident left
+  # on the spindle. Everything under fastRoot is either
   # rebuildable (thumbs, caches) or dump-protected onto the HDD nightly —
   # PostgreSQL via the nas-db-dump timer below, so losing the budget NVMe
   # costs at most a day of photo metadata. Navidrome is the exception and
@@ -32,6 +34,7 @@ let
   fastRoot = "/mnt/fast";
   generatedRoot = "${fastRoot}/immich-generated";
   navidromeRoot = "${fastRoot}/navidrome";
+  plexRoot = "${fastRoot}/plex";
   # Shared helpers (#130); the definitions moved verbatim, so the
   # Immich/Navidrome wait scripts keep their pre-refactor store paths.
   inherit (import ./wake-helpers.nix { inherit lib pkgs; })
@@ -109,7 +112,7 @@ in
       "d ${config.services.postgresql.dataDir} 0700 postgres postgres -"
       "d ${navidromeRoot} 0700 tom users -"
       "d ${navidromeRoot}/cache 0700 tom users -"
-      "d ${storageRoot}/services/plex 0700 tom users -"
+      "d ${plexRoot} 0700 tom users -"
     ];
 
     systemd.services.immich-server = {
@@ -287,13 +290,33 @@ in
     # would thrash. Reachable only through the coordinator's 32400 relay.
     # No hardware-transcode config until a Plex Pass exists (precondition
     # not true yet); CPU direct-play/remux is the baseline.
+    # ── dataDir moved to the NVMe 2026-08-22 ────────────────────────────
+    # This was the last chatty random-I/O resident on the HDD. Plex's dataDir
+    # is a SQLite library database plus its WAL, and a resident server pokes
+    # it continuously — housekeeping, session state, plex.tv keepalives — so
+    # a 5400rpm spindle carried seek chatter all day for 683M of state that
+    # is entirely REBUILDABLE by a library rescan.
+    #
+    # That rebuildability is the whole argument, and ../nas/lacie-mirror.nix
+    # already made it out loud: services/ is excluded from the cold-storage
+    # dump precisely because Plex's state is "regenerable by a rescan". State
+    # not worth mirroring is state that belongs on the expendable fast tier,
+    # not on the disk whose job is durability. Tom's ruling, 2026-08-22.
+    #
+    # storageRoot stays in RequiresMountsFor: the DB lives on the NVMe now,
+    # but the MEDIA Plex serves is still the HDD's videos subvolume, and
+    # starting the server without it would have it index an empty library and
+    # helpfully mark the whole collection as deleted.
     services.plex = {
       enable = true;
       user = "tom";
       group = "users";
-      dataDir = "${storageRoot}/services/plex";
+      dataDir = plexRoot;
     };
-    systemd.services.plex.unitConfig.RequiresMountsFor = [ storageRoot ];
+    systemd.services.plex.unitConfig.RequiresMountsFor = [
+      storageRoot
+      fastRoot
+    ];
 
     networking.firewall.extraInputRules = ''
       ip saddr 10.42.0.2 tcp dport { 2283, 4533, 32400 } accept comment "media from coordinator (LAN; /30 retired 2026-08-21)"

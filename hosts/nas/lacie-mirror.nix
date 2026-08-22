@@ -44,8 +44,10 @@ let
       mount -o noatime /dev/disk/by-uuid/${lacieUuid} /mnt/lacie
     fi
 
-    # services/ is deliberately NOT mirrored: it holds live Plex SQLite state
-    # (regenerable by a rescan) and the append-only journal archive; the DB
+    # services/ is deliberately NOT mirrored: it holds the append-only journal
+    # archive (and, until 2026-08-22, live Plex SQLite state — that argument
+    # for excluding it, "regenerable by a rescan", is exactly why the Plex
+    # dataDir has since moved to the NVMe fast tier; see media.nix); the DB
     # that matters (Immich's postgres) rides photos/backups/db via the nightly
     # pg_dump. models/ IS mirrored (renamed from archive/ 2026-08-21) — its
     # weights/ half holds retired, often unreproducible model weights plus
