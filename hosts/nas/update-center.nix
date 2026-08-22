@@ -85,6 +85,27 @@ let
         fail=1
       fi
     done
+
+    # ── Flush the day's build, keep nothing (Tom's rule, 2026-08-22) ────────
+    # "we only keep the latest armed update on disk, and yesterday's one gets
+    # flushed." Once a closure is pushed above, the LOCAL copy is pure
+    # garbage: attic on this same box holds the authoritative bytes, and
+    # that is the only copy any device ever pulls. Leaving it in the store
+    # means every night's three closures pile up until the weekly sweep,
+    # which is precisely the accumulation that filled the eMMC twice.
+    #
+    # Nothing is lost by collecting immediately. These paths are unrooted the
+    # moment the build ends (--no-link, so not even a result symlink), and
+    # tomorrow's run re-substitutes anything still current from attic over
+    # localhost at memory speed rather than rebuilding it.
+    #
+    # PLAIN gc, never -d: the -d ban in ../../modules/gc-retention.nix is
+    # fleet doctrine, and it applies with full force on the box that is also
+    # the house router. This removes unreachable paths only and cannot touch
+    # a live generation or the running system.
+    echo "update-center: flushing the day's build (attic holds the bytes)"
+    nix-store --gc 2>&1 | tail -2 || echo "update-center: gc did not complete cleanly" >&2
+
     exit $fail
   '';
 in

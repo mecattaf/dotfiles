@@ -19,6 +19,7 @@
     # Sleep, CUPS job 88 (model census) woke the printer via the pinned-IP
     # queue and printed — no keepalive anywhere.
     ./nix-builds.nix # 2026-08-22: build scratch off the eMMC + in-build auto-GC
+    ./nix-on-nvme.nix # 2026-08-22: /nix onto the M.2 — GATE OFF, reboot-only (#232)
     ./journal.nix
     ./storage.nix
     ./discovery.nix # Avahi + read-only SMB so the NAS shows up in Nautilus (2026-08-21)
@@ -109,7 +110,21 @@
   myNas.attic.enable = true;
   # The App Store's build half — nightly 01:30, capped to the bottom of every
   # scheduler, publishes to the local attic. Devices pull; nothing is pushed.
+  #
+  # Back ON 2026-08-22 in the same commit that flips myNas.nixOnNvme below —
+  # the pairing is the point. It was briefly turned off that morning when the
+  # 57G eMMC could not hold three closures; disabling the build farm made the
+  # symptom stop without fixing the siting, which was the wrong answer. The
+  # store now lives on the 256G M.2, so the farm has room to do its job.
   myNas.updateCenter.enable = true;
+
+  # ── /nix on the M.2 (#232) ──────────────────────────────────────────────
+  # Flipped after the runbook in ./nix-on-nvme.nix was walked on the real
+  # hardware: store rsync'd with -aHAX, verified, `nixos-rebuild boot`, and a
+  # SUPERVISED reboot with a console on the HDMI corner. Never flip this
+  # remotely — /nix is a neededForBoot mount and a mistake does not degrade,
+  # it means the house router does not come up.
+  myNas.nixOnNvme.enable = true;
 
   # amdtop — the same telemetry TUI the coordinator runs (modules/strix-ai.nix).
   # This box is AMD on both halves: common-cpu-amd/kvm-amd, plus the radeonsi
