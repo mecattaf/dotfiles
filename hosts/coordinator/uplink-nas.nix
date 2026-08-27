@@ -193,6 +193,103 @@ in
     };
   };
 
+  # ── Emergency failover watchdog (2026-08-28, closes #235) ────────────────
+  # The 2026-08-23 incident, verified minute-by-minute from the attic DB and
+  # this box's journal: the NAS's mt7925u wan0 wedged at 10:30:51 (within a
+  # minute of update-center's ExecStopPost gc hitting its 1h SIGKILL), and
+  # this box sat "connected" to a dead LAN for FIVE DAYS with the fallback
+  # rail configured right next to it. NM never re-evaluated: the BE550 kept
+  # beaconing, the profile is static-addressed, and priority ordering only
+  # runs at (re)activation time.
+  #
+  # Two hard lessons encoded here:
+  #   1. Pinging the gateway is NOT a health check. 10.42.0.1 answered ICMP
+  #      for the entire outage — the NAS was alive, only its wan0 was dead.
+  #      The probe must be end-to-end: public anycast IPs, through the wifi
+  #      interface, both of two independent targets down before a round
+  #      counts as a failure.
+  #   2. Auto-REVERT is deliberately absent. One radio cannot observe the
+  #      BE550 segment while associated to the Freebox, so a revert probe
+  #      would itself be a daytime rail switch — exactly what the freeze
+  #      rule forbids. Failing over when the internet is already dead kills
+  #      no live session (they died ~2.5 min ago); switching back is a
+  #      judgement made by Tom's hand (`nmcli connection up thomas-6ghz`) or
+  #      by uplink-rail-reconcile at next boot.
+  #
+  # Coexists with uplink-rail-reconcile above: that one fixes "woke up on
+  # the wrong rail at boot"; this one fixes "the good rail died under me".
+  # Quiet by design on healthy rounds — the NAS journal lost the entire
+  # incident window to AdGuard error spam, so this unit logs state changes
+  # only, never a heartbeat.
+  systemd.services.uplink-failover-watchdog = {
+    description = "Fail over to the Freebox rail when internet via thomas-6ghz is dead";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = pkgs.writeShellScript "uplink-failover-watchdog" ''
+        PATH=${
+          lib.makeBinPath [
+            pkgs.networkmanager
+            pkgs.iputils
+            pkgs.gnugrep
+            pkgs.coreutils
+          ]
+        }
+        state=/run/uplink-watchdog.failcount
+
+        # Only guard the NAS rail. On the Freebox (failed over, or Tom's
+        # choice), or with the radio down entirely (NM's own problem), stand
+        # aside so the watchdog can never fight a manual rail decision.
+        nmcli -t -f NAME connection show --active | grep -qx "thomas-6ghz" || {
+          rm -f "$state"
+          exit 0
+        }
+
+        ok=0
+        for target in 1.1.1.1 9.9.9.9; do
+          if ping -c1 -W2 -I wlp192s0 "$target" >/dev/null 2>&1; then
+            ok=1
+            break
+          fi
+        done
+
+        if [ "$ok" = 1 ]; then
+          if [ -s "$state" ] && [ "$(cat "$state")" != 0 ]; then
+            echo "internet reachable again via thomas-6ghz; debounce reset"
+          fi
+          rm -f "$state"
+          exit 0
+        fi
+
+        n=$(($(cat "$state" 2>/dev/null || echo 0) + 1))
+        echo "$n" >"$state"
+        echo "internet unreachable via thomas-6ghz (strike $n/5)"
+        [ "$n" -lt 5 ] && exit 0
+
+        # ~2.5 min of sustained darkness: the rail is dead, not blinking.
+        # Distinguish the two death shapes in the log before switching —
+        # this line is the forensic record the 08-23 incident never got.
+        if ping -c1 -W2 -I wlp192s0 10.42.0.1 >/dev/null 2>&1; then
+          echo "FAILOVER: gateway 10.42.0.1 answers but forwards nothing (NAS wan0 dead?) — bringing up Freebox-AB3ACE"
+        else
+          echo "FAILOVER: gateway 10.42.0.1 unreachable — bringing up Freebox-AB3ACE"
+        fi
+        rm -f "$state"
+        nmcli connection up Freebox-AB3ACE
+      '';
+    };
+  };
+  systemd.timers.uplink-failover-watchdog = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      # After uplink-rail-reconcile (OnBootSec=2min) has settled the boot rail.
+      OnBootSec = "3min";
+      OnUnitActiveSec = "30s";
+      # Default 1min accuracy would smear the 30s cadence and stretch the
+      # 5-strike debounce unpredictably.
+      AccuracySec = "10s";
+    };
+  };
+
   # The `nas` hosts pin moved to modules/common.nix (fleet-wide) at the
   # 2026-08-21 attic move — every host dials the substituter by that name.
 }
