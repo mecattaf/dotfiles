@@ -51,8 +51,17 @@ in
     llamaRocmCommands
     llamaVulkanCommands
     stableDiffusionRocmCommands
-    strixAi.ds4-rocm
-    strixAi.vllm-rocm
+
+    # ds4-rocm and vllm-rocm are deliberately ABSENT (dotfiles#237 ruling,
+    # 2026-08-28). Each independently pulled therock-rocm-sdk-gfx1151 — 8.3 GiB
+    # NAR, narinfo-404 on both upstream caches, so locally unique — into the
+    # closure, where it was by itself the dominant term of every cold nightly
+    # update-center push (#234's measured arithmetic). No allowed deployment
+    # uses the ds4/vllm backends today; when the DS4 TP=2 bring-up resumes
+    # (docs/local-ai/ds4-vllm-recon-2026-08-21.md), `nix build .#ds4-rocm` /
+    # `.#vllm-rocm` are the one-command escape hatches, and the renderer
+    # backends in modules/local-models.nix stay declared — they only enter a
+    # closure when a deployment actually selects them.
 
     # One TUI for CPU, Radeon iGPU, and XDNA NPU telemetry. Upstream packaged it
     # (hellas-ai/nix-strix-halo#161) after we carried a local pkgs/amdtop.nix;
