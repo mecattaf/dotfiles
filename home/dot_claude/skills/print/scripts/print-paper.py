@@ -709,6 +709,15 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="submit every validated PDF to CUPS",
     )
+    parser.add_argument(
+        "--submit-only",
+        action="store_true",
+        help=(
+            "skip rendering; treat input as an already-rendered .pdf and submit "
+            "it to CUPS directly. Pairs with a prior render-only invocation so "
+            "submission never races a still-being-revised document (issue #227)."
+        ),
+    )
     parser.add_argument("--printer", default=DEFAULT_PRINTER, help="CUPS destination")
     parser.add_argument("--copies", type=int, default=1, help="copies per PDF")
     parser.add_argument(
@@ -734,6 +743,22 @@ def main() -> None:
         return
     if not args.input:
         fail("an input file is required (or use --list-profiles)")
+
+    if args.submit_only:
+        # Deliberately does not render. This is the second half of the
+        # render-verify-submit contract (issue #227): the caller renders
+        # WITHOUT --print, verifies the result against whatever the user
+        # asked for (page count, completeness), and only then re-invokes the
+        # script in this mode to queue the already-verified PDF exactly
+        # once. There is no code path here that can feed the printer pages
+        # from a document that has not already been rendered and inspected.
+        pdf_path = Path(args.input).expanduser().resolve()
+        if not pdf_path.is_file():
+            fail(f"--submit-only target does not exist: {pdf_path}")
+        if pdf_path.suffix.lower() != ".pdf":
+            fail(f"--submit-only expects an already-rendered .pdf, got {pdf_path.name}")
+        submit_print(pdf_path, printer=args.printer, copies=args.copies, sides=args.sides)
+        return
 
     if args.compare:
         profile_names = list(PROFILES)

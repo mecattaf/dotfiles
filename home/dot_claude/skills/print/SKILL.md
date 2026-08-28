@@ -12,14 +12,33 @@ every typesetting decision (profile, one-page enforcement, duplex,
 filename, title) and drives the renderer:
 
     ~/.claude/skills/print/scripts/print-auto.py INPUT.md \
-      [--intent brief|document|form|specimen] [--print] [--output-dir DIR]
+      [--intent brief|document|form|specimen] [--print] \
+      [--target-pages N] [--output-dir DIR]
 
 The session should not deliberate typography when using this path. Every
 print becomes a dated job directory under ~/Paper/jobs (markdown archived
 as source.md, rendered PDF, decision.json receipt recording npu /
-npu-retry / fallback provenance). Fall back to direct print-paper.py
-below only when the user explicitly asks for a specific profile or layout
-comparison.
+npu-retry / fallback provenance, plus pages_rendered / target_pages /
+length_check). Fall back to direct print-paper.py below only when the user
+explicitly asks for a specific profile or layout comparison.
+
+**Render-verify-submit (issue #227) — MANDATORY when the user gave the
+document an acceptance condition** (a page count, "one-pager", "N pages",
+section/coverage requirements): pass `--target-pages N`. Every invocation
+of `print-auto.py` always renders first and never submits in that same
+step; `--print` only reaches CUPS afterward, and only if the rendered page
+count matches `--target-pages` exactly. A mismatch prints nothing, writes
+`length_check: "fail"` to decision.json, and exits 3 — revise the markdown
+and re-run. This means the session can call `print-auto.py ... --print`
+repeatedly while iterating toward the target and it is architecturally
+impossible for a page to reach the printer before the render satisfies it.
+
+**Never revise a document after `--print` has been passed.** If a
+just-submitted job turns out short or wrong, `cancel <job>` is an
+anti-pattern: by the time cancellation lands, pages are already out. Fix
+the markdown, re-render (still without `--print`, and with `--force` to
+overwrite the previous PDF), confirm the new render, and only then submit
+— once. Do not treat a queued job as a draft.
 
 **Quiet hours.** Between 00:00 and 06:00 physical printing sleeps:
 --print still renders and validates, but the submission is spooled to
@@ -49,8 +68,24 @@ The pipeline is local:
    validate before any of them is submitted.
 4. Inspect the PDFs when layout judgment matters. Keep the generated HTML with
    **--keep-html** when diagnosing CSS or link behavior.
-5. Pass **--print** only when the user explicitly asked for a physical print.
-   Report the CUPS request IDs afterward.
+5. **When the user gave a length or completeness target that
+   --require-one-page cannot express** (a stated page count, "make it N
+   pages", "cover all of X"), render WITHOUT **--print** first, read the
+   reported page count (or open the PDF), and only once it satisfies the
+   target run:
+
+       ~/.claude/skills/print/scripts/print-paper.py --submit-only RENDERED.pdf \
+         [--sides one-sided|long-edge|short-edge] [--printer NAME]
+
+   `--submit-only` never renders — it queues exactly the PDF path given, so
+   the submit step cannot be the same act as an unverified render. Combining
+   `--print` with the render in one call is reserved for outputs that are
+   already fully self-validating in that same call (e.g.
+   **--require-one-page**, which fails loudly before anything is queued).
+   Do not combine an un-gated render with `--print` for anything else.
+6. Pass **--print** only when the user explicitly asked for a physical print,
+   and only after step 5's verification for any targeted document. Report the
+   CUPS request IDs afterward.
 
 ## Typography profiles
 
@@ -106,6 +141,10 @@ Use **--list-profiles** for the exact face, point size, and leading values.
 - Do not claim physical completion from queue submission alone. Report that
   CUPS accepted the jobs; inspect queue state when the user asks for delivery
   confirmation.
+- Submission is one-shot, not a draft. Never submit a rendered document you
+  have not already verified against whatever the user asked for, and never
+  follow a submission with `cancel` to revise — render again (Workflow §5,
+  `--target-pages` for autopilot) and submit once (issue #227).
 
 ## Supported source
 

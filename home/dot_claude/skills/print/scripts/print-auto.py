@@ -10,7 +10,15 @@ validated here with one corrective retry and a deterministic fallback.
 
 Usage:
     print-auto.py INPUT.md [--intent brief|document|form|specimen]
-                  [--print] [--output-dir DIR]
+                  [--print] [--target-pages N] [--output-dir DIR]
+
+Render-verify-submit gate (issue #227): this script ALWAYS renders first,
+without submitting. If --print was passed, submission is a second, separate
+subprocess call made only after the render is on disk. When --target-pages
+is given, --print is refused (exit 3, nothing sent to CUPS) unless the
+rendered page count matches exactly — so a session iterating toward a
+length target can call this repeatedly with zero pages ever reaching the
+printer, and the eventual physical print happens exactly once.
 """
 
 import argparse
@@ -96,6 +104,22 @@ def validate(raw: str) -> dict | str:
     return d
 
 
+def pdf_page_count(path: Path) -> int | None:
+    """Best-effort page count, mirroring print-paper.py's own pdfinfo/regex
+    fallback, so the render-verify gate below works even before pdfinfo is
+    on PATH."""
+    pdfinfo = shutil.which("pdfinfo")
+    if pdfinfo:
+        out = subprocess.run([pdfinfo, str(path)], capture_output=True, text=True)
+        if out.returncode == 0:
+            match = re.search(r"^Pages:\s+(\d+)", out.stdout, re.M)
+            if match:
+                return int(match.group(1))
+    payload = path.read_bytes()
+    count = len(re.findall(rb"/Type\s*/Page\b", payload))
+    return count or None
+
+
 def decide(text: str, intent: str | None, source: Path) -> tuple[dict, str]:
     """Returns (decision, provenance) where provenance is npu|npu-retry|fallback."""
     digest = doc_digest(text, intent)
@@ -129,6 +153,14 @@ def main() -> int:
     ap.add_argument("--force", action="store_true",
                     help="print immediately even during quiet hours (00-06)")
     ap.add_argument("--output-dir", type=Path)
+    ap.add_argument(
+        "--target-pages", type=int, default=None,
+        help=(
+            "exact page count the user asked for (issue #227). When set, "
+            "--print is refused unless the rendered PDF matches; the render "
+            "itself always happens, so a session can call this repeatedly "
+            "while iterating without --print and burn zero paper."
+        ))
     args = ap.parse_args()
 
     text = args.input.read_text()
@@ -158,21 +190,42 @@ def main() -> int:
     # ~/Paper/outbox. --force ("/print force") bypasses the window.
     quiet = 0 <= datetime.datetime.now().hour < 6
     spool = args.do_print and quiet and not args.force
+    sides_flag = "one-sided" if decision["sides"] == "one-sided" else "long-edge"
 
-    cmd = [sys.executable, str(PRINT_PAPER), str(source),
-           "--profile", decision["profile"], "-o", str(outpath)]
+    # Render-verify-submit gate (issue #227): this invocation ALWAYS renders
+    # without --print first — --print never reaches print-paper.py in the
+    # same call that does the rendering. Submission, if it happens at all,
+    # is a wholly separate subprocess call below, gated on the verified page
+    # count. A session iterating toward a length target can therefore call
+    # this repeatedly (with or without --print) and never put a page on the
+    # printer until the render it inspected is the render it submits.
+    render_cmd = [sys.executable, str(PRINT_PAPER), str(source),
+                  "--profile", decision["profile"], "-o", str(outpath)]
     if decision["require_one_page"]:
-        cmd.append("--require-one-page")
-    if decision["sides"] == "one-sided":
-        cmd += ["--sides", "one-sided"]
-    if args.do_print and not spool:
-        cmd.append("--print")
-    rc = subprocess.run(cmd).returncode
-    if rc == 0:
+        render_cmd.append("--require-one-page")
+    if sides_flag == "one-sided":
+        render_cmd += ["--sides", "one-sided"]
+    rc = subprocess.run(render_cmd).returncode
+    if rc != 0:
+        return rc
+
+    pages_rendered = pdf_page_count(outpath)
+    if args.target_pages is None:
+        length_check = "not_applicable"
+    elif pages_rendered == args.target_pages:
+        length_check = "pass"
+    else:
+        length_check = "fail"
+
+    blocked = args.do_print and length_check == "fail"
+    printed = False
+    print_spooled = False
+
+    if args.do_print and not blocked:
         if spool:
             outbox = Path.home() / "Paper" / "outbox"
             outbox.mkdir(parents=True, exist_ok=True)
-            sides_lp = ("one-sided" if decision["sides"] == "one-sided"
+            sides_lp = ("one-sided" if sides_flag == "one-sided"
                         else "two-sided-long-edge")
             entry = {"pdf": str(outpath), "sides": sides_lp,
                      "job_dir": str(jobdir),
@@ -181,18 +234,45 @@ def main() -> int:
             tmp = outbox / f".{jobdir.name}.tmp"
             tmp.write_text(json.dumps(entry, indent=2) + "\n")
             tmp.replace(outbox / f"{jobdir.name}.json")
-        receipt = {"decision": decision, "provenance": provenance,
-                   "source": str(source), "original_input": str(args.input),
-                   "pdf": str(outpath),
-                   "printed": args.do_print and not spool,
-                   "print_spooled": spool}
-        (jobdir / "decision.json").write_text(
-            json.dumps(receipt, indent=2) + "\n")
-        if spool:
-            print(f"print-auto: quiet hours — spooled for the 06:05 flush "
-                  f"({jobdir.name}); use --force to print now")
-        print(f"print-auto: {provenance} decision -> {outpath}")
-    return rc
+            print_spooled = True
+        else:
+            # Submit the exact PDF that was just verified — a distinct
+            # subprocess call that only ever submits, never renders, so
+            # there is no window in which unrendered or unverified content
+            # can be queued.
+            submit_cmd = [sys.executable, str(PRINT_PAPER),
+                          "--submit-only", str(outpath),
+                          "--sides", sides_flag]
+            submit_rc = subprocess.run(submit_cmd).returncode
+            if submit_rc != 0:
+                return submit_rc
+            printed = True
+
+    receipt = {"decision": decision, "provenance": provenance,
+               "source": str(source), "original_input": str(args.input),
+               "pdf": str(outpath),
+               "pages_rendered": pages_rendered,
+               "target_pages": args.target_pages,
+               "length_check": length_check,
+               "printed": printed,
+               "print_spooled": print_spooled,
+               "blocked": blocked}
+    (jobdir / "decision.json").write_text(
+        json.dumps(receipt, indent=2) + "\n")
+
+    if blocked:
+        print(f"print-auto: rendered {pages_rendered} page(s), target was "
+              f"{args.target_pages} — NOT submitted. Revise the document and "
+              f"re-run (with --print) once the render matches.",
+              file=sys.stderr)
+        return 3
+    if print_spooled:
+        print(f"print-auto: quiet hours — spooled for the 06:05 flush "
+              f"({jobdir.name}); use --force to print now")
+    print(f"print-auto: {provenance} decision -> {outpath} "
+          f"({pages_rendered if pages_rendered is not None else 'unknown'} page(s), "
+          f"length_check={length_check})")
+    return 0
 
 
 if __name__ == "__main__":
