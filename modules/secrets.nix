@@ -53,7 +53,18 @@ in
         '';
       })
 
-      {
+      # NOT ungated any more (2026-08-28). This block delivers ssh-user-key and
+      # atuin-key, whose ciphertexts are encrypted to the `delivered` tier — and
+      # `delivered` is DERIVED as "every host except the nas". The appliance flipped
+      # mySecrets.enable ON this day to receive huggingface-token, so an unguarded
+      # block here would declare two secrets it holds no key for and fail its
+      # activation. Verified before the change: the nas host key decrypts neither.
+      #
+      # THE INVARIANT, for whoever adds the next secret: the nas now runs agenix but
+      # is a recipient of exactly ONE ciphertext. Any block that is not host-gated
+      # must exclude it, or it breaks the appliance rather than the box you were
+      # thinking about.
+      (lib.mkIf (config.networking.hostName != "nas") {
         # (hermes-credentials — the Nous Research AI harness's OAuth state — was
         # delivered here until 2026-08-04. The harness is no longer in use fleet-wide,
         # so the secret, its ciphertext, and its recipient rule are all gone. Any
@@ -105,7 +116,7 @@ in
           fi
         '';
 
-      }
+      })
 
       # Tailscale: join the tailnet on first boot with this host's own pre-auth key
       # (per-host .age; single-use, non-ephemeral, preauthorized, tag:mesh — tagged
@@ -258,19 +269,35 @@ in
         '';
       })
 
-      # Hugging Face read token — coordinator-only operator credential. The
-      # ciphertext is deliberately optional so adding the declarative CLI does
-      # not require or manufacture a credential. Once provisioned with agenix,
-      # the wrapper reads this /run path directly; no activation copy or
-      # Hugging Face login cache is involved.
-      (lib.mkIf (config.networking.hostName == "coordinator" && builtins.pathExists hfTokenCiphertext) {
+      # Hugging Face read token — coordinator AND nas since 2026-08-28. The
+      # ciphertext stays optional (pathExists) so the tree still evaluates on a
+      # checkout that carries no credential; it went absent-but-declared for the
+      # whole life of the declarative CLI, which is precisely why `hf` had been
+      # running unauthenticated without ever saying so.
+      #
+      # The nas is the REAL consumer, not a convenience copy: hosts/nas/models.nix
+      # runs library-fetch — "the ONLY thing that ever talks to Hugging Face" —
+      # and it curls catalog weights anonymously, so a gated repo 401s the
+      # nightly. The coordinator keeps it for interactive `hf` (Tom, same day:
+      # "hf-on-coordinator is just there as a fallback, honestly").
+      #
+      # Owner stays `tom` on both: on the nas library-fetch runs as root, which
+      # reads a 0400 tom-owned file regardless, and keeping the owner uniform
+      # means the interactive `hf` wrapper works on either box unchanged.
+      (lib.mkIf
+        (
+          (config.networking.hostName == "coordinator" || config.networking.hostName == "nas")
+          && builtins.pathExists hfTokenCiphertext
+        )
+        {
         age.secrets.huggingface-token = {
           file = hfTokenCiphertext;
           owner = "tom";
           group = "users";
           mode = "400";
         };
-      })
+        }
+      )
 
       # navidrome-credentials: NOT consumed by the navidrome server (which now
       # runs on the NAS, hosts/nas/media.nix, reached through the coordinator's

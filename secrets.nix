@@ -51,6 +51,15 @@ let
   # landing was enough — but wifi credentials are their own tier and have to say
   # so explicitly.
   workerOnly = nonEmpty [ registry.worker.hostKey ];
+  # The appliance. It held NO agenix secret at all until 2026-08-28 (see the
+  # `delivered` comment above). Tom's ruling that day, on being shown the
+  # doctrine: "overrule that ruling if you found it too constraining." No
+  # overrule was actually needed — the 2026-08-04 text already names this exact
+  # door ("add its key back here for the SPECIFIC secrets it consumes, not
+  # wholesale"), and this is the first walk through it. The nas is deliberately
+  # NOT folded into `delivered`: it is a recipient of one ciphertext and no
+  # other, and the standing authority the aug04 ruling withdrew stays withdrawn.
+  nasOnly = nonEmpty [ registry.nas.hostKey ];
 in
 {
   # --- delivered tier (every host that runs agenix — i.e. all but the nas) ---
@@ -163,9 +172,18 @@ in
   # authenticated operator box — gh + wrangler stay off the laptops).
   "secrets/gh-hosts.age".publicKeys = editors ++ coordinatorOnly;
   "secrets/wrangler-config.age".publicKeys = editors ++ coordinatorOnly;
-  # Optional Hugging Face read token. The rule is declared now; ciphertext is
-  # created with agenix only when Tom supplies the credential.
-  "secrets/huggingface-token.age".publicKeys = editors ++ coordinatorOnly;
+  # Hugging Face read token. Provisioned 2026-08-28 (fine-grained, HF display
+  # name `nixOS`) after carrying a declaration with no ciphertext since the
+  # declarative CLI landed — `builtins.pathExists` meant the coordinator simply
+  # evaluated the delivery to nothing and `hf` ran unauthenticated.
+  #
+  # The nas joined the recipients the same day, and it is the ONLY secret the
+  # appliance can decrypt. The consumer is not interactive `hf`: it is
+  # hosts/nas/models.nix's library-fetch, the service its own header calls "the
+  # ONLY thing that ever talks to Hugging Face", which curls catalog weights
+  # anonymously and therefore 401s on anything gated. Coordinator keeps it for
+  # the CLI.
+  "secrets/huggingface-token.age".publicKeys = editors ++ coordinatorOnly ++ nasOnly;
 
   # Qwen Token Plan API key (Alibaba MaaS, ap-southeast-1 — the OpenAI-compatible
   # subscription endpoint pi ships as the built-in `qwen-token-plan` provider).

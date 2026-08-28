@@ -51,7 +51,14 @@ let
   havePasswordHash = builtins.pathExists ciphertext;
 in
 {
-  config = lib.mkIf (config.mySecrets.enable && havePasswordHash) {
+  # ...and never the nas. The appliance turned mySecrets.enable ON 2026-08-28 for
+  # huggingface-token alone; tom-password-hash is a `delivered`-tier ciphertext
+  # that excludes it by construction, so without this guard the flip would have
+  # pointed `users.users.tom.hashedPasswordFile` at a secret the box cannot
+  # decrypt — locking the account out of the appliance, not merely failing loudly.
+  config = lib.mkIf (
+    config.mySecrets.enable && havePasswordHash && config.networking.hostName != "nas"
+  ) {
     age.secrets.tom-password-hash = {
       file = ciphertext;
       # Read by update-users-groups.pl as root. tom must NOT be able to read his

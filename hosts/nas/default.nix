@@ -50,9 +50,23 @@
   networking.hostName = "nas";
   myHeadless.enable = true;
 
-  # No shared agenix payload on this appliance (doctrine holds — the attic
-  # RS256 secret is a runbook-placed file, see ./attic.nix).
-  mySecrets.enable = false;
+  # agenix ON since 2026-08-28 — and the doctrine still holds, because the
+  # doctrine was never "no agenix here", it was "no STANDING decryption
+  # authority over ciphertext this box never reads" (the aug04 ruling that
+  # pulled the appliance out of the whole common tier). That text names its own
+  # exception: flip this on and "add its key back [to secrets.nix] for the
+  # specific secrets it consumes, not wholesale."
+  #
+  # Consumed: huggingface-token, and nothing else. The nas is a recipient of
+  # exactly one ciphertext (secrets.nix `nasOnly`) and can decrypt no other —
+  # not tom's password hash, not the fleet SSH key, not atuin's. Those blocks
+  # are explicitly gated away from this host; see the invariant note in
+  # modules/secrets.nix before adding the next secret.
+  #
+  # Why it was needed: ./models.nix's library-fetch downloads catalog weights
+  # from Hugging Face anonymously, so gated repos 401 the nightly.
+  # (The attic RS256 secret remains a runbook-placed file, see ./attic.nix.)
+  mySecrets.enable = true;
 
   # TAILSCALE ON — Tom's ruling 2026-08-21: "everything at home goes through
   # the NAS! so let's have the NAS be the tailscale sink." Reverses the
@@ -141,6 +155,14 @@
   # its own ~62 MB glibc/libdrm chain, shared with nothing else in this closure.
   environment.systemPackages = [
     inputs.nix-strix-halo.packages.${pkgs.stdenv.hostPlatform.system}.amdtop
+
+    # `hf` on the appliance (2026-08-28). library-fetch is the automated path and
+    # needs no CLI, but the Library is where models actually land, so stocking one
+    # by hand should not mean shelling to another box. The wrapper reads
+    # /run/agenix/huggingface-token, which this host now receives — so it is
+    # authenticated here for the same reason and by the same mechanism as the
+    # nightly, with no login flow and nothing written into $HF_HOME.
+    pkgs.huggingface-cli
   ];
 
   system.stateVersion = "26.05";

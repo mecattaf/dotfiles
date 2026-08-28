@@ -98,6 +98,30 @@ let
     text = ''
       weights=${lib.escapeShellArg "${modelsRoot}/weights"}
       fail=0
+
+      # Authenticate when agenix has delivered the token (nas became a recipient
+      # 2026-08-28). Public catalog rows never needed it; gated ones were 401ing
+      # this loop into DOWNLOAD FAILED with no hint that a credential was the
+      # missing piece. A box without the secret degrades to exactly the previous
+      # anonymous behaviour rather than failing.
+      #
+      # The token goes in a 0600 header file, never on the curl argv — argv is
+      # world-readable through /proc and this runs as root. curl drops the
+      # Authorization header when huggingface.co redirects to its signed CDN
+      # host; that is both correct and required, since cdn-lfs rejects a request
+      # carrying a bearer it did not issue.
+      auth=()
+      token_file=/run/agenix/huggingface-token
+      if [ -r "$token_file" ]; then
+        hdr="$(mktemp)"
+        chmod 600 "$hdr"
+        printf 'Authorization: Bearer %s\n' "$(cat "$token_file")" > "$hdr"
+        trap 'rm -f "$hdr"' EXIT
+        auth=(-H "@$hdr")
+        echo "library-fetch: authenticating to Hugging Face with the agenix token"
+      else
+        echo "library-fetch: no Hugging Face token readable; anonymous fetches only"
+      fi
       while IFS=$'\t' read -r id name bytes oid url; do
         dest="$weights/$id/$name"
         if [ -e "$dest" ] && [ "$(stat -c %s "$dest")" = "$bytes" ]; then
@@ -105,7 +129,7 @@ let
         fi
         echo "library-fetch: downloading $id/$name ($bytes bytes)"
         mkdir -p "$(dirname "$dest")"
-        if ! curl -fL --retry 3 --retry-delay 10 -o "$dest.part" "$url"; then
+        if ! curl -fL --retry 3 --retry-delay 10 "''${auth[@]}" -o "$dest.part" "$url"; then
           echo "library-fetch: DOWNLOAD FAILED: $url" >&2
           rm -f "$dest.part"
           fail=1
