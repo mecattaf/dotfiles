@@ -31,7 +31,18 @@
 #   2. Stage-2 udev coldplug. boot.blacklistedKernelModules below blocks the
 #      modalias path (udev loads with `modprobe -b`, which honors blacklists;
 #      the explicit `modprobe thunderbolt` in the fallback paths below is
-#      unaffected, because blacklist only gates alias resolution).
+#      unaffected, because blacklist only gates alias resolution). But the
+#      blacklist does NOT block DEPENDENCY loads: the first worker reboot
+#      (00:35, 2026-08-29) came back with the stock core bound anyway,
+#      pulled in as the `typec` module's dependency when coldplug loaded the
+#      UCSI/USB-C stack at ~6.7s — the unit ran at 7.7s and its live-guard
+#      correctly stood down. Blacklisting typec instead would break PD
+#      management (framework_tool, tb-link-heal's ucsi unbind). The cure is
+#      ORDERING: the unit runs before systemd-udev-trigger.service, so the
+#      patched core is already resident when typec's dependency resolves —
+#      a dependency on a loaded module is satisfied, not re-loaded. Possible
+#      only because the staged dir lives on the root filesystem (single-fs
+#      twins), readable before any udev-driven mount could exist.
 #   3. systemd-modules-load. tb-fleet.nix (coordinator) and the worker's
 #      default.nix pinned "thunderbolt-net" into boot.kernelModules — an
 #      explicit load that ignores blacklists AND drags the stock core in as a
@@ -172,16 +183,23 @@ in
 
     systemd.services.fn-rdma-modules = {
       description = "insert the patched thunderbolt core/net/ibverbs set before anything else binds";
-      wantedBy = [ "multi-user.target" ];
-      # Before bolt: the daemon must find the patched core's bus, never
-      # trigger a stock load. Before networkd: thunderbolt0's static /30
-      # should configure onto the patched net's netdev in one pass.
+      # Early boot, before stage-2 udev coldplug — see loader 2 in the
+      # header for why ordinary multi-user placement lost the race to the
+      # typec dependency chain. DefaultDependencies=no is required to sit
+      # this early; remount-fs guarantees the root fs (where the staged .ko
+      # set lives) is in its final state.
+      wantedBy = [ "sysinit.target" ];
       before = [
+        "systemd-udev-trigger.service"
         "bolt.service"
         "systemd-networkd.service"
         "network.target"
       ];
-      after = [ "local-fs.target" ];
+      after = [
+        "systemd-remount-fs.service"
+        "systemd-modules-load.service"
+      ];
+      unitConfig.DefaultDependencies = false;
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = true;
