@@ -10,19 +10,28 @@
 # management path survives anything the TB side does.
 #
 # Addressing doctrine, three layers:
-#   - 10.99.0.0/30  tb-fleet   (thunderbolt0) — the fast rail, unchanged.
+#   - 10.99.0.0/30  tb-fleet   (thunderbolt0) — the tensor rail, unchanged.
 #   - 10.99.1.0/30  eth-fleet  (enp191s0)     — this file, always-on.
 #   - 10.99.9.x/32  fleet IPs  (lo)           — the STABLE identity. Each
-#     host routes to the peer's /32 twice: via TB at metric 50 (on the
-#     tb-fleet profile, added imperatively like the profile itself) and
-#     via ethernet at metric 200 (declared below). The kernel prefers TB
-#     while thunderbolt0 exists, fails over the instant it vanishes, and
-#     snaps back when tb-link-heal restores it. Connections to the fleet
-#     IP survive the flip — the address never changes, only the path.
+#     host routes to the peer's /32 twice: via ethernet at metric 20
+#     (declared below) and via TB at metric 50 (on the tb-fleet profile,
+#     added imperatively like the profile itself). The kernel prefers the
+#     wire while enp191s0 exists, fails over to TB the instant it
+#     vanishes, and snaps back when the cable returns. Connections to the
+#     fleet IP survive the flip — the address never changes, only the path.
+#
+#     METRICS FLIPPED 2026-08-28 (dotfiles#240 ruling): ethernet used to sit
+#     at 200 behind TB's 50, which meant admin traffic on the fleet IP rode
+#     Thunderbolt whenever it was up — a `reboot` sharing the rail being
+#     tuned for vLLM tensor traffic (#238) and owning the fleet's whole
+#     USB-C/PD failure class. Now TB is the fleet IP's FAILOVER, never its
+#     preference. The imperative TB route stays at 50, untouched — only
+#     this profile's declared metric moved below it.
 #
 # Anything that must be TB-only (vLLM tensor traffic) still names
 # 10.99.0.x explicitly; anything that must never die (SSH, healing,
-# monitoring, deploys) names the fleet IP 10.99.9.2.
+# monitoring, deploys) names the fleet IP 10.99.9.2 and since #240
+# thereby prefers the wire.
 #
 # The tb-fleet-reachability tripwire deliberately keeps pinging 10.99.0.2:
 # it watches the FAST rail specifically. This rail gets its own quieter
@@ -58,11 +67,12 @@
       addresses = "10.99.1.1/30";
       never-default = true;
       ignore-auto-dns = true;
-      # Peer fleet-IP fallback route, deliberately expensive (metric 200)
-      # so the tb-fleet route (metric 50) always wins while it exists.
-      # Keyfile syntax (routeN=dest,next-hop,metric) — a nmcli-style
-      # `routes` key is silently ignored by the keyfile parser.
-      route1 = "10.99.9.2/32,10.99.1.2,200";
+      # Peer fleet-IP route, deliberately CHEAP (metric 20) so it beats the
+      # imperative tb-fleet route (metric 50) whenever the wire is up — the
+      # #240 flip; TB is the failover now, see the header. Keyfile syntax
+      # (routeN=dest,next-hop,metric) — a nmcli-style `routes` key is
+      # silently ignored by the keyfile parser.
+      route1 = "10.99.9.2/32,10.99.1.2,20";
     };
     ipv6.method = "disabled";
   };

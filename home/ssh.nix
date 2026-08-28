@@ -44,8 +44,8 @@ let
     zenbook = "zenbook-duo";
     nas = "nas";
     # Back since 2026-08-21 (#229). The right-hand side is the registry name;
-    # mkBlock rewrites its HostName to the Thunderbolt address on the
-    # coordinator — see `workerRail` above for the measurements behind that.
+    # mkBlock rewrites its HostName to the fleet identity on the coordinator —
+    # see `workerRail` below for the #240 ruling behind that.
     worker = "worker";
   };
 
@@ -59,35 +59,42 @@ let
   # tailnet-direct decision ever lands.
   needsJump = target: target == "nas" && hostName != "nas" && hostName != "coordinator";
 
-  # The worker has TWO rails, and which one the nickname should use is not a
-  # matter of taste. From the coordinator it is the THUNDERBOLT CABLE, always:
+  # The worker has THREE rails from the coordinator, and which one the nickname
+  # uses is a RULING, not taste (dotfiles#240, 2026-08-28): Thunderbolt
+  # (10.99.0.x) is reserved for LLM-parallelism / tensor traffic ONLY; admin
+  # traffic — interactive SSH, reboots, deploys, health checks — prefers the
+  # dedicated 5GbE cable (eth-fleet) and rides the stable fleet identity.
   #
-  #   TB   10.99.0.2 : rtt min/avg/max/mdev = 0.109/0.625/0.803/0.260 ms
-  #   wifi 10.42.0.5 : rtt min/avg/max/mdev = 42.115/104.817/197.654/54.229 ms
+  # The 2026-08-21 measurement that put this nickname on the TB rail compared
+  # TB against WIFI (0.6 ms vs 105 ms avg, mdev 54 ms) — a real 170x, but
+  # eth-fleet.nix landed the SAME NIGHT and was never entered in the race.
+  # Re-measured 2026-08-28 with PM QoS held (modules/lowlat-cluster.nix), 200
+  # samples each:
   #
-  # (measured 2026-08-21, both boxes idle). ~170x the latency, and a mdev of
-  # 54ms against 0.26ms — the wifi path is not merely slower, it is jittery,
-  # because it is a 6GHz association bounced through the AP and the NAS's router
-  # plane. The cable is a dedicated point-to-point link between these two boxes
-  # that depends on no AP, no DHCP lease, no dnsmasq and no router: it is up
-  # whenever both machines are, which is exactly what you want underneath an
-  # interactive shell and underneath multi-gigabyte closure copies (the
-  # reintegration itself pushed ~39GB of model weights across it).
+  #   TB   10.99.0.2 : rtt min/avg/max = 33/58/122 us, mdev 18 us
+  #   eth  10.99.1.2 : rtt min/avg/max = 58/72/142 us, mdev  9 us
   #
-  # This is a COORDINATOR-ONLY preference. The cable has exactly two ends, so
+  # 14 us of average and a TIGHTER tail on the wire — indistinguishable under
+  # an interactive shell. The latency case for TB is dead, and what remains is
+  # the reliability case AGAINST it: the TB link's whole failure class lives in
+  # the USB-C/PD stack (tb-fleet.nix doctrine), it is the rail deliberate USB4
+  # experiments run on, and a `reboot` typed over it competes with the tensor
+  # traffic it exists to carry.
+  #
+  # The nickname therefore targets 10.99.9.2 — the fleet identity on the
+  # worker's loopback, reachable via BOTH cables. Since #240 the eth-fleet
+  # route to it costs metric 20 against the imperative TB route's 50, so admin
+  # traffic prefers the wired rail and falls over to TB only when the 5GbE
+  # cable itself dies (eth-fleet.nix owns that doctrine). Tensor traffic keeps
+  # naming 10.99.0.x explicitly and never competes with this block.
+  #
+  # This is a COORDINATOR-ONLY preference. The cables have exactly two ends, so
   # from the zenbook or the NAS the nickname must use the LAN identity, which is
   # also the fleet-facing one every other consumer uses — the NAS's Immich ML
-  # URL, the journal ACL, the networking.hosts pin. Both addresses are registry
+  # URL, the journal ACL, the networking.hosts pin. All addresses are registry
   # aliases, so the pinned host key is checked whichever rail answers and no
   # TOFU prompt appears either way.
-  #
-  # NB an earlier revision of this file routed here for a WRONG reason (a
-  # misdiagnosed "AP client isolation"; see hosts/worker/default.nix for the
-  # retraction). The rail choice survived the retraction on its own merits,
-  # which are the numbers above — not any claim that wifi is broken. It works
-  # fine; it is just the slow, indirect way to reach a box on the other end of a
-  # cable.
-  workerRail = if hostName == "coordinator" then "10.99.0.2" else "worker";
+  workerRail = if hostName == "coordinator" then "10.99.9.2" else "worker";
 
   mkBlock =
     _alias: target:

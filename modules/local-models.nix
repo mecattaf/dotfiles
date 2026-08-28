@@ -395,6 +395,13 @@ in
       # Re-run on activation whenever the wanted-set changes; a no-change
       # rebuild restarts nothing and moves nothing.
       restartTriggers = [ wantedManifest ];
+      # The Library lives across the network on every host; do not race the
+      # uplink at boot. Ordering only — the real anti-race guard is per-host
+      # on the mount itself (the worker gates on the NAS actually answering,
+      # hosts/worker/default.nix, dotfiles#240; NM's "online" word alone was
+      # measured insufficient there).
+      wants = [ "network-online.target" ];
+      after = [ "network-online.target" ];
       unitConfig.RequiresMountsFor = [ cfg.libraryPath ];
       serviceConfig = {
         Type = "oneshot";

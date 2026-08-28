@@ -174,7 +174,41 @@
       "_netdev"
       "x-systemd.automount"
       "x-systemd.idle-timeout=10min"
+      # Boot race, reproduced 2026-08-28 (dotfiles#240): local-models-sync's
+      # RequiresMountsFor pulls this mount into the boot transaction, mount.nfs4
+      # runs before the wifi to `nas` has associated, gets ENETUNREACH — an
+      # immediate routing error, not a timeout — and the mount lands in `failed`
+      # with nothing to retry it; the sync dies as a dependency casualty.
+      # `_netdev`'s network-online ordering cannot help here: eth-fleet
+      # activates instantly, so NM reports online while wlp192s0 is still
+      # associating (the printer hit the same lie, modules/printing.nix). House
+      # doctrine — wait for the NAS's reality, not a target's word:
+      "x-systemd.requires=library-reachable.service"
     ];
+  };
+  systemd.services.library-reachable = {
+    description = "Wait for the NAS Library export to answer before NFS mounts it";
+    serviceConfig = {
+      Type = "oneshot";
+      # Stay active once passed: this gate exists for the boot race only, so
+      # later automount triggers (after the 10min idle unmount) must not
+      # re-serialize behind a fresh wait.
+      RemainAfterExit = true;
+      TimeoutStartSec = "3min";
+      # 120s covers the observed ~30s association with room; then proceed
+      # regardless — a genuinely dead NAS degrades to the soft+nofail design
+      # above (sync fails visibly, llama-swap serves what is local), never to
+      # a louder failure or a hung boot.
+      ExecStart = pkgs.writeShellScript "wait-library-reachable" ''
+        for _ in $(${pkgs.coreutils}/bin/seq 120); do
+          if ${pkgs.bash}/bin/bash -c 'exec 3<>/dev/tcp/nas/2049' 2>/dev/null; then
+            exit 0
+          fi
+          ${pkgs.coreutils}/bin/sleep 1
+        done
+        echo "nas:2049 unreachable after 120s; letting mount.nfs4 try anyway" >&2
+      '';
+    };
   };
   services.local-models.libraryPath = "/mnt/library/weights";
 
@@ -247,12 +281,14 @@
   };
 
   # ── eth-fleet, worker half (doctrine: hosts/coordinator/eth-fleet.nix) ────
-  # The 5GbE port cabled directly to the coordinator's twin: the fallback
-  # rail that shares nothing with USB-C/PD. Fleet identity 10.99.9.2 on lo;
-  # peer fleet route via ethernet at metric 200 loses to the tb-fleet route
-  # (metric 50, on the imperative tb-fleet profile) whenever TB is alive.
-  # Oneshot rather than networking.localCommands — that unit is masked
-  # under NetworkManager (see hosts/coordinator/eth-fleet.nix).
+  # The 5GbE port cabled directly to the coordinator's twin: the admin rail
+  # that shares nothing with USB-C/PD. Fleet identity 10.99.9.2 on lo; peer
+  # fleet route via ethernet at metric 20 BEATS the tb-fleet route (metric
+  # 50, on the imperative tb-fleet profile) — flipped 2026-08-28 with the
+  # #240 ruling that Thunderbolt carries tensor traffic only and admin
+  # traffic prefers the wire, TB as failover. Oneshot rather than
+  # networking.localCommands — that unit is masked under NetworkManager
+  # (see hosts/coordinator/eth-fleet.nix).
   systemd.services.fleet-identity = {
     description = "Stable fleet identity 10.99.9.2/32 on loopback";
     wantedBy = [ "multi-user.target" ];
@@ -276,8 +312,9 @@
       addresses = "10.99.1.2/30";
       never-default = true;
       ignore-auto-dns = true;
-      # Keyfile routeN syntax — see hosts/coordinator/eth-fleet.nix.
-      route1 = "10.99.9.1/32,10.99.1.1,200";
+      # Keyfile routeN syntax and the #240 metric flip — see
+      # hosts/coordinator/eth-fleet.nix.
+      route1 = "10.99.9.1/32,10.99.1.1,20";
     };
     ipv6.method = "disabled";
   };
