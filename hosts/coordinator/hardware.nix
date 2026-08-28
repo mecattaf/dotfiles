@@ -11,7 +11,11 @@
   boot.initrd.availableKernelModules = [
     "nvme"
     "xhci_pci"
-    "thunderbolt"
+    # "thunderbolt" left the initrd 2026-08-29 (#241): the initrd's udev
+    # coldplug bound the STOCK core before "Switching root" (08-21 boot
+    # journal), which made it impossible for fn-rdma.nix's patched core to be
+    # the first driver bound — the reference bring-up's one non-negotiable
+    # rule. This box boots from NVMe; nothing in early boot needs a TB tunnel.
     "uas"
     "usbhid"
     "sd_mod"

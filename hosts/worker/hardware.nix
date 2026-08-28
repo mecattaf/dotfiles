@@ -15,10 +15,11 @@
     "usbhid"
     "usb_storage"
     "sd_mod"
-    # Not decoration: thunderbolt0 is this host's fallback rail to the
-    # coordinator (10.99.0.2 <-> 10.99.0.1) and the path the reintegration
-    # deploy itself travels over.
-    "thunderbolt"
+    # "thunderbolt" left the initrd 2026-08-29 (#241): the initrd coldplug
+    # bound the stock core before the root switch, so fn-rdma.nix's patched
+    # core could never be first — the one non-negotiable rule. The rail this
+    # entry served still comes up, just from stage 2; and since the #241
+    # repoint, deploys dial the fleet identity (10.99.9.2), not this rail.
   ];
   boot.kernelModules = [ "kvm-amd" ];
   hardware.cpu.amd.updateMicrocode = lib.mkDefault true;

@@ -217,7 +217,9 @@
   # dual-reboot/replug lore in hosts/coordinator/tb-fleet.nix). This end
   # pins the net module and runs the same heal loop against the
   # coordinator's /30 address; the loud tripwire lives coordinator-side.
-  boot.kernelModules = [ "thunderbolt-net" ];
+  # Gated off under fn-rdma (#241), same as the coordinator's tb-fleet.nix:
+  # modules-load ignores blacklists and pulls the stock core as a dependency.
+  boot.kernelModules = lib.mkIf (!config.myFnRdma.enable) [ "thunderbolt-net" ];
   systemd.services.tb-link-heal = {
     description = "Heal the worker-coordinator Thunderbolt link where software can";
     serviceConfig = {

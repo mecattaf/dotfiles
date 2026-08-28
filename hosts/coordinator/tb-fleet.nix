@@ -1,4 +1,9 @@
-{ pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 # ─── The coordinator↔worker Thunderbolt link: MUST always work ──────────────
 #
 # Tom's ruling (2026-08-21, first dual-reboot night): "the coordinator-worker
@@ -107,7 +112,10 @@ in
 {
   # Layer 1: the net service must exist the moment the link trains — found
   # NOT loaded after the first reboot (worker had it, this box did not).
-  boot.kernelModules = [ "thunderbolt-net" ];
+  # Gated off under fn-rdma (#241): systemd-modules-load ignores blacklists
+  # and would drag the STOCK core in as this module's dependency, beating the
+  # patched set to the bus; fn-rdma's boot unit inserts its own matched net.
+  boot.kernelModules = lib.mkIf (!config.myFnRdma.enable) [ "thunderbolt-net" ];
 
   # Layer 2: the reconciler.
   systemd.services.tb-link-heal = {

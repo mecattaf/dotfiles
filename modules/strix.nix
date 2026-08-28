@@ -33,6 +33,9 @@
     # PM QoS + MTU tuning for the coordinator<->worker rails. Declares an
     # option that defaults OFF; enabled below, so only these two boxes get it.
     ./lowlat-cluster.nix
+    # Patched Thunderbolt core/net/ibverbs set, first-bound at boot (#241).
+    # Same gate shape as lowlat-cluster: defaults OFF, enabled below.
+    ./fn-rdma.nix
   ];
 
   config = {
@@ -158,6 +161,13 @@
       # measured win is PM QoS; MTU buys throughput nothing has yet shown to
       # be short of.
     };
+
+    # The patched Thunderbolt module set (#241) rides the same both-ends
+    # logic: the matched core/net ABI is a per-host invariant, but ibverbs
+    # USE needs both twins on the set, so it is enabled here — in the file
+    # only the twins import — not per-host. Per-host escape stays runtime:
+    # `touch /etc/fn-rdma-disable` + one attended reboot loads the stock pair.
+    myFnRdma.enable = true;
 
     # Strix Halo unified-memory tuning (128 GiB pinnable for the iGPU).
     # amdxdna binds through IOMMU SVA/PASID and needs translated mode
