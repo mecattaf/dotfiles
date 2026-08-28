@@ -11,6 +11,7 @@
     ./disko.nix
     ./network.nix
     ./router.nix # 2026-08-20: NAS is the house router (A8500 uplink + BE550 LAN)
+    ./wan-watchdog.nix # 2026-08-28: software recovery for the mt7925u wedge (#235 post-mortem)
     # printer-keepalive.nix DELETED same-day it was born (Tom: "there has to
     # be a smarter way"): with the CUPS queue dialing the printer's pinned IP
     # (modules/printing.nix), a print job itself wakes the Brother from Deep
