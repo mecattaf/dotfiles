@@ -27,10 +27,18 @@ in
 # more disruptive than the last and the gentle ones handle the mundane
 # causes (AP reboot, lease hiccup) that don't deserve a device bounce:
 #   1. `nmcli connection up` — reactivation, for the NM-recoverable cases.
-#   2. USB deauthorize/reauthorize — logical unplug/replug: full re-probe,
+#   2. debugfs chip_reset — the driver's own System Error Recovery, the
+#      mechanism purpose-built for the MCU-wedge class (research 08-28:
+#      the wedge is a known mt7925 issue, comprehensive fixes still in
+#      upstream review; kernel 7.1.5 already carries the high-load ABBA
+#      deadlock fix and wedged anyway). SER's own recovery path has had
+#      2026 bugfixes, so it gets one shot before the USB hammer.
+#   3. USB deauthorize/reauthorize — logical unplug/replug: full re-probe,
 #      firmware re-download, NM autoconnect. This is the power-cycle
-#      equivalent that the 08-23 wedge actually needed.
-#   3. restart wpa_supplicant + NetworkManager — for the daemon-side hang
+#      equivalent that the 08-23 wedge actually needed. (sysfs driver
+#      unbind/bind has a documented failure precedent on mt7925u —
+#      morrownr/USB-WiFi#688 — which is why it's not a rung.)
+#   4. restart wpa_supplicant + NetworkManager — for the daemon-side hang
 #      the wedge leaves behind (a supplicant stuck in a dead ioctl may only
 #      come unstuck once the device node is gone; restart sweeps the rest).
 # 10-minute cooldown between ladders, forever — a router must keep trying,
@@ -99,9 +107,23 @@ in
             }
           fi
 
-          # Rung 2: logical unplug/replug. Find the A8500 by VID/PID (the
+          # Rung 2: the driver's System Error Recovery — full chip/firmware
+          # reset. debugfs knob verified present on this phy (2026-08-28).
+          phy=$(cat /sys/class/net/wan0/phy80211/name 2>/dev/null || echo phy0)
+          ser=/sys/kernel/debug/ieee80211/$phy/mt76/chip_reset
+          if [ -w "$ser" ]; then
+            echo "rung 2 — driver chip_reset (SER) on $phy"
+            echo 1 >"$ser" 2>/dev/null || true
+            sleep 20
+            probe && {
+              echo "recovered via chip_reset"
+              exit 0
+            }
+          fi
+
+          # Rung 3: logical unplug/replug. Find the A8500 by VID/PID (the
           # sysfs path shifts with port/hub topology; the identity doesn't).
-          echo "rung 2 — USB re-enumeration of the A8500"
+          echo "rung 3 — USB re-enumeration of the A8500"
           for dev in /sys/bus/usb/devices/*; do
             [ -f "$dev/idVendor" ] || continue
             [ "$(cat "$dev/idVendor")" = "${a8500.usbVid}" ] || continue
@@ -117,8 +139,8 @@ in
             exit 0
           }
 
-          # Rung 3: sweep the daemons the wedge may have left hanging.
-          echo "rung 3 — restarting wpa_supplicant + NetworkManager"
+          # Rung 4: sweep the daemons the wedge may have left hanging.
+          echo "rung 4 — restarting wpa_supplicant + NetworkManager"
           systemctl restart wpa_supplicant.service NetworkManager.service
           sleep 25
           timeout 45 nmcli connection up Freebox-AB3ACE >/dev/null 2>&1 || true
