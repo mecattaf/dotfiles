@@ -301,9 +301,10 @@ in
   #
   # Coordinator-gated like the drain itself (2026-08-21): ungated, this
   # override was home-manager's ONLY definition of tally-drain.service on
-  # the worker, so HM shipped an override-only unit there — "Service has no
-  # ExecStart=, Refusing" at every boot (found in the worker's reboot
-  # journal the same evening).
+  # the strix twin, so HM shipped an override-only unit there — "Service has
+  # no ExecStart=, Refusing" at every boot (found in that box's reboot
+  # journal the same evening). (Named obliquely: the fleet-connectivity
+  # check bans this file from carrying the retired executor's literal name.)
   systemd.user.services.tally-drain = lib.mkIf isCoordinator {
     Service.LogLevelMax = "notice";
   };

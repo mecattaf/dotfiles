@@ -376,16 +376,11 @@
       };
 
       localModelCatalog = import ./lib/local-models.nix { lib = nixpkgs.lib; };
-      # `pkgs` was dropped from this call 2026-08-22: the 2026-08-21 rewrite of
-      # model-store.nix (weights stopped being fetchurl FODs and became plain
-      # runtime paths) narrowed its signature to { catalog, lib }, and a
-      # module that builds no derivations has no use for a package set. The
-      # call site kept passing it, so evaluating the local-model-routing check
-      # died with "unexpected argument 'pkgs'".
-      localModelStore = import ./lib/model-store.nix {
-        lib = nixpkgs.lib;
-        catalog = localModelCatalog;
-      };
+      # The flake-level model-store binding is gone (2026-08-28, with the
+      # #242 corpse removal): lib/model-store.nix still exists and is imported
+      # where it is consumed — modules/local-models.nix and hosts/nas/models.nix
+      # — but the flake itself no longer projects a package set from it, because
+      # the 2026-08-21 "weights leave nix" ruling means there isn't one.
 
       # Single host-wiring point. Interactive machines add Home Manager; the NAS
       # deliberately stops at NixOS so no user compositor or WayVNC unit exists.
@@ -523,17 +518,18 @@
             ]
             (host: {
               # Canonical names resolve through MagicDNS or the direct NAS map —
-              # except the worker, which is dialled by its THUNDERBOLT address.
-              # Every manual deploy is run from the coordinator, which is the one
-              # box holding the other end of that cable, and a deploy is the
-              # single most bandwidth-hungry thing the fleet does: the #229
-              # reintegration pushed ~39GB of model weights to this host. The
-              # cable measured 0.6ms rtt against 105ms (mdev 54ms) over the 6GHz
-              # LAN, and it depends on no AP, no lease and no router plane.
-              # 10.99.0.2 is a registry alias, so the host key stays pinned.
+              # except the worker, which is dialled by its FLEET identity
+              # (#241 repoint). The old target was the raw Thunderbolt address
+              # 10.99.0.2, which meant a worker rebooting with a sick TB rail
+              # severed its own deploy path — the one path that could ship it a
+              # fix. 10.99.9.2 lives on the worker's loopback and is reachable
+              # over whichever rail is up: the 5GbE eth-fleet route at metric
+              # 20 (hosts/coordinator/eth-fleet.nix) with the TB rail behind it
+              # at metric 50, no AP, no lease, no router plane on either. It is
+              # a registry alias, so the host key stays pinned.
               # The LAN identity 10.42.0.5 remains the fleet-facing one — it is
               # what the NAS dials for Immich ML and what the journal ACL admits.
-              hostname = if host == "worker" then "10.99.0.2" else host;
+              hostname = if host == "worker" then "10.99.9.2" else host;
               sshOpts = fleetDeploySshOpts;
               profiles.system.path =
                 inputs.deploy-rs.lib.${system}.activate.nixos
@@ -580,9 +576,11 @@
           nas-installer-iso = nasInstaller.config.system.build.isoImage;
         };
 
-      # Artifact rows are individually buildable as `nix build .#models.<id>`.
-      # This operator escape hatch does not change the one NixOS install switch.
-      legacyPackages.${system}.models = localModelStore.packages;
+      # `nix build .#models.<id>` retired with the 2026-08-21 "weights leave
+      # nix" ruling: weights are no longer derivations, so there is nothing to
+      # build — the NAS Library and library-fetch own materialization now.
+      # (The binding this comment replaced read localModelStore.packages, an
+      # attribute the same ruling's model-store rewrite deleted.)
 
       formatter.${system} = pkgs.nixfmt;
 
@@ -921,10 +919,18 @@
           # is orthogonal to the tailnet, whichever way the tailnet is set.
           assert nasOn.services.tailscale.enable == nasOff.services.tailscale.enable;
           assert nasOn.services.tailscale.extraUpFlags == nasOff.services.tailscale.extraUpFlags;
-          # And it must not grow the appliance a secret: "NO SECRET LIVES ON
-          # THIS BOX" is the standing ruling, and Paperless is exactly the kind
-          # of service that would want one.
-          assert !nasOn.mySecrets.enable;
+          # And it must not grow the appliance a secret. This read
+          # `!nasOn.mySecrets.enable` until 2026-08-28, encoding the "NO SECRET
+          # LIVES ON THIS BOX" ruling — which that ruling's own named door was
+          # walked through the same day (hf token for models.nix's library
+          # fetch, commit 7f1072e2), leaving this assert unconditionally false
+          # exactly like the tailscale one above it before the ws5 restatement.
+          # Same cure: state it against the gate-OFF configuration. Paperless
+          # must not CHANGE the secrets posture, whatever it is — the flip
+          # itself may not be what sneaks a credential onto the appliance.
+          assert nasOn.mySecrets.enable == nasOff.mySecrets.enable;
+          assert builtins.attrNames nasOn.age.secrets
+            == builtins.attrNames nasOff.age.secrets;
           assert nasOn.services.paperless.database.createLocally;
           pkgs.runCommand "nas-paperless-staged" { } ''
             touch "$out"
@@ -1188,10 +1194,12 @@
           assert meshRegistry.${strixWorker}.hostKey != "";
           assert meshRegistry.${strixWorker}.userKey == meshRegistry.coordinator.userKey;
           assert nixpkgs.lib.hasInfix "tom@mesh-20260729" meshRegistry.${strixWorker}.userKey;
-          # Both rails addressable without TOFU: the LAN identity and the
-          # Thunderbolt fallback the reintegration deploy itself travelled over.
+          # Every dialable identity addressable without TOFU: the LAN identity,
+          # the Thunderbolt rail the reintegration deploy travelled over, and
+          # the fleet identity the deploy path now dials (#241).
           assert nixpkgs.lib.elem "10.42.0.5" meshRegistry.${strixWorker}.aliases;
           assert nixpkgs.lib.elem "10.99.0.2" meshRegistry.${strixWorker}.aliases;
+          assert nixpkgs.lib.elem "10.99.9.2" meshRegistry.${strixWorker}.aliases;
           # 2026-08-20 rewire: names resolve to the LAN identities — the NAS
           # at its gateway address, the coordinator at its pinned lease. Both
           # are reachable over the legacy /30 cable too until the cleanup
@@ -1221,10 +1229,12 @@
           assert !self.nixosConfigurations.zenbook-duo.config.services.journald.upload.enable;
           assert self.deploy.nodes.coordinator.hostname == "coordinator";
           assert self.deploy.nodes.nas.hostname == "nas";
-          # Deliberately the cable, not the name — see the deploy node comment.
+          # Deliberately the rail-independent fleet identity, not the name and
+          # not a single cable (#241 repoint — the TB-only target severed the
+          # deploy path exactly when a sick rail made a deploy most needed).
           # Asserted against the registry so this can never drift into an address
           # that carries no pinned host key.
-          assert self.deploy.nodes.${strixWorker}.hostname == "10.99.0.2";
+          assert self.deploy.nodes.${strixWorker}.hostname == "10.99.9.2";
           assert nixpkgs.lib.elem self.deploy.nodes.${strixWorker}.hostname
             meshRegistry.${strixWorker}.aliases;
           # ...while the LAN identity stays the fleet-facing one.
@@ -1635,8 +1645,6 @@
               _deploymentId: deployment:
               deployment.status == "canonical" && deployment.backend == "npu" && deployment.model == "qwen3:4b"
             ) localModelCatalog.deployments;
-            modelPackagePaths = map toString (builtins.attrValues localModelStore.packages);
-            coordinatorExtraDependencies = map toString coordinator.system.extraDependencies;
             selectedDeploymentIds = coordinator.services.local-models.allow;
             mageArtifactIds = [
               "mage-vl-bf16"
@@ -1728,8 +1736,13 @@
               "vibevoice-large-bf16"
               "vibevoice-qwen25-7b-tokenizer"
             ];
-          assert
-            builtins.length (nixpkgs.lib.intersectLists modelPackagePaths coordinatorExtraDependencies) == 22;
+          # Until 2026-08-28 an assert here intersected localModelStore.packages
+          # with coordinator.system.extraDependencies (== 22) — both artifacts of
+          # the design the 2026-08-21 "weights leave nix" ruling deleted, and
+          # 7516ba9c left it standing red on purpose because its REPLACEMENT is
+          # a design call (a Library-flow invariant), not a repair. Standing red
+          # also meant every deploy's check phase failed, so the corpse is gone;
+          # the design call lives on as issue #242, not in a broken eval.
           assert nixpkgs.lib.all (artifact: artifact.source.layout == "snapshot") mageArtifacts;
           assert builtins.length mageFiles == 164;
           assert nixpkgs.lib.foldl' (total: file: total + file.bytes) 0 mageFiles == 45863017994;
