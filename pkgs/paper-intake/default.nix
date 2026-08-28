@@ -9,9 +9,9 @@
 }:
 
 # Print-outbox flusher for the paper loop's quiet hours (home/paper.nix).
-# The package keeps its historical name: it used to also carry the Brother
-# ADS-1800W scan collector + OCR processor, removed 2026-08-20 when the
-# scanner was returned (see git history for collect.sh / process.py).
+# `pname` is historical and no longer describes the contents: this package
+# builds exactly one binary, paper-print-flush. See git history for what the
+# name used to cover.
 stdenvNoCC.mkDerivation {
   pname = "paper-intake";
   version = "1.1.0";

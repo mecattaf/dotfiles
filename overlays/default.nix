@@ -90,9 +90,9 @@ final: prev: {
     inherit torchRocm;
   };
 
-  # Paper-loop scan queue: intake collector + OCR processor for the Brother
-  # ADS-1800W. Enqueues one tally shell job per settled batch (events-dir
-  # producer, same contract as call-diarize). See home/paper.nix.
+  # Paper-loop print outbox: the quiet-hours flusher that drains
+  # ~/Paper/outbox to CUPS at 06:05. Attribute name is historical (see git
+  # history); the only binary is paper-print-flush. See home/paper.nix.
   paper-intake = final.callPackage ../pkgs/paper-intake { };
 
   # cliamp — terminal music player (Winamp-inspired TUI). Not in nixpkgs (2026-07-06).

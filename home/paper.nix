@@ -4,10 +4,9 @@
   pkgs,
   ...
 }:
-# The paper loop's print half. The inbound half (Brother ADS-1800W
-# scan-to-SFTP into ~/Paper/intake + the paper-intake collector/OCR
-# pipeline) was REMOVED 2026-08-20: the scanner was returned to the shop.
-# See git history for the retired units and pkgs/paper-intake's collector.
+# The paper loop. It is print-only: there is no inbound half, and nothing
+# here reads ~/Paper/intake. (An inbound half existed briefly in Aug 2026 and
+# is gone from the tree entirely; git history is the only record.)
 #
 # Coordinator-only: the printer queue and the print skill live here.
 let
