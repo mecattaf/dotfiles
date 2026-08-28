@@ -71,7 +71,6 @@ let
       lib.makeBinPath [
         pkgs.kmod
         pkgs.coreutils
-        pkgs.iproute2
         pkgs.gnugrep
       ]
     }
@@ -122,17 +121,35 @@ let
       exit 1
     fi
     say "patched core + net inserted"
+    # Marker for fn-rdma-ibverbs: the leaf loads only over OUR core.
+    touch /run/fn-rdma-patched
+  '';
 
-    # The verbs provider is a leaf; its failure costs tonight's rdma DEVICE,
-    # never the rails. Give thunderbolt0 a moment to register first — the
-    # driver's netdev binding is named at insert time.
+  # Split off the boot-critical path deliberately: the second worker reboot
+  # spent 7.6s of the pre-udev-trigger window waiting for thunderbolt0 to
+  # train, which stretched sysinit far enough to trip an unrelated unit's
+  # start-rate limit (suid-sgid-wrappers, 5 activation requests inside one
+  # window). Only the CORE has a first-bound requirement; the verbs provider
+  # is a leaf and can take its time here, off every critical path.
+  ibverbsScript = pkgs.writeShellScript "fn-rdma-ibverbs" ''
+    PATH=${
+      lib.makeBinPath [
+        pkgs.kmod
+        pkgs.coreutils
+        pkgs.iproute2
+      ]
+    }
+    say() { echo "fn-rdma-ibverbs: $*"; }
+    staged=${cfg.stagedDir}
+
     modprobe configfs || true
     modprobe ib_core || true
     modprobe ib_uverbs || true
-    for _ in $(seq 30); do
+    for _ in $(seq 60); do
       [ -e /sys/class/net/thunderbolt0 ] && break
       sleep 0.5
     done
+    [ -e /sys/class/net/thunderbolt0 ] || say "thunderbolt0 never registered; inserting anyway"
     # No native_rc_split_zcopy: that knob belongs to a local zero-copy patch
     # this build deliberately does not carry (fetch-and-build.sh header).
     if ! insmod "$staged/thunderbolt_ibverbs.ko" \
@@ -147,7 +164,7 @@ let
     if [ -n "$d" ] && [ "$d" != usb4_rdma0 ]; then
       rdma dev set "$d" name usb4_rdma0 || say "device rename failed; still usable as $d"
     fi
-    say "module set live: $(ls /sys/class/infiniband/ 2>/dev/null | tr '\n' ' ')"
+    say "verbs provider live: $(ls /sys/class/infiniband/ 2>/dev/null | tr '\n' ' ')"
   '';
 in
 {
@@ -204,6 +221,20 @@ in
         Type = "oneshot";
         RemainAfterExit = true;
         ExecStart = loadScript;
+      };
+    };
+
+    # The leaf, off the critical path — see the ibverbsScript comment.
+    systemd.services.fn-rdma-ibverbs = {
+      description = "insert the thunderbolt verbs provider once the patched pair is up";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "fn-rdma-modules.service" ];
+      requires = [ "fn-rdma-modules.service" ];
+      unitConfig.ConditionPathExists = "/run/fn-rdma-patched";
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = ibverbsScript;
       };
     };
   };
