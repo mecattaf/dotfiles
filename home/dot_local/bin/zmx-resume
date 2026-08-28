@@ -29,4 +29,6 @@ sess=$(printf '%s\n' "$picker" \
     | cut -f1)
 [[ -n "$sess" ]] || exit 0
 
-exec zmx attach "$sess"
+# Name fish explicitly: the login shell is bash (#236), and a resumed session
+# is an interactive terminal context — the one place fish is wanted.
+exec zmx attach "$sess" fish

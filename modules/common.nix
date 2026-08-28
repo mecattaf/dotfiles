@@ -172,9 +172,22 @@
       "render"
       "networkmanager"
     ];
-    shell = pkgs.fish;
+    # Login shell is bash, fleet-wide — fish is a terminal UI choice (made
+    # explicit at the kitty layer via `shell fish` in kitty.conf), not a
+    # fleet execution substrate. `ssh <host> '<cmd>'` as tom used to be
+    # parsed by fish: no error, no exit code, just wrong answers for `$PATH`
+    # splatting, `export`, `VAR=x cmd`, heredocs, `[[ ]]`, arrays (#236).
+    # deploy-rs and journal-upload ssh as root, whose shell was always bash —
+    # unaffected by this. `bashInteractive` (not the minimal `bash`) so
+    # readline/completion behave for the rare bare `ssh host` interactive
+    # fallback session.
+    shell = pkgs.bashInteractive;
     linger = true;
   };
+  # Kept enabled: this is what holds fish in /etc/shells, vendor completions,
+  # and the failure-surfacing interactiveShellInit hook (#236) — it's no
+  # longer tom's login shell, but kitty.conf's `shell fish` still runs it for
+  # every terminal window.
   programs.fish.enable = true;
   # tom's password is delivered declaratively by ./user-password.nix (#54), but
   # sudo stays passwordless on purpose: the mesh is key-only, unattended
@@ -352,6 +365,15 @@
     # Chromium/Electron (google-chrome + PWA launchers) only run native Wayland
     # under niri with this set; otherwise they fall back to X11 and blur/fail.
     NIXOS_OZONE_WL = "1";
+    # Moved here from fish/config.fish's pre-`status is-interactive` guard
+    # block (#236): with bash as tom's login shell those `export`/`set -gx`
+    # lines no longer run for non-interactive ssh, and these three were
+    # confirmed reaching that path today (e.g. EDITOR=[nvim] on worker).
+    # sessionVariables reaches every shell via the PAM session, not just
+    # interactive ones, so the ssh-visible behavior is preserved.
+    EDITOR = "nvim";
+    ESCDELAY = "0";
+    MICRO_TRUECOLOR = "1";
   };
 
   # --- base system packages (the rest are user packages in home/) ---

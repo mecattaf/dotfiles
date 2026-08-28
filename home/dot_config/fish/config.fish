@@ -2,9 +2,12 @@ set -g fish_greeting
 set -g fish_key_bindings fish_default_key_bindings
 set -e SSH_ASKPASS
 
-export MICRO_TRUECOLOR=1
-export ESCDELAY=0
-set -gx EDITOR 'nvim'
+# MICRO_TRUECOLOR / ESCDELAY / EDITOR moved to environment.sessionVariables
+# (modules/common.nix) — they used to live here, above the interactive
+# guard below, specifically so they'd still reach non-interactive ssh
+# commands. Now that tom's login shell is bash (#236), that guard never ran
+# for ssh in the first place; sessionVariables reaches every PAM session
+# instead, ssh included, so the values are still there without fish's help.
 
 # Everything below is interactive-only. Non-interactive shells (ssh commands,
 # scripts, command substitutions) must get stock tools and NO tty writes —
