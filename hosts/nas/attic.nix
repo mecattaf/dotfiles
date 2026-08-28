@@ -84,6 +84,58 @@ in
         # never from wan0 (the router firewall admits nothing unsolicited
         # from the Freebox side).
         listen = "[::]:8080";
+        # ── Chunking, sized for THIS cache and not for a public one (#234) ──
+        # attic's defaults are avg 64 KiB / min 16 KiB / max 256 KiB, with
+        # everything above 64 KiB chunked. Measured 2026-08-28 with a single
+        # push on an otherwise idle machine (load 0.23):
+        #
+        #   mesa-26.1.5 — 264 MiB, 2,943 chunks, 478s  →  0.55 MiB/s
+        #   atticd  99% of one core, start to finish   →  0.16s per chunk
+        #   attic push (the client)  0.1% CPU          →  asleep throughout
+        #
+        # A sixth of a second per 90 KiB chunk is not compression work — no
+        # zstd level on this Zen+ core runs at 0.55 MiB/s. It is FIXED
+        # PER-CHUNK work: content hash, a SQLite row, a storage file, its own
+        # zstd frame, repeated 616k times across this database.
+        #
+        # The arithmetic closes on the 2026-08-23 run exactly. That night was
+        # one store path: `therock-rocm-sdk-gfx1151`, 8512 MiB in ONE NAR,
+        # 96,139 chunks (nar id 3508, first chunk 00:04:22 UTC, last 07:30:26
+        # — the 8h SIGTERM). 51,090 of those chunks were new, over 17,019s of
+        # non-idle push time: 0.33s per chunk, the same order as the 0.16s
+        # measured above on an idle box. Either constant, the run's length is
+        # CHUNK COUNT times a fixed cost. It is not bytes, not
+        # bandwidth, and not anything on the client — which is also why -j5
+        # cannot help: attic parallelises across PATHS, and this is one path,
+        # one NAR, one serial stream. The 08-22 attempt at the same path is
+        # still in the database as a Pending 8512 MiB NAR (id 3161), killed
+        # the same way, so the job had been re-uploading the same 8.5 GiB from
+        # scratch every night and losing to the ceiling every night.
+        #
+        # So: fewer, bigger chunks. 16x fewer of them — that SDK path goes
+        # from 96k chunks to ~8.5k. The honest bound on the win is NOT 16x:
+        # compression is per-byte and does not shrink, and at 0.55 MiB/s it
+        # can be at most about a third of the cost, so expect 3-10x. That is
+        # the difference between most of a night and well inside the hour.
+        # The defaults are tuned for a
+        # shared multi-tenant cache where fine-grained dedup between unrelated
+        # tenants pays for itself; this cache has exactly one producer
+        # (./update-center.nix, same box) and already dedups whole NARs, so
+        # sub-64 KiB dedup buys very little and was charging the entire push
+        # budget for it.
+        #
+        # Costs, stated: dedup gets coarser, so the cache grows somewhat, and
+        # existing chunks keep their old boundaries — a re-uploaded NAR will
+        # not match them, so there is a one-off re-store of whatever gets
+        # pushed again. Both are bounded by the retention policy below and by
+        # 128G free on a 234G filesystem. NEITHER touches server.db's keypair:
+        # these parameters affect new uploads only and are not a migration.
+        chunking = {
+          nar-size-threshold = 1048576; # 1 MiB — below this, store the NAR whole
+          min-size = 262144; # 256 KiB
+          avg-size = 1048576; # 1 MiB
+          max-size = 4194304; # 4 MiB
+        };
         # Retention carried over from the coordinator config (#133 doctrine:
         # accumulating artifact, declared policy): last-accessed keeps what
         # the fleet actually USES; only month-cold paths expire. Bounds the

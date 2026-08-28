@@ -90,7 +90,18 @@ let
   '';
 in
 {
-  options.myNas.updateCenter.enable = lib.mkEnableOption "nightly fleet closure builds pushed to the local attic cache";
+  options.myNas.updateCenter = {
+    enable = lib.mkEnableOption "nightly fleet closure builds pushed to the local attic cache";
+    schedule.enable = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Arm the 01:30 timer. Off leaves the service defined and hand-startable
+        but nothing fires on a clock — the committed form of "paused", which a
+        runtime `systemctl stop update-center.timer` is not (#234).
+      '';
+    };
+  };
 
   config = lib.mkIf cfg.enable {
     assertions = [
@@ -139,16 +150,64 @@ in
         # The sweep must be allowed to finish; the default stop timeout would
         # kill it partway and leave exactly the accumulation it exists to stop.
         TimeoutStopSec = "1h";
-        # Bottom of every queue: the house router's day job always wins.
+        # ── The throttle, retuned 2026-08-28 after measuring it (#234) ──────
+        # #234 filed three suspects for the KiB/s localhost push — Nice=19,
+        # CPUWeight=20, IOSchedulingClass=idle "throttle the whole cgroup and
+        # the attic push client inherits them". Measured on the live box while
+        # a push ran (idle machine, load 0.23, nothing else building):
+        #
+        #   PID   NI  %CPU  COMMAND
+        #   1172   0  99.0  atticd                ← the whole cost is HERE
+        #  17703   0   0.1  attic push … local:fleet …
+        #
+        # The client is asleep. atticd does the chunking, hashing and zstd
+        # server-side, it is a SEPARATE unit with NO limits at all (Nice=0, no
+        # CPUWeight, no MemoryMax), and it is not in this cgroup — so none of
+        # these three dials was ever in the push path. They are exonerated and
+        # two of them are removed anyway, because they were doing harm or
+        # nothing:
+        #
+        #   IOSchedulingClass=idle — a NO-OP on this machine. ionice classes
+        #   are honoured only by BFQ; nvme0n1 runs `none` and mmcblk0 runs
+        #   `mq-deadline` (both blk-mq, both ignore ioprio). It read as a
+        #   deployed protection and was never one. Deleted rather than swapped
+        #   for IOWeight, which needs BFQ too — the real politeness lever on
+        #   this box is CPU, and that stays.
+        #
+        #   MemoryHigh=14G — this one was actively hurting. memory.high is not
+        #   a ceiling, it is a *penalty*: past it the kernel injects reclaim
+        #   stalls into every allocation, forever, and page cache from reading
+        #   the store counts. That is why every run reports its peak as exactly
+        #   14G (2026-08-28: "14G memory peak" — the limit, not a coincidence):
+        #   the job spent its whole life pinned at the throttle point. Nix runs
+        #   in-process here (root talks to the store directly, no daemon — see
+        #   the 18.9G incoming / 28.5G written charged to THIS unit), so that
+        #   penalty was taxing substitution and build too. MemoryMax below is
+        #   the real bound and needs no help: at the limit the kernel simply
+        #   reclaims the cache, with no allocator penalty and no OOM unless the
+        #   anonymous set genuinely does not fit.
+        #
+        # Kept as-is, deliberately: the house router's day job still wins, and
+        # #235 makes CPU politeness worth MORE, not less (the mt7925u uplink
+        # has a documented wedge mode under CPU starvation). Nothing here is
+        # raised in the name of speed.
         Nice = 19;
         CPUWeight = 20;
-        IOSchedulingClass = "idle";
-        MemoryHigh = "14G";
         MemoryMax = "16G";
       };
     };
 
-    systemd.timers.update-center = {
+    # ── The pause has to be committable (#234, 2026-08-28) ─────────────────
+    # `systemctl stop update-center.timer` is runtime-only, and `wantedBy` is
+    # re-asserted on every activation: three separate nixos-rebuilds during the
+    # #235 recovery silently re-armed it, and the 08-28 run fired four minutes
+    # after the power cycle that ended a five-day outage. A pause that has to
+    # be re-applied by hand after every switch will be forgotten exactly once.
+    # So the schedule is its own gate: flip it false to park the nightly in the
+    # repo, where the reason lives next to it. The SERVICE stays defined and
+    # `systemctl start update-center` still works — this parks the clock, not
+    # the build farm.
+    systemd.timers.update-center = lib.mkIf cfg.schedule.enable {
       wantedBy = [ "timers.target" ];
       timerConfig = {
         OnCalendar = "01:30";
