@@ -30,6 +30,9 @@
     ./local-models.nix
     # Deterministic FastFlowLM roster only; ad-hoc `flm run`, with no daemon.
     ./npu-llm.nix
+    # PM QoS + MTU tuning for the coordinator<->worker rails. Declares an
+    # option that defaults OFF; enabled below, so only these two boxes get it.
+    ./lowlat-cluster.nix
   ];
 
   config = {
@@ -139,6 +142,21 @@
     nix.settings = {
       max-jobs = 4;
       cores = 8;
+    };
+
+    # The fleet rails' latency floor. Both twins hold /dev/cpu_dma_latency at
+    # 0, because holding it on only ONE end is worth almost nothing (468 us
+    # against 577 us unheld and 63-90 us held on both) — the remote wakeup
+    # dominates the round trip. Enabling it here rather than per-host is the
+    # point: this module is imported by exactly the two boxes that must agree,
+    # so the both-ends invariant is structural instead of a deploy checklist.
+    myLowLatCluster = {
+      enable = true;
+      # Each twin watches the other's end of the tb-fleet /30.
+      peer = if config.networking.hostName == "coordinator" then "10.99.0.2" else "10.99.0.1";
+      # jumbo stays off: see the two-step deploy note in the module. The
+      # measured win is PM QoS; MTU buys throughput nothing has yet shown to
+      # be short of.
     };
 
     # Strix Halo unified-memory tuning (128 GiB pinnable for the iGPU).
