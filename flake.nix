@@ -1631,6 +1631,11 @@
         local-model-routing =
           let
             coordinator = self.nixosConfigurations.coordinator.config;
+            # 2026-08-29: the worker is bound here so the NPU-decommission and
+            # linux-7.2 lock-ins below can be asserted on BOTH twins. modules/
+            # strix.nix is shared, so a one-sided assert would let a future
+            # per-host override drift the pair apart unnoticed.
+            worker = self.nixosConfigurations.worker.config;
             zenbook = self.nixosConfigurations.zenbook-duo.config;
             coordinatorSettings = coordinator.services.llama-swap.settings;
             findPiWrapper =
@@ -1640,7 +1645,6 @@
                 hostConfig.home-manager.users.tom.home.packages;
             coordinatorPi = findPiWrapper coordinator;
             zenbookPi = findPiWrapper zenbook;
-            coordinatorFlmManifest = coordinator.environment.etc."local-models/fastflowlm.json".source;
             canonicalUtilityDeployments = nixpkgs.lib.filterAttrs (
               _deploymentId: deployment:
               deployment.status == "canonical" && deployment.backend == "npu" && deployment.model == "qwen3:4b"
@@ -1774,13 +1778,32 @@
           assert coordinator.systemd.services.llama-swap.environment.LLAMA_MEDIA_MARKER == "<__media__>";
           assert
             coordinator.systemd.services.llama-swap.environment.XDG_CACHE_HOME == "/var/cache/llama-swap";
-          assert coordinator.hardware.amd-npu.enableNPU;
-          assert nixpkgs.lib.elem "amd_iommu=on" coordinator.boot.kernelParams;
-          assert
-            coordinator.services.npu-llm.models == [
-              "gemma4-it:e4b"
-              "qwen3.6-moe:35b-a3b"
-            ];
+          # ── NPU decommission, 2026-08-29 (fleet-7.2) ──────────────────────
+          # These used to assert the NPU stack was PRESENT. The house style for
+          # a removal is to flip them negative rather than delete them, so the
+          # absence is locked in and a silent re-enable is a build failure.
+          assert !coordinator.hardware.amd-npu.enable;
+          assert !coordinator.hardware.amd-npu.enableNPU;
+          assert !worker.hardware.amd-npu.enable;
+          assert !worker.hardware.amd-npu.enableNPU;
+          assert nixpkgs.lib.elem "amd_iommu=off" coordinator.boot.kernelParams;
+          assert !(nixpkgs.lib.elem "amd_iommu=on" coordinator.boot.kernelParams);
+          assert nixpkgs.lib.elem "amd_iommu=off" worker.boot.kernelParams;
+          assert !(nixpkgs.lib.elem "amd_iommu=on" worker.boot.kernelParams);
+          # #244 checklist: sp5100_tco must stay armed through the reboot
+          # transition, which is exactly when a wedged box needs it.
+          assert nixpkgs.lib.elem "watchdog.stop_on_reboot=0" coordinator.boot.kernelParams;
+          assert nixpkgs.lib.elem "watchdog.stop_on_reboot=0" worker.boot.kernelParams;
+          # The twins ride linux 7.2 from nixpkgs-fresh (modules/strix.nix).
+          # hasPrefix, not equality: the versioned attr advances within 7.2.x.
+          assert nixpkgs.lib.hasPrefix "7.2" coordinator.boot.kernelPackages.kernel.version;
+          assert nixpkgs.lib.hasPrefix "7.2" worker.boot.kernelPackages.kernel.version;
+          assert !coordinator.services.npu-llm.enable;
+          assert !worker.services.npu-llm.enable;
+          # The ad-hoc FLM manifest is a product of services.npu-llm; with the
+          # service off the etc entry must not exist at all.
+          assert !(coordinator.environment.etc ? "local-models/fastflowlm.json");
+          assert !(worker.environment.etc ? "local-models/fastflowlm.json");
           assert nixpkgs.lib.all (unit: !(nixpkgs.lib.hasPrefix "flm-" unit)) (
             builtins.attrNames coordinator.systemd.services
           );
@@ -1790,20 +1813,29 @@
           assert nixpkgs.lib.all (
             unit: !(nixpkgs.lib.hasPrefix "flm-" unit)
           ) coordinator.systemd.services.llama-swap.after;
-          assert nixpkgs.lib.any (
-            package: nixpkgs.lib.getName package == "fastflowlm"
+          assert nixpkgs.lib.all (
+            package: nixpkgs.lib.getName package != "fastflowlm"
           ) coordinator.environment.systemPackages;
-          assert nixpkgs.lib.any (
-            package: nixpkgs.lib.getName package == "utility-model"
+          assert nixpkgs.lib.all (
+            package: nixpkgs.lib.getName package != "utility-model"
           ) coordinator.environment.systemPackages;
+          assert nixpkgs.lib.all (
+            package: nixpkgs.lib.getName package != "fastflowlm"
+          ) worker.environment.systemPackages;
+          assert nixpkgs.lib.all (
+            package: nixpkgs.lib.getName package != "utility-model"
+          ) worker.environment.systemPackages;
           assert
             localModelCatalog.utility == {
               stableId = "utility";
               deployment = "flm-qwen3-4b-utility";
               contextTokens = 32768;
             };
-          assert builtins.length (builtins.attrNames canonicalUtilityDeployments) == 1;
-          assert canonicalUtilityDeployments ? "flm-qwen3-4b-utility";
+          # The utility SLOT above stays (npu-llm still reads its shape), but
+          # its deployment retired 2026-08-29, so no canonical qwen3:4b NPU row
+          # remains and utilityEnabled derives false on every host.
+          assert builtins.length (builtins.attrNames canonicalUtilityDeployments) == 0;
+          assert !(canonicalUtilityDeployments ? "flm-qwen3-4b-utility");
           assert localModelCatalog.deployments."flm-qwen3-4b-utility".hosts == [ "coordinator" ];
           assert !(localModelCatalog.deployments."flm-qwen3-4b-utility" ? peer);
           assert !(localModelCatalog.deployments."flm-gemma4-it-e4b" ? peer);
@@ -1849,31 +1881,10 @@
           assert nixpkgs.lib.elem "HF_HUB_OFFLINE=1" renderedBackends.mlx.env;
           assert builtins.hasAttr "mlx-lm" inputs.nix-strix-halo.packages.${system};
           pkgs.runCommand "local-model-routing" { } ''
-            ${pkgs.jq}/bin/jq -e '
-              .schema == 2
-              and .runtime == "fastflowlm"
-              and .lifecycle == "ad-hoc"
-              and .persistentServer == false
-              and (.models | map(.tag)) == [
-                "gemma4-it:e4b",
-                "qwen3.6-moe:35b-a3b",
-                "qwen3:4b"
-              ]
-              and (.models | map(.command)) == [
-                ["flm", "run", "gemma4-it:e4b"],
-                ["flm", "run", "qwen3.6-moe:35b-a3b"],
-                ["flm", "run", "qwen3:4b"]
-              ]
-              and .utility == {
-                "id": "utility",
-                "model": "qwen3:4b",
-                "owner": "utility-model",
-                "lifecycle": "request-scoped",
-                "contextTokens": 32768,
-                "command": ["utility-model"]
-              }
-            ' ${coordinatorFlmManifest} >/dev/null
-
+            # The jq block that used to validate the coordinator's FastFlowLM
+            # manifest was removed 2026-08-29 with the NPU decommission: with
+            # services.npu-llm off there is no /etc/local-models/fastflowlm.json
+            # to read. Its absence is asserted at eval time above.
             ${pkgs.gnugrep}/bin/grep -F 'export LLAMA_SWAP_PORT=9292' ${coordinatorPi}/bin/pi >/dev/null
             ${pkgs.gnugrep}/bin/grep -F -- '-e ${pkgs.pi-llama-swap-extension}' \
               ${coordinatorPi}/bin/pi >/dev/null

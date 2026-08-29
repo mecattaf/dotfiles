@@ -67,6 +67,11 @@ let
   # One canonical application-facing utility slot.  Consumers name only
   # stableId; services.npu-llm owns the request-scoped rewrite to this
   # FastFlowLM deployment.
+  #
+  # 2026-08-29: the slot's SHAPE stays (modules/npu-llm.nix and the flake's
+  # local-model-routing check both read it), but its deployment is retired with
+  # the NPU decommission — so npu-llm's utilityEnabled derives false and no host
+  # projects a utility model.
   utility = {
     stableId = "utility";
     deployment = "flm-qwen3-4b-utility";
@@ -1421,7 +1426,9 @@ let
             flm-qwen3-4b-utility = {
               model = "qwen3:4b";
               role = "utility";
-              status = "canonical";
+              # Retired 2026-08-29: NPU decommissioned permanently (fleet-7.2 session).
+              status = "retired";
+              archived = "/mnt/nas/models/weights/flm/Qwen3-4B-NPU2 (2026-08-11, rsync -a of the runtime-owned ~/.config/flm/models tree from the coordinator; no store hash exists for FLM weights)";
               backend = "npu";
               hosts = [ "coordinator" ];
               runtime = {
@@ -1436,7 +1443,9 @@ let
             flm-gemma4-it-e4b = {
               model = "gemma4-it:e4b";
               role = "utility";
-              status = "canonical";
+              # Retired 2026-08-29: NPU decommissioned permanently (fleet-7.2 session).
+              status = "retired";
+              archived = "/mnt/nas/models/weights/flm/Gemma4-E4B-IT-NPU2 (2026-08-29, rsync -a of the runtime-owned ~/.config/flm/models tree from the coordinator; no store hash exists for FLM weights)";
               backend = "npu";
               hosts = [ "coordinator" ];
               runtime = {
@@ -1469,7 +1478,9 @@ let
             flm-qwen36-35b-a3b-npu2 = {
               model = "qwen3.6-moe:35b-a3b";
               role = "vision";
-              status = "canonical";
+              # Retired 2026-08-29: NPU decommissioned permanently (fleet-7.2 session).
+              status = "retired";
+              archived = "/mnt/nas/models/weights/flm/Qwen3.6-35B-A3B-NPU2 (2026-08-29, rsync -a of the runtime-owned ~/.config/flm/models tree from the coordinator; no store hash exists for FLM weights)";
               backend = "npu";
               hosts = [
                 "coordinator"
