@@ -115,10 +115,18 @@ let
       # One new matching entry is the whole signal; there is nothing to sustain
       # and nothing to suppress, so the tripwire fires on the poll that sees it
       # and re-arms on the first quiet poll.
+      #
+      # But "re-arms on the first quiet poll" assumed a one-off crash. A unit
+      # flapping at (or faster than) the poll cadence never grants a quiet
+      # poll, so the watcher latched disarmed — 8 days blind on the
+      # coordinator (#245), swallowing not just the flapper but every OTHER
+      # failure on the box. The renotify floor bounds that blindness: a
+      # condition still over-threshold this long after a fire fires again.
       threshold = 1;
       rearm = 1;
       sustainSeconds = 0;
       refractorySeconds = 0;
+      renotifySeconds = cfg.renotifySeconds;
       intervalSeconds = cfg.checkSeconds;
       onBootSec = "5min";
       stateDirectory = "tripwire/${kind}";
@@ -246,6 +254,17 @@ in
       type = lib.types.int;
       default = 300;
       description = "Cadence of the journal watchers. Crashes are already durable in the journal, so this is about notice, not capture.";
+    };
+
+    renotifySeconds = lib.mkOption {
+      type = lib.types.int;
+      default = 21600;
+      description = ''
+        How long a watcher may stay continuously over-threshold after a fire
+        before it fires again (#245). Bounds the blindness a flapping unit
+        can inflict: 6 hours means at worst 4 reminders a day instead of one
+        report ever. 0 restores the unbounded latch.
+      '';
     };
   };
 

@@ -114,6 +114,20 @@ let
           '';
         };
 
+        renotifySeconds = lib.mkOption {
+          type = lib.types.int;
+          default = 0;
+          description = ''
+            Re-notification floor for a latched condition (#245). If the
+            tripwire has fired (disarmed) and the condition then stays
+            continuously over-threshold for this long, it fires again under a
+            fresh episode instead of accumulating silently forever. 0 keeps
+            the original behavior: after a fire, only a quiet poll (sample
+            past `rearm`) can ever re-arm it — which a source flapping at the
+            poll cadence never grants.
+          '';
+        };
+
         onFire = lib.mkOption {
           type = lib.types.lines;
           default = "";
@@ -219,6 +233,7 @@ in
           TRIPWIRE_REARM = toString (if i.rearm == null then i.threshold else i.rearm);
           TRIPWIRE_SUSTAIN = toString i.sustainSeconds;
           TRIPWIRE_REFRACTORY = toString i.refractorySeconds;
+          TRIPWIRE_RENOTIFY = toString i.renotifySeconds;
           TRIPWIRE_COMPARISON = i.comparison;
           TRIPWIRE_VALUE_FIELD = i.valueField;
         }
