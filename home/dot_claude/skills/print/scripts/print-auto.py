@@ -1,12 +1,29 @@
 #!/usr/bin/env python3
-"""Local-model print orchestration: markdown in, typeset PDF out.
+"""Local print orchestration: markdown in, typeset PDF out.
 
 The calling session hands over ONLY a markdown file (plus an optional
 intent hint and --print). Every typesetting decision — profile, one-page
-enforcement, duplex, filename, title — is made by the request-scoped NPU
-utility model (`utility-model` wrapper, FastFlowLM qwen3:4b), then executed
-by print-paper.py. FastFlowLM has no grammar enforcement, so the JSON is
-validated here with one corrective retry and a deterministic fallback.
+enforcement, duplex, filename, title — is made by the request-scoped local
+utility model (`utility-model` wrapper), then executed by print-paper.py.
+The model has no grammar enforcement, so the JSON is validated here with
+one corrective retry and a deterministic fallback.
+
+The seam behind that wrapper MIGRATED on 2026-08-29: it used to be the
+XDNA2 NPU running FastFlowLM, which is decommissioned permanently; it is
+now the GPU roster, where llama-swap serves qwen3.6-35B-A3B behind the
+stable id `utility`. The wrapper exists on the coordinator only, and its
+first request after an idle unload cold-loads a ~40 GB model, so the
+classification call is given a generous timeout.
+
+Classification failure is NON-FATAL, and deliberately so: printing is the
+point of this script. Anything at all going wrong at the seam — no wrapper
+on this host, llama-swap unreachable, a timeout, two invalid answers —
+falls through to the same deterministic default that has always backed the
+model (source-serif, duplex, no one-page enforcement, kebab-case filename
+from the input stem), records provenance "fallback" in decision.json with
+the reason, says so once on stderr, and renders. Everything downstream of
+the decision — the job directory, the render-verify-submit gate, quiet
+hours — is untouched by which path produced it.
 
 Usage:
     print-auto.py INPUT.md [--intent brief|document|form|specimen]
@@ -36,6 +53,10 @@ PRINT_PAPER = SCRIPT_DIR / "print-paper.py"
 PROFILES = {"garamond", "baskerville", "source-serif", "times"}
 SIDES = {"duplex", "one-sided"}
 
+# llama-swap cold-loads the utility model on the first request after an idle
+# unload; that alone can take minutes on a ~40 GB Vulkan backend.
+UTILITY_TIMEOUT_SECONDS = 1200
+
 SYSTEM = (
     "You are the typesetting controller for a local print pipeline. Decide "
     "how to render the given Markdown document as an A4 PDF. Output ONLY a "
@@ -48,9 +69,12 @@ SYSTEM = (
     "baskerville = formal/ceremonial; times = academic papers. "
     "require_one_page only for clearly single-page artifacts (a short form, "
     "a specimen sheet, a one-page checklist). one-sided only for "
-    "forms/worksheets meant to be scanned or posted; otherwise duplex. "
-    "/no_think"
+    "forms/worksheets meant to be scanned or posted; otherwise duplex."
 )
+
+
+class ClassifierUnavailable(RuntimeError):
+    """The utility seam could not answer. Never fatal — see decide()."""
 
 
 def doc_digest(text: str, intent: str | None) -> str:
@@ -65,23 +89,51 @@ def doc_digest(text: str, intent: str | None) -> str:
     return "\n".join(parts)
 
 
-def ask_utility(user_content: str) -> dict:
+def ask_utility(user_content: str) -> str:
+    """One classification round trip through the GPU utility seam.
+
+    Every way this can fail — the wrapper absent because we are not on the
+    coordinator, llama-swap down or still cold-loading past the budget, a
+    non-zero exit, an unparseable envelope — becomes one ClassifierUnavailable
+    so decide() has a single thing to catch.
+    """
+    # `think: False` is the seam's flag, not the backend's; the wrapper
+    # translates it for whatever engine is behind the stable id. Without it a
+    # reasoning model burns the whole budget before emitting any JSON.
     req = {
         "model": "utility",
         "temperature": 0,
         "max_tokens": 300,
+        "think": False,
         "messages": [
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": user_content},
         ],
     }
-    out = subprocess.run(
-        ["utility-model"], input=json.dumps(req).encode(),
-        capture_output=True, timeout=600)
+    try:
+        out = subprocess.run(
+            ["utility-model"], input=json.dumps(req).encode(),
+            capture_output=True, timeout=UTILITY_TIMEOUT_SECONDS)
+    except FileNotFoundError as exc:
+        raise ClassifierUnavailable(
+            "utility-model is not installed here; the GPU utility model "
+            "(qwen3.6-35B-A3B through llama-swap) is served on the "
+            "coordinator only") from exc
+    except OSError as exc:
+        raise ClassifierUnavailable(f"could not run utility-model: {exc}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise ClassifierUnavailable(
+            f"utility-model did not answer within "
+            f"{UTILITY_TIMEOUT_SECONDS}s") from exc
     if out.returncode != 0:
-        raise RuntimeError(f"utility-model failed: {out.stderr.decode()[:400]}")
-    resp = json.loads(out.stdout)
-    return resp["choices"][0]["message"]["content"]
+        raise ClassifierUnavailable(
+            f"utility-model failed: {out.stderr.decode()[:400].strip()}")
+    try:
+        resp = json.loads(out.stdout)
+        return resp["choices"][0]["message"]["content"]
+    except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
+        raise ClassifierUnavailable(
+            f"utility-model returned a malformed response: {exc}") from exc
 
 
 def validate(raw: str) -> dict | str:
@@ -120,29 +172,51 @@ def pdf_page_count(path: Path) -> int | None:
     return count or None
 
 
-def decide(text: str, intent: str | None, source: Path) -> tuple[dict, str]:
-    """Returns (decision, provenance) where provenance is npu|npu-retry|fallback."""
-    digest = doc_digest(text, intent)
-    raw = ask_utility(digest)
-    d = validate(raw)
-    if isinstance(d, dict):
-        return d, "npu"
-    raw2 = ask_utility(
-        digest + f"\n\nYour previous output was rejected ({d}). "
-        "Output only the corrected JSON object.")
-    d2 = validate(raw2)
-    if isinstance(d2, dict):
-        return d2, "npu-retry"
-    fallback = {
+def default_decision(source: Path) -> dict:
+    """The deterministic decision that backs the classifier whenever the
+    utility seam cannot answer or answers invalidly."""
+    return {
         "profile": "source-serif",
         "require_one_page": False,
         "sides": "duplex",
         "filename": re.sub(r"[^a-z0-9]+", "-", source.stem.lower()).strip("-") + ".pdf",
         "title": source.stem,
     }
-    print(f"print-auto: NPU decision invalid twice ({d2}); using fallback",
+
+
+def decide(text: str, intent: str | None, source: Path) -> tuple[dict, str]:
+    """Returns (decision, provenance) where provenance is gpu|gpu-retry|fallback.
+
+    Provenance named the engine before this script's seam moved to the GPU
+    roster on 2026-08-29, so receipts already on disk under ~/Paper/jobs
+    carry npu / npu-retry / retired instead; leave those values alone when
+    reading old job directories.
+
+    Nothing here is allowed to stop a print. The seam is reached inside one
+    try block, and any ClassifierUnavailable — no wrapper on this host,
+    llama-swap unreachable, timeout, malformed envelope — lands on the same
+    deterministic default that two invalid model answers would.
+    """
+    digest = doc_digest(text, intent)
+    try:
+        raw = ask_utility(digest)
+        d = validate(raw)
+        if isinstance(d, dict):
+            return d, "gpu"
+        raw2 = ask_utility(
+            digest + f"\n\nYour previous output was rejected ({d}). "
+            "Output only the corrected JSON object.")
+        d2 = validate(raw2)
+        if isinstance(d2, dict):
+            return d2, "gpu-retry"
+        reason = f"utility decision invalid twice ({d2})"
+    except ClassifierUnavailable as exc:
+        reason = str(exc)
+    print(f"print-auto: {reason}; using the deterministic fallback "
+          f"(source-serif, duplex, no one-page enforcement). Drive "
+          f"print-paper.py directly when the profile or layout matters.",
           file=sys.stderr)
-    return fallback, "fallback"
+    return default_decision(source), "fallback"
 
 
 def main() -> int:

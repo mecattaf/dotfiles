@@ -180,6 +180,31 @@ let
 
   localModels = lib.mapAttrs' renderModel selectedDeployments;
 
+  # ── the application-facing utility slot ───────────────────────────────────
+  # Migrated here from modules/npu-llm.nix on 2026-08-29. The stable id
+  # `utility` is now backed by a GPU roster row served through llama-swap, so
+  # the wrapper is a plain catalog-row-onto-host projection — this module's job
+  # — rather than anything FastFlowLM ever owned. It is installed only where the
+  # slot's deployment is canonical, assigned to this host, AND allowed into that
+  # host's llama-swap roster: without the last condition the wrapper would name
+  # a served id the local proxy does not know.
+  utilityDeployment = catalog.deployments.${catalog.utility.deployment};
+  utilityEnabled =
+    utilityDeployment.status == "canonical"
+    && lib.elem host utilityDeployment.hosts
+    && lib.elem catalog.utility.deployment cfg.allow;
+  utilityEndpoint = "http://localhost:${toString config.services.llama-swap.port}";
+  utilityRunner = pkgs.writeShellApplication {
+    name = "utility-model";
+    runtimeInputs = [ pkgs.python3 ];
+    text = ''
+      exec ${pkgs.python3}/bin/python3 ${../pkgs/utility-model/utility_model.py} "$@" \
+        --endpoint ${lib.escapeShellArg utilityEndpoint} \
+        --concrete-model ${lib.escapeShellArg utilityDeployment.model} \
+        --context-tokens ${toString catalog.utility.contextTokens}
+    '';
+  };
+
   artifactIds = builtins.attrNames catalog.artifacts;
   deploymentIds = builtins.attrNames catalog.deployments;
   artifactRows = builtins.attrValues catalog.artifacts;
@@ -326,6 +351,17 @@ let
       assertion = builtins.length snapshotAliasNames == builtins.length (lib.unique snapshotAliasNames);
       message = "Selected local-model snapshot aliases must be unique.";
     }
+    {
+      # The utility slot must name a row llama-swap can actually serve
+      # (2026-08-29 GPU migration). A runtime appliance here would mean the
+      # wrapper forwards the stable `utility` id to an endpoint that has never
+      # heard of it — the exact failure the FLM-era seam avoided by owning its
+      # own child process.
+      assertion =
+        utilityDeployment.status != "canonical"
+        || lib.elem utilityDeployment.backend catalog.backendKinds.local;
+      message = "The catalog's utility deployment must be a managed local backend served through llama-swap.";
+    }
   ];
   failedCatalogAssertion = lib.findFirst (entry: !entry.assertion) null catalogAssertions;
   catalogValid =
@@ -367,6 +403,9 @@ in
 
   config = {
     assertions = catalogAssertions;
+
+    # The stable `utility` door, on the hosts that serve it and nowhere else.
+    environment.systemPackages = lib.optional utilityEnabled utilityRunner;
 
     # Metadata stays generational and inspectable alongside the selected artifacts.
     environment.etc = {

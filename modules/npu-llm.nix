@@ -7,63 +7,41 @@
 # Declarative FastFlowLM roster for ad-hoc NPU inference.
 #
 # This module deliberately creates no systemd units and performs no activation
-# pull. The ordinary `flm run <model>` command owns interactive load/use/unload;
-# the utility wrapper owns one start/request/stop cycle. `flm pull <model>`
-# remains an explicit operator action when runtime-owned files are absent. Nix
-# owns only the allowed model identities and an inspectable manifest.
+# pull. The ordinary `flm run <model>` command owns interactive load/use/unload.
+# `flm pull <model>` remains an explicit operator action when runtime-owned
+# files are absent. Nix owns only the allowed model identities and an
+# inspectable manifest.
+#
+# The `utility-model` wrapper used to live here too, because the stable
+# `utility` id was backed by an FLM row and this module owned one
+# start/request/stop cycle around it. It moved to modules/local-models.nix on
+# 2026-08-29 with the slot itself: the utility deployment is now a GPU roster
+# row served by llama-swap, which has nothing to do with FastFlowLM. Nothing in
+# this module reads catalog.utility any more.
 let
   cfg = config.services.npu-llm;
   catalog = import ../lib/local-models.nix { inherit lib; };
   host = config.networking.hostName;
-  utilityDeployment = catalog.deployments.${catalog.utility.deployment};
-  utilityEnabled =
-    utilityDeployment.status == "canonical"
-    && utilityDeployment.backend == "npu"
-    && lib.elem host utilityDeployment.hosts;
-  utilityModel = utilityDeployment.model;
-  declaredModels = cfg.models ++ lib.optional utilityEnabled utilityModel;
   catalogModels = map (deployment: deployment.model) (
     lib.filter (
       deployment:
       deployment.status == "canonical" && deployment.backend == "npu" && lib.elem host deployment.hosts
     ) (builtins.attrValues catalog.deployments)
   );
-  utilityRunner = pkgs.writeShellApplication {
-    name = "utility-model";
-    runtimeInputs = [ pkgs.python3 ];
-    text = ''
-      exec ${pkgs.python3}/bin/python3 ${../pkgs/utility-model/utility_model.py} "$@" \
-        --flm ${pkgs.fastflowlm}/bin/flm \
-        --concrete-model ${lib.escapeShellArg utilityModel} \
-        --context-tokens ${toString catalog.utility.contextTokens}
-    '';
+  manifest = (pkgs.formats.json { }).generate "fastflowlm-models.json" {
+    schema = 2;
+    runtime = "fastflowlm";
+    lifecycle = "ad-hoc";
+    persistentServer = false;
+    models = map (tag: {
+      inherit tag;
+      command = [
+        "flm"
+        "run"
+        tag
+      ];
+    }) cfg.models;
   };
-  manifest = (pkgs.formats.json { }).generate "fastflowlm-models.json" (
-    {
-      schema = 2;
-      runtime = "fastflowlm";
-      lifecycle = "ad-hoc";
-      persistentServer = false;
-      models = map (tag: {
-        inherit tag;
-        command = [
-          "flm"
-          "run"
-          tag
-        ];
-      }) declaredModels;
-    }
-    // lib.optionalAttrs utilityEnabled {
-      utility = {
-        id = catalog.utility.stableId;
-        model = utilityModel;
-        owner = "utility-model";
-        lifecycle = "request-scoped";
-        contextTokens = catalog.utility.contextTokens;
-        command = [ "utility-model" ];
-      };
-    }
-  );
 in
 {
   options.services.npu-llm = {
@@ -73,10 +51,8 @@ in
       type = lib.types.listOf lib.types.str;
       default = [ ];
       description = ''
-        Additional FastFlowLM model tags approved for ad-hoc `flm run` use on
-        this host. The canonical utility deployment is projected separately
-        from the typed catalog. This option never starts, serves, or downloads
-        a model.
+        FastFlowLM model tags approved for ad-hoc `flm run` use on this host.
+        This option never starts, serves, or downloads a model.
       '';
     };
   };
@@ -92,16 +68,16 @@ in
         message = "services.npu-llm.models must contain at least one tag.";
       }
       {
-        assertion = builtins.length declaredModels == builtins.length (lib.unique declaredModels);
+        assertion = builtins.length cfg.models == builtins.length (lib.unique cfg.models);
         message = "services.npu-llm.models must not contain duplicate tags.";
       }
       {
-        assertion = lib.sort builtins.lessThan declaredModels == lib.sort builtins.lessThan catalogModels;
-        message = "services.npu-llm plus the utility slot must exactly match this host's canonical NPU catalog rows.";
+        assertion = lib.sort builtins.lessThan cfg.models == lib.sort builtins.lessThan catalogModels;
+        message = "services.npu-llm.models must exactly match this host's canonical NPU catalog rows.";
       }
     ];
 
-    environment.systemPackages = [ pkgs.fastflowlm ] ++ lib.optional utilityEnabled utilityRunner;
+    environment.systemPackages = [ pkgs.fastflowlm ];
     environment.etc."local-models/fastflowlm.json".source = manifest;
   };
 }

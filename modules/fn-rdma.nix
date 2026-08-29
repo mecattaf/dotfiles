@@ -173,13 +173,23 @@ in
 
     stagedDir = lib.mkOption {
       type = lib.types.str;
-      default = "/home/tom/.local/state/flashnext-rdma/7.1.4/out";
+      default = "/home/tom/.local/state/flashnext-rdma/7.2/out";
       description = ''
         Where fetch-and-build.sh staged the matched .ko set on THIS host.
         Deliberately a runtime path, not a store path: the modules are
         vermagic-pinned to the running kernel and rebuilt by the operator's
         attended lane, not by nix — route (b), the nix-native kernel swap,
         was evaluated and declined in host/rdma/attended-bringup.md.
+
+        RE-BAKE PENDING (2026-08-29, #244): the twins moved to linux 7.2 and
+        this default moved with them, but the 7.2 .ko set has not been built
+        yet — that is the ATTENDED operator lane
+        (host/rdma/fetch-and-build.sh), not something a switch can do. Until
+        the set is staged at this path the loadScript takes its sanctioned
+        fallback and loads the STOCK thunderbolt pair: the TB rails come up
+        and carry IP normally, there is simply no ibverbs device. That is a
+        designed degradation, not a failure — nothing on the twins requires
+        RDMA to boot or to serve.
       '';
     };
   };

@@ -1,5 +1,10 @@
 # Coordinator local-AI deployment decisions
 
+> **Superseded 2026-08-29: NPU decommissioned permanently; flm retired with
+> archive receipts (see [`../../lib/local-models.nix`](../../lib/local-models.nix)).**
+> This is a dated record and its body is left exactly as written; read every
+> FastFlowLM/NPU claim below as history.
+
 Status: coordinator-only placement regenerated on 2026-07-29; Mage's Turbo and
 unified VLM inference snapshots are now selected as immutable appliance
 payloads. Existing LLM/VLM serving selection and the FastFlowLM lifecycle

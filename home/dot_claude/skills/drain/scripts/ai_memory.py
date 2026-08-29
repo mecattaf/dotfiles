@@ -24,7 +24,11 @@ from typing import Callable, Mapping, Sequence
 
 SOURCES = ("claude-code", "codex")
 STABLE_MODEL_ID = "utility"
-UTILITY_TIMEOUT_SECONDS = 600.0
+# The seam is GPU-backed through llama-swap since 2026-08-29. A request that
+# arrives after the roster's idle TTL unloaded the model pays for a cold load of
+# a ~40 GB Vulkan backend first — llama-swap sizes its own health window at 900s
+# for exactly that — so the per-request budget has to cover load plus generation.
+UTILITY_TIMEOUT_SECONDS = 1200.0
 # A byte ceiling is conservative for the 32K-token Qwen deployment while still
 # accommodating real root turns with many compact tool-evidence records.
 TURN_CHUNK_BYTES = 24_000
@@ -1071,12 +1075,25 @@ def utility_content(response: dict[str, object] | str) -> str:
     return content
 
 
+# The seam moved off the XDNA2 NPU to the GPU roster on 2026-08-29: the NPU is
+# decommissioned permanently, but distillation is not. `utility-model` now
+# forwards one request to llama-swap, which serves the stable id `utility` as
+# qwen3.6-35B-A3B. That wrapper is installed on the coordinator alone
+# (modules/local-models.nix), because the coordinator is the only host whose
+# llama-swap carries that row — so an absent wrapper means "not this host",
+# never "the model is gone". Failure stays closed and bounded through the same
+# MemoryError path every other failure uses, so callers, `main`, and the tests
+# keep their exit and return semantics.
+UTILITY_UNAVAILABLE = (
+    "local utility-model is not installed here; the GPU utility model "
+    "(qwen3.6-35B-A3B through llama-swap) is served on the coordinator only"
+)
+
+
 def invoke_utility(request: dict[str, object]) -> dict[str, object]:
     command = shutil.which("utility-model")
     if command is None:
-        raise MemoryError(
-            "local utility-model is unavailable; switch the coordinator configuration first"
-        )
+        raise MemoryError(UTILITY_UNAVAILABLE)
     try:
         completed = subprocess.run(
             [command, "--timeout", str(UTILITY_TIMEOUT_SECONDS)],
@@ -1088,7 +1105,10 @@ def invoke_utility(request: dict[str, object]) -> dict[str, object]:
             check=False,
         )
     except subprocess.TimeoutExpired as exc:
-        raise MemoryError("local utility-model timed out") from exc
+        raise MemoryError(
+            "local utility-model timed out; llama-swap did not finish the "
+            f"cold load and generation within {UTILITY_TIMEOUT_SECONDS:.0f}s"
+        ) from exc
     except OSError as exc:
         raise MemoryError(f"could not invoke local utility-model: {exc}") from exc
     if completed.returncode != 0:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -222,6 +224,25 @@ class SkillBoundaryTests(unittest.TestCase):
         self.assertIn('ai_memory.py" pickup', pickup)
         self.assertNotIn('ai_memory.py" drain', pickup)
         self.assertIn("ai-memory:parent", pickup)
+
+    def test_drain_skill_names_the_gpu_seam_the_distillation_now_runs_on(self) -> None:
+        drain = DRAIN_SKILL.read_text()
+        # The seam migrated on 2026-08-29 rather than retiring: a session
+        # reading only the frontmatter description must learn which engine
+        # answers, because the skills tree is hot-loaded through an
+        # out-of-store symlink and the body may never be read.
+        description = drain.split("---")[1]
+        self.assertIn("GPU utility model", description)
+        self.assertIn("llama-swap", description)
+        self.assertIn("2026-08-29", description)
+        self.assertNotIn("RETIRED", description)
+        # The body must not claim the path is gone, and must not send a
+        # session off to change a host's configuration and retry.
+        self.assertIn("llama-swap", drain)
+        self.assertIn("qwen3.6-35B-A3B", drain)
+        self.assertIn("coordinator only", drain)
+        self.assertNotIn("switch the coordinator configuration", drain)
+        self.assertNotIn("distillation path is retired", drain)
 
 
 class DrainTests(unittest.TestCase):
@@ -506,6 +527,96 @@ class DrainTests(unittest.TestCase):
                 self.journal,
                 f"{predecessor.source}:{predecessor.session_id}",
             )
+
+    def test_default_invoker_forwards_through_the_installed_wrapper(self) -> None:
+        # Since the 2026-08-29 GPU migration the default invoker's whole job is
+        # to shell out to the `utility-model` wrapper, which forwards to
+        # llama-swap. Prove the seam is wired end to end here: the stable id
+        # goes out on stdin, the wrapper's stdout comes back as the response,
+        # and a real note gets written from it.
+        wrapper_dir = self.root / "bin"
+        wrapper_dir.mkdir()
+        recorded = self.root / "wrapper-request.json"
+        wrapper = wrapper_dir / "utility-model"
+        wrapper.write_text(
+            f"#!{sys.executable}\n"
+            "import json, os, sys\n"
+            "request = json.load(sys.stdin)\n"
+            f"open({str(recorded)!r}, 'a').write(json.dumps(request) + '\\n')\n"
+            "json.dump({'model': 'utility', 'choices': [{'message': "
+            "{'role': 'assistant', 'content': json.dumps("
+            f"{json.dumps(result_data())}"
+            ")}}]}, sys.stdout)\n",
+            encoding="utf-8",
+        )
+        wrapper.chmod(0o755)
+
+        trace = copied_trace(
+            fixture_trace(CLAUDE_HOME, CLAUDE_ROOT_ID),
+            self.root,
+        )
+        with mock.patch.dict(
+            os.environ,
+            {"PATH": f"{wrapper_dir}:{os.environ['PATH']}"},
+        ):
+            status, note_path = memory.drain_session(
+                identity=memory.Identity("claude-code", CLAUDE_ROOT_ID),
+                journal_dir=self.journal,
+                trace_path=trace,
+                now=datetime.fromisoformat("2026-08-29T10:00:00+02:00"),
+            )
+        self.assertEqual(status, "created")
+        self.assertTrue(note_path.is_file())
+        forwarded = [
+            json.loads(line) for line in recorded.read_text().splitlines() if line
+        ]
+        self.assertTrue(forwarded)
+        self.assertTrue(all(req["model"] == "utility" for req in forwarded))
+        self.assertTrue(all(req["stream"] is False for req in forwarded))
+
+    def test_absent_wrapper_fails_closed_naming_the_gpu_seam_not_the_npu(self) -> None:
+        # The wrapper is installed on the coordinator alone, so an absent one
+        # means "not this host" — it must say that, and it must fail closed
+        # through the ordinary bounded MemoryError path: same exit semantics as
+        # every other failure, no traceback, no partial note. It must not blame
+        # the decommissioned NPU, which has nothing to do with this seam any
+        # more, and must not send the session off to change a configuration.
+        trace = copied_trace(
+            fixture_trace(CLAUDE_HOME, CLAUDE_ROOT_ID),
+            self.root,
+        )
+        with mock.patch.object(memory.shutil, "which", return_value=None):
+            with self.assertRaises(memory.MemoryError) as caught:
+                memory.drain_session(
+                    identity=memory.Identity("claude-code", CLAUDE_ROOT_ID),
+                    journal_dir=self.journal,
+                    trace_path=trace,
+                    now=datetime.fromisoformat("2026-08-29T10:00:00+02:00"),
+                )
+        message = str(caught.exception)
+        self.assertIn("llama-swap", message)
+        self.assertIn("coordinator only", message)
+        self.assertNotIn("NPU", message)
+        self.assertNotIn("switch the coordinator configuration", message)
+        self.assertFalse(list(self.journal.rglob("*.md")))
+
+    def test_a_bounded_seam_failure_exits_one_through_main_without_a_traceback(
+        self,
+    ) -> None:
+        stderr = io.StringIO()
+        with mock.patch.object(
+            memory,
+            "current_identity",
+            side_effect=memory.MemoryError(memory.UTILITY_UNAVAILABLE),
+        ):
+            with contextlib.redirect_stderr(stderr):
+                status = memory.main(["drain"])
+        self.assertEqual(status, 1)
+        self.assertEqual(
+            stderr.getvalue(),
+            f"ai-memory: {memory.UTILITY_UNAVAILABLE}\n",
+        )
+        self.assertNotIn("Traceback", stderr.getvalue())
 
     def test_trace_provenance_is_rechecked_before_writing(self) -> None:
         with self.assertRaisesRegex(memory.MemoryError, "different thread identity"):

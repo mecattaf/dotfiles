@@ -2,6 +2,7 @@
   config,
   inputs,
   lib,
+  pkgs,
   ...
 }:
 # AMD Strix Halo layer — imported by `coordinator` and `worker`, the two
@@ -102,40 +103,60 @@
       ];
     };
 
-    # Both identical Strix Halo systems expose the XDNA2 NPU alongside their
-    # Radeon iGPU, and both get the uniform accelerator surface.
+    # NPU DECOMMISSIONED 2026-08-29: Tom forgoes the XDNA2 NPU permanently.
+    # The nix-amd-ai import stays — its overlay is applied unconditionally and
+    # keeps pkgs.fastflowlm resolvable — but this gate removes amdxdna, the
+    # accel udev rules, the XRT env vars, the @video/@render memlock limits,
+    # and the flm package from both twins. Recovery is flipping these back and
+    # restoring the catalog rows to canonical. (utility-model survived the
+    # decommission: it migrated to the GPU seam the same day and now installs
+    # via modules/local-models.nix on the coordinator only, dialing llama-swap.)
+    #
+    # The memlock loss is not a serving regression: managed llama-swap sets its
+    # own LimitMEMLOCK=infinity on its unit (modules/llama-swap.nix), so the GPU
+    # inference path never depended on the @video/@render limits this gate drops.
     hardware.amd-npu = {
-      enable = true;
-      enableNPU = true;
-      enableFastFlowLM = true;
+      enable = false;
+      enableNPU = false;
+      enableFastFlowLM = false;
       enableLemonade = false;
       enableROCm = false;
       lemonade.user = "tom";
     };
 
-    # modules/npu-llm.nix asserts that this list, plus the utility slot when the
-    # host owns it, EXACTLY equals the host's canonical NPU catalog rows — so
-    # these two branches are not a preference, they are the only lists that
-    # evaluate. The utility deployment (qwen3:4b) is coordinator-only and is
-    # projected automatically, which is why it is absent from both.
-    services.npu-llm = {
-      enable = true;
-      models =
-        lib.optionals (config.networking.hostName == "coordinator") [
-          "gemma4-it:e4b"
-          # gpt-oss:20b ruled out 2026-08-20 (old and outdated; dotfiles#229).
-          # The catalog row is status = "retired"; the ~14G runtime-owned snapshot
-          # under ~/.config/flm/models is freed by an explicit `flm remove`, not GC.
-        ]
-        ++ [
-          # The drain's next OCR engine (24.3G, runtime-owned), carried on BOTH
-          # boxes since its catalog row names both. Download stays the explicit
-          # operator action `flm pull qwen3.6-moe:35b-a3b` — this module never
-          # pulls — and it must be validated on OCR before any qwen3-vl / GPU-35B
-          # removal that depends on it.
-          "qwen3.6-moe:35b-a3b"
-        ];
-    };
+    # Retired 2026-08-29 with the NPU decommission. The roster below is kept as
+    # commented Nix rather than deleted — it is the exact shape a revival would
+    # restore. Its catalog rows are now status = "retired" with archive receipts
+    # in lib/local-models.nix; the runtime-owned weights under ~/.config/flm/models
+    # were freed by explicit `flm remove` (they are not store paths, so nothing
+    # about them is GC-reachable), after being rsynced to the NAS.
+    #
+    # Weights archived at /mnt/nas/models/weights/flm/. Tom may choose to revive
+    # the NPU on this device specifically for gemma4-it:e4b (Gemma4-E4B-IT-NPU2 —
+    # ad-hoc multimodal utility) and qwen3.6-moe:35b-a3b (Qwen3.6-35B-A3B-NPU2 —
+    # the drain's next OCR engine, OCR-validation still pending) if flm is ever
+    # brought back. Recovery = uncomment the roster below + flip the enables here
+    # and in hardware.amd-npu above + restore the catalog rows to canonical +
+    # `flm pull`, or restore the trees from the NAS archive.
+    services.npu-llm.enable = false;
+    # services.npu-llm = {
+    #   enable = true;
+    #   models =
+    #     lib.optionals (config.networking.hostName == "coordinator") [
+    #       "gemma4-it:e4b"
+    #       # gpt-oss:20b ruled out 2026-08-20 (old and outdated; dotfiles#229).
+    #       # The catalog row is status = "retired"; the ~14G runtime-owned snapshot
+    #       # under ~/.config/flm/models is freed by an explicit `flm remove`, not GC.
+    #     ]
+    #     ++ [
+    #       # The drain's next OCR engine (24.3G, runtime-owned), carried on BOTH
+    #       # boxes since its catalog row names both. Download stays the explicit
+    #       # operator action `flm pull qwen3.6-moe:35b-a3b` — this module never
+    #       # pulls — and it must be validated on OCR before any qwen3-vl / GPU-35B
+    #       # removal that depends on it.
+    #       "qwen3.6-moe:35b-a3b"
+    #     ];
+    # };
 
     # The gfx1151 ROCm graph contains several split Composable Kernel derivations,
     # each of which honors NIX_BUILD_CORES internally. Leaving both knobs at the
@@ -169,12 +190,55 @@
     # `touch /etc/fn-rdma-disable` + one attended reboot loads the stock pair.
     myFnRdma.enable = true;
 
+    # ── Linux 7.2 on the twins (#244) ──────────────────────────────────────
+    #
+    # Same sourcing doctrine as hosts/nas/kernel.nix, applied to the boxes that
+    # actually motivated the migration:
+    #
+    #   * The main `nixpkgs` pin predates 7.2 (it sits at 7.1.4) and does NOT
+    #     move for this — it gates the whole Mesa/ROCm userland these two boxes
+    #     are built around, and dragging it forward to chase a kernel would
+    #     re-qualify the entire gfx1151 inference stack.
+    #   * freshPkgs.linuxPackages_latest — rejected: it would silently jump to
+    #     7.3 the next time nixpkgs-fresh moves for something unrelated.
+    #   * linuxPackages_7_2 — CHOSEN: the versioned attr advances only within
+    #     the 7.2.x stable series (point fixes yes, series jumps never), and
+    #     when 7.2 ages out of nixpkgs entirely eval breaks LOUDLY and this
+    #     stanza gets a deliberate successor. Fail-loud, not drift.
+    #
+    # Why now: 7.1.4 carries the amdgpu ISM dc_lock reboot deadlock (#244) —
+    # the twins can wedge on the way down and need a hand at the power button.
+    # 7.2 fixes it. No mkForce: modules/common.nix:45 sets kernelPackages with
+    # mkDefault, so this plain assignment wins on both twins.
+    #
+    # The one string attached to this: the fn-rdma .ko set is vermagic-pinned
+    # and its 7.2 re-bake is pending on the ATTENDED operator lane (#244,
+    # host/rdma/fetch-and-build.sh). Until that set is staged, the loader takes
+    # its sanctioned stock-thunderbolt fallback — the TB rails carry IP, just
+    # without ibverbs. See modules/fn-rdma.nix `stagedDir`.
+    boot.kernelPackages =
+      (import inputs.nixpkgs-fresh {
+        inherit (pkgs.stdenv.hostPlatform) system;
+        config.allowUnfree = true;
+      }).linuxPackages_7_2;
+
     # Strix Halo unified-memory tuning (128 GiB pinnable for the iGPU).
-    # amdxdna binds through IOMMU SVA/PASID and needs translated mode
-    # (hardware.amd-npu additionally pins iommu.passthrough=0).
+    #
+    # IOMMU is explicitly OFF since the 2026-08-29 NPU decommission. It was on
+    # for amdxdna, the only consumer on these boxes that ever needed translated
+    # mode; with amdxdna gone nothing on the twins does, so the DMA translation
+    # cost buys nothing. (The old comment here also claimed hardware.amd-npu
+    # pins iommu.passthrough=0 — the pinned nix-amd-ai never has; that claim was
+    # already stale before this change.)
+    #
+    # watchdog.stop_on_reboot=0 keeps sp5100_tco armed across the reboot
+    # transition (#244 checklist): the watchdog exists precisely to catch a box
+    # that hangs on the way down, which is exactly when the kernel would
+    # otherwise disarm it.
     boot.kernelParams = [
-      "amd_iommu=on"
+      "amd_iommu=off"
       "ttm.pages_limit=33554432"
+      "watchdog.stop_on_reboot=0"
     ];
 
     # --- mt7925e (RZ717 wifi) crash hardening, 2026-07-16 ---

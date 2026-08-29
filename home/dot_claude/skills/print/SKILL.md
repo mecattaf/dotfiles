@@ -7,7 +7,7 @@ description: Render Markdown, plain text, or HTML into restrained, readable A4 P
 
 ## Autopilot rendering (preferred)
 
-Hand over ONLY the markdown; the request-scoped NPU utility model makes
+Hand over ONLY the markdown; the request-scoped local utility model makes
 every typesetting decision (profile, one-page enforcement, duplex,
 filename, title) and drives the renderer:
 
@@ -17,10 +17,30 @@ filename, title) and drives the renderer:
 
 The session should not deliberate typography when using this path. Every
 print becomes a dated job directory under ~/Paper/jobs (markdown archived
-as source.md, rendered PDF, decision.json receipt recording npu /
-npu-retry / fallback provenance, plus pages_rendered / target_pages /
-length_check). Fall back to direct print-paper.py below only when the user
-explicitly asks for a specific profile or layout comparison.
+as source.md, rendered PDF, decision.json receipt recording gpu / gpu-retry
+/ fallback provenance, plus pages_rendered / target_pages / length_check).
+Fall back to direct print-paper.py below only when the user explicitly asks
+for a specific profile or layout comparison.
+
+**The classifier's engine moved on 2026-08-29.** It ran on the
+request-scoped NPU utility model until that XDNA2 NPU was decommissioned
+permanently; the stable `utility` id now resolves to the GPU roster, where
+llama-swap serves **qwen3.6-35B-A3B**. Two consequences worth knowing
+before you read a stderr line and worry:
+
+- The `utility-model` wrapper is installed on the **coordinator only**.
+  Off that box, classification cannot run.
+- Classification failure of any kind — no wrapper, llama-swap unreachable,
+  a cold-load timeout, two invalid answers — is **non-fatal**. print-auto
+  prints one stderr line naming the reason, renders with the deterministic
+  default (source-serif, duplex, no one-page enforcement, kebab-case
+  filename from the input stem), and writes provenance `"fallback"`. The
+  print still happens. Job directories written between 2026-08-29 and this
+  migration carry provenance `"retired"`; older ones carry `npu` /
+  `npu-retry`.
+
+When the fallback fires and the profile or layout actually matters, drive
+Manual rendering below rather than accepting the default.
 
 **Render-verify-submit (issue #227) — MANDATORY when the user gave the
 document an acceptance condition** (a page count, "one-pager", "N pages",
