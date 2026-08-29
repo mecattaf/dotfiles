@@ -34,10 +34,11 @@
 #
 # A kernel is self-contained against the stable userland (no ZFS here, btrfs
 # only, no out-of-tree modules on this host) — this is NOT a precedent for
-# mixing fresh into the appliance's package set. Reboot to take effect is
-# Tom's hand at the box (he wants the BIOS auto-power-on toggle checked in
-# the same visit); until then the running 7.1.5 keeps its live new_id
-# binding, so removing the shim from the closure is safe on a live switch.
+# mixing fresh into the appliance's package set.
+#
+# DONE 2026-08-29 (attended visit): rebooted onto 7.2.0 at the box, and the
+# BIOS AC-power-loss policy was set to Power On in the same visit (EuP left
+# disabled so the policy actually holds). Nothing about this file is pending.
 {
   boot.kernelPackages = freshPkgs.linuxPackages_7_2;
 }

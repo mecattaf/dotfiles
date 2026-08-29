@@ -16,10 +16,9 @@
 #      would die whenever the TV sleeps. The pin keeps the session immortal.
 #   2. It caps the output at 1080p even on a 4K panel — the TV upscales, and
 #      VNC moves a quarter of the pixels.
-# NB the pin lands as a kernel cmdline + initrd firmware change, so it takes
-# effect at the NEXT REBOOT (fold it into the pending NAS reboot test — never
-# reboot while the LaCie dump runs). Until then the session simply rides the
-# TV's own EDID, which works as long as the TV stays attached.
+# NB the pin lands as a kernel cmdline + initrd firmware change — live since
+# the 2026-08-29 attended reboot (the 7.2 visit); the session no longer
+# depends on the TV's own EDID.
 #
 # wayvnc runs as a systemd USER service defined system-side (this appliance
 # has no home-manager), tied to the graphical session. No VNC auth — access
