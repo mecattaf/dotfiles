@@ -41,27 +41,15 @@ in
     linkConfig.Name = "wan0";
   };
 
-  # ── new_id shim: A8500 device ID lands upstream in kernel 7.2 ─────────────
-  # The mt7925u driver itself is present on 7.1.x; only the USB VID/PID table
-  # entry is missing. Writing new_id also probes already-present devices, so
-  # plug order vs boot order does not matter. Self-obsoleting: delete with
-  # a8500.nix's usb fields at kernel >= 7.2.
-  systemd.services.a8500-new-id = lib.mkIf (a8500Known && a8500.usbVid != null) {
-    description = "Register the Netgear A8500 USB ID with the mt7925u driver";
-    wantedBy = [ "multi-user.target" ];
-    before = [ "NetworkManager.service" ];
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-      ExecStart = pkgs.writeShellScript "a8500-new-id" ''
-        set -eu
-        ${pkgs.kmod}/bin/modprobe mt7925u
-        sysfs=/sys/bus/usb/drivers/mt7925u/new_id
-        # Idempotent: a duplicate new_id write returns EEXIST; ignore it.
-        echo "${a8500.usbVid} ${a8500.usbPid}" > "$sysfs" 2>/dev/null || true
-      '';
-    };
-  };
+  # a8500-new-id shim RETIRED 2026-08-29, exactly as its own header promised:
+  # the A8500's USB ID is in the stock mt7925u table from kernel 7.2, and
+  # ./kernel.nix put this box on the 7.2 series in the same commit. One
+  # correction to the original "delete with a8500.nix's usb fields" note:
+  # the VID/PID fields STAY — they grew two load-bearing consumers after
+  # that note was written (wan-watchdog.nix's rung-3 USB re-enumeration and
+  # the udev power rule below). Only the shim service goes. Safe on a live
+  # switch: the running 7.1.x kernel keeps its already-written new_id entry
+  # until the module unloads, and the reboot that drops it boots 7.2.
 
   # ── USB power management OFF for the uplink radio (2026-08-21) ────────────
   # Two distinct doze mechanisms can add 100-400ms wake latency to this

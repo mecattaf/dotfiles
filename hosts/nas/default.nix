@@ -7,6 +7,7 @@
 {
   imports = [
     ./unstable-pkgs.nix
+    ./kernel.nix # 2026-08-29: linux 7.2 for the mt7925u uplink dongle (#244 NAS scope)
     ./hardware.nix
     ./disko.nix
     ./network.nix

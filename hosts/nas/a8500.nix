@@ -7,9 +7,13 @@
 #   mac    — the adapter's permanent MAC, `lsusb`/`ip link` at plug-in.
 #   usbVid/usbPid — hex WITHOUT 0x prefix, from `lsusb` (vendor 0846 = Netgear).
 #
-# The new_id shim exists because the A8500's USB device ID enters the upstream
-# mt7925u id table only in kernel 7.2; this box runs 7.1.x. Delete the shim
-# (and these two usb fields) once the NAS kernel reaches >= 7.2.
+# The new_id shim (router.nix) existed because the A8500's USB device ID
+# enters the upstream mt7925u id table only in kernel 7.2. RETIRED 2026-08-29
+# when ./kernel.nix moved this box to the 7.2 series. The usb fields below
+# OUTLIVE the shim, against this header's original plan: wan-watchdog.nix
+# matches the dongle by VID/PID for its rung-3 USB re-enumeration (and gates
+# the whole watchdog on their presence), and router.nix's udev power rule
+# scopes on them too. Do not delete.
 {
   # Captured live at first plug-in, 2026-08-20. lsusb's database mislabels
   # 0846:9050 as an "A6200 (BCM43526)" — stale usb.ids; the silicon is

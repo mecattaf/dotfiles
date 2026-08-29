@@ -13,8 +13,18 @@
 # Instantiating unstable is not free, so it happens exactly once here and is
 # handed to the rest of the host as the `unstablePkgs` module argument. Doing
 # it per-file would evaluate a second full nixpkgs for every consumer.
+#
+# freshPkgs (2026-08-29): same once-only rule for the nixpkgs-fresh input.
+# Sole NAS consumer today is ./kernel.nix — the main `nixpkgs` pin predates
+# linux 7.2 (it even sits BELOW stable's 7.1.5 at the time of writing), so
+# the kernel has to come from the rolling resolver. Anything else on this
+# box that ever needs fresh must take this argument, not re-import.
 {
   _module.args.unstablePkgs = import inputs.nixpkgs {
+    inherit (pkgs.stdenv.hostPlatform) system;
+    config.allowUnfree = true;
+  };
+  _module.args.freshPkgs = import inputs.nixpkgs-fresh {
     inherit (pkgs.stdenv.hostPlatform) system;
     config.allowUnfree = true;
   };
