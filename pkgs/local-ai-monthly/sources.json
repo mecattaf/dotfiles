@@ -44,7 +44,7 @@
       {
         "name": "coordinator",
         "hardware": "AMD Ryzen AI MAX+ 395, Radeon 8060S gfx1151, 128 GiB unified RAM",
-        "policy": "XDNA NPU enabled; IOMMU enabled in translated mode",
+        "policy": "NPU decommissioned 2026-08-29; IOMMU off (amd_iommu=off)",
         "roles": ["Tally coordinator", "Pi harness", "primary GPU inference", "Git and PR mechanics"]
       }
     ],

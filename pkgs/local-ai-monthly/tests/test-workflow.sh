@@ -48,7 +48,7 @@ cat > "$registry" <<'JSON'
   },
   "hardware_context": {
     "nodes": [
-      {"name":"coordinator","hardware":"128 GiB test host","policy":"NPU and IOMMU enabled"}
+      {"name":"coordinator","hardware":"128 GiB test host","policy":"NPU decommissioned 2026-08-29; IOMMU off (amd_iommu=off)"}
     ]
   },
   "model_selection_policy": {
@@ -143,7 +143,7 @@ jq -e '.sources[0].baseline == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
 grep -q 'Add candidate model' "$prepared/evidence.md"
 grep -q 'Active llama.cpp model/MTP target: \*\*Q8\*\*' "$prepared/context.md"
 grep -q 'best-Q8_0.gguf \[Q8_0\]' "$prepared/context.md"
-grep -q 'NPU and IOMMU enabled' "$prepared/context.md"
+grep -Fq -- 'NPU decommissioned 2026-08-29; IOMMU off (amd_iommu=off)' "$prepared/context.md"
 
 cat > "$hf_capture/responses/001.json" <<'JSON'
 {

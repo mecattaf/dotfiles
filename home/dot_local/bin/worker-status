@@ -1,19 +1,16 @@
 #!/usr/bin/env bash
-# One-shot status of the loaner worker's two continuous drains, over the TB5 link.
-# Worker loan until ~2026-08-22. Falls back to tailscale if the TB link is down.
-W=${WORKER_ADDR:-10.99.0.2}
-ssh -o ConnectTimeout=5 -o BatchMode=yes tom@$W true 2>/dev/null || W=100.66.206.54
-exec ssh -o BatchMode=yes tom@$W "bash -s" <<'REMOTE'
+# One-shot status of the worker twin, over the fleet identity.
+#
+# 10.99.9.2 lives on the worker's loopback and is reachable over whichever rail
+# is currently up (TB5 10.99.0.2 or 5GbE 10.99.1.2), which is exactly why the
+# deploy path dials it too. There is no tailnet fallback: the worker left the
+# tailnet and 100.66.206.54 has been dead since.
+W=${WORKER_ADDR:-10.99.9.2}
+exec ssh -o ConnectTimeout=5 -o BatchMode=yes tom@"$W" "bash -s" <<'REMOTE'
 echo "== worker $(hostname) up $(uptime | sed "s/.*up //;s/,.*//") =="
-echo "-- academic-ocr drain --"
-systemctl --user is-active academic-drain.service tally-daemon.service | paste -sd/ - | sed 's|^|units (drain/tally): |'
-tail -2 ~/.local/state/academic-ocr/drain/drain.log
-done_n=$(grep -c . ~/.local/state/academic-ocr/drain/completed.jsonl 2>/dev/null); total=$(grep -c . ~/.local/state/academic-ocr/drain/worklist.jsonl 2>/dev/null)
-echo "papers completed (all-time file): $done_n / worklist $total"
-echo "-- music tier-3 --"
-systemctl --user is-active mc-tier3.service | sed 's|^|unit: |'
-cd ~/mecattaf/music-consolidation 2>/dev/null && bash scripts/tier3-run.sh status 2>/dev/null | tail -1
 echo "-- box --"
 t=$(cat /sys/class/drm/card*/device/hwmon/hwmon*/temp1_input 2>/dev/null | head -1)
 echo "gpu edge: $((t/1000))C   disk free: $(df -h --output=avail / | tail -1 | tr -d ' ')"
+echo "-- llama-swap --"
+systemctl is-active llama-swap.service | sed 's|^|unit: |'
 REMOTE

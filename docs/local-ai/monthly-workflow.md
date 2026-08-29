@@ -101,7 +101,14 @@ unverified recommendation, never an instruction or state transition.
 The accepted context names each canonical model/MTP file and quantization, the
 128 GiB coordinator's NPU/IOMMU policy, and the rule that active llama.cpp model
 and MTP weights must be Q8. Native FastFlowLM NPU2 snapshots, F16/BF16 vision
-projectors, and speech/tokenizer artifacts are explicit format exceptions. Any
+projectors, and speech/tokenizer artifacts are explicit format exceptions.
+
+> **Superseded 2026-08-29: NPU decommissioned permanently; flm retired with
+> archive receipts (see [`../../lib/local-models.nix`](../../lib/local-models.nix)).**
+> The hardware policy string the bot ships in `pkgs/local-ai-monthly/sources.json`
+> now reads `NPU decommissioned 2026-08-29; IOMMU off (amd_iommu=off)`, and the
+> FastFlowLM NPU2 format exception is void. The bot must not propose an NPU
+> candidate; interactive local inference is the llama-swap GPU roster only. Any
 relevant finding must include an exact candidate/quant table.
 
 The concrete model is not hardcoded. The preparation derivation intersects the

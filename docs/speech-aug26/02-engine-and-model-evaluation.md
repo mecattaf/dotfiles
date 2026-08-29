@@ -80,6 +80,8 @@ That makes the repository an excellent **executable bill of materials and patch 
 
 Kyuz0’s broader Strix Halo work is worth continuing to monitor because it is close to this hardware and frequently exposes the exact gfx1151 packaging gap. One local distinction must remain: do not copy Fedora advice to disable IOMMU. This machine’s XDNA/NPU path relies on translated IOMMU mode.
 
+> **Superseded 2026-08-29: the NPU is decommissioned and `amd_iommu=off` is now the fleet setting; this warning is void.** The XDNA/NPU path it protected no longer exists on either Strix Halo twin, and FastFlowLM is retired with archive receipts (see `lib/local-models.nix`). The sentence above is kept as the documented reason it was ever written.
+
 ## ASR and translation
 
 Parakeet and VibeVoice ASR have different jobs:
