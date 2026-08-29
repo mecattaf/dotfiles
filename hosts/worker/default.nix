@@ -210,6 +210,26 @@
       '';
     };
   };
+  # ── NFS readahead: undo the kernel's 128KB default (2026-08-29) ──────────
+  # Same fix as the coordinator's nfs-nas-readahead (hosts/coordinator/
+  # nas-client.nix — full lore and the live A/B measurements there: 88 →
+  # 113 MB/s, within ~6% of raw TCP). Kernel ≥5.18 gives every NFS mount a
+  # 128KB bdi readahead window regardless of rsize, which starves the RPC
+  # pipeline on the wifi path's RTT and was the real "650 Mbps hotload
+  # ceiling" all along. Hooked to the mount unit because the bdi is recreated
+  # at the kernel default on every automount trigger — and this mount cycles
+  # every 10 idle minutes (x-systemd.idle-timeout above), so a boot-time
+  # setter would be reverted within the hour.
+  systemd.services.nfs-library-readahead = {
+    description = "Raise NFS readahead on /mnt/library (kernel default 128KB caps the wifi path at ~88MB/s)";
+    wantedBy = [ "mnt-library.mount" ];
+    after = [ "mnt-library.mount" ];
+    serviceConfig.Type = "oneshot";
+    script = ''
+      echo 16384 > "/sys/class/bdi/$(${pkgs.util-linux}/bin/mountpoint -d /mnt/library)/read_ahead_kb"
+    '';
+  };
+
   services.local-models.libraryPath = "/mnt/library/weights";
 
   # ── Thunderbolt link durability, worker half (2026-08-21 ruling: the

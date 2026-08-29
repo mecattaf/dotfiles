@@ -75,6 +75,31 @@ in
         ];
       };
 
+      # ── NFS readahead: undo the kernel's 128KB default (2026-08-29) ────────
+      # Since kernel ~5.18 every NFS mount gets a 128KB bdi readahead window
+      # regardless of rsize (it used to be 15x rsize = 15MB). On this wifi
+      # path's ~2.7ms RTT that starves the RPC pipeline: measured live on this
+      # box, a sequential Library read did 88 MB/s stock and 113 MB/s at 16MB
+      # readahead — within ~6% of the raw-TCP ceiling (~120 MB/s), so this one
+      # knob closes the whole NFS-vs-TCP gap. The knobs it replaces: rsize/
+      # wsize already negotiate to 1MB (checked live, do not add them), and
+      # nconnect is not worth a remount — a single stream already saturates
+      # the air (~74% of the 1297 Mbit/s PHY rate is normal wifi MAC
+      # efficiency).
+      #
+      # Hooked to the MOUNT UNIT, not boot: the bdi device is recreated with
+      # the 128KB default on every automount trigger, so the setter must
+      # re-fire each time the mount comes up.
+      systemd.services.nfs-nas-readahead = {
+        description = "Raise NFS readahead on /mnt/nas (kernel default 128KB caps the wifi path at ~88MB/s)";
+        wantedBy = [ "mnt-nas.mount" ];
+        after = [ "mnt-nas.mount" ];
+        serviceConfig.Type = "oneshot";
+        script = ''
+          echo 16384 > "/sys/class/bdi/$(${pkgs.util-linux}/bin/mountpoint -d /mnt/nas)/read_ahead_kb"
+        '';
+      };
+
       # ── #139: warm the automount before the graphical session ──────────────
       # home/home.nix points the Music/Videos XDG user dirs and the Photos
       # bookmark at /mnt/nas. When the automount is still cold at session start
