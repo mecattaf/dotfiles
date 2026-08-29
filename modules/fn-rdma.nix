@@ -87,28 +87,35 @@ let
       exit 0
     fi
 
-    if [ -e /etc/fn-rdma-disable ]; then
-      say "/etc/fn-rdma-disable present — loading the STOCK pair"
+    # Stock fallback loads the matched IN-TREE stream module (7.2 ships it);
+    # the patched path below insmods the staged MATCHED build instead. Never
+    # crossed: the series changes the XDomain protocol-handler ABI that
+    # stream registers against — same all-or-nothing doctrine as net.
+    load_stock() {
       modprobe thunderbolt
       modprobe thunderbolt_net
+      modprobe thunderbolt_stream || true
+    }
+
+    if [ -e /etc/fn-rdma-disable ]; then
+      say "/etc/fn-rdma-disable present — loading the STOCK set"
+      load_stock
       exit 0
     fi
 
     for m in thunderbolt-patched.ko thunderbolt_net.ko thunderbolt_ibverbs.ko; do
       if [ ! -f "$staged/$m" ]; then
-        say "staged $m missing under $staged — falling back to the STOCK pair"
-        modprobe thunderbolt
-        modprobe thunderbolt_net
+        say "staged $m missing under $staged — falling back to the STOCK set"
+        load_stock
         exit 0
       fi
     done
 
     if ! insmod "$staged/thunderbolt-patched.ko"; then
       # The one sanctioned fallback: the patched CORE itself refused, so the
-      # host runs the stock pair — a plain, known-good boot.
-      say "patched core failed to insert — falling back to the STOCK pair"
-      modprobe thunderbolt || true
-      modprobe thunderbolt_net || true
+      # host runs the stock set — a plain, known-good boot.
+      say "patched core failed to insert — falling back to the STOCK set"
+      load_stock || true
       exit 0
     fi
 
@@ -121,6 +128,12 @@ let
       exit 1
     fi
     say "patched core + net inserted"
+    if [ -f "$staged/thunderbolt_stream.ko" ]; then
+      insmod "$staged/thunderbolt_stream.ko" \
+        || say "matched stream module refused to insert — USB4STREAM absent this boot"
+    else
+      say "no matched thunderbolt_stream.ko staged — USB4STREAM absent this boot (the in-tree one never loads over the patched core)"
+    fi
     # Marker for fn-rdma-ibverbs: the leaf loads only over OUR core.
     touch /run/fn-rdma-patched
   '';
@@ -173,7 +186,7 @@ in
 
     stagedDir = lib.mkOption {
       type = lib.types.str;
-      default = "/home/tom/.local/state/flashnext-rdma/7.2/out";
+      default = "/home/tom/.local/state/flashnext-rdma/7.2.0/out";
       description = ''
         Where fetch-and-build.sh staged the matched .ko set on THIS host.
         Deliberately a runtime path, not a store path: the modules are
@@ -181,24 +194,30 @@ in
         attended lane, not by nix — route (b), the nix-native kernel swap,
         was evaluated and declined in host/rdma/attended-bringup.md.
 
-        RE-BAKE PENDING (2026-08-29, #244): the twins moved to linux 7.2 and
-        this default moved with them, but the 7.2 .ko set has not been built
-        yet — that is the ATTENDED operator lane
-        (host/rdma/fetch-and-build.sh), not something a switch can do. Until
-        the set is staged at this path the loadScript takes its sanctioned
-        fallback and loads the STOCK thunderbolt pair: the TB rails come up
-        and carry IP normally, there is simply no ibverbs device. That is a
-        designed degradation, not a failure — nothing on the twins requires
-        RDMA to boot or to serve.
+        RE-BAKED 2026-08-29 (#244): the 7.2.0 set is built and staged
+        bit-identical on both twins (the script stages at $KVER = uname -r,
+        so the path is 7.2.0/out — the earlier 7.2/out guess never matched
+        anything). From the next boot the loadScript inserts the patched
+        set; if the staging is ever absent or refuses to insert, the
+        sanctioned fallback still loads the STOCK thunderbolt pair — rails
+        up, IP normal, no ibverbs device. RDMA USE stays gated behind the
+        attended lane either way (NCCL_IB_DISABLE=1 is unconditional in
+        fn-env.sh until the morning A/B flips it).
       '';
     };
   };
 
   config = lib.mkIf cfg.enable {
     # Loader 2 of the three in the header: block stage-2 udev's modalias path.
+    # thunderbolt_stream joined 2026-08-29: the peer advertising kstream would
+    # otherwise make udev modalias-load the IN-TREE stream module over a
+    # patched core (tbsvc:kstreamp… alias). The explicit modprobe in the
+    # loader's stock fallback is unaffected — blacklist only gates alias
+    # resolution.
     boot.blacklistedKernelModules = [
       "thunderbolt"
       "thunderbolt_net"
+      "thunderbolt_stream"
     ];
 
     # RoCEv2 admission on rail 0 ONLY — the house per-interface idiom, never
