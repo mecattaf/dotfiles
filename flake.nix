@@ -1645,9 +1645,14 @@
                 hostConfig.home-manager.users.tom.home.packages;
             coordinatorPi = findPiWrapper coordinator;
             zenbookPi = findPiWrapper zenbook;
+            # The catalog's utility slot, resolved to the row that actually
+            # backs it. Backend-agnostic since the 2026-08-29 GPU migration:
+            # the top-level pointer names the row and `canonical` is what makes
+            # it live, so this stays honest across a change of engine.
             canonicalUtilityDeployments = nixpkgs.lib.filterAttrs (
-              _deploymentId: deployment:
-              deployment.status == "canonical" && deployment.backend == "npu" && deployment.model == "qwen3:4b"
+              deploymentId: deployment:
+              deployment.status == "canonical"
+              && deploymentId == localModelCatalog.utility.deployment
             ) localModelCatalog.deployments;
             selectedDeploymentIds = coordinator.services.local-models.allow;
             mageArtifactIds = [
@@ -1816,8 +1821,14 @@
           assert nixpkgs.lib.all (
             package: nixpkgs.lib.getName package != "fastflowlm"
           ) coordinator.environment.systemPackages;
-          assert nixpkgs.lib.all (
-            package: nixpkgs.lib.getName package != "utility-model"
+          # The wrapper SURVIVES the decommission by moving to the GPU roster
+          # (Tom's ruling, 2026-08-29) — it is installed by
+          # modules/local-models.nix wherever the utility deployment is
+          # canonical, host-assigned, and allowed. That is the coordinator and
+          # only the coordinator: the worker's roster is the two gemma4-31b rows
+          # and its llama-swap has never heard of qwen3.6-35b-a3b.
+          assert nixpkgs.lib.any (
+            package: nixpkgs.lib.getName package == "utility-model"
           ) coordinator.environment.systemPackages;
           assert nixpkgs.lib.all (
             package: nixpkgs.lib.getName package != "fastflowlm"
@@ -1828,14 +1839,19 @@
           assert
             localModelCatalog.utility == {
               stableId = "utility";
-              deployment = "flm-qwen3-4b-utility";
+              deployment = "qwen36-35b-a3b-mtp-ud-q8-k-xl";
               contextTokens = 32768;
             };
-          # The utility SLOT above stays (npu-llm still reads its shape), but
-          # its deployment retired 2026-08-29, so no canonical qwen3:4b NPU row
-          # remains and utilityEnabled derives false on every host.
-          assert builtins.length (builtins.attrNames canonicalUtilityDeployments) == 0;
+          # Exactly one canonical row backs the stable `utility` id, it is the
+          # Vulkan qwen3.6-35B-A3B, llama-swap serves it under that id on the
+          # coordinator, and it is emphatically not the retired FLM row.
+          assert builtins.length (builtins.attrNames canonicalUtilityDeployments) == 1;
+          assert canonicalUtilityDeployments ? "qwen36-35b-a3b-mtp-ud-q8-k-xl";
           assert !(canonicalUtilityDeployments ? "flm-qwen3-4b-utility");
+          assert
+            canonicalUtilityDeployments."qwen36-35b-a3b-mtp-ud-q8-k-xl".model
+            == "qwen3.6-35b-a3b";
+          assert coordinatorSettings.models ? "qwen3.6-35b-a3b";
           assert localModelCatalog.deployments."flm-qwen3-4b-utility".hosts == [ "coordinator" ];
           assert !(localModelCatalog.deployments."flm-qwen3-4b-utility" ? peer);
           assert !(localModelCatalog.deployments."flm-gemma4-it-e4b" ? peer);

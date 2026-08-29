@@ -1,41 +1,49 @@
 #!/usr/bin/env python3
-"""Request-scoped owner for the local FastFlowLM utility model.
+"""Request-scoped owner for the local utility model.
 
 The application-facing protocol is one OpenAI-compatible chat-completions
 request on stdin and one response on stdout.  Callers may name only the stable
-model ID ``utility``.  Nix supplies the concrete FastFlowLM tag and executable.
+model ID ``utility``.  Nix supplies the llama-swap endpoint and the concrete
+served model ID.
 
-There is deliberately no long-running service here: each invocation takes the
-NPU lock, starts its own loopback-only FLM child, performs one request, and
-stops the child before returning.
+Installed on the coordinator only, GPU-backed via llama-swap since 2026-08-29.
+Until that date the seam owned a FastFlowLM child on the XDNA2 NPU: it took an
+NPU lock, spawned a loopback-only server, waited for health, ran one request,
+and killed the child.  That NPU is decommissioned permanently, and Tom's ruling
+moved the seam rather than retiring it, so this file now forwards one request to
+the coordinator's llama-swap endpoint and rewrites ``utility`` to the concrete
+served ID on the way out and back.
 
-Not installed anywhere since 2026-08-29 (NPU decommission).  Kept in-tree
-because the ai-memory flake check imports this file by path as the module
-under test.
+No lock and no child process survive that move.  llama-swap already serializes
+per-model loads, cold-loads on demand, and TTL-unloads when idle, so the only
+thing left here is the bounded request itself.  It can still take minutes: a
+cold load of a ~40 GB Vulkan model is exactly what llama-swap's own 900s
+healthCheckTimeout (modules/llama-swap.nix) is sized for, and callers already
+tolerated FLM's start-wait, so the default timeout below is generous on purpose.
+
+The ai-memory flake check imports this file by path as the module under test,
+independently of which hosts install the wrapper.
 """
 
 from __future__ import annotations
 
 import argparse
-import fcntl
 import json
-import os
-import signal
-import socket
-import stat
-import subprocess
 import sys
-import tempfile
-import time
 import urllib.error
+import urllib.parse
 import urllib.request
-from pathlib import Path
 from typing import BinaryIO
 
 
 STABLE_MODEL_ID = "utility"
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+DEFAULT_ENDPOINT = "http://localhost:9292"
+CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
+# Cold-loading the served model can consume llama-swap's whole 900s health
+# window before a single token is generated; leave room for the generation too.
+DEFAULT_TIMEOUT_SECONDS = 1200.0
 
 
 class UtilityModelError(RuntimeError):
@@ -44,11 +52,11 @@ class UtilityModelError(RuntimeError):
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run one request through the short-lived local utility model"
+        description="Run one request through the local utility model"
     )
     parser.add_argument(
-        "--flm",
-        required=True,
+        "--endpoint",
+        default=DEFAULT_ENDPOINT,
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
@@ -65,8 +73,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--timeout",
         type=float,
-        default=600.0,
-        help="Total lock, startup, and request timeout in seconds (default: 600)",
+        default=DEFAULT_TIMEOUT_SECONDS,
+        help=(
+            "Total request timeout in seconds, cold load included "
+            f"(default: {DEFAULT_TIMEOUT_SECONDS:.0f})"
+        ),
     )
     return parser.parse_args(argv)
 
@@ -95,50 +106,13 @@ def load_request(stream: BinaryIO) -> dict[str, object]:
     return request
 
 
-def runtime_lock_path() -> Path:
-    configured = os.environ.get("XDG_RUNTIME_DIR")
-    runtime_root = (
-        Path(configured)
-        if configured
-        else Path(tempfile.gettempdir()) / f"ai-memory-{os.getuid()}"
-    )
-    lock_dir = runtime_root / "ai-memory"
-    lock_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
-    info = lock_dir.lstat()
-    if stat.S_ISLNK(info.st_mode) or info.st_uid != os.getuid():
-        raise UtilityModelError(f"unsafe utility lock directory: {lock_dir}")
-    os.chmod(lock_dir, 0o700)
-    return lock_dir / "utility-model.lock"
-
-
-def acquire_lock(path: Path, deadline: float) -> BinaryIO:
-    flags = os.O_CREAT | os.O_RDWR | os.O_CLOEXEC
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    fd = os.open(path, flags, 0o600)
-    lock = os.fdopen(fd, "a+b", buffering=0)
-    while True:
-        try:
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return lock
-        except BlockingIOError:
-            if time.monotonic() >= deadline:
-                lock.close()
-                raise UtilityModelError("timed out waiting for the local utility NPU")
-            time.sleep(0.1)
-
-
-def reserve_loopback_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
-
-
-def remaining_seconds(deadline: float) -> float:
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        raise UtilityModelError("utility-model request timed out")
-    return remaining
+def normalize_endpoint(endpoint: str) -> str:
+    parsed = urllib.parse.urlsplit(endpoint)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise UtilityModelError(
+            f"utility endpoint must be an http(s) URL, got: {endpoint}"
+        )
+    return endpoint.rstrip("/")
 
 
 def read_bounded(response: BinaryIO) -> bytes:
@@ -150,75 +124,59 @@ def read_bounded(response: BinaryIO) -> bytes:
     return body
 
 
-def wait_until_ready(
-    process: subprocess.Popen[bytes],
-    base_url: str,
-    deadline: float,
-    log: BinaryIO,
-) -> None:
-    last_error = "server has not accepted a request"
-    while True:
-        return_code = process.poll()
-        if return_code is not None:
-            raise UtilityModelError(
-                f"FastFlowLM exited during startup ({return_code}): "
-                f"{tail_log(log)}"
-            )
-
-        remaining = remaining_seconds(deadline)
-        try:
-            with urllib.request.urlopen(
-                f"{base_url}/v1/models",
-                timeout=min(1.0, remaining),
-            ) as response:
-                if response.status == 200:
-                    read_bounded(response)
-                    return
-                last_error = f"health endpoint returned HTTP {response.status}"
-        except (OSError, urllib.error.URLError) as exc:
-            last_error = str(exc)
-
-        if remaining <= 0.1:
-            raise UtilityModelError(
-                "timed out waiting for FastFlowLM readiness: "
-                f"{last_error}; {tail_log(log)}"
-            )
-        time.sleep(min(0.1, remaining))
-
-
 def send_request(
     request: dict[str, object],
     concrete_model: str,
-    base_url: str,
-    deadline: float,
+    endpoint: str,
+    timeout: float,
 ) -> dict[str, object]:
     upstream_request = dict(request)
     upstream_request["model"] = concrete_model
     upstream_request["stream"] = False
+    # Every consumer asks for a non-reasoning answer with FastFlowLM's `think`
+    # flag. llama.cpp takes that instruction through the chat template instead,
+    # and IGNORES the bare flag: measured 2026-08-29 against the served model,
+    # `think: false` still spent the whole token budget on reasoning_content and
+    # returned empty content, which is a silent failure for both the drain's
+    # JSON and print's classifier. Translate it here — the seam is the one place
+    # that knows the concrete backend, and consumers keep naming one flag.
+    if upstream_request.pop("think", None) is False:
+        template_kwargs = dict(upstream_request.get("chat_template_kwargs") or {})
+        template_kwargs.setdefault("enable_thinking", False)
+        upstream_request["chat_template_kwargs"] = template_kwargs
     encoded = json.dumps(
         upstream_request,
         ensure_ascii=False,
         separators=(",", ":"),
     ).encode("utf-8")
     http_request = urllib.request.Request(
-        f"{base_url}/v1/chat/completions",
+        f"{endpoint}{CHAT_COMPLETIONS_PATH}",
         data=encoded,
         headers={"Content-Type": "application/json"},
         method="POST",
     )
     try:
-        with urllib.request.urlopen(
-            http_request,
-            timeout=remaining_seconds(deadline),
-        ) as response:
+        with urllib.request.urlopen(http_request, timeout=timeout) as response:
             raw_response = read_bounded(response)
     except urllib.error.HTTPError as exc:
-        detail = exc.read(2048).decode("utf-8", errors="replace")
+        detail = " ".join(exc.read(2048).decode("utf-8", errors="replace").split())
         raise UtilityModelError(
-            f"FastFlowLM returned HTTP {exc.code}: {detail}"
+            f"llama-swap returned HTTP {exc.code} for model "
+            f"{concrete_model}: {detail}"
         ) from exc
-    except (OSError, urllib.error.URLError) as exc:
-        raise UtilityModelError(f"FastFlowLM request failed: {exc}") from exc
+    except urllib.error.URLError as exc:
+        raise UtilityModelError(
+            f"llama-swap at {endpoint} did not answer: {exc.reason}"
+        ) from exc
+    except TimeoutError as exc:
+        raise UtilityModelError(
+            f"llama-swap at {endpoint} did not answer within {timeout:g}s; "
+            f"a cold load of {concrete_model} can take minutes"
+        ) from exc
+    except OSError as exc:
+        raise UtilityModelError(
+            f"utility request to {endpoint} failed: {exc}"
+        ) from exc
 
     try:
         result = json.loads(raw_response)
@@ -231,46 +189,14 @@ def send_request(
         TypeError,
     ) as exc:
         raise UtilityModelError(
-            f"FastFlowLM returned a malformed chat response: {exc}"
+            f"llama-swap returned a malformed chat response: {exc}"
         ) from exc
     if not isinstance(result, dict) or not isinstance(content, str):
-        raise UtilityModelError("FastFlowLM chat response has no textual content")
+        raise UtilityModelError("llama-swap chat response has no textual content")
 
     # Keep the concrete deployment behind the stable boundary in both directions.
     result["model"] = STABLE_MODEL_ID
     return result
-
-
-def tail_log(log: BinaryIO, limit: int = 2048) -> str:
-    try:
-        log.flush()
-        log.seek(0, os.SEEK_END)
-        size = log.tell()
-        log.seek(max(0, size - limit))
-        text = log.read(limit).decode("utf-8", errors="replace")
-    except OSError:
-        return "no FastFlowLM log available"
-    compact = " ".join(text.split())
-    return compact or "no FastFlowLM log output"
-
-
-def stop_child(process: subprocess.Popen[bytes]) -> None:
-    if process.poll() is not None:
-        return
-    for child_signal, wait_seconds in (
-        (signal.SIGINT, 8.0),
-        (signal.SIGTERM, 3.0),
-        (signal.SIGKILL, 1.0),
-    ):
-        try:
-            os.killpg(process.pid, child_signal)
-        except ProcessLookupError:
-            return
-        try:
-            process.wait(timeout=wait_seconds)
-            return
-        except subprocess.TimeoutExpired:
-            continue
 
 
 def run_once(args: argparse.Namespace, request: dict[str, object]) -> dict[str, object]:
@@ -278,56 +204,8 @@ def run_once(args: argparse.Namespace, request: dict[str, object]) -> dict[str, 
         raise UtilityModelError("--timeout must be greater than zero")
     if args.context_tokens < 512:
         raise UtilityModelError("declared utility context must be at least 512 tokens")
-
-    deadline = time.monotonic() + args.timeout
-    lock = acquire_lock(runtime_lock_path(), deadline)
-    process: subprocess.Popen[bytes] | None = None
-    try:
-        port = reserve_loopback_port()
-        base_url = f"http://127.0.0.1:{port}"
-        environment = os.environ.copy()
-        environment["FLM_DISABLE_UPDATE_CHECK"] = "1"
-        with tempfile.TemporaryFile(mode="w+b") as log:
-            try:
-                process = subprocess.Popen(
-                    [
-                        args.flm,
-                        "serve",
-                        args.concrete_model,
-                        "--host",
-                        "127.0.0.1",
-                        "--port",
-                        str(port),
-                        "--ctx-len",
-                        str(args.context_tokens),
-                        "--cors",
-                        "0",
-                        "--quiet",
-                    ],
-                    stdin=subprocess.DEVNULL,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    env=environment,
-                    start_new_session=True,
-                )
-            except OSError as exc:
-                raise UtilityModelError(
-                    f"could not start local FastFlowLM: {exc}"
-                ) from exc
-
-            try:
-                wait_until_ready(process, base_url, deadline, log)
-                return send_request(
-                    request,
-                    args.concrete_model,
-                    base_url,
-                    deadline,
-                )
-            finally:
-                stop_child(process)
-    finally:
-        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-        lock.close()
+    endpoint = normalize_endpoint(args.endpoint)
+    return send_request(request, args.concrete_model, endpoint, args.timeout)
 
 
 def main(argv: list[str] | None = None) -> int:

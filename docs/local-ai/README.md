@@ -2,12 +2,17 @@
 
 > **Superseded 2026-08-29: NPU decommissioned permanently; flm retired with
 > archive receipts (see [`lib/local-models.nix`](../../lib/local-models.nix)).**
-> Everything below that describes FastFlowLM, the `utility` slot, the
-> `utility-model` wrapper, ad-hoc `flm run <model>`, or `services.npu-llm` is
-> history. Both Strix Halo twins now boot `amd_iommu=off`, so the XDNA2 path
-> cannot come back without a reversed boot decision. Interactive local
-> inference is the llama-swap GPU roster and nothing else. The FastFlowLM
-> weights survive only under `/mnt/nas/models/weights/flm/`.
+> Everything below that describes FastFlowLM, an NPU-backed `utility` slot,
+> ad-hoc `flm run <model>`, or `services.npu-llm` is history. Both Strix Halo
+> twins now boot `amd_iommu=off`, so the XDNA2 path cannot come back without a
+> reversed boot decision. Interactive local inference is the llama-swap GPU
+> roster and nothing else. The FastFlowLM weights survive only under
+> `/mnt/nas/models/weights/flm/`.
+>
+> **The `utility` slot and its `utility-model` wrapper are NOT history** — they
+> migrated to the GPU roster (`qwen3.6-35B-A3B` via llama-swap) the same day.
+> Read every "utility" passage below as describing the old engine, not a dead
+> seam; `lib/local-models.nix` has the live wiring.
 
 The fleet provides a set of bounded appliances, not one undifferentiated LLM
 daemon. Each appliance owns a workload, an inference implementation, immutable
@@ -33,7 +38,9 @@ them:
    *Superseded 2026-08-29: NPU decommissioned permanently; flm retired with
    archive receipts (see `lib/local-models.nix`). Only Voxtype's Parakeet
    snapshot remains runtime-owned; the FastFlowLM half of this mechanism and
-   its rendered manifest are gone.*
+   its rendered manifest are gone. The `utility` slot left this mechanism
+   entirely the same day — it migrated to the GPU roster (`qwen3.6-35B-A3B`
+   via llama-swap) and is now mechanism 1, served.*
 4. Everything else in the catalog is **cataloged only** and downloads nothing.
 
 [`model-roster.md`](model-roster.md) is the authoritative split across those
@@ -95,7 +102,7 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 | Document OCR/RAG | Qwen3-VL 8B primary, 32B refine, Qwen3 Embedding 8B, Qwen3-VL Embedding 8B | Coordinator llama.cpp ROCm behind llama-swap | Active coordinator allowlist; text and multimodal embedders are complementary. |
 | Shared text and coding | Qwen 3.6 35B-A3B and stock 27B, both UD-Q8_K_XL with integrated MTP; Gemma 4 26B Q8 with matched MTP | Coordinator Vulkan behind llama-swap | Active coordinator allowlist. Qwen3-Coder-Next remains cataloged only. |
 | Computer use | Fara 1.5 27B/9B/4B, each Q8_0 plus matched BF16 projector | Coordinator ROCm behind llama-swap | Active coordinator allowlist; three sizes for the latency/quality tradeoff. |
-| Application utility slot | FastFlowLM Qwen3 4B behind the stable ID `utility` | `utility-model` wrapper; one start/request/stop cycle per request | **Superseded 2026-08-29: retired.** The wrapper is uninstalled; callers that wanted a utility model use the llama-swap roster. |
+| Application utility slot | ~~FastFlowLM Qwen3 4B~~ Qwen 3.6 35B-A3B UD-Q8_K_XL behind the stable ID `utility` | `utility-model` wrapper; one forwarded chat-completions request to llama-swap | **Migrated to the GPU roster 2026-08-29** (`qwen3.6-35B-A3B` via llama-swap), replacing the NPU start/request/stop cycle. Coordinator-only, because only that host's llama-swap carries the row. |
 | Ad-hoc NPU inference | FastFlowLM Gemma 4 E4B and GPT-OSS 20B | Direct, ad-hoc `flm run <model>` | **Superseded 2026-08-29: retired.** flm is not installed anywhere; weights archived under `/mnt/nas/models/weights/flm/`. |
 | Call transcription + diarization | Microsoft VibeVoice-ASR | Future dedicated PyTorch/ROCm batch service | BF16 payload and tokenizer are Nix-rooted on coordinator; service remains future work. |
 | Text-to-speech | VibeVoice Large community mirror | Future dedicated PyTorch/ROCm batch service | BF16 payload and tokenizer are Nix-rooted on coordinator; mirror risk remains recorded. |
@@ -104,10 +111,12 @@ nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
 
 ## Text classes
 
-- **Utility:** ~~the stable ID `utility` resolves to FastFlowLM Qwen3 4B at
-  32768 context, started and stopped around each request.~~ *Superseded
-  2026-08-29: NPU decommissioned permanently; flm retired with archive receipts
-  (see `lib/local-models.nix`). There is no utility class.*
+- **Utility:** the stable ID `utility` resolves to Qwen 3.6 35B-A3B UD-Q8_K_XL
+  at 32768 context, served by llama-swap on the coordinator. ~~It resolved to
+  FastFlowLM Qwen3 4B, started and stopped around each request.~~ *Migrated to
+  the GPU roster 2026-08-29 with the NPU decommission (see
+  `lib/local-models.nix`); the class survives, the engine changed, and the
+  wrapper no longer owns a child process.*
 - **Small and fast:** ~~`gemma4-it:e4b` and `gpt-oss:20b` remain available on
   the coordinator NPU through an explicit `flm run <model>`.~~ *Superseded
   2026-08-29: same decommission. Small-and-fast work goes to the llama-swap GPU
@@ -147,11 +156,15 @@ the current architecture.
    [`../../lib/mage-models.nix`](../../lib/mage-models.nix).
 2. [`../../modules/local-models.nix`](../../modules/local-models.nix) projects
    only the command-managed coordinator allowlist into the Nix store and llama-swap;
-   runtime appliances never become proxy peers.
+   runtime appliances never become proxy peers. Since 2026-08-29 it also owns
+   the `utility-model` wrapper, which is a projection of the catalog's utility
+   slot onto whichever host serves that row.
 3. ~~`../../modules/npu-llm.nix` validates the explicit FastFlowLM roster and
    writes its non-resident runtime manifest.~~ *Superseded 2026-08-29: NPU
    decommissioned permanently; flm retired with archive receipts (see
-   `lib/local-models.nix`). The module and its manifest are gone.*
+   `lib/local-models.nix`). The module is inert and its manifest is gone; the
+   utility wrapper it used to build moved to `modules/local-models.nix` with
+   the slot.*
 4. [`mage.md`](mage.md) records the selected Mage download set, deduplicated
    storage cost, upstream invocation contract, and serving boundary.
 5. [`deployment-decisions-2026-07-29.md`](deployment-decisions-2026-07-29.md)

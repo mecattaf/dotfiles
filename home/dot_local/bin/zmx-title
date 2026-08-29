@@ -9,18 +9,24 @@
 #   - a sanitized LLM-generated title  (only on full success), OR
 #   - the <fallback-name> byte-for-byte (on ANY failure).
 #
-# "ANY failure" = titling disabled, utility-model/jq missing, NPU unavailable,
-# model not pulled, timeout, empty/junk output. In every one of those cases the
-# output is IDENTICAL to the caller's deterministic name, so wiring this in can
-# never change behavior when the utility slot is unavailable — "titling off"
-# === today's shipped `<cwd-basename>-<HHMMSS>` naming.
+# "ANY failure" = titling disabled, utility-model/jq missing, the wrapper not
+# installed on this host, the model still cold-loading past the deadline,
+# empty/junk output. In every one of those cases the output is IDENTICAL to the
+# caller's deterministic name, so wiring this in can never change behavior when
+# the utility slot is unavailable — "titling off" === today's shipped
+# `<cwd-basename>-<HHMMSS>` naming.
 #
-# Automatic NPU titling is disabled by default. With ZMX_TITLE=1, the
-# Nix-managed `utility-model` command exclusively owns one short-lived
-# FastFlowLM start/request/stop cycle. This consumer knows only the stable
-# `utility` ID: there is no consumer model, URL, port, or provider override.
+# Automatic titling is disabled by default. With ZMX_TITLE=1, the Nix-managed
+# `utility-model` command exclusively owns one bounded request. This consumer
+# knows only the stable `utility` ID: there is no consumer model, URL, port, or
+# provider override. Which engine sits behind that ID is not this file's
+# business — it was a short-lived FastFlowLM NPU child until 2026-08-29 and is
+# the GPU roster through llama-swap since.
 #   ZMX_TITLE         (set to 1 to opt this cosmetic consumer in)
-#   ZMX_TITLE_TIMEOUT (default 45 — total local-NPU deadline, seconds)
+#   ZMX_TITLE_TIMEOUT (default 45 — total deadline, seconds. Deliberately far
+#                     below the seam's own budget: a cold-loading backend must
+#                     never stall terminal creation, and a fallback name here
+#                     costs nothing.)
 set -u
 
 fallback="${1-}"
@@ -59,8 +65,8 @@ payload="$(jq -n --arg s "$sys" --arg u "$usr" \
       messages:[{role:"system",content:$s},{role:"user",content:$u}]}' 2>/dev/null)" \
     || emit_fallback
 
-# The owner enforces the deadline and always tears its FLM child down before
-# returning. Any non-zero exit becomes this consumer's deterministic fallback.
+# The owner enforces the deadline. Any non-zero exit — unreachable backend,
+# timeout, upstream error — becomes this consumer's deterministic fallback.
 resp="$(printf '%s' "$payload" \
     | utility-model --timeout "$timeout" 2>/dev/null)" || emit_fallback
 

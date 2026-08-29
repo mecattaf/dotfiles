@@ -65,16 +65,23 @@ let
   ];
 
   # One canonical application-facing utility slot.  Consumers name only
-  # stableId; services.npu-llm owns the request-scoped rewrite to this
-  # FastFlowLM deployment.
+  # stableId; modules/local-models.nix owns the request-scoped rewrite to the
+  # deployment named here and installs the `utility-model` wrapper on whichever
+  # host serves it.
   #
-  # 2026-08-29: the slot's SHAPE stays (modules/npu-llm.nix and the flake's
-  # local-model-routing check both read it), but its deployment is retired with
-  # the NPU decommission — so npu-llm's utilityEnabled derives false and no host
-  # projects a utility model.
+  # 2026-08-29 — MIGRATED TO THE GPU ROSTER, chosen by Tom.  This slot used to
+  # name flm-qwen3-4b-utility, a FastFlowLM row on the XDNA2 NPU.  That NPU is
+  # decommissioned permanently and its row stays retired (with its archive
+  # receipt), but the SEAM is not: it moves to the GPU twin of the model Tom had
+  # earmarked as the drain's next engine, qwen36-35b-a3b-mtp-ud-q8-k-xl, which
+  # llama-swap already serves as `qwen3.6-35b-a3b` on the coordinator.  The
+  # wrapper forwards one request to that endpoint instead of owning an FLM
+  # child; llama-swap serializes loads and TTL-unloads, so nothing takes a lock.
+  #
+  # contextTokens tracks the row's own --ctx-size (commonLlamaArgs, 32768).
   utility = {
     stableId = "utility";
-    deployment = "flm-qwen3-4b-utility";
+    deployment = "qwen36-35b-a3b-mtp-ud-q8-k-xl";
     contextTokens = 32768;
   };
 
@@ -1437,7 +1444,7 @@ let
               };
               evidence = "api-only";
               hardware = "coordinator Strix Halo XDNA2 NPU; amdxdna/XRT from nix-amd-ai";
-              notes = "Canonical utility slot. A request-scoped owner rewrites `utility` to `qwen3:4b`, starts and stops FastFlowLM around the request, and never registers an FLM peer in llama-swap.";
+              notes = "Held the canonical utility slot until 2026-08-29, when a request-scoped owner rewrote `utility` to `qwen3:4b`, started and stopped FastFlowLM around the request, and never registered an FLM peer in llama-swap. The slot moved to qwen36-35b-a3b-mtp-ud-q8-k-xl with the NPU decommission; this row keeps only its archive receipt.";
             };
 
             flm-gemma4-it-e4b = {
@@ -1524,7 +1531,13 @@ let
               };
               evidence = "upstream-measured";
               hardware = "Ryzen AI MAX+ 395 / gfx1151 / 128 GB unified memory";
-              notes = "Default daily text generator. The Q8 GGUF contains its matched MTP block; llama.cpp self-speculation is enabled without a separate draft file.";
+              # Also the canonical utility deployment since 2026-08-29 (chosen
+              # by Tom): the top-level `utility` slot names this row, so the
+              # `utility-model` wrapper rewrites the stable id `utility` to the
+              # served id below. No second roster row and no second load — the
+              # drain and print seams dial the same resident backend as
+              # everything else on this host.
+              notes = "Default daily text generator, and the canonical utility deployment behind the stable `utility` id since 2026-08-29. The Q8 GGUF contains its matched MTP block; llama.cpp self-speculation is enabled without a separate draft file.";
             };
 
             qwen36-27b-mtp-ud-q8-k-xl = {
