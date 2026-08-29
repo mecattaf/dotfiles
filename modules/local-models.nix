@@ -88,8 +88,12 @@ let
         fi
         echo "local-models-sync: borrowing $id/$name ($bytes bytes)"
         mkdir -p "$(dirname "$dest")"
-        cp "$src" "$dest.part"
-        actual="$(sha256sum "$dest.part" | cut -d' ' -f1)"
+        # Hash DURING the copy (tee splits the stream), not after: the old
+        # cp-then-sha256sum shape re-read the whole artifact from local NVMe
+        # as a second pass — ~40-60s of pure overhead on an 80GB borrow
+        # (2026-08-29). Failure behavior is unchanged: pipefail + set -e
+        # abort on a failed read/write exactly as a failed cp did.
+        actual="$(tee "$dest.part" < "$src" | sha256sum | cut -d' ' -f1)"
         if [ "$actual" != "$oid" ]; then
           echo "local-models-sync: HASH MISMATCH for $id/$name (want $oid got $actual)" >&2
           rm -f "$dest.part"
