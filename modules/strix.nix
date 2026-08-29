@@ -107,8 +107,10 @@
     # The nix-amd-ai import stays — its overlay is applied unconditionally and
     # keeps pkgs.fastflowlm resolvable — but this gate removes amdxdna, the
     # accel udev rules, the XRT env vars, the @video/@render memlock limits,
-    # and the flm/utility-model packages from both twins. Recovery is flipping
-    # these back and restoring the catalog rows to canonical.
+    # and the flm package from both twins. Recovery is flipping these back and
+    # restoring the catalog rows to canonical. (utility-model survived the
+    # decommission: it migrated to the GPU seam the same day and now installs
+    # via modules/local-models.nix on the coordinator only, dialing llama-swap.)
     #
     # The memlock loss is not a serving regression: managed llama-swap sets its
     # own LimitMEMLOCK=infinity on its unit (modules/llama-swap.nix), so the GPU
