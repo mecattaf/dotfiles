@@ -47,13 +47,33 @@ in
 # harmless in that case and the cooldown keeps it polite).
 #
 # Journal discipline (the AdGuard vacuum lesson, #235): healthy rounds are
-# SILENT; strikes and remediations log, heartbeats never.
+# SILENT; strikes and remediations log, heartbeats never. Accounting is off
+# on the unit for the same reason — systemd's per-deactivation "Consumed
+# 32ms CPU time ... 84B IP traffic" stamp at a 30s cadence was ~2,400
+# journal lines/day of nothing, drowning the very state changes this
+# discipline exists to keep findable (noticed 2026-08-29 while doing
+# forensics on that day's incident).
+#
+# FIELD RECORD 2026-08-29 — the ladder's first live win, and a NEW failure
+# shape: at 13:01:49 the Freebox deauthed wan0 with Reason 16
+# (GROUP_KEY_HANDSHAKE_TIMEOUT) — the firmware missed a group-key rekey,
+# a different entry in the same mt7925 flakiness family as the 08-23
+# wedge. Strikes 1-5 ran 13:02:12→13:04:32, rung 1 (nmcli) failed, rung 2
+# (chip_reset) failed, rung 3 (USB re-enumeration) recovered at 13:06:04.
+# ~4 min 15 s outage, no hands. The remediation for the CLASS is the 7.2
+# kernel (./kernel.nix, #244): the mt7925 fixes that were "still in
+# upstream review" in the 08-28 research note land there. This ladder
+# stays as the safety net regardless.
 {
   config = lib.mkIf a8500Known {
     systemd.services.wan0-watchdog = {
       description = "Recover the A8500 uplink when internet via wan0 is dead";
       serviceConfig = {
         Type = "oneshot";
+        # Journal discipline (header): no per-run "Consumed ..." stamp.
+        CPUAccounting = false;
+        MemoryAccounting = false;
+        IPAccounting = false;
         ExecStart = pkgs.writeShellScript "wan0-watchdog" ''
           PATH=${
             lib.makeBinPath [
