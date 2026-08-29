@@ -115,6 +115,12 @@
     # The memlock loss is not a serving regression: managed llama-swap sets its
     # own LimitMEMLOCK=infinity on its unit (modules/llama-swap.nix), so the GPU
     # inference path never depended on the @video/@render limits this gate drops.
+    #
+    # linux 7.2 ships amdxdna IN-TREE, so disabling the nix-amd-ai module no
+    # longer keeps the driver off the bus — observed bound (0 users) on the
+    # worker's first 7.2 boot. Blacklist it: the NPU is decommissioned and,
+    # with amd_iommu=off, unusable regardless. Remove this line on revival.
+    boot.blacklistedKernelModules = [ "amdxdna" ];
     hardware.amd-npu = {
       enable = false;
       enableNPU = false;
