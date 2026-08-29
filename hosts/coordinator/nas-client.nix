@@ -72,7 +72,42 @@ in
           "x-systemd.automount"
           "x-systemd.mount-timeout=30s"
           "_netdev"
+          # Boot race, reproduced here 2026-08-29 (first 7.2 boot; same shape
+          # as the worker's dotfiles#240): local-models-sync's
+          # RequiresMountsFor pulls this mount into the boot transaction,
+          # mount.nfs4 runs before the wifi to `nas` has associated, gets
+          # ENETUNREACH, and the mount lands in `failed` — the sync dies as a
+          # dependency casualty and nfs-nas-readahead false-fails behind it.
+          # _netdev's network-online ordering cannot help: enp191s0 activates
+          # instantly, so NM reports online while the wifi is still
+          # associating. House doctrine — wait for the NAS's reality, not a
+          # target's word:
+          "x-systemd.requires=nas-reachable.service"
         ];
+      };
+      systemd.services.nas-reachable = {
+        description = "Wait for the NAS NFS export to answer before mounting it";
+        serviceConfig = {
+          Type = "oneshot";
+          # Stay active once passed: this gate exists for the boot race only,
+          # so later automount triggers must not re-serialize behind a fresh
+          # wait.
+          RemainAfterExit = true;
+          TimeoutStartSec = "3min";
+          # 120s covers wifi association with room; then proceed regardless —
+          # a genuinely dead NAS degrades to the soft+nofail design above
+          # (sync fails visibly, everything else is lazy), never to a louder
+          # failure or a hung boot.
+          ExecStart = pkgs.writeShellScript "wait-nas-reachable" ''
+            for _ in $(${pkgs.coreutils}/bin/seq 120); do
+              if ${pkgs.bash}/bin/bash -c 'exec 3<>/dev/tcp/nas/2049' 2>/dev/null; then
+                exit 0
+              fi
+              ${pkgs.coreutils}/bin/sleep 1
+            done
+            echo "nas:2049 unreachable after 120s; letting mount.nfs4 try anyway" >&2
+          '';
+        };
       };
 
       # ── NFS readahead: undo the kernel's 128KB default (2026-08-29) ────────
@@ -95,7 +130,12 @@ in
         wantedBy = [ "mnt-nas.mount" ];
         after = [ "mnt-nas.mount" ];
         serviceConfig.Type = "oneshot";
+        # The findmnt guard: this unit is wanted by the mount JOB, which fires
+        # it even when mount.nfs4 itself failed (seen on the 2026-08-29 boot
+        # race) — and `mountpoint -d` then answers with the autofs trigger's
+        # bdi, which has no read_ahead_kb. Nothing mounted → nothing to tune.
         script = ''
+          ${pkgs.util-linux}/bin/findmnt --type nfs4 --mountpoint /mnt/nas >/dev/null || exit 0
           echo 16384 > "/sys/class/bdi/$(${pkgs.util-linux}/bin/mountpoint -d /mnt/nas)/read_ahead_kb"
         '';
       };

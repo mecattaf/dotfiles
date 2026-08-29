@@ -225,7 +225,11 @@
     wantedBy = [ "mnt-library.mount" ];
     after = [ "mnt-library.mount" ];
     serviceConfig.Type = "oneshot";
+    # Same findmnt guard as the coordinator's setter: the mount JOB fires this
+    # unit even when mount.nfs4 itself failed, and `mountpoint -d` then
+    # answers with the autofs trigger's bdi, which has no read_ahead_kb.
     script = ''
+      ${pkgs.util-linux}/bin/findmnt --type nfs4 --mountpoint /mnt/library >/dev/null || exit 0
       echo 16384 > "/sys/class/bdi/$(${pkgs.util-linux}/bin/mountpoint -d /mnt/library)/read_ahead_kb"
     '';
   };
