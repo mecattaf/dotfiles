@@ -1071,12 +1071,25 @@ def utility_content(response: dict[str, object] | str) -> str:
     return content
 
 
+# The NPU utility model was decommissioned 2026-08-29 on both Strix Halo
+# boxes, permanently: `hardware.amd-npu.enable` and `services.npu-llm.enable`
+# are both false, so neither the `utility-model` wrapper nor the `flm` CLI is
+# installed on any host any more. This seam therefore no longer degrades into
+# "try again once the coordinator is switched" — there is no configuration
+# that brings it back. It fails closed with one clean sentence, through the
+# same MemoryError path every other bounded failure uses, so callers, `main`,
+# and the tests keep their existing exit and return semantics.
+UTILITY_DECOMMISSIONED = (
+    "the NPU utility model was decommissioned 2026-08-29; "
+    "the /drain distillation path is retired — "
+    "no configuration switch restores it"
+)
+
+
 def invoke_utility(request: dict[str, object]) -> dict[str, object]:
     command = shutil.which("utility-model")
     if command is None:
-        raise MemoryError(
-            "local utility-model is unavailable; switch the coordinator configuration first"
-        )
+        raise MemoryError(UTILITY_DECOMMISSIONED)
     try:
         completed = subprocess.run(
             [command, "--timeout", str(UTILITY_TIMEOUT_SECONDS)],

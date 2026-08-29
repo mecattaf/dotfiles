@@ -237,6 +237,20 @@ class UtilityOwnerTests(unittest.TestCase):
         self.assertTrue((self.records / "stopped").is_file())
 
 
+class UtilityOwnerRetentionTests(unittest.TestCase):
+    def test_owner_records_why_it_stays_in_tree_while_uninstalled(self) -> None:
+        # The NPU decommission of 2026-08-29 removed the `utility-model`
+        # wrapper from every host, but this file is still the module under
+        # test for the checks above — it is imported by path, not by PATH.
+        # Pin the rationale so a later cleanup pass does not read "installed
+        # nowhere" as "delete me" and take these tests down with it.
+        source = UTILITY_OWNER.read_text(encoding="utf-8")
+        self.assertIn("2026-08-29", source)
+        self.assertIn("NPU decommission", source)
+        self.assertIn("flake check", source)
+        self.assertIn("by path", source)
+
+
 class ZmxTitleTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temporary = tempfile.TemporaryDirectory()

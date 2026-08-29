@@ -5,22 +5,33 @@ description: Render Markdown, plain text, or HTML into restrained, readable A4 P
 
 # Print
 
-## Autopilot rendering (preferred)
+## Autopilot rendering
 
-Hand over ONLY the markdown; the request-scoped NPU utility model makes
-every typesetting decision (profile, one-page enforcement, duplex,
-filename, title) and drives the renderer:
+**Auto-classification is retired as of 2026-08-29.** Typesetting decisions
+used to come from the request-scoped NPU utility model; that NPU was
+decommissioned permanently on both Strix Halo boxes and the `utility-model`
+wrapper is no longer installed on any host. Nothing restores it.
+
+`print-auto.py` still works and is still the fastest path to paper — the
+retirement is deliberately non-fatal. It now renders with the deterministic
+default that always backed the model (source-serif, duplex, no one-page
+enforcement, kebab-case filename from the input stem), writes provenance
+`"retired"` into decision.json, and prints one stderr notice saying so:
 
     ~/.claude/skills/print/scripts/print-auto.py INPUT.md \
       [--intent brief|document|form|specimen] [--print] \
       [--target-pages N] [--output-dir DIR]
 
-The session should not deliberate typography when using this path. Every
-print becomes a dated job directory under ~/Paper/jobs (markdown archived
-as source.md, rendered PDF, decision.json receipt recording npu /
-npu-retry / fallback provenance, plus pages_rendered / target_pages /
-length_check). Fall back to direct print-paper.py below only when the user
-explicitly asks for a specific profile or layout comparison.
+Because nothing chooses typography for you any more, **use Manual rendering
+below whenever the profile or layout actually matters** — anything literary,
+formal, academic, or single-page. Reach for autopilot when the default is
+fine and the job-directory bookkeeping is what you want. `--intent` is
+accepted but no longer changes the outcome.
+
+Every print becomes a dated job directory under ~/Paper/jobs (markdown
+archived as source.md, rendered PDF, decision.json receipt recording npu /
+npu-retry / fallback / retired provenance, plus pages_rendered /
+target_pages / length_check).
 
 **Render-verify-submit (issue #227) — MANDATORY when the user gave the
 document an acceptance condition** (a page count, "one-pager", "N pages",

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -222,6 +224,17 @@ class SkillBoundaryTests(unittest.TestCase):
         self.assertIn('ai_memory.py" pickup', pickup)
         self.assertNotIn('ai_memory.py" drain', pickup)
         self.assertIn("ai-memory:parent", pickup)
+
+    def test_drain_skill_states_the_permanent_utility_model_retirement(self) -> None:
+        drain = DRAIN_SKILL.read_text()
+        self.assertIn("2026-08-29", drain)
+        self.assertIn("decommission", drain.lower())
+        # The retirement is permanent: the skill must not send a session off
+        # to change a host's configuration and retry, and must not offer a
+        # cloud or paid substitute for the model that is gone.
+        self.assertNotIn("switch the coordinator configuration", drain)
+        self.assertIn("no configuration switch", drain)
+        self.assertIn("paid", drain)
 
 
 class DrainTests(unittest.TestCase):
@@ -506,6 +519,47 @@ class DrainTests(unittest.TestCase):
                 self.journal,
                 f"{predecessor.source}:{predecessor.session_id}",
             )
+
+    def test_absent_utility_model_refuses_permanently_and_writes_nothing(self) -> None:
+        # The NPU was decommissioned 2026-08-29 and `utility-model` is not
+        # installed on any host any more, so the seam's own default invoker is
+        # what a real /drain now hits. It must fail closed through the ordinary
+        # bounded MemoryError path — same exit semantics as every other
+        # failure, no traceback, no partial note — and it must not tell the
+        # session that switching a configuration would bring the model back.
+        trace = copied_trace(
+            fixture_trace(CLAUDE_HOME, CLAUDE_ROOT_ID),
+            self.root,
+        )
+        with mock.patch.object(memory.shutil, "which", return_value=None):
+            with self.assertRaises(memory.MemoryError) as caught:
+                memory.drain_session(
+                    identity=memory.Identity("claude-code", CLAUDE_ROOT_ID),
+                    journal_dir=self.journal,
+                    trace_path=trace,
+                    now=datetime.fromisoformat("2026-08-29T10:00:00+02:00"),
+                )
+        message = str(caught.exception)
+        self.assertIn("decommissioned 2026-08-29", message)
+        self.assertIn("no configuration switch restores it", message)
+        self.assertNotIn("switch the coordinator configuration", message)
+        self.assertFalse(list(self.journal.rglob("*.md")))
+
+    def test_retired_seam_exits_one_through_main_without_a_traceback(self) -> None:
+        stderr = io.StringIO()
+        with mock.patch.object(
+            memory,
+            "current_identity",
+            side_effect=memory.MemoryError(memory.UTILITY_DECOMMISSIONED),
+        ):
+            with contextlib.redirect_stderr(stderr):
+                status = memory.main(["drain"])
+        self.assertEqual(status, 1)
+        self.assertEqual(
+            stderr.getvalue(),
+            f"ai-memory: {memory.UTILITY_DECOMMISSIONED}\n",
+        )
+        self.assertNotIn("Traceback", stderr.getvalue())
 
     def test_trace_provenance_is_rechecked_before_writing(self) -> None:
         with self.assertRaisesRegex(memory.MemoryError, "different thread identity"):

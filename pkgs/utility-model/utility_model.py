@@ -8,6 +8,10 @@ model ID ``utility``.  Nix supplies the concrete FastFlowLM tag and executable.
 There is deliberately no long-running service here: each invocation takes the
 NPU lock, starts its own loopback-only FLM child, performs one request, and
 stops the child before returning.
+
+Not installed anywhere since 2026-08-29 (NPU decommission).  Kept in-tree
+because the ai-memory flake check imports this file by path as the module
+under test.
 """
 
 from __future__ import annotations
