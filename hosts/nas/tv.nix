@@ -41,12 +41,63 @@
   # first probe falls back to 1024x768 (worker lore, headless-display.nix).
   boot.initrd.extraFirmwarePaths = [ "edid/1920x1080.bin" ];
 
-  # A terminal for the session — niri's default config spawns alacritty; there
-  # is no dotfiles bootstrap on the appliance, so defaults are the config.
+  # Terminals for the session. kitty is what the binds spawn (2026-08-29,
+  # Tom at the console: Mod+Return must open kitty, like everywhere else);
+  # alacritty stays as the fallback niri's built-in defaults spawn if the
+  # config below ever fails to parse.
   environment.systemPackages = [
+    pkgs.kitty
     pkgs.alacritty
     pkgs.wayvnc
   ];
+
+  # There is no dotfiles bootstrap / home-manager on the appliance, so the
+  # session ran niri's built-in defaults (terminal on Mod+T → alacritty) —
+  # unusable muscle-memory at the TV corner. niri falls back to
+  # /etc/niri/config.kdl when ~/.config/niri/config.kdl is absent, which is
+  # exactly the appliance shape: a deliberately small, self-contained bind
+  # set (a `binds` section replaces ALL default binds, so everything needed
+  # at the console is spelled out; desktop binds.kdl is NOT imported — it
+  # spawns ~/.local/bin scripts this host does not have). Picked up at the
+  # session's next start; the running compositor only watches the file it
+  # loaded at startup.
+  environment.etc."niri/config.kdl".text = ''
+    binds {
+        Mod+Shift+Slash { show-hotkey-overlay; }
+
+        Mod+Return hotkey-overlay-title="Terminal" { spawn "kitty"; }
+        Mod+T { spawn "kitty"; }
+
+        Mod+Q { close-window; }
+
+        Mod+Left  { focus-column-left; }
+        Mod+Right { focus-column-right; }
+        Mod+Up    { focus-window-up; }
+        Mod+Down  { focus-window-down; }
+        Mod+H { focus-column-left; }
+        Mod+L { focus-column-right; }
+        Mod+K { focus-window-up; }
+        Mod+J { focus-window-down; }
+
+        Mod+Shift+Left  { move-column-left; }
+        Mod+Shift+Right { move-column-right; }
+        Mod+Shift+H { move-column-left; }
+        Mod+Shift+L { move-column-right; }
+
+        Mod+1 { focus-workspace 1; }
+        Mod+2 { focus-workspace 2; }
+        Mod+3 { focus-workspace 3; }
+        Mod+Shift+1 { move-column-to-workspace 1; }
+        Mod+Shift+2 { move-column-to-workspace 2; }
+        Mod+Shift+3 { move-column-to-workspace 3; }
+
+        Mod+F { maximize-column; }
+        Mod+Shift+F { fullscreen-window; }
+        Mod+R { switch-preset-column-width; }
+
+        Mod+Shift+E { quit; }
+    }
+  '';
 
   systemd.user.services.wayvnc = {
     description = "wayvnc — VNC mirror of the TV session";
