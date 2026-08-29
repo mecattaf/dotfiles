@@ -248,6 +248,21 @@
   security.polkit.enable = true;
   programs.dconf.enable = true; # so home-manager dconf theme keys apply
   services.gvfs.enable = true;
+  # #239: gvfs's Network pane browses mDNS/DNS-SD through a LOCAL avahi
+  # daemon — it does not sniff multicast itself. The NAS announces itself
+  # (hosts/nas/discovery.nix) but until now only the NAS ran an Avahi client
+  # (via printing.nix), so no desktop host could see the announcement. This
+  # is the client half of printing.nix's stanza, fleet-wide; values are
+  # identical so the NAS-side merge is a no-op. resolved's own mDNS stays
+  # off, same as printing.nix, so avahi is the single 5353 owner.
+  services.avahi = {
+    enable = true;
+    nssmdns4 = true;
+    # mkDefault: the NAS closes this itself (hosts/nas/discovery.nix opens
+    # its own per-interface firewall zones instead).
+    openFirewall = lib.mkDefault true;
+  };
+  services.resolved.settings.Resolve.MulticastDNS = false;
   services.udisks2.enable = true;
   services.power-profiles-daemon.enable = true;
   services.fprintd.enable = true; # fingerprint

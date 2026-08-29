@@ -26,6 +26,7 @@ default_threshold="${TRIPWIRE_THRESHOLD:?}"
 rearm="${TRIPWIRE_REARM:?}"
 sustain="${TRIPWIRE_SUSTAIN:-0}"
 refractory="${TRIPWIRE_REFRACTORY:-0}"
+renotify="${TRIPWIRE_RENOTIFY:-0}"
 comparison="${TRIPWIRE_COMPARISON:-ge}"
 value_field="${TRIPWIRE_VALUE_FIELD:-VALUE}"
 
@@ -99,6 +100,16 @@ if [ "$over" -eq 1 ]; then
   if [ "$now" -lt "$refractory_until" ]; then
     decision="suppressed"
   elif [ "$armed" -eq 1 ] && [ "$held_for" -ge "$sustain" ]; then
+    decision="fire"
+  elif [ "$armed" -eq 0 ] && [ "$renotify" -gt 0 ] && [ "$held_for" -ge "$renotify" ]; then
+    # Re-notification floor (#245): a disarmed tripwire whose condition has
+    # been continuously over-threshold for `renotify` seconds fires again
+    # rather than accumulating forever. Without this, a source that never
+    # yields a quiet poll (a unit flapping at the poll cadence) latches the
+    # watcher silent — the coordinator's drain-dashboard-dns failed 2,258
+    # times over 8 days and was reported once. The episode that fires here
+    # is the post-fire accumulation, so it carries its own fresh episode id
+    # and the marker/banner genuinely resurface.
     decision="fire"
   else
     decision="accumulating"
