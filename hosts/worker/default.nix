@@ -243,7 +243,13 @@
   # coordinator's /30 address; the loud tripwire lives coordinator-side.
   # Gated off under fn-rdma (#241), same as the coordinator's tb-fleet.nix:
   # modules-load ignores blacklists and pulls the stock core as a dependency.
-  boot.kernelModules = lib.mkIf (!config.myFnRdma.enable) [ "thunderbolt-net" ];
+  # thunderbolt_stream: 7.2 in-tree USB4 streaming, same pin and same
+  # verification as the coordinator's (tb-fleet.nix) — the kstream service
+  # only appears when BOTH ends advertise it.
+  boot.kernelModules = lib.mkIf (!config.myFnRdma.enable) [
+    "thunderbolt-net"
+    "thunderbolt_stream"
+  ];
   systemd.services.tb-link-heal = {
     description = "Heal the worker-coordinator Thunderbolt link where software can";
     serviceConfig = {

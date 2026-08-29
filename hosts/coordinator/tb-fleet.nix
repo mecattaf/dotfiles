@@ -115,7 +115,16 @@ in
   # Gated off under fn-rdma (#241): systemd-modules-load ignores blacklists
   # and would drag the STOCK core in as this module's dependency, beating the
   # patched set to the bus; fn-rdma's boot unit inserts its own matched net.
-  boot.kernelModules = lib.mkIf (!config.myFnRdma.enable) [ "thunderbolt-net" ];
+  # thunderbolt_stream: the 7.2 in-tree USB4 streaming service (dotfiles#244's
+  # "USB4STREAM"). Control plane verified live on both twins 2026-08-29: the
+  # kstream XDomain service appears on BOTH rails (0-2.1/1-2.1), and a
+  # configfs round-trip (/sys/kernel/config/thunderbolt/stream/<svc>/<name>)
+  # materializes /dev/tbstreamN. Pinned here so the service is advertised to
+  # the peer from boot, not from whenever someone modprobes it.
+  boot.kernelModules = lib.mkIf (!config.myFnRdma.enable) [
+    "thunderbolt-net"
+    "thunderbolt_stream"
+  ];
 
   # Layer 2: the reconciler.
   systemd.services.tb-link-heal = {
