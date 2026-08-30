@@ -127,7 +127,10 @@ in
         # CSRF) stays real.
         PAPERLESS_AUTO_LOGIN_USERNAME = "tom";
         PAPERLESS_URL = "http://paperless.internal";
-        PAPERLESS_ALLOWED_HOSTS = "paperless.internal,nas,10.77.0.2,127.0.0.1,localhost";
+        # 10.77.0.2 (the retired /30 cable address) left this list with #264 —
+        # the tether is gone, so the entry could only ever have matched a Host
+        # header no client can now send.
+        PAPERLESS_ALLOWED_HOSTS = "paperless.internal,nas,127.0.0.1,localhost";
         PAPERLESS_CSRF_TRUSTED_ORIGINS = "http://paperless.internal";
         # Embedded text is extracted directly; only true scans get the cheap
         # Tesseract baseline — and no PDF/A twin is ever persisted. The web
