@@ -186,7 +186,17 @@ in
 
     stagedDir = lib.mkOption {
       type = lib.types.str;
-      default = "/home/tom/.local/state/flashnext-rdma/7.2.0/out";
+      # modDirVersion, not version: the attended lane stages at $KVER =
+      # `uname -r`, which is the modules-dir string ("7.2.0"), while
+      # kernel.version is the bare series ("7.2") — using the latter is
+      # exactly how the original never-matching "7.2/out" default was born.
+      # Following the configured kernel means a kernel bump automatically
+      # retargets the loader at the (initially empty) new path: the first
+      # boot after a bump takes the sanctioned stock fallback until the
+      # attended lane re-bakes for the new vermagic. That is the designed
+      # sequence, not a regression.
+      default = "/home/tom/.local/state/flashnext-rdma/${config.boot.kernelPackages.kernel.modDirVersion}/out";
+      defaultText = lib.literalExpression ''"/home/tom/.local/state/flashnext-rdma/''${config.boot.kernelPackages.kernel.modDirVersion}/out"'';
       description = ''
         Where fetch-and-build.sh staged the matched .ko set on THIS host.
         Deliberately a runtime path, not a store path: the modules are
@@ -194,15 +204,12 @@ in
         attended lane, not by nix — route (b), the nix-native kernel swap,
         was evaluated and declined in host/rdma/attended-bringup.md.
 
-        RE-BAKED 2026-08-29 (#244): the 7.2.0 set is built and staged
-        bit-identical on both twins (the script stages at $KVER = uname -r,
-        so the path is 7.2.0/out — the earlier 7.2/out guess never matched
-        anything). From the next boot the loadScript inserts the patched
-        set; if the staging is ever absent or refuses to insert, the
-        sanctioned fallback still loads the STOCK thunderbolt pair — rails
-        up, IP normal, no ibverbs device. RDMA USE stays gated behind the
-        attended lane either way (NCCL_IB_DISABLE=1 is unconditional in
-        fn-env.sh until the morning A/B flips it).
+        From boot the loadScript inserts the patched set staged here; if the
+        staging is absent (fresh kernel bump awaiting its re-bake) or
+        refuses to insert, the sanctioned fallback loads the STOCK
+        thunderbolt set — rails up, IP normal, no ibverbs device. RDMA USE
+        stays gated behind the attended lane either way (NCCL_IB_DISABLE=1
+        is unconditional in fn-env.sh until the morning A/B flips it).
       '';
     };
   };
