@@ -41,7 +41,7 @@
   networking.networkmanager.enable = true;
   time.timeZone = lib.mkDefault "Europe/Paris";
   i18n.defaultLocale = lib.mkDefault "en_US.UTF-8";
-  system.nixos.distroName = "tombionix";
+  system.nixos.distroName = "bionix";
   boot.kernelPackages = lib.mkDefault pkgs.linuxPackages_latest;
   boot.loader.systemd-boot.enable = lib.mkDefault true;
   # #133 item 6: bound the boot menu to the same depth as the generation
