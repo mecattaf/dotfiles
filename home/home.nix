@@ -45,6 +45,7 @@ let
     # here too would double-provide bin/pi and collide in the profile.
     "codex"
     "spec-kit" # bin: `specify` — GitHub Spec-Kit, spec-driven development bootstrapper
+    "cc-switch-cli" # bin: `cc-switch` — switches Claude Code/Codex/Gemini CLI provider configs
   ];
   llmAgentsSelected = pkgs.buildEnv {
     name = "llm-agents-selected";
