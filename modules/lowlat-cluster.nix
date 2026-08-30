@@ -142,6 +142,22 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    # ── TCP admission on the tensor rail (2026-08-30, cp-tp2 latent killer) ──
+    # fn-env.sh computes NCCL_SOCKET_IFNAME from the rails that carry a
+    # routable /30 — which names thunderbolt0 — but until this stanza the
+    # rail's firewall admitted ONLY UDP 4791 (fn-rdma's RoCE door): every
+    # NCCL/Ray TCP connect over the rail would have hung at cp-tp2's first
+    # real bootstrap. Verified empirically (TCP connect over thunderbolt0
+    # timed out; the same test over the trusted 5GbE worked). Interface-scoped
+    # high-port range on a point-to-point /30 — the house per-interface idiom,
+    # NOT trustedInterfaces. NCCL and Ray both use dynamic high ports.
+    networking.firewall.interfaces.thunderbolt0.allowedTCPPortRanges = [
+      {
+        from = 1024;
+        to = 65535;
+      }
+    ];
+
     # ── Layer 1: the PM QoS hold, the whole measured win ─────────────────────
     systemd.services.lowlat-cluster = {
       description = "PM QoS cpu_dma_latency=0 for low-latency fleet rails";
