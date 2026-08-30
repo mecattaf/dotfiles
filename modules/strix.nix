@@ -89,7 +89,18 @@
           "gemma4-31b-it-q8-0"
           "gemma4-31b-it-vl"
         ];
-      artifacts = lib.optionals (config.networking.hostName == "coordinator") [
+      artifacts = [
+        # BOTH twins, unconditionally: the flashnext TP=2 checkpoint is
+        # tensor-parallel across coordinator AND worker, so each box needs the
+        # complete 185.6 GB on its own NVMe (TP shards compute, not weights).
+        # Listing it here is also what stops local-models-sync from pruning it:
+        # an artifact absent from wanted.json is `rm -rf`'d on every boot,
+        # rebuild, and sync-service start. That is not hypothetical — it
+        # deleted the freshly staged checkpoint from both twins on 2026-08-29.
+        # No llama-swap row: vLLM serves this one through its own pair service.
+        "flashnext-fp8"
+      ]
+      ++ lib.optionals (config.networking.hostName == "coordinator") [
         # Priority Mage family: the unified VLM and the low-latency generation
         # and editing variants. Base and RL checkpoints are intentionally
         # omitted; their quality gain does not justify 5-7.5x more steps here.
