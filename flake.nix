@@ -1356,7 +1356,17 @@
               "gemma4-31b-it-q8-0"
               "gemma4-31b-it-vl"
             ];
-          assert worker.services.local-models.artifacts == [ ];
+          # ...and exactly ONE artifact, which is not a mirror either: the FP8
+          # checkpoint is required IN FULL on each twin (tensor-parallel shards
+          # compute, not the on-disk weights), so both rosters carrying it is
+          # the symmetry requirement being met, not coordinator content leaking
+          # across. It is also the anti-prune row — absent from wanted.json,
+          # local-models-sync rm -rf's 185.6 GB on every boot, which it did to
+          # both twins on 2026-08-29. This guard read `== [ ]` until now and had
+          # been red since 8d772780 added the row; asserting the exact list
+          # keeps the original intent (nothing mirrored) while letting the one
+          # deliberate both-twins artifact through.
+          assert worker.services.local-models.artifacts == [ "flashnext-fp8" ];
           # AdGuard is FORBIDDEN per-device on this LAN (DoH vs the NAS's
           # dns_hijack). The worker is the box that collision was first proven
           # on, so its closure must not carry the service at all.
@@ -1745,8 +1755,14 @@
               "qwen38-27b-mtp-q8-0"
               "ornith-15-35b-q8-0"
             ];
+          # flashnext-fp8 leads this list for the same reason it is the worker's
+          # only artifact: it is declared on BOTH twins in modules/strix.nix
+          # because the FP8 checkpoint must be present in full per node, and it
+          # is the row whose absence makes local-models-sync prune 185.6 GB.
+          # Stale here since 8d772780 for the same reason as the worker guard.
           assert
             coordinator.services.local-models.artifacts == [
+              "flashnext-fp8"
               "mage-vl-bf16"
               "mage-flow-4b-turbo-bf16"
               "mage-flow-edit-4b-turbo-bf16"

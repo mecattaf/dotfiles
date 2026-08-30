@@ -41,8 +41,19 @@
 #      ORDERING: the unit runs before systemd-udev-trigger.service, so the
 #      patched core is already resident when typec's dependency resolves —
 #      a dependency on a loaded module is satisfied, not re-loaded. Possible
-#      only because the staged dir lives on the root filesystem (single-fs
-#      twins), readable before any udev-driven mount could exist.
+#      only because the staged dir lives on the ROOT filesystem, readable
+#      before any udev-driven mount could exist.
+#
+#      That last clause was free while the twins were single-disk. It became
+#      a LIVE CONSTRAINT on 2026-08-30 (#261): the coordinator gained the
+#      500GB retired off the worker and /home moved onto it wholesale. This
+#      unit runs at sysinit.target with DefaultDependencies=no, ordered only
+#      after systemd-remount-fs.service — it fires long before any ordinary
+#      mount unit could bring /home up. So stagedDir is /var/lib/... and NOT
+#      ~/.local/state/...: vermagic-pinned .ko files are OS state, not user
+#      data, and they were only ever under $HOME by accident of who built
+#      them. The old path is the one thing about the /home split that would
+#      have silently degraded both twins to the stock fallback forever.
 #   3. systemd-modules-load. tb-fleet.nix (coordinator) and the worker's
 #      default.nix pinned "thunderbolt-net" into boot.kernelModules — an
 #      explicit load that ignores blacklists AND drags the stock core in as a
@@ -195,10 +206,12 @@ in
       # boot after a bump takes the sanctioned stock fallback until the
       # attended lane re-bakes for the new vermagic. That is the designed
       # sequence, not a regression.
-      default = "/home/tom/.local/state/flashnext-rdma/${config.boot.kernelPackages.kernel.modDirVersion}/out";
-      defaultText = lib.literalExpression ''"/home/tom/.local/state/flashnext-rdma/''${config.boot.kernelPackages.kernel.modDirVersion}/out"'';
+      default = "/var/lib/flashnext-rdma/${config.boot.kernelPackages.kernel.modDirVersion}/out";
+      defaultText = lib.literalExpression ''"/var/lib/flashnext-rdma/''${config.boot.kernelPackages.kernel.modDirVersion}/out"'';
       description = ''
         Where fetch-and-build.sh staged the matched .ko set on THIS host.
+        MUST be on the root filesystem — this unit runs before any /home
+        mount unit can exist (#261; see loader 2 in the header).
         Deliberately a runtime path, not a store path: the modules are
         vermagic-pinned to the running kernel and rebuilt by the operator's
         attended lane, not by nix — route (b), the nix-native kernel swap,

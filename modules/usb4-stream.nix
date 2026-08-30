@@ -45,6 +45,11 @@
 #   - Rail 1 (the second cable) is parked with no IP and its worker-side
 #     controller failed DMA activation on first-ever use; streams provision
 #     on the rail-0 cable only until that link earns trust.
+#   - HopIDs are a SHARED, RACEABLE budget with thunderbolt_net, and the netdev
+#     existing does not mean it has claimed its own yet — it claims in
+#     tbnet_open, not at probe. Provisioning inside that window starves the IP
+#     rail (#262). The provisioner therefore gates on CARRIER, not on the
+#     netdev's presence. Do not relax that back to a -e test.
 let
   cfg = config.myUsb4Stream;
 
@@ -64,6 +69,29 @@ let
     done
     if [ ! -e "/sys/class/net/$rail/device" ]; then
       say "rail $rail never appeared; provisioning nothing (streams need the XDomain link)"
+      exit 0
+    fi
+
+    # The netdev EXISTING is not enough to provision safely. thunderbolt_net
+    # allocates its Rx HopID in tbnet_open — when the link is brought UP — not
+    # at probe, so there is a window where $rail is present but has claimed
+    # nothing yet. Allocating stream HopIDs inside that window takes the ones
+    # the net rail is about to ask for, and the rail comes up dark with
+    # "failed to allocate Rx HopID" (#262, observed 2026-08-30: the peer booted
+    # ~2 min after this host, the udev re-fire landed exactly in the window,
+    # and rail 0 lost its IP while rail 1 — which this unit never provisions —
+    # was unaffected). Carrier is the observable for "tbnet_open already won".
+    for _ in $(seq 120); do
+      [ "$(cat "/sys/class/net/$rail/carrier" 2>/dev/null || echo 0)" = 1 ] && break
+      sleep 1
+    done
+    if [ "$(cat "/sys/class/net/$rail/carrier" 2>/dev/null || echo 0)" != 1 ]; then
+      # Skip rather than race. The IP rail outranks the streams (tb-fleet.nix:
+      # "the coordinator-worker thunderbolt link MUST always be working"), and
+      # this is self-healing: the recovery for a dark rail is tb-link-heal's
+      # NHI rebind, which tears down and re-creates the XDomain devices and so
+      # re-fires this unit through the same udev rule that started it.
+      say "rail $rail has no carrier after 120s; NOT provisioning — streams must never outrank the IP rail (#262)"
       exit 0
     fi
 
