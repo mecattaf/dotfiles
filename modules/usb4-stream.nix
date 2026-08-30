@@ -138,8 +138,16 @@ in
   config = lib.mkIf cfg.enable {
     # The stream devices are operator surface (bench harnesses, transport
     # shims), not a root-only debug interface.
+    #
+    # The second rule is the lifecycle fix (learned 2026-08-30, worker
+    # reboot): the peer rebooting tears down and re-creates the XDomain, and
+    # the configfs group tree goes with it — a boot-time oneshot provisions
+    # NOTHING that survives the peer bouncing. Every (re)appearance of a
+    # stream service re-pulls the provisioner via the systemd-udev WANTS
+    # idiom, and the service is idempotent + re-runnable (no RemainAfterExit).
     services.udev.extraRules = ''
       KERNEL=="tbstream[0-9]*", GROUP="users", MODE="0660"
+      ACTION=="add", SUBSYSTEM=="thunderbolt", ATTR{key}=="stream", TAG+="systemd", ENV{SYSTEMD_WANTS}+="usb4-stream-provision.service"
     '';
 
     systemd.services.usb4-stream-provision = {
@@ -152,9 +160,11 @@ in
         "network.target"
         "fn-rdma-modules.service"
       ];
+      # Re-fired by udev on every stream-service appearance; a flapping cable
+      # must not trip the start limiter and leave streams unprovisioned.
+      unitConfig.StartLimitIntervalSec = 0;
       serviceConfig = {
         Type = "oneshot";
-        RemainAfterExit = true;
         ExecStart = provisionScript;
       };
     };
