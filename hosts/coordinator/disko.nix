@@ -6,7 +6,9 @@
   #
   # ── Why `device` is by-id and no longer /dev/nvme0n1 ────────────────────────
   # This box now has a SECOND NVMe: the 500GB SN7100 (serial 260538801482)
-  # retired off the worker. NVMe enumeration order is not an identity — the
+  # moved here from the worker, which took a 1TB in its place. It is not spare
+  # capacity — it carries the whole of /home and the box is expected to boot
+  # with it fitted. NVMe enumeration order is not an identity — the
   # worker proved it during the transition, where the same physical disk was
   # nvme1n1 before a reboot and nvme0n1 after, with no hardware change at all.
   # A destructive disko run against a bare /dev/nvme0n1 would therefore be a
@@ -58,7 +60,7 @@
   };
 
   # ── The secondary: /home on the 500GB (2026-08-30, #261) ────────────────────
-  # The WD_BLACK SN7100 500GB retired off the worker, serial 260538801482.
+  # The WD_BLACK SN7100 500GB moved over from the worker, serial 260538801482.
   # Wiped blank before the physical move (no partition table, no bootloader),
   # then laid out here.
   #
@@ -115,7 +117,31 @@
               "-m"
               "1"
             ];
-            mountOptions = [ "defaults" ];
+            # ── nofail is NOT optional on this host (#261) ─────────────────
+            # local-fs.target carries OnFailure=emergency.target with
+            # OnFailureJobMode=replace-irreversibly, root's shadow entry is
+            # `!`, and SYSTEMD_SULOGIN_FORCE is set nowhere in the closure. A
+            # REQUIRED /home that never appears therefore hangs for the 90s
+            # DefaultDeviceTimeout and then drops the fleet's control node into
+            # an emergency console that refuses to log in — recoverable only
+            # with external media. That is a worse outcome than every failure
+            # it could be protecting against.
+            #
+            # So this degrades the way the NAS mount does
+            # (hosts/coordinator/nas-client.nix): soft, visible, never a hung
+            # boot. 10s because an NVMe that is present is enumerated on the
+            # PCIe bus long before that, so the timeout only ever pays out when
+            # the disk is genuinely absent.
+            #
+            # The cost of nofail is that a missing /home becomes SILENT — the
+            # box boots into an empty one and services scribble on the anchor.
+            # home-on-secondary.service (hosts/coordinator/default.nix) is what
+            # makes it loud again; do not remove one without the other.
+            mountOptions = [
+              "defaults"
+              "nofail"
+              "x-systemd.device-timeout=10s"
+            ];
           };
         };
       };
