@@ -21,7 +21,7 @@
 #     the session name and NEVER delays the launch. It is disabled by default
 #     now that FastFlowLM models are ad-hoc `flm run` workloads rather than
 #     persistent llama-swap peers.
-#   - elsewhere (zenbook thin-client): open a new kitty that
+#   - elsewhere (any thin client): open a new kitty that
 #     immediately SSHs to coordinator via the `desk` fish function; niri's
 #     window-rule renders the white "remote" border once desk sets the title.
 

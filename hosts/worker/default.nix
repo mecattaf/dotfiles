@@ -68,8 +68,9 @@
   networking.hostName = "worker";
 
   # ── the LAN identity ───────────────────────────────────────────────────────
-  # thomas-6ghz, modelled on the zenbook's profile (hosts/zenbook-duo) for the
-  # WPA3-SAE/6GHz shape and on the coordinator's (hosts/coordinator/uplink-nas.nix)
+  # thomas-6ghz, modelled on the zenbook-duo's profile (that host was retired on
+  # 2026-08-30; see git history for hosts/zenbook-duo) for the WPA3-SAE/6GHz
+  # shape and on the coordinator's (hosts/coordinator/uplink-nas.nix)
   # for the STATIC addressing rationale — this box is stationary and load-bearing:
   # the NAS's Immich dials worker:3003 for every ML batch, the NAS admits
   # 10.42.0.5 for journal upload, and modules/common.nix pins the name fleet-wide.
@@ -105,7 +106,7 @@
   # settles, thomas-6ghz is its ONLY wifi profile — the flake asserts exactly
   # that, so a re-added second SSID fails the build rather than the house.
   #
-  # interface-name IS pinned (unlike the roaming zenbook): the firewall
+  # interface-name IS pinned (unlike a roaming host, which cannot be): the firewall
   # admissions this host depends on — :3003 in ./immich-ml.nix and :9292 in
   # modules/llama-swap.nix — are interface-scoped to wlp192s0 anyway, so an
   # interface rename must fail loudly here rather than half-work there.

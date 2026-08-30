@@ -46,9 +46,10 @@
     # dns_hijack drops on tcp/443 (hosts/nas/router.nix), so DNS would go dark
     # the moment this box joined `thomas`. Filtering now comes from the LAN
     # resolver (10.42.0.1) via DHCP; on the freebox-uplink fallback rail DNS is
-    # the Freebox's, unfiltered — accepted. The Zenbook Duo still imports the
-    # module and must shed it (or be exempted from the DoH drop list) before it
-    # ever gets a be550 profile.
+    # the Freebox's, unfiltered — accepted. The Zenbook Duo was the one host
+    # still importing the module, and left the fleet on 2026-08-30 without ever
+    # getting a be550 profile; no client carries AdGuard now, which is what the
+    # flake-level asserts pin.
     ./attic.nix # fleet binary-cache server (atticd over the tailscale mesh) — refs #42
     # Artifact serving plane: Caddy drop-dir + TTL reaper (publish-artifact
     # skill's tailnet rung). Live origins stay local on 127.0.0.1.

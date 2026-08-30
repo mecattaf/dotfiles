@@ -6,9 +6,10 @@
 }:
 # Per-machine AdGuard Home — the fleet's DNS ad/tracker filter, ONE loopback
 # instance per box. This replaces the old coordinator-only LAN quadlet that
-# filtered DNS for the now-retired BE550 wifi segment; coordinator, zenbook-duo,
-# and the Ethernet-only NAS now filter their OWN queries. Each host imports this
-# module explicitly.
+# filtered DNS for the now-retired BE550 wifi segment; the coordinator and the
+# Ethernet-only NAS now filter their OWN queries (the zenbook-duo was the third
+# importer until it left the fleet on 2026-08-30). Each host imports this module
+# explicitly.
 #
 # Fully declarative: mutableSettings = false, so the entire config lives here in
 # git and AdGuard NEVER runs its web setup wizard. AdGuardHome.yaml is
@@ -42,7 +43,9 @@ let
   # tailnet is used only by the host that actually needs it:
   #   coordinator  loopback   — its own Caddy, never touches an interface
   #   nas          /30 cable  — hosts/coordinator/uplink-nas.nix
-  #   zenbook-duo  tailnet    — genuinely remote and roaming; correct here
+  # The fallback branch below is the roaming case. It had one real user, the
+  # zenbook-duo (retired 2026-08-30), and is kept because it is what any future
+  # off-LAN host would take — see #233, which wants it re-pointed anyway.
   coordinatorAddr =
     {
       coordinator = "127.0.0.1";

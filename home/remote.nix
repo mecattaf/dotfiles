@@ -40,8 +40,8 @@ let
       # viewmode=1 → Remmina windowed (not auto-fullscreen), so niri's maximized
       # window-rule governs geometry. scale=1 → fit the remote framebuffer to that
       # window, so a maximized session fills the column cleanly regardless of the
-      # DPI/resolution mismatch between the high-DPI zenbook and the headless Strix
-      # outputs (wayvnc doesn't negotiate dynamic remote resize).
+      # DPI/resolution mismatch between whatever client is viewing and the
+      # headless Strix outputs (wayvnc doesn't negotiate dynamic remote resize).
       viewmode=1
       scale=1
     '';

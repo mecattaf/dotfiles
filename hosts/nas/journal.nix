@@ -43,8 +43,11 @@
   #
   # The sender set is the two Strix Halo boxes (Tom's 2026-08-21 ruling): they
   # live in the same room as this appliance, on this LAN, and never leave it.
-  # The zenbook is de-facto mobile and is deliberately NOT admitted — a roaming
+  # The rule was written to exclude the de-facto mobile zenbook-duo — a roaming
   # laptop streaming its journal home over arbitrary networks is the wrong trade.
+  # That host left the fleet on 2026-08-30, so the ACL now names every member
+  # there is; keep it an explicit allowlist rather than a subnet, so a future
+  # mobile member has to be admitted deliberately.
   #
   # Both sender addresses are STATIC on their own side
   # (hosts/coordinator/uplink-nas.nix, hosts/worker/default.nix) with dhcp-host

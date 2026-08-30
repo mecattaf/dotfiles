@@ -33,7 +33,9 @@
 # WHY AN OPTION AND NOT AN UNCONDITIONAL BLOCK: flooring C3 is right for a
 # dedicated inference node and wrong for a laptop. The gate is twofold — the
 # option below defaults OFF, and the only importer is modules/strix.nix, which
-# only `coordinator` and `worker` import. The zenbook can never see it.
+# only `coordinator` and `worker` import. The gate was written while the fleet
+# still had a laptop (zenbook-duo, retired 2026-08-30) and stays as written: it
+# is the shape that keeps this safe to import from anywhere.
 #
 # ─── The rails this fleet actually has, 2026-08-28 ──────────────────────────
 #

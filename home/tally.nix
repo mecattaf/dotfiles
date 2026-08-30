@@ -9,8 +9,6 @@
 #
 # home/home.nix is shared by the fleet, but the daemon, logical pools, local
 # executor, and calendar producers exist ONLY on coordinator.
-# zenbook-duo remains a best-effort target of the coordinator-owned deploy
-# workflow and is not required for coordinator maintenance.
 #
 # The calendar remains systemd's clock, while tally owns admission, ordering,
 # execution, and proof. One nightly item leases the build lane and coordinator GPU
@@ -203,7 +201,6 @@ in
     # One low-priority durable row replaces the old 02:00/03:30/04:30/06:00 chain.
     # It holds the build and coordinator GPU lanes end-to-end, making the measured
     # single-node build plus activation one exclusive maintenance window.
-    # The system service handles Zenbook's successful offline/low-power skip internally.
     producers = lib.optionalAttrs isCoordinator {
       # call-record and call-diarize-backfill drop complete EnqueuePayload files
       # into tally's shared events directory. tally-drain.timer already claims

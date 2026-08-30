@@ -4,9 +4,12 @@
 #
 # The star topology's senders are the STRIX HALO BOXES ONLY (Tom's ruling
 # 2026-08-21): coordinator + worker live in the same room as the NAS, on the same
-# LAN, and never leave it; the zenbook is de-facto mobile and never uploads,
-# because a roaming laptop streaming its journal home over arbitrary networks is
-# the wrong trade. hosts/coordinator/journal-upload.nix said "when hosts/worker
+# LAN, and never leave it. The rule was written against the zenbook-duo, which
+# was de-facto mobile and deliberately never uploaded — a roaming laptop
+# streaming its journal home over arbitrary networks is the wrong trade. That
+# host left the fleet on 2026-08-30 and the senders are now the whole of it, but
+# the rule stands for any future mobile member.
+# hosts/coordinator/journal-upload.nix said "when hosts/worker
 # lands, it gets this same sender module" — this is that module.
 #
 # It is deliberately the SENDER HALF ONLY. The weekly NVMe→HDD archive job and

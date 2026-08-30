@@ -1,10 +1,11 @@
 { pkgs, ... }:
 # Fleet journald substrate, sender side (issue #135, workstream 1). Star
 # topology; senders are the STRIX HALO BOXES ONLY (Tom's ruling 2026-08-21:
-# coordinator + worker live in the same room as the NAS; the zenbook is
-# de-facto mobile and never uploads — a roaming laptop streaming its journal
-# home over arbitrary networks is the wrong trade). When hosts/worker lands,
-# it gets this same sender module; zenbook/bridge stay thin clients.
+# coordinator + worker live in the same room as the NAS. The rule was written
+# to exclude the de-facto mobile zenbook-duo — a roaming laptop streaming its
+# journal home over arbitrary networks is the wrong trade — and that host left
+# the fleet on 2026-08-30, but the rule stands for any future mobile member).
+# When hosts/worker lands, it gets this same sender module.
 # Plaintext over the LAN (settled decision — nixpkgs systemd has no GnuTLS;
 # same trust domain as NFSv4 on the same segment).
 let

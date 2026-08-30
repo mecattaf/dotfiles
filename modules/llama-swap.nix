@@ -77,8 +77,10 @@ in
   # Two doors, both interface-scoped. Neither is global: llama-swap has no
   # application-layer authentication, so "which interface" IS the access control.
   #
-  # tailnet: roaming clients (zenbook, phone), matching the fleet's VNC/media/
-  # ASR posture. INERT on the worker, which has no tailnet by design — that box
+  # tailnet: roaming clients (Tom's phone; the zenbook-duo until it left the
+  # fleet 2026-08-30), matching the fleet's VNC/media/ASR posture. The door stays
+  # open — it is scoped to an interface, not to a host that happens to exist.
+  # INERT on the worker, which has no tailnet by design — that box
   # is a LAN compute node, not a tailnet service.
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ cfg.port ];
   # The house LAN. This comment used to read "the private /30 cable to the NAS,

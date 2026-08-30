@@ -6,7 +6,8 @@
 #   brightness up|down            adjust ALL internal (DRM/eDP) backlights together
 #   brightness up|down focused    adjust ONLY the niri-focused output's backlight
 #
-# The `focused` mode exists for the zenbook-duo's two eDP panels: it reads
+# The `focused` mode was written for the zenbook-duo's two eDP panels (that
+# host was retired 2026-08-30; the mode is generic and stays): it reads
 # `niri msg focused-output`, then finds the backlight whose sysfs path carries
 # that connector name (e.g. eDP-2 -> .../card1-eDP-2/card1-eDP-2-backlight,
 # eDP-1 -> .../card1-eDP-1/intel_backlight). Fully generic -- no per-host device
