@@ -197,28 +197,11 @@
       inputs.utils.follows = "tally/flake-utils";
     };
 
-    # ntm — niri tablet management (github.com/mecattaf/ntm): one Rust daemon
-    # for edge-initiated multi-finger touchscreen gestures + accelerometer
-    # rotation via iio-sensor-proxy. ZENBOOK-DUO ONLY — the one host with touch
-    # panels + an accelerometer; the coordinator never sees it.
-    # Consumed like tally (same author, same channel: flake input pinned in
-    # flake.lock, follows nixpkgs so the Rust build resolves against our one
-    # pin) — but ntm ships no home-manager module, only packages.*.ntm, so
-    # home/ntm.nix does the module work: package + config + manual-start user
-    # service, hostname-gated. Complements the PR #1856 niri fork's per-device
-    # touch→output mapping (overlays/default.nix, niri-local.kdl): niri routes
-    # each panel's touches, ntm layers bezel gestures + rotation on top.
-    # `nix flake update ntm` bumps to the latest pushed commit.
-    ntm = {
-      url = "github:mecattaf/ntm";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     # piri — niri IPC extension daemon (github.com/Asthestarsfalll/piri): one
     # Rust daemon that tails niri's event stream and layers plugins on top —
     # scratchpads, marks, window/workspace rules. We use it for the "music"
     # auto-scratchpad (Mod+M toggles a right-side SoundCloud/cliamp pane).
-    # Third-party but consumed exactly like ntm/tally: flake input pinned in
+    # Third-party but consumed exactly like tally: flake input pinned in
     # flake.lock, follows nixpkgs so the Rust build resolves against our one pin.
     # piri ships packages.default + a NixOS module, but NOT a home-manager
     # module, so home/piri.nix does the module work: package + user service, with
@@ -951,18 +934,16 @@
           assert coordinatorHome.programs.atuin.settings.auto_sync;
           assert coordinatorHome.services.tally.enable;
           assert coordinatorHome.programs.voxtype.enable;
-          assert !(coordinatorHome.systemd.user.services ? ntm);
           assert coordinatorHome.systemd.user.services ? wayvnc;
           # The worker keeps Home Manager (unlike the NAS, which stops at NixOS):
           # it is an ordinary interactive box that merely has nobody sitting at
           # it, so the shell, atuin sync and niri session are all real. What it
           # must NOT pick up are the things gated on being the coordinator — the
-          # Tally daemon and voxtype — or the zenbook's dual-screen ntm daemon.
+          # Tally daemon and voxtype.
           assert workerHome.home.username == "tom";
           assert workerHome.programs.atuin.settings.auto_sync;
           assert !workerHome.services.tally.enable;
           assert !workerHome.programs.voxtype.enable;
-          assert !(workerHome.systemd.user.services ? ntm);
           # wayvnc's unit exists and is deliberately unreachable — this host has
           # no tailnet and :5900 is admitted on tailscale0 only, fleet-wide. The
           # unit stays so the screen becomes viewable the day that changes; see
