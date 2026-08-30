@@ -1,4 +1,4 @@
-{ ... }:
+{ pkgs, ... }:
 # coordinator — AMD Strix Halo (gfx1151), the main device. Freebox wifi uplink +
 # directly-attached NAS (uplink-nas.nix) and the native media services
 # (services.nix: services.immich + services.navidrome, on /mnt/nas). DNS
@@ -75,5 +75,55 @@
   # delivered /etc/ssh/ssh_host_ed25519_key matched mesh-registry.nix, so
   # agenix may now decrypt against it.
   mySecrets.enable = true;
+
+  # ── /home is on the secondary, and a missing one must be LOUD (#261) ────────
+  # ./disko.nix mounts /home from the 500GB with `nofail`, because a required
+  # mount that never appears drops this box into an emergency console it cannot
+  # be logged into. The price of nofail is silence: the machine would boot
+  # perfectly, /home would be an empty directory on the anchor, and services
+  # would start writing into it — the same shadowed-/home shape the SSD
+  # transition had to reclaim 161G from, except nothing would announce it.
+  #
+  # This is the announcement. It asserts the STRONG property, not merely that
+  # something is mounted: that /home is a mountpoint AND that its source
+  # carries the declared PARTUUID, so a wrong disk answering to the name fails
+  # too. modules/failure-surfacing.nix installs OnFailure=failure-notify@%N on
+  # every service through a top-level drop-in, so failing here writes a marker
+  # and surfaces on the next interactive fish login with no wiring of its own.
+  #
+  # After local-fs.target: by then systemd has either mounted /home or given up
+  # on it, and either way it has stopped waiting.
+  systemd.services.home-on-secondary = {
+    description = "Assert /home is the 500GB secondary, not an empty dir on the anchor";
+    after = [ "local-fs.target" ];
+    wantedBy = [ "multi-user.target" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+      ExecStart = pkgs.writeShellScript "check-home-on-secondary" ''
+        set -u
+        want=7a1c9d2e-0b64-4f8a-9c31-5e2d8f4a6b70
+
+        src="$(${pkgs.util-linux}/bin/findmnt --noheadings --output SOURCE \
+          --mountpoint /home || true)"
+        if [ -z "$src" ]; then
+          echo "/home is NOT a mountpoint — the 500GB secondary did not mount," >&2
+          echo "and nofail let the boot continue. Anything written to /home is" >&2
+          echo "landing on the anchor and shadowing the real one. Check the disk" >&2
+          echo "before starting work: lsblk, journalctl -b -u home.mount" >&2
+          exit 1
+        fi
+
+        got="$(${pkgs.util-linux}/bin/lsblk --noheadings --output PARTUUID "$src" \
+          | ${pkgs.coreutils}/bin/head -1 | ${pkgs.coreutils}/bin/tr -d ' ')"
+        if [ "$got" != "$want" ]; then
+          echo "/home is mounted from $src (PARTUUID $got), which is not the" >&2
+          echo "declared secondary $want. Some other filesystem is answering to" >&2
+          echo "/home; do not write to it until that is explained." >&2
+          exit 1
+        fi
+      '';
+    };
+  };
 
 }
