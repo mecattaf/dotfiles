@@ -15,13 +15,15 @@
 # A known-host entry is NOT a nickname: it records trust for a name that already
 # resolves. So this module never adds trust — it only names destinations, sets
 # `tom` as the default user, and pins the fleet key. Machine identities stay
-# untouched: the flake node, deploy-rs target, agenix recipient, and MagicDNS name
-# of the laptop all remain `zenbook-duo`; only the typed nickname is `zenbook`.
+# untouched: the flake node, deploy-rs target, agenix recipient and MagicDNS name
+# are always the real hostname, and only the typed nickname differs. The one
+# nickname that ever differed was `zenbook` -> `zenbook-duo`, dropped with that
+# host on 2026-08-30; every remaining alias is now an identity map.
 #
 # Deliberately NOT touched here:
 #   - ~/.ssh/known_hosts stays mutable and user-owned (GitHub, LAN IPs, …); fleet
 #     trust keeps arriving through /etc/ssh/ssh_known_hosts (modules/mesh.nix).
-#   - automation (deploy-rs, the zenbook preflight) passes
+#   - automation (deploy-rs) passes
 #     -F /dev/null precisely so these preferences can never steer a deploy or a
 #     rollback. Nothing below is on an operational path.
 #
@@ -41,7 +43,6 @@ let
   # presentation-layer name that exists nowhere else in the fleet.
   operatorAliases = {
     coordinator = "coordinator";
-    zenbook = "zenbook-duo";
     nas = "nas";
     # Back since 2026-08-21 (#229). The right-hand side is the registry name;
     # mkBlock rewrites its HostName to the fleet identity on the coordinator —
@@ -89,7 +90,8 @@ let
   # naming 10.99.0.x explicitly and never competes with this block.
   #
   # This is a COORDINATOR-ONLY preference. The cables have exactly two ends, so
-  # from the zenbook or the NAS the nickname must use the LAN identity, which is
+  # from any non-twin host — the NAS today — the nickname must use the LAN
+  # identity, which is
   # also the fleet-facing one every other consumer uses — the NAS's Immich ML
   # URL, the journal ACL, the networking.hosts pin. All addresses are registry
   # aliases, so the pinned host key is checked whichever rail answers and no

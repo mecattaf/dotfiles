@@ -12,10 +12,9 @@ The flake exports exactly four NixOS host configurations:
 | `coordinator` | Framework Desktop, AMD Strix Halo | controller node, daily driver |
 | `worker` | Framework Desktop, AMD Strix Halo | second Strix Halo twin, reintegrated; deployed over the fleet identity `10.99.9.2` |
 | `nas` | UGREEN NASync DXP2800 GT, AMD R2514 | Ethernet-only headless media/storage behind the coordinator relay; Immich ML stays on coordinator |
-| `zenbook-duo` | ASUS Zenbook Duo, Intel | thin-client laptop |
 
 ```
-flake.nix        four NixOS hosts wired through one mkHost
+flake.nix        three NixOS hosts wired through one mkHost
 modules/         common.nix (every host) + strix.nix (both AMD Strix Halo twins)
 hosts/           one module per machine
 home/            home-manager: typed nix (home.nix, nvim.nix) + RAW out-of-store

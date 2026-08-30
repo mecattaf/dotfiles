@@ -304,7 +304,7 @@
         }
       ];
 
-      # One hardened operational SSH path for deploy-rs and the Zenbook preflight.
+      # One hardened operational SSH path for deploy-rs.
       fleetDeploySshOpts = [
         "-F"
         "/dev/null"
@@ -496,7 +496,6 @@
         # kernel/Mesa churn) and it keeps Home Manager, because unlike the NAS it
         # is an ordinary interactive NixOS box that happens to be headless.
         worker = mkHost { hostModule = ./hosts/worker; };
-        zenbook-duo = mkHost { hostModule = ./hosts/zenbook-duo; };
       };
 
       # deploy-rs owns HOW a selected generation reaches and activates on a node.
@@ -523,7 +522,6 @@
               # Dialled over the Thunderbolt cable, not the LAN — see the
               # hostname branch below.
               "worker"
-              "zenbook-duo"
             ]
             (host: {
               # Canonical names resolve through MagicDNS or the direct NAS map —
@@ -847,7 +845,6 @@
           # collision was first proven on — is included.
           assert !coordinator.services.adguardhome.enable;
           assert !worker.services.adguardhome.enable;
-          assert !self.nixosConfigurations.zenbook-duo.config.services.adguardhome.enable;
           assert nas.services.adguardhome.enable;
           # ── #130 expansion gates: all OFF, and the pairs agree ─────────────
           # These assert the STAGED shape, i.e. that today's switch is a no-op
@@ -948,7 +945,6 @@
         home-profiles =
           let
             coordinatorHome = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
-            zenbookHome = self.nixosConfigurations.zenbook-duo.config.home-manager.users.tom;
             workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
           in
           assert coordinatorHome.home.username == "tom";
@@ -957,12 +953,6 @@
           assert coordinatorHome.programs.voxtype.enable;
           assert !(coordinatorHome.systemd.user.services ? ntm);
           assert coordinatorHome.systemd.user.services ? wayvnc;
-          assert zenbookHome.home.username == "tom";
-          assert zenbookHome.programs.atuin.settings.auto_sync;
-          assert !zenbookHome.services.tally.enable;
-          assert !zenbookHome.programs.voxtype.enable;
-          assert zenbookHome.systemd.user.services ? ntm;
-          assert zenbookHome.systemd.user.services ? wayvnc;
           # The worker keeps Home Manager (unlike the NAS, which stops at NixOS):
           # it is an ordinary interactive box that merely has nobody sitting at
           # it, so the shell, atuin sync and niri session are all real. What it
@@ -1169,7 +1159,6 @@
               "coordinator"
               "nas"
               strixWorker
-              "zenbook-duo"
             ];
             retiredAliases = nixpkgs.lib.concatStringsSep "|" [
               (strixWorker + "-tb")
@@ -1233,9 +1222,6 @@
             nas.networking.firewall.extraInputRules;
           assert nixpkgs.lib.hasInfix "ip saddr 10.42.0.5 tcp dport 19532 accept"
             nas.networking.firewall.extraInputRules;
-          # The zenbook stays a thin client on purpose — mobile, so it never
-          # streams its journal home over arbitrary networks.
-          assert !self.nixosConfigurations.zenbook-duo.config.services.journald.upload.enable;
           assert self.deploy.nodes.coordinator.hostname == "coordinator";
           assert self.deploy.nodes.nas.hostname == "nas";
           # Deliberately the rail-independent fleet identity, not the name and
@@ -1372,7 +1358,6 @@
           # on, so its closure must not carry the service at all.
           assert !worker.services.adguardhome.enable;
           assert !coordinator.services.adguardhome.enable;
-          assert !self.nixosConfigurations.zenbook-duo.config.services.adguardhome.enable;
           assert coordinator.microvm.host.enable;
           assert !(self.nixosConfigurations.coordinator.options.myArtifacts ? livePortRange);
           assert !coordinator.home-manager.users.tom.services.tally.pools.coordinator-gpu.hardPreempt;
@@ -1445,10 +1430,8 @@
         printing =
           let
             coordinator = self.nixosConfigurations.coordinator.config;
-            zenbook = self.nixosConfigurations.zenbook-duo.config;
             activeHosts = [
               coordinator
-              zenbook
             ];
             expectedPrinter = {
               name = "Brother_HL_L2445DW";
@@ -1655,7 +1638,6 @@
             # strix.nix is shared, so a one-sided assert would let a future
             # per-host override drift the pair apart unnoticed.
             worker = self.nixosConfigurations.worker.config;
-            zenbook = self.nixosConfigurations.zenbook-duo.config;
             coordinatorSettings = coordinator.services.llama-swap.settings;
             findPiWrapper =
               hostConfig:
@@ -1663,7 +1645,6 @@
                 (throw "evaluated host has no declarative Pi wrapper")
                 hostConfig.home-manager.users.tom.home.packages;
             coordinatorPi = findPiWrapper coordinator;
-            zenbookPi = findPiWrapper zenbook;
             # The catalog's utility slot, resolved to the row that actually
             # backs it. Backend-agnostic since the 2026-08-29 GPU migration:
             # the top-level pointer names the row and `canonical` is what makes
@@ -1791,7 +1772,6 @@
               lmHosts = nixpkgs.lib.filter (hostConfig: hostConfig.services ? local-models) [
                 coordinator
                 worker
-                zenbook
               ];
               wantedArtifactIds = nixpkgs.lib.unique (
                 nixpkgs.lib.concatMap (
@@ -1977,11 +1957,6 @@
             ${pkgs.gnugrep}/bin/grep -F 'export LLAMA_SWAP_PORT=9292' ${coordinatorPi}/bin/pi >/dev/null
             ${pkgs.gnugrep}/bin/grep -F -- '-e ${pkgs.pi-llama-swap-extension}' \
               ${coordinatorPi}/bin/pi >/dev/null
-            if ${pkgs.gnugrep}/bin/grep -F -- '${pkgs.pi-llama-swap-extension}' \
-              ${zenbookPi}/bin/pi >/dev/null; then
-              echo "Pi loaded the llama-swap provider on a host without llama-swap" >&2
-              exit 1
-            fi
             touch "$out"
           '';
       }

@@ -46,7 +46,6 @@ let
   hosts = [
     "coordinator"
     "worker" # reintegrated 2026-08-21 (#229) — missed on the first pass
-    "zenbook-duo"
   ];
   build = pkgs.writeShellScript "update-center-build" ''
     set -u

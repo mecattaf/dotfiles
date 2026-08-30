@@ -39,7 +39,8 @@
   # box was still running the pre-rotation closure that holds the OLD tom@mesh
   # key, and authorizing that key anywhere would have undone the rotation its
   # own departure forced. It now carries the SHARED ROTATED key —
-  # byte-identical to the coordinator's and the zenbook's rows — because the
+  # byte-identical to the coordinator's row (and to the zenbook-duo's, until
+  # that host left the fleet on 2026-08-30) — because the
   # closure that ships with this commit delivers exactly that key to the box
   # (modules/secrets.nix, ssh-user-key.age, re-minted here to include this
   # host). The old tom@mesh key is never to reappear in this file.
@@ -77,10 +78,5 @@
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ0sfr0Sr5HaHKEAn/aO4qPbixN7PDYwIpuQvLlue4dU root@nas";
     # The appliance is inbound-only; coordinator deploys to it over the cable.
     userKey = "";
-  };
-  zenbook-duo = {
-    aliases = [ "zenbook-duo" ];
-    hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKvikHKjh49tlT9PDlG47hcRWyz8NX7uWw2ZhQoQJxxP root@zenbook-duo";
-    userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729";
   };
 }
