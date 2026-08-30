@@ -37,6 +37,9 @@
     # Patched Thunderbolt core/net/ibverbs set, first-bound at boot (#241).
     # Same gate shape as lowlat-cluster: defaults OFF, enabled below.
     ./fn-rdma.nix
+    # 7.2's in-tree USB4STREAM: udev perms + declarative stream groups on the
+    # rail-0 cable. Same gate shape: defaults OFF, enabled below.
+    ./usb4-stream.nix
   ];
 
   config = {
@@ -195,6 +198,7 @@
     # only the twins import — not per-host. Per-host escape stays runtime:
     # `touch /etc/fn-rdma-disable` + one attended reboot loads the stock pair.
     myFnRdma.enable = true;
+    myUsb4Stream.enable = true;
 
     # ── Linux 7.2 on the twins (#244) ──────────────────────────────────────
     #
