@@ -42,9 +42,6 @@ let
   # that fails.
   delivered = nonEmpty (map (h: registry.${h}.hostKey) (builtins.filter (h: h != "nas") names));
 
-  laptops = nonEmpty [
-    registry.zenbook-duo.hostKey
-  ];
   coordinatorOnly = nonEmpty [ registry.coordinator.hostKey ];
   # The reintegrated worker (#229, 2026-08-21). It joins the `delivered` tier
   # automatically above — that list is derived from the registry, so its row
@@ -89,13 +86,10 @@ in
   # preauthorized, tag:mesh — minted 2026-07-05 via the fleet OAuth client;
   # only the owning host can decrypt its key) ---
   "secrets/tailscale-authkey-coordinator.age".publicKeys = editors ++ coordinatorOnly;
-  "secrets/tailscale-authkey-zenbook-duo.age".publicKeys =
-    editors ++ nonEmpty [ registry.zenbook-duo.hostKey ];
-
-  # --- wifi PSK tier: the laptops PLUS the coordinator, whose Freebox uplink
+  # --- wifi PSK tier: the coordinator, whose Freebox uplink
   # (wlp192s0) is now declarative too (migrated from an imperative profile on
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r
-  "secrets/wifi.age".publicKeys = editors ++ laptops ++ coordinatorOnly;
+  "secrets/wifi.age".publicKeys = editors ++ coordinatorOnly;
   # BE550 repeated-LAN credentials ($BE550_SSID / $BE550_PSK) — the
   # thomas-6ghz profile on the coordinator (hosts/coordinator/uplink-nas.nix),
   # the zenbook (its AdGuard-DoH landmine was defused the same day the laptops
@@ -109,7 +103,7 @@ in
   # different things (one is "every agenix host", the other is "every host that
   # associates to this SSID") and they will diverge again the moment a host
   # exists that runs agenix but is not on this wifi.
-  "secrets/wifi-lan.age".publicKeys = editors ++ coordinatorOnly ++ laptops ++ workerOnly;
+  "secrets/wifi-lan.age".publicKeys = editors ++ coordinatorOnly ++ workerOnly;
 
   # --- operator vault (admin key ONLY — a tar.gz of everything that is not
   # otherwise in git: pre-generated host keys + wifi profiles (staging), tom's ssh
@@ -141,9 +135,10 @@ in
   # by DRM. Coordinator-only, same reasoning as soundcloud-cookies.
   "secrets/youtube-music-cookies.age".publicKeys = editors ++ coordinatorOnly;
 
-  # cliamp (client) needs this on both boxes it runs from — coordinator (where
-  # navidrome itself lives) and zenbook-duo (laptops tier).
-  "secrets/navidrome-credentials.age".publicKeys = editors ++ coordinatorOnly ++ laptops;
+  # cliamp (client) reads this on the coordinator, where navidrome's relay
+  # lives. The zenbook was the second consumer until it left the fleet
+  # (2026-08-30); the laptops tier went with it.
+  "secrets/navidrome-credentials.age".publicKeys = editors ++ coordinatorOnly;
 
   # Immich full-permissions API key (photos.internal), read client-side by agent
   # sessions on the coordinator for indexing/dedup/library passes. Replaces the

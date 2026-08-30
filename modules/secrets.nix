@@ -302,14 +302,12 @@ in
       # navidrome-credentials: NOT consumed by the navidrome server (which now
       # runs on the NAS, hosts/nas/media.nix, reached through the coordinator's
       # navidrome-relay) — read client-side by the cliamp fish function, on
-      # whichever box cliamp runs from. Delivered to coordinator + zenbook-duo,
-      # matching the recipient tier in secrets.nix. The wrapper exports the
+      # whichever box cliamp runs from. Coordinator-only since the zenbook left
+      # the fleet (2026-08-30), matching the recipient tier in secrets.nix. The wrapper exports the
       # file's NAVIDROME_PASSWORD under both that name (which config.toml's
       # ${NAVIDROME_PASSWORD} placeholder interpolates) and NAVIDROME_PASS
       # (which cliamp's config-less env fallback reads).
-      (lib.mkIf
-        (config.networking.hostName == "coordinator" || config.networking.hostName == "zenbook-duo")
-        {
+      (lib.mkIf (config.networking.hostName == "coordinator") {
           age.secrets.navidrome-credentials = {
             file = ../secrets/navidrome-credentials.age;
             owner = "tom";
@@ -389,9 +387,6 @@ in
         (
           builtins.elem config.networking.hostName [
             "coordinator"
-            # + the zenbook since 2026-08-21 ("6ghz fleet wide"): its
-            # thomas-6ghz profile substitutes the same $BE550_SSID/$BE550_PSK.
-            "zenbook-duo"
             # + the worker with its reintegration the same day (#229). Its
             # thomas-6ghz profile is the only way it reaches the house LAN at
             # all — there is no Freebox fallback profile on that box and no
