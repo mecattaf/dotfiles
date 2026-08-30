@@ -12,10 +12,9 @@
 # whole-dir out-of-store symlink (home/dot_config/niri/piri.toml, see
 # home/home.nix configDirs) so it hot-reloads with the rest of the niri config.
 #
-# NOT host-gated (unlike ntm=zenbook-only, tally=coordinator-only): piri is a
-# general niri extension and every host in the fleet runs niri, so it runs
-# everywhere. Auto-started with the graphical session (unlike ntm, which omits
-# WantedBy while its gestures are mid-tuning).
+# NOT host-gated (unlike tally, which is coordinator-only): piri is a general
+# niri extension and every host in the fleet runs niri, so it runs everywhere.
+# Auto-started with the graphical session.
 let
   piri = inputs.piri.packages.${pkgs.stdenv.hostPlatform.system}.default;
 in
