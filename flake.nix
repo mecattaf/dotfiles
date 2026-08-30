@@ -5,19 +5,27 @@
     # Unstable: Strix Halo (gfx1151) wants fresh kernels + Mesa.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-    # nixpkgs-fresh — a second nixpkgs, tracking the SAME nixos-unstable branch, used
-    # ONLY to keep a handful of fast-moving user packages (currently
-    # google-chrome and uv, see overlays list below) current independent of the `nixpkgs`
-    # pin above. That pin is deliberately lagging — the exact-candidate fleet deploy
-    # keeps it as the only door kernel/Mesa churn enters through, bumped manually.
-    # Browser point releases carry none of that risk, so they shouldn't have to wait
-    # on it.
+    # nixpkgs-fresh — a second nixpkgs used ONLY to keep a handful of
+    # fast-moving user packages (currently google-chrome and uv, see overlays
+    # list below) and the twins'/NAS's linuxPackages_7_2 kernel series current
+    # independent of the `nixpkgs` pin above. That pin is deliberately
+    # lagging — the exact-candidate fleet deploy keeps it as the only door
+    # Mesa/ROCm churn enters through, bumped manually. Browser point releases
+    # and 7.2.y kernel point fixes carry none of that risk, so they shouldn't
+    # have to wait on it.
+    #
+    # nixos-unstable-SMALL since 2026-08-30 (#244): the same rolling resolver,
+    # gated by the same core Hydra jobs, minus the big-channel test set that
+    # had nixos-unstable sitting 4+ days behind while 7.2.2 (a kernel point
+    # fix the twins wanted) was already through. Everything this input feeds
+    # is either an upstream binary (chrome), a leaf tool (uv), or the
+    # versioned kernel attr whose whole doctrine is point-fix-only advance.
     #
     # Its lock entry is a reproducible fallback. The nightly fleet transaction uses
     # `rollingInputOverrides` below to resolve it (with llm-agents and the two AMD
     # catalogs) exactly once, then builds and deploys those immutable URLs without
     # writing the lock. A plain local build uses the reviewed fallback revision.
-    nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable-small";
 
     # nixpkgs-stable — pins ONLY nixosConfigurations.nas (issue #135 ruling):
     # the NAS is a frozen self-sustaining appliance on standard stable nixpkgs,
@@ -279,7 +287,8 @@
       rollingInputOverrides = [
         {
           name = "nixpkgs-fresh";
-          url = "github:NixOS/nixpkgs/nixos-unstable";
+          # unstable-small since 2026-08-30 — must match the input URL above.
+          url = "github:NixOS/nixpkgs/nixos-unstable-small";
         }
         {
           name = "llm-agents";
@@ -1749,9 +1758,57 @@
           # with coordinator.system.extraDependencies (== 22) — both artifacts of
           # the design the 2026-08-21 "weights leave nix" ruling deleted, and
           # 7516ba9c left it standing red on purpose because its REPLACEMENT is
-          # a design call (a Library-flow invariant), not a repair. Standing red
-          # also meant every deploy's check phase failed, so the corpse is gone;
-          # the design call lives on as issue #242, not in a broken eval.
+          # a design call (a Library-flow invariant), not a repair. That call was
+          # made in #242 (operator-approved 2026-08-30) and the invariant below
+          # is its layer (a): the allow-list is TOTAL over the Library flow at
+          # the description level. Every deployment a host may start — plus its
+          # extra `artifacts` — must reference only catalog rows that can
+          # actually drive a borrow: at least one file, every file carrying the
+          # 64-hex sha256 oid and a positive byte count local-models-sync
+          # verifies against. Library REACHABILITY is deliberately not asserted
+          # here: eval cannot describe NFS, and the sync unit already fails
+          # loudly per-row at the only layer that can honestly check it
+          # (layer (b) of the #242 proposal; layer (c), NAS-side coverage,
+          # lives with library-fetch).
+          assert
+            let
+              lmHosts = nixpkgs.lib.filter (hostConfig: hostConfig.services ? local-models) [
+                coordinator
+                worker
+                zenbook
+              ];
+              wantedArtifactIds = nixpkgs.lib.unique (
+                nixpkgs.lib.concatMap (
+                  hostConfig:
+                  hostConfig.services.local-models.artifacts
+                  ++ nixpkgs.lib.concatMap (
+                    deploymentId:
+                    nixpkgs.lib.filter (artifactId: artifactId != null) (
+                      builtins.attrValues localModelCatalog.deployments.${deploymentId}.artifacts
+                    )
+                  ) hostConfig.services.local-models.allow
+                ) lmHosts
+              );
+              # sha256 of the empty string: a zero-byte row (snapshot repos
+              # legitimately carry empty __init__.py markers) is borrowable
+              # ONLY if it declares exactly this oid — zero bytes under any
+              # other hash is a corrupt catalog row the sync could never
+              # verify.
+              emptySha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+              borrowable =
+                artifactId:
+                let
+                  files = localModelCatalog.artifacts.${artifactId}.source.files;
+                in
+                files != [ ]
+                && nixpkgs.lib.all (
+                  file:
+                  builtins.match "[0-9a-f]{64}" file.oid != null
+                  && (if file.bytes > 0 then true else file.oid == emptySha256)
+                ) files;
+              defective = nixpkgs.lib.filter (artifactId: !(borrowable artifactId)) wantedArtifactIds;
+            in
+            defective == [ ] || throw "local-model-routing: allow-listed deployments reference artifacts the Library flow cannot materialize (missing files, malformed oid, or zero bytes): ${nixpkgs.lib.concatStringsSep ", " defective}";
           assert nixpkgs.lib.all (artifact: artifact.source.layout == "snapshot") mageArtifacts;
           assert builtins.length mageFiles == 164;
           assert nixpkgs.lib.foldl' (total: file: total + file.bytes) 0 mageFiles == 45863017994;
