@@ -33,12 +33,20 @@
   # model_serial alias is used deliberately (not the `_1` duplicate, not the
   # `eui.` form).
   #
-  # ⚠️ DESTRUCTIVE, AND THIS HOST IS LIVE. `nixos-rebuild switch` never
-  # partitions; only an explicit disko / disko-install invocation does. This
-  # declaration must NOT be `nixos-rebuild switch`ed onto the host while it is
-  # still running from the 500GB — the rendered fstab names THIS disk's
-  # PARTUUIDs, and the running system would lose its root at the next boot.
-  # Build-verify only until the physical swap is done (dotfiles#259 P2/P5).
+  # ── Status: the transition is DONE (2026-08-30) ─────────────────────────────
+  # This host now runs FROM this disk. It was installed with disko-install
+  # while the 500GB was still live and booted via a one-shot NVRAM entry keyed
+  # to the ESP's PARTUUID, with the 500GB left fitted as rollback. Across that
+  # reboot the kernel's NVMe enumeration FLIPPED — this disk went from nvme1n1
+  # to nvme0n1 with no hardware change — which is the whole argument for the
+  # pinned identifiers above, observed rather than theorised. The 500GB's GPT
+  # labels were then renamed `disk-main-*` → `oldworker-*` so it can never
+  # contend with the coordinator's anchor once refitted there.
+  #
+  # ⚠️ DESTRUCTIVE: an explicit disko/disko-install run wipes this disk.
+  # `nixos-rebuild switch` never partitions and is safe. The earlier standing
+  # ban on switching this declaration onto the host is retired — the host's
+  # running root IS these PARTUUIDs now.
   disko.devices.disk.w1t = {
     type = "disk";
     device = "/dev/disk/by-id/nvme-WD_BLACK_SN7100_1TB_26051Y809195";
