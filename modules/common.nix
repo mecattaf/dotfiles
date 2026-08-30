@@ -69,7 +69,7 @@
     # every input is pinned in flake.lock.
     flake-registry = "";
 
-    # Fleet-deploy hardening: a dead substituter (coordinator down, Zenbook
+    # Fleet-deploy hardening: a dead substituter (coordinator down, or a member
     # off-tailnet) must delay an unattended build by seconds, not hang it; and a
     # transfer that dies midway must fall back to building rather than fail closed.
     connect-timeout = 5;

@@ -13,7 +13,7 @@ binds {
     // scroll: bindsym $mod+Shift+Return exec $scripts/nvim-terminal.sh
     // niri: same script, ported to shell + niri msg; host-aware
     //   coordinator: new kitty in focused kitty/nvim's cwd
-    //   remote (zenbook): new kitty that SSHs to coordinator via `desk`
+    //   remote (any thin client): new kitty that SSHs to coordinator via `desk`
     Mod+Shift+Return hotkey-overlay-title="Terminal (smart)" { spawn-sh "~/.local/bin/new-terminal"; }
 
     // Resume an existing zmx session via fzf picker; runs locally on the
@@ -68,9 +68,10 @@ binds {
 
     F1 hotkey-overlay-title="Brightness Down" { spawn-sh "~/.local/bin/brightness down"; }
     F2 hotkey-overlay-title="Brightness Up" { spawn-sh "~/.local/bin/brightness up"; }
-    // Shift = adjust ONLY the focused screen's backlight (zenbook-duo dual eDP;
-    // `focused` maps niri's focused output -> its backlight generically, so this
-    // is harmless/degrades to default on single-screen hosts).
+    // Shift = adjust ONLY the focused screen's backlight. Written for the
+    // zenbook-duo's dual eDP (retired 2026-08-30); `focused` maps niri's focused
+    // output -> its backlight generically, so this degrades to the default on
+    // single-screen hosts and stays harmless.
     Shift+F1 hotkey-overlay-title="Brightness Down (focused screen)" { spawn-sh "~/.local/bin/brightness down focused"; }
     Shift+F2 hotkey-overlay-title="Brightness Up (focused screen)" { spawn-sh "~/.local/bin/brightness up focused"; }
     F3 hotkey-overlay-title="Play/Pause" { spawn-sh "~/.local/bin/media play"; }

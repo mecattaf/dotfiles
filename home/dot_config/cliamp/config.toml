@@ -23,8 +23,9 @@ eq_preset = "Custom"
 eq = [-1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 speed = 1.00
 [navidrome]
-# Tailnet MagicDNS name, not localhost: this config is shared fleet-wide
-# (coordinator + zenbook-duo), and only the coordinator could reach localhost.
+# Tailnet MagicDNS name, not localhost: this config is shared fleet-wide and
+# only the coordinator could reach localhost. It had a second reader, the
+# zenbook-duo, until that host left the fleet on 2026-08-30.
 url         = "http://coordinator.tail8dd1.ts.net:4533"
 user        = "${NAVIDROME_USER}"
 password    = "${NAVIDROME_PASSWORD}"
@@ -39,8 +40,8 @@ enabled = true
 user    = "lemurisback"
 # Go+ restored 2026-08-03 (dotfiles#70). cliamp shells to
 # `yt-dlp --cookies-from-browser chrome`, so Chrome must be signed into
-# SoundCloud as lemurisback on whichever box runs cliamp (coordinator +
-# zenbook-duo). Note: SoundCloud now serves major-label/monetized catalog
+# SoundCloud as lemurisback on whichever box runs cliamp (the coordinator).
+# Note: SoundCloud now serves major-label/monetized catalog
 # over DRM-encrypted HLS that yt-dlp cannot decrypt (won't-fix upstream,
 # yt-dlp#17335) -- this unlocks the non-DRM Go+ subset (most indie/DJ
 # uploads), not the whole catalog.

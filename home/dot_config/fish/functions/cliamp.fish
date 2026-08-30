@@ -19,8 +19,8 @@ function cliamp --wraps cliamp --description "cliamp wired to the NAS Navidrome 
         set user (grep '^NAVIDROME_USER=' $creds | string replace 'NAVIDROME_USER=' '')
         set pass (grep '^NAVIDROME_PASSWORD=' $creds | string replace 'NAVIDROME_PASSWORD=' '')
     else
-        # Only coordinator + zenbook-duo get the secret (secrets.nix). Anywhere
-        # else, say so instead of opening a silently Navidrome-less browser.
+        # Only the coordinator gets the secret (secrets.nix). Anywhere else,
+        # say so instead of opening a silently Navidrome-less browser.
         echo "cliamp: $creds unreadable — Navidrome disabled, local files only" >&2
     end
 

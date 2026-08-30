@@ -46,7 +46,7 @@ case "$cmd" in
             # self-reaps when the foreground command (nvim) exits.
             exec zmx attach "$sess" "$@"
         fi
-        # Thin-client (zenbook): reach the coordinator over the same
+        # Thin client: reach the coordinator over the same
         # kitten-ssh path everything else uses, so a compose survives a net blip
         # (ruling 2). Shell-quote the payload argv for the remote bash -lc; the
         # remote login shell (fish 3.4+) forwards it, $(id -u) evaluates there.

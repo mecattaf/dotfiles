@@ -1,6 +1,6 @@
 if test (hostname) != "coordinator"
-    # The coordinator is where sessions live. On another box (the
-    # zenbook thin-client), a terminal is a *projector*: it reaches a persistent
+    # The coordinator is where sessions live. On another box (a thin
+    # client), a terminal is a *projector*: it reaches a persistent
     # LOCAL zmx session on the coordinator via `kitten ssh ... -t zmx attach`.
     # kitten ssh
     # (over the tailnet) gives reliable kitty terminfo/graphics/clipboard while

@@ -221,8 +221,8 @@ in
       # service stays down. That is the intended behaviour.
     ];
 
-    # Every fleet device substitutes: coordinator .2, worker .5, zenbook and
-    # anything else from the pool. LAN-wide by subnet, same doctrine as SMB
+    # Every fleet device substitutes: coordinator .2, worker .5, and anything
+    # else from the pool. LAN-wide by subnet, same doctrine as SMB
     # (discovery.nix). A tailscale0 admission joins here when the NAS's
     # tailnet identity lands, so roaming hosts can substitute from anywhere.
     networking.firewall.extraInputRules = ''

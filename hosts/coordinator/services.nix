@@ -44,7 +44,8 @@ in
 # services.immich also subsumes the redis + machine-learning sidecars natively.
 # The navidrome-credentials secret is unrelated to the server — it is consumed
 # client-side by the cliamp fish function — and is delivered in
-# modules/secrets.nix (coordinator + zenbook-duo both run cliamp).
+# modules/secrets.nix (coordinator only since the zenbook-duo left the fleet,
+# 2026-08-30; it was the second cliamp host).
 #
 # Reachability: both bind 0.0.0.0, but the firewall opens their ports ONLY on
 # tailscale0 (same trust model as wayvnc:5900), so they are reachable across the
@@ -213,7 +214,9 @@ in
 
     # navidrome-credentials delivery moved to modules/secrets.nix (2026-07-13):
     # it's NOT consumed by the navidrome server here — only read client-side by
-    # the cliamp fish function — and cliamp now also runs from zenbook-duo, so a
-    # single host-agnostic block covers both recipients instead of duplicating it.
+    # the cliamp fish function. It moved there when cliamp gained a second host
+    # (zenbook-duo, retired 2026-08-30) and a single host-agnostic block beat
+    # duplicating the delivery; it stays there now that the coordinator is the
+    # only recipient again, because that is where secret delivery belongs.
   };
 }

@@ -27,7 +27,8 @@
 #      boot journal: bus registered at 21:26:00, root switch at :03). No
 #      stage-2 unit can ever be first past that. Removed in the twins'
 #      hardware.nix — these boxes boot from NVMe and nothing in early boot
-#      needs a TB tunnel; the zenbook (docking) keeps its entry.
+#      needs a TB tunnel. (The zenbook-duo kept its entry because it docked
+#      over Thunderbolt; that host left the fleet 2026-08-30.)
 #   2. Stage-2 udev coldplug. boot.blacklistedKernelModules below blocks the
 #      modalias path (udev loads with `modprobe -b`, which honors blacklists;
 #      the explicit `modprobe thunderbolt` in the fallback paths below is

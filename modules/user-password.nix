@@ -31,8 +31,9 @@
 # a declared hash ONLY when it is creating the shadow entry; for a user that
 # already has one it preserves whatever is there. So:
 #   * a newly flashed host gets the password automatically — the #54 case;
-#   * coordinator and zenbook-duo, whose tom already exists with `!`, need one
-#     `sudo passwd tom` each, once.
+#   * the coordinator, whose tom already exists with `!`, needs one
+#     `sudo passwd tom`, once. (The zenbook-duo was in the same position until
+#     it left the fleet on 2026-08-30.)
 # Making it authoritative everywhere would mean `users.mutableUsers = false`,
 # which is deliberately NOT done here: that also rewrites root's shadow entry to
 # `!` unless root is declared too, i.e. it would erase the install-time root

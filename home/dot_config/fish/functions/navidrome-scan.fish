@@ -15,7 +15,7 @@ function navidrome-scan --description "Trigger a Navidrome library rescan and wa
 
     set -l creds /run/agenix/navidrome-credentials
     if not test -r $creds
-        echo "navidrome-scan: $creds unreadable (coordinator/zenbook-duo only)" >&2
+        echo "navidrome-scan: $creds unreadable (coordinator only)" >&2
         return 1
     end
     set -l user (grep '^NAVIDROME_USER=' $creds | string replace 'NAVIDROME_USER=' '')

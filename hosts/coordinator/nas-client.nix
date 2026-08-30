@@ -281,7 +281,7 @@ in
       # replacing them: photos/music/videos.internal resolve fleet-wide via
       # the per-box AdGuard rewrites (modules/adguardhome.nix) to whichever
       # coordinator address is closest to the asking host — loopback here, the
-      # /30 cable on the NAS, the tailnet only from the roaming zenbook — and
+      # /30 cable on the NAS, the tailnet only from a roaming host — and
       # Caddy (:80, see caddy-artifacts.nix for the matching firewall zones)
       # hands them to the same socket relays the port URLs use. Plain HTTP by
       # the same v1 posture as the artifact plane: WireGuard is the transport
