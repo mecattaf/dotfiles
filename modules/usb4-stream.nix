@@ -145,10 +145,49 @@ let
       ]
     }
     say() { echo "usb4-stream: $*"; }
+    # LOG_WARNING via the journald level prefix (SyslogLevelPrefix on the
+    # unit) — refusals must show up in `journalctl -p warning -b`, or a
+    # refused boot reads as "streams are parked", the exact silence class
+    # #279 fixed one module over.
+    warn() { echo "<4>usb4-stream: $*"; }
     fail=0
 
     rail=${cfg.rail}
     identity=/var/lib/usb4-stream/rail-identity
+    intended="${lib.optionalString (cfg.railNhi != null) cfg.railNhi}"
+
+    # ── Anchor on the NHI, enter through whatever name it wears (#275) ──────
+    # Review fix 2026-08-31: gate 1 alone REFUSED when $rail had drifted to
+    # the other cable — fail-closed, but it converts "wrong cable" into "no
+    # cable for the whole boot", and the single planned verification reboot
+    # would then verify a coin toss. The pin names a soldered PCI function,
+    # so do better: find the netdev that currently rides the pinned NHI and
+    # anchor on IT, whatever probe-order name it carries. The refusal remains
+    # for the only case left: no netdev on the pinned NHI at all.
+    if [ -n "$intended" ]; then
+      found=""
+      for _ in $(seq 60); do
+        for n in /sys/class/net/*/device; do
+          case "$(readlink -f "$n" 2>/dev/null)" in
+            */"$intended"/*)
+              found="''${n%/device}"
+              found="''${found##*/}"
+              break
+              ;;
+          esac
+        done
+        [ -n "$found" ] && break
+        sleep 1
+      done
+      if [ -z "$found" ]; then
+        warn "REFUSING to provision: no netdev rides the pinned rail-0 NHI $intended after 60s — thunderbolt_net absent or the NHI unbound; nothing safe to anchor on (#275)"
+        exit 1
+      fi
+      if [ "$found" != "$rail" ]; then
+        warn "probe-order flip (#266): the rail-0 cable ($intended) is named $found this boot, not $rail — anchoring on the NHI and continuing on $found"
+        rail=$found
+      fi
+    fi
     for _ in $(seq 60); do
       [ -e "/sys/class/net/$rail/device" ] && break
       sleep 1
@@ -197,19 +236,20 @@ let
     nhi=''${nhi##*/}
     peer=$(cat "/sys/bus/thunderbolt/devices/$xd/unique_id" 2>/dev/null || echo unknown)
     if [ "$peer" = unknown ]; then
-      say "REFUSING to provision: cannot read /sys/bus/thunderbolt/devices/$xd/unique_id — the cable identity is unresolvable, and identity is the gate (#275)"
+      warn "REFUSING to provision: cannot read /sys/bus/thunderbolt/devices/$xd/unique_id — the cable identity is unresolvable, and identity is the gate (#275)"
       exit 1
     fi
 
-    # Gate 1 — the per-host pin. Fail CLOSED: a wrong or missing pin refuses
-    # and paints the unit red; it can never provision the wrong cable.
-    intended="${lib.optionalString (cfg.railNhi != null) cfg.railNhi}"
+    # Gate 1 — the per-host pin, kept as an INVARIANT check even though the
+    # NHI-anchored entry above should make it unreachable when the pin is
+    # set: if resolution above and this walk ever disagree, that is a bug
+    # worth a red unit, never a wrong-cable provision.
     if [ -n "$intended" ] && [ "$nhi" != "$intended" ]; then
-      say "REFUSING to provision: $rail rides NHI $nhi (xdomain $xd, peer $peer) but the rail-0 cable enters this host at $intended — the name has drifted to the other cable (#275, observed live 2026-08-30). Diagnose: readlink -f /sys/class/net/$rail; tb-link-heal's NHI rebind re-rolls the name assignment."
+      warn "REFUSING to provision: $rail rides NHI $nhi (xdomain $xd, peer $peer) but the rail-0 cable enters this host at $intended — the name drifted between resolution and this walk (#275). Diagnose: readlink -f /sys/class/net/$rail; tb-link-heal's NHI rebind re-rolls the name assignment."
       exit 1
     fi
     if [ -z "$intended" ]; then
-      say "WARNING: no railNhi pin for this host; the identity file is the only drift guard, and a FIRST run will trust whatever cable $rail names right now. Set myUsb4Stream.railNhi."
+      warn "no railNhi pin for this host; the identity file is the only drift guard, and a FIRST run will trust whatever cable $rail names right now. Set myUsb4Stream.railNhi."
     fi
 
     # Gate 2 — the recorded identity (#275 fix 1+2). The module now has a
@@ -218,7 +258,7 @@ let
       rec_nhi=$(grep -m1 '^nhi=' "$identity" | cut -d= -f2)
       rec_peer=$(grep -m1 '^peer_uid=' "$identity" | cut -d= -f2)
       if [ "$nhi" != "$rec_nhi" ] || [ "$peer" != "$rec_peer" ]; then
-        say "REFUSING to provision: resolved cable identity (nhi=$nhi peer_uid=$peer) differs from the recorded one (nhi=$rec_nhi peer_uid=$rec_peer) in $identity — the name drifted (#275) or the cabling changed. If the change is DELIBERATE: rm $identity and re-trigger this unit to re-anchor."
+        warn "REFUSING to provision: resolved cable identity (nhi=$nhi peer_uid=$peer) differs from the recorded one (nhi=$rec_nhi peer_uid=$rec_peer) in $identity — the name drifted (#275) or the cabling changed. If the change is DELIBERATE: rm $identity and re-trigger this unit to re-anchor."
         exit 1
       fi
     fi
@@ -256,14 +296,14 @@ let
         fi
         idx=$(cat "$d/index" 2>/dev/null || echo "")
         if [ -n "$idx" ] && fuser -s "/dev/tbstream$idx" 2>/dev/null; then
-          say "NOT releasing stale group $g/$f (/dev/tbstream$idx): a consumer holds it open — close it and re-trigger this unit"
+          warn "NOT releasing stale group $g/$f (/dev/tbstream$idx): a consumer holds it open — close it and re-trigger this unit"
           fail=1
           continue
         fi
         if rmdir "$d"; then
           say "released stale group $g/$f (was /dev/tbstream''${idx:-?}) — not on the rail-0 cable or beyond the configured count (#275)"
         else
-          say "FAILED to release stale group $g/$f — do not trust configfs until this is understood"
+          warn "FAILED to release stale group $g/$f — do not trust configfs until this is understood"
           fail=1
         fi
       done
@@ -284,6 +324,36 @@ let
     for i in $(seq 0 $((${toString cfg.streams} - 1))); do
       g="$base/fn$i"
       want=$((10 + i))
+      # Converge pre-pin groups (review fix 2026-08-31): groups from before
+      # the pin era hold 9/9 and 10/10, and treating that as a refusal made
+      # the first `switch` after the pin paint the unit red on BOTH twins
+      # (four deterministic mismatches, exit 4 from switch-to-configuration).
+      # rmdir of an UNOPENED group is the documented-safe direction — it
+      # releases the hopids and index without ever touching the data path —
+      # so an off-pin group nothing holds open is released and recreated at
+      # the pin. A group a consumer holds open keeps the refusal: live pair
+      # state is never rewritten one-sided (the mismatched-peer wedge in
+      # HAZARDS).
+      if [ -d "$g" ]; then
+        cur_in=$(cat "$g/in_hopid" 2>/dev/null || echo 0)
+        cur_out=$(cat "$g/out_hopid" 2>/dev/null || echo 0)
+        if { [ "$cur_in" != 0 ] && [ "$cur_in" != "$want" ]; } \
+          || { [ "$cur_out" != 0 ] && [ "$cur_out" != "$want" ]; }; then
+          idx=$(cat "$g/index" 2>/dev/null || echo "")
+          if [ -n "$idx" ] && fuser -s "/dev/tbstream$idx" 2>/dev/null; then
+            warn "fn$i holds off-pin hopids $cur_in/$cur_out and a consumer has /dev/tbstream$idx open — NOT rewriting live pair state; close it and re-trigger this unit (#276)"
+            fail=1
+            continue
+          fi
+          if rmdir "$g"; then
+            say "released fn$i (off-pin hopids $cur_in/$cur_out, was /dev/tbstream''${idx:-?}) to recreate it at the $want/$want pin (#276)"
+          else
+            warn "FAILED to release off-pin fn$i (hopids $cur_in/$cur_out) — refusing rather than leaving a group off the pin (#276)"
+            fail=1
+            continue
+          fi
+        fi
+      fi
       mkdir -p "$g"
       # EBUSY while a consumer holds the stream open — leave live values be.
       echo ${toString cfg.ringSize} > "$g/ring_size" 2>/dev/null \
@@ -302,13 +372,13 @@ let
         cur=$(cat "$g/''${side}_hopid")
         if [ "$cur" = 0 ]; then
           if ! echo "$want" > "$g/''${side}_hopid" 2>/dev/null; then
-            say "REFUSED: fn$i ''${side}_hopid=$want not granted (EBUSY) — something else holds hopid $want on $xd; NOT falling back to auto-allocation, the pin IS the #276 guarantee"
+            warn "REFUSED: fn$i ''${side}_hopid=$want not granted (EBUSY) — something else holds hopid $want on $xd; NOT falling back to auto-allocation, the pin IS the #276 guarantee"
             fail=1
           fi
         elif [ "$cur" = "$want" ]; then
           :
         else
-          say "WARNING: fn$i ''${side}_hopid=$cur, not the pinned $want — inherited from a peer on pre-pin config? NOT rewriting an interlocked pair one-sided. If $cur is 8 this stream MUST NOT be opened: thunderbolt_net holds hop 8 on every router in this fleet (#276)."
+          warn "fn$i ''${side}_hopid=$cur, not the pinned $want — inherited from a peer between the convergence pass and this write? NOT rewriting an interlocked pair one-sided. If $cur is 8 this stream MUST NOT be opened: thunderbolt_net holds hop 8 on every router in this fleet (#276)."
           fail=1
         fi
       done
@@ -340,7 +410,7 @@ let
         say "RECORDED rail identity for the first time: nhi=$nhi peer_uid=$peer (xdomain $xd, svc $svc). VERIFY this is the intended rail-0 cable — cable A, the one carrying 10.99.0.x on both twins; if not, rm $identity and re-trigger after healing the rail."
       fi
     else
-      say "finished with refusals; identity NOT (re)recorded"
+      warn "finished with refusals; identity NOT (re)recorded"
       exit 1
     fi
   '';
@@ -456,6 +526,15 @@ in
         ExecStart = provisionScript;
         # The identity record (#275) and the keep-foreign marker live here.
         StateDirectory = "usb4-stream";
+        # The script's waits are worst-case 60+120+60 s; the 90 s default
+        # would SIGTERM it mid-wait and leave a `failed` unit that is
+        # indistinguishable from a deliberate identity refusal — and the
+        # carefully-worded skip lines would never be reached.
+        TimeoutStartSec = 300;
+        # The `<4>` prefix on warn() is parsed into PRIORITY=4 only with
+        # this on. It is systemd's default; pinned so the escalation cannot
+        # silently regress (#279's lesson, applied here).
+        SyslogLevelPrefix = true;
       };
     };
   };
