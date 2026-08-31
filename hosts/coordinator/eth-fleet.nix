@@ -45,6 +45,14 @@
     description = "Stable fleet identity 10.99.9.1/32 on loopback";
     wantedBy = [ "multi-user.target" ];
     after = [ "network-pre.target" ];
+    # Since #273 the hostname resolves to this /32, so any service that binds
+    # by hostname needs the address on lo FIRST. after=network-pre alone gave
+    # no such guarantee (review finding 2026-08-31): nothing ordered this
+    # before the binders. before=network.target does — the conventional edge
+    # for "network identity is set up" — and binders are After=network.target
+    # by convention. A unit that binds the hostname EARLIER than that now
+    # fails loudly instead of binding loopback quietly: the intended trade.
+    before = [ "network.target" ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;

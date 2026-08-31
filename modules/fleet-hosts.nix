@@ -84,10 +84,14 @@
 #   absence on the twins, not merely the presence on the NAS.
 #
 # ⚠ A service that binds by hostname now depends on systemd-services
-# fleet-identity being up (it puts 10.99.9.x on lo). That unit is a oneshot at
-# network-pre.target, i.e. before anything that could bind — but a unit that
-# binds the hostname and starts EARLIER than that would now fail loudly instead
-# of binding loopback quietly. That is the intended trade: loud beats silent.
+# fleet-identity being up (it puts 10.99.9.x on lo). An earlier draft of this
+# note claimed after=network-pre.target already put it "before anything that
+# could bind" — FALSE (review, 2026-08-31): after= orders it, before= nothing
+# did. The unit is now explicitly before=network.target on both twins, the
+# conventional "network identity is set up" edge that binders order After=.
+# A unit that binds the hostname and starts EARLIER than network.target would
+# still fail loudly instead of binding loopback quietly. That is the intended
+# trade: loud beats silent.
 #
 # NOT DONE, deliberately: the `coordinator.fleet` / `worker.fleet` alias shape
 # #277 offers as its alternative. Extra names at every call site buy

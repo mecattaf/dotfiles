@@ -380,6 +380,10 @@
     description = "Stable fleet identity 10.99.9.2/32 on loopback";
     wantedBy = [ "multi-user.target" ];
     after = [ "network-pre.target" ];
+    # #273 makes the hostname resolve to this /32 — ordered before
+    # network.target so hostname-binders (After=network.target by convention)
+    # find the address on lo. Rationale: hosts/coordinator/eth-fleet.nix.
+    before = [ "network.target" ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
