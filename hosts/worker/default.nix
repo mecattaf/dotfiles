@@ -63,6 +63,11 @@
     ./journal-upload.nix # sender half of the #135 substrate — Strix boxes only
     ../../modules/cli-anything.nix
     ../../modules/strix.nix
+    # TWINS ONLY: kills the stock 127.0.0.2 self-mapping and points both twins'
+    # names at their fleet identities on lo (#273). Without it gethostname()
+    # resolves to loopback, which every distributed library happily binds — the
+    # rank-1-hangs-forever failure. The NAS must NOT import this.
+    ../../modules/fleet-hosts.nix
   ];
 
   networking.hostName = "worker";

@@ -1185,6 +1185,25 @@
           # commit, so these hold across the whole transition.
           assert coordinator.networking.hosts."10.42.0.1" == [ "nas" ];
           assert nas.networking.hosts."10.42.0.2" == [ "coordinator" ];
+          # #273: the TWINS' own names must NEVER resolve to loopback again.
+          # Stock NixOS sets networking.hosts."127.0.0.2" = [ hostName ]; that
+          # address resolves fine, so every gethostname()-and-bind library
+          # (torch/Gloo measured: rank 0 dies in 6.3 s, rank 1 hangs to a 90 s
+          # kill) binds loopback WITHOUT the warning its own fallback path would
+          # have printed. modules/fleet-hosts.nix mkForce-empties it on both
+          # twins and points each name at the /32 fleet identity on lo; an empty
+          # list renders no /etc/hosts line at all (nixpkgs filters it).
+          assert coordinator.networking.hosts."127.0.0.2" == [ ];
+          assert worker.networking.hosts."127.0.0.2" == [ ];
+          assert coordinator.networking.hosts."10.99.9.1" == [ "coordinator" ];
+          assert coordinator.networking.hosts."10.99.9.2" == [ strixWorker ];
+          assert worker.networking.hosts."10.99.9.1" == [ "coordinator" ];
+          assert worker.networking.hosts."10.99.9.2" == [ strixWorker ];
+          # ...and the NAS keeps the stock mapping, deliberately: it is an
+          # appliance, not a rank in a job, and it does not import
+          # modules/fleet-hosts.nix.
+          assert nas.networking.hosts."127.0.0.2" == [ "nas" ];
+          assert !(nas.networking.hosts ? "10.99.9.1");
           # journald substrate (#135): the NAS receives on the NVMe, and the
           # senders are the STRIX HALO BOXES ONLY (Tom's 2026-08-21 ruling) —
           # the worker joined as the second sender with #229. Each sender keeps
