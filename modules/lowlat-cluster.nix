@@ -9,13 +9,20 @@
 # hosts/coordinator/tb-fleet.nix and eth-fleet.nix guarantee the links EXIST.
 # This module guarantees they are FAST. Measured on the live pair 2026-08-28
 # (dotfiles#238): as found, 577 us avg RTT over Thunderbolt; with PM QoS held
-# on BOTH ends, 63-90 us — 8.5x, at no power cost (76.22 W vs 74.14 W, inside
-# noise). Re-measured 2026-08-28 19:xx with the transient unit live: tb0
-# 33/58/122 us mdev 18, eth 58/72/142 us mdev 9, 200 samples each.
+# on BOTH ends, 63-90 us — 8.5x. Re-measured 2026-08-28 19:xx with the
+# transient unit live: tb0 33/58/122 us mdev 18, eth 58/72/142 us mdev 9,
+# 200 samples each.
+#
+# #238's "at no power cost" reading (76.22 W vs 74.14 W) did NOT survive
+# review: both figures were sampled while the ping benchmark was running, so
+# they compare load-power to load-power and never touched the idle floor,
+# which is where the entire cost lived. See #257 and the pmqosHold comment.
 #
 # CAUSE, found in /sys/devices/system/cpu/cpu*/cpuidle/state*/latency on both
 # twins: POLL 0us | C1 1us | C2 18us | C3 350us. Every inter-node packet was
-# paying a C3 exit. Holding /dev/cpu_dma_latency at 0 floors the cores at C2.
+# paying a C3 exit. Holding /dev/cpu_dma_latency below 350 blocks that exit;
+# the budget is an OPTION (pmqosLatencyUs, default 100) because the value
+# chooses which states survive, and the original 0 left only POLL.
 #
 # IT MUST BE HELD ON BOTH ENDS. Coordinator-only measured 468 us: the REMOTE
 # wakeup dominates the round trip. That asymmetry is almost certainly why
@@ -37,24 +44,30 @@
 # still had a laptop (zenbook-duo, retired 2026-08-30) and stays as written: it
 # is the shape that keeps this safe to import from anywhere.
 #
-# ─── The rails this fleet actually has (per-boot SNAPSHOT, 2026-08-31) ──────
+# ─── The rails this fleet actually has (STRUCTURAL since #266) ─────────────
 #
-# thunderbolt0/1 are PROBE-ORDER names, not cables (#266: the worker's own
+# This table used to be a per-boot SNAPSHOT with a warning attached, because
+# thunderbolt0/1 were PROBE-ORDER names rather than cables: the worker's own
 # kernel named the same device — svc 1-2.0 — thunderbolt0 at 17:41 and
-# thunderbolt1 at 18:42 on 2026-08-30). The durable rule is RESOLVE PER
-# NODE, NEVER HARDCODE:
-#   readlink -f /sys/class/net/thunderboltN   -> NHI function + domain
-# The 2026-08-28 version of this table ("thunderbolt0 c4:00.5 -> domain0")
-# was the WORKER's snapshot presented as fleet fact — wrong for the
-# coordinator on both the PCI function (c5 there) and the domain (#267).
-# Verified 2026-08-31, a boot on which the names happened to agree
-# end-to-end (luck, not design — the two cabling crossings cancel):
+# thunderbolt1 at 18:42 on 2026-08-30, and the 2026-08-31 12:27 reboot
+# flipped both twins at once. Since #266 the names are pinned to the NHIs by
+# modules/fleet-rail-names.nix, so the table below is a FACT rather than a
+# snapshot, and `rail0` means one specific cable on both twins forever.
 #
-#   cable A   coord c5:00.6/domain1 <-> worker c4:00.5/domain0
-#             (thunderbolt0 on both)   10.99.0.x/30   tb-fleet, the fast rail
-#   cable B   coord c5:00.5/domain0 <-> worker c4:00.6/domain1
-#             (thunderbolt1 on both)   10.99.2.x/30   tb-fleet2, rail 2 (#274)
+# (The 2026-08-28 version of this table — "thunderbolt0 c4:00.5 -> domain0" —
+# was the WORKER's snapshot presented as fleet fact, wrong for the
+# coordinator on both the PCI function (c5 there) and the domain (#267).
+# That class of error is what keying the table by hostName now prevents.)
+#
+#   rail0     coord c5:00.6/domain1 <-> worker c4:00.5/domain0   cable A
+#                                      10.99.0.x/30   tb-fleet, the fast rail
+#   rail2     coord c5:00.5/domain0 <-> worker c4:00.6/domain1   cable B
+#                                      10.99.2.x/30   tb-fleet2, rail 2 (#274)
 #   enp191s0  5GbE, probe-stable name  10.99.1.x/30   eth-fleet, the fallback
+#
+# Cable A reaches domain1 on the coordinator and domain0 on the worker: the
+# two cabling crossings cancel. That asymmetry is real, triple-verified
+# (#275), and the reason the pin table is per-host.
 #
 # Two USB4 host routers on SEPARATE NHIs and separate domains — genuinely
 # independent controllers, not one controller split, which is why tb-link-heal
@@ -113,11 +126,51 @@
 let
   cfg = config.myLowLatCluster;
 
-  # A single 4-byte little-endian 0 written to the PM QoS device, then the fd
-  # held open forever. `exec sleep infinity` replaces the shell but keeps fd 3.
+  # A single 4-byte little-endian budget written to the PM QoS device, then the
+  # fd held open forever. `exec sleep infinity` replaces the shell but keeps
+  # fd 3 — the fd IS the constraint; closing it releases the budget.
+  #
+  # THE VALUE MATTERS AND 0 WAS THE WRONG ONE (#257). cpuidle admits exactly
+  # the states whose exit latency is <= the budget. On Strix Halo:
+  #
+  #   POLL  0 us     C1  1 us     C2  18 us     C3  350 us
+  #
+  # so a budget of 0 admits POLL ALONE — a busy-wait spin at whatever the
+  # governor holds, which here is EPP=performance at full boost. This module's
+  # header used to claim 0 "floors the cores at C2"; it did not, and the cost
+  # was measured on 2026-08-31 at 70.16 W package power with the box idle,
+  # POLL holding 97.5% of wall clock against 0.4 s in C1 and 0.8 s in C2. That
+  # is invisible to load, %CPU, top and htop, because POLL is accounted as
+  # idle — only the fans give it away.
+  #
+  # MEASURED 2026-08-31, held on BOTH twins, 200-sample ping over rail 0, idle
+  # package power from amdgpu power1_average with the bench stopped. This is
+  # the measurement #257 asked for before picking a number:
+  #
+  #   budget  admits          RTT avg    coord idle   worker idle
+  #   0       POLL            0.054 ms   70 W         70 W
+  #   1       POLL+C1         0.104 ms   18 W          7 W
+  #   100     POLL+C1+C2      0.116 ms   10 W          6 W
+  #   (none)  +C3             0.829 ms   17 W          6 W
+  #
+  # Two readings that matter. First, essentially the whole 8.5x RTT win is the
+  # C3 BLOCK, not the POLL floor: 0.116 ms against 0.829 ms unconstrained is
+  # still ~7x, while the extra step from 0.116 to 0.054 costs 60 W to buy 62
+  # us. Second, on an APU that 60 W is not merely waste — package power is
+  # SHARED with the GPU, so idle cores spinning at full boost are taking
+  # budget directly from the thing this fleet exists to run.
+  #
+  # 100 is chosen over 1 for the last 8 W; the two differ by 12 us, which is
+  # inside the tripwire's margin either way (budget 200 us). If a future
+  # tensor-path measurement shows those 12 us matter, set pmqosLatencyUs = 1
+  # and keep almost all of the power win.
   pmqosHold = pkgs.writeShellScript "pmqos-hold" ''
     exec 3> /dev/cpu_dma_latency
-    printf '\0\0\0\0' >&3
+    # 4-byte little-endian, built from the option rather than hand-escaped, so
+    # changing the number cannot silently write the wrong bytes.
+    v=${toString cfg.pmqosLatencyUs}
+    printf "$(printf '\\%03o' \
+      $((v & 255)) $(((v >> 8) & 255)) $(((v >> 16) & 255)) $(((v >> 24) & 255)))" >&3
     exec ${pkgs.coreutils}/bin/sleep infinity
   '';
 
@@ -139,6 +192,25 @@ in
     peer = lib.mkOption {
       type = lib.types.str;
       description = "The peer's fast-rail /30 address, watched by the latency tripwire.";
+    };
+
+    pmqosLatencyUs = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 100;
+      description = ''
+        CPU DMA latency budget in microseconds, held open on
+        /dev/cpu_dma_latency for as long as the unit runs. cpuidle admits
+        exactly the idle states whose exit latency is <= this number.
+
+        On these boxes: POLL 0, C1 1, C2 18, C3 350 us. The default 100
+        therefore admits POLL/C1/C2 and blocks C3, which is the whole point —
+        C3's 350 us exit is what the remote wakeup was paying for.
+
+        Do NOT set this to 0. That admits POLL alone, i.e. a full-boost
+        busy-wait with no idling at all: measured 70.16 W package power on an
+        idle coordinator with POLL at 97.5% of wall clock (#257). Any value in
+        19..349 keeps the C3 block; 100 leaves margin on both sides.
+      '';
     };
 
     latencyBudgetMicros = lib.mkOption {
@@ -183,11 +255,11 @@ in
         # takes the conventional 9000 — NOT 65520, which it will silently
         # refuse, leaving the rail at 1500 and the operator none the wiser.
         {
-          name = "thunderbolt0";
+          name = "rail0";
           mtu = 65520;
         }
         {
-          name = "thunderbolt1";
+          name = "rail2";
           mtu = 65520;
         }
         {
@@ -205,24 +277,30 @@ in
     # routable /30 — which names thunderbolt0 — but until this stanza the
     # rail's firewall admitted ONLY UDP 4791 (fn-rdma's RoCE door): every
     # NCCL/Ray TCP connect over the rail would have hung at cp-tp2's first
-    # real bootstrap. Verified empirically (TCP connect over thunderbolt0
+    # real bootstrap. Verified empirically (TCP connect over the rail-0 netdev
     # timed out; the same test over the trusted 5GbE worked). Interface-scoped
     # high-port range on a point-to-point /30 — the house per-interface idiom,
     # NOT trustedInterfaces. NCCL and Ray both use dynamic high ports.
-    networking.firewall.interfaces.thunderbolt0.allowedTCPPortRanges = [
+    #
+    # Since #266 this door names a CABLE, not a probe order: rail0 is pinned
+    # to cable A's NHI by modules/fleet-rail-names.nix. Before that rename the
+    # door and the /30 both chased `thunderbolt0` and so moved cables
+    # together — right by coincidence, and only while both twins flipped in
+    # the same direction.
+    networking.firewall.interfaces.rail0.allowedTCPPortRanges = [
       {
         from = 1024;
         to = 65535;
       }
     ];
-    # Rail 2's twin door (#274, 2026-08-31): the moment thunderbolt1 carries
-    # a real /30 it inherits the same admission problem — an addressed rail
-    # whose TCP connects silently time out is exactly the hang class #274
-    # exists to remove, and the second-socket-rail experiment (#274 reason 3)
-    # is a TCP consumer. Same interface-scoped idiom, same point-to-point
-    # /30 exposure: only the twin is on the far end. UDP 4791 stays
-    # rail-0-only — fn-rdma owns that door and RoCE rides the IP rail.
-    networking.firewall.interfaces.thunderbolt1.allowedTCPPortRanges = [
+    # Rail 2's twin door (#274, 2026-08-31): the moment rail2 carries a real
+    # /30 it inherits the same admission problem — an addressed rail whose TCP
+    # connects silently time out is exactly the hang class #274 exists to
+    # remove, and the second-socket-rail experiment (#274 reason 3) is a TCP
+    # consumer. Same interface-scoped idiom, same point-to-point /30 exposure:
+    # only the twin is on the far end. UDP 4791 stays rail-0-only — fn-rdma
+    # owns that door and RoCE rides the IP rail.
+    networking.firewall.interfaces.rail2.allowedTCPPortRanges = [
       {
         from = 1024;
         to = 65535;
@@ -231,7 +309,7 @@ in
 
     # ── Layer 1: the PM QoS hold, the whole measured win ─────────────────────
     systemd.services.lowlat-cluster = {
-      description = "PM QoS cpu_dma_latency=0 for low-latency fleet rails";
+      description = "PM QoS cpu_dma_latency hold for low-latency fleet rails";
       wantedBy = [ "multi-user.target" ];
       after = [ "network-pre.target" ];
       serviceConfig = {
@@ -296,7 +374,7 @@ in
       onFirePath = [ pkgs.coreutils ];
       onFire = ''
         mkdir -p /var/lib/failure-markers
-        printf '%s — the fast rail is UP but SLOW: avg RTT over ${cfg.peer} has exceeded ${toString cfg.latencyBudgetMicros} us for ~1 h (episode %s)\n  This is the 2026-08-28 C3 regression (dotfiles#238), not a dead link. Check BOTH boxes: systemctl is-active lowlat-cluster, then sudo od -An -td4 /dev/cpu_dma_latency (must read 0 on each). PM QoS held on only one end measures ~468 us and looks like the knob did nothing (see modules/lowlat-cluster.nix)\n' \
+        printf '%s — the fast rail is UP but SLOW: avg RTT over ${cfg.peer} has exceeded ${toString cfg.latencyBudgetMicros} us for ~1 h (episode %s)\n  This is the 2026-08-28 C3 regression (dotfiles#238), not a dead link. Check BOTH boxes: systemctl is-active lowlat-cluster, then sudo od -An -td4 /dev/cpu_dma_latency (must read ${toString cfg.pmqosLatencyUs} on each). PM QoS held on only one end measures ~468 us and looks like the knob did nothing (see modules/lowlat-cluster.nix)\n' \
           "$(date '+%Y-%m-%d %H:%M')" "$4" \
           > /var/lib/failure-markers/fleet-latency
       '';

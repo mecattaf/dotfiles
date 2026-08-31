@@ -254,17 +254,23 @@ let
     modprobe configfs || true
     modprobe ib_core || true
     modprobe ib_uverbs || true
+    # rail0 is cable A's netdev by construction since #266 (a .link Name= on
+    # the NHI's ID_PATH, applied by udev at add time — so the name that
+    # appears here is already the pinned one). Before that pin this waited on
+    # `thunderbolt0`, i.e. on whichever cable won the probe race, and bound
+    # RoCE to it: on the 2026-08-31 flip that would have put the verbs
+    # provider on cable B while the streams ran on cable A.
     for _ in $(seq 60); do
-      [ -e /sys/class/net/thunderbolt0 ] && break
+      [ -e /sys/class/net/rail0 ] && break
       sleep 0.5
     done
-    [ -e /sys/class/net/thunderbolt0 ] || say "thunderbolt0 never registered; inserting anyway"
+    [ -e /sys/class/net/rail0 ] || say "rail0 never registered; inserting anyway"
     # No native_rc_split_zcopy: that knob belongs to a local zero-copy patch
     # this build deliberately does not carry (fetch-and-build.sh header).
     if ! insmod "$staged/thunderbolt_ibverbs.ko" \
       profile=linux_perf bind_services=1 allocate_rings=1 start_rings=1 \
       negotiate_native=1 enable_tunnels=1 register_verbs=1 \
-      native_tx_max_inflight=128 roce_netdev=thunderbolt0; then
+      native_tx_max_inflight=128 roce_netdev=rail0; then
       say "thunderbolt_ibverbs failed to insert — core+net stay patched, no rdma device this boot"
       exit 0
     fi
@@ -355,7 +361,53 @@ in
     # Rail 1 gets nothing: RDMA on both rails puts both peers at route 0x2 in
     # each other's domains and the source-blind control handler cross-matches
     # their HELLOs — HopID state corruption, not a slowdown.
-    networking.firewall.interfaces.thunderbolt0.allowedUDPPorts = [ 4791 ];
+    # rail0 = cable A by construction (#266), so this door and roce_netdev
+    # above can no longer drift onto different cables from each other.
+    networking.firewall.interfaces.rail0.allowedUDPPorts = [ 4791 ];
+
+    # ── The staging miss is now WATCHED, not just logged (#262, #279) ────────
+    #
+    # #279 made the miss loud at boot (LOG_WARNING plus the greppable negative
+    # /run/fn-rdma-stock-fallback, which records the kernel the answer applies
+    # to). That is still a log line: it scrolls past once per boot and nothing
+    # asks about it again. #262's fourth acceptance item wanted a tripwire, and
+    # this is it — the marker file makes the sensor a one-line existence test
+    # rather than a journal grep, which is why it can be this cheap.
+    #
+    # Deliberately a SLOW tripwire. Unlike the rail tripwires, this watches a
+    # state that is expected to persist for days: the re-bake is an attended,
+    # per-node task (flashnext host/rdma/fetch-and-build.sh) and cannot be
+    # automated from here. A 24 h refractory makes it a standing reminder
+    # instead of a pager — the failure mode this guards against is FORGETTING,
+    # not an outage.
+    myTripwire.fn-rdma-staging = {
+      description = "the patched thunderbolt ibverbs set is staged for the running kernel";
+      intervalSeconds = 3600;
+      onBootSec = "15min";
+      threshold = 1;
+      comparison = "ge";
+      rearm = 0;
+      refractorySeconds = 86400;
+      valueField = "RDMA_STOCK_FALLBACK";
+      sensorPath = [ pkgs.coreutils ];
+      sensor = ''
+        # Written by the boot unit whenever it falls back to the stock set;
+        # its contents are the kernel release the fallback applies to, so a
+        # stale file from an older kernel cannot read as a pass.
+        if [ -e /run/fn-rdma-stock-fallback ]; then
+          echo "1 fn-rdma:$(cat /run/fn-rdma-stock-fallback 2>/dev/null || echo unknown) 1"
+        else
+          echo "0 fn-rdma:staged 1"
+        fi
+      '';
+      onFirePath = [ pkgs.coreutils ];
+      onFire = ''
+        mkdir -p /var/lib/failure-markers
+        printf '%s — fn-rdma is on the STOCK thunderbolt set for kernel %s; ibverbs is unavailable and any RDMA-vs-TCP comparison on this node is measuring sockets (episode %s)\n  This is the one attended task: run flashnext host/rdma/fetch-and-build.sh ON THIS NODE with TARGET_KVER=%s, which stages into ${cfg.stagedDir}, then reboot. Verify: ls ${cfg.stagedDir} and journalctl -b -p warning -g fn-rdma (silent when staged).\n' \
+          "$(date '+%Y-%m-%d %H:%M')" "$2" "$4" "$2" \
+          > /var/lib/failure-markers/fn-rdma-staging
+      '';
+    };
 
     systemd.services.fn-rdma-modules = {
       description = "insert the patched thunderbolt core/net/ibverbs set before anything else binds";

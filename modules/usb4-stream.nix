@@ -439,28 +439,33 @@ in
 
     rail = lib.mkOption {
       type = lib.types.str;
-      default = "thunderbolt0";
+      default = "rail0";
       description = ''
         Netdev whose cable carries the streams; the stream service is resolved
         as its XDomain sibling. The name is the ENTRY POINT, not the anchor —
-        it is probe-order (#266/#275) and the resolved physical identity is
-        gated against railNhi and the recorded identity file before anything
-        is provisioned.
+        the resolved physical identity is still gated against railNhi and the
+        recorded identity file before anything is provisioned.
+
+        Since #266 the entry point is itself cable-bound: `rail0` is pinned to
+        cable A's NHI by modules/fleet-rail-names.nix, so the probe-order
+        drift this option's gates exist to catch (#275) should now be
+        unreachable. The gates stay — they are what would make a regression in
+        the pin loud instead of silent, and they cost one sysfs walk.
       '';
     };
 
     railNhi = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
-      default =
-        {
-          coordinator = "0000:c5:00.6";
-          worker = "0000:c4:00.5";
-        }
-        .${config.networking.hostName} or null;
+      # ONE COPY (#266): this used to repeat the per-host cable-A table that
+      # modules/fleet-rail-names.nix now owns. Two hand-maintained copies of a
+      # soldered-PCI-function table is the exact shape that produced #267,
+      # where a stale constant sat in one file and silently disagreed with the
+      # hardware, so this reads the other module's option instead.
+      default = config.myFleetRails.cableA;
       defaultText = lib.literalMD ''
-        per-host table — coordinator `"0000:c5:00.6"`, worker `"0000:c4:00.5"`
-        (cable A's NHIs, verified by unique_id reciprocity 2026-08-31); `null`
-        on unknown hosts
+        `config.myFleetRails.cableA` — the fleet's per-host cable-A table
+        (coordinator `"0000:c5:00.6"`, worker `"0000:c4:00.5"`, verified by
+        unique_id reciprocity 2026-08-31); `null` on hosts that are not twins
       '';
       description = ''
         PCI function of the NHI the rail-0 cable enters on THIS host; the
@@ -501,15 +506,14 @@ in
 
     benchNhi = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
-      default =
-        {
-          coordinator = "0000:c5:00.5";
-          worker = "0000:c4:00.6";
-        }
-        .${config.networking.hostName} or null;
+      # Same ONE COPY rule as railNhi (#266): cable B's per-host table lives
+      # in modules/fleet-rail-names.nix, which also names this cable's netdev
+      # `rail2`.
+      default = config.myFleetRails.cableB;
       defaultText = lib.literalMD ''
-        per-host table — coordinator `"0000:c5:00.5"`, worker `"0000:c4:00.6"`
-        (cable B's NHIs, the complement of railNhi); `null` on unknown hosts
+        `config.myFleetRails.cableB` — the fleet's per-host cable-B table
+        (coordinator `"0000:c5:00.5"`, worker `"0000:c4:00.6"`, the complement
+        of railNhi); `null` on hosts that are not twins
       '';
       description = ''
         PCI function of the NHI the BENCH cable (cable B) enters on this host.

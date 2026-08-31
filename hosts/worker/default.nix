@@ -332,29 +332,54 @@
     };
   };
 
-  # ── Rail 2, worker half (#274, 2026-08-31): 10.99.2.2/30 on thunderbolt1.
+  # ── Rail 0, worker half (#266, 2026-08-31): 10.99.0.2/30 on rail0.
+  # Was an imperative keyfile bound to `interface-name=thunderbolt0` until the
+  # cable-bound rename removed that name from the box entirely. Doctrine, the
+  # migration note (delete the legacy /etc keyfile in the same window) and the
+  # #240 route rationale live coordinator-side in hosts/coordinator/tb-fleet.nix.
+  networking.networkmanager.ensureProfiles.profiles.tb-fleet = {
+    connection = {
+      id = "tb-fleet";
+      type = "ethernet";
+      interface-name = "rail0";
+      autoconnect = true;
+      autoconnect-priority = 50;
+    };
+    # Cable A's NHI on this box (c4:00.5 here, c5:00.6 on the coordinator —
+    # the crossing is real, see modules/fleet-rail-names.nix).
+    match.path = "pci-0000:c4:00.5;";
+    ipv4 = {
+      method = "manual";
+      addresses = "10.99.0.2/30";
+      never-default = true;
+      ignore-auto-dns = true;
+      # The #240 metric-50 failover leg toward the coordinator's fleet
+      # identity, carried over verbatim from the keyfile this replaces.
+      # routeN keyfile syntax — an nmcli-style `routes` key is silently
+      # dropped by the parser.
+      route1 = "10.99.9.1/32,10.99.0.1,50";
+    };
+    ipv6.method = "disabled";
+  };
+
+  # ── Rail 2, worker half (#274, 2026-08-31): 10.99.2.2/30 on rail2.
   # Doctrine, the measured addressed-but-peerless hang, the HAZARDS (both
   # ends together; THIS box's controller failed DMA activation on rail 2's
   # first-ever tunnel use — watch the first bring-up) and the tripwire all
-  # live coordinator-side in hosts/coordinator/tb-fleet.nix. Declarative,
-  # unlike rail 0's tb-fleet, which is imperative NM state on both ends and
-  # must not be disturbed (see the wifi doctrine above): rail 2 has no
-  # imperative history — only NM's volatile auto "Wired connection 2"
-  # (link-local), which loses autoconnect to this profile.
+  # live coordinator-side in hosts/coordinator/tb-fleet.nix.
   networking.networkmanager.ensureProfiles.profiles.tb-fleet2 = {
     connection = {
       id = "tb-fleet2";
       type = "ethernet";
-      interface-name = "thunderbolt1";
+      interface-name = "rail2";
       autoconnect = true;
       autoconnect-priority = 50;
     };
-    # #266 mitigation: pin to the PHYSICAL NHI (cable B is c4:00.6 on this
-    # box, c5:00.5 on the coordinator). Both interface-name and match.path
-    # must match, so a probe-order name flip makes this profile UNAVAILABLE
-    # — rail 2 dark and loud — rather than putting the /30 on the wrong
-    # cable. Full rationale, the rejected .link-rename alternative, and the
-    # re-cabling caveat: hosts/coordinator/tb-fleet.nix at its tb-fleet2.
+    # Cable B is c4:00.6 on this box, c5:00.5 on the coordinator. Since #266
+    # `rail2` names that same cable by construction, so this path and the
+    # interface name agree on every boot instead of by luck; keeping both is
+    # the fail-closed check on the rename itself. Full rationale:
+    # hosts/coordinator/tb-fleet.nix at its tb-fleet2.
     match.path = "pci-0000:c4:00.6;";
     ipv4 = {
       method = "manual";

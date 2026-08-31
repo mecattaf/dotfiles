@@ -185,7 +185,52 @@ in
     '';
   };
 
-  # ── Rail 2 (#274, 2026-08-31): thunderbolt1 gets a real /30 ────────────────
+  # ── Rail 0 (#266, 2026-08-31): the last imperative rail becomes declarative
+  #
+  # Until #266 this /30 was NOT in this file at all: it lived as a hand-made
+  # keyfile at /etc/NetworkManager/system-connections/tb-fleet.nmconnection on
+  # each twin, bound purely by `interface-name=thunderbolt0`, and the doctrine
+  # in this file said it "must not be disturbed". The rename forces the issue
+  # — after it there IS no thunderbolt0, so the imperative profile would have
+  # matched nothing and taken the fast rail down with it. Declaring it here is
+  # therefore not scope creep; it is the only way the rename is safe.
+  #
+  # Faithful to the keyfile it replaces, including the piece that is easy to
+  # miss: route1 is the metric-50 leg of the #240 failover ruling (this twin
+  # reaches the OTHER twin's fleet identity 10.99.9.x over TB when the 5GbE
+  # metric-20 leg is gone). Dropping it would have quietly demoted the fleet
+  # to a single admin path.
+  #
+  # MIGRATION, one time, both twins: the legacy /etc keyfile must be removed
+  # in the same window, or NM loads two profiles named tb-fleet with different
+  # UUIDs. The stale one binds thunderbolt0 and so can never activate, but it
+  # clutters `nmcli con` and would win the name on any future rollback.
+  networking.networkmanager.ensureProfiles.profiles.tb-fleet = {
+    connection = {
+      id = "tb-fleet";
+      type = "ethernet";
+      interface-name = "rail0";
+      autoconnect = true;
+      autoconnect-priority = 50;
+    };
+    # Cable A's NHI on this host — same both-pins-name-one-cable shape as
+    # tb-fleet2 below, and the same fail-closed property.
+    match.path = "pci-0000:c5:00.6;";
+    ipv4 = {
+      method = "manual";
+      addresses = "10.99.0.1/30";
+      never-default = true;
+      ignore-auto-dns = true;
+      # The #240 failover leg, carried over verbatim from the keyfile.
+      # Keyfile syntax (routeN=dest,next-hop,metric) — an nmcli-style
+      # `routes` key is silently ignored by the parser, which here would
+      # have meant losing the TB failover path without a single error.
+      route1 = "10.99.9.2/32,10.99.0.2,50";
+    };
+    ipv6.method = "disabled";
+  };
+
+  # ── Rail 2 (#274, 2026-08-31): cable B gets a real /30 ─────────────────────
   #
   # Cable B ran link-local-only since the fleet was built. #274's measured
   # finding (torch 2.13.0+rocm7.14.0): with a comma list like
@@ -231,31 +276,39 @@ in
     connection = {
       id = "tb-fleet2";
       type = "ethernet";
-      interface-name = "thunderbolt1";
+      interface-name = "rail2";
       autoconnect = true;
       autoconnect-priority = 50;
     };
-    # #266 mitigation — the strongest pin landable without a rename
-    # (2026-08-31). match.path binds this profile to the PHYSICAL NHI via
-    # udev's ID_PATH, which is per-host: cable B is pci-0000:c5:00.5 here
-    # and pci-0000:c4:00.6 on the worker (cable map triple-verified —
-    # unique_id reciprocity, configfs hopid interlock, byte-counter
-    # cross-match; #275). interface-name AND match.path must BOTH match, so
-    # on a probe-order flip (thunderbolt1 = cable A's netdev) this profile
-    # goes UNAVAILABLE instead of addressing the wrong cable: rail 2 dark
-    # and loud (tb-rail2-reachability fires; nmcli shows the profile
-    # inactive), never silently crossed.
+    # BOTH pins now name the SAME cable, which is the whole difference
+    # between this and the 2026-08-31 12:25 version of this file.
     #
-    # Why not a .link rename to cable-stable names: renaming inside the
-    # kernel's thunderbolt%d namespace races EEXIST when two netdevs swap,
-    # and leaving that namespace forces a sweep of every name consumer
-    # (usb4-stream's rail anchor, fn-rdma's roce_netdev + UDP 4791 door,
-    # the per-interface firewall stanzas) — that sweep is #266's own work,
-    # owned elsewhere, and needs more than one reboot to trust.
+    # That version paired interface-name=thunderbolt1 with match.path=cable B
+    # and reasoned that requiring both to match made a probe-order flip park
+    # the profile rather than cross the cables. The reasoning was right and
+    # the fail-safe fired exactly as designed at the 12:27 reboot — but it
+    # fired on EVERY flip, because a probe-order name and a soldered PCI
+    # function can only agree by luck. Rail 2 was down from that reboot until
+    # #266 landed.
     #
-    # If the cables are ever re-plugged into swapped ports these paths go
-    # stale on BOTH ends at once — update both profiles in one commit,
-    # from readlink -f /sys/class/net/thunderbolt*.
+    # `rail2` is now cable B's netdev by construction
+    # (modules/fleet-rail-names.nix pins it with a .link Name= on this
+    # ID_PATH), so name and path agree on every boot. Keeping match.path as
+    # well is deliberate belt-and-braces: if the rename ever regressed, the
+    # two would disagree again and this profile would park LOUDLY
+    # (tb-rail2-reachability fires; nmcli shows it inactive) instead of
+    # addressing the wrong cable. Fail-closed, but no longer fail-often.
+    #
+    # The .link objection recorded here previously — that renaming races
+    # EEXIST when two netdevs swap — applies only to renaming WITHIN the
+    # kernel's thunderbolt%d namespace. rail0/rail2 are a disjoint namespace
+    # the kernel never mints, so the collision is unreachable; see the header
+    # of modules/fleet-rail-names.nix.
+    #
+    # If the cables are ever re-plugged into swapped ports this path goes
+    # stale on BOTH ends at once — update the table in
+    # modules/fleet-rail-names.nix and this profile in one commit, from
+    # `udevadm info /sys/class/net/rail2 | grep ID_PATH`.
     match.path = "pci-0000:c5:00.5;";
     ipv4 = {
       method = "manual";
@@ -296,7 +349,7 @@ in
     onFirePath = [ pkgs.coreutils ];
     onFire = ''
       mkdir -p /var/lib/failure-markers
-      printf '%s — rail 2 (cable B, tb-fleet2) has not answered on ${peer2} for ~1 h (episode %s)\n  Check BOTH ends: nmcli -g GENERAL.STATE connection show tb-fleet2 (must be activated on each). Then readlink -f /sys/class/net/thunderbolt1 — must end in c5:00.5/domain0/... on the coordinator and c4:00.6/domain1/... on the worker; a mismatch is the #266 probe-order name flip, not a dead cable. If the profile is active and the path is right, suspect the worker controller DMA-activation history (HAZARDS in hosts/coordinator/tb-fleet.nix)\n' \
+      printf '%s — rail 2 (cable B, tb-fleet2) has not answered on ${peer2} for ~1 h (episode %s)\n  Check BOTH ends: nmcli -g GENERAL.STATE connection show tb-fleet2 (must be activated on each). Then confirm the cable pin held: ip link show rail2 must EXIST, and udevadm info /sys/class/net/rail2 must report ID_PATH=pci-0000:c5:00.5 on the coordinator and pci-0000:c4:00.6 on the worker. A MISSING rail2 means the .link pin did not apply (modules/fleet-rail-names.nix, #266) — look for a thunderbolt1 that should have been renamed. A present rail2 with the right path and no peer is a real dead cable: suspect the worker controller DMA-activation history (HAZARDS in hosts/coordinator/tb-fleet.nix)\n' \
         "$(date '+%Y-%m-%d %H:%M')" "$4" \
         > /var/lib/failure-markers/tb-rail2-reachability
     '';
