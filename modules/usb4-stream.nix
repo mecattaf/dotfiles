@@ -322,39 +322,45 @@ let
 
     base="/sys/kernel/config/thunderbolt/stream/$svc"
     mkdir -p "$base"
+    # ── Convergence pass 1: release ALL off-pin groups before creating ANY
+    # (review fix 2026-08-31, refined the same day): groups from before the
+    # pin era hold 9/9 and 10/10, and treating that as a refusal made the
+    # first `switch` after the pin paint the unit red on BOTH twins. rmdir
+    # of an UNOPENED group is the documented-safe direction — it releases
+    # the hopids and index without ever touching the data path — so an
+    # off-pin group nothing holds open is released and recreated at the pin.
+    # The two passes MUST be separate: pinning fn0 at 10 while the old fn1
+    # still holds 10 is an EBUSY against ourselves — observed live at
+    # 12:16:50 when the single-loop version raced the worker's reboot
+    # re-fire. A group a consumer holds open keeps the refusal: live pair
+    # state is never rewritten one-sided (the mismatched-peer wedge in
+    # HAZARDS).
     for i in $(seq 0 $((${toString cfg.streams} - 1))); do
       g="$base/fn$i"
       want=$((10 + i))
-      # Converge pre-pin groups (review fix 2026-08-31): groups from before
-      # the pin era hold 9/9 and 10/10, and treating that as a refusal made
-      # the first `switch` after the pin paint the unit red on BOTH twins
-      # (four deterministic mismatches, exit 4 from switch-to-configuration).
-      # rmdir of an UNOPENED group is the documented-safe direction — it
-      # releases the hopids and index without ever touching the data path —
-      # so an off-pin group nothing holds open is released and recreated at
-      # the pin. A group a consumer holds open keeps the refusal: live pair
-      # state is never rewritten one-sided (the mismatched-peer wedge in
-      # HAZARDS).
-      if [ -d "$g" ]; then
-        cur_in=$(cat "$g/in_hopid" 2>/dev/null || echo 0)
-        cur_out=$(cat "$g/out_hopid" 2>/dev/null || echo 0)
-        if { [ "$cur_in" != 0 ] && [ "$cur_in" != "$want" ]; } \
-          || { [ "$cur_out" != 0 ] && [ "$cur_out" != "$want" ]; }; then
-          idx=$(cat "$g/index" 2>/dev/null || echo "")
-          if [ -n "$idx" ] && fuser -s "/dev/tbstream$idx" 2>/dev/null; then
-            warn "fn$i holds off-pin hopids $cur_in/$cur_out and a consumer has /dev/tbstream$idx open — NOT rewriting live pair state; close it and re-trigger this unit (#276)"
-            fail=1
-            continue
-          fi
-          if rmdir "$g"; then
-            say "released fn$i (off-pin hopids $cur_in/$cur_out, was /dev/tbstream''${idx:-?}) to recreate it at the $want/$want pin (#276)"
-          else
-            warn "FAILED to release off-pin fn$i (hopids $cur_in/$cur_out) — refusing rather than leaving a group off the pin (#276)"
-            fail=1
-            continue
-          fi
+      [ -d "$g" ] || continue
+      cur_in=$(cat "$g/in_hopid" 2>/dev/null || echo 0)
+      cur_out=$(cat "$g/out_hopid" 2>/dev/null || echo 0)
+      if { [ "$cur_in" != 0 ] && [ "$cur_in" != "$want" ]; } \
+        || { [ "$cur_out" != 0 ] && [ "$cur_out" != "$want" ]; }; then
+        idx=$(cat "$g/index" 2>/dev/null || echo "")
+        if [ -n "$idx" ] && fuser -s "/dev/tbstream$idx" 2>/dev/null; then
+          warn "fn$i holds off-pin hopids $cur_in/$cur_out and a consumer has /dev/tbstream$idx open — NOT rewriting live pair state; close it and re-trigger this unit (#276)"
+          fail=1
+          continue
+        fi
+        if rmdir "$g"; then
+          say "released fn$i (off-pin hopids $cur_in/$cur_out, was /dev/tbstream''${idx:-?}) to recreate it at the $want/$want pin (#276)"
+        else
+          warn "FAILED to release off-pin fn$i (hopids $cur_in/$cur_out) — refusing rather than leaving a group off the pin (#276)"
+          fail=1
         fi
       fi
+    done
+    # ── Convergence pass 2: create and configure at the pin ────────────────
+    for i in $(seq 0 $((${toString cfg.streams} - 1))); do
+      g="$base/fn$i"
+      want=$((10 + i))
       mkdir -p "$g"
       # EBUSY while a consumer holds the stream open — leave live values be.
       echo ${toString cfg.ringSize} > "$g/ring_size" 2>/dev/null \
