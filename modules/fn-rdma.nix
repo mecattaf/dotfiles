@@ -161,6 +161,13 @@ let
       # without parsing the journal, for anything (or anyone) checking
       # whether this boot has a verbs device to reach for.
       echo "$kver" > /run/fn-rdma-stock-fallback || true
+    elif [ -z "$rdma_miss" ]; then
+      # A bake landed (or the tree was always complete). Detection runs on
+      # every `switch` (restartIfChanged), so without this the marker written
+      # by an earlier miss would keep answering "no matched set" for a box
+      # that has one — the marker must track the CURRENT answer, not the
+      # first one this boot.
+      rm -f /run/fn-rdma-stock-fallback
     fi
 
     # Boot-time only. On a live `switch` this unit starts immediately, but a
