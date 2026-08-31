@@ -481,6 +481,26 @@ in
       default = 2048;
       description = "Interrupt throttling in ns; lower is better latency (driver default 8192).";
     };
+
+    benchNhi = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default =
+        {
+          coordinator = "0000:c5:00.5";
+          worker = "0000:c4:00.6";
+        }
+        .${config.networking.hostName} or null;
+      defaultText = lib.literalMD ''
+        per-host table — coordinator `"0000:c5:00.5"`, worker `"0000:c4:00.6"`
+        (cable B's NHIs, the complement of railNhi); `null` on unknown hosts
+      '';
+      description = ''
+        PCI function of the NHI the BENCH cable (cable B) enters on this host.
+        Consumed only by the `usb4-stream-bench-cable` operator command below —
+        the boot path never touches this cable (EXPECTED ABSENCE in the
+        header). null disables the command.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -490,6 +510,88 @@ in
         message = "myUsb4Stream.streams must be 1..10: hopids are pinned at 10+N and Max Input HopID is 19 on these hosts (measured 2026-08-31, all four host lane adapters).";
       }
     ];
+
+    # The deliberate verb for cable B (#272's post-reboot ask, #276's pin).
+    # After #275 the boot path provisions the rail-0 cable ONLY, so the
+    # USB4STREAM bench — deliberately staged onto cable B so a hop-table
+    # wedge cannot take down the tensor rail — has no device unless someone
+    # states the choice. This is that statement: run it on BOTH twins before
+    # a bench pass, tear down with --release after. It arms keep-foreign so
+    # the provisioner's sweep will not undo the operator mid-campaign, and
+    # it applies the same 10+N hopid pin so a manual pass can never take
+    # thunderbolt_net's hop 8 — the two hazards a bare `mkdir` in configfs
+    # would reopen.
+    environment.systemPackages = lib.optional (cfg.benchNhi != null) (
+      pkgs.writeShellScriptBin "usb4-stream-bench-cable" ''
+        PATH=${
+          lib.makeBinPath [
+            pkgs.coreutils
+            pkgs.gnugrep
+            pkgs.psmisc
+          ]
+        }
+        set -u
+        nhi=${cfg.benchNhi}
+        [ "$(id -u)" = 0 ] || { echo "run as root (configfs writes)"; exit 1; }
+
+        # Resolve the bench cable's netdev and xdomain by NHI, never by name.
+        found=""
+        for n in /sys/class/net/*/device; do
+          case "$(readlink -f "$n" 2>/dev/null)" in
+            */"$nhi"/*) found=$(readlink -f "$n") ;;
+          esac
+        done
+        if [ -z "$found" ]; then
+          echo "no netdev rides the bench NHI $nhi — is the cable up?"
+          exit 1
+        fi
+        netsvc=$(basename "$found")
+        xd=''${netsvc%.*}
+        svc=""
+        for d in /sys/bus/thunderbolt/devices/"$xd".*; do
+          [ -f "$d/key" ] || continue
+          [ "$(cat "$d/key")" = stream ] && svc=$(basename "$d") && break
+        done
+        [ -n "$svc" ] || { echo "no stream service under $xd (peer not advertising kstream?)"; exit 1; }
+        base="/sys/kernel/config/thunderbolt/stream/$svc"
+
+        if [ "''${1:-}" = --release ]; then
+          for g in "$base"/fn*; do
+            [ -d "$g" ] || continue
+            idx=$(cat "$g/index" 2>/dev/null || echo "")
+            if [ -n "$idx" ] && fuser -s "/dev/tbstream$idx" 2>/dev/null; then
+              echo "NOT releasing $g: /dev/tbstream$idx is open"; exit 1
+            fi
+            rmdir "$g" && echo "released $g"
+          done
+          rmdir "$base" 2>/dev/null || true
+          rm -f /var/lib/usb4-stream/keep-foreign
+          echo "bench cable released; keep-foreign disarmed — the provisioner's sweep owns configfs again"
+          exit 0
+        fi
+
+        mkdir -p /var/lib/usb4-stream
+        touch /var/lib/usb4-stream/keep-foreign
+        mkdir -p "$base"
+        for i in 0 1; do
+          g="$base/fn$i"
+          want=$((10 + i))
+          mkdir -p "$g"
+          echo ${toString cfg.ringSize} > "$g/ring_size" 2>/dev/null || true
+          echo ${toString cfg.throttlingNs} > "$g/throttling" 2>/dev/null || true
+          for side in in out; do
+            cur=$(cat "$g/''${side}_hopid")
+            if [ "$cur" = 0 ]; then
+              echo "$want" > "$g/''${side}_hopid" || echo "fn$i ''${side}_hopid=$want refused (EBUSY) — do NOT open this fn"
+            elif [ "$cur" != "$want" ]; then
+              echo "fn$i ''${side}_hopid=$cur, not $want — peer on a different layout? Do NOT open if 8 (#276)."
+            fi
+          done
+          echo "fn$i: /dev/tbstream$(cat "$g/index") hopids $(cat "$g/in_hopid")/$(cat "$g/out_hopid")"
+        done
+        echo "bench cable provisioned on $svc ($nhi); keep-foreign ARMED — run on the other twin too, and '$0 --release' on both when the campaign ends"
+      ''
+    );
 
     # The stream devices are operator surface (bench harnesses, transport
     # shims), not a root-only debug interface.
