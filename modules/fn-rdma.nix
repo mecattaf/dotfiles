@@ -71,6 +71,39 @@
 # that host to the stock pair — no config revert, no redeploy. Remove the
 # flag and reboot to come back.
 #
+# THE VERMAGIC TREADMILL (#279, measured 2026-08-31). stagedDir is keyed to
+# the exact modDirVersion and stays that way — see the option's comment for
+# why a more forgiving key would be worse, not kinder. The cost of an honest
+# key is that EVERY kernel bump silently retargets the loader at an empty
+# path, and that cost has been paid unnoticed: the twins have run 7.2.2 since
+# the 08-30 bump (`uname -r` = 7.2.2 on both) while /var/lib/flashnext-rdma
+# holds only 7.1.4 (Aug 29 00:03) and 7.2.0 (Aug 29 21:2x). Both are
+# vermagic-dead the moment 7.2.2 boots, so both boxes took the sanctioned
+# stock fallback and there is no verbs device on either: the coordinator's
+# /sys/class/infiniband exists and is EMPTY with ib_core loaded at 0 users,
+# the worker's does not exist at all.
+#
+# The loader DID say so, and that is the point: at PRIORITY=6.
+#
+#   coordinator 2026-08-30T18:42:47 fn-rdma-load[976]: fn-rdma: staged
+#     thunderbolt-patched.ko missing under /var/lib/flashnext-rdma/7.2.2/out
+#     — falling back to the STOCK set          <- PRIORITY=6, i.e. INFO
+#
+# `journalctl -p warning -b` on either twin showed nothing about RDMA, so the
+# estate read this as "RDMA is parked pending a decision" when the true state
+# was "RDMA cannot be tried at all". The miss is therefore now a WARNING
+# (LOG_WARNING via systemd's SyslogLevelPrefix) plus a /run marker, and it is
+# evaluated ABOVE the live-activation guard so a `switch` reports it too —
+# that path previously printed "a thunderbolt core is already bound" and
+# nothing whatsoever about whether a matched set even exists.
+#
+# The re-bake itself stays OUT of the config: it is one attended run of
+# flashnext's host/rdma/fetch-and-build.sh per node, whose TARGET_KVER is
+# already 7.2.2 and which refuses to build unless the box actually runs that
+# kernel (and verifies the peer's over ssh), so it cannot mint another
+# mismatch. Once a 7.2.2 tree is staged on both twins, 7.1.4 and 7.2.0 are
+# prunable — nothing in this module reads a non-current tree, by design.
+#
 # Import-is-the-gate: only modules/strix.nix imports this file, so only the
 # twins can ever see it, and it is enabled THERE rather than per-host because
 # the matched-set requirement is a both-ends invariant — same reasoning as
@@ -87,7 +120,48 @@ let
       ]
     }
     say() { echo "fn-rdma: $*"; }
+    # LOG_WARNING. The "<4>" is a syslog level prefix consumed by journald,
+    # not printed text — systemd's SyslogLevelPrefix= defaults to true for
+    # journal stdout, and serviceConfig below pins it explicitly so this does
+    # not become a silent no-op if that default ever moves. #279: the miss
+    # this reports was already being logged, just at PRIORITY=6 where
+    # `journalctl -p warning -b` could never see it.
+    warn() { echo "<4>fn-rdma: $*"; }
     staged=${cfg.stagedDir}
+    kver=${config.boot.kernelPackages.kernel.modDirVersion}
+
+    # ── #279 tripwire, deliberately ABOVE every early exit ───────────────
+    # Whether a matched set is staged is independent of what is already
+    # bound, so it is reported on EVERY activation — boot and live `switch`
+    # alike. Detection is split from the fallback (which still happens
+    # further down, in order, after the disable-flag check) purely so this
+    # answer survives the live-activation guard immediately below.
+    #
+    # Deliberately NOT a myTripwire sensor, though tripwire-journal-sensor.sh
+    # would match this line trivially: a missing bake is a STEADY state that
+    # persists for as long as RDMA stays parked, and a tripwire with a
+    # renotifySeconds on a permanently-true condition is a pager that cries
+    # forever. Boot-time warning + /run marker is the right shape — one line
+    # per boot, checkable on demand, silent once a bake lands.
+    rdma_miss=""
+    if [ ! -d "$staged" ]; then
+      rdma_miss="no staged modules for $kver; falling back to stock thunderbolt, ibverbs unavailable ($staged does not exist)"
+    else
+      for m in thunderbolt-patched.ko thunderbolt_net.ko thunderbolt_ibverbs.ko; do
+        [ -f "$staged/$m" ] && continue
+        # Worse than a clean miss: a directory exists, so a bake was started
+        # for THIS vermagic and did not finish. Same fallback, louder cause.
+        rdma_miss="incomplete staged set for $kver ($staged/$m missing); falling back to stock thunderbolt, ibverbs unavailable"
+        break
+      done
+    fi
+    if [ -n "$rdma_miss" ] && [ ! -e /etc/fn-rdma-disable ]; then
+      warn "$rdma_miss — re-bake with flashnext host/rdma/fetch-and-build.sh (#279)"
+      # Counterpart to /run/fn-rdma-patched: the negative answer, greppable
+      # without parsing the journal, for anything (or anyone) checking
+      # whether this boot has a verbs device to reach for.
+      echo "$kver" > /run/fn-rdma-stock-fallback || true
+    fi
 
     # Boot-time only. On a live `switch` this unit starts immediately, but a
     # bound core must never be swapped hot — so a system that already carries
@@ -115,13 +189,16 @@ let
       exit 0
     fi
 
-    for m in thunderbolt-patched.ko thunderbolt_net.ko thunderbolt_ibverbs.ko; do
-      if [ ! -f "$staged/$m" ]; then
-        say "staged $m missing under $staged — falling back to the STOCK set"
-        load_stock
-        exit 0
-      fi
-    done
+    # Detected and warned about at the top of this script. Acting on it here
+    # keeps the ORDER the header promises (disable flag first, then staging)
+    # and keeps the fallback non-blocking: rails up, IP normal, no ibverbs.
+    # A missing RDMA stack must never stop the rails carrying IP — that is
+    # the design, and #279 changes only how loudly it is announced.
+    if [ -n "$rdma_miss" ]; then
+      say "falling back to the STOCK set — $rdma_miss"
+      load_stock
+      exit 0
+    fi
 
     if ! insmod "$staged/thunderbolt-patched.ko"; then
       # The one sanctioned fallback: the patched CORE itself refused, so the
@@ -207,6 +284,24 @@ in
       # boot after a bump takes the sanctioned stock fallback until the
       # attended lane re-bakes for the new vermagic. That is the designed
       # sequence, not a regression.
+      #
+      # DECIDED 2026-08-31 (#279 suggestion 3, "key it to something more
+      # forgiving than an exact modDirVersion"): NO — the exact key stays,
+      # and the visibility problem is fixed instead (see THE VERMAGIC
+      # TREADMILL in the header). A forgiving key cannot help, because the
+      # thing being keyed has no ABI: a .ko carries a vermagic string the
+      # kernel matches character-for-character, so a 7.2.0 tree is not "an
+      # older set that mostly works" on 7.2.2, it is unloadable. Falling
+      # back to the nearest tree would only trade this module's one clean,
+      # diagnosable state (staging absent -> stock set, warned) for two
+      # worse ones: a vermagic-refused insmod whose journal line blames the
+      # module rather than the bump, or — with --force, which nothing here
+      # will ever do — the patched core bound against mismatched struct
+      # layouts, i.e. exactly the ring-ABI class of failure the
+      # all-or-nothing pairing rule above exists to prevent. Honest key,
+      # loud miss. Corollary: stale trees are dead weight, not a safety
+      # net, so 7.1.4 and 7.2.0 are prunable the moment a 7.2.2 bake is
+      # staged on both twins.
       default = "/var/lib/flashnext-rdma/${config.boot.kernelPackages.kernel.modDirVersion}/out";
       defaultText = lib.literalExpression ''"/var/lib/flashnext-rdma/''${config.boot.kernelPackages.kernel.modDirVersion}/out"'';
       description = ''
@@ -224,6 +319,13 @@ in
         thunderbolt set — rails up, IP normal, no ibverbs device. RDMA USE
         stays gated behind the attended lane either way (NCCL_IB_DISABLE=1
         is unconditional in fn-env.sh until the morning A/B flips it).
+
+        An absent or incomplete staging is announced at LOG_WARNING and
+        leaves /run/fn-rdma-stock-fallback naming the kernel that has no
+        matched set (#279) — so the two questions worth asking are
+        `journalctl -b -p warning -g fn-rdma` and
+        `test -e /run/fn-rdma-stock-fallback`, not "is
+        /sys/class/infiniband empty".
       '';
     };
   };
@@ -271,6 +373,11 @@ in
         Type = "oneshot";
         RemainAfterExit = true;
         ExecStart = loadScript;
+        # systemd's own default, pinned because the #279 tripwire depends on
+        # it: without prefix parsing the loader's "<4>" would be printed as
+        # literal text at PRIORITY=6 and the warning would be invisible all
+        # over again.
+        SyslogLevelPrefix = true;
       };
     };
 
