@@ -92,8 +92,19 @@
 # explicit provisioning.
 #
 # HAZARDS, all observed live 2026-08-30 — read before "improving" this:
-#   - Ring memory is a shared budget: two streams at ring_size 4096 ENOMEM'd
-#     on concurrent open. 1024 is the proven multi-stream size.
+#   - The concurrent-open budget is ONE stream per NHI while that cable's
+#     netdev is up — and it is ring-hop SLOTS, not memory. (An earlier
+#     revision here blamed "ring memory" and called 1024 "the proven
+#     multi-stream size"; both halves were wrong.) Measured 2026-08-31, both
+#     twins: these NHIs report hop_count = 3 — hop 0 is the control channel,
+#     hop 1 is thunderbolt_net's whenever the cable's rail netdev is up,
+#     hop 2 is the single slot left for a stream. A second concurrent open
+#     on the same NHI fails at ANY ring_size (tested at 32) while the kernel
+#     warns "invalid hop: -1", and a single stream opens fine at 4096; the
+#     driver launders that -EINVAL (and every other ring-alloc failure) into
+#     -ENOMEM at open(). Tuning ring_size cannot buy a second stream. Two
+#     concurrent streams need two cables, or the netdev taken down to free
+#     hop 1 — the latter untested and inside the #262 claim-window hazard.
 #   - Open/close cycling against a half-configured or mismatched peer WEDGES
 #     the router hop tables — config-space reads start timing out, and the
 #     damage spreads to thunderbolt_net's paths (the IP rail went dark).
@@ -113,8 +124,11 @@
 #     worker's tbnet then failed to allocate its Rx HopID (cable-B fn0 held
 #     hopid 8), and at 18:48:16 both twins' cable-B NHIs warned from
 #     tbnet_tear_down (nhi.c:760, RX ring 1 AND TX ring 1 "already stopped")
-#     — a leaked DMA ring on each side. The budget is 3 DMA rings per NHI
-#     (flashnext DECISIONS-2026-08-30.md §3.1), so one leaked ring means
+#     — a leaked DMA ring on each side. The budget is 3 ring-hop SLOTS per
+#     NHI (flashnext DECISIONS-2026-08-30.md §3.1 says "3 DMA rings"; the 3
+#     is right but they are hop slots, and only hop 2 is ever free for a
+#     stream once the control channel holds 0 and tbnet holds 1 — see the
+#     first bullet), so one leaked ring means
 #     EVERY subsequent stream open on that cable returns ENOMEM, which is
 #     what blocked the USB4STREAM bench until the next reboot. The identity
 #     gates above exist to make this class impossible, not just observable.
@@ -487,15 +501,20 @@ in
         How many named streams (fn0..fnN-1) to provision. Each is PINNED to
         in/out hopid 10+N (see the HAZARDS block: 8 is thunderbolt_net's on
         every router in this fleet, 9 is headroom), and the lane adapters'
-        Max Input HopID is 19 on these hosts — so at most 10 streams, and
-        keep it small anyway: the budget is shared with thunderbolt_net.
+        Max Input HopID is 19 on these hosts — so at most 10 streams may be
+        PROVISIONED. Provisioning is cheap (a group allocates no rings until
+        opened), but only ONE of them can be OPEN at a time per NHI while
+        the cable's netdev is up: the NHI has 3 ring-hop slots and the
+        control channel plus thunderbolt_net hold two of them (measured
+        2026-08-31; see the HAZARDS block). streams = 2 stays the default so
+        fn1 exists as a fallback pair, not for concurrent use.
       '';
     };
 
     ringSize = lib.mkOption {
       type = lib.types.int;
       default = 1024;
-      description = "TX/RX ring entries per stream (32..4096). 4096 ENOMEM'd on two concurrent streams; 1024 is the proven multi-stream size.";
+      description = "TX/RX ring entries per stream (32..4096). Size does NOT decide how many streams can open concurrently — that is the NHI's ring-hop budget (one open per NHI while the netdev is up; see HAZARDS). A single stream opens fine at 4096; 1024 is simply the size the banked bench numbers were taken at.";
     };
 
     throttlingNs = lib.mkOption {
