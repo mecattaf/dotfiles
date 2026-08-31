@@ -378,9 +378,20 @@ let
           fi
         elif [ "$cur" = "$want" ]; then
           :
-        else
-          warn "fn$i ''${side}_hopid=$cur, not the pinned $want — inherited from a peer between the convergence pass and this write? NOT rewriting an interlocked pair one-sided. If $cur is 8 this stream MUST NOT be opened: thunderbolt_net holds hop 8 on every router in this fleet (#276)."
+        elif [ "$cur" = 8 ]; then
+          warn "fn$i ''${side}_hopid=8 — thunderbolt_net's hop on every router in this fleet. This stream MUST NOT be opened, and the pin could not displace it: the peer is still advertising it (#276)."
           fail=1
+        else
+          # Observed live on the first switch (2026-08-31 12:08, worker): the
+          # convergence pass released the off-pin group, and the recreated
+          # group INSTANTLY re-inherited the old hopids from the un-switched
+          # peer's XDomain advertisement — one side alone cannot converge an
+          # interlocked pair, by construction. A non-8 inherited value is a
+          # benign, still-interlocked legacy layout: warn, stay green, and
+          # let the pin land when both ends (re)provision from empty — the
+          # fleet reboot, or any peer bounce. Failing here painted the unit
+          # red for a state that is correct-by-interlock and self-resolving.
+          warn "fn$i ''${side}_hopid=$cur, not the pinned $want — legacy value re-inherited from the peer's advertisement; interlock intact, NOT rewriting one-sided. The pin lands when both ends reprovision from empty (fleet reboot)."
         fi
       done
       say "fn$i ready: /dev/tbstream$(cat "$g/index") in_hopid=$(cat "$g/in_hopid") out_hopid=$(cat "$g/out_hopid") ring=$(cat "$g/ring_size") throttle=$(cat "$g/throttling")ns"
