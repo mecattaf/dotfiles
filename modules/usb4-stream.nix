@@ -19,6 +19,30 @@
 #   RTT   64B  p50 14.3µs  (TCP over the 5GbE: 60.4µs)
 #   RTT  4KB  p50 21.8µs p99 25.3µs  (TCP 5GbE: 137.8µs p50)
 #   throughput, single stream, ring 4096/throttle 2048: ~841 MB/s
+# The 5GbE figures were independently corroborated 2026-08-31 by a second
+# harness: 56.6µs p50 at 64B / 138.33µs at 4KiB against the 60.4/137.8
+# above — two harnesses, two days, close agreement.
+#
+# TCP over thunderbolt0 ITSELF, measured 2026-08-31 (#278; cable A, 20 000
+# iterations × 2 rounds, interface pinning proven by per-netdev counter
+# deltas on both nodes) — the baseline the block above lacked:
+#   p50 RTT:  64B 130.42 | 4KiB 130.42 | 8KiB 130.44 | 16KiB 130.44
+#             | 64KiB 329.43 µs
+#   p99 RTT:  64B 191.45 | 4KiB 274.75 | 8KiB 345.37 | 16KiB 225.86
+#             | 64KiB 411.25 µs
+#   minimum at 64B: 34.41µs;  throughput TX/RX: 8.81/9.20 Gb/s
+# p50 flat to 0.03µs across an eight-fold size range against a 34µs floor:
+# that is not fabric cost, it is thunderbolt_net's wakeup/coalescing path —
+# roughly 100µs of pure software overhead on a fast link. Whether it is
+# recoverable by tuning the interrupt/coalescing path is UNTESTED; flagged
+# as the obvious cheap experiment, not a claim.
+# The SAME-CABLE comparison is the meaningful one: 14.3µs vs 130.42µs at
+# 64B makes the stream primitive a ~9x win on its own cable, not the ~4x
+# the cross-cable 5GbE figures imply.
+# Caveat on the ~841 MB/s: it was taken at ring 4096, while ring 1024 /
+# throttling 2048 is what is actually in force on all four fn groups on
+# both nodes (read 2026-08-31) — do not expect that number to reproduce
+# as-is at the provisioned defaults.
 #
 # What this module owns — the CONFIGURATION half the kernel pin alone doesn't
 # give (module loading lives in tb-fleet.nix / worker default.nix for stock
