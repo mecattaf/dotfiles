@@ -403,8 +403,14 @@ in
       onFirePath = [ pkgs.coreutils ];
       onFire = ''
         mkdir -p /var/lib/failure-markers
+        # $2 is the sensor's LABEL, namespaced "fn-rdma:<kver>" so the episode
+        # key is unique across tripwires. The operator instruction below needs
+        # the bare kernel release: TARGET_KVER=fn-rdma:7.2.2 would stage into
+        # /var/lib/flashnext-rdma/fn-rdma:7.2.2/out, which the loader never
+        # reads — a bake that reports success and still boots the stock set.
+        kver="''${2#fn-rdma:}"
         printf '%s — fn-rdma is on the STOCK thunderbolt set for kernel %s; ibverbs is unavailable and any RDMA-vs-TCP comparison on this node is measuring sockets (episode %s)\n  This is the one attended task: run flashnext host/rdma/fetch-and-build.sh ON THIS NODE with TARGET_KVER=%s, which stages into ${cfg.stagedDir}, then reboot. Verify: ls ${cfg.stagedDir} and journalctl -b -p warning -g fn-rdma (silent when staged).\n' \
-          "$(date '+%Y-%m-%d %H:%M')" "$2" "$4" "$2" \
+          "$(date '+%Y-%m-%d %H:%M')" "$kver" "$4" "$kver" \
           > /var/lib/failure-markers/fn-rdma-staging
       '';
     };
