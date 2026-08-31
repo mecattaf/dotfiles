@@ -14,7 +14,9 @@
 # to sit outside it was decommissioned 2026-08-29 and retired from the schema
 # 2026-08-31 (#270), so nothing interactive serves models on these boxes except
 # through this proxy. The one plane still outside it is the flashnext TP=2
-# vLLM lane — see #270 for the gateway-row design that would bring it in. The
+# vLLM lane, arbitrated since 2026-08-31 by modules/flashnext-lane.nix (a
+# mutual systemd Conflicts — exactly one plane holds the GPUs); see #270 for
+# the gateway-row design that would route it through this door too. The
 # proxy itself is a small, always-on Go process and consumes no GPU. Tally
 # remains the admission controller for the coordinator GPU pool; llama-swap
 # supplies the one stable API door and load/unload mechanism.

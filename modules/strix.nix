@@ -33,6 +33,12 @@
     # roster module whose only live use was being asserted off since the
     # 2026-08-29 NPU decommission. Deleted with the appliance tier; a revival
     # restores it from git history (see the roster comment below).
+    #
+    # The flashnext TP=2 lane's systemd identity: a target the flashnext
+    # scripts wrap themselves in, mutually Conflicts= with llama-swap so
+    # exactly one plane holds the GPUs. Both twins get it — the lane spans
+    # both boxes and each twin arbitrates its own proxy.
+    ./flashnext-lane.nix
     # PM QoS + MTU tuning for the coordinator<->worker rails. Declares an
     # option that defaults OFF; enabled below, so only these two boxes get it.
     ./lowlat-cluster.nix
