@@ -243,7 +243,57 @@
         config.allowUnfree = true;
       }).linuxPackages_7_2;
 
-    # Strix Halo unified-memory tuning (128 GiB pinnable for the iGPU).
+    # Strix Halo unified-memory tuning.
+    #
+    # ttm.pages_limit=33554432 is 33554432 × 4 KiB = exactly 128 GiB, i.e. the
+    # whole machine: a deliberate CEILING for a box whose entire point is that
+    # the iGPU reaches system RAM. It is NOT a memory policy and it reserves
+    # nothing. Kept at 128 GiB by ruling on #280, 2026-08-31, because it is
+    # coupled to flashnext's per-rank claim — see the HAZARD below before
+    # touching it.
+    #
+    # HAZARD — pages_limit and FN_GPU_UTIL are two unrelated mechanisms that
+    # must be changed TOGETHER (#280).
+    #   * amdgpu sizes the GTT pool from the TTM page limit and then clamps it
+    #     to system RAM. Measured on BOTH twins, current boot:
+    #         amdgpu: Capping GTT to 128087M to not exceed available system memory
+    #         amdgpu: 128087M of GTT memory ready.
+    #         mem_info_gtt_total = 134309523456 B = 125.085 GiB
+    #                            = MemTotal (131161644 kB) to the byte
+    #     So today the 128 GiB request sits ~2.9 GiB above what the kernel will
+    #     grant, and the RAM cap — not this parameter — sets gtt_total. Push
+    #     pages_limit BELOW MemTotal and it becomes load-bearing directly:
+    #     gtt_total follows it down.
+    #   * The actual policy is FN_GPU_UTIL=0.62 in flashnext's host/fn-env.sh,
+    #     and it is a FRACTION OF GTT (fork patch 0004 points the engine's
+    #     memory reporting at mem_info_gtt_total): 0.62 × 125.085 GiB =
+    #     77.55 GiB/rank, which is the measured 76–78 GiB/rank. 0.62 was chosen,
+    #     not defaulted — it keeps the rank under the 80 GiB residency bound
+    #     receipts-verify grades (ruling P11) and leaves the ~40 GiB/node of
+    #     page cache the mmap'd engram table is served from.
+    #
+    # Hence why #280's "lower the ceiling to ~96 GiB so the OS enforces the
+    # reservation the application only promises" option was rejected: lowering
+    # the ceiling shrinks gtt_total, and shrinking gtt_total silently shrinks
+    # the engine's claim through that same 0.62 — 0.62 × 96 = 59.5 GiB/rank, an
+    # ~18 GiB/rank cut to the very workload the change was meant to protect,
+    # with no error and no log line. The "protection" would rewrite the
+    # protected thing. A ceiling stays a ceiling.
+    #
+    # Enforcement of the ~40 GiB page-cache reservation therefore does not
+    # belong to a kernel parameter. It belongs to #270: making the flashnext
+    # lane a declared unit with its own accounting and a real arbitration
+    # against llama-swap, which returns on every boot and every rebuild with
+    # LimitMEMLOCK=infinity and is entitled to the same 125 GiB pool.
+    #
+    # Failure mode of getting this wrong is not an OOM and not an error: the
+    # engram table's page cache is evicted and every table gather becomes an
+    # NVMe fault — a decode-latency collapse that reads as a model or transport
+    # problem, the most expensive class of bug on this estate. Idle 2026-08-31:
+    # coordinator 93 GiB buff/cache, worker 20 GiB (the worker has not yet
+    # faulted the table in, so the "cache is already full of what we must
+    # protect" framing in #280 is coordinator-only). Whoever changes this
+    # number changes host/fn-env.sh in the same breath, or measures why not.
     #
     # IOMMU is explicitly OFF since the 2026-08-29 NPU decommission. It was on
     # for amdxdna, the only consumer on these boxes that ever needed translated
