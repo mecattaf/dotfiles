@@ -53,7 +53,8 @@ let
   # failure, and the rung NEVER fired on the coordinator (#267). The heal
   # script now derives the bound functions at runtime from the driver
   # directory — correct on either twin, survives board revisions.
-  peer = "10.99.0.2"; # the worker's end of the /30
+  peer = "10.99.0.2"; # the worker's end of the rail-0 /30
+  peer2 = "10.99.2.2"; # the worker's end of the rail-2 /30 (#274)
   healScript = pkgs.writeShellScript "tb-link-heal" ''
     PATH=${
       pkgs.lib.makeBinPath [
@@ -181,6 +182,99 @@ in
       printf '%s — the worker has not answered on the Thunderbolt link for ~15 min (episode %s)\n  tb-link-heal retries every 2 min and now includes the CCGx PD reset; if still dark, run on EACH blind end: sudo framework_tool --pd-reset 2, then rebind ucsi_acpi (see hosts/coordinator/tb-fleet.nix)\n' \
         "$(date '+%Y-%m-%d %H:%M')" "$4" \
         > /var/lib/failure-markers/tb-fleet-reachability
+    '';
+  };
+
+  # ── Rail 2 (#274, 2026-08-31): thunderbolt1 gets a real /30 ────────────────
+  #
+  # Cable B ran link-local-only since the fleet was built. #274's measured
+  # finding (torch 2.13.0+rocm7.14.0): with a comma list like
+  # GLOO_SOCKET_IFNAME=thunderbolt0,thunderbolt1, any NON-resolving name
+  # fails loudly and immediately, naming the bad interface — but a name that
+  # RESOLVES (thunderbolt1's self-assigned 169.254.x) with nothing configured
+  # on the far end HANGS FOREVER, no exception, no log line. That is the one
+  # undiagnosable state in the matrix, and cable B sat in it. A /30 on BOTH
+  # ends removes it permanently: the name resolves AND the peer answers. It
+  # also makes cable B's bring-up sequence match the one usb4-stream's
+  # carrier gate was designed against (#275), and cable B has consumers on
+  # purpose now — the TB-IP aggregation experiment and the USB4STREAM bench
+  # are deliberately staged onto it so a hop-table wedge cannot take down
+  # the tensor rail.
+  #
+  # Declarative (the eth-fleet ensureProfiles idiom), UNLIKE rail 0's
+  # tb-fleet, which is imperative NM state on both ends and must not be
+  # disturbed (hosts/worker/default.nix doctrine). Rail 2 has no imperative
+  # history to preserve — only NM's volatile auto "Wired connection 2"
+  # (ipv4.method=link-local, from NM_AUTO_DEFAULT_LINK_LOCAL_ONLY=1 in NM's
+  # own 90-nm-thunderbolt.rules), which loses autoconnect to any real
+  # profile (priority 50 vs the auto default's -999) and is not regenerated
+  # while a profile matches the device.
+  #
+  # HAZARDS (#274):
+  #   - BOTH ENDS TOGETHER. A one-sided /30 recreates the exact
+  #     addressed-but-peerless hang and is WORSE than link-local. This
+  #     profile and the worker's (hosts/worker/default.nix) land in one
+  #     commit and must switch in the same deploy window.
+  #   - Rail 2's worker-side controller failed DMA activation on its
+  #     FIRST-EVER tunnel use (config-space read timeout — usb4-stream.nix
+  #     HAZARDS; flashnext DECISIONS-2026-08-30 §3.2). This /30 is where
+  #     that history gets retested: WATCH THE FIRST BRING-UP; the tripwire
+  #     below makes a recurrence loud within ~1 h.
+  #   - thunderbolt1 is a PROBE-ORDER name (#266). With both cables now
+  #     addressed, a one-sided name flip would land the two /30s on crossed
+  #     cables — both TB rails dark with carrier up. Wrong-but-loud (both
+  #     tripwires fire, and tb-link-heal's rebind re-rolls the assignment);
+  #     the silent variant is what the tripwire's readlink check catches.
+  networking.networkmanager.ensureProfiles.profiles.tb-fleet2 = {
+    connection = {
+      id = "tb-fleet2";
+      type = "ethernet";
+      interface-name = "thunderbolt1";
+      autoconnect = true;
+      autoconnect-priority = 50;
+    };
+    ipv4 = {
+      method = "manual";
+      addresses = "10.99.2.1/30";
+      never-default = true;
+      ignore-auto-dns = true;
+      # DELIBERATELY no routeN: fleet-identity (10.99.9.x) failover stays on
+      # the 5GbE at metric 20 and rail 0 at metric 50 (#240 ruling — admin
+      # traffic prefers the wire, TB as failover). Rail 2 is the
+      # experiment/bench rail, not a third failover path.
+    };
+    ipv6.method = "disabled";
+  };
+
+  # Rail 2's tripwire — gentler than rail 0's ON PURPOSE. Rail 0 carries the
+  # 2026-08-21 MUST-always-work ruling and stays loud within ~15 min; rail 2
+  # is the experiment rail, so loud within ~1 h is enough, and a tighter
+  # clock would just double-fire alongside rail 0's during any shared
+  # PD/CCGx event (one CCGx owns both rear ports).
+  myTripwire.tb-rail2-reachability = {
+    description = "the worker answers pings over the rail-2 /30 (cable B)";
+    intervalSeconds = 900;
+    onBootSec = "10min";
+    threshold = 1;
+    comparison = "ge";
+    sustainSeconds = 3600;
+    rearm = 0;
+    refractorySeconds = 43200;
+    valueField = "TB2_DARK";
+    sensorPath = [ pkgs.iputils ];
+    sensor = ''
+      if ping -c 2 -W 3 ${peer2} >/dev/null 2>&1; then
+        echo "0 tb2 1"
+      else
+        echo "1 tb2 1"
+      fi
+    '';
+    onFirePath = [ pkgs.coreutils ];
+    onFire = ''
+      mkdir -p /var/lib/failure-markers
+      printf '%s — rail 2 (cable B, tb-fleet2) has not answered on ${peer2} for ~1 h (episode %s)\n  Check BOTH ends: nmcli -g GENERAL.STATE connection show tb-fleet2 (must be activated on each). Then readlink -f /sys/class/net/thunderbolt1 — must end in c5:00.5/domain0/... on the coordinator and c4:00.6/domain1/... on the worker; a mismatch is the #266 probe-order name flip, not a dead cable. If the profile is active and the path is right, suspect the worker controller DMA-activation history (HAZARDS in hosts/coordinator/tb-fleet.nix)\n' \
+        "$(date '+%Y-%m-%d %H:%M')" "$4" \
+        > /var/lib/failure-markers/tb-rail2-reachability
     '';
   };
 }

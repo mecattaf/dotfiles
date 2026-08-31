@@ -332,6 +332,34 @@
     };
   };
 
+  # ── Rail 2, worker half (#274, 2026-08-31): 10.99.2.2/30 on thunderbolt1.
+  # Doctrine, the measured addressed-but-peerless hang, the HAZARDS (both
+  # ends together; THIS box's controller failed DMA activation on rail 2's
+  # first-ever tunnel use — watch the first bring-up) and the tripwire all
+  # live coordinator-side in hosts/coordinator/tb-fleet.nix. Declarative,
+  # unlike rail 0's tb-fleet, which is imperative NM state on both ends and
+  # must not be disturbed (see the wifi doctrine above): rail 2 has no
+  # imperative history — only NM's volatile auto "Wired connection 2"
+  # (link-local), which loses autoconnect to this profile.
+  networking.networkmanager.ensureProfiles.profiles.tb-fleet2 = {
+    connection = {
+      id = "tb-fleet2";
+      type = "ethernet";
+      interface-name = "thunderbolt1";
+      autoconnect = true;
+      autoconnect-priority = 50;
+    };
+    ipv4 = {
+      method = "manual";
+      addresses = "10.99.2.2/30";
+      never-default = true;
+      ignore-auto-dns = true;
+      # No routeN — same rationale as the coordinator's profile: the #240
+      # failover order (5GbE metric 20, rail 0 metric 50) stays untouched.
+    };
+    ipv6.method = "disabled";
+  };
+
   # ── eth-fleet, worker half (doctrine: hosts/coordinator/eth-fleet.nix) ────
   # The 5GbE port cabled directly to the coordinator's twin: the admin rail
   # that shares nothing with USB-C/PD. Fleet identity 10.99.9.2 on lo; peer
