@@ -143,14 +143,23 @@
   # hosts/coordinator/uplink-nas.nix at the 2026-08-21 attic move).
   networking.hosts."10.42.0.1" = [ "nas" ];
 
-  # The worker by name, fleet-wide, for exactly the same reason (#229,
-  # 2026-08-21). The NAS's Immich dials http://worker:3003 for every ML batch
-  # (hosts/nas/media.nix) and the NAS is a stable-pinned appliance with no mDNS
-  # and no bare-hostname resolution, so without this pin that URL is a black
-  # hole. The address is the worker's STATIC lease-free identity — declared in
-  # hosts/worker/default.nix, guarded by the dnsmasq dhcp-host pin in
-  # hosts/nas/router.nix — not a DHCP outcome.
-  networking.hosts."10.42.0.5" = [ "worker" ];
+  # The `worker` -> 10.42.0.5 pin that lived here from 2026-08-21 (#229) MOVED
+  # to hosts/nas/network.nix on 2026-08-31 (#277). It was never fleet-wide by
+  # need — only the NAS requires it, for http://worker:3003 (Immich ML) — and
+  # fleet-wide is exactly what made it wrong: the address is the house 6 GHz
+  # wifi, so on the TWINS the name `worker` answered the slow rail. Measured
+  # coordinator -> worker 2026-08-31: 26.977/104.895/167.264 ms min/avg/max to
+  # 10.42.0.5 against 0.096/0.109/0.126 ms to the 10.99.9.2 fleet identity
+  # (~960x, and wildly variable — the 8.862 ms in #277 no longer reproduces).
+  # The twins now answer `worker` from modules/fleet-hosts.nix (#273) and this
+  # scope must NOT reintroduce a second answer: with nsswitch running `resolve`
+  # ahead of `files`, two /etc/hosts entries for one name are ordered by
+  # systemd-resolved, not by the file, so "reconcile by ordering" is not
+  # available. One answer per name per host, host-scoped.
+  # Do not move it back: nothing on the twins dials the worker by name over the
+  # LAN (the deploy node, home/ssh.nix and the journal ACL all name addresses),
+  # and the flake's fleet-connectivity check asserts BOTH halves — presence on
+  # the NAS and absence on each twin.
 
   # #106 proposed also setting `nix.registry.nixpkgs.flake` and `nix.nixPath`
   # here. Deliberately NOT done: nixpkgs' own misc/nixpkgs-flake.nix already

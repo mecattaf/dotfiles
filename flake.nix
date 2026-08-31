@@ -1234,7 +1234,16 @@
             meshRegistry.${strixWorker}.aliases;
           # ...while the LAN identity stays the fleet-facing one.
           assert nixpkgs.lib.elem "10.42.0.5" meshRegistry.${strixWorker}.aliases;
-          assert coordinator.networking.hosts."10.42.0.5" == [ strixWorker ];
+          # The `worker` -> 10.42.0.5 NAME pin is HOST-SCOPED to the NAS since
+          # 2026-08-31 (#277): only its Immich needs the wifi answer, and on the
+          # twins that answer is ~960x slower than the wire (104.895 ms avg vs
+          # 0.109 ms, measured 2026-08-31) AND collides with the fleet-identity
+          # entry #273 adds. Two /etc/hosts lines for one name are ordered by
+          # systemd-resolved, not by the file, so the absence on the twins is
+          # the load-bearing half — assert it, not just the presence on the NAS.
+          assert nas.networking.hosts."10.42.0.5" == [ strixWorker ];
+          assert !(coordinator.networking.hosts ? "10.42.0.5");
+          assert !(worker.networking.hosts ? "10.42.0.5");
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
           assert coordinator.services.tailscale.extraUpFlags == [ "--ssh" ];
           # The NAS is the tailnet SINK since the 2026-08-21 ws5 pivot; the

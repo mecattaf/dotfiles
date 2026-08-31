@@ -73,9 +73,11 @@ in
       # Keep Smart Search and Face Detection off this appliance and on a Strix
       # Halo box. That box is the WORKER since 2026-08-21 (#229): it is the same
       # silicon as the coordinator and nobody is typing on it, so the ML batches
-      # land where they cost nothing. `worker` resolves through the fleet-wide
-      # networking.hosts pin (modules/common.nix -> 10.42.0.5, the worker's
-      # static LAN identity, guarded by the dhcp-host pin in ./router.nix); the
+      # land where they cost nothing. `worker` resolves through the
+      # networking.hosts pin in ./network.nix (-> 10.42.0.5, the worker's static
+      # LAN identity, guarded by the dhcp-host pin in ./router.nix) — pinned on
+      # THIS host since #277 moved it out of the fleet-wide modules/common.nix,
+      # where it was also answering on the twins and sending them over wifi; the
       # endpoint itself is hosts/worker/immich-ml.nix, socket activated, waking
       # on the first request and retiring after 15 idle minutes. It admits only
       # its LAN interface and has no tailnet door, so the reachable path is this

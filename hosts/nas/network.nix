@@ -42,6 +42,29 @@
   # record until the cleanup commit retires that rail.
   networking.hosts."10.42.0.2" = [ "coordinator" ];
 
+  # The worker as seen from this host: its STATIC lease-free LAN identity
+  # (declared in hosts/worker/default.nix, guarded by the dnsmasq dhcp-host pin
+  # in hosts/nas/router.nix — not a DHCP outcome). This host's Immich dials
+  # http://worker:3003 for every ML batch (./media.nix, #229) and the appliance
+  # has no mDNS and no bare-hostname resolution, so without this pin that URL is
+  # a black hole.
+  #
+  # HOST-SCOPED HERE ON PURPOSE, moved out of modules/common.nix 2026-08-31
+  # (#277). 10.42.0.5 is the house 6 GHz wifi — right for this consumer, wrong
+  # for the twins, which reach each other on the 5GbE/Thunderbolt rails
+  # (coordinator -> 10.42.0.5 measured 104.895 ms avg on 2026-08-31 against
+  # 0.109 ms to the 10.99.9.2 fleet identity). The twins answer `worker` from
+  # modules/fleet-hosts.nix (#273) instead. The two consumers genuinely want
+  # different answers, and each host gets exactly ONE: nsswitch runs `resolve`
+  # ahead of `files`, so two entries for one name are ordered by
+  # systemd-resolved and not by /etc/hosts — first-match is not a knob we own.
+  #
+  # The NAS is deliberately NOT on the fleet rails: it is a wired appliance on
+  # the LAN it also routes, so this wifi address is the only path it has to the
+  # worker. If Immich ML ever needs the wire, the fix is a rail to this box, not
+  # a second entry here.
+  networking.hosts."10.42.0.5" = [ "worker" ];
+
   # extraInputRules is an nftables-only option: under the default iptables
   # backend it renders NOTHING and the rules below silently vanish. That
   # sealed the first installed system shut (SSH dropped, ping-only; recovered

@@ -75,12 +75,13 @@
 #   Consequence, and the rule this file follows: every name gets EXACTLY ONE
 #   answer per host. Never two entries reconciled by ordering — that is not a
 #   knob we own.
-#   ⚠ AS OF THIS COMMIT THAT RULE IS VIOLATED for `worker` on the twins:
-#   modules/common.nix:153 still pins 10.42.0.5 = [ "worker" ] fleet-wide, so
-#   each twin now carries two `worker` lines and the wifi one even sorts first.
-#   #277 is the other half of this change and fixes it by scope, not by order:
-#   the pin moves into hosts/nas/network.nix, whose Immich genuinely wants the
-#   wifi answer for http://worker:3003.
+#   That rule is why the 10.42.0.5 `worker` pin no longer lives in
+#   modules/common.nix (fleet-wide, therefore also on the twins, where the wifi
+#   line even SORTED FIRST) and is host-scoped to hosts/nas/network.nix instead
+#   (#277, 2026-08-31): the NAS's Immich genuinely wants the wifi answer for
+#   http://worker:3003, the twins genuinely want the wire, and those are two
+#   host-scoped answers rather than one ambiguous pair. The flake asserts the
+#   absence on the twins, not merely the presence on the NAS.
 #
 # ⚠ A service that binds by hostname now depends on systemd-services
 # fleet-identity being up (it puts 10.99.9.x on lo). That unit is a oneshot at

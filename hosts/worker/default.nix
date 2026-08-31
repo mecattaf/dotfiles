@@ -78,7 +78,10 @@
   # shape and on the coordinator's (hosts/coordinator/uplink-nas.nix)
   # for the STATIC addressing rationale — this box is stationary and load-bearing:
   # the NAS's Immich dials worker:3003 for every ML batch, the NAS admits
-  # 10.42.0.5 for journal upload, and modules/common.nix pins the name fleet-wide.
+  # 10.42.0.5 for journal upload, and hosts/nas/network.nix pins the name to this
+  # address ON THE NAS (host-scoped there since #277; fleet-wide until then,
+  # which is what made the twins resolve each other over wifi — they now use the
+  # 10.99.9.x fleet identities, ../../modules/fleet-hosts.nix).
   # None of that may depend on a DHCP round-trip at association time or on a lease
   # renewal ("anything dns/dhcp related must never bite", 2026-08-21). The dnsmasq
   # dhcp-host pin in hosts/nas/router.nix stays as the guard that keeps the pool

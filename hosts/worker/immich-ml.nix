@@ -13,8 +13,12 @@
 # 2026-08-02 cutover — and is woken on demand by a socket-activated proxy that
 # retires after 15 idle minutes. Only the admitted interface and the identity of
 # the box changed. The NAS's Immich now dials http://worker:3003
-# (hosts/nas/media.nix), which resolves through the fleet-wide
-# networking.hosts pin for 10.42.0.5 in modules/common.nix.
+# (hosts/nas/media.nix), which resolves through the networking.hosts pin for
+# 10.42.0.5 in hosts/nas/network.nix — host-scoped to the NAS since #277 (it
+# was fleet-wide in modules/common.nix, which also made the TWINS resolve
+# `worker` to the house wifi). Unaffected here: the socket below binds
+# 0.0.0.0:3003 explicitly, so this endpoint never depended on resolving its own
+# name — which is exactly why #273's 127.0.0.2 kill cannot break Immich ML.
 #
 # Why this host and not the NAS itself: the NAS is a stable-pinned appliance
 # with no accelerator worth the name, and Immich's own

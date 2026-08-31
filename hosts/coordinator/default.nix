@@ -33,7 +33,9 @@
     # retirement, standalone from services.immich (which is on the NAS since the
     # 2026-08-02 cutover) — with only the admitting interface and the box's name
     # changed. The NAS now dials http://worker:3003 (hosts/nas/media.nix), which
-    # resolves via the fleet-wide 10.42.0.5 pin in modules/common.nix. Deploy
+    # resolves via the 10.42.0.5 pin in hosts/nas/network.nix — host-scoped to
+    # the NAS since #277; THIS box resolves `worker` to the fleet identity
+    # 10.99.9.2 instead (modules/fleet-hosts.nix, #273). Deploy
     # order matters and is recorded here because getting it wrong is a visible
     # outage: worker first (so the endpoint exists), then the NAS (so it starts
     # dialling the new one), then this box (which stops answering :3003).
