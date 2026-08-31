@@ -31,7 +31,8 @@
 #   p99 RTT:  64B 191.45 | 4KiB 274.75 | 8KiB 345.37 | 16KiB 225.86
 #             | 64KiB 411.25 µs
 #   minimum at 64B: 34.41µs;  throughput TX/RX: 8.81/9.20 Gb/s
-# p50 flat to 0.03µs across an eight-fold size range against a 34µs floor:
+# p50 flat to 0.03µs from 64B to 16KiB — a 256-fold size range — against a
+# 34µs floor:
 # that is not fabric cost, it is thunderbolt_net's wakeup/coalescing path —
 # roughly 100µs of pure software overhead on a fast link. Whether it is
 # recoverable by tuning the interrupt/coalescing path is UNTESTED; flagged
