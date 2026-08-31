@@ -349,6 +349,13 @@
       autoconnect = true;
       autoconnect-priority = 50;
     };
+    # #266 mitigation: pin to the PHYSICAL NHI (cable B is c4:00.6 on this
+    # box, c5:00.5 on the coordinator). Both interface-name and match.path
+    # must match, so a probe-order name flip makes this profile UNAVAILABLE
+    # — rail 2 dark and loud — rather than putting the /30 on the wrong
+    # cable. Full rationale, the rejected .link-rename alternative, and the
+    # re-cabling caveat: hosts/coordinator/tb-fleet.nix at its tb-fleet2.
+    match.path = "pci-0000:c4:00.6;";
     ipv4 = {
       method = "manual";
       addresses = "10.99.2.2/30";

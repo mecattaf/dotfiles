@@ -222,9 +222,11 @@ in
   #     below makes a recurrence loud within ~1 h.
   #   - thunderbolt1 is a PROBE-ORDER name (#266). With both cables now
   #     addressed, a one-sided name flip would land the two /30s on crossed
-  #     cables — both TB rails dark with carrier up. Wrong-but-loud (both
-  #     tripwires fire, and tb-link-heal's rebind re-rolls the assignment);
-  #     the silent variant is what the tripwire's readlink check catches.
+  #     cables — both TB rails dark with carrier up. The match.path pin
+  #     below keeps THIS /30 off the wrong cable entirely; rail 0's
+  #     imperative name-bound profile keeps its exposure until #266's own
+  #     fix, mitigated by its heal ladder (whose rebind re-rolls the
+  #     assignment) and tripwire.
   networking.networkmanager.ensureProfiles.profiles.tb-fleet2 = {
     connection = {
       id = "tb-fleet2";
@@ -233,6 +235,28 @@ in
       autoconnect = true;
       autoconnect-priority = 50;
     };
+    # #266 mitigation — the strongest pin landable without a rename
+    # (2026-08-31). match.path binds this profile to the PHYSICAL NHI via
+    # udev's ID_PATH, which is per-host: cable B is pci-0000:c5:00.5 here
+    # and pci-0000:c4:00.6 on the worker (cable map triple-verified —
+    # unique_id reciprocity, configfs hopid interlock, byte-counter
+    # cross-match; #275). interface-name AND match.path must BOTH match, so
+    # on a probe-order flip (thunderbolt1 = cable A's netdev) this profile
+    # goes UNAVAILABLE instead of addressing the wrong cable: rail 2 dark
+    # and loud (tb-rail2-reachability fires; nmcli shows the profile
+    # inactive), never silently crossed.
+    #
+    # Why not a .link rename to cable-stable names: renaming inside the
+    # kernel's thunderbolt%d namespace races EEXIST when two netdevs swap,
+    # and leaving that namespace forces a sweep of every name consumer
+    # (usb4-stream's rail anchor, fn-rdma's roce_netdev + UDP 4791 door,
+    # the per-interface firewall stanzas) — that sweep is #266's own work,
+    # owned elsewhere, and needs more than one reboot to trust.
+    #
+    # If the cables are ever re-plugged into swapped ports these paths go
+    # stale on BOTH ends at once — update both profiles in one commit,
+    # from readlink -f /sys/class/net/thunderbolt*.
+    match.path = "pci-0000:c5:00.5;";
     ipv4 = {
       method = "manual";
       addresses = "10.99.2.1/30";
