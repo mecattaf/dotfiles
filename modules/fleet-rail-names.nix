@@ -46,11 +46,21 @@
 # IF THE CABLES ARE EVER RE-PLUGGED into swapped ports, these paths go stale
 # on BOTH ends at once. Update both hosts in one commit, from
 # `udevadm info /sys/class/net/rail0 | grep ID_PATH`.
-{ config, lib, ... }:
+{ config, lib, pkgs, ... }:
 let
   cfg = config.myFleetRails;
   # udev's ID_PATH for a PCI function, which is what .link's Path= matches.
   idPath = fn: "pci-${fn}";
+
+  # The /30 host halves, derived from the same hostName key as the cable table
+  # so the verifier below can never be told about a host it is not running on.
+  # rail0 = 10.99.0.x (cable A), rail2 = 10.99.2.x (cable B); coordinator is
+  # .1 on both, worker is .2 — matching tb-fleet / tb-fleet2.
+  isCoord = config.networking.hostName == "coordinator";
+  railAddr  = if isCoord then "10.99.0.1" else "10.99.0.2";
+  railPeer  = if isCoord then "10.99.0.2" else "10.99.0.1";
+  benchAddr = if isCoord then "10.99.2.1" else "10.99.2.2";
+  benchPeer = if isCoord then "10.99.2.2" else "10.99.2.1";
 in
 {
   options.myFleetRails = {
@@ -127,6 +137,84 @@ in
       };
       linkConfig.Name = "rail0";
     };
+    # ── fleet-postboot-verify ────────────────────────────────────────────
+    # The rename happens in udev, BEFORE NetworkManager activates the profiles
+    # that address the rails. That ordering is the whole design, and it is the
+    # one thing a reboot can falsify. Checking it by hand means remembering
+    # five commands and two per-host PCI constants — which is exactly how a
+    # wrong cable gets accepted at 1am. This is that check as one word, with
+    # the constants read from the table above rather than recalled.
+    #
+    # Exits non-zero on any FAIL, so it composes into a script.
+    environment.systemPackages = [
+      (pkgs.writeShellScriptBin "fleet-postboot-verify" ''
+        PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.iproute2 pkgs.systemd pkgs.gnugrep pkgs.iputils ]}
+        fail=0
+        ok()   { printf '  \033[32mPASS\033[0m  %s\n' "$1"; }
+        bad()  { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; fail=1; }
+        echo "fleet-postboot-verify on ${config.networking.hostName}"
+        echo
+
+        echo "1. cable-bound names (#266) — the rename must beat NetworkManager"
+        for r in rail0 rail2; do
+          [ -e "/sys/class/net/$r" ] && ok "$r exists" || bad "$r MISSING — the .link rename did not apply"
+        done
+        stray=$(ls /sys/class/net | grep -c '^thunderbolt' || true)
+        [ "$stray" = 0 ] && ok "no thunderbolt* netdevs remain" \
+          || bad "$stray thunderbolt* netdev(s) still present — rename incomplete"
+
+        echo
+        echo "2. each name is on its OWN cable (the silent-failure mode)"
+        for pair in "rail0:${idPath cfg.cableA}" "rail2:${idPath cfg.cableB}"; do
+          r=''${pair%%:*}; want=''${pair#*:}
+          got=$(udevadm info "/sys/class/net/$r" 2>/dev/null | grep -m1 'ID_PATH=' | cut -d= -f2)
+          if [ "$got" = "$want" ]; then ok "$r rides $want"
+          else bad "$r rides '$got', expected '$want' — THE RAILS ARE SWAPPED"; fi
+        done
+
+        echo
+        echo "3. addresses and peers"
+        for pair in "rail0:${railAddr}:${railPeer}" "rail2:${benchAddr}:${benchPeer}"; do
+          r=$(echo "$pair" | cut -d: -f1); a=$(echo "$pair" | cut -d: -f2); pr=$(echo "$pair" | cut -d: -f3)
+          ip -4 addr show dev "$r" 2>/dev/null | grep -q "$a" \
+            && ok "$r carries $a" || bad "$r does not carry $a — profile parked or on the wrong cable"
+          ping -c2 -W2 "$pr" >/dev/null 2>&1 && ok "$r peer $pr answers" || bad "$r peer $pr unreachable"
+        done
+
+        echo
+        echo "4. PM QoS budget (#257) — must be the configured value, NOT 0"
+        v=$(od -An -td4 /dev/cpu_dma_latency 2>/dev/null | tr -d ' \n')
+        if [ "$v" = "${toString config.myLowLatCluster.pmqosLatencyUs}" ]; then
+          ok "/dev/cpu_dma_latency reads $v us"
+        elif [ -z "$v" ]; then
+          bad "/dev/cpu_dma_latency unreadable (run me with sudo)"
+        else
+          bad "/dev/cpu_dma_latency reads '$v', expected ${toString config.myLowLatCluster.pmqosLatencyUs} — do NOT fix this by reverting the fleet to 0"
+        fi
+
+        echo
+        echo "5. units and stream state"
+        n=$(systemctl --failed --no-legend | wc -l)
+        [ "$n" = 0 ] && ok "no failed units" || { bad "$n failed unit(s):"; systemctl --failed --no-legend; }
+        svc=$(ls /sys/kernel/config/thunderbolt/stream/ 2>/dev/null | wc -l)
+        [ "$svc" = 1 ] && ok "exactly one stream service (EXPECTED ABSENCE on cable B is correct)" \
+          || bad "$svc stream services — expected 1; a leftover bench group disables the drift sweep"
+        [ -e /var/lib/usb4-stream/keep-foreign ] \
+          && bad "keep-foreign is ARMED — a bench pass was not released (usb4-stream-bench-cable --release)" \
+          || ok "keep-foreign disarmed"
+
+        echo
+        if [ "$fail" = 0 ]; then
+          echo "ALL CHECKS PASSED — the boot-ordering path is proven on this host."
+        else
+          echo "SOMETHING FAILED. If section 2 failed, the rename lost the race to"
+          echo "NetworkManager: 'sudo udevadm trigger --subsystem-match=net --action=add'"
+          echo "then re-run. Report the full output before benching anything."
+        fi
+        exit "$fail"
+      '')
+    ];
+
     systemd.network.links."10-rail2" = {
       matchConfig = {
         Path = idPath cfg.cableB;
