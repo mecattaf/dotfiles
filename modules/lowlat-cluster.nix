@@ -37,16 +37,57 @@
 # still had a laptop (zenbook-duo, retired 2026-08-30) and stays as written: it
 # is the shape that keeps this safe to import from anywhere.
 #
-# ─── The rails this fleet actually has, 2026-08-28 ──────────────────────────
+# ─── The rails this fleet actually has (per-boot SNAPSHOT, 2026-08-31) ──────
 #
-#   thunderbolt0   c4:00.5 -> domain0   10.99.0.1/30   tb-fleet, the fast rail
-#   thunderbolt1   c4:00.6 -> domain1   link-local     TRAINED BUT UNCONFIGURED
-#   enp191s0       5GbE                 10.99.1.1/30   eth-fleet, the fallback
+# thunderbolt0/1 are PROBE-ORDER names, not cables (#266: the worker's own
+# kernel named the same device — svc 1-2.0 — thunderbolt0 at 17:41 and
+# thunderbolt1 at 18:42 on 2026-08-30). The durable rule is RESOLVE PER
+# NODE, NEVER HARDCODE:
+#   readlink -f /sys/class/net/thunderboltN   -> NHI function + domain
+# The 2026-08-28 version of this table ("thunderbolt0 c4:00.5 -> domain0")
+# was the WORKER's snapshot presented as fleet fact — wrong for the
+# coordinator on both the PCI function (c5 there) and the domain (#267).
+# Verified 2026-08-31, a boot on which the names happened to agree
+# end-to-end (luck, not design — the two cabling crossings cancel):
+#
+#   cable A   coord c5:00.6/domain1 <-> worker c4:00.5/domain0
+#             (thunderbolt0 on both)   10.99.0.x/30   tb-fleet, the fast rail
+#   cable B   coord c5:00.5/domain0 <-> worker c4:00.6/domain1
+#             (thunderbolt1 on both)   link-local     TRAINED BUT UNCONFIGURED
+#   enp191s0  5GbE, probe-stable name  10.99.1.x/30   eth-fleet, the fallback
 #
 # Two USB4 host routers on SEPARATE NHIs and separate domains — genuinely
-# independent controllers, not one controller split, which is why tb-fleet.nix
-# rebinds both PCI functions. PM QoS is a CPU-level property and therefore
-# helps all three rails at once; the MTU knob below is per-interface.
+# independent controllers, not one controller split, which is why tb-link-heal
+# rebinds both PCI functions (derived at runtime per node since #267). PM QoS
+# is a CPU-level property and therefore helps all three rails at once; the
+# MTU knob below is per-interface.
+#
+# ─── The link ceiling: 40 Gb/s per direction; no cable changes it (#267) ────
+#
+# Recorded so nobody re-runs this investigation. Read 2026-08-30 from
+# /sys/kernel/debug/thunderbolt/{0-0,1-0}/port2/regs, capability 0x01, on
+# ALL FOUR host lane adapters across both nodes — byte-identical every time:
+#
+#   LANE_ADP_CS_0 = 0x003c01c0   supported speeds Gen3+Gen4, widths x1+x2
+#   LANE_ADP_CS_1 = 0x4824003c   TARGET speed 0xC (the CM is ALREADY asking
+#                                for Gen3/4, dual), CURRENT speed Gen3
+#                                (20 Gb/s per lane), CURRENT width DUAL
+#
+# Bonded x2 = 40 Gb/s per direction — the USB4 v1 / TB3 / TB4 number, and
+# how Framework specs these ports. The hardware is asked for Gen4 and
+# answers Gen3. The controlled experiment has already run by accident: one
+# TB5 cable and one TB3 cable between the same two boxes train IDENTICALLY
+# at Gen3 — the host is the limiter, not the medium. NO CABLE PURCHASE
+# CHANGES THIS NUMBER. Two adjacent traps:
+#   - sysfs `generation=4` is tb_switch.generation, i.e. "this is a USB4
+#     router" — it is 4 for every USB4 router and never 5. It says nothing
+#     about USB4 v1 vs v2 and must not be read as a link speed.
+#   - retimers ARE enumerated on both ports of both boards (vendor 0x1da0
+#     AMD, device 0x8833), but the scan is RACY: the worker enumerated all
+#     four at [3653.4–3653.9], then a rescan 20 s later dropped 0-0:2.2 and
+#     never re-found it. tb-fleet's "no retimers at all" PD-blind test stays
+#     sound — it only needs ANY retimer present — but COUNTING retimers is
+#     not a diagnostic.
 #
 # Rail 2 is deliberately left unaddressed HERE. Giving it a /30 is a topology
 # change to a link Tom has ruled "MUST always work" (tb-fleet.nix), it needs a

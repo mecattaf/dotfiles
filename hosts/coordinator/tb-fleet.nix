@@ -45,12 +45,14 @@
 #   3. A tripwire that makes any remaining darkness LOUD within ~15 min,
 #      with the recovery instruction in the marker text.
 let
-  # Strix Halo USB4 NHI functions — identical PCI addresses on both twins
-  # (verified live on each: /sys/bus/pci/drivers/thunderbolt).
-  nhiDevices = [
-    "0000:c4:00.5"
-    "0000:c4:00.6"
-  ];
+  # NO hardcoded NHI list. The one that used to sit here — "0000:c4:00.5/.6,
+  # identical PCI addresses on both twins" — was FALSE: those are the
+  # WORKER's functions; this box binds 0000:c5:00.5/.6 (verified live on
+  # each: ls /sys/bus/pci/drivers/thunderbolt/). So the rebind rung wrote a
+  # nonexistent device into unbind, "2>/dev/null || true" swallowed the
+  # failure, and the rung NEVER fired on the coordinator (#267). The heal
+  # script now derives the bound functions at runtime from the driver
+  # directory — correct on either twin, survives board revisions.
   peer = "10.99.0.2"; # the worker's end of the /30
   healScript = pkgs.writeShellScript "tb-link-heal" ''
     PATH=${
@@ -77,14 +79,24 @@ let
       # Retimers ("0-0:2.1") enumerate only while the port electrically
       # trains — their presence means CC/PD is alive and the stall is in
       # the thunderbolt layer, where an NHI re-probe re-runs tb_start().
-      echo "retimers present but no XDomain peer — rebinding USB4 NHIs"
-      for d in ${toString nhiDevices}; do
-        echo "$d" > /sys/bus/pci/drivers/thunderbolt/unbind 2>/dev/null || true
-      done
-      sleep 2
-      for d in ${toString nhiDevices}; do
-        echo "$d" > /sys/bus/pci/drivers/thunderbolt/bind 2>/dev/null || true
-      done
+      # The NHI functions are DERIVED from the driver's bound-device
+      # symlinks (c5:00.5/.6 here, c4:00.5/.6 on the worker — per-host,
+      # never hardcode, #267), captured BEFORE unbinding removes them.
+      # Failures are loud now: the old "2>/dev/null || true" is exactly
+      # what hid #267 for the life of this file.
+      nhis=$(ls /sys/bus/pci/drivers/thunderbolt/ | grep -E '^[0-9a-f]+:' || true)
+      if [ -z "$nhis" ]; then
+        echo "retimers present but NO NHI bound to the thunderbolt driver — nothing to rebind"
+      else
+        echo "retimers present but no XDomain peer — rebinding USB4 NHIs: $nhis"
+        for d in $nhis; do
+          echo "$d" > /sys/bus/pci/drivers/thunderbolt/unbind || echo "unbind failed for $d"
+        done
+        sleep 2
+        for d in $nhis; do
+          echo "$d" > /sys/bus/pci/drivers/thunderbolt/bind || echo "bind failed for $d"
+        done
+      fi
     else
       # NO retimers at all: the PD-blind signature of 2026-08-21 — the CCGx
       # stopped doing CC detection and nothing above it can help. The proven

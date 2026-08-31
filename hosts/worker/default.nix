@@ -282,14 +282,25 @@
           echo "peer device present but 10.99.0.1 dark — re-activating tb-fleet"
           nmcli connection up tb-fleet || true
         elif ls /sys/bus/thunderbolt/devices/ | grep -qE '^[0-9]+-[0-9]+:'; then
-          echo "retimers present but no XDomain peer — rebinding USB4 NHIs"
-          for d in 0000:c4:00.5 0000:c4:00.6; do
-            echo "$d" > /sys/bus/pci/drivers/thunderbolt/unbind 2>/dev/null || true
-          done
-          sleep 2
-          for d in 0000:c4:00.5 0000:c4:00.6; do
-            echo "$d" > /sys/bus/pci/drivers/thunderbolt/bind 2>/dev/null || true
-          done
+          # NHI functions derived at runtime, not hardcoded. This box's old
+          # hardcode (c4:00.5/.6) happened to be correct FOR ITSELF, but the
+          # coordinator's copy of the same list was the worker's addresses
+          # too, which made its rebind rung dead code for the life of the
+          # file (#267 — rationale in tb-fleet.nix). Capture before
+          # unbinding removes the symlinks; failures stay loud.
+          nhis=$(ls /sys/bus/pci/drivers/thunderbolt/ | grep -E '^[0-9a-f]+:' || true)
+          if [ -z "$nhis" ]; then
+            echo "retimers present but NO NHI bound to the thunderbolt driver — nothing to rebind"
+          else
+            echo "retimers present but no XDomain peer — rebinding USB4 NHIs: $nhis"
+            for d in $nhis; do
+              echo "$d" > /sys/bus/pci/drivers/thunderbolt/unbind || echo "unbind failed for $d"
+            done
+            sleep 2
+            for d in $nhis; do
+              echo "$d" > /sys/bus/pci/drivers/thunderbolt/bind || echo "bind failed for $d"
+            done
+          fi
         else
           # PD-blind signature (no retimers at all): CCGx reset, the fix
           # proven on the coordinator 2026-08-21 — see tb-fleet.nix doctrine.
