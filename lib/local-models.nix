@@ -308,7 +308,11 @@ let
         default = null;
       };
       backend = mkOption {
-        type = types.enum (backendKinds.local ++ backendKinds.appliances);
+        # local engines plus the retired-only values (today just "npu", legal
+        # solely on status = "retired" archive rows — see
+        # lib/local-model-backends.nix and the assertion in
+        # modules/local-models.nix that pins that restriction).
+        type = types.enum (backendKinds.local ++ backendKinds.retired);
       };
       hosts = mkOption {
         # Widened beyond ["coordinator"] for the worker-node reintegration

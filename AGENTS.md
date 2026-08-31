@@ -21,6 +21,11 @@ Interactive local inference is the llama-swap GPU roster and nothing else. There
 is no ad-hoc CLI escape hatch any more: if a model is not served by llama-swap,
 it is not available locally.
 
-The three retired FastFlowLM catalog rows keep `status = "retired"` with archive
+The four retired FastFlowLM catalog rows keep `status = "retired"` with archive
 receipts in `lib/local-models.nix`; the weights themselves survive under
-`/mnt/nas/models/weights/flm/` and nowhere else.
+`/mnt/nas/models/weights/flm/` and nowhere else. Since 2026-08-31 (#270) the
+"appliance" tier is gone from the schema too: `modules/npu-llm.nix` is deleted,
+`backendKinds` has no `appliances` kind, and `backend = "npu"` is legal only on
+those retired archive rows. Do not reintroduce an appliance tier; a new engine
+is a new `local` backend with a llama-swap command renderer, or it does not
+serve interactively.

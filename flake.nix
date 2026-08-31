@@ -1725,11 +1725,11 @@
               "artifacts"
               "libraryPath"
             ];
-          assert
-            builtins.attrNames self.nixosConfigurations.coordinator.options.services.npu-llm == [
-              "enable"
-              "models"
-            ];
+          # The exact-list assert on options.services.npu-llm went with the
+          # module itself (deleted 2026-08-31, #270 — the appliance tier is
+          # retired). The negative flm-*/fastflowlm asserts further down are
+          # what still guard against the UPSTREAM nix-amd-ai module, which
+          # stays imported for the GPU path.
           assert
             coordinator.services.local-models.allow == [
               "qwen36-35b-a3b-mtp-ud-q8-k-xl"
@@ -1738,7 +1738,9 @@
               "fara15-27b-q8-0"
               "fara15-9b-q8-0"
               # fara15-4b-q8-0 and qwen3-vl-32b-ocr-refine ruled out 2026-08-20
-              # (#229); qwen3-vl-8b-ocr exits with the NPU2 OCR flip.
+              # (#229); qwen3-vl-8b-ocr's NPU2 exit flip died with the NPU
+              # decommission — it stays until a GPU OCR successor validates
+              # (modules/strix.nix has the fuller note).
               "qwen3-vl-8b-ocr"
               "qwen3-embedding-8b-q8-0"
               "qwen3-vl-embedding-8b-q8-0"
@@ -1841,6 +1843,11 @@
               "qwen3.6-35b-a3b"
               "qwen3.8-27b"
             ];
+          # peers is upstream's llama-swap-to-llama-swap federation primitive
+          # (verified in the shipped v240 binary, 2026-08-31). Empty means "the
+          # twins' proxies are not federated yet", no longer "appliances are
+          # not peers" — the appliance tier is retired. The #270 gateway-row
+          # design is the change that gets to relax this.
           assert coordinatorSettings.peers == { };
           assert coordinator.systemd.services.llama-swap.environment.LLAMA_MEDIA_MARKER == "<__media__>";
           assert
@@ -1865,10 +1872,13 @@
           # hasPrefix, not equality: the versioned attr advances within 7.2.x.
           assert nixpkgs.lib.hasPrefix "7.2" coordinator.boot.kernelPackages.kernel.version;
           assert nixpkgs.lib.hasPrefix "7.2" worker.boot.kernelPackages.kernel.version;
-          assert !coordinator.services.npu-llm.enable;
-          assert !worker.services.npu-llm.enable;
-          # The ad-hoc FLM manifest is a product of services.npu-llm; with the
-          # service off the etc entry must not exist at all.
+          # `assert !{coordinator,worker}.services.npu-llm.enable` stood here
+          # until 2026-08-31 (#270): with modules/npu-llm.nix deleted the
+          # option no longer evaluates, and the absence asserts below are the
+          # ones that still bite (they guard the upstream nix-amd-ai module,
+          # which keeps shipping fastflowlm/flm machinery we must not enable).
+          # The ad-hoc FLM manifest was a product of services.npu-llm; with the
+          # module gone the etc entry must not exist at all.
           assert !(coordinator.environment.etc ? "local-models/fastflowlm.json");
           assert !(worker.environment.etc ? "local-models/fastflowlm.json");
           assert nixpkgs.lib.all (unit: !(nixpkgs.lib.hasPrefix "flm-" unit)) (
@@ -1920,9 +1930,12 @@
           assert !(localModelCatalog.deployments."flm-gpt-oss-20b" ? peer);
           assert !(nixpkgs.lib.hasInfix "qwen3:4b" (builtins.toJSON coordinatorSettings));
           assert !(nixpkgs.lib.hasInfix "-hf" (builtins.toJSON coordinatorSettings));
+          # `appliances` fell out of backendKinds 2026-08-31 (#270): the tier
+          # had exactly one member and zero live rows. "npu" survives only as a
+          # retired-only value so the four archived FLM rows keep their factual
+          # backend record; lib/local-model-backends.nix carries the ruling.
           assert
             localModelCatalog.backendKinds == {
-              appliances = [ "npu" ];
               local = [
                 "rocm"
                 "vulkan"
@@ -1930,6 +1943,7 @@
                 "vllm"
                 "mlx"
               ];
+              retired = [ "npu" ];
             };
           assert
             builtins.attrNames renderedBackends == [
@@ -1960,9 +1974,10 @@
           assert builtins.hasAttr "mlx-lm" inputs.nix-strix-halo.packages.${system};
           pkgs.runCommand "local-model-routing" { } ''
             # The jq block that used to validate the coordinator's FastFlowLM
-            # manifest was removed 2026-08-29 with the NPU decommission: with
-            # services.npu-llm off there is no /etc/local-models/fastflowlm.json
-            # to read. Its absence is asserted at eval time above.
+            # manifest was removed 2026-08-29 with the NPU decommission (and
+            # the module that produced it was deleted outright 2026-08-31,
+            # #270): there is no /etc/local-models/fastflowlm.json to read.
+            # Its absence is asserted at eval time above.
             ${pkgs.gnugrep}/bin/grep -F 'export LLAMA_SWAP_PORT=9292' ${coordinatorPi}/bin/pi >/dev/null
             ${pkgs.gnugrep}/bin/grep -F -- '-e ${pkgs.pi-llama-swap-extension}' \
               ${coordinatorPi}/bin/pi >/dev/null

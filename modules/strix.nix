@@ -29,8 +29,10 @@
     ./llama-swap.nix
     # Typed model catalog, guarded store materialization, and host projections.
     ./local-models.nix
-    # Deterministic FastFlowLM roster only; ad-hoc `flm run`, with no daemon.
-    ./npu-llm.nix
+    # ./npu-llm.nix was imported here until 2026-08-31 (#270): the FastFlowLM
+    # roster module whose only live use was being asserted off since the
+    # 2026-08-29 NPU decommission. Deleted with the appliance tier; a revival
+    # restores it from git history (see the roster comment below).
     # PM QoS + MTU tuning for the coordinator<->worker rails. Declares an
     # option that defaults OFF; enabled below, so only these two boxes get it.
     ./lowlat-cluster.nix
@@ -59,8 +61,11 @@
           # Ruled out 2026-08-20 (notes ACTION-PLAN §2b / dotfiles#229): rows stay
           # in the catalog; recovery is uncommenting a line here.
           # "fara15-4b-q8-0"
-          # qwen3-vl-8b-ocr stays UNTIL the FastFlowLM Qwen 3.6 35B NPU2 build is
-          # validated on OCR. Its former primary consumer — the paper-intake OCR
+          # qwen3-vl-8b-ocr's exit condition used to be "the FastFlowLM Qwen 3.6
+          # 35B NPU2 build validates on OCR" — that flip died with the NPU
+          # decommission (2026-08-29; tier retired 2026-08-31, #270), so the row
+          # stays until a GPU successor for the drain's OCR lane is validated
+          # instead. Its former primary consumer — the paper-intake OCR
           # processor — was removed 2026-08-20 with the returned ADS-1800W
           # scanner, so only the academic-ocr drain lane still dials this route;
           # weigh that when deciding whether it exits with the worker-drain flip.
@@ -155,10 +160,16 @@
     # the NPU on this device specifically for gemma4-it:e4b (Gemma4-E4B-IT-NPU2 —
     # ad-hoc multimodal utility) and qwen3.6-moe:35b-a3b (Qwen3.6-35B-A3B-NPU2 —
     # the drain's next OCR engine, OCR-validation still pending) if flm is ever
-    # brought back. Recovery = uncomment the roster below + flip the enables here
-    # and in hardware.amd-npu above + restore the catalog rows to canonical +
-    # `flm pull`, or restore the trees from the NAS archive.
-    services.npu-llm.enable = false;
+    # brought back. Recovery = restore modules/npu-llm.nix from git history and
+    # re-import it above (deleted 2026-08-31 with the appliance tier, #270 —
+    # its `services.npu-llm.enable = false` line went with it, since setting an
+    # undeclared option fails eval) + uncomment the roster below + flip the
+    # enables in hardware.amd-npu above + restore the catalog rows to canonical
+    # (their backend value "npu" is retired-only in lib/local-model-backends.nix
+    # and must be re-promoted) + `flm pull`, or restore the trees from the NAS
+    # archive. AGENTS.md rules the NPU must never come back as part of the
+    # CURRENT design; this block is the record of what a reversal would restore,
+    # not an invitation.
     # services.npu-llm = {
     #   enable = true;
     #   models =

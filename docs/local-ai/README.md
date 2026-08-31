@@ -13,6 +13,14 @@
 > migrated to the GPU roster (`qwen3.6-35B-A3B` via llama-swap) the same day.
 > Read every "utility" passage below as describing the old engine, not a dead
 > seam; `lib/local-models.nix` has the live wiring.
+>
+> **2026-08-31 (#270): the appliance *tier* is retired from the schema, not
+> just disabled.** `modules/npu-llm.nix` is deleted (git history keeps it),
+> `backendKinds` no longer declares an `appliances` kind, and `backend = "npu"`
+> survives only as a retired-only value on the four archived FLM catalog rows.
+> "Appliance" below still validly names the modality-specific *payloads* (Mage,
+> VibeVoice, Voxtype) — bounded non-LLM artifacts with their own runtimes —
+> but there is no interactive serving tier beside llama-swap any more.
 
 The fleet provides a set of bounded appliances, not one undifferentiated LLM
 daemon. Each appliance owns a workload, an inference implementation, immutable
@@ -155,16 +163,20 @@ the current architecture.
    manifests are factored into
    [`../../lib/mage-models.nix`](../../lib/mage-models.nix).
 2. [`../../modules/local-models.nix`](../../modules/local-models.nix) projects
-   only the command-managed coordinator allowlist into the Nix store and llama-swap;
-   runtime appliances never become proxy peers. Since 2026-08-29 it also owns
+   only the command-managed per-host allowlist into llama-swap. Its
+   `peers = { }` used to encode "runtime appliances never become proxy peers";
+   since 2026-08-31 (#270) `peers` is understood as upstream's
+   llama-swap-to-llama-swap federation field and is simply unclaimed until the
+   flashnext gateway design uses it. Since 2026-08-29 the module also owns
    the `utility-model` wrapper, which is a projection of the catalog's utility
    slot onto whichever host serves that row.
 3. ~~`../../modules/npu-llm.nix` validates the explicit FastFlowLM roster and
    writes its non-resident runtime manifest.~~ *Superseded 2026-08-29: NPU
    decommissioned permanently; flm retired with archive receipts (see
-   `lib/local-models.nix`). The module is inert and its manifest is gone; the
-   utility wrapper it used to build moved to `modules/local-models.nix` with
-   the slot.*
+   `lib/local-models.nix`). The module sat inert until 2026-08-31 (#270), when
+   it was deleted outright with the appliance tier — recover it from git
+   history only alongside a reversed decommission ruling. The utility wrapper
+   it used to build moved to `modules/local-models.nix` with the slot.*
 4. [`mage.md`](mage.md) records the selected Mage download set, deduplicated
    storage cost, upstream invocation contract, and serving boundary.
 5. [`deployment-decisions-2026-07-29.md`](deployment-decisions-2026-07-29.md)

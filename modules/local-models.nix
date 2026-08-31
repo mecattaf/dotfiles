@@ -181,7 +181,9 @@ let
   localModels = lib.mapAttrs' renderModel selectedDeployments;
 
   # ── the application-facing utility slot ───────────────────────────────────
-  # Migrated here from modules/npu-llm.nix on 2026-08-29. The stable id
+  # Migrated here from modules/npu-llm.nix on 2026-08-29 (that module was
+  # deleted outright 2026-08-31 with the appliance tier, #270; git history
+  # keeps it). The stable id
   # `utility` is now backed by a GPU roster row served through llama-swap, so
   # the wrapper is a plain catalog-row-onto-host projection — this module's job
   # — rather than anything FastFlowLM ever owned. It is installed only where the
@@ -243,11 +245,14 @@ let
       message = "Every local-model backend must have exactly one llama-swap command renderer.";
     }
     {
+      # The appliance tier is retired (2026-08-31, #270): a backend value
+      # outside `local` is legal only as history, on a row that is itself
+      # retired. Anything live must be an engine the renderer table can serve.
       assertion = lib.all (
         deployment:
-        lib.elem deployment.backend (catalog.backendKinds.local ++ catalog.backendKinds.appliances)
+        lib.elem deployment.backend catalog.backendKinds.local || deployment.status == "retired"
       ) deploymentList;
-      message = "Every deployment must use a declared local or appliance backend.";
+      message = "Every non-retired deployment must use a managed local backend; retired backend values (npu) are archive records only.";
     }
     {
       assertion = lib.all (
@@ -296,7 +301,7 @@ let
         else
           referencedArtifactIds deployment == [ ]
       ) deploymentList;
-      message = "Managed local deployments require a model artifact; runtime appliances must not root artifacts.";
+      message = "Managed local deployments require a model artifact; retired archive rows must not root artifacts.";
     }
     {
       assertion = builtins.length canonicalModelIds == builtins.length (lib.unique canonicalModelIds);
@@ -353,7 +358,8 @@ let
     }
     {
       # The utility slot must name a row llama-swap can actually serve
-      # (2026-08-29 GPU migration). A runtime appliance here would mean the
+      # (2026-08-29 GPU migration). A non-local backend here — historically the
+      # FLM appliance rows, today only a retired archive value — would mean the
       # wrapper forwards the stable `utility` id to an endpoint that has never
       # heard of it — the exact failure the FLM-era seam avoided by owning its
       # own child process.
@@ -374,8 +380,9 @@ in
       default = [ ];
       description = ''
         Canonical deployment IDs to materialize and expose through llama-swap
-        on this host. Runtime appliances such as FastFlowLM stay outside this
-        list and are invoked through their own explicit CLI.
+        on this host. Every entry must be a managed local backend; there is no
+        other interactive serving tier (the NPU/FastFlowLM appliance tier was
+        decommissioned 2026-08-29 and retired from the schema 2026-08-31, #270).
       '';
     };
 
@@ -419,7 +426,18 @@ in
       assert catalogValid;
       {
         models = localModels;
-        # Runtime appliances are deliberately not represented as proxy peers.
+        # `peers` is upstream llama-swap's instance-to-instance federation
+        # primitive: entries name REMOTE llama-swap/OpenAI providers this proxy
+        # routes and proxies model requests to (verified against the shipped
+        # v240 binary 2026-08-31 — internal/router.{Peer,NewPeer,peerMember},
+        # "peer: routing model %s to peer %s" — the shipped README documents
+        # none of it). This comment used to justify the empty set by the NPU
+        # appliance tier ("runtime appliances are deliberately not represented
+        # as proxy peers"); that tier is retired (#270) and the field is now
+        # simply UNCLAIMED: it stays empty until the flashnext dual-node
+        # gateway design (#270) deliberately federates the twins' proxies.
+        # flake.nix pins peers == { } — relax that assert in the same change
+        # that first populates this.
         peers = { };
       };
 

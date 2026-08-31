@@ -9,11 +9,15 @@
 # This module owns only the proxy package, lifecycle, state, and network
 # boundary. local-models.nix owns the typed roster, backend commands, guarded
 # weight materialization, and — since the 2026-08-29 GPU migration — the
-# `utility-model` wrapper that dials the port below. Runtime appliances such as
-# FastFlowLM stay outside this control plane. The proxy itself is a small,
-# always-on Go process and consumes no GPU. Tally remains the admission
-# controller for the coordinator GPU pool; llama-swap supplies the one stable
-# API door and load/unload mechanism.
+# `utility-model` wrapper that dials the port below. This is the ONE gateway
+# to interactive local inference: the NPU/FastFlowLM appliance tier that used
+# to sit outside it was decommissioned 2026-08-29 and retired from the schema
+# 2026-08-31 (#270), so nothing interactive serves models on these boxes except
+# through this proxy. The one plane still outside it is the flashnext TP=2
+# vLLM lane — see #270 for the gateway-row design that would bring it in. The
+# proxy itself is a small, always-on Go process and consumes no GPU. Tally
+# remains the admission controller for the coordinator GPU pool; llama-swap
+# supplies the one stable API door and load/unload mechanism.
 let
   cfg = config.services.llama-swap;
 

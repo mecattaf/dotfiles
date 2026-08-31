@@ -3,11 +3,16 @@
 > **Superseded 2026-08-29: NPU decommissioned permanently; flm retired with
 > archive receipts (see [`../../lib/local-models.nix`](../../lib/local-models.nix)).**
 > Every NPU/FastFlowLM row and every reference to `services.npu-llm.models`,
-> an NPU-backed `utility` slot, or `flm run` below is history. The three flm
-> catalog rows are now `status = "retired"` and carry `archived` receipts
+> an NPU-backed `utility` slot, or `flm run` below is history. The four flm
+> catalog rows (this page's table predates `flm-qwen36-35b-a3b-npu2` and shows
+> three) are now `status = "retired"` and carry `archived` receipts
 > pointing at `/mnt/nas/models/weights/flm/`. Both Strix Halo twins boot
 > `amd_iommu=off`. Interactive local inference is the llama-swap GPU roster
 > only.
+>
+> **2026-08-31 (#270): the appliance tier is retired from the schema itself.**
+> `modules/npu-llm.nix` is deleted, `backendKinds` has no `appliances` kind,
+> and `backend = "npu"` is legal only on those retired archive rows.
 >
 > **The `utility` slot itself is live** — it migrated to the GPU roster
 > (`qwen3.6-35B-A3B` via llama-swap) on the same date rather than retiring; see
@@ -183,6 +188,10 @@ more.
 FastFlowLM never becomes a llama-swap peer. `flake.nix` asserts that no
 `flm-`-prefixed systemd unit exists, that llama-swap has no peers at all, and
 that the string `qwen3:4b` never appears in the rendered llama-swap settings.
+*Refined 2026-08-31 (#270): `peers` turned out to be upstream's
+llama-swap-to-llama-swap federation field, nothing to do with appliances. The
+assert stands, now meaning "the twins' proxies are not federated yet"; the
+flashnext gateway design is what would relax it.*
 
 ## Voxtype and Parakeet
 
