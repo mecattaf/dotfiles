@@ -242,6 +242,46 @@ in
           # 100.64.0.0/10 CGNAT address, which tells the upstream nothing
           # except "this query came from a VPN-shaped range".
           edns_client_subnet.enabled = false;
+
+          # RATE LIMITING — the default here is a WHOLE-HOUSE bucket, and that
+          # is the actual bug being fixed. AdGuard defaults to ratelimit=20
+          # queries/sec applied per /24 (ratelimit_subnet_len_ipv4=24), and
+          # since the 2026-08-20 rewire every client in the building lives in
+          # 10.42.0.0/24 — so the phones, the TV, the IoT devices and both
+          # twins have been sharing ONE 20 q/s bucket. Over-limit queries are
+          # DROPPED, not refused, so the symptom is a stalled page that loads
+          # on retry: precisely the kind of thing that never gets reported and
+          # never gets attributed to the resolver.
+          #
+          # Per-client buckets instead — /32, and /64 for v6 (one device, since
+          # privacy extensions rotate inside the /64) — at 100 q/s each. That
+          # is strictly more headroom for every real client than today, while
+          # still containing the threat that actually exists on this LAN: one
+          # broken IoT device hammering :53. Not adversarial abuse — this
+          # listener is admitted only from enp1s0 (hosts/nas/router.nix) and
+          # tailscale0, never from the WAN.
+          #
+          # Mesh note: per-client is also the right shape for headscale, whose
+          # nodes all come out of one 100.64.0.0/10 pool. Under the /24 default
+          # a friend's device — namespaced away from Tom's nodes by headscale
+          # ACLs, but sharing the address pool — could throttle Tom's phone by
+          # sitting in the same /24. It cannot now.
+          #
+          # Whitelisted: loopback (the resolver's own path; on a loopback-only
+          # importer that is every query it will ever see, and Immich ML
+          # batches / model fetches touch hostnames by the hundred), the LAN
+          # address itself, and the two infra twins that legitimately burst.
+          ratelimit = 100;
+          ratelimit_subnet_len_ipv4 = 32;
+          ratelimit_subnet_len_ipv6 = 64;
+          ratelimit_whitelist = [
+            "127.0.0.1"
+          ]
+          ++ lib.optionals isLanResolver [
+            "10.42.0.1"
+            "10.42.0.2" # coordinator
+            "10.42.0.5" # worker
+          ];
         };
 
         filtering = {
