@@ -170,24 +170,31 @@ already works.
 ## Phase 2 runbook — public exposure (gate OFF)
 
 `myNas.headscale.publicEndpoint.enable`, default off, hostname default
-`headscale.mecattaf.dev`. Flipping it changes `server_url` from the LAN URL to
-the public one, brings up Caddy on this box, and admits `wan0 tcp/80` and
-`wan0 tcp/443`.
+`headscale.mecattaf.dev`, port default `8443`. Flipping it changes `server_url`
+from the LAN URL to the public one **including the port**, brings up Caddy on
+this box, and admits exactly one door: `wan0 tcp/<port>`.
 
 **This gate is the first deliberate breach of this box's "wan0 admits nothing
 unsolicited" invariant**, which is asserted as settled doctrine in two separate
 host files (`hosts/nas/tv.nix:117`, `hosts/nas/attic.nix:84`). The doctrine is
-being narrowed, not deleted: exactly two TCP ports, terminated by Caddy,
-reverse-proxied to a LAN-bound headscale, nothing else on `wan0` changed.
+being narrowed, not deleted: exactly ONE nonstandard TCP port, terminated by
+Caddy, reverse-proxied to a LAN-bound headscale, nothing else on `wan0` changed.
+(Ruling 2026-09-01: nonstandard on purpose — nothing else that could ever want
+:443 can collide with this door, and a Free line on shared IPv4 doesn't own
+:443 anyway. For the record, the coordinator's tailscale.com fallback is
+outbound-only NAT traversal and forwards nothing on the Freebox, so there is no
+port contention from that side to design around.)
 
 Steps that only Tom can do:
 
 1. **Freebox OS** (`http://mafreebox.freebox.fr`, LAN-side admin):
    - pin a static DHCP lease for the NAS's `wan0` permanent MAC
      (`hosts/nas/a8500.nix`) so the forward target cannot drift;
-   - forward **TCP 80 and TCP 443** to that address. 80 is not optional —
-     Caddy's ACME challenge wants it for HTTP-01. **No UDP 3478**: embedded DERP
-     stays off.
+   - forward **one TCP port — `publicEndpoint.port`, default 8443** — to that
+     address. Not :80, not :443. If the panel says the line is on *IPv4
+     partagée*, either request full-stack IPv4 there or pick the port from the
+     allotted range and set `publicEndpoint.port` to match. **No UDP 3478**:
+     embedded DERP stays off.
 2. **DDNS**, because the Freebox holds a residential and probably dynamic public
    IP: Freebox DynDNS (`dyndns.freebox.fr`, same admin panel) is the path of
    least resistance; a Cloudflare-API updater is the alternative.
@@ -195,24 +202,33 @@ Steps that only Tom can do:
    DNS-only**. Orange-cloud proxying **breaks headscale** — the control channel
    is a `POST` carrying `Upgrade: tailscale-control-protocol`, and Cloudflare's
    proxy does not support that WebSocket-over-POST mechanism. Upstream's own
-   documented limitation, not a preference.
-4. Flip the gate and deploy. Every already-registered node has to be re-pointed
+   documented limitation, not a preference — and it rules out Cloudflare
+   Tunnel for the same reason, which is why this runbook forwards a port at
+   all.
+4. **The ACME secret** (DNS-01; with no :80/:443 there is no other challenge):
+   mint a Cloudflare API token scoped to **Zone.DNS edit on mecattaf.dev
+   only**, then `nix develop -c agenix -e secrets/cloudflare-dns-acme.age`
+   containing the single line `CF_DNS_API_TOKEN=<token>`; add the nasOnly-tier
+   entry in `secrets.nix` and the `age.secrets.cloudflare-dns-acme` line in the
+   phase-2 block of `hosts/nas/headscale.nix` (it names the runtime path it
+   expects; the declarations can't be pre-written because agenix eval requires
+   the `.age` file to exist).
+5. Flip the gate and deploy. Every already-registered node has to be re-pointed
    once: the NAS does it automatically (the enroll unit sees the stale
    `ControlURL` and cuts over); anywhere else it is one
-   `tailscale up --login-server=https://<hostname> --force-reauth`. **Do phase 2
-   before any friend device joins** — then it costs one node's churn instead of
-   everyone's.
-5. Verify from off-LAN (phone on LTE): the Tailscale app's custom-server login
-   must reach the name and get a valid cert.
+   `tailscale up --login-server=https://<hostname>:<port> --force-reauth`.
+   **Do phase 2 before any friend device joins** — then it costs one node's
+   churn instead of everyone's.
+6. Verify from off-LAN (phone on LTE): the Tailscale app's custom-server login
+   must reach `name:port` and get a valid cert.
 
-**Caddy, and why not the DNS-01 shape.** `modules/caddy-artifacts.nix` documents
-wanting a `caddy-dns/cloudflare` DNS-01 wildcard for the coordinator. That path
-needs a Cloudflare API token, which on *this* box would be a credential at rest
-on an appliance whose whole doctrine is one ciphertext and no more, plus an
-`xcaddy` plugin build and its vendor hash. With `:80` forwarded, **HTTP-01 needs
-no token, no plugin and no hash** — strictly less machinery for the same
-certificate, and there is no wildcard here, just one name. DNS-01 remains the
-right answer for wildcards.
+**Certs: DNS-01 via `security.acme` (lego), not a caddy plugin.** The first
+draft of this page argued for HTTP-01 on :80 to keep a Cloudflare token off
+this appliance; the nonstandard-port ruling makes HTTP-01 and TLS-ALPN-01
+physically impossible (ACME dials only :80/:443), so DNS-01 is the only
+challenge left. The token is an agenix ciphertext scoped to one zone's DNS —
+and lego still needs **no `xcaddy` plugin build and no vendor hash**; Caddy
+just consumes the minted cert via `useACMEHost`.
 
 Caddy rather than nginx for a load-bearing protocol reason, not taste: nginx and
 Apache need explicit `Upgrade`/`Connection` passthrough stanzas to survive
