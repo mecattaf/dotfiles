@@ -325,6 +325,25 @@ in
         # Blocklists. AdGuard DNS filter is the network-level analog of the
         # AdGuard browser extension's base filter; Steven Black adds the classic
         # hosts-file coverage. IDs are arbitrary but must stay unique + stable.
+        #
+        # 2026-09-01, now that this instance filters for the whole house rather
+        # than one laptop's own queries, two Hagezi lists join them — chosen for
+        # what they add that the first two do NOT:
+        #   - Pro (id 3) is the curated ads/trackers list whose whole selling
+        #     point is low breakage; it overlaps the first two heavily but
+        #     catches the mobile-app telemetry endpoints a hosts-file list
+        #     never carried. ~4.8 MiB on fetch.
+        #   - TIF Medium (id 4) is a different KIND of list: threat intel —
+        #     malware, phishing, cryptojacking C2 — not advertising. This is
+        #     the only entry here that protects a device whose owner clicked
+        #     the wrong link, which is the interesting category once phones and
+        #     (per today's headscale ruling) eventually friends' machines
+        #     resolve through this box. ~6.9 MiB.
+        # Both are far under AdGuard's 256 MB per-list ceiling
+        # (rulelist.DefaultMaxRuleListSize), and both refresh on the default
+        # 24h filters_update_interval. OISD Big was considered and REJECTED:
+        # it is a third general-purpose ads/trackers list, so it would cost
+        # memory and update bandwidth to re-block what ids 1-3 already block.
         filters = [
           {
             enabled = true;
@@ -337,6 +356,18 @@ in
             id = 2;
             name = "Steven Black hosts";
             url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts";
+          }
+          {
+            enabled = true;
+            id = 3;
+            name = "Hagezi Pro";
+            url = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/pro.txt";
+          }
+          {
+            enabled = true;
+            id = 4;
+            name = "Hagezi Threat Intelligence Feeds (medium)";
+            url = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt";
           }
         ];
       };
