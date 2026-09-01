@@ -969,8 +969,7 @@
         "piri": "piri",
         "sfmono-liga": "sfmono-liga",
         "tally": "tally",
-        "voxtype": "voxtype",
-        "zmx": "zmx"
+        "voxtype": "voxtype"
       }
     },
     "rust-overlay": {
@@ -1945,22 +1944,6 @@
         "submodules": true,
         "type": "git",
         "url": "https://github.com/Xilinx/XRT"
-      }
-    },
-    "zmx": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1787162745,
-        "narHash": "sha256-uk1FF/iqpArkY1gK5wHDISUf+tDLGJQ+U6BDmiV6Nns=",
-        "owner": "neurosnap",
-        "repo": "zmx",
-        "rev": "9575587bbe363a6652c17d64d002c67eb1f32e6a",
-        "type": "github"
-      },
-      "original": {
-        "owner": "neurosnap",
-        "repo": "zmx",
-        "type": "github"
       }
     }
   },

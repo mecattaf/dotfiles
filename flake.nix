@@ -113,31 +113,6 @@
       flake = false;
     };
 
-    # zmx — LOCAL terminal session persistence (neurosnap/zmx, built on
-    # ghostty-vt). THE projector primitive (jul7 ruling, tally morning-annotation
-    # §12): every kitty on the coordinator is a persistent local zmx session
-    # (`zmx attach <name>`); other boxes reach it via `kitten ssh coordinator -t
-    # zmx attach <session>` over the tailnet. Supersedes shpool fleet-wide.
-    #
-    # We tried zmosh (a zmx fork adding encrypted-UDP roaming) but it is
-    # unmaintained and ships a stale build.zig.zon2json-lock that breaks offline
-    # nix builds. Its one feature we forgo — UDP auto-reconnect — is moot:
-    # kitten ssh gives reliable graphics/clipboard while attached, and a
-    # persistent session survives disconnects server-side.
-    #
-    # flake = false ON PURPOSE (2026-08-21): upstream's flake packages zmx via
-    # Cloudef/zig2nix, whose import-from-derivation (zon2json/zon2nix built
-    # MID-EVAL) made every dotfiles evaluation build zig tooling, broke
-    # `nix flake check --no-build`, and turned one GC into
-    # "path 'zon2json.drv' is not valid". pkgs/zmx.nix now builds the same
-    # source with the nixpkgs zig toolchain from upstream's committed
-    # build.zig.zon2json-lock — pure eval, zero IFD, and zig2nix leaves our
-    # input graph entirely. `nix flake update zmx` still bumps the pin.
-    zmx = {
-      url = "github:neurosnap/zmx";
-      flake = false;
-    };
-
     # git-ai — AI-authorship tracking CLI (github.com/git-ai-project/git-ai).
     # Consume its flake package directly and pin it in flake.lock. The Home
     # Manager profile installs upstream's `minimal` output, which provides
@@ -172,11 +147,10 @@
     # timers/services and the build-time `checkedConfig` validator, which a bare
     # pkg can't deliver; NO bespoke pkgs/tally.nix. home/tally.nix imports the
     # module and enables the daemon on the coordinator only. Other hosts leave
-    # the module off. Composes onto
-    # the dotfiles-owned zmx substrate — tally ships
-    # none of it. follows nixpkgs so the Rust build resolves against our one pin
-    # rather than dragging a second nixpkgs into the lock. `nix flake update
-    # tally` bumps to the latest pushed commit (and, post-release, the tag).
+    # the module off. Composes onto whatever terminal substrate the dotfiles own —
+    # tally ships none of it. follows nixpkgs so the Rust build resolves against
+    # our one pin rather than dragging a second nixpkgs into the lock. `nix flake
+    # update tally` bumps to the latest pushed commit (and, post-release, the tag).
     #
     # Repo is mecattaf/tally.nix (NOT mecattaf/tally, which is the pre-rebuild
     # spec history). It is public, so use the native `github:` fetcher: fleet
@@ -335,10 +309,6 @@
           # allowlisted set out of this namespace. See the input comment above.
           llm-agents = inputs.llm-agents.packages.${system};
           sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { src = inputs.sfmono-liga; };
-          # zmx built by our own pkgs/zmx.nix from the non-flake source input:
-          # nixpkgs zig + upstream's committed dependency lock, no zig2nix IFD
-          # (see the input comment).
-          zmx = final.callPackage ./pkgs/zmx.nix { src = inputs.zmx; };
         })
         # Pin-decoupled "hot" packages — see the nixpkgs-fresh input comment above.
         # Cherry-picked, not a wholesale pkgs swap: only packages named here track
