@@ -93,7 +93,7 @@ let
   # reach. Phase 1 is the honest LAN answer; phase 2 is the public name.
   loginServer =
     if cfg.publicEndpoint.enable then
-      "https://${cfg.publicEndpoint.hostname}"
+      "https://${cfg.publicEndpoint.hostname}:${toString cfg.publicEndpoint.port}"
     else
       "http://${lanAddr}:${toString port}";
 in
@@ -114,10 +114,18 @@ in
           1. Freebox OS (http://mafreebox.freebox.fr, LAN-side admin):
              a. pin a static DHCP lease for the NAS's wan0 permanent MAC
                 (hosts/nas/a8500.nix) so the forward target cannot drift;
-             b. forward TCP 80 AND TCP 443 to that address. 80 is not
-                optional: Caddy's ACME challenge is HTTP-01/TLS-ALPN and
-                HTTP-01 wants :80. No UDP 3478 — the embedded DERP server
-                stays off, see the derp block below.
+             b. forward exactly ONE TCP port — `port` below, default 8443 —
+                to that address. NOT :80, NOT :443 (Tom's ruling 2026-09-01:
+                the public door is nonstandard and isolated, which also
+                sidesteps Free's shared-IPv4 trap — a line on "IPv4
+                partagee" owns only a slice of the address's ports, never
+                :443; if the panel shows a partagee range, either request
+                full-stack IPv4 there or pick the forwarded port from the
+                allotted range and set `port` to match). No UDP 3478 — the
+                embedded DERP server stays off, see the derp block below.
+                For the record, nothing else contends for Freebox forwards:
+                the coordinator's tailscale.com fallback is outbound-only
+                NAT traversal and needs no inbound port at all.
           2. Freebox DynDNS (same admin panel, dyndns.freebox.fr) or a
              Cloudflare-API updater, because the Freebox holds a residential
              and probably dynamic public IP.
@@ -126,24 +134,38 @@ in
              the control channel is a POST with `Upgrade:
              tailscale-control-protocol`, and Cloudflare's proxy does not
              support that WebSocket-over-POST mechanism. This is upstream's
-             own documented limitation, not a preference.
-          4. Flip this gate and deploy. Note that the server_url CHANGES with
-             it (LAN URL -> public URL), so every already-registered node has
-             to be re-pointed once: on the NAS the enroll unit below does it
-             automatically (it logs out of the stale control URL and
-             re-registers); anywhere else it is one
-             `tailscale up --login-server=https://<hostname> --force-reauth`.
+             own documented limitation (and it rules out Cloudflare Tunnel
+             for the same reason), not a preference.
+          4. The cert secret (DNS-01 — with no :80 or :443 forwarded,
+             HTTP-01 and TLS-ALPN-01 are both impossible, ACME validates via
+             DNS instead): mint a Cloudflare API token scoped to Zone.DNS
+             edit on the mecattaf.dev zone ONLY, then
+               nix develop -c agenix -e secrets/cloudflare-dns-acme.age
+             containing the single line
+               CF_DNS_API_TOKEN=<token>
+             and wire it per the house pattern: a nasOnly-tier entry in
+             secrets.nix plus, in this file's phase-2 block, an
+             age.secrets.cloudflare-dns-acme line feeding the
+             security.acme environmentFile below. The declarations are NOT
+             pre-written because agenix eval needs the .age file to exist;
+             the acme block below names the runtime path it expects.
+          5. Flip this gate and deploy. Note that the server_url CHANGES with
+             it (LAN URL -> public URL WITH the port), so every
+             already-registered node has to be re-pointed once: on the NAS
+             the enroll unit below does it automatically (it logs out of the
+             stale control URL and re-registers); anywhere else it is one
+             `tailscale up --login-server=https://<hostname>:<port> --force-reauth`.
              Doing phase 2 BEFORE any friend device joins costs one node's
              churn; doing it after costs everyone's.
-          5. Verify from off-LAN (phone on LTE): the custom-server login flow
-             in the Tailscale app must reach the name and get a valid cert.
+          6. Verify from off-LAN (phone on LTE): the custom-server login flow
+             in the Tailscale app must reach name:port and get a valid cert.
 
         WHAT THIS GATE ADMITS, stated once so it is never a surprise: an
         UNSOLICITED inbound door on wan0. Every other line in hosts/nas/*
         says the Freebox side admits nothing (tv.nix:117, attic.nix:84).
-        That doctrine is being deliberately narrowed, not deleted: exactly two
-        TCP ports, terminated by Caddy, reverse-proxied to a LAN-bound
-        headscale, and nothing else on wan0 changes.
+        That doctrine is being deliberately narrowed, not deleted: exactly
+        ONE nonstandard TCP port, terminated by Caddy, reverse-proxied to a
+        LAN-bound headscale, and nothing else on wan0 changes.
       '';
 
       hostname = lib.mkOption {
@@ -159,6 +181,22 @@ in
 
           Must NOT share a domain with `dns.base_domain` below — headscale
           requires those two to differ.
+        '';
+      };
+
+      port = lib.mkOption {
+        type = lib.types.port;
+        default = 8443;
+        description = ''
+          The ONE public TCP port (Tom's ruling 2026-09-01: nonstandard, so
+          the WAN door stays isolated from everything else that could ever
+          want :443 — and usable even on a shared-IPv4 Free line, where :443
+          is not Tom's to forward; on such a line set this to a port inside
+          the allotted range). Baked into server_url, so changing it after
+          nodes have registered costs the same re-point churn as changing the
+          hostname. Caddy listens on it directly; there is no :80 and no
+          redirect — a door that answers exactly one protocol on exactly one
+          port.
         '';
       };
     };
@@ -565,31 +603,56 @@ in
       iifname "tailscale0" tcp dport ${toString port} accept comment "headscale re-auth over an already-established tunnel"
     ''
     + lib.optionalString cfg.publicEndpoint.enable ''
-      iifname "enp1s0" tcp dport 443 accept comment "headscale HTTPS (Caddy), BE550 LAN"
-      iifname "wan0" tcp dport 443 accept comment "PHASE-2 WAN DOOR: headscale control plane from the internet (see myNas.headscale.publicEndpoint)"
-      iifname "wan0" tcp dport 80 accept comment "PHASE-2 WAN DOOR: ACME HTTP-01 for the headscale cert only"
+      iifname "enp1s0" tcp dport ${toString cfg.publicEndpoint.port} accept comment "headscale HTTPS (Caddy), BE550 LAN"
+      iifname "tailscale0" tcp dport ${toString cfg.publicEndpoint.port} accept comment "headscale HTTPS (Caddy) re-auth over an established tunnel"
+      iifname "wan0" tcp dport ${toString cfg.publicEndpoint.port} accept comment "PHASE-2 WAN DOOR, the only one: headscale control plane from the internet (see myNas.headscale.publicEndpoint)"
     '';
 
-    # ── Phase 2: Caddy in front, HTTP-01 certs, no plugin and no secret ────
-    # Deliberately NOT the caddy-dns/cloudflare DNS-01 shape that
-    # modules/caddy-artifacts.nix documents wanting for the coordinator: that
-    # path needs a Cloudflare API token, which on THIS box would be a new
-    # credential at rest on an appliance whose entire doctrine is that it
-    # holds one ciphertext and no more. With :80 forwarded, HTTP-01 needs no
-    # token, no plugin and no vendor hash — strictly less machinery for the
-    # same certificate. The DNS-01 story stays the right answer for
-    # wildcards; there is no wildcard here, just one name.
+    # ── Phase 2: Caddy in front on the ONE nonstandard port, DNS-01 certs ──
+    # This block originally shipped as HTTP-01 on :80/:443 precisely to avoid
+    # a Cloudflare API token at rest on this appliance. Tom's ruling
+    # 2026-09-01 ("nonstandard port, clean and isolated") reversed that
+    # trade knowingly: with no :80 and no :443 forwarded, HTTP-01 and
+    # TLS-ALPN-01 are both physically impossible (ACME dials only those two
+    # ports), so DNS-01 is not a preference here, it is the only remaining
+    # challenge. The token is an agenix ciphertext scoped to Zone.DNS edit on
+    # one zone (runbook step 4) — no plugin and no vendor hash even so,
+    # because the ACME client is lego via security.acme, not a caddy build.
     #
     # Caddy and not nginx for a load-bearing protocol reason, not taste:
     # headscale's control channel is a POST carrying `Upgrade:
     # tailscale-control-protocol`, which nginx and Apache need explicit
     # header-passthrough stanzas to survive. Caddy's reverse_proxy handles
     # protocol upgrades natively.
+    security.acme = lib.mkIf cfg.publicEndpoint.enable {
+      acceptTerms = true;
+      defaults.email = "thomas@mecattaf.dev";
+      certs.${cfg.publicEndpoint.hostname} = {
+        dnsProvider = "cloudflare";
+        # Minted in runbook step 4; the age.secrets line that materializes
+        # this path is added in the same flip commit (it cannot be
+        # pre-written — agenix eval requires the .age file to exist).
+        environmentFile = "/run/agenix/cloudflare-dns-acme";
+        # lego must ask a PUBLIC resolver whether the TXT record has
+        # propagated: this box's own resolver chain (AdGuard) answers from
+        # cache and would race the challenge.
+        dnsResolver = "1.1.1.1:53";
+        group = "caddy";
+        reloadServices = [ "caddy" ];
+      };
+    };
     services.caddy = lib.mkIf cfg.publicEndpoint.enable {
       enable = true;
-      virtualHosts.${cfg.publicEndpoint.hostname}.extraConfig = ''
-        reverse_proxy ${lanAddr}:${toString port}
-      '';
+      # The site address carries the port and the scheme: one listener on
+      # cfg.publicEndpoint.port, TLS from the lego-minted cert above (that is
+      # what useACMEHost wires), no :80 listener, no HTTP->HTTPS redirect
+      # because there is nothing to redirect from.
+      virtualHosts."https://${cfg.publicEndpoint.hostname}:${toString cfg.publicEndpoint.port}" = {
+        useACMEHost = cfg.publicEndpoint.hostname;
+        extraConfig = ''
+          reverse_proxy ${lanAddr}:${toString port}
+        '';
+      };
     };
 
     # ── THE BACKUP GAP, stated rather than skipped ─────────────────────────
