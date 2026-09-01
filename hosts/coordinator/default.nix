@@ -58,7 +58,15 @@
     # still importing the module, and left the fleet on 2026-08-30 without ever
     # getting a be550 profile; no client carries AdGuard now, which is what the
     # flake-level asserts pin.
-    ./attic.nix # fleet binary-cache server (atticd over the tailscale mesh) — refs #42
+    # ./attic.nix is NOT a server any more and has not been since 2026-08-21 —
+    # atticd moved to the NAS with ws5 and what is left here is the cache-health
+    # tripwire pointed at it (read that file's header; it says "NOTHING
+    # server-shaped"). This line said "atticd over the tailscale mesh", which was
+    # doubly stale by 2026-09-01: the daemon is on the other box, and the pull
+    # path is http://nas:8080/fleet over the house LAN — the tailnet has never
+    # carried fleet cache traffic, and now that the two boxes sit on DIFFERENT
+    # control planes it could not. Refs #42.
+    ./attic.nix
     # Artifact serving plane: Caddy drop-dir + TTL reaper (publish-artifact
     # skill's tailnet rung). Live origins stay local on 127.0.0.1.
     ../../modules/caddy-artifacts.nix
@@ -81,7 +89,10 @@
   # The 2026-08-02 atomic cutover (#131): media core and its PostgreSQL now
   # live on the NAS; the coordinator keeps only the tailnet identity, the
   # socket relays (2283/4533/32400), the on-demand ML backend, and the NFS
-  # client mount at the immutable /mnt/nas path.
+  # client mount at the immutable /mnt/nas path. That "tailnet identity" became
+  # the fleet's LAST tailscale.com one on 2026-09-01 and is now load-bearing for
+  # a second reason — it is the emergency rail (./tailscale.nix), not merely
+  # what is left over after the media core moved.
   myCoordinatorMedia.enable = false;
   myNasClient.useRemoteStorage = true;
   myNasClient.relayMedia = true;
