@@ -21,10 +21,16 @@
 # roster, ships its journal to the NAS, and is reached over ordinary SSH.
 #
 # WHAT IT IS NOT:
-#   * not a tailnet node — the NAS is the fleet's single tailscale sink
-#     (2026-08-21 ruling). Consequence, accepted: wayvnc has no reachable door
-#     here, because modules/common.nix admits :5900 on tailscale0 ONLY and the
-#     standing rule is that VNC never touches the raw LAN. The headless display
+#   * not a tailnet node — no node identity on any control plane. The
+#     2026-08-21 ruling said this as "the NAS is the fleet's single tailscale
+#     sink"; since 2026-09-01 the fleet has two tailnets and this box is on
+#     neither (the NAS runs its own headscale, the coordinator keeps
+#     tailscale.com as the emergency rail). Consequence, accepted: wayvnc has no
+#     reachable door here, because the :5900 admission is scoped to tailscale0
+#     and the standing rule is that VNC never touches the raw LAN. That door
+#     moved from modules/common.nix to hosts/coordinator/tailscale.nix on
+#     2026-09-01, which changes nothing here — the reason it was unreachable was
+#     always the missing interface, never the missing rule. The headless display
 #     below still exists so the niri session lights an output normally; the
 #     screen is simply not remotely viewable until this box has a tailnet again.
 #   * not a build pusher — hosts/worker/cache-push.nix is DELETED. That module
@@ -486,15 +492,36 @@
   # re-checking both rails.
 
   # ── no tailnet on this box ─────────────────────────────────────────────────
-  # Same shape the NAS carried before it became the sink (git history of
-  # hosts/nas/default.nix pre-2026-08-21). enable alone is not enough: the
-  # fleet-wide extraUpFlags/extraSetFlags in modules/common.nix would otherwise
-  # remain defined and read as intent. Tom removes the stale worker node from
-  # the Tailscale admin console himself; `tailscale logout` runs on the box at
-  # verification time so the machine stops holding a node identity.
+  # Tom's #229 ruling, unchanged: this is a stationary LAN compute node reached
+  # over ordinary SSH, and it holds no node identity anywhere. He removed the
+  # stale worker node from the Tailscale admin console himself; `tailscale
+  # logout` ran on the box at verification time.
+  #
+  # This block used to carry two more lines — `extraUpFlags`/`extraSetFlags`
+  # mkForced to [ ] — and its comment explained exactly why: "enable alone is
+  # not enough: the fleet-wide extraUpFlags/extraSetFlags in modules/common.nix
+  # would otherwise remain defined and read as intent." That reason DIED on
+  # 2026-09-01, when the fleet-wide tailscale tier was retired to
+  # hosts/coordinator/tailscale.nix. Both lists are now empty by default, so the
+  # overrides had nothing left to override, and keeping a mkForce under a
+  # justification that is no longer true is how a reader learns to distrust the
+  # comments. They are gone; flake.nix still asserts both lists empty, which is
+  # now a tripwire on modules/common.nix rather than a check on this file.
+  #
+  # The enable line STAYS, and stays mkForce. It is not defending against
+  # today's tree — nothing sets it true any more — it is the standing statement
+  # that this box must not acquire a tailnet by inheritance. The fleet just
+  # demonstrated that a module can hand every host a daemon it never asked for,
+  # and this is the one host where that must fail loudly rather than quietly
+  # work. It is also what keeps modules/secrets.nix from declaring an authkey
+  # here: that block is gated on `services.tailscale.enable`, and a stale key
+  # would silently re-join the box on its next flash.
+  #
+  # If this host ever DOES rejoin a tailnet, it joins the NAS's headscale
+  # (hosts/nas/headscale.nix), not tailscale.com — that control plane survives
+  # on the coordinator alone, as the emergency rail, and widening it is not the
+  # way to give a LAN box a tailnet.
   services.tailscale.enable = lib.mkForce false;
-  services.tailscale.extraUpFlags = lib.mkForce [ ];
-  services.tailscale.extraSetFlags = lib.mkForce [ ];
 
   # agenix delivery. The host key at /etc/ssh/ssh_host_ed25519_key is UNCHANGED
   # across the retirement (verified live 2026-08-21 against the registry row), so
