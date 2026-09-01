@@ -22,9 +22,18 @@
 // the box that is the house router, a service that will not start because of
 // an ACL for devices that do not exist yet is a self-inflicted outage. Every
 // name below therefore appears only inside a comment until the thing it names
-// is real. If even the explicit `grants` block at the bottom is ever found to
-// be refused by a future headscale, the guaranteed-valid floor is the empty
-// policy `{}` — which means the same thing (allow-all) with less to parse.
+// is real.
+//
+// 2026-09-01, LEARNED ON THE FIRST DEPLOY, THE EXPENSIVE WAY: this file
+// originally used a `grants` block, on the research claim that upstream calls
+// `acls` legacy and `grants` current. The LIVE 0.29.3 binary on this box
+// refused it — `parsing policy: unknown field "grants"` — which crash-looped
+// headscale, timed out the enroll unit, and failed the whole NAS activation
+// (deploy-rs rolled the box back; nothing was lost). `grants` is
+// tailscale.com's newer syntax; the headscale actually packaged here speaks
+// `acls`. So: `acls` in this file, everywhere, until a headscale release
+// whose OWN release notes say otherwise — and the guaranteed-valid floor
+// remains the empty policy `{}` (allow-all, nothing to parse).
 //
 // ─── THE SCHEME THIS GROWS INTO ───────────────────────────────────────────
 // Written now, in the file it will land in, so the future public
@@ -53,22 +62,24 @@
 //   about a machine Tom administers.
 //
 // THE DENY-ALL BASELINE, to paste in when the first friend user exists. Note
-// that `grants` must be explicit from then on — omitting it means allow-all,
-// which is fine for a one-node tailnet and wrong the moment it is not:
+// that `acls` must be explicit from then on — omitting it means allow-all,
+// which is fine for a one-node tailnet and wrong the moment it is not.
+// (`acls` syntax, NOT `grants` — see the 2026-09-01 note above; ports ride in
+// the dst string as `target:port`.)
 //
 //   "tagOwners": {
 //     "tag:mesh":   ["tom@"],
 //     "tag:shared": ["tom@"],
 //   },
-//   "grants": [
+//   "acls": [
 //     // Tom reaches everything.
-//     { "src": ["tom@"],      "dst": ["*"],          "ip": ["*"] },
+//     { "action": "accept", "src": ["tom@"],      "dst": ["*:*"] },
 //     // The fleet reaches the fleet.
-//     { "src": ["tag:mesh"],  "dst": ["tag:mesh"],   "ip": ["*"] },
+//     { "action": "accept", "src": ["tag:mesh"],  "dst": ["tag:mesh:*"] },
 //     // Each friend gets ONE narrow, explicitly-ported grant to the shared
 //     // surface and nothing else. Friends never see each other and never see
 //     // Tom's fleet, because nothing above grants it.
-//     { "src": ["<friend>@"], "dst": ["tag:shared"], "ip": ["443"] },
+//     { "action": "accept", "src": ["<friend>@"], "dst": ["tag:shared:443"] },
 //   ],
 //   "ssh": [
 //     // Tailscale SSH stays inside Tom's own devices. modules/common.nix puts
@@ -85,13 +96,12 @@
 //     "routes": { "10.42.0.0/24": ["tag:mesh"] },
 //   },
 //
-// AUTOGROUPS this headscale (0.29.3, nixpkgs-stable 26.05) supports:
+// AUTOGROUPS this headscale (0.28.0, nixpkgs-stable 26.05 — NOT 0.29.3 as first written; verified `headscale version` 2026-09-01) supports:
 //   autogroup:internet (dst only), autogroup:member, autogroup:tagged,
 //   autogroup:self (dst only), autogroup:nonroot (ssh `users` only),
 //   autogroup:danger-all (src only).
 // NOT supported, so do not reach for them: autogroup:admin, device-posture
-// conditions, IP sets. Upstream calls `acls` legacy and `grants` current —
-// use `grants`.
+// conditions, IP sets — and `grants` (refused live 2026-09-01, note above).
 //
 // VERIFY BEFORE TRUSTING: `tagOwners` parsing at this exact version was not
 // confirmed from source, only from the shared Tailscale policy schema. When
@@ -100,11 +110,12 @@
 // key against it. The server-side `headscale nodes tag -i <id> -t tag:mesh`
 // path works regardless and needs no tagOwners at all — that is the fallback.
 {
-  "grants": [
-    // src "*" = everyone, dst "*" = everything, ip "*" = all ports.
-    // Equivalent to omitting the section, but written out so the shape is
-    // visible and the deny-all switch above is a paste rather than an act of
-    // authorship.
-    { "src": ["*"], "dst": ["*"], "ip": ["*"] },
+  "acls": [
+    // src "*" = everyone, dst "*:*" = everything on all ports. Equivalent to
+    // omitting the section, but written out so the shape is visible and the
+    // deny-all switch above is a paste rather than an act of authorship.
+    // This exact rule is upstream's own documented allow-all — and unlike its
+    // `grants` predecessor, it has now been parsed by the binary that counts.
+    { "action": "accept", "src": ["*"], "dst": ["*:*"] },
   ],
 }

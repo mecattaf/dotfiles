@@ -446,7 +446,8 @@ in
     # missing path in exactly the race we are trying to remove.
     #
     # MANUAL FALLBACK, if the CLI shape below ever drifts under a headscale
-    # bump (this was written against 0.29.3, nixpkgs-stable 26.05):
+    # bump (written against 0.29.3 per research, CORRECTED 2026-09-01: the stable
+    # pin actually ships 0.28.0 — verified live, the grants-refusal proved it):
     #   headscale users create tom
     #   headscale users list                       # note the numeric id
     #   headscale preauthkeys create -u <id> -e 1h --tags tag:mesh
