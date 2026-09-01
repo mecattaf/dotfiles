@@ -945,12 +945,24 @@
           assert !workerHome.services.tally.enable;
           assert !workerHome.programs.voxtype.enable;
           # wayvnc's unit exists and is deliberately unreachable — this host has
-          # no tailnet and :5900 is admitted on tailscale0 only, fleet-wide. The
-          # unit stays so the screen becomes viewable the day that changes; see
+          # no tailnet, and the :5900 door is the coordinator's alone. The unit
+          # stays so the screen becomes viewable the day that changes; see
           # hosts/worker/headless-display.nix.
+          #
+          # RETARGETED 2026-09-01, and in the direction the ruling went. This
+          # read `builtins.elem 5900 worker…tailscale0.allowedTCPPorts`, which
+          # passed for a reason that was never about this host: modules/common.nix
+          # admitted :5900 fleet-wide, so the worker carried a firewall rule for
+          # an interface it does not have. With the tailnet tier moved to
+          # hosts/coordinator/tailscale.nix the rule is gone, so assert the fact
+          # that actually holds — ABSENT here, PRESENT on the box that has a
+          # tailscale0. Both directions, because a half-move that left the door
+          # on the wrong host would look identical from either side alone.
           assert workerHome.systemd.user.services ? wayvnc;
-          assert builtins.elem 5900
+          assert !builtins.elem 5900
             self.nixosConfigurations.worker.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
+          assert builtins.elem 5900
+            self.nixosConfigurations.coordinator.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
           assert !self.nixosConfigurations.worker.config.services.tailscale.enable;
           pkgs.runCommand "home-profiles" { } ''
             touch "$out"
@@ -1245,12 +1257,29 @@
           assert !(coordinator.networking.hosts ? "10.42.0.5");
           assert !(worker.networking.hosts ? "10.42.0.5");
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
+          # ── the emergency rail (2026-09-01) ────────────────────────────────
+          # This box owns its own tailnet since the fleet-wide default in
+          # modules/common.nix was retired; the enable assert is NEW and is the
+          # half that matters, because `extraUpFlags == [ "--ssh" ]` alone passed
+          # happily back when the flags came from the fleet tier and would pass
+          # again if the enable were dropped and the flags left behind as inert
+          # decoration. Exact list, not `elem`: the flag set is the rail's whole
+          # configuration and a silent addition to it is a change of posture.
+          assert coordinator.services.tailscale.enable;
           assert coordinator.services.tailscale.extraUpFlags == [ "--ssh" ];
-          # The NAS is the tailnet SINK since the 2026-08-21 ws5 pivot; the
-          # worker has no node at all. (This assertion was inverted for the NAS
-          # here too, and failing — see the matching note in nas-topology.)
-          assert nas.services.tailscale.enable;
-          assert nixpkgs.lib.elem "--advertise-routes=10.42.0.0/24" nas.services.tailscale.extraUpFlags;
+          assert coordinator.services.tailscale.extraSetFlags == [ "--ssh" ];
+          # ...and it must actually be able to JOIN unattended, which is the one
+          # property an idle fallback cannot prove by being idle. The authkey is
+          # wired by modules/secrets.nix's host-gated block, not by hand — assert
+          # the wiring rather than the file's existence, so a rename of the
+          # ciphertext or a change to that gate surfaces here.
+          assert coordinator.age.secrets ? tailscale-authkey;
+          assert coordinator.services.tailscale.authKeyFile
+            == coordinator.age.secrets.tailscale-authkey.path;
+          # The worker is the counter-example, and since 2026-09-01 the empty
+          # flag lists hold BY DEFAULT rather than by mkForce — which is the
+          # positive statement that no fleet-wide tailscale tier is back. Keep
+          # all three: they are the tripwire on modules/common.nix.
           assert !worker.services.tailscale.enable;
           assert worker.services.tailscale.extraUpFlags == [ ];
           assert worker.services.tailscale.extraSetFlags == [ ];
@@ -1258,6 +1287,10 @@
           # the guard added to modules/secrets.nix with #229. A stale key here
           # would silently re-join the box on its next flash.
           assert !(worker.age.secrets ? tailscale-authkey);
+          # The NAS keeps a tailnet, on its OWN control plane — see the
+          # headscale block in nas-topology for the shape assert.
+          assert nas.services.tailscale.enable;
+          assert nixpkgs.lib.elem "--advertise-routes=10.42.0.0/24" nas.services.tailscale.extraUpFlags;
           # ── the TV endpoint, again (2026-08-21) ────────────────────────────
           # A SECOND copy of the stale "no graphical session" assertions, which
           # is why fixing the nas-topology block alone left this check red. The

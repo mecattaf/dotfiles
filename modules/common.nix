@@ -299,24 +299,37 @@
     enable = true;
     startWhenNeeded = true;
   };
-  services.tailscale.enable = true;
-  # Tailscale SSH: any mesh node can reach any other over the tailnet from any
-  # underlying network, authenticated by
-  # tailnet identity — no user keypair needed for this path. Keep the flag on
-  # BOTH paths: `extraUpFlags` lets the autoconnect unit recover a stopped node
-  # whose stored preferences already have SSH enabled (tailscale up requires all
-  # non-default preferences), while `extraSetFlags` also repairs already-running
-  # nodes on every activation.
-  # NB: requires an `ssh` rule in the tailnet ACL allowing tag:mesh → tag:mesh
-  # for users [autogroup:nonroot, root] — added in the Tailscale admin console.
-  services.tailscale.extraUpFlags = [ "--ssh" ];
-  services.tailscale.extraSetFlags = [ "--ssh" ];
+  # NO TAILSCALE TIER HERE — Tom's ruling 2026-09-01. This file used to carry
+  # `services.tailscale.enable = true` plus a fleet-wide `--ssh` on both
+  # extraUpFlags and extraSetFlags, from the era when "every fleet box is a
+  # tailscale.com node" was simply true. Two moves emptied that premise from
+  # both ends: the worker came off the tailnet with #229, and the NAS became a
+  # client of its OWN headscale on 2026-09-01 (hosts/nas/headscale.nix). What
+  # was left was a default that exactly ONE host wanted and two hosts had to
+  # fight — the worker with three mkForce lines, the NAS with two.
+  #
+  # So the tailnet is now declared per host, where the host's reason for having
+  # one lives:
+  #   coordinator  official tailscale.com, always connected but idle — the
+  #                emergency rail when the NAS is down (hosts/coordinator/tailscale.nix)
+  #   nas          its own headscale control plane, and its own client of it
+  #                (hosts/nas/headscale.nix)
+  #   worker       no tailnet at all, by ruling (hosts/worker/default.nix)
+  #
+  # Do NOT restore a default here for a fourth host: a daemon that exists at
+  # this module's pleasure goes dark the moment this module changes its mind,
+  # which is the whole reason the NAS took ownership of its own enable. The
+  # `--ssh` narrative (both flag paths, and the tag:mesh ACL rule it needs)
+  # moved to hosts/coordinator/tailscale.nix with the flags themselves.
+  #
+  # The tailscale0 wayvnc door moved with it. It lived here as
+  # `mkIf (!myHeadless.enable) [ 5900 ]`, which read as a fleet posture but
+  # resolved to two hosts: the coordinator, which wanted it, and the worker,
+  # which has no tailscale0 for it to land on — hosts/worker/headless-display.nix
+  # has carried the "runs here but is not reachable" note ever since. The NAS's
+  # own :5900 was never this line's (hosts/nas/tv.nix opens it explicitly).
   services.resolved.enable = true;
   networking.firewall.enable = true;
-  # wayvnc (port 5900) is reachable ONLY over the tailnet — never the raw LAN/wifi.
-  networking.firewall.interfaces.tailscale0.allowedTCPPorts = lib.mkIf (!config.myHeadless.enable) [
-    5900
-  ];
 
   # --- coredumps: bounded, but generously (refs #133 item 5, #134) ---
   # 3.5G accumulated in 26 days with no bound at all. Cores are *evidence* in the
