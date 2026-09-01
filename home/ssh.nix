@@ -52,12 +52,23 @@ let
 
   unknownTargets = lib.filter (t: !(registry ? ${t})) (lib.attrValues operatorAliases);
 
-  # The NAS has no tailnet identity (phase 1 of the 2026-08-20 rewire keeps it
-  # that way), so from a roaming host the nickname still has to hop through the
+  # From a roaming host the `nas` nickname still has to hop through the
   # coordinator, which resolves `nas` → 10.42.0.1 via networking.hosts (the
   # BE550 LAN; formerly the /30 cable). The pinned host key checked at the far
-  # end is still `nas`, so no trust changes. Revisit if the phase-2
-  # tailnet-direct decision ever lands.
+  # end is still `nas`, so no trust changes.
+  #
+  # The REASON changed on 2026-09-01 and the old one was becoming a lie. This
+  # said "the NAS has no tailnet identity", true only until 2026-08-21; the
+  # appliance has had one since, and since 2026-09-01 it has its own control
+  # plane for it (hosts/nas/headscale.nix). The jump survives anyway, for a
+  # sharper reason: a roaming host reaches the house over the coordinator's
+  # tailscale.com rail, the NAS's node lives on headscale, and two nodes on
+  # different control planes share no netmap and cannot address each other. So
+  # there is no tailnet-direct path to the NAS from a roaming session — not for
+  # want of an identity, but for want of a SHARED one.
+  # Revisit when headscale's publicEndpoint gate flips and a roaming client can
+  # join the NAS's own tailnet: at that point the jump becomes unnecessary for
+  # clients on that plane and still necessary for anything on tailscale.com.
   needsJump = target: target == "nas" && hostName != "nas" && hostName != "coordinator";
 
   # The worker has THREE rails from the coordinator, and which one the nickname
