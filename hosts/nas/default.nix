@@ -44,6 +44,7 @@
     ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate OFF
     ./tv.nix # niri TV session on the HDMI corner + wayvnc (2026-08-21)
     ../../modules/adguardhome.nix
+    ./pihole.nix # 2026-09-01: Pi-hole v6 as a SHADOW resolver on :5335, gate below
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc
   ];
@@ -133,6 +134,26 @@
   # symptom stop without fixing the siting, which was the wrong answer. The
   # store now lives on the 256G M.2, so the farm has room to do its job.
   myNas.updateCenter.enable = true;
+
+  # Pi-hole in SHADOW MODE — Tom's ruling 2026-09-01: "Pi-hole gets added on the
+  # NAS in SHADOW MODE: evaluation only — own DNS port and web UI, actively
+  # resolving/filtering for testing, but NOT advertised to any client (DHCP/DNS
+  # advertisement unchanged)."
+  #
+  # ON, not gated-off like the #130 workstreams were, because "actively
+  # resolving/filtering" IS the ruling — a Pi-hole that is not answering
+  # queries measures nothing. What makes this safe to land hot is that the
+  # exposure, not the service, is what stays off: :5335 admitted from the
+  # coordinator alone, web UI on loopback, DHCP/NTP servers forced off, and
+  # seven assertions in ./pihole.nix that fail the BUILD if any of that drifts
+  # — including one that fires if dnsmasq ever stops advertising 10.42.0.1
+  # (= AdGuard) as the LAN resolver.
+  #
+  # AdGuard Home remains THE resolver and gets no competition for it. Flipping
+  # this line to false is the entire retirement procedure; promotion is not a
+  # flip of anything and is written up in
+  # docs/nas/pihole-shadow-2026-09-01.md.
+  myNas.piholeShadow.enable = true;
 
   # ── /nix on the M.2 (#232) ──────────────────────────────────────────────
   # Flipped after the runbook in ./nix-on-nvme.nix was walked on the real
