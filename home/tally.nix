@@ -114,6 +114,16 @@ in
     # The largest registered coordinator flow is errata-map.
     enqueue.fanoutCap = 400;
 
+    # Daemon-config model pin for agent lanes whose caller names none: flows
+    # cannot choose a model by law (doc/src/flows/submission-and-replay.md,
+    # "A flow cannot choose a model"), so the hijacked flows' claude-code
+    # lanes run on this exact id, stamped on every row it answers for with
+    # modelProvenance=daemon-config.
+    agent = lib.mkIf isCoordinator {
+      adapter = "claude-code";
+      model = "claude-opus-5";
+    };
+
     # These are real contention lanes, not synthetic maintenance pools.
     pools = lib.optionalAttrs isCoordinator {
       build = {
@@ -147,6 +157,16 @@ in
       # mutex; windowed-consumption budget pools are intentionally unavailable
       # to flow nodes.
       codex-window = {
+        resource = "mutex";
+        capacity = 1;
+        enforce = "cooperative";
+        hardPreempt = false;
+      };
+      # Claude Max subscription concurrency lane, mirroring codex-window: the
+      # claude() flow sugar fixes this pool, so every claude-code flow node on
+      # this host serializes through it (first consumer: the herdr-kitten
+      # hijacked flow, dotfiles#284).
+      claude-window = {
         resource = "mutex";
         capacity = 1;
         enforce = "cooperative";
