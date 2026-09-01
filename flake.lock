@@ -496,6 +496,30 @@
         "type": "github"
       }
     },
+    "herdr-kitten": {
+      "inputs": {
+        "herdr": [
+          "herdr"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1788295280,
+        "narHash": "sha256-Jhjo4B+RyGL2BQA+X/Tp7rzoU/rEcmEe749r2UFNjBI=",
+        "ref": "refs/heads/main",
+        "rev": "41a6de5cc945131ef98988898fcb67aec5da9340",
+        "revCount": 28,
+        "type": "git",
+        "url": "file:///home/tom/mecattaf/herdr-kitten"
+      },
+      "original": {
+        "rev": "41a6de5cc945131ef98988898fcb67aec5da9340",
+        "type": "git",
+        "url": "file:///home/tom/mecattaf/herdr-kitten"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -979,6 +1003,7 @@
         "disko": "disko",
         "git-ai": "git-ai",
         "herdr": "herdr",
+        "herdr-kitten": "herdr-kitten",
         "home-manager": "home-manager",
         "llm-agents": "llm-agents",
         "microvm": "microvm",
