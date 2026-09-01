@@ -37,13 +37,35 @@
 # never generated from nix (ruling B9): `herdr plugin link` stays imperative.
 let
   hostName = osConfig.networking.hostName;
-  herdr = inputs.herdr.packages.${pkgs.stdenv.hostPlatform.system}.herdr;
+  system = pkgs.stdenv.hostPlatform.system;
+  herdr = inputs.herdr.packages.${system}.herdr;
+  herdr-kitten = inputs.herdr-kitten.packages.${system}.herdr-kitten;
 
   repoDir = "${config.home.homeDirectory}/mecattaf/dotfiles";
   link = p: config.lib.file.mkOutOfStoreSymlink "${repoDir}/home/${p}";
 in
 {
-  home.packages = [ herdr ]; # `herdr` client + server on PATH, every host
+  # `herdr` client + server and the `hk` CLI on PATH, every interactive host.
+  # hk is not optional decoration: it IS the kitty side of herdr here — the
+  # niri binds below the terminal keys, the kitty gestures, and the dictation
+  # route all shell out to it.
+  home.packages = [
+    herdr
+    herdr-kitten
+  ];
+
+  # The kitten half of herdr-kitten lives in the Nix store, but kitty resolves a
+  # bare `kitten foo.py` against ~/.config/kitty — which here is a whole-dir
+  # out-of-store symlink into the git tree, so no generated file can nest inside
+  # it. Same shape as kitty-scrollback.nvim (home/home.nix): emit an
+  # `action_alias` carrying the store path at a NEUTRAL ~/.config path, and let
+  # the tracked, hot-reloadable kitty.conf spend it as `map <chord> hk <gesture>`.
+  # The chords stay in kitty.conf where Tom can re-cut them without a rebuild —
+  # upstream's README rules them "suggestions, not law".
+  xdg.configFile."kitty-herdr-nix.conf".text = ''
+    # GENERATED — Nix-store path for the herdr-kitten kitty kitten (offline-safe).
+    action_alias hk kitten ${herdr-kitten}/share/hk/kitten/hk.py
+  '';
 
   # RAW single-file symlink; see CONFIG above. `onboarding = false` is the first
   # assignment in that file precisely so herdr's first run never decides to

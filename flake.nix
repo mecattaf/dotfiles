@@ -207,6 +207,33 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # herdr-kitten — the repo where herdr IS the kitty kitten: one stdlib-Python
+    # kitten (four gestures on kitty's GUI thread) plus the `hk` CLI (workspace
+    # create/attach/resume/rename, the dictation endpoint, the recording
+    # spinner). It is the whole integration layer between kitty and herdr, and
+    # it is the reason this repo could delete its six home-grown kittens and the
+    # whole script tier under them outright.
+    #
+    # CONSUMED AS AN INPUT, NEVER VENDORED (ruling B3): `nix flake update
+    # herdr-kitten` is the entire upgrade story. Consume
+    # `packages.<sys>.herdr-kitten` only — no overlay of its own reaches our pkgs
+    # fixpoint (F.3) — and keep it out of `rollingInputOverrides` (F.4) for the
+    # same reason herdr is out: it fronts live PTYs.
+    #
+    # URL: local git checkout at the reviewed rev while spec A's repo is
+    # pre-publication. It becomes `github:mecattaf/herdr-kitten/<rev>` (the URL
+    # its own README already documents) before this PR merges; the rev is the
+    # same object either way.
+    #
+    # Upstream pins herdr at the same dbc398f5 this flake does and follows its
+    # nixpkgs; both are re-pointed at ours so one herdr and one nixpkgs serve
+    # the whole closure.
+    herdr-kitten = {
+      url = "git+file:///home/tom/mecattaf/herdr-kitten?rev=41a6de5cc945131ef98988898fcb67aec5da9340";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.herdr.follows = "herdr";
+    };
+
     # nix-amd-ai — the proven coordinator NPU plane (hardware.amd-npu: amdxdna,
     # XRT plugin discovery, udev/memlock, FastFlowLM) plus the one accelerator
     # package nix-strix-halo does not expose: stable-diffusion-cpp-rocm.
