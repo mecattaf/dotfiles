@@ -1,0 +1,65 @@
+# herdr — github.com/herdrdev/herdr, pinned at 0.8.2 in flake.lock.
+#
+# THIS FILE IS WRITABLE AND LIVE. home/herdr.nix delivers it as a SINGLE-FILE
+# out-of-store symlink (~/.config/herdr/config.toml → this path in the git
+# checkout), so editing it here changes the running server's config with no
+# rebuild — reload it in place with prefix+shift+r. The rest of
+# ~/.config/herdr stays a real writable directory that herdr owns at runtime:
+# the server socket, the session store, and plugins.json, which is NEVER
+# generated from nix (`herdr plugin link` stays imperative).
+#
+# herdr edits this file back when a setting is changed from inside the app
+# (theme, status indicators, sound, toasts). Those writes are surgical
+# key upserts, so comments and untouched keys survive — but they DO land in
+# the git tree as ordinary unstaged edits. That is the deal RAW makes.
+#
+# Every value below is a deliberate choice; herdr's own defaults are noted
+# where they differ.
+
+# Never run the first-run onboarding flow. Load-bearing: onboarding ends by
+# WRITING a config, and this path is a tracked file in the dotfiles repo.
+onboarding = false
+
+[keys]
+# herdr's default, pinned explicitly so a future upstream change to the
+# default prefix can't silently move every binding under it.
+prefix = "ctrl+b"
+
+[terminal]
+# New panes, tabs and workspaces open in the cwd of the pane they were
+# created from (herdr's default, pinned): the behavior the deleted
+# new-terminal script used to hand-roll.
+new_cwd = "follow"
+
+[session]
+# Restoring a session puts Claude Code / codex / pi panes back into their own
+# conversation, not just a fresh shell in the right directory.
+resume_agents_on_restore = true
+
+[update]
+# Nix owns this binary; the version is the flake.lock rev and moves only when
+# the input is bumped. A self-update nag about a store path nobody can write
+# is noise (upstream default: true).
+version_check = false
+# Agent DETECTION manifests are data, not the binary — let herdr keep its
+# knowledge of which processes are agents current (upstream default: true).
+manifest_check = true
+
+[ui]
+# kitty owns the window title. Empty leaves it alone; herdr's default
+# ("{hostname}: {workspace}") would fight the terminal for it.
+window_title = ""
+# The workspaces sidebar is off by default and toggled on demand with
+# prefix+b: niri is the layout authority here, and a persistent panel just
+# spends columns.
+sidebar_start_collapsed = true
+# Collapsed means GONE, not a compact rail (upstream default: "compact").
+sidebar_collapsed_mode = "hidden"
+
+[experimental]
+# Kitty graphics passthrough for attached clients is unprobed against this
+# kitty; leave it off until it is actually tested (upstream default: false).
+kitty_graphics = false
+# NB: `pane_history` is deliberately ABSENT. It defaults off, and turning it on
+# would persist pane screen contents — secrets included — to
+# session-history.json on disk.

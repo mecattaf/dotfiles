@@ -186,6 +186,27 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # herdr — the terminal workspace manager for AI coding agents
+    # (github.com/herdrdev/herdr, Apache-2.0). It is the upstream PRODUCT that
+    # replaces everything this repo used to invent for itself: the home-grown
+    # kitten tier, its session layer, and its title-naming pipeline are all
+    # deleted in favour of one server holding every PTY.
+    #
+    # PINNED TO A REV, not a branch: 0.8.2 is the floor this setup needs (plugin
+    # API + the agent sidebar), and nixpkgs carries 0.7.4 — below it. Bump by
+    # editing the rev here, deliberately, the way nixpkgs-paperless is bumped.
+    #
+    # Consume `packages.<sys>.herdr` ONLY (home/herdr.nix). Upstream composes
+    # rust-overlay into its own pkgs fixpoint to build the Rust toolchain from
+    # rust-toolchain.toml; that must never reach ours, so no overlay of theirs is
+    # ever applied here. Following our nixpkgs keeps the build on our one pin.
+    # NOT in `rollingInputOverrides`: herdr owns live PTYs, so its version moves
+    # when Tom says so, never on a nightly resolve.
+    herdr = {
+      url = "github:herdrdev/herdr/dbc398f580d1da6c336c6837a60b7e0710501d6d";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     # nix-amd-ai — the proven coordinator NPU plane (hardware.amd-npu: amdxdna,
     # XRT plugin discovery, udev/memlock, FastFlowLM) plus the one accelerator
     # package nix-strix-halo does not expose: stable-diffusion-cpp-rocm.
@@ -905,6 +926,11 @@
           assert coordinatorHome.services.tally.enable;
           assert coordinatorHome.programs.voxtype.enable;
           assert coordinatorHome.systemd.user.services ? wayvnc;
+          # ONE herdr server, coordinator only (ruling B5), and it must never be
+          # tied to the compositor's lifetime (ruling B6) — the PTYs outlive it.
+          assert coordinatorHome.systemd.user.services ? herdr;
+          assert !(coordinatorHome.systemd.user.services.herdr.Unit ? PartOf);
+          assert coordinatorHome.systemd.user.services.herdr.Install.WantedBy == [ "default.target" ];
           # The worker keeps Home Manager (unlike the NAS, which stops at NixOS):
           # it is an ordinary interactive box that merely has nobody sitting at
           # it, so the shell, atuin sync and niri session are all real. What it
@@ -914,6 +940,9 @@
           assert workerHome.programs.atuin.settings.auto_sync;
           assert !workerHome.services.tally.enable;
           assert !workerHome.programs.voxtype.enable;
+          # …and the herdr SERVER. The worker still gets the herdr binary (it is
+          # how `herdr --remote coordinator` works at all), just no unit.
+          assert !(workerHome.systemd.user.services ? herdr);
           # wayvnc's unit exists and is deliberately unreachable — this host has
           # no tailnet and :5900 is admitted on tailscale0 only, fleet-wide. The
           # unit stays so the screen becomes viewable the day that changes; see
