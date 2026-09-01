@@ -48,9 +48,20 @@ in
 # 2026-08-30; it was the second cliamp host).
 #
 # Reachability: both bind 0.0.0.0, but the firewall opens their ports ONLY on
-# tailscale0 (same trust model as wayvnc:5900), so they are reachable across the
-# tailnet — e.g. Tom's phone — but never the raw LAN/wifi. This restores the
-# phone access that went away with the retired BE550 LAN segment.
+# tailscale0 (same trust model as wayvnc:5900, whose door now sits beside this
+# one in ./tailscale.nix), so they are reachable across the tailnet — e.g. Tom's
+# phone — but never the raw LAN/wifi. This restores the phone access that went
+# away with the retired BE550 LAN segment.
+#
+# WHICH tailnet, since 2026-09-01 there are two: this box's tailscale0 belongs to
+# official tailscale.com, and in headscale phase 1 that is still the only path
+# into the house from outside it (hosts/nas/headscale.nix is LAN-only until its
+# publicEndpoint gate flips). So a roaming phone reaches these doors exactly as
+# it always did. What phase 2 will need thinking about, and what is recorded here
+# rather than guessed at: a phone that MOVES to the headscale tailnet reaches
+# this box over the NAS's advertised 10.42.0.0/24 route, arriving on the LAN
+# interface — which these tailscale0-scoped rules do not admit. That is a
+# deliberate open question for the phase-2 runbook, not a bug to pre-fix here.
 {
   options.myCoordinatorMedia.enable = lib.mkOption {
     type = lib.types.bool;

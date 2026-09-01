@@ -269,8 +269,14 @@ in
         };
       };
 
-      # Existing clients keep coordinator.tail8dd1.ts.net; only coordinator has
-      # a Tailscale identity, and these sockets relay across the private cable.
+      # Existing clients keep coordinator.tail8dd1.ts.net. "Only coordinator has
+      # a Tailscale identity" was the reason, and since 2026-09-01 it needs its
+      # qualifier: only coordinator has a TAILSCALE.COM identity. The NAS has a
+      # tailnet too now, on the headscale it runs itself
+      # (hosts/nas/headscale.nix), and these two nodes cannot see each other over
+      # either — different control planes, no shared netmap. Which is fine and is
+      # not what these sockets ride: they relay over the house LAN, and the
+      # tailnet is only how a ROAMING client reaches this door.
       networking.firewall.interfaces.tailscale0.allowedTCPPorts = [
         2283
         4533

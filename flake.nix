@@ -597,24 +597,59 @@
             coordinator = self.nixosConfigurations.coordinator.config;
             worker = self.nixosConfigurations.worker.config;
           in
-          # ── the tailnet sink (2026-08-21 ws5 pivot) ────────────────────────
-          # This assertion used to read `!nas.services.tailscale.enable` and was
-          # left inverted when the pivot landed — the NAS became the fleet's
+          # ── the tailnet sink, on its OWN control plane (2026-09-01) ────────
+          # This assertion once read `!nas.services.tailscale.enable` and was
+          # left inverted when the ws5 pivot landed — the NAS became the fleet's
           # tailscale SINK and subnet router in commit 33fb9a15 while the check
           # still demanded it have no tailnet identity, so `nix flake check` had
-          # been failing here ever since. Corrected with the #229 work, in the
+          # been failing here ever since. Corrected with the #229 work in the
           # direction the architecture actually went: the appliance IS the
-          # tailnet node, it advertises the house LAN, and it does so with an
-          # interactive login rather than an authkey secret (the NAS holds no
-          # secrets — mySecrets.enable = false).
+          # tailnet node and it advertises the house LAN.
+          #
+          # What changed 2026-09-01 is not WHETHER it has a tailnet but WHOSE:
+          # the appliance is now a client of the headscale running on itself
+          # (hosts/nas/headscale.nix), and controlplane.tailscale.com no longer
+          # holds its node key. The sink asserts below are untouched by that on
+          # purpose — routing features and the advertised route are properties of
+          # this node's job, not of who issues its netmap.
           assert nas.services.tailscale.enable;
           assert nas.services.tailscale.useRoutingFeatures == "server";
           assert builtins.elem "--advertise-routes=10.42.0.0/24" nas.services.tailscale.extraUpFlags;
           assert builtins.elem "--advertise-routes=10.42.0.0/24" nas.services.tailscale.extraSetFlags;
+          # The control plane itself, asserted by SHAPE rather than by URL. The
+          # address and port are hosts/nas/headscale.nix's to choose and will
+          # change at its phase-2 public-endpoint flip; what must never drift is
+          # that SOME --login-server is passed (without it the node silently
+          # falls back to tailscale.com, which is a regression to the superseded
+          # #233 design and would look perfectly healthy) and that it is not
+          # tailscale.com's. --login-server rides extraUpFlags ONLY: `tailscale
+          # set` has no such flag, so its appearance in extraSetFlags would fail
+          # the packaged tailscaled-set unit on every boot — assert its absence
+          # there too, because that failure is a boot-time surprise, not an
+          # eval-time one.
+          assert builtins.any (nixpkgs.lib.hasPrefix "--login-server=")
+            nas.services.tailscale.extraUpFlags;
+          assert !builtins.any (nixpkgs.lib.hasInfix "tailscale.com")
+            nas.services.tailscale.extraUpFlags;
+          assert !builtins.any (nixpkgs.lib.hasPrefix "--login-server=")
+            nas.services.tailscale.extraSetFlags;
+          # ...and the mirror image on the coordinator, which is the fleet's LAST
+          # official tailscale.com node and keeps it as the emergency rail
+          # (hosts/coordinator/tailscale.nix). The ABSENCE of --login-server is
+          # the entire content of "official tailscale.com", so it is the thing
+          # worth pinning: a well-meaning sweep that pointed this box at the
+          # NAS's headscale would destroy the rail's whole reason for existing —
+          # a fallback that shares a control plane with what it backs up.
+          assert coordinator.services.tailscale.enable;
+          assert !builtins.any (nixpkgs.lib.hasPrefix "--login-server=")
+            coordinator.services.tailscale.extraUpFlags;
           # The worker is the counter-example that keeps the sink meaningful: a
-          # LAN compute node reached over ordinary SSH, with no node of its own.
-          # All three knobs, because enable alone leaves the fleet-wide
-          # up/set flags from modules/common.nix defined and readable as intent.
+          # LAN compute node reached over ordinary SSH, with no node of its own
+          # on EITHER control plane. All three knobs still, but the reason
+          # changed on 2026-09-01: the empty flag lists used to be mkForced here
+          # against the fleet-wide default in modules/common.nix, and now hold by
+          # default because that default is gone. Asserting them is how a
+          # re-introduced fleet tailscale tier gets caught.
           assert !worker.services.tailscale.enable;
           assert worker.services.tailscale.extraUpFlags == [ ];
           assert worker.services.tailscale.extraSetFlags == [ ];
@@ -906,6 +941,13 @@
           # had been failing. Stated as an equality against the gate-OFF
           # configuration, it now says the thing that was always meant: this gate
           # is orthogonal to the tailnet, whichever way the tailnet is set.
+          #
+          # That equality form is why the 2026-09-01 control-plane cutover needed
+          # no edit here — the appliance moved from tailscale.com to its own
+          # headscale, --login-server appeared in extraUpFlags, and both asserts
+          # stayed true without being retargeted. Keep it stated this way: an
+          # assert that names a specific tailnet posture has now had to be
+          # rewritten twice, and this one has survived both pivots.
           assert nasOn.services.tailscale.enable == nasOff.services.tailscale.enable;
           assert nasOn.services.tailscale.extraUpFlags == nasOff.services.tailscale.extraUpFlags;
           # And it must not grow the appliance a secret. This read
@@ -945,12 +987,24 @@
           assert !workerHome.services.tally.enable;
           assert !workerHome.programs.voxtype.enable;
           # wayvnc's unit exists and is deliberately unreachable — this host has
-          # no tailnet and :5900 is admitted on tailscale0 only, fleet-wide. The
-          # unit stays so the screen becomes viewable the day that changes; see
+          # no tailnet, and the :5900 door is the coordinator's alone. The unit
+          # stays so the screen becomes viewable the day that changes; see
           # hosts/worker/headless-display.nix.
+          #
+          # RETARGETED 2026-09-01, and in the direction the ruling went. This
+          # read `builtins.elem 5900 worker…tailscale0.allowedTCPPorts`, which
+          # passed for a reason that was never about this host: modules/common.nix
+          # admitted :5900 fleet-wide, so the worker carried a firewall rule for
+          # an interface it does not have. With the tailnet tier moved to
+          # hosts/coordinator/tailscale.nix the rule is gone, so assert the fact
+          # that actually holds — ABSENT here, PRESENT on the box that has a
+          # tailscale0. Both directions, because a half-move that left the door
+          # on the wrong host would look identical from either side alone.
           assert workerHome.systemd.user.services ? wayvnc;
-          assert builtins.elem 5900
+          assert !builtins.elem 5900
             self.nixosConfigurations.worker.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
+          assert builtins.elem 5900
+            self.nixosConfigurations.coordinator.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
           assert !self.nixosConfigurations.worker.config.services.tailscale.enable;
           pkgs.runCommand "home-profiles" { } ''
             touch "$out"
@@ -1245,12 +1299,29 @@
           assert !(coordinator.networking.hosts ? "10.42.0.5");
           assert !(worker.networking.hosts ? "10.42.0.5");
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
+          # ── the emergency rail (2026-09-01) ────────────────────────────────
+          # This box owns its own tailnet since the fleet-wide default in
+          # modules/common.nix was retired; the enable assert is NEW and is the
+          # half that matters, because `extraUpFlags == [ "--ssh" ]` alone passed
+          # happily back when the flags came from the fleet tier and would pass
+          # again if the enable were dropped and the flags left behind as inert
+          # decoration. Exact list, not `elem`: the flag set is the rail's whole
+          # configuration and a silent addition to it is a change of posture.
+          assert coordinator.services.tailscale.enable;
           assert coordinator.services.tailscale.extraUpFlags == [ "--ssh" ];
-          # The NAS is the tailnet SINK since the 2026-08-21 ws5 pivot; the
-          # worker has no node at all. (This assertion was inverted for the NAS
-          # here too, and failing — see the matching note in nas-topology.)
-          assert nas.services.tailscale.enable;
-          assert nixpkgs.lib.elem "--advertise-routes=10.42.0.0/24" nas.services.tailscale.extraUpFlags;
+          assert coordinator.services.tailscale.extraSetFlags == [ "--ssh" ];
+          # ...and it must actually be able to JOIN unattended, which is the one
+          # property an idle fallback cannot prove by being idle. The authkey is
+          # wired by modules/secrets.nix's host-gated block, not by hand — assert
+          # the wiring rather than the file's existence, so a rename of the
+          # ciphertext or a change to that gate surfaces here.
+          assert coordinator.age.secrets ? tailscale-authkey;
+          assert coordinator.services.tailscale.authKeyFile
+            == coordinator.age.secrets.tailscale-authkey.path;
+          # The worker is the counter-example, and since 2026-09-01 the empty
+          # flag lists hold BY DEFAULT rather than by mkForce — which is the
+          # positive statement that no fleet-wide tailscale tier is back. Keep
+          # all three: they are the tripwire on modules/common.nix.
           assert !worker.services.tailscale.enable;
           assert worker.services.tailscale.extraUpFlags == [ ];
           assert worker.services.tailscale.extraSetFlags == [ ];
@@ -1258,6 +1329,10 @@
           # the guard added to modules/secrets.nix with #229. A stale key here
           # would silently re-join the box on its next flash.
           assert !(worker.age.secrets ? tailscale-authkey);
+          # The NAS keeps a tailnet, on its OWN control plane — see the
+          # headscale block in nas-topology for the shape assert.
+          assert nas.services.tailscale.enable;
+          assert nixpkgs.lib.elem "--advertise-routes=10.42.0.0/24" nas.services.tailscale.extraUpFlags;
           # ── the TV endpoint, again (2026-08-21) ────────────────────────────
           # A SECOND copy of the stale "no graphical session" assertions, which
           # is why fixing the nas-topology block alone left this check red. The
@@ -1296,6 +1371,13 @@
           # (home/remote.nix). Kept as an EXACT set on purpose — the point of
           # this assert is that the tailnet door cannot widen unnoticed, so a
           # third port here must be a deliberate edit, not a surprise.
+          #
+          # It held across the 2026-09-01 headscale cutover unchanged, which is
+          # the correct outcome and worth recording: headscale PUSHES resolvers
+          # to clients and binds none, so becoming its own control plane did not
+          # cost this node a tailnet port. The control-plane listener lives on
+          # the LAN leg, not here (hosts/nas/headscale.nix) — if a headscale port
+          # ever shows up in this set, phase 2 was wired to the wrong interface.
           assert nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [
             53
             5900

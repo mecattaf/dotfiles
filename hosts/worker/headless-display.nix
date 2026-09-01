@@ -13,9 +13,12 @@
 # enough. wayvnc binds the lit output automatically (no --output pin; see
 # home/remote.nix).
 #
-# NB since #229 this box has NO tailnet (hosts/worker/default.nix), and
-# modules/common.nix admits :5900 on tailscale0 only — so wayvnc runs here but is
-# not reachable from anywhere. The synthesized output is still worth keeping: it
+# NB since #229 this box has NO tailnet (hosts/worker/default.nix), and :5900 is
+# admitted on tailscale0 only — so wayvnc runs here but is not reachable from
+# anywhere. That admission lived in modules/common.nix until 2026-09-01 and is
+# now the coordinator's alone (hosts/coordinator/tailscale.nix); the unreachability
+# here is unchanged, because it was always the absent interface and never the
+# absent rule. The synthesized output is still worth keeping: it
 # is what makes the autologin niri session come up healthy rather than fall back
 # to 1024x768 on a connector-less box, and it makes the screen viewable again the
 # day this host has a tailnet identity. VNC is never exposed on the raw LAN.
