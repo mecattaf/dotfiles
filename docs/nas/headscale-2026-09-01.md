@@ -142,7 +142,8 @@ re-feeding autoconnect the used, expired one. `RuntimeDirectoryPreserve=yes` is
 what keeps `/run/headscale-nas-enroll` alive between the mint and the read.
 
 Manual fallback, if the CLI shape ever drifts (written against **headscale
-0.29.3**, `nixpkgs-stable` 26.05 — the NAS is stable-pinned per #135, so this is
+0.28.0** (not 0.29.3 as the research first claimed — the live binary settled it),
+`nixpkgs-stable` 26.05 — the NAS is stable-pinned per #135, so this is
 the version that actually ships here):
 
 ```sh
