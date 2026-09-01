@@ -19,6 +19,12 @@
     # including this one, pulls and activates on its own schedule. Manual
     # deploys still work via the flake's deploy-rs nodes (`deploy .#nas`).
     ./uplink-nas.nix
+    # The fleet's LAST official tailscale.com node, kept always-connected-but-idle
+    # as the escape hatch for a NAS-is-down day (Tom's ruling 2026-09-01). Pairs
+    # with ./uplink-nas.nix's freebox-uplink fallback profile ON PURPOSE — the
+    # rail must share neither control plane nor uplink with the thing it backs
+    # up. Never "tidy this away" because hosts/nas/headscale.nix exists.
+    ./tailscale.nix
     ./tb-fleet.nix # the worker cable: module pin + heal loop + tripwire (2026-08-21)
     ./eth-fleet.nix # the wired fallback rail under it: 5GbE + stable fleet IPs (2026-08-21)
     ./journal-upload.nix # fleet journald substrate sender — refs #135
