@@ -70,7 +70,10 @@ in
   };
 
   # wayvnc config. wayvnc runs with no auth — access is gated at the network layer
-  # and firewalled to the tailnet (see modules/common.nix).
+  # and firewalled to the tailnet. That :5900 admission stopped being fleet-wide
+  # on 2026-09-01 and is now the coordinator's alone
+  # (hosts/coordinator/tailscale.nix); on the worker this server therefore runs
+  # unreachable by design, which its own host files have said since #229.
   xdg.configFile."wayvnc/config".text = ''
     address=0.0.0.0
     port=5900
