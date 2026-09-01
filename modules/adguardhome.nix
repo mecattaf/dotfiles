@@ -33,9 +33,9 @@
 # "completing" the settings block. AdGuard fills its config struct with its own
 # defaults (internal/home/config.go) and unmarshals our YAML OVER it, so an
 # omitted key is that default, not a zero value. Several of those defaults are
-# load-bearing here: cache_enabled=true, enable_dnssec=true, refuse_any=true,
-# handle_ddr=true, use_private_ptr_resolvers=true, filters_update_interval=24h,
-# blocked_response_ttl=10s, querylog 90d / statistics 1d. That is why some keys
+# load-bearing here: refuse_any=true, handle_ddr=true,
+# use_private_ptr_resolvers=true, filters_update_interval=24h,
+# blocked_response_ttl=10s, max_http_size=256MB. That is why some keys
 # below look like they "just set the default": on the box that owns :53 for the
 # whole house, a default that can drift under a package bump is not a default
 # worth relying on. Pinning is deliberate, not noise.
@@ -370,6 +370,37 @@ in
             url = "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/adblock/tif.medium.txt";
           }
         ];
+
+        # Retention. Both blocks are TOP-LEVEL siblings of dns/filtering in
+        # AdGuard's config, not nested under either — the yaml keys are
+        # `querylog:` and `statistics:`.
+        #
+        # statistics.interval is the one that actually needed changing:
+        # AdGuard's default is ONE DAY, so the dashboard on this box has never
+        # been able to answer "what changed since last week" — which is the
+        # only question a blocklist addition or an upstream swap ever raises.
+        # Stats are aggregate counters, so 90 days of them costs almost
+        # nothing.
+        #
+        # querylog goes the other way: its default is also 90 days, but the
+        # log is per-query and since 2026-08-20 it carries every device in the
+        # house (the dns_hijack chain in hosts/nas/router.nix guarantees that
+        # even the devices that ask elsewhere land in it). 30 days is more than
+        # any "why did X break" investigation here has ever reached back for,
+        # and it bounds a file whose volume multiplied by the number of
+        # devices on the LAN the day this box became their resolver.
+        # file_enabled is the default and is the whole point: the log must
+        # survive the restart that a rebuild performs, or it cannot be used to
+        # investigate the rebuild.
+        querylog = {
+          enabled = true;
+          file_enabled = true;
+          interval = "720h"; # 30 days
+        };
+        statistics = {
+          enabled = true;
+          interval = "2160h"; # 90 days, up from AdGuard's 24h default
+        };
       };
     };
 
