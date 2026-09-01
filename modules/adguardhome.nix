@@ -28,6 +28,17 @@
 # into resolved, so MagicDNS keeps winning for the tailnet — the reason we route
 # through resolved instead of the naive `nameservers = [ "127.0.0.1" ]`, which
 # would bypass resolved and break split-DNS across the mesh.
+#
+# WHAT THIS FILE DOES NOT SET IS ALSO LIVE CONFIG — read this before
+# "completing" the settings block. AdGuard fills its config struct with its own
+# defaults (internal/home/config.go) and unmarshals our YAML OVER it, so an
+# omitted key is that default, not a zero value. Several of those defaults are
+# load-bearing here: cache_enabled=true, enable_dnssec=true, refuse_any=true,
+# handle_ddr=true, use_private_ptr_resolvers=true, filters_update_interval=24h,
+# blocked_response_ttl=10s, querylog 90d / statistics 1d. That is why some keys
+# below look like they "just set the default": on the box that owns :53 for the
+# whole house, a default that can drift under a package bump is not a default
+# worth relying on. Pinning is deliberate, not noise.
 let
   # SPLIT-HORIZON `.internal` (2026-08-06). Every box used to get the same
   # hardcoded answer — the coordinator's TAILNET address, 100.105.121.73. That
@@ -162,10 +173,11 @@ in
           #     for: set it in hosts/nas/default.nix once `tailscale status` on
           #     the NAS has printed the headscale-issued address, rebuild, and
           #     the wait-for-address loop below picks it up with no other edit.
-          bind_hosts =
-            [ "127.0.0.1" ]
-            ++ lib.optionals isLanResolver [ "10.42.0.1" ]
-            ++ lib.optional (isLanResolver && tailnetAddr != null) tailnetAddr;
+          bind_hosts = [
+            "127.0.0.1"
+          ]
+          ++ lib.optionals isLanResolver [ "10.42.0.1" ]
+          ++ lib.optional (isLanResolver && tailnetAddr != null) tailnetAddr;
           port = 53;
           upstream_dns = [
             "https://1.1.1.1/dns-query"
@@ -177,6 +189,59 @@ in
             "9.9.9.9"
           ];
           upstream_mode = "load_balance";
+
+          # LAST RESORT, not a second opinion: fallback_dns is consulted only
+          # when EVERY upstream_dns entry has failed outright — it is not the
+          # per-query racing that upstream_mode does. It is deliberately
+          # PLAINTEXT :53, because the failure it covers is "the encrypted
+          # transport is unavailable at all" (a DPI'd or port-443-filtered
+          # uplink — e.g. the day the house comes up on the coordinator's
+          # freebox emergency rail instead of its own WAN), and a fallback that
+          # speaks the same protocol as the thing that just died is not a
+          # fallback. Quad9's pair, so the last-resort path is not the same
+          # operator (Cloudflare) that is first on the hot path.
+          fallback_dns = [
+            "9.9.9.9"
+            "149.112.112.112"
+          ];
+
+          # Cache. cache_enabled/cache_size are AdGuard's own defaults pinned
+          # explicitly: this process is the whole house's resolver now, so a
+          # package bump quietly changing either is a latency regression
+          # nobody would think to blame on a rebuild.
+          #
+          # cache_optimistic is the real change: when an entry's TTL has
+          # expired, answer from the stale entry IMMEDIATELY and refresh in
+          # the background instead of making the client wait for a DoH round
+          # trip. On a LAN that asks for the same few hundred names all day,
+          # nearly every "miss" is a TTL expiry on a name we already know, and
+          # the ISP-invisible upstream we chose is also the slowest part of
+          # the path. Not set: cache_ttl_min/max — clamping TTLs means lying
+          # to every client in the house about how long an answer is good for,
+          # and no misbehaving upstream has been observed to warrant it.
+          cache_enabled = true;
+          cache_size = 4194304; # bytes; AdGuard's default, pinned
+          cache_optimistic = true;
+
+          # DNSSEC validation is a PIN of what this box already does, not a
+          # new risk being taken: enable_dnssec defaults to TRUE in 0.107.78
+          # (internal/home/config.go fills the config struct BEFORE our YAML
+          # is unmarshalled over it, so every key this file omits is a live
+          # default, not a zero value). Validation has therefore been on since
+          # the 2026-07-13 rollout — the "stage it and watch for SERVFAIL
+          # spikes" caution describes a decision that was already made by
+          # omission a year ago. Written down so a future default flip cannot
+          # silently turn it off.
+          enable_dnssec = true;
+
+          # EDNS Client Subnet stays OFF (also the default; pinned because it
+          # is exactly what a "make DNS faster" pass reaches for). It exists
+          # so CDN-geo-routing upstreams can see a client's subnet — useless
+          # against plain recursive resolvers like these, and actively wrong
+          # once mesh clients arrive: what would be forwarded to 1.1.1.1 is a
+          # 100.64.0.0/10 CGNAT address, which tells the upstream nothing
+          # except "this query came from a VPN-shaped range".
+          edns_client_subnet.enabled = false;
         };
 
         filtering = {
