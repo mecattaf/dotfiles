@@ -988,17 +988,12 @@
               export AI_MEMORY_HANDOFF_SKILL=${./home/dot_claude/skills/handoff/SKILL.md}
               export AI_MEMORY_PICKUP_SKILL=${./home/dot_claude/skills/pickup/SKILL.md}
               export AI_MEMORY_UTILITY_OWNER=${./pkgs/utility-model/utility_model.py}
-              export AI_MEMORY_ZMX_TITLE=${./home/dot_local/bin/zmx-title}
               mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_RUNTIME_DIR"
 
               python3 -m unittest discover \
                 -s ${./tests/ai-memory} \
                 -p 'test_*.py' \
                 -v
-              ${pkgs.bash}/bin/bash -n \
-                ${./home/dot_local/bin/zmx-title} \
-                ${./home/dot_local/bin/zmx-retitle} \
-                ${./home/dot_local/bin/new-terminal}
 
               mkdir -p "$HOME/journal"
               qmd --index ai-memory-check \
