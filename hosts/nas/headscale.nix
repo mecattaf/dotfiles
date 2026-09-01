@@ -491,6 +491,15 @@ in
         RuntimeDirectoryPreserve = "yes";
       };
       script = ''
+        # NixOS wraps every `script =` in `bash -e`, and this script's whole
+        # design contradicts -e: it degrades on purpose (the four-shape mint,
+        # the || true logout) and exits FATAL only where it says FATAL.
+        # Learned live 2026-09-01, deploy #2: headscale's unit reports ready
+        # a beat before its API answers, the first CLI probe of an
+        # unprotected assignment failed in that beat, and -e turned it into
+        # an instant status=5 death with zero log output — which failed the
+        # entire NAS activation. -e goes OFF before anything else runs.
+        set +e
         set -uo pipefail
         keyfile="$RUNTIME_DIRECTORY/authkey"
         want='${loginServer}'
