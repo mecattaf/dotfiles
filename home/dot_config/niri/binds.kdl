@@ -13,11 +13,11 @@ binds {
     // scroll: bindsym $mod+Shift+Return exec $scripts/nvim-terminal.sh
     // niri: same script, ported to shell + niri msg; host-aware
     //   coordinator: new kitty in focused kitty/nvim's cwd
-    //   remote (any thin client): new kitty that SSHs to coordinator via `desk`
+    //   remote (any thin client): new kitty that reaches the coordinator via `desk`
     Mod+Shift+Return hotkey-overlay-title="Terminal (smart)" { spawn-sh "~/.local/bin/new-terminal"; }
 
-    // Resume an existing zmx session via fzf picker; runs locally on the
-    // coordinator, attaches the coordinator's sessions over kitten ssh on remotes.
+    // Resume an existing session via a picker; runs locally on the
+    // coordinator, reaches the coordinator's sessions from remotes.
     Mod+Ctrl+Shift+Return hotkey-overlay-title="Terminal (resume)" { spawn-sh "~/.local/bin/resume-terminal"; }
 
     // scroll: bindsym $mod+D exec vicinae open
