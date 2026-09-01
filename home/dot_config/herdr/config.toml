@@ -63,3 +63,185 @@ kitty_graphics = false
 # NB: `pane_history` is deliberately ABSENT. It defaults off, and turning it on
 # would persist pane screen contents — secrets included — to
 # session-history.json on disk.
+
+# ---------------------------------------------------------------------------
+# tally × herdr — the now-slice.
+#
+# The AGENTS panel is the board; tally gets no bespoke UI. What ships here is
+# the config-and-two-scripts tier: sidebar tokens, five command keys, and
+# ~/.local/bin/tally-{lane-view,steer}. What does NOT ship: the bridge daemon
+# (it belongs to the herdr-kitten repo), tally heartbeat emission, a
+# `query trace --follow` consumer, and any events-push verb — that last one is
+# never attempted.
+#
+# A tally lane can never BE a herdr agent: every agent entry is derived from a
+# live pane (herdr src/app/agents.rs:24-36, 361-370), while a lane is a
+# `systemd-run --user --wait --collect` transient unit. But `pane report-agent`
+# lets any process author the agent identity and semantic state of any pane
+# (src/api/schema/panes.rs:448-461, endorsed for non-native agents at
+# agents.mdx:125-129), so a lane's row is one cheap pane hosting a real viewer
+# of the lane's real trace. Nothing is faked; the reporter only supplies the
+# facts herdr cannot observe.
+#
+# Until the daemon exists, a lane pane is registered BY HAND — four herdr calls
+# and one line in the sidecar map the steer keys read:
+#
+#   pane=$(herdr pane split --current --direction right --no-focus \
+#          | jq -r .result.pane.pane_id)
+#   herdr pane run "$pane" "tally-lane-view --task <task-uuid>"
+#   herdr pane report-agent "$pane" --source herdr:tally --agent tally --state working
+#   herdr pane report-metadata "$pane" --source herdr:tally \
+#       --display-agent "tally: <task-ref>" --token summary="node 4/11 · implement" \
+#       --token attempt="1/2" --token campaign="night-notes" --ttl-ms 30000
+#   echo "$pane <task-ref> <owner/repo> <worklist-pattern> <task-uuid>" \
+#       >> ~/.local/state/tally-bridge/panes
+#
+# Report `idle` on terminal witness and never `done`: herdr derives done from
+# an idle row nobody has looked at yet (app/api_helpers.rs:96-105) and keeps it
+# visible until Tom actually looks — a lane that finished at 04:00 is still
+# wearing its checkmark at 09:00. --ttl-ms is the staleness contract: if the
+# reporter dies, the tally tokens expire out of the sidebar rather than lying.
+
+[ui.sidebar.agents]
+# herdr's defaults are [["state_icon","workspace","tab"], ["agent"]]. These rows
+# apply to every agent without a rows_by_agent override — which includes custom
+# reported agents, i.e. every tally lane (configuration.mdx:428).
+#
+# $summary / $attempt / $campaign are dynamic pane metadata, not literal text:
+# they render only for panes whose reporter published them with
+# `pane report-metadata --token`, and they disappear when unreported or expired.
+# For a Claude Code or codex pane none of them are set, so those two rows vanish
+# and the layout collapses back to herdr's shape. Styling stays here — reporters
+# provide values only (configuration.mdx:446). Cap is 16 rows × 16 tokens.
+rows = [
+  ["state_icon", "agent", "state_text"],
+  ["$summary"],
+  ["$attempt", "$campaign"],
+  ["workspace", "tab"],
+]
+
+# --- tally command keys ----------------------------------------------------
+#
+# All five are collision-free against herdr's default map, which already owns
+# prefix+s (settings), prefix+p (previous_tab) and prefix+o
+# (open_notification_target) — the picks the bridge scope originally proposed.
+# Verified free at 0.8.2: t, i, shift+s, shift+a, shift+o.
+#
+# Popup commands do NOT receive HERDR_PANE_ID; they receive
+# HERDR_ACTIVE_PANE_ID for the tiled pane underneath (configuration.mdx:198-199).
+# That is the id every one of these resolves through the sidecar map.
+
+# Steering acquires the campaign's dispatch hold BEFORE the editor opens, never
+# after saving: a steer that arrives after the automatic retry has dispatched
+# spends an attempt on the uncorrected run, and under a two-attempt cap that is
+# often the whole task (tally doc/src/flows/campaigns.md:2590-2606). tally-steer
+# posts a placeholder steer with --hold, opens $EDITOR inside that window, then
+# posts the real text on stdin via --message-file -.
+[[keys.command]]
+key = "prefix+t"
+type = "popup"
+command = "tally-steer"
+description = "steer this tally lane (takes a 600s campaign hold first)"
+width = "80%"
+height = "60%"
+
+# The deliberate escape. --hold is campaign-WIDE — it suspends every dispatch in
+# the campaign, so ten minutes of thinking on one lane freezes nine siblings.
+# This is the steer for when that trade is wrong.
+[[keys.command]]
+key = "prefix+shift+s"
+type = "popup"
+command = "tally-steer --no-hold"
+description = "steer this tally lane without embargoing the campaign"
+width = "80%"
+height = "60%"
+
+# Pardon lifts the ten-attempt lifetime latch. A steer already refreshes the
+# per-epoch budget, so this is only for a task whose budget was spent on
+# something other than its own content. Detached shell per the ruling: the
+# receipt carries the reason verbatim, and notify-send is the only feedback path
+# a detached command has.
+[[keys.command]]
+key = "prefix+shift+a"
+type = "shell"
+description = "pardon this tally lane's attempt latch"
+command = """
+map="${XDG_STATE_HOME:-$HOME/.local/state}/tally-bridge/panes"
+line=$(grep -v '^[[:space:]]*#' "$map" 2>/dev/null | awk -v p="$HERDR_ACTIVE_PANE_ID" '$1 == p { print; exit }')
+notify() { command -v notify-send >/dev/null && notify-send "tally pardon" "$1"; }
+[ -n "$line" ] || { notify "pane $HERDR_ACTIVE_PANE_ID is not a registered tally lane"; exit 1; }
+set -- $line
+[ -n "$3" ] && [ -n "$4" ] || { notify "no campaign coordinates on the map line for $1"; exit 1; }
+if out=$(tally campaign pardon "$3" "$4" --task "$2" --reason "operator pardon from herdr lane pane $HERDR_ACTIVE_PANE_ID (prefix+shift+a); the attempt budget was spent on something other than this task's content" 2>&1); then
+  notify "pardoned $2"
+else
+  notify "pardon refused: $out"
+fi
+"""
+
+# The raw capture, unrendered. tally-lane-view clips every field to fit a pane;
+# this is the whole stream, followed live (`less +F`) the way the lane writes it.
+# Ordinary generations are <uuid>.out and task-ref nodes are <uuid>.<task-id>.out
+# (tally doc/src/operating/observability.md:791), hence the glob.
+[[keys.command]]
+key = "prefix+shift+o"
+type = "popup"
+description = "open this tally lane's raw <uuid>.out in the pager"
+width = "90%"
+height = "85%"
+command = """
+map="${XDG_STATE_HOME:-$HOME/.local/state}/tally-bridge/panes"
+line=$(grep -v '^[[:space:]]*#' "$map" 2>/dev/null | awk -v p="$HERDR_ACTIVE_PANE_ID" '$1 == p { print; exit }')
+[ -n "$line" ] || { echo "pane $HERDR_ACTIVE_PANE_ID is not a registered tally lane"; read -r _; exit 1; }
+set -- $line
+[ -n "$5" ] || { echo "the map line for $1 names no task uuid (column 5)"; read -r _; exit 1; }
+cap="${TALLY_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/tally}/capture"
+out=$(ls -1t "$cap/$5"*.out 2>/dev/null | head -n1)
+[ -n "$out" ] || { echo "no capture yet at $cap/$5*.out"; read -r _; exit 1; }
+exec ${PAGER:-less} +F "$out"
+"""
+
+# The typed doubt behind a blocked row. An open inbox entry is what makes a lane
+# blocked, and steering is the inbox's own answer verb — a steer addressed to
+# this task answers every open entry the campaign holds for it, so no separate
+# answer binding exists or should. `campaign inbox` is campaign-scoped with no
+# --task flag, so this filters the projection by taskId here.
+[[keys.command]]
+key = "prefix+i"
+type = "popup"
+description = "read the tally inbox entries open for this lane"
+width = "85%"
+height = "70%"
+command = """
+map="${XDG_STATE_HOME:-$HOME/.local/state}/tally-bridge/panes"
+line=$(grep -v '^[[:space:]]*#' "$map" 2>/dev/null | awk -v p="$HERDR_ACTIVE_PANE_ID" '$1 == p { print; exit }')
+[ -n "$line" ] || { echo "pane $HERDR_ACTIVE_PANE_ID is not a registered tally lane"; read -r _; exit 1; }
+set -- $line
+[ -n "$3" ] && [ -n "$4" ] || { echo "no campaign coordinates on the map line for $1"; read -r _; exit 1; }
+json=$(tally campaign inbox "$3" "$4" --state open --json 2>&1) || { echo "$json"; read -r _; exit 1; }
+printf '%s' "$json" | jq -r --arg t "$2" '"campaign " + .campaign + " — " + (.open|tostring) + " open, " + (.answered|tostring) + " answered", (.entries[] | select(.taskId == $t) | "[" + (.sequence|tostring) + "] " + .kind + " · " + .state + " · " + (.writtenAt // "-") + "  " + (.question | gsub("[[:cntrl:]]+"; " ")))'
+n=$(printf '%s' "$json" | jq --arg t "$2" '[.entries[] | select(.taskId == $t)] | length')
+[ "$n" = "0" ] && echo "no open entries for $2"
+echo
+echo "answer with prefix+t: one steer addressed to this task answers every open entry above."
+read -r _
+"""
+
+# The viewer itself, on a key. The bridge normally puts tally-lane-view in the
+# lane pane with `herdr pane run`, but no script ships unwired: this reopens the
+# live trace for the lane this pane is registered to — after a viewer was closed
+# by hand, or from any pane in the map. type = "pane" gives it a real temporary
+# pane rather than a modal popup, because the viewer is a long-running loop and
+# the steer keys must stay reachable while it runs.
+[[keys.command]]
+key = "prefix+shift+v"
+type = "pane"
+description = "reopen the live trace viewer for this tally lane"
+command = """
+map="${XDG_STATE_HOME:-$HOME/.local/state}/tally-bridge/panes"
+line=$(grep -v '^[[:space:]]*#' "$map" 2>/dev/null | awk -v p="$HERDR_ACTIVE_PANE_ID" '$1 == p { print; exit }')
+[ -n "$line" ] || { echo "pane $HERDR_ACTIVE_PANE_ID is not a registered tally lane"; read -r _; exit 1; }
+set -- $line
+[ -n "$5" ] || { echo "the map line for $1 names no task uuid (column 5)"; read -r _; exit 1; }
+exec tally-lane-view --task "$5"
+"""
