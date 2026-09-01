@@ -348,6 +348,13 @@ in
     # --reset makes the up idempotent across prefs that were written by the
     # tailscale.com era; without it `tailscale up` can refuse with "changing
     # settings via 'tailscale up' requires mentioning all settings".
+    # This box enables its OWN tailscaled. Until 2026-09-01 the enable came
+    # from modules/common.nix's fleet-wide default; that default is being
+    # retired in the same series (tailscale.com survives only on the
+    # coordinator, as the Freebox emergency rail), and a headscale client
+    # whose daemon exists at another module's pleasure would go dark the
+    # moment that module forgets it.
+    services.tailscale.enable = true;
     services.tailscale.useRoutingFeatures = "server";
     services.tailscale.extraUpFlags = lib.mkForce [
       "--ssh"
