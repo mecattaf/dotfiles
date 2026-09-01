@@ -63,163 +63,231 @@ let
   # The NAS is the only host whose AdGuard serves more than loopback: it is
   # the resolver for the whole BE550 LAN (2026-08-20 rewire).
   isLanResolver = config.networking.hostName == "nas";
+
+  tailnetAddr = config.myAdguard.tailnetAddr;
+
+  # Addresses AdGuard is told to bind EXPLICITLY, each paired with the device
+  # it appears on, so the boot wait below can watch for the address itself
+  # rather than a target that lies about it (see the block at the bottom).
+  waitAddrs =
+    lib.optionals isLanResolver [
+      {
+        dev = "enp1s0";
+        addr = "10.42.0.1";
+      }
+    ]
+    ++ lib.optionals (isLanResolver && tailnetAddr != null) [
+      {
+        dev = "tailscale0";
+        addr = tailnetAddr;
+      }
+    ];
 in
 {
-  services.adguardhome = {
-    enable = true;
-    mutableSettings = false; # config is git, not the web wizard
-    host = "127.0.0.1"; # web UI / query log — loopback only
-    port = 3000;
-    openFirewall = false; # loopback-only: nothing to expose
+  # The NAS's tailnet-facing DNS bind, as an OPTION rather than the literal it
+  # used to be. See the bind_hosts block for why this is not just tidying.
+  options.myAdguard.tailnetAddr = lib.mkOption {
+    type = lib.types.nullOr lib.types.str;
+    default = null;
+    example = "100.64.0.1";
+    description = ''
+      Tailnet address of THIS host, bound by AdGuard in addition to loopback
+      and the LAN address so mesh clients can query it directly at its node
+      address (no subnet-route acceptance needed — what phones want).
 
-    settings = {
-      # DNS resolver: loopback bind, DoH upstreams (encrypted end to end so the
-      # ISP no longer sees plaintext lookups).
-      #
-      # The endpoints are IP-LITERAL DoH (1.1.1.1 / 9.9.9.9), not hostnames, on
-      # purpose: a hostname endpoint (https://dns.cloudflare.com/…) makes AdGuard
-      # first resolve that hostname over plain :53 via bootstrap_dns on every
-      # cold start, so a network that filters outbound :53 (captive portals,
-      # some hotel/guest LANs) would stall the resolver until bootstrap gives
-      # up. An IP-literal endpoint connects straight to <ip>:443 with no :53
-      # lookup at all — one less thing that can break on an unfamiliar network,
-      # which matters for the roaming laptop. Verified live before fleet rollout
-      # 2026-07-13: resolves + filters through this exact config. bootstrap_dns
-      # is kept only to satisfy the mutableSettings=false assertion (must be a
-      # non-empty list) and as a fallback if a hostname endpoint is ever added;
-      # it is not on the hot path today.
-      dns = {
-        # LAN resolver (NAS only): bind the LAN address EXPLICITLY alongside
-        # loopback, never 0.0.0.0 — resolved's stub holds 127.0.0.53:53, and
-        # a wildcard :53 bind EADDRINUSEs against it (found as a crashloop on
-        # first NixOS boot, recorded in the 26d4afdf retirement message). The
-        # specific-address bind races address assignment at boot exactly like
-        # nfsd did (hosts/nas/storage.nix lore); the ExecStartPre wait below
-        # is the fix. Port 53 admission is scoped to the LAN interface in
-        # hosts/nas/router.nix, not opened here.
-        bind_hosts =
-          [ "127.0.0.1" ]
-          ++ lib.optionals isLanResolver [
-            "10.42.0.1"
-            # The NAS's tailnet address (2026-08-21, "NAS is the tailscale
-            # sink"): the admin console's split-DNS entry sends every tailnet
-            # device's `.internal` queries here, so photos.internal works
-            # from anywhere. Stable for the lifetime of the node key (which
-            # is expiry-disabled); if the NAS ever re-registers, update this
-            # and the console entry together.
-            "100.89.54.51"
-          ];
-        port = 53;
-        upstream_dns = [
-          "https://1.1.1.1/dns-query"
-          "https://1.0.0.1/dns-query"
-          "https://9.9.9.9/dns-query"
-        ];
-        bootstrap_dns = [
-          "1.1.1.1"
-          "9.9.9.9"
-        ];
-        upstream_mode = "load_balance";
-      };
-
-      filtering = {
-        protection_enabled = true;
-        filtering_enabled = true;
-
-        # Fleet-internal names under the ICANN-reserved private-use TLD
-        # `.internal` (deliberately NOT mecattaf.dev — that zone is real and
-        # public on Cloudflare; these names must scream intranet). Every box
-        # running this filter resolves them to the coordinator over its
-        # shortest path (`coordinatorAddr` above), where Caddy
-        # (hosts/coordinator/nas-client.nix) routes them onto the NAS media
-        # relays. Phones don't use these resolvers, so phone apps keep the
-        # coordinator.tail8dd1.ts.net port URLs.
-        rewrites = [
-          {
-            enabled = true;
-            domain = "photos.internal";
-            answer = coordinatorAddr;
-          }
-          {
-            enabled = true;
-            domain = "music.internal";
-            answer = coordinatorAddr;
-          }
-          {
-            enabled = true;
-            domain = "videos.internal";
-            answer = coordinatorAddr;
-          }
-          # #136: resolves fleet-wide now, but answers only once the
-          # myNas.paperless / myNasClient.relayPaperless pair flips on.
-          {
-            enabled = true;
-            domain = "paperless.internal";
-            answer = coordinatorAddr;
-          }
-        ];
-      };
-
-      # Blocklists. AdGuard DNS filter is the network-level analog of the
-      # AdGuard browser extension's base filter; Steven Black adds the classic
-      # hosts-file coverage. IDs are arbitrary but must stay unique + stable.
-      filters = [
-        {
-          enabled = true;
-          id = 1;
-          name = "AdGuard DNS filter";
-          url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt";
-        }
-        {
-          enabled = true;
-          id = 2;
-          name = "Steven Black hosts";
-          url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts";
-        }
-      ];
-    };
-  };
-
-  # Point resolved's upstream at AdGuard and make that route authoritative for
-  # ALL names (~.), so no DHCP-pushed per-link DNS can slip past the filter.
-  # resolved itself is enabled fleet-wide in common.nix; this only sets where it
-  # forwards. Tailscale's ts.net domain is more specific, so MagicDNS still wins.
-  services.resolved.settings.Resolve = {
-    DNS = "127.0.0.1";
-    Domains = "~.";
-  };
-
-  # LAN-resolver boot ordering (NAS only): the explicit 10.42.0.1 bind above
-  # fails if AdGuard starts before NM has the static address up — the same
-  # race that broke nfsd's hostName bind behind network-online.target (NM
-  # reports online before the static address exists). Wait for the address
-  # itself, not for a target that lies about it; 30s bound, then start anyway
-  # and let Restart handle a genuinely late interface.
-  systemd.services.adguardhome = lib.mkIf isLanResolver {
-    # The tailnet bind additionally needs tailscaled to have brought
-    # tailscale0 up with the node address; same wait-for-the-address-itself
-    # doctrine, same 30s bound per address.
-    after = [ "tailscaled.service" ];
-    wants = [ "tailscaled.service" ];
-    serviceConfig.ExecStartPre = pkgs.writeShellScript "wait-bind-addrs" ''
-      for addr in "enp1s0 10\.42\.0\.1/" "tailscale0 100\.89\.54\.51/"; do
-        set -- $addr
-        for _ in $(${pkgs.coreutils}/bin/seq 30); do
-          ${pkgs.iproute2}/bin/ip -4 addr show dev "$1" 2>/dev/null | ${pkgs.gnugrep}/bin/grep -q "$2" && break
-          ${pkgs.coreutils}/bin/sleep 1
-        done
-      done
-      exit 0
+      null means "bind nothing we cannot verify": mesh clients still resolve
+      through 10.42.0.1 over the advertised 10.42.0.0/24 subnet route. Set it
+      only to an address `tailscale status` has actually printed on this box —
+      an address AdGuard cannot bind is a house-wide DNS outage, not a
+      degradation.
     '';
-    # RestartSec: upstream module already sets 10 — good enough for the
-    # late-interface case; do not fight it.
   };
 
-  # Tailnet devices query the split-DNS entry directly at the node address:
-  # admit :53 on the tailnet interface (NAS only). LAN admission lives in
-  # hosts/nas/router.nix; this is its roaming twin.
-  networking.firewall.interfaces.tailscale0 = lib.mkIf isLanResolver {
-    allowedUDPPorts = [ 53 ];
-    allowedTCPPorts = [ 53 ];
+  config = {
+    services.adguardhome = {
+      enable = true;
+      mutableSettings = false; # config is git, not the web wizard
+      host = "127.0.0.1"; # web UI / query log — loopback only
+      port = 3000;
+      openFirewall = false; # loopback-only: nothing to expose
+
+      settings = {
+        # DNS resolver: loopback bind, DoH upstreams (encrypted end to end so the
+        # ISP no longer sees plaintext lookups).
+        #
+        # The endpoints are IP-LITERAL DoH (1.1.1.1 / 9.9.9.9), not hostnames, on
+        # purpose: a hostname endpoint (https://dns.cloudflare.com/…) makes AdGuard
+        # first resolve that hostname over plain :53 via bootstrap_dns on every
+        # cold start, so a network that filters outbound :53 (captive portals,
+        # some hotel/guest LANs) would stall the resolver until bootstrap gives
+        # up. An IP-literal endpoint connects straight to <ip>:443 with no :53
+        # lookup at all — one less thing that can break on an unfamiliar network,
+        # which matters for the roaming laptop. Verified live before fleet rollout
+        # 2026-07-13: resolves + filters through this exact config. bootstrap_dns
+        # is kept only to satisfy the mutableSettings=false assertion (must be a
+        # non-empty list) and as a fallback if a hostname endpoint is ever added;
+        # it is not on the hot path today.
+        dns = {
+          # LAN resolver (NAS only): bind the LAN address EXPLICITLY alongside
+          # loopback, never 0.0.0.0 — resolved's stub holds 127.0.0.53:53, and
+          # a wildcard :53 bind EADDRINUSEs against it (found as a crashloop on
+          # first NixOS boot, recorded in the 26d4afdf retirement message). The
+          # specific-address bind races address assignment at boot exactly like
+          # nfsd did (hosts/nas/storage.nix lore); the ExecStartPre wait below
+          # is the fix. Port 53 admission is scoped to the LAN interface in
+          # hosts/nas/router.nix, not opened here.
+          #
+          # THE TAILNET ENTRY USED TO BE A LITERAL, 100.89.54.51, and it must
+          # never come back as one. That address was minted by a control plane
+          # this box no longer talks to: Tom's ruling 2026-09-01 moves the NAS's
+          # own tailscaled onto the NAS's OWN headscale, which allocates out of
+          # its own 100.64.0.0/10 pool, so the successor address is not knowable
+          # at eval time and is not stable across a headscale DB rebuild either.
+          #
+          # A wrong literal here is not a degradation, it is a HOUSE-WIDE DNS
+          # OUTAGE: AdGuard exits when it cannot bind a listed address, and this
+          # process is the only thing answering :53 for every LAN client — the
+          # dns_hijack chain in hosts/nas/router.nix DNATs them here even when
+          # they ask someone else. So the address is now myAdguard.tailnetAddr,
+          # default null, and mesh DNS does not wait on it being filled in:
+          #   * a mesh client that takes the advertised 10.42.0.0/24 subnet route
+          #     queries 10.42.0.1 and is answered today. The packet arrives on
+          #     tailscale0 addressed to an address AdGuard already binds, and the
+          #     kernel's weak host model delivers it off the "wrong" interface —
+          #     the same property the .internal hairpin note above documents.
+          #     The tailscale0 :53 door at the bottom of this file admits it.
+          #   * querying the NAS at its own 100.64.x node address instead needs
+          #     no route acceptance (phones and Windows take routes by default,
+          #     Linux needs --accept-routes), and THAT is what the option is
+          #     for: set it in hosts/nas/default.nix once `tailscale status` on
+          #     the NAS has printed the headscale-issued address, rebuild, and
+          #     the wait-for-address loop below picks it up with no other edit.
+          bind_hosts =
+            [ "127.0.0.1" ]
+            ++ lib.optionals isLanResolver [ "10.42.0.1" ]
+            ++ lib.optional (isLanResolver && tailnetAddr != null) tailnetAddr;
+          port = 53;
+          upstream_dns = [
+            "https://1.1.1.1/dns-query"
+            "https://1.0.0.1/dns-query"
+            "https://9.9.9.9/dns-query"
+          ];
+          bootstrap_dns = [
+            "1.1.1.1"
+            "9.9.9.9"
+          ];
+          upstream_mode = "load_balance";
+        };
+
+        filtering = {
+          protection_enabled = true;
+          filtering_enabled = true;
+
+          # Fleet-internal names under the ICANN-reserved private-use TLD
+          # `.internal` (deliberately NOT mecattaf.dev — that zone is real and
+          # public on Cloudflare; these names must scream intranet). Every box
+          # running this filter resolves them to the coordinator over its
+          # shortest path (`coordinatorAddr` above), where Caddy
+          # (hosts/coordinator/nas-client.nix) routes them onto the NAS media
+          # relays. Phones don't use these resolvers, so phone apps keep the
+          # coordinator.tail8dd1.ts.net port URLs.
+          rewrites = [
+            {
+              enabled = true;
+              domain = "photos.internal";
+              answer = coordinatorAddr;
+            }
+            {
+              enabled = true;
+              domain = "music.internal";
+              answer = coordinatorAddr;
+            }
+            {
+              enabled = true;
+              domain = "videos.internal";
+              answer = coordinatorAddr;
+            }
+            # #136: resolves fleet-wide now, but answers only once the
+            # myNas.paperless / myNasClient.relayPaperless pair flips on.
+            {
+              enabled = true;
+              domain = "paperless.internal";
+              answer = coordinatorAddr;
+            }
+          ];
+        };
+
+        # Blocklists. AdGuard DNS filter is the network-level analog of the
+        # AdGuard browser extension's base filter; Steven Black adds the classic
+        # hosts-file coverage. IDs are arbitrary but must stay unique + stable.
+        filters = [
+          {
+            enabled = true;
+            id = 1;
+            name = "AdGuard DNS filter";
+            url = "https://adguardteam.github.io/HostlistsRegistry/assets/filter_1.txt";
+          }
+          {
+            enabled = true;
+            id = 2;
+            name = "Steven Black hosts";
+            url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts";
+          }
+        ];
+      };
+    };
+
+    # Point resolved's upstream at AdGuard and make that route authoritative for
+    # ALL names (~.), so no DHCP-pushed per-link DNS can slip past the filter.
+    # resolved itself is enabled fleet-wide in common.nix; this only sets where it
+    # forwards. Tailscale's ts.net domain is more specific, so MagicDNS still wins.
+    services.resolved.settings.Resolve = {
+      DNS = "127.0.0.1";
+      Domains = "~.";
+    };
+
+    # LAN-resolver boot ordering (NAS only): the explicit 10.42.0.1 bind above
+    # fails if AdGuard starts before NM has the static address up — the same
+    # race that broke nfsd's hostName bind behind network-online.target (NM
+    # reports online before the static address exists). Wait for the address
+    # itself, not for a target that lies about it; 30s bound per address, then
+    # start anyway and let Restart handle a genuinely late interface.
+    systemd.services.adguardhome = lib.mkIf isLanResolver (
+      {
+        serviceConfig.ExecStartPre = pkgs.writeShellScript "wait-bind-addrs" ''
+          ${lib.concatMapStringsSep "\n" (a: ''
+            for _ in $(${pkgs.coreutils}/bin/seq 30); do
+              ${pkgs.iproute2}/bin/ip -4 addr show dev "${a.dev}" 2>/dev/null \
+                | ${pkgs.gnugrep}/bin/grep -q "${builtins.replaceStrings [ "." ] [ "\\." ] a.addr}/" && break
+              ${pkgs.coreutils}/bin/sleep 1
+            done
+          '') waitAddrs}
+          exit 0
+        '';
+        # RestartSec: upstream module already sets 10 — good enough for the
+        # late-interface case; do not fight it.
+      }
+      # The tailscaled ordering exists ONLY for the tailnet bind, so it is gated
+      # on there being one. With myAdguard.tailnetAddr unset the house resolver
+      # no longer waits on the VPN control plane to come up at boot — a real win
+      # now that the control plane is headscale running on this same box: a
+      # headscale/tailscaled startup problem must not be able to delay :53 for
+      # the whole LAN, and with no tailnet address to bind there is nothing on
+      # tailscale0 for AdGuard to wait for.
+      // lib.optionalAttrs (tailnetAddr != null) {
+        after = [ "tailscaled.service" ];
+        wants = [ "tailscaled.service" ];
+      }
+    );
+
+    # Mesh devices query this resolver over the tailnet — either at the NAS's
+    # node address (myAdguard.tailnetAddr, when set) or at 10.42.0.1 through the
+    # advertised subnet route. Both arrive on tailscale0, so admission stays
+    # interface-scoped and needs no edit when the control plane changes. LAN
+    # admission lives in hosts/nas/router.nix; this is its roaming twin.
+    networking.firewall.interfaces.tailscale0 = lib.mkIf isLanResolver {
+      allowedUDPPorts = [ 53 ];
+      allowedTCPPorts = [ 53 ];
+    };
   };
 }
