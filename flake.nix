@@ -609,6 +609,33 @@
       checks.${system} = {
         music-acquire = pkgs.music-acquire;
 
+        # The Claude capacity oracle (DECISION-R2-1). It is BOTH the waybar
+        # module and the dispatch admission gate, so its three exit codes
+        # (0 headroom / 1 defer / 2 cannot determine) are a fleet contract:
+        # a regression that turns "cannot determine" into 0 would dispatch
+        # into a spent subscription window, and one that turns headroom into
+        # nonzero would stall the queue silently. Both are cheap to pin and
+        # impossible to notice by eye, so they are asserted here.
+        #
+        # The suite is hermetic — it drives the script through a seeded cache
+        # in a temp XDG_RUNTIME_DIR with a temp HOME holding a deliberately
+        # dead token — so it runs inside the sandbox with no network.
+        claude-capacity =
+          pkgs.runCommand "claude-capacity"
+            { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              set -euo pipefail
+              export HOME="$TMPDIR/home"
+              mkdir -p "$HOME"
+              CLAUDE_CAPACITY=${./home/dot_local/bin/claude-capacity} \
+                python3 ${./tests/claude-capacity/test-claude-capacity.py} | tee "$TMPDIR/out"
+              # py_compile is a second, independent guard: a syntax error in the
+              # oracle would otherwise only surface when waybar or a dispatch
+              # asked it a question.
+              python3 -m py_compile ${./home/dot_local/bin/claude-capacity}
+              cp "$TMPDIR/out" $out
+            '';
+
         nas-topology =
           let
             nas = self.nixosConfigurations.nas.config;

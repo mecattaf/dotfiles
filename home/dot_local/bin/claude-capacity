@@ -1,0 +1,382 @@
+#!/usr/bin/env python3
+"""Claude Code rate-limit capacity — one script, two consumers.
+
+Calls the same endpoint Claude Code's `/usage` command uses
+(https://api.anthropic.com/api/oauth/usage). Reads the OAuth token from
+~/.claude/.credentials.json. Stdlib only.
+
+MODES
+  (no args) / --waybar   Waybar custom-module JSON on stdout, always exit 0.
+                         This is Tom's original script, behavior-for-behavior:
+                         a failure prints a warning-class module and exits 0,
+                         because a bar module that exits nonzero just goes blank.
+  --json                 The parsed windows as JSON, for debugging and ledgers.
+                         exit 0 on data, 2 when the answer cannot be determined.
+  --check                THE DISPATCH ADMISSION ORACLE (DECISION-R2-1).
+                           exit 0  headroom  — admit
+                           exit 1  no headroom — defer
+                           exit 2  cannot determine (no creds / expired token /
+                                   HTTP or network error / window not reported)
+                         --window five_hour|seven_day|seven_day_opus|
+                                  seven_day_sonnet|any    (default: any)
+                         --threshold N   percent utilization at which headroom
+                                         ends (default 90; admit while < N)
+  --cache-ttl N          seconds a cached reading counts as fresh (default 60)
+  --no-cache             always hit the network; never read or write the cache
+
+THE CACHE IS NOT AN OPTIMIZATION. /api/oauth/usage rate-limits: polling it
+by hand a handful of times in one minute already returned `HTTP 429: Too Many
+Requests` (measured 2026-09-02). A bar module on a short interval plus a
+dispatcher asking once per job would spend the whole budget on asking. So every
+reading is cached in $XDG_RUNTIME_DIR (tmpfs, per-user, gone on reboot) for
+--cache-ttl seconds, and when a live call fails a reading up to STALE_GRACE old
+is served instead of an error — a fifteen-minute-old utilization number is a far
+better admission input than "unknown", because these windows move in hours.
+Waybar's `interval` is set correspondingly long in the module definition.
+
+WHY ONE SCRIPT. DECISION-R2-1 moves Claude-specific capacity knowledge OUT of
+tally and INTO dotfiles: tally keeps a generic admission preflight hook
+(configured command, nonzero exit = defer), and this file is the thing that
+knows what a Claude Max window is. The bar and the dispatcher must never be
+able to disagree about headroom, so they read the same rows from the same call.
+
+FAIL-CLOSED, DELIBERATELY. `--check` distinguishes 1 (measured: no headroom)
+from 2 (unmeasurable) so a caller MAY choose to fail open. Tally's generic hook
+treats every nonzero exit as "defer", so wired to tally this oracle fails
+CLOSED: an unreachable API defers dispatch rather than flooding a spent window.
+That is the safe direction at 3 a.m.; if it ever proves too conservative the
+fix is a `|| exit 0` in the wrapper, not a change here.
+
+Provenance: the waybar half is Tom's, supplied verbatim 2026-09-02;
+--check/--json were added in round 2 without touching its output.
+"""
+import argparse
+import json
+import os
+import sys
+import tempfile
+import time
+import urllib.request
+import urllib.error
+from datetime import datetime, timezone
+
+ICON = "\U000f06a9"  # nerd-font robot glyph; set to "" for none
+CREDS = os.path.expanduser("~/.claude/.credentials.json")
+URL = "https://api.anthropic.com/api/oauth/usage"
+TIMEOUT = 5
+
+LABELS = {
+    "five_hour":        "Session (5h)",
+    "seven_day":        "Weekly",
+    "seven_day_opus":   "Opus weekly",
+    "seven_day_sonnet": "Sonnet weekly",
+}
+
+WINDOWS = list(LABELS) + ["any"]
+
+EXIT_HEADROOM = 0
+EXIT_DEFER = 1
+EXIT_UNKNOWN = 2
+
+CACHE_TTL = 60          # seconds a reading counts as fresh
+STALE_GRACE = 900       # seconds an old reading beats "unknown" when the API is down
+
+
+def emit(text, tooltip, classes=(), percentage=None):
+    out = {"text": text, "tooltip": tooltip, "class": list(classes)}
+    if percentage is not None:
+        out["percentage"] = percentage
+    print(json.dumps(out))
+
+
+def load_token():
+    with open(CREDS, encoding="utf-8") as fh:
+        oauth = (json.load(fh) or {}).get("claudeAiOauth") or {}
+    token = oauth.get("accessToken")
+    if not token:
+        return None, "no access token in credentials"
+    expires_at_ms = oauth.get("expiresAt") or 0
+    if expires_at_ms and expires_at_ms / 1000 < datetime.now(timezone.utc).timestamp():
+        return None, "token expired — run `claude` to refresh"
+    return token, None
+
+
+def fetch_usage(token):
+    req = urllib.request.Request(URL, headers={
+        "Authorization": f"Bearer {token}",
+        "Content-Type":  "application/json",
+    })
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+        return json.load(resp)
+
+
+def cache_path():
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    return os.path.join(runtime, "claude-capacity-cache.json")
+
+
+def cache_read(max_age):
+    """Return (payload, age_seconds) when a cached reading is at most max_age
+    old, else (None, None). Any unreadable/corrupt cache is simply a miss."""
+    if max_age is None or max_age <= 0:
+        return None, None
+    try:
+        with open(cache_path(), encoding="utf-8") as fh:
+            blob = json.load(fh)
+        age = time.time() - float(blob["fetched_at"])
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return None, None
+    if age < 0 or age > max_age:
+        return None, None
+    return blob.get("data"), age
+
+
+def cache_write(data):
+    """Best effort, atomic, 0600. A cache we cannot write is not an error."""
+    path = cache_path()
+    try:
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".claude-capacity-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump({"fetched_at": time.time(), "data": data}, fh)
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+    except (OSError, ValueError, TypeError):
+        pass
+
+
+def acquire(ttl=CACHE_TTL, stale_grace=STALE_GRACE):
+    """The ONE acquisition path, shared by every mode.
+
+    Returns (data, stale_age, err). `err` is None on success, else a dict with
+      reason  — one lowercase line for --check/--json
+      waybar  — (short, tooltip, class) exactly as Tom's script phrased it
+
+    ORDER MATTERS. The cache is consulted BEFORE the credentials file, because
+    a reading that is already in hand needs no token: a `claude` refresh
+    rewriting ~/.claude/.credentials.json, or a momentarily unreadable file,
+    must not turn a five-second-old measurement into "cannot determine" and
+    defer the whole queue. Only when there is nothing fresh do we authenticate
+    and call out; only when THAT fails do we accept an older reading.
+    """
+    data, _ = cache_read(ttl)
+    if data is not None:
+        return data, None, None
+
+    err = None
+    token = None
+    try:
+        token, reason = load_token()
+        if reason:
+            err = {"reason": reason, "waybar": ("?", reason, "warning")}
+    except FileNotFoundError:
+        err = {"reason": f"credentials file missing: {CREDS}",
+               "waybar": ("no auth", f"Credentials file missing: {CREDS}", "critical")}
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        err = {"reason": f"credentials unreadable: {exc}",
+               "waybar": ("?", f"Credentials unreadable: {exc}", "warning")}
+
+    if token and not err:
+        try:
+            data = fetch_usage(token)
+            cache_write(data)
+            return data, None, None
+        except urllib.error.HTTPError as exc:
+            err = {"reason": f"HTTP {exc.code}: {exc.reason}",
+                   "waybar": ("?", f"HTTP {exc.code}: {exc.reason}", "warning")}
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+            err = {"reason": f"network error: {exc}",
+                   "waybar": ("?", f"Network error: {exc}", "warning")}
+
+    stale, age = cache_read(stale_grace)
+    if stale is not None:
+        return stale, age, None
+    return None, None, err
+
+
+def fmt_reset(iso):
+    if not iso:
+        return ""
+    try:
+        when = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return ""
+    delta = (when - datetime.now(timezone.utc)).total_seconds()
+    if delta <= 0:           return "now"
+    if delta < 3600:         return f"in {int(delta // 60)}m"
+    if delta < 86400:        return f"in {delta / 3600:.1f}h"
+    return f"in {delta / 86400:.1f}d"
+
+
+def fail(short, tooltip, cls="warning"):
+    text = f"{ICON} {short}" if ICON else short
+    emit(text, tooltip, [cls])
+    sys.exit(0)
+
+
+# ---------------------------------------------------------------------------
+# Shared acquisition. Returns (rows, error, stale_age): rows is
+# [{key, label, utilization, resets_at}, …] ordered as LABELS is; error is None
+# or a one-line human reason the answer cannot be determined; stale_age is None
+# for a live/fresh reading or the age in seconds of the fallback reading served
+# because the API refused.
+# ---------------------------------------------------------------------------
+def usage_rows(ttl=CACHE_TTL):
+    data, stale_age, err = acquire(ttl=ttl)
+    if err is not None:
+        return None, err["reason"], None
+
+    rows = []
+    for key, label in LABELS.items():
+        entry = data.get(key)
+        if not entry or entry.get("utilization") is None:
+            continue
+        rows.append({
+            "key": key,
+            "label": label,
+            "utilization": entry["utilization"],
+            "resets_at": entry.get("resets_at"),
+        })
+    return rows, None, stale_age
+
+
+# ---------------------------------------------------------------------------
+# Waybar mode — Tom's original main(). The only edits: the fetch goes through
+# the cache (the API 429s under polling), and a stale reading says so in the
+# tooltip instead of pretending to be live. Text, classes, percentage and every
+# failure class are exactly as he wrote them.
+# ---------------------------------------------------------------------------
+def main_waybar(ttl=CACHE_TTL):
+    data, stale_age, err = acquire(ttl=ttl)
+    if err is not None:
+        fail(*err["waybar"])   # prints a module and exits 0, as Tom wrote it
+
+    rows = []
+    max_pct = 0.0
+    for key, label in LABELS.items():
+        entry = data.get(key)
+        if not entry or entry.get("utilization") is None:
+            continue
+        pct = entry["utilization"]
+        max_pct = max(max_pct, pct)
+        rows.append((label, pct, entry.get("resets_at")))
+
+    if not rows:
+        emit(f"{ICON} 0%" if ICON else "0%", "No usage reported", [])
+        return 0
+
+    pct_int = round(max_pct)
+    text = f"{ICON} {pct_int}%" if ICON else f"{pct_int}%"
+    classes = ["critical"] if max_pct >= 100 else ["warning"] if max_pct >= 80 else []
+
+    lines = ["Claude Code usage"]
+    for label, pct, reset in rows:
+        suffix = f"  (resets {fmt_reset(reset)})" if reset else ""
+        lines.append(f"  {label}: {pct:.0f}%{suffix}")
+    if stale_age is not None:
+        lines.append(f"  ⚠ stale: API unreachable, reading is {int(stale_age // 60)}m old")
+        if "warning" not in classes:
+            classes = classes + ["warning"]
+
+    emit(text, "\n".join(lines), classes, percentage=min(pct_int, 100))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# --json
+# ---------------------------------------------------------------------------
+def main_json(ttl=CACHE_TTL):
+    rows, error, stale_age = usage_rows(ttl=ttl)
+    if error is not None:
+        print(json.dumps({"ok": False, "error": error}))
+        return EXIT_UNKNOWN
+    print(json.dumps({
+        "ok": True,
+        "stale_age_seconds": stale_age,
+        "windows": {r["key"]: {"label": r["label"],
+                               "utilization": r["utilization"],
+                               "resets_at": r["resets_at"]} for r in rows},
+        "max_utilization": max((r["utilization"] for r in rows), default=0.0),
+    }))
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# --check — the admission oracle
+# ---------------------------------------------------------------------------
+def main_check(window, threshold, ttl=CACHE_TTL):
+    rows, error, stale_age = usage_rows(ttl=ttl)
+    if error is not None:
+        print(f"unknown: {error}", file=sys.stderr)
+        return EXIT_UNKNOWN
+
+    if window == "any":
+        # No named window: the binding constraint is whichever window is
+        # closest to spent, which is also what the bar's headline number shows.
+        # An account reporting no windows at all is NOT headroom by assumption —
+        # it is an answer we did not get, so it is exit 2.
+        if not rows:
+            print("unknown: no usage windows reported", file=sys.stderr)
+            return EXIT_UNKNOWN
+        worst = max(rows, key=lambda r: r["utilization"])
+        pct, key, label = worst["utilization"], worst["key"], worst["label"]
+        resets = worst["resets_at"]
+    else:
+        match = next((r for r in rows if r["key"] == window), None)
+        if match is None:
+            print(f"unknown: window {window!r} not reported by the API "
+                  f"(reported: {', '.join(r['key'] for r in rows) or 'none'})",
+                  file=sys.stderr)
+            return EXIT_UNKNOWN
+        pct, key, label = match["utilization"], match["key"], match["label"]
+        resets = match["resets_at"]
+
+    reset_note = f", resets {fmt_reset(resets)}" if resets else ""
+    stale_note = f" [stale reading, {int(stale_age // 60)}m old]" if stale_age is not None else ""
+    if pct < threshold:
+        print(f"headroom: {label} ({key}) at {pct:.0f}% < {threshold:g}%{reset_note}{stale_note}")
+        return EXIT_HEADROOM
+    print(f"defer: {label} ({key}) at {pct:.0f}% >= {threshold:g}%{reset_note}{stale_note}")
+    return EXIT_DEFER
+
+
+def build_parser():
+    p = argparse.ArgumentParser(
+        prog="claude-capacity",
+        description="Claude Code rate-limit capacity: waybar module and dispatch admission oracle.")
+    mode = p.add_mutually_exclusive_group()
+    mode.add_argument("--waybar", action="store_true",
+                      help="waybar custom-module JSON on stdout, always exit 0 (default)")
+    mode.add_argument("--json", action="store_true",
+                      help="parsed windows as JSON; exit 2 when undeterminable")
+    mode.add_argument("--check", action="store_true",
+                      help="admission check: exit 0 headroom, 1 defer, 2 cannot determine")
+    p.add_argument("--window", choices=WINDOWS, default="any",
+                   help="which rate-limit window --check reads (default: any = the worst one)")
+    p.add_argument("--threshold", type=float, default=90.0, metavar="N",
+                   help="percent utilization at which headroom ends (default: 90)")
+    p.add_argument("--cache-ttl", type=float, default=CACHE_TTL, metavar="N",
+                   help=f"seconds a cached reading counts as fresh (default: {CACHE_TTL})")
+    p.add_argument("--no-cache", action="store_true",
+                   help="always hit the network; never read the cache")
+    return p
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
+    ttl = 0 if args.no_cache else args.cache_ttl
+    if args.check:
+        return main_check(args.window, args.threshold, ttl=ttl)
+    if args.json:
+        return main_json(ttl=ttl)
+    return main_waybar(ttl=ttl)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
