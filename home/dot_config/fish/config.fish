@@ -45,6 +45,10 @@ alias cd='z'
 # Claude Code
 alias cc='claude --dangerously-skip-permissions'
 alias cac='claude --continue --dangerously-skip-permissions'
+# Second Claude account (work). CLAUDE_CONFIG_DIR isolates login, history and
+# state in ~/.claude-work; skills/settings are the same dotfiles links (home.nix).
+alias cc2='env CLAUDE_CONFIG_DIR=$HOME/.claude-work claude --dangerously-skip-permissions'
+alias cac2='env CLAUDE_CONFIG_DIR=$HOME/.claude-work claude --continue --dangerously-skip-permissions'
 
 # ── Music ────────────────────────────────────────────────────────────────
 # The library lives on the NAS and is served by Navidrome; cliamp is the client.

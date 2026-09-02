@@ -223,6 +223,11 @@ in
   home.file.".claude/skills".source = link "dot_claude/skills";
   home.file.".claude/settings.json".source = link "dot_claude/settings.json";
 
+  # Second Claude account (work): `cc2`/`cac2` in fish set CLAUDE_CONFIG_DIR to
+  # ~/.claude-work. Same skills + settings, separate .credentials.json/.claude.json.
+  home.file.".claude-work/skills".source = link "dot_claude/skills";
+  home.file.".claude-work/settings.json".source = link "dot_claude/settings.json";
+
   # Same canonical skill tree, exposed to Codex and `pi` (earendil-works/pi)
   # through the vendor-neutral, always-trusted Agent-Skills directory
   # (~/.agents/skills). Both read the same agentskills.io SKILL.md format
