@@ -96,6 +96,30 @@ let
     '';
   };
 
+  # The Claude capacity ORACLE as a dispatch admission command (DECISION-R2-1).
+  #
+  # The oracle itself is a RAW dotfile — home/dot_local/bin/claude-capacity,
+  # reachable through the out-of-store ~/.local/bin symlink, so a threshold is
+  # retuned by editing a file, not by a rebuild. This wrapper exists for two
+  # reasons and no others:
+  #   1. a STABLE /nix/store argv that a tally job unit can name, since tally
+  #      takes direct argv and never a shell string;
+  #   2. a pinned python3. `python3` lives in the per-user profile here
+  #      (/etc/profiles/per-user/tom/bin/python3) and is NOT in
+  #      /run/current-system/sw/bin, so a systemd-run job that does not inherit
+  #      the user profile PATH would fail to exec the oracle at all.
+  #
+  # Exit codes are the contract: 0 headroom (admit), 1 no headroom (defer),
+  # 2 cannot determine. Tally's hook treats every nonzero as defer, so this
+  # fails CLOSED — an unreachable API defers rather than burning a spent window.
+  # See the claude-window pool below for what still has to land tally-side.
+  capacityOracle = pkgs.writeShellApplication {
+    name = "tally-admit-claude";
+    runtimeInputs = [ pkgs.python3 ];
+    text = ''
+      exec python3 "$HOME/.local/bin/claude-capacity" --check "$@"
+    '';
+  };
 in
 {
   imports = [
@@ -106,6 +130,7 @@ in
   home.packages = lib.optionals isCoordinator [
     pkgs.call-diarize
     pkgs.local-ai-monthly
+    capacityOracle
   ];
 
   services.tally = {
@@ -119,6 +144,14 @@ in
     # "A flow cannot choose a model"), so the hijacked flows' claude-code
     # lanes run on this exact id, stamped on every row it answers for with
     # modelProvenance=daemon-config.
+    #
+    # NOT TOUCHED HERE, DELIBERATELY (DECISION-R2-1, 2026-09-02): the ruling
+    # retires daemon model pins as daemon POLICY — model becomes contract-declared
+    # data hashed WITH the contract (the tally.nix#657-clean path), with the
+    # fleet-wide default moving to session creation. That is a tally-side change
+    # (model.rs job() field + the #657 payload-hash fix) and this line can only
+    # be dropped once it lands; dropping it first would leave every model-less
+    # claude-code lane unpinned mid-flight. Stage C / the tally lane owns it.
     agent = lib.mkIf isCoordinator {
       adapter = "claude-code";
       model = "claude-opus-5";
@@ -166,6 +199,42 @@ in
       # claude() flow sugar fixes this pool, so every claude-code flow node on
       # this host serializes through it (first consumer: the herdr-kitten
       # hijacked flow, dotfiles#284).
+      #
+      # SUPERSEDED-PENDING by DECISION-R2-1 (2026-09-02). This pool is a
+      # capacity-one mutex: it can say "one at a time" and nothing else. It
+      # cannot say "the weekly Opus window is spent, come back in six hours",
+      # which is the thing that actually rations a Max subscription. The ruling
+      # replaces it with a GENERIC admission preflight hook in tally (configured
+      # command; nonzero exit = defer, ledger event on the deferral) plus the
+      # Claude-specific knowledge living HERE, in dotfiles, as the capacity
+      # ORACLE: `tally-admit-claude` (below) / `claude-capacity --check`,
+      # which is window-aware (5h / weekly / weekly-Opus / weekly-Sonnet) and
+      # therefore lets admission be model-aware.
+      #
+      # WHAT IS NOT DONE, AND WHY, so this is not rediscovered as a mystery:
+      # the tally pinned in flake.lock (mecattaf/tally.nix 62fac87c) exposes NO
+      # such hook — its whole coordinator option surface is enqueue / lease /
+      # retention / storage / attestations / pools / executors / producers /
+      # campaignPoll / flows / adapters, and none of them takes an admission
+      # command. So the pool STAYS, because it is the only working mutual
+      # exclusion at this pin and deleting it would lose serialization while
+      # gaining nothing. Two near-misses were evaluated and rejected:
+      #   - pools.<n>.usageMeter + predicate.windowed-consumption IS a real
+      #     existing seam, but it is a spend FEEDER for a `budget` pool, and a
+      #     windowed-consumption pool "rejects requests without an estimate" —
+      #     every claude() flow node on this host would start being refused,
+      #     because none of them carries a consumption estimate. Not a silent
+      #     switch to make at 5 a.m. from the dotfiles side.
+      #   - a gate node prepended to each flow would work, but that is inventing
+      #     a tally-side mechanism from dotfiles, which the round-2 brief forbids.
+      #
+      # TODO(DECISION-R2-1, tally-runner lane): when tally grows the generic
+      # preflight hook, this whole pool entry is replaced by pointing that hook
+      # at the oracle — e.g.
+      #     admission.preflight.argv = [ (lib.getExe capacityOracle) "--window" "any" ];
+      # and the claude-code lanes stop serializing on a mutex they never needed.
+      # The oracle already exists, is already on PATH, and is already tested
+      # (tests/claude-capacity, 21 cases, hermetic); only the caller is missing.
       claude-window = {
         resource = "mutex";
         capacity = 1;
