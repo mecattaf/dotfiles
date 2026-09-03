@@ -1392,17 +1392,42 @@
               "gemma4-31b-it-q8-0"
               "gemma4-31b-it-vl"
             ];
-          # ...and exactly ONE artifact, which is not a mirror either: the FP8
-          # checkpoint is required IN FULL on each twin (tensor-parallel shards
-          # compute, not the on-disk weights), so both rosters carrying it is
-          # the symmetry requirement being met, not coordinator content leaking
-          # across. It is also the anti-prune row — absent from wanted.json,
-          # local-models-sync rm -rf's 185.6 GB on every boot, which it did to
-          # both twins on 2026-08-29. This guard read `== [ ]` until now and had
-          # been red since 8d772780 added the row; asserting the exact list
-          # keeps the original intent (nothing mirrored) while letting the one
-          # deliberate both-twins artifact through.
-          assert worker.services.local-models.artifacts == [ "flashnext-fp8" ];
+          # ...and TWO artifacts, neither of which is a mirror. This guard read
+          # `== [ ]` until 8d772780, then `== [ "flashnext-fp8" ]`; the exact
+          # list is asserted rather than a membership test precisely so that a
+          # third entry has to be argued for here, in writing, before it can
+          # cost the worker another hundred gigabytes.
+          #
+          #   flashnext-fp8 — required IN FULL on each twin (tensor-parallel
+          #     shards compute, not the on-disk weights), so both rosters
+          #     carrying it is the symmetry requirement being met, not
+          #     coordinator content leaking across. Also the anti-prune row:
+          #     absent from wanted.json, local-models-sync rm -rf's 185.6 GB on
+          #     every boot, which it did to both twins on 2026-08-29.
+          #
+          #   qwen38-flash-ciru-strix-iu4 — worker ONLY, and asymmetric ON
+          #     PURPOSE (#291). ciru's IU4 runs the whole 126.63 GiB model on
+          #     ONE box; it is the single-box calibration point the TP=2 pair
+          #     spread across both twins is measured against. Putting it on the
+          #     coordinator too would defeat the comparison, which is why the
+          #     coordinator's own guard below still reads [ "flashnext-fp8" ]
+          #     and must stay that way. It is an artifact and never a
+          #     deployment because it needs ciru's llama.cpp fork (v1.1 =
+          #     baba5e0617ac40aa88b9ba96f4b90e584caec64e); stock llama.cpp,
+          #     vLLM and transformers cannot load it. Same anti-prune duty.
+          #
+          # ORDER IS LOAD-BEARING: modules/strix.nix builds this as the shared
+          # base list ++ the worker-only optional, so flashnext-fp8 leads.
+          #
+          # ⚠ The worker must NOT be switched onto this list until the NAS
+          #   Library actually holds the bytes — local-models-sync fails hard
+          #   with "MISSING in Library" otherwise. See the flashnix repo,
+          #   docs/trinity/CIRU-IU4-WORKER.md, for the ordered bring-up.
+          assert
+            worker.services.local-models.artifacts == [
+              "flashnext-fp8"
+              "qwen38-flash-ciru-strix-iu4"
+            ];
           # AdGuard is FORBIDDEN per-device on this LAN (DoH vs the NAS's
           # dns_hijack). The worker is the box that collision was first proven
           # on, so its closure must not carry the service at all.
@@ -1783,11 +1808,18 @@
               "qwen3-vl-embedding-8b-q8-0"
               "qwen38-27b-mtp-q8-0"
             ];
-          # flashnext-fp8 leads this list for the same reason it is the worker's
-          # only artifact: it is declared on BOTH twins in modules/strix.nix
-          # because the FP8 checkpoint must be present in full per node, and it
-          # is the row whose absence makes local-models-sync prune 185.6 GB.
+          # flashnext-fp8 leads this list for the same reason it leads the
+          # worker's: it is declared on BOTH twins in modules/strix.nix because
+          # the FP8 checkpoint must be present in full per node, and it is the
+          # row whose absence makes local-models-sync prune 185.6 GB.
           # Stale here since 8d772780 for the same reason as the worker guard.
+          #
+          # ONE entry, and it stays one: the coordinator deliberately does NOT
+          # get qwen38-flash-ciru-strix-iu4 (#291). That row is the worker's
+          # single-box control against this pair — mirroring it here would
+          # spend 126.63 GiB destroying the comparison it exists to provide.
+          # If this guard ever goes red with the ciru id in it, the fix is to
+          # remove the declaration from modules/strix.nix, not to widen this.
           assert
             coordinator.services.local-models.artifacts == [
               "flashnext-fp8"

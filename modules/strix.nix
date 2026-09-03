@@ -120,6 +120,39 @@
         # No llama-swap row: vLLM serves this one through its own pair service.
         "flashnext-fp8"
       ]
+      # ── worker ONLY: the single-box ciru reference (#291) ─────────────────
+      #
+      # ⚠ DO NOT `nixos-rebuild switch` THE WORKER UNTIL THE NAS HOLDS THE
+      #   BYTES. modules/local-models.nix's sync fails hard, per file, with
+      #   "MISSING in Library: <id>/<name> (run library-fetch on the NAS?)"
+      #   for any artifact this list names that /mnt/library/weights does not
+      #   hold, and exits non-zero. The 126.63 GiB has to be at
+      #   /mnt/nas/models/weights/qwen38-flash-ciru-strix-iu4/ first. The
+      #   ordered bring-up is written down in the flashnix repo at
+      #   docs/trinity/CIRU-IU4-WORKER.md — follow it, do not improvise.
+      #
+      # NOT mirrored to the coordinator, and that asymmetry is the entire
+      # point: this is one box running the whole model, the control against
+      # which the flashnext TP=2 pair spread across BOTH twins is measured.
+      # Declaring it on the coordinator too would spend 126.63 GiB proving
+      # nothing and would break the coordinator's exact-list guard in
+      # flake.nix, which is deliberately left reading [ "flashnext-fp8" ].
+      #
+      # An ARTIFACT, never a deployment row: ciru's IU4 needs its own
+      # llama.cpp fork (github.com/ciru-ai/Qwen3.8-Flash-CIRU-STRIX-IU4, tag
+      # v1.1 = commit baba5e0617ac40aa88b9ba96f4b90e584caec64e, MIT). Stock
+      # llama.cpp, vLLM and HF transformers cannot load it, so there is no
+      # llama-swap row to write — same shape as flashnext-fp8 and the three
+      # glm53-flash-ciru rows. It is served, if at all, by a hand-run
+      # ./scripts/ciru/run-server.sh out of that checkout.
+      #
+      # And, exactly as above, THIS LINE IS THE ANTI-PRUNE: absent from
+      # wanted.json, local-models-sync `rm -rf`'s
+      # /var/lib/local-models/qwen38-flash-ciru-strix-iu4 on every boot,
+      # rebuild and sync start, costing a 126.63 GiB re-stage over the LAN.
+      ++ lib.optionals (config.networking.hostName == "worker") [
+        "qwen38-flash-ciru-strix-iu4"
+      ]
       ++ lib.optionals (config.networking.hostName == "coordinator") [
         # PARKED, not retired (#286, 2026-09-03). 70.7 GiB of snapshot payload
         # with no consumer: neither family has a systemd unit on either twin,

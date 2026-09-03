@@ -2161,6 +2161,88 @@ let
               };
             };
 
+            qwen38-flash-ciru-strix-iu4 = {
+              kind = "model";
+              maker = "Ciru (jcbtc)";
+              quantization = "Q4_1-IU4-PLE-FP8";
+              notes = "flashnix single-box reference lane, worker ONLY (the twins' TP=2 rows stay symmetric; this one deliberately is not mirrored): ciru's Qwen3.8-Flash-CIRU-STRIX-IU4, 11 files / 135963061571 bytes (126.63 GiB) on ONE Strix Halo. Declared as an artifact and never a llama-swap row, because it needs ciru's custom llama.cpp runtime (github.com/ciru-ai/Qwen3.8-Flash-CIRU-STRIX-IU4 tag v1.1 = commit baba5e0617ac40aa88b9ba96f4b90e584caec64e, MIT) — stock llama.cpp, vLLM and HF transformers CANNOT run it. THIS ROW IS THE ANTI-PRUNE: without it local-models-sync rm -rf's /var/lib/local-models/qwen38-flash-ciru-strix-iu4 on every boot, rebuild, and sync start, costing a 126.6 GiB re-stage — precisely what happened to flashnext-fp8 on both twins on 2026-08-29. A 126.6 GiB model fits a 128 GiB box only because ple/ple.payload.bin (48.8 GiB of exact FP8-E4M3 expert weights) is PAGED FROM NVMe at run time and never resident: the runtime keeps a 4 GiB PLE decoded-page cache plus an 8 GiB prompt cache and gives the rest to KV, so fast NVMe and >=160 GiB free storage are mandatory, and Linux is required for the validated P16/O_DIRECT prefill path. Why it is here: the single-box calibration point for the dual-box flashnix TP=2 numbers. Ciru's REPORTED figures, his and not measured here: 30.80 tok/s generation @8K at MTP depth 3, 359 tok/s prefill @8K, HumanEval 160/164. Lineage: base Qwen/Qwen3.8-Flash-Next @f5d08274bafd880402bd16f5e3e6c514136ec06c, PLE source Qwen/Qwen3.8-Flash-Next-FP8 @bcd9f01ddc9cff2316eb84281bebcd5b058bddce (a different snapshot from the one flashnext-fp8 pins — both are valid, do not reconcile them), runtime base ggml-org/llama.cpp @f5e85d43a048f3d5adefb4c5e29867d8077fba62. LICENCE: Qwen Community License 1.0 for the artifacts (LICENSE in-tree), MIT for the runtime — NOT the Apache-2.0 the neighbouring flashnext-fp8 row records. checksums.sha256 and profiles/strix-halo-production.env are carried deliberately: the shipped profile sets GGML_QWEN4EXP_PLE_STRICT_SHA=0, so `sha256sum -c checksums.sha256` from the artifact root is a prerequisite of using it, not a nicety. .gitattributes is omitted per house convention; the upstream repo is 12 files / 135963061732 bytes.";
+              source = {
+                layout = "snapshot";
+                localName = "Qwen3.8-Flash-CIRU-STRIX-IU4";
+                hfUrl = "https://huggingface.co/jcbtc/Qwen3.8-Flash-CIRU-STRIX-IU4";
+                revision = "070155a761f150aff6983991e246f43f0e2acbaf";
+                primary = "Qwen3.8-Flash-CIRU-STRIX-IU4.gguf";
+                files = [
+                  {
+                    path = "LICENSE";
+                    bytes = 3235;
+                    oid = "a0dc422560841fd68e06d974907f8b4c709bca44a67daad2b528437bdf676c08";
+                    hash = "sha256-oNxCJWCEH9aOBtl0kH+LTHCbykSmfarStShDe99nbAg=";
+                  }
+                  {
+                    path = "NOTICE.md";
+                    bytes = 980;
+                    oid = "a3025fe30913d85400eda53259d68bb22c6b491e734d5a00e971101091c8bc57";
+                    hash = "sha256-owJf4wkT2FQA7aUyWdaLsixrSR5zTVoA6XEQEJHIvFc=";
+                  }
+                  {
+                    path = "Qwen3.8-Flash-CIRU-STRIX-IU4.gguf";
+                    bytes = 79397818720;
+                    oid = "c0ea11e4e24d0f909720b6c4e7462aa1e6fbf5e0f6acc796063f2aed4cf46ed0";
+                    hash = "sha256-wOoR5OJND5CXILbE50Yqoeb79eD2rMeWBj8q7Uz0btA=";
+                  }
+                  {
+                    path = "README.md";
+                    bytes = 14931;
+                    oid = "9e68f1ed74c7d718eef4da6f4204442e09975b76e3a4d01431d2518a7e5e2e29";
+                    hash = "sha256-nmjx7XTH1xju9NpvQgRELgmXW3bjpNAUMdJRin5eLik=";
+                  }
+                  {
+                    path = "assets/qwen38-flash-ciru-strix-iu4.jpg";
+                    bytes = 160625;
+                    oid = "3a46a7fd054305b2c1a931682015d93094312fb3b76c8ef83a2adb350b0f584c";
+                    hash = "sha256-Okan/QVDBbLBqTFoIBXZMJQxL7O3bI74OirbNQsPWEw=";
+                  }
+                  {
+                    path = "checksums.sha256";
+                    bytes = 473;
+                    oid = "cd1177aef73724230e04e53171321339177a7fcb6cd1292d6794cb9abfa98f54";
+                    hash = "sha256-zRF3rvc3JCMOBOUxcTITORd6f8ts0SktZ5TLmr+pj1Q=";
+                  }
+                  {
+                    path = "mtp/Qwen3.8-Flash-CIRU-STRIX-IU4-MTP-Q8_0.gguf";
+                    bytes = 4135893248;
+                    oid = "e6743badef1f2619fcb5addfa4344a2a3368cb75214735117e3af80c70b80642";
+                    hash = "sha256-5nQ7re8fJhn8ta3fpDRKKjNoy3UhRzURfjr4DHC4BkI=";
+                  }
+                  {
+                    path = "ple/ple.manifest.json";
+                    bytes = 115213;
+                    oid = "eb7404ce5ef056729452df10ee888e0c300cd0459121444be3313c51788cc171";
+                    hash = "sha256-63QEzl7wVnKUUt8Q7oiODDAM0EWRIURL4zE8UXiMwXE=";
+                  }
+                  {
+                    path = "ple/ple.payload.bin";
+                    bytes = 52429053952;
+                    oid = "687fc742efb6888c6cd7cf9c80cb4b1ac8cb4707b9409c206699c43363e239b2";
+                    hash = "sha256-aH/HQu+2iIxs18+cgMtLGsjLRwe5QJwgZpnEM2PiObI=";
+                  }
+                  {
+                    path = "ple/ple.scale.bf16";
+                    bytes = 2;
+                    oid = "c7c58bd6007672362da2106fdbfaf9f50629e4bdf8598169c598027394ef9791";
+                    hash = "sha256-x8WL1gB2cjYtohBv2/r59QYp5L34WYFpxZgCc5Tvl5E=";
+                  }
+                  {
+                    path = "profiles/strix-halo-production.env";
+                    bytes = 192;
+                    oid = "2a5a9f7fd344ba40548d0c870d2a16086296ba72e638e5a47ea0d7531ddeea24";
+                    hash = "sha256-Klqff9NEukBUjQyHDSoWCGKWunLmOOWkfqDXUx3e6iQ=";
+                  }
+                ];
+              };
+            };
+
             flashnext-fp8 = {
               kind = "model";
               maker = "Qwen";
