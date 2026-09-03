@@ -1,10 +1,12 @@
-# add amd-quark package
+# amd-quark: cp314 outruns the pin — RESOLVED in flashnix, open question for us
 
-**Filed 2026-09-03 from the flashnix container build.** Not yet acted on.
+**Filed 2026-09-03 from the flashnix container build. Resolved the same evening.**
+The first version of this page blamed the network and was wrong; the corrected
+diagnosis is below, because the wrong one is an easy mistake to make twice.
 
 ## What stopped
 
-`substrate/container/Containerfile:264` — the editable engine install —
+`substrate/container/Containerfile` — the editable engine install —
 
 ```
 pip install -e /opt/vllm --no-build-isolation --extra-index-url ${ROCM_WHL}
@@ -12,50 +14,70 @@ ERROR: Could not find a version that satisfies the requirement amd-quark==0.12.p
        (from versions: 0.1.0, 0.6.0)
 ```
 
-The pin is upstream vLLM's own, at `requirements/rocm.txt:24` in the engine worktree
-(`~/.cache/flashnix/vllm`). `ROCM_WHL` is `https://stable.repo.amd.com/rocm/whl-next/`.
+## The actual cause: Python 3.14, not the index
 
-## What is actually true
+The image runs `PYTHON_VERSION=3.14.3`. Every amd-quark release caps
+`Requires-Python` below cp314:
 
-`amd-quark==0.12.post1` **exists on PyPI.** Measured, not remembered:
+| version | Requires-Python |
+|---|---|
+| 0.12.post1 | `>=3.11,<3.14` |
+| 0.11.2 (and 0.9-0.11.x) | `>=3.9.0,<3.13` |
+| 0.6.0 | `>=3.9.0` |
+| 0.1.0 | `>=3.6` |
 
-```
-$ curl -s https://pypi.org/simple/amd-quark/ | grep -o 'amd_quark-[0-9][^-]*'
-... 0.11.2  0.12.post1  0.12rc1  0.12rc2  0.12rc3  0.12rc4
-```
+pip discarded every capped release and offered exactly the two with **no upper
+bound** — which is the entire `from versions: 0.1.0, 0.6.0`. The pin was correct,
+the package was present, and pip was reading PyPI the whole time.
 
-So the pin is not wrong and the package is not missing. The resolver offered only
-`0.1.0, 0.6.0` — the ROCm index's much older copy — which means **pip never reached
-PyPI**, even though PyPI was its default primary index and only the ROCm index was
-passed as `--extra-index-url`.
+**What I got wrong, and why it looked right.** I saw `0.12.post1` on
+`pypi.org/simple/amd-quark/`, saw only `0.1.0, 0.6.0` in the resolver's list, and
+concluded pip had never reached PyPI — the same AAAA-with-no-IPv6-egress trap that
+had genuinely broken apt inside this same image an hour earlier (flashnix `1f06120`).
+A recent real fault is a seductive explanation for the next symptom. The tell I
+missed: `/simple/` lists filenames and hides `Requires-Python`, so "the version is
+listed" and "the version is installable" are different claims, and only the JSON API
+distinguishes them. Checking `pypi.org/pypi/amd-quark/0.12.post1/json` would have
+shown `<3.14` immediately.
 
-## The likely cause, and why it is familiar
+Second correction: **the ROCm index carries no amd-quark at all** — its project URL
+404s where torch, rocm and triton all 301. So the two offered versions came from
+PyPI, not from "the ROCm index's older copy" as the first version of this page said.
 
-This LAN publishes AAAA records with no IPv6 egress. That already broke apt inside the
-same build, where every source line came back `Ign:` and the fix was
-`Acquire::ForceIPv4 "true"` (flashnix commit `1f06120`). `pypi.org` has AAAA records.
-A pip that tries IPv6 first, hangs, and quietly proceeds with whatever index it *could*
-reach produces exactly the observed symptom: a real version, invisible.
+## How flashnix fixed it
 
-**Therefore the first thing to try is a network fix, not a pin change** — force IPv4 for
-pip the way we already do for apt. Relaxing or dropping the pin would "work" while
-leaving the real fault in place, and the next package to live only on PyPI would fail
-the same way with a different name.
+A dedicated step ahead of the engine install (`Containerfile:277`, flashnix `e6873a9`)
+installs the same pinned version with `--ignore-requires-python` scoped to that one
+step; the engine then finds the pin already satisfied. `ARG QUARK_PIN` holds the
+version and the engine-extract step asserts it still matches the engine's own
+`requirements/rocm.txt:24`, so the two cannot drift silently. The engine worktree was
+not touched.
 
-## Why a nix package may still be wanted
+Verified in throwaway containers rather than by a full rebuild: the failure reproduces
+byte-for-byte, the new step exits 0, all 57 deps resolve to cp314 wheels with no
+sdist, and the exact command that died now passes `--dry-run`.
 
-Independent of the container: nothing in this repo packages `amd-quark`, and nixpkgs has
-no `amd-quark` attribute. If Quark is ever wanted on the host side rather than only
-inside the flashnix image, it needs a `pkgs/amd-quark.nix`. `pkgs/huggingface-cli.nix`
-is the nearest existing shape for a Python tool from an upstream wheel.
+## What is still open for this repo
 
-Open question, deliberately not answered here: **do we need it at all?** Qwen is FP8,
-DeepSeek-V4 is native MXFP4, GLM-5.3 is ciru's IU4 — none is Quark-quantized. If every
-`quark` import in the engine is lazy and fires only for Quark checkpoints, the honest
-answer may be that the dependency is dead weight on our serve paths and the correct fix
-is upstream-shaped, not ours.
+**Do we need amd-quark at all?** Qwen is FP8, DeepSeek-V4 is native MXFP4, GLM-5.3 is
+ciru's IU4 — none is Quark-quantized. If every `quark` import in the engine is lazy,
+the dependency is dead weight on our serve paths and the upstream-shaped fix is to
+drop it, not to bypass its metadata. Unanswered.
+
+**cp314 will do this again.** Running a 3.14 interpreter ahead of the ecosystem means
+any pure-Python dependency whose maintainer caps `Requires-Python` disappears from
+resolution with a message that looks like a missing package. Worth knowing as a class
+of failure before the next one costs an hour.
+
+**Startup cost, for whoever watches a first serve:** quark JIT-compiles a stable-ABI
+C++ `hw_emulation` extension on first import — ~2.8s on gfx1151, needs the GPU and
+hipcc, both present at serve time. Fast, but a real compile in the startup path. Do
+not mistake it for a hang.
+
+**A nix package is not currently wanted.** Nothing here packages amd-quark and nothing
+needs it host-side; it lives inside the flashnix image. If that changes,
+`pkgs/huggingface-cli.nix` is the nearest existing shape.
 
 ## Decides what
 
-Nothing yet. No Nix file references amd-quark. When it does, it will be a new
-`pkgs/amd-quark.nix` plus whichever host list pulls it in.
+Nothing in this repo. The fix lives in flashnix `substrate/container/Containerfile`.
