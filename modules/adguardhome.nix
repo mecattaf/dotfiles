@@ -107,7 +107,17 @@ in
             # from anywhere. Stable for the lifetime of the node key (which
             # is expiry-disabled); if the NAS ever re-registers, update this
             # and the console entry together.
-            "100.89.54.51"
+            #
+            # 2026-09-03: it re-registered. This read 100.89.54.51 and the
+            # NAS's tailscale0 now carries 100.64.0.1, so AdGuard could not
+            # bind and exited 1 on every start — a crash loop that took the
+            # LAN resolver down with it (systemd-resolved's global DNS is
+            # 127.0.0.1, i.e. AdGuard, so nothing on this box could resolve
+            # anything). The ExecStartPre wait above does not catch this: it
+            # waits 30s for an address that will never appear, then exits 0
+            # and lets the bind fail anyway. The console-side split-DNS entry
+            # must be repointed to 100.64.0.1 by hand to match.
+            "100.64.0.1"
           ];
         port = 53;
         upstream_dns = [
