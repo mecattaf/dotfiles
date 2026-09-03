@@ -30,6 +30,29 @@ The coupling is the reverse of what it looks like. `local-models-sync.service` d
 only `WantedBy=multi-user.target` (`modules/local-models.nix:455`); it is `llama-swap`
 that reaches for it.
 
+## It is not hypothetical — it already destroyed this artifact repeatedly
+
+`journalctl -u local-models-sync` on coordinator, Sep 1:
+
+```
+03:25:45  pruning retired artifact deepseek-v4-flash-0731-bf16
+06:26:47  pruning retired artifact deepseek-v4-flash-0731-bf16
+07:04:34  pruning retired artifact deepseek-v4-flash-0731-bf16
+08:10:07  pruning retired artifact deepseek-v4-flash-0731-bf16
+12:42:40  pruning retired artifact deepseek-v4-flash-0731-bf16
+15:54:29  pruning retired artifact deepseek-v4-flash-0731-bf16
+20:13:57  pruning retired artifact deepseek-v4-flash-0731-bf16
+```
+
+Seven sweeps in seventeen hours against a 156 GiB artifact, each one firing because
+llama-swap started. It ran again on Sep 3 at 17:46 against a batch of other rows. This
+is the direct explanation for why DeepSeek-V4 read as absent from both twins at the
+start of the 2026-09-03 bring-up despite having been staged before: it was staged into
+the pruned tree while undeclared, and the sweep removed it — more than once.
+
+The unit is not lying about it either; it logs every removal with the artifact name.
+Nothing was silent except the consequence.
+
 ## Why that matters more than a boot-time prune
 
 `substrate/host/fn-cluster-up.sh` calls `fn-swap-arbitrate.sh stop` to take the GPUs,
