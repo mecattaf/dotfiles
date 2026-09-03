@@ -784,6 +784,1050 @@ let
               notes = "Aggressive refusal-removal route selected to diversify the pool beyond Heretic/abliteration.";
             };
 
+            glm53-flash-ciru-strix-iu4-rank0 = {
+              kind = "model";
+              maker = "Ciru (jcbtc)";
+              quantization = "W4-IU4-hybrid-g128";
+              notes = "flashnix GLM lane, TP rank 0 payload: ciru's per-rank prepacked W4 (IU4 layout glm53_iu4_n32_kword_g128_v1) plus the shared config, runtime wheels/kernels, systemd and docs. coordinator ONLY: the two ranks carry different bytes, so each twin declares its own row. Never a llama-swap row; served by the flashnix pair service. Weights are AWQ-derived under ciru's private permission from wtdcode: use, do not redistribute. Runtime code Apache-2.0/MIT, see THIRD_PARTY_NOTICES.md in the artifact.";
+              source = {
+                layout = "snapshot";
+                localName = "glm53-flash-ciru-strix-iu4-rank0";
+                hfUrl = "https://huggingface.co/jcbtc/GLM5.3-Flash-CIRU-STRIX-IU4";
+                revision = "72a639ec52818a5bcf71162dbbbcbc29c6b6e8cd";
+                primary = "config/config.json";
+                files = [
+                  {
+                    path = "LICENSE";
+                    bytes = 1070;
+                    oid = "30b85b6b9659f2e78aa259f8faf5d920a68dee7c9ced3fa6dba1f19f2bc4fca1";
+                    hash = "sha256-MLhba5ZZ8ueKoln4+vXZIKaN7nyc7T+m26HxnyvE/KE=";
+                  }
+                  {
+                    path = "LICENSE_SCOPE.md";
+                    bytes = 1511;
+                    oid = "79ebd15d2e8fa494bff962d3589107a3d238bda661423a9c3f8ec4e71ff05cfa";
+                    hash = "sha256-eevRXS6PpJS/+WLTWJEHo9I4vaZhQjqcP47E5x/wXPo=";
+                  }
+                  {
+                    path = "PUBLIC_RELEASE_CHECKLIST.md";
+                    bytes = 12362;
+                    oid = "a480834b774c3ea545806e2939b538c8ca1b0ba444f39b92dcb1fe8b5e59e2b7";
+                    hash = "sha256-pICDS3dMPqVFgG4pObU4yMobC6RE85uS3LH+i15Z4rc=";
+                  }
+                  {
+                    path = "README.md";
+                    bytes = 19562;
+                    oid = "9e3775d73d0bbeacf7c8dac169fe8d12634c83adb9e39d1a84ea1952a6f9ccb3";
+                    hash = "sha256-njd11z0Lvqz3yNrBaf6NEmNMg625450ahOoZUqb5zLM=";
+                  }
+                  {
+                    path = "THIRD_PARTY_NOTICES.md";
+                    bytes = 2538;
+                    oid = "5ecfd3f0d9ceb2a2ce872b56318aaae4e0dc6a4548ab25fa66e54bb10fb04aea";
+                    hash = "sha256-Xs/T8NnOsqLOhytWMYqq5ODcakVIqyX6ZuVLsQ+wSuo=";
+                  }
+                  {
+                    path = "assets/GLM5.3-Flash-CIRU-STRIX-IU4.png";
+                    bytes = 2066759;
+                    oid = "2ebf4a64a6d646dd9d5829a4217e437ebae91a40e97656be6abf4a81f84976dc";
+                    hash = "sha256-Lr9KZKbWRt2dWCmkIX5DfrrpGkDpdla+ar9KgfhJdtw=";
+                  }
+                  {
+                    path = "benchmarks/128k-cache-dev9-read-rank0.prom";
+                    bytes = 98163;
+                    oid = "eff5ab45e33295de427a9397b6f648bb3ee54d297454dfca2b00635dc3b8ff7c";
+                    hash = "sha256-7/WrReMyld5CepOXtvZIuz7lTSl0VN/KKwBjXcO4/3w=";
+                  }
+                  {
+                    path = "benchmarks/128k-cache-dev9-read-rank1.prom";
+                    bytes = 96984;
+                    oid = "28349234e4b681510da8ce4613411cc5fa238c48e81278a416e452ff06cdfbd0";
+                    hash = "sha256-KDSSNOS2gVENqM5GE0EcxfojjEjoEnikFuRS/wbN+9A=";
+                  }
+                  {
+                    path = "benchmarks/128k-cache-dev9-read-v1.json";
+                    bytes = 1106;
+                    oid = "a5be0960703ba89fe36d6f52d81509b1f692bb27a6c9f6fce8d2bd7960d0fff8";
+                    hash = "sha256-pb4JYHA7qJ/jbW9S2BUJsfaSuyemyfb86NK9eWDQ//g=";
+                  }
+                  {
+                    path = "benchmarks/128k-cache-repair-write-v1.json";
+                    bytes = 1091;
+                    oid = "f833d895071021131ad1559f2e025e69414364ae03173dd8dd84082c808bf614";
+                    hash = "sha256-+DPYlQcQIRMa0VWfLgJeaUFDZK4DFz3Y3YQILICL9hQ=";
+                  }
+                  {
+                    path = "benchmarks/README.md";
+                    bytes = 8002;
+                    oid = "bc6659e4fb84d5ccf4b49dae147ee941a4e3bce3c83e333c7b65088478835283";
+                    hash = "sha256-vGZZ5PuE1cz0tJ2uFH7pQaTjvOPIPjM8e2UIhHiDUoM=";
+                  }
+                  {
+                    path = "benchmarks/bf16-quality.json";
+                    bytes = 3109;
+                    oid = "4559fc167da962b2fccac141e4292d386f30fc215c89d43b0c80b3410cae088e";
+                    hash = "sha256-RVn8Fn2pYrL8ysFB5CktOG8w/CFcidQ7DICzQQyuCI4=";
+                  }
+                  {
+                    path = "benchmarks/hard15.json";
+                    bytes = 1263;
+                    oid = "f7d6a0dd8cc8ca6c627df5cffe1712bbcd81d4096025af978770d604099aab63";
+                    hash = "sha256-99ag3YzIymxiffXP/hcSu82B1AlgJa+Xh3DWBAmaq2M=";
+                  }
+                  {
+                    path = "benchmarks/packaged-nhi-gate.md";
+                    bytes = 5316;
+                    oid = "162c97b2059eb403b39b47cfcf170906b66d8c9235ad13a0e44535d284953546";
+                    hash = "sha256-FiyXsgWetAOzm0fPzxcJBrZtjJI1rROg5EU10oSVNUY=";
+                  }
+                  {
+                    path = "benchmarks/production-128k-he0-9-v3.jsonl";
+                    bytes = 61484;
+                    oid = "421578786d6ab402be7313bf8c8ab6c3f3d56e171fa7c1777743578e3889fe44";
+                    hash = "sha256-QhV4eG1qtAK+cxO/jIq2w/PVbhcfp8F3d0NXjjiJ/kQ=";
+                  }
+                  {
+                    path = "benchmarks/production-128k-he0-9-v3.score.json";
+                    bytes = 2842;
+                    oid = "dcb4c7f001bc4bf61124a005309de002de06912513aa03328559146659aa8dbc";
+                    hash = "sha256-3LTH8AG8S/YRJKAFMJ3gAt4GkSUTqgMyhVkUZlmqjbw=";
+                  }
+                  {
+                    path = "benchmarks/standard69.json";
+                    bytes = 3793;
+                    oid = "1168acec38eabc0cfde4af3d091773327264154af7bda07ca4da9cdab8aa9d39";
+                    hash = "sha256-EWis7DjqvAz95K89CRdzMnJkFUr3vaB8pNqc2riqnTk=";
+                  }
+                  {
+                    path = "benchmarks/tooleval-config.json";
+                    bytes = 2518;
+                    oid = "a7b48d116f87c1967357f928dbc34a78b62e95b1ae5c1c937711a914c6a26866";
+                    hash = "sha256-p7SNEW+HwZZzV/ko28NKeLYulbGuXByTdxGpFMaiaGY=";
+                  }
+                  {
+                    path = "config/chat_template.jinja";
+                    bytes = 10644;
+                    oid = "34d5ee66b12fa6446cdae131c352b8f68cd85369e0e6fda115583805fada3891";
+                    hash = "sha256-NNXuZrEvpkRs2uExw1K49ozYU2ng5v2hFVg4BfraOJE=";
+                  }
+                  {
+                    path = "config/config.json";
+                    bytes = 7374;
+                    oid = "18485cd976c9e26c30362b034a43b4bfd7aab2e34ec7563ac97887a4c4c6faa4";
+                    hash = "sha256-GEhc2XbJ4mwwNisDSkO0v9eqsuNOx1Y6yXiHpMTG+qQ=";
+                  }
+                  {
+                    path = "config/generation_config.json";
+                    bytes = 215;
+                    oid = "a07de3408f578c6a7ca8a1646aa91a41df55d539349fda15fb8b611eb007e9b7";
+                    hash = "sha256-oH3jQI9XjGp8qKFkaqkaQd9V1Tk0n9oV+4thHrAH6bc=";
+                  }
+                  {
+                    path = "config/processor_config.json";
+                    bytes = 1445;
+                    oid = "ce7d2572395b24edcd2525e886ecbd132754db2f9025adbbcf5f482d7978fa40";
+                    hash = "sha256-zn0lcjlbJO3NJSXohuy9EydU2y+QJa27z19ILXl4+kA=";
+                  }
+                  {
+                    path = "config/tokenizer.json";
+                    bytes = 20217442;
+                    oid = "19e773648cb4e65de8660ea6365e10acca112d42a854923df93db4a6f333a82d";
+                    hash = "sha256-GedzZIy05l3oZg6mNl4QrMoRLUKoVJI9+T20pvMzqC0=";
+                  }
+                  {
+                    path = "config/tokenizer_config.json";
+                    bytes = 832;
+                    oid = "21848631f494177b449db5fab804cfb52e38077e0802dd4a8568978c010c3d3b";
+                    hash = "sha256-IYSGMfSUF3tEnbX6uATPtS44B34IAt1KhWiXjAEMPTs=";
+                  }
+                  {
+                    path = "context-profiles/1-64k.env";
+                    bytes = 100;
+                    oid = "e14c6da1a5bd5ff5d2069145f4831eff8a4f8e51fd6e93217e71bbc84986db59";
+                    hash = "sha256-4UxtoaW9X/XSBpFF9IMe/4pPjlH9bpMhfnG7yEmG21k=";
+                  }
+                  {
+                    path = "context-profiles/2-128k.env";
+                    bytes = 103;
+                    oid = "c98ae19c5cb4bb352e051a7de4abefea9884fa602604e094d873c4982a2e1f3b";
+                    hash = "sha256-yYrhnFy0uzUuBRp95Kvv6piE+mAmBOCU2HPEmCouHzs=";
+                  }
+                  {
+                    path = "context-profiles/3-256k.env";
+                    bytes = 103;
+                    oid = "88e4a8a630c85b4c496c257bdb37d755fac5932e7ae7e9e09c4c7ee80eab5550";
+                    hash = "sha256-iOSopjDIW0xJbCV72zfXVfrFky565+ngnEx+6A6rVVA=";
+                  }
+                  {
+                    path = "docs/CiruStrixLink-GLM5.3-Flash-CIRU-STRIX-IU4.md";
+                    bytes = 22048;
+                    oid = "0d8961d5bd5299e63368c5bf91efe0aba6713554fcf513f0aba699a0ff8006e5";
+                    hash = "sha256-DYlh1b1SmeYzaMW/ke/gq6ZxNVT89RPwq6aZoP+ABuU=";
+                  }
+                  {
+                    path = "docs/INSTALLATION.md";
+                    bytes = 23583;
+                    oid = "8c01c30d589acbec2859a9f845e9aae65bb9b119b7175accff528b071fd7c00e";
+                    hash = "sha256-jAHDDViay+woWan4Remq5lu5sRm3F1rM/1KLBx/XwA4=";
+                  }
+                  {
+                    path = "install-generation-frontend-user-service.sh";
+                    bytes = 996;
+                    oid = "abf092616b9d0c287efeabf8b99151d3a2b35a25e53ee49aa2ff7c2e6bf0f798";
+                    hash = "sha256-q/CSYWudDCh+/qv4uZFR06KzWiXlPuSaov98Lmvw95g=";
+                  }
+                  {
+                    path = "install-nhi-system-service.sh";
+                    bytes = 14279;
+                    oid = "dd5001875d676442f878fdf7bc86617cf78a19dd38ae245612bae2ae3558409d";
+                    hash = "sha256-3VABh11nZEL4eP33vIZhfPeKGd04riRWErrirjVYQJ0=";
+                  }
+                  {
+                    path = "install-user-service.sh";
+                    bytes = 1610;
+                    oid = "a9a4e6890f4fdcf1562f751b9caa44956189c7ecdea21444c6804437035350ea";
+                    hash = "sha256-qaTmiQ9P3PFWL3UbnKpElWGJx+zeohRExoBENwNTUOo=";
+                  }
+                  {
+                    path = "launch-node.sh";
+                    bytes = 10245;
+                    oid = "a68a0c69bb6db933d59daddf0161b7f00218640245c84e072fdd3a9869b487f2";
+                    hash = "sha256-pooMabttuTPVna3fAWG38AIYZAJFyE4HL906mGm0h/I=";
+                  }
+                  {
+                    path = "rank-0/GLM5.3-Flash-CIRU-STRIX-IU4-rank-0-part-0.safetensors";
+                    bytes = 7851586392;
+                    oid = "ef19436bd7ed4b030542f2f430bbff5461cca3196a3496ed85ba8b34d02bf1bd";
+                    hash = "sha256-7xlDa9ftSwMFQvL0MLv/VGHMoxlqNJbthbqLNNAr8b0=";
+                  }
+                  {
+                    path = "rank-0/GLM5.3-Flash-CIRU-STRIX-IU4-rank-0-part-1.safetensors";
+                    bytes = 8218435312;
+                    oid = "f9481d5cbee96e04d6fa7d8ac854d9b8a3788f2578b0ea449b9b4d4428418685";
+                    hash = "sha256-+UgdXL7pbgTW+n2KyFTZuKN4jyV4sOpEm5tNRChBhoU=";
+                  }
+                  {
+                    path = "rank-0/GLM5.3-Flash-CIRU-STRIX-IU4-rank-0-part-10.safetensors";
+                    bytes = 7563801048;
+                    oid = "76408c5361f4f990f1ab2d6cf43729cd6e80aa709940c2c740c24a04236ff4f1";
+                    hash = "sha256-dkCMU2H0+ZDxqy1s9DcpzW6AqnCZQMLHQMJKBCNv9PE=";
+                  }
+                  {
+                    path = "rank-0/GLM5.3-Flash-CIRU-STRIX-IU4-rank-0-part-2.safetensors";
+                    bytes = 8218435424;
+                    oid = "da923ce1bc6ec9bc84218b79631259f61daa7831567202f85dc52ee5621882bc";
+                    hash = "sha256-2pI84bxuybyEIYt5YxJZ9h2qeDFWcgL4XcUu5WIYgrw=";
+                  }
+                  {
+                    path = "rank-0/GLM5.3-Flash-CIRU-STRIX-IU4-rank-0-part-3.safetensors";
+                    bytes = 8218435424;
+                    oid = "4e5eb60ddefb69dd40c8f237684f85ea2f5962735d8b2381a05341d15226d14b";
+                    hash = "sha256-Tl62Dd77ad1AyPI3aE+F6i9ZYnNdiyOBoFNB0VIm0Us=";
+                  }
+                  {
+                    path = "rank-0/GLM5.3-Flash-CIRU-STRIX-IU4-rank-0-part-4.safetensors";
+                    bytes = 8218435424;
+                    oid = "35655df15dcdd18310154faf21e89bff5ba94db900d6ff387c3dd0c911cea8f6";
+                    hash = "sha256-NWVd8V3N0YMQFU+vIeib/1upTbkA1v84fD3QyRHOqPY=";
+                  }
+                  {
+                    path = "rank-0/GLM5.3-Flash-CIRU-STRIX-IU4-rank-0-part-5.safetensors";
+                    bytes = 8218435424;
+                    oid = "f0fb0284599e35c612be8ce091e3cb56b98e4d0113f7728ca35e667078c203a0";
+                    hash = "sha256-8PsChFmeNcYSvozgkePLVrmOTQET93KMo15mcHjCA6A=";
+                  }
+                  {
+                    path = "rank-0/GLM5.3-Flash-CIRU-STRIX-IU4-rank-0-part-6.safetensors";
+                    bytes = 8218435424;
+                    oid = "25c2ad306aebb38b0e8f1835261c4235189b6a42d2f839013995acd9d4525f34";
+                    hash = "sha256-JcKtMGrrs4sOjxg1JhxCNRibakLS+DkBOZWs2dRSXzQ=";
+                  }
+                  {
+                    path = "rank-0/GLM5.3-Flash-CIRU-STRIX-IU4-rank-0-part-7.safetensors";
+                    bytes = 8218435424;
+                    oid = "42c1f7b625973f489c18c15f15ef995db98b62b425595c7f494ea3e91b7e619d";
+                    hash = "sha256-QsH3tiWXP0icGMFfFe+ZXbmLYrQlWVx/SU6j6Rt+YZ0=";
+                  }
+                  {
+                    path = "rank-0/GLM5.3-Flash-CIRU-STRIX-IU4-rank-0-part-8.safetensors";
+                    bytes = 8218435424;
+                    oid = "167074d6cf6295125735d26896aa567d7df17c381b313eb913152986bf7461de";
+                    hash = "sha256-FnB01s9ilRJXNdJolqpWfX3xfDgbMT65ExUphr90Yd4=";
+                  }
+                  {
+                    path = "rank-0/GLM5.3-Flash-CIRU-STRIX-IU4-rank-0-part-9.safetensors";
+                    bytes = 8218435424;
+                    oid = "c76e83307ed3ea7da0651153a4202b45b0934a72b66a1cc215fd0bcb8bdc6969";
+                    hash = "sha256-x26DMH7T6n2gZRFTpCArRbCTSnK2ahzCFf0Ly4vcaWk=";
+                  }
+                  {
+                    path = "rank-0/glm53-runtime-prepack.json";
+                    bytes = 1296;
+                    oid = "6677ca20b64b8d3aab007ac8f0d85bef6552894897808c269e1bf841398af4ef";
+                    hash = "sha256-ZnfKILZLjTqrAHrI8Nhb72VSiUiXgIwmnhv4QTmK9O8=";
+                  }
+                  {
+                    path = "run-node.sh";
+                    bytes = 867;
+                    oid = "450aa1f65fa3d65a3fb16326e86c8aa45edf7233877fa13f15bf9f383a9bac7f";
+                    hash = "sha256-RQqh9l+j1lo/sWMm6GyKpF7fcjOHf6E/Fb+fODqbrH8=";
+                  }
+                  {
+                    path = "runtime/generation-frontend/LICENSE";
+                    bytes = 11334;
+                    oid = "f66965430a7a838d6de955bba6a89862ab56f9fc0154b08a7a2c2804958007ce";
+                    hash = "sha256-9mllQwp6g41t6VW7pqiYYqtW+fwBVLCKeiwoBJWAB84=";
+                  }
+                  {
+                    path = "runtime/generation-frontend/NOTICE";
+                    bytes = 199;
+                    oid = "855ae0d70a97876c725fe63536a6f58456954cca7d6774a2d6f97c863553852f";
+                    hash = "sha256-hVrg1wqXh2xyX+Y1Nqb1hFaVTMp9Z3Si1vl8hjVThS8=";
+                  }
+                  {
+                    path = "runtime/generation-frontend/glm53_generation_frontend.py";
+                    bytes = 5670;
+                    oid = "77c6a27ac9c04348e798e82b88abc5e30b31f873dacdf566a48c540e8fc946f5";
+                    hash = "sha256-d8aiesnAQ0jnmOgriKvF4wsx+HPazfVmpIxUDo/JRvU=";
+                  }
+                  {
+                    path = "runtime/generation-frontend/run.sh";
+                    bytes = 1188;
+                    oid = "384de03b070b5af23b7c2250b0f42134a0cf33dd8894af1f3fdf4b299efa551a";
+                    hash = "sha256-OE3gOwcLWvI7fCJQsPQhNKDPM92IlK8fP99LKZ76VRo=";
+                  }
+                  {
+                    path = "runtime/gfx1151/GLM5.3-Flash-CIRU-STRIX-IU4-dense-kda.so";
+                    bytes = 134872;
+                    oid = "12aee5aa0e88c700438345909f2e659f9016bc752a5863626fd7a04b994b4a50";
+                    hash = "sha256-Eq7lqg6IxwBDg0WQny5ln5AWvHUqWGNib9egS5lLSlA=";
+                  }
+                  {
+                    path = "runtime/gfx1151/GLM5.3-Flash-CIRU-STRIX-IU4-iu4-m1.so";
+                    bytes = 157816;
+                    oid = "aa77365274b88b42264408737b4968f22ad395daffeafe84497189347236fa37";
+                    hash = "sha256-qnc2UnS4i0ImRAhze0lo8irTldr/6v6ESXGJNHI2+jc=";
+                  }
+                  {
+                    path = "runtime/gfx1151/GLM5.3-Flash-CIRU-STRIX-IU4-m4-residual.so";
+                    bytes = 211568;
+                    oid = "0cb7cec9af206621a4e39947b246f752190e57e98818f5fd11a90504a7e1912f";
+                    hash = "sha256-DLfOya8gZiGk45lHskb3UhkOV+mIGPX9EakFBKfhkS8=";
+                  }
+                  {
+                    path = "runtime/gfx1151/GLM5.3-Flash-CIRU-STRIX-IU4-m8-align.so";
+                    bytes = 101552;
+                    oid = "1709a0a5029a4f7cbb6eb02f129730307e6351ba8890b0cbef3975c5bd0a1cfc";
+                    hash = "sha256-FwmgpQKaT3y7brAvEpcwMH5jUbqIkLDL7zl1xb0KHPw=";
+                  }
+                  {
+                    path = "runtime/gfx1151/GLM5.3-Flash-CIRU-STRIX-IU4-nhi-m8-bf16.so";
+                    bytes = 35768;
+                    oid = "46f4fd80444ac177b0dbfdc6edc368ef5f41324421aa742fae85ac770938febf";
+                    hash = "sha256-RvT9gERKwXew2/3G7cNo719BMkQhqnQvroWsdwk4/r8=";
+                  }
+                  {
+                    path = "runtime/gfx1151/GLM5.3-Flash-CIRU-STRIX-IU4-resident-g128.so";
+                    bytes = 187856;
+                    oid = "ea4295c7ad0cd7e3e43eb43d240c58c790647b5b4a249cdd54a07f079f5072e9";
+                    hash = "sha256-6kKVx60M1+PkPrQ9JAxYx5Bke1tKJJzdVKB/B59Qcuk=";
+                  }
+                  {
+                    path = "runtime/gfx1151/GLM5.3-Flash-CIRU-STRIX-IU4-top8-epilogue.so";
+                    bytes = 112216;
+                    oid = "aadf78f626f210a8139a915f99fbec09257eb22910d98d68d403215940e62519";
+                    hash = "sha256-qt949ibyEKgTmpFfmfvsCSV+sikQ2Y1o1AMhWUDmJRk=";
+                  }
+                  {
+                    path = "runtime/gfx1151/moe-tuned-r23/E=288,N=1024,device_name=AMD_Radeon_8060S,dtype=int4_w4a16.json";
+                    bytes = 379;
+                    oid = "2ebd0932d45b0012659f729a49522751de721476dd52db15e2e76ae466169440";
+                    hash = "sha256-Lr0JMtRbABJln3KaSVInUd5yFHbdUtsV4udq5GYWlEA=";
+                  }
+                  {
+                    path = "runtime/gfx1151/moe-tuned-r23/E=288,N=2048,device_name=AMD_Radeon_8060S,dtype=int4_w4a16.json";
+                    bytes = 379;
+                    oid = "2ebd0932d45b0012659f729a49522751de721476dd52db15e2e76ae466169440";
+                    hash = "sha256-Lr0JMtRbABJln3KaSVInUd5yFHbdUtsV4udq5GYWlEA=";
+                  }
+                  {
+                    path = "runtime/packages/GLM5.3-Flash-CIRU-STRIX-IU4-aiter-gfx1151-source-v0.1.0-rc1.tar.gz";
+                    bytes = 55734195;
+                    oid = "986e7d734d4c32e70788ad0052a4c48196487b22db1bb9de1b220e555bb3de99";
+                    hash = "sha256-mG59c01MMucHiK0AUqTEgZZIeyLbG7neGyIOVVuz3pk=";
+                  }
+                  {
+                    path = "runtime/packages/GLM5.3-Flash-CIRU-STRIX-IU4-kernels-source-v0.1.0-rc1.tar.gz";
+                    bytes = 41147;
+                    oid = "88e96a32dbfa01b0bce712d2ded81fbe282452afc59c0961f6c10e7a7a0b2841";
+                    hash = "sha256-iOlqMtv6AbC85xLS3tgfvigkUq/FnAlh9sEOenoLKEE=";
+                  }
+                  {
+                    path = "runtime/packages/GLM5.3-Flash-CIRU-STRIX-IU4-vllm-source-v0.1.0-rc2-dev9.tar.gz";
+                    bytes = 40520111;
+                    oid = "c9b6c30d9690591a0e01ff05fcbf2b3456e9207b92bf4268a4c62a294da965bb";
+                    hash = "sha256-ybbDDZaQWRoOAf8F/L8rNFbpIHuSv0JopMYqKU2pZbs=";
+                  }
+                  {
+                    path = "runtime/packages/INSTALL-RUNTIME.sh";
+                    bytes = 4464;
+                    oid = "2cfa66b5e42cfe0b2cea1d75da6daa3147313f6caa9d897fbd74d7616d61c4b1";
+                    hash = "sha256-LPpmteQs/gss6h112m2qMUcxP2yqnYl/vXTXYW1hxLE=";
+                  }
+                  {
+                    path = "runtime/packages/README.md";
+                    bytes = 14159;
+                    oid = "8a8b6dc95dc38ed1e93d6fce3fe05fe1aa86911b71682d8389351d4284c0a224";
+                    hash = "sha256-iottyV3DjtHpPW/OP+Bf4aqGkRtxaC2DiTUdQoTAoiQ=";
+                  }
+                  {
+                    path = "runtime/packages/aiter-jit-gfx1151/module_aiter_core.so";
+                    bytes = 567024;
+                    oid = "3580569033331d904b3ca2b899e3bea00324d098dc5a28c3c8f76a124f24f846";
+                    hash = "sha256-NYBWkDMzHZBLPKK4meO+oAMk0JjcWijDyPdqEk8k+EY=";
+                  }
+                  {
+                    path = "runtime/packages/nixos-module.nix";
+                    bytes = 349;
+                    oid = "5894153308f708cbfe3fb49280d7fbae1fbc3390046d33a01577682c5ecdc8e3";
+                    hash = "sha256-WJQVMwj3CMv+P7SSgNf7rh+8M5AEbTOgFXdoLF7NyOM=";
+                  }
+                  {
+                    path = "runtime/packages/requirements-runtime.lock";
+                    bytes = 2129;
+                    oid = "0e27c6d236d3011c468b142c1772c1324f65e22edf406f4651afa9f6e8aa7582";
+                    hash = "sha256-DifG0jbTARxGixQsF3LBMk9l4i7fQG9GUa+p9uiqdYI=";
+                  }
+                  {
+                    path = "runtime/packages/runtime-env.sh";
+                    bytes = 4973;
+                    oid = "023b51c21ae9ab060a702beb41a8a86c53479a9f39086d11818c6d7c9e9d2a8f";
+                    hash = "sha256-AjtRwhrpqwYKcCvrQaiobFNHmp85CG0RgYxtfJ6dKo8=";
+                  }
+                  {
+                    path = "runtime/packages/shell.nix";
+                    bytes = 416;
+                    oid = "85a5db43958b734ed84c8d59113a6aa9e4e5fd5d0836ecf38be29d90c1a1d4c1";
+                    hash = "sha256-haXbQ5WLc07YTI1ZETpqqeTl/V0INuzzi+KdkMGh1ME=";
+                  }
+                  {
+                    path = "runtime/packages/wheels/amd_aiter-0.1.0rc1-cp314-cp314-linux_x86_64.whl";
+                    bytes = 67412360;
+                    oid = "e392272a101a5f11809818df222ccfe68892c4d541a83eefdfd3e6e3e08d7cb1";
+                    hash = "sha256-45InKhAaXxGAmBjfIizP5oiSxNVBqD7v39Pm4+CNfLE=";
+                  }
+                  {
+                    path = "runtime/packages/wheels/vllm-0.1.0rc2.dev9+g9255fd9fb9.rocm100-cp314-cp314-linux_x86_64.whl";
+                    bytes = 44318322;
+                    oid = "ba5b1c0f957c41cf0d4d0af36df59cbe25ae5d0640766baea6d7ce32506d2317";
+                    hash = "sha256-ulscD5V8Qc8NTQrzbfWcviWuXQZAdmuuptfOMlBtIxc=";
+                  }
+                  {
+                    path = "select-context-profile.sh";
+                    bytes = 1329;
+                    oid = "dc952cc01d0cace7056d19e5154bc776bb895ded518f5c488263456453a300cb";
+                    hash = "sha256-3JUswB0MrOcFbRnlFUvHdruJXe1Rj1xIgmNFZFOjAMs=";
+                  }
+                  {
+                    path = "select-nhi-context-profile.sh";
+                    bytes = 2135;
+                    oid = "ade63ebf7997f2035e958b507786f868ab2dd873ff7d3dc2182e59ba1aa7cf64";
+                    hash = "sha256-reY+v3mX8gNelYtQd4b4aKst2HP/fT3CGC5Zuhqnz2Q=";
+                  }
+                  {
+                    path = "systemd/GLM5.3-Flash-CIRU-STRIX-IU4-frontend.service";
+                    bytes = 602;
+                    oid = "25d22ce6f261b4c8d2d39f128da3ef29b62dbcec51b0e9e6c2320f85afec1eb8";
+                    hash = "sha256-JdIs5vJhtMjS058SjaPvKbYtvOxRsOnmwjIPha/sHrg=";
+                  }
+                  {
+                    path = "systemd/GLM5.3-Flash-CIRU-STRIX-IU4-nhi@.service";
+                    bytes = 1094;
+                    oid = "6a66abf8670afaf7ea4c58d9ce94b9d5eeea4c0fa6f8a8188e704a6aa120843a";
+                    hash = "sha256-amar+GcK+vfqTFjZzpS51e7qTA+m+KgYjnBKaqEghDo=";
+                  }
+                  {
+                    path = "systemd/GLM5.3-Flash-CIRU-STRIX-IU4.service";
+                    bytes = 549;
+                    oid = "43795fbee7ae6d4f8254ab95e93a2972a4f9649d38918de604906b519715530e";
+                    hash = "sha256-Q3lfvueubU+CVKuV6TopcqT5ZJ04kY3mBJBrUZcVUw4=";
+                  }
+                  {
+                    path = "systemd/external-transport.env.example";
+                    bytes = 595;
+                    oid = "8e53d2a02b0cfc4f1820fad94448dfd0e479a323e7c8aa42f64d048bca2649e2";
+                    hash = "sha256-jlPSoCsM/E8YIPrZREjf0OR5oyPnyKpC9k0Ei8omSeI=";
+                  }
+                  {
+                    path = "systemd/frontend.env.example";
+                    bytes = 759;
+                    oid = "1037a376d52e6d8c47f4042353ff70f47e9f7bc2781a6d187a383b445e4b3e10";
+                    hash = "sha256-EDejdtUubYxH9AQjU/9w9H6fe8J4Gm0Yejg7RF5LPhA=";
+                  }
+                  {
+                    path = "systemd/nhi.env.example";
+                    bytes = 1371;
+                    oid = "fa9325e1ea3cb8b3738454cb7c783185eb34413f092754753bf8b7b523aeca52";
+                    hash = "sha256-+pMl4eo8uLNzhFTLfHgxhes0QT8JJ1R1O/i3tSOuylI=";
+                  }
+                  {
+                    path = "systemd/node.env.example";
+                    bytes = 1607;
+                    oid = "ba02883889778eeafa4f67647e92f557b7d3dc7f86ddc91ddbb2bd75e17b3a32";
+                    hash = "sha256-ugKIOIl3jur6T2dkfpL1V7fT3H+G3ckd27K9deF7OjI=";
+                  }
+                  {
+                    path = "tools/ciru-strixlink-0.2.0-linux-amd64.tar.gz";
+                    bytes = 3948597;
+                    oid = "cd868685f2bcb2652d66fe8415f007a896234d1cccb56fcb4c7c576100950851";
+                    hash = "sha256-zYaGhfK8smUtZv6EFfAHqJYjTRzMtW/LTHxXYQCVCFE=";
+                  }
+                ];
+              };
+            };
+
+            glm53-flash-ciru-strix-iu4-rank1 = {
+              kind = "model";
+              maker = "Ciru (jcbtc)";
+              quantization = "W4-IU4-hybrid-g128";
+              notes = "flashnix GLM lane, TP rank 1 payload: ciru's per-rank prepacked W4 (IU4 layout glm53_iu4_n32_kword_g128_v1) plus the shared config, runtime wheels/kernels, systemd and docs. worker ONLY: the two ranks carry different bytes, so each twin declares its own row. Never a llama-swap row; served by the flashnix pair service. Weights are AWQ-derived under ciru's private permission from wtdcode: use, do not redistribute. Runtime code Apache-2.0/MIT, see THIRD_PARTY_NOTICES.md in the artifact.";
+              source = {
+                layout = "snapshot";
+                localName = "glm53-flash-ciru-strix-iu4-rank1";
+                hfUrl = "https://huggingface.co/jcbtc/GLM5.3-Flash-CIRU-STRIX-IU4";
+                revision = "72a639ec52818a5bcf71162dbbbcbc29c6b6e8cd";
+                primary = "config/config.json";
+                files = [
+                  {
+                    path = "LICENSE";
+                    bytes = 1070;
+                    oid = "30b85b6b9659f2e78aa259f8faf5d920a68dee7c9ced3fa6dba1f19f2bc4fca1";
+                    hash = "sha256-MLhba5ZZ8ueKoln4+vXZIKaN7nyc7T+m26HxnyvE/KE=";
+                  }
+                  {
+                    path = "LICENSE_SCOPE.md";
+                    bytes = 1511;
+                    oid = "79ebd15d2e8fa494bff962d3589107a3d238bda661423a9c3f8ec4e71ff05cfa";
+                    hash = "sha256-eevRXS6PpJS/+WLTWJEHo9I4vaZhQjqcP47E5x/wXPo=";
+                  }
+                  {
+                    path = "PUBLIC_RELEASE_CHECKLIST.md";
+                    bytes = 12362;
+                    oid = "a480834b774c3ea545806e2939b538c8ca1b0ba444f39b92dcb1fe8b5e59e2b7";
+                    hash = "sha256-pICDS3dMPqVFgG4pObU4yMobC6RE85uS3LH+i15Z4rc=";
+                  }
+                  {
+                    path = "README.md";
+                    bytes = 19562;
+                    oid = "9e3775d73d0bbeacf7c8dac169fe8d12634c83adb9e39d1a84ea1952a6f9ccb3";
+                    hash = "sha256-njd11z0Lvqz3yNrBaf6NEmNMg625450ahOoZUqb5zLM=";
+                  }
+                  {
+                    path = "THIRD_PARTY_NOTICES.md";
+                    bytes = 2538;
+                    oid = "5ecfd3f0d9ceb2a2ce872b56318aaae4e0dc6a4548ab25fa66e54bb10fb04aea";
+                    hash = "sha256-Xs/T8NnOsqLOhytWMYqq5ODcakVIqyX6ZuVLsQ+wSuo=";
+                  }
+                  {
+                    path = "assets/GLM5.3-Flash-CIRU-STRIX-IU4.png";
+                    bytes = 2066759;
+                    oid = "2ebf4a64a6d646dd9d5829a4217e437ebae91a40e97656be6abf4a81f84976dc";
+                    hash = "sha256-Lr9KZKbWRt2dWCmkIX5DfrrpGkDpdla+ar9KgfhJdtw=";
+                  }
+                  {
+                    path = "benchmarks/128k-cache-dev9-read-rank0.prom";
+                    bytes = 98163;
+                    oid = "eff5ab45e33295de427a9397b6f648bb3ee54d297454dfca2b00635dc3b8ff7c";
+                    hash = "sha256-7/WrReMyld5CepOXtvZIuz7lTSl0VN/KKwBjXcO4/3w=";
+                  }
+                  {
+                    path = "benchmarks/128k-cache-dev9-read-rank1.prom";
+                    bytes = 96984;
+                    oid = "28349234e4b681510da8ce4613411cc5fa238c48e81278a416e452ff06cdfbd0";
+                    hash = "sha256-KDSSNOS2gVENqM5GE0EcxfojjEjoEnikFuRS/wbN+9A=";
+                  }
+                  {
+                    path = "benchmarks/128k-cache-dev9-read-v1.json";
+                    bytes = 1106;
+                    oid = "a5be0960703ba89fe36d6f52d81509b1f692bb27a6c9f6fce8d2bd7960d0fff8";
+                    hash = "sha256-pb4JYHA7qJ/jbW9S2BUJsfaSuyemyfb86NK9eWDQ//g=";
+                  }
+                  {
+                    path = "benchmarks/128k-cache-repair-write-v1.json";
+                    bytes = 1091;
+                    oid = "f833d895071021131ad1559f2e025e69414364ae03173dd8dd84082c808bf614";
+                    hash = "sha256-+DPYlQcQIRMa0VWfLgJeaUFDZK4DFz3Y3YQILICL9hQ=";
+                  }
+                  {
+                    path = "benchmarks/README.md";
+                    bytes = 8002;
+                    oid = "bc6659e4fb84d5ccf4b49dae147ee941a4e3bce3c83e333c7b65088478835283";
+                    hash = "sha256-vGZZ5PuE1cz0tJ2uFH7pQaTjvOPIPjM8e2UIhHiDUoM=";
+                  }
+                  {
+                    path = "benchmarks/bf16-quality.json";
+                    bytes = 3109;
+                    oid = "4559fc167da962b2fccac141e4292d386f30fc215c89d43b0c80b3410cae088e";
+                    hash = "sha256-RVn8Fn2pYrL8ysFB5CktOG8w/CFcidQ7DICzQQyuCI4=";
+                  }
+                  {
+                    path = "benchmarks/hard15.json";
+                    bytes = 1263;
+                    oid = "f7d6a0dd8cc8ca6c627df5cffe1712bbcd81d4096025af978770d604099aab63";
+                    hash = "sha256-99ag3YzIymxiffXP/hcSu82B1AlgJa+Xh3DWBAmaq2M=";
+                  }
+                  {
+                    path = "benchmarks/packaged-nhi-gate.md";
+                    bytes = 5316;
+                    oid = "162c97b2059eb403b39b47cfcf170906b66d8c9235ad13a0e44535d284953546";
+                    hash = "sha256-FiyXsgWetAOzm0fPzxcJBrZtjJI1rROg5EU10oSVNUY=";
+                  }
+                  {
+                    path = "benchmarks/production-128k-he0-9-v3.jsonl";
+                    bytes = 61484;
+                    oid = "421578786d6ab402be7313bf8c8ab6c3f3d56e171fa7c1777743578e3889fe44";
+                    hash = "sha256-QhV4eG1qtAK+cxO/jIq2w/PVbhcfp8F3d0NXjjiJ/kQ=";
+                  }
+                  {
+                    path = "benchmarks/production-128k-he0-9-v3.score.json";
+                    bytes = 2842;
+                    oid = "dcb4c7f001bc4bf61124a005309de002de06912513aa03328559146659aa8dbc";
+                    hash = "sha256-3LTH8AG8S/YRJKAFMJ3gAt4GkSUTqgMyhVkUZlmqjbw=";
+                  }
+                  {
+                    path = "benchmarks/standard69.json";
+                    bytes = 3793;
+                    oid = "1168acec38eabc0cfde4af3d091773327264154af7bda07ca4da9cdab8aa9d39";
+                    hash = "sha256-EWis7DjqvAz95K89CRdzMnJkFUr3vaB8pNqc2riqnTk=";
+                  }
+                  {
+                    path = "benchmarks/tooleval-config.json";
+                    bytes = 2518;
+                    oid = "a7b48d116f87c1967357f928dbc34a78b62e95b1ae5c1c937711a914c6a26866";
+                    hash = "sha256-p7SNEW+HwZZzV/ko28NKeLYulbGuXByTdxGpFMaiaGY=";
+                  }
+                  {
+                    path = "config/chat_template.jinja";
+                    bytes = 10644;
+                    oid = "34d5ee66b12fa6446cdae131c352b8f68cd85369e0e6fda115583805fada3891";
+                    hash = "sha256-NNXuZrEvpkRs2uExw1K49ozYU2ng5v2hFVg4BfraOJE=";
+                  }
+                  {
+                    path = "config/config.json";
+                    bytes = 7374;
+                    oid = "18485cd976c9e26c30362b034a43b4bfd7aab2e34ec7563ac97887a4c4c6faa4";
+                    hash = "sha256-GEhc2XbJ4mwwNisDSkO0v9eqsuNOx1Y6yXiHpMTG+qQ=";
+                  }
+                  {
+                    path = "config/generation_config.json";
+                    bytes = 215;
+                    oid = "a07de3408f578c6a7ca8a1646aa91a41df55d539349fda15fb8b611eb007e9b7";
+                    hash = "sha256-oH3jQI9XjGp8qKFkaqkaQd9V1Tk0n9oV+4thHrAH6bc=";
+                  }
+                  {
+                    path = "config/processor_config.json";
+                    bytes = 1445;
+                    oid = "ce7d2572395b24edcd2525e886ecbd132754db2f9025adbbcf5f482d7978fa40";
+                    hash = "sha256-zn0lcjlbJO3NJSXohuy9EydU2y+QJa27z19ILXl4+kA=";
+                  }
+                  {
+                    path = "config/tokenizer.json";
+                    bytes = 20217442;
+                    oid = "19e773648cb4e65de8660ea6365e10acca112d42a854923df93db4a6f333a82d";
+                    hash = "sha256-GedzZIy05l3oZg6mNl4QrMoRLUKoVJI9+T20pvMzqC0=";
+                  }
+                  {
+                    path = "config/tokenizer_config.json";
+                    bytes = 832;
+                    oid = "21848631f494177b449db5fab804cfb52e38077e0802dd4a8568978c010c3d3b";
+                    hash = "sha256-IYSGMfSUF3tEnbX6uATPtS44B34IAt1KhWiXjAEMPTs=";
+                  }
+                  {
+                    path = "context-profiles/1-64k.env";
+                    bytes = 100;
+                    oid = "e14c6da1a5bd5ff5d2069145f4831eff8a4f8e51fd6e93217e71bbc84986db59";
+                    hash = "sha256-4UxtoaW9X/XSBpFF9IMe/4pPjlH9bpMhfnG7yEmG21k=";
+                  }
+                  {
+                    path = "context-profiles/2-128k.env";
+                    bytes = 103;
+                    oid = "c98ae19c5cb4bb352e051a7de4abefea9884fa602604e094d873c4982a2e1f3b";
+                    hash = "sha256-yYrhnFy0uzUuBRp95Kvv6piE+mAmBOCU2HPEmCouHzs=";
+                  }
+                  {
+                    path = "context-profiles/3-256k.env";
+                    bytes = 103;
+                    oid = "88e4a8a630c85b4c496c257bdb37d755fac5932e7ae7e9e09c4c7ee80eab5550";
+                    hash = "sha256-iOSopjDIW0xJbCV72zfXVfrFky565+ngnEx+6A6rVVA=";
+                  }
+                  {
+                    path = "docs/CiruStrixLink-GLM5.3-Flash-CIRU-STRIX-IU4.md";
+                    bytes = 22048;
+                    oid = "0d8961d5bd5299e63368c5bf91efe0aba6713554fcf513f0aba699a0ff8006e5";
+                    hash = "sha256-DYlh1b1SmeYzaMW/ke/gq6ZxNVT89RPwq6aZoP+ABuU=";
+                  }
+                  {
+                    path = "docs/INSTALLATION.md";
+                    bytes = 23583;
+                    oid = "8c01c30d589acbec2859a9f845e9aae65bb9b119b7175accff528b071fd7c00e";
+                    hash = "sha256-jAHDDViay+woWan4Remq5lu5sRm3F1rM/1KLBx/XwA4=";
+                  }
+                  {
+                    path = "install-generation-frontend-user-service.sh";
+                    bytes = 996;
+                    oid = "abf092616b9d0c287efeabf8b99151d3a2b35a25e53ee49aa2ff7c2e6bf0f798";
+                    hash = "sha256-q/CSYWudDCh+/qv4uZFR06KzWiXlPuSaov98Lmvw95g=";
+                  }
+                  {
+                    path = "install-nhi-system-service.sh";
+                    bytes = 14279;
+                    oid = "dd5001875d676442f878fdf7bc86617cf78a19dd38ae245612bae2ae3558409d";
+                    hash = "sha256-3VABh11nZEL4eP33vIZhfPeKGd04riRWErrirjVYQJ0=";
+                  }
+                  {
+                    path = "install-user-service.sh";
+                    bytes = 1610;
+                    oid = "a9a4e6890f4fdcf1562f751b9caa44956189c7ecdea21444c6804437035350ea";
+                    hash = "sha256-qaTmiQ9P3PFWL3UbnKpElWGJx+zeohRExoBENwNTUOo=";
+                  }
+                  {
+                    path = "launch-node.sh";
+                    bytes = 10245;
+                    oid = "a68a0c69bb6db933d59daddf0161b7f00218640245c84e072fdd3a9869b487f2";
+                    hash = "sha256-pooMabttuTPVna3fAWG38AIYZAJFyE4HL906mGm0h/I=";
+                  }
+                  {
+                    path = "rank-1/GLM5.3-Flash-CIRU-STRIX-IU4-rank-1-part-0.safetensors";
+                    bytes = 7851586392;
+                    oid = "3c59dcf14b7e07de2e785cd54669535e182382e9d07462b27a9be562d43ffe70";
+                    hash = "sha256-PFnc8Ut+B94ueFzVRmlTXhgjgunQdGKyepvlYtQ//nA=";
+                  }
+                  {
+                    path = "rank-1/GLM5.3-Flash-CIRU-STRIX-IU4-rank-1-part-1.safetensors";
+                    bytes = 8218435312;
+                    oid = "a15e8b26dd65e990dcdddebcd1a39d6f6adb6711b5c64a7ba2acb9094e02ecfe";
+                    hash = "sha256-oV6LJt1l6ZDc3d680aOdb2rbZxG1xkp7oqy5CU4C7P4=";
+                  }
+                  {
+                    path = "rank-1/GLM5.3-Flash-CIRU-STRIX-IU4-rank-1-part-10.safetensors";
+                    bytes = 7563801048;
+                    oid = "af9104a902644e4e7f296c5ce3947e8897809e9b00bdeb3cfde011b08957b716";
+                    hash = "sha256-r5EEqQJkTk5/KWxc45R+iJeAnpsAves8/eARsIlXtxY=";
+                  }
+                  {
+                    path = "rank-1/GLM5.3-Flash-CIRU-STRIX-IU4-rank-1-part-2.safetensors";
+                    bytes = 8218435424;
+                    oid = "aa7604365a912e6508471168c4933e3df2d824bd5e831350293e870c609e37ff";
+                    hash = "sha256-qnYENlqRLmUIRxFoxJM+PfLYJL1egxNQKT6HDGCeN/8=";
+                  }
+                  {
+                    path = "rank-1/GLM5.3-Flash-CIRU-STRIX-IU4-rank-1-part-3.safetensors";
+                    bytes = 8218435424;
+                    oid = "d8fad4c06940747bbff7822487be448ca7af323523814039f80cfa6f22e9e77a";
+                    hash = "sha256-2PrUwGlAdHu/94Ikh75EjKevMjUjgUA5+Az6byLp53o=";
+                  }
+                  {
+                    path = "rank-1/GLM5.3-Flash-CIRU-STRIX-IU4-rank-1-part-4.safetensors";
+                    bytes = 8218435424;
+                    oid = "d028bef6fdbac3d4018bb0c5ff0db83eb367e812d57d91ec66a445ae2c2a328d";
+                    hash = "sha256-0Ci+9v26w9QBi7DF/w24PrNn6BLVfZHsZqRFriwqMo0=";
+                  }
+                  {
+                    path = "rank-1/GLM5.3-Flash-CIRU-STRIX-IU4-rank-1-part-5.safetensors";
+                    bytes = 8218435424;
+                    oid = "cb7af5e468a95a6cebb2d77c80eb4696a75384860545cb9cb4b90e9c4b3af7e6";
+                    hash = "sha256-y3r15GipWmzrstd8gOtGlqdThIYFRcuctLkOnEs69+Y=";
+                  }
+                  {
+                    path = "rank-1/GLM5.3-Flash-CIRU-STRIX-IU4-rank-1-part-6.safetensors";
+                    bytes = 8218435424;
+                    oid = "63d6f709d50f520739f753991a20c3275dd65fa6a60144f60c9195e5d718ffcd";
+                    hash = "sha256-Y9b3CdUPUgc591OZGiDDJ13WX6amAUT2DJGV5dcY/80=";
+                  }
+                  {
+                    path = "rank-1/GLM5.3-Flash-CIRU-STRIX-IU4-rank-1-part-7.safetensors";
+                    bytes = 8218435424;
+                    oid = "625149b168a7fc16117555925180e498a77a5d5bd6902bee4ffd3ae4a9cf9325";
+                    hash = "sha256-YlFJsWin/BYRdVWSUYDkmKd6XVvWkCvuT/065KnPkyU=";
+                  }
+                  {
+                    path = "rank-1/GLM5.3-Flash-CIRU-STRIX-IU4-rank-1-part-8.safetensors";
+                    bytes = 8218435424;
+                    oid = "4f18105aeea29c721cf86ffd90538c74b67938d92216125b594b0b64a9bf8502";
+                    hash = "sha256-TxgQWu6inHIc+G/9kFOMdLZ5ONkiFhJbWUsLZKm/hQI=";
+                  }
+                  {
+                    path = "rank-1/GLM5.3-Flash-CIRU-STRIX-IU4-rank-1-part-9.safetensors";
+                    bytes = 8218435424;
+                    oid = "4b26298300acb849b141fbce2ce4c691e0115dd817134e184eaedbccc6bca852";
+                    hash = "sha256-SyYpgwCsuEmxQfvOLOTGkeARXdgXE04YTq7bzMa8qFI=";
+                  }
+                  {
+                    path = "rank-1/glm53-runtime-prepack.json";
+                    bytes = 1296;
+                    oid = "1c3d399c7a246dfce4e75ed8cac1ec229b09c6c111f0e1a544575d9bdd4b03bd";
+                    hash = "sha256-HD05nHokbfzk517YysHsIpsJxsER8OGlRFddm91LA70=";
+                  }
+                  {
+                    path = "run-node.sh";
+                    bytes = 867;
+                    oid = "450aa1f65fa3d65a3fb16326e86c8aa45edf7233877fa13f15bf9f383a9bac7f";
+                    hash = "sha256-RQqh9l+j1lo/sWMm6GyKpF7fcjOHf6E/Fb+fODqbrH8=";
+                  }
+                  {
+                    path = "runtime/generation-frontend/LICENSE";
+                    bytes = 11334;
+                    oid = "f66965430a7a838d6de955bba6a89862ab56f9fc0154b08a7a2c2804958007ce";
+                    hash = "sha256-9mllQwp6g41t6VW7pqiYYqtW+fwBVLCKeiwoBJWAB84=";
+                  }
+                  {
+                    path = "runtime/generation-frontend/NOTICE";
+                    bytes = 199;
+                    oid = "855ae0d70a97876c725fe63536a6f58456954cca7d6774a2d6f97c863553852f";
+                    hash = "sha256-hVrg1wqXh2xyX+Y1Nqb1hFaVTMp9Z3Si1vl8hjVThS8=";
+                  }
+                  {
+                    path = "runtime/generation-frontend/glm53_generation_frontend.py";
+                    bytes = 5670;
+                    oid = "77c6a27ac9c04348e798e82b88abc5e30b31f873dacdf566a48c540e8fc946f5";
+                    hash = "sha256-d8aiesnAQ0jnmOgriKvF4wsx+HPazfVmpIxUDo/JRvU=";
+                  }
+                  {
+                    path = "runtime/generation-frontend/run.sh";
+                    bytes = 1188;
+                    oid = "384de03b070b5af23b7c2250b0f42134a0cf33dd8894af1f3fdf4b299efa551a";
+                    hash = "sha256-OE3gOwcLWvI7fCJQsPQhNKDPM92IlK8fP99LKZ76VRo=";
+                  }
+                  {
+                    path = "runtime/gfx1151/GLM5.3-Flash-CIRU-STRIX-IU4-dense-kda.so";
+                    bytes = 134872;
+                    oid = "12aee5aa0e88c700438345909f2e659f9016bc752a5863626fd7a04b994b4a50";
+                    hash = "sha256-Eq7lqg6IxwBDg0WQny5ln5AWvHUqWGNib9egS5lLSlA=";
+                  }
+                  {
+                    path = "runtime/gfx1151/GLM5.3-Flash-CIRU-STRIX-IU4-iu4-m1.so";
+                    bytes = 157816;
+                    oid = "aa77365274b88b42264408737b4968f22ad395daffeafe84497189347236fa37";
+                    hash = "sha256-qnc2UnS4i0ImRAhze0lo8irTldr/6v6ESXGJNHI2+jc=";
+                  }
+                  {
+                    path = "runtime/gfx1151/GLM5.3-Flash-CIRU-STRIX-IU4-m4-residual.so";
+                    bytes = 211568;
+                    oid = "0cb7cec9af206621a4e39947b246f752190e57e98818f5fd11a90504a7e1912f";
+                    hash = "sha256-DLfOya8gZiGk45lHskb3UhkOV+mIGPX9EakFBKfhkS8=";
+                  }
+                  {
+                    path = "runtime/gfx1151/GLM5.3-Flash-CIRU-STRIX-IU4-m8-align.so";
+                    bytes = 101552;
+                    oid = "1709a0a5029a4f7cbb6eb02f129730307e6351ba8890b0cbef3975c5bd0a1cfc";
+                    hash = "sha256-FwmgpQKaT3y7brAvEpcwMH5jUbqIkLDL7zl1xb0KHPw=";
+                  }
+                  {
+                    path = "runtime/gfx1151/GLM5.3-Flash-CIRU-STRIX-IU4-nhi-m8-bf16.so";
+                    bytes = 35768;
+                    oid = "46f4fd80444ac177b0dbfdc6edc368ef5f41324421aa742fae85ac770938febf";
+                    hash = "sha256-RvT9gERKwXew2/3G7cNo719BMkQhqnQvroWsdwk4/r8=";
+                  }
+                  {
+                    path = "runtime/gfx1151/GLM5.3-Flash-CIRU-STRIX-IU4-resident-g128.so";
+                    bytes = 187856;
+                    oid = "ea4295c7ad0cd7e3e43eb43d240c58c790647b5b4a249cdd54a07f079f5072e9";
+                    hash = "sha256-6kKVx60M1+PkPrQ9JAxYx5Bke1tKJJzdVKB/B59Qcuk=";
+                  }
+                  {
+                    path = "runtime/gfx1151/GLM5.3-Flash-CIRU-STRIX-IU4-top8-epilogue.so";
+                    bytes = 112216;
+                    oid = "aadf78f626f210a8139a915f99fbec09257eb22910d98d68d403215940e62519";
+                    hash = "sha256-qt949ibyEKgTmpFfmfvsCSV+sikQ2Y1o1AMhWUDmJRk=";
+                  }
+                  {
+                    path = "runtime/gfx1151/moe-tuned-r23/E=288,N=1024,device_name=AMD_Radeon_8060S,dtype=int4_w4a16.json";
+                    bytes = 379;
+                    oid = "2ebd0932d45b0012659f729a49522751de721476dd52db15e2e76ae466169440";
+                    hash = "sha256-Lr0JMtRbABJln3KaSVInUd5yFHbdUtsV4udq5GYWlEA=";
+                  }
+                  {
+                    path = "runtime/gfx1151/moe-tuned-r23/E=288,N=2048,device_name=AMD_Radeon_8060S,dtype=int4_w4a16.json";
+                    bytes = 379;
+                    oid = "2ebd0932d45b0012659f729a49522751de721476dd52db15e2e76ae466169440";
+                    hash = "sha256-Lr0JMtRbABJln3KaSVInUd5yFHbdUtsV4udq5GYWlEA=";
+                  }
+                  {
+                    path = "runtime/packages/GLM5.3-Flash-CIRU-STRIX-IU4-aiter-gfx1151-source-v0.1.0-rc1.tar.gz";
+                    bytes = 55734195;
+                    oid = "986e7d734d4c32e70788ad0052a4c48196487b22db1bb9de1b220e555bb3de99";
+                    hash = "sha256-mG59c01MMucHiK0AUqTEgZZIeyLbG7neGyIOVVuz3pk=";
+                  }
+                  {
+                    path = "runtime/packages/GLM5.3-Flash-CIRU-STRIX-IU4-kernels-source-v0.1.0-rc1.tar.gz";
+                    bytes = 41147;
+                    oid = "88e96a32dbfa01b0bce712d2ded81fbe282452afc59c0961f6c10e7a7a0b2841";
+                    hash = "sha256-iOlqMtv6AbC85xLS3tgfvigkUq/FnAlh9sEOenoLKEE=";
+                  }
+                  {
+                    path = "runtime/packages/GLM5.3-Flash-CIRU-STRIX-IU4-vllm-source-v0.1.0-rc2-dev9.tar.gz";
+                    bytes = 40520111;
+                    oid = "c9b6c30d9690591a0e01ff05fcbf2b3456e9207b92bf4268a4c62a294da965bb";
+                    hash = "sha256-ybbDDZaQWRoOAf8F/L8rNFbpIHuSv0JopMYqKU2pZbs=";
+                  }
+                  {
+                    path = "runtime/packages/INSTALL-RUNTIME.sh";
+                    bytes = 4464;
+                    oid = "2cfa66b5e42cfe0b2cea1d75da6daa3147313f6caa9d897fbd74d7616d61c4b1";
+                    hash = "sha256-LPpmteQs/gss6h112m2qMUcxP2yqnYl/vXTXYW1hxLE=";
+                  }
+                  {
+                    path = "runtime/packages/README.md";
+                    bytes = 14159;
+                    oid = "8a8b6dc95dc38ed1e93d6fce3fe05fe1aa86911b71682d8389351d4284c0a224";
+                    hash = "sha256-iottyV3DjtHpPW/OP+Bf4aqGkRtxaC2DiTUdQoTAoiQ=";
+                  }
+                  {
+                    path = "runtime/packages/aiter-jit-gfx1151/module_aiter_core.so";
+                    bytes = 567024;
+                    oid = "3580569033331d904b3ca2b899e3bea00324d098dc5a28c3c8f76a124f24f846";
+                    hash = "sha256-NYBWkDMzHZBLPKK4meO+oAMk0JjcWijDyPdqEk8k+EY=";
+                  }
+                  {
+                    path = "runtime/packages/nixos-module.nix";
+                    bytes = 349;
+                    oid = "5894153308f708cbfe3fb49280d7fbae1fbc3390046d33a01577682c5ecdc8e3";
+                    hash = "sha256-WJQVMwj3CMv+P7SSgNf7rh+8M5AEbTOgFXdoLF7NyOM=";
+                  }
+                  {
+                    path = "runtime/packages/requirements-runtime.lock";
+                    bytes = 2129;
+                    oid = "0e27c6d236d3011c468b142c1772c1324f65e22edf406f4651afa9f6e8aa7582";
+                    hash = "sha256-DifG0jbTARxGixQsF3LBMk9l4i7fQG9GUa+p9uiqdYI=";
+                  }
+                  {
+                    path = "runtime/packages/runtime-env.sh";
+                    bytes = 4973;
+                    oid = "023b51c21ae9ab060a702beb41a8a86c53479a9f39086d11818c6d7c9e9d2a8f";
+                    hash = "sha256-AjtRwhrpqwYKcCvrQaiobFNHmp85CG0RgYxtfJ6dKo8=";
+                  }
+                  {
+                    path = "runtime/packages/shell.nix";
+                    bytes = 416;
+                    oid = "85a5db43958b734ed84c8d59113a6aa9e4e5fd5d0836ecf38be29d90c1a1d4c1";
+                    hash = "sha256-haXbQ5WLc07YTI1ZETpqqeTl/V0INuzzi+KdkMGh1ME=";
+                  }
+                  {
+                    path = "runtime/packages/wheels/amd_aiter-0.1.0rc1-cp314-cp314-linux_x86_64.whl";
+                    bytes = 67412360;
+                    oid = "e392272a101a5f11809818df222ccfe68892c4d541a83eefdfd3e6e3e08d7cb1";
+                    hash = "sha256-45InKhAaXxGAmBjfIizP5oiSxNVBqD7v39Pm4+CNfLE=";
+                  }
+                  {
+                    path = "runtime/packages/wheels/vllm-0.1.0rc2.dev9+g9255fd9fb9.rocm100-cp314-cp314-linux_x86_64.whl";
+                    bytes = 44318322;
+                    oid = "ba5b1c0f957c41cf0d4d0af36df59cbe25ae5d0640766baea6d7ce32506d2317";
+                    hash = "sha256-ulscD5V8Qc8NTQrzbfWcviWuXQZAdmuuptfOMlBtIxc=";
+                  }
+                  {
+                    path = "select-context-profile.sh";
+                    bytes = 1329;
+                    oid = "dc952cc01d0cace7056d19e5154bc776bb895ded518f5c488263456453a300cb";
+                    hash = "sha256-3JUswB0MrOcFbRnlFUvHdruJXe1Rj1xIgmNFZFOjAMs=";
+                  }
+                  {
+                    path = "select-nhi-context-profile.sh";
+                    bytes = 2135;
+                    oid = "ade63ebf7997f2035e958b507786f868ab2dd873ff7d3dc2182e59ba1aa7cf64";
+                    hash = "sha256-reY+v3mX8gNelYtQd4b4aKst2HP/fT3CGC5Zuhqnz2Q=";
+                  }
+                  {
+                    path = "systemd/GLM5.3-Flash-CIRU-STRIX-IU4-frontend.service";
+                    bytes = 602;
+                    oid = "25d22ce6f261b4c8d2d39f128da3ef29b62dbcec51b0e9e6c2320f85afec1eb8";
+                    hash = "sha256-JdIs5vJhtMjS058SjaPvKbYtvOxRsOnmwjIPha/sHrg=";
+                  }
+                  {
+                    path = "systemd/GLM5.3-Flash-CIRU-STRIX-IU4-nhi@.service";
+                    bytes = 1094;
+                    oid = "6a66abf8670afaf7ea4c58d9ce94b9d5eeea4c0fa6f8a8188e704a6aa120843a";
+                    hash = "sha256-amar+GcK+vfqTFjZzpS51e7qTA+m+KgYjnBKaqEghDo=";
+                  }
+                  {
+                    path = "systemd/GLM5.3-Flash-CIRU-STRIX-IU4.service";
+                    bytes = 549;
+                    oid = "43795fbee7ae6d4f8254ab95e93a2972a4f9649d38918de604906b519715530e";
+                    hash = "sha256-Q3lfvueubU+CVKuV6TopcqT5ZJ04kY3mBJBrUZcVUw4=";
+                  }
+                  {
+                    path = "systemd/external-transport.env.example";
+                    bytes = 595;
+                    oid = "8e53d2a02b0cfc4f1820fad94448dfd0e479a323e7c8aa42f64d048bca2649e2";
+                    hash = "sha256-jlPSoCsM/E8YIPrZREjf0OR5oyPnyKpC9k0Ei8omSeI=";
+                  }
+                  {
+                    path = "systemd/frontend.env.example";
+                    bytes = 759;
+                    oid = "1037a376d52e6d8c47f4042353ff70f47e9f7bc2781a6d187a383b445e4b3e10";
+                    hash = "sha256-EDejdtUubYxH9AQjU/9w9H6fe8J4Gm0Yejg7RF5LPhA=";
+                  }
+                  {
+                    path = "systemd/nhi.env.example";
+                    bytes = 1371;
+                    oid = "fa9325e1ea3cb8b3738454cb7c783185eb34413f092754753bf8b7b523aeca52";
+                    hash = "sha256-+pMl4eo8uLNzhFTLfHgxhes0QT8JJ1R1O/i3tSOuylI=";
+                  }
+                  {
+                    path = "systemd/node.env.example";
+                    bytes = 1607;
+                    oid = "ba02883889778eeafa4f67647e92f557b7d3dc7f86ddc91ddbb2bd75e17b3a32";
+                    hash = "sha256-ugKIOIl3jur6T2dkfpL1V7fT3H+G3ckd27K9deF7OjI=";
+                  }
+                  {
+                    path = "tools/ciru-strixlink-0.2.0-linux-amd64.tar.gz";
+                    bytes = 3948597;
+                    oid = "cd868685f2bcb2652d66fe8415f007a896234d1cccb56fcb4c7c576100950851";
+                    hash = "sha256-zYaGhfK8smUtZv6EFfAHqJYjTRzMtW/LTHxXYQCVCFE=";
+                  }
+                ];
+              };
+            };
+
+            glm53-flash-dflash2 = {
+              kind = "model";
+              maker = "Inco AI";
+              quantization = "BF16";
+              notes = "flashnix GLM lane: the DFlash2 draft model ciru's launcher requires for speculative decoding (k=7 default, k=3 general). BOTH twins (draft runs rank-local, TP=1). CC BY-NC-ND 4.0: personal use only, never redistributed, never in a commercial artifact.";
+              source = {
+                layout = "snapshot";
+                localName = "glm53-flash-dflash2";
+                hfUrl = "https://huggingface.co/incoai/GLM-5.3-Flash-DFlash2";
+                revision = "bf582e4eacc1810f76656d1811693ff6c6737d2a";
+                primary = "config.json";
+                files = [
+                  {
+                    path = "README.md";
+                    bytes = 2619;
+                    oid = "2014434d3e3639147d35d61259690d585e7820993180e7d579e3b796dddf5a31";
+                    hash = "sha256-IBRDTT42ORR9NdYSWWkNWF54IJkxgOfVeeO3lt3fWjE=";
+                  }
+                  {
+                    path = "assets/dflash2-figure.png";
+                    bytes = 286889;
+                    oid = "6d8dcc9a9472bddb644c881fe83050b5343d09bf5ffb0912e5598e55fe671e99";
+                    hash = "sha256-bY3MmpRyvdtkTIgf6DBQtTQ9Cb9f+wkS5VmOVf5nHpk=";
+                  }
+                  {
+                    path = "config.json";
+                    bytes = 1273;
+                    oid = "c4aeac0101196a6e26705b34c45230bcd0c7c68ee2d2d1efdb242087f3712573";
+                    hash = "sha256-xK6sAQEZam4mcFs0xFIwvNDHxo7i0tHv2yQgh/NxJXM=";
+                  }
+                  {
+                    path = "model.safetensors";
+                    bytes = 2342169800;
+                    oid = "b038e1d9d1e7833fa3880c2c0135ba9b673013f03da1b29fb831931584759dac";
+                    hash = "sha256-sDjh2dHngz+jiAwsATW6m2cwE/A9obKfuDGTFYR1naw=";
+                  }
+                ];
+              };
+            };
+
             deepseek-v4-flash-0731-bf16 = {
               kind = "model";
               maker = "DeepSeek";
