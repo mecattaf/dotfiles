@@ -15,3 +15,4 @@ it.
 | [`local-ai/pi-appliance-pattern.md`](local-ai/pi-appliance-pattern.md) | Reusable single, pooled, aggregator, and typed-swarm mechanism for durable local-model appliances. |
 | [`local-ai/dual-node-inference-lessons.md`](local-ai/dual-node-inference-lessons.md) | Preserved operational lessons from the retired dual-node ds4 cluster. History, not a deployment target. |
 | [`old/`](old/) | Archival stub: an index of the retired documentation set and how to read it back from Git history. |
+| [`local-ai/wanted-packages/`](local-ai/wanted-packages/) | Packaging work the fleet has asked for but not yet done — one page per finding, each naming what stopped and what is actually true. |
