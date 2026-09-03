@@ -736,16 +736,44 @@
           # ── the NAS router plane (2026-08-20 rewire) ───────────────────────
           # The NAS is the house's gateway/DHCP/DNS (hosts/nas/router.nix).
           assert nas.services.dnsmasq.enable;
-          # AdGuard owns :53 (the settings type lifts scalars into lists).
+          # dnsmasq is DHCP-only: whatever owns :53 on this box, it is not this
+          # (the settings type lifts scalars into lists). Held across #288 —
+          # the owner changed from AdGuard to resolved's stub, the rule did not.
           assert nixpkgs.lib.toList nas.services.dnsmasq.settings.port == [ 0 ];
           assert nas.networking.nat.enable;
           assert nas.networking.nat.externalInterface == "wan0";
           assert nas.networking.nat.internalInterfaces == [ "enp1s0" ];
           assert nas.networking.nftables.tables ? dns_hijack;
+          # The LAN's resolver must answer at 10.42.0.1:53. THIS is the invariant
+          # the LAN actually depends on; which daemon satisfies it is #288's
+          # business. Both halves are asserted so the pair can never both be
+          # empty: AdGuard's bind list keeps naming the address (so the
+          # `adguardDown = false` flip in modules/adguardhome.nix restores a
+          # working resolver, not a loopback-only one), and while AdGuard is off
+          # resolved's extra stub listener holds it.
           assert builtins.elem "10.42.0.1" nas.services.adguardhome.settings.dns.bind_hosts;
           # Never 0.0.0.0: resolved's stub holds 127.0.0.53:53 and a wildcard
           # bind EADDRINUSEs against it (26d4afdf lore).
           assert !(builtins.elem "0.0.0.0" nas.services.adguardhome.settings.dns.bind_hosts);
+          # #288 (2026-09-03), INVERT THIS WHOLE BLOCK WITH `adguardDown`:
+          # AdGuard crash-looped on a tailnet address it lost in the headscale
+          # migration and took LAN DNS with it, so it is disabled in config and
+          # systemd-resolved carries the plane instead. Asserted here because a
+          # rebuild that dropped the stub listeners would be the outage this
+          # change exists to prevent, arriving silently.
+          assert !nas.services.adguardhome.enable;
+          assert
+            nas.services.resolved.settings.Resolve.DNSStubListenerExtra == [
+              "10.42.0.1" # the BE550 LAN (dnsmasq option 6 + the dns_hijack DNAT)
+              "100.64.0.1" # the tailnet split-DNS entry
+            ];
+          # ...and it must have somewhere to forward to. `127.0.0.1` here would
+          # mean resolved is still pointed at the AdGuard that is not running.
+          assert !(builtins.elem "127.0.0.1" nas.services.resolved.settings.Resolve.DNS);
+          assert builtins.elem "1.1.1.1" nas.services.resolved.settings.Resolve.DNS;
+          # Global route stays authoritative for every name in both branches, so
+          # the Freebox's per-link DNS on wan0 can never win.
+          assert nas.services.resolved.settings.Resolve.Domains == "~.";
           # ── Strix Halo hard-lock protections must outlive the rewire ──────
           # The mt7925e wcid roam crash bricked the coordinator twice
           # (2026-07-16); the standing fixes are the ASPM escape hatch + the
@@ -807,14 +835,19 @@
               dns = "10.42.0.1";
               ignore-auto-dns = true;
             };
-          # .internal resolution: the NAS's AdGuard is the ONE resolver that
-          # answers these names, and it answers with the coordinator's PINNED
-          # lease (hosts/nas/router.nix dhcp-host); since 2026-08-20 it serves
-          # every LAN phone the same way. A 100.x answer here is the regression
-          # this catches.
+          # .internal resolution: the NAS is the ONE resolver that answers these
+          # names, and it answers with the coordinator's PINNED lease
+          # (hosts/nas/router.nix dhcp-host); since 2026-08-20 it serves every
+          # LAN phone the same way. A 100.x answer here is the regression this
+          # catches. Both answerers are checked since #288 — AdGuard's rewrites
+          # (dormant, kept correct for the flip back) and the /etc/hosts pin
+          # that systemd-resolved serves from the same address today.
           assert builtins.all (
             r: r.answer == "10.42.0.2"
           ) nas.services.adguardhome.settings.filtering.rewrites;
+          assert builtins.all (n: builtins.elem n nas.networking.hosts."10.42.0.2") (
+            map (r: r.domain) nas.services.adguardhome.settings.filtering.rewrites
+          );
           # The second half of this pair used to assert the COORDINATOR's own
           # loopback AdGuard rewrote .internal to 127.0.0.1. That instance was
           # deleted on cutover day (2026-08-21, phase 3) and the assert was left
@@ -828,7 +861,10 @@
           # collision was first proven on — is included.
           assert !coordinator.services.adguardhome.enable;
           assert !worker.services.adguardhome.enable;
-          assert nas.services.adguardhome.enable;
+          # The NAS's own instance used to be asserted ON here. It is asserted
+          # OFF in the router-plane block above instead, with the #288 rationale
+          # and the resolved listeners that replace it — one place, so the pair
+          # cannot half-flip. Re-point this line there when AdGuard comes back.
           # ── #130 expansion gates: all OFF, and the pairs agree ─────────────
           # These assert the STAGED shape, i.e. that today's switch is a no-op
           # on the NAS's running services. Each gate flips with its own runbook
@@ -918,8 +954,7 @@
           # must not CHANGE the secrets posture, whatever it is — the flip
           # itself may not be what sneaks a credential onto the appliance.
           assert nasOn.mySecrets.enable == nasOff.mySecrets.enable;
-          assert builtins.attrNames nasOn.age.secrets
-            == builtins.attrNames nasOff.age.secrets;
+          assert builtins.attrNames nasOn.age.secrets == builtins.attrNames nasOff.age.secrets;
           assert nasOn.services.paperless.database.createLocally;
           pkgs.runCommand "nas-paperless-staged" { } ''
             touch "$out"
@@ -1184,7 +1219,12 @@
           # are reachable over the legacy /30 cable too until the cleanup
           # commit, so these hold across the whole transition.
           assert coordinator.networking.hosts."10.42.0.1" == [ "nas" ];
-          assert nas.networking.hosts."10.42.0.2" == [ "coordinator" ];
+          # Membership, not equality, since #288: modules/adguardhome.nix adds
+          # the four .internal names to this same address while AdGuard is down,
+          # and the merge order of two list definitions is module-import order,
+          # not ours to pin. The .internal half is asserted in the router-plane
+          # block above; this half is the coordinator's own name.
+          assert builtins.elem "coordinator" nas.networking.hosts."10.42.0.2";
           # #273: the TWINS' own names must NEVER resolve to loopback again.
           # Stock NixOS sets networking.hosts."127.0.0.2" = [ hostName ]; that
           # address resolves fine, so every gethostname()-and-bind library
@@ -1296,10 +1336,11 @@
           # (home/remote.nix). Kept as an EXACT set on purpose — the point of
           # this assert is that the tailnet door cannot widen unnoticed, so a
           # third port here must be a deliberate edit, not a surprise.
-          assert nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [
-            53
-            5900
-          ];
+          assert
+            nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [
+              53
+              5900
+            ];
           assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
           assert nas.myNas.storage.enable;
           assert nas.myNas.media.enable;
@@ -1660,8 +1701,7 @@
             # it live, so this stays honest across a change of engine.
             canonicalUtilityDeployments = nixpkgs.lib.filterAttrs (
               deploymentId: deployment:
-              deployment.status == "canonical"
-              && deploymentId == localModelCatalog.utility.deployment
+              deployment.status == "canonical" && deploymentId == localModelCatalog.utility.deployment
             ) localModelCatalog.deployments;
             selectedDeploymentIds = coordinator.services.local-models.allow;
             mageArtifactIds = [
@@ -1805,7 +1845,8 @@
                 ) files;
               defective = nixpkgs.lib.filter (artifactId: !(borrowable artifactId)) wantedArtifactIds;
             in
-            defective == [ ] || throw "local-model-routing: allow-listed deployments reference artifacts the Library flow cannot materialize (missing files, malformed oid, or zero bytes): ${nixpkgs.lib.concatStringsSep ", " defective}";
+            defective == [ ]
+            || throw "local-model-routing: allow-listed deployments reference artifacts the Library flow cannot materialize (missing files, malformed oid, or zero bytes): ${nixpkgs.lib.concatStringsSep ", " defective}";
           assert nixpkgs.lib.all (artifact: artifact.source.layout == "snapshot") mageArtifacts;
           assert builtins.length mageFiles == 164;
           assert nixpkgs.lib.foldl' (total: file: total + file.bytes) 0 mageFiles == 45863017994;
@@ -1906,9 +1947,7 @@
           assert builtins.length (builtins.attrNames canonicalUtilityDeployments) == 1;
           assert canonicalUtilityDeployments ? "qwen36-35b-a3b-mtp-ud-q8-k-xl";
           assert !(canonicalUtilityDeployments ? "flm-qwen3-4b-utility");
-          assert
-            canonicalUtilityDeployments."qwen36-35b-a3b-mtp-ud-q8-k-xl".model
-            == "qwen3.6-35b-a3b";
+          assert canonicalUtilityDeployments."qwen36-35b-a3b-mtp-ud-q8-k-xl".model == "qwen3.6-35b-a3b";
           assert coordinatorSettings.models ? "qwen3.6-35b-a3b";
           assert localModelCatalog.deployments."flm-qwen3-4b-utility".hosts == [ "coordinator" ];
           assert !(localModelCatalog.deployments."flm-qwen3-4b-utility" ? peer);

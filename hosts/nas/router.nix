@@ -19,10 +19,14 @@ in
 #   - the wifi *client* half lives here (the BE550's stock firmware has no
 #     WISP/repeater mode, and the NAS has no radio of its own — the A8500 is
 #     the listening ear both lack);
-#   - AdGuard is the NixOS service from modules/adguardhome.nix serving the
-#     whole LAN (bind + boot-race handling live there), not a rootless
-#     quadlet, so no ip_unprivileged_port_start sysctl and no
-#     DNSStubListener hack;
+#   - the LAN resolver is a NixOS service from modules/adguardhome.nix
+#     serving the whole LAN (bind + boot-race handling live there), not a
+#     rootless quadlet, so no ip_unprivileged_port_start sysctl and no
+#     DNSStubListener hack. Since #288 (2026-09-03) the daemon behind
+#     10.42.0.1:53 is systemd-resolved's extra stub listener rather than
+#     AdGuard, which is disabled in config there; NOTHING in this file
+#     changed for that, because everything below is written against the
+#     ADDRESS, not the daemon;
 #   - firewall admissions use this box's nftables extraInputRules idiom
 #     (hosts/nas/network.nix:26-31 records why), not
 #     interfaces.<if>.allowedTCPPorts.
@@ -133,10 +137,11 @@ in
   };
 
   # ── DHCP: dnsmasq, DHCP-ONLY ─────────────────────────────────────────────
-  # port=0 is non-negotiable: AdGuard owns :53 on this box
-  # (modules/adguardhome.nix) and must not be fought with — same doctrine as
-  # the coordinator's JBL segment (f9cb4236) and installer dnsmasq.
-  # Option 6 hands every LAN client this box (= AdGuard) as resolver.
+  # port=0 is non-negotiable: something else owns :53 on this box
+  # (modules/adguardhome.nix — AdGuard normally, systemd-resolved's stub
+  # while #288 holds) and must not be fought with — same doctrine as the
+  # coordinator's JBL segment (f9cb4236) and installer dnsmasq.
+  # Option 6 hands every LAN client this box as resolver.
   services.dnsmasq = {
     enable = true;
     settings = {
@@ -179,6 +184,11 @@ in
   # source-IP match would drop it before dnsmasq ever saw it — the exact
   # failure the JBL segment hit (f9cb4236). DNS is iifname-scoped too: every
   # LAN client is a legitimate resolver client, not just the coordinator.
+  # The rule comments below still SAY "AdGuard". Left verbatim on purpose
+  # while #288 holds: these strings are baked into the nftables ruleset, so
+  # editing them changes the closure and makes activation reload nftables for
+  # a cosmetic word. The admissions are address-scoped (:53 on enp1s0), not
+  # daemon-scoped, so they are correct whichever daemon holds 10.42.0.1:53.
   networking.firewall.extraInputRules = ''
     iifname "enp1s0" udp dport 67 accept comment "DHCP for the BE550 LAN"
     iifname "enp1s0" udp dport 53 accept comment "AdGuard DNS for the BE550 LAN"
@@ -190,7 +200,8 @@ in
   # clients that ignore DHCP option 6 (Chromecasts, IoT); the forward drops
   # close the #46 escape hatch — Android "Automatic" Private DNS over
   # DoT/853 or DoH/443-to-known-DNS-IPs sails past a plaintext-only hijack,
-  # verified live in AdGuard's querylog on the original segment. Dropping
+  # verified live in AdGuard's querylog on the original segment (that log is
+  # gone while #288 holds AdGuard off; the drops are unaffected). Dropping
   # them forces fallback to plaintext 53, which the DNAT then owns. Strict
   # (hostname-pinned) Private DNS remains a phone-side setting, as before.
   networking.nftables.tables.dns_hijack = {

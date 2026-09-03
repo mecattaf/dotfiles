@@ -28,7 +28,62 @@
 # into resolved, so MagicDNS keeps winning for the tailnet — the reason we route
 # through resolved instead of the naive `nameservers = [ "127.0.0.1" ]`, which
 # would bypass resolved and break split-DNS across the mesh.
+#
+# ┌───────────────────────────────────────────────────────────────────────────┐
+# │ 2026-09-03 — ADGUARD IS OFF IN CONFIG. See `adguardDown` in the let block │
+# │ immediately below; that one boolean is the whole switch, and flipping it  │
+# │ back to `false` restores every line of the arrangement described above.   │
+# └───────────────────────────────────────────────────────────────────────────┘
 let
+  # ── #288/#289/#290: AdGuard disabled in config (2026-09-03) ───────────────
+  # The bind list below pinned the NAS's tailnet address. The NAS re-registered
+  # during the headscale migration and that address moved (100.89.54.51 →
+  # 100.64.0.1), so AdGuard could not bind and exited 1 on every start. Because
+  # resolved's global DNS on this box was 127.0.0.1 — i.e. AdGuard itself — a
+  # dead AdGuard meant the NAS resolved nothing, and because the NAS is the
+  # LAN's resolver (dnsmasq option 6 + the dns_hijack DNAT in
+  # hosts/nas/router.nix), the whole house resolved nothing with it.
+  #
+  # It was stopped and `systemctl disable`d by hand, and the LAN has been held
+  # up since by a RUNTIME-ONLY drop-in, /run/systemd/resolved.conf.d/
+  # 99-adguard-down.conf, which evaporates on reboot and is reverted by any
+  # rebuild. That made `nixos-rebuild` on this box a LAN-wide outage. This flag
+  # makes the mitigation durable so a rebuild is safe again.
+  #
+  # TO REVERT, once the tailnet bind address is genuinely fixed:
+  #   1. confirm `ip -4 addr show tailscale0` still carries the address pinned
+  #      in `dns.bind_hosts` and in the ExecStartPre wait below (both read
+  #      100.64.0.1 today), and repoint the headscale console's split-DNS entry
+  #      to match;
+  #   2. set `adguardDown = false` here — nothing else in this file changes;
+  #   3. re-invert the two paired assertions in flake.nix that name
+  #      `nas.services.adguardhome.enable` and the resolved stub addresses.
+  # Nothing about AdGuard's settings has been deleted: `services.adguardhome`
+  # below is intact and still evaluated, so step 2 is genuinely a one-word flip.
+  #
+  # WHAT IS LOST WHILE THIS IS TRUE: DNS-level ad/tracker blocking for the whole
+  # LAN, the query log, and DoH-encrypted upstreams (resolved forwards in
+  # plaintext to the three public resolvers below — deliberately identical to
+  # the runtime mitigation the operator has been running, rather than a
+  # DNSOverTLS variant nobody has exercised on this box). Everything that must
+  # keep WORKING — name resolution on the NAS, the LAN's resolver at
+  # 10.42.0.1:53, the tailnet split-DNS listener, and the `.internal` names —
+  # is carried over explicitly further down.
+  adguardDown = true;
+
+  # The fleet-internal service names, in ONE place. They are consumed twice:
+  # by AdGuard's `rewrites` (when it runs) and by the /etc/hosts pin that
+  # replaces those rewrites while `adguardDown` is true. Deriving both from
+  # this list is what stops the two answers from drifting apart.
+  # #136: paperless.internal resolves fleet-wide now, but answers only once
+  # the myNas.paperless / myNasClient.relayPaperless pair flips on.
+  internalNames = [
+    "photos.internal"
+    "music.internal"
+    "videos.internal"
+    "paperless.internal"
+  ];
+
   # SPLIT-HORIZON `.internal` (2026-08-06). Every box used to get the same
   # hardcoded answer — the coordinator's TAILNET address, 100.105.121.73. That
   # made Tailscale load-bearing for traffic that never leaves the building:
@@ -66,7 +121,11 @@ let
 in
 {
   services.adguardhome = {
-    enable = true;
+    # #288: off in config, not deleted. Everything below stays evaluated (the
+    # upstream module wraps its whole `config` — assertions included — in
+    # `mkIf cfg.enable`, so a disabled service with a full `settings` block is
+    # inert, not an error) precisely so the flip back is one word.
+    enable = !adguardDown;
     mutableSettings = false; # config is git, not the web wizard
     host = "127.0.0.1"; # web UI / query log — loopback only
     port = 3000;
@@ -97,28 +156,29 @@ in
         # nfsd did (hosts/nas/storage.nix lore); the ExecStartPre wait below
         # is the fix. Port 53 admission is scoped to the LAN interface in
         # hosts/nas/router.nix, not opened here.
-        bind_hosts =
-          [ "127.0.0.1" ]
-          ++ lib.optionals isLanResolver [
-            "10.42.0.1"
-            # The NAS's tailnet address (2026-08-21, "NAS is the tailscale
-            # sink"): the admin console's split-DNS entry sends every tailnet
-            # device's `.internal` queries here, so photos.internal works
-            # from anywhere. Stable for the lifetime of the node key (which
-            # is expiry-disabled); if the NAS ever re-registers, update this
-            # and the console entry together.
-            #
-            # 2026-09-03: it re-registered. This read 100.89.54.51 and the
-            # NAS's tailscale0 now carries 100.64.0.1, so AdGuard could not
-            # bind and exited 1 on every start — a crash loop that took the
-            # LAN resolver down with it (systemd-resolved's global DNS is
-            # 127.0.0.1, i.e. AdGuard, so nothing on this box could resolve
-            # anything). The ExecStartPre wait above does not catch this: it
-            # waits 30s for an address that will never appear, then exits 0
-            # and lets the bind fail anyway. The console-side split-DNS entry
-            # must be repointed to 100.64.0.1 by hand to match.
-            "100.64.0.1"
-          ];
+        bind_hosts = [
+          "127.0.0.1"
+        ]
+        ++ lib.optionals isLanResolver [
+          "10.42.0.1"
+          # The NAS's tailnet address (2026-08-21, "NAS is the tailscale
+          # sink"): the admin console's split-DNS entry sends every tailnet
+          # device's `.internal` queries here, so photos.internal works
+          # from anywhere. Stable for the lifetime of the node key (which
+          # is expiry-disabled); if the NAS ever re-registers, update this
+          # and the console entry together.
+          #
+          # 2026-09-03: it re-registered. This read 100.89.54.51 and the
+          # NAS's tailscale0 now carries 100.64.0.1, so AdGuard could not
+          # bind and exited 1 on every start — a crash loop that took the
+          # LAN resolver down with it (systemd-resolved's global DNS is
+          # 127.0.0.1, i.e. AdGuard, so nothing on this box could resolve
+          # anything). The ExecStartPre wait above does not catch this: it
+          # waits 30s for an address that will never appear, then exits 0
+          # and lets the bind fail anyway. The console-side split-DNS entry
+          # must be repointed to 100.64.0.1 by hand to match.
+          "100.64.0.1"
+        ];
         port = 53;
         upstream_dns = [
           "https://1.1.1.1/dns-query"
@@ -144,30 +204,15 @@ in
         # (hosts/coordinator/nas-client.nix) routes them onto the NAS media
         # relays. Phones don't use these resolvers, so phone apps keep the
         # coordinator.tail8dd1.ts.net port URLs.
-        rewrites = [
-          {
-            enabled = true;
-            domain = "photos.internal";
-            answer = coordinatorAddr;
-          }
-          {
-            enabled = true;
-            domain = "music.internal";
-            answer = coordinatorAddr;
-          }
-          {
-            enabled = true;
-            domain = "videos.internal";
-            answer = coordinatorAddr;
-          }
-          # #136: resolves fleet-wide now, but answers only once the
-          # myNas.paperless / myNasClient.relayPaperless pair flips on.
-          {
-            enabled = true;
-            domain = "paperless.internal";
-            answer = coordinatorAddr;
-          }
-        ];
+        # Built from `internalNames` in the let block (2026-09-03) rather than
+        # spelled out four times, so that this list and the /etc/hosts pin that
+        # stands in for it while AdGuard is down cannot answer for different
+        # sets of names.
+        rewrites = map (domain: {
+          enabled = true;
+          inherit domain;
+          answer = coordinatorAddr;
+        }) internalNames;
       };
 
       # Blocklists. AdGuard DNS filter is the network-level analog of the
@@ -190,13 +235,95 @@ in
     };
   };
 
-  # Point resolved's upstream at AdGuard and make that route authoritative for
-  # ALL names (~.), so no DHCP-pushed per-link DNS can slip past the filter.
-  # resolved itself is enabled fleet-wide in common.nix; this only sets where it
-  # forwards. Tailscale's ts.net domain is more specific, so MagicDNS still wins.
-  services.resolved.settings.Resolve = {
-    DNS = "127.0.0.1";
-    Domains = "~.";
+  # Where resolved forwards. resolved itself is enabled fleet-wide in
+  # common.nix; this only sets its upstream (and, while AdGuard is down, its
+  # listeners). `Domains = "~."` is common to both branches and is the reason
+  # the branch matters at all: it makes the GLOBAL route authoritative for every
+  # name, so no per-link DNS pushed by the Freebox over wan0 can slip past.
+  # Tailscale's own domains are more specific, so MagicDNS still wins either way.
+  #
+  # Only `Resolve` keys are set here, never the whole section: modules/common.nix
+  # also writes `Resolve.MulticastDNS = false` into it and the two definitions
+  # merge key-wise.
+  services.resolved.settings.Resolve =
+    if !adguardDown then
+      {
+        # Normal arrangement: AdGuard on loopback is the one upstream, so every
+        # query on this box is filtered before it leaves.
+        DNS = "127.0.0.1";
+        Domains = "~.";
+      }
+    else
+      # ── #288 mitigation, made durable ────────────────────────────────────
+      # Field-for-field the runtime drop-in that is holding the LAN up right
+      # now (/run/systemd/resolved.conf.d/99-adguard-down.conf, read live
+      # 2026-09-03), so a rebuild REPLACES that file with an identical
+      # permanent one instead of reverting it. Setting `enable = false` on its
+      # own would have removed the resolver without replacing it — resolved's
+      # DNS was 127.0.0.1, i.e. AdGuard — and produced the same LAN-wide
+      # outage by a different route. This branch is what prevents that.
+      {
+        DNS = [
+          "1.1.1.1"
+          "8.8.8.8"
+          "9.9.9.9"
+        ];
+        FallbackDNS = [
+          "1.0.0.1"
+          "8.8.4.4"
+        ];
+        Domains = "~.";
+      }
+      // lib.optionalAttrs isLanResolver {
+        # THE LAN'S RESOLVER, taken over from AdGuard. resolved's stub normally
+        # answers on 127.0.0.53 only; these extra listeners put it on the two
+        # addresses clients actually dial, so nothing downstream has to change:
+        #   10.42.0.1  — dnsmasq option 6 hands this to every LAN client and
+        #                the dns_hijack DNAT (hosts/nas/router.nix) rewrites
+        #                stragglers onto it. Admitted on enp1s0 there.
+        #   100.64.0.1 — the tailnet node address the headscale console's
+        #                split-DNS entry points at, so `.internal` keeps
+        #                answering for roaming devices. Admitted on tailscale0
+        #                at the bottom of this file.
+        #
+        # A pinned tailnet address here does NOT reintroduce #288. That bug was
+        # a HARD bind failure: AdGuard exits 1 when an address in bind_hosts is
+        # absent, and took the resolver down with it. systemd-resolved sets
+        # IP_FREEBIND on its extra stub listeners, so a missing address is a
+        # no-op — verified live on the coordinator 2026-09-03 by pointing
+        # DNSStubListenerExtra at 10.42.0.199, an address that box does not
+        # have: resolved started clean, stayed active, and 127.0.0.53 kept
+        # answering. Worst case if this address moves again is that tailnet
+        # split-DNS goes quiet; the LAN does not notice.
+        DNSStubListenerExtra = [
+          "10.42.0.1"
+          "100.64.0.1"
+        ];
+      };
+
+  # `.internal` while AdGuard is down (#288). AdGuard's `rewrites` above were
+  # the ONLY answerer for these names on this LAN, so `enable = false` alone
+  # loses them fleet-wide — measured live 2026-09-03 against 10.42.0.1, with
+  # AdGuard already stopped: `coordinator` and `worker` answered from
+  # /etc/hosts, `photos.internal` timed out.
+  #
+  # systemd-resolved synthesises answers from /etc/hosts for every query it
+  # serves, the stub listeners included, so the same names come back from the
+  # same address with no new daemon. Verified live on the coordinator the same
+  # day by bind-mounting a probe /etc/hosts and querying the stub at
+  # 127.0.0.53: multi-label `probe.internal` and `deep.sub.internal` both
+  # answered, confirming this is not a single-label-only path. (`internal` is
+  # also in resolved's built-in negative trust anchor list, so DNSSEC does not
+  # object.)
+  #
+  # `coordinatorAddr` is 10.42.0.2 on this host — the same answer the rewrites
+  # give — so this stays correct, and harmless, if AdGuard ever comes back:
+  # /etc/hosts would simply answer first with an identical record. It can be
+  # kept or dropped when `adguardDown` flips; it is not load-bearing then.
+  # hosts/nas/network.nix defines the same key with [ "coordinator" ]; the two
+  # list definitions merge.
+  networking.hosts = lib.optionalAttrs (adguardDown && isLanResolver) {
+    ${coordinatorAddr} = internalNames;
   };
 
   # LAN-resolver boot ordering (NAS only): the explicit 10.42.0.1 bind above
@@ -205,14 +332,20 @@ in
   # reports online before the static address exists). Wait for the address
   # itself, not for a target that lies about it; 30s bound, then start anyway
   # and let Restart handle a genuinely late interface.
-  systemd.services.adguardhome = lib.mkIf isLanResolver {
+  #
+  # Gated on `!adguardDown` as well as `isLanResolver` (#288): a bare
+  # `systemd.services.adguardhome` definition RENDERS A UNIT even when the
+  # upstream module is disabled, and this one carries only ordering and an
+  # ExecStartPre — no ExecStart — so leaving it live would write a broken
+  # adguardhome.service into the system closure.
+  systemd.services.adguardhome = lib.mkIf (isLanResolver && !adguardDown) {
     # The tailnet bind additionally needs tailscaled to have brought
     # tailscale0 up with the node address; same wait-for-the-address-itself
     # doctrine, same 30s bound per address.
     after = [ "tailscaled.service" ];
     wants = [ "tailscaled.service" ];
     serviceConfig.ExecStartPre = pkgs.writeShellScript "wait-bind-addrs" ''
-      for addr in "enp1s0 10\.42\.0\.1/" "tailscale0 100\.89\.54\.51/"; do
+      for addr in "enp1s0 10\.42\.0\.1/" "tailscale0 100\.64\.0\.1/"; do
         set -- $addr
         for _ in $(${pkgs.coreutils}/bin/seq 30); do
           ${pkgs.iproute2}/bin/ip -4 addr show dev "$1" 2>/dev/null | ${pkgs.gnugrep}/bin/grep -q "$2" && break
@@ -227,7 +360,9 @@ in
 
   # Tailnet devices query the split-DNS entry directly at the node address:
   # admit :53 on the tailnet interface (NAS only). LAN admission lives in
-  # hosts/nas/router.nix; this is its roaming twin.
+  # hosts/nas/router.nix; this is its roaming twin. Deliberately NOT gated on
+  # `adguardDown` — while AdGuard is off it is resolved's extra stub listener on
+  # 100.64.0.1 answering here instead, and the door has to stay open for it.
   networking.firewall.interfaces.tailscale0 = lib.mkIf isLanResolver {
     allowedUDPPorts = [ 53 ];
     allowedTCPPorts = [ 53 ];
