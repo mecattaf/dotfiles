@@ -1426,6 +1426,7 @@
           assert
             worker.services.local-models.artifacts == [
               "flashnext-fp8"
+              "deepseek-v4-flash-0731-bf16"
               "qwen38-flash-ciru-strix-iu4"
             ];
           # AdGuard is FORBIDDEN per-device on this LAN (DoH vs the NAS's
@@ -1823,6 +1824,7 @@
           assert
             coordinator.services.local-models.artifacts == [
               "flashnext-fp8"
+              "deepseek-v4-flash-0731-bf16"
             ];
           # Until 2026-08-28 an assert here intersected localModelStore.packages
           # with coordinator.system.extraDependencies (== 22) — both artifacts of

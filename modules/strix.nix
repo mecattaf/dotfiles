@@ -119,6 +119,23 @@
         # deleted the freshly staged checkpoint from both twins on 2026-08-29.
         # No llama-swap row: vLLM serves this one through its own pair service.
         "flashnext-fp8"
+        # DS4, both twins, same reasoning and the same anti-prune duty: 155.44
+        # GiB (166,898,508,212 B, 53 files, 48 shards) complete on each box for
+        # the TP=2 serve. Verified 2026-09-03 against the Library: all 53
+        # declared files present, every oid 64-hex, declared bytes == actual
+        # bytes exactly, no LFS pointers, safetensors index and shard headers
+        # agree in both directions.
+        #
+        # The row name says "bf16" and that is a MISNOMER kept for continuity —
+        # the key is load-bearing in FN_MODEL_DIR, FN_LIBRARY_DIR and two banked
+        # receipts, so the notes get fixed, not the key. The checkpoint is
+        # native MXFP4: FP4 experts packed two per byte with one E8M0 scale per
+        # 32 values (138 GiB of the 155), plus UE8M0-scaled FP8 e4m3 dense
+        # weights. Only embeddings and norms are BF16. config.json's
+        # `torch_dtype: bfloat16` is the COMPUTE dtype and is where the wrong
+        # suffix came from. flashnix docs/trinity/DS4-BRINGUP.md §1 has the
+        # byte-level evidence.
+        "deepseek-v4-flash-0731-bf16"
       ]
       # ── worker ONLY: the single-box ciru reference (#291) ─────────────────
       #
