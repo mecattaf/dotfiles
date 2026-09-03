@@ -1733,9 +1733,6 @@
           assert
             coordinator.services.local-models.allow == [
               "qwen36-35b-a3b-mtp-ud-q8-k-xl"
-              "qwen36-27b-mtp-ud-q8-k-xl"
-              "gemma4-26b-a4b-it-mtp-q8-0"
-              "fara15-27b-q8-0"
               "fara15-9b-q8-0"
               # fara15-4b-q8-0 and qwen3-vl-32b-ocr-refine ruled out 2026-08-20
               # (#229); qwen3-vl-8b-ocr's NPU2 exit flip died with the NPU
@@ -1745,7 +1742,6 @@
               "qwen3-embedding-8b-q8-0"
               "qwen3-vl-embedding-8b-q8-0"
               "qwen38-27b-mtp-q8-0"
-              "ornith-15-35b-q8-0"
             ];
           # flashnext-fp8 leads this list for the same reason it is the worker's
           # only artifact: it is declared on BOTH twins in modules/strix.nix
@@ -1755,12 +1751,6 @@
           assert
             coordinator.services.local-models.artifacts == [
               "flashnext-fp8"
-              "mage-vl-bf16"
-              "mage-flow-4b-turbo-bf16"
-              "mage-flow-edit-4b-turbo-bf16"
-              "vibevoice-asr-bf16"
-              "vibevoice-large-bf16"
-              "vibevoice-qwen25-7b-tokenizer"
             ];
           # Until 2026-08-28 an assert here intersected localModelStore.packages
           # with coordinator.system.extraDependencies (== 22) — both artifacts of
@@ -1832,14 +1822,10 @@
           ) selectedWeightQuantizations;
           assert
             builtins.attrNames coordinatorSettings.models == [
-              "fara1.5-27b"
               "fara1.5-9b"
-              "gemma4-26b-a4b-it"
-              "ornith-1.5-35b"
               "qwen3-embedding-8b"
               "qwen3-vl-8b-ocr"
               "qwen3-vl-embedding-8b"
-              "qwen3.6-27b"
               "qwen3.6-35b-a3b"
               "qwen3.8-27b"
             ];

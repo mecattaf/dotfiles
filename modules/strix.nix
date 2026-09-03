@@ -63,9 +63,15 @@
       allow =
         lib.optionals (config.networking.hostName == "coordinator") [
           "qwen36-35b-a3b-mtp-ud-q8-k-xl"
-          "qwen36-27b-mtp-ud-q8-k-xl"
-          "gemma4-26b-a4b-it-mtp-q8-0"
-          "fara15-27b-q8-0"
+          # Evicted 2026-09-03 for the dual-Strix staging budget (#286): the
+          # coordinator needed ~264 GiB it did not have. Catalog rows stay;
+          # recovery is uncommenting a line here, and the weights are one
+          # local-models-sync away in the NAS Library (all four verified
+          # present 2026-09-03). qwen3.6-27b is the cheapest of these to lose —
+          # canonical qwen3.8-27b already declares `supersedes` on it.
+          # "qwen36-27b-mtp-ud-q8-k-xl"
+          # "gemma4-26b-a4b-it-mtp-q8-0"
+          # "fara15-27b-q8-0"
           "fara15-9b-q8-0"
           # Ruled out 2026-08-20 (notes ACTION-PLAN §2b / dotfiles#229): rows stay
           # in the catalog; recovery is uncommenting a line here.
@@ -85,7 +91,7 @@
           # MELS fleet additions (#229): Qwen lane primary + wildcard companion.
           # Materialized at the next switch (~68G on the coordinator).
           "qwen38-27b-mtp-q8-0"
-          "ornith-15-35b-q8-0"
+          # "ornith-15-35b-q8-0"
         ]
         # ── the worker's lane (#229, live 2026-08-21) ─────────────────────────
         # The two gemma4-31b rows have carried `hosts = [ "worker" ]` since the
@@ -115,19 +121,20 @@
         "flashnext-fp8"
       ]
       ++ lib.optionals (config.networking.hostName == "coordinator") [
-        # Priority Mage family: the unified VLM and the low-latency generation
-        # and editing variants. Base and RL checkpoints are intentionally
-        # omitted; their quality gain does not justify 5-7.5x more steps here.
-        # These are immutable snapshot payloads; runtime services stay gated on
-        # a proven ROCm package and do not become fake llama-swap rows.
-        # Coordinator-only: every one of these is consumed by an interactive
-        # or agent-side workflow that runs where Tom sits.
-        "mage-vl-bf16"
-        "mage-flow-4b-turbo-bf16"
-        "mage-flow-edit-4b-turbo-bf16"
-        "vibevoice-asr-bf16"
-        "vibevoice-large-bf16"
-        "vibevoice-qwen25-7b-tokenizer"
+        # PARKED, not retired (#286, 2026-09-03). 70.7 GiB of snapshot payload
+        # with no consumer: neither family has a systemd unit on either twin,
+        # because the runtime services are still gated on a proven ROCm
+        # package. Staging the dual-Strix lane needed the space more than a
+        # not-yet-servable checkpoint did. Catalog rows stay; re-borrow is one
+        # sync from the Library (all six verified present 2026-09-03).
+        # NB: the mage byte-count asserts in flake.nix read mageArtifactIds
+        # from the catalog directly, so they stay green with these commented.
+        # "mage-vl-bf16"
+        # "mage-flow-4b-turbo-bf16"
+        # "mage-flow-edit-4b-turbo-bf16"
+        # "vibevoice-asr-bf16"
+        # "vibevoice-large-bf16"
+        # "vibevoice-qwen25-7b-tokenizer"
       ];
     };
 
