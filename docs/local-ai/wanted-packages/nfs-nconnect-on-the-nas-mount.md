@@ -15,7 +15,19 @@ nas:/ on /mnt/nas type nfs4 (rw,noatime,vers=4.2,rsize=1048576,wsize=1048576,
 ```
 
 The NAS's only network is a USB wifi adapter (`mt76-usb-rx` / `mt76-tx phy3` are its
-busiest kernel threads). Estate-wide aggregate off that mount measured ~75-87 MB/s.
+busiest kernel threads).
+
+**The estate aggregate is at least 107.7 MB/s**, measured with one lane on each twin:
+
+| | |
+|---|---|
+| coordinator, pulling GLM rank0 | 40.9 MB/s |
+| worker, pulling DeepSeek-V4 | 66.8 MB/s |
+| **aggregate** | **107.7 MB/s** |
+
+Earlier readings of "~70 MB/s, and that is the whole fleet" were every one of them
+taken while two lanes shared a single twin. There is no 70 MB/s fleet ceiling; that
+number was a property of the contention, not of the AP.
 
 ## The claim this page originally made, and why it was wrong
 
@@ -51,10 +63,20 @@ this repo now has **no evidence that it would help**, and the page should not be
 providing any. Anyone picking this up should measure a single cold reader on an
 otherwise-idle fleet first, and only then decide.
 
-The finding that survives intact is about *scheduling*, not mount options: the twins have
-separate links to the AP, so **where** bytes land changes total time. Two jobs on one twin
-starved each other to the point where one reached 0 MB/s while the other twin's identical
-job ran at 60. Placing work on the idle twin was worth more than any tuning on this page.
+The finding that survives intact is about *scheduling*, not mount options. The twins have
+independent shares of the AP, so **where** bytes land changes total time. Two jobs on one
+twin starved each other to the point where one reached 0 MB/s while the other twin's
+identical job ran at 60; moved apart, the same two jobs summed to 107.7 MB/s.
+
+So the operating rule is **not** "serialize the lanes" — that was the wrong lesson drawn
+from the contaminated ceiling, and following it would have idled half the fleet. It is
+**do not stack two lanes on one twin.** Placement, not scheduling.
+
+That also re-founds the case for crossing the wifi once and replicating over a wired
+rail. The reason is not that the AP is scarce; it is that an artifact identical on both
+twins should cross the radio once rather than twice. An artifact that is genuinely
+different per host — GLM's pre-sharded ranks — has nothing to save and should simply be
+pulled to each twin in parallel.
 
 ## The measurement lesson, which is the durable part
 
