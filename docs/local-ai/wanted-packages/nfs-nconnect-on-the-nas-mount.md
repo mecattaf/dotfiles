@@ -1,57 +1,70 @@
-# the NAS NFS mount has no nconnect, and one stream gets a fifth of the link
+# the NAS mount has no nconnect — but that is not what makes a reader slow
 
-**Filed 2026-09-03 from the flashnix trinity staging.** Measured. Not yet acted on.
+**Filed 2026-09-03 from the flashnix trinity staging. Corrected the same night**,
+after the measurement it rested on turned out to have been taken under contention.
+Not acted on, and the case for acting is weaker than the first version claimed.
 
-## What was measured
+## The fact that is solid
 
-The NAS is reached over wifi on both twins — `ip route get 10.42.0.1` returns
-`dev wlp192s0`. The mount carries no `nconnect=`:
+Both twins reach the NAS over wifi — `ip route get 10.42.0.1` returns `dev wlp192s0`
+— and the mount carries no `nconnect=`:
 
 ```
 nas:/ on /mnt/nas type nfs4 (rw,noatime,vers=4.2,rsize=1048576,wsize=1048576,
                              ...,proto=tcp,timeo=100,retrans=3,...)
 ```
 
-Read throughput off that mount, `dd iflag=direct`:
-
-| concurrent streams | aggregate |
-|---|---|
-| 1 | 15.3 MB/s |
-| 4 | 64 MB/s |
-| 8 | 70 MB/s |
-
-So ~70 MB/s is the ceiling for the whole fleet, and **a single reader gets about a
-fifth of it**. The gap is not the radio; it is that one NFS mount uses one TCP
-connection, and a single connection cannot fill this link.
-
-By contrast `rail0` (Thunderbolt, 10.99.0.x) measured **1.2 GB/s** coordinator→worker,
-roughly 18x the NAS path.
-
-## Why it is worth acting on
-
-Every consumer that reads the Library serially — `library-fetch`, a plain `rsync`, a
-single `cp` — is capped near 15 MB/s no matter how idle the rest of the link is. The
-flashnix staging lanes worked around it in application code, with parallel `--files-from`
-buckets and by crossing the wifi once per artifact and replicating over rail0. That
-workaround is correct for them and does nothing for anything else that mounts the NAS.
-
-`nconnect=8` on the mount would hand the same improvement to every reader without any
-application changing, since NFS would spread one client's traffic over eight TCP
-connections. It is a mount option, so it lands wherever the NAS mount is declared, and
-it needs an activation to take effect.
-
-Not claimed: that `nconnect=8` reaches exactly 70 MB/s for a single reader. The 8-stream
-figure came from eight independent `dd` processes, which is a different shape from one
-process over eight connections. The direction is well established; the number is not.
-
-## Worth checking at the same time
-
 The NAS's only network is a USB wifi adapter (`mt76-usb-rx` / `mt76-tx phy3` are its
-busiest kernel threads). Wifi is half-duplex, so a download *into* the NAS competes for
-airtime with NFS reads *out* of it — the two are not independent budgets. Any wired path
-to the NAS would dominate every tuning option on this page.
+busiest kernel threads). Estate-wide aggregate off that mount measured ~75-87 MB/s.
+
+## The claim this page originally made, and why it was wrong
+
+It said a single NFS reader is capped near 15 MB/s — a fifth of the link — because one
+mount uses one TCP connection, and offered `nconnect=8` as the fix.
+
+The 15.3 MB/s figure came from a stream sweep taken while two other staging jobs were
+running. The disproof came from the other twin, same AP, same second:
+
+| | streams | rate |
+|---|---|---|
+| rank0, coordinator (sharing the box with ~7 other rsync streams) | 1 | 7.1-7.8 MB/s |
+| rank1, worker (alone on that box) | 1 | 56-65 MB/s |
+
+**A single NFS stream demonstrably reaches ~65 MB/s on this fleet.** There is no
+per-connection ceiling near 15 MB/s to lift.
+
+The real mechanism is contention share: rsync fair-shares by stream, so one logical
+stream competing against seven gets roughly an eighth. Parallelising a slow reader works
+by *winning back share* from the other readers on the same box, not by lifting a
+per-connection cap. That distinction matters, because share-winning is zero-sum between
+local jobs while a cap-lift would not be.
+
+The related figure that also collapsed: a "single-stream rsync is 8.5 MB/s" claim was
+retracted by its author as arithmetic (34 MB/s ÷ 4 workers under contention) rather than
+a measurement.
+
+## What this leaves
+
+`nconnect` may still be worth setting — spreading one client's traffic over several TCP
+connections is generally good on a lossy radio, and nothing here argues against it. But
+this repo now has **no evidence that it would help**, and the page should not be read as
+providing any. Anyone picking this up should measure a single cold reader on an
+otherwise-idle fleet first, and only then decide.
+
+The finding that survives intact is about *scheduling*, not mount options: the twins have
+separate links to the AP, so **where** bytes land changes total time. Two jobs on one twin
+starved each other to the point where one reached 0 MB/s while the other twin's identical
+job ran at 60. Placing work on the idle twin was worth more than any tuning on this page.
+
+## The measurement lesson, which is the durable part
+
+Three separate throughput figures on this fleet in one night were taken under
+uncontrolled contention and each was presented as a property of the link:
+15.3 MB/s single-stream, 8.5 MB/s single-stream rsync, and a ~20 MB/s "coordinator link
+cap" that turned out to be one competing job — the same host sustained 48 MB/s the
+moment that job stopped. Measure with `iflag=direct`, on a quiet fleet, and say what
+else was running. A number without its conditions is not a measurement.
 
 ## Decides what
 
-Wherever the `/mnt/nas` NFS mount is declared (`x-systemd.automount`, `_netdev`,
-`nas-reachable.service` in its requires list). No change made.
+Nothing today. If ever acted on: wherever the `/mnt/nas` NFS mount is declared.
