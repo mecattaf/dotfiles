@@ -143,6 +143,125 @@ let
     };
   };
 
+  # ── Local inference providers (flashnix pair + llama-swap) ───────────────
+  # These three lived ONLY in a hand-edited ~/.pi/agent/models.json, which this
+  # module also generates — so every `home-manager switch` silently reverted the
+  # file to the qwen-token-plan-only version and local AI went dark until someone
+  # re-pasted them. Declaring them here is the fix: the generated file now IS the
+  # roster, and a switch is a no-op instead of a regression.
+  #
+  # WHY THESE AND NOT the pi-llama-swap extension's dynamic discovery: that
+  # extension registers ONE provider (`llama-swap`) against LLAMA_SWAP_PORT on
+  # localhost, so it can neither reach the worker's proxy nor name the two
+  # planes apart in a receipt. The static entries below are addressable by an
+  # exact `--provider/--model` pair, which is what the flashnix bring-up
+  # receipts quote verbatim. Both routes coexist; neither shadows the other.
+  #
+  # WHY UNCONDITIONAL (no `hasLocalLlamaSwap` gate): a provider entry is an inert
+  # endpoint declaration — pi dials it only when a run names it. Gating would
+  # reintroduce exactly the failure this commit removes, i.e. a host evaluating
+  # to a models.json with no local providers in it. Cost of keeping them
+  # everywhere is three unreachable rows in `pi --list-models`.
+  zeroCost = {
+    input = 0;
+    output = 0;
+    cacheRead = 0;
+    cacheWrite = 0;
+  };
+
+  # llama-swap and the vLLM lane are both auth-free on the LAN; pi still wants a
+  # non-empty key or it refuses to build the Authorization header.
+  openaiCompat = {
+    supportsDeveloperRole = false;
+    supportsReasoningEffort = false;
+    supportsStore = false;
+  };
+
+  # This host's own proxy port where NixOS declares it, else the fleet-wide
+  # convention (modules/llama-swap.nix pins 9292 on every box that runs it).
+  llamaSwapPort = if hasLocalLlamaSwap then llamaSwap.port else 9292;
+
+  localModelsJson = {
+    providers = {
+      # The flashnix TP=2 vLLM pair (modules/flashnext-lane.nix arbitrates it
+      # against llama-swap — exactly one plane holds the GPUs at a time, so this
+      # provider answers only while the pair is up).
+      flashnix-local = {
+        api = "openai-completions";
+        apiKey = "flashnix-local-no-auth";
+        authHeader = true;
+        baseUrl = "http://127.0.0.1:1234/v1";
+        compat = openaiCompat;
+        models = [
+          {
+            id = "flashnix";
+            name = "Qwen3.8-Flash-Next FP8 (flashnix pair, TP=2)";
+            contextWindow = 262144;
+            maxTokens = 32768;
+            input = [ "text" ];
+            reasoning = false;
+            cost = zeroCost;
+          }
+        ];
+      };
+
+      llama-swap-coordinator = {
+        api = "openai-completions";
+        apiKey = "llama-swap-no-auth";
+        authHeader = true;
+        baseUrl = "http://127.0.0.1:${toString llamaSwapPort}/v1";
+        compat = openaiCompat;
+        models = [
+          {
+            id = "qwen3.8-27b";
+            name = "Qwen3.8 27B Q8_0 (llama-swap, coordinator)";
+            contextWindow = 32768;
+            maxTokens = 8192;
+            input = [ "text" ];
+            reasoning = false;
+            cost = zeroCost;
+          }
+          {
+            id = "qwen3.6-35b-a3b";
+            name = "Qwen3.6 35B-A3B MTP (llama-swap, coordinator)";
+            contextWindow = 32768;
+            maxTokens = 8192;
+            input = [ "text" ];
+            reasoning = false;
+            cost = zeroCost;
+          }
+        ];
+      };
+
+      # The twin's proxy, by hostname — resolved over the same 10.42.0.0/24 the
+      # weight staging uses, not over Tailscale.
+      llama-swap-worker = {
+        api = "openai-completions";
+        apiKey = "llama-swap-no-auth";
+        authHeader = true;
+        baseUrl = "http://worker:9292/v1";
+        compat = openaiCompat;
+        models = [
+          {
+            id = "gemma4-31b-it";
+            name = "Gemma4 31B IT (llama-swap, worker)";
+            contextWindow = 32768;
+            maxTokens = 8192;
+            input = [ "text" ];
+            reasoning = false;
+            cost = zeroCost;
+          }
+        ];
+      };
+    };
+  };
+
+  # The cloud provider is the only one that needs a host gate: its key is an
+  # agenix path that does not exist off the fleet. Local rows are always present.
+  modelsJson = lib.recursiveUpdate localModelsJson (
+    lib.optionalAttrs hasQwenTokenPlan qwenModelsJson
+  );
+
   # ── extension roster ─────────────────────────────────────────────────────
   # One entry per extension — the whole "standard": a name, an `enable` toggle,
   # and an immutable `src`. Add a package by adding a stanza; disable one by
@@ -198,7 +317,12 @@ in
   # (re-reading on every /model open), so unlike settings.json it is safe to own
   # as a read-only store symlink. Same separation of planes as the `-e` roster
   # above: what we declare lives in git, what pi mutates stays in ~/.pi.
-  home.file.".pi/agent/models.json" = lib.mkIf hasQwenTokenPlan {
-    source = (pkgs.formats.json { }).generate "pi-models.json" qwenModelsJson;
+  #
+  # Unconditional since 2026-09-03: it used to be gated on the agenix cloud token,
+  # which meant a host without that secret got NO file at all and the local
+  # providers below only existed as a hand-edit that the next switch destroyed.
+  # The gate now lives on the one provider that actually needs it (see modelsJson).
+  home.file.".pi/agent/models.json" = {
+    source = (pkgs.formats.json { }).generate "pi-models.json" modelsJson;
   };
 }
