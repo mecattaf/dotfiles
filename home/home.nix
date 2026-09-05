@@ -227,6 +227,9 @@ in
   # ~/.claude-work. Same skills + settings, separate .credentials.json/.claude.json.
   home.file.".claude-work/skills".source = link "dot_claude/skills";
   home.file.".claude-work/settings.json".source = link "dot_claude/settings.json";
+  # Third account (2026-09-05): `cc3`/`cac3` → ~/.claude-3, same links.
+  home.file.".claude-3/skills".source = link "dot_claude/skills";
+  home.file.".claude-3/settings.json".source = link "dot_claude/settings.json";
 
   # Same canonical skill tree, exposed to Codex and `pi` (earendil-works/pi)
   # through the vendor-neutral, always-trusted Agent-Skills directory

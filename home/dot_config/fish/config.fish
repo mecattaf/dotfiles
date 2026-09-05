@@ -49,6 +49,9 @@ alias cac='claude --continue --dangerously-skip-permissions'
 # state in ~/.claude-work; skills/settings are the same dotfiles links (home.nix).
 alias cc2='env CLAUDE_CONFIG_DIR=$HOME/.claude-work claude --dangerously-skip-permissions'
 alias cac2='env CLAUDE_CONFIG_DIR=$HOME/.claude-work claude --continue --dangerously-skip-permissions'
+# Third Claude account (2026-09-05), same rotation: state in ~/.claude-3.
+alias cc3='env CLAUDE_CONFIG_DIR=$HOME/.claude-3 claude --dangerously-skip-permissions'
+alias cac3='env CLAUDE_CONFIG_DIR=$HOME/.claude-3 claude --continue --dangerously-skip-permissions'
 
 # ── Music ────────────────────────────────────────────────────────────────
 # The library lives on the NAS and is served by Navidrome; cliamp is the client.
