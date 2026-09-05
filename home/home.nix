@@ -113,6 +113,7 @@ in
 {
   imports = [
     ./ai-memory.nix
+    ./harness-records.nix
     ./herdr.nix
     ./nvim.nix
     ./paper.nix
