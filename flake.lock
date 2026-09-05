@@ -475,6 +475,52 @@
         "type": "github"
       }
     },
+    "herdr": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "rust-overlay": "rust-overlay_2"
+      },
+      "locked": {
+        "lastModified": 1788267196,
+        "narHash": "sha256-YKvJWwWd4jNC3NVvNkhEEl2hYeQymnZfGZ3hF28Dqog=",
+        "owner": "herdrdev",
+        "repo": "herdr",
+        "rev": "dbc398f580d1da6c336c6837a60b7e0710501d6d",
+        "type": "github"
+      },
+      "original": {
+        "owner": "herdrdev",
+        "repo": "herdr",
+        "rev": "dbc398f580d1da6c336c6837a60b7e0710501d6d",
+        "type": "github"
+      }
+    },
+    "herdr-kitten": {
+      "inputs": {
+        "herdr": [
+          "herdr"
+        ],
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1788295280,
+        "narHash": "sha256-Jhjo4B+RyGL2BQA+X/Tp7rzoU/rEcmEe749r2UFNjBI=",
+        "ref": "refs/heads/main",
+        "rev": "41a6de5cc945131ef98988898fcb67aec5da9340",
+        "revCount": 28,
+        "type": "git",
+        "url": "file:///home/tom/mecattaf/herdr-kitten"
+      },
+      "original": {
+        "rev": "41a6de5cc945131ef98988898fcb67aec5da9340",
+        "type": "git",
+        "url": "file:///home/tom/mecattaf/herdr-kitten"
+      }
+    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -957,6 +1003,8 @@
         "deploy-rs": "deploy-rs",
         "disko": "disko",
         "git-ai": "git-ai",
+        "herdr": "herdr",
+        "herdr-kitten": "herdr-kitten",
         "home-manager": "home-manager",
         "llm-agents": "llm-agents",
         "microvm": "microvm",
@@ -970,8 +1018,7 @@
         "piri": "piri",
         "sfmono-liga": "sfmono-liga",
         "tally": "tally",
-        "voxtype": "voxtype",
-        "zmx": "zmx"
+        "voxtype": "voxtype"
       }
     },
     "rust-overlay": {
@@ -987,6 +1034,27 @@
         "owner": "oxalica",
         "repo": "rust-overlay",
         "rev": "095c394bb91342882f27f6c73f64064fb9de9f2a",
+        "type": "github"
+      },
+      "original": {
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "type": "github"
+      }
+    },
+    "rust-overlay_2": {
+      "inputs": {
+        "nixpkgs": [
+          "herdr",
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1783577481,
+        "narHash": "sha256-EWMxOWrJ031f8f/lrcEmhTRs4npw1/5N3Hcjin846c8=",
+        "owner": "oxalica",
+        "repo": "rust-overlay",
+        "rev": "4cdea398dc491b082dccdce0fad1ed0b75fa3394",
         "type": "github"
       },
       "original": {
@@ -1946,22 +2014,6 @@
         "submodules": true,
         "type": "git",
         "url": "https://github.com/Xilinx/XRT"
-      }
-    },
-    "zmx": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1787162745,
-        "narHash": "sha256-uk1FF/iqpArkY1gK5wHDISUf+tDLGJQ+U6BDmiV6Nns=",
-        "owner": "neurosnap",
-        "repo": "zmx",
-        "rev": "9575587bbe363a6652c17d64d002c67eb1f32e6a",
-        "type": "github"
-      },
-      "original": {
-        "owner": "neurosnap",
-        "repo": "zmx",
-        "type": "github"
       }
     }
   },

@@ -19,7 +19,7 @@
 # WHY WE KEEP IT (the image.nvim north star, dotfiles#49 lineage): when the
 # image lands in Claude Code it STILL collapses to an opaque `[Image #N]`
 # placeholder — same as native Ctrl+V — so this does NOT, by itself, fix the
-# Ctrl+G-composer image-loss (annex_ctrlg.py's screen-scrape still only sees the
+# Ctrl+G-composer image-loss (any screen-scraping composer still only sees the
 # token). Its value is that it materializes the clipboard image as a STABLE,
 # KNOWABLE file path we own. That path is the enabling primitive for the flipped
 # workflow: a composer nvim can render it inline via image.nvim (kitty graphics
@@ -28,8 +28,8 @@
 #
 # KEYBIND CAVEAT (do NOT naively `map ctrl+v` globally): upstream binds Ctrl+V,
 # but a global kitty Ctrl+V map SHADOWS nvim visual-block and shell literal-next
-# (0x16) in EVERY window — the same focus-gating lesson as annex_ctrlg.py's
-# Ctrl+G. Whatever chord invokes this must be harness-focus-gated (pass the raw
+# (0x16) in EVERY window — the same focus-gating lesson the retired Ctrl+G
+# overlay composer taught. Whatever chord invokes this must be harness-focus-gated (pass the raw
 # byte through outside claude/pi) or a dedicated non-conflicting chord. See the
 # kitty.conf binding for how it's wired.
 #
