@@ -101,14 +101,20 @@ else
 fi
 
 # ── 2. the meters directory the module now creates ──────────────────────────
+# Existence alone stopped being evidence on 2026-09-06, when something else on
+# the box created the directory 0755 before this branch ever switched. The
+# MODE is what only the declared rule produces: systemd-tmpfiles `d ... 0700`
+# both creates the directory and chmods an existing one, so 0700 is the switch,
+# and 0755 is somebody's mkdir -p.
 if coordinator_only; then
-  if [ -d "$HOME/.local/state/tally/meters" ]; then
-    ok "[E] meters dir exists" "test -d ~/.local/state/tally/meters"
+  mode="$(stat -c '%a' "$HOME/.local/state/tally/meters" 2>/dev/null)"
+  if [ "$mode" = "700" ]; then
+    ok "[E] meters dir 0700" "stat -c %a ~/.local/state/tally/meters"
   else
-    no "[E] meters dir exists" "test -d ~/.local/state/tally/meters"
+    no "[E] meters dir 0700 (got '$mode')" "stat -c %a ~/.local/state/tally/meters"
   fi
 else
-  na "[E] meters dir (coordinator only)" "test -d ~/.local/state/tally/meters"
+  na "[E] meters dir (coordinator only)" "stat -c %a ~/.local/state/tally/meters"
 fi
 
 # ── 3. the retired pin, by absence ──────────────────────────────────────────
