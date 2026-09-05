@@ -7,18 +7,44 @@ binds {
 
     // ── Application Launchers ────────────────────────────────────
 
+    // THE INVERSION (spec B11). Mod+Return is the herdr-backed smart path and
+    // Mod+Shift+Return the deliberately herdr-free plain tier — the reverse of
+    // the pre-herdr scheme, and the reason the home-grown `new-terminal` and
+    // `resume-terminal` scripts are gone rather than rewritten. herdr-kitten
+    // (`hk`) owns everything terminal-side; niri owns only which workspace the
+    // window lands on.
+
     // scroll: bindsym $mod+Return exec kitty -e fish
-    Mod+Return hotkey-overlay-title="Terminal" { spawn "kitty" "-e" "fish"; }
+    // Fresh niri workspace + a herdr-backed shell, two authorities in one chord.
+    // niri hops to the empty trailing workspace of the focused output (dynamic
+    // workspaces guarantee exactly one exists), then hands off to herdr-kitten.
+    // `hk new` creates the herdr workspace — labelled from the git repo root,
+    // which is the cwd-follow/unique-name job the deleted `new-terminal` script
+    // did by hand — plus its root pane, and attaches a kitty window to it. It
+    // opens that window through kitty remote control, so it has to run INSIDE a
+    // kitty to have a socket to aim at; the `kitty -e hk new` window is that
+    // socket and exits the moment the attached window is up.
+    Mod+Return hotkey-overlay-title="Terminal (herdr)" { spawn-sh "niri msg action focus-workspace \"$(niri msg -j workspaces | jq -re 'map(select(.is_focused))[0].output as $o | map(select(.output == $o)) | max_by(.idx) | .idx')\"; exec kitty -e hk new"; }
 
-    // scroll: bindsym $mod+Shift+Return exec $scripts/nvim-terminal.sh
-    // niri: same script, ported to shell + niri msg; host-aware
-    //   coordinator: new kitty in focused kitty/nvim's cwd
-    //   remote (any thin client): new kitty that SSHs to coordinator via `desk`
-    Mod+Shift+Return hotkey-overlay-title="Terminal (smart)" { spawn-sh "~/.local/bin/new-terminal"; }
+    // The plain tier, kept on purpose: zero herdr involvement, no pane, no
+    // server, kitty-scrollback.nvim and OSC 133 exactly as they always were.
+    // The escape hatch for when herdr is the thing that is broken.
+    Mod+Shift+Return hotkey-overlay-title="Terminal (plain)" { spawn "kitty" "-e" "fish"; }
 
-    // Resume an existing zmx session via fzf picker; runs locally on the
-    // coordinator, attaches the coordinator's sessions over kitten ssh on remotes.
-    Mod+Ctrl+Shift+Return hotkey-overlay-title="Terminal (resume)" { spawn-sh "~/.local/bin/resume-terminal"; }
+    // Resume picker over herdr's detached panes (terminal id / label / agent
+    // status; fzf when present, numbered menu otherwise). It execs the attach in
+    // place, so the kitty window it opens IS the resumed pane's surface.
+    Mod+Ctrl+Shift+Return hotkey-overlay-title="Terminal (resume)" { spawn "kitty" "-e" "hk" "resume"; }
+
+    // Name this session. herdr-kitten's workspace rename fans one label over
+    // every tier that shows a name: herdr's durable label (the only one that
+    // survives a server restart), the live display title, and the kitty window
+    // title of each window projecting that workspace. Upstream names
+    // `hk ws rename` the bind target for a rename chord (docs/mapping.md P50) —
+    // the pane-level `hk rename` needs a pane id, which a compositor bind cannot
+    // know, whereas herdr always knows which workspace is focused. This chord
+    // used to open the ChatGPT webapp (see Chrome Webapps below).
+    Mod+Shift+N hotkey-overlay-title="Rename Session (herdr)" { spawn-sh "kitty --class herdr-rename -e sh -c 'ws=$(hk ws list | grep focused$ | cut -f2); printf \"rename %s to: \" \"$ws\"; read -r name; [ -n \"$name\" ] && hk ws rename \"$ws\" \"$name\"'"; }
 
     // scroll: bindsym $mod+D exec vicinae open
     Mod+D hotkey-overlay-title="Launcher" { spawn "vicinae" "open"; }
@@ -92,7 +118,9 @@ binds {
     // Chrome and OBS are installed through NixOS; invoke their binaries directly.
 
     // scroll: bindsym $mod+Shift+N exec $chrome --app=https://chat.openai.com/
-    Mod+Shift+N { spawn "google-chrome-stable" "--app=https://chat.openai.com/"; }
+    // ^ DROPPED (spec DECISION-1): Mod+Shift+N is the herdr rename flow now, in
+    //   the terminal group above. The ChatGPT PWA keeps its desktop entry and
+    //   stays one Mod+D launcher away.
     // scroll: bindsym $mod+Shift+C exec $chrome --app=https://claude.ai/
     Mod+Shift+C { spawn "google-chrome-stable" "--app=https://claude.ai/"; }
     // scroll: bindsym $mod+Shift+M exec $chrome --app=https://soundcloud.com
@@ -129,9 +157,16 @@ binds {
 
     // Reserved: Mod+I — toggle top bar
 
-    // Voxtype streams with toggle activation: press once to start dictating,
-    // then press again to finish. The shifted chord cancels without insertion.
-    Mod+Space repeat=false hotkey-overlay-title="Dictate (toggle)" { spawn "voxtype" "record" "toggle"; }
+    // Dictation is HOLD-to-talk now, and niri is deliberately not the thing
+    // driving it: a niri bind has no on-release trigger, so push-to-talk lives
+    // in voxtype's own evdev hotkey layer (home/voxtype.nix), which sees the
+    // physical press AND release below the compositor. This bind exists only to
+    // SWALLOW the chord — niri consumes Mod+Space so the surface being dictated
+    // into never receives it — and `spawn "true"` is the cheapest way to say
+    // "consumed, do nothing". It must never be given a real action: that action
+    // would fire on every press, on top of the evdev listener already recording.
+    Mod+Space repeat=false hotkey-overlay-title="Dictate (hold)" { spawn "true"; }
+    // Unchanged: the shifted chord cancels an in-flight dictation, no insertion.
     Mod+Shift+Space hotkey-overlay-title="Cancel Dictation" { spawn "voxtype" "record" "cancel"; }
 
     Mod+Slash { show-hotkey-overlay; }
@@ -251,6 +286,9 @@ binds {
     Mod+7 { focus-workspace 7; }
     Mod+8 { focus-workspace 8; }
     Mod+9 { focus-workspace 9; }
+    // Mod+0 closes the row (ruling-record R4). niri workspaces are dynamic, so
+    // index 10 is the tenth workspace when it exists and the last one otherwise.
+    Mod+0 { focus-workspace 10; }
     Mod+Ctrl+1 { move-column-to-workspace 1; }
     Mod+Ctrl+2 { move-column-to-workspace 2; }
     Mod+Ctrl+3 { move-column-to-workspace 3; }

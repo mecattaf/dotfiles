@@ -73,7 +73,6 @@ let
     "qt6ct"
     "cliamp"
   ];
-  # NB: zmx has no config file (unlike shpool) — nothing to symlink here.
 
   # Python interpreter backing the niri helper bin/ scripts (wifi-menu, fzf-nmcli, …).
   pythonForNiri = pkgs.python3.withPackages (
@@ -114,6 +113,7 @@ in
 {
   imports = [
     ./ai-memory.nix
+    ./herdr.nix
     ./nvim.nix
     ./paper.nix
     ./pi.nix
@@ -290,13 +290,13 @@ in
   };
 
   # ---------------------------------------------------------------------------
-  # zmx — LOCAL session persistence. No systemd plumbing: unlike shpool's single
-  # socket-activated daemon, zmx is daemon-PER-session, forked from the CLI on
-  # first `attach` (setsid + XDG_RUNTIME_DIR socket). `loginctl enable-linger
-  # tom` (already set on the coordinator) keeps those per-session daemons alive
-  # across logout, so a laptop can re-`kitten ssh` in and re-attach any time. See
-  # home.packages below for the binary, and home/dot_local/bin/zmx-resume for the
-  # picker.
+  # `loginctl enable-linger tom` (already set on the coordinator) is what keeps
+  # user-level services running when no login session is open. The posture it
+  # now serves is ONE long-lived server per user, not N daemons forked per
+  # session: the coordinator hosts the single herdr server and every PTY lives
+  # inside it, so a laptop that reconnects later finds its panes still alive.
+  # Linger is therefore load-bearing for the coordinator alone — no other host
+  # runs a server (ruling B5/B6).
   # ---------------------------------------------------------------------------
 
   # ---------------------------------------------------------------------------
@@ -437,10 +437,7 @@ in
     xdg-terminal-exec
     xarchiver
 
-    # session persistence + terminal. zmx (overlay pkg via flake input) is the
-    # projector primitive — persistent LOCAL sessions, reached over kitten ssh
-    # from laptops.
-    zmx
+    # terminal
     kitty
 
     # agent / dev tooling. A curated slice of the llm-agents.nix catalog

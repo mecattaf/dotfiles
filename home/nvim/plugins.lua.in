@@ -33,7 +33,7 @@ vim.g.mapleader = " "
 
 -- claude_slash blink.cmp source lives outside the Nix-rendered lua/ tree so its
 -- LOGIC is live-editable with no rebuild (same whole-dir-symlink trick as
--- ~/.local/bin/annex-pick.lua — see home.nix's `home.file.".local/bin"`).
+-- the rest of ~/.local/bin — see home.nix's `home.file.".local/bin"`).
 -- Only this one path line needs a rebuild if it ever moves.
 package.path = package.path .. ";" .. vim.env.HOME .. "/.local/bin/nvim-lua/?.lua"
 

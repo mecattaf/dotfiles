@@ -113,31 +113,6 @@
       flake = false;
     };
 
-    # zmx — LOCAL terminal session persistence (neurosnap/zmx, built on
-    # ghostty-vt). THE projector primitive (jul7 ruling, tally morning-annotation
-    # §12): every kitty on the coordinator is a persistent local zmx session
-    # (`zmx attach <name>`); other boxes reach it via `kitten ssh coordinator -t
-    # zmx attach <session>` over the tailnet. Supersedes shpool fleet-wide.
-    #
-    # We tried zmosh (a zmx fork adding encrypted-UDP roaming) but it is
-    # unmaintained and ships a stale build.zig.zon2json-lock that breaks offline
-    # nix builds. Its one feature we forgo — UDP auto-reconnect — is moot:
-    # kitten ssh gives reliable graphics/clipboard while attached, and a
-    # persistent session survives disconnects server-side.
-    #
-    # flake = false ON PURPOSE (2026-08-21): upstream's flake packages zmx via
-    # Cloudef/zig2nix, whose import-from-derivation (zon2json/zon2nix built
-    # MID-EVAL) made every dotfiles evaluation build zig tooling, broke
-    # `nix flake check --no-build`, and turned one GC into
-    # "path 'zon2json.drv' is not valid". pkgs/zmx.nix now builds the same
-    # source with the nixpkgs zig toolchain from upstream's committed
-    # build.zig.zon2json-lock — pure eval, zero IFD, and zig2nix leaves our
-    # input graph entirely. `nix flake update zmx` still bumps the pin.
-    zmx = {
-      url = "github:neurosnap/zmx";
-      flake = false;
-    };
-
     # git-ai — AI-authorship tracking CLI (github.com/git-ai-project/git-ai).
     # Consume its flake package directly and pin it in flake.lock. The Home
     # Manager profile installs upstream's `minimal` output, which provides
@@ -172,11 +147,10 @@
     # timers/services and the build-time `checkedConfig` validator, which a bare
     # pkg can't deliver; NO bespoke pkgs/tally.nix. home/tally.nix imports the
     # module and enables the daemon on the coordinator only. Other hosts leave
-    # the module off. Composes onto
-    # the dotfiles-owned zmx substrate — tally ships
-    # none of it. follows nixpkgs so the Rust build resolves against our one pin
-    # rather than dragging a second nixpkgs into the lock. `nix flake update
-    # tally` bumps to the latest pushed commit (and, post-release, the tag).
+    # the module off. Composes onto whatever terminal substrate the dotfiles own —
+    # tally ships none of it. follows nixpkgs so the Rust build resolves against
+    # our one pin rather than dragging a second nixpkgs into the lock. `nix flake
+    # update tally` bumps to the latest pushed commit (and, post-release, the tag).
     #
     # Repo is mecattaf/tally.nix (NOT mecattaf/tally, which is the pre-rebuild
     # spec history). It is public, so use the native `github:` fetcher: fleet
@@ -210,6 +184,54 @@
     piri = {
       url = "github:Asthestarsfalll/piri";
       inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # herdr — the terminal workspace manager for AI coding agents
+    # (github.com/herdrdev/herdr, Apache-2.0). It is the upstream PRODUCT that
+    # replaces everything this repo used to invent for itself: the home-grown
+    # kitten tier, its session layer, and its title-naming pipeline are all
+    # deleted in favour of one server holding every PTY.
+    #
+    # PINNED TO A REV, not a branch: 0.8.2 is the floor this setup needs (plugin
+    # API + the agent sidebar), and nixpkgs carries 0.7.4 — below it. Bump by
+    # editing the rev here, deliberately, the way nixpkgs-paperless is bumped.
+    #
+    # Consume `packages.<sys>.herdr` ONLY (home/herdr.nix). Upstream composes
+    # rust-overlay into its own pkgs fixpoint to build the Rust toolchain from
+    # rust-toolchain.toml; that must never reach ours, so no overlay of theirs is
+    # ever applied here. Following our nixpkgs keeps the build on our one pin.
+    # NOT in `rollingInputOverrides`: herdr owns live PTYs, so its version moves
+    # when Tom says so, never on a nightly resolve.
+    herdr = {
+      url = "github:herdrdev/herdr/dbc398f580d1da6c336c6837a60b7e0710501d6d";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # herdr-kitten — the repo where herdr IS the kitty kitten: one stdlib-Python
+    # kitten (four gestures on kitty's GUI thread) plus the `hk` CLI (workspace
+    # create/attach/resume/rename, the dictation endpoint, the recording
+    # spinner). It is the whole integration layer between kitty and herdr, and
+    # it is the reason this repo could delete its six home-grown kittens and the
+    # whole script tier under them outright.
+    #
+    # CONSUMED AS AN INPUT, NEVER VENDORED (ruling B3): `nix flake update
+    # herdr-kitten` is the entire upgrade story. Consume
+    # `packages.<sys>.herdr-kitten` only — no overlay of its own reaches our pkgs
+    # fixpoint (F.3) — and keep it out of `rollingInputOverrides` (F.4) for the
+    # same reason herdr is out: it fronts live PTYs.
+    #
+    # URL: local git checkout at the reviewed rev while spec A's repo is
+    # pre-publication. It becomes `github:mecattaf/herdr-kitten/<rev>` (the URL
+    # its own README already documents) before this PR merges; the rev is the
+    # same object either way.
+    #
+    # Upstream pins herdr at the same dbc398f5 this flake does and follows its
+    # nixpkgs; both are re-pointed at ours so one herdr and one nixpkgs serve
+    # the whole closure.
+    herdr-kitten = {
+      url = "git+file:///home/tom/mecattaf/herdr-kitten?rev=41a6de5cc945131ef98988898fcb67aec5da9340";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.herdr.follows = "herdr";
     };
 
     # nix-amd-ai — the proven coordinator NPU plane (hardware.amd-npu: amdxdna,
@@ -335,10 +357,6 @@
           # allowlisted set out of this namespace. See the input comment above.
           llm-agents = inputs.llm-agents.packages.${system};
           sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { src = inputs.sfmono-liga; };
-          # zmx built by our own pkgs/zmx.nix from the non-flake source input:
-          # nixpkgs zig + upstream's committed dependency lock, no zig2nix IFD
-          # (see the input comment).
-          zmx = final.callPackage ./pkgs/zmx.nix { src = inputs.zmx; };
         })
         # Pin-decoupled "hot" packages — see the nixpkgs-fresh input comment above.
         # Cherry-picked, not a wholesale pkgs swap: only packages named here track
@@ -935,6 +953,11 @@
           assert coordinatorHome.services.tally.enable;
           assert coordinatorHome.programs.voxtype.enable;
           assert coordinatorHome.systemd.user.services ? wayvnc;
+          # ONE herdr server, coordinator only (ruling B5), and it must never be
+          # tied to the compositor's lifetime (ruling B6) — the PTYs outlive it.
+          assert coordinatorHome.systemd.user.services ? herdr;
+          assert !(coordinatorHome.systemd.user.services.herdr.Unit ? PartOf);
+          assert coordinatorHome.systemd.user.services.herdr.Install.WantedBy == [ "default.target" ];
           # The worker keeps Home Manager (unlike the NAS, which stops at NixOS):
           # it is an ordinary interactive box that merely has nobody sitting at
           # it, so the shell, atuin sync and niri session are all real. What it
@@ -944,6 +967,9 @@
           assert workerHome.programs.atuin.settings.auto_sync;
           assert !workerHome.services.tally.enable;
           assert !workerHome.programs.voxtype.enable;
+          # …and the herdr SERVER. The worker still gets the herdr binary (it is
+          # how `herdr --remote coordinator` works at all), just no unit.
+          assert !(workerHome.systemd.user.services ? herdr);
           # wayvnc's unit exists and is deliberately unreachable — this host has
           # no tailnet and :5900 is admitted on tailscale0 only, fleet-wide. The
           # unit stays so the screen becomes viewable the day that changes; see
@@ -988,17 +1014,12 @@
               export AI_MEMORY_HANDOFF_SKILL=${./home/dot_claude/skills/handoff/SKILL.md}
               export AI_MEMORY_PICKUP_SKILL=${./home/dot_claude/skills/pickup/SKILL.md}
               export AI_MEMORY_UTILITY_OWNER=${./pkgs/utility-model/utility_model.py}
-              export AI_MEMORY_ZMX_TITLE=${./home/dot_local/bin/zmx-title}
               mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_RUNTIME_DIR"
 
               python3 -m unittest discover \
                 -s ${./tests/ai-memory} \
                 -p 'test_*.py' \
                 -v
-              ${pkgs.bash}/bin/bash -n \
-                ${./home/dot_local/bin/zmx-title} \
-                ${./home/dot_local/bin/zmx-retitle} \
-                ${./home/dot_local/bin/new-terminal}
 
               mkdir -p "$HOME/journal"
               qmd --index ai-memory-check \
