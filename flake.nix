@@ -1128,6 +1128,31 @@
               touch "$out"
             '';
 
+        # nightly-record (dotfiles#298): five lanes, five rows, every night,
+        # from the harness transcripts and nothing else. Same shape as
+        # print-paper — the real program, driven against fixtures.
+        nightly-record =
+          pkgs.runCommand "nightly-record"
+            {
+              nativeBuildInputs = [ pkgs.python3 ];
+            }
+            ''
+              set -euo pipefail
+
+              export HOME="$TMPDIR/home"
+              export PYTHONDONTWRITEBYTECODE=1
+              export NIGHTLY_RECORD_SCRIPT=${./home/dot_local/bin/nightly-record}
+              export NIGHTLY_RECORD_FIXTURES=${./tests/nightly-record/fixtures}
+              mkdir -p "$HOME"
+
+              python3 -m unittest discover \
+                -s ${./tests/nightly-record} \
+                -p 'test_*.py' \
+                -v
+
+              touch "$out"
+            '';
+
         # The prune guard (dotfiles#296): local-models-sync must never delete,
         # and local-models-prune --yes must refuse a set that drifted from the
         # recorded dry-run. Hermetic — a fixture tree and a fake manifest, no

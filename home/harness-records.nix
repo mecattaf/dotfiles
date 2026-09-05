@@ -34,6 +34,8 @@ let
     pkgs.rsync
     pkgs.coreutils
   ];
+
+  recordPath = lib.makeBinPath [ pkgs.python3 ];
 in
 {
   # ── the transcript mirror (Rule 9: nothing hand-installed stays so) ─────────
@@ -72,6 +74,40 @@ in
       OnUnitActiveSec = "1h";
       # A box that was asleep through a scheduled run still mirrors on wake:
       # the whole value of the mirror is that it has no gaps.
+      Persistent = true;
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
+
+  # ── the nightly record (mined 10: outside tally) ───────────────────────────
+  #
+  # One row per seat-lane per day, appended to
+  # ~/.local/state/nightly-record/<date>.jsonl, read from the harnesses' own
+  # transcripts. It records; it does not admit, ration, or feed tally — wiring
+  # these numbers in as a pool usageMeter is dotfiles#304, after P06/EXP-002.
+  #
+  # The program is home/dot_local/bin/nightly-record: python3, stdlib only, so
+  # the unit needs nothing but a python3 on PATH.
+  systemd.user.services.nightly-record = lib.mkIf isCoordinator {
+    Unit.Description = "Record yesterday's per-seat token spend from the harness transcripts";
+    Service = {
+      Type = "oneshot";
+      # Same reason as the mirror: bulk reads over every seat's project tree.
+      Nice = 10;
+      Environment = [ "PATH=${recordPath}" ];
+      ExecStart = "%h/.local/bin/nightly-record";
+    };
+  };
+
+  systemd.user.timers.nightly-record = lib.mkIf isCoordinator {
+    Unit.Description = "Daily per-seat token record";
+    Timer = {
+      # Default OnCalendar = daily is 00:00; the program reads the PREVIOUS
+      # day, so it never races a day that is still being written.
+      OnCalendar = "daily";
+      # A box that was off at midnight still records that day on next boot.
+      # This is the field that makes the record gapless, which is the only
+      # property that makes a weekly budget row checkable against it.
       Persistent = true;
     };
     Install.WantedBy = [ "timers.target" ];

@@ -1,0 +1,287 @@
+#!/usr/bin/env python3
+"""nightly-record — one row per seat-lane per day, from the harness transcripts.
+
+dotfiles#298. Mined candidate 10 (the nightly record is OUTSIDE tally) and
+mined 18 (no agent-harness logic in tally; the meter is external). This program
+reads only files the harnesses already write, and writes only its own jsonl. It
+never touches tally state, never enqueues anything, and never opens a
+credential file.
+
+It is a SKELETON on purpose: it RECORDS. Feeding these numbers into the
+per-seat budget pools as a tally usageMeter is dotfiles#304, after P06/EXP-002
+takes the paired readings that would calibrate them.
+
+Output: one JSON line per lane appended to
+    $NIGHTLY_RECORD_OUT/<date>.jsonl        (default ~/.local/state/nightly-record)
+
+    {"date", "seat", "lane", "tokens_in", "tokens_out", "cache",
+     "seconds", "source_files", "grade"}
+
+grade is MEASURED or UNKNOWN. A lane whose store is missing or unparseable
+STILL gets a row, graded UNKNOWN with zeroed counters, and the program still
+exits 0 — one broken seat must never silence the whole record.
+
+stdlib only, by rule: this runs from a systemd user timer with nothing but a
+python3 on PATH.
+
+Paths are rooted at $NIGHTLY_RECORD_HOME (default $HOME) so the hermetic test
+in tests/nightly-record can drive the real program against fixtures.
+"""
+
+import datetime
+import json
+import os
+import pathlib
+import sys
+
+# ── the lanes ───────────────────────────────────────────────────────────────
+# (seat, lane, relative store root). The seat names are the pool names in
+# home/tally.nix, deliberately: a row here and a budget row there must be
+# joinable by one field.
+CLAUDE_SEATS = [
+    ("cc", ".claude/projects"),
+    ("cc2", ".claude-work/projects"),
+    ("cc3", ".claude-3/projects"),
+]
+CODEX_SEAT = ("codex", ".codex/sessions")
+PI_SEAT = ("pi", ".pi/agent/sessions")
+
+
+def _iso_day(value):
+    """Return the YYYY-MM-DD of an ISO-8601 timestamp, or None."""
+    if not isinstance(value, str) or len(value) < 10:
+        return None
+    return value[:10]
+
+
+def _epoch(value):
+    """Seconds since epoch for an ISO-8601 timestamp, or None."""
+    if not isinstance(value, str):
+        return None
+    text = value.replace("Z", "+00:00")
+    try:
+        return datetime.datetime.fromisoformat(text).timestamp()
+    except ValueError:
+        return None
+
+
+def _jsonl(path):
+    """Yield parsed records from a jsonl file, skipping unparseable lines.
+
+    A single corrupt line is a fact about that line, not about the seat: the
+    harnesses append while running and a truncated tail is ordinary.
+    """
+    with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                yield json.loads(line)
+            except (ValueError, TypeError):
+                continue
+
+
+def _blank(date, seat, lane, grade="UNKNOWN"):
+    return {
+        "date": date,
+        "seat": seat,
+        "lane": lane,
+        "tokens_in": 0,
+        "tokens_out": 0,
+        "cache": 0,
+        "seconds": 0,
+        "source_files": 0,
+        "grade": grade,
+    }
+
+
+def _span_seconds(stamps):
+    """Wall span covered by a file's records on the day, in whole seconds.
+
+    Deliberately a SPAN, not a sum of gaps: what this measures is how long the
+    seat was engaged, which is the number a cost-per-hour question needs. A
+    single-record file spans zero.
+    """
+    if len(stamps) < 2:
+        return 0
+    return int(max(stamps) - min(stamps))
+
+
+def claude_lane(root, date, seat):
+    """Claude Code: message.usage on assistant records under projects/."""
+    row = _blank(date, seat, "claude")
+    if not root.is_dir():
+        return row
+    row["grade"] = "MEASURED"
+    for path in sorted(root.rglob("*.jsonl")):
+        stamps = []
+        matched = False
+        try:
+            records = list(_jsonl(path))
+        except OSError:
+            continue
+        for record in records:
+            if record.get("type") != "assistant":
+                continue
+            if _iso_day(record.get("timestamp")) != date:
+                continue
+            usage = record.get("message", {}).get("usage") or {}
+            if not isinstance(usage, dict):
+                continue
+            matched = True
+            row["tokens_in"] += int(usage.get("input_tokens") or 0)
+            row["tokens_out"] += int(usage.get("output_tokens") or 0)
+            row["cache"] += int(usage.get("cache_creation_input_tokens") or 0)
+            row["cache"] += int(usage.get("cache_read_input_tokens") or 0)
+            moment = _epoch(record.get("timestamp"))
+            if moment is not None:
+                stamps.append(moment)
+        if matched:
+            row["source_files"] += 1
+            row["seconds"] += _span_seconds(stamps)
+    return row
+
+
+def codex_lane(root, date, seat):
+    """Codex: the LAST token_count event of each rollout is cumulative."""
+    row = _blank(date, seat, "codex")
+    if not root.is_dir():
+        return row
+    row["grade"] = "MEASURED"
+    for path in sorted(root.rglob("*.jsonl")):
+        total = None
+        stamps = []
+        try:
+            records = list(_jsonl(path))
+        except OSError:
+            continue
+        for record in records:
+            if _iso_day(record.get("timestamp")) != date:
+                continue
+            moment = _epoch(record.get("timestamp"))
+            if moment is not None:
+                stamps.append(moment)
+            payload = record.get("payload")
+            if not isinstance(payload, dict) or payload.get("type") != "token_count":
+                continue
+            info = payload.get("info")
+            if not isinstance(info, dict):
+                continue
+            usage = info.get("total_token_usage")
+            if isinstance(usage, dict):
+                total = usage
+        if total is None:
+            continue
+        row["source_files"] += 1
+        row["tokens_in"] += int(total.get("input_tokens") or 0)
+        row["tokens_out"] += int(total.get("output_tokens") or 0)
+        row["cache"] += int(total.get("cached_input_tokens") or 0)
+        row["cache"] += int(total.get("cache_write_input_tokens") or 0)
+        row["seconds"] += _span_seconds(stamps)
+    return row
+
+
+def pi_lane(root, date, seat):
+    """pi (earendil-works/pi): message.usage on assistant message records."""
+    row = _blank(date, seat, "pi")
+    if not root.is_dir():
+        return row
+    row["grade"] = "MEASURED"
+    for path in sorted(root.rglob("*.jsonl")):
+        stamps = []
+        matched = False
+        try:
+            records = list(_jsonl(path))
+        except OSError:
+            continue
+        for record in records:
+            if record.get("type") != "message":
+                continue
+            if _iso_day(record.get("timestamp")) != date:
+                continue
+            message = record.get("message")
+            if not isinstance(message, dict):
+                continue
+            usage = message.get("usage")
+            if not isinstance(usage, dict):
+                continue
+            matched = True
+            row["tokens_in"] += int(usage.get("input") or 0)
+            row["tokens_out"] += int(usage.get("output") or 0)
+            row["cache"] += int(usage.get("cacheRead") or 0)
+            row["cache"] += int(usage.get("cacheWrite") or 0)
+            moment = _epoch(record.get("timestamp"))
+            if moment is not None:
+                stamps.append(moment)
+        if matched:
+            row["source_files"] += 1
+            row["seconds"] += _span_seconds(stamps)
+    return row
+
+
+def collect(home, date):
+    rows = []
+    for seat, relative in CLAUDE_SEATS:
+        rows.append(_safe(claude_lane, home / relative, date, seat, "claude"))
+    rows.append(_safe(codex_lane, home / CODEX_SEAT[1], date, CODEX_SEAT[0], "codex"))
+    rows.append(_safe(pi_lane, home / PI_SEAT[1], date, PI_SEAT[0], "pi"))
+    return rows
+
+
+def _safe(reader, root, date, seat, lane):
+    """A lane that raises still produces a row. That is the whole contract."""
+    try:
+        return reader(root, date, seat)
+    except Exception as error:  # noqa: BLE001 — a broken seat must not silence the rest
+        print(f"nightly-record: {seat}/{lane} unreadable: {error}", file=sys.stderr)
+        return _blank(date, seat, lane)
+
+
+def main(argv):
+    date = None
+    out_dir = None
+    rest = list(argv[1:])
+    while rest:
+        flag = rest.pop(0)
+        if flag == "--date" and rest:
+            date = rest.pop(0)
+        elif flag == "--out" and rest:
+            out_dir = rest.pop(0)
+        elif flag in ("-h", "--help"):
+            print(__doc__)
+            return 0
+        else:
+            print(f"nightly-record: unknown argument {flag}", file=sys.stderr)
+            return 2
+
+    home = pathlib.Path(os.environ.get("NIGHTLY_RECORD_HOME") or pathlib.Path.home())
+    if out_dir is None:
+        out_dir = os.environ.get("NIGHTLY_RECORD_OUT") or str(
+            home / ".local/state/nightly-record"
+        )
+    if date is None:
+        # The PREVIOUS day: the timer fires early, and a day is only complete
+        # once it is over.
+        date = (datetime.date.today() - datetime.timedelta(days=1)).isoformat()
+
+    rows = collect(home, date)
+
+    destination = pathlib.Path(out_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    target = destination / f"{date}.jsonl"
+    with open(target, "a", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, sort_keys=True) + "\n")
+
+    for row in rows:
+        print(
+            "nightly-record: {seat:4s} {lane:7s} {grade:8s} "
+            "in={tokens_in} out={tokens_out} cache={cache} "
+            "seconds={seconds} files={source_files}".format(**row)
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
