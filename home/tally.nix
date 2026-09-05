@@ -340,11 +340,21 @@ in
 
       # pi — earendil-works/pi on Qwen Cloud.
       # PROPOSED consumptionCap 200000000 tokens / 7 days, and this is the
-      # WEAKEST number of the five: pi's only usage source is the plan's credit
-      # page (CLAIMED, never measured), and its session store has not been
-      # located at all, so nightly-record grades the pi lane UNKNOWN
-      # (dotfiles#307). Lowest cap of the five for that reason — the seat whose
-      # spend cannot be observed gets the least rope.
+      # WEAKEST number of the five, but not for the reason first drafted here.
+      #
+      # The SPEND is measured. pi's session store WAS located:
+      # ~/.pi/agent/sessions/<cwd-slug>/<ts>_<uuid>.jsonl, carrying per-message
+      # usage {input, output, cacheRead, cacheWrite}. nightly-record reads it
+      # and grades the pi lane MEASURED, like the other four (dotfiles#307,
+      # corrected in a comment there). First reading, 2026-09-05: 15526 in,
+      # 1155 out, 14848 cache, 1 file.
+      #
+      # What is unmeasured is the CEILING this cap is supposed to sit under.
+      # pi's allowance is a Qwen Cloud plan credit page — CLAIMED, never read
+      # by anything here, in credits rather than tokens, with no local artifact
+      # to check a weekly figure against. So the number below is anchored to
+      # nothing, which is why it is the lowest of the five: the seat whose
+      # LIMIT cannot be observed gets the least rope, even though its spend can.
       # PROPOSED per-attempt cap (convention): 20000000.
       pi = {
         resource = "budget";
