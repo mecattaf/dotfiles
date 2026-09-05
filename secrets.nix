@@ -186,6 +186,18 @@ in
   # subscription, not a per-token bill, so every box that can decrypt it can burn
   # the shared 7-day credit pool. The coordinator is the only agent host.
   "secrets/qwencloud-token.age".publicKeys = editors ++ coordinatorOnly;
+  # Codex CLI ChatGPT-subscription login (~/.codex/auth.json: id/access/refresh
+  # tokens + account_id, auth_mode "chatgpt"). Re-logged 2026-09-05 onto the
+  # Pro-plan account; this ciphertext is that session so a reflash restores
+  # `codex` without a browser login. Coordinator-only for exactly the
+  # claude-credentials reasons above: the coordinator is the only agent host,
+  # and two devices refreshing one OAuth session sign each other out.
+  # Delivered by modules/secrets.nix as a seed-once COPY (Codex rewrites the
+  # file on token refresh). Re-mint after any re-login:
+  #   age -R <(nix eval --raw --impure --expr 'builtins.concatStringsSep "\n" (import ./secrets.nix)."secrets/codex-auth.age".publicKeys') \
+  #       -o secrets/codex-auth.age ~/.codex/auth.json
+  # (no admin key needed — creating a ciphertext only uses public keys).
+  "secrets/codex-auth.age".publicKeys = editors ++ coordinatorOnly;
   # gws (Google Workspace CLI, personal account thomasmecattaf@gmail.com) — same
   # operator-box ruling as gh/wrangler above. client_secret identifies the OAuth
   # app; credentials.enc + .encryption_key + token_cache.json are the actual

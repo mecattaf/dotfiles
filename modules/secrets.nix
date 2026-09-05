@@ -334,6 +334,30 @@ in
         };
       })
 
+      # codex-auth: the Codex CLI ChatGPT-subscription session (Pro plan,
+      # re-logged 2026-09-05). Same shape as claude-credentials above, for the
+      # same reason: Codex REWRITES auth.json on every token refresh, so agenix's
+      # read-only /run symlink cannot be the live file. Seed once into ~/.codex
+      # (Codex's default CODEX_HOME) only if absent; after that the live file is
+      # Codex's, and a re-login means re-minting the ciphertext (secrets.nix).
+      (lib.mkIf (config.networking.hostName == "coordinator") {
+        age.secrets.codex-auth = {
+          file = ../secrets/codex-auth.age;
+          owner = "tom";
+          group = "users";
+          mode = "600";
+        };
+
+        system.userActivationScripts.seedCodexAuth.text = ''
+          auth="$HOME/.codex/auth.json"
+          if [ ! -e "$auth" ] && [ -r "${config.age.secrets.codex-auth.path}" ]; then
+            mkdir -p "$HOME/.codex"
+            cp "${config.age.secrets.codex-auth.path}" "$auth"
+            chmod 600 "$auth"
+          fi
+        '';
+      })
+
       # immich-api-key: full-permissions Immich key (photos.internal), read
       # client-side by agent sessions on the coordinator for indexing/dedup
       # passes. Delivered to /run/agenix/immich-api-key; replaces the loose
