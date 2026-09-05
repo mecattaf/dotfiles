@@ -11,7 +11,14 @@
 # tells you everything.
 set -u
 
+# Which checkout SECTION 3's greps read, and nothing else. Overridable because
+# the default tree only carries this branch after it merges.
 DOTFILES="${L8_FLASH_DOTFILES:-/home/tom/mecattaf/dotfiles}"
+# Where every RAW dotfile actually lives, and it is NOT overridable:
+# home/home.nix:15 hardcodes repoDir = "$HOME/mecattaf/dotfiles" and anchors
+# every out-of-store symlink there, whatever checkout the switch was taken from
+# (dotfiles#313). Any check that RESOLVES a symlink must compare against this.
+REPO_DIR="$HOME/mecattaf/dotfiles"
 HOST="$(hostname)"
 COORDINATOR="coordinator"
 
@@ -48,7 +55,7 @@ names_pool() { # $1 = haystack, $2 = pool name
   printf '%s\n' "$1" | grep -qE "(^|[^A-Za-z0-9_-])$2([^A-Za-z0-9_-]|\$)"
 }
 
-echo "l8-flash-probe on $HOST (dotfiles at $DOTFILES)"
+echo "l8-flash-probe on $HOST (greps read $DOTFILES; symlinks resolve into $REPO_DIR)"
 echo
 
 # ── 1. the pool rows tally actually serves ──────────────────────────────────
@@ -137,10 +144,14 @@ for timer in claude-transcript-mirror.timer nightly-record.timer; do
 done
 
 # ── 6. the cc3 links, resolved ──────────────────────────────────────────────
+# Compared against $REPO_DIR, never $DOTFILES: these links can resolve nowhere
+# but the hardcoded anchor in home/home.nix:15 (dotfiles#313), so pointing them
+# at an overridden $L8_FLASH_DOTFILES reports two spurious FAILs. The override
+# stays scoped to section 3, which is what its comment claims.
 for leaf in settings.json skills; do
   target="$(readlink -f "$HOME/.claude-3/$leaf" 2>/dev/null)"
   case "$target" in
-    "$DOTFILES/home/dot_claude"/*)
+    "$REPO_DIR/home/dot_claude"/*)
       ok "cc3 link resolves: $leaf" "readlink -f ~/.claude-3/$leaf"
       ;;
     *)
