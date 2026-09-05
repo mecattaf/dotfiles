@@ -1128,6 +1128,27 @@
               touch "$out"
             '';
 
+        # The prune guard (dotfiles#296): local-models-sync must never delete,
+        # and local-models-prune --yes must refuse a set that drifted from the
+        # recorded dry-run. Hermetic — a fixture tree and a fake manifest, no
+        # /var, no systemd, no weights.
+        local-models-sync =
+          pkgs.runCommand "local-models-sync"
+            {
+              nativeBuildInputs = [
+                pkgs.local-models-prune
+                pkgs.findutils
+                pkgs.coreutils
+              ];
+            }
+            ''
+              set -euo pipefail
+              export HOME="$TMPDIR/home"
+              mkdir -p "$HOME"
+              ${pkgs.bash}/bin/bash ${./tests/local-models-sync/test-prune-guard.sh}
+              touch "$out"
+            '';
+
         nixos-only =
           let
             retiredPlatformPattern = nixpkgs.lib.concatStringsSep "|" [
