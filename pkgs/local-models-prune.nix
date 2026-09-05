@@ -134,7 +134,6 @@ let
           '                               and record its sha256 as the delete intent' \
           'local-models-prune --yes       delete that set, and ONLY if it is still' \
           '                               byte-for-byte what --dry-run recorded' \
-          '' \
           'Nothing else deletes. The sync service audits and never removes.' >&2
       }
 

@@ -1246,16 +1246,37 @@
             # the bottom greps the flake's own source tree, and a literal here
             # would match itself. It is no longer a "retired host" — see below.
             strixWorker = "work" + "er";
-            # What stayed retired (Tom's ruling, unchanged by #229): the worker
-            # is a HOST again, never a Tally executor or a Tally pool. All jobs
-            # execute locally on the coordinator; home/tally.nix declares
-            # `executors = { }` and no worker-gpu lane. The GPU cooldown tripwire
-            # that used to reach across for a worker-gpu lease is DEAD and
-            # deleted, so nothing is left that would want one.
-            retiredPool = strixWorker + "-gpu";
+            # HALF of Tom's old ruling survives, and the halves are now split
+            # (dotfiles#310, dotfiles#291). It used to read: the worker is a
+            # HOST again, never a Tally executor AND never a Tally pool.
+            #
+            #   STILL TRUE, and asserted structurally below: never an EXECUTOR.
+            #   All jobs execute locally on the coordinator, home/tally.nix
+            #   declares `executors = { }`, and the worker runs no daemon
+            #   (CONSOLIDATED §3 Q2). The GPU cooldown tripwire that used to
+            #   reach across for a lease is dead and deleted.
+            #
+            #   SUPERSEDED by CONSOLIDATED §3 Q1 at the sheet's default
+            #   (RULINGS.md R-2026-09-06-03, 2026-09-06): "capacity one per
+            #   device until jobs carry a VRAM request the engine reads". There
+            #   is now a per-GPU row for each of the two devices, and the second
+            #   one is named after the box that holds it. It is a ROW IN THE
+            #   COORDINATOR'S POOL TABLE, not an executor and not a daemon —
+            #   nothing leases it yet. It exists so the first job that runs over
+            #   there has a lane to name instead of borrowing the coordinator's
+            #   and lying about which device it sat on.
+            #
+            # A pool row and an executor are different objects; the old guard
+            # conflated them because, while the host was retired, no row could
+            # be anything but the first step back toward an executor.
+            devicePool = strixWorker + "-gpu";
+            # The sweep below no longer bans the bare host name from
+            # home/tally.nix — that ban is what forced this file's neighbours to
+            # spell it obliquely, and Q1 needs the name spoken. What remains
+            # banned is the two RETIRED EXECUTOR attribute names. The invariant
+            # that actually mattered keeps its own structural assertion, which
+            # is stronger than a grep over prose.
             retiredExecutionPattern = nixpkgs.lib.concatStringsSep "|" [
-              strixWorker
-              retiredPool
               (strixWorker + "Flake")
               (strixWorker + "Models")
             ];
@@ -1461,12 +1482,20 @@
           assert worker.nix.buildMachines == [ ];
           assert !(worker.nix.settings ? post-build-hook);
           assert nixpkgs.lib.elem "http://nas:8080/fleet" worker.nix.settings.extra-substituters;
-          # Still retired, and asserted in the NEGATIVE on purpose: a host, never
-          # a Tally executor or pool. The one thing that ever wanted a worker-gpu
-          # lease — the GPU cooldown tripwire — is deleted outright.
+          # The executor half, still asserted in the NEGATIVE: a host, never a
+          # Tally executor. Both directions, because `executors == { }` alone
+          # would pass a config that renamed the attribute.
           assert !(builtins.hasAttr strixWorker coordinator.home-manager.users.tom.services.tally.executors);
-          assert !(builtins.hasAttr retiredPool coordinator.home-manager.users.tom.services.tally.pools);
           assert coordinator.home-manager.users.tom.services.tally.executors == { };
+          # The pool half, now asserted in the POSITIVE (Q1; dotfiles#310).
+          # Pinning the SHAPE is worth more than pinning the absence: capacity
+          # one per device, declared vram — not a budget row, not a mutex, and
+          # never given a budgetGb, because a GB budget means nothing until an
+          # enqueue states how much VRAM it wants and none of them does.
+          assert builtins.hasAttr devicePool coordinator.home-manager.users.tom.services.tally.pools;
+          assert coordinator.home-manager.users.tom.services.tally.pools.${devicePool}.resource == "vram";
+          assert coordinator.home-manager.users.tom.services.tally.pools.${devicePool}.capacity == 1;
+          assert coordinator.home-manager.users.tom.services.tally.pools.${devicePool}.budgetGb == null;
           assert !worker.home-manager.users.tom.services.tally.enable;
           # ...but very much present in the SSH mesh, in both directions. This
           # assertion was the inverse until #229 and was failing at HEAD, since
