@@ -1270,16 +1270,32 @@
             # conflated them because, while the host was retired, no row could
             # be anything but the first step back toward an executor.
             devicePool = strixWorker + "-gpu";
-            # The sweep below no longer bans the bare host name from
-            # home/tally.nix — that ban is what forced this file's neighbours to
-            # spell it obliquely, and Q1 needs the name spoken. What remains
-            # banned is the two RETIRED EXECUTOR attribute names. The invariant
-            # that actually mattered keeps its own structural assertion, which
-            # is stronger than a grep over prose.
+            # The sweep below is now TWO sweeps, because the relaxation Q1 needs
+            # is narrower than the file it lands in.
+            #
+            #   retiredExecutionPattern — the two RETIRED EXECUTOR attribute
+            #   names, still banned from home/tally.nix AND flows/. Nothing in
+            #   this branch wants either back.
+            #
+            #   retiredFlowHostPattern — the bare host name, still banned from
+            #   flows/ ONLY. This is the half the first cut of #310 dropped
+            #   wholesale, which unbanned the name in flows/ too — more than Q1
+            #   asked for. A flow is a script that ENQUEUES work; a flow naming
+            #   the other box is a flow trying to run there, which is exactly
+            #   the executor half that stayed retired (Q2: one daemon, on the
+            #   coordinator). home/tally.nix is different in kind — it declares
+            #   the pool TABLE, and Q1 puts a row for the other box's device in
+            #   it, so the name must be speakable there and only there. That
+            #   ban is what had forced this file's neighbours to spell the box
+            #   obliquely. The pool row keeps its own structural assertion
+            #   below, which is stronger than a grep over prose.
             retiredExecutionPattern = nixpkgs.lib.concatStringsSep "|" [
               (strixWorker + "Flake")
               (strixWorker + "Models")
             ];
+            # The bare name subsumes devicePool ("<host>-gpu"): a flow may name
+            # neither.
+            retiredFlowHostPattern = strixWorker;
             retiredDeployment = "deepseek-v4-flash-q4-dual";
             activeHostSets = [
               (builtins.attrNames self.nixosConfigurations)
@@ -1580,7 +1596,12 @@
             fi
             if ${pkgs.ripgrep}/bin/rg --line-number '${retiredExecutionPattern}' \
               ${./home/tally.nix} ${./flows}; then
-              echo "retired Tally executor or pool found" >&2
+              echo "retired Tally executor attribute found" >&2
+              exit 1
+            fi
+            if ${pkgs.ripgrep}/bin/rg --line-number '${retiredFlowHostPattern}' \
+              ${./flows}; then
+              echo "a flow names the retired execution host" >&2
               exit 1
             fi
             touch "$out"
