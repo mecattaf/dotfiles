@@ -1,0 +1,121 @@
+// ─── headscale ACL policy — the fleet's tailnet, and the friend fleet ──────
+//
+// Loaded by hosts/nas/headscale.nix as services.headscale.settings.policy.path
+// (mode = "file"). It rides into /nix/store on every rebuild, so this file IS
+// the policy: there is no web console, no database copy, and no way to change
+// the ACL without a diff. Edits apply with `systemctl reload headscale`
+// (SIGHUP) — no restart, no node churn.
+//
+// huJSON: comments and trailing commas are legal here. That is the whole
+// reason upstream chose the format, and this file leans on it hard.
+//
+// ── TODAY'S CONTENT IS ALLOW-ALL, DELIBERATELY ────────────────────────────
+// The only node on this tailnet today is the NAS itself. What matters on day
+// one is not the rules, it is that the MECHANISM exists before the first
+// friend key is ever minted: policy in git, reviewed in a diff, rebuilt onto
+// the box, reloadable. Retrofitting that later — after a friend's phone is
+// already registered — is how a sandbox gets skipped.
+//
+// It is also deliberately the SIMPLEST policy that names no user and no tag.
+// A policy referencing `tom@` or `tag:mesh` before those exist can fail
+// validation, and headscale refuses to serve on a policy it cannot load; on
+// the box that is the house router, a service that will not start because of
+// an ACL for devices that do not exist yet is a self-inflicted outage. Every
+// name below therefore appears only inside a comment until the thing it names
+// is real.
+//
+// 2026-09-01, LEARNED ON THE FIRST DEPLOY, THE EXPENSIVE WAY: this file
+// originally used a `grants` block, on the research claim that upstream calls
+// `acls` legacy and `grants` current. The LIVE 0.29.3 binary on this box
+// refused it — `parsing policy: unknown field "grants"` — which crash-looped
+// headscale, timed out the enroll unit, and failed the whole NAS activation
+// (deploy-rs rolled the box back; nothing was lost). `grants` is
+// tailscale.com's newer syntax; the headscale actually packaged here speaks
+// `acls`. So: `acls` in this file, everywhere, until a headscale release
+// whose OWN release notes say otherwise — and the guaranteed-valid floor
+// remains the empty policy `{}` (allow-all, nothing to parse).
+//
+// ─── THE SCHEME THIS GROWS INTO ───────────────────────────────────────────
+// Written now, in the file it will land in, so the future public
+// `omarchy-nix-fleet` repo (agenix-encrypted preauth keys, one per friend
+// device) has an unambiguous target to mint against and needs ZERO
+// headscale-side redesign when it appears. Full narrative, plus the
+// key-minting runbook, in docs/nas/headscale-2026-09-01.md.
+//
+// USERS: one per PERSON, never per device.
+//     headscale users create tom
+//     headscale users create <friend>
+//   A person's laptop and phone group naturally under their own user, which is
+//   what makes `<friend>@` a meaningful ACL subject and what makes
+//   `autogroup:self` useful. One user per device would make every grant a
+//   hand-maintained list.
+//
+// TAGS: tag Tom's INFRASTRUCTURE, never a friend's personal device.
+//     tag:mesh    — Tom's NixOS fleet nodes (continuity: modules/secrets.nix
+//                   already records tag:mesh as the scheme the retired
+//                   tailscale.com authkeys used, so this is the same name
+//                   carried across the control-plane move, not a new idea)
+//     tag:shared  — the one or two things friends are actually invited to
+//   Friends' phones/laptops stay UNTAGGED personal devices under their own
+//   user. That is what keeps `autogroup:member` and `<friend>@` honest as ACL
+//   subjects, and it is also the polite arrangement: a tag is an assertion
+//   about a machine Tom administers.
+//
+// THE DENY-ALL BASELINE, to paste in when the first friend user exists. Note
+// that `acls` must be explicit from then on — omitting it means allow-all,
+// which is fine for a one-node tailnet and wrong the moment it is not.
+// (`acls` syntax, NOT `grants` — see the 2026-09-01 note above; ports ride in
+// the dst string as `target:port`.)
+//
+//   "tagOwners": {
+//     "tag:mesh":   ["tom@"],
+//     "tag:shared": ["tom@"],
+//   },
+//   "acls": [
+//     // Tom reaches everything.
+//     { "action": "accept", "src": ["tom@"],      "dst": ["*:*"] },
+//     // The fleet reaches the fleet.
+//     { "action": "accept", "src": ["tag:mesh"],  "dst": ["tag:mesh:*"] },
+//     // Each friend gets ONE narrow, explicitly-ported grant to the shared
+//     // surface and nothing else. Friends never see each other and never see
+//     // Tom's fleet, because nothing above grants it.
+//     { "action": "accept", "src": ["<friend>@"], "dst": ["tag:shared:443"] },
+//   ],
+//   "ssh": [
+//     // Tailscale SSH stays inside Tom's own devices. modules/common.nix puts
+//     // --ssh on every node's up/set flags; without a rule here that flag
+//     // grants nothing, which is the correct default for a tailnet that has
+//     // guests on it.
+//     { "action": "accept", "src": ["tom@"], "dst": ["tag:mesh"],
+//       "users": ["autogroup:nonroot", "tom"] },
+//   ],
+//   // Route approval for the house LAN, so the NAS's --advertise-routes stops
+//   // needing a manual `headscale nodes approve-routes`. Depends on the tag
+//   // being owned, which is why it lands with this block and not before it.
+//   "autoApprovers": {
+//     "routes": { "10.42.0.0/24": ["tag:mesh"] },
+//   },
+//
+// AUTOGROUPS this headscale (0.28.0, nixpkgs-stable 26.05 — NOT 0.29.3 as first written; verified `headscale version` 2026-09-01) supports:
+//   autogroup:internet (dst only), autogroup:member, autogroup:tagged,
+//   autogroup:self (dst only), autogroup:nonroot (ssh `users` only),
+//   autogroup:danger-all (src only).
+// NOT supported, so do not reach for them: autogroup:admin, device-posture
+// conditions, IP sets — and `grants` (refused live 2026-09-01, note above).
+//
+// VERIFY BEFORE TRUSTING: `tagOwners` parsing at this exact version was not
+// confirmed from source, only from the shared Tailscale policy schema. When
+// the block above is first pasted in, deploy it and check
+// `journalctl -u headscale` for a policy-load error BEFORE minting a friend
+// key against it. The server-side `headscale nodes tag -i <id> -t tag:mesh`
+// path works regardless and needs no tagOwners at all — that is the fallback.
+{
+  "acls": [
+    // src "*" = everyone, dst "*:*" = everything on all ports. Equivalent to
+    // omitting the section, but written out so the shape is visible and the
+    // deny-all switch above is a paste rather than an act of authorship.
+    // This exact rule is upstream's own documented allow-all — and unlike its
+    // `grants` predecessor, it has now been parsed by the binary that counts.
+    { "action": "accept", "src": ["*"], "dst": ["*:*"] },
+  ],
+}

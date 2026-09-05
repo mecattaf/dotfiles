@@ -43,6 +43,7 @@
     ./update-center.nix # nightly fleet builds -> attic (the App Store model)
     ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate OFF
     ./tv.nix # niri TV session on the HDMI corner + wayvnc (2026-08-21)
+    ./headscale.nix # 2026-09-01: the fleet's OWN tailnet control plane (supersedes #233)
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc
@@ -69,26 +70,45 @@
   # (The attic RS256 secret remains a runbook-placed file, see ./attic.nix.)
   mySecrets.enable = true;
 
+  # ── THE TAILNET, AND WHOSE CONTROL PLANE IT IS ─────────────────────────
+  #
   # TAILSCALE ON — Tom's ruling 2026-08-21: "everything at home goes through
-  # the NAS! so let's have the NAS be the tailscale sink." Reverses the
+  # the NAS! so let's have the NAS be the tailscale sink." That reversed the
   # 2026-08-04-era mkForce-disables (which belonged to the world where the
-  # coordinator was the only door to the internet). The NAS joins the tailnet
-  # as a SUBNET ROUTER advertising the whole LAN, so a roaming laptop reaches
-  # every home device — NAS services, printer, coordinator — through one
-  # node. Login is interactive (`tailscale up` prints a URL; no authkey
-  # secret lands on the appliance), and the advertised route must be
-  # APPROVED once in the Tailscale admin console. The coordinator keeps its
-  # own tailnet identity until this is proven, then decommissions per the
-  # same ruling ("i'm fine with no tailscale on the coordinator").
-  services.tailscale.useRoutingFeatures = "server";
-  services.tailscale.extraUpFlags = lib.mkForce [
-    "--ssh"
-    "--advertise-routes=10.42.0.0/24"
-  ];
-  services.tailscale.extraSetFlags = lib.mkForce [
-    "--ssh"
-    "--advertise-routes=10.42.0.0/24"
-  ];
+  # coordinator was the only door to the internet), and it still holds: this
+  # box is the tailnet node, and it is a SUBNET ROUTER advertising the whole
+  # LAN so a roaming laptop reaches every home device — NAS services,
+  # printer, coordinator — through one node.
+  #
+  # What changed 2026-09-01, on Tom's ruling that "self-hosted headscale
+  # lands on the NAS and becomes the control plane for everything": the
+  # tailnet this box is a node OF is now its OWN. The sink is still a sink;
+  # the server holding its node key is no longer controlplane.tailscale.com
+  # but headscale on 10.42.0.1. This SUPERSEDES #233, whose design had the
+  # NAS and the coordinator both on official tailscale.com.
+  #
+  # Two consequences worth stating where the old comment stood:
+  #   - "Login is interactive, no authkey secret lands on the appliance" is
+  #     now "the key is minted at runtime by the headscale on this very box
+  #     and lives only in /run" — the property that mattered (no credential
+  #     at rest on the appliance, no new agenix door) is preserved, by a
+  #     different and strictly more automatic mechanism.
+  #   - "the advertised route must be APPROVED once in the Tailscale admin
+  #     console" becomes `headscale nodes approve-routes` on this box. There
+  #     is no admin console any more; there is a policy file in git.
+  #
+  # The coordinator does NOT follow. It keeps official tailscale.com,
+  # always-connected-but-idle, as the EMERGENCY RAIL — coordinator + Freebox
+  # is the off-NAS escape hatch, and an escape hatch that lives on the box
+  # that might be the thing failing is not one. It needs no code change to
+  # stay that way (it inherits modules/common.nix's defaults) and it must not
+  # be "cleaned up" because headscale exists now.
+  #
+  # Every knob — useRoutingFeatures, both flag lists, the authKeyFile, the
+  # enroll unit, the firewall doors — lives in ./headscale.nix so that the
+  # server and this box's membership in it cannot drift apart. Read that file
+  # before touching anything tailnet-shaped on this host.
+  myNas.headscale.enable = true;
 
   # Preserve graphics/VA-API for headless Immich video transcoding. This does
   # not install or start a display server, compositor, or graphical login.
