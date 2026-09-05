@@ -130,7 +130,14 @@ else
   no "llama-swap Restart=on-failure (got '$restart')" "systemctl show llama-swap -p Restart"
 fi
 
-# ── 5. the two user timers ──────────────────────────────────────────────────
+# ── 5. the two user timers, and the DECLARED units behind them ──────────────
+# `active` alone is NOT evidence for the mirror: the hand-written timer this PR
+# replaces (dotfiles#293) is active on the coordinator today, and it would stay
+# active — green here — while the declared service failed on fire. So each
+# timer is checked twice. A home-manager unit's fragment lives in /nix/store
+# and is linked into ~/.config/systemd/user; a hand-written unit IS the plain
+# file there. FragmentPath is therefore the one field that says which of the
+# two won the name.
 for timer in claude-transcript-mirror.timer nightly-record.timer; do
   if coordinator_only; then
     if systemctl --user is-active --quiet "$timer"; then
@@ -138,10 +145,36 @@ for timer in claude-transcript-mirror.timer nightly-record.timer; do
     else
       no "$timer active" "systemctl --user is-active $timer"
     fi
+    frag="$(systemctl --user show "$timer" -p FragmentPath --value 2>/dev/null)"
+    case "$frag" in
+      /nix/store/*)
+        ok "$timer declared (fragment in /nix/store)" "systemctl --user show $timer -p FragmentPath"
+        ;;
+      *)
+        no "$timer declared (fragment '$frag')" "systemctl --user show $timer -p FragmentPath"
+        ;;
+    esac
   else
     na "$timer (coordinator only)" "systemctl --user is-active $timer"
+    na "$timer declared (coordinator only)" "systemctl --user show $timer -p FragmentPath"
   fi
 done
+
+# The declared service's ExecStart is %h/.local/bin/claude-transcript-mirror,
+# and ~/.local/bin is an out-of-store symlink into $REPO_DIR — so the PROGRAM
+# arrives with the raw tree, not with the switch (dotfiles#313). Unit present,
+# program absent is exactly the half-delivery a switch taken from the wrong
+# checkout produces, and it is silent: the timer is active, the service fails
+# on fire, the mirror stops.
+if coordinator_only; then
+  if [ -x "$HOME/.local/bin/claude-transcript-mirror" ]; then
+    ok "mirror program executable" "test -x ~/.local/bin/claude-transcript-mirror"
+  else
+    no "mirror program executable" "test -x ~/.local/bin/claude-transcript-mirror"
+  fi
+else
+  na "mirror program (coordinator only)" "test -x ~/.local/bin/claude-transcript-mirror"
+fi
 
 # ── 6. the cc3 links, resolved ──────────────────────────────────────────────
 # Compared against $REPO_DIR, never $DOTFILES: these links can resolve nowhere
