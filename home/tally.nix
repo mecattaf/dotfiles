@@ -509,4 +509,29 @@ in
     Service.LogLevelMax = "notice";
   };
 
+  # The meters directory the daemon's external usage feeders write into
+  # (dotfiles#292). At the pinned tally the event path is
+  #
+  #   nix/modules/common.nix:2697
+  #     meterEventPath = stateDir: pool:
+  #       "${toString stateDir}/meters/${builtins.hashString "sha256" pool}.json";
+  #
+  # so every `pools.<name>.usageMeter` lands under <stateDir>/meters/. The
+  # module renders a tally-meter-<pool> unit only for a pool that DECLARES a
+  # usageMeter, and it never creates the directory itself — its own path setup
+  # lists stateDir, stateDir/events and stateDir/capture/archive and stops
+  # there. Measured on the coordinator 2026-09-06: ~/.local/state/tally exists,
+  # ~/.local/state/tally/meters does not.
+  #
+  # Declared HERE, ahead of the first feeder (dotfiles#304), because the
+  # directory is also what the external meter script writes into by hand while
+  # the feeders are still being calibrated by P06/EXP-002 — a missing directory
+  # would make that a silent no-op rather than a legible failure.
+  #
+  # Mode 0700 is PROPOSED (R-03): no tally option constrains it; it is what a
+  # per-user state subtree of an already-private ~/.local/state should be.
+  systemd.user.tmpfiles.rules = lib.mkIf isCoordinator [
+    "d %h/.local/state/tally/meters 0700 - - -"
+  ];
+
 }
