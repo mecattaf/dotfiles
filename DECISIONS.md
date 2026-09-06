@@ -121,3 +121,54 @@ asserts the unit's non-goal as bytes — `builtins.hashFile` over both programs
 against `cards/UTIL-01.md` `instrument_sha256` — plus the timers per box,
 `Persistent` on each, `tally` on the coordinator sampler's PATH alone, and the
 one tmpfiles rule.
+
+2026-09-06 U-D15 (dotfiles#318): the `herdr-kitten` input moves BOTH its rev and
+its URL form — `git+file:///home/tom/mecattaf/herdr-kitten?rev=41a6de5` becomes
+`github:mecattaf/herdr-kitten/ccc16393cc35e2cce2b8cd9a55718b3c84849a8f` — and
+three lines are decided here.
+
+(1) **The `github:` form is taken, not deferred, because the precondition it
+needs is MEASURED present.** An earlier reading of the herdr-kitten survey's
+Q-7 ("the repo is PRIVATE by standing wall. No executor flips visibility.")
+would have deferred the URL form and moved only the rev. Measured 2026-09-06 on
+the coordinator: `gh repo view mecattaf/herdr-kitten --json isPrivate,visibility`
+→ `{"isPrivate":false,"visibility":"PUBLIC"}`, and `nix flake metadata
+github:mecattaf/herdr-kitten/ccc16393…` resolves, unpacks, and reports narHash
+`sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=` — byte-identical to what
+the local checkout had locked. Q-7 is a bar on an EXECUTOR flipping visibility;
+it is not a claim that the repo is private forever, and no executor flipped
+anything here. Deferring a form whose only stated blocker has already been
+cleared upstream would have shipped a flake that evaluates on exactly one box
+while reporting itself green, so the flip is taken and the deferral withdrawn.
+
+(2) **The card's `mutation_hint` is honoured on flake.nix, because flake.lock
+cannot carry the string it counts.** "reintroduce the file:// URL → the grep
+count is 1" was executed literally: `flake.nix` back to `git+file://…`, then
+`nix flake lock --update-input herdr-kitten`. MEASURED: `grep -c 'git+file'
+flake.nix` = 1 (the card's "1"), `grep -c 'file:///home/tom' flake.lock` = 2,
+and `grep -c 'git+file' flake.lock` = **0 on both sides of the fault** — Nix
+writes a local git tree in the lock as `"type": "git"` + `"url":
+"file:///home/tom/…"`, never as `git+file`. So the DOMINANT's byte-exact lock
+grep is kept as clause B and cannot be the clause that goes red;
+`tests/herdr/test-herdr-kitten-input.sh` adds B2/B3/B4 (the same grep over
+flake.nix, `file:///home/tom` over both files, and the positive form — the URL
+is `github:mecattaf/herdr-kitten/<40 hex>` and the lock node agrees). Oracle rc
+0 green, rc 1 under the mutation with B2/B3/B4 red.
+
+(3) **The lock update the oracle names must be a NO-OP, and that is asserted.**
+Clause A0 runs `nix flake lock --update-input herdr-kitten` (falling back to
+`--offline`), then requires `flake.lock` byte-unchanged and restores it if not.
+That is both "after nix flake lock --update-input herdr-kitten" and the card's
+"re-applying the same card reports zero changes"; a pin that drifted on every
+re-run would satisfy neither. The script restores the lock a SECOND time on
+exit, because under the mutation Nix rewrites it again inside clause A
+(`nix flake check` fixes up a lock that no longer matches `flake.nix`,
+`--no-build` or not) — MEASURED: a mutated run otherwise leaves `flake.lock`
+dirty, i.e. a change nobody authorized. Every clause reads the mutated lock
+before that exit restore, so no red is masked: green run rc 0 with the tree
+byte-clean, mutated run rc 1 with `flake.lock` restored on the way out.
+
+Not decided here and deliberately untouched: the herdr TOPOLOGY. One server, on
+the coordinator (ruling B5); `#309` stays Tom's. The `home-profiles` check
+asserts that shape in both directions so a pin move cannot become a topology
+move. The switch that puts this pin on a box is `DEFERRED.md` DF-U-D15-1.
