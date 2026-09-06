@@ -1,0 +1,302 @@
+#!/usr/bin/env bash
+# l8-flash-probe — did the one dotfiles switch land? (dotfiles#301)
+#
+# Run on EACH box after `nixos-rebuild switch`. One line per check: PASS, FAIL
+# or SKIP, always with the argv that produced it, so the output is its own
+# receipt. Exit 0 iff every APPLICABLE check passed; a check that does not
+# apply to this host is SKIP and does not fail the run.
+#
+# set -u but deliberately NOT set -e: every check must run even after one
+# fails. A probe that stops at the first failure tells you one thing; this one
+# tells you everything.
+set -u
+
+# Which checkout SECTION 3's greps read, and nothing else. Overridable because
+# the default tree only carries this branch after it merges.
+DOTFILES="${L8_FLASH_DOTFILES:-/home/tom/mecattaf/dotfiles}"
+# Where every RAW dotfile actually lives, and it is NOT overridable:
+# home/home.nix:15 hardcodes repoDir = "$HOME/mecattaf/dotfiles" and anchors
+# every out-of-store symlink there, whatever checkout the switch was taken from
+# (dotfiles#313). Any check that RESOLVES a symlink must compare against this.
+REPO_DIR="$HOME/mecattaf/dotfiles"
+# The host this probe is running on. The override exists for ONE reader: the
+# committed test in tests/l8-flash-probe/, which must be able to exercise a
+# coordinator-only row on any box and inside the nix sandbox. Nothing on a
+# real box sets it, and a probe run with it set is a test run, not evidence.
+HOST="${L8_FLASH_HOST:-$(hostname)}"
+COORDINATOR="coordinator"
+
+pass=0
+fail=0
+skip=0
+
+report() { # $1 = verdict, $2 = name, $3.. = argv
+  local verdict="$1" name="$2"
+  shift 2
+  printf '%-4s  %-48s  %s\n' "$verdict" "$name" "$*"
+}
+
+ok() {
+  pass=$((pass + 1))
+  report PASS "$@"
+}
+no() {
+  fail=$((fail + 1))
+  report FAIL "$@"
+}
+na() {
+  skip=$((skip + 1))
+  report SKIP "$@"
+}
+
+coordinator_only() { [ "$HOST" = "$COORDINATOR" ]; }
+
+# Whole-token match against `tally query pools` output. NOT `grep -w`: a
+# hyphen is a non-word character, so `grep -w codex` matches inside
+# "codex-window" and would report the retired mutex as the new seat row. The
+# delimiter class here includes the hyphen for exactly that reason.
+names_pool() { # $1 = haystack, $2 = pool name
+  printf '%s\n' "$1" | grep -qE "(^|[^A-Za-z0-9_-])$2([^A-Za-z0-9_-]|\$)"
+}
+
+echo "l8-flash-probe on $HOST (greps read $DOTFILES; symlinks resolve into $REPO_DIR)"
+echo
+# READ A GREEN RUN CORRECTLY. Not every check can only pass after the switch;
+# some are already true on this box before it, and a few land with the TREE
+# rather than with the rebuild (home/home.nix:15 anchors every raw dotfile at
+# $REPO_DIR — dotfiles#313). Each check says which it is:
+#
+#   [E] switch-evidence — can only PASS after `nixos-rebuild switch` on THIS
+#       box. These are what "the switch landed" means.
+#   [P] pre-condition   — already true beforehand, or delivered by updating
+#       $REPO_DIR to carry this branch. A PASS here is NOT evidence of a
+#       switch; a FAIL here means the tree was not delivered, which is the
+#       failure that makes the [E] checks lie.
+echo "[E] switch-evidence: passes only after the rebuild on this box"
+echo "[P] pre-condition:   true before it, or delivered with the tree at $REPO_DIR"
+echo
+
+# ── 1. the pool rows tally actually serves ──────────────────────────────────
+# `tally query pools` is the pin's own verb (doc/src/operating/cli.md,
+# "Producers, pools, render, and stand-up"). The daemon runs on the
+# coordinator only, so this is where the rows can be READ; the file checks
+# below run everywhere.
+if coordinator_only; then
+  if pools_out="$(tally query pools 2>&1)"; then
+    for want in cc cc2 cc3 codex pi coordinator-gpu worker-gpu; do
+      if names_pool "$pools_out" "$want"; then
+        ok "[E] pool present: $want" "tally query pools | names_pool $want"
+      else
+        no "[E] pool present: $want" "tally query pools | names_pool $want"
+      fi
+    done
+    for gone in codex-window claude-window; do
+      if names_pool "$pools_out" "$gone"; then
+        no "[E] pool retired: $gone" "tally query pools | names_pool $gone"
+      else
+        ok "[E] pool retired: $gone" "tally query pools | names_pool $gone"
+      fi
+    done
+  else
+    no "[E] tally query pools answers" "tally query pools"
+  fi
+else
+  na "[E] tally pool rows (coordinator only)" "tally query pools"
+fi
+
+# ── 2. the meters directory the module now creates ──────────────────────────
+# Existence alone stopped being evidence on 2026-09-06, when something else on
+# the box created the directory 0755 before this branch ever switched. The
+# MODE is what only the declared rule produces: systemd-tmpfiles `d ... 0700`
+# both creates the directory and chmods an existing one, so 0700 is the switch,
+# and 0755 is somebody's mkdir -p.
+if coordinator_only; then
+  mode="$(stat -c '%a' "$HOME/.local/state/tally/meters" 2>/dev/null)"
+  if [ "$mode" = "700" ]; then
+    ok "[E] meters dir 0700" "stat -c %a ~/.local/state/tally/meters"
+  else
+    no "[E] meters dir 0700 (got '$mode')" "stat -c %a ~/.local/state/tally/meters"
+  fi
+else
+  na "[E] meters dir (coordinator only)" "stat -c %a ~/.local/state/tally/meters"
+fi
+
+# ── 3. the retired pin, by absence ──────────────────────────────────────────
+# Both greps must find NOTHING. This is the switch's own oracle: the pin is
+# gone when its commit id and both retired pool names are absent from the file
+# that used to carry them.
+tallynix="$DOTFILES/home/tally.nix"
+if [ -r "$tallynix" ]; then
+  if grep -n c5eb4510 "$tallynix" >/dev/null 2>&1; then
+    no "[P] pin absent from tally.nix" "grep -n c5eb4510 $tallynix"
+  else
+    ok "[P] pin absent from tally.nix" "grep -n c5eb4510 $tallynix"
+  fi
+  if grep -nE 'codex-window|claude-window' "$tallynix" >/dev/null 2>&1; then
+    no "[P] window mutexes absent" "grep -nE 'codex-window|claude-window' $tallynix"
+  else
+    ok "[P] window mutexes absent" "grep -nE 'codex-window|claude-window' $tallynix"
+  fi
+else
+  no "[P] tally.nix readable" "test -r $tallynix"
+fi
+
+# ── 4. llama-swap, running and with its restart policy declared ─────────────
+if systemctl is-active --quiet llama-swap; then
+  ok "[P] llama-swap active" "systemctl is-active llama-swap"
+else
+  no "[P] llama-swap active" "systemctl is-active llama-swap"
+fi
+restart="$(systemctl show llama-swap -p Restart 2>/dev/null)"
+if [ "$restart" = "Restart=on-failure" ]; then
+  ok "[P] llama-swap Restart=on-failure" "systemctl show llama-swap -p Restart"
+else
+  no "[P] llama-swap Restart=on-failure (got '$restart')" "systemctl show llama-swap -p Restart"
+fi
+
+# ── 5. the two user timers, and the DECLARED units behind them ──────────────
+# `active` alone is NOT evidence for the mirror: the hand-written timer this PR
+# replaces (dotfiles#293) is active on the coordinator today, and it would stay
+# active — green here — while the declared service failed on fire. So each
+# timer is checked twice. A home-manager unit's fragment lives in /nix/store
+# and is linked into ~/.config/systemd/user; a hand-written unit IS the plain
+# file there. FragmentPath is therefore the one field that says which of the
+# two won the name.
+for timer in claude-transcript-mirror.timer nightly-record.timer; do
+  # The mirror's timer can be active from the hand-written unit, so `active` is
+  # a pre-condition there; nightly-record has no hand-written ancestor, so its
+  # timer existing at all is evidence. The fragment check below is evidence for
+  # both.
+  case "$timer" in
+    claude-transcript-mirror.timer) active_tag="[P]" ;;
+    *) active_tag="[E]" ;;
+  esac
+  if coordinator_only; then
+    if systemctl --user is-active --quiet "$timer"; then
+      ok "$active_tag $timer active" "systemctl --user is-active $timer"
+    else
+      no "$active_tag $timer active" "systemctl --user is-active $timer"
+    fi
+    frag="$(systemctl --user show "$timer" -p FragmentPath --value 2>/dev/null)"
+    case "$frag" in
+      /nix/store/*)
+        ok "[E] $timer declared (fragment in /nix/store)" "systemctl --user show $timer -p FragmentPath"
+        ;;
+      *)
+        no "[E] $timer declared (fragment '$frag')" "systemctl --user show $timer -p FragmentPath"
+        ;;
+    esac
+  else
+    na "$active_tag $timer (coordinator only)" "systemctl --user is-active $timer"
+    na "[E] $timer declared (coordinator only)" "systemctl --user show $timer -p FragmentPath"
+  fi
+done
+
+# The declared service's ExecStart is %h/.local/bin/claude-transcript-mirror,
+# and ~/.local/bin is an out-of-store symlink into $REPO_DIR — so the PROGRAM
+# arrives with the raw tree, not with the switch (dotfiles#313). Unit present,
+# program absent is exactly the half-delivery a switch taken from the wrong
+# checkout produces, and it is silent: the timer is active, the service fails
+# on fire, the mirror stops.
+if coordinator_only; then
+  if [ -x "$HOME/.local/bin/claude-transcript-mirror" ]; then
+    ok "[P] mirror program executable" "test -x ~/.local/bin/claude-transcript-mirror"
+  else
+    no "[P] mirror program executable" "test -x ~/.local/bin/claude-transcript-mirror"
+  fi
+else
+  na "[P] mirror program (coordinator only)" "test -x ~/.local/bin/claude-transcript-mirror"
+fi
+
+# ── 5b. the hand-written pair the declared units replace (#293, #319) ───────
+# home-manager will not write over a plain file of the same name, so while
+# ~/.config/systemd/user/claude-transcript-mirror.{service,timer} exist as
+# ORDINARY FILES they win the name and the declaration in
+# home/harness-records.nix:70 never takes effect — the switch reports success
+# and the mirror keeps running from the untracked pair, which is Rule 9's exact
+# failure. Their removal is P05 walkthrough step 4: Tom's own shell act
+# (scopes/clean-dotfiles.md:171 §6), taken AFTER the tree carries the
+# replacement and BEFORE the switch, because until the switch the hand-written
+# pair is the only working mirror. It is sequenced inside U-D19 and carried as
+# DEFERRED.md row DF-U-D16-1.
+#
+# [E], not [P]: a green row here means the deletion has happened. Before it
+# this row is expected to FAIL, and that FAIL is the reminder.
+if coordinator_only; then
+  left=""
+  for suffix in service timer; do
+    unit="$HOME/.config/systemd/user/claude-transcript-mirror.$suffix"
+    # -f, not -e: home-manager links its own fragment into this directory, and
+    # a SYMLINK of that name is the declared unit having won. Only a plain file
+    # is the hand-written pair.
+    if [ -f "$unit" ] && [ ! -L "$unit" ]; then
+      left="$left $suffix"
+    fi
+  done
+  if [ -z "$left" ]; then
+    ok "[E] hand-written pair gone" "test ! -f ~/.config/systemd/user/claude-transcript-mirror.{service,timer}"
+  else
+    no "[E] hand-written pair gone (still plain:$left)" "test ! -f ~/.config/systemd/user/claude-transcript-mirror.{service,timer}"
+  fi
+else
+  na "[E] hand-written pair gone (coordinator only)" "test ! -f ~/.config/systemd/user/claude-transcript-mirror.{service,timer}"
+fi
+
+# ── 6. the cc3 links, resolved ──────────────────────────────────────────────
+# Compared against $REPO_DIR, never $DOTFILES: these links can resolve nowhere
+# but the hardcoded anchor in home/home.nix:15 (dotfiles#313), so pointing them
+# at an overridden $L8_FLASH_DOTFILES reports two spurious FAILs. The override
+# stays scoped to section 3, which is what its comment claims.
+for leaf in settings.json skills; do
+  target="$(readlink -f "$HOME/.claude-3/$leaf" 2>/dev/null)"
+  case "$target" in
+    "$REPO_DIR/home/dot_claude"/*)
+      ok "[P] cc3 link resolves: $leaf" "readlink -f ~/.claude-3/$leaf"
+      ;;
+    *)
+      no "[P] cc3 link resolves: $leaf (got '$target')" "readlink -f ~/.claude-3/$leaf"
+      ;;
+  esac
+done
+
+# ── 7. herdr: binaries everywhere, one server on the coordinator (ruling B5) ─
+for binary in herdr hk; do
+  if command -v "$binary" >/dev/null 2>&1; then
+    ok "[E] $binary on PATH" "command -v $binary"
+  else
+    no "[E] $binary on PATH" "command -v $binary"
+  fi
+done
+if coordinator_only; then
+  if systemctl --user is-active --quiet herdr; then
+    ok "[E] herdr server active" "systemctl --user is-active herdr"
+  else
+    no "[E] herdr server active" "systemctl --user is-active herdr"
+  fi
+else
+  # NOT a failure on the worker: ruling B5 in home/herdr.nix puts ONE server on
+  # the coordinator and the client binaries everywhere. See dotfiles#309.
+  na "[E] herdr server (coordinator only, ruling B5)" "systemctl --user is-active herdr"
+fi
+
+# ── 8. cleanupPeriodDays, read from the seat that actually uses it ──────────
+if cleanup="$(python3 - <<'PY' 2>/dev/null
+import json, os, sys
+path = os.path.expanduser("~/.claude/settings.json")
+with open(path) as handle:
+    print(json.load(handle).get("cleanupPeriodDays"))
+PY
+)"; then
+  if [ "$cleanup" = "365" ]; then
+    ok "[P] cleanupPeriodDays = 365" "python3 -c 'json ~/.claude/settings.json'"
+  else
+    no "[P] cleanupPeriodDays = 365 (got '$cleanup')" "python3 -c 'json ~/.claude/settings.json'"
+  fi
+else
+  no "[P] cleanupPeriodDays readable" "python3 -c 'json ~/.claude/settings.json'"
+fi
+
+echo
+echo "l8-flash-probe: $pass passed, $fail failed, $skip skipped on $HOST"
+echo "  [E] = switch-evidence, [P] = pre-condition (see the legend above)"
+[ "$fail" -eq 0 ]

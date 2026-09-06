@@ -1,7 +1,7 @@
 export const meta = {
   name: "issue-96-drain",
   description: "Pointer-run HANDOFF-PROMPT-B: implement the drain/handoff/pickup skills on the utility-model seam (#96)",
-  pools: ["codex-window", "flow-build"],
+  pools: ["flow-build"],
   argsSchema: {
     type: "object",
     required: ["repository", "baseRev", "branch", "worktree", "promptPath", "notesRepo"],

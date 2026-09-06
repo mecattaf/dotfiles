@@ -1,0 +1,216 @@
+#!/usr/bin/env bash
+# tally-lane-view — read-only viewer for ONE tally lane, hosted in a herdr pane.
+#
+#   tally-lane-view --task <uuid> [--attempt N] [--interval SECONDS] [--once]
+#
+# A tally lane is a `systemd-run --user --wait --collect` transient unit with
+# the prompt in its argv and stdin on /dev/null (tally
+# doc/src/concepts/executors.md:8-16). There is no PTY to attach to, so
+# "entering" a lane means exactly this: a pane showing the lane's live trace
+# with the steer keys live. The bridge recipe that puts this script in a pane is
+# `herdr pane split --no-focus` → `herdr pane run <pane> "tally-lane-view
+# --task <uuid>"` → `herdr pane report-agent` (that last call is what makes the
+# AGENTS row exist; this script never reports anything).
+#
+# `tally query trace` on the pinned tally is a snapshot verb — no --follow, and
+# no after-cursor — so this re-polls: each pass takes a fresh snapshot and pages
+# it with --cursor to the end, rendering only records past the last one printed.
+# Re-paging the whole window every pass is the cost of that API shape, which is
+# why the default interval is seconds and not milliseconds. Record cursors are
+# fixed-width and ordered — trace:<uuid>:<attempt>:<leaseEpoch>:<recordIndex> —
+# so a plain string compare is the entire dedup, and a fresh attempt sorts after
+# the old one for free.
+#
+# Two things this viewer refuses to do:
+#   * call a lane "done". Done is herdr's own derivation from an idle agent row
+#     that nobody has looked at yet (herdr app/api_helpers.rs:96-105). The most
+#     this pane ever says is `idle`.
+#   * read a verdict off the incremental stream. Labels only; terminality comes
+#     from `tally query proof`, which rebuilds the projection (tally
+#     doc/src/operating/observability.md:641-650, rule 5).
+#
+# TALLY_BIN overrides the tally binary (test seam; defaults to `tally`).
+set -uo pipefail
+
+TALLY_BIN=${TALLY_BIN:-tally}
+
+usage() {
+    grep -m1 '^#   tally-lane-view ' "$0" | sed 's/^#   //'
+}
+
+task=""
+attempt=""
+interval=3
+once=0
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --task) task=${2:?--task needs a task uuid}; shift 2 ;;
+        --task=*) task=${1#*=}; shift ;;
+        --attempt) attempt=${2:?--attempt needs a number}; shift 2 ;;
+        --attempt=*) attempt=${1#*=}; shift ;;
+        --interval) interval=${2:?--interval needs seconds}; shift 2 ;;
+        --interval=*) interval=${1#*=}; shift ;;
+        --once) once=1; shift ;;
+        -h|--help) usage; exit 0 ;;
+        --) shift; break ;;
+        -*) echo "tally-lane-view: unknown flag $1" >&2; usage >&2; exit 2 ;;
+        *) if [ -z "$task" ]; then task=$1; shift; else
+               echo "tally-lane-view: unexpected argument $1" >&2; exit 2
+           fi ;;
+    esac
+done
+
+if [ -z "$task" ]; then
+    echo "tally-lane-view: --task <uuid> is required" >&2
+    usage >&2
+    exit 2
+fi
+
+case "$interval" in
+    ''|*[!0-9.]*) echo "tally-lane-view: --interval takes seconds, got '$interval'" >&2; exit 2 ;;
+esac
+
+# Rendering width for one payload field. The trace carries whole tool inputs and
+# whole tool results; a pane is not a log file, so each field is clipped and the
+# raw bytes stay one keystroke away on prefix+shift+o.
+width=${COLUMNS:-}
+[ -n "$width" ] || width=$(tput cols 2>/dev/null || echo 100)
+[ "$width" -gt 60 ] 2>/dev/null || width=100
+field_width=$(( width - 24 ))
+[ "$field_width" -ge 24 ] || field_width=24
+
+# stream-json rendering. Claude Code's records are `system` / `assistant` /
+# `user` / `result` / `rate_limit_event`; anything else prints its type and a
+# clipped body rather than being dropped, and a record tally itself marked
+# unparseable prints its raw line. Nothing here interprets a record — it is
+# transcription with clipping. One snapshot can carry several generations of the
+# same task, and record indices restart with each one, so every line is prefixed
+# `a<attempt>·<recordIndex>`.
+render_jq='
+def clip: tostring | gsub("[[:cntrl:]]+"; " ") | if (length > $w) then .[0:$w] + "…" else . end;
+def blocks:
+  ((.message.content // []) | map(
+      if .type == "text" then "text " + ((.text // "") | clip)
+      elif .type == "thinking" then "thinking " + ((.thinking // "") | clip)
+      elif .type == "tool_use" then "tool_use " + (.name // "?") + " " + ((.input // {}) | clip)
+      elif .type == "tool_result" then
+        "tool_result" + (if .is_error == true then " (error)" else "" end)
+        + " " + ((.content // "") | clip)
+      else (.type // "?") end) | join("  "));
+.items[]
+| select(.cursor > $last)
+| ("a" + (.attempt | tostring) + "·" + (.recordIndex | tostring)) as $i
+| if .parseStatus != "json" then "\($i)  unparsed  \(.raw | clip)"
+  else
+    .payload as $p
+    | ($p.type // "?") as $t
+    | if ($t == "assistant" or $t == "user") then "\($i)  \($t)  \($p | blocks)"
+      elif $t == "system" then "\($i)  system  \($p.subtype // "" | clip)"
+      elif $t == "result" then "\($i)  result  \($p.subtype // "" | clip)"
+      else "\($i)  \($t)  \($p | clip)"
+      end
+  end'
+
+footer() {
+    printf '\n'
+    printf '  keys  prefix+t steer (takes a 600s campaign hold first) · prefix+shift+s steer without a hold\n'
+    printf '        prefix+shift+a pardon · prefix+shift+o raw <uuid>.out · prefix+i this task'"'"'s inbox\n'
+    printf '  This pane is READ-ONLY. The lane runs as a transient unit with stdin on /dev/null and its\n'
+    printf '  prompt in argv, so NO keystroke typed here reaches the agent — steering is the steer keys.\n'
+    printf '  Labels below are transcription. A terminal verdict comes from `tally query proof`, never\n'
+    printf '  from this stream.\n\n'
+}
+
+printf '── tally lane %s%s ──\n' "$task" "${attempt:+ (attempt $attempt)}"
+footer
+
+last=""          # highest record cursor already printed
+gen_id=""        # attempt/leaseEpoch of the newest generation seen
+status=""        # last status line printed, so a quiet lane stays quiet
+trap 'printf "\n── viewer detached; the lane is untouched ──\n"; exit 0' INT TERM
+
+while :; do
+    page_cursor=""
+    envelope=""
+    failure=""
+    while :; do
+        if [ -z "$page_cursor" ]; then
+            envelope=$("$TALLY_BIN" query trace --task "$task" ${attempt:+--attempt "$attempt"} 2>&1)
+        else
+            envelope=$("$TALLY_BIN" query trace --task "$task" ${attempt:+--attempt "$attempt"} \
+                --cursor "$page_cursor" 2>&1)
+        fi || { failure=$envelope; break; }
+
+        if ! printf '%s' "$envelope" | jq -e . >/dev/null 2>&1; then
+            failure=$envelope
+            break
+        fi
+
+        printf '%s' "$envelope" | jq -r --arg last "$last" --argjson w "$field_width" "$render_jq"
+
+        newest=$(printf '%s' "$envelope" | jq -r '[.items[].cursor] | max // empty')
+        if [ -n "$newest" ] && [ "$newest" \> "$last" ]; then
+            last=$newest
+        fi
+
+        page_cursor=$(printf '%s' "$envelope" | jq -r '.nextCursor // empty')
+        [ -n "$page_cursor" ] || break
+    done
+
+    if [ -n "$failure" ]; then
+        # A cursor tally no longer holds, a daemon that is down, a task it does
+        # not know: say which, keep the pane, and retry. Never fake continuity.
+        printf '!! trace query failed: %s\n' "$(printf '%s' "$failure" | tr '\n' ' ' | cut -c1-200)"
+        status=""
+    else
+        # The generation block is the only place liveness is stated, and it is
+        # read, never guessed. A running lane is served as
+        # reason="live-capture-snapshot" with complete=false; a finished one as
+        # "completed-capture" (tally crates/tally-core/src/trace.rs:459-465).
+        # The remaining reasons — a capture past the 16 MiB query cap, an
+        # adapter that declares no provider trace — state nothing about
+        # running, so neither does this line. `idle` is the most it ever says:
+        # `done` is herdr's derivation, not a viewer's.
+        line=$(printf '%s' "$envelope" | jq -r '
+            (.generations | last) as $g
+            | if $g == null then "no generation for this task yet"
+              else
+                (if ($g.reason == "live-capture-snapshot" and $g.complete == false)
+                   then "live"
+                 elif $g.reason == "completed-capture" then "idle"
+                 else "liveness not stated" end)
+                + " · attempt " + ($g.attempt | tostring)
+                + " · lease " + ($g.leaseEpoch | tostring)
+                + " · " + $g.adapter
+                + " · " + $g.reason
+                + (if $g.capability != "available"
+                     then " · trace " + $g.capability else "" end)
+                + (if $g.byteCount != null
+                     then " · " + ($g.byteCount | tostring) + "B captured" else "" end)
+                + (if $g.truncation != null
+                     then " · TRUNCATED (" + $g.truncation + "): records "
+                          + (($g.retainedRange.firstRecord // "?") | tostring) + "–"
+                          + (($g.retainedRange.lastRecord // "?") | tostring)
+                          + " retained, this window is not whole"
+                     else "" end)
+              end')
+
+        this_gen=$(printf '%s' "$envelope" | jq -r '(.generations | last) as $g
+            | if $g == null then "" else "\($g.attempt)/\($g.leaseEpoch)" end')
+        if [ -n "$this_gen" ] && [ "$this_gen" != "$gen_id" ]; then
+            [ -z "$gen_id" ] || printf '── new generation: attempt/lease %s (the records above are the previous one) ──\n' "$this_gen"
+            gen_id=$this_gen
+        fi
+
+        if [ "$line" != "$status" ]; then
+            printf '── %s ──\n' "$line"
+            status=$line
+        fi
+    fi
+
+    [ "$once" -eq 1 ] && break
+    sleep "$interval"
+done
+
+footer

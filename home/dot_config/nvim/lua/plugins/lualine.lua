@@ -109,21 +109,6 @@ components.recording = {
   end,
 }
 
--- zmx session indicator (ZMX_SESSION is set inside any zmx session)
-components.zmx = {
-  function()
-    local name = vim.env.ZMX_SESSION
-    if name then
-      return '⧉ ' .. name
-    end
-    return ''
-  end,
-  cond = function()
-    return vim.env.ZMX_SESSION ~= nil
-  end,
-  color = { fg = '#818898' },
-}
-
 -- LSP diagnostics
 components.diagnostics = {
   'diagnostics',
@@ -189,7 +174,6 @@ function M.setup()
         components.recording,
       },
       lualine_x = {
-        components.zmx,
         components.diagnostics,
         components.filetype,
       },

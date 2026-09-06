@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+# tally-steer — post human steering to the tally lane this herdr pane is showing,
+# taking the campaign's dispatch hold FIRST so the writing happens inside the
+# embargo.
+#
+#   tally-steer [--no-hold] [--hold SECONDS] [--pane PANE_ID] [--task TASK_REF]
+#
+# Bound to prefix+t (with hold) and prefix+shift+s (--no-hold) as herdr popup
+# commands. Only a keystroke ever runs this: no timer, watcher, or polling loop
+# may reach `tally campaign steer`.
+#
+# WHY THE HOLD COMES FIRST. A recorded steer carries a doNotDispatchBefore one
+# second after the record, so an overseer who reads the failure, diagnoses it,
+# and only then steers routinely finds the retry already dispatched without the
+# correction — under a two-attempt cap that is often the whole task (tally
+# doc/src/flows/campaigns.md:2590-2606). So: placeholder steer with --hold, then
+# the editor inside that window, then the real text. Steering is append-only, so
+# the second record costs nothing but a log entry and saves the attempt. The
+# hold is CAMPAIGN-WIDE — ten minutes of thinking on one lane freezes its
+# siblings — which is why its length is printed before the editor opens and why
+# --no-hold exists.
+#
+# The message goes in on stdin via --message-file -, the contract that does not
+# re-quote or expose the text in argv (tally crates/tally/src/cli/args.rs:414-421):
+# what makes dictated prose, full of apostrophes and sentence breaks, arrive
+# verbatim.
+#
+# PANE → LANE. herdr popups do NOT receive HERDR_PANE_ID; they receive
+# HERDR_ACTIVE_PANE_ID for the tiled pane underneath (configuration.mdx:198-199).
+# That id is looked up in the sidecar map — one whitespace-separated line per
+# registered lane pane, `#` comments allowed, written by hand until the bridge
+# daemon (deferred to the herdr-kitten repo) owns it:
+#
+#     <pane_id> <task_ref> [<owner/repo>] [<worklist_pattern>] [<task_uuid>]
+#     w1:p3     crm/t07    mecattaf/tally.nix  worklists/night-notes.md  019f…
+#
+# The campaign coordinates are positional arguments of `tally campaign steer`, so
+# a two-column line resolves the task but still needs TALLY_CAMPAIGN_REPO /
+# TALLY_CAMPAIGN_WORKLIST in the environment to post. TALLY_BIN overrides the
+# tally binary (test seam).
+set -uo pipefail
+
+TALLY_BIN=${TALLY_BIN:-tally}
+BRIDGE_STATE=${TALLY_BRIDGE_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/tally-bridge}
+MAP=$BRIDGE_STATE/panes
+
+hold=600
+use_hold=1
+pane=${HERDR_ACTIVE_PANE_ID:-}
+task=""
+
+usage() {
+    grep -m1 '^#   tally-steer ' "$0" | sed 's/^#   //'
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --no-hold) use_hold=0; shift ;;
+        --hold) hold=${2:?--hold needs seconds}; shift 2 ;;
+        --hold=*) hold=${1#*=}; shift ;;
+        --pane) pane=${2:?--pane needs a herdr pane id}; shift 2 ;;
+        --pane=*) pane=${1#*=}; shift ;;
+        --task) task=${2:?--task needs a task ref}; shift 2 ;;
+        --task=*) task=${1#*=}; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "tally-steer: unknown argument $1" >&2; usage >&2; exit 2 ;;
+    esac
+done
+
+die() { printf '\ntally-steer: %s\n' "$1" >&2; pause; exit 1; }
+
+# A popup closes the moment its command exits, so anything worth reading has to
+# be held on screen deliberately.
+pause() {
+    [ -t 0 ] || return 0
+    printf '\n[enter] to close this popup '
+    read -r _ || true
+}
+
+repo=${TALLY_CAMPAIGN_REPO:-}
+worklist=${TALLY_CAMPAIGN_WORKLIST:-}
+
+if [ -z "$task" ]; then
+    [ -n "$pane" ] || die "no pane id. Popups get HERDR_ACTIVE_PANE_ID, not HERDR_PANE_ID; pass --pane to run this outside herdr."
+    [ -r "$MAP" ] || die "no lane map at $MAP. Register this pane first: printf '%s %s %s %s %s\\n' <pane> <taskRef> <owner/repo> <worklist> <uuid> >> $MAP"
+
+    line=$(grep -v '^[[:space:]]*#' "$MAP" | awk -v p="$pane" '$1 == p { print; exit }')
+    [ -n "$line" ] || die "pane $pane is not in $MAP — this pane is not a registered tally lane."
+
+    # shellcheck disable=SC2086 # the map is whitespace-separated by construction
+    set -- $line
+    task=${2:-}
+    [ -n "${3:-}" ] && repo=$3
+    [ -n "${4:-}" ] && worklist=$4
+    [ -n "$task" ] || die "map line for pane $pane names no task ref: $line"
+fi
+
+if [ -z "$repo" ] || [ -z "$worklist" ]; then
+    die "no campaign coordinates for task $task. \`tally campaign steer\` takes <owner/repo> <worklist> positionally: add them as columns 3 and 4 of the $MAP line, or export TALLY_CAMPAIGN_REPO / TALLY_CAMPAIGN_WORKLIST."
+fi
+
+printf 'tally-steer\n'
+printf '  pane      %s\n' "${pane:-<none>}"
+printf '  task      %s\n' "$task"
+printf '  campaign  %s %s\n' "$repo" "$worklist"
+
+if [ "$use_hold" -eq 1 ]; then
+    printf '  hold      %ss — the placeholder steer below embargoes EVERY dispatch in this\n' "$hold"
+    printf '            campaign, siblings included, for that long. Your editor opens inside it.\n\n'
+    placeholder="steering in progress: an operator took a ${hold}s dispatch hold from the herdr lane pane ${pane:-?} at $(date -Is). The corrective message follows in the next steer record on this task."
+    if ! out=$("$TALLY_BIN" campaign steer "$repo" "$worklist" --task "$task" \
+        --hold "$hold" --message "$placeholder" 2>&1); then
+        printf '!! the holding steer was REFUSED:\n%s\n\n' "$out"
+        printf 'A campaign armed before --hold shipped must be re-armed before it accepts a\n'
+        printf 'held record (tally crates/tally/src/cli/args.rs:418-428). Without the hold your\n'
+        printf 'message races the automatic retry and loses by default.\n'
+        printf '\ncontinue and write an unheld steer anyway? [y/N] '
+        read -r answer || answer=""
+        case "$answer" in [yY]*) ;; *) printf 'aborted; nothing was posted.\n'; pause; exit 1 ;; esac
+    else
+        printf 'hold taken; dispatch is embargoed for %ss. Write the correction.\n\n' "$hold"
+    fi
+else
+    printf '  hold      NONE (--no-hold): this steer does not stop the world, and it may lose\n'
+    printf '            the race to an automatic retry already in flight.\n\n'
+fi
+
+scratch=$(mktemp -t "tally-steer-${task//\//-}.XXXXXX.md") || die "could not create the scratch file"
+
+editor=${EDITOR:-${VISUAL:-nvim}}
+$editor "$scratch"
+status=$?
+if [ $status -ne 0 ]; then
+    printf '!! %s exited %d; nothing was posted. Draft kept at %s\n' "$editor" "$status" "$scratch"
+    pause
+    exit 1
+fi
+
+if [ ! -s "$scratch" ] || ! grep -q '[^[:space:]]' "$scratch"; then
+    rm -f "$scratch"
+    printf 'empty draft; no steering message posted.\n'
+    [ "$use_hold" -eq 1 ] && printf 'The %ss hold IS already recorded and running. Press prefix+t again to use it.\n' "$hold"
+    pause
+    exit 1
+fi
+
+# The real record. No --hold here: the placeholder already embargoed the
+# campaign and this message lands inside that window, so re-holding would only
+# extend the freeze on every sibling lane.
+if out=$("$TALLY_BIN" campaign steer "$repo" "$worklist" --task "$task" \
+    --message-file - <"$scratch" 2>&1); then
+    printf '\nsteer posted to %s.\n%s\n' "$task" "$out"
+    printf 'It also answers every open inbox entry this campaign holds for that task.\n'
+    rm -f "$scratch"
+    pause
+    exit 0
+fi
+
+printf '\n!! the steer was REFUSED:\n%s\n' "$out"
+printf 'Your text is kept at %s\n' "$scratch"
+pause
+exit 1

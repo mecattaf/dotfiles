@@ -1,0 +1,87 @@
+  {
+  }
+#
+[
+]
+}
+  "$(cat "$LOCAL_MODELS_ROOT/kept-artifact/model.gguf")" "aaaa"
+  "$(find "$LOCAL_MODELS_ROOT" -name '*stray*' | wc -l)" "0"
+  "$(grep -c 'prune-set 0 entries, 0 bytes' "$work/out.6")" "1"
+  "$(grep -c 'REFUSING — no recorded dry-run intent' "$work/out.1")" "1"
+  "$(grep -c 'the dry-run diff must be 0' "$work/out.3")" "1"
+  "$(printf '%s\n' "$audit_out" | grep -c 'AUDIT would prune')" \
+  "$(printf '%s\n' "$audit_out" | tail -1)" \
+  "$(printf '%s\n' "$set_out" | cut -f1,3 | tr '\t' ':' | tr '\n' ';')" \
+  "$(test -e "$LOCAL_MODELS_PRUNE_STATE" && echo present || echo gone)" "gone"
+  "$(test -e "$LOCAL_MODELS_ROOT/gone-artifact" && echo present || echo gone)" "gone"
+# ── 1. the oracle names the right set ──────────────────────────────────────
+#   1. the SERVICE path (local-models-sync-audit) deletes nothing, ever
+  "2"
+# ── 2. the SERVICE path audits and deletes nothing ─────────────────────────
+# ── 3. --yes with no recorded dry-run refuses ──────────────────────────────
+# ── 4. --dry-run records, then the set CHANGES, then --yes refuses ─────────
+# ── 5. dry-run then yes on an unchanged set deletes exactly that set ───────
+# ── 6. an empty prune set is a no-op, not an error ─────────────────────────
+  "artifact:6;file:2;"
+# Asserts the two properties the ruling actually turns on:
+before="$(inventory)"
+cat >"$LOCAL_MODELS_MANIFEST" <<'JSON'
+check() { # $1 = description, $2 = actual, $3 = expected
+check "audit deleted nothing" "$(inventory)" "$before"
+check "audit prints one would-prune line per entry" \
+check "audit prints the summary line" \
+check "both stray files are gone" \
+check "drift refusal says the diff must be 0" \
+check "--dry-run deleted nothing" "$(inventory)" "$before"
+check "--dry-run exits 0" "$?" "0"
+check "--dry-run recorded an intent" "$(test -s "$LOCAL_MODELS_PRUNE_STATE" && echo yes)" "yes"
+check "empty set dry-run summary" \
+check "prune-set names both entries" \
+check "refusal names the missing intent" \
+check "refused --yes deleted nothing" "$(inventory)" "$before"
+check "refused --yes deleted nothing after drift" "$(inventory)" "$drifted"
+check "the intent file is consumed" \
+check "the retired artifact is gone" \
+check "the wanted file survived" \
+check "--yes after the set drifted exits 4" "$?" "4"
+check "--yes on a matching set exits 0" "$?" "0"
+check "--yes without a dry-run exits 3" "$?" "3"
+drifted="$(inventory)"
+# Drives the real binaries through LOCAL_MODELS_ROOT / LOCAL_MODELS_MANIFEST /
+    echo "        actual:   $2"
+    echo "        expected: $3"
+    echo "FAIL  $1"
+    echo "PASS  $1"
+  else
+else
+exit "$fail"
+export LOCAL_MODELS_MANIFEST="$work/wanted.json"
+export LOCAL_MODELS_PRUNE_STATE="$work/state/.prune-intent"
+export LOCAL_MODELS_ROOT="$work/root"
+fail=0
+    fail=1
+  fi
+fi
+    "files": [ { "name": "model.gguf", "bytes": 4, "oid": "unused-here" } ]
+# ── fixture ────────────────────────────────────────────────────────────────
+# gone-artifact: not in the manifest at all
+# Hermetic guard test for the local-models prune split (dotfiles#296).
+    "id": "kept-artifact",
+  if [ "$2" = "$3" ]; then
+if [ "$fail" = 0 ]; then
+inventory() { find "$LOCAL_MODELS_ROOT" | LC_ALL=C sort; }
+JSON
+# kept-artifact: wanted, with one wanted file and one stray file
+# LOCAL_MODELS_PRUNE_STATE against a fixture tree. No network, no /var, no
+  "local-models-sync: AUDIT prune-set 2 entries, 8 bytes"
+mkdir -p "$LOCAL_MODELS_ROOT/kept-artifact" "$LOCAL_MODELS_ROOT/gone-artifact"
+printf 'aaaa' >"$LOCAL_MODELS_ROOT/kept-artifact/model.gguf"   # 4 bytes, wanted
+printf 'bb' >"$LOCAL_MODELS_ROOT/kept-artifact/stray.bin"      # 2 bytes, stray
+printf 'cccccc' >"$LOCAL_MODELS_ROOT/gone-artifact/old.gguf"   # 6 bytes, retired
+printf 'dddddddd' >"$LOCAL_MODELS_ROOT/kept-artifact/second-stray.bin"
+set -uo pipefail
+# systemd, no model weights.
+#      the set a preceding `--dry-run` recorded — the dry-run diff must be 0
+trap 'rm -rf "$work"' EXIT
+#!/usr/bin/env bash
+work="$(mktemp -d)"

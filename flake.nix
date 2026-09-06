@@ -113,31 +113,6 @@
       flake = false;
     };
 
-    # zmx — LOCAL terminal session persistence (neurosnap/zmx, built on
-    # ghostty-vt). THE projector primitive (jul7 ruling, tally morning-annotation
-    # §12): every kitty on the coordinator is a persistent local zmx session
-    # (`zmx attach <name>`); other boxes reach it via `kitten ssh coordinator -t
-    # zmx attach <session>` over the tailnet. Supersedes shpool fleet-wide.
-    #
-    # We tried zmosh (a zmx fork adding encrypted-UDP roaming) but it is
-    # unmaintained and ships a stale build.zig.zon2json-lock that breaks offline
-    # nix builds. Its one feature we forgo — UDP auto-reconnect — is moot:
-    # kitten ssh gives reliable graphics/clipboard while attached, and a
-    # persistent session survives disconnects server-side.
-    #
-    # flake = false ON PURPOSE (2026-08-21): upstream's flake packages zmx via
-    # Cloudef/zig2nix, whose import-from-derivation (zon2json/zon2nix built
-    # MID-EVAL) made every dotfiles evaluation build zig tooling, broke
-    # `nix flake check --no-build`, and turned one GC into
-    # "path 'zon2json.drv' is not valid". pkgs/zmx.nix now builds the same
-    # source with the nixpkgs zig toolchain from upstream's committed
-    # build.zig.zon2json-lock — pure eval, zero IFD, and zig2nix leaves our
-    # input graph entirely. `nix flake update zmx` still bumps the pin.
-    zmx = {
-      url = "github:neurosnap/zmx";
-      flake = false;
-    };
-
     # git-ai — AI-authorship tracking CLI (github.com/git-ai-project/git-ai).
     # Consume its flake package directly and pin it in flake.lock. The Home
     # Manager profile installs upstream's `minimal` output, which provides
@@ -172,11 +147,10 @@
     # timers/services and the build-time `checkedConfig` validator, which a bare
     # pkg can't deliver; NO bespoke pkgs/tally.nix. home/tally.nix imports the
     # module and enables the daemon on the coordinator only. Other hosts leave
-    # the module off. Composes onto
-    # the dotfiles-owned zmx substrate — tally ships
-    # none of it. follows nixpkgs so the Rust build resolves against our one pin
-    # rather than dragging a second nixpkgs into the lock. `nix flake update
-    # tally` bumps to the latest pushed commit (and, post-release, the tag).
+    # the module off. Composes onto whatever terminal substrate the dotfiles own —
+    # tally ships none of it. follows nixpkgs so the Rust build resolves against
+    # our one pin rather than dragging a second nixpkgs into the lock. `nix flake
+    # update tally` bumps to the latest pushed commit (and, post-release, the tag).
     #
     # Repo is mecattaf/tally.nix (NOT mecattaf/tally, which is the pre-rebuild
     # spec history). It is public, so use the native `github:` fetcher: fleet
@@ -210,6 +184,54 @@
     piri = {
       url = "github:Asthestarsfalll/piri";
       inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # herdr — the terminal workspace manager for AI coding agents
+    # (github.com/herdrdev/herdr, Apache-2.0). It is the upstream PRODUCT that
+    # replaces everything this repo used to invent for itself: the home-grown
+    # kitten tier, its session layer, and its title-naming pipeline are all
+    # deleted in favour of one server holding every PTY.
+    #
+    # PINNED TO A REV, not a branch: 0.8.2 is the floor this setup needs (plugin
+    # API + the agent sidebar), and nixpkgs carries 0.7.4 — below it. Bump by
+    # editing the rev here, deliberately, the way nixpkgs-paperless is bumped.
+    #
+    # Consume `packages.<sys>.herdr` ONLY (home/herdr.nix). Upstream composes
+    # rust-overlay into its own pkgs fixpoint to build the Rust toolchain from
+    # rust-toolchain.toml; that must never reach ours, so no overlay of theirs is
+    # ever applied here. Following our nixpkgs keeps the build on our one pin.
+    # NOT in `rollingInputOverrides`: herdr owns live PTYs, so its version moves
+    # when Tom says so, never on a nightly resolve.
+    herdr = {
+      url = "github:herdrdev/herdr/dbc398f580d1da6c336c6837a60b7e0710501d6d";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    # herdr-kitten — the repo where herdr IS the kitty kitten: one stdlib-Python
+    # kitten (four gestures on kitty's GUI thread) plus the `hk` CLI (workspace
+    # create/attach/resume/rename, the dictation endpoint, the recording
+    # spinner). It is the whole integration layer between kitty and herdr, and
+    # it is the reason this repo could delete its six home-grown kittens and the
+    # whole script tier under them outright.
+    #
+    # CONSUMED AS AN INPUT, NEVER VENDORED (ruling B3): `nix flake update
+    # herdr-kitten` is the entire upgrade story. Consume
+    # `packages.<sys>.herdr-kitten` only — no overlay of its own reaches our pkgs
+    # fixpoint (F.3) — and keep it out of `rollingInputOverrides` (F.4) for the
+    # same reason herdr is out: it fronts live PTYs.
+    #
+    # URL: local git checkout at the reviewed rev while spec A's repo is
+    # pre-publication. It becomes `github:mecattaf/herdr-kitten/<rev>` (the URL
+    # its own README already documents) before this PR merges; the rev is the
+    # same object either way.
+    #
+    # Upstream pins herdr at the same dbc398f5 this flake does and follows its
+    # nixpkgs; both are re-pointed at ours so one herdr and one nixpkgs serve
+    # the whole closure.
+    herdr-kitten = {
+      url = "git+file:///home/tom/mecattaf/herdr-kitten?rev=41a6de5cc945131ef98988898fcb67aec5da9340";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.herdr.follows = "herdr";
     };
 
     # nix-amd-ai — the proven coordinator NPU plane (hardware.amd-npu: amdxdna,
@@ -335,10 +357,6 @@
           # allowlisted set out of this namespace. See the input comment above.
           llm-agents = inputs.llm-agents.packages.${system};
           sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { src = inputs.sfmono-liga; };
-          # zmx built by our own pkgs/zmx.nix from the non-flake source input:
-          # nixpkgs zig + upstream's committed dependency lock, no zig2nix IFD
-          # (see the input comment).
-          zmx = final.callPackage ./pkgs/zmx.nix { src = inputs.zmx; };
         })
         # Pin-decoupled "hot" packages — see the nixpkgs-fresh input comment above.
         # Cherry-picked, not a wholesale pkgs swap: only packages named here track
@@ -540,6 +558,11 @@
             crm
             dcal
             local-ai-monthly
+            # `nix build .#local-models-prune` — the ONLY verb on this fleet
+            # that deletes a working copy. Exposed so the guard suite can be
+            # pointed at a built path (LOCAL_MODELS_PRUNE_BIN) instead of
+            # requiring the binaries to be installed on the caller's PATH.
+            local-models-prune
             mactahoe-gtk-theme
             mactahoe-icon-theme
             music-acquire
@@ -590,6 +613,70 @@
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
         music-acquire = pkgs.music-acquire;
+
+        # The Claude capacity oracle (DECISION-R2-1). It is BOTH the waybar
+        # module and the dispatch admission gate, so its three exit codes
+        # (0 headroom / 1 defer / 2 cannot determine) are a fleet contract:
+        # a regression that turns "cannot determine" into 0 would dispatch
+        # into a spent subscription window, and one that turns headroom into
+        # nonzero would stall the queue silently. Both are cheap to pin and
+        # impossible to notice by eye, so they are asserted here.
+        #
+        # The suite is hermetic — it drives the script through a seeded cache
+        # in a temp XDG_RUNTIME_DIR with a temp HOME holding a deliberately
+        # dead token — so it runs inside the sandbox with no network.
+        claude-capacity =
+          pkgs.runCommand "claude-capacity"
+            { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              set -euo pipefail
+              export HOME="$TMPDIR/home"
+              mkdir -p "$HOME"
+              CLAUDE_CAPACITY=${./home/dot_local/bin/claude-capacity} \
+                python3 ${./tests/claude-capacity/test-claude-capacity.py} | tee "$TMPDIR/out"
+              # The count is asserted against the doc, not just printed. P05's
+              # handoff called this suite "21 hermetic cases" when it had 23 and
+              # had never had any other number; a receipt drifted from the code
+              # and nothing caught it. docs/local-ai/claude-capacity.md now
+              # states the number, and this check fails if the two disagree —
+              # whichever of them moved (U-D8).
+              n=$(tail -1 "$TMPDIR/out" | grep -o '^[0-9]*')
+              test -n "$n"
+              grep -q "$n" ${./docs/local-ai/claude-capacity.md} || {
+                echo "claude-capacity: the suite reports $n cases but" >&2
+                echo "docs/local-ai/claude-capacity.md does not say $n." >&2
+                echo "Fix the doc, or the suite — do not fix the receipt." >&2
+                exit 1
+              }
+              # py_compile is a second, independent guard: a syntax error in the
+              # oracle would otherwise only surface when waybar or a dispatch
+              # asked it a question.
+              python3 -m py_compile ${./home/dot_local/bin/claude-capacity}
+              cp "$TMPDIR/out" $out
+            '';
+
+        # The l8-flash reconciliation's own row (U-D16, #319, #293).
+        #
+        # home/dot_local/bin/l8-flash-probe gained a row that says whether the
+        # two HAND-WRITTEN claude-transcript-mirror units are still plain files
+        # in ~/.config/systemd/user. They are, today: removing them is Tom's
+        # shell act in P05 walkthrough step 4 (DEFERRED.md DF-U-D16-1), and it
+        # must not happen before the switch that replaces them. So the row ships
+        # RED, and a row that is red on the day it is written is exactly the row
+        # nobody notices has stopped working. It is asserted here instead, in a
+        # temp HOME, in all four states that matter: pair present, half
+        # deleted, gone, and — the one an `-e` test would get backwards —
+        # present as home-manager's own symlinks, which is the switch having
+        # SUCCEEDED. Hermetic: no systemd, no tally, no network.
+        l8-flash-probe-row =
+          pkgs.runCommand "l8-flash-probe-row"
+            { nativeBuildInputs = [ pkgs.gnugrep pkgs.gawk ]; }
+            ''
+              set -euo pipefail
+              L8_FLASH_PROBE=${./home/dot_local/bin/l8-flash-probe} \
+                bash ${./tests/l8-flash-probe/test-handwritten-row.sh} | tee "$TMPDIR/out"
+              cp "$TMPDIR/out" $out
+            '';
 
         nas-topology =
           let
@@ -970,6 +1057,11 @@
           assert coordinatorHome.services.tally.enable;
           assert coordinatorHome.programs.voxtype.enable;
           assert coordinatorHome.systemd.user.services ? wayvnc;
+          # ONE herdr server, coordinator only (ruling B5), and it must never be
+          # tied to the compositor's lifetime (ruling B6) — the PTYs outlive it.
+          assert coordinatorHome.systemd.user.services ? herdr;
+          assert !(coordinatorHome.systemd.user.services.herdr.Unit ? PartOf);
+          assert coordinatorHome.systemd.user.services.herdr.Install.WantedBy == [ "default.target" ];
           # The worker keeps Home Manager (unlike the NAS, which stops at NixOS):
           # it is an ordinary interactive box that merely has nobody sitting at
           # it, so the shell, atuin sync and niri session are all real. What it
@@ -979,6 +1071,9 @@
           assert workerHome.programs.atuin.settings.auto_sync;
           assert !workerHome.services.tally.enable;
           assert !workerHome.programs.voxtype.enable;
+          # …and the herdr SERVER. The worker still gets the herdr binary (it is
+          # how `herdr --remote coordinator` works at all), just no unit.
+          assert !(workerHome.systemd.user.services ? herdr);
           # wayvnc's unit exists and is deliberately unreachable — this host has
           # no tailnet and :5900 is admitted on tailscale0 only, fleet-wide. The
           # unit stays so the screen becomes viewable the day that changes; see
@@ -1023,17 +1118,12 @@
               export AI_MEMORY_HANDOFF_SKILL=${./home/dot_claude/skills/handoff/SKILL.md}
               export AI_MEMORY_PICKUP_SKILL=${./home/dot_claude/skills/pickup/SKILL.md}
               export AI_MEMORY_UTILITY_OWNER=${./pkgs/utility-model/utility_model.py}
-              export AI_MEMORY_ZMX_TITLE=${./home/dot_local/bin/zmx-title}
               mkdir -p "$HOME" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_RUNTIME_DIR"
 
               python3 -m unittest discover \
                 -s ${./tests/ai-memory} \
                 -p 'test_*.py' \
                 -v
-              ${pkgs.bash}/bin/bash -n \
-                ${./home/dot_local/bin/zmx-title} \
-                ${./home/dot_local/bin/zmx-retitle} \
-                ${./home/dot_local/bin/new-terminal}
 
               mkdir -p "$HOME/journal"
               qmd --index ai-memory-check \
@@ -1077,6 +1167,52 @@
                 -p 'test_*.py' \
                 -v
 
+              touch "$out"
+            '';
+
+        # nightly-record (dotfiles#298): five lanes, five rows, every night,
+        # from the harness transcripts and nothing else. Same shape as
+        # print-paper — the real program, driven against fixtures.
+        nightly-record =
+          pkgs.runCommand "nightly-record"
+            {
+              nativeBuildInputs = [ pkgs.python3 ];
+            }
+            ''
+              set -euo pipefail
+
+              export HOME="$TMPDIR/home"
+              export PYTHONDONTWRITEBYTECODE=1
+              export NIGHTLY_RECORD_SCRIPT=${./home/dot_local/bin/nightly-record}
+              export NIGHTLY_RECORD_FIXTURES=${./tests/nightly-record/fixtures}
+              mkdir -p "$HOME"
+
+              python3 -m unittest discover \
+                -s ${./tests/nightly-record} \
+                -p 'test_*.py' \
+                -v
+
+              touch "$out"
+            '';
+
+        # The prune guard (dotfiles#296): local-models-sync must never delete,
+        # and local-models-prune --yes must refuse a set that drifted from the
+        # recorded dry-run. Hermetic — a fixture tree and a fake manifest, no
+        # /var, no systemd, no weights.
+        local-models-sync =
+          pkgs.runCommand "local-models-sync"
+            {
+              nativeBuildInputs = [
+                pkgs.local-models-prune
+                pkgs.findutils
+                pkgs.coreutils
+              ];
+            }
+            ''
+              set -euo pipefail
+              export HOME="$TMPDIR/home"
+              mkdir -p "$HOME"
+              ${pkgs.bash}/bin/bash ${./tests/local-models-sync/test-prune-guard.sh}
               touch "$out"
             '';
 
@@ -1152,19 +1288,56 @@
             # the bottom greps the flake's own source tree, and a literal here
             # would match itself. It is no longer a "retired host" — see below.
             strixWorker = "work" + "er";
-            # What stayed retired (Tom's ruling, unchanged by #229): the worker
-            # is a HOST again, never a Tally executor or a Tally pool. All jobs
-            # execute locally on the coordinator; home/tally.nix declares
-            # `executors = { }` and no worker-gpu lane. The GPU cooldown tripwire
-            # that used to reach across for a worker-gpu lease is DEAD and
-            # deleted, so nothing is left that would want one.
-            retiredPool = strixWorker + "-gpu";
+            # HALF of Tom's old ruling survives, and the halves are now split
+            # (dotfiles#310, dotfiles#291). It used to read: the worker is a
+            # HOST again, never a Tally executor AND never a Tally pool.
+            #
+            #   STILL TRUE, and asserted structurally below: never an EXECUTOR.
+            #   All jobs execute locally on the coordinator, home/tally.nix
+            #   declares `executors = { }`, and the worker runs no daemon
+            #   (CONSOLIDATED §3 Q2). The GPU cooldown tripwire that used to
+            #   reach across for a lease is dead and deleted.
+            #
+            #   SUPERSEDED by CONSOLIDATED §3 Q1 at the sheet's default
+            #   (RULINGS.md R-2026-09-06-03, 2026-09-06): "capacity one per
+            #   device until jobs carry a VRAM request the engine reads". There
+            #   is now a per-GPU row for each of the two devices, and the second
+            #   one is named after the box that holds it. It is a ROW IN THE
+            #   COORDINATOR'S POOL TABLE, not an executor and not a daemon —
+            #   nothing leases it yet. It exists so the first job that runs over
+            #   there has a lane to name instead of borrowing the coordinator's
+            #   and lying about which device it sat on.
+            #
+            # A pool row and an executor are different objects; the old guard
+            # conflated them because, while the host was retired, no row could
+            # be anything but the first step back toward an executor.
+            devicePool = strixWorker + "-gpu";
+            # The sweep below is now TWO sweeps, because the relaxation Q1 needs
+            # is narrower than the file it lands in.
+            #
+            #   retiredExecutionPattern — the two RETIRED EXECUTOR attribute
+            #   names, still banned from home/tally.nix AND flows/. Nothing in
+            #   this branch wants either back.
+            #
+            #   retiredFlowHostPattern — the bare host name, still banned from
+            #   flows/ ONLY. This is the half the first cut of #310 dropped
+            #   wholesale, which unbanned the name in flows/ too — more than Q1
+            #   asked for. A flow is a script that ENQUEUES work; a flow naming
+            #   the other box is a flow trying to run there, which is exactly
+            #   the executor half that stayed retired (Q2: one daemon, on the
+            #   coordinator). home/tally.nix is different in kind — it declares
+            #   the pool TABLE, and Q1 puts a row for the other box's device in
+            #   it, so the name must be speakable there and only there. That
+            #   ban is what had forced this file's neighbours to spell the box
+            #   obliquely. The pool row keeps its own structural assertion
+            #   below, which is stronger than a grep over prose.
             retiredExecutionPattern = nixpkgs.lib.concatStringsSep "|" [
-              strixWorker
-              retiredPool
               (strixWorker + "Flake")
               (strixWorker + "Models")
             ];
+            # The bare name subsumes devicePool ("<host>-gpu"): a flow may name
+            # neither.
+            retiredFlowHostPattern = strixWorker;
             retiredDeployment = "deepseek-v4-flash-q4-dual";
             activeHostSets = [
               (builtins.attrNames self.nixosConfigurations)
@@ -1367,12 +1540,20 @@
           assert worker.nix.buildMachines == [ ];
           assert !(worker.nix.settings ? post-build-hook);
           assert nixpkgs.lib.elem "http://nas:8080/fleet" worker.nix.settings.extra-substituters;
-          # Still retired, and asserted in the NEGATIVE on purpose: a host, never
-          # a Tally executor or pool. The one thing that ever wanted a worker-gpu
-          # lease — the GPU cooldown tripwire — is deleted outright.
+          # The executor half, still asserted in the NEGATIVE: a host, never a
+          # Tally executor. Both directions, because `executors == { }` alone
+          # would pass a config that renamed the attribute.
           assert !(builtins.hasAttr strixWorker coordinator.home-manager.users.tom.services.tally.executors);
-          assert !(builtins.hasAttr retiredPool coordinator.home-manager.users.tom.services.tally.pools);
           assert coordinator.home-manager.users.tom.services.tally.executors == { };
+          # The pool half, now asserted in the POSITIVE (Q1; dotfiles#310).
+          # Pinning the SHAPE is worth more than pinning the absence: capacity
+          # one per device, declared vram — not a budget row, not a mutex, and
+          # never given a budgetGb, because a GB budget means nothing until an
+          # enqueue states how much VRAM it wants and none of them does.
+          assert builtins.hasAttr devicePool coordinator.home-manager.users.tom.services.tally.pools;
+          assert coordinator.home-manager.users.tom.services.tally.pools.${devicePool}.resource == "vram";
+          assert coordinator.home-manager.users.tom.services.tally.pools.${devicePool}.capacity == 1;
+          assert coordinator.home-manager.users.tom.services.tally.pools.${devicePool}.budgetGb == null;
           assert !worker.home-manager.users.tom.services.tally.enable;
           # ...but very much present in the SSH mesh, in both directions. This
           # assertion was the inverse until #229 and was failing at HEAD, since
@@ -1457,7 +1638,12 @@
             fi
             if ${pkgs.ripgrep}/bin/rg --line-number '${retiredExecutionPattern}' \
               ${./home/tally.nix} ${./flows}; then
-              echo "retired Tally executor or pool found" >&2
+              echo "retired Tally executor attribute found" >&2
+              exit 1
+            fi
+            if ${pkgs.ripgrep}/bin/rg --line-number '${retiredFlowHostPattern}' \
+              ${./flows}; then
+              echo "a flow names the retired execution host" >&2
               exit 1
             fi
             touch "$out"

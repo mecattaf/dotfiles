@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import socket
-import stat
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import unittest
@@ -20,12 +17,6 @@ UTILITY_OWNER = Path(
     os.environ.get(
         "AI_MEMORY_UTILITY_OWNER",
         REPO_ROOT / "pkgs/utility-model/utility_model.py",
-    )
-)
-ZMX_TITLE = Path(
-    os.environ.get(
-        "AI_MEMORY_ZMX_TITLE",
-        REPO_ROOT / "home/dot_local/bin/zmx-title",
     )
 )
 
@@ -314,83 +305,6 @@ class UtilityOwnerProvenanceTests(unittest.TestCase):
         # The FLM child lifecycle is gone, not merely unused.
         self.assertNotIn("subprocess", source)
         self.assertNotIn("fcntl", source)
-
-
-class ZmxTitleTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
-        self.root = Path(self.temporary.name)
-        self.bin_dir = self.root / "bin"
-        self.bin_dir.mkdir()
-        self.fake_utility = self.bin_dir / "utility-model"
-        self.fake_utility.write_text(
-            FAKE_UTILITY.replace(
-                "#!/usr/bin/env python3",
-                f"#!{sys.executable}",
-                1,
-            ),
-            encoding="utf-8",
-        )
-        self.fake_utility.chmod(
-            self.fake_utility.stat().st_mode
-            | stat.S_IXUSR
-            | stat.S_IXGRP
-            | stat.S_IXOTH
-        )
-        self.request_path = self.root / "request.json"
-
-    def tearDown(self) -> None:
-        self.temporary.cleanup()
-
-    def run_title(
-        self,
-        fallback: str,
-        *,
-        enabled: bool,
-        fail: bool = False,
-    ) -> subprocess.CompletedProcess[str]:
-        environment = os.environ.copy()
-        environment.update(
-            {
-                "PATH": f"{self.bin_dir}:{environment['PATH']}",
-                "ZMX_TITLE": "1" if enabled else "0",
-                "FAKE_UTILITY_REQUEST": str(self.request_path),
-                "FAKE_UTILITY_FAIL": "1" if fail else "0",
-            }
-        )
-        return subprocess.run(
-            [
-                shutil.which("bash") or "/bin/bash",
-                str(ZMX_TITLE),
-                fallback,
-                "synthetic terminal context",
-            ],
-            input="",
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=environment,
-            timeout=10,
-            check=False,
-        )
-
-    def test_disabled_and_failed_titling_preserve_exact_fallback(self) -> None:
-        disabled = self.run_title("stable-fallback", enabled=False)
-        self.assertEqual(disabled.stdout, "stable-fallback\n")
-        failed = self.run_title("stable-fallback", enabled=True, fail=True)
-        self.assertEqual(failed.stdout, "stable-fallback\n")
-
-    def test_enabled_titling_names_only_the_stable_utility_id(self) -> None:
-        completed = self.run_title("stable-fallback", enabled=True)
-        self.assertEqual(completed.returncode, 0)
-        self.assertEqual(completed.stdout, "✨ Memory Drain\n")
-        request = json.loads(self.request_path.read_text())
-        self.assertEqual(request["model"], "utility")
-        self.assertFalse(request["think"])
-        source = ZMX_TITLE.read_text()
-        self.assertNotIn("FLM_TITLE_", source)
-        self.assertNotIn("qwen3:4b", source)
-        self.assertNotIn("http://", source)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@
     "modules-left": ["sway/workspaces"],
     "modules-center": [],
     "modules-right": [
+        "custom/claude-capacity",
         "pulseaudio",
         "backlight",
         "battery",

@@ -129,6 +129,22 @@ in
       # Inherited by native GPU backend children when models are added.
       LimitMEMLOCK = "infinity";
       TimeoutStopSec = "2min";
+
+      # Restart policy, declared here rather than inherited (dotfiles#294).
+      # `systemctl show llama-swap -p Restart` already printed
+      # Restart=on-failure on the coordinator before this line existed, and
+      # RestartSec=3 was already in the rendered unit — both came from the
+      # UPSTREAM nixpkgs services.llama-swap module's own serviceConfig, i.e.
+      # from a file this repository does not own and does not pin by content.
+      # An upstream default change would have taken the restart policy of the
+      # fleet's only inference gateway with it, silently. Adopting the values
+      # rather than inventing them means the switch changes no behaviour and
+      # only moves the decision into this repo.
+      #
+      # RestartSec = 3 is PROPOSED (R-03): it is the effective value measured
+      # on the running coordinator 2026-09-06, adopted as-is.
+      Restart = "on-failure";
+      RestartSec = 3;
     };
   };
 }

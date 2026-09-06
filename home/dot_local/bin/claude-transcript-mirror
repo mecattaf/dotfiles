@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Additive mirror of Claude Code transcripts (dotfiles#293).
+#
+# Absorbed 2026-09-06 from the hand-written ~/archives/claude-code-mirror/sync.sh
+# and the two hand-written unit files that drove it. The units are now declared
+# in home/harness-records.nix; this script stays a RAW dotfile, reachable
+# through the whole-dir ~/.local/bin out-of-store symlink, so the mirror can be
+# retuned by editing a file rather than by a rebuild.
+#
+# NEVER DELETES. What Claude Code's own retention removes from a source root
+# stays here — that is the entire point: this mirror is the sample frame every
+# per-seat usage reading in the P0x sequence draws on, and settings.json's
+# cleanupPeriodDays (#295) only decides how long the SOURCE keeps a session.
+# Safe to re-run at any time.
+set -euo pipefail
+
+M="$HOME/archives/claude-code-mirror"
+
+sync_root() { # $1 = source config dir, $2 = mirror subdir
+  [ -d "$1/projects" ] || return 0
+  mkdir -p "$M/$2/projects"
+  rsync -a --no-inc-recursive "$1/projects/" "$M/$2/projects/"
+  for f in history.jsonl settings.json; do
+    [ -f "$1/$f" ] && cp -p "$1/$f" "$M/$2/$f"
+  done
+  return 0
+}
+
+# The three Claude seats, named explicitly. The hand-written script reached the
+# third one only through CLAUDE_CONFIG_DIR, which a systemd unit does not carry
+# — so cc3 (~/.claude-3, main 88c7c755) was silently unmirrored under the timer.
+sync_root "$HOME/.claude" claude
+sync_root "$HOME/.claude-work" claude-work
+sync_root "$HOME/.claude-3" claude-3
+
+# An interactively-set CLAUDE_CONFIG_DIR pointing somewhere else still works,
+# for a seat this file does not know about yet.
+if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
+  case "$CLAUDE_CONFIG_DIR" in
+    "$HOME/.claude" | "$HOME/.claude-work" | "$HOME/.claude-3") ;;
+    *) sync_root "$CLAUDE_CONFIG_DIR" "$(basename "$CLAUDE_CONFIG_DIR")" ;;
+  esac
+fi
+
+date -Is >>"$M/last-sync.log"

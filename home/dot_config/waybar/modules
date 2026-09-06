@@ -89,6 +89,28 @@
       "current-only": false,
       "disable-markup": false
     },
+    // Claude Code rate-limit capacity (DECISION-R2-1, 2026-09-02). The SAME
+    // script is the dispatch admission oracle — `claude-capacity --check`
+    // exits 0 headroom / 1 defer / 2 cannot determine — so the bar and the
+    // dispatcher can never disagree about headroom.
+    //
+    // interval 300, not 30: /api/oauth/usage rate-limits (a handful of manual
+    // polls in one minute already returned HTTP 429). The script also caches
+    // every reading for 60s in $XDG_RUNTIME_DIR and serves a reading up to 15
+    // minutes old when the API refuses, so a long interval costs nothing in
+    // freshness and a short one costs the whole budget.
+    //
+    // on-click drops the cache and signals waybar to re-run the module, which
+    // is the only way to force a live reading from the bar.
+    "custom/claude-capacity": {
+         "format": "{}",
+         "return-type": "json",
+         "exec": "~/.local/bin/claude-capacity",
+         "interval": 300,
+         "signal": 8,
+         "on-click": "sh -c 'rm -f \"${XDG_RUNTIME_DIR:-/tmp}/claude-capacity-cache.json\"; pkill -RTMIN+8 waybar'"
+    },
+
     "custom/pomo": {
          "format": "{}",
          "exec": "~/.config/hypr/scripts/pomo emoji",
@@ -112,5 +134,4 @@
          "interval" : 1,
          "on-click": "~/.config/hypr/scripts/pomo pause"
     }
-  }
 }

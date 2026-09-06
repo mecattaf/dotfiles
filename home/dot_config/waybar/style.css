@@ -174,3 +174,31 @@ tooltip {
     margin-left: 10px;
     color: @mauve; 
 }
+
+/* Claude Code rate-limit capacity (DECISION-R2-1). The classes come from the
+   script: none while under 80% utilization, `warning` at >= 80% or when the
+   reading is stale/unauthenticated, `critical` at >= 100% or with no
+   credentials at all. Same palette logic as #battery below/above its states. */
+#custom-claude-capacity {
+    background: @base;
+    padding: 0px 10px;
+    margin: 3px 0px;
+    border: 1px solid @mantle;
+    border-radius: 0;
+    border-right: 0px;
+    color: @sky;
+}
+
+#custom-claude-capacity.warning {
+    color: @peach;
+}
+
+#custom-claude-capacity.critical {
+    color: @text;
+    border-bottom: 2px solid @red;
+    animation-name: blink;
+    animation-duration: 0.5s;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+}

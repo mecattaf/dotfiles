@@ -1,7 +1,7 @@
 export const meta = {
   name: "docs-model-split",
   description: "Refresh docs/local-ai to the allowlist reality, preserve retired DS4 evidence, sunset the stale set",
-  pools: ["codex-window", "flow-build"],
+  pools: ["flow-build"],
   argsSchema: {
     type: "object",
     required: ["repository", "baseRev", "branch", "worktree"],

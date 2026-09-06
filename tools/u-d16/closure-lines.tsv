@@ -1,0 +1,5 @@
+docs/README.md	lines/docs_README.md.txt
+flake.nix	lines/flake.nix.txt
+home/dot_local/bin/l8-flash-probe	lines/home_dot_local_bin_l8-flash-probe.txt
+pkgs/local-models-prune.nix	lines/pkgs_local-models-prune.nix.txt
+tests/local-models-sync/test-prune-guard.sh	lines/tests_local-models-sync_test-prune-guard.sh.txt
