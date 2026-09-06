@@ -96,6 +96,31 @@ let
     '';
   };
 
+  # The Claude capacity ORACLE as a dispatch admission command (DECISION-R2-1).
+  #
+  # The oracle itself is a RAW dotfile — home/dot_local/bin/claude-capacity,
+  # reachable through the out-of-store ~/.local/bin symlink, so a threshold is
+  # retuned by editing a file, not by a rebuild. This wrapper exists for two
+  # reasons and no others:
+  #   1. a STABLE /nix/store argv that a tally job unit can name, since tally
+  #      takes direct argv and never a shell string;
+  #   2. a pinned python3. `python3` lives in the per-user profile here
+  #      (/etc/profiles/per-user/tom/bin/python3) and is NOT in
+  #      /run/current-system/sw/bin, so a systemd-run job that does not inherit
+  #      the user profile PATH would fail to exec the oracle at all.
+  #
+  # Exit codes are the contract: 0 headroom (admit), 1 no headroom (defer),
+  # 2 cannot determine. Tally's hook treats every nonzero as defer, so this
+  # fails CLOSED — an unreachable API defers rather than burning a spent window.
+  # See the per-seat subscription rows below for what still has to land
+  # tally-side (dotfiles#304).
+  capacityOracle = pkgs.writeShellApplication {
+    name = "tally-admit-claude";
+    runtimeInputs = [ pkgs.python3 ];
+    text = ''
+      exec python3 "$HOME/.local/bin/claude-capacity" --check "$@"
+    '';
+  };
 in
 {
   imports = [
@@ -106,6 +131,7 @@ in
   home.packages = lib.optionals isCoordinator [
     pkgs.call-diarize
     pkgs.local-ai-monthly
+    capacityOracle
   ];
 
   services.tally = {
@@ -119,6 +145,14 @@ in
     # "A flow cannot choose a model"), so the hijacked flows' claude-code
     # lanes run on this exact id, stamped on every row it answers for with
     # modelProvenance=daemon-config.
+    #
+    # NOT TOUCHED HERE, DELIBERATELY (DECISION-R2-1, 2026-09-02): the ruling
+    # retires daemon model pins as daemon POLICY — model becomes contract-declared
+    # data hashed WITH the contract (the tally.nix#657-clean path), with the
+    # fleet-wide default moving to session creation. That is a tally-side change
+    # (model.rs job() field + the #657 payload-hash fix) and this line can only
+    # be dropped once it lands; dropping it first would leave every model-less
+    # claude-code lane unpinned mid-flight. Stage C / the tally lane owns it.
     agent = lib.mkIf isCoordinator {
       adapter = "claude-code";
       model = "claude-opus-5";
@@ -141,7 +175,25 @@ in
         enforce = "cooperative";
         hardPreempt = false;
       };
+      # ── GPU rows, one per device (CONSOLIDATED §3 Q1, at the sheet's default:
+      # "capacity one per device until jobs carry a VRAM request the engine
+      # reads"). Both twins are 128 GiB Strix; neither row declares budgetGb,
+      # because a GB budget only means something once an enqueue states how
+      # much VRAM it wants, and none of them does. Until then capacity = 1 is
+      # the honest statement: one GPU-resident job per device.
+      #
+      # The DAEMON is one kernel, on the coordinator (Q2) — worker-gpu is a row
+      # in the coordinator's pool table describing the other box's device, not a
+      # second daemon. Nothing leases it yet; it exists so that the first job
+      # that runs on the worker has a lane to name instead of borrowing
+      # coordinator-gpu and lying about which device it sat on.
       coordinator-gpu = {
+        resource = "vram";
+        capacity = 1;
+        enforce = "cooperative";
+        hardPreempt = false;
+      };
+      worker-gpu = {
         resource = "vram";
         capacity = 1;
         enforce = "cooperative";
@@ -153,22 +205,163 @@ in
         enforce = "cooperative";
         hardPreempt = false;
       };
-      # Tally v0.1.0 models a capacity-one subscription concurrency lane as a
-      # mutex; windowed-consumption budget pools are intentionally unavailable
-      # to flow nodes.
-      codex-window = {
-        resource = "mutex";
-        capacity = 1;
+
+      # ── PER-SEAT SUBSCRIPTION ROWS (dotfiles#291) ───────────────────────────
+      #
+      # WHAT WAS HERE AND IS GONE: the two per-harness `<harness>-window`
+      # capacity-one mutexes, one for the Codex lane and one for the Claude
+      # lane — the mutex-pool pin deployed 2026-09-01 alongside the
+      # claude-code/opus-5 daemon agent line above. Retired 2026-09-06 by
+      # CONSOLIDATED §3 Q8 at the sheet's default: "per-seat rows now, since
+      # the rail already has them" (RULINGS.md R-2026-09-06-03). Both names,
+      # and the pin's own commit id, are deliberately absent from this file:
+      # their absence is the switch's own oracle (home/dot_local/bin/
+      # l8-flash-probe greps for them and must find nothing).
+      #
+      # WHY THEY WENT. A mutex says "one at a time" and nothing else. It cannot
+      # say "the weekly Opus window is spent, come back later", which is the
+      # only thing that actually rations a subscription — and it cannot tell
+      # cc from cc2 from cc3, which are three separate windows on three
+      # separate logins that the mutex serialized into one queue. The
+      # DECISION-R2-1 analysis (2026-09-02, in the herdr branch) concluded the
+      # pools should STAY, on the grounds that the pinned tally offered no
+      # generic admission preflight hook and a windowed-consumption pool would
+      # start refusing every flow node. Both premises still hold; the
+      # CONCLUSION is superseded, because the ruling changed what the rows are
+      # FOR. They are no longer the serialization lane for flow nodes — flows
+      # cannot use them at all, see below — they are the RATIONING lane for
+      # jobs Tom's own harness enqueues, one row per login, which is exactly
+      # what windowed-consumption expresses and a mutex cannot.
+      #
+      # WHAT REPLACED THEM: five `budget` rows with a rolling-window predicate,
+      # one per seat. windowSec = 604800 (7 days) is the tally option default
+      # AND the measured Codex primary window (`window_minutes: 10080` in the
+      # ~/.codex rollout rate_limits rows), so all five seats share one window
+      # shape and can be read side by side.
+      #
+      # THE COST, STATED PLAINLY (dotfiles#302, dotfiles#305). A
+      # windowed-consumption pool "rejects requests without an estimate"
+      # (common.nix consumptionEstimate at the pin: "Every request that names a
+      # windowed-consumption pool must provide an estimate"), and FLOWS CANNOT
+      # SUPPLY ONE: doc/src/flows/host-api.md is explicit that "There is
+      # deliberately no consumptionEstimate field", and
+      # crates/tally-flow/src/dialect.rs::validate_flow_pool_predicates rejects
+      # any flow whose meta.pools names a windowed-consumption pool with
+      # FlowPoolError/windowed-consumption-excluded. On top of that the claude()
+      # and codex() flow sugars each hardcode a pool set containing exactly
+      # the retired per-harness window name for their harness (host-api.md),
+      # names that no longer exist. So at THIS pin the flow sugar is unusable, and it stays unusable
+      # until a later tally exposes seat-named sugar. The five registered flows
+      # were adjusted accordingly (flows/README.md, dotfiles#302); they are
+      # dormant (onCalendar = null) and were never run through this lane.
+      #
+      # PER-ATTEMPT CAP — A CONVENTION, NOT A FIELD (dotfiles#303). Q8 asks for
+      # "a budget and a per-attempt cap field per row". There is NO per-attempt
+      # cap field on a pool at this pin: the submodule offers resource,
+      # capacity, budgetGb, predicate, usageMeter, enforce, hardPreempt and
+      # nothing else. `consumptionCap` below is the WHOLE-WINDOW cap. The
+      # per-attempt figure is therefore written here as a CONVENTION: the
+      # consumptionEstimate every enqueue naming that row must carry, and must
+      # not exceed. Nothing enforces it; dotfiles#303 is the upstream ask.
+      #
+      # NO usageMeter YET (dotfiles#304). Without one, a budget pool falls back
+      # to tally's built-in adapter usage feeder, which counts only what tally
+      # itself dispatched — not what Tom spent interactively on the same
+      # subscription. home/dot_local/bin/claude-capacity (the ONE Claude
+      # oracle) and home/dot_local/bin/nightly-record both exist and feed
+      # nothing; wiring them per seat is dotfiles#304, after P06/EXP-002 takes
+      # the readings that would calibrate them.
+      #
+      # EVERY NUMBER BELOW IS PROPOSED (R-03), drafted by P05, not ruled.
+
+      # cc — ~/.claude, Tom's primary Claude Max seat.
+      # PROPOSED consumptionCap 500000000 tokens / 7 days. Basis: the Claude
+      # Max weekly window as the seat reports it; no measured seat total exists
+      # yet (P06/EXP-002 takes the first paired readings).
+      # PROPOSED per-attempt cap (convention): 50000000 — one tenth of the
+      # window, so a single runaway attempt cannot spend more than a tenth of
+      # the week.
+      cc = {
+        resource = "budget";
+        predicate.windowed-consumption = {
+          windowSec = 604800;
+          consumptionCap = 500000000;
+        };
         enforce = "cooperative";
         hardPreempt = false;
       };
-      # Claude Max subscription concurrency lane, mirroring codex-window: the
-      # claude() flow sugar fixes this pool, so every claude-code flow node on
-      # this host serializes through it (first consumer: the herdr-kitten
-      # hijacked flow, dotfiles#284).
-      claude-window = {
-        resource = "mutex";
-        capacity = 1;
+
+      # cc2 — ~/.claude-work, the UNATTENDED lane the floor measures (P10).
+      # Never hosts Fable. Same PROPOSED figures as cc: same subscription
+      # shape, different login, and no measured basis to separate them yet.
+      # PROPOSED consumptionCap 500000000; PROPOSED per-attempt 50000000.
+      cc2 = {
+        resource = "budget";
+        predicate.windowed-consumption = {
+          windowSec = 604800;
+          consumptionCap = 500000000;
+        };
+        enforce = "cooperative";
+        hardPreempt = false;
+      };
+
+      # cc3 — ~/.claude-3, the third account (main 88c7c755, `cc3`/`cac3`).
+      # PROPOSED consumptionCap 500000000; PROPOSED per-attempt 50000000.
+      cc3 = {
+        resource = "budget";
+        predicate.windowed-consumption = {
+          windowSec = 604800;
+          consumptionCap = 500000000;
+        };
+        enforce = "cooperative";
+        hardPreempt = false;
+      };
+
+      # codex — the ONE Codex login on this box, /home/tom/.codex, which is
+      # NAYLA's (RULINGS.md R-2026-09-06-02; see docs/local-ai/codex-login.md).
+      # This row rations HER window, which is exactly why it needs a cap.
+      # PROPOSED consumptionCap 300000000 tokens / 7 days. Basis: the primary
+      # window in the ~/.codex rollout rate_limits rows is window_minutes
+      # 10080 = 7 days, so windowSec matches the real window exactly; the level
+      # is set below the Claude seats because RAWA-FLOW §3's measured baseline
+      # is p50 8.8M and p90 47M tokens per rollout, i.e. a week of Codex work
+      # is counted in dozens of rollouts, not hundreds.
+      # PROPOSED per-attempt cap (convention): 47000000 — the RAWA-FLOW §3 p90
+      # itself, the one number here with a measured basis.
+      codex = {
+        resource = "budget";
+        predicate.windowed-consumption = {
+          windowSec = 604800;
+          consumptionCap = 300000000;
+        };
+        enforce = "cooperative";
+        hardPreempt = false;
+      };
+
+      # pi — earendil-works/pi on Qwen Cloud.
+      # PROPOSED consumptionCap 200000000 tokens / 7 days, and this is the
+      # WEAKEST number of the five, but not for the reason first drafted here.
+      #
+      # The SPEND is measured. pi's session store WAS located:
+      # ~/.pi/agent/sessions/<cwd-slug>/<ts>_<uuid>.jsonl, carrying per-message
+      # usage {input, output, cacheRead, cacheWrite}. nightly-record reads it
+      # and grades the pi lane MEASURED, like the other four (dotfiles#307,
+      # corrected in a comment there). First reading, 2026-09-05: 15526 in,
+      # 1155 out, 14848 cache, 1 file.
+      #
+      # What is unmeasured is the CEILING this cap is supposed to sit under.
+      # pi's allowance is a Qwen Cloud plan credit page — CLAIMED, never read
+      # by anything here, in credits rather than tokens, with no local artifact
+      # to check a weekly figure against. So the number below is anchored to
+      # nothing, which is why it is the lowest of the five: the seat whose
+      # LIMIT cannot be observed gets the least rope, even though its spend can.
+      # PROPOSED per-attempt cap (convention): 20000000.
+      pi = {
+        resource = "budget";
+        predicate.windowed-consumption = {
+          windowSec = 604800;
+          consumptionCap = 200000000;
+        };
         enforce = "cooperative";
         hardPreempt = false;
       };
@@ -325,5 +518,30 @@ in
   systemd.user.services.tally-drain = lib.mkIf isCoordinator {
     Service.LogLevelMax = "notice";
   };
+
+  # The meters directory the daemon's external usage feeders write into
+  # (dotfiles#292). At the pinned tally the event path is
+  #
+  #   nix/modules/common.nix:2697
+  #     meterEventPath = stateDir: pool:
+  #       "${toString stateDir}/meters/${builtins.hashString "sha256" pool}.json";
+  #
+  # so every `pools.<name>.usageMeter` lands under <stateDir>/meters/. The
+  # module renders a tally-meter-<pool> unit only for a pool that DECLARES a
+  # usageMeter, and it never creates the directory itself — its own path setup
+  # lists stateDir, stateDir/events and stateDir/capture/archive and stops
+  # there. Measured on the coordinator 2026-09-06: ~/.local/state/tally exists,
+  # ~/.local/state/tally/meters does not.
+  #
+  # Declared HERE, ahead of the first feeder (dotfiles#304), because the
+  # directory is also what the external meter script writes into by hand while
+  # the feeders are still being calibrated by P06/EXP-002 — a missing directory
+  # would make that a silent no-op rather than a legible failure.
+  #
+  # Mode 0700 is PROPOSED (R-03): no tally option constrains it; it is what a
+  # per-user state subtree of an already-private ~/.local/state should be.
+  systemd.user.tmpfiles.rules = lib.mkIf isCoordinator [
+    "d %h/.local/state/tally/meters 0700 - - -"
+  ];
 
 }

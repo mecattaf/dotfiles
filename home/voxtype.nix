@@ -15,6 +15,50 @@ let
   package = inputs.voxtype.packages.${pkgs.stdenv.hostPlatform.system}.onnx-migraphx;
   osdPackage = inputs.voxtype.packages.${pkgs.stdenv.hostPlatform.system}.osd-gtk4;
   parakeetModel = "parakeet-unified-en-0.6b";
+
+  # Voxtype 0.7.5 runs `output.post_process.command` and both output hooks
+  # through a bare `sh -c`: no argument interpolation, no injected environment
+  # (src/output/post_process.rs, src/output/mod.rs `run_hook`). Every command
+  # below therefore resolves its own target.
+
+  # The dictation route. `hk voice text` delivers stdin into the focused
+  # window's herdr pane and prints nothing; on any other window it prints
+  # nothing, sends zero bytes and exits 3 (herdr-kitten hk/voice.py). Translate
+  # that one exit code back into the transcript on stdout so the wtype driver
+  # types it, and let every other status propagate — voxtype reuses the original
+  # text on a non-zero exit by itself, so a herdr outage still gets typed.
+  dictationRoute = ''
+    text=$(cat)
+    printf '%s' "$text" | hk voice text
+    status=$?
+    [ "$status" -eq 3 ] || exit "$status"
+    printf '%s' "$text"
+  '';
+
+  # The recording spinner. `hk voice begin`/`end` need both a kitty socket in
+  # $KITTY_LISTEN_ON and an explicit --window id (herdr-kitten hk/kittyc.py);
+  # the voxtype daemon has neither, so the start hook resolves the focused kitty
+  # instance from niri and its focused window from kitty — the same `is_focused`
+  # predicate `hk voice text` uses to pick its delivery target — and records the
+  # pair so the stop hook clears the spinner from the window that got it. A
+  # focused non-kitty surface has no socket to reach and simply gets no spinner.
+  spinnerState = "$XDG_RUNTIME_DIR/voxtype-spinner-window";
+
+  spinnerStart = ''
+    pid=$(niri msg --json focused-window | jq -er .pid) || exit 0
+    KITTY_LISTEN_ON="unix:@kitty-$pid"
+    export KITTY_LISTEN_ON
+    window=$(kitty @ --to "$KITTY_LISTEN_ON" ls |
+      jq -er 'first(.[].tabs[].windows[] | select(.is_focused) | .id)') || exit 0
+    hk voice begin --window "$window" || exit 0
+    printf '%s %s\n' "$KITTY_LISTEN_ON" "$window" > "${spinnerState}"
+  '';
+
+  spinnerStop = ''
+    read -r socket window 2>/dev/null < "${spinnerState}" || exit 0
+    rm -f "${spinnerState}"
+    KITTY_LISTEN_ON="$socket" hk voice end --window "$window" || exit 0
+  '';
 in
 {
   imports = [ inputs.voxtype.homeManagerModules.default ];
@@ -28,9 +72,16 @@ in
     settings = {
       state_file = "auto";
 
+      # niri binds have no on-release trigger, so hold-to-talk lives in
+      # voxtype's own evdev layer (spec B B12) rather than in a compositor
+      # keybinding. Tom is already in the `input` group, so the listener needs
+      # no NixOS change; niri swallows Mod+Space so the focused surface never
+      # receives the chord while dictating.
       hotkey = {
-        enabled = false;
-        mode = "toggle";
+        enabled = true;
+        key = "SPACE";
+        modifiers = [ "LEFTMETA" ];
+        mode = "push_to_talk";
       };
 
       # CPAL exposes this host's PipeWire/ALSA bridge as `default`, while the
@@ -67,6 +118,32 @@ in
           "wtype"
           "clipboard"
         ];
+
+        # Dictation goes global (spec B B13): herdr panes are fed by send-text,
+        # every other Wayland surface by the wtype driver. `fallback_on_empty =
+        # false` is what makes the herdr half silent — the route exits 0 with
+        # empty stdout once the text is already in the pane, and voxtype must
+        # then type nothing rather than re-type the transcript on top of it.
+        #
+        # CONFLICT, not resolvable in this file: at the pinned rev post_process
+        # is dead while `parakeet.streaming = true`. The daemon does hand the
+        # processor to `StreamingSession::commit_segment`, which binds it to
+        # `_post_process` and never calls it ("post_process is intentionally
+        # bypassed during streaming", src/output/streaming.rs:180). B13 asserts
+        # the opposite and cites that same doc block. Streaming is pinned byte
+        # for byte by U.5/F.18 and this route is required by R5.4, so both land
+        # as ruled and the runtime claim R5.5 is left to adjudicate upstream.
+        post_process = {
+          command = dictationRoute;
+          fallback_on_empty = false;
+        };
+
+        # Spinner on when recording starts, off after the output burst. Under
+        # streaming these output hooks fire once per typed segment by design
+        # (src/output/streaming.rs:158-162), so the spinner clears at the first
+        # burst rather than at key release.
+        pre_recording_command = spinnerStart;
+        post_output_command = spinnerStop;
       };
     };
   };

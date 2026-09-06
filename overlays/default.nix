@@ -38,6 +38,13 @@ final: prev: {
   # Evidence-gated, resumable front door over the music acquisition campaign.
   music-acquire = final.callPackage ../pkgs/music-acquire { };
 
+  # Audit-first prune for /var/lib/local-models (dotfiles#296). Two binaries:
+  # a pure oracle the boot-time sync service prints an AUDIT from, and the one
+  # verb that deletes — and only when its set matches a recorded dry-run.
+  # Packaged rather than inlined in modules/local-models.nix so the hermetic
+  # check in flake.nix can build and drive it directly.
+  local-models-prune = final.callPackage ../pkgs/local-models-prune.nix { };
+
   # Headless calendar CLI, vendored with its package definition.
   dcal = final.callPackage ../pkgs/dcal/nix/package.nix { };
 

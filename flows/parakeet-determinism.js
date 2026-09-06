@@ -1,7 +1,7 @@
 export const meta = {
   name: "parakeet-determinism",
   description: "Pin 2-3 parakeet models as deterministic Nix fetches and add the voxtype bootstrap gate (#107, then #84 acceptance)",
-  pools: ["codex-window", "flow-build"],
+  pools: ["flow-build"],
   argsSchema: {
     type: "object",
     required: ["repository", "baseRev", "branch", "worktree"],

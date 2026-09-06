@@ -19,9 +19,11 @@ members on coordinator llama-swap.
   flow-era minimum `e7ae081`.
 - The Home Manager module exports `services.tally.flows`; `home/tally.nix`
   imports this registry on coordinator only.
-- `codex-window` is a cooperative capacity-one mutex. Tally 0.1.0 has no
-  `subscription` resource class, and flows deliberately cannot lease
-  windowed-consumption budget pools.
+- The Codex lane used to be a cooperative capacity-one mutex pool named after
+  the harness window. It was retired on 2026-09-06 (dotfiles#291, dotfiles#302)
+  and replaced by per-seat `budget` rows in `home/tally.nix`. Flows deliberately
+  cannot lease windowed-consumption budget pools — see "The Codex lane is gone"
+  below.
 - Tally 0.1.0 reserves `build` for `drv()` nodes. Shell nodes use
   `flow-build`; the nightly deploy leases both lanes to retain exclusivity.
 - The returned compute host is removed under #117. There is no remote-first
@@ -54,12 +56,45 @@ tally flow run   flows/errata-map.js --args '<json>' --catalog flows/catalog.jso
 
 Args defaults live in `tally-flows.nix`; override per run with `--args`.
 
+## The Codex lane is gone, and these flows cannot get it back at this pin
+
+`home/tally.nix` no longer declares a per-harness window mutex for Codex; the
+five flows below dropped it from `meta.pools` on 2026-09-06 (dotfiles#302).
+They stay registered and dormant (`onCalendar = null`) so that the fact stays
+visible rather than being deleted with them.
+
+Affected: `allowlist-implementation`, `parakeet-determinism`, `docs-model-split`,
+`issue-96-drain`, `errata-map`. Their `sh()` nodes are unaffected — those name
+`flow-build` and `coordinator-gpu`, which still exist. Their `codex()` nodes are
+**refused at admission** and will stay refused until a later tally lands
+seat-named sugar.
+
+Three facts from the pinned tally (`mecattaf/tally.nix` `62fac87c`) decide this,
+and none of them has a workaround on the dotfiles side:
+
+1. `codex()` fixes its node's pool set to exactly the retired per-harness window
+   name (`doc/src/flows/host-api.md`), and the sugar takes no pool argument. A
+   flow cannot ask for the `codex` seat row, or any other seat.
+2. A flow may not name a windowed-consumption pool at all.
+   `crates/tally-flow/src/dialect.rs::validate_flow_pool_predicates` rejects it
+   with `FlowPoolError`/`windowed-consumption-excluded` — *"flows are excluded
+   from windowed-consumption admission by design; use priorities to control
+   contention between workloads"* — and the Nix module always runs `flow check`
+   WITH the config, so pointing `meta.pools` at the new `codex` row would fail
+   the build, not merely the run.
+3. There is nothing to declare instead. `host-api.md`: *"There is deliberately
+   no `consumptionEstimate` field"*; an unknown field is
+   `FlowSpecError`/`unknown-spec-field`. `consumptionEstimate` exists only on
+   `enqueue`, never on the flow spec surface.
+
+The upstream ask is dotfiles#305.
+
 ## Notes
 
 - Pool names reference the live coordinator daemon config (`home/tally.nix`):
-  `flow-build`, `coordinator-gpu`, and `codex-window`. Weight downloads
-  serialize through `flow-build` deliberately — one WAN link — and the nightly
-  deploy leases that lane as well.
+  `flow-build` and `coordinator-gpu`. Weight downloads serialize through
+  `flow-build` deliberately — one WAN link — and the nightly deploy leases that
+  lane as well.
 - `materialize-model-weights` builds `.#models.<artifactId>` store paths; get the
   current id list with
   `nix eval .#legacyPackages.x86_64-linux.models --apply builtins.attrNames`.

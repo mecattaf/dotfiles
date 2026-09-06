@@ -1,7 +1,7 @@
 export const meta = {
   name: "allowlist-implementation",
   description: "Replace downloadAllModels with a per-host/deployment allowlist (#95 prereq) and ship the declarative hf CLI (#90)",
-  pools: ["codex-window", "flow-build"],
+  pools: ["flow-build"],
   argsSchema: {
     type: "object",
     required: ["repository", "baseRev", "branch", "worktree"],

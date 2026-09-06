@@ -63,6 +63,9 @@ let
       pkgs.jq
       pkgs.coreutils
       pkgs.findutils
+      # local-models-sync-audit + local-models-prune-set: the would-prune set,
+      # printed and never acted on. See pkgs/local-models-prune.nix.
+      pkgs.local-models-prune
     ];
     text = ''
       manifest=/etc/local-models/wanted.json
@@ -104,28 +107,23 @@ let
         mv -f "$dest.part" "$dest"
       done < <(jq -r '.[] | .id as $id | .files[] | [$id, .name, (.bytes|tostring), .oid] | @tsv' "$manifest")
 
-      # Prune only after a fully clean pass: artifacts (and stray files inside
-      # kept artifacts) that the manifest no longer wants. Always re-borrowable
-      # — the Library is the archive; device dirs are working copies.
+      # THIS SERVICE NEVER DELETES (dotfiles#296, ruled pruner disposition:
+      # "wanted.json aligned", with a guard). It used to end here with two
+      # unconditional prune branches — `rm -rf` of any artifact directory the
+      # manifest no longer named, and `rm -f` of any stray file inside a kept
+      # one — run by a boot-time oneshot with no operator present. Any change
+      # that narrowed the wanted set therefore became tens of GiB of deleted
+      # weights at the next boot, before anyone read the diff.
+      #
+      # What is left is an AUDIT: the same set, computed by the same rules,
+      # printed and not touched. Deletion moved to the explicit manual verb
+      # `local-models-prune`, which refuses unless the set it computes is
+      # byte-for-byte the set a preceding `--dry-run` recorded.
+      #
+      # Still gated on a fully clean pass: a set computed from a failed borrow
+      # would name files that are merely MISSING, not retired.
       if [ "$fail" = 0 ]; then
-        for dir in "$root"/*/; do
-          [ -e "$dir" ] || continue
-          id="$(basename "$dir")"
-          if ! jq -e --arg id "$id" 'any(.[]; .id == $id)' "$manifest" >/dev/null; then
-            echo "local-models-sync: pruning retired artifact $id"
-            rm -rf "$dir"
-            continue
-          fi
-          while IFS= read -r f; do
-            rel="''${f#"$root/$id/"}"
-            if ! jq -e --arg id "$id" --arg rel "$rel" \
-              'any(.[]; .id == $id and any(.files[]; .name == $rel))' "$manifest" >/dev/null; then
-              echo "local-models-sync: pruning stray file $id/$rel"
-              rm -f "$f"
-            fi
-          done < <(find "$dir" -type f ! -name '*.part')
-          find "$dir" -type d -empty -delete
-        done
+        local-models-sync-audit
       fi
       exit "$fail"
     '';
@@ -412,7 +410,14 @@ in
     assertions = catalogAssertions;
 
     # The stable `utility` door, on the hosts that serve it and nowhere else.
-    environment.systemPackages = lib.optional utilityEnabled utilityRunner;
+    # local-models-prune is the ONLY thing on this fleet that deletes a working
+    # copy of a model weight, and it is on PATH exactly on the hosts that have
+    # working copies to delete (dotfiles#296). Run it as
+    #   sudo local-models-prune --dry-run    # read the set, record the intent
+    #   sudo local-models-prune --yes        # delete it, iff it has not changed
+    environment.systemPackages =
+      lib.optional utilityEnabled utilityRunner
+      ++ lib.optional (hostArtifactIds != [ ]) pkgs.local-models-prune;
 
     # Metadata stays generational and inspectable alongside the selected artifacts.
     environment.etc = {

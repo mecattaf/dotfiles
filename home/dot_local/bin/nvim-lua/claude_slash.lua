@@ -2,7 +2,7 @@
 -- commands & skills (Claude Code style, sibling of filemention's '@'-mention
 -- source). Lives outside the Nix-rendered nvim/ tree so this LOGIC is
 -- live-editable with no rebuild — the same whole-dir-symlink trick as
--- ~/.local/bin/annex-pick.lua (see home.nix's `home.file.".local/bin"` and
+-- the rest of ~/.local/bin/nvim-lua (see home.nix's `home.file.".local/bin"` and
 -- the one `package.path` line added in plugins.lua.in for require()
 -- resolution). Only that one path line ever needs a rebuild; everything
 -- below reloads on the next nvim launch, always.

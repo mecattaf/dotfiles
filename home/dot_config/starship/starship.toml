@@ -6,7 +6,6 @@ $git_branch\
 $git_state\
 $git_status\
 $cmd_duration\
-${custom.zmx}\
 ${custom.ssh}\
 ${custom.network}\
 $line_break\
@@ -53,16 +52,6 @@ style = "yellow"
 [python]
 format = "[$virtualenv]($style) "
 style = "bright-black"
-
-# Persistent zmx session indicator. Just a glyph — the old segment printed the
-# full session name (SHPOOL_SESSION_NAME) and got visually noisy.
-# Provisional sign (jul7 "work on the sign/glyph"); fuller prompt restyle is TBD.
-[custom.zmx]
-when = 'test -n "$ZMX_SESSION"'
-command = 'true'
-format = '[⧉]($style) '
-style = 'bright-black'
-shell = ['fish']
 
 [custom.ssh]
 command = 'echo "ssh"'

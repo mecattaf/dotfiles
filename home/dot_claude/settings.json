@@ -7,10 +7,25 @@
     "defaultMode": "auto"
   },
   "autoMemoryEnabled": false,
+  "cleanupPeriodDays": 365,
   "model": "opus",
   "tui": "fullscreen",
   "effortLevel": "high",
   "skipDangerousModePermissionPrompt": true,
   "skipAutoPermissionPrompt": true,
-  "voiceEnabled": true
+  "voiceEnabled": true,
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/home/tom/.claude/hooks/herdr-agent-state.sh' session",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
 }
