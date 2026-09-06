@@ -122,6 +122,7 @@ in
     ./remote.nix
     ./ssh.nix
     ./tally.nix
+    ./util-sampler.nix
     ./voxtype.nix
   ];
 

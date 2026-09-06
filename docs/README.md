@@ -17,5 +17,6 @@ it.
 | [`local-ai/pi-appliance-pattern.md`](local-ai/pi-appliance-pattern.md) | Reusable single, pooled, aggregator, and typed-swarm mechanism for durable local-model appliances. |
 | [`local-ai/dual-node-inference-lessons.md`](local-ai/dual-node-inference-lessons.md) | Preserved operational lessons from the retired dual-node ds4 cluster. History, not a deployment target. |
 | [`l8-flash-reconcile.md`](l8-flash-reconcile.md) | **How `l8-flash` reached `main`, and why the order was the blocker** — the anchor rule in `home/home.nix:15`, the hand-written mirror pair and which half of its deletion is Tom's, and the U-D16 oracle. |
+| [`util-01-sampler-reconcile.md`](util-01-sampler-reconcile.md) | **How the two-commit UTIL-01 sampler branch reached `main` with its semantics unchanged** — the one overlapping import line, the digests the card locks, the two `[E]` probe rows that ship RED on purpose, and the U-D17 oracle. |
 | [`old/`](old/) | Archival stub: an index of the retired documentation set and how to read it back from Git history. |
 | [`local-ai/wanted-packages/`](local-ai/wanted-packages/) | Findings the fleet turned up but has not acted on — one page per finding, each naming what stopped, what is measured, and what is inference. |

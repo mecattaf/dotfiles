@@ -1,0 +1,476 @@
+#!/usr/bin/env python3
+"""util-sampler — UTIL-01 §signal.instrument. ONE sample per invocation.
+
+Reads: sysfs (gfx1151 amdgpu), `tally query pools` (coordinator only), the
+declared serve liveness/arms/metrics endpoints, the box's drain ledger.
+Writes: exactly one JSON line to $UTIL_METERS/util-sampler/<box>-<date>.jsonl.
+
+It never POSTs, never touches /v1/chat/completions or /completion, never holds a
+GPU, never starts or stops anything, and opens every input 'r'.  The only path it
+creates or writes is $UTIL_METERS/util-sampler/.
+
+Invoked by a 60 s systemd user timer; it takes one sample and exits.  There is no
+loop in this file.
+
+Time budget (no threads, no signals): the whole invocation is capped at 12 s and
+each probe (health + arms + metrics) at 4 s, enforced by checking the elapsed
+time between requests and skipping the remaining fetches.  A probe that lost the
+budget is recorded with `skipped: true`, never as `alive: false` — a probe that
+was not asked is not a dead probe.
+
+Write discipline (T6 / abort_on).  `--box` is not a free string: it is looked up
+in the card's declared boxes and an undeclared one is refused with exit 2 before
+anything is read.  The append then goes through guard_meters_write(), the same
+guard util-row uses, so no argument — `--box ../../ESCAPED` included — can put a
+byte outside <meters>/util-*.  Both checks are present: the whitelist is the
+specification, the guard is the belt.
+
+Every sample records the box's IANA zone (`tz`) beside the offset-bearing `ts`.
+The offset alone cannot say how long the local day is: a sampler that stops
+before a fall-back transition writes only `+02:00`, and a row computed from those
+offsets calls a 25-hour day 24 hours long.  The zone key is the fact that fixes
+it, so the sampler — the only program on the box at sample time — records it.
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+SCHEMA = "util-sample/2"   # /2 adds `tz` and `tz_source`
+PROBE_TIMEOUT_S = 2.0            # one HTTP request
+POOLS_TIMEOUT_S = 5.0            # `tally query pools`
+PROBE_BUDGET_S = 4.0             # health + arms + metrics for ONE probe
+INVOCATION_BUDGET_S = 12.0       # the whole sample, against the card's 15 s timer
+
+# --- the card's `definition` block, transcribed, not reinterpreted -----------
+
+SYSFS_DIR = "/sys/class/drm/card1/device"
+SYSFS_FIELDS = {
+    "gpu_busy_percent": "gpu_busy_percent",
+    "vram_used": "mem_info_vram_used",
+    "gtt_used": "mem_info_gtt_used",
+}
+
+SERVE_PROBES = {
+    "coordinator": [
+        {"name": "llama-swap",
+         "health": "http://127.0.0.1:9292/health",
+         "arms": "http://127.0.0.1:9292/running",
+         "metrics": "http://127.0.0.1:9292/metrics"},
+        {"name": "flashnext",
+         "health": "http://127.0.0.1:1234/health",
+         "arms": "http://127.0.0.1:1234/v1/models",
+         "metrics": "http://127.0.0.1:1234/metrics"},
+    ],
+    "worker": [
+        {"name": "llama-swap",
+         "health": "http://127.0.0.1:9292/health",
+         "arms": "http://127.0.0.1:9292/running",
+         "metrics": "http://127.0.0.1:9292/metrics"},
+        {"name": "llama-server-direct",
+         "health": "http://127.0.0.1:8080/health",
+         "arms": "http://127.0.0.1:8080/v1/models",
+         "metrics": "http://127.0.0.1:8080/metrics"},
+        {"name": "flashnext-rank",
+         "health": "http://127.0.0.1:1234/health",
+         "arms": "http://127.0.0.1:1234/v1/models",
+         "metrics": "http://127.0.0.1:1234/metrics"},
+    ],
+}
+
+LEDGERS = {
+    "coordinator": "/home/tom/.local/state/academic-ocr/drain/completed.jsonl",
+    "worker": None,
+}
+
+VRAM_POOL_BY_BOX = {"coordinator": "coordinator-gpu", "worker": "worker-gpu"}
+
+# The card declares exactly two boxes.  A sample from anything else is not a
+# sample of this estate, and its name must never reach a filesystem path.
+KNOWN_BOXES = tuple(sorted(set(SERVE_PROBES) | set(VRAM_POOL_BY_BOX) | set(LEDGERS)))
+
+ZONEINFO_MARK = os.sep + "zoneinfo" + os.sep
+
+# definition.tokens_source: the only counters read.
+METRIC_COUNTERS = (
+    "llamacpp:prompt_tokens_total",
+    "llamacpp:tokens_predicted_total",
+    "vllm:prompt_tokens_total",
+    "vllm:generation_tokens_total",
+)
+
+# --- helpers ----------------------------------------------------------------
+
+
+def meters_root():
+    root = os.environ.get("UTIL_METERS") or "~/.local/state/tally/meters"
+    return os.path.abspath(os.path.expanduser(root))
+
+
+def guard_meters_write(meters, path):
+    """T6: util-sampler writes nothing outside <meters>/util-*.
+
+    The same guard as util-row's, in the same words, for the same reason.
+    realpath, not abspath: a symlink out of the meters root is a write outside
+    the meters root.
+    """
+    root = os.path.realpath(meters)
+    target = os.path.realpath(path)
+    rel = os.path.relpath(target, root)
+    first = rel.split(os.sep)[0]
+    if first == os.pardir or os.path.isabs(rel):
+        raise SystemExit("util-sampler: refusing to write outside %s: %s" % (root, target))
+    if not first.startswith("util-"):
+        raise SystemExit("util-sampler: refusing to write %s — only <meters>/util-* is writable"
+                         % target)
+    return target
+
+
+def detect_box(explicit):
+    """The box name, checked against the card's declared boxes.
+
+    It becomes a filename, so it is a whitelist and not a string: `--box
+    ../../ESCAPED` is refused here, before any path is built.  An undeclared
+    hostname is refused too — the sampler does not invent a box.
+    """
+    box = explicit or socket.gethostname().split(".")[0]
+    if box not in KNOWN_BOXES:
+        raise ValueError(box)
+    return box
+
+
+def local_tz():
+    """(IANA key, where it came from) for the box's local zone.
+
+    $TZ first, then the /etc/localtime symlink.  The key is validated by loading
+    it, so an unloadable name is recorded as unknown rather than written into the
+    sample as a fact.  Both are null when neither answers; the row writer then
+    falls back to the replaying box's own zone and says so.
+    """
+    candidate = os.environ.get("TZ") or None
+    if candidate:
+        candidate = candidate.lstrip(":")
+    source = "TZ" if candidate else None
+    if not candidate:
+        try:
+            real = os.path.realpath("/etc/localtime")
+        except OSError:
+            real = ""
+        idx = real.rfind(ZONEINFO_MARK)
+        if idx >= 0:
+            candidate = real[idx + len(ZONEINFO_MARK):]
+            source = "/etc/localtime"
+    if not candidate:
+        return None, None
+    try:
+        ZoneInfo(candidate)
+    except (ZoneInfoNotFoundError, ValueError, OSError):
+        return None, None
+    return candidate, source
+
+
+class Clock:
+    """The invocation budget.  `remaining()` is what is left of INVOCATION_BUDGET_S.
+
+    Nothing is interrupted mid-request: every request is given a timeout no
+    larger than what is left, and a request whose budget has run out is not
+    issued at all.
+    """
+
+    def __init__(self, budget=INVOCATION_BUDGET_S):
+        self.t0 = time.monotonic()
+        self.budget = budget
+
+    def elapsed(self):
+        return time.monotonic() - self.t0
+
+    def remaining(self):
+        return self.budget - self.elapsed()
+
+
+def read_sysfs():
+    out = {}
+    for key, fname in SYSFS_FIELDS.items():
+        try:
+            with open(os.path.join(SYSFS_DIR, fname), "r") as fh:
+                out[key] = int(fh.read().strip())
+        except Exception:
+            out[key] = None
+    return out
+
+
+def http_get(url, timeout=PROBE_TIMEOUT_S):
+    """Returns (status:int|None, body:str|None, ms:int, error:str|None).
+
+    A refused connection or a timeout is a value, never an exception.
+    Only GET; the sampler has no other verb.
+    """
+    t0 = time.monotonic()
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read(1 << 20).decode("utf-8", "replace")
+            return resp.status, body, int(round((time.monotonic() - t0) * 1000)), None
+    except urllib.error.HTTPError as exc:
+        try:
+            body = exc.read(1 << 20).decode("utf-8", "replace")
+        except Exception:
+            body = None
+        return exc.code, body, int(round((time.monotonic() - t0) * 1000)), None
+    except Exception as exc:
+        return None, None, int(round((time.monotonic() - t0) * 1000)), "%s: %s" % (type(exc).__name__, exc)
+
+
+def parse_arms(body):
+    """Model ids from a /running or /v1/models answer.  [] is 'no arm loaded';
+    None is 'the answer could not be read'."""
+    if body is None:
+        return None
+    try:
+        doc = json.loads(body)
+    except Exception:
+        return None
+    if not isinstance(doc, dict):
+        return None
+    ids = []
+    for key in ("data", "running", "models"):
+        seq = doc.get(key)
+        if not isinstance(seq, list):
+            continue
+        for item in seq:
+            if isinstance(item, str):
+                ids.append(item)
+            elif isinstance(item, dict):
+                for field in ("id", "model", "name"):
+                    val = item.get(field)
+                    if isinstance(val, str) and val:
+                        ids.append(val)
+                        break
+        break
+    return sorted(set(ids))
+
+
+def parse_metrics(body):
+    """The named counters only (definition.tokens_source).  None = no counters."""
+    if body is None:
+        return None
+    found = {}
+    for line in body.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        name = parts[0]
+        if name not in METRIC_COUNTERS:
+            continue
+        try:
+            found[name] = float(parts[1])
+        except ValueError:
+            continue
+    return found or None
+
+
+def probe_one(spec, clock):
+    """health, then arms, then metrics — each only while budget remains.
+
+    Worst case for this function is PROBE_BUDGET_S (4 s), and it never exceeds
+    what `clock` has left, so three probes plus the pools call cannot run past
+    INVOCATION_BUDGET_S.
+    """
+    p0 = time.monotonic()
+    probe = {"name": spec["name"], "alive": False, "http": None, "ms": None,
+             "arms": None, "metrics": None, "skipped": False, "elapsed_ms": 0}
+
+    def left():
+        return min(PROBE_BUDGET_S - (time.monotonic() - p0), clock.remaining())
+
+    def done():
+        probe["elapsed_ms"] = int(round((time.monotonic() - p0) * 1000))
+        return probe
+
+    budget = left()
+    if budget <= 0:
+        probe["skipped"] = True
+        return done()
+    status, _body, ms, _err = http_get(spec["health"], timeout=min(PROBE_TIMEOUT_S, budget))
+    probe["http"] = status
+    probe["ms"] = ms
+    probe["alive"] = status == 200
+    if not probe["alive"]:
+        return done()
+
+    budget = left()
+    if budget <= 0:
+        probe["skipped"] = True
+        return done()
+    a_status, a_body, _a_ms, _a_err = http_get(spec["arms"], timeout=min(PROBE_TIMEOUT_S, budget))
+    if a_status == 200:
+        probe["arms"] = parse_arms(a_body)
+
+    budget = left()
+    if budget <= 0:
+        probe["skipped"] = True
+        return done()
+    m_status, m_body, _m_ms, _m_err = http_get(spec["metrics"], timeout=min(PROBE_TIMEOUT_S, budget))
+    if m_status == 200:
+        probe["metrics"] = parse_metrics(m_body)
+    return done()
+
+
+def read_pools(box, clock):
+    """`tally query pools` reduced to {pool: held}.  Coordinator only.
+
+    Bounded by whatever is left of the invocation budget; an exhausted budget is
+    recorded as a failure with its reason, never as held 0 (R-04)."""
+    if box != "coordinator":
+        return None
+    budget = min(POOLS_TIMEOUT_S, clock.remaining())
+    if budget <= 0:
+        return {"ok": False, "held": None, "elapsed_ms": 0, "skipped": True,
+                "error": "invocation budget exhausted before `tally query pools`"}
+    t0 = time.monotonic()
+    try:
+        proc = subprocess.run(
+            ["tally", "query", "pools"],
+            capture_output=True, timeout=budget, text=True,
+        )
+    except Exception as exc:
+        return {"ok": False, "held": None, "skipped": False,
+                "elapsed_ms": int(round((time.monotonic() - t0) * 1000)),
+                "error": "%s: %s" % (type(exc).__name__, exc)}
+    elapsed = int(round((time.monotonic() - t0) * 1000))
+    if proc.returncode != 0:
+        return {"ok": False, "held": None, "elapsed_ms": elapsed, "skipped": False,
+                "error": "exit %d: %s" % (proc.returncode, (proc.stderr or "")[:200])}
+    try:
+        doc = json.loads(proc.stdout)
+        held = {}
+        for pool in doc.get("pools", []):
+            held[str(pool["pool"])] = int(pool["held"])
+    except Exception as exc:
+        return {"ok": False, "held": None, "elapsed_ms": elapsed, "skipped": False,
+                "error": "%s: %s" % (type(exc).__name__, exc)}
+    return {"ok": True, "held": held, "elapsed_ms": elapsed, "skipped": False, "error": None}
+
+
+def sha256_and_lines(path):
+    h = hashlib.sha256()
+    lines = 0
+    with open(path, "rb") as fh:
+        while True:
+            chunk = fh.read(1 << 20)
+            if not chunk:
+                break
+            h.update(chunk)
+            lines += chunk.count(b"\n")
+    return h.hexdigest(), lines
+
+
+def read_ledger(box):
+    path = LEDGERS.get(box)
+    if path is None:
+        return {"path": None, "exists": False, "bytes": None,
+                "lines": None, "sha256": None, "mtime": None}
+    try:
+        st = os.stat(path)
+    except Exception:
+        return {"path": path, "exists": False, "bytes": None,
+                "lines": None, "sha256": None, "mtime": None}
+    try:
+        digest, lines = sha256_and_lines(path)
+    except Exception:
+        digest, lines = None, None
+    return {"path": path, "exists": True, "bytes": st.st_size,
+            "lines": lines, "sha256": digest, "mtime": st.st_mtime}
+
+
+def self_sha256():
+    """sha256 of this program's own file.
+
+    When the program is piped over ssh (`python3 - < util-sampler`) the source is
+    not a file and cannot be re-read; the value is null and the grade says so.
+    No CLAIMED value is ever written here (R-03/abort_on).
+    """
+    path = globals().get("__file__")
+    if isinstance(path, str) and os.path.isfile(path):
+        try:
+            with open(path, "rb") as fh:
+                return hashlib.sha256(fh.read()).hexdigest(), "MEASURED"
+        except Exception:
+            pass
+    return None, "UNKNOWN"
+
+
+def build_sample(box):
+    clock = Clock()
+    now = datetime.now().astimezone()
+    version, version_grade = self_sha256()
+    tz_key, tz_source = local_tz()
+    sysfs = read_sysfs()
+    pools = read_pools(box, clock)
+    probes = [probe_one(spec, clock) for spec in SERVE_PROBES.get(box, [])]
+    return {
+        "schema": SCHEMA,
+        "ts": now.isoformat(),
+        "ts_epoch": now.timestamp(),
+        "tz": tz_key,
+        "tz_source": tz_source,
+        "box": box,
+        "lease_pool": VRAM_POOL_BY_BOX.get(box),
+        "sysfs": sysfs,
+        "pools": pools,
+        "probes": probes,
+        "ledger": read_ledger(box),
+        "budget": {"invocation_s": INVOCATION_BUDGET_S, "probe_s": PROBE_BUDGET_S,
+                   "exhausted": clock.remaining() <= 0},
+        "sampler_version": version,
+        "sampler_version_grade": version_grade,
+    }
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="UTIL-01 sampler: one sample, then exit.")
+    ap.add_argument("--box", default=None,
+                    help="one of %s (default: hostname)" % " | ".join(KNOWN_BOXES))
+    ap.add_argument("--meters", default=None, help="meters root (default: $UTIL_METERS)")
+    ap.add_argument("--stdout", action="store_true",
+                    help="print the sample instead of appending it (writes nothing)")
+    args = ap.parse_args(argv)
+
+    try:
+        box = detect_box(args.box)
+    except ValueError as exc:
+        sys.stderr.write("util-sampler: unknown box %r; declared boxes are %s; nothing written\n"
+                         % (str(exc), ", ".join(KNOWN_BOXES)))
+        return 2
+    sample = build_sample(box)
+    line = json.dumps(sample, sort_keys=True) + "\n"
+
+    if args.stdout:
+        sys.stdout.write(line)
+        return 0
+
+    root = os.path.abspath(os.path.expanduser(args.meters)) if args.meters else meters_root()
+    outdir = guard_meters_write(root, os.path.join(root, "util-sampler"))
+    os.makedirs(outdir, exist_ok=True)
+    day = datetime.fromisoformat(sample["ts"]).strftime("%Y-%m-%d")
+    outpath = guard_meters_write(root, os.path.join(outdir, "%s-%s.jsonl" % (box, day)))
+    with open(outpath, "a") as fh:
+        fh.write(line)
+    sys.stdout.write(outpath + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

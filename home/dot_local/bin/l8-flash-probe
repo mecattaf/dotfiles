@@ -242,6 +242,44 @@ else
   na "[E] hand-written pair gone (coordinator only)" "test ! -f ~/.config/systemd/user/claude-transcript-mirror.{service,timer}"
 fi
 
+# ── 5c. the UTIL-01 timers, declared not hand-installed (#311, #320) ────────
+# The two units home/util-sampler.nix declares. Rule 9 is stricter here than
+# for the mirror: these timers have NEVER existed by hand, so there is no
+# hand-written ancestor to lose the name to, and the only way either fragment
+# can sit anywhere but /nix/store is somebody having hand-installed one. That
+# is the failure this row is for.
+#
+# FragmentPath and nothing else. `is-active` is deliberately NOT checked: the
+# sampler's timer carries OnBootSec=1min and the row writer's fires at 00:05,
+# so a box rebooted a minute ago and a box that has never switched look the
+# same through `is-active`, while FragmentPath separates them the instant the
+# unit exists. Two rows, one per timer — the count matters: before the switch
+# the probe must exit 1 with exactly these two additional FAIL rows on the
+# coordinator and the same PASS rows it had before (#320).
+#
+# util-sampler.timer is declared on BOTH boxes (the sampler picks its own probe
+# list and lease pool by hostname; no Nix conditional selects them), so its row
+# runs everywhere. util-row.timer is coordinator-gated — it is the joiner that
+# pulls the worker's log — so off the coordinator it is SKIP, never FAIL.
+util_fragment_row() { # $1 = timer, $2 = "both" | "coordinator"
+  local timer="$1" scope="$2" frag
+  if [ "$scope" = "coordinator" ] && ! coordinator_only; then
+    na "[E] $timer declared (coordinator only)" "systemctl --user show $timer -p FragmentPath"
+    return
+  fi
+  frag="$(systemctl --user show "$timer" -p FragmentPath --value 2>/dev/null)"
+  case "$frag" in
+    /nix/store/*)
+      ok "[E] $timer declared (fragment in /nix/store)" "systemctl --user show $timer -p FragmentPath"
+      ;;
+    *)
+      no "[E] $timer declared (fragment '$frag')" "systemctl --user show $timer -p FragmentPath"
+      ;;
+  esac
+}
+util_fragment_row util-sampler.timer both
+util_fragment_row util-row.timer coordinator
+
 # ── 6. the cc3 links, resolved ──────────────────────────────────────────────
 # Compared against $REPO_DIR, never $DOTFILES: these links can resolve nowhere
 # but the hardcoded anchor in home/home.nix:15 (dotfiles#313), so pointing them
