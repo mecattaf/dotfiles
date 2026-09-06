@@ -1,9 +1,9 @@
 # The rewrite seat feeders
 
 `home/seat-feeder.nix` declares three coordinator-only systemd user
-timer+service pairs. Each fires once per 60-second policy tick and invokes
-`~/.local/bin/tally-seat-feeder`; Home Manager also creates
-`~/.local/state/tally-rewrite/meters/` at mode 0700.
+timer+service pairs. Each fires every 30 seconds—half the 60-second policy
+staleness bound—and invokes `~/.local/bin/tally-seat-feeder`; Home Manager also
+creates `~/.local/state/tally-rewrite/meters/` at mode 0700.
 
 This is a freshness mechanism, not a scheduler. A feeder reads an allowance and
 atomically replaces its row file. It never launches work on a seat, holds no
@@ -25,11 +25,13 @@ seat within one clock. It still publishes three independent rows: `cc` and
 grouping is carried by each service's `X-TallyRows` field and asserted in the
 flake check.
 
-All services use `OnUnitActiveSec=60s`, `AccuracySec=1s`, and
-`WantedBy=timers.target`. The worker configuration evaluates with no feeder
-unit. The program gives each external read at most 12 seconds, so all three
-Claude reads fit inside the service's 50-second deadline; a read that cannot
-finish becomes UNKNOWN instead of delaying the next tick.
+All services use `OnUnitActiveSec=30s`, `AccuracySec=1s`, and
+`WantedBy=timers.target`. D-B48 makes the period at most half the kernel's
+60-second staleness bound, so the worst legal timer gap is 31 seconds rather
+than 61. The worker configuration evaluates with no feeder unit. The program
+gives each external read at most 12 seconds, so all three Claude reads fit
+inside the service's 50-second deadline; a read that cannot finish becomes
+UNKNOWN instead of delaying the next tick.
 
 ## Source boundaries
 
@@ -74,9 +76,12 @@ sentinel byte-for-byte.
 
 The fixture builds U-B10's merged `tally-admit` offline into a temporary target;
 it does not duplicate the kernel's admission ladder. It seeds all five rows,
-replays all three declared clocks for 60 ticks, checks 300 row ages, and runs a
-real admit on the otherwise-GO Codex row after every tick. Both meter files and
-admission receipts stay below the fixture's temporary HOME.
+replays all three declared clocks for 60 policy ticks, and probes every row at
+each clock's worst-case expiry (`nominal + AccuracySec`) before the feeder
+writes. It also probes after every policy tick. The otherwise-GO Codex row goes
+through the real kernel at every probe; UNKNOWN rows have their source age
+checked directly. Both meter files and admission receipts stay below the
+fixture's temporary HOME.
 
 Run the DOMINANT clauses from the repository root:
 
@@ -94,7 +99,9 @@ The middle command must print exactly:
 ["tally-seat-feeder-claude","tally-seat-feeder-codex","tally-seat-feeder-pi-qwencloud"]
 ```
 
-The mutation removes the `tally-seat-feeder-codex.timer` line from
-`tests/seat-feeder/timers.tsv`. Tick 0 remains seeded; the next probe is at tick
-1 plus five seconds, so the real kernel reads age 65000ms and answers SLOW
-`stale_observation`. The fixture exits 1 and names that decision.
+The original mutation removes the `tally-seat-feeder-codex.timer` line from
+`tests/seat-feeder/timers.tsv`. Tick 0 remains seeded; at the first policy probe
+the real kernel reads age 61000ms and answers SLOW `stale_observation`. D-B48's
+regression mutation raises all periods back to 60 seconds: the first maximally
+delayed firing is at 61 seconds, and the pre-fire real-kernel probe gives the
+same RED. The fixture exits 1 and names the signal, reason, and age.

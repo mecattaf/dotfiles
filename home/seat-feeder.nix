@@ -4,7 +4,7 @@
   pkgs,
   ...
 }:
-# tally-seat-feeder — one user timer per external-seat instrument, at the tick.
+# tally-seat-feeder — one user timer per external-seat instrument, at half-tick.
 #
 # UNIT: U-D12 DF-SEAT-FEEDER. ISSUE: dotfiles#315. SPEC: /home/tom/sept7/plan/
 # TALLY-SPEC-2026-09-06.md section 2.4 "Freshness and the feeder", section 6.1
@@ -82,10 +82,13 @@ let
   # branch (a)'s and pinned; the two estates never share a path.
   metersDir = "%h/.local/state/tally-rewrite/meters";
 
-  # The policy tick, from Policy::default().tick_ms = 60_000. The timer's
-  # cadence IS the tick: a row re-stamped every 60 s is never more than one tick
-  # old at a probe, which is the whole of this unit's claim.
-  tickSeconds = 60;
+  # Policy::default().tick_ms = 60_000 and stale_ticks = 1. D-B48 requires a
+  # feeder period no greater than HALF that bound: with the declared 1-second
+  # timer accuracy, the longest permitted gap is 31 seconds, leaving margin
+  # below the kernel's 60-second refusal boundary.
+  policyTickSeconds = 60;
+  feederPeriodSeconds = 30;
+  timerAccuracySeconds = 1;
 
   instruments = {
     claude = {
@@ -129,7 +132,7 @@ let
       # row list and the estate's cannot drift apart silently. X- keys are
       # systemd's own extension space and are ignored by the manager.
       X-TallyRows = lib.concatStringsSep "," spec.rows;
-      X-TallyTickSeconds = toString tickSeconds;
+      X-TallyTickSeconds = toString policyTickSeconds;
     };
     Service = {
       # One stamp per invocation. There is no loop in the program — the timer
@@ -145,23 +148,22 @@ let
       ]
       ++ spec.environment;
       ExecStart = "${feeder} ${name}";
-      # The feeder writes one small file per row and exits; a run that has not
-      # finished inside a tick is a run that would overlap the next one.
-      TimeoutStartSec = "${toString (tickSeconds - 10)}s";
+      # Retain the delivered 50-second service ceiling: the three sequential
+      # Claude readers each have a 12-second internal timeout, and failures
+      # become UNKNOWN rows rather than an unbounded service.
+      TimeoutStartSec = "${toString (policyTickSeconds - 10)}s";
     };
   };
 
   timer = name: spec: {
-    Unit.Description = "tally seat feeder tick (${toString tickSeconds}s): ${spec.description}";
+    Unit.Description = "tally seat feeder half-tick (${toString feederPeriodSeconds}s): ${spec.description}";
     Timer = {
       OnBootSec = "1min";
-      OnUnitActiveSec = "${toString tickSeconds}s";
-      # The claim is "age <= 1 tick at every probe". systemd's default
-      # 1-minute accuracy would let a 60 s timer coalesce into buckets of its
-      # own and put a row past the bound while the timer still called itself
-      # on time. AccuracySec=1s keeps the grid a grid (the UTIL-01 sampler at
-      # commit 34a613dc uses the same number for the same reason).
-      AccuracySec = "1s";
+      OnUnitActiveSec = "${toString feederPeriodSeconds}s";
+      # D-B48: AccuracySec is part of the gap, not harmless jitter. At the
+      # worst legal expiry the row is 30 + 1 = 31 seconds old, still safely
+      # inside the kernel's one-tick (60-second) staleness bound.
+      AccuracySec = "${toString timerAccuracySeconds}s";
       Unit = "tally-seat-feeder-${name}.service";
       # This is a monotonic tick, not a wall-clock backlog: no Persistent
       # catch-up is declared.

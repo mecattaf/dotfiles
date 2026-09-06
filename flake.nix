@@ -1174,10 +1174,10 @@
           assert coordinatorHome.systemd.user.services ? herdr;
           assert !(coordinatorHome.systemd.user.services.herdr.Unit ? PartOf);
           assert coordinatorHome.systemd.user.services.herdr.Install.WantedBy == [ "default.target" ];
-          # U-D12: exactly three coordinator-only feeder clocks, each at the
-          # kernel policy's 60-second tick.  The row list lives on the service
-          # as data so tools/feeder-fixture.sh can prove the declared estate and
-          # its replay table are the same object.
+          # U-D12 / D-B48: exactly three coordinator-only feeder clocks, each
+          # at half the kernel policy's 60-second staleness bound. The row list
+          # lives on the service as data so tools/feeder-fixture.sh can prove
+          # the declared estate and its replay table are the same object.
           assert coordinatorSeatFeeders == seatFeederNames;
           assert workerSeatFeeders == [ ];
           assert builtins.all (
@@ -1186,7 +1186,7 @@
               timer = coordinatorHome.systemd.user.timers.${name};
               service = coordinatorHome.systemd.user.services.${name};
             in
-            timer.Timer.OnUnitActiveSec == "60s"
+            timer.Timer.OnUnitActiveSec == "30s"
             && timer.Timer.AccuracySec == "1s"
             && timer.Timer.Unit == "${name}.service"
             && timer.Install.WantedBy == [ "timers.target" ]

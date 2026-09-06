@@ -18,7 +18,6 @@ from datetime import datetime, timedelta, timezone
 
 TICK_SECONDS = 60
 TICK_MILLISECONDS = 60_000
-PROBE_OFFSET_SECONDS = 5
 START = datetime(2026, 9, 6, 0, 0, 0, tzinfo=timezone.utc)
 PROBE_ROW = "codex"
 FEEDER_PREFIX = "tally-seat-feeder-"
@@ -328,6 +327,90 @@ def run_admit(binary, workdir, meters, row_id, when):
     return process, decision
 
 
+def probe_rows(log, meters, rows, fed, when, tick, phase, ages, failures):
+    """Check the source age of every row, including rows the decoder refuses."""
+    checks = 0
+    for row_id, _instrument, _owner, expected_grade in rows:
+        path = os.path.join(meters, row_id + ".json")
+        try:
+            payload = read_json(path)
+            observed = row_observed_at(payload)
+            grade = row_grade(payload)
+        except (OSError, ValueError):
+            observed = None
+            grade = None
+        age_ms = None
+        if observed is not None:
+            age_ms = int((when - observed).total_seconds() * 1000)
+            ages.append(age_ms)
+        log.write(
+            json.dumps(
+                {
+                    "age_ms": age_ms,
+                    "at": rfc3339(when),
+                    "event": "row-age",
+                    "grade": grade,
+                    "phase": phase,
+                    "row": row_id,
+                    "tick": tick,
+                    "timer": fed.get(row_id, ("<none>", "", 0, 0))[0],
+                },
+                sort_keys=True,
+            )
+            + "\n"
+        )
+        checks += 1
+        if age_ms is None or age_ms > TICK_MILLISECONDS:
+            fail(
+                failures,
+                f"tick {tick} {phase} row {row_id}: age {age_ms}ms is past one tick",
+            )
+        if grade != expected_grade:
+            fail(
+                failures,
+                f"tick {tick} {phase} row {row_id}: grade {grade!r}, "
+                f"wanted {expected_grade}",
+            )
+    return checks
+
+
+def probe_admit(log, binary, workdir, meters, fed, when, tick, phase, failures):
+    """Run U-B10 at a probe point; do not duplicate its freshness ladder."""
+    process, decision = run_admit(binary, workdir, meters, PROBE_ROW, when)
+    if decision is None:
+        fail(
+            failures,
+            f"tick {tick} {phase}: tally-admit returned non-JSON rc {process.returncode}",
+        )
+        decision = {}
+    observation = decision.get("observation") or {}
+    event = {
+        "age_ms": observation.get("ageMs"),
+        "at": rfc3339(when),
+        "event": "admit",
+        "phase": phase,
+        "rc": process.returncode,
+        "reason": decision.get("reason"),
+        "row": PROBE_ROW,
+        "signal": decision.get("signal"),
+        "tick": tick,
+        "timer": fed.get(PROBE_ROW, ("<none>", "", 0, 0))[0],
+    }
+    log.write(json.dumps(event, sort_keys=True) + "\n")
+    if event["age_ms"] is None or event["age_ms"] > TICK_MILLISECONDS:
+        fail(
+            failures,
+            f"tick {tick} {phase} admit {PROBE_ROW}: age {event['age_ms']}ms is past "
+            f"one tick ({event['signal']} {event['reason']})",
+        )
+    if event["signal"] == "SLOW" and event["reason"] == "stale_observation":
+        fail(
+            failures,
+            f"tick {tick} {phase} admit {PROBE_ROW}: SLOW stale_observation",
+        )
+    return 1
+
+
 def replay(args):
     repo = os.path.abspath(args.repo)
     workdir = os.path.abspath(args.workdir)
@@ -365,125 +448,140 @@ def replay(args):
     validate_seeded_rows(meters, rows, failures)
 
     fed = {}
+    timer_specs = []
     for unit, instrument, row_csv, cadence, accuracy in timers:
         try:
             cadence_value = int(cadence)
-            int(accuracy)
+            accuracy_value = int(accuracy)
         except ValueError:
             fail(failures, f"T0 {unit} has a non-integer cadence/accuracy")
             continue
+        if cadence_value <= 0 or accuracy_value < 0:
+            fail(failures, f"T0 {unit} has an invalid cadence/accuracy")
+            continue
+        if cadence_value * 2 > TICK_SECONDS:
+            fail(
+                failures,
+                f"T2 {unit} cadence {cadence_value}s exceeds half the "
+                f"{TICK_SECONDS}s staleness bound",
+            )
+        nominal_at = START + timedelta(seconds=cadence_value)
+        timer_specs.append(
+            {
+                "accuracy": accuracy_value,
+                "cadence": cadence_value,
+                "fire_at": nominal_at + timedelta(seconds=accuracy_value),
+                "instrument": instrument,
+                "nominal_at": nominal_at,
+                "rows": row_csv,
+                "unit": unit,
+            }
+        )
         for row_id in row_csv.split(","):
-            fed[row_id] = (unit, instrument, cadence_value)
+            fed[row_id] = (unit, instrument, cadence_value, accuracy_value)
     for row_id, *_rest in rows:
         if row_id not in fed:
             fail(failures, f"T1 no fixture timer feeds {row_id}")
 
     probes = 0
     row_age_checks = 0
+    row_ages = []
+    policy_probe_accuracy = max((spec["accuracy"] for spec in timer_specs), default=0)
     with open(args.log, "w", encoding="utf-8") as log:
         for tick in range(1, args.ticks + 1):
             tick_at = START + timedelta(seconds=TICK_SECONDS * tick)
-            for unit, instrument, _row_csv, cadence, _accuracy in timers:
-                try:
-                    due = (TICK_SECONDS * tick) % int(cadence) == 0
-                except ValueError:
-                    continue
-                if not due:
-                    continue
-                process = run_feeder(repo, workdir, instrument, tick_at)
-                log.write(
-                    json.dumps(
-                        {
-                            "at": rfc3339(tick_at),
-                            "event": "timer",
-                            "instrument": instrument,
-                            "rc": process.returncode,
-                            "tick": tick,
-                            "unit": unit,
-                        },
-                        sort_keys=True,
-                    )
-                    + "\n"
-                )
-                if process.returncode != 0:
-                    fail(
-                        failures,
-                        f"tick {tick}: {unit} returned {process.returncode}: "
-                        f"{process.stderr.decode('utf-8', 'replace').strip()}",
-                    )
+            probe_at = tick_at + timedelta(seconds=policy_probe_accuracy)
 
-            probe_at = tick_at + timedelta(seconds=PROBE_OFFSET_SECONDS)
-            for row_id, _instrument, _owner, expected_grade in rows:
-                path = os.path.join(meters, row_id + ".json")
-                try:
-                    payload = read_json(path)
-                    observed = row_observed_at(payload)
-                    grade = row_grade(payload)
-                except (OSError, ValueError):
-                    observed = None
-                    grade = None
-                age_ms = None
-                if observed is not None:
-                    age_ms = int((probe_at - observed).total_seconds() * 1000)
-                log.write(
-                    json.dumps(
-                        {
-                            "age_ms": age_ms,
-                            "at": rfc3339(probe_at),
-                            "event": "row-age",
-                            "grade": grade,
-                            "row": row_id,
-                            "tick": tick,
-                            "timer": fed.get(row_id, ("<none>", "", 0))[0],
-                        },
-                        sort_keys=True,
-                    )
-                    + "\n"
+            # OnUnitActiveSec is relative to the previous activation. Its next
+            # nominal deadline is therefore previous_fire + cadence; systemd
+            # may activate at nominal + AccuracySec. Probe immediately BEFORE
+            # that latest legal firing, where row age is maximal, then execute
+            # every timer sharing the deadline. At 30s/1s every such probe sees
+            # 31s. Raising the period to 60s makes the first real admit see 61s
+            # and SLOW stale_observation.
+            while timer_specs and min(spec["fire_at"] for spec in timer_specs) <= probe_at:
+                fire_at = min(spec["fire_at"] for spec in timer_specs)
+                due = [spec for spec in timer_specs if spec["fire_at"] == fire_at]
+                row_age_checks += probe_rows(
+                    log, meters, rows, fed, fire_at, tick, "pre-fire", row_ages, failures
                 )
-                row_age_checks += 1
-                if age_ms is None or age_ms > TICK_MILLISECONDS:
-                    fail(failures, f"tick {tick} row {row_id}: age {age_ms}ms is past one tick")
-                if grade != expected_grade:
-                    fail(
-                        failures,
-                        f"tick {tick} row {row_id}: grade {grade!r}, wanted {expected_grade}",
-                    )
-
-            process, decision = run_admit(args.admit, workdir, meters, PROBE_ROW, probe_at)
-            probes += 1
-            if decision is None:
-                fail(failures, f"tick {tick}: tally-admit returned non-JSON rc {process.returncode}")
-                decision = {}
-            observation = decision.get("observation") or {}
-            event = {
-                "age_ms": observation.get("ageMs"),
-                "at": rfc3339(probe_at),
-                "event": "admit",
-                "rc": process.returncode,
-                "reason": decision.get("reason"),
-                "row": PROBE_ROW,
-                "signal": decision.get("signal"),
-                "tick": tick,
-                "timer": fed.get(PROBE_ROW, ("<none>", "", 0))[0],
-            }
-            log.write(json.dumps(event, sort_keys=True) + "\n")
-            if event["age_ms"] is None or event["age_ms"] > TICK_MILLISECONDS:
-                fail(
+                probes += probe_admit(
+                    log,
+                    args.admit,
+                    workdir,
+                    meters,
+                    fed,
+                    fire_at,
+                    tick,
+                    "pre-fire",
                     failures,
-                    f"tick {tick} admit {PROBE_ROW}: age {event['age_ms']}ms is past one tick "
-                    f"({event['signal']} {event['reason']})",
                 )
-            if event["signal"] == "SLOW" and event["reason"] == "stale_observation":
-                fail(failures, f"tick {tick} admit {PROBE_ROW}: SLOW stale_observation")
 
-            # Even if config/table drift was already found, execute the first
-            # probe: under the mutation it is the evidence that matters.
+                for spec in due:
+                    process = run_feeder(repo, workdir, spec["instrument"], fire_at)
+                    log.write(
+                        json.dumps(
+                            {
+                                "accuracy_sec": spec["accuracy"],
+                                "at": rfc3339(fire_at),
+                                "event": "timer",
+                                "instrument": spec["instrument"],
+                                "nominal_at": rfc3339(spec["nominal_at"]),
+                                "rc": process.returncode,
+                                "tick": tick,
+                                "unit": spec["unit"],
+                            },
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
+                    if process.returncode != 0:
+                        fail(
+                            failures,
+                            f"tick {tick}: {spec['unit']} returned {process.returncode}: "
+                            f"{process.stderr.decode('utf-8', 'replace').strip()}",
+                        )
+                    spec["nominal_at"] = fire_at + timedelta(seconds=spec["cadence"])
+                    spec["fire_at"] = spec["nominal_at"] + timedelta(
+                        seconds=spec["accuracy"]
+                    )
+
+            # The ordinary policy probe is itself after the declared timer
+            # accuracy, never at an idealized nominal tick. Any firing whose
+            # latest legal expiry is this instant has already executed above.
+            row_age_checks += probe_rows(
+                log,
+                meters,
+                rows,
+                fed,
+                probe_at,
+                tick,
+                "policy-probe",
+                row_ages,
+                failures,
+            )
+            probes += probe_admit(
+                log,
+                args.admit,
+                workdir,
+                meters,
+                fed,
+                probe_at,
+                tick,
+                "policy-probe",
+                failures,
+            )
+
+            # Even if config/table drift was already found, execute through the
+            # first policy probe: under either mutation the real-kernel
+            # boundary evidence matters more than an early structural exit.
             if failures:
                 break
 
     print(
         f"replay: {args.ticks} ticks requested, {probes} real tally-admit probes, "
-        f"{row_age_checks} row-age checks, log {args.log}"
+        f"{row_age_checks} row-age checks, maximum row age "
+        f"{max(row_ages, default='none')}ms, log {args.log}"
     )
     if failures:
         print(f"replay: RED ({len(failures)} assertion(s)); first failures:")
