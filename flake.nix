@@ -1226,6 +1226,27 @@
           assert builtins.elem
             "d %h/.local/state/tally-rewrite/meters 0700 - - -"
             coordinatorHome.systemd.user.tmpfiles.rules;
+          # `hk` ON PATH (U-D15). home/herdr.nix consumes
+          # `inputs.herdr-kitten.packages.<sys>.herdr-kitten` and nothing else —
+          # no overlay of the input's own reaches our pkgs fixpoint (F.3) — so
+          # the ONLY way the CLI can be in this list is that consumption. This
+          # assert is the reason the input pin may never silently go missing:
+          # the niri terminal binds, the kitty gestures and the dictation route
+          # all shell out to `hk`.
+          assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten")
+            coordinatorHome.home.packages;
+          # …and the kitten half is addressed by STORE PATH out of a neutral
+          # ~/.config file, because kitty resolves a bare `kitten foo.py` against
+          # ~/.config/kitty, which is a whole-dir out-of-store symlink into the
+          # git tree. The generated action_alias must therefore name a
+          # /nix/store path ending in the kitten's own entry point; a pin that
+          # predates round2-01/03/04 (e.g. 41a6de5) ships a tree kitty cannot
+          # load at all, which is why the rev, not just the URL, is asserted
+          # material here.
+          assert nixpkgs.lib.hasInfix "/share/hk/kitten/hk.py"
+            coordinatorHome.xdg.configFile."kitty-herdr-nix.conf".text;
+          assert nixpkgs.lib.hasInfix "/nix/store/"
+            coordinatorHome.xdg.configFile."kitty-herdr-nix.conf".text;
           # The worker keeps Home Manager (unlike the NAS, which stops at NixOS):
           # it is an ordinary interactive box that merely has nobody sitting at
           # it, so the shell, atuin sync and niri session are all real. What it
@@ -1238,6 +1259,13 @@
           # …and the herdr SERVER. The worker still gets the herdr binary (it is
           # how `herdr --remote coordinator` works at all), just no unit.
           assert !(workerHome.systemd.user.services ? herdr);
+          # The BINARY, though, is the worker's too — the client is how you
+          # reach a server at all (`herdr --remote coordinator`), and `hk` rides
+          # with it. Asserting it here is what keeps U-D15's pin move from
+          # turning into a topology move: one server (ruling B5, #309 is Tom's),
+          # two clients, unchanged.
+          assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten")
+            workerHome.home.packages;
           # wayvnc's unit exists and is deliberately unreachable — this host has
           # no tailnet and :5900 is admitted on tailscale0 only, fleet-wide. The
           # unit stays so the screen becomes viewable the day that changes; see
@@ -1247,6 +1275,37 @@
             self.nixosConfigurations.worker.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
           assert !self.nixosConfigurations.worker.config.services.tailscale.enable;
           pkgs.runCommand "home-profiles" { } ''
+            touch "$out"
+          '';
+
+        # U-D15 — the herdr-kitten INPUT, end to end. home/herdr.nix emits ONE
+        # `action_alias` carrying a store path and kitty spends it as
+        # `map <chord> hk <gesture>`; if that path is wrong, or the tree behind
+        # it predates round2-01/03/04, every gesture dies inside kitty's own
+        # loader with nothing in this repo going red — which is exactly how the
+        # BUG-1/BUG-2 class shipped once already. So the alias is parsed back
+        # out of the coordinator's own generation here and the file it names is
+        # READ in the store. `nix flake check --offline --no-build` gets the
+        # eval half (the alias is a store path under THIS input's package and it
+        # ends at the kitten's entry point); a full `nix flake check` gets the
+        # build half (the entry point and the `hk` CLI are really there).
+        herdr-kitten-input =
+          let
+            lib = nixpkgs.lib;
+            herdr-kitten = inputs.herdr-kitten.packages.${system}.herdr-kitten;
+            conf =
+              self.nixosConfigurations.coordinator.config.home-manager.users.tom.xdg.configFile."kitty-herdr-nix.conf".text;
+            aliasLine = lib.findFirst (l: lib.hasPrefix "action_alias hk kitten " l) null (
+              lib.splitString "\n" conf
+            );
+            kittenPath = lib.last (lib.splitString " " aliasLine);
+          in
+          assert aliasLine != null;
+          assert lib.hasPrefix "${herdr-kitten}/" kittenPath;
+          assert lib.hasSuffix "/share/hk/kitten/hk.py" kittenPath;
+          pkgs.runCommand "herdr-kitten-input" { } ''
+            test -f ${herdr-kitten}/share/hk/kitten/hk.py
+            test -x ${herdr-kitten}/bin/hk
             touch "$out"
           '';
 
