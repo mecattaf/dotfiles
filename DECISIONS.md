@@ -48,20 +48,18 @@ way: a branch merged into the one switch, its commit count and issues in the
 message, history preserved — `981e8d01` is carried, not squashed. Merge
 authority: `~/research-methods/DECISIONS.md` D-B12.
 
-(2) **"PR #314 merged" gates on the TREE and reads `gh` beside it.** The
-evaluator re-runs the DOMINANT *before* merging — merging is its own act on PASS
-— so an oracle that demanded `MERGED` could never pass and no unit of this shape
-could ever be graded. Clauses 1a–1c therefore gate on what "merged" means for
-this repository, in the form U-D16 decided (ancestry against `HEAD`, never the
-local `main` ref; the commits pinned as shas, never resolved from the
-`util-01-sampler` ref): `34a613dc` and `981e8d01` are ancestors of `HEAD`, the
-branch is still two commits, and `main`'s head at the reconciliation
-(`ecc6a228`) is an ancestor too — so it was a merge and not a fast-forward.
-Clause 1d makes the `gh` call the oracle string names: `MERGED` passes, `OPEN`
-passes only while the PR still points head `util-01-sampler` at base `main`
-(a retargeted or force-pushed OPEN PR is not one whose merge would land these
-commits), `CLOSED` fails always, and `gh` unable to answer is `NOT VERIFIED`
-that does not gate — 1a–1c are the same fact offline.
+(2) **`gh pr view 314 --json state == MERGED` is literal and cannot be
+substituted by tree ancestry.** The issue says the generation-4 DOMINANT is
+byte-exact. Clause 1d therefore passes only on `MERGED`; `OPEN`, `CLOSED`, an
+unavailable `gh`, and a failed lookup all fail. Clauses 1a–1c remain additional
+topology checks in the form U-D16 decided (ancestry against `HEAD`, never the
+local `main` ref; commits pinned as shas): `34a613dc` and `981e8d01` must be
+ancestors, the range must still contain exactly those two commits, and main at
+the reconciliation (`ecc6a228`) must also be an ancestor. They establish the
+history-preserving merge but do not stand in for GitHub's state. Because this
+unit is expressly barred from merging its own PR, the implementer's required
+DOMINANT run is expected to be red on clause 1d; the complete oracle can first
+turn green on the evaluator's post-merge run.
 
 (3) **A conflict-marker grep (clause 5) is part of the oracle**, because the
 flake check alone cannot see the whole mutation. MEASURED at `120812a7`: a

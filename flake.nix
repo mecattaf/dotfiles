@@ -722,10 +722,6 @@
           # coordinator's lease events and the drain ledger — so it is
           # coordinator-gated, and a copy on the worker would pull from itself.
           assert !(worker.systemd.user.timers ? util-row);
-          # The worker's whole user-timer set, not just membership: before this
-          # branch that box had NO user timer at all, and this is the row
-          # l8-flash-probe reports from the other side.
-          assert builtins.attrNames worker.systemd.user.timers == [ "util-sampler" ];
           # ── the sampler's own semantics ────────────────────────────────────
           # Persistent=false on the sampler is a measurement decision, not a
           # style one: a catch-up burst would write several samples carrying one

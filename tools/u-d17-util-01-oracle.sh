@@ -25,7 +25,8 @@ UTIL_BASE="34a613dc"                                    # the branch's first com
 MAIN_AT_MERGE="ecc6a2284fc2eb1d53dfd6626ce05d432650420b" # main when this reconciled (U-D16's merge)
 PR=314
 
-# cards/UTIL-01.md instrument_sha256, and the digests in 34a613dc's message.
+# cards/UTIL-01.md instrument_sha256, and the round-two digest record in
+# 981e8d01 (which supersedes the round-one digests in 34a613dc's message).
 # The unit's non-goal is "no change to the sampler's semantics"; the card's
 # abort_on makes a row written by an instrument other than the one locked at
 # arming a CRASH, so a merge that moved either byte is not a merge that can be
@@ -35,12 +36,10 @@ SHA_ROW="1fdb80179595dc151af67e4ed2bc03e6a3bcf34685acb869b1cc9d9bcfa90906"
 
 pass=0
 fail=0
-note=0
 
 report() { printf '%-4s  %-56s  %s\n' "$1" "$2" "${*:3}"; }
 ok() { pass=$((pass + 1)); report PASS "$@"; }
 no() { fail=$((fail + 1)); report FAIL "$@"; }
-info() { note=$((note + 1)); report NOTE "$@"; }
 
 echo "u-d17-util-01-oracle in $ROOT"
 echo "  PR #$PR carries $UTIL_BASE and ${UTIL_HEAD:0:8}; main was ${MAIN_AT_MERGE:0:8} at the reconciliation"
@@ -81,40 +80,26 @@ fi
 # The oracle string names this call, so it is made. It is read in three states:
 #
 #   MERGED  — the completion condition, after the evaluator merges. PASS.
-#   OPEN    — the state the implementer leaves it in, because merging is the
-#             evaluator's act and not this unit's. PASS *only* while 1a holds
-#             and the PR still points head util-01-sampler at base main, which
-#             is checked here: an OPEN PR that was retargeted or whose head was
-#             force-pushed elsewhere is NOT a PR whose merge would land these
-#             two commits on main.
-#   CLOSED  — closed without merging. FAIL, always.
+#   OPEN    — not merged. FAIL, including on the implementer's delivery run.
+#   CLOSED  — closed without merging. FAIL.
 #
-# gh needs network and an authenticated account. On a bare PATH without either
-# this clause CANNOT RUN, and it says NOT VERIFIED and does not gate — clauses
-# 1a–1c are the same fact read off the tree, offline, and they do gate.
+# The generation-4 issue says this acceptance is byte-exact. Tree ancestry is
+# useful additional evidence, but it cannot substitute for GitHub's state. If
+# gh, its network call, or its authentication is unavailable, this clause is
+# therefore FAIL rather than NOT VERIFIED.
 if command -v gh >/dev/null 2>&1; then
-  if pr_json="$(gh pr view "$PR" --json state,baseRefName,headRefName 2>/dev/null)"; then
+  if pr_json="$(gh pr view "$PR" --json state 2>/dev/null)"; then
     state="$(printf '%s' "$pr_json" | tr -d ' "' | sed -n 's/.*state:\([A-Z]*\).*/\1/p')"
-    base="$(printf '%s' "$pr_json" | tr -d ' "' | sed -n 's/.*baseRefName:\([^,}]*\).*/\1/p')"
-    head="$(printf '%s' "$pr_json" | tr -d ' "' | sed -n 's/.*headRefName:\([^,}]*\).*/\1/p')"
-    case "$state:$base:$head" in
-      MERGED:main:util-01-sampler)
-        ok "1d PR #$PR state MERGED" "gh pr view $PR --json state,baseRefName,headRefName"
-        ;;
-      OPEN:main:util-01-sampler)
-        ok "1d PR #$PR state OPEN, main <- util-01-sampler (the evaluator merges)" \
-           "gh pr view $PR --json state,baseRefName,headRefName"
-        ;;
-      *)
-        no "1d PR #$PR state '$state' base '$base' head '$head'" \
-           "gh pr view $PR --json state,baseRefName,headRefName"
-        ;;
-    esac
+    if [ "$state" = "MERGED" ]; then
+      ok "1d PR #$PR state MERGED" "gh pr view $PR --json state"
+    else
+      no "1d PR #$PR state '${state:-unreadable}', want MERGED" "gh pr view $PR --json state"
+    fi
   else
-    info "1d NOT VERIFIED: gh could not answer (no network or no auth)" "gh pr view $PR --json state"
+    no "1d gh could not answer (network/auth unavailable)" "gh pr view $PR --json state"
   fi
 else
-  info "1d NOT VERIFIED: gh is not on PATH" "command -v gh"
+  no "1d gh is not on PATH" "command -v gh"
 fi
 
 # ── 2. the sampler's semantics did not move ────────────────────────────────
@@ -190,7 +175,5 @@ else
 fi
 
 echo
-echo "u-d17-util-01-oracle: $pass passed, $fail failed, $note noted"
-echo "  NOTE rows could not run here and do not gate; clauses 1a-1c read the"
-echo "  same fact off the tree, offline, and they do."
+echo "u-d17-util-01-oracle: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

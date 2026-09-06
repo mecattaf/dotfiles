@@ -84,8 +84,7 @@ DOMINANT gate rather than beside it. That check also pins what a badly resolved
 merge would have dropped silently:
 
 - `util-sampler.timer` and `util-row.timer` on the coordinator;
-- `util-sampler.timer` on the worker, and `[ "util-sampler" ]` as the worker's
-  **whole** user-timer set — that box had none at all before;
+- `util-sampler.timer` on the worker and no `util-row.timer` there;
 - `Persistent = false` on the sampler, `true` on the row writer. Not a style
   choice: a catch-up burst would write several samples carrying one instant,
   each a fabricated reading of a GPU nobody was watching, so a box that was off
@@ -149,15 +148,16 @@ Twelve clauses, one line each with the argv that produced it. The design
 decisions behind two of them are in [`../DECISIONS.md`](../DECISIONS.md); the
 short version:
 
-- **"PR #314 merged" is read twice.** Clauses 1a–1c read it off the *tree* and
-  gate: both commits are ancestors of `HEAD`, the branch is still two commits,
-  and `main`'s own head at the reconciliation is an ancestor too — so this was a
-  merge, not a fast-forward of one side over the other. Checked against `HEAD`
-  rather than the local `main` ref, so the clause is true on this branch before
-  the merge and on `main` after it. Clause 1d makes the `gh pr view 314 --json
-  state` call the oracle string names and reads its answer; without network or
-  auth it says `NOT VERIFIED` and does not gate, because 1a–1c are the same fact
-  read offline.
+- **"PR #314 merged" is read exactly.** Clauses 1a–1c additionally read the
+  topology off the *tree*: both commits are ancestors of `HEAD`, the branch is
+  still two commits, and `main`'s own head at the reconciliation is an ancestor
+  too — so the history was preserved by a merge. Clause 1d makes the exact `gh
+  pr view 314 --json state` call the oracle names, and only `MERGED` passes.
+  `OPEN`, `CLOSED`, an unavailable `gh`, or a failed lookup are all `FAIL`;
+  ancestry is evidence, not a substitute for GitHub's state. Consequently the
+  implementer's required self-run is red on clause 1d while the PR is open, and
+  the evaluator's post-merge run is the first run that can satisfy the complete
+  DOMINANT.
 - **Clause 5 greps for conflict markers** because clause 4 cannot cover the
   mutation on its own. A marker in a `.nix` file is a syntax error and
   evaluation dies; a marker left in a shell program, a doc or a fixture parses
