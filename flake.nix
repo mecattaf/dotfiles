@@ -1051,6 +1051,21 @@
           let
             coordinatorHome = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
             workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
+            seatFeederNames = [
+              "tally-seat-feeder-claude"
+              "tally-seat-feeder-codex"
+              "tally-seat-feeder-pi-qwencloud"
+            ];
+            seatFeederRows = {
+              tally-seat-feeder-claude = "cc,cc2,cc3";
+              tally-seat-feeder-codex = "codex";
+              tally-seat-feeder-pi-qwencloud = "pi-qwencloud";
+            };
+            isSeatFeeder = name: builtins.match "tally-seat-feeder-.*" name != null;
+            coordinatorSeatFeeders =
+              builtins.filter isSeatFeeder (builtins.attrNames coordinatorHome.systemd.user.timers);
+            workerSeatFeeders =
+              builtins.filter isSeatFeeder (builtins.attrNames workerHome.systemd.user.timers);
           in
           assert coordinatorHome.home.username == "tom";
           assert coordinatorHome.programs.atuin.settings.auto_sync;
@@ -1062,6 +1077,27 @@
           assert coordinatorHome.systemd.user.services ? herdr;
           assert !(coordinatorHome.systemd.user.services.herdr.Unit ? PartOf);
           assert coordinatorHome.systemd.user.services.herdr.Install.WantedBy == [ "default.target" ];
+          # U-D12: exactly three coordinator-only feeder clocks, each at the
+          # kernel policy's 60-second tick.  The row list lives on the service
+          # as data so tools/feeder-fixture.sh can prove the declared estate and
+          # its replay table are the same object.
+          assert coordinatorSeatFeeders == seatFeederNames;
+          assert workerSeatFeeders == [ ];
+          assert builtins.all (
+            name:
+            let
+              timer = coordinatorHome.systemd.user.timers.${name};
+              service = coordinatorHome.systemd.user.services.${name};
+            in
+            timer.Timer.OnUnitActiveSec == "60s"
+            && timer.Timer.AccuracySec == "1s"
+            && timer.Timer.Unit == "${name}.service"
+            && timer.Install.WantedBy == [ "timers.target" ]
+            && service.Unit.X-TallyRows == seatFeederRows.${name}
+          ) seatFeederNames;
+          assert builtins.elem
+            "d %h/.local/state/tally-rewrite/meters 0700 - - -"
+            coordinatorHome.systemd.user.tmpfiles.rules;
           # The worker keeps Home Manager (unlike the NAS, which stops at NixOS):
           # it is an ordinary interactive box that merely has nobody sitting at
           # it, so the shell, atuin sync and niri session are all real. What it

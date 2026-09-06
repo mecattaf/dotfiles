@@ -120,6 +120,7 @@ in
     ./pi.nix
     ./piri.nix
     ./remote.nix
+    ./seat-feeder.nix
     ./ssh.nix
     ./tally.nix
     ./voxtype.nix
