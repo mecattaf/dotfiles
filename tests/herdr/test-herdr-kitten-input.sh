@@ -25,7 +25,13 @@
 # of the two files it is reintroduced in.
 #
 # No network is required (A0 falls back to --offline), no build (--no-build),
-# nothing switched, nothing written: the lock is restored if A0 moves it.
+# nothing switched, nothing written: the lock is restored if A0 moves it, AND
+# again on exit. The second restore matters under the mutation, where Nix
+# rewrites flake.lock a second time inside clause A (`nix flake check` fixes up
+# a lock that no longer matches flake.nix, `--no-build` or not) — MEASURED
+# 2026-09-06: after a mutated run the tree would otherwise be left dirty, which
+# is itself a change the card does not authorize. Every clause still reads the
+# mutated lock before the exit restore happens, so nothing is masked.
 set -uo pipefail
 
 repo="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
@@ -39,7 +45,7 @@ bad()  { printf '[F] %s\n' "$*"; fail=1; }
 # "after nix flake lock --update-input herdr-kitten" — run it, and require it
 # to be a no-op, which is also the card's "re-applying reports zero changes".
 lock_before=$(mktemp) || exit 2
-trap 'rm -f "$lock_before"' EXIT
+trap 'cmp -s "$lock_before" flake.lock || cp "$lock_before" flake.lock; rm -f "$lock_before"' EXIT
 cp flake.lock "$lock_before"
 if timeout 600 nix flake lock --update-input herdr-kitten >/dev/null 2>&1 \
   || timeout 600 nix flake lock --update-input herdr-kitten --offline >/dev/null 2>&1; then
