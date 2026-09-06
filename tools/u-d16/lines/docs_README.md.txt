@@ -1,0 +1,1 @@
+| [`local-ai/codex-login.md`](local-ai/codex-login.md) | **Whose Codex login `/home/tom/.codex/auth.json` is** (Nayla's, R-2026-09-06-02), which Nix file seeds it, and why Tom's own login needs a `CODEX_HOME` he names. Paths only. |

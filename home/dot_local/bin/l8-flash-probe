@@ -19,7 +19,11 @@ DOTFILES="${L8_FLASH_DOTFILES:-/home/tom/mecattaf/dotfiles}"
 # every out-of-store symlink there, whatever checkout the switch was taken from
 # (dotfiles#313). Any check that RESOLVES a symlink must compare against this.
 REPO_DIR="$HOME/mecattaf/dotfiles"
-HOST="$(hostname)"
+# The host this probe is running on. The override exists for ONE reader: the
+# committed test in tests/l8-flash-probe/, which must be able to exercise a
+# coordinator-only row on any box and inside the nix sandbox. Nothing on a
+# real box sets it, and a probe run with it set is a test run, not evidence.
+HOST="${L8_FLASH_HOST:-$(hostname)}"
 COORDINATOR="coordinator"
 
 pass=0
@@ -202,6 +206,40 @@ if coordinator_only; then
   fi
 else
   na "[P] mirror program (coordinator only)" "test -x ~/.local/bin/claude-transcript-mirror"
+fi
+
+# ── 5b. the hand-written pair the declared units replace (#293, #319) ───────
+# home-manager will not write over a plain file of the same name, so while
+# ~/.config/systemd/user/claude-transcript-mirror.{service,timer} exist as
+# ORDINARY FILES they win the name and the declaration in
+# home/harness-records.nix:70 never takes effect — the switch reports success
+# and the mirror keeps running from the untracked pair, which is Rule 9's exact
+# failure. Their removal is P05 walkthrough step 4: Tom's own shell act
+# (scopes/clean-dotfiles.md:171 §6), taken AFTER the tree carries the
+# replacement and BEFORE the switch, because until the switch the hand-written
+# pair is the only working mirror. It is sequenced inside U-D19 and carried as
+# DEFERRED.md row DF-U-D16-1.
+#
+# [E], not [P]: a green row here means the deletion has happened. Before it
+# this row is expected to FAIL, and that FAIL is the reminder.
+if coordinator_only; then
+  left=""
+  for suffix in service timer; do
+    unit="$HOME/.config/systemd/user/claude-transcript-mirror.$suffix"
+    # -f, not -e: home-manager links its own fragment into this directory, and
+    # a SYMLINK of that name is the declared unit having won. Only a plain file
+    # is the hand-written pair.
+    if [ -f "$unit" ] && [ ! -L "$unit" ]; then
+      left="$left $suffix"
+    fi
+  done
+  if [ -z "$left" ]; then
+    ok "[E] hand-written pair gone" "test ! -f ~/.config/systemd/user/claude-transcript-mirror.{service,timer}"
+  else
+    no "[E] hand-written pair gone (still plain:$left)" "test ! -f ~/.config/systemd/user/claude-transcript-mirror.{service,timer}"
+  fi
+else
+  na "[E] hand-written pair gone (coordinator only)" "test ! -f ~/.config/systemd/user/claude-transcript-mirror.{service,timer}"
 fi
 
 # ── 6. the cc3 links, resolved ──────────────────────────────────────────────
