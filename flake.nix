@@ -220,31 +220,26 @@
     # fixpoint (F.3) — and keep it out of `rollingInputOverrides` (F.4) for the
     # same reason herdr is out: it fronts live PTYs.
     #
-    # URL — the end state is `github:mecattaf/herdr-kitten/<rev>`, the URL its
-    # own README documents and the shape the `tally` input above already uses
-    # for exactly the stated reason ("fleet auto-upgrades need no GitHub
-    # credential helper or access token"). It is NOT taken here, because the
-    # fetchability that form needs does not exist and neither of the two paths
-    # to it is an executor's (MEASURED 2026-09-06, U-D15):
-    #   * the repo made public — `mecattaf/herdr-kitten` is PRIVATE, and the
-    #     flip is the herdr-kitten survey's Q-7, a TOM LINE ("the repo is
-    #     PRIVATE by standing wall. No executor flips visibility."). Measured:
-    #     `nix flake metadata github:mecattaf/herdr-kitten/ccc16393…` answers
-    #     HTTP 404.
-    #   * a credential path the fleet's other boxes actually have — there is
-    #     none. `gh` and `wrangler` are `coordinatorOnly` by Tom's ruling
-    #     (secrets.nix:166-168, "the coordinator is the fleet's only
-    #     authenticated operator box — gh + wrangler stay off the laptops");
-    #     /etc/nix/nix.conf carries no `access-tokens` line and there is no
-    #     ~/.config/nix/nix.conf; `ssh -T git@github.com` from the coordinator
-    #     answers "Permission denied (publickey)", the fleet SSH user key being
-    #     a fleet-mutual key and not a GitHub credential.
-    # There is no third path, so the URL FORM stays the local checkout below —
-    # a `file://` git tree at the reviewed rev, spec A's repo being
-    # pre-publication — and
-    # only the REV moves. The day Q-7 lands the change is one edit of this line
-    # plus `nix flake lock --update-input herdr-kitten`; the rev is the same
-    # object either way. See docs/herdr/herdr-kitten-input.md and DEFERRED.md.
+    # URL — `github:mecattaf/herdr-kitten/<rev>`, the URL its own README
+    # documents and the same shape the `tally` input above uses for exactly the
+    # stated reason: "fleet auto-upgrades need no GitHub credential helper or
+    # access token". The local-checkout URL it replaces resolved only on THIS
+    # box — a `file://` git tree under /home/tom — so no other host could
+    # evaluate this flake at all; that is what U-D15 removed. (No `file://`
+    # spelling of it survives anywhere in this file or in flake.lock: that
+    # absence is an asserted clause of U-D15's oracle, not a tidiness.) The form is admissible because the repo is
+    # fetchable without a credential — MEASURED 2026-09-06 on the coordinator:
+    # `gh repo view mecattaf/herdr-kitten --json isPrivate,visibility` answers
+    # `{"isPrivate":false,"visibility":"PUBLIC"}`, and `nix flake metadata
+    # github:mecattaf/herdr-kitten/ccc16393…` resolves to the same narHash
+    # (sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=) the local checkout
+    # locked, i.e. the same object by content and not merely by rev name. The
+    # earlier survey answer for Q-7 ("the repo is PRIVATE by standing wall") is
+    # therefore spent, not overridden: no executor flipped visibility, the flip
+    # had already happened upstream when this was measured. Pinned BY REV and
+    # never by branch: this input fronts live PTYs, so it moves when Tom says so
+    # (F.4 keeps it out of rollingInputOverrides for the same reason herdr is
+    # out). See docs/herdr/herdr-kitten-input.md.
     #
     # REV: the merged head of `mecattaf/herdr-kitten` main past the round-2
     # merges — U-C2…U-C5 (`97e4b9c`, `5e857f0`, `ccc1639`) and herdr-kitten #26's
@@ -256,7 +251,7 @@
     # nixpkgs; both are re-pointed at ours so one herdr and one nixpkgs serve
     # the whole closure.
     herdr-kitten = {
-      url = "git+file:///home/tom/mecattaf/herdr-kitten?rev=ccc16393cc35e2cce2b8cd9a55718b3c84849a8f";
+      url = "github:mecattaf/herdr-kitten/ccc16393cc35e2cce2b8cd9a55718b3c84849a8f";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.herdr.follows = "herdr";
     };

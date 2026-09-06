@@ -509,16 +509,16 @@
       "locked": {
         "lastModified": 1788695454,
         "narHash": "sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=",
-        "ref": "refs/heads/main",
+        "owner": "mecattaf",
+        "repo": "herdr-kitten",
         "rev": "ccc16393cc35e2cce2b8cd9a55718b3c84849a8f",
-        "revCount": 54,
-        "type": "git",
-        "url": "file:///home/tom/mecattaf/herdr-kitten"
+        "type": "github"
       },
       "original": {
+        "owner": "mecattaf",
+        "repo": "herdr-kitten",
         "rev": "ccc16393cc35e2cce2b8cd9a55718b3c84849a8f",
-        "type": "git",
-        "url": "file:///home/tom/mecattaf/herdr-kitten"
+        "type": "github"
       }
     },
     "home-manager": {
