@@ -678,6 +678,26 @@
               cp "$TMPDIR/out" $out
             '';
 
+        # The two UTIL-01 rows l8-flash-probe gained with the reconciliation
+        # (U-D17, #320). Same reasoning as l8-flash-probe-row above: both rows
+        # ship RED, because nothing has switched yet and neither timer has a
+        # fragment, and a row that is red on the day it is written is the row
+        # nobody notices has stopped working. Asserted here in a fake HOME with
+        # a fake `systemctl` on PATH, in every state that matters — pre-switch,
+        # declared, hand-installed (the Rule 9 failure), and off the
+        # coordinator, where util-row is SKIP and must never be FAIL. The count
+        # is asserted too: the issue says the probe gains EXACTLY these two
+        # rows. Hermetic: no systemd, no tally, no network.
+        l8-flash-probe-util-rows =
+          pkgs.runCommand "l8-flash-probe-util-rows"
+            { nativeBuildInputs = [ pkgs.gnugrep pkgs.gawk ]; }
+            ''
+              set -euo pipefail
+              L8_FLASH_PROBE=${./home/dot_local/bin/l8-flash-probe} \
+                bash ${./tests/l8-flash-probe/test-util-timer-rows.sh} | tee "$TMPDIR/out"
+              cp "$TMPDIR/out" $out
+            '';
+
         nas-topology =
           let
             nas = self.nixosConfigurations.nas.config;
