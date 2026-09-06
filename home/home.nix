@@ -123,6 +123,7 @@ in
     ./seat-feeder.nix
     ./ssh.nix
     ./tally.nix
+    ./util-sampler.nix
     ./voxtype.nix
   ];
 

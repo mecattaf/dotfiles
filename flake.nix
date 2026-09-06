@@ -678,6 +678,103 @@
               cp "$TMPDIR/out" $out
             '';
 
+        # The UTIL-01 reconciliation's own topology (U-D17, #320, #311, #314).
+        #
+        # `nix flake check --offline --no-build` is this unit's DOMINANT gate,
+        # and on its own it only proves the merged tree EVALUATES. That catches
+        # the mutation the unit is graded against — a conflict marker left in a
+        # .nix file is a syntax error and evaluation dies — but it would stay
+        # green through a resolution that silently dropped
+        # `./util-sampler.nix` from home/home.nix's imports, or that resolved
+        # the merge by taking main's side of a file the branch had edited. This
+        # check is the difference: every assertion below is an eval-time one, so
+        # it runs under --no-build, and each names a property of the SAMPLER's
+        # semantics, which this reconciliation's non-goal says it must not
+        # change.
+        #
+        # Nothing here restates the card (/home/tom/research-methods/cards/
+        # UTIL-01.md) or adds a threshold. The last two assertions are the
+        # sharpest: the card's `instrument_sha256` locks the two programs at
+        # arming, and `abort_on` makes a row written by any other instrument a
+        # CRASH — so a merge that touched either program is not a merge that can
+        # be graded. The digests are the ones in 34a613dc's message.
+        util-sampler-topology =
+          let
+            coordinator = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
+            worker = self.nixosConfigurations.worker.config.home-manager.users.tom;
+            samplerPath =
+              box:
+              builtins.head (
+                builtins.filter (nixpkgs.lib.hasPrefix "PATH=")
+                  box.systemd.user.services.util-sampler.Service.Environment
+              );
+            metersRule = "d %h/.local/state/tally/meters/util-sampler 0700 - - -";
+          in
+          # ── the import line survived the merge ─────────────────────────────
+          # home/home.nix is the ONE file both branches touched, and its imports
+          # list is where the resolution happened. These four say the resolution
+          # kept all three entries: two units on the coordinator, one on the
+          # worker, none of which exist if ./util-sampler.nix was dropped.
+          assert coordinator.systemd.user.timers ? util-sampler;
+          assert coordinator.systemd.user.timers ? util-row;
+          assert worker.systemd.user.timers ? util-sampler;
+          # The row writer is the JOINER — it reads both boxes' logs, the
+          # coordinator's lease events and the drain ledger — so it is
+          # coordinator-gated, and a copy on the worker would pull from itself.
+          assert !(worker.systemd.user.timers ? util-row);
+          # ── the sampler's own semantics ────────────────────────────────────
+          # Persistent=false on the sampler is a measurement decision, not a
+          # style one: a catch-up burst would write several samples carrying one
+          # instant, each a fabricated reading of a GPU nobody was watching. A
+          # box that was off must show as ABSENT samples. The row writer is the
+          # opposite — a row is a pure function of a sampler log that is already
+          # closed, so catching up fabricates nothing.
+          assert coordinator.systemd.user.timers.util-sampler.Timer.Persistent == false;
+          assert coordinator.systemd.user.timers.util-row.Timer.Persistent == true;
+          assert worker.systemd.user.timers.util-sampler.Timer.Persistent == false;
+          # `tally` on the COORDINATOR sampler's PATH and nowhere else: the
+          # worker has no tally daemon and no tally binary, so putting it there
+          # would be a lie about what that box can answer. The sampler records a
+          # failed pools call with its error string, never as zero.
+          assert nixpkgs.lib.hasInfix "-tally-" (samplerPath coordinator);
+          assert !(nixpkgs.lib.hasInfix "-tally-" (samplerPath worker));
+          # The one tmpfiles rule, on both boxes. systemd-tmpfiles creates the
+          # missing parent for a `d` line, which is why the worker gets the
+          # whole path from this rule alone and no duplicate is emitted for the
+          # parent home/tally.nix already declares on the coordinator.
+          assert builtins.elem metersRule coordinator.systemd.user.tmpfiles.rules;
+          assert builtins.elem metersRule worker.systemd.user.tmpfiles.rules;
+          # ── the programs are byte-for-byte the ones the card locked ────────
+          assert
+            builtins.hashFile "sha256" ./home/dot_local/bin/util-sampler
+              == "cc76a8179c46e735d6005f3f2d92f137cff026d7c3658a27b89261778fa50ce6";
+          assert
+            builtins.hashFile "sha256" ./home/dot_local/bin/util-row
+              == "1fdb80179595dc151af67e4ed2bc03e6a3bcf34685acb869b1cc9d9bcfa90906";
+          pkgs.runCommand "util-sampler-topology" { } ''
+            touch "$out"
+          '';
+
+        # The two UTIL-01 rows l8-flash-probe gained with the reconciliation
+        # (U-D17, #320). Same reasoning as l8-flash-probe-row above: both rows
+        # ship RED, because nothing has switched yet and neither timer has a
+        # fragment, and a row that is red on the day it is written is the row
+        # nobody notices has stopped working. Asserted here in a fake HOME with
+        # a fake `systemctl` on PATH, in every state that matters — pre-switch,
+        # declared, hand-installed (the Rule 9 failure), and off the
+        # coordinator, where util-row is SKIP and must never be FAIL. The count
+        # is asserted too: the issue says the probe gains EXACTLY these two
+        # rows. Hermetic: no systemd, no tally, no network.
+        l8-flash-probe-util-rows =
+          pkgs.runCommand "l8-flash-probe-util-rows"
+            { nativeBuildInputs = [ pkgs.gnugrep pkgs.gawk ]; }
+            ''
+              set -euo pipefail
+              L8_FLASH_PROBE=${./home/dot_local/bin/l8-flash-probe} \
+                bash ${./tests/l8-flash-probe/test-util-timer-rows.sh} | tee "$TMPDIR/out"
+              cp "$TMPDIR/out" $out
+            '';
+
         nas-topology =
           let
             nas = self.nixosConfigurations.nas.config;
