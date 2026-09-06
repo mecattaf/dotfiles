@@ -43,12 +43,22 @@
 # verb is run as `sudo local-models-prune --dry-run` then
 # `sudo local-models-prune --yes`.
 let
-  # Both scripts read the same three paths, environment-overridable so
+  # The paths both scripts read, environment-overridable so
   # tests/local-models-sync can drive them against a fixture tree.
-  paths = ''
+  #
+  # Split in two because the VERB never reads the manifest itself — it delegates
+  # the whole computation to the ORACLE — and writeShellApplication runs
+  # shellcheck, which fails the derivation on an unused `manifest=` assignment
+  # (SC2034). That failure is why `nix build .#checks.<sys>.local-models-sync`
+  # reported "1 dependency failed" and why no built binary ever existed to put
+  # on PATH.
+  rootPath = ''
     root="''${LOCAL_MODELS_ROOT:-${runtimeRoot}}"
+  '';
+  manifestPathLine = ''
     manifest="''${LOCAL_MODELS_MANIFEST:-${manifestPath}}"
   '';
+  paths = rootPath + manifestPathLine;
 
   pruneSet = writeShellApplication {
     name = "local-models-prune-set";
@@ -122,7 +132,7 @@ let
       pruneSet
     ];
     text = ''
-      ${paths}
+      ${rootPath}
       state="''${LOCAL_MODELS_PRUNE_STATE:-${stateFile}}"
 
       # printf rather than a heredoc: this text is a Nix indented string, and a
