@@ -629,6 +629,20 @@
               mkdir -p "$HOME"
               CLAUDE_CAPACITY=${./home/dot_local/bin/claude-capacity} \
                 python3 ${./tests/claude-capacity/test-claude-capacity.py} | tee "$TMPDIR/out"
+              # The count is asserted against the doc, not just printed. P05's
+              # handoff called this suite "21 hermetic cases" when it had 23 and
+              # had never had any other number; a receipt drifted from the code
+              # and nothing caught it. docs/local-ai/claude-capacity.md now
+              # states the number, and this check fails if the two disagree —
+              # whichever of them moved (U-D8).
+              n=$(tail -1 "$TMPDIR/out" | grep -o '^[0-9]*')
+              test -n "$n"
+              grep -q "$n" ${./docs/local-ai/claude-capacity.md} || {
+                echo "claude-capacity: the suite reports $n cases but" >&2
+                echo "docs/local-ai/claude-capacity.md does not say $n." >&2
+                echo "Fix the doc, or the suite — do not fix the receipt." >&2
+                exit 1
+              }
               # py_compile is a second, independent guard: a syntax error in the
               # oracle would otherwise only surface when waybar or a dispatch
               # asked it a question.
