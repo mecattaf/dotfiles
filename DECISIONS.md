@@ -121,3 +121,91 @@ asserts the unit's non-goal as bytes — `builtins.hashFile` over both programs
 against `cards/UTIL-01.md` `instrument_sha256` — plus the timers per box,
 `Persistent` on each, `tally` on the coordinator sampler's PATH alone, and the
 one tmpfiles rule.
+
+2026-09-06 U-D15 (dotfiles#318): the `herdr-kitten` input moves BOTH its rev and
+its URL form — `git+file:///home/tom/mecattaf/herdr-kitten?rev=41a6de5` becomes
+`github:mecattaf/herdr-kitten/ccc16393cc35e2cce2b8cd9a55718b3c84849a8f` — and
+three lines are decided here.
+
+(1) **The `github:` form is taken, not deferred, because the Tom line that
+barred it has been TAKEN and recorded.** The first attempt at this unit
+(`receipt-parked-tomline9.json`, verdict STOPPED, branch head `25bf1dc9`)
+moved only the rev and deferred the URL form behind the herdr-kitten survey's
+**Q-7** — *"The repo is PRIVATE by standing wall. No executor flips
+visibility"* — after measuring `HTTP 404` on the `github:` URL and
+`{"isPrivate":true}` on the repo. That bar is now spent by
+`~/research-methods/RULINGS.md` **R-2026-09-06-22** *(Tom's line, 2026-09-06
+evening: "herdr kitten goes public is fine")*: `gh repo edit
+mecattaf/herdr-kitten --visibility public` was performed by the planning
+session at 20:31Z on that line, and the ruling names this unit — *"U-D15
+(dotfiles PR #324, the `github:` input) resumes with no Tom line left on it."*
+No executor of this unit ran any visibility command. RE-MEASURED 2026-09-06T22:05Z on
+the coordinator: `gh repo view mecattaf/herdr-kitten --json isPrivate,visibility`
+→ `{"isPrivate":false,"visibility":"PUBLIC"}`; `gh api repos/mecattaf/herdr-kitten`
+→ `updated_at 2026-09-06T20:31:56Z`, i.e. the ruling's own timestamp; and
+`nix flake metadata github:mecattaf/herdr-kitten/ccc16393…` resolves, unpacks,
+and reports narHash `sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=` —
+byte-identical to what `nix flake metadata --offline
+'git+file:///home/tom/mecattaf/herdr-kitten?rev=ccc16393…'` reports for the
+local checkout, so the fetcher changed and the object did not. Deferring a form
+whose only blocker a Tom line has already cleared would have shipped a flake
+that evaluates on exactly one box while reporting itself green, so the flip is
+taken and the earlier deferral withdrawn.
+
+(2) **The card's `mutation_hint` is honoured on flake.nix, because flake.lock
+cannot carry the string it counts.** "reintroduce the file:// URL → the grep
+count is 1" was executed literally: `flake.nix` back to `git+file://…`, then
+`nix flake lock --update-input herdr-kitten`. MEASURED: `grep -c 'git+file'
+flake.nix` = 1 (the card's "1"), `grep -c 'file:///home/tom' flake.lock` = 2,
+and `grep -c 'git+file' flake.lock` = **0 on both sides of the fault** — Nix
+writes a local git tree in the lock as `"type": "git"` + `"url":
+"file:///home/tom/…"`, never as `git+file`. So the DOMINANT's byte-exact lock
+grep is kept as clause B and cannot be the clause that goes red;
+`tests/herdr/test-herdr-kitten-input.sh` adds B2/B3/B4 (the same grep over
+flake.nix, `file:///home/tom` over both files, and the positive form — the URL
+is `github:mecattaf/herdr-kitten/<40 hex>` and the lock node agrees). Oracle rc
+0 green, rc 1 under the mutation with B2/B3/B4 red.
+
+Those greps read the whole of `flake.nix`, COMMENTS INCLUDED, and that is not a
+false positive to paper over: MEASURED 2026-09-06T22:10Z, a first draft of the
+new URL comment spelled the retired local URL out for contrast and the oracle
+went red on B2/B3 with the pin itself correct. So `flake.nix` never names the
+form it removed, not even nostalgically; the prose that does name it lives in
+`docs/herdr/herdr-kitten-input.md` and in this file, neither of which the oracle
+greps.
+
+(3) **The lock update the oracle names must be a NO-OP, and that is asserted.**
+Clause A0 runs `nix flake lock --update-input herdr-kitten` (falling back to
+`--offline`), then requires `flake.lock` byte-unchanged and restores it if not.
+That is both "after nix flake lock --update-input herdr-kitten" and the card's
+"re-applying the same card reports zero changes"; a pin that drifted on every
+re-run would satisfy neither. The script restores the lock a SECOND time on
+exit, because under the mutation Nix rewrites it again inside clause A
+(`nix flake check` fixes up a lock that no longer matches `flake.nix`,
+`--no-build` or not) — MEASURED: a mutated run otherwise leaves `flake.lock`
+dirty, i.e. a change nobody authorized. Every clause reads the mutated lock
+before that exit restore, so no red is masked: green run rc 0 with the tree
+byte-clean, mutated run rc 1 with `flake.lock` restored on the way out.
+
+(4) **The card's byte-exact DOMINANT does not discriminate this unit, and the
+mechanized form does — both MEASURED on the parent.** The first attempt's
+receipt recorded this as defect D-2 and it is still true of the card's three
+clauses taken byte-exactly. CONTROL, in a detached worktree at `origin/main`
+`cd917822` (removed after): `nix flake lock --update-input herdr-kitten` rc 0,
+`nix flake check --offline --no-build` rc 0, `grep -c 'git+file' flake.lock`
+**0**, `nix eval … home.packages` **`["herdr-kitten"]`** — every clause of the
+card green on a commit that still pins `41a6de5` over a local URL. Nix spells a
+local git tree `"type": "git"` + a bare `file://` URL in the lock, never
+`git+file`, so the card's grep cannot see the fault it names; and `hk` was
+already in the coordinator's packages before this unit.
+The same control under `bash tests/herdr/test-herdr-kitten-input.sh
+/tmp/ud15-control-…` exits **1** — B2 = 1, B3 = 2/1, B4 red twice, and the lock
+node reading `git -/- 41a6de5…`. So the discriminating acceptance for this unit
+is the script's B2/B3/B4 plus the no-op A0, not clause B alone; D-2 is answered
+by mechanism rather than argued away, and the card's own argv is kept verbatim
+as clause B inside it.
+
+Not decided here and deliberately untouched: the herdr TOPOLOGY. One server, on
+the coordinator (ruling B5); `#309` stays Tom's. The `home-profiles` check
+asserts that shape in both directions so a pin move cannot become a topology
+move. The switch that puts this pin on a box is `DEFERRED.md` DF-U-D15-1.

@@ -507,18 +507,18 @@
         ]
       },
       "locked": {
-        "lastModified": 1788295280,
-        "narHash": "sha256-Jhjo4B+RyGL2BQA+X/Tp7rzoU/rEcmEe749r2UFNjBI=",
-        "ref": "refs/heads/main",
-        "rev": "41a6de5cc945131ef98988898fcb67aec5da9340",
-        "revCount": 28,
-        "type": "git",
-        "url": "file:///home/tom/mecattaf/herdr-kitten"
+        "lastModified": 1788695454,
+        "narHash": "sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=",
+        "owner": "mecattaf",
+        "repo": "herdr-kitten",
+        "rev": "ccc16393cc35e2cce2b8cd9a55718b3c84849a8f",
+        "type": "github"
       },
       "original": {
-        "rev": "41a6de5cc945131ef98988898fcb67aec5da9340",
-        "type": "git",
-        "url": "file:///home/tom/mecattaf/herdr-kitten"
+        "owner": "mecattaf",
+        "repo": "herdr-kitten",
+        "rev": "ccc16393cc35e2cce2b8cd9a55718b3c84849a8f",
+        "type": "github"
       }
     },
     "home-manager": {

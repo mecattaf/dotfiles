@@ -220,16 +220,46 @@
     # fixpoint (F.3) — and keep it out of `rollingInputOverrides` (F.4) for the
     # same reason herdr is out: it fronts live PTYs.
     #
-    # URL: local git checkout at the reviewed rev while spec A's repo is
-    # pre-publication. It becomes `github:mecattaf/herdr-kitten/<rev>` (the URL
-    # its own README already documents) before this PR merges; the rev is the
-    # same object either way.
+    # URL — `github:mecattaf/herdr-kitten/<rev>`, the URL its own README
+    # documents and the same shape the `tally` input above uses for exactly the
+    # stated reason: "fleet auto-upgrades need no GitHub credential helper or
+    # access token". The local-checkout URL it replaces resolved only on THIS
+    # box — a `file://` git tree under /home/tom — so no other host could
+    # evaluate this flake at all; that is what U-D15 removed. (No `file://`
+    # spelling of it survives anywhere in this file or in flake.lock: that
+    # absence is an asserted clause of U-D15's oracle, not a tidiness.)
+    #
+    # The form is admissible because the Tom line that barred it has been taken:
+    # `~/research-methods/RULINGS.md` R-2026-09-06-22 ("herdr kitten goes public
+    # is fine") records `gh repo edit mecattaf/herdr-kitten --visibility public`
+    # run by the planning session at 20:31Z and names this unit — "U-D15 resumes
+    # with no Tom line left on it". No executor here ran a visibility command.
+    # MEASURED 2026-09-06T22:05Z on the coordinator:
+    # `gh repo view mecattaf/herdr-kitten --json isPrivate,visibility` answers
+    # `{"isPrivate":false,"visibility":"PUBLIC"}`, and `nix flake metadata
+    # github:mecattaf/herdr-kitten/ccc16393…` resolves to the same narHash
+    # (sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=) that the local
+    # `file://` git checkout under /home/tom reports for the SAME rev — the same
+    # object by content, not merely by rev name. (Neither spelling of the old
+    # local URL is written here, not even in a comment: the oracle greps this
+    # file for both, so a nostalgic mention would read as the fault.)
+    # The survey's Q-7 ("the repo is PRIVATE by standing wall. No executor flips
+    # visibility") is spent by that ruling, not overridden. Pinned BY REV and
+    # never by branch: this input fronts live PTYs, so it moves when Tom says so
+    # (F.4 keeps it out of rollingInputOverrides for the same reason herdr is
+    # out). See docs/herdr/herdr-kitten-input.md.
+    #
+    # REV: the merged head of `mecattaf/herdr-kitten` main past the round-2
+    # merges — U-C2…U-C5 (`97e4b9c`, `5e857f0`, `ccc1639`) and herdr-kitten #26's
+    # `homeManagerModules.default`. The previous pin `41a6de5` predates every one
+    # of them and installs a kitten that cannot load under kitty; RULING-kitten
+    # §0 rules that tree "must not ship", so no box may switch on it.
     #
     # Upstream pins herdr at the same dbc398f5 this flake does and follows its
     # nixpkgs; both are re-pointed at ours so one herdr and one nixpkgs serve
     # the whole closure.
     herdr-kitten = {
-      url = "git+file:///home/tom/mecattaf/herdr-kitten?rev=41a6de5cc945131ef98988898fcb67aec5da9340";
+      url = "github:mecattaf/herdr-kitten/ccc16393cc35e2cce2b8cd9a55718b3c84849a8f";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.herdr.follows = "herdr";
     };
@@ -1199,6 +1229,27 @@
           assert builtins.elem
             "d %h/.local/state/tally-rewrite/meters 0700 - - -"
             coordinatorHome.systemd.user.tmpfiles.rules;
+          # `hk` ON PATH (U-D15). home/herdr.nix consumes
+          # `inputs.herdr-kitten.packages.<sys>.herdr-kitten` and nothing else —
+          # no overlay of the input's own reaches our pkgs fixpoint (F.3) — so
+          # the ONLY way the CLI can be in this list is that consumption. This
+          # assert is the reason the input pin may never silently go missing:
+          # the niri terminal binds, the kitty gestures and the dictation route
+          # all shell out to `hk`.
+          assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten")
+            coordinatorHome.home.packages;
+          # …and the kitten half is addressed by STORE PATH out of a neutral
+          # ~/.config file, because kitty resolves a bare `kitten foo.py` against
+          # ~/.config/kitty, which is a whole-dir out-of-store symlink into the
+          # git tree. The generated action_alias must therefore name a
+          # /nix/store path ending in the kitten's own entry point; a pin that
+          # predates round2-01/03/04 (e.g. 41a6de5) ships a tree kitty cannot
+          # load at all, which is why the rev, not just the URL, is asserted
+          # material here.
+          assert nixpkgs.lib.hasInfix "/share/hk/kitten/hk.py"
+            coordinatorHome.xdg.configFile."kitty-herdr-nix.conf".text;
+          assert nixpkgs.lib.hasInfix "/nix/store/"
+            coordinatorHome.xdg.configFile."kitty-herdr-nix.conf".text;
           # The worker keeps Home Manager (unlike the NAS, which stops at NixOS):
           # it is an ordinary interactive box that merely has nobody sitting at
           # it, so the shell, atuin sync and niri session are all real. What it
@@ -1211,6 +1262,13 @@
           # …and the herdr SERVER. The worker still gets the herdr binary (it is
           # how `herdr --remote coordinator` works at all), just no unit.
           assert !(workerHome.systemd.user.services ? herdr);
+          # The BINARY, though, is the worker's too — the client is how you
+          # reach a server at all (`herdr --remote coordinator`), and `hk` rides
+          # with it. Asserting it here is what keeps U-D15's pin move from
+          # turning into a topology move: one server (ruling B5, #309 is Tom's),
+          # two clients, unchanged.
+          assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten")
+            workerHome.home.packages;
           # wayvnc's unit exists and is deliberately unreachable — this host has
           # no tailnet and :5900 is admitted on tailscale0 only, fleet-wide. The
           # unit stays so the screen becomes viewable the day that changes; see
@@ -1220,6 +1278,37 @@
             self.nixosConfigurations.worker.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
           assert !self.nixosConfigurations.worker.config.services.tailscale.enable;
           pkgs.runCommand "home-profiles" { } ''
+            touch "$out"
+          '';
+
+        # U-D15 — the herdr-kitten INPUT, end to end. home/herdr.nix emits ONE
+        # `action_alias` carrying a store path and kitty spends it as
+        # `map <chord> hk <gesture>`; if that path is wrong, or the tree behind
+        # it predates round2-01/03/04, every gesture dies inside kitty's own
+        # loader with nothing in this repo going red — which is exactly how the
+        # BUG-1/BUG-2 class shipped once already. So the alias is parsed back
+        # out of the coordinator's own generation here and the file it names is
+        # READ in the store. `nix flake check --offline --no-build` gets the
+        # eval half (the alias is a store path under THIS input's package and it
+        # ends at the kitten's entry point); a full `nix flake check` gets the
+        # build half (the entry point and the `hk` CLI are really there).
+        herdr-kitten-input =
+          let
+            lib = nixpkgs.lib;
+            herdr-kitten = inputs.herdr-kitten.packages.${system}.herdr-kitten;
+            conf =
+              self.nixosConfigurations.coordinator.config.home-manager.users.tom.xdg.configFile."kitty-herdr-nix.conf".text;
+            aliasLine = lib.findFirst (l: lib.hasPrefix "action_alias hk kitten " l) null (
+              lib.splitString "\n" conf
+            );
+            kittenPath = lib.last (lib.splitString " " aliasLine);
+          in
+          assert aliasLine != null;
+          assert lib.hasPrefix "${herdr-kitten}/" kittenPath;
+          assert lib.hasSuffix "/share/hk/kitten/hk.py" kittenPath;
+          pkgs.runCommand "herdr-kitten-input" { } ''
+            test -f ${herdr-kitten}/share/hk/kitten/hk.py
+            test -x ${herdr-kitten}/bin/hk
             touch "$out"
           '';
 
