@@ -655,6 +655,29 @@
               cp "$TMPDIR/out" $out
             '';
 
+        # The l8-flash reconciliation's own row (U-D16, #319, #293).
+        #
+        # home/dot_local/bin/l8-flash-probe gained a row that says whether the
+        # two HAND-WRITTEN claude-transcript-mirror units are still plain files
+        # in ~/.config/systemd/user. They are, today: removing them is Tom's
+        # shell act in P05 walkthrough step 4 (DEFERRED.md DF-U-D16-1), and it
+        # must not happen before the switch that replaces them. So the row ships
+        # RED, and a row that is red on the day it is written is exactly the row
+        # nobody notices has stopped working. It is asserted here instead, in a
+        # temp HOME, in all four states that matter: pair present, half
+        # deleted, gone, and — the one an `-e` test would get backwards —
+        # present as home-manager's own symlinks, which is the switch having
+        # SUCCEEDED. Hermetic: no systemd, no tally, no network.
+        l8-flash-probe-row =
+          pkgs.runCommand "l8-flash-probe-row"
+            { nativeBuildInputs = [ pkgs.gnugrep pkgs.gawk ]; }
+            ''
+              set -euo pipefail
+              L8_FLASH_PROBE=${./home/dot_local/bin/l8-flash-probe} \
+                bash ${./tests/l8-flash-probe/test-handwritten-row.sh} | tee "$TMPDIR/out"
+              cp "$TMPDIR/out" $out
+            '';
+
         nas-topology =
           let
             nas = self.nixosConfigurations.nas.config;
