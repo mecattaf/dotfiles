@@ -1174,10 +1174,11 @@
           assert coordinatorHome.systemd.user.services ? herdr;
           assert !(coordinatorHome.systemd.user.services.herdr.Unit ? PartOf);
           assert coordinatorHome.systemd.user.services.herdr.Install.WantedBy == [ "default.target" ];
-          # U-D12 / D-B48: exactly three coordinator-only feeder clocks, each
-          # at half the kernel policy's 60-second staleness bound. The row list
-          # lives on the service as data so tools/feeder-fixture.sh can prove
-          # the declared estate and its replay table are the same object.
+          # U-D12 / D-B54: exactly three coordinator-only feeder clocks. The
+          # enforced freshness arithmetic is period 30 + accuracy 1 + service
+          # cap 20 = 51 seconds, strictly inside the kernel's 60-second bound.
+          # Rows and duration live on the service as evaluated data so the
+          # fixture cannot silently replay a friendlier clock than the estate.
           assert coordinatorSeatFeeders == seatFeederNames;
           assert workerSeatFeeders == [ ];
           assert builtins.all (
@@ -1191,6 +1192,9 @@
             && timer.Timer.Unit == "${name}.service"
             && timer.Install.WantedBy == [ "timers.target" ]
             && service.Unit.X-TallyRows == seatFeederRows.${name}
+            && service.Unit.X-TallyTickSeconds == "60"
+            && service.Unit.X-TallyServiceDurationSeconds == "20"
+            && service.Service.TimeoutStartSec == "20s"
           ) seatFeederNames;
           assert builtins.elem
             "d %h/.local/state/tally-rewrite/meters 0700 - - -"

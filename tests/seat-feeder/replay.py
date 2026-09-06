@@ -14,6 +14,7 @@ import os
 import stat
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 TICK_SECONDS = 60
@@ -97,7 +98,7 @@ def check_config(coordinator_path, worker_path, timers, failures):
     if table_names != DECLARED_FEEDERS:
         fail(failures, f"C3 fixture timers are {table_names!r}, Nix has {DECLARED_FEEDERS!r}")
 
-    for unit, instrument, row_csv, cadence, accuracy in timers:
+    for unit, instrument, row_csv, cadence, accuracy, duration in timers:
         name = unit.removesuffix(".timer")
         timer = coordinator_timers.get(name)
         service = coordinator_services.get(name)
@@ -119,6 +120,8 @@ def check_config(coordinator_path, worker_path, timers, failures):
             fail(failures, f"C6 {unit} row list differs from {row_csv}")
         if service_unit.get("X-TallyTickSeconds") != str(TICK_SECONDS):
             fail(failures, f"C6 {unit} does not carry the policy tick")
+        if service_unit.get("X-TallyServiceDurationSeconds") != duration:
+            fail(failures, f"C6 {unit} service-duration cap differs from {duration}s")
         service_body = service.get("Service") or {}
         command = service_body.get("ExecStart") or []
         if isinstance(command, list):
@@ -130,6 +133,8 @@ def check_config(coordinator_path, worker_path, timers, failures):
             fail(failures, f"C8 {unit} has no rewrite meters path")
         if ".local/state/tally/meters" in json.dumps(service, sort_keys=True):
             fail(failures, f"C8 {unit} names the pinned live meters path")
+        if service_body.get("TimeoutStartSec") != f"{duration}s":
+            fail(failures, f"C8 {unit} does not enforce its {duration}s duration cap")
 
     expected_dir = "d %h/.local/state/tally-rewrite/meters 0700 - - -"
     if expected_dir not in (coordinator.get("tmpfiles") or []):
@@ -152,7 +157,11 @@ def feeder_environment(repo, workdir, when, target=None, overrides=None):
         "PYTHONDONTWRITEBYTECODE": "1",
     }
     if overrides:
-        environment.update(overrides)
+        for key, value in overrides.items():
+            if value is None:
+                environment.pop(key, None)
+            else:
+                environment[key] = value
     return environment
 
 
@@ -254,6 +263,151 @@ def row_grade(row):
     return None
 
 
+def delayed_claude_run(repo, workdir, case_name, delays):
+    """Observe the real feeder while credential-free readers finish over time."""
+    case = os.path.join(workdir, "claude-publication-" + case_name)
+    meters = os.path.join(case, "meters")
+    os.makedirs(os.path.join(case, "home"), mode=0o700)
+    os.makedirs(meters, mode=0o700)
+    environment = feeder_environment(
+        repo,
+        case,
+        START,
+        target=meters,
+        overrides={
+            # Use the real wall clock here. The normal 60-tick replay keeps its
+            # deterministic virtual clock.
+            "TALLY_FEEDER_NOW": None,
+            "TALLY_FIXTURE_READER_DELAYS": json.dumps(delays, sort_keys=True),
+        },
+    )
+    started = time.monotonic()
+    try:
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                os.path.join(repo, "home", "dot_local", "bin", "tally-seat-feeder"),
+                "claude",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=environment,
+        )
+    except OSError as error:
+        return {"error": f"could not start feeder: {error}", "rc": None}
+
+    seen = {}
+    paths = {seat: os.path.join(meters, seat + ".json") for seat in delays}
+    deadline = started + max(8.0, sum(delays.values()) + 3.0)
+    timed_out = False
+    while True:
+        now = time.monotonic()
+        for seat, path in paths.items():
+            if seat not in seen and os.path.isfile(path):
+                seen[seat] = now - started
+        if process.poll() is not None:
+            break
+        if now >= deadline:
+            timed_out = True
+            process.kill()
+            break
+        time.sleep(0.01)
+    _stdout, stderr = process.communicate()
+    finished = time.monotonic()
+    for seat, path in paths.items():
+        if seat not in seen and os.path.isfile(path):
+            seen[seat] = finished - started
+
+    stamp_lags = {}
+    for seat, path in paths.items():
+        if not os.path.isfile(path):
+            continue
+        try:
+            observed = row_observed_at(read_json(path))
+            if observed is not None:
+                stamp_lags[seat] = os.path.getmtime(path) - observed.timestamp()
+        except (OSError, ValueError):
+            continue
+    return {
+        "error": "wall-time publication check timed out" if timed_out else None,
+        "rc": process.returncode,
+        "runtime": finished - started,
+        "seen": seen,
+        "stamp_lags": stamp_lags,
+        "stderr": stderr.decode("utf-8", "replace").strip(),
+    }
+
+
+def check_claude_publication(repo, workdir, failures):
+    """Prove concurrent duration, stamp-at-write, and per-return publication."""
+    # 1.2 real seconds represents the production reader's 12-second timeout.
+    # At that 10:1 scale, the declared 20-second unit cap is 2.0 seconds. Three
+    # concurrent readers finish near 1.2 seconds; the old sequential loop takes
+    # at least 3.6 and crosses the scaled unit envelope.
+    runtime_case = delayed_claude_run(
+        repo,
+        workdir,
+        "runtime",
+        {"cc": 1.2, "cc2": 1.2, "cc3": 1.2},
+    )
+    if runtime_case.get("error"):
+        fail(failures, f"P1 {runtime_case['error']}")
+    if runtime_case.get("rc") != 0:
+        fail(
+            failures,
+            f"P1 delayed Claude feeder returned {runtime_case.get('rc')}: "
+            f"{runtime_case.get('stderr', '')}",
+        )
+    if runtime_case.get("runtime", 99.0) >= 2.0:
+        fail(
+            failures,
+            f"P1 Claude readers were not concurrent: scaled runtime "
+            f"{runtime_case.get('runtime', 0):.3f}s reached the 2.0s cap",
+        )
+
+    # A row's RFC3339 stamp is whole-second precision. Its file mtime may be
+    # less than one second later, plus a small write margin; anything older was
+    # stamped before its read rather than at publication.
+    for seat in ("cc", "cc2", "cc3"):
+        lag = (runtime_case.get("stamp_lags") or {}).get(seat)
+        if lag is None or not (-0.1 <= lag < 1.25):
+            fail(failures, f"P2 {seat} stamp-to-publish lag is {lag!r}s")
+
+    # Different completion times make batching observable. With per-return
+    # publication, cc and cc2 appear while slower readers are still running.
+    # The old `rows.append(...); for row in rows: write_row(...)` shape makes
+    # all three files appear together after the last read.
+    order_case = delayed_claude_run(
+        repo,
+        workdir,
+        "order",
+        {"cc": 0.4, "cc2": 1.2, "cc3": 2.0},
+    )
+    if order_case.get("error"):
+        fail(failures, f"P3 {order_case['error']}")
+    if order_case.get("rc") != 0:
+        fail(
+            failures,
+            f"P3 staggered Claude feeder returned {order_case.get('rc')}: "
+            f"{order_case.get('stderr', '')}",
+        )
+    seen = order_case.get("seen") or {}
+    if set(seen) != {"cc", "cc2", "cc3"}:
+        fail(failures, f"P3 staggered publication produced rows {sorted(seen)!r}")
+    elif seen["cc2"] - seen["cc"] < 0.3 or seen["cc3"] - seen["cc2"] < 0.3:
+        fail(
+            failures,
+            "P3 Claude rows were batched at the end instead of published as each read returned: "
+            f"cc={seen['cc']:.3f}s cc2={seen['cc2']:.3f}s cc3={seen['cc3']:.3f}s",
+        )
+    for seat in ("cc", "cc2", "cc3"):
+        lag = (order_case.get("stamp_lags") or {}).get(seat)
+        if lag is None or not (-0.1 <= lag < 1.25):
+            fail(failures, f"P4 staggered {seat} stamp-to-publish lag is {lag!r}s")
+
+    return runtime_case, order_case
+
+
 def validate_seeded_rows(meters, rows, failures):
     expected_ids = sorted(row_id for row_id, *_rest in rows)
     actual_ids = sorted(
@@ -278,7 +432,7 @@ def validate_seeded_rows(meters, rows, failures):
         if row_grade(payload) != grade:
             fail(failures, f"R4 {row_id}.json grade differs from {grade}")
         if row_observed_at(payload) != START:
-            fail(failures, f"R5 {row_id}.json did not preserve the source time")
+            fail(failures, f"R5 {row_id}.json was not stamped at virtual publication")
 
     for row_id in ("cc", "cc2"):
         window = by_id.get(row_id, {}).get("window") or {}
@@ -353,7 +507,7 @@ def probe_rows(log, meters, rows, fed, when, tick, phase, ages, failures):
                     "phase": phase,
                     "row": row_id,
                     "tick": tick,
-                    "timer": fed.get(row_id, ("<none>", "", 0, 0))[0],
+                    "timer": fed.get(row_id, ("<none>", "", 0, 0, 0))[0],
                 },
                 sort_keys=True,
             )
@@ -394,7 +548,7 @@ def probe_admit(log, binary, workdir, meters, fed, when, tick, phase, failures):
         "row": PROBE_ROW,
         "signal": decision.get("signal"),
         "tick": tick,
-        "timer": fed.get(PROBE_ROW, ("<none>", "", 0, 0))[0],
+        "timer": fed.get(PROBE_ROW, ("<none>", "", 0, 0, 0))[0],
     }
     log.write(json.dumps(event, sort_keys=True) + "\n")
     if event["age_ms"] is None or event["age_ms"] > TICK_MILLISECONDS:
@@ -419,7 +573,7 @@ def replay(args):
     os.makedirs(os.path.join(workdir, "home"), mode=0o700, exist_ok=True)
 
     try:
-        timers = read_table(os.path.join(repo, "tests", "seat-feeder", "timers.tsv"), 5)
+        timers = read_table(os.path.join(repo, "tests", "seat-feeder", "timers.tsv"), 6)
         rows = read_table(os.path.join(repo, "tests", "seat-feeder", "rows.tsv"), 4)
     except (OSError, ValueError) as error:
         print(f"replay: fixture table error: {error}", file=sys.stderr)
@@ -429,6 +583,7 @@ def replay(args):
     check_config(args.coordinator_config, args.worker_config, timers, failures)
     check_live_tree_refusal(repo, workdir, failures)
     check_codex_read_boundary(repo, workdir, failures)
+    runtime_case, order_case = check_claude_publication(repo, workdir, failures)
 
     # Seed every row independently of the timer table. Removing a timer then
     # leaves a real but ageing observation, which is precisely the mutation.
@@ -449,15 +604,16 @@ def replay(args):
 
     fed = {}
     timer_specs = []
-    for unit, instrument, row_csv, cadence, accuracy in timers:
+    for unit, instrument, row_csv, cadence, accuracy, duration in timers:
         try:
             cadence_value = int(cadence)
             accuracy_value = int(accuracy)
+            duration_value = int(duration)
         except ValueError:
-            fail(failures, f"T0 {unit} has a non-integer cadence/accuracy")
+            fail(failures, f"T0 {unit} has a non-integer cadence/accuracy/duration")
             continue
-        if cadence_value <= 0 or accuracy_value < 0:
-            fail(failures, f"T0 {unit} has an invalid cadence/accuracy")
+        if cadence_value <= 0 or accuracy_value < 0 or duration_value <= 0:
+            fail(failures, f"T0 {unit} has an invalid cadence/accuracy/duration")
             continue
         if cadence_value * 2 > TICK_SECONDS:
             fail(
@@ -465,45 +621,127 @@ def replay(args):
                 f"T2 {unit} cadence {cadence_value}s exceeds half the "
                 f"{TICK_SECONDS}s staleness bound",
             )
-        nominal_at = START + timedelta(seconds=cadence_value)
+        if cadence_value + accuracy_value + duration_value >= TICK_SECONDS:
+            fail(
+                failures,
+                f"T3 {unit} permits {cadence_value}+{accuracy_value}+{duration_value}="
+                f"{cadence_value + accuracy_value + duration_value}s, not inside the "
+                f"{TICK_SECONDS}s staleness bound",
+            )
+        if duration_value >= cadence_value:
+            fail(
+                failures,
+                f"T4 {unit} duration {duration_value}s can overlap its "
+                f"{cadence_value}s period",
+            )
         timer_specs.append(
             {
                 "accuracy": accuracy_value,
                 "cadence": cadence_value,
-                "fire_at": nominal_at + timedelta(seconds=accuracy_value),
+                "duration": duration_value,
                 "instrument": instrument,
-                "nominal_at": nominal_at,
                 "rows": row_csv,
                 "unit": unit,
             }
         )
         for row_id in row_csv.split(","):
-            fed[row_id] = (unit, instrument, cadence_value, accuracy_value)
+            fed[row_id] = (
+                unit,
+                instrument,
+                cadence_value,
+                accuracy_value,
+                duration_value,
+            )
     for row_id, *_rest in rows:
         if row_id not in fed:
             fail(failures, f"T1 no fixture timer feeds {row_id}")
 
     probes = 0
+    in_flight_probes = 0
     row_age_checks = 0
     row_ages = []
     policy_probe_accuracy = max((spec["accuracy"] for spec in timer_specs), default=0)
-    with open(args.log, "w", encoding="utf-8") as log:
-        for tick in range(1, args.ticks + 1):
-            tick_at = START + timedelta(seconds=TICK_SECONDS * tick)
-            probe_at = tick_at + timedelta(seconds=policy_probe_accuracy)
+    horizon = START + timedelta(
+        seconds=TICK_SECONDS * args.ticks + policy_probe_accuracy
+    )
 
-            # OnUnitActiveSec is relative to the previous activation. Its next
-            # nominal deadline is therefore previous_fire + cadence; systemd
-            # may activate at nominal + AccuracySec. Probe immediately BEFORE
-            # that latest legal firing, where row age is maximal, then execute
-            # every timer sharing the deadline. At 30s/1s every such probe sees
-            # 31s. Raising the period to 60s makes the first real admit see 61s
-            # and SLOW stale_observation.
-            while timer_specs and min(spec["fire_at"] for spec in timer_specs) <= probe_at:
-                fire_at = min(spec["fire_at"] for spec in timer_specs)
-                due = [spec for spec in timer_specs if spec["fire_at"] == fire_at]
+    # Build one chronological event stream. A run starts at its latest legal
+    # timer expiry and remains in flight for the service's entire hard cap.
+    # Publication happens only at completion in this conservative model; the
+    # real Claude feeder normally publishes individual seats earlier. Policy
+    # probes and the explicit midpoint probe can therefore land during a run.
+    timeline = {}
+
+    def events_at(when):
+        return timeline.setdefault(
+            when,
+            {"in_flight": [], "policy": [], "publishes": [], "starts": []},
+        )
+
+    for tick in range(1, args.ticks + 1):
+        when = START + timedelta(
+            seconds=TICK_SECONDS * tick + policy_probe_accuracy
+        )
+        events_at(when)["policy"].append(tick)
+
+    for spec in timer_specs:
+        start_at = START + timedelta(seconds=spec["cadence"] + spec["accuracy"])
+        while start_at <= horizon:
+            finish_at = start_at + timedelta(seconds=spec["duration"])
+            tick = min(
+                args.ticks,
+                max(1, int((start_at - START).total_seconds() // TICK_SECONDS) + 1),
+            )
+            run = {
+                "finish_at": finish_at,
+                "spec": spec,
+                "start_at": start_at,
+                "tick": tick,
+            }
+            events_at(start_at)["starts"].append(run)
+            midpoint = start_at + timedelta(seconds=spec["duration"] / 2)
+            if midpoint <= horizon:
+                events_at(midpoint)["in_flight"].append(run)
+            if finish_at <= horizon:
+                events_at(finish_at)["publishes"].append(run)
+            # OnUnitActiveSec is relative to the prior activation. Apply the
+            # full AccuracySec again to model the worst legal next activation.
+            start_at += timedelta(seconds=spec["cadence"] + spec["accuracy"])
+
+    with open(args.log, "w", encoding="utf-8") as log:
+        for when in sorted(timeline):
+            event = timeline[when]
+
+            if event["starts"]:
+                tick = min(run["tick"] for run in event["starts"])
+                for run in event["starts"]:
+                    spec = run["spec"]
+                    log.write(
+                        json.dumps(
+                            {
+                                "accuracy_sec": spec["accuracy"],
+                                "at": rfc3339(when),
+                                "duration_sec": spec["duration"],
+                                "event": "service-start",
+                                "finish_at": rfc3339(run["finish_at"]),
+                                "instrument": spec["instrument"],
+                                "tick": run["tick"],
+                                "unit": spec["unit"],
+                            },
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
                 row_age_checks += probe_rows(
-                    log, meters, rows, fed, fire_at, tick, "pre-fire", row_ages, failures
+                    log,
+                    meters,
+                    rows,
+                    fed,
+                    when,
+                    tick,
+                    "service-start",
+                    row_ages,
+                    failures,
                 )
                 probes += probe_admit(
                     log,
@@ -511,24 +749,104 @@ def replay(args):
                     workdir,
                     meters,
                     fed,
-                    fire_at,
+                    when,
                     tick,
-                    "pre-fire",
+                    "service-start",
                     failures,
                 )
 
-                for spec in due:
-                    process = run_feeder(repo, workdir, spec["instrument"], fire_at)
+            if event["in_flight"]:
+                tick = min(run["tick"] for run in event["in_flight"])
+                in_flight_probes += 1
+                row_age_checks += probe_rows(
+                    log,
+                    meters,
+                    rows,
+                    fed,
+                    when,
+                    tick,
+                    "service-in-flight",
+                    row_ages,
+                    failures,
+                )
+                probes += probe_admit(
+                    log,
+                    args.admit,
+                    workdir,
+                    meters,
+                    fed,
+                    when,
+                    tick,
+                    "service-in-flight",
+                    failures,
+                )
+
+            # A policy probe coincident with completion is conservatively
+            # ordered before publication: an arbitrary caller can win that
+            # race, so the old row must still be fresh.
+            for tick in event["policy"]:
+                row_age_checks += probe_rows(
+                    log,
+                    meters,
+                    rows,
+                    fed,
+                    when,
+                    tick,
+                    "policy-probe",
+                    row_ages,
+                    failures,
+                )
+                probes += probe_admit(
+                    log,
+                    args.admit,
+                    workdir,
+                    meters,
+                    fed,
+                    when,
+                    tick,
+                    "policy-probe",
+                    failures,
+                )
+
+            if event["publishes"]:
+                tick = min(run["tick"] for run in event["publishes"])
+                row_age_checks += probe_rows(
+                    log,
+                    meters,
+                    rows,
+                    fed,
+                    when,
+                    tick,
+                    "pre-publish",
+                    row_ages,
+                    failures,
+                )
+                probes += probe_admit(
+                    log,
+                    args.admit,
+                    workdir,
+                    meters,
+                    fed,
+                    when,
+                    tick,
+                    "pre-publish",
+                    failures,
+                )
+
+                for run in event["publishes"]:
+                    spec = run["spec"]
+                    process = run_feeder(repo, workdir, spec["instrument"], when)
                     log.write(
                         json.dumps(
                             {
                                 "accuracy_sec": spec["accuracy"],
-                                "at": rfc3339(fire_at),
-                                "event": "timer",
+                                "at": rfc3339(when),
+                                "duration_sec": spec["duration"],
+                                "event": "service-publish",
                                 "instrument": spec["instrument"],
-                                "nominal_at": rfc3339(spec["nominal_at"]),
                                 "rc": process.returncode,
-                                "tick": tick,
+                                "started_at": rfc3339(run["start_at"]),
+                                "tick": run["tick"],
                                 "unit": spec["unit"],
                             },
                             sort_keys=True,
@@ -538,49 +856,29 @@ def replay(args):
                     if process.returncode != 0:
                         fail(
                             failures,
-                            f"tick {tick}: {spec['unit']} returned {process.returncode}: "
+                            f"tick {run['tick']}: {spec['unit']} returned "
+                            f"{process.returncode}: "
                             f"{process.stderr.decode('utf-8', 'replace').strip()}",
                         )
-                    spec["nominal_at"] = fire_at + timedelta(seconds=spec["cadence"])
-                    spec["fire_at"] = spec["nominal_at"] + timedelta(
-                        seconds=spec["accuracy"]
-                    )
 
-            # The ordinary policy probe is itself after the declared timer
-            # accuracy, never at an idealized nominal tick. Any firing whose
-            # latest legal expiry is this instant has already executed above.
-            row_age_checks += probe_rows(
-                log,
-                meters,
-                rows,
-                fed,
-                probe_at,
-                tick,
-                "policy-probe",
-                row_ages,
-                failures,
-            )
-            probes += probe_admit(
-                log,
-                args.admit,
-                workdir,
-                meters,
-                fed,
-                probe_at,
-                tick,
-                "policy-probe",
-                failures,
-            )
-
-            # Even if config/table drift was already found, execute through the
-            # first policy probe: under either mutation the real-kernel
-            # boundary evidence matters more than an early structural exit.
-            if failures:
+            # Structural/publication mutations still run through the first
+            # policy probe, leaving real-kernel evidence in the log.
+            if event["policy"] and failures:
                 break
 
     print(
+        "replay: Claude wall check runtime "
+        f"{runtime_case.get('runtime', 0):.3f}s; staggered publishes "
+        + ", ".join(
+            f"{seat}={(order_case.get('seen') or {}).get(seat, -1):.3f}s"
+            for seat in ("cc", "cc2", "cc3")
+        )
+    )
+
+    print(
         f"replay: {args.ticks} ticks requested, {probes} real tally-admit probes, "
-        f"{row_age_checks} row-age checks, maximum row age "
+        f"{in_flight_probes} during service runs, {row_age_checks} row-age checks, "
+        "maximum row age "
         f"{max(row_ages, default='none')}ms, log {args.log}"
     )
     if failures:

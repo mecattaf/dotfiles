@@ -65,8 +65,8 @@ let
   # home/tally.nix's capacity oracle and home/harness-records.nix's recorders:
   # a threshold or a row field is retuned by editing a file, not by a rebuild.
   # Its delivered sha256 is
-  # 8c67fba64c814347f5cd491e062d5a38f670eb9371ec97ee7acfcbcc9c4aa550;
-  # the first U-D12 commit records the same digest, following UTIL-01's motion.
+  # 76fb8cb9f3baacc1737a56b7508ed90bf12ff5e693586945dc86333fb019ff00;
+  # the D-B54 repair commit records the same digest, following UTIL-01's motion.
   # A systemd user unit inherits no interactive PATH, so each unit supplies its
   # own.
   feeder = "%h/.local/bin/tally-seat-feeder";
@@ -82,13 +82,16 @@ let
   # branch (a)'s and pinned; the two estates never share a path.
   metersDir = "%h/.local/state/tally-rewrite/meters";
 
-  # Policy::default().tick_ms = 60_000 and stale_ticks = 1. D-B48 requires a
-  # feeder period no greater than HALF that bound: with the declared 1-second
-  # timer accuracy, the longest permitted gap is 31 seconds, leaving margin
-  # below the kernel's 60-second refusal boundary.
+  # Policy::default().tick_ms = 60_000 and stale_ticks = 1. D-B54 completes
+  # D-B48: the period, timer accuracy, AND whole service duration belong in the
+  # bound. 30 + 1 + 20 = 51 seconds, strictly inside the 60-second refusal
+  # boundary. TimeoutStartSec below makes the 20-second term an enforced cap,
+  # not a timing hope; the feeder's concurrent 12-second readers leave eight
+  # seconds for shaping and atomic publication.
   policyTickSeconds = 60;
   feederPeriodSeconds = 30;
   timerAccuracySeconds = 1;
+  serviceDurationSeconds = 20;
 
   instruments = {
     claude = {
@@ -133,6 +136,7 @@ let
       # systemd's own extension space and are ignored by the manager.
       X-TallyRows = lib.concatStringsSep "," spec.rows;
       X-TallyTickSeconds = toString policyTickSeconds;
+      X-TallyServiceDurationSeconds = toString serviceDurationSeconds;
     };
     Service = {
       # One stamp per invocation. There is no loop in the program — the timer
@@ -148,10 +152,10 @@ let
       ]
       ++ spec.environment;
       ExecStart = "${feeder} ${name}";
-      # Retain the delivered 50-second service ceiling: the three sequential
-      # Claude readers each have a 12-second internal timeout, and failures
-      # become UNKNOWN rows rather than an unbounded service.
-      TimeoutStartSec = "${toString (policyTickSeconds - 10)}s";
+      # D-B54's hard duration term. A oneshot still active after this deadline
+      # is terminated and the unit is FAILED; it cannot silently publish a row
+      # outside the arithmetic above.
+      TimeoutStartSec = "${toString serviceDurationSeconds}s";
     };
   };
 
@@ -175,6 +179,7 @@ let
 
   named = f: lib.mapAttrs' (name: spec: lib.nameValuePair "tally-seat-feeder-${name}" (f name spec));
 in
+assert feederPeriodSeconds + timerAccuracySeconds + serviceDurationSeconds < policyTickSeconds;
 {
   systemd.user.services = lib.mkIf isCoordinator (named service instruments);
   systemd.user.timers = lib.mkIf isCoordinator (named timer instruments);

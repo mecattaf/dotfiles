@@ -1,9 +1,10 @@
 # tests/seat-feeder/timers.tsv — the fixture's timer table (U-D12, dotfiles#315).
 #
 # ONE LINE PER DECLARED TIMER. tools/feeder-fixture.sh replays 60 policy ticks
-# over this table. Before every firing it probes at the latest legal expiry —
-# the timer's nominal deadline plus AccuracySec — then runs the instrument and
-# probes again after each policy tick. Every probe must read age <= 1 tick.
+# over this table. Every firing starts at its latest legal expiry (the nominal
+# deadline plus AccuracySec), occupies service_duration_sec, and publishes at
+# completion. Probes land at start, midpoint, policy times, and immediately
+# before publication. Every probe must read age <= 1 tick.
 #
 # THIS TABLE IS ALSO THE MUTATION. The manifest's mutation_hint is "remove the
 # timer from the fixture -> the next probe reads SLOW stale_observation -> RED".
@@ -27,6 +28,7 @@
 #   rows                  comma-separated row ids this timer re-stamps
 #   on_unit_active_sec    cadence; D-B48 caps it at half the 60-second bound
 #   accuracy_sec          worst-case systemd timer expiry delay
-tally-seat-feeder-claude.timer	claude	cc,cc2,cc3	30	1
-tally-seat-feeder-codex.timer	codex	codex	30	1
-tally-seat-feeder-pi-qwencloud.timer	pi-qwencloud	pi-qwencloud	30	1
+#   service_duration_sec  hard TimeoutStartSec cap; 30 + 1 + 20 < 60 (D-B54)
+tally-seat-feeder-claude.timer	claude	cc,cc2,cc3	30	1	20
+tally-seat-feeder-codex.timer	codex	codex	30	1	20
+tally-seat-feeder-pi-qwencloud.timer	pi-qwencloud	pi-qwencloud	30	1	20

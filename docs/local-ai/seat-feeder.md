@@ -25,13 +25,18 @@ seat within one clock. It still publishes three independent rows: `cc` and
 grouping is carried by each service's `X-TallyRows` field and asserted in the
 flake check.
 
-All services use `OnUnitActiveSec=30s`, `AccuracySec=1s`, and
-`WantedBy=timers.target`. D-B48 makes the period at most half the kernel's
-60-second staleness bound, so the worst legal timer gap is 31 seconds rather
-than 61. The worker configuration evaluates with no feeder unit. The program
-gives each external read at most 12 seconds, so all three Claude reads fit
-inside the service's 50-second deadline; a read that cannot finish becomes
-UNKNOWN instead of delaying the next tick.
+All services use `OnUnitActiveSec=30s`, `AccuracySec=1s`, a hard
+`TimeoutStartSec=20s`, and `WantedBy=timers.target`. D-B54's enforced
+worst-case arithmetic is `30 + 1 + 20 = 51 < 60` seconds: period plus timer
+accuracy plus the whole service duration remains inside the kernel's
+staleness bound. A service still active at 20 seconds is terminated and its
+unit fails; it cannot silently publish outside that envelope. The worker
+configuration evaluates with no feeder unit.
+
+The Claude service runs its three readers concurrently. Each reader retains
+its 12-second timeout, leaving eight seconds inside the service cap for row
+shaping and publication. As each read returns, that seat is shaped and written
+immediately; a slow seat cannot hold completed seats in a batch.
 
 ## Source boundaries
 
@@ -40,6 +45,12 @@ consumes only its JSON result; it never opens a credential file itself and
 drops the reader's stderr. When that reader returns its bounded cache, the
 feeder writes a current UNKNOWN result naming the cached source timestamp.
 Re-stamping old values as fresh MEASURED would manufacture headroom.
+
+Every row's `observed_at` (and an UNKNOWN row's `updated_at` / `taken_at`) is
+sampled inside the atomic write path, after its read returned. A reader's own
+timestamp is retained only as `source.source_observed_at`; it never becomes
+the row-age clock. This makes a newly landed row age from publication rather
+than from service start.
 
 The Codex reader recursively opens only `.jsonl` files below
 `~/.codex/sessions`. It takes `used_percent`, `window_minutes`, and `resets_at`
@@ -76,12 +87,18 @@ sentinel byte-for-byte.
 
 The fixture builds U-B10's merged `tally-admit` offline into a temporary target;
 it does not duplicate the kernel's admission ladder. It seeds all five rows,
-replays all three declared clocks for 60 policy ticks, and probes every row at
-each clock's worst-case expiry (`nominal + AccuracySec`) before the feeder
-writes. It also probes after every policy tick. The otherwise-GO Codex row goes
-through the real kernel at every probe; UNKNOWN rows have their source age
-checked directly. Both meter files and admission receipts stay below the
-fixture's temporary HOME.
+replays all three declared clocks for 60 policy ticks, and makes every service
+occupy its full declared 20 seconds. It probes at service start, halfway
+through the run, at policy-probe times, and immediately before publication.
+The otherwise-GO Codex row goes through the real kernel at every probe;
+UNKNOWN rows have their publication age checked directly. The conservative
+maximum is 51 seconds on the first run. Both meter files and admission receipts
+stay below the fixture's temporary HOME.
+
+A credential-free wall-time check drives the real feeder with equal delayed
+readers to prove concurrency, then staggered delayed readers to prove `cc` and
+`cc2` appear while slower reads are still running. It also compares each file
+mtime with its row stamp, catching a timestamp taken before the read.
 
 Run the DOMINANT clauses from the repository root:
 
@@ -104,4 +121,7 @@ The original mutation removes the `tally-seat-feeder-codex.timer` line from
 the real kernel reads age 61000ms and answers SLOW `stale_observation`. D-B48's
 regression mutation raises all periods back to 60 seconds: the first maximally
 delayed firing is at 61 seconds, and the pre-fire real-kernel probe gives the
-same RED. The fixture exits 1 and names the signal, reason, and age.
+same RED. D-B54's publication mutation changes `as_completed(futures)` to
+`list(as_completed(futures))`, recreating batch-at-end without changing any
+input; the staggered wall-time run then turns RED because all three files land
+together. The fixture exits 1 and names the failed property.

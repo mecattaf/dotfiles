@@ -22,6 +22,7 @@ with a `reason`; exit 0 on MEASURED, 2 on UNKNOWN.
 import json
 import os
 import sys
+import time
 
 SEATS = {
     "cc": {
@@ -49,6 +50,16 @@ def main(argv):
         sys.stderr.write("stamp-receipt-fixture: usage: window --seat <seat>\n")
         return 64
     seat = argv[3]
+    # Publication-order checks give this credential-free reader small,
+    # deliberate wall delays. Normal 60-tick replay leaves the variable unset.
+    # The JSON mapping avoids any shell evaluation in the fixture.
+    try:
+        delays = json.loads(os.environ.get("TALLY_FIXTURE_READER_DELAYS", "{}"))
+        delay = float(delays.get(seat, 0))
+    except (AttributeError, TypeError, ValueError):
+        delay = 0
+    if delay > 0:
+        time.sleep(delay)
     out = dict(SEATS.get(seat) or {"grade": "UNKNOWN", "reason": f"no such seat {seat!r}"})
     out["seat"] = seat
     # The real reader stamps its source time.  The replay pins the clock for

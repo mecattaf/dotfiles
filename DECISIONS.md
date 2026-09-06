@@ -49,14 +49,21 @@ UNKNOWN row is rejected by the meter decoder before a Decision carries age;
 those rows' source timestamps are checked separately over the same 60 ticks.
 The fixture refuses to substitute a second admission implementation.
 
-(3) **A source timestamp remains the observation timestamp.** In particular,
-`stamp-receipt.py window` may return its bounded cache during a 429; the feeder
-turns that into a current UNKNOWN read naming the cached source time instead of
-re-labelling old numbers as fresh MEASURED. A
+(3) **D-B54 supersedes the original source-time line: the row observation is
+stamped at publication, after the read.** A reader's timestamp remains source
+metadata only. In particular, `stamp-receipt.py window` may return its bounded
+cache during a 429; the feeder turns that into a current UNKNOWN read naming
+the cached source time instead of re-labelling old numbers as fresh MEASURED. A
 Codex `rate_limits` record missing any of `used_percent`, `window_minutes`, or
 `resets_at` becomes a fresh UNKNOWN row. `pi-qwencloud` declares no `window`
 cell at all: absent means UNKNOWN, while `kind: none` would falsely describe a
 non-spendable device.
+
+(4) **D-B54's duration term is an enforced envelope, not a nominal runtime.**
+The three 12-second Claude reads run concurrently and publish independently;
+the unit fails at 20 seconds. With the 30-second period and one-second timer
+accuracy, the worst permitted age is `30 + 1 + 20 = 51 < 60` seconds. The
+fixture advances services through that full duration and admits during runs.
 
 2026-09-06 U-D17 (dotfiles#320): the manifest's DOMINANT oracle for the
 `util-01-sampler` reconciliation is `PR #314 merged (gh pr view 314 --json state

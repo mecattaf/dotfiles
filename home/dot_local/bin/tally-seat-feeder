@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tally-seat-feeder — re-stamp one owned seat row at the policy tick.
+"""tally-seat-feeder — re-stamp owned seat rows inside the policy bound.
 
 U-D12 DF-SEAT-FEEDER (dotfiles#315). CARD: /home/tom/sept7/plan/
 TALLY-SPEC-2026-09-06.md section 2.4 "Freshness and the feeder".
@@ -30,7 +30,9 @@ THE THREE INSTRUMENTS (the manifest's three timers):
                 program never opens ~/.claude*/.credentials.json, never
                 sees a token, and stores only the two utilization numbers
                 and their reset stamps. cc and cc2 are two pools (D-B5):
-                two rows, two reset clocks, never summed.
+                two rows, two reset clocks, never summed. All three reads
+                run concurrently and each row is stamped and published as
+                its own read returns (D-B54).
 
   codex         Reads the `rate_limits` records Codex itself writes into
                 its rollouts (~/.codex/sessions/**/*.jsonl): used_percent,
@@ -70,6 +72,7 @@ import os
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 SCHEMA_SEAT = "seat-meter/1"
@@ -87,9 +90,9 @@ KILL_GRACE_SECONDS = 10
 # section 1.1 measured. pi-qwencloud has none it can prove: absent, not zero.
 CONTEXT_WINDOW = {"claude": 200_000, "codex": 258_400}
 
-# Three sequential readers must finish before the 50-second unit deadline.  A
-# wedged or rate-limited endpoint therefore becomes a fresh UNKNOWN row rather
-# than making the timer miss the next policy tick.
+# The three readers run concurrently. Each is individually bounded at 12
+# seconds, leaving eight seconds inside the systemd service's 20-second hard
+# cap for row shaping and atomic publication (D-B54).
 CLAUDE_READER_TIMEOUT_SECONDS = 12
 
 PI_UNKNOWN_REASON = (
@@ -113,16 +116,16 @@ def rfc3339(dt):
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def source_time(value, fallback):
-    """Normalize a source timestamp, preserving fallback on malformed input."""
+def source_time(value):
+    """Normalize a source timestamp for metadata; never use it as row age."""
     if not isinstance(value, str) or not value.strip():
-        return fallback
+        return None
     try:
         parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     except ValueError:
-        return fallback
+        return None
     if parsed.tzinfo is None:
-        return fallback
+        return None
     return rfc3339(parsed)
 
 
@@ -150,7 +153,7 @@ def meters_dir():
 
 
 def write_row(directory, row_id, payload):
-    """Atomically publish one row. A half-written row is never observable."""
+    """Stamp and atomically publish one row; a half-write is never visible."""
     # Home Manager's tmpfiles rule owns the directory.  If it is absent, fail
     # visibly instead of letting an impure service invent deployment state.
     if not os.path.isdir(directory):
@@ -158,6 +161,15 @@ def write_row(directory, row_id, payload):
     path = os.path.join(directory, row_id + ".json")
     fd, tmp = tempfile.mkstemp(dir=directory, prefix="." + row_id + ".", suffix=".tmp")
     try:
+        # D-B54: this is the observation clock. It is sampled only after the
+        # external read has returned and immediately before the row is written,
+        # never at service start. UNKNOWN readings are observations too.
+        published_at = rfc3339(now_dt())
+        payload["observed_at"] = published_at
+        if payload.get("schema_version") == SCHEMA_EXP:
+            payload["updated_at"] = published_at
+        for reading in payload.get("readings") or []:
+            reading["taken_at"] = published_at
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(payload, fh, indent=2, sort_keys=True)
             fh.write("\n")
@@ -169,15 +181,14 @@ def write_row(directory, row_id, payload):
         except OSError:
             pass
         raise
-    return path
+    return path, payload
 
 
-def base_row(row_id, owner, observed_at):
+def base_row(row_id, owner):
     return {
         "schema_version": SCHEMA_SEAT,
         "seat": row_id,
         "owner": owner,
-        "observed_at": observed_at,
         "per_attempt_token_cap": PER_ATTEMPT_TOKEN_CAP,
         "checkpoint_grace_seconds": CHECKPOINT_GRACE_SECONDS,
         "kill_grace_seconds": KILL_GRACE_SECONDS,
@@ -185,7 +196,7 @@ def base_row(row_id, owner, observed_at):
     }
 
 
-def unknown_row(row_id, owner, observed_at, reason, source=None):
+def unknown_row(row_id, owner, reason, source=None):
     """A row that refuses, in the shape the kernel already refuses on.
 
     exp002-meter/1 with a null utilization and capacity.grade UNKNOWN is the
@@ -193,12 +204,9 @@ def unknown_row(row_id, owner, observed_at, reason, source=None):
     observation_unusable on it. A refusing row still carries its observation
     time, which is the whole point of the feeder — the refusal is fresh.
     """
-    row = base_row(row_id, owner, observed_at)
+    row = base_row(row_id, owner)
     row["schema_version"] = SCHEMA_EXP
-    row["updated_at"] = observed_at
-    row["readings"] = [
-        {"taken_at": observed_at, "numbers": {"utilization_pct": None, "total_tokens": 0}}
-    ]
+    row["readings"] = [{"numbers": {"utilization_pct": None, "total_tokens": 0}}]
     row["capacity"] = {"grade": "UNKNOWN", "reason": reason}
     if source is not None:
         row["source"] = source
@@ -248,27 +256,27 @@ def read_claude_seat(seat):
     return out, None
 
 
-def claude_row(seat, observed_at):
-    reading, reason = read_claude_seat(seat)
+def claude_row(seat, reading, reason):
     source = {"kind": "oauth-usage-endpoint", "reader": "stamp-receipt.py window", "seat": seat}
     if reading is not None:
-        source_observed_at = source_time(reading.get("observed_at"), observed_at)
+        source_observed_at = source_time(reading.get("observed_at"))
+        if source_observed_at is not None:
+            source["source_observed_at"] = source_observed_at
         # stamp-receipt.py can explicitly return its <120-second cache during
         # an endpoint 429.  A cache is useful diagnostic evidence, but it is
-        # not a new allowance observation.  Publish the current failed read as
-        # UNKNOWN instead of re-labelling cached numbers as fresh MEASURED.
+        # not a new allowance measurement. Publish the current failed read as
+        # UNKNOWN, stamped when this row is written, instead of re-labelling
+        # cached numbers as fresh MEASURED.
         if reading.get("from_cache_seconds") is not None:
             return unknown_row(
                 seat,
                 "tom",
-                observed_at,
                 f"the sanctioned reader returned a cached observation "
                 f"({reading.get('from_cache_seconds')}s old); freshness was not invented",
-                {**source, "cached_observed_at": source_observed_at},
+                source,
             )
-        observed_at = source_observed_at
     if reading is None or reason is not None:
-        return unknown_row(seat, "tom", observed_at, reason, source)
+        return unknown_row(seat, "tom", reason, source)
 
     def span(key, minutes):
         cell = reading.get(key) or {}
@@ -287,11 +295,10 @@ def claude_row(seat, observed_at):
         return unknown_row(
             seat,
             "tom",
-            observed_at,
             "the reader answered MEASURED without a five-hour utilization and reset",
             source,
         )
-    row = base_row(seat, "tom", observed_at)
+    row = base_row(seat, "tom")
     row["utilization_pct"] = primary["utilization_pct"]
     row["window"] = {"kind": "nested", "primary": primary, "secondary": secondary}
     if secondary is not None:
@@ -373,7 +380,7 @@ def find_rate_limits(obj, depth=0):
     return None
 
 
-def codex_row(observed_at):
+def codex_row():
     root = codex_sessions_dir()
     limits, path = newest_rate_limits(root)
     source = {"kind": "codex-rollout-rate-limits", "root": root, "path": path}
@@ -381,7 +388,6 @@ def codex_row(observed_at):
         return unknown_row(
             "codex",
             "third-party",
-            observed_at,
             f"no rate_limits record under {root}: Codex has not stated its window here",
             source,
         )
@@ -393,11 +399,10 @@ def codex_row(observed_at):
         return unknown_row(
             "codex",
             "third-party",
-            observed_at,
             "the rate_limits record carries no used_percent, window_minutes, or resets_at",
             source,
         )
-    row = base_row("codex", "third-party", observed_at)
+    row = base_row("codex", "third-party")
     row["utilization_pct"] = float(used)
     window = {"kind": "rolling", "minutes": int(minutes), "utilization_pct": float(used)}
     if isinstance(resets, (int, float)):
@@ -419,17 +424,49 @@ def codex_row(observed_at):
 # ── the pi-qwencloud writer ──────────────────────────────────────────────────
 
 
-def pi_row(observed_at):
+def pi_row():
     return unknown_row(
         "pi-qwencloud",
         "tom",
-        observed_at,
         PI_UNKNOWN_REASON,
         {"kind": "unavailable", "reason": "Qwen Cloud publishes no window artefact on this box"},
     )
 
 
 INSTRUMENTS = ("claude", "codex", "pi-qwencloud")
+
+
+def publish_row(directory, row):
+    """Publish one completed read immediately and report its own failure."""
+    try:
+        path, published = write_row(directory, row["seat"], row)
+    except OSError as exc:
+        sys.stderr.write(f"tally-seat-feeder: {row['seat']}: {exc}\n")
+        return 1
+    grade = published.get("grade") or (published.get("capacity") or {}).get("grade")
+    print(f"{published['seat']} {grade} {published['observed_at']} {path}")
+    return 0
+
+
+def publish_claude_rows(directory, seats):
+    """Read concurrently and publish each seat as soon as its read returns."""
+    if not seats:
+        sys.stderr.write("tally-seat-feeder: Claude seat list is empty\n")
+        return 1
+    failed = 0
+    with ThreadPoolExecutor(max_workers=len(seats), thread_name_prefix="seat-reader") as pool:
+        futures = {pool.submit(read_claude_seat, seat): seat for seat in seats}
+        for future in as_completed(futures):
+            seat = futures[future]
+            try:
+                reading, reason = future.result()
+            except Exception as exc:
+                reading = None
+                reason = f"the reader failed internally: {type(exc).__name__}"
+            # D-B54: no results list exists. A completed seat is shaped, stamped
+            # inside write_row, and published before another future is awaited.
+            failed += publish_row(directory, claude_row(seat, reading, reason))
+    return failed
 
 
 def main(argv):
@@ -442,28 +479,11 @@ def main(argv):
         return 2
 
     directory = meters_dir()
-    observed_at = rfc3339(now_dt())
-    rows = []
     if instrument == "claude":
         seats = (os.environ.get("TALLY_CLAUDE_SEATS") or "cc cc2 cc3").split()
-        for seat in seats:
-            rows.append(claude_row(seat, observed_at))
-    elif instrument == "codex":
-        rows.append(codex_row(observed_at))
-    else:
-        rows.append(pi_row(observed_at))
-
-    failed = 0
-    for row in rows:
-        try:
-            path = write_row(directory, row["seat"], row)
-        except OSError as exc:
-            failed += 1
-            sys.stderr.write(f"tally-seat-feeder: {row['seat']}: {exc}\n")
-            continue
-        grade = row.get("grade") or (row.get("capacity") or {}).get("grade")
-        print(f"{row['seat']} {grade} {row['observed_at']} {path}")
-    return 1 if failed else 0
+        return 1 if publish_claude_rows(directory, seats) else 0
+    row = codex_row() if instrument == "codex" else pi_row()
+    return 1 if publish_row(directory, row) else 0
 
 
 if __name__ == "__main__":
