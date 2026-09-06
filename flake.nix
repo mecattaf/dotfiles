@@ -220,16 +220,43 @@
     # fixpoint (F.3) — and keep it out of `rollingInputOverrides` (F.4) for the
     # same reason herdr is out: it fronts live PTYs.
     #
-    # URL: local git checkout at the reviewed rev while spec A's repo is
-    # pre-publication. It becomes `github:mecattaf/herdr-kitten/<rev>` (the URL
-    # its own README already documents) before this PR merges; the rev is the
-    # same object either way.
+    # URL — the end state is `github:mecattaf/herdr-kitten/<rev>`, the URL its
+    # own README documents and the shape the `tally` input above already uses
+    # for exactly the stated reason ("fleet auto-upgrades need no GitHub
+    # credential helper or access token"). It is NOT taken here, because the
+    # fetchability that form needs does not exist and neither of the two paths
+    # to it is an executor's (MEASURED 2026-09-06, U-D15):
+    #   * the repo made public — `mecattaf/herdr-kitten` is PRIVATE, and the
+    #     flip is the herdr-kitten survey's Q-7, a TOM LINE ("the repo is
+    #     PRIVATE by standing wall. No executor flips visibility."). Measured:
+    #     `nix flake metadata github:mecattaf/herdr-kitten/ccc16393…` answers
+    #     HTTP 404.
+    #   * a credential path the fleet's other boxes actually have — there is
+    #     none. `gh` and `wrangler` are `coordinatorOnly` by Tom's ruling
+    #     (secrets.nix:166-168, "the coordinator is the fleet's only
+    #     authenticated operator box — gh + wrangler stay off the laptops");
+    #     /etc/nix/nix.conf carries no `access-tokens` line and there is no
+    #     ~/.config/nix/nix.conf; `ssh -T git@github.com` from the coordinator
+    #     answers "Permission denied (publickey)", the fleet SSH user key being
+    #     a fleet-mutual key and not a GitHub credential.
+    # There is no third path, so the URL FORM stays the local checkout below —
+    # a `file://` git tree at the reviewed rev, spec A's repo being
+    # pre-publication — and
+    # only the REV moves. The day Q-7 lands the change is one edit of this line
+    # plus `nix flake lock --update-input herdr-kitten`; the rev is the same
+    # object either way. See docs/herdr/herdr-kitten-input.md and DEFERRED.md.
+    #
+    # REV: the merged head of `mecattaf/herdr-kitten` main past the round-2
+    # merges — U-C2…U-C5 (`97e4b9c`, `5e857f0`, `ccc1639`) and herdr-kitten #26's
+    # `homeManagerModules.default`. The previous pin `41a6de5` predates every one
+    # of them and installs a kitten that cannot load under kitty; RULING-kitten
+    # §0 rules that tree "must not ship", so no box may switch on it.
     #
     # Upstream pins herdr at the same dbc398f5 this flake does and follows its
     # nixpkgs; both are re-pointed at ours so one herdr and one nixpkgs serve
     # the whole closure.
     herdr-kitten = {
-      url = "git+file:///home/tom/mecattaf/herdr-kitten?rev=41a6de5cc945131ef98988898fcb67aec5da9340";
+      url = "git+file:///home/tom/mecattaf/herdr-kitten?rev=ccc16393cc35e2cce2b8cd9a55718b3c84849a8f";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.herdr.follows = "herdr";
     };
