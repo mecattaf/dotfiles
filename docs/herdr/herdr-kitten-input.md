@@ -1,9 +1,9 @@
-# The `herdr-kitten` input: what it pins, and the one thing that is not ours
+# The `herdr-kitten` input: what it pins, how it is fetched, and what checks it
 
 Written for U-D15 (`mecattaf/dotfiles#318`). It records the state of the
-`herdr-kitten` flake input after the round-2 re-pin, the measurement behind the
-URL form it still carries, and the exact edit that finishes the job the day
-that measurement changes.
+`herdr-kitten` flake input after the round-2 re-pin — both halves of it, the rev
+and the URL form — the measurement that admitted the `github:` fetcher, and the
+one thing that is still not this repository's to do.
 
 ## What the input is
 
@@ -29,25 +29,56 @@ so and never on a nightly resolve.
 
 The topology is untouched by any of this and is not this document's to move:
 **one** herdr server, on the coordinator (ruling B5). `#309` is the open TOM
-LINE on that question.
+LINE on that question, and `DEFERRED.md` DF-U-D15-2 is the row.
 
 ## What the pin is
 
-    url = "git+file:///home/tom/mecattaf/herdr-kitten?rev=ccc16393cc35e2cce2b8cd9a55718b3c84849a8f";
+    url = "github:mecattaf/herdr-kitten/ccc16393cc35e2cce2b8cd9a55718b3c84849a8f";
 
-`ccc1639` is the merged head of `mecattaf/herdr-kitten` `main` past the round-2
-merges — U-C2…U-C5 (`97e4b9c`, `5e857f0`, `ccc1639`) and herdr-kitten #26's
-`homeManagerModules.default`.
+**The rev.** `ccc1639` is the merged head of `mecattaf/herdr-kitten` `main` past
+the round-2 merges — U-C2…U-C5 (`97e4b9c`, `5e857f0`, `ccc1639`) and
+herdr-kitten #26's `homeManagerModules.default`.
 
 The rev it replaced, `41a6de5`, predates all of them. `RULING-kitten.md` §0
 rules that tree **"must not ship"**: it is the pre-round2 install layout, so a
 switch on it installs a kitten kitty's loader cannot load, and the failure lands
 inside kitty with nothing in this repo going red. That is the hazard the bump
-removes, and it is the reason the two checks below exist.
+removes, and it is the reason the checks below exist.
+
+**The URL form.** `github:` — the URL the repo's own README documents, and the
+shape the `tally` input already uses for exactly the stated reason: *"fleet
+auto-upgrades need no GitHub credential helper or access token."* What it
+replaces, `git+file:///home/tom/mecattaf/herdr-kitten`, resolved **only on the
+coordinator**; every other box in the fleet failed to evaluate this flake at
+all. Pinned **by rev**, never by branch, for the F.4 reason above.
+
+That form is admissible because its one precondition — fetchable without a
+credential — is measured present, not assumed. MEASURED 2026-09-06 on the
+coordinator:
+
+| measurement | result |
+|---|---|
+| `gh repo view mecattaf/herdr-kitten --json isPrivate,visibility` | `{"isPrivate":false,"visibility":"PUBLIC"}` |
+| `nix flake metadata github:mecattaf/herdr-kitten/ccc16393cc35e2cce2b8cd9a55718b3c84849a8f` | resolves and unpacks; narHash `sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=` |
+| the narHash the local checkout had locked | `sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=` — identical |
+
+The two narHashes matching is the point: the fetcher changed and **the object
+did not**. The herdr-kitten survey's **Q-7** (*"the repo is PRIVATE by standing
+wall. No executor flips visibility."*) is honoured rather than overridden — it
+bars an executor from flipping visibility, and no executor did; the repo was
+already public when this was measured. See `DECISIONS.md`, the 2026-09-06 U-D15
+entry, for why the form was taken rather than deferred.
+
+The lock node changed shape with it: `"type": "git"` + `"url":
+"file:///home/tom/mecattaf/herdr-kitten"` is now a `github` node with
+`owner`/`repo`/`rev`. Nothing else in the input block moved —
+`inputs.nixpkgs.follows` and `inputs.herdr.follows` are exactly as they were, so
+one herdr and one nixpkgs still serve the whole closure, and the `herdr` input
+itself did not move: herdr owns live PTYs and its version is Tom's.
 
 ## What checks it
 
-`nix flake check` carries two of them; both are eval-time except where noted.
+`nix flake check` carries two, both eval-time except where noted.
 
 - `checks.<sys>.home-profiles` — `hk` is in the coordinator's `home.packages`
   **and** the worker's (one server, two clients), and the generated
@@ -60,53 +91,46 @@ removes, and it is the reason the two checks below exist.
   file is **read in the store** along with `bin/hk`. `--offline --no-build`
   reduces this to the eval half.
 
-## The one thing that is not ours: the URL form
+## The oracle
 
-The end state for the URL is `github:mecattaf/herdr-kitten/<rev>` — the URL the
-repo's own README documents, and the shape the `tally` input already uses for
-exactly the stated reason: *"fleet auto-upgrades need no GitHub credential
-helper or access token."* A `git+file://` URL resolves **only on this box**, so
-the fleet cannot evaluate this flake from anywhere else.
+U-D15's DOMINANT, mechanized as one argv:
 
-That flip is not taken here, and it is not an executor's to take. Fetchability
-is a precondition, and neither of its two paths holds. MEASURED 2026-09-06 on
-the coordinator:
+```sh
+bash tests/herdr/test-herdr-kitten-input.sh
+```
 
-| path | measurement | verdict |
+It prints every clause with its measured value and exits non-zero on the first
+red one:
+
+| clause | what it measures | value |
 |---|---|---|
-| the repo made public | `nix flake metadata github:mecattaf/herdr-kitten/ccc16393cc35e2cce2b8cd9a55718b3c84849a8f` → `HTTP error 404`; `gh repo view mecattaf/herdr-kitten --json isPrivate` → `{"isPrivate":true,"visibility":"PRIVATE"}` | **barred.** The public flip is the herdr-kitten survey's **Q-7**: *"The repo is PRIVATE by standing wall. No executor flips visibility."* Tom's line. |
-| a credential path the fleet's other boxes actually have | `/etc/nix/nix.conf` carries no `access-tokens` line; `~/.config/nix/nix.conf` does not exist; `/etc/nix/netrc` and `~/.netrc` do not exist; `ssh -T git@github.com` → `Permission denied (publickey)`; `secrets.nix:166-168` makes `gh-hosts.age` and `wrangler-config.age` `coordinatorOnly` under Tom's ruling *"the coordinator is the fleet's only authenticated operator box — gh + wrangler stay off the laptops"* | **absent.** The fleet SSH user key is a fleet-mutual key, not a GitHub credential, and the one GitHub credential on the estate is a `gh` CLI hosts file the other boxes cannot decrypt. |
+| A0 | `nix flake lock --update-input herdr-kitten` (falls back to `--offline`) | rc 0, and `flake.lock` **unchanged** — re-applying reports zero changes. Restored again on exit, because clause A rewrites the lock a second time when `flake.nix` and the lock disagree (measured under the mutation) |
+| A | `nix flake check --offline --no-build` | rc 0 |
+| B | `grep -c 'git+file' flake.lock` | 0 |
+| B2 | `grep -c 'git+file' flake.nix` | 0 |
+| B3 | `grep -c 'file:///home/tom'` over `flake.lock` / `flake.nix` | 0 / 0 |
+| B4 | the URL is `github:mecattaf/herdr-kitten/<40 hex>`, and the lock node agrees (`type github`, `owner`/`repo`/`rev`) | both |
+| C | `hk` in the coordinator's `home.packages` | `["herdr-kitten"]` |
+| C2 | `hk` in the worker's too, and the `action_alias` store path | both |
 
-There is no third path, and inventing one is out of scope by the issue's own
-words. So the URL form stays local and only the rev moved.
+**Why B is not the clause that goes red.** The card's mutation hint is
+*"reintroduce the file:// URL → the grep count is 1"*. Executed literally —
+`flake.nix` back to `git+file:///home/tom/mecattaf/herdr-kitten?rev=…`, then
+`nix flake lock --update-input herdr-kitten` — the measured counts are
+`flake.nix` **1** (the card's "1"), `file:///home/tom` in `flake.lock` **2**,
+and `git+file` in `flake.lock` **0**: Nix never spells a local git tree
+`git+file` *in the lock*, it writes `"type": "git"` plus a bare `file://` URL.
+So clause B reads 0 on both sides of the fault and cannot see it. B2/B3/B4 are
+where the mutation lands, whichever of the two files it is reintroduced in, and
+they are part of the acceptance for that reason rather than as tidiness.
 
-## Finishing it, the day Q-7 lands
+## What is still not done here
 
-Two commands, in this order, from a clean worktree:
-
-```sh
-sed -i 's|url = "git+file:///home/tom/mecattaf/herdr-kitten?rev=\(.*\)";|url = "github:mecattaf/herdr-kitten/\1";|' flake.nix
-nix flake lock --update-input herdr-kitten
-```
-
-Then the acceptance, which is U-D15's DOMINANT in full:
-
-```sh
-nix flake check --offline --no-build          # 0
-grep -c 'git+file' flake.lock                 # 0
-grep -c 'git+file' flake.nix                  # 0  (1 until the flip)
-grep -c 'file:///home/tom' flake.lock         # 0  (2 until the flip)
-nix eval --offline --json \
-  .#nixosConfigurations.coordinator.config.home-manager.users.tom.home.packages \
-  --apply 'ps: builtins.filter (n: n == "herdr-kitten") (map (p: (builtins.parseDrvName (p.name or "")).name) ps)'
-                                              # ["herdr-kitten"]
-```
-
-The lock node changes shape at the same time: `"type": "git"` + `"url":
-"file:///home/tom/mecattaf/herdr-kitten"` becomes a `github` node with
-`owner`/`repo`. Nothing else in the input block moves — `inputs.nixpkgs.follows`
-and `inputs.herdr.follows` stay exactly as they are, so one herdr and one
-nixpkgs still serve the whole closure, and the `herdr` input itself does not
-move: herdr owns live PTYs and its version is Tom's.
-
-The deferral is tracked as **D-1** in `DEFERRED.md`.
+Declaring an input is not installing it. Neither box runs this pin until a
+`nixos-rebuild switch`, which this unit does not perform: the coordinator's
+switch is U-D19's own unit and the worker's is a TOM LINE (`D-B15`). Tracked as
+`DEFERRED.md` **DF-U-D15-1**, discharged when `readlink -f "$(command -v hk)"`
+on each box resolves under the same store path clause C2 prints. MEASURED
+2026-09-06 on the coordinator it does not: `hk` resolves under
+`/nix/store/caj91n9…-herdr-kitten-0.1.0-dev`, the running generation, while this
+lock's package is `/nix/store/wjbbi7n…-herdr-kitten-0.1.0-dev`.
