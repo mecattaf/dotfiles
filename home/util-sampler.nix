@@ -34,9 +34,9 @@
 # is why the digests are written down here and not only in the kit:
 #
 #   home/dot_local/bin/util-sampler
-#     29ab396f1a06250d341627f81946a2df6b6414e724d1d3a057597ef3f48035df
+#     cc76a8179c46e735d6005f3f2d92f137cff026d7c3658a27b89261778fa50ce6
 #   home/dot_local/bin/util-row
-#     a612a3255af3c69b48dfdb32063a66555a5be4609fed7634f9adad1d7ed8db63
+#     1fdb80179595dc151af67e4ed2bc03e6a3bcf34685acb869b1cc9d9bcfa90906
 #
 # WHAT THIS FILE DOES NOT DO. It declares units; it enables nothing by hand,
 # starts no serve, holds no GPU, and sends no inference request. The sampler's
@@ -69,7 +69,7 @@ let
   );
 
   # The row writer additionally pulls the worker's sampler log with
-  # `scp -o BatchMode=yes -p` (util-row:170), so it needs openssh. It reads the
+  # `scp -o BatchMode=yes -p` (util-row:322), so it needs openssh. It reads the
   # worker; it never writes there.
   rowPath = lib.makeBinPath [
     pkgs.python3

@@ -11,6 +11,25 @@ creates or writes is $UTIL_METERS/util-sampler/.
 
 Invoked by a 60 s systemd user timer; it takes one sample and exits.  There is no
 loop in this file.
+
+Time budget (no threads, no signals): the whole invocation is capped at 12 s and
+each probe (health + arms + metrics) at 4 s, enforced by checking the elapsed
+time between requests and skipping the remaining fetches.  A probe that lost the
+budget is recorded with `skipped: true`, never as `alive: false` — a probe that
+was not asked is not a dead probe.
+
+Write discipline (T6 / abort_on).  `--box` is not a free string: it is looked up
+in the card's declared boxes and an undeclared one is refused with exit 2 before
+anything is read.  The append then goes through guard_meters_write(), the same
+guard util-row uses, so no argument — `--box ../../ESCAPED` included — can put a
+byte outside <meters>/util-*.  Both checks are present: the whitelist is the
+specification, the guard is the belt.
+
+Every sample records the box's IANA zone (`tz`) beside the offset-bearing `ts`.
+The offset alone cannot say how long the local day is: a sampler that stops
+before a fall-back transition writes only `+02:00`, and a row computed from those
+offsets calls a 25-hour day 24 hours long.  The zone key is the fact that fixes
+it, so the sampler — the only program on the box at sample time — records it.
 """
 
 import argparse
@@ -24,10 +43,13 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-SCHEMA = "util-sample/1"
-PROBE_TIMEOUT_S = 2.0
-POOLS_TIMEOUT_S = 5.0
+SCHEMA = "util-sample/2"   # /2 adds `tz` and `tz_source`
+PROBE_TIMEOUT_S = 2.0            # one HTTP request
+POOLS_TIMEOUT_S = 5.0            # `tally query pools`
+PROBE_BUDGET_S = 4.0             # health + arms + metrics for ONE probe
+INVOCATION_BUDGET_S = 12.0       # the whole sample, against the card's 15 s timer
 
 # --- the card's `definition` block, transcribed, not reinterpreted -----------
 
@@ -72,6 +94,12 @@ LEDGERS = {
 
 VRAM_POOL_BY_BOX = {"coordinator": "coordinator-gpu", "worker": "worker-gpu"}
 
+# The card declares exactly two boxes.  A sample from anything else is not a
+# sample of this estate, and its name must never reach a filesystem path.
+KNOWN_BOXES = tuple(sorted(set(SERVE_PROBES) | set(VRAM_POOL_BY_BOX) | set(LEDGERS)))
+
+ZONEINFO_MARK = os.sep + "zoneinfo" + os.sep
+
 # definition.tokens_source: the only counters read.
 METRIC_COUNTERS = (
     "llamacpp:prompt_tokens_total",
@@ -88,13 +116,85 @@ def meters_root():
     return os.path.abspath(os.path.expanduser(root))
 
 
+def guard_meters_write(meters, path):
+    """T6: util-sampler writes nothing outside <meters>/util-*.
+
+    The same guard as util-row's, in the same words, for the same reason.
+    realpath, not abspath: a symlink out of the meters root is a write outside
+    the meters root.
+    """
+    root = os.path.realpath(meters)
+    target = os.path.realpath(path)
+    rel = os.path.relpath(target, root)
+    first = rel.split(os.sep)[0]
+    if first == os.pardir or os.path.isabs(rel):
+        raise SystemExit("util-sampler: refusing to write outside %s: %s" % (root, target))
+    if not first.startswith("util-"):
+        raise SystemExit("util-sampler: refusing to write %s — only <meters>/util-* is writable"
+                         % target)
+    return target
+
+
 def detect_box(explicit):
-    if explicit:
-        return explicit
-    host = socket.gethostname().split(".")[0]
-    if host in SERVE_PROBES:
-        return host
-    return host
+    """The box name, checked against the card's declared boxes.
+
+    It becomes a filename, so it is a whitelist and not a string: `--box
+    ../../ESCAPED` is refused here, before any path is built.  An undeclared
+    hostname is refused too — the sampler does not invent a box.
+    """
+    box = explicit or socket.gethostname().split(".")[0]
+    if box not in KNOWN_BOXES:
+        raise ValueError(box)
+    return box
+
+
+def local_tz():
+    """(IANA key, where it came from) for the box's local zone.
+
+    $TZ first, then the /etc/localtime symlink.  The key is validated by loading
+    it, so an unloadable name is recorded as unknown rather than written into the
+    sample as a fact.  Both are null when neither answers; the row writer then
+    falls back to the replaying box's own zone and says so.
+    """
+    candidate = os.environ.get("TZ") or None
+    if candidate:
+        candidate = candidate.lstrip(":")
+    source = "TZ" if candidate else None
+    if not candidate:
+        try:
+            real = os.path.realpath("/etc/localtime")
+        except OSError:
+            real = ""
+        idx = real.rfind(ZONEINFO_MARK)
+        if idx >= 0:
+            candidate = real[idx + len(ZONEINFO_MARK):]
+            source = "/etc/localtime"
+    if not candidate:
+        return None, None
+    try:
+        ZoneInfo(candidate)
+    except (ZoneInfoNotFoundError, ValueError, OSError):
+        return None, None
+    return candidate, source
+
+
+class Clock:
+    """The invocation budget.  `remaining()` is what is left of INVOCATION_BUDGET_S.
+
+    Nothing is interrupted mid-request: every request is given a timeout no
+    larger than what is left, and a request whose budget has run out is not
+    issued at all.
+    """
+
+    def __init__(self, budget=INVOCATION_BUDGET_S):
+        self.t0 = time.monotonic()
+        self.budget = budget
+
+    def elapsed(self):
+        return time.monotonic() - self.t0
+
+    def remaining(self):
+        return self.budget - self.elapsed()
 
 
 def read_sysfs():
@@ -181,45 +281,77 @@ def parse_metrics(body):
     return found or None
 
 
-def probe_one(spec):
-    status, _body, ms, _err = http_get(spec["health"])
-    alive = status == 200
-    arms = None
-    metrics = None
-    if alive:
-        a_status, a_body, _a_ms, _a_err = http_get(spec["arms"])
-        if a_status == 200:
-            arms = parse_arms(a_body)
-        m_status, m_body, _m_ms, _m_err = http_get(spec["metrics"])
-        if m_status == 200:
-            metrics = parse_metrics(m_body)
-    return {
-        "name": spec["name"],
-        "alive": alive,
-        "http": status,
-        "ms": ms,
-        "arms": arms,
-        "metrics": metrics,
-    }
+def probe_one(spec, clock):
+    """health, then arms, then metrics — each only while budget remains.
+
+    Worst case for this function is PROBE_BUDGET_S (4 s), and it never exceeds
+    what `clock` has left, so three probes plus the pools call cannot run past
+    INVOCATION_BUDGET_S.
+    """
+    p0 = time.monotonic()
+    probe = {"name": spec["name"], "alive": False, "http": None, "ms": None,
+             "arms": None, "metrics": None, "skipped": False, "elapsed_ms": 0}
+
+    def left():
+        return min(PROBE_BUDGET_S - (time.monotonic() - p0), clock.remaining())
+
+    def done():
+        probe["elapsed_ms"] = int(round((time.monotonic() - p0) * 1000))
+        return probe
+
+    budget = left()
+    if budget <= 0:
+        probe["skipped"] = True
+        return done()
+    status, _body, ms, _err = http_get(spec["health"], timeout=min(PROBE_TIMEOUT_S, budget))
+    probe["http"] = status
+    probe["ms"] = ms
+    probe["alive"] = status == 200
+    if not probe["alive"]:
+        return done()
+
+    budget = left()
+    if budget <= 0:
+        probe["skipped"] = True
+        return done()
+    a_status, a_body, _a_ms, _a_err = http_get(spec["arms"], timeout=min(PROBE_TIMEOUT_S, budget))
+    if a_status == 200:
+        probe["arms"] = parse_arms(a_body)
+
+    budget = left()
+    if budget <= 0:
+        probe["skipped"] = True
+        return done()
+    m_status, m_body, _m_ms, _m_err = http_get(spec["metrics"], timeout=min(PROBE_TIMEOUT_S, budget))
+    if m_status == 200:
+        probe["metrics"] = parse_metrics(m_body)
+    return done()
 
 
-def read_pools(box):
-    """`tally query pools` reduced to {pool: held}.  Coordinator only."""
+def read_pools(box, clock):
+    """`tally query pools` reduced to {pool: held}.  Coordinator only.
+
+    Bounded by whatever is left of the invocation budget; an exhausted budget is
+    recorded as a failure with its reason, never as held 0 (R-04)."""
     if box != "coordinator":
         return None
+    budget = min(POOLS_TIMEOUT_S, clock.remaining())
+    if budget <= 0:
+        return {"ok": False, "held": None, "elapsed_ms": 0, "skipped": True,
+                "error": "invocation budget exhausted before `tally query pools`"}
     t0 = time.monotonic()
     try:
         proc = subprocess.run(
             ["tally", "query", "pools"],
-            capture_output=True, timeout=POOLS_TIMEOUT_S, text=True,
+            capture_output=True, timeout=budget, text=True,
         )
     except Exception as exc:
-        return {"ok": False, "held": None,
+        return {"ok": False, "held": None, "skipped": False,
                 "elapsed_ms": int(round((time.monotonic() - t0) * 1000)),
                 "error": "%s: %s" % (type(exc).__name__, exc)}
     elapsed = int(round((time.monotonic() - t0) * 1000))
     if proc.returncode != 0:
-        return {"ok": False, "held": None, "elapsed_ms": elapsed,
+        return {"ok": False, "held": None, "elapsed_ms": elapsed, "skipped": False,
                 "error": "exit %d: %s" % (proc.returncode, (proc.stderr or "")[:200])}
     try:
         doc = json.loads(proc.stdout)
@@ -227,9 +359,9 @@ def read_pools(box):
         for pool in doc.get("pools", []):
             held[str(pool["pool"])] = int(pool["held"])
     except Exception as exc:
-        return {"ok": False, "held": None, "elapsed_ms": elapsed,
+        return {"ok": False, "held": None, "elapsed_ms": elapsed, "skipped": False,
                 "error": "%s: %s" % (type(exc).__name__, exc)}
-    return {"ok": True, "held": held, "elapsed_ms": elapsed, "error": None}
+    return {"ok": True, "held": held, "elapsed_ms": elapsed, "skipped": False, "error": None}
 
 
 def sha256_and_lines(path):
@@ -281,18 +413,27 @@ def self_sha256():
 
 
 def build_sample(box):
+    clock = Clock()
     now = datetime.now().astimezone()
     version, version_grade = self_sha256()
+    tz_key, tz_source = local_tz()
+    sysfs = read_sysfs()
+    pools = read_pools(box, clock)
+    probes = [probe_one(spec, clock) for spec in SERVE_PROBES.get(box, [])]
     return {
         "schema": SCHEMA,
         "ts": now.isoformat(),
         "ts_epoch": now.timestamp(),
+        "tz": tz_key,
+        "tz_source": tz_source,
         "box": box,
         "lease_pool": VRAM_POOL_BY_BOX.get(box),
-        "sysfs": read_sysfs(),
-        "pools": read_pools(box),
-        "probes": [probe_one(spec) for spec in SERVE_PROBES.get(box, [])],
+        "sysfs": sysfs,
+        "pools": pools,
+        "probes": probes,
         "ledger": read_ledger(box),
+        "budget": {"invocation_s": INVOCATION_BUDGET_S, "probe_s": PROBE_BUDGET_S,
+                   "exhausted": clock.remaining() <= 0},
         "sampler_version": version,
         "sampler_version_grade": version_grade,
     }
@@ -300,13 +441,19 @@ def build_sample(box):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="UTIL-01 sampler: one sample, then exit.")
-    ap.add_argument("--box", default=None, help="coordinator | worker (default: hostname)")
+    ap.add_argument("--box", default=None,
+                    help="one of %s (default: hostname)" % " | ".join(KNOWN_BOXES))
     ap.add_argument("--meters", default=None, help="meters root (default: $UTIL_METERS)")
     ap.add_argument("--stdout", action="store_true",
                     help="print the sample instead of appending it (writes nothing)")
     args = ap.parse_args(argv)
 
-    box = detect_box(args.box)
+    try:
+        box = detect_box(args.box)
+    except ValueError as exc:
+        sys.stderr.write("util-sampler: unknown box %r; declared boxes are %s; nothing written\n"
+                         % (str(exc), ", ".join(KNOWN_BOXES)))
+        return 2
     sample = build_sample(box)
     line = json.dumps(sample, sort_keys=True) + "\n"
 
@@ -315,10 +462,10 @@ def main(argv=None):
         return 0
 
     root = os.path.abspath(os.path.expanduser(args.meters)) if args.meters else meters_root()
-    outdir = os.path.join(root, "util-sampler")
+    outdir = guard_meters_write(root, os.path.join(root, "util-sampler"))
     os.makedirs(outdir, exist_ok=True)
     day = datetime.fromisoformat(sample["ts"]).strftime("%Y-%m-%d")
-    outpath = os.path.join(outdir, "%s-%s.jsonl" % (box, day))
+    outpath = guard_meters_write(root, os.path.join(outdir, "%s-%s.jsonl" % (box, day)))
     with open(outpath, "a") as fh:
         fh.write(line)
     sys.stdout.write(outpath + "\n")

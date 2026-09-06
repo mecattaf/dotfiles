@@ -10,8 +10,23 @@ Live mode reads those inputs from the estate.  --replay-mode reads them from an
 inputs bundle (a directory holding INPUTS.json), which is how util-replay and
 the fixture tests drive exactly the same arithmetic.
 
-It writes only <meters>/util-<box>-<date>.json and <meters>/util-<box>-week-*.json,
-opens every input 'r', starts nothing, and holds no GPU.
+The lease input is FROZEN at row time: util-row writes
+<meters>/util-sampler/<box>-<date>.lease-slice.jsonl — the verbatim `granted`
+lines of lease-events.jsonl whose grantedAt falls on the date AND whose pools
+contain the box's vram pool, in file order — and the row names and hashes that
+FILE.  The live, append-only lease-events.jsonl is never an input of the replay:
+a grant landing after the row was written can no longer turn the row red.  A
+slice that already exists is never silently overwritten (--refresh-slice).
+
+The day is the BOX's calendar day, not the sampler's coverage: the window is
+[date 00:00, date+1 00:00) in the box's IANA zone, which every sample carries as
+`tz`, so day_hours is 23, 24 or 25 whether or not the samples span the
+transition.  Reading the offsets off the first and last sample instead makes a
+night that stopped before a fall-back look 24 hours long.
+
+It writes only <meters>/util-<box>-<date>.json, <meters>/util-<box>-week-*.json
+and <meters>/util-sampler/<box>-<date>.lease-slice.jsonl — all under
+<meters>/util-* (T6) — opens every input 'r', starts nothing, and holds no GPU.
 """
 
 import argparse
@@ -21,7 +36,8 @@ import os
 import statistics
 import subprocess
 import sys
-from datetime import date as date_cls, datetime, timedelta
+from datetime import date as date_cls, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 SCHEMA = "util-row/1"
 EXPECTED_SAMPLES = 1440
@@ -82,12 +98,87 @@ def meters_default():
     return os.path.abspath(os.path.expanduser(root))
 
 
+def guard_meters_write(meters, path):
+    """T6: util-row writes nothing outside <meters>/util-*.
+
+    realpath, not abspath: a symlink out of the meters root is a write outside
+    the meters root.
+    """
+    root = os.path.realpath(meters)
+    target = os.path.realpath(path)
+    rel = os.path.relpath(target, root)
+    first = rel.split(os.sep)[0]
+    if first == os.pardir or os.path.isabs(rel):
+        raise SystemExit("util-row: refusing to write outside %s: %s" % (root, target))
+    if not first.startswith("util-"):
+        raise SystemExit("util-row: refusing to write %s — only <meters>/util-* is writable"
+                         % target)
+    return target
+
+
 def r6(x):
     return None if x is None else round(x, ROUND)
 
 
 def parse_ts(text):
     return datetime.fromisoformat(text)
+
+
+def sampled_zone(samples):
+    """(ZoneInfo|None, key|None): the box's IANA zone as the sampler recorded it.
+
+    The first sample that names a loadable `tz` wins; util-sample/1 lines (before
+    the sampler recorded a zone) simply do not name one, so a day that mixes the
+    two schema versions still finds the key.  An unloadable name is treated as no
+    name at all — a zone this box cannot resolve is not a fact about the day.
+    """
+    for sample in samples:
+        key = sample.get("tz")
+        if not isinstance(key, str) or not key:
+            continue
+        try:
+            return ZoneInfo(key), key
+        except (ZoneInfoNotFoundError, ValueError, OSError):
+            continue
+    return None, None
+
+
+def day_window(date_str, samples):
+    """[date 00:00, date+1 00:00) in the BOX's zone, and its length in hours.
+
+    definition.day: "the box's local calendar day; day_hours is its actual length
+    (24; 23 or 25 on a DST transition day)".  The length is therefore a property
+    of the date and the zone — never of how much of the day the sampler happened
+    to cover.  Taking the offsets off samples[0] and samples[-1] reads a night
+    that stopped at 01:59+02:00 on a fall-back date as a 24-hour day, and then
+    idle_hours = day_hours - lease_hours is an hour short.
+
+    The zone comes from the samples' own `tz` (the sampler reads $TZ or
+    /etc/localtime on the box), so the replay reconstructs the same window on any
+    machine, under any TZ.  Where no sample names a zone — an empty day, or a log
+    written by a pre-repair sampler — the replaying box's own zone is used at the
+    day's two midnights.  That fallback is a real limit and it is stated in
+    README §7; it is still strictly better than the sampled offsets, because the
+    boundaries are evaluated at the boundaries.
+
+    Every integral is clipped to this window, which is why no sum can exceed
+    day_hours (T5).
+    """
+    d0 = date_cls.fromisoformat(date_str)
+    d1 = d0 + timedelta(days=1)
+    zone, _key = sampled_zone(samples)
+    if zone is not None:
+        start = datetime(d0.year, d0.month, d0.day, tzinfo=zone)
+        end = datetime(d1.year, d1.month, d1.day, tzinfo=zone)
+    else:
+        # .astimezone() on a naive datetime applies the system zone's rules AT
+        # THAT INSTANT, so each midnight gets its own offset.
+        start = datetime(d0.year, d0.month, d0.day).astimezone()
+        end = datetime(d1.year, d1.month, d1.day).astimezone()
+    start_epoch = start.timestamp()
+    end_epoch = end.timestamp()
+    day_hours = int(round((end_epoch - start_epoch) / 3600.0))
+    return start_epoch, end_epoch, day_hours
 
 
 def iso_week(date_str):
@@ -104,6 +195,67 @@ def _ref(declared, actual):
 
 def sampler_log_path(meters, box, date_str):
     return os.path.join(meters, "util-sampler", "%s-%s.jsonl" % (box, date_str))
+
+
+def lease_slice_path(meters, box, date_str):
+    return os.path.join(meters, "util-sampler", "%s-%s.lease-slice.jsonl" % (box, date_str))
+
+
+def select_lease_slice(lease_events_path, date_str, pool):
+    """The verbatim `granted` lines of lease-events.jsonl whose grantedAt falls on
+    the date AND whose pools contain `pool`, in file order.  May be empty.
+
+    This is the ONLY place the live lease-events.jsonl is read.  Its output is
+    written once, at row time, and everything downstream reads that file.
+    """
+    out = []
+    if not lease_events_path or not os.path.isfile(lease_events_path):
+        return out
+    with open(lease_events_path, "r") as fh:
+        for line in fh:
+            if not line.strip():
+                continue
+            try:
+                doc = json.loads(line)
+            except Exception:
+                continue
+            event = doc.get("event") or {}
+            if event.get("kind") != "granted":
+                continue
+            grant = event.get("grant") or {}
+            if pool not in (grant.get("pools") or []):
+                continue
+            granted_at = grant.get("grantedAt")
+            if not isinstance(granted_at, str):
+                continue
+            try:
+                stamp = parse_ts(granted_at.replace("Z", "+00:00")).astimezone()
+            except Exception:
+                continue
+            if stamp.strftime("%Y-%m-%d") != date_str:
+                continue
+            out.append(line if line.endswith("\n") else line + "\n")
+    return out
+
+
+def freeze_lease_slice(meters, box, date_str, lease_events_path, refresh=False):
+    """Write the slice file and return its path.  Refuses to overwrite silently.
+
+    A re-run of a closed day must REPRODUCE the row, not re-freeze its inputs, so
+    an existing slice is an error unless --refresh-slice says otherwise.
+    """
+    out = lease_slice_path(meters, box, date_str)
+    guard_meters_write(meters, out)
+    if os.path.exists(out) and not refresh:
+        raise SystemExit(
+            "util-row: %s already exists; a closed day must reproduce, not re-freeze "
+            "(pass --refresh-slice to overwrite)" % out)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    pool = VRAM_POOL_BY_BOX.get(box)
+    lines = select_lease_slice(lease_events_path, date_str, pool)
+    with open(out, "w") as fh:
+        fh.write("".join(lines))
+    return out
 
 
 def receipt_is_evidence(doc):
@@ -178,7 +330,7 @@ def pull_worker_sampler_log(meters, date_str):
                 "stderr": "%s: %s" % (type(exc).__name__, exc)}
 
 
-def build_inputs_live(box, date_str, meters):
+def build_inputs_live(box, date_str, meters, refresh_slice=False):
     if box == "worker":
         pull_worker_sampler_log(meters, date_str)
     ledger_path = LEDGERS.get(box)
@@ -187,13 +339,14 @@ def build_inputs_live(box, date_str, meters):
         coord_log = sampler_log_path(meters, "coordinator", date_str)
         lease_src = _ref(coord_log, coord_log)
     log = sampler_log_path(meters, box, date_str)
+    slice_path = freeze_lease_slice(meters, box, date_str, LEASE_EVENTS, refresh_slice)
     return {
         "schema": "util-inputs/1",
         "box": box,
         "date": date_str,
         "sampler_log": _ref(log, log),
         "ledger": _ref(ledger_path, ledger_path),
-        "lease_events": _ref(LEASE_EVENTS, LEASE_EVENTS),
+        "lease_slice": _ref(slice_path, slice_path),
         "lease_source_log": lease_src,
         "evidence_files": walk_evidence_receipts(date_str),
     }
@@ -207,13 +360,14 @@ def build_inputs_from_row(row):
         ev.append({"path": entry["path"], "file": entry["path"],
                    "sha256": entry.get("sha256"), "mtime": entry.get("mtime")})
     lease_src = paths.get("lease_source_log")
+    lease_slice = paths.get("lease_slice")
     return {
         "schema": "util-inputs/1",
         "box": row["box"],
         "date": row["date"],
         "sampler_log": _ref(paths.get("sampler_log"), paths.get("sampler_log")),
         "ledger": _ref(paths.get("ledger"), paths.get("ledger")),
-        "lease_events": _ref(paths.get("lease_events"), paths.get("lease_events")),
+        "lease_slice": _ref(lease_slice, lease_slice),
         "lease_source_log": _ref(lease_src, lease_src) if lease_src else None,
         "evidence_files": ev,
     }
@@ -247,7 +401,7 @@ def load_inputs_bundle(bundle_dir):
         "date": doc["date"],
         "sampler_log": resolve(doc.get("sampler_log")),
         "ledger": resolve(doc.get("ledger")),
-        "lease_events": resolve(doc.get("lease_events")),
+        "lease_slice": resolve(doc.get("lease_slice")),
         "lease_source_log": resolve(doc.get("lease_source_log")),
         "evidence_files": ev,
     }
@@ -281,13 +435,13 @@ def read_samples(path, date_str):
     return out
 
 
-def read_ledger_rows(path, date_str):
-    """(rows_on_date, pages_on_date, hour_histogram).  None path -> unknown."""
+def read_ledger_rows(path, date_str, start_epoch, end_epoch):
+    """(rows, pages, the epochs of the rows) inside the day window.  None -> unknown."""
     if not path or not os.path.isfile(path):
         return None
     rows = 0
     pages = 0
-    hours = [0] * 24
+    epochs = []
     with open(path, "r") as fh:
         for line in fh:
             line = line.strip()
@@ -298,34 +452,39 @@ def read_ledger_rows(path, date_str):
                 stamp = parse_ts(doc["completed_at"])
             except Exception:
                 continue
-            if stamp.strftime("%Y-%m-%d") != date_str:
+            epoch = stamp.timestamp()
+            if not (start_epoch <= epoch < end_epoch):
                 continue
             rows += 1
             npages = doc.get("pages")
             if isinstance(npages, (int, float)) and not isinstance(npages, bool):
                 pages += int(npages)
-            hours[stamp.hour] += 1
-    return {"rows": rows, "pages": pages, "hours": hours}
+            epochs.append(epoch)
+    return {"rows": rows, "pages": pages, "epochs": epochs}
 
 
-def read_lease_slice(path, date_str, pool):
-    """The grants of the day, verbatim, for the sha; parsed, for the unit join."""
-    if not path or not os.path.isfile(path):
-        return {"sha256": None, "grants": []}
-    blob = []
+def read_lease_slice_file(path):
+    """The FROZEN slice file, parsed for the unit join.
+
+    It reads whatever the file holds — the filtering by date and pool happened
+    once, at freeze time, in select_lease_slice().  Nothing here re-reads the live
+    lease-events.jsonl; the row's integrity comes from the file's sha256, checked
+    by util-replay like every other input.
+    """
     grants = []
+    if not path or not os.path.isfile(path):
+        return {"grants": [], "lines": 0}
+    lines = 0
     with open(path, "r") as fh:
         for line in fh:
             if not line.strip():
                 continue
+            lines += 1
             try:
                 doc = json.loads(line)
             except Exception:
                 continue
-            event = doc.get("event") or {}
-            if event.get("kind") != "granted":
-                continue
-            grant = event.get("grant") or {}
+            grant = ((doc.get("event") or {}).get("grant") or {})
             granted_at = grant.get("grantedAt")
             if not isinstance(granted_at, str):
                 continue
@@ -333,14 +492,11 @@ def read_lease_slice(path, date_str, pool):
                 stamp = parse_ts(granted_at.replace("Z", "+00:00")).astimezone()
             except Exception:
                 continue
-            if stamp.strftime("%Y-%m-%d") != date_str:
-                continue
-            blob.append(line if line.endswith("\n") else line + "\n")
             grants.append({"epoch": stamp.timestamp(),
                            "unit": grant.get("unit"),
                            "pools": grant.get("pools") or []})
     grants.sort(key=lambda g: g["epoch"])
-    return {"sha256": sha256_bytes("".join(blob).encode("utf-8")), "grants": grants}
+    return {"grants": grants, "lines": lines}
 
 
 # --- the arithmetic ---------------------------------------------------------
@@ -392,8 +548,13 @@ def resolve_held(samples, pool, lease_source):
     return out
 
 
-def intervals_for(samples):
-    """Gap to the next sample capped at 300 s; the last sample gets the median."""
+def intervals_for(samples, start_epoch, end_epoch):
+    """Gap to the next sample capped at 300 s; the last sample gets the median.
+
+    Every interval is then CLIPPED to [start_epoch, end_epoch), so the intervals
+    of a day sum to at most the window's length and no integral can exceed
+    day_hours — which is what made idle_hours go negative before.
+    """
     n = len(samples)
     if n == 0:
         return [], []
@@ -405,7 +566,14 @@ def intervals_for(samples):
         last = float(statistics.median(capped))
     else:
         last = 60.0
-    return raw, capped + [last]
+    spans = capped + [last]
+    clipped = []
+    for i, sample in enumerate(samples):
+        t = float(sample["ts_epoch"])
+        lo = max(t, start_epoch)
+        hi = min(t + spans[i], end_epoch)
+        clipped.append(max(0.0, hi - lo))
+    return raw, clipped
 
 
 def token_ledger(samples):
@@ -476,6 +644,10 @@ def compute_row(inputs):
     samples = read_samples(inputs["sampler_log"]["file"], date_str)
     n = len(samples)
 
+    # The day window, in the BOX's zone (definition.day).  day_hours is 23, 24 or
+    # 25 whatever the coverage; every integral below is clipped to it (T5).
+    start_epoch, end_epoch, day_hours = day_window(date_str, samples)
+
     lease_src_ref = inputs.get("lease_source_log")
     lease_source = None
     if lease_src_ref and lease_src_ref.get("file"):
@@ -485,15 +657,19 @@ def compute_row(inputs):
     held = resolve_held(samples, pool, lease_source)
     lease_grade = "MEASURED" if n > 0 and all(h is not None for h in held) else "UNKNOWN"
 
-    raw_gaps, intervals = intervals_for(samples)
+    raw_gaps, intervals = intervals_for(samples, start_epoch, end_epoch)
 
     alive = [bool(any(p.get("alive") for p in (s.get("probes") or []))) for s in samples]
     gpu = [(s.get("sysfs") or {}).get("gpu_busy_percent") for s in samples]
     gtt = [(s.get("sysfs") or {}).get("gtt_used") for s in samples]
 
+    day_seconds = float(day_hours) * 3600.0
     if lease_grade == "MEASURED":
-        lease_hours = r6(sum(intervals[i] for i in range(n) if held[i] >= 1) / 3600.0)
-        idle_hours = r6(24.0 - lease_hours)
+        lease_seconds = min(sum(intervals[i] for i in range(n) if held[i] >= 1), day_seconds)
+        lease_hours = r6(lease_seconds / 3600.0)
+        # never negative: the intervals are clipped to the window, and the
+        # subtraction is floored at 0 so a rounding crumb cannot produce -0.0.
+        idle_hours = r6(max(0.0, float(day_hours) - lease_hours))
         unleased_alive_hours = r6(
             sum(intervals[i] for i in range(n) if alive[i] and held[i] == 0) / 3600.0)
     else:
@@ -516,47 +692,63 @@ def compute_row(inputs):
 
     tokens_in, tokens_out, tokens_grade = token_ledger(samples)
 
+    def bucket_of(epoch):
+        """The hour's index measured from the window start, NOT `.hour`.
+
+        On a fall-back day the local clock shows 02 twice; two different physical
+        hours must be two different entries, or one of them is never classified
+        while the dispositions still add up.
+        """
+        idx = int((float(epoch) - start_epoch) // 3600)
+        if idx < 0 or idx >= day_hours:
+            return None
+        return idx
+
     ledger_path = (inputs.get("ledger") or {}).get("path")
     ledger_file = (inputs.get("ledger") or {}).get("file")
-    ledger_day = read_ledger_rows(ledger_file, date_str) if ledger_path else None
+    ledger_day = (read_ledger_rows(ledger_file, date_str, start_epoch, end_epoch)
+                  if ledger_path else None)
+    ledger_hours = [0] * day_hours
     if ledger_day is None:
         pages_completed = None
         pages_grade = "UNKNOWN"
         ledger_rows = None
-        ledger_hours = [0] * 24
     else:
         pages_completed = ledger_day["pages"]
         pages_grade = "MEASURED"
         ledger_rows = ledger_day["rows"]
-        ledger_hours = ledger_day["hours"]
+        for epoch in ledger_day["epochs"]:
+            idx = bucket_of(epoch)
+            if idx is not None:
+                ledger_hours[idx] += 1
 
-    receipt_hours = [0] * 24
+    receipt_hours = [0] * day_hours
     receipts_counted = 0
     for entry in inputs["evidence_files"]:
         mtime = entry.get("mtime")
         if mtime is None:
             continue
-        stamp = datetime.fromtimestamp(float(mtime)).astimezone()
-        if stamp.strftime("%Y-%m-%d") != date_str:
+        idx = bucket_of(float(mtime))
+        if idx is None:
             continue
-        receipt_hours[stamp.hour] += 1
+        receipt_hours[idx] += 1
         receipts_counted += 1
 
-    # hour buckets
     by_hour = {}
     for i, sample in enumerate(samples):
-        by_hour.setdefault(sample["_dt"].hour, []).append(i)
+        idx = bucket_of(float(sample["ts_epoch"]))
+        if idx is None:
+            continue
+        by_hour.setdefault(idx, []).append(i)
 
     hours = []
     counts = {d: 0 for d in DISPOSITIONS}
-    for h in range(24):
+    for h in range(day_hours):
         idx = by_hour.get(h, [])
         count = len(idx)
+        hour_start = start_epoch + h * 3600.0
+        hour_end = hour_start + 3600.0
         if count:
-            first = samples[idx[0]]["_dt"]
-            hour_start = float(samples[idx[0]]["ts_epoch"]) - (
-                first.minute * 60 + first.second + first.microsecond / 1e6)
-            hour_end = hour_start + 3600.0
             gaps = [raw_gaps[i] for i in range(len(raw_gaps))
                     if float(samples[i]["ts_epoch"]) < hour_end
                     and float(samples[i + 1]["ts_epoch"]) > hour_start]
@@ -589,7 +781,8 @@ def compute_row(inputs):
                       "held_frac": held_frac, "alive_frac": alive_frac,
                       "evidence": evidence, "disposition": disposition})
 
-    lease = read_lease_slice((inputs.get("lease_events") or {}).get("file"), date_str, pool)
+    slice_file = (inputs.get("lease_slice") or {}).get("file")
+    lease = read_lease_slice_file(slice_file)
 
     if lease_grade == "MEASURED":
         timeline = []
@@ -621,21 +814,22 @@ def compute_row(inputs):
     }
 
     sampler_log_file = inputs["sampler_log"]["file"]
+
+    def sha_of(path):
+        return sha256_file(path) if path and os.path.isfile(path) else None
+
     inputs_sha = {
-        "sampler_log": (sha256_file(sampler_log_file)
-                        if sampler_log_file and os.path.isfile(sampler_log_file) else None),
-        "ledger": (sha256_file(ledger_file)
-                   if ledger_file and os.path.isfile(ledger_file) else None),
-        "lease_events_slice": lease["sha256"],
-        "lease_source_log": (sha256_file(lease_src_ref["file"])
-                             if lease_src_ref and lease_src_ref.get("file")
-                             and os.path.isfile(lease_src_ref["file"]) else None),
+        "sampler_log": sha_of(sampler_log_file),
+        "ledger": sha_of(ledger_file),
+        "lease_slice": sha_of(slice_file),
+        "lease_source_log": sha_of(lease_src_ref.get("file") if lease_src_ref else None),
     }
 
     row = {
         "schema": SCHEMA,
         "box": box,
         "date": date_str,
+        "day_hours": day_hours,
         "lease_pool": pool,
         "lease_grade": lease_grade,
         "lease_unresolved_samples": sum(1 for h in held if h is None),
@@ -668,7 +862,7 @@ def compute_row(inputs):
         "inputs_paths": {
             "sampler_log": inputs["sampler_log"]["path"],
             "ledger": ledger_path,
-            "lease_events": (inputs.get("lease_events") or {}).get("path"),
+            "lease_slice": (inputs.get("lease_slice") or {}).get("path"),
             "lease_source_log": (lease_src_ref or {}).get("path") if lease_src_ref else None,
         },
         "inputs_sha256": inputs_sha,
@@ -726,9 +920,10 @@ def rebuild_week(meters, box, week):
     red = []
     for row in rows:
         unleased = row.get("unleased_alive_hours")
+        day_hours = row.get("day_hours") or 24
         if (unleased is not None and unleased > 0) \
                 or (row.get("dispositions") or {}).get("CRASH", 0) > 0 \
-                or (row.get("dispositions") or {}).get("UNKNOWN", 0) == 24:
+                or (row.get("dispositions") or {}).get("UNKNOWN", 0) == day_hours:
             red.append(row["date"])
 
     doc = {
@@ -745,6 +940,7 @@ def rebuild_week(meters, box, week):
         "red_nights": red,
     }
     path = os.path.join(meters, "util-%s-week-%s.json" % (box, week))
+    guard_meters_write(meters, path)
     with open(path, "wb") as fh:
         fh.write(canonical(doc))
     return path
@@ -769,18 +965,28 @@ def main(argv=None):
     ap.add_argument("--box", default=None, help="coordinator | worker")
     ap.add_argument("--meters", default=None, help="meters root (default: $UTIL_METERS)")
     ap.add_argument("--replay-mode", default=None, metavar="DIR",
-                    help="read inputs from an inputs bundle (DIR/INPUTS.json)")
+                    help="read inputs from an inputs bundle (DIR/INPUTS.json); "
+                         "requires an explicit --meters")
     ap.add_argument("--weekly", action="store_true",
                     help="also regenerate the weekly rollup in --replay-mode")
+    ap.add_argument("--refresh-slice", action="store_true",
+                    help="overwrite an existing <box>-<date>.lease-slice.jsonl "
+                         "(without it, an existing slice is refused: exit 2)")
     args = ap.parse_args(argv)
 
     if args.replay_mode:
+        # T6: no default write target.  The bundle directory is an INPUT; writing
+        # the row beside it would be a write outside <meters>/util-*.
+        if not args.meters:
+            sys.stderr.write("util-row: --replay-mode requires an explicit --meters; "
+                             "nothing written\n")
+            return 2
         inputs = load_inputs_bundle(args.replay_mode)
-        meters = os.path.abspath(os.path.expanduser(args.meters)) if args.meters \
-            else os.path.abspath(args.replay_mode)
+        meters = os.path.abspath(os.path.expanduser(args.meters))
         os.makedirs(meters, exist_ok=True)
         row = compute_row(inputs)
         path = os.path.join(meters, "util-%s-%s.json" % (row["box"], row["date"]))
+        guard_meters_write(meters, path)
         with open(path, "wb") as fh:
             fh.write(canonical(row))
         print(path)
@@ -793,12 +999,28 @@ def main(argv=None):
     meters = os.path.abspath(os.path.expanduser(args.meters)) if args.meters else meters_default()
     os.makedirs(meters, exist_ok=True)
 
-    for box in default_boxes(args.box):
-        inputs = build_inputs_live(box, date_str, meters)
+    boxes = default_boxes(args.box)
+
+    # The frozen slice is refused BEFORE any box is computed, so a refusal never
+    # leaves a half-written night behind.
+    if not args.refresh_slice:
+        for box in boxes:
+            existing = lease_slice_path(meters, box, date_str)
+            if os.path.exists(existing):
+                sys.stderr.write(
+                    "util-row: %s already exists; a closed day must reproduce, not "
+                    "re-freeze (pass --refresh-slice to overwrite); nothing written\n"
+                    % existing)
+                return 2
+
+    for box in boxes:
+        inputs = build_inputs_live(box, date_str, meters, args.refresh_slice)
         row = compute_row(inputs)
         path = os.path.join(meters, "util-%s-%s.json" % (box, date_str))
+        guard_meters_write(meters, path)
         with open(path, "wb") as fh:
             fh.write(canonical(row))
+        print(inputs["lease_slice"]["path"])
         print(path)
         print(rebuild_week(meters, box, iso_week(date_str)))
     return 0
