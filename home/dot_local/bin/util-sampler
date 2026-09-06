@@ -1,0 +1,329 @@
+#!/usr/bin/env python3
+"""util-sampler — UTIL-01 §signal.instrument. ONE sample per invocation.
+
+Reads: sysfs (gfx1151 amdgpu), `tally query pools` (coordinator only), the
+declared serve liveness/arms/metrics endpoints, the box's drain ledger.
+Writes: exactly one JSON line to $UTIL_METERS/util-sampler/<box>-<date>.jsonl.
+
+It never POSTs, never touches /v1/chat/completions or /completion, never holds a
+GPU, never starts or stops anything, and opens every input 'r'.  The only path it
+creates or writes is $UTIL_METERS/util-sampler/.
+
+Invoked by a 60 s systemd user timer; it takes one sample and exits.  There is no
+loop in this file.
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+
+SCHEMA = "util-sample/1"
+PROBE_TIMEOUT_S = 2.0
+POOLS_TIMEOUT_S = 5.0
+
+# --- the card's `definition` block, transcribed, not reinterpreted -----------
+
+SYSFS_DIR = "/sys/class/drm/card1/device"
+SYSFS_FIELDS = {
+    "gpu_busy_percent": "gpu_busy_percent",
+    "vram_used": "mem_info_vram_used",
+    "gtt_used": "mem_info_gtt_used",
+}
+
+SERVE_PROBES = {
+    "coordinator": [
+        {"name": "llama-swap",
+         "health": "http://127.0.0.1:9292/health",
+         "arms": "http://127.0.0.1:9292/running",
+         "metrics": "http://127.0.0.1:9292/metrics"},
+        {"name": "flashnext",
+         "health": "http://127.0.0.1:1234/health",
+         "arms": "http://127.0.0.1:1234/v1/models",
+         "metrics": "http://127.0.0.1:1234/metrics"},
+    ],
+    "worker": [
+        {"name": "llama-swap",
+         "health": "http://127.0.0.1:9292/health",
+         "arms": "http://127.0.0.1:9292/running",
+         "metrics": "http://127.0.0.1:9292/metrics"},
+        {"name": "llama-server-direct",
+         "health": "http://127.0.0.1:8080/health",
+         "arms": "http://127.0.0.1:8080/v1/models",
+         "metrics": "http://127.0.0.1:8080/metrics"},
+        {"name": "flashnext-rank",
+         "health": "http://127.0.0.1:1234/health",
+         "arms": "http://127.0.0.1:1234/v1/models",
+         "metrics": "http://127.0.0.1:1234/metrics"},
+    ],
+}
+
+LEDGERS = {
+    "coordinator": "/home/tom/.local/state/academic-ocr/drain/completed.jsonl",
+    "worker": None,
+}
+
+VRAM_POOL_BY_BOX = {"coordinator": "coordinator-gpu", "worker": "worker-gpu"}
+
+# definition.tokens_source: the only counters read.
+METRIC_COUNTERS = (
+    "llamacpp:prompt_tokens_total",
+    "llamacpp:tokens_predicted_total",
+    "vllm:prompt_tokens_total",
+    "vllm:generation_tokens_total",
+)
+
+# --- helpers ----------------------------------------------------------------
+
+
+def meters_root():
+    root = os.environ.get("UTIL_METERS") or "~/.local/state/tally/meters"
+    return os.path.abspath(os.path.expanduser(root))
+
+
+def detect_box(explicit):
+    if explicit:
+        return explicit
+    host = socket.gethostname().split(".")[0]
+    if host in SERVE_PROBES:
+        return host
+    return host
+
+
+def read_sysfs():
+    out = {}
+    for key, fname in SYSFS_FIELDS.items():
+        try:
+            with open(os.path.join(SYSFS_DIR, fname), "r") as fh:
+                out[key] = int(fh.read().strip())
+        except Exception:
+            out[key] = None
+    return out
+
+
+def http_get(url, timeout=PROBE_TIMEOUT_S):
+    """Returns (status:int|None, body:str|None, ms:int, error:str|None).
+
+    A refused connection or a timeout is a value, never an exception.
+    Only GET; the sampler has no other verb.
+    """
+    t0 = time.monotonic()
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read(1 << 20).decode("utf-8", "replace")
+            return resp.status, body, int(round((time.monotonic() - t0) * 1000)), None
+    except urllib.error.HTTPError as exc:
+        try:
+            body = exc.read(1 << 20).decode("utf-8", "replace")
+        except Exception:
+            body = None
+        return exc.code, body, int(round((time.monotonic() - t0) * 1000)), None
+    except Exception as exc:
+        return None, None, int(round((time.monotonic() - t0) * 1000)), "%s: %s" % (type(exc).__name__, exc)
+
+
+def parse_arms(body):
+    """Model ids from a /running or /v1/models answer.  [] is 'no arm loaded';
+    None is 'the answer could not be read'."""
+    if body is None:
+        return None
+    try:
+        doc = json.loads(body)
+    except Exception:
+        return None
+    if not isinstance(doc, dict):
+        return None
+    ids = []
+    for key in ("data", "running", "models"):
+        seq = doc.get(key)
+        if not isinstance(seq, list):
+            continue
+        for item in seq:
+            if isinstance(item, str):
+                ids.append(item)
+            elif isinstance(item, dict):
+                for field in ("id", "model", "name"):
+                    val = item.get(field)
+                    if isinstance(val, str) and val:
+                        ids.append(val)
+                        break
+        break
+    return sorted(set(ids))
+
+
+def parse_metrics(body):
+    """The named counters only (definition.tokens_source).  None = no counters."""
+    if body is None:
+        return None
+    found = {}
+    for line in body.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        name = parts[0]
+        if name not in METRIC_COUNTERS:
+            continue
+        try:
+            found[name] = float(parts[1])
+        except ValueError:
+            continue
+    return found or None
+
+
+def probe_one(spec):
+    status, _body, ms, _err = http_get(spec["health"])
+    alive = status == 200
+    arms = None
+    metrics = None
+    if alive:
+        a_status, a_body, _a_ms, _a_err = http_get(spec["arms"])
+        if a_status == 200:
+            arms = parse_arms(a_body)
+        m_status, m_body, _m_ms, _m_err = http_get(spec["metrics"])
+        if m_status == 200:
+            metrics = parse_metrics(m_body)
+    return {
+        "name": spec["name"],
+        "alive": alive,
+        "http": status,
+        "ms": ms,
+        "arms": arms,
+        "metrics": metrics,
+    }
+
+
+def read_pools(box):
+    """`tally query pools` reduced to {pool: held}.  Coordinator only."""
+    if box != "coordinator":
+        return None
+    t0 = time.monotonic()
+    try:
+        proc = subprocess.run(
+            ["tally", "query", "pools"],
+            capture_output=True, timeout=POOLS_TIMEOUT_S, text=True,
+        )
+    except Exception as exc:
+        return {"ok": False, "held": None,
+                "elapsed_ms": int(round((time.monotonic() - t0) * 1000)),
+                "error": "%s: %s" % (type(exc).__name__, exc)}
+    elapsed = int(round((time.monotonic() - t0) * 1000))
+    if proc.returncode != 0:
+        return {"ok": False, "held": None, "elapsed_ms": elapsed,
+                "error": "exit %d: %s" % (proc.returncode, (proc.stderr or "")[:200])}
+    try:
+        doc = json.loads(proc.stdout)
+        held = {}
+        for pool in doc.get("pools", []):
+            held[str(pool["pool"])] = int(pool["held"])
+    except Exception as exc:
+        return {"ok": False, "held": None, "elapsed_ms": elapsed,
+                "error": "%s: %s" % (type(exc).__name__, exc)}
+    return {"ok": True, "held": held, "elapsed_ms": elapsed, "error": None}
+
+
+def sha256_and_lines(path):
+    h = hashlib.sha256()
+    lines = 0
+    with open(path, "rb") as fh:
+        while True:
+            chunk = fh.read(1 << 20)
+            if not chunk:
+                break
+            h.update(chunk)
+            lines += chunk.count(b"\n")
+    return h.hexdigest(), lines
+
+
+def read_ledger(box):
+    path = LEDGERS.get(box)
+    if path is None:
+        return {"path": None, "exists": False, "bytes": None,
+                "lines": None, "sha256": None, "mtime": None}
+    try:
+        st = os.stat(path)
+    except Exception:
+        return {"path": path, "exists": False, "bytes": None,
+                "lines": None, "sha256": None, "mtime": None}
+    try:
+        digest, lines = sha256_and_lines(path)
+    except Exception:
+        digest, lines = None, None
+    return {"path": path, "exists": True, "bytes": st.st_size,
+            "lines": lines, "sha256": digest, "mtime": st.st_mtime}
+
+
+def self_sha256():
+    """sha256 of this program's own file.
+
+    When the program is piped over ssh (`python3 - < util-sampler`) the source is
+    not a file and cannot be re-read; the value is null and the grade says so.
+    No CLAIMED value is ever written here (R-03/abort_on).
+    """
+    path = globals().get("__file__")
+    if isinstance(path, str) and os.path.isfile(path):
+        try:
+            with open(path, "rb") as fh:
+                return hashlib.sha256(fh.read()).hexdigest(), "MEASURED"
+        except Exception:
+            pass
+    return None, "UNKNOWN"
+
+
+def build_sample(box):
+    now = datetime.now().astimezone()
+    version, version_grade = self_sha256()
+    return {
+        "schema": SCHEMA,
+        "ts": now.isoformat(),
+        "ts_epoch": now.timestamp(),
+        "box": box,
+        "lease_pool": VRAM_POOL_BY_BOX.get(box),
+        "sysfs": read_sysfs(),
+        "pools": read_pools(box),
+        "probes": [probe_one(spec) for spec in SERVE_PROBES.get(box, [])],
+        "ledger": read_ledger(box),
+        "sampler_version": version,
+        "sampler_version_grade": version_grade,
+    }
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="UTIL-01 sampler: one sample, then exit.")
+    ap.add_argument("--box", default=None, help="coordinator | worker (default: hostname)")
+    ap.add_argument("--meters", default=None, help="meters root (default: $UTIL_METERS)")
+    ap.add_argument("--stdout", action="store_true",
+                    help="print the sample instead of appending it (writes nothing)")
+    args = ap.parse_args(argv)
+
+    box = detect_box(args.box)
+    sample = build_sample(box)
+    line = json.dumps(sample, sort_keys=True) + "\n"
+
+    if args.stdout:
+        sys.stdout.write(line)
+        return 0
+
+    root = os.path.abspath(os.path.expanduser(args.meters)) if args.meters else meters_root()
+    outdir = os.path.join(root, "util-sampler")
+    os.makedirs(outdir, exist_ok=True)
+    day = datetime.fromisoformat(sample["ts"]).strftime("%Y-%m-%d")
+    outpath = os.path.join(outdir, "%s-%s.jsonl" % (box, day))
+    with open(outpath, "a") as fh:
+        fh.write(line)
+    sys.stdout.write(outpath + "\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
