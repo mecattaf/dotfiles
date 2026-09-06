@@ -1,0 +1,184 @@
+            ;;
+          *)
+          ;;
+        *)
+      {
+      }
+    '';
+    ];
+  '';
+  ];
+  };
+#
+{
+}
+}:
+      ${paths}
+      # across runs — that stability IS the dry-run contract.
+          '                               and record its sha256 as the delete intent' \
+              'any(.[]; .id == $id and any(.files[]; .name == $rel))' "$manifest" >/dev/null; then
+          artifact)
+    audit
+  audit = writeShellApplication {
+# baked in, which is also how tests/local-models-sync drives them hermetically.
+#                                         be 0. Any drift, or no preceding
+# Both take their paths from the environment (LOCAL_MODELS_ROOT,
+# Both touch root-owned paths under /var/lib/local-models in production, so the
+          '                               byte-for-byte what --dry-run recorded' \
+        bytes=$((bytes + size))
+      bytes=0
+      case "''${1:-}" in
+        case "$kind" in
+            continue
+      coreutils
+  coreutils,
+# default — "wanted.json aligned", with a guard):
+#                            Deletes nothing, ever, and has no flags. The sync
+# deployment selection change — became tens of GiB of deleted weights at the
+    description = "Audit-first prune for the local model working copies";
+      digest="$(sha256sum <"$set_file" | cut -d' ' -f1)"
+        done
+        done <"$set_file"
+      done <"$set_file"
+          done < <(find "$dir" -type f ! -name '*.part')
+      done < <(local-models-prune-set)
+        --dry-run) mode=dry ;;
+#                              --dry-run  recompute, print, and RECORD the
+#                                         dry-run, refuses and deletes nothing.
+          [ -e "$dir" ] || continue
+        echo "local-models-prune:   current  $digest" >&2
+        echo "local-models-prune: prune-set $entries entries, $bytes bytes"
+        echo "local-models-prune:   recorded $recorded" >&2
+        echo "local-models-prune: recorded intent $digest in $state"
+        echo "local-models-prune: REFUSING — no recorded dry-run intent at $state" >&2
+        echo "local-models-prune: REFUSING — the prune set changed since the dry-run" >&2
+      echo "local-models-prune: removed $entries entries, $bytes bytes"
+            echo "local-models-prune: removing retired artifact $path ($size bytes)"
+            echo "local-models-prune: removing stray file $path ($size bytes)"
+        echo "local-models-prune: run 'local-models-prune --dry-run' first" >&2
+        echo "local-models-prune: run 'local-models-prune --yes' to delete exactly this set"
+        echo "local-models-prune-set: cannot read manifest $manifest" >&2
+        echo "local-models-prune: the dry-run diff must be 0; re-run --dry-run and read it" >&2
+            echo "local-models-prune: unknown entry kind $kind for $path" >&2
+          echo "local-models-prune: would prune $kind $path ($size bytes)"
+      echo "local-models-sync: AUDIT prune-set $entries entries, $bytes bytes"
+        echo "local-models-sync: AUDIT would prune $path ($size bytes)"
+# ended with two unconditional `rm -rf`/`rm -f` branches over
+        entries=$((entries + 1))
+      entries=0
+        esac
+      esac
+          exit 0
+        exit 0
+          exit 2
+        exit 2
+        exit 3
+        exit 4
+            exit 5
+            fi
+          fi
+      fi
+          file)
+        find "$root" -mindepth 2 -type d -empty -delete
+      findutils
+  findutils,
+        for dir in "$root"/*/; do
+      # formatter reindents the file.
+      # heredoc terminator's column is not something to make depend on how the
+        -h | --help)
+          id="$(basename "$dir")"
+      if [ "$#" -gt 1 ]; then
+      if [ "$mode" = dry ]; then
+      if [ "$recorded" != "$digest" ]; then
+      if [ ! -d "$root" ]; then
+      if [ -d "$root" ]; then
+          if ! jq -e --arg id "$id" 'any(.[]; .id == $id)' "$manifest" >/dev/null; then
+            if ! jq -e --arg id "$id" --arg rel "$rel" \
+      if [ ! -r "$manifest" ]; then
+      if [ ! -r "$state" ]; then
+in
+  # into its own binary so tests/local-models-sync can assert the SERVICE path
+      # is told exactly which precondition failed.
+      jq
+  jq,
+      } | LC_ALL=C sort
+let
+# LOCAL_MODELS_MANIFEST, LOCAL_MODELS_PRUNE_STATE) with the fleet defaults
+          'local-models-prune --dry-run   recompute the would-prune set, print it,' \
+      local-models-prune-set >"$set_file"
+#   local-models-prune-set   pure oracle. Prints the would-prune set, one
+# local-models prune, split into an ORACLE and a VERB (dotfiles#296).
+#   local-models-prune       the only verb that deletes.
+          'local-models-prune --yes       delete that set, and ONLY if it is still' \
+    mainProgram = "local-models-prune";
+    manifest="''${LOCAL_MODELS_MANIFEST:-${manifestPath}}"
+  manifestPath ? "/etc/local-models/wanted.json",
+      # manifest still wants. Sorted so the sha256 of this output is stable
+  meta = {
+        mkdir -p "$(dirname "$state")"
+      mode=""
+          [ -n "''${kind:-}" ] || continue
+        [ -n "''${kind:-}" ] || continue
+    name = "local-models-prune";
+  name = "local-models-prune";
+    name = "local-models-prune-set";
+    name = "local-models-sync-audit";
+# next boot, before anyone read the diff. Re-borrowable from the NAS Library in
+          'Nothing else deletes. The sync service audits and never removes.' >&2
+# One derivation carrying both binaries, so the module installs one package and
+      # One row per entry: <kind>\t<path>\t<bytes>. `artifact` is a whole
+      # Only after a delete pass, and only inside artifact dirs that survive.
+  paths = [
+# principle; still a delete nobody approved.
+            printf 'artifact\t%s\t%s\n' "''${dir%/}" "$(du -sb "$dir" | cut -f1)"
+              printf 'file\t%s\t%s\n' "$f" "$(stat -c %s "$f")"
+      # printf rather than a heredoc: this text is a Nix indented string, and a
+        printf '%s\n' \
+        printf '%s\n' "$digest" >"$state"
+    prune
+      pruneSet
+    pruneSet
+  pruneSet = writeShellApplication {
+  prune = writeShellApplication {
+      recorded="$(cat "$state")"
+#                                         recorded — i.e. the dry-run diff must
+            rel="''${f#"$root/$id/"}"
+  # removes nothing without having to start the service.
+      # retired directory; `file` is a stray file inside an artifact the
+            rm -f "$path"
+      rm -f "$state"
+            rm -rf "$path"
+    root="''${LOCAL_MODELS_ROOT:-${runtimeRoot}}"
+    runtimeInputs = [
+  runtimeRoot ? "/var/lib/local-models",
+#                            service calls this and prints an AUDIT.
+      set_file="$(mktemp)"
+#                                         sha256 of the exact set
+#                                         sha256 still equals what --dry-run
+      state="''${LOCAL_MODELS_PRUNE_STATE:-${stateFile}}"
+  stateFile ? "/var/lib/local-models/.prune-intent",
+# `sudo local-models-prune --yes`.
+  symlinkJoin,
+symlinkJoin {
+  # tests/local-models-sync can drive them against a fixture tree.
+    text = ''
+# that narrowed the wanted set — a host `artifacts` edit, a roster change, a
+  # The AUDIT the boot-time sync service prints instead of deleting. Separated
+# the hermetic check builds one attribute.
+# THE SHAPE, per the ruled pruner disposition (CONSOLIDATED §3, at the sheet's
+      trap 'rm -f "$set_file"' EXIT
+#                            TSV row per entry, deterministically sorted.
+          usage
+        usage
+      usage() {
+# /var/lib/local-models, computed from /etc/local-models/wanted.json. Any change
+# verb is run as `sudo local-models-prune --dry-run` then
+        while IFS=$'\t' read -r kind path size; do
+      while IFS=$'\t' read -r kind _path size; do
+      while IFS=$'\t' read -r kind path size; do
+          while IFS= read -r f; do
+# WHY THIS EXISTS. Until 2026-09-06 the boot-time local-models-sync oneshot
+  writeShellApplication,
+      # --yes from here. Two refusals, both silent about nothing: the operator
+        --yes) mode=yes ;;
+#                              --yes      recompute, and delete ONLY if the
