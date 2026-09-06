@@ -1,0 +1,32 @@
+# tests/seat-feeder/timers.tsv — the fixture's timer table (U-D12, dotfiles#315).
+#
+# ONE LINE PER DECLARED TIMER. tools/feeder-fixture.sh replays 60 policy ticks
+# over this table: at each tick every timer whose cadence falls due runs its
+# instrument, and then every fed row is probed. The claim under test is that
+# each probe reads age <= 1 tick on every row a timer feeds.
+#
+# THIS TABLE IS ALSO THE MUTATION. The manifest's mutation_hint is "remove the
+# timer from the fixture -> the next probe reads SLOW stale_observation -> RED".
+# Delete the Codex timer line below (the mutation_hint's fed row) — e.g.
+#
+#     sed -i '/^tally-seat-feeder-codex.timer/d' tests/seat-feeder/timers.tsv
+#
+# — and that otherwise-GO row is never re-stamped after the seed, so at the
+# very next real tally-admit probe its age is 65,000 ms against a 60,000 ms
+# bound and the fixture goes red naming SLOW stale_observation. Nothing else in
+# the run changes. (An UNKNOWN row is refused before admission reports age, so
+# pi-qwencloud is deliberately not the mutation witness.)
+#
+# Clause 2 of the oracle asserts, through `nix eval`, that every timer named
+# here is declared in the coordinator's config with this cadence and this row
+# list, so the table cannot drift away from the estate it claims to describe.
+#
+# columns, tab-separated:
+#   timer_unit            the systemd user timer as declared in home/seat-feeder.nix
+#   instrument            the argv the service passes to tally-seat-feeder
+#   rows                  comma-separated row ids this timer re-stamps
+#   on_unit_active_sec    the cadence; 60 is Policy::default().tick_ms / 1000
+#   accuracy_sec          AccuracySec, so a 60 s timer is not coalesced
+tally-seat-feeder-claude.timer	claude	cc,cc2,cc3	60	1
+tally-seat-feeder-codex.timer	codex	codex	60	1
+tally-seat-feeder-pi-qwencloud.timer	pi-qwencloud	pi-qwencloud	60	1

@@ -1,0 +1,30 @@
+# tests/seat-feeder/rows.tsv — the seat rows these three instruments feed
+# (U-D12, dotfiles#315). One line per row that exists on disk under the
+# rewrite's meters directory.
+#
+# WHY THIS IS A SEPARATE TABLE FROM timers.tsv. A row and its timer are two
+# facts, and the bug this unit fixes is exactly the case where the first exists
+# without the second: the five live rows were stamped once, at 02:22, and then
+# nobody wrote them again (spec section 2.4, finding C7). So the fixture seeds
+# every row here at tick 0 — the rows as they stand on a box with no feeder —
+# and only then lets the declared timers run. Remove a timer and its row is
+# still THERE; it is merely stale, which is the refusal the mutation must show.
+#
+# columns, tab-separated:
+#   row               the row id, i.e. the file stem under the meters directory
+#   instrument        which of the three feeders writes it
+#   owner             tom | third-party (no kernel row is fed here: the kernel
+#                     re-stamps its own at every probe, spec section 2.4)
+#   expected_grade    MEASURED, or UNKNOWN for a row that must refuse and say why
+#
+# cc3 is declared UNKNOWN on purpose. D-B5's MEASURED reading of 11:39Z found
+# cc and cc2 answering and cc3's OAuth token expired ("TOM LINE: run `claude`
+# once on cc3"), so the fixture keeps that state: a Claude seat whose reader
+# refuses still gets a FRESH row every tick, carrying the refusal and its
+# reason. A stale UNKNOWN and a fresh UNKNOWN are different facts, and only the
+# second one tells the door why it is shut.
+cc	claude	tom	MEASURED
+cc2	claude	tom	MEASURED
+cc3	claude	tom	UNKNOWN
+codex	codex	third-party	MEASURED
+pi-qwencloud	pi-qwencloud	tom	UNKNOWN
