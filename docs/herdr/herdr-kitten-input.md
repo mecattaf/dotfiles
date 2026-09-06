@@ -156,6 +156,16 @@ went red with the pin itself correct, so `flake.nix` never names the form it
 removed. The prose that does name it lives in this file and in `DECISIONS.md`,
 neither of which the oracle greps.
 
+**The control, MEASURED.** In a detached worktree at `origin/main` `cd917822`
+(removed after), the card's three clauses taken byte-exactly are ALL green: the
+lock update rc 0, `nix flake check --offline --no-build` rc 0, `grep -c
+'git+file' flake.lock` **0**, `nix eval` **`["herdr-kitten"]`** — on a commit
+that still pins `41a6de5` over a local URL. The card's DOMINANT therefore does
+not discriminate this unit. The same worktree under this script exits **1** (B2
+= 1, B3 = 2/1, B4 red twice, lock node `git -/- 41a6de5…`). That is
+`DECISIONS.md` clause (4) and the first attempt's defect D-2, answered by
+mechanism.
+
 ## What is still not done here
 
 Declaring an input is not installing it. Neither box runs this pin until a

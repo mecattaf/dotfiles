@@ -187,6 +187,24 @@ dirty, i.e. a change nobody authorized. Every clause reads the mutated lock
 before that exit restore, so no red is masked: green run rc 0 with the tree
 byte-clean, mutated run rc 1 with `flake.lock` restored on the way out.
 
+(4) **The card's byte-exact DOMINANT does not discriminate this unit, and the
+mechanized form does — both MEASURED on the parent.** The first attempt's
+receipt recorded this as defect D-2 and it is still true of the card's three
+clauses taken byte-exactly. CONTROL, in a detached worktree at `origin/main`
+`cd917822` (removed after): `nix flake lock --update-input herdr-kitten` rc 0,
+`nix flake check --offline --no-build` rc 0, `grep -c 'git+file' flake.lock`
+**0**, `nix eval … home.packages` **`["herdr-kitten"]`** — every clause of the
+card green on a commit that still pins `41a6de5` over a local URL. Nix spells a
+local git tree `"type": "git"` + a bare `file://` URL in the lock, never
+`git+file`, so the card's grep cannot see the fault it names; and `hk` was
+already in the coordinator's packages before this unit.
+The same control under `bash tests/herdr/test-herdr-kitten-input.sh
+/tmp/ud15-control-…` exits **1** — B2 = 1, B3 = 2/1, B4 red twice, and the lock
+node reading `git -/- 41a6de5…`. So the discriminating acceptance for this unit
+is the script's B2/B3/B4 plus the no-op A0, not clause B alone; D-2 is answered
+by mechanism rather than argued away, and the card's own argv is kept verbatim
+as clause B inside it.
+
 Not decided here and deliberately untouched: the herdr TOPOLOGY. One server, on
 the coordinator (ruling B5); `#309` stays Tom's. The `home-profiles` check
 asserts that shape in both directions so a pin move cannot become a topology
