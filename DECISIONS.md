@@ -127,19 +127,30 @@ its URL form — `git+file:///home/tom/mecattaf/herdr-kitten?rev=41a6de5` become
 `github:mecattaf/herdr-kitten/ccc16393cc35e2cce2b8cd9a55718b3c84849a8f` — and
 three lines are decided here.
 
-(1) **The `github:` form is taken, not deferred, because the precondition it
-needs is MEASURED present.** An earlier reading of the herdr-kitten survey's
-Q-7 ("the repo is PRIVATE by standing wall. No executor flips visibility.")
-would have deferred the URL form and moved only the rev. Measured 2026-09-06 on
+(1) **The `github:` form is taken, not deferred, because the Tom line that
+barred it has been TAKEN and recorded.** The first attempt at this unit
+(`receipt-parked-tomline9.json`, verdict STOPPED, branch head `25bf1dc9`)
+moved only the rev and deferred the URL form behind the herdr-kitten survey's
+**Q-7** — *"The repo is PRIVATE by standing wall. No executor flips
+visibility"* — after measuring `HTTP 404` on the `github:` URL and
+`{"isPrivate":true}` on the repo. That bar is now spent by
+`~/research-methods/RULINGS.md` **R-2026-09-06-22** *(Tom's line, 2026-09-06
+evening: "herdr kitten goes public is fine")*: `gh repo edit
+mecattaf/herdr-kitten --visibility public` was performed by the planning
+session at 20:31Z on that line, and the ruling names this unit — *"U-D15
+(dotfiles PR #324, the `github:` input) resumes with no Tom line left on it."*
+No executor of this unit ran any visibility command. RE-MEASURED 2026-09-06T22:05Z on
 the coordinator: `gh repo view mecattaf/herdr-kitten --json isPrivate,visibility`
-→ `{"isPrivate":false,"visibility":"PUBLIC"}`, and `nix flake metadata
-github:mecattaf/herdr-kitten/ccc16393…` resolves, unpacks, and reports narHash
-`sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=` — byte-identical to what
-the local checkout had locked. Q-7 is a bar on an EXECUTOR flipping visibility;
-it is not a claim that the repo is private forever, and no executor flipped
-anything here. Deferring a form whose only stated blocker has already been
-cleared upstream would have shipped a flake that evaluates on exactly one box
-while reporting itself green, so the flip is taken and the deferral withdrawn.
+→ `{"isPrivate":false,"visibility":"PUBLIC"}`; `gh api repos/mecattaf/herdr-kitten`
+→ `updated_at 2026-09-06T20:31:56Z`, i.e. the ruling's own timestamp; and
+`nix flake metadata github:mecattaf/herdr-kitten/ccc16393…` resolves, unpacks,
+and reports narHash `sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=` —
+byte-identical to what `nix flake metadata --offline
+'git+file:///home/tom/mecattaf/herdr-kitten?rev=ccc16393…'` reports for the
+local checkout, so the fetcher changed and the object did not. Deferring a form
+whose only blocker a Tom line has already cleared would have shipped a flake
+that evaluates on exactly one box while reporting itself green, so the flip is
+taken and the earlier deferral withdrawn.
 
 (2) **The card's `mutation_hint` is honoured on flake.nix, because flake.lock
 cannot carry the string it counts.** "reintroduce the file:// URL → the grep
@@ -154,6 +165,14 @@ grep is kept as clause B and cannot be the clause that goes red;
 flake.nix, `file:///home/tom` over both files, and the positive form — the URL
 is `github:mecattaf/herdr-kitten/<40 hex>` and the lock node agrees). Oracle rc
 0 green, rc 1 under the mutation with B2/B3/B4 red.
+
+Those greps read the whole of `flake.nix`, COMMENTS INCLUDED, and that is not a
+false positive to paper over: MEASURED 2026-09-06T22:10Z, a first draft of the
+new URL comment spelled the retired local URL out for contrast and the oracle
+went red on B2/B3 with the pin itself correct. So `flake.nix` never names the
+form it removed, not even nostalgically; the prose that does name it lives in
+`docs/herdr/herdr-kitten-input.md` and in this file, neither of which the oracle
+greps.
 
 (3) **The lock update the oracle names must be a NO-OP, and that is asserted.**
 Clause A0 runs `nix flake lock --update-input herdr-kitten` (falling back to

@@ -52,22 +52,29 @@ replaces, `git+file:///home/tom/mecattaf/herdr-kitten`, resolved **only on the
 coordinator**; every other box in the fleet failed to evaluate this flake at
 all. Pinned **by rev**, never by branch, for the F.4 reason above.
 
-That form is admissible because its one precondition — fetchable without a
-credential — is measured present, not assumed. MEASURED 2026-09-06 on the
-coordinator:
+That form is admissible because the Tom line that barred it has been taken.
+The herdr-kitten survey's **Q-7** (*"The repo is PRIVATE by standing wall. No
+executor flips visibility."*) is what stopped the first attempt at this unit at
+the rev alone; `~/research-methods/RULINGS.md` **R-2026-09-06-22** *(Tom's line:
+"herdr kitten goes public is fine")* records that the planning session ran
+`gh repo edit mecattaf/herdr-kitten --visibility public` at 20:31Z on that line,
+and names this unit: *"U-D15 (dotfiles PR #324, the `github:` input) resumes
+with no Tom line left on it."* No executor of this unit ran any visibility
+command. Re-measured 2026-09-06T22:05Z on the coordinator:
 
 | measurement | result |
 |---|---|
 | `gh repo view mecattaf/herdr-kitten --json isPrivate,visibility` | `{"isPrivate":false,"visibility":"PUBLIC"}` |
 | `nix flake metadata github:mecattaf/herdr-kitten/ccc16393cc35e2cce2b8cd9a55718b3c84849a8f` | resolves and unpacks; narHash `sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=` |
-| the narHash the local checkout had locked | `sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=` — identical |
+| `nix flake metadata --offline 'git+file:///home/tom/mecattaf/herdr-kitten?rev=ccc16393…'` | the same narHash `sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=` |
+| `gh api repos/mecattaf/herdr-kitten --jq .updated_at` | `2026-09-06T20:31:56Z` — the ruling's own timestamp |
 
 The two narHashes matching is the point: the fetcher changed and **the object
-did not**. The herdr-kitten survey's **Q-7** (*"the repo is PRIVATE by standing
-wall. No executor flips visibility."*) is honoured rather than overridden — it
-bars an executor from flipping visibility, and no executor did; the repo was
-already public when this was measured. See `DECISIONS.md`, the 2026-09-06 U-D15
-entry, for why the form was taken rather than deferred.
+did not**. Q-7 is honoured rather than overridden — it bars an *executor* from
+flipping visibility, and the flip here is Tom's line taken and written down.
+See `DECISIONS.md`, the 2026-09-06 U-D15 entry, for why the form was taken
+rather than deferred, and for the first attempt's STOPPED verdict that this
+supersedes.
 
 The lock node changed shape with it: `"type": "git"` + `"url":
 "file:///home/tom/mecattaf/herdr-kitten"` is now a `github` node with
@@ -90,6 +97,22 @@ itself did not move: herdr owns live PTYs and its version is Tom's.
   own package*, and then, under a full `nix flake check` (no `--no-build`), the
   file is **read in the store** along with `bin/hk`. `--offline --no-build`
   reduces this to the eval half.
+
+**The build half, MEASURED 2026-09-06T22:20Z on the coordinator** (beyond the
+card's targeted `--no-build` verification, run once so the claim above is not
+only a design):
+
+```sh
+nix build --no-link --print-out-paths '.#checks.x86_64-linux.herdr-kitten-input'
+# -> rc 0, /nix/store/l7nrj3lg8bkwhnh4f84dsv5kn87qf1b4-herdr-kitten-input
+```
+
+It built `/nix/store/4i3bbxvk1is0rpzzi9y7vsi1bqgg1mi2-herdr-kitten-0.1.0-dev.drv`
+— the package **out of the `github:` fetcher**, not out of the local checkout —
+and then read `share/hk/kitten/hk.py` and `bin/hk` in the store. The package
+path the coordinator's generation names is
+`/nix/store/wjbbi7n73h2xn5g3nrpfkprr3c2hy28c-herdr-kitten-0.1.0-dev`, which is
+clause C2's line and DF-U-D15-1's discharge target.
 
 ## The oracle
 
@@ -123,6 +146,15 @@ and `git+file` in `flake.lock` **0**: Nix never spells a local git tree
 So clause B reads 0 on both sides of the fault and cannot see it. B2/B3/B4 are
 where the mutation lands, whichever of the two files it is reintroduced in, and
 they are part of the acceptance for that reason rather than as tidiness.
+
+MEASURED 2026-09-06 on the coordinator, both directions: the mutated run exits
+**1** (A0, B2, B3 twice and B4 twice red, `grep -c 'git+file' flake.nix` = 1 —
+the card's "1"), and the reverted run exits **0** with the tree byte-clean.
+B2/B3 read the whole of `flake.nix`, **comments included**: a first draft of the
+new URL comment spelled the retired local URL out for contrast and the oracle
+went red with the pin itself correct, so `flake.nix` never names the form it
+removed. The prose that does name it lives in this file and in `DECISIONS.md`,
+neither of which the oracle greps.
 
 ## What is still not done here
 
