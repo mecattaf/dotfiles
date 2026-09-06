@@ -558,6 +558,11 @@
             crm
             dcal
             local-ai-monthly
+            # `nix build .#local-models-prune` — the ONLY verb on this fleet
+            # that deletes a working copy. Exposed so the guard suite can be
+            # pointed at a built path (LOCAL_MODELS_PRUNE_BIN) instead of
+            # requiring the binaries to be installed on the caller's PATH.
+            local-models-prune
             mactahoe-gtk-theme
             mactahoe-icon-theme
             music-acquire
