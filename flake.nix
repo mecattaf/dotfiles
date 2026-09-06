@@ -227,16 +227,24 @@
     # box — a `file://` git tree under /home/tom — so no other host could
     # evaluate this flake at all; that is what U-D15 removed. (No `file://`
     # spelling of it survives anywhere in this file or in flake.lock: that
-    # absence is an asserted clause of U-D15's oracle, not a tidiness.) The form is admissible because the repo is
-    # fetchable without a credential — MEASURED 2026-09-06 on the coordinator:
+    # absence is an asserted clause of U-D15's oracle, not a tidiness.)
+    #
+    # The form is admissible because the Tom line that barred it has been taken:
+    # `~/research-methods/RULINGS.md` R-2026-09-06-22 ("herdr kitten goes public
+    # is fine") records `gh repo edit mecattaf/herdr-kitten --visibility public`
+    # run by the planning session at 20:31Z and names this unit — "U-D15 resumes
+    # with no Tom line left on it". No executor here ran a visibility command.
+    # MEASURED 2026-09-06T22:05Z on the coordinator:
     # `gh repo view mecattaf/herdr-kitten --json isPrivate,visibility` answers
     # `{"isPrivate":false,"visibility":"PUBLIC"}`, and `nix flake metadata
     # github:mecattaf/herdr-kitten/ccc16393…` resolves to the same narHash
-    # (sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=) the local checkout
-    # locked, i.e. the same object by content and not merely by rev name. The
-    # earlier survey answer for Q-7 ("the repo is PRIVATE by standing wall") is
-    # therefore spent, not overridden: no executor flipped visibility, the flip
-    # had already happened upstream when this was measured. Pinned BY REV and
+    # (sha256-X5b1Fi6ObCI5xHPpEXTL8k1FbWO5JZeBnqMYAfG6jVU=) that the local
+    # `file://` git checkout under /home/tom reports for the SAME rev — the same
+    # object by content, not merely by rev name. (Neither spelling of the old
+    # local URL is written here, not even in a comment: the oracle greps this
+    # file for both, so a nostalgic mention would read as the fault.)
+    # The survey's Q-7 ("the repo is PRIVATE by standing wall. No executor flips
+    # visibility") is spent by that ruling, not overridden. Pinned BY REV and
     # never by branch: this input fronts live PTYs, so it moves when Tom says so
     # (F.4 keeps it out of rollingInputOverrides for the same reason herdr is
     # out). See docs/herdr/herdr-kitten-input.md.
