@@ -13,6 +13,7 @@ it.
 | [`local-ai/tallies/`](local-ai/tallies/) | Reviewed model-roster rationale; the July 29 coordinator-only tally is the accepted anchor. |
 | [`local-ai/codex-login.md`](local-ai/codex-login.md) | **Whose Codex login `/home/tom/.codex/auth.json` is** (Nayla's, R-2026-09-06-02), which Nix file seeds it, and why Tom's own login needs a `CODEX_HOME` he names. Paths only. |
 | [`local-ai/claude-capacity.md`](local-ai/claude-capacity.md) | **The capacity oracle's three exit codes and its case count — 23, not the 21 a receipt claims.** Why "the two" cannot be named, and how to run the suite in and out of nix. |
+| [`local-ai/seat-feeder.md`](local-ai/seat-feeder.md) | **The rewrite's three coordinator-only seat-feeder timers** — row ownership, source boundaries, the 60-second freshness contract, UNKNOWN deferrals, and the real-kernel fixture. |
 | [`local-ai/monthly-workflow.md`](local-ai/monthly-workflow.md) | Evidence-first Git update bot, single Pi judgment, nested Tally GPU lease, and merge-only pin advancement. |
 | [`local-ai/pi-appliance-pattern.md`](local-ai/pi-appliance-pattern.md) | Reusable single, pooled, aggregator, and typed-swarm mechanism for durable local-model appliances. |
 | [`local-ai/dual-node-inference-lessons.md`](local-ai/dual-node-inference-lessons.md) | Preserved operational lessons from the retired dual-node ds4 cluster. History, not a deployment target. |

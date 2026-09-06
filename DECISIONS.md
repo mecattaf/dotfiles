@@ -29,3 +29,31 @@ Also decided: content closure (`tools/u-d16/`) is part of the oracle, because
 ancestry alone stays green under `git revert` of any of the 30 commits, which is
 one of the two readings of the unit's `mutation_hint`. Both readings measured
 RED at `020b2ad1`.
+
+2026-09-06 U-D12 (dotfiles#315): three implementation lines were open between
+the issue's per-row wording and its DOMINANT/scope, and are fixed here.
+
+(1) **The three declared timer+service pairs are the three named instruments,
+not five independently clocked row files.** They are
+`tally-seat-feeder-{claude,codex,pi-qwencloud}`. The Claude invocation writes
+the `cc`, `cc2`, and `cc3` rows independently; separate JSON files and reset
+clocks preserve D-B5's two-pool ruling. This follows the acceptance's exact
+"three timers declared" and the scope's exact "three timer+service pairs";
+`X-TallyRows` on each service makes the grouping evaluated data rather than a
+comment.
+
+(2) **The fixture's admit witness is `codex`, read by name through U-B10's real
+`tally-admit`.** It is below the soft ceiling in the fixture, so removing its
+timer makes the very next probe unambiguously SLOW `stale_observation`. An
+UNKNOWN row is rejected by the meter decoder before a Decision carries age;
+those rows' source timestamps are checked separately over the same 60 ticks.
+The fixture refuses to substitute a second admission implementation.
+
+(3) **A source timestamp remains the observation timestamp.** In particular,
+`stamp-receipt.py window` may return its bounded cache during a 429; the feeder
+turns that into a current UNKNOWN read naming the cached source time instead of
+re-labelling old numbers as fresh MEASURED. A
+Codex `rate_limits` record missing any of `used_percent`, `window_minutes`, or
+`resets_at` becomes a fresh UNKNOWN row. `pi-qwencloud` declares no `window`
+cell at all: absent means UNKNOWN, while `kind: none` would falsely describe a
+non-spendable device.
