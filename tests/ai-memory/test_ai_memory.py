@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -38,6 +39,13 @@ HANDOFF_SKILL = Path(
 )
 PICKUP_SKILL = Path(
     os.environ.get("AI_MEMORY_PICKUP_SKILL", SKILL_ROOT / "pickup/SKILL.md")
+)
+
+ENQUEUE_CHECK = Path(
+    os.environ.get(
+        "AI_MEMORY_ENQUEUE_CHECK",
+        REPO_ROOT / "tools/enqueue-row-check.py",
+    )
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -864,6 +872,251 @@ class HarvestTests(unittest.TestCase):
         self.assertIn("no current session identity found", stderr.getvalue())
         self.assertNotIn("Traceback", stderr.getvalue())
         self.assertEqual(self.journal_files(), [])
+
+
+class HarvestEnqueueTests(unittest.TestCase):
+    """MEM-3: one unresolved unit becomes one row in the daemon's shape.
+
+    The rows land under the harvest store's own `enqueue/` directory and are
+    validated by `tools/enqueue-row-check.py` before they reach the disk.
+    Crossing into `~/.local/state/tally/events/` is a separate act (D-E07), so
+    every case here proves the scratch store is the only thing written.
+    """
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.harvest = self.root / "harvest"
+        self.runtime = self.root / "runtime"
+        self.runtime.mkdir()
+        self.identity = memory.Identity("claude-code", CLAUDE_ROOT_ID)
+        self.trace = copied_trace(fixture_trace(CLAUDE_HOME, CLAUDE_ROOT_ID), self.root)
+        self.environment = mock.patch.dict(
+            os.environ,
+            {
+                "XDG_RUNTIME_DIR": str(self.runtime),
+                "AI_MEMORY_HARVEST_DIR": str(self.harvest),
+                "AI_MEMORY_ENQUEUE_CHECK": str(ENQUEUE_CHECK),
+            },
+        )
+        self.environment.start()
+        os.environ.pop("ENQUEUE_ROW_CHECK_DROP_KEYS", None)
+
+    def tearDown(self) -> None:
+        self.environment.stop()
+        self.temporary.cleanup()
+
+    def run_harvest(self, *responses: object) -> tuple[int, str, str]:
+        """`ai_memory.py harvest --enqueue`, the argv the mechanism names."""
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with mock.patch.object(
+            memory, "current_identity", return_value=self.identity
+        ), mock.patch.object(
+            memory, "resolve_trace", return_value=self.trace
+        ), mock.patch.object(
+            memory, "invoke_utility", QueueInvoker(*responses)
+        ):
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                status = memory.main(["harvest", "--enqueue"])
+        return status, stdout.getvalue(), stderr.getvalue()
+
+    def rows(self) -> list[Path]:
+        return sorted((self.harvest / "enqueue").glob("*.enqueue.json"))
+
+    def hook_log(self) -> Path:
+        return self.harvest / "hook.log"
+
+    def test_harvest_enqueue_rows(self) -> None:
+        units = [
+            "Wire the harvest verb to a SessionEnd hook.",
+            "Move a validated harvest row into the daemon's own events dir.",
+        ]
+        status, stdout, stderr = self.run_harvest(
+            dict(result_data(), unresolved_units=units)
+        )
+        self.assertEqual(status, 0, stderr)
+        self.assertIn("created:", stdout)
+        self.assertEqual(stderr, "")
+
+        rows = self.rows()
+        self.assertEqual(len(rows), 2, [path.name for path in rows])
+        self.assertFalse(list((self.harvest / "enqueue").glob(".ai-memory-*.tmp")))
+        # Nothing was refused, so the store's ledger has nothing to say.
+        self.assertFalse(self.hook_log().exists())
+
+        documents: list[tuple[Path, dict[str, object]]] = []
+        for path in rows:
+            completed = subprocess.run(
+                [sys.executable, str(ENQUEUE_CHECK), str(path)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            documents.append((path, json.loads(path.read_text(encoding="utf-8"))))
+        documents.sort(key=lambda item: item[1]["row"]["dedupKey"])
+
+        self.assertEqual(
+            [document["row"]["dedupKey"] for _, document in documents],
+            [f"harvest:{CLAUDE_ROOT_ID}:1", f"harvest:{CLAUDE_ROOT_ID}:2"],
+        )
+        self.assertEqual(
+            [document["row"]["description"] for _, document in documents], units
+        )
+
+        seen_ids = set()
+        for path, document in documents:
+            row = document["row"]
+            self.assertEqual(path.name, f"{document['eventId']}.enqueue.json")
+            self.assertEqual(document["schemaVersion"], 1)
+            self.assertIs(document["acknowledged"], False)
+            seen_ids.add(document["eventId"])
+            self.assertEqual(row["rowVersion"], 5)
+            self.assertEqual(row["priority"], "low")
+            self.assertEqual(row["source"], "harvest")
+            self.assertEqual(row["adapter"], "ai-memory")
+            self.assertEqual(row["pool"], ["harvest"])
+            self.assertEqual(row["sessionRef"], CLAUDE_ROOT_ID)
+            # Nothing about a harvested row runs anything.
+            self.assertEqual(row["argv"], [])
+            self.assertIs(row["noEnqueue"], True)
+            self.assertEqual(
+                row["origin"], {"schemaVersion": 1, "source": "harvest"}
+            )
+            self.assertRegex(row["payloadHash"], r"^sha256:[0-9a-f]{64}$")
+            self.assertRegex(row["briefHash"], r"^sha256:[0-9a-f]{64}$")
+            self.assertNotIn("/.local/state/tally/", f"{path}")
+        self.assertEqual(len(seen_ids), 2)
+
+        # A second harvest of an unchanged session enqueues nothing again.
+        status, _, stderr = self.run_harvest(dict(result_data(), unresolved_units=units))
+        self.assertEqual(status, 0, stderr)
+        self.assertEqual(self.rows(), rows)
+
+    def test_harvest_enqueue_refuses_malformed(self) -> None:
+        # The seam belongs to the validator: it drops the named key from the
+        # document it is handed, so the refusal is driven with a row the writer
+        # built correctly rather than with a hand-forged file.
+        with mock.patch.dict(os.environ, {"ENQUEUE_ROW_CHECK_DROP_KEYS": "eventId"}):
+            status, _, stderr = self.run_harvest(result_data())
+
+            self.assertEqual(status, 1)
+            self.assertIn("enqueue refused 1 row", stderr)
+            self.assertIn("eventId is missing", stderr)
+            self.assertNotIn("Traceback", stderr)
+
+            # No file is written — not the row, and not a temporary beside it.
+            self.assertEqual(self.rows(), [])
+            enqueue_dir = self.harvest / "enqueue"
+            self.assertFalse(
+                enqueue_dir.exists() and any(enqueue_dir.iterdir()),
+                sorted(enqueue_dir.glob("*")) if enqueue_dir.exists() else [],
+            )
+
+            # The refusal is one line in the harvest store's own hook.log.
+            lines = self.hook_log().read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lines), 1, lines)
+            self.assertIn(f"session=claude-code:{CLAUDE_ROOT_ID}", lines[0])
+            self.assertIn("enqueue=refused unit=1", lines[0])
+            self.assertIn("eventId is missing", lines[0])
+
+            # The note itself still stands: only the row was refused.
+            self.assertTrue((self.harvest / f"{CLAUDE_ROOT_ID}.md").is_file())
+
+            # And the validator's own argv refuses the same document, rc 1.
+            document = memory.enqueue_row_document(
+                identity=self.identity,
+                unit="One unresolved unit, stated in one sentence.",
+                ordinal=1,
+                event_id="33333333-3333-4333-8333-333333333333",
+                row_uuid="44444444-4444-4444-8444-444444444444",
+            )
+            probe = self.root / f"{document['eventId']}.enqueue.json"
+            probe.write_text(json.dumps(document), encoding="utf-8")
+            refused = subprocess.run(
+                [sys.executable, str(ENQUEUE_CHECK), str(probe)],
+                capture_output=True,
+                text=True,
+                env=dict(os.environ),
+            )
+        self.assertEqual(refused.returncode, 1, refused.stderr)
+        self.assertIn("eventId is missing", refused.stderr)
+
+        # The seam is the only thing that made it malformed.
+        kept = subprocess.run(
+            [sys.executable, str(ENQUEUE_CHECK), str(probe)],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(kept.returncode, 0, kept.stderr)
+
+    def test_the_row_store_is_the_harvest_store_not_the_live_events_dir(self) -> None:
+        # D-E07: one override moves the notes, the rows and the ledger
+        # together, and no default here can reach branch (a)'s live state dir.
+        with mock.patch.dict(
+            os.environ, {"XDG_STATE_HOME": str(self.root / "state")}
+        ):
+            os.environ.pop("AI_MEMORY_HARVEST_DIR")
+            store = memory.default_harvest_dir()
+        self.assertEqual(
+            memory.enqueue_dir(store),
+            self.root / "state/tally-rewrite/harvest/enqueue",
+        )
+        self.assertEqual(
+            memory.hook_log_path(store),
+            self.root / "state/tally-rewrite/harvest/hook.log",
+        )
+        self.assertNotIn("/.local/state/tally/", f"{memory.enqueue_dir(store)}/")
+
+    def test_the_shape_is_the_live_daemons_and_a_real_row_passes(self) -> None:
+        # The required keys are taken from a real row, so a real row passes.
+        validator = memory.load_enqueue_validator()
+        exemplar = {
+            "schemaVersion": 1,
+            "eventId": "fffe9574-e63d-440f-8198-212bad9d4ec0",
+            "acknowledged": True,
+            "guardrailDepth": 1,
+            "row": {
+                "rowVersion": 5,
+                "uuid": "019ffbbe-bbb8-7093-bedb-8b8c2d887881",
+                "description": "spec-build-driver steeringRecheck",
+                "priority": "low",
+                "source": "orchestrator",
+                "adapter": "spec-build-driver",
+                "pool": ["campaign-control"],
+                "model": None,
+                "cwd": None,
+                "dedupKey": "flow:019ffbb8-837e-7b13-a0e1-bd899e1d927d:k:gate",
+                "payloadHash": "sha256:" + "5a" * 32,
+                "briefHash": "sha256:" + "41" * 32,
+                "sessionRef": None,
+                "jobTokenHash": "sha256:" + "00" * 32,
+                "leaseEpoch": 12,
+                "attempt": 1,
+                "argv": ["spec-build-driver", "steeringRecheck"],
+                "evidence": ["exit:0"],
+                "parentUuid": "019ffbb8-837e-7b13-a0e1-bd899e1d927d",
+                "consumptionEstimate": None,
+                "runtimeMaxSec": 900,
+                "noEnqueue": True,
+                "credentials": {},
+                "origin": {"schemaVersion": 1, "source": "orchestrator"},
+                "ghOrigin": None,
+                "relatedTrigger": None,
+                "evidenceClass": None,
+                "manifestHash": None,
+            },
+        }
+        self.assertEqual(validator.validate_document(exemplar), [])
+
+        for key in ("eventId", "schemaVersion", "row"):
+            missing = {k: v for k, v in exemplar.items() if k != key}
+            self.assertIn(f"{key} is missing", validator.validate_document(missing))
+        for key in ("dedupKey", "argv", "noEnqueue", "origin", "priority"):
+            row = {k: v for k, v in exemplar["row"].items() if k != key}
+            self.assertIn(
+                f"row.{key} is missing",
+                validator.validate_document(dict(exemplar, row=row)),
+            )
 
 
 class CompactionTests(unittest.TestCase):
