@@ -146,6 +146,36 @@ assert !(lib.hasInfix "/.local/state/tally/" rowsFile);
     inputs.tally-lake.homeManagerModules.tally-uplink
   ];
 
+  # THE ONE THING THIS FILE ADDS TO THE LAKE'S RENDERED UNIT, and why it is
+  # here rather than upstream (U-D19, dotfiles#322). The lake's module renders a
+  # `Type = "oneshot"` service and nothing else; `wakes = 1` means one wake per
+  # invocation, so the process probes, pulls, executes, mirrors, re-arms and
+  # EXITS. Without `RemainAfterExit`, systemd erases the outcome of that wake
+  # the instant it ends: a successful wake and a wake that never happened both
+  # read `inactive`, and only a failure is legible. U-D19's card grades the
+  # switch on `systemctl is-active tally-kernel.service tally-uplink.service ->
+  # active active`, which under the bare oneshot is unreachable BY
+  # CONSTRUCTION — not "not yet true", but never true for longer than the
+  # milliseconds of one wake.
+  #
+  # So the unit is given systemd's own idiom for a job whose result outlives
+  # its process: after a successful wake the unit stays `active` and MEANS "the
+  # last wake of this box's uplink succeeded"; after a failed one it is
+  # `failed` and names the error. That is strictly more information than the
+  # bare oneshot, and it is what makes the card's clause a measurement rather
+  # than a race.
+  #
+  # WHAT THIS IS NOT, and DF-U-D14-4 is untouched by it: `RemainAfterExit` is
+  # not a schedule. It adds no timer, no `Install` section and no `WantedBy` —
+  # nothing here fires the unit, exactly as U-D14 deferred, and `flake.nix`'s
+  # `tally-uplink-topology` keeps asserting `!(unit ? Install)` beside the new
+  # assertion on this key. The first wake is taken by U-D19's post-switch probe
+  # (`tools/u-d19-switch-oracle.sh`, clause D); every later wake is whatever
+  # spec §2.2b's wake mechanism becomes.
+  systemd.user.services.tally-uplink = lib.mkIf isCoordinator {
+    Service.RemainAfterExit = true;
+  };
+
   services.tally-uplink = lib.mkIf isCoordinator {
     enable = true;
 

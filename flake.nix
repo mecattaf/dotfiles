@@ -1067,6 +1067,13 @@
           # no Install section: nothing here starts the unit on a target, and
           # no timer in this repository fires it (DF-U-D14-4).
           assert !(unit ? Install);
+          # ... and the one key U-D19 added, asserted BESIDE that one so the
+          # pair reads as what it is: the wake's RESULT survives the wake
+          # (a successful `wakes = 1` oneshot stays `active`, a failed one is
+          # `failed`), while nothing fires the unit. Dropping this key would
+          # make U-D19's card clause `tally-uplink.service -> active`
+          # unreachable by construction, so it is asserted rather than trusted.
+          assert unit.Service.RemainAfterExit;
           # the uplink's own outbox, declared with its mode.
           assert builtins.elem "d ${state}/uplink 0700 - - -"
             coordinatorHome.systemd.user.tmpfiles.rules;
