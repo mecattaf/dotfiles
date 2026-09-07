@@ -572,3 +572,68 @@ NOT decided here and deliberately untouched: the kernel and what it serves
 (`--rows` stays gpu-coordinator,gpu-worker,mechanical), the switch that would
 make the corrected `TALLY_CLAUDE_SEATS` live (U-D19's, DF-CAP-1-1), TL-17 itself
 (DF-CAP-1-2), and every path under `~/.local/state/tally/`.
+
+2026-09-07 MEM-3 (dotfiles#340): `harvest --enqueue` turns each unresolved unit
+of a harvest into one enqueue row in the live daemon's shape. Six lines decided
+here so the unit did not wait.
+
+(1) **The required-keys list is the intersection of real rows, plus the two
+hashes the mechanism names.** MEASURED 2026-09-07 over a 600-row random sample
+of `~/.local/state/tally/events/*.enqueue.json` (10,144 rows, read only): every
+row carries the 5 event keys and the 26 row keys of `REQUIRED_EVENT_KEYS` /
+`REQUIRED_ROW_KEYS`, with **no type violation anywhere** — the whole 600 pass
+apart from `row.briefHash` (missing in 144) and `row.payloadHash` (missing in
+52), which MEM-3's mechanism names on a harvest row and which are therefore
+required here. `jobTokenHash` was universal in the first 400-row sample and
+missing in 2 of the next 600, so it is optional: a key that is *nearly* always
+present is not an invariant. `ingressId`, `orchestration`, `workspace`,
+`adapterOptions`, `ghOrigin` and `modelProvenance` are optional for the same
+reason, and unknown keys are allowed, because the daemon's shape grows by
+addition and a validator that refused growth would refuse tomorrow's rows.
+
+(2) **The validator's test seam is an environment variable read at check time,
+not a hand-forged file.** `ENQUEUE_ROW_CHECK_DROP_KEYS` drops the named keys
+from the document the validator is handed. The refusal path is then driven by a
+row the writer *built correctly*, which is the only way the test proves the
+writer's own validate-before-write ordering rather than proving that a broken
+file is broken. The seam works identically in-process and across the CLI's
+process boundary, so one seam serves both halves of the oracle. It is unset in
+every real run, and `apply_test_seam` copies before it drops, so no caller's
+document is mutated.
+
+(3) **`acknowledged` is `false` and `guardrailDepth` is `0` on a harvested row,
+which is out of the live sample's distribution and is the honest value.** All
+400 sampled live rows carry `acknowledged: true` because the daemon acks what it
+has taken; `guardrailDepth` 0 occurs in 61 of 400. No daemon has seen a harvest
+row — they sit in the harvest store — so saying otherwise would be a claim about
+a delivery that has not happened. The validator checks the *type*, never the
+value, which is why both readings pass.
+
+(4) **A refused row does not cost the harvest its other rows, and does not cost
+it the note.** The writer attempts every unit, logs one line per refusal, and
+raises once at the end; the note has already been written by then. So the verb
+exits 1 with the reason on stderr, `hook.log` carries exactly one line per
+refused unit, and the distillation Tom paid ~40 GB of cold load for is still on
+disk. The alternative — abort on the first bad row — would discard good rows to
+punish a bad one.
+
+(5) **`hook.log` is `<harvest store>/hook.log`, the same file MEM-2's SessionEnd
+hook writes** (`~/research-methods/DECISIONS.md` D-E14 (3)): one override,
+`AI_MEMORY_HARVEST_DIR`, moves the notes, the rows and the ledger together, so a
+test never has to point them apart and no path in this verb can reach branch
+(a)'s live state dir. MEM-3 does not depend on MEM-2 and does not require the
+hook to exist; it writes the same ledger when it has something to record.
+
+(6) **An `unchanged` harvest enqueues nothing.** The enqueue runs after the note
+is written, inside the same session lock, and the `unchanged` short-circuit
+returns before it. A SessionEnd hook that fires twice on one session therefore
+does not write the same units twice — the rows have fresh uuid4 `eventId`s and
+would not deduplicate themselves, so the idempotence has to live here. The
+`dedupKey` is `harvest:<session_id>:<n>` and is what a future mover would fold
+on.
+
+NOT decided here and deliberately untouched: the drain (its bytes, its store and
+its written prohibition are unchanged); the live daemon (never called); anything
+under `~/.local/state/tally/`, which this unit only ever READ, to take the shape
+from a real row; and the move of a validated row into the daemon's own events
+directory, which is a separate act (D-E07) carried as `DEFERRED.md` DF-MEM-3-1.
