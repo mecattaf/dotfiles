@@ -27,8 +27,17 @@ trap 'rm -rf "$tmp"' EXIT
 # which is what systemd prints for a unit it has never heard of) and refuses
 # every other verb, so nothing else in the probe can accidentally pass.
 mkdir -p "$tmp/bin"
-cat > "$tmp/bin/systemctl" <<'FAKE'
-#!/usr/bin/env bash
+# The shebang is the RUNNING bash, resolved at write time, never
+# `#!/usr/bin/env bash`: this file is executed through PATH, and a nix build
+# sandbox has no /usr/bin/env, so the literal form made every fake-systemctl
+# call fail there while passing on a box that has one. That is how this check
+# read 10/10 under `bash tests/...` and 6/10 as `checks.l8-flash-probe-util-rows`
+# under a FULL `nix flake check` — the four "-> PASS" cases, the ones that need
+# the fake to actually answer, were the ones that flipped (U-D19, #322).
+cat > "$tmp/bin/systemctl" <<FAKE
+#!${BASH}
+FAKE
+cat >> "$tmp/bin/systemctl" <<'FAKE'
 unit=""
 want_fragment=0
 for arg in "$@"; do
