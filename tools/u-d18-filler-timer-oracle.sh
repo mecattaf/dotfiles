@@ -309,13 +309,32 @@ if [ "$probe_started" = 1 ]; then
 fi
 
 # --- F ---------------------------------------------------------------------
-# Nothing switched, nothing hand-installed, nothing left behind.
+# Nothing hand-installed, nothing left behind.
+#
+# RULE 9 IS ABOUT WHO WROTE THE FILE, NOT ABOUT WHETHER A FILE IS THERE, and
+# after U-D19's switch a file IS there — home-manager put it there, as a symlink
+# into the store. `[ -e "$f" ]` cannot tell that apart from the hand-written
+# pair Rule 9 forbids, so from generation 189 on it read this unit's own correct
+# installation as a violation (MEASURED 2026-09-07: U-D18's oracle went from
+# PASS to FAIL on this clause alone, with no edit to U-D18's deliverable).
+#
+# The test is therefore the distinction Rule 9 actually draws: a PLAIN FILE at
+# that path is hand-written and is the refusal; a SYMLINK that resolves under
+# /nix/store is the switch's own act and is the intended state. This is the
+# same two-part assertion as `frag_ok` in tools/u-d19-switch-oracle.sh, and the
+# same defect that dotfiles#331 records for home/dot_local/bin/l8-flash-probe.
 handwritten=0
 for f in "${HOME:-/home/tom}/.config/systemd/user/tally-filler.service" \
          "${HOME:-/home/tom}/.config/systemd/user/tally-filler.timer"; do
-  [ -e "$f" ] && { bad "F a hand-written unit exists where only a switch may put one (Rule 9): $f"; handwritten=1; }
+  [ -e "$f" ] || continue
+  if [ -L "$f" ] && case "$(readlink -f "$f" 2>/dev/null)" in /nix/store/*) true ;; *) false ;; esac; then
+    note "F $f is a symlink into the store — home-manager's, put there by U-D19's switch, not a hand-written unit"
+  else
+    bad "F a hand-written unit exists where only a switch may put one (Rule 9): $f is a plain file"
+    handwritten=1
+  fi
 done
-[ "$handwritten" = 0 ] && pass "F no hand-written ~/.config/systemd/user/tally-filler.{service,timer} exists (Rule 9)"
+[ "$handwritten" = 0 ] && pass "F no HAND-WRITTEN ~/.config/systemd/user/tally-filler.{service,timer} exists (Rule 9; a store symlink there is the switch's own act)"
 
 real_state=$(systemctl --user show tally-filler.timer --property=LoadState --value 2>/dev/null)
 case "$real_state" in

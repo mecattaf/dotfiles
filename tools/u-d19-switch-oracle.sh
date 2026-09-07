@@ -116,6 +116,14 @@ else
   fi
   note "B generation now $(readlink /run/current-system) ($(basename "$(readlink /nix/var/nix/profiles/system)"))"
 fi
+# Read HERE, before anything below starts a unit, because clause H2 grades what
+# the SWITCH did. The uplink is a oneshot with no Install section: after the
+# switch it is loaded and `inactive`, and it only enters a state at all when
+# clause C2 wakes it. Taking the census after that wake would charge the switch
+# with a failure the oracle itself caused, and would count one failure twice —
+# C2 already grades it by name.
+post_switch_sys_failed=$(systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | sort | tr '\n' ' ')
+post_switch_usr_failed=$(systemctl --user --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | sort | tr '\n' ' ')
 
 # ── C. the two units, one per bus ───────────────────────────────────────────
 # The kernel is a `Type = simple` system service with `wantedBy =
@@ -146,22 +154,85 @@ if [ "$u_state" = "active" ]; then
 else
   bad "C2 systemctl --user is-active tally-uplink.service -> ${u_state:-<empty>} (user bus), want active; restart rc=$u_rc"
   journalctl --user -u tally-uplink.service -n 15 --no-pager 2>&1 | sed 's/^/    /' | head -20
+  # THE DIAGNOSIS, PRINTED RATHER THAN GUESSED AT. The known blocker at the
+  # revs this repository pins (tally-b 26d7580, tally-lake a233c30) is a
+  # cross-repo contract mismatch that no dotfiles option can close, and it is
+  # asked here directly so the failure names its own cause instead of leaving a
+  # reader to reconstruct it from a journal line:
+  #
+  #   - the uplink's probe() is an `admit` with no taskId, taken over EVERY row
+  #     of its rows file, in file order (tally-lake src/uplink.mjs:88-103,
+  #     src/socket.mjs:105-118);
+  #   - the kernel's `admit` runs `consider()` -> `stamp_row(row)`, which looks
+  #     the row up in its OWN --rows table and refuses `exec_recovery_malformed`
+  #     when it is not there (tally crates/tally-kernel/src/exec.rs:1340-1350);
+  #   - this estate's kernel is configured, correctly, with only the three
+  #     `owner: kernel` rows, because `stamp` WRITES <meters>/<row>.json with
+  #     `owner: kernel` (crates/tally-kernel/src/row.rs:154-…) and giving it the
+  #     seat rows would have it overwrite the rows U-D12's feeders publish,
+  #     destroying D-B5's two pools.
+  #
+  # So the first row of docs/rows.md — `cc`, owner tom — refuses the whole wake.
+  # home/tally-uplink.nix's own comment states the contract the pinned code does
+  # not keep: "the served kernel answers from its own three rows AND THE METERS
+  # DIR FOR THE REST, and a probe that fails is written busy with grade UNKNOWN,
+  # never as false idle". Filed as mecattaf/tally and mecattaf/tally-ts-sdk
+  # issues; DEFERRED.md DF-U-D19-1. Neither head carries a fix today (MEASURED
+  # 2026-09-07: tally add5dddb, tally-ts-sdk f817f86d).
+  kbin=$(systemctl show -p ExecStart --value tally-kernel.service 2>/dev/null | sed -n 's/.*path=\([^ ;]*\).*/\1/p' | head -1)
+  ksock="$state/kernel.sock"
+  if [ -x "$kbin" ] && [ -S "$ksock" ]; then
+    note "C2 diagnosis — the kernel's own answer to a probe of each kind of row:"
+    for r in cc gpu-coordinator mechanical; do
+      note "    admit {row:$r} -> $("$kbin" call --socket "$ksock" --verb admit --body "{\"row\":\"$r\",\"request\":{}}" 2>&1 | head -1)"
+    done
+    note "    kernel --rows (owner: kernel only): $(systemctl show -p ExecStart --value tally-kernel.service | sed -n 's/.*--rows \([^ ;]*\).*/\1/p' | head -1)"
+    note "    uplink --rows (all nine):           $(systemctl --user show -p ExecStart --value tally-uplink.service | sed -n 's/.*--rows \([^ ;]*\).*/\1/p' | head -1)"
+  fi
 fi
 
 # ── D. the fragments are the store's, on both buses ─────────────────────────
-# The card names the kernel's; the uplink's is asserted too, because a unit
-# still answering from a hand-written ~/.config/systemd/user file would satisfy
+# The card names the kernel's; the uplink's and the filler timer's are asserted
+# too, because a unit still answering from a hand-written file would satisfy
 # clause C while proving nothing about the switch (Rule 9).
-k_frag=$(systemctl show -p FragmentPath --value tally-kernel.service 2>/dev/null || true)
-case "$k_frag" in
-  /nix/store/*) pass "D1 systemctl show -p FragmentPath tally-kernel.service -> $k_frag" ;;
-  *)            bad  "D1 tally-kernel.service FragmentPath is '${k_frag:-<empty>}', want a /nix/store path" ;;
-esac
-u_frag=$(systemctl --user show -p FragmentPath --value tally-uplink.service 2>/dev/null || true)
-case "$u_frag" in
-  /nix/store/*) pass "D2 systemctl --user show -p FragmentPath tally-uplink.service -> $u_frag" ;;
-  *)            bad  "D2 tally-uplink.service FragmentPath is '${u_frag:-<empty>}', want a /nix/store path" ;;
-esac
+#
+# "UNDER /nix/store" IS A CLAIM ABOUT WHERE THE BYTES LIVE, NOT ABOUT THE
+# STRING systemd PRINTS, and on this box the two differ. MEASURED 2026-09-07,
+# generation 189: NixOS installs a system unit as /etc/systemd/system/<u> and
+# home-manager installs a user unit as ~/.config/systemd/user/<u>, each a
+# SYMLINK into the store, and systemd reports the symlink it loaded —
+#
+#   systemctl show -p FragmentPath tally-kernel.service
+#     -> /etc/systemd/system/tally-kernel.service
+#   readlink -f that
+#     -> /nix/store/…-unit-tally-kernel.service/tally-kernel.service
+#
+# — for EVERY declared unit on this estate, llama-swap and tally-daemon
+# included. A literal `case $frag in /nix/store/*)` therefore reads FAIL for a
+# unit that is store-backed, which is a false RED and not a finding. (It is
+# also a live defect in home/dot_local/bin/l8-flash-probe, which does exactly
+# that and so reports FAIL for four units this switch installed correctly:
+# filed as dotfiles#331, DEFERRED.md DF-U-D19-3, not fixed here.)
+#
+# So the assertion is the two-part one the clause MEANS, and both halves are
+# printed: the FragmentPath is a SYMLINK (never a plain file, which is what a
+# hand-installed unit is — Rule 9) and it RESOLVES under /nix/store.
+frag_ok() { # $1 = label, $2 = FragmentPath
+  local what="$1" frag="$2" real
+  if [ -z "$frag" ]; then bad "$what FragmentPath is empty — the unit is not loaded"; return; fi
+  if [ ! -L "$frag" ]; then
+    bad "$what FragmentPath '$frag' is not a symlink — a plain unit file is a hand-installed one (Rule 9)"; return
+  fi
+  real=$(readlink -f "$frag" 2>/dev/null)
+  case "$real" in
+    /nix/store/*) pass "$what FragmentPath $frag -> $real" ;;
+    *)            bad  "$what FragmentPath '$frag' resolves to '${real:-<unresolvable>}', want a path under /nix/store" ;;
+  esac
+}
+frag_ok "D1 systemctl show -p FragmentPath tally-kernel.service:" \
+  "$(systemctl show -p FragmentPath --value tally-kernel.service 2>/dev/null || true)"
+frag_ok "D2 systemctl --user show -p FragmentPath tally-uplink.service:" \
+  "$(systemctl --user show -p FragmentPath --value tally-uplink.service 2>/dev/null || true)"
 
 # ── E. the timers the switch armed ──────────────────────────────────────────
 timers=$(systemctl --user list-timers --all --no-legend --no-pager 2>/dev/null | awk '{print $(NF-1)}')
@@ -170,10 +241,18 @@ listed() { printf '%s\n' "$timers" | grep -qx -- "$1"; }
 # The feeder timer is found by the ROW it feeds, not by its name — see the
 # header. `X-TallyRows` is home/seat-feeder.nix's own extension key, read the
 # same way tools/feeder-fixture.sh reads it.
+# `systemctl show` drops keys it does not know, so X- extension keys are NOT
+# readable that way (MEASURED: `systemctl --user show -p X-TallyRows
+# tally-seat-feeder-claude.service` prints nothing, while the unit file two
+# symlinks away carries `X-TallyRows=cc,cc2,cc3`). It is read from the fragment,
+# which is also what tools/feeder-fixture.sh does.
 feeder=""
+feeder_rows=""
 for t in $(printf '%s\n' "$timers" | grep '^tally-seat-feeder-.*\.timer$'); do
   svc="${t%.timer}.service"
-  rows=$(systemctl --user show -p X-TallyRows --value "$svc" 2>/dev/null)
+  sfrag=$(systemctl --user show -p FragmentPath --value "$svc" 2>/dev/null)
+  [ -n "$sfrag" ] && [ -r "$sfrag" ] || continue
+  rows=$(sed -n 's/^X-TallyRows=//p' "$sfrag" | head -1)
   case ",${rows}," in *,cc,*) feeder="$t"; feeder_rows="$rows"; break ;; esac
 done
 if [ -n "$feeder" ]; then
@@ -189,15 +268,12 @@ done
 
 # D-B66's clause, moved here from U-D18 because only this unit switches.
 if listed tally-filler.timer; then
-  pass "E3 systemctl --user list-timers names tally-filler.timer (D-B66, moved here from U-D18) — next $(systemctl --user show -p NextElapseUSecMonotonic --value tally-filler.timer 2>/dev/null)"
+  pass "E3 systemctl --user list-timers names tally-filler.timer (D-B66, moved here from U-D18) — $(systemctl --user show -p ActiveState,Unit --value tally-filler.timer 2>/dev/null | tr '\n' ' ')"
 else
   bad "E3 tally-filler.timer is not listed; listed timers: $(printf '%s' "$timers" | tr '\n' ' ')"
 fi
-f_frag=$(systemctl --user show -p FragmentPath --value tally-filler.timer 2>/dev/null || true)
-case "$f_frag" in
-  /nix/store/*) pass "E4 tally-filler.timer FragmentPath -> $f_frag (DF-U-D18-1's discharge condition)" ;;
-  *)            bad  "E4 tally-filler.timer FragmentPath is '${f_frag:-<empty>}', want a /nix/store path" ;;
-esac
+frag_ok "E4 tally-filler.timer (DF-U-D18-1's discharge condition):" \
+  "$(systemctl --user show -p FragmentPath --value tally-filler.timer 2>/dev/null || true)"
 
 # ── F. llama-swap: still active, never restarted ────────────────────────────
 # The card's non-goal is "never restart llama-swap", and this is where that is
@@ -251,19 +327,18 @@ fi
 # dir that this run never touches, and `reset-failed` would only clear the
 # evidence. So the clause is "the switch ADDED no failed unit", measured against
 # the baseline's name, never "--failed is empty".
-sys_failed=$(systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | sort | tr '\n' ' ')
-usr_failed=$(systemctl --user --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | sort | tr '\n' ' ')
 base_usr=$(printf '%s' "$U_D19_BEFORE_USER_FAILED" | tr ' ' '\n' | sort | tr '\n' ' ')
 new_usr=""
-for u in $usr_failed; do case " $base_usr " in *" $u "*) ;; *) new_usr="$new_usr$u ";; esac; done
-[ -z "$(printf '%s' "$sys_failed" | tr -d ' ')" ] \
-  && pass "H1 systemctl --failed (system) is empty" \
-  || bad  "H1 systemctl --failed (system): $sys_failed"
+for u in ${post_switch_usr_failed:-}; do case " $base_usr " in *" $u "*) ;; *) new_usr="$new_usr$u ";; esac; done
+[ -z "$(printf '%s' "${post_switch_sys_failed:-}" | tr -d ' ')" ] \
+  && pass "H1 systemctl --failed (system) is empty immediately after the switch" \
+  || bad  "H1 systemctl --failed (system) immediately after the switch: $post_switch_sys_failed"
 if [ -z "$new_usr" ]; then
-  pass "H2 the switch added no failed user unit (now: ${usr_failed:-<none>}; pre-existing by D-B98: ${base_usr:-<none>})"
+  pass "H2 the switch added no failed user unit (immediately after it: ${post_switch_usr_failed:-<none>}; pre-existing by D-B98: ${base_usr:-<none>})"
 else
   bad "H2 the switch ADDED failed user unit(s): $new_usr(pre-existing: ${base_usr:-<none>})"
 fi
+note "H2b for completeness, the census as this run ENDS — user: $(systemctl --user --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | sort | tr '\n' ' ' | sed 's/ $//;s/^$/<none>/'); system: $(systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | sort | tr '\n' ' ' | sed 's/ $//;s/^$/<none>/')" 
 # The act was `#coordinator`, and this repository's worker profile still
 # declares none of it — the same eval the negative control takes, so a leak in
 # the coordinator gate is RED here too and not only over ssh.

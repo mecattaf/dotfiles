@@ -499,3 +499,138 @@ the socket (U-D11/TL-15, DF-U-D18-3), every option of
 `home/tally-uplink.nix` (which still renders with no `Install` section — this
 unit discharges DF-U-D14-4 with a timer of the filler's own, never by installing
 the uplink), and every line of the register's own `tools/e1-loop.sh`.
+
+2026-09-07 U-D19 (dotfiles#322): the coordinator switch. The card's oracle is
+prose naming an ACT and the probes that grade it, so it is mechanized as ONE
+argv — `bash tools/u-d19-switch-oracle.sh` — and the lines the prose left open
+are decided here. The switch itself is TAKEN: `nix flake check` (FULL) rc 0,
+`sudo nixos-rebuild switch --flake .#coordinator` rc 0, generation 190, from
+`main` at `bc105180` plus this branch's five commits.
+
+(1) **The full `nix flake check` is run as the card says, and it found a red
+that `--offline --no-build` cannot see.** Every other unit in this suite
+verifies with the targeted gate, which proves the tree EVALUATES; the full form
+BUILDS every check derivation. `checks.x86_64-linux.l8-flash-probe-util-rows`
+came back 6/10 while `bash tests/l8-flash-probe/test-util-timer-rows.sh` on the
+box read 10/10. The test writes a fake `systemctl` onto `PATH` with the literal
+shebang `#!/usr/bin/env bash`, and a nix build sandbox has no `/usr/bin/env`, so
+inside the derivation every fake call failed and `FragmentPath` came back empty
+— flipping exactly the four `-> PASS` cases, the ones that need the fake to
+answer. Fixed by resolving the shebang to the running bash at write time. This
+is the class of defect only the full gate can see, which is the whole reason the
+card asks for it.
+
+(2) **"FragmentPath under `/nix/store`" is a claim about where the bytes live,
+not about the string systemd prints, and on this box the two differ.** MEASURED
+on generation 190: NixOS installs a system unit as `/etc/systemd/system/<u>` and
+home-manager a user unit as `~/.config/systemd/user/<u>`, each a SYMLINK into
+the store, and systemd reports the symlink it loaded — for EVERY declared unit
+on both buses, `llama-swap.service` and `tally-daemon.service` included. A
+literal `case $frag in /nix/store/*)` therefore reads FAIL for a unit that is
+store-backed. The oracle asserts the two-part claim the clause MEANS and prints
+both halves: the `FragmentPath` is a SYMLINK — a plain file there is precisely a
+hand-installed unit, Rule 9 — and it RESOLVES under `/nix/store`. The same
+defect is live in `home/dot_local/bin/l8-flash-probe`, where it makes four rows
+read FAIL for units this switch installed correctly; filed as dotfiles#331 and
+carried as DF-U-D19-3, NOT fixed here (it is U-D16/U-D17's artefact, and
+DF-U-D17-1 cannot be discharged by this unit in any case — its worker half is a
+TOM LINE).
+
+(2b) **The same defect had made this unit's own act turn U-D18's oracle red, and
+that one IS repaired here.** `tools/u-d18-filler-timer-oracle.sh` clause F read
+`[ -e ~/.config/systemd/user/tally-filler.{service,timer} ]` as a Rule 9
+violation. After the switch a file IS there — home-manager's, a symlink into the
+store — so from generation 189 on, U-D18 went from PASS to FAIL with no edit to
+its deliverable. Rule 9 is about WHO WROTE the file: a plain file at that path
+is the refusal, a store symlink is the switch's own act. Clause F now draws that
+distinction and U-D18 reads PASS again. A unit that breaks another unit's oracle
+by doing its own job repairs it in the same PR.
+
+(3) **`tally-seat-feeder-cc.timer` is not matched by name, because no such timer
+exists on this estate and none ever did.** The card predates U-D12's delivery,
+whose own DOMINANT was "nix eval of the coordinator config shows the THREE
+timers declared", named for the INSTRUMENT: one Claude reader writes the `cc`,
+`cc2` and `cc3` rows on one tick (this file's U-D12 line (1); D-B5 keeps `cc`
+and `cc2` two pools). Clause E1 finds the listed `tally-seat-feeder-*.timer`
+whose service declares the `cc` row in its `X-TallyRows` key and requires THAT
+timer, which is strictly stronger than a name match: a rename that dropped the
+row would still be RED. All three instruments are asserted besides, since the
+issue title says "the feeders' timers listed". `X-TallyRows` is read from the
+FRAGMENT and not from `systemctl show`, which drops keys it does not know
+(MEASURED: `show -p X-TallyRows` prints nothing while the unit file carries
+`X-TallyRows=cc,cc2,cc3`).
+
+(4) **The llama-swap baseline is a committed file, and the clause is three
+readings rather than one.** A baseline captured at the oracle's own start would
+be captured AFTER any restart a previous run caused, so it is
+`tools/u-d19-switch-baseline.env`, written once before the first switch.
+`ActiveEnterTimestamp` alone would not notice a stop-and-start inside the same
+second, so `MainPID` and `NRestarts` are asserted with it. MEASURED before
+switching, so the clause could not be satisfied by luck: the new generation's
+`etc/systemd/system/llama-swap.service` is BYTE-IDENTICAL to the running one.
+After: `Sat 2026-09-05 10:50:00 CEST`, MainPID 4003635, NRestarts 0 — all three
+unchanged across two switches.
+
+(5) **The `--failed` census is taken immediately after the switch, and the
+clause is "the switch ADDED no failed unit", never "--failed is empty".** D-B98:
+`util-row.service` was already failed before this run, on branch (a)'s state dir
+which this run never touches, and `reset-failed` would only clear the evidence.
+The census is read before anything below starts a unit, because the uplink is a
+oneshot with no `Install` section: after the switch it is loaded and `inactive`,
+and only enters a state when the oracle wakes it. Taking the census later would
+charge the switch with a failure the oracle itself caused and count one failure
+twice, since clause C2 already grades it by name.
+
+(6) **`RemainAfterExit` on `tally-uplink.service`, and it is not a schedule.**
+The lake's module renders `Type = "oneshot"`, and `wakes = 1` means one wake per
+invocation. Without the key, systemd erases that wake's outcome the instant it
+ends: a successful wake and a wake that never happened both read `inactive`, and
+the card's `is-active … -> active active` is unreachable BY CONSTRUCTION — not
+"not yet true", but never true for longer than the milliseconds of one wake.
+With it, `active` MEANS "the last wake succeeded" and a failed wake stays
+`failed` naming its error. DF-U-D14-4 is untouched: no timer, no `Install`, no
+`WantedBy`, and `flake.nix`'s `tally-uplink-topology` asserts the new key
+immediately beside the standing `assert !(unit ? Install)`.
+
+(7) **The two clauses this unit cannot turn green, and why they are recorded as
+a blocker rather than softened into a NOTE.** `tally-uplink.service` is `failed`
+and `ledger.jsonl` does not grow across a wake, for one reason measured to the
+line: the uplink's `probe()` is an `admit` with no `taskId` taken over EVERY row
+of its rows file in file order (tally-ts-sdk `src/uplink.mjs:88-103`,
+`src/socket.mjs:105-118`); the kernel's `admit` runs `consider()` ->
+`stamp_row(row)`, which refuses `exec_recovery_malformed` for a row outside its
+own `--rows` table (tally `crates/tally-kernel/src/exec.rs:1340-1350`); and this
+estate's kernel is configured, CORRECTLY, with only the three `owner: kernel`
+rows, because `RowWriter::stamp` WRITES `<meters>/<row>.json` with
+`"owner":"kernel"` and giving it the seat rows would have it overwrite the rows
+U-D12's feeders publish, destroying D-B5's two pools. `docs/rows.md`'s first row
+is `cc`, so the first probe of every wake throws. The repository's only two
+levers are the kernel's `--rows` (must stay the owned rows) and the uplink's
+`--rows` (must stay the estate's nine, asserted by `tally-uplink-topology`), and
+neither is a fix. Filed as mecattaf/tally#50 and mecattaf/tally-ts-sdk#105;
+carried as DF-U-D19-1 and DF-U-D19-2; neither upstream `main` carries a fix
+today (MEASURED: `add5dddb`, `f817f86d`). The clauses stay hard FAILs and the
+oracle reports rc 1: the card asks for `active`, the box says `failed`, and an
+author who converted his own red clause into a NOTE would be grading his own
+oracle. The chain IS being written — the file exists with `admission_transition`
+records from probes on the rows the kernel owns — so what is missing is the
+estate's own traffic, and manufacturing rows by hand to move the number would be
+the oracle writing the evidence it then reads.
+
+(8) **The mutation hint is a measurement and is taken as one.** "Not a code
+mutation: the negative control is the probe on the worker box, which must report
+the units absent (unswitched)". `bash tools/u-d19-worker-negative-control.sh` is
+read-only over ssh with `BatchMode` — `is-active`, `show -p`, `list-timers` and
+nothing else, by the non-goal "the worker box untouched". It also evaluates THIS
+repository's rendered WORKER profile and requires it to declare none of the
+four, so the absence is by construction and not merely by a switch not yet
+taken. MEASURED after the switch: rc 0, every unit absent there while the same
+four are active/listed here — which is the contrast that makes the coordinator's
+probes evidence rather than a claim true of any box.
+
+NOT decided here and deliberately untouched: the worker box's switch (D-B15,
+DF-U-D19-4), the `l8-flash-probe` repair (dotfiles#331, DF-U-D19-3), the two
+upstream fixes (mecattaf/tally#50, mecattaf/tally-ts-sdk#105), every option of
+`modules/tally-b.nix` and `home/seat-feeder.nix` and `home/tally-filler.nix`,
+and both flake input revs — `tally-b` and `tally-lake` stay where U-D13 and
+U-D14 pinned them, and neither upstream head would have helped.
