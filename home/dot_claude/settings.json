@@ -26,6 +26,18 @@
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/home/tom/.claude/hooks/ai-memory-harvest.sh'",
+            "timeout": 600
+          }
+        ]
+      }
     ]
   }
 }
