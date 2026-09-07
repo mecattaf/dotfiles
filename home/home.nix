@@ -228,6 +228,15 @@ in
   home.file.".claude/skills".source = link "dot_claude/skills";
   home.file.".claude/settings.json".source = link "dot_claude/settings.json";
 
+  # SessionEnd -> the harvest verb (MEM-2, dotfiles#339). ONE link, not a
+  # whole-dir one, for the same reason as the lines above: ~/.claude/hooks must
+  # stay a real directory, because herdr's own SessionStart hook is a raw file
+  # that lives there and is not delivered from this repository. settings.json is
+  # shared by all three Claude config dirs and names this hook by ABSOLUTE path,
+  # so one link serves ~/.claude, ~/.claude-work and ~/.claude-3 alike.
+  home.file.".claude/hooks/ai-memory-harvest.sh".source =
+    link "dot_claude/hooks/ai-memory-harvest.sh";
+
   # Second Claude account (work): `cc2`/`cac2` in fish set CLAUDE_CONFIG_DIR to
   # ~/.claude-work. Same skills + settings, separate .credentials.json/.claude.json.
   home.file.".claude-work/skills".source = link "dot_claude/skills";
