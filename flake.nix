@@ -161,6 +161,44 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # tally-b — the REWRITE kernel (github.com/mecattaf/tally, the repo whose
+    # pre-rebuild spec history the `tally` comment above names): the Rust
+    # workspace of TALLY-SPEC §2.1 — admission, leases, the witness chain and
+    # the typed socket — delivered by U-B1…U-B13 on `main`.
+    #
+    # `flake = false` because the repo ships NO flake of its own: it is a cargo
+    # workspace (std-only crates, no build.rs, no external dependency), so
+    # there is nothing to consume but source, and modules/tally-b.nix does the
+    # whole packaging — rustPlatform over crates/tally-socket, whose binary IS
+    # `tally-kernel` (serve/call/chain/guard), run as the SYSTEM service
+    # tally-kernel.service. Same plain-source consumption sfmono-liga uses.
+    #
+    # PINNED TO A REV on `main`, deliberately, the way nixpkgs-paperless and
+    # herdr are bumped: `nix flake lock --update-input tally-b` must be a
+    # NO-OP at the pin (asserted by tests/tally-b/test-tally-b-input.sh), and
+    # moving the kernel is an edit here, reviewed like any other change.
+    #
+    # The repo is PRIVATE (`gh repo view mecattaf/tally --json isPrivate` →
+    # true, MEASURED 2026-09-06) and this unit flips no visibility — no
+    # executor does; contrast U-D15's herdr-kitten, whose `github:` form a Tom
+    # line had already cleared (R-2026-09-06-22) before the flip. The native
+    # `github:` fetcher was MEASURED against that wall: it downloads the
+    # codeload tarball with nix's own `access-tokens`, of which this fleet has
+    # none configured, and answers `HTTP error 404` on the private repo. So
+    # the URL is the `git+https://` form, which fetches through git and
+    # therefore through the machine's OWN persistent credential path — the
+    # `gh auth git-credential` helper in root's and tom's global gitconfig —
+    # with no token in this file, in flake.lock or in the environment nix
+    # needs at eval time. Consequence, stated plainly and recorded in
+    # DECISIONS.md: the ONE network act (the lock update / first fetch) works
+    # only on a host whose git can authenticate to github.com; after that the
+    # git cache and store path make every gate `--offline`-clean anywhere.
+    # Nothing was printed or read from any credential store to establish this.
+    tally-b = {
+      url = "git+https://github.com/mecattaf/tally?rev=26d758049bf0e89126157b3ea743085bb1b918f0";
+      flake = false;
+    };
+
     # deploy-rs — the fleet's one NixOS activation engine. Tally remains the
     # scheduler/admission/proof plane; deploy-rs runs inside that one durable job
     # and contributes target copy, activation, SSH confirmation, and automatic
@@ -804,6 +842,78 @@
                 bash ${./tests/l8-flash-probe/test-util-timer-rows.sh} | tee "$TMPDIR/out"
               cp "$TMPDIR/out" $out
             '';
+
+        # The tally-b topology (U-D13, #316). Same reasoning as
+        # util-sampler-topology: `nix flake check --offline --no-build` on its
+        # own only proves the tree EVALUATES, and it would stay green through a
+        # merge resolution that dropped ../../modules/tally-b.nix from
+        # hosts/coordinator/default.nix's imports or that repointed the unit at
+        # the live estate's state root. Every assertion is eval-time, so each
+        # runs under --no-build, and each names a property the card's non-goals
+        # or the kernel's own refusals make load-bearing:
+        #   - the service exists on the coordinator and ONLY there (one kernel,
+        #     spec §2.4 Q2 — the worker twin is a row, not a second kernel);
+        #   - its state root carries the tally-rewrite component, because the
+        #     kernel's Ledger::open refuses branch (a)'s paths by name
+        #     (ledger.rs:31-35) — a unit pointed at ~/.local/state/tally is a
+        #     crash loop, caught here instead;
+        #   - the socket is kernel.sock BESIDE that root (tally-socket's own
+        #     default_socket_path: SOCKET_BASENAME beside the chain it fronts);
+        #   - ExecStart is the store-built binary with all three flags;
+        #   - the live user-bus tally-daemon declaration still evaluates — the
+        #     card's non-goal "the live tally-daemon.service stays" as bytes —
+        #     and no system-bus twin of it appeared.
+        tally-b-topology =
+          let
+            coordinator = self.nixosConfigurations.coordinator.config;
+            worker = self.nixosConfigurations.worker.config;
+            nas = self.nixosConfigurations.nas.config;
+            svc = coordinator.systemd.services.tally-kernel;
+            execStart = svc.serviceConfig.ExecStart;
+            coordinatorHome = coordinator.home-manager.users.tom;
+          in
+          assert svc.enable;
+          assert !(worker.systemd.services ? tally-kernel);
+          assert !(nas.systemd.services ? tally-kernel);
+          assert svc.serviceConfig.User == "tom";
+          assert coordinator.services.tally-kernel.stateDir
+            == "/home/tom/.local/state/tally-rewrite";
+          assert coordinator.services.tally-kernel.socketPath
+            == "/home/tom/.local/state/tally-rewrite/kernel.sock";
+          assert nixpkgs.lib.hasInfix "-tally-b-kernel-" execStart;
+          assert nixpkgs.lib.hasInfix "/bin/tally-kernel serve " execStart;
+          assert nixpkgs.lib.hasInfix "--state /home/tom/.local/state/tally-rewrite " execStart;
+          assert nixpkgs.lib.hasInfix "--socket /home/tom/.local/state/tally-rewrite/kernel.sock" execStart;
+          assert !(nixpkgs.lib.hasInfix "state/tally/" execStart);
+          assert builtins.elem
+            "d /home/tom/.local/state/tally-rewrite 0700 tom users - -"
+            coordinator.systemd.tmpfiles.rules;
+          assert builtins.elem
+            "d /home/tom/.local/state/tally-rewrite/meters 0700 tom users - -"
+            coordinator.systemd.tmpfiles.rules;
+          # the rows are exactly the three kernel-owned rows of the rewrite's
+          # docs/rows.md, each carrying every cell row_from_json refuses to
+          # default (a missing grace is a startup refusal by name).
+          assert builtins.map (r: r.row) coordinator.services.tally-kernel.rows
+            == [ "gpu-coordinator" "gpu-worker" "mechanical" ];
+          assert builtins.all (
+            r: builtins.all (c: r ? ${c}) [
+              "row"
+              "capacity"
+              "context_window"
+              "checkpoint_grace_seconds"
+              "kill_grace_seconds"
+              "per_attempt_token_cap"
+              "running"
+            ]
+          ) coordinator.services.tally-kernel.rows;
+          # the non-goal: the live daemon stays, on the user bus, and this unit
+          # did not grow a system-bus twin of it.
+          assert coordinatorHome.systemd.user.services ? tally-daemon;
+          assert !(coordinator.systemd.services ? tally-daemon);
+          pkgs.runCommand "tally-b-topology" { } ''
+            touch "$out"
+          '';
 
         nas-topology =
           let
