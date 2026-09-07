@@ -69,6 +69,11 @@ SECTION_NAMES = (
     "Open questions",
     "Handoff",
 )
+# A harvest note carries the journal contract plus the model's own resolution
+# statement; the journal's own section tuple is unchanged (R-c21).
+HARVEST_SECTION_NAMES = (
+    SECTION_NAMES[:-1] + ("Unresolved units", "Handoff")
+)
 RESULT_KEYS = {
     "title",
     "group",
@@ -78,6 +83,12 @@ RESULT_KEYS = {
     "constraints",
     "artifacts",
     "open_questions",
+    # Resolution is not inferred from prose (MECHANISM-2026-09-07 §6b): the
+    # model states it. Both keys are required of every distillation, so one
+    # schema serves the journal drain and the harvest verb alike; the journal
+    # note simply does not render them.
+    "resolved",
+    "unresolved_units",
 }
 
 SYSTEM_PROMPT = """\
@@ -93,8 +104,15 @@ Required JSON keys:
   "candidate_ideas": ["useful proposals that were discussed but not settled"],
   "constraints": ["positive and negative constraints that must survive"],
   "artifacts": ["durable files, commits, issues, commands, and outcomes"],
-  "open_questions": ["unresolved gates only"]
+  "open_questions": ["unresolved gates only"],
+  "resolved": true,
+  "unresolved_units": ["one sentence naming one deliverable that was not finished"]
 }
+
+Set "resolved" to true only when the work the session set out to do is finished
+and nothing is left to hand on; otherwise set it to false. Every item of
+"unresolved_units" is one bounded unit of work stated in one sentence that names
+the deliverable. When "resolved" is true, "unresolved_units" is the empty array.
 
 Preserve outcomes and current state rather than narrating the transcript.
 Distinguish user-settled decisions from assistant proposals. Preserve rejected
@@ -145,6 +163,8 @@ class ModelResult:
     constraints: tuple[str, ...]
     artifacts: tuple[str, ...]
     open_questions: tuple[str, ...]
+    resolved: bool
+    unresolved_units: tuple[str, ...]
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -156,6 +176,8 @@ class ModelResult:
             "constraints": list(self.constraints),
             "artifacts": list(self.artifacts),
             "open_questions": list(self.open_questions),
+            "resolved": self.resolved,
+            "unresolved_units": list(self.unresolved_units),
         }
 
 
@@ -1014,6 +1036,17 @@ def validate_model_result(value: object) -> ModelResult:
     if "<!-- ai-memory:" in thread:
         raise ModelOutputError("thread contains a reserved marker")
 
+    resolved = value.get("resolved")
+    if not isinstance(resolved, bool):
+        raise ModelOutputError("resolved must be a boolean")
+    unresolved_units = validate_item_list(
+        "unresolved_units", value.get("unresolved_units")
+    )
+    if resolved and unresolved_units:
+        raise ModelOutputError(
+            "resolved is true but unresolved_units is not empty"
+        )
+
     return ModelResult(
         title=normalize_title(title_value),
         group=validate_group(group_value),
@@ -1027,6 +1060,8 @@ def validate_model_result(value: object) -> ModelResult:
         open_questions=validate_item_list(
             "open_questions", value.get("open_questions")
         ),
+        resolved=resolved,
+        unresolved_units=unresolved_units,
     )
 
 
@@ -1320,7 +1355,15 @@ def render_note(
     source_digest: str,
     result: ModelResult,
     handoff: tuple[dict[str, object], str] | None,
+    harvest: bool = False,
 ) -> str:
+    """Render one note. `harvest` selects the harvest store's variant.
+
+    A harvest note is a journal note's front matter plus `resolved:`, and its
+    sections are the journal's plus `## Unresolved units`. The journal note is
+    byte-identical to what it was before harvest existed: the drain never
+    renders the two resolution fields (R-c21).
+    """
     frontmatter: list[tuple[str, str]] = [
         ("title", title),
         ("group", group),
@@ -1337,13 +1380,15 @@ def render_note(
     frontmatter.extend(
         [
             ("started_at", started_at),
-            ("drained_at", drained_at),
+            ("harvested_at" if harvest else "drained_at", drained_at),
             ("source_digest", source_digest),
         ]
     )
 
     lines = ["---"]
     lines.extend(f"{key}: {yaml_string(value)}" for key, value in frontmatter)
+    if harvest:
+        lines.append(f"resolved: {'true' if result.resolved else 'false'}")
     lines.extend(
         [
             "---",
@@ -1374,6 +1419,19 @@ def render_note(
             "",
             render_list(result.open_questions),
             "",
+        ]
+    )
+    if harvest:
+        lines.extend(
+            [
+                "## Unresolved units",
+                "",
+                render_list(result.unresolved_units),
+                "",
+            ]
+        )
+    lines.extend(
+        [
             "## Handoff",
             "",
         ]
@@ -1399,6 +1457,7 @@ def validate_rendered_note(
     title: str,
     group: str,
     digest: str,
+    sections: Sequence[str] = SECTION_NAMES,
 ) -> None:
     encoded = text.encode("utf-8")
     if len(encoded) > MAX_NOTE_BYTES:
@@ -1415,7 +1474,7 @@ def validate_rendered_note(
         if fields.get(key) != value:
             raise MemoryError(f"rendered note failed validation for {key}")
     headings = re.findall(r"(?m)^## (.+)$", body)
-    if tuple(headings) != SECTION_NAMES:
+    if tuple(headings) != tuple(sections):
         raise MemoryError("rendered note sections differ from the journal contract")
 
 
@@ -1675,6 +1734,97 @@ def drain_session(
     return ("updated" if existing is not None else "created"), target
 
 
+def default_harvest_dir() -> Path:
+    """The harvest store, which is never the journal (D-E07, R-c21).
+
+    `~/.local/state/tally-rewrite/harvest/`. `AI_MEMORY_HARVEST_DIR` overrides
+    it so a test or a hook can point the verb at a scratch directory without
+    reaching anywhere near the live state dir.
+    """
+    override = os.environ.get("AI_MEMORY_HARVEST_DIR")
+    if override:
+        return Path(override).expanduser()
+    state_home = os.environ.get("XDG_STATE_HOME")
+    root = Path(state_home).expanduser() if state_home else Path.home() / ".local/state"
+    return root / "tally-rewrite" / "harvest"
+
+
+def harvest_note_path(harvest_dir: Path, identity: Identity) -> Path:
+    """One file per session, overwritten on a later harvest of that session.
+
+    The name is the session id, not a slug of the model's title: nothing about
+    where a harvest lands depends on what the model said, so a second harvest
+    of the same session never leaves a second file behind (D-E07).
+    """
+    return harvest_dir / f"{identity.session_id}.md"
+
+
+def harvest_session(
+    *,
+    identity: Identity,
+    harvest_dir: Path,
+    trace_path: Path,
+    now: datetime,
+    invoker: ModelInvoker = invoke_utility,
+) -> tuple[str, Path]:
+    """Distil one root session into the harvest store.
+
+    Drain's identity resolution, trace capture, provenance validation and
+    utility-model path, writing to the harvest store alone. It reads no journal
+    and writes no journal: no lineage inheritance, no title freeze, no
+    deterministic-slug collision dance — those belong to the notes Tom chose to
+    keep. It never prompts, and it never runs the drain.
+    """
+    identity = validate_identity(identity)
+    harvest_dir = harvest_dir.expanduser()
+    target = harvest_note_path(harvest_dir, identity)
+    with SessionLock(identity):
+        snapshot = capture_trace(trace_path, now)
+        validate_trace_provenance(identity, snapshot.records)
+
+        existing: JournalNote | None = None
+        if target.is_file():
+            try:
+                existing = load_note(target)
+            except MemoryError:
+                existing = None
+        if (
+            existing is not None
+            and existing.frontmatter.get("source") == identity.source
+            and existing.frontmatter.get("session_id") == identity.session_id
+            and existing.frontmatter.get("source_digest") == snapshot.digest
+        ):
+            return "unchanged", target
+
+        turns, assistant_visible = normalize_trace(identity.source, snapshot.records)
+        handoff = latest_handoff(assistant_visible, identity)
+        result = compact_turns(turns, invoker)
+
+        rendered = render_note(
+            identity=identity,
+            title=result.title,
+            group=result.group,
+            parent=None,
+            started_at=snapshot.started_at,
+            drained_at=now.isoformat(timespec="seconds"),
+            source_digest=snapshot.digest,
+            result=result,
+            handoff=handoff,
+            harvest=True,
+        )
+        validate_rendered_note(
+            rendered,
+            identity,
+            result.title,
+            result.group,
+            snapshot.digest,
+            sections=HARVEST_SECTION_NAMES,
+        )
+        atomic_write(target, rendered)
+
+    return ("updated" if existing is not None else "created"), target
+
+
 def load_config(path: Path | None = None) -> Path:
     config_path = path or (
         Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
@@ -1726,7 +1876,26 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="action", required=True)
 
     subparsers.add_parser("identity")
-    subparsers.add_parser("drain")
+    subparsers.add_parser(
+        "drain",
+        help="distil this session into the Markdown journal (user-requested only)",
+        description=(
+            "Distil the exact current root session into the local Markdown "
+            "journal. The user must request every drain."
+        ),
+    )
+    subparsers.add_parser(
+        "harvest",
+        help="distil this session into the harvest store, never the journal",
+        description=(
+            "Distil the exact current root session into the harvest store at "
+            "~/.local/state/tally-rewrite/harvest/<session_id>.md, one file per "
+            "session, overwritten on a later harvest of the same session. "
+            "Non-interactive: it never prompts, never writes the journal and "
+            "never runs the drain. Exits 0 on a written file, non-zero with the "
+            "reason on stderr otherwise."
+        ),
+    )
 
     pickup_parser = subparsers.add_parser("pickup")
     pickup_parser.add_argument("reference")
@@ -1754,6 +1923,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.action == "pickup":
             journal_dir = load_config()
             sys.stdout.write(pickup_output(journal_dir, args.reference))
+            return 0
+
+        if args.action == "harvest":
+            identity = current_identity()
+            trace_path = resolve_trace(identity)
+            status, path = harvest_session(
+                identity=identity,
+                harvest_dir=default_harvest_dir(),
+                trace_path=trace_path,
+                now=datetime.now().astimezone(),
+            )
+            print(f"{status}: {path}")
             return 0
 
         if args.action == "drain":
