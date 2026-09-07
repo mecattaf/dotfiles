@@ -1077,6 +1077,98 @@
             touch "$out"
           '';
 
+        # tally-filler-topology (U-D18, dotfiles#321) — the filler lane's
+        # CLOCK: home/tally-filler.nix's user timer and the oneshot it wakes.
+        #
+        # Same reasoning as tally-uplink-topology directly above: home-manager
+        # gives no `assertions` option, so the invariants over the RENDERED
+        # units live here, under `nix flake check --offline --no-build`, which
+        # is the card's own first clause. The card's second clause — "nix eval
+        # shows tally-filler.timer declared on the coordinator with
+        # OnUnitActiveSec set and the service calling the uplink's filler
+        # verb" — is asserted here as well as read out by
+        # tools/u-d18-filler-timer-oracle.sh, so the two halves are one gate.
+        #
+        # Each assert names a property the card's oracle, its non-goals or
+        # D-B10 makes load-bearing:
+        #   - the TIMER is declared, on the coordinator and only there, with
+        #     OnUnitActiveSec set and pointing at its own service; this pair is
+        #     the mutation hint's target ("remove the timer -> the eval is
+        #     false"), so dropping ./tally-filler.nix from home/home.nix turns
+        #     the first of them false and this check red;
+        #   - its period EQUALS the drain's own declared period, because D-B10
+        #     rules the two fillers alternate by round-robin: a literal here
+        #     would let the upstream drain's cadence move without a review, and
+        #     the equality makes that drift red instead;
+        #   - the service calls the lane's verb — e1-loop.sh with `--all`
+        #     (D-U-E1LOOP-7) — and does NOT carry `--dry-run`, which is the
+        #     probe's selector and never the installed unit's;
+        #   - the non-goals as bytes: no llama-swap, no :9292, no unload
+        #     anywhere in the rendered unit, and no system-bus twin;
+        #   - nothing under ~/.local/state is written by it, and branch (a)'s
+        #     live root ~/.local/state/tally/ appears nowhere in it;
+        #   - the uplink is given no schedule by this unit: it still renders
+        #     with no Install section (DF-U-D14-4 is discharged by a timer of
+        #     the filler's own, never by installing the uplink).
+        tally-filler-topology =
+          let
+            coordinator = self.nixosConfigurations.coordinator.config;
+            coordinatorHome = coordinator.home-manager.users.tom;
+            workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
+            timer = coordinatorHome.systemd.user.timers.tally-filler;
+            service = coordinatorHome.systemd.user.services.tally-filler;
+            drain = coordinatorHome.systemd.user.timers.tally-drain;
+            execStart =
+              let e = service.Service.ExecStart;
+              in if builtins.isList e then builtins.concatStringsSep " " e else e;
+            # Everything the unit says, as one string, so the non-goal
+            # assertions cannot be satisfied by a value hiding in Environment.
+            rendered = execStart + " " + builtins.concatStringsSep " " service.Service.Environment;
+          in
+          # DECLARED on the coordinator, and nowhere else.
+          assert coordinatorHome.systemd.user.timers ? tally-filler;
+          assert coordinatorHome.systemd.user.services ? tally-filler;
+          assert !(workerHome.systemd.user.timers ? tally-filler);
+          assert !(workerHome.systemd.user.services ? tally-filler);
+          # the timer: OnUnitActiveSec SET, pointing at its own service, armed
+          # by timers.target, and not a wall-clock backlog.
+          assert timer.Timer ? OnUnitActiveSec;
+          assert timer.Timer.OnUnitActiveSec != "";
+          assert timer.Timer.Unit == "tally-filler.service";
+          assert builtins.elem "timers.target" timer.Install.WantedBy;
+          assert !(timer.Timer ? Persistent);
+          # D-B10: the two fillers alternate, so the filler's period IS the
+          # drain's period. Asserted as an equality against the other filler's
+          # own declaration, never as a literal.
+          assert timer.Timer.OnUnitActiveSec == drain.Timer.OnUnitActiveSec;
+          assert coordinatorHome.systemd.user.services ? tally-drain;
+          # the service calls the lane's verb, and calls it as a pass and not
+          # as a probe.
+          assert nixpkgs.lib.hasInfix "/research-methods/tools/e1-loop.sh " execStart;
+          assert nixpkgs.lib.hasSuffix " --all" execStart;
+          assert !(nixpkgs.lib.hasInfix "--dry-run" execStart);
+          assert service.Service.Type == "oneshot";
+          # and it is a PASS, not a latch: no RemainAfterExit, so every wake
+          # actually starts the lane again. (The oracle's transient probe DOES
+          # set RemainAfterExit, so its exit status stays readable after it
+          # fires; that difference is the probe's, never this unit's.)
+          assert !(service.Service ? RemainAfterExit);
+          # the non-goals as bytes: it never calls llama-swap, never unloads.
+          assert !(nixpkgs.lib.hasInfix "llama" rendered);
+          assert !(nixpkgs.lib.hasInfix "9292" rendered);
+          assert !(nixpkgs.lib.hasInfix "unload" rendered);
+          # no state of its own: the lane's state is the register's git tree.
+          assert !(nixpkgs.lib.hasInfix "/.local/state/" rendered);
+          assert !(builtins.any (r: nixpkgs.lib.hasInfix "tally-filler" r)
+            coordinatorHome.systemd.user.tmpfiles.rules);
+          # no system-bus twin, and the uplink still carries no schedule.
+          assert !(coordinator.systemd.services ? tally-filler);
+          assert !(coordinator.systemd.timers ? tally-filler);
+          assert !(coordinatorHome.systemd.user.services.tally-uplink ? Install);
+          pkgs.runCommand "tally-filler-topology" { } ''
+            touch "$out"
+          '';
+
         nas-topology =
           let
             nas = self.nixosConfigurations.nas.config;
