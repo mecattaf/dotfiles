@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -16,6 +17,7 @@ import sys
 import tempfile
 import time
 import unicodedata
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -1749,6 +1751,200 @@ def default_harvest_dir() -> Path:
     return root / "tally-rewrite" / "harvest"
 
 
+ENQUEUE_CHECK_ENV = "AI_MEMORY_ENQUEUE_CHECK"
+ENQUEUE_SCHEMA_VERSION = 1
+ENQUEUE_ROW_VERSION = 5
+ENQUEUE_SOURCE = "harvest"
+ENQUEUE_ADAPTER = "ai-memory"
+ENQUEUE_PRIORITY = "low"
+ENQUEUE_POOL = ("harvest",)
+ENQUEUE_RUNTIME_MAX_SEC = 900
+
+_ENQUEUE_VALIDATORS: dict[str, object] = {}
+
+
+def enqueue_dir(harvest_dir: Path) -> Path:
+    """The enqueue store, inside the harvest store and never beside it.
+
+    `<harvest_dir>/enqueue/`. One override (`AI_MEMORY_HARVEST_DIR`) moves the
+    notes, the rows and the log together, so no path here can reach branch
+    (a)'s live events dir: crossing into it is a separate act (D-E07).
+    """
+    return harvest_dir.expanduser() / "enqueue"
+
+
+def hook_log_path(harvest_dir: Path) -> Path:
+    """The harvest store's own ledger, one line per event (D-E14 (3))."""
+    return harvest_dir.expanduser() / "hook.log"
+
+
+def append_hook_line(harvest_dir: Path, line: str) -> None:
+    """Append exactly one line. A ledger, not a transcript."""
+    path = hook_log_path(harvest_dir)
+    path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    text = " ".join(line.split())
+    try:
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(text + "\n")
+    except OSError as exc:
+        raise MemoryError(f"harvest hook log is unwritable at {path}: {exc}") from exc
+
+
+def enqueue_check_path() -> Path:
+    """Where `tools/enqueue-row-check.py` is.
+
+    `AI_MEMORY_ENQUEUE_CHECK` if set (the flake check and the tests point at
+    the store copy that way), else the repository copy beside this engine:
+    `~/.claude/skills` is an out-of-store symlink into the checkout, so
+    resolving this file lands in the repository and `tools/` is three levels up.
+    """
+    override = os.environ.get(ENQUEUE_CHECK_ENV)
+    if override:
+        return Path(override).expanduser()
+    return Path(__file__).resolve().parents[3] / "tools" / "enqueue-row-check.py"
+
+
+def load_enqueue_validator() -> object:
+    """Load the shape validator by path; the row shape has one definition."""
+    path = enqueue_check_path()
+    cached = _ENQUEUE_VALIDATORS.get(str(path))
+    if cached is not None:
+        return cached
+    if not path.is_file():
+        raise MemoryError(f"enqueue shape validator is unavailable at {path}")
+    spec = importlib.util.spec_from_file_location("enqueue_row_check", path)
+    if spec is None or spec.loader is None:
+        raise MemoryError(f"enqueue shape validator is unloadable at {path}")
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:  # noqa: BLE001 - the reason travels to stderr
+        raise MemoryError(f"enqueue shape validator failed to load: {exc}") from exc
+    _ENQUEUE_VALIDATORS[str(path)] = module
+    return module
+
+
+def enqueue_row_document(
+    *,
+    identity: Identity,
+    unit: str,
+    ordinal: int,
+    event_id: str,
+    row_uuid: str,
+) -> dict[str, object]:
+    """One unresolved unit as one enqueue event in the live daemon's shape.
+
+    The shape is the exemplar row's, key for key. Three fields say what this
+    row is for: `argv` is empty and `noEnqueue` is true, so nothing about the
+    row can run anything, and `priority` is `low`, so a harvested unit never
+    outranks work Tom released himself. `acknowledged` is false because no
+    daemon has seen it: these rows sit in the harvest store.
+    """
+    brief = unit
+    payload = json.dumps(
+        {
+            "adapter": ENQUEUE_ADAPTER,
+            "argv": [],
+            "description": unit,
+            "pool": list(ENQUEUE_POOL),
+            "priority": ENQUEUE_PRIORITY,
+            "source": ENQUEUE_SOURCE,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return {
+        "schemaVersion": ENQUEUE_SCHEMA_VERSION,
+        "eventId": event_id,
+        "acknowledged": False,
+        "guardrailDepth": 0,
+        "row": {
+            "rowVersion": ENQUEUE_ROW_VERSION,
+            "uuid": row_uuid,
+            "description": unit,
+            "priority": ENQUEUE_PRIORITY,
+            "source": ENQUEUE_SOURCE,
+            "adapter": ENQUEUE_ADAPTER,
+            "pool": list(ENQUEUE_POOL),
+            "model": None,
+            "cwd": None,
+            "dedupKey": f"{ENQUEUE_SOURCE}:{identity.session_id}:{ordinal}",
+            "payloadHash": "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+            "briefHash": "sha256:" + hashlib.sha256(brief.encode("utf-8")).hexdigest(),
+            "sessionRef": identity.session_id,
+            "leaseEpoch": 0,
+            "attempt": 1,
+            "argv": [],
+            "evidence": [],
+            "parentUuid": None,
+            "consumptionEstimate": None,
+            "runtimeMaxSec": ENQUEUE_RUNTIME_MAX_SEC,
+            "noEnqueue": True,
+            "credentials": {},
+            "origin": {
+                "schemaVersion": ENQUEUE_SCHEMA_VERSION,
+                "source": ENQUEUE_SOURCE,
+            },
+            "relatedTrigger": None,
+            "evidenceClass": None,
+            "manifestHash": None,
+        },
+    }
+
+
+def write_enqueue_rows(
+    *,
+    identity: Identity,
+    harvest_dir: Path,
+    units: Sequence[str],
+    now: datetime,
+    id_factory: Callable[[], str] | None = None,
+) -> tuple[list[Path], list[str]]:
+    """One row per unresolved unit, validated before it reaches the disk.
+
+    Returns the paths written and one refusal reason per row that failed the
+    shape check. A refused row is not written — not even as a temporary file —
+    and its refusal is one line in the harvest store's `hook.log`. The
+    remaining units are still attempted: one malformed row does not cost a
+    harvest its other rows.
+    """
+    identity = validate_identity(identity)
+    validator = load_enqueue_validator()
+    factory = id_factory or (lambda: str(uuid.uuid4()))
+    target_dir = enqueue_dir(harvest_dir)
+    written: list[Path] = []
+    refusals: list[str] = []
+
+    for ordinal, unit in enumerate(units, start=1):
+        document = enqueue_row_document(
+            identity=identity,
+            unit=unit,
+            ordinal=ordinal,
+            event_id=factory(),
+            row_uuid=factory(),
+        )
+        reasons = validator.validate_document(document)
+        if reasons:
+            reason = "; ".join(reasons)
+            refusals.append(reason)
+            append_hook_line(
+                harvest_dir,
+                f"{now.isoformat(timespec='seconds')} "
+                f"session={identity.source}:{identity.session_id} "
+                f"enqueue=refused unit={ordinal} reason={reason}",
+            )
+            continue
+        path = target_dir / f"{document['eventId']}.enqueue.json"
+        atomic_write(
+            path,
+            json.dumps(document, ensure_ascii=False, separators=(",", ":")) + "\n",
+        )
+        written.append(path)
+
+    return written, refusals
+
+
 def harvest_note_path(harvest_dir: Path, identity: Identity) -> Path:
     """One file per session, overwritten on a later harvest of that session.
 
@@ -1765,7 +1961,8 @@ def harvest_session(
     harvest_dir: Path,
     trace_path: Path,
     now: datetime,
-    invoker: ModelInvoker = invoke_utility,
+    invoker: ModelInvoker | None = None,
+    enqueue: bool = False,
 ) -> tuple[str, Path]:
     """Distil one root session into the harvest store.
 
@@ -1774,8 +1971,16 @@ def harvest_session(
     and writes no journal: no lineage inheritance, no title freeze, no
     deterministic-slug collision dance — those belong to the notes Tom chose to
     keep. It never prompts, and it never runs the drain.
+
+    With `enqueue`, every unresolved unit of the distillation also becomes one
+    validated row under `<harvest_dir>/enqueue/` once the note is on disk. A
+    harvest that changed nothing (`unchanged`) writes no rows: a SessionEnd
+    hook that fires twice must not enqueue the same units twice. A refused row
+    is logged and skipped, and the refusal is raised once every unit has been
+    attempted, so the caller exits non-zero with the note still written.
     """
     identity = validate_identity(identity)
+    invoker = invoke_utility if invoker is None else invoker
     harvest_dir = harvest_dir.expanduser()
     target = harvest_note_path(harvest_dir, identity)
     with SessionLock(identity):
@@ -1822,6 +2027,20 @@ def harvest_session(
         )
         atomic_write(target, rendered)
 
+        refusals: list[str] = []
+        if enqueue:
+            _, refusals = write_enqueue_rows(
+                identity=identity,
+                harvest_dir=harvest_dir,
+                units=result.unresolved_units,
+                now=now,
+            )
+
+    if refusals:
+        raise MemoryError(
+            f"enqueue refused {len(refusals)} row(s) of this harvest "
+            f"(see {hook_log_path(harvest_dir)}): {refusals[0]}"
+        )
     return ("updated" if existing is not None else "created"), target
 
 
@@ -1884,7 +2103,7 @@ def build_parser() -> argparse.ArgumentParser:
             "journal. The user must request every drain."
         ),
     )
-    subparsers.add_parser(
+    harvest_parser = subparsers.add_parser(
         "harvest",
         help="distil this session into the harvest store, never the journal",
         description=(
@@ -1894,6 +2113,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Non-interactive: it never prompts, never writes the journal and "
             "never runs the drain. Exits 0 on a written file, non-zero with the "
             "reason on stderr otherwise."
+        ),
+    )
+    harvest_parser.add_argument(
+        "--enqueue",
+        action="store_true",
+        help=(
+            "also write one enqueue row per unresolved unit under "
+            "<harvest store>/enqueue/<eventId>.enqueue.json, in the live "
+            "daemon's shape and validated before it is kept; a refused row is "
+            "not written and its reason is one line in the store's hook.log"
         ),
     )
 
@@ -1933,6 +2162,7 @@ def main(argv: list[str] | None = None) -> int:
                 harvest_dir=default_harvest_dir(),
                 trace_path=trace_path,
                 now=datetime.now().astimezone(),
+                enqueue=args.enqueue,
             )
             print(f"{status}: {path}")
             return 0
