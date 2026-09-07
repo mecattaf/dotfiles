@@ -161,6 +161,44 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # tally-b — the REWRITE kernel (github.com/mecattaf/tally, the repo whose
+    # pre-rebuild spec history the `tally` comment above names): the Rust
+    # workspace of TALLY-SPEC §2.1 — admission, leases, the witness chain and
+    # the typed socket — delivered by U-B1…U-B13 on `main`.
+    #
+    # `flake = false` because the repo ships NO flake of its own: it is a cargo
+    # workspace (std-only crates, no build.rs, no external dependency), so
+    # there is nothing to consume but source, and modules/tally-b.nix does the
+    # whole packaging — rustPlatform over crates/tally-socket, whose binary IS
+    # `tally-kernel` (serve/call/chain/guard), run as the SYSTEM service
+    # tally-kernel.service. Same plain-source consumption sfmono-liga uses.
+    #
+    # PINNED TO A REV on `main`, deliberately, the way nixpkgs-paperless and
+    # herdr are bumped: `nix flake lock --update-input tally-b` must be a
+    # NO-OP at the pin (asserted by tests/tally-b/test-tally-b-input.sh), and
+    # moving the kernel is an edit here, reviewed like any other change.
+    #
+    # The repo is PRIVATE (`gh repo view mecattaf/tally --json isPrivate` →
+    # true, MEASURED 2026-09-06) and this unit flips no visibility — no
+    # executor does; contrast U-D15's herdr-kitten, whose `github:` form a Tom
+    # line had already cleared (R-2026-09-06-22) before the flip. The native
+    # `github:` fetcher was MEASURED against that wall: it downloads the
+    # codeload tarball with nix's own `access-tokens`, of which this fleet has
+    # none configured, and answers `HTTP error 404` on the private repo. So
+    # the URL is the `git+https://` form, which fetches through git and
+    # therefore through the machine's OWN persistent credential path — the
+    # `gh auth git-credential` helper in root's and tom's global gitconfig —
+    # with no token in this file, in flake.lock or in the environment nix
+    # needs at eval time. Consequence, stated plainly and recorded in
+    # DECISIONS.md: the ONE network act (the lock update / first fetch) works
+    # only on a host whose git can authenticate to github.com; after that the
+    # git cache and store path make every gate `--offline`-clean anywhere.
+    # Nothing was printed or read from any credential store to establish this.
+    tally-b = {
+      url = "git+https://github.com/mecattaf/tally?rev=26d758049bf0e89126157b3ea743085bb1b918f0";
+      flake = false;
+    };
+
     # deploy-rs — the fleet's one NixOS activation engine. Tally remains the
     # scheduler/admission/proof plane; deploy-rs runs inside that one durable job
     # and contributes target copy, activation, SSH confirmation, and automatic
