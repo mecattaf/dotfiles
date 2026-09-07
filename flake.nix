@@ -1169,6 +1169,108 @@
             touch "$out"
           '';
 
+        # tally-pump-topology (FIX-E11, dotfiles#350) — the RELEASE STATION's
+        # clock: home/tally-pump.nix's user timer and the oneshot tick it wakes.
+        #
+        # Same reasoning as tally-filler-topology and tally-uplink-topology
+        # above: home-manager gives no `assertions` option, so the invariants
+        # over the RENDERED units live here, under `nix flake check`, and the
+        # unit's own file asserts only literals (a top-level assert that forces
+        # `pkgs` dies "infinite recursion encountered" — U-D14's finding).
+        #
+        # What each assert holds, and why it is load-bearing:
+        #   - the pair is DECLARED on the coordinator and NOWHERE ELSE. The
+        #     worker holds no seat, no manifest and no lane, so a pump there
+        #     would be a second release station racing this one; and the
+        #     coordinator-only shape is also the mutation target (drop
+        #     ./tally-pump.nix from home/home.nix -> the first assert is false
+        #     and this check goes red, exactly as the `nix eval` half does);
+        #   - the timer is a five-minute WALL CLOCK schedule pointing at its own
+        #     service, armed by timers.target, and explicitly NOT Persistent:
+        #     a catch-up burst at switch time would be a burst of ticks each
+        #     able to launch paid workers;
+        #   - the service calls the lane's verb as `pump.sh --once` — the tick,
+        #     never the loop — is a oneshot, and is not a latch (no
+        #     RemainAfterExit, so every wake really runs a tick);
+        #   - MAXW is set, and set to the value the two typed starts on record
+        #     used, because the seat budget and not the machine is the scarce
+        #     resource here;
+        #   - the tick's PATH carries what the tick actually shells out to
+        #     (python3, git, gh) plus the harness profile dir launch.sh execs
+        #     `claude`/`codex`/`pi` from;
+        #   - the non-goals as bytes: no llama-swap, no :9292, no unload
+        #     anywhere in the rendered unit (the release station never touches
+        #     the GPU lane), nothing written under ~/.local/state, no tmpfiles
+        #     rule of its own, and no system-bus twin.
+        tally-pump-topology =
+          let
+            coordinator = self.nixosConfigurations.coordinator.config;
+            coordinatorHome = coordinator.home-manager.users.tom;
+            workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
+            timer = coordinatorHome.systemd.user.timers.tally-pump;
+            service = coordinatorHome.systemd.user.services.tally-pump;
+            execStart =
+              let e = service.Service.ExecStart;
+              in if builtins.isList e then builtins.concatStringsSep " " e else e;
+            # Everything the unit says, as one string, so a non-goal cannot be
+            # satisfied by a value hiding in Environment or in a redirect.
+            rendered =
+              execStart
+              + " "
+              + builtins.concatStringsSep " " service.Service.Environment
+              + " "
+              + service.Service.StandardOutput
+              + " "
+              + service.Service.StandardError;
+            env = builtins.concatStringsSep " " service.Service.Environment;
+          in
+          # DECLARED on the coordinator, and nowhere else.
+          assert coordinatorHome.systemd.user.timers ? tally-pump;
+          assert coordinatorHome.systemd.user.services ? tally-pump;
+          assert !(workerHome.systemd.user.timers ? tally-pump);
+          assert !(workerHome.systemd.user.services ? tally-pump);
+          # the timer: a five-minute wall-clock schedule, its own service,
+          # armed by timers.target, and no catch-up backlog.
+          assert timer.Timer ? OnCalendar;
+          assert timer.Timer.OnCalendar == "*:0/5";
+          assert timer.Timer.Unit == "tally-pump.service";
+          assert builtins.elem "timers.target" timer.Install.WantedBy;
+          assert timer.Timer ? Persistent;
+          assert timer.Timer.Persistent == false;
+          # the service: the lane's TICK verb, as a oneshot, not a latch.
+          assert nixpkgs.lib.hasInfix "/codex-lane/pump.sh " execStart;
+          assert nixpkgs.lib.hasSuffix " --once" execStart;
+          assert service.Service.Type == "oneshot";
+          assert !(service.Service ? RemainAfterExit);
+          assert !(service.Service ? Restart);
+          # the cap the two typed starts on record used.
+          assert nixpkgs.lib.hasInfix "MAXW=2" env;
+          # what the tick shells out to, and where the harnesses live.
+          # matched on the store-path segment (".../<name>-<version>/bin") and
+          # not on "/bin/<name>", which is not what makeBinPath renders.
+          assert nixpkgs.lib.hasInfix "-python3-" env;
+          assert nixpkgs.lib.hasInfix "-git-" env;
+          assert nixpkgs.lib.hasInfix "-gh-" env;
+          assert nixpkgs.lib.hasInfix "/etc/profiles/per-user/tom/bin" env;
+          # one log for both forms.
+          assert nixpkgs.lib.hasInfix "append:" service.Service.StandardOutput;
+          assert nixpkgs.lib.hasSuffix "/codex-lane/pump.log" service.Service.StandardOutput;
+          assert service.Service.StandardError == service.Service.StandardOutput;
+          # the non-goals as bytes: it never touches the GPU lane.
+          assert !(nixpkgs.lib.hasInfix "llama" rendered);
+          assert !(nixpkgs.lib.hasInfix "9292" rendered);
+          assert !(nixpkgs.lib.hasInfix "unload" rendered);
+          # no state of its own: the station's state is the lane's own files.
+          assert !(nixpkgs.lib.hasInfix "/.local/state/" rendered);
+          assert !(builtins.any (r: nixpkgs.lib.hasInfix "tally-pump" r)
+            coordinatorHome.systemd.user.tmpfiles.rules);
+          # no system-bus twin.
+          assert !(coordinator.systemd.services ? tally-pump);
+          assert !(coordinator.systemd.timers ? tally-pump);
+          pkgs.runCommand "tally-pump-topology" { } ''
+            touch "$out"
+          '';
+
         nas-topology =
           let
             nas = self.nixosConfigurations.nas.config;
