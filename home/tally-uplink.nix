@@ -56,19 +56,70 @@
 # naming the path, which is a legible failure and not a silent no-token run.
 # Writing the file is TL-13's act and Tom's (DEFERRED.md DF-U-D14-2).
 #
-# NOT A SWITCH, AND NOT A CLOCK. This module declares the unit; only U-D19's
-# coordinator switch installs it (DEFERRED.md DF-U-D14-1), and nothing here
-# starts it on a timer. The uplink holds no schedule of its own — the lake's
-# module says so ("the uplink sleeps only until the next_wake_at the lake handed
-# it back") and its card's non-goal is "no scheduling logic in the uplink (the
-# lake proposes, the door answers)". What starts a run is a socket event, a
-# verdict, or a timer somebody else owns: U-D18's filler-lane timer
-# (DEFERRED.md DF-U-D14-4). So the unit below is declared with no `Install`
-# section — exactly what the upstream module renders — and `wakes = 1`: one wake
-# per invocation, never a loop this file authorises.
+# NOT A SWITCH — BUT, SINCE FIX-E12, A CLOCK. This module declares the unit;
+# only U-D19's coordinator switch installs it (DEFERRED.md DF-U-D14-1). What it
+# now also declares is the WAKE, because for seven hours nothing on the box
+# could deliver one.
+#
+# MEASURED 2026-09-07/08 on the coordinator (spec id `uplink-has-no-trigger`,
+# issue dotfiles#351, DECIDED ~/research-methods/DECISIONS.md D-E24):
+# `systemctl --user list-units --failed` → exactly one unit, tally-uplink.service,
+# 'Active: failed (Result: exit-code) since Mon 2026-09-07 15:56:31 CEST; 7h ago';
+# `systemctl --user show tally-uplink.service -p TriggeredBy -p WantedBy
+# -p RequiredBy -p Wants` → all four EMPTY; `systemctl --user cat
+# tally-uplink.timer` → rc 1 'No files found'; `list-dependencies --reverse` →
+# the single line 'tally-uplink.service'; `list-timers --all` → 16 timers, none
+# of them this one. The trigger this file deferred to "U-D18's filler-lane
+# timer" (DF-U-D14-4) was never wired: `grep -c uplink
+# ~/research-methods/tools/e1-loop.sh` → 0, rc 1. A unit with `wakes = 1`, no
+# `Install`, no timer and no reverse dependency runs exactly as many times as a
+# human types `systemctl --user start`, which is the one thing this estate is
+# built not to need. So DF-U-D14-4 is discharged HERE, by a timer of the
+# uplink's own, and not by installing the service.
+#
+# THE DIVISION OF LABOUR IS UNCHANGED. The timer is a clock and nothing else —
+# the same shape home/tally-filler.nix and home/tally-pump.nix state for their
+# lanes. It adds no scheduling logic to the uplink (the card's non-goal, "the
+# lake proposes, the door answers"): the SERVICE still renders with `wakes = 1`,
+# `Type=oneshot` and no `Install` section of its own — one wake per invocation,
+# never a loop this file authorises — and the only instant the uplink itself
+# waits for is still the `next_wake_at` the lake handed back. A socket event or
+# a verdict may still start it; this timer only guarantees that something does.
+#
+# WHY THE MONOTONIC FORM AND NOT A WALL CLOCK. `OnUnitInactiveSec` measures the
+# period from the moment the previous run went INACTIVE — including the moment
+# it went inactive by FAILING — so wakes can never pile up behind a run that is
+# failing fast or hanging under its timeout: there is always a full quiet period
+# between the end of one wake and the start of the next. An `OnCalendar = *:0/5`
+# would instead keep marking the wall clock through a long or repeatedly failing
+# run and start the next one the instant the mark passed. That matters right now
+# and not hypothetically: the uplink exits 1 against the deployed lake's 5xx
+# until the `tally-lake` pin is bumped and the switch lands (FIX-E04), so this
+# timer's first job is to fail patiently, once every five minutes, instead of
+# hot-looping over a red dependency. `OnActiveSec` gives the same period as the
+# FIRST delay after the timer is armed — the filler's own reasoning (what arms
+# this timer is a switch, not a boot, and the base for `OnUnitInactiveSec` does
+# not exist until the unit has run once), so a switch does not fire a wake in
+# the same second it lands. `Persistent = false`, declared rather than omitted
+# so the unit says so: a box that was off owes the lake nothing, because the
+# state a catch-up burst would work through (the outbox, the ledger, the lake's
+# own record of `last_seq`) is all still there and the next wake reads it, and a
+# burst of wakes is exactly what a `wakes = 1` unit must never be given.
 let
   hostName = osConfig.networking.hostName;
   isCoordinator = hostName == "coordinator";
+
+  # The wake period, and the accuracy of the wake. Five minutes IS the drain's
+  # own declared cadence on this box (MEASURED in the rendered coordinator
+  # config: `systemd.user.timers.tally-drain.Timer.OnUnitActiveSec` = "5min",
+  # which home/tally-filler.nix already ties its lane to), so the box keeps ONE
+  # rhythm for the rewrite's periodic work instead of three. The literal lives
+  # here because a top-level assert may not force `config`; the EQUALITY with
+  # the drain's declaration is asserted over the rendered timer in flake.nix's
+  # `tally-uplink-topology`, so a cadence drift on either side is red rather
+  # than silent.
+  uplinkPeriod = "5min";
+  timerAccuracySeconds = 1;
 
   # The rewrite's own state root, spelled absolute from home.homeDirectory
   # rather than left at the lake module's `%h` defaults. Same value (this is a
@@ -141,6 +192,7 @@ in
 # gated), so a merge resolution that repoints either one cannot stay green.
 assert lib.hasInfix "tally-rewrite" stateSuffix;
 assert !(lib.hasInfix "/.local/state/tally/" rowsFile);
+assert uplinkPeriod != "";
 {
   imports = [
     inputs.tally-lake.homeManagerModules.tally-uplink
@@ -181,9 +233,12 @@ assert !(lib.hasInfix "/.local/state/tally/" rowsFile);
     package = inputs.tally-lake.lib.mkUplink { node = "${node}"; };
 
     # One wake per invocation: probe, pull, execute what the door admitted,
-    # mirror, re-arm, exit. There is no interval here to set — the only instant
-    # the uplink waits for is a `next_wake_at` the lake handed back — and no
-    # timer in this file (DEFERRED.md DF-U-D14-4).
+    # mirror, re-arm, exit. There is still no interval to set HERE — the only
+    # instant the uplink itself waits for is a `next_wake_at` the lake handed
+    # back — and the value stays 1 now that the timer below owns the cadence:
+    # the manager wakes the oneshot, the oneshot does one pass and exits. This
+    # is asserted, together with the timer, by flake.nix's
+    # `tally-uplink-topology`, so raising it here would be red.
     wakes = 1;
 
     # `kit` and `plan` stay at their null defaults, and null is the honest
@@ -214,4 +269,33 @@ assert !(lib.hasInfix "/.local/state/tally/" rowsFile);
   systemd.user.tmpfiles.rules = lib.mkIf isCoordinator [
     "d ${rewriteState}/uplink 0700 - - -"
   ];
+
+  # THE WAKE (FIX-E12, dotfiles#351, D-E24). A clock and nothing else: it holds
+  # no path, no argv, no credential and no policy — every one of those is the
+  # service's above, rendered by the lake's own module — and it exists on the
+  # coordinator only, for the same reason the service does (one uplink per box
+  # that serves a kernel, spec §2.4 Q2; the worker twin is a ROW that kernel
+  # serves). Both halves of that are asserted by `tally-uplink-topology`.
+  systemd.user.timers.tally-uplink = lib.mkIf isCoordinator {
+    Unit = {
+      Description = "tally lake uplink wake (one pass, ${uplinkPeriod} after the previous pass ENDS — FIX-E12, dotfiles#351)";
+      # X- keys are systemd's own extension space: ignored by the manager, read
+      # by the topology check and by a human running `systemctl --user cat`, so
+      # the timer says which cadence it means and where the number came from.
+      X-TallyWakePeriod = uplinkPeriod;
+      X-TallyWakeForm = "OnUnitInactiveSec";
+    };
+    Timer = {
+      # The first wake after the timer is ARMED (a switch, not a boot), then one
+      # period after each pass ENDS — failures included, which is the property
+      # that keeps wakes from piling up behind a red run. See the header.
+      OnActiveSec = uplinkPeriod;
+      OnUnitInactiveSec = uplinkPeriod;
+      # No wall-clock backlog, and no catch-up burst at switch time.
+      Persistent = false;
+      AccuracySec = "${toString timerAccuracySeconds}s";
+      Unit = "tally-uplink.service";
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
 }

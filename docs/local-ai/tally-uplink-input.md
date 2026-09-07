@@ -180,9 +180,27 @@ bare PATH.
   it (`DEFERRED.md` DF-U-D14-1). MEASURED 2026-09-07: `systemctl --user
   is-active tally-uplink.service` → `inactive`, the declared-but-not-switched
   state, which is the intended one. Nothing is hand-started (Rule 9).
-- **No timer.** No `Install` section, and no unit in this repository fires the
-  uplink. What starts a run is a socket event, a verdict, or a timer somebody
-  else owns — U-D18's filler lane (`DEFERRED.md` DF-U-D14-4).
+- ~~**No timer.**~~ **SUPERSEDED by FIX-E12 (dotfiles#351, D-E24).** As
+  written, this non-goal held that "no unit in this repository fires the uplink.
+  What starts a run is a socket event, a verdict, or a timer somebody else owns
+  — U-D18's filler lane (`DEFERRED.md` DF-U-D14-4)." That timer was never
+  wired. MEASURED 2026-09-07/08: the service had been `failed` for 7h with
+  `TriggeredBy=`, `WantedBy=`, `RequiredBy=` and `Wants=` all empty,
+  `systemctl --user cat tally-uplink.timer` → rc 1 'No files found', its
+  reverse-dependency tree the single line `tally-uplink.service`, and
+  `grep -c uplink ~/research-methods/tools/e1-loop.sh` → 0 rc 1 — so with
+  `wakes = 1` nothing on the box could ever start it again. `home/tally-
+  uplink.nix` now declares **`tally-uplink.timer`** on the coordinator:
+  `OnActiveSec` / `OnUnitInactiveSec` = `5min` (the drain's own declared
+  cadence; the monotonic form measures from the END of the previous pass,
+  failures included, so wakes cannot pile up behind a red run), `Persistent =
+  false`, `Unit = tally-uplink.service`, `WantedBy = timers.target`. The
+  SERVICE is unchanged — still `Type=oneshot`, still `wakes = 1`, still **no
+  `Install` section of its own** — so the card's non-goal ("no scheduling logic
+  in the uplink") still holds: the clock is a separate unit, and the uplink
+  still waits only on the `next_wake_at` the lake handed back. Asserted by
+  `tally-uplink-topology` and by `tests/tally-uplink/probe-FIX-E12.sh` (rc 0).
+  It lands live at the next coordinator switch, like everything else here.
 - **No kit, no plan** (DF-U-D14-3), and **no evaluator lock** — that one is
   U-D13's DF-U-D13-2, still waiting on U-A17.
 - **No edit to `home/tally.nix`, `modules/tally-b.nix` or the feeders.**
