@@ -163,6 +163,36 @@ PI_WINDOW_REMAINING_REASON = (
     "one would be invented headroom"
 )
 
+# The cell the usage endpoint leaves out for cc (MEASURED 2026-09-07T21:16Z:
+# .window-cache-cc.json holds five_hour utilization 0.0 with resets_at null,
+# while cc2 and cc3 both carry the instant). The utilization IS a measurement
+# and belongs in the row; the reset instant is the missing cell, and the row
+# says so. It does NOT declare a nested window with an UNKNOWN reset: the
+# kernel's reader refuses that shape outright — "declared window has no reset
+# instant" (tally crates/tally-kernel/src/window.rs parse_span; the string is
+# already in tally's archive, admission-receipts.jsonl line 79) — and a refused
+# row is STOP observation_unusable, the very door this row is meant to open.
+# The whole-window sentinel is read as an ABSENT window instead (parse_window
+# skips an absent `window` and parse_flat answers Window::Unknown), which is
+# unknown and never headroom. This is the shape dotfiles#343 already rules for
+# pi-qwencloud when nothing states its reset (tests/seat-feeder/
+# test-seat-rows.py case H).
+FIVE_HOUR_RESET_UNKNOWN_CELL = "window.primary.resets_at"
+FIVE_HOUR_RESET_UNKNOWN_REASON = (
+    "UNKNOWN window.primary.resets_at: declared window has no reset instant — "
+    "the reading carries a five-hour utilization and no reset for this seat, so "
+    "the row states its window as UNKNOWN and names the missing cell rather "
+    "than declaring a window it cannot carry, and never defaults the reset to "
+    "now. The five-hour utilization is MEASURED and stays in utilization_pct; "
+    "any seven-day span the reading did carry is kept, unasserted, in "
+    "window_stated_spans."
+)
+FIVE_HOUR_RESET_REMAINING_REASON = (
+    "the five-hour span's reset instant is UNKNOWN and the row therefore states "
+    "no window; a remainder over one would be headroom inside a period nothing "
+    "on this box bounded"
+)
+
 PI_UNKNOWN_REASON = (
     "TL-17 is unset (DECISIONS.md D-B17): Qwen Cloud states its allowance as a "
     "plan-credit page in credits, and no artefact on this box carries a window "
@@ -398,7 +428,24 @@ def reading_from_published_row(directory, seat):
     except (OSError, ValueError):
         return None
     window = row.get("window")
-    if not isinstance(window, dict):
+    if isinstance(window, dict):
+        spans = (("five_hour", window.get("primary")), ("seven_day", window.get("secondary")))
+    elif is_number(row.get("utilization_pct")):
+        # The row published the sentinel window: the five-hour reset instant was
+        # the missing cell and the utilization was MEASURED all the same. The
+        # reading is retained out of the cells such a row DOES carry, so a later
+        # reader timeout re-publishes it instead of blanking the row — the whole
+        # point of the retained reading (CAP-1).
+        stated = row.get("window_stated_spans")
+        stated = stated if isinstance(stated, dict) else {}
+        seven_day = stated.get("seven_day")
+        if not isinstance(seven_day, dict):
+            seven_day = {"utilization_pct": row.get("weekly_utilization_pct"), "resets_at": None}
+        spans = (
+            ("five_hour", {"utilization_pct": row.get("utilization_pct"), "resets_at": None}),
+            ("seven_day", seven_day),
+        )
+    else:
         return None
     observed = (
         parse_stamp(row.get("reading_observed_at"))
@@ -408,7 +455,7 @@ def reading_from_published_row(directory, seat):
     if observed is None:
         return None
     reading = {"observed_at": rfc3339(observed)}
-    for key, span in (("five_hour", window.get("primary")), ("seven_day", window.get("secondary"))):
+    for key, span in spans:
         span = span if isinstance(span, dict) else {}
         util = span.get("utilization_pct")
         reading[key] = {
@@ -504,7 +551,7 @@ def read_claude_seat(seat):
 def claude_row(directory, seat, reading, reason):
     """One Claude seat row: the nested pair, the split, and the reading's age.
 
-    Three ways in, and none of them ends in a blank row:
+    Four ways in, and none of them ends in a blank row:
 
     * the endpoint answered now — grade MEASURED, age 0;
     * the reader served its own cache (D-B92) — the same measurement at the
@@ -515,6 +562,13 @@ def claude_row(directory, seat, reading, reason):
       with its age, its origin and the failure's own reason. A row that says
       "44% of five hours, measured 2,400 s ago" is evidence; a row with a null
       utilization is a hole, and CAP-1 exists because holes were being written.
+    * the reading carries the five-hour utilization and NO reset instant (which
+      is what the usage endpoint answers for cc: MEASURED 2026-09-07T21:16Z,
+      five_hour 0.0 with resets_at null) — the number is published and the
+      MISSING CELL is named: window UNKNOWN with window_unknown_cell and the
+      reason, window_remaining_pct UNKNOWN with its reason, model_split and the
+      grade unchanged. Blanking four cells over one absent instant is what made
+      the only live Claude row a STOP.
     """
     source = {"kind": "oauth-usage-endpoint", "reader": "stamp-receipt.py window", "seat": seat}
     if reading is not None:
@@ -553,12 +607,18 @@ def claude_row(directory, seat, reading, reason):
             return None
         return {"minutes": minutes, "resets_at": resets, "utilization_pct": float(util)}
 
+    def utilization_of(key):
+        return (reading.get(key) or {}).get("utilization")
+
     # The Claude seat is a nested window: a five-hour span inside a seven-day
     # one (ACCOUNTS.md:9-11 shape, MEASURED D-B5). Both are published; the
     # primary is the one that decides GO, the secondary is the weekly ceiling.
     primary = span("five_hour", 300)
     secondary = span("seven_day", 10080)
-    if primary is None:
+    five_hour_utilization = utilization_of("five_hour")
+    if primary is None and not is_number(five_hour_utilization):
+        # NOTHING was measured: there is no number to publish and the row is a
+        # stated hole rather than an invented one.
         return unknown_row(
             seat,
             "tom",
@@ -569,25 +629,43 @@ def claude_row(directory, seat, reading, reason):
             ),
             source,
         )
-    window = {"kind": "nested", "primary": primary}
-    if secondary is not None:
-        window["secondary"] = secondary
-    else:
-        # The PAIR is what a Claude row promises. When the endpoint stated no
-        # seven-day window the cell says so and names why; it is never filled
-        # in from the five-hour one. The kernel's reader reads the sentinel as
-        # an absent secondary, so the row stays readable.
-        window["secondary"] = UNKNOWN
-        window["secondary_reason"] = (
-            "the usage endpoint stated no seven_day utilization and reset for this seat"
-        )
 
     row = base_row(seat, "tom")
-    row["utilization_pct"] = primary["utilization_pct"]
-    row["window"] = window
+    if primary is not None:
+        window = {"kind": "nested", "primary": primary}
+        if secondary is not None:
+            window["secondary"] = secondary
+        else:
+            # The PAIR is what a Claude row promises. When the endpoint stated no
+            # seven-day window the cell says so and names why; it is never filled
+            # in from the five-hour one. The kernel's reader reads the sentinel as
+            # an absent secondary, so the row stays readable.
+            window["secondary"] = UNKNOWN
+            window["secondary_reason"] = (
+                "the usage endpoint stated no seven_day utilization and reset for this seat"
+            )
+        row["window"] = window
+        row["utilization_pct"] = primary["utilization_pct"]
+        remaining, remaining_reason = window_remaining(window)
+    else:
+        # The five-hour utilization IS a measurement and the reset instant is
+        # the one cell nothing stated. The row keeps the number, names the
+        # missing cell, and states NO window — never a declared window with an
+        # UNKNOWN reset (the kernel refuses that: window.rs parse_span), never a
+        # reset defaulted to now, and never the four blank cells the old
+        # fallback wrote. The seven-day span, if the reading carried one whole,
+        # travels under a key the kernel's flat projection does not read
+        # (window_minutes / resets_at / secondary are the keys it would read),
+        # so the row states no window by that route either.
+        row["window"] = UNKNOWN
+        row["window_unknown_cell"] = FIVE_HOUR_RESET_UNKNOWN_CELL
+        row["window_reason"] = FIVE_HOUR_RESET_UNKNOWN_REASON
+        if secondary is not None:
+            row["window_stated_spans"] = {"seven_day": dict(secondary)}
+        row["utilization_pct"] = float(five_hour_utilization)
+        remaining, remaining_reason = UNKNOWN, FIVE_HOUR_RESET_REMAINING_REASON
     if secondary is not None:
         row["weekly_utilization_pct"] = secondary["utilization_pct"]
-    remaining, remaining_reason = window_remaining(window)
     row["window_remaining_pct"] = remaining
     if remaining_reason is not None:
         row["window_remaining_reason"] = remaining_reason

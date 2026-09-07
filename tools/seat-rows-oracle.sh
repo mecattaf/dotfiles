@@ -9,7 +9,14 @@
 # rewrite's meters directory:
 #
 #   * the row exists and is JSON;
-#   * `window.kind` is `nested` or `rolling` — never absent, never `none`;
+#   * `window.kind` is `nested` or `rolling` — never absent, never `none` — or
+#     the WHOLE window is the string UNKNOWN with a `window_reason` beside it,
+#     which is the one honest answer when nothing on this box states the span's
+#     reset instant (dotfiles#343 for pi-qwencloud, dotfiles#349/FIX-E06 for a
+#     Claude seat whose five-hour reset the endpoint omits). A row in that state
+#     must ALSO carry none of the flat window keys (`window_minutes`,
+#     `resets_at`, `secondary`), because the kernel's reader would project a
+#     window out of them that the row declined to declare;
 #   * every span of that window carries `minutes` > 0, a `resets_at` that is
 #     RFC 3339, and a `utilization_pct` that is a number in 0..100 — or the
 #     whole span is the string UNKNOWN with a reason cell beside it, or its
@@ -141,8 +148,14 @@ def span($cell; $reasonkey; $holder):
 . as $row
 | (.window) as $w
 | (
-    if ($w | type) != "object" then
-      ["window is \($w | tojson): a row must state its window as an object whose kind is nested or rolling"]
+    if ($w | unknownstr) then
+      (if ($row.window_reason // null | hasreason) then []
+       else ["window is UNKNOWN with no window_reason cell beside it"] end)
+      + ([ "window_minutes", "resets_at", "secondary" ]
+         | map(select($row[.] != null))
+         | map("window is UNKNOWN and the row still carries the flat key \(.): the kernel would project a window this row declined to declare"))
+    elif ($w | type) != "object" then
+      ["window is \($w | tojson): a row must state its window as an object whose kind is nested or rolling, or the string UNKNOWN with a window_reason"]
     elif (($w.kind // "") | ascii_downcase) == "nested" then
       (($w.primary // null) | span("window.primary"; "primary_reason"; $w))
       + (if ($w.secondary // null) == null then
@@ -225,7 +238,7 @@ for row in "${SEAT_ROWS[@]}"; do
     done <<<"$problems"
     continue
   fi
-  kind=$(jq -r '.window.kind' "$path")
+  kind=$(jq -r 'if (.window | type) == "object" then .window.kind else (.window | tojson) end' "$path")
   grade=$(jq -r '.grade // .capacity.grade // "none"' "$path")
   printf 'ok   %-13s window %-7s grade %-15s remaining %s\n' \
     "$row" "$kind" "$grade" "$(jq -r '.window_remaining_pct | tojson' "$path")"
