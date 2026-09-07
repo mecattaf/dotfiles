@@ -983,6 +983,100 @@
             touch "$out"
           '';
 
+        # tally-uplink-topology (U-D14, dotfiles#317) — the LAKE's box-side
+        # loop, declared on the coordinator's USER bus by home/tally-uplink.nix
+        # importing inputs.tally-lake.homeManagerModules.tally-uplink.
+        #
+        # This check is where a home-manager module's eval-time guard lives in
+        # this repository. modules/tally-b.nix could put its invariants in
+        # NixOS `assertions`; home-manager gives no option of that kind
+        # (MEASURED: no `options.assertions` anywhere in the pinned
+        # home-manager's modules/), and a top-level `assert` over `config` in a
+        # home module recurses. So the RENDERED unit is asserted here, under
+        # `nix flake check --offline --no-build`, which is the card's own first
+        # clause.
+        #
+        # Each assert names a property the card's oracle, its non-goals, or the
+        # kernel's own refusals make load-bearing:
+        #   - the service is DECLARED, on the coordinator and only there (one
+        #     uplink per box that serves a kernel, spec §2.4 Q2 — the worker
+        #     twin is a row the coordinator's kernel serves, not a second
+        #     uplink); this pair is the mutation hint's target, so dropping
+        #     `./tally-uplink.nix` from home/home.nix turns the first of them
+        #     false and this check red;
+        #   - every path it runs against is under ~/.local/state/tally-rewrite,
+        #     never branch (a)'s ~/.local/state/tally — the served kernel's
+        #     Ledger::open refuses those paths by name (tally
+        #     crates/tally-kernel/src/ledger.rs:31-35) and the two estates are
+        #     kept apart by declaration rather than by discovery at first run;
+        #   - the rows file is the PINNED kernel's docs/rows.md out of the
+        #     store, so the rows probed and the kernel they are probed against
+        #     are one pin and cannot drift; a live checkout path would let a
+        #     `git checkout` move the unit under nobody's review;
+        #   - the token is a PATH and the unit carries no `Install` section —
+        #     no secret in the store, and no schedule this unit authorises
+        #     (DEFERRED.md DF-U-D14-2 and DF-U-D14-4);
+        #   - the non-goals as bytes: no system-bus twin of the uplink, and the
+        #     live user-bus tally-daemon declaration still evaluates.
+        tally-uplink-topology =
+          let
+            coordinator = self.nixosConfigurations.coordinator.config;
+            coordinatorHome = coordinator.home-manager.users.tom;
+            workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
+            cfg = coordinatorHome.services.tally-uplink;
+            unit = coordinatorHome.systemd.user.services.tally-uplink;
+            # home-manager renders Service.ExecStart through a settings type
+            # that admits either form; join whatever it produced so the infix
+            # assertions below read the argv as one string.
+            execStart =
+              let e = unit.Service.ExecStart;
+              in if builtins.isList e then builtins.concatStringsSep " " e else e;
+            state = "/home/tom/.local/state/tally-rewrite";
+          in
+          # DECLARED on the coordinator, and nowhere else.
+          assert coordinatorHome.systemd.user.services ? tally-uplink;
+          assert !(workerHome.systemd.user.services ? tally-uplink);
+          assert cfg.enable;
+          # the options, as this estate sets them.
+          assert cfg.tokenFile == "${state}/lake-token";
+          assert cfg.socket == "${state}/kernel.sock";
+          assert cfg.ledger == "${state}/ledger.jsonl";
+          assert cfg.stateDir == "${state}/uplink";
+          assert cfg.executor == "coordinator";
+          assert cfg.wakes == 1;
+          # null is the honest state for both: no kit on this estate names an
+          # argv yet, and the plan body is the acceptor's (DF-U-D14-3).
+          assert cfg.kit == null;
+          assert cfg.plan == null;
+          # the rows file is the pinned kernel's, out of the store.
+          assert nixpkgs.lib.hasPrefix "/nix/store/" cfg.rows;
+          assert nixpkgs.lib.hasSuffix "/docs/rows.md" cfg.rows;
+          assert !(nixpkgs.lib.hasInfix "/home/tom/" cfg.rows);
+          # the rendered argv says what it runs against.
+          assert nixpkgs.lib.hasInfix "/bin/node " execStart;
+          assert nixpkgs.lib.hasInfix "/bin/uplink.mjs " execStart;
+          assert nixpkgs.lib.hasInfix "--rows /nix/store/" execStart;
+          assert nixpkgs.lib.hasInfix "--token-file ${state}/lake-token" execStart;
+          assert nixpkgs.lib.hasInfix "--socket ${state}/kernel.sock" execStart;
+          assert nixpkgs.lib.hasInfix "--ledger ${state}/ledger.jsonl" execStart;
+          assert nixpkgs.lib.hasInfix "--executor coordinator" execStart;
+          assert nixpkgs.lib.hasInfix "--state ${state}/uplink" execStart;
+          assert nixpkgs.lib.hasInfix "--wakes 1" execStart;
+          # branch (a)'s live root appears nowhere in it.
+          assert !(nixpkgs.lib.hasInfix "state/tally/" execStart);
+          # no Install section: nothing here starts the unit on a target, and
+          # no timer in this repository fires it (DF-U-D14-4).
+          assert !(unit ? Install);
+          # the uplink's own outbox, declared with its mode.
+          assert builtins.elem "d ${state}/uplink 0700 - - -"
+            coordinatorHome.systemd.user.tmpfiles.rules;
+          # the non-goals: no system-bus twin, and the live daemon stays.
+          assert !(coordinator.systemd.services ? tally-uplink);
+          assert coordinatorHome.systemd.user.services ? tally-daemon;
+          pkgs.runCommand "tally-uplink-topology" { } ''
+            touch "$out"
+          '';
+
         nas-topology =
           let
             nas = self.nixosConfigurations.nas.config;
