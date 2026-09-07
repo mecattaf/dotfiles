@@ -152,7 +152,17 @@ def feeder_environment(repo, workdir, when, target=None, overrides=None):
         "TALLY_CODEX_SESSIONS": os.path.join(
             repo, "tests", "seat-feeder", "inputs", "codex-sessions"
         ),
-        "TALLY_CLAUDE_SEATS": "cc cc2 cc3",
+        # Comma-separated, as home/seat-feeder.nix declares it: systemd splits
+        # an unquoted Environment= value on whitespace, which cost two of the
+        # three Claude rows on the live box (CAP-1).
+        "TALLY_CLAUDE_SEATS": "cc,cc2,cc3",
+        # Both of these default to real paths outside the repository. The
+        # fixture names them so no replay reads the box's retained readings or
+        # the plan directory's live hold record (CAP-1).
+        "TALLY_WINDOW_CACHE_DIR": os.path.join(workdir, "reader-cache"),
+        "TALLY_PI_HOLD": os.path.join(
+            repo, "tests", "seat-feeder", "inputs", "pi-hold.json"
+        ),
         "TALLY_FEEDER_NOW": rfc3339(when),
         "PYTHONDONTWRITEBYTECODE": "1",
     }
@@ -459,9 +469,27 @@ def validate_seeded_rows(meters, rows, failures):
 
     pi = by_id.get("pi-qwencloud") or {}
     reason = ((pi.get("capacity") or {}).get("reason") or "")
-    if "window" in pi:
-        fail(failures, "R9 pi-qwencloud invented a window instead of leaving it UNKNOWN")
-    if "TL-17" not in reason or "D-B17" not in reason:
+    pi_window = pi.get("window") or {}
+    # CAP-1 supersedes U-D12's "pi carries no window at all". The two questions
+    # are separate: TL-17 leaves the UTILIZATION unreadable and the row goes on
+    # refusing on it, while the RESET is stated by the provider itself in the
+    # quota refusal the hold record carries (D-B95). The utilization cell is
+    # the sentinel with its reason, never a number this box invented.
+    if (
+        pi_window.get("kind") != "rolling"
+        or pi_window.get("minutes") != 10080
+        or pi_window.get("resets_at") != "2026-09-12T08:02:00Z"
+    ):
+        fail(failures, "R9 pi-qwencloud does not carry the hold record's rolling window")
+    if pi_window.get("utilization_pct") != "UNKNOWN" or not pi_window.get(
+        "utilization_reason"
+    ):
+        fail(failures, "R9 pi-qwencloud invented a utilization instead of UNKNOWN with a reason")
+    if pi.get("window_remaining_pct") != "UNKNOWN" or not pi.get(
+        "window_remaining_reason"
+    ):
+        fail(failures, "R9 pi-qwencloud invented a remainder instead of UNKNOWN with a reason")
+    if row_grade(pi) != "UNKNOWN" or "TL-17" not in reason or "D-B17" not in reason:
         fail(failures, "R9 pi-qwencloud does not name its UNKNOWN reason")
 
 

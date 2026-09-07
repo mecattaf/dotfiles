@@ -1,0 +1,8 @@
+{
+  "held": true,
+  "reason": "429: {\"message\":\"Your token-plan 1-week quota has been exhausted. The quota will reset at 09-12 08:02:00 UTC.\",\"type\":\"insufficient_quota\",\"code\":\"insufficient_quota\"}",
+  "observed_at": "2026-09-06T01:39:17Z",
+  "held_until": "2026-09-12T08:02:00Z",
+  "released_at": "none",
+  "note": "fixture copy of the shape /home/tom/sept7/plan/codex-lane/pi-hold.json carries (D-B95). The feeder reads held_until from here so the replay never reaches outside the repository for the pi row's reset instant."
+}
