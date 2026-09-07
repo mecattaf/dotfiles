@@ -56,9 +56,34 @@ and runs this program unmodified — tools/feeder-fixture.sh):
 
   TALLY_REWRITE_METERS   meters dir      ~/.local/state/tally-rewrite/meters
   TALLY_STAMP_RECEIPT    Claude reader   ~/research-methods/bin/stamp-receipt.py
-  TALLY_CLAUDE_SEATS     seats, spaced   "cc cc2 cc3"
+  TALLY_CLAUDE_SEATS     seats, , or ' ' "cc,cc2,cc3"
   TALLY_CODEX_SESSIONS   rollout root    ~/.codex/sessions
+  TALLY_WINDOW_CACHE_DIR reader's cache  ~/.local/state/tally-rewrite/meters
+  TALLY_PI_HOLD          pi hold record  ~/sept7/plan/codex-lane/pi-hold.json
   TALLY_FEEDER_NOW       clock override  (unset: the real clock)
+
+EVERY ROW STATES ITS WINDOW (CAP-1, dotfiles#337). A row that carries a
+utilization and no window answers half the question: a seat at 95% with a
+reset one tick away and a seat at 95% with a reset a week away are the
+same number and a different door. So each row this program writes carries
+`window` (nested for the Claude seats, rolling for codex and pi), a
+`window_remaining_pct` that is a number or the string UNKNOWN with the
+reason beside it, and — on the Claude rows — `model_split`, whose cells
+are UNKNOWN because the usage endpoint answers null for the two per-model
+seven-day windows. Nothing is invented: where a source is silent the cell
+says UNKNOWN and names why, which the kernel's reader reads as absent
+(tally crates/tally-kernel/src/window.rs `is_absent`, meter.rs
+`is_unknown_value`) and never as headroom.
+
+AND A FAILED READ KEEPS THE LAST MEASURED ONE. When the sanctioned reader
+times out, hands back an expired token or answers UNKNOWN, the honest row
+is not a blank one: it is the last MEASURED reading this box retained,
+re-published with `reading_age_seconds`, `reading_observed_at`,
+`reading_source` and the grade STALE-MEASURED. D-B92 already rules that a
+reading under 45 s old is the same measurement, so under that age the
+grade stays MEASURED and only the age cell moves; over it the row says
+plainly how old its numbers are. An old reading that says its age is
+strictly better evidence than a null utilization.
 
 Exit codes: 0 every row written; 1 a row could not be written at all
 (the refusal is on stderr); 2 usage; 3 the meters directory is refused.
@@ -95,6 +120,49 @@ CONTEXT_WINDOW = {"claude": 200_000, "codex": 258_400}
 # cap for row shaping and atomic publication (D-B54).
 CLAUDE_READER_TIMEOUT_SECONDS = 12
 
+# The one sentinel this program writes into a cell it cannot fill. The kernel's
+# reader reads it as ABSENT, never as a number and never as a refusal
+# (crates/tally-kernel/src/window.rs is_absent; meter.rs is_unknown_value), so
+# a row may say "I do not know this cell" without becoming unreadable.
+UNKNOWN = "UNKNOWN"
+
+# D-B92: the sanctioned reader serves a reading under 45 s old from its own
+# cache before it calls the usage API, and the endpoint answers in whole
+# percents — at that resolution the cached reading IS the measurement, and
+# D-B60's "re-measure immediately before deciding" still holds. Older than
+# this the reading is still the last MEASURED one; it is published with its
+# age under the grade STALE-MEASURED rather than dropped for a null.
+CACHE_MEASURED_MAX_AGE_SECONDS = 45
+GRADE_MEASURED = "MEASURED"
+GRADE_STALE_MEASURED = "STALE-MEASURED"
+
+# The two per-model seven-day windows the usage endpoint carries as keys and
+# answers as null on this account (MEASURED: .window-cache-<seat>.json,
+# seven_day_opus and seven_day_sonnet both null). UNKNOWN with the reason named
+# in the row is the honest cell; a zero would be invented utilization.
+MODEL_SPLIT_KEYS = (("opus", "seven_day_opus"), ("sonnet", "seven_day_sonnet"))
+MODEL_SPLIT_NULL_REASON = (
+    "usage API returns null for seven_day_opus/seven_day_sonnet"
+)
+MODEL_SPLIT_STATED_REASON = (
+    "none: the usage endpoint stated both per-model seven-day windows"
+)
+
+# pi-qwencloud's allowance is a one-week token plan (R-2026-09-06-20: 10,000
+# credits per 7 days), so its PERIOD is known even though TL-17 leaves its
+# utilization unreadable. Its reset instant is only ever stated by the provider
+# itself, in the 429 the harvest recorded into pi-hold.json (D-B95).
+PI_WINDOW_MINUTES = 10080
+PI_WINDOW_UTILIZATION_REASON = (
+    "TL-17 is unset (D-B17): the provider states this window's RESET instant in "
+    "its quota refusal and never a percentage, so the period and the reset are "
+    "known and the utilization is not"
+)
+PI_WINDOW_REMAINING_REASON = (
+    "the window published no utilization (TL-17 unset), and a remainder without "
+    "one would be invented headroom"
+)
+
 PI_UNKNOWN_REASON = (
     "TL-17 is unset (DECISIONS.md D-B17): Qwen Cloud states its allowance as a "
     "plan-credit page in credits, and no artefact on this box carries a window "
@@ -116,17 +184,61 @@ def rfc3339(dt):
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def source_time(value):
-    """Normalize a source timestamp for metadata; never use it as row age."""
+def parse_stamp(value):
+    """An RFC 3339 stamp as an aware datetime, or None. Naive is not a stamp."""
     if not isinstance(value, str) or not value.strip():
         return None
     try:
         parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
     except ValueError:
         return None
-    if parsed.tzinfo is None:
-        return None
-    return rfc3339(parsed)
+    return parsed if parsed.tzinfo is not None else None
+
+
+def source_time(value):
+    """Normalize a source timestamp for metadata; never use it as row age."""
+    parsed = parse_stamp(value)
+    return None if parsed is None else rfc3339(parsed)
+
+
+def is_number(value):
+    """A JSON number, and not the bool that Python would call one."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def window_remaining(window):
+    """100 minus the BINDING span, or UNKNOWN with the reason beside it.
+
+    The binding span is the most spent one: a seat at 3% of five hours and 96%
+    of seven days has four percent left, not ninety-seven. Defined only when
+    EVERY span published a utilization — a remainder over some of the windows
+    is invented headroom (tally docs/meter-row-contract.md, "the window
+    remainder"), and the row says UNKNOWN instead. The cell is the row's own
+    declaration and wins over anything the reader would derive.
+    """
+    if window.get("kind") == "rolling":
+        spans = [window]
+    else:
+        spans = [window.get("primary"), window.get("secondary")]
+    used = []
+    for span in spans:
+        if span is None:
+            continue
+        if not isinstance(span, dict):
+            return UNKNOWN, (
+                "a span of this window is UNKNOWN, so a remainder over the rest "
+                "would be invented headroom"
+            )
+        util = span.get("utilization_pct")
+        if not is_number(util):
+            return UNKNOWN, (
+                "a span of this window published no utilization, so a remainder "
+                "over the rest would be invented headroom"
+            )
+        used.append(float(util))
+    if not used:
+        return UNKNOWN, "this window published no utilization at all"
+    return round(max(0.0, 100.0 - max(used)), 6), None
 
 
 def meters_dir():
@@ -216,6 +328,139 @@ def unknown_row(row_id, owner, reason, source=None):
 # ── the Claude instrument ────────────────────────────────────────────────────
 
 
+def claude_seats():
+    """The Claude seat list, separated by commas or by spaces.
+
+    Comma is what home/seat-feeder.nix declares, and the reason is a MEASURED
+    bug: `Environment=` in a systemd unit splits an UNQUOTED value on
+    whitespace into SEPARATE assignments, so `TALLY_CLAUDE_SEATS=cc cc2 cc3`
+    reached this program as `cc` alone and two words systemd tried and failed
+    to parse as further assignments. On 2026-09-07 17:0xZ the live coordinator
+    had one Claude row on disk for three seats for exactly that reason. Both
+    separators are read here so that neither spelling can lose a seat again.
+    """
+    raw = os.environ.get("TALLY_CLAUDE_SEATS") or "cc,cc2,cc3"
+    return [seat for seat in raw.replace(",", " ").split() if seat]
+
+
+def window_cache_dir():
+    """Where the sanctioned reader keeps its own D-B92 cache.
+
+    stamp-receipt.py hard-codes `.window-cache-<seat>.json` beside the LIVE
+    rewrite rows, so this default is the READER's path and deliberately not
+    this program's output directory: a fixture writing rows into a scratch dir
+    still finds the last MEASURED reading where the reader actually put it.
+    Nothing in that file is a credential — it is the usage response the reader
+    already prints from: percentages and reset stamps, no token.
+    """
+    default = os.path.join(
+        os.path.expanduser("~"), ".local", "state", "tally-rewrite", "meters"
+    )
+    return os.path.abspath(
+        os.path.expanduser(os.environ.get("TALLY_WINDOW_CACHE_DIR") or default)
+    )
+
+
+def reading_from_cache(seat):
+    """The reader's own cached usage response, in the reader's return shape."""
+    path = os.path.join(window_cache_dir(), f".window-cache-{seat}.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            cached = json.load(fh) or {}
+    except (OSError, ValueError):
+        return None
+    usage = cached.get("usage")
+    observed = parse_stamp(cached.get("observed_at"))
+    if not isinstance(usage, dict) or observed is None:
+        return None
+    reading = {"observed_at": rfc3339(observed)}
+    for key in ("five_hour", "seven_day", "seven_day_opus", "seven_day_sonnet"):
+        cell = usage.get(key) or {}
+        reading[key] = {
+            "utilization": cell.get("utilization"),
+            "resets_at": cell.get("resets_at"),
+        }
+    return {"reading": reading, "at": observed, "source": f"the reader's own cache {path}"}
+
+
+def reading_from_published_row(directory, seat):
+    """The last row this feeder published for the seat, read back as a reading.
+
+    The row's own `reading_observed_at` is preferred over its `observed_at`:
+    the first is when the numbers were MEASURED and the second is when they
+    were published, so re-publishing a re-publication cannot make a reading
+    look younger than it is.
+    """
+    path = os.path.join(directory, seat + ".json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            row = json.load(fh) or {}
+    except (OSError, ValueError):
+        return None
+    window = row.get("window")
+    if not isinstance(window, dict):
+        return None
+    observed = (
+        parse_stamp(row.get("reading_observed_at"))
+        or parse_stamp((row.get("source") or {}).get("source_observed_at"))
+        or parse_stamp(row.get("observed_at"))
+    )
+    if observed is None:
+        return None
+    reading = {"observed_at": rfc3339(observed)}
+    for key, span in (("five_hour", window.get("primary")), ("seven_day", window.get("secondary"))):
+        span = span if isinstance(span, dict) else {}
+        util = span.get("utilization_pct")
+        reading[key] = {
+            "utilization": util if is_number(util) else None,
+            "resets_at": span.get("resets_at"),
+        }
+    split = row.get("model_split")
+    split = split if isinstance(split, dict) else {}
+    for name, key in MODEL_SPLIT_KEYS:
+        util = split.get(name)
+        reading[key] = {"utilization": util if is_number(util) else None, "resets_at": None}
+    return {
+        "reading": reading,
+        "at": observed,
+        "source": f"the last row this feeder published at {path}",
+    }
+
+
+def last_measured(directory, seat):
+    """The most recent MEASURED reading this box retained for the seat.
+
+    Two sources, written by two clocks and neither reliably ahead of the other:
+    the row this feeder last published (already in the contract's shape) and
+    the sanctioned reader's own D-B92 cache. The newer wins.
+    """
+    kept = [
+        candidate
+        for candidate in (
+            reading_from_published_row(directory, seat),
+            reading_from_cache(seat),
+        )
+        if candidate is not None
+    ]
+    if not kept:
+        return None
+    return max(kept, key=lambda candidate: candidate["at"])
+
+
+def model_split(reading):
+    """The per-model seven-day pair, UNKNOWN where the endpoint answers null."""
+    cells = {}
+    for name, key in MODEL_SPLIT_KEYS:
+        util = (reading.get(key) or {}).get("utilization")
+        cells[name] = float(util) if is_number(util) else UNKNOWN
+    cells["reason"] = (
+        MODEL_SPLIT_NULL_REASON
+        if UNKNOWN in cells.values()
+        else MODEL_SPLIT_STATED_REASON
+    )
+    return cells
+
+
 def stamp_receipt_path():
     default = os.path.join(os.path.expanduser("~"), "research-methods", "bin", "stamp-receipt.py")
     return os.path.abspath(os.path.expanduser(os.environ.get("TALLY_STAMP_RECEIPT") or default))
@@ -256,33 +501,55 @@ def read_claude_seat(seat):
     return out, None
 
 
-def claude_row(seat, reading, reason):
+def claude_row(directory, seat, reading, reason):
+    """One Claude seat row: the nested pair, the split, and the reading's age.
+
+    Three ways in, and none of them ends in a blank row:
+
+    * the endpoint answered now — grade MEASURED, age 0;
+    * the reader served its own cache (D-B92) — the same measurement at the
+      endpoint's whole-percent resolution, so grade MEASURED under 45 s and
+      STALE-MEASURED over it, with the age in the row either way;
+    * the read did not land at all (a timeout, an expired token, an endpoint
+      error) — the last MEASURED reading this box retained is re-published
+      with its age, its origin and the failure's own reason. A row that says
+      "44% of five hours, measured 2,400 s ago" is evidence; a row with a null
+      utilization is a hole, and CAP-1 exists because holes were being written.
+    """
     source = {"kind": "oauth-usage-endpoint", "reader": "stamp-receipt.py window", "seat": seat}
     if reading is not None:
         source_observed_at = source_time(reading.get("observed_at"))
         if source_observed_at is not None:
             source["source_observed_at"] = source_observed_at
-        # stamp-receipt.py can explicitly return its <120-second cache during
-        # an endpoint 429.  A cache is useful diagnostic evidence, but it is
-        # not a new allowance measurement. Publish the current failed read as
-        # UNKNOWN, stamped when this row is written, instead of re-labelling
-        # cached numbers as fresh MEASURED.
-        if reading.get("from_cache_seconds") is not None:
+
+    age_seconds = 0
+    origin = "the usage endpoint, read now"
+    stale_reason = None
+    if reading is not None and reason is None:
+        cached = reading.get("from_cache_seconds")
+        if is_number(cached):
+            age_seconds = max(0, int(cached))
+            origin = "the sanctioned reader's own cache (D-B92)"
+    else:
+        kept = last_measured(directory, seat)
+        if kept is None:
             return unknown_row(
                 seat,
                 "tom",
-                f"the sanctioned reader returned a cached observation "
-                f"({reading.get('from_cache_seconds')}s old); freshness was not invented",
+                f"{reason}; and no MEASURED reading was retained to re-publish",
                 source,
             )
-    if reading is None or reason is not None:
-        return unknown_row(seat, "tom", reason, source)
+        reading = kept["reading"]
+        age_seconds = max(0, int((now_dt() - kept["at"]).total_seconds()))
+        origin = kept["source"]
+        stale_reason = reason
+        source["source_observed_at"] = reading["observed_at"]
 
     def span(key, minutes):
         cell = reading.get(key) or {}
         util = cell.get("utilization")
         resets = cell.get("resets_at")
-        if util is None or not resets:
+        if not is_number(util) or not resets:
             return None
         return {"minutes": minutes, "resets_at": resets, "utilization_pct": float(util)}
 
@@ -295,16 +562,45 @@ def claude_row(seat, reading, reason):
         return unknown_row(
             seat,
             "tom",
-            "the reader answered MEASURED without a five-hour utilization and reset",
+            (
+                "the retained reading carries no five-hour utilization and reset"
+                if stale_reason
+                else "the reader answered MEASURED without a five-hour utilization and reset"
+            ),
             source,
         )
+    window = {"kind": "nested", "primary": primary}
+    if secondary is not None:
+        window["secondary"] = secondary
+    else:
+        # The PAIR is what a Claude row promises. When the endpoint stated no
+        # seven-day window the cell says so and names why; it is never filled
+        # in from the five-hour one. The kernel's reader reads the sentinel as
+        # an absent secondary, so the row stays readable.
+        window["secondary"] = UNKNOWN
+        window["secondary_reason"] = (
+            "the usage endpoint stated no seven_day utilization and reset for this seat"
+        )
+
     row = base_row(seat, "tom")
     row["utilization_pct"] = primary["utilization_pct"]
-    row["window"] = {"kind": "nested", "primary": primary, "secondary": secondary}
+    row["window"] = window
     if secondary is not None:
         row["weekly_utilization_pct"] = secondary["utilization_pct"]
+    remaining, remaining_reason = window_remaining(window)
+    row["window_remaining_pct"] = remaining
+    if remaining_reason is not None:
+        row["window_remaining_reason"] = remaining_reason
+    row["model_split"] = model_split(reading)
     row["context_window"] = CONTEXT_WINDOW["claude"]
-    row["grade"] = "MEASURED"
+    row["grade"] = (
+        GRADE_MEASURED if age_seconds <= CACHE_MEASURED_MAX_AGE_SECONDS else GRADE_STALE_MEASURED
+    )
+    row["reading_age_seconds"] = age_seconds
+    row["reading_observed_at"] = source_time(reading.get("observed_at"))
+    row["reading_source"] = origin
+    if stale_reason is not None:
+        row["stale_reason"] = stale_reason
     row["source"] = source
     return row
 
@@ -410,6 +706,10 @@ def codex_row():
     elif isinstance(resets, str) and resets:
         window["resets_at"] = resets
     row["window"] = window
+    remaining, remaining_reason = window_remaining(window)
+    row["window_remaining_pct"] = remaining
+    if remaining_reason is not None:
+        row["window_remaining_reason"] = remaining_reason
     row["context_window"] = CONTEXT_WINDOW["codex"]
     row["grade"] = "MEASURED"
     row["source"] = source
@@ -424,13 +724,82 @@ def codex_row():
 # ── the pi-qwencloud writer ──────────────────────────────────────────────────
 
 
-def pi_row():
-    return unknown_row(
-        "pi-qwencloud",
-        "tom",
-        PI_UNKNOWN_REASON,
-        {"kind": "unavailable", "reason": "Qwen Cloud publishes no window artefact on this box"},
+def pi_hold_path():
+    """The harvest's record of the provider's own quota refusal (D-B95)."""
+    default = os.path.join(
+        os.path.expanduser("~"), "sept7", "plan", "codex-lane", "pi-hold.json"
     )
+    return os.path.abspath(os.path.expanduser(os.environ.get("TALLY_PI_HOLD") or default))
+
+
+def pi_hold():
+    """`held_until` when the seat is held, else None with the reason why.
+
+    The provider states this seat's RESET instant and never its utilization:
+    the 429 the harvest recorded reads "Your token-plan 1-week quota has been
+    exhausted. The quota will reset at 09-12 08:02:00 UTC". That instant plus
+    the plan's own week (R-2026-09-06-20) is a whole rolling window, and it is
+    read from the record rather than re-derived. A hold that has been released
+    is not a window: its `held_until` describes a wall that is gone.
+    """
+    path = pi_hold_path()
+    try:
+        with open(path, encoding="utf-8") as fh:
+            hold = json.load(fh) or {}
+    except OSError:
+        return None, f"no hold record at {path}: nothing on this box states a reset instant"
+    except ValueError:
+        return None, f"the hold record at {path} is not JSON"
+    if hold.get("held") is not True:
+        return None, f"the hold record at {path} is not held, so it states no current reset"
+    held_until = source_time(hold.get("held_until"))
+    if held_until is None:
+        return None, f"the hold record at {path} carries no RFC 3339 held_until"
+    return held_until, None
+
+
+def pi_row():
+    """The reference arm's row: UNKNOWN utilization, and a window all the same.
+
+    TL-17 leaves the utilization unreadable and this row keeps refusing on it
+    (grade UNKNOWN, the reason named). The WINDOW is a different question and
+    is answerable: the plan's period is a week, and the provider states the
+    reset in its own refusal. Publishing the period while hiding the reset
+    would leave routing unable to say when the arm comes back, which is the
+    cell CAP-1 exists to add.
+    """
+    held_until, hold_reason = pi_hold()
+    source = {
+        "kind": "unavailable",
+        "reason": "Qwen Cloud publishes no window artefact on this box",
+        "hold_record": pi_hold_path(),
+    }
+    row = unknown_row("pi-qwencloud", "tom", PI_UNKNOWN_REASON, source)
+    if held_until is not None:
+        row["window"] = {
+            "kind": "rolling",
+            "minutes": PI_WINDOW_MINUTES,
+            "resets_at": held_until,
+            "utilization_pct": UNKNOWN,
+            "utilization_reason": PI_WINDOW_UTILIZATION_REASON,
+        }
+        row["window_source"] = {
+            "kind": "provider-quota-refusal",
+            "path": pi_hold_path(),
+            "held_until": held_until,
+            "note": "D-B95: the weekly exhaustion's stated reset, honoured over any TTL",
+        }
+    else:
+        # A window whose reset nothing states is not a window. Declaring one
+        # with an UNKNOWN reset would be a shape the row asserted and did not
+        # carry, which the kernel's reader refuses outright
+        # (crates/tally-kernel/src/window.rs parse_span). The sentinel is read
+        # as an unknown window instead, and the reason travels with it.
+        row["window"] = UNKNOWN
+        row["window_reason"] = hold_reason
+    row["window_remaining_pct"] = UNKNOWN
+    row["window_remaining_reason"] = PI_WINDOW_REMAINING_REASON
+    return row
 
 
 INSTRUMENTS = ("claude", "codex", "pi-qwencloud")
@@ -465,7 +834,7 @@ def publish_claude_rows(directory, seats):
                 reason = f"the reader failed internally: {type(exc).__name__}"
             # D-B54: no results list exists. A completed seat is shaped, stamped
             # inside write_row, and published before another future is awaited.
-            failed += publish_row(directory, claude_row(seat, reading, reason))
+            failed += publish_row(directory, claude_row(directory, seat, reading, reason))
     return failed
 
 
@@ -480,8 +849,7 @@ def main(argv):
 
     directory = meters_dir()
     if instrument == "claude":
-        seats = (os.environ.get("TALLY_CLAUDE_SEATS") or "cc cc2 cc3").split()
-        return 1 if publish_claude_rows(directory, seats) else 0
+        return 1 if publish_claude_rows(directory, claude_seats()) else 0
     row = codex_row() if instrument == "codex" else pi_row()
     return 1 if publish_row(directory, row) else 0
 
