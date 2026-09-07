@@ -1019,6 +1019,7 @@
         "sfmono-liga": "sfmono-liga",
         "tally": "tally",
         "tally-b": "tally-b",
+        "tally-lake": "tally-lake",
         "voxtype": "voxtype"
       }
     },
@@ -1312,6 +1313,22 @@
         "rev": "26d758049bf0e89126157b3ea743085bb1b918f0",
         "type": "git",
         "url": "https://github.com/mecattaf/tally"
+      }
+    },
+    "tally-lake": {
+      "locked": {
+        "lastModified": 1788743759,
+        "narHash": "sha256-3Qm+6udvhk9rwL/s2GNAbm9D6vH7VLHZuYFKbl1al84=",
+        "ref": "refs/heads/main",
+        "rev": "a233c303246efb6eceb8e84ac409f85d3d41879b",
+        "revCount": 162,
+        "type": "git",
+        "url": "https://github.com/mecattaf/tally-ts-sdk"
+      },
+      "original": {
+        "rev": "a233c303246efb6eceb8e84ac409f85d3d41879b",
+        "type": "git",
+        "url": "https://github.com/mecattaf/tally-ts-sdk"
       }
     },
     "therock-src-7-15-gfx1151-base-half-011b45bd": {
