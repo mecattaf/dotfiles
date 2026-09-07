@@ -124,6 +124,7 @@ in
     ./ssh.nix
     ./tally.nix
     ./tally-filler.nix
+    ./tally-pump.nix
     ./tally-uplink.nix
     ./util-sampler.nix
     ./voxtype.nix
