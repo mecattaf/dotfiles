@@ -199,6 +199,74 @@
       flake = false;
     };
 
+    # tally-lake — the LAKE (github.com/mecattaf/tally-ts-sdk), TALLY-SPEC §2.2:
+    # packages/schema, packages/factory (the CONWIP release station), apps/worker
+    # (the deployed Durable Object, `tally-lake` on Tom's own account) and
+    # apps/uplink (W-03, the box side: probe every row, POST the reading, pull
+    # /proposals, admit over the socket, POST /outcomes, execute under lease,
+    # mirror the chain, re-arm the plan). The lake PROPOSES; the kernel answers.
+    #
+    # The THIRD tally-named input in this file, and the three are easy to
+    # confuse, so here they are side by side:
+    #   tally       mecattaf/tally.nix      the LIVE daemon's public packaging flake
+    #   tally-b     mecattaf/tally          the REWRITE kernel's cargo workspace
+    #   tally-lake  mecattaf/tally-ts-sdk   the LAKE that proposes to that kernel
+    #
+    # CONSUMED AS A FLAKE, unlike tally-b: this repo DOES ship a flake.nix.
+    # W-03 added it (lake commit c29fdfb, "packages.uplink and
+    # homeManagerModules.tally-uplink (D-B65)") under an explicit supersession
+    # of that repo's own CONTRIBUTING §2 rule 6 ("No Nix in this deliverable"),
+    # because U-D14's card assigns the package derivation and the home-manager
+    # module to the lake and no other unit was chartered to build them. So there
+    # is no `flake = false` here, and home/tally-uplink.nix imports
+    # `inputs.tally-lake.homeManagerModules.tally-uplink` exactly the way
+    # home/tally.nix imports `inputs.tally.homeManagerModules.tally` — the
+    # motion this unit replicates (the card's exemplar).
+    #
+    # NO `inputs.nixpkgs.follows`, because there is nothing to follow: the
+    # lake's flake takes NO inputs at all, on purpose (its own comment: a
+    # nixpkgs input would be a fetch, and its lock would pin bytes nobody in
+    # that repository chose). It records the node store path its
+    # scripts/node-env.sh records and refuses to evaluate if the two disagree,
+    # so our pin drags no second package universe along and our nixpkgs cannot
+    # move its toolchain under it.
+    #
+    # `git+https://`, NOT `github:`, for the wall U-D13 established over
+    # mecattaf/tally and re-MEASURED here for THIS repo on 2026-09-07: it is
+    # PRIVATE (`gh repo view mecattaf/tally-ts-sdk --json isPrivate,visibility`
+    # → {"isPrivate":true,"visibility":"PRIVATE"}) and no executor flips
+    # visibility. `nix flake metadata
+    # github:mecattaf/tally-ts-sdk/a233c303246efb6eceb8e84ac409f85d3d41879b`
+    # answers `HTTP error 404` (MEASURED) because the tarball fetcher spends
+    # nix's own `access-tokens`, of which this fleet configures none. The
+    # `git+https://` form fetches through git and therefore through the
+    # machine's own persistent credential path (`gh auth git-credential` in the
+    # global gitconfig) — no token in this file, none in flake.lock, none needed
+    # in the environment at eval time, and none read or printed to establish any
+    # of it. Same stated consequence as tally-b: the ONE network act (the lock
+    # update / a cold fetch) works only on a host whose git can authenticate to
+    # github.com; after it, the git cache and the store path make every gate
+    # `--offline`-clean anywhere.
+    #
+    # PINNED TO A REV on `main`, deliberately, the way tally-b and
+    # nixpkgs-paperless are bumped: `nix flake lock --update-input tally-lake`
+    # must be a NO-OP at the pin (asserted as clause A0 of
+    # tests/tally-uplink/test-tally-uplink-input.sh), and moving the lake is an
+    # edit here, reviewed like any other change. NOT in
+    # `rollingInputOverrides`: the lake proposes work onto this box's rows, so
+    # its version moves when Tom says so, never on a nightly resolve — the same
+    # reason herdr and herdr-kitten are out.
+    #
+    # REV: a233c30 = origin/main of mecattaf/tally-ts-sdk at W-03's delivery
+    # (PR #99 `lake/uplink`, merged as e3249b7, whose flake.nix commit c29fdfb
+    # is MEASURED an ancestor of this rev) plus U-A22's own evaluator probe. It
+    # is the first `main` that exports `homeManagerModules.tally-uplink` at all;
+    # anything before c29fdfb has no flake to import and this input cannot
+    # evaluate. See docs/local-ai/tally-uplink-input.md.
+    tally-lake = {
+      url = "git+https://github.com/mecattaf/tally-ts-sdk?rev=a233c303246efb6eceb8e84ac409f85d3d41879b";
+    };
+
     # deploy-rs — the fleet's one NixOS activation engine. Tally remains the
     # scheduler/admission/proof plane; deploy-rs runs inside that one durable job
     # and contributes target copy, activation, SSH confirmation, and automatic
