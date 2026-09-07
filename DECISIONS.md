@@ -499,3 +499,76 @@ the socket (U-D11/TL-15, DF-U-D18-3), every option of
 `home/tally-uplink.nix` (which still renders with no `Install` section — this
 unit discharges DF-U-D14-4 with a timer of the filler's own, never by installing
 the uplink), and every line of the register's own `tools/e1-loop.sh`.
+
+2026-09-07 CAP-1 (dotfiles#337): the manifest's DOMINANT for SEAT-ROWS-UNTIL is
+prose over five rows, so it is mechanized as ONE argv —
+`bash tools/seat-rows-oracle.sh [meters-dir]` — and the lines the prose left
+open are decided here.
+
+(1) **With no argument the oracle runs one feeder pass itself, into a scratch
+directory.** The manifest's own parenthetical allows either "the live directory
+after one feeder pass" or "the feeder run by hand with TALLY_METERS_DIR at a
+scratch dir". The evaluator re-runs from a FRESH worktree, where the live
+directory's contents are whatever the last switched generation's timers left;
+so the no-argument form is the self-contained one and is what the acceptance
+records. The argument form asserts on a directory a caller already fed, which is
+the live-directory reading of the same sentence. `TALLY_METERS_DIR` is honoured
+when no argument is given, so the manifest's wording works verbatim. The oracle
+writes nothing under `~/.local/state` in either form.
+
+(2) **A cell a source is silent about is the string `UNKNOWN` with a reason
+beside it, and never a null or a zero.** MEASURED against the merged
+`tally-admit`: the kernel's reader treats that sentinel as ABSENT
+(`window.rs is_absent`, `meter.rs is_unknown_value`), so the row stays readable
+— "no field it refuses, no rename" holds. A null `utilization_pct` at the row
+root, by contrast, refuses the row outright, which is what the pre-CAP-1 `cc`
+row was doing.
+
+(3) **The feeder never declares a window whose reset it does not know.** A
+declared window missing its reset is a refusal, not an unknown: MEASURED
+negative control, `tally-admit` answers STOP `observation_unusable` with
+`refusal meter_cell_unknown`, "declared window has no reset instant". So when
+`pi-hold.json` states no current reset, the row publishes `"window": "UNKNOWN"`
+with `window_reason` — read as an unknown window — and the oracle goes RED
+naming the row. An incomplete row is a fact to surface, not one to paper over,
+and the alternative (declaring the shape anyway) would trade a legible RED for
+an unreadable row.
+
+(4) **`window_remaining_pct` is `100 −` the BINDING span, the most spent one.**
+A seat at 3% of five hours and 96% of seven days has four percent left, not
+ninety-seven. It is published as the row's own cell, which the contract says
+wins over anything the reader derives, and it is UNKNOWN — with the reason —
+whenever any span published no utilization, because a remainder over some of
+the windows is invented headroom.
+
+(5) **D-B92's cached reading is PUBLISHED, superseding U-D12's "freshness was
+not invented".** U-D12 wrote a current UNKNOWN whenever the reader answered from
+its cache, on the reasoning that re-stamping old values as fresh MEASURED
+manufactures headroom. D-B92 settles the resolution question the other way: the
+endpoint answers in whole percents, so a reading under 45 s old IS the
+measurement. The row now carries the numbers plus `reading_age_seconds`,
+`reading_observed_at` and `reading_source`, graded MEASURED under 45 s and
+STALE-MEASURED over it. Headroom is not manufactured because the age is in the
+row; MEASURED 2026-09-07 17:00–17:05Z, alternate passes of the live service were
+publishing MEASURED and UNKNOWN for the same unchanged seat, which is worse
+evidence than an old number that says how old it is.
+
+(6) **A read that does not land falls back to the last MEASURED reading, from
+two sources, newer first: the row this feeder last published, then the reader's
+own `.window-cache-<seat>.json`.** The reader hard-codes that cache beside the
+live rewrite rows, so `TALLY_WINDOW_CACHE_DIR` names the directory rather than
+assuming it is the feeder's own output — a scratch-dir run still finds the
+retained reading where the reader actually put it, and a fixture can redirect it
+to stay hermetic. The file holds the usage response, percentages and reset
+stamps; it is not a credential and no value from it is printed.
+
+(7) **U-D12's replay assertion R9, "pi-qwencloud invented a window instead of
+leaving it UNKNOWN", is superseded and inverted.** The reset and the utilization
+are two questions; only the second is behind TL-17. R9 now requires the hold
+record's rolling window with an UNKNOWN utilization and an UNKNOWN remainder,
+both with reasons.
+
+NOT decided here and deliberately untouched: the kernel and what it serves
+(`--rows` stays gpu-coordinator,gpu-worker,mechanical), the switch that would
+make the corrected `TALLY_CLAUDE_SEATS` live (U-D19's, DF-CAP-1-1), TL-17 itself
+(DF-CAP-1-2), and every path under `~/.local/state/tally/`.
