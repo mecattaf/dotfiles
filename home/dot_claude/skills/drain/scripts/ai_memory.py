@@ -1790,18 +1790,38 @@ def append_hook_line(harvest_dir: Path, line: str) -> None:
         raise MemoryError(f"harvest hook log is unwritable at {path}: {exc}") from exc
 
 
-def enqueue_check_path() -> Path:
+def enqueue_check_path(start: Path | str | None = None) -> Path:
     """Where `tools/enqueue-row-check.py` is.
 
     `AI_MEMORY_ENQUEUE_CHECK` if set (the flake check and the tests point at
-    the store copy that way), else the repository copy beside this engine:
-    `~/.claude/skills` is an out-of-store symlink into the checkout, so
-    resolving this file lands in the repository and `tools/` is three levels up.
+    the store copy that way), else the repository copy found by WALKING UP from
+    this engine to the nearest directory that holds `tools/enqueue-row-check.py`.
+
+    The walk-up replaces a fixed `parents[N]`, which was off by two and made
+    `harvest --enqueue` refuse on the live checkout (FIX-E08): `~/.claude/skills`
+    is an out-of-store symlink into the repository, so resolving this file lands
+    at `<repo>/home/dot_claude/skills/drain/scripts/ai_memory.py` and the
+    validator is five levels up, not three. Counting levels is the bug; looking
+    for the file is not. Nothing here searches downwards and nothing guesses: the
+    first ancestor that actually holds the file wins, and when no ancestor does
+    the failure names every directory that was looked at.
     """
     override = os.environ.get(ENQUEUE_CHECK_ENV)
     if override:
         return Path(override).expanduser()
-    return Path(__file__).resolve().parents[3] / "tools" / "enqueue-row-check.py"
+    origin = Path(start).expanduser() if start is not None else Path(__file__)
+    origin = origin.resolve()
+    searched: list[str] = []
+    for parent in origin.parents:
+        candidate = parent / "tools" / "enqueue-row-check.py"
+        searched.append(str(parent))
+        if candidate.is_file():
+            return candidate
+    raise MemoryError(
+        "enqueue shape validator is unavailable: no tools/enqueue-row-check.py "
+        f"above {origin} (searched {len(searched)} directories: "
+        f"{', '.join(searched)}); set {ENQUEUE_CHECK_ENV} to name it"
+    )
 
 
 def load_enqueue_validator() -> object:

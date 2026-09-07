@@ -1775,7 +1775,12 @@
           assert lib.hasInfix "AI_MEMORY_HARVEST_HOOK_TIMEOUT:-${toString scriptTimeout}}" hookText;
           # The hook runs `harvest` and nothing else: the drain verb, the
           # journal and branch (a)'s live state dir are absent from the script.
-          assert lib.hasInfix "python3 \"$engine\" harvest" hookText;
+          assert lib.hasInfix "python3 \"$engine\" \"\${harvest_argv[@]}\"" hookText;
+          # FIX-E08 (dotfiles#348): the close -> row -> floor leg is wired. The
+          # verb is still `harvest` and the flag is `--enqueue`, so a hook that
+          # writes a note but no rows cannot pass evaluation again.
+          assert lib.hasInfix "harvest_argv=(harvest)" hookText;
+          assert lib.hasInfix "harvest_argv+=(--enqueue)" hookText;
           assert !(lib.hasInfix "$engine\" drain" hookText);
           assert !(lib.hasInfix "state/tally/" hookText);
           # The SessionStart hook is this unit's non-goal and stays as it was.
