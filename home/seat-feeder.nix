@@ -36,6 +36,10 @@
 #   tally-seat-feeder-pi-qwencloud  the pi-qwencloud row, grade UNKNOWN with the
 #                                   reason named in the row (D-B17 / TL-17
 #                                   unset). It exists so the deferral is data.
+#                                   Its WINDOW is a different question and is
+#                                   answered: a 10,080-minute rolling window
+#                                   resetting at pi-hold.json's provider-stated
+#                                   held_until (D-B95, CAP-1).
 #
 # WHY THREE AND NOT FIVE. The manifest's DOMINANT oracle reads "nix eval of the
 # coordinator config shows the THREE timers declared", and its title enumerates
@@ -65,8 +69,9 @@ let
   # home/tally.nix's capacity oracle and home/harness-records.nix's recorders:
   # a threshold or a row field is retuned by editing a file, not by a rebuild.
   # Its delivered sha256 is
-  # 76fb8cb9f3baacc1737a56b7508ed90bf12ff5e693586945dc86333fb019ff00;
-  # the D-B54 repair commit records the same digest, following UTIL-01's motion.
+  # 4d3dff21a6ee7d61ebe70564c090d7944c06a7a0d8f3e51f08bc4b5c1f7db4d1
+  # (CAP-1; the D-B54 repair commit recorded 76fb8cb9… before every row stated
+  # its window), following UTIL-01's motion.
   # A systemd user unit inherits no interactive PATH, so each unit supplies its
   # own.
   feeder = "%h/.local/bin/tally-seat-feeder";
@@ -106,9 +111,18 @@ let
       # open ~/.claude*/.credentials.json (D-B5), and dotfiles neither copies it
       # nor re-implements it. Absent, the feeder still writes each row, with
       # grade UNKNOWN and that absence as the reason.
+      # The seat list is COMMA-separated, and the comma is load-bearing.
+      # systemd splits an unquoted `Environment=` value on whitespace into
+      # SEPARATE assignments, so `TALLY_CLAUDE_SEATS=cc cc2 cc3` set the
+      # variable to `cc` and then tried to read `cc2` and `cc3` as further
+      # assignments. MEASURED on the coordinator 2026-09-07 17:0xZ: one Claude
+      # row on disk for three declared seats, every pass, for that reason
+      # alone (CAP-1, dotfiles#337). The feeder reads either separator; this
+      # file writes the one that cannot be split. The flake check asserts that
+      # no feeder environment entry carries whitespace at all.
       environment = [
         "TALLY_STAMP_RECEIPT=%h/research-methods/bin/stamp-receipt.py"
-        "TALLY_CLAUDE_SEATS=cc cc2 cc3"
+        "TALLY_CLAUDE_SEATS=cc,cc2,cc3"
         # A user unit inherits no profile, so the HTTPS trust store is named.
         "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"
         "NIX_SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"

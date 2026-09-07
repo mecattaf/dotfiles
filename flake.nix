@@ -1589,6 +1589,15 @@
             && service.Unit.X-TallyTickSeconds == "60"
             && service.Unit.X-TallyServiceDurationSeconds == "20"
             && service.Service.TimeoutStartSec == "20s"
+            # CAP-1: no feeder environment entry may carry whitespace. systemd
+            # splits an unquoted `Environment=` value on whitespace into
+            # separate assignments, and `TALLY_CLAUDE_SEATS=cc cc2 cc3` was
+            # therefore reaching the program as `cc` alone — one Claude row on
+            # disk for three seats, MEASURED 2026-09-07 17:0xZ. A list this
+            # module writes with a comma cannot be silently truncated again.
+            && builtins.all (
+              entry: builtins.match ".*[[:space:]].*" entry == null
+            ) service.Service.Environment
           ) seatFeederNames;
           assert builtins.elem
             "d %h/.local/state/tally-rewrite/meters 0700 - - -"
