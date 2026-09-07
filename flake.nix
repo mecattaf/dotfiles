@@ -1748,6 +1748,68 @@
               touch "$out"
             '';
 
+        # MEM-2 (dotfiles#339): SessionEnd -> the harvest verb. The asserts
+        # are EVALUATION-time on purpose — `nix flake check --offline --no-build`
+        # evaluates and does not build, so the wiring this unit adds (the hook
+        # block, the path it names, the timeout ordering, the delivered file) is
+        # checked by the same command the unit's oracle already runs.
+        ai-memory-harvest-hook =
+          let
+            lib = nixpkgs.lib;
+            homeConfig = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
+            settings = builtins.fromJSON (builtins.readFile ./home/dot_claude/settings.json);
+            hookPath = "/home/tom/.claude/hooks/ai-memory-harvest.sh";
+            hookText = builtins.readFile ./home/dot_claude/hooks/ai-memory-harvest.sh;
+            sessionEnd = settings.hooks.SessionEnd;
+            entry = builtins.head (builtins.head sessionEnd).hooks;
+            # The script's own timeout must fire BEFORE Claude Code's, so the
+            # hook always ends by its own hand and always writes its log line.
+            scriptTimeout = 420;
+          in
+          # Exactly one SessionEnd matcher, carrying exactly one command hook.
+          assert builtins.length sessionEnd == 1;
+          assert builtins.length (builtins.head sessionEnd).hooks == 1;
+          assert entry.type == "command";
+          assert entry.command == "bash '${hookPath}'";
+          assert entry.timeout > scriptTimeout;
+          assert lib.hasInfix "AI_MEMORY_HARVEST_HOOK_TIMEOUT:-${toString scriptTimeout}}" hookText;
+          # The hook runs `harvest` and nothing else: the drain verb, the
+          # journal and branch (a)'s live state dir are absent from the script.
+          assert lib.hasInfix "python3 \"$engine\" harvest" hookText;
+          assert !(lib.hasInfix "$engine\" drain" hookText);
+          assert !(lib.hasInfix "state/tally/" hookText);
+          # The SessionStart hook is this unit's non-goal and stays as it was.
+          assert (builtins.head (builtins.head settings.hooks.SessionStart).hooks).command
+            == "bash '/home/tom/.claude/hooks/herdr-agent-state.sh' session";
+          # The file the block names is actually delivered, as ONE link (not a
+          # whole-dir one), so ~/.claude/hooks stays a real directory beside
+          # herdr's raw hook, which this repository does not ship.
+          assert homeConfig.home.file ? ".claude/hooks/ai-memory-harvest.sh";
+          assert homeConfig.home.file.".claude/hooks/ai-memory-harvest.sh".target
+            == ".claude/hooks/ai-memory-harvest.sh";
+          # mkOutOfStoreSymlink names its store entry after the file it points
+          # at, so this is the out-of-store link and not a copied-in blob: the
+          # hook stays editable in the checkout, like every other raw dotfile.
+          assert lib.hasSuffix "-hm_aimemoryharvest.sh"
+            (toString homeConfig.home.file.".claude/hooks/ai-memory-harvest.sh".source);
+          assert !(homeConfig.home.file ? ".claude/hooks");
+          pkgs.runCommand "ai-memory-harvest-hook"
+            {
+              nativeBuildInputs = [ pkgs.python3 ];
+            }
+            ''
+              set -euo pipefail
+
+              export HOME="$TMPDIR/home"
+              export PYTHONDONTWRITEBYTECODE=1
+              export MEM2_HOOK=${./home/dot_claude/hooks/ai-memory-harvest.sh}
+              mkdir -p "$HOME"
+
+              bash ${./tests/ai-memory-hook/harvest-hook-test.sh}
+
+              touch "$out"
+            '';
+
         print-paper =
           pkgs.runCommand "print-paper"
             {
