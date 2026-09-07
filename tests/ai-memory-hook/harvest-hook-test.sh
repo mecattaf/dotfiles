@@ -169,10 +169,37 @@ if expect_exit_zero && expect_one_log_line "$sid_a" && expect_status created; th
     fail "the hook did not point the engine at the harvest store"
   elif ! grep -q "^CLAUDE_CODE_CHILD_SESSION=<unset>$" "$envout"; then
     fail "the hook left CLAUDE_CODE_CHILD_SESSION set; it must be cleared"
-  elif ! grep -q "^ARGV=harvest$" "$envout"; then
-    fail "the hook ran '$(sed -n 's/^ARGV=//p' "$envout")', not 'harvest'"
+  elif ! grep -q "^ARGV=harvest --enqueue$" "$envout"; then
+    fail "the hook ran '$(sed -n 's/^ARGV=//p' "$envout")', not 'harvest --enqueue'"
   else
-    ok "note written, identity exported, verb is harvest"
+    ok "note written, identity exported, verb is harvest --enqueue"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# FIX-E08 (dotfiles#348): the close -> row -> floor leg. The hook passes the
+# verb's own --enqueue by default, so a close writes rows and not only a note;
+# AI_MEMORY_HARVEST_ENQUEUE=0 is the one opt-out and it changes nothing else
+# about the hook's contract (still exit 0, still exactly one log line).
+case_name="enqueue is on by default"
+cases=$((cases + 1))
+run_hook "$payload" created
+if expect_exit_zero && expect_one_log_line "$sid_a" && expect_status created; then
+  if ! grep -q '^ARGV=harvest --enqueue$' "$envout"; then
+    fail "the harvest argv is '$(sed -n 's/^ARGV=//p' "$envout")'; --enqueue is absent"
+  else
+    ok "the default argv carries --enqueue"
+  fi
+fi
+
+case_name="enqueue opt-out"
+cases=$((cases + 1))
+run_hook "$payload" created env AI_MEMORY_HARVEST_ENQUEUE=0
+if expect_exit_zero && expect_one_log_line "$sid_a" && expect_status created; then
+  if ! grep -q '^ARGV=harvest$' "$envout"; then
+    fail "AI_MEMORY_HARVEST_ENQUEUE=0 still ran '$(sed -n 's/^ARGV=//p' "$envout")'"
+  else
+    ok "the opt-out drops --enqueue and nothing else"
   fi
 fi
 

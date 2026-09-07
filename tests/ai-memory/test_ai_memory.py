@@ -992,6 +992,51 @@ class HarvestEnqueueTests(unittest.TestCase):
         self.assertEqual(status, 0, stderr)
         self.assertEqual(self.rows(), rows)
 
+    def test_harvest_enqueue_without_the_override_finds_the_validator(self) -> None:
+        """FIX-E08: the fallback path, with AI_MEMORY_ENQUEUE_CHECK UNSET.
+
+        Every other green in this tree sets the override, which is exactly how
+        the off-by-two `parents[3]` survived: nothing exercised the fallback. The
+        engine's own file is stood up in a synthetic tree whose repository root
+        holds `tools/enqueue-row-check.py`, so the walk-up is what has to find
+        it — five levels up, the live checkout's own shape.
+        """
+        tree = self.root / "checkout"
+        scripts = tree / "home/dot_claude/skills/drain/scripts"
+        scripts.mkdir(parents=True)
+        validator = tree / "tools/enqueue-row-check.py"
+        validator.parent.mkdir(parents=True)
+        validator.write_text(ENQUEUE_CHECK.read_text(encoding="utf-8"), encoding="utf-8")
+        engine_copy = scripts / "ai_memory.py"
+        engine_copy.write_text("# a stand-in for this engine's own file\n", encoding="utf-8")
+
+        units = ["Prove the enqueue validator is found without the override."]
+        with mock.patch.object(memory, "__file__", str(engine_copy)):
+            os.environ.pop("AI_MEMORY_ENQUEUE_CHECK", None)
+            self.assertEqual(memory.enqueue_check_path(), validator.resolve())
+            status, stdout, stderr = self.run_harvest(
+                dict(result_data(), unresolved_units=units)
+            )
+        self.assertEqual(status, 0, stderr)
+        self.assertIn("created:", stdout)
+        rows = self.rows()
+        self.assertEqual(len(rows), 1, [path.name for path in rows])
+        document = json.loads(rows[0].read_text(encoding="utf-8"))
+        self.assertEqual(document["row"]["description"], units[0])
+
+    def test_the_validator_search_names_itself_when_nothing_is_found(self) -> None:
+        """No ancestor holds it: the failure names the search, not a level count."""
+        orphan = self.root / "orphan/scripts/ai_memory.py"
+        orphan.parent.mkdir(parents=True)
+        orphan.write_text("# no tools/ above this\n", encoding="utf-8")
+        os.environ.pop("AI_MEMORY_ENQUEUE_CHECK", None)
+        with self.assertRaises(memory.MemoryError) as caught:
+            memory.enqueue_check_path(orphan)
+        message = str(caught.exception)
+        self.assertIn("no tools/enqueue-row-check.py above", message)
+        self.assertIn(str(orphan.resolve()), message)
+        self.assertIn("AI_MEMORY_ENQUEUE_CHECK", message)
+
     def test_harvest_enqueue_refuses_malformed(self) -> None:
         # The seam belongs to the validator: it drops the named key from the
         # document it is handed, so the refusal is driven with a row the writer

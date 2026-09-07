@@ -29,6 +29,12 @@
 # path here, and the string that would name it appears nowhere in this file at
 # all -- the flake check asserts exactly that).
 #
+# WHAT IT ENQUEUES. With the harvest note on disk, the same run writes one
+# validated enqueue row per unresolved unit of the distillation, under
+# <harvest dir>/enqueue/<eventId>.enqueue.json — the verb's own `--enqueue`
+# (FIX-E08, dotfiles#348). A harvest that changed nothing writes no rows, so a
+# hook that fires twice does not enqueue the same units twice.
+#
 # It never runs on a child or subagent session: a transcript under a
 # `subagents/` directory is refused here by name, and every other non-root
 # session is refused by ai_memory.py's own root proof, surfaced as a logged skip.
@@ -147,6 +153,18 @@ fi
 # --------------------------------------------------------------------------
 harvest_timeout=${AI_MEMORY_HARVEST_HOOK_TIMEOUT:-420}
 
+# The enqueue leg (FIX-E08). `harvest` alone wrote the note and stopped there,
+# so the close -> row -> floor leg was unwired: nothing scheduled or hooked ever
+# called the verb's own `--enqueue`. It is passed here by default, and the rows
+# land under <harvest dir>/enqueue/ — inside the store this script already owns,
+# never beside it and never in branch (a)'s. AI_MEMORY_HARVEST_ENQUEUE=0 is the
+# one opt-out (a host whose validator is missing, say); it changes what the verb
+# writes, never whether this script exits 0 or logs its one line.
+harvest_argv=(harvest)
+if [ "${AI_MEMORY_HARVEST_ENQUEUE:-1}" != "0" ]; then
+  harvest_argv+=(--enqueue)
+fi
+
 if [ -n "$session_cwd" ] && [ -d "$session_cwd" ]; then
   cd "$session_cwd" 2>/dev/null || cd "$HOME" 2>/dev/null || true
 else
@@ -163,7 +181,7 @@ output=$(
     CLAUDE_CODE_SESSION_ID="$session_id" \
     CLAUDE_CONFIG_DIR="$config_dir" \
     AI_MEMORY_HARVEST_DIR="$harvest_dir" \
-    timeout -k 5 "$harvest_timeout" python3 "$engine" harvest 2>&1
+    timeout -k 5 "$harvest_timeout" python3 "$engine" "${harvest_argv[@]}" 2>&1
 )
 rc=$?
 
