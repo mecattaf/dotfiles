@@ -286,3 +286,119 @@ is red either way; the removal reading is the one the hint names and the one
 run. NOT decided here and deliberately untouched: the switch (U-D19), the
 uplink (U-D14/W-03), the evaluator lock (null until U-A17 exists to be locked),
 and every line of `home/tally.nix`.
+
+2026-09-07 U-D14 (dotfiles#317): the `tally-lake` input and
+`home/tally-uplink.nix` — the LAKE's box-side loop (`apps/uplink`, card W-03) as
+one user service on the coordinator, beside U-D13's served kernel. It replicates
+the `tally.nix` input motion exactly (the card's exemplar): an input, then ONE
+home module that imports what the input exports and sets it for this estate.
+Seven lines are decided here; the mechanism and its measurements are in
+`docs/local-ai/tally-uplink-input.md`.
+
+(1) **Consumed AS A FLAKE — no `flake = false` — because unlike `mecattaf/tally`
+this repo ships one.** W-03 added `flake.nix` to mecattaf/tally-ts-sdk (lake
+commit `c29fdfb`) under an explicit supersession of that repository's own
+CONTRIBUTING §2 rule 6, "No Nix in this deliverable", recorded there as D-B65:
+U-D14's card assigns the package derivation and the home-manager module to the
+lake, and no other unit was chartered to build them. So `home/tally-uplink.nix`
+imports `inputs.tally-lake.homeManagerModules.tally-uplink` the way
+`home/tally.nix` imports `inputs.tally.homeManagerModules.tally`, and this
+repository writes none of the uplink's behaviour. No `inputs.nixpkgs.follows`
+either, because there is nothing to follow: the lake's flake takes NO inputs at
+all, on purpose, so our pin drags no second package universe along.
+
+(2) **`git+https://` again, for U-D13's wall, re-MEASURED for THIS repo on
+2026-09-07.** `gh repo view mecattaf/tally-ts-sdk --json isPrivate,visibility` →
+`{"isPrivate":true,"visibility":"PRIVATE"}`, and no executor flips visibility.
+`nix flake metadata github:mecattaf/tally-ts-sdk/a233c30…` answers `HTTP error
+404` — the tarball fetcher spends nix's own `access-tokens` and this fleet
+configures none. The `git+https://` form fetches through git and therefore
+through the machine's persistent credential path (the `gh auth git-credential`
+helper in the global gitconfig — never read, never printed). Same stated
+consequence as `tally-b`: the ONE network act works only on a host whose git can
+authenticate to github.com; after it, the git cache and the store path make
+every gate `--offline`-clean anywhere.
+
+(3) **The pin is `a233c303246efb6eceb8e84ac409f85d3d41879b` = `origin/main` of
+mecattaf/tally-ts-sdk at W-03's delivery** (PR #99 `lake/uplink`, whose
+`flake.nix` commit `c29fdfb` is an ancestor of it) plus U-A22's evaluator probe.
+It is the FIRST `main` that exports `homeManagerModules.tally-uplink` at all;
+anything before `c29fdfb` has no flake to import and this input cannot evaluate.
+`nix flake lock --update-input tally-lake` at that pin is a NO-OP — MEASURED
+2026-09-07, and asserted as clause A0 of
+`tests/tally-uplink/test-tally-uplink-input.sh`, which is also the card's
+"re-applying the same card reports zero changes". The input is NOT in
+`rollingInputOverrides`: the lake proposes work onto this box's rows, so its
+version moves when Tom says so, never on a nightly resolve — the same reason
+herdr and herdr-kitten are out.
+
+(4) **The rows file is `${inputs.tally-b}/docs/rows.md` — out of the store, from
+the SAME pin the kernel comes from.** Upstream the option is required and has no
+default, by the lake's own ruling that the rows file is a runtime argument
+(D-B64) whose path that repository does not own; this estate answers it with the
+pinned kernel's own table rather than the live checkout at
+`/home/tom/mecattaf/tally`, which a `git checkout` could move under the unit
+without a review anywhere. The rows the uplink probes and the kernel it probes
+them against are then ONE pin and cannot drift apart in silence. MEASURED
+2026-09-07 with the lake's own parser at the pin (`--parse-only` → rc 0): nine
+rows — `cc`, `cc2`, `cc3`, `codex`, `pi-qwencloud`, `cerebras` (owner tom /
+third-party, the seat rows U-D12's feeders write into the meters dir) and
+`gpu-coordinator`, `gpu-worker`, `mechanical` (owner kernel, the three U-D13's
+module serves). ALL NINE are probed, not just the kernel's three: the uplink
+asks the door about every row it is given, and the door answers from its own
+rows plus the meters dir. A probe that fails is written busy with grade UNKNOWN,
+never as false idle.
+
+(5) **The interpreter is `pkgs.nodejs-slim_24` from THIS flake, passed through
+the seam the lake exported for it.** The lake's flake records a node store path
+(`nodejs-slim-24.19.0`) and cannot do better from inside a pure flake with no
+inputs — `builtins.storePath` is refused in pure mode, so its pin is a run-time
+reference and not a build-time one. Its `mkUplink` takes `node` as an argument
+"precisely so U-D14, which HAS a `pkgs`, can pass a real node derivation": the
+interpreter is then a closure edge of the generation that installs the unit,
+GC-protected, instead of a naked store path nothing owns. 24.18.0 at this
+nixpkgs pin rather than the lake's 24.19.0, deliberately — the interpreter
+belongs to whoever installs the unit, and both are node 24. MEASURED:
+`require('tls').rootCertificates.length` is 120 on BOTH, so the unit needs no
+`SSL_CERT_FILE` the way `home/seat-feeder.nix`'s python feeders do.
+
+(6) **The token is a PATH and never a value, and nothing creates it.**
+`tokenFile` = `~/.local/state/tally-rewrite/lake-token`; nothing in this
+repository writes, reads, prints or stores its contents, and NO tmpfiles rule
+names the file — creating it empty would be a stub standing in for a credential,
+and an empty bearer is a 401 that reads like a lake outage. Until Tom writes it
+the unit fails with `cannot read the lake token file <path>`, which names the
+path (`DEFERRED.md` DF-U-D14-2). The lake ORIGIN on the unit is not a
+credential: the Worker refuses every request, reads included, whose
+Authorization is not the bearer (lake D-A22-1). Clause G asserts the path, the
+absence of a rule and an empty `Service.Environment`, and never opens the file.
+
+(7) **A home-manager module's eval-time guard lives in `flake.nix`'s
+`tally-uplink-topology` check.** `modules/tally-b.nix` could put its invariants
+in NixOS `assertions`; home-manager gives no option of that kind (MEASURED: no
+`options.assertions` anywhere in the pinned home-manager's `modules/`), and a
+top-level `assert` over `config` in a home module recurses. So the invariants
+over literals sit in `home/tally-uplink.nix` and the invariants over the
+RENDERED unit sit in the flake check — which runs under `nix flake check
+--offline --no-build`, the card's own first clause, so the two halves of the
+oracle are one gate. It asserts the service is declared on the coordinator and
+NOT on the worker (one uplink per box that serves a kernel, spec §2.4 Q2 — the
+worker twin is a row that kernel serves), every path under
+`~/.local/state/tally-rewrite` and none under branch (a)'s live root, the rows
+out of the store, `wakes = 1`, no `Install` section, no system-bus twin, and the
+live `tally-daemon` declaration still evaluating.
+
+MEASURED for the mutation hint: with `./tally-uplink.nix` removed from
+`home/home.nix` — "the module import" — the card's own eval
+(`…systemd.user.services ? tally-uplink`) prints exactly `false`, and
+`nix flake check --offline --no-build` fails on the topology check's first
+assert. The membership form is deliberate: it makes the hint's own word `false`
+the printed value rather than an attribute-missing error. The other reading —
+dropping the UPSTREAM import inside `home/tally-uplink.nix` — leaves
+`services.tally-uplink` set but undeclared and dies non-zero; both are red and
+only `true` is green.
+
+NOT decided here and deliberately untouched: the switch (U-D19, DF-U-D14-1),
+what wakes the uplink (U-D18's filler-lane timer, DF-U-D14-4), the kit and the
+plan (both null, DF-U-D14-3), the evaluator lock (still U-D13's DF-U-D13-2,
+waiting on U-A17), and every line of `home/tally.nix` and `modules/tally-b.nix`.
