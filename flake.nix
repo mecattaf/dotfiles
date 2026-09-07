@@ -1013,9 +1013,24 @@
         #     store, so the rows probed and the kernel they are probed against
         #     are one pin and cannot drift; a live checkout path would let a
         #     `git checkout` move the unit under nobody's review;
-        #   - the token is a PATH and the unit carries no `Install` section —
-        #     no secret in the store, and no schedule this unit authorises
-        #     (DEFERRED.md DF-U-D14-2 and DF-U-D14-4);
+        #   - the token is a PATH and the SERVICE carries no `Install` section —
+        #     no secret in the store, and no target this unit installs itself
+        #     onto (DEFERRED.md DF-U-D14-2);
+        #   - the WAKE exists and is a timer's, not a human's (FIX-E12, spec id
+        #     `uplink-has-no-trigger`, dotfiles#351, D-E24): MEASURED, the
+        #     service had been failed for 7h with TriggeredBy/WantedBy/
+        #     RequiredBy/Wants all empty, no .timer file, and no reverse
+        #     dependency, so nothing on the box could ever start it again. The
+        #     asserts below require the TIMER on the coordinator and NOT on the
+        #     worker, in the monotonic form (`OnUnitInactiveSec`, which measures
+        #     from the end of the previous pass — failures included — so wakes
+        #     cannot pile up behind a red run) at the drain's own declared
+        #     cadence, armed by `timers.target`, with no `Persistent` catch-up;
+        #     `Install.WantedBy` is this unit's mutation target, so dropping
+        #     that one line makes this check red;
+        #   - and the service is still the oneshot it was: `Type=oneshot`,
+        #     `--wakes 1`, no `Install` of its own — the timer owns the cadence,
+        #     the uplink owns the pass;
         #   - the non-goals as bytes: no system-bus twin of the uplink, and the
         #     live user-bus tally-daemon declaration still evaluates.
         tally-uplink-topology =
@@ -1025,6 +1040,12 @@
             workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
             cfg = coordinatorHome.services.tally-uplink;
             unit = coordinatorHome.systemd.user.services.tally-uplink;
+            timer = coordinatorHome.systemd.user.timers.tally-uplink;
+            # The drain's own cadence, read from its declaration rather than
+            # retyped: FIX-E12 ties the uplink's wake to it (as
+            # home/tally-filler.nix ties the filler's), so a move on either side
+            # is red instead of silent.
+            drain = coordinatorHome.systemd.user.timers.tally-drain;
             # home-manager renders Service.ExecStart through a settings type
             # that admits either form; join whatever it produced so the infix
             # assertions below read the argv as one string.
@@ -1064,14 +1085,38 @@
           assert nixpkgs.lib.hasInfix "--wakes 1" execStart;
           # branch (a)'s live root appears nowhere in it.
           assert !(nixpkgs.lib.hasInfix "state/tally/" execStart);
-          # no Install section: nothing here starts the unit on a target, and
-          # no timer in this repository fires it (DF-U-D14-4).
+          # the SERVICE still installs itself onto no target and still does one
+          # pass per invocation: the timer below owns the cadence, and the unit
+          # it wakes is the same oneshot U-D14 declared.
           assert !(unit ? Install);
+          assert unit.Service.Type == "oneshot";
+          # the WAKE (FIX-E12, dotfiles#351): DECLARED on the coordinator, and
+          # nowhere else.
+          assert coordinatorHome.systemd.user.timers ? tally-uplink;
+          assert !(workerHome.systemd.user.timers ? tally-uplink);
+          # in the monotonic form, at the drain's own cadence, with the first
+          # wake a full period after the timer is armed — never a wall clock.
+          assert timer.Timer ? OnUnitInactiveSec;
+          assert timer.Timer.OnUnitInactiveSec != "";
+          assert timer.Timer.OnUnitInactiveSec == drain.Timer.OnUnitActiveSec;
+          assert timer.Timer.OnActiveSec == timer.Timer.OnUnitInactiveSec;
+          assert !(timer.Timer ? OnCalendar);
+          # no catch-up burst at switch time, declared false rather than omitted.
+          assert timer.Timer.Persistent == false;
+          # it wakes ITS OWN service, and it is armed by timers.target — the
+          # line whose removal is this unit's mutation.
+          assert timer.Timer.Unit == "tally-uplink.service";
+          assert builtins.elem "timers.target" (timer.Install.WantedBy or [ ]);
+          # a clock and nothing else: no argv, no path, no credential in it.
+          assert !(timer ? Service);
+          assert !(nixpkgs.lib.hasInfix "lake-token" (builtins.toJSON timer));
           # the uplink's own outbox, declared with its mode.
           assert builtins.elem "d ${state}/uplink 0700 - - -"
             coordinatorHome.systemd.user.tmpfiles.rules;
-          # the non-goals: no system-bus twin, and the live daemon stays.
+          # the non-goals: no system-bus twin of either half, and the live
+          # daemon stays.
           assert !(coordinator.systemd.services ? tally-uplink);
+          assert !(coordinator.systemd.timers ? tally-uplink);
           assert coordinatorHome.systemd.user.services ? tally-daemon;
           pkgs.runCommand "tally-uplink-topology" { } ''
             touch "$out"
@@ -1107,9 +1152,13 @@
         #     anywhere in the rendered unit, and no system-bus twin;
         #   - nothing under ~/.local/state is written by it, and branch (a)'s
         #     live root ~/.local/state/tally/ appears nowhere in it;
-        #   - the uplink is given no schedule by this unit: it still renders
-        #     with no Install section (DF-U-D14-4 is discharged by a timer of
-        #     the filler's own, never by installing the uplink).
+        #   - the uplink is given no schedule by THIS unit: it still renders
+        #     with no Install section. (DF-U-D14-4 was to be discharged by a
+        #     timer of the filler's own; MEASURED, it never was — the lane's
+        #     e1-loop.sh names the uplink nowhere — so FIX-E12 discharged it in
+        #     home/tally-uplink.nix with a tally-uplink.timer instead, and the
+        #     assert below still holds: a timer wakes the service, nothing
+        #     installs it.)
         tally-filler-topology =
           let
             coordinator = self.nixosConfigurations.coordinator.config;
