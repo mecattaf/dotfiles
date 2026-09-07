@@ -402,3 +402,100 @@ NOT decided here and deliberately untouched: the switch (U-D19, DF-U-D14-1),
 what wakes the uplink (U-D18's filler-lane timer, DF-U-D14-4), the kit and the
 plan (both null, DF-U-D14-3), the evaluator lock (still U-D13's DF-U-D13-2,
 waiting on U-A17), and every line of `home/tally.nix` and `modules/tally-b.nix`.
+
+2026-09-07 U-D18 (dotfiles#321): the manifest's DOMINANT oracle for the filler
+lane's timer is prose naming three clauses, so it is mechanized as ONE argv —
+`bash tools/u-d18-filler-timer-oracle.sh` — and the lines the prose left open
+are decided here.
+
+(1) **"The uplink's filler verb" resolves to the REGISTER's
+`tools/e1-loop.sh --all`, not to a verb of `apps/uplink`.** MEASURED 2026-09-07
+at the rev this repository pins (`tally-lake` = tally-ts-sdk `a233c30`): the
+lake's uplink CLI offers `--parse-only`, `--replay-only`, `--drain-only` and the
+default wake, and the string `filler` occurs nowhere in that input at all. The
+verb is named instead by a captured ruling — `~/research-methods/DECISIONS.md`
+D-U-E1LOOP-7, "`--all` is the lane's verb over the whole eligible population and
+is what U-D18's timer calls" — so `ExecStart` is
+`bash %h/research-methods/tools/e1-loop.sh --all`. The alternative readings were
+both worse: inventing a `--filler` flag on an input this unit does not own, or
+re-implementing the lane's dispatch here, which is the one thing a clock must
+never do. MEASURED: that verb's population today is 21 ready rungs (24 eligible,
+15 not eligible), and `--all --dry-run` exits 0 having dispatched nothing.
+
+(2) **The verb is an out-of-store `%h` path, and no `ConditionPathExists=`
+guards it.** The register is LOCAL by ruling (D-B12), so it is not and must not
+become a flake input of this repository; `%h/research-methods/...` is the same
+seam `home/seat-feeder.nix` already uses for `stamp-receipt.py`. A condition
+would turn an absent lane into a silent no-op; without one the unit exits
+non-zero naming the path, which is this repository's own rule for a missing
+directory (dotfiles#292).
+
+(3) **D-B10's round-robin is carried as an EQUALITY against the drain's own
+declared period, not as a literal.** `tally-drain.timer` — the other filler —
+is declared `OnUnitActiveSec = "5min"` (MEASURED in the rendered coordinator
+config and in the installed unit file). `home/tally-filler.nix` spells the same
+string, byte for byte, and `flake.nix`'s `tally-filler-topology` check asserts
+`filler.OnUnitActiveSec == drain.OnUnitActiveSec`. `"300s"` would be the same
+duration and a different byte; the equality is what makes an upstream cadence
+change RED here instead of a silent end to the alternation. What actually keeps
+the GPU single-tenant is NOT the cadence but the lane's own `/running`-empty
+gate, which this unit deliberately does not duplicate and could not enforce.
+
+(4) **Recorded rather than smoothed over: which unit "the academic drain" is.**
+Spec §2.4 names `tally-drain.timer` as the GPU row's unleased tenant, "every
+5 min, `Python-urllib/3.14`, MEASURED". MEASURED here 2026-09-07: that timer's
+cadence IS five minutes and its service runs `tally … daemon drain` (the
+producer-event drain), while llama-swap's only `Python-urllib/3.14` callers in a
+40-minute window were PER-MINUTE `GET /health` + `GET /running` probes — the
+util-sampler's shape, not a five-minute tenant. This unit therefore alternates
+against the drain BY NAME and BY DECLARED CADENCE (the unit D-B10 names), and
+nothing here depends on resolving who authored §2.4's user-agent observation.
+
+(5) **`TimeoutStartSec = "infinity"`, and no `Restart=`.** The one systemd
+default this unit overrides. §4.4.2 bounds an ITEM by `runtime_cap_seconds`,
+enforced by the lane per item; a manager-side deadline over the whole pass would
+SIGTERM the unit mid-item and cost more than the one item a preemption is
+allowed to cost (§4.4.1, "yields the lease within one item"). A cold-load crash
+loop is stopped by the lane's `abort_on.consecutive_crash: 2` (§4.4.6), not by a
+clock — and a `Restart=` on a GPU lane would BE that loop.
+
+(6) **The run proof is a transient probe named `tally-filler-probe`, running a
+`--dry-run`.** The card's post-switch clause — "after the switch `systemctl
+--user list-timers` names `tally-filler.timer`" — is U-D19's post-condition by
+the orchestrator's D-B66 note (U-D19 is the only unit whose oracle switches, and
+it dependsOn U-D18, so the clause could not be true at this unit's own
+evaluation). What clause E proves instead is spec §2.4/§5.2's own form for a
+timer before TL-15: `systemd-run --user --on-calendar` from a shell, the
+module's own rendered argv, `list-timers` naming it, `LastTriggerUSec` observed
+to move, and the check recording `launcher: shell` and reporting without
+failing. The probe's name is NOT `tally-filler` (that would shadow what U-D19's
+switch installs, and Rule 9 bars a hand-installed stand-in) and its argv carries
+`--dry-run` (a probe that made a real model request would spend GPU time to
+prove a clock works, and would break the lane's "never two concurrent model
+requests"). Both differences are asserted ABSENT from the installed unit.
+MEASURED: the probe armed, was named by `list-timers`, fired, and the pass it
+started exited 0 — `ActiveState=active Result=success ExecMainStatus=0`.
+
+(7) **The module's own asserts are over LITERALS only.** A top-level `assert`
+that forces `pkgs` — which the unit's `PATH` does — dies "infinite recursion
+encountered" while the module system is still merging (MEASURED on this file's
+first draft; the same class of failure U-D14 hit with `config`). So the
+PATH-shaped non-goals ("never calls llama-swap", "never unloads") are asserted
+in `flake.nix` over the RENDERED unit, where they are strictly stronger: there
+they read `ExecStart` and `Environment` as one string, so a value cannot hide in
+the environment block.
+
+MEASURED for the mutation hint: with `./tally-filler.nix` removed from
+`home/home.nix` — "remove the timer" — the card's own eval
+(`…systemd.user.timers ? tally-filler`) prints exactly `false`, `nix flake check
+--offline --no-build` fails on the topology check's first assert, and
+`bash tools/u-d18-filler-timer-oracle.sh` reports FAIL rc 1. The membership form
+is deliberate: it makes the hint's own word `false` the printed value rather
+than an attribute-missing error.
+
+NOT decided here and deliberately untouched: the switch (U-D19, DF-U-D18-1), the
+anti-starvation number (TL-10, DF-U-D18-2), moving the drain onto a lease over
+the socket (U-D11/TL-15, DF-U-D18-3), every option of
+`home/tally-uplink.nix` (which still renders with no `Install` section — this
+unit discharges DF-U-D14-4 with a timer of the filler's own, never by installing
+the uplink), and every line of the register's own `tools/e1-loop.sh`.
