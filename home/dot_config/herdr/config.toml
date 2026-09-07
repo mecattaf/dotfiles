@@ -26,6 +26,21 @@ onboarding = false
 prefix = "ctrl+b"
 
 [terminal]
+# fish is the terminal UI here; bash is only the LOGIN shell (#236). herdr's
+# default for this key is empty, which means "$SHELL, then /bin/sh" — and the
+# $SHELL the server inherits is the passwd entry, i.e. bashInteractive. So
+# every herdr pane (Mod+Return -> `kitty -e hk new`) came up in bash, while
+# kitty's own `shell fish` only governs the windows kitty starts itself. This
+# is the herdr-side twin of that kitty.conf line.
+#
+# Absolute, and deliberately NOT a store path: /run/current-system/sw/bin is
+# where modules/common.nix's `programs.fish.enable` puts fish, it survives a
+# rebuild, and the server (a systemd user unit with no login-shell PATH) does
+# not have to resolve a bare name.
+default_shell = "/run/current-system/sw/bin/fish"
+# "auto" is herdr's default and means login shells on macOS only — on Linux new
+# panes stay non-login, which is what fish's conf.d/ init expects.
+shell_mode = "auto"
 # New panes, tabs and workspaces open in the cwd of the pane they were
 # created from (herdr's default, pinned): the behavior the deleted
 # new-terminal script used to hand-roll.
