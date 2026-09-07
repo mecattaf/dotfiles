@@ -41,4 +41,29 @@ Hard boundaries:
 - Do not author a handoff, run Git commands, or imply that anything was backed
   up remotely.
 - Do not run this automatically at Stop time or as a side effect of another
-  skill. The user must request every drain.
+  skill. The user must request every drain. That prohibition is about the
+  journal and it stays; it is lifted only for the separate harvest store below
+  (R-c21).
+
+## The harvest verb — the same machinery, a different store
+
+`harvest` is a second verb on the same engine. It shares drain's identity
+resolution, trace capture and provenance validation and its utility-model path,
+and it differs in exactly one way that matters: it writes to
+`~/.local/state/tally-rewrite/harvest/<session_id>.md` — one file per session,
+overwritten on a later harvest of the same session — and never to the journal
+(D-E07). The journal stays what Tom chose to keep.
+
+```bash
+python3 "$HOME/.agents/skills/drain/scripts/ai_memory.py" harvest
+```
+
+- It is non-interactive by construction: it never prompts, exits 0 on a written
+  file, and otherwise exits non-zero with the reason on stderr. It is what a
+  SessionEnd hook calls.
+- It never runs the drain, and the drain never runs it.
+- Its distillation carries two fields the journal note does not render:
+  `resolved` (a boolean the model states, never inferred from prose) and
+  `unresolved_units` (each one bounded unit of work in one sentence naming its
+  deliverable). Both are required of the model; a missing one is a bounded
+  failure, not a guess.

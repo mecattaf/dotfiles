@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -64,6 +65,8 @@ def result_data(
         "constraints": ["No cloud or paid-model fallback is allowed."],
         "artifacts": ["modules/npu-llm.nix defines the local boundary."],
         "open_questions": ["A live NPU smoke test follows deployment."],
+        "resolved": False,
+        "unresolved_units": ["Wire the harvest verb to a SessionEnd hook."],
     }
 
 
@@ -224,6 +227,21 @@ class SkillBoundaryTests(unittest.TestCase):
         self.assertIn('ai_memory.py" pickup', pickup)
         self.assertNotIn('ai_memory.py" drain', pickup)
         self.assertIn("ai-memory:parent", pickup)
+
+    def test_the_written_rule_keeps_drain_manual_and_names_the_harvest_store(
+        self,
+    ) -> None:
+        # R-c21: the prohibition on automatic runs stays for the journal and is
+        # lifted for the separate harvest store. A session that reads only this
+        # file must be able to tell which verb a hook may call and where it
+        # writes — and must not be sent at branch (a)'s live state dir.
+        drain = DRAIN_SKILL.read_text()
+        self.assertIn("The user must request every drain", drain)
+        self.assertIn('ai_memory.py" harvest', drain)
+        self.assertIn("~/.local/state/tally-rewrite/harvest/<session_id>.md", drain)
+        self.assertIn("never to the journal", drain)
+        self.assertIn("unresolved_units", drain)
+        self.assertNotIn("~/.local/state/tally/harvest", drain)
 
     def test_drain_skill_names_the_gpu_seam_the_distillation_now_runs_on(self) -> None:
         drain = DRAIN_SKILL.read_text()
@@ -543,10 +561,14 @@ class DrainTests(unittest.TestCase):
             "import json, os, sys\n"
             "request = json.load(sys.stdin)\n"
             f"open({str(recorded)!r}, 'a').write(json.dumps(request) + '\\n')\n"
+            # The distilled JSON is embedded as a JSON *string* literal (which
+            # is also a valid Python one), not as a Python expression: the
+            # schema carries a boolean since the harvest verb landed, and
+            # `false` is not Python.
             "json.dump({'model': 'utility', 'choices': [{'message': "
-            "{'role': 'assistant', 'content': json.dumps("
-            f"{json.dumps(result_data())}"
-            ")}}]}, sys.stdout)\n",
+            "{'role': 'assistant', 'content': "
+            f"{json.dumps(json.dumps(result_data()))}"
+            "}}]}, sys.stdout)\n",
             encoding="utf-8",
         )
         wrapper.chmod(0o755)
@@ -630,6 +652,218 @@ class DrainTests(unittest.TestCase):
                 invoker=QueueInvoker(result_data()),
             )
         self.assertFalse(list(self.journal.rglob("*.md")))
+
+
+class HarvestTests(unittest.TestCase):
+    """The second verb (MECHANISM-2026-09-07 §6b, D-E07, R-c21).
+
+    Harvest shares drain's identity resolution, trace capture and utility-model
+    path and writes to its own store. The journal stays what Tom chose to keep,
+    so every case here proves the scratch journal directory is still empty.
+    """
+
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.journal = self.root / "journal"
+        self.journal.mkdir()
+        self.harvest = self.root / "harvest"
+        self.runtime = self.root / "runtime"
+        self.runtime.mkdir()
+        self.environment = mock.patch.dict(
+            os.environ,
+            {"XDG_RUNTIME_DIR": str(self.runtime)},
+        )
+        self.environment.start()
+
+    def tearDown(self) -> None:
+        self.environment.stop()
+        self.temporary.cleanup()
+
+    def journal_files(self) -> list[Path]:
+        return [path for path in self.journal.rglob("*") if path.is_file()]
+
+    def harvest_files(self) -> list[Path]:
+        return sorted(path for path in self.harvest.rglob("*") if path.is_file())
+
+    def test_harvest_writes_store_not_journal(self) -> None:
+        identity = memory.Identity("claude-code", CLAUDE_ROOT_ID)
+        trace = copied_trace(fixture_trace(CLAUDE_HOME, CLAUDE_ROOT_ID), self.root)
+
+        status, note_path = memory.harvest_session(
+            identity=identity,
+            harvest_dir=self.harvest,
+            trace_path=trace,
+            now=datetime.fromisoformat("2026-09-07T21:00:00+02:00"),
+            invoker=QueueInvoker(result_data()),
+        )
+
+        self.assertEqual(status, "created")
+        self.assertEqual(self.harvest_files(), [note_path])
+        self.assertEqual(
+            note_path,
+            self.harvest / f"{CLAUDE_ROOT_ID}.md",
+        )
+        self.assertEqual(self.journal_files(), [])
+
+        text = note_path.read_text()
+        fields, _ = memory.parse_frontmatter(text)
+        self.assertEqual(fields["source"], "claude-code")
+        self.assertEqual(fields["session_id"], CLAUDE_ROOT_ID)
+        self.assertIn("harvested_at", fields)
+        self.assertNotIn("drained_at", fields)
+        self.assertIn("## Unresolved units", text)
+        self.assertNotIn("SECRET_", text)
+
+        # A later harvest of the same session overwrites the one file (D-E07);
+        # it never allocates a second, and it still never touches the journal.
+        with trace.open("a", encoding="utf-8") as handle:
+            handle.write(
+                json.dumps(
+                    {
+                        "type": "user",
+                        "sessionId": CLAUDE_ROOT_ID,
+                        "isSidechain": False,
+                        "timestamp": "2026-09-07T21:05:00+02:00",
+                        "message": {
+                            "role": "user",
+                            "content": "One more root turn before the session ends.",
+                        },
+                    }
+                )
+                + "\n"
+            )
+        status, again = memory.harvest_session(
+            identity=identity,
+            harvest_dir=self.harvest,
+            trace_path=trace,
+            now=datetime.fromisoformat("2026-09-07T21:06:00+02:00"),
+            invoker=QueueInvoker(result_data(title="a model-proposed rename")),
+        )
+        self.assertEqual(status, "updated")
+        self.assertEqual(again, note_path)
+        self.assertEqual(self.harvest_files(), [note_path])
+        self.assertEqual(self.journal_files(), [])
+        self.assertFalse(list(self.harvest.glob(".ai-memory-*.tmp")))
+
+    def test_model_json_requires_resolved_fields(self) -> None:
+        well_formed: dict[str, object] = {
+            "title": "harvest verb",
+            "group": "memory harvest",
+            "thread": "The session added a harvest verb beside the drain.",
+            "decisions": ["Harvest writes its own store, never the journal."],
+            "candidate_ideas": ["A SessionEnd hook could call the verb."],
+            "constraints": ["The drain stays a user-requested verb."],
+            "artifacts": ["home/dot_claude/skills/drain/scripts/ai_memory.py"],
+            "open_questions": ["Whether the hook lands in the same pull."],
+            "resolved": False,
+            "unresolved_units": [
+                "Add the SessionEnd hook that calls harvest non-interactively."
+            ],
+        }
+
+        for missing in ("resolved", "unresolved_units"):
+            incomplete = {
+                key: value for key, value in well_formed.items() if key != missing
+            }
+            with self.assertRaises(memory.ModelOutputError) as caught:
+                memory.validate_model_result(incomplete)
+            self.assertIn(missing, str(caught.exception))
+
+        with self.assertRaisesRegex(memory.ModelOutputError, "resolved must be"):
+            memory.validate_model_result(dict(well_formed, resolved="yes"))
+
+        result = memory.validate_model_result(well_formed)
+        self.assertIs(result.resolved, False)
+        self.assertEqual(
+            result.unresolved_units,
+            ("Add the SessionEnd hook that calls harvest non-interactively.",),
+        )
+
+        _, note_path = memory.harvest_session(
+            identity=memory.Identity("codex", CODEX_ROOT_ID),
+            harvest_dir=self.harvest,
+            trace_path=fixture_trace(CODEX_HOME, CODEX_ROOT_ID),
+            now=datetime.fromisoformat("2026-09-07T21:10:00+02:00"),
+            invoker=QueueInvoker(well_formed),
+        )
+        text = note_path.read_text()
+        self.assertIn("resolved: false", text)
+        self.assertIn(
+            "## Unresolved units\n\n- Add the SessionEnd hook that calls "
+            "harvest non-interactively.",
+            text,
+        )
+        self.assertEqual(self.journal_files(), [])
+
+    def test_a_resolved_session_renders_an_empty_unresolved_list(self) -> None:
+        resolved = dict(result_data(), resolved=True, unresolved_units=[])
+        _, note_path = memory.harvest_session(
+            identity=memory.Identity("claude-code", CLAUDE_ROOT_ID),
+            harvest_dir=self.harvest,
+            trace_path=fixture_trace(CLAUDE_HOME, CLAUDE_ROOT_ID),
+            now=datetime.fromisoformat("2026-09-07T21:20:00+02:00"),
+            invoker=QueueInvoker(resolved),
+        )
+        text = note_path.read_text()
+        self.assertIn("resolved: true", text)
+        self.assertIn("## Unresolved units\n\n- None recorded.", text)
+        with self.assertRaisesRegex(memory.ModelOutputError, "is not empty"):
+            memory.validate_model_result(
+                dict(result_data(), resolved=True, unresolved_units=["Still open."])
+            )
+        self.assertEqual(self.journal_files(), [])
+
+    def test_the_drain_note_is_unchanged_by_the_two_new_fields(self) -> None:
+        # R-c21 lifts the prohibition for the harvest store alone: a journal
+        # note must render exactly the sections it always did, with no
+        # resolution statement in its front matter.
+        _, note_path = memory.drain_session(
+            identity=memory.Identity("claude-code", CLAUDE_ROOT_ID),
+            journal_dir=self.journal,
+            trace_path=fixture_trace(CLAUDE_HOME, CLAUDE_ROOT_ID),
+            now=datetime.fromisoformat("2026-09-07T21:30:00+02:00"),
+            invoker=QueueInvoker(result_data()),
+        )
+        text = note_path.read_text()
+        fields, body = memory.parse_frontmatter(text)
+        self.assertNotIn("resolved", fields)
+        self.assertIn("drained_at", fields)
+        self.assertNotIn("## Unresolved units", body)
+        self.assertEqual(
+            tuple(re.findall(r"(?m)^## (.+)$", body)),
+            memory.SECTION_NAMES,
+        )
+        self.assertEqual(self.harvest_files(), [])
+
+    def test_the_verb_is_callable_non_interactively_and_names_its_store(self) -> None:
+        # What MEM-2's SessionEnd hook will call: no prompt, a bounded failure
+        # on stderr with a non-zero exit, and a default store under the
+        # rewrite's state dir, never branch (a)'s ~/.local/state/tally.
+        with mock.patch.dict(
+            os.environ,
+            {"AI_MEMORY_HARVEST_DIR": "", "XDG_STATE_HOME": str(self.root / "state")},
+        ):
+            os.environ.pop("AI_MEMORY_HARVEST_DIR")
+            default = memory.default_harvest_dir()
+        self.assertEqual(default, self.root / "state/tally-rewrite/harvest")
+        self.assertNotIn("/.local/state/tally/", f"{default}/")
+
+        stderr = io.StringIO()
+        with mock.patch.object(
+            memory,
+            "current_identity",
+            side_effect=memory.MemoryError(
+                "no current session identity found (expected CLAUDE_CODE_SESSION_ID"
+                " or CODEX_THREAD_ID)"
+            ),
+        ):
+            with contextlib.redirect_stderr(stderr):
+                status = memory.main(["harvest"])
+        self.assertEqual(status, 1)
+        self.assertIn("no current session identity found", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+        self.assertEqual(self.journal_files(), [])
 
 
 class CompactionTests(unittest.TestCase):
