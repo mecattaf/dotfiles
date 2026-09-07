@@ -1301,32 +1301,32 @@
     "tally-b": {
       "flake": false,
       "locked": {
-        "lastModified": 1788739290,
-        "narHash": "sha256-GxAnsdQEK5tU1kmRperQWlurJXQaDJR9zqxbMzMAR7s=",
+        "lastModified": 1788779817,
+        "narHash": "sha256-JkbYyVys9NOiaU+9Zgj2Pcm67TdrDiVvVNTQkXsdIfs=",
         "ref": "refs/heads/main",
-        "rev": "26d758049bf0e89126157b3ea743085bb1b918f0",
-        "revCount": 94,
+        "rev": "d4e54d5f7c41335e4a1c5f539e3ab8865fc04412",
+        "revCount": 117,
         "type": "git",
         "url": "https://github.com/mecattaf/tally"
       },
       "original": {
-        "rev": "26d758049bf0e89126157b3ea743085bb1b918f0",
+        "rev": "d4e54d5f7c41335e4a1c5f539e3ab8865fc04412",
         "type": "git",
         "url": "https://github.com/mecattaf/tally"
       }
     },
     "tally-lake": {
       "locked": {
-        "lastModified": 1788743759,
-        "narHash": "sha256-3Qm+6udvhk9rwL/s2GNAbm9D6vH7VLHZuYFKbl1al84=",
+        "lastModified": 1788780068,
+        "narHash": "sha256-nbIxCIkfn03q5l275nJXpC1LbPpBaL3OTe9P2b3rd/o=",
         "ref": "refs/heads/main",
-        "rev": "a233c303246efb6eceb8e84ac409f85d3d41879b",
-        "revCount": 162,
+        "rev": "38a526ba3894aa2fed0ec276b4921de4ef10b8e4",
+        "revCount": 198,
         "type": "git",
         "url": "https://github.com/mecattaf/tally-ts-sdk"
       },
       "original": {
-        "rev": "a233c303246efb6eceb8e84ac409f85d3d41879b",
+        "rev": "38a526ba3894aa2fed0ec276b4921de4ef10b8e4",
         "type": "git",
         "url": "https://github.com/mecattaf/tally-ts-sdk"
       }

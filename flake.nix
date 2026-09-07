@@ -195,7 +195,7 @@
     # git cache and store path make every gate `--offline`-clean anywhere.
     # Nothing was printed or read from any credential store to establish this.
     tally-b = {
-      url = "git+https://github.com/mecattaf/tally?rev=26d758049bf0e89126157b3ea743085bb1b918f0";
+      url = "git+https://github.com/mecattaf/tally?rev=d4e54d5f7c41335e4a1c5f539e3ab8865fc04412";
       flake = false;
     };
 
@@ -264,7 +264,7 @@
     # anything before c29fdfb has no flake to import and this input cannot
     # evaluate. See docs/local-ai/tally-uplink-input.md.
     tally-lake = {
-      url = "git+https://github.com/mecattaf/tally-ts-sdk?rev=a233c303246efb6eceb8e84ac409f85d3d41879b";
+      url = "git+https://github.com/mecattaf/tally-ts-sdk?rev=38a526ba3894aa2fed0ec276b4921de4ef10b8e4";
     };
 
     # deploy-rs — the fleet's one NixOS activation engine. Tally remains the
