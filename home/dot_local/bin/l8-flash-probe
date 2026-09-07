@@ -51,6 +51,31 @@ na() {
 
 coordinator_only() { [ "$HOST" = "$COORDINATOR" ]; }
 
+# FragmentPath as systemd PRINTS it, resolved to what it POINTS AT. A declared
+# unit's fragment is almost never a bare store path: home-manager links its
+# fragment into ~/.config/systemd/user and NixOS links system units into
+# /etc/systemd/system, and systemd reports the LINK it loaded, not the target.
+# Measured on both buses (dotfiles#331):
+#   systemctl --user show tally-daemon.service -p FragmentPath
+#     -> /home/tom/.config/systemd/user/tally-daemon.service   (a symlink)
+#   systemctl show tally-kernel.service -p FragmentPath
+#     -> /etc/systemd/system/tally-kernel.service              (a symlink)
+#      readlink -f -> /nix/store/...-unit-tally-kernel.service/tally-kernel.service
+# So classifying the printed string against /nix/store/* calls every declared
+# unit hand-installed. Resolve first, classify second. A HAND-INSTALLED unit is
+# a plain file: it resolves to itself, stays outside the store, and still FAILs
+# — which is the whole point of the row.
+resolve_fragment() { # $1 = FragmentPath as printed; echoes what it resolves to
+  local raw="$1" resolved
+  [ -n "$raw" ] || return 0
+  # -f, and a fallback: readlink -f prints nothing if the target's directory is
+  # gone (a stale link into a garbage-collected store), and a stale link must be
+  # classified on the string it still has rather than vanish into the empty
+  # case, whose message says "the unit does not exist".
+  resolved="$(readlink -f "$raw" 2>/dev/null || true)"
+  printf '%s' "${resolved:-$raw}"
+}
+
 # Whole-token match against `tally query pools` output. NOT `grep -w`: a
 # hyphen is a non-word character, so `grep -w codex` matches inside
 # "codex-window" and would report the retired mutex as the new seat row. The
@@ -177,13 +202,14 @@ for timer in claude-transcript-mirror.timer nightly-record.timer; do
     else
       no "$active_tag $timer active" "systemctl --user is-active $timer"
     fi
-    frag="$(systemctl --user show "$timer" -p FragmentPath --value 2>/dev/null)"
+    raw="$(systemctl --user show "$timer" -p FragmentPath --value 2>/dev/null)"
+    frag="$(resolve_fragment "$raw")"
     case "$frag" in
       /nix/store/*)
-        ok "[E] $timer declared (fragment in /nix/store)" "systemctl --user show $timer -p FragmentPath"
+        ok "[E] $timer declared (fragment resolves into /nix/store)" "readlink -f \$(systemctl --user show $timer -p FragmentPath --value)"
         ;;
       *)
-        no "[E] $timer declared (fragment '$frag')" "systemctl --user show $timer -p FragmentPath"
+        no "[E] $timer declared (fragment '$raw' -> '$frag')" "readlink -f \$(systemctl --user show $timer -p FragmentPath --value)"
         ;;
     esac
   else
@@ -262,18 +288,19 @@ fi
 # runs everywhere. util-row.timer is coordinator-gated — it is the joiner that
 # pulls the worker's log — so off the coordinator it is SKIP, never FAIL.
 util_fragment_row() { # $1 = timer, $2 = "both" | "coordinator"
-  local timer="$1" scope="$2" frag
+  local timer="$1" scope="$2" raw frag
   if [ "$scope" = "coordinator" ] && ! coordinator_only; then
     na "[E] $timer declared (coordinator only)" "systemctl --user show $timer -p FragmentPath"
     return
   fi
-  frag="$(systemctl --user show "$timer" -p FragmentPath --value 2>/dev/null)"
+  raw="$(systemctl --user show "$timer" -p FragmentPath --value 2>/dev/null)"
+  frag="$(resolve_fragment "$raw")"
   case "$frag" in
     /nix/store/*)
-      ok "[E] $timer declared (fragment in /nix/store)" "systemctl --user show $timer -p FragmentPath"
+      ok "[E] $timer declared (fragment resolves into /nix/store)" "readlink -f \$(systemctl --user show $timer -p FragmentPath --value)"
       ;;
     *)
-      no "[E] $timer declared (fragment '$frag')" "systemctl --user show $timer -p FragmentPath"
+      no "[E] $timer declared (fragment '$raw' -> '$frag')" "readlink -f \$(systemctl --user show $timer -p FragmentPath --value)"
       ;;
   esac
 }
