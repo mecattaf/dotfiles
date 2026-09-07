@@ -209,3 +209,80 @@ Not decided here and deliberately untouched: the herdr TOPOLOGY. One server, on
 the coordinator (ruling B5); `#309` stays Tom's. The `home-profiles` check
 asserts that shape in both directions so a pin move cannot become a topology
 move. The switch that puts this pin on a box is `DEFERRED.md` DF-U-D15-1.
+
+2026-09-06 U-D13 (dotfiles#316): the `tally-b` input and `modules/tally-b.nix`
+— the rewrite kernel (github.com/mecattaf/tally, U-B1…U-B13) as one system
+service on the coordinator, beside the live daemon. Five lines are decided
+here; the mechanism and its measurements are in `docs/local-ai/tally-b-input.md`.
+
+(1) **`git+https://` with `flake = false`, because the repo is private AND
+carries no Nix.** `gh repo view mecattaf/tally --json isPrivate,visibility` →
+`{"isPrivate":true,"visibility":"PRIVATE"}` (MEASURED 2026-09-06), and no
+executor flips visibility — contrast U-D15, where R-2026-09-06-22 had already
+taken the Tom line before the `github:` form was admitted. The native `github:`
+fetcher was MEASURED against that wall: `nix flake lock --update-input tally-b`
+over `github:mecattaf/tally/<rev>` answers `HTTP error 404`, because the
+tarball fetcher spends nix's own `access-tokens` and this fleet configures none
+(greps over /etc/nix/nix.conf, ~/.config/nix/nix.conf, NIX_ACCESS_TOKENS: all
+empty; no ~/.netrc). The `git+https://` form fetches through git, and git here
+authenticates through the machine's persistent credential path (the `gh auth
+git-credential` helper in the global gitconfig — never read, never printed).
+Consequence, stated rather than hidden: the ONE network act (the lock update /
+a cold fetch) works only on a host whose git can authenticate to github.com;
+after it, the git cache and the store path make every gate `--offline`-clean
+anywhere. `flake = false` is the repo's own law — its CONTRIBUTING §1 rule 2
+("This repository carries no Nix at all") and its DEFERRED.md, which names
+`modules/tally-b.nix` in THIS repository as the unit's home.
+
+(2) **The pin is `26d758049bf0e89126157b3ea743085bb1b918f0` = `origin/main` of
+mecattaf/tally at U-B13's delivery** (PR #45 `k/socket` merged, plus the
+evaluator-probe commit), and `nix flake lock --update-input tally-b` at that
+pin is a NO-OP — MEASURED twice, and asserted as clause A0 of
+`tests/tally-b/test-tally-b-input.sh`, which is both the card's "the lock
+updated with nix flake lock --update-input tally-b" and its "re-applying the
+same card reports zero changes". Bumping the kernel is an edit of the rev in
+flake.nix, deliberate, the way nixpkgs-paperless is bumped — never a nightly
+resolve (the input is NOT in `rollingInputOverrides`).
+
+(3) **The socket path question the kernel's repo left open is answered at the
+kernel's own default.** tally's DEFERRED.md carries "[OPERATOR] Where the
+socket lives on the coordinator once U-D11 runs it under systemd … which path
+the estate settles on is an operator's line". Settled: `<state>/kernel.sock` =
+`~/.local/state/tally-rewrite/kernel.sock`, which is `default_socket_path()`'s
+own answer (SOCKET_BASENAME beside the chain it fronts). It is a module option
+(`services.tally-kernel.socketPath`), never an environment variable on the
+unit, so a move is a reviewed eval-time change the topology check sees.
+
+(4) **The rows file is the three `owner: kernel` rows of the rewrite's own
+docs/rows.md and nothing else.** gpu-coordinator and gpu-worker (capacity 1,
+context_window 32768, graces 30/10, cap 100000 per D-B3/TL-3, `running` =
+llama-swap's `/running` — 127.0.0.1:9292 for this box, `http://worker:9292`
+for the twin, because ONE kernel on the coordinator serves both devices, spec
+§2.4 Q2) and mechanical (context_window null, `running` none — the evaluator's
+row runs no model). The tom-owned seat rows are NOT served: U-D12's feeders
+write them into the meters dir on the user bus and the kernel reads them
+through it. A failed `/running` probe is written busy with grade UNKNOWN
+(`RunningSource::observe`), so a down endpoint cannot fabricate headroom.
+
+(5) **System bus, User=tom, no sandbox exemption dance — and coexistence is
+asserted, not promised.** The live `tally-daemon.service` stays a USER unit
+writing `~/.local/state/tally/`; `tally-kernel.service` is a SYSTEM unit
+writing `~/.local/state/tally-rewrite/`, and the separation is enforced three
+times over: the kernel's own `Ledger::open` refuses branch (a)'s paths by name
+(ledger.rs:31-35), the module asserts `tally-rewrite` in the stateDir at eval
+time, and the `tally-b-topology` flake check plus clause F of the test script
+assert the live declaration still evaluates while no system-bus `tally-daemon`
+twin exists. ProtectHome/ReadWritePaths hardening is deliberately absent: the
+process's whole job is running admitted work as this user over this user's
+tree, and its own writes are confined by the state root it refuses to leave
+rather than by a sandbox that would have to exempt the executor's world anyway.
+
+MEASURED for the mutation hint, both readings: with the `systemd.services`
+block removed from the module, `nix eval
+.#nixosConfigurations.coordinator.config.systemd.services.tally-kernel.enable`
+fails non-zero ("does not provide attribute"); with `enable = false` in
+hosts/coordinator/default.nix it prints `false`. The card's "the eval is false"
+is red either way; the removal reading is the one the hint names and the one
+run. NOT decided here and deliberately untouched: the switch (U-D19), the
+uplink (U-D14/W-03), the evaluator lock (null until U-A17 exists to be locked),
+and every line of `home/tally.nix`.
