@@ -1018,6 +1018,7 @@
         "piri": "piri",
         "sfmono-liga": "sfmono-liga",
         "tally": "tally",
+        "tally-b": "tally-b",
         "voxtype": "voxtype"
       }
     },
@@ -1294,6 +1295,23 @@
         "owner": "mecattaf",
         "repo": "tally.nix",
         "type": "github"
+      }
+    },
+    "tally-b": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788739290,
+        "narHash": "sha256-GxAnsdQEK5tU1kmRperQWlurJXQaDJR9zqxbMzMAR7s=",
+        "ref": "refs/heads/main",
+        "rev": "26d758049bf0e89126157b3ea743085bb1b918f0",
+        "revCount": 94,
+        "type": "git",
+        "url": "https://github.com/mecattaf/tally"
+      },
+      "original": {
+        "rev": "26d758049bf0e89126157b3ea743085bb1b918f0",
+        "type": "git",
+        "url": "https://github.com/mecattaf/tally"
       }
     },
     "therock-src-7-15-gfx1151-base-half-011b45bd": {
