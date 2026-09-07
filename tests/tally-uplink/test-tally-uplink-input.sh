@@ -273,12 +273,24 @@ else
 fi
 # And nothing in this unit's OWN files spells a bearer literal. Scoped to those
 # files deliberately: flake.nix carries a pre-existing, unrelated smoke fixture
-# whose expected header is the literal `Bearer smoke-fixture-token` (the
-# claude-capacity check), and reading that as this unit's secret would be a
-# false red.
-if grep -REn 'Bearer[ =:]+[A-Za-z0-9_.-]{8,}' \
-     home/tally-uplink.nix tests/tally-uplink docs/local-ai/tally-uplink-input.md >/dev/null 2>&1; then
-  bad  "G a bearer literal appears in this unit's files"
+# (the claude-capacity check) whose expected Authorization header is a hard-coded
+# test string, and reading that as this unit's secret would be a false red. This
+# comment says so without spelling one, because the search below reads this file
+# too and a literal written here would be its own red.
+#
+# Every path is required to EXIST before the search runs. `grep` over a missing
+# file exits 2 — the same non-zero it returns for "no match" — so an absent path
+# reads as "nothing found" and masks whatever the present files say. MEASURED
+# 2026-09-07: that is exactly what happened while this unit's doc was unwritten,
+# and it hid a match in this script's own prose. A clause that cannot search is
+# now red, not green.
+g_files="home/tally-uplink.nix tests/tally-uplink/test-tally-uplink-input.sh docs/local-ai/tally-uplink-input.md"
+g_missing=
+for f in $g_files; do [ -e "$f" ] || g_missing="$g_missing $f"; done
+if [ -n "$g_missing" ]; then
+  bad  "G cannot search for a bearer literal: missing$g_missing"
+elif grep -REn 'Bearer[ =:]+[A-Za-z0-9_.-]{8,}' $g_files >/dev/null 2>&1; then
+  bad  "G a bearer literal appears in this unit's files: $(grep -REl 'Bearer[ =:]+[A-Za-z0-9_.-]{8,}' $g_files | tr '\n' ' ')"
 else
   pass "G no bearer literal in home/tally-uplink.nix, this suite, or the unit's doc"
 fi
