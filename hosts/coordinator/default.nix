@@ -67,6 +67,11 @@
     # rank-0-dies-in-6s / rank-1-hangs-forever failure. The NAS must NOT import
     # this: it still needs `worker` to mean the house wifi for Immich ML.
     ../../modules/fleet-hosts.nix
+    # The REWRITE kernel (github.com/mecattaf/tally, U-B1…U-B13) as one system
+    # service against ~/.local/state/tally-rewrite/, coexisting with the live
+    # user-bus tally-daemon.service (U-D13). Declared here, installed by U-D19's
+    # switch — never hand-started (DEFERRED.md DF-U-D13-1).
+    ../../modules/tally-b.nix
   ];
 
   networking.hostName = "coordinator";
@@ -79,6 +84,12 @@
   myCoordinatorMedia.enable = false;
   myNasClient.useRemoteStorage = true;
   myNasClient.relayMedia = true;
+
+  # The rewrite's served kernel: ONE kernel, on the coordinator (spec §2.4 Q2 —
+  # the worker twin is a ROW this kernel serves, not a second kernel), on the
+  # system bus, against the rewrite's own state root. The live daemon on tom's
+  # user bus is untouched and keeps running (modules/tally-b.nix).
+  services.tally-kernel.enable = true;
   # Flipped post-flash after the zero-TOFU host-key check (2026-07-05): the
   # delivered /etc/ssh/ssh_host_ed25519_key matched mesh-registry.nix, so
   # agenix may now decrypt against it.
