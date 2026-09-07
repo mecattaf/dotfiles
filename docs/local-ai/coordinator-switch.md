@@ -153,6 +153,56 @@ It is **read-only over ssh** with `BatchMode`, by the card's own non-goal *"the
 worker box untouched"*: nothing is started, stopped, switched, built or written
 there.
 
+## 6b. What the switch could not turn green, measured to the line
+
+Two clauses of the card's own oracle read `[F]`, and they are one blocker twice:
+`tally-uplink.service` is `failed`, and `ledger.jsonl` does not grow across a
+wake.
+
+```
+uplink: replay from last_seq 0: 0 of 0 mirrored records owed
+uplink: SocketError: kernel refused admit: exec_recovery_malformed
+tally-uplink.service: Main process exited, code=exited, status=1/FAILURE
+```
+
+```
+$ tally-kernel call --socket S --verb admit --body '{"row":"cc","request":{}}'
+{"reply":"refusal","body":{"code":"exec_recovery_malformed",
+ "detail":"cannot recover held lease none: its exec_started row is malformed:
+           no kernel row spec for \"cc\""}}
+$ … --body '{"row":"gpu-coordinator","request":{}}'  -> {"signal":"STOP","reason":"utilization_at_stop"}
+$ … --body '{"row":"mechanical","request":{}}'       -> {"signal":"GO","reason":"within_headroom"}
+```
+
+- the uplink's `probe()` is an `admit` with **no `taskId`**, taken over **every**
+  row of its rows file, in file order (`tally-ts-sdk src/uplink.mjs:88-103`,
+  `src/socket.mjs:105-118`);
+- the kernel's `admit` runs `consider()` → `stamp_row(row)`, which refuses
+  `exec_recovery_malformed` for a row outside its own `--rows` table
+  (`tally crates/tally-kernel/src/exec.rs:1340-1350`);
+- this estate's kernel is configured — **correctly** — with only the three
+  `owner: kernel` rows, because `RowWriter::stamp` *writes*
+  `<meters>/<row>.json` with `"owner":"kernel"`, so giving it the seat rows
+  would have it overwrite what U-D12's feeders publish and destroy D-B5's two
+  pools.
+
+`docs/rows.md`'s first row is `cc`, so the first probe of every wake throws. The
+repository's only two levers are the kernel's `--rows` (must stay the owned
+rows) and the uplink's `--rows` (must stay the estate's nine, asserted by
+`tally-uplink-topology`), and neither is a fix. Filed as
+[mecattaf/tally#50](https://github.com/mecattaf/tally/issues/50) and
+[mecattaf/tally-ts-sdk#105](https://github.com/mecattaf/tally-ts-sdk/issues/105);
+carried as `DF-U-D19-1` and `DF-U-D19-2`. Neither upstream `main` carries a fix
+today (MEASURED 2026-09-07: `add5dddb`, `f817f86d`), so a pin bump would not help.
+
+**They stay hard `[F]`s and the oracle exits 1.** The card asks for `active`,
+the box says `failed`, and an author who converted his own red clause into a
+`NOTE` would be grading his own oracle. The chain *is* being written — the file
+exists carrying `admission_transition` records from probes on the rows the
+kernel owns — so what is missing is the estate's own traffic, and manufacturing
+rows by hand to move the number would be the oracle writing the evidence it
+then reads.
+
 ## 7. The non-goals, as the oracle enforces them
 
 | non-goal | how it is asserted |
