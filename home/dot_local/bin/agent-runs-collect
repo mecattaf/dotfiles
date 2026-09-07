@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+"""agent-runs-collect — one history store for every agent harness.
+
+Schema follows codex's `threads` verbatim (git_sha / git_branch / git_origin_url /
+model_provider / rollout_path / first_user_message / archived), plus `harness`,
+since codex only ever needs one. rollout_path points at the harness's OWN jsonl —
+nothing is re-serialized. Tokens only; USD is a later join.
+"""
+import json, os, re, sqlite3, subprocess, sys, time
+from pathlib import Path
+
+DB   = Path.home()/".local/state/agent-runs/state.sqlite"
+IDX  = Path.home()/".local/state/agent-runs/index.jsonl"
+UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS threads(
+  thread_id TEXT PRIMARY KEY, run_id TEXT, parent_thread_id TEXT,
+  harness TEXT, provider TEXT, model TEXT,
+  initiator TEXT, runtime TEXT, rollout_path TEXT,
+  cwd TEXT, repo TEXT, worktree TEXT,
+  git_branch TEXT, git_sha TEXT, git_origin_url TEXT,
+  first_user_message TEXT, created_at TEXT, updated_at TEXT,
+  n_requests INT, tokens_used INT, archived INT DEFAULT 0);
+CREATE INDEX IF NOT EXISTS ix_th_repo ON threads(repo, git_branch);
+CREATE INDEX IF NOT EXISTS ix_th_run  ON threads(run_id);
+CREATE INDEX IF NOT EXISTS ix_th_prov ON threads(harness, provider, model);
+CREATE TABLE IF NOT EXISTS thread_items(
+  id INTEGER PRIMARY KEY, thread_id TEXT, transcript TEXT, seq INT,
+  ts TEXT, role TEXT, text TEXT, UNIQUE(transcript, seq));
+CREATE INDEX IF NOT EXISTS ix_it_thread ON thread_items(thread_id);
+CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(text, content='thread_items', content_rowid='id');
+CREATE TABLE IF NOT EXISTS requests(
+  thread_id TEXT, request_id TEXT, run_id TEXT,
+  harness TEXT, provider TEXT, model TEXT,
+  ts TEXT, duration_ms INT, effort TEXT, is_sidechain INT,
+  input INT, output INT, cache_read INT, cache_write INT,
+  cc_5m INT, cc_1h INT, reasoning INT,
+  PRIMARY KEY(thread_id, request_id));
+CREATE INDEX IF NOT EXISTS ix_rq_prov ON requests(harness, provider, model);
+CREATE INDEX IF NOT EXISTS ix_rq_ts   ON requests(ts);
+CREATE TABLE IF NOT EXISTS watermark(path TEXT PRIMARY KEY, mtime REAL, size INT);
+"""
+
+_git = {}
+def git_id(cwd):
+    """repo, worktree, origin — the codex differentiator, derived once per cwd."""
+    if not cwd: return (None, None, None)
+    if cwd in _git: return _git[cwd]
+    out = (None, None, None)
+    if Path(cwd).is_dir():
+        def g(*a):
+            try: return subprocess.run(["git","-C",cwd,*a], capture_output=True,
+                                       text=True, timeout=5).stdout.strip() or None
+            except Exception: return None
+        top, common, origin = g("rev-parse","--show-toplevel"), g("rev-parse","--git-common-dir"), g("remote","get-url","origin")
+        repo = None
+        if common:
+            c = Path(common if os.path.isabs(common) else os.path.join(cwd, common))
+            repo = str(c.parent if c.name == ".git" else c)
+        out = (repo or top, top, origin)
+    _git[cwd] = out
+    return out
+
+def fresh(db, p):
+    st = p.stat()
+    r = db.execute("SELECT mtime,size FROM watermark WHERE path=?", (str(p),)).fetchone()
+    if r and r[0] == st.st_mtime and r[1] == st.st_size: return None
+    return st
+
+def mark(db, p, st):
+    db.execute("INSERT OR REPLACE INTO watermark VALUES(?,?,?)", (str(p), st.st_mtime, st.st_size))
+
+def text_of(m):
+    c = m.get("content")
+    if isinstance(c, str): return c
+    if isinstance(c, list):
+        out=[]
+        for b in c:
+            if not isinstance(b, dict): continue
+            if b.get("type")=="text": out.append(b.get("text") or "")
+            elif b.get("type")=="tool_use": out.append(f"[tool:{b.get('name','')}]")
+        return "\n".join(x for x in out if x)
+    return ""
+
+def put_item(db, tid, path, seq, ts, role, txt):
+    db.execute("""INSERT OR REPLACE INTO thread_items(thread_id,transcript,seq,ts,role,text)
+                  VALUES(?,?,?,?,?,?)""", (tid, str(path), seq, ts, role, txt))
+
+def put_thread(db, **k):
+    cols = ("thread_id","run_id","parent_thread_id","harness","provider","model","initiator","runtime","rollout_path",
+            "cwd","repo","worktree","git_branch","git_sha","git_origin_url",
+            "first_user_message","created_at","updated_at","n_requests","tokens_used")
+    db.execute(f"INSERT OR REPLACE INTO threads({','.join(cols)},archived) "
+               f"VALUES({','.join('?'*len(cols))},COALESCE((SELECT archived FROM threads WHERE thread_id=?),0))",
+               tuple(k.get(c) for c in cols) + (k.get("thread_id"),))
+
+# ---------------- claude code ----------------
+def ing_claude(db, root, harness_src):
+    proj = root/"projects"
+    if not proj.is_dir(): return (0,0)
+    nf=nr=0
+    for p in proj.rglob("*.jsonl"):
+        st = fresh(db, p)
+        if not st: continue
+        by, items, meta, seq = {}, [], {}, 0
+        with p.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line=line.strip()
+                if not line: continue
+                try: d=json.loads(line)
+                except Exception: continue
+                sid = d.get("sessionId") or p.stem
+                meta.setdefault("sid", sid)
+                for a,b in (("cwd","cwd"),("gitBranch","git_branch"),("entrypoint","ep")):
+                    if d.get(a) and not meta.get(b): meta[b]=d[a]
+                ts=d.get("timestamp")
+                if ts:
+                    meta["c"]=min(meta.get("c",ts),ts); meta["u"]=max(meta.get("u",ts),ts)
+                m=d.get("message") or {}
+                role=m.get("role") or ("user" if d.get("type")=="user" else None)
+                if role:
+                    t=text_of(m)
+                    if t:
+                        if role=="user" and not meta.get("first"): meta["first"]=t[:400]
+                        items.append((seq,ts,role,t)); seq+=1
+                if d.get("type")!="assistant": continue
+                model=m.get("model"); u=m.get("usage") or {}
+                if not model or model=="<synthetic>" or not u: continue
+                cc=u.get("cache_creation") or {}
+                row=dict(input=u.get("input_tokens") or 0, output=u.get("output_tokens") or 0,
+                         cache_read=u.get("cache_read_input_tokens") or 0,
+                         cc_5m=cc.get("ephemeral_5m_input_tokens") or 0,
+                         cc_1h=cc.get("ephemeral_1h_input_tokens") or 0,
+                         model=model, ts=ts, effort=d.get("effort"),
+                         sc=1 if d.get("isSidechain") else 0)
+                row["cache_write"]=row["cc_5m"]+row["cc_1h"]
+                rid=d.get("requestId") or f"{sid}:{seq}"
+                tot=row["input"]+row["output"]+row["cache_read"]+row["cache_write"]
+                if rid not in by or tot>=by[rid][0]: by[rid]=(tot,row)   # last/max snapshot wins
+        tid=meta.get("sid",p.stem)
+        rel=p.relative_to(proj).parts
+        run=next((x for x in rel[1:] if UUID.match(x) or (x.endswith(".jsonl") and UUID.match(x[:-6]))), tid)
+        run=run[:-6] if run.endswith(".jsonl") else run
+        for rid,(_,v) in by.items():
+            db.execute("INSERT OR REPLACE INTO requests VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (tid,rid,run,"claude-code","anthropic",v["model"],v["ts"],0,v["effort"],v["sc"],
+                 v["input"],v["output"],v["cache_read"],v["cache_write"],v["cc_5m"],v["cc_1h"],0))
+        for (q,ts,role,t) in items: put_item(db,tid,p,q,ts,role,t)
+        cwd=meta.get("cwd"); repo,wt,origin=git_id(cwd)
+        ep=meta.get("ep") or ""
+        put_thread(db, thread_id=tid, run_id=run,
+            parent_thread_id=(run if run!=tid else None),
+            harness="claude-code", provider="anthropic",
+            model=next((v["model"] for _,v in by.values()), None),
+            initiator="tally" if ep.startswith("sdk") else "human", runtime="kitty",
+            rollout_path=str(p), cwd=cwd, repo=repo, worktree=wt,
+            git_branch=meta.get("git_branch"), git_sha=None, git_origin_url=origin,
+            first_user_message=meta.get("first"), created_at=meta.get("c"),
+            updated_at=meta.get("u"), n_requests=len(by),
+            tokens_used=sum(v["input"]+v["output"]+v["cache_read"]+v["cache_write"] for _,v in by.values()))
+        mark(db,p,st); nf+=1; nr+=len(by)
+    return (nf,nr)
+
+# ---------------- pi ----------------
+def ing_pi(db):
+    root=Path.home()/".pi/agent/sessions"
+    if not root.is_dir(): return (0,0)
+    nf=nr=0
+    for p in root.rglob("*.jsonl"):
+        st=fresh(db,p)
+        if not st: continue
+        tid=p.stem.split("_")[-1]; provider=model=cwd=first=None
+        c=u=None; seq=0; n=0
+        with p.open(encoding="utf-8",errors="replace") as fh:
+            for line in fh:
+                try: d=json.loads(line)
+                except Exception: continue
+                ty=d.get("type"); ts=d.get("timestamp")
+                if ts: c=min(c or ts,ts); u=max(u or ts,ts)
+                if ty=="session": cwd=d.get("cwd")
+                elif ty=="model_change": provider=d.get("provider"); model=d.get("modelId")
+                elif ty=="message":
+                    m=d.get("message") or {}
+                    role=m.get("role"); t=text_of(m)
+                    if t:
+                        if role=="user" and not first: first=t[:400]
+                        put_item(db,tid,p,seq,ts,role,t); seq+=1
+                    us=m.get("usage") or {}
+                    if us:
+                        n+=1
+                        db.execute("INSERT OR REPLACE INTO requests VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                            (tid,d.get("id") or f"{tid}:{seq}",tid,"pi",provider or "?",m.get("model") or model,
+                             ts,0,None,0,us.get("input") or 0,us.get("output") or 0,
+                             us.get("cacheRead") or 0,us.get("cacheWrite") or 0,0,0,us.get("reasoning") or 0))
+        repo,wt,origin=git_id(cwd)
+        tok=db.execute("SELECT COALESCE(SUM(input+output+cache_read+cache_write),0) FROM requests WHERE thread_id=?",(tid,)).fetchone()[0]
+        put_thread(db, thread_id=tid, run_id=tid, parent_thread_id=None,
+            harness="pi", provider=provider, model=model,
+            initiator=("tally" if cwd and "/state/tally/" in cwd else "human"), runtime="kitty",
+            rollout_path=str(p), cwd=cwd, repo=repo, worktree=wt, git_branch=None,
+            git_sha=None, git_origin_url=origin, first_user_message=first,
+            created_at=c, updated_at=u, n_requests=n, tokens_used=tok)
+        mark(db,p,st); nf+=1; nr+=n
+    return (nf,nr)
+
+# ---------------- codex (threads table is already the reference shape) ----------------
+def ing_codex(db):
+    s=Path.home()/".codex/state_5.sqlite"
+    if not s.exists(): return 0
+    c=sqlite3.connect(f"file:{s}?mode=ro",uri=True); c.row_factory=sqlite3.Row
+    n=0
+    for r in c.execute("SELECT * FROM threads"):
+        cwd=r["cwd"]; repo,wt,origin=git_id(cwd)
+        iso=lambda v: time.strftime("%FT%TZ",time.gmtime(v)) if v else None
+        put_thread(db, thread_id=r["id"], run_id=r["id"], parent_thread_id=None,
+            harness="codex", provider=r["model_provider"],
+            model=r["model"], initiator="human", runtime="kitty",
+            rollout_path=r["rollout_path"], cwd=cwd, repo=repo, worktree=wt,
+            git_branch=r["git_branch"], git_sha=r["git_sha"],
+            git_origin_url=r["git_origin_url"] or origin,
+            first_user_message=(r["first_user_message"] or "")[:400],
+            created_at=iso(r["created_at"]), updated_at=iso(r["updated_at"]),
+            n_requests=None, tokens_used=r["tokens_used"])
+        n+=1
+    c.close(); return n
+
+# ---------------- llama-swap (requests only; caller unknown until an id is propagated) ----------------
+def ing_llamaswap(db):
+    src=os.environ.get("LLAMASWAP_DB","/var/lib/llama-swap/activity.sqlite")
+    if not os.access(src,os.R_OK): return None
+    a=sqlite3.connect(f"file:{src}?mode=ro",uri=True); n=0
+    for i,ts,model,code,ctok,itok,otok,dur in a.execute(
+        "SELECT id,ts_created,model_id,resp_status_code,cache_tokens,input_tokens,output_tokens,duration_ms FROM activity"):
+        t=time.strftime("%FT%TZ",time.gmtime(ts/1000 if ts>1e11 else ts))
+        db.execute("INSERT OR REPLACE INTO requests VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("llama-swap",str(i),None,None,"local",model,t,dur or 0,None,0,
+             itok or 0,otok or 0,ctok or 0,0,0,0,0)); n+=1
+    a.close(); return n
+
+def main():
+    DB.parent.mkdir(parents=True,exist_ok=True)
+    db=sqlite3.connect(DB); db.executescript(SCHEMA)
+    for root,name in ((Path.home()/".claude","claude"),(Path.home()/".claude-work","claude-work")):
+        f,r=ing_claude(db,root,name); print(f"  {name:<12} files {f:>5}  requests {r:>7,}")
+    f,r=ing_pi(db);      print(f"  {'pi':<12} files {f:>5}  requests {r:>7,}")
+    n=ing_codex(db);     print(f"  {'codex':<12} threads {n:>4}")
+    l=ing_llamaswap(db); print(f"  {'llama-swap':<12} " + (f"requests {l:>7,}" if l is not None else "SKIPPED (needs root)"))
+    db.execute("INSERT INTO items_fts(items_fts) VALUES('rebuild')")
+    db.commit()
+    with IDX.open("w") as fh:
+        for r in db.execute("""SELECT thread_id,harness,provider,model,repo,git_branch,
+                                      updated_at,rollout_path,tokens_used FROM threads"""):
+            fh.write(json.dumps(dict(zip(
+                ("id","harness","provider","model","repo","branch","updated_at","rollout_path","tokens"),r)))+"\n")
+    print(f"\n  -> {DB}\n  -> {IDX}")
+    db.close()
+
+if __name__=="__main__": main()
