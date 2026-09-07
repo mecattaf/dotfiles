@@ -67,3 +67,29 @@ python3 "$HOME/.agents/skills/drain/scripts/ai_memory.py" harvest
   `unresolved_units` (each one bounded unit of work in one sentence naming its
   deliverable). Both are required of the model; a missing one is a bounded
   failure, not a guess.
+
+### `harvest --enqueue` — an unresolved unit as a row
+
+```bash
+python3 "$HOME/.agents/skills/drain/scripts/ai_memory.py" harvest --enqueue
+```
+
+With `--enqueue`, each unresolved unit of the distillation also becomes one row
+in the live daemon's enqueue-event shape, written under the harvest store at
+`<store>/enqueue/<eventId>.enqueue.json`.
+
+- The shape is the daemon's, key for key: `schemaVersion` 1, a uuid4 `eventId`,
+  and a `row` whose `description` is the unit sentence, `source` is `harvest`,
+  `adapter` is `ai-memory`, `pool` is `["harvest"]`, `sessionRef` is the session
+  id and `dedupKey` is `harvest:<session_id>:<n>`.
+- Nothing about a row runs anything: `argv` is empty, `noEnqueue` is true and
+  `priority` is `low`. A harvested unit never outranks work Tom released.
+- Every row is checked by `tools/enqueue-row-check.py` — whose required keys and
+  types are taken from the daemon's own rows — *before* it reaches the disk. A
+  row that fails is not written at all, and its reason is one line in the
+  store's `hook.log`; the verb then exits non-zero with the same reason on
+  stderr, with the harvest note itself still written.
+- The rows stay in the harvest store. Moving one into the daemon's own events
+  directory is a separate act, not this verb's (D-E07).
+- A harvest that changed nothing writes no rows again, so a SessionEnd hook that
+  fires twice does not enqueue the same units twice.
