@@ -210,9 +210,40 @@ model-scoped limits (their own cap, stated by the provider; the account row abov
   codex  account (all models) weekly    0.0% ░░░░░░░░░░ 100% left for everything else
 ```
 
-`← governing` is the provider's own `is_active` flag — which limit is actually
-in force right now. On `cc` that is the Fable row; on `cc2` and `cc3` it is the
-account row. In JSON: `seat.model_budget.governing_limit`.
+When a scoped model is capped but the account still has room, the report says
+so, because Anthropic states the escape explicitly: *"keep using Fable models
+with usage credits, **or switch to another Claude model** to keep working
+within your plan's usage limits."*
+
+```
+  cc     → Fable is capped, but the account has 3% left: switch models to keep working on this seat
+```
+
+### `is_active` is carried, not interpreted
+
+The payload's `is_active` flag looks like "the limit currently governing". It
+is not, and this was checked before relying on it:
+
+| payload | session | weekly_all | weekly_scoped | flag on |
+|---|---|---|---|---|
+| [claude-code#87419](https://github.com/anthropics/claude-code/issues/87419) (2026-08-17) | 5% | 14% | 16% | **session** |
+| [#79412 comment](https://github.com/anthropics/claude-code/issues/79412) (2026-08-22) | 0% | 50% | 44% | **weekly_all** |
+| this box | 2% | 97% | 100% | **weekly_scoped** |
+
+The first row is the counterexample: the flag sits on a 5% window while a
+scoped row sits higher. It is neither "highest" nor "nearest exhaustion".
+Anthropic documents nothing, Claude Code never reads the field, and CodexBar
+decodes it and then ignores it. So it is published raw as
+`seat.model_budget.provider_is_active_on` and **nothing depends on it** — a
+test asserts the state does not move when only the flag moves.
+
+### The legacy null fields
+
+`seven_day_opus` / `seven_day_sonnet` are the flat per-model buckets that
+`limits[]` superseded. `seven_day_opus` remains in Claude Code's known-keys
+list but is no longer rendered anywhere. Null means "no legacy bucket applies
+to this account", **not** "no per-model data available" — the per-model data is
+in `limits[]`, which is what this reads.
 
 ## Pending allowance changes
 
@@ -232,14 +263,20 @@ against the same limits ([support.claude.com/…/11647753](https://support.claud
 updated 2026-07-13) — which is why the transcript token counts in this report
 are a floor on consumption, never the whole of it.
 
-## The provider's grading outranks the local thresholds
+## The provider's grading may tighten the state, never loosen it
 
-Anthropic's payload grades each limit `normal` / `warning` / `critical`. That
-grading decides the seat's state, because it is the provider's statement about
-its own product and a local threshold guessing at the same thing can only be
-wrong differently. `seat.state_basis` says which rule fired. The
-`WARN_PCT`/`WALL_PCT` thresholds remain the fallback for providers that publish
-a percentage and no judgment (Codex, and the Qwen estimate).
+Anthropic's payload grades each limit `normal` / `warning` / `critical` — this
+box has observed 45% graded `normal` and 97% graded `critical`. It is a real
+field and it is the provider describing its own product, so it is used.
+
+But the threshold at which it flips is documented nowhere, and a sibling field
+on the same entries (`is_active`, above) turned out to mean something other
+than the obvious reading. So severity is allowed to make the answer **more**
+conservative and never less: a seat is as spent as the worse of the provider's
+grade and the local threshold. An undocumented field whose semantics might
+shift can then cost some caution, never a flooded window.
+
+`seat.state_basis` names which rule fired and mentions the other.
 
 `seat.overage` carries whether there is any way past the wall at all —
 `extra_usage_enabled`, `credits_enabled`, `can_purchase_credits`.

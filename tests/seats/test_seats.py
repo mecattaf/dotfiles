@@ -434,16 +434,31 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(cc["state"], "open", "Fable's cap binds Fable, not the account")
         self.assertTrue(cc["usable"])
 
-    def test_the_governing_limit_is_taken_from_the_provider(self):
+    def test_is_active_is_carried_raw_and_never_interpreted(self):
+        # The obvious reading — "the limit currently governing" — is refuted by
+        # a real payload where the flag sits on the session row at 5% while a
+        # scoped row sits higher at 16% (anthropics/claude-code#87419). So the
+        # flag is published and nothing is derived from it, and in particular
+        # it must not be relabelled "governing" anywhere.
         self.box.claude("cc", ".claude", 10.0, 45.0, scoped=100.0, active="scoped")
         _, seats = self.box.report()
-        self.assertEqual(seats["cc"]["model_budget"]["governing_limit"], "weekly:fable")
+        self.assertEqual(seats["cc"]["model_budget"]["provider_is_active_on"],
+                         ["weekly:fable"])
+        self.assertNotIn("governing", json.dumps(seats["cc"]))
         self.box.claude("cc", ".claude", 10.0, 45.0, scoped=100.0, active="weekly_all")
         _, seats = self.box.report()
-        self.assertEqual(seats["cc"]["model_budget"]["governing_limit"], "seven_day")
+        self.assertEqual(seats["cc"]["model_budget"]["provider_is_active_on"], ["seven_day"])
+
+    def test_is_active_does_not_move_the_state(self):
+        # Same percentages, flag moved: the answer must not change.
+        self.box.claude("cc", ".claude", 10.0, 45.0, scoped=100.0, active="scoped")
+        _, first = self.box.report()
+        self.box.claude("cc", ".claude", 10.0, 45.0, scoped=100.0, active="weekly_all")
+        _, second = self.box.report()
+        self.assertEqual(first["cc"]["state"], second["cc"]["state"])
 
     # ── the provider's own grading outranks a local threshold ───────────────
-    def test_provider_severity_decides_the_state(self):
+    def test_provider_severity_can_tighten_the_state(self):
         # 45% would be "open" on the local thresholds; the provider says
         # critical, and the provider is describing its own product.
         self.box.claude("cc", ".claude", 10.0, 45.0, severity="critical")
@@ -452,7 +467,18 @@ class SeatsTest(unittest.TestCase):
         self.assertIn("provider severity critical", seats["cc"]["state_basis"])
         self.assertEqual(seats["cc"]["free_at"], iso(self.box.weekly_reset))
 
-    def test_thresholds_apply_only_when_the_provider_does_not_grade(self):
+    def test_provider_severity_can_never_loosen_the_state(self):
+        # The threshold at which severity flips is documented nowhere, and a
+        # sibling field on the same entries (is_active) already turned out to
+        # mean something other than the obvious reading. So an optimistic
+        # grading must not talk this meter out of a 99% window.
+        self.box.claude("cc", ".claude", 10.0, 99.0, severity="normal")
+        _, seats = self.box.report()
+        self.assertEqual(seats["cc"]["state"], "spent")
+        self.assertIn("local threshold", seats["cc"]["state_basis"])
+        self.assertEqual(seats["cc"]["free_at"], iso(self.box.weekly_reset))
+
+    def test_thresholds_carry_an_ungraded_payload(self):
         _, seats = self.box.report()
         self.assertEqual(seats["cc3"]["state"], "tight")   # 85%, ungraded payload
         self.assertIn("local threshold", seats["cc3"]["state_basis"])

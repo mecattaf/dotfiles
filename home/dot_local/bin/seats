@@ -424,10 +424,17 @@ def window(kind, label, minutes, used, resets_at, scope=None, binding=True,
            severity="", is_active=None):
     used = pct(used)
     return {
-        # severity and is_active are the PROVIDER'S OWN judgment, carried
-        # through untouched. is_active marks the limit actually governing the
-        # account right now — on one seat that is the Fable row, on another the
-        # account-wide row. Nothing here recomputes either.
+        # severity and is_active are the provider's own fields, carried through
+        # untouched and NOT interpreted.
+        #
+        # is_active in particular: the obvious reading is "the limit currently
+        # governing", and it is wrong. Across three real payloads the flag sits
+        # on the session row at 5% while a scoped row sits higher at 16%
+        # (anthropics/claude-code#87419, 2026-08-17), on weekly_all at 50%
+        # (#79412, 2026-08-22), and on weekly_scoped at 100% (this box). It is
+        # neither "highest" nor "nearest exhaustion". Anthropic documents
+        # nothing, Claude Code never reads the field, and CodexBar decodes it
+        # and then ignores it. So it is published raw and nothing depends on it.
         "severity": severity,
         "is_active": is_active,
         "id": kind,
@@ -557,9 +564,9 @@ def add_model_budget(seat):
                     "documented_term": CLAUDE_MODEL_TERMS.get(
                         str(entry.get("scope") or "").lower())}
                    for entry in scoped],
-        # The provider marks which limit is actually governing right now. On
-        # one seat that is the scoped model row, on another the account row.
-        "governing_limit": next((w["id"] for w in seat["windows"] if w.get("is_active")), None),
+        # The raw flag, for whoever can establish what it means. Deliberately
+        # NOT named "governing": see the note on is_active in window().
+        "provider_is_active_on": [w["id"] for w in seat["windows"] if w.get("is_active")],
     }
     return seat
 
@@ -567,16 +574,23 @@ def add_model_budget(seat):
 def classify(seat):
     """State from the BINDING windows only.
 
-    WHERE THE STATE COMES FROM. When the provider grades its own limits —
-    Anthropic's payload carries `severity` per limit — that grading is used,
-    because it is the provider's statement about its own product and a local
-    threshold guessing at the same thing can only be wrong differently. The
-    WARN_PCT/WALL_PCT thresholds are the fallback for providers that publish a
-    percentage and no judgment (Codex, and the Qwen estimate).
+    WHERE THE STATE COMES FROM. Two sources, and the more pessimistic wins.
 
-    open   provider says normal, or every binding window below WARN_PCT
-    tight  provider says warning, or a binding window at or above WARN_PCT
-    spent  provider says critical, or a binding window at the wall
+    Anthropic's payload carries a `severity` per limit (normal / warning /
+    critical) which this box has observed directly — 45% graded normal, 97%
+    graded critical. It is a real field and it is the provider describing its
+    own product, so it is used. But the threshold at which it flips is
+    documented NOWHERE, and a sibling field on the same entries (`is_active`)
+    turned out to mean something other than the obvious reading. So severity is
+    allowed to make the answer MORE conservative and never less: a seat is as
+    spent as the worse of the provider's grade and the local threshold.
+
+    That way an undocumented field whose semantics might shift can cost some
+    caution, never a flooded window.
+
+    open   both say fine
+    tight  either says warning, or a binding window at or above WARN_PCT
+    spent  either says critical, or a binding window at the wall
     """
     binding = [w for w in seat["windows"] if w["binding"] and w["used_pct"] is not None]
     if not binding:
@@ -585,20 +599,28 @@ def classify(seat):
     seat["worst_window"] = worst["id"]
     seat["worst_pct"] = worst["used_pct"]
 
+    if worst["used_pct"] >= WALL_PCT:
+        by_threshold, threshold_note = "spent", f"{worst['id']} at or above {WALL_PCT}%"
+    elif worst["used_pct"] >= WARN_PCT:
+        by_threshold, threshold_note = "tight", f"{worst['id']} at or above {WARN_PCT}%"
+    else:
+        by_threshold, threshold_note = "open", f"{worst['id']} below {WARN_PCT}%"
+
     graded = [w for w in binding if w.get("severity") in SEVERITY_RANK]
+    by_severity = severity_note = None
     if graded:
         top = max(graded, key=lambda w: SEVERITY_RANK[w["severity"]])
-        seat["state"] = SEVERITY_STATE[top["severity"]]
-        seat["state_basis"] = f"provider severity {top['severity']} on {top['id']}"
-    elif worst["used_pct"] >= WALL_PCT:
-        seat["state"] = "spent"
-        seat["state_basis"] = f"local threshold, {worst['id']} at or above {WALL_PCT}%"
-    elif worst["used_pct"] >= WARN_PCT:
-        seat["state"] = "tight"
-        seat["state_basis"] = f"local threshold, {worst['id']} at or above {WARN_PCT}%"
+        by_severity = SEVERITY_STATE[top["severity"]]
+        severity_note = f"provider severity {top['severity']} on {top['id']}"
+
+    rank = {"open": 0, "tight": 1, "spent": 2}
+    if by_severity is not None and rank[by_severity] > rank[by_threshold]:
+        seat["state"] = by_severity
+        seat["state_basis"] = f"{severity_note} (worse than local threshold: {threshold_note})"
     else:
-        seat["state"] = "open"
-        seat["state_basis"] = "local threshold"
+        seat["state"] = by_threshold
+        seat["state_basis"] = ("local threshold, " + threshold_note
+                               + (f"; {severity_note}" if severity_note else ""))
     seat["usable"] = seat["state"] in ("open", "tight")
     add_model_budget(seat)
     # When a seat is spent, the honest answer to "when can I use it" is the
@@ -606,7 +628,7 @@ def classify(seat):
     if seat["state"] == "spent":
         walls = [parse_ts(w["resets_at"]) for w in binding
                  if (w.get("severity") == "critical" or w["used_pct"] >= WALL_PCT)
-                 and w["resets_at"]]
+                 and w["resets_at"]]  # either signal marks a wall
         walls = [w for w in walls if w]
         seat["free_at"] = iso(min(walls)) if walls else ""
     return add_pace(seat)
@@ -643,6 +665,13 @@ def claude_windows(usage):
     `is_active` flag, plus the model-scoped rows. The scoped rows are the part
     the meter files record as model_split UNKNOWN: usage.seven_day_opus really
     is null, but scope.model.display_name is right here.
+
+    Why those legacy fields are null and should stay ignored:
+    seven_day_opus / seven_day_sonnet are the flat per-model buckets that
+    `limits[]` superseded. seven_day_opus is still in Claude Code's known-keys
+    list but is no longer rendered anywhere; null means "no legacy bucket
+    applies to this account", NOT "no per-model data available" — the per-model
+    data is in `limits[]`, which is what this reads.
     """
     graded = {}
     for entry in usage.get("limits") or []:
@@ -1568,7 +1597,9 @@ def render_table(report, color):
                      "the account row above is the ceiling for everything else):")
         for seat_id, budget in budgets:
             for row in budget["models"]:
-                governs = " ← governing" if row.get("is_active") else ""
+                # No label is put on is_active: its meaning is not established
+                # (see window()). The raw flag is in the JSON for anyone who
+                # settles it.
                 span = ("weekly" if row["minutes"] == 10080
                         else f"{row['minutes'] // 60}h" if row["minutes"] else "")
                 term = row.get("documented_term") or {}
@@ -1577,13 +1608,22 @@ def render_table(report, color):
                     f"  {seat_id:<6} {str(row['model']):<20} {span:<7} "
                     f"{row['used_pct']:5.1f}% {bar(row['used_pct'])} "
                     f"resets {until(parse_ts(row['resets_at'])):<10}"
-                    f"{('  ' + row['severity']) if row.get('severity') else ''}{governs}"
+                    f"{('  ' + row['severity']) if row.get('severity') else ''}"
                     + (f"   [documented cap: {cap:.0%} of the weekly allowance]" if cap else ""))
             if budget["account_remaining_pct"] is not None:
                 lines.append(f"  {seat_id:<6} {'account (all models)':<20} {'weekly':<7} "
                              f"{budget['account_used_pct']:5.1f}% "
                              f"{bar(budget['account_used_pct'])} "
                              f"{budget['account_remaining_pct']:.0f}% left for everything else")
+            spent_models = [r["model"] for r in budget["models"]
+                            if r["used_pct"] is not None and r["used_pct"] >= 100.0]
+            if spent_models and (budget["account_remaining_pct"] or 0) > 0:
+                # Officially: "keep using Fable models with usage credits, or
+                # switch to another Claude model to keep working within your
+                # plan's usage limits." So this seat is not finished.
+                lines.append(f"  {seat_id:<6} → {', '.join(map(str, spent_models))} is capped, "
+                             f"but the account has {budget['account_remaining_pct']:.0f}% left: "
+                             f"switch models to keep working on this seat")
 
     grants = [(s["id"], s["reset_credits"]) for s in report["seats"] if s.get("reset_credits")
               and s["reset_credits"].get("available")]
