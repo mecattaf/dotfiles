@@ -1,0 +1,1331 @@
+#!/usr/bin/env python3
+"""seats — one capacity oracle for every seat on this box.
+
+WHAT IT ANSWERS, in one call: which subscription seats have headroom right
+now, how much of each window is spent, when each window resets, and how many
+tokens the seat has actually burned inside its own current weekly window.
+
+    seats                 the table (default)
+    seats --json          one JSON document, schema seat-capacity/1
+    seats --jsonl         one JSON line per seat (append to a ledger, pipe to jq)
+    seats --tsv           flat columns for awk, sort, a spreadsheet
+    seats --check cc      exit oracle: 0 headroom / 1 spent / 2 unmeasurable
+    seats --pick          print the seat with the most headroom, exit 1 if none
+    seats --watch 60      redraw every 60s
+
+WHY IT EXISTS. Three programs on this box already know a piece of this:
+claude-capacity knows ONE Claude seat's windows, tally-seat-feeder stamps
+kernel meter rows for the rewrite, nightly-record counts yesterday's tokens.
+None of them answers the only question a person actually asks at 15:00Z —
+"what can I run tonight, and on what". This does, and it is deliberately
+standalone: stdlib only, no tally, no daemon, no bar. It reads the same
+sources those three read, so it can never disagree with them about a number,
+but it does not depend on any of them being alive.
+
+THE SEATS, and where each one's truth lives:
+
+  cc,cc2,cc3    Claude Code, three logins (~/.claude, ~/.claude-work,
+                ~/.claude-3). Truth: api.anthropic.com/api/oauth/usage, the
+                endpoint /usage calls, read with each seat's own OAuth token.
+                Gives the five-hour window, the seven-day window, and — the
+                part the meter rows call UNKNOWN — the per-model weekly rows
+                in `limits[]` with scope.model.display_name. A token is read
+                and sent; it is NEVER printed, cached, or logged.
+
+  codex         Truth: the `rate_limits` records Codex itself writes into its
+                own rollouts (~/.codex/sessions/**/*.jsonl). Reading a rollout
+                is not a spend and needs no credential, so this is the default
+                path; --codex-live asks `codex app-server` over JSON-RPC
+                instead when a fresher number is worth the process.
+
+  pi-qwencloud  Qwen Cloud (Alibaba token-plan) publishes NO window endpoint.
+                Its allowance is a plan-credit page nothing here can read. But
+                it states the reset in its own refusal:
+                  "Your token-plan 1-week quota has been exhausted.
+                   The quota will reset at 09-12 08:02:00 UTC."
+                So the window is MEASURED-FROM-REFUSAL: parsed out of the last
+                429 this box received, never a made-up TTL. A free GET /models
+                confirms the key still authenticates; the quota-spending probe
+                is opt-in (--probe-qwen) because asking costs the thing being
+                measured.
+
+  gpu-*         llama-swap /running on the coordinator and the worker. No
+                window, no quota: a GPU is busy or it is not.
+
+FRESHNESS AND THE 429. /api/oauth/usage rate-limits — polling it by hand a few
+times in one minute already returned 429 (measured 2026-09-02). Every reading
+is cached per seat in $XDG_RUNTIME_DIR for --cache-ttl seconds, and when a
+live call fails, a reading up to --stale-grace old is served in preference to
+"unknown": a ten-minute-old utilization figure is a far better input than a
+shrug, because these windows move in hours. --refresh skips the reuse window;
+it does not skip the stale fallback.
+
+GRADES, because a number with no provenance is a guess wearing a suit:
+  MEASURED                read from the provider's own live answer
+  MEASURED-FROM-REFUSAL   read out of the provider's own 429 text
+  CACHED                  a live answer that is older than the TTL
+  UNKNOWN                 nothing on this box knows; the row says so and
+                          never counts as headroom
+
+Configuration is optional. ~/.config/seats/seats.json, if present, replaces
+the seat table wholesale; every field below has a real default.
+"""
+
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+SCHEMA = "seat-capacity/1"
+
+HOME = Path(os.environ.get("SEATS_HOME") or Path.home())
+STATE = Path(os.environ.get("SEATS_STATE") or (HOME / ".local/state/seats"))
+
+USAGE_ENDPOINT = "https://api.anthropic.com/api/oauth/usage"
+QWEN_BASE = "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+QWEN_KEY_FILE = os.environ.get("SEATS_QWEN_KEY_FILE") or "/run/agenix/qwencloud-token"
+QWEN_HOLD_FILES = [Path(p) for p in
+                   (os.environ.get("SEATS_QWEN_HOLD") or "").split(":") if p] or [
+    HOME / ".local/state/seats/qwen-hold.json",
+    HOME / "sept7/plan/codex-lane/pi-hold.json",
+]
+
+# Set by the hermetic test, and useful by hand on a train: every outbound call
+# fails immediately, so what is left is exactly what this box can answer from
+# its own disk. Nothing degrades to a guess — the rows say CACHED or UNKNOWN.
+OFFLINE = os.environ.get("SEATS_NO_NETWORK") == "1"
+
+# The seat feeder (home/dot_local/bin/tally-seat-feeder, on a 30-second timer)
+# already calls this endpoint for all three Claude seats and leaves the raw
+# payload beside its meter rows. That reading is the SAME call this program
+# would make, already paid for, so it is consulted before the network is.
+PEER_CACHE_DIR = Path(os.environ.get("SEATS_PEER_CACHE_DIR")
+                      or (HOME / ".local/state/tally-rewrite/meters"))
+
+HTTP_TIMEOUT = 8
+CACHE_TTL = 60           # seconds a reading counts as fresh
+STALE_GRACE = 900        # seconds an old reading still beats "unknown"
+
+WARN_PCT = 80.0          # at or above this a window is TIGHT
+WALL_PCT = 95.0          # at or above this a window is SPENT
+
+# ── the seat table ──────────────────────────────────────────────────────────
+# Seat ids are the pool names in home/tally.nix and the row names in
+# ~/.local/state/tally-rewrite/meters, deliberately: a row here and a row
+# there must be joinable by one field and never by a guess.
+DEFAULT_SEATS = [
+    {"id": "cc",  "provider": "claude", "label": "Claude Max (personal)",
+     "config_dir": "~/.claude", "owner": "tom", "spend_root": "~/.claude/projects"},
+    {"id": "cc2", "provider": "claude", "label": "Claude Max (work)",
+     "config_dir": "~/.claude-work", "owner": "tom", "spend_root": "~/.claude-work/projects"},
+    {"id": "cc3", "provider": "claude", "label": "Claude (third login)",
+     "config_dir": "~/.claude-3", "owner": "tom", "spend_root": "~/.claude-3/projects"},
+    {"id": "codex", "provider": "codex", "label": "Codex CLI",
+     "config_dir": "~/.codex", "owner": "third-party", "spend_root": "~/.codex/sessions",
+     "note": "RULINGS R-2026-09-06-02: this login is not Tom's — read by name, never spent."},
+    {"id": "pi-qwencloud", "provider": "qwen", "label": "Qwen Cloud (token-plan, via pi)",
+     "owner": "tom", "spend_root": "~/.pi/agent/sessions"},
+    {"id": "gpu-coordinator", "provider": "llama-swap", "label": "Local GPU (coordinator)",
+     "owner": "kernel", "endpoint": "http://127.0.0.1:9292"},
+    {"id": "gpu-worker", "provider": "llama-swap", "label": "Local GPU (worker)",
+     "owner": "kernel", "endpoint": "http://worker:9292"},
+]
+
+
+# ── small helpers ───────────────────────────────────────────────────────────
+
+def now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def expand(value) -> Path | None:
+    if not value:
+        return None
+    text = os.path.expandvars(str(value))
+    if text.startswith("~"):
+        return Path(str(HOME) + text[1:])
+    return Path(text)
+
+
+def parse_ts(value):
+    """RFC-3339 or epoch seconds -> aware datetime, or None. Never raises."""
+    if value in (None, "", "none"):
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            return datetime.fromtimestamp(float(value), timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    try:
+        stamp = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
+
+
+def iso(stamp) -> str:
+    if stamp is None:
+        return ""
+    return stamp.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def until(stamp) -> str:
+    """'in 4h52m' — how a person reads a reset, not how a machine stores one."""
+    if stamp is None:
+        return ""
+    delta = (stamp - now()).total_seconds()
+    if delta <= 0:
+        return "now"
+    days, rest = divmod(int(delta), 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes = rest // 60
+    if days:
+        return f"in {days}d{hours}h"
+    if hours:
+        return f"in {hours}h{minutes:02d}m"
+    return f"in {minutes}m"
+
+
+def human_tokens(count) -> str:
+    if not count:
+        return "—"
+    for scale, suffix in ((1e9, "G"), (1e6, "M"), (1e3, "k")):
+        if count >= scale:
+            return f"{count / scale:.1f}{suffix}"
+    return str(int(count))
+
+
+def one_line(text, limit=160) -> str:
+    """Collapse any provider prose to a single line that fits a table cell."""
+    flat = re.sub(r"\s+", " ", str(text or "")).strip()
+    return flat if len(flat) <= limit else flat[: limit - 1] + "…"
+
+
+def pct(value):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, min(100.0, number))
+
+
+# ── the reading cache ───────────────────────────────────────────────────────
+# Not an optimisation: a rate-limited endpoint asked once per glance spends the
+# budget on asking. Runtime dir, so it dies with the boot and never accretes.
+
+def cache_path(name: str) -> Path:
+    root = Path(os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()) / "seats"
+    root.mkdir(parents=True, exist_ok=True)
+    return root / f"{name}.json"
+
+
+def cache_read(name: str, max_age: float):
+    if max_age is None or max_age <= 0:
+        return None, None
+    try:
+        blob = json.loads(cache_path(name).read_text(encoding="utf-8"))
+        age = time.time() - float(blob["fetched_at"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None, None
+    if age < 0 or age > max_age:
+        return None, None
+    return blob.get("data"), age
+
+
+def cache_write(name: str, data) -> None:
+    path = cache_path(name)
+    try:
+        handle, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".seats-")
+        try:
+            with os.fdopen(handle, "w", encoding="utf-8") as stream:
+                json.dump({"fetched_at": time.time(), "data": data}, stream)
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+    except (OSError, ValueError, TypeError):
+        pass  # a cache we cannot write is not an error
+
+
+def peer_cache_read(seat_id: str, max_age: float):
+    """(usage, age) from the seat feeder's own reading, or (None, None).
+
+    Reading a peer's cache is not a shortcut, it is the whole point: an
+    endpoint that rate-limits punishes every extra caller, and two programs
+    on one box disagreeing about one seat's utilization would be worse than
+    either being slightly stale.
+    """
+    path = PEER_CACHE_DIR / f".window-cache-{seat_id}.json"
+    try:
+        blob = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None, None
+    observed = parse_ts(blob.get("observed_at"))
+    usage = blob.get("usage")
+    if observed is None or not isinstance(usage, dict):
+        return None, None
+    age = (now() - observed).total_seconds()
+    if age < 0 or age > max_age:
+        return None, None
+    return usage, age
+
+
+def http_json(url: str, headers=None, timeout=HTTP_TIMEOUT, retries=2):
+    """(payload, error). Never raises; the error is a lowercase line.
+
+    A 429 is retried with backoff rather than reported. Three Claude seats
+    asking at once — plus whatever timer is already polling — trips the shared
+    limiter routinely, and a blank row is a worse answer than a two-second wait.
+    A `retry-after` header is obeyed when it is short enough to be worth it.
+    """
+    if OFFLINE:
+        return None, "offline: SEATS_NO_NETWORK=1"
+    request = urllib.request.Request(url, headers=headers or {})
+    for attempt in range(retries + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8", "replace")), None
+        except urllib.error.HTTPError as error:
+            body = ""
+            try:
+                body = error.read().decode("utf-8", "replace")[:400]
+            except Exception:  # noqa: BLE001 — a body we cannot read is not the story
+                pass
+            if error.code == 429 and attempt < retries:
+                try:
+                    wait = float((error.headers or {}).get("retry-after") or 0)
+                except (TypeError, ValueError):
+                    wait = 0.0
+                if wait <= 10:
+                    time.sleep(max(wait, 1.5 * (attempt + 1)))
+                    continue
+            return None, one_line(f"HTTP {error.code} {error.reason}"
+                                  + (f": {body}" if body else ""))
+        except Exception as error:  # noqa: BLE001 — DNS, TLS, timeout, refused
+            return None, f"unreachable: {error}"
+    return None, "HTTP 429 Too Many Requests (retries exhausted)"
+
+
+# ── window and seat construction ────────────────────────────────────────────
+
+def window(kind, label, minutes, used, resets_at, scope=None, binding=True):
+    used = pct(used)
+    return {
+        "id": kind,
+        "label": label,
+        "minutes": minutes,
+        "used_pct": used,
+        "remaining_pct": None if used is None else round(100.0 - used, 2),
+        "resets_at": iso(resets_at),
+        "resets_in_seconds": None if resets_at is None else max(0, int((resets_at - now()).total_seconds())),
+        "scope": scope,
+        # A scoped window binds only its own model. The session and weekly
+        # windows bind everything, and only those decide whether a seat is open.
+        "binding": binding,
+    }
+
+
+def blank_seat(spec, state, grade, detail=""):
+    return {
+        "id": spec["id"],
+        "provider": spec["provider"],
+        "label": spec.get("label", spec["id"]),
+        "owner": spec.get("owner", "tom"),
+        "tier": "",
+        "state": state,
+        "usable": state == "open",
+        "grade": grade,
+        "detail": detail,
+        "note": spec.get("note", ""),
+        "windows": [],
+        "free_at": "",
+        "source": {},
+        "spend": None,
+    }
+
+
+MIN_ELAPSED_FRACTION = 0.10   # below this a window has too little history to extrapolate
+
+
+def add_pace(seat):
+    """Per-window burn rate and the moment the window would hit 100%.
+
+    Straight-line from the window's own start, which is the crudest possible
+    model and the only one the data supports: the endpoint publishes a
+    percentage and a reset, not a series. It is guarded so a window that reset
+    twenty minutes ago cannot project a wall out of three minutes of work, and
+    every field it produces is named a projection rather than a reading.
+    """
+    for entry in seat["windows"]:
+        entry["pace_pct_per_hour"] = None
+        entry["projected_pct_at_reset"] = None
+        entry["wall_eta"] = ""
+        reset = parse_ts(entry["resets_at"])
+        if reset is None or entry["used_pct"] is None or not entry["minutes"]:
+            continue
+        start = reset - timedelta(minutes=entry["minutes"])
+        elapsed = (now() - start).total_seconds() / 3600.0
+        span = entry["minutes"] / 60.0
+        if elapsed <= 0 or elapsed < span * MIN_ELAPSED_FRACTION:
+            continue
+        rate = entry["used_pct"] / elapsed
+        entry["pace_pct_per_hour"] = round(rate, 3)
+        entry["projected_pct_at_reset"] = round(min(999.0, entry["used_pct"] + rate * (span - elapsed)), 1)
+        if rate > 0 and entry["used_pct"] < 100.0:
+            hours_left = (100.0 - entry["used_pct"]) / rate
+            if hours_left < (span - elapsed):
+                entry["wall_eta"] = iso(now() + timedelta(hours=hours_left))
+    return seat
+
+
+def classify(seat):
+    """State from the BINDING windows only, plus whatever the provider held.
+
+    open   every binding window below WARN_PCT
+    tight  a binding window at or above WARN_PCT but below the wall
+    spent  a binding window at the wall, or a provider refusal in force
+    """
+    binding = [w for w in seat["windows"] if w["binding"] and w["used_pct"] is not None]
+    if not binding:
+        return seat
+    worst = max(binding, key=lambda w: w["used_pct"])
+    seat["worst_window"] = worst["id"]
+    seat["worst_pct"] = worst["used_pct"]
+    if worst["used_pct"] >= WALL_PCT:
+        seat["state"] = "spent"
+    elif worst["used_pct"] >= WARN_PCT:
+        seat["state"] = "tight"
+    else:
+        seat["state"] = "open"
+    seat["usable"] = seat["state"] in ("open", "tight")
+    # When a seat is spent, the honest answer to "when can I use it" is the
+    # earliest reset among the windows that are actually at the wall.
+    if seat["state"] == "spent":
+        walls = [parse_ts(w["resets_at"]) for w in binding
+                 if w["used_pct"] >= WALL_PCT and w["resets_at"]]
+        walls = [w for w in walls if w]
+        seat["free_at"] = iso(min(walls)) if walls else ""
+    return add_pace(seat)
+
+
+# ── provider: Claude ────────────────────────────────────────────────────────
+
+def claude_token(config_dir: Path):
+    """(token, tier, error). The token is returned to be SENT, never shown."""
+    try:
+        blob = json.loads((config_dir / ".credentials.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None, "", f"no credentials at {config_dir}/.credentials.json"
+    except (OSError, ValueError) as error:
+        return None, "", f"credentials unreadable: {error}"
+    oauth = blob.get("claudeAiOauth") or {}
+    token = oauth.get("accessToken")
+    tier = str(oauth.get("rateLimitTier") or "")
+    match = re.search(r"max_(\d+x)", tier, re.IGNORECASE)
+    label = "Max " + match.group(1) if match else (str(oauth.get("subscriptionType") or "").title())
+    if not token:
+        return None, label, "no access token in credentials"
+    expires = (oauth.get("expiresAt") or 0) / 1000
+    if expires and expires < time.time():
+        return None, label, "sign-in expired — start Claude Code to refresh it"
+    return token, label, None
+
+
+def claude_windows(usage):
+    """The two binding windows, plus every per-model row the payload carries.
+
+    The meter files call the model split UNKNOWN because usage.seven_day_opus
+    and friends are null. They are — but the same payload's `limits` array
+    carries the scoped rows with scope.model.display_name, which is where the
+    'Fable weekly at 100%' kind of fact actually lives.
+    """
+    out = []
+    for key, label, minutes in (("five_hour", "session (5h)", 300),
+                                ("seven_day", "weekly (7d)", 10080)):
+        entry = usage.get(key)
+        if isinstance(entry, dict) and entry.get("utilization") is not None:
+            out.append(window(key, label, minutes, entry.get("utilization"),
+                              parse_ts(entry.get("resets_at"))))
+    for entry in usage.get("limits") or []:
+        if not isinstance(entry, dict) or entry.get("kind") != "weekly_scoped":
+            continue
+        scope = entry.get("scope") or {}
+        model = ((scope.get("model") or {}).get("display_name")
+                 or (scope.get("model") or {}).get("id") or "scoped")
+        out.append(window(f"weekly:{str(model).lower()}", f"weekly · {model}", 10080,
+                          entry.get("percent"), parse_ts(entry.get("resets_at")),
+                          scope=str(model), binding=False))
+    return out
+
+
+def read_claude(spec, opts):
+    config_dir = expand(spec.get("config_dir"))
+    name = f"claude-{spec['id']}"
+    seat = blank_seat(spec, "unknown", "UNKNOWN")
+
+    # ACQUISITION ORDER, and it matters. Anything already in hand needs no
+    # token and costs the shared rate limit nothing; only when nothing fresh
+    # exists do we authenticate and call out; only when THAT fails do we
+    # accept an older reading rather than report a shrug.
+    #   1. this program's own reading, inside the reuse window
+    #   2. the seat feeder's reading, inside the reuse window  (same call)
+    #   3. the network
+    #   4. either cache, up to --stale-grace old
+    _, seat["tier"], _ = claude_token(config_dir)
+    usage = age = error = None
+    grade = "MEASURED"
+    origin = "oauth-usage-endpoint"
+
+    if not opts.refresh:
+        data, age = cache_read(name, opts.cache_ttl)
+        if data is not None:
+            usage, grade, origin = data, "CACHED", "own-cache"
+        else:
+            usage, age = peer_cache_read(spec["id"], opts.cache_ttl)
+            if usage is not None:
+                grade, origin = "MEASURED", "seat-feeder-cache"
+
+    if usage is None:
+        token, _tier, error = claude_token(config_dir)
+        if token:
+            payload, error = http_json(USAGE_ENDPOINT, {
+                "Authorization": f"Bearer {token}",
+                "anthropic-beta": "oauth-2025-04-20",
+                "Accept": "application/json",
+            })
+            if payload is not None:
+                cache_write(name, payload)
+                usage, grade, origin, age = payload, "MEASURED", "oauth-usage-endpoint", 0
+
+    if usage is None:
+        # An old reading beats a shrug: these windows move in hours, so a
+        # ten-minute-old number still routes work correctly.
+        for reader, label in ((lambda: cache_read(name, opts.stale_grace), "own-cache"),
+                              (lambda: peer_cache_read(spec["id"], opts.stale_grace),
+                               "seat-feeder-cache")):
+            stale, stale_age = reader()
+            if stale is not None:
+                usage, age, grade, origin = stale, stale_age, "CACHED", label
+                break
+
+    if usage is None:
+        seat["state"] = "unauth" if (error or "").startswith(("no ", "sign-in")) else "unknown"
+        seat["detail"] = one_line(error or "no reading")
+        return seat
+
+    if isinstance(usage.get("usage"), dict):
+        usage = usage["usage"]
+    seat["windows"] = claude_windows(usage or {})
+    seat["grade"] = grade
+    seat["source"] = {"kind": origin, "endpoint": USAGE_ENDPOINT,
+                      "config_dir": str(config_dir),
+                      "reading_age_seconds": round(age) if age else 0}
+    if error:
+        seat["detail"] = one_line(f"served from {origin}, {round(age or 0)}s old ({error})")
+    if not seat["windows"]:
+        seat["state"], seat["detail"] = "unknown", "payload carried no windows"
+        return seat
+    return classify(seat)
+
+
+# ── provider: Codex ─────────────────────────────────────────────────────────
+
+def newest_codex_limits(root: Path):
+    """The last rate_limits record Codex wrote for itself. Reading is not spending.
+
+    Codex stamps a rate_limits block into its own rollout on every turn, so the
+    newest rollout that carries one is a real reading with a real timestamp —
+    no credential opened, no request made, nothing spent to learn it.
+    """
+    if not root.is_dir():
+        return None, None, f"no rollouts at {root}"
+    files = sorted(root.rglob("rollout-*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for path in files[:40]:
+        found = None
+        stamp = None
+        try:
+            with path.open(encoding="utf-8", errors="replace") as stream:
+                for line in stream:
+                    if '"rate_limits"' not in line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except ValueError:
+                        continue
+                    payload = record.get("payload")
+                    limits = payload.get("rate_limits") if isinstance(payload, dict) else None
+                    if isinstance(limits, dict):
+                        found, stamp = limits, record.get("timestamp")
+        except OSError:
+            continue
+        if found:
+            return found, {"kind": "codex-rollout-rate-limits", "path": str(path),
+                           "observed_at": stamp or iso(datetime.fromtimestamp(
+                               path.stat().st_mtime, timezone.utc))}, None
+    return None, None, "no rate_limits record in the 40 newest rollouts"
+
+
+def codex_live_limits(config_dir: Path):
+    """`codex app-server` over JSON-RPC — fresher, but it starts a process."""
+    def rpc(proc, request_id, method, params=None, timeout=6):
+        proc.stdin.write(json.dumps({"id": request_id, "method": method,
+                                     "params": params or {}}) + "\n")
+        proc.stdin.flush()
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            line = proc.stdout.readline()
+            if not line:
+                break
+            try:
+                message = json.loads(line)
+            except ValueError:
+                continue
+            if message.get("id") == request_id:
+                return message
+        raise TimeoutError(method)
+
+    env = dict(os.environ, CODEX_HOME=str(config_dir))
+    try:
+        proc = subprocess.Popen(
+            ["codex", "-s", "read-only", "-a", "on-request", "app-server"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, env=env)
+    except (OSError, ValueError) as error:
+        return None, None, f"codex app-server unavailable: {error}"
+    try:
+        rpc(proc, 1, "initialize", {"clientInfo": {"name": "seats", "version": "1"}}, timeout=10)
+        proc.stdin.write(json.dumps({"method": "initialized", "params": {}}) + "\n")
+        proc.stdin.flush()
+        message = rpc(proc, 2, "account/rateLimits/read", timeout=6)
+        limits = (message.get("result") or {}).get("rateLimits") or {}
+        normalised = {"limit_id": "codex", "planType": limits.get("planType")}
+        for side in ("primary", "secondary"):
+            entry = limits.get(side)
+            if isinstance(entry, dict):
+                normalised[side] = {"used_percent": entry.get("usedPercent"),
+                                    "window_minutes": entry.get("windowDurationMins"),
+                                    "resets_at": entry.get("resetsAt")}
+        return normalised, {"kind": "codex-app-server-rpc"}, None
+    except Exception as error:  # noqa: BLE001 — a timeout here is a fallback, not a crash
+        return None, None, f"codex rpc failed: {error}"
+    finally:
+        try:
+            proc.terminate()
+            proc.wait(timeout=2)
+        except Exception:  # noqa: BLE001
+            try:
+                proc.kill()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def read_codex(spec, opts):
+    seat = blank_seat(spec, "unknown", "UNKNOWN")
+    config_dir = expand(spec.get("config_dir")) or (HOME / ".codex")
+    limits = source = error = None
+    if opts.codex_live:
+        limits, source, error = codex_live_limits(config_dir)
+    if limits is None:
+        limits, source, fallback_error = newest_codex_limits(config_dir / "sessions")
+        error = error or fallback_error
+    if limits is None:
+        seat["detail"] = error or "no reading"
+        return seat
+
+    seat["tier"] = str(limits.get("planType") or "")
+    for side, label in (("primary", "primary"), ("secondary", "secondary")):
+        entry = limits.get(side)
+        if not isinstance(entry, dict) or entry.get("used_percent") is None:
+            continue
+        minutes = entry.get("window_minutes")
+        name = ("weekly (7d)" if minutes == 10080
+                else f"{minutes // 60}h window" if minutes and minutes % 60 == 0
+                else f"{minutes}m window" if minutes else label)
+        seat["windows"].append(window(f"codex:{side}", name, minutes,
+                                      entry.get("used_percent"),
+                                      parse_ts(entry.get("resets_at"))))
+    credits = limits.get("credits")
+    if isinstance(credits, dict):
+        seat["credits"] = {"has_credits": credits.get("has_credits"),
+                           "balance": credits.get("balance"),
+                           "unlimited": credits.get("unlimited")}
+    seat["grade"] = "MEASURED"
+    seat["source"] = source or {}
+    if not seat["windows"]:
+        seat["detail"] = "rate_limits record carried no window"
+        return seat
+    return classify(seat)
+
+
+# ── provider: Qwen Cloud ────────────────────────────────────────────────────
+
+QUOTA_RESET = re.compile(
+    r"quota will reset at\s+(\d{4}-)?(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})\s*(UTC)?",
+    re.IGNORECASE)
+
+
+def parse_quota_reset(text, observed):
+    """The reset out of the provider's own refusal.
+
+    The 429 says '09-12 08:02:00 UTC' — a month and a day with no year, so the
+    year is the one that puts the reset AFTER the refusal and inside a year of
+    it. That is the only inference here, and it is stated rather than hidden.
+    """
+    match = QUOTA_RESET.search(str(text or ""))
+    if not match:
+        return None
+    year_text, month, day, hour, minute, second = match.group(1, 2, 3, 4, 5, 6)
+    base = observed or now()
+    for year in ([int(year_text[:4])] if year_text else [base.year, base.year + 1]):
+        try:
+            when = datetime(year, int(month), int(day), int(hour), int(minute),
+                            int(second), tzinfo=timezone.utc)
+        except ValueError:
+            continue
+        if when >= base - timedelta(days=1):
+            return when
+    return None
+
+
+def read_qwen_hold():
+    """The newest hold record any lane on this box wrote. (record, path)."""
+    found = []
+    for path in QWEN_HOLD_FILES:
+        try:
+            record = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        stamp = parse_ts(record.get("last_seen_at") or record.get("observed_at"))
+        found.append((stamp or datetime.fromtimestamp(0, timezone.utc), record, str(path)))
+    if not found:
+        return None, None
+    _, record, path = max(found, key=lambda row: row[0])
+    return record, path
+
+
+def qwen_key():
+    value = os.environ.get("QWENCLOUD_TOKEN")
+    if value:
+        return value.strip(), "environment"
+    try:
+        return Path(QWEN_KEY_FILE).read_text(encoding="utf-8").strip(), QWEN_KEY_FILE
+    except OSError:
+        return None, None
+
+
+def qwen_probe_spend(key):
+    """The one probe that costs quota. Opt-in, one token, and it tells you.
+
+    Returns (held_until, raw_message). A 200 means the quota is open; a 429
+    carries the reset stamp that is the only window this provider publishes.
+    """
+    if OFFLINE:
+        return None, "offline: SEATS_NO_NETWORK=1"
+    body = json.dumps({"model": "qwen3.8-max", "max_tokens": 1,
+                       "messages": [{"role": "user", "content": "."}]}).encode()
+    request = urllib.request.Request(QWEN_BASE + "/chat/completions", data=body, headers={
+        "Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=HTTP_TIMEOUT) as response:
+            response.read()
+        return None, "open (probe accepted)"
+    except urllib.error.HTTPError as error:
+        text = ""
+        try:
+            text = error.read().decode("utf-8", "replace")[:600]
+        except Exception:  # noqa: BLE001
+            pass
+        return parse_quota_reset(text, now()), f"HTTP {error.code}: {text}"
+    except Exception as error:  # noqa: BLE001
+        return None, f"unreachable: {error}"
+
+
+def read_qwen(spec, opts):
+    seat = blank_seat(spec, "unknown", "UNKNOWN")
+    seat["tier"] = "token-plan (weekly credits)"
+    key, key_source = qwen_key()
+
+    # 1. Reachability — free. GET /models spends no quota and proves the key
+    #    still authenticates, which is a different fact from having headroom.
+    reachable, auth_error = (None, "no api key on this box")
+    if key:
+        reachable, auth_error = http_json(QWEN_BASE + "/models",
+                                          {"Authorization": f"Bearer {key}"})
+
+    # 2. The window, out of the last refusal this box actually received.
+    hold, hold_path = read_qwen_hold()
+    held_until = None
+    if hold:
+        held_until = parse_ts(hold.get("held_until")) or parse_quota_reset(
+            hold.get("reason"), parse_ts(hold.get("observed_at")))
+
+    # 3. The spending probe, only when asked for.
+    probe_note = ""
+    if opts.probe_qwen and key:
+        probed, probe_note = qwen_probe_spend(key)
+        if probed:
+            held_until = probed
+            record = {"held": True, "reason": probe_note, "observed_at": iso(now()),
+                      "held_until": iso(probed), "written_by": "seats --probe-qwen"}
+            STATE.mkdir(parents=True, exist_ok=True)
+            (STATE / "qwen-hold.json").write_text(json.dumps(record, indent=1), encoding="utf-8")
+            hold_path = str(STATE / "qwen-hold.json")
+        elif probe_note.startswith("open"):
+            held_until = None
+
+    seat["source"] = {"kind": "429-refusal-text" if held_until else "no-window-published",
+                      "base_url": QWEN_BASE, "key_source": key_source,
+                      "hold_record": hold_path or "", "reachable": reachable is not None,
+                      "probe": probe_note}
+
+    if held_until and held_until > now():
+        seat["windows"] = [window("qwen:weekly", "weekly (7d)", 10080, 100.0, held_until)]
+        seat["grade"] = "MEASURED-FROM-REFUSAL"
+        seat["state"], seat["usable"] = "spent", False
+        seat["free_at"] = iso(held_until)
+        seat["detail"] = "weekly quota exhausted; reset stated by the provider's own 429"
+        return seat
+
+    notes = []
+    if held_until:
+        notes.append(f"hold expired at {iso(held_until)}; quota not re-probed since")
+    if reachable is None:
+        notes.append(auth_error or "key does not authenticate")
+        seat["state"], seat["detail"] = "unauth", "; ".join(notes)
+        return seat
+
+    # Authenticates, no hold in force — but Qwen Cloud publishes no window, so
+    # "how much is left" stays UNKNOWN and never counts as headroom by itself.
+    seat["state"] = "open"
+    seat["usable"] = True
+    seat["grade"] = "UNKNOWN"
+    seat["windows"] = [window("qwen:weekly", "weekly (7d)", 10080, None, None)]
+    notes.append("key authenticates; provider publishes no usage endpoint "
+                 "(run --probe-qwen to spend one token and learn the state)")
+    seat["detail"] = "; ".join(notes)
+    return seat
+
+
+# ── provider: llama-swap (local GPU) ────────────────────────────────────────
+
+def read_llama_swap(spec, opts):
+    seat = blank_seat(spec, "unknown", "UNKNOWN")
+    endpoint = spec.get("endpoint", "http://127.0.0.1:9292")
+    data, error = http_json(endpoint + "/running", timeout=3)
+    seat["source"] = {"kind": "llama-swap-running", "endpoint": endpoint + "/running"}
+    if data is None:
+        seat["state"], seat["detail"] = "offline", error or "no answer"
+        return seat
+    running = [m.get("model") or m.get("id") or str(m) for m in (data.get("running") or [])]
+    seat["grade"] = "MEASURED"
+    seat["running"] = running
+    seat["state"] = "busy" if running else "open"
+    seat["usable"] = True   # a busy GPU is a queue, not a wall
+    seat["detail"] = ", ".join(running) if running else "idle, no model resident"
+    return seat
+
+
+READERS = {"claude": read_claude, "codex": read_codex,
+           "qwen": read_qwen, "llama-swap": read_llama_swap}
+
+
+# ── spend: tokens actually burned inside the seat's own window ──────────────
+# The question "total weekly consumption" has a right answer and a convenient
+# one. The right answer counts from the moment the seat's OWN weekly window
+# opened (resets_at minus seven days), which is what the provider is metering.
+# Only when no such stamp exists does this fall back to a rolling seven days.
+
+SPEND_CACHE = STATE / "spend-cache.json"
+
+
+def _load_spend_cache():
+    try:
+        return json.loads(SPEND_CACHE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_spend_cache(cache):
+    try:
+        STATE.mkdir(parents=True, exist_ok=True)
+        SPEND_CACHE.write_text(json.dumps(cache), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _bucket(events):
+    """[(epoch, in, out, cache)] -> {hour_key: [in, out, cache]}.
+
+    Hour buckets, because a rolling window with a real start time cannot be
+    answered from daily totals and re-reading every transcript on every glance
+    is the thing the cache exists to avoid.
+    """
+    out = {}
+    for stamp, tin, tout, tcache in events:
+        key = datetime.fromtimestamp(stamp, timezone.utc).strftime("%Y-%m-%dT%H")
+        row = out.setdefault(key, [0, 0, 0])
+        row[0] += tin
+        row[1] += tout
+        row[2] += tcache
+    return out
+
+
+def _events_claude(path):
+    events = []
+    with path.open(encoding="utf-8", errors="replace") as stream:
+        for line in stream:
+            if '"usage"' not in line:
+                continue
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if record.get("type") != "assistant":
+                continue
+            stamp = parse_ts(record.get("timestamp"))
+            usage = (record.get("message") or {}).get("usage")
+            if stamp is None or not isinstance(usage, dict):
+                continue
+            events.append((stamp.timestamp(),
+                           int(usage.get("input_tokens") or 0),
+                           int(usage.get("output_tokens") or 0),
+                           int(usage.get("cache_creation_input_tokens") or 0)
+                           + int(usage.get("cache_read_input_tokens") or 0)))
+    return events
+
+
+def _events_codex(path):
+    """Codex totals are CUMULATIVE per rollout, so the deltas are the spend."""
+    events = []
+    previous = (0, 0, 0)
+    with path.open(encoding="utf-8", errors="replace") as stream:
+        for line in stream:
+            if '"token_count"' not in line:
+                continue
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            payload = record.get("payload")
+            if not isinstance(payload, dict) or payload.get("type") != "token_count":
+                continue
+            info = payload.get("info") or {}
+            total = info.get("total_token_usage")
+            stamp = parse_ts(record.get("timestamp"))
+            if stamp is None or not isinstance(total, dict):
+                continue
+            current = (int(total.get("input_tokens") or 0),
+                       int(total.get("output_tokens") or 0),
+                       int(total.get("cached_input_tokens") or 0)
+                       + int(total.get("cache_write_input_tokens") or 0))
+            delta = tuple(max(0, c - p) for c, p in zip(current, previous))
+            previous = current
+            if any(delta):
+                events.append((stamp.timestamp(), *delta))
+    return events
+
+
+def _events_pi(path):
+    events = []
+    with path.open(encoding="utf-8", errors="replace") as stream:
+        for line in stream:
+            if '"usage"' not in line:
+                continue
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if record.get("type") != "message":
+                continue
+            usage = (record.get("message") or {}).get("usage")
+            stamp = parse_ts(record.get("timestamp"))
+            if stamp is None or not isinstance(usage, dict):
+                continue
+            events.append((stamp.timestamp(),
+                           int(usage.get("input") or 0),
+                           int(usage.get("output") or 0),
+                           int(usage.get("cacheRead") or 0) + int(usage.get("cacheWrite") or 0)))
+    return events
+
+
+EXTRACTORS = {"claude": _events_claude, "codex": _events_codex, "qwen": _events_pi}
+
+
+def spend_since(spec, start: datetime, cache):
+    """Tokens from `start` to now, from the harness's own transcripts.
+
+    Files whose mtime predates the window cannot hold an event inside it, so
+    they are never opened: a seven-day question does not need 255 project
+    directories re-read from the beginning of time.
+    """
+    root = expand(spec.get("spend_root"))
+    extract = EXTRACTORS.get(spec["provider"])
+    if root is None or extract is None or not root.is_dir():
+        return None
+    floor = start.timestamp() - 3600
+    totals = [0, 0, 0]
+    files = sessions = 0
+    for path in root.rglob("*.jsonl"):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        if stat.st_mtime < floor:
+            continue
+        files += 1
+        key = f"{path}|{int(stat.st_mtime)}|{stat.st_size}"
+        buckets = cache.get(key)
+        if buckets is None:
+            try:
+                buckets = _bucket(extract(path))
+            except OSError:
+                continue
+            cache[key] = buckets
+        counted = False
+        for hour, row in buckets.items():
+            try:
+                when = datetime.strptime(hour, "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+            if when + timedelta(hours=1) < start:
+                continue
+            counted = True
+            for index in range(3):
+                totals[index] += row[index]
+        sessions += 1 if counted else 0
+    return {"window_start": iso(start),
+            "tokens_in": totals[0], "tokens_out": totals[1], "cache_tokens": totals[2],
+            "total_tokens": totals[0] + totals[1] + totals[2],
+            "billable_tokens": totals[0] + totals[1],
+            "sessions": sessions, "files_scanned": files, "grade": "MEASURED"}
+
+
+def attach_spend(seats, specs, days):
+    cache = _load_spend_cache()
+    by_id = {spec["id"]: spec for spec in specs}
+    for seat in seats:
+        spec = by_id.get(seat["id"], {})
+        if spec.get("provider") not in EXTRACTORS:
+            continue
+        # Prefer the seat's own weekly window: that is the interval the
+        # provider is metering, and the one a percentage refers to.
+        start = None
+        basis = f"rolling-{days}d"
+        for entry in seat["windows"]:
+            if entry["minutes"] == 10080 and entry["resets_at"]:
+                reset = parse_ts(entry["resets_at"])
+                if reset:
+                    start, basis = reset - timedelta(minutes=10080), "seat-weekly-window"
+                    break
+        if start is None:
+            start = now() - timedelta(days=days)
+        try:
+            spend = spend_since(spec, start, cache)
+        except Exception as error:  # noqa: BLE001 — one unreadable tree, not a dead report
+            spend = {"grade": "UNKNOWN", "error": str(error)}
+        if spend:
+            spend["basis"] = basis
+            seat["spend"] = spend
+    # Keep the cache to files that still exist at the size we hashed.
+    _save_spend_cache({k: v for k, v in cache.items()
+                       if os.path.exists(k.split("|", 1)[0])})
+
+
+# ── rendering ───────────────────────────────────────────────────────────────
+
+COLORS = {"open": "\033[32m", "busy": "\033[36m", "tight": "\033[33m",
+          "spent": "\033[31m", "unauth": "\033[35m", "offline": "\033[90m",
+          "unknown": "\033[90m"}
+RESET = "\033[0m"
+
+
+def paint(text, state, enabled):
+    return f"{COLORS.get(state, '')}{text}{RESET}" if enabled else text
+
+
+def bar(value, width=10):
+    if value is None:
+        return "?" * width
+    filled = int(round(value / 100.0 * width))
+    return "█" * filled + "░" * (width - filled)
+
+
+def render_table(report, color):
+    lines = []
+    rows = []
+    for seat in report["seats"]:
+        windows = {w["id"]: w for w in seat["windows"]}
+        session = windows.get("five_hour")
+        weekly = next((w for w in seat["windows"]
+                       if w["minutes"] == 10080 and w["binding"]), None)
+
+        def cell(entry):
+            if entry is None:
+                return "—"
+            if entry["used_pct"] is None:
+                return "unknown"
+            return f"{entry['used_pct']:5.1f}% {bar(entry['used_pct'])}"
+
+        reset_from = weekly or session
+        if seat["free_at"]:
+            reset_from = next((w for w in seat["windows"]
+                               if w["resets_at"] == seat["free_at"]), reset_from)
+        reset = ""
+        if reset_from and reset_from["resets_at"]:
+            reset = f"{parse_ts(reset_from['resets_at']).strftime('%a %H:%MZ')} {until(parse_ts(reset_from['resets_at']))}"
+
+        spend = seat.get("spend") or {}
+        rows.append([
+            seat["id"],
+            paint(seat["state"], seat["state"], color),
+            cell(session),
+            cell(weekly),
+            reset,
+            human_tokens(spend.get("billable_tokens")),
+            human_tokens(spend.get("total_tokens")),
+            one_line(seat["detail"], 46),
+        ])
+
+    headers = ["SEAT", "STATE", "SESSION (5h)", "WEEKLY (7d)", "NEXT RESET",
+               "IN+OUT", "W/CACHE", "NOTE"]
+    plain = [[re.sub(r"\033\[[0-9;]*m", "", c) for c in row] for row in rows]
+    widths = [max(len(headers[i]), *(len(r[i]) for r in plain)) for i in range(len(headers))]
+    lines.append("  ".join(h.ljust(widths[i]) for i, h in enumerate(headers)))
+    lines.append("  ".join("─" * widths[i] for i in range(len(headers))))
+    for row, flat in zip(rows, plain):
+        lines.append("  ".join(
+            row[i] + " " * (widths[i] - len(flat[i])) for i in range(len(headers))))
+
+    scoped = [(s["id"], w) for s in report["seats"] for w in s["windows"]
+              if not w["binding"] and w["used_pct"] is not None]
+    if scoped:
+        lines.append("")
+        lines.append("per-model weekly rows (bind that model only):")
+        for seat_id, entry in scoped:
+            lines.append(f"  {seat_id:<14} {entry['label']:<22} {entry['used_pct']:5.1f}% "
+                         f"{bar(entry['used_pct'])}  resets {until(parse_ts(entry['resets_at']))}")
+
+    forecasts = [(s["id"], w) for s in report["seats"] for w in s["windows"]
+                 if w.get("wall_eta") and w["used_pct"] is not None and w["used_pct"] < WALL_PCT]
+    if forecasts:
+        lines.append("")
+        lines.append("on course to hit the wall before it resets:")
+        for seat_id, entry in sorted(forecasts, key=lambda row: row[1]["wall_eta"]):
+            eta = parse_ts(entry["wall_eta"])
+            lines.append(f"  {seat_id:<14} {entry['label']:<22} "
+                         f"{entry['pace_pct_per_hour']:.1f}%/h → 100% {until(eta)} "
+                         f"({eta.strftime('%a %H:%MZ')}), window resets "
+                         f"{until(parse_ts(entry['resets_at']))}")
+
+    bases = sorted({(s.get("spend") or {}).get("basis") for s in report["seats"]
+                    if s.get("spend")} - {None})
+    best = report.get("recommend")
+    lines.append("")
+    lines.append(f"read at {report['generated_at']}   "
+                 + (f"most headroom: {best}" if best else "no seat has headroom"))
+    if bases:
+        lines.append("token counts measured over: " + ", ".join(bases)
+                     + "  (seat-weekly-window = since that seat's own weekly reset)")
+    return "\n".join(lines)
+
+
+def render_tsv(report):
+    out = ["seat\tprovider\tstate\tgrade\twindow\tused_pct\tremaining_pct\tresets_at\t"
+           "resets_in_s\tbinding\tpace_pct_per_h\twall_eta\tspend_billable\tspend_total\t"
+           "spend_basis"]
+    for seat in report["seats"]:
+        spend = seat.get("spend") or {}
+        if not seat["windows"]:
+            out.append(f"{seat['id']}\t{seat['provider']}\t{seat['state']}\t{seat['grade']}\t"
+                       f"-\t\t\t\t\t\t\t\t{spend.get('billable_tokens','')}\t"
+                       f"{spend.get('total_tokens','')}\t{spend.get('basis','')}")
+        for entry in seat["windows"]:
+            out.append("\t".join(str(x) for x in [
+                seat["id"], seat["provider"], seat["state"], seat["grade"], entry["id"],
+                "" if entry["used_pct"] is None else entry["used_pct"],
+                "" if entry["remaining_pct"] is None else entry["remaining_pct"],
+                entry["resets_at"], entry["resets_in_seconds"] or "",
+                "yes" if entry["binding"] else "no",
+                entry.get("pace_pct_per_hour") if entry.get("pace_pct_per_hour") is not None else "",
+                entry.get("wall_eta") or "",
+                spend.get("billable_tokens", ""), spend.get("total_tokens", ""),
+                spend.get("basis", "")]))
+    return "\n".join(out)
+
+
+# ── the oracles ─────────────────────────────────────────────────────────────
+
+def headroom(seat):
+    """The binding remaining percentage, or None when it cannot be measured."""
+    binding = [w for w in seat["windows"] if w["binding"] and w["remaining_pct"] is not None]
+    if not binding:
+        return None
+    return min(w["remaining_pct"] for w in binding)
+
+
+def recommend(seats):
+    best = None
+    for seat in seats:
+        if seat["provider"] == "llama-swap" or seat["owner"] != "tom":
+            continue
+        if seat["state"] not in ("open", "tight"):
+            continue
+        room = headroom(seat)
+        if room is None:
+            continue
+        if best is None or room > best[1]:
+            best = (seat["id"], room)
+    return best[0] if best else ""
+
+
+# ── main ────────────────────────────────────────────────────────────────────
+
+def load_specs(only):
+    path = HOME / ".config/seats/seats.json"
+    specs = DEFAULT_SEATS
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(loaded, list) and loaded:
+            specs = loaded
+    except (OSError, ValueError):
+        pass
+    if only:
+        wanted = {s.strip() for s in only.split(",") if s.strip()}
+        specs = [s for s in specs if s["id"] in wanted or s["provider"] in wanted]
+    return specs
+
+
+def collect(specs, opts):
+    def one(spec):
+        reader = READERS.get(spec["provider"])
+        if reader is None:
+            return blank_seat(spec, "unknown", "UNKNOWN", f"no reader for {spec['provider']}")
+        try:
+            return reader(spec, opts)
+        except Exception as error:  # noqa: BLE001 — one broken seat never silences the report
+            return blank_seat(spec, "unknown", "UNKNOWN", f"reader failed: {error}")
+
+    if not specs:
+        return []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, len(specs))) as pool:
+        seats = list(pool.map(one, specs))
+    order = {spec["id"]: i for i, spec in enumerate(specs)}
+    seats.sort(key=lambda s: order.get(s["id"], 99))
+    return seats
+
+
+def build_report(opts):
+    specs = load_specs(opts.only)
+    seats = collect(specs, opts)
+    if not opts.no_spend:
+        attach_spend(seats, specs, opts.days)
+    return {
+        "schema_version": SCHEMA,
+        "generated_at": iso(now()),
+        "host": os.uname().nodename,
+        "thresholds": {"warn_pct": WARN_PCT, "wall_pct": WALL_PCT},
+        "recommend": recommend(seats),
+        "seats": seats,
+    }
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="seats", description="capacity across every seat on this box",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="exit codes: --check 0 headroom / 1 spent / 2 unmeasurable; "
+               "--pick 1 when no seat has headroom; otherwise 0.")
+    out = parser.add_mutually_exclusive_group()
+    out.add_argument("--json", action="store_true", help="one JSON document")
+    out.add_argument("--jsonl", action="store_true", help="one JSON line per seat")
+    out.add_argument("--tsv", action="store_true", help="one row per window")
+    out.add_argument("--check", metavar="SEAT", help="exit-code oracle for one seat")
+    out.add_argument("--pick", action="store_true", help="print the seat with the most headroom")
+    parser.add_argument("--only", metavar="IDS", help="comma-separated seat ids or providers")
+    parser.add_argument("--window", default="any",
+                        help="--check: which window binds (five_hour, seven_day, any)")
+    parser.add_argument("--threshold", type=float, default=WALL_PCT,
+                        help="--check: utilization at which headroom ends (default %(default)s)")
+    parser.add_argument("--days", type=int, default=7,
+                        help="spend window when the seat publishes no weekly reset")
+    parser.add_argument("--no-spend", action="store_true", help="skip the transcript scan")
+    parser.add_argument("--refresh", action="store_true", help="ignore the reuse window")
+    parser.add_argument("--cache-ttl", type=float, default=CACHE_TTL)
+    parser.add_argument("--stale-grace", type=float, default=STALE_GRACE)
+    parser.add_argument("--codex-live", action="store_true",
+                        help="ask codex app-server instead of reading its rollouts")
+    parser.add_argument("--probe-qwen", action="store_true",
+                        help="spend one Qwen token to learn the quota state")
+    parser.add_argument("--watch", type=float, metavar="SECONDS", help="redraw on an interval")
+    parser.add_argument("--no-color", action="store_true")
+    opts = parser.parse_args(argv)
+
+    if opts.check:
+        opts.only = opts.check
+        opts.no_spend = True
+        report = build_report(opts)
+        seat = next((s for s in report["seats"] if s["id"] == opts.check), None)
+        if seat is None:
+            print(f"no such seat: {opts.check}", file=sys.stderr)
+            return 2
+        candidates = [w for w in seat["windows"] if w["binding"]] if opts.window == "any" else \
+                     [w for w in seat["windows"] if w["id"] == opts.window]
+        measured = [w for w in candidates if w["used_pct"] is not None]
+        if not measured:
+            print(f"{opts.check}: unmeasurable ({seat['detail'] or 'no window'})", file=sys.stderr)
+            return 2
+        worst = max(measured, key=lambda w: w["used_pct"])
+        room = 100.0 - worst["used_pct"]
+        print(f"{opts.check}: {worst['id']} {worst['used_pct']:.1f}% used, "
+              f"{room:.1f}% left, resets {until(parse_ts(worst['resets_at'])) or 'unknown'}")
+        return 0 if worst["used_pct"] < opts.threshold else 1
+
+    color = sys.stdout.isatty() and not opts.no_color and not os.environ.get("NO_COLOR")
+
+    def emit():
+        report = build_report(opts)
+        if opts.json:
+            print(json.dumps(report, indent=2, sort_keys=True))
+        elif opts.jsonl:
+            for seat in report["seats"]:
+                print(json.dumps(dict(seat, generated_at=report["generated_at"]),
+                                 sort_keys=True))
+        elif opts.tsv:
+            print(render_tsv(report))
+        elif opts.pick:
+            if not report["recommend"]:
+                return 1
+            print(report["recommend"])
+        else:
+            print(render_table(report, color))
+        return 0
+
+    if opts.watch:
+        try:
+            while True:
+                sys.stdout.write("\033[2J\033[H" if color else "")
+                emit()
+                sys.stdout.flush()
+                time.sleep(max(5.0, opts.watch))
+        except KeyboardInterrupt:
+            return 0
+    return emit()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -2013,6 +2013,31 @@
               touch "$out"
             '';
 
+        # seats: one capacity oracle across every seat on this box. Hermetic —
+        # SEATS_NO_NETWORK=1 and a home tree the test builds itself, because
+        # every fact the program reports is relative to now and a checked-in
+        # fixture would rot on the second day.
+        seats =
+          pkgs.runCommand "seats"
+            {
+              nativeBuildInputs = [ pkgs.python3 ];
+            }
+            ''
+              set -euo pipefail
+
+              export HOME="$TMPDIR/home"
+              export PYTHONDONTWRITEBYTECODE=1
+              export SEATS_SCRIPT=${./home/dot_local/bin/seats}
+              mkdir -p "$HOME"
+
+              python3 -m unittest discover \
+                -s ${./tests/seats} \
+                -p 'test_*.py' \
+                -v
+
+              touch "$out"
+            '';
+
         # The prune guard (dotfiles#296): local-models-sync must never delete,
         # and local-models-prune --yes must refuse a set that drifted from the
         # recorded dry-run. Hermetic — a fixture tree and a fake manifest, no
