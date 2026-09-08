@@ -28,7 +28,7 @@ read at 2026-09-08T05:16:34Z   most headroom: cc3
 | Seat | Truth | Costs |
 |---|---|---|
 | `cc`, `cc2`, `cc3` | `api.anthropic.com/api/oauth/usage`, per-seat OAuth token from `~/.claude*/.credentials.json` | one request, usually zero (see freshness) |
-| `codex` | the `rate_limits` records Codex writes into its own rollouts under `~/.codex/sessions` | nothing — reading a rollout is not a spend |
+| `codex` | `codex app-server` over JSON-RPC — the account's own live answer | one short-lived process, cached |
 | `pi-qwencloud` | the reset stated in the provider's own 429 text | nothing, unless `--probe-qwen` |
 | `gpu-coordinator`, `gpu-worker` | `llama-swap` `/running` | nothing |
 
@@ -136,34 +136,77 @@ from having headroom. `--probe-qwen` spends one token to learn the real state
 and writes the result back to the hold record; it is opt-in precisely because
 asking costs the thing being measured.
 
-## Scoped model caps: Fable and the account together
+## Codex reads the account, not the rollouts
 
-Fable is **half the individual subscription** on `cc` and `cc2`. Its scoped
-weekly row reaching 100% means Fable has eaten 50 points of the account's week
-— it does **not** mean the seat is finished. Opus and Sonnet may keep going
-against whatever the account's overall weekly row has left. Read alone, either
-number misleads, so both are published:
+The account is the default source, and the reason is a measurement. On
+2026-09-08 the newest rollout on this box said the weekly window was **98%
+spent**; the account said **0%** — the window had reset and no rollout had been
+written since. The local read was not merely stale, it was wrong in the
+direction that stops work.
+
+A rollout records what Codex was *told* at the time it last ran. Only the
+account knows what is true now. `--codex-rollouts` forces the local read
+(no process spawned) and the row is then graded `CACHED` and labelled
+"what Codex was last told, not what the account says now".
+
+The live answer also carries what no rollout does:
+
+- **per-model limit rows** — `rateLimitsByLimitId` holds one entry per limit;
+  a named entry (`GPT-5.3-Codex-Spark`) is a per-model cap with its own 5-hour
+  and weekly windows. Only the account's own rows bind the seat.
+- **rate-limit reset credits** — grants that hand back a full window. They are
+  spendable only by a person and **they expire**, so they are reported with
+  their next expiry date. Hiding three of these would be hiding capacity.
+- `planType`, credit balance, and `spendControlReached`.
+
+`account/read` is deliberately not called: it returns the login's email
+address, and this login is not Tom's (RULINGS R-2026-09-06-02). `planType` is
+already on the rate-limits result.
+
+## Scoped model caps: reported, never converted
+
+Both providers publish model-scoped limits alongside the account-wide one:
+Anthropic as a `weekly_scoped` entry with `scope.model.display_name`, OpenAI as
+a named entry in `rateLimitsByLimitId`. Each has its own percentage, its own
+severity, and its own reset.
+
+**Both numbers are repeated exactly as the API states them, and no conversion
+between them is inferred.** An earlier version of this tool turned a scoped
+percentage into "points of the account's week" using an assumed 50% share.
+That was invented, and this box's own data refuses it: on two accounts of the
+identical plan, one reached 100% of the Fable limit having logged **fewer**
+Fable tokens (1.54B) than the other has spent while still at 96% (1.70B). No
+fixed share reproduces both readings, and the transcripts here cannot see usage
+from claude.ai web or mobile on the same accounts anyway. The API knows; the
+meter repeats it.
+
+What a scoped row means operationally is the one thing worth stating: it caps
+**that model**, so the model can be finished while the account still has room —
+and the account row remains the ceiling for everything else.
 
 ```
-per-model weekly caps (a slice of the account's own week, in points of that week):
-  cc     Fable    100.0% ██████████ of its 50-point cap = 50 pts spent
-                  →  0 pts left for Fable, 3 pts left for other models
-  cc2    Fable     96.0% ██████████ of its 50-point cap = 48 pts spent
-                  →  0 pts left for Fable, 0 pts left for other models
+model-scoped limits (their own cap, stated by the provider; the account row above is the ceiling for everything else):
+  cc     Fable                weekly  100.0% ██████████ resets in 1d2h     critical ← governing
+  cc     account (all models) weekly   97.0% ██████████ 3% left for everything else
+  codex  GPT-5.3-Codex-Spark  5h        0.0% ░░░░░░░░░░ resets in 4h59m
+  codex  account (all models) weekly    0.0% ░░░░░░░░░░ 100% left for everything else
 ```
 
-The account cap bounds a scoped model too: when `cc2`'s week is at 100%, Fable
-having 4 points of its own share left is irrelevant — `points_left_for_this_model`
-is the smaller of the two.
+`← governing` is the provider's own `is_active` flag — which limit is actually
+in force right now. On `cc` that is the Fable row; on `cc2` and `cc3` it is the
+account row. In JSON: `seat.model_budget.governing_limit`.
 
-In JSON this is `seat.model_budget`: `account_used_pct`,
-`account_remaining_pct`, `points_left_for_other_models`, and a row per model
-with `used_pct`, `share_of_total`, `account_points_used`, `account_points_cap`
-and `points_left_for_this_model`.
+## The provider's grading outranks the local thresholds
 
-The share is per-seat config (`model_shares: {"fable": 0.5}` on `cc` and `cc2`).
-`cc3` is Pro and carries no Fable row yet — when it is upgraded, add the same
-entry and nothing else changes.
+Anthropic's payload grades each limit `normal` / `warning` / `critical`. That
+grading decides the seat's state, because it is the provider's statement about
+its own product and a local threshold guessing at the same thing can only be
+wrong differently. `seat.state_basis` says which rule fired. The
+`WARN_PCT`/`WALL_PCT` thresholds remain the fallback for providers that publish
+a percentage and no judgment (Codex, and the Qwen estimate).
+
+`seat.overage` carries whether there is any way past the wall at all —
+`extra_usage_enabled`, `credits_enabled`, `can_purchase_credits`.
 
 ## Grades
 
@@ -214,8 +257,8 @@ than flood a spent window. That is the safe direction at 3 a.m.
 
 Other flags: `--refresh` (skip the reuse window), `--no-spend` (skip the
 transcript scan), `--days N` (spend window when a seat publishes no weekly
-reset), `--codex-live` (ask `codex app-server` over JSON-RPC instead of reading
-rollouts), `--no-color`.
+reset), `--codex-rollouts` (read Codex's own rollouts instead of asking the
+account), `--no-color`.
 
 `SEATS_NO_NETWORK=1` makes every outbound call fail immediately — useful on a
 train, and how the test runs. Nothing degrades to a guess; rows say `CACHED` or
@@ -245,6 +288,6 @@ number, but it does not need any of them alive.
 
 ## Test
 
-`nix build .#checks.x86_64-linux.seats` — 20 assertions against a home tree the
+`nix build .#checks.x86_64-linux.seats` — 39 assertions against a home tree the
 test builds itself (every fact here is relative to *now*, so a checked-in
 fixture would rot on the second day), with `SEATS_NO_NETWORK=1`.

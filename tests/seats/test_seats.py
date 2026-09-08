@@ -25,6 +25,8 @@ What it pins:
     exit code
 """
 
+import importlib.machinery
+import importlib.util
 import json
 import os
 import pathlib
@@ -42,24 +44,35 @@ def iso(stamp):
     return stamp.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def window_cache(five_hour_pct, weekly_pct, weekly_reset, scoped=None):
-    """The shape tally-seat-feeder leaves beside its meter rows."""
+def window_cache(five_hour_pct, weekly_pct, weekly_reset, scoped=None,
+                 severity=None, active=None):
+    """The shape tally-seat-feeder leaves beside its meter rows.
+
+    `severity` and `active` are the provider's own grading, which the meter now
+    reads in preference to its local thresholds. Passing None for severity
+    leaves the payload ungraded, which is how the threshold fallback is tested.
+    """
     usage = {
         "five_hour": {"utilization": five_hour_pct,
                       "resets_at": iso(NOW + timedelta(hours=3))},
         "seven_day": {"utilization": weekly_pct, "resets_at": iso(weekly_reset)},
         "seven_day_opus": None,
+        "extra_usage": {"is_enabled": False, "utilization": None},
+        "spend": {"enabled": False, "can_purchase_credits": False},
         "limits": [
             {"kind": "session", "group": "session", "percent": five_hour_pct,
-             "resets_at": iso(NOW + timedelta(hours=3)), "scope": None},
+             "resets_at": iso(NOW + timedelta(hours=3)), "scope": None,
+             "severity": "normal" if severity else None, "is_active": False},
             {"kind": "weekly_all", "group": "weekly", "percent": weekly_pct,
-             "resets_at": iso(weekly_reset), "scope": None},
+             "resets_at": iso(weekly_reset), "scope": None,
+             "severity": severity, "is_active": active is None or active == "weekly_all"},
         ],
     }
     if scoped is not None:
         usage["limits"].append({
             "kind": "weekly_scoped", "group": "weekly", "percent": scoped,
-            "resets_at": iso(weekly_reset),
+            "resets_at": iso(weekly_reset), "severity": severity,
+            "is_active": active == "scoped",
             "scope": {"model": {"id": None, "display_name": "Fable"}}})
     return {"observed_at": iso(NOW - timedelta(seconds=30)), "usage": usage}
 
@@ -78,7 +91,8 @@ class SeatsFixture:
         self.window_start = self.weekly_reset - timedelta(days=7)
 
     # ── seats ───────────────────────────────────────────────────────────────
-    def claude(self, seat, config, five_hour, weekly, scoped=None, events=()):
+    def claude(self, seat, config, five_hour, weekly, scoped=None, events=(),
+               severity=None, active=None):
         (self.home / config).mkdir(parents=True, exist_ok=True)
         (self.home / config / ".credentials.json").write_text(json.dumps({
             "claudeAiOauth": {
@@ -87,7 +101,8 @@ class SeatsFixture:
                 "subscriptionType": "max",
                 "expiresAt": int((NOW + timedelta(hours=1)).timestamp() * 1000)}}))
         (self.peer / f".window-cache-{seat}.json").write_text(
-            json.dumps(window_cache(five_hour, weekly, self.weekly_reset, scoped)))
+            json.dumps(window_cache(five_hour, weekly, self.weekly_reset, scoped,
+                                    severity, active)))
         project = self.home / config / "projects" / "-proj"
         project.mkdir(parents=True, exist_ok=True)
         lines = []
@@ -263,16 +278,26 @@ class SeatsTest(unittest.TestCase):
                         entry["used_pct"] + entry["remaining_pct"], 100.0, places=6)
 
     # ── Codex ───────────────────────────────────────────────────────────────
-    def test_codex_reads_the_newest_rollout_that_carries_limits(self):
+    def test_codex_falls_back_to_rollouts_and_says_that_is_what_it_did(self):
+        # The account is the default source. With no way to reach it, the
+        # rollout read is a fallback and is graded and labelled as one: it is
+        # what Codex was last TOLD, which on this box was once 98% while the
+        # account said 0% because the window had reset.
         _, seats = self.box.report()
         codex = seats["codex"]
-        self.assertEqual(codex["grade"], "MEASURED")
+        self.assertEqual(codex["grade"], "CACHED")
         self.assertEqual(codex["source"]["kind"], "codex-rollout-rate-limits")
         self.assertTrue(codex["source"]["path"].endswith("new.jsonl"))
+        self.assertIn("not what the account says now", codex["detail"])
         primary = [w for w in codex["windows"] if w["id"] == "codex:primary"]
         self.assertEqual(primary[0]["used_pct"], 98.0)
         self.assertEqual(primary[0]["minutes"], 10080)
         self.assertEqual(codex["state"], "spent")
+
+    def test_codex_rollouts_flag_forces_the_local_read(self):
+        result = self.box.run("--json", "--codex-rollouts")
+        seats = {s["id"]: s for s in json.loads(result.stdout)["seats"]}
+        self.assertEqual(seats["codex"]["source"]["kind"], "codex-rollout-rate-limits")
 
     def test_codex_totals_are_differenced_not_summed(self):
         _, seats = self.box.report()
@@ -356,34 +381,61 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(credits["used"], 500)
         self.assertEqual(seats["pi-qwencloud"]["windows"][0]["used_pct"], 20.0)
 
-    # ── scoped model caps ───────────────────────────────────────────────────
-    def test_a_scoped_cap_is_reported_in_points_of_the_account_week(self):
+    # ── scoped model caps: repeated from the API, never converted ───────────
+    def test_scoped_and_account_limits_are_both_reported_verbatim(self):
         _, seats = self.box.report()
         budget = seats["cc"]["model_budget"]
-        # cc: weekly 45%, Fable 100% of a half-share.
         self.assertEqual(budget["account_used_pct"], 45.0)
         self.assertEqual(budget["account_remaining_pct"], 55.0)
         row = budget["models"][0]
         self.assertEqual(row["model"], "Fable")
-        self.assertEqual(row["share_of_total"], 0.5)
-        self.assertEqual(row["account_points_cap"], 50.0)
-        self.assertEqual(row["account_points_used"], 50.0)
-        self.assertEqual(row["points_left_for_this_model"], 0.0)
-        self.assertEqual(budget["points_left_for_other_models"], 55.0,
-                         "Fable being spent leaves the rest of the week to other models")
+        self.assertEqual(row["used_pct"], 100.0)
+        self.assertEqual(row["remaining_pct"], 0.0)
 
-    def test_the_account_cap_bounds_a_scoped_model_too(self):
-        # cc2: weekly at 96%, Fable at 40% of its half — Fable's own cap says
-        # 30 points remain, the account says 4. The smaller one is the truth.
-        self.box.claude("cc2", ".claude-work", 0.0, 96.0, scoped=40.0)
+    def test_no_share_conversion_is_invented(self):
+        # An earlier version turned a scoped percentage into "points of the
+        # account's week" with an assumed 50% share. The box's own data refuses
+        # any fixed share, so the meter must not publish one.
         _, seats = self.box.report()
-        row = seats["cc2"]["model_budget"]["models"][0]
-        self.assertEqual(row["remaining_own_pct"], 60.0)
-        self.assertEqual(row["points_left_for_this_model"], 4.0)
+        blob = json.dumps(seats["cc"])
+        for invented in ("share_of_total", "account_points_used",
+                         "account_points_cap", "points_left_for_this_model"):
+            self.assertNotIn(invented, blob)
 
-    def test_a_seat_with_no_scoped_row_gets_no_model_rows(self):
+    def test_a_scoped_limit_never_spends_the_seat(self):
         _, seats = self.box.report()
-        self.assertEqual(seats["cc3"].get("model_budget", {}).get("models", []), [])
+        cc = seats["cc"]
+        self.assertEqual(cc["model_budget"]["models"][0]["used_pct"], 100.0)
+        self.assertEqual(cc["state"], "open", "Fable's cap binds Fable, not the account")
+        self.assertTrue(cc["usable"])
+
+    def test_the_governing_limit_is_taken_from_the_provider(self):
+        self.box.claude("cc", ".claude", 10.0, 45.0, scoped=100.0, active="scoped")
+        _, seats = self.box.report()
+        self.assertEqual(seats["cc"]["model_budget"]["governing_limit"], "weekly:fable")
+        self.box.claude("cc", ".claude", 10.0, 45.0, scoped=100.0, active="weekly_all")
+        _, seats = self.box.report()
+        self.assertEqual(seats["cc"]["model_budget"]["governing_limit"], "seven_day")
+
+    # ── the provider's own grading outranks a local threshold ───────────────
+    def test_provider_severity_decides_the_state(self):
+        # 45% would be "open" on the local thresholds; the provider says
+        # critical, and the provider is describing its own product.
+        self.box.claude("cc", ".claude", 10.0, 45.0, severity="critical")
+        _, seats = self.box.report()
+        self.assertEqual(seats["cc"]["state"], "spent")
+        self.assertIn("provider severity critical", seats["cc"]["state_basis"])
+        self.assertEqual(seats["cc"]["free_at"], iso(self.box.weekly_reset))
+
+    def test_thresholds_apply_only_when_the_provider_does_not_grade(self):
+        _, seats = self.box.report()
+        self.assertEqual(seats["cc3"]["state"], "tight")   # 85%, ungraded payload
+        self.assertIn("local threshold", seats["cc3"]["state_basis"])
+
+    def test_overage_terms_are_reported(self):
+        _, seats = self.box.report()
+        self.assertEqual(seats["cc"]["overage"]["extra_usage_enabled"], False)
+        self.assertEqual(seats["cc"]["overage"]["can_purchase_credits"], False)
 
     # ── spend ───────────────────────────────────────────────────────────────
     def test_spend_counts_the_seats_own_window_only(self):
@@ -495,6 +547,84 @@ class SeatsTest(unittest.TestCase):
             result = self.box.run(*args)
             self.assertNotIn("sk-test-not-a-real-token", result.stdout)
             self.assertNotIn("sk-test-not-a-real-token", result.stderr)
+
+
+class CodexLivePayloadTest(unittest.TestCase):
+    """The live account payload, parsed directly.
+
+    The RPC itself cannot run in a hermetic test — it would spawn Codex against
+    a real account — so the parsing is exercised against a captured payload of
+    the real shape. This is the DEFAULT path now, so it needs cover.
+    """
+
+    def setUp(self):
+        spec = importlib.util.spec_from_loader(
+            "seats_mod", importlib.machinery.SourceFileLoader("seats_mod", SCRIPT))
+        self.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.mod)
+        self.payload = {
+            "rateLimits": {"limitId": "codex", "limitName": None,
+                           "primary": {"usedPercent": 12, "windowDurationMins": 10080,
+                                       "resetsAt": int((NOW + timedelta(days=6)).timestamp())},
+                           "secondary": None,
+                           "credits": {"hasCredits": False, "unlimited": False, "balance": "0"},
+                           "spendControlReached": False, "planType": "pro"},
+            "rateLimitsByLimitId": {
+                "codex": {"limitId": "codex", "limitName": None,
+                          "primary": {"usedPercent": 12, "windowDurationMins": 10080,
+                                      "resetsAt": int((NOW + timedelta(days=6)).timestamp())},
+                          "secondary": None},
+                "codex_bengalfox": {
+                    "limitId": "codex_bengalfox", "limitName": "GPT-5.3-Codex-Spark",
+                    "primary": {"usedPercent": 40, "windowDurationMins": 300,
+                                "resetsAt": int((NOW + timedelta(hours=4)).timestamp())},
+                    "secondary": {"usedPercent": 55, "windowDurationMins": 10080,
+                                  "resetsAt": int((NOW + timedelta(days=6)).timestamp())}}},
+            "rateLimitResetCredits": {
+                "availableCount": 3,
+                "credits": [
+                    {"status": "available", "title": "Full reset",
+                     "expiresAt": int((NOW + timedelta(days=12)).timestamp())},
+                    {"status": "available", "title": "Full reset",
+                     "expiresAt": int((NOW + timedelta(days=40)).timestamp())},
+                    {"status": "spent", "title": "Full reset",
+                     "expiresAt": int((NOW + timedelta(days=2)).timestamp())}]},
+        }
+
+    def test_account_rows_bind_and_model_rows_do_not(self):
+        windows = {w["id"]: w for w in self.mod.codex_windows_from_live(self.payload)}
+        self.assertTrue(windows["codex:primary"]["binding"])
+        self.assertEqual(windows["codex:primary"]["used_pct"], 12.0)
+        self.assertEqual(windows["codex:primary"]["minutes"], 10080)
+        # A per-model cap restricts that model, exactly as a Claude scoped row.
+        self.assertFalse(windows["codex_bengalfox:primary"]["binding"])
+        self.assertFalse(windows["codex_bengalfox:secondary"]["binding"])
+        self.assertEqual(windows["codex_bengalfox:primary"]["scope"], "GPT-5.3-Codex-Spark")
+        self.assertEqual(windows["codex_bengalfox:secondary"]["used_pct"], 55.0)
+
+    def test_a_model_row_at_55_does_not_spend_an_account_at_12(self):
+        seat = self.mod.blank_seat(
+            {"id": "codex", "provider": "codex", "owner": "third-party"}, "unknown", "UNKNOWN")
+        seat["windows"] = self.mod.codex_windows_from_live(self.payload)
+        self.mod.classify(seat)
+        self.assertEqual(seat["state"], "open")
+        self.assertEqual(seat["worst_pct"], 12.0)
+
+    def test_only_available_reset_credits_are_counted(self):
+        grants = self.payload["rateLimitResetCredits"]
+        available = [g for g in grants["credits"] if g["status"] == "available"]
+        self.assertEqual(len(available), 2)
+        self.assertEqual(grants["availableCount"], 3)
+        # The soonest expiry belongs to a SPENT credit; it must not be reported
+        # as the next deadline.
+        soonest = min(self.mod.parse_ts(g["expiresAt"]) for g in available)
+        self.assertEqual(soonest.date(), (NOW + timedelta(days=12)).date())
+
+    def test_a_payload_without_the_by_id_map_still_yields_the_account_row(self):
+        payload = {"rateLimits": self.payload["rateLimits"]}
+        windows = self.mod.codex_windows_from_live(payload)
+        self.assertEqual([w["id"] for w in windows], ["codex:primary"])
+        self.assertTrue(windows[0]["binding"])
 
 
 if __name__ == "__main__":

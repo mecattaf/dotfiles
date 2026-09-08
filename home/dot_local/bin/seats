@@ -185,20 +185,10 @@ WALL_PCT = 95.0          # at or above this a window is SPENT
 # ~/.local/state/tally-rewrite/meters, deliberately: a row here and a row
 # there must be joinable by one field and never by a guess.
 DEFAULT_SEATS = [
-    # model_shares: a scoped weekly cap expressed as a FRACTION OF THE
-    # ACCOUNT'S OWN WEEKLY ALLOWANCE. Fable is half the individual
-    # subscription on cc and cc2: its scoped row reaching 100% means Fable has
-    # eaten 50 points of the account's week, and Opus and Sonnet may keep
-    # going against whatever the account's overall weekly row has left. The
-    # two facts are different and both are reported.
     {"id": "cc",  "provider": "claude", "label": "Claude Max (personal)",
-     "config_dir": "~/.claude", "owner": "tom", "spend_root": "~/.claude/projects",
-     "model_shares": {"fable": 0.5}},
+     "config_dir": "~/.claude", "owner": "tom", "spend_root": "~/.claude/projects"},
     {"id": "cc2", "provider": "claude", "label": "Claude Max (work)",
-     "config_dir": "~/.claude-work", "owner": "tom", "spend_root": "~/.claude-work/projects",
-     "model_shares": {"fable": 0.5}},
-    # cc3 is Pro and carries no Fable row yet; when it is upgraded, give it the
-    # same model_shares entry and nothing else here needs to change.
+     "config_dir": "~/.claude-work", "owner": "tom", "spend_root": "~/.claude-work/projects"},
     {"id": "cc3", "provider": "claude", "label": "Claude (third login)",
      "config_dir": "~/.claude-3", "owner": "tom", "spend_root": "~/.claude-3/projects"},
     {"id": "codex", "provider": "codex", "label": "Codex CLI",
@@ -393,9 +383,20 @@ def http_json(url: str, headers=None, timeout=HTTP_TIMEOUT, retries=2):
 
 # ── window and seat construction ────────────────────────────────────────────
 
-def window(kind, label, minutes, used, resets_at, scope=None, binding=True):
+SEVERITY_RANK = {"normal": 0, "warning": 1, "critical": 2}
+SEVERITY_STATE = {"normal": "open", "warning": "tight", "critical": "spent"}
+
+
+def window(kind, label, minutes, used, resets_at, scope=None, binding=True,
+           severity="", is_active=None):
     used = pct(used)
     return {
+        # severity and is_active are the PROVIDER'S OWN judgment, carried
+        # through untouched. is_active marks the limit actually governing the
+        # account right now — on one seat that is the Fable row, on another the
+        # account-wide row. Nothing here recomputes either.
+        "severity": severity,
+        "is_active": is_active,
         "id": kind,
         "label": label,
         "minutes": minutes,
@@ -463,53 +464,60 @@ def add_pace(seat):
     return seat
 
 
-def add_model_budget(seat, shares):
-    """Scoped model caps and the account cap, side by side.
+def add_model_budget(seat):
+    """The account's limit and each model-scoped limit, side by side.
 
-    A scoped row is a percentage OF ITS OWN CAP, and that cap is a slice of the
-    account's week. Read alone, "Fable 100%" looks like a spent seat and is
-    not: it means Fable's half is gone and everything else may keep going
-    against what the account's overall weekly row has left. Both numbers are
-    published because acting on either one alone is a mistake.
+    NOTHING HERE IS DERIVED. Both providers publish these as separate limits
+    with their own percentages and their own resets, and that is how they are
+    reported: the account row, and one row per scoped model. An earlier version
+    of this function converted a scoped percentage into "points of the account's
+    week" using an assumed share. That conversion was invented, and the box's
+    own data refuses it — on two accounts of the identical plan, one reached
+    100% of the Fable limit having logged FEWER Fable tokens (1.54B) than the
+    other has spent while still at 96% (1.70B). No fixed share reproduces both.
+    The API states both numbers; the meter repeats them and infers nothing.
+
+    What a scoped row means operationally is the one thing worth saying: it
+    caps THAT model, so the model is done while the account still has room —
+    and the account row remains the ceiling for everything else.
     """
-    weekly = next((w for w in seat["windows"]
-                   if w["binding"] and w["minutes"] == 10080 and w["used_pct"] is not None), None)
+    account = next((w for w in seat["windows"]
+                    if w["binding"] and w["minutes"] == 10080 and w["used_pct"] is not None), None)
     scoped = [w for w in seat["windows"] if not w["binding"] and w["used_pct"] is not None]
-    if weekly is None and not scoped:
+    if account is None and not scoped:
         return seat
-    account_left = None if weekly is None else round(100.0 - weekly["used_pct"], 2)
-    models = []
-    for entry in scoped:
-        share = (shares or {}).get(str(entry.get("scope") or "").lower())
-        own_left = round(100.0 - entry["used_pct"], 2)
-        row = {"model": entry.get("scope"), "used_pct": entry["used_pct"],
-               "remaining_own_pct": own_left, "share_of_total": share,
-               "resets_at": entry["resets_at"]}
-        if share is not None:
-            # In points of the account's week, so the two caps are comparable.
-            row["account_points_used"] = round(entry["used_pct"] * share, 2)
-            row["account_points_cap"] = round(100.0 * share, 2)
-            own_points_left = own_left * share
-            row["points_left_for_this_model"] = round(
-                own_points_left if account_left is None else min(own_points_left, account_left), 2)
-        models.append(row)
     seat["model_budget"] = {
-        "account_used_pct": None if weekly is None else weekly["used_pct"],
-        "account_remaining_pct": account_left,
-        # The account cap binds every model, so this is also the ceiling for
-        # anything NOT covered by a scoped row (Opus and Sonnet here).
-        "points_left_for_other_models": account_left,
-        "models": models,
+        "account_used_pct": None if account is None else account["used_pct"],
+        "account_remaining_pct": None if account is None else round(100.0 - account["used_pct"], 2),
+        "account_severity": None if account is None else account.get("severity"),
+        "models": [{"model": entry.get("scope"),
+                    "window": entry["id"],
+                    "minutes": entry["minutes"],
+                    "used_pct": entry["used_pct"],
+                    "remaining_pct": entry["remaining_pct"],
+                    "severity": entry.get("severity"),
+                    "is_active": entry.get("is_active"),
+                    "resets_at": entry["resets_at"]} for entry in scoped],
+        # The provider marks which limit is actually governing right now. On
+        # one seat that is the scoped model row, on another the account row.
+        "governing_limit": next((w["id"] for w in seat["windows"] if w.get("is_active")), None),
     }
     return seat
 
 
 def classify(seat):
-    """State from the BINDING windows only, plus whatever the provider held.
+    """State from the BINDING windows only.
 
-    open   every binding window below WARN_PCT
-    tight  a binding window at or above WARN_PCT but below the wall
-    spent  a binding window at the wall, or a provider refusal in force
+    WHERE THE STATE COMES FROM. When the provider grades its own limits —
+    Anthropic's payload carries `severity` per limit — that grading is used,
+    because it is the provider's statement about its own product and a local
+    threshold guessing at the same thing can only be wrong differently. The
+    WARN_PCT/WALL_PCT thresholds are the fallback for providers that publish a
+    percentage and no judgment (Codex, and the Qwen estimate).
+
+    open   provider says normal, or every binding window below WARN_PCT
+    tight  provider says warning, or a binding window at or above WARN_PCT
+    spent  provider says critical, or a binding window at the wall
     """
     binding = [w for w in seat["windows"] if w["binding"] and w["used_pct"] is not None]
     if not binding:
@@ -517,18 +525,29 @@ def classify(seat):
     worst = max(binding, key=lambda w: w["used_pct"])
     seat["worst_window"] = worst["id"]
     seat["worst_pct"] = worst["used_pct"]
-    if worst["used_pct"] >= WALL_PCT:
+
+    graded = [w for w in binding if w.get("severity") in SEVERITY_RANK]
+    if graded:
+        top = max(graded, key=lambda w: SEVERITY_RANK[w["severity"]])
+        seat["state"] = SEVERITY_STATE[top["severity"]]
+        seat["state_basis"] = f"provider severity {top['severity']} on {top['id']}"
+    elif worst["used_pct"] >= WALL_PCT:
         seat["state"] = "spent"
+        seat["state_basis"] = f"local threshold, {worst['id']} at or above {WALL_PCT}%"
     elif worst["used_pct"] >= WARN_PCT:
         seat["state"] = "tight"
+        seat["state_basis"] = f"local threshold, {worst['id']} at or above {WARN_PCT}%"
     else:
         seat["state"] = "open"
+        seat["state_basis"] = "local threshold"
     seat["usable"] = seat["state"] in ("open", "tight")
+    add_model_budget(seat)
     # When a seat is spent, the honest answer to "when can I use it" is the
     # earliest reset among the windows that are actually at the wall.
     if seat["state"] == "spent":
         walls = [parse_ts(w["resets_at"]) for w in binding
-                 if w["used_pct"] >= WALL_PCT and w["resets_at"]]
+                 if (w.get("severity") == "critical" or w["used_pct"] >= WALL_PCT)
+                 and w["resets_at"]]
         walls = [w for w in walls if w]
         seat["free_at"] = iso(min(walls)) if walls else ""
     return add_pace(seat)
@@ -558,20 +577,30 @@ def claude_token(config_dir: Path):
 
 
 def claude_windows(usage):
-    """The two binding windows, plus every per-model row the payload carries.
+    """Every limit the payload states, with the provider's own grading.
 
-    The meter files call the model split UNKNOWN because usage.seven_day_opus
-    and friends are null. They are — but the same payload's `limits` array
-    carries the scoped rows with scope.model.display_name, which is where the
-    'Fable weekly at 100%' kind of fact actually lives.
+    usage.five_hour and usage.seven_day carry the percentages; the `limits`
+    array carries the same limits again WITH the provider's `severity` and its
+    `is_active` flag, plus the model-scoped rows. The scoped rows are the part
+    the meter files record as model_split UNKNOWN: usage.seven_day_opus really
+    is null, but scope.model.display_name is right here.
     """
+    graded = {}
+    for entry in usage.get("limits") or []:
+        if isinstance(entry, dict) and entry.get("kind"):
+            graded.setdefault(entry["kind"], entry)
+
     out = []
-    for key, label, minutes in (("five_hour", "session (5h)", 300),
-                                ("seven_day", "weekly (7d)", 10080)):
+    for key, kind, label, minutes in (("five_hour", "session", "session (5h)", 300),
+                                      ("seven_day", "weekly_all", "weekly (7d)", 10080)):
         entry = usage.get(key)
-        if isinstance(entry, dict) and entry.get("utilization") is not None:
-            out.append(window(key, label, minutes, entry.get("utilization"),
-                              parse_ts(entry.get("resets_at"))))
+        if not isinstance(entry, dict) or entry.get("utilization") is None:
+            continue
+        mark = graded.get(kind) or {}
+        out.append(window(key, label, minutes, entry.get("utilization"),
+                          parse_ts(entry.get("resets_at")),
+                          severity=str(mark.get("severity") or ""),
+                          is_active=mark.get("is_active")))
     for entry in usage.get("limits") or []:
         if not isinstance(entry, dict) or entry.get("kind") != "weekly_scoped":
             continue
@@ -580,7 +609,9 @@ def claude_windows(usage):
                  or (scope.get("model") or {}).get("id") or "scoped")
         out.append(window(f"weekly:{str(model).lower()}", f"weekly · {model}", 10080,
                           entry.get("percent"), parse_ts(entry.get("resets_at")),
-                          scope=str(model), binding=False))
+                          scope=str(model), binding=False,
+                          severity=str(entry.get("severity") or ""),
+                          is_active=entry.get("is_active")))
     return out
 
 
@@ -642,6 +673,14 @@ def read_claude(spec, opts):
     if isinstance(usage.get("usage"), dict):
         usage = usage["usage"]
     seat["windows"] = claude_windows(usage or {})
+    extra = usage.get("extra_usage") if isinstance(usage.get("extra_usage"), dict) else {}
+    spend = usage.get("spend") if isinstance(usage.get("spend"), dict) else {}
+    seat["overage"] = {
+        "extra_usage_enabled": extra.get("is_enabled"),
+        "extra_usage_utilization": extra.get("utilization"),
+        "credits_enabled": spend.get("enabled"),
+        "can_purchase_credits": spend.get("can_purchase_credits"),
+    }
     seat["grade"] = grade
     seat["source"] = {"kind": origin, "endpoint": USAGE_ENDPOINT,
                       "config_dir": str(config_dir),
@@ -651,7 +690,6 @@ def read_claude(spec, opts):
     if not seat["windows"]:
         seat["state"], seat["detail"] = "unknown", "payload carried no windows"
         return seat
-    add_model_budget(seat, spec.get("model_shares"))
     return classify(seat)
 
 
@@ -693,8 +731,23 @@ def newest_codex_limits(root: Path):
 
 
 def codex_live_limits(config_dir: Path):
-    """`codex app-server` over JSON-RPC — fresher, but it starts a process."""
-    def rpc(proc, request_id, method, params=None, timeout=6):
+    """`codex app-server` over JSON-RPC — the account's own live answer.
+
+    This is the DEFAULT path, and the reason is a measurement: on 2026-09-08
+    the newest rollout on this box said the weekly window was 98% spent, while
+    the account said 0% — the window had reset and no rollout had been written
+    since, so the local read was not merely stale, it was wrong in the
+    direction that stops work. A rollout records what Codex was told at the
+    time it last ran. Only the account knows what is true now.
+
+    It also carries what no rollout does: the per-model limit rows, and the
+    rate-limit reset credits, which are worth real work and expire.
+
+    account/read is deliberately NOT called. It returns the login's email
+    address, this login is not Tom's (RULINGS R-2026-09-06-02), and planType
+    is already on the rate-limits result.
+    """
+    def rpc(proc, request_id, method, params=None, timeout=8):
         proc.stdin.write(json.dumps({"id": request_id, "method": method,
                                      "params": params or {}}) + "\n")
         proc.stdin.flush()
@@ -711,6 +764,8 @@ def codex_live_limits(config_dir: Path):
                 return message
         raise TimeoutError(method)
 
+    if OFFLINE:
+        return None, "offline: SEATS_NO_NETWORK=1"
     env = dict(os.environ, CODEX_HOME=str(config_dir))
     try:
         proc = subprocess.Popen(
@@ -718,23 +773,15 @@ def codex_live_limits(config_dir: Path):
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             text=True, env=env)
     except (OSError, ValueError) as error:
-        return None, None, f"codex app-server unavailable: {error}"
+        return None, f"codex app-server unavailable: {error}"
     try:
-        rpc(proc, 1, "initialize", {"clientInfo": {"name": "seats", "version": "1"}}, timeout=10)
+        rpc(proc, 1, "initialize", {"clientInfo": {"name": "seats", "version": "1"}}, timeout=15)
         proc.stdin.write(json.dumps({"method": "initialized", "params": {}}) + "\n")
         proc.stdin.flush()
-        message = rpc(proc, 2, "account/rateLimits/read", timeout=6)
-        limits = (message.get("result") or {}).get("rateLimits") or {}
-        normalised = {"limit_id": "codex", "planType": limits.get("planType")}
-        for side in ("primary", "secondary"):
-            entry = limits.get(side)
-            if isinstance(entry, dict):
-                normalised[side] = {"used_percent": entry.get("usedPercent"),
-                                    "window_minutes": entry.get("windowDurationMins"),
-                                    "resets_at": entry.get("resetsAt")}
-        return normalised, {"kind": "codex-app-server-rpc"}, None
-    except Exception as error:  # noqa: BLE001 — a timeout here is a fallback, not a crash
-        return None, None, f"codex rpc failed: {error}"
+        result = (rpc(proc, 2, "account/rateLimits/read", timeout=10).get("result") or {})
+        return result, None
+    except Exception as error:  # noqa: BLE001 — a timeout here falls back, never crashes
+        return None, f"codex rpc failed: {error}"
     finally:
         try:
             proc.terminate()
@@ -746,38 +793,120 @@ def codex_live_limits(config_dir: Path):
                 pass
 
 
+def codex_windows_from_live(result):
+    """Every limit the account publishes, account-wide and per model.
+
+    rateLimitsByLimitId carries one entry per limit: the bare "codex" entry is
+    the account's own, and a named entry (limitName "GPT-5.3-Codex-Spark") is a
+    per-model cap. Only the account's rows bind the seat — a model-scoped row
+    restricts that model, exactly as a Claude scoped row does.
+    """
+    windows = []
+    rows = result.get("rateLimitsByLimitId")
+    if not isinstance(rows, dict) or not rows:
+        bare = result.get("rateLimits")
+        rows = {"codex": bare} if isinstance(bare, dict) else {}
+    for limit_id, row in sorted(rows.items()):
+        if not isinstance(row, dict):
+            continue
+        name = row.get("limitName")
+        account_wide = not name
+        for side in ("primary", "secondary"):
+            entry = row.get(side)
+            if not isinstance(entry, dict) or entry.get("usedPercent") is None:
+                continue
+            minutes = entry.get("windowDurationMins")
+            span = ("weekly (7d)" if minutes == 10080
+                    else f"session ({minutes // 60}h)" if minutes and minutes % 60 == 0
+                    else f"{minutes}m window" if minutes else side)
+            windows.append(window(
+                f"{limit_id}:{side}", span if account_wide else f"{span} · {name}",
+                minutes, entry.get("usedPercent"), parse_ts(entry.get("resetsAt")),
+                scope=None if account_wide else name, binding=account_wide))
+    return windows
+
+
 def read_codex(spec, opts):
+    """Live from the account by default; the rollout read is the fallback."""
     seat = blank_seat(spec, "unknown", "UNKNOWN")
     config_dir = expand(spec.get("config_dir")) or (HOME / ".codex")
-    limits = source = error = None
-    if opts.codex_live:
-        limits, source, error = codex_live_limits(config_dir)
-    if limits is None:
-        limits, source, fallback_error = newest_codex_limits(config_dir / "sessions")
-        error = error or fallback_error
-    if limits is None:
-        seat["detail"] = error or "no reading"
-        return seat
+    name = f"codex-{spec['id']}"
 
+    result = error = None
+    grade, origin, age = "MEASURED", "codex-app-server-rpc", 0
+    if not opts.codex_rollouts:
+        if not opts.refresh:
+            result, age = cache_read(name, opts.cache_ttl)
+            if result is not None:
+                grade = "CACHED"
+        if result is None:
+            # Spawning a process per glance would be rude, so the answer is
+            # cached like every other reading; --refresh skips the reuse window.
+            result, error = codex_live_limits(config_dir)
+            if result is not None:
+                cache_write(name, result)
+                grade, age = "MEASURED", 0
+        if result is None:
+            result, age = cache_read(name, opts.stale_grace)
+            if result is not None:
+                grade = "CACHED"
+
+    if result is not None:
+        seat["windows"] = codex_windows_from_live(result)
+        account = result.get("rateLimits") if isinstance(result.get("rateLimits"), dict) else {}
+        seat["tier"] = str(account.get("planType") or "")
+        credits = account.get("credits")
+        if isinstance(credits, dict):
+            seat["credits"] = {"has_credits": credits.get("hasCredits"),
+                               "balance": credits.get("balance"),
+                               "unlimited": credits.get("unlimited")}
+        # Rate-limit reset credits: a full window back, granted by the
+        # provider, spendable only by a person, and they EXPIRE. A capacity
+        # report that hid three of these would be hiding capacity.
+        grants = result.get("rateLimitResetCredits")
+        if isinstance(grants, dict):
+            available = [g for g in (grants.get("credits") or [])
+                         if isinstance(g, dict) and g.get("status") == "available"]
+            expiries = sorted(x for x in (parse_ts(g.get("expiresAt")) for g in available) if x)
+            seat["reset_credits"] = {
+                "available": grants.get("availableCount", len(available)),
+                "next_expiry": iso(expiries[0]) if expiries else "",
+                "note": "a full rate-limit reset; only a person can spend one",
+            }
+        if account.get("spendControlReached"):
+            seat["detail"] = "spend control reached"
+        seat["grade"] = grade
+        seat["source"] = {"kind": origin, "reading_age_seconds": round(age) if age else 0}
+        if not seat["windows"]:
+            seat["detail"] = "account published no window"
+            return seat
+        return classify(seat)
+
+    # Fallback: what Codex was last TOLD, which is not what is true now.
+    limits, source, fallback_error = newest_codex_limits(config_dir / "sessions")
+    error = error or fallback_error
+    if limits is None:
+        seat["detail"] = one_line(error or "no reading")
+        return seat
     seat["tier"] = str(limits.get("planType") or "")
-    for side, label in (("primary", "primary"), ("secondary", "secondary")):
+    for side in ("primary", "secondary"):
         entry = limits.get(side)
         if not isinstance(entry, dict) or entry.get("used_percent") is None:
             continue
         minutes = entry.get("window_minutes")
-        name = ("weekly (7d)" if minutes == 10080
-                else f"{minutes // 60}h window" if minutes and minutes % 60 == 0
-                else f"{minutes}m window" if minutes else label)
-        seat["windows"].append(window(f"codex:{side}", name, minutes,
+        span = ("weekly (7d)" if minutes == 10080
+                else f"session ({minutes // 60}h)" if minutes and minutes % 60 == 0
+                else f"{minutes}m window" if minutes else side)
+        seat["windows"].append(window(f"codex:{side}", span, minutes,
                                       entry.get("used_percent"),
                                       parse_ts(entry.get("resets_at"))))
-    credits = limits.get("credits")
-    if isinstance(credits, dict):
-        seat["credits"] = {"has_credits": credits.get("has_credits"),
-                           "balance": credits.get("balance"),
-                           "unlimited": credits.get("unlimited")}
-    seat["grade"] = "MEASURED"
+    seat["grade"] = "CACHED"
     seat["source"] = source or {}
+    observed = (source or {}).get("observed_at", "")
+    seat["detail"] = one_line(
+        f"read from the last rollout{f' of {observed}' if observed else ''} — what Codex was "
+        f"last told, not what the account says now"
+        + (f" ({error})" if error else ""))
     if not seat["windows"]:
         seat["detail"] = "rate_limits record carried no window"
         return seat
@@ -1376,23 +1505,34 @@ def render_table(report, color):
                and s["model_budget"]["models"]]
     if budgets:
         lines.append("")
-        lines.append("per-model weekly caps (a slice of the account's own week, "
-                     "in points of that week):")
+        lines.append("model-scoped limits (their own cap, stated by the provider; "
+                     "the account row above is the ceiling for everything else):")
         for seat_id, budget in budgets:
             for row in budget["models"]:
-                share = row.get("share_of_total")
-                if share is None:
-                    lines.append(f"  {seat_id:<6} {str(row['model']):<8} "
-                                 f"{row['used_pct']:5.1f}% {bar(row['used_pct'])} of its own cap "
-                                 f"(share of the account unknown)")
-                    continue
+                governs = " ← governing" if row.get("is_active") else ""
+                span = ("weekly" if row["minutes"] == 10080
+                        else f"{row['minutes'] // 60}h" if row["minutes"] else "")
                 lines.append(
-                    f"  {seat_id:<6} {str(row['model']):<8} "
-                    f"{row['used_pct']:5.1f}% {bar(row['used_pct'])} of its "
-                    f"{row['account_points_cap']:.0f}-point cap "
-                    f"= {row['account_points_used']:.0f} pts spent  →  "
-                    f"{row['points_left_for_this_model']:.0f} pts left for {row['model']}, "
-                    f"{budget['points_left_for_other_models']:.0f} pts left for other models")
+                    f"  {seat_id:<6} {str(row['model']):<20} {span:<7} "
+                    f"{row['used_pct']:5.1f}% {bar(row['used_pct'])} "
+                    f"resets {until(parse_ts(row['resets_at'])):<10}"
+                    f"{('  ' + row['severity']) if row.get('severity') else ''}{governs}")
+            if budget["account_remaining_pct"] is not None:
+                lines.append(f"  {seat_id:<6} {'account (all models)':<20} {'weekly':<7} "
+                             f"{budget['account_used_pct']:5.1f}% "
+                             f"{bar(budget['account_used_pct'])} "
+                             f"{budget['account_remaining_pct']:.0f}% left for everything else")
+
+    grants = [(s["id"], s["reset_credits"]) for s in report["seats"] if s.get("reset_credits")
+              and s["reset_credits"].get("available")]
+    if grants:
+        lines.append("")
+        lines.append("rate-limit reset credits (a full window back; only a person can spend one):")
+        for seat_id, grant in grants:
+            expiry = parse_ts(grant.get("next_expiry"))
+            lines.append(f"  {seat_id:<14} {grant['available']} available"
+                         + (f", next expires {until(expiry)} "
+                            f"({expiry.strftime('%Y-%m-%d')})" if expiry else ""))
 
     credited = [(s["id"], s["credits"], s.get("plan") or {}) for s in report["seats"]
                 if isinstance(s.get("credits"), dict) and "allowance" in s["credits"]]
@@ -1581,8 +1721,9 @@ def main(argv=None):
     parser.add_argument("--refresh", action="store_true", help="ignore the reuse window")
     parser.add_argument("--cache-ttl", type=float, default=CACHE_TTL)
     parser.add_argument("--stale-grace", type=float, default=STALE_GRACE)
-    parser.add_argument("--codex-live", action="store_true",
-                        help="ask codex app-server instead of reading its rollouts")
+    parser.add_argument("--codex-rollouts", action="store_true",
+                        help="read Codex's own rollouts instead of asking the account "
+                             "(no process spawned, but only as fresh as the last run)")
     parser.add_argument("--probe-qwen", action="store_true",
                         help="spend one Qwen token to learn the quota state")
     parser.add_argument("--watch", type=float, metavar="SECONDS", help="redraw on an interval")
