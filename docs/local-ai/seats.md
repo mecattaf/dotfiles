@@ -163,30 +163,48 @@ The live answer also carries what no rollout does:
 address, and this login is not Tom's (RULINGS R-2026-09-06-02). `planType` is
 already on the rate-limits result.
 
-## Scoped model caps: reported, never converted
+## Scoped model caps: reported from the API, cap cited from the docs
 
 Both providers publish model-scoped limits alongside the account-wide one:
 Anthropic as a `weekly_scoped` entry with `scope.model.display_name`, OpenAI as
 a named entry in `rateLimitsByLimitId`. Each has its own percentage, its own
-severity, and its own reset.
+severity, and its own reset. **Both numbers are repeated exactly as the API
+states them.**
 
-**Both numbers are repeated exactly as the API states them, and no conversion
-between them is inferred.** An earlier version of this tool turned a scoped
-percentage into "points of the account's week" using an assumed 50% share.
-That was invented, and this box's own data refuses it: on two accounts of the
-identical plan, one reached 100% of the Fable limit having logged **fewer**
-Fable tokens (1.54B) than the other has spent while still at 96% (1.70B). No
-fixed share reproduces both readings, and the transcripts here cannot see usage
-from claude.ai web or mobile on the same accounts anyway. The API knows; the
-meter repeats it.
+What Anthropic documents about the Fable cap
+([support.claude.com/…/15424964](https://support.claude.com/en/articles/15424964-claude-fable-models-on-your-plan),
+updated week of 2026-09-01):
 
-What a scoped row means operationally is the one thing worth stating: it caps
-**that model**, so the model can be finished while the account still has room —
-and the account row remains the ceiling for everything else.
+> "You can use up to 50% of your weekly usage limits on Fable models at no
+> extra cost. **They draw from your plan's regular weekly usage limits and use
+> them faster than other Claude models.** When you reach your Fable limit, you
+> can keep using Fable models with usage credits, or switch to another model to
+> stay within your plan's usage limits."
+
+and, answering the obvious question head-on:
+
+> "**Will I get 50% more for my weekly limit for Fable models…?** No. You can
+> use up to 50% of your weekly limit on Fable models, but your use of other
+> models draws from the same usage limits and you can never use more than your
+> weekly limit."
+
+So the scoped cap is a **slice** of the weekly allowance, not a budget beside
+it, and scoped usage draws the account row down too. That is sourced, and it is
+carried per model as `documented_term` — a citation with its quote, URL and
+check date, sitting beside the reading.
+
+**The conversion between the two percentages is not documented, so it is not
+computed.** "Fable at 100%" plausibly means 50 points of the weekly row, but
+Anthropic never says so, and two clauses above make a local check impossible:
+Fable "use[s] them faster than other Claude models" (tokens are weighted, so
+counting tokens per model proves nothing about points), and usage on claude.ai
+and Claude Desktop counts against the same limits (so this box cannot see all
+of it). An earlier version of this tool published a derived points figure as if
+it were measured; a test now asserts those field names never return.
 
 ```
 model-scoped limits (their own cap, stated by the provider; the account row above is the ceiling for everything else):
-  cc     Fable                weekly  100.0% ██████████ resets in 1d2h     critical ← governing
+  cc     Fable                weekly  100.0% ██████████ resets in 1d2h  critical ← governing  [documented cap: 50% of the weekly allowance]
   cc     account (all models) weekly   97.0% ██████████ 3% left for everything else
   codex  GPT-5.3-Codex-Spark  5h        0.0% ░░░░░░░░░░ resets in 4h59m
   codex  account (all models) weekly    0.0% ░░░░░░░░░░ 100% left for everything else
@@ -195,6 +213,24 @@ model-scoped limits (their own cap, stated by the provider; the account row abov
 `← governing` is the provider's own `is_active` flag — which limit is actually
 in force right now. On `cc` that is the Fable row; on `cc2` and `cc3` it is the
 account row. In JSON: `seat.model_budget.governing_limit`.
+
+## Pending allowance changes
+
+A weekly percentage is a fraction of an allowance, and the allowance moves. The
+report carries dated advisories for changes that have not yet taken effect, and
+drops each one once its date passes:
+
+> **! allowance change in 5d16h (2026-09-14):** Claude Code weekly limits drop
+> from the temporary +50% boost (ends 2026-09-13) to a permanent +25% over the
+> pre-July baseline — about 17% less than now.
+
+Source: [BleepingComputer, 2026-08-29](https://www.bleepingcomputer.com/news/artificial-intelligence/anthropic-is-cutting-claude-codes-current-weekly-limits-by-17-percent/).
+Add entries to `ALLOWANCE_CHANGES` as they are announced.
+
+Note also that usage on claude.ai, Claude Code and Claude Desktop all counts
+against the same limits ([support.claude.com/…/11647753](https://support.claude.com/en/articles/11647753-how-do-usage-and-length-limits-work),
+updated 2026-07-13) — which is why the transcript token counts in this report
+are a floor on consumption, never the whole of it.
 
 ## The provider's grading outranks the local thresholds
 
@@ -288,6 +324,6 @@ number, but it does not need any of them alive.
 
 ## Test
 
-`nix build .#checks.x86_64-linux.seats` — 39 assertions against a home tree the
+`nix build .#checks.x86_64-linux.seats` — 41 assertions against a home tree the
 test builds itself (every fact here is relative to *now*, so a checked-in
 fixture would rot on the second day), with `SEATS_NO_NETWORK=1`.

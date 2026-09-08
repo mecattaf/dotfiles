@@ -383,6 +383,39 @@ def http_json(url: str, headers=None, timeout=HTTP_TIMEOUT, retries=2):
 
 # ── window and seat construction ────────────────────────────────────────────
 
+# Documented plan terms for Anthropic's model-scoped weekly caps. These are
+# CITATIONS, not measurements, and nothing derives a number from them: they are
+# carried so the report can state what the cap is meant to be beside what the
+# API says it currently reads.
+CLAUDE_MODEL_TERMS = {
+    "fable": {
+        "cap_share_of_weekly": 0.5,
+        "applies_to": "Max plans, premium Team seats, premium seat-based Enterprise seats",
+        "quote": ("You can use up to 50% of your weekly usage limits on Fable models at no "
+                  "extra cost. They draw from your plan's regular weekly usage limits and "
+                  "use them faster than other Claude models."),
+        "source": "https://support.claude.com/en/articles/15424964-claude-fable-models-on-your-plan",
+        "checked": "2026-09-08",
+        "caveat": ("the cap is documented; the points-for-points conversion to the weekly row "
+                   "is not, and Fable is stated to consume the allowance faster per token"),
+    },
+}
+
+# A dated advisory: the temporary +50% Claude Code weekly boost ends 2026-09-13,
+# and from 2026-09-14 limits sit at a permanent +25% over the pre-July baseline
+# — roughly a 17% cut against what these seats have had all summer. Every
+# weekly percentage below is a fraction of an allowance that is about to shrink,
+# so the report says so until the date passes and then stops.
+ALLOWANCE_CHANGES = [
+    {"effective": "2026-09-14T00:00:00Z",
+     "applies_to": "claude",
+     "note": ("Claude Code weekly limits drop from the temporary +50% boost (ends 2026-09-13) "
+              "to a permanent +25% over the pre-July baseline — about 17% less than now"),
+     "source": "https://www.bleepingcomputer.com/news/artificial-intelligence/"
+               "anthropic-is-cutting-claude-codes-current-weekly-limits-by-17-percent/"},
+]
+
+
 SEVERITY_RANK = {"normal": 0, "warning": 1, "critical": 2}
 SEVERITY_STATE = {"normal": "open", "warning": "tight", "critical": "spent"}
 
@@ -467,15 +500,36 @@ def add_pace(seat):
 def add_model_budget(seat):
     """The account's limit and each model-scoped limit, side by side.
 
-    NOTHING HERE IS DERIVED. Both providers publish these as separate limits
-    with their own percentages and their own resets, and that is how they are
-    reported: the account row, and one row per scoped model. An earlier version
-    of this function converted a scoped percentage into "points of the account's
-    week" using an assumed share. That conversion was invented, and the box's
-    own data refuses it — on two accounts of the identical plan, one reached
-    100% of the Fable limit having logged FEWER Fable tokens (1.54B) than the
-    other has spent while still at 96% (1.70B). No fixed share reproduces both.
-    The API states both numbers; the meter repeats them and infers nothing.
+    WHAT ANTHROPIC DOCUMENTS (support.claude.com/en/articles/15424964,
+    "Claude Fable models on your plan", updated week of 2026-09-01):
+
+        "You can use up to 50% of your weekly usage limits on Fable models at
+         no extra cost. They draw from your plan's regular weekly usage limits
+         and use them faster than other Claude models."
+
+    and, answering the obvious question directly:
+
+        "Will I get 50% more for my weekly limit for Fable models...? No. You
+         can use up to 50% of your weekly limit on Fable models, but your use
+         of other models draws from the same usage limits and you can never
+         use more than your weekly limit."
+
+    So the scoped cap is a SLICE of the weekly allowance, not a budget beside
+    it, and scoped usage draws the account row down too. That much is sourced
+    and is recorded as a plan term.
+
+    WHAT IS NOT DOCUMENTED is the conversion between the two percentages —
+    whether "Fable at 100%" always means exactly 50 points of the weekly row.
+    It is the natural reading of a 50% cap, but Anthropic never states it, and
+    two clauses above make a token-level check impossible from here: Fable
+    "use[s] them faster than other Claude models" (so tokens are weighted, and
+    counting tokens per model proves nothing about points), and usage on
+    claude.ai and Claude Desktop counts against the same limits (so this box
+    cannot see all of it anyway). An earlier version of this function published
+    a derived points figure as if it were measured. It no longer does: the two
+    percentages are repeated exactly as the API states them, the documented cap
+    is carried as a cited plan term, and the arithmetic joining them is left
+    undone rather than guessed.
 
     What a scoped row means operationally is the one thing worth saying: it
     caps THAT model, so the model is done while the account still has room —
@@ -497,7 +551,12 @@ def add_model_budget(seat):
                     "remaining_pct": entry["remaining_pct"],
                     "severity": entry.get("severity"),
                     "is_active": entry.get("is_active"),
-                    "resets_at": entry["resets_at"]} for entry in scoped],
+                    "resets_at": entry["resets_at"],
+                    # The published plan term for this model, when there is one.
+                    # A citation sitting beside the reading, never folded into it.
+                    "documented_term": CLAUDE_MODEL_TERMS.get(
+                        str(entry.get("scope") or "").lower())}
+                   for entry in scoped],
         # The provider marks which limit is actually governing right now. On
         # one seat that is the scoped model row, on another the account row.
         "governing_limit": next((w["id"] for w in seat["windows"] if w.get("is_active")), None),
@@ -1512,11 +1571,14 @@ def render_table(report, color):
                 governs = " ← governing" if row.get("is_active") else ""
                 span = ("weekly" if row["minutes"] == 10080
                         else f"{row['minutes'] // 60}h" if row["minutes"] else "")
+                term = row.get("documented_term") or {}
+                cap = term.get("cap_share_of_weekly")
                 lines.append(
                     f"  {seat_id:<6} {str(row['model']):<20} {span:<7} "
                     f"{row['used_pct']:5.1f}% {bar(row['used_pct'])} "
                     f"resets {until(parse_ts(row['resets_at'])):<10}"
-                    f"{('  ' + row['severity']) if row.get('severity') else ''}{governs}")
+                    f"{('  ' + row['severity']) if row.get('severity') else ''}{governs}"
+                    + (f"   [documented cap: {cap:.0%} of the weekly allowance]" if cap else ""))
             if budget["account_remaining_pct"] is not None:
                 lines.append(f"  {seat_id:<6} {'account (all models)':<20} {'weekly':<7} "
                              f"{budget['account_used_pct']:5.1f}% "
@@ -1562,6 +1624,13 @@ def render_table(report, color):
                          f"{entry['pace_pct_per_hour']:.1f}%/h → 100% {until(eta)} "
                          f"({eta.strftime('%a %H:%MZ')}), window resets "
                          f"{until(parse_ts(entry['resets_at']))}")
+
+    for change in report.get("allowance_changes") or []:
+        lines.append("")
+        lines.append(f"! allowance change {until(parse_ts(change['effective']))} "
+                     f"({parse_ts(change['effective']).strftime('%Y-%m-%d')}): {change['note']}.")
+        lines.append("  Every weekly percentage above is a fraction of an allowance that "
+                     "is about to change.")
 
     bases = sorted({(s.get("spend") or {}).get("basis") for s in report["seats"]
                     if s.get("spend")} - {None})
@@ -1694,6 +1763,11 @@ def build_report(opts):
         "host": os.uname().nodename,
         "thresholds": {"warn_pct": WARN_PCT, "wall_pct": WALL_PCT},
         "recommend": recommend(seats),
+        # Only changes that have not yet taken effect; once the date passes the
+        # advisory is simply history and stops being printed.
+        "allowance_changes": [c for c in ALLOWANCE_CHANGES
+                              if (parse_ts(c["effective"]) or now()) > now()
+                              and any(s["provider"] == c["applies_to"] for s in seats)],
         "seats": seats,
     }
 

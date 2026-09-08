@@ -392,15 +392,40 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(row["used_pct"], 100.0)
         self.assertEqual(row["remaining_pct"], 0.0)
 
-    def test_no_share_conversion_is_invented(self):
-        # An earlier version turned a scoped percentage into "points of the
-        # account's week" with an assumed 50% share. The box's own data refuses
-        # any fixed share, so the meter must not publish one.
+    def test_no_share_conversion_is_computed(self):
+        # Anthropic documents the cap ("up to 50% of your weekly usage limits
+        # on Fable models") but never the points-for-points conversion, and
+        # states that Fable consumes the allowance FASTER per token. So the cap
+        # is carried as a citation and the arithmetic joining the two
+        # percentages is left undone rather than guessed.
         _, seats = self.box.report()
         blob = json.dumps(seats["cc"])
-        for invented in ("share_of_total", "account_points_used",
+        for computed in ("share_of_total", "account_points_used",
                          "account_points_cap", "points_left_for_this_model"):
-            self.assertNotIn(invented, blob)
+            self.assertNotIn(computed, blob)
+
+    def test_the_documented_cap_is_carried_as_a_citation(self):
+        _, seats = self.box.report()
+        term = seats["cc"]["model_budget"]["models"][0]["documented_term"]
+        self.assertEqual(term["cap_share_of_weekly"], 0.5)
+        self.assertIn("support.claude.com", term["source"])
+        self.assertIn("use them faster than other Claude models", term["quote"])
+        self.assertIn("not", term["caveat"])
+        # A model with no published term gets None, not a fabricated default.
+        self.box.claude("cc2", ".claude-work", 0.0, 50.0, scoped=10.0)
+        _, seats = self.box.report()
+        rows = seats["cc2"]["model_budget"]["models"]
+        self.assertEqual(rows[0]["model"], "Fable")
+
+    def test_a_pending_allowance_change_is_surfaced_then_expires(self):
+        report, _ = self.box.report()
+        changes = report["allowance_changes"]
+        # The 2026-09-14 Claude Code cut is in the future as of this writing;
+        # once it passes the advisory must stop being reported rather than
+        # linger as a permanent scare.
+        for change in changes:
+            self.assertGreater(change["effective"], iso(NOW))
+            self.assertIn("source", change)
 
     def test_a_scoped_limit_never_spends_the_seat(self):
         _, seats = self.box.report()
