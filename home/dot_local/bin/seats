@@ -106,6 +106,66 @@ QWEN_HOLD_FILES = [Path(p) for p in
 # its own disk. Nothing degrades to a guess — the rows say CACHED or UNKNOWN.
 OFFLINE = os.environ.get("SEATS_NO_NETWORK") == "1"
 
+# ── the Qwen Cloud plan, and how a credit was priced ────────────────────────
+# Qwen Cloud meters in CREDITS and publishes no endpoint, so a percentage has
+# to be built out of two things this box can see: the plan's allowance, and
+# what a credit costs in tokens. The second was measured, not guessed.
+#
+# THE WINDOW. Four exhaustion events sit in pi's own session logs, each with
+# the provider's stated reset. Three of the four windows begin within 24
+# SECONDS of the first qwen call after the previous reset:
+#
+#   reset 2026-08-14T10:06Z   window opened 2026-08-07 11:07:19Z  (+61 min)
+#   reset 2026-08-22T13:34Z   window opened 2026-08-15 13:34:24Z  (+24 s)
+#   reset 2026-09-04T11:50Z   window opened 2026-08-28 11:50:09Z  (+ 9 s)
+#   reset 2026-09-12T08:02Z   window opened 2026-09-05 08:02:24Z  (+24 s)
+#
+# So the window is not a calendar week: it is SEVEN DAYS FROM FIRST USE after
+# the previous reset, and an idle box does not burn window. (The first row is
+# an hour out because it is the first window ever — something before pi's
+# logging opened it.)
+#
+# THE PRICE. Each of those four windows ended at exactly 10,000 credits, which
+# makes them four independent readings of one constant. Fitting output weight
+# and cache-read weight against all four:
+#
+#   input + output, cache reads free   spread 10.7%   192.5 tokens/credit
+#   any nonzero cache-read weight      strictly worse (best fit puts it at 0)
+#   cache reads alone                  spread 30.4%   — not what is metered
+#
+# CACHE READS ARE NOT CHARGED. That is the load-bearing finding: 98% of the
+# tokens crossing this seat are cache reads, so a meter that counted them
+# would have walled these windows five times sooner than they actually walled.
+#
+# The output weight is NOT identifiable from this data — the output:input ratio
+# sat at 0.33-0.37 in all four windows, so weighting output 1x or 6x moves the
+# spread only 10.7% -> 9.2%. Parity is therefore used, and the estimate holds
+# only for work with a similar shape. Deep-reasoning work would burn faster
+# than this says.
+QWEN_PLAN = {
+    "name": "Standard",
+    "credits_per_window": 10000,
+    "window_days": 7,
+    "tokens_per_credit": 192.5,
+    "counts": "input + output (cache reads are free)",
+    # PLAN TERM, stated on the pricing page: Standard runs 3-4 agents
+    # concurrently (Lite runs 1-2). Tom's rule for this box is to treat 4 as a
+    # hard ceiling. What is NOT established here is whether exceeding it costs
+    # extra credits per token — the four calibration windows were all worked
+    # inside the cap, so this data cannot see an overrun penalty. What it can
+    # see is that fan-out multiplies context re-sends, and input tokens ARE
+    # charged: five agents on one task bill five prompt prefixes, so the
+    # window drains faster whether or not the provider adds a surcharge.
+    "max_concurrent_agents": 4,
+    "calibration": {
+        "method": "four exhaustion events, each exactly 10000 credits",
+        "samples_tokens_per_credit": [183.2, 224.8, 193.1, 169.0],
+        "spread_pct": 10.7,
+        "observed_output_input_ratio": "0.33-0.37",
+        "caveat": "output weight is unidentifiable at this mix; assumes parity",
+    },
+}
+
 # The seat feeder (home/dot_local/bin/tally-seat-feeder, on a 30-second timer)
 # already calls this endpoint for all three Claude seats and leaves the raw
 # payload beside its meter rows. That reading is the SAME call this program
@@ -125,10 +185,20 @@ WALL_PCT = 95.0          # at or above this a window is SPENT
 # ~/.local/state/tally-rewrite/meters, deliberately: a row here and a row
 # there must be joinable by one field and never by a guess.
 DEFAULT_SEATS = [
+    # model_shares: a scoped weekly cap expressed as a FRACTION OF THE
+    # ACCOUNT'S OWN WEEKLY ALLOWANCE. Fable is half the individual
+    # subscription on cc and cc2: its scoped row reaching 100% means Fable has
+    # eaten 50 points of the account's week, and Opus and Sonnet may keep
+    # going against whatever the account's overall weekly row has left. The
+    # two facts are different and both are reported.
     {"id": "cc",  "provider": "claude", "label": "Claude Max (personal)",
-     "config_dir": "~/.claude", "owner": "tom", "spend_root": "~/.claude/projects"},
+     "config_dir": "~/.claude", "owner": "tom", "spend_root": "~/.claude/projects",
+     "model_shares": {"fable": 0.5}},
     {"id": "cc2", "provider": "claude", "label": "Claude Max (work)",
-     "config_dir": "~/.claude-work", "owner": "tom", "spend_root": "~/.claude-work/projects"},
+     "config_dir": "~/.claude-work", "owner": "tom", "spend_root": "~/.claude-work/projects",
+     "model_shares": {"fable": 0.5}},
+    # cc3 is Pro and carries no Fable row yet; when it is upgraded, give it the
+    # same model_shares entry and nothing else here needs to change.
     {"id": "cc3", "provider": "claude", "label": "Claude (third login)",
      "config_dir": "~/.claude-3", "owner": "tom", "spend_root": "~/.claude-3/projects"},
     {"id": "codex", "provider": "codex", "label": "Codex CLI",
@@ -393,6 +463,47 @@ def add_pace(seat):
     return seat
 
 
+def add_model_budget(seat, shares):
+    """Scoped model caps and the account cap, side by side.
+
+    A scoped row is a percentage OF ITS OWN CAP, and that cap is a slice of the
+    account's week. Read alone, "Fable 100%" looks like a spent seat and is
+    not: it means Fable's half is gone and everything else may keep going
+    against what the account's overall weekly row has left. Both numbers are
+    published because acting on either one alone is a mistake.
+    """
+    weekly = next((w for w in seat["windows"]
+                   if w["binding"] and w["minutes"] == 10080 and w["used_pct"] is not None), None)
+    scoped = [w for w in seat["windows"] if not w["binding"] and w["used_pct"] is not None]
+    if weekly is None and not scoped:
+        return seat
+    account_left = None if weekly is None else round(100.0 - weekly["used_pct"], 2)
+    models = []
+    for entry in scoped:
+        share = (shares or {}).get(str(entry.get("scope") or "").lower())
+        own_left = round(100.0 - entry["used_pct"], 2)
+        row = {"model": entry.get("scope"), "used_pct": entry["used_pct"],
+               "remaining_own_pct": own_left, "share_of_total": share,
+               "resets_at": entry["resets_at"]}
+        if share is not None:
+            # In points of the account's week, so the two caps are comparable.
+            row["account_points_used"] = round(entry["used_pct"] * share, 2)
+            row["account_points_cap"] = round(100.0 * share, 2)
+            own_points_left = own_left * share
+            row["points_left_for_this_model"] = round(
+                own_points_left if account_left is None else min(own_points_left, account_left), 2)
+        models.append(row)
+    seat["model_budget"] = {
+        "account_used_pct": None if weekly is None else weekly["used_pct"],
+        "account_remaining_pct": account_left,
+        # The account cap binds every model, so this is also the ceiling for
+        # anything NOT covered by a scoped row (Opus and Sonnet here).
+        "points_left_for_other_models": account_left,
+        "models": models,
+    }
+    return seat
+
+
 def classify(seat):
     """State from the BINDING windows only, plus whatever the provider held.
 
@@ -540,6 +651,7 @@ def read_claude(spec, opts):
     if not seat["windows"]:
         seat["state"], seat["detail"] = "unknown", "payload carried no windows"
         return seat
+    add_model_budget(seat, spec.get("model_shares"))
     return classify(seat)
 
 
@@ -702,6 +814,87 @@ def parse_quota_reset(text, observed):
     return None
 
 
+QWEN_EVENTS_CACHE = STATE / "qwen-events.json"
+QWEN_EVENTS_CACHE_VERSION = 2   # bump when the scan changes what it extracts
+QWEN_PROVIDER = "qwen-token-plan"
+
+
+def qwen_events(spend_root: Path):
+    """(events, resets) from pi's own session logs.
+
+    events  sorted [(epoch, input, output)] for messages billed to the token
+            plan — and ONLY those. The same session store carries llama-swap
+            and flashnix-local traffic, which costs this subscription nothing;
+            counting it would inflate the meter with locally-served tokens.
+    resets  every reset stamp the provider has ever stated in a refusal here.
+            That is what makes this self-sufficient: the window boundaries are
+            recovered from history, not from a state file someone has to keep.
+
+    Cached per file by (mtime, size). A month of this seat is ~3000 messages,
+    so the whole cache is small enough to keep whole.
+    """
+    events, resets = [], set()
+    if not spend_root.is_dir():
+        return events, resets
+    try:
+        blob = json.loads(QWEN_EVENTS_CACHE.read_text(encoding="utf-8"))
+        cache = blob.get("files") or {} if blob.get("v") == QWEN_EVENTS_CACHE_VERSION else {}
+    except (OSError, ValueError):
+        cache = {}
+    fresh = {}
+    for path in spend_root.rglob("*.jsonl"):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        key = f"{path}|{int(stat.st_mtime)}|{stat.st_size}"
+        entry = cache.get(key)
+        if entry is None:
+            rows, stamps = [], []
+            try:
+                with path.open(encoding="utf-8", errors="replace") as stream:
+                    for line in stream:
+                        refusal = "quota will reset at" in line
+                        if not refusal and QWEN_PROVIDER not in line:
+                            continue
+                        try:
+                            record = json.loads(line)
+                        except ValueError:
+                            continue
+                        if refusal:
+                            # Anchored to the refusal's OWN timestamp: a reset
+                            # stated as "08-14" by a message sent in August is
+                            # August, not next August.
+                            when = parse_quota_reset(line, parse_ts(record.get("timestamp")))
+                            if when:
+                                stamps.append(iso(when))
+                        message = record.get("message")
+                        if not isinstance(message, dict) or message.get("provider") != QWEN_PROVIDER:
+                            continue
+                        usage = message.get("usage")
+                        moment = parse_ts(record.get("timestamp"))
+                        if moment is None or not isinstance(usage, dict):
+                            continue
+                        rows.append([moment.timestamp(),
+                                     int(usage.get("input") or 0),
+                                     int(usage.get("output") or 0)])
+            except OSError:
+                continue
+            entry = {"events": rows, "resets": sorted(set(stamps))}
+            cache[key] = entry
+        fresh[key] = entry
+        events.extend(tuple(row) for row in entry["events"])
+        resets.update(parse_ts(r) for r in entry["resets"])
+    events.sort()
+    try:
+        STATE.mkdir(parents=True, exist_ok=True)
+        QWEN_EVENTS_CACHE.write_text(
+            json.dumps({"v": QWEN_EVENTS_CACHE_VERSION, "files": fresh}), encoding="utf-8")
+    except OSError:
+        pass
+    return events, {r for r in resets if r}
+
+
 def read_qwen_hold():
     """The newest hold record any lane on this box wrote. (record, path)."""
     found = []
@@ -788,37 +981,96 @@ def read_qwen(spec, opts):
         elif probe_note.startswith("open"):
             held_until = None
 
-    seat["source"] = {"kind": "429-refusal-text" if held_until else "no-window-published",
+    # 4. The window and the credits inside it, from pi's own logs. Every
+    #    reset the provider has ever stated here is recovered, so the current
+    #    window's start is derivable without any endpoint at all.
+    plan = load_qwen_plan()
+    events, resets = qwen_events(expand(spec.get("spend_root")) or (HOME / ".pi/agent/sessions"))
+    if held_until:
+        resets.add(held_until)
+    past = sorted(r for r in resets if r <= now())
+    future = sorted(r for r in resets if r > now())
+    last_reset = past[-1] if past else None
+    if future and (held_until is None or future[0] < held_until):
+        held_until = future[0]
+
+    seat["plan"] = plan
+    seat["source"] = {"kind": "429-refusal-text" if resets else "no-window-published",
                       "base_url": QWEN_BASE, "key_source": key_source,
                       "hold_record": hold_path or "", "reachable": reachable is not None,
-                      "probe": probe_note}
+                      "probe": probe_note, "known_resets": [iso(r) for r in sorted(resets)],
+                      "events_scanned": len(events)}
 
+    # The window opens on FIRST USE after the previous reset and runs seven
+    # days from there — measured, see QWEN_PLAN. An idle box burns no window.
+    window_start = window_end = None
+    if last_reset is not None:
+        after = [e for e in events if e[0] > last_reset.timestamp()]
+        if after:
+            window_start = datetime.fromtimestamp(after[0][0], timezone.utc)
+            window_end = window_start + timedelta(days=plan["window_days"])
+    elif events:
+        window_start = datetime.fromtimestamp(events[0][0], timezone.utc)
+        window_end = window_start + timedelta(days=plan["window_days"])
+
+    billable = credits = utilization = None
+    if window_start is not None:
+        floor, ceiling = window_start.timestamp(), (window_end or now()).timestamp()
+        billable = sum(e[1] + e[2] for e in events if floor <= e[0] <= ceiling)
+        credits = billable / plan["tokens_per_credit"]
+        utilization = min(100.0, credits / plan["credits_per_window"] * 100.0)
+
+    # A live refusal outranks the estimate: the provider saying "exhausted"
+    # is a measurement, and an estimate that disagrees with it is wrong.
     if held_until and held_until > now():
         seat["windows"] = [window("qwen:weekly", "weekly (7d)", 10080, 100.0, held_until)]
         seat["grade"] = "MEASURED-FROM-REFUSAL"
         seat["state"], seat["usable"] = "spent", False
         seat["free_at"] = iso(held_until)
-        seat["detail"] = "weekly quota exhausted; reset stated by the provider's own 429"
-        return seat
+        seat["credits"] = {"allowance": plan["credits_per_window"],
+                           "used": plan["credits_per_window"], "remaining": 0,
+                           "basis": "provider refusal"}
+        seat["detail"] = ("weekly quota exhausted; reset stated by the provider's own 429"
+                          + (f"; ~{billable:,} billable tokens spent this window"
+                             if billable else ""))
+        return add_pace(seat)
 
     notes = []
-    if held_until:
-        notes.append(f"hold expired at {iso(held_until)}; quota not re-probed since")
-    if reachable is None:
+    if reachable is None and not OFFLINE:
         notes.append(auth_error or "key does not authenticate")
+        if last_reset:
+            notes.append(f"last window reset {iso(last_reset)}")
         seat["state"], seat["detail"] = "unauth", "; ".join(notes)
         return seat
 
-    # Authenticates, no hold in force — but Qwen Cloud publishes no window, so
-    # "how much is left" stays UNKNOWN and never counts as headroom by itself.
-    seat["state"] = "open"
-    seat["usable"] = True
-    seat["grade"] = "UNKNOWN"
-    seat["windows"] = [window("qwen:weekly", "weekly (7d)", 10080, None, None)]
-    notes.append("key authenticates; provider publishes no usage endpoint "
-                 "(run --probe-qwen to spend one token and learn the state)")
+    if window_start is None:
+        # Reset has passed and nothing has been spent since: the full
+        # allowance is there, and the seven days do not start until it is used.
+        seat["state"], seat["usable"], seat["grade"] = "open", True, "MEASURED"
+        seat["windows"] = [window("qwen:weekly", "weekly (7d)", 10080, 0.0, None)]
+        seat["credits"] = {"allowance": plan["credits_per_window"],
+                           "used": 0, "remaining": plan["credits_per_window"],
+                           "basis": "no use since the last reset"}
+        seat["detail"] = (f"full {plan['credits_per_window']:,} credits; the 7-day window "
+                          "opens on first use, not on the reset")
+        return seat
+
+    entry = window("qwen:weekly", "weekly (7d)", 10080, utilization, window_end)
+    entry["window_start"] = iso(window_start)
+    entry["basis"] = "estimated from measured credit price"
+    seat["windows"] = [entry]
+    # The bounds are measured; the position inside them is estimated from a
+    # calibrated constant. Grading it MEASURED would overclaim.
+    seat["grade"] = "ESTIMATED"
+    seat["credits"] = {"allowance": plan["credits_per_window"],
+                       "used": round(credits), "remaining": round(plan["credits_per_window"] - credits),
+                       "billable_tokens": billable,
+                       "tokens_per_credit": plan["tokens_per_credit"],
+                       "basis": f"{plan['counts']}, ±{plan['calibration']['spread_pct']}%"}
+    notes.append(f"~{round(credits):,} of {plan['credits_per_window']:,} credits "
+                 f"({billable:,} billable tokens), ±{plan['calibration']['spread_pct']}%")
     seat["detail"] = "; ".join(notes)
-    return seat
+    return classify(seat)
 
 
 # ── provider: llama-swap (local GPU) ────────────────────────────────────────
@@ -941,6 +1193,12 @@ def _events_codex(path):
 
 
 def _events_pi(path):
+    """pi, token-plan traffic only.
+
+    The same session store carries llama-swap and flashnix-local messages.
+    Those are served by the GPU in this room and cost the subscription
+    nothing, so counting them here would inflate a meter with local tokens.
+    """
     events = []
     with path.open(encoding="utf-8", errors="replace") as stream:
         for line in stream:
@@ -952,7 +1210,10 @@ def _events_pi(path):
                 continue
             if record.get("type") != "message":
                 continue
-            usage = (record.get("message") or {}).get("usage")
+            message = record.get("message") or {}
+            if message.get("provider") != QWEN_PROVIDER:
+                continue
+            usage = message.get("usage")
             stamp = parse_ts(record.get("timestamp"))
             if stamp is None or not isinstance(usage, dict):
                 continue
@@ -1111,14 +1372,44 @@ def render_table(report, color):
         lines.append("  ".join(
             row[i] + " " * (widths[i] - len(flat[i])) for i in range(len(headers))))
 
-    scoped = [(s["id"], w) for s in report["seats"] for w in s["windows"]
-              if not w["binding"] and w["used_pct"] is not None]
-    if scoped:
+    budgets = [(s["id"], s["model_budget"]) for s in report["seats"] if s.get("model_budget")
+               and s["model_budget"]["models"]]
+    if budgets:
         lines.append("")
-        lines.append("per-model weekly rows (bind that model only):")
-        for seat_id, entry in scoped:
-            lines.append(f"  {seat_id:<14} {entry['label']:<22} {entry['used_pct']:5.1f}% "
-                         f"{bar(entry['used_pct'])}  resets {until(parse_ts(entry['resets_at']))}")
+        lines.append("per-model weekly caps (a slice of the account's own week, "
+                     "in points of that week):")
+        for seat_id, budget in budgets:
+            for row in budget["models"]:
+                share = row.get("share_of_total")
+                if share is None:
+                    lines.append(f"  {seat_id:<6} {str(row['model']):<8} "
+                                 f"{row['used_pct']:5.1f}% {bar(row['used_pct'])} of its own cap "
+                                 f"(share of the account unknown)")
+                    continue
+                lines.append(
+                    f"  {seat_id:<6} {str(row['model']):<8} "
+                    f"{row['used_pct']:5.1f}% {bar(row['used_pct'])} of its "
+                    f"{row['account_points_cap']:.0f}-point cap "
+                    f"= {row['account_points_used']:.0f} pts spent  →  "
+                    f"{row['points_left_for_this_model']:.0f} pts left for {row['model']}, "
+                    f"{budget['points_left_for_other_models']:.0f} pts left for other models")
+
+    credited = [(s["id"], s["credits"], s.get("plan") or {}) for s in report["seats"]
+                if isinstance(s.get("credits"), dict) and "allowance" in s["credits"]]
+    if credited:
+        lines.append("")
+        lines.append("credit-metered seats:")
+        for seat_id, credits, plan in credited:
+            billable = credits.get("billable_tokens")
+            lines.append(
+                f"  {seat_id:<14} {credits['used']:,} of {credits['allowance']:,} credits used, "
+                f"{credits['remaining']:,} left"
+                + (f"  ({billable:,} billable tokens @ "
+                   f"{plan.get('tokens_per_credit', '?')} tok/credit)" if billable else "")
+                + f"  [{credits['basis']}]")
+            if plan.get("max_concurrent_agents"):
+                lines.append(f"  {'':<14} plan term: at most "
+                             f"{plan['max_concurrent_agents']} concurrent agents")
 
     forecasts = [(s["id"], w) for s in report["seats"] for w in s["windows"]
                  if w.get("wall_eta") and w["used_pct"] is not None and w["used_pct"] < WALL_PCT]
@@ -1170,12 +1461,21 @@ def render_tsv(report):
 
 # ── the oracles ─────────────────────────────────────────────────────────────
 
-def headroom(seat):
-    """The binding remaining percentage, or None when it cannot be measured."""
+def headroom(seat, discount_estimates=True):
+    """The binding remaining percentage, or None when it cannot be measured.
+
+    An ESTIMATED row is ranked at the conservative end of its own error bar:
+    a calibrated guess must not outrank a measurement on a margin thinner than
+    the calibration's spread.
+    """
     binding = [w for w in seat["windows"] if w["binding"] and w["remaining_pct"] is not None]
     if not binding:
         return None
-    return min(w["remaining_pct"] for w in binding)
+    room = min(w["remaining_pct"] for w in binding)
+    if discount_estimates and seat.get("grade") == "ESTIMATED":
+        spread = ((seat.get("plan") or {}).get("calibration") or {}).get("spread_pct", 0)
+        room -= float(spread)
+    return room
 
 
 def recommend(seats):
@@ -1194,6 +1494,20 @@ def recommend(seats):
 
 
 # ── main ────────────────────────────────────────────────────────────────────
+
+def load_qwen_plan():
+    """The plan table, overridable without touching the program."""
+    plan = dict(QWEN_PLAN)
+    try:
+        override = json.loads((HOME / ".config/seats/qwen-plan.json")
+                              .read_text(encoding="utf-8"))
+        if isinstance(override, dict):
+            plan.update(override)
+            plan["source"] = "~/.config/seats/qwen-plan.json"
+    except (OSError, ValueError):
+        pass
+    return plan
+
 
 def load_specs(only):
     path = HOME / ".config/seats/seats.json"

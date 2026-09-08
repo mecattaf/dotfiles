@@ -125,18 +125,35 @@ class SeatsFixture:
         newer.write_text("\n".join(lines) + "\n")
         os.utime(newer, (NOW.timestamp(), NOW.timestamp()))
 
-    def qwen(self, reason, observed_at, held_until=None):
-        record = {"held": True, "reason": reason, "observed_at": iso(observed_at)}
-        if held_until:
-            record["held_until"] = iso(held_until)
-        path = self.state / "qwen-hold.json"
-        path.write_text(json.dumps(record))
+    def qwen(self, messages=(), refusals=(), hold=None):
+        """messages: (when, input, output, cacheRead, provider). refusals:
+        (when, reset). hold: an explicit hold record, for the paths that still
+        depend on one."""
         session = self.home / ".pi/agent/sessions/-proj"
         session.mkdir(parents=True, exist_ok=True)
-        (session / "s.jsonl").write_text(json.dumps({
-            "type": "message", "timestamp": iso(NOW - timedelta(hours=2)),
-            "message": {"usage": {"input": 100, "output": 20,
-                                  "cacheRead": 5, "cacheWrite": 0}}}) + "\n")
+        lines = []
+        for when, tin, tout, cache, provider in messages:
+            lines.append(json.dumps({
+                "type": "message", "timestamp": iso(when),
+                "message": {"provider": provider, "model": "qwen3.8-max",
+                            "usage": {"input": tin, "output": tout,
+                                      "cacheRead": cache, "cacheWrite": 0}}}))
+        for when, reset in refusals:
+            lines.append(json.dumps({
+                "type": "error", "timestamp": iso(when),
+                "error": ("429 insufficient_quota: Your token-plan 1-week quota has been "
+                          "exhausted. The quota will reset at %s UTC."
+                          % reset.strftime("%m-%d %H:%M:%S"))}))
+        (session / "s.jsonl").write_text("\n".join(lines) + "\n")
+        path = self.state / "qwen-hold.json"
+        if hold is not None:
+            path.write_text(json.dumps(hold))
+        elif path.exists():
+            path.unlink()
+        # The event cache is keyed by (mtime, size); a rewritten fixture in the
+        # same second with the same length must not be served from it.
+        for stale in self.state.glob("qwen-events.json"):
+            stale.unlink()
         return path
 
     # ── driving the program ─────────────────────────────────────────────────
@@ -188,11 +205,19 @@ class SeatsTest(unittest.TestCase):
         self.box.codex(98.0, NOW + timedelta(days=4), totals=[
             (codex_inside, (1000, 100, 500)),
             (codex_inside + timedelta(hours=1), (2500, 400, 900))])
+        # Qwen: a reset four days ago, the window opened by first use three
+        # days ago, and 96,250 billable tokens spent inside it — 500 credits at
+        # the calibrated 192.5 tokens/credit, so 5.0% of the 10,000 allowance.
+        # The cache reads and the llama-swap message must not be billed.
+        self.qwen_reset = NOW - timedelta(days=4)
+        self.qwen_opened = NOW - timedelta(days=3)
         self.box.qwen(
-            '429: {"message":"Your token-plan 1-week quota has been exhausted. '
-            'The quota will reset at %s 08:02:00 UTC.","code":"insufficient_quota"}'
-            % (NOW + timedelta(days=3)).strftime("%m-%d"),
-            observed_at=NOW - timedelta(hours=5))
+            messages=[
+                (self.qwen_reset - timedelta(hours=1), 500_000, 0, 0, "qwen-token-plan"),
+                (self.qwen_opened, 90_000, 6_250, 9_000_000, "qwen-token-plan"),
+                (self.qwen_opened + timedelta(hours=1), 999_999, 999_999, 0, "llama-swap"),
+            ],
+            refusals=[(self.qwen_reset - timedelta(days=2), self.qwen_reset)])
 
     # ── the shape of the answer ─────────────────────────────────────────────
     def test_every_seat_produces_exactly_one_row(self):
@@ -203,7 +228,8 @@ class SeatsTest(unittest.TestCase):
         for seat in report["seats"]:
             self.assertIn("state", seat)
             self.assertIn(seat["grade"],
-                          {"MEASURED", "CACHED", "MEASURED-FROM-REFUSAL", "UNKNOWN"})
+                          {"MEASURED", "CACHED", "MEASURED-FROM-REFUSAL",
+                           "ESTIMATED", "UNKNOWN"})
 
     def test_a_scoped_model_window_does_not_spend_the_seat(self):
         _, seats = self.box.report()
@@ -258,25 +284,106 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(spend["cache_tokens"], 900)
 
     # ── Qwen Cloud ──────────────────────────────────────────────────────────
-    def test_qwen_window_comes_out_of_the_refusal_text(self):
+    def test_qwen_window_opens_on_first_use_not_on_the_reset(self):
+        _, seats = self.box.report()
+        entry = seats["pi-qwencloud"]["windows"][0]
+        self.assertEqual(entry["window_start"], iso(self.qwen_opened))
+        self.assertEqual(entry["resets_at"], iso(self.qwen_opened + timedelta(days=7)),
+                         "seven days from first use, not seven days from the reset")
+
+    def test_qwen_resets_are_recovered_from_the_refusal_history(self):
+        _, seats = self.box.report()
+        self.assertIn(iso(self.qwen_reset),
+                      seats["pi-qwencloud"]["source"]["known_resets"])
+
+    def test_qwen_credits_come_from_billable_tokens_only(self):
+        _, seats = self.box.report()
+        qwen = seats["pi-qwencloud"]
+        self.assertEqual(qwen["grade"], "ESTIMATED")
+        credits = qwen["credits"]
+        # 90,000 + 6,250 = 96,250 billable; the 9,000,000 cache reads, the
+        # llama-swap message and the pre-window message are all excluded.
+        self.assertEqual(credits["billable_tokens"], 96_250)
+        self.assertEqual(credits["used"], 500)
+        self.assertEqual(credits["remaining"], 9_500)
+        self.assertEqual(qwen["windows"][0]["used_pct"], 5.0)
+        self.assertEqual(qwen["state"], "open")
+
+    def test_qwen_local_traffic_is_never_billed(self):
+        _, seats = self.box.report()
+        # The llama-swap message carries ~2M tokens and would dominate both
+        # the credit estimate and the spend row if the provider went unchecked.
+        self.assertEqual(seats["pi-qwencloud"]["spend"]["tokens_in"], 90_000)
+
+    def test_a_live_refusal_outranks_the_estimate(self):
+        held = NOW + timedelta(days=3)
+        self.box.qwen(
+            messages=[(NOW - timedelta(hours=2), 10, 10, 0, "qwen-token-plan")],
+            refusals=[(NOW - timedelta(hours=1), held)])
         _, seats = self.box.report()
         qwen = seats["pi-qwencloud"]
         self.assertEqual(qwen["grade"], "MEASURED-FROM-REFUSAL")
         self.assertEqual(qwen["state"], "spent")
-        expected = (NOW + timedelta(days=3)).strftime("%Y-%m-%dT08:02:00Z")
-        self.assertEqual(qwen["free_at"], expected)
-        self.assertEqual(qwen["windows"][0]["used_pct"], 100.0)
+        self.assertEqual(qwen["free_at"], iso(held))
+        self.assertEqual(qwen["credits"]["remaining"], 0,
+                         "the provider saying exhausted beats an estimate saying otherwise")
 
-    def test_an_expired_qwen_hold_stops_holding(self):
-        self.box.qwen(
-            '429: {"message":"Your token-plan 1-week quota has been exhausted. '
-            'The quota will reset at %s 08:02:00 UTC."}'
-            % (NOW - timedelta(days=2)).strftime("%m-%d"),
-            observed_at=NOW - timedelta(days=9))
+    def test_qwen_with_no_use_since_the_reset_holds_the_full_allowance(self):
+        self.box.qwen(refusals=[(NOW - timedelta(days=3), NOW - timedelta(days=1))])
         _, seats = self.box.report()
         qwen = seats["pi-qwencloud"]
-        self.assertNotEqual(qwen["state"], "spent")
-        self.assertIn("hold expired", qwen["detail"])
+        self.assertEqual(qwen["state"], "open")
+        self.assertEqual(qwen["credits"]["remaining"], 10_000)
+        self.assertEqual(qwen["windows"][0]["used_pct"], 0.0)
+        self.assertIn("opens on first use", qwen["detail"])
+
+    def test_the_plan_terms_are_published_with_the_seat(self):
+        _, seats = self.box.report()
+        plan = seats["pi-qwencloud"]["plan"]
+        self.assertEqual(plan["credits_per_window"], 10_000)
+        self.assertEqual(plan["window_days"], 7)
+        self.assertEqual(plan["max_concurrent_agents"], 4)
+        self.assertIn("cache reads are free", plan["counts"])
+
+    def test_the_plan_can_be_overridden_without_editing_the_program(self):
+        config = self.box.home / ".config/seats"
+        config.mkdir(parents=True, exist_ok=True)
+        (config / "qwen-plan.json").write_text(json.dumps(
+            {"credits_per_window": 2500, "tokens_per_credit": 192.5}))
+        _, seats = self.box.report()
+        credits = seats["pi-qwencloud"]["credits"]
+        self.assertEqual(credits["allowance"], 2500)
+        self.assertEqual(credits["used"], 500)
+        self.assertEqual(seats["pi-qwencloud"]["windows"][0]["used_pct"], 20.0)
+
+    # ── scoped model caps ───────────────────────────────────────────────────
+    def test_a_scoped_cap_is_reported_in_points_of_the_account_week(self):
+        _, seats = self.box.report()
+        budget = seats["cc"]["model_budget"]
+        # cc: weekly 45%, Fable 100% of a half-share.
+        self.assertEqual(budget["account_used_pct"], 45.0)
+        self.assertEqual(budget["account_remaining_pct"], 55.0)
+        row = budget["models"][0]
+        self.assertEqual(row["model"], "Fable")
+        self.assertEqual(row["share_of_total"], 0.5)
+        self.assertEqual(row["account_points_cap"], 50.0)
+        self.assertEqual(row["account_points_used"], 50.0)
+        self.assertEqual(row["points_left_for_this_model"], 0.0)
+        self.assertEqual(budget["points_left_for_other_models"], 55.0,
+                         "Fable being spent leaves the rest of the week to other models")
+
+    def test_the_account_cap_bounds_a_scoped_model_too(self):
+        # cc2: weekly at 96%, Fable at 40% of its half — Fable's own cap says
+        # 30 points remain, the account says 4. The smaller one is the truth.
+        self.box.claude("cc2", ".claude-work", 0.0, 96.0, scoped=40.0)
+        _, seats = self.box.report()
+        row = seats["cc2"]["model_budget"]["models"][0]
+        self.assertEqual(row["remaining_own_pct"], 60.0)
+        self.assertEqual(row["points_left_for_this_model"], 4.0)
+
+    def test_a_seat_with_no_scoped_row_gets_no_model_rows(self):
+        _, seats = self.box.report()
+        self.assertEqual(seats["cc3"].get("model_budget", {}).get("models", []), [])
 
     # ── spend ───────────────────────────────────────────────────────────────
     def test_spend_counts_the_seats_own_window_only(self):
@@ -333,13 +440,29 @@ class SeatsTest(unittest.TestCase):
             "--window any takes the worst binding window")
 
     def test_pick_names_the_seat_with_the_most_headroom(self):
+        # Qwen sits at 5% of its allowance, so it outranks cc's 55% even after
+        # the estimate is docked its own ±10.7% calibration spread.
         result = self.box.run("--pick")
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(result.stdout.strip(), "cc")
+        self.assertEqual(result.stdout.strip(), "pi-qwencloud")
+
+    def test_an_estimate_is_ranked_at_the_conservative_end_of_its_error_bar(self):
+        # Qwen at 50% leaves 50 points, docked to 39.3 by the spread, so cc's
+        # measured 55 wins — a calibrated guess must not beat a measurement on
+        # a margin thinner than the calibration's own uncertainty.
+        self.box.qwen(
+            messages=[(self.qwen_opened, 962_500, 0, 0, "qwen-token-plan")],
+            refusals=[(self.qwen_reset - timedelta(days=2), self.qwen_reset)])
+        _, seats = self.box.report()
+        self.assertEqual(seats["pi-qwencloud"]["windows"][0]["used_pct"], 50.0)
+        self.assertEqual(self.box.run("--pick").stdout.strip(), "cc")
 
     def test_pick_fails_when_nothing_is_open(self):
         for seat, config in (("cc", ".claude"), ("cc2", ".claude-work"), ("cc3", ".claude-3")):
             self.box.claude(seat, config, 99.0, 99.0)
+        self.box.qwen(
+            messages=[(NOW - timedelta(hours=2), 10, 10, 0, "qwen-token-plan")],
+            refusals=[(NOW - timedelta(hours=1), NOW + timedelta(days=3))])
         self.assertEqual(self.box.run("--pick").returncode, 1)
 
     # ── the other renderings ────────────────────────────────────────────────

@@ -58,27 +58,112 @@ A ten-minute-old utilization figure routes work correctly; a shrug does not.
 Two programs on one box disagreeing about one seat's number would be worse
 than either being slightly stale.
 
-## Qwen Cloud, the awkward one
+## Qwen Cloud: measured, not guessed
 
 Qwen Cloud (Alibaba token-plan) publishes **no** usage endpoint. Its allowance
 is a plan-credit page nothing here can read — which is why the tally meter row
-for it has always been `UNKNOWN`. But it states the reset in its own refusal:
+for it has always been `UNKNOWN`. Two things had to be established before a
+percentage could exist. Both were measured from this box's own history.
+
+### 1. The window opens on first use, not on the reset
+
+Four exhaustion events sit in pi's session logs, each carrying the provider's
+stated reset. Three of the four windows begin within **24 seconds** of the
+first qwen call after the previous reset:
+
+| stated reset | window opened | gap |
+|---|---|---|
+| 2026-08-14 10:06Z | 2026-08-07 11:07:19Z | +61 min |
+| 2026-08-22 13:34Z | 2026-08-15 13:34:24Z | +24 s |
+| 2026-09-04 11:50Z | 2026-08-28 11:50:09Z | +9 s |
+| 2026-09-12 08:02Z | 2026-09-05 08:02:24Z | +24 s |
+
+So the window is **not** a calendar week: it is seven days from first use after
+the previous reset, and an idle box burns no window. (The first row is an hour
+out because it is the first window ever — something opened it before pi was
+logging.) The reset stamps are recovered from the refusal texts in the session
+logs themselves, so this needs no state file anyone has to maintain.
+
+### 2. A credit is worth ~192 billable tokens, and cache reads are free
+
+Each of those four windows ended at exactly 10,000 credits, which makes them
+four independent readings of one constant. Fitting output weight and
+cache-read weight against all four:
+
+| formula | spread across the four windows | implied price |
+|---|---|---|
+| **input + output, cache reads free** | **10.7%** | **192.5 tokens/credit** |
+| any nonzero cache-read weight | strictly worse — best fit puts it at 0 | — |
+| cache reads alone | 30.4% | — not what is metered |
+
+Per-window samples: 183.2, 224.8, 193.1, 169.0 tokens/credit.
+
+**Cache reads are not charged.** That is the load-bearing finding: 98% of the
+tokens crossing this seat are cache reads, so a meter that counted them would
+have walled these windows five times sooner than they actually walled. The pi
+session store also carries llama-swap and flashnix-local traffic, served by the
+GPU in this room at no cost to the subscription; that is filtered out too.
+
+**The output weight is not identifiable from this data.** The output:input
+ratio sat at 0.33–0.37 in all four windows, so weighting output 1× or 6× moves
+the spread only 10.7% → 9.2%. Parity is assumed, and the estimate therefore
+holds only for work of a similar shape — heavy-reasoning work would burn faster
+than this says.
+
+So: **10,000 credits ≈ 1.92M input+output tokens per week, ±11%.**
+
+The plan lives in `QWEN_PLAN` and is overridable at
+`~/.config/seats/qwen-plan.json` (`credits_per_window`, `window_days`,
+`tokens_per_credit`, `max_concurrent_agents`) — a plan change is one file, not
+an edit to the program.
+
+### Concurrency is a plan term
+
+Standard runs **3–4 agents concurrently** (Lite runs 1–2); 4 is the ceiling for
+this box, and the number is published with the seat. What this data *cannot*
+show is whether exceeding it costs extra credits per token — all four
+calibration windows were worked inside the cap. What it *can* show is that
+fan-out multiplies context re-sends and input tokens are charged: five agents
+on one task bill five prompt prefixes, so the window drains faster whether or
+not the provider adds a surcharge.
+
+### What still needs the provider
+
+A live refusal outranks the estimate — the provider saying "exhausted" is a
+measurement, and an estimate that disagrees with it is wrong. A free
+`GET /models` confirms the key still authenticates, which is a different fact
+from having headroom. `--probe-qwen` spends one token to learn the real state
+and writes the result back to the hold record; it is opt-in precisely because
+asking costs the thing being measured.
+
+## Scoped model caps: Fable and the account together
+
+Fable is **half the individual subscription** on `cc` and `cc2`. Its scoped
+weekly row reaching 100% means Fable has eaten 50 points of the account's week
+— it does **not** mean the seat is finished. Opus and Sonnet may keep going
+against whatever the account's overall weekly row has left. Read alone, either
+number misleads, so both are published:
 
 ```
-Your token-plan 1-week quota has been exhausted.
-The quota will reset at 09-12 08:02:00 UTC.
+per-model weekly caps (a slice of the account's own week, in points of that week):
+  cc     Fable    100.0% ██████████ of its 50-point cap = 50 pts spent
+                  →  0 pts left for Fable, 3 pts left for other models
+  cc2    Fable     96.0% ██████████ of its 50-point cap = 48 pts spent
+                  →  0 pts left for Fable, 0 pts left for other models
 ```
 
-So the window is graded `MEASURED-FROM-REFUSAL`: parsed out of the last 429
-this box actually received (from `~/.local/state/seats/qwen-hold.json` or the
-factory lane's `pi-hold.json`, newest wins), never a made-up TTL. The year is
-inferred — the refusal states only a month and day — by taking the year that
-puts the reset after the refusal.
+The account cap bounds a scoped model too: when `cc2`'s week is at 100%, Fable
+having 4 points of its own share left is irrelevant — `points_left_for_this_model`
+is the smaller of the two.
 
-A free `GET /models` confirms the key still authenticates, which is a
-different fact from having headroom. `--probe-qwen` spends one token to learn
-the real state and writes the result back to the hold record; it is opt-in
-precisely because asking costs the thing being measured.
+In JSON this is `seat.model_budget`: `account_used_pct`,
+`account_remaining_pct`, `points_left_for_other_models`, and a row per model
+with `used_pct`, `share_of_total`, `account_points_used`, `account_points_cap`
+and `points_left_for_this_model`.
+
+The share is per-seat config (`model_shares: {"fable": 0.5}` on `cc` and `cc2`).
+`cc3` is Pro and carries no Fable row yet — when it is upgraded, add the same
+entry and nothing else changes.
 
 ## Grades
 
@@ -86,6 +171,7 @@ precisely because asking costs the thing being measured.
 |---|---|
 | `MEASURED` | read from the provider's own live answer |
 | `MEASURED-FROM-REFUSAL` | read out of the provider's own 429 text |
+| `ESTIMATED` | measured window bounds, position inside them from a calibrated constant (Qwen credits) — `--pick` ranks these at the conservative end of the calibration's spread |
 | `CACHED` | a live answer older than the TTL; the age is in `source.reading_age_seconds` |
 | `UNKNOWN` | nothing on this box knows — the row says so and never counts as headroom |
 
