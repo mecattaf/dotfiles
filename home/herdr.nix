@@ -7,7 +7,7 @@
   ...
 }:
 # herdr — the terminal workspace manager for AI coding agents
-# (github.com/herdrdev/herdr), pinned in flake.lock at 0.8.2. This file IS the
+# (github.com/herdrdev/herdr), pinned in flake.lock at 0.9.0. This file IS the
 # module: herdr ships packages.<sys>.herdr and nothing else — no NixOS module,
 # no home-manager module — so package + user service + config live here, the
 # way home/piri.nix does the same job for piri.

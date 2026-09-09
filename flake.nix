@@ -298,8 +298,8 @@
     # kitten tier, its session layer, and its title-naming pipeline are all
     # deleted in favour of one server holding every PTY.
     #
-    # PINNED TO A REV, not a branch: 0.8.2 is the floor this setup needs (plugin
-    # API + the agent sidebar), and nixpkgs carries 0.7.4 — below it. Bump by
+    # PINNED TO A REV, not a branch: 0.9.0 is the current reviewed release
+    # (plugin API + the agent sidebar), and nixpkgs carries an older release. Bump by
     # editing the rev here, deliberately, the way nixpkgs-paperless is bumped.
     #
     # Consume `packages.<sys>.herdr` ONLY (home/herdr.nix). Upstream composes
@@ -309,7 +309,7 @@
     # NOT in `rollingInputOverrides`: herdr owns live PTYs, so its version moves
     # when Tom says so, never on a nightly resolve.
     herdr = {
-      url = "github:herdrdev/herdr/dbc398f580d1da6c336c6837a60b7e0710501d6d";
+      url = "github:herdrdev/herdr/b99002ac99b09e00b4ca692436cb15a6b0d676f1";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -361,9 +361,8 @@
     # of them and installs a kitten that cannot load under kitty; RULING-kitten
     # §0 rules that tree "must not ship", so no box may switch on it.
     #
-    # Upstream pins herdr at the same dbc398f5 this flake does and follows its
-    # nixpkgs; both are re-pointed at ours so one herdr and one nixpkgs serve
-    # the whole closure.
+    # Upstream's herdr and nixpkgs inputs both follow these top-level inputs,
+    # so one herdr and one nixpkgs serve the whole closure.
     herdr-kitten = {
       url = "github:mecattaf/herdr-kitten/ccc16393cc35e2cce2b8cd9a55718b3c84849a8f";
       inputs.nixpkgs.follows = "nixpkgs";
