@@ -14,9 +14,12 @@ failure recorded below is historical, not the current blocker.
 Subsequent checks passed automatic recovery after a personal-daemon restart and
 the actual off-LAN/no-cached-map migration and offline rollback cases.
 
-The remaining fleet step is local access to the shipped laptops: their saved
-control URLs still point at the home LAN. Neither laptop has been migrated or
-updated by these public-endpoint tests. See the concise
+The public connection is ready, but the kernel update is not yet published:
+the ASUS patched kernel still needs to finish building and pass final artifact
+checks. Dell's candidate is built and cached. Local access to the shipped
+laptops is also required because their saved control URLs still point at the
+home LAN. Neither laptop has been migrated or updated by these public-endpoint
+tests. See the concise
 [current operator checklist](overseas-headscale.md). Private custom-domain media
 HTTPS and personal exit-node commissioning remain separate follow-ups.
 

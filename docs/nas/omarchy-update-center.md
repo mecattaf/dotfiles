@@ -15,6 +15,10 @@ into a private temporary directory, remove its `origin`, and verify that
 `git rev-list --all --count` is exactly one and `git rev-parse HEAD` matches the
 reviewed candidate. Stream a tar archive over pinned SSH into a new root-only
 directory beneath `/var/lib/omarchy-update-center/private/sources/COMMIT`.
+Extract as NAS root with `tar --no-same-owner` and keep that source root mode
+0700; preserving the coordinator's numeric owner can make the publisher's Git
+checks reject the checkout. Verify root ownership and the exact clean, shallow
+commit before publication; do not bypass the check with global `safe.directory`.
 Do not copy the original `.git` directory: that would include historical objects.
 The publisher detects an absolute local shallow checkout and supplies Nix's
 required `shallow=1` flag while still pinning and verifying the full revision.
