@@ -5,7 +5,8 @@
   ...
 }:
 # NAS-owned Headscale control plane; coordinator retains independent SaaS
-# Tailscale as an emergency path. The current control URL is LAN-only.
+# Tailscale as an emergency path. The NAS self-client keeps its LAN URL;
+# the advertised public URL is configured separately in hosts/nas/default.nix.
 # Preserve the NAS identity and restricted fleet policy across network moves.
 # Public ingress is a separate task: see docs/nas/overseas-headscale.md.
 let

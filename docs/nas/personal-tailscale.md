@@ -156,3 +156,32 @@ zero failed system services, synchronized clock, successful first update poll,
 matching signed app manifest/installed target and both GUI app launchers present.
 Neither laptop has yet received the kernel update or passed public-control
 migration in this receipt. ASUS boot validation remains pending.
+
+At 14:57 Paris, the deployed generation became
+`/nix/store/3cd22c7pm527n6a5w0awwp2laa79w9b9-nixos-system-nas-26.05.20260731.5b4f72e`.
+Funnel now uses a persistent, readiness-checked oneshot unit with a scoped
+8443-only stop action; daemon restarts retain the configured endpoint. Eleven
+policy tests and six executable readiness tests passed. A temporary diagnostic
+443 Funnel was removed; only 8443 remains public. No blanket reset was used.
+Both NAS identities and core services remained healthy, HTTPS health returned
+200 through the personal tailnet, and the rollback timer was disarmed.
+
+Public A/AAAA records were still absent from independent public resolvers and
+the authoritative DNS server after the documented propagation window, including
+after a scoped personal-daemon restart. This is an unresolved public-name
+publication failure, not evidence of overseas readiness. No Cloudflare DNS
+token is needed for this `*.ts.net` Headscale endpoint; the missing Cloudflare
+credential belongs only to the separate private media custom-domain task.
+
+The prepared migration's actual core passed a disposable persistent-node test:
+invalid new endpoint, bounded failure, old-URL rollback and private-daemon
+restart retained the exact machine/node keys, ID/IP and preferences. Signed
+offer and cache metadata reads passed afterward. A positive public-control
+migration has not passed. The first ephemeral probe was automatically reaped
+while offline and was correctly excluded as a model for persistent laptops.
+
+Both real laptops subsequently became unreachable before any migration script
+could be uploaded. ASUS briefly answered a Headscale ping, then stopped; its
+last LAN address also became unreachable. No real laptop endpoint, daemon or
+system was changed. Physical reconnection and a successful public-protocol test
+remain required before migration and the unrelated-network handover check.
