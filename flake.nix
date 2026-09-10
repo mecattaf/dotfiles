@@ -760,35 +760,32 @@
         # The suite is hermetic — it drives the script through a seeded cache
         # in a temp XDG_RUNTIME_DIR with a temp HOME holding a deliberately
         # dead token — so it runs inside the sandbox with no network.
-        claude-capacity =
-          pkgs.runCommand "claude-capacity"
-            { nativeBuildInputs = [ pkgs.python3 ]; }
-            ''
-              set -euo pipefail
-              export HOME="$TMPDIR/home"
-              mkdir -p "$HOME"
-              CLAUDE_CAPACITY=${./home/dot_local/bin/claude-capacity} \
-                python3 ${./tests/claude-capacity/test-claude-capacity.py} | tee "$TMPDIR/out"
-              # The count is asserted against the doc, not just printed. P05's
-              # handoff called this suite "21 hermetic cases" when it had 23 and
-              # had never had any other number; a receipt drifted from the code
-              # and nothing caught it. docs/local-ai/claude-capacity.md now
-              # states the number, and this check fails if the two disagree —
-              # whichever of them moved (U-D8).
-              n=$(tail -1 "$TMPDIR/out" | grep -o '^[0-9]*')
-              test -n "$n"
-              grep -q "$n" ${./docs/local-ai/claude-capacity.md} || {
-                echo "claude-capacity: the suite reports $n cases but" >&2
-                echo "docs/local-ai/claude-capacity.md does not say $n." >&2
-                echo "Fix the doc, or the suite — do not fix the receipt." >&2
-                exit 1
-              }
-              # py_compile is a second, independent guard: a syntax error in the
-              # oracle would otherwise only surface when waybar or a dispatch
-              # asked it a question.
-              python3 -m py_compile ${./home/dot_local/bin/claude-capacity}
-              cp "$TMPDIR/out" $out
-            '';
+        claude-capacity = pkgs.runCommand "claude-capacity" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+          set -euo pipefail
+          export HOME="$TMPDIR/home"
+          mkdir -p "$HOME"
+          CLAUDE_CAPACITY=${./home/dot_local/bin/claude-capacity} \
+            python3 ${./tests/claude-capacity/test-claude-capacity.py} | tee "$TMPDIR/out"
+          # The count is asserted against the doc, not just printed. P05's
+          # handoff called this suite "21 hermetic cases" when it had 23 and
+          # had never had any other number; a receipt drifted from the code
+          # and nothing caught it. docs/local-ai/claude-capacity.md now
+          # states the number, and this check fails if the two disagree —
+          # whichever of them moved (U-D8).
+          n=$(tail -1 "$TMPDIR/out" | grep -o '^[0-9]*')
+          test -n "$n"
+          grep -q "$n" ${./docs/local-ai/claude-capacity.md} || {
+            echo "claude-capacity: the suite reports $n cases but" >&2
+            echo "docs/local-ai/claude-capacity.md does not say $n." >&2
+            echo "Fix the doc, or the suite — do not fix the receipt." >&2
+            exit 1
+          }
+          # py_compile is a second, independent guard: a syntax error in the
+          # oracle would otherwise only surface when waybar or a dispatch
+          # asked it a question.
+          python3 -m py_compile ${./home/dot_local/bin/claude-capacity}
+          cp "$TMPDIR/out" $out
+        '';
 
         # The l8-flash reconciliation's own row (U-D16, #319, #293).
         #
@@ -805,7 +802,12 @@
         # SUCCEEDED. Hermetic: no systemd, no tally, no network.
         l8-flash-probe-row =
           pkgs.runCommand "l8-flash-probe-row"
-            { nativeBuildInputs = [ pkgs.gnugrep pkgs.gawk ]; }
+            {
+              nativeBuildInputs = [
+                pkgs.gnugrep
+                pkgs.gawk
+              ];
+            }
             ''
               set -euo pipefail
               L8_FLASH_PROBE=${./home/dot_local/bin/l8-flash-probe} \
@@ -840,8 +842,7 @@
             samplerPath =
               box:
               builtins.head (
-                builtins.filter (nixpkgs.lib.hasPrefix "PATH=")
-                  box.systemd.user.services.util-sampler.Service.Environment
+                builtins.filter (nixpkgs.lib.hasPrefix "PATH=") box.systemd.user.services.util-sampler.Service.Environment
               );
             metersRule = "d %h/.local/state/tally/meters/util-sampler 0700 - - -";
           in
@@ -882,10 +883,10 @@
           # ── the programs are byte-for-byte the ones the card locked ────────
           assert
             builtins.hashFile "sha256" ./home/dot_local/bin/util-sampler
-              == "cc76a8179c46e735d6005f3f2d92f137cff026d7c3658a27b89261778fa50ce6";
+            == "cc76a8179c46e735d6005f3f2d92f137cff026d7c3658a27b89261778fa50ce6";
           assert
             builtins.hashFile "sha256" ./home/dot_local/bin/util-row
-              == "1fdb80179595dc151af67e4ed2bc03e6a3bcf34685acb869b1cc9d9bcfa90906";
+            == "1fdb80179595dc151af67e4ed2bc03e6a3bcf34685acb869b1cc9d9bcfa90906";
           pkgs.runCommand "util-sampler-topology" { } ''
             touch "$out"
           '';
@@ -902,7 +903,12 @@
         # rows. Hermetic: no systemd, no tally, no network.
         l8-flash-probe-util-rows =
           pkgs.runCommand "l8-flash-probe-util-rows"
-            { nativeBuildInputs = [ pkgs.gnugrep pkgs.gawk ]; }
+            {
+              nativeBuildInputs = [
+                pkgs.gnugrep
+                pkgs.gawk
+              ];
+            }
             ''
               set -euo pipefail
               L8_FLASH_PROBE=${./home/dot_local/bin/l8-flash-probe} \
@@ -943,28 +949,30 @@
           assert !(worker.systemd.services ? tally-kernel);
           assert !(nas.systemd.services ? tally-kernel);
           assert svc.serviceConfig.User == "tom";
-          assert coordinator.services.tally-kernel.stateDir
-            == "/home/tom/.local/state/tally-rewrite";
-          assert coordinator.services.tally-kernel.socketPath
-            == "/home/tom/.local/state/tally-rewrite/kernel.sock";
+          assert coordinator.services.tally-kernel.stateDir == "/home/tom/.local/state/tally-rewrite";
+          assert
+            coordinator.services.tally-kernel.socketPath == "/home/tom/.local/state/tally-rewrite/kernel.sock";
           assert nixpkgs.lib.hasInfix "-tally-b-kernel-" execStart;
           assert nixpkgs.lib.hasInfix "/bin/tally-kernel serve " execStart;
           assert nixpkgs.lib.hasInfix "--state /home/tom/.local/state/tally-rewrite " execStart;
           assert nixpkgs.lib.hasInfix "--socket /home/tom/.local/state/tally-rewrite/kernel.sock" execStart;
           assert !(nixpkgs.lib.hasInfix "state/tally/" execStart);
-          assert builtins.elem
-            "d /home/tom/.local/state/tally-rewrite 0700 tom users - -"
+          assert builtins.elem "d /home/tom/.local/state/tally-rewrite 0700 tom users - -"
             coordinator.systemd.tmpfiles.rules;
-          assert builtins.elem
-            "d /home/tom/.local/state/tally-rewrite/meters 0700 tom users - -"
+          assert builtins.elem "d /home/tom/.local/state/tally-rewrite/meters 0700 tom users - -"
             coordinator.systemd.tmpfiles.rules;
           # the rows are exactly the three kernel-owned rows of the rewrite's
           # docs/rows.md, each carrying every cell row_from_json refuses to
           # default (a missing grace is a startup refusal by name).
-          assert builtins.map (r: r.row) coordinator.services.tally-kernel.rows
-            == [ "gpu-coordinator" "gpu-worker" "mechanical" ];
+          assert
+            builtins.map (r: r.row) coordinator.services.tally-kernel.rows == [
+              "gpu-coordinator"
+              "gpu-worker"
+              "mechanical"
+            ];
           assert builtins.all (
-            r: builtins.all (c: r ? ${c}) [
+            r:
+            builtins.all (c: r ? ${c}) [
               "row"
               "capacity"
               "context_window"
@@ -1049,8 +1057,10 @@
             # that admits either form; join whatever it produced so the infix
             # assertions below read the argv as one string.
             execStart =
-              let e = unit.Service.ExecStart;
-              in if builtins.isList e then builtins.concatStringsSep " " e else e;
+              let
+                e = unit.Service.ExecStart;
+              in
+              if builtins.isList e then builtins.concatStringsSep " " e else e;
             state = "/home/tom/.local/state/tally-rewrite";
           in
           # DECLARED on the coordinator, and nowhere else.
@@ -1110,8 +1120,7 @@
           assert !(timer ? Service);
           assert !(nixpkgs.lib.hasInfix "lake-token" (builtins.toJSON timer));
           # the uplink's own outbox, declared with its mode.
-          assert builtins.elem "d ${state}/uplink 0700 - - -"
-            coordinatorHome.systemd.user.tmpfiles.rules;
+          assert builtins.elem "d ${state}/uplink 0700 - - -" coordinatorHome.systemd.user.tmpfiles.rules;
           # the non-goals: no system-bus twin of either half, and the live
           # daemon stays.
           assert !(coordinator.systemd.services ? tally-uplink);
@@ -1167,13 +1176,14 @@
             service = coordinatorHome.systemd.user.services.tally-filler;
             drain = coordinatorHome.systemd.user.timers.tally-drain;
             execStart =
-              let e = service.Service.ExecStart;
-              in if builtins.isList e then builtins.concatStringsSep " " e else e;
+              let
+                e = service.Service.ExecStart;
+              in
+              if builtins.isList e then builtins.concatStringsSep " " e else e;
             fillerPath = nixpkgs.lib.removePrefix "PATH=" (
-              nixpkgs.lib.findFirst
-                (value: nixpkgs.lib.hasPrefix "PATH=" value)
-                (throw "tally-filler.service has no PATH environment")
-                service.Service.Environment
+              nixpkgs.lib.findFirst (
+                value: nixpkgs.lib.hasPrefix "PATH=" value
+              ) (throw "tally-filler.service has no PATH environment") service.Service.Environment
             );
             # Everything the unit says, as one string, so the non-goal
             # assertions cannot be satisfied by a value hiding in Environment.
@@ -1213,8 +1223,10 @@
           assert !(nixpkgs.lib.hasInfix "unload" rendered);
           # no state of its own: the lane's state is the register's git tree.
           assert !(nixpkgs.lib.hasInfix "/.local/state/" rendered);
-          assert !(builtins.any (r: nixpkgs.lib.hasInfix "tally-filler" r)
-            coordinatorHome.systemd.user.tmpfiles.rules);
+          assert
+            !(builtins.any (
+              r: nixpkgs.lib.hasInfix "tally-filler" r
+            ) coordinatorHome.systemd.user.tmpfiles.rules);
           # no system-bus twin, and the uplink still carries no schedule.
           assert !(coordinator.systemd.services ? tally-filler);
           assert !(coordinator.systemd.timers ? tally-filler);
@@ -1271,8 +1283,10 @@
             timer = coordinatorHome.systemd.user.timers.tally-pump;
             service = coordinatorHome.systemd.user.services.tally-pump;
             execStart =
-              let e = service.Service.ExecStart;
-              in if builtins.isList e then builtins.concatStringsSep " " e else e;
+              let
+                e = service.Service.ExecStart;
+              in
+              if builtins.isList e then builtins.concatStringsSep " " e else e;
             # Everything the unit says, as one string, so a non-goal cannot be
             # satisfied by a value hiding in Environment or in a redirect.
             rendered =
@@ -1323,8 +1337,10 @@
           assert !(nixpkgs.lib.hasInfix "unload" rendered);
           # no state of its own: the station's state is the lane's own files.
           assert !(nixpkgs.lib.hasInfix "/.local/state/" rendered);
-          assert !(builtins.any (r: nixpkgs.lib.hasInfix "tally-pump" r)
-            coordinatorHome.systemd.user.tmpfiles.rules);
+          assert
+            !(builtins.any (
+              r: nixpkgs.lib.hasInfix "tally-pump" r
+            ) coordinatorHome.systemd.user.tmpfiles.rules);
           # no system-bus twin.
           assert !(coordinator.systemd.services ? tally-pump);
           assert !(coordinator.systemd.timers ? tally-pump);
@@ -1716,10 +1732,12 @@
               tally-seat-feeder-pi-qwencloud = "pi-qwencloud";
             };
             isSeatFeeder = name: builtins.match "tally-seat-feeder-.*" name != null;
-            coordinatorSeatFeeders =
-              builtins.filter isSeatFeeder (builtins.attrNames coordinatorHome.systemd.user.timers);
-            workerSeatFeeders =
-              builtins.filter isSeatFeeder (builtins.attrNames workerHome.systemd.user.timers);
+            coordinatorSeatFeeders = builtins.filter isSeatFeeder (
+              builtins.attrNames coordinatorHome.systemd.user.timers
+            );
+            workerSeatFeeders = builtins.filter isSeatFeeder (
+              builtins.attrNames workerHome.systemd.user.timers
+            );
           in
           assert coordinatorHome.home.username == "tom";
           assert coordinatorHome.programs.atuin.settings.auto_sync;
@@ -1758,12 +1776,9 @@
             # therefore reaching the program as `cc` alone — one Claude row on
             # disk for three seats, MEASURED 2026-09-07 17:0xZ. A list this
             # module writes with a comma cannot be silently truncated again.
-            && builtins.all (
-              entry: builtins.match ".*[[:space:]].*" entry == null
-            ) service.Service.Environment
+            && builtins.all (entry: builtins.match ".*[[:space:]].*" entry == null) service.Service.Environment
           ) seatFeederNames;
-          assert builtins.elem
-            "d %h/.local/state/tally-rewrite/meters 0700 - - -"
+          assert builtins.elem "d %h/.local/state/tally-rewrite/meters 0700 - - -"
             coordinatorHome.systemd.user.tmpfiles.rules;
           # `hk` ON PATH (U-D15). home/herdr.nix consumes
           # `inputs.herdr-kitten.packages.<sys>.herdr-kitten` and nothing else —
@@ -1772,8 +1787,7 @@
           # assert is the reason the input pin may never silently go missing:
           # the niri terminal binds, the kitty gestures and the dictation route
           # all shell out to `hk`.
-          assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten")
-            coordinatorHome.home.packages;
+          assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") coordinatorHome.home.packages;
           # …and the kitten half is addressed by STORE PATH out of a neutral
           # ~/.config file, because kitty resolves a bare `kitten foo.py` against
           # ~/.config/kitty, which is a whole-dir out-of-store symlink into the
@@ -1803,8 +1817,7 @@
           # with it. Asserting it here is what keeps U-D15's pin move from
           # turning into a topology move: one server (ruling B5, #309 is Tom's),
           # two clients, unchanged.
-          assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten")
-            workerHome.home.packages;
+          assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") workerHome.home.packages;
           # wayvnc's unit exists and is deliberately unreachable — this host has
           # no tailnet and :5900 is admitted on tailscale0 only, fleet-wide. The
           # unit stays so the screen becomes viewable the day that changes; see
@@ -1963,19 +1976,22 @@
           assert !(lib.hasInfix "$engine\" drain" hookText);
           assert !(lib.hasInfix "state/tally/" hookText);
           # The SessionStart hook is this unit's non-goal and stays as it was.
-          assert (builtins.head (builtins.head settings.hooks.SessionStart).hooks).command
+          assert
+            (builtins.head (builtins.head settings.hooks.SessionStart).hooks).command
             == "bash '/home/tom/.claude/hooks/herdr-agent-state.sh' session";
           # The file the block names is actually delivered, as ONE link (not a
           # whole-dir one), so ~/.claude/hooks stays a real directory beside
           # herdr's raw hook, which this repository does not ship.
           assert homeConfig.home.file ? ".claude/hooks/ai-memory-harvest.sh";
-          assert homeConfig.home.file.".claude/hooks/ai-memory-harvest.sh".target
+          assert
+            homeConfig.home.file.".claude/hooks/ai-memory-harvest.sh".target
             == ".claude/hooks/ai-memory-harvest.sh";
           # mkOutOfStoreSymlink names its store entry after the file it points
           # at, so this is the out-of-store link and not a copied-in blob: the
           # hook stays editable in the checkout, like every other raw dotfile.
-          assert lib.hasSuffix "-hm_aimemoryharvest.sh"
-            (toString homeConfig.home.file.".claude/hooks/ai-memory-harvest.sh".source);
+          assert lib.hasSuffix "-hm_aimemoryharvest.sh" (
+            toString homeConfig.home.file.".claude/hooks/ai-memory-harvest.sh".source
+          );
           assert !(homeConfig.home.file ? ".claude/hooks");
           pkgs.runCommand "ai-memory-harvest-hook"
             {
@@ -2090,14 +2106,22 @@
               touch "$out"
             '';
 
-        # The prune guard (dotfiles#296): local-models-sync must never delete,
-        # and local-models-prune --yes must refuse a set that drifted from the
-        # recorded dry-run. Hermetic — a fixture tree and a fake manifest, no
-        # /var, no systemd, no weights.
-        local-models-sync =
-          pkgs.runCommand "local-models-sync"
+        # Model bytes are explicit transactions, never activation work. Drive
+        # the evaluated worker borrow binary against tiny fixtures, then keep
+        # the guarded prune contract from dotfiles#296. Hermetic: no network,
+        # systemd, /var, or production weights.
+        local-model-transactions =
+          let
+            workerConfig = self.nixosConfigurations.worker.config;
+            borrowPackage =
+              nixpkgs.lib.findFirst (package: nixpkgs.lib.getName package == "local-models-borrow")
+                (throw "worker has no explicit local-models-borrow command")
+                workerConfig.environment.systemPackages;
+          in
+          pkgs.runCommand "local-model-transactions"
             {
               nativeBuildInputs = [
+                borrowPackage
                 pkgs.local-models-prune
                 pkgs.findutils
                 pkgs.coreutils
@@ -2107,6 +2131,8 @@
               set -euo pipefail
               export HOME="$TMPDIR/home"
               mkdir -p "$HOME"
+              export LOCAL_MODELS_BORROW_BIN=${borrowPackage}/bin/local-models-borrow
+              ${pkgs.bash}/bin/bash ${./tests/local-models-sync/test-borrow.sh}
               ${pkgs.bash}/bin/bash ${./tests/local-models-sync/test-prune-guard.sh}
               touch "$out"
             '';
@@ -2435,6 +2461,44 @@
           assert worker.nix.buildMachines == [ ];
           assert !(worker.nix.settings ? post-build-hook);
           assert nixpkgs.lib.elem "http://nas:8080/fleet" worker.nix.settings.extra-substituters;
+          # Doctrine, 2026-09-10: no model byte transfer may enter update,
+          # activation, boot, or llama-swap ordering. Both endpoints get one
+          # explicit borrow CLI; neither gets a transfer service or timer.
+          assert !(worker.systemd.services ? local-models-sync);
+          assert !(coordinator.systemd.services ? local-models-sync);
+          assert !(worker.systemd.services ? local-models-borrow);
+          assert !(coordinator.systemd.services ? local-models-borrow);
+          assert !(worker.systemd.timers ? local-models-sync);
+          assert !(coordinator.systemd.timers ? local-models-sync);
+          assert !(worker.systemd.timers ? local-models-borrow);
+          assert !(coordinator.systemd.timers ? local-models-borrow);
+          assert
+            builtins.length (
+              nixpkgs.lib.filter (
+                package: nixpkgs.lib.getName package == "local-models-borrow"
+              ) worker.environment.systemPackages
+            ) == 1;
+          assert
+            builtins.length (
+              nixpkgs.lib.filter (
+                package: nixpkgs.lib.getName package == "local-models-borrow"
+              ) coordinator.environment.systemPackages
+            ) == 1;
+          assert
+            !(nixpkgs.lib.elem "local-models-sync.service" (worker.systemd.services.llama-swap.wants or [ ]));
+          assert
+            !(nixpkgs.lib.elem "local-models-sync.service" (worker.systemd.services.llama-swap.after or [ ]));
+          assert
+            !(nixpkgs.lib.elem "local-models-sync.service" (
+              coordinator.systemd.services.llama-swap.wants or [ ]
+            ));
+          assert
+            !(nixpkgs.lib.elem "local-models-sync.service" (
+              coordinator.systemd.services.llama-swap.after or [ ]
+            ));
+          # NAS downloads remain a separate timer/operator action, never an
+          # update-center or activation dependency.
+          assert (nas.systemd.services.library-fetch.wantedBy or [ ]) == [ ];
           # The executor half, still asserted in the NEGATIVE: a host, never a
           # Tally executor. Both directions, because `executors == { }` alone
           # would pass a config that renamed the attribute.
@@ -2477,9 +2541,8 @@
           #   flashnext-fp8 — required IN FULL on each twin (tensor-parallel
           #     shards compute, not the on-disk weights), so both rosters
           #     carrying it is the symmetry requirement being met, not
-          #     coordinator content leaking across. Also the anti-prune row:
-          #     absent from wanted.json, local-models-sync rm -rf's 185.6 GB on
-          #     every boot, which it did to both twins on 2026-08-29.
+          #     coordinator content leaking across. The row also keeps the
+          #     explicit prune oracle aligned with the intended working set.
           #
           #   qwen38-flash-ciru-strix-iu4 — worker ONLY, and asymmetric ON
           #     PURPOSE (#291). ciru's IU4 runs the whole 126.63 GiB model on
@@ -2495,10 +2558,9 @@
           # ORDER IS LOAD-BEARING: modules/strix.nix builds this as the shared
           # base list ++ the worker-only optional, so flashnext-fp8 leads.
           #
-          # ⚠ The worker must NOT be switched onto this list until the NAS
-          #   Library actually holds the bytes — local-models-sync fails hard
-          #   with "MISSING in Library" otherwise. See the flashnix repo,
-          #   docs/trinity/CIRU-IU4-WORKER.md, for the ordered bring-up.
+          # NixOS can switch safely whether or not these bytes exist. Staging
+          # is a later, explicit `local-models-borrow --dry-run` / `--yes`
+          # transaction; see docs/trinity/CIRU-IU4-WORKER.md in flashnix.
           assert
             worker.services.local-models.artifacts == [
               "flashnext-fp8"
@@ -2893,8 +2955,9 @@
           # flashnext-fp8 leads this list for the same reason it leads the
           # worker's: it is declared on BOTH twins in modules/strix.nix because
           # the FP8 checkpoint must be present in full per node, and it is the
-          # row whose absence makes local-models-sync prune 185.6 GB.
-          # Stale here since 8d772780 for the same reason as the worker guard.
+          # row that keeps the explicit prune oracle aligned with the intended
+          # working set. Stale here since 8d772780 for the same reason as the
+          # worker guard.
           #
           # ONE entry, and it stays one: the coordinator deliberately does NOT
           # get qwen38-flash-ciru-strix-iu4 (#291). That row is the worker's
@@ -2917,12 +2980,11 @@
           # the description level. Every deployment a host may start — plus its
           # extra `artifacts` — must reference only catalog rows that can
           # actually drive a borrow: at least one file, every file carrying the
-          # 64-hex sha256 oid and a positive byte count local-models-sync
-          # verifies against. Library REACHABILITY is deliberately not asserted
-          # here: eval cannot describe NFS, and the sync unit already fails
-          # loudly per-row at the only layer that can honestly check it
-          # (layer (b) of the #242 proposal; layer (c), NAS-side coverage,
-          # lives with library-fetch).
+          # 64-hex sha256 oid and a positive byte count the explicit borrow
+          # transaction verifies against. Library REACHABILITY is deliberately
+          # not asserted here: eval cannot describe NFS. The operator-only
+          # `local-models-borrow --dry-run` owns that live check; NAS-side
+          # coverage lives with library-fetch.
           assert
             let
               lmHosts = nixpkgs.lib.filter (hostConfig: hostConfig.services ? local-models) [

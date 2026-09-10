@@ -23,8 +23,8 @@
 #
 #   local-models-prune-set   pure oracle. Prints the would-prune set, one
 #                            TSV row per entry, deterministically sorted.
-#                            Deletes nothing, ever, and has no flags. The sync
-#                            service calls this and prints an AUDIT.
+#                            Deletes nothing, ever, and has no flags. The
+#                            explicit borrow transaction prints its AUDIT.
 #
 #   local-models-prune       the only verb that deletes.
 #                              --dry-run  recompute, print, and RECORD the
@@ -101,11 +101,11 @@ let
     '';
   };
 
-  # The AUDIT the boot-time sync service prints instead of deleting. Separated
-  # into its own binary so tests/local-models-sync can assert the SERVICE path
-  # removes nothing without having to start the service.
+  # The audit the explicit borrow transaction prints instead of deleting.
+  # Separated into its own binary so the guard suite can prove it removes
+  # nothing.
   audit = writeShellApplication {
-    name = "local-models-sync-audit";
+    name = "local-models-prune-audit";
     runtimeInputs = [
       coreutils
       pruneSet
@@ -115,11 +115,11 @@ let
       bytes=0
       while IFS=$'\t' read -r kind path size; do
         [ -n "''${kind:-}" ] || continue
-        echo "local-models-sync: AUDIT would prune $path ($size bytes)"
+        echo "local-models-prune: AUDIT would prune $path ($size bytes)"
         entries=$((entries + 1))
         bytes=$((bytes + size))
       done < <(local-models-prune-set)
-      echo "local-models-sync: AUDIT prune-set $entries entries, $bytes bytes"
+      echo "local-models-prune: AUDIT prune-set $entries entries, $bytes bytes"
     '';
   };
 
@@ -144,7 +144,7 @@ let
           '                               and record its sha256 as the delete intent' \
           'local-models-prune --yes       delete that set, and ONLY if it is still' \
           '                               byte-for-byte what --dry-run recorded' \
-          'Nothing else deletes. The sync service audits and never removes.' >&2
+          'Nothing else deletes. Borrowing audits and never removes.' >&2
       }
 
       mode=""

@@ -72,12 +72,9 @@ in
           "x-systemd.automount"
           "x-systemd.mount-timeout=30s"
           "_netdev"
-          # Boot race, reproduced here 2026-08-29 (first 7.2 boot; same shape
-          # as the worker's dotfiles#240): local-models-sync's
-          # RequiresMountsFor pulls this mount into the boot transaction,
-          # mount.nfs4 runs before the wifi to `nas` has associated, gets
-          # ENETUNREACH, and the mount lands in `failed` — the sync dies as a
-          # dependency casualty and nfs-nas-readahead false-fails behind it.
+          # Boot race, reproduced here 2026-08-29 (first 7.2 boot): an early
+          # access can pull this lazy mount up before wifi has associated,
+          # yielding ENETUNREACH and a failed mount.
           # _netdev's network-online ordering cannot help: enp191s0 activates
           # instantly, so NM reports online while the wifi is still
           # associating. House doctrine — wait for the NAS's reality, not a
@@ -95,9 +92,8 @@ in
           RemainAfterExit = true;
           TimeoutStartSec = "3min";
           # 120s covers wifi association with room; then proceed regardless —
-          # a genuinely dead NAS degrades to the soft+nofail design above
-          # (sync fails visibly, everything else is lazy), never to a louder
-          # failure or a hung boot.
+          # a genuinely dead NAS degrades to the soft+nofail, lazy design above,
+          # never to a louder failure or a hung boot.
           ExecStart = pkgs.writeShellScript "wait-nas-reachable" ''
             for _ in $(${pkgs.coreutils}/bin/seq 120); do
               if ${pkgs.bash}/bin/bash -c 'exec 3<>/dev/tcp/nas/2049' 2>/dev/null; then

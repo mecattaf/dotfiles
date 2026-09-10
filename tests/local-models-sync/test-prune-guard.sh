@@ -2,7 +2,7 @@
 # Hermetic guard test for the local-models prune split (dotfiles#296).
 #
 # Asserts the two properties the ruling actually turns on:
-#   1. the SERVICE path (local-models-sync-audit) deletes nothing, ever
+#   1. the borrow audit path (local-models-prune-audit) deletes nothing, ever
 #   2. `"$PRUNE_BIN" --yes` refuses unless the set it computes is exactly
 #      the set a preceding `--dry-run` recorded — the dry-run diff must be 0
 #
@@ -22,7 +22,7 @@
 #                                    nix build .#local-models-prune
 #                                    LOCAL_MODELS_PRUNE_BIN=./result/bin/local-models-prune
 #   LOCAL_MODELS_PRUNE_SET_BIN     override the ORACLE alone
-#   LOCAL_MODELS_SYNC_AUDIT_BIN    override the SERVICE path alone
+#   LOCAL_MODELS_PRUNE_AUDIT_BIN   override the audit path alone
 #
 # Unset means "resolve from PATH", the in-nix behaviour, unchanged.
 #
@@ -68,7 +68,7 @@ resolve() { # $1 = override value (may be empty), $2 = basename
 
 PRUNE_BIN="${LOCAL_MODELS_PRUNE_BIN:-local-models-prune}"
 PRUNE_SET_BIN="$(resolve "${LOCAL_MODELS_PRUNE_SET_BIN:-}" local-models-prune-set)"
-AUDIT_BIN="$(resolve "${LOCAL_MODELS_SYNC_AUDIT_BIN:-}" local-models-sync-audit)"
+AUDIT_BIN="$(resolve "${LOCAL_MODELS_PRUNE_AUDIT_BIN:-}" local-models-prune-audit)"
 
 echo "prune guard: verb    $PRUNE_BIN"
 echo "prune guard: oracle  $PRUNE_SET_BIN"
@@ -107,11 +107,11 @@ check "prune-set names both entries" \
   "$(printf '%s\n' "$set_out" | cut -f1,3 | tr '\t' ':' | tr '\n' ';')" \
   "artifact:6;file:2;"
 
-# ── 2. the SERVICE path audits and deletes nothing ─────────────────────────
+# ── 2. the borrow path audits and deletes nothing ──────────────────────────
 audit_out="$("$AUDIT_BIN")"
 check "audit prints the summary line" \
   "$(printf '%s\n' "$audit_out" | tail -1)" \
-  "local-models-sync: AUDIT prune-set 2 entries, 8 bytes"
+  "local-models-prune: AUDIT prune-set 2 entries, 8 bytes"
 check "audit prints one would-prune line per entry" \
   "$(printf '%s\n' "$audit_out" | grep -c 'AUDIT would prune')" \
   "2"
@@ -159,8 +159,8 @@ check "empty set dry-run summary" \
 # The count is part of the oracle's output, not decoration: a suite that skips
 # assertions when a binary is missing would otherwise report success.
 if [ "$fail" = 0 ]; then
-  echo "local-models-sync prune guard: $passes/$total checks passed"
+  echo "local-model transaction prune guard: $passes/$total checks passed"
 else
-  echo "local-models-sync prune guard: $passes/$total checks passed, FAILURES above" >&2
+  echo "local-model transaction prune guard: $passes/$total checks passed, FAILURES above" >&2
 fi
 exit "$fail"

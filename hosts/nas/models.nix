@@ -20,12 +20,12 @@
 # NEVER store paths and never part of any closure — the first update-center
 # run proved the old FOD design impossible (three fleet builds dead on the
 # 57G eMMC). Instead:
-#   1. a new catalog row (lib/local-models.nix) is the ONLY trigger;
-#   2. library-fetch (below, nightly + on demand) downloads the missing
-#      files from Hugging Face ONCE, sha256-verified, into weights/;
-#   3. each declaring node's local-models-sync borrows the bytes over the
-#      LAN into /var/lib/local-models before llama-swap starts.
-# An unchanged catalog moves zero bytes anywhere, on every nightly, ever.
+#   1. catalog rows (lib/local-models.nix) describe the collection;
+#   2. library-fetch (below, independently nightly or on demand) downloads
+#      missing files from Hugging Face ONCE, sha256-verified, into weights/;
+#   3. an operator may later run local-models-borrow on a device to loan a
+#      working copy over the LAN into /var/lib/local-models.
+# No NixOS build, activation, boot, or model-server start runs step 2 or 3.
 # (The transient models/cache idea — a static nix binary cache of weight
 # FODs — died with the FOD design and was never built.)
 #
@@ -176,8 +176,8 @@ in
     # .snapshots and backups stay contained); this one is exported ON PURPOSE:
     # rw for the coordinator (archive/restore procedures over its /mnt/nas
     # mount), and READ-ONLY + root-squashed for the worker — its
-    # local-models-sync borrows weights from here (mounted at /mnt/library,
-    # hosts/worker/default.nix). The ACL still names hosts explicitly, per
+    # explicit local-models-borrow transactions read weights from here (mounted
+    # at /mnt/library, hosts/worker/default.nix). The ACL still names hosts, per
     # the storage.nix doctrine; the nftables admission below is its twin.
     # NB the worker line carries fsid=0: NFSv4 clients resolve mount paths
     # against THEIR OWN pseudo-root, and the worker deliberately has no entry
@@ -197,9 +197,8 @@ in
     # Converges weights/ toward the full catalog manifest: present + right
     # size → untouched; missing → download once, sha256-verify (the catalog's
     # git-lfs oid IS the sha256), land atomically. Never deletes. Nightly at
-    # 02:30 — after the 01:30 update-center has published the closures that
-    # carry any new wanted.json, and before devices typically pull. Run it by
-    # hand (`systemctl start library-fetch`) to stock a new model immediately.
+    # 02:30, independently of update-center and every device activation. Run it
+    # by hand (`systemctl start library-fetch`) to stock a new model immediately.
     systemd.services.library-fetch = {
       description = "Download missing catalog model weights from Hugging Face into the Library";
       after = [ "network-online.target" ];

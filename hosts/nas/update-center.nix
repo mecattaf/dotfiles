@@ -39,7 +39,7 @@
 # Model weights are NOT in these builds (2026-08-21 decisive ruling): the
 # first observed run died filling the 57G eMMC with weight FODs, and the
 # whole weight plane moved out of nix — see hosts/nas/models.nix
-# (library-fetch) and modules/local-models.nix (local-models-sync). The
+# (library-fetch) and modules/local-models.nix (explicit local-models-borrow). The
 # closures built here are slim system closures and fit the eMMC comfortably.
 let
   cfg = config.myNas.updateCenter;

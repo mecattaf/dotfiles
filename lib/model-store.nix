@@ -14,22 +14,20 @@
 #
 # Now this file computes only DATA:
 #   - where an artifact's files live at runtime on a device
-#     (/var/lib/local-models/<artifactId>/…, reconciled by the
-#     local-models-sync oneshot in modules/local-models.nix), and
+#     (/var/lib/local-models/<artifactId>/…, optionally populated by the
+#     explicit local-models-borrow command in modules/local-models.nix), and
 #   - the per-file facts (target name, HF-relative path, bytes, sha256 oid)
-#     that the sync and the NAS library-fetch units need.
+#     that the borrow command and NAS library-fetch unit need.
 #
-# Nix evaluates descriptions; systemd moves bytes. Same paradigm NixOS uses
-# for OCI images (declared by digest, pulled at service start) and secrets.
-# Weights flow HF → NAS Library (/mnt/nas/models/weights) exactly once, then
-# Library → declared node — and an unchanged catalog moves ZERO bytes.
+# Nix evaluates descriptions and never moves bytes. Weights flow HF → NAS
+# Library (/mnt/nas/models/weights) under its independent acquisition action,
+# then Library → device only under an explicit operator borrow transaction.
 let
   runtimeRoot = "/var/lib/local-models";
 
   # Flat artifacts collapse to basenames (unique by catalog assertion);
   # snapshot artifacts keep their repository-relative tree.
-  targetName =
-    layout: path: if layout == "snapshot" then path else builtins.baseNameOf path;
+  targetName = layout: path: if layout == "snapshot" then path else builtins.baseNameOf path;
 
   materializeArtifact = artifactId: artifact: rec {
     directory = "${runtimeRoot}/${artifactId}";
@@ -47,7 +45,7 @@ let
   materialized = lib.mapAttrs materializeArtifact catalog.artifacts;
 
   # Manifest rows for a set of artifact ids — the JSON contract shared by the
-  # device-side sync (name/bytes/oid) and the NAS library-fetch (plus url).
+  # device-side borrow command (name/bytes/oid) and NAS library-fetch (plus url).
   manifestFor =
     artifactIds:
     map (artifactId: {

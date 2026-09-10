@@ -1,5 +1,17 @@
 # DECISIONS
 
+2026-09-10 model-byte doctrine: a NixOS evaluation, build, switch, boot, or
+service start must never download, copy, verify, prune, mount for, order after,
+or wait for model weights. The NAS Library at `/mnt/nas/models/weights` is the
+canonical collection. Internet acquisition terminates there via the independent
+`library-fetch` timer or an explicit operator start. Worker and coordinator
+working copies are optional loans made only by an operator invoking
+`local-models-borrow --dry-run` and then `--yes`; the command preflights the
+whole declared byte count against free space, verifies each file, and lands it
+atomically. Existing working copies remain in place. Deletion remains a separate
+guarded `local-models-prune --dry-run` / `--yes` transaction. A missing model may
+make that model unavailable when requested; it may never make an OS update fail.
+
 2026-09-06 orchestrator B: merged U-D5, U-D8 to main under the handoff's merge authority; gate ["bash", "/tmp/claude-1000/-home-tom/f9d7af0b-e4f1-476b-b2b2-5c58c365fdaa/scratchpad/gate.sh"] = nix flake check --offline --no-build + tests/local-models-sync/test-prune-guard.sh (LOCAL_MODELS_PRUNE_BIN) + claude-capacity case count vs docs/local-ai/claude-capacity.md; rc 0; receipts under /home/tom/research-methods/receipts/FACTORY-2026-09-06/.
 
 2026-09-06 U-D16 (dotfiles#319): the manifest's DOMINANT oracle for the l8-flash

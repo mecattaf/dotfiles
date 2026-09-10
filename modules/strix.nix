@@ -65,9 +65,9 @@
           "qwen36-35b-a3b-mtp-ud-q8-k-xl"
           # Evicted 2026-09-03 for the dual-Strix staging budget (#286): the
           # coordinator needed ~264 GiB it did not have. Catalog rows stay;
-          # recovery is uncommenting a line here, and the weights are one
-          # local-models-sync away in the NAS Library (all four verified
-          # present 2026-09-03). qwen3.6-27b is the cheapest of these to lose —
+          # recovery is uncommenting a line here; an operator can then borrow
+          # the weights from the NAS Library (all four verified present
+          # 2026-09-03). qwen3.6-27b is the cheapest of these to lose —
           # canonical qwen3.8-27b already declares `supersedes` on it.
           # "qwen36-27b-mtp-ud-q8-k-xl"
           # "gemma4-26b-a4b-it-mtp-q8-0"
@@ -89,7 +89,7 @@
           "qwen3-embedding-8b-q8-0"
           "qwen3-vl-embedding-8b-q8-0"
           # MELS fleet additions (#229): Qwen lane primary + wildcard companion.
-          # Materialized at the next switch (~68G on the coordinator).
+          # A switch describes them; only local-models-borrow moves their bytes.
           "qwen38-27b-mtp-q8-0"
           # "ornith-15-35b-q8-0"
         ]
@@ -113,10 +113,9 @@
         # BOTH twins, unconditionally: the flashnext TP=2 checkpoint is
         # tensor-parallel across coordinator AND worker, so each box needs the
         # complete 185.6 GB on its own NVMe (TP shards compute, not weights).
-        # Listing it here is also what stops local-models-sync from pruning it:
-        # an artifact absent from wanted.json is `rm -rf`'d on every boot,
-        # rebuild, and sync-service start. That is not hypothetical — it
-        # deleted the freshly staged checkpoint from both twins on 2026-08-29.
+        # Listing it here keeps wanted.json and the explicit prune oracle aligned.
+        # No activation or boot path prunes or borrows it; the old sync service
+        # that deleted both freshly staged copies on 2026-08-29 is gone.
         # No llama-swap row: vLLM serves this one through its own pair service.
         "flashnext-fp8"
         # DS4, both twins, same reasoning and the same anti-prune duty: 155.44
@@ -139,14 +138,11 @@
       ]
       # ── worker ONLY: the single-box ciru reference (#291) ─────────────────
       #
-      # ⚠ DO NOT `nixos-rebuild switch` THE WORKER UNTIL THE NAS HOLDS THE
-      #   BYTES. modules/local-models.nix's sync fails hard, per file, with
-      #   "MISSING in Library: <id>/<name> (run library-fetch on the NAS?)"
-      #   for any artifact this list names that /mnt/library/weights does not
-      #   hold, and exits non-zero. The 126.63 GiB has to be at
-      #   /mnt/nas/models/weights/qwen38-flash-ciru-strix-iu4/ first. The
-      #   ordered bring-up is written down in the flashnix repo at
-      #   docs/trinity/CIRU-IU4-WORKER.md — follow it, do not improvise.
+      # Switching NixOS is always safe whether these bytes exist or fit. An
+      # operator who wants the working copy separately runs
+      # `local-models-borrow --dry-run`, reviews the whole capacity plan, then
+      # `--yes`. The bring-up runbook remains in the flashnix repo at
+      # docs/trinity/CIRU-IU4-WORKER.md.
       #
       # NOT mirrored to the coordinator, and that asymmetry is the entire
       # point: this is one box running the whole model, the control against
@@ -163,10 +159,8 @@
       # glm53-flash-ciru rows. It is served, if at all, by a hand-run
       # ./scripts/ciru/run-server.sh out of that checkout.
       #
-      # And, exactly as above, THIS LINE IS THE ANTI-PRUNE: absent from
-      # wanted.json, local-models-sync `rm -rf`'s
-      # /var/lib/local-models/qwen38-flash-ciru-strix-iu4 on every boot,
-      # rebuild and sync start, costing a 126.63 GiB re-stage over the LAN.
+      # This line also keeps wanted.json and the guarded, operator-only prune
+      # oracle aligned. It does not copy, move, or delete the working copy.
       ++ lib.optionals (config.networking.hostName == "worker") [
         "qwen38-flash-ciru-strix-iu4"
       ]
@@ -176,7 +170,7 @@
         # because the runtime services are still gated on a proven ROCm
         # package. Staging the dual-Strix lane needed the space more than a
         # not-yet-servable checkpoint did. Catalog rows stay; re-borrow is one
-        # sync from the Library (all six verified present 2026-09-03).
+        # explicit transaction from the Library (all six verified 2026-09-03).
         # NB: the mage byte-count asserts in flake.nix read mageArtifactIds
         # from the catalog directly, so they stay green with these commented.
         # "mage-vl-bf16"

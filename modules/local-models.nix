@@ -49,65 +49,161 @@ let
   deploymentArtifactIds = lib.unique (lib.concatMap referencedArtifactIds selectedList);
   hostArtifactIds = lib.unique (deploymentArtifactIds ++ cfg.artifacts);
 
-  # The host's wanted-set manifest: the ONLY thing nix contributes about
+  # The host's wanted-set manifest: the ONLY thing Nix contributes about
   # weights (2026-08-21 decisive ruling — weights are static documents, never
-  # store paths; see lib/model-store.nix). local-models-sync reconciles
-  # /var/lib/local-models against this before llama-swap starts.
+  # store paths; see lib/model-store.nix). It is metadata for an explicit
+  # operator transaction; evaluating or activating NixOS never moves bytes.
   wantedManifest = (pkgs.formats.json { }).generate "local-models-wanted.json" (
     modelStore.manifestFor hostArtifactIds
   );
 
-  syncScript = pkgs.writeShellApplication {
-    name = "local-models-sync";
+  borrowScript = pkgs.writeShellApplication {
+    name = "local-models-borrow";
     runtimeInputs = [
       pkgs.jq
       pkgs.coreutils
       pkgs.findutils
-      # local-models-sync-audit + local-models-prune-set: the would-prune set,
+      pkgs.util-linux
+      # local-models-prune-audit + local-models-prune-set: the would-prune set,
       # printed and never acted on. See pkgs/local-models-prune.nix.
       pkgs.local-models-prune
     ];
     text = ''
-      manifest=/etc/local-models/wanted.json
-      library=${lib.escapeShellArg cfg.libraryPath}
-      root=${lib.escapeShellArg modelStore.runtimeRoot}
+      case "''${1:-}" in
+        --dry-run) mode=dry-run ;;
+        --yes) mode=apply ;;
+        *)
+          echo "usage: local-models-borrow --dry-run|--yes" >&2
+          echo "Model borrowing is an explicit transaction; NixOS activation never runs it." >&2
+          exit 2
+          ;;
+      esac
+      if [ "$#" -ne 1 ]; then
+        echo "usage: local-models-borrow --dry-run|--yes" >&2
+        exit 2
+      fi
+
+      default_library=${lib.escapeShellArg cfg.libraryPath}
+      default_root=${lib.escapeShellArg modelStore.runtimeRoot}
+      manifest="''${LOCAL_MODELS_MANIFEST:-/etc/local-models/wanted.json}"
+      library="''${LOCAL_MODELS_LIBRARY:-$default_library}"
+      root="''${LOCAL_MODELS_ROOT:-$default_root}"
+      lock="''${LOCAL_MODELS_BORROW_LOCK:-/run/lock/local-models-borrow.lock}"
+      reserve="''${LOCAL_MODELS_RESERVE_BYTES:-8589934592}"
+
+      case "$reserve" in
+        "" | *[!0-9]*)
+          echo "local-models-borrow: REFUSING — reserve must be a non-negative byte count" >&2
+          exit 2
+          ;;
+      esac
+      if [ ! -r "$manifest" ]; then
+        echo "local-models-borrow: REFUSING — cannot read manifest $manifest" >&2
+        exit 6
+      fi
+
       mkdir -p "$root"
       chmod 0755 "$root"
-      fail=0
+      mkdir -p "$(dirname "$lock")"
+      exec 9>"$lock"
+      if ! flock -n 9; then
+        echo "local-models-borrow: REFUSING — another borrow transaction holds $lock" >&2
+        exit 4
+      fi
 
-      # Converge every wanted file. Present + right size → untouched (the
-      # no-catalog-change nightly moves zero bytes, by ruling). Missing or
-      # wrong size → copy from the Library, sha256-verify, land atomically.
+      rows() {
+        jq -r '.[] | .id as $id | .files[] | [$id, .name, (.bytes|tostring), .oid] | @tsv' "$manifest"
+      }
+
+      # Preflight the WHOLE transaction before moving one byte. Reserving 8 GiB
+      # keeps an operator borrow from filling the system disk. This is
+      # intentionally conservative for a wrong-sized existing destination: the
+      # old file remains usable until its verified replacement lands.
+      needed=0
+      entries=0
+      fail=0
       while IFS=$'\t' read -r id name bytes oid; do
         dest="$root/$id/$name"
         src="$library/$id/$name"
         if [ -e "$dest" ] && [ "$(stat -c %s "$dest")" = "$bytes" ]; then
           continue
         fi
+        entries=$((entries + 1))
+        needed=$((needed + bytes))
+        echo "local-models-borrow: WOULD borrow $id/$name ($bytes bytes)"
         if [ ! -e "$src" ]; then
-          echo "local-models-sync: MISSING in Library: $id/$name (run library-fetch on the NAS?)" >&2
+          echo "local-models-borrow: MISSING in Library: $id/$name (run library-fetch on the NAS?)" >&2
           fail=1
+        elif [ "$(stat -c %s "$src")" != "$bytes" ]; then
+          echo "local-models-borrow: WRONG SIZE in Library: $id/$name" >&2
+          fail=1
+        fi
+      done < <(rows)
+
+      available_blocks="$(stat -f -c %a "$root")"
+      block_size="$(stat -f -c %S "$root")"
+      available=$((available_blocks * block_size))
+      if [ "$available" -gt "$reserve" ]; then
+        usable=$((available - reserve))
+      else
+        usable=0
+      fi
+      echo "local-models-borrow: PLAN $entries file(s), $needed bytes; $available bytes free, $reserve reserved"
+
+      if [ "$fail" -ne 0 ]; then
+        echo "local-models-borrow: REFUSING — the canonical NAS Library is incomplete" >&2
+        exit 5
+      fi
+      if [ "$needed" -gt "$usable" ]; then
+        echo "local-models-borrow: REFUSING — transaction needs $needed bytes but only $usable are available after reserve" >&2
+        exit 3
+      fi
+      if [ "$mode" = dry-run ]; then
+        exit 0
+      fi
+
+      # Apply exactly the preflighted plan. Present + right size is untouched;
+      # missing or wrong size is copied from the canonical NAS Library,
+      # sha256-verified during the copy, and atomically landed.
+      current_part=""
+      trap '[ -z "$current_part" ] || rm -f "$current_part"' EXIT
+      trap 'exit 129' HUP
+      trap 'exit 130' INT
+      trap 'exit 143' TERM
+      while IFS=$'\t' read -r id name bytes oid; do
+        dest="$root/$id/$name"
+        src="$library/$id/$name"
+        if [ -e "$dest" ] && [ "$(stat -c %s "$dest")" = "$bytes" ]; then
           continue
         fi
-        echo "local-models-sync: borrowing $id/$name ($bytes bytes)"
+        echo "local-models-borrow: borrowing $id/$name ($bytes bytes)"
         mkdir -p "$(dirname "$dest")"
+        current_part="$dest.part"
         # Hash DURING the copy (tee splits the stream), not after: the old
         # cp-then-sha256sum shape re-read the whole artifact from local NVMe
         # as a second pass — ~40-60s of pure overhead on an 80GB borrow
         # (2026-08-29). Failure behavior is unchanged: pipefail + set -e
         # abort on a failed read/write exactly as a failed cp did.
-        actual="$(tee "$dest.part" < "$src" | sha256sum | cut -d' ' -f1)"
-        if [ "$actual" != "$oid" ]; then
-          echo "local-models-sync: HASH MISMATCH for $id/$name (want $oid got $actual)" >&2
+        if ! actual="$(tee "$dest.part" < "$src" | sha256sum | cut -d' ' -f1)"; then
+          echo "local-models-borrow: COPY FAILED for $id/$name" >&2
           rm -f "$dest.part"
+          current_part=""
+          fail=1
+          continue
+        fi
+        if [ "$actual" != "$oid" ]; then
+          echo "local-models-borrow: HASH MISMATCH for $id/$name (want $oid got $actual)" >&2
+          rm -f "$dest.part"
+          current_part=""
           fail=1
           continue
         fi
         chmod 0644 "$dest.part"
         mv -f "$dest.part" "$dest"
-      done < <(jq -r '.[] | .id as $id | .files[] | [$id, .name, (.bytes|tostring), .oid] | @tsv' "$manifest")
+        current_part=""
+      done < <(rows)
 
-      # THIS SERVICE NEVER DELETES (dotfiles#296, ruled pruner disposition:
+      # THIS TRANSACTION NEVER DELETES (dotfiles#296, ruled pruner disposition:
       # "wanted.json aligned", with a guard). It used to end here with two
       # unconditional prune branches — `rm -rf` of any artifact directory the
       # manifest no longer named, and `rm -f` of any stray file inside a kept
@@ -123,7 +219,7 @@ let
       # Still gated on a fully clean pass: a set computed from a failed borrow
       # would name files that are merely MISSING, not retired.
       if [ "$fail" = 0 ]; then
-        local-models-sync-audit
+        local-models-prune-audit
       fi
       exit "$fail"
     '';
@@ -233,7 +329,9 @@ let
       # Archive-before-delete, made mechanical (2026-08-20): a retirement is
       # only real once the bytes survive somewhere. The `archived` receipt on
       # the row is the proof; without it the retirement does not evaluate.
-      assertion = lib.all (deployment: deployment.status != "retired" || deployment.archived != null) deploymentList;
+      assertion = lib.all (
+        deployment: deployment.status != "retired" || deployment.archived != null
+      ) deploymentList;
       message = "Every retired deployment must carry an `archived` receipt (NAS path + date) — archive the weights before retiring the row (docs/nas/model-archive.md).";
     }
     {
@@ -247,8 +345,7 @@ let
       # outside `local` is legal only as history, on a row that is itself
       # retired. Anything live must be an engine the renderer table can serve.
       assertion = lib.all (
-        deployment:
-        lib.elem deployment.backend catalog.backendKinds.local || deployment.status == "retired"
+        deployment: lib.elem deployment.backend catalog.backendKinds.local || deployment.status == "retired"
       ) deploymentList;
       message = "Every non-retired deployment must use a managed local backend; retired backend values (npu) are archive records only.";
     }
@@ -309,7 +406,7 @@ let
       assertion = lib.all (
         deployment: lib.all (arg: !(lib.hasInfix "-hf" arg)) deployment.runtime.args
       ) deploymentList;
-      message = "Runtime model downloads (-hf) are forbidden; weights arrive only via the NAS Library flow (catalog row -> library-fetch -> local-models-sync).";
+      message = "Runtime model downloads (-hf) are forbidden; internet downloads terminate in the canonical NAS Library and device borrowing is an explicit operator transaction.";
     }
     {
       assertion = lib.all (
@@ -377,10 +474,13 @@ in
       type = lib.types.listOf lib.types.str;
       default = [ ];
       description = ''
-        Canonical deployment IDs to materialize and expose through llama-swap
-        on this host. Every entry must be a managed local backend; there is no
-        other interactive serving tier (the NPU/FastFlowLM appliance tier was
-        decommissioned 2026-08-29 and retired from the schema 2026-08-31, #270).
+        Canonical deployment IDs to describe and expose through llama-swap on
+        this host. This option publishes paths and metadata only; it never
+        transfers model bytes. Use local-models-borrow explicitly when a
+        working copy is wanted. Every entry must be a managed local backend;
+        there is no other interactive serving tier (the NPU/FastFlowLM
+        appliance tier was decommissioned 2026-08-29 and retired from the
+        schema 2026-08-31, #270).
       '';
     };
 
@@ -388,8 +488,9 @@ in
       type = lib.types.listOf lib.types.str;
       default = [ ];
       description = ''
-        Additional artifact IDs to materialize without adding a llama-swap
-        model row. This is for complete snapshots and modality-specific
+        Additional artifact IDs to describe without adding a llama-swap model
+        row. This does not transfer bytes; local-models-borrow is the explicit
+        transaction. This is for complete snapshots and modality-specific
         appliances such as Mage, ASR, and TTS.
       '';
     };
@@ -400,8 +501,8 @@ in
       description = ''
         Where this host reads the NAS model Library from (the coordinator's
         NFS mount by default; the worker mounts the read-only models export
-        at /mnt/library). local-models-sync borrows wanted artifacts from
-        here into /var/lib/local-models.
+        at /mnt/library). The explicit local-models-borrow transaction reads
+        wanted artifacts here and copies them into /var/lib/local-models.
       '';
     };
   };
@@ -410,14 +511,19 @@ in
     assertions = catalogAssertions;
 
     # The stable `utility` door, on the hosts that serve it and nowhere else.
-    # local-models-prune is the ONLY thing on this fleet that deletes a working
-    # copy of a model weight, and it is on PATH exactly on the hosts that have
-    # working copies to delete (dotfiles#296). Run it as
+    # Borrow and prune are both explicit operator transactions. Neither is a
+    # service, timer, boot unit, or activation hook. local-models-prune is the
+    # ONLY thing on this fleet that deletes a working copy (dotfiles#296):
+    #   sudo local-models-borrow --dry-run  # inspect bytes and free-space gate
+    #   sudo local-models-borrow --yes      # copy + verify from the NAS Library
     #   sudo local-models-prune --dry-run    # read the set, record the intent
     #   sudo local-models-prune --yes        # delete it, iff it has not changed
     environment.systemPackages =
       lib.optional utilityEnabled utilityRunner
-      ++ lib.optional (hostArtifactIds != [ ]) pkgs.local-models-prune;
+      ++ lib.optionals (hostArtifactIds != [ ]) [
+        borrowScript
+        pkgs.local-models-prune
+      ];
 
     # Metadata stays generational and inspectable alongside the selected artifacts.
     environment.etc = {
@@ -446,43 +552,14 @@ in
         peers = { };
       };
 
-    # Weights live OUTSIDE the store (2026-08-21 decisive ruling): the sync
-    # oneshot below converges /var/lib/local-models against wanted.json from
-    # the NAS Library before llama-swap starts. World-readable on purpose —
-    # llama-swap's DynamicUser sandbox reads these paths through
-    # ProtectSystem=strict.
+    # Weights live OUTSIDE the store (2026-08-21 decisive ruling). NixOS creates
+    # only the empty root and publishes metadata; it NEVER starts, schedules,
+    # orders against, or waits for a model-byte transfer. Existing working
+    # copies stay world-readable because llama-swap's DynamicUser sandbox reads
+    # these paths through ProtectSystem=strict. Missing rows fail only when an
+    # operator tries to use them.
     systemd.tmpfiles.rules = lib.mkIf (hostArtifactIds != [ ]) [
       "d ${modelStore.runtimeRoot} 0755 root root -"
     ];
-
-    systemd.services.local-models-sync = lib.mkIf (hostArtifactIds != [ ]) {
-      description = "Borrow this host's model weights from the NAS Library";
-      wantedBy = [ "multi-user.target" ];
-      # Re-run on activation whenever the wanted-set changes; a no-change
-      # rebuild restarts nothing and moves nothing.
-      restartTriggers = [ wantedManifest ];
-      # The Library lives across the network on every host; do not race the
-      # uplink at boot. Ordering only — the real anti-race guard is per-host
-      # on the mount itself (the worker gates on the NAS actually answering,
-      # hosts/worker/default.nix, dotfiles#240; NM's "online" word alone was
-      # measured insufficient there).
-      wants = [ "network-online.target" ];
-      after = [ "network-online.target" ];
-      unitConfig.RequiresMountsFor = [ cfg.libraryPath ];
-      serviceConfig = {
-        Type = "oneshot";
-        ExecStart = lib.getExe syncScript;
-        # First borrow of a 39G model over the LAN takes ~8 min; several, more.
-        TimeoutStartSec = "2h";
-      };
-    };
-
-    # llama-swap starts after the working copies are converged. `wants`, not
-    # `requires`: a failed borrow (Library unreachable) leaves llama-swap up
-    # serving whatever is already local — only the missing rows error on use.
-    systemd.services.llama-swap = lib.mkIf (hostArtifactIds != [ ]) {
-      wants = [ "local-models-sync.service" ];
-      after = [ "local-models-sync.service" ];
-    };
   };
 }

@@ -151,8 +151,9 @@
 
   # ── Borrowing model weights from the NAS Library (2026-08-21 ruling) ──────
   # The NAS exports its models tree read-only + root-squashed to this host
-  # (hosts/nas/models.nix, fsid=6); local-models-sync borrows this host's
-  # wanted set from here into /var/lib/local-models before llama-swap starts.
+  # (hosts/nas/models.nix, fsid=6). Only an operator's explicit
+  # local-models-borrow transaction reads it into /var/lib/local-models;
+  # activation, boot, and llama-swap startup never touch it.
   # Mounted at /mnt/library, NOT /mnt/nas — because /mnt/nas has a real
   # history on this box (Tom: "/mnt/nas WAS taken — i am no longer using it,
   # since i moved the NAS away from ethernet"): it was this host's genuine
@@ -167,7 +168,7 @@
   # says so — /mnt/nas remains free for whatever history does next.
   # soft+nofail, same hardening rationale as the coordinator's
   # nas-client mount: a dead NAS must never hang this box's boot or I/O
-  # forever — sync just fails visibly and llama-swap serves what is local.
+  # forever. llama-swap serves whatever is already local.
   boot.supportedFilesystems = [ "nfs" ];
   fileSystems."/mnt/library" = {
     # `nas:/` — the models tree is this host's whole NFSv4 pseudo-root (its
@@ -183,15 +184,10 @@
       "_netdev"
       "x-systemd.automount"
       "x-systemd.idle-timeout=10min"
-      # Boot race, reproduced 2026-08-28 (dotfiles#240): local-models-sync's
-      # RequiresMountsFor pulls this mount into the boot transaction, mount.nfs4
-      # runs before the wifi to `nas` has associated, gets ENETUNREACH — an
-      # immediate routing error, not a timeout — and the mount lands in `failed`
-      # with nothing to retry it; the sync dies as a dependency casualty.
-      # `_netdev`'s network-online ordering cannot help here: eth-fleet
-      # activates instantly, so NM reports online while wlp192s0 is still
-      # associating (the printer hit the same lie, modules/printing.nix). House
-      # doctrine — wait for the NAS's reality, not a target's word:
+      # An explicit borrow may be invoked shortly after boot, while wifi is
+      # still associating. `_netdev` cannot distinguish eth-fleet being ready
+      # from the NAS actually being reachable, so gate that on NAS reality.
+      # Nothing in the boot/update graph accesses this lazy automount.
       "x-systemd.requires=library-reachable.service"
     ];
   };
@@ -205,9 +201,8 @@
       RemainAfterExit = true;
       TimeoutStartSec = "3min";
       # 120s covers the observed ~30s association with room; then proceed
-      # regardless — a genuinely dead NAS degrades to the soft+nofail design
-      # above (sync fails visibly, llama-swap serves what is local), never to
-      # a louder failure or a hung boot.
+      # regardless — a genuinely dead NAS makes an explicit borrow fail while
+      # llama-swap continues serving what is local.
       ExecStart = pkgs.writeShellScript "wait-library-reachable" ''
         for _ in $(${pkgs.coreutils}/bin/seq 120); do
           if ${pkgs.bash}/bin/bash -c 'exec 3<>/dev/tcp/nas/2049' 2>/dev/null; then
