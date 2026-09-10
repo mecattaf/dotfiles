@@ -1975,6 +1975,7 @@
 
               export HOME="$TMPDIR/home"
               export PYTHONDONTWRITEBYTECODE=1
+              export PRINT_AUTO_SCRIPT=${./home/dot_claude/skills/print/scripts/print-auto.py}
               export PRINT_PAPER_SCRIPT=${./home/dot_claude/skills/print/scripts/print-paper.py}
               export PRINT_PAPER_SKILL=${./home/dot_claude/skills/print/SKILL.md}
               mkdir -p "$HOME"

@@ -219,6 +219,45 @@ def decide(text: str, intent: str | None, source: Path) -> tuple[dict, str]:
     return default_decision(source), "fallback"
 
 
+def spool_print(
+    outpath: Path,
+    jobdir: Path,
+    sides_flag: str,
+    *,
+    outbox: Path | None = None,
+    now: datetime.datetime | None = None,
+) -> Path:
+    """Atomically queue one already-rendered PDF and return its manifest.
+
+    Queue paths must be absolute. ``--output-dir`` is often relative to an
+    agent scratchpad; systemd starts the morning flusher with a different
+    working directory, so persisting that relative spelling strands an
+    otherwise valid PDF and turns the 06:05 flush into a unit failure.
+    """
+    outpath = outpath.expanduser().resolve()
+    jobdir = jobdir.expanduser().resolve()
+    if outbox is None:
+        outbox = Path.home() / "Paper" / "outbox"
+    outbox = outbox.expanduser().resolve()
+    outbox.mkdir(parents=True, exist_ok=True)
+
+    sides_lp = (
+        "one-sided" if sides_flag == "one-sided" else "two-sided-long-edge"
+    )
+    queued_at = now or datetime.datetime.now()
+    entry = {
+        "pdf": str(outpath),
+        "sides": sides_lp,
+        "job_dir": str(jobdir),
+        "queued_at": queued_at.isoformat(timespec="seconds"),
+    }
+    tmp = outbox / f".{jobdir.name}.tmp"
+    manifest = outbox / f"{jobdir.name}.json"
+    tmp.write_text(json.dumps(entry, indent=2) + "\n")
+    tmp.replace(manifest)
+    return manifest
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("input", type=Path)
@@ -246,7 +285,10 @@ def main() -> int:
     # hands over a markdown file from anywhere (scratchpad included); it is
     # archived here as source.md so working trees stay unpolluted.
     if args.output_dir:
-        jobdir = args.output_dir
+        # The morning flusher runs from systemd, not from this invocation's
+        # cwd. Resolve an explicit relative directory before any receipt or
+        # queue entry records it (2026-09-10 failure episode).
+        jobdir = args.output_dir.expanduser().resolve()
     else:
         now = datetime.datetime.now()
         slug = re.sub(r"[^a-z0-9]+", "-", args.input.stem.lower()).strip("-")
@@ -297,17 +339,7 @@ def main() -> int:
 
     if args.do_print and not blocked:
         if spool:
-            outbox = Path.home() / "Paper" / "outbox"
-            outbox.mkdir(parents=True, exist_ok=True)
-            sides_lp = ("one-sided" if sides_flag == "one-sided"
-                        else "two-sided-long-edge")
-            entry = {"pdf": str(outpath), "sides": sides_lp,
-                     "job_dir": str(jobdir),
-                     "queued_at": datetime.datetime.now().isoformat(
-                         timespec="seconds")}
-            tmp = outbox / f".{jobdir.name}.tmp"
-            tmp.write_text(json.dumps(entry, indent=2) + "\n")
-            tmp.replace(outbox / f"{jobdir.name}.json")
+            spool_print(outpath, jobdir, sides_flag)
             print_spooled = True
         else:
             # Submit the exact PDF that was just verified — a distinct
