@@ -2,14 +2,17 @@
 
 The NAS runs its own Headscale control plane at `http://10.42.0.1:8090` and is a
 client of that control plane. The coordinator retains independent SaaS Tailscale
-as an emergency path; worker has no tailnet membership. The control URL is
-currently LAN-only. Public HTTPS is disabled.
+as an emergency path; worker has no tailnet membership. Since September 10 the
+public control URL is `https://nas-saas.tail8dd1.ts.net:8443`, served by Funnel
+through a separate NAS personal-account container. The original NAS client keeps
+its LAN URL. The disabled Caddy public option is not the active ingress path.
 
 Headscale state lives in `/var/lib/headscale`. The NAS enrollment unit waits for
-the local control socket, ensures user `tom`, mints a short-lived runtime key and
-joins the configured control URL. It logs out and re-enrolls if that URL changes;
-never change it casually during a network move. Restarting
-`tailscaled-autoconnect` reruns enrollment with a fresh runtime key.
+the local control socket and verifies saved identity/preferences. Only a strictly
+pristine client may receive a short-lived enrollment key. An established client
+is never automatically logged out or re-enrolled; a URL mismatch fails closed.
+Restarting `tailscaled-autoconnect` rechecks that guard, not a forced enrollment.
+Existing laptop control URLs still require deliberate preference migration.
 
 The current NAS tailnet IPv4 identity is `100.64.0.1`. Preserve it and the NAS SSH
 and Attic signing identities: the restricted fleet policy and deployed laptop
@@ -29,11 +32,12 @@ fleet does not accept Headscale DNS or subnet routes. LAN AdGuard is separate.
 
 The embedded DERP server is disabled and public relays remain available. This
 does not expose the private control endpoint to overseas clients. The current
-listener firewall admits port 8090 on the NAS LAN and established tailnet.
-Metrics and gRPC stay on loopback.
+listener firewall admits port 8090 on the NAS LAN and established tailnet, with
+a scoped admission for the isolated Funnel backend. Metrics/debug stay on
+loopback; remote TCP gRPC is disabled by the deployed TLS/insecure settings.
 
 For deployed laptop updates and signed publication, see
-[Omarchy offers](omarchy-update-center.md). For the unresolved overseas control
-URL and public ingress, see [overseas Headscale](overseas-headscale.md). That
-follow-up prioritizes no Freebox changes and does not enable public services or
-re-enroll devices as part of the [wired NAS move](router-rewire.md).
+[Omarchy offers](omarchy-update-center.md). For verified public transport and
+the remaining local-console migration/unrelated-network checks on the shipped
+laptops, see [overseas Headscale](overseas-headscale.md). No Freebox changes or
+replacement fleet identities were required.

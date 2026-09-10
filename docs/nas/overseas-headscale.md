@@ -1,74 +1,78 @@
-# Overseas Headscale follow-up
+# Public Headscale and remaining laptop handover
 
-The cupboard move preserves the existing Headscale control plane and identities.
-It does not establish overseas access and does not change Freebox configuration.
-Public ingress is a separate follow-up, not a blocker for the wired migration.
+## Current state — September 10, 2026
 
-## State that must survive
+The public control endpoint is **`https://nas-saas.tail8dd1.ts.net:8443`**.
+It reaches the existing NAS Headscale through an outbound Tailscale Funnel;
+no Freebox/BE550 forwarding, paid VPS or Cloudflare token is required.
+The separate `nas-saas` personal-account node supplies ingress only. ASUS and
+Dell remain on private Headscale, not the personal Tailscale account.
 
-- Headscale listens at `http://10.42.0.1:8090`; the public HTTPS option is off.
-  A successful LAN connection does not demonstrate off-LAN control access.
-- NAS Headscale IPv4 identity is `100.64.0.1`. The restrictive ACL, signed-offer
-  listener and laptop distribution endpoints depend on that address. Preserve
-  `/var/lib/headscale`, NAS tailscaled state, the NAS SSH host key used to sign
-  offers, and the Attic signing identity. Do not re-enroll or rebuild identities
-  as a network-cleanup step. Use the [verified backup workflow](headscale-backup.md).
-- The deployed laptops already consume signed updates. The NAS offers manifest
-  and signature at `100.64.0.1:8091` and cache at `100.64.0.1:8080`; clients
-  verify the pinned NAS signing key and cache signatures. Publication and owner
-  installation remain separate actions. See the [deployment receipts and update
-  workflow](omarchy-update-center.md).
-- `headscale-policy.hujson` is deny-by-default: NAS may SSH into `tag:fleet`,
-  and fleet devices may fetch NAS offers/cache. It does not grant fleet devices
-  the house subnet, NAS SSH or each other's services. Keep this policy intact.
-- The coordinator remains on independent SaaS Tailscale with Freebox fallback.
-  NAS and laptops do not silently migrate to that separate control plane.
+Headscale still listens privately at `10.42.0.1:8090`. Its own NAS client keeps
+that LAN control URL and its existing node `1`, `100.64.0.1`. The dedicated
+public Caddy option is off; this does not mean the Funnel endpoint is off.
+AdGuard keeps its existing DNS listener. Funnel exposes only the Headscale
+backend, never media, SSH, update offers/cache or metrics.
 
-## What still needs design and verification
+Public DNS was first observed working at 15:49 Paris after earlier negative
+answers. Exact Tailscale 1.98.9 disposable clients subsequently proved:
 
-Public DERP relays do not publish the private Headscale control URL. Existing
-peer connections or a successful LAN update cannot establish that laptops can
-register, reconnect or obtain updated network information from overseas.
+- LAN-to-public control migration and daemon restart with the same full private
+  configuration, machine/node keys, Headscale node ID/IP and other preferences.
+- Pristine registration directly through public HTTPS and reconnection after
+  restart, confirmed by fresh server timestamps and actual public TCP sockets.
+- Verification of the existing signed update manifest and retrieval of both
+  laptop cache records over the private Headscale data path.
+- Public TLS health HTTP 200 and administrative API HTTP 401 for missing and
+  invalid credentials. TLS certificate verification remained enabled.
 
-Prioritize an ingress design requiring no Freebox changes. That likely requires
-an outbound connection from home to a public ingress host; select and test the
-transport in the follow-up. Do not assume Cloudflare proxy or Tunnel supports
-Headscale's control-protocol upgrade. A proposed ingress must be tested against
-the actual deployed Headscale/client versions before choosing it.
+These are genuine public-internet transport tests from the coordinator, **not
+an unrelated-network test on either owner's laptop**. Initial disposable nodes
+and credentials were removed without changing real nodes `1`, `2` or `4`.
+Detailed deployment and test receipts are in [personal-tailscale.md](personal-tailscale.md).
 
-Define the stable public control URL, TLS/certificate ownership, protocol
-forwarding and failure recovery before enabling the dormant public endpoint.
-Changing the control URL requires a planned migration of already-deployed
-clients; the existing NAS enrollment unit re-enrolls on a URL change. Preserve
-its identity and pinned distribution addresses deliberately throughout that work.
+## Next: local access to the laptops
 
-Acceptance must use an external network/hotspot: fresh registration or planned
-re-authentication, reconnect after restart, NAS-to-laptop administrative SSH,
-manifest signature verification, cache retrieval and restrictive ACL negatives.
-Record which tests have actually passed; do not infer overseas readiness from
-LAN deployment or existing tunnel continuity.
+Both laptops left home before their daemon preferences could be migrated.
+Their old `http://10.42.0.1:8090` control URL cannot bootstrap from friends'
+Wi-Fi. Merely changing the source configuration or seeing an old peer online
+does not repair those saved preferences.
 
-## Preserve these remaining operational tasks
+Use the reviewed operator tool in `omarchy-fleet`:
+`docs/fleet-endpoint-migration.md`, `scripts/fleet-endpoint-migrate.py` and
+`scripts/fleet-endpoint-launch.sh`. Follow its preflight and recovery gates;
+run independently of the SSH connection it may interrupt. Never log out,
+force re-authentication, delete state or mint replacement laptop identities.
 
-- Select and validate a public endpoint such as `headscale.mecattaf.dev` before
-  migrating clients. Standard HTTPS 443 is the intended candidate to evaluate;
-  the dormant 8443 value is not an instruction to change the Freebox.
-- Choose one certificate owner. Existing staged Caddy uses NixOS ACME/lego
-  DNS validation; credentials belong in the NAS agenix flow, never the store.
-- Verify public DNS/HTTPS before any fleet tunnel exists, including the NAS's
-  own connection. Avoid permanent private-IP overrides on roaming laptops.
-- Already-enrolled laptop daemons need preference migration, not merely an
-  enrollment option change. Review the NAS's logout/re-enroll logic before
-  changing its URL; do not blindly delete state or lose `100.64.0.1`.
-- The prior handoff reported encrypted identity archives on NAS and coordinator,
-  but operator recovery-key decryption was not yet proven. Verify recovery,
-  retain an offsite/offline copy, and test isolated restoration without duplicate
-  live nodes. Cache data recovery is separate from signing-key recovery.
-- Keep public relay-map fallback initially; no additional DERP service or home
-  UDP forwarding is required by this migration. Measure remote throughput later.
-- Test each laptop off-LAN: authenticated NAS administration, denied lateral
-  access, signed offer decline/accept, exact target installation, reconnect and
-  suspend/resume. Existing LAN installation receipts are not these tests.
-- Complete certificate/endpoint, disk and backup monitoring; document private
-  coordinator-assisted recovery. NAS downtime may interrupt management/updates,
-  while ordinary laptop use remains independent.
+For each laptop, record the original identity, migrate the existing **fleet**
+daemon (not the logged-out personal daemon), restart that daemon and prove a
+fresh public-control connection. Preserve Dell node `2` / `100.64.0.2` and ASUS
+node `4` / `100.64.0.4`; keep DNS and subnet-route acceptance disabled.
+
+Then, from the unrelated Wi-Fi, verify NAS-to-laptop SSH, signed offers/cache,
+denied lateral/household access and reconnect after suspend/resume. Only after
+those checks should the prepared signed update be published for owner acceptance.
+No forced update or reboot is part of endpoint migration. Installing a new kernel
+requires a later reboot to run it; app-only changes should not request a reboot.
+ASUS boot reliability remains unproven until the patched kernel is installed
+and actual boot/display behavior is checked.
+
+## Recovery and independent follow-ups
+
+- Preserve `/var/lib/headscale`, the original `/var/lib/tailscale`, independent
+  `/var/lib/tailscale-personal`, NAS SSH/signing and Attic identities. See the
+  [Headscale snapshot](headscale-backup.md) and [encrypted identity archive](fleet-identity-backup.md)
+  procedures. Keys do not belong in Attic's package cache.
+- Encrypted archives are held privately on NAS and coordinator. Real operator-key
+  decryption and a full service-restoration rehearsal still require the operator
+  recovery identity; database-only scratch restoration is not that proof.
+- The existing restrictive ACL remains: NAS may SSH to fleet; fleet may fetch
+  NAS offers/cache on ports 8091/8080. No household or laptop-to-laptop access.
+- Keep the coordinator's independent SaaS connection and Freebox Wi-Fi fallback.
+  NAS downtime interrupts management/updates, not ordinary laptop use.
+- The personal ingress node currently reports key expiry on March 9, 2027.
+  Disable expiry for that exact unattended node in the personal account, or plan
+  renewal before then. No account-wide expiry policy was changed here.
+- Private `music.mecattaf.dev` / `plex.mecattaf.dev` DNS-01 HTTPS and off-LAN
+  personal exit-node testing are separate tasks. Their missing zone-scoped
+  Cloudflare credential does not block this `*.ts.net` fleet endpoint.

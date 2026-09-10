@@ -137,9 +137,10 @@ revision, successful client result and signatures against the published
 candidate. This was operator-directed commissioning; owner GUI acceptance and
 a live rollback exercise have not been performed or claimed.
 
-Remaining live gates: owner GUI acceptance, live rollback verification, and
-public HTTPS control-plane provisioning plus hotspot acceptance. The public
-endpoint remains unconfigured; overseas reachability is not yet established.
+At this initial receipt, owner GUI acceptance, live rollback verification and
+public HTTPS/hotspot acceptance were still outstanding. Later receipts below
+cover app installation; [the public Headscale checklist](overseas-headscale.md)
+records the subsequently verified public transport and remaining laptop migration.
 
 ## Native-dock commissioning incident — September 10, 2026
 

@@ -5,6 +5,19 @@ account **in addition to**, not instead of, the NAS-hosted Headscale fleet.
 Marwan's ASUS and Omar's Dell remain exclusively registered with Headscale.
 The coordinator's independent SaaS connection and Freebox Wi-Fi fallback remain.
 
+## Current fleet status — September 10, 15:52 Paris
+
+**Public ingress is working.** Public DNS appeared at 15:49 and real isolated
+Tailscale 1.98.9 clients passed control-protocol registration, migration,
+restart/reconnection and signed update access at 15:51–15:52. The earlier DNS
+failure recorded below is historical, not the current blocker.
+
+The remaining fleet step is local access to the shipped laptops: their saved
+control URLs still point at the home LAN. Neither laptop has been migrated or
+updated by these public-endpoint tests. See the concise
+[current operator checklist](overseas-headscale.md). Private custom-domain media
+HTTPS and personal exit-node commissioning remain separate follow-ups.
+
 ## Reuse and boundaries
 
 - `33fb9a15` previously shipped NAS SaaS membership and home subnet advertisement.
@@ -27,7 +40,7 @@ The coordinator's independent SaaS connection and Freebox Wi-Fi fallback remain.
 | `music.mecattaf.dev` | Personal tailnet only; NAS Navidrome |
 | `plex.mecattaf.dev` | Personal tailnet only; NAS Plex |
 | NAS personal exit node | Optional, explicitly selected by personal clients |
-| Headscale through Funnel, port 8443 | Public control endpoint only; requires protocol and off-LAN validation |
+| Headscale through Funnel, port 8443 | Public control endpoint; protocol tests passed, actual off-LAN laptops pending |
 | Fleet offers/cache | Existing private Headscale addresses only |
 
 Private media HTTPS and the prospective public Funnel listener use distinct ports
@@ -191,3 +204,32 @@ The final 14:59 public DNS check still returned no address. Disposable node
 node `5` was already absent. Test preauth keys `13` and `14` were expired,
 both probe daemons stopped, and their dedicated plaintext auth/state files
 removed. Real nodes `1`, `2` and `4` retained their original identities.
+
+## Public transport verified — September 10, 15:49–15:52 Paris
+
+Public DNS returned `176.58.90.46`, `176.58.90.63` and `176.58.90.145` through
+Quad9 and Cloudflare DoH. One resolver still held an older negative answer;
+no permanent hosts override or global resolver change was made. Public HTTPS
+health returned 200 with TLS verification enabled; missing and invalid API
+credentials each returned 401 through independently resolved public addresses.
+
+An isolated persistent Tailscale 1.98.9 client migrated from LAN control to
+`https://nas-saas.tail8dd1.ts.net:8443` using the reviewed migration core.
+After its daemon restarted, Headscale recorded a fresh connection. Full private
+Config, machine/node keys, node ID/IP and non-control preferences were unchanged.
+A second pristine client registered directly through public HTTPS, with no
+prior LAN control map, and also reconnected after restart with the same identity.
+Actual TCP sockets reached public `176.58.90.46:8443`, not the personal NAS's
+`100.65.85.114` tailnet address. The public Noise key matched the existing NAS.
+
+Both clients verified the real SSH-signed app-release manifest and fetched the
+two device cache records over private Headscale. Manifest SHA-256:
+`989860f219236375ad74f159fb117efd6abf4d007b5010a79dd3502362aa51ba`.
+The existing owner offer was unchanged; these tests neither published a new
+update nor contacted either laptop.
+
+Disposable nodes `7`/`8` were then deleted, preauth keys `15`/`16` expired,
+both daemons stopped and all four dedicated plaintext auth/state files removed.
+Real NAS/Dell/ASUS nodes `1`/`2`/`4` retained their exact identity fields.
+This is public-internet transport proof from the coordinator, not a substitute
+for the remaining unrelated-Wi-Fi checks on the real laptops.
