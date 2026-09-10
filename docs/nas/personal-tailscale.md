@@ -5,12 +5,14 @@ account **in addition to**, not instead of, the NAS-hosted Headscale fleet.
 Marwan's ASUS and Omar's Dell remain exclusively registered with Headscale.
 The coordinator's independent SaaS connection and Freebox Wi-Fi fallback remain.
 
-## Current fleet status — September 10, 15:52 Paris
+## Current fleet status — September 10, 16:08 Paris
 
 **Public ingress is working.** Public DNS appeared at 15:49 and real isolated
 Tailscale 1.98.9 clients passed control-protocol registration, migration,
 restart/reconnection and signed update access at 15:51–15:52. The earlier DNS
 failure recorded below is historical, not the current blocker.
+Subsequent checks passed automatic recovery after a personal-daemon restart and
+the actual off-LAN/no-cached-map migration and offline rollback cases.
 
 The remaining fleet step is local access to the shipped laptops: their saved
 control URLs still point at the home LAN. Neither laptop has been migrated or
@@ -43,7 +45,7 @@ HTTPS and personal exit-node commissioning remain separate follow-ups.
 | Headscale through Funnel, port 8443 | Public control endpoint; protocol tests passed, actual off-LAN laptops pending |
 | Fleet offers/cache | Existing private Headscale addresses only |
 
-Private media HTTPS and the prospective public Funnel listener use distinct ports
+Private media HTTPS and the public Funnel listener use distinct ports
 and backends. Never point Funnel at the private media Caddy listener. Cloudflare
 records for private media are DNS-only, pointing at the enrolled personal NAS
 address; knowing that address does not grant tailnet access. Do not publish a
@@ -54,6 +56,9 @@ password reset. Funnel's `*.ts.net` name is separate from the private custom
 domains; compatibility must be proven before changing any laptop control URL.
 
 ## Commissioning gates
+
+These are independent feature gates, not a requirement to finish private media
+HTTPS or personal exit routing before enabling the public Headscale endpoint.
 
 1. Evaluate and build the isolated configuration; validate firewall rules before
    deployment. Preserve the deployed NAS generation and an encrypted identity
@@ -80,8 +85,9 @@ domains; compatibility must be proven before changing any laptop control URL.
 8. Capture both NAS client identities using the updated recovery helper and copy
    ciphertext off the NAS. Retain the previous snapshot; no keys go in Attic.
 
-This document is a commissioning checklist, not a deployment receipt. Record
-actual results and remaining operator gates here before declaring completion.
+The following dated receipts record which gates have actually passed. Earlier
+staging limitations are historical; use the current status at the top and the
+latest receipt rather than treating every earlier pending item as still blocked.
 
 ## Initial staging — September 10
 
@@ -233,3 +239,58 @@ both daemons stopped and all four dedicated plaintext auth/state files removed.
 Real NAS/Dell/ASUS nodes `1`/`2`/`4` retained their exact identity fields.
 This is public-internet transport proof from the coordinator, not a substitute
 for the remaining unrelated-Wi-Fi checks on the real laptops.
+
+## Restart recovery and off-LAN migration tool — September 10, 16:08 Paris
+
+Restarting only `tailscaled.service` inside `nas-saas` at 15:58:06 preserved the
+persistent 8443 Funnel configuration. The untouched disposable client regained
+a fresh control connection at approximately 16:00:24 (138 seconds), confirmed
+by server and client logs, not cached Running status. A fresh public client
+also registered successfully. Host Headscale/tailscaled invocation identities
+and all real node identities were unchanged; NAS services remained healthy.
+
+Fleet commit `d069df2` adds the operator-only migration tool and console guide;
+`62ce751` tightens recipient checksum and untested-reboot wording without changing
+the independently tested executable bytes.
+It does not change the runtime candidate or install anything. Fourteen migration
+tests and all 49 updater/client/layout tests passed. The launcher uses the exact
+Python already present in both installed app-release closures, not PATH Python
+or an on-device download.
+
+An independent disposable test blocked the old home LAN only in its own daemon
+cgroup, producing real Tailscale 1.98.9 NoState without a cached self map. With
+the public Noise key pinned through authenticated NAS inspection, the committed
+core migrated and restarted into a fresh public connection in 5.7 seconds,
+preserving full Config, machine/node keys, ID/IP and preferences. Signed manifest
+and cache reads passed with LAN destinations still blocked. An injected public
+network failure then restored the exact old URL/private identity in 90.26 seconds
+and explicitly reported **offline local-console recovery**, not online rollback.
+
+Fleet-to-NAS ports 8080/8091 passed; NAS SSH and media port 4533 timed out,
+consistent with the restrictive ACL but not a packet-level drop trace.
+A household-address probe on the physically local coordinator used ordinary
+host networking through SOCKS, so it was explicitly excluded as Headscale ACL
+evidence. The existing no-subnet-route preference and restrictive ACL were not
+changed. Real unrelated-network laptop acceptance remains outstanding.
+
+Disposable nodes `9`/`10` were removed after exact identity checks; test keys
+`17`/`18` were expired, both probe units unloaded, ports 19093/19094 closed and
+four plaintext test auth/state files removed. The test-only network restrictions
+were removed with those units. Public-only receipts are retained privately on
+the coordinator under `.local/share/fleet-recovery/public-tests/2026-09-10-funnel-recovery/`.
+No real laptop was contacted during this preparation round; the published offer
+remains the existing app release `470fae7`.
+
+The private, history-free delivery archive is
+`/home/tom/.local/state/fleet-endpoint-ready.J6fOKJ/fleet-endpoint-62ce751.tar.gz`.
+SHA-256: `23f79a807fc833e7720f960b77a7c96b3b5fa40f97b4f44ec947c4ee31cc71b7`.
+It contains the two scripts, console guide and tests only, with an operator
+receipt beside it. It has not been hosted publicly or delivered to either laptop.
+
+The final post-cleanup encrypted identity archive is
+`fleet-identities-2026-09-10T14-09-31Z-s2jazk9g.tar.gz.age` (165,185,589 bytes).
+NAS and coordinator SHA-256 independently matched
+`cdc7d54526d6eed7064c8242718a313b3e78bf9dd7c20d6e90d072682aa2fb10`.
+It captures the current configuration and both independent NAS client identities;
+archive/isolated database verification passed, but real operator-key decryption
+remains unverified. Prior encrypted archives were retained privately.

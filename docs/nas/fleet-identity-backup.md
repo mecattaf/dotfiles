@@ -124,3 +124,20 @@ The regular Headscale snapshot and isolated verification also succeeded:
 `2026-09-10T07-34-11Z-yve_6v1f`. Its normal two-snapshot retention removed the
 older `2026-09-10T07-31-05Z-9jh_suce`; no encrypted identity archive was removed.
 No global garbage collection ran. NAS failed system units remained zero.
+
+## Post-public-ingress capture — September 10, 16:09 Paris
+
+After public-control, personal-daemon recovery and off-LAN migration tests, all
+disposable registrations/credentials were cleaned up before a fresh live capture.
+Archive `fleet-identities-2026-09-10T14-09-31Z-s2jazk9g.tar.gz.age`
+(165,185,589 bytes) is retained in the same private NAS and coordinator directories.
+Independent SHA-256 checks on both hosts matched:
+`cdc7d54526d6eed7064c8242718a313b3e78bf9dd7c20d6e90d072682aa2fb10`.
+
+This capture includes both independent NAS Tailscale identities and the deployed
+public Headscale configuration, plus the unchanged SSH/Headscale/Attic identities.
+Archive verification and isolated database checks passed. Both ciphertext files
+are 0600 under 0700 directories; previous encrypted archives were retained.
+The coordinator also holds a private JSON receipt. No service was stopped and
+no secret was uploaded to Attic or committed. Real operator-key decryption is
+still **unverified**; that requires the separately held operator recovery key.

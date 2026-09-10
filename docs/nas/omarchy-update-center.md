@@ -198,3 +198,33 @@ The [encrypted identity recovery receipt](fleet-identity-backup.md) records the
 protected NAS and coordinator copies, verification scope and decryption caveat.
 Overseas control-plane provisioning remains distinct from this successful local
 offer-delivery test.
+
+## Public-control preparation and pending kernel — September 10, 16:12 Paris
+
+Both laptops subsequently accepted the app offer; later read-only checks matched
+their installed targets and signatures. That app release remains the public offer.
+The [public Headscale transport](overseas-headscale.md) now passes disposable
+registration, restart recovery, off-LAN migration and signed/cache access tests.
+The real shipped laptops still need their one-time control-URL migration and
+unrelated-network checks. Nothing in this preparation round contacted them.
+
+Kernel 7.2.4 with the ASUS-only VMD fix is **still building, not ready to install**.
+The original `omarchy-kernel-89f703a-build.service` is unchanged. Queued
+`omarchy-final-bc866db-build.service` waits for that kernel and then builds both
+runtime candidates from exact private revision
+`bc866db28b920794e20e6bcb6e21a28c894c56ea`. Later migration-tool/documentation
+commits do not change those runtime candidates. Neither unit publishes an offer.
+
+A separate capped `omarchy-final-bc866db-verify.service` waits for both final
+roots and verifies their exact pinned revisions/closures, kernel version and
+actual ASUS initrd modules/early-load entries, archived VMD bytes and final
+interrupt ordering. Its root-private result is:
+`/var/lib/omarchy-update-center/private/build-only-bc866db/verification.json`.
+Missing receipt means **pending/unverified**, never success. PASS is artifact
+verification, not a physical ASUS boot test, owner consent or publication.
+
+The coordinator retains the full status/verification recipe at
+`/home/tom/.local/share/fleet-recovery/nas/kernel-build-bc866db-status.md`.
+All builds and checks run independently with bounded resources; there is no
+automatic publication, activation or reboot. Public endpoint migration does
+not require this new kernel and can proceed separately after local-console GO.
