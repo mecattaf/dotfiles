@@ -1,8 +1,7 @@
 # Wired NAS and BE550 in the cupboard
 
-This is the deployment target. The PR prepares configuration; merge does not
-activate it. Freebox configuration and the existing Wi-Fi band choices stay as
-configured. The TV connection and USB Wi-Fi intake are retired.
+Deployed on 2026-09-10. Freebox configuration and the existing Wi-Fi band
+choices are unchanged. The TV connection and USB Wi-Fi intake are retired.
 
 ```text
 Freebox Ethernet port 3 → BE550 WAN (router mode)
@@ -33,37 +32,39 @@ Fallback restores internet access, not services on an unavailable NAS. Freebox
 fallback also loses the direct BE550 LAN path. Other devices keep their normal
 NAS dependency unless deliberately configured otherwise.
 
-## Cutover
+## Deployment and recovery
 
-1. Build all affected configurations and run the topology/fallback checks. Copy
-   the NAS closure and install it for **next boot only**. Keep the running NAS
-   Wi-Fi uplink and services intact. Keep the coordinator closure ready locally;
-   activate it after reconnecting following the move.
-2. Hand the browser agent the BE550 pass: record/export existing settings,
-   select router mode, static LAN `.3/24`, WAN Dynamic IP, DHCP off, primary-LAN
-   IPv6 off, and preserve radio bands/SSIDs/security. Freebox stays untouched.
-   Mode changes can briefly reboot Wi-Fi; the NAS still supplies the current
-   internet path until it is shut down.
-3. Tom switches the coordinator to Freebox Wi-Fi and confirms this agent is
-   reachable. Shut down the NAS cleanly before removing power, move both boxes,
-   retire the USB Wi-Fi adapter and TV cable, then wire Freebox port 3 → BE550
-   WAN and NAS Ethernet → BE550 LAN. Power up; the NAS boots its staged system.
-4. Tom returns the coordinator to `thomas-6ghz`. Activate its prepared closure
-   and finish verification: NAS route `.3`, client gateway/DNS `.1`, AdGuard
-   filtering and internal names, NFS/SSH/media/cache/Headscale, and coordinator
-   NAS → direct BE550 → Freebox fallback. Return to Freebox if troubleshooting
-   needs independent internet. Hardware-only checks remain coverage/airflow.
+The NAS booted the wired configuration after relocation. The BE550 is an Archer
+BE550 v1.0, firmware 1.2.4 Build 20260402 rel.18154(4555), in router mode. Its
+WAN uses DHCP and upstream DNS from Freebox; the observed WAN lease was
+`192.168.1.17`, gateway and DNS `192.168.1.254`. That lease is not a static
+address requirement. LAN is `10.42.0.3/24`, DHCP is off and IPv6 is off.
+
+Wireless retains `thomas` on 2.4 GHz and `thomas-6ghz` on 6 GHz. The 5 GHz
+radio, Smart Connect, MLO, guest networks and IoT networks are off. Existing
+passwords/security and radio tuning are preserved. AP Isolation and device
+Access Control are off; Wi-Fi authentication and the router firewall remain.
+
+The coordinator configuration can be activated while it stays on Freebox.
+Its boot reconciliation ignores activations after the first five minutes of
+uptime. The worker's Ethernet management link and BE550 Wi-Fi provided access
+throughout this migration; coordinator Wi-Fi is switched only after setup.
+
+Router backups before and after the mode change and the system deployment
+receipt are kept privately under `~/.local/state/nas-wired-cutover/` on the
+coordinator. The original NAS generation and private uplink backup are retained
+under `/var/lib/nas-wired-cutover` with a GC root for the previous system.
+The one migration PR preserves the removed implementation for future recovery.
 
 The saved primary coordinator profile always names NAS `.1`; bypass modifies
 only the active route/DNS. Recovery is checked at boot and 04:00, or explicitly
 with `systemctl start uplink-rail-revert.service`. Probes select the intended
 upstream independently of the currently working default route.
 
-NetworkManager keeps old profiles after their declarations disappear. Retain
-the existing NAS Ethernet profile ID during cutover; inspect and retire the
-obsolete NAS Freebox Wi-Fi profile and `/var/lib/nas-router/freebox-uplink.env`
-after the wired path is proven. Unplugging the adapter does not delete them.
-Keep the existing kernel selection during this move; reconsider it separately.
+The NAS Ethernet profile keeps its existing ID. Obsolete NAS Freebox Wi-Fi
+profiles and `/var/lib/nas-router/freebox-uplink.env` are retired after checking
+the wired path; removing a declaration alone does not remove persistent
+NetworkManager profiles. Kernel selection is unchanged.
 
 The coordinator's independent SaaS Tailscale emergency path stays enabled.
 Preserve NAS Headscale identity, policy and signed laptop updates; overseas
