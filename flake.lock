@@ -1317,16 +1317,16 @@
     },
     "tally-lake": {
       "locked": {
-        "lastModified": 1788780068,
-        "narHash": "sha256-nbIxCIkfn03q5l275nJXpC1LbPpBaL3OTe9P2b3rd/o=",
+        "lastModified": 1788818925,
+        "narHash": "sha256-akCLcSbleNs9wVW8cTK+nPxVmr9tlVilnMHdJ6sqDs8=",
         "ref": "refs/heads/main",
-        "rev": "38a526ba3894aa2fed0ec276b4921de4ef10b8e4",
-        "revCount": 198,
+        "rev": "897f9015e7c22304c3bfd7ca2ec990b294966ded",
+        "revCount": 230,
         "type": "git",
         "url": "https://github.com/mecattaf/tally-ts-sdk"
       },
       "original": {
-        "rev": "38a526ba3894aa2fed0ec276b4921de4ef10b8e4",
+        "rev": "897f9015e7c22304c3bfd7ca2ec990b294966ded",
         "type": "git",
         "url": "https://github.com/mecattaf/tally-ts-sdk"
       }

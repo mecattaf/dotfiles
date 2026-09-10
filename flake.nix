@@ -257,14 +257,34 @@
     # its version moves when Tom says so, never on a nightly resolve — the same
     # reason herdr and herdr-kitten are out.
     #
-    # REV: a233c30 = origin/main of mecattaf/tally-ts-sdk at W-03's delivery
-    # (PR #99 `lake/uplink`, merged as e3249b7, whose flake.nix commit c29fdfb
-    # is MEASURED an ancestor of this rev) plus U-A22's own evaluator probe. It
-    # is the first `main` that exports `homeManagerModules.tally-uplink` at all;
-    # anything before c29fdfb has no flake to import and this input cannot
-    # evaluate. See docs/local-ai/tally-uplink-input.md.
+    # REV: 897f901 = origin/main of mecattaf/tally-ts-sdk on 2026-09-10
+    # (MEASURED: `git rev-parse origin/main` in the local clone; 32 commits
+    # ahead of the previous pin 38a526ba, and the whole range is on `main`).
+    # The lineage of this line, so a reader can see what each bump bought:
+    #   a233c30  W-03's delivery (PR #99 `lake/uplink`, merged as e3249b7,
+    #            whose flake.nix commit c29fdfb is an ancestor) plus U-A22's
+    #            evaluator probe — the first `main` that exports
+    #            `homeManagerModules.tally-uplink` at all; anything before
+    #            c29fdfb has no flake to import and this input cannot evaluate.
+    #   38a526ba the pin this bump replaces.
+    #   897f901  THIS pin. What it carries that 38a526ba lacks (TL-18 /
+    #            dotfiles#304, runbook step 3 of tally-ts-sdk docs/deploy.md):
+    #            packages/planning/src/objects/factory.ts:617 `level_rank` and
+    #            the uplink's `level_rank` passthrough — without it a proposal
+    #            arrives without the level the floor ranks it by; FIX-E04, the
+    #            uplink SHUTTING THE DOOR on the lake's 5xx instead of retrying
+    #            into it (the deployed Worker answers 500 FactoryError /
+    #            PersistenceFailed today, tally-ts-sdk docs/e2e.md:178-186, so
+    #            this is the difference between a legible refusal every five
+    #            minutes and a hot loop); FIX-E05 and FIX-E10.
+    # BUMPING THE PIN IS NOT DEPLOYING THE LAKE and is not a switch: this line
+    # moves the bytes the BOX evaluates against. The deployed Worker
+    # (f95beed) already carries the factory fix; only the box-side pin lacked
+    # it. The switch that installs the result is Tom's (dotfiles#322 U-D19),
+    # and so is any further bump once FT-2/FT-4/FT-5/FT-6 merge.
+    # See docs/local-ai/tally-uplink-input.md.
     tally-lake = {
-      url = "git+https://github.com/mecattaf/tally-ts-sdk?rev=38a526ba3894aa2fed0ec276b4921de4ef10b8e4";
+      url = "git+https://github.com/mecattaf/tally-ts-sdk?rev=897f9015e7c22304c3bfd7ca2ec990b294966ded";
     };
 
     # deploy-rs — the fleet's one NixOS activation engine. Tally remains the
@@ -1028,6 +1048,11 @@
         #   - the token is a PATH and the SERVICE carries no `Install` section —
         #     no secret in the store, and no target this unit installs itself
         #     onto (DEFERRED.md DF-U-D14-2);
+        #   - the KIT is a store file that reaches the rendered argv, and the
+        #     PLAN is still null with no `--plan` on it (TL-18 / D-B18,
+        #     dotfiles#304): the argv table the box resolves against must be a
+        #     reviewed artifact, never a file edited on the box (Rule 9,
+        #     dotfiles#293), and arming remains Tom's act and not this module's;
         #   - the WAKE exists and is a timer's, not a human's (FIX-E12, spec id
         #     `uplink-has-no-trigger`, dotfiles#351, D-E24): MEASURED, the
         #     service had been failed for 7h with TriggeredBy/WantedBy/
@@ -1079,10 +1104,23 @@
           assert cfg.stateDir == "${state}/uplink";
           assert cfg.executor == "coordinator";
           assert cfg.wakes == 1;
-          # null is the honest state for both: no kit on this estate names an
-          # argv yet, and the plan body is the acceptor's (DF-U-D14-3).
-          assert cfg.kit == null;
+          # THE KIT is a store file, not null and not a path on the box
+          # (TL-18 / D-B18, dotfiles#304). This is the assert FT-3 flipped:
+          # `cfg.kit == null` was the honest state while no kit named an argv
+          # for this estate, and the honest state now is that exactly one
+          # reviewed store artifact does. The three clauses say what a kit must
+          # be here — in the store (so nothing hand-edited on the box can become
+          # the argv table, Rule 9 / dotfiles#293), named by the module that
+          # builds it, and actually REACHING the unit, which the third clause
+          # reads off the rendered argv rather than off the option.
+          assert nixpkgs.lib.hasPrefix "/nix/store/" cfg.kit;
+          assert nixpkgs.lib.hasSuffix "-tally-uplink-kit.json" cfg.kit;
+          assert nixpkgs.lib.hasInfix "--kit /nix/store/" execStart;
+          # THE PLAN stays null, and null is still the honest state for it: the
+          # plan body is the acceptor's and arming is Tom's act, so the unit
+          # must carry no `--plan` either.
           assert cfg.plan == null;
+          assert !(nixpkgs.lib.hasInfix "--plan" execStart);
           # the rows file is the pinned kernel's, out of the store.
           assert nixpkgs.lib.hasPrefix "/nix/store/" cfg.rows;
           assert nixpkgs.lib.hasSuffix "/docs/rows.md" cfg.rows;
@@ -1126,6 +1164,10 @@
           assert !(nixpkgs.lib.hasInfix "lake-token" (builtins.toJSON timer));
           # the uplink's own outbox, declared with its mode.
           assert builtins.elem "d ${state}/uplink 0700 - - -" coordinatorHome.systemd.user.tmpfiles.rules;
+          # and the kit's usage drop, where every `usage_source.path_glob` the
+          # kit names resolves: the kernel resolves the glob, it does not create
+          # the directory.
+          assert builtins.elem "d ${state}/uplink/usage 0700 - - -" coordinatorHome.systemd.user.tmpfiles.rules;
           # the non-goals: no system-bus twin of either half, and the live
           # daemon stays.
           assert !(coordinator.systemd.services ? tally-uplink);
