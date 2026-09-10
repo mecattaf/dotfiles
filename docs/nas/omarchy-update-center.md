@@ -42,7 +42,13 @@ The transient `omarchy-update-publish.service` has an eight-hour runtime ceiling
 with two cores, no remote builders, and no lock-file updates. It selects only
 the requested fleet toplevels; this job has no model-weight synchronization step.
 The candidate is pushed in full to the existing signed Attic `fleet` cache,
-including paths that also exist upstream. Only successful pushes are signed
+including paths that also exist upstream, with at most three concurrent path
+uploads. This bound also applies to keepalive. The first-fill measurement found
+the single-path upload using about 1.3 CPU cores in Attic on an eight-thread NAS,
+with the disk mostly idle; three paths allow parallel server work while retaining
+CPU headroom. The uploader's resource limits do not cap the separate Attic server,
+so this is a path-concurrency bound rather than a three-core CPU quota.
+Only successful pushes are signed
 with `/etc/ssh/ssh_host_ed25519_key` under namespace `fleet-update`.
 Push tokens are short-lived and minted locally through `atticd-atticadm`, whose
 wrapper loads the existing protected signing environment. Do not print tokens,

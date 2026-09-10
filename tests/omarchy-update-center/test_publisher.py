@@ -102,6 +102,8 @@ class PublisherTests(unittest.TestCase):
             self.assertIn("?rev=" + self.revision + "#", call[-1])
             self.assertEqual(call[call.index("--max-jobs") + 1], "1")
         push_index = next(i for i, call in enumerate(self.calls) if call[:2] == ("attic", "push"))
+        push_call = self.calls[push_index]
+        self.assertEqual(push_call[push_call.index("--jobs") + 1], "3")
         sign_index = next(i for i, call in enumerate(self.calls) if call[0] == "ssh-keygen")
         self.assertLess(push_index, sign_index)
         allowed = self.root / "allowed_signers"
@@ -171,6 +173,8 @@ class PublisherTests(unittest.TestCase):
                 self.assertIn("/fleet/nar/", call.args[0].full_url)
         self.assertFalse(any(call[:2] == ("nix", "build") for call in self.calls))
         self.assertTrue(any(call[:2] == ("attic", "push") for call in self.calls))
+        push_call = next(call for call in self.calls if call[:2] == ("attic", "push"))
+        self.assertEqual(push_call[push_call.index("--jobs") + 1], "3")
 
 
 if __name__ == "__main__":

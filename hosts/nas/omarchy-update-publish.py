@@ -58,7 +58,7 @@ def login():
 
 def push(paths):
     # Include upstream paths too: an overseas owner needs one complete cache.
-    run("attic", "push", "--jobs", "1", "--ignore-upstream-cache-filter",
+    run("attic", "push", "--jobs", "3", "--ignore-upstream-cache-filter",
         "omarchy-local:fleet", *paths)
 
 
