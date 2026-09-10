@@ -274,3 +274,103 @@ needed. Disposable node 11, key 19, daemon and plaintext state were cleaned up;
 real identities 1/2/4 were unchanged. Public-only receipts are retained at
 `/home/tom/.local/share/fleet-recovery/public-tests/2026-09-10-bc866db-dell/`.
 No actual laptop was contacted or updated by this test.
+
+## Both kernel updates built and verified — September 10, 18:28 Paris
+
+The ASUS patched Linux 7.2.4 kernel completed and registered all three expected
+outputs at approximately 18:26. Both final `bc866db` system builds completed
+successfully at 18:27. The independent artifact verifier returned **PASS** at
+`2026-09-10T16:28:40.806991+00:00` for exact revision
+`bc866db28b920794e20e6bcb6e21a28c894c56ea`:
+
+| Device | Verified system | Valid closure paths |
+| --- | --- | --- |
+| ASUS (`zenbook-duo`) | `/nix/store/yci0p2fgjacgy1mxd05z4mgpa4s3f75d-nixos-system-zenbook-duo-26.05.20260727.2f5a153` | 3,136 |
+| Dell (`xps`) | `/nix/store/dhh7k1yk67i8zgaj53xjfgnfandqy4bf-nixos-system-xps-26.05.20260727.2f5a153` | 3,139 |
+
+Both match the exact pinned evaluation and kernel version 7.2.4. ASUS uses the
+expected patched kernel, with i915, VMD and all three MEI modules in the actual
+initrd, explicit early MEI/i915 loading and the verified microcode prefix. The
+archived VMD module matches the final kernel module, SHA-256
+`2a125e899b65818642bfb10a08a02f3d1b66624eae3d019bfa11d4f02ffe350a`.
+Final-module disassembly verifies the locked dummy-read interrupt ordering.
+
+All original/final builders and the verifier exited successfully. The verifier
+receipt remains root-private at
+`/var/lib/omarchy-update-center/private/build-only-bc866db/verification.json`.
+This PASS proves build artifacts, not an actual ASUS hardware boot. Root then
+authorized normal signed publication for both devices and public download tests;
+publication is a separate receipt, not implied by this build result.
+
+The coordinator's private copy is
+`/home/tom/.local/share/fleet-recovery/nas/verification-bc866db-2026-09-10T16-28-40Z.json`.
+Both copies match SHA-256
+`bd7d62dc345fb3713399557f27863e9c74a32125536aa0337a8d170a2cccbd67`.
+
+## Kernel offer published — September 10, 18:30 Paris
+
+Normal dual-device publication succeeded at `2026-09-10T16:30:20Z` in
+70.361 seconds. It pushed 31 new paths and reused 3,242 already in Attic.
+Current release is
+`bc866db28b920794e20e6bcb6e21a28c894c56ea-l724d2g2`, with exactly the two
+verified toplevels above. The signed notes identify Linux 7.2.4, the intended
+ASUS startup fix and the reboot needed to run the new kernel.
+
+- Manifest SHA-256: `ef5f1d0b05e3ba97a88b6dad603fb01a0aaacc4d94c7302d827fe11894f45391`.
+- Detached signature SHA-256: `01bb5c2d5f07e1c1da1eae29af2af3529a0ce391ed0dfc621cf5bb7928377223`.
+- Previous release: `470fae7f9d9eead6d58c5ba21c61d92b4ddff80c-dkhqvdwc`.
+
+Normal retention removed only the superseded `099cc20b` release metadata and
+its publication roots. Its manifest, signature and root-path receipt survive
+in the root-private archive
+`/var/lib/omarchy-update-center/private/retention-receipts/099cc20b1cf50aaf7a3443c58bda5962390960d4-p25ro959`.
+No global garbage collection or laptop activation was performed. Actual public
+download verification is recorded separately after completion.
+
+## Final public download proof and cleanup — September 10, 18:36 Paris
+
+**Both published updates are ready to download.** A fresh Tailscale 1.98.9 test
+client reached public Headscale at `176.58.90.46:8443`, with its own cgroup denied
+both the home LAN and personal NAS SaaS address. Private NAS data used DERP
+`par`. The actual fleet client accepted the signed manifest and both exact
+verified system targets.
+
+All 3,273 combined closure paths passed fresh-cache metadata-signature checks
+against only the pinned fleet key, and all 3,273 NAR URLs returned HEAD 200.
+Six complete NAR bodies (292,159,480 bytes) were streamed, decompressed and
+hash-checked: both toplevels, both initrds, ASUS kernel and ASUS modules. The
+complete ASUS modules payload, including the VMD fix, was 155,578,848 bytes,
+hash `sha256-x+vMsESgf+IRMt8Cn0uPuWo95cyCYxyRhGx9Mfq0P3k=`. The previous full
+Dell kernel download proof was reused only after confirming its unchanged
+path, size and hash. This is complete cache metadata/availability coverage plus
+full new boot-payload downloads, not a duplicate 25 GB system-store import.
+
+The isolated fixture initially selected an unreachable public IPv6 address.
+Fresh independent Cloudflare DoH queries confirmed the public IPv4 records;
+only the fixture's private hosts bind selected one of those addresses, retaining
+TLS hostname verification. No production DNS or laptop address pin was added.
+
+Manual keepalive passed at 18:33:02, refreshing all 3,340 current/previous paths
+without changing either signed offer. Disposable node 12 and key 20 were removed
+and expired respectively; its daemon, private state, auth file, socket and
+test-only network restrictions were cleaned up. Real identities 1/2/4 remained
+unchanged, and NAS failed services remained zero. No actual laptop was contacted.
+
+After successful verification, exactly five completed build-only outlinks,
+their five matching automatic GC links and two dangling `099cc20b` automatic
+GC links were removed. The four current/previous publication roots remain.
+No store data, source checkout, verifier receipt or recovery archive was deleted.
+The private cleanup receipt is retained on coordinator and NAS; SHA-256
+`fc57dcae9e3eb07e8e45e37d0df5fcbe0ee6fcdf830fdb02ecf36bf3529324dd`.
+
+Public-only detailed receipts are retained privately under
+`/home/tom/.local/share/fleet-recovery/public-tests/2026-09-10-bc866db-final/`:
+
+- `RESULTS.md`: SHA-256 `89b3a515b48c6dc5aca0da83bb0f3ff0bbd61204d4d4bd818a7ce61d8582ad16`.
+- `final-boot-body-proof.json`: SHA-256 `175495c6dae944513c6f54b5e0f5b3b17e794852c43a09a69ca75ad361fa124b`.
+- `combined-closure-proof.json`: SHA-256 `1bbf2b0b0fa94b2571d4300b9af03727921348246b20ccddccb19d3e00bbf9b6`.
+
+The remaining owner-side sequence is the prepared one-time public-control
+migration, acceptance through the Nix dock indicator, and reboot into the new
+kernel. Actual ASUS boot/display behavior must be observed there; no build,
+publication or NAS-side download-verification step remains outstanding.

@@ -5,7 +5,7 @@ account **in addition to**, not instead of, the NAS-hosted Headscale fleet.
 Marwan's ASUS and Omar's Dell remain exclusively registered with Headscale.
 The coordinator's independent SaaS connection and Freebox Wi-Fi fallback remain.
 
-## Current fleet status — September 10, 16:08 Paris
+## Current fleet status — September 10, 18:36 Paris
 
 **Public ingress is working.** Public DNS appeared at 15:49 and real isolated
 Tailscale 1.98.9 clients passed control-protocol registration, migration,
@@ -14,10 +14,12 @@ failure recorded below is historical, not the current blocker.
 Subsequent checks passed automatic recovery after a personal-daemon restart and
 the actual off-LAN/no-cached-map migration and offline rollback cases.
 
-The public connection is ready, but the kernel update is not yet published:
-the ASUS patched kernel still needs to finish building and pass final artifact
-checks. Dell's candidate is built and cached. Local access to the shipped
-laptops is also required because their saved control URLs still point at the
+Both final Linux 7.2.4 updates are built and passed artifact verification at
+18:28:40, including the ASUS patched VMD module and actual initrd contents.
+The signed dual-device release was published successfully at 18:30:20; final
+public download checks passed for all 3,273 cache paths and six complete new
+boot payloads. The NAS-side release is ready for the onsite visit. Local access to the
+shipped laptops is still required because their saved control URLs point at the
 home LAN. Neither laptop has been migrated or updated by these public-endpoint
 tests. See the concise
 [current operator checklist](overseas-headscale.md). Private custom-domain media

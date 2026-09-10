@@ -14,6 +14,14 @@ public Caddy option is off; this does not mean the Funnel endpoint is off.
 AdGuard keeps its existing DNS listener. Funnel exposes only the Headscale
 backend, never media, SSH, update offers/cache or metrics.
 
+The Linux 7.2.4 release `bc866db` is **built, verified and published for both
+laptops**, with the ASUS-only VMD patch included. All 3,273 cache paths passed
+signature and availability checks through public Headscale with LAN access
+blocked; six complete new boot payloads were downloaded and hash-verified.
+There is no remaining NAS build or publication step before the onsite visit.
+The one-time laptop connection step below is still required. Exact receipts and
+bounded retention are in [omarchy-update-center.md](omarchy-update-center.md).
+
 Public DNS was first observed working at 15:49 Paris after earlier negative
 answers. Exact Tailscale 1.98.9 disposable clients subsequently proved:
 
