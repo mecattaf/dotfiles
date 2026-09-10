@@ -175,3 +175,25 @@ unit dependency. Dell completed at 11:27:12 and ASUS at 11:27:44 Paris, with
 matching running/profile paths and no failed system units. Native dock loading
 and the active owner's scoped approval permission were checked after fresh
 desktop sessions. The following two-app release remains a separate owner decision.
+
+## App offer ready — September 10, 2026
+
+NAS-built fleet `470fae7f9d9eead6d58c5ba21c61d92b4ddff80c` adds ChatGPT and
+Claude desktop. Published at 11:38:36 Paris after 8m02s, including 106 newly
+cached paths. Manifest/signature SHA-256 values:
+`989860f219236375ad74f159fb117efd6abf4d007b5010a79dd3502362aa51ba` and
+`3643060493b87a530df2dcac945332446cab55efc016624216f61b4cf912590c`.
+Both laptops verified the offer and reported native-widget availability while
+their installed systems and profiles remained on the corrected preparation.
+The operator did not accept or install this app offer.
+
+Current app and previous preparation closures passed recursive pinned-cache
+metadata-signature checks. Manual keepalive refreshed all 3,302 retained paths
+in 13.2 seconds, without building or activating anything. Only the two temporary
+app-prefetch root links were removed, after current publication roots proved
+both packages retained. No store data or recovery archive was deleted.
+
+The [encrypted identity recovery receipt](fleet-identity-backup.md) records the
+protected NAS and coordinator copies, verification scope and decryption caveat.
+Overseas control-plane provisioning remains distinct from this successful local
+offer-delivery test.
