@@ -185,3 +185,9 @@ could be uploaded. ASUS briefly answered a Headscale ping, then stopped; its
 last LAN address also became unreachable. No real laptop endpoint, daemon or
 system was changed. Physical reconnection and a successful public-protocol test
 remain required before migration and the unrelated-network handover check.
+
+The final 14:59 public DNS check still returned no address. Disposable node
+`6` was deleted only after matching its test name/address/identity; ephemeral
+node `5` was already absent. Test preauth keys `13` and `14` were expired,
+both probe daemons stopped, and their dedicated plaintext auth/state files
+removed. Real nodes `1`, `2` and `4` retained their original identities.
