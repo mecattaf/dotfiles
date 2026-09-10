@@ -71,7 +71,17 @@ Current and previous publications retain their own Nix GC roots. A failed build,
 push, or signing operation leaves the existing offer intact. Successful
 publication removes older release directories and their roots; it does not run
 global garbage collection. A later publication also clears interrupted staging
-roots. The daily `omarchy-update-keepalive` job repushes any missing retained paths
+roots. Retention follows publication, not laptop installation acknowledgements:
+the current and previous releases remain available even after both owners update.
+Nix shares unchanged store paths instead of storing a separate full disk image
+for every release. Attic sweeps every 12 hours with a default one-month
+last-access retention period; superseded cache data ages out when no longer used.
+The NAS's weekly Nix garbage collection separately reclaims unreferenced local
+build paths. Operator-created temporary build outlinks must be removed after
+verification and published-root checks; otherwise they can keep old builds alive.
+Neither cleanup should remove identity archives or signing keys.
+
+The daily `omarchy-update-keepalive` job repushes any missing retained paths
 and makes body-free HEAD requests to their Attic NAR endpoints. Attic's NAR handler
 refreshes last access; merely probing narinfo or pushing already-cached paths does
 not. This keeps armed updates available through Attic's month-cold retention.
