@@ -1348,6 +1348,47 @@
             touch "$out"
           '';
 
+        omarchy-update-center =
+          let
+            nas = self.nixosConfigurations.nas.config;
+          in
+          assert nas.myNas.omarchyUpdateCenter.enable;
+          assert nas.myNas.omarchyUpdateCenter.listenAddress == "100.64.0.1";
+          assert nas.myNas.omarchyUpdateCenter.port == 8091;
+          assert nas.services.headscale.settings.policy.mode == "file";
+          pkgs.runCommand "omarchy-update-center-check"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.openssh
+                nas.services.headscale.package
+              ];
+            }
+            ''
+              headscale policy check -f ${./hosts/nas/headscale-policy.hujson}
+              python ${./tests/omarchy-update-center/policy_test.py} ${./hosts/nas/headscale-policy.hujson}
+              mkdir -p hosts/nas tests/omarchy-update-center
+              cp ${./hosts/nas/omarchy-update-publish.py} hosts/nas/omarchy-update-publish.py
+              cp ${./tests/omarchy-update-center/test_publisher.py} tests/omarchy-update-center/test_publisher.py
+              python -m unittest discover -v -s tests/omarchy-update-center
+              touch "$out"
+            '';
+
+        headscale-backup =
+          let
+            nas = self.nixosConfigurations.nas.config;
+          in
+          assert nas.myNas.headscale.backup.enable;
+          assert nas.systemd.services.headscale-backup.unitConfig.AssertPathIsMountPoint == "/mnt/nas";
+          assert nas.systemd.timers.headscale-backup.timerConfig.Persistent == false;
+          pkgs.runCommand "headscale-backup-check" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+            mkdir -p hosts/nas tests/headscale-backup
+            cp ${./hosts/nas/headscale-backup.py} hosts/nas/headscale-backup.py
+            cp ${./tests/headscale-backup/test_backup.py} tests/headscale-backup/test_backup.py
+            python -m unittest discover -v -s tests/headscale-backup
+            touch "$out"
+          '';
+
         nas-topology =
           let
             nas = self.nixosConfigurations.nas.config;
@@ -1384,12 +1425,9 @@
           # the packaged tailscaled-set unit on every boot — assert its absence
           # there too, because that failure is a boot-time surprise, not an
           # eval-time one.
-          assert builtins.any (nixpkgs.lib.hasPrefix "--login-server=")
-            nas.services.tailscale.extraUpFlags;
-          assert !builtins.any (nixpkgs.lib.hasInfix "tailscale.com")
-            nas.services.tailscale.extraUpFlags;
-          assert !builtins.any (nixpkgs.lib.hasPrefix "--login-server=")
-            nas.services.tailscale.extraSetFlags;
+          assert builtins.any (nixpkgs.lib.hasPrefix "--login-server=") nas.services.tailscale.extraUpFlags;
+          assert !builtins.any (nixpkgs.lib.hasInfix "tailscale.com") nas.services.tailscale.extraUpFlags;
+          assert !builtins.any (nixpkgs.lib.hasPrefix "--login-server=") nas.services.tailscale.extraSetFlags;
           # ...and the mirror image on the coordinator, which is the fleet's LAST
           # official tailscale.com node and keeps it as the emergency rail
           # (hosts/coordinator/tailscale.nix). The ABSENCE of --login-server is
@@ -1398,8 +1436,8 @@
           # NAS's headscale would destroy the rail's whole reason for existing —
           # a fallback that shares a control plane with what it backs up.
           assert coordinator.services.tailscale.enable;
-          assert !builtins.any (nixpkgs.lib.hasPrefix "--login-server=")
-            coordinator.services.tailscale.extraUpFlags;
+          assert
+            !builtins.any (nixpkgs.lib.hasPrefix "--login-server=") coordinator.services.tailscale.extraUpFlags;
           # The worker is the counter-example that keeps the sink meaningful: a
           # LAN compute node reached over ordinary SSH, with no node of its own
           # on EITHER control plane. All three knobs still, but the reason
@@ -1875,8 +1913,8 @@
           # tailscale0. Both directions, because a half-move that left the door
           # on the wrong host would look identical from either side alone.
           assert workerHome.systemd.user.services ? wayvnc;
-          assert !builtins.elem 5900
-            self.nixosConfigurations.worker.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
+          assert
+            !builtins.elem 5900 self.nixosConfigurations.worker.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
           assert builtins.elem 5900
             self.nixosConfigurations.coordinator.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
           assert !self.nixosConfigurations.worker.config.services.tailscale.enable;
@@ -2450,8 +2488,7 @@
           # the wiring rather than the file's existence, so a rename of the
           # ciphertext or a change to that gate surfaces here.
           assert coordinator.age.secrets ? tailscale-authkey;
-          assert coordinator.services.tailscale.authKeyFile
-            == coordinator.age.secrets.tailscale-authkey.path;
+          assert coordinator.services.tailscale.authKeyFile == coordinator.age.secrets.tailscale-authkey.path;
           # The worker is the counter-example, and since 2026-09-01 the empty
           # flag lists hold BY DEFAULT rather than by mkForce — which is the
           # positive statement that no fleet-wide tailscale tier is back. Keep

@@ -1,5 +1,13 @@
 # headscale on the NAS — the fleet's own control plane (2026-09-01)
 
+September 10 update: the historical allow-all policy below is superseded by
+`hosts/nas/headscale-policy.hujson` (NAS admin SSH; fleet cache/offers only).
+The backup gap is addressed by [verified identity backups](headscale-backup.md).
+[Manual signed update publication](omarchy-update-center.md) now covers the lent
+laptops. Public HTTPS remains a separate gated step pending Freebox forwarding,
+DNS and ACME provisioning; a successful LAN deployment does not clear that gate.
+The coordinator keeps its independent SaaS Tailscale + Freebox fallback.
+
 Tom's ruling, 2026-09-01: *"self-hosted headscale server lands on the NAS and
 becomes the control plane for everything — my devices, future friend devices.
 The NAS's own tailscaled will point at its local headscale."*

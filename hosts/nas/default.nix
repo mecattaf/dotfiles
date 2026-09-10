@@ -41,9 +41,11 @@
     ./models.nix # the model Library: weights forever-collection + static cache (was ws4 archive.nix)
     ./attic.nix # ws5  fleet binary cache, served directly (executed 2026-08-21)
     ./update-center.nix # nightly fleet builds -> attic (the App Store model)
+    ./omarchy-update-center.nix # manual signed offers; owners choose installation
     ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate OFF
     ./tv.nix # niri TV session on the HDMI corner + wayvnc (2026-08-21)
     ./headscale.nix # 2026-09-01: the fleet's OWN tailnet control plane (supersedes #233)
+    ./headscale-backup.nix # consistent identity backup before overseas handover
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc
@@ -109,6 +111,8 @@
   # server and this box's membership in it cannot drift apart. Read that file
   # before touching anything tailnet-shaped on this host.
   myNas.headscale.enable = true;
+  myNas.headscale.backup.enable = true;
+  myNas.omarchyUpdateCenter.enable = true;
 
   # Preserve graphics/VA-API for headless Immich video transcoding. This does
   # not install or start a display server, compositor, or graphical login.

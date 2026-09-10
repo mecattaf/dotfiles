@@ -53,7 +53,7 @@
 #
 # PHASE 2 (myNas.headscale.publicEndpoint.enable, gate OFF — runbook in its
 # own option description below): Caddy terminates TLS for a real public name
-# and wan0 admits :80/:443. That gate is the FIRST deliberate breach of this
+# and wan0 admits exactly TCP :8443 (configurable). That gate is the FIRST deliberate breach of this
 # box's "wan0 admits nothing unsolicited" invariant (asserted as settled
 # doctrine at hosts/nas/tv.nix:117 and hosts/nas/attic.nix:84) — which is
 # exactly why it is a gate with a runbook and not three lines in this commit.
@@ -312,20 +312,14 @@ in
         # to a local peer and holds no certificate material of its own.
 
         # sqlite at /var/lib/headscale/db.sqlite with WAL on — the packaged
-        # default, and right for a personal + friends tailnet. Postgres would
-        # be a second stateful service on an appliance for no gain. See the
-        # BACKUP GAP note further down: this state is on the root filesystem
-        # and NOTHING in this repo snapshots it today.
+        # default, and right for a personal + friends tailnet. Consistent
+        # backups are handled separately by headscale-backup.nix.
         database.type = "sqlite";
 
         # ── The ACL policy is a FILE IN THIS REPO, from day one ────────────
-        # Even though today's content is allow-all. The point is that the
-        # MECHANISM exists before the first friend key is ever minted: policy
-        # in git, reviewed in a diff, rebuilt onto the box, reloadable with
-        # `systemctl reload headscale`. The user/tag scheme and the
-        # deny-all-baseline shape it grows into are written out in the file's
-        # own header so the future omarchy-nix-fleet repo has an unambiguous
-        # target to mint keys against.
+        # Deny-by-default since 2026-09-10: NAS admin SSH into tag:fleet;
+        # fleet may fetch signed offers/cache from the NAS only. This is
+        # reviewed in git and reloadable with `systemctl reload headscale`.
         policy = {
           mode = "file";
           path = ./headscale-policy.hujson;
@@ -665,21 +659,9 @@ in
       };
     };
 
-    # ── THE BACKUP GAP, stated rather than skipped ─────────────────────────
-    # /var/lib/headscale is on the ROOT filesystem, and hosts/nas/snapshots.nix
-    # covers exactly six Btrfs subvolumes under /mnt/nas — none of which is
-    # this. So the control plane's database (node keys, users, preauth keys,
-    # ACL state) is NOT backed up by anything in this repo today. Recorded as a
-    # known, accepted gap rather than silently left: the blast radius of losing
-    # it is "every node re-registers", which is cheap and bounded, and it is
-    # emphatically not the irreplaceable-media class of data the snapshot
-    # schedule exists for. If it ever stops being cheap (friend devices Tom
-    # cannot walk over to), the fix is a timer running
-    # `sqlite3 db.sqlite '.backup …'` — never a naive file copy, because WAL
-    # mode is on and db.sqlite alone is an inconsistent snapshot.
-    #
-    # noise_private.key lives in the same directory and is server-identity
-    # state, self-generated on first start. It is not a secret to mint and not
-    # a thing to put in agenix; losing it costs a re-handshake, not data.
+    # Overseas devices make re-enrollment costly. headscale-backup.nix now
+    # snapshots the live SQLite database consistently and preserves the Noise
+    # identity on the separate data disk. See docs/nas/headscale-backup.md for
+    # verification, the manual pre-handover backup, and restore limitations.
   };
 }
