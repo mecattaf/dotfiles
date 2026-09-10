@@ -1169,6 +1169,12 @@
             execStart =
               let e = service.Service.ExecStart;
               in if builtins.isList e then builtins.concatStringsSep " " e else e;
+            fillerPath = nixpkgs.lib.removePrefix "PATH=" (
+              nixpkgs.lib.findFirst
+                (value: nixpkgs.lib.hasPrefix "PATH=" value)
+                (throw "tally-filler.service has no PATH environment")
+                service.Service.Environment
+            );
             # Everything the unit says, as one string, so the non-goal
             # assertions cannot be satisfied by a value hiding in Environment.
             rendered = execStart + " " + builtins.concatStringsSep " " service.Service.Environment;
@@ -1214,6 +1220,13 @@
           assert !(coordinator.systemd.timers ? tally-filler);
           assert !(coordinatorHome.systemd.user.services.tally-uplink ? Install);
           pkgs.runCommand "tally-filler-topology" { } ''
+            set -euo pipefail
+            # #346: use the rendered service PATH, not the check derivation's
+            # nativeBuildInputs. The first python3 the timer can see must own
+            # numpy; falling through to Tom's mutable profile is not a unit
+            # dependency and is exactly how calibrate failed after verdicts.
+            export PATH=${nixpkgs.lib.escapeShellArg fillerPath}
+            python3 -c 'import numpy'
             touch "$out"
           '';
 

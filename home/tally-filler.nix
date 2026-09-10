@@ -141,6 +141,11 @@ let
   #                                   unrelated repository's oracle runs.
   # node is deliberately absent: the lane applies the lake's own recorded
   # interpreter through `$E1_LAKE/scripts/node-env.sh` and refuses if it cannot.
+  # `bin/register calibrate` imports numpy lazily after a verdict. Pinning the
+  # bare interpreter made every completed replay fail at that last step even
+  # though Tom's later profile Python happened to carry numpy (#346); the unit
+  # must carry its own dependency instead of relying on PATH fall-through.
+  fillerPython = pkgs.python3.withPackages (ps: [ ps.numpy ]);
   fillerPath = lib.makeBinPath [
     pkgs.bash
     pkgs.bubblewrap
@@ -152,7 +157,7 @@ let
     pkgs.gnugrep
     pkgs.gnused
     pkgs.jq
-    pkgs.python3
+    fillerPython
     pkgs.systemd
   ]
   + ":/etc/profiles/per-user/tom/bin:/run/current-system/sw/bin";

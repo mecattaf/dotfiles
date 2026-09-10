@@ -133,8 +133,10 @@ let
   #                                   deciding which nix an unrelated
   #                                   repository's oracle runs.
   # No numpy-capable python is pinned because the lane needs none: no script in
-  # the lane imports numpy (MEASURED 2026-09-08, `grep -n numpy *.py` -> no hit),
-  # exactly as home/tally-filler.nix pins the plain pkgs.python3.
+  # the lane imports numpy (MEASURED 2026-09-08, `grep -n numpy *.py` -> no hit).
+  # This differs deliberately from home/tally-filler.nix: the filler's external
+  # `bin/register calibrate` imports numpy after a verdict (#346), while this
+  # release-station tick does not.
   pumpPath = lib.makeBinPath [
     pkgs.bash
     pkgs.coreutils
