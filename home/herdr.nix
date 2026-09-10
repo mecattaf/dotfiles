@@ -29,6 +29,16 @@
 # holds on the coordinator (see home/home.nix) and is what keeps it up with no
 # login session open.
 #
+# OOM RULING (#352). The server must survive its own pane children just as B6
+# says it survives the compositor. A process launched in a pane remains in the
+# herdr cgroup; systemd's DefaultOOMPolicy=stop turns the kernel's targeted kill
+# of one runaway child into a stop of the server and every unrelated pane.
+# OOMPolicy=continue leaves the kernel's chosen victim dead and the rest of the
+# workspace estate alive. No MemoryHigh/MemoryMax is set on this WHOLE cgroup:
+# that would throttle or protect the runaway descendants together with the
+# small server. Unattended work gets workload-specific limits at its own
+# systemd action boundary instead (#357).
+#
 # CONFIG (ruling B7). ~/.config/herdr is herdr's RUNTIME directory — it holds
 # the server socket, plugins.json, and the session store — so it must stay a
 # real writable directory. Only config.toml is ours, delivered as a SINGLE-FILE
@@ -83,6 +93,9 @@ in
       ExecStart = "${lib.getExe herdr} server";
       Restart = "on-failure";
       RestartSec = 3;
+      # One pane child being selected by the kernel OOM killer must not make
+      # systemd tear down the server and every other pane (#352).
+      OOMPolicy = "continue";
     };
     # default.target, not graphical-session.target — starts with the user
     # manager under linger, before and independently of any Wayland session.

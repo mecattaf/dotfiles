@@ -1848,6 +1848,22 @@
             touch "$out"
           '';
 
+        # A pane child selected by the kernel OOM killer must not turn into a
+        # systemd stop of the Herdr server and every unrelated pane (#352).
+        # Keep this separate from the herdr-kitten input check: the policy is
+        # ours and remains required across upstream Herdr versions.
+        herdr-oom-isolation =
+          let
+            coordinatorHome = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
+            workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
+            service = coordinatorHome.systemd.user.services.herdr;
+          in
+          assert service.Service.OOMPolicy == "continue";
+          assert !(workerHome.systemd.user.services ? herdr);
+          pkgs.runCommand "herdr-oom-isolation" { } ''
+            touch "$out"
+          '';
+
         ai-memory =
           let
             homeConfig = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
@@ -2020,6 +2036,29 @@
 
               python3 -m unittest discover \
                 -s ${./tests/nightly-record} \
+                -p 'test_*.py' \
+                -v
+
+              touch "$out"
+            '';
+
+        # Post-mortem transcript discovery must cover all three isolated
+        # CLAUDE_CONFIG_DIR roots; ~/.claude alone is a partial answer (#352).
+        claude-sessions =
+          pkgs.runCommand "claude-sessions"
+            {
+              nativeBuildInputs = [ pkgs.python3 ];
+            }
+            ''
+              set -euo pipefail
+
+              export HOME="$TMPDIR/home"
+              export PYTHONDONTWRITEBYTECODE=1
+              export CLAUDE_SESSIONS_SCRIPT=${./home/dot_local/bin/claude-sessions}
+              mkdir -p "$HOME"
+
+              python3 -m unittest discover \
+                -s ${./tests/claude-sessions} \
                 -p 'test_*.py' \
                 -v
 

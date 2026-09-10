@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""List Claude Code transcripts across every local seat, newest first.
+
+The three account aliases deliberately isolate their session stores. A
+post-mortem that searches only ~/.claude silently misses cc2 and cc3, so this
+helper always fans out over all three roots (#352).
+
+Examples:
+  claude-sessions
+  claude-sessions --since '2026-09-08 16:49:40' --until '2026-09-08 16:49:50'
+  claude-sessions --around '2026-09-08 16:49:43' --window-seconds 10 --json
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+
+SEATS = (
+    ("cc", Path(".claude/projects")),
+    ("cc2", Path(".claude-work/projects")),
+    ("cc3", Path(".claude-3/projects")),
+)
+TAIL_BYTES = 512 * 1024
+
+
+def parse_time(value: str) -> float:
+    text = value.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = dt.datetime.fromisoformat(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"invalid time {value!r}; use ISO-8601 or YYYY-MM-DD HH:MM:SS"
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=dt.datetime.now().astimezone().tzinfo)
+    return parsed.timestamp()
+
+
+def tail_records(path: Path):
+    """Yield valid JSON records newest-first from a bounded file tail."""
+    with path.open("rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        size = handle.tell()
+        start = max(0, size - TAIL_BYTES)
+        handle.seek(start)
+        data = handle.read()
+    if start:
+        _, _, data = data.partition(b"\n")
+    for raw in reversed(data.splitlines()):
+        try:
+            row = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(row, dict):
+            yield row
+
+
+def user_text(row: dict[str, Any]) -> str | None:
+    if row.get("type") != "user":
+        return None
+    message = row.get("message")
+    if not isinstance(message, dict) or message.get("role") != "user":
+        return None
+    content = message.get("content")
+    if isinstance(content, str):
+        text = content
+    elif isinstance(content, list):
+        pieces = [
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        ]
+        text = " ".join(pieces)
+    else:
+        return None
+    compact = " ".join(text.split())
+    return compact or None
+
+
+def transcript_row(seat: str, path: Path) -> dict[str, Any]:
+    stat = path.stat()
+    session_id = path.stem
+    cwd = None
+    slug = None
+    prompt = None
+    for row in tail_records(path):
+        candidate_id = row.get("sessionId") or row.get("session_id")
+        if isinstance(candidate_id, str) and candidate_id:
+            session_id = candidate_id
+        if cwd is None and isinstance(row.get("cwd"), str):
+            cwd = row["cwd"]
+        if slug is None and isinstance(row.get("slug"), str):
+            slug = row["slug"]
+        if prompt is None:
+            prompt = user_text(row)
+        if cwd is not None and slug is not None and prompt is not None:
+            break
+    modified = dt.datetime.fromtimestamp(stat.st_mtime, dt.timezone.utc).astimezone()
+    return {
+        "seat": seat,
+        "session_id": session_id,
+        "modified_at": modified.isoformat(timespec="seconds"),
+        "modified_epoch": stat.st_mtime,
+        "bytes": stat.st_size,
+        "cwd": cwd,
+        "slug": slug,
+        "last_prompt": prompt,
+        "path": str(path.resolve()),
+    }
+
+
+def collect(home: Path, since: float | None, until: float | None):
+    rows = []
+    for seat, relative in SEATS:
+        root = home / relative
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*.jsonl"):
+            try:
+                modified = path.stat().st_mtime
+                if since is not None and modified < since:
+                    continue
+                if until is not None and modified > until:
+                    continue
+                rows.append(transcript_row(seat, path))
+            except OSError as exc:
+                print(f"claude-sessions: cannot read {path}: {exc}", file=sys.stderr)
+    rows.sort(key=lambda row: (-row["modified_epoch"], row["seat"], row["path"]))
+    return rows
+
+
+def shorten(value: str | None, width: int) -> str:
+    if not value:
+        return "-"
+    home = str(Path.home())
+    if value == home:
+        value = "~"
+    elif value.startswith(home + os.sep):
+        value = "~" + value[len(home) :]
+    return value if len(value) <= width else value[: width - 1] + "…"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--since", type=parse_time)
+    parser.add_argument("--until", type=parse_time)
+    parser.add_argument("--around", type=parse_time)
+    parser.add_argument("--window-seconds", type=int, default=10)
+    parser.add_argument("--limit", type=int, default=50, help="0 means all")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--show-prompt", action="store_true")
+    args = parser.parse_args()
+
+    if args.window_seconds < 0:
+        parser.error("--window-seconds must be non-negative")
+    if args.limit < 0:
+        parser.error("--limit must be non-negative")
+    if args.around is not None and (args.since is not None or args.until is not None):
+        parser.error("--around cannot be combined with --since/--until")
+    since, until = args.since, args.until
+    if args.around is not None:
+        since = args.around - args.window_seconds
+        until = args.around + args.window_seconds
+    if since is not None and until is not None and since > until:
+        parser.error("--since must not be later than --until")
+
+    home = Path(os.environ.get("CLAUDE_SESSIONS_HOME", Path.home())).expanduser()
+    rows = collect(home, since, until)
+    if args.limit:
+        rows = rows[: args.limit]
+
+    if args.json:
+        json.dump(rows, sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
+
+    columns = ["MODIFIED", "SEAT", "SESSION", "CWD", "SUMMARY"]
+    if args.show_prompt:
+        columns.append("LAST PROMPT")
+    print("\t".join(columns))
+    for row in rows:
+        values = [
+            row["modified_at"],
+            row["seat"],
+            shorten(row["session_id"], 36),
+            shorten(row["cwd"], 42),
+            shorten(row["slug"], 32),
+        ]
+        if args.show_prompt:
+            values.append(shorten(row["last_prompt"], 100))
+        print("\t".join(values))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

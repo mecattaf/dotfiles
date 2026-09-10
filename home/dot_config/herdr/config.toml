@@ -1,4 +1,4 @@
-# herdr — github.com/herdrdev/herdr, pinned at 0.8.2 in flake.lock.
+# herdr — github.com/herdrdev/herdr, pinned at 0.9.0 in flake.lock.
 #
 # THIS FILE IS WRITABLE AND LIVE. home/herdr.nix delivers it as a SINGLE-FILE
 # out-of-store symlink (~/.config/herdr/config.toml → this path in the git
@@ -47,6 +47,12 @@ shell_mode = "auto"
 new_cwd = "follow"
 
 [session]
+# Preservation is process-lifecycle based (#352/#355): explicitly exiting an
+# agent closes that conversation; closing a Kitty projection only detaches it
+# and deliberately leaves the live pane resumable. At the end of real work,
+# close the pane (`herdr pane close <pane-id>`) rather than merely closing its
+# Kitty window. Use `claude-sessions` when recovering transcript identities
+# across cc, cc2 and cc3; a ~/.claude-only sweep is knowingly incomplete.
 # Restoring a session puts Claude Code / codex / pi panes back into their own
 # conversation, not just a fresh shell in the right directory.
 resume_agents_on_restore = true
