@@ -107,3 +107,20 @@ HTTPS, exit routing and overseas fleet reconnection. No public endpoint, DNS
 record or laptop preference has been changed in this staging step. General LAN
 subnet routing and direct NAS SSH on the personal tailnet are not enabled;
 coordinator emergency SSH remains the administration entrance.
+
+## Fleet recheck — September 10
+
+Read-only SSH through the NAS Headscale interface reached ASUS node `4` at
+`100.64.0.4`. Its cached app release `470fae7` signature and digest verified,
+and the manifest target matched the installed receipt, running system and
+system profile. Update proxy/timer were active, polling succeeded and the
+client correctly reported no pending update. Both ChatGPT and Claude launchers
+and executable paths were present; interactive application login was not tested.
+Clock was synchronized.
+
+ASUS remains on kernel `6.18.40`; this boot contains the known NVMe stalls,
+GSC timeout and a failed Plymouth unit. The replacement patched kernel is
+still building, so boot reliability has **not** passed handover validation.
+Dell node `2`, `100.64.0.2`, was offline in the NAS Headscale netmap and two
+bounded SSH attempts timed out. Wake it for the outstanding Dell recheck;
+no reboot, update activation or laptop preference change was performed.
