@@ -133,3 +133,26 @@ still building, so boot reliability has **not** passed handover validation.
 Dell node `2`, `100.64.0.2`, was offline in the NAS Headscale netmap and two
 bounded SSH attempts timed out. Wake it for the outstanding Dell recheck;
 no reboot, update activation or laptop preference change was performed.
+
+## Public endpoint commissioning — September 10
+
+The operator subsequently enabled Funnel. The NAS received the `funnel`
+capability and advertised allowed ports, then deployed
+`/nix/store/4r22psnjah1j4iiqf4ayiwwk398zlrwb-nixos-system-nas-26.05.20260731.5b4f72e`
+without reboot. Headscale now advertises
+`https://nas-saas.tail8dd1.ts.net:8443`; its existing NAS client still uses
+the original LAN URL and remains node `1`, `100.64.0.1`.
+
+Funnel forwards only to the fixed Headscale backend, not media, cache, SSH,
+AdGuard or metrics. Its certificate was issued at 14:37 Paris. Through the
+personal-tailnet resolution, health returned 200, unauthenticated and fake-token
+API requests returned 401, and malformed registration returned 400. These
+checks are not public-network proof: the public DNS record was still propagating.
+AdGuard, DHCP, both NAS daemons and the ongoing kernel build remained healthy;
+the deployment rollback timer was disarmed after these checks.
+
+Dell's subsequent reboot recheck passed through Headscale: original node `2`,
+zero failed system services, synchronized clock, successful first update poll,
+matching signed app manifest/installed target and both GUI app launchers present.
+Neither laptop has yet received the kernel update or passed public-control
+migration in this receipt. ASUS boot validation remains pending.
