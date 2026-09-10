@@ -48,7 +48,7 @@
     # 7.2's in-tree USB4STREAM: udev perms + declarative stream groups on the
     # rail-0 cable. Same gate shape: defaults OFF, enabled below.
     ./usb4-stream.nix
-    # Cable-bound rail0/rail2 names, and the fleet's one copy of the per-host
+    # Cable-bound rail0 name, and the fleet's one copy of the per-host
     # cable->NHI table that usb4-stream's railNhi now reads (#266).
     ./fleet-rail-names.nix
   ];
@@ -282,7 +282,7 @@
     myFnRdma.enable = true;
     myUsb4Stream.enable = true;
 
-    # Cable-bound rail0/rail2 names (#266). Enabled here for the same
+    # Cable-bound rail0 name (#266). Enabled here for the same
     # both-ends reason as the two above: a rename on one twin only would put
     # the two ends of a /30 on different cables, which is the exact silent
     # darkness this closes. The per-host NHI table lives in the module.

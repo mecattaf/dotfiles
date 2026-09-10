@@ -61,19 +61,15 @@
 #
 #   rail0     coord c5:00.6/domain1 <-> worker c4:00.5/domain0   cable A
 #                                      10.99.0.x/30   tb-fleet, the fast rail
-#   rail2     coord c5:00.5/domain0 <-> worker c4:00.6/domain1   cable B
-#                                      10.99.2.x/30   tb-fleet2, rail 2 (#274)
 #   enp191s0  5GbE, probe-stable name  10.99.1.x/30   eth-fleet, the fallback
 #
 # Cable A reaches domain1 on the coordinator and domain0 on the worker: the
 # two cabling crossings cancel. That asymmetry is real, triple-verified
 # (#275), and the reason the pin table is per-host.
 #
-# Two USB4 host routers on SEPARATE NHIs and separate domains — genuinely
-# independent controllers, not one controller split, which is why tb-link-heal
-# rebinds both PCI functions (derived at runtime per node since #267). PM QoS
-# is a CPU-level property and therefore helps all three rails at once; the
-# MTU knob below is per-interface.
+# Cable B (the TB3 / rail2 bench cable) was removed on 2026-09-10.
+# Cable A is now the sole USB4 link; Ethernet remains the admin/fallback
+# path. PM QoS helps both links; MTU tuning below is per-interface.
 #
 # ─── The link ceiling: 40 Gb/s per direction; no cable changes it (#267) ────
 #
@@ -102,27 +98,6 @@
 #     sound — it only needs ANY retimer present — but COUNTING retimers is
 #     not a diagnostic.
 #
-# Rail 2 was deliberately left unaddressed here until 2026-08-31 (#274). The
-# original reasoning was correct when written: a /30 is a topology change to
-# a link Tom ruled "MUST always work" (tb-fleet.nix), it needs a matching
-# worker profile, and nothing measured said a second rail helps — a TP=2
-# decode all-reduce is a ~5 KB payload, latency-bound, not bandwidth-bound.
-# Three things changed (#274):
-#   1. ADDRESSED-BUT-PEERLESS IS THE ONE STATE THAT HANGS SILENTLY. Measured
-#      on torch 2.13.0: a GLOO_SOCKET_IFNAME entry that does not resolve
-#      fails loudly, naming the interface; thunderbolt1 on self-assigned
-#      169.254.x RESOLVES, connects to nothing, and hangs forever with no
-#      log line. A /30 on both ends removes that state permanently.
-#   2. usb4-stream's carrier gate was designed against the IP rail's
-#      bring-up sequence; an unaddressed cable B follows a different one,
-#      which is part of how the 2026-08-30 DMA-ring leak happened (#275).
-#   3. cable B has consumers now: the TB-IP-on-A-vs-A+B aggregation
-#      experiment and the USB4STREAM bench are deliberately staged onto it.
-# The /30s live beside the rail they extend — hosts/coordinator/tb-fleet.nix
-# and hosts/worker/default.nix (profile tb-fleet2) — not in the module that
-# tunes rails, exactly as the pre-#274 version of this comment prescribed.
-# The hazards (both ends together; the worker controller's first-use DMA
-# failure history) are documented at the profiles.
 let
   cfg = config.myLowLatCluster;
 
@@ -259,10 +234,6 @@ in
           mtu = 65520;
         }
         {
-          name = "rail2";
-          mtu = 65520;
-        }
-        {
           name = "enp191s0";
           mtu = 9000;
         }
@@ -293,20 +264,6 @@ in
         to = 65535;
       }
     ];
-    # Rail 2's twin door (#274, 2026-08-31): the moment rail2 carries a real
-    # /30 it inherits the same admission problem — an addressed rail whose TCP
-    # connects silently time out is exactly the hang class #274 exists to
-    # remove, and the second-socket-rail experiment (#274 reason 3) is a TCP
-    # consumer. Same interface-scoped idiom, same point-to-point /30 exposure:
-    # only the twin is on the far end. UDP 4791 stays rail-0-only — fn-rdma
-    # owns that door and RoCE rides the IP rail.
-    networking.firewall.interfaces.rail2.allowedTCPPortRanges = [
-      {
-        from = 1024;
-        to = 65535;
-      }
-    ];
-
     # ── Layer 1: the PM QoS hold, the whole measured win ─────────────────────
     systemd.services.lowlat-cluster = {
       description = "PM QoS cpu_dma_latency hold for low-latency fleet rails";

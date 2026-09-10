@@ -357,36 +357,6 @@
     ipv6.method = "disabled";
   };
 
-  # ── Rail 2, worker half (#274, 2026-08-31): 10.99.2.2/30 on rail2.
-  # Doctrine, the measured addressed-but-peerless hang, the HAZARDS (both
-  # ends together; THIS box's controller failed DMA activation on rail 2's
-  # first-ever tunnel use — watch the first bring-up) and the tripwire all
-  # live coordinator-side in hosts/coordinator/tb-fleet.nix.
-  networking.networkmanager.ensureProfiles.profiles.tb-fleet2 = {
-    connection = {
-      id = "tb-fleet2";
-      type = "ethernet";
-      interface-name = "rail2";
-      autoconnect = true;
-      autoconnect-priority = 50;
-    };
-    # Cable B is c4:00.6 on this box, c5:00.5 on the coordinator. Since #266
-    # `rail2` names that same cable by construction, so this path and the
-    # interface name agree on every boot instead of by luck; keeping both is
-    # the fail-closed check on the rename itself. Full rationale:
-    # hosts/coordinator/tb-fleet.nix at its tb-fleet2.
-    match.path = "pci-0000:c4:00.6;";
-    ipv4 = {
-      method = "manual";
-      addresses = "10.99.2.2/30";
-      never-default = true;
-      ignore-auto-dns = true;
-      # No routeN — same rationale as the coordinator's profile: the #240
-      # failover order (5GbE metric 20, rail 0 metric 50) stays untouched.
-    };
-    ipv6.method = "disabled";
-  };
-
   # ── eth-fleet, worker half (doctrine: hosts/coordinator/eth-fleet.nix) ────
   # The 5GbE port cabled directly to the coordinator's twin: the admin rail
   # that shares nothing with USB-C/PD. Fleet identity 10.99.9.2 on lo; peer

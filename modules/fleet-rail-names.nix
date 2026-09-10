@@ -1,4 +1,6 @@
-# Cable-bound names for the two USB4 rails (#266).
+# Cable-bound name for the remaining USB4 rail (#266).
+# Cable B / rail2 was removed from the setup on 2026-09-10. The history
+# below explains why the surviving cable A keeps its physical NHI pin.
 #
 # THE PROBLEM THIS CLOSES. `thunderbolt0` is not a cable. It is whichever of
 # the two USB4 NHIs won the race to register tbnet on this boot, and until
@@ -26,7 +28,6 @@
 # so there is no second vocabulary to learn:
 #
 #   rail0   cable A   coord 0000:c5:00.6 <-> worker 0000:c4:00.5   10.99.0.x/30
-#   rail2   cable B   coord 0000:c5:00.5 <-> worker 0000:c4:00.6   10.99.2.x/30
 #   (rail 1 is the 5GbE, enp191s0, 10.99.1.x/30 — already a stable name)
 #
 # The cable map is triple-verified (unique_id reciprocity, configfs hopid
@@ -35,8 +36,8 @@
 # on the worker. That asymmetry is the reason the table below is keyed by
 # hostName and the values are soldered PCI functions: one host's constant can
 # never be consulted on the other, and a wrong value fails CLOSED (the netdev
-# keeps its kernel name, every profile that wants rail0/rail2 parks, and the
-# rail-2 tripwire fires) rather than addressing the wrong cable.
+# keeps its kernel name, the rail0 profile parks, and the fast-rail
+# reachability tripwire fires) rather than addressing the wrong cable.
 #
 # THIS TABLE IS THE FLEET'S ONE COPY. modules/usb4-stream.nix's railNhi reads
 # cableA from here rather than repeating it — the previous duplicate pair was
@@ -46,7 +47,12 @@
 # IF THE CABLES ARE EVER RE-PLUGGED into swapped ports, these paths go stale
 # on BOTH ends at once. Update both hosts in one commit, from
 # `udevadm info /sys/class/net/rail0 | grep ID_PATH`.
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.myFleetRails;
   # udev's ID_PATH for a PCI function, which is what .link's Path= matches.
@@ -54,17 +60,15 @@ let
 
   # The /30 host halves, derived from the same hostName key as the cable table
   # so the verifier below can never be told about a host it is not running on.
-  # rail0 = 10.99.0.x (cable A), rail2 = 10.99.2.x (cable B); coordinator is
-  # .1 on both, worker is .2 — matching tb-fleet / tb-fleet2.
+  # rail0 = 10.99.0.x (cable A); coordinator is .1, worker is .2,
+  # matching tb-fleet.
   isCoord = config.networking.hostName == "coordinator";
-  railAddr  = if isCoord then "10.99.0.1" else "10.99.0.2";
-  railPeer  = if isCoord then "10.99.0.2" else "10.99.0.1";
-  benchAddr = if isCoord then "10.99.2.1" else "10.99.2.2";
-  benchPeer = if isCoord then "10.99.2.2" else "10.99.2.1";
+  railAddr = if isCoord then "10.99.0.1" else "10.99.0.2";
+  railPeer = if isCoord then "10.99.0.2" else "10.99.0.1";
 in
 {
   options.myFleetRails = {
-    enable = lib.mkEnableOption "cable-bound rail0/rail2 names for the two USB4 rails (#266)";
+    enable = lib.mkEnableOption "cable-bound rail0 name for the USB4 link (#266)";
 
     cableA = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -83,44 +87,17 @@ in
         one usb4-stream provisions — enters on THIS host. Named `rail0`.
       '';
     };
-
-    cableB = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default =
-        {
-          coordinator = "0000:c5:00.5";
-          worker = "0000:c4:00.6";
-        }
-        .${config.networking.hostName} or null;
-      defaultText = lib.literalMD ''
-        per-host table — coordinator `"0000:c5:00.5"`, worker `"0000:c4:00.6"`;
-        `null` on hosts that are not twins
-      '';
-      description = ''
-        PCI function of the NHI that cable B — rail 2, 10.99.2.x, the bench
-        and aggregation cable — enters on THIS host. Named `rail2`.
-      '';
-    };
   };
 
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = cfg.cableA != null && cfg.cableB != null;
+        assertion = cfg.cableA != null;
         message = ''
           myFleetRails.enable is on but this host (${config.networking.hostName})
-          has no entry in the cable table. Add its two NHI functions to
+          has no entry in the cable table. Add its rail-0 NHI function to
           modules/fleet-rail-names.nix, read from
           `udevadm info /sys/class/net/thunderbolt* | grep ID_PATH`.
-        '';
-      }
-      {
-        assertion = cfg.cableA != cfg.cableB;
-        message = ''
-          myFleetRails.cableA and cableB are both ${toString cfg.cableA} on
-          ${config.networking.hostName}. The two rails are separate NHIs on
-          separate domains; identical values would race both .link files onto
-          one device and leave the other rail unnamed.
         '';
       }
     ];
@@ -148,7 +125,15 @@ in
     # Exits non-zero on any FAIL, so it composes into a script.
     environment.systemPackages = [
       (pkgs.writeShellScriptBin "fleet-postboot-verify" ''
-        PATH=${lib.makeBinPath [ pkgs.coreutils pkgs.iproute2 pkgs.systemd pkgs.gnugrep pkgs.iputils ]}
+        PATH=${
+          lib.makeBinPath [
+            pkgs.coreutils
+            pkgs.iproute2
+            pkgs.systemd
+            pkgs.gnugrep
+            pkgs.iputils
+          ]
+        }
         fail=0
         ok()   { printf '  \033[32mPASS\033[0m  %s\n' "$1"; }
         bad()  { printf '  \033[31mFAIL\033[0m  %s\n' "$1"; fail=1; }
@@ -156,7 +141,7 @@ in
         echo
 
         echo "1. cable-bound names (#266) — the rename must beat NetworkManager"
-        for r in rail0 rail2; do
+        for r in rail0; do
           [ -e "/sys/class/net/$r" ] && ok "$r exists" || bad "$r MISSING — the .link rename did not apply"
         done
         stray=$(ls /sys/class/net | grep -c '^thunderbolt' || true)
@@ -165,20 +150,20 @@ in
 
         echo
         echo "2. each name is on its OWN cable (the silent-failure mode)"
-        for pair in "rail0:${idPath cfg.cableA}" "rail2:${idPath cfg.cableB}"; do
+        for pair in "rail0:${idPath cfg.cableA}"; do
           r=''${pair%%:*}; want=''${pair#*:}
           got=$(udevadm info "/sys/class/net/$r" 2>/dev/null | grep -m1 'ID_PATH=' | cut -d= -f2)
           if [ "$got" = "$want" ]; then ok "$r rides $want"
-          else bad "$r rides '$got', expected '$want' — THE RAILS ARE SWAPPED"; fi
+          else bad "$r rides '$got', expected '$want' — WRONG CABLE PORT"; fi
         done
 
         echo
         echo "3. addresses and peers"
-        for pair in "rail0:${railAddr}:${railPeer}" "rail2:${benchAddr}:${benchPeer}"; do
+        for pair in "rail0:${railAddr}:${railPeer}"; do
           r=$(echo "$pair" | cut -d: -f1); a=$(echo "$pair" | cut -d: -f2); pr=$(echo "$pair" | cut -d: -f3)
           ip -4 addr show dev "$r" 2>/dev/null | grep -q "$a" \
             && ok "$r carries $a" || bad "$r does not carry $a — profile parked or on the wrong cable"
-          ping -c2 -W2 "$pr" >/dev/null 2>&1 && ok "$r peer $pr answers" || bad "$r peer $pr unreachable"
+          ping -I "$r" -c2 -W2 "$pr" >/dev/null 2>&1 && ok "$r peer $pr answers" || bad "$r peer $pr unreachable"
         done
 
         echo
@@ -197,10 +182,10 @@ in
         n=$(systemctl --failed --no-legend | wc -l)
         [ "$n" = 0 ] && ok "no failed units" || { bad "$n failed unit(s):"; systemctl --failed --no-legend; }
         svc=$(ls /sys/kernel/config/thunderbolt/stream/ 2>/dev/null | wc -l)
-        [ "$svc" = 1 ] && ok "exactly one stream service (EXPECTED ABSENCE on cable B is correct)" \
+        [ "$svc" = 1 ] && ok "exactly one stream service on the remaining cable" \
           || bad "$svc stream services — expected 1; a leftover bench group disables the drift sweep"
         [ -e /var/lib/usb4-stream/keep-foreign ] \
-          && bad "keep-foreign is ARMED — a bench pass was not released (usb4-stream-bench-cable --release)" \
+          && bad "keep-foreign is ARMED — see docs/local-ai/single-thunderbolt-cable.md for retirement cleanup" \
           || ok "keep-foreign disarmed"
 
         echo
@@ -214,13 +199,5 @@ in
         exit "$fail"
       '')
     ];
-
-    systemd.network.links."10-rail2" = {
-      matchConfig = {
-        Path = idPath cfg.cableB;
-        Driver = "thunderbolt-net";
-      };
-      linkConfig.Name = "rail2";
-    };
   };
 }

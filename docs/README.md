@@ -6,6 +6,7 @@ it.
 
 | Path | Purpose |
 |---|---|
+| [`local-ai/single-thunderbolt-cable.md`](local-ai/single-thunderbolt-cable.md) | Single USB4 cable topology after the TB3 removal, live process cleanup, and deployment transition. |
 | [`local-ai/README.md`](local-ai/README.md) | Current local-AI appliance boundaries, deployment mechanisms, and routing. |
 | [`local-ai/model-roster.md`](local-ai/model-roster.md) | **The authoritative model split** — served, rooted, runtime-owned, and cataloged-only — with pinned sources and per-host placement. |
 | [`local-ai/deployment-decisions-2026-07-29.md`](local-ai/deployment-decisions-2026-07-29.md) | Coordinator placement ledger: exact download totals, precision policy, and exclusions. |

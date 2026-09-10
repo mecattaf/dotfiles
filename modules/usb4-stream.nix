@@ -82,14 +82,12 @@
 #      inside one coordinator boot), not for post-reboot cleanup. Groups a
 #      consumer holds open are never touched — refusal, not force. Touch
 #      /var/lib/usb4-stream/keep-foreign to suppress the sweep for deliberate
-#      out-of-module provisioning (e.g. a cable-B bench pass).
+#      out-of-module provisioning (historically, a cable-B bench pass).
 #
-# EXPECTED ABSENCE (#272, #275): after this fix, cable B carries NO stream
-# groups from this module — exactly one service directory (the rail-0
-# cable's) in /sys/kernel/config/thunderbolt/stream/ is the fix WORKING. A
-# human checking configfs must not read the second cable's absence as a
-# provisioning failure; a benchmark on cable B needs its own deliberate,
-# explicit provisioning.
+# SINGLE CABLE (2026-09-10): cable B / rail2 has been removed, along with
+# its bench provisioning command. Exactly one service directory (rail0) in
+# /sys/kernel/config/thunderbolt/stream/ is expected. The historical hazards
+# below still apply to the remaining cable; two-cable benchmarks are retired.
 #
 # HAZARDS, all observed live 2026-08-30 — read before "improving" this:
 #   - The concurrent-open budget is ONE stream per NHI while that cable's
@@ -103,8 +101,9 @@
 #     warns "invalid hop: -1", and a single stream opens fine at 4096; the
 #     driver launders that -EINVAL (and every other ring-alloc failure) into
 #     -ENOMEM at open(). Tuning ring_size cannot buy a second stream. Two
-#     concurrent streams need two cables, or the netdev taken down to free
-#     hop 1 — the latter untested and inside the #262 claim-window hazard.
+#     concurrent streams required two cables. This setup now has one cable;
+#     taking its netdev down to free hop 1 is untested and inside the #262
+#     claim-window hazard. Keep only one stream open at a time.
 #   - Open/close cycling against a half-configured or mismatched peer WEDGES
 #     the router hop tables — config-space reads start timing out, and the
 #     damage spreads to thunderbolt_net's paths (the IP rail went dark).
@@ -113,11 +112,9 @@
 #     here deliberately only CREATES config and never opens the devices.
 #     (Releasing an UNOPENED group is the safe direction: rmdir releases its
 #     hopids and index without ever touching the data path.)
-#   - Rail 1 (the second cable) is parked with no IP and its worker-side
-#     controller failed DMA activation on first-ever use; streams provision
-#     on the rail-0 cable only until that link earns trust. Since #274
-#     (2026-08-31) that cable carries 10.99.2.x/30 as tb-fleet2 — addressed,
-#     but still NOT stream-provisioned here; see EXPECTED ABSENCE above.
+#   - The former second cable's worker-side controller failed DMA activation
+#     on first-ever use. It gained a /30 in #274 (2026-08-31), but was never
+#     stream-provisioned at boot. That cable was removed on 2026-09-10.
 #   - THE NAME-DRIFT HAZARD (#275): provisioning on the wrong cable is not
 #     harmless config noise. On 2026-08-30 the coordinator provisioned cable
 #     B thirteen seconds after boot, inside the tbnet claim window; the
@@ -137,9 +134,9 @@
 #     tbnet_open, not at probe. Provisioning inside that window starves the IP
 #     rail (#262). The provisioner therefore gates on CARRIER, not on the
 #     netdev's presence. Do not relax that back to a -e test. Two additions
-#     2026-08-31: (a) #274 gave cable B its /30 (tb-fleet2), so BOTH cables
-#     now run the addressed bring-up sequence this gate was designed against
-#     — the gate is no longer correct-for-one-cable-only; (b) the hopid half
+#     2026-08-31: (a) #274 gave the former cable B its /30 (tb-fleet2), so
+#     both cables then used the addressed bring-up sequence this gate was
+#     designed against; (b) the hopid half
 #     of the race is now closed structurally: thunderbolt_net holds
 #     in_hop_id 8 on every host router in this fleet (0x801c0801 on every
 #     port2, all four routers, both twins, read 2026-08-31), and this module
@@ -221,10 +218,9 @@ let
     # ~2 min after this host, the udev re-fire landed exactly in the window,
     # and rail 0 lost its IP while rail 1 — which this unit never provisions —
     # was unaffected). Carrier is the observable for "tbnet_open already won".
-    # Since #274 both cables are addressed (tb-fleet / tb-fleet2), so this
-    # sequence now holds for whichever cable the name points at; the
-    # WRONG-cable case is handled by the identity gates below, and the hopid
-    # stakes of losing this race are removed by the 10+N pin (see HAZARDS).
+    # The remaining cable is addressed by tb-fleet. The identity gates below
+    # reject a wrong NHI, and the 10+N pin protects the netdev's hopids
+    # if provisioning races its bring-up (see HAZARDS).
     for _ in $(seq 120); do
       [ "$(cat "/sys/class/net/$rail/carrier" 2>/dev/null || echo 0)" = 1 ] && break
       sleep 1
@@ -522,25 +518,6 @@ in
       default = 2048;
       description = "Interrupt throttling in ns; lower is better latency (driver default 8192).";
     };
-
-    benchNhi = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      # Same ONE COPY rule as railNhi (#266): cable B's per-host table lives
-      # in modules/fleet-rail-names.nix, which also names this cable's netdev
-      # `rail2`.
-      default = config.myFleetRails.cableB;
-      defaultText = lib.literalMD ''
-        `config.myFleetRails.cableB` — the fleet's per-host cable-B table
-        (coordinator `"0000:c5:00.5"`, worker `"0000:c4:00.6"`, the complement
-        of railNhi); `null` on hosts that are not twins
-      '';
-      description = ''
-        PCI function of the NHI the BENCH cable (cable B) enters on this host.
-        Consumed only by the `usb4-stream-bench-cable` operator command below —
-        the boot path never touches this cable (EXPECTED ABSENCE in the
-        header). null disables the command.
-      '';
-    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -550,88 +527,6 @@ in
         message = "myUsb4Stream.streams must be 1..10: hopids are pinned at 10+N and Max Input HopID is 19 on these hosts (measured 2026-08-31, all four host lane adapters).";
       }
     ];
-
-    # The deliberate verb for cable B (#272's post-reboot ask, #276's pin).
-    # After #275 the boot path provisions the rail-0 cable ONLY, so the
-    # USB4STREAM bench — deliberately staged onto cable B so a hop-table
-    # wedge cannot take down the tensor rail — has no device unless someone
-    # states the choice. This is that statement: run it on BOTH twins before
-    # a bench pass, tear down with --release after. It arms keep-foreign so
-    # the provisioner's sweep will not undo the operator mid-campaign, and
-    # it applies the same 10+N hopid pin so a manual pass can never take
-    # thunderbolt_net's hop 8 — the two hazards a bare `mkdir` in configfs
-    # would reopen.
-    environment.systemPackages = lib.optional (cfg.benchNhi != null) (
-      pkgs.writeShellScriptBin "usb4-stream-bench-cable" ''
-        PATH=${
-          lib.makeBinPath [
-            pkgs.coreutils
-            pkgs.gnugrep
-            pkgs.psmisc
-          ]
-        }
-        set -u
-        nhi=${cfg.benchNhi}
-        [ "$(id -u)" = 0 ] || { echo "run as root (configfs writes)"; exit 1; }
-
-        # Resolve the bench cable's netdev and xdomain by NHI, never by name.
-        found=""
-        for n in /sys/class/net/*/device; do
-          case "$(readlink -f "$n" 2>/dev/null)" in
-            */"$nhi"/*) found=$(readlink -f "$n") ;;
-          esac
-        done
-        if [ -z "$found" ]; then
-          echo "no netdev rides the bench NHI $nhi — is the cable up?"
-          exit 1
-        fi
-        netsvc=$(basename "$found")
-        xd=''${netsvc%.*}
-        svc=""
-        for d in /sys/bus/thunderbolt/devices/"$xd".*; do
-          [ -f "$d/key" ] || continue
-          [ "$(cat "$d/key")" = stream ] && svc=$(basename "$d") && break
-        done
-        [ -n "$svc" ] || { echo "no stream service under $xd (peer not advertising kstream?)"; exit 1; }
-        base="/sys/kernel/config/thunderbolt/stream/$svc"
-
-        if [ "''${1:-}" = --release ]; then
-          for g in "$base"/fn*; do
-            [ -d "$g" ] || continue
-            idx=$(cat "$g/index" 2>/dev/null || echo "")
-            if [ -n "$idx" ] && fuser -s "/dev/tbstream$idx" 2>/dev/null; then
-              echo "NOT releasing $g: /dev/tbstream$idx is open"; exit 1
-            fi
-            rmdir "$g" && echo "released $g"
-          done
-          rmdir "$base" 2>/dev/null || true
-          rm -f /var/lib/usb4-stream/keep-foreign
-          echo "bench cable released; keep-foreign disarmed — the provisioner's sweep owns configfs again"
-          exit 0
-        fi
-
-        mkdir -p /var/lib/usb4-stream
-        touch /var/lib/usb4-stream/keep-foreign
-        mkdir -p "$base"
-        for i in 0 1; do
-          g="$base/fn$i"
-          want=$((10 + i))
-          mkdir -p "$g"
-          echo ${toString cfg.ringSize} > "$g/ring_size" 2>/dev/null || true
-          echo ${toString cfg.throttlingNs} > "$g/throttling" 2>/dev/null || true
-          for side in in out; do
-            cur=$(cat "$g/''${side}_hopid")
-            if [ "$cur" = 0 ]; then
-              echo "$want" > "$g/''${side}_hopid" || echo "fn$i ''${side}_hopid=$want refused (EBUSY) — do NOT open this fn"
-            elif [ "$cur" != "$want" ]; then
-              echo "fn$i ''${side}_hopid=$cur, not $want — peer on a different layout? Do NOT open if 8 (#276)."
-            fi
-          done
-          echo "fn$i: /dev/tbstream$(cat "$g/index") hopids $(cat "$g/in_hopid")/$(cat "$g/out_hopid")"
-        done
-        echo "bench cable provisioned on $svc ($nhi); keep-foreign ARMED — run on the other twin too, and '$0 --release' on both when the campaign ends"
-      ''
-    );
 
     # The stream devices are operator surface (bench harnesses, transport
     # shims), not a root-only debug interface.

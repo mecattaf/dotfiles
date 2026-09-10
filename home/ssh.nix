@@ -60,8 +60,9 @@ let
   # tailnet-direct decision ever lands.
   needsJump = target: target == "nas" && hostName != "nas" && hostName != "coordinator";
 
-  # The worker has THREE rails from the coordinator, and which one the nickname
-  # uses is a RULING, not taste (dotfiles#240, 2026-08-28): Thunderbolt
+  # The worker keeps two direct links: cable A / rail0 and 5GbE. Cable B /
+  # rail2 was unplugged 2026-09-10 (docs/local-ai/single-thunderbolt-cable.md).
+  # The nickname follows the #240 ruling (2026-08-28): Thunderbolt
   # (10.99.0.x) is reserved for LLM-parallelism / tensor traffic ONLY; admin
   # traffic — interactive SSH, reboots, deploys, health checks — prefers the
   # dedicated 5GbE cable (eth-fleet) and rides the stable fleet identity.

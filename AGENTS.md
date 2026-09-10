@@ -29,3 +29,11 @@ receipts in `lib/local-models.nix`; the weights themselves survive under
 those retired archive rows. Do not reintroduce an appliance tier; a new engine
 is a new `local` backend with a llama-swap command renderer, or it does not
 serve interactively.
+
+**The second Thunderbolt cable is removed — 2026-09-10.** Tom unplugged the
+TB3 cable (cable B / `rail2`, formerly `10.99.2.0/30`). The twins retain one
+USB4 cable: cable A / `rail0`, plus their existing Ethernet connection. Do not
+restore `tb-fleet2`, rail-2 monitoring, or cable-B benchmark provisioning based
+on historical dual-cable notes. Current topology, live cleanup, and the pending
+configuration deployment are recorded in
+[docs/local-ai/single-thunderbolt-cable.md](docs/local-ai/single-thunderbolt-cable.md).
