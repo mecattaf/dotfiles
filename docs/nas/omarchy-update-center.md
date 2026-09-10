@@ -228,3 +228,11 @@ The coordinator retains the full status/verification recipe at
 All builds and checks run independently with bounded resources; there is no
 automatic publication, activation or reboot. Public endpoint migration does
 not require this new kernel and can proceed separately after local-console GO.
+
+The verifier itself passed nine local/NAS regression tests, including real zstd
+subprocess handoff after an unaligned microcode prefix and archive-only symlink
+resolution for early-load configuration. The existing app-release ASUS initrd
+also parsed successfully. Corrected helper SHA-256:
+`d5746fbc8894f5b9d280b73c5099ae5afa9d04b79104c20842f66a0e8a002392`.
+Only the waiting verifier restarted at 16:16; both original builder processes
+were preserved. These helper tests do not mark the pending new kernel verified.
