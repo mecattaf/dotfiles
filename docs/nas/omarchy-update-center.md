@@ -70,3 +70,18 @@ service remains. There is no build timer and no laptop activation credential.
 The manifest listener binds only the NAS Headscale address, and the firewall
 admits its two distribution ports (8091 and Attic 8080) on that interface.
 Headscale ACLs provide the device-level access restrictions.
+
+## Deployment receipt — September 10, 2026
+
+NAS deployed from dotfiles `ef326be3` with deploy-rs confirmation at 09:33 Paris.
+Running system: `/nix/store/rviiii1dcgmdya3vav5z74113znvmw8g-nixos-system-nas-26.05.20260731.5b4f72e`.
+Headscale, tailscaled, nginx and resolved were active; failed system units: zero.
+The live policy matched the restrictive repository policy. Manifest listener:
+`100.64.0.1:8091` only. Its 404 is expected: no release has been published yet.
+Empty-state keepalive passed. A pre-deploy identity snapshot and a post-deploy
+service snapshot both passed isolated restore verification. Coordinator SaaS
+Tailscale remained online at `100.105.121.73`.
+
+Remaining live gates: first real publication, laptop cache/consent/rollback
+checks, and public HTTPS control-plane provisioning plus hotspot acceptance.
+No laptop deployment or overseas reachability is claimed by this NAS receipt.
