@@ -89,6 +89,15 @@ and coordinator in the existing private recovery directories. Both SHA-256:
 Archive verification passed; real operator-key decryption remains unverified.
 No previous encrypted archive was removed.
 
+After SaaS enrollment, the recovery helper captured both NAS client states,
+Headscale database/Noise identity, and NAS SSH/Attic identities in
+`fleet-identities-2026-09-10T12-12-52Z-8t_3318m.tar.gz.age` (165,167,928 bytes).
+NAS and coordinator copies independently matched SHA-256
+`8a43bc32ab8bcb70bb62f6265a07e3ea02d7f350da1a9da369e16e00edb5fe94`.
+Private directories remain mode 0700 and encrypted archives 0600. Archive
+verification passed; operator-key decryption remains unverified. Prior archives
+were retained and no service was stopped for this capture.
+
 The NAS-only SaaS login is now approved: `nas-saas`, `100.65.85.114`,
 `nas-saas.tail8dd1.ts.net`. Both existing media relays returned HTTP 302 through
 that personal tailnet address from the coordinator. This is an authenticated
