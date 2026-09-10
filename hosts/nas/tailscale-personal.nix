@@ -239,12 +239,52 @@ in
                 "personal-headscale.socket"
               ];
               serviceConfig = {
-                # Foreground session: stopping this unit retracts this Funnel.
-                # No --bg and no blanket 'funnel reset' touching other state.
-                ExecStart = "${pkgs.tailscale}/bin/tailscale funnel --https=8443 http://127.0.0.1:18090";
+                Type = "oneshot";
+                RemainAfterExit = true;
+                # Persist through tailscaled restarts; retract ONLY our public
+                # port on unit stop. Private media 443 must remain untouched.
+                ExecStart = "${pkgs.tailscale}/bin/tailscale funnel --bg --https=8443 http://127.0.0.1:18090";
+                ExecStop = "${pkgs.tailscale}/bin/tailscale funnel --https=8443 off";
+                ExecCondition = pkgs.writeShellScript "personal-funnel-ready" ''
+                  deadline=$((SECONDS + 60))
+                  while (( SECONDS < deadline )); do
+                    status="$(${pkgs.coreutils}/bin/timeout 3 ${pkgs.tailscale}/bin/tailscale status --json --peers=false 2>/dev/null)" || status='{}'
+                    if ${pkgs.jq}/bin/jq -e '.BackendState == "Running"' >/dev/null 2>&1 <<<"$status"; then
+                      # A denied/unknown capability skips activation without
+                      # invoking the interactive approval flow or retrying it.
+                      if ${pkgs.jq}/bin/jq -e '
+                        (.Self.CapMap // {}) | keys as $caps |
+                        ($caps | index("https") != null) and
+                        ($caps | index("funnel") != null) and
+                        any($caps[];
+                          select(startswith("https://tailscale.com/cap/funnel-ports?")) |
+                          split("?")[1] | split("&")[] |
+                          select(startswith("ports=")) | ltrimstr("ports=") |
+                          split(",")[] | split("-") |
+                          map(try tonumber catch -1) |
+                          if length == 1 then .[0] == 8443
+                          elif length == 2 then .[0] >= 0 and .[0] <= 8443 and .[1] >= 8443
+                          else false end)
+                      ' >/dev/null 2>&1 <<<"$status"; then
+                        exit 0
+                      fi
+                      echo "Personal Funnel not started: required node capabilities unavailable." >&2
+                      exit 1
+                    fi
+                    ${pkgs.coreutils}/bin/sleep 2
+                  done
+                  echo "Personal Funnel not started: daemon readiness timed out." >&2
+                  # ExecCondition 255 is a transient startup failure; 1 above
+                  # is a clean skip, not an automatic authorization retry.
+                  exit 255
+                '';
                 Restart = "on-failure";
                 RestartSec = "30s";
+                TimeoutStartSec = "90s";
+                TimeoutStopSec = "15s";
               };
+              startLimitIntervalSec = 300;
+              startLimitBurst = 3;
             };
           };
         systemd.sockets = lib.mapAttrs (_: entry: entry.socket) relays;

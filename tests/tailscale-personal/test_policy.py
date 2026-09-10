@@ -94,11 +94,24 @@ class PersonalTailnetPolicy(unittest.TestCase):
         self.assertEqual(n["sockets"]["personal-headscale"], "127.0.0.1:18090")
         self.assertTrue(n["proxies"]["personal-headscale"].endswith("10.42.0.1:8090"))
         funnel = n["proxies"]["personal-headscale-funnel"]
-        self.assertIn("funnel --https=8443 http://127.0.0.1:18090", funnel)
-        self.assertNotIn("--bg", funnel)
+        self.assertIn("funnel --bg --https=8443 http://127.0.0.1:18090", funnel)
         for forbidden in ("4533", "32400", "--https=443 ", "8080", "8091"):
             self.assertNotIn(forbidden, funnel)
         self.assertNotIn("8090 accept", FIXTURES["enabled"]["input"])
+
+    def test_funnel_persistent_start_and_scoped_stop_have_bounded_retries(self):
+        unit = FIXTURES["public"]["container"]["funnelUnit"]
+        service = unit["serviceConfig"]
+        self.assertEqual(service["Type"], "oneshot")
+        self.assertTrue(service["RemainAfterExit"])
+        self.assertTrue(service["ExecStop"].endswith("/tailscale funnel --https=8443 off"))
+        self.assertEqual(unit["startLimitBurst"], 3)
+        self.assertEqual(unit["startLimitIntervalSec"], 300)
+        self.assertEqual(service["Restart"], "on-failure")
+        self.assertEqual(service["TimeoutStartSec"], "90s")
+        self.assertEqual(service["TimeoutStopSec"], "15s")
+        for forbidden in ("--yes", "reset", "--https=443 "):
+            self.assertNotIn(forbidden, service["ExecStart"] + service["ExecStop"])
 
     def test_custom_https_reuses_host_certificate_without_sharing_keys(self):
         c = FIXTURES["tls"]

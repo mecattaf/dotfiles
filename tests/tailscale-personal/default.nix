@@ -139,6 +139,11 @@ let
           proxies = lib.mapAttrs (_: s: s.serviceConfig.ExecStart or null) (
             lib.filterAttrs (n: _: lib.hasPrefix "personal-" n) k.systemd.services
           );
+          funnelUnit = lib.optionalAttrs (k.systemd.services ? personal-headscale-funnel) (
+            let s = k.systemd.services.personal-headscale-funnel; in {
+              inherit (s) serviceConfig startLimitIntervalSec startLimitBurst;
+            }
+          );
           tables = lib.mapAttrs (_: t: t.content) k.networking.nftables.tables;
           failedAssertions = map (a: a.message) (builtins.filter (a: !a.assertion) k.assertions);
         };
@@ -181,6 +186,7 @@ in
       }
       ''
         python3 ${./test_policy.py} ${fixtures}
+        python3 ${./test_readiness.py} ${fixtures}
         # LKL gives nft its own sandbox kernel, not the builder/host firewall.
         LD_PRELOAD=${pkgs.lklWithFirewall.lib}/lib/liblkl-hijack.so \
           nft --check --file ${rules}
