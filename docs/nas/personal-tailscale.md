@@ -69,3 +69,41 @@ domains; compatibility must be proven before changing any laptop control URL.
 
 This document is a commissioning checklist, not a deployment receipt. Record
 actual results and remaining operator gates here before declaring completion.
+
+## Initial staging — September 10
+
+The isolated `nas-saas` container was deployed without reboot, initially unjoined.
+The NAS remained Headscale node `1`, `100.64.0.1`, with its existing control URL
+and host routing table 52. AdGuard, DHCP and the ongoing ASUS kernel build stayed
+healthy; host and container had no failed units after activation.
+
+Live checks from the new namespace passed: AdGuard DNS, Navidrome/Plex backends
+and public HTTPS reachable; NAS SSH, fleet cache/offers, household coordinator
+SSH and the not-yet-enabled Headscale backend blocked. These are namespace
+isolation checks, not proof of authenticated tailnet or overseas operation.
+
+The pre-change archive
+`fleet-identities-2026-09-10T12-00-12Z-lte77dg6.tar.gz.age` is retained on NAS
+and coordinator in the existing private recovery directories. Both SHA-256:
+`77004e6390726f16d077a41d2f57eda0c03b552442fd400fe579d059935a36dd`.
+Archive verification passed; real operator-key decryption remains unverified.
+No previous encrypted archive was removed.
+
+The NAS-only SaaS login is now approved: `nas-saas`, `100.65.85.114`,
+`nas-saas.tail8dd1.ts.net`. Both existing media relays returned HTTP 302 through
+that personal tailnet address from the coordinator. This is an authenticated
+overlay test from home, not an unrelated-network or application-login test.
+The user removed the retired SaaS `harness` and `zenbook-duo` registrations;
+the independent Headscale registrations were not removed or migrated.
+
+The final staged NAS generation is
+`/nix/store/69s9mwzs26fpyjxx6saxk5rhw7wnjkm4-nixos-system-nas-26.05.20260731.5b4f72e`.
+It was activated without reboot, with both NAS identities preserved. The
+temporary rollback timer was disarmed after successful health checks.
+
+Pending: supply the zone-scoped DNS token,
+approve scoped SaaS permissions/Funnel/exit capability, then validate private
+HTTPS, exit routing and overseas fleet reconnection. No public endpoint, DNS
+record or laptop preference has been changed in this staging step. General LAN
+subnet routing and direct NAS SSH on the personal tailnet are not enabled;
+coordinator emergency SSH remains the administration entrance.

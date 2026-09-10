@@ -1388,6 +1388,34 @@
             pkgs = self.nixosConfigurations.nas.pkgs;
           }).check;
 
+        nas-personal-https =
+          let
+            nas =
+              (self.nixosConfigurations.nas.extendModules {
+                modules = [
+                  {
+                    myNas.tailscalePersonal.media.https.enable = true;
+                    # Evaluation-only fixture. No certificate request or deployment.
+                    age.secrets.nas-cloudflare-dns.file = nixpkgs.lib.mkForce (
+                      pkgs.writeText "dns-secret-fixture" "synthetic-not-a-credential"
+                    );
+                  }
+                ];
+              }).config;
+            cert = nas.security.acme.certs."music.mecattaf.dev";
+          in
+          assert builtins.all (a: a.assertion) nas.assertions;
+          assert cert.dnsProvider == "cloudflare";
+          assert cert.extraDomainNames == [ "plex.mecattaf.dev" ];
+          assert cert.environmentFile == nas.age.secrets.nas-cloudflare-dns.path;
+          assert nas.age.secrets.nas-cloudflare-dns.mode == "0400";
+          assert !nas.myNas.headscale.publicEndpoint.enable;
+          assert nas.services.headscale.settings.server_url == "http://10.42.0.1:8090";
+          assert
+            nas.services.caddy.virtualHosts."https://music.mecattaf.dev:8443".listenAddresses
+            == [ "172.31.255.1" ];
+          pkgs.runCommand "nas-personal-https-check" { } ''touch "$out"'';
+
         headscale-endpoint =
           let
             nas = self.nixosConfigurations.nas.config;

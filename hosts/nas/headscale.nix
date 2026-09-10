@@ -45,9 +45,12 @@ let
       cur="$(printf '%s' "$prefs" | jq -er 'if has("Config") and (.LoggedOut | type) == "boolean" then .ControlURL | strings else error("invalid prefs") end' 2>/dev/null)" || return 1
       cur="''${cur%/}"
       state="$(printf '%s' "$status" | jq -er '.BackendState | strings' 2>/dev/null)" || return 1
-      have_key="$(printf '%s' "$status" | jq -er 'if (.HaveNodeKey | type) == "boolean" then (.HaveNodeKey | tostring) else error("missing key state") end' 2>/dev/null)" || return 1
+      # HaveNodeKey is bool,json:",omitempty" in 1.98.10: a pristine daemon
+      # omits false. Only the strict pristine branch may interpret absence;
+      # an established node with missing key state must still fail closed.
+      have_key="$(printf '%s' "$status" | jq -er 'if has("HaveNodeKey") then (if (.HaveNodeKey | type) == "boolean" then (.HaveNodeKey | tostring) else error("invalid key state") end) else "absent" end' 2>/dev/null)" || return 1
       pristine=false
-      if [ "$have_key" = false ] && [ "$state" = NeedsLogin ] \
+      if { [ "$have_key" = false ] || [ "$have_key" = absent ]; } && [ "$state" = NeedsLogin ] \
         && printf '%s' "$prefs" | jq -e '.Config == null and .LoggedOut != true' >/dev/null 2>&1 \
         && printf '%s' "$status" | jq -e '(.Self.ID // "") == ""' >/dev/null 2>&1; then
         pristine=true

@@ -155,6 +155,31 @@ class EndpointIdentityTests(unittest.TestCase):
     def test_pristine_bootstrap_mints_tagged_key_only(self):
         self.prefs.update(ControlURL="", Config=None)
         self.status.update(BackendState="NeedsLogin", HaveNodeKey=False, Self=None)
+        self.assert_pristine_bootstrap()
+
+    def test_authentic_fresh_status_omits_false_have_node_key(self):
+        # Non-secret projection of the live 1.98.10 fresh-daemon shape:
+        # HaveNodeKey's omitempty tag removes false instead of emitting it.
+        self.prefs.update(ControlURL="", Config=None)
+        self.status = json.loads((Path(__file__).parent / "fixtures/fresh-status.json").read_text())
+        self.assertNotIn("HaveNodeKey", self.status)
+        self.assert_pristine_bootstrap()
+
+    def test_missing_key_with_retained_config_is_not_pristine(self):
+        self.status.update(BackendState="NeedsLogin", Self=None)
+        del self.status["HaveNodeKey"]
+        result, calls = self.run_script(self.enroll)
+        self.assertNotEqual(result.returncode, 0)
+        self.assert_read_only(calls)
+
+    def test_explicit_null_key_is_malformed_not_omitted(self):
+        self.prefs.update(ControlURL="", Config=None)
+        self.status.update(BackendState="NeedsLogin", HaveNodeKey=None, Self=None)
+        result, calls = self.run_script(self.enroll)
+        self.assertNotEqual(result.returncode, 0)
+        self.assert_read_only(calls)
+
+    def assert_pristine_bootstrap(self):
         result, calls = self.run_script(self.enroll)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(sum(call[:3] == ["headscale", "preauthkeys", "create"] for call in calls), 1)

@@ -1,11 +1,13 @@
 { ... }:
-# ─── The emergency rail: official tailscale.com, and ONLY here (2026-09-01) ───
+# ─── Independent emergency rail: official tailscale.com ────────────────────
 #
-# Tom's ruling 2026-09-01, alongside the headscale landing: official
-# tailscale.com is RETIRED fleet-wide and survives on this box alone, as an
+# Tom's ruling 2026-09-01, alongside the headscale landing: this connection is an
 # always-connected-but-idle fallback. Idle is the design, not neglect — nothing
 # routes over it in normal operation, and that is exactly what makes it
 # trustworthy the one day it is needed.
+# September 10 adds an ISOLATED personal-Tailscale instance on the NAS. This
+# coordinator connection remains independent; neither it nor its Freebox
+# fallback is replaced. The borrowed laptops remain exclusively on Headscale.
 #
 # WHAT IT IS FOR, in one sentence: this box plus the Freebox wifi rail
 # (./uplink-nas.nix's `freebox-uplink` profile) is the escape hatch when the NAS

@@ -63,7 +63,8 @@ in
       # THE INVARIANT, for whoever adds the next secret: the nas now runs agenix but
       # is a recipient of exactly ONE ciphertext. Any block that is not host-gated
       # must exclude it, or it breaks the appliance rather than the box you were
-      # thinking about.
+      # thinking about. The optional personal-https module adds only its own
+      # NAS-scoped Cloudflare DNS token, not membership of this delivered tier.
       (lib.mkIf (config.networking.hostName != "nas") {
         # (hermes-credentials — the Nous Research AI harness's OAuth state — was
         # delivered here until 2026-08-04. The harness is no longer in use fleet-wide,

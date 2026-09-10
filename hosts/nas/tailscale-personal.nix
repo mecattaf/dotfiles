@@ -369,7 +369,7 @@ in
         text = ''
           # Explicit one-time interactive SaaS login. No auth key in argv,
           # Nix, logs, or Git; never operate the host's default socket.
-          exec nixos-container run ${name} -- tailscale up ${lib.escapeShellArgs preferences}
+          exec nixos-container run ${name} -- tailscale up --timeout=60s ${lib.escapeShellArgs preferences}
         '';
       })
     ];

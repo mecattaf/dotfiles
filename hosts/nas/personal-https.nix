@@ -11,6 +11,11 @@ in
         assertion = config.mySecrets.enable;
         message = "Private NAS HTTPS requires agenix secret delivery.";
       }
+      {
+        assertion =
+          !config.myNas.headscale.publicEndpoint.enable || config.myNas.headscale.publicEndpoint.port != 8443;
+        message = "Private media uses host-veth port 8443; do not also bind a wildcard Headscale HTTPS listener there.";
+      }
     ];
     age.secrets.nas-cloudflare-dns = {
       file = ../../secrets/nas-cloudflare-dns.age;
