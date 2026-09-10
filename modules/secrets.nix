@@ -142,6 +142,27 @@ in
       #   * pathExists — reality. Declaring an agenix secret whose ciphertext is
       #     absent fails eval, and declaring one this host cannot decrypt fails
       #     activation; both are worse than having no tailnet.
+      #
+      # SINCE 2026-09-01 this block serves exactly ONE host and each of the other
+      # two misses it for a different reason, which is worth spelling out because
+      # the fleet-wide `services.tailscale.enable` that used to make the first
+      # half trivially true everywhere is gone (modules/common.nix tombstone):
+      #   * coordinator — fires. This is where the emergency rail's key is
+      #     delivered and where authKeyFile gets set, so the enable in
+      #     hosts/coordinator/tailscale.nix is what arms the join; there is no
+      #     hand-wired authKeyFile on that host and there must not be one.
+      #   * worker — fails the FIRST half (mkForce false), which is the whole
+      #     point of keeping that line: no key is declared for a box that must
+      #     not rejoin a tailnet.
+      #   * nas — has a tailnet, so it passes the first half, and misses on the
+      #     SECOND: there is no secrets/tailscale-authkey-nas.age and there must
+      #     not be. That box mints its key at runtime from its own headscale and
+      #     sets authKeyFile to a /run path itself (hosts/nas/headscale.nix). So
+      #     `pathExists` is now load-bearing in a direction it was not written
+      #     for — minting that ciphertext would not ADD a fallback, it would
+      #     silently OVERRIDE the appliance's runtime-minted key with a
+      #     tailscale.com one and re-register the node against the control plane
+      #     it deliberately left. Do not create that file.
       (lib.mkIf
         (
           config.services.tailscale.enable
