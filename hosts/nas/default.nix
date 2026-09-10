@@ -115,6 +115,11 @@
   # state and routes; the host's Headscale client and fleet ACL remain intact.
   # HTTPS and public Funnel stay gated until credentials and live tests pass.
   myNas.tailscalePersonal.enable = true;
+  # Public control ingress only. The personal NAS remains a separate SaaS
+  # identity; existing Headscale clients and the NAS's own LAN login persist.
+  myNas.tailscalePersonal.funnel.enable = true;
+  myNas.tailscalePersonal.funnel.policyApproved = true;
+  myNas.headscale.serverUrl = "https://nas-saas.tail8dd1.ts.net:8443";
   myNas.headscale.backup.enable = true;
   myNas.omarchyUpdateCenter.enable = true;
 

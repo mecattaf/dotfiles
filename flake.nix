@@ -1410,7 +1410,9 @@
           assert cert.environmentFile == nas.age.secrets.nas-cloudflare-dns.path;
           assert nas.age.secrets.nas-cloudflare-dns.mode == "0400";
           assert !nas.myNas.headscale.publicEndpoint.enable;
-          assert nas.services.headscale.settings.server_url == "http://10.42.0.1:8090";
+          assert nas.services.headscale.settings.server_url == "https://nas-saas.tail8dd1.ts.net:8443";
+          assert nas.myNas.headscale.clientLoginServer == "http://10.42.0.1:8090";
+          assert nas.myNas.tailscalePersonal.funnel.enable;
           assert
             nas.services.caddy.virtualHosts."https://music.mecattaf.dev:8443".listenAddresses
             == [ "172.31.255.1" ];
