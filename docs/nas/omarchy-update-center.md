@@ -87,15 +87,55 @@ Headscale ACLs provide the device-level access restrictions.
 
 ## Deployment receipt — September 10, 2026
 
-NAS deployed from dotfiles `ef326be3` with deploy-rs confirmation at 09:33 Paris.
-Running system: `/nix/store/rviiii1dcgmdya3vav5z74113znvmw8g-nixos-system-nas-26.05.20260731.5b4f72e`.
+NAS deployed from dotfiles `9a84225e` with deploy-rs confirmation at 10:07 Paris.
+Running system: `/nix/store/h1l9kyjn5s0257kyw1hm7h78qpq4sags-nixos-system-nas-26.05.20260731.5b4f72e`.
 Headscale, tailscaled, nginx and resolved were active; failed system units: zero.
 The live policy matched the restrictive repository policy. Manifest listener:
-`100.64.0.1:8091` only. Its 404 is expected: no release has been published yet.
-Empty-state keepalive passed. A pre-deploy identity snapshot and a post-deploy
-service snapshot both passed isolated restore verification. Coordinator SaaS
-Tailscale remained online at `100.105.121.73`.
+`100.64.0.1:8091` only. Coordinator SaaS Tailscale remained online at
+`100.105.121.73`. The earlier 09:33 baseline deployment (`ef326be3`) passed
+empty-state keepalive; its pre-deploy identity snapshot and post-deploy service
+snapshot both passed isolated restore verification.
 
-Remaining live gates: first real publication, laptop cache/consent/rollback
-checks, and public HTTPS control-plane provisioning plus hotspot acceptance.
-No laptop deployment or overseas reachability is claimed by this NAS receipt.
+The first real offer was published successfully at 10:40:33 Paris
+(`2026-09-10T08:40:33Z`), replacing the initial expected 404. Its exact fleet
+revision is `7e0a1cac478fb5b268ca3c1b1fc4cf6672911dde`, transported as a private
+depth-one Git checkout without the credential-bearing repository history.
+Both final closures were built and validated on the coordinator, copied only to
+the NAS for publication, and realized there without further compilation:
+
+| Device | Published toplevel |
+| --- | --- |
+| Dell / Omar (`xps`) | `/nix/store/6pgphnadzs2r707k1p5jcghqwlh927vq-nixos-system-xps-26.05.20260727.2f5a153` |
+| ASUS / Marwan (`zenbook-duo`) | `/nix/store/fibjw887qfy4s0m7sbxffc90zqmn5gfv-nixos-system-zenbook-duo-26.05.20260727.2f5a153` |
+
+The actual fleet client verified the HTTP manifest/signature pair against the
+pinned NAS host key, checked both device entries and release notes, and rejected
+a deliberately altered manifest. SHA-256 receipts:
+
+- Manifest: `c865c79aa2a9d0bef6e4ac57fbee68f5d2ede1a508e46ca375a4eabf3d71c238`.
+- Signature: `cf4e57009476ca0d9dba3264eb5aff9e2f02be8acad1fab6036f0e1da0655164`.
+
+All 2,883 closure paths were present in Attic, representing 21,849,683,296
+uncompressed NAR bytes. Recursive verification against the direct fleet HTTP
+cache passed with one required signature and only the pinned fleet cache key;
+this was metadata-signature verification (`--no-contents`), not a full NAR
+content download. The final three-job publication completed successfully in
+33 minutes 22 seconds, reusing paths uploaded before that run.
+
+Manual `omarchy-update-keepalive` then succeeded at 10:41:03 Paris in 11.3
+seconds: all 2,883 paths were already cached, all received body-free NAR HEAD
+retention refreshes, and no builds or laptop changes occurred. Peak service
+memory was 55.7 MiB. Repeating actual client verification afterward confirmed
+the manifest and signature hashes above, timestamp, revision and device paths
+were unchanged.
+
+Both laptops subsequently installed this actual signed candidate through the
+fleet update client: ASUS at 10:41:38 Paris and Dell at 10:41:45 Paris. The
+coordinator verified their running systems, system profiles, configuration
+revision, successful client result and signatures against the published
+candidate. This was operator-directed commissioning; owner GUI acceptance and
+a live rollback exercise have not been performed or claimed.
+
+Remaining live gates: owner GUI acceptance, live rollback verification, and
+public HTTPS control-plane provisioning plus hotspot acceptance. The public
+endpoint remains unconfigured; overseas reachability is not yet established.
