@@ -158,6 +158,7 @@ def publish(state, source, revision, notes, devices, signing_key):
         signature.chmod(0o644)
         release.chmod(0o755)
         sync_directory(release)
+        sync_directory(releases)
         current = state / "public" / "current"
         if current.is_symlink():
             replace_link(state / "public" / "previous", os.readlink(current))

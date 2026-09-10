@@ -138,6 +138,21 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(len(list((self.state / "public/releases").iterdir())), 2)
         self.assertEqual(len(list((self.state / "roots").iterdir())), 2)
 
+    def test_release_parent_sync_failure_preserves_previous_offer(self):
+        self.publish()
+        previous = (self.state / "public/current").resolve()
+
+        def synchronize(path):
+            if path == self.state / "public/releases":
+                raise OSError("fixture parent-directory sync failed")
+
+        with patch.object(publisher, "sync_directory", side_effect=synchronize):
+            with self.assertRaises(OSError):
+                self.publish()
+        self.assertEqual((self.state / "public/current").resolve(), previous)
+        self.assertEqual(len(list((self.state / "public/releases").iterdir())), 1)
+        self.assertEqual(len(list((self.state / "roots").iterdir())), 1)
+
     def test_revision_mismatch_publishes_nothing(self):
         with patch.object(publisher, "run", return_value=json.dumps({"locked": {"rev": "b" * 40}})):
             with self.assertRaises(ValueError):
