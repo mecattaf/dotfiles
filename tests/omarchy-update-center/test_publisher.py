@@ -32,6 +32,8 @@ class PublisherTests(unittest.TestCase):
 
     def command(self, *args, **kwargs):
         self.calls.append(args)
+        if args[0] == "git":
+            return "false"
         if args[0:3] == ("nix", "flake", "metadata"):
             return json.dumps({"locked": {"rev": self.revision}})
         if args[:2] == ("nix", "build"):
@@ -73,8 +75,20 @@ class PublisherTests(unittest.TestCase):
         for source in ("path:/tmp/fleet", "https://example.test/fleet?ref=main", "git+ssh://host/fleet"):
             with self.assertRaises(ValueError):
                 publisher.immutable_source(source, self.revision)
-        self.assertEqual(publisher.immutable_source("/path with space/fleet", self.revision),
-                         "git+file:///path%20with%20space/fleet?rev=" + self.revision)
+        with patch.object(publisher, "run", return_value="false"):
+            self.assertEqual(publisher.immutable_source("/path with space/fleet", self.revision),
+                             "git+file:///path%20with%20space/fleet?rev=" + self.revision)
+
+    def test_local_shallow_checkout_gets_explicit_fetcher_flag(self):
+        with patch.object(publisher, "run", return_value="true") as command:
+            self.assertEqual(publisher.immutable_source("/private/tip", self.revision),
+                             "git+file:///private/tip?rev=" + self.revision + "&shallow=1")
+            command.assert_called_once_with("git", "-C", "/private/tip", "rev-parse",
+                                            "--is-shallow-repository", timeout=30)
+        with patch.object(publisher, "run") as command:
+            self.assertEqual(publisher.immutable_source("https://example.test/fleet.git", self.revision),
+                             "git+https://example.test/fleet.git?rev=" + self.revision)
+            command.assert_not_called()
 
     def test_success_publishes_only_after_push_and_real_signature_verifies(self):
         manifest = self.publish()

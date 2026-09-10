@@ -31,14 +31,23 @@ def run(*args, timeout=14400):
 def immutable_source(source, revision):
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise ValueError("revision must be a full lowercase 40-character Git commit")
+    local_path = None
     if source.startswith("/"):
+        local_path = Path(source).resolve()
         source = "git+" + Path(source).resolve().as_uri()
     elif source.startswith("https://"):
         source = "git+" + source
     parts = urlsplit(source)
     if parts.scheme not in ("git+https", "git+file") or parts.query or parts.fragment:
         raise ValueError("source must be an absolute Git checkout or git+https URL without query/fragment")
-    return source + "?rev=" + revision
+    result = source + "?rev=" + revision
+    # Private NAS transport deliberately carries only the reviewed tip, not
+    # the repository's credential-bearing historical objects. Nix requires
+    # this explicit fetcher flag even for a local shallow checkout.
+    if local_path is not None and run("git", "-C", str(local_path),
+                                     "rev-parse", "--is-shallow-repository", timeout=30) == "true":
+        result += "&shallow=1"
+    return result
 
 
 def login():

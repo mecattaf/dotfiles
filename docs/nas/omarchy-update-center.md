@@ -8,8 +8,16 @@ read the notes, and explicitly accept; closing the notification changes nothing.
 Prepare a reviewed commit in `omarchy-fleet`, including its committed lock file.
 The NAS must be able to read the source: an absolute Git checkout **on the NAS**,
 or a reachable HTTPS Git repository. Until the fleet has a remote, transfer a
-private Git bundle to the NAS and clone it there; preserve `.git` and the
-candidate commit. Keep that transfer private: publishing the repository or its
+private depth-one Git clone to the NAS; preserve `.git` and the candidate commit.
+Use `git clone --depth=1 --no-tags --single-branch file:///home/tom/mecattaf/omarchy-fleet`
+into a private temporary directory, remove its `origin`, and verify that
+`git rev-list --all --count` is exactly one and `git rev-parse HEAD` matches the
+reviewed candidate. Stream a tar archive over pinned SSH into a new root-only
+directory beneath `/var/lib/omarchy-update-center/private/sources/COMMIT`.
+Do not copy the original `.git` directory: that would include historical objects.
+The publisher detects an absolute local shallow checkout and supplies Nix's
+required `shallow=1` flag while still pinning and verifying the full revision.
+Keep that transfer private: publishing the repository or its
 history requires completing the credential-history audit first.
 A working tree without its Git objects is not a valid source. Local uncommitted
 changes do not enter a candidate pinned by `--revision`.
