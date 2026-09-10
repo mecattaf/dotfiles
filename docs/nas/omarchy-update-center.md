@@ -2,8 +2,9 @@
 
 `myNas.omarchyUpdateCenter.enable` installs a manual publisher, a private HTTP
 manifest endpoint at `http://100.64.0.1:8091`, and a daily cache keepalive. It does
-not extend the house `update-center` build list or activate laptops. Owners poll,
-read the notes, and explicitly accept; closing the notification changes nothing.
+not extend the house `update-center` build list or activate laptops. Laptops poll;
+owners click the native Nix dock indicator, read the notes, and explicitly accept.
+Choosing **Not now** changes nothing. Publication does not open a popup or install.
 
 Prepare a reviewed commit in `omarchy-fleet`, including its committed lock file.
 The NAS must be able to read the source: an absolute Git checkout **on the NAS**,
@@ -139,3 +140,38 @@ a live rollback exercise have not been performed or claimed.
 Remaining live gates: owner GUI acceptance, live rollback verification, and
 public HTTPS control-plane provisioning plus hotspot acceptance. The public
 endpoint remains unconfigured; overseas reachability is not yet established.
+
+## Native-dock commissioning incident — September 10, 2026
+
+The NAS built and published fleet `0fb5e3dcb163ea325f8386d3f2874f1db6402676`
+at 11:01:06 Paris, without receiving prebuilt system closures from the
+coordinator. Publication took 4m28s and pushed 77 new paths, reusing 2,803.
+This preparatory release did not enable the two AI desktop apps.
+
+Commissioning exposed a laptop installer dependency error: replacing the
+cache-relay service stopped its `Requires=` dependent installer during
+activation. The live systems stayed on `7e0a1cac` but their profiles had advanced.
+Both exact previous profiles were restored and reactivated successfully;
+running system and profile matched again, with the desktop, fleet rail and
+cache relay active and no failed system units. The faulty offer was withdrawn:
+`current` and `previous` pointed to the original signed `7e0a1cac` publication,
+whose hashes above remained unchanged.
+
+The withdrawn manifest and signature were archived privately under
+`private/incidents/0fb5e3dcb163ea325f8386d3f2874f1db6402676`, with SHA-256
+`7f718ed270aca0b1d85e58b13b76e53cfa55aabefd2064f7e13e502dcda16304` and
+`6c72f588186f2cd84783aa70cc3d224667fc65b5e92757f668216e22a116824a` respectively.
+Normal publisher retention may now prune the withdrawn public release without
+losing that incident receipt. No owner-approved app installation is implied.
+
+The corrected preparation `099cc20b1cf50aaf7a3443c58bda5962390960d4` was built
+and published on the NAS at 11:25:51 Paris in 1m44s, with 49 new paths and
+2,831 reused. Its manifest/signature SHA-256 values are
+`ab81dd2209c87e00398e58d5be8b907e86ed5dffbb4573a7ae11e2266a582169` and
+`4f0a7f81883e71c23ef91d3d5ef07c4006adb9665783ef336c0e01c21cf6b06f`.
+Both laptops installed through independent commissioning units, preserving
+signature verification and NAS-only closure copying while avoiding the original
+unit dependency. Dell completed at 11:27:12 and ASUS at 11:27:44 Paris, with
+matching running/profile paths and no failed system units. Native dock loading
+and the active owner's scoped approval permission were checked after fresh
+desktop sessions. The following two-app release remains a separate owner decision.

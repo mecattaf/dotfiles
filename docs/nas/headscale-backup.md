@@ -72,3 +72,8 @@ The snapshot does not include `/var/lib/tailscale`, ACME material, or the NAS SS
 host key used to sign update offers. Those identities retain their existing
 separate recovery requirements. A Headscale database/key restore does not replace
 the need to preserve the pinned NAS SSH host key.
+
+The manual [encrypted fleet identity archive](fleet-identity-backup.md) supplements
+this snapshot with the NAS SSH signing key, Tailscale state and Attic signing
+identities. Its ciphertext is also retained privately on the coordinator; it is
+not an Attic package-cache upload or a replacement for per-laptop owner escrow.
