@@ -240,3 +240,27 @@ also parsed successfully. Corrected helper SHA-256:
 `d5746fbc8894f5b9d280b73c5099ae5afa9d04b79104c20842f66a0e8a002392`.
 Only the waiting verifier restarted at 16:16; both original builder processes
 were preserved. These helper tests do not mark the pending new kernel verified.
+
+## Dell candidate cached and publicly downloadable — September 10
+
+The exact final `bc866db` Dell candidate built successfully at 16:33:28:
+`/nix/store/dhh7k1yk67i8zgaj53xjfgnfandqy4bf-nixos-system-xps-26.05.20260727.2f5a153`.
+A protected Attic prefill added 39 missing paths (255,675,032 uncompressed NAR
+bytes), reusing 3,100 paths. It left both signed offer pointers and bytes
+unchanged. The ASUS candidate and dual-device publication were still pending.
+
+A disposable Tailscale 1.98.9 client connected through public Headscale with
+both the home LAN and personal NAS SaaS address denied in its own cgroup.
+Actual control traffic reached public `176.58.90.46:8443`; private cache traffic
+used DERP `par`. Through this path, all 3,139 recursive Dell cache metadata
+signatures passed against only the pinned fleet key, and every NAR URL returned
+HEAD 200. These are complete metadata/availability checks, not a full 25.93 GB
+closure download.
+
+The complete Dell kernel NAR was also streamed, decompressed and hash-checked:
+24,351,232 bytes, SHA-256 base64
+`y7uIRqg3YlaOOlaAkEF3BzQuFsjo26JRAR4j9b/3vpw=`. No duplicate store import was
+needed. Disposable node 11, key 19, daemon and plaintext state were cleaned up;
+real identities 1/2/4 were unchanged. Public-only receipts are retained at
+`/home/tom/.local/share/fleet-recovery/public-tests/2026-09-10-bc866db-dell/`.
+No actual laptop was contacted or updated by this test.

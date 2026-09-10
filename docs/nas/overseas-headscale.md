@@ -49,9 +49,12 @@ daemon (not the logged-out personal daemon), restart that daemon and prove a
 fresh public-control connection. Preserve Dell node `2` / `100.64.0.2` and ASUS
 node `4` / `100.64.0.4`; keep DNS and subnet-route acceptance disabled.
 
+The September 10 operator instruction is to finish both builds, verify their
+artifacts, publish the signed update and prove public-Headscale cache downloads
+before the onsite visit. Publication does not migrate or install either laptop.
 Then, from the unrelated Wi-Fi, verify NAS-to-laptop SSH, signed offers/cache,
-denied lateral/household access and reconnect after suspend/resume. Only after
-those checks should the prepared signed update be published for owner acceptance.
+denied lateral/household access and reconnect after suspend/resume. Once those
+checks pass, accept the already-published update through the laptop's Nix icon.
 No forced update or reboot is part of endpoint migration. Installing a new kernel
 requires a later reboot to run it; app-only changes should not request a reboot.
 ASUS boot reliability remains unproven until the patched kernel is installed
