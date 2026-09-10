@@ -25,6 +25,7 @@ FIXED_FILES = (
     "var/lib/headscale/noise_private.key", "var/lib/atticd-secrets/env",
 )
 DATABASES = ("var/lib/headscale/db.sqlite", "var/lib/atticd/server.db")
+PERSONAL_STATE = "var/lib/tailscale-personal"
 
 
 def checksum(path):
@@ -79,8 +80,10 @@ def database_copy(source, target):
     target.chmod(0o600)
 
 
-def tailscale_files(root):
-    directory = root / "var/lib/tailscale"
+def tailscale_files(root, relative="var/lib/tailscale"):
+    directory = root / relative
+    if directory.is_symlink():
+        raise ValueError("unexpected symlink for Tailscale state directory")
     result = []
     for path in sorted(directory.rglob("*")):
         if path.is_symlink():
@@ -94,9 +97,19 @@ def tailscale_files(root):
     return result
 
 
+def identity_files(root):
+    result = tailscale_files(root)
+    personal = root / PERSONAL_STATE
+    if personal.exists() or personal.is_symlink():
+        # Once provisioned, the independent SaaS identity is mandatory too.
+        # Never silently omit a broken or half-provisioned state directory.
+        result.extend(tailscale_files(root, PERSONAL_STATE))
+    return result
+
+
 def capture(root, server_config, policy, staging):
     sources = {name: root / name for name in FIXED_FILES}
-    sources.update({str(path.relative_to(root)): path for path in tailscale_files(root)})
+    sources.update({str(path.relative_to(root)): path for path in identity_files(root)})
     sources.update({"reference/headscale-server.yaml": server_config,
                     "reference/headscale-policy.hujson": policy})
     originals = {}
@@ -116,16 +129,18 @@ def capture(root, server_config, policy, staging):
                and line.partition(b"=")[2].strip() for line in
                (staging / "var/lib/atticd-secrets/env").read_bytes().splitlines()):
         raise ValueError("Attic RS256 signing secret is absent")
-    tailscale_state = json.loads((staging / "var/lib/tailscale/tailscaled.state").read_bytes())
-    if not isinstance(tailscale_state, dict) or not tailscale_state:
-        raise ValueError("Tailscale state is not a nonempty JSON object")
+    for name in sources:
+        if name.endswith("/tailscaled.state"):
+            tailscale_state = json.loads((staging / name).read_bytes())
+            if not isinstance(tailscale_state, dict) or not tailscale_state:
+                raise ValueError("Tailscale state is not a nonempty JSON object")
     # Private identity files must bracket the independent database snapshots.
     # This is not a cross-service transaction; concurrent rotations must retry.
     for name, source in sources.items():
         if hashlib.sha256(stable_read(source)).hexdigest() != originals[name]:
             raise ValueError("identity changed across database snapshots; retry")
-    if {str(path.relative_to(root)) for path in tailscale_files(root)} != {
-            name for name in sources if name.startswith("var/lib/tailscale/")}:
+    if {str(path.relative_to(root)) for path in identity_files(root)} != {
+            name for name in sources if name.startswith(("var/lib/tailscale/", PERSONAL_STATE + "/"))}:
         raise ValueError("Tailscale state inventory changed during snapshot; retry")
     names = sorted(list(sources) + list(DATABASES))
     manifest = {
@@ -172,6 +187,8 @@ def verify_archive(archive, verification_directory):
             "var/lib/tailscale/tailscaled.state", "reference/headscale-server.yaml",
             "reference/headscale-policy.hujson",
         }
+        if any(name.startswith(PERSONAL_STATE + "/") for name in expected):
+            required.add(PERSONAL_STATE + "/tailscaled.state")
         if (manifest.get("schemaVersion") != 1 or not required <= expected
                 or set(names) != expected | {"manifest.json"}):
             raise ValueError("incomplete identity archive")

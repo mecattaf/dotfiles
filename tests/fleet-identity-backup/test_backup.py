@@ -86,6 +86,41 @@ class IdentityBackupTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.capture()
 
+    def test_personal_identity_is_captured_separately(self):
+        personal = self.root / backup.PERSONAL_STATE
+        personal.mkdir()
+        (personal / "tailscaled.state").write_text('{"synthetic":"personal"}')
+        (personal / "tailscaled.log1.txt").write_text("not identity")
+        archive = self.archive()
+        verification = Path(self.temporary.name) / "verify"
+        verification.mkdir()
+        manifest = backup.verify_archive(archive, verification)
+        self.assertIn(backup.PERSONAL_STATE + "/tailscaled.state", manifest["files"])
+        self.assertNotIn(backup.PERSONAL_STATE + "/tailscaled.log1.txt", manifest["files"])
+        self.assertNotEqual((self.staging / backup.PERSONAL_STATE / "tailscaled.state").read_bytes(),
+                            (self.staging / "var/lib/tailscale/tailscaled.state").read_bytes())
+
+    def test_present_but_incomplete_personal_identity_fails(self):
+        (self.root / backup.PERSONAL_STATE).mkdir()
+        with self.assertRaisesRegex(ValueError, "identity state is missing"):
+            self.capture()
+
+    def test_personal_state_directory_symlink_is_rejected(self):
+        (self.root / backup.PERSONAL_STATE).symlink_to(self.root / "var/lib/tailscale")
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            self.capture()
+
+    def test_personal_state_appearing_during_snapshot_is_rejected(self):
+        original = backup.database_copy
+        def appearing(source, target):
+            original(source, target)
+            personal = self.root / backup.PERSONAL_STATE
+            personal.mkdir(exist_ok=True)
+            (personal / "tailscaled.state").write_text('{"synthetic":"new"}')
+        with patch.object(backup, "database_copy", side_effect=appearing):
+            with self.assertRaisesRegex(ValueError, "inventory changed"):
+                self.capture()
+
     def test_empty_attic_fleet_key_fails(self):
         self.connections[1].execute("UPDATE cache SET keypair=''")
         self.connections[1].commit()

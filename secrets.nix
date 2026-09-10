@@ -86,6 +86,9 @@ in
   # preauthorized, tag:mesh — minted 2026-07-05 via the fleet OAuth client;
   # only the owning host can decrypt its key) ---
   "secrets/tailscale-authkey-coordinator.age".publicKeys = editors ++ coordinatorOnly;
+  # NAS private media HTTPS: zone-limited DNS-01 token, no broad Wrangler OAuth
+  # authority. Ciphertext is provisioned before enabling personal-https.nix.
+  "secrets/nas-cloudflare-dns.age".publicKeys = editors ++ nasOnly;
   # --- wifi PSK tier: the coordinator, whose Freebox uplink
   # (wlp192s0) is now declarative too (migrated from an imperative profile on
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r

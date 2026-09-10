@@ -1383,6 +1383,49 @@
               touch "$out"
             '';
 
+        nas-personal-tailnet =
+          (import ./tests/tailscale-personal {
+            pkgs = self.nixosConfigurations.nas.pkgs;
+          }).check;
+
+        headscale-endpoint =
+          let
+            nas = self.nixosConfigurations.nas.config;
+          in
+          assert nas.myNas.headscale.clientLoginServer == "http://10.42.0.1:8090";
+          pkgs.runCommand "headscale-endpoint-check"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.jq
+                pkgs.python3
+              ];
+              HEADSCALE_ENROLL_SCRIPT = pkgs.writeText "headscale-enroll-script" nas.systemd.services.headscale-nas-enroll.script;
+              HEADSCALE_CONNECT_SCRIPT = pkgs.writeText "headscale-connect-script" nas.systemd.services.tailscaled-autoconnect.script;
+            }
+            ''
+              python3 -m unittest discover -s ${./tests/headscale-endpoint} -v
+              touch "$out"
+            '';
+
+        fleet-identity-backup =
+          pkgs.runCommand "fleet-identity-backup-check"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.openssh
+                pkgs.age
+              ];
+            }
+            ''
+              mkdir -p hosts/nas tests/fleet-identity-backup
+              cp ${./hosts/nas/fleet-identity-backup.py} hosts/nas/fleet-identity-backup.py
+              cp ${./tests/fleet-identity-backup/test_backup.py} tests/fleet-identity-backup/test_backup.py
+              python -m unittest discover -v -s tests/fleet-identity-backup
+              touch "$out"
+            '';
+
         headscale-backup =
           let
             nas = self.nixosConfigurations.nas.config;

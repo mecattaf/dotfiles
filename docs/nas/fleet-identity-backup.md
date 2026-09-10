@@ -12,6 +12,12 @@ Attic RS256 signing environment file, and the actual Headscale server YAML/polic
 It preserves the identities the installed laptops already trust; it generates no
 replacement service key and changes no recipient on those laptops.
 
+When `/var/lib/tailscale-personal` exists, its independent personal-Tailscale
+identity is captured too, under its own archive path. It never replaces the
+Headscale client's `/var/lib/tailscale`. An incomplete personal state directory
+fails capture rather than silently omitting that identity. Diagnostic logs from
+both daemons are excluded. Neither daemon's private state belongs in Attic.
+
 ## Capture and retain
 
 Run as root on the NAS after putting the reviewed helper outside Git's secret

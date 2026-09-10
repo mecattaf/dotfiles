@@ -43,6 +43,8 @@
     ./omarchy-update-center.nix # manual signed offers; owners choose installation
     ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate OFF
     ./headscale.nix # 2026-09-01: the fleet's OWN tailnet control plane (supersedes #233)
+    ./tailscale-personal.nix # Additional isolated SaaS ingress; never enroll the lent laptops here
+    ./personal-https.nix # Gated, NAS-scoped DNS-01 certificates for private media
     ./headscale-backup.nix # consistent identity backup before overseas handover
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
@@ -109,6 +111,10 @@
   # server and this box's membership in it cannot drift apart. Read that file
   # before touching anything tailnet-shaped on this host.
   myNas.headscale.enable = true;
+  # Personal SaaS access is additive (2026-09-10). It has its own container,
+  # state and routes; the host's Headscale client and fleet ACL remain intact.
+  # HTTPS and public Funnel stay gated until credentials and live tests pass.
+  myNas.tailscalePersonal.enable = true;
   myNas.headscale.backup.enable = true;
   myNas.omarchyUpdateCenter.enable = true;
 

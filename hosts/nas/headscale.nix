@@ -20,19 +20,81 @@ let
   # Nothing else in the fleet claims 8090 (grepped 2026-09-01).
   port = 8090;
 
-  # The URL clients are told to dial, and the URL headscale advertises as its
-  # own. These MUST agree — a client whose ControlURL differs from the
-  # server's server_url gets registration URLs pointing somewhere it cannot
-  # reach. Phase 1 is the honest LAN answer; phase 2 is the public name.
-  loginServer =
-    if cfg.publicEndpoint.enable then
-      "https://${cfg.publicEndpoint.hostname}:${toString cfg.publicEndpoint.port}"
-    else
-      "http://${lanAddr}:${toString port}";
+  # Advertising a URL and providing its HTTPS ingress are separate decisions.
+  # An existing client must be migrated explicitly; activation never logs out.
+  loginServer = lib.removeSuffix "/" cfg.clientLoginServer;
+  controlUrlType =
+    lib.types.addCheck
+      (lib.types.strMatching "https?://[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)*(:[1-9][0-9]{0,4})?/?")
+      (
+        url:
+        let
+          endpointPort = builtins.match "https?://[^/:]+:([0-9]+)/?" url;
+        in
+        endpointPort == null || lib.toInt (builtins.head endpointPort) <= 65535
+      );
+
+  # Read only non-secret projections of local state. Never print raw prefs:
+  # Config contains persistent private identity material in Tailscale 1.98.10.
+  identityGuard = ''
+    want=${lib.escapeShellArg loginServer}
+    inspect_identity() {
+      local prefs status
+      prefs="$(tailscale debug prefs 2>/dev/null)" || return 1
+      status="$(tailscale status --json --peers=false 2>/dev/null)" || return 1
+      cur="$(printf '%s' "$prefs" | jq -er 'if has("Config") and (.LoggedOut | type) == "boolean" then .ControlURL | strings else error("invalid prefs") end' 2>/dev/null)" || return 1
+      cur="''${cur%/}"
+      state="$(printf '%s' "$status" | jq -er '.BackendState | strings' 2>/dev/null)" || return 1
+      have_key="$(printf '%s' "$status" | jq -er 'if (.HaveNodeKey | type) == "boolean" then (.HaveNodeKey | tostring) else error("missing key state") end' 2>/dev/null)" || return 1
+      pristine=false
+      if [ "$have_key" = false ] && [ "$state" = NeedsLogin ] \
+        && printf '%s' "$prefs" | jq -e '.Config == null and .LoggedOut != true' >/dev/null 2>&1 \
+        && printf '%s' "$status" | jq -e '(.Self.ID // "") == ""' >/dev/null 2>&1; then
+        pristine=true
+      fi
+      if [ "$pristine" = true ]; then
+        case "$cur" in
+          ""|https://controlplane.tailscale.com|https://login.tailscale.com|"$want") return 0 ;;
+        esac
+      elif [ "$cur" = "$want" ] && [ "$have_key" = true ]; then
+        case "$state" in Running|Starting|Stopped) return 0 ;; esac
+      fi
+      echo 'Refusing automatic Headscale identity or endpoint migration; existing state is preserved. Operator review required.' >&2
+      return 1
+    }
+    if ! inspect_identity; then
+      echo 'Headscale client state is unavailable or requires explicit recovery; no enrollment attempted.' >&2
+      exit 1
+    fi
+  '';
 in
 {
   options.myNas.headscale = {
     enable = lib.mkEnableOption "the self-hosted headscale control plane on the NAS (Tom's ruling 2026-09-01, supersedes #233's tailscale.com design)";
+
+    serverUrl = lib.mkOption {
+      type = controlUrlType;
+      default = "http://${lanAddr}:${toString port}";
+      description = ''
+        Advertised HTTP(S) control-server base URL, independent of the local
+        publicEndpoint Caddy/DNS-01 listener. No credentials, paths, queries
+        or fragments. Configure and verify external ingress first. Changing
+        this does not migrate the NAS self-client: clientLoginServer remains
+        on its established LAN URL. Laptop endpoint migration is separate;
+        normal activation refuses changed NAS client URLs without logging out.
+      '';
+    };
+
+    clientLoginServer = lib.mkOption {
+      type = controlUrlType;
+      default = "http://${lanAddr}:${toString port}";
+      description = ''
+        NAS self-client control URL. Keep the established LAN endpoint when
+        advertising external ingress: it reaches the same Headscale server
+        without changing NAS client identity or depending on public ingress.
+        Changing this option is not authorization to migrate an existing node.
+      '';
+    };
 
     publicEndpoint = {
       enable = lib.mkEnableOption ''
@@ -40,8 +102,8 @@ in
         design is validated; the wired migration makes no Freebox changes.
         See docs/nas/overseas-headscale.md for preserved overseas requirements.
 
-        Enabling this changes server_url and re-enrolls the NAS automatically.
-        Existing clients also need a planned control-URL migration. Provision
+        This only provisions the local HTTPS origin; serverUrl is separate.
+        Existing clients need a planned control-URL migration. Provision
         and test ingress, DNS and the DNS-01 certificate secret first; the
         declarations below do not provide an internet route to this service.
       '';
@@ -68,7 +130,7 @@ in
         description = ''
           Port for the dormant public HTTPS listener. The separate ingress
           follow-up must validate the endpoint and client migration before
-          enabling it; changing this value changes the advertised control URL.
+          enabling it; this value does not change the advertised serverUrl.
         '';
       };
     };
@@ -84,7 +146,7 @@ in
       inherit port;
 
       settings = {
-        server_url = loginServer;
+        server_url = lib.removeSuffix "/" cfg.serverUrl;
 
         # ── DNS: headscale PUSHES resolvers, it never BINDS one ────────────
         # Nothing here opens a DNS listener, which is the whole reason this
@@ -227,19 +289,17 @@ in
     # to photos.internal — the host that OWNS a service dials it locally,
     # everyone else dials the real name.
     #
-    # In phase 2 loginServer becomes the public HTTPS name, and the
-    # networking.hosts pin below keeps the split-horizon property: this box
-    # resolves that name to its own LAN address and hits its own Caddy, never
-    # the Freebox's public IP.
+    # Advertising external ingress does not change this client's URL. The
+    # same server accepts its existing Noise client over the LAN listener;
+    # server_url supplies public registration links, not a client Host ACL.
     #
     # --login-server goes ONLY in extraUpFlags. `tailscale set` has no such
     # flag, and the packaged module runs `tailscale set <extraSetFlags>`
     # unconditionally (systemd.services.tailscaled-set) — putting it there
     # would fail that unit on every boot.
     #
-    # --reset makes the up idempotent across prefs that were written by the
-    # tailscale.com era; without it `tailscale up` can refuse with "changing
-    # settings via 'tailscale up' requires mentioning all settings".
+    # --reset is used only for verified pristine bootstrap. A stopped existing
+    # identity is resumed with bare up, never reset or reauthenticated.
     # This box enables its OWN tailscaled. Until 2026-09-01 the enable came
     # from modules/common.nix's fleet-wide default; that default is being
     # retired in the same series (tailscale.com survives only on the
@@ -272,43 +332,11 @@ in
       ${lanAddr} = [ cfg.publicEndpoint.hostname ];
     };
 
-    # ── headscale-nas-enroll: mint locally, join locally, no secret at rest ─
-    #
-    # Runs between tailscaled and tailscaled-autoconnect and does three
-    # things, all idempotent:
-    #   1. ensures the headscale user `tom` exists (see the policy file for
-    #      why one user per PERSON and not per device);
-    #   2. mints a single-use, 1h, tag:mesh preauth key into /run and leaves
-    #      it there for autoconnect's --auth-key;
-    #   3. performs the CONTROL-PLANE CUTOVER: if tailscaled is currently
-    #      registered against a different control URL (i.e. official
-    #      tailscale.com, which is exactly the state of this box before this
-    #      commit deploys), it logs out so autoconnect re-registers against
-    #      headscale. A logged-in node is otherwise `Running`, and
-    #      autoconnect never calls `tailscale up` on a Running node — so
-    #      without this step the migration would silently never happen.
-    #
-    # DEPLOY THIS OVER THE LAN, NOT OVER THE TAILNET. Step 3 drops this box's
-    # tailscale.com session on purpose; doing it from a session that rides
-    # that very tunnel cuts the branch you are sitting on. Same register as
-    # hosts/nas/nix-on-nvme.nix's "never flip this remotely".
-    #
-    # A key is minted on every start rather than only when one is needed:
-    # single-use and 1h-expiring, so an unused one is a dead row in
-    # /var/lib/headscale/db.sqlite and nothing else, and the alternative
-    # (conditionally leaving the file absent) hands autoconnect a `cat` of a
-    # missing path in exactly the race we are trying to remove.
-    #
-    # MANUAL FALLBACK, if the CLI shape below ever drifts under a headscale
-    # bump (written against 0.29.3 per research, CORRECTED 2026-09-01: the stable
-    # pin actually ships 0.28.0 — verified live, the grants-refusal proved it):
-    #   headscale users create tom
-    #   headscale users list                       # note the numeric id
-    #   headscale preauthkeys create -u <id> -e 1h --tags tag:mesh
-    #   tailscale up --login-server=<loginServer> --auth-key <key> \
-    #     --ssh --advertise-routes=10.42.0.0/24 --reset
+    # The initial enrollment gate is also required by the preference updater.
+    # Existing identities need neither a fresh key nor a reachable Headscale API.
+    # Unknown, expired and foreign identities require explicit operator recovery.
     systemd.services.headscale-nas-enroll = {
-      description = "Mint a local headscale preauth key for this node and cut it over from any foreign control plane";
+      description = "Preserve the NAS Headscale identity; bootstrap only a pristine client";
       after = [
         "headscale.service"
         "tailscaled.service"
@@ -317,13 +345,14 @@ in
         "headscale.service"
         "tailscaled.service"
       ];
-      # The hard edge to autoconnect, expressed from this side so it lives in
-      # one place: autoconnect REQUIRES the mint and is ordered after it. If
-      # the mint fails, autoconnect does not run and never `cat`s a missing
-      # file. tailscaled itself stays up either way, so a failed enroll costs
-      # this box its tailnet identity, not the house router.
-      requiredBy = [ "tailscaled-autoconnect.service" ];
-      before = [ "tailscaled-autoconnect.service" ];
+      requiredBy = [
+        "tailscaled-autoconnect.service"
+        "tailscaled-set.service"
+      ];
+      before = [
+        "tailscaled-autoconnect.service"
+        "tailscaled-set.service"
+      ];
       path = [
         config.services.headscale.package
         config.services.tailscale.package
@@ -332,124 +361,69 @@ in
       ];
       serviceConfig = {
         Type = "oneshot";
-        # DELIBERATELY NOT RemainAfterExit. A oneshot that never stays active
-        # is re-run every time something Requires= it, which makes
-        # `systemctl restart tailscaled-autoconnect` mint a FRESH key rather
-        # than re-feeding autoconnect the used, expired one — the single
-        # recovery command for "this node lost its tailnet identity". The cost
-        # of that choice is that the runtime directory would normally be reaped
-        # the instant this unit exits, i.e. before autoconnect ever reads the
-        # key; RuntimeDirectoryPreserve is what buys it back.
         RuntimeDirectory = "headscale-nas-enroll";
         RuntimeDirectoryMode = "0700";
         RuntimeDirectoryPreserve = "yes";
       };
       script = ''
-        # NixOS wraps every `script =` in `bash -e`, and this script's whole
-        # design contradicts -e: it degrades on purpose (the four-shape mint,
-        # the || true logout) and exits FATAL only where it says FATAL.
-        # Learned live 2026-09-01, deploy #2: headscale's unit reports ready
-        # a beat before its API answers, the first CLI probe of an
-        # unprotected assignment failed in that beat, and -e turned it into
-        # an instant status=5 death with zero log output — which failed the
-        # entire NAS activation. -e goes OFF before anything else runs.
-        set +e
-        set -uo pipefail
-        keyfile="$RUNTIME_DIRECTORY/authkey"
-        want='${loginServer}'
+        set -euo pipefail
+        ${identityGuard}
+        if [ "$pristine" != true ]; then
+          echo 'Existing Headscale identity retained; no enrollment key needed.'
+          exit 0
+        fi
 
-        # 1. headscale must be answering on its unix socket. The CLI reaches
-        #    it via /etc/headscale/config.yaml (written by the packaged
-        #    module) and /run/headscale/headscale.sock; root gets in
-        #    regardless of the 0750/0770 headscale-group modes.
         ready=0
         for _ in $(seq 60); do
           if headscale users list >/dev/null 2>&1; then ready=1; break; fi
           sleep 1
         done
         if [ "$ready" -ne 1 ]; then
-          echo "FATAL: headscale did not answer its socket within 60s" >&2
+          echo 'Headscale bootstrap API unavailable; no identity changed.' >&2
           exit 1
         fi
-
-        # 2. The `tom` user, idempotently.
         getuid() {
-          headscale users list -o json 2>/dev/null \
-            | jq -r '.[] | select(.name == "tom") | .id' 2>/dev/null | head -n1
+          headscale users list -o json | jq -er '[.[] | select(.name == "tom") | .id][0] // empty'
         }
-        uid="$(getuid)"
-        if [ -z "$uid" ] || [ "$uid" = "null" ]; then
-          echo "creating headscale user 'tom'"
-          headscale users create tom --display-name "Tom" || true
+        if ! uid="$(getuid)"; then
+          headscale users create tom --display-name "Tom" >/dev/null
           uid="$(getuid)"
         fi
-        if [ -z "$uid" ] || [ "$uid" = "null" ]; then
-          echo "FATAL: no headscale user 'tom' and could not create one" >&2
-          exit 1
-        fi
-
-        # 3. Mint. Four attempts, narrowing from "what we want" to "what
-        #    certainly works", because this runs on the house router and a
-        #    CLI-shape drift must degrade rather than wedge:
-        #      json + tag:mesh -> json untagged -> text + tag:mesh -> text
-        #    An untagged key is a working key; the tag is a scheme we are
-        #    establishing early (see the policy file), and a headscale that
-        #    refuses a tag it has no tagOwners entry for must not cost this
-        #    box its tailnet identity.
-        plausible() {
-          # A headscale preauth key is a long opaque token, one line, no
-          # spaces. Anything shorter than this is a log line, not a key.
-          [ "$(printf '%s' "$1" | wc -c)" -ge 24 ]
-        }
-        mint_json() {
-          headscale preauthkeys create -u "$uid" -e 1h "$@" -o json 2>/dev/null \
-            | jq -r '.key // empty' 2>/dev/null | head -n1
-        }
-        mint_text() {
-          headscale preauthkeys create -u "$uid" -e 1h "$@" 2>/dev/null \
-            | tail -n1 | tr -d '[:space:]'
-        }
-        key=""
-        for attempt in json-tagged json-plain text-tagged text-plain; do
-          case "$attempt" in
-            json-tagged) candidate="$(mint_json --tags tag:mesh)" ;;
-            json-plain)  candidate="$(mint_json)" ;;
-            text-tagged) candidate="$(mint_text --tags tag:mesh)" ;;
-            text-plain)  candidate="$(mint_text)" ;;
-          esac
-          if [ -n "$candidate" ] && plausible "$candidate"; then
-            key="$candidate"
-            echo "minted a preauth key ($attempt)"
-            break
-          fi
-        done
-        if [ -z "$key" ]; then
-          echo "FATAL: could not mint a headscale preauth key" >&2
-          exit 1
-        fi
+        # Fail closed rather than degrading into an untagged infrastructure node.
+        key="$(headscale preauthkeys create -u "$uid" -e 1h --tags tag:mesh -o json \
+          | jq -er '.key | strings | select(length >= 24)')"
         umask 0077
-        printf '%s\n' "$key" > "$keyfile"
-        chmod 0400 "$keyfile"
+        printf '%s\n' "$key" > "$RUNTIME_DIRECTORY/authkey"
+        chmod 0400 "$RUNTIME_DIRECTORY/authkey"
+      '';
+    };
 
-        # 4. THE CUTOVER. `tailscale debug prefs` carries the ControlURL the
-        #    daemon is actually registered against — the one thing
-        #    `tailscale status` will not tell us and the only way to
-        #    distinguish "logged into headscale" from "logged into
-        #    tailscale.com" without guessing.
-        cur=""
-        for _ in $(seq 30); do
-          cur="$(tailscale debug prefs 2>/dev/null | jq -r '.ControlURL // empty' 2>/dev/null)"
-          if [ -n "$cur" ]; then break; fi
+    # The upstream unit passes an auth key even for Stopped/NeedsMachineAuth.
+    # Resume a known node without a key; never turn reauthentication into an
+    # automatic identity replacement. Recheck the guard immediately before use.
+    systemd.services.tailscaled-autoconnect = {
+      serviceConfig.Type = lib.mkForce "oneshot";
+      serviceConfig.TimeoutStartSec = "120s";
+      path = [ pkgs.coreutils ];
+      script = lib.mkForce ''
+        set -euo pipefail
+        ${identityGuard}
+        if [ "$pristine" = true ]; then
+          test -s ${lib.escapeShellArg config.services.tailscale.authKeyFile}
+          tailscale up --timeout=30s \
+            --auth-key=${lib.escapeShellArg "file:${config.services.tailscale.authKeyFile}"} \
+            ${lib.escapeShellArgs config.services.tailscale.extraUpFlags}
+        elif [ "$state" = Stopped ]; then
+          # Bare up only restores WantRunning, retaining all identity/prefs.
+          timeout 30 tailscale up
+        fi
+        for _ in $(seq 60); do
+          inspect_identity
+          if [ "$state" = Running ]; then exit 0; fi
           sleep 1
         done
-        if [ -n "$cur" ] && [ "$cur" != "$want" ]; then
-          echo "control plane moving: $cur -> $want; logging out of the stale one"
-          # Bounded: logging out of a control server that is unreachable (the
-          # Freebox is down, tailscale.com is unreachable) must not hang the
-          # boot of the house router.
-          timeout 30 tailscale logout || true
-        fi
-        exit 0
+        echo 'Headscale client did not reach Running; identity preserved.' >&2
+        exit 1
       '';
     };
 
