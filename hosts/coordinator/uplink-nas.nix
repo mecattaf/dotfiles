@@ -5,51 +5,33 @@
   ...
 }:
 let
-  # The Freebox uplink PSK ships as an agenix secret (secrets/wifi.age). Until
-  # that ciphertext is committed the whole declarative-wifi block stays inert so
-  # nothing here can break eval or clobber the live imperative connection.
   wifiReady = builtins.pathExists ../../secrets/wifi.age;
-  # BE550-LAN credentials, minted at cutover phase 3 (2026-08-20 rewire).
   lanReady = builtins.pathExists ../../secrets/wifi-lan.age;
+  uplink = pkgs.writeShellScript "coordinator-uplink" ''
+    export PATH=${
+      lib.makeBinPath [
+        pkgs.networkmanager
+        pkgs.iproute2
+        pkgs.iputils
+      ]
+    }
+    exec ${pkgs.python3}/bin/python3 ${./uplink.py} "$@"
+  '';
+  service = mode: {
+    description = "Check coordinator routing and DNS (${mode})";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${uplink} ${mode}";
+      RuntimeDirectory = "coordinator-uplink";
+      RuntimeDirectoryMode = "0700";
+      RuntimeDirectoryPreserve = "yes";
+      TimeoutStartSec = "150s";
+    };
+  };
 in
-# The coordinator's internet uplink + directly-attached NAS.
-#
-# HISTORY: this file was `router.nix` and made the coordinator a LAN gateway /
-# DHCP / DNS server for a downstream 10.42.0.0/24 wifi segment on enp191s0,
-# fronted by a TP-Link BE550 in AP mode. The BE550 was RETIRED 2026-07-13 and
-# physically unplugged, so that entire router plane is gone — the shared-mode
-# gateway profile, the dnsmasq-shared DHCP drop-ins, the BE550 lease pin, the
-# nftables :53 DNAT + encrypted-DNS-bypass drops, the enp191s0 firewall holes,
-# and the DNSStubListener=no hack that only existed so the old rootless AdGuard
-# quadlet could own :53 for those wifi clients. DNS filtering now lives per-box
-# in modules/adguardhome.nix (loopback resolver) instead of a LAN service here.
-#
-# What remains is genuinely BE550-independent:
-#   - the Freebox wifi uplink (wlp192s0), this box's actual internet, and
-#   - a private routed fast lane to the headless NixOS host `nas`.
-#
-# 2026-08-20/21 REWIRE, COMPLETE: the BE550 came back as a dumb AP, but the
-# router plane did not come back here — the NAS ingests the Freebox on a USB
-# A8500 and is the LAN's gateway/DHCP/DNS (hosts/nas/router.nix); this box is
-# an ordinary client of the repeated wifi (thomas-6ghz profile below, static
-# .2). Every transitional rail (nas-fast-lane, installer dnsmasq, NAT,
-# enp191s0 admissions, the /30 itself) was deleted on cutover day.
-#
-# The LaCie 4TB USB plane that used to live here (the /mnt/nas automount, the
-# SAT smartd thermal watch, the hd-idle spin-down suite) was RETIRED 2026-08-02
-# with the NAS cutover (#131): the real NAS owns /mnt/nas now, the LaCie hangs
-# off the NAS as the rollback copy, and if it ever mounts anywhere again the
-# path is /mnt/lacie — never /mnt/nas — with no monitoring attached. See git
-# history for the retired blocks (they carried the probed USB-bridge lore:
-# `-n standby,q`, `-c ata`, kernel-name resolution for hd-idle).
 {
-  # Internet uplink: the Freebox AP over wifi (wlp192s0). Ported from the live
-  # imperative NM profile that was hand-copied during flash night
-  # (refs #37); field-for-field mirror of `nmcli connection show Freebox-AB3ACE`
-  # (2026-07-11), minus the PSK, which comes from secrets/wifi.age via
-  # `environmentFiles` `$FREEBOX_PSK` substitution. Both halves are gated on
-  # `wifiReady` so this never lands a half-substituted profile that would fight
-  # the live connection.
+  # Primary: static LAN identity, NAS routing and DNS. Emergency bypass changes
+  # only the active device's gateway/DNS, leaving this saved profile intact.
   networking.networkmanager.ensureProfiles.profiles.freebox-uplink = lib.mkIf wifiReady {
     connection = {
       id = "Freebox-AB3ACE";
@@ -61,20 +43,7 @@ in
     wifi = {
       mode = "infrastructure";
       ssid = "Freebox-AB3ACE";
-      # Pinned HARD to the Freebox's 5GHz radio (2026-07-16). The mt7925e
-      # driver has a wcid list-corruption race on the same-SSID band-steering
-      # roam path (2.4↔5GHz hop): `list_add corruption` → `kernel BUG at
-      # lib/list_debug.c:32` inside a locked section → instant full lockup,
-      # no oops, no video, no network, power-cycle required. It killed this
-      # box TWICE in 12h (boots ending 2026-07-16 01:06 and 13:17, journal
-      # -2/-1), both times at the exact instant of a roam to this BSSID.
-      # Kernel 7.1 already carries the known upstream fixes for this bug
-      # class (double-wcid-init + wcid_cleanup poll_list, verified in-tree),
-      # so this is a remaining unfixed race; BIOS 3.05 (2026-07-14) armed it:
-      # 11 roams / 8 days / 0 crashes on 3.02 vs 9 roams / 2 crashes on 3.05.
-      # No roam, no crash. Trade-off: no 2.4GHz fallback if the 5GHz radio
-      # drops — fine for a stationary desktop; see also the disable_aspm +
-      # watchdog hardening in modules/strix.nix.
+      # Keep the Freebox radio pin: roaming between its bands has crashed mt7925e.
       bssid = "8C:97:EA:FE:FA:E0";
       band = "a";
     };
@@ -89,15 +58,6 @@ in
     lib.optional wifiReady config.age.secrets.wifi.path
     ++ lib.optional lanReady config.age.secrets.wifi-lan.path;
 
-  # The repeated LAN (2026-08-20 rewire): once the NAS routes the house and
-  # the BE550 rebroadcasts at the TV corner, this box becomes an ordinary
-  # wifi client of that segment — its pinned lease is 10.42.0.2
-  # (hosts/nas/router.nix dhcp-host). Higher autoconnect-priority than the
-  # freebox-uplink above, which stays as the fallback rail: if the repeated
-  # LAN is down (NAS rebuild, BE550 unplugged), NM falls back to the Freebox
-  # and this box keeps internet + tailnet, including its SSH path to the
-  # NAS's uplink leg.
-  #
   networking.networkmanager.ensureProfiles.profiles.thomas-6ghz = lib.mkIf lanReady {
     connection = {
       id = "thomas-6ghz";
@@ -108,29 +68,15 @@ in
     };
     wifi = {
       mode = "infrastructure";
-      # thomas-6ghz since the 2026-08-21 6GHz ruling (via wifi-lan.age).
-      # Deliberately NO bssid pin and NO band: this SSID exists on exactly
-      # one radio (the BE550's 6GHz; its 5GHz radio is disabled and 2.4
-      # carries a different SSID), so the mt7925 same-SSID roam crash has no
-      # surface here — and the 6GHz MLD BSSID differs between scan and
-      # association (seen live), so a pin actively breaks activation. The
-      # flake check carries a matching by-name exemption for this profile.
+      # No BSSID/band pin: this SSID is only on the BE550 6 GHz radio;
+      # its MLD scan and association BSSIDs differ. Preserve WPA3/PMF.
       ssid = "$BE550_SSID";
     };
     wifi-security = {
-      # WPA3-SAE — mandatory on 6GHz, with protected management frames.
       key-mgmt = "sae";
       pmf = 3;
       psk = "$BE550_PSK";
     };
-    # STATIC addressing (2026-08-21 hardening ruling: "anything dns/dhcp
-    # related must never bite"). This box's 10.42.0.2 is load-bearing — NAS
-    # firewall admissions, NFS export ACLs, and AdGuard's .internal answers
-    # all name it — so its most important client must not depend on the
-    # DHCP round-trip at association time or lease renewal. The dnsmasq
-    # dhcp-host pin (hosts/nas/router.nix) stays as the guard that keeps
-    # the pool from ever handing .2 to anyone else. DNS is the NAS resolver,
-    # stated here rather than learned, with ignore-auto-dns for good measure.
     ipv4 = {
       method = "manual";
       address1 = "10.42.0.2/24";
@@ -138,259 +84,38 @@ in
       dns = "10.42.0.1";
       ignore-auto-dns = true;
     };
-    ipv6.method = "ignore";
+    # Keep this managed LAN IPv4-only; fallback Freebox retains automatic IPv6.
+    ipv6.method = "disabled";
   };
 
-  # nas-fast-lane RETIRED 2026-08-21 (Tom: "no longer desired at all
-  # whatsoever"): the /30 point-to-point rail (nas-fast-lane NM profile,
-  # installer dnsmasq, NAT relay, enp191s0 admissions here and in
-  # attic/caddy-artifacts/llama-swap/immich-ml) is gone — the physical cable
-  # was unplugged at the TV-corner move and the NAS reaches the internet
-  # through its own wan0 now. The NAS-SIDE dual-rail leftovers (10.77.0.2
-  # address, 10.77.0.1 export/admission entries across the NAS modules)
-  # retire in the post-soak cleanup commit. NOTE: ensureProfiles never
-  # deletes a profile it stopped ensuring — `nmcli connection delete
-  # nas-fast-lane` was run by hand at retirement.
-  #
-  # NM at INFO explicitly (2026-08-21): this box's NetworkManager had logged
-  # nothing since Aug 05 — every wifi incident of cutover day was forensically
-  # blind. Whatever suppressed it, pin the level so it cannot regress.
   networking.networkmanager.logLevel = "INFO";
 
-  # ── Boot-time rail reconciler (2026-08-21, first coordinator reboot) ──────
-  # Observed live: at boot NM missed the 6GHz beacon in its first scan (6GHz
-  # discovery is slow), associated to the Freebox fallback (priority 100),
-  # and — correctly, per NM semantics — never preempted back to thomas-6ghz
-  # (110). Result: internet fine, but the ENTIRE 10.42.0.x world silently
-  # unreachable — printer "Host is down", NAS "No route to host", failure
-  # episodes on every retry. This oneshot runs ONCE, ~2 min after boot: if
-  # the box finds itself on the fallback while the preferred SSID is
-  # visible, switch back. Deliberately never periodic — a daytime
-  # auto-switch would kill live Claude sessions (the wifi-switch freeze
-  # rule: rail changes happen at boot or by Tom's hand between prompts).
-  systemd.services.uplink-rail-reconcile = {
-    description = "Return to thomas-6ghz if boot landed on the Freebox fallback rail";
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = pkgs.writeShellScript "uplink-rail-reconcile" ''
-        PATH=${lib.makeBinPath [ pkgs.networkmanager pkgs.gnugrep ]}
-        nmcli -t -f NAME connection show --active | grep -qx "Freebox-AB3ACE" || exit 0
-        if nmcli -t -f SSID device wifi list --rescan yes | grep -qx "thomas-6ghz"; then
-          echo "on fallback rail with thomas-6ghz visible; switching back"
-          nmcli connection up thomas-6ghz
-        else
-          echo "on fallback rail; thomas-6ghz not visible — staying (BE550 down?)"
-        fi
-      '';
+  systemd.services.uplink-failover-watchdog = service "tick";
+  systemd.timers.uplink-failover-watchdog = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "3min";
+      OnUnitActiveSec = "30s";
+      AccuracySec = "1s";
     };
   };
+  # Return only in controlled windows. A manual daytime Freebox connection is
+  # never preempted, and a working BE550 bypass is not bounced back and forth.
+  systemd.services.uplink-rail-reconcile = service "boot";
   systemd.timers.uplink-rail-reconcile = {
     wantedBy = [ "timers.target" ];
     timerConfig = {
       OnBootSec = "2min";
-      AccuracySec = "30s";
-      # once per boot, never recurring (see comment above)
+      AccuracySec = "1s";
     };
   };
-
-  # ── Emergency failover watchdog (2026-08-28, closes #235) ────────────────
-  # The 2026-08-23 incident, verified minute-by-minute from the attic DB and
-  # this box's journal: the NAS's mt7925u wan0 wedged at 10:30:51 (within a
-  # minute of update-center's ExecStopPost gc hitting its 1h SIGKILL), and
-  # this box sat "connected" to a dead LAN for FIVE DAYS with the fallback
-  # rail configured right next to it. NM never re-evaluated: the BE550 kept
-  # beaconing, the profile is static-addressed, and priority ordering only
-  # runs at (re)activation time.
-  #
-  # Two hard lessons encoded here:
-  #   1. Pinging the gateway is NOT a health check. 10.42.0.1 answered ICMP
-  #      for the entire outage — the NAS was alive, only its wan0 was dead.
-  #      The probe must be end-to-end: public anycast IPs, through the wifi
-  #      interface, both of two independent targets down before a round
-  #      counts as a failure.
-  #   2. Daytime auto-REVERT is deliberately absent. One radio cannot
-  #      observe the BE550 segment while associated to the Freebox, so a
-  #      revert probe would itself be a daytime rail switch — exactly what
-  #      the freeze rule forbids. Failing over when the internet is already
-  #      dead kills no live session (they died minutes ago); switching back
-  #      is a judgement made by Tom's hand (`nmcli connection up
-  #      thomas-6ghz`), by uplink-rail-reconcile at next boot, or — since
-  #      2026-08-29 — by uplink-rail-revert at 04:00 (below), which bounds
-  #      a Freebox exile at one night instead of "until Tom notices".
-  #
-  # THE SHAPE-AWARE DEBOUNCE (2026-08-29, from that morning's incident):
-  # the two death shapes this watchdog already distinguished in its log
-  # deserve different patience, because one of them self-heals. At 13:01:49
-  # the Freebox deauthed the NAS's wan0 (mt7925u missed a group-key rekey);
-  # the NAS's own wan0-watchdog needed ~4 min from onset to recover it
-  # (5-strike debounce, then rungs 1-2 failed, rung 3 USB re-enumeration
-  # worked at 13:06:04). This box's flat 5-strike fuse blew at 13:04:24 —
-  # 100 seconds before the heal landed — and by design nothing switched
-  # back, so a 4-minute NAS blip cost a whole afternoon on the fallback
-  # rail. Both watchdogs run the same 30s cadence, so an identical fuse
-  # GUARANTEES this box always jumps ship right as the NAS ladder starts.
-  # Now: gateway-dead shape (BE550/NAS truly dark — nothing will self-heal)
-  # still fails over at strike 5; gateway-alive shape (NAS up, wan0 dead —
-  # the exact case its ladder exists for) holds until strike 12 (~6 min),
-  # long enough for the full ladder including the USB rung, replayed against
-  # both the 08-23 and 08-29 timelines. Cost: a genuinely unrecoverable
-  # wan0 death reaches the fallback rail ~3.5 min later than before.
-  #
-  # Coexists with uplink-rail-reconcile above: that one fixes "woke up on
-  # the wrong rail at boot"; this one fixes "the good rail died under me".
-  # Quiet by design on healthy rounds — the NAS journal lost the entire
-  # incident window to AdGuard error spam, so this unit logs state changes
-  # only, never a heartbeat. (Accounting is off for the same discipline:
-  # systemd otherwise stamps a "Consumed ..." line at every 30s deactivation
-  # — thousands of journal lines a day saying nothing.)
-  systemd.services.uplink-failover-watchdog = {
-    description = "Fail over to the Freebox rail when internet via thomas-6ghz is dead";
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = pkgs.writeShellScript "uplink-failover-watchdog" ''
-        PATH=${
-          lib.makeBinPath [
-            pkgs.networkmanager
-            pkgs.iputils
-            pkgs.gnugrep
-            pkgs.coreutils
-          ]
-        }
-        state=/run/uplink-watchdog.failcount
-
-        # Only guard the NAS rail. On the Freebox (failed over, or Tom's
-        # choice), or with the radio down entirely (NM's own problem), stand
-        # aside so the watchdog can never fight a manual rail decision.
-        nmcli -t -f NAME connection show --active | grep -qx "thomas-6ghz" || {
-          rm -f "$state"
-          exit 0
-        }
-
-        ok=0
-        for target in 1.1.1.1 9.9.9.9; do
-          if ping -c1 -W2 -I wlp192s0 "$target" >/dev/null 2>&1; then
-            ok=1
-            break
-          fi
-        done
-
-        if [ "$ok" = 1 ]; then
-          if [ -s "$state" ] && [ "$(cat "$state")" != 0 ]; then
-            echo "internet reachable again via thomas-6ghz; debounce reset"
-          fi
-          rm -f "$state"
-          exit 0
-        fi
-
-        n=$(($(cat "$state" 2>/dev/null || echo 0) + 1))
-        echo "$n" >"$state"
-        echo "internet unreachable via thomas-6ghz (strike $n)"
-        [ "$n" -lt 5 ] && exit 0
-
-        # ~2.5 min of sustained darkness: the rail is dead, not blinking.
-        # The death SHAPE decides the fuse (doctrine in the header): a dark
-        # gateway means the LAN itself is gone — nothing self-heals, switch
-        # now. A live gateway that forwards nothing is the NAS-wan0-dead
-        # shape, which the NAS's own wan0-watchdog ladder recovers in ~4-5
-        # min from onset — hold until strike 12 (~6 min) to let it.
-        if ping -c1 -W2 -I wlp192s0 10.42.0.1 >/dev/null 2>&1; then
-          if [ "$n" -lt 12 ]; then
-            # One shape line at the decision point, not per strike.
-            [ "$n" = 5 ] && echo "gateway 10.42.0.1 alive but forwarding nothing (NAS wan0 dead?) — holding for the NAS wan0-watchdog ladder, failover at strike 12"
-            exit 0
-          fi
-          echo "FAILOVER: gateway stayed alive but never forwarded (NAS ladder failed or Freebox WAN down) — bringing up Freebox-AB3ACE"
-        else
-          echo "FAILOVER: gateway 10.42.0.1 unreachable — bringing up Freebox-AB3ACE"
-        fi
-        rm -f "$state"
-        nmcli connection up Freebox-AB3ACE
-      '';
-      # Journal discipline (see header): no per-run "Consumed ..." stamp.
-      CPUAccounting = false;
-      MemoryAccounting = false;
-      IPAccounting = false;
-    };
-  };
-  systemd.timers.uplink-failover-watchdog = {
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      # After uplink-rail-reconcile (OnBootSec=2min) has settled the boot rail.
-      OnBootSec = "3min";
-      OnUnitActiveSec = "30s";
-      # Default 1min accuracy would smear the 30s cadence and stretch the
-      # 5-strike debounce unpredictably.
-      AccuracySec = "10s";
-    };
-  };
-
-  # ── Nightly rail revert (2026-08-29, from the wan0-rekey incident) ────────
-  # The failover watchdog above deliberately never switches back, and the
-  # boot reconciler only runs at boot — so before this unit, a daytime
-  # failover left the box exiled on the Freebox until Tom noticed by hand
-  # (the 08-29 incident: a 4-minute NAS blip, a whole afternoon off the
-  # LAN, printer/NAS/worker all silently unreachable). This bounds the
-  # exile at one night while keeping the freeze rule intact: 04:00 is the
-  # sanctioned quiet window, the same reasoning that lets the NAS run its
-  # own overnight maintenance. The revert is verify-or-undo — if
-  # thomas-6ghz associates but has no end-to-end internet, go straight
-  # back to the Freebox rather than trading a working fallback for a dead
-  # preferred rail.
-  #
-  # Persistent is deliberately FALSE: a 04:00 firing missed because the box
-  # was off must NOT fire as a catch-up at the next (likely daytime) boot —
-  # uplink-rail-reconcile already owns the boot case, on its own terms.
-  systemd.services.uplink-rail-revert = {
-    description = "Return to thomas-6ghz overnight after a daytime failover to the Freebox rail";
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = pkgs.writeShellScript "uplink-rail-revert" ''
-        PATH=${
-          lib.makeBinPath [
-            pkgs.networkmanager
-            pkgs.iputils
-            pkgs.gnugrep
-            pkgs.coreutils
-          ]
-        }
-        # Only act from the fallback rail; on thomas-6ghz (or with wifi
-        # down entirely) there is nothing to revert.
-        nmcli -t -f NAME connection show --active | grep -qx "Freebox-AB3ACE" || exit 0
-        if ! nmcli -t -f SSID device wifi list --rescan yes | grep -qx "thomas-6ghz"; then
-          echo "on fallback rail; thomas-6ghz not visible — staying (BE550 down?)"
-          exit 0
-        fi
-        echo "on fallback rail with thomas-6ghz visible — reverting"
-        if ! nmcli connection up thomas-6ghz; then
-          echo "REVERT FAILED at association — returning to Freebox-AB3ACE"
-          nmcli connection up Freebox-AB3ACE
-          exit 0
-        fi
-        # Verify end-to-end, with patience for 6GHz association + DNS-free
-        # anycast targets, same probe doctrine as the failover watchdog.
-        sleep 10
-        for _ in 1 2 3 4 5 6; do
-          for target in 1.1.1.1 9.9.9.9; do
-            if ping -c1 -W2 -I wlp192s0 "$target" >/dev/null 2>&1; then
-              echo "reverted to thomas-6ghz; internet verified end-to-end"
-              exit 0
-            fi
-          done
-          sleep 5
-        done
-        echo "REVERT UNDONE: thomas-6ghz associates but forwards nothing — returning to Freebox-AB3ACE"
-        nmcli connection up Freebox-AB3ACE
-      '';
-    };
-  };
+  systemd.services.uplink-rail-revert = service "return";
   systemd.timers.uplink-rail-revert = {
     wantedBy = [ "timers.target" ];
     timerConfig = {
-      OnCalendar = "04:00";
-      # No Persistent=true — see the header.
+      OnCalendar = "*-*-* 04:00:00";
+      Persistent = false;
+      AccuracySec = "1min";
     };
   };
-
-  # The `nas` hosts pin moved to modules/common.nix (fleet-wide) at the
-  # 2026-08-21 attic move — every host dials the substituter by that name.
 }

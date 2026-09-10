@@ -1,12 +1,7 @@
 { pkgs, ... }:
-# coordinator — AMD Strix Halo (gfx1151), the main device. Freebox wifi uplink +
-# directly-attached NAS (uplink-nas.nix) and the native media services
-# (services.nix: services.immich + services.navidrome, on /mnt/nas). DNS
-# ad/tracker filtering comes from the NAS LAN resolver (10.42.0.1) since the
-# 2026-08-21 cutover — see the removal note in the imports list below.
-# The old rootless podman quadlet stack — AdGuard, Immich, Navidrome —
-# was retired 2026-07-13 (AdGuard with the BE550 router; Immich/Navidrome moved
-# to native modules), leaving this host container-free.
+# Coordinator: NAS-managed LAN routing/DNS, direct BE550 bypass, then Freebox.
+# Static 10.42.0.2 keeps NAS services reachable while bypassing a failed NAS
+# routing or DNS service. Freebox remains the independent emergency uplink.
 {
   imports = [
     ./hardware.nix
@@ -47,17 +42,8 @@
     # dialling the new one), then this box (which stops answering :3003).
     ./atuin.nix
     ./audio.nix # pins the webcam mic as the default PipeWire source
-    # AdGuard REMOVED from this host at cutover phase 3 (2026-08-21, Tom's
-    # ruling: "adguard shall now run only on the NAS"). Not just redundant —
-    # actively incompatible with the repeated LAN: the loopback instance's
-    # upstreams are DoH to 1.1.1.1/1.0.0.1/9.9.9.9, exactly the IPs the NAS's
-    # dns_hijack drops on tcp/443 (hosts/nas/router.nix), so DNS would go dark
-    # the moment this box joined `thomas`. Filtering now comes from the LAN
-    # resolver (10.42.0.1) via DHCP; on the freebox-uplink fallback rail DNS is
-    # the Freebox's, unfiltered — accepted. The Zenbook Duo was the one host
-    # still importing the module, and left the fleet on 2026-08-30 without ever
-    # getting a be550 profile; no client carries AdGuard now, which is what the
-    # flake-level asserts pin.
+    # AdGuard is NAS-only. The primary profile uses NAS DNS; the two emergency
+    # tiers use independent DNS and intentionally bypass NAS filtering.
     # ./attic.nix is NOT a server any more and has not been since 2026-08-21 —
     # atticd moved to the NAS with ws5 and what is left here is the cache-health
     # tripwire pointed at it (read that file's header; it says "NOTHING

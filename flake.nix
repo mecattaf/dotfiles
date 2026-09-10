@@ -747,6 +747,15 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        coordinator-uplink =
+          pkgs.runCommand "coordinator-uplink-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              mkdir -p hosts/coordinator tests/coordinator-uplink
+              cp ${./hosts/coordinator/uplink.py} hosts/coordinator/uplink.py
+              cp ${./tests/coordinator-uplink/test_uplink.py} tests/coordinator-uplink/test_uplink.py
+              python -m unittest discover -s tests/coordinator-uplink -v
+              touch $out
+            '';
         music-acquire = pkgs.music-acquire;
 
         # The Claude capacity oracle (DECISION-R2-1). It is BOTH the waybar
@@ -1452,36 +1461,13 @@
           # which only renders under the nftables backend — with iptables the
           # appliance seals itself shut (hit live 2026-08-01).
           assert nas.networking.nftables.enable;
-          # ── the TV endpoint (2026-08-21) ───────────────────────────────────
-          # The same class of staleness as the tailscale block above, and found
-          # the same way: these four read `!niri`, `!greetd` and no wayvnc on
-          # either bus, encoding "this appliance has no graphical session at
-          # all". True until hosts/nas/tv.nix landed a niri session on the
-          # HDMI corner with a wayvnc mirror, after which `nix flake check` was
-          # red on the niri line — so the tailscale correction that fixed this
-          # check never actually turned it green.
-          #
-          # Corrected in the direction the architecture went, rather than by
-          # deletion: the appliance now HAS a session, and what is worth
-          # pinning is its SHAPE, because every part of that shape was a bug
-          # once. myHeadless.tv is the deliberate carve-out in
-          # modules/headless.nix — asserting it keeps the session from ever
-          # arriving by accident through a stray graphical import.
-          assert nas.myHeadless.tv.enable;
-          assert nas.programs.niri.enable;
-          assert nas.services.greetd.enable;
-          # greetd ships WantedBy=graphical.target, which this appliance never
-          # reaches — tv.nix adds multi-user.target and the two MERGE rather
-          # than replace, so membership is the only correct test here. This is
-          # the "found dead-on-arrival at first deploy" lesson from tv.nix,
-          # pinned so a refactor cannot quietly drop the working half.
-          assert builtins.elem "multi-user.target" nas.systemd.services.greetd.wantedBy;
-          # wayvnc lives on the USER bus, defined system-side because this box
-          # has no home-manager (asserted just below). Both halves matter: a
-          # SYSTEM wayvnc unit would have no session to mirror and is the
-          # wrong-bus mistake this pins against.
-          assert nas.systemd.user.services ? wayvnc;
+          # The NAS is a storage/router appliance with no graphical session.
+          assert !nas.programs.niri.enable;
+          assert !nas.services.greetd.enable;
+          assert !nas.services.pipewire.enable;
+          assert !(nas.systemd.user.services ? wayvnc);
           assert !(nas.systemd.services ? wayvnc);
+          assert nas.hardware.graphics.enable;
           assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
           # Post-cutover topology (live since 2026-08-02, #131): the verified
           # data disk and the media stack run on the NAS; the coordinator only
@@ -1563,47 +1549,40 @@
           # Attic moved to the NAS at ws5 — the coordinator serves no :8080 and
           # every host, worker included, dials http://nas:8080/fleet instead.
           assert builtins.elem "http://nas:8080/fleet" worker.nix.settings.extra-substituters;
-          # ── the NAS router plane (2026-08-20 rewire) ───────────────────────
-          # The NAS is the house's gateway/DHCP/DNS (hosts/nas/router.nix).
+          # NAS gateway/DNS .1 forwards on Ethernet to BE550 .3.
           assert nas.services.dnsmasq.enable;
-          # dnsmasq is DHCP-only: whatever owns :53 on this box, it is not this
-          # (the settings type lifts scalars into lists). Held across #288 —
-          # the owner changed from AdGuard to resolved's stub, the rule did not.
           assert nixpkgs.lib.toList nas.services.dnsmasq.settings.port == [ 0 ];
-          assert nas.networking.nat.enable;
-          assert nas.networking.nat.externalInterface == "wan0";
-          assert nas.networking.nat.internalInterfaces == [ "enp1s0" ];
-          assert nas.networking.nftables.tables ? dns_hijack;
-          # The LAN's resolver must answer at 10.42.0.1:53. THIS is the invariant
-          # the LAN actually depends on; which daemon satisfies it is #288's
-          # business. Both halves are asserted so the pair can never both be
-          # empty: AdGuard's bind list keeps naming the address (so the
-          # `adguardDown = false` flip in modules/adguardhome.nix restores a
-          # working resolver, not a loopback-only one), and while AdGuard is off
-          # resolved's extra stub listener holds it.
-          assert builtins.elem "10.42.0.1" nas.services.adguardhome.settings.dns.bind_hosts;
-          # Never 0.0.0.0: resolved's stub holds 127.0.0.53:53 and a wildcard
-          # bind EADDRINUSEs against it (26d4afdf lore).
-          assert !(builtins.elem "0.0.0.0" nas.services.adguardhome.settings.dns.bind_hosts);
-          # #288 (2026-09-03), INVERT THIS WHOLE BLOCK WITH `adguardDown`:
-          # AdGuard crash-looped on a tailnet address it lost in the headscale
-          # migration and took LAN DNS with it, so it is disabled in config and
-          # systemd-resolved carries the plane instead. Asserted here because a
-          # rebuild that dropped the stub listeners would be the outage this
-          # change exists to prevent, arriving silently.
-          assert !nas.services.adguardhome.enable;
+          assert builtins.elem "option:router,10.42.0.1" nas.services.dnsmasq.settings.dhcp-option;
+          assert builtins.elem "option:dns-server,10.42.0.1" nas.services.dnsmasq.settings.dhcp-option;
           assert
-            nas.services.resolved.settings.Resolve.DNSStubListenerExtra == [
-              "10.42.0.1" # the BE550 LAN (dnsmasq option 6 + the dns_hijack DNAT)
-              "100.64.0.1" # the tailnet split-DNS entry
+            nas.networking.networkmanager.ensureProfiles.profiles.coordinator-fast-lane.ipv4.gateway
+            == "10.42.0.3";
+          assert !(nas.networking.networkmanager.ensureProfiles.profiles ? freebox-uplink);
+          assert !(nas.systemd.services ? wan0-watchdog);
+          assert !(nas.systemd.network.links ? "10-wan0");
+          assert !(builtins.elem "usbcore.autosuspend=-1" nas.boot.kernelParams);
+          assert !nas.networking.nat.enable;
+          assert nas.networking.nftables.tables ? nas_upstream;
+          assert nas.networking.nftables.tables ? dns_hijack;
+          assert nas.boot.kernel.sysctl."net.ipv4.ip_forward" == 1;
+          assert nas.boot.kernel.sysctl."net.ipv4.conf.all.send_redirects" == 0;
+          assert nas.boot.kernel.sysctl."net.ipv4.conf.enp1s0.send_redirects" == 0;
+          assert nas.services.adguardhome.enable;
+          assert
+            nas.services.adguardhome.settings.dns.bind_hosts == [
+              "127.0.0.1"
+              "10.42.0.1"
             ];
-          # ...and it must have somewhere to forward to. `127.0.0.1` here would
-          # mean resolved is still pointed at the AdGuard that is not running.
-          assert !(builtins.elem "127.0.0.1" nas.services.resolved.settings.Resolve.DNS);
-          assert builtins.elem "1.1.1.1" nas.services.resolved.settings.Resolve.DNS;
-          # Global route stays authoritative for every name in both branches, so
-          # the Freebox's per-link DNS on wan0 can never win.
+          assert nas.services.resolved.settings.Resolve.DNSStubListenerExtra == [ "100.64.0.1" ];
+          assert nas.services.resolved.settings.Resolve.DNS == "127.0.0.1";
           assert nas.services.resolved.settings.Resolve.Domains == "~.";
+          assert
+            coordinator.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4.gateway
+            == "10.42.0.1";
+          assert
+            coordinator.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4.dns == "10.42.0.1";
+          assert
+            coordinator.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv6.method == "disabled";
           # ── Strix Halo hard-lock protections must outlive the rewire ──────
           # The mt7925e wcid roam crash bricked the coordinator twice
           # (2026-07-16); the standing fixes are the ASPM escape hatch + the
@@ -1665,36 +1644,16 @@
               dns = "10.42.0.1";
               ignore-auto-dns = true;
             };
-          # .internal resolution: the NAS is the ONE resolver that answers these
-          # names, and it answers with the coordinator's PINNED lease
-          # (hosts/nas/router.nix dhcp-host); since 2026-08-20 it serves every
-          # LAN phone the same way. A 100.x answer here is the regression this
-          # catches. Both answerers are checked since #288 — AdGuard's rewrites
-          # (dormant, kept correct for the flip back) and the /etc/hosts pin
-          # that systemd-resolved serves from the same address today.
+          # AdGuard and local host lookups agree on the media front doors.
           assert builtins.all (
             r: r.answer == "10.42.0.2"
           ) nas.services.adguardhome.settings.filtering.rewrites;
           assert builtins.all (n: builtins.elem n nas.networking.hosts."10.42.0.2") (
             map (r: r.domain) nas.services.adguardhome.settings.filtering.rewrites
           );
-          # The second half of this pair used to assert the COORDINATOR's own
-          # loopback AdGuard rewrote .internal to 127.0.0.1. That instance was
-          # deleted on cutover day (2026-08-21, phase 3) and the assert was left
-          # behind, reading `settings.filtering.rewrites` off a module that is no
-          # longer imported — `settings` is null there, so the check threw
-          # "expected a set but found null" rather than failing an assertion.
-          # Squared up with the #229 work, and re-pointed at the thing that
-          # actually matters now: per-device AdGuard is FORBIDDEN on this LAN
-          # (its DoH upstreams are exactly what the NAS's dns_hijack drops), so
-          # the invariant is that NO client runs one. The worker — the box that
-          # collision was first proven on — is included.
+          # Filtering is centralized on the NAS.
           assert !coordinator.services.adguardhome.enable;
           assert !worker.services.adguardhome.enable;
-          # The NAS's own instance used to be asserted ON here. It is asserted
-          # OFF in the router-plane block above instead, with the #288 rationale
-          # and the resolved listeners that replace it — one place, so the pair
-          # cannot half-flip. Re-point this line there when AdGuard comes back.
           # ── #130 expansion gates: all OFF, and the pairs agree ─────────────
           # These assert the STAGED shape, i.e. that today's switch is a no-op
           # on the NAS's running services. Each gate flips with its own runbook
@@ -2400,16 +2359,7 @@
           assert nixpkgs.lib.elem "10.42.0.5" meshRegistry.${strixWorker}.aliases;
           assert nixpkgs.lib.elem "10.99.0.2" meshRegistry.${strixWorker}.aliases;
           assert nixpkgs.lib.elem "10.99.9.2" meshRegistry.${strixWorker}.aliases;
-          # 2026-08-20 rewire: names resolve to the LAN identities — the NAS
-          # at its gateway address, the coordinator at its pinned lease. Both
-          # are reachable over the legacy /30 cable too until the cleanup
-          # commit, so these hold across the whole transition.
           assert coordinator.networking.hosts."10.42.0.1" == [ "nas" ];
-          # Membership, not equality, since #288: modules/adguardhome.nix adds
-          # the four .internal names to this same address while AdGuard is down,
-          # and the merge order of two list definitions is module-import order,
-          # not ours to pin. The .internal half is asserted in the router-plane
-          # block above; this half is the coordinator's own name.
           assert builtins.elem "coordinator" nas.networking.hosts."10.42.0.2";
           # #273: the TWINS' own names must NEVER resolve to loopback again.
           # Stock NixOS sets networking.hosts."127.0.0.2" = [ hostName ]; that
@@ -2504,56 +2454,14 @@
           # headscale block in nas-topology for the shape assert.
           assert nas.services.tailscale.enable;
           assert nixpkgs.lib.elem "--advertise-routes=10.42.0.0/24" nas.services.tailscale.extraUpFlags;
-          # ── the TV endpoint, again (2026-08-21) ────────────────────────────
-          # A SECOND copy of the stale "no graphical session" assertions, which
-          # is why fixing the nas-topology block alone left this check red. The
-          # appliance profile did not disappear when tv.nix landed — it grew a
-          # deliberate carve-out (modules/headless.nix), and these three moved
-          # with it. The session's exact shape is pinned once, in nas-topology;
-          # here we only record that it is expected to exist.
-          assert nas.programs.niri.enable;
-          assert nas.services.greetd.enable;
-          # pipewire rides the SAME carve-out and for a concrete reason: it
-          # carries HDMI audio to the TV. headless.nix mkForce-disables it for
-          # every non-tv appliance, so this asserts the carve-out is reaching
-          # it — `!enable` here had been failing since tv.nix.
-          assert nas.services.pipewire.enable;
-          # Printing is NOT part of the carve-out and stays off: the Brother is
-          # driven by the coordinator's CUPS queue at its pinned IP
-          # (modules/printing.nix), never by this box. Still true, still worth
-          # holding — a graphical session is an easy way to drag CUPS in.
+          assert !nas.programs.niri.enable;
+          assert !nas.services.greetd.enable;
+          assert !nas.services.pipewire.enable;
           assert !nas.services.printing.enable;
-          # Avahi is ON since cutover day and that is deliberate — it is how the
-          # NAS announces its read-only SMB trees so GNOME's Network pane can
-          # list them (hosts/nas/discovery.nix, Tom's "show its files in
-          # Network" ask). The old `!enable` assert here predates that module and
-          # had been failing; it is replaced by the property that actually
-          # matters, which is that the announcement never leaks onto the Freebox
-          # segment: LAN leg only, never wan0.
+          # Discovery remains restricted to the wired LAN.
           assert nas.services.avahi.enable;
           assert nas.services.avahi.allowInterfaces == [ "enp1s0" ];
-          # The tailnet door is no longer empty either: the NAS became the fleet's
-          # tailscale sink at ws5 and now answers DNS on it (the 2026-08-21
-          # split-DNS server-side change, so tailnet clients resolve .internal).
-          # Asserting the exact set keeps that door from quietly widening.
-          # 5900 joined 53 with tv.nix: wayvnc is reachable over the tailnet so
-          # the TV session can be driven from a roaming host, which is the same
-          # LAN-and-tailnet-but-never-WAN doctrine the rest of the fleet uses
-          # (home/remote.nix). Kept as an EXACT set on purpose — the point of
-          # this assert is that the tailnet door cannot widen unnoticed, so a
-          # third port here must be a deliberate edit, not a surprise.
-          #
-          # It held across the 2026-09-01 headscale cutover unchanged, which is
-          # the correct outcome and worth recording: headscale PUSHES resolvers
-          # to clients and binds none, so becoming its own control plane did not
-          # cost this node a tailnet port. The control-plane listener lives on
-          # the LAN leg, not here (hosts/nas/headscale.nix) — if a headscale port
-          # ever shows up in this set, phase 2 was wired to the wrong interface.
-          assert
-            nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [
-              53
-              5900
-            ];
+          assert nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [ 53 ];
           assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
           assert nas.myNas.storage.enable;
           assert nas.myNas.media.enable;
@@ -3044,9 +2952,7 @@
           # libraryPath arrived with the 2026-08-21 "weights leave nix" ruling
           # (3f941c02): model weights are no longer nix FODs — they live in the
           # NAS Library and are pulled by library-fetch — so the module needs to
-          # be told where that Library is mounted. This exact-list assert was
-          # not updated with it and had been failing since, masked behind the
-          # stale tv.nix asserts above which tripped first.
+          # be told where that Library is mounted.
           assert
             builtins.attrNames self.nixosConfigurations.coordinator.options.services.local-models == [
               "allow"

@@ -5,13 +5,13 @@ personal machine from one reviewed source of truth.
 
 ## Hosts
 
-The flake exports exactly four NixOS host configurations:
+The flake exports these NixOS host configurations:
 
 | Host | Hardware | Role |
 |---|---|---|
 | `coordinator` | Framework Desktop, AMD Strix Halo | controller node, daily driver |
 | `worker` | Framework Desktop, AMD Strix Halo | second Strix Halo twin, reintegrated; deployed over the fleet identity `10.99.9.2` |
-| `nas` | UGREEN NASync DXP2800 GT, AMD R2514 | Ethernet-only headless media/storage behind the coordinator relay; Immich ML stays on coordinator |
+| `nas` | UGREEN NASync DXP2800 GT, AMD R2514 | Wired gateway/DNS, storage, media and Headscale; BE550 Ethernet upstream, Immich ML on worker |
 
 ```
 flake.nix        three NixOS hosts wired through one mkHost

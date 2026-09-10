@@ -7,12 +7,11 @@
 {
   imports = [
     ./unstable-pkgs.nix
-    ./kernel.nix # 2026-08-29: linux 7.2 for the mt7925u uplink dongle (#244 NAS scope)
+    ./kernel.nix # retain the validated kernel series during the network move
     ./hardware.nix
     ./disko.nix
     ./network.nix
-    ./router.nix # 2026-08-20: NAS is the house router (A8500 uplink + BE550 LAN)
-    ./wan-watchdog.nix # 2026-08-28: software recovery for the mt7925u wedge (#235 post-mortem)
+    ./router.nix # Gateway, DHCP and DNS; Ethernet upstream through BE550
     # printer-keepalive.nix DELETED same-day it was born (Tom: "there has to
     # be a smarter way"): with the CUPS queue dialing the printer's pinned IP
     # (modules/printing.nix), a print job itself wakes the Brother from Deep
@@ -43,7 +42,6 @@
     ./update-center.nix # nightly fleet builds -> attic (the App Store model)
     ./omarchy-update-center.nix # manual signed offers; owners choose installation
     ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate OFF
-    ./tv.nix # niri TV session on the HDMI corner + wayvnc (2026-08-21)
     ./headscale.nix # 2026-09-01: the fleet's OWN tailnet control plane (supersedes #233)
     ./headscale-backup.nix # consistent identity backup before overseas handover
     ../../modules/adguardhome.nix

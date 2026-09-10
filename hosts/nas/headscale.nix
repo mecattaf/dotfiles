@@ -4,82 +4,15 @@
   pkgs,
   ...
 }:
-# ─── The fleet's OWN control plane: headscale on the NAS (2026-09-01) ───────
-#
-# Tom's ruling 2026-09-01: "self-hosted headscale server lands on the NAS and
-# becomes the control plane for everything — his devices, future friend
-# devices. The NAS's own tailscaled will point at its local headscale."
-#
-# This SUPERSEDES the design in #233, which had the NAS and the coordinator
-# both on official tailscale.com (NAS primary sink, coordinator emergency
-# rail). The split survives; the control plane under the NAS half does not.
-# After today:
-#
-#   nas          headscale server  +  tailscale CLIENT of its own headscale
-#   coordinator  official tailscale.com, always-connected-but-idle — the
-#                EMERGENCY RAIL, do not remove, do not clean up (see
-#                hosts/coordinator/*, modules/common.nix; not this file's lane)
-#   worker       no tailnet at all, of either kind (unchanged)
-#
-# MUST NEVER COME BACK, stated the way AGENTS.md states these things: official
-# tailscale.com is no longer a control plane for the NAS. If this box is ever
-# found registered against controlplane.tailscale.com, that is a regression to
-# be undone, not a fallback that healed itself — the escape hatch is the
-# coordinator's node plus the Freebox, deliberately on the OTHER box, because a
-# single-point-of-failure escape hatch that lives on the failing box is not an
-# escape hatch. Equally: the coordinator's tailscale + freebox-uplink pair must
-# never be "tidied away" because headscale exists now.
-#
-# ── WHY THE SUBNET ROUTER SURVIVES THE CONTROL-PLANE SWAP ──────────────────
-# hosts/nas/default.nix's old block advertised 10.42.0.0/24 so "a roaming
-# laptop reaches every home device through one node". That premise is about
-# ROAMING CLIENTS, not about whose control plane issues the netmap: headscale
-# speaks the same protocol and the same subnet-router feature. So
-# useRoutingFeatures = "server" and --advertise-routes stay exactly as they
-# were, and the flake's nas-topology / fleet-connectivity asserts on those
-# three knobs stay green by design rather than by edit. What changes is one
-# flag (--login-server) and one fact (which server holds the node keys).
-#
-# ── PHASING, and what is honestly NOT true yet ─────────────────────────────
-# PHASE 1 (this commit, gate ON): headscale answers on the LAN address only,
-# plain HTTP, port 8090. Every NixOS box on 10.42.0.0/24 can join, the NAS
-# joins itself, MagicDNS + split-DNS-to-AdGuard are configured and live. What
-# this does NOT do is make headscale reachable from outside the house: there is
-# no port-forward on the Freebox and no public DNS name. So until phase 2,
-# headscale is a HOME-ONLY control plane and the coordinator's tailscale.com
-# node remains the only actual remote-access path. Stated plainly so nobody
-# reads "the control plane for everything" off the ruling and assumes the
-# roaming half already works.
-#
-# PHASE 2 (myNas.headscale.publicEndpoint.enable, gate OFF — runbook in its
-# own option description below): Caddy terminates TLS for a real public name
-# and wan0 admits exactly TCP :8443 (configurable). That gate is the FIRST deliberate breach of this
-# box's "wan0 admits nothing unsolicited" invariant (asserted as settled
-# doctrine at hosts/nas/tv.nix:117 and hosts/nas/attic.nix:84) — which is
-# exactly why it is a gate with a runbook and not three lines in this commit.
-#
-# ── NO NEW SECRET, BY CONSTRUCTION ─────────────────────────────────────────
-# The appliance is a recipient of exactly ONE ciphertext (huggingface-token,
-# secrets.nix `nasOnly`) and that invariant is untouched here. headscale's
-# noise_private.key is SELF-GENERATED into /var/lib/headscale on first start —
-# server-identity state, not a credential anyone mints. The NAS's own preauth
-# key is MINTED AT RUNTIME by headscale-nas-enroll below, from the headscale
-# that is running on this very box, into /run — so it never exists at rest,
-# never enters git, and needs no agenix door at all. There is deliberately no
-# secrets/tailscale-authkey-nas.age and there must not be one.
-#
-# ── DOCS ───────────────────────────────────────────────────────────────────
-# docs/nas/headscale-2026-09-01.md carries the user/tag scheme, the
-# key-minting workflow for the future public omarchy-nix-fleet repo, the
-# phase-2 exposure runbook, and the ops/backup gap.
+# NAS-owned Headscale control plane; coordinator retains independent SaaS
+# Tailscale as an emergency path. The current control URL is LAN-only.
+# Preserve the NAS identity and restricted fleet policy across network moves.
+# Public ingress is a separate task: see docs/nas/overseas-headscale.md.
 let
   cfg = config.myNas.headscale;
 
-  # The LAN address this box already owns as gateway/DHCP/DNS
-  # (hosts/nas/network.nix). Bind EXPLICITLY to it, never 0.0.0.0 — the same
-  # doctrine modules/adguardhome.nix records for :53, and here it has a second
-  # payoff: a listener bound to 10.42.0.1 cannot be reached from wan0 at all,
-  # so the WAN invariant is enforced by the bind and not only by nftables.
+  # Stable service address on the BE550 LAN. Firewall rules, not the bind
+  # alone, determine which forwarded traffic can reach this listener.
   lanAddr = "10.42.0.1";
 
   # 8090, not 8080: atticd owns [::]:8080 on this box (hosts/nas/attic.nix),
@@ -103,69 +36,14 @@ in
 
     publicEndpoint = {
       enable = lib.mkEnableOption ''
-        the PUBLIC headscale endpoint: Caddy + TLS on this box and an
-        unsolicited-traffic door on wan0.
+        a public HTTPS Headscale endpoint. Disabled until a separate ingress
+        design is validated; the wired migration makes no Freebox changes.
+        See docs/nas/overseas-headscale.md for preserved overseas requirements.
 
-        GATE OFF until the runbook below has been walked, because three of its
-        five steps happen outside this repo and the fourth is a documented
-        reversal of stated policy.
-
-        RUNBOOK (phase 2):
-          1. Freebox OS (http://mafreebox.freebox.fr, LAN-side admin):
-             a. pin a static DHCP lease for the NAS's wan0 permanent MAC
-                (hosts/nas/a8500.nix) so the forward target cannot drift;
-             b. forward exactly ONE TCP port — `port` below, default 8443 —
-                to that address. NOT :80, NOT :443 (Tom's ruling 2026-09-01:
-                the public door is nonstandard and isolated, which also
-                sidesteps Free's shared-IPv4 trap — a line on "IPv4
-                partagee" owns only a slice of the address's ports, never
-                :443; if the panel shows a partagee range, either request
-                full-stack IPv4 there or pick the forwarded port from the
-                allotted range and set `port` to match). No UDP 3478 — the
-                embedded DERP server stays off, see the derp block below.
-                For the record, nothing else contends for Freebox forwards:
-                the coordinator's tailscale.com fallback is outbound-only
-                NAT traversal and needs no inbound port at all.
-          2. Freebox DynDNS (same admin panel, dyndns.freebox.fr) or a
-             Cloudflare-API updater, because the Freebox holds a residential
-             and probably dynamic public IP.
-          3. Cloudflare DNS for the name in `hostname`: an A record that is
-             GREY-CLOUD / DNS-ONLY. Orange-cloud proxying BREAKS headscale —
-             the control channel is a POST with `Upgrade:
-             tailscale-control-protocol`, and Cloudflare's proxy does not
-             support that WebSocket-over-POST mechanism. This is upstream's
-             own documented limitation (and it rules out Cloudflare Tunnel
-             for the same reason), not a preference.
-          4. The cert secret (DNS-01 — with no :80 or :443 forwarded,
-             HTTP-01 and TLS-ALPN-01 are both impossible, ACME validates via
-             DNS instead): mint a Cloudflare API token scoped to Zone.DNS
-             edit on the mecattaf.dev zone ONLY, then
-               nix develop -c agenix -e secrets/cloudflare-dns-acme.age
-             containing the single line
-               CF_DNS_API_TOKEN=<token>
-             and wire it per the house pattern: a nasOnly-tier entry in
-             secrets.nix plus, in this file's phase-2 block, an
-             age.secrets.cloudflare-dns-acme line feeding the
-             security.acme environmentFile below. The declarations are NOT
-             pre-written because agenix eval needs the .age file to exist;
-             the acme block below names the runtime path it expects.
-          5. Flip this gate and deploy. Note that the server_url CHANGES with
-             it (LAN URL -> public URL WITH the port), so every
-             already-registered node has to be re-pointed once: on the NAS
-             the enroll unit below does it automatically (it logs out of the
-             stale control URL and re-registers); anywhere else it is one
-             `tailscale up --login-server=https://<hostname>:<port> --force-reauth`.
-             Doing phase 2 BEFORE any friend device joins costs one node's
-             churn; doing it after costs everyone's.
-          6. Verify from off-LAN (phone on LTE): the custom-server login flow
-             in the Tailscale app must reach name:port and get a valid cert.
-
-        WHAT THIS GATE ADMITS, stated once so it is never a surprise: an
-        UNSOLICITED inbound door on wan0. Every other line in hosts/nas/*
-        says the Freebox side admits nothing (tv.nix:117, attic.nix:84).
-        That doctrine is being deliberately narrowed, not deleted: exactly
-        ONE nonstandard TCP port, terminated by Caddy, reverse-proxied to a
-        LAN-bound headscale, and nothing else on wan0 changes.
+        Enabling this changes server_url and re-enrolls the NAS automatically.
+        Existing clients also need a planned control-URL migration. Provision
+        and test ingress, DNS and the DNS-01 certificate secret first; the
+        declarations below do not provide an internet route to this service.
       '';
 
       hostname = lib.mkOption {
@@ -188,15 +66,9 @@ in
         type = lib.types.port;
         default = 8443;
         description = ''
-          The ONE public TCP port (Tom's ruling 2026-09-01: nonstandard, so
-          the WAN door stays isolated from everything else that could ever
-          want :443 — and usable even on a shared-IPv4 Free line, where :443
-          is not Tom's to forward; on such a line set this to a port inside
-          the allotted range). Baked into server_url, so changing it after
-          nodes have registered costs the same re-point churn as changing the
-          hostname. Caddy listens on it directly; there is no :80 and no
-          redirect — a door that answers exactly one protocol on exactly one
-          port.
+          Port for the dormant public HTTPS listener. The separate ingress
+          follow-up must validate the endpoint and client migration before
+          enabling it; changing this value changes the advertised control URL.
         '';
       };
     };
@@ -278,20 +150,8 @@ in
           split."internal" = [ lanAddr ];
         };
 
-        # ── DERP: embedded relay OFF, public relay map KEPT ────────────────
-        # Relay and control are independent planes: a node authenticating
-        # against this headscale is perfectly happy relaying through
-        # Tailscale Inc.'s public DERP fleet when it cannot get a direct
-        # WireGuard path. Upstream's own doc says the embedded server has "no
-        # speed or throughput optimisations" and becomes a single point of
-        # failure once the public map is dropped.
-        #
-        # Rejected deliberately: enabling it here would put a second
-        # self-hosted single point of failure behind the same box that is
-        # already the house router, and would need UDP 3478 forwarded on the
-        # Freebox for STUN — a third hole in the wan0 invariant, bought for a
-        # relay we have no measured need for. Revisit only if two friend
-        # devices are observed failing to connect through the public map.
+        # Retain public DERP relays. They do not make the private control
+        # endpoint reachable to new or reconnecting overseas clients.
         derp.server.enabled = false;
 
         # ── The management surfaces stay on loopback, forever ──────────────
@@ -597,11 +457,8 @@ in
     # hosts/nas/network.nix:68-73 records why this box uses raw nftables
     # snippets rather than networking.firewall.interfaces.<if>.allowedTCPPorts
     # like the rest of the fleet, and flake.nix's nas-topology check pins the
-    # nftables backend so they render at all. Note this also keeps the
-    # fleet-connectivity check's EXACT-SET assert on
-    # interfaces.tailscale0.allowedTCPPorts ([ 53 5900 ]) meaningful and
-    # untouched: the tailnet door is widening for a deliberate reason, and it
-    # is doing so where this host says such doors go.
+    # nftables backend so they render. Keep control-plane admissions separate
+    # from the DNS listener's interface port list.
     networking.firewall.extraInputRules = ''
       iifname "enp1s0" tcp dport ${toString port} accept comment "headscale control plane, BE550 LAN"
       iifname "tailscale0" tcp dport ${toString port} accept comment "headscale re-auth over an already-established tunnel"
@@ -609,33 +466,18 @@ in
     + lib.optionalString cfg.publicEndpoint.enable ''
       iifname "enp1s0" tcp dport ${toString cfg.publicEndpoint.port} accept comment "headscale HTTPS (Caddy), BE550 LAN"
       iifname "tailscale0" tcp dport ${toString cfg.publicEndpoint.port} accept comment "headscale HTTPS (Caddy) re-auth over an established tunnel"
-      iifname "wan0" tcp dport ${toString cfg.publicEndpoint.port} accept comment "PHASE-2 WAN DOOR, the only one: headscale control plane from the internet (see myNas.headscale.publicEndpoint)"
     '';
 
-    # ── Phase 2: Caddy in front on the ONE nonstandard port, DNS-01 certs ──
-    # This block originally shipped as HTTP-01 on :80/:443 precisely to avoid
-    # a Cloudflare API token at rest on this appliance. Tom's ruling
-    # 2026-09-01 ("nonstandard port, clean and isolated") reversed that
-    # trade knowingly: with no :80 and no :443 forwarded, HTTP-01 and
-    # TLS-ALPN-01 are both physically impossible (ACME dials only those two
-    # ports), so DNS-01 is not a preference here, it is the only remaining
-    # challenge. The token is an agenix ciphertext scoped to Zone.DNS edit on
-    # one zone (runbook step 4) — no plugin and no vendor hash even so,
-    # because the ACME client is lego via security.acme, not a caddy build.
-    #
-    # Caddy and not nginx for a load-bearing protocol reason, not taste:
-    # headscale's control channel is a POST carrying `Upgrade:
-    # tailscale-control-protocol`, which nginx and Apache need explicit
-    # header-passthrough stanzas to survive. Caddy's reverse_proxy handles
-    # protocol upgrades natively.
+    # Dormant HTTPS origin and DNS-01 certificate configuration. Public ingress
+    # remains undesigned; this block alone does not make the service reachable.
+    # Caddy forwards Headscale's control-protocol upgrades to the local server.
     security.acme = lib.mkIf cfg.publicEndpoint.enable {
       acceptTerms = true;
       defaults.email = "thomas@mecattaf.dev";
       certs.${cfg.publicEndpoint.hostname} = {
         dnsProvider = "cloudflare";
-        # Minted in runbook step 4; the age.secrets line that materializes
-        # this path is added in the same flip commit (it cannot be
-        # pre-written — agenix eval requires the .age file to exist).
+        # Provision this secret only as part of the reviewed public-ingress
+        # follow-up; it is not needed while the endpoint remains disabled.
         environmentFile = "/run/agenix/cloudflare-dns-acme";
         # lego must ask a PUBLIC resolver whether the TXT record has
         # propagated: this box's own resolver chain (AdGuard) answers from

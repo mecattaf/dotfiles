@@ -36,8 +36,7 @@
 {
   services.avahi = {
     enable = true;
-    # Announce only on the LAN leg. Never wan0 — the Freebox segment must see
-    # a router, not a fileserver.
+    # Announce only on the BE550 LAN.
     allowInterfaces = [ "enp1s0" ];
     publish = {
       enable = true;
@@ -111,7 +110,7 @@
 
   # mDNS + SMB to the whole LAN (see the scope ruling in the header). Same
   # nftables shape as every other scoped listener on this box (storage.nix,
-  # media.nix, attic.nix …) — scoped to the LAN leg, never wan0.
+  # media.nix, attic.nix …).
   networking.firewall.extraInputRules = ''
     iifname "enp1s0" udp dport 5353 accept
     ip saddr 10.42.0.0/24 tcp dport 445 accept

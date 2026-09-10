@@ -80,9 +80,8 @@ in
       # Same single-process shape the coordinator ran: API + GC + storage.
       mode = "monolithic";
       settings = {
-        # nftables is the access control: 8080 admitted from the LAN below,
-        # never from wan0 (the router firewall admits nothing unsolicited
-        # from the Freebox side).
+        # nftables admits LAN clients below; omarchy-update-center.nix admits
+        # the Headscale distribution path, further restricted by its ACL.
         listen = "[::]:8080";
         # ── Chunking, sized for THIS cache and not for a public one (#234) ──
         # attic's defaults are avg 64 KiB / min 16 KiB / max 256 KiB, with

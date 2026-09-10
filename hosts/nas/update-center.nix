@@ -186,10 +186,7 @@ in
         #   reclaims the cache, with no allocator penalty and no OOM unless the
         #   anonymous set genuinely does not fit.
         #
-        # Kept as-is, deliberately: the house router's day job still wins, and
-        # #235 makes CPU politeness worth MORE, not less (the mt7925u uplink
-        # has a documented wedge mode under CPU starvation). Nothing here is
-        # raised in the name of speed.
+        # Leave CPU headroom for routing, DNS and interactive NAS services.
         Nice = 19;
         CPUWeight = 20;
         MemoryMax = "16G";
