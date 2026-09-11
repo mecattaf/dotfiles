@@ -50,30 +50,63 @@ let
     # see `workerRail` below for the #240 ruling behind that.
     worker = "worker";
     # The thin client (2026-09-11). Identity map like the rest; resolves via
-    # modules/fleet-hosts.nix on the twins.
+    # modules/fleet-hosts.nix on the twins. The reverse direction is NOT that
+    # file: fleet-hosts.nix is twins-only, so ON the client `coordinator` and
+    # `worker` resolve from its own networking.hosts entries
+    # (hosts/client/default.nix:91-92 — 10.42.0.2 and 10.42.0.5), and `nas`
+    # from the LAN resolver. Same names, three different sources, one answer
+    # each, so the pinned host keys still match and nothing ever TOFUs.
     client = "client";
   };
 
   unknownTargets = lib.filter (t: !(registry ? ${t})) (lib.attrValues operatorAliases);
 
-  # From a roaming host the `nas` nickname still has to hop through the
-  # coordinator, which resolves `nas` → 10.42.0.1 via networking.hosts (the
-  # BE550 LAN; formerly the /30 cable). The pinned host key checked at the far
-  # end is still `nas`, so no trust changes.
+  # THE JUMP IS THE WORKER'S ALONE (2026-09-11).
   #
-  # The REASON changed on 2026-09-01 and the old one was becoming a lie. This
-  # said "the NAS has no tailnet identity", true only until 2026-08-21; the
-  # appliance has had one since, and since 2026-09-01 it has its own control
-  # plane for it (hosts/nas/headscale.nix). The jump survives anyway, for a
-  # sharper reason: a roaming host reaches the house over the coordinator's
-  # tailscale.com rail, the NAS's node lives on headscale, and two nodes on
-  # different control planes share no netmap and cannot address each other. So
-  # there is no tailnet-direct path to the NAS from a roaming session — not for
-  # want of an identity, but for want of a SHARED one.
-  # Revisit when headscale's publicEndpoint gate flips and a roaming client can
-  # join the NAS's own tailnet: at that point the jump becomes unnecessary for
-  # clients on that plane and still necessary for anything on tailscale.com.
-  needsJump = target: target == "nas" && hostName != "nas" && hostName != "coordinator";
+  # The rule it encodes: a host that can only reach the house over the
+  # COORDINATOR's tailscale.com rail cannot address the NAS directly, because
+  # the NAS's node lives on its own headscale control plane
+  # (hosts/nas/headscale.nix, 2026-09-01) and two nodes on different control
+  # planes share no netmap. Not for want of an identity — the appliance has had
+  # one since 2026-08-21 — but for want of a SHARED one. Such a host hops
+  # through the coordinator, which resolves `nas` → 10.42.0.1 from
+  # networking.hosts. The pinned host key checked at the far end is still `nas`,
+  # so the jump changes no trust.
+  #
+  # Three hosts are exempt, and the third is new. `nas` is itself. The
+  # coordinator is on the LAN with it. And the CLIENT — the thin client that
+  # arrived on 2026-09-11 — is exempt for BOTH of its rails, which is why the
+  # old `hostName != "coordinator"` spelling was not merely redundant here but
+  # wrong:
+  #
+  #   * on the LAN the client dials `nas` = 10.42.0.1 directly from its own
+  #     networking.hosts. Routing a 10.42.0.16 → 10.42.0.1 session through
+  #     10.42.0.2 is a pointless extra hop and an extra failure mode.
+  #   * off-LAN the client rides the NAS's OWN headscale (node 100.64.0.4) and
+  #     reaches the house through the subnet route the NAS advertises. The
+  #     coordinator is reachable only THROUGH that route — so `ProxyJump
+  #     coordinator` for `ssh nas` would dial the NAS to get to the coordinator
+  #     to get to the NAS. A loop, and the thing the client does most when it is
+  #     away from the house is exactly this.
+  #
+  # That leaves the worker: LAN-wired, no tailnet identity of its own, roamed to
+  # only via the coordinator. Revisit if the worker ever joins the NAS's plane.
+  #
+  # CONTROLMASTER: not here, and that is a decision (plan section 6.2, option
+  # (B)). No ControlMaster/ControlPersist/ServerAlive* in these blocks. The two
+  # paths that actually carry long sessions bring their own multiplexing —
+  # herdr --remote opens a private control socket per attach, and `kitten ssh`
+  # has share_connections — so a fleet-wide master would only add a socket that
+  # can wedge across a laptop suspend and outlive the network it was opened on.
+  # Plain ssh pays roughly 200 ms per connection and can never be stale.
+  needsJump =
+    target:
+    target == "nas"
+    && !(builtins.elem hostName [
+      "nas"
+      "coordinator"
+      "client"
+    ]);
 
   # The worker has ONE rail from anywhere: the house LAN (it is wired into the
   # BE550's Ethernet port 2 in another room). Every host, the coordinator
