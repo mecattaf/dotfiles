@@ -124,19 +124,21 @@ class Policy(unittest.TestCase):
              patch.object(uplink, "boot_window", return_value=uptime <= 300), \
              patch.object(uplink, "active", return_value=active), \
              patch.object(uplink, "controlled_return") as returned, \
-             patch.object(uplink, "save_state") as saved:
+             patch.object(uplink, "save_state") as saved, \
+             patch.object(uplink, "command") as cmd:
             uplink.main()
-            return returned.call_count, saved.call_count
+            stops = [c for c in cmd.call_args_list if c.args[:2] == ("systemctl", "stop")]
+            return returned.call_count, saved.call_count, len(stops)
 
     def test_boot_repeat_is_a_noop_once_primary_is_up(self):
         # Polled every 20 s, so it must not re-probe or reset the watchdog counter.
-        self.assertEqual(self.run_boot(40, uplink.PRIMARY), (0, 0))
+        self.assertEqual(self.run_boot(40, uplink.PRIMARY), (0, 0, 0))
 
     def test_boot_retries_the_return_while_on_freebox(self):
-        self.assertEqual(self.run_boot(40, uplink.FREEBOX), (1, 1))
+        self.assertEqual(self.run_boot(40, uplink.FREEBOX), (1, 1, 0))
 
-    def test_boot_outside_window_leaves_freebox_alone(self):
-        self.assertEqual(self.run_boot(400, uplink.FREEBOX), (0, 0))
+    def test_boot_outside_window_leaves_freebox_alone_and_stops_its_timer(self):
+        self.assertEqual(self.run_boot(400, uplink.FREEBOX), (0, 0, 1))
 
     def test_probe_rules_include_terminal_route_and_cleanup(self):
         with patch.object(uplink, "command") as cmd:

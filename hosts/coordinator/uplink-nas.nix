@@ -13,6 +13,7 @@ let
         pkgs.networkmanager
         pkgs.iproute2
         pkgs.iputils
+        pkgs.systemd
       ]
     }
     exec ${pkgs.python3}/bin/python3 ${./uplink.py} "$@"
@@ -104,7 +105,11 @@ in
   #
   # The boot window is one of those controlled windows, and it is polled: from
   # 20 s after boot, every 20 s, until uplink.py's five-minute boot window
-  # closes (outside it the service is a no-op, so the timer costs nothing).
+  # closes. The first run after the window has closed stops this timer itself
+  # (`systemctl stop uplink-rail-reconcile.timer`), so it does not fire a
+  # no-op every 20 s for the rest of the day; timers.target starts it again
+  # at the next boot, and a midday rebuild that restarts it gets one run that
+  # stops it again.
   # On the 2026-09-11 21:00 boot NetworkManager auto-activated Freebox 3 s
   # after the radio appeared because the BE550 6 GHz SSID was not yet in the
   # scan results; the old single OnBootSec=2min run only brought thomas-6ghz

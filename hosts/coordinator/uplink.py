@@ -10,7 +10,8 @@ boot. NetworkManager picks Freebox at boot whenever the BE550 6 GHz SSID is
 missing from the first scan (2026-09-11 21:00:27: "auto-activating connection
 'Freebox-AB3ACE'" 3 s after wlp192s0 came up; thomas-6ghz only returned with
 the old 2-minute one-shot at 21:02:24), so `boot` retries until the primary is
-associated and is a no-op once it is or once the window has closed.
+associated, is a no-op once it is, and once the window has closed stops its
+own timer (timers.target restarts it at the next boot).
 """
 import contextlib
 import fcntl
@@ -184,6 +185,14 @@ def controlled_return():
         raise
 
 
+BOOT_TIMER = "uplink-rail-reconcile.timer"
+
+
+def stop_boot_timer():
+    # Polled every 20 s; nothing is left to do until the next boot restarts it.
+    command("systemctl", "stop", BOOT_TIMER, check=False)
+
+
 def boot_window():
     # OnBootSec timers started by a midday rebuild may fire immediately. They
     # must not treat that activation as permission to leave a manual Freebox
@@ -201,8 +210,12 @@ def main():
         if sys.argv[1:] in (["return"], ["boot"]):
             # Boot runs repeat every 20 s: once the primary is up they must
             # neither re-probe nor reset the watchdog's failure counter.
-            if sys.argv[1] == "boot" and (not boot_window() or active() == PRIMARY):
-                return
+            if sys.argv[1] == "boot":
+                if not boot_window():
+                    stop_boot_timer()
+                    return
+                if active() == PRIMARY:
+                    return
             controlled_return()
             save_state({})
         elif sys.argv[1:] == ["tick"]:
