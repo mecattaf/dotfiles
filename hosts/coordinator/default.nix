@@ -38,7 +38,9 @@
     # outage: worker first (so the endpoint exists), then the NAS (so it starts
     # dialling the new one), then this box (which stops answering :3003).
     ./atuin.nix
-    ./audio.nix # pins the webcam mic as the default PipeWire source
+    # ./audio.nix MOVED to hosts/client 2026-09-11 with the iContact webcam it
+    # pinned: the USB peripherals live on the thin client's Thunderbolt dock
+    # now (R-7). This box keeps Ryzen HD Audio + Radeon HDMI and no real mic.
     # AdGuard is NAS-only. The primary profile uses NAS DNS; the two emergency
     # tiers use independent DNS and intentionally bypass NAS filtering.
     # ./attic.nix is NOT a server any more and has not been since 2026-08-21 —

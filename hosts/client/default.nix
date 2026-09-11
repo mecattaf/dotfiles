@@ -61,6 +61,7 @@
   imports = [
     ./hardware.nix
     ./disko.nix
+    ./audio.nix # pins the iContact webcam mic (on the dock) as the default source
     # No dedicated nixos-hardware module for the UX8406; compose the generics.
     # common-pc-laptop does NOT enable bolt — modules/common.nix does, fleet-
     # wide, and this docking host is exactly what that line is for.

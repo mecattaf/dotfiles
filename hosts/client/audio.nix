@@ -1,7 +1,17 @@
 { pkgs, ... }:
-# coordinator audio intake — the iContact Camera Pro webcam mic is the mic Tom
-# actually speaks into (Claude Code /voice, meetings), so it is pinned as the
-# default PipeWire source rather than left to WirePlumber's priority election.
+# client audio intake — the iContact Camera Pro webcam mic is the mic Tom
+# actually speaks into (meetings, the call-record scripts), so it is pinned as
+# the default PipeWire source rather than left to WirePlumber's priority
+# election. Moved here from hosts/coordinator/audio.nix on 2026-09-11 with the
+# webcam itself: the coordinator's USB peripherals live on the Thunderbolt
+# dock the thin client sits on now (R-7), and the coordinator keeps only its
+# Ryzen HD Audio and Radeon HDMI — no real mic, so voxtype there has nothing
+# to hear until a dictation route is decided.
+#
+# The node name carries the unit's USB serial, so the rule is the same on any
+# host the camera is plugged into. The runtime repair below is PER HOST
+# (WirePlumber state is local): re-run `amixer -c Pro sset Mic 36% cap` once
+# on this box when the mic first goes silent.
 #
 # Diagnosed 2026-08-04 after /voice reported "No audio detected from
 # microphone". Two independent faults, both invisible from the PipeWire side:
@@ -29,7 +39,7 @@
 # well above every other capture device makes it win the election outright, so
 # a stale or cleared default-nodes state can no longer move the intake.
 {
-  services.pipewire.wireplumber.extraConfig."51-coordinator-default-source" = {
+  services.pipewire.wireplumber.extraConfig."51-client-default-source" = {
     "monitor.alsa.rules" = [
       {
         # Matched on node.name, which carries the USB serial — precise for this
