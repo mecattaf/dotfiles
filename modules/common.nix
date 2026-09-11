@@ -259,7 +259,11 @@
   # --- desktop plumbing ---
   hardware.bluetooth.enable = true;
   services.gnome.gnome-keyring.enable = true;
-  security.pam.services.greetd.enableGnomeKeyring = true;
+  # Only where a greeter exists: a headless host has no greetd PAM stack to unlock
+  # a keyring for (2026-09-11 boot hygiene, with modules/dotfiles-bootstrap.nix).
+  security.pam.services.greetd = lib.mkIf config.services.greetd.enable {
+    enableGnomeKeyring = true;
+  };
   security.polkit.enable = true;
   programs.dconf.enable = true; # so home-manager dconf theme keys apply
   services.gvfs.enable = true;
