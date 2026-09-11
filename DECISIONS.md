@@ -1,5 +1,70 @@
 # DECISIONS
 
+2026-09-11 the coordinator is headless; no VNC in the fleet. This is the
+"next one" the entry below promises — it reads "the coordinator goes fully
+headless EVENTUALLY, not today, and not in this PR — the next one flips
+niri/greetd off there in the worker's shape", and the consolidation plan
+(docs/zenbook-duo-return-2026-09-11.md §8.3, sequence §10 steps 9-11) moved
+"eventually" to "right after the seat is proven". NB: the ruling numbers in
+the entry below are that entry's own, and they do NOT line up with the plan
+document's — cite the two by content, never by number.
+
+`myDisplay.enable = false` in hosts/coordinator/default.nix is the whole
+flip. modules/display.nix's option (default true, because the fleet-wide
+greetd→niri session in modules/common.nix is derived from it and the
+exceptions opt out) drives the compositor, the greeter, and the
+display-bound user services; so voxtype and piri leave the coordinator BY
+DERIVATION, with no per-file gate to remember. Deleted outright, not
+commented out: home/remote.nix — the whole module, wayvnc unit and config,
+the Remmina package and the generated .remmina profile — and the :5900 door
+in hosts/coordinator/tailscale.nix. Nothing serves VNC and nothing views it:
+there is no VNC in this fleet. The flake's home-profiles check asserts every
+one of those as an equality against the option, so the flip and the
+deletions cannot be separated in a later commit.
+
+What KEEPS its coordinator gate: the dcal daemon and the coordinator-only
+package extras in home/home.nix (around :93 and :562). Those are CLI tools
+that happen to be installed on one box, not display things, and the plan
+says so (§8.3). What does NOT come back: the dual-5K desktop is retired in
+full — the PA27JCV moves to the client's Thunderbolt dock and the second 5K
+panel is retired, which is what made the flip cheap in the first place.
+
+The casualty, recorded not solved: DICTATION. voxtype typed into the focused
+window of the session that just went away, and the client has no dictation
+row yet. It is deferred, not deleted.
+
+Why tonight and not "eventually": the 2026-09-11 21:00 boot. The coordinator
+was powered on with no monitor after a move; greetd autologged tom into niri
+at 21:00:37 and pam logged "gkr-pam: couldn't unlock the login keyring" (an
+autologin has no password to unlock it with), polkitd came up for that
+session a second later, and when a display was plugged in the session was
+sitting on a password dialog that nothing on the client could answer. Tom
+typed the password; it changed nothing (the network hole of that same boot
+was the uplink's, fixed separately in PR #371). That prompt is display-bound
+by construction: with greetd and niri off nothing autologs in, nothing tries
+to unlock a keyring, and nothing prompts. The seat was proven from the client
+the same evening (Mod+Return projecting herdr through ssh), so the gate the
+prepared commit waited on is green.
+
+Operator acts a switch cannot perform, in order:
+(1) drive `sudo nixos-rebuild switch --flake .#coordinator` from the client
+    — it was driven from inside Tom's herdr session over ssh, by the agent
+    running there. After the flip the coordinator's only inputs are ssh and
+    a blind VT getty, so the seat has to already be working;
+(2) herdr is deliberately NOT restarted at the flip: the running server
+    still carries the WAYLAND_DISPLAY of a session that is gone, which is
+    harmless until the next boot clears it, and restarting it would kill
+    the very session the switch was driven from. `systemctl --user
+    unset-environment WAYLAND_DISPLAY DISPLAY` then `systemctl --user
+    restart herdr` remains the recipe if a pane needs the clean environment
+    before a reboot (plan §6.1; the restart kills live panes and herdr's
+    `resume_agents_on_restore` brings the agent conversations back);
+(3) unplug DP-1 from the coordinator and plug it into the client's dock;
+(4) `ss -ltn | grep 5900` on the coordinator — expect nothing.
+
+Keep a keyboard and a monitor within physical reach of the coordinator until
+all four are green: the VT getty is still there, and it is blind.
+
 2026-09-11 the Zenbook Duo comes back as the thin client. The ASUS Zenbook
 Duo UX8406MA is reclaimed from Marwan the same afternoon its Omarchy install
 was ready ("i want to see my omarchy-less asus zenbook ready for action asap

@@ -32,9 +32,10 @@
 #     transcript mirror, no dcal daemon, no paper timers. Every one of those
 #     is `hostName == "coordinator"`-gated in home/; the flake's home-profiles
 #     check asserts their absence here.
-#   * not a server of anything — no wayvnc (home/remote.nix is coordinator-
-#     gated since this host exists; it gets the Remmina client and the
-#     `coordinator (VNC)` profile), no atuin server, no caddy, no immich or
+#   * not a server of anything — no wayvnc (no VNC in the fleet since the
+#     2026-09-11 headless flip: home/remote.nix and its Remmina viewer
+#     profile went with the coordinator's session), no atuin server, no
+#     caddy, no immich or
 #     navidrome relay, no journal upload to the NAS (hosts/nas/journal.nix
 #     admits the twins only), no printing queue (forced off below), no
 #     microVM host, no model tooling.

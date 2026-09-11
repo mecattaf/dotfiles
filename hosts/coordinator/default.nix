@@ -75,6 +75,33 @@
   ];
 
   networking.hostName = "coordinator";
+
+  # ── HEADLESS since 2026-09-11 ──────────────────────────────────────────────
+  # No compositor, no greeter, no VNC — and no VNC anywhere in the fleet, since
+  # this was the only box that ever served it (R-9 read with R-13,
+  # docs/zenbook-duo-return-2026-09-11.md §8.3). This ONE line does all of it:
+  # modules/display.nix's option drives programs.niri.enable and
+  # services.greetd.enable in modules/common.nix, and home/voxtype.nix and
+  # home/piri.nix key off it too, so the wayvnc unit, the dictation daemon and
+  # the niri IPC daemon all go with the session rather than being switched off
+  # one by one. home/remote.nix and the :5900 door in ./tailscale.nix are
+  # DELETED in the same commit; the flake's home-profiles check asserts each of
+  # those facts as an equality against this option and refuses a half-flip.
+  #
+  # ITS ONLY INPUTS ARE NOW: (1) ssh — from the client over the LAN at
+  # 10.42.0.2, or off-LAN over the NAS subnet route — and (2) the VT getty
+  # autologin modules/common.nix keeps on every host, which is BLIND until a
+  # monitor and keyboard are physically plugged back in. Keep a keyboard within
+  # reach (plan §10 step 7).
+  #
+  # WHAT DID NOT CHANGE: everything Tom actually runs still runs HERE — the
+  # herdr server and its agent seats, tally, the halogen client, the microVM
+  # host, caddy artifacts, the atuin server, the printing queue, the models and
+  # the skills. The client (hosts/client) is a thin client: it PROJECTS this
+  # box through `kitty -e hk ssh --in-place coordinator` and owns none of it
+  # (R-13, R-9). Losing the display cost this host a screen, not a workload.
+  myDisplay.enable = false;
+
   # Both stay on their proven pre-migration side until the real HDD and service
   # state have passed the associated issue's cutover checklist.
   # The 2026-08-02 atomic cutover (#131): media core and its PostgreSQL now
