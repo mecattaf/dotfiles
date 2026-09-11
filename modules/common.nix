@@ -253,7 +253,6 @@
 
   # --- desktop plumbing ---
   hardware.bluetooth.enable = true;
-  services.hardware.bolt.enable = true; # ordinary USB4/Thunderbolt device authorization
   services.gnome.gnome-keyring.enable = true;
   security.pam.services.greetd.enableGnomeKeyring = true;
   security.polkit.enable = true;

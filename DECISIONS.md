@@ -1,5 +1,39 @@
 # DECISIONS
 
+2026-09-11, later the same day: the Thunderbolt residue goes too. The earlier
+entry below kept "the stock `thunderbolt` driver and bolt ... for ordinary USB4
+peripherals"; that clause is SUPERSEDED. Tom's ruling is that no Thunderbolt
+reference survives on either twin, so `services.hardware.bolt.enable` is gone
+from modules/common.nix and its now-dead `mkForce false` from
+modules/headless.nix. boltd no longer runs anywhere in the fleet. CONSEQUENCE,
+recorded so it is not a surprise: a USB4/Thunderbolt dock or enclosure plugged
+into the coordinator is no longer auto-authorized by a daemon. The stock
+in-tree `thunderbolt` kernel module still loads in stage 2 — it is nixpkgs's
+default and not ours to strip — so a device can still be authorized by hand
+through sysfs. Reinstating the daemon is a one-line revert if a dock ever
+needs it. The initrd module lists are untouched in substance; only the
+comments naming the bus are removed.
+
+Same act closes open act (3) of the entry below: hosts/nas/router.nix now pins
+`worker` by its WIRED 5GbE MAC 9c:bf:0d:01:cc:65 (enp191s0) instead of the
+idle wifi MAC 44:f7:9f:da:bd:1d, which could never have matched. The pin is
+belt-and-braces — the worker sets 10.42.0.5 statically and .5 sits below the
+DHCP pool — but it reserves the address and keeps the name stable.
+
+Three docs that still read as live Thunderbolt runbooks, and cite config files
+this branch deleted, are stamped historical rather than erased:
+docs/usb4-pd-wedge-2026-08-21.md, docs/local-ai/ds4-vllm-recon-2026-08-21.md
+and docs/local-ai/wanted-packages/rail0-has-no-hostname.md. The dated incident
+record and the measurements are worth keeping; presenting them as instructions
+is not. The standing "not to be reintroduced" guards in AGENTS.md and
+docs/nas/router-rewire.md deliberately KEEP the word Thunderbolt — naming the
+thing is how they stop it coming back — and this log is append-only, so its
+own Thunderbolt mentions stay as history. Unremovable residue: flake.lock
+carries a `thunderbolt-ibverbs` input and a westeri/thunderbolt.git kernel
+source, both TRANSITIVE inputs of the third-party hellas-ai/nix-strix-halo
+flake. Nothing in our flake.nix references them; they leave only when upstream
+drops them or we drop nix-strix-halo.
+
 2026-09-11 mono-model on Halogen. llama-swap is removed from every host, and
 with it the deployment layer: no proxy, no roster, no per-model command
 renderers, no backend kinds, no `services.local-models.allow`, no port 9292.
