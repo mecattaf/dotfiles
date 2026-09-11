@@ -1,0 +1,82 @@
+    };
+  '';
+  ...
+  ];
+  };
+#
+{
+}
+}:
+  # `action_alias` carrying the store path at a NEUTRAL ~/.config path, and let
+    action_alias hk kitten ${herdr-kitten}/share/hk/kitten/hk.py
+  # assignment in that file precisely so herdr's first run never decides to
+  # bare `kitten foo.py` against ~/.config/kitty — which here is a whole-dir
+  config,
+# CONFIG (ruling B7). ~/.config/herdr is herdr's RUNTIME directory — it holds
+    # default.target, not graphical-session.target — starts with the user
+      Description = "herdr — terminal workspace manager for AI coding agents";
+      Documentation = [ "https://herdr.dev" ];
+      ExecStart = "${lib.getExe herdr} server";
+# function in home/dot_config/fish/conf.d/remote.fish). The NAS is not in this
+    # GENERATED — Nix-store path for the herdr-kitten kitty kitten (offline-safe).
+    herdr
+  # `herdr` client + server and the `hk` CLI on PATH, every interactive host.
+  herdr = inputs.herdr.packages.${system}.herdr;
+    herdr-kitten
+  herdr-kitten = inputs.herdr-kitten.packages.${system}.herdr-kitten;
+# herdr — the terminal workspace manager for AI coding agents
+  # hk is not optional decoration: it IS the kitty side of herdr here — the
+# holds on the coordinator (see home/home.nix) and is what keeps it up with no
+  home.packages = [
+  hostName = osConfig.networking.hostName;
+# hosts/nas/tv.nix.
+in
+  inputs,
+    Install.WantedBy = [ "default.target" ];
+# interactive profile gets the BINARY, because the client is how you reach a
+# it `herdr --remote coordinator` attaches over the tailnet (see the `desk`
+  # it. Same shape as kitty-scrollback.nvim (home/home.nix): emit an
+let
+  lib,
+# LIFECYCLE (ruling B6). Deliberately NOT PartOf=graphical-session.target. The
+  link = p: config.lib.file.mkOutOfStoreSymlink "${repoDir}/home/${p}";
+# login session open.
+    # manager under linger, before and independently of any Wayland session.
+# module: herdr ships packages.<sys>.herdr and nothing else — no NixOS module,
+# never generated from nix (ruling B9): `herdr plugin link` stays imperative.
+  # niri binds below the terminal keys, the kitty gestures, and the dictation
+# no home-manager module — so package + user service + config live here, the
+      # NO PartOf/After/Wants on graphical-session.target: this server must
+  osConfig,
+# out-of-store symlink into the git checkout: editable in place, reloadable
+  # out-of-store symlink into the git tree, so no generated file can nest inside
+# panes are still running when a client comes back. Binding it to the graphical
+# picture — it stops at NixOS with no home-manager, so nothing here can reach
+  pkgs,
+  # RAW single-file symlink; see CONFIG above. `onboarding = false` is the first
+# real writable directory. Only config.toml is ours, delivered as a SINGLE-FILE
+  repoDir = "${config.home.homeDirectory}/mecattaf/dotfiles";
+      Restart = "on-failure";
+      RestartSec = 3;
+  # route all shell out to it.
+# server at all: on the coordinator `herdr` attaches to the local one, and off
+    Service = {
+# session would kill every session on a compositor restart, which is exactly
+      # survive the compositor, not follow it (ruling B6).
+  systemd.user.services.herdr = lib.mkIf (hostName == "coordinator") {
+  system = pkgs.stdenv.hostPlatform.system;
+  # The chords stay in kitty.conf where Tom can re-cut them without a rebuild —
+# the failure the deleted home-grown tier had. `loginctl enable-linger tom`
+  # The kitten half of herdr-kitten lives in the Nix store, but kitty resolves a
+# them: restart niri, log out, close the laptop lid on another host, and the
+# the server socket, plugins.json, and the session store — so it must stay a
+  # the tracked, hot-reloadable kitty.conf spend it as `map <chord> hk <gesture>`.
+# TOPOLOGY (ruling B5). ONE server, coordinator only. Every host with an
+    Unit = {
+  # upstream's README rules them "suggestions, not law".
+# way home/piri.nix does the same job for piri.
+# whole point of the server is that the PTYs outlive the surfaces attached to
+# with prefix+shift+r, no rebuild. Never a whole-dir link, and plugins.json is
+  # write its own config over a tracked path.
+  xdg.configFile."herdr/config.toml".source = link "dot_config/herdr/config.toml";
+  xdg.configFile."kitty-herdr-nix.conf".text = ''

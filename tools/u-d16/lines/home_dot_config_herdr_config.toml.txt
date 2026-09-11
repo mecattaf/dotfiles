@@ -1,0 +1,192 @@
+"""
+#
+# ---------------------------------------------------------------------------
+]
+  ["$attempt", "$campaign"],
+[ "$n" = "0" ] && echo "no open entries for $2"
+  ["$summary"],
+# $summary / $attempt / $campaign are dynamic pane metadata, not literal text:
+# a detached command has.
+# after saving: a steer that arrives after the automatic retry has dispatched
+# Agent DETECTION manifests are data, not the binary — let herdr keep its
+# agents.mdx:125-129), so a lane's row is one cheap pane hosting a real viewer
+# All five are collision-free against herdr's default map, which already owns
+# and one line in the sidecar map the steer keys read:
+# and the layout collapses back to herdr's shape. Styling stays here — reporters
+# an idle row nobody has looked at yet (app/api_helpers.rs:96-105) and keeps it
+# answer binding exists or should. `campaign inbox` is campaign-scoped with no
+# apply to every agent without a rows_by_agent override — which includes custom
+# A tally lane can never BE a herdr agent: every agent entry is derived from a
+# blocked, and steering is the inbox's own answer verb — a steer addressed to
+# by hand, or from any pane in the map. type = "pane" gives it a real temporary
+cap="${TALLY_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/tally}/capture"
+# checkout), so editing it here changes the running server's config with no
+# Collapsed means GONE, not a compact rail (upstream default: "compact").
+command = """
+command = "tally-steer"
+command = "tally-steer --no-hold"
+# ~/.config/herdr stays a real writable directory that herdr owns at runtime:
+# conversation, not just a fresh shell in the right directory.
+# created from (herdr's default, pinned): the behavior the deleted
+# default prefix can't silently move every binding under it.
+description = "open this tally lane's raw <uuid>.out in the pager"
+description = "pardon this tally lane's attempt latch"
+description = "read the tally inbox entries open for this lane"
+description = "reopen the live trace viewer for this tally lane"
+description = "steer this tally lane (takes a 600s campaign hold first)"
+description = "steer this tally lane without embargoing the campaign"
+#       --display-agent "tally: <task-ref>" --token summary="node 4/11 · implement" \
+echo
+#   echo "$pane <task-ref> <owner/repo> <worklist-pattern> <task-uuid>" \
+echo "answer with prefix+t: one steer addressed to this task answers every open entry above."
+else
+# Every value below is a deliberate choice; herdr's own defaults are noted
+exec ${PAGER:-less} +F "$out"
+exec tally-lane-view --task "$5"
+[experimental]
+# facts herdr cannot observe.
+fi
+# For a Claude Code or codex pane none of them are set, so those two rows vanish
+# generated from nix (`herdr plugin link` stays imperative).
+height = "60%"
+height = "70%"
+height = "85%"
+# HERDR_ACTIVE_PANE_ID for the tiled pane underneath (configuration.mdx:198-199).
+# herdr edits this file back when a setting is changed from inside the app
+#   herdr pane report-agent "$pane" --source herdr:tally --agent tally --state working
+#   herdr pane report-metadata "$pane" --source herdr:tally \
+#   herdr pane run "$pane" "tally-lane-view --task <task-uuid>"
+# herdr's default, pinned explicitly so a future upstream change to the
+# herdr's defaults are [["state_icon","workspace","tab"], ["agent"]]. These rows
+# ("{hostname}: {workspace}") would fight the terminal for it.
+if out=$(tally campaign pardon "$3" "$4" --task "$2" --reason "operator pardon from herdr lane pane $HERDR_ACTIVE_PANE_ID (prefix+shift+a); the attempt budget was spent on something other than this task's content" 2>&1); then
+# is noise (upstream default: true).
+# (it belongs to the herdr-kitten repo), tally heartbeat emission, a
+#          | jq -r .result.pane.pane_id)
+json=$(tally campaign inbox "$3" "$4" --state open --json 2>&1) || { echo "$json"; read -r _; exit 1; }
+key = "prefix+i"
+key = "prefix+shift+a"
+key = "prefix+shift+o"
+key = "prefix+shift+s"
+key = "prefix+shift+v"
+key = "prefix+t"
+[keys]
+[[keys.command]]
+# key upserts, so comments and untouched keys survive — but they DO land in
+kitty_graphics = false
+# Kitty graphics passthrough for attached clients is unprobed against this
+# kitty; leave it off until it is actually tested (upstream default: false).
+# kitty owns the window title. Empty leaves it alone; herdr's default
+# knowledge of which processes are agents current (upstream default: true).
+# lane pane with `herdr pane run`, but no script ships unwired: this reopens the
+# lets any process author the agent identity and semantic state of any pane
+line=$(grep -v '^[[:space:]]*#' "$map" 2>/dev/null | awk -v p="$HERDR_ACTIVE_PANE_ID" '$1 == p { print; exit }')
+# live pane (herdr src/app/agents.rs:24-36, 361-370), while a lane is a
+# live trace for the lane this pane is registered to — after a viewer was closed
+# ~/.local/bin/tally-{lane-view,steer}. What does NOT ship: the bridge daemon
+#       >> ~/.local/state/tally-bridge/panes
+manifest_check = true
+map="${XDG_STATE_HOME:-$HOME/.local/state}/tally-bridge/panes"
+[ -n "$3" ] && [ -n "$4" ] || { echo "no campaign coordinates on the map line for $1"; read -r _; exit 1; }
+[ -n "$3" ] && [ -n "$4" ] || { notify "no campaign coordinates on the map line for $1"; exit 1; }
+[ -n "$5" ] || { echo "the map line for $1 names no task uuid (column 5)"; read -r _; exit 1; }
+[ -n "$line" ] || { echo "pane $HERDR_ACTIVE_PANE_ID is not a registered tally lane"; read -r _; exit 1; }
+[ -n "$line" ] || { notify "pane $HERDR_ACTIVE_PANE_ID is not a registered tally lane"; exit 1; }
+[ -n "$out" ] || { echo "no capture yet at $cap/$5*.out"; read -r _; exit 1; }
+n=$(printf '%s' "$json" | jq --arg t "$2" '[.entries[] | select(.taskId == $t)] | length')
+# NB: `pane_history` is deliberately ABSENT. It defaults off, and turning it on
+# never attempted.
+# Never run the first-run onboarding flow. Load-bearing: onboarding ends by
+new_cwd = "follow"
+# New panes, tabs and workspaces open in the cwd of the pane they were
+# new-terminal script used to hand-roll.
+# Nix owns this binary; the version is the flake.lock rev and moves only when
+notify() { command -v notify-send >/dev/null && notify-send "tally pardon" "$1"; }
+  notify "pardoned $2"
+  notify "pardon refused: $out"
+# often the whole task (tally doc/src/flows/campaigns.md:2590-2606). tally-steer
+# of the lane's real trace. Nothing is faked; the reporter only supplies the
+onboarding = false
+# (open_notification_target) — the picks the bridge scope originally proposed.
+# Ordinary generations are <uuid>.out and task-ref nodes are <uuid>.<task-id>.out
+out=$(ls -1t "$cap/$5"*.out 2>/dev/null | head -n1)
+# out-of-store symlink (~/.config/herdr/config.toml → this path in the git
+#   pane=$(herdr pane split --current --direction right --no-focus \
+# pane rather than a modal popup, because the viewer is a long-running loop and
+# `pane report-metadata --token`, and they disappear when unreported or expired.
+# Pardon lifts the ten-attempt lifetime latch. A steer already refreshes the
+# per-epoch budget, so this is only for a task whose budget was spent on
+# Popup commands do NOT receive HERDR_PANE_ID; they receive
+# posts a placeholder steer with --hold, opens $EDITOR inside that window, then
+# posts the real text on stdin via --message-file -.
+# prefix+b: niri is the layout authority here, and a persistent panel just
+prefix = "ctrl+b"
+# prefix+s (settings), prefix+p (previous_tab) and prefix+o
+printf '%s' "$json" | jq -r --arg t "$2" '"campaign " + .campaign + " — " + (.open|tostring) + " open, " + (.answered|tostring) + " answered", (.entries[] | select(.taskId == $t) | "[" + (.sequence|tostring) + "] " + .kind + " · " + .state + " · " + (.writtenAt // "-") + "  " + (.question | gsub("[[:cntrl:]]+"; " ")))'
+# provide values only (configuration.mdx:446). Cap is 16 rows × 16 tokens.
+# `query trace --follow` consumer, and any events-push verb — that last one is
+read -r _
+# rebuild — reload it in place with prefix+shift+r. The rest of
+# receipt carries the reason verbatim, and notify-send is the only feedback path
+# reported agents, i.e. every tally lane (configuration.mdx:428).
+# reporter dies, the tally tokens expire out of the sidebar rather than lying.
+# Report `idle` on terminal witness and never `done`: herdr derives done from
+# Restoring a session puts Claude Code / codex / pi panes back into their own
+resume_agents_on_restore = true
+rows = [
+[session]
+# session-history.json on disk.
+set -- $line
+sidebar_collapsed_mode = "hidden"
+sidebar_start_collapsed = true
+# something other than its own content. Detached shell per the ruling: the
+# spends an attempt on the uncorrected run, and under a two-attempt cap that is
+# spends columns.
+# (src/api/schema/panes.rs:448-461, endorsed for non-native agents at
+  ["state_icon", "agent", "state_text"],
+# Steering acquires the campaign's dispatch hold BEFORE the editor opens, never
+# `systemd-run --user --wait --collect` transient unit. But `pane report-agent`
+# --- tally command keys ----------------------------------------------------
+# (tally doc/src/operating/observability.md:791), hence the glob.
+# tally × herdr — the now-slice.
+# --task flag, so this filters the projection by taskId here.
+[terminal]
+# That is the id every one of these resolves through the sidecar map.
+# The AGENTS panel is the board; tally gets no bespoke UI. What ships here is
+# the campaign, so ten minutes of thinking on one lane freezes nine siblings.
+# the config-and-two-scripts tier: sidebar tokens, five command keys, and
+# The deliberate escape. --hold is campaign-WIDE — it suspends every dispatch in
+# the git tree as ordinary unstaged edits. That is the deal RAW makes.
+# the input is bumped. A self-update nag about a store path nobody can write
+# (theme, status indicators, sound, toasts). Those writes are surgical
+# The raw capture, unrendered. tally-lane-view clips every field to fit a pane;
+# the server socket, the session store, and plugins.json, which is NEVER
+# the steer keys must stay reachable while it runs.
+# The typed doubt behind a blocked row. An open inbox entry is what makes a lane
+# The viewer itself, on a key. The bridge normally puts tally-lane-view in the
+# The workspaces sidebar is off by default and toggled on demand with
+# they render only for panes whose reporter published them with
+# THIS FILE IS WRITABLE AND LIVE. home/herdr.nix delivers it as a SINGLE-FILE
+# This is the steer for when that trade is wrong.
+# this is the whole stream, followed live (`less +F`) the way the lane writes it.
+# this task answers every open entry the campaign holds for it, so no separate
+#       --token attempt="1/2" --token campaign="night-notes" --ttl-ms 30000
+type = "pane"
+type = "popup"
+type = "shell"
+[ui]
+[ui.sidebar.agents]
+# Until the daemon exists, a lane pane is registered BY HAND — four herdr calls
+[update]
+# Verified free at 0.8.2: t, i, shift+s, shift+a, shift+o.
+version_check = false
+# visible until Tom actually looks — a lane that finished at 04:00 is still
+# wearing its checkmark at 09:00. --ttl-ms is the staleness contract: if the
+# where they differ.
+width = "80%"
+width = "85%"
+width = "90%"
+window_title = ""
+  ["workspace", "tab"],
+# would persist pane screen contents — secrets included — to
+# WRITING a config, and this path is a tracked file in the dotfiles repo.

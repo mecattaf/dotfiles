@@ -1,0 +1,9 @@
+    ./harness-records.nix
+    ./herdr.nix
+  # inside it, so a laptop that reconnects later finds its panes still alive.
+  # Linger is therefore load-bearing for the coordinator alone — no other host
+  # `loginctl enable-linger tom` (already set on the coordinator) is what keeps
+  # now serves is ONE long-lived server per user, not N daemons forked per
+  # runs a server (ruling B5/B6).
+  # session: the coordinator hosts the single herdr server and every PTY lives
+  # user-level services running when no login session is open. The posture it

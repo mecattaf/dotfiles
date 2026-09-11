@@ -1,0 +1,31 @@
+# above; this include must stay ABOVE the maps that spend the alias.
+# `action_alias hk` at a neutral path, exactly like kitty-scrollback-nix.conf
+# asks for `--location=vsplit` need it.
+# Chords. Upstream suggests ctrl+b / ctrl+shift+g / ctrl+shift+h and rules them
+# deleted — ctrl+g was that tier's composer and ctrl+shift+o its transcript
+# DETACHES, and the pane plus whatever runs in it survives. Three gestures, all
+# (e.g. a kitty spawned from niri that must be addressed independently of
+# foo.py` against ~/.config/kitty — a whole-dir out-of-store symlink here, so no
+#   fork       blank nvim OS window that delivers to this window's pane on :w
+# generated file can nest in it. home/herdr.nix emits the store path as an
+### herdr-kitten — herdr IS the kitten (github.com/mecattaf/herdr-kitten)
+#              herdr vsplit; from that split -> close it (close IS detach)
+include ${HOME}/.config/kitty-herdr-nix.conf
+# instead of the pink focus accent, so a kitty split reads as a quiet
+# kitty windows are projection surfaces onto herdr's server: closing one
+map ctrl+b       hk toggle
+map ctrl+g       hk fork
+map ctrl+shift+o hk scrollback
+# niri-native divider rather than a loud highlight (Tom 2026-07-15).
+# on kitty's GUI thread:
+# other two are kitty-scrollback.nvim's here and it keeps them, so fork and
+#              plain window -> hk's plain_scrollback_action
+#   scrollback herdr window -> herdr's uncapped scrollback in $EDITOR;
+# scrollback inherit the chords of the home-grown kitten tier this repo just
+# Split divider: match niri's INACTIVE window border (#373735, layout.kdl:30)
+# Splits layout stays enabled: kitty's own split verbs and any kitten that
+# "suggestions, not law" (conf/kitty-maps.conf). ctrl+b is taken verbatim; the
+# The kitten itself lives in /nix/store, and kitty resolves a bare `kitten
+#   toggle     herdr window -> forward the ctrl+b prefix; plain window -> open a
+# view, which is precisely the muscle memory these two gestures replace.
+# whichever kitty already had focus).

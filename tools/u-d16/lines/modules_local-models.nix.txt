@@ -1,0 +1,17 @@
+      #
+      # byte-for-byte the set a preceding `--dry-run` recorded.
+      # `local-models-prune`, which refuses unless the set it computes is
+      # manifest no longer named, and `rm -f` of any stray file inside a kept
+      # one — run by a boot-time oneshot with no operator present. Any change
+      pkgs.local-models-prune
+      # printed and never acted on. See pkgs/local-models-prune.nix.
+      # printed and not touched. Deletion moved to the explicit manual verb
+      # Still gated on a fully clean pass: a set computed from a failed borrow
+    #   sudo local-models-prune --dry-run    # read the set, record the intent
+    #   sudo local-models-prune --yes        # delete it, iff it has not changed
+      # that narrowed the wanted set therefore became tens of GiB of deleted
+      # unconditional prune branches — `rm -rf` of any artifact directory the
+      # "wanted.json aligned", with a guard). It used to end here with two
+      # weights at the next boot, before anyone read the diff.
+      # What is left is an AUDIT: the same set, computed by the same rules,
+      # would name files that are merely MISSING, not retired.

@@ -1,0 +1,50 @@
+    // "consumed, do nothing". It must never be given a real action: that action
+    // Dictation is HOLD-to-talk now, and niri is deliberately not the thing
+    // did by hand — plus its root pane, and attaches a kitty window to it. It
+    // driving it: a niri bind has no on-release trigger, so push-to-talk lives
+    // ^ DROPPED (spec DECISION-1): Mod+Shift+N is the herdr rename flow now, in
+    // every tier that shows a name: herdr's durable label (the only one that
+    // Fresh niri workspace + a herdr-backed shell, two authorities in one chord.
+    // `hk new` creates the herdr workspace — labelled from the git repo root,
+    // (`hk`) owns everything terminal-side; niri owns only which workspace the
+    // `hk ws rename` the bind target for a rename chord (docs/mapping.md P50) —
+    // index 10 is the tenth workspace when it exists and the last one otherwise.
+    // into never receives it — and `spawn "true"` is the cheapest way to say
+    // in voxtype's own evdev hotkey layer (home/voxtype.nix), which sees the
+    // kitty to have a socket to aim at; the `kitty -e hk new` window is that
+    // know, whereas herdr always knows which workspace is focused. This chord
+    // Mod+0 closes the row (ruling-record R4). niri workspaces are dynamic, so
+    Mod+0 { focus-workspace 10; }
+    Mod+Ctrl+Shift+Return hotkey-overlay-title="Terminal (resume)" { spawn "kitty" "-e" "hk" "resume"; }
+    Mod+Return hotkey-overlay-title="Terminal (herdr)" { spawn-sh "niri msg action focus-workspace \"$(niri msg -j workspaces | jq -re 'map(select(.is_focused))[0].output as $o | map(select(.output == $o)) | max_by(.idx) | .idx')\"; exec kitty -e hk new"; }
+    Mod+Shift+N hotkey-overlay-title="Rename Session (herdr)" { spawn-sh "kitty --class herdr-rename -e sh -c 'ws=$(hk ws list | grep focused$ | cut -f2); printf \"rename %s to: \" \"$ws\"; read -r name; [ -n \"$name\" ] && hk ws rename \"$ws\" \"$name\"'"; }
+    Mod+Shift+Return hotkey-overlay-title="Terminal (plain)" { spawn "kitty" "-e" "fish"; }
+    // Mod+Shift+Return the deliberately herdr-free plain tier — the reverse of
+    Mod+Space repeat=false hotkey-overlay-title="Dictate (hold)" { spawn "true"; }
+    // Name this session. herdr-kitten's workspace rename fans one label over
+    // niri hops to the empty trailing workspace of the focused output (dynamic
+    // opens that window through kitty remote control, so it has to run INSIDE a
+    // physical press AND release below the compositor. This bind exists only to
+    // place, so the kitty window it opens IS the resumed pane's surface.
+    // Resume picker over herdr's detached panes (terminal id / label / agent
+    // `resume-terminal` scripts are gone rather than rewritten. herdr-kitten
+    // scroll: bindsym $mod+Return exec kitty -e fish
+    // server, kitty-scrollback.nvim and OSC 133 exactly as they always were.
+    // socket and exits the moment the attached window is up.
+    // status; fzf when present, numbered menu otherwise). It execs the attach in
+    //   stays one Mod+D launcher away.
+    // survives a server restart), the live display title, and the kitty window
+    // SWALLOW the chord — niri consumes Mod+Space so the surface being dictated
+    // The escape hatch for when herdr is the thing that is broken.
+    // THE INVERSION (spec B11). Mod+Return is the herdr-backed smart path and
+    // the pane-level `hk rename` needs a pane id, which a compositor bind cannot
+    // The plain tier, kept on purpose: zero herdr involvement, no pane, no
+    // the pre-herdr scheme, and the reason the home-grown `new-terminal` and
+    //   the terminal group above. The ChatGPT PWA keeps its desktop entry and
+    // title of each window projecting that workspace. Upstream names
+    // Unchanged: the shifted chord cancels an in-flight dictation, no insertion.
+    // used to open the ChatGPT webapp (see Chrome Webapps below).
+    // which is the cwd-follow/unique-name job the deleted `new-terminal` script
+    // window lands on.
+    // workspaces guarantee exactly one exists), then hands off to herdr-kitten.
+    // would fire on every press, on top of the evdev listener already recording.

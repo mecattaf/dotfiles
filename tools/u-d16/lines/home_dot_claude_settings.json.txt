@@ -1,0 +1,16 @@
+          {
+          }
+        ]
+      {
+      }
+    ]
+  }
+  "cleanupPeriodDays": 365,
+            "command": "bash '/home/tom/.claude/hooks/herdr-agent-state.sh' session",
+        "hooks": [
+  "hooks": {
+        "matcher": "*",
+    "SessionStart": [
+            "timeout": 10
+            "type": "command",
+  "voiceEnabled": true,

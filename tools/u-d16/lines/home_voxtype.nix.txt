@@ -1,0 +1,70 @@
+        #
+        };
+  '';
+  # $KITTY_LISTEN_ON and an explicit --window id (herdr-kitten hk/kittyc.py);
+    [ "$status" -eq 3 ] || exit "$status"
+        # as ruled and the runtime claim R5.5 is left to adjudicate upstream.
+  # below therefore resolves its own target.
+        # burst rather than at key release.
+        # bypassed during streaming", src/output/streaming.rs:180). B13 asserts
+          command = dictationRoute;
+        # CONFLICT, not resolvable in this file: at the pinned rev post_process
+        # Dictation goes global (spec B B13): herdr panes are fed by send-text,
+  dictationRoute = ''
+        # empty stdout once the text is already in the pane, and voxtype must
+        enabled = true;
+        # every other Wayland surface by the wtype driver. `fallback_on_empty =
+    export KITTY_LISTEN_ON
+          fallback_on_empty = false;
+        # false` is what makes the herdr half silent — the route exits 0 with
+  # focused non-kitty surface has no socket to reach and simply gets no spinner.
+        # for byte by U.5/F.18 and this route is required by R5.4, so both land
+    hk voice begin --window "$window" || exit 0
+  # instance from niri and its focused window from kitty — the same `is_focused`
+        # is dead while `parakeet.streaming = true`. The daemon does hand the
+      jq -er 'first(.[].tabs[].windows[] | select(.is_focused) | .id)') || exit 0
+      # keybinding. Tom is already in the `input` group, so the listener needs
+        key = "SPACE";
+    KITTY_LISTEN_ON="$socket" hk voice end --window "$window" || exit 0
+    KITTY_LISTEN_ON="unix:@kitty-$pid"
+        mode = "push_to_talk";
+        modifiers = [ "LEFTMETA" ];
+      # niri binds have no on-release trigger, so hold-to-talk lives in
+      # no NixOS change; niri swallows Mod+Space so the focused surface never
+  # nothing, sends zero bytes and exits 3 (herdr-kitten hk/voice.py). Translate
+  # pair so the stop hook clears the spinner from the window that got it. A
+    pid=$(niri msg --json focused-window | jq -er .pid) || exit 0
+        post_output_command = spinnerStop;
+        post_process = {
+        # `_post_process` and never calls it ("post_process is intentionally
+  # predicate `hk voice text` uses to pick its delivery target — and records the
+        pre_recording_command = spinnerStart;
+    printf '%s' "$text"
+    printf '%s' "$text" | hk voice text
+    printf '%s %s\n' "$KITTY_LISTEN_ON" "$window" > "${spinnerState}"
+        # processor to `StreamingSession::commit_segment`, which binds it to
+    read -r socket window 2>/dev/null < "${spinnerState}" || exit 0
+      # receives the chord while dictating.
+    rm -f "${spinnerState}"
+        # Spinner on when recording starts, off after the output burst. Under
+  spinnerStart = ''
+  spinnerState = "$XDG_RUNTIME_DIR/voxtype-spinner-window";
+  spinnerStop = ''
+  # (src/output/post_process.rs, src/output/mod.rs `run_hook`). Every command
+        # (src/output/streaming.rs:158-162), so the spinner clears at the first
+    status=$?
+        # streaming these output hooks fire once per typed segment by design
+    text=$(cat)
+  # text on a non-zero exit by itself, so a herdr outage still gets typed.
+  # that one exit code back into the transcript on stdout so the wtype driver
+  # The dictation route. `hk voice text` delivers stdin into the focused
+        # then type nothing rather than re-type the transcript on top of it.
+        # the opposite and cites that same doc block. Streaming is pinned byte
+  # The recording spinner. `hk voice begin`/`end` need both a kitty socket in
+  # the voxtype daemon has neither, so the start hook resolves the focused kitty
+  # through a bare `sh -c`: no argument interpolation, no injected environment
+  # types it, and let every other status propagate — voxtype reuses the original
+  # Voxtype 0.7.5 runs `output.post_process.command` and both output hooks
+      # voxtype's own evdev layer (spec B B12) rather than in a compositor
+    window=$(kitty @ --to "$KITTY_LISTEN_ON" ls |
+  # window's herdr pane and prints nothing; on any other window it prints

@@ -1,0 +1,6 @@
+  # a pure oracle the boot-time sync service prints an AUDIT from, and the one
+  # Audit-first prune for /var/lib/local-models (dotfiles#296). Two binaries:
+  # check in flake.nix can build and drive it directly.
+  local-models-prune = final.callPackage ../pkgs/local-models-prune.nix { };
+  # Packaged rather than inlined in modules/local-models.nix so the hermetic
+  # verb that deletes — and only when its set matches a recorded dry-run.

@@ -15,9 +15,7 @@
   "$(test -e "$LOCAL_MODELS_PRUNE_STATE" && echo present || echo gone)" "gone"
   "$(test -e "$LOCAL_MODELS_ROOT/gone-artifact" && echo present || echo gone)" "gone"
 # ── 1. the oracle names the right set ──────────────────────────────────────
-#   1. the SERVICE path (local-models-sync-audit) deletes nothing, ever
   "2"
-# ── 2. the SERVICE path audits and deletes nothing ─────────────────────────
 # ── 3. --yes with no recorded dry-run refuses ──────────────────────────────
 # ── 4. --dry-run records, then the set CHANGES, then --yes refuses ─────────
 # ── 5. dry-run then yes on an unchanged set deletes exactly that set ───────
@@ -73,7 +71,6 @@ inventory() { find "$LOCAL_MODELS_ROOT" | LC_ALL=C sort; }
 JSON
 # kept-artifact: wanted, with one wanted file and one stray file
 # LOCAL_MODELS_PRUNE_STATE against a fixture tree. No network, no /var, no
-  "local-models-sync: AUDIT prune-set 2 entries, 8 bytes"
 mkdir -p "$LOCAL_MODELS_ROOT/kept-artifact" "$LOCAL_MODELS_ROOT/gone-artifact"
 printf 'aaaa' >"$LOCAL_MODELS_ROOT/kept-artifact/model.gguf"   # 4 bytes, wanted
 printf 'bb' >"$LOCAL_MODELS_ROOT/kept-artifact/stray.bin"      # 2 bytes, stray

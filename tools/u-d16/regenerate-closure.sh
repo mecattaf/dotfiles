@@ -58,9 +58,12 @@ git diff --name-status "$BASE" "$HEAD_SHA" | while IFS=$'\t' read -r status path
     A|M)
       if grep -qxF "$path" "$OUT/.evolved"; then
         slug="$(printf '%s' "$path" | tr '/' '_')"
-        git diff "$BASE" "$HEAD_SHA" -- "$path" \
+        # A path the 30 commits only DELETED from (window-rules.kdl) has no
+        # candidate lines; grep then exits 1 and, under pipefail, would abort
+        # the whole run half-written. An empty lines file is the right answer.
+        ( git diff "$BASE" "$HEAD_SHA" -- "$path" \
           | grep '^+[^+]' | sed 's/^+//' \
-          | grep -v '^[[:space:]]*$' | sort -u > "$OUT/.cand"
+          | grep -v '^[[:space:]]*$' | sort -u > "$OUT/.cand" ) || true
         : > "$OUT/lines/$slug.txt"
         while IFS= read -r line; do
           # Only lines that survive to HEAD today. A line the 30 commits added
