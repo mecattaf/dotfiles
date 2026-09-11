@@ -27,11 +27,15 @@
 #     sink"; since 2026-09-01 the fleet has two tailnets and this box is on
 #     neither (the NAS runs its own headscale, the coordinator keeps
 #     tailscale.com as the emergency rail).
-#   * not a display — no compositor, no greeter, no VNC (Tom's ruling
-#     2026-09-11: "ONLY the coordinator has a display output, and therefore
-#     needs the compositor"). The fleet-wide greetd→niri autologin from
-#     modules/common.nix is forced off below, and home/remote.nix ships no
-#     wayvnc unit to a host whose niri is off. Home Manager itself STAYS:
+#   * not a display — no compositor, no greeter, no VNC. Tom's ruling of
+#     2026-09-11 morning read "ONLY the coordinator has a display output,
+#     and therefore needs the compositor"; the same afternoon the ASUS
+#     Zenbook Duo came back as the thin client (hosts/client), so two hosts
+#     have a compositor now and this one still has none — the line that
+#     survives is "the worker has no display", not "only the coordinator".
+#     The fleet-wide greetd→niri autologin from modules/common.nix is
+#     forced off below, and home/remote.nix ships no wayvnc unit to a host
+#     whose niri is off. Home Manager itself STAYS:
 #     tom's shell, atuin, the user timers and the herdr/hk client are all real
 #     here; only the graphical session is absent. Console recovery is the VT
 #     getty autologin modules/common.nix keeps on every host.
@@ -83,8 +87,8 @@
   # modules/common.nix enables greetd→niri fleet-wide with plain assignments,
   # so these must be mkForce. Nothing graphical runs on this box: no greeter,
   # no session, no wayvnc; VT1 simply gets the getty autologin like the other
-  # VTs. The flake asserts both stay off here and on the NAS, and on ONLY the
-  # coordinator.
+  # VTs. The flake asserts both stay off here and on the NAS, and on for the
+  # coordinator and the client.
   programs.niri.enable = lib.mkForce false;
   services.greetd.enable = lib.mkForce false;
 

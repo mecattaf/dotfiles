@@ -1,5 +1,102 @@
 # DECISIONS
 
+2026-09-11 the Zenbook Duo comes back as the thin client. The ASUS Zenbook
+Duo UX8406MA is reclaimed from Marwan the same afternoon its Omarchy install
+was ready ("i want to see my omarchy-less asus zenbook ready for action asap
+now") and re-enters this tree as `client` — flake node, networking.hostName,
+mesh-registry row, agenix recipient, deploy node, ssh nickname, one name, no
+`zenbook` alias. The rulings, numbered so the host module and the flake's
+checks can cite them:
+(R-1) the coordinator stops being the main input device; the Duo is it.
+(R-2) it leaves omarchy-fleet/omarchy-nix (Hyprland + Quickshell) for niri,
+kitty and the ~/.local/bin scripts of this tree; Tom is not using Omarchy.
+(R-3) the coordinator goes fully headless EVENTUALLY, not today, and not in
+this PR — the next one flips niri/greetd off there in the worker's shape.
+(R-4) the dual-5K desktop is retired; only DP-1 stays connected until then.
+(R-5) the Duo is a THIN CLIENT: compositor, kitty, the clipboard bridge
+(cliphist, wl-clipboard), Chrome, the Duo hardware layer, PipeWire and bolt
+for the dock. NOT on it: the herdr server, tally, the halogen client, the
+microVM host, caddy artifacts, the printing queue, the atuin server, voxtype,
+a wayvnc server, the dcal daemon, journal upload, immich, any model tooling.
+Every one of those is now host-gated or forced off, and asserted.
+(R-6) the two crucial seams are clipboard control across ssh and effortless
+kitty ssh into coordinator sessions: Mod+Return on the client is
+`kitty -e hk ssh --in-place coordinator` (tier 1, herdr --remote); `desk`
+is the fish spelling. Clipboard beyond what herdr --remote carries (OSC 52,
+focus-gated) is a follow-up.
+(R-7) the coordinator's USB peripherals move to the Thunderbolt dock; the
+iContact webcam mic's WirePlumber pin moves with it (hosts/client/audio.nix,
+the coordinator copy deleted). The MediaTek dongle is the coordinator's
+Bluetooth controller and stays. Untested until the dock is plugged.
+(R-8) Chrome is the one real local app on the client AND stays on the
+coordinator (fleet-wide package).
+(R-9) VNC: nothing beyond today — the coordinator serves, the client views
+(`coordinator (VNC)` Remmina profile, registry-driven).
+(R-10) stock niri's one-output touch mapping is an ACCEPTED defect: global
+`touch { map-to-output "eDP-1" }` in the client's niri-local.kdl; no PR #1856
+fork, no ntm, no rotation today.
+(R-11) binds.kdl carries over in full; per-host differences go ONLY through
+niri-local.kdl and kanshi profiles (`Duo` exists, nothing added). F10 on the
+client is brightness-to-zero (brightnessctl -s … set 0 / -r), the daemon
+syncing eDP-2; the sleep-monitors popup stays on the coordinator.
+(R-12) hostname `client`, everywhere.
+(R-13) the ssh host key omarchy-fleet minted on 2026-09-07 is REUSED, never
+rotated: that is what makes the return an in-place switch.
+(R-14) install path is an IN-PLACE SWITCH from the coordinator
+(`nixos-rebuild switch --flake .#client --target-host root@10.42.0.16
+--build-host localhost`, or the closure copied and switched detached from
+the ssh session when wifi re-association would kill the switch mid-way),
+then a reboot; disk, host key, /var/lib/tailscale* and the NM profiles are
+kept, and the Omarchy generation stays in the boot menu as the rollback.
+(R-15) the seat is the fleet-wide greetd autologin → niri as tom; no SDDM.
+(R-16) rail: on the LAN nothing but the LAN. services.tailscale is declared
+with the NAS headscale control URL and NO auth key, no autoconnect, no `up`;
+the node state on disk is kept and re-login is a later manual act. Headscale
+node 4 (`zenbook-duo-fleet`) is not deleted.
+(R-17) hardware carried from omarchy-fleet: initrd vmd/thunderbolt/mei+i915,
+kvm-intel, microcode, the nixos-hardware Intel laptop trio, i915.enable_psr=0,
+the no-RTC e2fsck + emergency-shell + timesyncd trio, intel-media-driver +
+iHD, the dock daemon (modules/zenbook-duo-daemon.nix), asusd + /etc/asusd +
+thermald, the asus_screenpad backlight unit masked, upower PowerOff at 5%,
+iio, disko matching the live layout. DROPPED: the 7.2.4 kernel pin + vmd
+MTL016 patch (kernel build not today; the intermittent VMD boot stall is an
+accepted wait — follow-up), the Intel NPU firmware (AGENTS.md decommission),
+the Hyprland-only rotate module, every omarchy.* option, docker.
+(R-18) update path: the client is in the NAS nightly BUILD list only; it is
+never pushed to or activated by anything but Tom's own
+`sudo nixos-rebuild switch --flake github:mecattaf/dotfiles/main#client`,
+docked on the LAN, coordinator first whenever herdr is bumped.
+
+Two things this ruling set found on the way and decided: (a) the NAS
+resolver serves no DHCP client names, so "client by name only" needed an
+address after all — the lease the NAS already hands the laptop's MAC
+(10.42.0.16) is pinned in hosts/nas/router.nix, carried as a registry alias,
+and written into the twins' /etc/hosts by modules/fleet-hosts.nix; (b) the
+worker leaves wifi-lan.age's recipients in the same rekey that admits the
+client, discharging this morning's operator act (4).
+
+This supersedes the same-day "ONLY the coordinator has a display output"
+line above and in hosts/worker/default.nix: two hosts have a compositor now
+(coordinator and client), the worker still has none, and one host serves
+VNC (the coordinator).
+
+Operator acts this leaves open, none performed by a switch: (1) on the
+client, once the declarative thomas-6ghz profile has associated, delete the
+hand-delivered keyfile omarchy-fleet left —
+`rm /etc/NetworkManager/system-connections/thomas-6ghz.nmconnection` and the
+`Freebox-64238A` one — and the `docker0` bridge profile; (2) plug the dock
+and run the R-7 checks (`boltctl list`, `wpctl status`, `amixer -c Pro sset
+Mic 36% cap` once); (3) `/home/marwan` (817M) is left in place on the
+laptop, not deleted; Tom decides; (4) the NAS switch that makes the dnsmasq
+lease pin, the nightly client build and the xps-only publisher live — until
+then `omarchy-update-publish` must be given `--devices xps`; (5) the manual
+`tailscale up --login-server=https://nas-saas.tail8dd1.ts.net:8443` on the
+client if it should ever leave the LAN; (6) dictation: the coordinator has
+no mic once the webcam moves, voxtype there is deaf — route undecided;
+(7) the omarchy-fleet `retire-zenbook-duo` branch (no remote) is merged by
+hand; (8) a `DuoDocked` kanshi profile, because with the keyboard docked
+only eDP-1 remains and kanshi falls through to `Laptop` (scale 1.5, written
+for the Dell XPS).
 2026-09-11, later the same day: the Thunderbolt residue goes too. The earlier
 entry below kept "the stock `thunderbolt` driver and bolt ... for ordinary USB4
 peripherals"; that clause is SUPERSEDED. Tom's ruling is that no Thunderbolt
