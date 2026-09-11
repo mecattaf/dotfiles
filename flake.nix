@@ -1855,6 +1855,7 @@
           let
             coordinatorHome = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
             workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
+            clientHome = self.nixosConfigurations.client.config.home-manager.users.tom;
             seatFeederNames = [
               "tally-seat-feeder-claude"
               "tally-seat-feeder-codex"
@@ -1871,6 +1872,9 @@
             );
             workerSeatFeeders = builtins.filter isSeatFeeder (
               builtins.attrNames workerHome.systemd.user.timers
+            );
+            clientSeatFeeders = builtins.filter isSeatFeeder (
+              builtins.attrNames clientHome.systemd.user.timers
             );
           in
           assert coordinatorHome.home.username == "tom";
@@ -1890,6 +1894,7 @@
           # fixture cannot silently replay a friendlier clock than the estate.
           assert coordinatorSeatFeeders == seatFeederNames;
           assert workerSeatFeeders == [ ];
+          assert clientSeatFeeders == [ ];
           assert builtins.all (
             name:
             let
@@ -1956,10 +1961,11 @@
           # No wayvnc on the worker since 2026-09-11: with niri and greetd
           # forced off (hosts/worker/default.nix) home/remote.nix renders
           # nothing there, so there is no VNC server, no session for it to
-          # capture, and no door. The coordinator is the ONLY host with a
-          # compositor — both directions asserted, plus the NAS for the third
-          # box, because a half-move that left a session on the wrong host
-          # would look identical from either side alone.
+          # capture, and no door. Two hosts have a compositor — the
+          # coordinator and, since the same day, the thin client — and ONE
+          # serves VNC: the coordinator. Every direction asserted, plus the
+          # NAS for the fourth box, because a half-move that left a session
+          # on the wrong host would look identical from either side alone.
           assert !(workerHome.systemd.user.services ? wayvnc);
           assert coordinatorHome.systemd.user.services ? wayvnc;
           assert !self.nixosConfigurations.worker.config.programs.niri.enable;
@@ -1967,6 +1973,36 @@
           assert self.nixosConfigurations.coordinator.config.programs.niri.enable;
           assert self.nixosConfigurations.coordinator.config.services.greetd.enable;
           assert !self.nixosConfigurations.nas.config.programs.niri.enable;
+          # The thin client (2026-09-11): Tom's seat, so niri and greetd are
+          # ON and the whole coordinator-gated tier is OFF — no tally, no
+          # voxtype, no herdr SERVER (the binary and `hk` are here: Mod+Return
+          # is `hk ssh --in-place coordinator`, asserted below through the
+          # generated niri-local.kdl), no wayvnc (it VIEWS the coordinator:
+          # the `coordinator (VNC)` Remmina profile exists here and no
+          # `client (VNC)` profile exists on the coordinator), no dcal daemon,
+          # no :5900 door, no seat-feeder clocks. Touch is mapped globally to
+          # eDP-1 on stock niri (PR #1856 accepted as a defect, no fork).
+          assert clientHome.home.username == "tom";
+          assert !clientHome.services.tally.enable;
+          assert !clientHome.programs.voxtype.enable;
+          assert !(clientHome.systemd.user.services ? herdr);
+          assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") clientHome.home.packages;
+          assert !(clientHome.systemd.user.services ? wayvnc);
+          assert !(clientHome.xdg.configFile ? "wayvnc/config");
+          assert !(clientHome.systemd.user.services ? dcal-daemon);
+          assert coordinatorHome.systemd.user.services ? dcal-daemon;
+          assert clientHome.xdg.dataFile ? "remmina/coordinator.remmina";
+          assert !(coordinatorHome.xdg.dataFile ? "remmina/client.remmina");
+          assert self.nixosConfigurations.client.config.programs.niri.enable;
+          assert self.nixosConfigurations.client.config.services.greetd.enable;
+          assert
+            !builtins.elem 5900 (
+              self.nixosConfigurations.client.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
+                or [ ]
+            );
+          assert nixpkgs.lib.hasInfix "map-to-output \"eDP-1\"" clientHome.xdg.configFile."niri-local.kdl".text;
+          assert nixpkgs.lib.hasInfix "hk ssh --in-place coordinator" clientHome.xdg.configFile."niri-local.kdl".text;
+          assert !(nixpkgs.lib.hasInfix "binds" coordinatorHome.xdg.configFile."niri-local.kdl".text);
           assert
             !builtins.elem 5900 (
               self.nixosConfigurations.worker.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts

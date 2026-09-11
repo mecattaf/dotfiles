@@ -166,17 +166,67 @@ in
       # file is shared by the whole-dir symlink). Emitted at a neutral ~/.config path
       # (niri/ is a whole-dir symlink, can't nest a generated file inside) and pulled
       # in by an ABSOLUTE include in niri/config.kdl (niri expands neither ~ nor $HOME).
-      # Written on EVERY host (no `optional` include on the pinned niri). Every
-      # remaining host gets an inert file: the only occupant this slot ever had
-      # was the zenbook-duo's per-device touch → output mapping (PR #1856 syntax,
-      # understood only by its niri-pr1856 build), and that host left the fleet
-      # on 2026-08-30. The slot is kept because it is the one real per-host niri
-      # hook — niri/ itself is a whole-dir symlink and cannot nest a generated
-      # file. NB: store-managed (read-only, re-emitted on switch), not hot-reload
-      # RAW like the rest of niri/.
-      "niri-local.kdl".text = ''
-        // GENERATED per-host (home.nix). No host-specific niri config on ${hostName}.
-      '';
+      # Written on EVERY host (no `optional` include on the pinned niri). The
+      # coordinator gets an inert file. The client — the ASUS Zenbook Duo, back
+      # on 2026-09-11 — gets the ONLY per-host niri content in the fleet, and
+      # this slot is the only place such content may live: niri/ itself is a
+      # whole-dir RAW symlink shared by every host, so binds.kdl carries over
+      # in full and the two chords that mean something different on a thin
+      # client are OVERRIDDEN here. That works because config.kdl includes
+      # this file last and niri's includes are positional: "binds will
+      # override previously-defined conflicting keys" (niri wiki,
+      # Configuration:-Include). NB: store-managed (read-only, re-emitted on
+      # switch), not hot-reload RAW like the rest of niri/.
+      #
+      # Touch: stock niri maps every touch device to ONE output; per-device
+      # mapping needs the unmerged PR #1856 and its fork build, which left the
+      # tree with the old `zenbook-duo` host and does NOT come back (Tom's
+      # ruling 2026-09-11: accepted defect, no fork, no ntm, no rotation). The
+      # top panel is the working surface, so it gets the touch; the bottom
+      # panel's touch lands on the top one until #1856 merges.
+      #
+      # Mod+Return: the same workspace hop as binds.kdl, then a kitty window
+      # running `hk ssh --in-place coordinator` — one herdr window INTO the
+      # coordinator's server (herdr --remote, remote keybindings), which is
+      # what "effortless kitty ssh into coordinator sessions" means on this
+      # box. `--in-place` is required under `kitty -e`: kitty exports
+      # KITTY_LISTEN_ON to the child, so a plain `hk ssh` would open a second
+      # OS window and let the first exit. `hk new` is meaningless here (no
+      # local server); Mod+Shift+Return stays the plain local fish.
+      #
+      # F10: binds.kdl's "sleep monitors" popup (power-off-monitors behind an
+      # fzf prompt) becomes a popup-free BACKLIGHT toggle — brightness to zero
+      # on intel_backlight, which the dock daemon copies to eDP-2 within
+      # 500 ms, so one write darkens both panels; the next F10 restores the
+      # saved level (or 50% if the save file under /tmp is gone). Keys keep
+      # working throughout, so there is no lockout; Mod+Shift+P keeps DPMS-all.
+      #
+      # XF86 twins: the daemon re-emits the Duo keyboard's Fn keys as
+      # XF86MonBrightnessDown/Up and XF86AudioMicMute, none of which binds.kdl
+      # binds (it binds plain F-keys for the Glove80). Bound here so the
+      # laptop's own keys are not dead.
+      "niri-local.kdl".text =
+        if hostName == "client" then
+          ''
+            // GENERATED per-host (home.nix). client — ASUS Zenbook Duo UX8406MA.
+            input {
+                touch {
+                    map-to-output "eDP-1"
+                }
+            }
+
+            binds {
+                Mod+Return hotkey-overlay-title="Terminal (herdr on coordinator)" { spawn-sh "niri msg action focus-workspace \"$(niri msg -j workspaces | jq -re 'map(select(.is_focused))[0].output as $o | map(select(.output == $o)) | max_by(.idx) | .idx')\"; exec kitty -e hk ssh --in-place coordinator"; }
+                F10 hotkey-overlay-title="Backlight off / restore" { spawn-sh "if [ \"$(brightnessctl -d intel_backlight get)\" -gt 0 ]; then brightnessctl -s -d intel_backlight set 0; else brightnessctl -r -d intel_backlight || brightnessctl -d intel_backlight set 50%; fi"; }
+                XF86MonBrightnessDown allow-when-locked=true { spawn-sh "~/.local/bin/brightness down"; }
+                XF86MonBrightnessUp allow-when-locked=true { spawn-sh "~/.local/bin/brightness up"; }
+                XF86AudioMicMute allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"; }
+            }
+          ''
+        else
+          ''
+            // GENERATED per-host (home.nix). No host-specific niri config on ${hostName}.
+          '';
     }
     // (
       # GTK4 / libadwaita apps (Nautilus) ignore gtk-theme-name; the only override
@@ -383,7 +433,10 @@ in
   # dcal keeps the local calendar database warm for CLI reads. Its IPC socket
   # is PID-qualified directly beneath XDG_RUNTIME_DIR; do not add a nested
   # RuntimeDirectory here because unix socket paths are limited to 108 chars.
-  systemd.user.services.dcal-daemon = {
+  # Coordinator only (2026-09-11): the calendar CLI and its agents run there;
+  # the thin client has no consumer, and the unit was the one fleet-wide
+  # user service with no host gate at all.
+  systemd.user.services.dcal-daemon = lib.mkIf (hostName == "coordinator") {
     Unit = {
       Description = "dcal calendar daemon";
       After = [ "graphical-session.target" ];
