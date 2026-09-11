@@ -16,7 +16,13 @@ from typing import Any
 
 from . import __version__
 from .asr import VibeVoiceASR, ensure_model_layout, gpu_probe
-from .cleanup import MODELS, preflight_models, reduce_consensus, run_both_models
+from .cleanup import (
+    MODELS,
+    chat_completions_url,
+    preflight_models,
+    reduce_decisions,
+    run_cleanup,
+)
 from .pipeline import (
     AudioActivity,
     Validation,
@@ -37,7 +43,7 @@ from .pipeline import (
 )
 
 
-DEFAULT_ENDPOINT = "http://127.0.0.1:9292/v1/chat/completions"
+DEFAULT_INFERENCE_URL = "http://worker:8731"
 DEFAULT_CONTEXT = (
     "English-language business call. Preserve personal names, organization names, "
     "acronyms, and technical vocabulary exactly as spoken."
@@ -74,12 +80,16 @@ def parser() -> argparse.ArgumentParser:
         help="UTF-8 file containing call-specific names or vocabulary (repeatable)",
     )
     result.add_argument(
-        "--llama-swap-endpoint",
-        default=os.environ.get("CALL_DIARIZE_LLAMA_SWAP_ENDPOINT", DEFAULT_ENDPOINT),
-        help=argparse.SUPPRESS,
+        "--inference-endpoint",
+        default=os.environ.get("CALL_DIARIZE_INFERENCE_URL", DEFAULT_INFERENCE_URL),
+        metavar="URL",
+        help=(
+            "Halogen Flash base URL or its /v1/chat/completions URL "
+            "(default: $CALL_DIARIZE_INFERENCE_URL or http://worker:8731)"
+        ),
     )
     result.add_argument(
-        "--llama-timeout",
+        "--inference-timeout",
         type=int,
         default=1200,
         help=argparse.SUPPRESS,
@@ -382,7 +392,6 @@ def _render_review(
     rejections: list[dict[str, Any]],
     final_unavailable: list[dict[str, Any]],
     cleanup_failures: list[dict[str, Any]],
-    disagreements: list[dict[str, Any]],
     lexical_conflicts: list[dict[str, Any]],
     dropped: list[dict[str, Any]],
 ) -> str:
@@ -404,9 +413,8 @@ def _render_review(
         f"- Cleanup model/shard failures: {len(cleanup_failures)}",
         f"- Raw-ASR fallback shards: {len(failed_shards)}",
         f"- Low-channel-support rows seen in rejected windows: {len(low_support)}",
-        f"- Gemma/Qwen decision disagreements: {len(disagreements)}",
         f"- Near/far versus mixed lexical conflicts: {len(lexical_conflicts)}",
-        f"- Consensus duplicates removed: {len(dropped)}",
+        f"- Proven duplicates removed: {len(dropped)}",
         "",
         "## Final unavailable spans",
         "",
@@ -449,16 +457,6 @@ def _render_review(
     else:
         lines.append("None.")
 
-    lines.extend(["", "## Cleanup-model disagreements", ""])
-    if disagreements:
-        for item in disagreements:
-            lines.extend(_review_item("disagreement", item))
-            lines.append(
-                f"  - Gemma: `{item['gemma']['action']}`; Qwen: `{item['qwen']['action']}`"
-            )
-    else:
-        lines.append("None.")
-
     lines.extend(["", "## Mixed-track lexical conflicts", ""])
     if lexical_conflicts:
         for item in lexical_conflicts:
@@ -470,7 +468,7 @@ def _render_review(
     else:
         lines.append("None.")
 
-    lines.extend(["", "## Consensus duplicate drops", ""])
+    lines.extend(["", "## Proven duplicate drops", ""])
     if dropped:
         for item in dropped:
             lines.extend(_review_item("duplicate", item))
@@ -510,7 +508,8 @@ def execute(args: argparse.Namespace) -> int:
     support_dir = _support_dir()
     model_dir = ensure_model_layout(state_root, support_dir)
 
-    advertised_models = preflight_models(args.llama_swap_endpoint)
+    inference_endpoint = chat_completions_url(args.inference_endpoint)
+    advertised_models = preflight_models(inference_endpoint)
     gpu = gpu_probe()
     print(
         f"GPU gate: {gpu['device_name']} · Torch {gpu['torch_version']} · ROCm {gpu['rocm_version']}",
@@ -595,16 +594,14 @@ def execute(args: argparse.Namespace) -> int:
             if previous
             else None
         )
-    decisions, cleanup_failures = run_both_models(
+    decisions, cleanup_failures = run_cleanup(
         shards,
         isolated,
         raw_root,
-        args.llama_swap_endpoint,
-        args.llama_timeout,
+        inference_endpoint,
+        args.inference_timeout,
     )
-    cleaned, dropped, disagreements = reduce_consensus(
-        isolated, decisions, cleanup_failures
-    )
+    cleaned, dropped = reduce_decisions(isolated, decisions, cleanup_failures)
 
     leaf_counts = {"60": 0, "30": 0, "15": 0}
     for selected in selected_by_track.values():
@@ -629,14 +626,15 @@ def execute(args: argparse.Namespace) -> int:
         "call_dir": str(call_dir),
         "recording_durations": durations,
         "gpu": gpu,
-        "llama_swap_models": MODELS,
-        "llama_swap_advertised_model_count": len(advertised_models),
+        "cleanup_models": MODELS,
+        "inference_endpoint": inference_endpoint,
+        "inference_advertised_model_count": len(advertised_models),
         "leaf_counts": leaf_counts,
         "rejected_window_count": len(rejections),
         "final_unavailable_count": len(final_unavailable),
         "isolated_candidate_count": len(isolated),
         "published_row_count": len(cleaned),
-        "consensus_duplicate_drop_count": len(dropped),
+        "proven_duplicate_drop_count": len(dropped),
         "cleanup_failure_count": len(cleanup_failures),
         "raw_fallback_shard_count": len(raw_fallback_shards),
         "raw_fallback_candidate_count": len(raw_fallback_candidates),
@@ -665,7 +663,6 @@ def execute(args: argparse.Namespace) -> int:
         rejections,
         final_unavailable,
         cleanup_failures,
-        disagreements,
         lexical_conflicts,
         dropped,
     )

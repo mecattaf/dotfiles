@@ -24,11 +24,18 @@
         "option:dns-server,10.42.0.1"
       ];
       dhcp-authoritative = true;
+      # The worker is pinned on its WIRED 5GbE NIC (enp191s0), which is its
+      # only link to the house since 2026-09-11. The earlier pin named the
+      # box's idle wifi MAC (44:f7:9f:da:bd:1d) — a radio that never
+      # associates, so the reservation could never match. The host also
+      # configures .5 statically (hosts/worker/default.nix), and .5 sits
+      # below the pool (.10-.200); this pin keeps the address reserved so
+      # nothing else can be handed it and the name stays stable.
       dhcp-host = [
         "ac:f2:3c:35:1e:d1,coordinator,10.42.0.2,infinite"
         "98:03:8e:6b:61:e2,be550,10.42.0.3,infinite"
         "08:f9:7e:55:f3:96,printer,10.42.0.4,infinite"
-        "44:f7:9f:da:bd:1d,worker,10.42.0.5,infinite"
+        "9c:bf:0d:01:cc:65,worker,10.42.0.5,infinite"
       ];
     };
   };

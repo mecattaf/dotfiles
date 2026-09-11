@@ -144,18 +144,13 @@
   networking.hosts."10.42.0.1" = [ "nas" ];
 
   # The `worker` -> 10.42.0.5 pin that lived here from 2026-08-21 (#229) MOVED
-  # to hosts/nas/network.nix on 2026-08-31 (#277). It was never fleet-wide by
-  # need — only the NAS requires it, for http://worker:3003 (Immich ML) — and
-  # fleet-wide is exactly what made it wrong: the address is the house 6 GHz
-  # wifi, so on the TWINS the name `worker` answered the slow rail. Measured
-  # coordinator -> worker 2026-08-31: 26.977/104.895/167.264 ms min/avg/max to
-  # 10.42.0.5 against 0.096/0.109/0.126 ms to the 10.99.9.2 fleet identity
-  # (~960x, and wildly variable — the 8.862 ms in #277 no longer reproduces).
-  # The twins now answer `worker` from modules/fleet-hosts.nix (#273) and this
-  # scope must NOT reintroduce a second answer: with nsswitch running `resolve`
-  # ahead of `files`, two /etc/hosts entries for one name are ordered by
-  # systemd-resolved, not by the file, so "reconcile by ordering" is not
-  # available. One answer per name per host, host-scoped.
+  # to hosts/nas/network.nix on 2026-08-31 (#277), and the twins answer the
+  # same name from modules/fleet-hosts.nix (#273). Every host agrees on
+  # 10.42.0.5, but the pin stays host-scoped on purpose: with nsswitch running
+  # `resolve` ahead of `files`,
+  # two /etc/hosts entries for one name are ordered by systemd-resolved, not by
+  # the file, and a fleet-wide copy here would double the twins' entry and the
+  # NAS's. One answer per name per host, host-scoped.
   # Do not move it back: nothing on the twins dials the worker by name over the
   # LAN (the deploy node, home/ssh.nix and the journal ACL all name addresses),
   # and the flake's fleet-connectivity check asserts BOTH halves — presence on
@@ -258,7 +253,6 @@
 
   # --- desktop plumbing ---
   hardware.bluetooth.enable = true;
-  services.hardware.bolt.enable = true; # ordinary USB4/Thunderbolt device authorization
   services.gnome.gnome-keyring.enable = true;
   security.pam.services.greetd.enableGnomeKeyring = true;
   security.polkit.enable = true;
@@ -325,9 +319,10 @@
   # The tailscale0 wayvnc door moved with it. It lived here as
   # `mkIf (!myHeadless.enable) [ 5900 ]`, which read as a fleet posture but
   # resolved to two hosts: the coordinator, which wanted it, and the worker,
-  # which has no tailscale0 for it to land on — hosts/worker/headless-display.nix
-  # has carried the "runs here but is not reachable" note ever since. The NAS's
-  # own :5900 was never this line's (hosts/nas/tv.nix opens it explicitly).
+  # which has no tailscale0 for it to land on — and no compositor at all
+  # (hosts/worker/default.nix forces the greetd→niri session below off), so
+  # the coordinator is the only host this session block actually lights. The
+  # NAS's own :5900 was never this line's.
   services.resolved.enable = true;
   networking.firewall.enable = true;
 

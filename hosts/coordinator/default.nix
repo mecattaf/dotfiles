@@ -20,8 +20,6 @@
     # rail must share neither control plane nor uplink with the thing it backs
     # up. Never "tidy this away" because hosts/nas/headscale.nix exists.
     ./tailscale.nix
-    ./tb-fleet.nix # the worker cable: module pin + heal loop + tripwire (2026-08-21)
-    ./eth-fleet.nix # the wired fallback rail under it: 5GbE + stable fleet IPs (2026-08-21)
     ./journal-upload.nix # fleet journald substrate sender — refs #135
     ./nas-client.nix
     # backups.nix (ws2b borg client) DELETED 2026-08-21 unbuilt, with the
@@ -34,9 +32,8 @@
     # retirement, standalone from services.immich (which is on the NAS since the
     # 2026-08-02 cutover) — with only the admitting interface and the box's name
     # changed. The NAS now dials http://worker:3003 (hosts/nas/media.nix), which
-    # resolves via the 10.42.0.5 pin in hosts/nas/network.nix — host-scoped to
-    # the NAS since #277; THIS box resolves `worker` to the fleet identity
-    # 10.99.9.2 instead (modules/fleet-hosts.nix, #273). Deploy
+    # resolves via the 10.42.0.5 pin in hosts/nas/network.nix; this box answers
+    # the same address from modules/fleet-hosts.nix. Deploy
     # order matters and is recorded here because getting it wrong is a visible
     # outage: worker first (so the endpoint exists), then the NAS (so it starts
     # dialling the new one), then this box (which stops answering :3003).
@@ -62,10 +59,11 @@
     ../../modules/cli-anything.nix
     ../../modules/strix.nix
     # TWINS ONLY: kills the stock 127.0.0.2 self-mapping and points both twins'
-    # names at their fleet identities on lo (#273). Without it gethostname()
+    # names at their static LAN addresses (#273). Without it gethostname()
     # resolves to loopback, which every distributed library happily binds — the
     # rank-0-dies-in-6s / rank-1-hangs-forever failure. The NAS must NOT import
-    # this: it still needs `worker` to mean the house wifi for Immich ML.
+    # this: it carries its own pins in hosts/nas/network.nix and keeps the
+    # stock loopback mapping.
     ../../modules/fleet-hosts.nix
     # The REWRITE kernel (github.com/mecattaf/tally, U-B1…U-B13) as one system
     # service against ~/.local/state/tally-rewrite/, coexisting with the live
@@ -93,6 +91,12 @@
   # system bus, against the rewrite's own state root. The live daemon on tom's
   # user bus is untouched and keeps running (modules/tally-b.nix).
   services.tally-kernel.enable = true;
+
+  # This box serves no model. The `utility-model` wrapper that /drain and
+  # /print shell out to forwards one request to the worker's Halogen server
+  # (modules/halogen.nix); the small GGUF artifacts loaned here are served by
+  # hand with llama-server when wanted.
+  services.halogen.client.enable = true;
   # Flipped post-flash after the zero-TOFU host-key check (2026-07-05): the
   # delivered /etc/ssh/ssh_host_ed25519_key matched mesh-registry.nix, so
   # agenix may now decrypt against it.

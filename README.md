@@ -10,7 +10,7 @@ The flake exports these NixOS host configurations:
 | Host | Hardware | Role |
 |---|---|---|
 | `coordinator` | Framework Desktop, AMD Strix Halo | controller node, daily driver |
-| `worker` | Framework Desktop, AMD Strix Halo | second Strix Halo twin, reintegrated; deployed over the fleet identity `10.99.9.2` |
+| `worker` | Framework Desktop, AMD Strix Halo | second Strix Halo twin in another room, wired into the BE550 (LAN port 2) at `10.42.0.5`; no direct link to the coordinator |
 | `nas` | UGREEN NASync DXP2800 GT, AMD R2514 | Wired gateway/DNS, storage, media and Headscale; BE550 Ethernet upstream, Immich ML on worker |
 
 ```
@@ -20,7 +20,7 @@ hosts/           one module per machine
 home/            home-manager: typed nix (home.nix, nvim.nix) + RAW out-of-store
                  configs (niri KDL, kitty, fish, nvim lua) linked via mkOutOfStoreSymlink
 overlays/ pkgs/  custom packages (mactahoe themes, backlog-md, …)
-docs/local-ai/  current local-AI appliance docs, model roster, monthly tallies
+docs/local-ai/  the halogen server, the 15-row model catalogue and per-host wanted sets
 docs/old/       archival stub indexing retired docs in Git history
 ```
 

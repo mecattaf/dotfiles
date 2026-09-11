@@ -398,119 +398,122 @@ in
   # ---------------------------------------------------------------------------
   # user packages.
   # ---------------------------------------------------------------------------
-  home.packages = with pkgs; [
-    # browser
-    google-chrome
+  home.packages =
+    with pkgs;
+    [
+      # browser
+      google-chrome
 
-    # fish init + shell
-    eza
-    zoxide
-    starship
-    fzf
-    bat
-    ripgrep
-    fd
-    jq
-    yq-go
-    glow
+      # fish init + shell
+      eza
+      zoxide
+      starship
+      fzf
+      bat
+      ripgrep
+      fd
+      jq
+      yq-go
+      glow
 
-    # niri / wayland desktop tooling. xwayland-satellite: niri's X11 path — X11 apps
-    # and Chrome fallbacks need it on the session PATH.
-    xwayland-satellite
-    acpi
-    brightnessctl
-    playerctl
-    swaybg
-    wl-clipboard
-    cliphist
-    wl-gammarelay-rs
-    kanshi
-    grim
-    slurp
-    wf-recorder
-    wl-mirror
-    wmctrl
-    wtype
-    lisgd
-    ddcutil
-    cava
-    pamixer
-    pavucontrol
-    nwg-look
+      # niri / wayland desktop tooling. xwayland-satellite: niri's X11 path — X11 apps
+      # and Chrome fallbacks need it on the session PATH.
+      xwayland-satellite
+      acpi
+      brightnessctl
+      playerctl
+      swaybg
+      wl-clipboard
+      cliphist
+      wl-gammarelay-rs
+      kanshi
+      grim
+      slurp
+      wf-recorder
+      wl-mirror
+      wmctrl
+      wtype
+      lisgd
+      ddcutil
+      cava
+      pamixer
+      pavucontrol
+      nwg-look
 
-    # the python interpreter the niri helper scripts need
-    pythonForNiri
+      # the python interpreter the niri helper scripts need
+      pythonForNiri
 
-    # media / viewers
-    yt-dlp
-    aria2
-    mpv
-    imv
-    vlc
-    zathura
-    ffmpeg-full
-    ffmpegthumbnailer
+      # media / viewers
+      yt-dlp
+      aria2
+      mpv
+      imv
+      vlc
+      zathura
+      ffmpeg-full
+      ffmpegthumbnailer
 
-    # screen/game recording — exposes the vkcapture host layer + obs-gamecapture on PATH.
-    obs-studio-plugins.obs-vkcapture
+      # screen/game recording — exposes the vkcapture host layer + obs-gamecapture on PATH.
+      obs-studio-plugins.obs-vkcapture
 
-    # files / nautilus + open-any-terminal + archive GUI
-    nautilus
-    nautilus-open-any-terminal
-    xdg-terminal-exec
-    xarchiver
+      # files / nautilus + open-any-terminal + archive GUI
+      nautilus
+      nautilus-open-any-terminal
+      xdg-terminal-exec
+      xarchiver
 
-    # terminal
-    kitty
+      # terminal
+      kitty
 
-    # agent / dev tooling. A curated slice of the llm-agents.nix catalog
-    # (claude-code, ccusage, ck, claude-agent-acp, qmd, pi, codex, spec-kit) lands via
-    # llmAgentsSelected — see the allowlist buildEnv in the `let` block above.
-    # claude-code comes from there (newest, decoupled from nixpkgs); creds still
-    # seed via modules/secrets.nix, and DISABLE_UPDATES=1 keeps the native
-    # updater from clobbering ~/.local/bin.
-    llmAgentsSelected
-    # Upstream's minimal flake output: git-ai + git-og, while programs.git below
-    # remains the sole provider of the real git binary.
-    inputs.git-ai.packages.${pkgs.stdenv.hostPlatform.system}.minimal
-    huggingface-cli # metadata CLI; agenix authentication is coordinator-only
-    gh
-    google-cloud-sdk
-    gws # Google Workspace CLI (Gmail/Calendar/Drive/Sheets/Docs/...), Discovery-doc-backed
-    cloudflared
-    wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (coordinator-only cred, binary fleet-wide)
-    backlog-md # bespoke pkg via overlay — see pkgs/backlog-md.nix
-    pkgs.crm # vendored personal CRM CLI; data stays at its built-in notes path
-    pkgs.dcal # vendored calendar CLI; data lives under XDG, nothing in git
-    music-acquire # evidence-gated SoundCloud → YouTube → capture acquisition
-    cliamp # terminal music player → navidrome. overlay pkg, see pkgs/cliamp.nix
-    uv # Astral Python pkg/project manager. "hot" overlay pkg — rides nixpkgs-fresh HEAD (flake.nix), so it stays latest independent of the main pin.
+      # agent / dev tooling. A curated slice of the llm-agents.nix catalog
+      # (claude-code, ccusage, ck, claude-agent-acp, qmd, pi, codex, spec-kit) lands via
+      # llmAgentsSelected — see the allowlist buildEnv in the `let` block above.
+      # claude-code comes from there (newest, decoupled from nixpkgs); creds still
+      # seed via modules/secrets.nix, and DISABLE_UPDATES=1 keeps the native
+      # updater from clobbering ~/.local/bin.
+      llmAgentsSelected
+      # Upstream's minimal flake output: git-ai + git-og, while programs.git below
+      # remains the sole provider of the real git binary.
+      inputs.git-ai.packages.${pkgs.stdenv.hostPlatform.system}.minimal
+      huggingface-cli # metadata CLI; agenix authentication is coordinator-only
+      gh
+      google-cloud-sdk
+      gws # Google Workspace CLI (Gmail/Calendar/Drive/Sheets/Docs/...), Discovery-doc-backed
+      cloudflared
+      wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (coordinator-only cred, binary fleet-wide)
+      backlog-md # bespoke pkg via overlay — see pkgs/backlog-md.nix
+      pkgs.crm # vendored personal CRM CLI; data stays at its built-in notes path
+      pkgs.dcal # vendored calendar CLI; data lives under XDG, nothing in git
+      music-acquire # evidence-gated SoundCloud → YouTube → capture acquisition
+      cliamp # terminal music player → navidrome. overlay pkg, see pkgs/cliamp.nix
+      uv # Astral Python pkg/project manager. "hot" overlay pkg — rides nixpkgs-fresh HEAD (flake.nix), so it stays latest independent of the main pin.
 
-    # artifact system (md-artifact / presentation-beta / publish-artifact skills;
-    # knobs in modules/artifacts-defaults.nix). render = md→snapshot dir;
-    # view = bounded chrome --app window (rung 0, no publish); deck-init =
-    # scaffold reveal deck with nix-vendored assets (no CDN).
-    artifact-render
-    artifact-view
-    artifact-deck
+      # artifact system (md-artifact / presentation-beta / publish-artifact skills;
+      # knobs in modules/artifacts-defaults.nix). render = md→snapshot dir;
+      # view = bounded chrome --app window (rung 0, no publish); deck-init =
+      # scaffold reveal deck with nix-vendored assets (no CDN).
+      artifact-render
+      artifact-view
+      artifact-deck
 
-    # cursors (theme dep)
-    bibata-cursors
+      # cursors (theme dep)
+      bibata-cursors
 
-    # codecs/gstreamer plugins for thumbnailers + portals
-    gst_all_1.gstreamer
-    gst_all_1.gst-plugins-base
-    gst_all_1.gst-plugins-good
-    gst_all_1.gst-plugins-bad
-    libjxl
-  ]
-  ++ lib.optionals (hostName == "coordinator") [
-    # Reference CLI for the local Fara1.5 computer-use models (overlay pkg,
-    # see pkgs/fara-cli.nix). Drives a real Chromium tab via Playwright;
-    # point it at the coordinator's own llama-swap server, e.g.:
-    #   fara-cli --base_url http://localhost:9292/v1 --model fara1.5-9b --task "..."
-    fara-cli
-  ];
+      # codecs/gstreamer plugins for thumbnailers + portals
+      gst_all_1.gstreamer
+      gst_all_1.gst-plugins-base
+      gst_all_1.gst-plugins-good
+      gst_all_1.gst-plugins-bad
+      libjxl
+    ]
+    ++ lib.optionals (hostName == "coordinator") [
+      # Reference CLI for the local Fara1.5 computer-use model (overlay pkg,
+      # see pkgs/fara-cli.nix). Drives a real Chromium tab via Playwright;
+      # point it at the llama-server you started by hand on the borrowed
+      # fara15-9b-q8-0 + mmproj (docs/local-ai/README.md), e.g.:
+      #   fara-cli --base_url http://localhost:8080/v1 --model fara1.5-9b --task "..."
+      fara-cli
+    ];
 
   # nvim → implemented in ./nvim.nix (imported above).
 

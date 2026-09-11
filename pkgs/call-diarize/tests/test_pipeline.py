@@ -8,8 +8,9 @@ from unittest import mock
 
 from call_diarize.asr import map_legacy_key
 from call_diarize.cleanup import (
+    chat_completions_url,
     extract_json_object,
-    reduce_consensus,
+    reduce_decisions,
     run_model_shard,
     validate_decisions,
 )
@@ -176,6 +177,16 @@ class StructuralValidationTests(unittest.TestCase):
 
 
 class CleanupContractTests(unittest.TestCase):
+    def test_endpoint_accepts_base_or_chat_completions_url(self) -> None:
+        self.assertEqual(
+            chat_completions_url("http://worker:8731"),
+            "http://worker:8731/v1/chat/completions",
+        )
+        self.assertEqual(
+            chat_completions_url("http://worker:8731/v1/chat/completions/"),
+            "http://worker:8731/v1/chat/completions",
+        )
+
     def test_shards_never_exceed_ten(self) -> None:
         rows = [row(f"s{index}", "words", index, index + 1) for index in range(23)]
         shards = candidate_shards(rows)
@@ -222,7 +233,7 @@ class CleanupContractTests(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(RuntimeError, "interrupted cleanup"):
                     run_model_shard(
-                        "gemma",
+                        "halogen",
                         "test-model",
                         shard,
                         raw_root,
@@ -232,7 +243,7 @@ class CleanupContractTests(unittest.TestCase):
                         retries=1,
                     )
 
-            first_attempt = raw_root / "cleanup/gemma/shard-000.attempt-01.json"
+            first_attempt = raw_root / "cleanup/halogen/shard-000.attempt-01.json"
             self.assertTrue(first_attempt.is_file())
             first_evidence = load_json(first_attempt)
             self.assertEqual(first_evidence["error"], "interrupted cleanup")
@@ -243,7 +254,7 @@ class CleanupContractTests(unittest.TestCase):
                 return_value=response,
             ):
                 decisions = run_model_shard(
-                    "gemma",
+                    "halogen",
                     "test-model",
                     shard,
                     raw_root,
@@ -254,7 +265,7 @@ class CleanupContractTests(unittest.TestCase):
                 )
 
             self.assertEqual(decisions[0]["action"], "keep")
-            final = load_json(raw_root / "cleanup/gemma/shard-000.json")
+            final = load_json(raw_root / "cleanup/halogen/shard-000.json")
             self.assertEqual(final["attempt"], 2)
             self.assertEqual(load_json(first_attempt), first_evidence)
 
@@ -303,7 +314,7 @@ class CleanupContractTests(unittest.TestCase):
         self.assertEqual(normalized[0]["action"], "unavailable")
         self.assertIsNone(normalized[0]["duplicate_of"])
 
-    def test_drop_requires_both_models_and_lexical_match(self) -> None:
+    def test_drop_requires_model_duplicate_and_lexical_match(self) -> None:
         first = row("a", "This is an unmistakable repeated sentence.", 0, 3)
         second = row("b", "This is an unmistakable repeated sentence.", 3, 6)
         keep = {"source_id": "a", "action": "keep", "duplicate_of": None, "reason": ""}
@@ -313,24 +324,32 @@ class CleanupContractTests(unittest.TestCase):
             "duplicate_of": "a",
             "reason": "",
         }
-        decisions = {
-            "gemma": {"a": keep, "b": duplicate},
-            "qwen": {"a": keep, "b": duplicate},
-        }
-        kept, dropped, _ = reduce_consensus([first, second], decisions)
+        decisions = {"halogen": {"a": keep, "b": duplicate}}
+        kept, dropped = reduce_decisions([first, second], decisions)
         self.assertEqual([item["source_id"] for item in kept], ["a"])
         self.assertEqual([item["source_id"] for item in dropped], ["b"])
+        self.assertEqual(dropped[0]["model_decisions"], {"halogen": duplicate})
 
-        decisions["qwen"]["b"] = {
+        decisions["halogen"]["b"] = {
             "source_id": "b",
             "action": "keep",
             "duplicate_of": None,
             "reason": "",
         }
-        kept, dropped, disagreements = reduce_consensus([first, second], decisions)
+        kept, dropped = reduce_decisions([first, second], decisions)
         self.assertEqual(len(kept), 2)
         self.assertEqual(dropped, [])
-        self.assertEqual(len(disagreements), 1)
+
+        unrelated = row("c", "Something entirely different was said.", 6, 9)
+        decisions["halogen"]["c"] = {
+            "source_id": "c",
+            "action": "duplicate",
+            "duplicate_of": "a",
+            "reason": "",
+        }
+        kept, dropped = reduce_decisions([first, second, unrelated], decisions)
+        self.assertEqual(len(kept), 3)
+        self.assertEqual(dropped, [])
 
     def test_lexical_match_is_same_channel_and_nearby(self) -> None:
         prior = row("a", "This is an unmistakable repeated sentence.", 0, 3)

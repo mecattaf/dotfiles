@@ -243,7 +243,7 @@ in
   mage-vl-bf16 = {
     kind = "model";
     maker = "Microsoft";
-    notes = "Full official BF16 Mage-VL snapshot: image/video understanding, traditional and neural codec paths, and the proactive streaming gate. The future online route must use the upstream feat/mage-vl SGLang branch behind llama-swap; no compatible backend is declared yet.";
+    notes = "Full official BF16 Mage-VL snapshot: image/video understanding, traditional and neural codec paths, and the proactive streaming gate. The future online route must use the upstream feat/mage-vl SGLang branch as its own server; no compatible backend is declared yet.";
     source = {
       layout = "snapshot";
       localName = "Mage-VL";

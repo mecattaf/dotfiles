@@ -40,7 +40,8 @@
 # `--dry-run` is appended to the module's argv for the same reason the oracle
 # appends it: the population resolves and NOTHING is dispatched, so no GPU time
 # is spent proving a clock works. Nothing is switched, nothing is written to
-# ~/.config, no credential is read, llama-swap is neither called nor restarted.
+# ~/.config, no credential is read, the worker's Halogen server is neither
+# called nor restarted.
 set -uo pipefail
 
 repo="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"

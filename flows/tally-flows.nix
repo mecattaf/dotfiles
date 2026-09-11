@@ -46,9 +46,9 @@ in
       maxNodes = 64;
       args = {
         flake = dotfiles;
-        # Populate only from the accepted canonical allowlist after it lands;
-        # uncensored = heretic artifacts only. Never include the retired
-        # deepseek-v4-flash model or MTP artifact.
+        # Left empty on purpose: the flow refuses at run time. Model bytes
+        # reach a host only through the operator's local-models-borrow
+        # transaction, never through a flake build.
         models = [ ];
       };
     };

@@ -7,7 +7,10 @@
 }:
 # Remote-access stack: wayvnc (VNC server, so any device can be viewed) + Remmina
 # (VNC client, pre-loaded with a profile for every OTHER host). Only meaningful on a
-# NixOS host with a niri session.
+# NixOS host with a niri session — and since 2026-09-11 that is the coordinator
+# alone (the worker has no display, no compositor, no session), so the whole
+# module is gated on the host's niri being enabled rather than shipping a
+# wayvnc unit that could never find a Wayland socket.
 let
   registry = import ../modules/mesh-registry.nix;
   hostName = osConfig.networking.hostName;
@@ -47,7 +50,7 @@ let
     '';
   };
 in
-{
+lib.mkIf osConfig.programs.niri.enable {
   home.packages = [
     pkgs.wayvnc
     pkgs.remmina
@@ -72,8 +75,8 @@ in
   # wayvnc config. wayvnc runs with no auth — access is gated at the network layer
   # and firewalled to the tailnet. That :5900 admission stopped being fleet-wide
   # on 2026-09-01 and is now the coordinator's alone
-  # (hosts/coordinator/tailscale.nix); on the worker this server therefore runs
-  # unreachable by design, which its own host files have said since #229.
+  # (hosts/coordinator/tailscale.nix), which since 2026-09-11 is also the only
+  # host this module renders on at all.
   xdg.configFile."wayvnc/config".text = ''
     address=0.0.0.0
     port=5900

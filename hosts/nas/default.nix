@@ -37,7 +37,7 @@
     # backups.nix (ws2b borg) DELETED 2026-08-21 unbuilt — Tom's ruling:
     # "real backups are physical redundancy, not a backup sitting on the
     # same device." The protection stack is snapshots + RAID 1 + LaCie.
-    ./models.nix # the model Library: weights forever-collection + static cache (was ws4 archive.nix)
+    ./models.nix # the model Library: weights forever-collection + static cache
     ./attic.nix # ws5  fleet binary cache, served directly (executed 2026-08-21)
     ./update-center.nix # nightly fleet builds -> attic (the App Store model)
     ./omarchy-update-center.nix # manual signed offers; owners choose installation
@@ -139,13 +139,12 @@
   # disk; deployment order (NAS restore first, then the coordinator cutover)
   # is sequenced manually in #131.
   myNas.media.enable = true;
-  # The model Library (was ws4 archive, renamed 2026-08-21 — migration runbook
-  # in models.nix): weights/ holds the forever collection (first residents:
-  # the rescued FastFlowLM trees, moved from archive/models/flm), cache/ is
-  # the nightly static binary cache. compression=none subvolume, created live
-  # 2026-08-20. docs/nas/model-archive.md is the retire/restore runbook, and
-  # retired catalog rows must carry an `archived` receipt (asserted in
-  # modules/local-models.nix).
+  # The model Library (migration runbook in models.nix): weights/ holds the
+  # forever collection — every row of lib/local-models.nix, the halogen bundle
+  # the worker serves included — and cache/ is the nightly static binary
+  # cache. compression=none subvolume. Hosts take working copies through the
+  # explicit local-models-borrow transaction (modules/local-models.nix);
+  # docs/nas/model-archive.md is the retire/restore runbook.
   myNas.models.enable = true;
   # ws2a snapshots — flipped 2026-08-21 per the runbook in ./snapshots.nix:
   # subvolume layout verified live (photos/music/documents/videos/services/

@@ -20,13 +20,14 @@ Tally calendar: local-ai-review mutex
   -> prove old pin is an ancestor of the exact observed head
   -> capture watched paths, commits, diffs, pickaxe history, and package sets
   -> rescan bounded current-head candidate inventories, prioritizing Q8 paths
+  -> GET /v1/models from the Halogen server; it must advertise the served model
   -> Nix build: prepare immutable evidence + exact HF request set
   -> fetch those HF metadata API responses (blobs=true metadata, never blobs)
   -> Nix build: validate and fold metadata into the evidence bundle
-  -> Tally child waits for coordinator-gpu
-       -> invoke Pi once through llama-swap, without tools
+  -> Tally child waits for the registry's tally_pool (coordinator-gpu)
+       -> invoke Pi once against the halogen provider, without tools
        -> write advisory PR commentary
-  -> release coordinator-gpu
+  -> release that pool
   -> Nix build: validate commentary and render the complete PR body
   -> if source pins are unchanged, record a completed census without a PR
   -> disposable Git worktree: replace only sources.json, build, commit, push
@@ -36,18 +37,23 @@ Tally calendar: local-ai-review mutex
 
 The calendar parent holds only the `local-ai-review` mutex. Deterministic Git,
 Nix, HTTP, and publication work therefore does not reserve VRAM. The parent is
-allowed one child enqueue; that low-priority child alone holds `coordinator-gpu` for
-the Pi process and releases it immediately afterward. This uses the same Tally
-calendar-to-opaque-argv shape as the nightly fleet updates, with a nested lease
-because only one stage consumes the scarce resource.
+allowed one child enqueue; that low-priority child alone holds the pool named
+by `inference.tally_pool` in `sources.json` (`coordinator-gpu`) for the Pi
+process and releases it immediately afterward. The Pi process runs on the
+coordinator; the model it talks to is the Halogen Flash server on the worker.
+This uses the same Tally calendar-to-opaque-argv shape as the nightly fleet
+updates, with a nested lease because only one stage consumes the scarce
+resource.
 
 ## Deterministic preparation
 
 `sources.json` is the reviewed data plane: exact accepted pins, categories,
 watched, ignored, and inventory path globs, evidence bounds, HF bounds, fleet
-hardware, the Q8 selection policy, and abstract model selection. JSON remains
-the boundary because Git, `jq`, the Nix builders, and the receipt all consume
-it directly.
+hardware, the `inference` block (provider `halogen`, URL `http://worker:8731`,
+model `halogen-qwen3.8-flash-next`, execution host `coordinator`, compute host
+`worker`, Tally pool), and the mono-model selection policy with its list of
+kept small Library artifacts. JSON remains the boundary because Git, `jq`,
+the Nix builders, and the receipt all consume it directly.
 
 Each enabled monthly or on-change Git source is cloned into a new directory
 under `/run/user/$UID`; the workflow never runs a broad cleanup command. Clones
@@ -80,9 +86,13 @@ builder contacts the network.
 ## The one Pi operation
 
 Pi is retained as the standard local-agent harness, but this workflow adds no
-task-specific Pi extension and exposes no tools. The only extension loaded is
-the existing, immutably pinned `pi-llama-swap` provider required to register
-llama-swap as a Pi provider.
+task-specific Pi extension, loads no extension at all, and exposes no tools.
+The provider is the plain `halogen` entry in Pi's declared `models.json`
+(`home/pi.nix`): the worker's Halogen Flash server at `http://worker:8731/v1`,
+OpenAI-compatible, no authentication. The judge checks that `models.json`
+declares that provider with the registry's model id before Pi starts, and
+copies the declaration into the run's private agent directory so the fresh
+`PI_CODING_AGENT_DIR` can resolve it.
 
 The invocation has a fresh `PI_CODING_AGENT_DIR`, no session, and disables
 ambient extensions, skills, prompt templates, context files, approval, and all
@@ -98,24 +108,27 @@ worktree and cannot call Git or GitHub. A final Nix derivation checks the output
 shape and combines it with mechanical facts. Pi's prose is therefore an
 unverified recommendation, never an instruction or state transition.
 
-The accepted context names each canonical model/MTP file and quantization, the
-128 GiB coordinator's NPU/IOMMU policy, and the rule that active llama.cpp model
-and MTP weights must be Q8. Native FastFlowLM NPU2 snapshots, F16/BF16 vision
-projectors, and speech/tokenizer artifacts are explicit format exceptions.
+The accepted context (`context.md`) is rendered mechanically from
+`sources.json`: the mono-model policy summary, the served-model line
+(`halogen-qwen3.8-flash-next` through provider `halogen` at
+`http://worker:8731` on `worker`), the kept small Library artifacts
+(`qwen36-35b-a3b-mtp-ud-q8-k-xl`, `gemma4-12b-it-q8-0`,
+`gemma4-12b-it-mtp-q8-0`, `fara15-9b-q8-0`, `fara15-9b-mmproj-bf16` — served
+by hand, never declaratively), the runtime and change policies, and the fleet
+hardware table with each host's policy string (the coordinator's reads `NPU
+decommissioned 2026-08-29; IOMMU off (amd_iommu=off)`). Preparation refuses
+if a kept artifact is missing from the typed catalogue. The prompt tells Pi to
+respect that policy: a Halogen Flash server release or a change to its
+runtime profile is the finding that matters most, other served-model
+candidates are at most watch items, and any relevant model finding must
+include an exact candidate/quant table.
 
-> **Superseded 2026-08-29: NPU decommissioned permanently; flm retired with
-> archive receipts (see [`../../lib/local-models.nix`](../../lib/local-models.nix)).**
-> The hardware policy string the bot ships in `pkgs/local-ai-monthly/sources.json`
-> now reads `NPU decommissioned 2026-08-29; IOMMU off (amd_iommu=off)`, and the
-> FastFlowLM NPU2 format exception is void. The bot must not propose an NPU
-> candidate; interactive local inference is the llama-swap GPU roster only. Any
-relevant finding must include an exact candidate/quant table.
-
-The concrete model is not hardcoded. The preparation derivation intersects the
-configured `strongest`/fallback role order with the canonical typed catalog and
-the model IDs currently advertised by llama-swap. The chosen class, deployment,
-model, backend, and RAM tier are captured before inference and written to the
-receipt.
+The concrete model is named by the registry, not by the prompt or the code:
+`inference.model` is `halogen-qwen3.8-flash-next`. Before any Tally slot is
+spent, the supervisor fetches `/v1/models` from `inference.url` and the
+preparation derivation refuses unless that id is advertised. The provider,
+endpoint, compute host, and model id are written to `model.json` before
+inference and carried into the receipt.
 
 ## PR and accepted state
 

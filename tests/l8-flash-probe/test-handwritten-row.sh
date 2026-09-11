@@ -10,9 +10,11 @@
 #
 # Hermetic: a temp HOME, L8_FLASH_HOST=coordinator so the coordinator-only
 # branch is taken on any box and inside the nix sandbox, and no systemd, tally
-# or network call is consulted for this row. The probe never sets -e, so its
-# other rows failing in the sandbox is expected and irrelevant — only the
-# target row is read.
+# or network call is consulted for this row. A fake `ssh` earlier on PATH
+# refuses every connection, so the probe's worker row (read over `ssh worker`
+# off the worker) reports UNKNOWN instead of dialling a real box from a test.
+# The probe never sets -e, so its other rows failing in the sandbox is expected
+# and irrelevant — only the target row is read.
 set -euo pipefail
 
 PROBE="${L8_FLASH_PROBE:-$(cd "$(dirname "$0")/../.." && pwd)/home/dot_local/bin/l8-flash-probe}"
@@ -22,8 +24,12 @@ ROW='hand-written pair gone'
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
+mkdir -p "$tmp/bin"
+printf '#!%s\nexit 255\n' "$(command -v bash)" > "$tmp/bin/ssh"
+chmod 755 "$tmp/bin/ssh"
+
 run() { # $1 = fake HOME; prints the target row's line
-  HOME="$1" L8_FLASH_HOST=coordinator bash "$PROBE" 2>/dev/null \
+  PATH="$tmp/bin:$PATH" HOME="$1" L8_FLASH_HOST=coordinator bash "$PROBE" 2>/dev/null \
     | grep -F "$ROW" || true
 }
 
@@ -70,7 +76,7 @@ line="$(run "$h4")"
 check "declared symlinks -> PASS" PASS "$(verdict "$line")" "$line"
 
 # ── 5. off the coordinator the row does not apply ──────────────────────────
-line="$(HOME="$h1" L8_FLASH_HOST=worker bash "$PROBE" 2>/dev/null | grep -F "$ROW" || true)"
+line="$(PATH="$tmp/bin:$PATH" HOME="$h1" L8_FLASH_HOST=worker bash "$PROBE" 2>/dev/null | grep -F "$ROW" || true)"
 check "non-coordinator -> SKIP" SKIP "$(verdict "$line")" "$line"
 
 echo "$((5 - fails))/5 cases passed"

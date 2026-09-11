@@ -1,15 +1,20 @@
 set -euo pipefail
 
 ocr_prompt='Transcribe this scanned academic page to clean GitHub-flavored Markdown. Preserve heading levels, paragraphs, footnotes, and tables (as markdown tables). Use $...$ / $$...$$ for math. Do not add commentary. If part is illegible write [illegible].'
-llama_swap_url=${ACADEMIC_OCR_LLAMA_SWAP_URL:-http://localhost:9292}
+inference_url=${ACADEMIC_OCR_INFERENCE_URL:-http://worker:8731}
+# The one visual protocol: Halogen Flash on the worker, addressed by the model
+# id it serves. The protocol id doubles as the model named in every request.
+vlm_protocol_id=halogen-qwen3.8-flash-next
 
 # A visual transcription that hits the cap comes back as a plausible prefix, so
 # its signature still agrees with the mechanical extraction well enough for the
 # flow to converge on a page that has silently lost its tail. Fail closed below
 # 600 permille of the longest mechanical extraction of the same page, and only
 # where that extraction is long enough to vouch for the page at all. Lengths are
-# counted in the whitespace words the rest of the pipeline counts.
-vlm_max_tokens=4096
+# counted in the whitespace words the rest of the pipeline counts. The token
+# budget also covers the model's reasoning, so it sits well above the length of
+# any one page transcription.
+vlm_max_tokens=16384
 voucher_min_words=200
 voucher_min_permille=600
 curl_cmd=${ACADEMIC_OCR_CURL:-curl}
@@ -241,12 +246,8 @@ strip_markdown_fence() {
     "$source" > "$destination"
 }
 
-require_local_llama_swap() {
-  local endpoint=$1
-  case $endpoint in
-    http://localhost:9292) ;;
-    *) die "inference endpoint must be llama-swap on localhost:9292, got $endpoint" ;;
-  esac
+is_vlm_protocol() {
+  [[ $1 == "$vlm_protocol_id" ]]
 }
 
 count_words() {
@@ -300,7 +301,6 @@ require_untruncated_vlm() {
 run_vlm() {
   local raster=$1 model=$2 output=$3
   local b64_file payload response content
-  require_local_llama_swap "$llama_swap_url"
   b64_file="$work_dir/page.b64"
   payload="$work_dir/chat-request.json"
   response="$work_dir/chat-response.json"
@@ -330,10 +330,10 @@ run_vlm() {
     --max-time 900 \
     --header 'Content-Type: application/json' \
     --data-binary "@$payload" \
-    "$llama_swap_url/v1/chat/completions" > "$response" \
-    || die "llama-swap request failed for $model"
+    "$inference_url/v1/chat/completions" > "$response" \
+    || die "inference request to $inference_url failed for $model"
   jq -e '.choices[0].message.content | type == "string" and length > 0' "$response" >/dev/null \
-    || die "llama-swap returned no text content for $model"
+    || die "$inference_url returned no text content for $model"
   vlm_finish_reason=$(jq -r '.choices[0].finish_reason // ""' "$response")
   # The cap is the one truncation the server reports outright. It is the only
   # signal available for a scanned page, which has no mechanical voucher.
@@ -363,7 +363,7 @@ recognize() {
   mkdir -p "$(dirname "$artifact_path")"
 
   case $protocol_id:$protocol_tier in
-    poppler-text:cheap|mupdf-text:cheap|qwen3-vl-8b-ocr:standard|qwen3-vl-32b-ocr:specialist) ;;
+    poppler-text:cheap|mupdf-text:cheap|"$vlm_protocol_id":standard) ;;
     *) die "unsupported protocol/tier pair: $protocol_id/$protocol_tier" ;;
   esac
 
@@ -374,7 +374,7 @@ recognize() {
   engine_page=$page_number
   vlm_finish_reason=''
 
-  if [[ $protocol_id == qwen3-vl-* || $input_id != original ]]; then
+  if is_vlm_protocol "$protocol_id" || [[ $input_id != original ]]; then
     raster_path=$(prepare_raster "$source_path" "$page_number" "$artifact_path")
   fi
   if [[ $protocol_id == poppler-text || $protocol_id == mupdf-text ]]; then
@@ -401,11 +401,7 @@ recognize() {
     require_substantive_text "$text_file" "$protocol_id"
     require_untruncated_vlm "$text_file" "$protocol_id" "$artifact_path" "$paper_id" "$page_number"
     engine_version=$protocol_id
-    if [[ $protocol_id == qwen3-vl-8b-ocr ]]; then
-      confidence=900
-    else
-      confidence=850
-    fi
+    confidence=900
   fi
 
   signature=$(academic-ocr-signature "$text_file")
@@ -432,7 +428,8 @@ recognize() {
     --arg inputDigest "$input_digest" \
     --arg textDigest "$text_digest" \
     --arg engineVersion "$engine_version" \
-    --arg endpoint "$llama_swap_url" \
+    --arg endpoint "$inference_url" \
+    --arg vlmProtocol "$vlm_protocol_id" \
     --arg promptDigest "$prompt_digest" \
     --arg finishReason "$vlm_finish_reason" \
     --argjson wordCount "$(count_words "$text_file")" \
@@ -463,8 +460,8 @@ recognize() {
         sourceDigest: $sourceDigest,
         inputDigest: $inputDigest,
         engine: $engineVersion,
-        endpoint: (if ($protocolId | startswith("qwen3-vl-")) then $endpoint else null end),
-        promptDigest: (if ($protocolId | startswith("qwen3-vl-")) then $promptDigest else null end),
+        endpoint: (if $protocolId == $vlmProtocol then $endpoint else null end),
+        promptDigest: (if $protocolId == $vlmProtocol then $promptDigest else null end),
         finishReason: (if ($finishReason | length > 0) then $finishReason else null end)
       }
     }' > "$artifact_tmp"
@@ -540,7 +537,7 @@ arbitrate() {
   truncated_paths=()
   for candidate in "${basis_paths[@]}"; do
     if (( voucher_words >= voucher_min_words )) \
-      && jq -e '.protocolId | startswith("qwen3-vl-")' "$candidate" >/dev/null; then
+      && jq -e --arg vlm "$vlm_protocol_id" '.protocolId == $vlm' "$candidate" >/dev/null; then
       jq -jr '.text' "$candidate" > "$work_dir/basis-text.md"
       candidate_words=$(count_words "$work_dir/basis-text.md")
       if (( candidate_words < floor_words )); then
@@ -553,13 +550,12 @@ arbitrate() {
   (( ${#ranked_paths[@]} > 0 )) \
     || die_code 20 "every arbiter candidate falls under the $floor_words-word floor of a $voucher_words-word mechanical voucher: the page is truncated"
 
-  selected_path=$(jq -sr '
+  selected_path=$(jq -sr --arg vlm "$vlm_protocol_id" '
     def rank:
-      if .protocolId == "qwen3-vl-32b-ocr" then 0
-      elif .protocolId == "qwen3-vl-8b-ocr" then 1
-      elif .protocolId == "poppler-text" then 2
-      elif .protocolId == "mupdf-text" then 3
-      else 4 end;
+      if .protocolId == $vlm then 0
+      elif .protocolId == "poppler-text" then 1
+      elif .protocolId == "mupdf-text" then 2
+      else 3 end;
     sort_by([rank, -(.text | length), .artifactPath]) | .[0].artifactPath
   ' "${ranked_paths[@]}")
   [[ -f $selected_path ]] || die 'arbiter selection did not resolve to an artifact'
@@ -598,7 +594,7 @@ arbitrate() {
       truncatedArtifactPaths: $truncated,
       selectedArtifactPath: $selectedArtifactPath,
       provenance: {
-        strategy: "specialist-first-then-longest",
+        strategy: "visual-first-then-longest",
         voucherWords: $voucherWords
       }
     }' > "$artifact_tmp"
@@ -862,14 +858,19 @@ embed() {
   paper_id=$(jq -er '.paperId' "$brief_path")
   chunks_path=$(jq -er '.chunksPath' "$brief_path")
   artifact_path=$(jq -er '.artifactPath' "$brief_path")
-  endpoint=$(jq -er '.embedding.endpoint' "$brief_path")
+  endpoint=$(jq -r '.embedding.endpoint // ""' "$brief_path")
   model=$(jq -er '.embedding.model' "$brief_path")
   batch_size=$(jq -er '.embedding.batchSize | select(type == "number" and . >= 1 and . <= 64)' "$brief_path")
   dimensions=$(jq -er '.embedding.dimensions | select(. == 4096)' "$brief_path")
   require_state_path chunksPath "$chunks_path"
   require_state_path artifactPath "$artifact_path"
   require_paper_id "$paper_id"
-  require_local_llama_swap "$endpoint"
+  # No fleet server offers /v1/embeddings. The endpoint is an operator-run
+  # llama-server named through ACADEMIC_OCR_EMBEDDINGS_URL at planning time;
+  # with none named, the flow skips this stage and never dispatches it here.
+  [[ -n $endpoint && $endpoint != null ]] \
+    || die 'embedding endpoint is null: ACADEMIC_OCR_EMBEDDINGS_URL was unset when the assemble args were planned, so no embeddings backend exists for this run'
+  [[ $endpoint =~ ^https?://[^[:space:]]+$ ]] || die "embedding endpoint is not an http(s) URL: $endpoint"
   [[ $model == qwen3-embedding-8b ]] || die "unsupported embedding model: $model"
   [[ -f $chunks_path ]] || die "chunks are missing: $chunks_path"
   chunk_count=$(jq -er '.chunks | length | select(. > 0)' "$chunks_path") || die 'chunks file has no chunks'
@@ -916,7 +917,7 @@ embed() {
       --header 'Content-Type: application/json' \
       --data-binary "@$request" \
       "$endpoint/v1/embeddings" > "$response" \
-      || die "llama-swap embedding request failed for chunks $start through $((end - 1))"
+      || die "embedding request to $endpoint failed for chunks $start through $((end - 1))"
     expected_batch=$((end - start))
     jq -e \
       --argjson count "$expected_batch" \
@@ -1091,23 +1092,33 @@ receipt() {
             path: $brief[0].stages.chunk.result.artifactPath,
             digest: $brief[0].stages.chunk.result.artifactDigest
           },
-          embeddings: {
-            path: $brief[0].stages.embed.result.artifactPath,
-            digest: $brief[0].stages.embed.result.artifactDigest,
-            model: $brief[0].stages.embed.result.model
-          },
-          disposable_index: {
-            path: $brief[0].stages.index.result.artifactPath,
-            digest: $brief[0].stages.index.result.artifactDigest,
-            kind: $brief[0].stages.index.result.indexKind
-          }
+          embeddings: (
+            if $brief[0].stages.embed == null then {
+              status: "skipped",
+              reason: "ACADEMIC_OCR_EMBEDDINGS_URL was unset when the assemble args were planned; no fleet server offers /v1/embeddings"
+            } else {
+              path: $brief[0].stages.embed.result.artifactPath,
+              digest: $brief[0].stages.embed.result.artifactDigest,
+              model: $brief[0].stages.embed.result.model
+            } end
+          ),
+          disposable_index: (
+            if $brief[0].stages.index == null then {
+              status: "skipped",
+              reason: "no embeddings to index; rerun the embed and index nodes from chunks.json once an embeddings backend is named"
+            } else {
+              path: $brief[0].stages.index.result.artifactPath,
+              digest: $brief[0].stages.index.result.artifactDigest,
+              kind: $brief[0].stages.index.result.indexKind
+            } end
+          )
         },
         rebuild: {
           durable_inputs: [
             $brief[0].stages.assemble.result.paperPath,
             $brief[0].stages.chunk.result.artifactPath
           ],
-          embedding_model: $brief[0].stages.embed.result.model,
+          embedding_model: $brief[0].stages.chunk.result.embeddingModel,
           index_is_disposable: true
         }
       }

@@ -10,6 +10,19 @@ Freebox Ethernet port 3 → BE550 WAN (router mode)
                             └─ thomas-6ghz → coordinator .2, worker .5
 ```
 
+**Addendum 2026-09-11.** The worker moved out of the cupboard's room and is
+now wired into BE550 LAN port 2 (its `enp191s0`, static `.5`, gateway and DNS
+`.1`); it has no wifi profile. The coordinator-worker Thunderbolt and direct
+5GbE cables, the `10.99.x` rails and the `10.99.9.x` fleet identities are gone
+from the flake. Current shape:
+
+```text
+                          BE550 LAN 10.42.0.3
+                            ├─ Ethernet port 1 → NAS enp1s0, 10.42.0.1
+                            ├─ Ethernet port 2 → worker enp191s0, 10.42.0.5 (other room)
+                            └─ thomas-6ghz → coordinator .2
+```
+
 The NAS remains the normal gateway, DHCP server and AdGuard resolver. Clients
 use `.1` for gateway and DNS. The NAS forwards through its single Ethernet NIC
 back to BE550 `.3`; source NAT sends replies back through the NAS, and ICMP

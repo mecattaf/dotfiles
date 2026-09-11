@@ -1,7 +1,7 @@
 export const meta = {
   name: "errata-map",
-  description: "Map every errata candidate in the reshaped notes (annex + weak-claims + discovery sweep), quorum-verify each, emit a decision ledger for Tom",
-  pools: ["coordinator-gpu", "flow-build"],
+  description: "Map every errata candidate in the reshaped notes (annex + weak-claims + discovery sweep), verify each against the local model, emit a decision ledger for Tom",
+  pools: ["worker-gpu", "flow-build"],
   argsSchema: {
     type: "object",
     required: ["notesRepo", "outDir", "maxRows"],
@@ -61,9 +61,11 @@ export const meta = {
   const bounded = rows.slice(0, args.maxRows);
   log(`errata-map: ${rows.length} candidate rows, inspecting ${bounded.length}`);
 
-  // Per-row verdicts from the remaining family-diverse local members on the
-  // coordinator. The retired dual-node DS4 member is deliberately absent.
-  const selected = members("errata-review", { count: 2, diversity: "family" });
+  // Per-row verdicts from the one local member the mono-model fleet has: the
+  // Halogen server behind http://worker:8731 (flows/catalog.json). A single
+  // verdict, not a quorum — there is no second served family to diversify
+  // across.
+  const selected = members("errata-review", { count: 1 });
   const verdictSchema = {
     type: "object",
     required: ["verdict", "rationale"],

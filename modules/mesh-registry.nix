@@ -18,9 +18,8 @@
   coordinator = {
     aliases = [
       "coordinator"
-      # eth-fleet rail + stable fleet identity (2026-08-21, eth-fleet.nix)
-      "10.99.1.1"
-      "10.99.9.1"
+      # The static LAN address (hosts/coordinator/uplink-nas.nix).
+      "10.42.0.2"
     ];
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFPCZFlnHQSNH3D0R1/qs9A/W498f8xTNUNBtLWZgU2A root@coordinator";
     userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729";
@@ -45,19 +44,14 @@
   # (modules/secrets.nix, ssh-user-key.age, re-minted here to include this
   # host). The old tom@mesh key is never to reappear in this file.
   #
-  # Aliases carry both rails so neither path needs a TOFU prompt: the LAN
-  # identity 10.42.0.5 (static in hosts/worker/default.nix, pinned in
-  # hosts/nas/router.nix) and the Thunderbolt fallback 10.99.0.2 (tb-fleet,
-  # coordinator side 10.99.0.1) — the rail the reintegration deploy itself
-  # travels over.
+  # One rail, one alias: the LAN identity 10.42.0.5 (static in
+  # hosts/worker/default.nix, pinned by name in hosts/nas/network.nix and
+  # modules/fleet-hosts.nix). An alias that answers nowhere only buys TOFU
+  # prompts against a host that cannot reply, so nothing else is listed.
   worker = {
     aliases = [
       "worker"
       "10.42.0.5"
-      "10.99.0.2"
-      # eth-fleet rail + stable fleet identity (2026-08-21, eth-fleet.nix)
-      "10.99.1.2"
-      "10.99.9.2"
     ];
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9xaf+UX4cjDEme+Ath3EZYLiUJla/+3QlG4TvCzwLO root@worker";
     userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729";

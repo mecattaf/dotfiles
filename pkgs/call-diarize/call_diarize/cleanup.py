@@ -1,4 +1,4 @@
-"""Candidate-bounded semantic cleanup through the managed llama-swap endpoint."""
+"""Candidate-bounded semantic cleanup through the fleet's Halogen Flash server."""
 
 from __future__ import annotations
 
@@ -13,10 +13,12 @@ from typing import Any, Iterable
 from .pipeline import lexical_duplicate_target, load_json, write_json_exclusive
 
 
+# Label -> served model id. The label names the evidence directory below
+# asr-raw/cleanup/; the id is the one Halogen Flash answers to.
 MODELS = {
-    "gemma": "gemma4-26b-a4b-it",
-    "qwen": "qwen3.6-35b-a3b",
+    "halogen": "halogen-qwen3.8-flash-next",
 }
+CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 ALLOWED_ACTIONS = {"keep", "duplicate", "unavailable"}
 SYSTEM_PROMPT = """You make conservative, source-bounded transcript cleanup decisions.
 Return one JSON object only. Never merge candidates, rewrite text, invent timestamps,
@@ -40,11 +42,17 @@ class CleanupShardFailure(RuntimeError):
         super().__init__(str(report["error"]))
 
 
+def chat_completions_url(value: str) -> str:
+    """Accept the server base URL or its full chat-completions URL."""
+
+    value = value.rstrip("/")
+    if value.endswith(CHAT_COMPLETIONS_PATH):
+        return value
+    return value + CHAT_COMPLETIONS_PATH
+
+
 def _models_url(endpoint: str) -> str:
-    marker = "/v1/chat/completions"
-    if marker in endpoint:
-        return endpoint.split(marker, 1)[0] + "/v1/models"
-    return endpoint.rstrip("/") + "/v1/models"
+    return chat_completions_url(endpoint)[: -len(CHAT_COMPLETIONS_PATH)] + "/v1/models"
 
 
 def _http_json(
@@ -64,11 +72,11 @@ def _http_json(
             value = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:2000]
-        raise RuntimeError(f"llama-swap HTTP {exc.code} from {url}: {detail}") from exc
+        raise RuntimeError(f"inference server HTTP {exc.code} from {url}: {detail}") from exc
     except (urllib.error.URLError, TimeoutError, socket.timeout) as exc:
-        raise RuntimeError(f"llama-swap request failed for {url}: {exc}") from exc
+        raise RuntimeError(f"inference request failed for {url}: {exc}") from exc
     if not isinstance(value, dict):
-        raise RuntimeError(f"llama-swap returned a non-object from {url}")
+        raise RuntimeError(f"inference server returned a non-object from {url}")
     return value
 
 
@@ -82,7 +90,7 @@ def preflight_models(endpoint: str, timeout: int = 10) -> list[str]:
     missing = sorted(set(MODELS.values()) - set(advertised))
     if missing:
         raise RuntimeError(
-            f"llama-swap does not advertise required cleanup models: {missing}"
+            f"inference server does not advertise the cleanup model: {missing}"
         )
     return advertised
 
@@ -253,9 +261,10 @@ def run_model_shard(
             "temperature": 0,
             "top_p": 1,
             "seed": 0,
-            "max_tokens": 4096,
+            # Halogen's token budget covers reasoning as well as the answer;
+            # this is its default budget and bounds one shard of decisions.
+            "max_tokens": 8192,
             "response_format": {"type": "json_object"},
-            "chat_template_kwargs": {"enable_thinking": False},
         }
         started = time.monotonic()
         try:
@@ -363,7 +372,7 @@ def _raw_fallback_decisions(
     ]
 
 
-def run_both_models(
+def run_cleanup(
     shards: Iterable[dict[str, Any]],
     rows: list[dict[str, Any]],
     raw_root: Path,
@@ -421,12 +430,12 @@ def run_both_models(
     return decisions_by_model, failures
 
 
-def reduce_consensus(
+def reduce_decisions(
     rows: list[dict[str, Any]],
     decisions: dict[str, dict[str, dict[str, Any]]],
     cleanup_failures: Iterable[dict[str, Any]] = (),
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Keep by default; drop only two-model duplicate consensus plus lexical proof."""
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Keep by default; drop only a model duplicate decision plus lexical proof."""
 
     failures_by_source: dict[str, list[dict[str, Any]]] = {}
     for failure in cleanup_failures:
@@ -441,52 +450,34 @@ def reduce_consensus(
 
     kept: list[dict[str, Any]] = []
     dropped: list[dict[str, Any]] = []
-    disagreements: list[dict[str, Any]] = []
     for row in rows:
         source_id = str(row["source_id"])
-        gemma = decisions["gemma"][source_id]
-        qwen = decisions["qwen"][source_id]
-        signatures = {
-            (gemma["action"], gemma.get("duplicate_of")),
-            (qwen["action"], qwen.get("duplicate_of")),
+        row_decisions = {
+            label: decisions[label][source_id] for label in MODELS
         }
-        if len(signatures) > 1:
-            disagreements.append(
-                {
-                    "source_id": source_id,
-                    "start": row["start"],
-                    "end": row["end"],
-                    "speaker": row["speaker"],
-                    "text": row["text"],
-                    "gemma": gemma,
-                    "qwen": qwen,
-                }
-            )
-
         row_failures = failures_by_source.get(source_id, [])
         lexical_target = lexical_duplicate_target(row, kept)
-        consensus_duplicate = (
+        proven_duplicate = (
             not row_failures
             and row.get("kind") == "speech"
-            and gemma["action"] == "duplicate"
-            and qwen["action"] == "duplicate"
+            and all(
+                decision["action"] == "duplicate"
+                for decision in row_decisions.values()
+            )
             and lexical_target is not None
         )
-        if consensus_duplicate:
+        if proven_duplicate:
             dropped.append(
                 {
                     **row,
                     "duplicate_of": lexical_target,
-                    "drop_rule": "two-model consensus plus deterministic lexical match",
-                    "model_decisions": {"gemma": gemma, "qwen": qwen},
+                    "drop_rule": "model duplicate decision plus deterministic lexical match",
+                    "model_decisions": row_decisions,
                 }
             )
         else:
-            kept_row = {
-                **row,
-                "cleanup_decisions": {"gemma": gemma, "qwen": qwen},
-            }
+            kept_row = {**row, "cleanup_decisions": row_decisions}
             if row_failures:
                 kept_row["cleanup_failures"] = row_failures
             kept.append(kept_row)
-    return kept, dropped, disagreements
+    return kept, dropped

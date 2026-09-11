@@ -76,8 +76,7 @@ jq -e '
   and (.protocols | map(.id) == [
     "poppler-text",
     "mupdf-text",
-    "qwen3-vl-8b-ocr",
-    "qwen3-vl-32b-ocr"
+    "halogen-qwen3.8-flash-next"
   ])
   and .rasterDpi == 400
   and .maxMutationIterations == 3
@@ -232,21 +231,23 @@ fi
 grep -q 'empty or near-empty' "$work/scan.err" || fail 'mechanical failure did not explain the fail-closed gate'
 [[ $scan_sha =~ ^[0-9a-f]{64}$ ]] || fail 'scan fixture hash failed'
 
-vlm_artifact="$run_dir/ocr/fixture-paper/page-1/qwen3-vl-8b-ocr/original.json"
+vlm_protocol=halogen-qwen3.8-flash-next
+vlm_artifact="$run_dir/ocr/fixture-paper/page-1/$vlm_protocol/original.json"
 jq -n \
   --arg sourcePath "$source_path" \
+  --arg protocol "$vlm_protocol" \
   --arg artifactPath "$vlm_artifact" '{
     action: "recognize",
     page: {paperId: "fixture-paper", pageNumber: 1, sourcePath: $sourcePath},
-    protocol: {id: "qwen3-vl-8b-ocr", tier: "standard"},
+    protocol: {id: $protocol, tier: "standard"},
     input: {id: "original", mutation: {kind: "none"}},
     artifactPath: $artifactPath
   }' > "$work/vlm-brief.json"
 run_action recognize "$work/vlm-brief.json" "$work/vlm.out"
-jq -e '
-  .protocolId == "qwen3-vl-8b-ocr"
+jq -e --arg protocol "$vlm_protocol" '
+  .protocolId == $protocol
   and .confidencePermille == 900
-  and .provenance.endpoint == "http://localhost:9292"
+  and .provenance.endpoint == "http://worker:8731"
   and (.provenance.promptDigest | test("^sha256:[0-9a-f]{64}$"))
   and .provenance.finishReason == "stop"
   and (.wordCount | type == "number" and . > 0)
@@ -260,13 +261,14 @@ poppler_words=$(jq -r '.wordCount' "$poppler_artifact")
 
 # A page that stops at the token cap fails on the server's own signal, with no
 # mechanical voucher anywhere in reach.
-capped_artifact="$run_dir/ocr/capped-fixture/page-1/qwen3-vl-8b-ocr/original.json"
+capped_artifact="$run_dir/ocr/capped-fixture/page-1/$vlm_protocol/original.json"
 jq -n \
   --arg sourcePath "$source_path" \
+  --arg protocol "$vlm_protocol" \
   --arg artifactPath "$capped_artifact" '{
     action: "recognize",
     page: {paperId: "capped-fixture", pageNumber: 1, sourcePath: $sourcePath},
-    protocol: {id: "qwen3-vl-8b-ocr", tier: "standard"},
+    protocol: {id: $protocol, tier: "standard"},
     input: {id: "original", mutation: {kind: "none"}},
     artifactPath: $artifactPath
   }' > "$work/capped-brief.json"
@@ -313,13 +315,14 @@ write_recognition() {
 
 write_recognition poppler-text "$voucher_text" poppler-text
 
-voucher_artifact="$voucher_page_dir/qwen3-vl-8b-ocr/original.json"
+voucher_artifact="$voucher_page_dir/$vlm_protocol/original.json"
 jq -n \
   --arg sourcePath "$source_path" \
+  --arg protocol "$vlm_protocol" \
   --arg artifactPath "$voucher_artifact" '{
     action: "recognize",
     page: {paperId: "voucher-fixture", pageNumber: 1, sourcePath: $sourcePath},
-    protocol: {id: "qwen3-vl-8b-ocr", tier: "standard"},
+    protocol: {id: $protocol, tier: "standard"},
     input: {id: "original", mutation: {kind: "none"}},
     artifactPath: $artifactPath
   }' > "$work/voucher-brief.json"
@@ -347,16 +350,18 @@ jq -e '.wordCount == 200 and .provenance.finishReason == "stop"' "$voucher_artif
   || fail 'a transcription clearing the voucher floor did not record its length'
 
 # The arbiter drops a truncated visual candidate rather than ranking it first,
-# which it otherwise would: the specialist tier outranks every mechanical
-# extraction before length is even considered.
-write_recognition qwen3-vl-32b-ocr "$short_content" qwen3-vl-32b-ocr
-truncated_path="$voucher_page_dir/qwen3-vl-32b-ocr/original.json"
+# which it otherwise would: the visual tier outranks every mechanical
+# extraction before length is even considered. The candidate is written under
+# a sibling variant so the passing transcription above stays on disk.
+write_recognition "$vlm_protocol" "$short_content" "$vlm_protocol-truncated"
+truncated_path="$voucher_page_dir/$vlm_protocol-truncated/original.json"
 truncated_digest=$(jq -r '.textDigest' "$truncated_path")
 voucher_poppler="$voucher_page_dir/poppler-text/original.json"
 voucher_poppler_digest=$(jq -r '.textDigest' "$voucher_poppler")
 voucher_arbiter="$voucher_page_dir/arbiter/final.json"
 jq -n \
   --arg sourcePath "$source_path" \
+  --arg protocol "$vlm_protocol" \
   --arg truncatedPath "$truncated_path" \
   --arg truncatedDigest "$truncated_digest" \
   --arg voucherPath "$voucher_poppler" \
@@ -368,7 +373,7 @@ jq -n \
       taskUuid: "00000000-0000-4000-8000-000000000131",
       witnessSeq: 1,
       verdict: "pass",
-      protocolId: "qwen3-vl-32b-ocr",
+      protocolId: $protocol,
       inputVariant: "original",
       artifactPath: $truncatedPath,
       textDigest: $truncatedDigest
@@ -397,6 +402,7 @@ jq -e \
 vlm_digest=$(jq -r '.textDigest' "$vlm_artifact")
 selection=$(jq -n \
   --arg digest "$vlm_digest" \
+  --arg protocol "$vlm_protocol" \
   --arg path "$vlm_artifact" '{
     paperId: "fixture-paper",
     pageNumber: 1,
@@ -406,8 +412,8 @@ selection=$(jq -n \
     chosenArtifactPath: $path,
     textDigest: $digest,
     disagreementPermille: 0,
-    agreementProtocols: ["qwen3-vl-8b-ocr", "qwen3-vl-32b-ocr"],
-    attemptCount: 4,
+    agreementProtocols: ["poppler-text", $protocol],
+    attemptCount: 3,
     proof: {taskUuid: "00000000-0000-4000-8000-000000000124", witnessSeq: 1}
   }')
 package_dir="$run_dir/package"
@@ -455,7 +461,11 @@ chunks_digest=$(sha256sum "$chunks_path" | awk '{print $1}')
 run_action chunk "$work/chunk-brief.json" "$work/chunk-replay.out"
 [[ $(sha256sum "$chunks_path" | awk '{print $1}') == "$chunks_digest" ]] || fail 'chunk output changed on replay'
 
+# No fleet server offers /v1/embeddings: a null endpoint is the planner saying
+# ACADEMIC_OCR_EMBEDDINGS_URL was unset, and the driver refuses it outright
+# rather than fabricating vectors.
 embeddings_path="$package_dir/embeddings.json"
+embeddings_url='http://embed-fixture.invalid:8080'
 jq -n \
   --arg chunksPath "$chunks_path" \
   --arg artifactPath "$embeddings_path" '{
@@ -463,7 +473,32 @@ jq -n \
     paperId: "fixture-paper",
     chunksPath: $chunksPath,
     embedding: {
-      endpoint: "http://localhost:9292",
+      endpoint: null,
+      model: "qwen3-embedding-8b",
+      batchSize: 16,
+      dimensions: 4096
+    },
+    artifactPath: $artifactPath
+  }' > "$work/embed-null-brief.json"
+if TALLY_BRIEF="$work/embed-null-brief.json" \
+  ACADEMIC_OCR_CURL="$fake_curl" \
+  ACADEMIC_OCR_STATE_ROOT="$state" \
+  academic-ocr-driver embed > "$work/embed-null.out" 2> "$work/embed-null.err"; then
+  fail 'embed accepted a null endpoint'
+fi
+[[ ! -e $embeddings_path ]] || fail 'embed wrote an artifact without a backend'
+grep -q 'ACADEMIC_OCR_EMBEDDINGS_URL was unset' "$work/embed-null.err" \
+  || fail 'the null-endpoint refusal did not name the variable to set'
+
+jq -n \
+  --arg chunksPath "$chunks_path" \
+  --arg endpoint "$embeddings_url" \
+  --arg artifactPath "$embeddings_path" '{
+    action: "embed",
+    paperId: "fixture-paper",
+    chunksPath: $chunksPath,
+    embedding: {
+      endpoint: $endpoint,
       model: "qwen3-embedding-8b",
       batchSize: 16,
       dimensions: 4096
@@ -472,8 +507,9 @@ jq -n \
   }' > "$work/embed-brief.json"
 run_action embed "$work/embed-brief.json" "$work/embed.out"
 embed_summary=$(summary_from_output "$work/embed.out")
-jq -e '
+jq -e --arg endpoint "$embeddings_url" '
   .model == "qwen3-embedding-8b"
+  and .endpoint == $endpoint
   and .dimensions == 4096
   and (.vectors | length > 0)
   and all(.vectors[]; .embedding | length == 4096)
@@ -514,6 +550,7 @@ jq -n \
   --argjson chunk "$chunk_summary" \
   --argjson embed "$embed_summary" \
   --argjson index "$index_summary" \
+  --arg protocol "$vlm_protocol" \
   --arg outputDir "$package_dir" \
   --arg artifactPath "$receipt_path" '{
     action: "receipt",
@@ -527,8 +564,7 @@ jq -n \
     protocols: [
       {id: "poppler-text", tier: "cheap"},
       {id: "mupdf-text", tier: "cheap"},
-      {id: "qwen3-vl-8b-ocr", tier: "standard"},
-      {id: "qwen3-vl-32b-ocr", tier: "specialist"}
+      {id: $protocol, tier: "standard"}
     ],
     outputDir: $outputDir,
     stages: {
@@ -543,9 +579,27 @@ run_action receipt "$work/receipt-brief.json" "$work/receipt.out"
 jq -e '
   .status == "complete"
   and .ocr.page_count == 1
+  and .artifacts.embeddings.model == "qwen3-embedding-8b"
+  and .artifacts.disposable_index.kind == "sqlite-vec+fts5"
+  and .rebuild.embedding_model == "qwen3-embedding-8b"
   and .rebuild.index_is_disposable == true
   and (.rebuild.durable_inputs | length == 2)
 ' "$receipt_path" >/dev/null
+
+# With no embeddings backend named, the flow hands the receipt null embed and
+# index stages, and the receipt says so instead of pointing at nothing.
+skipped_receipt_path="$package_dir/receipt.json"
+jq '.stages.embed = null | .stages.index = null | .artifactPath = $path' \
+  --arg path "$skipped_receipt_path" "$work/receipt-brief.json" > "$work/receipt-skipped-brief.json"
+run_action receipt "$work/receipt-skipped-brief.json" "$work/receipt-skipped.out"
+jq -e '
+  .status == "complete"
+  and .artifacts.embeddings.status == "skipped"
+  and (.artifacts.embeddings.reason | contains("ACADEMIC_OCR_EMBEDDINGS_URL"))
+  and .artifacts.disposable_index.status == "skipped"
+  and .rebuild.embedding_model == "qwen3-embedding-8b"
+' "$skipped_receipt_path" >/dev/null \
+  || fail 'a receipt without embed and index stages did not record the skip'
 
 ocr_flow_log="$run_dir/ocr-flow.jsonl"
 jq -cn \
@@ -567,14 +621,30 @@ jq -cn \
       }
     }
   }' > "$ocr_flow_log"
-assemble_args=$(academic-ocr-plan-assemble --ocr-args "$ocr_args" --flow-log "$ocr_flow_log")
+assemble_args=$(env -u ACADEMIC_OCR_EMBEDDINGS_URL \
+  academic-ocr-plan-assemble --ocr-args "$ocr_args" --flow-log "$ocr_flow_log" 2> "$work/plan.err")
 [[ -f $assemble_args && -f $run_dir/ocr-result.json ]] || fail 'assemble planner did not retain its outputs'
 jq -e '
   .paper.paperId == "fixture-paper"
   and (.pages | length == 1)
+  and (.protocols | map(.id) | index("halogen-qwen3.8-flash-next") != null)
+  and .embedding.endpoint == null
   and .embedding.model == "qwen3-embedding-8b"
   and .embedding.dimensions == 4096
 ' "$assemble_args" >/dev/null
+grep -q 'ACADEMIC_OCR_EMBEDDINGS_URL is unset' "$work/plan.err" \
+  || fail 'the planner did not announce the skipped embedding stage'
+embedded_args=$(ACADEMIC_OCR_EMBEDDINGS_URL="$embeddings_url" \
+  academic-ocr-plan-assemble --ocr-args "$ocr_args" --flow-log "$ocr_flow_log" \
+    --output "$run_dir/assemble-args-embedded.json")
+jq -e --arg endpoint "$embeddings_url" '.embedding.endpoint == $endpoint' "$embedded_args" >/dev/null \
+  || fail 'the planner did not carry the named embeddings backend into the args'
+if ACADEMIC_OCR_EMBEDDINGS_URL='not-a-url' \
+  academic-ocr-plan-assemble --ocr-args "$ocr_args" --flow-log "$ocr_flow_log" \
+    --output "$run_dir/assemble-args-bad.json" > /dev/null 2> "$work/plan-bad.err"; then
+  fail 'the planner accepted a malformed embeddings URL'
+fi
+grep -q 'not an http(s) URL' "$work/plan-bad.err" || fail 'the planner did not explain the malformed URL'
 
 printf 'academic-ocr fixture tests passed (jitter=%s, different=%s, mechanical=%s permille)\n' \
   "$jitter_disagreement" "$different_disagreement" "$mechanical_disagreement"

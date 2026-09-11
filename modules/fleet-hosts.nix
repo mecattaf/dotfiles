@@ -2,8 +2,9 @@
 # ─── fleet-hosts: the twins' name→address table ─────────────────────────────
 #
 # THE TWINS ONLY (imported from hosts/coordinator/default.nix and
-# hosts/worker/default.nix). The NAS deliberately does NOT get this file — see
-# the §worker pin note at the bottom.
+# hosts/worker/default.nix). The NAS deliberately does NOT get this file: it
+# carries its own pins in hosts/nas/network.nix and keeps the stock loopback
+# self-mapping, because it is an appliance and not a rank in a job.
 #
 # WHAT THIS UNDOES, and why it cost a night (#273). Stock NixOS gives every host
 #   networking.hosts."127.0.0.2" = [ hostName ]
@@ -26,35 +27,16 @@
 # Note the asymmetry: rank 0 errors in six seconds, rank 1 hangs forever. In a
 # service that is a silent hang with an empty log, not a diagnosable crash. On a
 # distro that maps the hostname to 127.0.1.1, or to nothing at all, the same bug
-# is LOUD. NixOS's specific choice is what disguises it. Same shape applies to
-# MPI, Dask, Ray in some modes, and several other torch backends; a per-library
-# env pin (GLOO_SOCKET_IFNAME landed downstream in flashnext as the immediate
-# unblock) fixes exactly the one library you thought of and nothing else.
+# is LOUD. NixOS's specific choice is what disguises it.
 #
-# So: each twin's own name resolves to its own FLEET IDENTITY, and the PEER's
-# name to the peer's. 10.99.9.x/32 is already this estate's declared stable
-# identity (hosts/coordinator/eth-fleet.nix:15 "the STABLE identity", :51 and
-# hosts/worker/default.nix:332 `ip addr replace 10.99.9.x/32 dev lo`). Two
-# properties make it the right target here:
-#   - it lives on lo, so gethostname() can never resolve to an address that goes
-#     down with a cable, a link, or an AP association;
-#   - it is routable from the peer over whichever rail is up — the eth-fleet
-#     /32 route at metric 20 (eth-fleet.nix:75, worker/default.nix:350) with the
-#     imperative Thunderbolt route behind it at 50 (#240 flip).
-# After this, every library in the class above finds a correct, reachable
-# address with no application-level pin at all.
-#
-# Pointing the PEER's name at the wire is the other half (#277): the fleet-wide
-# `worker` pin used to answer 10.42.0.5, the house 6 GHz wifi. Measured
-# coordinator -> worker on 2026-08-31: 26.977/104.895/167.264 ms min/avg/max to
-# 10.42.0.5 against 0.096/0.109/0.126 ms to 10.99.9.2 — ~960x on average and
-# wildly variable (the 8.862 ms in #277 no longer reproduces; wifi got worse,
-# not better). Anything fleet-side resolving a peer by name silently took the
-# slow path and nothing at this layer would flag it. This estate has already
-# paid for that twice in other guises: Ray advertised the wifi address on both
-# nodes until --node-ip-address, and vLLM's get_ip() (UDP-probes 8.8.8.8, reads
-# the local sockname = the default route = wlp192s0) did the same until
-# VLLM_HOST_IP was pinned per node. Both were found by running into them.
+# So: each twin's own name resolves to its own LAN address, and the PEER's name
+# to the peer's. The twins share nothing but the house LAN — the worker is
+# wired into the BE550 in another room — so these are the only answers, and
+# they are static on both boxes (hosts/coordinator/uplink-nas.nix .2,
+# hosts/worker/default.nix .5). A coordinator whose wifi is down will find that
+# gethostname() resolves to an address it does not currently hold, and a
+# binder will fail LOUDLY there instead of binding loopback quietly: that is
+# the intended trade.
 #
 # ⚠ HAZARDS — /etc/hosts IS NOT AN ORDERED ANSWER HERE. Two of them:
 #   (1) nsswitch on these boxes is
@@ -62,41 +44,18 @@
 #                [!UNAVAIL=return] files myhostname dns
 #       `resolve` comes BEFORE `files` and LLMNR is on (+LLMNR -mDNS), so
 #       systemd-resolved answers first and /etc/hosts is consulted through it,
-#       not instead of it. Proven live on 2026-08-31, before this file existed:
-#       on the worker `getent hosts coordinator` returned 10.99.1.1 — the
-#       eth-fleet address, learned over LLMNR on enp191s0 — while the worker had
-#       no `coordinator` line in /etc/hosts at all.
+#       not instead of it.
 #   (2) When one name has TWO entries, resolved decides the order, NOT the file.
-#       Also proven live: the worker's /etc/hosts listed `10.42.0.5 worker`
+#       Proven live 2026-08-31: the worker's /etc/hosts listed `10.42.0.5 worker`
 #       BEFORE `127.0.0.2 worker`, yet `getent ahosts worker` returned
 #       127.0.0.2 first. And nixpkgs renders networking.hosts with
-#       `lib.attrNames`, i.e. LEXICOGRAPHIC by address string, so "10.42.0.5"
-#       sorts ahead of "10.99.9.2" regardless of declaration order anyway.
+#       `lib.attrNames`, i.e. LEXICOGRAPHIC by address string.
 #   Consequence, and the rule this file follows: every name gets EXACTLY ONE
 #   answer per host. Never two entries reconciled by ordering — that is not a
-#   knob we own.
-#   That rule is why the 10.42.0.5 `worker` pin no longer lives in
-#   modules/common.nix (fleet-wide, therefore also on the twins, where the wifi
-#   line even SORTED FIRST) and is host-scoped to hosts/nas/network.nix instead
-#   (#277, 2026-08-31): the NAS's Immich genuinely wants the wifi answer for
-#   http://worker:3003, the twins genuinely want the wire, and those are two
-#   host-scoped answers rather than one ambiguous pair. The flake asserts the
-#   absence on the twins, not merely the presence on the NAS.
-#
-# ⚠ A service that binds by hostname now depends on systemd-services
-# fleet-identity being up (it puts 10.99.9.x on lo). An earlier draft of this
-# note claimed after=network-pre.target already put it "before anything that
-# could bind" — FALSE (review, 2026-08-31): after= orders it, before= nothing
-# did. The unit is now explicitly before=network.target on both twins, the
-# conventional "network identity is set up" edge that binders order After=.
-# A unit that binds the hostname and starts EARLIER than network.target would
-# still fail loudly instead of binding loopback quietly. That is the intended
-# trade: loud beats silent.
-#
-# NOT DONE, deliberately: the `coordinator.fleet` / `worker.fleet` alias shape
-# #277 offers as its alternative. Extra names at every call site buy
-# unambiguity we get for free from one-answer-per-host, and would leave the
-# loopback self-mapping (the actual #273 bug) in place.
+#   knob we own. The pins below are therefore the twins' ONLY entries for these
+#   two names; hosts/nas/network.nix carries the NAS's, and modules/common.nix
+#   must not grow a fleet-wide copy that would double them here (the flake
+#   asserts the exact lists).
 {
   # nixpkgs filters empty lists out of /etc/hosts (stringHosts uses
   # `filterAttrs (_: v: v != [])`), so mkForce [] DELETES the line rather than
@@ -104,9 +63,9 @@
   # definition is a plain one, not mkDefault.
   networking.hosts."127.0.0.2" = lib.mkForce [ ];
 
-  # Both fleet identities on both twins: self so gethostname() binds the wire,
-  # peer so cross-node hostname use takes the wire. Registry aliases
+  # Both LAN identities on both twins: self so gethostname() binds the LAN,
+  # peer so cross-node hostname use reaches it. Registry aliases
   # (modules/mesh-registry.nix), so ssh to either name stays TOFU-free.
-  networking.hosts."10.99.9.1" = [ "coordinator" ];
-  networking.hosts."10.99.9.2" = [ "worker" ];
+  networking.hosts."10.42.0.2" = [ "coordinator" ];
+  networking.hosts."10.42.0.5" = [ "worker" ];
 }

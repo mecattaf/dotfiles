@@ -99,10 +99,25 @@ retained chunks when rebuilding them.
 ## Protocol and inference boundary
 
 The cheap tier is `pdftotext` plus `mutool`, both of which exit nonzero for
-empty or near-empty extraction. The standard and specialist tiers are
-`qwen3-vl-8b-ocr` and `qwen3-vl-32b-ocr`. The embedding node uses
-`qwen3-embedding-8b`. Every model request goes through the OpenAI-compatible
-llama-swap endpoint at `http://localhost:9292`, with temperature zero for OCR.
+empty or near-empty extraction. The standard tier is the fleet's one inference
+server, Halogen Flash on the worker, addressed as protocol and model id
+`halogen-qwen3.8-flash-next` through its OpenAI-compatible
+`/v1/chat/completions` with `image_url` content parts and temperature zero.
+The base URL defaults to `http://worker:8731` and is overridable through
+`ACADEMIC_OCR_INFERENCE_URL`. Halogen's token budget covers its reasoning as
+well as the transcription, so the per-page cap is 16384 tokens.
+
+Halogen serves no `/v1/embeddings`. The embed node names `qwen3-embedding-8b`,
+a loanable NAS-Library artifact an operator serves by hand with `llama-server`
+on the coordinator. `academic-ocr-plan-assemble` reads that server's base URL
+from `ACADEMIC_OCR_EMBEDDINGS_URL`, which has no default: when it is unset the
+planner says so on stderr, writes `embedding.endpoint: null`, and the
+`academic-assemble` flow skips the embed and index nodes and receipts both as
+`skipped` with the reason. The chunk node still runs and still stamps every
+chunk id with the embedding model, so the retained `chunks.json` embeds
+identically once a backend is named and the two nodes are rerun. The driver's
+`embed` action refuses a null endpoint outright rather than fabricating
+vectors.
 
 ## Truncation
 
@@ -111,8 +126,8 @@ prefix. Its signature still agrees with the mechanical extraction closely
 enough for the flow to converge, so the page would assemble with its tail
 silently missing. Two gates fail such a page closed, both with exit code 20:
 
-- `finish_reason=length` from llama-swap is rejected outright. This is the
-  server's own report and the only signal available for a scanned page, which
+- `finish_reason=length` from the inference server is rejected outright. This
+  is the server's own report and the only signal available for a scanned page, which
   has no mechanical extraction to measure against.
 - A transcription shorter than 600 permille of the longest mechanical
   extraction of the same page is rejected, but only where that extraction runs

@@ -22,22 +22,23 @@ as source.md, rendered PDF, decision.json receipt recording gpu / gpu-retry
 Fall back to direct print-paper.py below only when the user explicitly asks
 for a specific profile or layout comparison.
 
-**The classifier's engine moved on 2026-08-29.** It ran on the
-request-scoped NPU utility model until that XDNA2 NPU was decommissioned
-permanently; the stable `utility` id now resolves to the GPU roster, where
-llama-swap serves **qwen3.6-35B-A3B**. Two consequences worth knowing
-before you read a stderr line and worry:
+**Where the classifier runs.** The stable `utility` id resolves to the
+fleet's one inference server: the `utility-model` wrapper forwards the
+classification request to the **Halogen Flash server on the worker**
+(`http://worker:8731`). Two consequences worth knowing before you read a
+stderr line and worry:
 
 - The `utility-model` wrapper is installed on the **coordinator only**.
   Off that box, classification cannot run.
-- Classification failure of any kind — no wrapper, llama-swap unreachable,
-  a cold-load timeout, two invalid answers — is **non-fatal**. print-auto
-  prints one stderr line naming the reason, renders with the deterministic
-  default (source-serif, duplex, no one-page enforcement, kebab-case
-  filename from the input stem), and writes provenance `"fallback"`. The
-  print still happens. Job directories written between 2026-08-29 and this
-  migration carry provenance `"retired"`; older ones carry `npu` /
-  `npu-retry`.
+- Classification failure of any kind — no wrapper, the Halogen server
+  unreachable, a timeout while the worker's unit is still starting, two
+  invalid answers — is **non-fatal**. print-auto prints one stderr line
+  naming the reason, renders with the deterministic default (source-serif,
+  duplex, no one-page enforcement, kebab-case filename from the input stem),
+  and writes provenance `"fallback"`. The print still happens. Job
+  directories already on disk under `~/Paper/jobs` may carry the provenance
+  values of earlier engines (`retired`, `npu`, `npu-retry`); leave those
+  alone when reading old jobs.
 
 When the fallback fires and the profile or layout actually matters, drive
 Manual rendering below rather than accepting the default.

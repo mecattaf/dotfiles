@@ -46,14 +46,6 @@
 let
   cfg = config.services.tally-kernel;
 
-  # The one llama-swap door this box serves (modules/llama-swap.nix pins 9292
-  # fleet-wide). A GPU row's `running` cell is the served model's own
-  # /running endpoint — DEFAULT_RUNNING_ENDPOINT in tally's row.rs is exactly
-  # this URL — and a probe that fails is written as busy with grade UNKNOWN,
-  # never as a false idle (row.rs RunningSource::observe), so this endpoint
-  # being down cannot fabricate headroom.
-  llamaSwapRunning = "http://127.0.0.1:${toString config.services.llama-swap.port}/running";
-
   # The rows the served kernel OWNS — the three `owner: kernel` rows of the
   # rewrite's own docs/rows.md, and nothing else. The seat rows (cc, cc2,
   # cc3, codex, pi-qwencloud) are tom-owned observations written into the
@@ -62,10 +54,13 @@ let
   # table's own: capacity 1 per device, `window: none` (a device is contended,
   # never spent), context_window 32768 on the GPU rows and none on
   # `mechanical`, graces 30/10, and the per-attempt cap 100000 that D-B3/TL-3
-  # set on every row. `gpu-worker` probes the OTHER twin's llama-swap by its
-  # fleet name (modules/fleet-hosts.nix pins `worker` → 10.99.9.2 on this
-  # box); one kernel serves both devices because the daemon is one kernel on
-  # the coordinator (spec §2.4 Q2) — the worker box runs no kernel of its own.
+  # set on every row. One kernel serves both devices because the daemon is one
+  # kernel on the coordinator (spec §2.4 Q2) — the worker box runs no kernel
+  # of its own. Neither GPU row carries a `running` probe: the coordinator
+  # serves no model, and the worker's GPU is held for the life of the Halogen
+  # server (modules/halogen.nix), which exposes no "what is loaded" endpoint —
+  # so both are `none`, which the kernel records as measured not-applicable
+  # rather than as an unknown.
   defaultRows = [
     {
       row = "gpu-coordinator";
@@ -74,8 +69,7 @@ let
       checkpoint_grace_seconds = 30;
       kill_grace_seconds = 10;
       per_attempt_token_cap = 100000;
-      running.kind = "http";
-      running.endpoint = llamaSwapRunning;
+      running.kind = "none";
     }
     {
       row = "gpu-worker";
@@ -84,8 +78,7 @@ let
       checkpoint_grace_seconds = 30;
       kill_grace_seconds = 10;
       per_attempt_token_cap = 100000;
-      running.kind = "http";
-      running.endpoint = "http://worker:${toString config.services.llama-swap.port}/running";
+      running.kind = "none";
     }
     {
       row = "mechanical";

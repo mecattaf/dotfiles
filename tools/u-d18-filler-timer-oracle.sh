@@ -14,10 +14,11 @@
 #   C  D-B10's round-robin as an equality: the filler's period IS
 #      tally-drain.timer's own declared period, read from the same rendered
 #      config, so neither filler can crowd the other out
-#   D  the non-goals as bytes: llama-swap, :9292 and "unload" occur NOWHERE in
-#      the rendered unit (ExecStart and Environment together), there is no
-#      system-bus twin, the worker declares neither unit, and the installed
-#      unit carries no `--dry-run`
+#   D  the non-goals as bytes: the inference server (halogen, :8731) is named
+#      NOWHERE in the rendered unit (ExecStart and Environment together) — the
+#      timer dispatches through the lane's own verb and never dials a serve —
+#      there is no system-bus twin, the worker declares neither unit, and the
+#      installed unit carries no `--dry-run`
 #   E  THE RUN PROOF, before any switch: a TRANSIENT timer started with
 #      `systemd-run --user --on-calendar` from this shell, running the module's
 #      OWN rendered argv, named by `systemctl --user list-timers`, observed to
@@ -52,8 +53,8 @@
 #
 # NOTHING IS SWITCHED, NOTHING IS INSTALLED, NOTHING IS WRITTEN outside a
 # transient systemd unit that this script stops on exit. No credential is read.
-# llama-swap is neither called nor restarted; the probe's `--dry-run` reaches no
-# serve at all.
+# The worker's Halogen server is neither called nor restarted; the probe's
+# `--dry-run` reaches no serve at all.
 set -uo pipefail
 
 repo="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -170,16 +171,16 @@ x_peer=$(ev "$home.systemd.user.services.tally-filler.Unit.X-TallyPeerTimer")
   || bad "C X-TallyPeerTimer is '${x_peer:-<unset>}', not tally-drain.timer"
 
 # --- D ---------------------------------------------------------------------
-# The non-goals as bytes: "the timer never calls llama-swap directly; never
-# unloads". Read over ExecStart AND Environment together, so a value cannot hide
-# in the environment block.
+# The non-goals as bytes: "the timer never dials the inference server directly;
+# never restarts a serve". Read over ExecStart AND Environment together, so a
+# value cannot hide in the environment block.
 rendered=$(evapp "$home" 'h: let s = h.systemd.user.services.tally-filler.Service;
   e = if builtins.isList s.ExecStart then builtins.concatStringsSep " " s.ExecStart else s.ExecStart;
   in e + " " + builtins.concatStringsSep " " s.Environment')
 if [ -z "$rendered" ]; then
   bad "D the rendered unit would not evaluate"
 else
-  for forbidden in llama 9292 unload; do
+  for forbidden in halogen 8731; do
     case "$rendered" in
       *"$forbidden"*) bad "D the rendered unit names '$forbidden' — the card's non-goal" ;;
       *) pass "D the rendered unit names no '$forbidden'" ;;

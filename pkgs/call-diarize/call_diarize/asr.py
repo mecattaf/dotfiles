@@ -371,7 +371,7 @@ class VibeVoiceASR:
         }
 
     def close(self) -> None:
-        """Release ROCm allocations before llama-swap loads cleanup models."""
+        """Release ROCm allocations once transcription is complete."""
 
         del self.model
         self.torch.cuda.empty_cache()

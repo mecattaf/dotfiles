@@ -1,5 +1,13 @@
 # rail0 has no hostname, so `ssh worker` takes the 5 GbE wire
 
+**Status: historical.** The Thunderbolt and direct 5GbE rails between the
+twins were retired on 2026-09-11 and the config this page cites
+(`hosts/coordinator/tb-fleet.nix`, `hosts/coordinator/eth-fleet.nix`,
+`modules/fn-rdma.nix`, `modules/usb4-stream.nix`) is deleted. The twins are
+plain LAN peers on `10.42.0.0/24`. Nothing below is a current deployment
+target or a runbook to follow; it is kept for the incident lore and the
+measurements. See `DECISIONS.md`, 2026-09-11.
+
 **Filed 2026-09-03 from the flashnix trinity staging. Corrected the same night** —
 the gap is real, the payoff is 1.9x and not the 8x the link speeds imply.
 

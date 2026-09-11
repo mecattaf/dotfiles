@@ -97,15 +97,20 @@ while IFS= read -r entry; do
 
   # Rebuild the flow args from the drain's own record of this paper, repointed
   # at THIS package (the recorded tools path is the store path that drained it)
-  # and carrying the table threshold the scan used.
+  # and carrying the table threshold the scan used. Model and backend fields
+  # come from this package's contract, not the record: the recorded args name
+  # whatever served the paper originally.
   src_args="$DRAIN/args/$db_id.json"
   if [ ! -f "$src_args" ]; then
     log "SKIP $db_id: no recorded flow args"; continue
   fi
   args_file="$DRAIN/args/$db_id.backfill.json"
   "$JQ" --arg tools "$SELF" --arg bash "$BASH_BIN" --arg dr "$DATA_ROOT" \
-    --argjson run "$MIN_RUN" \
-    '.tools=$tools | .bash=$bash | .dataRoot=$dr | .tableMinNumericRun=$run' \
+    --argjson run "$MIN_RUN" --arg embeddingsUrl "${ACADEMIC_OCR_EMBEDDINGS_URL:-}" \
+    '.tools=$tools | .bash=$bash | .dataRoot=$dr | .tableMinNumericRun=$run
+     | del(.refineModel)
+     | .ocrModel="halogen-qwen3.8-flash-next" | .embedModel="qwen3-embedding-8b"
+     | .embeddingsUrl=(if $embeddingsUrl == "" then null else $embeddingsUrl end)' \
     "$src_args" > "$args_file"
   pages=$("$JQ" -r .pageCount "$args_file")
 
@@ -120,7 +125,7 @@ while IFS= read -r entry; do
   attempt_log="$DRAIN/logs/$db_id.backfill.attempt"
   ok=0
   tally flow run "$FLOW" --args "$("$CORE/cat" "$args_file")" \
-    --flow-run-id "$run_id" --max-nodes $((8 * pages + 30)) \
+    --flow-run-id "$run_id" --max-nodes $((6 * pages + 30)) \
     >"$attempt_log" 2>&1 && ok=1
   "$CORE/cat" "$attempt_log" >>"$DRAIN/logs/$db_id.log"
 
@@ -175,7 +180,7 @@ if [ "$placed" -gt 0 ]; then
 
 Pages that resolved source:mech on a linearized table are re-transcribed
 through the VLM lane and the papers reassembled (pipeline stamp
-tally-flow-e2e-2026-08-06). Text-only, per the standing option-A ruling.
+tally-flow-e2e-2026-09-11). Text-only, per the standing option-A ruling.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"; then
     log "reabsorbed $placed papers into notes"

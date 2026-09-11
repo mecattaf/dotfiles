@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# One-shot status of the worker twin, over the fleet identity.
+# One-shot status of the worker twin, over the house LAN.
 #
-# 10.99.9.2 lives on the worker's loopback and is reachable over whichever rail
-# is currently up (TB5 10.99.0.2 or 5GbE 10.99.1.2), which is exactly why the
-# deploy path dials it too. There is no tailnet fallback: the worker left the
-# tailnet and 100.66.206.54 has been dead since.
-W=${WORKER_ADDR:-10.99.9.2}
+# The worker is wired into the BE550 in another room and 10.42.0.5 is its only
+# address. There is no tailnet fallback: the worker left the tailnet and
+# 100.66.206.54 has been dead since.
+W=${WORKER_ADDR:-10.42.0.5}
 exec ssh -o ConnectTimeout=5 -o BatchMode=yes tom@"$W" "bash -s" <<'REMOTE'
 echo "== worker $(hostname) up $(uptime | sed "s/.*up //;s/,.*//") =="
 echo "-- box --"
 t=$(cat /sys/class/drm/card*/device/hwmon/hwmon*/temp1_input 2>/dev/null | head -1)
 echo "gpu edge: $((t/1000))C   disk free: $(df -h --output=avail / | tail -1 | tr -d ' ')"
-echo "-- llama-swap --"
-systemctl is-active llama-swap.service | sed 's|^|unit: |'
+echo "-- halogen --"
+systemctl is-active podman-halogen.service | sed 's|^|unit: |'
+curl -fsS -m 5 http://127.0.0.1:8731/health 2>/dev/null | head -c 300 || echo "health: no answer on :8731"
+echo
 REMOTE

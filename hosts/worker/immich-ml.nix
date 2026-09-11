@@ -84,12 +84,12 @@ in
   };
 
   # ML has no application-layer authentication, so the door is interface-scoped
-  # rather than global. wlp192s0 is this box's LAN leg (the same interface name
-  # as on its twin — see the interface-name pin in ./default.nix); every client
-  # on that segment is a pinned house device. Port 3003 is deliberately NOT
-  # opened anywhere else, and there is no tailnet on this host to open it on.
-  # The requesting party is the NAS at 10.42.0.1.
-  networking.firewall.interfaces.wlp192s0.allowedTCPPorts = [ 3003 ];
+  # rather than global. enp191s0 is this box's LAN leg (wired into the BE550;
+  # see the interface-name pin in ./default.nix); every client on that segment
+  # is a pinned house device. Port 3003 is
+  # deliberately NOT opened anywhere else, and there is no tailnet on this host
+  # to open it on. The requesting party is the NAS at 10.42.0.1.
+  networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 3003 ];
   systemd.sockets.immich-ml-access = {
     description = "Wake worker Immich ML on the first private request";
     wantedBy = [ "sockets.target" ];

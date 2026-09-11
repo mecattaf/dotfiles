@@ -8,16 +8,16 @@ utility model (`utility-model` wrapper), then executed by print-paper.py.
 The model has no grammar enforcement, so the JSON is validated here with
 one corrective retry and a deterministic fallback.
 
-The seam behind that wrapper MIGRATED on 2026-08-29: it used to be the
-XDNA2 NPU running FastFlowLM, which is decommissioned permanently; it is
-now the GPU roster, where llama-swap serves qwen3.6-35B-A3B behind the
-stable id `utility`. The wrapper exists on the coordinator only, and its
-first request after an idle unload cold-loads a ~40 GB model, so the
+The seam behind that wrapper is the fleet's one inference server: the
+Halogen Flash server on the worker (http://worker:8731), which answers the
+stable id `utility` through the wrapper. The wrapper exists on the
+coordinator only. The server stays resident, but a request that lands while
+the worker's unit is still starting waits on that start, so the
 classification call is given a generous timeout.
 
 Classification failure is NON-FATAL, and deliberately so: printing is the
 point of this script. Anything at all going wrong at the seam — no wrapper
-on this host, llama-swap unreachable, a timeout, two invalid answers —
+on this host, the Halogen server unreachable, a timeout, two invalid answers —
 falls through to the same deterministic default that has always backed the
 model (source-serif, duplex, no one-page enforcement, kebab-case filename
 from the input stem), records provenance "fallback" in decision.json with
@@ -53,8 +53,8 @@ PRINT_PAPER = SCRIPT_DIR / "print-paper.py"
 PROFILES = {"garamond", "baskerville", "source-serif", "times"}
 SIDES = {"duplex", "one-sided"}
 
-# llama-swap cold-loads the utility model on the first request after an idle
-# unload; that alone can take minutes on a ~40 GB Vulkan backend.
+# A request that lands while the worker's Halogen unit is still starting waits
+# on that start, and a long document is a long generation.
 UTILITY_TIMEOUT_SECONDS = 1200
 
 SYSTEM = (
@@ -93,7 +93,7 @@ def ask_utility(user_content: str) -> str:
     """One classification round trip through the GPU utility seam.
 
     Every way this can fail — the wrapper absent because we are not on the
-    coordinator, llama-swap down or still cold-loading past the budget, a
+    coordinator, the Halogen server down or still starting past the budget, a
     non-zero exit, an unparseable envelope — becomes one ClassifierUnavailable
     so decide() has a single thing to catch.
     """
@@ -116,9 +116,9 @@ def ask_utility(user_content: str) -> str:
             capture_output=True, timeout=UTILITY_TIMEOUT_SECONDS)
     except FileNotFoundError as exc:
         raise ClassifierUnavailable(
-            "utility-model is not installed here; the GPU utility model "
-            "(qwen3.6-35B-A3B through llama-swap) is served on the "
-            "coordinator only") from exc
+            "utility-model is not installed here; the utility-model wrapper "
+            "(which forwards to the Halogen server on the worker) is "
+            "installed on the coordinator only") from exc
     except OSError as exc:
         raise ClassifierUnavailable(f"could not run utility-model: {exc}") from exc
     except subprocess.TimeoutExpired as exc:
@@ -187,15 +187,14 @@ def default_decision(source: Path) -> dict:
 def decide(text: str, intent: str | None, source: Path) -> tuple[dict, str]:
     """Returns (decision, provenance) where provenance is gpu|gpu-retry|fallback.
 
-    Provenance named the engine before this script's seam moved to the GPU
-    roster on 2026-08-29, so receipts already on disk under ~/Paper/jobs
-    carry npu / npu-retry / retired instead; leave those values alone when
-    reading old job directories.
+    Receipts already on disk under ~/Paper/jobs may carry the provenance
+    values of earlier engines (npu / npu-retry / retired); leave those values
+    alone when reading old job directories.
 
     Nothing here is allowed to stop a print. The seam is reached inside one
-    try block, and any ClassifierUnavailable — no wrapper on this host,
-    llama-swap unreachable, timeout, malformed envelope — lands on the same
-    deterministic default that two invalid model answers would.
+    try block, and any ClassifierUnavailable — no wrapper on this host, the
+    Halogen server unreachable, timeout, malformed envelope — lands on the
+    same deterministic default that two invalid model answers would.
     """
     digest = doc_digest(text, intent)
     try:

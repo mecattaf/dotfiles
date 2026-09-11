@@ -25,162 +25,33 @@
     # Accelerated inference/tooling packages from nix-strix-halo plus the one
     # noamsto-only GPU backend.
     ./strix-ai.nix
-    # Native local-model proxy/control plane.
-    ./llama-swap.nix
     # Typed model catalog, guarded store materialization, and host projections.
     ./local-models.nix
-    # ./npu-llm.nix was imported here until 2026-08-31 (#270): the FastFlowLM
-    # roster module whose only live use was being asserted off since the
-    # 2026-08-29 NPU decommission. Deleted with the appliance tier; a revival
-    # restores it from git history (see the roster comment below).
-    #
-    # The flashnext TP=2 lane's systemd identity: a target the flashnext
-    # scripts wrap themselves in, mutually Conflicts= with llama-swap so
-    # exactly one plane holds the GPUs. Both twins get it — the lane spans
-    # both boxes and each twin arbitrates its own proxy.
-    ./flashnext-lane.nix
-    # PM QoS + MTU tuning for the coordinator<->worker rails. Declares an
-    # option that defaults OFF; enabled below, so only these two boxes get it.
-    ./lowlat-cluster.nix
-    # Patched Thunderbolt core/net/ibverbs set, first-bound at boot (#241).
-    # Same gate shape as lowlat-cluster: defaults OFF, enabled below.
-    ./fn-rdma.nix
-    # 7.2's in-tree USB4STREAM: udev perms + declarative stream groups on the
-    # rail-0 cable. Same gate shape: defaults OFF, enabled below.
-    ./usb4-stream.nix
-    # Cable-bound rail0/rail2 names, and the fleet's one copy of the per-host
-    # cable->NHI table that usb4-stream's railNhi now reads (#266).
-    ./fleet-rail-names.nix
+    # The fleet's one inference server (the worker enables it) and the
+    # utility-model client that dials it (the coordinator enables that).
+    ./halogen.nix
   ];
 
   config = {
-    # Explicit deployment authority. The catalog may remain broad; only these
-    # per-host rows enter the system closure and llama-swap configuration.
-    # modules/local-models.nix asserts that every ID listed here is canonical,
-    # locally-backed, AND assigned to THIS host in lib/local-models.nix — so a
-    # roster line on the wrong box is a build failure, not a runtime surprise.
-    services.local-models = {
-      allow =
-        lib.optionals (config.networking.hostName == "coordinator") [
-          "qwen36-35b-a3b-mtp-ud-q8-k-xl"
-          # Evicted 2026-09-03 for the dual-Strix staging budget (#286): the
-          # coordinator needed ~264 GiB it did not have. Catalog rows stay;
-          # recovery is uncommenting a line here; an operator can then borrow
-          # the weights from the NAS Library (all four verified present
-          # 2026-09-03). qwen3.6-27b is the cheapest of these to lose —
-          # canonical qwen3.8-27b already declares `supersedes` on it.
-          # "qwen36-27b-mtp-ud-q8-k-xl"
-          # "gemma4-26b-a4b-it-mtp-q8-0"
-          # "fara15-27b-q8-0"
-          "fara15-9b-q8-0"
-          # Ruled out 2026-08-20 (notes ACTION-PLAN §2b / dotfiles#229): rows stay
-          # in the catalog; recovery is uncommenting a line here.
-          # "fara15-4b-q8-0"
-          # qwen3-vl-8b-ocr's exit condition used to be "the FastFlowLM Qwen 3.6
-          # 35B NPU2 build validates on OCR" — that flip died with the NPU
-          # decommission (2026-08-29; tier retired 2026-08-31, #270), so the row
-          # stays until a GPU successor for the drain's OCR lane is validated
-          # instead. Its former primary consumer — the paper-intake OCR
-          # processor — was removed 2026-08-20 with the returned ADS-1800W
-          # scanner, so only the academic-ocr drain lane still dials this route;
-          # weigh that when deciding whether it exits with the worker-drain flip.
-          "qwen3-vl-8b-ocr"
-          # "qwen3-vl-32b-ocr-refine"
-          "qwen3-embedding-8b-q8-0"
-          "qwen3-vl-embedding-8b-q8-0"
-          # MELS fleet additions (#229): Qwen lane primary + wildcard companion.
-          # A switch describes them; only local-models-borrow moves their bytes.
-          "qwen38-27b-mtp-q8-0"
-          # "ornith-15-35b-q8-0"
-        ]
-        # ── the worker's lane (#229, live 2026-08-21) ─────────────────────────
-        # The two gemma4-31b rows have carried `hosts = [ "worker" ]` since the
-        # MELS work and were inert for exactly as long as this host was absent
-        # from the flake. They are the whole worker roster: the Google MELS lane
-        # heavy model and its multimodal twin, sharing one Q8_0 weight set (the
-        # -vl entry adds only the BF16 projector, and forgoes speculative
-        # decoding because llama.cpp refuses to combine it with vision).
-        #
-        # Deliberately NOT mirrored from the coordinator: the twins have 128 GB
-        # each, not 256 GB between them, and duplicating the qwen/fara rosters
-        # would spend the worker's disk on weights the coordinator already
-        # serves over the LAN for nothing in return. The split is the point.
-        ++ lib.optionals (config.networking.hostName == "worker") [
-          "gemma4-31b-it-q8-0"
-          "gemma4-31b-it-vl"
-        ];
-      artifacts = [
-        # BOTH twins, unconditionally: the flashnext TP=2 checkpoint is
-        # tensor-parallel across coordinator AND worker, so each box needs the
-        # complete 185.6 GB on its own NVMe (TP shards compute, not weights).
-        # Listing it here keeps wanted.json and the explicit prune oracle aligned.
-        # No activation or boot path prunes or borrows it; the old sync service
-        # that deleted both freshly staged copies on 2026-08-29 is gone.
-        # No llama-swap row: vLLM serves this one through its own pair service.
-        "flashnext-fp8"
-        # DS4, both twins, same reasoning and the same anti-prune duty: 155.44
-        # GiB (166,898,508,212 B, 53 files, 48 shards) complete on each box for
-        # the TP=2 serve. Verified 2026-09-03 against the Library: all 53
-        # declared files present, every oid 64-hex, declared bytes == actual
-        # bytes exactly, no LFS pointers, safetensors index and shard headers
-        # agree in both directions.
-        #
-        # The row name says "bf16" and that is a MISNOMER kept for continuity —
-        # the key is load-bearing in FN_MODEL_DIR, FN_LIBRARY_DIR and two banked
-        # receipts, so the notes get fixed, not the key. The checkpoint is
-        # native MXFP4: FP4 experts packed two per byte with one E8M0 scale per
-        # 32 values (138 GiB of the 155), plus UE8M0-scaled FP8 e4m3 dense
-        # weights. Only embeddings and norms are BF16. config.json's
-        # `torch_dtype: bfloat16` is the COMPUTE dtype and is where the wrong
-        # suffix came from. flashnix docs/trinity/DS4-BRINGUP.md §1 has the
-        # byte-level evidence.
-        "deepseek-v4-flash-0731-bf16"
-      ]
-      # ── worker ONLY: the single-box ciru reference (#291) ─────────────────
-      #
-      # Switching NixOS is always safe whether these bytes exist or fit. An
-      # operator who wants the working copy separately runs
-      # `local-models-borrow --dry-run`, reviews the whole capacity plan, then
-      # `--yes`. The bring-up runbook remains in the flashnix repo at
-      # docs/trinity/CIRU-IU4-WORKER.md.
-      #
-      # NOT mirrored to the coordinator, and that asymmetry is the entire
-      # point: this is one box running the whole model, the control against
-      # which the flashnext TP=2 pair spread across BOTH twins is measured.
-      # Declaring it on the coordinator too would spend 126.63 GiB proving
-      # nothing and would break the coordinator's exact-list guard in
-      # flake.nix, which is deliberately left reading [ "flashnext-fp8" ].
-      #
-      # An ARTIFACT, never a deployment row: ciru's IU4 needs its own
-      # llama.cpp fork (github.com/ciru-ai/Qwen3.8-Flash-CIRU-STRIX-IU4, tag
-      # v1.1 = commit baba5e0617ac40aa88b9ba96f4b90e584caec64e, MIT). Stock
-      # llama.cpp, vLLM and HF transformers cannot load it, so there is no
-      # llama-swap row to write — same shape as flashnext-fp8 and the three
-      # glm53-flash-ciru rows. It is served, if at all, by a hand-run
-      # ./scripts/ciru/run-server.sh out of that checkout.
-      #
-      # This line also keeps wanted.json and the guarded, operator-only prune
-      # oracle aligned. It does not copy, move, or delete the working copy.
-      ++ lib.optionals (config.networking.hostName == "worker") [
-        "qwen38-flash-ciru-strix-iu4"
+    # What each twin WANTS on its own NVMe under /var/lib/local-models — the
+    # exact set local-models-borrow loans from the NAS Library and
+    # local-models-prune keeps. Nothing here serves a model: the worker's
+    # bundle is served by modules/halogen.nix, the coordinator's small GGUFs by
+    # a hand-run llama-server. The catalogue (lib/local-models.nix) stays
+    # broader than either list — embeddings, VibeVoice speech and Mage rows are
+    # loanable on demand — and the NAS Library keeps every row regardless.
+    services.local-models.artifacts =
+      lib.optionals (config.networking.hostName == "worker") [
+        "halogen-qwen38-flash-next"
+        "halogen-qwen38-27b"
       ]
       ++ lib.optionals (config.networking.hostName == "coordinator") [
-        # PARKED, not retired (#286, 2026-09-03). 70.7 GiB of snapshot payload
-        # with no consumer: neither family has a systemd unit on either twin,
-        # because the runtime services are still gated on a proven ROCm
-        # package. Staging the dual-Strix lane needed the space more than a
-        # not-yet-servable checkpoint did. Catalog rows stay; re-borrow is one
-        # explicit transaction from the Library (all six verified 2026-09-03).
-        # NB: the mage byte-count asserts in flake.nix read mageArtifactIds
-        # from the catalog directly, so they stay green with these commented.
-        # "mage-vl-bf16"
-        # "mage-flow-4b-turbo-bf16"
-        # "mage-flow-edit-4b-turbo-bf16"
-        # "vibevoice-asr-bf16"
-        # "vibevoice-large-bf16"
-        # "vibevoice-qwen25-7b-tokenizer"
+        "qwen36-35b-a3b-mtp-ud-q8-k-xl"
+        "gemma4-12b-it-q8-0"
+        "gemma4-12b-it-mtp-q8-0"
+        "fara15-9b-q8-0"
+        "fara15-9b-mmproj-bf16"
       ];
-    };
 
     # NPU DECOMMISSIONED 2026-08-29: Tom forgoes the XDNA2 NPU permanently.
     # The nix-amd-ai import stays — its overlay is applied unconditionally and
@@ -189,11 +60,13 @@
     # and the flm package from both twins. Recovery is flipping these back and
     # restoring the catalog rows to canonical. (utility-model survived the
     # decommission: it migrated to the GPU seam the same day and now installs
-    # via modules/local-models.nix on the coordinator only, dialing llama-swap.)
+    # via modules/halogen.nix on the coordinator only, dialing the worker's
+    # Halogen server.)
     #
-    # The memlock loss is not a serving regression: managed llama-swap sets its
-    # own LimitMEMLOCK=infinity on its unit (modules/llama-swap.nix), so the GPU
-    # inference path never depended on the @video/@render limits this gate drops.
+    # The memlock loss is not a serving regression: the Halogen container runs
+    # with an unlimited memlock ulimit of its own (modules/halogen.nix), so the
+    # GPU inference path never depended on the @video/@render limits this gate
+    # drops.
     #
     # linux 7.2 ships amdxdna IN-TREE, so disabling the nix-amd-ai module no
     # longer keeps the driver off the bus — observed bound (0 users) on the
@@ -259,35 +132,6 @@
       cores = 8;
     };
 
-    # The fleet rails' latency floor. Both twins hold /dev/cpu_dma_latency at
-    # 0, because holding it on only ONE end is worth almost nothing (468 us
-    # against 577 us unheld and 63-90 us held on both) — the remote wakeup
-    # dominates the round trip. Enabling it here rather than per-host is the
-    # point: this module is imported by exactly the two boxes that must agree,
-    # so the both-ends invariant is structural instead of a deploy checklist.
-    myLowLatCluster = {
-      enable = true;
-      # Each twin watches the other's end of the tb-fleet /30.
-      peer = if config.networking.hostName == "coordinator" then "10.99.0.2" else "10.99.0.1";
-      # jumbo stays off: see the two-step deploy note in the module. The
-      # measured win is PM QoS; MTU buys throughput nothing has yet shown to
-      # be short of.
-    };
-
-    # The patched Thunderbolt module set (#241) rides the same both-ends
-    # logic: the matched core/net ABI is a per-host invariant, but ibverbs
-    # USE needs both twins on the set, so it is enabled here — in the file
-    # only the twins import — not per-host. Per-host escape stays runtime:
-    # `touch /etc/fn-rdma-disable` + one attended reboot loads the stock pair.
-    myFnRdma.enable = true;
-    myUsb4Stream.enable = true;
-
-    # Cable-bound rail0/rail2 names (#266). Enabled here for the same
-    # both-ends reason as the two above: a rename on one twin only would put
-    # the two ends of a /30 on different cables, which is the exact silent
-    # darkness this closes. The per-host NHI table lives in the module.
-    myFleetRails.enable = true;
-
     # ── Linux 7.2 on the twins (#244) ──────────────────────────────────────
     #
     # Same sourcing doctrine as hosts/nas/kernel.nix, applied to the boxes that
@@ -309,11 +153,8 @@
     # 7.2 fixes it. No mkForce: modules/common.nix:45 sets kernelPackages with
     # mkDefault, so this plain assignment wins on both twins.
     #
-    # The one string attached to this: the fn-rdma .ko set is vermagic-pinned
-    # and its 7.2 re-bake is pending on the ATTENDED operator lane (#244,
-    # host/rdma/fetch-and-build.sh). Until that set is staged, the loader takes
-    # its sanctioned stock-thunderbolt fallback — the TB rails carry IP, just
-    # without ibverbs. See modules/fn-rdma.nix `stagedDir`.
+    # Nothing out-of-tree rides this kernel, so a 7.2.x point release is just
+    # a point release.
     boot.kernelPackages =
       (import inputs.nixpkgs-fresh {
         inherit (pkgs.stdenv.hostPlatform) system;
@@ -325,59 +166,19 @@
     # ttm.pages_limit=33554432 is 33554432 × 4 KiB = exactly 128 GiB, i.e. the
     # whole machine: a deliberate CEILING for a box whose entire point is that
     # the iGPU reaches system RAM. It is NOT a memory policy and it reserves
-    # nothing. Kept at 128 GiB by ruling on #280, 2026-08-31, because it is
-    # coupled to flashnext's per-rank claim — see the HAZARD below before
-    # touching it.
-    #
-    # HAZARD — pages_limit and FN_GPU_UTIL are two unrelated mechanisms that
-    # must be changed TOGETHER (#280).
-    #   * amdgpu sizes the GTT pool from the TTM page limit and then clamps it
-    #     to system RAM. Measured on BOTH twins, current boot:
-    #         amdgpu: Capping GTT to 128087M to not exceed available system memory
-    #         amdgpu: 128087M of GTT memory ready.
-    #         mem_info_gtt_total = 134309523456 B = 125.085 GiB
-    #                            = MemTotal (131161644 kB) to the byte
-    #     So today the 128 GiB request sits ~2.9 GiB above what the kernel will
-    #     grant, and the RAM cap — not this parameter — sets gtt_total. Push
-    #     pages_limit BELOW MemTotal and it becomes load-bearing directly:
-    #     gtt_total follows it down.
-    #   * The actual policy is FN_GPU_UTIL=0.62 in flashnext's host/fn-env.sh,
-    #     and it is a FRACTION OF GTT (fork patch 0004 points the engine's
-    #     memory reporting at mem_info_gtt_total): 0.62 × 125.085 GiB =
-    #     77.55 GiB/rank, which is the measured 76–78 GiB/rank. 0.62 was chosen,
-    #     not defaulted — it keeps the rank under the 80 GiB residency bound
-    #     receipts-verify grades (ruling P11) and leaves the ~40 GiB/node of
-    #     page cache the mmap'd engram table is served from.
-    #
-    # Hence why #280's "lower the ceiling to ~96 GiB so the OS enforces the
-    # reservation the application only promises" option was rejected: lowering
-    # the ceiling shrinks gtt_total, and shrinking gtt_total silently shrinks
-    # the engine's claim through that same 0.62 — 0.62 × 96 = 59.5 GiB/rank, an
-    # ~18 GiB/rank cut to the very workload the change was meant to protect,
-    # with no error and no log line. The "protection" would rewrite the
-    # protected thing. A ceiling stays a ceiling.
-    #
-    # Enforcement of the ~40 GiB page-cache reservation therefore does not
-    # belong to a kernel parameter. It belongs to #270: making the flashnext
-    # lane a declared unit with its own accounting and a real arbitration
-    # against llama-swap, which returns on every boot and every rebuild with
-    # LimitMEMLOCK=infinity and is entitled to the same 125 GiB pool.
-    #
-    # Failure mode of getting this wrong is not an OOM and not an error: the
-    # engram table's page cache is evicted and every table gather becomes an
-    # NVMe fault — a decode-latency collapse that reads as a model or transport
-    # problem, the most expensive class of bug on this estate. Idle 2026-08-31:
-    # coordinator 93 GiB buff/cache, worker 20 GiB (the worker has not yet
-    # faulted the table in, so the "cache is already full of what we must
-    # protect" framing in #280 is coordinator-only). Whoever changes this
-    # number changes host/fn-env.sh in the same breath, or measures why not.
+    # nothing — amdgpu sizes the GTT pool from it and then clamps to system
+    # RAM (measured on both twins: "Capping GTT to 128087M", gtt_total =
+    # MemTotal to the byte), so today the RAM cap, not this number, sets the
+    # pool. Push it below MemTotal and it becomes load-bearing directly.
+    # The worker's Halogen server plans its KV pool against that GTT figure
+    # (modules/halogen.nix); whoever lowers this ceiling re-checks
+    # HALOGEN_KV_POOL_POSITIONS in the same change.
     #
     # IOMMU is explicitly OFF since the 2026-08-29 NPU decommission. It was on
     # for amdxdna, the only consumer on these boxes that ever needed translated
     # mode; with amdxdna gone nothing on the twins does, so the DMA translation
-    # cost buys nothing. (The old comment here also claimed hardware.amd-npu
-    # pins iommu.passthrough=0 — the pinned nix-amd-ai never has; that claim was
-    # already stale before this change.)
+    # cost buys nothing — and Halogen's own measurements put amd_iommu=off at
+    # 13–16 % of prefill.
     #
     # watchdog.stop_on_reboot=0 keeps sp5100_tco armed across the reboot
     # transition (#244 checklist): the watchdog exists precisely to catch a box

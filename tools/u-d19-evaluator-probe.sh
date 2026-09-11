@@ -7,7 +7,8 @@
 #   bash tools/u-d19-evaluator-probe.sh
 #
 # READ-ONLY. Nothing is switched, started, stopped, restarted or written; the
-# worker box is not contacted; llama-swap is not touched; no credential is read.
+# worker box (and the Halogen server on it) is not contacted; no credential is
+# read.
 #
 # THREE THINGS THE CARD'S ORACLE CANNOT SEE.
 #

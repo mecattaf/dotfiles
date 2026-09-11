@@ -21,12 +21,11 @@
 #
 # WHY NO BUILD STEP: these are pi packages, i.e. TypeScript that pi transpiles
 # and runs itself. A package needs a Nix build only if it has real *runtime*
-# dependencies. pi-llama-swap has none — every non-relative import is either
-# `import type` (erased before module resolution) or a node: builtin, and its
-# sole package.json dependency (undici-types) is types-only. So the store SOURCE
-# *is* the loadable package. An extension that DID carry runtime deps would need
-# pkgs.buildNpmPackage (with an npmDepsHash) to vendor node_modules — swap `src`
-# for that derivation and the rest of this module is unchanged.
+# dependencies. A pure-TypeScript extension (only `import type` and node:
+# builtins) loads straight from the store SOURCE. An extension that DID carry
+# runtime deps would need pkgs.buildNpmPackage (with an npmDepsHash) to vendor
+# node_modules — swap `src` for that derivation and the rest of this module is
+# unchanged.
 #
 # LAZY LOADING (the nvim question): pi loads extensions eagerly at startup —
 # they're cheap JS modules, so there is no per-keystroke `lazy`-style deferral to
@@ -37,11 +36,14 @@
 # the latter to scope an extension to one repo instead of the whole fleet.
 #
 let
-  # Embedded home-manager exposes the host's evaluated NixOS config here. Only
-  # load the local provider where that host actually runs llama-swap; Pi itself
-  # remains available everywhere.
-  llamaSwap = lib.attrByPath [ "services" "llama-swap" ] null osConfig;
-  hasLocalLlamaSwap = llamaSwap != null && llamaSwap.enable;
+  # Embedded home-manager exposes the host's evaluated NixOS config here. The
+  # fleet's one local endpoint is the worker's Halogen server; its address and
+  # model id come from modules/halogen.nix's client options on whichever host
+  # renders this, falling back to the fleet convention where that module is
+  # not imported.
+  halogen = lib.attrByPath [ "services" "halogen" ] null osConfig;
+  halogenEndpoint = if halogen != null then halogen.client.endpoint else "http://worker:8731";
+  halogenModelId = if halogen != null then halogen.modelId else "halogen-qwen3.8-flash-next";
 
   # ── Qwen Token Plan (Alibaba MaaS subscription) ──────────────────────────
   # pi ships `qwen-token-plan` as a BUILT-IN provider on exactly our endpoint
@@ -143,25 +145,13 @@ let
     };
   };
 
-  # ── Local inference providers (flashnix pair + llama-swap) ───────────────
-  # These three lived ONLY in a hand-edited ~/.pi/agent/models.json, which this
-  # module also generates — so every `home-manager switch` silently reverted the
-  # file to the qwen-token-plan-only version and local AI went dark until someone
-  # re-pasted them. Declaring them here is the fix: the generated file now IS the
-  # roster, and a switch is a no-op instead of a regression.
-  #
-  # WHY THESE AND NOT the pi-llama-swap extension's dynamic discovery: that
-  # extension registers ONE provider (`llama-swap`) against LLAMA_SWAP_PORT on
-  # localhost, so it can neither reach the worker's proxy nor name the two
-  # planes apart in a receipt. The static entries below are addressable by an
-  # exact `--provider/--model` pair, which is what the flashnix bring-up
-  # receipts quote verbatim. Both routes coexist; neither shadows the other.
-  #
-  # WHY UNCONDITIONAL (no `hasLocalLlamaSwap` gate): a provider entry is an inert
-  # endpoint declaration — pi dials it only when a run names it. Gating would
-  # reintroduce exactly the failure this commit removes, i.e. a host evaluating
-  # to a models.json with no local providers in it. Cost of keeping them
-  # everywhere is three unreachable rows in `pi --list-models`.
+  # ── the local inference provider ─────────────────────────────────────────
+  # Declared HERE, in the generated models.json, and unconditionally: a
+  # provider entry is an inert endpoint declaration that pi dials only when a
+  # run names it, so every host renders the same row and a `home-manager
+  # switch` can never regress a hand-edited file back to cloud-only. The row
+  # is addressable by an exact `--provider/--model` pair, which is what
+  # receipts quote verbatim.
   zeroCost = {
     input = 0;
     output = 0;
@@ -169,86 +159,50 @@ let
     cacheWrite = 0;
   };
 
-  # llama-swap and the vLLM lane are both auth-free on the LAN; pi still wants a
-  # non-empty key or it refuses to build the Authorization header.
+  # Halogen is auth-free on the LAN; pi still wants a non-empty key or it
+  # refuses to build the Authorization header.
   openaiCompat = {
     supportsDeveloperRole = false;
     supportsReasoningEffort = false;
     supportsStore = false;
   };
 
-  # This host's own proxy port where NixOS declares it, else the fleet-wide
-  # convention (modules/llama-swap.nix pins 9292 on every box that runs it).
-  llamaSwapPort = if hasLocalLlamaSwap then llamaSwap.port else 9292;
-
   localModelsJson = {
     providers = {
-      # The flashnix TP=2 vLLM pair (modules/flashnext-lane.nix arbitrates it
-      # against llama-swap — exactly one plane holds the GPUs at a time, so this
-      # provider answers only while the pair is up).
-      flashnix-local = {
+      # The fleet's one local model: Halogen Flash on the worker, by hostname
+      # over the house LAN (modules/halogen.nix). Vision-capable; reasoning is
+      # on by default and the token budget covers thinking, so maxTokens is
+      # generous. Halogen accepts pi's /v1/chat/completions shape and also
+      # serves /v1/responses.
+      halogen = {
         api = "openai-completions";
-        apiKey = "flashnix-local-no-auth";
+        apiKey = "halogen-no-auth";
         authHeader = true;
-        baseUrl = "http://127.0.0.1:1234/v1";
+        baseUrl = "${halogenEndpoint}/v1";
         compat = openaiCompat;
         models = [
           {
-            id = "flashnix";
-            name = "Qwen3.8-Flash-Next FP8 (flashnix pair, TP=2)";
+            id = halogenModelId;
+            name = "Qwen3.8-Flash-Next (Halogen, worker)";
             contextWindow = 262144;
             maxTokens = 32768;
-            input = [ "text" ];
-            reasoning = false;
+            input = [
+              "text"
+              "image"
+            ];
+            reasoning = true;
             cost = zeroCost;
           }
-        ];
-      };
-
-      llama-swap-coordinator = {
-        api = "openai-completions";
-        apiKey = "llama-swap-no-auth";
-        authHeader = true;
-        baseUrl = "http://127.0.0.1:${toString llamaSwapPort}/v1";
-        compat = openaiCompat;
-        models = [
+          # The alternate engine on the same port (services.halogen.alternates,
+          # `halogen-switch qwen38-27b`). Whichever server is resident answers
+          # any model id, so this row is what pi shows while the 27B is up.
           {
-            id = "qwen3.8-27b";
-            name = "Qwen3.8 27B Q8_0 (llama-swap, coordinator)";
-            contextWindow = 32768;
-            maxTokens = 8192;
+            id = "halogen-qwen3.8-27b";
+            name = "Qwen3.8-27B (Halogen alternate, worker)";
+            contextWindow = 262144;
+            maxTokens = 16384;
             input = [ "text" ];
-            reasoning = false;
-            cost = zeroCost;
-          }
-          {
-            id = "qwen3.6-35b-a3b";
-            name = "Qwen3.6 35B-A3B MTP (llama-swap, coordinator)";
-            contextWindow = 32768;
-            maxTokens = 8192;
-            input = [ "text" ];
-            reasoning = false;
-            cost = zeroCost;
-          }
-        ];
-      };
-
-      # The twin's proxy, by hostname — resolved over the same 10.42.0.0/24 the
-      # weight staging uses, not over Tailscale.
-      llama-swap-worker = {
-        api = "openai-completions";
-        apiKey = "llama-swap-no-auth";
-        authHeader = true;
-        baseUrl = "http://worker:9292/v1";
-        compat = openaiCompat;
-        models = [
-          {
-            id = "gemma4-31b-it";
-            name = "Gemma4 31B IT (llama-swap, worker)";
-            contextWindow = 32768;
-            maxTokens = 8192;
-            input = [ "text" ];
-            reasoning = false;
+            reasoning = true;
             cost = zeroCost;
           }
         ];
@@ -267,15 +221,9 @@ let
   # and an immutable `src`. Add a package by adding a stanza; disable one by
   # flipping `enable = false` (or deleting it). Update by bumping rev + hash
   # (nix-prefetch-url --unpack <github-archive-url>, then nix hash to-sri).
-  extensions = {
-    # llama-swap provider with dynamic model discovery — feeds the local model
-    # roster served on this box (see modules/llama-swap.nix) into pi as a
-    # first-class provider. https://pi.dev/packages/@danielmeneses/pi-llama-swap
-    pi-llama-swap = {
-      enable = hasLocalLlamaSwap;
-      src = pkgs.pi-llama-swap-extension;
-    };
-  };
+  # Empty today: the local provider is plain models.json config (above), which
+  # needs no extension.
+  extensions = { };
 
   # Enabled specs → a flat `-e <store-path>` argv the wrapper prepends.
   enabled = lib.filterAttrs (_: e: e.enable) extensions;
@@ -297,14 +245,6 @@ let
         exec ${pi}/bin/pi "$@"
         ;;
     esac
-    # The extension's upstream default is :8080; our one caller-facing local
-    # LLM endpoint comes from this host's service config. Preserve an explicit
-    # caller override for diagnostics and remote endpoints.
-    ${lib.optionalString hasLocalLlamaSwap ''
-      if test -z "''${LLAMA_SWAP_URL-}" && test -z "''${LLAMA_SWAP_PORT-}"; then
-        export LLAMA_SWAP_PORT=${toString llamaSwap.port}
-      fi
-    ''}
     exec ${pi}/bin/pi ${lib.escapeShellArgs loadArgs} "$@"
   '';
 in

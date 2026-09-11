@@ -30,69 +30,43 @@ prepare() {
     and (.observed_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T"))
     and (.status | IN("no-delta", "irrelevant", "relevant", "needs-split")))' \
     "$manifest" >/dev/null
-  jq -e '.deployments | type == "object" and length > 0' "$catalog" >/dev/null
+  jq -e '.artifacts | type == "object" and length > 0' "$catalog" >/dev/null
   jq -e '.data | type == "array"' "$models" >/dev/null
   jq -e '
-    .model_selection_policy.active_llama_cpp_weight_target == "Q8"
-    and (.model_selection_policy.preferred_quantizations | index("Q8_0") != null)
-    and (.model_selection_policy.active_lower_bit_exceptions | type == "array")
-    and (.model_selection_policy.native_format_exceptions | type == "array")
-    and (.hardware_context.nodes | type == "array" and length == 1)
-    and (.hardware_context.nodes[0].name == "coordinator")
+    (.inference.provider | type == "string" and length > 0)
+    and (.inference.url | type == "string" and startswith("http"))
+    and (.inference.model | type == "string" and length > 0)
+    and (.model_selection_policy.summary | type == "string" and length > 0)
+    and (.model_selection_policy.kept_small_artifacts | type == "array")
+    and (.hardware_context.nodes | type == "array")
+    and ([.hardware_context.nodes[].name] | index("coordinator") != null)
+    and ([.hardware_context.nodes[].name] | index("worker") != null)
   ' "$registry" >/dev/null
+  if ! jq -e --slurpfile catalog "$catalog" '
+    .model_selection_policy.kept_small_artifacts - ($catalog[0].artifacts | keys) | length == 0
+  ' "$registry" >/dev/null; then
+    printf 'local-ai-monthly: a kept small artifact is not in the catalogue\n' >&2
+    exit 1
+  fi
 
   canonical_copy "$manifest" "$out/manifest.json"
   canonical_copy "$catalog" "$out/catalog.json"
-  canonical_copy "$models" "$out/llama-swap-models.json"
+  canonical_copy "$models" "$out/inference-models.json"
 
-  local advertised model_class fallback_json selected selected_class role ram_order
-  advertised="$(jq -c '[.data[]?.id | strings] | sort | unique' "$models")"
-  model_class="$(jq -r '.inference.model_class' "$registry")"
-  fallback_json="$(jq -c '.inference.fallback_classes // []' "$registry")"
-  selected=''
-  selected_class=''
-
-  while IFS= read -r class; do
-    mapfile -t roles < <(jq -r --arg class "$class" '.inference.classes[$class].role_order[]?' "$registry")
-    ram_order="$(jq -r --arg class "$class" '.inference.classes[$class].ram_order // "descending"' "$registry")"
-    for role in "${roles[@]}"; do
-      selected="$(jq -c \
-        --arg role "$role" \
-        --argjson advertised "$advertised" \
-        --arg order "$ram_order" '
-          [.deployments | to_entries[]
-            | .value as $deployment
-            | select($deployment.status == "canonical")
-            | select($deployment.role == $role)
-            | select($advertised | index($deployment.model))
-            | {
-                deployment_id: .key,
-                model_id: $deployment.model,
-                role: $deployment.role,
-                ram_tier_gb: ($deployment.ramTierGb // 0),
-                backend: $deployment.backend
-              }]
-          | sort_by(.ram_tier_gb, .model_id)
-          | if $order == "descending" then reverse else . end
-          | .[0] // empty
-        ' "$catalog")"
-      if [[ -n "$selected" ]]; then
-        selected_class="$class"
-        break 2
-      fi
-    done
-  done < <(jq -nr --arg primary "$model_class" --argjson fallback "$fallback_json" \
-    '[$primary] + $fallback | .[]')
-
-  if [[ -z "$selected" ]]; then
-    printf 'local-ai-monthly: no advertised llama-swap model satisfies the configured classes\n' >&2
+  # The fleet is mono-model: the registry names the served model and the
+  # live server must advertise it before any Tally slot is spent on Pi.
+  local model_id
+  model_id="$(jq -r '.inference.model' "$registry")"
+  if ! jq -e --arg model "$model_id" '[.data[]?.id | strings] | index($model) != null' \
+    "$models" >/dev/null; then
+    printf 'local-ai-monthly: the inference server does not advertise %s\n' "$model_id" >&2
     exit 1
   fi
   jq -n --arg provider "$(jq -r '.inference.provider' "$registry")" \
     --arg endpoint "$(jq -r '.inference.url' "$registry")" \
-    --arg class "$selected_class" \
-    --argjson selected "$selected" \
-    '{provider: $provider, endpoint: $endpoint, class: $class} + $selected' \
+    --arg compute_host "$(jq -r '.inference.compute_host // "worker"' "$registry")" \
+    --arg model "$model_id" \
+    '{provider: $provider, endpoint: $endpoint, compute_host: $compute_host, model_id: $model}' \
     > "$out/model.json"
 
   local hf_list="$out/hf-repositories.txt"
@@ -251,47 +225,38 @@ prepare() {
     printf '# Accepted local context\n\n'
     printf 'The current typed roster is authoritative. Recommendations do not edit it.\n\n'
     printf '## Operator model-selection policy\n\n'
-    printf -- '- Active llama.cpp model/MTP target: **%s**.\n' \
-      "$(jq -r '.model_selection_policy.active_llama_cpp_weight_target' "$registry")"
-    printf -- '- Preferred quant labels: `%s`.\n' \
-      "$(jq -r '.model_selection_policy.preferred_quantizations | join("`, `")' "$registry")"
-    printf -- '- Active lower-bit exceptions: %s.\n' \
-      "$(jq -r '.model_selection_policy.active_lower_bit_exceptions | if length == 0 then "none" else join(", ") end' "$registry")"
-    printf -- '- Native-format exceptions: %s.\n' \
-      "$(jq -r '.model_selection_policy.native_format_exceptions | join("; ")' "$registry")"
-    printf -- '- Rationale: %s\n' "$(jq -r '.model_selection_policy.rationale' "$registry")"
-    printf -- '- Monthly census rule: %s\n\n' "$(jq -r '.model_selection_policy.monthly_census' "$registry")"
+    printf -- '- %s\n' "$(jq -r '.model_selection_policy.summary' "$registry")"
+    printf -- '- Served model: `%s` through provider `%s` at `%s` on `%s`.\n' \
+      "$model_id" \
+      "$(jq -r '.inference.provider' "$registry")" \
+      "$(jq -r '.inference.url' "$registry")" \
+      "$(jq -r '.inference.compute_host // "worker"' "$registry")"
+    printf -- '- Kept small Library artifacts: %s.\n' \
+      "$(jq -r '.model_selection_policy.kept_small_artifacts | if length == 0 then "none" else "`" + join("`, `") + "`" end' "$registry")"
+    printf -- '- Runtime policy: %s\n' "$(jq -r '.hardware_context.runtime_policy' "$registry")"
+    printf -- '- Change policy: %s\n\n' "$(jq -r '.hardware_context.change_policy' "$registry")"
 
     printf '## Fleet hardware\n\n'
-    printf '| Host | Hardware | Accelerator policy |\n'
-    printf '|---|---|---|\n'
-    jq -r '.hardware_context.nodes[] | [.name, .hardware, .policy] | @tsv' "$registry" \
-      | while IFS=$'\t' read -r host hardware policy; do
-          printf '| `%s` | %s | %s |\n' "$host" "$hardware" "$policy"
+    printf '| Host | Hardware | Policy | Roles |\n'
+    printf '|---|---|---|---|\n'
+    jq -r '.hardware_context.nodes[] | [.name, .hardware, .policy, ((.roles // []) | join(", "))] | @tsv' "$registry" \
+      | while IFS=$'\t' read -r host hardware policy roles; do
+          printf '| `%s` | %s | %s | %s |\n' "$host" "$hardware" "$policy" "$roles"
         done
 
-    printf '\n## Canonical served roster\n\n'
-    printf '| Deployment | Served model | Hosts | Role / backend | Weight artifacts and quant | RAM tier | Evidence |\n'
-    printf '|---|---|---|---|---|---:|---|\n'
+    printf '\n## Library artifact catalogue\n\n'
+    printf 'Artifacts are loanable NAS-Library files; none of them is served declaratively.\n\n'
+    printf '| Artifact | Kind | Primary file and quant | Maker | HF revision |\n'
+    printf '|---|---|---|---|---|\n'
     jq -r '
-      . as $catalog
-      | $catalog.deployments | to_entries[]
-      | select(.value.status == "canonical")
-      | . as $entry
-      | ([($entry.value.artifacts // {}) | to_entries[]
-          | select(.value != null)
-          | .value as $artifact_id
-          | $catalog.artifacts[$artifact_id]
-          | select(.kind | IN("model", "mtp-head"))
-          | ((.source.primary // $artifact_id) + " [" + (.quantization // "native") + "]")]
-          | if length == 0 then "runtime-managed" else join("<br>") end) as $weights
-      | [$entry.key, $entry.value.model, ($entry.value.hosts | join(", ")),
-         ($entry.value.role + " / " + $entry.value.backend), $weights,
-         ($entry.value.ramTierGb | tostring), $entry.value.evidence]
+      .artifacts | to_entries[]
+      | [.key, (.value.kind // "unknown"),
+         ((.value.source.primary // .key) + " [" + (.value.quantization // "native") + "]"),
+         (.value.maker // "unknown"), ((.value.source.revision // "unknown")[0:12])]
       | @tsv' "$catalog" \
-      | while IFS=$'\t' read -r deployment model hosts role_backend weights ram evidence; do
-          printf '| `%s` | `%s` | %s | %s | %s | %s | %s |\n' \
-            "$deployment" "$model" "$hosts" "$role_backend" "$weights" "$ram" "$evidence"
+      | while IFS=$'\t' read -r artifact kind weights maker revision; do
+          printf '| `%s` | %s | %s | %s | `%s` |\n' \
+            "$artifact" "$kind" "$weights" "$maker" "$revision"
         done
     if [[ -s "$capture/accepted-tally.md" ]]; then
       printf '\n## Previous accepted rationale (bounded)\n\n'
@@ -340,7 +305,7 @@ enrich() {
   local hf_manifest="$hf_capture/manifest.json"
 
   mkdir -p "$out"
-  for name in catalog.json context.md evidence.md hf-requests.json llama-swap-models.json \
+  for name in catalog.json context.md evidence.md hf-requests.json inference-models.json \
     manifest.json model.json next-sources.json pr-facts.md run.json; do
     cp "$prepared/$name" "$out/$name"
   done

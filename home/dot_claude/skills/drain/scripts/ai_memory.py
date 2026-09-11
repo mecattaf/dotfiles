@@ -26,12 +26,12 @@ from typing import Callable, Mapping, Sequence
 
 SOURCES = ("claude-code", "codex")
 STABLE_MODEL_ID = "utility"
-# The seam is GPU-backed through llama-swap since 2026-08-29. A request that
-# arrives after the roster's idle TTL unloaded the model pays for a cold load of
-# a ~40 GB Vulkan backend first — llama-swap sizes its own health window at 900s
-# for exactly that — so the per-request budget has to cover load plus generation.
+# The seam is the fleet's Halogen server on the worker, reached through the
+# `utility-model` wrapper. The server stays resident, but a request that lands
+# while the worker's unit is still starting waits on that start, and a long
+# root turn is a long generation — so the per-request budget is generous.
 UTILITY_TIMEOUT_SECONDS = 1200.0
-# A byte ceiling is conservative for the 32K-token Qwen deployment while still
+# A byte ceiling well inside the server's prompt budget while still
 # accommodating real root turns with many compact tool-evidence records.
 TURN_CHUNK_BYTES = 24_000
 MAX_HANDOFF_BYTES = 8_000
@@ -1112,18 +1112,18 @@ def utility_content(response: dict[str, object] | str) -> str:
     return content
 
 
-# The seam moved off the XDNA2 NPU to the GPU roster on 2026-08-29: the NPU is
-# decommissioned permanently, but distillation is not. `utility-model` now
-# forwards one request to llama-swap, which serves the stable id `utility` as
-# qwen3.6-35B-A3B. That wrapper is installed on the coordinator alone
-# (modules/local-models.nix), because the coordinator is the only host whose
-# llama-swap carries that row — so an absent wrapper means "not this host",
-# never "the model is gone". Failure stays closed and bounded through the same
-# MemoryError path every other failure uses, so callers, `main`, and the tests
-# keep their exit and return semantics.
+# The stable id `utility` is served by the fleet's one inference server, the
+# Halogen Flash server on the worker (modules/halogen.nix): `utility-model`
+# forwards one chat-completions request to it over the wired LAN and answers
+# under the stable id. That wrapper is installed on the coordinator alone, so
+# an absent wrapper means "not this host", never "the model is gone". Failure
+# stays closed and bounded through the same MemoryError path every other
+# failure uses, so callers, `main`, and the tests keep their exit and return
+# semantics.
 UTILITY_UNAVAILABLE = (
-    "local utility-model is not installed here; the GPU utility model "
-    "(qwen3.6-35B-A3B through llama-swap) is served on the coordinator only"
+    "local utility-model is not installed here; the utility-model wrapper "
+    "(which forwards to the Halogen server on the worker) is installed on the "
+    "coordinator only"
 )
 
 
@@ -1143,8 +1143,8 @@ def invoke_utility(request: dict[str, object]) -> dict[str, object]:
         )
     except subprocess.TimeoutExpired as exc:
         raise MemoryError(
-            "local utility-model timed out; llama-swap did not finish the "
-            f"cold load and generation within {UTILITY_TIMEOUT_SECONDS:.0f}s"
+            "local utility-model timed out; the Halogen server on the worker "
+            f"did not answer within {UTILITY_TIMEOUT_SECONDS:.0f}s"
         ) from exc
     except OSError as exc:
         raise MemoryError(f"could not invoke local utility-model: {exc}") from exc

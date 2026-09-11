@@ -18,8 +18,9 @@
 #      than tools/u-d19-switch-baseline.env records.
 #
 # Clause A is run in its FULL form, as the card says, in the delivered worktree.
-# Nothing here switches, reboots, restarts llama-swap, touches the worker box or
-# the NAS, reads a credential, or writes ~/.local/state/tally/.
+# Nothing here switches, reboots, touches the worker box (where the fleet's
+# Halogen server runs) or the NAS, reads a credential, or writes
+# ~/.local/state/tally/.
 set -uo pipefail
 
 repo="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -90,11 +91,18 @@ for t in tally-seat-feeder-claude.timer tally-seat-feeder-codex.timer tally-seat
   listed "$t" && pass "E2 list-timers names $t" || bad "E2 $t is not listed"; done
 listed tally-filler.timer && pass "E3 list-timers names tally-filler.timer (D-B66)" || bad "E3 tally-filler.timer is not listed"
 
-# F
-[ "$(systemctl is-active llama-swap.service 2>/dev/null)" = active ] && pass "F1 llama-swap.service is active" || bad "F1 llama-swap.service not active"
-for k in "ActiveEnterTimestamp:$U_D19_LLAMA_SWAP_ACTIVE_ENTER" "MainPID:$U_D19_LLAMA_SWAP_MAIN_PID" "NRestarts:$U_D19_LLAMA_SWAP_NRESTARTS"; do
-  p="${k%%:*}"; want="${k#*:}"; got=$(systemctl show -p "$p" --value llama-swap.service 2>/dev/null)
-  [ "$got" = "$want" ] && pass "F $p unchanged: $got" || bad "F $p is '$got', baseline '$want'"; done
+# F — the switch installed no inference serve on this box. The fleet's one
+# server is the worker's podman-halogen.service (modules/halogen.nix), and the
+# coordinator carries only the utility-model client that dials it; a serve unit
+# loaded on the coordinator's system bus would be a declaration this card never
+# made. The worker itself is deliberately not contacted from here.
+ls=$(systemctl show -p LoadState --value podman-halogen.service 2>/dev/null)
+[ "$ls" = not-found ] \
+  && pass "F1 podman-halogen.service is not loaded on the coordinator (LoadState=$ls): the serve is the worker's" \
+  || bad  "F1 podman-halogen.service is loaded on the coordinator (LoadState='${ls:-<empty>}'); the coordinator serves nothing"
+command -v utility-model >/dev/null 2>&1 \
+  && pass "F2 utility-model (the client that dials the worker's Halogen server) is on PATH" \
+  || bad  "F2 utility-model is not on PATH — the coordinator's one inference client is missing"
 
 # G
 u_after=$( [ -f "$ledger" ] && stat -c %s "$ledger" || echo 0 )

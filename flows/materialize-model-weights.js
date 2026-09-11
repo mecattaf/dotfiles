@@ -1,6 +1,6 @@
 export const meta = {
   name: "materialize-model-weights",
-  description: "Gate on #104 closing, then materialize allowlisted model weights on coordinator; replay-safe per artifact",
+  description: "Refuses: model bytes reach a host only through the operator's local-models-borrow transaction, which a flow cannot run",
   pools: ["flow-build"],
   argsSchema: {
     type: "object",
@@ -19,56 +19,27 @@ export const meta = {
 };
 
 (async () => {
-  const retiredModels = new Set([
-    "deepseek-v4-flash-q4-imatrix",
-    "deepseek-v4-flash-mtp"
-  ]);
-  const models = [...new Set(args.models)];
-  for (const model of models) {
-    if (retiredModels.has(model)) {
-      throw new Error(`retired DS4 artifact is not a materialization target: ${model}`);
-    }
-  }
-
-  // The whole campaign is armed but inert until the LaCie post-restore umbrella
-  // closes and the SSD space is real. This node IS the gate: it fails until then.
-  await sh(
+  // The weight plane lives outside Nix. There is no `.#models.<id>` store
+  // path to build: a catalogue row in lib/local-models.nix is an identity and
+  // a provenance record, the NAS Library holds the bytes, and a host's wanted
+  // set is rendered to /etc/local-models/wanted.json by a switch that moves
+  // nothing. Copying those bytes onto a host is a root-held operator
+  // transaction with its own lock, free-space gate and hash verification:
+  //
+  //   sudo local-models-borrow --dry-run
+  //   sudo local-models-borrow --yes
+  //
+  // This flow runs as the tally daemon's user and cannot hold that lock, so
+  // it refuses loudly rather than pretending to materialize anything. It stays
+  // registered so the fact is visible in `tally flow` listings.
+  const requested = [...new Set(args.models)];
+  throw new Error(
     [
-      "bash",
-      "-c",
-      'test "$(gh issue view 104 -R mecattaf/dotfiles --json state -q .state)" = "CLOSED"'
-    ],
-    { pools: ["flow-build"], key: "gate-issue-104", evidence: ["exit:0"], label: "gate-issue-104" }
-  );
-
-  // Weight downloads serialize through the build lane (capacity 1) on purpose:
-  // one WAN link, and this keeps the lane honest against the nightly deploy.
-  // Interrupted runs replay cheaply — each artifact node is keyed, so completed
-  // downloads collapse to Reused on re-run.
-  const coordinatorBuilt = [];
-  for (const model of models) {
-    const built = await sh(
-      ["nix", "build", `${args.flake}#models.${model}`, "--no-link", "--print-out-paths"],
-      {
-        pools: ["flow-build"],
-        key: `coordinator-${model}`,
-        evidence: ["exit:0"],
-        label: `coordinator:${model}`
-      }
-    );
-    coordinatorBuilt.push({ model, result: built.result });
-  }
-
-  // Post-materialization smoke: the coordinator rebuild must now see every
-  // allowlisted deployment resolvable without any network fetch.
-  return sh(
-    ["nix", "build", `${args.flake}#nixosConfigurations.coordinator.config.system.build.toplevel`, "--no-link"],
-    {
-      pools: ["flow-build"],
-      key: "closure-proof",
-      brief: { coordinator: coordinatorBuilt },
-      evidence: ["exit:0"],
-      label: "closure-proof"
-    }
+      "materialize-model-weights: refusing.",
+      `Requested ${requested.length} artifact id(s): ${JSON.stringify(requested)}.`,
+      "Model bytes are not built from the flake; they are borrowed from the NAS Library",
+      "by an operator with `sudo local-models-borrow --dry-run` then `--yes` on the host",
+      "whose /etc/local-models/wanted.json names them (docs/local-ai/README.md)."
+    ].join(" ")
   );
 })();

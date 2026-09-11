@@ -84,6 +84,17 @@ chmod 0444 "$ocr_result_tmp"
 mv -f -- "$ocr_result_tmp" "$ocr_result"
 
 driver_path=${ACADEMIC_OCR_DRIVER_PATH:?ACADEMIC_OCR_DRIVER_PATH is not set}
+# No fleet server offers /v1/embeddings. The embed and index stages run only
+# against an operator-run llama-server named here; with none named they are
+# skipped by the flow and receipted as skipped, and the paper still assembles
+# and chunks. There is deliberately no default.
+embeddings_url=${ACADEMIC_OCR_EMBEDDINGS_URL:-}
+if [[ -n $embeddings_url ]]; then
+  [[ $embeddings_url =~ ^https?://[^[:space:]]+$ ]] \
+    || die "ACADEMIC_OCR_EMBEDDINGS_URL is not an http(s) URL: $embeddings_url"
+else
+  printf 'academic-ocr-plan-assemble: ACADEMIC_OCR_EMBEDDINGS_URL is unset; the embed and index stages will be skipped and receipted as skipped\n' >&2
+fi
 output_dir="$run_dir/package"
 receipt_path="$run_dir/receipt.json"
 output_tmp=$(mktemp "$run_dir/.assemble-args.XXXXXX")
@@ -94,6 +105,7 @@ jq -n \
   --arg program "$driver_path" \
   --arg outputDir "$output_dir" \
   --arg receiptPath "$receipt_path" \
+  --arg embeddingsUrl "$embeddings_url" \
   '{
     paper: {
       paperId: $source[0].paperId,
@@ -112,7 +124,7 @@ jq -n \
     receiptPath: $receiptPath,
     chunkWords: 512,
     embedding: {
-      endpoint: "http://localhost:9292",
+      endpoint: (if $embeddingsUrl == "" then null else $embeddingsUrl end),
       model: "qwen3-embedding-8b",
       batchSize: 16,
       dimensions: 4096

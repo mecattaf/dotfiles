@@ -37,6 +37,17 @@ if ! flock -n 9; then echo "another drain is running" >&2; exit 75; fi
 
 log() { echo "$("$CORE/date" -Is) $*" | "$CORE/tee" -a "$DRAIN/drain.log" >&2; }
 
+# No fleet server offers /v1/embeddings. The embed and index stages run only
+# against an operator-run llama-server named here, with no default; unset,
+# every paper this session skips both stages and its receipt says so.
+EMBEDDINGS_URL="${ACADEMIC_OCR_EMBEDDINGS_URL:-}"
+case "$EMBEDDINGS_URL" in
+  "") log "ACADEMIC_OCR_EMBEDDINGS_URL unset: embed and index stages are SKIPPED for every paper this session and receipted as skipped (paper.md and chunks.json still land)" ;;
+  http://*|https://*) log "embeddings backend: $EMBEDDINGS_URL" ;;
+  *) log "ACADEMIC_OCR_EMBEDDINGS_URL is not an http(s) URL: $EMBEDDINGS_URL"; exit 64 ;;
+esac
+log "inference backend: $INFERENCE_URL"
+
 # ── #154: waiting for the corpus is THIS process's job, never systemd's ──────
 # The unit used to carry ConditionPathIsDirectory on the corpus root. A start
 # condition is evaluated once, and an unmet one marks the job *skipped* — the
@@ -118,11 +129,14 @@ while IFS= read -r line; do
   # 4 consecutive bare-numeric lines is the column-major linearization
   # fingerprint; see tables.sh for the full recall/false-positive table.
   args_file="$DRAIN/args/$db_id.json"
-  "$JQ" --arg dataRoot "$DATA_ROOT" --arg tools "$SELF" --arg bash "$BASH_BIN" '{
+  "$JQ" --arg dataRoot "$DATA_ROOT" --arg tools "$SELF" --arg bash "$BASH_BIN" \
+    --arg embeddingsUrl "$EMBEDDINGS_URL" '{
     paperId: .db_id, title: .title, sourceUrl: .file_url, sha256: .sha256,
     pageCount: .pages, dataRoot: $dataRoot, tools: $tools, bash: $bash,
-    dpi: 200, ocrModel: "qwen3-vl-8b-ocr", refineModel: "qwen3-vl-32b-ocr",
-    embedModel: "qwen3-embedding-8b", minAgreementPermille: 700,
+    dpi: 200, ocrModel: "halogen-qwen3.8-flash-next",
+    embedModel: "qwen3-embedding-8b",
+    embeddingsUrl: (if $embeddingsUrl == "" then null else $embeddingsUrl end),
+    minAgreementPermille: 700,
     mechSelfAgreementPermille: 930, mechMinWords: 200, tableMinNumericRun: 4
   }' <<<"$line" >"$args_file"
 
@@ -131,9 +145,9 @@ while IFS= read -r line; do
   run_id=$("$CORE/cat" "$run_id_file")
 
   log "start $db_id pages=$pages run_id=$run_id"
-  # Worst case per page since the table gate (2026-08-06): mech + cmpmech +
-  # tables + raster + vlm8b + cmp8b + vlm32b + cmp32b = 8 nodes.
-  max_nodes=$((8 * pages + 30))
+  # Worst case per page: mech + cmpmech + tables + raster + vlm + cmpvlm =
+  # 6 nodes.
+  max_nodes=$((6 * pages + 30))
   # One file per attempt, appended to the paper's log afterwards: the
   # supersede check below must only ever see THIS attempt's output, or a
   # historical args-changed error in the accumulated log would rotate the

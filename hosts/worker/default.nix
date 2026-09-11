@@ -16,23 +16,25 @@
 # 2026-08 architecture superseded is deliberately absent; each omission is
 # recorded below rather than silently dropped.
 #
-# WHAT IT IS NOW, in one line: a stationary LAN compute node at 10.42.0.5 that
-# owns Immich ML for the whole house and the worker half of the local-model
-# roster, ships its journal to the NAS, and is reached over ordinary SSH.
+# WHAT IT IS NOW, in one line: a stationary LAN compute node at 10.42.0.5,
+# wired into the BE550's Ethernet port 2 in another room from the coordinator
+# (no link of any other kind between the two), that owns Immich ML for the
+# whole house, ships its journal to the NAS, and is reached over ordinary SSH.
 #
 # WHAT IT IS NOT:
 #   * not a tailnet node — no node identity on any control plane. The
 #     2026-08-21 ruling said this as "the NAS is the fleet's single tailscale
 #     sink"; since 2026-09-01 the fleet has two tailnets and this box is on
 #     neither (the NAS runs its own headscale, the coordinator keeps
-#     tailscale.com as the emergency rail). Consequence, accepted: wayvnc has no
-#     reachable door here, because the :5900 admission is scoped to tailscale0
-#     and the standing rule is that VNC never touches the raw LAN. That door
-#     moved from modules/common.nix to hosts/coordinator/tailscale.nix on
-#     2026-09-01, which changes nothing here — the reason it was unreachable was
-#     always the missing interface, never the missing rule. The headless display
-#     below still exists so the niri session lights an output normally; the
-#     screen is simply not remotely viewable until this box has a tailnet again.
+#     tailscale.com as the emergency rail).
+#   * not a display — no compositor, no greeter, no VNC (Tom's ruling
+#     2026-09-11: "ONLY the coordinator has a display output, and therefore
+#     needs the compositor"). The fleet-wide greetd→niri autologin from
+#     modules/common.nix is forced off below, and home/remote.nix ships no
+#     wayvnc unit to a host whose niri is off. Home Manager itself STAYS:
+#     tom's shell, atuin, the user timers and the herdr/hk client are all real
+#     here; only the graphical session is absent. Console recovery is the VT
+#     getty autologin modules/common.nix keeps on every host.
 #   * not a build pusher — hosts/worker/cache-push.nix is DELETED. That module
 #     was a nix post-build-hook that pushed every locally built path into the
 #     coordinator's atticd. It held nothing else (its whole body was one
@@ -53,7 +55,7 @@
 #   * not thermally policed — the GPU cooldown tripwire is DEAD (Tom's ruling
 #     2026-08-21, at the end of this reintegration). Its two scripts and module
 #     are deleted, not carried forward: the sensor/hysteresis layer and the
-#     llama-swap shed adapter both go. The tripwire's original Layer 2 SSH'd to
+#     model-shedding adapter both go. The tripwire's original Layer 2 SSH'd to
 #     the coordinator for a `worker-gpu` Tally lease that no longer exists, and
 #     rather than keep a rewritten reflex nobody asked for, the whole thing is
 #     retired. The hardware's own thermal management owns this now.
@@ -64,13 +66,12 @@
   imports = [
     ./hardware.nix
     ./disko.nix
-    ./headless-display.nix
     ./immich-ml.nix # moved here from the coordinator 2026-08-21 (#229)
     ./journal-upload.nix # sender half of the #135 substrate — Strix boxes only
     ../../modules/cli-anything.nix
     ../../modules/strix.nix
     # TWINS ONLY: kills the stock 127.0.0.2 self-mapping and points both twins'
-    # names at their fleet identities on lo (#273). Without it gethostname()
+    # names at their static LAN addresses (#273). Without it gethostname()
     # resolves to loopback, which every distributed library happily binds — the
     # rank-1-hangs-forever failure. The NAS must NOT import this.
     ../../modules/fleet-hosts.nix
@@ -78,95 +79,70 @@
 
   networking.hostName = "worker";
 
+  # ── no display, no compositor ──────────────────────────────────────────────
+  # modules/common.nix enables greetd→niri fleet-wide with plain assignments,
+  # so these must be mkForce. Nothing graphical runs on this box: no greeter,
+  # no session, no wayvnc; VT1 simply gets the getty autologin like the other
+  # VTs. The flake asserts both stay off here and on the NAS, and on ONLY the
+  # coordinator.
+  programs.niri.enable = lib.mkForce false;
+  services.greetd.enable = lib.mkForce false;
+
   # ── the LAN identity ───────────────────────────────────────────────────────
-  # thomas-6ghz, modelled on the zenbook-duo's profile (that host was retired on
-  # 2026-08-30; see git history for hosts/zenbook-duo) for the WPA3-SAE/6GHz
-  # shape and on the coordinator's (hosts/coordinator/uplink-nas.nix)
-  # for the STATIC addressing rationale — this box is stationary and load-bearing:
-  # the NAS's Immich dials worker:3003 for every ML batch, the NAS admits
-  # 10.42.0.5 for journal upload, and hosts/nas/network.nix pins the name to this
-  # address ON THE NAS (host-scoped there since #277; fleet-wide until then,
-  # which is what made the twins resolve each other over wifi — they now use the
-  # 10.99.9.x fleet identities, ../../modules/fleet-hosts.nix).
-  # None of that may depend on a DHCP round-trip at association time or on a lease
-  # renewal ("anything dns/dhcp related must never bite", 2026-08-21). The dnsmasq
-  # dhcp-host pin in hosts/nas/router.nix stays as the guard that keeps the pool
-  # from ever handing .5 to anyone else.
+  # WIRED. This box lives in another room from the coordinator, and its one
+  # link to the house is an Ethernet cable from its 5GbE port (enp191s0) into
+  # the BE550's LAN port 2, right beside the NAS's port 1. There is no wifi
+  # profile: the mt7925e radio sits idle (its ASPM hardening in
+  # modules/strix.nix stays — the silicon is on the board, and a driver that
+  # never associates cannot roam-crash).
   #
-  # DELIBERATELY NO BSSID and no band: thomas-6ghz exists on exactly one radio
-  # (the BE550's 6GHz; its 5GHz radio is disabled and 2.4GHz carries the separate
-  # `thomas` SSID for the printer), so the mt7925e same-SSID roam crash has no
-  # surface — and the 6GHz MLD BSSID differs between scan and association, which
-  # is what broke activation ON THIS VERY BOX when a pin was tried live. The
-  # flake's wcid check carries a matching by-name exemption for this profile.
+  # STATIC addressing, same rationale as before the move: this box is
+  # stationary and load-bearing — the NAS's Immich dials worker:3003 for every
+  # ML batch, the NAS admits 10.42.0.5 for journal upload and the models
+  # export, and hosts/nas/network.nix pins the name to this address. None of
+  # that may depend on a DHCP round-trip at link-up or on a lease renewal
+  # ("anything dns/dhcp related must never bite", 2026-08-21). .5 sits below
+  # the NAS's DHCP pool (.10–.200), so the pool can never hand it out.
   #
-  # NO Freebox profile: the old wifi-freebox-worker / wifi-sodimo-worker secret
-  # profiles are dropped with their ciphertexts. This box's fallback rail is not
-  # another SSID — it is the Thunderbolt link to the coordinator (tb-fleet,
-  # 10.99.0.1 <-> 10.99.0.2), which is imperative NM state on both ends and must
-  # not be disturbed.
+  # ⚠ ensureProfiles NEVER DELETES a profile it stopped ensuring: any profile
+  # this file no longer names must be removed on the box by hand
+  # (`nmcli connection delete <name>`), or a stale one can hold 10.42.0.5 on a
+  # second interface beside this profile. The 2026-09-11 list is in
+  # DECISIONS.md.
   #
-  # ⚠ ensureProfiles NEVER DELETES a profile it stopped ensuring, so dropping
-  # those two from this file did not remove them from the box — they had to be
-  # deleted by hand at the reintegration, and they were. That mattered more than
-  # it sounds: the stale Freebox-AB3ACE keyfile carried autoconnect with
-  # priority 100 for an SSID that IS still in range (it is the coordinator's own
-  # fallback rail). Any hiccup associating to thomas-6ghz and this box would
-  # have quietly joined the Freebox segment instead, taken a Freebox DHCP
-  # address, and disappeared from 10.42.0.5 — silently breaking Immich ML for
-  # the whole house and its journal upload, with nothing pointing at the cause.
-  # Deleted alongside it: sodimo_wifi (dead SSID) and the imperative
-  # thomas-diag / thomas6-diag test profiles from cutover week. After this host
-  # settles, thomas-6ghz is its ONLY wifi profile — the flake asserts exactly
-  # that, so a re-added second SSID fails the build rather than the house.
-  #
-  # interface-name IS pinned (unlike a roaming host, which cannot be): the firewall
-  # admissions this host depends on — :3003 in ./immich-ml.nix and :9292 in
-  # modules/llama-swap.nix — are interface-scoped to wlp192s0 anyway, so an
+  # interface-name IS pinned: the firewall admission this host depends on —
+  # :3003 in ./immich-ml.nix — is interface-scoped to enp191s0, so an
   # interface rename must fail loudly here rather than half-work there.
-  networking.networkmanager.ensureProfiles.environmentFiles = lib.optional (builtins.pathExists ../../secrets/wifi-lan.age) config.age.secrets.wifi-lan.path;
-  networking.networkmanager.ensureProfiles.profiles.thomas-6ghz =
-    lib.mkIf (builtins.pathExists ../../secrets/wifi-lan.age)
-      {
-        connection = {
-          id = "thomas-6ghz";
-          type = "wifi";
-          interface-name = "wlp192s0";
-          autoconnect = true;
-          autoconnect-priority = 110;
-        };
-        wifi = {
-          mode = "infrastructure";
-          ssid = "$BE550_SSID";
-        };
-        wifi-security = {
-          # WPA3-SAE with protected management frames — mandatory on 6GHz.
-          key-mgmt = "sae";
-          pmf = 3;
-          psk = "$BE550_PSK";
-        };
-        ipv4 = {
-          method = "manual";
-          address1 = "10.42.0.5/24";
-          gateway = "10.42.0.1";
-          dns = "10.42.0.1";
-          ignore-auto-dns = true;
-        };
-        ipv6.method = "ignore";
-      };
+  networking.networkmanager.ensureProfiles.profiles.lan = {
+    connection = {
+      id = "lan";
+      type = "ethernet";
+      interface-name = "enp191s0";
+      autoconnect = true;
+      autoconnect-priority = 110;
+    };
+    ipv4 = {
+      method = "manual";
+      address1 = "10.42.0.5/24";
+      gateway = "10.42.0.1";
+      dns = "10.42.0.1";
+      ignore-auto-dns = true;
+    };
+    ipv6.method = "disabled";
+  };
 
   # ── Borrowing model weights from the NAS Library (2026-08-21 ruling) ──────
   # The NAS exports its models tree read-only + root-squashed to this host
   # (hosts/nas/models.nix, fsid=6). Only an operator's explicit
   # local-models-borrow transaction reads it into /var/lib/local-models;
-  # activation, boot, and llama-swap startup never touch it.
+  # activation, boot, and the Halogen unit's start never touch it.
   # Mounted at /mnt/library, NOT /mnt/nas — because /mnt/nas has a real
   # history on this box (Tom: "/mnt/nas WAS taken — i am no longer using it,
   # since i moved the NAS away from ethernet"): it was this host's genuine
   # NAS path in the ethernet-NAS era, then the worker loan repurposed it as a
   # runtime bind of /home/tom/nas-local (recreated at every boot by
   # /root/worker-loan/reassert.sh — the same machinery that kept resurrecting
-  # the OCR llama-swap drop-in; whole plane RETIRED 2026-08-21 evening,
+  # the OCR serving drop-in; whole plane RETIRED 2026-08-21 evening,
   # archived under /root/worker-loan-RETIRED-2026-08-21, corpus data intact
   # at /home/tom/nas-local). Now that the NAS is the house's wifi router
   # rather than an ethernet peer, the path is deliberately NOT resurrected:
@@ -174,7 +150,7 @@
   # says so — /mnt/nas remains free for whatever history does next.
   # soft+nofail, same hardening rationale as the coordinator's
   # nas-client mount: a dead NAS must never hang this box's boot or I/O
-  # forever. llama-swap serves whatever is already local.
+  # forever. Halogen serves whatever is already local.
   boot.supportedFilesystems = [ "nfs" ];
   fileSystems."/mnt/library" = {
     # `nas:/` — the models tree is this host's whole NFSv4 pseudo-root (its
@@ -190,9 +166,9 @@
       "_netdev"
       "x-systemd.automount"
       "x-systemd.idle-timeout=10min"
-      # An explicit borrow may be invoked shortly after boot, while wifi is
-      # still associating. `_netdev` cannot distinguish eth-fleet being ready
-      # from the NAS actually being reachable, so gate that on NAS reality.
+      # An explicit borrow may be invoked shortly after boot, before the LAN
+      # link has settled. `_netdev` cannot distinguish the link being up from
+      # the NAS actually being reachable, so gate that on NAS reality.
       # Nothing in the boot/update graph accesses this lazy automount.
       "x-systemd.requires=library-reachable.service"
     ];
@@ -206,9 +182,9 @@
       # re-serialize behind a fresh wait.
       RemainAfterExit = true;
       TimeoutStartSec = "3min";
-      # 120s covers the observed ~30s association with room; then proceed
+      # 120s covers link-up plus the NAS's own boot with room; then proceed
       # regardless — a genuinely dead NAS makes an explicit borrow fail while
-      # llama-swap continues serving what is local.
+      # Halogen continues serving what is local.
       ExecStart = pkgs.writeShellScript "wait-library-reachable" ''
         for _ in $(${pkgs.coreutils}/bin/seq 120); do
           if ${pkgs.bash}/bin/bash -c 'exec 3<>/dev/tcp/nas/2049' 2>/dev/null; then
@@ -225,13 +201,13 @@
   # nas-client.nix — full lore and the live A/B measurements there: 88 →
   # 113 MB/s, within ~6% of raw TCP). Kernel ≥5.18 gives every NFS mount a
   # 128KB bdi readahead window regardless of rsize, which starves the RPC
-  # pipeline on the wifi path's RTT and was the real "650 Mbps hotload
+  # pipeline on the LAN path's RTT and was the real "650 Mbps hotload
   # ceiling" all along. Hooked to the mount unit because the bdi is recreated
   # at the kernel default on every automount trigger — and this mount cycles
   # every 10 idle minutes (x-systemd.idle-timeout above), so a boot-time
   # setter would be reverted within the hour.
   systemd.services.nfs-library-readahead = {
-    description = "Raise NFS readahead on /mnt/library (kernel default 128KB caps the wifi path at ~88MB/s)";
+    description = "Raise NFS readahead on /mnt/library (kernel default 128KB caps the LAN path at ~88MB/s)";
     wantedBy = [ "mnt-library.mount" ];
     after = [ "mnt-library.mount" ];
     serviceConfig.Type = "oneshot";
@@ -246,196 +222,20 @@
 
   services.local-models.libraryPath = "/mnt/library/weights";
 
-  # ── Thunderbolt link durability, worker half (2026-08-21 ruling: the
-  # coordinator↔worker cable MUST always work — full doctrine and the
-  # dual-reboot/replug lore in hosts/coordinator/tb-fleet.nix). This end
-  # pins the net module and runs the same heal loop against the
-  # coordinator's /30 address; the loud tripwire lives coordinator-side.
-  # Gated off under fn-rdma (#241), same as the coordinator's tb-fleet.nix:
-  # modules-load ignores blacklists and pulls the stock core as a dependency.
-  # thunderbolt_stream: 7.2 in-tree USB4 streaming, same pin and same
-  # verification as the coordinator's (tb-fleet.nix) — the kstream service
-  # only appears when BOTH ends advertise it.
-  boot.kernelModules = lib.mkIf (!config.myFnRdma.enable) [
-    "thunderbolt-net"
-    "thunderbolt_stream"
-  ];
-  systemd.services.tb-link-heal = {
-    description = "Heal the worker-coordinator Thunderbolt link where software can";
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = pkgs.writeShellScript "tb-link-heal" ''
-        PATH=${
-          lib.makeBinPath [
-            pkgs.iputils
-            pkgs.coreutils
-            pkgs.gnugrep
-            pkgs.networkmanager
-            pkgs.framework-tool
-          ]
-        }
-        STATE=/var/lib/tb-link-heal
-        if ping -c 1 -W 3 10.99.0.1 >/dev/null 2>&1; then
-          rm -f "$STATE/pd-reset-stamp"
-          exit 0
-        fi
-        if ls /sys/bus/thunderbolt/devices/ | grep -qE '^[0-9]+-[1-9]'; then
-          echo "peer device present but 10.99.0.1 dark — re-activating tb-fleet"
-          nmcli connection up tb-fleet || true
-        elif ls /sys/bus/thunderbolt/devices/ | grep -qE '^[0-9]+-[0-9]+:'; then
-          # NHI functions derived at runtime, not hardcoded. This box's old
-          # hardcode (c4:00.5/.6) happened to be correct FOR ITSELF, but the
-          # coordinator's copy of the same list was the worker's addresses
-          # too, which made its rebind rung dead code for the life of the
-          # file (#267 — rationale in tb-fleet.nix). Capture before
-          # unbinding removes the symlinks; failures stay loud.
-          nhis=$(ls /sys/bus/pci/drivers/thunderbolt/ | grep -E '^[0-9a-f]+:' || true)
-          if [ -z "$nhis" ]; then
-            echo "retimers present but NO NHI bound to the thunderbolt driver — nothing to rebind"
-          else
-            echo "retimers present but no XDomain peer — rebinding USB4 NHIs: $nhis"
-            for d in $nhis; do
-              echo "$d" > /sys/bus/pci/drivers/thunderbolt/unbind || echo "unbind failed for $d"
-            done
-            sleep 2
-            for d in $nhis; do
-              echo "$d" > /sys/bus/pci/drivers/thunderbolt/bind || echo "bind failed for $d"
-            done
-          fi
-        else
-          # PD-blind signature (no retimers at all): CCGx reset, the fix
-          # proven on the coordinator 2026-08-21 — see tb-fleet.nix doctrine.
-          # Rate-limited: also bounces the other rear USB-C port.
-          now=$(date +%s)
-          stamp=$(stat -c %Y "$STATE/pd-reset-stamp" 2>/dev/null || echo 0)
-          if [ $((now - stamp)) -gt 1800 ]; then
-            echo "no retimers on the bus — PD-blind signature; resetting CCGx PD controller"
-            framework_tool --pd-reset 2 || true
-            sleep 5
-            echo USBC000:00 > /sys/bus/platform/drivers/ucsi_acpi/unbind 2>/dev/null || true
-            sleep 2
-            echo USBC000:00 > /sys/bus/platform/drivers/ucsi_acpi/bind 2>/dev/null || true
-            touch "$STATE/pd-reset-stamp"
-          else
-            echo "PD-blind but CCGx reset already fired recently — holding"
-          fi
-        fi
-      '';
-      StateDirectory = "tb-link-heal";
-    };
+  # ── the one inference server on the fleet ─────────────────────────────────
+  # Halogen Flash holds this box's GPU and most of its memory for the life of
+  # the process (modules/halogen.nix has the doctrine). The bundle it serves is
+  # this host's only wanted artifact (modules/strix.nix), loaned from the NAS
+  # Library by an operator; the coordinator dials http://worker:8731.
+  services.halogen.enable = true;
+  # The alternate model on the same box: Qwen3.8-27B under halogen-server.
+  # Never resident together with Flash — `halogen-switch qwen38-27b` stops
+  # the Flash unit and starts this one; `halogen-switch flash` goes back.
+  services.halogen.alternates.qwen38-27b = {
+    image = "ghcr.io/peonist-ai/halogen@sha256:1430491c479bee106dbaa3316e5509401546962f26f275ac777dfd1b5397589b";
+    artifact = "halogen-qwen38-27b";
+    modelId = "halogen-qwen3.8-27b";
   };
-  systemd.timers.tb-link-heal = {
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnBootSec = "2min";
-      OnUnitActiveSec = "2min";
-      AccuracySec = "30s";
-    };
-  };
-
-  # ── Rail 0, worker half (#266, 2026-08-31): 10.99.0.2/30 on rail0.
-  # Was an imperative keyfile bound to `interface-name=thunderbolt0` until the
-  # cable-bound rename removed that name from the box entirely. Doctrine, the
-  # migration note (delete the legacy /etc keyfile in the same window) and the
-  # #240 route rationale live coordinator-side in hosts/coordinator/tb-fleet.nix.
-  networking.networkmanager.ensureProfiles.profiles.tb-fleet = {
-    connection = {
-      id = "tb-fleet";
-      type = "ethernet";
-      interface-name = "rail0";
-      autoconnect = true;
-      autoconnect-priority = 50;
-    };
-    # Cable A's NHI on this box (c4:00.5 here, c5:00.6 on the coordinator —
-    # the crossing is real, see modules/fleet-rail-names.nix).
-    match.path = "pci-0000:c4:00.5;";
-    ipv4 = {
-      method = "manual";
-      addresses = "10.99.0.2/30";
-      never-default = true;
-      ignore-auto-dns = true;
-      # The #240 metric-50 failover leg toward the coordinator's fleet
-      # identity, carried over verbatim from the keyfile this replaces.
-      # routeN keyfile syntax — an nmcli-style `routes` key is silently
-      # dropped by the parser.
-      route1 = "10.99.9.1/32,10.99.0.1,50";
-    };
-    ipv6.method = "disabled";
-  };
-
-  # ── Rail 2, worker half (#274, 2026-08-31): 10.99.2.2/30 on rail2.
-  # Doctrine, the measured addressed-but-peerless hang, the HAZARDS (both
-  # ends together; THIS box's controller failed DMA activation on rail 2's
-  # first-ever tunnel use — watch the first bring-up) and the tripwire all
-  # live coordinator-side in hosts/coordinator/tb-fleet.nix.
-  networking.networkmanager.ensureProfiles.profiles.tb-fleet2 = {
-    connection = {
-      id = "tb-fleet2";
-      type = "ethernet";
-      interface-name = "rail2";
-      autoconnect = true;
-      autoconnect-priority = 50;
-    };
-    # Cable B is c4:00.6 on this box, c5:00.5 on the coordinator. Since #266
-    # `rail2` names that same cable by construction, so this path and the
-    # interface name agree on every boot instead of by luck; keeping both is
-    # the fail-closed check on the rename itself. Full rationale:
-    # hosts/coordinator/tb-fleet.nix at its tb-fleet2.
-    match.path = "pci-0000:c4:00.6;";
-    ipv4 = {
-      method = "manual";
-      addresses = "10.99.2.2/30";
-      never-default = true;
-      ignore-auto-dns = true;
-      # No routeN — same rationale as the coordinator's profile: the #240
-      # failover order (5GbE metric 20, rail 0 metric 50) stays untouched.
-    };
-    ipv6.method = "disabled";
-  };
-
-  # ── eth-fleet, worker half (doctrine: hosts/coordinator/eth-fleet.nix) ────
-  # The 5GbE port cabled directly to the coordinator's twin: the admin rail
-  # that shares nothing with USB-C/PD. Fleet identity 10.99.9.2 on lo; peer
-  # fleet route via ethernet at metric 20 BEATS the tb-fleet route (metric
-  # 50, on the imperative tb-fleet profile) — flipped 2026-08-28 with the
-  # #240 ruling that Thunderbolt carries tensor traffic only and admin
-  # traffic prefers the wire, TB as failover. Oneshot rather than
-  # networking.localCommands — that unit is masked under NetworkManager
-  # (see hosts/coordinator/eth-fleet.nix).
-  systemd.services.fleet-identity = {
-    description = "Stable fleet identity 10.99.9.2/32 on loopback";
-    wantedBy = [ "multi-user.target" ];
-    after = [ "network-pre.target" ];
-    # #273 makes the hostname resolve to this /32 — ordered before
-    # network.target so hostname-binders (After=network.target by convention)
-    # find the address on lo. Rationale: hosts/coordinator/eth-fleet.nix.
-    before = [ "network.target" ];
-    serviceConfig = {
-      Type = "oneshot";
-      RemainAfterExit = true;
-      ExecStart = "${pkgs.iproute2}/bin/ip addr replace 10.99.9.2/32 dev lo";
-    };
-  };
-  networking.networkmanager.ensureProfiles.profiles.eth-fleet = {
-    connection = {
-      id = "eth-fleet";
-      type = "ethernet";
-      interface-name = "enp191s0";
-      autoconnect = true;
-      autoconnect-priority = 50;
-    };
-    ipv4 = {
-      method = "manual";
-      addresses = "10.99.1.2/30";
-      never-default = true;
-      ignore-auto-dns = true;
-      # Keyfile routeN syntax and the #240 metric flip — see
-      # hosts/coordinator/eth-fleet.nix.
-      route1 = "10.99.9.1/32,10.99.1.1,20";
-    };
-    ipv6.method = "disabled";
-  };
-  networking.firewall.trustedInterfaces = [ "enp191s0" ];
 
   # NM at INFO for the same reason the coordinator pins it: on cutover day this
   # fleet's wifi incidents were forensically blind because NetworkManager had
@@ -456,8 +256,8 @@
   #
   # Once the declarative profile below took over and this host settled on its
   # static 10.42.0.5, coordinator -> worker was verified good on every path that
-  # matters: ARP REACHABLE, ping, :3003 answering `pong`, :9292 serving the
-  # roster. The likeliest cause of the earlier failure is a stale AP client
+  # matters: ARP REACHABLE, ping, :3003 answering `pong`, the model port
+  # serving. The likeliest cause of the earlier failure is a stale AP client
   # entry or a wifi idle/power-save interaction on a box that had been sitting
   # untouched for weeks and had no traffic of its own — the NAS had a warm ARP
   # entry precisely because this box talks to it constantly for DHCP and DNS,
@@ -466,8 +266,9 @@
   #
   # The operational lesson that DOES survive: an idle wireless box with no
   # traffic of its own is not reliably reachable from a peer station, which is
-  # one more reason this host now has a static address, a constant journal
-  # upload to the NAS, and a Thunderbolt rail that owes the AP nothing.
+  # one more reason this host has a static address, a constant journal upload
+  # to the NAS, and no wireless leg at all — it is wired into the BE550, and
+  # the AP is out of the picture.
 
   # ── SSH reachability: the one line that must not be got wrong ──────────────
   # The retired closure carried `services.openssh.openFirewall = false` plus a
@@ -477,14 +278,10 @@
   # another room with no console. So the override is DELETED and :22 falls back
   # to the NixOS default (open on every interface), exactly matching the
   # coordinator's live posture on the same LAN, in the same trust domain, behind
-  # the same NAS NAT. The LAN path (10.42.0.5) is primary; the Thunderbolt rail
-  # (10.99.0.2) is the fallback and is covered by the same default.
-  #
-  # NB the live pre-reintegration box also carried a HAND-ADDED nftables/iptables
-  # accept for 10.99.0.1 on thunderbolt0 that exists nowhere in any closure. It
-  # disappears at the first switch; that is fine precisely because :22 is open
-  # by default now, and is the reason this must not be "tightened" later without
-  # re-checking both rails.
+  # the same NAS NAT. The LAN path (10.42.0.5) is the ONLY path — there is no
+  # second rail to fall back to, which is one more reason :22 stays on the
+  # default (every interface) rather than an interface-scoped admission that a
+  # NIC rename could silently close.
 
   # ── no tailnet on this box ─────────────────────────────────────────────────
   # Tom's #229 ruling, unchanged: this is a stationary LAN compute node reached

@@ -2,7 +2,7 @@ export const meta = {
   name: "paper-e2e",
   description:
     "One paper end-to-end: fetch, per-page mech-first OCR with VLM consensus fallback, assemble, chunk, embed, index, receipt",
-  pools: ["coordinator-gpu", "flow-build"],
+  pools: ["worker-gpu", "coordinator-gpu", "flow-build"],
   argsSchema: {
     type: "object",
     required: [
@@ -16,8 +16,8 @@ export const meta = {
       "bash",
       "dpi",
       "ocrModel",
-      "refineModel",
       "embedModel",
+      "embeddingsUrl",
       "minAgreementPermille",
       "mechSelfAgreementPermille",
       "mechMinWords",
@@ -34,8 +34,13 @@ export const meta = {
       bash: { type: "string", pattern: "^/" },
       dpi: { type: "integer", minimum: 150, maximum: 600 },
       ocrModel: { type: "string", minLength: 1 },
-      refineModel: { type: "string", minLength: 1 },
       embedModel: { type: "string", minLength: 1 },
+      // No fleet server offers /v1/embeddings. The drain fills this from
+      // ACADEMIC_OCR_EMBEDDINGS_URL; null means none was named, and the embed
+      // and index nodes are skipped and receipted as skipped.
+      embeddingsUrl: {
+        anyOf: [{ type: "string", pattern: "^https?://" }, { type: "null" }]
+      },
       minAgreementPermille: { type: "integer", minimum: 0, maximum: 1000 },
       mechSelfAgreementPermille: { type: "integer", minimum: 0, maximum: 1000 },
       mechMinWords: { type: "integer", minimum: 0 },
@@ -63,7 +68,7 @@ function run(name, argvTail, opts) {
 // #145: a cancelled node is an operator instruction, never OCR evidence. The
 // settled verdicts below otherwise make `tally flow cancel` indistinguishable
 // from a genuine disagreement: the 2026-08-03 incident cancelled in-flight
-// vlm32b refines and the fallback accepted vlm8b-disputed for those pages,
+// VLM nodes and the fallback accepted disputed pages,
 // then wrote the receipt — freezing the paper at degraded quality forever
 // (receipted papers are never retried). A cancelled node instead aborts the
 // page, and one cancelled page aborts the paper before assembly, so no
@@ -79,8 +84,7 @@ async function resolvePage(page) {
   const p = pad3(page);
   const png = `${root}/renders/${p}.png`;
   const mechDir = `${root}/mech/${p}`;
-  const vlm8b = `${root}/vlm/${p}.md`;
-  const vlm32b = `${root}/refine/${p}.md`;
+  const vlm = `${root}/vlm/${p}.md`;
 
   const mech = await run("mech", [blob, String(page), mechDir], {
     pools: ["flow-build"],
@@ -156,10 +160,16 @@ async function resolvePage(page) {
 
   // VLM lane: mech failed closed (scanned page), the engines disagreed, or the
   // page carries a table. Only now is the page render needed. A rerouted table
-  // page is not bounced straight back by the cmp8b gate below: Dice runs over
+  // page is not bounced straight back by the cmpvlm gate below: Dice runs over
   // word multisets, so the linearized mechanical reference still agrees with a
   // properly tabulated VLM transcription of the same cells — the reference is
   // only ever a check on *which words* are present, never on their order.
+  //
+  // One visual protocol: Halogen Flash on the worker (worker-gpu is the lane
+  // that names that device). It runs at temperature zero, so a second pass
+  // with the same model would reproduce the first; a page whose transcription
+  // disagrees with its mechanical reference is recorded as disputed rather
+  // than re-transcribed.
   await run("raster", [blob, String(page), String(args.dpi), png], {
     pools: ["flow-build"],
     key: `raster-${p}`,
@@ -167,79 +177,44 @@ async function resolvePage(page) {
     evidence: ["exit:0", `artifact:${png}`, "hash:sha256"]
   });
 
-  const ocr = await run("vlm", [png, args.ocrModel, vlm8b], {
-    pools: ["coordinator-gpu"],
+  const ocr = await run("vlm", [png, args.ocrModel, vlm], {
+    pools: ["worker-gpu"],
     priority: "low",
     runtimeMaxSec: 1800,
-    key: `vlm8b-${p}`,
-    label: `vlm8b-${p}`,
-    evidence: ["exit:0", `artifact:${vlm8b}`, "hash:sha256"],
+    key: `vlm-${p}`,
+    label: `vlm-${p}`,
+    evidence: ["exit:0", `artifact:${vlm}`, "hash:sha256"],
     settle: true
   });
-  guardCancelled(ocr, page, "vlm8b");
+  guardCancelled(ocr, page, "vlm");
   const ocrOk = ocr.verdict === "pass" && !ocr.error;
 
-  if (ocrOk && mechOk) {
-    const cmp = await run(
-      "compare",
-      [mechRef, vlm8b, `${root}/verdicts/${p}-8b.json`, String(args.minAgreementPermille)],
-      {
-        pools: ["flow-build"],
-        key: `cmp8b-${p}`,
-        label: `cmp8b-${p}`,
-        evidence: ["exit:0", `artifact:${root}/verdicts/${p}-8b.json`, "hash:sha256"],
-        settle: true
-      }
-    );
-    guardCancelled(cmp, page, "cmp8b");
-    if (cmp.verdict === "pass" && !cmp.error) {
-      return { page, source: "vlm8b" };
-    }
-  }
-
-  // Specialist lane: 8B unavailable or disagreed with the mechanical reference.
-  const refine = await run("vlm", [png, args.refineModel, vlm32b], {
-    pools: ["coordinator-gpu"],
-    priority: "low",
-    runtimeMaxSec: 1800,
-    key: `vlm32b-${p}`,
-    label: `vlm32b-${p}`,
-    evidence: ["exit:0", `artifact:${vlm32b}`, "hash:sha256"],
-    settle: true
-  });
-  guardCancelled(refine, page, "vlm32b");
-  const refineOk = refine.verdict === "pass" && !refine.error;
-
-  if (!refineOk) {
-    if (ocrOk) {
-      return { page, source: "vlm8b", disputed: true };
-    }
+  if (!ocrOk) {
     if (mechOk) {
       return { page, source: "mech", disputed: true };
     }
     throw new Error(`page ${page}: no successful protocol`);
   }
-
-  const reference = mechOk ? mechRef : ocrOk ? vlm8b : null;
-  if (reference !== null) {
-    const cmp = await run(
-      "compare",
-      [reference, vlm32b, `${root}/verdicts/${p}-32b.json`, String(args.minAgreementPermille)],
-      {
-        pools: ["flow-build"],
-        key: `cmp32b-${p}`,
-        label: `cmp32b-${p}`,
-        evidence: ["exit:0", `artifact:${root}/verdicts/${p}-32b.json`, "hash:sha256"],
-        settle: true
-      }
-    );
-    guardCancelled(cmp, page, "cmp32b");
-    if (cmp.verdict === "pass" && !cmp.error) {
-      return { page, source: "vlm32b" };
-    }
-    return { page, source: "vlm32b", disputed: true };
+  if (!mechOk) {
+    return { page, source: "vlm", disputed: true };
   }
-  return { page, source: "vlm32b", disputed: true };
+
+  const cmp = await run(
+    "compare",
+    [mechRef, vlm, `${root}/verdicts/${p}-vlm.json`, String(args.minAgreementPermille)],
+    {
+      pools: ["flow-build"],
+      key: `cmpvlm-${p}`,
+      label: `cmpvlm-${p}`,
+      evidence: ["exit:0", `artifact:${root}/verdicts/${p}-vlm.json`, "hash:sha256"],
+      settle: true
+    }
+  );
+  guardCancelled(cmp, page, "cmpvlm");
+  if (cmp.verdict === "pass" && !cmp.error) {
+    return { page, source: "vlm" };
+  }
+  return { page, source: "vlm", disputed: true };
 }
 
 (async () => {
@@ -314,23 +289,30 @@ async function resolvePage(page) {
     evidence: ["exit:0", `artifact:${chunks}`, "hash:sha256"]
   });
 
-  await run("embed", [chunks, args.embedModel, embeddings], {
-    pools: ["coordinator-gpu"],
-    priority: "low",
-    runtimeMaxSec: 3600,
-    key: "embed",
-    label: "embed",
-    evidence: ["exit:0", `artifact:${embeddings}`, "hash:sha256"]
-  });
+  // The embeddings backend is an operator-run llama-server on the coordinator
+  // (coordinator-gpu). Without one the paper still assembles and chunks; the
+  // receipt records the two skipped stages so they can be rebuilt from
+  // chunks.json later.
+  if (args.embeddingsUrl !== null) {
+    await run("embed", [chunks, args.embedModel, args.embeddingsUrl, embeddings], {
+      pools: ["coordinator-gpu"],
+      priority: "low",
+      runtimeMaxSec: 3600,
+      key: "embed",
+      label: "embed",
+      evidence: ["exit:0", `artifact:${embeddings}`, "hash:sha256"]
+    });
 
-  await run("index", [chunks, embeddings, index], {
-    pools: ["flow-build"],
-    key: "index",
-    label: "index",
-    evidence: ["exit:0", `artifact:${index}`, "hash:sha256"]
-  });
+    await run("index", [chunks, embeddings, index], {
+      pools: ["flow-build"],
+      key: "index",
+      label: "index",
+      evidence: ["exit:0", `artifact:${index}`, "hash:sha256"]
+    });
+  }
 
-  await run("receipt", [root, args.paperId, receipt, ...receiptSpecs], {
+  const embeddingsBackend = args.embeddingsUrl === null ? "-" : args.embeddingsUrl;
+  await run("receipt", [root, args.paperId, receipt, embeddingsBackend, ...receiptSpecs], {
     pools: ["flow-build"],
     key: "receipt",
     label: "receipt",
@@ -345,10 +327,10 @@ async function resolvePage(page) {
     disputedPages: resolved.filter(r => r.disputed).map(r => r.page),
     failedPages,
     bySource: {
-      vlm8b: resolved.filter(r => r.source === "vlm8b").length,
-      vlm32b: resolved.filter(r => r.source === "vlm32b").length,
+      vlm: resolved.filter(r => r.source === "vlm").length,
       mech: resolved.filter(r => r.source === "mech").length
     },
+    embeddings: args.embeddingsUrl === null ? "skipped" : "embedded",
     receiptPath: receipt
   };
 })();

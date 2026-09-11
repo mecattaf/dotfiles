@@ -49,8 +49,14 @@ THE SEATS, and where each one's truth lives:
                 is opt-in (--probe-qwen) because asking costs the thing being
                 measured.
 
-  gpu-*         llama-swap /running on the coordinator and the worker. No
-                window, no quota: a GPU is busy or it is not.
+  gpu-worker    The fleet's one inference server, Halogen Flash on the worker
+                (http://worker:8731, GET /health). No window, no quota: the
+                row says whether the server is up and which model id it
+                answers to.
+  gpu-coordinator
+                Serves nothing declaratively: the small GGUF artifacts loaned
+                there are run by hand, and a hand-run llama-server is not a
+                seat. The row is UNKNOWN / not-applicable and says why.
 
 FRESHNESS AND THE 429. /api/oauth/usage rate-limits — polling it by hand a few
 times in one minute already returned 429 (measured 2026-09-02). Every reading
@@ -105,6 +111,11 @@ QWEN_HOLD_FILES = [Path(p) for p in
 # fails immediately, so what is left is exactly what this box can answer from
 # its own disk. Nothing degrades to a guess — the rows say CACHED or UNKNOWN.
 OFFLINE = os.environ.get("SEATS_NO_NETWORK") == "1"
+
+# The fleet's one inference server, Halogen Flash on the worker
+# (modules/halogen.nix). The base URL follows the *_INFERENCE_URL convention;
+# the override is for a hand-run llama-server, not a second declared server.
+INFERENCE_URL = (os.environ.get("SEATS_INFERENCE_URL") or "http://worker:8731").rstrip("/")
 
 # ── the Qwen Cloud plan, and how a credit was priced ────────────────────────
 # Qwen Cloud meters in CREDITS and publishes no endpoint, so a percentage has
@@ -196,10 +207,12 @@ DEFAULT_SEATS = [
      "note": "RULINGS R-2026-09-06-02: this login is not Tom's — read by name, never spent."},
     {"id": "pi-qwencloud", "provider": "qwen", "label": "Qwen Cloud (token-plan, via pi)",
      "owner": "tom", "spend_root": "~/.pi/agent/sessions"},
-    {"id": "gpu-coordinator", "provider": "llama-swap", "label": "Local GPU (coordinator)",
-     "owner": "kernel", "endpoint": "http://127.0.0.1:9292"},
-    {"id": "gpu-worker", "provider": "llama-swap", "label": "Local GPU (worker)",
-     "owner": "kernel", "endpoint": "http://worker:9292"},
+    {"id": "gpu-coordinator", "provider": "none", "label": "Local GPU (coordinator)",
+     "owner": "kernel",
+     "reason": "serves nothing declaratively; the fleet's inference server is Halogen "
+               "on the worker, and a GGUF loaned here is run by hand"},
+    {"id": "gpu-worker", "provider": "halogen", "label": "Local GPU (worker, Halogen Flash)",
+     "owner": "kernel", "endpoint": INFERENCE_URL},
 ]
 
 
@@ -1040,9 +1053,10 @@ def qwen_events(spend_root: Path):
     """(events, resets) from pi's own session logs.
 
     events  sorted [(epoch, input, output)] for messages billed to the token
-            plan — and ONLY those. The same session store carries llama-swap
-            and flashnix-local traffic, which costs this subscription nothing;
-            counting it would inflate the meter with locally-served tokens.
+            plan — and ONLY those. The same session store carries locally
+            served traffic (the Halogen server on the worker, a hand-run
+            llama-server), which costs this subscription nothing; counting it
+            would inflate the meter with locally-served tokens.
     resets  every reset stamp the provider has ever stated in a refusal here.
             That is what makes this self-sufficient: the window boundaries are
             recovered from history, not from a state file someone has to keep.
@@ -1290,27 +1304,67 @@ def read_qwen(spec, opts):
     return classify(seat)
 
 
-# ── provider: llama-swap (local GPU) ────────────────────────────────────────
+# ── provider: halogen (the worker's inference server) ───────────────────────
 
-def read_llama_swap(spec, opts):
+def _halogen_model_ids(payload):
+    """Model ids out of a /health or /v1/models answer, whatever shape it takes."""
+    if not isinstance(payload, dict):
+        return []
+    ids = []
+    for key in ("model", "model_id"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            ids.append(value)
+    for key in ("data", "models"):
+        seq = payload.get(key)
+        if not isinstance(seq, list):
+            continue
+        for item in seq:
+            if isinstance(item, str) and item:
+                ids.append(item)
+            elif isinstance(item, dict):
+                value = item.get("id") or item.get("model") or item.get("name")
+                if isinstance(value, str) and value:
+                    ids.append(value)
+    return sorted(set(ids))
+
+
+def read_halogen(spec, opts):
+    """Up or not, and which model id answers. Two GETs, nothing spent.
+
+    /health is the liveness probe. The model id comes from that answer when it
+    carries one and from /v1/models otherwise; a server that is up but names
+    no model is reported as up with the id unknown, never guessed.
+    """
     seat = blank_seat(spec, "unknown", "UNKNOWN")
-    endpoint = spec.get("endpoint", "http://127.0.0.1:9292")
-    data, error = http_json(endpoint + "/running", timeout=3)
-    seat["source"] = {"kind": "llama-swap-running", "endpoint": endpoint + "/running"}
-    if data is None:
+    endpoint = (spec.get("endpoint") or INFERENCE_URL).rstrip("/")
+    seat["source"] = {"kind": "halogen-health", "endpoint": endpoint + "/health"}
+    health, error = http_json(endpoint + "/health", timeout=3)
+    if health is None:
         seat["state"], seat["detail"] = "offline", error or "no answer"
         return seat
-    running = [m.get("model") or m.get("id") or str(m) for m in (data.get("running") or [])]
+    models = _halogen_model_ids(health)
+    if not models:
+        listed, _ = http_json(endpoint + "/v1/models", timeout=3)
+        models = _halogen_model_ids(listed)
     seat["grade"] = "MEASURED"
-    seat["running"] = running
-    seat["state"] = "busy" if running else "open"
+    seat["running"] = models
+    seat["state"] = "open"
     seat["usable"] = True   # a busy GPU is a queue, not a wall
-    seat["detail"] = ", ".join(running) if running else "idle, no model resident"
+    seat["detail"] = ("up, serving " + ", ".join(models)) if models else "up, model id not stated"
     return seat
 
 
+# ── provider: none (a device that serves nothing) ───────────────────────────
+
+def read_none(spec, opts):
+    """A row for a device with no server behind it: UNKNOWN, not-applicable,
+    with the reason in the row — never counted as headroom."""
+    return blank_seat(spec, "n/a", "UNKNOWN", spec.get("reason", "no server behind this seat"))
+
+
 READERS = {"claude": read_claude, "codex": read_codex,
-           "qwen": read_qwen, "llama-swap": read_llama_swap}
+           "qwen": read_qwen, "halogen": read_halogen, "none": read_none}
 
 
 # ── spend: tokens actually burned inside the seat's own window ──────────────
@@ -1412,8 +1466,8 @@ def _events_codex(path):
 def _events_pi(path):
     """pi, token-plan traffic only.
 
-    The same session store carries llama-swap and flashnix-local messages.
-    Those are served by the GPU in this room and cost the subscription
+    The same session store carries locally served messages — the Halogen
+    server on the worker, a hand-run llama-server. Those cost the subscription
     nothing, so counting them here would inflate a meter with local tokens.
     """
     events = []
@@ -1528,7 +1582,7 @@ def attach_spend(seats, specs, days):
 
 COLORS = {"open": "\033[32m", "busy": "\033[36m", "tight": "\033[33m",
           "spent": "\033[31m", "unauth": "\033[35m", "offline": "\033[90m",
-          "unknown": "\033[90m"}
+          "unknown": "\033[90m", "n/a": "\033[90m"}
 RESET = "\033[0m"
 
 
@@ -1730,7 +1784,7 @@ def headroom(seat, discount_estimates=True):
 def recommend(seats):
     best = None
     for seat in seats:
-        if seat["provider"] == "llama-swap" or seat["owner"] != "tom":
+        if seat["provider"] in ("halogen", "none") or seat["owner"] != "tom":
             continue
         if seat["state"] not in ("open", "tight"):
             continue

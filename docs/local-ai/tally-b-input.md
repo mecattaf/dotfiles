@@ -80,16 +80,19 @@ pin must be a NO-OP, and clause A0 asserts it.
   `docs/rows.md` — `gpu-coordinator`, `gpu-worker`, `mechanical` — with that
   table's cells: capacity 1, `window: none` (a device is contended, never
   spent), `context_window` 32768 on the GPU rows and null on `mechanical`,
-  graces 30/10, `per_attempt_token_cap` 100000 (D-B3/TL-3). The `running`
-  source of a GPU row is llama-swap's `/running` endpoint — this box's for
-  `gpu-coordinator`, `http://worker:9292/running` (the fleet-name pin of
-  `modules/fleet-hosts.nix`) for `gpu-worker`, because ONE kernel on the
-  coordinator serves both devices (spec §2.4 Q2). The seat rows (cc, cc2, cc3,
-  codex, pi-qwencloud) are NOT in this file: they are tom-owned observations
-  written into the meters dir by U-D12's feeders on the user bus and read
-  through it. A failed `/running` probe is written busy with grade UNKNOWN,
-  never as false idle (`RunningSource::observe`), so a down endpoint cannot
-  fabricate headroom.
+  graces 30/10, `per_attempt_token_cap` 100000 (D-B3/TL-3). Neither GPU row carries a
+  `running` probe: all three rows are `running.kind = "none"`. The coordinator
+  serves no model, and the worker's GPU is held for the life of the Halogen
+  server (`modules/halogen.nix`), which exposes no "what is loaded" endpoint —
+  so `none`, which the kernel records as measured not-applicable rather than
+  as an unknown. ONE kernel on the coordinator serves both device rows (spec
+  §2.4 Q2); the worker box runs no kernel of its own. The row schema still
+  admits `{"kind":"http","endpoint":url}` and `{"kind":"fixed","value":bool}`,
+  and an http probe that failed would be written busy with grade UNKNOWN,
+  never as false idle (`RunningSource::observe`) — but no row in this file
+  names one. The seat rows (cc, cc2, cc3, codex, pi-qwencloud) are NOT in this
+  file: they are tom-owned observations written into the meters dir by
+  U-D12's feeders on the user bus and read through it.
 - **The meters dir and the state root**, declared as system tmpfiles rules
   (`d … 0700 tom users`), the same motion `home/tally.nix` and
   `home/seat-feeder.nix` use from the user bus: a missing directory should be a
