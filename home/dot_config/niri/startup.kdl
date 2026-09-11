@@ -16,9 +16,10 @@ spawn-at-startup "sh" "-c" "sleep 0.5 && kanshi"
 // boot. Mod+D is ~/.local/bin/launcher now — an fzf script in a floating kitty,
 // with no daemon to start.
 
-// Home Manager deploys the repository wallpaper under ~/.local/share/wallpapers.
-// Runtime changes go through ~/.local/bin/wallpaper, which re-points swaybg.
-spawn-sh-at-startup "swaybg -i $HOME/.local/share/wallpapers/wallpaper.jpg -m fill"
+// No wallpaper daemon (Tom 2026-09-11): the backdrop is layout.kdl's
+// background-color #000000, which the Zenbook's OLED renders as panel-off
+// black. ~/.local/bin/wallpaper still exists for a one-off swaybg, and nothing
+// restarts one at login.
 
 
 // ── gsettings ────────────────────────────────────────────────
