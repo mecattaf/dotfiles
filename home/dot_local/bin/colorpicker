@@ -4,4 +4,9 @@
 output=$(niri msg pick-color) || exit 1
 hex=$(echo "$output" | grep -oP '#[0-9a-f]{6}')
 printf '%s' "$hex" | wl-copy
-notify-send "Color Picker" "$hex copied to clipboard"
+# The copy is the whole job; the toast is garnish. No host in the fleet ships a
+# notification daemon or notify-send (verified 2026-09-11), so guard it rather
+# than trailing a "command not found" behind every successful pick.
+if command -v notify-send &>/dev/null; then
+    notify-send "Color Picker" "$hex copied to clipboard"
+fi

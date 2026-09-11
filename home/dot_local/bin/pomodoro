@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# pomodoro -- Pomodoro timer with rofi menu
+# pomodoro -- Pomodoro timer with an fzf menu
 
 [[ -n $POMO_FILE ]] && POMO=$POMO_FILE || POMO=$HOME/.local/share/pomo
 [[ -n $POMO_WORK_TIME ]] && WORK_TIME=$POMO_WORK_TIME || WORK_TIME=25
@@ -11,12 +11,23 @@ else
     DATE_CMD="date"; STAT_CMD="stat"
 fi
 
+# Every user-visible message goes through here. The fleet ships no notification
+# daemon and no notify-send binary (verified 2026-09-11): a bare notify-send call
+# printed "command not found" into the prompt kitty on every timer event, and the
+# notify daemon below fires them unattended. Same guard as bin/pomo's send_msg.
+function notify {
+    if command -v notify-send &>/dev/null; then
+        notify-send "$@"
+    fi
+    return 0
+}
+
 function pomo_start {
     test -e "$(dirname -- "$POMO")" || mkdir -p "$(dirname -- "$POMO")"
     :> "$POMO"
     touch "$POMO"
     pomo_ensure_services
-    notify-send -t 1500 "Pomodoro" "Focus: ${WORK_TIME}m"
+    notify -t 1500 "Pomodoro" "Focus: ${WORK_TIME}m"
 }
 
 function pomo_isstopped { [[ ! -e "$POMO" ]]; }
@@ -24,7 +35,7 @@ function pomo_isstopped { [[ ! -e "$POMO" ]]; }
 function pomo_stop {
     rm -f "$POMO"
     pomo_stop_services
-    notify-send "Pomodoro Stopped" -t 1000
+    notify "Pomodoro Stopped" -t 1000
 }
 
 function pomo_stamp {
@@ -39,13 +50,13 @@ function pomo_ispaused { [[ $(wc -l < "$POMO") -gt 0 ]]; }
 function pomo_pause {
     local running=$(pomo_stat)
     if pomo_isstopped; then
-        notify-send "No Active Timer" -t 1000; return 1
+        notify "No Active Timer" -t 1000; return 1
     elif pomo_ispaused; then
         pomo_stamp "$running"
-        notify-send "Pomodoro Resumed" -t 1000
+        notify "Pomodoro Resumed" -t 1000
     else
         echo "$running" > "$POMO"
-        notify-send "Pomodoro Paused" -t 1000
+        notify "Pomodoro Paused" -t 1000
     fi
 }
 
@@ -101,13 +112,13 @@ function pomo_notify_daemon {
             local work_left=$(( WORK_TIME*60 - running ))
             if [[ $work_left -gt 0 ]]; then
                 sleep $work_left
-                [[ -e "$POMO" ]] && notify-send "Break Time!" "Great work! Time for a break." -t 5000
+                [[ -e "$POMO" ]] && notify "Break Time!" "Great work! Time for a break." -t 5000
                 sleep 1
             else
                 local break_left=$(( work_left + BREAK_TIME*60 ))
                 if [[ $break_left -gt 0 ]]; then
                     sleep $break_left
-                    [[ -e "$POMO" ]] && notify-send "Focus Time!" "Break's over! Time to focus." -t 5000
+                    [[ -e "$POMO" ]] && notify "Focus Time!" "Break's over! Time to focus." -t 5000
                     sleep 1
                 else
                     sleep 5
@@ -134,7 +145,7 @@ function pomo_menu {
     local prompt="Pomodoro Timer"
     pomo_isstopped || prompt=$(pomo_status)
 
-    local selected=$(printf '%s\n' "${options[@]}" | rofi -dmenu -i -p "$prompt")
+    local selected=$(printf '%s\n' "${options[@]}" | fzf --reverse --no-info --prompt="$prompt ")
 
     case "$selected" in
         "Start/Pause")

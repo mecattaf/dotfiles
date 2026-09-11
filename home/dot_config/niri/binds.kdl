@@ -7,6 +7,19 @@ binds {
 
     // ── Application Launchers ────────────────────────────────────
 
+    // THE LAUNCHER TIER IS fzf-IN-A-FLOATING-KITTY (2026-09-11). The four
+    // programs this section used to invoke — the launcher daemon on Mod+D and in
+    // startup.kdl, the dmenu behind Mod+V, the emoji grid on Mod+Shift+V, the
+    // on-screen key display on Mod+Apostrophe — were installed on NO host in the
+    // fleet. Every one of those chords had been silently dead. Rather than
+    // package four pickers for the fleet's one seat, they are deleted and every
+    // survivor uses the pattern F10 / Shift+F9 / Shift+F10 already proved below:
+    // `kitty --class <name>-prompt -e <script>`, with a window-rule in
+    // window-rules.kdl floating that app-id at a fixed size. fzf is the only
+    // dependency the tier has left, and it is already on every host. The deleted
+    // names are in the commit that removed them; nothing here should tempt anyone
+    // to package them again.
+
     // THE INVERSION (spec B11). Mod+Return is the herdr-backed smart path and
     // Mod+Shift+Return the deliberately herdr-free plain tier — the reverse of
     // the pre-herdr scheme, and the reason the home-grown `new-terminal` and
@@ -46,8 +59,10 @@ binds {
     // used to open the ChatGPT webapp (see Chrome Webapps below).
     Mod+Shift+N hotkey-overlay-title="Rename Session (herdr)" { spawn-sh "kitty --class herdr-rename -e sh -c 'ws=$(hk ws list | grep focused$ | cut -f2); printf \"rename %s to: \" \"$ws\"; read -r name; [ -n \"$name\" ] && hk ws rename \"$ws\" \"$name\"'"; }
 
-    // scroll: bindsym $mod+D exec vicinae open
-    Mod+D hotkey-overlay-title="Launcher" { spawn "vicinae" "open"; }
+    // ~/.local/bin/launcher parses the XDG .desktop tree itself (no dex, no
+    // gtk-launch, no gio — none of which are installed either) and dispatches
+    // the pick with `setsid -f sh -c`, so the app outlives this kitty.
+    Mod+D hotkey-overlay-title="Launcher" { spawn-sh "kitty --class launcher-prompt -e ~/.local/bin/launcher"; }
     // Reserved: Mod+Shift+D — secondary launcher
 
     // scroll: bindsym $mod+E exec thunar
@@ -68,8 +83,12 @@ binds {
 
     // ── Desktop Utilities ─────────────────────────────────────────
 
-    Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "~/.local/bin/clipboard"; }
-    Mod+Shift+V hotkey-overlay-title="Emoji Picker" { spawn "rofimoji" "-a" "clipboard"; }
+    // cliphist history through fzf. Esc is a clean cancel: bin/clipboard exits 0
+    // without touching wl-copy, so a stray Mod+V never blanks the clipboard.
+    Mod+V hotkey-overlay-title="Clipboard" { spawn-sh "kitty --class clipboard-prompt -e ~/.local/bin/clipboard"; }
+    // Mod+Shift+V ("Emoji Picker") is DELETED, not ported: the grid it spawned
+    // was installed nowhere, and nothing in the fzf tier replaces it. The fleet
+    // has no emoji picker as of 2026-09-11; accepted, and the chord is free.
     // Reserved: Mod+O — notifications
     // Reserved: Mod+Comma — settings
     // Reserved: Mod+B — control center
@@ -95,9 +114,11 @@ binds {
     F1 hotkey-overlay-title="Brightness Down" { spawn-sh "~/.local/bin/brightness down"; }
     F2 hotkey-overlay-title="Brightness Up" { spawn-sh "~/.local/bin/brightness up"; }
     // Shift = adjust ONLY the focused screen's backlight. Written for the
-    // zenbook-duo's dual eDP (retired 2026-08-30); `focused` maps niri's focused
-    // output -> its backlight generically, so this degrades to the default on
-    // single-screen hosts and stays harmless.
+    // zenbook-duo's dual eDP, and load-bearing again since that device came back
+    // on 2026-09-11 as host `client`; `focused` maps niri's focused output -> its
+    // backlight generically, so this degrades to the default on single-screen
+    // hosts and stays harmless. bin/brightness floors every step at raw 1 — only
+    // its explicit `off` verb reaches 0, because raw 0 on i915 is power-off.
     Shift+F1 hotkey-overlay-title="Brightness Down (focused screen)" { spawn-sh "~/.local/bin/brightness down focused"; }
     Shift+F2 hotkey-overlay-title="Brightness Up (focused screen)" { spawn-sh "~/.local/bin/brightness up focused"; }
     F3 hotkey-overlay-title="Play/Pause" { spawn-sh "~/.local/bin/media play"; }
@@ -106,7 +127,7 @@ binds {
     F6 hotkey-overlay-title="Mute" { spawn-sh "~/.local/bin/volume mute"; }
     F7 hotkey-overlay-title="Volume Down" { spawn-sh "~/.local/bin/volume down"; }
     F8 hotkey-overlay-title="Volume Up" { spawn-sh "~/.local/bin/volume up"; }
-    F9 hotkey-overlay-title="Pomodoro" { spawn-sh "~/.local/bin/pomodoro menu"; }
+    F9 hotkey-overlay-title="Pomodoro" { spawn-sh "kitty --class pomodoro-prompt -e ~/.local/bin/pomodoro menu"; }
     Shift+F9 hotkey-overlay-title="Audio Route" { spawn-sh "kitty --class audio-route-prompt -e ~/.config/niri/scripts/audio-route"; }
     F10 hotkey-overlay-title="Sleep Monitors" { spawn-sh "kitty --class sleep-monitors-prompt -e ~/.config/niri/scripts/sleep-monitors"; }
     Shift+F10 hotkey-overlay-title="Call Recording" { spawn-sh "kitty --class call-record-prompt -e ~/.config/niri/scripts/call-record-menu"; }
@@ -148,12 +169,9 @@ binds {
 
     // ── Utilities ────────────────────────────────────────────────
 
-    // scroll: set $start-wshowkeys wshowkeys -F "JetBrainsMono Nerd Font 16" -a bottom
-    // scroll: bindsym $mod+apostrophe exec $start-wshowkeys
-    Mod+Apostrophe hotkey-overlay-title="Show Keys" { spawn-sh "wshowkeys -F 'JetBrainsMono Nerd Font 16' -a bottom"; }
-    // scroll: set $stop-wshowkeys pkill wshowkeys
-    // scroll: bindsym $mod+Shift+apostrophe exec $stop-wshowkeys
-    Mod+Shift+Apostrophe { spawn-sh "pkill wshowkeys"; }
+    // Mod+Apostrophe / Mod+Shift+Apostrophe (start and stop the on-screen key
+    // display) are DELETED: the program was installed on no host, and a
+    // screencast overlay is not worth packaging for a single seat. Chords free.
 
     // Reserved: Mod+I — toggle top bar
 
