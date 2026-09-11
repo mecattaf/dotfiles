@@ -35,7 +35,7 @@ include "window-rules.kdl"
 include "misc.kdl"
 include "startup.kdl"
 
-// Shared local overrides. Keep this include mandatory: the pinned niri 25.11 does
+// Shared local overrides. Keep this include mandatory: the pinned niri 26.04 does
 // not know `optional=true`, and local.kdl is always deployed with this directory.
 include "local.kdl"
 
@@ -43,7 +43,7 @@ include "local.kdl"
 // Absolute path: this file lives OUTSIDE the whole-dir out-of-store symlink so it
 // can differ per host; niri include does NOT expand ~ or $HOME, and `optional` is
 // unavailable on the pinned niri, so home.nix writes it on EVERY host. It is
-// inert everywhere today: its one occupant was the zenbook-duo's per-device
-// touch → output mapping, and that host left the fleet on 2026-08-30. The slot
-// stays because it is the only real per-host niri hook. See dotfiles#67.
+// inert on every host but the client (2026-09-11), whose touch mapping and
+// chord overrides live there; see home/home.nix. The slot stays because it is
+// the only real per-host niri hook. See dotfiles#67.
 include "/home/tom/.config/niri-local.kdl"
