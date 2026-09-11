@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# hk-new-inplace -- `hk new`'s own two herdr calls, run for a tty that has no
+# kitty socket to launch a window on.
+#
+# THE GAP. `hk new` (herdr-kitten's cmd_new, hk/verbs.py) creates a workspace +
+# root pane, then — ONLY when `kittyc.available()` (KITTY_LISTEN_ON is set and
+# `kitty` is on PATH) and `--no-window` was not passed — launches a kitty OS
+# window running `herdr terminal attach <terminal_id>`. Under a plain
+# `ssh -t coordinator <cmd>` there is no KITTY_LISTEN_ON on the far end (kitty
+# never exports it across ssh), so `hk new` degrades to `--no-window`'s
+# behaviour: it creates the workspace and pane, prints their ids, and returns —
+# it does NOT attach. This script is the other half: it does what `cmd_new`
+# would have done with a kitty socket, using the same two herdr primitives
+# (`workspace create`, `terminal attach`), so a bare ssh tty gets attached too.
+#
+# Deliberately NOT a herdr-kitten change (that repo is out of scope for this
+# host's tree; see DEFERRED.md DF-CLIENT-10) — everything here is `hk`/`herdr`
+# CLI calls hk itself already makes internally.
+#
+# Used as: `kitty -e ssh -t coordinator hk-new-inplace` (home/home.nix's
+# client niri-local.kdl, Mod+Return). The ssh session's cwd (its login
+# directory, normally $HOME) becomes the pane's cwd and feeds `hk new`'s own
+# git-root-or-cwd-basename label (`default_label`, hk/verbs.py) exactly as it
+# would locally — there is no cd here to preserve that behaviour.
+#
+# Resurrection: closing the kitty window that ends up wrapping this (client
+# sleeps, ssh drops, kitty quits) tears down the ssh session and this script's
+# `herdr terminal attach`, but the pane and workspace it attached to are
+# server-side state and outlive both — `hk resume` lists it by terminal_id,
+# label and agent_status on the next Mod+Ctrl+Shift+Return. Verified live
+# 2026-09-11: a workspace created this way survived a killed ssh -t session
+# and reappeared in `hk resume --print`.
+set -euo pipefail
+
+out="$(hk new --no-window)"
+pane_id="$(awk '{print $2}' <<<"$out")"
+if [ -z "$pane_id" ]; then
+  echo "hk-new-inplace: hk new --no-window produced no pane id: $out" >&2
+  exit 1
+fi
+terminal_id="$(herdr pane get "$pane_id" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["terminal_id"])')"
+exec herdr terminal attach "$terminal_id"
