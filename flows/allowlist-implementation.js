@@ -1,6 +1,6 @@
 export const meta = {
   name: "allowlist-implementation",
-  description: "Replace downloadAllModels with a per-host/deployment allowlist (#95 prereq) and ship the declarative hf CLI (#90)",
+  description: "Replace downloadAllModels with a per-host wanted set (#95 prereq) and ship the declarative hf CLI (#90)",
   pools: ["flow-build"],
   argsSchema: {
     type: "object",
@@ -27,21 +27,21 @@ export const meta = {
   const implementation = await codex(
     [
       "Implement dotfiles issue #95's prerequisite in this worktree: replace the",
-      "all-or-nothing services.local-models.downloadAllModels flag with a per-host,",
-      "per-deployment allowlist (e.g. services.local-models.allow = [ <deployment ids> ]).",
-      "Enabling a deployment materializes only its artifacts into",
-      "system.extraDependencies and its llama-swap row; everything else stays",
-      "metadata-only. Keep the standing invariants: no runtime -hf downloads ever",
-      "(preserve the assertion), weights never in git, catalog JSON still emitted.",
-      "Update the flake.nix:713-717 assertions to the new option shape. Ruling in",
-      "force: the allowlist REPLACES the flag — do not keep both. Populate the",
-      "initial allowlist per docs/local-ai/model-roster.md with ALL deployments",
-      "EXCEPT uncensored, where only qwen3.6-35b-heretic is allowed (ruling",
-      "2026-07-25). Also fold in issue #90: package the Hugging Face `hf` CLI",
-      "declaratively (pinned), with noninteractive auth via the secrets layer and",
-      "a smoke check; neither activation nor tally jobs may run `hf download`.",
-      "Read gh issues 95 and 90 for full acceptance criteria. Commit atomically",
-      "on the branch; do not push."
+      "all-or-nothing services.local-models.downloadAllModels flag with a per-host",
+      "wanted set (services.local-models.artifacts = [ <artifact ids> ]). Declaring",
+      "an artifact puts it into that host's /etc/local-models/wanted.json and",
+      "nothing else: no store path, no service, no proxy row. Bytes move only",
+      "through the operator's local-models-borrow transaction. Keep the standing",
+      "invariants: no runtime -hf downloads ever (preserve the assertion), weights",
+      "never in git, catalog JSON still emitted. Update the flake.nix assertions",
+      "to the new option shape. Ruling in force: the wanted set REPLACES the",
+      "flag — do not keep both. Populate the initial per-host sets from",
+      "docs/local-ai/model-roster.md (halogen host: halogen-qwen38-flash-next;",
+      "coordinator: the five small GGUF rows). Also fold in issue #90: package",
+      "the Hugging Face `hf` CLI declaratively (pinned), with noninteractive auth",
+      "via the secrets layer and a smoke check; neither activation nor tally jobs",
+      "may run `hf download`. Read gh issues 95 and 90 for full acceptance",
+      "criteria. Commit atomically on the branch; do not push."
     ].join(" "),
     { key: "implementation", workspace, label: "implementation" }
   );

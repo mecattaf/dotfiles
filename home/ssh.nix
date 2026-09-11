@@ -71,43 +71,13 @@ let
   # clients on that plane and still necessary for anything on tailscale.com.
   needsJump = target: target == "nas" && hostName != "nas" && hostName != "coordinator";
 
-  # The worker has THREE rails from the coordinator, and which one the nickname
-  # uses is a RULING, not taste (dotfiles#240, 2026-08-28): Thunderbolt
-  # (10.99.0.x) is reserved for LLM-parallelism / tensor traffic ONLY; admin
-  # traffic — interactive SSH, reboots, deploys, health checks — prefers the
-  # dedicated 5GbE cable (eth-fleet) and rides the stable fleet identity.
-  #
-  # The 2026-08-21 measurement that put this nickname on the TB rail compared
-  # TB against WIFI (0.6 ms vs 105 ms avg, mdev 54 ms) — a real 170x, but
-  # eth-fleet.nix landed the SAME NIGHT and was never entered in the race.
-  # Re-measured 2026-08-28 with PM QoS held (modules/lowlat-cluster.nix), 200
-  # samples each:
-  #
-  #   TB   10.99.0.2 : rtt min/avg/max = 33/58/122 us, mdev 18 us
-  #   eth  10.99.1.2 : rtt min/avg/max = 58/72/142 us, mdev  9 us
-  #
-  # 14 us of average and a TIGHTER tail on the wire — indistinguishable under
-  # an interactive shell. The latency case for TB is dead, and what remains is
-  # the reliability case AGAINST it: the TB link's whole failure class lives in
-  # the USB-C/PD stack (tb-fleet.nix doctrine), it is the rail deliberate USB4
-  # experiments run on, and a `reboot` typed over it competes with the tensor
-  # traffic it exists to carry.
-  #
-  # The nickname therefore targets 10.99.9.2 — the fleet identity on the
-  # worker's loopback, reachable via BOTH cables. Since #240 the eth-fleet
-  # route to it costs metric 20 against the imperative TB route's 50, so admin
-  # traffic prefers the wired rail and falls over to TB only when the 5GbE
-  # cable itself dies (eth-fleet.nix owns that doctrine). Tensor traffic keeps
-  # naming 10.99.0.x explicitly and never competes with this block.
-  #
-  # This is a COORDINATOR-ONLY preference. The cables have exactly two ends, so
-  # from any non-twin host — the NAS today — the nickname must use the LAN
-  # identity, which is
-  # also the fleet-facing one every other consumer uses — the NAS's Immich ML
-  # URL, the journal ACL, the networking.hosts pin. All addresses are registry
-  # aliases, so the pinned host key is checked whichever rail answers and no
-  # TOFU prompt appears either way.
-  workerRail = if hostName == "coordinator" then "10.99.9.2" else "worker";
+  # The worker has ONE rail from anywhere: the house LAN (it is wired into the
+  # BE550's Ethernet port 2 in another room). Every host, the coordinator
+  # included, dials the name — which resolves to the static 10.42.0.5 on the
+  # twins via modules/fleet-hosts.nix and on the NAS via hosts/nas/network.nix.
+  # The address is a registry alias, so the pinned host key is checked and no
+  # TOFU prompt appears.
+  workerRail = "worker";
 
   mkBlock =
     _alias: target:

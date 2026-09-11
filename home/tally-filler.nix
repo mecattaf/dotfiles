@@ -62,18 +62,18 @@
 #      round-robin.
 #   2. SERIALISATION ON THE GPU. Cadence alone cannot keep two tenants off one
 #      device. What does is the lane's own gate: `tools/e1-loop.sh` waits for
-#      llama-swap's `/running` to be EMPTY before it dispatches an item, and
+#      the inference server to be idle before it dispatches an item, and
 #      never issues a second concurrent model request (its step 4, and
 #      E1-LOOP's own non-goal). So whoever holds the model finishes; the other
 #      takes the next turn. That gate is a read of a status endpoint made by
 #      the lane, never by this unit.
 #
-# NON-GOALS, AS BYTES. "The timer never calls llama-swap directly; never
-# unloads." Nothing in the rendered unit below names llama-swap, port 9292, or
-# any unload/restart of a serve — asserted in both directions by the flake check
-# and by tools/u-d18-filler-timer-oracle.sh. In particular this module does NOT
-# set `E1_PROBE_URL`: the lane's `/running` probe stays the lane's own default,
-# so the endpoint is not even a string this unit carries.
+# NON-GOALS, AS BYTES. "The timer never calls the inference server directly;
+# never stops a serve." Nothing in the rendered unit below names the server,
+# its port, or any stop/restart of a serve — asserted in both directions by the
+# flake check and by tools/u-d18-filler-timer-oracle.sh. In particular this
+# module does NOT set `E1_PROBE_URL`: the lane's idle probe stays the lane's
+# own default, so the endpoint is not even a string this unit carries.
 #
 # RULE 9 (nothing hand-installed stays so). This unit is declared here before it
 # has ever run by hand; there is no ~/.config/systemd/user/tally-filler* pair to
@@ -146,21 +146,22 @@ let
   # though Tom's later profile Python happened to carry numpy (#346); the unit
   # must carry its own dependency instead of relying on PATH fall-through.
   fillerPython = pkgs.python3.withPackages (ps: [ ps.numpy ]);
-  fillerPath = lib.makeBinPath [
-    pkgs.bash
-    pkgs.bubblewrap
-    pkgs.coreutils
-    pkgs.curl
-    pkgs.findutils
-    pkgs.gawk
-    pkgs.git
-    pkgs.gnugrep
-    pkgs.gnused
-    pkgs.jq
-    fillerPython
-    pkgs.systemd
-  ]
-  + ":/etc/profiles/per-user/tom/bin:/run/current-system/sw/bin";
+  fillerPath =
+    lib.makeBinPath [
+      pkgs.bash
+      pkgs.bubblewrap
+      pkgs.coreutils
+      pkgs.curl
+      pkgs.findutils
+      pkgs.gawk
+      pkgs.git
+      pkgs.gnugrep
+      pkgs.gnused
+      pkgs.jq
+      fillerPython
+      pkgs.systemd
+    ]
+    + ":/etc/profiles/per-user/tom/bin:/run/current-system/sw/bin";
 in
 # Asserted over LITERALS here (a top-level assert that forced `config` would
 # recurse — U-D14's finding, DECISIONS.md (U-D14) (7)); the invariants over the
@@ -170,7 +171,7 @@ in
 # `pkgs` (which `fillerPath` does) is evaluated while the module system is still
 # merging and dies "infinite recursion encountered" — MEASURED here on the first
 # draft of this file, the same class of failure U-D14 hit with `config`. So the
-# non-goals over the PATH ("never calls llama-swap", "never unloads") are
+# non-goals over the PATH ("never calls the server", "never stops a serve") are
 # asserted in flake.nix over the rendered unit, where they are strictly stronger
 # anyway: there they cover ExecStart and Environment together.
 assert fillerPeriod != "";

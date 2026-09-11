@@ -6,8 +6,8 @@ it.
 
 | Path | Purpose |
 |---|---|
-| [`local-ai/README.md`](local-ai/README.md) | Current local-AI appliance boundaries, deployment mechanisms, and routing. |
-| [`local-ai/model-roster.md`](local-ai/model-roster.md) | **The authoritative model split** — served, rooted, runtime-owned, and cataloged-only — with pinned sources and per-host placement. |
+| [`local-ai/README.md`](local-ai/README.md) | The one inference server (Halogen Flash on the worker), how a Library artifact reaches a host, and the hand-run `llama-server` pattern. |
+| [`local-ai/model-roster.md`](local-ai/model-roster.md) | **The 15-row catalogue** — pinned sources, which host wants which artifact, and what (if anything) serves each row. |
 | [`local-ai/deployment-decisions-2026-07-29.md`](local-ai/deployment-decisions-2026-07-29.md) | Coordinator placement ledger: exact download totals, precision policy, and exclusions. |
 | [`local-ai/mage.md`](local-ai/mage.md) | Selected Mage-Flow Turbo and Mage-VL snapshots, exact and deduplicated sizes, paths, and runtime boundaries. |
 | [`local-ai/tallies/`](local-ai/tallies/) | Reviewed model-roster rationale; the July 29 coordinator-only tally is the accepted anchor. |

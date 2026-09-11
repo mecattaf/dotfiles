@@ -110,11 +110,20 @@ export const meta = {
       outputDir: { type: "string", pattern: "^/" },
       receiptPath: { type: "string", pattern: "^/" },
       chunkWords: { type: "integer", minimum: 64, maximum: 2048 },
+      // No fleet server offers /v1/embeddings. The endpoint is an operator-run
+      // llama-server that the planner takes from ACADEMIC_OCR_EMBEDDINGS_URL;
+      // null means none was named, and the embed and index nodes are skipped
+      // and receipted as skipped rather than dispatched to nothing.
       embedding: {
         type: "object",
         required: ["endpoint", "model", "batchSize", "dimensions"],
         properties: {
-          endpoint: { const: "http://localhost:9292" },
+          endpoint: {
+            anyOf: [
+              { type: "string", pattern: "^https?://" },
+              { type: "null" }
+            ]
+          },
           model: { const: "qwen3-embedding-8b" },
           batchSize: { type: "integer", minimum: 1, maximum: 64 },
           dimensions: { const: 4096 }
@@ -265,35 +274,39 @@ function witnessed(result) {
       chunkSchema
     );
 
-    stage = "embed";
-    const embeddingsPath = `${args.outputDir}/embeddings.json`;
-    const embedded = await node(
-      "embed",
-      {
-        paperId: args.paper.paperId,
-        chunksPath: chunked.result.artifactPath,
-        embedding: args.embedding
-      },
-      embeddingsPath,
-      ["coordinator-gpu"],
-      "embed",
-      embeddingSchema
-    );
+    let embedded = null;
+    let indexed = null;
+    if (args.embedding.endpoint !== null) {
+      stage = "embed";
+      const embeddingsPath = `${args.outputDir}/embeddings.json`;
+      embedded = await node(
+        "embed",
+        {
+          paperId: args.paper.paperId,
+          chunksPath: chunked.result.artifactPath,
+          embedding: args.embedding
+        },
+        embeddingsPath,
+        ["coordinator-gpu"],
+        "embed",
+        embeddingSchema
+      );
 
-    stage = "index";
-    const indexPath = `${args.outputDir}/index/papers.db`;
-    const indexed = await node(
-      "index",
-      {
-        paperId: args.paper.paperId,
-        chunksPath: chunked.result.artifactPath,
-        embeddingsPath: embedded.result.artifactPath
-      },
-      indexPath,
-      ["academic-ocr-cpu"],
-      "index",
-      indexSchema
-    );
+      stage = "index";
+      const indexPath = `${args.outputDir}/index/papers.db`;
+      indexed = await node(
+        "index",
+        {
+          paperId: args.paper.paperId,
+          chunksPath: chunked.result.artifactPath,
+          embeddingsPath: embedded.result.artifactPath
+        },
+        indexPath,
+        ["academic-ocr-cpu"],
+        "index",
+        indexSchema
+      );
+    }
 
     stage = "receipt";
     const receipt = await node(
@@ -306,8 +319,8 @@ function witnessed(result) {
         stages: {
           assemble: witnessed(assembled),
           chunk: witnessed(chunked),
-          embed: witnessed(embedded),
-          index: witnessed(indexed)
+          embed: embedded === null ? null : witnessed(embedded),
+          index: indexed === null ? null : witnessed(indexed)
         }
       },
       args.receiptPath,
@@ -322,11 +335,12 @@ function witnessed(result) {
       paperId: args.paper.paperId,
       receiptPath: receipt.result.artifactPath,
       receiptDigest: receipt.result.artifactDigest,
+      embeddings: args.embedding.endpoint === null ? "skipped" : "embedded",
       stages: {
         assemble: witnessed(assembled),
         chunk: witnessed(chunked),
-        embed: witnessed(embedded),
-        index: witnessed(indexed),
+        embed: embedded === null ? null : witnessed(embedded),
+        index: indexed === null ? null : witnessed(indexed),
         receipt: witnessed(receipt)
       }
     };

@@ -13,8 +13,9 @@
 # cache plane landed on 57G of eMMC while 186G of NVMe sat 17% used.
 #
 # This eMMC has now filled TWICE:
-#   1. The first update-center run, with model-weight FODs — fixed by moving
-#      the whole weight plane out of nix (./models.nix, ../../modules/local-models.nix).
+#   1. The first update-center run, with model-weight FODs — fixed by keeping
+#      the whole weight plane out of nix: the Library in ./models.nix, working
+#      copies through local-models-borrow (../../modules/local-models.nix).
 #   2. 2026-08-22, found at 100% with ZERO bytes free and update-center in
 #      failed state: "error: write of 26 bytes: No space left on device",
 #      build FAILED for worker and zenbook-duo. 18G of it was atticd's state

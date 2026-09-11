@@ -251,21 +251,22 @@ class SkillBoundaryTests(unittest.TestCase):
         self.assertIn("unresolved_units", drain)
         self.assertNotIn("~/.local/state/tally/harvest", drain)
 
-    def test_drain_skill_names_the_gpu_seam_the_distillation_now_runs_on(self) -> None:
+    def test_drain_skill_names_the_gpu_seam_the_distillation_runs_on(self) -> None:
         drain = DRAIN_SKILL.read_text()
-        # The seam migrated on 2026-08-29 rather than retiring: a session
-        # reading only the frontmatter description must learn which engine
-        # answers, because the skills tree is hot-loaded through an
-        # out-of-store symlink and the body may never be read.
+        # A session reading only the frontmatter description must learn which
+        # engine answers — the Halogen server on the worker, reached through
+        # the utility-model wrapper — because the skills tree is hot-loaded
+        # through an out-of-store symlink and the body may never be read.
         description = drain.split("---")[1]
         self.assertIn("GPU utility model", description)
-        self.assertIn("llama-swap", description)
-        self.assertIn("2026-08-29", description)
+        self.assertIn("Halogen", description)
+        self.assertIn("worker", description)
         self.assertNotIn("RETIRED", description)
-        # The body must not claim the path is gone, and must not send a
-        # session off to change a host's configuration and retry.
-        self.assertIn("llama-swap", drain)
-        self.assertIn("qwen3.6-35B-A3B", drain)
+        # The body must name where the request goes, must not claim the path
+        # is gone, and must not send a session off to change a host's
+        # configuration and retry.
+        self.assertIn("Halogen", drain)
+        self.assertIn("http://worker:8731", drain)
         self.assertIn("coordinator only", drain)
         self.assertNotIn("switch the coordinator configuration", drain)
         self.assertNotIn("distillation path is retired", drain)
@@ -555,9 +556,9 @@ class DrainTests(unittest.TestCase):
             )
 
     def test_default_invoker_forwards_through_the_installed_wrapper(self) -> None:
-        # Since the 2026-08-29 GPU migration the default invoker's whole job is
-        # to shell out to the `utility-model` wrapper, which forwards to
-        # llama-swap. Prove the seam is wired end to end here: the stable id
+        # The default invoker's whole job is to shell out to the
+        # `utility-model` wrapper, which forwards to the Halogen server on the
+        # worker. Prove the seam is wired end to end here: the stable id
         # goes out on stdin, the wrapper's stdout comes back as the response,
         # and a real note gets written from it.
         wrapper_dir = self.root / "bin"
@@ -624,7 +625,7 @@ class DrainTests(unittest.TestCase):
                     now=datetime.fromisoformat("2026-08-29T10:00:00+02:00"),
                 )
         message = str(caught.exception)
-        self.assertIn("llama-swap", message)
+        self.assertIn("Halogen", message)
         self.assertIn("coordinator only", message)
         self.assertNotIn("NPU", message)
         self.assertNotIn("switch the coordinator configuration", message)

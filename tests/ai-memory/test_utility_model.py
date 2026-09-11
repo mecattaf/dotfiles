@@ -21,10 +21,10 @@ UTILITY_OWNER = Path(
 )
 
 
-# The served ID llama-swap exposes for the deployment behind the stable
-# `utility` slot since the 2026-08-29 GPU migration (lib/local-models.nix:
-# utility.deployment -> qwen36-35b-a3b-mtp-ud-q8-k-xl -> model).
-CONCRETE_MODEL = "qwen3.6-35b-a3b"
+# The model id the Halogen server on the worker answers to (modules/halogen.nix
+# `services.halogen.modelId`); the wrapper rewrites the stable `utility` id to
+# it on the way out and back.
+CONCRETE_MODEL = "halogen-qwen3.8-flash-next"
 
 
 class QuietServer(ThreadingHTTPServer):
@@ -36,11 +36,11 @@ class QuietServer(ThreadingHTTPServer):
         pass
 
 
-class FakeLlamaSwap:
-    """A loopback stand-in for the coordinator's llama-swap endpoint.
+class FakeHalogen:
+    """A loopback stand-in for the worker's Halogen server.
 
-    The wrapper owns no child process since the GPU migration, so the fake
-    upstream is started by the test rather than exec'd by the code under test.
+    The wrapper owns no child process, so the fake upstream is started by the
+    test rather than exec'd by the code under test.
     """
 
     def __init__(self, *, status: int = 200, delay: float = 0.0) -> None:
@@ -79,7 +79,7 @@ class FakeLlamaSwap:
                     ).encode()
                 else:
                     body = json.dumps(
-                        {"error": "model qwen3.6-35b-a3b failed to load"}
+                        {"error": f"model {CONCRETE_MODEL} is not ready"}
                     ).encode()
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
@@ -146,14 +146,14 @@ def utility_request(model: str = "utility") -> dict[str, object]:
 
 class UtilityOwnerTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.upstream: FakeLlamaSwap | None = None
+        self.upstream: FakeHalogen | None = None
 
     def tearDown(self) -> None:
         if self.upstream is not None:
             self.upstream.close()
 
-    def start_upstream(self, **kwargs: object) -> FakeLlamaSwap:
-        self.upstream = FakeLlamaSwap(**kwargs)  # type: ignore[arg-type]
+    def start_upstream(self, **kwargs: object) -> FakeHalogen:
+        self.upstream = FakeHalogen(**kwargs)  # type: ignore[arg-type]
         return self.upstream
 
     def run_owner(
@@ -184,7 +184,7 @@ class UtilityOwnerTests(unittest.TestCase):
             check=False,
         )
 
-    def test_stable_id_is_rewritten_across_the_llama_swap_forward(self) -> None:
+    def test_stable_id_is_rewritten_across_the_halogen_forward(self) -> None:
         upstream = self.start_upstream()
         completed = self.run_owner(utility_request(), endpoint=upstream.endpoint)
         self.assertEqual(completed.returncode, 0, completed.stderr)
@@ -204,21 +204,19 @@ class UtilityOwnerTests(unittest.TestCase):
             '{"title":"local result"}',
         )
 
-    def test_the_think_flag_is_translated_into_the_chat_template_kwarg(self) -> None:
-        # Consumers name FastFlowLM's `think` flag. llama.cpp ignores it and
-        # reasons anyway, spending the whole token budget before emitting any
-        # answer — so the seam must translate it into the template kwarg the
-        # backend actually honours, and must not leave the dead flag upstream.
+    def test_the_think_flag_is_translated_into_enable_thinking(self) -> None:
+        # Consumers name the `think` flag. Halogen reasons by default and its
+        # budget covers the thinking, so the seam must translate the flag into
+        # the top-level `enable_thinking` the server honours, and must not
+        # leave the dead flag upstream.
         upstream = self.start_upstream()
         request = utility_request()
         request["think"] = False
         completed = self.run_owner(request, endpoint=upstream.endpoint)
         self.assertEqual(completed.returncode, 0, completed.stderr)
         forwarded = upstream.requests[0]
-        self.assertEqual(
-            forwarded["chat_template_kwargs"],
-            {"enable_thinking": False},
-        )
+        self.assertIs(forwarded["enable_thinking"], False)
+        self.assertNotIn("chat_template_kwargs", forwarded)
         self.assertNotIn("think", forwarded)
 
     def test_a_request_that_wants_reasoning_is_forwarded_untouched(self) -> None:
@@ -228,6 +226,7 @@ class UtilityOwnerTests(unittest.TestCase):
         completed = self.run_owner(request, endpoint=upstream.endpoint)
         self.assertEqual(completed.returncode, 0, completed.stderr)
         forwarded = upstream.requests[0]
+        self.assertNotIn("enable_thinking", forwarded)
         self.assertNotIn("chat_template_kwargs", forwarded)
         self.assertNotIn("think", forwarded)
 
@@ -250,11 +249,13 @@ class UtilityOwnerTests(unittest.TestCase):
         self.assertIn('must use model "utility"', completed.stderr)
         self.assertEqual(upstream.requests, [])
 
-    def test_unreachable_llama_swap_fails_with_one_bounded_line(self) -> None:
+    def test_unreachable_halogen_fails_with_one_bounded_line(self) -> None:
         endpoint = closed_endpoint()
         completed = self.run_owner(utility_request(), endpoint=endpoint)
         self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("llama-swap", completed.stderr)
+        # The one line names the upstream it could not reach, by name and by
+        # address, so the reader knows which box to look at.
+        self.assertIn("halogen", completed.stderr.lower())
         self.assertIn(endpoint, completed.stderr)
         self.assertNotIn("Traceback", completed.stderr)
         self.assertEqual(len(completed.stderr.splitlines()), 1)
@@ -269,10 +270,10 @@ class UtilityOwnerTests(unittest.TestCase):
         self.assertNotIn("Traceback", completed.stderr)
         self.assertEqual(completed.stdout, "")
 
-    def test_a_slow_cold_load_times_out_cleanly_and_says_why(self) -> None:
-        # llama-swap can legitimately spend minutes cold-loading; when the
-        # caller's budget runs out first the failure must still name the cause
-        # rather than surfacing a socket traceback.
+    def test_a_slow_upstream_times_out_cleanly_and_says_why(self) -> None:
+        # A request that lands while the worker's unit is still starting, or a
+        # long generation, can outlast the caller's budget; the failure must
+        # then name the timeout rather than surfacing a socket traceback.
         upstream = self.start_upstream(delay=5.0)
         completed = self.run_owner(
             utility_request(),
@@ -281,7 +282,6 @@ class UtilityOwnerTests(unittest.TestCase):
         )
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("did not answer within", completed.stderr)
-        self.assertIn("cold load", completed.stderr)
         self.assertNotIn("Traceback", completed.stderr)
 
     def test_the_endpoint_must_be_an_http_url(self) -> None:
@@ -292,17 +292,17 @@ class UtilityOwnerTests(unittest.TestCase):
 
 class UtilityOwnerProvenanceTests(unittest.TestCase):
     def test_owner_records_where_the_seam_runs_and_why_it_is_in_tree(self) -> None:
-        # The 2026-08-29 migration moved this seam off the decommissioned NPU
-        # onto llama-swap rather than retiring it. Pin both halves: where it is
-        # installed (so nobody re-reads the FLM lifecycle back into it), and
-        # that the flake check imports it by path regardless of installation.
+        # Pin both halves of where this seam lives: the upstream it forwards
+        # to (the Halogen server on the worker) and the host the wrapper is
+        # installed on (the coordinator), and that the flake check imports it
+        # by path regardless of installation.
         source = UTILITY_OWNER.read_text(encoding="utf-8")
-        self.assertIn("2026-08-29", source)
-        self.assertIn("llama-swap", source)
+        self.assertIn("halogen", source.lower())
         self.assertIn("coordinator", source)
         self.assertIn("flake check", source)
         self.assertIn("by path", source)
-        # The FLM child lifecycle is gone, not merely unused.
+        # The wrapper owns no child process and takes no lock: one bounded
+        # HTTP request is the whole of it.
         self.assertNotIn("subprocess", source)
         self.assertNotIn("fcntl", source)
 

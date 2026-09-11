@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # vlm.sh <png> <model> <out-md>
-# One bounded VLM transcription through llama-swap. June-proven prompt, temp 0.
+# One bounded VLM transcription through Halogen Flash on the worker
+# ($INFERENCE_URL from env.sh). June-proven prompt, temp 0. The token budget
+# covers the model's reasoning as well as the page, hence the wide cap.
 # All large payloads travel via files, never argv (128 KiB per-arg kernel cap).
 set -euo pipefail
 . "$(dirname "$0")/env.sh"
@@ -11,13 +13,13 @@ trap 'rm -rf "$work"' EXIT
 prompt="Transcribe this scanned academic page to clean GitHub-flavored Markdown. Preserve heading levels, paragraphs, footnotes, and tables (as markdown tables). Use \$...\$ / \$\$...\$\$ for math. Do not add commentary. If part is illegible write [illegible]."
 "$CORE/base64" -w0 "$png" > "$work/b64"
 "$JQ" -n --arg model "$model" --arg prompt "$prompt" --rawfile b64 "$work/b64" \
-  '{model: $model, temperature: 0, max_tokens: 6000,
+  '{model: $model, temperature: 0, max_tokens: 16384,
     messages: [{role: "user", content: [
       {type: "text", text: $prompt},
       {type: "image_url", image_url: {url: ("data:image/png;base64," + $b64)}}]}]}' \
   > "$work/body.json"
 "$CURL" -fsS --max-time 1500 -H 'Content-Type: application/json' \
-  -d @"$work/body.json" "$LLAMA_SWAP/v1/chat/completions" > "$work/resp.json"
+  -d @"$work/body.json" "$INFERENCE_URL/v1/chat/completions" > "$work/resp.json"
 finish=$("$JQ" -r '.choices[0].finish_reason // empty' "$work/resp.json")
 if [ "$finish" = "length" ]; then
   echo "VLM output truncated at max_tokens (finish_reason=length)" >&2

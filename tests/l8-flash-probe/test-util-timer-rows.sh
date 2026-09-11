@@ -10,8 +10,10 @@
 # not the wording.
 #
 # Hermetic: a fake `systemctl` earlier on PATH answers `--user show <unit> -p
-# FragmentPath --value` out of a table this test writes, L8_FLASH_HOST selects
-# the box, and no real systemd, tally or network call decides any assertion.
+# FragmentPath --value` out of a table this test writes, a fake `ssh` beside it
+# refuses every connection (so the probe's worker row reports UNKNOWN rather
+# than dialling a real box), L8_FLASH_HOST selects the box, and no real
+# systemd, tally or network call decides any assertion.
 #
 # The fixtures are SYMLINK-SHAPED on purpose (dotfiles#331). A declared unit's
 # FragmentPath is the link home-manager wrote into ~/.config/systemd/user, not
@@ -62,6 +64,8 @@ fi
 exit 1
 FAKE
 chmod 755 "$tmp/bin/systemctl"
+printf '#!%s\nexit 255\n' "$BASH_ABS" > "$tmp/bin/ssh"
+chmod 755 "$tmp/bin/ssh"
 
 FRAGMENTS="$tmp/fragments"
 export FRAGMENTS

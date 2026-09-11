@@ -380,8 +380,9 @@
     nix-amd-ai.url = "github:noamsto/nix-amd-ai";
 
     # nix-strix-halo — the broad gfx1151 package plane for the Framework Desktop:
-    # llama.cpp ROCm/Vulkan, ds4-rocm, vLLM, MLX, tokenizers, MES firmware, and a
-    # buildable live ISO. Consume its package
+    # llama.cpp ROCm/Vulkan, amdtop, MES firmware, and a buildable live ISO
+    # (its ds4/vLLM/MLX outputs exist upstream but nothing here consumes them:
+    # the fleet is mono-model on Halogen). Consume its package
     # outputs directly rather than applying its global overlay: that preserves its
     # own TheRock/Python provider graph and avoids replacing the already-live
     # nix-amd-ai XRT/FastFlowLM pair. The two flakes currently pin identical XRT +
@@ -655,24 +656,15 @@
             [
               "coordinator"
               "nas"
-              # Dialled over the Thunderbolt cable, not the LAN — see the
-              # hostname branch below.
               "worker"
             ]
             (host: {
-              # Canonical names resolve through MagicDNS or the direct NAS map —
-              # except the worker, which is dialled by its FLEET identity
-              # (#241 repoint). The old target was the raw Thunderbolt address
-              # 10.99.0.2, which meant a worker rebooting with a sick TB rail
-              # severed its own deploy path — the one path that could ship it a
-              # fix. 10.99.9.2 lives on the worker's loopback and is reachable
-              # over whichever rail is up: the 5GbE eth-fleet route at metric
-              # 20 (hosts/coordinator/eth-fleet.nix) with the TB rail behind it
-              # at metric 50, no AP, no lease, no router plane on either. It is
+              # Canonical names, every one: `nas` and `coordinator` through the
+              # direct hosts pins, `worker` through modules/fleet-hosts.nix
+              # (its static 10.42.0.5 on the twins — the box is wired into the
+              # BE550 in another room and has no other address). Every name is
               # a registry alias, so the host key stays pinned.
-              # The LAN identity 10.42.0.5 remains the fleet-facing one — it is
-              # what the NAS dials for Immich ML and what the journal ACL admits.
-              hostname = if host == "worker" then "10.99.9.2" else host;
+              hostname = host;
               sshOpts = fleetDeploySshOpts;
               profiles.system.path =
                 inputs.deploy-rs.lib.${system}.activate.nixos
@@ -710,15 +702,10 @@
           # applying either upstream overlay to the fleet's global pkgs fixpoint.
           stable-diffusion-cpp-rocm = amdAi.stable-diffusion-cpp-rocm;
           inherit (strixAi)
-            ds4-rocm
             ec-su-axb35-monitor
             llama-cpp-rocm
             llama-cpp-vulkan
-            mlx-lm
-            mlx-rocm
             strix-halo-mes-firmware
-            tokenizers-cpp
-            vllm-rocm
             ;
           live-iso = strixAi.live-iso;
           nas-installer-iso = nasInstaller.config.system.build.isoImage;
@@ -843,7 +830,9 @@
         # sharpest: the card's `instrument_sha256` locks the two programs at
         # arming, and `abort_on` makes a row written by any other instrument a
         # CRASH — so a merge that touched either program is not a merge that can
-        # be graded. The digests are the ones in 34a613dc's message.
+        # be graded. The sampler digest is the halogen-era script (UTIL-01's
+        # instrument_sha256 must be re-armed to it); the row writer's is the one
+        # in 34a613dc's message.
         util-sampler-topology =
           let
             coordinator = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
@@ -892,7 +881,7 @@
           # ── the programs are byte-for-byte the ones the card locked ────────
           assert
             builtins.hashFile "sha256" ./home/dot_local/bin/util-sampler
-            == "cc76a8179c46e735d6005f3f2d92f137cff026d7c3658a27b89261778fa50ce6";
+            == "25709720ad9e05e18061148076f015fb83f7e02aa64ebbb57b69861306b8e5a0";
           assert
             builtins.hashFile "sha256" ./home/dot_local/bin/util-row
             == "1fdb80179595dc151af67e4ed2bc03e6a3bcf34685acb869b1cc9d9bcfa90906";
@@ -1603,22 +1592,23 @@
           assert !(builtins.elem "wlp192s0" worker.networking.firewall.trustedInterfaces);
           # Coordinator LAN doors: the .internal front doors and the LLM
           # endpoint. :3003 is deliberately ABSENT — it left with Immich ML.
-          assert builtins.all
-            (p: builtins.elem p coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts)
-            [
-              80 # caddy .internal front doors
-              9292 # llama-swap
-            ];
+          assert builtins.elem 80 coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts;
+          # The coordinator serves no model: no inference door on its LAN leg.
+          assert !(builtins.elem 9292 coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts);
+          assert !(builtins.elem 8731 coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts);
           assert !(builtins.elem 3003 coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts);
           # Worker LAN doors: Immich ML (dialled by nas.services.immich above)
-          # and its own llama-swap. Nothing else — and no tailnet to hide behind,
-          # which is exactly why these stay interface-scoped rather than global.
-          assert builtins.all
-            (p: builtins.elem p worker.networking.firewall.interfaces.wlp192s0.allowedTCPPorts)
-            [
+          # and the Halogen API (modules/halogen.nix). Nothing else — and no
+          # tailnet to hide behind, which is exactly why these stay
+          # interface-scoped rather than global. On enp191s0: the worker is
+          # WIRED into the BE550 and has no wifi profile at all.
+          assert
+            worker.networking.firewall.interfaces.enp191s0.allowedTCPPorts == [
               3003 # immich-ml
-              9292 # llama-swap
+              8731 # halogen
             ];
+          assert !(worker.networking.firewall.interfaces ? wlp192s0);
+          assert !(builtins.elem "enp191s0" worker.networking.firewall.trustedInterfaces);
           # Attic moved to the NAS at ws5 — the coordinator serves no :8080 and
           # every host, worker included, dials http://nas:8080/fleet instead.
           assert builtins.elem "http://nas:8080/fleet" worker.nix.settings.extra-substituters;
@@ -1673,10 +1663,12 @@
           # the same SSID as 6GHz, this exemption must be revisited first.
           #
           # BOTH Strix boxes are checked since 2026-08-21 (#229): the worker is
-          # the same silicon with the same mt7925e RZ717 on the same SSID, and
-          # it is in fact the box where the 6GHz BSSID pin was proven to break
-          # activation. A hardening rule that covered only the machine Tom sits
-          # at would have missed the headless one that cannot report a lockup.
+          # the same silicon with the same mt7925e RZ717, and it is in fact the
+          # box where the 6GHz BSSID pin was proven to break activation. Since
+          # 2026-09-11 the worker is WIRED and declares no wifi profile at all
+          # (asserted below), so the check is vacuous there today — it stays so
+          # that a wifi profile re-added to the headless box that cannot report
+          # a lockup is held to the same rule as the coordinator's.
           assert nixpkgs.lib.hasInfix "mt7925e disable_aspm=1" coordinator.boot.extraModprobeConfig;
           assert nixpkgs.lib.hasInfix "mt7925e disable_aspm=1" worker.boot.extraModprobeConfig;
           assert
@@ -1696,21 +1688,26 @@
               coordinator
               worker
             ];
-          # The worker's thomas-6ghz is its ONLY wifi profile: no Freebox
-          # fallback rail exists on that box (its fallback is the Thunderbolt
-          # link), so a second SSID appearing here would be a silent roam
-          # surface on the machine least able to report the resulting lockup.
+          # The worker declares NO wifi profile since 2026-09-11: it is wired
+          # into the BE550's Ethernet port 2 in another room, and the only
+          # profile it ensures is the wired `lan` one. A wifi profile
+          # reappearing here would be a silent roam surface on the machine
+          # least able to report the resulting lockup — and, with the address
+          # static on both, a second holder of 10.42.0.5.
           assert
             builtins.filter (
               name:
               (worker.networking.networkmanager.ensureProfiles.profiles.${name}.connection.type or "") == "wifi"
-            ) (builtins.attrNames worker.networking.networkmanager.ensureProfiles.profiles)
-            == [ "thomas-6ghz" ];
+            ) (builtins.attrNames worker.networking.networkmanager.ensureProfiles.profiles) == [ ];
+          assert builtins.attrNames worker.networking.networkmanager.ensureProfiles.profiles == [ "lan" ];
+          assert
+            worker.networking.networkmanager.ensureProfiles.profiles.lan.connection.interface-name
+            == "enp191s0";
           # Static, lease-free LAN identity — the property every cross-host
           # reference to this box depends on (NAS ML URL, NAS journal ACL, the
-          # fleet-wide hosts pin). A silent revert to DHCP breaks all three.
+          # hosts pins). A silent revert to DHCP breaks all three.
           assert
-            worker.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4 == {
+            worker.networking.networkmanager.ensureProfiles.profiles.lan.ipv4 == {
               method = "manual";
               address1 = "10.42.0.5/24";
               gateway = "10.42.0.1";
@@ -1914,9 +1911,10 @@
             coordinatorHome.xdg.configFile."kitty-herdr-nix.conf".text;
           # The worker keeps Home Manager (unlike the NAS, which stops at NixOS):
           # it is an ordinary interactive box that merely has nobody sitting at
-          # it, so the shell, atuin sync and niri session are all real. What it
-          # must NOT pick up are the things gated on being the coordinator — the
-          # Tally daemon and voxtype.
+          # it, so the shell, atuin sync and the user timers are all real. What
+          # it must NOT pick up are the things gated on being the coordinator —
+          # the Tally daemon, voxtype, and since 2026-09-11 the graphical
+          # session itself (no display output on that box: Tom's ruling).
           assert workerHome.home.username == "tom";
           assert workerHome.programs.atuin.settings.auto_sync;
           assert !workerHome.services.tally.enable;
@@ -1930,23 +1928,25 @@
           # turning into a topology move: one server (ruling B5, #309 is Tom's),
           # two clients, unchanged.
           assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") workerHome.home.packages;
-          # wayvnc's unit exists and is deliberately unreachable — this host has
-          # no tailnet, and the :5900 door is the coordinator's alone. The unit
-          # stays so the screen becomes viewable the day that changes; see
-          # hosts/worker/headless-display.nix.
-          #
-          # RETARGETED 2026-09-01, and in the direction the ruling went. This
-          # read `builtins.elem 5900 worker…tailscale0.allowedTCPPorts`, which
-          # passed for a reason that was never about this host: modules/common.nix
-          # admitted :5900 fleet-wide, so the worker carried a firewall rule for
-          # an interface it does not have. With the tailnet tier moved to
-          # hosts/coordinator/tailscale.nix the rule is gone, so assert the fact
-          # that actually holds — ABSENT here, PRESENT on the box that has a
-          # tailscale0. Both directions, because a half-move that left the door
-          # on the wrong host would look identical from either side alone.
-          assert workerHome.systemd.user.services ? wayvnc;
+          # No wayvnc on the worker since 2026-09-11: with niri and greetd
+          # forced off (hosts/worker/default.nix) home/remote.nix renders
+          # nothing there, so there is no VNC server, no session for it to
+          # capture, and no door. The coordinator is the ONLY host with a
+          # compositor — both directions asserted, plus the NAS for the third
+          # box, because a half-move that left a session on the wrong host
+          # would look identical from either side alone.
+          assert !(workerHome.systemd.user.services ? wayvnc);
+          assert coordinatorHome.systemd.user.services ? wayvnc;
+          assert !self.nixosConfigurations.worker.config.programs.niri.enable;
+          assert !self.nixosConfigurations.worker.config.services.greetd.enable;
+          assert self.nixosConfigurations.coordinator.config.programs.niri.enable;
+          assert self.nixosConfigurations.coordinator.config.services.greetd.enable;
+          assert !self.nixosConfigurations.nas.config.programs.niri.enable;
           assert
-            !builtins.elem 5900 self.nixosConfigurations.worker.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
+            !builtins.elem 5900 (
+              self.nixosConfigurations.worker.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
+                or [ ]
+            );
           assert builtins.elem 5900
             self.nixosConfigurations.coordinator.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
           assert !self.nixosConfigurations.worker.config.services.tailscale.enable;
@@ -2364,18 +2364,17 @@
             #   names, still banned from home/tally.nix AND flows/. Nothing in
             #   this branch wants either back.
             #
-            #   retiredFlowHostPattern — the bare host name, still banned from
-            #   flows/ ONLY. This is the half the first cut of #310 dropped
-            #   wholesale, which unbanned the name in flows/ too — more than Q1
-            #   asked for. A flow is a script that ENQUEUES work; a flow naming
-            #   the other box is a flow trying to run there, which is exactly
-            #   the executor half that stayed retired (Q2: one daemon, on the
-            #   coordinator). home/tally.nix is different in kind — it declares
-            #   the pool TABLE, and Q1 puts a row for the other box's device in
-            #   it, so the name must be speakable there and only there. That
-            #   ban is what had forced this file's neighbours to spell the box
-            #   obliquely. The pool row keeps its own structural assertion
-            #   below, which is stronger than a grep over prose.
+            #   retiredFlowHostPattern — the bare host name, banned from the
+            #   CODE under flows/ except in two spellings: the Halogen endpoint
+            #   `http://<host>:8731` and the `<host>-gpu` pool. A flow is a
+            #   script that ENQUEUES work; a flow naming the other box as a
+            #   place to run is the executor half that stayed retired (Q2: one
+            #   daemon, on the coordinator). Dialling the box's inference
+            #   server over HTTP, or leasing the pool row that describes its
+            #   device (home/tally.nix declares it), is neither — every model
+            #   call on this fleet lands on the worker now. Prose (README.md)
+            #   is not checked. The pool row keeps its own structural
+            #   assertion below, which is stronger than a grep over prose.
             retiredExecutionPattern = nixpkgs.lib.concatStringsSep "|" [
               (strixWorker + "Flake")
               (strixWorker + "Models")
@@ -2383,7 +2382,6 @@
             # The bare name subsumes devicePool ("<host>-gpu"): a flow may name
             # neither.
             retiredFlowHostPattern = strixWorker;
-            retiredDeployment = "deepseek-v4-flash-q4-dual";
             activeHostSets = [
               (builtins.attrNames self.nixosConfigurations)
               (builtins.attrNames self.deploy.nodes)
@@ -2426,12 +2424,19 @@
           assert meshRegistry.${strixWorker}.hostKey != "";
           assert meshRegistry.${strixWorker}.userKey == meshRegistry.coordinator.userKey;
           assert nixpkgs.lib.hasInfix "tom@mesh-20260729" meshRegistry.${strixWorker}.userKey;
-          # Every dialable identity addressable without TOFU: the LAN identity,
-          # the Thunderbolt rail the reintegration deploy travelled over, and
-          # the fleet identity the deploy path now dials (#241).
-          assert nixpkgs.lib.elem "10.42.0.5" meshRegistry.${strixWorker}.aliases;
-          assert nixpkgs.lib.elem "10.99.0.2" meshRegistry.${strixWorker}.aliases;
-          assert nixpkgs.lib.elem "10.99.9.2" meshRegistry.${strixWorker}.aliases;
+          # Every dialable identity addressable without TOFU — exactly one per
+          # twin, the static LAN address; an alias that answers nowhere only
+          # buys TOFU prompts.
+          assert
+            meshRegistry.${strixWorker}.aliases == [
+              "worker"
+              "10.42.0.5"
+            ];
+          assert
+            meshRegistry.coordinator.aliases == [
+              "coordinator"
+              "10.42.0.2"
+            ];
           assert coordinator.networking.hosts."10.42.0.1" == [ "nas" ];
           assert builtins.elem "coordinator" nas.networking.hosts."10.42.0.2";
           # #273: the TWINS' own names must NEVER resolve to loopback again.
@@ -2440,19 +2445,20 @@
           # (torch/Gloo measured: rank 0 dies in 6.3 s, rank 1 hangs to a 90 s
           # kill) binds loopback WITHOUT the warning its own fallback path would
           # have printed. modules/fleet-hosts.nix mkForce-empties it on both
-          # twins and points each name at the /32 fleet identity on lo; an empty
-          # list renders no /etc/hosts line at all (nixpkgs filters it).
+          # twins and points each name at its static LAN address; an empty list
+          # renders no /etc/hosts line at all (nixpkgs filters it).
+          # Exact lists: a second entry for either name would be ordered by
+          # systemd-resolved, not by the file.
           assert coordinator.networking.hosts."127.0.0.2" == [ ];
           assert worker.networking.hosts."127.0.0.2" == [ ];
-          assert coordinator.networking.hosts."10.99.9.1" == [ "coordinator" ];
-          assert coordinator.networking.hosts."10.99.9.2" == [ strixWorker ];
-          assert worker.networking.hosts."10.99.9.1" == [ "coordinator" ];
-          assert worker.networking.hosts."10.99.9.2" == [ strixWorker ];
+          assert coordinator.networking.hosts."10.42.0.2" == [ "coordinator" ];
+          assert coordinator.networking.hosts."10.42.0.5" == [ strixWorker ];
+          assert worker.networking.hosts."10.42.0.2" == [ "coordinator" ];
+          assert worker.networking.hosts."10.42.0.5" == [ strixWorker ];
           # ...and the NAS keeps the stock mapping, deliberately: it is an
           # appliance, not a rank in a job, and it does not import
           # modules/fleet-hosts.nix.
           assert nas.networking.hosts."127.0.0.2" == [ "nas" ];
-          assert !(nas.networking.hosts ? "10.99.9.1");
           # journald substrate (#135): the NAS receives on the NVMe, and the
           # senders are the STRIX HALO BOXES ONLY (Tom's 2026-08-21 ruling) —
           # the worker joined as the second sender with #229. Each sender keeps
@@ -2473,26 +2479,24 @@
             nas.networking.firewall.extraInputRules;
           assert self.deploy.nodes.coordinator.hostname == "coordinator";
           assert self.deploy.nodes.nas.hostname == "nas";
-          # Deliberately the rail-independent fleet identity, not the name and
-          # not a single cable (#241 repoint — the TB-only target severed the
-          # deploy path exactly when a sick rail made a deploy most needed).
-          # Asserted against the registry so this can never drift into an address
-          # that carries no pinned host key.
-          assert self.deploy.nodes.${strixWorker}.hostname == "10.99.9.2";
+          # The worker is dialled by NAME since 2026-09-11 — it resolves to the
+          # static LAN address on the coordinator (modules/fleet-hosts.nix),
+          # which is the box's only address now. Asserted against the registry
+          # so this can never drift into an address that carries no pinned
+          # host key.
+          assert self.deploy.nodes.${strixWorker}.hostname == strixWorker;
           assert nixpkgs.lib.elem self.deploy.nodes.${strixWorker}.hostname
             meshRegistry.${strixWorker}.aliases;
-          # ...while the LAN identity stays the fleet-facing one.
-          assert nixpkgs.lib.elem "10.42.0.5" meshRegistry.${strixWorker}.aliases;
-          # The `worker` -> 10.42.0.5 NAME pin is HOST-SCOPED to the NAS since
-          # 2026-08-31 (#277): only its Immich needs the wifi answer, and on the
-          # twins that answer is ~960x slower than the wire (104.895 ms avg vs
-          # 0.109 ms, measured 2026-08-31) AND collides with the fleet-identity
-          # entry #273 adds. Two /etc/hosts lines for one name are ordered by
-          # systemd-resolved, not by the file, so the absence on the twins is
-          # the load-bearing half — assert it, not just the presence on the NAS.
+          # The `worker` -> 10.42.0.5 NAME pin exists on every host that dials
+          # it, and every host agrees on the answer: the NAS from
+          # hosts/nas/network.nix (its Immich dials http://worker:3003), the
+          # twins from modules/fleet-hosts.nix. Host-scoped rather than
+          # fleet-wide on purpose — two /etc/hosts lines for one name are
+          # ordered by systemd-resolved, not by the file (#277), so each host
+          # carries exactly one and modules/common.nix carries none.
           assert nas.networking.hosts."10.42.0.5" == [ strixWorker ];
-          assert !(coordinator.networking.hosts ? "10.42.0.5");
-          assert !(worker.networking.hosts ? "10.42.0.5");
+          assert coordinator.networking.hosts."10.42.0.5" == [ strixWorker ];
+          assert worker.networking.hosts."10.42.0.5" == [ strixWorker ];
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
           # ── the emergency rail (2026-09-01) ────────────────────────────────
           # This box owns its own tailnet since the fleet-wide default in
@@ -2562,7 +2566,7 @@
           assert !(worker.nix.settings ? post-build-hook);
           assert nixpkgs.lib.elem "http://nas:8080/fleet" worker.nix.settings.extra-substituters;
           # Doctrine, 2026-09-10: no model byte transfer may enter update,
-          # activation, boot, or llama-swap ordering. Both endpoints get one
+          # activation, boot, or service ordering. Both endpoints get one
           # explicit borrow CLI; neither gets a transfer service or timer.
           assert !(worker.systemd.services ? local-models-sync);
           assert !(coordinator.systemd.services ? local-models-sync);
@@ -2584,17 +2588,15 @@
                 package: nixpkgs.lib.getName package == "local-models-borrow"
               ) coordinator.environment.systemPackages
             ) == 1;
-          assert
-            !(nixpkgs.lib.elem "local-models-sync.service" (worker.systemd.services.llama-swap.wants or [ ]));
-          assert
-            !(nixpkgs.lib.elem "local-models-sync.service" (worker.systemd.services.llama-swap.after or [ ]));
+          # The Halogen unit orders after nothing model-shaped either: its
+          # pre-start CHECKS the bundle and refuses; it never fetches.
           assert
             !(nixpkgs.lib.elem "local-models-sync.service" (
-              coordinator.systemd.services.llama-swap.wants or [ ]
+              worker.systemd.services.podman-halogen.after or [ ]
             ));
           assert
-            !(nixpkgs.lib.elem "local-models-sync.service" (
-              coordinator.systemd.services.llama-swap.after or [ ]
+            !(nixpkgs.lib.elem "local-models-borrow.service" (
+              worker.systemd.services.podman-halogen.after or [ ]
             ));
           # NAS downloads remain a separate timer/operator action, never an
           # update-center or activation dependency.
@@ -2625,48 +2627,97 @@
           # modules/strix.nix is selected by hostname on BOTH Strix boxes now.
           assert !(self.nixosConfigurations.coordinator.options ? myCluster);
           assert !(self.nixosConfigurations.${strixWorker}.options ? myCluster);
-          # The worker's roster is its own: the two gemma4-31b rows, and nothing
-          # mirrored from the coordinator (128 GB each, not 256 GB shared).
+          # ── mono-model: the wanted sets, exact ─────────────────────────────
+          # Exact lists, not membership tests, so a new hundred-gigabyte row
+          # has to be argued for here in writing before it can cost a twin its
+          # disk. The worker wants ONE thing, the Halogen bundle it serves; the
+          # coordinator wants the small GGUFs an operator serves by hand. There
+          # is no `allow` any more: nothing is a deployment, nothing is served
+          # by a roster.
+          assert !(worker.services.local-models ? allow);
+          assert worker.services.local-models.artifacts == [ "halogen-qwen38-flash-next" ];
           assert
-            worker.services.local-models.allow == [
-              "gemma4-31b-it-q8-0"
-              "gemma4-31b-it-vl"
+            coordinator.services.local-models.artifacts == [
+              "qwen36-35b-a3b-mtp-ud-q8-k-xl"
+              "gemma4-12b-it-q8-0"
+              "gemma4-12b-it-mtp-q8-0"
+              "fara15-9b-q8-0"
+              "fara15-9b-mmproj-bf16"
             ];
-          # ...and TWO artifacts, neither of which is a mirror. This guard read
-          # `== [ ]` until 8d772780, then `== [ "flashnext-fp8" ]`; the exact
-          # list is asserted rather than a membership test precisely so that a
-          # third entry has to be argued for here, in writing, before it can
-          # cost the worker another hundred gigabytes.
-          #
-          #   flashnext-fp8 — required IN FULL on each twin (tensor-parallel
-          #     shards compute, not the on-disk weights), so both rosters
-          #     carrying it is the symmetry requirement being met, not
-          #     coordinator content leaking across. The row also keeps the
-          #     explicit prune oracle aligned with the intended working set.
-          #
-          #   qwen38-flash-ciru-strix-iu4 — worker ONLY, and asymmetric ON
-          #     PURPOSE (#291). ciru's IU4 runs the whole 126.63 GiB model on
-          #     ONE box; it is the single-box calibration point the TP=2 pair
-          #     spread across both twins is measured against. Putting it on the
-          #     coordinator too would defeat the comparison, which is why the
-          #     coordinator's own guard below still reads [ "flashnext-fp8" ]
-          #     and must stay that way. It is an artifact and never a
-          #     deployment because it needs ciru's llama.cpp fork (v1.1 =
-          #     baba5e0617ac40aa88b9ba96f4b90e584caec64e); stock llama.cpp,
-          #     vLLM and transformers cannot load it. Same anti-prune duty.
-          #
-          # ORDER IS LOAD-BEARING: modules/strix.nix builds this as the shared
-          # base list ++ the worker-only optional, so flashnext-fp8 leads.
-          #
-          # NixOS can switch safely whether or not these bytes exist. Staging
-          # is a later, explicit `local-models-borrow --dry-run` / `--yes`
-          # transaction; see docs/trinity/CIRU-IU4-WORKER.md in flashnix.
+          # The catalogue itself: fifteen artifacts and no other top-level
+          # attribute — no deployments, no backend kinds, no utility pointer.
+          assert builtins.attrNames localModelCatalog == [ "artifacts" ];
           assert
-            worker.services.local-models.artifacts == [
-              "flashnext-fp8"
-              "deepseek-v4-flash-0731-bf16"
-              "qwen38-flash-ciru-strix-iu4"
+            builtins.attrNames localModelCatalog.artifacts == [
+              "fara15-9b-mmproj-bf16"
+              "fara15-9b-q8-0"
+              "gemma4-12b-it-mtp-q8-0"
+              "gemma4-12b-it-q8-0"
+              "halogen-qwen38-flash-next"
+              "mage-flow-4b-turbo-bf16"
+              "mage-flow-edit-4b-turbo-bf16"
+              "mage-vl-bf16"
+              "qwen3-embedding-8b-q8-0"
+              "qwen3-vl-embedding-8b-mmproj-f16"
+              "qwen3-vl-embedding-8b-q8-0"
+              "qwen36-35b-a3b-mtp-ud-q8-k-xl"
+              "vibevoice-asr-bf16"
+              "vibevoice-large-bf16"
+              "vibevoice-qwen25-7b-tokenizer"
             ];
+          assert localModelCatalog.artifacts.halogen-qwen38-flash-next.source.layout == "snapshot";
+          assert builtins.length localModelCatalog.artifacts.halogen-qwen38-flash-next.source.files == 9;
+          # ── Halogen: one server, on the worker, dialled from the coordinator ─
+          assert worker.services.halogen.enable;
+          assert !coordinator.services.halogen.enable;
+          assert coordinator.services.halogen.client.enable;
+          assert !worker.services.halogen.client.enable;
+          assert worker.virtualisation.oci-containers.containers ? halogen;
+          assert !(coordinator.virtualisation.oci-containers.containers ? halogen);
+          assert nixpkgs.lib.hasPrefix "ghcr.io/peonist-ai/halogen-flash-server@sha256:"
+            worker.virtualisation.oci-containers.containers.halogen.image;
+          assert
+            worker.virtualisation.oci-containers.containers.halogen.volumes == [
+              "/var/lib/local-models/halogen-qwen38-flash-next:/models:ro"
+            ];
+          assert
+            worker.virtualisation.oci-containers.containers.halogen.environment.HALOGEN_TOKENIZER
+            == "/models/tokenizer";
+          assert worker.virtualisation.oci-containers.containers.halogen.environment ? HALOGEN_VISION_TOWER;
+          # The service never downloads weights (model-byte doctrine).
+          assert !(worker.virtualisation.oci-containers.containers.halogen.environment ? HALOGEN_DOWNLOAD);
+          assert nixpkgs.lib.all
+            (flag: nixpkgs.lib.elem flag worker.virtualisation.oci-containers.containers.halogen.extraOptions)
+            [
+              "--network=host"
+              "--device=/dev/kfd"
+              "--device=/dev/dri"
+              "--ipc=host"
+              "--ulimit=memlock=-1:-1"
+            ];
+          assert worker.systemd.services.podman-halogen.serviceConfig.TimeoutStartSec == "45min";
+          assert nixpkgs.lib.elem "amdgpu.gttsize=126976" worker.boot.kernelParams;
+          assert !(nixpkgs.lib.elem "amdgpu.gttsize=126976" coordinator.boot.kernelParams);
+          # The utility-model wrapper lives on the coordinator only.
+          assert
+            builtins.length (
+              nixpkgs.lib.filter (
+                package: nixpkgs.lib.getName package == "utility-model"
+              ) coordinator.environment.systemPackages
+            ) == 1;
+          assert
+            builtins.length (
+              nixpkgs.lib.filter (
+                package: nixpkgs.lib.getName package == "utility-model"
+              ) worker.environment.systemPackages
+            ) == 0;
+          # llama-swap is gone from every host: no unit, no proxy, no door.
+          assert !coordinator.services.llama-swap.enable;
+          assert !worker.services.llama-swap.enable;
+          assert !(coordinator.systemd.services ? llama-swap);
+          assert !(worker.systemd.services ? llama-swap);
+          assert !(coordinator.systemd.targets ? flashnext-lane);
+          assert !(worker.systemd.targets ? flashnext-lane);
           # AdGuard is FORBIDDEN per-device on this LAN (DoH vs the NAS's
           # dns_hijack). The worker is the box that collision was first proven
           # on, so its closure must not carry the service at all.
@@ -2680,10 +2731,42 @@
           assert coordinator.systemd.timers ? tripwire-coredump;
           assert coordinator.systemd.timers ? tripwire-user-unit-failure;
           assert coordinator.systemd.timers ? failure-marker-reconcile;
-          assert monthlySources.inference.url == "http://coordinator:9292";
-          assert monthlySources.inference.compute_host == "coordinator";
+          assert monthlySources.inference.provider == "halogen";
+          assert monthlySources.inference.url == "http://worker:8731";
+          assert monthlySources.inference.compute_host == "worker";
           assert monthlySources.inference.tally_pool == "coordinator-gpu";
-          assert !(builtins.hasAttr retiredDeployment localModelCatalog.deployments);
+          # ── NPU decommission, 2026-08-29 (fleet-7.2) ──────────────────────
+          # These used to assert the NPU stack was PRESENT. The house style for
+          # a removal is to flip them negative rather than delete them, so the
+          # absence is locked in and a silent re-enable is a build failure.
+          assert !coordinator.hardware.amd-npu.enable;
+          assert !coordinator.hardware.amd-npu.enableNPU;
+          assert !worker.hardware.amd-npu.enable;
+          assert !worker.hardware.amd-npu.enableNPU;
+          assert nixpkgs.lib.elem "amd_iommu=off" coordinator.boot.kernelParams;
+          assert !(nixpkgs.lib.elem "amd_iommu=on" coordinator.boot.kernelParams);
+          assert nixpkgs.lib.elem "amd_iommu=off" worker.boot.kernelParams;
+          assert !(nixpkgs.lib.elem "amd_iommu=on" worker.boot.kernelParams);
+          # #244 checklist: sp5100_tco must stay armed through the reboot
+          # transition, which is exactly when a wedged box needs it.
+          assert nixpkgs.lib.elem "watchdog.stop_on_reboot=0" coordinator.boot.kernelParams;
+          assert nixpkgs.lib.elem "watchdog.stop_on_reboot=0" worker.boot.kernelParams;
+          # The twins ride linux 7.2 from nixpkgs-fresh (modules/strix.nix).
+          # hasPrefix, not equality: the versioned attr advances within 7.2.x.
+          assert nixpkgs.lib.hasPrefix "7.2" coordinator.boot.kernelPackages.kernel.version;
+          assert nixpkgs.lib.hasPrefix "7.2" worker.boot.kernelPackages.kernel.version;
+          # `assert !{coordinator,worker}.services.npu-llm.enable` stood here
+          # until 2026-08-31 (#270): with modules/npu-llm.nix deleted the
+          # option no longer evaluates, and the absence asserts below are the
+          # ones that still bite (they guard the upstream nix-amd-ai module,
+          # which keeps shipping fastflowlm/flm machinery we must not enable).
+          # The ad-hoc FLM manifest was a product of services.npu-llm; with the
+          # module gone the etc entry must not exist at all.
+          assert !(coordinator.environment.etc ? "local-models/fastflowlm.json");
+          assert !(worker.environment.etc ? "local-models/fastflowlm.json");
+          assert nixpkgs.lib.all (unit: !(nixpkgs.lib.hasPrefix "flm-" unit)) (
+            builtins.attrNames coordinator.systemd.services
+          );
           pkgs.runCommand "fleet-connectivity" { } ''
             if ${pkgs.ripgrep}/bin/rg --line-number '${retiredAliases}' ${self}; then
               echo "retired mesh alias found" >&2
@@ -2698,9 +2781,10 @@
               echo "retired Tally executor attribute found" >&2
               exit 1
             fi
-            if ${pkgs.ripgrep}/bin/rg --line-number '${retiredFlowHostPattern}' \
-              ${./flows}; then
-              echo "a flow names the retired execution host" >&2
+            if ${pkgs.ripgrep}/bin/rg --line-number --glob '!README.md' '${retiredFlowHostPattern}' \
+              ${./flows} \
+              | ${pkgs.ripgrep}/bin/rg --invert-match 'http://${strixWorker}:8731|${strixWorker}-gpu'; then
+              echo "a flow names the retired execution host outside its inference endpoint or GPU pool" >&2
               exit 1
             fi
             touch "$out"
@@ -2949,340 +3033,6 @@
               touch "$out"
             '';
 
-        local-model-routing =
-          let
-            coordinator = self.nixosConfigurations.coordinator.config;
-            # 2026-08-29: the worker is bound here so the NPU-decommission and
-            # linux-7.2 lock-ins below can be asserted on BOTH twins. modules/
-            # strix.nix is shared, so a one-sided assert would let a future
-            # per-host override drift the pair apart unnoticed.
-            worker = self.nixosConfigurations.worker.config;
-            coordinatorSettings = coordinator.services.llama-swap.settings;
-            findPiWrapper =
-              hostConfig:
-              nixpkgs.lib.findFirst (package: nixpkgs.lib.getName package == "pi")
-                (throw "evaluated host has no declarative Pi wrapper")
-                hostConfig.home-manager.users.tom.home.packages;
-            coordinatorPi = findPiWrapper coordinator;
-            # The catalog's utility slot, resolved to the row that actually
-            # backs it. Backend-agnostic since the 2026-08-29 GPU migration:
-            # the top-level pointer names the row and `canonical` is what makes
-            # it live, so this stays honest across a change of engine.
-            canonicalUtilityDeployments = nixpkgs.lib.filterAttrs (
-              deploymentId: deployment:
-              deployment.status == "canonical" && deploymentId == localModelCatalog.utility.deployment
-            ) localModelCatalog.deployments;
-            selectedDeploymentIds = coordinator.services.local-models.allow;
-            mageArtifactIds = [
-              "mage-vl-bf16"
-              "mage-flow-4b-turbo-bf16"
-              "mage-flow-edit-4b-turbo-bf16"
-            ];
-            mageArtifacts = map (artifactId: localModelCatalog.artifacts.${artifactId}) mageArtifactIds;
-            mageFiles = nixpkgs.lib.concatMap (artifact: artifact.source.files) mageArtifacts;
-            mageUniqueFiles = builtins.attrValues (
-              nixpkgs.lib.listToAttrs (
-                map (file: {
-                  name = file.oid;
-                  value = file;
-                }) mageFiles
-              )
-            );
-            selectedWeightArtifactIds = nixpkgs.lib.unique (
-              nixpkgs.lib.concatMap (
-                deploymentId:
-                let
-                  refs = localModelCatalog.deployments.${deploymentId}.artifacts;
-                in
-                nixpkgs.lib.filter (artifactId: artifactId != null) [
-                  refs.model
-                  refs.mtpHead
-                ]
-              ) selectedDeploymentIds
-            );
-            selectedWeightQuantizations = map (
-              artifactId: localModelCatalog.artifacts.${artifactId}.quantization
-            ) selectedWeightArtifactIds;
-            testRenderers = import ./lib/local-model-runtime.nix {
-              lib = nixpkgs.lib;
-              packages = {
-                llamaRocm = "/runtime/rocm";
-                llamaVulkan = "/runtime/vulkan";
-                ds4 = "/runtime/ds4";
-                vllm = "/runtime/vllm";
-                mlxLm = "/runtime/mlx-lm";
-              };
-            };
-            testRender =
-              renderer:
-              renderer {
-                deployment.model = "test-model";
-                modelPath = "/models/model.gguf";
-                modelDirectory = "/models/model-directory";
-              };
-            renderedBackends = nixpkgs.lib.mapAttrs (_: testRender) testRenderers;
-          in
-          # libraryPath arrived with the 2026-08-21 "weights leave nix" ruling
-          # (3f941c02): model weights are no longer nix FODs — they live in the
-          # NAS Library and are pulled by library-fetch — so the module needs to
-          # be told where that Library is mounted.
-          assert
-            builtins.attrNames self.nixosConfigurations.coordinator.options.services.local-models == [
-              "allow"
-              "artifacts"
-              "libraryPath"
-            ];
-          # The exact-list assert on options.services.npu-llm went with the
-          # module itself (deleted 2026-08-31, #270 — the appliance tier is
-          # retired). The negative flm-*/fastflowlm asserts further down are
-          # what still guard against the UPSTREAM nix-amd-ai module, which
-          # stays imported for the GPU path.
-          assert
-            coordinator.services.local-models.allow == [
-              "qwen36-35b-a3b-mtp-ud-q8-k-xl"
-              "fara15-9b-q8-0"
-              # fara15-4b-q8-0 and qwen3-vl-32b-ocr-refine ruled out 2026-08-20
-              # (#229); qwen3-vl-8b-ocr's NPU2 exit flip died with the NPU
-              # decommission — it stays until a GPU OCR successor validates
-              # (modules/strix.nix has the fuller note).
-              "qwen3-vl-8b-ocr"
-              "qwen3-embedding-8b-q8-0"
-              "qwen3-vl-embedding-8b-q8-0"
-              "qwen38-27b-mtp-q8-0"
-            ];
-          # flashnext-fp8 leads this list for the same reason it leads the
-          # worker's: it is declared on BOTH twins in modules/strix.nix because
-          # the FP8 checkpoint must be present in full per node, and it is the
-          # row that keeps the explicit prune oracle aligned with the intended
-          # working set. Stale here since 8d772780 for the same reason as the
-          # worker guard.
-          #
-          # ONE entry, and it stays one: the coordinator deliberately does NOT
-          # get qwen38-flash-ciru-strix-iu4 (#291). That row is the worker's
-          # single-box control against this pair — mirroring it here would
-          # spend 126.63 GiB destroying the comparison it exists to provide.
-          # If this guard ever goes red with the ciru id in it, the fix is to
-          # remove the declaration from modules/strix.nix, not to widen this.
-          assert
-            coordinator.services.local-models.artifacts == [
-              "flashnext-fp8"
-              "deepseek-v4-flash-0731-bf16"
-            ];
-          # Until 2026-08-28 an assert here intersected localModelStore.packages
-          # with coordinator.system.extraDependencies (== 22) — both artifacts of
-          # the design the 2026-08-21 "weights leave nix" ruling deleted, and
-          # 7516ba9c left it standing red on purpose because its REPLACEMENT is
-          # a design call (a Library-flow invariant), not a repair. That call was
-          # made in #242 (operator-approved 2026-08-30) and the invariant below
-          # is its layer (a): the allow-list is TOTAL over the Library flow at
-          # the description level. Every deployment a host may start — plus its
-          # extra `artifacts` — must reference only catalog rows that can
-          # actually drive a borrow: at least one file, every file carrying the
-          # 64-hex sha256 oid and a positive byte count the explicit borrow
-          # transaction verifies against. Library REACHABILITY is deliberately
-          # not asserted here: eval cannot describe NFS. The operator-only
-          # `local-models-borrow --dry-run` owns that live check; NAS-side
-          # coverage lives with library-fetch.
-          assert
-            let
-              lmHosts = nixpkgs.lib.filter (hostConfig: hostConfig.services ? local-models) [
-                coordinator
-                worker
-              ];
-              wantedArtifactIds = nixpkgs.lib.unique (
-                nixpkgs.lib.concatMap (
-                  hostConfig:
-                  hostConfig.services.local-models.artifacts
-                  ++ nixpkgs.lib.concatMap (
-                    deploymentId:
-                    nixpkgs.lib.filter (artifactId: artifactId != null) (
-                      builtins.attrValues localModelCatalog.deployments.${deploymentId}.artifacts
-                    )
-                  ) hostConfig.services.local-models.allow
-                ) lmHosts
-              );
-              # sha256 of the empty string: a zero-byte row (snapshot repos
-              # legitimately carry empty __init__.py markers) is borrowable
-              # ONLY if it declares exactly this oid — zero bytes under any
-              # other hash is a corrupt catalog row the sync could never
-              # verify.
-              emptySha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-              borrowable =
-                artifactId:
-                let
-                  files = localModelCatalog.artifacts.${artifactId}.source.files;
-                in
-                files != [ ]
-                && nixpkgs.lib.all (
-                  file:
-                  builtins.match "[0-9a-f]{64}" file.oid != null
-                  && (if file.bytes > 0 then true else file.oid == emptySha256)
-                ) files;
-              defective = nixpkgs.lib.filter (artifactId: !(borrowable artifactId)) wantedArtifactIds;
-            in
-            defective == [ ]
-            || throw "local-model-routing: allow-listed deployments reference artifacts the Library flow cannot materialize (missing files, malformed oid, or zero bytes): ${nixpkgs.lib.concatStringsSep ", " defective}";
-          assert nixpkgs.lib.all (artifact: artifact.source.layout == "snapshot") mageArtifacts;
-          assert builtins.length mageFiles == 164;
-          assert nixpkgs.lib.foldl' (total: file: total + file.bytes) 0 mageFiles == 45863017994;
-          assert nixpkgs.lib.foldl' (total: file: total + file.bytes) 0 mageUniqueFiles == 36583914927;
-          assert nixpkgs.lib.all (
-            quantization:
-            nixpkgs.lib.elem quantization [
-              "Q8_0"
-              "UD-Q8_K_XL"
-              # Qwen 3.8's MTP head: Q4_0 is the only published MTP asset;
-              # the base model itself stays Q8_0.
-              "Q4_0"
-            ]
-          ) selectedWeightQuantizations;
-          assert
-            builtins.attrNames coordinatorSettings.models == [
-              "fara1.5-9b"
-              "qwen3-embedding-8b"
-              "qwen3-vl-8b-ocr"
-              "qwen3-vl-embedding-8b"
-              "qwen3.6-35b-a3b"
-              "qwen3.8-27b"
-            ];
-          # peers is upstream's llama-swap-to-llama-swap federation primitive
-          # (verified in the shipped v240 binary, 2026-08-31). Empty means "the
-          # twins' proxies are not federated yet", no longer "appliances are
-          # not peers" — the appliance tier is retired. The #270 gateway-row
-          # design is the change that gets to relax this.
-          assert coordinatorSettings.peers == { };
-          assert coordinator.systemd.services.llama-swap.environment.LLAMA_MEDIA_MARKER == "<__media__>";
-          assert
-            coordinator.systemd.services.llama-swap.environment.XDG_CACHE_HOME == "/var/cache/llama-swap";
-          # ── NPU decommission, 2026-08-29 (fleet-7.2) ──────────────────────
-          # These used to assert the NPU stack was PRESENT. The house style for
-          # a removal is to flip them negative rather than delete them, so the
-          # absence is locked in and a silent re-enable is a build failure.
-          assert !coordinator.hardware.amd-npu.enable;
-          assert !coordinator.hardware.amd-npu.enableNPU;
-          assert !worker.hardware.amd-npu.enable;
-          assert !worker.hardware.amd-npu.enableNPU;
-          assert nixpkgs.lib.elem "amd_iommu=off" coordinator.boot.kernelParams;
-          assert !(nixpkgs.lib.elem "amd_iommu=on" coordinator.boot.kernelParams);
-          assert nixpkgs.lib.elem "amd_iommu=off" worker.boot.kernelParams;
-          assert !(nixpkgs.lib.elem "amd_iommu=on" worker.boot.kernelParams);
-          # #244 checklist: sp5100_tco must stay armed through the reboot
-          # transition, which is exactly when a wedged box needs it.
-          assert nixpkgs.lib.elem "watchdog.stop_on_reboot=0" coordinator.boot.kernelParams;
-          assert nixpkgs.lib.elem "watchdog.stop_on_reboot=0" worker.boot.kernelParams;
-          # The twins ride linux 7.2 from nixpkgs-fresh (modules/strix.nix).
-          # hasPrefix, not equality: the versioned attr advances within 7.2.x.
-          assert nixpkgs.lib.hasPrefix "7.2" coordinator.boot.kernelPackages.kernel.version;
-          assert nixpkgs.lib.hasPrefix "7.2" worker.boot.kernelPackages.kernel.version;
-          # `assert !{coordinator,worker}.services.npu-llm.enable` stood here
-          # until 2026-08-31 (#270): with modules/npu-llm.nix deleted the
-          # option no longer evaluates, and the absence asserts below are the
-          # ones that still bite (they guard the upstream nix-amd-ai module,
-          # which keeps shipping fastflowlm/flm machinery we must not enable).
-          # The ad-hoc FLM manifest was a product of services.npu-llm; with the
-          # module gone the etc entry must not exist at all.
-          assert !(coordinator.environment.etc ? "local-models/fastflowlm.json");
-          assert !(worker.environment.etc ? "local-models/fastflowlm.json");
-          assert nixpkgs.lib.all (unit: !(nixpkgs.lib.hasPrefix "flm-" unit)) (
-            builtins.attrNames coordinator.systemd.services
-          );
-          assert nixpkgs.lib.all (
-            unit: !(nixpkgs.lib.hasPrefix "flm-" unit)
-          ) coordinator.systemd.services.llama-swap.wants;
-          assert nixpkgs.lib.all (
-            unit: !(nixpkgs.lib.hasPrefix "flm-" unit)
-          ) coordinator.systemd.services.llama-swap.after;
-          assert nixpkgs.lib.all (
-            package: nixpkgs.lib.getName package != "fastflowlm"
-          ) coordinator.environment.systemPackages;
-          # The wrapper SURVIVES the decommission by moving to the GPU roster
-          # (Tom's ruling, 2026-08-29) — it is installed by
-          # modules/local-models.nix wherever the utility deployment is
-          # canonical, host-assigned, and allowed. That is the coordinator and
-          # only the coordinator: the worker's roster is the two gemma4-31b rows
-          # and its llama-swap has never heard of qwen3.6-35b-a3b.
-          assert nixpkgs.lib.any (
-            package: nixpkgs.lib.getName package == "utility-model"
-          ) coordinator.environment.systemPackages;
-          assert nixpkgs.lib.all (
-            package: nixpkgs.lib.getName package != "fastflowlm"
-          ) worker.environment.systemPackages;
-          assert nixpkgs.lib.all (
-            package: nixpkgs.lib.getName package != "utility-model"
-          ) worker.environment.systemPackages;
-          assert
-            localModelCatalog.utility == {
-              stableId = "utility";
-              deployment = "qwen36-35b-a3b-mtp-ud-q8-k-xl";
-              contextTokens = 32768;
-            };
-          # Exactly one canonical row backs the stable `utility` id, it is the
-          # Vulkan qwen3.6-35B-A3B, llama-swap serves it under that id on the
-          # coordinator, and it is emphatically not the retired FLM row.
-          assert builtins.length (builtins.attrNames canonicalUtilityDeployments) == 1;
-          assert canonicalUtilityDeployments ? "qwen36-35b-a3b-mtp-ud-q8-k-xl";
-          assert !(canonicalUtilityDeployments ? "flm-qwen3-4b-utility");
-          assert canonicalUtilityDeployments."qwen36-35b-a3b-mtp-ud-q8-k-xl".model == "qwen3.6-35b-a3b";
-          assert coordinatorSettings.models ? "qwen3.6-35b-a3b";
-          assert localModelCatalog.deployments."flm-qwen3-4b-utility".hosts == [ "coordinator" ];
-          assert !(localModelCatalog.deployments."flm-qwen3-4b-utility" ? peer);
-          assert !(localModelCatalog.deployments."flm-gemma4-it-e4b" ? peer);
-          assert !(localModelCatalog.deployments."flm-gpt-oss-20b" ? peer);
-          assert !(nixpkgs.lib.hasInfix "qwen3:4b" (builtins.toJSON coordinatorSettings));
-          assert !(nixpkgs.lib.hasInfix "-hf" (builtins.toJSON coordinatorSettings));
-          # `appliances` fell out of backendKinds 2026-08-31 (#270): the tier
-          # had exactly one member and zero live rows. "npu" survives only as a
-          # retired-only value so the four archived FLM rows keep their factual
-          # backend record; lib/local-model-backends.nix carries the ruling.
-          assert
-            localModelCatalog.backendKinds == {
-              local = [
-                "rocm"
-                "vulkan"
-                "ds4"
-                "vllm"
-                "mlx"
-              ];
-              retired = [ "npu" ];
-            };
-          assert
-            builtins.attrNames renderedBackends == [
-              "ds4"
-              "mlx"
-              "rocm"
-              "vllm"
-              "vulkan"
-            ];
-          assert
-            renderedBackends.rocm.cmd == "/runtime/rocm/bin/llama-server --port \${PORT} -m /models/model.gguf";
-          assert
-            renderedBackends.vulkan.cmd
-            == "/runtime/vulkan/bin/llama-server --port \${PORT} -m /models/model.gguf";
-          assert
-            renderedBackends.ds4.cmd
-            == "/runtime/ds4/bin/ds4-server --host 127.0.0.1 --port \${PORT} -m /models/model.gguf";
-          assert
-            renderedBackends.vllm.cmd
-            == "/runtime/vllm/bin/vllm serve /models/model-directory --host 127.0.0.1 --port \${PORT} --served-model-name test-model";
-          assert renderedBackends.vllm.useModelName == "test-model";
-          assert nixpkgs.lib.elem "HF_HUB_OFFLINE=1" renderedBackends.vllm.env;
-          assert
-            renderedBackends.mlx.cmd
-            == "/runtime/mlx-lm/bin/mlx_lm.server --model /models/model-directory --host 127.0.0.1 --port \${PORT}";
-          assert renderedBackends.mlx.useModelName == "default_model";
-          assert nixpkgs.lib.elem "HF_HUB_OFFLINE=1" renderedBackends.mlx.env;
-          assert builtins.hasAttr "mlx-lm" inputs.nix-strix-halo.packages.${system};
-          pkgs.runCommand "local-model-routing" { } ''
-            # The jq block that used to validate the coordinator's FastFlowLM
-            # manifest was removed 2026-08-29 with the NPU decommission (and
-            # the module that produced it was deleted outright 2026-08-31,
-            # #270): there is no /etc/local-models/fastflowlm.json to read.
-            # Its absence is asserted at eval time above.
-            ${pkgs.gnugrep}/bin/grep -F 'export LLAMA_SWAP_PORT=9292' ${coordinatorPi}/bin/pi >/dev/null
-            ${pkgs.gnugrep}/bin/grep -F -- '-e ${pkgs.pi-llama-swap-extension}' \
-              ${coordinatorPi}/bin/pi >/dev/null
-            touch "$out"
-          '';
       }
       // inputs.deploy-rs.lib.${system}.deployChecks self.deploy;
     };

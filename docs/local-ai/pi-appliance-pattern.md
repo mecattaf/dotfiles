@@ -2,8 +2,10 @@
 
 This is the reusable mechanism behind durable local-model workflows in these
 dotfiles. A frontier model authors and refines inspectable procedural memory;
-replaceable local models execute it through Pi and llama-swap. Tally sees one
-top-level executable and contributes scheduling, resource admission, and proof.
+a local model executes it through Pi against the fleet's inference server —
+Halogen Flash on the worker, declared to Pi as the `halogen` provider. Tally
+sees one top-level executable and contributes scheduling, resource admission,
+and proof.
 
 The monthly source-review bot is the deliberately smaller first implementation:
 one tool-less Pi judgment over fully prepared evidence. The patterns below are
@@ -31,9 +33,13 @@ the runtime directory; the compact lineage belongs in Tally's local witness.
 
 ## Abstract model selectors
 
-Workflow procedure names a capability class, never a checkpoint. Current
-single-member classes are `strongest` and `fast`, resolved against the accepted
-catalog and the models currently advertised by llama-swap.
+Workflow procedure names a capability class, never a checkpoint. A class is
+resolved against the accepted catalog and the model ids the inference server
+advertises at `/v1/models`, and the resolution is written down before
+inference begins. On the present mono-model fleet every class resolves to the
+one served id, `halogen-qwen3.8-flash-next`; the vocabulary exists so that a
+workflow's procedure survives the server changing underneath it, not because
+there is a choice to make today.
 
 A pool selector extends that vocabulary without changing the task contract:
 
@@ -47,7 +53,10 @@ pool from becoming several nearly identical quants or fine-tunes when the goal
 is broader hypothesis coverage. Useful keys include base checkpoint family,
 maker/frontier lab, architecture, fine-tune lineage, backend, and modality.
 Resolution is deterministic and its concrete member list is written to the
-witness before inference begins.
+witness before inference begins. A pool needs that many *distinct* members;
+one server advertising one model cannot supply them, so pool selectors are
+design guidance for a future roster rather than something the fleet can
+resolve now.
 
 ## Pool: map, validate, reduce
 
@@ -129,7 +138,10 @@ surprise work.
 
 Git, deterministic transforms, Pi processes, validation, and publication run on
 the coordinator unless a workflow explicitly declares another execution host.
-Model calls cross only the llama-swap boundary to the selected compute host.
+Model calls cross only the inference-server boundary: OpenAI-compatible HTTP
+requests to `http://worker:8731`, made by Pi through the `halogen` entry in
+its declared `models.json` (`home/pi.nix`). Nothing on the coordinator loads
+or unloads a model; the server on the worker is always resident.
 
 ## Durable versus transient state
 

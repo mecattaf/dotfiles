@@ -223,14 +223,14 @@ class SeatsTest(unittest.TestCase):
         # Qwen: a reset four days ago, the window opened by first use three
         # days ago, and 96,250 billable tokens spent inside it — 500 credits at
         # the calibrated 192.5 tokens/credit, so 5.0% of the 10,000 allowance.
-        # The cache reads and the llama-swap message must not be billed.
+        # The cache reads and the locally served (halogen) message must not be billed.
         self.qwen_reset = NOW - timedelta(days=4)
         self.qwen_opened = NOW - timedelta(days=3)
         self.box.qwen(
             messages=[
                 (self.qwen_reset - timedelta(hours=1), 500_000, 0, 0, "qwen-token-plan"),
                 (self.qwen_opened, 90_000, 6_250, 9_000_000, "qwen-token-plan"),
-                (self.qwen_opened + timedelta(hours=1), 999_999, 999_999, 0, "llama-swap"),
+                (self.qwen_opened + timedelta(hours=1), 999_999, 999_999, 0, "halogen"),
             ],
             refusals=[(self.qwen_reset - timedelta(days=2), self.qwen_reset)])
 
@@ -327,7 +327,7 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(qwen["grade"], "ESTIMATED")
         credits = qwen["credits"]
         # 90,000 + 6,250 = 96,250 billable; the 9,000,000 cache reads, the
-        # llama-swap message and the pre-window message are all excluded.
+        # halogen message and the pre-window message are all excluded.
         self.assertEqual(credits["billable_tokens"], 96_250)
         self.assertEqual(credits["used"], 500)
         self.assertEqual(credits["remaining"], 9_500)
@@ -336,7 +336,7 @@ class SeatsTest(unittest.TestCase):
 
     def test_qwen_local_traffic_is_never_billed(self):
         _, seats = self.box.report()
-        # The llama-swap message carries ~2M tokens and would dominate both
+        # The halogen message carries ~2M tokens and would dominate both
         # the credit estimate and the spend row if the provider went unchecked.
         self.assertEqual(seats["pi-qwencloud"]["spend"]["tokens_in"], 90_000)
 
@@ -519,15 +519,27 @@ class SeatsTest(unittest.TestCase):
 
     def test_offline_reports_the_gpu_rows_without_guessing(self):
         _, seats = self.box.report()
+        # The worker's row is the Halogen server's liveness probe; with the
+        # network off it is offline, graded UNKNOWN, and names where it asked.
+        self.assertEqual(seats["gpu-worker"]["provider"], "halogen")
         self.assertEqual(seats["gpu-worker"]["state"], "offline")
         self.assertEqual(seats["gpu-worker"]["grade"], "UNKNOWN")
         self.assertFalse(seats["gpu-worker"]["windows"])
+        self.assertEqual(seats["gpu-worker"]["source"]["endpoint"], "http://worker:8731/health")
+        # The coordinator serves nothing: not-applicable, never headroom, and
+        # the row says why rather than pretending to have probed something.
+        self.assertEqual(seats["gpu-coordinator"]["provider"], "none")
+        self.assertEqual(seats["gpu-coordinator"]["state"], "n/a")
+        self.assertEqual(seats["gpu-coordinator"]["grade"], "UNKNOWN")
+        self.assertFalse(seats["gpu-coordinator"]["usable"])
+        self.assertIn("serves nothing", seats["gpu-coordinator"]["detail"])
 
     # ── the oracles ─────────────────────────────────────────────────────────
     def test_check_exit_codes(self):
         self.assertEqual(self.box.run("--check", "cc").returncode, 0)
         self.assertEqual(self.box.run("--check", "cc2").returncode, 1)
         self.assertEqual(self.box.run("--check", "gpu-worker").returncode, 2)
+        self.assertEqual(self.box.run("--check", "gpu-coordinator").returncode, 2)
         self.assertEqual(self.box.run("--check", "no-such-seat").returncode, 2)
 
     def test_check_honours_window_and_threshold(self):

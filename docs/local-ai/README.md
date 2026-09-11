@@ -1,195 +1,140 @@
-# Local AI as appliances
+# Local AI
 
-> **Superseded 2026-08-29: NPU decommissioned permanently; flm retired with
-> archive receipts (see [`lib/local-models.nix`](../../lib/local-models.nix)).**
-> Everything below that describes FastFlowLM, an NPU-backed `utility` slot,
-> ad-hoc `flm run <model>`, or `services.npu-llm` is history. Both Strix Halo
-> twins now boot `amd_iommu=off`, so the XDNA2 path cannot come back without a
-> reversed boot decision. Interactive local inference is the llama-swap GPU
-> roster and nothing else. The FastFlowLM weights survive only under
-> `/mnt/nas/models/weights/flm/`.
->
-> **The `utility` slot and its `utility-model` wrapper are NOT history** — they
-> migrated to the GPU roster (`qwen3.6-35B-A3B` via llama-swap) the same day.
-> Read every "utility" passage below as describing the old engine, not a dead
-> seam; `lib/local-models.nix` has the live wiring.
->
-> **2026-08-31 (#270): the appliance *tier* is retired from the schema, not
-> just disabled.** `modules/npu-llm.nix` is deleted (git history keeps it),
-> `backendKinds` no longer declares an `appliances` kind, and `backend = "npu"`
-> survives only as a retired-only value on the four archived FLM catalog rows.
-> "Appliance" below still validly names the modality-specific *payloads* (Mage,
-> VibeVoice, Voxtype) — bounded non-LLM artifacts with their own runtimes —
-> but there is no interactive serving tier beside llama-swap any more.
+The fleet runs one inference server and a Library of loanable model artifacts.
+Every claim on this page names the Nix file that decides it.
 
-The fleet provides a set of bounded appliances, not one undifferentiated LLM
-daemon. Each appliance owns a workload, an inference implementation, immutable
-model identity, resource class, and an explicit caller boundary.
+## The one server: Halogen Flash on the worker
 
-## Deployment state
+[`../../modules/halogen.nix`](../../modules/halogen.nix) runs
+`ghcr.io/peonist-ai/halogen-flash-server` (a pinned OCI image, under podman) on
+the worker, the second Strix Halo twin. It loads Qwen3.8-Flash-Next in
+Peonist's proprietary `.hgn` format from
+`/var/lib/local-models/halogen-qwen38-flash-next` — the catalogue row
+`halogen-qwen38-flash-next`, loaned there from the NAS Library. Nothing else
+loads those bytes: not llama.cpp, not vLLM, not transformers.
 
-The old all-or-nothing `downloadAllModels` gate is gone. A model reaches a host
-through exactly one of four mechanisms, and only the coordinator uses any of
-them:
+| | |
+|---|---|
+| Base URL | `http://worker:8731` (`worker` resolves to `10.42.0.5` from every host; wired LAN only) |
+| Model id | `halogen-qwen3.8-flash-next` — a label; a request naming another id is not rejected |
+| Endpoints | `POST /v1/chat/completions` (streaming and non-streaming, tool calls, `image_url` content parts), `POST /v1/responses`, `POST /v1/completions`, `GET /v1/models`, `GET /health` (JSON; the liveness and discovery probe) |
+| Auth | none |
+| Reasoning budget | the token budget covers thinking; default `max_tokens` 8192, cap 65536; three budget spellings are accepted, but two spellings with different values is a 400 |
+| Not available | `/v1/embeddings`, reranking, audio, image generation, hot reload, a second model |
 
-1. `services.local-models.allow` — **served**: the row is rooted in the Nix
-   store and gets a llama-swap model.
-2. `services.local-models.artifacts` — **rooted**: the payload is rooted in the
-   store with no llama-swap row, for the selected Mage inference set and the
-   speech snapshots whose modality-specific runtimes would be misrepresented as
-   llama-swap models.
-3. Runtime-owned rosters — FastFlowLM's ad-hoc tags plus the request-scoped
-   `utility` slot, and Voxtype's Parakeet snapshot. Nix declares the allowed
-   identity; the tool owns the files. No NixOS service starts or retains an FLM
-   model, and the exact roster renders to `/etc/local-models/fastflowlm.json`.
-
-   *Superseded 2026-08-29: NPU decommissioned permanently; flm retired with
-   archive receipts (see `lib/local-models.nix`). Only Voxtype's Parakeet
-   snapshot remains runtime-owned; the FastFlowLM half of this mechanism and
-   its rendered manifest are gone. The `utility` slot left this mechanism
-   entirely the same day — it migrated to the GPU roster (`qwen3.6-35B-A3B`
-   via llama-swap) and is now mechanism 1, served.*
-4. Everything else in the catalog is **cataloged only** and downloads nothing.
-
-[`model-roster.md`](model-roster.md) is the authoritative split across those
-four states; the [coordinator decision](deployment-decisions-2026-07-29.md)
-carries the placement ledger and storage totals.
-
-## Hugging Face metadata CLI
-
-Tom's declarative Home Manager profile provides `hf` through
-`pkgs.huggingface-cli`; authenticated access remains coordinator-only. Its
-underlying `huggingface-hub` package is version 1.16.0 from the locked
-`nixpkgs` input, and the flake smoke pins that expected version so a future
-lock update requires an intentional review.
-
-Public repository metadata needs no credential. This example requests only the
-pinned revision record and sibling names:
+The vision tower is part of the bundle, so OCR and image reading are requests
+to this same server with `image_url` content parts.
 
 ```console
-hf models info unsloth/Qwen3.6-35B-A3B-MTP-GGUF \
-  --revision 5bc3e238d916f48a861bac2f8a1990a0e9b7e98d \
-  --expand sha,siblings \
-  --format json
+curl -s http://worker:8731/health
+curl -s http://worker:8731/v1/chat/completions -H 'content-type: application/json' \
+  -d '{"model":"halogen-qwen3.8-flash-next","messages":[{"role":"user","content":"ping"}]}'
 ```
 
-For gated or private metadata, create a read-only token and enter the raw token
-as an agenix secret:
+Anything that takes an inference base URL reads it from a `*_INFERENCE_URL`
+variable defaulting to `http://worker:8731`; the override is there for a
+hand-run `llama-server` (below), not for a second declared server.
+
+## The `utility` slot
+
+Callers name the stable ID `utility`, never a concrete model. The
+request-scoped `utility-model` wrapper
+([`../../pkgs/utility-model/utility_model.py`](../../pkgs/utility-model/utility_model.py),
+installed on the coordinator only) forwards one chat-completions request to
+the worker's halogen server and returns the answer. `/drain` and `/print`
+call `utility-model` with the same CLI flags they always have. The wrapper
+owns no process and loads nothing; the server on the worker is always
+resident.
+
+## How an artifact reaches a host
+
+The weight plane lives outside Nix. A catalogue row in
+[`../../lib/local-models.nix`](../../lib/local-models.nix) gives an artifact an
+identity and a pinned provenance record; it does not move a byte.
+
+1. **Library.** `library-fetch` on the NAS
+   ([`../../hosts/nas/models.nix`](../../hosts/nas/models.nix)) is the only
+   thing that talks to Hugging Face. It fills `/mnt/nas/models/weights/<id>/`
+   (exported to the twins at `/mnt/library/weights`) and never deletes.
+2. **Wanted set.** Each twin declares `services.local-models.artifacts`
+   ([`../../modules/local-models.nix`](../../modules/local-models.nix)), which
+   renders to `/etc/local-models/wanted.json`. A switch describes the set;
+   it transfers nothing.
+3. **Borrow.** An operator copies wanted artifacts from the Library into
+   `/var/lib/local-models/<id>/`, verified by size and SHA-256, with a free-space
+   gate:
+
+   ```console
+   sudo local-models-borrow --dry-run   # plan: bytes needed, bytes free, what is missing upstream
+   sudo local-models-borrow --yes       # copy + verify from the NAS Library
+   ```
+
+4. **Prune.** Borrowing never deletes. The only thing that removes a loaned
+   copy is the separate pruner, and it refuses unless the set it recorded at
+   `--dry-run` is still the set it sees at `--yes`:
+
+   ```console
+   sudo local-models-prune --dry-run
+   sudo local-models-prune --yes
+   ```
+
+Neither transaction is a service, timer, boot unit or activation hook.
+[`../nas/model-archive.md`](../nas/model-archive.md) is the retire/restore
+runbook for the Library itself.
+
+## Per-host wanted sets
+
+| Host | Wanted artifacts | Served by |
+|---|---|---|
+| `worker` | `halogen-qwen38-flash-next` | `modules/halogen.nix`, always resident |
+| `coordinator` | `qwen36-35b-a3b-mtp-ud-q8-k-xl`, `gemma4-12b-it-q8-0`, `gemma4-12b-it-mtp-q8-0`, `fara15-9b-q8-0`, `fara15-9b-mmproj-bf16` | nothing declarative — an operator's `llama-server` |
+| `nas` | none (it holds the Library) | — |
+
+## Running a loaned GGUF by hand
+
+The coordinator's small models have no declared server. Both twins carry
+nix-strix-halo's `llama-cpp-rocm` and `llama-cpp-vulkan` commands
+([`../../modules/strix-ai.nix`](../../modules/strix-ai.nix)), so an operator
+who has borrowed a row starts it in a shell and stops it when done:
 
 ```console
-nix develop -c agenix -e secrets/huggingface-token.age
+llama-server --port 8080 \
+  -m /var/lib/local-models/qwen36-35b-a3b-mtp-ud-q8-k-xl/Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf \
+  -c 32768 -ngl 999
+
+llama-server --port 8080 \
+  -m /var/lib/local-models/fara15-9b-q8-0/Fara1.5-9B-Q8_0.gguf \
+  --mmproj /var/lib/local-models/fara15-9b-mmproj-bf16/mmproj-Fara1.5-9B-bf16.gguf -ngl 999
 ```
 
-`secrets.nix` limits that secret to the coordinator recipients, and
-`modules/secrets.nix` decrypts it as
-`/run/agenix/huggingface-token`. The `hf` wrapper reads that file into
-`HF_TOKEN` only for the child process. It does not run the CLI login flow or
-copy plaintext into the Nix store, repository, activation output, or
-`$HF_HOME`. This change intentionally carries no token or ciphertext; the
-secret declaration becomes active only after the operator provisions the
-encrypted file.
+Point the caller at it through its `*_INFERENCE_URL` override. Runtime
+downloads (`-hf`) are forbidden by assertion: the bytes come from the Library
+or not at all. The same pattern covers the embedders — there is no embeddings
+server until an operator starts one with `--embedding`.
 
-Metadata inspection stops at API records such as revisions, tags, sibling
-names, and LFS metadata. Monthly Tally research may update catalog candidates,
-but it cannot add them to the coordinator allowlist or initiate downloads. Host
-activation materializes only the separately reviewed selections.
+## Other rows
 
-The targeted smoke check runs `hf --version` and the metadata command against a
-local API fixture, then compares the complete isolated `$HF_HOME` manifest
-before and after:
-
-```console
-nix build .#checks.x86_64-linux.huggingface-cli-smoke --no-link
-```
-
-## Appliance map
-
-| Appliance | Selected implementation | Serving boundary | State |
-|---|---|---|---|
-| Streaming speech-to-text | Voxtype with `parakeet-unified-en-0.6b` | Coordinator-only systemd user service; local ONNX Runtime/MIGraphX on gfx1151 | Model download is an idempotent service pre-start step. |
-| Document OCR/RAG | Qwen3-VL 8B primary, 32B refine, Qwen3 Embedding 8B, Qwen3-VL Embedding 8B | Coordinator llama.cpp ROCm behind llama-swap | Active coordinator allowlist; text and multimodal embedders are complementary. |
-| Shared text and coding | Qwen 3.6 35B-A3B and stock 27B, both UD-Q8_K_XL with integrated MTP; Gemma 4 26B Q8 with matched MTP | Coordinator Vulkan behind llama-swap | Active coordinator allowlist. Qwen3-Coder-Next remains cataloged only. |
-| Computer use | Fara 1.5 27B/9B/4B, each Q8_0 plus matched BF16 projector | Coordinator ROCm behind llama-swap | Active coordinator allowlist; three sizes for the latency/quality tradeoff. |
-| Application utility slot | ~~FastFlowLM Qwen3 4B~~ Qwen 3.6 35B-A3B UD-Q8_K_XL behind the stable ID `utility` | `utility-model` wrapper; one forwarded chat-completions request to llama-swap | **Migrated to the GPU roster 2026-08-29** (`qwen3.6-35B-A3B` via llama-swap), replacing the NPU start/request/stop cycle. Coordinator-only, because only that host's llama-swap carries the row. |
-| Ad-hoc NPU inference | FastFlowLM Gemma 4 E4B and GPT-OSS 20B | Direct, ad-hoc `flm run <model>` | **Superseded 2026-08-29: retired.** flm is not installed anywhere; weights archived under `/mnt/nas/models/weights/flm/`. |
-| Call transcription + diarization | Microsoft VibeVoice-ASR | Future dedicated PyTorch/ROCm batch service | BF16 payload and tokenizer are Nix-rooted on coordinator; service remains future work. |
-| Text-to-speech | VibeVoice Large community mirror | Future dedicated PyTorch/ROCm batch service | BF16 payload and tokenizer are Nix-rooted on coordinator; mirror risk remains recorded. |
-| Image generation and editing | Mage-Flow 4B Turbo generation/editing pair | Direct upstream `MageFlowPipeline`, CLI, or Gradio boundary | Four-step snapshots are selected; Base and RL are omitted. gfx1151/ROCm runtime packaging and smoke remain pending. |
-| General image/video understanding and proactive streaming | Microsoft Mage-VL BF16 | Offline Transformers; future custom Mage-VL SGLang branch behind llama-swap | Immutable complete snapshot selected; no runtime row until that SGLang branch is packaged and proven on gfx1151/ROCm. |
-
-## Text classes
-
-- **Utility:** the stable ID `utility` resolves to Qwen 3.6 35B-A3B UD-Q8_K_XL
-  at 32768 context, served by llama-swap on the coordinator. ~~It resolved to
-  FastFlowLM Qwen3 4B, started and stopped around each request.~~ *Migrated to
-  the GPU roster 2026-08-29 with the NPU decommission (see
-  `lib/local-models.nix`); the class survives, the engine changed, and the
-  wrapper no longer owns a child process.*
-- **Small and fast:** ~~`gemma4-it:e4b` and `gpt-oss:20b` remain available on
-  the coordinator NPU through an explicit `flm run <model>`.~~ *Superseded
-  2026-08-29: same decommission. Small-and-fast work goes to the llama-swap GPU
-  roster.*
-- **Daily general:** Qwen 3.6 35B-A3B UD-Q8_K_XL with integrated MTP on
-  Vulkan.
-- **Coder:** stock Qwen 3.6 27B UD-Q8_K_XL with integrated MTP and Gemma 4
-  26B A4B IT Q8_0 plus its Q8_0 MTP head are active on coordinator.
-  Qwen3-Coder-Next is retained only as catalog metadata.
-- **Uncensored:** none are materialized. All three rows are `candidate` and
-  absent from the allowlist; see the operating rules in
-  [`model-roster.md`](model-roster.md) for the standing disposition.
-
-## Routing and scheduling boundaries
-
-Managed OpenAI-compatible LLM and VLM calls enter through llama-swap. Its
-command-managed GPU backends retain the normal load/unload boundary. FastFlowLM
-was deliberately separate: ad-hoc NPU work invoked `flm run <model>` directly,
-and there was no persistent FLM endpoint. *Superseded 2026-08-29: NPU
-decommissioned permanently; flm retired with archive receipts (see
-`lib/local-models.nix`). That second interactive route no longer exists — every
-interactive local call now enters through llama-swap.* Mage-Flow is direct because
-its upstream interface is a diffusion pipeline, not an OpenAI-compatible model
-server. Mage-VL may enter llama-swap only through upstream's custom SGLang
-server after that exact backend is packaged and verified on ROCm.
-Modality-specific speech services keep their own declared endpoints.
-
-Tally schedules, serializes, and proves the monthly community review described
-in [`monthly-workflow.md`](monthly-workflow.md). Historical notes do not define
-the current architecture.
+- **Speech (VibeVoice-ASR, VibeVoice-Large, the Qwen2.5 tokenizer)** and
+  **Mage (Mage-Flow Turbo, Mage-Flow Edit Turbo, Mage-VL)** are loanable
+  Library artifacts with their own upstream runtimes and no server on this
+  fleet. [`mage.md`](mage.md) records the selected Mage snapshots and their
+  invocation contract.
+- **Voxtype** (streaming dictation, `parakeet-unified-en-0.6b`) is not a
+  catalogue artifact: `home/voxtype.nix` lets the tool own its own model
+  directory on the coordinator.
 
 ## Sources of truth
 
-1. [`../../lib/local-models.nix`](../../lib/local-models.nix) owns immutable
-   artifact and deployment metadata; the large directory-preserving Mage file
-   manifests are factored into
-   [`../../lib/mage-models.nix`](../../lib/mage-models.nix).
-2. [`../../modules/local-models.nix`](../../modules/local-models.nix) projects
-   only the command-managed per-host allowlist into llama-swap. Its
-   `peers = { }` used to encode "runtime appliances never become proxy peers";
-   since 2026-08-31 (#270) `peers` is understood as upstream's
-   llama-swap-to-llama-swap federation field and is simply unclaimed until the
-   flashnext gateway design uses it. Since 2026-08-29 the module also owns
-   the `utility-model` wrapper, which is a projection of the catalog's utility
-   slot onto whichever host serves that row.
-3. ~~`../../modules/npu-llm.nix` validates the explicit FastFlowLM roster and
-   writes its non-resident runtime manifest.~~ *Superseded 2026-08-29: NPU
-   decommissioned permanently; flm retired with archive receipts (see
-   `lib/local-models.nix`). The module sat inert until 2026-08-31 (#270), when
-   it was deleted outright with the appliance tier — recover it from git
-   history only alongside a reversed decommission ruling. The utility wrapper
-   it used to build moved to `modules/local-models.nix` with the slot.*
-4. [`mage.md`](mage.md) records the selected Mage download set, deduplicated
-   storage cost, upstream invocation contract, and serving boundary.
-5. [`deployment-decisions-2026-07-29.md`](deployment-decisions-2026-07-29.md)
-   is the authoritative active placement and storage ledger.
-6. [`model-roster.md`](model-roster.md) is the authoritative human-readable
-   split: served, rooted, runtime-owned, and cataloged-only, including the
-   speech and NPU appliances that do not belong in the llama-swap catalog.
-7. [`tallies/`](tallies/) records accepted roster rationale. The monthly update
-   bot advances its exact research-source pins in `sources.json`; its advisory
-   summary remains visible in the corresponding pull request.
-8. [`dual-node-inference-lessons.md`](dual-node-inference-lessons.md) preserves
-   the operational lessons from the retired dual-node ds4 cluster. It is
-   history, not a deployment target.
-
-[`../old/`](../old/) is now an archival stub. The material it held is
-recoverable from Git history, and the stub records how.
+1. [`../../lib/local-models.nix`](../../lib/local-models.nix) and
+   [`../../lib/mage-models.nix`](../../lib/mage-models.nix) — the typed
+   catalogue: identity, pinned revision, bytes, hashes.
+2. [`../../modules/halogen.nix`](../../modules/halogen.nix) — the one server.
+3. [`../../modules/local-models.nix`](../../modules/local-models.nix) — the
+   wanted-set manifest and the borrow transaction;
+   [`../../pkgs/local-models-prune.nix`](../../pkgs/local-models-prune.nix)
+   — the pruner.
+4. [`../../hosts/nas/models.nix`](../../hosts/nas/models.nix) — the Library
+   and `library-fetch`.
+5. [`model-roster.md`](model-roster.md) — the catalogue as a table.
+6. [`../../flake.nix`](../../flake.nix) — assertions pinning each host's
+   wanted set, so the table cannot drift silently.

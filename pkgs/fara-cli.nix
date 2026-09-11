@@ -23,12 +23,12 @@ let
   browserbase = callPackage ./browserbase.nix { python3Packages = pyPkgs; };
 in
 # microsoft/fara — the reference CLI for the Fara1.5 computer-use-agent
-# models (fara15-27b-q8-0 / fara15-9b-q8-0 / fara15-4b-q8-0 in
+# model (fara15-9b-q8-0 with its fara15-9b-mmproj-bf16 projector in
 # lib/local-models.nix). It drives a real Chromium tab through Playwright,
-# steered by an OpenAI-compatible chat endpoint; point it at the
-# coordinator's own llama-swap server with --base_url/--model (see
-# home/home.nix). No upstream release tags exist yet, so this pins the
-# exact commit cloned 2026-08-03.
+# steered by an OpenAI-compatible chat endpoint; point it at a llama-server
+# the operator has started by hand on the borrowed GGUF with
+# --base_url/--model (see home/home.nix). No upstream release tags exist
+# yet, so this pins the exact commit cloned 2026-08-03.
 pyPkgs.buildPythonApplication rec {
   pname = "fara";
   version = "0-unstable-2026-07-22";

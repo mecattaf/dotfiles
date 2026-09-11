@@ -22,7 +22,7 @@
 }:
 stdenvNoCC.mkDerivation {
   pname = "academic-ocr-drain";
-  version = "2026-08-06";
+  version = "2026-09-11";
   src = builtins.path {
     path = ./.;
     name = "academic-ocr-drain-src";
@@ -37,7 +37,9 @@ stdenvNoCC.mkDerivation {
     chmod +x $lib/*.sh $lib/*.py
 
     # env.sh is generated, not copied: every tool resolves its binaries
-    # through these pins, so the whole ladder rebuilds against nixpkgs.
+    # through these pins, so the whole ladder rebuilds against nixpkgs. The
+    # inference base URL is the fleet's one server, Halogen Flash on the
+    # worker, overridable at run time through ACADEMIC_OCR_INFERENCE_URL.
     cat > $lib/env.sh <<EOF
     POPPLER=${poppler-utils}/bin
     MUPDF=${mupdf-headless}/bin
@@ -46,7 +48,7 @@ stdenvNoCC.mkDerivation {
     CORE=${coreutils}/bin
     GREP=${gnugrep}/bin/grep
     AWK=${gawk}/bin/gawk
-    LLAMA_SWAP=http://127.0.0.1:9292
+    INFERENCE_URL=\''${ACADEMIC_OCR_INFERENCE_URL:-http://worker:8731}
     EOF
 
     for entry in academic-drain:drain.sh academic-drain-stop:drain-stop.sh academic-drain-backfill-tables:backfill-tables.sh; do

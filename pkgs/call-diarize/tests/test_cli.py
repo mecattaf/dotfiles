@@ -12,7 +12,7 @@ from call_diarize.pipeline import Window, load_json, write_json_exclusive
 
 
 class EvidenceRerunTests(unittest.TestCase):
-    attempt_relative = Path("cleanup/gemma/shard-005.attempt-01.json")
+    attempt_relative = Path("cleanup/halogen/shard-005.attempt-01.json")
 
     def test_rerun_quarantines_partial_evidence_and_can_rewrite_attempt(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -144,7 +144,7 @@ class CleanupFallbackTests(unittest.TestCase):
                 ),
                 mock.patch(
                     "call_diarize.cli.preflight_models",
-                    return_value=["gemma4-26b-a4b-it", "qwen3.6-35b-a3b"],
+                    return_value=["halogen-qwen3.8-flash-next"],
                 ),
                 mock.patch("call_diarize.cli.gpu_probe", return_value=gpu),
                 mock.patch(
@@ -173,26 +173,27 @@ class CleanupFallbackTests(unittest.TestCase):
                 status = execute(args)
 
             self.assertEqual(status, 0)
-            self.assertEqual(cleanup_request.call_count, 6)
+            self.assertEqual(cleanup_request.call_count, 3)
             transcript = (call_dir / "transcript.md").read_text(encoding="utf-8")
             self.assertIn("Unedited raw ASR sentence.", transcript)
             self.assertIn("<!-- cleanup-failed shard-000 -->", transcript)
             self.assertIn("(raw; cleanup-failed shard-000)", transcript)
 
             manifest = load_json(call_dir / "asr-raw/manifest.json")
-            self.assertEqual(manifest["cleanup_failure_count"], 2)
+            self.assertEqual(
+                manifest["inference_endpoint"],
+                "http://worker:8731/v1/chat/completions",
+            )
+            self.assertEqual(manifest["cleanup_failure_count"], 1)
             self.assertEqual(manifest["raw_fallback_shard_count"], 1)
             self.assertEqual(manifest["raw_fallback_candidate_count"], 1)
             self.assertTrue(
                 all(failure["nonfatal"] for failure in manifest["cleanup_failures"])
             )
-            for label in ("gemma", "qwen"):
-                report = load_json(
-                    call_dir
-                    / f"asr-raw/cleanup/{label}/shard-000.failed.json"
-                )
-                self.assertEqual(report["fallback"], "raw-asr")
-                self.assertEqual(report["attempt_count"], 3)
+            report = load_json(call_dir / "asr-raw/cleanup/halogen/shard-000.failed.json")
+            self.assertEqual(report["model"], "halogen-qwen3.8-flash-next")
+            self.assertEqual(report["fallback"], "raw-asr")
+            self.assertEqual(report["attempt_count"], 3)
 
             review = (call_dir / "review-queue.md").read_text(encoding="utf-8")
             self.assertIn("Raw-ASR fallback shards: 1", review)

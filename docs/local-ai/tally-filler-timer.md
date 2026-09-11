@@ -78,11 +78,16 @@ rather than the literal `"5min"` is the point: if the upstream drain's cadence m
 check goes red and someone re-reads D-B10, instead of the round-robin quietly ending.
 
 **2. Serialisation on the GPU — the lane's gate, not the clock.** Cadence alone cannot
-keep two tenants off one device. What does is `tools/e1-loop.sh`'s own step 4: it waits
-for llama-swap's `/running` to be **empty** before it dispatches an item, and never issues
-a second concurrent model request (E1-LOOP's own non-goal). Whoever holds the model
-finishes; the other takes the next turn. **This unit does not duplicate that gate and
-could not enforce it** — which is exactly why the non-goal below is satisfiable.
+keep two tenants off one device. What does is `tools/e1-loop.sh`'s own serve gate (its
+step 4): it waits for the inference server to be **idle** before it dispatches an item —
+a read of a status endpoint at the lane's own default `E1_PROBE_URL`, which this module
+deliberately leaves unset — and never issues a second concurrent model request (E1-LOOP's
+own non-goal). It loads nothing and unloads nothing: a gate that does not open within the
+lane's wait is recorded as a refusal at stage `serve`, never answered by stopping what is
+running. Whoever holds the model finishes; the other takes the next turn. **This unit does not duplicate that gate and could not enforce it** —
+which is exactly why the non-goal below is satisfiable. The rendered unit gates on nothing
+at all: `ExecStart` is the pass, `Environment` is a store `PATH` and `E1_LAKE`, and there
+is no `Condition*=`, no `After=`, no `Requires=` naming a server.
 
 ### An honest note on which unit "the academic drain" is
 
@@ -93,9 +98,10 @@ writing down rather than smoothing over:
 - `tally-drain.timer`'s cadence **is** five minutes, and its service runs
   `tally --socket /run/user/1000/tally/tally.sock daemon drain` — the tally daemon's
   producer-event drain.
-- llama-swap's only `Python-urllib/3.14` callers in a 40-minute window were **per-minute**
-  `GET /health` + `GET /running` probes (the util-sampler's shape), not a five-minute
-  tenant.
+- the only per-minute `Python-urllib` shape on this fleet is the util-sampler's probe of
+  the worker's Halogen server — one `GET /health` plus one `GET /v1/models` — and the
+  coordinator has no serve probe at all (`home/dot_local/bin/util-sampler`'s
+  `SERVE_PROBES.coordinator` is empty). That is a sampler, not a five-minute tenant.
 
 So the unit this timer alternates against is the drain **by name and by declared
 cadence** — the unit D-B10 names — and nothing here depends on resolving which process
@@ -104,13 +110,15 @@ mechanism 2, not the cadence.
 
 ## 5. The non-goals, as bytes
 
-> the timer never calls llama-swap directly; never unloads
+> the timer never calls the inference server directly; never unloads anything
 
 The `tally-filler-topology` check reads `ExecStart` **and** `Environment` as one string
-and asserts that `llama`, `9292` and `unload` occur in neither, so a value cannot hide in
-the environment block. In particular the module deliberately does **not** set
-`E1_PROBE_URL`: the lane's `/running` probe stays the lane's own default, so the endpoint
-is not even a string this unit carries.
+and asserts that `llama`, `9292` and `unload` occur in neither — no server binary, no
+serve port, no stop verb — so a value cannot hide in the environment block. The fleet's
+server, Halogen Flash at `http://worker:8731`, is likewise named nowhere in the unit.
+In particular the module deliberately does **not** set `E1_PROBE_URL`: the lane's idle
+probe stays the lane's own default, so the endpoint is not even a string this unit
+carries.
 
 Also asserted, in both directions: no system-bus twin, nothing on the worker, no
 `~/.local/state` path (the lane's whole state is the register's git tree — its receipts,

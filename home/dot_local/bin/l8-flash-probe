@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # l8-flash-probe — did the one dotfiles switch land? (dotfiles#301)
 #
-# Run on EACH box after `nixos-rebuild switch`. One line per check: PASS, FAIL
-# or SKIP, always with the argv that produced it, so the output is its own
-# receipt. Exit 0 iff every APPLICABLE check passed; a check that does not
-# apply to this host is SKIP and does not fail the run.
+# Run on EACH box after `nixos-rebuild switch`. One line per check: PASS, FAIL,
+# SKIP or UNKNOWN, always with the argv that produced it, so the output is its
+# own receipt. Exit 0 iff every APPLICABLE check passed; a check that does not
+# apply to this host is SKIP and does not fail the run. UNKNOWN is a check this
+# box could not take (the worker's systemd out of reach): it is counted in the
+# summary, it does not fail the run, and it is not a receipt for that row.
 #
 # set -u but deliberately NOT set -e: every check must run even after one
 # fails. A probe that stops at the first failure tells you one thing; this one
@@ -25,15 +27,19 @@ REPO_DIR="$HOME/mecattaf/dotfiles"
 # real box sets it, and a probe run with it set is a test run, not evidence.
 HOST="${L8_FLASH_HOST:-$(hostname)}"
 COORDINATOR="coordinator"
+# The box that serves inference: the Halogen Flash server's podman unit lives
+# there (modules/halogen.nix), and `worker` resolves from every host.
+WORKER="worker"
 
 pass=0
 fail=0
 skip=0
+unknown=0
 
 report() { # $1 = verdict, $2 = name, $3.. = argv
   local verdict="$1" name="$2"
   shift 2
-  printf '%-4s  %-48s  %s\n' "$verdict" "$name" "$*"
+  printf '%-7s  %-48s  %s\n' "$verdict" "$name" "$*"
 }
 
 ok() {
@@ -47,6 +53,10 @@ no() {
 na() {
   skip=$((skip + 1))
   report SKIP "$@"
+}
+unk() {
+  unknown=$((unknown + 1))
+  report UNKNOWN "$@"
 }
 
 coordinator_only() { [ "$HOST" = "$COORDINATOR" ]; }
@@ -166,17 +176,47 @@ else
   no "[P] tally.nix readable" "test -r $tallynix"
 fi
 
-# ── 4. llama-swap, running and with its restart policy declared ─────────────
-if systemctl is-active --quiet llama-swap; then
-  ok "[P] llama-swap active" "systemctl is-active llama-swap"
-else
-  no "[P] llama-swap active" "systemctl is-active llama-swap"
+# ── 4. the fleet's one inference serve: podman-halogen on the WORKER ────────
+# The coordinator serves nothing; the Halogen Flash server is the worker's
+# podman-halogen.service (modules/halogen.nix), declared Restart=on-failure so
+# the engine's own watchdog exit is recovered. The unit is read on the worker's
+# own system bus: directly when this probe runs there, over `ssh worker`
+# otherwise. A box that cannot reach that bus reports UNKNOWN with the reason —
+# a row nobody measured is not a FAIL, and it is not a PASS either.
+HALOGEN_UNIT="podman-halogen.service"
+halogen_ctl=()
+halogen_via=""
+if [ "$HOST" = "$WORKER" ]; then
+  halogen_ctl=(systemctl)
+  halogen_via="systemctl"
+elif command -v ssh >/dev/null 2>&1; then
+  halogen_ctl=(ssh -o BatchMode=yes -o ConnectTimeout=5 "$WORKER" systemctl)
+  halogen_via="ssh $WORKER systemctl"
 fi
-restart="$(systemctl show llama-swap -p Restart 2>/dev/null)"
-if [ "$restart" = "Restart=on-failure" ]; then
-  ok "[P] llama-swap Restart=on-failure" "systemctl show llama-swap -p Restart"
+if [ -z "$halogen_via" ]; then
+  unk "[P] $HALOGEN_UNIT active on $WORKER (no ssh on this box)" "ssh $WORKER systemctl is-active $HALOGEN_UNIT"
+  unk "[P] $HALOGEN_UNIT Restart=on-failure (no ssh on this box)" "ssh $WORKER systemctl show $HALOGEN_UNIT -p Restart"
 else
-  no "[P] llama-swap Restart=on-failure (got '$restart')" "systemctl show llama-swap -p Restart"
+  state="$("${halogen_ctl[@]}" is-active "$HALOGEN_UNIT" 2>/dev/null)"
+  rc=$?
+  if [ "$HOST" != "$WORKER" ] && [ "$rc" -eq 255 ]; then
+    # 255 is ssh's own exit for a connection it could not make; systemctl
+    # never returns it. The worker is unreachable, so nothing was measured.
+    unk "[P] $HALOGEN_UNIT active on $WORKER ($WORKER unreachable over ssh)" "$halogen_via is-active $HALOGEN_UNIT"
+    unk "[P] $HALOGEN_UNIT Restart=on-failure ($WORKER unreachable over ssh)" "$halogen_via show $HALOGEN_UNIT -p Restart"
+  else
+    if [ "$state" = "active" ]; then
+      ok "[P] $HALOGEN_UNIT active on $WORKER" "$halogen_via is-active $HALOGEN_UNIT"
+    else
+      no "[P] $HALOGEN_UNIT active on $WORKER (got '$state')" "$halogen_via is-active $HALOGEN_UNIT"
+    fi
+    restart="$("${halogen_ctl[@]}" show "$HALOGEN_UNIT" -p Restart 2>/dev/null)"
+    if [ "$restart" = "Restart=on-failure" ]; then
+      ok "[P] $HALOGEN_UNIT Restart=on-failure" "$halogen_via show $HALOGEN_UNIT -p Restart"
+    else
+      no "[P] $HALOGEN_UNIT Restart=on-failure (got '$restart')" "$halogen_via show $HALOGEN_UNIT -p Restart"
+    fi
+  fi
 fi
 
 # ── 5. the two user timers, and the DECLARED units behind them ──────────────
@@ -362,6 +402,6 @@ else
 fi
 
 echo
-echo "l8-flash-probe: $pass passed, $fail failed, $skip skipped on $HOST"
+echo "l8-flash-probe: $pass passed, $fail failed, $skip skipped, $unknown unknown on $HOST"
 echo "  [E] = switch-evidence, [P] = pre-condition (see the legend above)"
 [ "$fail" -eq 0 ]

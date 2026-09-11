@@ -69,7 +69,7 @@
   # NixOS derives from it, /etc, /var, and the local-models weight collection.
   # EVERYTHING ELSE — the whole of /home — lives here. That is a durable
   # policy, not a one-off space reclaim: work that leaves large residue
-  # (flashnext development, a from-source chromium, a stray 50GB build tree)
+  # (a from-source chromium, a stray 50GB build tree, a hand-run model's logs)
   # lands in $HOME and therefore lands on this disk, where filling it up
   # cannot threaten the system's ability to boot or rebuild.
   #
@@ -80,13 +80,6 @@
   # the anchor. Verified before the split: nothing under /etc, /var/lib or
   # /run/current-system symlinks into /home, so the root filesystem has no
   # dependency on this disk being present.
-  #
-  # ── The one thing that had to move OUT of /home first ───────────────────────
-  # modules/fn-rdma.nix stages vermagic-pinned .ko files and inserts them at
-  # sysinit.target with DefaultDependencies=no. Its stagedDir default was
-  # ~/.local/state/flashnext-rdma, which no mount unit could ever satisfy that
-  # early; it is /var/lib/flashnext-rdma as of this commit. Kernel modules are
-  # OS state and belong on the anchor regardless.
   #
   # `uuid` is declared for the same reason as the anchor's partitions: disko
   # then derives device = /dev/disk/by-partuuid/<uuid>, so neither a format nor

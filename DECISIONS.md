@@ -1,5 +1,77 @@
 # DECISIONS
 
+2026-09-11 mono-model on Halogen. llama-swap is removed from every host, and
+with it the deployment layer: no proxy, no roster, no per-model command
+renderers, no backend kinds, no `services.local-models.allow`, no port 9292.
+The fleet's one inference server is Halogen Flash — Qwen3.8-Flash-Next in
+Peonist's .hgn format, served by the closed-source
+ghcr.io/peonist-ai/halogen-flash-server image (pinned by digest, release
+0.5.6) as a podman container on the WORKER (modules/halogen.nix), OpenAI-
+compatible on http://worker:8731, vision included so OCR lives there too. The
+launch shape is lifted from kyuz0/ai-toolbox-cockpit's halogen backend rather
+than waiting for hellas-ai/nix-strix-halo to package it. The coordinator
+serves nothing; its `utility-model` wrapper (what /drain and /print call)
+forwards to the worker's Halogen. The catalogue is cut to fifteen artifacts:
+the Halogen bundle, qwen3.6-35b-a3b, gemma 4 12b (+ MTP head), fara 1.5 9b
+(+ projector), the two embedding models, the three VibeVoice speech rows and
+the three Mage rows. OUT, and not to return: every dual-node model
+(flashnext-fp8, deepseek-v4-flash, the GLM 5.3 ciru shards, the ciru IU4
+reference), every dense big model (qwen3.8-27b, qwen3.6-27b, gemma4-31b,
+fara 27b), the qwen3-vl OCR pair, the uncensored candidates, ornith, muse
+glimmer, the retired FLM rows; flashnext, flashnix and the vLLM fork are
+defunct projects. Bulky providers leave the flake outputs too: ds4-rocm,
+vllm-rocm, mlx-lm, mlx-rocm, tokenizers-cpp. Kept: llama.cpp ROCm/Vulkan
+(an operator serves the small GGUFs by hand), stable-diffusion.cpp, amdtop.
+The NAS Library, `local-models-borrow` and `local-models-prune` keep their
+doctrine unchanged; per-host wanted sets shrink to the worker's one bundle
+and the coordinator's five small files, and both boxes' working copies are to
+be pruned to exactly that.
+
+Operator acts this leaves open, none performed by a switch: the NAS Library
+must hold the Halogen bundle before the worker can borrow it (library-fetch
+on a switched NAS, or the same download by hand into
+/mnt/nas/models/weights/halogen-qwen38-flash-next/); on the worker, after its
+switch, `local-models-prune --yes` then `local-models-borrow --yes`, then the
+podman-halogen unit's first start pulls the image; on the coordinator,
+`local-models-prune` down to the five small files, at a time of Tom's
+choosing and after its own switch.
+
+2026-09-11 the twins are LAN peers and nothing more. The worker moved to
+another room and is wired into the BE550's Ethernet port 2 at its static
+10.42.0.5; the coordinator stays on thomas-6ghz at .2. There is no Thunderbolt
+cable, no direct 5GbE cable and no 10.99.x rail between them, and Tom has no
+interest in the Thunderbolt work returning. Deleted outright, recoverable only
+from git history (last carrier 681459f5): hosts/coordinator/tb-fleet.nix and
+eth-fleet.nix, modules/fn-rdma.nix, usb4-stream.nix, lowlat-cluster.nix and
+fleet-rail-names.nix, the worker's twin heal loop and rail profiles, and the
+10.99.9.x fleet identities. Names resolve to LAN addresses on every host
+(modules/fleet-hosts.nix on the twins, hosts/nas/network.nix on the NAS), the
+deploy node and the ssh nickname dial `worker` by name, and the mesh registry
+carries one alias per twin. The stock `thunderbolt` driver and bolt stay for
+ordinary USB4 peripherals; only the fleet's use of the bus is gone.
+
+Same day, same ruling set: ONLY the coordinator has a display output, so only
+it runs a compositor. The worker's greetd→niri autologin is forced off, its
+synthesized-EDID headless-display.nix is deleted, and home/remote.nix renders
+no wayvnc on a host whose niri is off. Home Manager stays on the worker. And a
+standing constraint for the whole procedure: NO reboot of the coordinator
+until it is done; the worker may reboot as needed.
+
+Operator acts this leaves open, none of them performed by the switch:
+(1) on the worker, after its first switch onto this closure, delete the
+NetworkManager profiles the flake stopped ensuring — `nmcli connection delete
+thomas-6ghz tb-fleet tb-fleet2 eth-fleet` — or the stale wifi profile keeps
+10.42.0.5 on wlp192s0 beside the wired one; (2) on the coordinator the same for
+`tb-fleet tb-fleet2 eth-fleet`, plus `rm -rf /var/lib/flashnext-rdma
+/var/lib/tb-link-heal /var/lib/usb4-stream` and the stale failure markers
+`tb-fleet-reachability`, `tb-rail2-reachability`, `eth-fleet-reachability`
+under /var/lib/failure-markers; (3) hosts/nas/router.nix still pins `worker` to
+the box's WIFI MAC (44:f7:9f:da:bd:1d) in dnsmasq's dhcp-host list — harmless,
+since .5 sits below the pool, but it should be re-pointed at the Ethernet MAC
+once the box is reachable (`ip link show enp191s0` there; it answered nothing
+at .5 and held no lease when this was written); (4) the worker's recipient on
+secrets/wifi-lan.age is now unused and can be dropped at the next rekey.
+
 2026-09-10 model-byte doctrine: a NixOS evaluation, build, switch, boot, or
 service start must never download, copy, verify, prune, mount for, order after,
 or wait for model weights. The NAS Library at `/mnt/nas/models/weights` is the

@@ -1,6 +1,6 @@
 export const meta = {
   name: "docs-model-split",
-  description: "Refresh docs/local-ai to the allowlist reality, preserve retired DS4 evidence, sunset the stale set",
+  description: "Refresh docs/local-ai to the halogen mono-model reality: one server, fifteen catalogue rows, per-host wanted sets",
   pools: ["flow-build"],
   argsSchema: {
     type: "object",
@@ -28,23 +28,23 @@ export const meta = {
     [
       "Documentation wave in this worktree, three moves. (1) Refresh",
       "docs/local-ai/model-roster.md (and local-ai/README.md where affected) to",
-      "the post-allowlist reality: which deployments are materialized per host",
-      "(allowlist), which are cataloged-only, the parakeet/voxtype entries, and",
-      "the NPU utility model — one authoritative model-split table. Uncensored",
-      "ruling: only qwen3.6-35b-heretic materializes. (2) Keep",
-      "docs/old/migration-journal/ds4-dual-node-lessons.md as historical evidence",
-      "for the retired deployment. Current docs may summarize its measured result",
-      "but must not turn it back into an active runbook or materialization target.",
-      "(3) Sunset docs/old/: it is already self-declared non-normative; collapse",
-      "it to an archival README stub (or prune files whose content is now",
-      "superseded and cited nowhere), and update docs/README.md's index. Do not",
-      "invent history — where a fact is uncertain, point at the source commit.",
-      "Commit atomically on the branch; do not push."
+      "the current reality: the one inference server is Halogen Flash on the",
+      "worker at http://worker:8731 (model id halogen-qwen3.8-flash-next, served",
+      "by modules/halogen.nix); the catalogue is the fifteen rows in",
+      "lib/local-models.nix; each twin's wanted set is services.local-models.artifacts",
+      "and bytes move only through local-models-borrow; the coordinator's small",
+      "GGUF rows, the embedders, VibeVoice and Mage have no declared server and",
+      "an operator runs llama-server by hand — one authoritative catalogue table.",
+      "(2) Describe the current state only: no history sections, no",
+      "commented-out prose, no retired engines named as if they could return.",
+      "(3) Keep docs/README.md's index in step with the pages. Where a fact is",
+      "uncertain, point at the Nix file that decides it. Commit atomically on",
+      "the branch; do not push."
     ].join(" "),
     { key: "implementation", workspace, label: "implementation" }
   );
   return sh(
-    ["bash", "-c", 'cd "$1" && ! grep -rn "docs/old/migration-journal/ds4-dual-node-lessons" lib/ modules/', "citation-check", args.worktree],
+    ["bash", "-c", 'cd "$1" && ! grep -rniE "llama-swap|flashnext|ds4" docs/local-ai/README.md docs/local-ai/model-roster.md', "citation-check", args.worktree],
     {
       pools: ["flow-build"],
       key: "citation-check",

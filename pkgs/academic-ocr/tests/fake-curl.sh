@@ -11,7 +11,7 @@ done
   exit 2
 }
 
-default_content=$'# Fixture paper\n\nThis generated academic page tests deterministic visual transcription through the bounded llama-swap HTTP adapter. It preserves headings, paragraphs, citations, tables, and mathematical notation without adding commentary.\n\n## Findings\n\nThe controlled fixture contains enough substantive language for the OCR fail-closed gate and the downstream chunking test.'
+default_content=$'# Fixture paper\n\nThis generated academic page tests deterministic visual transcription through the bounded OpenAI-compatible HTTP adapter. It preserves headings, paragraphs, citations, tables, and mathematical notation without adding commentary.\n\n## Findings\n\nThe controlled fixture contains enough substantive language for the OCR fail-closed gate and the downstream chunking test.'
 
 if jq -e 'has("messages")' "$payload" >/dev/null; then
   jq -cn \

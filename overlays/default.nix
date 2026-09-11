@@ -68,10 +68,6 @@ final: prev: {
   # integrations. Upstream has no flake; see modules/cli-anything.nix.
   cli-anything-hub = final.callPackage ../pkgs/cli-anything-hub.nix { };
 
-  # llama-swap — nixos-unstable is still on v224; pin the current official v240
-  # static release while retaining nixpkgs' first-class services.llama-swap module.
-  llama-swap = final.callPackage ../pkgs/llama-swap.nix { };
-
   # fgp-browser: intentionally NOT packaged here — picked up as part of the
   # agency agency browser project (custom Chromium surface). Tracked in issue #45.
   # gws ships as a home package + agenix credentials, with no overlay.
@@ -93,15 +89,6 @@ final: prev: {
     inherit (import ../modules/artifacts-defaults.nix) namespace;
   };
   artifact-deck = final.callPackage ../pkgs/artifact-deck { };
-
-  # One immutable provider source is shared by interactive Pi and the monthly
-  # appliance. Explicit `-e` loading needs no npm install or mutable Pi state.
-  pi-llama-swap-extension = final.fetchFromGitHub {
-    owner = "danielmeneses";
-    repo = "pi-llama-swap";
-    rev = "915861a1fc2dfd01991720d1c8854bc974cb5322"; # v0.1.1
-    hash = "sha256-z0KJYGrl5QF+IRdTXQv1mS/v4XC/XdslEjJ2WI2Xmyk=";
-  };
 
   # Monthly local-AI update bot: deterministic Git/HF preparation, one Pi
   # judgment, deterministic verification/publication. Tally leases only Pi.

@@ -4,12 +4,14 @@ Flow scripts for the post-LaCie campaign: local-model materialization (lane A) a
 the notes-reshape/drain arc (lane B), run concurrently. They are registered on
 coordinator against tally.nix 0.1.0 (`6b250541`) but remain unscheduled: every
 entry has `onCalendar = null` and runs only through an explicit
-`tally flow run`. Dotfiles issue #104 is closed; its materialization gate remains
-in the script as witnessed proof rather than an active blocker.
+`tally flow run`. Dotfiles issue #104 is closed; lane A's weight step is now the
+operator's `local-models-borrow` transaction, and the flow that once wrapped it
+refuses (see below).
 
 Codex is the agentic harness for all implementation nodes (ruled 2026-07-25);
 Claude Code is not used as a flow node. Local quorum work goes through `local()`
-members on coordinator llama-swap.
+members that dial the worker's Halogen Flash server (`http://worker:8731`,
+model `halogen-qwen3.8-flash-next`; the one member is in `catalog.json`).
 
 ## T0 — flow-era readiness record
 
@@ -37,10 +39,10 @@ members on coordinator llama-swap.
 |---|---|---|---|
 | `allowlist-implementation` | A1 | T0 | codex |
 | `parakeet-determinism` | A2 | T0 | codex |
-| `materialize-model-weights` | A3 | A1; #104 is closed (in-flow proof remains) | none (pure sh) |
+| `materialize-model-weights` | A3 | refuses at run time: bytes reach a host only through `sudo local-models-borrow` | none |
 | `docs-model-split` | A4 | A1 landed (roster reflects allowlist) | codex |
 | `issue-96-drain` | B2 | T0; final acceptance gates on notes cutover (prompt A) | codex |
-| `errata-map` | B3 | notes cutover (in-flow gate node) + A3 (local members need weights) | codex + local quorum |
+| `errata-map` | B3 | notes cutover (in-flow gate node) + the worker's halogen server answering `GET /health` | codex + one local verdict (halogen) |
 
 Prompt A (notes cutover) stays a supervised session, not a flow. Prompt C and
 inbox-july23 processing follow B-lane completion as sessions.
@@ -92,12 +94,12 @@ The upstream ask is dotfiles#305.
 ## Notes
 
 - Pool names reference the live coordinator daemon config (`home/tally.nix`):
-  `flow-build` and `coordinator-gpu`. Weight downloads serialize through
-  `flow-build` deliberately — one WAN link — and the nightly deploy leases that
-  lane as well.
-- `materialize-model-weights` builds `.#models.<artifactId>` store paths; get the
-  current id list with
-  `nix eval .#legacyPackages.x86_64-linux.models --apply builtins.attrNames`.
-  Parakeet artifact ids join the list once A2 lands.
-- Uncensored roster ruling 2026-07-25: only `qwen3.6-35b-heretic` materializes;
-  the other two uncensored deployments stay cataloged, not downloaded.
+  `flow-build`, `coordinator-gpu` and `worker-gpu`. The catalog member leases
+  `worker-gpu`, the row that describes the halogen box's device; the nightly
+  deploy leases `flow-build`.
+- `materialize-model-weights` keeps its `flake` and `models` args so the
+  registry entry in `tally-flows.nix` still validates, and throws on every run.
+  The artifact ids it would have taken are the keys of
+  `lib/local-models.nix`'s `artifacts`; a host's wanted subset is
+  `/etc/local-models/wanted.json`, and `docs/local-ai/README.md` walks the
+  borrow transaction.

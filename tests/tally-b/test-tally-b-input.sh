@@ -18,8 +18,10 @@
 #      network, no credential — `git ls-remote` is NOT called here)
 #   E  the unit's shape: ExecStart is the store-built tally-kernel binary with
 #      `serve`, the state root carries the tally-rewrite component, the socket
-#      is kernel.sock BESIDE that root, and the rows file names exactly the
-#      three kernel-owned rows of the rewrite's docs/rows.md
+#      is kernel.sock BESIDE that root, the rows file names exactly the
+#      three kernel-owned rows of the rewrite's docs/rows.md, and every row's
+#      `running` is `{kind: none}` — no row probes an endpoint, because no
+#      device on this estate publishes one
 #   F  coexistence: the live user-bus tally-daemon declaration still evaluates
 #      on the coordinator, no SYSTEM-bus tally-daemon unit exists, and neither
 #      the worker nor the NAS imports the module at all
@@ -175,6 +177,20 @@ if [ "$cells" = "true" ]; then
   pass "E every row carries all seven cells row_from_json requires — nothing left to a server-side default"
 else
   bad  "E a row is missing a required cell: ${cells:-<eval failed>}"
+fi
+# `running` is `{kind: none}` on EVERY row, the GPU rows included. The fleet's
+# inference server (Halogen on the worker) publishes no per-model running
+# endpoint, and the coordinator's GPU serves nothing declaratively, so there is
+# nothing for the kernel to ask; `none` is recorded as measured false /
+# "not-applicable", never as an unknown. Read as the exact JSON shape so an
+# endpoint that crept back onto a row is a red clause, not a passing superset.
+running=$(nix eval --offline --json \
+  '.#nixosConfigurations.coordinator.config.services.tally-kernel.rows' \
+  --apply 'rs: map (r: r.running) rs' 2>/dev/null)
+if [ "$running" = '[{"kind":"none"},{"kind":"none"},{"kind":"none"}]' ]; then
+  pass "E every row's running is exactly {\"kind\":\"none\"} — gpu-coordinator, gpu-worker and mechanical alike: $running"
+else
+  bad  "E the rows' running cells are ${running:-<unreadable>}, wanted {\"kind\":\"none\"} on all three"
 fi
 
 # --- F ---------------------------------------------------------------------

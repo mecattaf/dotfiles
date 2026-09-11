@@ -36,16 +36,17 @@
 # missed (box off, power cut) is a build skipped, never a surprise daytime
 # build — the C4 lesson from fleet-deploy's post-mortem.
 #
-# Model weights are NOT in these builds (2026-08-21 decisive ruling): the
-# first observed run died filling the 57G eMMC with weight FODs, and the
-# whole weight plane moved out of nix — see hosts/nas/models.nix
-# (library-fetch) and modules/local-models.nix (explicit local-models-borrow). The
+# Model weights are NOT in these builds: the first observed run died filling
+# the 57G eMMC with weight FODs, and the whole weight plane lives outside nix
+# — hosts/nas/models.nix (library-fetch fills the Library) and
+# modules/local-models.nix (explicit local-models-borrow takes working copies;
+# the worker's halogen server reads its copy from /var/lib/local-models). The
 # closures built here are slim system closures and fit the eMMC comfortably.
 let
   cfg = config.myNas.updateCenter;
   hosts = [
     "coordinator"
-    "worker" # reintegrated 2026-08-21 (#229) — missed on the first pass
+    "worker"
   ];
   build = pkgs.writeShellScript "update-center-build" ''
     set -u

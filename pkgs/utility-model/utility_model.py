@@ -3,23 +3,16 @@
 
 The application-facing protocol is one OpenAI-compatible chat-completions
 request on stdin and one response on stdout.  Callers may name only the stable
-model ID ``utility``.  Nix supplies the llama-swap endpoint and the concrete
-served model ID.
+model ID ``utility``.  Nix supplies the endpoint of the fleet's Halogen Flash
+server and the concrete served model ID (modules/halogen.nix).
 
-Installed on the coordinator only, GPU-backed via llama-swap since 2026-08-29.
-Until that date the seam owned a FastFlowLM child on the XDNA2 NPU: it took an
-NPU lock, spawned a loopback-only server, waited for health, ran one request,
-and killed the child.  That NPU is decommissioned permanently, and Tom's ruling
-moved the seam rather than retiring it, so this file now forwards one request to
-the coordinator's llama-swap endpoint and rewrites ``utility`` to the concrete
-served ID on the way out and back.
-
-No lock and no child process survive that move.  llama-swap already serializes
-per-model loads, cold-loads on demand, and TTL-unloads when idle, so the only
-thing left here is the bounded request itself.  It can still take minutes: a
-cold load of a ~40 GB Vulkan model is exactly what llama-swap's own 900s
-healthCheckTimeout (modules/llama-swap.nix) is sized for, and callers already
-tolerated FLM's start-wait, so the default timeout below is generous on purpose.
+Installed on the coordinator only; the request itself runs on the worker, the
+box that serves Halogen.  This file forwards one request there and rewrites
+``utility`` to the concrete served ID on the way out and back.  No lock and no
+child process: the server is resident for the life of its unit, so the only
+thing left here is the bounded request itself.  It can still take minutes when
+it lands while the worker's unit is still cold-loading, or on a long
+generation, so the default timeout below is generous on purpose.
 
 The ai-memory flake check imports this file by path as the module under test,
 independently of which hosts install the wrapper.
@@ -39,10 +32,10 @@ from typing import BinaryIO
 STABLE_MODEL_ID = "utility"
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
-DEFAULT_ENDPOINT = "http://localhost:9292"
+DEFAULT_ENDPOINT = "http://worker:8731"
 CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
-# Cold-loading the served model can consume llama-swap's whole 900s health
-# window before a single token is generated; leave room for the generation too.
+# A request that arrives during the worker's cold load can wait most of that
+# load out before a single token is generated; leave room for the generation.
 DEFAULT_TIMEOUT_SECONDS = 1200.0
 
 
@@ -133,17 +126,16 @@ def send_request(
     upstream_request = dict(request)
     upstream_request["model"] = concrete_model
     upstream_request["stream"] = False
-    # Every consumer asks for a non-reasoning answer with FastFlowLM's `think`
-    # flag. llama.cpp takes that instruction through the chat template instead,
-    # and IGNORES the bare flag: measured 2026-08-29 against the served model,
-    # `think: false` still spent the whole token budget on reasoning_content and
-    # returned empty content, which is a silent failure for both the drain's
-    # JSON and print's classifier. Translate it here — the seam is the one place
-    # that knows the concrete backend, and consumers keep naming one flag.
+    # Every consumer asks for a non-reasoning answer with the `think` flag.
+    # Halogen reasons by default and its token budget covers the thinking, so
+    # an untranslated flag would spend the budget on reasoning_content and hand
+    # back an empty answer — a silent failure for both the drain's JSON and
+    # print's classifier.  Halogen honours a top-level `enable_thinking`
+    # (its own bundled clients send exactly that); translate here, the one
+    # place that knows the concrete backend, and never leave the dead flag
+    # upstream.
     if upstream_request.pop("think", None) is False:
-        template_kwargs = dict(upstream_request.get("chat_template_kwargs") or {})
-        template_kwargs.setdefault("enable_thinking", False)
-        upstream_request["chat_template_kwargs"] = template_kwargs
+        upstream_request.setdefault("enable_thinking", False)
     encoded = json.dumps(
         upstream_request,
         ensure_ascii=False,
@@ -161,17 +153,17 @@ def send_request(
     except urllib.error.HTTPError as exc:
         detail = " ".join(exc.read(2048).decode("utf-8", errors="replace").split())
         raise UtilityModelError(
-            f"llama-swap returned HTTP {exc.code} for model "
+            f"halogen returned HTTP {exc.code} for model "
             f"{concrete_model}: {detail}"
         ) from exc
     except urllib.error.URLError as exc:
         raise UtilityModelError(
-            f"llama-swap at {endpoint} did not answer: {exc.reason}"
+            f"halogen at {endpoint} did not answer: {exc.reason}"
         ) from exc
     except TimeoutError as exc:
         raise UtilityModelError(
-            f"llama-swap at {endpoint} did not answer within {timeout:g}s; "
-            f"a cold load of {concrete_model} can take minutes"
+            f"halogen at {endpoint} did not answer within {timeout:g}s; "
+            f"the worker may still be cold-loading {concrete_model}"
         ) from exc
     except OSError as exc:
         raise UtilityModelError(
@@ -189,10 +181,10 @@ def send_request(
         TypeError,
     ) as exc:
         raise UtilityModelError(
-            f"llama-swap returned a malformed chat response: {exc}"
+            f"halogen returned a malformed chat response: {exc}"
         ) from exc
     if not isinstance(result, dict) or not isinstance(content, str):
-        raise UtilityModelError("llama-swap chat response has no textual content")
+        raise UtilityModelError("halogen chat response has no textual content")
 
     # Keep the concrete deployment behind the stable boundary in both directions.
     result["model"] = STABLE_MODEL_ID

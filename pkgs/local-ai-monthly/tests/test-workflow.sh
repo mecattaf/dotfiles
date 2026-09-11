@@ -26,14 +26,12 @@ cat > "$registry" <<'JSON'
   "schema_version": 1,
   "accepted_through": "2026-07-01",
   "inference": {
-    "provider": "llama-swap",
-    "url": "http://coordinator:9292",
-    "model_class": "strongest",
-    "fallback_classes": [],
-    "tally_pool": "coordinator-gpu",
-    "classes": {
-      "strongest": {"role_order": ["quality", "general"], "ram_order": "descending"}
-    }
+    "provider": "halogen",
+    "url": "http://worker:8731",
+    "model": "halogen-qwen3.8-flash-next",
+    "execution_host": "coordinator",
+    "compute_host": "worker",
+    "tally_pool": "coordinator-gpu"
   },
   "limits": {
     "commit_log": 10,
@@ -48,16 +46,15 @@ cat > "$registry" <<'JSON'
   },
   "hardware_context": {
     "nodes": [
-      {"name":"coordinator","hardware":"128 GiB test host","policy":"NPU decommissioned 2026-08-29; IOMMU off (amd_iommu=off)"}
-    ]
+      {"name":"coordinator","hardware":"128 GiB test host","policy":"NPU decommissioned 2026-08-29; IOMMU off (amd_iommu=off)","roles":["Tally coordinator"]},
+      {"name":"worker","hardware":"128 GiB test twin","policy":"wired LAN only, another room","roles":["Halogen Flash server"]}
+    ],
+    "runtime_policy": "test runtime policy: every LLM call goes to the worker",
+    "change_policy": "test change policy: propose only"
   },
   "model_selection_policy": {
-    "active_llama_cpp_weight_target": "Q8",
-    "preferred_quantizations": ["UD-Q8_K_XL", "Q8_0"],
-    "active_lower_bit_exceptions": [],
-    "native_format_exceptions": ["FastFlowLM NPU2 runtime snapshots"],
-    "rationale": "test quality policy",
-    "monthly_census": "rescan current heads"
+    "summary": "test mono-model policy",
+    "kept_small_artifacts": ["best-q8"]
   },
   "sources": [{
     "slug": "example/repo",
@@ -95,26 +92,26 @@ cat > "$capture/catalog.json" <<'JSON'
 {
   "artifacts": {
     "best-q8": {
-      "kind": "model", "quantization": "Q8_0",
-      "source": {"primary": "best-Q8_0.gguf"}
-    }
-  },
-  "deployments": {
-    "best": {
-      "status": "canonical", "role": "quality", "ramTierGb": 64,
-      "model": "best-model", "backend": "vulkan", "evidence": "matched-local",
-      "hosts": ["coordinator"], "artifacts": {"model": "best-q8"}
+      "kind": "model", "quantization": "Q8_0", "maker": "Example",
+      "source": {
+        "primary": "best-Q8_0.gguf",
+        "hfUrl": "https://huggingface.co/example/best-gguf",
+        "revision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      }
     },
-    "fallback": {
-      "status": "canonical", "role": "general", "ramTierGb": 16,
-      "model": "fallback-model", "backend": "vulkan", "evidence": "unverified",
-      "hosts": ["coordinator"], "artifacts": {"model": "best-q8"}
+    "served-bundle": {
+      "kind": "model", "maker": "Example",
+      "source": {
+        "primary": "served.hgn",
+        "hfUrl": "https://huggingface.co/example/served-bundle",
+        "revision": "ffffffffffffffffffffffffffffffffffffffff"
+      }
     }
   }
 }
 JSON
 cat > "$capture/models.json" <<'JSON'
-{"data":[{"id":"fallback-model"},{"id":"best-model"}]}
+{"data":[{"id":"halogen-qwen3.8-flash-next"}]}
 JSON
 cat > "$capture/accepted-tally.md" <<'EOF'
 # Previous accepted review
@@ -135,15 +132,36 @@ printf 'example/new-model\n' > "$capture/sources/001-example/hf-repositories.txt
 : > "$capture/sources/001-example/packages-before.txt"
 : > "$capture/sources/001-example/packages-after.txt"
 
+# The live server must advertise the registry's served model.
+unadvertised="$work/unadvertised"
+mkdir -p "$unadvertised"
+cp "$capture/manifest.json" "$capture/catalog.json" "$capture/accepted-tally.md" "$unadvertised/"
+cp -R "$capture/sources" "$unadvertised/"
+printf '{"data":[{"id":"some-other-model"}]}\n' > "$unadvertised/models.json"
+if "$LOCAL_AI_PURE_STAGE" prepare "$registry" "$unadvertised" "$work/unadvertised-prepared" 2>/dev/null; then
+  printf 'test-workflow: prepare accepted a server that does not advertise the served model\n' >&2
+  exit 1
+fi
+
 "$LOCAL_AI_PURE_STAGE" prepare "$registry" "$capture" "$prepared"
-jq -e '.model_id == "best-model" and .class == "strongest"' "$prepared/model.json" >/dev/null
-jq -e 'length == 1 and .[0].repository == "example/new-model"' "$prepared/hf-requests.json" >/dev/null
+jq -e '.provider == "halogen" and .model_id == "halogen-qwen3.8-flash-next"
+  and .endpoint == "http://worker:8731" and .compute_host == "worker"' "$prepared/model.json" >/dev/null
+jq -e '.data[0].id == "halogen-qwen3.8-flash-next"' "$prepared/inference-models.json" >/dev/null
+jq -e '[.[].repository] == ["example/best-gguf", "example/new-model", "example/served-bundle"]' \
+  "$prepared/hf-requests.json" >/dev/null
 jq -e '.sources[0].baseline == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
   "$prepared/next-sources.json" >/dev/null
 grep -q 'Add candidate model' "$prepared/evidence.md"
-grep -q 'Active llama.cpp model/MTP target: \*\*Q8\*\*' "$prepared/context.md"
+grep -Fq -- '- test mono-model policy' "$prepared/context.md"
+grep -Fq -- 'Served model: `halogen-qwen3.8-flash-next` through provider `halogen` at `http://worker:8731` on `worker`' \
+  "$prepared/context.md"
+grep -Fq -- 'Kept small Library artifacts: `best-q8`' "$prepared/context.md"
 grep -q 'best-Q8_0.gguf \[Q8_0\]' "$prepared/context.md"
+grep -q 'served.hgn \[native\]' "$prepared/context.md"
 grep -Fq -- 'NPU decommissioned 2026-08-29; IOMMU off (amd_iommu=off)' "$prepared/context.md"
+grep -Fq -- '| `worker` | 128 GiB test twin | wired LAN only, another room | Halogen Flash server |' \
+  "$prepared/context.md"
+grep -Fq -- 'Runtime policy: test runtime policy' "$prepared/context.md"
 
 cat > "$hf_capture/responses/001.json" <<'JSON'
 {
@@ -169,25 +187,47 @@ cat > "$hf_capture/responses/001.json" <<'JSON'
   }]
 }
 JSON
-response_sha="$(sha256sum "$hf_capture/responses/001.json" | cut -d' ' -f1)"
-jq -n --arg sha "$response_sha" '{
-  schema_version: 1,
-  responses: [{
-    repository: "example/new-model",
-    api_url: "https://huggingface.co/api/models/example/new-model?blobs=true",
-    response: "responses/001.json",
-    sha256: $sha,
-    http_status: 200,
-    bytes: 1
-  }]
-}' > "$hf_capture/manifest.json"
+for index in 2 3; do
+  repository="example/best-gguf"
+  if ((index == 3)); then
+    repository="example/served-bundle"
+  fi
+  jq -n --arg repository "$repository" '{
+    id: $repository,
+    sha: "cccccccccccccccccccccccccccccccccccccccc",
+    lastModified: "2026-08-01T00:00:00Z",
+    siblings: [{rfilename: "README.md", size: 4}]
+  }' > "$hf_capture/responses/00$index.json"
+done
+manifest_responses='[]'
+for index in 1 2 3; do
+  case "$index" in
+    1) repository="example/new-model" ;;
+    2) repository="example/best-gguf" ;;
+    3) repository="example/served-bundle" ;;
+  esac
+  response_sha="$(sha256sum "$hf_capture/responses/00$index.json" | cut -d' ' -f1)"
+  manifest_responses="$(jq --arg repository "$repository" --arg sha "$response_sha" \
+    --arg response "responses/00$index.json" '. + [{
+      repository: $repository,
+      api_url: ("https://huggingface.co/api/models/" + $repository + "?blobs=true"),
+      response: $response,
+      sha256: $sha,
+      http_status: 200,
+      bytes: 1
+    }]' <<<"$manifest_responses")"
+done
+jq -n --argjson responses "$manifest_responses" \
+  '{schema_version: 1, responses: $responses}' > "$hf_capture/manifest.json"
 
 "$LOCAL_AI_PURE_STAGE" enrich "$registry" "$prepared" "$hf_capture" "$enriched"
-jq -e '.[0].revision == "dddddddddddddddddddddddddddddddddddddddd"' \
+jq -e '.[0].repository == "example/new-model"
+  and .[0].revision == "dddddddddddddddddddddddddddddddddddddddd"' \
   "$enriched/hf-metadata.json" >/dev/null
 jq -e '.[0].files | length == 1 and .[0].path == "zz-Q8_0.gguf"
   and .[0].sri == "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="' \
   "$enriched/hf-metadata.json" >/dev/null
+jq -e 'length == 3' "$enriched/hf-metadata.json" >/dev/null
 
 cat > "$work/commentary.md" <<'EOF'
 ## Local-model review
@@ -197,3 +237,48 @@ EOF
 "$LOCAL_AI_PURE_STAGE" finalize "$registry" "$enriched" "$work/commentary.md" "$finalized"
 grep -q '^## Local-model review' "$finalized/pr-body.md"
 jq -e '.commentary_sha256 | test("^[0-9a-f]{64}$")' "$finalized/run.json" >/dev/null
+
+# The judge selects Pi's declared provider and model by id, inside a private
+# agent directory seeded with that declaration.
+agent_dir="$work/pi-agent"
+fake_pi="$work/fake-pi"
+judge_state="$work/judge-state"
+judge_output="$work/judge/commentary.md"
+mkdir -p "$agent_dir"
+cat > "$agent_dir/models.json" <<'JSON'
+{"providers":{"halogen":{"baseUrl":"http://worker:8731/v1","models":[{"id":"halogen-qwen3.8-flash-next"}]}}}
+JSON
+# The shebang names the bash running this test: inside the build sandbox
+# there is no /usr/bin/env to resolve one.
+printf '#!%s\n' "$BASH" > "$fake_pi"
+cat >> "$fake_pi" <<'EOF2'
+set -euo pipefail
+printf '%s\n' "$@" > "${FAKE_PI_ARGV:?}"
+[[ -f "${PI_CODING_AGENT_DIR:?}/models.json" ]]
+printf '## Local-model review\n\nRetain the current roster; nothing material changed.\n'
+EOF2
+chmod +x "$fake_pi"
+
+if PI_CODING_AGENT_DIR="$agent_dir" LOCAL_AI_PI="$fake_pi" FAKE_PI_ARGV="$work/pi-argv" \
+  bash "$LOCAL_AI_JUDGE_SOURCE" "$work/commentary.md" "$enriched/evidence.md" \
+    "$enriched/context.md" "$enriched/hf-metadata.md" \
+    halogen some-other-model "$judge_output" "$judge_state" 2>/dev/null; then
+  printf 'test-workflow: judge accepted a model that models.json does not declare\n' >&2
+  exit 1
+fi
+
+PI_CODING_AGENT_DIR="$agent_dir" LOCAL_AI_PI="$fake_pi" FAKE_PI_ARGV="$work/pi-argv" \
+  bash "$LOCAL_AI_JUDGE_SOURCE" "$work/commentary.md" "$enriched/evidence.md" \
+    "$enriched/context.md" "$enriched/hf-metadata.md" \
+    halogen halogen-qwen3.8-flash-next "$judge_output" "$judge_state"
+grep -q '^## Local-model review' "$judge_output"
+jq -e '.providers.halogen.models[0].id == "halogen-qwen3.8-flash-next"' "$judge_state/models.json" >/dev/null
+mapfile -t pi_argv < "$work/pi-argv"
+[[ "${pi_argv[0]}" == "--no-extensions" ]]
+for ((index = 0; index < ${#pi_argv[@]}; index++)); do
+  if [[ "${pi_argv[index]}" == "--provider" ]]; then
+    [[ "${pi_argv[index + 1]}" == "halogen" ]]
+  elif [[ "${pi_argv[index]}" == "--model" ]]; then
+    [[ "${pi_argv[index + 1]}" == "halogen-qwen3.8-flash-next" ]]
+  fi
+done

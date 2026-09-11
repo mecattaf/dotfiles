@@ -11,8 +11,8 @@ cc2              spent      0.0% ░░░░░░░░░░  100.0% ██�
 cc3              open       0.0% ░░░░░░░░░░   45.0% ████░░░░░░  Sat 11:00Z in 4d5h  662.3k  66.6M
 codex            spent    —                   98.0% ██████████  Sat 07:18Z in 4d2h  1.3G    2.5G
 pi-qwencloud     spent    —                  100.0% ██████████  Sat 08:02Z in 4d2h  1.7M    83.3M   weekly quota exhausted…
-gpu-coordinator  open     —                  —                                      —       —       idle, no model resident
-gpu-worker       offline  —                  —                                      —       —       unreachable
+gpu-coordinator  n/a      —                  —                                      —       —       serves nothing declaratively; the fleet's inf…
+gpu-worker       open     —                  —                                      —       —       up, serving halogen-qwen3.8-flash-next
 
 per-model weekly rows (bind that model only):
   cc             weekly · Fable         100.0% ██████████  resets in 1d4h
@@ -30,7 +30,8 @@ read at 2026-09-08T05:16:34Z   most headroom: cc3
 | `cc`, `cc2`, `cc3` | `api.anthropic.com/api/oauth/usage`, per-seat OAuth token from `~/.claude*/.credentials.json` | one request, usually zero (see freshness) |
 | `codex` | `codex app-server` over JSON-RPC — the account's own live answer | one short-lived process, cached |
 | `pi-qwencloud` | the reset stated in the provider's own 429 text | nothing, unless `--probe-qwen` |
-| `gpu-coordinator`, `gpu-worker` | `llama-swap` `/running` | nothing |
+| `gpu-worker` | `GET /health` on the Halogen Flash server at `http://worker:8731`, then `GET /v1/models` if health names no model id | two requests, nothing spent |
+| `gpu-coordinator` | nothing — no server is declared on the coordinator; the row is `n/a` and says so | nothing |
 
 Token counts come from the harnesses' own transcripts — the same records
 `nightly-record` reads — counted from the moment **that seat's** weekly window
@@ -101,8 +102,9 @@ Per-window samples: 183.2, 224.8, 193.1, 169.0 tokens/credit.
 **Cache reads are not charged.** That is the load-bearing finding: 98% of the
 tokens crossing this seat are cache reads, so a meter that counted them would
 have walled these windows five times sooner than they actually walled. The pi
-session store also carries llama-swap and flashnix-local traffic, served by the
-GPU in this room at no cost to the subscription; that is filtered out too.
+session store also carries locally served traffic — the Halogen server on the
+worker, a hand-run `llama-server` — at no cost to the subscription; that is
+filtered out too.
 
 **The output weight is not identifiable from this data.** The output:input
 ratio sat at 0.33–0.37 in all four windows, so weighting output 1× or 6× moves
@@ -294,8 +296,14 @@ shift can then cost some caution, never a flooded window.
 ## States
 
 `open` (every binding window under 80%) · `tight` (80–95%) · `spent` (a binding
-window at 95%, or a provider refusal in force) · `busy` (a GPU with a model
-resident — a queue, not a wall) · `unauth` · `offline` · `unknown`.
+window at 95%, or a provider refusal in force) · `n/a` (a device with no
+server declared behind it — `gpu-coordinator`; graded `UNKNOWN`, never
+headroom) · `unauth` · `offline` · `unknown`.
+
+The two GPU rows have no windows. `gpu-worker` is `open` when the Halogen
+server answers `/health` (a busy GPU is a queue, not a wall) and `offline`
+when it does not; `gpu-coordinator` is always `n/a`. Neither is a
+subscription, so `--pick` never names them and `--check` on either answers 2.
 
 **Only the session and weekly windows bind.** A per-model weekly row — `Fable`
 at 100% on `cc` — restricts that model and nothing else, so it is reported
@@ -311,7 +319,7 @@ seats                    # the table
 seats --json             # one document, schema seat-capacity/1
 seats --jsonl            # one line per seat — append to a ledger, pipe to jq
 seats --tsv              # one row per window — awk, sort, a spreadsheet
-seats --only cc,cc3      # by seat id or by provider (claude, codex, qwen, llama-swap)
+seats --only cc,cc3      # by seat id or by provider (claude, codex, qwen, halogen, none)
 seats --watch 60         # redraw on an interval
 ```
 
@@ -337,11 +345,17 @@ account), `--no-color`.
 train, and how the test runs. Nothing degrades to a guess; rows say `CACHED` or
 `UNKNOWN`.
 
+`SEATS_INFERENCE_URL` overrides the `gpu-worker` row's base URL (default
+`http://worker:8731`, the fleet's `*_INFERENCE_URL` convention). The override
+is for pointing the row at a hand-run `llama-server`, not for a second
+declared server.
+
 ## Configuration
 
 None is required. `~/.config/seats/seats.json`, if present, replaces the seat
 table wholesale — a list of `{id, provider, label, owner, config_dir,
-spend_root, endpoint, note}` objects. Seat ids are the pool names in
+spend_root, endpoint, reason, note}` objects (`endpoint` for a `halogen` row,
+`reason` for a `none` row). Seat ids are the pool names in
 `home/tally.nix` and the row names in `~/.local/state/tally-rewrite/meters`,
 deliberately: a row here and a row there must be joinable by one field.
 

@@ -1,6 +1,5 @@
 {
   config,
-  inputs,
   lib,
   pkgs,
   ...
@@ -12,9 +11,6 @@ let
   modelStore = import ../lib/model-store.nix {
     inherit catalog lib;
   };
-  system = pkgs.stdenv.hostPlatform.system;
-  strixAi = inputs.nix-strix-halo.packages.${system};
-  host = config.networking.hostName;
   isSafeArtifactPath =
     path:
     path != ""
@@ -23,31 +19,7 @@ let
       lib.splitString "/" path
     );
 
-  deploymentList = builtins.attrValues catalog.deployments;
-  canonicalForHost = lib.filterAttrs (
-    _: deployment: deployment.status == "canonical" && lib.elem host deployment.hosts
-  ) catalog.deployments;
-  canonicalList = builtins.attrValues canonicalForHost;
-  canonicalModelIds = map (deployment: deployment.model) canonicalList;
-  selectedDeployments = lib.filterAttrs (name: _: lib.elem name cfg.allow) catalog.deployments;
-  selectedList = builtins.attrValues selectedDeployments;
-
-  modelRenderers = import ../lib/local-model-runtime.nix {
-    inherit lib;
-    packages = {
-      llamaRocm = strixAi.llama-cpp-rocm;
-      llamaVulkan = strixAi.llama-cpp-vulkan;
-      ds4 = strixAi.ds4-rocm;
-      vllm = strixAi.vllm-rocm;
-      mlxLm = strixAi.mlx-lm;
-    };
-  };
-  rendererBackends = builtins.attrNames modelRenderers;
-
-  referencedArtifactIds =
-    deployment: lib.filter (artifactId: artifactId != null) (builtins.attrValues deployment.artifacts);
-  deploymentArtifactIds = lib.unique (lib.concatMap referencedArtifactIds selectedList);
-  hostArtifactIds = lib.unique (deploymentArtifactIds ++ cfg.artifacts);
+  hostArtifactIds = lib.unique cfg.artifacts;
 
   # The host's wanted-set manifest: the ONLY thing Nix contributes about
   # weights (2026-08-21 decisive ruling — weights are static documents, never
@@ -225,84 +197,7 @@ let
     '';
   };
 
-  resolveArtifacts =
-    deployment:
-    lib.mapAttrs (
-      _: artifactId: if artifactId == null then null else modelStore.materialized.${artifactId}.primary
-    ) deployment.artifacts;
-
-  expandRuntimeArg =
-    deploymentName: resolved: arg:
-    lib.foldl' (
-      expanded: slot:
-      let
-        token = "@${slot}@";
-        path = resolved.${slot};
-      in
-      if lib.hasInfix token expanded && path == null then
-        throw "local-model deployment ${deploymentName}: ${token} has no artifact"
-      else if path == null then
-        expanded
-      else
-        lib.replaceStrings [ token ] [ (toString path) ] expanded
-    ) arg (builtins.attrNames resolved);
-
-  renderModel =
-    deploymentName: deployment:
-    let
-      resolved = resolveArtifacts deployment;
-      modelArtifact = modelStore.materialized.${deployment.artifacts.model};
-      modelPath = modelArtifact.primary;
-      modelDirectory = modelArtifact.directory;
-      runtimeArgs = map (expandRuntimeArg deploymentName resolved) deployment.runtime.args;
-      extraArgs = lib.concatMapStringsSep " " lib.escapeShellArg runtimeArgs;
-      renderer = modelRenderers.${deployment.backend} or null;
-      rendered =
-        if renderer == null then
-          throw "local-model deployment ${deploymentName}: backend ${deployment.backend} has no llama-swap command renderer"
-        else
-          renderer { inherit deployment modelDirectory modelPath; };
-    in
-    {
-      name = deployment.model;
-      value = rendered // {
-        name = deployment.model;
-        cmd = rendered.cmd + lib.optionalString (runtimeArgs != [ ]) " ${extraArgs}";
-        ttl = deployment.ttl;
-      };
-    };
-
-  localModels = lib.mapAttrs' renderModel selectedDeployments;
-
-  # ── the application-facing utility slot ───────────────────────────────────
-  # Migrated here from modules/npu-llm.nix on 2026-08-29 (that module was
-  # deleted outright 2026-08-31 with the appliance tier, #270; git history
-  # keeps it). The stable id
-  # `utility` is now backed by a GPU roster row served through llama-swap, so
-  # the wrapper is a plain catalog-row-onto-host projection — this module's job
-  # — rather than anything FastFlowLM ever owned. It is installed only where the
-  # slot's deployment is canonical, assigned to this host, AND allowed into that
-  # host's llama-swap roster: without the last condition the wrapper would name
-  # a served id the local proxy does not know.
-  utilityDeployment = catalog.deployments.${catalog.utility.deployment};
-  utilityEnabled =
-    utilityDeployment.status == "canonical"
-    && lib.elem host utilityDeployment.hosts
-    && lib.elem catalog.utility.deployment cfg.allow;
-  utilityEndpoint = "http://localhost:${toString config.services.llama-swap.port}";
-  utilityRunner = pkgs.writeShellApplication {
-    name = "utility-model";
-    runtimeInputs = [ pkgs.python3 ];
-    text = ''
-      exec ${pkgs.python3}/bin/python3 ${../pkgs/utility-model/utility_model.py} "$@" \
-        --endpoint ${lib.escapeShellArg utilityEndpoint} \
-        --concrete-model ${lib.escapeShellArg utilityDeployment.model} \
-        --context-tokens ${toString catalog.utility.contextTokens}
-    '';
-  };
-
   artifactIds = builtins.attrNames catalog.artifacts;
-  deploymentIds = builtins.attrNames catalog.deployments;
   artifactRows = builtins.attrValues catalog.artifacts;
   manifest = (pkgs.formats.json { }).generate "local-model-catalog.json" catalog;
   artifactEtc = lib.listToAttrs (
@@ -325,30 +220,6 @@ let
   ) snapshotAliasArtifacts;
 
   catalogAssertions = [
-    {
-      # Archive-before-delete, made mechanical (2026-08-20): a retirement is
-      # only real once the bytes survive somewhere. The `archived` receipt on
-      # the row is the proof; without it the retirement does not evaluate.
-      assertion = lib.all (
-        deployment: deployment.status != "retired" || deployment.archived != null
-      ) deploymentList;
-      message = "Every retired deployment must carry an `archived` receipt (NAS path + date) — archive the weights before retiring the row (docs/nas/model-archive.md).";
-    }
-    {
-      assertion =
-        lib.sort builtins.lessThan rendererBackends
-        == lib.sort builtins.lessThan catalog.backendKinds.local;
-      message = "Every local-model backend must have exactly one llama-swap command renderer.";
-    }
-    {
-      # The appliance tier is retired (2026-08-31, #270): a backend value
-      # outside `local` is legal only as history, on a row that is itself
-      # retired. Anything live must be an engine the renderer table can serve.
-      assertion = lib.all (
-        deployment: lib.elem deployment.backend catalog.backendKinds.local || deployment.status == "retired"
-      ) deploymentList;
-      message = "Every non-retired deployment must use a managed local backend; retired backend values (npu) are archive records only.";
-    }
     {
       assertion = lib.all (
         artifact: lib.elem artifact.source.primary (map (file: file.path) artifact.source.files)
@@ -383,57 +254,6 @@ let
       message = "Flat local-model artifact files must have unique basenames.";
     }
     {
-      assertion = lib.all (
-        deployment: lib.all (artifactId: lib.elem artifactId artifactIds) (referencedArtifactIds deployment)
-      ) deploymentList;
-      message = "Every local-model deployment artifact reference must exist in the artifact catalog.";
-    }
-    {
-      assertion = lib.all (
-        deployment:
-        if lib.elem deployment.backend catalog.backendKinds.local then
-          deployment.artifacts.model != null
-        else
-          referencedArtifactIds deployment == [ ]
-      ) deploymentList;
-      message = "Managed local deployments require a model artifact; retired archive rows must not root artifacts.";
-    }
-    {
-      assertion = builtins.length canonicalModelIds == builtins.length (lib.unique canonicalModelIds);
-      message = "Canonical public model IDs must be unique per host.";
-    }
-    {
-      assertion = lib.all (
-        deployment: lib.all (arg: !(lib.hasInfix "-hf" arg)) deployment.runtime.args
-      ) deploymentList;
-      message = "Runtime model downloads (-hf) are forbidden; internet downloads terminate in the canonical NAS Library and device borrowing is an explicit operator transaction.";
-    }
-    {
-      assertion = lib.all (
-        deployment:
-        (deployment.supersedes == null || lib.elem deployment.supersedes deploymentIds)
-        && (deployment.supersededBy == null || lib.elem deployment.supersededBy deploymentIds)
-      ) deploymentList;
-      message = "Local-model lineage must reference another deployment row.";
-    }
-    {
-      assertion = builtins.length cfg.allow == builtins.length (lib.unique cfg.allow);
-      message = "services.local-models.allow must not contain duplicate deployment IDs.";
-    }
-    {
-      assertion = lib.all (deploymentId: lib.elem deploymentId deploymentIds) cfg.allow;
-      message = "services.local-models.allow references an unknown deployment ID.";
-    }
-    {
-      assertion = lib.all (
-        deployment:
-        deployment.status == "canonical"
-        && lib.elem host deployment.hosts
-        && lib.elem deployment.backend catalog.backendKinds.local
-      ) selectedList;
-      message = "Every allowed local-model deployment must be a canonical managed backend assigned to this host.";
-    }
-    {
       assertion = builtins.length cfg.artifacts == builtins.length (lib.unique cfg.artifacts);
       message = "services.local-models.artifacts must not contain duplicate artifact IDs.";
     }
@@ -451,47 +271,18 @@ let
       assertion = builtins.length snapshotAliasNames == builtins.length (lib.unique snapshotAliasNames);
       message = "Selected local-model snapshot aliases must be unique.";
     }
-    {
-      # The utility slot must name a row llama-swap can actually serve
-      # (2026-08-29 GPU migration). A non-local backend here — historically the
-      # FLM appliance rows, today only a retired archive value — would mean the
-      # wrapper forwards the stable `utility` id to an endpoint that has never
-      # heard of it — the exact failure the FLM-era seam avoided by owning its
-      # own child process.
-      assertion =
-        utilityDeployment.status != "canonical"
-        || lib.elem utilityDeployment.backend catalog.backendKinds.local;
-      message = "The catalog's utility deployment must be a managed local backend served through llama-swap.";
-    }
   ];
-  failedCatalogAssertion = lib.findFirst (entry: !entry.assertion) null catalogAssertions;
-  catalogValid =
-    if failedCatalogAssertion == null then true else throw failedCatalogAssertion.message;
 in
 {
   options.services.local-models = {
-    allow = lib.mkOption {
-      type = lib.types.listOf lib.types.str;
-      default = [ ];
-      description = ''
-        Canonical deployment IDs to describe and expose through llama-swap on
-        this host. This option publishes paths and metadata only; it never
-        transfers model bytes. Use local-models-borrow explicitly when a
-        working copy is wanted. Every entry must be a managed local backend;
-        there is no other interactive serving tier (the NPU/FastFlowLM
-        appliance tier was decommissioned 2026-08-29 and retired from the
-        schema 2026-08-31, #270).
-      '';
-    };
-
     artifacts = lib.mkOption {
       type = lib.types.listOf lib.types.str;
       default = [ ];
       description = ''
-        Additional artifact IDs to describe without adding a llama-swap model
-        row. This does not transfer bytes; local-models-borrow is the explicit
-        transaction. This is for complete snapshots and modality-specific
-        appliances such as Mage, ASR, and TTS.
+        Catalogue artifact IDs this host WANTS as working copies under
+        /var/lib/local-models: the wanted set local-models-borrow loans from
+        the NAS Library and the exact set local-models-prune keeps. This does
+        not transfer bytes; both verbs are explicit operator transactions.
       '';
     };
 
@@ -510,7 +301,6 @@ in
   config = {
     assertions = catalogAssertions;
 
-    # The stable `utility` door, on the hosts that serve it and nowhere else.
     # Borrow and prune are both explicit operator transactions. Neither is a
     # service, timer, boot unit, or activation hook. local-models-prune is the
     # ONLY thing on this fleet that deletes a working copy (dotfiles#296):
@@ -518,12 +308,10 @@ in
     #   sudo local-models-borrow --yes      # copy + verify from the NAS Library
     #   sudo local-models-prune --dry-run    # read the set, record the intent
     #   sudo local-models-prune --yes        # delete it, iff it has not changed
-    environment.systemPackages =
-      lib.optional utilityEnabled utilityRunner
-      ++ lib.optionals (hostArtifactIds != [ ]) [
-        borrowScript
-        pkgs.local-models-prune
-      ];
+    environment.systemPackages = lib.optionals (hostArtifactIds != [ ]) [
+      borrowScript
+      pkgs.local-models-prune
+    ];
 
     # Metadata stays generational and inspectable alongside the selected artifacts.
     environment.etc = {
@@ -533,30 +321,11 @@ in
     // artifactEtc
     // snapshotAliasEtc;
 
-    services.llama-swap.settings =
-      assert catalogValid;
-      {
-        models = localModels;
-        # `peers` is upstream llama-swap's instance-to-instance federation
-        # primitive: entries name REMOTE llama-swap/OpenAI providers this proxy
-        # routes and proxies model requests to (verified against the shipped
-        # v240 binary 2026-08-31 — internal/router.{Peer,NewPeer,peerMember},
-        # "peer: routing model %s to peer %s" — the shipped README documents
-        # none of it). This comment used to justify the empty set by the NPU
-        # appliance tier ("runtime appliances are deliberately not represented
-        # as proxy peers"); that tier is retired (#270) and the field is now
-        # simply UNCLAIMED: it stays empty until the flashnext dual-node
-        # gateway design (#270) deliberately federates the twins' proxies.
-        # flake.nix pins peers == { } — relax that assert in the same change
-        # that first populates this.
-        peers = { };
-      };
-
     # Weights live OUTSIDE the store (2026-08-21 decisive ruling). NixOS creates
     # only the empty root and publishes metadata; it NEVER starts, schedules,
-    # orders against, or waits for a model-byte transfer. Existing working
-    # copies stay world-readable because llama-swap's DynamicUser sandbox reads
-    # these paths through ProtectSystem=strict. Missing rows fail only when an
+    # orders against, or waits for a model-byte transfer. Working copies stay
+    # world-readable so a read-only container mount (modules/halogen.nix) and
+    # a hand-run llama-server both read them. Missing rows fail only when an
     # operator tries to use them.
     systemd.tmpfiles.rules = lib.mkIf (hostArtifactIds != [ ]) [
       "d ${modelStore.runtimeRoot} 0755 root root -"

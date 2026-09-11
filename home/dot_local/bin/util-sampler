@@ -2,7 +2,7 @@
 """util-sampler — UTIL-01 §signal.instrument. ONE sample per invocation.
 
 Reads: sysfs (gfx1151 amdgpu), `tally query pools` (coordinator only), the
-declared serve liveness/arms/metrics endpoints, the box's drain ledger.
+worker's halogen liveness and model-list endpoints, the box's drain ledger.
 Writes: exactly one JSON line to $UTIL_METERS/util-sampler/<box>-<date>.jsonl.
 
 It never POSTs, never touches /v1/chat/completions or /completion, never holds a
@@ -13,7 +13,7 @@ Invoked by a 60 s systemd user timer; it takes one sample and exits.  There is n
 loop in this file.
 
 Time budget (no threads, no signals): the whole invocation is capped at 12 s and
-each probe (health + arms + metrics) at 4 s, enforced by checking the elapsed
+each probe (health + arms) at 4 s, enforced by checking the elapsed
 time between requests and skipping the remaining fetches.  A probe that lost the
 budget is recorded with `skipped: true`, never as `alive: false` — a probe that
 was not asked is not a dead probe.
@@ -48,7 +48,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 SCHEMA = "util-sample/2"   # /2 adds `tz` and `tz_source`
 PROBE_TIMEOUT_S = 2.0            # one HTTP request
 POOLS_TIMEOUT_S = 5.0            # `tally query pools`
-PROBE_BUDGET_S = 4.0             # health + arms + metrics for ONE probe
+PROBE_BUDGET_S = 4.0             # health + arms for ONE probe
 INVOCATION_BUDGET_S = 12.0       # the whole sample, against the card's 15 s timer
 
 # --- the card's `definition` block, transcribed, not reinterpreted -----------
@@ -60,30 +60,28 @@ SYSFS_FIELDS = {
     "gtt_used": "mem_info_gtt_used",
 }
 
+# The fleet's one inference server: Halogen Flash on the worker
+# (modules/halogen.nix), OpenAI-compatible on :8731 with GET /health as its
+# liveness probe and GET /v1/models as the list of what it serves.  The base
+# URL is the *_INFERENCE_URL convention; the override exists for a hand-run
+# llama-server, not for a second declared server.
+INFERENCE_URL = (os.environ.get("UTIL_SAMPLER_INFERENCE_URL") or "http://worker:8731").rstrip("/")
+
+# Halogen exposes no token counters: there is no prometheus /metrics and no
+# per-request ledger to read, so every probe's `metrics` is None and the row
+# writer grades tokens_in / tokens_out UNKNOWN.  `metrics_reason` says why in
+# the sample itself, so the UNKNOWN is a stated fact and not a missing key.
+NO_TOKEN_COUNTERS = "halogen exposes no token counters"
+
+# The coordinator serves nothing declaratively — the small GGUF artifacts loaned
+# there are run by hand, and a hand-run llama-server is not a declared probe —
+# so its probe list is empty and its sample carries sysfs, pools and the ledger.
 SERVE_PROBES = {
-    "coordinator": [
-        {"name": "llama-swap",
-         "health": "http://127.0.0.1:9292/health",
-         "arms": "http://127.0.0.1:9292/running",
-         "metrics": "http://127.0.0.1:9292/metrics"},
-        {"name": "flashnext",
-         "health": "http://127.0.0.1:1234/health",
-         "arms": "http://127.0.0.1:1234/v1/models",
-         "metrics": "http://127.0.0.1:1234/metrics"},
-    ],
+    "coordinator": [],
     "worker": [
-        {"name": "llama-swap",
-         "health": "http://127.0.0.1:9292/health",
-         "arms": "http://127.0.0.1:9292/running",
-         "metrics": "http://127.0.0.1:9292/metrics"},
-        {"name": "llama-server-direct",
-         "health": "http://127.0.0.1:8080/health",
-         "arms": "http://127.0.0.1:8080/v1/models",
-         "metrics": "http://127.0.0.1:8080/metrics"},
-        {"name": "flashnext-rank",
-         "health": "http://127.0.0.1:1234/health",
-         "arms": "http://127.0.0.1:1234/v1/models",
-         "metrics": "http://127.0.0.1:1234/metrics"},
+        {"name": "halogen",
+         "health": INFERENCE_URL + "/health",
+         "arms": INFERENCE_URL + "/v1/models"},
     ],
 }
 
@@ -99,14 +97,6 @@ VRAM_POOL_BY_BOX = {"coordinator": "coordinator-gpu", "worker": "worker-gpu"}
 KNOWN_BOXES = tuple(sorted(set(SERVE_PROBES) | set(VRAM_POOL_BY_BOX) | set(LEDGERS)))
 
 ZONEINFO_MARK = os.sep + "zoneinfo" + os.sep
-
-# definition.tokens_source: the only counters read.
-METRIC_COUNTERS = (
-    "llamacpp:prompt_tokens_total",
-    "llamacpp:tokens_predicted_total",
-    "vllm:prompt_tokens_total",
-    "vllm:generation_tokens_total",
-)
 
 # --- helpers ----------------------------------------------------------------
 
@@ -231,7 +221,7 @@ def http_get(url, timeout=PROBE_TIMEOUT_S):
 
 
 def parse_arms(body):
-    """Model ids from a /running or /v1/models answer.  [] is 'no arm loaded';
+    """Model ids from a /v1/models answer.  [] is 'nothing served';
     None is 'the answer could not be read'."""
     if body is None:
         return None
@@ -259,38 +249,18 @@ def parse_arms(body):
     return sorted(set(ids))
 
 
-def parse_metrics(body):
-    """The named counters only (definition.tokens_source).  None = no counters."""
-    if body is None:
-        return None
-    found = {}
-    for line in body.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split()
-        if len(parts) < 2:
-            continue
-        name = parts[0]
-        if name not in METRIC_COUNTERS:
-            continue
-        try:
-            found[name] = float(parts[1])
-        except ValueError:
-            continue
-    return found or None
-
-
 def probe_one(spec, clock):
-    """health, then arms, then metrics — each only while budget remains.
+    """health, then arms — each only while budget remains.
 
     Worst case for this function is PROBE_BUDGET_S (4 s), and it never exceeds
-    what `clock` has left, so three probes plus the pools call cannot run past
-    INVOCATION_BUDGET_S.
+    what `clock` has left, so the probe plus the pools call cannot run past
+    INVOCATION_BUDGET_S.  `metrics` is always None: the server exposes no
+    token counters, and the sample says so beside it.
     """
     p0 = time.monotonic()
     probe = {"name": spec["name"], "alive": False, "http": None, "ms": None,
-             "arms": None, "metrics": None, "skipped": False, "elapsed_ms": 0}
+             "arms": None, "metrics": None, "metrics_reason": NO_TOKEN_COUNTERS,
+             "skipped": False, "elapsed_ms": 0}
 
     def left():
         return min(PROBE_BUDGET_S - (time.monotonic() - p0), clock.remaining())
@@ -317,14 +287,6 @@ def probe_one(spec, clock):
     a_status, a_body, _a_ms, _a_err = http_get(spec["arms"], timeout=min(PROBE_TIMEOUT_S, budget))
     if a_status == 200:
         probe["arms"] = parse_arms(a_body)
-
-    budget = left()
-    if budget <= 0:
-        probe["skipped"] = True
-        return done()
-    m_status, m_body, _m_ms, _m_err = http_get(spec["metrics"], timeout=min(PROBE_TIMEOUT_S, budget))
-    if m_status == 200:
-        probe["metrics"] = parse_metrics(m_body)
     return done()
 
 

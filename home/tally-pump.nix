@@ -76,8 +76,8 @@
 # rendered pair, MEASURED 2026-09-08.)
 #
 # NON-GOALS, AS BYTES, asserted in flake.nix over the rendered unit: it never
-# names llama-swap, port 9292 or any unload/restart of a serve (the pump does
-# not touch the GPU lane); it writes nothing under ~/.local/state (neither
+# names the inference server, its port or any stop/restart of a serve (the pump
+# does not touch the GPU lane); it writes nothing under ~/.local/state (neither
 # branch (a)'s ~/.local/state/tally/ nor the rewrite's ~/.local/state/tally-
 # rewrite/ — the station's whole state is the lane's own files); it declares no
 # system-bus twin; and it is COORDINATOR ONLY (the worker holds no seat, no
@@ -89,8 +89,8 @@
 #
 # WHAT THIS FILE DOES NOT DO. It switches nothing: like every unit in this
 # repository it lands live at the next coordinator switch, and until then the
-# station stays a typed line. It does not restart, stop or enable llama-swap or
-# any other service. And it sets no policy about WHICH units get released — that
+# station stays a typed line. It does not restart, stop or enable the
+# inference server or any other service. And it sets no policy about WHICH units get released — that
 # is next.py's, through the manifest and the measured seat headroom.
 let
   hostName = osConfig.networking.hostName;
@@ -137,22 +137,23 @@ let
   # This differs deliberately from home/tally-filler.nix: the filler's external
   # `bin/register calibrate` imports numpy after a verdict (#346), while this
   # release-station tick does not.
-  pumpPath = lib.makeBinPath [
-    pkgs.bash
-    pkgs.coreutils
-    pkgs.findutils
-    pkgs.gawk
-    pkgs.gh
-    pkgs.git
-    pkgs.gnugrep
-    pkgs.gnused
-    pkgs.jq
-    pkgs.procps
-    pkgs.python3
-    pkgs.systemd
-    pkgs.util-linux
-  ]
-  + ":/etc/profiles/per-user/tom/bin:/run/current-system/sw/bin";
+  pumpPath =
+    lib.makeBinPath [
+      pkgs.bash
+      pkgs.coreutils
+      pkgs.findutils
+      pkgs.gawk
+      pkgs.gh
+      pkgs.git
+      pkgs.gnugrep
+      pkgs.gnused
+      pkgs.jq
+      pkgs.procps
+      pkgs.python3
+      pkgs.systemd
+      pkgs.util-linux
+    ]
+    + ":/etc/profiles/per-user/tom/bin:/run/current-system/sw/bin";
 in
 # LITERALS ONLY in these asserts, and that is not a style choice: a top-level
 # assert that forces `pkgs` (which `pumpPath` does) is evaluated while the module

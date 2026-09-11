@@ -249,7 +249,6 @@ fi
 
 provider="$(jq -r '.provider' "$enriched/model.json")"
 model_id="$(jq -r '.model_id' "$enriched/model.json")"
-endpoint="$(jq -r '.endpoint' "$enriched/model.json")"
 model_timeout="$(jq -r '.limits.model_timeout_seconds' "$registry")"
 commentary="$run_dir/pr-commentary.md"
 pi_state="$run_dir/pi-state"
@@ -276,7 +275,7 @@ fi
     "$enriched/evidence.md" \
     "$enriched/context.md" \
     "$enriched/hf-metadata.md" \
-    "$provider" "$model_id" "$endpoint" "$commentary" "$pi_state"
+    "$provider" "$model_id" "$commentary" "$pi_state"
 
 finalized="$(nix build --offline --no-link --print-out-paths \
   --file "$LOCAL_AI_STAGES" \

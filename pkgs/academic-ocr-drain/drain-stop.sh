@@ -15,7 +15,7 @@
 #      were needed in the incident; there is still no terminal-kill verb).
 #   3. If a receipt for the in-flight paper appeared while the cancel was in
 #      progress, that is a degraded result racing the cancel (the incident
-#      locked in six vlm8b-disputed pages exactly this way): remove the
+#      locked in six disputed VLM pages exactly this way): remove the
 #      receipt and the persisted run id so the next drain session redoes the
 #      paper at full quality. paper-e2e.js now refuses to assemble after a
 #      cancelled node, so this guard only catches the narrow window where

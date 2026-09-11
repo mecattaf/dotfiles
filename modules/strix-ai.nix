@@ -9,9 +9,11 @@
 # heads):
 #   * nix-amd-ai supplies the uniform hardware.amd-npu/FastFlowLM plane and
 #     stable-diffusion-cpp-rocm, which hellas does not package.
-#   * nix-strix-halo supplies every other GPU/runtime package below. Its gfx1151
-#     DS4 build uses the targeted TheRock ROCm provider; do not also install
-#     nix-amd-ai's older, manually-pinned ds4 package under the same bin names.
+#   * nix-strix-halo supplies every other GPU/runtime package below: the
+#     llama.cpp ROCm and Vulkan builds an operator serves the small GGUF
+#     artifacts with by hand, amdtop, and the MES firmware. The big model is
+#     not served from here at all — it is Halogen Flash, a self-contained OCI
+#     image on the worker (modules/halogen.nix).
 #
 # XRT is intentionally absent here. hardware.amd-npu already composes and exports
 # nix-amd-ai's XRT + amdxdna plugin on coordinator. Hellas currently pins the exact
@@ -52,29 +54,17 @@ in
     llamaVulkanCommands
     stableDiffusionRocmCommands
 
-    # ds4-rocm and vllm-rocm are deliberately ABSENT (dotfiles#237 ruling,
-    # 2026-08-28). Each independently pulled therock-rocm-sdk-gfx1151 — 8.3 GiB
-    # NAR, narinfo-404 on both upstream caches, so locally unique — into the
-    # closure, where it was by itself the dominant term of every cold nightly
-    # update-center push (#234's measured arithmetic). No allowed deployment
-    # uses the ds4/vllm backends today; when the DS4 TP=2 bring-up resumes
-    # (docs/local-ai/ds4-vllm-recon-2026-08-21.md), `nix build .#ds4-rocm` /
-    # `.#vllm-rocm` are the one-command escape hatches, and the renderer
-    # backends in modules/local-models.nix stay declared — they only enter a
-    # closure when a deployment actually selects them.
+    # ds4-rocm, vllm-rocm, mlx-rocm and mlx-lm are deliberately ABSENT: each
+    # pulls therock-rocm-sdk-gfx1151 — an 8.3 GiB NAR that no upstream cache
+    # serves — into the closure, where it was the dominant term of every cold
+    # nightly update-center push (#234's arithmetic), and nothing on the fleet
+    # runs them. The fleet is mono-model on Halogen; llama.cpp covers the
+    # small artifacts.
 
     # One TUI for CPU, Radeon iGPU, and XDNA NPU telemetry. Upstream packaged it
     # (hellas-ai/nix-strix-halo#161) after we carried a local pkgs/amdtop.nix;
     # sourcing it here retires that copy and puts it on the same gfx1151 plane.
     strixAi.amdtop
-  ];
-
-  # Development/runtime libraries have no useful standalone command. Root them in
-  # each generation without spraying Python/static-library trees into the global
-  # profile; use `nix shell .#mlx-rocm .#tokenizers-cpp` for an interactive env.
-  system.extraDependencies = [
-    strixAi.mlx-rocm
-    strixAi.tokenizers-cpp
   ];
 
   # The focused 0x80 MES blobs are the only part of upstream's `tuning` module we

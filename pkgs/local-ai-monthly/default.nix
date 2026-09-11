@@ -17,7 +17,6 @@
   nix,
   tinyxxd,
   llm-agents,
-  pi-llama-swap-extension,
 }:
 let
   shellRuntime = [
@@ -63,11 +62,11 @@ let
     name = "local-ai-monthly-judge";
     runtimeInputs = [
       coreutils
+      jq
       llm-agents.pi
     ];
     text = ''
       export LOCAL_AI_PI=${lib.escapeShellArg "${llm-agents.pi}/bin/pi"}
-      export LOCAL_AI_PI_PROVIDER_EXTENSION=${pi-llama-swap-extension}
       exec ${bash}/bin/bash ${./lib/judge.sh} "$@"
     '';
   };
