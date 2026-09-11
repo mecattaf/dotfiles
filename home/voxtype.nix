@@ -10,8 +10,18 @@
 # coordinator. The upstream Home Manager module owns the package, generated
 # TOML, and sole systemd user service. Other NixOS hosts import the options but
 # leave the complete integration disabled.
+#
+# Dictation is DISPLAY-BOUND, not merely coordinator-bound: the wtype driver
+# types into whatever window has focus and the `hk voice` spinner decorates the
+# focused kitty, so on a host with no compositor there is nothing to type into
+# and nothing to decorate. The gate is therefore the coordinator AND its seat
+# (myDisplay.enable, modules/display.nix) — when the coordinator goes headless
+# (R-13, plan §8.3) this whole file goes inert by derivation, with no second
+# edit here. Dictation ON THE CLIENT is a DEFERRED row (plan Q-1 (a)), not a
+# gate in this file: nothing below is written to run off the coordinator's GPU.
 let
   hostName = osConfig.networking.hostName;
+  isDictationHost = hostName == "coordinator" && osConfig.myDisplay.enable;
   package = inputs.voxtype.packages.${pkgs.stdenv.hostPlatform.system}.onnx-migraphx;
   osdPackage = inputs.voxtype.packages.${pkgs.stdenv.hostPlatform.system}.osd-gtk4;
   parakeetModel = "parakeet-unified-en-0.6b";
@@ -63,7 +73,7 @@ in
 {
   imports = [ inputs.voxtype.homeManagerModules.default ];
 
-  programs.voxtype = lib.mkIf (hostName == "coordinator") {
+  programs.voxtype = lib.mkIf isDictationHost {
     enable = true;
     engine = "parakeet";
     inherit package;
@@ -148,13 +158,13 @@ in
     };
   };
 
-  home.packages = lib.optionals (hostName == "coordinator") [ osdPackage ];
+  home.packages = lib.optionals isDictationHost [ osdPackage ];
 
   # The selected model is the only entry in Voxtype 0.7.5's registry marked as
   # compatible with its cache-aware live-streaming pipeline. Bootstrap it through
   # Voxtype's own idempotent downloader before the daemon starts, mirroring the
   # runtime-owned model-data boundary used by FastFlowLM.
-  systemd.user.services.voxtype = lib.mkIf (hostName == "coordinator") {
+  systemd.user.services.voxtype = lib.mkIf isDictationHost {
     Unit.X-Restart-Triggers = [ config.xdg.configFile."voxtype/config.toml".source ];
 
     Service = {

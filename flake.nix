@@ -1856,6 +1856,20 @@
             coordinatorHome = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
             workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
             clientHome = self.nixosConfigurations.client.config.home-manager.users.tom;
+            cfgOf = h: self.nixosConfigurations.${h}.config;
+            # Every host whose seat this block adjudicates — named, not
+            # discovered, so a fifth host added tomorrow (a seat by default,
+            # modules/display.nix) is either listed here on purpose or its
+            # absence is visible at eval. The list is the roll call, not a
+            # claim that all four have displays: what is asserted per host is
+            # the EQUALITY niri == greetd == myDisplay, plus the three
+            # topology facts below that never flip.
+            displayHosts = [
+              "coordinator"
+              "client"
+              "worker"
+              "nas"
+            ];
             seatFeederNames = [
               "tally-seat-feeder-claude"
               "tally-seat-feeder-codex"
@@ -1880,8 +1894,7 @@
           assert coordinatorHome.home.username == "tom";
           assert coordinatorHome.programs.atuin.settings.auto_sync;
           assert coordinatorHome.services.tally.enable;
-          assert coordinatorHome.programs.voxtype.enable;
-          assert coordinatorHome.systemd.user.services ? wayvnc;
+          assert coordinatorHome.programs.voxtype.enable == (cfgOf "coordinator").myDisplay.enable;
           # ONE herdr server, coordinator only (ruling B5), and it must never be
           # tied to the compositor's lifetime (ruling B6) — the PTYs outlive it.
           assert coordinatorHome.systemd.user.services ? herdr;
@@ -1958,29 +1971,44 @@
           # turning into a topology move: one server (ruling B5, #309 is Tom's),
           # two clients, unchanged.
           assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") workerHome.home.packages;
-          # No wayvnc on the worker since 2026-09-11: with niri and greetd
-          # forced off (hosts/worker/default.nix) home/remote.nix renders
-          # nothing there, so there is no VNC server, no session for it to
-          # capture, and no door. Two hosts have a compositor — the
-          # coordinator and, since the same day, the thin client — and ONE
-          # serves VNC: the coordinator. Every direction asserted, plus the
-          # NAS for the fourth box, because a half-move that left a session
-          # on the wrong host would look identical from either side alone.
+          # No wayvnc on the worker since 2026-09-11: with no display there
+          # (hosts/worker/default.nix) home/remote.nix renders nothing, so
+          # there is no VNC server, no session for it to capture, and no door.
+          #
+          # THE INVARIANT, stated once: VNC, voxtype and piri exist on the
+          # coordinator EXACTLY while the coordinator has a display. These are
+          # equalities against myDisplay.enable (modules/display.nix), not
+          # fixed values, so the coming headless flip (R-13, plan §8.3, §10
+          # steps 10-11) does not have to come back and re-key them — but a
+          # HALF flip is refused: when hosts/coordinator/default.nix sets
+          # myDisplay.enable = false, the same commit must delete the wayvnc
+          # unit, the Remmina viewer profile and the :5900 door, or this check
+          # does not build. What never flips is the topology: the client is a
+          # seat, the worker and the NAS are not — asserted separately below,
+          # because a half-move that left a session on the wrong host would
+          # look identical from either side alone.
           assert !(workerHome.systemd.user.services ? wayvnc);
-          assert coordinatorHome.systemd.user.services ? wayvnc;
-          assert !self.nixosConfigurations.worker.config.programs.niri.enable;
-          assert !self.nixosConfigurations.worker.config.services.greetd.enable;
-          assert self.nixosConfigurations.coordinator.config.programs.niri.enable;
-          assert self.nixosConfigurations.coordinator.config.services.greetd.enable;
-          assert !self.nixosConfigurations.nas.config.programs.niri.enable;
+          assert (coordinatorHome.systemd.user.services ? wayvnc) == (cfgOf "coordinator").myDisplay.enable;
+          assert (coordinatorHome.systemd.user.services ? piri) == (cfgOf "coordinator").myDisplay.enable;
+          assert clientHome.systemd.user.services ? piri;
+          assert builtins.all (
+            h:
+            (cfgOf h).programs.niri.enable == (cfgOf h).myDisplay.enable
+            && (cfgOf h).services.greetd.enable == (cfgOf h).myDisplay.enable
+          ) displayHosts;
+          assert (cfgOf "client").myDisplay.enable;
+          assert !(cfgOf "worker").myDisplay.enable;
+          assert !(cfgOf "nas").myDisplay.enable;
           # The thin client (2026-09-11): Tom's seat, so niri and greetd are
           # ON and the whole coordinator-gated tier is OFF — no tally, no
           # voxtype, no herdr SERVER (the binary and `hk` are here: Mod+Return
           # is `hk ssh --in-place coordinator`, asserted below through the
-          # generated niri-local.kdl), no wayvnc (it VIEWS the coordinator:
-          # the `coordinator (VNC)` Remmina profile exists here and no
-          # `client (VNC)` profile exists on the coordinator), no dcal daemon,
-          # no :5900 door, no seat-feeder clocks. Touch is mapped globally to
+          # generated niri-local.kdl), no wayvnc SERVER (while the coordinator
+          # has a display the client VIEWS it through a `coordinator (VNC)`
+          # Remmina profile — asserted above as an equality — and no
+          # `client (VNC)` profile ever exists on the coordinator, in either
+          # direction of the flip), no dcal daemon, no :5900 door, no
+          # seat-feeder clocks. Touch is mapped globally to
           # eDP-1 on stock niri (PR #1856 accepted as a defect, no fork).
           assert clientHome.home.username == "tom";
           assert !clientHome.services.tally.enable;
@@ -1991,10 +2019,11 @@
           assert !(clientHome.xdg.configFile ? "wayvnc/config");
           assert !(clientHome.systemd.user.services ? dcal-daemon);
           assert coordinatorHome.systemd.user.services ? dcal-daemon;
-          assert clientHome.xdg.dataFile ? "remmina/coordinator.remmina";
+          # A viewer profile exists exactly while there is a server to view.
+          assert
+            (clientHome.xdg.dataFile ? "remmina/coordinator.remmina")
+            == (cfgOf "coordinator").myDisplay.enable;
           assert !(coordinatorHome.xdg.dataFile ? "remmina/client.remmina");
-          assert self.nixosConfigurations.client.config.programs.niri.enable;
-          assert self.nixosConfigurations.client.config.services.greetd.enable;
           assert
             !builtins.elem 5900 (
               self.nixosConfigurations.client.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
@@ -2008,8 +2037,10 @@
               self.nixosConfigurations.worker.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
                 or [ ]
             );
-          assert builtins.elem 5900
-            self.nixosConfigurations.coordinator.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
+          assert
+            builtins.elem 5900
+              self.nixosConfigurations.coordinator.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
+            == (cfgOf "coordinator").myDisplay.enable;
           assert !self.nixosConfigurations.worker.config.services.tailscale.enable;
           pkgs.runCommand "home-profiles" { } ''
             touch "$out"

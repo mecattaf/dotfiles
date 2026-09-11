@@ -12,6 +12,9 @@ in
   config = lib.mkIf cfg.enable {
     # Keep a local recovery getty without a graphical or remote desktop session.
     boot.plymouth.enable = lib.mkForce false;
+    myDisplay.enable = lib.mkForce false; # an appliance has no display by definition
+    # Belt and braces: ./display.nix already derives both of these from the
+    # line above, and these two forces now agree with it rather than fight it.
     programs.niri.enable = lib.mkForce false;
     services.greetd.enable = lib.mkForce false;
     services.getty.autologinUser = "tom";
