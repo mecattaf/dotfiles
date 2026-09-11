@@ -1,7 +1,6 @@
 { lib, modulesPath, ... }:
 # Module list reconciled against `nixos-generate-config --show-hardware-config`
-# on the live coordinator (2026-07-11): the generator emits exactly
-# nvme xhci_pci thunderbolt uas usbhid sd_mod. Dropped the earlier guesses
+# on the live coordinator (2026-07-11). Dropped the earlier guesses
 # `ahci` (no SATA root — root is nvme) and `usb_storage` (superseded by `uas`,
 # the modern USB-Attached-SCSI driver the generator detects), added `uas`.
 # Filesystems come from ./disko.nix (disk verified 2026-07-05).
@@ -11,9 +10,6 @@
   boot.initrd.availableKernelModules = [
     "nvme"
     "xhci_pci"
-    # No "thunderbolt" here on purpose: this box boots from NVMe and nothing
-    # in early boot needs a USB4 tunnel; the stock driver loads in stage 2 for
-    # ordinary USB4 peripherals.
     "uas"
     "usbhid"
     "sd_mod"

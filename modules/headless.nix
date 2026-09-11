@@ -20,7 +20,6 @@ in
     security.rtkit.enable = lib.mkForce false;
     services.pipewire.enable = lib.mkForce false;
     hardware.bluetooth.enable = lib.mkForce false;
-    services.hardware.bolt.enable = lib.mkForce false;
     services.gnome.gnome-keyring.enable = lib.mkForce false;
     security.polkit.enable = lib.mkForce false;
     programs.dconf.enable = lib.mkForce false;

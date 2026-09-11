@@ -1,5 +1,13 @@
 # USB4/PD wedge incident — runbook and lore (2026-08-21)
 
+**Status: historical.** The Thunderbolt and direct 5GbE rails between the
+twins were retired on 2026-09-11 and the config this page cites
+(`hosts/coordinator/tb-fleet.nix`, `hosts/coordinator/eth-fleet.nix`,
+`modules/fn-rdma.nix`, `modules/usb4-stream.nix`) is deleted. The twins are
+plain LAN peers on `10.42.0.0/24`. Nothing below is a current deployment
+target or a runbook to follow; it is kept for the incident lore and the
+measurements. See `DECISIONS.md`, 2026-09-11.
+
 The config half of this story lives in `hosts/coordinator/tb-fleet.nix`
 (doctrine + automated cure) and `hosts/coordinator/eth-fleet.nix` (the
 fallback rail). This doc keeps the operational knowledge that is not config:
