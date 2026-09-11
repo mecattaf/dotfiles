@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# hk-prune-shells -- close the herdr workspaces that hold nothing but idle
+# shells.
+#
+# Every Mod+Return creates a workspace with one pane (hk-new-inplace); closing
+# the kitty window, or losing the ssh session under it, leaves that shell
+# alive server-side by design (preservation, #355 role A). When the shell was
+# never used, or its agent was exited by hand before the window closed, the
+# leftover is a fish prompt at ~ that `hk resume` lists forever. MEASURED
+# 2026-09-11: 99 workspaces on the coordinator, 98 of them exactly that.
+#
+# A workspace is pruned only when EVERY pane in it has agent_status "unknown"
+# AND its foreground process is the shell itself (herdr `pane process-info`
+# reports the foreground pid and name): a running command, editor or agent
+# in any pane keeps the whole workspace. --dry-run prints what would go.
+set -euo pipefail
+
+dry=0; [ "${1:-}" = "--dry-run" ] && dry=1
+shells='^(fish|bash|zsh|sh)$'
+
+panes_json="$(herdr pane list)"
+mapfile -t workspaces < <(jq -r '.result.panes[].workspace_id' <<<"$panes_json" | sort -u)
+
+kept=0; pruned=0
+for ws in "${workspaces[@]}"; do
+  keep=0
+  while IFS=$'\t' read -r pane status; do
+    if [ "$status" != "unknown" ]; then keep=1; break; fi
+    # every foreground process must be the shell itself (name matches, pid is
+    # the pane's shell_pid); anything else in the foreground keeps the workspace
+    busy="$(herdr pane process-info --pane "$pane" 2>/dev/null \
+          | jq -r --arg re "$shells" '.result.process_info
+              | .shell_pid as $sp
+              | [.foreground_processes[] | select((.name | test($re) | not) or (.pid != $sp))]
+              | length')"
+    if [ "${busy:-1}" != 0 ]; then keep=1; break; fi
+  done < <(jq -r --arg ws "$ws" '.result.panes[] | select(.workspace_id == $ws) | "\(.pane_id)\t\(.agent_status // "unknown")"' <<<"$panes_json")
+  if [ "$keep" = 1 ]; then kept=$((kept + 1)); continue; fi
+  if [ "$dry" = 1 ]; then echo "would close $ws"; else herdr workspace close "$ws" >/dev/null && echo "closed $ws"; fi
+  pruned=$((pruned + 1))
+done
+echo "hk-prune-shells: ${pruned} workspace(s) $([ "$dry" = 1 ] && echo 'would be ' )closed, ${kept} kept"

@@ -211,12 +211,17 @@ in
       # Mod+Ctrl+Shift+Return: binds.kdl's own resume chord (`kitty -e hk
       # resume`) is a no-op on the client — there is no local herdr server for
       # a local `hk resume` to query — so it is overridden the same way, into
-      # `ssh -t coordinator hk resume`: the picker over the coordinator's
-      # detached panes (terminal id / label / agent status; fzf if present, a
-      # numbered menu otherwise), execing the attach in place exactly as it
-      # does locally on the coordinator. This is how a workspace opened above
-      # and later detached (the client went to sleep mid-agent-run) comes
-      # back.
+      # `ssh -t coordinator hk-resume-agents` (dot_local/bin): `hk resume`'s
+      # picker over the coordinator's detached panes, RESTRICTED to the panes
+      # herdr sees an agent in (working / idle / blocked) and labelled with the
+      # pane's own title — the conversation name for Claude Code / codex. A
+      # bare shell left by a dropped ssh session, or a conversation exited by
+      # hand before the window closed, is not a session to come back to (Tom
+      # 2026-09-11, #355 role A) and never appears; `hk-prune-shells` closes
+      # those workspaces. fzf if present, a numbered menu otherwise, execing
+      # the attach in place exactly as `hk resume` does locally. This is how a
+      # workspace opened above and later detached (the client went to sleep
+      # mid-agent-run) comes back.
       #
       # F10: binds.kdl's "sleep monitors" popup (power-off-monitors behind an
       # fzf prompt) becomes a popup-free BACKLIGHT toggle — brightness to zero
@@ -243,7 +248,7 @@ in
 
             binds {
                 Mod+Return hotkey-overlay-title="Terminal (new, on coordinator)" { spawn-sh "niri msg action focus-workspace \"$(niri msg -j workspaces | jq -re 'map(select(.is_focused))[0].output as $o | map(select(.output == $o)) | max_by(.idx) | .idx')\"; exec kitty -e ssh -t coordinator hk-new-inplace"; }
-                Mod+Ctrl+Shift+Return hotkey-overlay-title="Terminal (resume, on coordinator)" { spawn "kitty" "-e" "ssh" "-t" "coordinator" "hk" "resume"; }
+                Mod+Ctrl+Shift+Return hotkey-overlay-title="Terminal (resume, on coordinator)" { spawn "kitty" "-e" "ssh" "-t" "coordinator" "hk-resume-agents"; }
                 F10 hotkey-overlay-title="Backlight off / restore" { spawn-sh "~/.local/bin/brightness toggle"; }
                 XF86MonBrightnessDown allow-when-locked=true { spawn-sh "~/.local/bin/brightness down"; }
                 XF86MonBrightnessUp allow-when-locked=true { spawn-sh "~/.local/bin/brightness up"; }

@@ -2085,8 +2085,10 @@
             );
           assert nixpkgs.lib.hasInfix "map-to-output \"eDP-1\"" clientHome.xdg.configFile."niri-local.kdl".text;
           assert nixpkgs.lib.hasInfix "ssh -t coordinator hk-new-inplace" clientHome.xdg.configFile."niri-local.kdl".text;
+          # ... and the resume chord is the agent-only picker, never the bare
+          # `hk resume` that lists every leftover shell (Tom 2026-09-11).
+          assert nixpkgs.lib.hasInfix "\"coordinator\" \"hk-resume-agents\"" clientHome.xdg.configFile."niri-local.kdl".text;
           assert !(nixpkgs.lib.hasInfix "hk ssh --in-place coordinator" clientHome.xdg.configFile."niri-local.kdl".text);
-          assert nixpkgs.lib.hasInfix "\"ssh\" \"-t\" \"coordinator\" \"hk\" \"resume\"" clientHome.xdg.configFile."niri-local.kdl".text;
           assert !(nixpkgs.lib.hasInfix "binds" coordinatorHome.xdg.configFile."niri-local.kdl".text);
           assert
             !builtins.elem 5900 (
