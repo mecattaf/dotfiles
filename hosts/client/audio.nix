@@ -56,6 +56,21 @@
           "priority.session" = 3000;
         };
       }
+      # The Sound Blaster GS3 on the same dock is the sink Tom listens on;
+      # pinned the same way so the default output never drifts to the INZONE
+      # dongle or the laptop's own codec across replugs (doc §7.2). Same
+      # USB-serial node name niri/scripts/audio-route dials.
+      {
+        matches = [
+          {
+            "node.name" =
+              "alsa_output.usb-Creative_Technology_Ltd_Sound_Blaster_GS3_1120050704030604-01.analog-stereo";
+          }
+        ];
+        actions.update-props = {
+          "priority.session" = 3000;
+        };
+      }
     ];
   };
 

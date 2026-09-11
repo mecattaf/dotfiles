@@ -142,9 +142,27 @@
   # control plane a future key would go to. The fleet's own rail (a second,
   # userspace tailscaled with state in /var/lib/tailscale-fleet, headscale
   # node 4 `zenbook-duo-fleet`) is not declared here; its state dir is left in
-  # place for the operator to reuse or delete.
+  # place for the operator to reuse or delete. Kernel-mode tailscaled (the
+  # NixOS default; the fleet rail was userspace with --accept-routes=false),
+  # so a future NAS subnet route for 10.42.0.0/24 can actually be used.
   services.tailscale.enable = true;
   services.tailscale.extraUpFlags = [ "--login-server=https://nas-saas.tail8dd1.ts.net:8443" ];
+
+  # ── the Thunderbolt 3 dock ─────────────────────────────────────────────────
+  # This is the docking host: the coordinator's webcam/mic, Sound Blaster,
+  # INZONE dongle, Glove80 and Magic Trackpad all hang off a TB3 dock on this
+  # laptop's Type-C port. boltd authorizes the dock; the domain reports
+  # security "iommu+user", so a plugged dock may still need one enrolment
+  # (`boltctl list`, then `boltctl enroll --policy auto <uuid>` once).
+  # The fleet-wide bolt line left modules/common.nix on 2026-09-11 with the
+  # twins' Thunderbolt ban (DECISIONS.md, the "later the same day" entry):
+  # that ban is about the two Strix boxes never using the bus between
+  # themselves again, and does not reach a laptop whose whole peripheral
+  # plane sits behind a dock. Declared here, host-scoped, on purpose.
+  services.hardware.bolt.enable = true;
+  # lsusb for dock inspection over ssh; the coordinator has it, this box
+  # otherwise would not.
+  environment.systemPackages = [ pkgs.usbutils ];
 
   # ── no printing queue on a thin client ─────────────────────────────────────
   # modules/printing.nix is fleet-wide for interactive hosts; printing from
