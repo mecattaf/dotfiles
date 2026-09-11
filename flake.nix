@@ -1617,6 +1617,24 @@
           assert nixpkgs.lib.toList nas.services.dnsmasq.settings.port == [ 0 ];
           assert builtins.elem "option:router,10.42.0.1" nas.services.dnsmasq.settings.dhcp-option;
           assert builtins.elem "option:dns-server,10.42.0.1" nas.services.dnsmasq.settings.dhcp-option;
+          # The worker's LAN address is declared TWICE on purpose, and the two
+          # must never drift. The box itself holds it statically (the `lan`
+          # profile, asserted further down: method=manual, no DHCP on
+          # enp191s0), which is what makes it survive a reboot without the NAS
+          # being up. The NAS additionally RESERVES it, so the pool can never
+          # hand .5 to anything else and the name stays stable. The reservation
+          # names the WIRED 5GbE NIC — the worker's only link since 2026-09-11;
+          # the earlier pin named the box's idle wifi MAC and could never have
+          # matched. This assert derives the address from the worker's own
+          # profile, so changing one side without the other fails the build.
+          assert
+            builtins.elem
+              "9c:bf:0d:01:cc:65,worker,${
+                nixpkgs.lib.head (
+                  nixpkgs.lib.splitString "/" worker.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.address1
+                )
+              },infinite"
+              nas.services.dnsmasq.settings.dhcp-host;
           assert
             nas.networking.networkmanager.ensureProfiles.profiles.coordinator-fast-lane.ipv4.gateway
             == "10.42.0.3";
