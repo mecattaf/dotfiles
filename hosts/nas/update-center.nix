@@ -47,6 +47,9 @@ let
   hosts = [
     "coordinator"
     "worker"
+    # The thin client (2026-09-11). Built here so its rare manual pull is a
+    # cache hit; never pushed to, never activated from here.
+    "client"
   ];
   build = pkgs.writeShellScript "update-center-build" ''
     set -u

@@ -1,11 +1,3 @@
 // Managed as a raw Home Manager out-of-store symlink so niri can hot-reload it.
 // This file is shared fleet-wide. Put machine-specific directives in the
 // generated ~/.config/niri-local.kdl slot owned by home/home.nix.
-
-// The coordinator's DP-4 monitor may be mounted inverted. Keep this candidate
-// disabled until the output is confirmed on-device, then express it through the
-// per-host generated configuration rather than this shared file.
-// output "DP-4" {
-//     scale 2.0
-//     transform "180"
-// }

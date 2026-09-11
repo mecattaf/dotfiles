@@ -11,7 +11,7 @@ when_to_use: something rendered/built/running needs a URL; sharing with a device
 
 - **Rendering-blind.** An artifact is a snapshot dir or a `host:port`. Never ask where it came from; never render here. The microvm is the workshop, not the gallery — static content NEVER holds a VM alive.
 - **Stable URL across rungs.** `<slug>.art.mecattaf.dev` is minted at first publish and survives promotion (split-horizon DNS: tailnet rung = unproxied record → coordinator tailnet IP, unroutable off-tailnet; public rung = same name, proxied).
-- **Rung 0 exists and is free.** `artifact-view <dir>` (bounded app window from file://) needs nothing from this skill. Publish only to cross a device/person boundary.
+- **Rung 0 exists and is free.** `artifact-view <dir>` (bounded app window from file://) needs nothing from this skill. Publish only to cross a device/person boundary. On a host without a display (the coordinator after 2026-09-11) `artifact-view` exits 2 and prints the publish rung; the seat (`client`) opens the URL — rung 0 is the CLIENT's rung.
 - **Ephemerality lives in ONE place:** the drop-dir (TTL in the FILENAME) plus CF metadata (expiry in the DNS comment / project name). No side registry, ever.
 
 ## Live facts (verify before acting)

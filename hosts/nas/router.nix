@@ -36,6 +36,13 @@
         "98:03:8e:6b:61:e2,be550,10.42.0.3,infinite"
         "08:f9:7e:55:f3:96,printer,10.42.0.4,infinite"
         "9c:bf:0d:01:cc:65,worker,10.42.0.5,infinite"
+        # The thin client (2026-09-11): the lease it already held on return
+        # day, made permanent so the registry alias and the twins' /etc/hosts
+        # line (modules/fleet-hosts.nix) stay true. Inside the pool on
+        # purpose — a dhcp-host reservation withdraws the address from
+        # dynamic allocation, and moving the box would have meant touching
+        # its profile on the day it came back.
+        "a0:b3:39:06:75:a7,client,10.42.0.16,infinite"
       ];
     };
   };

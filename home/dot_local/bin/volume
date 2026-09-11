@@ -5,5 +5,8 @@ case "$1" in
     up)    wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%+ ;;
     down)  wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%- ;;
     mute)  wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
-    *)     echo "Usage: $0 {up|down|mute}"; exit 1 ;;
+    # The Duo's own XF86AudioMicMute key (niri binds it on the client) has one
+    # script to call, same as the three sink verbs above.
+    micmute) wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle ;;
+    *)     echo "Usage: $0 {up|down|mute|micmute}"; exit 1 ;;
 esac

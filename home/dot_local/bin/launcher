@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# launcher -- freedesktop .desktop application launcher, fzf in a floating kitty
+#
+# Bound to Mod+D (niri/binds.kdl), which spawns `kitty --class launcher-prompt`;
+# window-rules.kdl floats that app-id at 800x500. It replaces the launcher daemon
+# that used to hold Mod+D, which was installed on no host in the fleet (verified
+# 2026-09-11) and whose startup.kdl server entry was dead the same way. The whole
+# launcher tier is fzf-in-kitty now: one dependency, already everywhere, no
+# daemon, nothing running between keypresses.
+#
+# Search path, in XDG precedence order: $XDG_DATA_HOME/applications (default
+# ~/.local/share/applications), then each $XDG_DATA_DIRS entry's applications/.
+# When XDG_DATA_DIRS is unset we fall back to the NixOS trio that actually holds
+# entries on this fleet: the per-user profile, the nix profile, the system.
+#
+# Entries are skipped when the [Desktop Entry] group says NoDisplay=true or
+# Hidden=true, and -- deliberately -- when it says Terminal=true. A Terminal=true
+# entry expects the LAUNCHER to wrap it in a terminal emulator of the launcher's
+# choosing; this launcher IS already running inside a kitty that exits the moment
+# the pick is dispatched, so honouring those entries would flash a window and
+# die. Terminal programs are launched from a shell here, which is the point of
+# having the box.
+#
+# Exec= parsing is deliberately lossy: the field codes %u %U %f %F %i %c %k are
+# stripped (nothing is being opened WITH a file here) and the remainder is handed
+# to `sh -c`, so a quoted argument containing shell metacharacters would be
+# re-interpreted. Every entry on this fleet survives it; the alternative is a full
+# freedesktop Exec tokenizer, which is not worth a keybind.
+#
+# `--list` prints the parsed "Name<TAB>Exec" rows and exits 0, without fzf and
+# without spawning anything. It is the test hook.
+
+set -euo pipefail
+
+dirs=()
+if [ -n "${XDG_DATA_HOME:-}" ]; then
+    dirs+=("$XDG_DATA_HOME/applications")
+else
+    dirs+=("$HOME/.local/share/applications")
+fi
+if [ -n "${XDG_DATA_DIRS:-}" ]; then
+    IFS=: read -r -a data_dirs <<<"$XDG_DATA_DIRS"
+else
+    data_dirs=(/etc/profiles/per-user/tom/share "$HOME/.nix-profile/share" /run/current-system/sw/share)
+fi
+for d in "${data_dirs[@]}"; do
+    [ -n "$d" ] && dirs+=("$d/applications")
+done
+
+# One awk pass over every .desktop file: read only the [Desktop Entry] group,
+# keep the FIRST Name=/Exec= (so localized Name[fr]= and later [Desktop Action]
+# groups cannot win), drop hidden/no-display/terminal entries, and drop a Name
+# already emitted by an earlier -- higher precedence -- directory.
+entries() {
+    local d
+    for d in "${dirs[@]}"; do
+        [ -d "$d" ] || continue
+        find -L "$d" -maxdepth 3 -name '*.desktop' -type f -print0 2>/dev/null
+    done | xargs -0 -r awk '
+        function flush(   e) {
+            if (name != "" && exec != "" && !nodisplay && !hidden && !terminal) {
+                e = exec
+                gsub(/%[uUfFick]/, "", e)
+                gsub(/%%/, "%", e)
+                gsub(/[ \t]+/, " ", e)
+                sub(/^ /, "", e); sub(/ $/, "", e)
+                if (e != "" && !(name in seen)) { seen[name] = 1; print name "\t" e }
+            }
+            name = ""; exec = ""; nodisplay = 0; hidden = 0; terminal = 0; ingroup = 0
+        }
+        FNR == 1 { flush() }
+        /^[ \t]*\[/ { ingroup = ($0 ~ /^[ \t]*\[Desktop Entry\][ \t]*$/); next }
+        !ingroup { next }
+        /^Name=/      { if (name == "") name = substr($0, 6); next }
+        /^Exec=/      { if (exec == "") exec = substr($0, 6); next }
+        /^NoDisplay=/ { if (substr($0, 11) == "true") nodisplay = 1; next }
+        /^Hidden=/    { if (substr($0, 8)  == "true") hidden = 1;    next }
+        /^Terminal=/  { if (substr($0, 10) == "true") terminal = 1;  next }
+        END { flush() }
+    '
+}
+
+if [ "${1:-}" = "--list" ]; then
+    entries
+    exit 0
+fi
+
+# fzf exits 130 on Esc/Ctrl-C with no output; that is a cancel, not a failure.
+pick="$(entries | sort -f | fzf --delimiter=$'\t' --with-nth=1 --reverse --no-info --prompt='> ' --header='Launcher')" || exit 0
+[ -n "$pick" ] || exit 0
+exec_line="${pick#*$'\t'}"
+[ -n "$exec_line" ] || exit 0
+# setsid -f detaches: the app outlives this kitty, which closes on return.
+setsid -f sh -c "$exec_line" >/dev/null 2>&1

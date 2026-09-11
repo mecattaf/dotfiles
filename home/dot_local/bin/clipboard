@@ -1,4 +1,16 @@
 #!/usr/bin/env bash
-# clipboard -- rofi clipboard history via cliphist
-# Standalone utility.
-cliphist list | rofi -dmenu -p "Clipboard" | cliphist decode | wl-copy
+# clipboard -- cliphist history picker, fzf in a floating kitty
+# Bound to Mod+V (niri/binds.kdl), which spawns `kitty --class clipboard-prompt`;
+# window-rules.kdl floats that app-id at 640x400. The dmenu program this used to
+# pipe into left the fleet on 2026-09-11 (installed nowhere), so the picker is
+# fzf now — the same one the whole Mod+D / Mod+V / F9 tier moved to.
+#
+# cliphist list emits "<id>\t<preview>"; --with-nth=2.. hides the id column from
+# the view while keeping it in the line fzf prints, which is what cliphist decode
+# needs. Esc/Ctrl-C makes fzf exit 130 with no output: swallow that and exit 0
+# rather than piping an empty selection into wl-copy and blanking the clipboard.
+set -euo pipefail
+
+pick="$(cliphist list | fzf --delimiter=$'\t' --with-nth=2.. --reverse --no-info --prompt='> ' --header='Clipboard')" || exit 0
+[ -n "$pick" ] || exit 0
+printf '%s\n' "$pick" | cliphist decode | wl-copy

@@ -1,25 +1,42 @@
 #!/usr/bin/env bash
 # brightness -- adjust display brightness
-# Uses brightnessctl with 5% steps.
+# Uses brightnessctl with 5% steps and a floor of 1 raw unit.
 #
 # Usage:
 #   brightness up|down            adjust ALL internal (DRM/eDP) backlights together
 #   brightness up|down focused    adjust ONLY the niri-focused output's backlight
+#   brightness off                save the current level, then blank the backlight
+#   brightness restore            put back the level `off` saved (50% if none)
+#   brightness toggle             off when lit, restore when dark
 #
-# The `focused` mode was written for the zenbook-duo's two eDP panels (that
-# host was retired 2026-08-30; the mode is generic and stays): it reads
+# THE FLOOR (-n 1). Every up/down call passes brightnessctl's `--min-value 1`.
+# Without it, five presses of F1 from 25% land on raw 0, and on i915 raw 0 is not
+# "very dim", it is backlight power-off: the panel goes black and F2 is invisible
+# to press. The coordinator never hit this because it has no backlight at all.
+# The Zenbook Duo has two, and darkness there is a real dead end, so `down` now
+# bottoms out at 1 and only the explicit `off` verb is allowed to reach 0.
+#
+# The `focused` mode was written for the zenbook-duo's two eDP panels. That
+# device came BACK on 2026-09-11 as the fleet's only seat, host `client`, so the
+# mode is load-bearing again rather than merely generic: it reads
 # `niri msg focused-output`, then finds the backlight whose sysfs path carries
 # that connector name (e.g. eDP-2 -> .../card1-eDP-2/card1-eDP-2-backlight,
 # eDP-1 -> .../card1-eDP-1/intel_backlight). Fully generic -- no per-host device
 # names -- so it is harmless on single-screen hosts (falls back to all-internal).
+#
+# off/restore/toggle are the script-side home of what the client's generated
+# ~/.config/niri-local.kdl used to inline on F10. On the Duo, writing
+# intel_backlight is enough for BOTH panels: the dock daemon mirrors eDP-1's
+# level onto card1-eDP-2-backlight every 500 ms. On any other host we save and
+# zero every DRM backlight we can see. brightnessctl's save file lives under
+# /tmp, so `restore` after a reboot has nothing to read and falls to 50%, by
+# design -- a lit screen is always the safe answer.
+#
+# Hosts with no DRM backlight (the coordinator, every headless box) get a
+# one-line notice and exit 0 from off/restore/toggle: there is nothing to blank,
+# and failing the bind would be noise.
 
 set -euo pipefail
-
-case "${1:-}" in
-    up)   op="5%+" ;;
-    down) op="5%-" ;;
-    *)    echo "Usage: $0 {up|down} [focused]"; exit 1 ;;
-esac
 
 # All backlights whose sysfs device is a real DRM connector (skips
 # asus_screenpad, DDC-less externals, LEDs). Prints device basenames.
@@ -44,22 +61,92 @@ backlight_for_output() {
     done
 }
 
-if [ "${2:-}" = "focused" ]; then
-    out="$(niri msg -j focused-output | jq -r '.name // empty')"
-    dev="$(backlight_for_output "$out")"
-    if [ -n "$dev" ]; then
-        brightnessctl -d "$dev" set "$op"
+# Device set that off/restore/toggle act on: intel_backlight alone when it
+# exists (the Duo case -- the dock daemon fans it out), every DRM backlight
+# otherwise. Empty on a host with no backlight at all.
+blank_devices() {
+    if [ -e /sys/class/backlight/intel_backlight ]; then
+        echo intel_backlight
     else
-        # Unknown/external focused output -- fall back to brightnessctl default.
-        brightnessctl set "$op"
+        drm_backlights
     fi
-else
-    mapfile -t devs < <(drm_backlights)
+}
+
+no_backlight_notice() {
+    echo "brightness: no DRM backlight on this host; nothing to ${1}."
+}
+
+step() {
+    local op="$1"
+    if [ "${2:-}" = "focused" ]; then
+        local out dev
+        out="$(niri msg -j focused-output | jq -r '.name // empty')"
+        dev="$(backlight_for_output "$out")"
+        if [ -n "$dev" ]; then
+            brightnessctl -n 1 -d "$dev" set "$op"
+        else
+            # Unknown/external focused output -- fall back to brightnessctl default.
+            brightnessctl -n 1 set "$op"
+        fi
+    else
+        local devs dev
+        mapfile -t devs < <(drm_backlights)
+        if [ "${#devs[@]}" -eq 0 ]; then
+            brightnessctl -n 1 set "$op"
+        else
+            for dev in "${devs[@]}"; do
+                brightnessctl -n 1 -d "$dev" set "$op"
+            done
+        fi
+    fi
+}
+
+do_off() {
+    local devs dev
+    mapfile -t devs < <(blank_devices)
     if [ "${#devs[@]}" -eq 0 ]; then
-        brightnessctl set "$op"
-    else
-        for dev in "${devs[@]}"; do
-            brightnessctl -d "$dev" set "$op"
-        done
+        no_backlight_notice "blank"
+        return 0
     fi
-fi
+    for dev in "${devs[@]}"; do
+        brightnessctl -s -d "$dev" set 0
+    done
+}
+
+do_restore() {
+    local devs dev
+    mapfile -t devs < <(blank_devices)
+    if [ "${#devs[@]}" -eq 0 ]; then
+        no_backlight_notice "restore"
+        return 0
+    fi
+    for dev in "${devs[@]}"; do
+        # No save file (fresh boot -- brightnessctl keeps it under /tmp): land on
+        # something visible rather than leaving the panel dark.
+        brightnessctl -r -d "$dev" || brightnessctl -n 1 -d "$dev" set 50%
+    done
+}
+
+do_toggle() {
+    local devs cur
+    mapfile -t devs < <(blank_devices)
+    if [ "${#devs[@]}" -eq 0 ]; then
+        no_backlight_notice "toggle"
+        return 0
+    fi
+    cur="$(brightnessctl -d "${devs[0]}" get)"
+    if [ "$cur" -gt 0 ]; then
+        do_off
+    else
+        do_restore
+    fi
+}
+
+case "${1:-}" in
+    up)      step "5%+" "${2:-}" ;;
+    down)    step "5%-" "${2:-}" ;;
+    off)     do_off ;;
+    restore) do_restore ;;
+    toggle)  do_toggle ;;
+    *)       echo "Usage: $0 {up|down|off|restore|toggle} [focused]"; exit 1 ;;
+esac

@@ -11,8 +11,10 @@ spawn-at-startup "wl-paste" "--type" "image" "--watch" "cliphist" "store"
 // scroll: exec kanshi
 spawn-at-startup "sh" "-c" "sleep 0.5 && kanshi"
 
-// scroll: exec vicinae server
-spawn-at-startup "vicinae" "server"
+// The launcher daemon that used to be started here was DELETED 2026-09-11: it
+// was installed on no host in the fleet, so this line spawned nothing on every
+// boot. Mod+D is ~/.local/bin/launcher now — an fzf script in a floating kitty,
+// with no daemon to start.
 
 // Home Manager deploys the repository wallpaper under ~/.local/share/wallpapers.
 // Runtime changes go through ~/.local/bin/wallpaper, which re-points swaybg.

@@ -11,7 +11,6 @@
 # ── 1. the pool rows tally actually serves ──────────────────────────────────
 # ── 2. the meters directory the module now creates ──────────────────────────
 # ── 3. the retired pin, by absence ──────────────────────────────────────────
-# ── 4. llama-swap, running and with its restart policy declared ─────────────
 # ── 5. the two user timers, and the DECLARED units behind them ──────────────
 # ── 6. the cc3 links, resolved ──────────────────────────────────────────────
 # ── 7. herdr: binaries everywhere, one server on the coordinator (ruling B5) ─
@@ -22,7 +21,6 @@
 # and 0755 is somebody's mkdir -p.
 # and is linked into ~/.config/systemd/user; a hand-written unit IS the plain
 # and ~/.local/bin is an out-of-store symlink into $REPO_DIR — so the PROGRAM
-# apply to this host is SKIP and does not fail the run.
   # a pre-condition there; nightly-record has no hand-written ancestor, so its
 # arrives with the raw tree, not with the switch (dotfiles#313). Unit present,
 # at an overridden $L8_FLASH_DOTFILES reports two spurious FAILs. The override
@@ -50,7 +48,6 @@ DOTFILES="${L8_FLASH_DOTFILES:-/home/tom/mecattaf/dotfiles}"
 echo
 echo "[E] switch-evidence: passes only after the rebuild on this box"
 echo "  [E] = switch-evidence, [P] = pre-condition (see the legend above)"
-echo "l8-flash-probe: $pass passed, $fail failed, $skip skipped on $HOST"
 echo "l8-flash-probe on $HOST (greps read $DOTFILES; symlinks resolve into $REPO_DIR)"
 echo "[P] pre-condition:   true before it, or delivered with the tree at $REPO_DIR"
       else
@@ -76,13 +73,11 @@ for binary in herdr hk; do
 for leaf in settings.json skills; do
 for timer in claude-transcript-mirror.timer nightly-record.timer; do
     for want in cc cc2 cc3 codex pi coordinator-gpu worker-gpu; do
-    frag="$(systemctl --user show "$timer" -p FragmentPath --value 2>/dev/null)"
 # gone when its commit id and both retired pool names are absent from the file
 # home/home.nix:15 hardcodes repoDir = "$HOME/mecattaf/dotfiles" and anchors
 # hyphen is a non-word character, so `grep -w codex` matches inside
   if [ "$cleanup" = "365" ]; then
   if [ "$mode" = "700" ]; then
-if [ "$restart" = "Restart=on-failure" ]; then
 if cleanup="$(python3 - <<'PY' 2>/dev/null
   if command -v "$binary" >/dev/null 2>&1; then
   if coordinator_only; then
@@ -93,7 +88,6 @@ if coordinator_only; then
       if names_pool "$pools_out" "$want"; then
   if pools_out="$(tally query pools 2>&1)"; then
 if [ -r "$tallynix" ]; then
-if systemctl is-active --quiet llama-swap; then
     if systemctl --user is-active --quiet "$timer"; then
   if systemctl --user is-active --quiet herdr; then
   if [ -x "$HOME/.local/bin/claude-transcript-mirror" ]; then
@@ -114,7 +108,6 @@ names_pool() { # $1 = haystack, $2 = pool name
 no() {
       no "$active_tag $timer active" "systemctl --user is-active $timer"
     no "[E] $binary on PATH" "command -v $binary"
-        no "[E] $timer declared (fragment '$frag')" "systemctl --user show $timer -p FragmentPath"
     no "[E] herdr server active" "systemctl --user is-active herdr"
     no "[E] meters dir 0700 (got '$mode')" "stat -c %a ~/.local/state/tally/meters"
         no "[E] pool present: $want" "tally query pools | names_pool $want"
@@ -123,8 +116,6 @@ no() {
       no "[P] cc3 link resolves: $leaf (got '$target')" "readlink -f ~/.claude-3/$leaf"
     no "[P] cleanupPeriodDays = 365 (got '$cleanup')" "python3 -c 'json ~/.claude/settings.json'"
   no "[P] cleanupPeriodDays readable" "python3 -c 'json ~/.claude/settings.json'"
-  no "[P] llama-swap active" "systemctl is-active llama-swap"
-  no "[P] llama-swap Restart=on-failure (got '$restart')" "systemctl show llama-swap -p Restart"
     no "[P] mirror program executable" "test -x ~/.local/bin/claude-transcript-mirror"
     no "[P] pin absent from tally.nix" "grep -n c5eb4510 $tallynix"
   no "[P] tally.nix readable" "test -r $tallynix"
@@ -133,25 +124,20 @@ no() {
 ok() {
       ok "$active_tag $timer active" "systemctl --user is-active $timer"
     ok "[E] $binary on PATH" "command -v $binary"
-        ok "[E] $timer declared (fragment in /nix/store)" "systemctl --user show $timer -p FragmentPath"
     ok "[E] herdr server active" "systemctl --user is-active herdr"
     ok "[E] meters dir 0700" "stat -c %a ~/.local/state/tally/meters"
         ok "[E] pool present: $want" "tally query pools | names_pool $want"
         ok "[E] pool retired: $gone" "tally query pools | names_pool $gone"
       ok "[P] cc3 link resolves: $leaf" "readlink -f ~/.claude-3/$leaf"
     ok "[P] cleanupPeriodDays = 365" "python3 -c 'json ~/.claude/settings.json'"
-  ok "[P] llama-swap active" "systemctl is-active llama-swap"
-  ok "[P] llama-swap Restart=on-failure" "systemctl show llama-swap -p Restart"
     ok "[P] mirror program executable" "test -x ~/.local/bin/claude-transcript-mirror"
     ok "[P] pin absent from tally.nix" "grep -n c5eb4510 $tallynix"
     ok "[P] window mutexes absent" "grep -nE 'codex-window|claude-window' $tallynix"
 # on fire, the mirror stops.
-# or SKIP, always with the argv that produced it, so the output is its own
   pass=$((pass + 1))
 pass=0
 path = os.path.expanduser("~/.claude/settings.json")
 #   [P] pre-condition   — already true beforehand, or delivered by updating
-  printf '%-4s  %-48s  %s\n' "$verdict" "$name" "$*"
   printf '%s\n' "$1" | grep -qE "(^|[^A-Za-z0-9_-])$2([^A-Za-z0-9_-]|\$)"
     print(json.load(handle).get("cleanupPeriodDays"))
 # "Producers, pools, render, and stand-up"). The daemon runs on the
@@ -159,15 +145,12 @@ path = os.path.expanduser("~/.claude/settings.json")
 PY
 # rather than with the rebuild (home/home.nix:15 anchors every raw dotfile at
 # READ A GREEN RUN CORRECTLY. Not every check can only pass after the switch;
-# receipt. Exit 0 iff every APPLICABLE check passed; a check that does not
 # replaces (dotfiles#293) is active on the coordinator today, and it would stay
 REPO_DIR="$HOME/mecattaf/dotfiles"
 report() { # $1 = verdict, $2 = name, $3.. = argv
   report FAIL "$@"
   report PASS "$@"
   report SKIP "$@"
-restart="$(systemctl show llama-swap -p Restart 2>/dev/null)"
-# Run on EACH box after `nixos-rebuild switch`. One line per check: PASS, FAIL
 set -u
 # set -u but deliberately NOT set -e: every check must run even after one
   shift 2

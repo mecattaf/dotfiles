@@ -425,21 +425,19 @@ in
         age.secrets.wifi.file = ../secrets/wifi.age;
       })
 
-      # Coordinator's BE550-LAN wifi credentials ($BE550_SSID/$BE550_PSK) —
-      # same shape and guard as the Freebox PSK above. Minted at cutover
-      # phase 3 of the 2026-08-20 NAS-router rewire, once the BE550's live
-      # SSID/PSK are read off its admin page; inert until then.
+      # BE550-LAN wifi credentials ($BE550_SSID/$BE550_PSK) — same shape and
+      # guard as the Freebox PSK above. Minted at cutover phase 3 of the
+      # 2026-08-20 NAS-router rewire. Delivered to the hosts whose
+      # thomas-6ghz profile reads it; the worker was one from 2026-08-21
+      # (#229) until it went wired-only on 2026-09-11 and left this list with
+      # the client's admission, the rekey that also dropped it from the
+      # ciphertext's recipients (secrets.nix).
       (lib.mkIf
         (
           builtins.elem config.networking.hostName [
             "coordinator"
-            # + the worker with its reintegration the same day (#229). Its
-            # thomas-6ghz profile is the only way it reaches the house LAN at
-            # all — there is no Freebox fallback profile on that box and no
-            # tailnet behind it, so this delivery is load-bearing, not a
-            # convenience. wifi-lan.age was re-minted in the same commit to add
-            # the worker host key to its recipients.
-            "worker"
+            # The thin client (hosts/client/default.nix): its only LAN path.
+            "client"
           ]
           && builtins.pathExists ../secrets/wifi-lan.age
         )

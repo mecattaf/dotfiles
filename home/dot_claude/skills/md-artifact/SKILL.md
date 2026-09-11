@@ -34,6 +34,8 @@ artifact-view /tmp/foo-artifact                  # bounded app window, file://
 
 Title = first `# h1` (else filename). Local images referenced by the doc must be copied into the snapshot dir manually — check for them.
 
+On a host without a display (the coordinator after 2026-09-11) `artifact-view` exits 2 and prints the publish rung; the seat (`client`) opens the URL — rung 0 is the CLIENT's rung.
+
 ## Hard rules
 
 1. Snapshot must pass the file:// test — open it with `artifact-view <dir>` before calling it done; broken-at-rung-0 means broken everywhere.

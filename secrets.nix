@@ -48,6 +48,9 @@ let
   # landing was enough — but wifi credentials are their own tier and have to say
   # so explicitly.
   workerOnly = nonEmpty [ registry.worker.hostKey ];
+  # The thin client (2026-09-11). It joins `delivered` automatically like the
+  # worker did; the wifi tier below names it explicitly.
+  clientOnly = nonEmpty [ registry.client.hostKey ];
   # The appliance. It held NO agenix secret at all until 2026-08-28 (see the
   # `delivered` comment above). Tom's ruling that day, on being shown the
   # doctrine: "overrule that ruling if you found it too constraining." No
@@ -93,20 +96,20 @@ in
   # (wlp192s0) is now declarative too (migrated from an imperative profile on
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r
   "secrets/wifi.age".publicKeys = editors ++ coordinatorOnly;
-  # BE550 repeated-LAN credentials ($BE550_SSID / $BE550_PSK) — the
-  # thomas-6ghz profile on the coordinator (hosts/coordinator/uplink-nas.nix),
-  # the zenbook (its AdGuard-DoH landmine was defused the same day the laptops
-  # tier joined, 2026-08-21), AND the worker since its reintegration later that
-  # day (#229). Every host that joins `thomas-6ghz` needs it, and for the worker
-  # it is the only path onto the house LAN at all — no Freebox fallback profile,
-  # no tailnet behind it. Re-minted with all three recipients.
+  # BE550 LAN credentials ($BE550_SSID / $BE550_PSK) — the thomas-6ghz
+  # profile on the coordinator (hosts/coordinator/uplink-nas.nix) and on the
+  # client (hosts/client/default.nix), the two hosts that associate to that
+  # SSID. The worker was a recipient from its 2026-08-21 reintegration until
+  # 2026-09-11, when it went wired-only on enp191s0 with no wifi profile at
+  # all; DECISIONS.md's operator act (4) of that day said "drop it at the next
+  # rekey", and the client's admission was that rekey. Re-minted with exactly
+  # these recipients.
   #
-  # NB this is now the same recipient set as the delivered tier, but it is
-  # deliberately still written out rather than reusing `delivered`: the two mean
+  # Deliberately written out rather than reusing `delivered`: the two mean
   # different things (one is "every agenix host", the other is "every host that
-  # associates to this SSID") and they will diverge again the moment a host
-  # exists that runs agenix but is not on this wifi.
-  "secrets/wifi-lan.age".publicKeys = editors ++ coordinatorOnly ++ workerOnly;
+  # associates to this SSID") and they diverge — the worker is in one and not
+  # the other.
+  "secrets/wifi-lan.age".publicKeys = editors ++ coordinatorOnly ++ clientOnly;
 
   # --- operator vault (admin key ONLY — a tar.gz of everything that is not
   # otherwise in git: pre-generated host keys + wifi profiles (staging), tom's ssh

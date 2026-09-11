@@ -68,4 +68,13 @@
   # (modules/mesh-registry.nix), so ssh to either name stays TOFU-free.
   networking.hosts."10.42.0.2" = [ "coordinator" ];
   networking.hosts."10.42.0.5" = [ "worker" ];
+
+  # The thin client (2026-09-11), so `ssh client` and `hk`/herdr from either
+  # twin dial it by name. It is NOT a twin and does not import this file; it
+  # carries its own pins for the two names above in hosts/client/default.nix.
+  # The address is the DHCP lease the NAS hands its MAC, pinned in
+  # hosts/nas/router.nix, and a registry alias (modules/mesh-registry.nix) —
+  # the NAS resolver serves no DHCP client names, which is why this line
+  # exists at all.
+  networking.hosts."10.42.0.16" = [ "client" ];
 }

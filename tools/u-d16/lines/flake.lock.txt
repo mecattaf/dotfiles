@@ -1,0 +1,30 @@
+        ]
+        ],
+      }
+      },
+    },
+          "herdr"
+          "herdr",
+        "herdr": [
+    "herdr": {
+        "herdr": "herdr",
+    "herdr-kitten": {
+        "herdr-kitten": "herdr-kitten",
+      "inputs": {
+        "lastModified": 1783577481,
+      "locked": {
+        "narHash": "sha256-EWMxOWrJ031f8f/lrcEmhTRs4npw1/5N3Hcjin846c8=",
+          "nixpkgs"
+        "nixpkgs": [
+      "original": {
+        "owner": "herdrdev",
+        "owner": "oxalica",
+        "ref": "refs/heads/main",
+        "repo": "herdr",
+        "repo": "rust-overlay",
+        "rev": "4cdea398dc491b082dccdce0fad1ed0b75fa3394",
+    "rust-overlay_2": {
+        "rust-overlay": "rust-overlay_2"
+        "type": "git",
+        "type": "github"
+        "voxtype": "voxtype"

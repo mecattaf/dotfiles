@@ -633,6 +633,12 @@
         # kernel/Mesa churn) and it keeps Home Manager, because unlike the NAS it
         # is an ordinary interactive NixOS box that happens to be headless.
         worker = mkHost { hostModule = ./hosts/worker; };
+        # The ASUS Zenbook Duo, Tom's thin client since 2026-09-11 (its second
+        # tenure here; `zenbook-duo` left on 2026-08-30 and came back from
+        # omarchy-fleet under this name). Plain mkHost: it rides the unstable
+        # pin like the twins and keeps Home Manager, because it is the box Tom
+        # sits at — niri, kitty and Chrome are real here, nothing else is.
+        client = mkHost { hostModule = ./hosts/client; };
       };
 
       # deploy-rs owns HOW a selected generation reaches and activates on a node.
@@ -654,16 +660,17 @@
         nodes =
           nixpkgs.lib.genAttrs
             [
+              "client"
               "coordinator"
               "nas"
               "worker"
             ]
             (host: {
               # Canonical names, every one: `nas` and `coordinator` through the
-              # direct hosts pins, `worker` through modules/fleet-hosts.nix
-              # (its static 10.42.0.5 on the twins — the box is wired into the
-              # BE550 in another room and has no other address). Every name is
-              # a registry alias, so the host key stays pinned.
+              # direct hosts pins, `worker` and `client` through
+              # modules/fleet-hosts.nix (the worker's static 10.42.0.5, the
+              # client's NAS-pinned DHCP lease 10.42.0.16). Every name is a
+              # registry alias, so the host key stays pinned.
               hostname = host;
               sshOpts = fleetDeploySshOpts;
               profiles.system.path =
@@ -1733,11 +1740,18 @@
               ignore-auto-dns = true;
             };
           # AdGuard and local host lookups agree on the media front doors.
+          # Wildcard rewrites (`*.art.mecattaf.dev`, M-4) cannot appear in
+          # /etc/hosts, so they are filtered out of the second test; the first
+          # still holds every rewrite, wildcard included, to the NAS address.
           assert builtins.all (
             r: r.answer == "10.42.0.2"
           ) nas.services.adguardhome.settings.filtering.rewrites;
           assert builtins.all (n: builtins.elem n nas.networking.hosts."10.42.0.2") (
-            map (r: r.domain) nas.services.adguardhome.settings.filtering.rewrites
+            map (r: r.domain) (
+              builtins.filter (
+                r: !(nixpkgs.lib.hasPrefix "*." r.domain)
+              ) nas.services.adguardhome.settings.filtering.rewrites
+            )
           );
           # Filtering is centralized on the NAS.
           assert !coordinator.services.adguardhome.enable;
@@ -1848,6 +1862,21 @@
           let
             coordinatorHome = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
             workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
+            clientHome = self.nixosConfigurations.client.config.home-manager.users.tom;
+            cfgOf = h: self.nixosConfigurations.${h}.config;
+            # Every host whose seat this block adjudicates — named, not
+            # discovered, so a fifth host added tomorrow (a seat by default,
+            # modules/display.nix) is either listed here on purpose or its
+            # absence is visible at eval. The list is the roll call, not a
+            # claim that all four have displays: what is asserted per host is
+            # the EQUALITY niri == greetd == myDisplay, plus the three
+            # topology facts below that never flip.
+            displayHosts = [
+              "coordinator"
+              "client"
+              "worker"
+              "nas"
+            ];
             seatFeederNames = [
               "tally-seat-feeder-claude"
               "tally-seat-feeder-codex"
@@ -1865,12 +1894,14 @@
             workerSeatFeeders = builtins.filter isSeatFeeder (
               builtins.attrNames workerHome.systemd.user.timers
             );
+            clientSeatFeeders = builtins.filter isSeatFeeder (
+              builtins.attrNames clientHome.systemd.user.timers
+            );
           in
           assert coordinatorHome.home.username == "tom";
           assert coordinatorHome.programs.atuin.settings.auto_sync;
           assert coordinatorHome.services.tally.enable;
-          assert coordinatorHome.programs.voxtype.enable;
-          assert coordinatorHome.systemd.user.services ? wayvnc;
+          assert coordinatorHome.programs.voxtype.enable == (cfgOf "coordinator").myDisplay.enable;
           # ONE herdr server, coordinator only (ruling B5), and it must never be
           # tied to the compositor's lifetime (ruling B6) — the PTYs outlive it.
           assert coordinatorHome.systemd.user.services ? herdr;
@@ -1883,6 +1914,7 @@
           # fixture cannot silently replay a friendlier clock than the estate.
           assert coordinatorSeatFeeders == seatFeederNames;
           assert workerSeatFeeders == [ ];
+          assert clientSeatFeeders == [ ];
           assert builtins.all (
             name:
             let
@@ -1946,27 +1978,76 @@
           # turning into a topology move: one server (ruling B5, #309 is Tom's),
           # two clients, unchanged.
           assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") workerHome.home.packages;
-          # No wayvnc on the worker since 2026-09-11: with niri and greetd
-          # forced off (hosts/worker/default.nix) home/remote.nix renders
-          # nothing there, so there is no VNC server, no session for it to
-          # capture, and no door. The coordinator is the ONLY host with a
-          # compositor — both directions asserted, plus the NAS for the third
-          # box, because a half-move that left a session on the wrong host
-          # would look identical from either side alone.
+          # No wayvnc on the worker since 2026-09-11: with no display there
+          # (hosts/worker/default.nix) home/remote.nix renders nothing, so
+          # there is no VNC server, no session for it to capture, and no door.
+          #
+          # THE INVARIANT, stated once: VNC, voxtype and piri exist on the
+          # coordinator EXACTLY while the coordinator has a display. These are
+          # equalities against myDisplay.enable (modules/display.nix), not
+          # fixed values, so the coming headless flip (R-13, plan §8.3, §10
+          # steps 10-11) does not have to come back and re-key them — but a
+          # HALF flip is refused: when hosts/coordinator/default.nix sets
+          # myDisplay.enable = false, the same commit must delete the wayvnc
+          # unit, the Remmina viewer profile and the :5900 door, or this check
+          # does not build. What never flips is the topology: the client is a
+          # seat, the worker and the NAS are not — asserted separately below,
+          # because a half-move that left a session on the wrong host would
+          # look identical from either side alone.
           assert !(workerHome.systemd.user.services ? wayvnc);
-          assert coordinatorHome.systemd.user.services ? wayvnc;
-          assert !self.nixosConfigurations.worker.config.programs.niri.enable;
-          assert !self.nixosConfigurations.worker.config.services.greetd.enable;
-          assert self.nixosConfigurations.coordinator.config.programs.niri.enable;
-          assert self.nixosConfigurations.coordinator.config.services.greetd.enable;
-          assert !self.nixosConfigurations.nas.config.programs.niri.enable;
+          assert (coordinatorHome.systemd.user.services ? wayvnc) == (cfgOf "coordinator").myDisplay.enable;
+          assert (coordinatorHome.systemd.user.services ? piri) == (cfgOf "coordinator").myDisplay.enable;
+          assert clientHome.systemd.user.services ? piri;
+          assert builtins.all (
+            h:
+            (cfgOf h).programs.niri.enable == (cfgOf h).myDisplay.enable
+            && (cfgOf h).services.greetd.enable == (cfgOf h).myDisplay.enable
+          ) displayHosts;
+          assert (cfgOf "client").myDisplay.enable;
+          assert !(cfgOf "worker").myDisplay.enable;
+          assert !(cfgOf "nas").myDisplay.enable;
+          # The thin client (2026-09-11): Tom's seat, so niri and greetd are
+          # ON and the whole coordinator-gated tier is OFF — no tally, no
+          # voxtype, no herdr SERVER (the binary and `hk` are here: Mod+Return
+          # is `hk ssh --in-place coordinator`, asserted below through the
+          # generated niri-local.kdl), no wayvnc SERVER (while the coordinator
+          # has a display the client VIEWS it through a `coordinator (VNC)`
+          # Remmina profile — asserted above as an equality — and no
+          # `client (VNC)` profile ever exists on the coordinator, in either
+          # direction of the flip), no dcal daemon, no :5900 door, no
+          # seat-feeder clocks. Touch is mapped globally to
+          # eDP-1 on stock niri (PR #1856 accepted as a defect, no fork).
+          assert clientHome.home.username == "tom";
+          assert !clientHome.services.tally.enable;
+          assert !clientHome.programs.voxtype.enable;
+          assert !(clientHome.systemd.user.services ? herdr);
+          assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") clientHome.home.packages;
+          assert !(clientHome.systemd.user.services ? wayvnc);
+          assert !(clientHome.xdg.configFile ? "wayvnc/config");
+          assert !(clientHome.systemd.user.services ? dcal-daemon);
+          assert coordinatorHome.systemd.user.services ? dcal-daemon;
+          # A viewer profile exists exactly while there is a server to view.
+          assert
+            (clientHome.xdg.dataFile ? "remmina/coordinator.remmina")
+            == (cfgOf "coordinator").myDisplay.enable;
+          assert !(coordinatorHome.xdg.dataFile ? "remmina/client.remmina");
+          assert
+            !builtins.elem 5900 (
+              self.nixosConfigurations.client.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
+                or [ ]
+            );
+          assert nixpkgs.lib.hasInfix "map-to-output \"eDP-1\"" clientHome.xdg.configFile."niri-local.kdl".text;
+          assert nixpkgs.lib.hasInfix "hk ssh --in-place coordinator" clientHome.xdg.configFile."niri-local.kdl".text;
+          assert !(nixpkgs.lib.hasInfix "binds" coordinatorHome.xdg.configFile."niri-local.kdl".text);
           assert
             !builtins.elem 5900 (
               self.nixosConfigurations.worker.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
                 or [ ]
             );
-          assert builtins.elem 5900
-            self.nixosConfigurations.coordinator.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
+          assert
+            builtins.elem 5900
+              self.nixosConfigurations.coordinator.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
+            == (cfgOf "coordinator").myDisplay.enable;
           assert !self.nixosConfigurations.worker.config.services.tailscale.enable;
           pkgs.runCommand "home-profiles" { } ''
             touch "$out"
@@ -2345,6 +2426,7 @@
             coordinator = self.nixosConfigurations.coordinator.config;
             nas = self.nixosConfigurations.nas.config;
             worker = self.nixosConfigurations.worker.config;
+            client = self.nixosConfigurations.client.config;
             meshRegistry = import ./modules/mesh-registry.nix;
             # `worker` is spelled by concatenation throughout this check for one
             # narrow reason that SURVIVES its reinstatement: the ripgrep sweep at
@@ -2405,7 +2487,10 @@
               (builtins.attrNames self.deploy.nodes)
               (builtins.attrNames meshRegistry)
             ];
+            # Alphabetical, because the three sets are attrNames and the assert
+            # below is list EQUALITY: `client` sorts first.
             expectedHosts = [
+              "client"
               "coordinator"
               "nas"
               strixWorker
@@ -2455,6 +2540,40 @@
               "coordinator"
               "10.42.0.2"
             ];
+          # The client (2026-09-11): the fleet host key omarchy-fleet minted on
+          # 2026-09-07, REUSED — the return was an in-place switch, and the key
+          # is the agenix identity — never the 2026-07-05 `zenbook-duo` key
+          # that is public in git history; the shared rotated user key, same
+          # string as the twins; the name plus the NAS-pinned lease. Every
+          # host that dials `client` answers 10.42.0.16, and the client dials
+          # both twins by their static addresses without importing the twins'
+          # own hosts module (it keeps its stock loopback self-mapping).
+          assert meshRegistry.client.hostKey != "";
+          assert !(nixpkgs.lib.hasInfix "QoQJxxP" meshRegistry.client.hostKey);
+          assert meshRegistry.client.userKey == meshRegistry.coordinator.userKey;
+          assert
+            meshRegistry.client.aliases == [
+              "client"
+              "10.42.0.16"
+            ];
+          assert coordinator.networking.hosts."10.42.0.16" == [ "client" ];
+          assert worker.networking.hosts."10.42.0.16" == [ "client" ];
+          assert client.networking.hosts."10.42.0.2" == [ "coordinator" ];
+          assert client.networking.hosts."10.42.0.5" == [ strixWorker ];
+          assert client.networking.hosts."10.42.0.1" == [ "nas" ];
+          assert client.networking.hosts."127.0.0.2" == [ "client" ];
+          assert client.networking.hostName == "client";
+          # Thin client: no journal upload (hosts/nas/journal.nix admits the
+          # twins only), no tailnet join (daemon declared, no key, no
+          # autoconnect), no printing queue, agenix on.
+          assert !client.services.journald.upload.enable;
+          assert client.services.tailscale.enable;
+          assert !(client.age.secrets ? tailscale-authkey);
+          assert !(client.systemd.services ? tailscaled-autoconnect);
+          assert !client.services.printing.enable;
+          assert client.mySecrets.enable;
+          assert client.services.zenbook-duo-daemon.enable;
+          assert self.deploy.nodes.client.hostname == "client";
           assert coordinator.networking.hosts."10.42.0.1" == [ "nas" ];
           assert builtins.elem "coordinator" nas.networking.hosts."10.42.0.2";
           # #273: the TWINS' own names must NEVER resolve to loopback again.

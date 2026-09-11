@@ -33,7 +33,6 @@
       coreutils
   coreutils,
 # default — "wanted.json aligned", with a guard):
-#                            Deletes nothing, ever, and has no flags. The sync
 # deployment selection change — became tens of GiB of deleted weights at the
     description = "Audit-first prune for the local model working copies";
       digest="$(sha256sum <"$set_file" | cut -d' ' -f1)"
@@ -61,8 +60,6 @@
         echo "local-models-prune: the dry-run diff must be 0; re-run --dry-run and read it" >&2
             echo "local-models-prune: unknown entry kind $kind for $path" >&2
           echo "local-models-prune: would prune $kind $path ($size bytes)"
-      echo "local-models-sync: AUDIT prune-set $entries entries, $bytes bytes"
-        echo "local-models-sync: AUDIT would prune $path ($size bytes)"
 # ended with two unconditional `rm -rf`/`rm -f` branches over
         entries=$((entries + 1))
       entries=0
@@ -97,7 +94,6 @@
       if [ ! -r "$manifest" ]; then
       if [ ! -r "$state" ]; then
 in
-  # into its own binary so tests/local-models-sync can assert the SERVICE path
       # is told exactly which precondition failed.
       jq
   jq,
@@ -122,9 +118,7 @@ let
     name = "local-models-prune";
   name = "local-models-prune";
     name = "local-models-prune-set";
-    name = "local-models-sync-audit";
 # next boot, before anyone read the diff. Re-borrowable from the NAS Library in
-          'Nothing else deletes. The sync service audits and never removes.' >&2
 # One derivation carrying both binaries, so the module installs one package and
       # One row per entry: <kind>\t<path>\t<bytes>. `artifact` is a whole
       # Only after a delete pass, and only inside artifact dirs that survive.
@@ -143,7 +137,6 @@ let
       recorded="$(cat "$state")"
 #                                         recorded — i.e. the dry-run diff must
             rel="''${f#"$root/$id/"}"
-  # removes nothing without having to start the service.
       # retired directory; `file` is a stray file inside an artifact the
             rm -f "$path"
       rm -f "$state"
@@ -151,7 +144,6 @@ let
     root="''${LOCAL_MODELS_ROOT:-${runtimeRoot}}"
     runtimeInputs = [
   runtimeRoot ? "/var/lib/local-models",
-#                            service calls this and prints an AUDIT.
       set_file="$(mktemp)"
 #                                         sha256 of the exact set
 #                                         sha256 still equals what --dry-run
@@ -163,7 +155,6 @@ symlinkJoin {
   # tests/local-models-sync can drive them against a fixture tree.
     text = ''
 # that narrowed the wanted set — a host `artifacts` edit, a roster change, a
-  # The AUDIT the boot-time sync service prints instead of deleting. Separated
 # the hermetic check builds one attribute.
 # THE SHAPE, per the ruled pruner disposition (CONSOLIDATED §3, at the sheet's
       trap 'rm -f "$set_file"' EXIT

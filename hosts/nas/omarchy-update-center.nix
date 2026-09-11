@@ -28,7 +28,7 @@ let
     ];
     text = ''
       if [ "$(id -u)" -ne 0 ]; then
-        echo 'Run with sudo: omarchy-update-publish --source GIT --revision COMMIT --notes-file FILE [--devices xps zenbook-duo]' >&2
+        echo 'Run with sudo: omarchy-update-publish --source GIT --revision COMMIT --notes-file FILE [--devices xps]' >&2
         exit 1
       fi
       exec systemd-run --unit=omarchy-update-publish --collect --wait --pipe \

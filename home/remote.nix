@@ -5,23 +5,33 @@
   osConfig,
   ...
 }:
-# Remote-access stack: wayvnc (VNC server, so any device can be viewed) + Remmina
-# (VNC client, pre-loaded with a profile for every OTHER host). Only meaningful on a
-# NixOS host with a niri session — and since 2026-09-11 that is the coordinator
-# alone (the worker has no display, no compositor, no session), so the whole
-# module is gated on the host's niri being enabled rather than shipping a
-# wayvnc unit that could never find a Wayland socket.
+# Remote-access stack: wayvnc (VNC server, so the coordinator's session can be
+# viewed) + Remmina (VNC client, pre-loaded with a profile for every host that
+# SERVES). Rendered on every niri host — the coordinator and, since 2026-09-11,
+# the thin client — but the SERVER half is the coordinator's alone: a thin
+# client is a viewer of the coordinator, never a thing to be viewed, and
+# without this gate the client would run an unauthenticated wayvnc on :5900
+# (the door is firewalled to tailscale0, which the client does not join —
+# still, no unit that could never be wanted). The worker has no niri at all,
+# so nothing renders there.
 let
   registry = import ../modules/mesh-registry.nix;
   hostName = osConfig.networking.hostName;
+  isCoordinator = hostName == "coordinator";
+
+  # Hosts that run the wayvnc unit below. The registry says who exists; this
+  # list says who serves. A profile for a host that serves nothing is a dead
+  # entry in Remmina's list, so the client gets `coordinator (VNC)` and the
+  # coordinator gets nothing.
+  servers = [ "coordinator" ];
 
   # wayvnc binds the single active output automatically. Avoid pinning a guessed
   # connector name; whichever active output lights up is the one to capture.
   vncOutput = null;
   outputArg = lib.optionalString (vncOutput != null) " --output ${vncOutput}";
 
-  # A Remmina VNC profile for each host other than this one → any box reaches any box.
-  others = lib.filter (h: h != hostName) (lib.attrNames registry);
+  # A Remmina VNC profile for each SERVING host other than this one.
+  others = lib.filter (h: h != hostName) servers;
   mkProfile = h: {
     name = "remmina/${h}.remmina";
     # force: Remmina rewrites its own profiles at runtime (window geometry, keyboard
@@ -51,14 +61,11 @@ let
   };
 in
 lib.mkIf osConfig.programs.niri.enable {
-  home.packages = [
-    pkgs.wayvnc
-    pkgs.remmina
-  ];
+  home.packages = [ pkgs.remmina ] ++ lib.optionals isCoordinator [ pkgs.wayvnc ];
 
   # Runs inside the niri graphical session. Restart-on-failure covers the brief
   # window before niri has exported its Wayland socket.
-  systemd.user.services.wayvnc = {
+  systemd.user.services.wayvnc = lib.mkIf isCoordinator {
     Unit = {
       Description = "wayvnc — VNC server for the niri session";
       After = [ "graphical-session.target" ];
@@ -74,13 +81,14 @@ lib.mkIf osConfig.programs.niri.enable {
 
   # wayvnc config. wayvnc runs with no auth — access is gated at the network layer
   # and firewalled to the tailnet. That :5900 admission stopped being fleet-wide
-  # on 2026-09-01 and is now the coordinator's alone
-  # (hosts/coordinator/tailscale.nix), which since 2026-09-11 is also the only
-  # host this module renders on at all.
-  xdg.configFile."wayvnc/config".text = ''
-    address=0.0.0.0
-    port=5900
-  '';
+  # on 2026-09-01 and is the coordinator's alone (hosts/coordinator/tailscale.nix),
+  # as is this file.
+  xdg.configFile."wayvnc/config" = lib.mkIf isCoordinator {
+    text = ''
+      address=0.0.0.0
+      port=5900
+    '';
+  };
 
   # Remmina mesh profiles. These are connection *data*, not app config — Remmina scans
   # $XDG_DATA_HOME/remmina (~/.local/share/remmina) for .remmina files, while

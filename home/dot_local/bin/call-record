@@ -10,6 +10,14 @@
 # Near side = INZONE Buds mono mic (what you say).
 # Both mono s16 48 kHz; mix.wav is the diarization test input, the split
 # tracks are per-speaker ground truth. Evidence files, keep all three.
+#
+# WHERE RECORDINGS END UP, on a thin client (2026-09-11). Capture happens where
+# the dongle is — the seat, i.e. the laptop — so ~/Recordings/calls on the
+# CLIENT is always the first and permanent copy. Diarization happens where the
+# GPUs and the tally daemon are, on the coordinator, and the client does not
+# carry call-diarize-backfill. So `stop` copies the closed session dir across
+# and enqueues it there, keeping the local copy. On the coordinator itself
+# nothing is copied: the local backfill command is found and used directly.
 set -euo pipefail
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/call-record"
@@ -99,6 +107,30 @@ stop)
         if command -v call-diarize-backfill >/dev/null 2>&1; then
             if ! call-diarize-backfill --enqueue "$dir"; then
                 echo "warning: diarization was not queued; run call-diarize-backfill later" >&2
+            fi
+        elif [[ "$(hostname)" != "coordinator" ]]; then
+            # Thin client: the recording exists here, the diarizer lives there.
+            # Stream the whole session dir over the fleet ssh block (home/ssh.nix
+            # gives `coordinator` its key, user and StrictHostKeyChecking; the
+            # client holds ~/.ssh/id_ed25519 via agenix) and enqueue on arrival.
+            # On the LAN this is a direct 10.42.0.16 -> 10.42.0.2 copy; off-LAN it
+            # rides the NAS's subnet route, which is slow but correct.
+            # Same doctrine as the local branch: a failed hand-off is a warning,
+            # never a failed `stop`. The local copy is kept either way, so the
+            # printed command line is always re-runnable by hand.
+            base=$(basename "$dir")
+            # The tilde is deliberate and deliberately unexpanded HERE: this
+            # path is interpreted by the coordinator's shell, whose $HOME is the
+            # one that matters, not this box's.
+            # shellcheck disable=SC2088
+            remote="~/Recordings/calls/$base"
+            handoff="tar -C \"$(dirname "$dir")\" -cf - \"$base\" | ssh coordinator \"mkdir -p ~/Recordings/calls && tar -C ~/Recordings/calls -xf - && call-diarize-backfill --enqueue $remote\""
+            if ! tar -C "$(dirname "$dir")" -cf - "$base" \
+                | ssh coordinator "mkdir -p ~/Recordings/calls && tar -C ~/Recordings/calls -xf - && call-diarize-backfill --enqueue $remote"; then
+                echo "warning: hand-off to the coordinator failed; the local copy is intact." >&2
+                echo "         re-run: $handoff" >&2
+            else
+                echo "handed to coordinator: $remote (local copy kept at $dir)"
             fi
         else
             echo "warning: call-diarize-backfill is unavailable; diarization was not queued" >&2

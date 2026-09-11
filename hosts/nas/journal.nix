@@ -45,9 +45,15 @@
   # live in the same room as this appliance, on this LAN, and never leave it.
   # The rule was written to exclude the de-facto mobile zenbook-duo — a roaming
   # laptop streaming its journal home over arbitrary networks is the wrong trade.
-  # That host left the fleet on 2026-08-30, so the ACL now names every member
-  # there is; keep it an explicit allowlist rather than a subnet, so a future
-  # mobile member has to be admitted deliberately.
+  #
+  # That laptop is BACK, as `client` (10.42.0.16 on this LAN, 100.64.0.4 on the
+  # tailnet when it is not), and it is deliberately NOT admitted here: the
+  # reason the rule excluded it has not changed — it is the one fleet member
+  # that roams. See DEFERRED.md DF-CLIENT-6; the plan's Q-8 closed with that
+  # default and I-7 records it. So this is NOT "every member there is": it is
+  # exactly the two stationary Strix boxes, and the allowlist stays explicit
+  # rather than a subnet precisely so admitting a mobile member is a ruling
+  # somebody has to make, not a lease somebody happens to get.
   #
   # Both sender addresses are STATIC on their own side
   # (hosts/coordinator/uplink-nas.nix, hosts/worker/default.nix) with dhcp-host

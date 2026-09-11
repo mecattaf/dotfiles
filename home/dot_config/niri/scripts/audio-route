@@ -1,12 +1,37 @@
 #!/usr/bin/env bash
-# Shift+F9 -> paired coordinator audio route picker. Node ids are ephemeral, so
-# resolve the stable PipeWire names from the live graph on every invocation.
+# Shift+F9 -> paired audio route picker. The DOCK era (2026-09-11): the Sound
+# Blaster GS3, the iContact webcam mic and the INZONE dongle hang off the
+# client's Thunderbolt dock, not off the coordinator, and hosts/client/audio.nix
+# pins the iContact as the default source at boot. This script is what moves off
+# that default for a call and back again.
+#
+# The four USB node names below are serial-based and therefore HOST-independent:
+# the same dock plugged into any box produces the same names, so this file needs
+# no host gate and keeps working if a device is moved. Node IDS are ephemeral,
+# so the stable names are resolved from the live graph on every invocation.
 set -euo pipefail
 
 readonly SPEAKER_SINK='alsa_output.usb-Creative_Technology_Ltd_Sound_Blaster_GS3_1120050704030604-01.analog-stereo'
 readonly WEBCAM_SOURCE='alsa_input.usb-DCX-241206-FAY_iContact_Camera_Pro_01.00.00-02.analog-stereo'
 readonly INZONE_SINK='alsa_output.usb-Sony_INZONE_Buds-00.analog-stereo'
 readonly INZONE_SOURCE='alsa_input.usb-Sony_INZONE_Buds-00.mono-fallback'
+
+# The laptop's OWN card — the route that needs no dock at all: undock, or take
+# one call on the couch. Matched by REGEX, not by an exact name. The Zenbook
+# Duo's internal card is `sof-hda-dsp` (card0, metal facts 2026-09-11), and the
+# PipeWire node built on it carries the PCI address plus whatever UCM profile
+# wireplumber picked — "...pci-0000_xx_yy.z.analog-stereo" on one profile,
+# "...HiFi__hw_sofhdadsp__sink" on another — so the node NAME is not something
+# to hard-code. The pattern therefore tests node.name and the ALSA card name
+# together: a PCI node belonging to a card that calls itself sof-hda-dsp.
+#
+# Never read off a live pw-dump on the laptop, so it is written to MISS
+# SILENTLY: no match means no `internal` row, and the two dock rows are
+# untouched. On the coordinator, whose internal card announces itself as
+# "HD-Audio Generic", the row is correctly absent.
+readonly INTERNAL_SINK_PREFIX='^alsa_output\.pci-'
+readonly INTERNAL_SOURCE_PREFIX='^alsa_input\.pci-'
+readonly INTERNAL_CARD_RE='sof[-_]?hda[-_]?dsp'
 
 if ! graph=$(timeout 5 pw-dump); then
     printf '%s\n' 'PipeWire is not responding.' >&2
@@ -34,6 +59,39 @@ node_id() {
     ' <<< "$graph"
 }
 
+# Glob sibling of node_id. node_id insists on EXACTLY one match because an exact
+# name that appears twice means the graph is confused; a pattern is expected to
+# be ambiguous (a laptop card publishes speaker and headphone sinks), so this one
+# takes the lowest-numbered match and prints nothing at all when there is none.
+node_id_match() {
+    local media_class=$1
+    local name_re=$2
+    local card_re=$3
+
+    jq -er \
+        --arg media_class "$media_class" \
+        --arg name_re "$name_re" \
+        --arg card_re "$card_re" '
+        [
+          .[]
+          | select(
+              .type == "PipeWire:Interface:Node"
+              and .info.props["media.class"] == $media_class
+              and ((.info.props["node.name"] // "") | test($name_re))
+              and (
+                ((.info.props["node.name"] // "") | test($card_re))
+                or ((.info.props["alsa.card_name"] // "") | test($card_re; "i"))
+                or ((.info.props["api.alsa.card.name"] // "") | test($card_re; "i"))
+              )
+            )
+          | .id
+        ]
+        | sort
+        | .[0]
+        | values
+    ' <<< "$graph"
+}
+
 default_id() {
     wpctl inspect "$1" 2>/dev/null \
         | sed -n '1s/^id \([0-9][0-9]*\),.*/\1/p'
@@ -43,6 +101,8 @@ speaker_sink_id=$(node_id Audio/Sink "$SPEAKER_SINK" 2>/dev/null || true)
 webcam_source_id=$(node_id Audio/Source "$WEBCAM_SOURCE" 2>/dev/null || true)
 inzone_sink_id=$(node_id Audio/Sink "$INZONE_SINK" 2>/dev/null || true)
 inzone_source_id=$(node_id Audio/Source "$INZONE_SOURCE" 2>/dev/null || true)
+internal_sink_id=$(node_id_match Audio/Sink "$INTERNAL_SINK_PREFIX" "$INTERNAL_CARD_RE" 2>/dev/null || true)
+internal_source_id=$(node_id_match Audio/Source "$INTERNAL_SOURCE_PREFIX" "$INTERNAL_CARD_RE" 2>/dev/null || true)
 current_sink_id=$(default_id @DEFAULT_AUDIO_SINK@ || true)
 current_source_id=$(default_id @DEFAULT_AUDIO_SOURCE@ || true)
 
@@ -61,6 +121,9 @@ fi
 if [[ -n "$inzone_sink_id" && -n "$inzone_source_id" ]]; then
     menu+=("inzone"$'\t'"  $(marker "$inzone_sink_id" "$inzone_source_id")  Sony INZONE  ·  INZONE mic")
 fi
+if [[ -n "$internal_sink_id" && -n "$internal_source_id" ]]; then
+    menu+=("internal"$'\t'"  $(marker "$internal_sink_id" "$internal_source_id")  Laptop speakers  ·  laptop mic")
+fi
 
 if ((${#menu[@]} == 0)); then
     printf '%s\n' 'Neither complete audio route is available.' >&2
@@ -70,7 +133,7 @@ if ((${#menu[@]} == 0)); then
 fi
 
 case "${1:-menu}" in
-speaker|inzone)
+speaker|inzone|internal)
     choice=$1
     ;;
 menu)
@@ -88,7 +151,7 @@ menu)
     choice=${choice%%$'\t'*}
     ;;
 *)
-    printf 'Usage: %s [speaker|inzone|menu]\n' "${0##*/}" >&2
+    printf 'Usage: %s [speaker|inzone|internal|menu]\n' "${0##*/}" >&2
     exit 2
     ;;
 esac
@@ -103,6 +166,11 @@ inzone)
     sink_id=$inzone_sink_id
     source_id=$inzone_source_id
     label='Sony INZONE + INZONE mic'
+    ;;
+internal)
+    sink_id=$internal_sink_id
+    source_id=$internal_source_id
+    label='Laptop speakers + laptop mic'
     ;;
 esac
 

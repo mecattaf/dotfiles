@@ -9,6 +9,7 @@
 {
   imports = [
     ./headless.nix # opt-in appliance profile without home-manager or desktop
+    ./display.nix # myDisplay.enable — does a human sit at this box (default true)
     ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
     ./user-password.nix # tom's login password via agenix hashedPasswordFile (#54)
@@ -208,9 +209,13 @@
   security.sudo.wheelNeedsPassword = false;
 
   # --- session: greetd → niri ---
-  programs.niri.enable = true;
+  # Both derive from myDisplay.enable (./display.nix, default true): a host
+  # with a seat gets the compositor and the greeter, one without gets neither.
+  # The greetd settings below stay unconditional — the module ignores them
+  # when the service is off — so the only thing a host flips is the option.
+  programs.niri.enable = config.myDisplay.enable;
   services.greetd = {
-    enable = true;
+    enable = config.myDisplay.enable;
     # NB: do NOT wrap these session blocks in lib.mkDefault — greetd's freeform TOML
     # settings replace (not deep-merge) the attrset, and a whole-attrset mkDefault
     # loses the command, producing "default_session contains no command" (jul5).
@@ -218,8 +223,8 @@
       command = "${pkgs.greetd}/bin/agreety --cmd niri-session";
       user = "greeter";
     };
-    # Autologin tom → niri at boot on every host (fleet-wide, moved here from the
-    # headless sessions). tom is a locked/key-only account: passwordless
+    # Autologin tom → niri at boot on every display host (myDisplay.enable,
+    # modules/display.nix). tom is a locked/key-only account: passwordless
     # login + passwordless sudo (wheelNeedsPassword=false) means no password is ever
     # prompted. The out-of-store config checkout is guaranteed present before this
     # runs by ./dotfiles-bootstrap.nix (ordered before greetd).
