@@ -13,8 +13,8 @@ in
     # Keep a local recovery getty without a graphical or remote desktop session.
     boot.plymouth.enable = lib.mkForce false;
     myDisplay.enable = lib.mkForce false; # an appliance has no display by definition
-    # Belt and braces: ./display.nix already derives both of these from the
-    # line above, and these two forces now agree with it rather than fight it.
+    # Belt and braces: ./common.nix already derives both of these from the
+    # option ./display.nix declares, and these two forces now agree with it rather than fight it.
     programs.niri.enable = lib.mkForce false;
     services.greetd.enable = lib.mkForce false;
     services.getty.autologinUser = "tom";
