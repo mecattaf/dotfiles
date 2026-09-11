@@ -186,6 +186,196 @@ let
   # way home/seat-feeder.nix's python feeders do — node carries its own trust
   # store, and the lake's POSTs are TLS to a workers.dev host.
   node = pkgs.nodejs-slim_24;
+
+  # ------------------------------------------------------------------ THE KIT
+  #
+  # TL-18 / D-B18, dotfiles#304. The box's argv table: `argv_ref ->
+  # {argv, cwd, env_allowlist, usage_source, stdin}`. The lake never originates
+  # an argv (spec §2.2c) and neither does the uplink — a proposal carries the
+  # NAME and the BOX carries the command (spec §2.1: "the argv the kit names IS
+  # the harness"). This attribute set is that carriage, rendered into the store
+  # so the table the unit resolves against is a reviewed artifact and not a file
+  # somebody edited on the box (Rule 9, dotfiles#293).
+  #
+  # A ref with no entry is a refusal that names the ref AND the kit file
+  # (`readKit(...).resolve`, lake apps/uplink/src/kit.mjs) — the uplink never
+  # falls back to a command of its own, which is why a DISABLED entry below is a
+  # stronger statement than an absent one: the refusal says which kit was asked.
+
+  # The one ENABLED job, and it is deliberately LOCAL and deterministic.
+  #
+  # WHY NOT A CLAUDE SEAT TONIGHT. The first unattended run leases a row the
+  # served kernel actually serves — `mechanical` (modules/tally-b.nix serves
+  # exactly three: gpu-coordinator, gpu-worker, mechanical). The seat rows (cc,
+  # cc2, cc3, codex, pi-qwencloud) are `owner: tom`, written by the U-D12
+  # feeders through the meters dir (tally docs/rows.md:41-55,
+  # modules/tally-b.nix:57-63 excludes them deliberately); a kernel lease on one
+  # of them would make `stamp_row` write `owner: kernel` over a feeder-owned
+  # file and give one file two writers. D-B6 already bars unattended spend of
+  # the codex seat. Whether the kernel may lease a Claude seat AT ALL, and
+  # through which row, is Tom's ruling and is asked in dotfiles#362 — until it
+  # lands, nothing here names a seat.
+  #
+  # WHY NOT THE UTILITY MODEL EITHER, YET. `utility-model` (llama-swap,
+  # qwen3.6-35b-a3b on the gpu-coordinator row) is the documented NEXT entry,
+  # not tonight's: a cold weight load can outrun a short lease, and the first
+  # unattended run should fail for a reason, not for a stopwatch.
+  #
+  # WHAT IT PROVES. Exactly the seam that has never once been exercised on this
+  # box: the kernel resolves `usage_source.path_glob` (first `*` -> the
+  # execution id's digest, tally crates/tally-kernel/src/exec.rs:95-140), exports
+  # it to the child as TALLY_USAGE_SOURCE_PATH together with TALLY_EXECUTION_ID
+  # (exec.rs:689), and writes `usage_source{kind,path}` into the `witness_record`
+  # (exec.rs:953-958). The child's whole job is to leave one line at that path
+  # carrying the execution id it was given, so the artifact and the receipt name
+  # each other. Tonight's receipt is that `witness_record` plus the
+  # `lease_release` beside it in ~/.local/state/tally-rewrite/ledger.jsonl.
+  #
+  # env_clear + an EMPTY env_allowlist is the point (exec.rs:681-687): the child
+  # sees the two TALLY_ variables and nothing else, so every path it touches is
+  # one the store already names.
+  localSmoke = pkgs.writeShellScript "tally-local-smoke" ''
+    set -eu
+    ${pkgs.coreutils}/bin/mkdir -p "$(${pkgs.coreutils}/bin/dirname "$TALLY_USAGE_SOURCE_PATH")"
+    printf '{"kind":"tally-usage/1","execution_id":"%s","argv_ref":"build:LOCAL-SMOKE","tokens":{"out":0},"ok":true}\n' \
+      "$TALLY_EXECUTION_ID" > "$TALLY_USAGE_SOURCE_PATH"
+    exit 0
+  '';
+
+  # THE HEADLESS CLAUDE SEAT: DESIGNED, DOCUMENTED, AND NOT ENABLED.
+  #
+  # This attribute is written out in full and then deliberately left OUT of
+  # `entries` (`enableClaudeSeat = false` below), so the design is reviewable
+  # here rather than reconstructed under time pressure later, and so a proposal
+  # naming `claude:headless` is refused by name against a kit file that visibly
+  # contains no such entry.
+  #
+  # WHY IT IS OFF. There is no sanctioned kernel lease on a Claude seat: the
+  # seat rows are feeder-owned (tally docs/rows.md:41-55, modules/tally-b.nix:
+  # 57-63), D-B6 bars unattended spend of the codex seat, cc3's sign-in is
+  # expired and pi-qwencloud is exhausted. `cc` is the seat with headroom, and
+  # leasing it is exactly the ruling dotfiles#362 asks Tom for.
+  #
+  # THE ARGV, AND WHY IT IS NOT D-B18's LITERAL. D-B18's ruled text is
+  # `env CLAUDE_CONFIG_DIR=<seat root> claude -p --output-format json
+  # --permission-mode bypassPermissions --model opus <brief-file>`. The form
+  # below is the CONSERVATIVE default this package states as an ASSUMPTION for
+  # Tom to overrule with one comment: `--permission-mode dontAsk` (never
+  # prompts, and DENIES what was not pre-allowed) instead of
+  # `bypassPermissions` (never prompts, and allows), `--max-turns 20` as a
+  # second, cheap bound on a runaway loop, and the brief on the kit's `stdin`
+  # rather than as a file path, because the item's brief is the plan's and a
+  # path here would be a file this module invented.
+  #
+  # THE RUNTIME CEILING IS THE LEASE'S (dotfiles#162, "every unattended job has
+  # a runtime ceiling that converts a hang into an alert"). It is the envelope's
+  # `seconds`, enforced by the kernel's own SIGTERM -> 30 s checkpoint grace ->
+  # SIGKILL rail; no second timer is added here, and none should be.
+  #
+  # THE OPEN HALF OF TL-18 is the `usage_source` wrapper: `claude -p` writes its
+  # usage into its own session transcript, not to $TALLY_USAGE_SOURCE_PATH, so
+  # enabling this entry means wrapping the binary in a script that copies the
+  # session's usage line to the resolved path — the same motion `localSmoke`
+  # performs, over a real transcript. Until that wrapper exists this entry would
+  # attest a run with no usage record, which is the shape of a receipt that
+  # proves nothing.
+  claudeSeatEntry = {
+    argv = [
+      "claude"
+      "-p"
+      "--output-format"
+      "json"
+      "--permission-mode"
+      "dontAsk"
+      "--max-turns"
+      "20"
+      "--model"
+      "opus"
+    ];
+    # the item's own worktree, handed down by the plan; the placeholder below is
+    # not a path this module would ship enabled.
+    cwd = "${rewriteState}/uplink/worktree";
+    env_allowlist = [
+      "HOME"
+      "PATH"
+      "CLAUDE_CONFIG_DIR"
+      "LANG"
+      "TERM"
+    ];
+    usage_source = {
+      kind = "claude-code-usage/1";
+      path_glob = "${rewriteState}/uplink/usage/claude-*.jsonl";
+    };
+    # the brief, handed to the child on stdin by exec.run.
+    stdin = "";
+  };
+  enableClaudeSeat = false;
+
+  # The two declared NO-OPs beside the job, under the acceptor's own taskId
+  # scheme: a worker ref is the label, its scope and eval cells are
+  # `scope(<taskId>)` and `eval(<taskId>)` (the factory proposes `argv_ref ??
+  # taskId`). They exist so a whole plan resolves rather than throwing on its
+  # second cell.
+  #
+  # `/bin/sh -c true`, NOT `/bin/true`. MEASURED on this box: /bin holds exactly
+  # one entry, `sh`, a symlink into the store; an argv naming /bin/true would
+  # attest a spawn failure rather than the pass the cell is about. The lake's own
+  # fixture (fixtures/uplink/kit.json) says the same thing.
+  noopEntry = kind: glob: {
+    argv = [
+      "/bin/sh"
+      "-c"
+      "true"
+    ];
+    cwd = "/";
+    env_allowlist = [ ];
+    usage_source = {
+      inherit kind;
+      path_glob = "${rewriteState}/uplink/usage/${glob}-*.jsonl";
+    };
+    stdin = "";
+  };
+
+  kitFile = pkgs.writeText "tally-uplink-kit.json" (
+    builtins.toJSON {
+      _note = [
+        "The coordinator's KIT (U-D14, TL-18/D-B18, dotfiles#304). argv_ref -> the"
+        "command, its cwd, the environment names it may see, where its usage record"
+        "lands, and what it is handed on stdin. Generated by home/tally-uplink.nix;"
+        "do not edit on the box (Rule 9, dotfiles#293) — edit the module and switch."
+        ""
+        "ENABLED: build:LOCAL-SMOKE, a deterministic local job for the mechanical row."
+        "It writes one JSON line at $TALLY_USAGE_SOURCE_PATH carrying the"
+        "$TALLY_EXECUTION_ID the kernel gave it, which is the usage_source join the"
+        "witness_record points at."
+        ""
+        "NOT ENABLED: claude:headless. The seat rows are feeder-owned (tally"
+        "docs/rows.md:41-55, modules/tally-b.nix:57-63) and no kernel lease on a"
+        "Claude seat is sanctioned; the ruling is asked in dotfiles#362. A proposal"
+        "naming it is refused by name against this file, which is the intended"
+        "outcome and not a gap."
+        ""
+        "usage_source.kind is an OPAQUE label the kernel carries and never reads"
+        "(tally docs/transport.md §2). It names no harness and nothing branches on it."
+      ];
+      entries =
+        {
+          "build:LOCAL-SMOKE" = {
+            argv = [ "${localSmoke}" ];
+            cwd = "${rewriteState}/uplink";
+            env_allowlist = [ ];
+            usage_source = {
+              kind = "tally-usage/1";
+              path_glob = "${rewriteState}/uplink/usage/local-smoke-*.jsonl";
+            };
+            stdin = "";
+          };
+          "scope(build:LOCAL-SMOKE)" = noopEntry "opaque-noop/1" "scope-noop";
+          "eval(build:LOCAL-SMOKE)" = noopEntry "opaque-noop/1" "eval-noop";
+        }
+        // lib.optionalAttrs enableClaudeSeat { "claude:headless" = claudeSeatEntry; };
+    }
+  );
 in
 # The two invariants this unit is graded on, at eval time and on every host that
 # imports the module (the import is unconditional; only the enablement is
@@ -241,15 +431,22 @@ assert uplinkPeriod != "";
     # `tally-uplink-topology`, so raising it here would be red.
     wakes = 1;
 
-    # `kit` and `plan` stay at their null defaults, and null is the honest
-    # state, not an oversight. The kit is the box's argv table (`argv_ref →
-    # {argv, cwd, env_allowlist, usage_source}`) and NO kit names an argv for
-    # this estate yet: TL-18 is the open Tom line on the Claude-seat one ("no
-    # kit names a Claude argv today"), and the uplink never falls back to a
-    # command of its own — a proposal carrying an `argv_ref` it cannot resolve
-    # is a legible throw, not a guess (DEFERRED.md DF-U-D14-3). The plan body is
-    # the acceptor's, re-POSTed to arm and re-arm; authoring one here would be
-    # the lake proposing from the wrong side of the seam.
+    # THE KIT (TL-18 / D-B18, dotfiles#304) — no longer null, and this is the
+    # change U-D14 deferred as DF-U-D14-3. The box's argv table now exists as a
+    # store file: `argv_ref → {argv, cwd, env_allowlist, usage_source, stdin}`,
+    # built above. It names ONE enabled job — `build:LOCAL-SMOKE`, a local
+    # deterministic run for the `mechanical` row, whose whole purpose is to
+    # close the `usage_source` join the kernel has never yet been given — plus
+    # that job's two declared no-op cells, and it deliberately does NOT name the
+    # designed `claude:headless` entry: no kernel lease on a Claude seat is
+    # sanctioned (D-B6; the ruling is asked in dotfiles#362), and a ref with no
+    # entry is a refusal that names the ref and this file rather than a guess.
+    #
+    # `plan` STAYS NULL, and null is still the honest state for it: the plan
+    # body is the acceptor's, re-POSTed to arm and re-arm, and authoring one
+    # here would be the lake proposing from the wrong side of the seam. Arming
+    # is Tom's act, not this module's.
+    kit = "${kitFile}";
   };
 
   # The uplink's own subdirectory, declared the way home/seat-feeder.nix declares
@@ -268,6 +465,15 @@ assert uplinkPeriod != "";
   # fails with "cannot read the lake token file <path>", which names the path.
   systemd.user.tmpfiles.rules = lib.mkIf isCoordinator [
     "d ${rewriteState}/uplink 0700 - - -"
+    # The kit's usage drop. Every `usage_source.path_glob` above resolves under
+    # this directory, and the kernel resolves the glob but does NOT create the
+    # directory — `localSmoke` mkdir -p's it for the same reason, and this rule
+    # gives it the MODE (0700, as for a per-user state subtree) and its
+    # existence before the first lease rather than at the mercy of the first
+    # child that runs. A usage record is the artifact half of tonight's
+    # receipt; a missing directory should be a legible failure, never a silent
+    # no-op (dotfiles#292).
+    "d ${rewriteState}/uplink/usage 0700 - - -"
   ];
 
   # THE WAKE (FIX-E12, dotfiles#351, D-E24). A clock and nothing else: it holds

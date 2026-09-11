@@ -24,7 +24,7 @@ input in `flake.nix`, and the three are easy to confuse:
 
 ```nix
 tally-lake = {
-  url = "git+https://github.com/mecattaf/tally-ts-sdk?rev=a233c303246efb6eceb8e84ac409f85d3d41879b";
+  url = "git+https://github.com/mecattaf/tally-ts-sdk?rev=897f9015e7c22304c3bfd7ca2ec990b294966ded";
 };
 ```
 
@@ -48,8 +48,9 @@ along and our nixpkgs cannot move its toolchain under it.
 `mecattaf/tally` and re-MEASURED here for THIS repo on 2026-09-07: it is PRIVATE
 (`gh repo view mecattaf/tally-ts-sdk --json isPrivate,visibility` →
 `{"isPrivate":true,"visibility":"PRIVATE"}`) and no executor flips visibility.
-`nix flake metadata github:mecattaf/tally-ts-sdk/a233c30…` answers `HTTP error
-404`, because the tarball fetcher spends nix's own `access-tokens` and this
+`nix flake metadata github:mecattaf/tally-ts-sdk/<rev>` answers `HTTP error
+404` (MEASURED on `a233c30` when this input was written, and true of every rev
+since), because the tarball fetcher spends nix's own `access-tokens` and this
 fleet configures none. The `git+https://` form fetches through git, and git here
 authenticates through the machine's own persistent credential path (the `gh auth
 git-credential` helper in the global gitconfig — never read, never printed). The
@@ -57,11 +58,24 @@ consequence, stated rather than hidden: the ONE network act (the lock update / a
 cold fetch) works only on a host whose git can authenticate to github.com; after
 it, the git cache and the store path make every gate `--offline`-clean anywhere.
 
-**The rev** `a233c30` is `origin/main` of mecattaf/tally-ts-sdk at W-03's
-delivery (PR #99 `lake/uplink`, whose `flake.nix` commit `c29fdfb` is an
-ancestor of it) plus U-A22's own evaluator probe. It is the first `main` that
-exports `homeManagerModules.tally-uplink` at all; anything before `c29fdfb` has
-no flake to import and this input cannot evaluate. Clause D of the test script
+**The rev** is `897f901` — `origin/main` of mecattaf/tally-ts-sdk on 2026-09-10
+(MEASURED: `git rev-parse origin/main`; 32 commits ahead of the pin it
+replaces, and the whole range is on `main`). The lineage of this line:
+
+| rev | what it bought |
+|---|---|
+| `a233c30` | W-03's delivery (PR #99 `lake/uplink`, whose `flake.nix` commit `c29fdfb` is an ancestor) plus U-A22's evaluator probe — the first `main` that exports `homeManagerModules.tally-uplink` at all; anything before `c29fdfb` has no flake to import and this input cannot evaluate |
+| `38a526ba` | the pin FT-3 replaced |
+| `897f901` | **this pin.** `packages/planning/src/objects/factory.ts:617` `level_rank` and the uplink's `level_rank` passthrough (without it a proposal arrives without the level the floor ranks it by); FIX-E04, the uplink SHUTTING THE DOOR on the lake's 5xx instead of retrying into it; FIX-E05; FIX-E10 |
+
+FIX-E04 is the one that matters on this box today: the deployed Worker answers
+`500 FactoryError / PersistenceFailed` on the Durable Object's own SQLite read
+(`tally-ts-sdk/docs/e2e.md:178-186`), so at the old pin every five-minute wake
+was a retry into a red dependency and at this one it is a legible refusal.
+**Bumping the pin is not deploying the lake and is not a switch**: this line
+moves the bytes the BOX evaluates against, and the deployed Worker (`f95beed`)
+already carried the factory fix. The switch that installs the result is Tom's
+(dotfiles#322 U-D19), and so is any further bump. Clause D of the test script
 checks the pin is an ancestor of the clone's `origin/main` without touching the
 network. Bump by editing the rev and running `nix flake lock --update-input
 tally-lake`, deliberately, the way `nixpkgs-paperless` is bumped — the lock
@@ -123,15 +137,115 @@ is unconditional, only the enablement is gated on `coordinator`:
   no schedule of its own, by its card's non-goal ("no scheduling logic in the
   uplink: the lake proposes, the door answers"), and the only instant it waits
   for is a `next_wake_at` the lake handed back.
-- **`kit` and `plan` stay null,** and null is the honest state. The kit is the
-  box's argv table and no kit names an argv for this estate yet (TL-18 is the
-  open Tom line); the uplink never falls back to a command of its own — a
-  proposal carrying an `argv_ref` it cannot resolve is a legible throw, not a
-  guess. The plan body is the acceptor's; authoring one here would be the lake
-  proposing from the wrong side of the seam. `DEFERRED.md` DF-U-D14-3.
-- **One tmpfiles rule**, `d <state>/uplink 0700 - - -`. The uplink creates its
-  outbox recursively itself, so what the rule adds is the MODE and its existence
-  before the first run. Idempotent with seat-feeder's rule over the parent.
+- **`kit` is a store file** (TL-18 / D-B18, dotfiles#304 — this is the change
+  DF-U-D14-3 deferred), and **`plan` stays null**. See *The kit* below.
+- **Two tmpfiles rules**, `d <state>/uplink 0700 - - -` and `d
+  <state>/uplink/usage 0700 - - -`. The uplink creates its outbox recursively
+  itself, so what the first rule adds is the MODE and its existence before the
+  first run; the second is where every `usage_source.path_glob` in the kit
+  resolves — the kernel resolves the glob but does not create the directory.
+  Idempotent with seat-feeder's rule over the parent.
+
+## The kit
+
+The kit is the box's argv table: `argv_ref → {argv, cwd, env_allowlist,
+usage_source, stdin}`. The lake never originates an argv (spec §2.2c) and
+neither does the uplink — a proposal carries the NAME and the box carries the
+command (spec §2.1: *"the argv the kit names IS the harness"*). It is rendered
+into the store by `home/tally-uplink.nix` and named by
+`services.tally-uplink.kit`, so the table the unit resolves against is a
+reviewed artifact and never a file edited on the box (Rule 9, dotfiles#293).
+
+| ref | argv | state |
+|---|---|---|
+| `build:LOCAL-SMOKE` | a `writeShellScript` that writes one usage line and exits 0 | **ENABLED** |
+| `scope(build:LOCAL-SMOKE)` | `/bin/sh -c true` | ENABLED (declared no-op) |
+| `eval(build:LOCAL-SMOKE)` | `/bin/sh -c true` | ENABLED (declared no-op) |
+| `claude:headless` | `claude -p --output-format json --permission-mode dontAsk --max-turns 20 --model opus` | **DESIGNED, NOT ENABLED** |
+
+The refs are the acceptor's own taskId scheme — a worker cell is the label and
+its two companions are `scope(<taskId>)` and `eval(<taskId>)`, which is what the
+factory proposes today (`argv_ref ?? taskId`). The no-op is `/bin/sh -c true`
+and **not** `/bin/true`: MEASURED on this box, `/bin` holds exactly one entry,
+`sh`, so an argv naming `/bin/true` would attest a spawn failure rather than the
+pass the cell is about.
+
+**Why the enabled entry is local and not a seat.** The first unattended run
+leases a row the served kernel actually serves — `mechanical`, one of the three
+in `modules/tally-b.nix`. The seat rows (`cc`, `cc2`, `cc3`, `codex`,
+`pi-qwencloud`) are `owner: tom`, written by the U-D12 feeders through the
+meters dir (`tally docs/rows.md:41-55`; `modules/tally-b.nix:57-63` excludes
+them deliberately), and a kernel lease on one of them would make `stamp_row`
+write `owner: kernel` over a feeder-owned file — one file, two writers. D-B6
+already bars unattended spend of the `codex` seat. `utility-model` (llama-swap,
+`qwen3.6-35b-a3b` on the `gpu-coordinator` row) is the documented NEXT entry
+and not tonight's: a cold weight load can outrun a short lease, and the first
+unattended run should fail for a reason, not for a stopwatch.
+
+**Why `claude:headless` is written out and left out.** It is a Nix attribute
+behind `enableClaudeSeat = false`, so the design is reviewable rather than
+reconstructed later, and so a proposal naming the ref is refused **by name**
+against a kit file that visibly contains no such entry (`readKit(…).resolve`,
+lake `apps/uplink/src/kit.mjs`). Whether the kernel may lease a Claude seat at
+all, and through which row, is Tom's ruling and is asked in dotfiles#362.
+D-B18's ruled text is `env CLAUDE_CONFIG_DIR=<seat root> claude -p
+--output-format json --permission-mode bypassPermissions --model opus
+<brief-file>`; the form recorded here is the conservative default this unit
+states as an ASSUMPTION for Tom to overrule with one comment —
+`--permission-mode dontAsk` (never prompts, and DENIES what was not
+pre-allowed) rather than `bypassPermissions` (never prompts, and allows),
+`--max-turns 20` as a second cheap bound on a runaway loop, the brief on the
+kit's `stdin` rather than as a path this module invented, `cwd` the item's
+worktree, `env_allowlist = ["HOME","PATH","CLAUDE_CONFIG_DIR","LANG","TERM"]`.
+The runtime ceiling is the lease envelope's `seconds`, enforced by the kernel's
+own SIGTERM → 30 s checkpoint grace → SIGKILL rail — no second timer is added
+(dotfiles#162). The OPEN half of TL-18 is the `usage_source` wrapper: `claude
+-p` writes its usage into its own session transcript, not to
+`$TALLY_USAGE_SOURCE_PATH`, so enabling the entry means wrapping the binary in
+a script that copies the session's usage line to the resolved path.
+
+**`plan` stays null.** The plan body is the acceptor's, re-POSTed to arm and
+re-arm; authoring one here would be the lake proposing from the wrong side of
+the seam, and arming is Tom's act. The topology check asserts `cfg.plan == null`
+and that the rendered argv carries no `--plan`.
+
+## The usage_source join
+
+This is the seam that has never once been exercised on this box, and closing it
+is why the enabled entry exists at all.
+
+```
+kit entry            exec.run request        the child's env        the ledger
+─────────            ────────────────        ───────────────        ──────────
+argv, cwd,       →   {lease, argv, cwd,  →   TALLY_EXECUTION_ID  →  witness_record
+env_allowlist,       env_allowlist,          TALLY_USAGE_SOURCE_    .usage_source
+usage_source{        usage_source{kind,      PATH  (and NOTHING     {kind, path}
+kind, path_glob},    path_glob}, stdin}      else: env_clear +
+stdin                                        env_allowlist)
+```
+
+The kernel resolves `path_glob` textually and only twice: a leading `~/` becomes
+`$HOME/`, and the **first** `*` becomes the execution id's digest (`tally
+crates/tally-kernel/src/exec.rs:95-140`). It exports the result to the child as
+`TALLY_USAGE_SOURCE_PATH` alongside `TALLY_EXECUTION_ID` (`:689`), and writes
+`usage_source{kind, path}` into the `witness_record` at `conclude` (`:953-958`).
+`kind` is an OPAQUE label the kernel carries and never reads (`tally
+docs/transport.md §2`); nothing in this repository branches on it.
+
+So the enabled job's whole task is to leave **one JSON line at that path
+carrying the execution id it was given** — after which the artifact and the
+receipt name each other. `env_allowlist` is EMPTY for it on purpose: with
+`env_clear`, the child sees those two variables and nothing else, so every path
+it touches is one the store already names.
+
+**Tonight's receipt is `witness_record` + `lease_release`** in
+`~/.local/state/tally-rewrite/ledger.jsonl`, checked with the kernel's own
+`ledger.verify`. Not a verdict: `ExecKernel::run` is start-and-wait
+(`exec.rs:1580-1583`), `conclude` writes the witness and releases the lease with
+`Disposition::Pass` (`:833-838`, `:859-862`), and `derive_verdict` returns early
+when no evaluator lock is configured (`tally-socket/src/server.rs:371-375`).
+`tests/tally-uplink/probe-FT-3-kit.sh` clause K4 proves the child half of this
+offline, with `env -i` and the two variables and nothing else.
 
 ## The token is a path, never a value
 
@@ -201,14 +315,25 @@ bare PATH.
   still waits only on the `next_wake_at` the lake handed back. Asserted by
   `tally-uplink-topology` and by `tests/tally-uplink/probe-FIX-E12.sh` (rc 0).
   It lands live at the next coordinator switch, like everything else here.
-- **No kit, no plan** (DF-U-D14-3), and **no evaluator lock** — that one is
-  U-D13's DF-U-D13-2, still waiting on U-A17.
+- ~~**No kit, no plan** (DF-U-D14-3).~~ **SUPERSEDED for the kit by FT-3
+  (dotfiles#361, TL-18 / D-B18, dotfiles#304):** the box now carries a store
+  kit with one enabled local entry, and `claude:headless` designed and
+  disabled — see *The kit* above. **`plan` is still null** and still deliberate.
+- **No evaluator lock, and that is now the settled state, not a gap.**
+  `services.tally-kernel.evaluatorLock = null` (`modules/tally-b.nix:188-190`)
+  is CORRECT: `exec.run` needs no verdict — it is start-and-wait, `conclude`
+  writes the `witness_record` and releases the lease with `Disposition::Pass`,
+  and `derive_verdict` returns early when no lock is configured
+  (`tally-socket/src/server.rs:371-375`). Nothing here adds evaluator or
+  verdict work.
 - **No edit to `home/tally.nix`, `modules/tally-b.nix` or the feeders.**
 
 ## How to re-run the acceptance
 
 ```console
-$ bash tests/tally-uplink/test-tally-uplink-input.sh
+$ bash tests/tally-uplink/test-tally-uplink-input.sh   # U-D14, clauses A0/A/B/C/D/E/G/H/F
+$ bash tests/tally-uplink/probe-FIX-E12.sh             # the WAKE, clauses S1..S5
+$ bash tests/tally-uplink/probe-FT-3-kit.sh            # the KIT and the join, clauses K1..K7
 ```
 
 Clauses: A0 lock-update no-op; A `nix flake check --offline --no-build`; B the
