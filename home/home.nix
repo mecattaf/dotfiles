@@ -120,7 +120,6 @@ in
     ./paper.nix
     ./pi.nix
     ./piri.nix
-    ./remote.nix
     ./seat-feeder.nix
     ./ssh.nix
     ./tally.nix
@@ -250,7 +249,7 @@ in
   dconf.settings."org/gnome/desktop/interface" = {
     gtk-theme = "MacTahoe-Dark-grey";
     color-scheme = "prefer-dark";
-    # Interface fonts for Nautilus, Remmina, and every other GTK app that reads
+    # Interface fonts for Nautilus and every other GTK app that reads
     # font-name. sf-pro ships system-wide via modules/common.nix fonts.packages
     # (the one apple-fonts family kept in the 2026-08-21 sweep — "too good to
     # have"); before this key was set at all, GTK fell back to Adwaita Sans —

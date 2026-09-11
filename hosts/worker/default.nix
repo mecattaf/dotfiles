@@ -33,8 +33,9 @@
 #     coordinator has a display output" was superseded the same afternoon
 #     and is not restated here, so no flip elsewhere in the fleet ever needs
 #     to come back and edit this paragraph). It opts out of the fleet-wide
-#     seat below, and home/remote.nix, home/voxtype.nix and home/piri.nix
-#     ship nothing to a host with no display. Home Manager itself STAYS:
+#     seat below, and home/voxtype.nix and home/piri.nix ship nothing to a
+#     host with no display (home/remote.nix, the VNC half, left the tree
+#     with the 2026-09-11 headless flip). Home Manager itself STAYS:
 #     tom's shell, atuin, the user timers and the herdr/hk client are all real
 #     here; only the graphical session is absent. Console recovery is the VT
 #     getty autologin modules/common.nix keeps on every host.
@@ -87,7 +88,7 @@
   # fleet's "is there a seat here" option, and modules/common.nix derives
   # programs.niri.enable and services.greetd.enable from it — so opting out
   # here turns off the greeter and the compositor together, along with the
-  # display-bound user services (wayvnc, voxtype, piri). Nothing graphical
+  # display-bound user services (voxtype, piri). Nothing graphical
   # runs on this box; VT1 simply gets the getty autologin like the other VTs.
   # The flake asserts every host's niri and greetd EQUAL its myDisplay, so
   # this cannot drift out of agreement in either direction.

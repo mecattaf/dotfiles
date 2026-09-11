@@ -1979,14 +1979,15 @@
           # two clients, unchanged.
           assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") workerHome.home.packages;
           # No wayvnc on the worker since 2026-09-11: with no display there
-          # (hosts/worker/default.nix) home/remote.nix renders nothing, so
-          # there is no VNC server, no session for it to capture, and no door.
+          # (hosts/worker/default.nix) home/remote.nix rendered nothing, and
+          # since the headless flip later that day the module is gone from
+          # the tree: no VNC server anywhere, no session to capture, no door.
           #
           # THE INVARIANT, stated once: VNC, voxtype and piri exist on the
           # coordinator EXACTLY while the coordinator has a display. These are
           # equalities against myDisplay.enable (modules/display.nix), not
-          # fixed values, so the coming headless flip (R-13, plan §8.3, §10
-          # steps 10-11) does not have to come back and re-key them — but a
+          # fixed values, so the headless flip (R-13, plan §8.3, §10 steps
+          # 10-11; landed 2026-09-11) did not have to re-key them — but a
           # HALF flip is refused: when hosts/coordinator/default.nix sets
           # myDisplay.enable = false, the same commit must delete the wayvnc
           # unit, the Remmina viewer profile and the :5900 door, or this check
@@ -2011,8 +2012,9 @@
           # voxtype, no herdr SERVER (the binary and `hk` are here: Mod+Return
           # is `hk ssh --in-place coordinator`, asserted below through the
           # generated niri-local.kdl), no wayvnc SERVER (while the coordinator
-          # has a display the client VIEWS it through a `coordinator (VNC)`
-          # Remmina profile — asserted above as an equality — and no
+          # had a display the client VIEWED it through a `coordinator (VNC)`
+          # Remmina profile — asserted below as an equality, absent since the
+          # 2026-09-11 flip — and no
           # `client (VNC)` profile ever exists on the coordinator, in either
           # direction of the flip), no dcal daemon, no :5900 door, no
           # seat-feeder clocks. Touch is mapped globally to

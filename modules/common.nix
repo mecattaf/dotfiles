@@ -403,7 +403,7 @@
     QT_QPA_PLATFORMTHEME = "qt6ct";
     # GTK reads GTK_THEME with the highest priority. niri has no XSettings/settings
     # daemon, so this system-wide export (reaching GUI apps via the PAM session) is
-    # what makes GTK3 apps like Remmina honor the theme without nwg-look. It must be
+    # what makes GTK3 apps like Nautilus honor the theme without nwg-look. It must be
     # here, not home.sessionVariables (which only reaches interactive shells).
     GTK_THEME = "MacTahoe-Dark-grey";
     # Chromium/Electron (google-chrome + PWA launchers) only run native Wayland

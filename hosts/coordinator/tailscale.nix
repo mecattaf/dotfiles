@@ -40,7 +40,10 @@
 # HISTORY: until 2026-09-01 all of this lived in modules/common.nix as a
 # fleet-wide default (enable + --ssh on both flag paths) with the wayvnc :5900
 # door beside it. The tombstone there records why the default had to go; what
-# follows is that default, narrowed to the one host that ever wanted it.
+# follows is that default, narrowed to the one host that ever wanted it. The
+# :5900 door itself was DELETED on 2026-09-11 with the headless flip — this box
+# has no session to serve and the fleet has no VNC at all (R-9 + R-13) — so
+# what is left below is the rail and nothing else.
 {
   services.tailscale.enable = true;
 
@@ -80,14 +83,4 @@
   # key is minted at runtime by its own headscale into /run — so do not read
   # that file's arrangement as a pattern to copy here. A pre-minted single-use
   # key is correct for a control plane we do not own.
-
-  # wayvnc (:5900) is reachable ONLY over the tailnet — never the raw LAN/wifi.
-  # Relocated from modules/common.nix 2026-09-01 with the rest of this tier.
-  # This is the coordinator's door only: the NAS opens its own for the TV
-  # session (hosts/nas/tv.nix, an exact-set assert in flake.nix guards it), and
-  # the worker has no tailscale0 for such a rule to land on at all. The wayvnc
-  # server itself is home-manager's (home/remote.nix) and runs with NO
-  # authentication, so "which interface" IS the access control — which is why
-  # this stays interface-scoped and never becomes a global allowedTCPPorts.
-  networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 5900 ];
 }

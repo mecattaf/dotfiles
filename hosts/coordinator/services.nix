@@ -48,8 +48,8 @@ in
 # 2026-08-30; it was the second cliamp host).
 #
 # Reachability: both bind 0.0.0.0, but the firewall opens their ports ONLY on
-# tailscale0 (same trust model as wayvnc:5900, whose door now sits beside this
-# one in ./tailscale.nix), so they are reachable across the tailnet — e.g. Tom's
+# tailscale0 (the trust model the wayvnc door used until the 2026-09-11 flip
+# removed it), so they are reachable across the tailnet — e.g. Tom's
 # phone — but never the raw LAN/wifi. This restores the phone access that went
 # away with the retired BE550 LAN segment.
 #
