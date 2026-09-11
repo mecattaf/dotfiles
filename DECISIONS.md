@@ -27,6 +27,13 @@ doctrine unchanged; per-host wanted sets shrink to the worker's one bundle
 and the coordinator's five small files, and both boxes' working copies are to
 be pruned to exactly that.
 
+Same day, addendum: a second Halogen engine, halogen-server with Qwen3.8-27B
+(35.9 GB, image ghcr.io/peonist-ai/halogen 0.1.3 by digest), is declared on
+the worker as `services.halogen.alternates.qwen38-27b`. The two cannot be
+resident together on 128 GB, so the units carry mutual Conflicts=, only Flash
+starts at boot, both answer on :8731, and `halogen-switch <flash|qwen38-27b>`
+is the operator's way between them. Flash is the everyday model.
+
 Operator acts this leaves open, none performed by a switch: the NAS Library
 must hold the Halogen bundle before the worker can borrow it (library-fetch
 on a switched NAS, or the same download by hand into

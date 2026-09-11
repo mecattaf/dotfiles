@@ -43,26 +43,84 @@ let
   artifact = catalog.artifacts.${cfg.artifact};
   hasFile = name: lib.any (file: file.name == name) bundle.files;
 
-  bundleCheck = pkgs.writeShellScript "halogen-bundle-check" ''
-    set -u
-    dir=${lib.escapeShellArg bundle.directory}
-    fail=0
-    ${lib.concatMapStringsSep "\n" (file: ''
-      f="$dir/${file.name}"
-      if [ ! -f "$f" ]; then
-        echo "halogen: MISSING $f" >&2
-        fail=1
-      elif [ "$(${pkgs.coreutils}/bin/stat -c %s "$f")" != "${toString file.bytes}" ]; then
-        echo "halogen: WRONG SIZE $f (want ${toString file.bytes} bytes)" >&2
-        fail=1
+  bundleCheckFor =
+    artifactId:
+    let
+      b = modelStore.materialized.${artifactId};
+    in
+    pkgs.writeShellScript "halogen-bundle-check-${artifactId}" ''
+      set -u
+      dir=${lib.escapeShellArg b.directory}
+      fail=0
+      ${lib.concatMapStringsSep "\n" (file: ''
+        f="$dir/${file.name}"
+        if [ ! -f "$f" ]; then
+          echo "halogen: MISSING $f" >&2
+          fail=1
+        elif [ "$(${pkgs.coreutils}/bin/stat -c %s "$f")" != "${toString file.bytes}" ]; then
+          echo "halogen: WRONG SIZE $f (want ${toString file.bytes} bytes)" >&2
+          fail=1
+        fi
+      '') b.files}
+      if [ "$fail" != 0 ]; then
+        echo "halogen: the ${artifactId} bundle is incomplete under $dir." >&2
+        echo "halogen: loan it from the NAS Library first: sudo local-models-borrow --dry-run, then --yes." >&2
+        exit 1
       fi
-    '') bundle.files}
-    if [ "$fail" != 0 ]; then
-      echo "halogen: the ${cfg.artifact} bundle is incomplete under $dir." >&2
-      echo "halogen: loan it from the NAS Library first: sudo local-models-borrow --dry-run, then --yes." >&2
-      exit 1
-    fi
-  '';
+    '';
+  bundleCheck = bundleCheckFor cfg.artifact;
+
+  # The one launch shape, shared by the Flash server and every alternate.
+  containerOptions = [
+    "--network=host"
+    "--device=/dev/kfd"
+    "--device=/dev/dri"
+    "--group-add=keep-groups"
+    "--security-opt=seccomp=unconfined"
+    "--ipc=host"
+    "--ulimit=memlock=-1:-1"
+  ];
+  # mkForce throughout: the oci-containers module writes its own values for
+  # these (no start timeout, restart always) and they are the wrong ones for
+  # a cold load measured in tens of minutes.
+  unitPolicy = {
+    TimeoutStartSec = lib.mkForce "45min";
+    TimeoutStopSec = lib.mkForce "2min";
+    # The engine's own watchdog exits the process on a wedged GPU queue so
+    # that a restart policy can recover it.
+    Restart = lib.mkForce "on-failure";
+    RestartSec = lib.mkForce "30s";
+  };
+
+  alternateNames = builtins.attrNames cfg.alternates;
+  unitOf =
+    name: if name == "flash" then "podman-halogen.service" else "podman-halogen-${name}.service";
+  allUnits = map unitOf ([ "flash" ] ++ alternateNames);
+  # One resident model at a time: the operator's switch between them.
+  halogenSwitch = pkgs.writeShellApplication {
+    name = "halogen-switch";
+    runtimeInputs = [ pkgs.systemd ];
+    text = ''
+      choice=''${1:-}
+      case "$choice" in
+        ${lib.concatMapStringsSep " | " (n: "${n}") ([ "flash" ] ++ alternateNames)}) ;;
+        *)
+          echo "usage: halogen-switch <${lib.concatStringsSep "|" ([ "flash" ] ++ alternateNames)}>" >&2
+          echo "Stops whichever Halogen server is resident and starts the named one (a cold load: minutes)." >&2
+          exit 64
+          ;;
+      esac
+      case "$choice" in
+        flash) unit=podman-halogen.service ;;
+        *) unit="podman-halogen-$choice.service" ;;
+      esac
+      for u in ${lib.escapeShellArgs allUnits}; do
+        [ "$u" = "$unit" ] || systemctl stop "$u"
+      done
+      systemctl start "$unit"
+      systemctl --no-pager status "$unit" | head -5
+    '';
+  };
 
   utilityRunner = pkgs.writeShellApplication {
     name = "utility-model";
@@ -147,6 +205,40 @@ in
       description = "Load the vision tower so image_url content parts are accepted (OCR lives here).";
     };
 
+    alternates = lib.mkOption {
+      type = lib.types.attrsOf (
+        lib.types.submodule {
+          options = {
+            image = lib.mkOption {
+              type = lib.types.str;
+              description = "OCI image reference, pinned by digest.";
+            };
+            artifact = lib.mkOption {
+              type = lib.types.str;
+              description = "Catalogue artifact holding the .hgn bundle (snapshot layout with tokenizer/).";
+            };
+            modelId = lib.mkOption {
+              type = lib.types.str;
+              description = "The id this server's /v1/models reports; informational for clients.";
+            };
+            environment = lib.mkOption {
+              type = lib.types.attrsOf lib.types.str;
+              default = { };
+              description = "Extra HALOGEN_* flags for this engine.";
+            };
+          };
+        }
+      );
+      default = { };
+      description = ''
+        Other Halogen engines on this host, one podman unit each
+        (podman-halogen-<name>), sharing the Flash server's port and launch
+        shape and never resident together with it or each other: the units
+        carry mutual Conflicts=, none starts at boot, and `halogen-switch
+        <name>` is how an operator brings one up in place of Flash.
+      '';
+    };
+
     client = {
       enable = lib.mkEnableOption "the utility-model wrapper that forwards one request to the fleet's Halogen server";
 
@@ -179,54 +271,74 @@ in
           assertion = lib.elem cfg.artifact config.services.local-models.artifacts;
           message = "services.halogen.artifact must be in this host's services.local-models.artifacts so the bundle is a wanted, loanable working copy.";
         }
+        {
+          assertion = lib.all (alt: lib.elem alt.artifact config.services.local-models.artifacts) (
+            builtins.attrValues cfg.alternates
+          );
+          message = "Every services.halogen.alternates.<name>.artifact must be in this host's services.local-models.artifacts.";
+        }
+        {
+          assertion = !(cfg.alternates ? flash);
+          message = "services.halogen.alternates may not be named `flash`; that is the primary server.";
+        }
       ];
 
       virtualisation.oci-containers.backend = "podman";
-      virtualisation.oci-containers.containers.halogen = {
-        image = cfg.image;
-        autoStart = true;
-        volumes = [ "${bundle.directory}:/models:ro" ];
-        environment = {
-          HALOGEN_CHECKPOINT = "/models/${artifact.source.primary}";
-          HALOGEN_CK_OVERLAY = "/models/qwen38-flash-next-w4b.overlay.hgn";
-          HALOGEN_TOKENIZER = "/models/tokenizer";
-          HALOGEN_MODEL_ID = cfg.modelId;
-          HALOGEN_API_PORT = toString cfg.port;
-          HALOGEN_CTX = toString cfg.contextPositions;
-          HALOGEN_KV_POOL_POSITIONS = toString cfg.kvPoolPositions;
-          HALOGEN_KV_SLOTS = toString cfg.kvSlots;
-          HALOGEN_PROMPT_CACHE = cfg.promptCache;
+      virtualisation.oci-containers.containers = {
+        halogen = {
+          image = cfg.image;
+          autoStart = true;
+          volumes = [ "${bundle.directory}:/models:ro" ];
+          environment = {
+            HALOGEN_CHECKPOINT = "/models/${artifact.source.primary}";
+            HALOGEN_CK_OVERLAY = "/models/qwen38-flash-next-w4b.overlay.hgn";
+            HALOGEN_TOKENIZER = "/models/tokenizer";
+            HALOGEN_MODEL_ID = cfg.modelId;
+            HALOGEN_API_PORT = toString cfg.port;
+            HALOGEN_CTX = toString cfg.contextPositions;
+            HALOGEN_KV_POOL_POSITIONS = toString cfg.kvPoolPositions;
+            HALOGEN_KV_SLOTS = toString cfg.kvSlots;
+            HALOGEN_PROMPT_CACHE = cfg.promptCache;
+          }
+          // lib.optionalAttrs cfg.vision {
+            HALOGEN_VISION_TOWER = "/models/qwen38-flash-next-vision.hgn";
+          };
+          extraOptions = containerOptions;
+        };
+      }
+      // lib.mapAttrs' (
+        name: alt:
+        lib.nameValuePair "halogen-${name}" {
+          image = alt.image;
+          autoStart = false;
+          volumes = [ "${modelStore.materialized.${alt.artifact}.directory}:/models:ro" ];
+          environment = {
+            HALOGEN_CHECKPOINT = "/models/${catalog.artifacts.${alt.artifact}.source.primary}";
+            HALOGEN_TOKENIZER = "/models/tokenizer";
+            HALOGEN_API_PORT = toString cfg.port;
+          }
+          // alt.environment;
+          extraOptions = containerOptions;
         }
-        // lib.optionalAttrs cfg.vision {
-          HALOGEN_VISION_TOWER = "/models/qwen38-flash-next-vision.hgn";
-        };
-        extraOptions = [
-          "--network=host"
-          "--device=/dev/kfd"
-          "--device=/dev/dri"
-          "--group-add=keep-groups"
-          "--security-opt=seccomp=unconfined"
-          "--ipc=host"
-          "--ulimit=memlock=-1:-1"
-        ];
-      };
+      ) cfg.alternates;
 
-      systemd.services.podman-halogen = {
-        preStart = lib.mkBefore "${bundleCheck}\n";
-        # mkForce throughout: the oci-containers module writes its own values
-        # for these (no start timeout, restart always) and they are the wrong
-        # ones for a 20-minute cold load.
-        serviceConfig = {
-          # A cold start reads ~68 GB off NVMe and upstream budgets 20 minutes
-          # for it; a slow disk has been seen past 30.
-          TimeoutStartSec = lib.mkForce "45min";
-          TimeoutStopSec = lib.mkForce "2min";
-          # The engine's own watchdog exits the process on a wedged GPU queue so
-          # that a restart policy can recover it.
-          Restart = lib.mkForce "on-failure";
-          RestartSec = lib.mkForce "30s";
+      systemd.services = {
+        podman-halogen = {
+          preStart = lib.mkBefore "${bundleCheck}\n";
+          conflicts = map unitOf alternateNames;
+          serviceConfig = unitPolicy;
         };
-      };
+      }
+      // lib.mapAttrs' (
+        name: alt:
+        lib.nameValuePair "podman-halogen-${name}" {
+          preStart = lib.mkBefore "${bundleCheckFor alt.artifact}\n";
+          conflicts = map unitOf ([ "flash" ] ++ (lib.remove name alternateNames));
+          serviceConfig = unitPolicy;
+        }
+      ) cfg.alternates;
+
+      environment.systemPackages = [ halogenSwitch ];
 
       networking.firewall.interfaces.${cfg.lanInterface}.allowedTCPPorts = [ cfg.port ];
 

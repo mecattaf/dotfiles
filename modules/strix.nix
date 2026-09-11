@@ -43,6 +43,7 @@
     services.local-models.artifacts =
       lib.optionals (config.networking.hostName == "worker") [
         "halogen-qwen38-flash-next"
+        "halogen-qwen38-27b"
       ]
       ++ lib.optionals (config.networking.hostName == "coordinator") [
         "qwen36-35b-a3b-mtp-ud-q8-k-xl"

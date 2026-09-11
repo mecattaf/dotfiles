@@ -228,6 +228,14 @@
   # this host's only wanted artifact (modules/strix.nix), loaned from the NAS
   # Library by an operator; the coordinator dials http://worker:8731.
   services.halogen.enable = true;
+  # The alternate model on the same box: Qwen3.8-27B under halogen-server.
+  # Never resident together with Flash — `halogen-switch qwen38-27b` stops
+  # the Flash unit and starts this one; `halogen-switch flash` goes back.
+  services.halogen.alternates.qwen38-27b = {
+    image = "ghcr.io/peonist-ai/halogen@sha256:1430491c479bee106dbaa3316e5509401546962f26f275ac777dfd1b5397589b";
+    artifact = "halogen-qwen38-27b";
+    modelId = "halogen-qwen3.8-27b";
+  };
 
   # NM at INFO for the same reason the coordinator pins it: on cutover day this
   # fleet's wifi incidents were forensically blind because NetworkManager had

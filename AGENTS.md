@@ -8,6 +8,11 @@ run by podman, with the weights loaned from the NAS Library into
 liveness and discovery probe), carries the vision tower, so OCR and image
 reading go through it too, and needs no authentication. The model id is
 `halogen-qwen3.8-flash-next`; a request naming another id is not rejected.
+A second Halogen engine, halogen-server with Qwen3.8-27B, is declared on the
+same worker as `services.halogen.alternates.qwen38-27b`: same port, same launch
+shape, never resident together with Flash (the units conflict), started only by
+an operator's `halogen-switch qwen38-27b` and put back with `halogen-switch
+flash`. Flash is the everyday model; the 27B is the alternate.
 There is no `/v1/embeddings`, no reranking, no audio, no image generation, no
 hot reload and no second model. The token budget covers thinking: default
 `max_tokens` 8192, cap 65536. Stable diffusion is outside this LLM route.

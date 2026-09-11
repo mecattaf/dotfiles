@@ -2635,7 +2635,11 @@
           # is no `allow` any more: nothing is a deployment, nothing is served
           # by a roster.
           assert !(worker.services.local-models ? allow);
-          assert worker.services.local-models.artifacts == [ "halogen-qwen38-flash-next" ];
+          assert
+            worker.services.local-models.artifacts == [
+              "halogen-qwen38-flash-next"
+              "halogen-qwen38-27b"
+            ];
           assert
             coordinator.services.local-models.artifacts == [
               "qwen36-35b-a3b-mtp-ud-q8-k-xl"
@@ -2644,7 +2648,7 @@
               "fara15-9b-q8-0"
               "fara15-9b-mmproj-bf16"
             ];
-          # The catalogue itself: fifteen artifacts and no other top-level
+          # The catalogue itself: sixteen artifacts and no other top-level
           # attribute — no deployments, no backend kinds, no utility pointer.
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
           assert
@@ -2653,6 +2657,7 @@
               "fara15-9b-q8-0"
               "gemma4-12b-it-mtp-q8-0"
               "gemma4-12b-it-q8-0"
+              "halogen-qwen38-27b"
               "halogen-qwen38-flash-next"
               "mage-flow-4b-turbo-bf16"
               "mage-flow-edit-4b-turbo-bf16"
@@ -2696,6 +2701,25 @@
               "--ulimit=memlock=-1:-1"
             ];
           assert worker.systemd.services.podman-halogen.serviceConfig.TimeoutStartSec == "45min";
+          # The alternate 27B engine: declared, never started at boot, and
+          # never resident together with Flash (mutual Conflicts=), on the same
+          # port so clients need not care which one answers.
+          assert builtins.attrNames worker.services.halogen.alternates == [ "qwen38-27b" ];
+          assert worker.virtualisation.oci-containers.containers ? halogen-qwen38-27b;
+          assert !worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.autoStart;
+          assert nixpkgs.lib.hasPrefix "ghcr.io/peonist-ai/halogen@sha256:"
+            worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.image;
+          assert
+            worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_API_PORT
+            == worker.virtualisation.oci-containers.containers.halogen.environment.HALOGEN_API_PORT;
+          assert worker.systemd.services.podman-halogen.conflicts == [ "podman-halogen-qwen38-27b.service" ];
+          assert worker.systemd.services.podman-halogen-qwen38-27b.conflicts == [ "podman-halogen.service" ];
+          assert
+            builtins.length (
+              nixpkgs.lib.filter (
+                package: nixpkgs.lib.getName package == "halogen-switch"
+              ) worker.environment.systemPackages
+            ) == 1;
           assert nixpkgs.lib.elem "amdgpu.gttsize=126976" worker.boot.kernelParams;
           assert !(nixpkgs.lib.elem "amdgpu.gttsize=126976" coordinator.boot.kernelParams);
           # The utility-model wrapper lives on the coordinator only.

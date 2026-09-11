@@ -560,6 +560,68 @@ let
               };
             };
 
+            # ── the alternate Halogen model: Qwen3.8-27B on the same worker ──
+            # Served by Peonist's halogen-server image (ghcr.io/peonist-ai/halogen),
+            # a sibling engine to the Flash one with its own checkpoint format
+            # generation (p1w4d-d2, ~6.3 bits/weight at decode). Mutually
+            # exclusive with the Flash server at runtime — the box holds one
+            # resident model — and switched by an operator
+            # (modules/halogen.nix, `halogen-switch`). Text only.
+            halogen-qwen38-27b = {
+              kind = "model";
+              maker = "Peonist";
+              baseCheckpoint = {
+                url = "https://huggingface.co/Qwen/Qwen3.8-27B";
+                revision = "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0";
+              };
+              quantization = "P1W4D-D2";
+              notes = "halogen-server bundle: the 27B dense checkpoint plus its flat tokenizer, pinned to the revision halogen-server 0.1.3 documents.";
+              source = {
+                hfUrl = "https://huggingface.co/peonist-ai/halogen-qwen3.8-27b";
+                revision = "d92dc33afed1cdc073846c76e51090fa493ce74a";
+                layout = "snapshot";
+                primary = "qwen3.8-27b-p1w4d-d2.hgn";
+                files = [
+                  {
+                    path = "qwen3.8-27b-p1w4d-d2.hgn";
+                    bytes = 35865565184;
+                    oid = "274c3fc767fb57faf025dd03c76376b1fc1b32448aef45aaf02d1898fa962089";
+                    hash = "sha256-J0w/x2f7V/rwJd0Dx2N2sfwbMkSK70Wq8C0YmPqWIIk=";
+                  }
+                  {
+                    path = "tokenizer/chat_template.jinja";
+                    bytes = 8952;
+                    oid = "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041";
+                    hash = "sha256-w8+eNKv0+eNsLXIWWqnBMtPipyW2wlhqqjqK+deoEEE=";
+                  }
+                  {
+                    path = "tokenizer/merges.txt";
+                    bytes = 3353259;
+                    oid = "a9d356d7bdf1ef4949e3e748e95b8e10ad9d4e2e838eddc38a0a7b6b94d1db8d";
+                    hash = "sha256-qdNW173x70lJ4+dI6VuOEK2dTi6Djt3Digp7a5TR240=";
+                  }
+                  {
+                    path = "tokenizer/tokenizer.json";
+                    bytes = 12809320;
+                    oid = "0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3";
+                    hash = "sha256-CZf0EMV6H05TsJ5L6PShctkO3ZVkNo+whHAwk3IpufM=";
+                  }
+                  {
+                    path = "tokenizer/tokenizer_config.json";
+                    bytes = 17928;
+                    oid = "b11349aafa7cdc6a320767cf7ceb29ed82f7eda5d65e8e0819e76f0ce947bf27";
+                    hash = "sha256-sRNJqvp83GoyB2fPfOsp7YL37aXWXo4IGedvDOlHvyc=";
+                  }
+                  {
+                    path = "tokenizer/vocab.json";
+                    bytes = 6722759;
+                    oid = "ce99b4cb2983d118806ce0a8b777a35b093e2000a503ebde25853284c9dfa003";
+                    hash = "sha256-zpm0yymD0RiAbOCot3ejWwk+IAClA+veJYUyhMnfoAM=";
+                  }
+                ];
+              };
+            };
+
             # ── the small general model on the coordinator ─────────────────
             gemma4-12b-it-q8-0 = mkSingleFileArtifact {
               maker = "Google";

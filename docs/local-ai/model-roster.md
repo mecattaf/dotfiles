@@ -10,8 +10,12 @@ commit.
 **A catalogue row is not a server.** Appearing here gives an artifact an
 identity and a provenance record. Bytes move only when `library-fetch` fills
 the NAS Library and an operator runs `local-models-borrow` on a host
-([`README.md`](README.md) walks the transaction). Exactly one row has a
-declared server: `halogen-qwen38-flash-next`, on the worker.
+([`README.md`](README.md) walks the transaction). Two rows have a declared
+server, both on the worker and never resident together:
+`halogen-qwen38-flash-next` (Halogen Flash, the everyday model, up at boot) and
+`halogen-qwen38-27b` (halogen-server's Qwen3.8-27B, the alternate an operator
+brings up with `halogen-switch qwen38-27b` and puts back with
+`halogen-switch flash`).
 
 ## Per-host wanted sets
 
@@ -20,7 +24,7 @@ assertion.
 
 | Host | Wanted artifacts | Served by |
 |---|---|---|
-| `worker` | `halogen-qwen38-flash-next` | [`../../modules/halogen.nix`](../../modules/halogen.nix) at `http://worker:8731`, always resident |
+| `worker` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b` | [`../../modules/halogen.nix`](../../modules/halogen.nix) at `http://worker:8731`; Flash resident at boot, the 27B only after `halogen-switch qwen38-27b` |
 | `coordinator` | `qwen36-35b-a3b-mtp-ud-q8-k-xl`, `gemma4-12b-it-q8-0`, `gemma4-12b-it-mtp-q8-0`, `fara15-9b-q8-0`, `fara15-9b-mmproj-bf16` | an operator's hand-run `llama-server`; nothing declarative |
 | `nas` | none; it holds the Library | — |
 
@@ -29,6 +33,7 @@ assertion.
 | Artifact id | Kind | Precision | Source | Bytes | Serving |
 |---|---|---|---|---|---|
 | `halogen-qwen38-flash-next` | model (4-bit checkpoint + quality overlay + vision tower + flat tokenizer, 9 files) | W4B `.hgn` | [`peonist-ai/halogen-qwen3.8-flash-next@ac23b1b`](https://huggingface.co/peonist-ai/halogen-qwen3.8-flash-next/tree/ac23b1b223b4e9192d27c22367d4dbacf2b595ef) (base [`Qwen/Qwen3.8-Flash-Next`](https://huggingface.co/Qwen/Qwen3.8-Flash-Next)) | 127.47 GB | Halogen Flash server on the worker; the only thing that loads these bytes |
+| `halogen-qwen38-27b` | model (dense checkpoint + flat tokenizer, 6 files) | P1W4D-D2 `.hgn` | [`peonist-ai/halogen-qwen3.8-27b@d92dc33`](https://huggingface.co/peonist-ai/halogen-qwen3.8-27b/tree/d92dc33afed1cdc073846c76e51090fa493ce74a) | 35.9 GB | `podman-halogen-qwen38-27b`, the alternate engine on `:8731`, text only |
 | `qwen36-35b-a3b-mtp-ud-q8-k-xl` | model with integrated MTP | UD-Q8_K_XL | [`unsloth/Qwen3.6-35B-A3B-MTP-GGUF@5bc3e23`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/tree/5bc3e238d916f48a861bac2f8a1990a0e9b7e98d) | 39.10 GB | hand-run `llama-server` |
 | `gemma4-12b-it-q8-0` | model | Q8_0 | [`unsloth/gemma-4-12b-it-GGUF@fc034cf`](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF/tree/fc034cfff751157913579611efad8462ac1be606) | 12.67 GB | hand-run `llama-server` |
 | `gemma4-12b-it-mtp-q8-0` | MTP head for the row above | Q8_0 | same repository and revision | 0.47 GB | passed to that `llama-server` |

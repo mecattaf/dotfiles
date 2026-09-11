@@ -193,6 +193,18 @@ let
             reasoning = true;
             cost = zeroCost;
           }
+          # The alternate engine on the same port (services.halogen.alternates,
+          # `halogen-switch qwen38-27b`). Whichever server is resident answers
+          # any model id, so this row is what pi shows while the 27B is up.
+          {
+            id = "halogen-qwen3.8-27b";
+            name = "Qwen3.8-27B (Halogen alternate, worker)";
+            contextWindow = 262144;
+            maxTokens = 16384;
+            input = [ "text" ];
+            reasoning = true;
+            cost = zeroCost;
+          }
         ];
       };
     };
