@@ -9,9 +9,10 @@ function cliamp --wraps cliamp --description "cliamp wired to the NAS Navidrome 
     set -l pass ""
 
     # URL is the coordinator's tailnet name, never localhost or `nas`: Navidrome
-    # runs on the NAS (hosts/nas/media.nix), which is Ethernet-only on the
-    # 10.77.0.0/24 private link, so the coordinator's navidrome-relay socket
-    # (hosts/coordinator/nas-client.nix) is the sole front door for every box.
+    # runs on the NAS (hosts/nas/media.nix), reached from the coordinator over
+    # the LAN (the 10.77.0.0/30 tether is retired, #264), so the coordinator's
+    # navidrome-relay socket (hosts/coordinator/nas-client.nix) is the sole
+    # front door for every box.
     test -n "$url"; or set url http://coordinator.tail8dd1.ts.net:4533
 
     set -l creds /run/agenix/navidrome-credentials
