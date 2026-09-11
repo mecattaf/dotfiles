@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# hk-resume-agents -- `hk resume`, restricted to the panes worth coming back to.
+#
+# THE RULE (Tom 2026-09-11, #355 role A): a herdr pane is resumable only when
+# it was closed while an agent harness was still running in it. A conversation
+# ended with Ctrl+C / `exit` before the kitty window went away is consciously
+# closed and never resurfaces; a bare shell left behind by a dropped ssh
+# session is not a session at all. `hk resume` lists every pane (title "~",
+# agent_status "unknown", dozens of them after a day of Mod+Return); this
+# wrapper keeps the rows whose agent_status herdr actually detected — working,
+# idle, blocked — and shows the pane's own title, which for Claude Code / codex
+# is the conversation's name.
+#
+# Rows come from `hk resume --print` (terminal_id \t label \t agent_status),
+# so the filter is pure over hk's own output; attaching goes back through
+# `hk resume --attach`, the same exec path the unfiltered picker uses. No
+# herdr-kitten change (DEFERRED.md DF-CLIENT-10).
+#
+# Used as: `kitty -e ssh -t coordinator hk-resume-agents` (home/home.nix's
+# client niri-local.kdl, Mod+Ctrl+Shift+Return). Also fine locally.
+set -euo pipefail
+
+rows="$(hk resume --print | awk -F'\t' '$3 != "unknown" && $3 != ""')"
+if [ -z "$rows" ]; then
+  echo "hk-resume-agents: no pane with a live agent to resume" >&2
+  echo "(bare shells are hidden; run \`hk resume\` for every pane)" >&2
+  sleep 2
+  exit 0
+fi
+
+if command -v fzf >/dev/null; then
+  choice="$(printf '%s\n' "$rows" | fzf --with-nth=3,2 --delimiter=$'\t' \
+    --prompt='resume agent> ' --header='status  session' || true)"
+  [ -n "$choice" ] || exit 0
+  exec hk resume --attach "$(cut -f1 <<<"$choice")"
+fi
+
+i=0
+while IFS=$'\t' read -r tid label status; do
+  i=$((i + 1)); printf '%d) [%s] %s\n' "$i" "$status" "$label"
+done <<<"$rows"
+read -r -p 'resume> ' n
+tid="$(sed -n "${n}p" <<<"$rows" | cut -f1)"
+[ -n "$tid" ] || exit 2
+exec hk resume --attach "$tid"
