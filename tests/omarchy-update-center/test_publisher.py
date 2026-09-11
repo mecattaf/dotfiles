@@ -96,7 +96,8 @@ class PublisherTests(unittest.TestCase):
         self.assertEqual(json.loads((current / "manifest.json").read_text()), manifest)
         self.assertEqual(set(manifest["devices"]), set(publisher.DEVICES))
         build_calls = [call for call in self.calls if call[:2] == ("nix", "build")]
-        self.assertEqual(len(build_calls), 2)
+        # One build per device in the constant (the Dell alone since 2026-09-11).
+        self.assertEqual(len(build_calls), len(publisher.DEVICES))
         for call in build_calls:
             self.assertIn("--no-update-lock-file", call)
             self.assertIn("?rev=" + self.revision + "#", call[-1])
@@ -167,7 +168,7 @@ class PublisherTests(unittest.TestCase):
         with patch.object(publisher, "run", side_effect=self.command), patch.object(publisher, "urlopen") as opener:
             opener.return_value.__enter__.return_value.status = 200
             publisher.keepalive(self.state)
-            self.assertEqual(opener.call_count, 2)
+            self.assertEqual(opener.call_count, len(publisher.DEVICES))
             for call in opener.call_args_list:
                 self.assertEqual(call.args[0].method, "HEAD")
                 self.assertIn("/fleet/nar/", call.args[0].full_url)

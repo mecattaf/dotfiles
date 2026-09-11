@@ -16,7 +16,11 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 
-DEVICES = ("xps", "zenbook-duo")
+# The Dell alone since 2026-09-11: the ASUS Zenbook Duo left omarchy-fleet
+# that day and lives in this tree as `client`. A publish with no --devices
+# builds every name here, so this constant had to shrink BEFORE the fleet
+# flake dropped hosts/zenbook-duo, or Omar's publish path would break.
+DEVICES = ("xps",)
 STORE_PATH = re.compile(r"/nix/store/[0-9abcdfghijklmnpqrsvwxyz]{32}-[^/\s]+")
 
 
