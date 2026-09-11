@@ -198,7 +198,9 @@ in
       # fzf prompt) becomes a popup-free BACKLIGHT toggle — brightness to zero
       # on intel_backlight, which the dock daemon copies to eDP-2 within
       # 500 ms, so one write darkens both panels; the next F10 restores the
-      # saved level (or 50% if the save file under /tmp is gone). Keys keep
+      # saved level (or 50% if the save file under /tmp is gone). The logic
+      # lives in bin/brightness (off/restore/toggle, since M-3), not inline
+      # here, so the script and the key cannot drift apart. Keys keep
       # working throughout, so there is no lockout; Mod+Shift+P keeps DPMS-all.
       #
       # XF86 twins: the daemon re-emits the Duo keyboard's Fn keys as
@@ -217,7 +219,7 @@ in
 
             binds {
                 Mod+Return hotkey-overlay-title="Terminal (herdr on coordinator)" { spawn-sh "niri msg action focus-workspace \"$(niri msg -j workspaces | jq -re 'map(select(.is_focused))[0].output as $o | map(select(.output == $o)) | max_by(.idx) | .idx')\"; exec kitty -e hk ssh --in-place coordinator"; }
-                F10 hotkey-overlay-title="Backlight off / restore" { spawn-sh "if [ \"$(brightnessctl -d intel_backlight get)\" -gt 0 ]; then brightnessctl -s -d intel_backlight set 0; else brightnessctl -r -d intel_backlight || brightnessctl -d intel_backlight set 50%; fi"; }
+                F10 hotkey-overlay-title="Backlight off / restore" { spawn-sh "~/.local/bin/brightness toggle"; }
                 XF86MonBrightnessDown allow-when-locked=true { spawn-sh "~/.local/bin/brightness down"; }
                 XF86MonBrightnessUp allow-when-locked=true { spawn-sh "~/.local/bin/brightness up"; }
                 XF86AudioMicMute allow-when-locked=true { spawn-sh "wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"; }
