@@ -2010,8 +2010,11 @@
           # The thin client (2026-09-11): Tom's seat, so niri and greetd are
           # ON and the whole coordinator-gated tier is OFF — no tally, no
           # voxtype, no herdr SERVER (the binary and `hk` are here: Mod+Return
-          # is `hk ssh --in-place coordinator`, asserted below through the
-          # generated niri-local.kdl), no wayvnc SERVER (while the coordinator
+          # is a plain `ssh -t coordinator hk-new-inplace` — a NEW herdr
+          # workspace on the coordinator, not a second view of its one
+          # existing session as the superseded `hk ssh --in-place coordinator`
+          # was — asserted below through the generated niri-local.kdl), no
+          # wayvnc SERVER (while the coordinator
           # had a display the client VIEWED it through a `coordinator (VNC)`
           # Remmina profile — asserted below as an equality, absent since the
           # 2026-09-11 flip — and no
@@ -2039,7 +2042,9 @@
                 or [ ]
             );
           assert nixpkgs.lib.hasInfix "map-to-output \"eDP-1\"" clientHome.xdg.configFile."niri-local.kdl".text;
-          assert nixpkgs.lib.hasInfix "hk ssh --in-place coordinator" clientHome.xdg.configFile."niri-local.kdl".text;
+          assert nixpkgs.lib.hasInfix "ssh -t coordinator hk-new-inplace" clientHome.xdg.configFile."niri-local.kdl".text;
+          assert !(nixpkgs.lib.hasInfix "hk ssh --in-place coordinator" clientHome.xdg.configFile."niri-local.kdl".text);
+          assert nixpkgs.lib.hasInfix "\"ssh\" \"-t\" \"coordinator\" \"hk\" \"resume\"" clientHome.xdg.configFile."niri-local.kdl".text;
           assert !(nixpkgs.lib.hasInfix "binds" coordinatorHome.xdg.configFile."niri-local.kdl".text);
           assert
             !builtins.elem 5900 (

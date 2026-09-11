@@ -185,14 +185,38 @@ in
       # top panel is the working surface, so it gets the touch; the bottom
       # panel's touch lands on the top one until #1856 merges.
       #
-      # Mod+Return: the same workspace hop as binds.kdl, then a kitty window
-      # running `hk ssh --in-place coordinator` — one herdr window INTO the
-      # coordinator's server (herdr --remote, remote keybindings), which is
-      # what "effortless kitty ssh into coordinator sessions" means on this
-      # box. `--in-place` is required under `kitty -e`: kitty exports
-      # KITTY_LISTEN_ON to the child, so a plain `hk ssh` would open a second
-      # OS window and let the first exit. `hk new` is meaningless here (no
-      # local server); Mod+Shift+Return stays the plain local fish.
+      # Mod+Return: the same workspace hop as binds.kdl, then a plain
+      # `ssh -t coordinator` running `hk-new-inplace` (dot_local/bin) — a NEW
+      # herdr workspace + root pane on the coordinator, attached in this ssh
+      # session's own tty. Superseded 2026-09-11 (Tom: "it gives me another
+      # instance of that same model[.] i want it to spawn a new terminal"):
+      # the old `kitty -e hk ssh --in-place coordinator` opened a second VIEW
+      # of herdr's one thin-client session (`herdr --remote`, its own virtual
+      # tabs) — every press landed on the SAME session, never a new one.
+      # `hk new` itself can't run here: it launches its attaching kitty window
+      # through kitty remote control, which needs a kitty socket on the box
+      # doing the launching — the coordinator, over a plain ssh tty, has none.
+      # `hk-new-inplace` is the other half of what `hk new` does when kitty IS
+      # available (`cmd_new`, herdr-kitten hk/verbs.py): `hk new --no-window`
+      # creates the workspace + pane without trying to launch anything, then
+      # `herdr terminal attach <terminal_id>` makes THIS tty the pane's
+      # surface — no kitty socket needed on the coordinator, only `herdr`
+      # itself, already there for the server. Closing the kitty window this
+      # runs in only detaches (client sleep, ssh drop, kitty quit); the
+      # workspace and its pane are the server's problem and outlive it, which
+      # is exactly what makes the resume chord below meaningful. `hk new` is
+      # still meaningless as a LOCAL verb here (no local server); Mod+Shift+
+      # Return stays the plain local fish.
+      #
+      # Mod+Ctrl+Shift+Return: binds.kdl's own resume chord (`kitty -e hk
+      # resume`) is a no-op on the client — there is no local herdr server for
+      # a local `hk resume` to query — so it is overridden the same way, into
+      # `ssh -t coordinator hk resume`: the picker over the coordinator's
+      # detached panes (terminal id / label / agent status; fzf if present, a
+      # numbered menu otherwise), execing the attach in place exactly as it
+      # does locally on the coordinator. This is how a workspace opened above
+      # and later detached (the client went to sleep mid-agent-run) comes
+      # back.
       #
       # F10: binds.kdl's "sleep monitors" popup (power-off-monitors behind an
       # fzf prompt) becomes a popup-free BACKLIGHT toggle — brightness to zero
@@ -218,7 +242,8 @@ in
             }
 
             binds {
-                Mod+Return hotkey-overlay-title="Terminal (herdr on coordinator)" { spawn-sh "niri msg action focus-workspace \"$(niri msg -j workspaces | jq -re 'map(select(.is_focused))[0].output as $o | map(select(.output == $o)) | max_by(.idx) | .idx')\"; exec kitty -e hk ssh --in-place coordinator"; }
+                Mod+Return hotkey-overlay-title="Terminal (new, on coordinator)" { spawn-sh "niri msg action focus-workspace \"$(niri msg -j workspaces | jq -re 'map(select(.is_focused))[0].output as $o | map(select(.output == $o)) | max_by(.idx) | .idx')\"; exec kitty -e ssh -t coordinator hk-new-inplace"; }
+                Mod+Ctrl+Shift+Return hotkey-overlay-title="Terminal (resume, on coordinator)" { spawn "kitty" "-e" "ssh" "-t" "coordinator" "hk" "resume"; }
                 F10 hotkey-overlay-title="Backlight off / restore" { spawn-sh "~/.local/bin/brightness toggle"; }
                 XF86MonBrightnessDown allow-when-locked=true { spawn-sh "~/.local/bin/brightness down"; }
                 XF86MonBrightnessUp allow-when-locked=true { spawn-sh "~/.local/bin/brightness up"; }
