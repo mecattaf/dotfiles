@@ -101,11 +101,22 @@ in
   };
   # Return only in controlled windows. A manual daytime Freebox connection is
   # never preempted, and a working BE550 bypass is not bounced back and forth.
+  #
+  # The boot window is one of those controlled windows, and it is polled: from
+  # 20 s after boot, every 20 s, until uplink.py's five-minute boot window
+  # closes (outside it the service is a no-op, so the timer costs nothing).
+  # On the 2026-09-11 21:00 boot NetworkManager auto-activated Freebox 3 s
+  # after the radio appeared because the BE550 6 GHz SSID was not yet in the
+  # scan results; the old single OnBootSec=2min run only brought thomas-6ghz
+  # back at 21:02:24, and Mod+Return on client failed for those two minutes.
+  # Once the radio is on thomas-6ghz the boot run returns before probing; the
+  # tick watchdog owns tier health and its failure counter must not be reset.
   systemd.services.uplink-rail-reconcile = service "boot";
   systemd.timers.uplink-rail-reconcile = {
     wantedBy = [ "timers.target" ];
     timerConfig = {
-      OnBootSec = "2min";
+      OnBootSec = "20s";
+      OnUnitActiveSec = "20s";
       AccuracySec = "1s";
     };
   };

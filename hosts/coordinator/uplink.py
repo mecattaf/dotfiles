@@ -3,6 +3,14 @@
 Run as root from the NixOS timers. Probe marks select private routing tables,
 so a healthy BE550 bypass cannot conceal a broken NAS forwarding path. Tables
 42001/42003 and rule priorities 101/103 are reserved exclusively for this unit.
+
+Modes: `tick` is the failover watchdog, `return` the 04:00 controlled return,
+`boot` the same return polled every 20 s during the first five minutes after
+boot. NetworkManager picks Freebox at boot whenever the BE550 6 GHz SSID is
+missing from the first scan (2026-09-11 21:00:27: "auto-activating connection
+'Freebox-AB3ACE'" 3 s after wlp192s0 came up; thomas-6ghz only returned with
+the old 2-minute one-shot at 21:02:24), so `boot` retries until the primary is
+associated and is a no-op once it is or once the window has closed.
 """
 import contextlib
 import fcntl
@@ -191,7 +199,9 @@ def main():
         except BlockingIOError:
             return
         if sys.argv[1:] in (["return"], ["boot"]):
-            if sys.argv[1] == "boot" and not boot_window():
+            # Boot runs repeat every 20 s: once the primary is up they must
+            # neither re-probe nor reset the watchdog's failure counter.
+            if sys.argv[1] == "boot" and (not boot_window() or active() == PRIMARY):
                 return
             controlled_return()
             save_state({})

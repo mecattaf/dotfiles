@@ -3,6 +3,7 @@ import contextlib
 import importlib.util
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -115,6 +116,27 @@ class Policy(unittest.TestCase):
              patch.object(uplink, "switch_freebox") as freebox, patch.object(uplink.time, "sleep"):
             uplink.controlled_return()
             freebox.assert_called_once()
+
+    def run_boot(self, uptime, active):
+        with tempfile.TemporaryDirectory() as state, \
+             patch.object(uplink, "STATE", Path(state)), \
+             patch.object(uplink.sys, "argv", ["uplink.py", "boot"]), \
+             patch.object(uplink, "boot_window", return_value=uptime <= 300), \
+             patch.object(uplink, "active", return_value=active), \
+             patch.object(uplink, "controlled_return") as returned, \
+             patch.object(uplink, "save_state") as saved:
+            uplink.main()
+            return returned.call_count, saved.call_count
+
+    def test_boot_repeat_is_a_noop_once_primary_is_up(self):
+        # Polled every 20 s, so it must not re-probe or reset the watchdog counter.
+        self.assertEqual(self.run_boot(40, uplink.PRIMARY), (0, 0))
+
+    def test_boot_retries_the_return_while_on_freebox(self):
+        self.assertEqual(self.run_boot(40, uplink.FREEBOX), (1, 1))
+
+    def test_boot_outside_window_leaves_freebox_alone(self):
+        self.assertEqual(self.run_boot(400, uplink.FREEBOX), (0, 0))
 
     def test_probe_rules_include_terminal_route_and_cleanup(self):
         with patch.object(uplink, "command") as cmd:
