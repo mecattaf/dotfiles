@@ -16,6 +16,43 @@ let
     "videos.internal"
     "paperless.internal"
   ];
+
+  # The artifact namespace, read from the one edit point rather than spelled
+  # out. modules/artifacts-defaults.nix owns it; a literal here would be a
+  # second place to forget when it changes, and this file already carries the
+  # `.internal` names that have no such single source.
+  artifacts = import ./artifacts-defaults.nix;
+
+  # SPLIT HORIZON FOR ARTIFACTS (2026-09-11, R-15). Exactly the same trick the
+  # `.internal` names above use, applied to a namespace that also exists in
+  # public DNS. The tailnet rung publishes <slug>.<namespace> as an
+  # unproxied record pointing at the coordinator's tailscale.com address — an
+  # address the client cannot route to, because the client's tailnet is the
+  # NAS's headscale and the two control planes share no netmap. On the LAN,
+  # though, Caddy is already listening for these names on the coordinator's own
+  # LAN interface (modules/caddy-artifacts.nix:86 opens :80 on wlp192s0), so
+  # the only thing missing was a resolver willing to say so. This is that.
+  #
+  # AdGuard Home's `*.example` matches SUBDOMAINS only, never the apex, which is
+  # what is wanted: every artifact slug resolves to 10.42.0.2 for anything
+  # asking this resolver, and the apex itself is left to public DNS.
+  #
+  # Known and accepted: off-LAN the public record still answers an address the
+  # client cannot reach. Off-LAN artifact viewing is a DEFERRED row (M-5,
+  # DF-CLIENT-8), not a gap this commit pretends to close. Also accepted: for
+  # LAN viewers this wildcard SHADOWS a slug that has been promoted to
+  # Cloudflare Pages — Caddy 404s a slug with no drop-file — which is exactly
+  # why the publish-artifact skill's rule is to keep the drop-file until the
+  # Pages copy is confirmed.
+  #
+  # This does not reopen the "no per-device AdGuard" ruling in AGENTS.md: this
+  # file is the LAN resolver, imported by the NAS alone, and the whole point is
+  # that there is exactly one of it.
+  artifactRewrite = {
+    enabled = true;
+    domain = "*.${artifacts.namespace}";
+    answer = coordinatorAddr;
+  };
 in
 {
   services.adguardhome = {
@@ -72,11 +109,15 @@ in
         protection_enabled = true;
         filtering_enabled = true;
 
-        rewrites = map (domain: {
+        # The `.internal` front doors, then the artifact wildcard. Both point at
+        # the coordinator; only the second one shadows a name that also exists
+        # in public DNS (see artifactRewrite above).
+        rewrites = (map (domain: {
           enabled = true;
           inherit domain;
           answer = coordinatorAddr;
-        }) internalNames;
+        }) internalNames)
+        ++ [ artifactRewrite ];
       };
 
       filters = [
