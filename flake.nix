@@ -1740,11 +1740,18 @@
               ignore-auto-dns = true;
             };
           # AdGuard and local host lookups agree on the media front doors.
+          # Wildcard rewrites (`*.art.mecattaf.dev`, M-4) cannot appear in
+          # /etc/hosts, so they are filtered out of the second test; the first
+          # still holds every rewrite, wildcard included, to the NAS address.
           assert builtins.all (
             r: r.answer == "10.42.0.2"
           ) nas.services.adguardhome.settings.filtering.rewrites;
           assert builtins.all (n: builtins.elem n nas.networking.hosts."10.42.0.2") (
-            map (r: r.domain) nas.services.adguardhome.settings.filtering.rewrites
+            map (r: r.domain) (
+              builtins.filter (
+                r: !(nixpkgs.lib.hasPrefix "*." r.domain)
+              ) nas.services.adguardhome.settings.filtering.rewrites
+            )
           );
           # Filtering is centralized on the NAS.
           assert !coordinator.services.adguardhome.enable;
