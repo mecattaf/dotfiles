@@ -76,6 +76,17 @@ window_title = ""
 sidebar_start_collapsed = true
 # Collapsed means GONE, not a compact rail (upstream default: "compact").
 sidebar_collapsed_mode = "hidden"
+# TABS (Tom 2026-09-11: "i really do not like Tabs"). herdr has no switch to
+# disable tabs — a workspace always has at least one — but it can hide the
+# row while there is only one, which is every workspace Mod+Return creates
+# (upstream default: false). A second tab appears only when something makes
+# one: prefix+c, `herdr tab create`, or a pane moved with --new-tab; close it
+# with prefix+shift+x (or `herdr tab close <tab_id>`) and the row goes away
+# again. Sessions live in WORKSPACES here, one per Mod+Return: prefix+w is
+# the workspace picker, prefix+g the session navigator across everything,
+# prefix+shift+n a new workspace, prefix+shift+d closes one, prefix+q
+# detaches this client and leaves the pane running.
+hide_tab_bar_when_single_tab = true
 
 [experimental]
 # Kitty graphics passthrough for attached clients is unprobed against this
