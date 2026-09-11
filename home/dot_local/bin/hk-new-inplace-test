@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# hk-new-inplace: like `hk new`, but for a tty with no kitty socket to aim at
+# (e.g. the far end of `ssh -t coordinator hk-new-inplace`). Creates a fresh
+# herdr workspace + root pane via `hk new --no-window` (no kitty dependency),
+# then execs `herdr terminal attach` on that pane's terminal_id so THIS tty
+# becomes the pane's surface.
+set -euo pipefail
+
+out="$(hk new --no-window)"
+pane_id="$(awk '{print $2}' <<<"$out")"
+if [ -z "$pane_id" ]; then
+  echo "hk-new-inplace: hk new --no-window produced no pane id: $out" >&2
+  exit 1
+fi
+terminal_id="$(herdr pane get "$pane_id" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["terminal_id"])')"
+exec herdr terminal attach "$terminal_id"
