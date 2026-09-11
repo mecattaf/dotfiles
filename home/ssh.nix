@@ -18,7 +18,8 @@
 # untouched: the flake node, deploy-rs target, agenix recipient and MagicDNS name
 # are always the real hostname, and only the typed nickname differs. The one
 # nickname that ever differed was `zenbook` -> `zenbook-duo`, dropped with that
-# host on 2026-08-30; every remaining alias is now an identity map.
+# host on 2026-08-30; the laptop came back on 2026-09-11 as `client`, and every
+# alias is an identity map.
 #
 # Deliberately NOT touched here:
 #   - ~/.ssh/known_hosts stays mutable and user-owned (GitHub, LAN IPs, …); fleet
@@ -48,6 +49,9 @@ let
     # mkBlock rewrites its HostName to the fleet identity on the coordinator —
     # see `workerRail` below for the #240 ruling behind that.
     worker = "worker";
+    # The thin client (2026-09-11). Identity map like the rest; resolves via
+    # modules/fleet-hosts.nix on the twins.
+    client = "client";
   };
 
   unknownTargets = lib.filter (t: !(registry ? ${t})) (lib.attrValues operatorAliases);

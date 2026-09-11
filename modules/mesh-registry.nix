@@ -38,8 +38,8 @@
   # box was still running the pre-rotation closure that holds the OLD tom@mesh
   # key, and authorizing that key anywhere would have undone the rotation its
   # own departure forced. It now carries the SHARED ROTATED key —
-  # byte-identical to the coordinator's row (and to the zenbook-duo's, until
-  # that host left the fleet on 2026-08-30) — because the
+  # byte-identical to the coordinator's row (and, since 2026-09-11, to the
+  # client's) — because the
   # closure that ships with this commit delivers exactly that key to the box
   # (modules/secrets.nix, ssh-user-key.age, re-minted here to include this
   # host). The old tom@mesh key is never to reappear in this file.
@@ -54,6 +54,30 @@
       "10.42.0.5"
     ];
     hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIC9xaf+UX4cjDEme+Ath3EZYLiUJla/+3QlG4TvCzwLO root@worker";
+    userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729";
+  };
+  # The ASUS Zenbook Duo UX8406MA, back as Tom's thin client on 2026-09-11
+  # after three days as Marwan's Omarchy laptop in omarchy-fleet. hostKey is
+  # the key omarchy-fleet generated offline on 2026-09-07 and delivered at its
+  # flash — read live off the box on return day and REUSED on purpose: the
+  # return is an in-place `nixos-rebuild switch --target-host`, and keeping
+  # the key is what lets the delivered tier decrypt and every other host's
+  # known_hosts stay valid (the worker's 2026-08-21 precedent). It is not the
+  # 2026-07-05 `zenbook-duo` key, which left the tree with that host and is
+  # public in git history. userKey is the shared rotated fleet key, same
+  # string as the twins.
+  #
+  # Two aliases: the name, and the DHCP lease the NAS hands this MAC
+  # (a0:b3:39:06:75:a7 → 10.42.0.16, pinned in hosts/nas/router.nix). The NAS
+  # resolver serves no DHCP client names, so the twins carry the `client` →
+  # .16 line in modules/fleet-hosts.nix and the address rides here so ssh to
+  # it stays TOFU-free.
+  client = {
+    aliases = [
+      "client"
+      "10.42.0.16"
+    ];
+    hostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAoNjOhvz1H+SO5AhDdb4Z1FZlzUC+/KlMR1Oa7V0+YM root@zenbook-duo";
     userKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINwxGJ4IgTFfdMI+A2SDJO/E3jsZ7M/5McAioO87VX8Z tom@mesh-20260729";
   };
   nas = {

@@ -633,6 +633,12 @@
         # kernel/Mesa churn) and it keeps Home Manager, because unlike the NAS it
         # is an ordinary interactive NixOS box that happens to be headless.
         worker = mkHost { hostModule = ./hosts/worker; };
+        # The ASUS Zenbook Duo, Tom's thin client since 2026-09-11 (its second
+        # tenure here; `zenbook-duo` left on 2026-08-30 and came back from
+        # omarchy-fleet under this name). Plain mkHost: it rides the unstable
+        # pin like the twins and keeps Home Manager, because it is the box Tom
+        # sits at — niri, kitty and Chrome are real here, nothing else is.
+        client = mkHost { hostModule = ./hosts/client; };
       };
 
       # deploy-rs owns HOW a selected generation reaches and activates on a node.
@@ -654,16 +660,17 @@
         nodes =
           nixpkgs.lib.genAttrs
             [
+              "client"
               "coordinator"
               "nas"
               "worker"
             ]
             (host: {
               # Canonical names, every one: `nas` and `coordinator` through the
-              # direct hosts pins, `worker` through modules/fleet-hosts.nix
-              # (its static 10.42.0.5 on the twins — the box is wired into the
-              # BE550 in another room and has no other address). Every name is
-              # a registry alias, so the host key stays pinned.
+              # direct hosts pins, `worker` and `client` through
+              # modules/fleet-hosts.nix (the worker's static 10.42.0.5, the
+              # client's NAS-pinned DHCP lease 10.42.0.16). Every name is a
+              # registry alias, so the host key stays pinned.
               hostname = host;
               sshOpts = fleetDeploySshOpts;
               profiles.system.path =
@@ -2345,6 +2352,7 @@
             coordinator = self.nixosConfigurations.coordinator.config;
             nas = self.nixosConfigurations.nas.config;
             worker = self.nixosConfigurations.worker.config;
+            client = self.nixosConfigurations.client.config;
             meshRegistry = import ./modules/mesh-registry.nix;
             # `worker` is spelled by concatenation throughout this check for one
             # narrow reason that SURVIVES its reinstatement: the ripgrep sweep at
@@ -2405,7 +2413,10 @@
               (builtins.attrNames self.deploy.nodes)
               (builtins.attrNames meshRegistry)
             ];
+            # Alphabetical, because the three sets are attrNames and the assert
+            # below is list EQUALITY: `client` sorts first.
             expectedHosts = [
+              "client"
               "coordinator"
               "nas"
               strixWorker
@@ -2455,6 +2466,40 @@
               "coordinator"
               "10.42.0.2"
             ];
+          # The client (2026-09-11): the fleet host key omarchy-fleet minted on
+          # 2026-09-07, REUSED — the return was an in-place switch, and the key
+          # is the agenix identity — never the 2026-07-05 `zenbook-duo` key
+          # that is public in git history; the shared rotated user key, same
+          # string as the twins; the name plus the NAS-pinned lease. Every
+          # host that dials `client` answers 10.42.0.16, and the client dials
+          # both twins by their static addresses without importing the twins'
+          # own hosts module (it keeps its stock loopback self-mapping).
+          assert meshRegistry.client.hostKey != "";
+          assert !(nixpkgs.lib.hasInfix "QoQJxxP" meshRegistry.client.hostKey);
+          assert meshRegistry.client.userKey == meshRegistry.coordinator.userKey;
+          assert
+            meshRegistry.client.aliases == [
+              "client"
+              "10.42.0.16"
+            ];
+          assert coordinator.networking.hosts."10.42.0.16" == [ "client" ];
+          assert worker.networking.hosts."10.42.0.16" == [ "client" ];
+          assert client.networking.hosts."10.42.0.2" == [ "coordinator" ];
+          assert client.networking.hosts."10.42.0.5" == [ strixWorker ];
+          assert client.networking.hosts."10.42.0.1" == [ "nas" ];
+          assert client.networking.hosts."127.0.0.2" == [ "client" ];
+          assert client.networking.hostName == "client";
+          # Thin client: no journal upload (hosts/nas/journal.nix admits the
+          # twins only), no tailnet join (daemon declared, no key, no
+          # autoconnect), no printing queue, agenix on.
+          assert !client.services.journald.upload.enable;
+          assert client.services.tailscale.enable;
+          assert !(client.age.secrets ? tailscale-authkey);
+          assert !(client.systemd.services ? tailscaled-autoconnect);
+          assert !client.services.printing.enable;
+          assert client.mySecrets.enable;
+          assert client.services.zenbook-duo-daemon.enable;
+          assert self.deploy.nodes.client.hostname == "client";
           assert coordinator.networking.hosts."10.42.0.1" == [ "nas" ];
           assert builtins.elem "coordinator" nas.networking.hosts."10.42.0.2";
           # #273: the TWINS' own names must NEVER resolve to loopback again.
