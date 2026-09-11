@@ -63,8 +63,8 @@
 #       lid-open  { spawn-sh "~/.local/bin/brightness restore"; }
 #   }
 #
-# (with the off/restore verbs the F10 toggle gives ~/.local/bin/brightness —
-# today that script only knows up/down). That is a compositor concern and
+# (~/.local/bin/brightness has had off/restore/toggle since M-3; F10 on the
+# client already calls `toggle`). That is a compositor concern and
 # belongs in the per-host niri slot; this file stays the logind half of the
 # answer either way.
 {

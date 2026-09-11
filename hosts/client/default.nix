@@ -62,6 +62,7 @@
     ./hardware.nix
     ./disko.nix
     ./audio.nix # pins the iContact webcam mic (on the dock) as the default source
+    ./lid.nix # the lid does nothing to logind; niri (per-host slot) owns the backlight half
     # No dedicated nixos-hardware module for the UX8406; compose the generics.
     # common-pc-laptop does NOT enable bolt — modules/common.nix does, fleet-
     # wide, and this docking host is exactly what that line is for.
@@ -185,9 +186,9 @@
 
   # The dock contract (modules/zenbook-duo-daemon.nix): keyboard on → eDP-2
   # off, backlights synced, Fn keys. kanshi's `Duo` profile covers both panels
-  # lit; with the keyboard docked only eDP-1 remains and kanshi falls through
-  # to whichever single-eDP profile matches — today that is `Laptop` (scale
-  # 1.5, written for the Dell XPS). A `DuoDocked` profile is a follow-up.
+  # lit; with the keyboard docked only eDP-1 remains and kanshi applies
+  # `DuoDocked` (home/dot_config/kanshi/config, one of the Duo's four profiles
+  # M-5 wrote — the Dell-era `Laptop` profile is gone).
   services.zenbook-duo-daemon.enable = true;
 
   # ── the Duo's own quirks, all measured on this metal by omarchy-fleet ──────
