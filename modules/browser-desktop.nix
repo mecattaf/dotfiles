@@ -9,6 +9,9 @@ in {
     environment.systemPackages = [ pkgs.browser-desktop ];
     systemd.user.services.browser-desktop = {
       description = "Shared browser desktop (Sway and WayVNC)";
+      # Keep open browser windows through configuration updates. Compositor
+      # changes take effect at reboot or an explicit service restart.
+      restartIfChanged = false;
       wantedBy = [ "default.target" ];
       serviceConfig = {
         ExecStart = "${pkgs.browser-desktop}/bin/browser-desktop";

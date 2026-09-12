@@ -14,9 +14,10 @@ let
     substituteInPlace "$out/vnc.html" \
       --replace-fail '<title>noVNC</title>' '<title>Browser desktop</title>' \
       --replace-fail 'type="image/x-icon" href="app/images/icons/novnc.ico"' 'type="image/svg+xml" href="desktop.svg"' \
-      --replace-fail '</head>' '<style>.noVNC_logo, .noVNC_logo + hr {display:none!important}</style></head>' \
+      --replace-fail '</head>' '<link rel="stylesheet" href="desktop.css"></head>' \
       --replace-fail 'mandatory: mandatory } });' 'mandatory: mandatory } }).then(() => { if (!document.getElementById("noVNC_control_bar_anchor").classList.contains("noVNC_right")) UI.toggleControlbarSide(); });'
     sed -i '/rel="apple-touch-icon"/d' "$out/vnc.html"
+    cp ${./desktop.css} "$out/desktop.css"
     cp ${./desktop.svg} "$out/desktop.svg"
     # A spectator must never request an exclusive VNC connection.
     rm -f "$out/mandatory.json"

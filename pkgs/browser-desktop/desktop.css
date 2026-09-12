@@ -1,0 +1,36 @@
+/* Keep the upstream toolbar, with a uniform 24px icon inside each 34px button. */
+.noVNC_logo,
+.noVNC_logo + hr {
+    display: none !important;
+}
+
+#noVNC_control_bar {
+    --novnc-blue: #000000;
+    --novnc-darkblue: #000000;
+    background-color: #000000;
+}
+
+#noVNC_control_bar_handle {
+    background-color: #000000;
+}
+
+:root.noVNC_connected #noVNC_control_bar_anchor.noVNC_idle {
+    opacity: 1;
+}
+
+#noVNC_control_bar > .noVNC_scroll > input.noVNC_button,
+#noVNC_mobile_buttons > input.noVNC_button {
+    box-sizing: border-box;
+    width: 34px;
+    height: 34px;
+    padding: 4px;
+    object-fit: contain;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#noVNC_control_bar .noVNC_button.noVNC_selected {
+    background-color: #000000;
+    border-color: #ffffff;
+}
