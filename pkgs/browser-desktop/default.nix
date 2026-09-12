@@ -1,5 +1,5 @@
 { symlinkJoin, runCommand, writeShellApplication, runtimeShell, bash, python3, fara-cli, sway, wayvnc,
-  novnc, google-chrome, mesa, gcr, jq, curl, systemd, util-linux, coreutils }:
+  novnc, google-chrome, bibata-cursors, mesa, gcr, jq, curl, systemd, util-linux, coreutils }:
 let
   python = python3.withPackages (p: [ p.aiohttp p.playwright p.pillow p.secretstorage (p.toPythonModule fara-cli) ]);
   runtimeInputs = [ bash sway wayvnc google-chrome jq curl systemd util-linux coreutils ];
@@ -26,6 +26,9 @@ let
     cp ${google-chrome}/share/icons/hicolor/48x48/apps/google-chrome.png "$out/chrome.png"
   '';
   environment = ''
+    export XCURSOR_THEME=Bibata-Modern-Amber
+    export XCURSOR_SIZE=24
+    export XCURSOR_PATH=${bibata-cursors}/share/icons
     export SHELL=${runtimeShell}
     export FARA_BROWSER_ASSETS=${./.}
     export FARA_BROWSER_PYTHON=${python}/bin/python

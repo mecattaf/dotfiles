@@ -16,8 +16,8 @@ The right sidebar omits the noVNC logo and uses a plain desktop favicon.
 The sidebar's Chrome icon lists the same existing profile/account mappings as
 `fara-browser profiles`. Select one and press **Open window**; a locked keyring
 instead offers **Unlock keyring** for the native desktop prompt. Menu launches
-wait until a FARA task finishes or is cancelled. Manually opened windows stay
-until the human closes them and survive subsequent FARA task cleanup.
+wait until a FARA task finishes or is cancelled. Manually opened windows survive subsequent FARA task cleanup and close when
+the manual session ends, explicitly or after five minutes without a viewer.
 A small loopback menu service reuses the CLI's profile, unlock and display checks;
 it does not expose arbitrary commands, profile paths or URLs.
 
@@ -48,13 +48,14 @@ The default on-demand service serves 9B only. Other selections do not download
 weights or change the fleet's inference services. Live validation below used 9B;
 4B and 27B have not been run in this session.
 
-The human entrance is `http://browser.internal` on BE550, using the existing
+The human entrance is `https://browser.internal` on BE550, using the existing
 Caddy and AdGuard conventions. `modules/browser-desktop.nix` declares the
 coordinator service; `modules/fara-browser-model.nix` declares loopback-only,
 on-demand inference using the already-loaned FARA weights. Neither activates
 model downloads. The physical Niri/greetd stack remains disabled.
 
-Sway starts with the lingering user manager at boot. The service waits for
+The lightweight launcher starts at boot. Sway and WayVNC start only when the
+human opens the viewer or the CLI starts a task. The service waits for
 WayVNC readiness and restarts automatically; the human viewer reconnects after
 transport interruptions. The coordinator resolves its own viewer locally,
 independent of Tailscale's `.internal` split-DNS. The client uses NAS DNS.
@@ -87,8 +88,8 @@ This is a keyring prompt, not a polkit authentication policy change.
 
 Completion/cancellation closes windows opened during the task, including new
 Chrome dialogs, and the helper viewer. Earlier Chrome windows survive. If a
-window refuses to close, the run reports `cleanup_failed`. The Sway desktop
-stays available; inference is stopped if the task started it.
+window refuses to close, the run reports `cleanup_failed`. The task stops Sway and WayVNC too unless a manual session remains; inference
+is stopped if the task started it.
 
 Runs under `~/.local/state/fara-browser/runs/<task-id>/` retain upstream screenshots
 and action records. `lifecycle.jsonl` adds takeover and cleanup events;
@@ -140,3 +141,34 @@ exclusion. A connected spectator sent no mouse, keyboard or wheel input while
 a second noVNC viewer navigated Chrome; reload preserved spectator mode and
 only the explicit Take control button requested a pause. The viewer always
 requests a shared VNC connection, preserving other connected viewers.
+
+## HTTPS and session lifetime
+
+Caddy terminates HTTPS/WSS at `https://browser.internal`; HTTP redirects there.
+WayVNC stays on loopback. Only the public Caddy root is versioned in
+`certs/browser-root.crt`. NixOS trusts it on client/coordinator, and Home Manager
+imports it into the Chrome NSS database. Preserve the private CA in coordinator's
+`/var/lib/caddy/.local/share/caddy/pki/authorities/local`; replacing that CA requires
+updating the pinned public certificate and rebuilding both machines.
+
+The Chrome panel has **End session** for immediate graceful closure. After the
+last WayVNC client disconnects, a manual session gets five minutes to reconnect,
+then systemd stops its Chrome processes, WayVNC and Sway. An active CLI task holds
+a lock and is exempt from this timer, including while paused. The lightweight
+launcher checks every five seconds. It also reclaims task windows and stops
+an automatically started model if the task process dies unexpectedly. Pre-task
+manual windows remain part of their manual session. Profiles and replay survive.
+
+Chrome launchers are separate systemd units tied to the desktop using PartOf,
+with background mode disabled. There is no compositor/WayVNC boot dependency.
+The remote seat uses Bibata Modern Amber at 24px; the human-control badge is
+hidden while spectator status and the explicit takeover button remain available.
+
+The final HTTPS build was verified in Chrome on both client and coordinator
+without certificate bypasses. A fresh FARA task completed the local form in five
+steps and stopped Chrome, its model, Sway and WayVNC. Live checks covered End
+session, cold restart, two viewers, reconnect resetting the grace period, and
+actual shutdown at an expired test deadline; contract tests cover the 300-second
+boundary. Killing a task owner with SIGKILL also reclaimed its browser and desktop.
+Task windows now cover the output as normal windows: forcing Sway fullscreen
+suppressed Chrome address-bar shortcuts on a fresh desktop.

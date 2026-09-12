@@ -6,8 +6,11 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, patch
+from contextlib import ExitStack
 import harness
 import menu
+import session
+import subprocess
 from aiohttp.test_utils import TestClient, TestServer
 
 
@@ -81,11 +84,11 @@ class ChromeMenu(unittest.IsolatedAsyncioTestCase):
             (root / 'Local State').write_text(json.dumps({'profile': {'info_cache': {
                 'Default': {'name': 'Test', 'user_name': 'test@example.test'}}}}))
             with patch.object(menu, 'RUNTIME', root), patch.object(menu, 'keyring_state', return_value='unlocked'), patch.object(menu.subprocess, 'run') as launch:
-                async with TestClient(TestServer(menu.make_app(root, 'http://browser.internal'))) as client:
-                    headers = {'Origin': 'http://browser.internal', 'X-Fara-Control': '1'}
+                async with TestClient(TestServer(menu.make_app(root, 'https://browser.internal'))) as client:
+                    headers = {'Origin': 'https://browser.internal', 'X-Fara-Control': '1'}
                     listing = await (await client.get('/profiles')).json()
                     self.assertEqual(listing['profiles'][0]['google_account'], 'test@example.test')
-                    for invalid_headers in ({}, {'Origin': 'http://other.test', 'X-Fara-Control': '1'}, {'Origin': 'http://browser.internal'}):
+                    for invalid_headers in ({}, {'Origin': 'http://other.test', 'X-Fara-Control': '1'}, {'Origin': 'https://browser.internal'}):
                         response = await client.post('/open', json={'profile': 'Default'}, headers=invalid_headers)
                         self.assertEqual(response.status, 403)
                     for body in ({'profile': '../Default'}, {'profile': 'Missing'}, []):
@@ -98,6 +101,59 @@ class ChromeMenu(unittest.IsolatedAsyncioTestCase):
                             response = await client.post('/' + action, json={'profile': 'Default'}, headers=headers)
                             self.assertEqual(response.status, 409)
                     launch.assert_not_called()
+
+
+class SessionCleanup(unittest.TestCase):
+    def test_failed_start_does_not_leave_a_restart_loop(self):
+        with tempfile.TemporaryDirectory() as root, patch.object(session, 'RUNTIME', Path(root)), patch.object(session.subprocess, 'run', side_effect=[subprocess.CalledProcessError(1, 'systemctl'), None]) as command:
+            with self.assertRaises(subprocess.CalledProcessError):
+                session.start_desktop()
+            self.assertEqual(command.call_args_list[-1].args[0],
+                             ['systemctl','--user','stop','browser-desktop.service'])
+
+    def test_grace_reconnect_active_task_and_abandoned_task(self):
+        with tempfile.TemporaryDirectory() as root, ExitStack() as stack:
+            root = Path(root)
+            stack.enter_context(patch.object(menu, 'RUNTIME', root))
+            for name, filename in [('MANUAL','manual-session'), ('NO_VIEWERS','no-viewers-since'),
+                                   ('TASK_LEASE','task-session.json'), ('TASK_MODEL','task-model-started')]:
+                stack.enter_context(patch.object(menu, name, root/filename))
+            stop = stack.enter_context(patch.object(menu, 'stop_desktop'))
+            command = stack.enter_context(patch.object(menu.subprocess, 'run', return_value=SimpleNamespace(stdout='[]')))
+            clock = stack.enter_context(patch.object(menu.time, 'monotonic', return_value=1000))
+            (root/'environment').touch(); menu.MANUAL.touch()
+            menu.reap_abandoned_task()
+            clock.return_value=1299; menu.reap_abandoned_task(); stop.assert_not_called()
+            command.return_value.stdout='[{"id":"viewer"}]'
+            menu.reap_abandoned_task(); self.assertFalse(menu.NO_VIEWERS.exists())
+            command.return_value.stdout='[]'
+            clock.return_value=1400; menu.reap_abandoned_task()
+            clock.return_value=1700
+            with menu.desktop_operation():
+                menu.reap_abandoned_task()
+            stop.assert_not_called(); self.assertFalse(menu.NO_VIEWERS.exists())
+            menu.reap_abandoned_task()
+            clock.return_value=2000; menu.reap_abandoned_task(); stop.assert_called_once()
+            stop.reset_mock(); menu.MANUAL.unlink()
+            menu.reap_abandoned_task(); stop.assert_called_once()
+
+    def test_abandoned_task_preserves_baseline_windows(self):
+        with tempfile.TemporaryDirectory() as root, ExitStack() as stack:
+            root = Path(root)
+            for name, value in [('RUNTIME',root), ('MANUAL',root/'manual'),
+                                ('NO_VIEWERS',root/'idle'), ('TASK_LEASE',root/'task'), ('TASK_MODEL',root/'model')]:
+                stack.enter_context(patch.object(menu, name, value))
+            (root/'environment').touch(); menu.MANUAL.touch()
+            menu.TASK_LEASE.write_text(json.dumps({'baseline':[1], 'unit':'browser-chrome-task-test.service'}))
+            stack.enter_context(patch.object(menu, 'session_environment', return_value={'SWAYSOCK':'test'}))
+            stack.enter_context(patch.object(menu, 'windows', side_effect=[{1:{},2:{}}, {1:{}}]))
+            command=stack.enter_context(patch.object(menu.subprocess, 'run', return_value=SimpleNamespace(stdout='[{"id":"viewer"}]')))
+            stop=stack.enter_context(patch.object(menu, 'stop_desktop'))
+            menu.reap_abandoned_task()
+            calls=[call.args[0] for call in command.call_args_list]
+            self.assertIn(['swaymsg','-s','test','[con_id=2] kill'],calls)
+            self.assertNotIn(['swaymsg','-s','test','[con_id=1] kill'],calls)
+            self.assertFalse(menu.TASK_LEASE.exists()); stop.assert_not_called()
 
 
 if __name__ == '__main__':

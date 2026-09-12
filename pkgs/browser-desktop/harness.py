@@ -23,6 +23,7 @@ import time
 import urllib.request
 import urllib.error
 from urllib.parse import urlparse
+from session import MANUAL, TASK_LEASE, TASK_MODEL, start_desktop, stop_desktop, launch_chrome, desktop_status
 
 RUNTIME = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / "browser-desktop"
 RUNS = Path.home() / ".local/state/fara-browser/runs"
@@ -76,7 +77,7 @@ def request_unlock():
     subprocess.Popen([os.environ["FARA_BROWSER_PROMPTER"]], env=session_environment(),
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     time.sleep(.2)
-    print(json.dumps({"status": "awaiting_keyring_unlock", "viewer": "http://browser.internal",
+    print(json.dumps({"status": "awaiting_keyring_unlock", "viewer": "https://browser.internal",
                       "message": "Enter the keyring password in the shared desktop."}), flush=True)
     # Prompt objects belong to one D-Bus connection. The established library
     # keeps it alive until the human completes or dismisses the native dialog.
@@ -278,7 +279,7 @@ class Runner:
         self.owned = set()
         self.desktop_env = session_environment()
         self.outcome = "interrupted"
-        self.chrome_launcher = None
+        self.chrome_unit = None
         self.model_started = False
         self.lock = asyncio.Lock()
 
@@ -422,6 +423,8 @@ class Runner:
                     if self.args.endpoint != "http://127.0.0.1:8732/v1" or self.args.model != "Fara1.5-9B":
                         raise RuntimeError("The selected local FARA endpoint is unavailable. Automatic startup is configured only for Fara1.5-9B at port 8732.")
                     self.model_started = command("systemctl", "--user", "is-active", "fara-browser-model", check=False) != "active"
+                    if self.model_started:
+                        TASK_MODEL.touch(mode=0o600)
                     command("systemctl", "--user", "start", "fara-browser-model")
                     self.phase = "loading_model"
                     self.record("loading_model")
@@ -440,11 +443,9 @@ class Runner:
                 if self.args.model not in available_models:
                     raise RuntimeError(f"Requested model {self.args.model!r} is not advertised by this endpoint: {available_models}")
             self.baseline = set(windows(self.desktop_env))
-            self.chrome_launcher = subprocess.Popen([os.environ["FARA_BROWSER_CHROME"],
-                "--ozone-platform=wayland", "--user-data-dir=" + str(self.args.chrome_data_dir),
-                "--no-first-run", "--no-default-browser-check",
-                "--profile-directory=" + self.args.profile, "--new-window", "about:blank"],
-                env=self.desktop_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.chrome_unit = f"browser-chrome-task-{os.getpid()}.service"
+            write_json(TASK_LEASE, {"baseline": sorted(self.baseline), "unit": self.chrome_unit})
+            launch_chrome(self.args.chrome_data_dir, self.args.profile, self.desktop_env, unit=self.chrome_unit)
             for _ in range(100):
                 self.owned = set(windows(self.desktop_env)) - self.baseline
                 if self.owned: break
@@ -453,8 +454,11 @@ class Runner:
                 raise RuntimeError("Could not identify exactly one new task window")
             window_id = next(iter(self.owned))
             command("swaymsg", "-s", self.desktop_env["SWAYSOCK"], f"[con_id={window_id}] focus")
-            command("swaymsg", "-s", self.desktop_env["SWAYSOCK"], f"[con_id={window_id}] floating disable")
-            command("swaymsg", "-s", self.desktop_env["SWAYSOCK"], f"[con_id={window_id}] fullscreen enable")
+            # Sway-forced fullscreen hides Chrome's address bar and suppresses
+            # its navigation shortcuts. Cover the output with a normal window.
+            command("swaymsg", "-s", self.desktop_env["SWAYSOCK"], f"[con_id={window_id}] floating enable")
+            command("swaymsg", "-s", self.desktop_env["SWAYSOCK"], f"[con_id={window_id}] resize set width 1440 px height 900 px")
+            command("swaymsg", "-s", self.desktop_env["SWAYSOCK"], f"[con_id={window_id}] move position 0 0")
             async with async_playwright() as playwright:
                 self.browser = await playwright.chromium.launch(
                     executable_path=os.environ["FARA_BROWSER_CHROME"], headless=True,
@@ -510,7 +514,7 @@ class Runner:
             with contextlib.suppress(Exception): await self.env.close()
             # Task windows are tracked independently of Chrome's shared process.
             # Never kill the entire browser or touch windows predating this run.
-            if self.chrome_launcher:
+            if self.chrome_unit:
                 self.owned.update(set(windows(self.desktop_env)) - self.baseline)
             for window_id in self.owned:
                 command("swaymsg", "-s", self.desktop_env["SWAYSOCK"], f"[con_id={window_id}] kill", check=False)
@@ -522,14 +526,10 @@ class Runner:
             if remaining:
                 self.outcome = "cleanup_failed"
                 self.record("cleanup_failed", window_ids=sorted(remaining))
-            elif self.chrome_launcher and self.chrome_launcher.poll() is None:
-                # This Popen is either our new browser or a short-lived handoff
-                # to a browser already running. Never signal an existing PID.
-                try:
-                    await asyncio.to_thread(self.chrome_launcher.wait, timeout=2)
-                except subprocess.TimeoutExpired:
-                    self.chrome_launcher.terminate()
-                    await asyncio.to_thread(self.chrome_launcher.wait, timeout=5)
+            elif self.chrome_unit:
+                command("systemctl", "--user", "stop", self.chrome_unit, check=False)
+            if not remaining:
+                TASK_LEASE.unlink(missing_ok=True)
             context.checkpoint()
             await agent.close(context)
             self.phase = self.outcome
@@ -576,7 +576,7 @@ def main():
     run.add_argument("--task-file", type=Path, required=True)
     run.add_argument("--id")
     run.add_argument("--max-steps", type=int, default=30)
-    run.add_argument("--viewer-url", default="http://browser.internal")
+    run.add_argument("--viewer-url", default="https://browser.internal")
     run.add_argument("--endpoint", default="http://127.0.0.1:8732/v1")
     run.add_argument("--model", default="Fara1.5-9B", help="Served model ID for Fara 1.5 4B, 9B or 27B; must match /v1/models")
     run.add_argument("--chrome-data-dir", type=Path, default=Path.home()/".config/google-chrome")
@@ -587,9 +587,9 @@ def main():
     args = parser.parse_args()
     if args.command in ("keyring", "unlock"):
         if args.command == "unlock" and keyring_state() == "locked":
-            session_environment()
+            start_desktop(manual=True)
             request_unlock()
-        print(json.dumps({"keyring": keyring_state(), "viewer": "http://browser.internal"}))
+        print(json.dumps({"keyring": keyring_state(), "viewer": "https://browser.internal"}))
         return
     if args.command == "profiles":
         active = None
@@ -617,7 +617,7 @@ def main():
             print(exc.read().decode(), file=sys.stderr)
             return 1
         except OSError:
-            print(json.dumps({"status": "idle", "keyring": keyring_state(), "viewer": "http://browser.internal"}))
+            print(json.dumps({"status": "idle", **desktop_status(), "keyring": keyring_state(), "viewer": "https://browser.internal"}))
             if args.command != "status": raise
         return
     if not (1 <= args.max_steps <= 200): parser.error("--max-steps must be between 1 and 200")
@@ -629,21 +629,32 @@ def main():
         parser.error("FARA inference must stay local")
     if keyring_state() != "unlocked":
         if keyring_state() == "locked":
+            start_desktop(manual=True)
             request_unlock()
-        print(json.dumps({"status": "needs_keyring_unlock", "viewer": "http://browser.internal",
+        print(json.dumps({"status": "needs_keyring_unlock", "viewer": "https://browser.internal",
                           "message": "Unlock the desktop keyring in the browser window, then rerun this command."}))
         return 3
     RUNTIME.mkdir(parents=True, exist_ok=True)
     with (RUNTIME / "task.lock").open("w") as lock:
         try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError: parser.error("Another FARA task is running")
-        runner = Runner(args)
+        start_desktop()
+        runner = None
         async def execute():
             task = asyncio.current_task()
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGTERM, signal.SIGINT): loop.add_signal_handler(sig, task.cancel)
             await runner.run()
-        asyncio.run(execute())
+        try:
+            runner = Runner(args)
+            asyncio.run(execute())
+        finally:
+            if runner and runner.model_started:
+                command("systemctl", "--user", "stop", "fara-browser-model", check=False)
+            TASK_MODEL.unlink(missing_ok=True)
+            if not MANUAL.exists():
+                stop_desktop()
+                TASK_LEASE.unlink(missing_ok=True)
         return 0 if runner.outcome == "completed" else 1
 
 

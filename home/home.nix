@@ -112,6 +112,7 @@ let
 in
 {
   imports = [
+    ./browser-trust.nix
     ./ai-memory.nix
     ./client-apps.nix
     ./harness-records.nix
@@ -419,7 +420,7 @@ in
       package = pkgs.mactahoe-icon-theme;
     };
     cursorTheme = {
-      name = "Bibata-Modern-Classic";
+      name = if hostName == "coordinator" then "Bibata-Modern-Amber" else "Bibata-Modern-Classic";
       package = pkgs.bibata-cursors;
     };
     # Photos gets a plain bookmark, not an XDG dir (see xdg.userDirs below):

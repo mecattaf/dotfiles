@@ -2041,6 +2041,7 @@
           # look identical from either side alone.
           # The separate browser-only Sway desktop is a coordinator user service.
           assert (cfgOf "coordinator").systemd.user.services ? browser-desktop;
+          assert (cfgOf "coordinator").systemd.user.services.browser-desktop.wantedBy == [ ];
           assert (cfgOf "coordinator").systemd.user.services.fara-browser-model.wantedBy == [ ];
           assert builtins.all (h: !((cfgOf h).systemd.user.services ? browser-desktop)) [ "client" "worker" "nas" ];
           assert !(workerHome.systemd.user.services ? wayvnc);

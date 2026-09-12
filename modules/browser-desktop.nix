@@ -12,7 +12,6 @@ in {
       # Keep open browser windows through configuration updates. Compositor
       # changes take effect at reboot or an explicit service restart.
       restartIfChanged = false;
-      wantedBy = [ "default.target" ];
       serviceConfig = {
         ExecStart = "${pkgs.browser-desktop}/bin/browser-desktop";
         ExecStartPost = pkgs.writeShellScript "browser-desktop-ready" ''
@@ -47,7 +46,13 @@ in {
       };
       unitConfig.ConditionUser = "tom";
     };
+    networking.firewall.interfaces.wlp192s0.allowedTCPPorts = [ 443 ];
+    networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 443 ];
     services.caddy.virtualHosts."http://browser.internal".extraConfig = ''
+      redir https://browser.internal{uri} 308
+    '';
+    services.caddy.virtualHosts."https://browser.internal".extraConfig = ''
+      tls internal
       # Share Caddy's existing listener and BE550/tailnet firewall policy.
       # A separate bind here would overlap its other :80 virtual hosts.
       handle /vnc {

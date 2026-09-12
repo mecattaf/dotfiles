@@ -14,7 +14,7 @@
 #
 # Ephemerality lives ONLY here + CF metadata; everything else is declarative.
 # v1 posture:
-#   - auto_https off, plain HTTP :80 on the tailnet (WireGuard already encrypts
+#   - auto_https disable_redirects, plain HTTP :80 on the tailnet (WireGuard already encrypts
 #     transport; off-tailnet resolvers get an unroutable 100.x). TLS via a
 #     caddy-dns/cloudflare DNS-01 wildcard is the documented follow-up.
 #   - PUBLIC live artifacts need the cloudflared tunnel back — re-minting that
@@ -59,7 +59,7 @@ in
   services.caddy = {
     enable = true;
     globalConfig = ''
-      auto_https off
+      auto_https disable_redirects
     '';
     # The placeholder tmpfile below guarantees the glob always matches — Caddy
     # treats a zero-match import glob as a config error.

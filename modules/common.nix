@@ -8,6 +8,7 @@
 # anything a host or nixos-hardware module may override.
 {
   imports = [
+    ./browser-trust.nix
     ./headless.nix # opt-in appliance profile without home-manager or desktop
     ./display.nix # myDisplay.enable — does a human sit at this box (default true)
     ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)

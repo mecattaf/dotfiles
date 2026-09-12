@@ -65,8 +65,11 @@ loaned copy, and only when the set it computed has not changed underneath it.
 
 **Shared browser desktop (2026-09-12).** Coordinator keeps `myDisplay.enable =
 false`: no physical Niri/greetd session. `modules/browser-desktop.nix` supplies a
-separate headless Sway seat with WayVNC on loopback and stock noVNC served by
-Caddy at `http://browser.internal` on BE550. This exception is coordinator-only;
+separate on-demand headless Sway seat with WayVNC on loopback and stock noVNC
+served by Caddy at `https://browser.internal` on BE550. The lightweight launcher
+starts at boot; Sway, WayVNC and Chrome do not. Manual sessions stop five minutes
+after the last viewer disconnects; active FARA tasks keep their session alive
+and release it on completion/cancellation unless a manual session remains. This exception is coordinator-only;
 worker and NAS remain without compositor/VNC. `fara-browser` uses Microsoft's
 pinned FARA loop against that noVNC canvas, ordinary installed Chrome profiles,
 and one task at a time. The house `fara-browser` skill documents profile/account

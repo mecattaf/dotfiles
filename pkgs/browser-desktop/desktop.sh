@@ -18,6 +18,7 @@ font monospace 10
 default_border pixel 1
 focus_follows_mouse no
 seat seat0 fallback true
+seat * xcursor_theme $XCURSOR_THEME $XCURSOR_SIZE
 input type:keyboard {
   xkb_layout us
   xkb_options caps:none

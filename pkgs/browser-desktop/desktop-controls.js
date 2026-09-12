@@ -6,6 +6,32 @@ UI.updateDesktopName = (event) => {
     document.title = 'Browser desktop';
 };
 if (!new URLSearchParams(location.search).has('agent')) {
+    // Only initial entry or an explicit Connect starts a manual session.
+    // Transport reconnects after End session must not restart the desktop.
+    let mayStartDesktop = true;
+    const connect = UI.connect.bind(UI);
+    UI.connect = async (...args) => {
+        try {
+            const response = await fetch('/desktop/profiles', {cache:'no-store'});
+            if (!response.ok) throw Error('Desktop status unavailable');
+            const state = await response.json();
+            if (!state.desktop_running) {
+                if (!mayStartDesktop) {
+                    UI.cancelReconnect();
+                    UI.showStatus('Session ended. Choose Start desktop to begin again.', 'normal');
+                    UI.openControlbar(); return;
+                }
+                const start = await fetch('/desktop/start', {method:'POST', headers:{'X-Fara-Control':'1'}});
+                if (!start.ok) throw Error('Unable to start desktop');
+            }
+            mayStartDesktop = false;
+            connect(...args);
+        } catch (error) { UI.showStatus(error.message, 'error'); }
+    };
+    const connectButton = document.getElementById('noVNC_connect_button');
+    if (connectButton.tagName === 'INPUT') connectButton.value = 'Start desktop';
+    else connectButton.textContent = 'Start desktop';
+    connectButton.addEventListener('click', () => { mayStartDesktop = true; }, {capture:true});
     // Fail closed on first connect/reconnect and when control status is unavailable.
     // Route the stock setting through the same ownership decision, including its
     // keyboard/clipboard controls, so it cannot accidentally end spectator mode.
@@ -16,7 +42,8 @@ if (!new URLSearchParams(location.search).has('agent')) {
         originalViewOnly();
     };
     const controls = document.createElement('div');
-    controls.style.cssText = 'position:fixed;right:12px;top:12px;z-index:10000;display:flex;align-items:center;gap:8px;background:#313131;color:white;padding:8px 12px;font:14px sans-serif';
+    controls.id = 'desktop-control-status';
+    controls.style.cssText = 'position:fixed;right:12px;top:12px;z-index:10000;display:flex;align-items:center;gap:8px;background:#000000;color:white;padding:8px 12px;font:14px sans-serif';
     const label = document.createElement('span');
     label.id = 'desktop-ownership'; label.textContent = 'Connecting…';
     const button = document.createElement('button'); button.id = 'desktop-take-control';
@@ -43,8 +70,10 @@ if (!new URLSearchParams(location.search).has('agent')) {
             const profile = state.profile_at_start;
             const identity = profile ? ` · ${profile.name} (${profile.directory}) · ${profile.google_account || 'No Google account recorded'}` : '';
             label.textContent = state.phase === 'pausing' ? 'Stopping FARA…' : human ? 'You have control' : `Spectating · ${state.task_id}${identity}`;
+            controls.style.display = human ? 'none' : 'flex';
             button.hidden = human; button.disabled = human || state.phase === 'pausing';
         } catch {
+            controls.style.display = 'flex';
             viewOnly = true; UI.updateViewOnly();
             label.textContent = 'Spectating · control status unavailable';
             button.hidden = false; button.disabled = true;
@@ -70,18 +99,22 @@ if (!new URLSearchParams(location.search).has('agent')) {
         <select id="chrome-profile" style="width:100%"><option value="">Choose a profile…</option></select>
         <p><button id="chrome-open" disabled>Open window</button>
         <button id="chrome-unlock" hidden>Unlock keyring</button></p>
+        <p><button id="desktop-end">End session</button></p>
+        <p style="white-space:normal">Closes five minutes after the last viewer disconnects. FARA tasks keep running.</p>
         <p id="chrome-status" role="status" style="white-space:normal;overflow-wrap:anywhere;margin-bottom:0"></p>`;
     wrapper.append(panel);
     bar.querySelector('hr').after(chrome, wrapper);
     const select = panel.querySelector('select');
     const open = panel.querySelector('#chrome-open');
     const unlock = panel.querySelector('#chrome-unlock');
+    const end = panel.querySelector('#desktop-end');
     const status = panel.querySelector('#chrome-status');
     let snapshot = null, pending = false, stateMessage = false;
     function buttons() {
         open.disabled = pending || !snapshot || snapshot.busy || snapshot.keyring !== 'unlocked' || !select.value;
         unlock.hidden = snapshot?.keyring !== 'locked';
         unlock.disabled = pending || snapshot?.busy;
+        end.disabled = pending || !snapshot?.desktop_running || snapshot?.busy;
     }
     async function refresh() {
         try {
@@ -121,17 +154,24 @@ if (!new URLSearchParams(location.search).has('agent')) {
     async function submit(action) {
         pending = true; buttons();
         stateMessage = false;
-        status.textContent = action === 'open' ? 'Opening Chrome…' : 'Requesting keyring unlock…';
+        status.textContent = action === 'end' ? 'Closing session…' : action === 'open' ? 'Opening Chrome…' : 'Requesting keyring unlock…';
         try {
             const response = await fetch('/desktop/' + action, {method:'POST',
                 headers:{'Content-Type':'application/json','X-Fara-Control':'1'},
                 body:JSON.stringify({profile:select.value})});
             const result = await response.json();
             if (!response.ok) throw Error(result.error || 'The request could not be completed.');
-            status.textContent = action === 'open' ? `Opened ${result.profile.name} (${result.profile.directory}).` : 'Enter the keyring password in the desktop dialog.';
+            if (action === 'end') {
+                UI.inhibitReconnect = true;
+                if (UI.rfb) UI.disconnect();
+                UI.cancelReconnect();
+            }
+            else if (!UI.connected) UI.connect();
+            status.textContent = action === 'end' ? 'Session ended.' : action === 'open' ? `Opened ${result.profile.name} (${result.profile.directory}).` : 'Enter the keyring password in the desktop dialog.';
         } catch (error) { status.textContent = error.message; }
         finally { pending = false; await refresh(); }
     }
+    end.onclick = () => submit('end');
     open.onclick = () => submit('open'); unlock.onclick = () => submit('unlock');
     setInterval(() => { if (panel.classList.contains('noVNC_open') && !pending) refresh(); }, 3000);
 }

@@ -6,7 +6,7 @@ description: Delegate a bounded task requiring a live, logged-in Google Chrome b
 # FARA browser tasks
 
 Run `fara-browser` on **coordinator**, through the existing SSH/Herdr terminal.
-The human opens **http://browser.internal** on the BE550 network. One task runs
+The human opens **https://browser.internal** on the BE550 network. One task runs
 at a time. This uses Microsoft's pinned Fara15Agent with its normal prompt,
 action vocabulary and trajectory writer; the environment is stock noVNC.
 
@@ -59,11 +59,12 @@ another size does not download weights or reconfigure the fleet.
 
 ## Takeover, completion and inspection
 
-The human can open `http://browser.internal` at any time to silently spectate.
+The human can open `https://browser.internal` at any time to silently spectate.
 During FARA control, the viewer shows the task/profile/account and disables mouse,
 keyboard and clipboard input. Opening or closing it does not interrupt the run.
 The sidebar's Chrome menu opens existing profiles when no FARA task is active;
-those manual windows persist until closed by the human.
+manual sessions stop five minutes after the last viewer disconnects, or immediately
+with **End session**. Active FARA tasks are exempt from this disconnect timer.
 
 The human's **Take control** button pauses the run and disconnects FARA's viewer.
 The equivalent CLI is `fara-browser pause`. When the human finishes:
@@ -87,13 +88,15 @@ error and cancellation outcomes are not success. If an external action's outcome
 is uncertain, inspect rather than replaying the whole task blindly.
 
 Completion closes only task-owned Chrome windows/tabs and FARA's helper browser.
-Existing profiles and the desktop keyring persist. Report any cleanup failure.
+Sway/WayVNC also stop unless a manual session remains. Existing profiles, replay
+and the desktop keyring persist. Report any cleanup failure. The launcher reclaims
+abandoned task windows if the owning CLI dies; never leave an unmonitored task.
 
 ## Other visual controllers
 
 Codex or another approved visual controller can use the same stock noVNC page.
 First inspect `fara-browser status` and pause any FARA run; wait for `paused` and
-the viewer's **You have control** state. Drive that viewer's canvas and keyboard.
+the viewer to have input enabled (`window.faraRfb().viewOnly === false`). Drive that viewer's canvas and keyboard.
 Its `window.faraRfb().toDataURL()` exposes the full desktop image; account-bearing
 Chrome does not need remote debugging. Map screenshot coordinates to the canvas
 bounds if the human viewer is scaled. Do not run two controllers concurrently.
