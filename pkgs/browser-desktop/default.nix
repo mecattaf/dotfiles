@@ -11,7 +11,18 @@ let
     rm "$out/vnc.html"
     cp ${novnc}/share/webapps/novnc/vnc.html "$out/vnc.html"
     substituteInPlace "$out/vnc.html" --replace-fail '</body>' '<script type="module" src="./desktop-controls.js"></script></body>'
+    substituteInPlace "$out/vnc.html" \
+      --replace-fail '<title>noVNC</title>' '<title>Browser desktop</title>' \
+      --replace-fail 'type="image/x-icon" href="app/images/icons/novnc.ico"' 'type="image/svg+xml" href="desktop.svg"' \
+      --replace-fail '</head>' '<style>.noVNC_logo, .noVNC_logo + hr {display:none!important}</style></head>' \
+      --replace-fail 'mandatory: mandatory } });' 'mandatory: mandatory } }).then(() => { if (!document.getElementById("noVNC_control_bar_anchor").classList.contains("noVNC_right")) UI.toggleControlbarSide(); });'
+    sed -i '/rel="apple-touch-icon"/d' "$out/vnc.html"
+    cp ${./desktop.svg} "$out/desktop.svg"
+    # A spectator must never request an exclusive VNC connection.
+    rm -f "$out/mandatory.json"
+    echo '{"shared":true}' > "$out/mandatory.json"
     cp ${./desktop-controls.js} "$out/desktop-controls.js"
+    cp ${google-chrome}/share/icons/hicolor/48x48/apps/google-chrome.png "$out/chrome.png"
   '';
   environment = ''
     export SHELL=${runtimeShell}
@@ -35,9 +46,16 @@ let
       exec "$FARA_BROWSER_PYTHON" "$FARA_BROWSER_ASSETS/harness.py" "$@"
     '';
   };
+  menu = writeShellApplication {
+    name = "browser-desktop-menu";
+    inherit runtimeInputs;
+    text = environment + ''
+      exec "$FARA_BROWSER_PYTHON" "$FARA_BROWSER_ASSETS/menu.py" "$@"
+    '';
+  };
 in symlinkJoin {
   name = "browser-desktop";
-  paths = [ desktop cli ];
+  paths = [ desktop cli menu ];
   passthru = {
     inherit python;
     webRoot = viewer;

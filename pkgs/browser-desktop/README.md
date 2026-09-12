@@ -9,8 +9,17 @@ account-bearing Chrome browser.
 `browser-desktop` is Bash packaged by Nix. `fara-browser` is a CLI adapter around
 the pinned upstream `Fara15Agent.run()` and `DataPointWriter`, with session
 lifecycle and takeover. noVNC's complete upstream interface is retained; the
-only injected UI is a small Take control button. There is no replacement RFB
+injected UI adds control status, Take control and a Chrome menu in the sidebar. There is no replacement RFB
 client, framebuffer, model loop, chat application or MCP server.
+
+The right sidebar omits the noVNC logo and uses a plain desktop favicon.
+The sidebar's Chrome icon lists the same existing profile/account mappings as
+`fara-browser profiles`. Select one and press **Open window**; a locked keyring
+instead offers **Unlock keyring** for the native desktop prompt. Menu launches
+wait until a FARA task finishes or is cancelled. Manually opened windows stay
+until the human closes them and survive subsequent FARA task cleanup.
+A small loopback menu service reuses the CLI's profile, unlock and display checks;
+it does not expose arbitrary commands, profile paths or URLs.
 
 ## Operator commands
 
@@ -28,7 +37,9 @@ fara-browser cancel
 Profile listings report Chrome's directory, display name and recorded Google
 account, plus the active FARA task. Run status reports the profile/account at
 launch and its current recorded metadata. These do not enumerate website
-sessions: verify the intended website identity visually before acting.
+sessions: verify the intended website identity visually before acting. The selected
+profile/account metadata also enters FARA’s task context automatically; the CLI
+opens the selected profile before delegating to the upstream agent.
 
 The adapter uses the same Fara 1.5 agent for 4B, 9B and 27B. Select an already
 served size with `--model MODEL_ID --endpoint http://127.0.0.1:PORT/v1`; the ID
@@ -54,6 +65,13 @@ already on another display, the CLI refuses to redirect or terminate them.
 Close that browser normally before moving its profiles into Sway.
 
 ## Ownership, unlock and cleanup
+
+Opening `browser.internal` during a run is silent spectator mode: it displays
+live pixels, task ID and the recorded Chrome profile/account with mouse, keyboard
+and clipboard input disabled. Loading or closing the viewer does not pause FARA.
+Reconnects begin with input disabled until ownership is confirmed. The stock
+view-only setting follows ownership and cannot override it. **Take control** is
+the explicit transition to human input.
 
 Take control cancels inference, disconnects the agent's RFB viewer and then
 allows human input. Resume supplies a fresh screenshot and the operator's
@@ -115,3 +133,10 @@ automatic restart and viewer reconnection. A further FARA run through the deploy
 `browser.internal` entrance completed the Unicode form task in nine steps, removed
 its task window and stopped its on-demand model. The desktop and Herdr remain up.
 An idle desktop can be empty: the task opens its selected Chrome profile.
+
+The Chrome sidebar was validated against a disposable real Chrome profile.
+Regression checks cover origin validation, unknown profiles and task-lock
+exclusion. A connected spectator sent no mouse, keyboard or wheel input while
+a second noVNC viewer navigated Chrome; reload preserved spectator mode and
+only the explicit Take control button requested a pause. The viewer always
+requests a shared VNC connection, preserving other connected viewers.

@@ -150,7 +150,7 @@ class NoVNCEnvironment:
 
     async def open(self):
         self.page = await self.runner.browser.new_page(viewport={"width": 1440, "height": 900}, device_scale_factor=1)
-        await self.page.goto(self.runner.args.viewer_url.rstrip("/") + "/novnc/vnc.html?autoconnect=1&path=/vnc&resize=off&agent=1")
+        await self.page.goto(self.runner.args.viewer_url.rstrip("/") + "/novnc/vnc.html?autoconnect=1&path=/vnc&resize=off&agent=1&view_only=0")
         await self.page.add_style_tag(content="#noVNC_control_bar_anchor {display:none!important}")
         await self.page.wait_for_function("document.documentElement.classList.contains('noVNC_connected')", timeout=15000)
         await asyncio.sleep(.25)
@@ -362,6 +362,9 @@ class Runner:
         self.directory.mkdir(parents=True, exist_ok=False)
         task = self.args.task_file.read_text()
         (self.directory / "task.txt").write_text(task)
+        task = ("Selected Chrome profile (recorded browser metadata, not proof of the website login): "
+                + json.dumps(self.profile, ensure_ascii=False)
+                + "\nVerify the requested website identity before acting.\n\n" + task)
         self.main_task = asyncio.current_task()
         server = await self.controls()
         self.record("started", profile=self.profile, model=self.args.model, endpoint=self.args.endpoint,

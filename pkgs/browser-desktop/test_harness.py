@@ -7,6 +7,8 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, patch
 import harness
+import menu
+from aiohttp.test_utils import TestClient, TestServer
 
 
 class Contract(unittest.TestCase):
@@ -69,6 +71,33 @@ class Contract(unittest.TestCase):
             self.assertLess(replay.index('"started"'), replay.index('"observation"'))
             self.assertIn('"image": "screen.png"', replay)
             self.assertIn('\\u003c/script>', replay)
+
+
+class ChromeMenu(unittest.IsolatedAsyncioTestCase):
+    async def test_requests_validate_origin_identity_and_desktop_ownership(self):
+        with tempfile.TemporaryDirectory() as root:
+            root = Path(root)
+            (root / 'Default').mkdir()
+            (root / 'Local State').write_text(json.dumps({'profile': {'info_cache': {
+                'Default': {'name': 'Test', 'user_name': 'test@example.test'}}}}))
+            with patch.object(menu, 'RUNTIME', root), patch.object(menu, 'keyring_state', return_value='unlocked'), patch.object(menu.subprocess, 'run') as launch:
+                async with TestClient(TestServer(menu.make_app(root, 'http://browser.internal'))) as client:
+                    headers = {'Origin': 'http://browser.internal', 'X-Fara-Control': '1'}
+                    listing = await (await client.get('/profiles')).json()
+                    self.assertEqual(listing['profiles'][0]['google_account'], 'test@example.test')
+                    for invalid_headers in ({}, {'Origin': 'http://other.test', 'X-Fara-Control': '1'}, {'Origin': 'http://browser.internal'}):
+                        response = await client.post('/open', json={'profile': 'Default'}, headers=invalid_headers)
+                        self.assertEqual(response.status, 403)
+                    for body in ({'profile': '../Default'}, {'profile': 'Missing'}, []):
+                        response = await client.post('/open', json=body, headers=headers)
+                        self.assertEqual(response.status, 409)
+                    with menu.desktop_operation():
+                        listing = await (await client.get('/profiles')).json()
+                        self.assertTrue(listing['busy'])
+                        for action in ('open', 'unlock'):
+                            response = await client.post('/' + action, json={'profile': 'Default'}, headers=headers)
+                            self.assertEqual(response.status, 409)
+                    launch.assert_not_called()
 
 
 if __name__ == '__main__':

@@ -31,6 +31,19 @@ in {
         StartLimitIntervalSec = 0;
       };
     };
+    systemd.user.services.browser-desktop-menu = {
+      description = "Chrome profile menu for the shared noVNC desktop";
+      wantedBy = [ "default.target" ];
+      after = [ "browser-desktop.service" ];
+      serviceConfig = {
+        ExecStart = "${pkgs.browser-desktop}/bin/browser-desktop-menu";
+        Restart = "on-failure";
+        RestartSec = 3;
+        TimeoutStopSec = 15;
+        UMask = "0077";
+      };
+      unitConfig.ConditionUser = "tom";
+    };
     services.caddy.virtualHosts."http://browser.internal".extraConfig = ''
       # Share Caddy's existing listener and BE550/tailnet firewall policy.
       # A separate bind here would overlap its other :80 virtual hosts.
@@ -39,6 +52,9 @@ in {
       }
       handle_path /control/* {
         reverse_proxy 127.0.0.1:4782
+      }
+      handle_path /desktop/* {
+        reverse_proxy 127.0.0.1:4784
       }
       handle_path /novnc/* {
         root * ${pkgs.browser-desktop.webRoot}

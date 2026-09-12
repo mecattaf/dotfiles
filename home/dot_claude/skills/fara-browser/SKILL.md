@@ -43,6 +43,10 @@ whose result is uncertain. Ask the user or inspect the recorded evidence.
 fara-browser run --profile 'Profile 2' --task-file /path/to/task.txt --max-steps 30
 ```
 
+The CLI opens that profile automatically and includes its recorded profile/account
+metadata in FARA's task context. Use `profiles` and `status` as the operator;
+FARA does not need to operate the Chrome launcher menu itself.
+
 Run this as a foreground tool process (or a managed process you continue to
 monitor). Do not fire and forget. It prints a task ID and status; inference stays
 on coordinator, starting the on-demand model service when needed.
@@ -54,6 +58,12 @@ record the selection. Only the default 9B endpoint starts automatically; choosin
 another size does not download weights or reconfigure the fleet.
 
 ## Takeover, completion and inspection
+
+The human can open `http://browser.internal` at any time to silently spectate.
+During FARA control, the viewer shows the task/profile/account and disables mouse,
+keyboard and clipboard input. Opening or closing it does not interrupt the run.
+The sidebar's Chrome menu opens existing profiles when no FARA task is active;
+those manual windows persist until closed by the human.
 
 The human's **Take control** button pauses the run and disconnects FARA's viewer.
 The equivalent CLI is `fara-browser pause`. When the human finishes:
