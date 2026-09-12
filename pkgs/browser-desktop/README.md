@@ -43,6 +43,12 @@ coordinator service; `modules/fara-browser-model.nix` declares loopback-only,
 on-demand inference using the already-loaned FARA weights. Neither activates
 model downloads. The physical Niri/greetd stack remains disabled.
 
+Sway starts with the lingering user manager at boot. The service waits for
+WayVNC readiness and restarts automatically; the human viewer reconnects after
+transport interruptions. The coordinator resolves its own viewer locally,
+independent of Tailscale's `.internal` split-DNS. The client uses NAS DNS.
+The existing Kitty/SSH/Herdr terminal route remains separate and unchanged.
+
 Chrome's user-data directory has one owning browser process. If its windows are
 already on another display, the CLI refuses to redirect or terminate them.
 Close that browser normally before moving its profiles into Sway.
@@ -101,5 +107,11 @@ pre-existing Chrome window. The tests used a disposable Chrome profile.
 
 The existing keyring reports unlocked. The native locked-keyring prompt still
 needs its first human check after reboot/relocking; the tests do not relock the
-user's keyring. Declarative fleet activation and migration from the existing
-Niri Chrome session are separate rollout steps.
+user's keyring.
+
+Coordinator and NAS were activated on 2026-09-12. Client-side checks verified DNS,
+the HTTP viewer and WebSocket upgrade. Terminating the desktop processes verified
+automatic restart and viewer reconnection. A further FARA run through the deployed
+`browser.internal` entrance completed the Unicode form task in nine steps, removed
+its task window and stopped its on-demand model. The desktop and Herdr remain up.
+An idle desktop can be empty: the task opens its selected Chrome profile.

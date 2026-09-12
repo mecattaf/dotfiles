@@ -1,8 +1,8 @@
-{ symlinkJoin, runCommand, writeShellApplication, python3, fara-cli, sway, wayvnc,
+{ symlinkJoin, runCommand, writeShellApplication, runtimeShell, bash, python3, fara-cli, sway, wayvnc,
   novnc, google-chrome, mesa, gcr, jq, curl, systemd, util-linux, coreutils }:
 let
   python = python3.withPackages (p: [ p.aiohttp p.playwright p.pillow p.secretstorage (p.toPythonModule fara-cli) ]);
-  runtimeInputs = [ sway wayvnc google-chrome jq curl systemd util-linux coreutils ];
+  runtimeInputs = [ bash sway wayvnc google-chrome jq curl systemd util-linux coreutils ];
   viewer = runCommand "fara-novnc" { } ''
     mkdir -p "$out"
     for entry in ${novnc}/share/webapps/novnc/*; do
@@ -14,6 +14,7 @@ let
     cp ${./desktop-controls.js} "$out/desktop-controls.js"
   '';
   environment = ''
+    export SHELL=${runtimeShell}
     export FARA_BROWSER_ASSETS=${./.}
     export FARA_BROWSER_PYTHON=${python}/bin/python
     export FARA_BROWSER_CHROME=${google-chrome}/bin/google-chrome-stable

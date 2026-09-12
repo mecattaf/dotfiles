@@ -17,7 +17,8 @@ if (!new URLSearchParams(location.search).has('agent')) {
     async function update() {
         try {
             const response = await fetch('/control/state', {cache:'no-store'});
-            const state = response.ok ? await response.json() : {owner:'human'};
+            if (!response.ok) throw Error('Control state unavailable');
+            const state = await response.json();
             const human = state.owner === 'human' && state.phase !== 'pausing';
             if (UI.rfb) UI.rfb.viewOnly = !human;
             button.textContent = state.phase === 'pausing' ? 'Stopping FARA…' : human ? 'You have control' : `Take control · ${state.task_id}`;
