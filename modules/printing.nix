@@ -14,6 +14,18 @@ lib.mkIf (!config.myHeadless.enable) {
   services.printing = {
     enable = true;
     drivers = [ pkgs.brlaser ];
+    # cups-browsed OFF (2026-09-12). It discovered the same Brother over mDNS,
+    # matched it to the persistent queue by name, and rewrote that queue's
+    # DeviceURI from the pinned ipp://10.42.0.4 below to
+    # implicitclass://Brother_HL_L2445DW/ — the exact .local dependency the
+    # pin exists to avoid. MEASURED 2026-09-11 22:12: job 303 went to the
+    # implicitclass backend, cupsd logged "Job completed" with 10 pages, the
+    # printer (idle, reachable at 10.42.0.4 the whole time) received nothing,
+    # and cups-browsed's journal has no entry at all. The queue is permanent
+    # and driverless, so there is nothing for discovery to add; avahi stays
+    # for .local resolution elsewhere. Repaired live with
+    # `lpadmin -p Brother_HL_L2445DW -v ipp://10.42.0.4:631/ipp/print`.
+    browsed.enable = false;
   };
 
   # AirPrint/IPP discovery and .local resolution. systemd-resolved also wants
