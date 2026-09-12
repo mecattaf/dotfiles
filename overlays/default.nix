@@ -89,6 +89,7 @@ final: prev: {
     inherit (import ../modules/artifacts-defaults.nix) namespace;
   };
   artifact-deck = final.callPackage ../pkgs/artifact-deck { };
+  browser-desktop = final.callPackage ../pkgs/browser-desktop { };
 
   # Monthly local-AI update bot: deterministic Git/HF preparation, one Pi
   # judgment, deterministic verification/publication. Tally leases only Pi.

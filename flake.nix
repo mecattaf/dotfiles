@@ -709,6 +709,7 @@
             academic-ocr
             brother-print-text
             call-diarize
+            browser-desktop
             crm
             dcal
             local-ai-monthly
@@ -2023,9 +2024,10 @@
           # No wayvnc on the worker since 2026-09-11: with no display there
           # (hosts/worker/default.nix) home/remote.nix rendered nothing, and
           # since the headless flip later that day the module is gone from
-          # the tree: no VNC server anywhere, no session to capture, no door.
+          # the tree. The browser-only Sway service added on 2026-09-12 is
+          # separate from that retired physical-session integration.
           #
-          # THE INVARIANT, stated once: VNC, voxtype and piri exist on the
+          # PHYSICAL-SESSION INVARIANT: the old VNC, voxtype and piri exist on the
           # coordinator EXACTLY while the coordinator has a display. These are
           # equalities against myDisplay.enable (modules/display.nix), not
           # fixed values, so the headless flip (R-13, plan §8.3, §10 steps
@@ -2037,6 +2039,10 @@
           # seat, the worker and the NAS are not — asserted separately below,
           # because a half-move that left a session on the wrong host would
           # look identical from either side alone.
+          # The separate browser-only Sway desktop is a coordinator user service.
+          assert (cfgOf "coordinator").systemd.user.services ? browser-desktop;
+          assert (cfgOf "coordinator").systemd.user.services.fara-browser-model.wantedBy == [ ];
+          assert builtins.all (h: !((cfgOf h).systemd.user.services ? browser-desktop)) [ "client" "worker" "nas" ];
           assert !(workerHome.systemd.user.services ? wayvnc);
           assert (coordinatorHome.systemd.user.services ? wayvnc) == (cfgOf "coordinator").myDisplay.enable;
           assert (coordinatorHome.systemd.user.services ? piri) == (cfgOf "coordinator").myDisplay.enable;

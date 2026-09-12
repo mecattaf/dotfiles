@@ -37,7 +37,11 @@ and the specialised rows (the Qwen3 text and VL embedders, VibeVoice speech,
 Mage-Flow and Mage-VL) are NAS-Library artifacts. An operator loans them onto
 a host with `local-models-borrow` and, for the GGUFs, serves them by hand with
 `llama-server` from nix-strix-halo's `llama-cpp-rocm` / `llama-cpp-vulkan`
-commands. Nothing declarative serves them: no service, no timer, no proxy row.
+commands. The sole task-specific exception is FARA 1.5 9B on coordinator: the
+on-demand `modules/fara-browser-model.nix` user service listens on loopback
+8732 while `fara-browser` needs it. It uses already-loaned weights and is not
+a second resident fleet model. Other small models have no declarative service,
+timer or proxy row.
 Embeddings in particular have no server behind them until an operator starts
 one.
 
@@ -58,3 +62,12 @@ artifacts from the Library into `/var/lib/local-models`, and
 `sudo local-models-prune --dry-run|--yes` is the only thing that deletes a
 loaned copy, and only when the set it computed has not changed underneath it.
 `docs/nas/model-archive.md` is the retire/restore runbook.
+
+**Shared browser desktop (2026-09-12).** Coordinator keeps `myDisplay.enable =
+false`: no physical Niri/greetd session. `modules/browser-desktop.nix` supplies a
+separate headless Sway seat with WayVNC on loopback and stock noVNC served by
+Caddy at `http://browser.internal` on BE550. This exception is coordinator-only;
+worker and NAS remain without compositor/VNC. `fara-browser` uses Microsoft's
+pinned FARA loop against that noVNC canvas, ordinary installed Chrome profiles,
+and one task at a time. The house `fara-browser` skill documents profile/account
+selection, human keyring unlock, takeover, replay and task-window cleanup.

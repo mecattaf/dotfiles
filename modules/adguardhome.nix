@@ -15,6 +15,7 @@ let
     "music.internal"
     "videos.internal"
     "paperless.internal"
+    "browser.internal"
   ];
 
   # The artifact namespace, read from the one edit point rather than spelled
