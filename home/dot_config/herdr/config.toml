@@ -29,7 +29,7 @@ prefix = "ctrl+b"
 # fish is the terminal UI here; bash is only the LOGIN shell (#236). herdr's
 # default for this key is empty, which means "$SHELL, then /bin/sh" — and the
 # $SHELL the server inherits is the passwd entry, i.e. bashInteractive. So
-# every herdr pane (Mod+Return -> `kitty -e hk new`) came up in bash, while
+# every herdr pane (Mod+Return -> a new workspace) came up in bash, while
 # kitty's own `shell fish` only governs the windows kitty starts itself. This
 # is the herdr-side twin of that kitty.conf line.
 #
@@ -102,7 +102,7 @@ kitty_graphics = false
 # The AGENTS panel is the board; tally gets no bespoke UI. What ships here is
 # the config-and-two-scripts tier: sidebar tokens, five command keys, and
 # ~/.local/bin/tally-{lane-view,steer}. What does NOT ship: the bridge daemon
-# (it belongs to the herdr-kitten repo), tally heartbeat emission, a
+# (unowned since herdr-kitten's removal, #385), tally heartbeat emission, a
 # `query trace --follow` consumer, and any events-push verb — that last one is
 # never attempted.
 #
@@ -153,6 +153,12 @@ rows = [
 ]
 
 # --- tally command keys ----------------------------------------------------
+#
+# FROM THE CLIENT these keys work only because every projector runs with
+# `--remote-keybindings server` (~/.local/bin/herdr-projector, `desk`): in the
+# default `local` mode a `herdr --remote` client strips its own [[keys.command]]
+# bindings and never merges the server's (herdr src/client/shell/config.rs:
+# 158-162,195), so prefix+t and the rest would silently do nothing (#385).
 #
 # All five are collision-free against herdr's default map, which already owns
 # prefix+s (settings), prefix+p (previous_tab) and prefix+o

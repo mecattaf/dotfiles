@@ -12,9 +12,8 @@
 # leave the complete integration disabled.
 #
 # Dictation is DISPLAY-BOUND, not merely coordinator-bound: the wtype driver
-# types into whatever window has focus and the `hk voice` spinner decorates the
-# focused kitty, so on a host with no compositor there is nothing to type into
-# and nothing to decorate. The gate is therefore the coordinator AND its seat
+# types into whatever window has focus, so on a host with no compositor there
+# is nothing to type into. The gate is therefore the coordinator AND its seat
 # (myDisplay.enable, modules/display.nix) — when the coordinator goes headless
 # (R-13, plan §8.3) this whole file goes inert by derivation, with no second
 # edit here. Dictation ON THE CLIENT is a DEFERRED row (plan Q-1 (a)), not a
@@ -26,49 +25,6 @@ let
   osdPackage = inputs.voxtype.packages.${pkgs.stdenv.hostPlatform.system}.osd-gtk4;
   parakeetModel = "parakeet-unified-en-0.6b";
 
-  # Voxtype 0.7.5 runs `output.post_process.command` and both output hooks
-  # through a bare `sh -c`: no argument interpolation, no injected environment
-  # (src/output/post_process.rs, src/output/mod.rs `run_hook`). Every command
-  # below therefore resolves its own target.
-
-  # The dictation route. `hk voice text` delivers stdin into the focused
-  # window's herdr pane and prints nothing; on any other window it prints
-  # nothing, sends zero bytes and exits 3 (herdr-kitten hk/voice.py). Translate
-  # that one exit code back into the transcript on stdout so the wtype driver
-  # types it, and let every other status propagate — voxtype reuses the original
-  # text on a non-zero exit by itself, so a herdr outage still gets typed.
-  dictationRoute = ''
-    text=$(cat)
-    printf '%s' "$text" | hk voice text
-    status=$?
-    [ "$status" -eq 3 ] || exit "$status"
-    printf '%s' "$text"
-  '';
-
-  # The recording spinner. `hk voice begin`/`end` need both a kitty socket in
-  # $KITTY_LISTEN_ON and an explicit --window id (herdr-kitten hk/kittyc.py);
-  # the voxtype daemon has neither, so the start hook resolves the focused kitty
-  # instance from niri and its focused window from kitty — the same `is_focused`
-  # predicate `hk voice text` uses to pick its delivery target — and records the
-  # pair so the stop hook clears the spinner from the window that got it. A
-  # focused non-kitty surface has no socket to reach and simply gets no spinner.
-  spinnerState = "$XDG_RUNTIME_DIR/voxtype-spinner-window";
-
-  spinnerStart = ''
-    pid=$(niri msg --json focused-window | jq -er .pid) || exit 0
-    KITTY_LISTEN_ON="unix:@kitty-$pid"
-    export KITTY_LISTEN_ON
-    window=$(kitty @ --to "$KITTY_LISTEN_ON" ls |
-      jq -er 'first(.[].tabs[].windows[] | select(.is_focused) | .id)') || exit 0
-    hk voice begin --window "$window" || exit 0
-    printf '%s %s\n' "$KITTY_LISTEN_ON" "$window" > "${spinnerState}"
-  '';
-
-  spinnerStop = ''
-    read -r socket window 2>/dev/null < "${spinnerState}" || exit 0
-    rm -f "${spinnerState}"
-    KITTY_LISTEN_ON="$socket" hk voice end --window "$window" || exit 0
-  '';
 in
 {
   imports = [ inputs.voxtype.homeManagerModules.default ];
@@ -129,31 +85,13 @@ in
           "clipboard"
         ];
 
-        # Dictation goes global (spec B B13): herdr panes are fed by send-text,
-        # every other Wayland surface by the wtype driver. `fallback_on_empty =
-        # false` is what makes the herdr half silent — the route exits 0 with
-        # empty stdout once the text is already in the pane, and voxtype must
-        # then type nothing rather than re-type the transcript on top of it.
-        #
-        # CONFLICT, not resolvable in this file: at the pinned rev post_process
-        # is dead while `parakeet.streaming = true`. The daemon does hand the
-        # processor to `StreamingSession::commit_segment`, which binds it to
-        # `_post_process` and never calls it ("post_process is intentionally
-        # bypassed during streaming", src/output/streaming.rs:180). B13 asserts
-        # the opposite and cites that same doc block. Streaming is pinned byte
-        # for byte by U.5/F.18 and this route is required by R5.4, so both land
-        # as ruled and the runtime claim R5.5 is left to adjudicate upstream.
-        post_process = {
-          command = dictationRoute;
-          fallback_on_empty = false;
-        };
-
-        # Spinner on when recording starts, off after the output burst. Under
-        # streaming these output hooks fire once per typed segment by design
-        # (src/output/streaming.rs:158-162), so the spinner clears at the first
-        # burst rather than at key release.
-        pre_recording_command = spinnerStart;
-        post_output_command = spinnerStop;
+        # No post_process and no output hooks (#385, 2026-09-13). The herdr
+        # route (`hk voice text` into the focused herdr pane) and the recording
+        # spinner (`hk voice begin`/`end`) were herdr-kitten verbs, removed with
+        # it fleet-wide; wtype types into whatever has focus, herdr panes
+        # included. Coordinator-hosted transcription used from the client
+        # (#376) needs a herdr-native delivery on the coordinator instead, and
+        # this module stays gated off everywhere meanwhile.
       };
     };
   };

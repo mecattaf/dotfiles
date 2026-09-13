@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# herdr-chord <new|sidebar|rename> -- the client's herdr chords, delivered to
+# ONE projector window by typing herdr's own prefix chord into it (#385 seams
+# 2, 3 and 4).
+#
+#   new      Mod+Return             prefix+shift+n  new workspace, this window only
+#   sidebar  Mod+Ctrl+Shift+Return  prefix+b        herdr's sidebar (agents panel)
+#   rename   Mod+Shift+N            prefix+shift+w  rename the focused workspace
+#
+# WHY KEYSTROKES AND NOT THE API. herdr's CLI focus is GLOBAL: `herdr workspace
+# create --focus` and every other focus verb on the API socket re-focus EVERY
+# attached client (src/server/headless/client_views.rs:857-863,162-186), so
+# `ssh coordinator herdr workspace create --focus` would move every projector
+# at once. The sidebar, the picker and rename are client-local overlays with no
+# API verb at all (src/client/shell/actions.rs:13-35). Only the projector's own
+# keybinding lane is per-window, so the chord is typed into that window through
+# kitty remote control: kitty.conf sets `allow_remote_control yes` and
+# `listen_on unix:@kitty-{kitty_pid}`, and niri reports each window's pid.
+# The projector's shell routes only Press events through the prefix state
+# machine and drops the releases of keys it consumed
+# (src/client/shell/input.rs:301-338), so an injected chord cannot leave the
+# prefix armed.
+#
+# WHICH WINDOW. A projector is a kitty with app-id `herdr-projector`
+# (herdr-projector's header).
+#   new      focused projector -> new workspace in it; otherwise hop to the
+#            empty trailing niri workspace of the focused output, spawn a
+#            projector there, and give it a fresh workspace ("Mod+Return must
+#            give me a NEW terminal", 186b36d2, kept).
+#   sidebar  focused projector, else the most recently focused one (focused
+#            first), else a new one.
+#   rename   focused projector only; elsewhere it does nothing.
+#
+# READY. A chord typed before the projector's herdr client has finished its
+# endpoint handshake is lost, so after a spawn the script waits for kitty to
+# report a `herdr client` process in the window's foreground and for that
+# client's own "endpoint handshake succeeded" line in herdr-client.log, then
+# settles briefly. Timeout 20 s (the first attach may have to open the ssh
+# master).
+set -euo pipefail
+
+verb="${1:-}"
+case "$verb" in
+  new) key="shift+n" ;;
+  sidebar) key="b" ;;
+  rename) key="shift+w" ;;
+  *)
+    echo "usage: herdr-chord <new|sidebar|rename>" >&2
+    exit 2
+    ;;
+esac
+
+class="herdr-projector"
+projector="${HERDR_PROJECTOR:-$HOME/.local/bin/herdr-projector}"
+client_log="${HERDR_CLIENT_LOG:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/herdr-client.log}"
+timeout_s="${HERDR_CHORD_TIMEOUT:-20}"
+
+die() {
+  echo "herdr-chord: $*" >&2
+  command -v notify-send >/dev/null 2>&1 && notify-send "herdr-chord" "$*" || true
+  exit 1
+}
+
+# kitty pid of the projector window with this niri id
+send_chord() {
+  local pid="$1"
+  local to="unix:@kitty-$pid"
+  kitten @ --to "$to" send-key --match recent:0 ctrl+b
+  kitten @ --to "$to" send-key --match recent:0 "$key"
+}
+
+# Wait until the projector in kitty $1 has a herdr client that finished its
+# handshake. Prints nothing; returns non-zero on timeout.
+wait_ready() {
+  local pid="$1" deadline cpid
+  deadline=$((SECONDS + timeout_s))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    cpid="$(kitten @ --to "unix:@kitty-$pid" ls 2>/dev/null | jq -r '
+      first(.[].tabs[].windows[].foreground_processes[]
+        | select((.cmdline[0] // "" | test("(^|/)herdr$")) and (.cmdline[1] // "") == "client")
+        | .pid) // empty' 2>/dev/null || true)"
+    if [ -n "$cpid" ] && [ -r "$client_log" ] &&
+      awk -v pid="$cpid" '
+        $0 ~ ("herdr starting.* pid=" pid "$") { seen = 1 }
+        seen && /endpoint handshake succeeded/ { ok = 1 }
+        END { exit !ok }' "$client_log"; then
+      sleep 0.3
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+windows_json() { niri msg -j windows; }
+
+spawn_projector() {
+  local before after id pid deadline
+  before="$(windows_json | jq -c --arg c "$class" '[.[] | select(.app_id == $c) | .id]')"
+  niri msg action spawn -- kitty --class "$class" -e "$projector"
+  deadline=$((SECONDS + timeout_s))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    after="$(windows_json | jq -c --arg c "$class" --argjson b "$before" \
+      '[.[] | select(.app_id == $c and (.id as $i | $b | any(. == $i) | not))] | max_by(.id) // empty | [.id, .pid]')"
+    if [ -n "$after" ]; then
+      id="$(jq -r '.[0]' <<<"$after")"
+      pid="$(jq -r '.[1]' <<<"$after")"
+      # kitty's remote-control socket answers once the window is up
+      if kitten @ --to "unix:@kitty-$pid" ls >/dev/null 2>&1; then
+        printf '%s %s\n' "$id" "$pid"
+        return 0
+      fi
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+focused="$(niri msg -j focused-window 2>/dev/null || true)"
+focused_app="$(jq -r '.app_id // empty' <<<"${focused:-null}" 2>/dev/null || true)"
+focused_pid="$(jq -r '.pid // empty' <<<"${focused:-null}" 2>/dev/null || true)"
+
+if [ "$focused_app" = "$class" ] && [ -n "$focused_pid" ]; then
+  send_chord "$focused_pid"
+  exit 0
+fi
+
+case "$verb" in
+  rename)
+    # Nothing to rename outside a projector; stay silent like an unbound key.
+    exit 0
+    ;;
+  sidebar)
+    recent="$(windows_json | jq -r --arg c "$class" '
+      [.[] | select(.app_id == $c)]
+      | max_by([(.focus_timestamp.secs // 0), (.focus_timestamp.nanos // 0)]) // empty
+      | "\(.id) \(.pid)"')"
+    if [ -n "$recent" ]; then
+      read -r id pid <<<"$recent"
+      niri msg action focus-window --id "$id"
+      send_chord "$pid"
+      exit 0
+    fi
+    ;;
+  new)
+    # The spawn path keeps binds.kdl's workspace hop: the empty trailing
+    # workspace of the focused output (dynamic workspaces guarantee one).
+    idx="$(niri msg -j workspaces | jq -re 'map(select(.is_focused))[0].output as $o
+      | map(select(.output == $o)) | max_by(.idx) | .idx' 2>/dev/null || true)"
+    [ -n "$idx" ] && niri msg action focus-workspace "$idx"
+    ;;
+esac
+
+spawned="$(spawn_projector)" || die "no herdr-projector window appeared within ${timeout_s}s"
+read -r id pid <<<"$spawned"
+wait_ready "$pid" || die "projector (kitty $pid) did not finish attaching to the coordinator within ${timeout_s}s"
+send_chord "$pid"

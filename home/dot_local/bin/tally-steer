@@ -29,7 +29,7 @@
 # HERDR_ACTIVE_PANE_ID for the tiled pane underneath (configuration.mdx:198-199).
 # That id is looked up in the sidecar map — one whitespace-separated line per
 # registered lane pane, `#` comments allowed, written by hand until the bridge
-# daemon (deferred to the herdr-kitten repo) owns it:
+# daemon (unowned since herdr-kitten's removal, #385) owns it:
 #
 #     <pane_id> <task_ref> [<owner/repo>] [<worklist_pattern>] [<task_uuid>]
 #     w1:p3     crm/t07    mecattaf/tally.nix  worklists/night-notes.md  019f…

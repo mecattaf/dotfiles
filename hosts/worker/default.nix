@@ -36,7 +36,7 @@
 #     seat below, and home/voxtype.nix and home/piri.nix ship nothing to a
 #     host with no display (home/remote.nix, the VNC half, left the tree
 #     with the 2026-09-11 headless flip). Home Manager itself STAYS:
-#     tom's shell, atuin, the user timers and the herdr/hk client are all real
+#     tom's shell, atuin, the user timers and the herdr client are all real
 #     here; only the graphical session is absent. Console recovery is the VT
 #     getty autologin modules/common.nix keeps on every host.
 #   * not a build pusher — hosts/worker/cache-push.nix is DELETED. That module

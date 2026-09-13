@@ -15,10 +15,13 @@
 # TOPOLOGY (ruling B5). ONE server, coordinator only. Every host with an
 # interactive profile gets the BINARY, because the client is how you reach a
 # server at all: on the coordinator `herdr` attaches to the local one, and off
-# it `herdr --remote coordinator` attaches over the tailnet (see the `desk`
-# function in home/dot_config/fish/conf.d/remote.fish). The NAS is not in this
-# picture — it stops at NixOS with no home-manager, so nothing here can reach
-# hosts/nas/tv.nix.
+# it `herdr --remote coordinator` attaches over the tailnet — on the client
+# as ~/.local/bin/herdr-projector, the window every herdr chord there targets
+# (home/dot_config/niri/binds.kdl, #385), and `desk` in
+# home/dot_config/fish/conf.d/remote.fish. herdr-kitten (`hk`) was removed
+# fleet-wide on 2026-09-13: it could not cross the ssh boundary. The NAS is
+# not in this picture — it stops at NixOS with no home-manager, so nothing
+# here can reach hosts/nas/tv.nix.
 #
 # LIFECYCLE (ruling B6). Deliberately NOT PartOf=graphical-session.target. The
 # whole point of the server is that the PTYs outlive the surfaces attached to
@@ -45,37 +48,31 @@
 # out-of-store symlink into the git checkout: editable in place, reloadable
 # with prefix+shift+r, no rebuild. Never a whole-dir link, and plugins.json is
 # never generated from nix (ruling B9): `herdr plugin link` stays imperative.
+#
+# FOOTGUNS on the projector path (#385 seam 12), recorded, not fixed here:
+#   * If this unit is STOPPED while a projector attaches, the remote side's
+#     `remote-client-bridge` spawns an unmanaged server daemon, which later
+#     fights the unit over herdr.sock (herdr src/remote/host_unix.rs:264-287).
+#     Start the unit before reattaching anything.
+#   * `herdr --remote` may offer, interactively, to STOP and REPLACE this
+#     server — killing every pane — if it judges the server incompatible.
+#     Today the policy is keep-running (endpoint generation 1 on both ends).
+#     Any herdr bump must land on the coordinator before or with the client.
+#   * If no generation-1 `herdr` is on the coordinator's PATH, the projector
+#     offers to install a non-Nix binary into ~/.local/bin/herdr. Decline.
+#   * The unit below must not change as a side effect of an edit elsewhere:
+#     a changed unit restarts on the next switch and kills every pane.
 let
   hostName = osConfig.networking.hostName;
   system = pkgs.stdenv.hostPlatform.system;
   herdr = inputs.herdr.packages.${system}.herdr;
-  herdr-kitten = inputs.herdr-kitten.packages.${system}.herdr-kitten;
 
   repoDir = config.rawDotfiles.repoDir; # home/raw-dotfiles-guard.nix
   link = p: config.lib.file.mkOutOfStoreSymlink "${repoDir}/home/${p}";
 in
 {
-  # `herdr` client + server and the `hk` CLI on PATH, every interactive host.
-  # hk is not optional decoration: it IS the kitty side of herdr here — the
-  # niri binds below the terminal keys, the kitty gestures, and the dictation
-  # route all shell out to it.
-  home.packages = [
-    herdr
-    herdr-kitten
-  ];
-
-  # The kitten half of herdr-kitten lives in the Nix store, but kitty resolves a
-  # bare `kitten foo.py` against ~/.config/kitty — which here is a whole-dir
-  # out-of-store symlink into the git tree, so no generated file can nest inside
-  # it. Same shape as kitty-scrollback.nvim (home/home.nix): emit an
-  # `action_alias` carrying the store path at a NEUTRAL ~/.config path, and let
-  # the tracked, hot-reloadable kitty.conf spend it as `map <chord> hk <gesture>`.
-  # The chords stay in kitty.conf where Tom can re-cut them without a rebuild —
-  # upstream's README rules them "suggestions, not law".
-  xdg.configFile."kitty-herdr-nix.conf".text = ''
-    # GENERATED — Nix-store path for the herdr-kitten kitty kitten (offline-safe).
-    action_alias hk kitten ${herdr-kitten}/share/hk/kitten/hk.py
-  '';
+  # `herdr` client + server on PATH, every interactive host.
+  home.packages = [ herdr ];
 
   # RAW single-file symlink; see CONFIG above. `onboarding = false` is the first
   # assignment in that file precisely so herdr's first run never decides to

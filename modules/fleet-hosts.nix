@@ -69,7 +69,7 @@
   networking.hosts."10.42.0.2" = [ "coordinator" ];
   networking.hosts."10.42.0.5" = [ "worker" ];
 
-  # The thin client (2026-09-11), so `ssh client` and `hk`/herdr from either
+  # The thin client (2026-09-11), so `ssh client` and herdr from either
   # twin dial it by name. It is NOT a twin and does not import this file; it
   # carries its own pins for the two names above in hosts/client/default.nix.
   # The address is the DHCP lease the NAS hands its MAC, pinned in

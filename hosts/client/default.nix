@@ -22,8 +22,9 @@
 # the dock's peripherals, and everything that thinks runs on the coordinator
 # (herdr server, the Claude/Codex/pi seats, tally, the artifact and microVM
 # planes) or the worker (Halogen). Mod+Return on this box is a herdr window
-# INTO the coordinator (`hk ssh --in-place coordinator`, home/home.nix's
-# niri-local.kdl branch); `desk` is the fish spelling of the same thing.
+# INTO the coordinator (~/.local/bin/herdr-projector, `herdr --remote
+# coordinator`, driven by herdr-chord from binds.kdl, #385); `desk` is the fish
+# spelling of the same thing.
 #
 # WHAT IT IS NOT:
 #   * not an agent host — no herdr server (home/herdr.nix is coordinator-

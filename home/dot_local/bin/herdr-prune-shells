@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# hk-prune-shells -- close the herdr workspaces that hold nothing but idle
-# shells.
+# herdr-prune-shells -- close the herdr workspaces that hold nothing but idle
+# shells. (Was hk-prune-shells; renamed when herdr-kitten left the fleet,
+# #385 — it never called `hk`, only herdr.)
 #
-# Every Mod+Return creates a workspace with one pane (hk-new-inplace); closing
-# the kitty window, or losing the ssh session under it, leaves that shell
-# alive server-side by design (preservation, #355 role A). When the shell was
-# never used, or its agent was exited by hand before the window closed, the
-# leftover is a fish prompt at ~ that `hk resume` lists forever. MEASURED
+# Every Mod+Return creates a workspace with one pane (herdr-chord new);
+# closing the projector window, or losing the link under it, leaves that
+# shell alive server-side by design (preservation, #355 role A). When the
+# shell was never used, or its agent was exited by hand before the window
+# closed, the leftover is a fish prompt at ~ that herdr's sidebar and pickers
+# list forever. MEASURED
 # 2026-09-11: 99 workspaces on the coordinator, 98 of them exactly that.
 #
 # A workspace is pruned only when EVERY pane in it has agent_status "unknown"
@@ -39,4 +41,4 @@ for ws in "${workspaces[@]}"; do
   if [ "$dry" = 1 ]; then echo "would close $ws"; else herdr workspace close "$ws" >/dev/null && echo "closed $ws"; fi
   pruned=$((pruned + 1))
 done
-echo "hk-prune-shells: ${pruned} workspace(s) $([ "$dry" = 1 ] && echo 'would be ' )closed, ${kept} kept"
+echo "herdr-prune-shells: ${pruned} workspace(s) $([ "$dry" = 1 ] && echo 'would be ' )closed, ${kept} kept"

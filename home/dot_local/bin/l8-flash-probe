@@ -365,7 +365,7 @@ for leaf in settings.json skills; do
 done
 
 # ── 7. herdr: binaries everywhere, one server on the coordinator (ruling B5) ─
-for binary in herdr hk; do
+for binary in herdr; do
   if command -v "$binary" >/dev/null 2>&1; then
     ok "[E] $binary on PATH" "command -v $binary"
   else

@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# herdr-projector -- a herdr window INTO the coordinator's one server, that
+# comes back by itself when the link drops and leaves nothing behind when it
+# goes (#385 seams 1 and 6).
+#
+# Used as: `kitty --class herdr-projector -e ~/.local/bin/herdr-projector`,
+# spawned by `herdr-chord` (Mod+Return / Mod+Ctrl+Shift+Return on the client),
+# and `desk` in fish/conf.d/remote.fish. The kitty class is how herdr-chord
+# tells a projector apart from any other kitty.
+#
+# WHY A PROJECTOR (`herdr --remote`) AND NOT `ssh -t coordinator herdr ...`:
+# herdr's clipboard-image bridge only runs in a `--remote` client, because the
+# image must be read from the LAPTOP's Wayland clipboard and staged on the
+# server (herdr src/client/clipboard_images.rs:66-73). Under a plain ssh tty
+# the herdr client runs on the coordinator, which has no display, and Claude
+# Code / Codex there see no image at all — the 2026-09-12 failure #385 exists
+# for.
+#
+# `--remote-keybindings server` is NOT optional: in `local` mode the client
+# strips its own [[keys.command]] bindings and never merges the server's
+# (src/client/shell/config.rs:158-162,195), so the tally popups (prefix+t,
+# prefix+shift+s, ...) would silently stop working from the laptop.
+#
+# RECONNECT (seam 1, option (a)). A plain `herdr --remote` has no reconnect:
+# on a lost link it prints "lost connection to remote Herdr ... Run `herdr
+# --remote ...` to reattach" and exits 1 (src/client/errors.rs:62-71,
+# src/main.rs run_remote -> exit 1). herdr's native backoff UI exists only for
+# saved machines, and that launch path always spawns a LOCAL server on the
+# laptop when none is listening (src/server/autodetect.rs:295-320), which
+# breaks ruling B5 (one server, on the coordinator) and the thin-client rule.
+# So this loop is the reconnect: exit 0 is a deliberate end (prefix+q detach,
+# or the window's own hangup) and ends the loop; any other status is a lost
+# link and is retried with bounded backoff (1, 2, 5, 10, then every 30 s) for
+# as long as the window lives. Exit 2 is herdr's usage error and is not
+# retried. After a reattach the window lands on the server's default target,
+# not necessarily the workspace it was showing.
+#
+# CLEANUP (seam 6). `herdr --remote` installs no signal handler. When kitty
+# closes the window the process dies by SIGHUP and its Drop cleanup never
+# runs, leaving a ControlPersist ssh master (`/tmp/herdr-ssh-<pid>-<n>/ctl`)
+# and the bridge socket (`/tmp/herdr-remote-<pid>-<target>-<session>.sock`)
+# behind (src/remote/attach.rs:548-571,1875-1886; unix_common.rs:76,126). This
+# script knows the child's pid, so on every child exit — and on HUP/TERM —
+# it runs `ssh -O exit` on that master and removes that pid's files. At start
+# it also sweeps the leftovers of any earlier projector whose pid is no longer
+# a live herdr (the ones from before this script existed included).
+#
+# The child runs in the background with its stdin put back on the tty, and
+# the script `wait`s for it: a foreground child would hold bash off its traps
+# until the child is gone, and a background job of a non-interactive bash
+# otherwise gets /dev/null as stdin. Job control is off, so the child stays
+# in the terminal's foreground process group and reads the tty normally.
+set -u
+
+target="${HERDR_PROJECTOR_TARGET:-coordinator}"
+herdr_bin="${HERDR_BIN:-herdr}"
+ssh_bin="${HERDR_PROJECTOR_SSH:-ssh}"
+tmp="${TMPDIR:-/tmp}"
+tmp="${tmp%/}"
+
+child=""
+stopping=0
+
+# Everything one `herdr --remote` process with this pid leaves in $TMPDIR.
+cleanup_pid() {
+  local pid="$1" d
+  for d in "$tmp"/herdr-ssh-"$pid"-*; do
+    [ -e "$d" ] || continue
+    if [ -S "$d/ctl" ]; then
+      "$ssh_bin" -o BatchMode=yes -S "$d/ctl" -O exit "$target" >/dev/null 2>&1
+    fi
+    rm -rf -- "$d"
+  done
+  # the bridge socket (readable name, and the short name used when the
+  # readable one would not fit a unix socket path) and install download dirs
+  rm -rf -- "$tmp"/herdr-remote-"$pid"-* "$tmp"/herdr-r-"$pid"-*.sock
+}
+
+# A pid is still a projector if it is alive AND is herdr; a recycled pid
+# running something else does not protect the files.
+pid_is_live_herdr() {
+  local pid="$1" cmd
+  [ -r "/proc/$pid/cmdline" ] || return 1
+  cmd="$(tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null)"
+  case "$cmd" in *herdr*) return 0 ;; *) return 1 ;; esac
+}
+
+sweep_orphans() {
+  local path base pid
+  for path in "$tmp"/herdr-ssh-* "$tmp"/herdr-remote-* "$tmp"/herdr-r-*.sock; do
+    [ -e "$path" ] || continue
+    [ -O "$path" ] || continue
+    base="${path##*/}"
+    pid="${base#herdr-ssh-}"
+    pid="${pid#herdr-remote-}"
+    pid="${pid#herdr-r-}"
+    pid="${pid%%-*}"
+    case "$pid" in '' | *[!0-9]*) continue ;; esac
+    pid_is_live_herdr "$pid" || cleanup_pid "$pid"
+  done
+}
+
+on_signal() {
+  stopping=1
+  if [ -n "$child" ]; then
+    kill -TERM "$child" 2>/dev/null
+  fi
+}
+
+on_exit() {
+  if [ -n "$child" ]; then
+    kill -TERM "$child" 2>/dev/null
+    wait "$child" 2>/dev/null
+    cleanup_pid "$child"
+  fi
+}
+
+trap on_signal HUP TERM INT
+trap on_exit EXIT
+
+sweep_orphans
+
+delays=(1 2 5 10 30)
+attempt=0
+while :; do
+  started=$SECONDS
+  "$herdr_bin" --remote "$target" --remote-keybindings server </dev/tty &
+  child=$!
+  wait "$child"
+  status=$?
+  # A trapped signal interrupts `wait` early; wait again for the real status.
+  while kill -0 "$child" 2>/dev/null; do
+    wait "$child"
+    status=$?
+  done
+  cleanup_pid "$child"
+  child=""
+
+  if [ "$stopping" = 1 ] || [ "$status" = 0 ]; then
+    exit 0
+  fi
+  if [ "$status" = 2 ]; then
+    printf 'herdr-projector: herdr refused its arguments (exit 2); not retrying\n' >&2
+    exit 2
+  fi
+
+  # A session that held for a minute was a working link: start the backoff over.
+  if [ $((SECONDS - started)) -ge 60 ]; then
+    attempt=0
+  fi
+  delay="${delays[$attempt]:-30}"
+  [ "$attempt" -lt $((${#delays[@]} - 1)) ] && attempt=$((attempt + 1))
+  printf '\r\nherdr-projector: link to %s lost (exit %s); reconnecting in %ss. Close the window to stop.\r\n' \
+    "$target" "$status" "$delay"
+  sleep "$delay" &
+  wait $! 2>/dev/null
+  [ "$stopping" = 1 ] && exit 0
+done
