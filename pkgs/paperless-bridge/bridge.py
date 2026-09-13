@@ -68,7 +68,9 @@ ACADEMIC_ROOT = os.environ.get(
 ACADEMIC_RECORDED_ROOT = "/mnt/nas/documents/academic-papers"
 # The fleet's utility seam (AGENTS.md): one chat-completions request on stdin,
 # one response on stdout. Only the coordinator has `utility-model`, so
-# `suggest` runs there against http://paperless.internal.
+# `suggest` runs there, against the default PAPERLESS_URL: on the coordinator
+# 127.0.0.1:28981 is the paperless-relay socket to nas:28981 (paperless.internal
+# does not resolve on the coordinator itself; it is a client-side name).
 UTILITY_CMD = os.environ.get("BRIDGE_UTILITY_CMD", "utility-model")
 SUGGEST_MODEL = os.environ.get("BRIDGE_SUGGEST_MODEL", "utility")
 SUGGEST_NOTE_MARKER = "paperless-bridge suggest"
@@ -116,7 +118,20 @@ CREATE INDEX IF NOT EXISTS entries_sha ON entries (sha256);
 CREATE UNIQUE INDEX IF NOT EXISTS entries_path ON entries (rel_path);
 """
 
-STATES = ("inventoried", "ingested", "relinked", "canonical-synced")
+# Parked states (2026-09-13 verification of #136) take an entry out of the
+# admission queue without losing it; `ingest` re-examines both on every run:
+#   unreadable       the canonical inode has no other-read bit, so the
+#                    PrivateUsers-sandboxed paperless user (owner tom, group
+#                    users, neither of which it is) cannot read the spool
+#                    hardlink. 3573 of the corpus's PDFs were 0600 on the day
+#                    of the flip (DEFERRED.md DF-136-3). Requeued once readable.
+#   consume-timeout  the consumer produced no document in time (a slow OCR, a
+#                    broken or encrypted PDF). The spool link is kept so
+#                    Paperless can still finish or retry; adopted as soon as
+#                    the document appears. Without parking, ORDER BY rel_path
+#                    re-selected the same failures at the head of every batch
+#                    and bulk admission could never get past them.
+STATES = ("inventoried", "unreadable", "consume-timeout", "ingested", "relinked", "canonical-synced")
 
 
 def ledger():
@@ -300,17 +315,96 @@ def cmd_scan(args):
 # ---------------------------------------------------------------- ingest
 
 
+def find_document(spool_name):
+    stem = os.path.splitext(spool_name)[0]
+    got = api("GET", "/api/documents/", params={"original_filename__istartswith": stem})
+    if got["count"] == 1:
+        return got["results"][0]
+    if got["count"] > 1:
+        die(f"multiple Paperless documents match spool name {spool_name}")
+    return None
+
+
 def wait_for_document(spool_name, timeout_sec):
     deadline = time.time() + timeout_sec
-    stem = os.path.splitext(spool_name)[0]
     while time.time() < deadline:
-        got = api("GET", "/api/documents/", params={"original_filename__istartswith": stem})
-        if got["count"] == 1:
-            return got["results"][0]
-        if got["count"] > 1:
-            die(f"multiple Paperless documents match spool name {spool_name}")
+        doc = find_document(spool_name)
+        if doc is not None:
+            return doc
         time.sleep(5)
     return None
+
+
+def paperless_readable(st):
+    """Can the paperless service user read this canonical inode? It is neither
+    the owner (tom) nor in the group (users), and runs with PrivateUsers=true,
+    so only the other-read bit counts."""
+    return bool(st.st_mode & 0o004)
+
+
+def record_ingested(db, row, doc, sha, md5):
+    meta = paperless_metadata(doc["id"])
+    if not checksum_matches(meta["original_checksum"], sha, md5):
+        die(
+            f"checksum mismatch for {row['rel_path']}: canonical sha256 {sha},"
+            f" Paperless stored {meta['original_checksum']}"
+        )
+    db.execute(
+        "UPDATE entries SET state = 'ingested', paperless_id = ?, media_path = ?,"
+        " updated = ? WHERE source_id = ?",
+        (doc["id"], meta["media_filename"], now(), row["source_id"]),
+    )
+    db.commit()
+    receipt(
+        "ingested",
+        source_id=row["source_id"],
+        rel_path=row["rel_path"],
+        sha256=row["sha256"],
+        paperless_id=doc["id"],
+        media_path=meta["media_filename"],
+    )
+    spool_path = os.path.join(SPOOL, f"{row['source_id']}.pdf")
+    if os.path.exists(spool_path):
+        os.unlink(spool_path)
+
+
+def park(db, row, state, **fields):
+    db.execute(
+        "UPDATE entries SET state = ?, updated = ? WHERE source_id = ?",
+        (state, now(), row["source_id"]),
+    )
+    db.commit()
+    receipt(state, source_id=row["source_id"], rel_path=row["rel_path"], **fields)
+
+
+def revisit_parked(db):
+    """Requeue unreadable entries that became readable; adopt timed-out
+    consumptions whose document has since appeared. Cheap: a stat per
+    unreadable entry, one API query per timed-out one."""
+    requeued = adopted = 0
+    for row in db.execute("SELECT * FROM entries WHERE state = 'unreadable'").fetchall():
+        src = os.path.join(CANONICAL_ROOT, row["rel_path"])
+        if os.path.exists(src) and paperless_readable(os.stat(src)):
+            db.execute(
+                "UPDATE entries SET state = 'inventoried', updated = ? WHERE source_id = ?",
+                (now(), row["source_id"]),
+            )
+            receipt("requeued", source_id=row["source_id"], was="unreadable")
+            requeued += 1
+    db.commit()
+    for row in db.execute("SELECT * FROM entries WHERE state = 'consume-timeout'").fetchall():
+        doc = find_document(f"{row['source_id']}.pdf")
+        if doc is None:
+            continue
+        src = os.path.join(CANONICAL_ROOT, row["rel_path"])
+        if not os.path.exists(src):
+            continue
+        sha, md5 = digests(src)
+        if sha != row["sha256"]:
+            continue  # ingest's own hash-mismatch alarm owns this case
+        record_ingested(db, row, doc, sha, md5)
+        adopted += 1
+    return requeued, adopted
 
 
 def paperless_metadata(doc_id):
@@ -331,12 +425,14 @@ def checksum_matches(stored, sha, md5):
 
 def cmd_ingest(args):
     db = ledger()
+    os.makedirs(SPOOL, exist_ok=True)
+    done = 0
+    # Before selecting, so a requeued entry can join this very batch.
+    requeued, adopted = revisit_parked(db)
     rows = db.execute(
         "SELECT * FROM entries WHERE state = 'inventoried' ORDER BY rel_path LIMIT ?",
         (args.batch,),
     ).fetchall()
-    os.makedirs(SPOOL, exist_ok=True)
-    done = 0
     for row in rows:
         src = os.path.join(CANONICAL_ROOT, row["rel_path"])
         if not os.path.exists(src):
@@ -364,39 +460,24 @@ def cmd_ingest(args):
             receipt("aliased", source_id=row["source_id"], alias_of=twin["source_id"],
                     paperless_id=twin["paperless_id"])
             continue
+        if not paperless_readable(os.stat(src)):
+            log(f"park {row['rel_path']}: not readable by the paperless user (no other-read bit)")
+            park(db, row, "unreadable", mode=oct(os.stat(src).st_mode & 0o7777))
+            continue
         spool_name = f"{row['source_id']}.pdf"
         spool_path = os.path.join(SPOOL, spool_name)
         if not os.path.exists(spool_path):
             os.link(src, spool_path)  # same-subvolume hardlink, never a copy
         doc = wait_for_document(spool_name, args.timeout)
         if doc is None:
-            log(f"timeout waiting for consumer on {spool_name}; will retry next run")
+            log(f"park {spool_name}: no document after {args.timeout}s; spool link kept")
+            park(db, row, "consume-timeout", timeout=args.timeout)
             continue
-        meta = paperless_metadata(doc["id"])
-        if not checksum_matches(meta["original_checksum"], sha, md5):
-            die(
-                f"checksum mismatch for {row['rel_path']}: canonical sha256 {sha},"
-                f" Paperless stored {meta['original_checksum']}"
-            )
-        db.execute(
-            "UPDATE entries SET state = 'ingested', paperless_id = ?, media_path = ?,"
-            " updated = ? WHERE source_id = ?",
-            (doc["id"], meta["media_filename"], now(), row["source_id"]),
-        )
-        db.commit()
-        receipt(
-            "ingested",
-            source_id=row["source_id"],
-            rel_path=row["rel_path"],
-            sha256=row["sha256"],
-            paperless_id=doc["id"],
-            media_path=meta["media_filename"],
-        )
+        record_ingested(db, row, doc, sha, md5)
         done += 1
-        if os.path.exists(spool_path):
-            os.unlink(spool_path)
     leftovers = os.listdir(SPOOL) if os.path.isdir(SPOOL) else []
-    print(json.dumps({"ingested": done, "spool_leftovers": leftovers}))
+    print(json.dumps({"ingested": done, "requeued": requeued, "adopted": adopted,
+                      "spool_leftovers": leftovers}))
     return 0
 
 
@@ -789,6 +870,20 @@ def suggest_lock():
     return fh
 
 
+def candidate_documents(args):
+    if args.document_id:
+        for i in args.document_id:
+            yield api("GET", f"/api/documents/{i}/")
+        return
+    page = 1
+    while True:
+        got = api("GET", "/api/documents/", params={"ordering": "id", "page": page, "page_size": 25})
+        yield from got["results"]
+        if not got.get("next"):
+            return
+        page += 1
+
+
 def cmd_suggest(args):
     """Bounded AI tag-candidate batch. Concurrency 1 by construction (serial
     loop + a host lock), one utility-model request per document, never a new
@@ -799,15 +894,17 @@ def cmd_suggest(args):
     lock = suggest_lock()
     tax = load_taxonomy()
     allowed = set(suggestable_slugs(tax))
-    if args.document_id:
-        docs = [api("GET", f"/api/documents/{i}/") for i in args.document_id]
-    else:
-        docs = api("GET", "/api/documents/", params={"ordering": "id", "page_size": args.limit})["results"]
     tags = {t["name"]: t for t in api_all("/api/tags/")}
-    out = []
-    for doc in docs[: args.limit]:
+    out, skipped = [], []
+    # --limit bounds the documents SENT to the model, not the documents
+    # looked at: the id-ordered walk skips already-suggested ones, so
+    # successive runs advance through the corpus instead of re-reading the
+    # first page forever (verification fix, 2026-09-13).
+    for doc in candidate_documents(args):
+        if len(out) >= args.limit:
+            break
         if not args.force and prior_suggestion(doc["id"], tax["version"], SUGGEST_MODEL):
-            out.append({"document": doc["id"], "skipped": "already-suggested"})
+            skipped.append(doc["id"])
             continue
         served, reply = call_utility(suggest_request(doc, tax, args.max_chars), args.timeout)
         cands = parse_candidates(reply, allowed, args.min_confidence)
@@ -833,7 +930,7 @@ def cmd_suggest(args):
             {"note": SUGGEST_NOTE_MARKER + "\n" + json.dumps(rec, sort_keys=True)})
         out.append({"document": doc["id"], **rec})
     lock.close()
-    print(json.dumps({"suggested": out}, indent=2))
+    print(json.dumps({"suggested": out, "skipped_already_suggested": skipped}, indent=2))
     return 0
 
 
@@ -861,7 +958,22 @@ BULK_PAUSED = 75  # EX_TEMPFAIL: guard tripped or no progress; rerun resumes
 
 
 def pending_count():
-    return ledger().execute("SELECT COUNT(*) FROM entries WHERE state = 'inventoried'").fetchone()[0]
+    db = ledger()
+    try:
+        return db.execute("SELECT COUNT(*) FROM entries WHERE state = 'inventoried'").fetchone()[0]
+    finally:
+        db.close()
+
+
+def parked_counts():
+    db = ledger()
+    try:
+        return dict(db.execute(
+            "SELECT state, COUNT(*) FROM entries WHERE state IN ('unreadable', 'consume-timeout')"
+            " GROUP BY state"
+        ).fetchall())
+    finally:
+        db.close()
 
 
 def cmd_bulk(args):
@@ -880,7 +992,9 @@ def cmd_bulk(args):
     for rnd in range(args.max_rounds):
         before = pending_count()
         if before == 0:
-            receipt("bulk-converged", rounds=rnd)
+            # Converged means "nothing left to admit", not "everything is in":
+            # parked entries are counted so the receipt cannot overstate it.
+            receipt("bulk-converged", rounds=rnd, parked=parked_counts())
             return 0
         reason = guard_reason(args)
         if reason:

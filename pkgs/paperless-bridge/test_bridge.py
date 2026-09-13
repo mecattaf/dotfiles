@@ -63,9 +63,19 @@ class FakePaperless:
         self.calls.append((method, path, body))
         parts = [p for p in path.split("/") if p][1:]  # drop "api"
         if parts == ["documents"] and method == "GET":
+            params = params or {}
             docs = sorted(self.docs.values(), key=lambda d: d["id"])
-            n = (params or {}).get("page_size", len(docs))
-            return {"count": len(docs), "next": None, "results": docs[:n]}
+            stem = params.get("original_filename__istartswith")
+            if stem is not None:
+                docs = [d for d in docs if (d.get("original_file_name") or "").startswith(stem)]
+            n = params.get("page_size", len(docs) or 1)
+            page = params.get("page", 1)
+            chunk = docs[(page - 1) * n : page * n]
+            more = page * n < len(docs)
+            return {"count": len(docs), "next": f"page={page + 1}" if more else None, "results": chunk}
+        if parts[:1] == ["documents"] and parts[2:] == ["metadata"]:
+            doc = self.docs[int(parts[1])]
+            return {"original_checksum": doc["checksum"], "media_filename": doc["media_filename"]}
         if parts[:1] == ["documents"] and len(parts) == 2:
             doc = self.docs[int(parts[1])]
             if method == "PATCH":
@@ -366,8 +376,22 @@ class TestSuggestAndTags(BridgeCase):
         self.assertEqual(rec["taxonomy_version"], 1)
         self.assertEqual(rec["candidates"], [{"slug": "kind/paper", "confidence": 0.82}])
         rc, out = self.suggest()
-        self.assertEqual([s.get("skipped") for s in out["suggested"]], ["already-suggested"] * 2)
+        self.assertEqual(out["suggested"], [])
+        self.assertEqual(out["skipped_already_suggested"], [21, 22])
         self.assertEqual(len(self.fake.notes[21]), 1)
+
+    def test_suggest_limit_advances_through_the_corpus(self):
+        for i in range(1, 61):
+            self.fake.add_doc(i, content=f"doc {i}", title=f"t{i}")
+        self.fake_utility('{"tags": []}')
+        seen = []
+        for _ in range(3):
+            rc, out = self.suggest(limit=25)
+            self.assertEqual(rc, 0)
+            seen.append([s["document"] for s in out["suggested"]])
+        self.assertEqual(seen[0], list(range(1, 26)))
+        self.assertEqual(seen[1], list(range(26, 51)))
+        self.assertEqual(seen[2], list(range(51, 61)))
 
     def test_accept_candidate_round_trip_through_sync_tags(self):
         self.run_cmd(self.b.cmd_scan)
@@ -394,6 +418,54 @@ class TestSuggestAndTags(BridgeCase):
         rc, out = self.run_cmd(self.b.cmd_sync_tags)
         self.assertEqual(rc, 1)
         self.assertEqual(out["drift"], ["ai-candidate/status/reading"])
+
+
+class TestIngestParking(BridgeCase):
+    """Entries Paperless cannot take must leave the head of the queue."""
+
+    def ingest(self, batch=10):
+        return self.run_cmd(self.b.cmd_ingest, batch=batch, timeout=0)
+
+    def states(self):
+        return {r["rel_path"]: r["state"] for r in self.b.ledger().execute("SELECT * FROM entries")}
+
+    def test_unreadable_is_parked_then_requeued(self):
+        os.chmod(os.path.join(self.root, self.rel_a), 0o600)
+        self.run_cmd(self.b.cmd_scan)
+        rc, out = self.ingest()
+        st = self.states()
+        self.assertEqual(st[self.rel_a], "unreadable")
+        # Readable entries were staged and timed out (no consumer here).
+        self.assertEqual(st["general/manual.pdf"], "consume-timeout")
+        self.assertFalse(os.path.exists(os.path.join(
+            self.root, ".paperless-consume", "%s.pdf" % self.b.ledger().execute(
+                "SELECT source_id FROM entries WHERE rel_path=?", (self.rel_a,)).fetchone()[0])))
+        os.chmod(os.path.join(self.root, self.rel_a), 0o644)
+        rc, out = self.ingest()
+        self.assertEqual(out["requeued"], 1)
+        self.assertEqual(self.states()[self.rel_a], "consume-timeout")
+
+    def test_timeout_is_parked_keeps_spool_and_is_adopted(self):
+        self.run_cmd(self.b.cmd_scan)
+        rc, out = self.ingest(batch=1)
+        row = self.b.ledger().execute("SELECT * FROM entries ORDER BY rel_path LIMIT 1").fetchone()
+        self.assertEqual(row["state"], "consume-timeout")
+        spool = os.path.join(self.root, ".paperless-consume", f"{row['source_id']}.pdf")
+        self.assertTrue(os.path.exists(spool))
+        # The next batch moves on instead of re-selecting the parked entry.
+        rc, out = self.ingest(batch=1)
+        self.assertEqual(sorted(self.states().values()).count("consume-timeout"), 2)
+        # Paperless finishes late: the parked entry is adopted, spool cleared.
+        src = os.path.join(self.root, row["rel_path"])
+        with open(src, "rb") as f:
+            data = f.read()
+        self.fake.add_doc(77, original_file_name=f"{row['source_id']}.pdf",
+                          checksum=sha(data), media_filename="Paper/77.pdf")
+        rc, out = self.ingest(batch=0)
+        self.assertEqual(out["adopted"], 1)
+        got = self.b.ledger().execute("SELECT * FROM entries WHERE source_id=?", (row["source_id"],)).fetchone()
+        self.assertEqual((got["state"], got["paperless_id"], got["media_path"]), ("ingested", 77, "Paper/77.pdf"))
+        self.assertFalse(os.path.exists(spool))
 
 
 class TestBulk(BridgeCase):
