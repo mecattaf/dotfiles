@@ -195,7 +195,7 @@
     # git cache and store path make every gate `--offline`-clean anywhere.
     # Nothing was printed or read from any credential store to establish this.
     tally-b = {
-      url = "git+https://github.com/mecattaf/tally?rev=8a9a4bc7ed4d02fde37816155c7748ba62016c99";
+      url = "git+https://github.com/mecattaf/tally?rev=b3a040e423926c542d794736d3976ec514bad02f";
       flake = false;
     };
 
