@@ -149,7 +149,12 @@ let
               rc=1
             fi
           fi
-          push || rc=1
+          # A failed push is not this unit's failure: the batch is safe in the
+          # spool, and huion-push.service owns that state — it fails on its
+          # next tick while the coordinator is unreachable and recovers on
+          # its own once the batch lands. Failing here would leave this unit
+          # red until the next opening, long after the pages arrived.
+          push || true
           exit "$rc"
           ;;
         push) push ;;
@@ -160,6 +165,11 @@ let
 
   unit = verb: {
     after = [ "bluetooth.service" ];
+    # Only udev and the timer start these. Left to its defaults, a switch
+    # restarts a changed unit that is failed — seen 2026-09-13: it killed one
+    # dump and started another with the notepad in reach. A deploy must never
+    # dump, nor kill a dump mid-transfer.
+    restartIfChanged = false;
     serviceConfig = {
       Type = "oneshot";
       User = "tom";
@@ -170,6 +180,9 @@ let
   };
 in
 {
+  # A switch does not restart bluetooth.service ("NOT restarting the
+  # following changed units"), so a changed package only runs after
+  # `systemctl restart bluetooth` or a reboot.
   hardware.bluetooth.package = pkgs.bluez.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ pkgs.huion-notes.bluezPatch ];
   });
