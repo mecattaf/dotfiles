@@ -13,11 +13,25 @@ let
   dotfiles = "/home/tom/mecattaf/dotfiles";
   notes = "/home/tom/mecattaf/notes";
   worktrees = "/home/tom/.local/state/tally-worktrees";
+  # 2026-09-13: pin each script to its own store path. The tally module types
+  # `script` and `catalog` as types.path, so a bare `./X.js` rendered as
+  # /nix/store/<hash>-source/flows/X.js: the whole flake source. Every commit,
+  # even a DECISIONS.md-only one, then changed tally's checked config, and its
+  # restartTriggers restarted tally-daemon on the next coordinator switch.
+  # builtins.path copies just the file, so the store path follows the file's
+  # content. The flow scripts have no relative imports (errata-map reads the
+  # catalog through its own option), so a lone file is complete.
+  pin =
+    p:
+    builtins.path {
+      path = p;
+      name = baseNameOf (toString p);
+    };
 in
 {
   services.tally.flows = lib.optionalAttrs isCoordinator {
     allowlist-implementation = {
-      script = ./allowlist-implementation.js;
+      script = pin ./allowlist-implementation.js;
       onCalendar = null;
       maxNodes = 4;
       args = {
@@ -29,7 +43,7 @@ in
     };
 
     parakeet-determinism = {
-      script = ./parakeet-determinism.js;
+      script = pin ./parakeet-determinism.js;
       onCalendar = null;
       maxNodes = 4;
       args = {
@@ -41,7 +55,7 @@ in
     };
 
     materialize-model-weights = {
-      script = ./materialize-model-weights.js;
+      script = pin ./materialize-model-weights.js;
       onCalendar = null;
       maxNodes = 64;
       args = {
@@ -54,7 +68,7 @@ in
     };
 
     docs-model-split = {
-      script = ./docs-model-split.js;
+      script = pin ./docs-model-split.js;
       onCalendar = null;
       maxNodes = 3;
       args = {
@@ -66,7 +80,7 @@ in
     };
 
     issue-96-drain = {
-      script = ./issue-96-drain.js;
+      script = pin ./issue-96-drain.js;
       onCalendar = null;
       maxNodes = 5;
       args = {
@@ -80,10 +94,10 @@ in
     };
 
     errata-map = {
-      script = ./errata-map.js;
+      script = pin ./errata-map.js;
       onCalendar = null;
       maxNodes = 400;
-      catalog = ./catalog.json;
+      catalog = pin ./catalog.json;
       args = {
         notesRepo = notes;
         outDir = "${notes}/july23-notes-reshape";
