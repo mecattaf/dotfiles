@@ -50,12 +50,149 @@
 # Opening the notepad with the cover: LED green = on and recording offline;
 # closed = asleep, link drops. Upstream's README says "cover closed" for note
 # mode — wrong for this unit.
+#
+# ── the sync: dump on connect, spool, push, retry ──────────────────────────
+# Opening the cover near the laptop is the whole gesture. BlueZ reconnects the
+# trusted notepad on its own, the uhid add fires the unbind above AND wants
+# huion-sync.service, and that one-shot, as tom:
+#
+#   1. dumps every stored page into /var/lib/huion-sync/spool/<ts>/ and lets
+#      the extractor CLEAR the device (no --keep — Tom: clearing synced pages
+#      "is indeed desirable"). The extractor deletes a page only once its SVG
+#      and JSON are on local disk and never an incomplete one; it cannot wait
+#      for the push, so the spool is the durability buffer, not the device.
+#   2. pushes every spooled batch, oldest first, to
+#      coordinator:~/Paper/inbox/<ts>/ and removes the local copy only after
+#      rsync succeeded.
+#
+# huion-push.timer re-runs step 2 alone (never a dump: that only happens when
+# the notepad connects) for anything a down or unreachable coordinator left in
+# the spool. One lock serialises the two.
+#
+# Why a folder per sync: filenames are page{N}-{DD}-{MM} and N restarts at 1
+# after every clearing sync, so two syncs on one day would overwrite each
+# other in a flat inbox. `inbox/` holds nothing but these folders — printable
+# markdown is `intake/`, the print loop's (home/paper.nix). OCR is a later
+# coordinator-side consumer of `inbox/` and is not declared anywhere yet.
+#
+# A system unit with User=tom rather than a user unit: udev can want a system
+# unit directly, and tom is all it needs — his ssh key and config for the push,
+# the system bus for BlueZ. It runs whether or not a niri session is up.
+let
+  mac = "25:6C:20:F5:D8:25";
+
+  huion-sync = pkgs.writeShellApplication {
+    name = "huion-sync";
+    runtimeInputs = with pkgs; [
+      bluez
+      coreutils
+      huion-notes
+      openssh
+      rsync
+      util-linux
+    ];
+    text = ''
+      usage() { echo "usage: huion-sync dump|push" >&2; exit 2; }
+      [[ $# -eq 1 ]] || usage
+
+      state=''${STATE_DIRECTORY:?run me as huion-sync.service or huion-push.service}
+      spool=$state/spool
+      mkdir -p "$spool"
+
+      # Wait rather than skip: a timer push holding the lock is seconds, and
+      # the notepad stays connected until the cover closes.
+      exec 9>"$state/lock"
+      flock -w 300 9
+
+      push() {
+        local d rc=0
+        for d in "$spool"/*/; do
+          [[ -d $d ]] || continue
+          local batch
+          batch=$(basename "$d")
+          if rsync -a --remove-source-files --timeout=60 \
+            -e 'ssh -o BatchMode=yes -o ConnectTimeout=10' \
+            "$d" "coordinator:Paper/inbox/$batch/"; then
+            rmdir "$d"
+            echo "pushed $batch -> coordinator:~/Paper/inbox/$batch/"
+          else
+            echo "push of $batch failed; kept in $spool for huion-push.timer" >&2
+            rc=1
+          fi
+        done
+        return "$rc"
+      }
+
+      # The extractor only creates -o when there are pages, and page numbers
+      # restart after a partial clear, so every attempt gets its own folder.
+      dump_once() {
+        local out rc=0
+        out=$spool/$(date +%Y-%m-%d_%H%M%S)
+        huion-notes dump --mac ${mac} -o "$out" || rc=$?
+        rmdir "$out" 2>/dev/null || true
+        return "$rc"
+      }
+
+      case $1 in
+        dump)
+          rc=0
+          # Let GATT resolve and the unbind land before the first frame.
+          sleep 3
+          if ! dump_once; then
+            # A dump that times out (HOGP won the race, a slow resolve) leaves
+            # every incomplete page on the device; one more try is safe.
+            sleep 5
+            if [[ $(bluetoothctl info ${mac}) == *"Connected: yes"* ]]; then
+              dump_once || rc=1
+            else
+              echo "notepad disconnected before the retry" >&2
+              rc=1
+            fi
+          fi
+          push || rc=1
+          exit "$rc"
+          ;;
+        push) push ;;
+        *) usage ;;
+      esac
+    '';
+  };
+
+  unit = verb: {
+    after = [ "bluetooth.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      User = "tom";
+      ExecStart = "${huion-sync}/bin/huion-sync ${verb}";
+      StateDirectory = "huion-sync";
+      StateDirectoryMode = "0700";
+    };
+  };
+in
 {
   hardware.bluetooth.package = pkgs.bluez.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ pkgs.huion-notes.bluezPatch ];
   });
 
   services.udev.extraRules = ''
-    SUBSYSTEM=="hid", KERNEL=="0005:256C:8251.*", ACTION=="add", RUN+="${pkgs.runtimeShell} -c 'echo %k > /sys/bus/hid/drivers/hid-generic/unbind 2>/dev/null || true'"
+    SUBSYSTEM=="hid", KERNEL=="0005:256C:8251.*", ACTION=="add", RUN+="${pkgs.runtimeShell} -c 'echo %k > /sys/bus/hid/drivers/hid-generic/unbind 2>/dev/null || true'", TAG+="systemd", ENV{SYSTEMD_WANTS}+="huion-sync.service"
   '';
+
+  # Every opening is a new HID instance (.000E, .0010, …), so the add — and
+  # the want — fires once per opening; a start while a run is still active
+  # merges into it.
+  systemd.services.huion-sync = unit "dump" // {
+    description = "Pull pages off the Huion Note X10 into coordinator:~/Paper/inbox";
+  };
+
+  systemd.services.huion-push = unit "push" // {
+    description = "Push spooled Huion pages to coordinator:~/Paper/inbox";
+  };
+  systemd.timers.huion-push = {
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "2min";
+      OnUnitActiveSec = "15min";
+    };
+  };
 }
