@@ -1,5 +1,29 @@
 # DECISIONS
 
+2026-09-13 the client's dock carries no display; the PA27JCV never moved.
+The 2026-09-11 entry below says "the PA27JCV moves to the client's
+Thunderbolt dock". It did not, and the kanshi profiles written for it
+(`DuoDock`, `DuoDockDocked`, matching the monitor by description string)
+could never have applied. Tom's uncommitted note on that file (2026-09-12:
+"there is a misnaming, it's NOT the asus pa27 it's a 14 inch display") is
+what caught it, and the metal agrees: on the client DP-1, DP-2 and HDMI-A-1
+all read `disconnected`, the Thunderbolt domain lists hubs, a NIC and
+peripherals, and the only displays are the Duo's own two 14-inch panels,
+eDP-1 and eDP-2. The two profiles are deleted, the note is folded into the
+file's header, and where the PA27JCV physically is now is not recorded here.
+
+Same day, thermald is off on the client, measured on the metal. The client
+idles at 56–58 °C, inside the EC's fan hysteresis band — fan on at 58, off at
+56, about 100 s on and 25 s off — and the band cannot be moved: the UX8406MA
+exposes no fan-curve interface (asusctl's fan-curve verb aborts with a core
+dump on it, which is what the coredump episodes of 2026-09-13 17:57 and 18:21
+were — probes, not faults). thermald had nothing to act on below 103 °C, the
+EC owns the fan, and it burnt 1 h 50 min of CPU in 46 h polling dead EC
+sensors. Both 14-inch panels stay lit: a proposal to disable eDP-2 by default
+for the heat was made and REJECTED by Tom the same evening — the bottom panel
+is part of the seat, not a cost. Chrome was checked and left alone: its GPU
+process already carries iHD_drv_video, so video decode is hardware.
+
 2026-09-11 the coordinator is headless; no VNC in the fleet. This is the
 "next one" the entry below promises — it reads "the coordinator goes fully
 headless EVENTUALLY, not today, and not in this PR — the next one flips

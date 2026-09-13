@@ -198,8 +198,8 @@
   # The dock contract (modules/zenbook-duo-daemon.nix): keyboard on → eDP-2
   # off, backlights synced, Fn keys. kanshi's `Duo` profile covers both panels
   # lit; with the keyboard docked only eDP-1 remains and kanshi applies
-  # `DuoDocked` (home/dot_config/kanshi/config, one of the Duo's four profiles
-  # M-5 wrote — the Dell-era `Laptop` profile is gone).
+  # `DuoDocked` (home/dot_config/kanshi/config, one of the Duo's two profiles
+  # — the dock-monitor ones went on 2026-09-13, see that file's header).
   services.zenbook-duo-daemon.enable = true;
 
   # ── the Duo's own quirks, all measured on this metal by omarchy-fleet ──────
@@ -213,13 +213,24 @@
   services.timesyncd.enable = true;
 
   # asusd for charge-limit / platform-profile. The charge limit is set below
-  # (battery-charge-limit, 60%); asusd's own saved value stays 100.
+  # (battery-charge-limit, 60%); asusd noticed the external write and has
+  # since persisted 60 into /etc/asusd/asusd.ron of its own accord (seen
+  # 2026-09-13), so the two agree; the oneshot stays because it is the
+  # declaration and asusd's file is only a cache of it.
   # Its upstream unit sandboxes onto /etc/asusd and nothing creates that dir,
   # so without the tmpfiles line it dies status=226/NAMESPACE before exec and
   # burns its five restarts in a second (omarchy-fleet R37).
   services.asusd.enable = true;
   systemd.tmpfiles.rules = [ "d /etc/asusd 0755 root root -" ];
-  services.thermald.enable = true;
+  # thermald is OFF on this box (2026-09-13), measured: the UX8406MA gives it
+  # nothing to act on — every ACPI trip is at 103 °C or above, the EC owns the
+  # fan and exposes no curve (asusctl's fan-curve verb aborts with a core dump
+  # here), and the firmware's own RAPL limits (20 W / 25 W in `quiet`) and the
+  # silicon's 100 °C throttle are what actually protect the chip. What it did
+  # instead: 1 h 50 min of CPU in 46 h of uptime polling eight dead EC sensors
+  # (thermal_zone2… read 0.05 °C) at ~8 ms of blocked EC bus per read, and
+  # one log line ever, "Unable to find a zone for STG0". Pure heat.
+  services.thermald.enable = false;
 
   # Always docked: cap charge at 60% (ASUS "Maximum Lifespan"). The box lives
   # on the Thunderbolt dock 24/7, so unplugged runtime is not a cost, and a
