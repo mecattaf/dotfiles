@@ -3398,6 +3398,7 @@
           assert coordinatorHome.systemd.user.timers ? paper-daemon-flush;
           assert coordinatorHome.systemd.user.timers.paper-daemon-flush.Timer.Persistent;
           assert daemonService.Unit.X-RestartIfChanged == false;
+          assert daemonService.Unit.StartLimitIntervalSec == 0;
           assert !(coordinatorHome.systemd.user.services ? paper-print-flush);
           assert nixpkgs.lib.all (
             name:

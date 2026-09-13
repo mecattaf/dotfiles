@@ -42,6 +42,17 @@ lib.mkIf isCoordinator {
       # stranded with no receipt. The next path event or sweep runs the new
       # generation.
       X-RestartIfChanged = false;
+      # No start rate limit. One drop is several inotify events (the .tmp
+      # create, its close-write, the rename), and a start while the oneshot
+      # is still active merges, so a few drops in a row are easily five
+      # starts in ten seconds. MEASURED 2026-09-13 with a transient
+      # PathChanged unit on this box: the sixth start leaves the SERVICE
+      # start-limit-hit and the PATH unit failed with unit-start-limit-hit,
+      # and it never watches again, even after the window passes, until
+      # someone resets it. With StartLimitIntervalSec=0 the same twelve rapid
+      # triggers all ran and the path stayed active. Nothing here can loop
+      # by itself: only an outside write or the sweep starts a run.
+      StartLimitIntervalSec = 0;
     };
     Service = {
       Type = "oneshot";
