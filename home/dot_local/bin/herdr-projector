@@ -50,6 +50,11 @@
 # until the child is gone, and a background job of a non-interactive bash
 # otherwise gets /dev/null as stdin. Job control is off, so the child stays
 # in the terminal's foreground process group and reads the tty normally.
+#
+# LIFECYCLE (#355): closing this window or prefix+q DETACHES; the panes live
+# on in the coordinator's server. Only an explicit exit inside a pane ends
+# it; `herdr-panes close <id>` on the coordinator ends one deliberately.
+# The full rule is beside [session] in home/dot_config/herdr/config.toml.
 set -u
 
 target="${HERDR_PROJECTOR_TARGET:-coordinator}"

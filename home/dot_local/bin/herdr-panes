@@ -1,0 +1,154 @@
+#!/usr/bin/env bash
+# herdr-panes [list [--json]] | close <pane_id> -- see the live herdr panes
+# and deliberately end one (#355, Role A: human session preservation).
+#
+# THE LIFECYCLE RULE this helper serves (also written beside [session] in
+# home/dot_config/herdr/config.toml):
+#   - Explicit exit (Ctrl+C, an agent's /exit) CLOSES the conversation. The
+#     pane's child dies, herdr removes the pane (app/actions.rs
+#     handle_pane_died -> ws.remove_pane, mark_session_dirty), and the next
+#     snapshot no longer carries it, so nothing can resume it.
+#   - Closing a kitty projector, or prefix+q, only DETACHES. The PTY lives on
+#     in the coordinator's herdr server, resumable from any projector
+#     (herdr's sidebar on Mod+Ctrl+Shift+Return, #385).
+#   - A herdr SERVER restart restores the saved layout. resume_agents_on_restore
+#     relaunches an agent only for a pane whose snapshot carries an agent
+#     session ref (persist/restore.rs pane_restore_startup ->
+#     agent_resume::plan, e.g. `codex resume <id>`); every other pane gets a
+#     fresh shell in its saved cwd. Layout restored is NOT proof that the
+#     process came back — check this list.
+#   - Preserved panes are not free: `herdr-panes close <id>` is the
+#     deliberate end, instead of guessing which kitty window once showed it.
+#
+# COLUMNS. pane, workspace (label), agent, agent_status (herdr's own words:
+# working / idle / done / blocked / unknown), cwd, the foreground argv
+# (`herdr pane process-info`), and LAST ACTIVITY. herdr exposes no timestamp
+# (`revision` is a counter, never a time), so last activity is the mtime of
+# the newest harness session file for the pane's cwd:
+#   claude  ~/.claude/projects, ~/.claude-work/projects and
+#           ~/.claude-3/projects (cc, cc2, cc3, as claude-sessions sweeps),
+#           under the cwd slug (every non-alphanumeric byte becomes '-');
+#   codex   ~/.codex/sessions rollouts from the last 30 days whose
+#           session_meta cwd equals the pane's cwd.
+# Several panes in one cwd share the newest file, so the value is "the last
+# activity of THAT harness in THAT directory", not a per-pane clock. Anything
+# else prints `unavailable`, never a guess.
+#
+# Runs where the server is (the coordinator); elsewhere `herdr` has no socket.
+set -euo pipefail
+
+usage() {
+  echo "usage: herdr-panes [list [--json]] | close <pane_id>" >&2
+  exit 2
+}
+
+HOME_DIR="${HERDR_PANES_HOME:-$HOME}"
+CLAUDE_SEATS=(.claude .claude-work .claude-3)
+
+panes_json() { herdr pane list | jq -c '.result.panes'; }
+
+fmt_mtime() { date -d "@$1" '+%Y-%m-%d %H:%M'; }
+
+last_activity() {
+  local agent="$1" cwd="$2" newest="" m slug f seat
+  case "$agent" in
+    claude)
+      slug="$(printf '%s' "$cwd" | sed 's/[^A-Za-z0-9]/-/g')"
+      for seat in "${CLAUDE_SEATS[@]}"; do
+        for f in "$HOME_DIR/$seat/projects/$slug"/*.jsonl; do
+          [ -e "$f" ] || continue
+          m="$(stat -c %Y "$f")"
+          if [ -z "$newest" ] || [ "$m" -gt "$newest" ]; then newest="$m"; fi
+        done
+      done
+      ;;
+    codex)
+      while IFS= read -r line; do
+        m="${line%% *}"
+        f="${line#* }"
+        if [ "$(head -n1 "$f" | jq -r 'select(.type == "session_meta") | .payload.cwd // empty' 2>/dev/null)" = "$cwd" ]; then
+          newest="${m%.*}"
+          break
+        fi
+      done < <(find "$HOME_DIR/.codex/sessions" -name 'rollout-*.jsonl' -mtime -30 -printf '%T@ %p\n' 2>/dev/null | sort -rn)
+      ;;
+  esac
+  if [ -n "$newest" ]; then fmt_mtime "$newest"; else echo unavailable; fi
+}
+
+foreground() {
+  herdr pane process-info --pane "$1" 2>/dev/null |
+    jq -r '[.result.process_info.foreground_processes[0].argv // [] | .[] ] | join(" ") | if . == "" then "-" else . end' 2>/dev/null ||
+    echo "-"
+}
+
+rows_json() {
+  local panes labels
+  panes="$(panes_json)"
+  labels="$(herdr workspace list | jq -c '[.result.workspaces[] | {key: .workspace_id, value: (.label // "")}] | from_entries')"
+  jq -c --argjson labels "$labels" '.[] | {
+      pane_id, workspace_id,
+      workspace: ($labels[.workspace_id] // ""),
+      agent: (.agent // "-"),
+      agent_status: (.agent_status // "unknown"),
+      cwd: (.foreground_cwd // .cwd // "")
+    }' <<<"$panes" |
+    while IFS= read -r row; do
+      local id agent cwd
+      id="$(jq -r .pane_id <<<"$row")"
+      agent="$(jq -r .agent <<<"$row")"
+      cwd="$(jq -r .cwd <<<"$row")"
+      jq -c --arg fg "$(foreground "$id")" --arg last "$(last_activity "$agent" "$cwd")" \
+        '. + {foreground: $fg, last_activity: $last}' <<<"$row"
+    done
+}
+
+cmd_list() {
+  local json=0
+  case "${1:-}" in
+    --json) json=1 ;;
+    "") ;;
+    *) usage ;;
+  esac
+  if [ "$json" = 1 ]; then
+    rows_json | jq -s .
+    return
+  fi
+  {
+    printf 'PANE\tWORKSPACE\tAGENT\tSTATUS\tLAST ACTIVITY\tCWD\tFOREGROUND\n'
+    rows_json | jq -r '[.pane_id, (.workspace_id + (if .workspace != "" then " (" + .workspace + ")" else "" end)),
+      .agent, .agent_status, .last_activity, .cwd, .foreground] | @tsv'
+  } | column -t -s $'\t'
+}
+
+cmd_close() {
+  local id="${1:-}" before after
+  [ -n "$id" ] && [ "$#" -eq 1 ] || usage
+  before="$(panes_json)"
+  if ! jq -e --arg id "$id" 'any(.[]; .pane_id == $id)' <<<"$before" >/dev/null; then
+    echo "herdr-panes: no live pane $id" >&2
+    exit 1
+  fi
+  jq -r --arg id "$id" '.[] | select(.pane_id == $id)
+    | "closing \(.pane_id) in \(.workspace_id): agent=\(.agent // "-") status=\(.agent_status) cwd=\(.cwd)"' <<<"$before"
+  herdr pane close "$id" >/dev/null
+  after="$(panes_json)"
+  if jq -e --arg id "$id" 'any(.[]; .pane_id == $id)' <<<"$after" >/dev/null; then
+    echo "herdr-panes: $id is still listed after close" >&2
+    exit 1
+  fi
+  echo "closed $id ($(jq length <<<"$before") -> $(jq length <<<"$after") panes)"
+}
+
+case "${1:-list}" in
+  list)
+    shift || true
+    cmd_list "$@"
+    ;;
+  close)
+    shift
+    cmd_close "$@"
+    ;;
+  -h | --help) usage ;;
+  *) usage ;;
+esac
