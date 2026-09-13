@@ -2184,8 +2184,16 @@
             service = coordinatorHome.systemd.user.services.herdr;
           in
           assert service.Service.OOMPolicy == "continue";
+          # #354: a switch (update-adopt's or Tom's) never restarts Herdr.
+          # sd-switch 0.6.4 reads X-SwitchMethod=keep-old (home/herdr.nix);
+          # the rendered unit text is checked too, so a renamed option cannot
+          # silently drop the line.
+          assert service.Unit.X-SwitchMethod == "keep-old";
           assert !(workerHome.systemd.user.services ? herdr);
           pkgs.runCommand "herdr-oom-isolation" { } ''
+            unit=${coordinatorHome.xdg.configFile."systemd/user/herdr.service".source}
+            grep -qx 'X-SwitchMethod=keep-old' "$unit"
+            grep -qx 'OOMPolicy=continue' "$unit"
             touch "$out"
           '';
 

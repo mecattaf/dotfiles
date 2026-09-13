@@ -88,6 +88,19 @@ in
       # NO PartOf/After/Wants on graphical-session.target: this server must
       # survive the compositor, not follow it (ruling B6).
       Documentation = [ "https://herdr.dev" ];
+      # SWITCH RULING (#354, 2026-09-13). A switch never restarts this server.
+      # home-manager's startServices drives sd-switch, and sd-switch restarts
+      # a changed, running unit by default. For herdr that would kill every
+      # live PTY, so an unattended update-adopt switch (or Tom's own) that
+      # moved the herdr package or this unit file would take down all panes.
+      # `keep-old` is sd-switch's own key: VERIFIED against the pinned
+      # sd-switch 0.6.4 source (src/systemd/ini.rs KEY_X_SWITCHMETHOD,
+      # "keep-old" => UnitSwitchMethod::KeepOld; src/lib.rs keeps the old
+      # unit running for that method) and home-manager 079a3b5's
+      # modules/systemd.nix X-SwitchMethod enum. The new version therefore
+      # lands only on a deliberate `systemctl --user restart herdr`, the same
+      # stance DF-CLIENT-7 takes. Asserted by the herdr-switch-keep-old check.
+      X-SwitchMethod = "keep-old";
     };
     Service = {
       ExecStart = "${lib.getExe herdr} server";
