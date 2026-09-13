@@ -76,7 +76,11 @@ NO_TOKEN_COUNTERS = "halogen exposes no token counters"
 # The coordinator serves nothing declaratively — the small GGUF artifacts loaned
 # there are run by hand, and a hand-run llama-server is not a declared probe —
 # so its probe list is empty and its sample carries sysfs, pools and the ledger.
+# The client — the Zenbook Duo, a full member of the fleet from 2026-09-13 —
+# serves nothing and holds no GPU pool: its sample is the clock, the zone and
+# an all-None sysfs block, which is what "this box ran nothing" looks like.
 SERVE_PROBES = {
+    "client": [],
     "coordinator": [],
     "worker": [
         {"name": "halogen",
@@ -86,14 +90,16 @@ SERVE_PROBES = {
 }
 
 LEDGERS = {
+    "client": None,
     "coordinator": "/home/tom/.local/state/academic-ocr/drain/completed.jsonl",
     "worker": None,
 }
 
 VRAM_POOL_BY_BOX = {"coordinator": "coordinator-gpu", "worker": "worker-gpu"}
 
-# The card declares exactly two boxes.  A sample from anything else is not a
-# sample of this estate, and its name must never reach a filesystem path.
+# Three declared boxes: the two Strix twins and the client.  A sample from
+# anything else is not a sample of this estate, and its name must never reach
+# a filesystem path.
 KNOWN_BOXES = tuple(sorted(set(SERVE_PROBES) | set(VRAM_POOL_BY_BOX) | set(LEDGERS)))
 
 ZONEINFO_MARK = os.sep + "zoneinfo" + os.sep

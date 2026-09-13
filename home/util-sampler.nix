@@ -34,7 +34,8 @@
 # is why the digests are written down here and not only in the kit:
 #
 #   home/dot_local/bin/util-sampler
-#     cc76a8179c46e735d6005f3f2d92f137cff026d7c3658a27b89261778fa50ce6
+#     7d8d398c5bb14062c52114610a0a0f5b8bafc1afb53aa230860eda55afd8f0f6
+#     (re-locked 2026-09-13: the client declared as a box)
 #   home/dot_local/bin/util-row
 #     1fdb80179595dc151af67e4ed2bc03e6a3bcf34685acb869b1cc9d9bcfa90906
 #

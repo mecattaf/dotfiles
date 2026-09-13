@@ -1301,16 +1301,16 @@
     "tally-b": {
       "flake": false,
       "locked": {
-        "lastModified": 1788779817,
-        "narHash": "sha256-JkbYyVys9NOiaU+9Zgj2Pcm67TdrDiVvVNTQkXsdIfs=",
+        "lastModified": 1789295185,
+        "narHash": "sha256-k3/mX9rifct2coFI09jbO/JoixBAvoEEyHIxDchPDxc=",
         "ref": "refs/heads/main",
-        "rev": "d4e54d5f7c41335e4a1c5f539e3ab8865fc04412",
-        "revCount": 117,
+        "rev": "8a9a4bc7ed4d02fde37816155c7748ba62016c99",
+        "revCount": 120,
         "type": "git",
         "url": "https://github.com/mecattaf/tally"
       },
       "original": {
-        "rev": "d4e54d5f7c41335e4a1c5f539e3ab8865fc04412",
+        "rev": "8a9a4bc7ed4d02fde37816155c7748ba62016c99",
         "type": "git",
         "url": "https://github.com/mecattaf/tally"
       }

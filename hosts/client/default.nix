@@ -150,6 +150,16 @@
   services.tailscale.enable = true;
   services.tailscale.extraUpFlags = [ "--login-server=https://nas-saas.tail8dd1.ts.net:8443" ];
 
+  # ── failure surfacing: tom is uid 1001 here ────────────────────────────────
+  # modules/failure-surfacing.nix watches the user manager of uid 1000 by
+  # default, which is tom on the twins. On this box tom is 1001 (the Omarchy
+  # install's uid ordering, kept by the in-place switch), so the default made
+  # failure-marker-reconcile spawn a `systemctl --user --machine=1000@.host`
+  # bridge that died with "Unknown user 1000" on every tick — a failed
+  # transient unit surfaced as its own episode — and left this user manager's
+  # unit failures unwatched. Name the real uid.
+  myFailureSurfacing.userManagerUids = [ 1001 ];
+
   # ── the Thunderbolt 3 dock ─────────────────────────────────────────────────
   # This is the docking host: the coordinator's webcam/mic, Sound Blaster,
   # INZONE dongle, Glove80 and Magic Trackpad all hang off a TB3 dock on this
@@ -202,13 +212,31 @@
   boot.initrd.systemd.emergencyAccess = true;
   services.timesyncd.enable = true;
 
-  # asusd for charge-limit / platform-profile (never set; threshold reads 100).
+  # asusd for charge-limit / platform-profile. The charge limit is set below
+  # (battery-charge-limit, 60%); asusd's own saved value stays 100.
   # Its upstream unit sandboxes onto /etc/asusd and nothing creates that dir,
   # so without the tmpfiles line it dies status=226/NAMESPACE before exec and
   # burns its five restarts in a second (omarchy-fleet R37).
   services.asusd.enable = true;
   systemd.tmpfiles.rules = [ "d /etc/asusd 0755 root root -" ];
   services.thermald.enable = true;
+
+  # Always docked: cap charge at 60% (ASUS "Maximum Lifespan"). The box lives
+  # on the Thunderbolt dock 24/7, so unplugged runtime is not a cost, and a
+  # cell held at 60% fades far slower than one held at 100% (health was 85%
+  # after 271 cycles when this was set, 2026-09-13). Ordered after asusd so
+  # its stored limit (100, /etc/asusd/asusd.ron) cannot overwrite this on
+  # boot; a udev rule would lose that race.
+  systemd.services.battery-charge-limit = {
+    description = "Cap BAT0 charge at 60%";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "asusd.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    script = "echo 60 > /sys/class/power_supply/BAT0/charge_control_end_threshold";
+  };
 
   # The asus_screenpad backlight reports brightness 130816 against a max of
   # 255, so systemd-backlight's save/restore fails on every boot. Mask the

@@ -195,7 +195,7 @@
     # git cache and store path make every gate `--offline`-clean anywhere.
     # Nothing was printed or read from any credential store to establish this.
     tally-b = {
-      url = "git+https://github.com/mecattaf/tally?rev=d4e54d5f7c41335e4a1c5f539e3ab8865fc04412";
+      url = "git+https://github.com/mecattaf/tally?rev=8a9a4bc7ed4d02fde37816155c7748ba62016c99";
       flake = false;
     };
 
@@ -909,7 +909,7 @@
           # ── the programs are byte-for-byte the ones the card locked ────────
           assert
             builtins.hashFile "sha256" ./home/dot_local/bin/util-sampler
-            == "25709720ad9e05e18061148076f015fb83f7e02aa64ebbb57b69861306b8e5a0";
+            == "7d8d398c5bb14062c52114610a0a0f5b8bafc1afb53aa230860eda55afd8f0f6";
           assert
             builtins.hashFile "sha256" ./home/dot_local/bin/util-row
             == "1fdb80179595dc151af67e4ed2bc03e6a3bcf34685acb869b1cc9d9bcfa90906";
