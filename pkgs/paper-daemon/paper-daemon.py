@@ -70,6 +70,7 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 from pathlib import Path
 
 QUEUE = os.environ.get("PAPER_QUEUE", "Brother_HL_L2445DW")
@@ -367,6 +368,32 @@ def notify(summary: str, body: str) -> None:
         log(f"client notification failed (rc {result.returncode}): {result.stderr.strip()}")
 
 
+def cancel_cups_job(cups_job: str) -> dict:
+    cancel = run(["cancel", cups_job])
+    return {"rc": cancel.returncode, "output": (cancel.stdout + cancel.stderr).strip()}
+
+
+def crashed(jobdir: Path, what: str) -> bool:
+    """An unexpected exception on one job (a malformed decision.json, a full
+    disk) must neither strand work/<id>/ with no outcome directory nor abort
+    the rest of the run: it becomes a failed/ entry with the traceback and a
+    client notify, like any other failure. Called from an except block."""
+    log(f"crashed on {jobdir.name} during {what}:\n{traceback.format_exc()}")
+    if not jobdir.exists():
+        return False  # it had already reached its outcome directory
+    meta_path = jobdir / "job.json"
+    try:
+        meta = json.loads(meta_path.read_text())
+    except Exception:  # noqa: BLE001
+        meta = {"id": jobdir.name}
+    try:
+        return fail_job(jobdir, meta, f"paper-daemon crashed during {what}",
+                        {"traceback": traceback.format_exc()[-8000:]})
+    except Exception:  # noqa: BLE001
+        log(f"could not even record the crash of {jobdir.name}:\n{traceback.format_exc()}")
+        return False
+
+
 def fail_job(jobdir: Path, meta: dict, reason: str, extra: dict) -> bool:
     """Move the job to failed/ with its evidence, notify, and return False."""
     since = meta.get("submitted_at") or meta.get("dropped_at")
@@ -434,9 +461,17 @@ def submit(jobdir: Path) -> bool:
                                     {**base, "printer_job": job, "ipp": dumps})
         cups_state = run(["lpstat", "-p", QUEUE])
         if "disabled" in cups_state.stdout:
-            return fail_job(jobdir, meta, "CUPS stopped the queue while printing: "
-                                + cups_state.stdout.strip(),
-                                {**base, "printer_job": seen, "ipp": dumps})
+            extra = {**base, "printer_job": seen, "ipp": dumps}
+            reason = "CUPS stopped the queue while printing: " + cups_state.stdout.strip()
+            if seen is None and cups_job:
+                # Same rule as the deadline below, and more urgent: a stopped
+                # queue keeps its held job, and the next ensure-printers run
+                # (the daemon's own repair, a switch, or boot at 03:00)
+                # re-enables the queue with `lpadmin -E` and prints it with
+                # nobody watching and no receipt.
+                extra["cancel"] = cancel_cups_job(cups_job)
+                reason += "; the printer never listed the job, CUPS job cancelled"
+            return fail_job(jobdir, meta, reason, extra)
         if time.monotonic() > deadline:
             extra = {**base, "printer_job": seen, "ipp": dumps, "budget_seconds": budget}
             if seen is None and cups_job:
@@ -445,9 +480,7 @@ def submit(jobdir: Path) -> bool:
                 # otherwise prints whenever the printer next wakes, which may
                 # be 03:00). A job the printer HAS accepted is left alone:
                 # its sheets are already moving.
-                cancel = run(["cancel", cups_job])
-                extra["cancel"] = {"rc": cancel.returncode,
-                                   "output": (cancel.stdout + cancel.stderr).strip()}
+                extra["cancel"] = cancel_cups_job(cups_job)
                 reason = f"printer never listed {title} within {budget:.0f}s; CUPS job cancelled"
             else:
                 reason = (f"printer job {seen.get('job-id')} still "
@@ -508,8 +541,14 @@ def process(drop: Path) -> bool:
     drop.rename(source)
     meta = {"id": jid, "original_name": drop.name,
             "dropped_at": at.isoformat(timespec="seconds"), "options": {}}
-    write_json(jobdir / "job.json", meta)
+    try:
+        write_json(jobdir / "job.json", meta)
+        return process_job(jobdir, source, meta, at)
+    except Exception:  # noqa: BLE001 — becomes failed/, never a stranded work/
+        return crashed(jobdir, "processing")
 
+
+def process_job(jobdir: Path, source: Path, meta: dict, at: dt.datetime) -> bool:
     try:
         meta["options"] = parse_front_matter(source.read_text(errors="replace"))
     except Rejected as exc:
@@ -571,7 +610,10 @@ def flush_outbox() -> bool:
         if not (jobdir / "job.json").exists():
             log(f"ignoring {jobdir}: not a paper-daemon job (no job.json)")
             continue
-        ok = submit(jobdir) and ok
+        try:
+            ok = submit(jobdir) and ok
+        except Exception:  # noqa: BLE001 — one bad entry must not block the rest
+            ok = crashed(jobdir, "submission from outbox/") and ok
     return ok
 
 
@@ -582,10 +624,21 @@ def cmd_run() -> int:
         # Re-scan until empty: a drop that lands while a long job is being
         # watched raises its path event while this service is still active.
         handled: set[str] = set()
+        grace_used = False
         while True:
             drops = [d for d in ready_drops(intake) if d.name not in handled]
             if not drops:
-                break
+                # The agent's `.tmp` write starts this run; its rename a few
+                # milliseconds later is merged into the still-active start
+                # and raises no further run. Look once more before exiting
+                # so that rename is not left for the five-minute sweep.
+                grace = env_float("PAPER_RESCAN_GRACE", 2)
+                if grace_used or grace <= 0:
+                    break
+                grace_used = True
+                time.sleep(grace)
+                continue
+            grace_used = False
             for drop in drops:
                 handled.add(drop.name)
                 if not settled(drop):
@@ -593,8 +646,8 @@ def cmd_run() -> int:
                     continue
                 try:
                     ok = process(drop) and ok
-                except Exception as exc:  # noqa: BLE001 — surface, never swallow
-                    log(f"crashed on {drop.name}: {exc!r}")
+                except Exception:  # noqa: BLE001 — before the move into work/
+                    log(f"crashed on {drop.name}:\n{traceback.format_exc()}")
                     ok = False
         if not quiet_hours(now()):
             ok = flush_outbox() and ok

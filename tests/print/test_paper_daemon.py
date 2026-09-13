@@ -59,6 +59,8 @@ def main(name):
         state["next_id"] += 1
         job = {"id": state["next_id"], "title": title, "pages": pages, "args": args}
         state["jobs"].append(job)
+        if state.get("disable_on_lp"):
+            state["queue_enabled"] = False
         save(state)
         print(f"request id is {QUEUE}-{job['id']} (1 file(s))")
         return 0
@@ -166,6 +168,9 @@ text = args.input.read_text()
 if "<!-- render: crash -->" in text:
     print("Chrome PDF export failed", file=sys.stderr)
     sys.exit(1)
+if "<!-- render: no-decision-key -->" in text:
+    (args.output_dir / "decision.json").write_text(json.dumps({"pages_rendered": 1}))
+    sys.exit(0)
 match = re.search(r"<!-- pages: (\d+) -->", text)
 pages = int(match.group(1)) if match else 1
 decision = {"profile": args.profile or "source-serif", "require_one_page": False,
@@ -227,6 +232,7 @@ class DaemonHarness(unittest.TestCase):
             "PAPER_NOW": "2026-09-13T22:00:00",
             "PAPER_SETTLE_SECONDS": "0.01",
             "PAPER_SETTLE_MAX": "1",
+            "PAPER_RESCAN_GRACE": "0",
             "PAPER_POLL_INTERVAL": "0.01",
             "PAPER_POLL_BASE_SECONDS": "0.6",
             "PAPER_POLL_PER_PAGE": "0",
@@ -317,6 +323,18 @@ class WorkingHoursTests(DaemonHarness):
         result = self.daemon("run")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.paper / "printed/fresh/receipt.json").exists())
+
+    def test_a_rename_just_after_an_empty_scan_is_caught_by_the_grace_rescan(self) -> None:
+        # The .tmp write starts the run; the rename that follows is merged
+        # into that start by systemd and raises no run of its own.
+        env = dict(self.env, PAPER_RESCAN_GRACE="2")
+        proc = subprocess.Popen([sys.executable, str(DAEMON), "run"], env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        time.sleep(0.7)
+        self.drop("late-rename")
+        _, err = proc.communicate(timeout=60)
+        self.assertEqual(proc.returncode, 0, err)
+        self.assertTrue((self.paper / "printed/late-rename/receipt.json").exists())
 
     def test_dotfiles_tmp_and_subdirectories_are_ignored(self) -> None:
         adopted = self.intake / ".adopted-2026-09-09"
@@ -547,6 +565,41 @@ class PrinterTruthTests(DaemonHarness):
         self.assertEqual(result.returncode, 1)
         self.assertTrue((self.paper / "failed/a-crash").exists())
         self.assertTrue((self.paper / "printed/b-fine/receipt.json").exists())
+
+    def test_cups_stopping_the_queue_cancels_a_job_the_printer_never_saw(self) -> None:
+        # A stopped queue holds its job, and the next ensure-printers run
+        # re-enables the queue: without the cancel it prints unattended.
+        self.state.update(printer_mode="never", disable_on_lp=True)
+        self.save_state()
+        self.drop("stopped")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 1)
+        failure = json.loads((self.paper / "failed/stopped/failure.json").read_text())
+        self.assertIn("CUPS stopped the queue", failure["reason"])
+        self.assertEqual(self.calls("cancel"), [[f"{QUEUE}-301"]])
+
+    def test_an_unexpected_crash_becomes_failed_not_a_stranded_work_dir(self) -> None:
+        self.drop("a-malformed", "<!-- render: no-decision-key -->\n")
+        self.drop("b-fine")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 1)
+        failure = json.loads((self.paper / "failed/a-malformed/failure.json").read_text())
+        self.assertIn("crashed", failure["reason"])
+        self.assertIn("KeyError", failure["traceback"])
+        self.assertEqual(list((self.paper / "work").iterdir()), [])
+        self.assertTrue((self.paper / "printed/b-fine/receipt.json").exists())
+        self.assertEqual(len(self.calls("ssh")), 1)
+
+    def test_a_broken_outbox_entry_does_not_block_the_morning_flush(self) -> None:
+        self.drop("a-broken")
+        self.drop("b-good")
+        self.daemon("run", now="2026-09-14T02:00:00")
+        (self.paper / "outbox/a-broken/decision.json").write_text("{not json")
+        result = self.daemon("flush", now="2026-09-14T06:05:00")
+        self.assertEqual(result.returncode, 1)
+        self.assertTrue((self.paper / "failed/a-broken/failure.json").exists())
+        self.assertTrue((self.paper / "printed/b-good/receipt.json").exists())
+        self.assertEqual(list((self.paper / "outbox").iterdir()), [])
 
 
 if __name__ == "__main__":
