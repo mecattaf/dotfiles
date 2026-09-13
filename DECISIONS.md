@@ -382,7 +382,9 @@ Why these shapes:
 
 The `client-mic` loopback is a pipewire.conf.d drop-in, so it goes live on the
 coordinator's next pipewire restart or reboot, not on the Home Manager
-switch. It becomes the coordinator's default source, since nothing else there
+switch. The model download runs inside the unit's ExecStart, not ExecStartPre, so
+the switch that first starts the unit does not wait on 2.5 GB (sd-switch's
+120 s job timeout). It becomes the coordinator's default source, since nothing else there
 is available; that is harmless on a headless box. DF-CLIENT-3 is removed.
 
 2026-09-13 full herdr on the client; herdr-kitten leaves the fleet (#385).

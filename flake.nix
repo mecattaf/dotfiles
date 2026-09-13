@@ -1951,6 +1951,9 @@
           assert !coordinatorHome.programs.voxtype.settings.parakeet.streaming;
           assert coordinatorHome.systemd.user.services.voxtype.Install.WantedBy == [ "default.target" ];
           assert coordinatorHome.systemd.user.services.voxtype.Unit.PartOf == [ ];
+          # No ExecStartPre: the switch that first starts this unit must not
+          # wait on the 2.5 GB model download (sd-switch 120 s job timeout).
+          assert !(coordinatorHome.systemd.user.services.voxtype.Service ? ExecStartPre);
           assert coordinatorHome.xdg.configFile ? "pipewire/pipewire.conf.d/60-client-mic.conf";
           assert nixpkgs.lib.hasInfix "client-mic" (builtins.readFile ./home/dot_local/bin/voxtype-relay);
           # ONE herdr server, coordinator only (ruling B5), and it must never be

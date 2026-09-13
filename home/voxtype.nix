@@ -168,11 +168,22 @@ in
       # XDG_DATA_HOME untouched: the model still lands in Voxtype's canonical
       # ~/.local/share/voxtype/models directory and the daemon continues to use
       # the declarative config generated above.
-      ExecStartPre = "${pkgs.coreutils}/bin/env XDG_CONFIG_HOME=%t/voxtype-bootstrap ${package}/bin/voxtype setup --download --model ${parakeetModel} --quiet";
+      #
+      # The download runs INSIDE ExecStart, then execs the daemon, and not as
+      # ExecStartPre (verifier, 2026-09-13). This unit is newly WantedBy
+      # default.target, so the coordinator's switch STARTS it, and Home
+      # Manager's sd-switch waits on every start job with its default 120 s
+      # timeout (sd-switch src/main.rs:103, lib.rs wait_for_all;
+      # servicesStartTimeoutMs = 0 passes no --timeout). With Type=simple an
+      # ExecStartPre holds that job for the whole first 2.5 GB download, and
+      # one slow fetch would fail home-manager-tom.service mid-activation.
+      # In ExecStart the job completes at fork; a failed download exits
+      # non-zero and Restart=on-failure retries it, as it did before.
+      ExecStart = lib.mkForce [
+        "${pkgs.runtimeShell} -c '${pkgs.coreutils}/bin/env XDG_CONFIG_HOME=%t/voxtype-bootstrap ${package}/bin/voxtype setup --download --model ${parakeetModel} --quiet && exec ${package}/bin/voxtype daemon'"
+      ];
       RuntimeDirectory = "voxtype-bootstrap";
       RuntimeDirectoryMode = "0700";
-      # First start downloads 2.5 GB; later starts are a no-op check.
-      TimeoutStartSec = "infinity";
     };
   };
 }
