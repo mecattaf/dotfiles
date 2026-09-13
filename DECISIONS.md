@@ -423,6 +423,12 @@ backoff UI, was not taken: `auto_detect_launch` spawns a LOCAL server when
 none is listening (server/autodetect.rs:295-320), which breaks ruling B5 and
 the thin-client rule. After a reattach the window lands on the server's
 default target, not necessarily the workspace it showed.
+Before every attach, first included, the wrapper asks the target over ssh
+whether `herdr.service` is active and waits with the same backoff if not:
+with no server listening, the remote `remote-client-bridge` spawns an
+UNMANAGED server daemon (herdr src/remote/host_unix.rs:72), so an unguarded
+retry loop would race a coordinator reboot and leave a second server
+fighting the unit over herdr.sock.
 
 herdr-kitten is removed fleet-wide, by Tom's ruling "herdr-kitten cannot cross
 ssh boundary, then we will have to live without it entirely". Gone: the input
@@ -431,8 +437,7 @@ and its lock node, the package on all three hosts, the generated
 ctrl+g's fork gesture has no replacement; herdr's scrollback editor is
 prefix+e), `hk-new-inplace`, `hk-resume-agents`, `checks.herdr-kitten-input`,
 `tests/herdr/test-herdr-kitten-input.sh`, and voxtype's `hk voice` route and
-spinner. voxtype is enabled on no host; wtype is its only driver now, and
-#376's delivery must be herdr-native on the coordinator. `hk-prune-shells`
+spinner (#376, the entry above, then rebuilt dictation without them). `hk-prune-shells`
 never used `hk` and survives as `herdr-prune-shells`. The zenbook plan's R-16
 ("the client carries no hk") is thereby implemented, by removal.
 docs/herdr/herdr-kitten-input.md is kept as history under a superseded header.

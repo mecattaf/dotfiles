@@ -53,7 +53,9 @@
 #   * If this unit is STOPPED while a projector attaches, the remote side's
 #     `remote-client-bridge` spawns an unmanaged server daemon, which later
 #     fights the unit over herdr.sock (herdr src/remote/host_unix.rs:264-287).
-#     Start the unit before reattaching anything.
+#     Start the unit before reattaching anything. herdr-projector refuses
+#     to (re)attach until `systemctl --user is-active herdr` answers active
+#     on the target, so its reconnect loop cannot race a reboot into this.
 #   * `herdr --remote` may offer, interactively, to STOP and REPLACE this
 #     server — killing every pane — if it judges the server incompatible.
 #     Today the policy is keep-running (endpoint generation 1 on both ends).
