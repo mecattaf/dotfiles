@@ -859,9 +859,10 @@
         # sharpest: the card's `instrument_sha256` locks the two programs at
         # arming, and `abort_on` makes a row written by any other instrument a
         # CRASH — so a merge that touched either program is not a merge that can
-        # be graded. The sampler digest is the halogen-era script (UTIL-01's
-        # instrument_sha256 must be re-armed to it); the row writer's is the one
-        # in 34a613dc's message.
+        # be graded. Both digests were re-locked 2026-09-13 for the Halogen
+        # journal token window (#312, util-sample/3, util-row/2) and the
+        # closed-day idempotence (#329); UTIL-01's instrument_sha256 must be
+        # re-armed to them.
         util-sampler-topology =
           let
             coordinator = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
@@ -910,10 +911,10 @@
           # ── the programs are byte-for-byte the ones the card locked ────────
           assert
             builtins.hashFile "sha256" ./home/dot_local/bin/util-sampler
-            == "7d8d398c5bb14062c52114610a0a0f5b8bafc1afb53aa230860eda55afd8f0f6";
+            == "7d3e97ad57e767b2002d7421384ceab6be9fadf05b75250917dd6743d460e338";
           assert
             builtins.hashFile "sha256" ./home/dot_local/bin/util-row
-            == "1fdb80179595dc151af67e4ed2bc03e6a3bcf34685acb869b1cc9d9bcfa90906";
+            == "69e8503be8dab90155938ee5c3de28c1d1dc732f2476a4cc745d1dd3e7e482f8";
           pkgs.runCommand "util-sampler-topology" { } ''
             touch "$out"
           '';
@@ -928,6 +929,28 @@
         # coordinator, where util-row is SKIP and must never be FAIL. The count
         # is asserted too: the issue says the probe gains EXACTLY these two
         # rows. Hermetic: no systemd, no tally, no network.
+        # UTIL-01's two behaviours added 2026-09-13, each asserted on fixtures
+        # (#329, #312). util-row-closed-day: a re-run of a written night that
+        # reproduces exits 0 and rewrites nothing; a differing slice or row
+        # exits 2 and writes nothing. util-01-halogen-tokens: the sampler reads
+        # every Halogen request-line shape and never turns a failed journal read
+        # into zero; util-row sums the windows (tokens_in = prompt - cached,
+        # prefill rate per halogen-flash-server#48). Hermetic: scratch meters, a
+        # fake journalctl, python3 and coreutils.
+        util-row-closed-day =
+          pkgs.runCommand "util-row-closed-day" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+            set -euo pipefail
+            UTIL_ROW=${./home/dot_local/bin/util-row} \
+              bash ${./tests/util-row/test-closed-day-idempotent.sh} | tee $out
+          '';
+        util-01-halogen-tokens =
+          pkgs.runCommand "util-01-halogen-tokens" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+            set -euo pipefail
+            UTIL_SAMPLER=${./home/dot_local/bin/util-sampler} \
+            UTIL_ROW=${./home/dot_local/bin/util-row} \
+              bash ${./tests/util-01/test-halogen-token-window.sh} | tee $out
+          '';
+
         l8-flash-probe-util-rows =
           pkgs.runCommand "l8-flash-probe-util-rows"
             {

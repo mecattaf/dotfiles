@@ -47,7 +47,7 @@ import sys
 from datetime import date as date_cls, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-SCHEMA = "util-row/1"
+SCHEMA = "util-row/2"   # /2: journal token windows (tokens_in_cached, requests, rates, PARTIAL)
 EXPECTED_SAMPLES = 1440
 GAP_CAP_S = 300.0
 LEASE_MATCH_WINDOW_S = 90.0
@@ -618,12 +618,49 @@ def intervals_for(samples, start_epoch, end_epoch):
 
 
 def token_ledger(samples):
-    """Positive deltas of the declared counters, per arm, per day."""
+    """Tokens per arm per day, from two sources.  Returns (fields, grade).
+
+    1. Journal token windows (util-sample/3, dotfiles#312) — Halogen's per-request
+       log lines, summed by the sampler per 60 s window and chained by journal
+       cursor, so a day's windows add up to the day.  Per arm (the probe's single
+       served id, else `unattributed`):
+         tokens_in        = prompt - cached   (tokens actually prefilled; the
+                            semantics llamacpp:prompt_tokens_total had)
+         tokens_in_cached = cached prompt tokens
+         tokens_out       = completion tokens (reasoning included)
+         tokens_requests  = completed requests
+         prefill_tokens_per_s = (prompt - cached) / prefill_s — NOT the server's
+                            prompt_per_second, which does not discount cache_n
+                            (peonist-ai/halogen-flash-server#48)
+         decode_tokens_per_s  = completion / decode_s
+       A sample of a journal probe that carries no error-free window is a MISSING
+       window; a window read without a previous cursor (after a gap or a boot) is
+       a PARTIAL one — still added, and counted.
+    2. /metrics counters (llama.cpp / vLLM), positive deltas between consecutive
+       samples, kept for a serve that exposes them.
+
+    Grade, per probe then worst-of:
+         MEASURED  every sample counted (journal: every window present and
+                   complete; metrics: at least one pair read);
+         PARTIAL   some counted, some missing or incomplete — the numbers are a
+                   lower bound, and tokens_windows says by how much;
+         UNKNOWN   nothing counted.  An alive serve that was never counted has
+                   its arms set to null, never zero (definition.tokens_source).
+    A token window is NOT an evidence event: receipt_is_evidence() is unchanged
+    (cards/UTIL-01.md: only Tom widens that definition; DEFERRED DF-UTIL-TOK-1).
+    """
     acc_in = {}
     acc_out = {}
     seen_metrics = {}
     seen_arms = {}
     seen_alive = {}
+
+    j = {}          # arm -> journal sums
+    jprobe = {}     # probe name -> {"counted", "missing", "partial", "unparsed"}
+
+    def arm_of(probe):
+        arms = probe.get("arms")
+        return arms[0] if isinstance(arms, list) and len(arms) == 1 else UNATTRIBUTED
 
     for sample in samples:
         for probe in sample.get("probes") or []:
@@ -635,6 +672,45 @@ def token_ledger(samples):
             arms = probe.get("arms")
             if isinstance(arms, list):
                 seen_arms.setdefault(name, set()).update(a for a in arms if isinstance(a, str))
+            tokens = probe.get("tokens")
+            if "tokens" not in probe and name not in jprobe:
+                continue
+            st = jprobe.setdefault(name, {"counted": 0, "missing": 0, "partial": 0, "unparsed": 0})
+            if not isinstance(tokens, dict) or tokens.get("error") is not None \
+                    or not isinstance(tokens.get("completion_tokens"), int):
+                st["missing"] += 1
+                continue
+            st["counted"] += 1
+            if not tokens.get("window_complete"):
+                st["partial"] += 1
+            st["unparsed"] += int(tokens.get("unparsed") or 0)
+            arm = arm_of(probe)
+            if tokens.get("requests", 0) == 0 and arm == UNATTRIBUTED:
+                # an idle window of a probe whose arm was not read this minute:
+                # it counts as a present window but names no arm.
+                continue
+            a = j.setdefault(arm, {"prompt": 0, "cached": 0, "out": 0, "requests": 0,
+                                   "prefill_s": 0.0, "decode_s": 0.0})
+            a["prompt"] += int(tokens.get("prompt_tokens") or 0)
+            a["cached"] += int(tokens.get("cached_tokens") or 0)
+            a["out"] += int(tokens.get("completion_tokens") or 0)
+            a["requests"] += int(tokens.get("requests") or 0)
+            a["prefill_s"] += float(tokens.get("prefill_s") or 0.0)
+            a["decode_s"] += float(tokens.get("decode_s") or 0.0)
+
+    # A journal probe that was alive for samples BEFORE it ever carried a window
+    # (a util-sample/2 line earlier the same day) has those samples missing too.
+    for name in jprobe:
+        pre = 0
+        for sample in samples:
+            probe = next((p for p in (sample.get("probes") or []) if p.get("name") == name), None)
+            if probe is None:
+                continue
+            if "tokens" in probe:
+                break
+            if probe.get("alive"):
+                pre += 1
+        jprobe[name]["missing"] += pre
 
     for i in range(len(samples) - 1):
         left = {p.get("name"): p for p in (samples[i].get("probes") or [])}
@@ -646,8 +722,7 @@ def token_ledger(samples):
             lm, rm = lp.get("metrics"), rp.get("metrics")
             if not isinstance(lm, dict) or not isinstance(rm, dict):
                 continue
-            arms = rp.get("arms")
-            arm = arms[0] if isinstance(arms, list) and len(arms) == 1 else UNATTRIBUTED
+            arm = arm_of(rp)
             # the counters were read at both ends of this pair: the arm is
             # MEASURED, and a zero delta is a measured zero, never UNKNOWN.
             acc_in.setdefault(arm, 0.0)
@@ -661,20 +736,57 @@ def token_ledger(samples):
 
     tokens_in = {k: int(round(v)) for k, v in acc_in.items()}
     tokens_out = {k: int(round(v)) for k, v in acc_out.items()}
+    tokens_in_cached = {}
+    tokens_requests = {}
+    prefill_rate = {}
+    decode_rate = {}
+    for arm, a in j.items():
+        tokens_in[arm] = tokens_in.get(arm, 0) + (a["prompt"] - a["cached"])
+        tokens_out[arm] = tokens_out.get(arm, 0) + a["out"]
+        tokens_in_cached[arm] = a["cached"]
+        tokens_requests[arm] = a["requests"]
+        prefill_rate[arm] = (r6((a["prompt"] - a["cached"]) / a["prefill_s"])
+                             if a["prefill_s"] > 0 else None)
+        decode_rate[arm] = r6(a["out"] / a["decode_s"]) if a["decode_s"] > 0 else None
 
-    # a serve that was alive but never showed a counter: its arms are UNKNOWN,
-    # never zero (definition.tokens_source).
-    for name in sorted(seen_alive):
-        if seen_metrics.get(name):
+    grades = []
+    for name in sorted(set(seen_alive) | set(seen_metrics) | set(jprobe)):
+        st = jprobe.get(name)
+        if st is not None and st["counted"] > 0:
+            grades.append("MEASURED" if st["missing"] == 0 and st["partial"] == 0 else "PARTIAL")
             continue
+        if seen_metrics.get(name):
+            grades.append("MEASURED")
+            continue
+        # a serve that was alive (or carried only failed windows) but was never
+        # counted: its arms are UNKNOWN, never zero (definition.tokens_source).
+        grades.append("UNKNOWN")
         arms = sorted(seen_arms.get(name) or [])
-        keys = arms if arms else [UNATTRIBUTED]
-        for key in keys:
+        for key in (arms if arms else [UNATTRIBUTED]):
             tokens_in.setdefault(key, None)
             tokens_out.setdefault(key, None)
 
-    grade = "MEASURED" if any(v is not None for v in tokens_out.values()) else "UNKNOWN"
-    return tokens_in, tokens_out, grade
+    if not grades or all(g == "UNKNOWN" for g in grades):
+        grade = "UNKNOWN"
+    elif all(g == "MEASURED" for g in grades):
+        grade = "MEASURED"
+    else:
+        grade = "PARTIAL"
+
+    windows = None
+    if jprobe:
+        windows = {k: sum(st[k] for st in jprobe.values())
+                   for k in ("counted", "missing", "partial", "unparsed")}
+    fields = {
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "tokens_in_cached": tokens_in_cached,
+        "tokens_requests": tokens_requests,
+        "prefill_tokens_per_s": prefill_rate,
+        "decode_tokens_per_s": decode_rate,
+        "tokens_windows": windows,
+    }
+    return fields, grade
 
 
 def compute_row(inputs):
@@ -731,7 +843,7 @@ def compute_row(inputs):
 
     serve_alive_hours = r6(sum(intervals[i] for i in range(n) if alive[i]) / 3600.0)
 
-    tokens_in, tokens_out, tokens_grade = token_ledger(samples)
+    token_fields, tokens_grade = token_ledger(samples)
 
     def bucket_of(epoch):
         """The hour's index measured from the window start, NOT `.hour`.
@@ -880,8 +992,13 @@ def compute_row(inputs):
         "gtt_used_bytes": gtt_block,
         "serve_alive_hours": serve_alive_hours,
         "unleased_alive_hours": unleased_alive_hours,
-        "tokens_in": tokens_in,
-        "tokens_out": tokens_out,
+        "tokens_in": token_fields["tokens_in"],
+        "tokens_out": token_fields["tokens_out"],
+        "tokens_in_cached": token_fields["tokens_in_cached"],
+        "tokens_requests": token_fields["tokens_requests"],
+        "prefill_tokens_per_s": token_fields["prefill_tokens_per_s"],
+        "decode_tokens_per_s": token_fields["decode_tokens_per_s"],
+        "tokens_windows": token_fields["tokens_windows"],
         "tokens_grade": tokens_grade,
         "pages_completed": pages_completed,
         "pages_grade": pages_grade,
@@ -950,13 +1067,21 @@ def rebuild_week(meters, box, week):
         for key in DISPOSITIONS:
             counts[key] += int((row.get("dispositions") or {}).get(key, 0))
 
+    # PARTIAL nights count like MEASURED ones toward the total — their numbers
+    # are real lower bounds — and tokens_grade_week (worst night) says how far to
+    # trust the sum.
     tokens_out_total = None
-    if any(row.get("tokens_grade") == "MEASURED" for row in rows):
+    if any(row.get("tokens_grade") in ("MEASURED", "PARTIAL") for row in rows):
         tokens_out_total = 0
         for row in rows:
             for value in (row.get("tokens_out") or {}).values():
                 if isinstance(value, int):
                     tokens_out_total += value
+    order = {"MEASURED": 0, "PARTIAL": 1, "UNKNOWN": 2}
+    tokens_grade_week = None
+    if rows:
+        tokens_grade_week = max((row.get("tokens_grade") or "UNKNOWN" for row in rows),
+                                key=lambda g: order.get(g, 2))
 
     red = []
     for row in rows:
@@ -976,6 +1101,7 @@ def rebuild_week(meters, box, week):
         "lease_hours": _sum_strict([row.get("lease_hours") for row in rows]),
         "gpu_busy_hours": _sum_strict([row.get("gpu_busy_hours") for row in rows]),
         "tokens_out_total": tokens_out_total,
+        "tokens_grade_week": tokens_grade_week,
         "pages_completed": _sum_strict([row.get("pages_completed") for row in rows]),
         "dispositions": counts,
         "red_nights": red,

@@ -34,14 +34,18 @@
 # is why the digests are written down here and not only in the kit:
 #
 #   home/dot_local/bin/util-sampler
-#     7d8d398c5bb14062c52114610a0a0f5b8bafc1afb53aa230860eda55afd8f0f6
-#     (re-locked 2026-09-13: the client declared as a box)
+#     7d3e97ad57e767b2002d7421384ceab6be9fadf05b75250917dd6743d460e338
+#     (re-locked 2026-09-13: the client declared as a box; again the same day
+#     for the Halogen journal token window, util-sample/3, #312)
 #   home/dot_local/bin/util-row
-#     1fdb80179595dc151af67e4ed2bc03e6a3bcf34685acb869b1cc9d9bcfa90906
+#     69e8503be8dab90155938ee5c3de28c1d1dc732f2476a4cc745d1dd3e7e482f8
+#     (re-locked 2026-09-13: closed-day idempotence, #329; the token windows,
+#     util-row/2, #312)
 #
 # WHAT THIS FILE DOES NOT DO. It declares units; it enables nothing by hand,
 # starts no serve, holds no GPU, and sends no inference request. The sampler's
-# only verb is GET, against health/arms/metrics endpoints. Neither program
+# only verb is GET, against health/arms/metrics endpoints, and its only other
+# read of a server is `journalctl` over Halogen's units (#312). Neither program
 # writes anywhere but `~/.local/state/tally/meters/util-*`; the OCR drain's
 # ledger is opened read-only and never written.
 let
@@ -56,11 +60,15 @@ let
   tallyPackage = inputs.tally.packages.${pkgs.stdenv.hostPlatform.system}.tally;
 
   # python3 stdlib only, both programs; coreutils for the shell-out-free odds
-  # and ends a oneshot still expects to find.
+  # and ends a oneshot still expects to find. systemd for `journalctl`: the
+  # sampler reads Halogen's per-request token lines from the journal
+  # (util-sample/3, dotfiles#312). It is on both boxes' PATH because the program
+  # is one program; only the worker's probe list names journal units.
   samplerPath = lib.makeBinPath (
     [
       pkgs.python3
       pkgs.coreutils
+      pkgs.systemd
     ]
     # The WORKER has no tally daemon and no tally binary (measured 2026-09-06),
     # and the sampler is written for that: its pools answer is `null` on the

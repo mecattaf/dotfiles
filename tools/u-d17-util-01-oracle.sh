@@ -31,8 +31,13 @@ PR=314
 # abort_on makes a row written by an instrument other than the one locked at
 # arming a CRASH, so a merge that moved either byte is not a merge that can be
 # graded.
-SHA_SAMPLER="cc76a8179c46e735d6005f3f2d92f137cff026d7c3658a27b89261778fa50ce6"
-SHA_ROW="1fdb80179595dc151af67e4ed2bc03e6a3bcf34685acb869b1cc9d9bcfa90906"
+#
+# Re-pointed 2026-09-13 (#380) at the digests flake.nix's util-sampler-topology
+# locks after #329 and #312. From then on these constants track the dotfiles
+# re-lock, not cards/UTIL-01.md's instrument_sha256: research-methods is
+# read-only from here and its card and kits/util stay drifted (DECISIONS.md).
+SHA_SAMPLER="7d3e97ad57e767b2002d7421384ceab6be9fadf05b75250917dd6743d460e338"
+SHA_ROW="69e8503be8dab90155938ee5c3de28c1d1dc732f2476a4cc745d1dd3e7e482f8"
 
 pass=0
 fail=0

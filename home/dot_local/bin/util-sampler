@@ -2,12 +2,22 @@
 """util-sampler — UTIL-01 §signal.instrument. ONE sample per invocation.
 
 Reads: sysfs (gfx1151 amdgpu), `tally query pools` (coordinator only), the
-worker's halogen liveness and model-list endpoints, the box's drain ledger.
+worker's halogen liveness and model-list endpoints, Halogen's journal since the
+previous sample (worker only; the token window), the box's drain ledger.
 Writes: exactly one JSON line to $UTIL_METERS/util-sampler/<box>-<date>.jsonl.
 
 It never POSTs, never touches /v1/chat/completions or /completion, never holds a
 GPU, never starts or stops anything, and opens every input 'r'.  The only path it
 creates or writes is $UTIL_METERS/util-sampler/.
+
+Token window (util-sample/3, dotfiles#312, 2026-09-13).  Halogen has no /metrics,
+but it logs one `serve_api:` line per completed request carrying the request's
+completion tokens, prompt tokens, cached prompt tokens and prefill/decode
+seconds.  Each sample reads the lines logged since the previous sample's journal
+cursor (read back from the tail of this box's own sampler log, so there is no
+state file) and records their sums as `probes[].tokens`.  A window that could
+not be read carries `error` and no counts — the row writer then says UNKNOWN,
+never zero; a window with no request in it is a measured zero.
 
 Invoked by a 60 s systemd user timer; it takes one sample and exits.  There is no
 loop in this file.
@@ -36,16 +46,17 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-SCHEMA = "util-sample/2"   # /2 adds `tz` and `tz_source`
+SCHEMA = "util-sample/3"   # /2 adds `tz` and `tz_source`; /3 adds probes[].tokens
 PROBE_TIMEOUT_S = 2.0            # one HTTP request
 POOLS_TIMEOUT_S = 5.0            # `tally query pools`
 PROBE_BUDGET_S = 4.0             # health + arms for ONE probe
@@ -67,11 +78,39 @@ SYSFS_FIELDS = {
 # llama-server, not for a second declared server.
 INFERENCE_URL = (os.environ.get("UTIL_SAMPLER_INFERENCE_URL") or "http://worker:8731").rstrip("/")
 
-# Halogen exposes no token counters: there is no prometheus /metrics and no
-# per-request ledger to read, so every probe's `metrics` is None and the row
-# writer grades tokens_in / tokens_out UNKNOWN.  `metrics_reason` says why in
-# the sample itself, so the UNKNOWN is a stated fact and not a missing key.
-NO_TOKEN_COUNTERS = "halogen exposes no token counters"
+# Halogen serves no prometheus /metrics (GET /metrics is a 404), so every probe's
+# `metrics` is None and `metrics_reason` says why in the sample itself.  Its
+# token counts come from the journal instead: see read_token_window().
+NO_METRICS = "no /metrics; tokens come from the journal window"
+
+# The journal units a Halogen server logs under: the Flash primary and the one
+# declared alternate (modules/halogen.nix unitOf; hosts/worker's
+# services.halogen.alternates).  Only one is resident at a time, and journalctl
+# with a -u that matches nothing still succeeds, so naming both is harmless.
+HALOGEN_UNITS = ("podman-halogen.service", "podman-halogen-qwen38-27b.service")
+JOURNAL_TIMEOUT_S = 3.0
+# A cursor older than this is not chained: the lines behind it belong to a gap
+# the row already reports, and summing them into this one sample would put a
+# gap's tokens on the wrong minute (or the wrong day).  Same cap as the row's.
+CURSOR_MAX_AGE_S = 300.0
+LOG_TAIL_BYTES = 1 << 16
+
+# One completed request, as Halogen 0.7.0 logs it (worker journal, 2026-09-13):
+#   serve_api: mtp 160 tok in 3.14s = 50.89 t/s | 88 rounds, commit 1.82/round |
+#   prompt 330 (325 cached), prefill 0.05s | detok 11us/tok | pld 6 rounds, ...
+# Calibrated the same evening against the API's own answer for that request:
+#   `N tok`        == usage.completion_tokens == timings.predicted_n (reasoning included)
+#   `prompt P`     == timings.prompt_n, and it INCLUDES the cached tokens
+#   `(K cached)`   == timings.cache_n == usage.prompt_tokens_details.cached_tokens
+#   `prefill Xs`   == timings.prompt_ms / 1000 (the uncached prefill's time)
+#   `tok in Ys`    == timings.predicted_ms / 1000
+# `(K cached)` is absent when nothing was cached, `rounds, commit` is absent under
+# concurrency, and the detok/pld tail varies, so all three are optional and the
+# pattern is not anchored at the end.
+LINE_RE = re.compile(
+    r"serve_api: (?P<mode>\w+) (?P<out>\d+) tok in (?P<dec_s>[\d.]+)s = [\d.]+ t/s"
+    r"(?: \| (?P<rounds>\d+) rounds, commit (?P<commit>[\d.]+)/round)?"
+    r" \| prompt (?P<prompt>\d+)(?: \((?P<cached>\d+) cached\))?, prefill (?P<prefill_s>[\d.]+)s")
 
 # The coordinator serves nothing declaratively — the small GGUF artifacts loaned
 # there are run by hand, and a hand-run llama-server is not a declared probe —
@@ -85,7 +124,8 @@ SERVE_PROBES = {
     "worker": [
         {"name": "halogen",
          "health": INFERENCE_URL + "/health",
-         "arms": INFERENCE_URL + "/v1/models"},
+         "arms": INFERENCE_URL + "/v1/models",
+         "journal_units": HALOGEN_UNITS},
     ],
 }
 
@@ -260,12 +300,13 @@ def probe_one(spec, clock):
 
     Worst case for this function is PROBE_BUDGET_S (4 s), and it never exceeds
     what `clock` has left, so the probe plus the pools call cannot run past
-    INVOCATION_BUDGET_S.  `metrics` is always None: the server exposes no
-    token counters, and the sample says so beside it.
+    INVOCATION_BUDGET_S.  `metrics` is always None: the server has no /metrics,
+    and the sample says so beside it.  The token window is read by
+    build_sample() after every HTTP probe, not here.
     """
     p0 = time.monotonic()
     probe = {"name": spec["name"], "alive": False, "http": None, "ms": None,
-             "arms": None, "metrics": None, "metrics_reason": NO_TOKEN_COUNTERS,
+             "arms": None, "metrics": None, "metrics_reason": NO_METRICS,
              "skipped": False, "elapsed_ms": 0}
 
     def left():
@@ -294,6 +335,133 @@ def probe_one(spec, clock):
     if a_status == 200:
         probe["arms"] = parse_arms(a_body)
     return done()
+
+
+def parse_serve_lines(lines):
+    """Sums over Halogen `serve_api:` request lines.  Pure; the fixture test's seam.
+
+    Lines that are not request lines (uvicorn access lines, load messages) are
+    skipped before the pattern is tried.  A request line the pattern cannot read
+    is counted in `unparsed`, never guessed at, so a format change shows up as a
+    number in the sample rather than as silently missing tokens.
+    """
+    acc = {"requests": 0, "prompt_tokens": 0, "cached_tokens": 0,
+           "completion_tokens": 0, "prefill_s": 0.0, "decode_s": 0.0, "unparsed": 0}
+    for line in lines:
+        if "serve_api: " not in line or " tok in " not in line:
+            continue
+        m = LINE_RE.search(line)
+        if m is None:
+            acc["unparsed"] += 1
+            continue
+        acc["requests"] += 1
+        acc["prompt_tokens"] += int(m.group("prompt"))
+        acc["cached_tokens"] += int(m.group("cached") or 0)
+        acc["completion_tokens"] += int(m.group("out"))
+        acc["prefill_s"] += float(m.group("prefill_s"))
+        acc["decode_s"] += float(m.group("dec_s"))
+    acc["prefill_s"] = round(acc["prefill_s"], 6)
+    acc["decode_s"] = round(acc["decode_s"], 6)
+    return acc
+
+
+def previous_cursor(meters, box, probe_name, now_epoch):
+    """(cursor, age_s) of this probe's last token window, read from the tail of
+    this box's own sampler log (today's, else yesterday's).  (None, None) if none.
+
+    Read-only and bounded to the last LOG_TAIL_BYTES of the file.  A window that
+    errored carries no cursor; the search goes back past it to the last good one,
+    so one failed read does not break the chain.
+    """
+    today = datetime.fromtimestamp(now_epoch).astimezone()
+    for day in (today, today - timedelta(days=1)):
+        path = os.path.join(meters, "util-sampler", "%s-%s.jsonl" % (box, day.strftime("%Y-%m-%d")))
+        try:
+            with open(path, "rb") as fh:
+                fh.seek(0, os.SEEK_END)
+                size = fh.tell()
+                fh.seek(max(0, size - LOG_TAIL_BYTES))
+                tail = fh.read().decode("utf-8", "replace").splitlines()
+        except OSError:
+            continue
+        for line in reversed(tail):
+            try:
+                doc = json.loads(line)
+            except Exception:
+                continue
+            for probe in doc.get("probes") or []:
+                if probe.get("name") != probe_name:
+                    continue
+                tokens = probe.get("tokens")
+                if isinstance(tokens, dict) and isinstance(tokens.get("cursor"), str):
+                    try:
+                        age = now_epoch - float(doc["ts_epoch"])
+                    except Exception:
+                        age = None
+                    return tokens["cursor"], age
+    return None, None
+
+
+def read_token_window(spec, prev_cursor, clock):
+    """Halogen's request lines since `prev_cursor`, summed.  Never raises.
+
+    With a cursor the window is exact and chained (`window_complete: true`);
+    without one it is the last 60 s and flagged incomplete.  Any failure — no
+    budget, journalctl missing, a non-zero exit, a timeout, no cursor printed —
+    returns `error` and no counts: the row reads that as UNKNOWN, never as zero.
+    With no new line journalctl still prints the cursor, so an idle window is a
+    measured zero.
+    """
+    base = {"source": "journal", "units": list(spec["journal_units"]),
+            "since_cursor": prev_cursor, "cursor": None}
+    budget = min(JOURNAL_TIMEOUT_S, clock.remaining())
+    if budget <= 0:
+        base["error"] = "invocation budget exhausted before journalctl"
+        return base
+    argv = ["journalctl", "-q", "--no-pager", "-o", "cat", "--show-cursor"]
+    for unit in spec["journal_units"]:
+        argv += ["-u", unit]
+    argv += ["--after-cursor=%s" % prev_cursor] if prev_cursor else ["--since=-60s"]
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=budget)
+    except Exception as exc:
+        base["error"] = "%s: %s" % (type(exc).__name__, exc)
+        return base
+    if proc.returncode != 0:
+        base["error"] = "journalctl exit %d: %s" % (proc.returncode, (proc.stderr or "").strip()[:200])
+        return base
+    cursor = None
+    body = []
+    for line in proc.stdout.splitlines():
+        if line.startswith("-- cursor: "):
+            cursor = line[len("-- cursor: "):].strip()
+        else:
+            body.append(line)
+    if not cursor and not prev_cursor:
+        # `--since` over a quiet minute prints no entry and therefore no cursor
+        # (measured on the worker 2026-09-13; --after-cursor prints one even when
+        # empty).  The minute had no request line in it, so the chain is started
+        # from the units' last entry, which is older than the window and not
+        # counted.  Without this a server that logs nothing could never chain.
+        budget = min(JOURNAL_TIMEOUT_S, clock.remaining())
+        if budget > 0:
+            try:
+                last = subprocess.run(argv[:-1] + ["-n", "1"], capture_output=True,
+                                      text=True, timeout=budget)
+                if last.returncode == 0:
+                    for line in last.stdout.splitlines():
+                        if line.startswith("-- cursor: "):
+                            cursor = line[len("-- cursor: "):].strip()
+            except Exception:
+                pass
+    if not cursor:
+        base["error"] = "journalctl printed no cursor (no journal entry for %s)" % ", ".join(
+            spec["journal_units"])
+        return base
+    base["cursor"] = cursor
+    base["window_complete"] = prev_cursor is not None
+    base.update(parse_serve_lines(body))
+    return base
 
 
 def read_pools(box, clock):
@@ -380,14 +548,26 @@ def self_sha256():
     return None, "UNKNOWN"
 
 
-def build_sample(box):
+def build_sample(box, meters=None):
     clock = Clock()
     now = datetime.now().astimezone()
     version, version_grade = self_sha256()
     tz_key, tz_source = local_tz()
     sysfs = read_sysfs()
     pools = read_pools(box, clock)
-    probes = [probe_one(spec, clock) for spec in SERVE_PROBES.get(box, [])]
+    specs = SERVE_PROBES.get(box, [])
+    probes = [probe_one(spec, clock) for spec in specs]
+    # The token window is read AFTER every HTTP probe, so a slow journal can only
+    # cost the window (recorded as an error), never a liveness answer.  It is
+    # read whether or not the probe is alive: a request can finish just before
+    # the server dies, and its line is still in the journal.
+    for spec, probe in zip(specs, probes):
+        if not spec.get("journal_units"):
+            continue
+        cursor, age = previous_cursor(meters or meters_root(), box, spec["name"], now.timestamp())
+        if cursor is not None and (age is None or age > CURSOR_MAX_AGE_S or age < 0):
+            cursor = None
+        probe["tokens"] = read_token_window(spec, cursor, clock)
     return {
         "schema": SCHEMA,
         "ts": now.isoformat(),
@@ -422,14 +602,14 @@ def main(argv=None):
         sys.stderr.write("util-sampler: unknown box %r; declared boxes are %s; nothing written\n"
                          % (str(exc), ", ".join(KNOWN_BOXES)))
         return 2
-    sample = build_sample(box)
+    root = os.path.abspath(os.path.expanduser(args.meters)) if args.meters else meters_root()
+    sample = build_sample(box, root)
     line = json.dumps(sample, sort_keys=True) + "\n"
 
     if args.stdout:
         sys.stdout.write(line)
         return 0
 
-    root = os.path.abspath(os.path.expanduser(args.meters)) if args.meters else meters_root()
     outdir = guard_meters_write(root, os.path.join(root, "util-sampler"))
     os.makedirs(outdir, exist_ok=True)
     day = datetime.fromisoformat(sample["ts"]).strftime("%Y-%m-%d")

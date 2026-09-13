@@ -55,8 +55,10 @@ Callers name the stable ID `utility` and never a concrete model. It resolves
 to the worker's Halogen Flash server, and the `utility-model` wrapper on the
 coordinator forwards one chat-completions request there and returns the
 answer. `/drain` and `/print` are its callers; their flags are unchanged. The
-server exposes no token counters, which is why the UTIL-01 sampler reports
-`tokens_in` / `tokens_out` as `UNKNOWN` (`DEFERRED.md`, DF-U-D17-2).
+server has no `/metrics`, but it logs one `serve_api:` line per request with its
+prompt, cached and completion tokens; the UTIL-01 sampler on the worker reads
+those lines per minute, so `tokens_in` / `tokens_out` are counted (dotfiles#312,
+`DECISIONS.md` 2026-09-13).
 
 ## Voxtype and Parakeet
 
