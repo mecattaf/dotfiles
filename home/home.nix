@@ -75,7 +75,11 @@ let
     "yt-dlp"
     "kanshi"
     "qt6ct"
-    "cliamp"
+    # NOT cliamp: it writes its control socket, pidfile, log, play history and
+    # resume state beside its config, so a whole-dir link put all of that into
+    # the working tree (resume.json, carrying a Navidrome stream URL with its
+    # Subsonic token, was even committed). ~/.config/cliamp is a real directory
+    # now and only its config is linked, file by file, below. (2026-09-13)
   ];
 
   # Python interpreter backing the niri helper bin/ scripts (wifi-menu, fzf-nmcli, …).
@@ -160,6 +164,11 @@ in
       source = link "dot_config/${d}";
     })
     // {
+      # cliamp: config and themes only, so the directory itself stays writable
+      # for the runtime files (see the note in configDirs above).
+      "cliamp/config.toml".source = link "dot_config/cliamp/config.toml";
+      "cliamp/themes".source = link "dot_config/cliamp/themes";
+
       # kitty/ is a whole-dir out-of-store symlink, so the store-path fragment can't
       # nest inside it — emit at a neutral path; kitty.conf includes it by absolute
       # (env-expanded) path.
@@ -319,8 +328,9 @@ in
 
   # SessionEnd -> the harvest verb (MEM-2, dotfiles#339). ONE link, not a
   # whole-dir one, for the same reason as the lines above: ~/.claude/hooks must
-  # stay a real directory, because herdr's own SessionStart hook is a raw file
-  # that lives there and is not delivered from this repository. settings.json is
+  # stay a real, writable directory, so a hook that is not delivered from this
+  # repository can still live beside it (the dead SessionStart hook that once
+  # named herdr-agent-state.sh there was removed 2026-09-13). settings.json is
   # shared by all three Claude config dirs and names this hook by ABSOLUTE path,
   # so one link serves ~/.claude, ~/.claude-work and ~/.claude-3 alike.
   home.file.".claude/hooks/ai-memory-harvest.sh".source =

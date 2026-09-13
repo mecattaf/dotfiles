@@ -19,9 +19,13 @@ plaintext/
 /result
 .wrangler/
 
-# cliamp writes its log, control socket and pidfile beside its config, and
-# ~/.config/cliamp is an out-of-store symlink straight into this repo — so
-# these runtime files land in the working tree on every run.
+# cliamp's runtime files. Since 2026-09-13 ~/.config/cliamp is a real directory
+# with only config.toml and themes/ linked in (home/home.nix), so these no
+# longer land here; the lines stay so a stale checkout or a revert cannot
+# commit them again. resume.json carries a Navidrome stream URL with a Subsonic
+# token — never track it.
 home/dot_config/cliamp/cliamp.log
 home/dot_config/cliamp/cliamp.sock
 home/dot_config/cliamp/cliamp.sock.pid
+home/dot_config/cliamp/history.toml
+home/dot_config/cliamp/resume.json
