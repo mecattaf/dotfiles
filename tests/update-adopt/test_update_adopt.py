@@ -59,6 +59,7 @@ if [ "$1" = --user ]; then user="${3%@}"; shift 3; fi
 case "$1" in
   is-system-running) cat "$FIXTURE/sys/running" 2>/dev/null || echo running ;;
   list-units)
+    [ -n "$user" ] && [ -e "$FIXTURE/sys/down-$user" ] && exit 1
     if printf '%s ' "$@" | grep -q -- '--failed'; then
       cat "$FIXTURE/sys/failed-${user:-system}" 2>/dev/null || true
     else
@@ -370,6 +371,59 @@ class AdoptTests(unittest.TestCase):
         self.assertOk(self.fx.run("adopt"), rc=1)
         self.assertEqual(self.fx.current(), self.fx.a)
         self.assertEqual(self.fx.state()["state"], "rolled-back")
+
+    # Someone else's `nixos-rebuild switch` lands while the probe window is
+    # open: never roll THEIR generation back.
+    def test_switch_by_someone_else_during_probe_is_not_rolled_back(self):
+        b = self.fx.system("b", last_modified=2000)
+        theirs = self.fx.system("t", last_modified=3000)
+        with open(b + "/fail-units", "w") as stream:
+            stream.write("broken.service loaded failed failed\n")
+        profile = os.path.join(self.fx.root, "nix/var/nix/profiles/system")
+        write_exec(b + "/bin/switch-to-configuration",
+                   SWITCH.replace('exit "$(cat', f'ln -sfn {theirs} {profile}\nexit "$(cat'))
+        self.fx.publish(b)
+        self.assertOk(self.fx.run("adopt"))
+        st = self.fx.state()
+        self.assertEqual(st["state"], "superseded")
+        self.assertEqual(self.fx.profile(), theirs)
+        self.assertNotIn(f"switch {os.path.basename(self.fx.a)} switch", self.fx.calls())
+        self.assertNotIn(b, st["rejected"])
+        self.assertEqual(self.fx.receipts()[-1]["kind"], "superseded")
+
+    # A user manager silent BEFORE the switch is not the candidate's fault.
+    def test_user_manager_silent_before_switch_is_not_probed(self):
+        open(os.path.join(self.fx.tmp, "sys/down-tom"), "w").close()
+        b = self.fx.system("b", last_modified=2000)
+        self.fx.publish(b)
+        self.assertOk(self.fx.run("adopt"))
+        self.assertEqual(self.fx.state()["state"], "known-good")
+
+    # A switch that outlives its wait is never raced by a rollback.
+    def test_hung_switch_is_not_rolled_back(self):
+        b = self.fx.system("b", last_modified=2000)
+        with open(b + "/switch-rc", "w") as stream:
+            stream.write("124")
+        self.fx.publish(b)
+        self.assertOk(self.fx.run("adopt"), rc=1)
+        st = self.fx.state()
+        self.assertEqual(st["state"], "switch-hung")
+        self.assertIn(b, st["rejected"])
+        self.assertNotIn(f"switch {os.path.basename(self.fx.a)} switch", self.fx.calls())
+
+    # Stage kicks activation only after it has released the shared lock.
+    def test_stage_kicks_activation_after_releasing_lock(self):
+        b = self.fx.system("b", last_modified=2000)
+        self.fx.publish(b)
+        systemctl = os.path.join(self.fx.bin, "systemctl")
+        with open(systemctl) as stream:
+            text = stream.read()
+        lock = os.path.join(self.fx.tmp, "adopt.lock")
+        probe = (f'  start) python3 -c "import fcntl,sys; h=open(\'{lock}\',\'a\'); '
+                 f'fcntl.flock(h, fcntl.LOCK_EX|fcntl.LOCK_NB)" && echo lock-free >> "$FIXTURE/calls.log" ;;')
+        write_exec(systemctl, text.replace("  start) : ;;", probe))
+        self.assertOk(self.fx.run("stage"))
+        self.assertIn("lock-free", self.fx.calls())
 
     # (4) kernel differs → boot, pending-reboot, nothing activated now
     def test_kernel_change_installs_for_boot(self):

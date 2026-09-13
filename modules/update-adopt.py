@@ -376,9 +376,15 @@ def stage(cfg, force=False, trigger=True):
         journal("busy", "activation-running")
         return 0
     try:
-        return _stage(cfg, force, trigger)
+        rc, kick = _stage(cfg, force, trigger)
     finally:
         lock.close()
+    # Kick activation only AFTER the lock is released: started while stage
+    # still held it, the activate unit would refuse "activation-running" and
+    # wait for its 30-minute timer.
+    if kick:
+        run(["systemctl", "start", "--no-block", "update-adopt-activate.service"], timeout=30)
+    return rc
 
 
 def _stage(cfg, force, trigger):
@@ -390,7 +396,7 @@ def _stage(cfg, force, trigger):
         try:
             manifest = fetch_candidate(cfg, workdir)
         except Refusal as refusal:
-            return refuse(cfg, state, refusal)
+            return refuse(cfg, state, refusal), False
     candidate = manifest["store_path"]
     state["candidate"] = {
         "store_path": candidate,
@@ -406,28 +412,28 @@ def _stage(cfg, force, trigger):
         drop_root("candidate")
         journal("known-good", "candidate-is-current", store_path=candidate)
         save_state(state)
-        return 0
+        return 0, False
     if candidate == profile and state.get("pending_reboot"):
         state["state"] = "pending-reboot"
         journal("pending-reboot", "candidate-installed-for-boot", store_path=candidate)
         save_state(state)
-        return 0
+        return 0, False
     if candidate in state["rejected"] and not force:
         state["state"] = "rejected"
         journal("rejected", "candidate-previously-failed", store_path=candidate)
         save_state(state)
-        return 0
+        return 0, False
     if cfg["policy"] == "manual":
         state["state"] = "candidate-seen"
         journal("candidate-seen", "policy-manual", store_path=candidate)
         receipt("candidate-seen", store_path=candidate, rev=manifest.get("rev"))
         save_state(state)
-        return 0
+        return 0, False
     if not force:
         try:
             downgrade_check(current, {"rev": manifest.get("rev"), "lastModified": manifest["last_modified"]})
         except Refusal as refusal:
-            return refuse(cfg, state, refusal, candidate)
+            return refuse(cfg, state, refusal, candidate), False
 
     free = free_gib(ROOT + STORE_DIR)
     if free < cfg["min_free_gib"]:
@@ -435,17 +441,17 @@ def _stage(cfg, force, trigger):
         state["last_deferral"] = {"reason": f"disk: {free:.1f} GiB free < {cfg['min_free_gib']}", "at": now_iso()}
         journal("waiting-for-safe-window", "disk", free_gib=f"{free:.1f}")
         save_state(state)
-        return 0
+        return 0, False
 
     realised = add_root("candidate", candidate)
     if realised.returncode != 0:
         refusal = Refusal("realise-failed", realised.stderr.strip()[-300:], rc=1)
-        return refuse(cfg, state, refusal, candidate)
+        return refuse(cfg, state, refusal, candidate), False
     verified = run(["nix", "store", "verify", "--no-contents", "--recursive", candidate], timeout=3600)
     if verified.returncode != 0:
         drop_root("candidate")
         refusal = Refusal("verify-failed", verified.stderr.strip()[-300:], rc=1)
-        return refuse(cfg, state, refusal, candidate)
+        return refuse(cfg, state, refusal, candidate), False
 
     # The closure's own revision file is authoritative; the manifest's fields
     # only let us skip a pointless download.
@@ -456,7 +462,7 @@ def _stage(cfg, force, trigger):
             downgrade_check(current, candidate_rev)
         except Refusal as refusal:
             drop_root("candidate")
-            return refuse(cfg, state, refusal, candidate)
+            return refuse(cfg, state, refusal, candidate), False
 
     state["candidate"]["reboot_required"] = boot_differs(candidate, resolve(BOOTED))
     state["state"] = "closure-ready"
@@ -465,9 +471,7 @@ def _stage(cfg, force, trigger):
     receipt("closure-ready", store_path=candidate, revision=candidate_rev,
             reboot_required=state["candidate"]["reboot_required"])
     save_state(state)
-    if trigger and cfg["policy"] == "rolling":
-        run(["systemctl", "start", "--no-block", "update-adopt-activate.service"], timeout=30)
-    return 0
+    return 0, trigger and cfg["policy"] == "rolling"
 
 
 # ── activate ─────────────────────────────────────────────────────────────────
@@ -514,7 +518,9 @@ def host_gates(cfg):
 
 def snapshot(cfg):
     system_failed = failed_units() or set()
-    users = {user: failed_units(user) or set() for user in cfg["user_managers"]}
+    # A user manager that does not answer BEFORE the switch (no linger, not
+    # logged in) is not probed after it: its silence is not the candidate's.
+    users = {user: failed_units(user) for user in cfg["user_managers"]}
     active = [
         unit for unit in cfg["critical_units"]
         if unit_active(unit["unit"], unit.get("user"))
@@ -535,6 +541,8 @@ def probe_once(cfg, before):
         if new:
             failures.append("new failed system units: " + ", ".join(new))
     for user, old in before["user_failed"].items():
+        if old is None:
+            continue
         current = failed_units(user)
         if current is None:
             failures.append(f"user manager {user}@ did not answer")
@@ -554,13 +562,26 @@ def probe_once(cfg, before):
     return failures
 
 
-def probe(cfg, before):
+def superseded(expected):
+    """True when the system profile no longer points at what we activated.
+
+    Tom (or an orchestrator) may run `nixos-rebuild switch` while a probe
+    window is open; the builtin gate only sees rebuilds that started BEFORE
+    ours. Rolling back then would silently undo THEIR switch, so the verdict
+    belongs to them, not to this activation.
+    """
+    return resolve(PROFILE) != expected
+
+
+def probe(cfg, before, expected):
     time.sleep(cfg["settle_sec"])
     deadline = time.monotonic() + cfg["probe_window_sec"]
     while True:
+        if superseded(expected):
+            return None
         failures = probe_once(cfg, before)
         if not failures or time.monotonic() >= deadline:
-            return failures
+            return None if superseded(expected) else failures
         time.sleep(cfg["probe_interval_sec"])
 
 
@@ -658,13 +679,38 @@ def _activate(cfg, force):
             save_state(state)
             return 0
         failures = [f"switch-to-configuration boot exited {result.returncode}: {result.stderr.strip()[-200:]}"]
+    elif result.returncode == 124:
+        # run() timed out waiting for the transient update-adopt-switch unit,
+        # which may STILL be activating. A rollback now would start a second
+        # switch-to-configuration beside it (and collide on the unit name).
+        # Stop, reject, and fail loudly for a human.
+        state["state"] = "switch-hung"
+        if candidate not in state["rejected"]:
+            state["rejected"].append(candidate)
+        journal("switch-hung", "switch-timeout", store_path=candidate, previous=previous)
+        receipt("switch-hung", store_path=candidate, previous=previous)
+        save_state(state)
+        return 1
     elif result.returncode != 0:
         failures = [f"switch-to-configuration switch exited {result.returncode}: {result.stderr.strip()[-200:]}"]
     else:
         state["state"] = "probing"
         journal("probing", "switched", store_path=candidate)
         save_state(state)
-        failures = probe(cfg, before)
+        failures = probe(cfg, before, candidate)
+
+    switched = action == "switch" and result.returncode == 0
+    if failures is None or (failures and switched and superseded(candidate)):
+        # Another switch moved the profile while we probed (see superseded()).
+        # Neither keep nor roll back: record it and leave the box to whoever
+        # switched it. rc 0 — nothing here failed.
+        state["state"] = "superseded"
+        state["activation"]["superseded_by"] = resolve(PROFILE)
+        drop_root("candidate")
+        journal("superseded", "profile-moved-during-probe", store_path=candidate, profile=resolve(PROFILE))
+        receipt("superseded", store_path=candidate, previous=previous, profile=resolve(PROFILE))
+        save_state(state)
+        return 0
 
     if not failures:
         state["state"] = "known-good"
@@ -685,7 +731,7 @@ def _activate(cfg, force):
         back_switch = switch_to(previous, action) if back.returncode == 0 else back
         rollback["switch_rc"] = back_switch.returncode
         if action == "switch" and back_switch.returncode == 0:
-            reprobe = probe(cfg, before)
+            reprobe = probe(cfg, before, previous) or []
             rollback["reprobe_failures"] = reprobe
             rollback["result"] = "rolled-back" if not reprobe else "rolled-back-unhealthy"
         else:

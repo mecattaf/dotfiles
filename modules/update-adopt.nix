@@ -26,7 +26,9 @@
 #             when kernel/initrd/params differ from the BOOTED system — probe
 #             for up to 10 min, and mark known-good or roll back locally to the
 #             previous generation, re-probe, reject the candidate and exit 1 so
-#             failure-surfacing writes a marker.
+#             failure-surfacing writes a marker. If the profile moves under
+#             the probe (someone else switched) it is `superseded`, never rolled
+#             back; a switch that outlives its wait is `switch-hung`, never raced.
 #
 # THE EXIT-CODE CONTRACT. Busy is not broken: a gate deferral, a newer local
 # generation, a manual policy or an unreachable NAS each exit 0 with a receipt
@@ -57,7 +59,8 @@
 # Both update-adopt units are restartIfChanged=false/stopIfChanged=false, so a
 # switch never kills the activation that is running it.
 #
-# POLICIES (hosts/*/default.nix): worker rolling, coordinator rolling, client
+# POLICIES (hosts/*/default.nix): worker rolling, coordinator stage-only until
+# the live downgrade refusal is seen (DEFERRED DF-354-1), then rolling; client
 # manual (R-18: activated only by Tom's own switch — it discovers and reports),
 # NAS NOT ENROLLED (2026-08-21 ruling: not built nightly, manual pinned bump;
 # the flake's update-adopt-topology check asserts it). rebootPolicy is `notify`
