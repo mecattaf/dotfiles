@@ -75,9 +75,15 @@ let
     inherit name;
     profile = profileNames.${name};
     target = "root@${builtins.head registry.${name}.aliases}";
-    # The coordinator collects itself in-process as the caller (tom), with no
-    # ssh loop back to its own sshd.
-    transport = if name == host then "local" else "ssh";
+    # Every node, the coordinator included, is collected as root over ssh.
+    # A local run as tom cannot read root-only state: #354's update-adopt
+    # keeps /var/lib/update-adopt at 0700, so the coordinator's own update
+    # facts would stay unknown forever. It would also grade the coordinator
+    # through a different code path (no runuser) than the other three.
+    # tom → root@coordinator is authorized by the mesh (MEASURED 2026-09-13:
+    # `ssh -o BatchMode=yes root@coordinator id -u` → 0). If the coordinator's
+    # sshd is broken, the view reads it UNREACHABLE, which is the truth.
+    transport = "ssh";
   }) order;
 
   collectOnly = pkgs.runCommand "fleet-status-collect" { } ''

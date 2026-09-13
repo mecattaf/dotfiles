@@ -41,6 +41,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -104,27 +105,71 @@ class CmdError(Exception):
     pass
 
 
+# Every child runs in its own process group and is registered here, so a
+# timeout kills the whole chain (runuser → env → herdr) and so the collector,
+# which leaves with os._exit once its budget is spent, can reap whatever a
+# still-running section thread started. Without this, a hung `herdr` or
+# `journalctl` would outlive every ssh invocation that spawned it (verifier
+# fix, 2026-09-13).
+_CHILDREN: set = set()
+_CHILDREN_LOCK = threading.Lock()
+
+
+def _kill_group(proc: subprocess.Popen) -> None:
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except OSError:
+        pass
+
+
+def kill_children() -> None:
+    with _CHILDREN_LOCK:
+        procs = list(_CHILDREN)
+    for proc in procs:
+        _kill_group(proc)
+
+
+def spawn(argv: list[str], timeout: float, env=None) -> tuple[int, str, str]:
+    """Run argv in its own process group with a hard timeout. Raises
+    subprocess.TimeoutExpired (after killing the group) or OSError."""
+    proc = subprocess.Popen(
+        argv,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL,
+        text=True,
+        env=env,
+        start_new_session=True,
+    )
+    with _CHILDREN_LOCK:
+        _CHILDREN.add(proc)
+    try:
+        try:
+            out, err = proc.communicate(timeout=max(0.1, timeout))
+        except subprocess.TimeoutExpired:
+            _kill_group(proc)
+            proc.communicate()
+            raise
+    finally:
+        with _CHILDREN_LOCK:
+            _CHILDREN.discard(proc)
+    return proc.returncode, out, err
+
+
 def run(argv: list[str], timeout: float = CMD_TIMEOUT, ok_codes=(0,), env=None) -> str:
     """Run argv with a hard timeout; raise CmdError with a short reason."""
     if shutil.which(argv[0]) is None and not os.path.isabs(argv[0]):
         raise CmdError(f"{argv[0]} not found")
     try:
-        proc = subprocess.run(
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=env,
-            stdin=subprocess.DEVNULL,
-        )
+        code, stdout, stderr = spawn(argv, timeout, env=env)
     except subprocess.TimeoutExpired:
         raise CmdError(f"{argv[0]} timed out after {timeout:g}s")
     except OSError as exc:
         raise CmdError(f"{argv[0]}: {exc.strerror}")
-    if proc.returncode not in ok_codes:
-        err = (proc.stderr or proc.stdout).strip().splitlines()
-        raise CmdError(f"{argv[0]} exit {proc.returncode}: {err[0][:160] if err else ''}")
-    return proc.stdout
+    if code not in ok_codes:
+        err = (stderr or stdout).strip().splitlines()
+        raise CmdError(f"{argv[0]} exit {code}: {err[0][:160] if err else ''}")
+    return stdout
 
 
 def as_tom(argv: list[str]) -> tuple[list[str], dict | None]:
@@ -432,21 +477,22 @@ def c_timers(profile: dict) -> dict:
 
 def journal(args: list[str]) -> list[dict]:
     argv = ["journalctl", "-o", "json", "--no-pager", "--since", EVENTS_SINCE, "-n", str(EVENTS_CAP), *args]
+    if shutil.which("journalctl") is None:
+        raise CmdError("journalctl not found")
     try:
-        proc = subprocess.run(argv, capture_output=True, text=True, timeout=CMD_TIMEOUT, stdin=subprocess.DEVNULL)
+        code, out, err = spawn(argv, CMD_TIMEOUT)
     except subprocess.TimeoutExpired:
         raise CmdError(f"journalctl timed out after {CMD_TIMEOUT:g}s")
     except OSError as exc:
         raise CmdError(f"journalctl: {exc.strerror}")
-    out = proc.stdout
-    if proc.returncode != 0:
+    if code != 0:
         # journalctl exits 1 for "matched nothing": a -g grep with no hit
-        # prints nothing at all, and a -u glob naming a unit that never
-        # logged says "No data available". Both are a measured empty list.
-        # Anything else is a real failure and stays unknown.
-        err = proc.stderr.strip()
-        if not (proc.returncode == 1 and not out.strip() and (not err or "No data available" in err)):
-            raise CmdError(f"journalctl exit {proc.returncode}: {err.splitlines()[0][:160] if err else ''}")
+        # prints nothing at all, and a match that never logged says "No data
+        # available". Both are a measured empty list. Anything else is a real
+        # failure and stays unknown.
+        err = err.strip()
+        if not (code == 1 and not out.strip() and (not err or "No data available" in err)):
+            raise CmdError(f"journalctl exit {code}: {err.splitlines()[0][:160] if err else ''}")
     rows = []
     for line in out.splitlines():
         try:
@@ -542,6 +588,37 @@ def tail_lines(path: Path, max_bytes: int = 4 << 20) -> list[str]:
     return lines[1:] if size > max_bytes else lines
 
 
+# tally-b's own payload kinds (crates/tally-kernel/src/lease.rs at b3a040e:
+# KIND_GRANT = "lease_grant", KIND_RELEASE = "lease_release"; both payloads
+# carry the id under "lease"). `lease_released` is only a boolean inside an
+# exec attestation, never a row kind: folding on it would leave every granted
+# lease open forever (verifier fix, 2026-09-13).
+LEASE_GRANT = "lease_grant"
+LEASE_RELEASE = "lease_release"
+
+
+def open_leases(lines) -> tuple[list[str], int | None]:
+    granted: set[str] = set()
+    last_seq = None
+    for line in lines:
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        last_seq = row.get("seq", last_seq)
+        p = row.get("payload") if isinstance(row.get("payload"), dict) else {}
+        kind, lease = p.get("kind"), p.get("lease")
+        if not lease:
+            continue
+        if kind == LEASE_GRANT:
+            granted.add(str(lease))
+        elif kind == LEASE_RELEASE:
+            granted.discard(str(lease))
+    return sorted(granted), last_seq
+
+
 def c_runs(profile: dict) -> dict:
     if "runs" not in profile.get("roles", []):
         return {"tally": by_design("profile roles", f"no Tally plane on profile {profile.get('name')}")}
@@ -560,23 +637,10 @@ def c_runs(profile: dict) -> dict:
     try:
         if home is None:
             raise OSError(f"no user {TOM}")
-        granted: dict[str, str] = {}
-        last_seq = None
-        for line in tail_lines(ledger):
-            try:
-                row = json.loads(line)
-            except ValueError:
-                continue
-            last_seq = row.get("seq", last_seq)
-            p = row.get("payload") or {}
-            kind, lease = p.get("kind"), p.get("lease")
-            if kind == "lease_grant" and lease:
-                granted[str(lease)] = p.get("row") or p.get("seat") or ""
-            elif kind == "lease_released" and lease:
-                granted.pop(str(lease), None)
+        open_ids, last_seq = open_leases(tail_lines(ledger))
         out["kernel_leases"] = fact(
-            {"open_lease_ids": sorted(granted), "ledger": str(ledger), "last_seq": last_seq},
-            f"{ledger} (lease_grant minus lease_released, last 4 MiB)",
+            {"open_lease_ids": open_ids, "ledger": str(ledger), "last_seq": last_seq},
+            f"{ledger} (lease_grant minus lease_release, last 4 MiB)",
         )
     except OSError as exc:
         out["kernel_leases"] = unknown(str(ledger), exc.strerror or str(exc))
@@ -590,7 +654,11 @@ def c_runs(profile: dict) -> dict:
     try:
         argv, env = as_tom([tom_bin("tally"), "query", "jobs", "--state", "running", "--json", "--limit", "20"])
         data = json.loads(run(argv, env=env))
-        ids = [i.get("jobId") or i.get("id") or i.get("job") for i in data.get("items", [])]
+        # tally 0.1.0's job rows name themselves `liveJobId` (the live job) and
+        # `taskUuid` (MEASURED 2026-09-13 from `tally query jobs --json`); there
+        # is no `jobId`/`id` key, so guessing those would read a busy daemon
+        # as a measured zero.
+        ids = [i.get("liveJobId") or i.get("taskUuid") or i.get("anchor") for i in data.get("items", [])]
         out["daemon_running_jobs"] = fact({"job_ids": [i for i in ids if i], "truncated": bool(data.get("nextCursor"))}, src)
     except (CmdError, ValueError, AttributeError) as exc:
         out["daemon_running_jobs"] = unknown(src, str(exc))
@@ -648,9 +716,9 @@ def c_attention(profile: dict) -> dict:
     out: dict = {}
     herdr = tom_bin("herdr")
 
-    def herdr_json(args):
+    def herdr_json(args, timeout: float = CMD_TIMEOUT):
         argv, env = as_tom([herdr, *args])
-        return json.loads(run(argv, env=env)).get("result", {})
+        return json.loads(run(argv, env=env, timeout=timeout)).get("result", {})
 
     try:
         agents = herdr_json(["agent", "list"]).get("agents", [])
@@ -718,7 +786,9 @@ def c_attention(profile: dict) -> dict:
             rows.append(row)
             continue
         try:
-            info = herdr_json(["pane", "process-info", "--pane", pid_]).get("process_info", {})
+            # The per-pane call gets only what is left of the pane budget, so
+            # one stuck call cannot push the whole section past the collector's.
+            info = herdr_json(["pane", "process-info", "--pane", pid_], timeout=max(0.2, budget - time.monotonic())).get("process_info", {})
             shell = int(info.get("shell_pid") or 0)
             if shell in table:
                 rss, nproc = tree_rss(shell, table)
@@ -850,6 +920,9 @@ def load_hosts() -> list[dict]:
 def fetch_node(host: dict) -> dict:
     name = host["name"]
     base = {"name": name, "profile": host.get("profile"), "target": host.get("target"), "report": None}
+    # "local" is a seam only (FLEET_STATUS_HOSTS_FILE fixtures). The rendered
+    # hosts.json dials every node, the coordinator included, as root over
+    # ssh, because update-adopt's state is root-only (modules/fleet-status.nix).
     if host.get("transport") == "local":
         argv = [os.environ.get("FLEET_STATUS_COLLECT", "fleet-status-collect"), "--json"]
     else:
@@ -960,37 +1033,82 @@ def val(f: dict, fmt=lambda v: v, unknown_text="unknown"):
     return unknown_text
 
 
+class Facts:
+    """Section view for the renderer. A section the collector gave up on is a
+    single `section` fact (budget exhausted, crash); validation accepts that,
+    so every named lookup here falls back to that unknown instead of raising
+    KeyError and taking the whole fleet view down with one slow node (verifier
+    fix, 2026-09-13)."""
+
+    def __init__(self, sections: dict):
+        self.sections = sections
+
+    def __call__(self, section: str, name: str) -> dict:
+        sec = self.sections.get(section) or {}
+        return sec.get(name) or sec.get("section") or unknown(section, "fact not reported")
+
+    def collapsed(self) -> dict[str, str]:
+        return {k: (v.get("section") or {}).get("reason", "") for k, v in self.sections.items() if isinstance(v, dict) and "section" in v}
+
+    def has(self, section: str, name: str) -> bool:
+        return name in (self.sections.get(section) or {})
+
+
+def short_path(v) -> str:
+    if isinstance(v, dict):
+        v = v.get("revision") or v.get("store_path") or json.dumps(v)
+    s = str(v)
+    base = s.rsplit("/", 1)[-1]
+    # /nix/store/<hash>-nixos-system-<host>-<ver> → hash prefix is what differs.
+    return base[:24]
+
+
 def render_node(n: dict, color: bool) -> list[str]:
     head = f"{n['name']:<12} {n.get('profile') or '?':<16}"
     if n["reachability"] != "reachable":
         word = "UNREACHABLE" if n["reachability"] == "unreachable" else n["reachability"].upper()
         return [paint(f"{head} {word}", BOLD + RED, color) + f"  {n.get('error', '')}", paint("             no facts: every section is unknown, not zero", DIM, color)]
-    s = n["report"]["sections"]
-    ident = s["identity"]
-    lines = [paint(head, BOLD, color) + f" reachable {n['latency_ms']}ms  up {val(ident['uptime_s'], dur)}  boot {val(ident['boot_id'], lambda v: v[:8])}"]
+    F = Facts(n["report"]["sections"])
+    lines = [paint(head, BOLD, color) + f" reachable {n['latency_ms']}ms  up {val(F('identity', 'uptime_s'), dur)}  boot {val(F('identity', 'boot_id'), lambda v: v[:8])}"]
+    gone = F.collapsed()
+    if gone:
+        lines.append("  " + paint("UNKNOWN   " + "; ".join(f"{k} ({r})" for k, r in gone.items()), YEL, color))
 
-    gen = s["nix"]["generation"]
-    pr = s["nix"]["pending_reboot"]
-    nix = f"gen {val(gen, lambda v: v['number'])}  {val(s['nix']['version'])}  rev {val(s['nix']['revision'], lambda v: v[:12])}"
+    gen = F("nix", "generation")
+    pr = F("nix", "pending_reboot")
+    nix = f"gen {val(gen, lambda v: v['number'])}  {val(F('nix', 'version'))}  rev {val(F('nix', 'revision'), lambda v: v[:12])}"
     if pr["grade"] == "measured" and pr["value"]["pending"]:
         nix += "  " + paint("PENDING REBOOT (" + ",".join(pr["value"]["differs"]) + ")", BOLD + YEL, color)
     elif pr["grade"] != "measured":
         nix += "  reboot state unknown"
     lines.append(f"  nix       {nix}")
 
-    up = s["updates"]["status"]
+    up = F("updates", "status")
     if up["grade"] == "measured":
+        # Keys of #354's `update-adopt status --json` (modules/update-adopt.py
+        # status()): state, policy, candidate{store_path,revision,…},
+        # last_known_good, last_attempt, last_refusal{reason,…}, pending_reboot.
         v = up["value"] if isinstance(up["value"], dict) else {}
-        parts = [f"{k} {str(v[k])[:24]}" for k in ("candidate", "last_known_good", "last_result", "state") if k in v]
-        lines.append("  updates   " + ("  ".join(parts) or json.dumps(v)[:100]))
+        parts = []
+        for k in ("state", "policy"):
+            if v.get(k):
+                parts.append(f"{k} {v[k]}")
+        parts.append("candidate " + (short_path(v["candidate"]) if v.get("candidate") else "none"))
+        if v.get("last_known_good"):
+            parts.append("lkg " + short_path(v["last_known_good"]))
+        if isinstance(v.get("last_refusal"), dict) and v["last_refusal"].get("reason"):
+            parts.append("refused " + str(v["last_refusal"]["reason"])[:32])
+        if v.get("last_attempt"):
+            parts.append("attempt " + str(v["last_attempt"])[:19])
+        lines.append("  updates   " + ("  ".join(parts) if v else json.dumps(up["value"])[:100]))
     else:
         lines.append(f"  updates   unknown ({up.get('reason')})")
 
-    fu, um, mk = s["systemd"]["failed_units"], s["user_manager"]["failed_units"], s["failure_markers"]["markers"]
-    sysline = f"{val(s['systemd']['system_state'])}  failed {val(fu, lambda v: len(v))}"
+    fu, um, mk = F("systemd", "failed_units"), F("user_manager", "failed_units"), F("failure_markers", "markers")
+    sysline = f"{val(F('systemd', 'system_state'))}  failed {val(fu, lambda v: len(v))}"
     if fu["grade"] == "measured" and fu["value"]:
         sysline = paint(sysline, RED, color) + " " + ",".join(fu["value"][:4])
-    sysline += f"  user {val(s['user_manager']['state'])} failed {val(um, lambda v: len(v))}"
+    sysline += f"  user {val(F('user_manager', 'state'))} failed {val(um, lambda v: len(v))}"
     if um["grade"] == "measured" and um["value"]:
         sysline += " " + ",".join(um["value"][:4])
     if mk["grade"] == "measured" and mk["value"]:
@@ -999,16 +1117,15 @@ def render_node(n: dict, color: bool) -> list[str]:
         sysline += "  markers unknown"
     lines.append(f"  systemd   {sysline}")
 
-    p = s["pressure"]
-    mem = val(p["memory"], lambda v: f"avail {gib(v['available'])}/{gib(v['total'])} swap {gib(v['swap_used'])}/{gib(v['swap_total'])}")
-    psi = val(p["psi"], lambda v: "psi10 mem {:.2f} cpu {:.2f} io {:.2f}".format(*(v.get(f"{r}_some", {}).get("avg10", 0.0) for r in ("memory", "cpu", "io"))))
-    load = val(p["load"], lambda v: "load " + " ".join(f"{x:.2f}" for x in v))
+    mem = val(F("pressure", "memory"), lambda v: f"avail {gib(v['available'])}/{gib(v['total'])} swap {gib(v['swap_used'])}/{gib(v['swap_total'])}", "memory unknown")
+    psi = val(F("pressure", "psi"), lambda v: "psi10 mem {:.2f} cpu {:.2f} io {:.2f}".format(*(v.get(f"{r}_some", {}).get("avg10", 0.0) for r in ("memory", "cpu", "io"))), "psi unknown")
+    load = val(F("pressure", "load"), lambda v: "load " + " ".join(f"{x:.2f}" for x in v), "load unknown")
     lines.append(f"  pressure  {mem}  {psi}  {load}")
-    tc = p["top_cgroups"]
+    tc = F("pressure", "top_cgroups")
     if tc["grade"] == "measured":
         lines.append("  cgroups   " + "  ".join(f"{c['cgroup'].rsplit('/', 1)[-1]} {mib(c['memory_current'])}" for c in tc["value"][:4]))
 
-    mounts = s["storage"]["mounts"]
+    mounts = F("storage", "mounts")
     if mounts["grade"] == "measured":
         parts = []
         for m in mounts["value"]:
@@ -1023,46 +1140,42 @@ def render_node(n: dict, color: bool) -> list[str]:
 
     bad = []
     for scope in ("system", "user"):
-        t = s["timers"][scope]
+        t = F("timers", scope)
         if t["grade"] == "measured":
             bad += [f"{b['unit']}={b['result']}" for b in t["value"]["non_success"]]
         elif t["grade"] == "unknown":
             bad.append(f"{scope} timers unknown")
     lines.append("  timers    " + (", ".join(bad[:5]) if bad else "all last runs succeeded"))
 
-    ev = s["events"]
-    lines.append("  events6h  " + "  ".join(f"{k.replace('_', ' ')} {val(ev[k], lambda v: len(v))}" for k in ("coredumps", "unit_failures", "oom_kills", "update_adopt")))
+    lines.append("  events6h  " + "  ".join(f"{k.replace('_', ' ')} {val(F('events', k), lambda v: len(v))}" for k in ("coredumps", "unit_failures", "oom_kills", "update_adopt")))
 
-    inf = s["inference"]
-    if "health" in inf:
-        h = inf["health"]
+    if F.has("inference", "health"):
+        h = F("inference", "health")
         lines.append("  inference " + val(h, lambda v: f"halogen {v.get('status')} {v.get('model')} busy={v.get('busy')} in_flight={v.get('in_flight')} queued={v.get('queued')}", f"halogen UNKNOWN ({h.get('reason')})"))
-        units = inf.get("halogen_units")
-        if units and units["grade"] == "measured":
+        units = F("inference", "halogen_units")
+        if units["grade"] == "measured":
             lines[-1] += "  " + " ".join(f"{k.replace('.service', '')}={v}" for k, v in units["value"].items())
-    if "fara_browser_model" in inf:
-        lines.append(f"  inference fara-browser-model {val(inf['fara_browser_model'])}")
+    if F.has("inference", "fara_browser_model"):
+        lines.append(f"  inference fara-browser-model {val(F('inference', 'fara_browser_model'))}")
 
-    r = s["runs"]
-    if "kernel_unit" in r:
-        kl = r["kernel_leases"]
-        jobs = r["daemon_running_jobs"]
+    if F.has("runs", "kernel_unit"):
+        kl = F("runs", "kernel_leases")
+        jobs = F("runs", "daemon_running_jobs")
         lines.append(
-            f"  runs      tally-kernel {val(r['kernel_unit'])} open leases {val(kl, lambda v: len(v['open_lease_ids']) and ','.join(v['open_lease_ids'][:3]) or 0)}"
-            f"  tally-daemon {val(r['daemon_unit'])} running jobs {val(jobs, lambda v: len(v['job_ids']))}"
+            f"  runs      tally-kernel {val(F('runs', 'kernel_unit'))} open leases {val(kl, lambda v: ','.join(v['open_lease_ids'][:3]) if v['open_lease_ids'] else 0)}"
+            f"  tally-daemon {val(F('runs', 'daemon_unit'))} running jobs {val(jobs, lambda v: len(v['job_ids']))}"
         )
 
-    a = s["attention"]
-    if "server" in a:
-        srv = a["server"]
-        ag = a["agents"]
+    if F.has("attention", "server"):
+        srv = F("attention", "server")
+        ag = F("attention", "agents")
         lines.append(
             "  herdr     "
             + val(srv, lambda v: f"server rss {mib(v['server_rss'])} (cgroup incl. panes {mib(v['cgroup_memory_current'])}, anon {mib(v.get('cgroup_anon'))})")
             + "  agents "
             + val(ag, lambda v: " ".join(f"{k}={c}" for k, c in sorted(v["by_status"].items())) or "none")
         )
-        panes = a["panes"]
+        panes = F("attention", "panes")
         if panes["grade"] == "measured":
             lines.append(f"  panes     {panes['value']['count']} panes; largest process trees:")
             for row in panes["value"]["panes"][:6]:
@@ -1090,6 +1203,7 @@ def main_collect(argv: list[str]) -> int:
     report = collect()
     sys.stdout.write(json.dumps(report, indent=None if "--json" in argv else 2) + "\n")
     sys.stdout.flush()
+    kill_children()  # reap what a section stuck past the budget left running
     os._exit(0)  # do not wait on a section thread stuck past the budget
 
 

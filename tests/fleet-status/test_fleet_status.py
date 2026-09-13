@@ -212,6 +212,56 @@ class Collector(unittest.TestCase):
         self.assertTrue(any("without reason" in e for e in errs), errs)
 
 
+class RenderAndFolds(unittest.TestCase):
+    """Verifier regressions (2026-09-13)."""
+
+    def node(self, report):
+        return {"name": "A", "profile": "strix-desk", "target": "root@A", "reachability": "reachable", "latency_ms": 5, "report": report}
+
+    def test_collapsed_section_renders_unknown_instead_of_crashing(self):
+        rep = healthy_report()
+        for sec in ("events", "timers", "pressure", "systemd", "nix", "inference"):
+            rep["sections"][sec] = {"section": fs.unknown(sec, "collector budget 6s exhausted")}
+        self.assertEqual(fs.validate_node_report(rep), [])
+        text = "\n".join(fs.render_node(self.node(rep), color=False))
+        self.assertIn("UNKNOWN   ", text)
+        self.assertIn("events (collector budget 6s exhausted)", text)
+        self.assertNotIn("all last runs succeeded", text)
+        # The collapsed system manager reads unknown; the user manager's own
+        # section still answered, so its measured count may appear.
+        self.assertIn("systemd   unknown  failed unknown", text)
+        self.assertNotIn("coredumps 0", text)
+        self.assertIn("load unknown", text)
+
+    def test_lease_release_closes_a_grant(self):
+        rows = [
+            {"seq": 1, "payload": {"kind": "lease_grant", "lease": "lease:a"}},
+            {"seq": 2, "payload": {"kind": "lease_grant", "lease": "lease:b"}},
+            {"seq": 3, "payload": {"kind": "lease_debit", "lease": "lease:a"}},
+            {"seq": 4, "payload": {"kind": "lease_release", "lease": "lease:a"}},
+            {"seq": 5, "payload": {"kind": "admission_transition", "seat": "gpu-worker"}},
+        ]
+        ids, last = fs.open_leases([json.dumps(r) for r in rows] + ["not json"])
+        self.assertEqual((ids, last), (["lease:b"], 5))
+
+    def test_update_adopt_status_shape_renders(self):
+        rep = healthy_report()
+        status = {
+            "state": "pending-reboot",
+            "policy": "rolling",
+            "candidate": {"store_path": "/nix/store/abcd1234-nixos-system-worker", "revision": "1dc4860e0000", "reboot_required": True},
+            "last_known_good": "/nix/store/ffff0000-nixos-system-worker",
+            "last_refusal": {"reason": "busy", "detail": "halogen in_flight=1", "at": "t"},
+            "last_attempt": "2026-09-13T03:00:00+00:00",
+        }
+        rep["sections"]["updates"]["status"] = fs.fact(status, "update-adopt status --json")
+        text = "\n".join(fs.render_node(self.node(rep), color=False))
+        self.assertIn("state pending-reboot", text)
+        self.assertIn("candidate 1dc4860e0000", text)
+        self.assertIn("lkg ffff0000-nixos-system-wo", text)
+        self.assertIn("refused busy", text)
+
+
 class HerdrAccounting(unittest.TestCase):
     def test_tree_rss_counts_descendants_only_of_the_pane(self):
         table = {1: (0, 100, 0), 10: (1, 5, 0), 11: (10, 7, 0), 12: (11, 11, 0), 20: (1, 1000, 0)}

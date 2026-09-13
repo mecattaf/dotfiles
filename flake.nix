@@ -2581,6 +2581,9 @@
               "client"
             ];
           assert !((etc "worker") ? "fleet-status/hosts.json");
+          # Root over ssh for every node, the coordinator too: update-adopt's
+          # state is root-only, so a local run as tom could never read it.
+          assert builtins.all (h: h.transport == "ssh") hostsJson;
           pkgs.runCommand "fleet-status" { nativeBuildInputs = [ pkgs.python3 ]; } ''
             set -euo pipefail
             export HOME="$TMPDIR/home"
