@@ -74,3 +74,6 @@ worker and NAS remain without compositor/VNC. `fara-browser` uses Microsoft's
 pinned FARA loop against that noVNC canvas, ordinary installed Chrome profiles,
 and one task at a time. The house `fara-browser` skill documents profile/account
 selection, human keyring unlock, takeover, replay and task-window cleanup.
+`chrome-stream` (same module) is the lighter path: headless Chrome's CDP
+screencast in a viewer page, bound to loopback and tunnelled to the client
+over `ssh -L`.

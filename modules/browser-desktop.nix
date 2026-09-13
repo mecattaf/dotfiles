@@ -6,7 +6,11 @@ in {
     # Keep the local agent independent of tailnet split-DNS for .internal.
     # LAN clients resolve the same name through the NAS to 10.42.0.2.
     networking.hosts."127.0.0.1" = [ "browser.internal" ];
-    environment.systemPackages = [ pkgs.browser-desktop ];
+    # chrome-stream (pkgs/chrome-stream, 2026-09-13) is the other way to reach a
+    # browser on this host: headless Chrome's CDP screencast, viewer and CDP both
+    # on loopback, carried to the client by `ssh -L`. It rides this module so it
+    # exists exactly where the shared browser desktop does, the coordinator.
+    environment.systemPackages = [ pkgs.browser-desktop pkgs.chrome-stream ];
     systemd.user.services.browser-desktop = {
       description = "Shared browser desktop (Sway and WayVNC)";
       # Keep open browser windows through configuration updates. Compositor

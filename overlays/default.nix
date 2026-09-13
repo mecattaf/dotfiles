@@ -90,6 +90,8 @@ final: prev: {
   };
   artifact-deck = final.callPackage ../pkgs/artifact-deck { };
   browser-desktop = final.callPackage ../pkgs/browser-desktop { };
+  # CDP screencast viewer; installed beside browser-desktop, coordinator only.
+  chrome-stream = final.callPackage ../pkgs/chrome-stream { };
 
   # Monthly local-AI update bot: deterministic Git/HF preparation, one Pi
   # judgment, deterministic verification/publication. Tally leases only Pi.

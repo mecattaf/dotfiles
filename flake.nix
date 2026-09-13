@@ -710,6 +710,7 @@
             brother-print-text
             call-diarize
             browser-desktop
+            chrome-stream
             crm
             dcal
             local-ai-monthly
@@ -1907,6 +1908,8 @@
             workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
             clientHome = self.nixosConfigurations.client.config.home-manager.users.tom;
             cfgOf = h: self.nixosConfigurations.${h}.config;
+            hasChromeStream =
+              h: builtins.any (p: (p.pname or p.name or "") == "chrome-stream") (cfgOf h).environment.systemPackages;
             # Every host whose seat this block adjudicates — named, not
             # discovered, so a fifth host added tomorrow (a seat by default,
             # modules/display.nix) is either listed here on purpose or its
@@ -2044,6 +2047,11 @@
           assert (cfgOf "coordinator").systemd.user.services.browser-desktop.wantedBy == [ ];
           assert (cfgOf "coordinator").systemd.user.services.fara-browser-model.wantedBy == [ ];
           assert builtins.all (h: !((cfgOf h).systemd.user.services ? browser-desktop)) [ "client" "worker" "nas" ];
+          # chrome-stream is installed with that desktop and nowhere else: the
+          # client reaches it over ssh with its own Chrome (R-16 keeps the
+          # client closure near-static).
+          assert hasChromeStream "coordinator";
+          assert builtins.all (h: !hasChromeStream h) [ "client" "worker" "nas" ];
           assert !(workerHome.systemd.user.services ? wayvnc);
           assert (coordinatorHome.systemd.user.services ? wayvnc) == (cfgOf "coordinator").myDisplay.enable;
           assert (coordinatorHome.systemd.user.services ? piri) == (cfgOf "coordinator").myDisplay.enable;
