@@ -106,6 +106,10 @@ final: prev: {
   # cloned 2026-08-03. See pkgs/fara-cli.nix.
   fara-cli = final.callPackage ../pkgs/fara-cli.nix { };
 
+  # fleet-status (#356): the graded per-host collector and the coordinator's
+  # bounded fan-out view. Stdlib Python; modules/fleet-status.nix installs it.
+  fleet-status = final.callPackage ../pkgs/fleet-status { };
+
   # Huion Note X10 offline-note extractor over BLE, pinned by commit, thin
   # strokes. Only hosts/client/huion.nix consumes it. See pkgs/huion-notes.nix.
   huion-notes = final.callPackage ../pkgs/huion-notes.nix { };
