@@ -178,17 +178,18 @@ binds {
 
     // Reserved: Mod+I — toggle top bar
 
-    // Dictation is HOLD-to-talk now, and niri is deliberately not the thing
-    // driving it: a niri bind has no on-release trigger, so push-to-talk lives
-    // in voxtype's own evdev hotkey layer (home/voxtype.nix), which sees the
-    // physical press AND release below the compositor. This bind exists only to
-    // SWALLOW the chord — niri consumes Mod+Space so the surface being dictated
-    // into never receives it — and `spawn "true"` is the cheapest way to say
-    // "consumed, do nothing". It must never be given a real action: that action
-    // would fire on every press, on top of the evdev listener already recording.
-    Mod+Space repeat=false hotkey-overlay-title="Dictate (hold)" { spawn "true"; }
-    // Unchanged: the shifted chord cancels an in-flight dictation, no insertion.
-    Mod+Shift+Space hotkey-overlay-title="Cancel Dictation" { spawn "voxtype" "record" "cancel"; }
+    // Dictation is HOLD-to-talk into the focused herdr projector, transcribed
+    // on the coordinator's GPU (#376, route b'). niri binds have no on-release
+    // trigger, so the bind only STARTS `dictate-hold` (a per-press process,
+    // not a daemon): it records the default PipeWire source (the Shift+F9
+    // Audio Route pick) over ssh into the coordinator's voxtype, watches evdev
+    // for the release of Space or Mod, and types the transcript into THAT
+    // projector with kitty remote control. repeat=false so a held key spawns
+    // it once; niri still swallows the chord, so the pane never sees a space.
+    // Outside a projector it does nothing. No model lives on the client.
+    Mod+Space repeat=false hotkey-overlay-title="Dictate (hold)" { spawn "dictate-hold"; }
+    // Cancels an in-flight dictation (so does Esc while holding): no insertion.
+    Mod+Shift+Space hotkey-overlay-title="Cancel Dictation" { spawn "dictate-hold" "--cancel"; }
 
     Mod+Slash { show-hotkey-overlay; }
 

@@ -66,5 +66,18 @@ in
     # terms (`meta.available` is true for x86_64-linux on the pinned rev;
     # it carries Codex too). Same fallback: the `chatgpt` PWA at home.nix:311.
     pkgs.llm-agents.chatgpt
+
+    # Dictation's client half (#376, route b'; home/dictate-hold.py has the
+    # whole mechanism). Not a GUI app, but seat-only for the same reason as
+    # the two above: the keyboard it watches is here and nowhere else. It is
+    # a PER-PRESS process spawned by niri's Mod+Space, never a unit, and
+    # python3-evdev rides only inside this wrapper's closure (no global
+    # python3Packages entry). The model and the voxtype package stay on the
+    # coordinator; flake.nix home-profiles asserts both sides.
+    (pkgs.writers.writePython3Bin "dictate-hold" {
+      libraries = [ pkgs.python3Packages.evdev ];
+      # flake8 runs at build time; the repo wraps comments past 79 columns.
+      flakeIgnore = [ "E501" ];
+    } (builtins.readFile ./dictate-hold.py))
   ];
 }

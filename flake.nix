@@ -1943,7 +1943,16 @@
           assert coordinatorHome.home.username == "tom";
           assert coordinatorHome.programs.atuin.settings.auto_sync;
           assert coordinatorHome.services.tally.enable;
-          assert coordinatorHome.programs.voxtype.enable == (cfgOf "coordinator").myDisplay.enable;
+          # Dictation (#376, route b'): the model and daemon run on the headless
+          # coordinator under linger, not in a graphical session that never
+          # starts there; the client only relays audio (dictate-hold, below).
+          assert coordinatorHome.programs.voxtype.enable;
+          assert !coordinatorHome.programs.voxtype.settings.hotkey.enabled;
+          assert !coordinatorHome.programs.voxtype.settings.parakeet.streaming;
+          assert coordinatorHome.systemd.user.services.voxtype.Install.WantedBy == [ "default.target" ];
+          assert coordinatorHome.systemd.user.services.voxtype.Unit.PartOf == [ ];
+          assert coordinatorHome.xdg.configFile ? "pipewire/pipewire.conf.d/60-client-mic.conf";
+          assert nixpkgs.lib.hasInfix "client-mic" (builtins.readFile ./home/dot_local/bin/voxtype-relay);
           # ONE herdr server, coordinator only (ruling B5), and it must never be
           # tied to the compositor's lifetime (ruling B6) — the PTYs outlive it.
           assert coordinatorHome.systemd.user.services ? herdr;
@@ -2013,6 +2022,7 @@
           assert workerHome.programs.atuin.settings.auto_sync;
           assert !workerHome.services.tally.enable;
           assert !workerHome.programs.voxtype.enable;
+          assert !(workerHome.systemd.user.services ? voxtype);
           # …and the herdr SERVER. The worker still gets the herdr binary (it is
           # how `herdr --remote coordinator` works at all), just no unit.
           assert !(workerHome.systemd.user.services ? herdr);
@@ -2078,6 +2088,15 @@
           assert clientHome.home.username == "tom";
           assert !clientHome.services.tally.enable;
           assert !clientHome.programs.voxtype.enable;
+          # …and no model either (#376): the client is the mic and the key, the
+          # coordinator is the model. No voxtype package, config or unit here;
+          # dictate-hold is the only dictation artefact, and it is seat-only.
+          assert !(builtins.any (p: nixpkgs.lib.hasPrefix "voxtype" (nixpkgs.lib.getName p)) clientHome.home.packages);
+          assert !(clientHome.xdg.configFile ? "voxtype/config.toml");
+          assert !(clientHome.systemd.user.services ? voxtype);
+          assert builtins.any (p: nixpkgs.lib.getName p == "dictate-hold") clientHome.home.packages;
+          assert !(builtins.any (p: nixpkgs.lib.getName p == "dictate-hold") coordinatorHome.home.packages);
+          assert nixpkgs.lib.hasInfix "Mod+Space repeat=false hotkey-overlay-title=\"Dictate (hold)\" { spawn \"dictate-hold\"; }" (builtins.readFile ./home/dot_config/niri/binds.kdl);
           assert !(clientHome.systemd.user.services ? herdr);
           assert builtins.any (p: nixpkgs.lib.getName p == "herdr") clientHome.home.packages;
           assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") clientHome.home.packages);

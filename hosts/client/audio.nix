@@ -5,8 +5,10 @@
 # election. Moved here from hosts/coordinator/audio.nix on 2026-09-11 with the
 # webcam itself: the coordinator's USB peripherals live on the Thunderbolt
 # dock the thin client sits on now (R-7), and the coordinator keeps only its
-# Ryzen HD Audio and Radeon HDMI — no real mic, so voxtype there has nothing
-# to hear until a dictation route is decided.
+# Ryzen HD Audio and Radeon HDMI — no real mic. Dictation therefore records
+# HERE and transcribes there: `dictate-hold` pipes this host's default source
+# (so this pin, or the Shift+F9 pick) over ssh to the coordinator's voxtype
+# (#376, home/voxtype.nix).
 #
 # The node name carries the unit's USB serial, so the rule is the same on any
 # host the camera is plugged into. The runtime repair below is PER HOST
