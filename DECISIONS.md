@@ -210,6 +210,74 @@ store. Retention is revisited only when a real question needs history that
 the journal and the failure markers cannot answer. When that happens, export
 selected fields from this schema; do not rebuild it.
 
+2026-09-13 Paperless v3 is live-gated on the NAS (#136): 3.1.3, no LLM index, no NAS AI.
+`myNas.paperless.enable` and the coordinator's `myNasClient.relayPaperless`
+flip together, and flake.nix nas-topology now asserts them ON. The first act
+was a bump of the nixpkgs-paperless pin from 3.0.4 to 3.1.3 (nixpkgs-unstable
+da39501c), made while the database is empty. Bumping after admission would be
+the migration #136 forbids. The 3.0 to 3.1 module diff is harmless, but the
+package changed its original checksum from MD5 to SHA-256. The bridge would
+have died on every document, and now compares by digest length.
+
+The rest of the #136 text is superseded by later rulings, and is read that
+way:
+- The NAS is not "8 GB, no Tailscale identity". It is 24 GB (MemTotal
+  24027800 kB), a headscale node and the house router (hosts/nas/default.nix,
+  2026-08-21 and 2026-09-01). Network acceptance is therefore:
+  - 28981 is admitted only from 10.42.0.2 (the coordinator);
+  - tailscale0 admits only DNS in the NixOS table;
+  - no serve or funnel mapping and no Cloudflare path names Paperless;
+  - `http://paperless.internal` via the coordinator relay is the one front
+    door.
+  It is not "the NAS has no tailnet node".
+- There is no llama-swap and no 10.77.0.1; the /30 cable is retired (#264).
+
+Router safety is part of the deployment. The NAS runs dnsmasq DHCP and DNS
+for the house, so paperless-task-queue, paperless-consumer and the bulk unit
+run at CPUWeight=20, Nice=10, idle IO and MemoryMax=8G. Paperless runs 1 task
+worker with 2 threads. `paperless-bridge-bulk` has no wantedBy: an operator
+starts it, or the separate `myNas.paperless.bulk.enable` timer does, which is
+off. Before every round it stops, with exit 75 and a receipt, when:
+- /mnt/nas has less than 150 GiB free (the disk was 94% full at the flip);
+- the 1-minute loadavg is above 6;
+- dnsmasq is inactive.
+Every step is ledger-driven, so a stop or a reboot loses at most the
+in-flight document.
+
+AI is tag candidates only. `paperless-bridge suggest` runs on the
+coordinator, because its utility-model wrapper is the fleet's accounted seam
+to the worker's resident Halogen Flash. The NAS never dials worker:8731 and
+never holds weights. Each suggestion writes:
+- `ai-candidate/<slug>` tags, only for kind/topic/course slugs, with
+  matching disabled;
+- one note recording the served model id, taxonomy version and confidence.
+A human accepts by retagging, and sync-tags exports that. Concurrency is 1,
+so no model or process is left behind: the request lands on a server that
+was already resident.
+
+Paperless's own LLM/vector index stays off (`PAPERLESS_AI_ENABLED=false`).
+Halogen has no /v1/embeddings (a POST returns 404), and AGENTS.md makes any
+embedder an operator loan. The one-time index build is therefore not part of
+closing #136. It happens after bulk convergence as an operator act:
+1. `local-models-borrow` the Qwen3 text embedder;
+2. run `llama-server --embeddings` by hand on the coordinator;
+3. point Paperless at it, build the index, stop the server.
+That act is carried as DEFERRED DF-136-1.
+
+Enrichment follows the corpus as it actually is. The catalog key is
+`local_pdf_path` in paper_archive plus historical_archive (3677 rows, 3627
+files present). paper.md is resolved through ocr_derivatives or
+ocr-june/papers-canonical/<db_id>/canonical/. A paper syncs only when every
+recorded OCR source hash equals the ledger sha256. Measured against the real
+catalog: 129 of the 184 OCR papers are syncable. The other 55 were OCR'd from
+a different payload than the facsimile on disk and stay at baseline, each
+with a receipt.
+
+LaCie cold dump: the sync of documents/ excludes .paperless-view and
+.paperless-consume. rclone does not keep hardlinks, so the projection would
+otherwise land a second copy of the corpus. services/paperless/{backups,bridge}
+(without the API token) is the one services/ tree that gets mirrored.
+
 2026-09-13 the Huion Note X10 is the paper inbox; the client runs one sync.
 Tom writes on the notepad anywhere, presses its button for each new page, and
 opens the cover near the client; the pages land on the coordinator as

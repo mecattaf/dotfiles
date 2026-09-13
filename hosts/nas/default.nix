@@ -41,7 +41,7 @@
     ./attic.nix # ws5  fleet binary cache, served directly (executed 2026-08-21)
     ./update-center.nix # nightly fleet builds -> attic (the App Store model)
     ./omarchy-update-center.nix # manual signed offers; owners choose installation
-    ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate OFF
+    ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate ON 2026-09-13
     ./headscale.nix # 2026-09-01: the fleet's OWN tailnet control plane (supersedes #233)
     ./tailscale-personal.nix # Additional isolated SaaS ingress; never enroll the lent laptops here
     ./personal-https.nix # Gated, NAS-scoped DNS-01 certificates for private media
@@ -122,6 +122,13 @@
   myNas.headscale.serverUrl = "https://nas-saas.tail8dd1.ts.net:8443";
   myNas.headscale.backup.enable = true;
   myNas.omarchyUpdateCenter.enable = true;
+  # #136 gate flip (2026-09-13), paired with the coordinator's
+  # myNasClient.relayPaperless in the same commit (flake.nix nas-topology
+  # asserts the pair). Pre-flip: runbook dirs created, documents snapshotted
+  # read-only as .snapshots/documents.pre-paperless-20260913T2241, input
+  # bumped to 3.1.3 while the database is empty. Bulk admission stays a
+  # manual start (myNas.paperless.bulk.enable is the separate timer gate).
+  myNas.paperless.enable = true;
 
   # Preserve graphics/VA-API for headless Immich video transcoding. This does
   # not install or start a display server, compositor, or graphical login.

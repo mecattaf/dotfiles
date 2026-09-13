@@ -63,10 +63,40 @@ let
       dst=$(find /mnt/lacie -maxdepth 1 -type d -iname "$tree" | head -1)
       [ -n "$dst" ] || { dst=/mnt/lacie/$tree; mkdir -p "$dst"; }
       echo "sync $tree: $src -> $dst"
-      rclone sync "$src" "$dst" \
+      # #136: documents/ carries the Paperless machinery. Every file in
+      # .paperless-view is a HARDLINK to a canonical PDF already in this
+      # sync, and rclone does not preserve hardlinks, so without these
+      # excludes the drawer drive would get the whole corpus a second time.
+      # Both trees are rebuildable from the canonical originals plus the
+      # bridge ledger (mirrored below). /mnt/nas/views is a read-only bind
+      # of the same view tree and is not in the tree list at all.
+      excludes=()
+      if [ "$tree" = documents ]; then
+        excludes=(--exclude '/.paperless-view/**' --exclude '/.paperless-consume/**')
+      fi
+      rclone sync "$src" "$dst" "''${excludes[@]}" \
         --backup-dir "/mnt/lacie/.previous-versions/$stamp/$tree" \
         --create-empty-src-dirs -v || {
         echo "$tree: sync FAILED"
+        fail=1
+      }
+    done
+
+    # #136 exception to "services/ is not mirrored": the Paperless database
+    # dumps and the bridge ledger/receipts/accepted-tag sidecars are the only
+    # non-regenerable Paperless state (the view tree is derived from them plus
+    # documents/). The API token is excluded: it is revocable, re-mintable,
+    # and has no business on a drawer drive.
+    for part in backups bridge; do
+      src=/mnt/nas/services/paperless/$part
+      [ -d "$src" ] || continue
+      dst=/mnt/lacie/services-paperless/$part
+      mkdir -p "$dst"
+      echo "sync services/paperless/$part: $src -> $dst"
+      rclone sync "$src" "$dst" --exclude '/api-token' \
+        --backup-dir "/mnt/lacie/.previous-versions/$stamp/services-paperless/$part" \
+        --create-empty-src-dirs -v || {
+        echo "services/paperless/$part: sync FAILED"
         fail=1
       }
     done

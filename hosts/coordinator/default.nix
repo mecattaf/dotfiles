@@ -103,6 +103,9 @@
   myCoordinatorMedia.enable = false;
   myNasClient.useRemoteStorage = true;
   myNasClient.relayMedia = true;
+  # #136: the tailnet front door (paperless.internal) for the NAS Paperless
+  # backend; flips with the NAS's myNas.paperless.enable (2026-09-13).
+  myNasClient.relayPaperless = true;
 
   # The rewrite's served kernel: ONE kernel, on the coordinator (spec §2.4 Q2 —
   # the worker twin is a ROW this kernel serves, not a second kernel), on the

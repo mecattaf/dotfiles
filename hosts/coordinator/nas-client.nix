@@ -383,6 +383,17 @@ in
 
       networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 28981 ];
 
+      # `paperless-bridge suggest` runs HERE, not on the NAS: the
+      # utility-model wrapper (modules/halogen.nix client) is the fleet's one
+      # accounted seam to the worker's resident Halogen server (AGENTS.md),
+      # and it exists on the coordinator only. The package records the
+      # concrete served model id beside every ai-candidate/* tag (#136).
+      environment.systemPackages = [
+        (pkgs.callPackage ../../pkgs/paperless-bridge {
+          suggestModelId = config.services.halogen.modelId;
+        })
+      ];
+
       services.caddy.virtualHosts."http://paperless.internal".extraConfig = ''
         reverse_proxy 127.0.0.1:28981
       '';

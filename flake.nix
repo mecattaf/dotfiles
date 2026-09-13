@@ -1846,8 +1846,29 @@
           # ws5 EXECUTED 2026-08-21: atticd runs on the NAS M.2, no relay —
           # every host dials http://nas:8080/fleet directly.
           assert nas.myNas.attic.enable; # ws5  hosts/nas/attic.nix
-          assert !nas.myNas.paperless.enable; # #136 hosts/nas/paperless.nix
-          assert !nas.services.paperless.enable;
+          # #136 FLIPPED ON 2026-09-13 (pre-flip snapshot, runbook dirs and
+          # the 3.1.3 bump done first; hosts/nas/paperless.nix). Inverted in
+          # the same commit as the gate, per this block's instruction. The
+          # bulk admission timer is its own gate and stays OFF until canary
+          # throughput and RSS are measured; the bulk service is never
+          # auto-started by a switch or a boot.
+          assert nas.myNas.paperless.enable; # #136 hosts/nas/paperless.nix
+          assert nas.services.paperless.enable;
+          assert !nas.myNas.paperless.bulk.enable;
+          assert !(nas.systemd.timers ? paperless-bridge-bulk);
+          assert nas.systemd.services.paperless-bridge-bulk.wantedBy == [ ];
+          # Router safety: the NAS is the house DHCP/DNS router.
+          assert builtins.all (
+            u:
+            nas.systemd.services.${u}.serviceConfig.CPUWeight == 20
+            && nas.systemd.services.${u}.serviceConfig.IOSchedulingClass == "idle"
+            && nas.systemd.services.${u}.serviceConfig.MemoryMax == "8G"
+          ) [ "paperless-task-queue" "paperless-consumer" "paperless-bridge-bulk" ];
+          # The backend port is admitted from the coordinator only; nothing
+          # tailnet-facing on the appliance may name it.
+          assert nixpkgs.lib.hasInfix "ip saddr 10.42.0.2 tcp dport 28981 accept" nas.networking.firewall.extraInputRules;
+          assert !(builtins.elem 28981 nas.networking.firewall.allowedTCPPorts);
+          assert !(builtins.elem "tailscale0" nas.networking.firewall.trustedInterfaces);
           assert !coordinator.myNasClient.relayAttic;
           # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
           # 2026-08-03: the staged Jellyfin alternative was deleted, not kept
