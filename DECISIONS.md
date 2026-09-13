@@ -30,6 +30,24 @@ the generation would reintroduce the per-commit coupling above. The
 `raw-dotfiles-guard` check pins each host's program list; adding a raw-program
 unit means updating that list on purpose.
 
+2026-09-13 two overnight hygiene calls, made without Tom and reversible.
+(1) The SessionStart hook in home/dot_claude/settings.json is REMOVED, not
+restored. It ran `~/.claude/hooks/herdr-agent-state.sh session`, a script
+that exists in no repository and on no host, so it failed on every session
+start and did nothing; DF-MEM-2-2 offered either answer, and removing a call
+to nothing changes no behaviour. The ai-memory-harvest-hook check now asserts
+there is no SessionStart block, so a hook naming an unshipped script cannot
+return by accident. Restoring herdr's hook later is a new, reviewed addition
+that ships the script beside ai-memory-harvest.sh.
+(2) cliamp's resume.json carried a live Navidrome Subsonic token
+(u=mecattaf, t/s pair; /rest/ping answered `ok` with it on 2026-09-13) and
+has been tracked in this PUBLIC repo since 1600e2eb (2026-08-21). It is now
+untracked and ignored, and ~/.config/cliamp is a real directory so it is not
+written into the tree again. NOT done: rotating the Navidrome password
+(re-encrypting navidrome-credentials) or rewriting history. The only
+listener is tailscale0:4533, so exposure is limited to the tailnet. Rotation
+stays Tom's call.
+
 2026-09-13 the Huion Note X10 is the paper inbox; the client runs one sync.
 Tom writes on the notepad anywhere, presses its button for each new page, and
 opens the cover near the client; the pages land on the coordinator as
