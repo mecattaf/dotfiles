@@ -212,7 +212,11 @@ in
           WatcherWait = "0s";
         };
         LogLevel = "info";
-        SessionTimeout = "168h";
+        # One web-UI login per browser per year. Single user, tailnet/LAN-only
+        # front door; the weekly re-login (168h) was pure friction. Tom's call,
+        # 2026-09-13 — chosen over ExtAuth header login, which would trust
+        # 127.0.0.1 and so anything that can reach :4533.
+        SessionTimeout = "8760h";
         AutoImportPlaylists = true;
         # No backups. Navidrome's own Backup.* is left entirely unset, which
         # is off by default (backup.path "", backup.schedule "", backup.count
