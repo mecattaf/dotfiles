@@ -33,17 +33,32 @@
 # Always-on exception (documented per the StopWhenUnneeded doctrine): unlike
 # Immich/Navidrome, Paperless keeps a consumer watching the spool and a
 # scheduler running maintenance, so socket activation would thrash it. Idle
-# RSS on the 8 GB box is a gate-flip validation measurement.
+# RSS is a gate-flip validation measurement. (The box was specced as 8 GB when
+# #136 was written; `free` on 2026-09-13 reads MemTotal 24027800 kB = 24 GB.
+# The concurrency below stays modest anyway — see router safety.)
 #
-# Gate-flip runbook (walk on the real hardware, then flip
-# myNas.paperless.enable and invert the checks in flake.nix):
+# ROUTER SAFETY (2026-09-13): this box is also the house router
+# (./router.nix: dnsmasq DHCP + forced DNS, NAT). Paperless OCR and bulk
+# admission must never be what takes the LAN down overnight, so the
+# CPU/IO-heavy units run at CPUWeight=20, Nice=10, idle IO class and a
+# MemoryMax=8G ceiling, and the bulk loop (paperless-bridge-bulk) checks
+# dnsmasq, free space (>=150 GiB on a 94%-full disk) and loadavg (<=6)
+# before every round and stops itself rather than wait.
+#
+# Gate-flip runbook (gate FLIPPED 2026-09-13 with the relay and the inverted
+# nas-topology asserts; steps 1 and the pre-flip snapshot
+# .snapshots/documents.pre-paperless-20260913T2241 were done before the flip,
+# the rest is post-deploy acceptance):
 #   1. mkdir the runbook dirs (tmpfiles 'z'-only doctrine, storage.nix):
 #        mkdir -m 750 /mnt/nas/documents/.paperless-view    (chown paperless)
 #        mkdir -m 770 /mnt/nas/documents/.paperless-consume (chown tom:paperless)
 #        mkdir -m 755 /mnt/nas/views
 #   2. deploy; verify paperless-web answers on 10.42.0.1:28981 from the
-#      coordinator only, and http://paperless.internal works from a tailnet
-#      client with auto-login (needs myNasClient.relayPaperless flipped in
+#      coordinator (10.42.0.2) only — NOT from the worker, a 10.42.0.x
+#      client, or a tailnet node via 100.64.0.1 (the NAS is a headscale node
+#      and subnet router since 2026-08-21/09-01; tailscale0 admits only DNS
+#      in the NixOS table) — and http://paperless.internal works from a
+#      tailnet client with auto-login (myNasClient.relayPaperless flipped in
 #      the same commit — the checks pair them).
 #   3. mint the bridge API token:
 #        paperless-manage drf_create_token tom \
@@ -53,14 +68,26 @@
 #      academic, one legacy scan, one general PDF; prove identical sha256 AND
 #      identical st_dev:st_ino for canonical + projected paths.
 #   5. measure idle/import RSS + disk wakeups alongside Immich/Navidrome
-#      before bulk admission; bulk-ingest in bounded batches afterwards.
-#   6. (future AI phase only) the worker's inference endpoint
-#      (http://worker:8731, Halogen Flash) is reachable from here over the
-#      house LAN. Nothing in v1 uses it regardless
-#      (PAPERLESS_AI_ENABLED=false, enrich reads files + the local API); turn
-#      it on with the #136 AI-batching admission design.
+#      and canary throughput before bulk admission; then
+#        systemctl start paperless-bridge-bulk
+#      (never auto-started: no wantedBy; its nightly timer is the separate
+#      myNas.paperless.bulk.enable gate, off). Resumable from the ledger.
+#   6. AI: tag candidates only, via `paperless-bridge suggest` run on the
+#      COORDINATOR, whose utility-model wrapper is the fleet's one seam to
+#      the worker's resident Halogen server (AGENTS.md) — never a direct call
+#      from this box, never weights here. PAPERLESS_AI_ENABLED stays false;
+#      the one-time LLM index build is an operator act after bulk
+#      convergence (DECISIONS.md 2026-09-13, DEFERRED.md DF-136-1).
 let
   cfg = config.myNas.paperless;
+  # Heavy-unit resource envelope (router safety, header). mkDefault so a
+  # measured override stays a one-liner.
+  routerSafe = {
+    CPUWeight = lib.mkDefault 20;
+    Nice = lib.mkDefault 10;
+    IOSchedulingClass = lib.mkDefault "idle";
+    MemoryMax = lib.mkDefault "8G";
+  };
   storageRoot = "/mnt/nas";
   documentsRoot = "${storageRoot}/documents";
   serviceRoot = "${storageRoot}/services/paperless";
@@ -86,6 +113,10 @@ in
   imports = [ "${inputs.nixpkgs-paperless}/nixos/modules/services/misc/paperless.nix" ];
 
   options.myNas.paperless.enable = lib.mkEnableOption "Paperless-ngx v3 as the same-inode PDF projection of /mnt/nas/documents (#136)";
+  options.myNas.paperless.bulk.enable = lib.mkEnableOption ''
+    the nightly timer for paperless-bridge-bulk (#136). Off until canary
+    throughput and RSS are measured; the service itself is always declared
+    but never auto-started, so an operator starts a run by hand'';
 
   config = lib.mkIf cfg.enable {
     assertions = [
@@ -134,10 +165,12 @@ in
         PAPERLESS_OCR_MODE = "auto";
         PAPERLESS_ARCHIVE_FILE_GENERATION = "never";
         # Defer the LLM/vector index: it is built once, deliberately, after
-        # the bulk enrichment pass converges (#136), and any AI runs through
-        # the worker's Halogen Flash server — never model weights on this box.
+        # the bulk enrichment pass converges (#136), as an operator act with a
+        # loaned embedder (Halogen has no /v1/embeddings) — never model
+        # weights on this box.
         PAPERLESS_AI_ENABLED = false;
-        # 8 GB box shared with Immich/Navidrome/Plex: modest fixed concurrency.
+        # 24 GB box shared with Immich/Navidrome/Plex AND the house router:
+        # modest fixed concurrency (router safety, header).
         PAPERLESS_TASK_WORKERS = 1;
         PAPERLESS_THREADS_PER_WORKER = 2;
         PAPERLESS_WEBSERVER_WORKERS = 2;
@@ -172,10 +205,52 @@ in
     };
 
     systemd.services =
-      lib.genAttrs (map (lib.removeSuffix ".service") paperlessUnits) (_: {
+      lib.genAttrs (map (lib.removeSuffix ".service") paperlessUnits) (unit: {
         unitConfig.RequiresMountsFor = [ storageRoot ];
+        # OCR and indexing happen in the task queue; the consumer does the
+        # copy-in. The web and scheduler units stay at normal priority.
+        serviceConfig = lib.optionalAttrs (builtins.elem unit [
+          "paperless-task-queue"
+          "paperless-consumer"
+        ]) routerSafe;
       })
       // {
+        # Guarded, resumable bulk admission (pkgs/paperless-bridge bulk).
+        # Deliberately NO wantedBy: a switch or a reboot never starts it; an
+        # operator does (`systemctl start paperless-bridge-bulk`), or the
+        # myNas.paperless.bulk.enable timer once measurements justify it.
+        # Exit 75 = paused by a guard or no progress (receipt says which);
+        # rerunning resumes from the ledger.
+        paperless-bridge-bulk = {
+          description = "Paperless bridge: guarded bulk admission rounds (#136)";
+          after = paperlessUnits ++ [ "dnsmasq.service" ];
+          requires = [ "paperless-consumer.service" ];
+          unitConfig.RequiresMountsFor = [ storageRoot ];
+          # sudo for the relink helper; systemctl for the dnsmasq guard.
+          path = [ config.systemd.package ];
+          environment.BRIDGE_RELINK_HELPER = "/run/wrappers/bin/sudo ${bridge}/bin/paperless-relink-helper";
+          serviceConfig = routerSafe // {
+            Type = "oneshot";
+            User = "tom";
+            Group = "users";
+            ExecCondition = "${pkgs.coreutils}/bin/test -s ${serviceRoot}/bridge/api-token";
+            ExecStart = lib.escapeShellArgs [
+              "${bridge}/bin/paperless-bridge"
+              "bulk"
+              "--batch"
+              "50"
+              "--min-free-gb"
+              "150"
+              "--max-load"
+              "6"
+              "--require-unit"
+              "dnsmasq.service"
+            ];
+            SuccessExitStatus = [ 75 ];
+            TimeoutStartSec = "infinity";
+          };
+        };
+
         # First-boot admin credential, generated on the box like the module's
         # own secret key — never a committed secret (mySecrets stays off, #136).
         paperless-admin-password = {
@@ -218,6 +293,15 @@ in
           };
         };
       };
+    systemd.timers.paperless-bridge-bulk = lib.mkIf cfg.bulk.enable {
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        # Overnight window; a run that is still going when this fires again
+        # is left alone (oneshot already active).
+        OnCalendar = "*-*-* 23:30:00";
+        Persistent = false;
+      };
+    };
     systemd.timers.paperless-db-dump = {
       wantedBy = [ "timers.target" ];
       timerConfig = {
@@ -257,8 +341,9 @@ in
       }
     ];
 
-    # Backend admitted only from the coordinator's LAN address; the
-    # tailnet reaches it through the coordinator relay + Caddy front door.
+    # Backend admitted only from the coordinator (10.42.0.2 on the house LAN;
+    # the /30 cable is retired); the tailnet reaches it through the
+    # coordinator relay + Caddy front door, never via this box's tailscale0.
     networking.firewall.extraInputRules = ''
       ip saddr 10.42.0.2 tcp dport 28981 accept comment "paperless from coordinator (LAN; /30 retired 2026-08-21)"
     '';
