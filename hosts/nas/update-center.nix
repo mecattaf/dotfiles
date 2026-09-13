@@ -25,7 +25,14 @@
 #     pinned ~6-month manual bump, by the operator, and never before.
 #
 # Source trust: the repo is public, fetched by commit over https — no repo
-# key on the appliance (doctrine holds). Push trust: the attic token is
+# key on the appliance (doctrine holds). Its PRIVATE locked inputs (tally-b =
+# mecattaf/tally, tally-lake = mecattaf/tally-ts-sdk) are not fetched here at
+# all: since 2026-09-13 the coordinator's update-center-seed user timer
+# (home/update-center-seed.nix, 00:45 and 01:20) copies their exact
+# narHash-addressed trees into this store and GC-roots them under
+# /var/lib/update-center/seeds, and the script's preflight logs
+# `seed-missing <node>` for any gap. Nix uses a valid locked store path
+# without fetching (measured: fresh-HOME eval exits 0), so still no credential. Push trust: the attic token is
 # minted LOCALLY each run via atticd-atticadm (the RS256 secret lives here,
 # runbook-placed) — no fleet secret involved.
 #
@@ -51,8 +58,9 @@ let
     # cache hit; never pushed to, never activated from here.
     "client"
   ];
+  # The body lives in ./update-center.sh so tests/update-center can run it
+  # with fake nix/attic on PATH; this wrapper supplies the real PATH and hosts.
   build = pkgs.writeShellScript "update-center-build" ''
-    set -u
     export HOME=/var/lib/update-center
     export PATH=${
       lib.makeBinPath [
@@ -60,36 +68,11 @@ let
         pkgs.attic-client
         pkgs.coreutils
         pkgs.jq
+        pkgs.openssh
       ]
     }:/run/current-system/sw/bin
-
-    # Resolve main ONCE to an immutable rev so all three builds and the log
-    # line describe the same candidate.
-    rev="$(nix flake metadata --json --refresh github:mecattaf/dotfiles/main | jq -er .url)"
-    echo "update-center: candidate $rev"
-
-    # Fresh short-lived push token, minted against the local atticd.
-    token="$(atticd-atticadm make-token --sub update-center --validity 1d \
-      --pull fleet --push fleet)"
-    attic login local http://127.0.0.1:8080 "$token" >/dev/null
-
-    fail=0
-    for host in ${lib.concatStringsSep " " hosts}; do
-      echo "update-center: building $host"
-      if out="$(nix build --no-link --print-out-paths \
-        "$rev#nixosConfigurations.$host.config.system.build.toplevel")"; then
-        echo "update-center: pushing $host ($out)"
-        attic push local:fleet "$out" || {
-          echo "update-center: push FAILED for $host" >&2
-          fail=1
-        }
-      else
-        echo "update-center: build FAILED for $host" >&2
-        fail=1
-      fi
-    done
-
-    exit $fail
+    export UPDATE_CENTER_HOSTS=${lib.escapeShellArg (lib.concatStringsSep " " hosts)}
+    exec ${pkgs.bash}/bin/bash ${./update-center.sh}
   '';
 in
 {

@@ -116,6 +116,24 @@ also run `nix flake lock --update-input`. They are run once by the integrator
 after the merge, not per lane. tools/u-d17-util-01-oracle.sh's SHA constants
 now track the dotfiles re-lock rather than the card's instrument_sha256.
 
+2026-09-13 the NAS update-center gets private inputs by seeding, not by a
+token. From 2026-09-10 every nightly build failed on `Failed to fetch git
+repository 'https://github.com/mecattaf/tally'`: flake.lock pins tally-b
+(mecattaf/tally) and tally-lake (mecattaf/tally-ts-sdk), both private, and the
+appliance holds no repo credential. The coordinator's home-manager user timer
+`update-center-seed` (home/update-center-seed.nix, 00:45 and 01:20) resolves
+main with --refresh, selects every mecattaf-owned locked node, `nix copy`s the
+narHash-addressed source trees to ssh-ng://root@nas as tom, and GC-roots them
+at /var/lib/update-center/seeds/<node>, dropping roots the lock no longer names.
+It skips while update-center runs. update-center's preflight logs
+`seed-missing <node>` for any gap before building. MEASURED 2026-09-13 22:50:
+with the trees seeded, a fresh-HOME root `nix eval` of pushed main's worker
+drvPath on the NAS exits 0 — Nix uses a valid locked store path without
+fetching — and the seed run as a transient unit exits 0, rooting herdr-kitten,
+tally, tally-b and tally-lake. Not taken: a read-only GitHub token on the NAS
+(breaks the no-repo-key doctrine) and pushing the trees into Attic (its
+one-month retention would expire a pin that rarely moves).
+
 2026-09-13 the Huion Note X10 is the paper inbox; the client runs one sync.
 Tom writes on the notepad anywhere, presses its button for each new page, and
 opens the cover near the client; the pages land on the coordinator as
