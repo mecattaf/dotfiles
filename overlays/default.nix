@@ -103,4 +103,8 @@ final: prev: {
   # nixpkgs; upstream ships no release tags, so this pins the exact commit
   # cloned 2026-08-03. See pkgs/fara-cli.nix.
   fara-cli = final.callPackage ../pkgs/fara-cli.nix { };
+
+  # Huion Note X10 offline-note extractor over BLE, pinned by commit, thin
+  # strokes. Only hosts/client/huion.nix consumes it. See pkgs/huion-notes.nix.
+  huion-notes = final.callPackage ../pkgs/huion-notes.nix { };
 }
