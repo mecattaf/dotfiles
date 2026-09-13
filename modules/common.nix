@@ -290,6 +290,13 @@
   xdg.portal = {
     enable = true;
     extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
+    # xdg-desktop-portal 1.17 stopped picking a backend implicitly and warns
+    # at every evaluation until one is named. "*" is the upstream spelling of
+    # the pre-1.17 behaviour these hosts already had (first implementation in
+    # lexicographic order), so this silences the warning without changing
+    # which portal answers. mkDefault so a compositor module can name its own.
+    # (2026-09-13)
+    config.common.default = lib.mkDefault "*";
   };
 
   # --- containers ---
