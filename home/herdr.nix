@@ -51,7 +51,7 @@ let
   herdr = inputs.herdr.packages.${system}.herdr;
   herdr-kitten = inputs.herdr-kitten.packages.${system}.herdr-kitten;
 
-  repoDir = "${config.home.homeDirectory}/mecattaf/dotfiles";
+  repoDir = config.rawDotfiles.repoDir; # home/raw-dotfiles-guard.nix
   link = p: config.lib.file.mkOutOfStoreSymlink "${repoDir}/home/${p}";
 in
 {

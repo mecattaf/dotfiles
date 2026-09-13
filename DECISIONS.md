@@ -1,5 +1,35 @@
 # DECISIONS
 
+2026-09-13 flake checkouts no longer ride into host closures, chrome-stream
+is installed, and a switch refuses a stale raw-dotfiles checkout.
+
+Source coupling. flows/tally-flows.nix passed `./X.js` into tally's
+types.path `script`/`catalog` options, which rendered as a path inside the
+whole flake source, so every commit changed tally's checked config and
+restarted tally-daemon at the next coordinator switch. Each script is now its
+own `builtins.path` copy. Proved with a throwaway local-only DECISIONS.md
+commit: coordinator, worker, client and nas toplevel drvPaths were identical
+before and after it. Keep it that way: nothing that varies per commit
+(`self`, `self.rev`, a bare `./dir` into a types.path option) goes into a host
+closure.
+
+chrome-stream (pkgs/chrome-stream) is in the overlay, `nix build
+.#chrome-stream`, and installed by modules/browser-desktop.nix, so it exists
+only where the shared browser desktop does, the coordinator. `home-profiles`
+asserts it is absent from client, worker and nas (R-16).
+
+#313, option 1. The raw-dotfiles anchor stays at ~/mecattaf/dotfiles, so
+hot-reload keeps following that checkout; option 2 (anchor at the switched
+flake) was a preference change and not taken. home/raw-dotfiles-guard.nix
+runs before checkLinkTargets and writeBoundary and fails the activation when
+a user unit's ExecStart/Pre/Post starts with `%h/.local/bin/<program>` and the
+checkout lacks it; no checkout only warns. It is a presence guard, not a rev
+equality: the worker and client checkouts lag main legitimately. The proposed
+"store rev vs checkout HEAD" note was dropped because putting `self.rev` into
+the generation would reintroduce the per-commit coupling above. The
+`raw-dotfiles-guard` check pins each host's program list; adding a raw-program
+unit means updating that list on purpose.
+
 2026-09-13 the Huion Note X10 is the paper inbox; the client runs one sync.
 Tom writes on the notepad anywhere, presses its button for each new page, and
 opens the cover near the client; the pages land on the coordinator as

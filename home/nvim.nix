@@ -9,7 +9,7 @@
 # by lazy-nix-helper. Most nvim files stay RAW (live-edit); only lua/plugins.lua +
 # lua/mappings.lua are rendered (they carry store paths).
 let
-  repoDir = "${config.home.homeDirectory}/mecattaf/dotfiles";
+  repoDir = config.rawDotfiles.repoDir; # home/raw-dotfiles-guard.nix
   ndir = "${repoDir}/home/dot_config/nvim";
   link = p: config.lib.file.mkOutOfStoreSymlink "${ndir}/${p}";
   vp = pkgs.vimPlugins;

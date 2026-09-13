@@ -77,3 +77,11 @@ selection, human keyring unlock, takeover, replay and task-window cleanup.
 `chrome-stream` (same module) is the lighter path: headless Chrome's CDP
 screencast in a viewer page, bound to loopback and tunnelled to the client
 over `ssh -L`.
+
+**Raw dotfiles come from `~/mecattaf/dotfiles`, not from the flake you switch
+from (#313).** Every out-of-store link (`home/home.nix` `link`, herdr, nvim)
+points into that checkout. Bring the branch there (ff-merge or `pull
+--ff-only`) before `nixos-rebuild switch`, even when switching from a worktree.
+`raw-dotfiles-guard` (`home/raw-dotfiles-guard.nix`) fails the Home Manager
+activation, before any file is written, when a user unit's
+`%h/.local/bin/<program>` is missing from that checkout.

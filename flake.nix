@@ -2347,6 +2347,70 @@
               touch "$out"
             '';
 
+        # #313 — raw-dotfiles-guard, the real binary against fixture checkouts:
+        # one missing nightly-record must fail naming it, a complete one must
+        # pass, and no checkout at all only warns. The eval half pins what
+        # each host's guard checks and that it runs before writeBoundary.
+        # These lists are pinned ON PURPOSE: adding a user unit that runs
+        # %h/.local/bin/<program> means adding <program> here deliberately,
+        # knowing a switch now needs it in ~/mecattaf/dotfiles first. Update
+        # the list; do not delete the assert.
+        raw-dotfiles-guard =
+          let
+            lib = nixpkgs.lib;
+            guard = pkgs.callPackage ./pkgs/raw-dotfiles-guard.nix { };
+            homeOf = h: self.nixosConfigurations.${h}.config.home-manager.users.tom;
+            entry = (homeOf "coordinator").home.activation.rawDotfilesGuard;
+          in
+          assert
+            (homeOf "coordinator").rawDotfiles.programs == [
+              "claude-transcript-mirror"
+              "nightly-record"
+              "tally-seat-feeder"
+              "util-row"
+              "util-sampler"
+            ];
+          assert (homeOf "worker").rawDotfiles.programs == [ "util-sampler" ];
+          assert (homeOf "client").rawDotfiles.programs == [ "util-sampler" ];
+          assert entry.before == [ "checkLinkTargets" "writeBoundary" ];
+          assert lib.hasInfix "/bin/raw-dotfiles-guard" entry.data;
+          pkgs.runCommand "raw-dotfiles-guard" { } ''
+            # stdenv runs with errexit; the stale fixture must be allowed to fail.
+            set +e -u
+            progs="claude-transcript-mirror nightly-record tally-seat-feeder util-row util-sampler"
+            mk() {
+              mkdir -p "$1/.git" "$1/home/dot_local/bin"
+              for p in $progs; do
+                printf '#!/bin/sh\n' > "$1/home/dot_local/bin/$p"
+                chmod +x "$1/home/dot_local/bin/$p"
+              done
+            }
+
+            mk "$TMPDIR/complete"
+            res=$(${lib.getExe guard} "$TMPDIR/complete" $progs 2>&1)
+            rc=$?
+            echo "$res"
+            [ "$rc" -eq 0 ] || { echo "complete fixture: rc=$rc" >&2; exit 1; }
+            case "$res" in *"ok (5 programs)"*) ;; *) echo "complete fixture: no ok line" >&2; exit 1 ;; esac
+
+            mk "$TMPDIR/stale"
+            rm "$TMPDIR/stale/home/dot_local/bin/nightly-record"
+            res=$(${lib.getExe guard} "$TMPDIR/stale" $progs 2>&1)
+            rc=$?
+            echo "$res"
+            [ "$rc" -ne 0 ] || { echo "stale fixture: guard passed" >&2; exit 1; }
+            case "$res" in *"bin/nightly-record does not exist"*) ;; *) echo "stale fixture: nightly-record not named" >&2; exit 1 ;; esac
+            case "$res" in *"bin/util-row does not exist"*) echo "stale fixture: named a present program" >&2; exit 1 ;; esac
+
+            res=$(${lib.getExe guard} "$TMPDIR/absent" $progs 2>&1)
+            rc=$?
+            echo "$res"
+            [ "$rc" -eq 0 ] || { echo "absent checkout: rc=$rc" >&2; exit 1; }
+            case "$res" in *warning*) ;; *) echo "absent checkout: no warning" >&2; exit 1 ;; esac
+
+            touch "$out"
+          '';
+
         # Post-mortem transcript discovery must cover all three isolated
         # CLAUDE_CONFIG_DIR roots; ~/.claude alone is a partial answer (#352).
         claude-sessions =

@@ -11,8 +11,12 @@
 # The RAW out-of-store symlinks below point at a *cloned checkout* of this repo at
 # `repoDir`, enabling hot-reload without a rebuild. A fresh machine must clone the
 # repo there BEFORE the first `home-manager switch`, else the symlinks dangle.
+# That checkout, not the flake switched from, supplies the raw half of every
+# switch: ./raw-dotfiles-guard.nix fails the activation, before writeBoundary,
+# when a user unit's %h/.local/bin/<program> is missing from it (#313), and
+# AGENTS.md carries the ordering rule.
 let
-  repoDir = "${config.home.homeDirectory}/mecattaf/dotfiles";
+  repoDir = config.rawDotfiles.repoDir;
   dots = "${repoDir}/home";
   link = path: config.lib.file.mkOutOfStoreSymlink "${dots}/${path}";
 
@@ -121,6 +125,7 @@ in
     ./paper.nix
     ./pi.nix
     ./piri.nix
+    ./raw-dotfiles-guard.nix
     ./seat-feeder.nix
     ./ssh.nix
     ./tally.nix
