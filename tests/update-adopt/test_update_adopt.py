@@ -560,6 +560,11 @@ class GateTests(unittest.TestCase):
         r = self.gate("halogen-idle")
         self.assertEqual(r.returncode, 1)
         self.assertIn("3 request", r.stdout)
+        with open(www + "/health", "w") as stream:
+            stream.write("<html>not json</html>")
+        r = self.gate("halogen-idle")
+        self.assertEqual(r.returncode, 2, r.stdout)
+        self.assertIn("not parseable", r.stdout)
         os.unlink(www + "/health")
         self.assertEqual(self.gate("halogen-idle").returncode, 2)
 

@@ -40,8 +40,10 @@ case "$verb" in
       echo "halogen is active but /health did not answer"
       exit 2
     fi
-    if ! busy="$(jq -er '((.in_flight // 0) + (.queued // 0)) as $n | if $n > 0 or .busy == true then "\($n)" else "" end' <<<"$health")"; then
-      busy=""
+    # An unparseable answer is "cannot tell", never "idle".
+    if ! busy="$(jq -r '((.in_flight // 0) + (.queued // 0)) as $n | if $n > 0 or .busy == true then "\($n)" else "" end' <<<"$health")"; then
+      echo "halogen /health was not parseable"
+      exit 2
     fi
     if [ -n "$busy" ]; then
       echo "halogen has $busy request(s) in flight or queued"
