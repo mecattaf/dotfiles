@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 # Coordinator: NAS-managed LAN routing/DNS, direct BE550 bypass, then Freebox.
 # Static 10.42.0.2 keeps NAS services reachable while bypassing a failed NAS
 # routing or DNS service. Freebox remains the independent emergency uplink.
@@ -114,6 +114,43 @@
   # delivered /etc/ssh/ssh_host_ed25519_key matched mesh-registry.nix, so
   # agenix may now decrypt against it.
   mySecrets.enable = true;
+
+  # ── power profile: balanced, declared, no daemon (2026-09-13) ──────────────
+  # power-profiles-daemon (modules/common.nix) had been holding "performance"
+  # since 2026-08-28 — persisted daemon state from the usb4-stream / dual-node
+  # days, in no config anywhere. That pinned all 32 threads to the performance
+  # governor and pushed the EC's platform profile to performance, whose fan
+  # curve keeps the Framework Desktop's fan on a floor it cannot hold: measured
+  # ~735 rpm against a 926 rpm target, stalling to 0 and restarting every ~20 s
+  # at 50 °C idle. That stall cycle is the "static buzz" Tom heard through the
+  # Thunderbolt era and after it. The worker, with no daemon, sits at
+  # balanced / powersave / balance_performance — the kernel and EC defaults —
+  # and that is what this box declares too. The daemon goes; the three values
+  # are written once at boot and at every switch, and nothing persists a
+  # profile behind the config's back any more.
+  services.power-profiles-daemon.enable = lib.mkForce false;
+  systemd.services.power-profile-balanced = {
+    description = "Pin the platform profile and CPU energy preference to balanced";
+    wantedBy = [ "multi-user.target" ];
+    after = [ "systemd-modules-load.service" ];
+    serviceConfig = {
+      Type = "oneshot";
+      RemainAfterExit = true;
+    };
+    # amd_pmf is a udev-loaded module; give /sys/firmware/acpi/platform_profile
+    # a moment to appear at boot rather than racing it.
+    script = ''
+      for _ in $(seq 1 40); do
+        [ -w /sys/firmware/acpi/platform_profile ] && break
+        sleep 0.5
+      done
+      echo balanced > /sys/firmware/acpi/platform_profile
+      for p in /sys/devices/system/cpu/cpufreq/policy*; do
+        echo powersave > "$p/scaling_governor"
+        echo balance_performance > "$p/energy_performance_preference"
+      done
+    '';
+  };
 
   # ── /home is on the secondary, and a missing one must be LOUD (#261) ────────
   # ./disko.nix mounts /home from the 500GB with `nofail`, because a required
