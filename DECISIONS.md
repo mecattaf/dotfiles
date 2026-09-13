@@ -54,6 +54,68 @@ store puts the unit) outranks /run/systemd/system. The one-boot form is a
 runtime drop-in with a false Condition, which is merged from /run and does
 take effect.
 
+2026-09-13 UTIL-01 counts tokens from Halogen's journal, not from /metrics
+(#312). llama-server and llama-swap are gone (2026-09-11 mono-model) and
+Halogen's GET /metrics is a 404, but Halogen 0.7.0 logs one line per completed
+request: `serve_api: mtp N tok in Ys … | prompt P (K cached), prefill Xs …`.
+The worker's util-sampler (util-sample/3) reads that line from
+`podman-halogen*.service`'s journal once a minute, chained by journal cursor
+read back from its own log, and util-row (util-row/2) sums the windows per
+arm. Calibrated the same evening on one request sent twice: P ==
+`timings.prompt_n` and INCLUDES the cache, K == `cache_n`, N ==
+`usage.completion_tokens` (reasoning included), prefill and decode seconds ==
+`prompt_ms` and `predicted_ms`. So `tokens_in` is P − K (tokens actually
+prefilled, what `llamacpp:prompt_tokens_total` meant), `tokens_in_cached` is
+K, and `prefill_tokens_per_s` is (P − K) / prefill_s. Halogen's own
+`prompt_per_second` does not discount `cache_n`
+(peonist-ai/halogen-flash-server#48), so it is not used. A window that could
+not be read is UNKNOWN, never zero; a day with holes grades PARTIAL, a new
+grade. Not taken: a token-counting proxy in front of :8731, which would
+put a new hop in every utility-model call just to count it.
+
+Also decided: a token window is not an evidence event (DEFERRED
+DF-UTIL-TOK-1; the card's own rule, only Tom widens it). The coordinator's
+fara-browser-model llama-server (:8732) and the hand-run llama-server rows in
+lib/local-models.nix are outside UTIL-01's SERVE_PROBES, so they get no
+counter. `/home/tom/research-methods` stays read-only from here and drifted:
+cards/UTIL-01.md still names /metrics and llama-swap in `tokens_source` and
+locks older `instrument_sha256` values, and kits/util's fixtures pin
+util-sample/2 and util-row/1. The digests locked in flake.nix's
+`util-sampler-topology` and copied into `tools/u-d17-util-01-oracle.sh` are
+this repository's; the card must be re-armed to them. The same re-lock
+carries #329: a re-run of a closed night that reproduces its slice and row
+byte-for-byte exits 0 and rewrites nothing, and a differing one exits 2.
+
+2026-09-13 the coordinator switch of U-D19 (#322) was taken outside its PR.
+It ran in the FIX-E order, through PRs #370-#378 and then a1329f8a (the
+tally-b pin to b3a040e). PR #333 was closed, not ported: its
+DECISIONS/DEFERRED text predated FIX-E06..E12 and #377. What the switch
+delivered, measured 2026-09-13 on coordinator generation 215:
+- tally-kernel.service active from /nix/store (…h006pvwl…-unit-tally-kernel),
+  with ledger.jsonl on disk;
+- tally-uplink.timer waking the oneshot uplink every five minutes (FIX-E12,
+  #351), with Result=success and "0 messages still owed to the lake" since the
+  tally-b pin. The 0600 lake-token was written by Tom;
+- the seat-feeder, filler, pump and util-sampler/util-row timers, all with
+  fragments in the store. TALLY_CLAUDE_SEATS=cc,cc2,cc3 is live, and
+  cc/cc2/cc3.json are written every 30 s;
+- claude-transcript-mirror units as Home Manager store links (the hand-written
+  pair and their .hm-bak copies are gone);
+- the ai-memory-harvest hook on disk and a SessionEnd block in the live
+  settings.json;
+- hk from /nix/store/wjbbi7n…-herdr-kitten-0.1.0-dev on both boxes.
+Tom switched the worker; util-sampler.timer is active there.
+l8-flash-probe reads 28/0 on the coordinator and 10/0 (10 SKIP) on the worker.
+The llama-swap clauses of the U-D19 oracle are void since the 2026-09-11
+mono-model entry. Twelve DEFERRED rows keyed on this switch were deleted
+(#380), and DF-U-D14-3 now keeps only the `plan` half. The repository-half
+oracles those rows name (tests/tally-b, tests/tally-uplink, tests/herdr,
+tools/u-d18-filler-timer-oracle.sh, tools/seat-rows-oracle.sh,
+tools/u-d17-util-01-oracle.sh) each run a full `nix flake check`, and three
+also run `nix flake lock --update-input`. They are run once by the integrator
+after the merge, not per lane. tools/u-d17-util-01-oracle.sh's SHA constants
+now track the dotfiles re-lock rather than the card's instrument_sha256.
+
 2026-09-13 the Huion Note X10 is the paper inbox; the client runs one sync.
 Tom writes on the notepad anywhere, presses its button for each new page, and
 opens the cover near the client; the pages land on the coordinator as
