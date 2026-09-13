@@ -8,9 +8,10 @@
 # Paperless-ngx v3 as the human-facing PDF catalog (#136): a same-inode
 # PROJECTION of the canonical /mnt/nas/documents tree, never a second payload
 # copy. The stable-pinned NAS gets module AND package from the dedicated
-# `nixpkgs-paperless` input (pinned nixos-unstable rev, paperless-ngx 3.0.4
-# from upstream tag v3.0.4, src sha256-3gQtrafqr0avRkFCIlvu7apk2NUNVOFxkdhFE
-# USCz9I=) — v3 only, never the stable 2.x; upgrades happen by bumping that
+# `nixpkgs-paperless` input (pinned nixpkgs-unstable rev da39501c, 2026-09-08,
+# paperless-ngx 3.1.3 from upstream tag v3.1.3, src
+# sha256-iTNl+TGs9NbbPl1Z+Y7z5DaBIv//Fcq21A9zhkmqIuw=; was 3.0.4 until the
+# 2026-09-13 pre-flip bump) — v3 only, never the stable 2.x; upgrades happen by bumping that
 # one input deliberately, not by riding a rolling resolver (a database with
 # schema migrations must not auto-upgrade nightly like nixpkgs-fresh's
 # browser charter allows).

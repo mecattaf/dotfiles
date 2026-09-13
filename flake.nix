@@ -42,10 +42,13 @@
     # nixpkgs-fresh is a nightly ROLLING resolver — the wrong risk profile
     # for a database with schema migrations. A fixed rev makes Paperless
     # upgrades a deliberate one-line bump reviewed like any other change.
-    # Pinned rev = nixos-unstable on 2026-08-04, paperless-ngx 3.0.4
-    # (upstream latest stable is 3.0.5, 2026-08-01, not yet in nixpkgs; bump
-    # this rev when it lands).
-    nixpkgs-paperless.url = "github:NixOS/nixpkgs/e72e4f299401a3689d4b3d5fc6496b11db7064eb";
+    # Pinned rev = nixpkgs-unstable on 2026-09-08 (the same rev the main
+    # `nixpkgs` input locked that day), paperless-ngx 3.1.3 = upstream latest
+    # stable. Bumped from 3.0.4 on 2026-09-13 BEFORE the gate flip, while the
+    # database is still empty: after 8951 documents the same bump would be
+    # the migration exercise #136 forbids. The module diff 3.0.4 -> 3.1.3 is
+    # one new `group` option (default = user) and a nounset fix; no drift.
+    nixpkgs-paperless.url = "github:NixOS/nixpkgs/da39501c8d0a093136854eddcd6927c8a8bb0d8f";
 
     home-manager = {
       url = "github:nix-community/home-manager";
