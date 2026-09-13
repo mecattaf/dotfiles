@@ -99,7 +99,7 @@ in
       # unit running for that method) and home-manager 079a3b5's
       # modules/systemd.nix X-SwitchMethod enum. The new version therefore
       # lands only on a deliberate `systemctl --user restart herdr`, the same
-      # stance DF-CLIENT-7 takes. Asserted by the herdr-switch-keep-old check.
+      # stance DF-CLIENT-7 takes. Asserted by the herdr-oom-isolation check.
       X-SwitchMethod = "keep-old";
     };
     Service = {

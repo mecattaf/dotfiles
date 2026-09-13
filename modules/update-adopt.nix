@@ -63,7 +63,7 @@
 # the live downgrade refusal is seen (DEFERRED DF-354-1), then rolling; client
 # manual (R-18: activated only by Tom's own switch — it discovers and reports),
 # NAS NOT ENROLLED (2026-08-21 ruling: not built nightly, manual pinned bump;
-# the flake's update-adopt-topology check asserts it). rebootPolicy is `notify`
+# the flake's update-adopt check asserts it). rebootPolicy is `notify`
 # everywhere: a boot-installed kernel writes the failure marker
 # `update-adopt-reboot-pending` after 72 h and never reboots by itself.
 let
