@@ -49,7 +49,7 @@ start)
     dir="$OUT_ROOT/$(date +%F)-$slug"
     mkdir -p "$dir" "$STATE_DIR"
 
-    # The Shift+F10 controller runs in a short-lived kitty popup. Start each
+    # The Shift+F9 controller runs in a short-lived kitty popup. Start each
     # capture in its own session with no terminal file descriptors so closing
     # that popup cannot send the recorders SIGHUP or hold the window open.
     : > "$dir/capture.log"

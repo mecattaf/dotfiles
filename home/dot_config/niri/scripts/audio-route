@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shift+F9 -> paired audio route picker. The DOCK era (2026-09-11): the Sound
+# F9 -> paired audio route picker. The DOCK era (2026-09-11): the Sound
 # Blaster GS3, the iContact webcam mic and the INZONE dongle hang off the
 # client's Thunderbolt dock, not off the coordinator, and hosts/client/audio.nix
 # pins the iContact as the default source at boot. This script is what moves off

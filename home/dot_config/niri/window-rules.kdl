@@ -31,7 +31,7 @@ window-rule {
     }
 }
 
-// Shift+F9 paired output/input picker: the same compact floating prompt as F10.
+// F9 paired output/input picker: the same compact floating prompt as F10.
 window-rule {
     match app-id="audio-route-prompt"
     open-floating true
@@ -45,7 +45,7 @@ window-rule {
     }
 }
 
-// Shift+F10 call recorder: the same compact floating prompt as F10.
+// Shift+F9 call recorder: the same compact floating prompt as F10.
 window-rule {
     match app-id="call-record-prompt"
     open-floating true
@@ -95,7 +95,7 @@ window-rule {
     }
 }
 
-// F9 pomodoro: three options and a countdown in the prompt line.
+// Shift+F10 pomodoro: three options and a countdown in the prompt line.
 window-rule {
     match app-id="pomodoro-prompt"
     open-floating true

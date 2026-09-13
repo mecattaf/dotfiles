@@ -3,7 +3,7 @@
 # Bound to Mod+V (niri/binds.kdl), which spawns `kitty --class clipboard-prompt`;
 # window-rules.kdl floats that app-id at 640x400. The dmenu program this used to
 # pipe into left the fleet on 2026-09-11 (installed nowhere), so the picker is
-# fzf now — the same one the whole Mod+D / Mod+V / F9 tier moved to.
+# fzf now — the same one the whole Mod+D / Mod+V / Shift+F10 tier moved to.
 #
 # cliphist list emits "<id>\t<preview>"; --with-nth=2.. hides the id column from
 # the view while keeping it in the line fzf prints, which is what cliphist decode

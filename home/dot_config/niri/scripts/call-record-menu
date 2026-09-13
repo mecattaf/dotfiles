@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shift+F10 → state-aware call recording picker. The capture implementation is
+# Shift+F9 → state-aware call recording picker. The capture implementation is
 # ~/.local/bin/call-record; this wrapper only supplies a compact fzf controller.
 set -euo pipefail
 
@@ -38,7 +38,7 @@ case "$action" in
 start)
     slug="call-$(date +%H%M%S)"
     if "$recorder" start "$slug"; then
-        printf '\nRecording started. Shift+F10 stops and saves it.\n'
+        printf '\nRecording started. Shift+F9 stops and saves it.\n'
         read -r -t 2 || true
     else
         printf '\nPress Enter to close.\n'

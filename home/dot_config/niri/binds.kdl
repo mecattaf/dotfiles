@@ -13,7 +13,7 @@ binds {
     // on-screen key display on Mod+Apostrophe — were installed on NO host in the
     // fleet. Every one of those chords had been silently dead. Rather than
     // package four pickers for the fleet's one seat, they are deleted and every
-    // survivor uses the pattern F10 / Shift+F9 / Shift+F10 already proved below:
+    // survivor uses the pattern F9 / Shift+F9 / F10 already proved below:
     // `kitty --class <name>-prompt -e <script>`, with a window-rule in
     // window-rules.kdl floating that app-id at a fixed size. fzf is the only
     // dependency the tier has left, and it is already on every host. The deleted
@@ -127,10 +127,10 @@ binds {
     F6 hotkey-overlay-title="Mute" { spawn-sh "~/.local/bin/volume mute"; }
     F7 hotkey-overlay-title="Volume Down" { spawn-sh "~/.local/bin/volume down"; }
     F8 hotkey-overlay-title="Volume Up" { spawn-sh "~/.local/bin/volume up"; }
-    F9 hotkey-overlay-title="Pomodoro" { spawn-sh "kitty --class pomodoro-prompt -e ~/.local/bin/pomodoro menu"; }
-    Shift+F9 hotkey-overlay-title="Audio Route" { spawn-sh "kitty --class audio-route-prompt -e ~/.config/niri/scripts/audio-route"; }
+    F9 hotkey-overlay-title="Audio Route" { spawn-sh "kitty --class audio-route-prompt -e ~/.config/niri/scripts/audio-route"; }
+    Shift+F9 hotkey-overlay-title="Call Recording" { spawn-sh "kitty --class call-record-prompt -e ~/.config/niri/scripts/call-record-menu"; }
     F10 hotkey-overlay-title="Sleep Monitors" { spawn-sh "kitty --class sleep-monitors-prompt -e ~/.config/niri/scripts/sleep-monitors"; }
-    Shift+F10 hotkey-overlay-title="Call Recording" { spawn-sh "kitty --class call-record-prompt -e ~/.config/niri/scripts/call-record-menu"; }
+    Shift+F10 hotkey-overlay-title="Pomodoro" { spawn-sh "kitty --class pomodoro-prompt -e ~/.local/bin/pomodoro menu"; }
 
 
     // ── Chrome Webapps ───────────────────────────────────────────
