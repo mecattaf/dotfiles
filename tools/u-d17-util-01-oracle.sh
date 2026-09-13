@@ -37,7 +37,7 @@ PR=314
 # re-lock, not cards/UTIL-01.md's instrument_sha256: research-methods is
 # read-only from here and its card and kits/util stay drifted (DECISIONS.md).
 SHA_SAMPLER="7d3e97ad57e767b2002d7421384ceab6be9fadf05b75250917dd6743d460e338"
-SHA_ROW="69e8503be8dab90155938ee5c3de28c1d1dc732f2476a4cc745d1dd3e7e482f8"
+SHA_ROW="13e6de94ae3f44f3a293701bc4baa9de10ec0d80ee95f40ea057562c9e212af9"
 
 pass=0
 fail=0

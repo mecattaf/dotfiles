@@ -1111,7 +1111,11 @@ def rebuild_week(meters, box, week):
     blob = canonical(doc)
     # Rewritten only when the bytes move, so an idempotent re-run leaves the
     # week file's mtime alone too (#329).
-    if not (os.path.isfile(path) and open(path, "rb").read() == blob):
+    current = None
+    if os.path.isfile(path):
+        with open(path, "rb") as fh:
+            current = fh.read()
+    if current != blob:
         with open(path, "wb") as fh:
             fh.write(blob)
     return path
@@ -1197,11 +1201,17 @@ def main(argv=None):
             if same is True:
                 rerun[box] = None
         for box in list(rerun):
-            inputs = build_inputs_live(box, date_str, meters, False, rerun=True)
-            row = compute_row(inputs)
-            blob = canonical(row)
             path = os.path.join(meters, "util-%s-%s.json" % (box, date_str))
             guard_meters_write(meters, path)
+            # The worker's log is pulled again only when no row exists yet: an
+            # existing row hashes the local copy, but a slice frozen by a run that
+            # died before its row landed may sit beside no local copy at all, and
+            # that row must not be computed from a missing log (verifier,
+            # 2026-09-13).
+            inputs = build_inputs_live(box, date_str, meters, False,
+                                       rerun=os.path.isfile(path))
+            row = compute_row(inputs)
+            blob = canonical(row)
             if os.path.isfile(path):
                 with open(path, "rb") as fh:
                     old = fh.read()

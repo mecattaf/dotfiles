@@ -914,7 +914,7 @@
             == "7d3e97ad57e767b2002d7421384ceab6be9fadf05b75250917dd6743d460e338";
           assert
             builtins.hashFile "sha256" ./home/dot_local/bin/util-row
-            == "69e8503be8dab90155938ee5c3de28c1d1dc732f2476a4cc745d1dd3e7e482f8";
+            == "13e6de94ae3f44f3a293701bc4baa9de10ec0d80ee95f40ea057562c9e212af9";
           pkgs.runCommand "util-sampler-topology" { } ''
             touch "$out"
           '';

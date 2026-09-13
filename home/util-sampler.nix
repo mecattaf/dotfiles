@@ -38,7 +38,7 @@
 #     (re-locked 2026-09-13: the client declared as a box; again the same day
 #     for the Halogen journal token window, util-sample/3, #312)
 #   home/dot_local/bin/util-row
-#     69e8503be8dab90155938ee5c3de28c1d1dc732f2476a4cc745d1dd3e7e482f8
+#     13e6de94ae3f44f3a293701bc4baa9de10ec0d80ee95f40ea057562c9e212af9
 #     (re-locked 2026-09-13: closed-day idempotence, #329; the token windows,
 #     util-row/2, #312)
 #
