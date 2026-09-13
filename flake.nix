@@ -2451,6 +2451,11 @@
               export PRINT_AUTO_SCRIPT=${./home/dot_claude/skills/print/scripts/print-auto.py}
               export PRINT_PAPER_SCRIPT=${./home/dot_claude/skills/print/scripts/print-paper.py}
               export PRINT_PAPER_SKILL=${./home/dot_claude/skills/print/SKILL.md}
+              export PRINT_SCRIPTS_README=${./home/dot_claude/skills/print/scripts/README.md}
+              # paper-daemon (#384) against stub lp/lpstat/ipptool/sudo: no paper.
+              export PAPER_DAEMON_SCRIPT=${./pkgs/paper-daemon/paper-daemon.py}
+              export PAPER_JOBS_TEST_FILE=${./pkgs/paper-daemon/get-jobs.test}
+              export PAPER_PRINTER_TEST_FILE=${./pkgs/paper-daemon/printer-state.test}
               mkdir -p "$HOME"
 
               python3 -m unittest discover \
@@ -3359,6 +3364,55 @@
                 | grep -F 'usage: brother-print-text [--] <text...>' >/dev/null
               touch "$out"
             '';
+
+        # print-plane (#384): the two silent failures of 2026-09-11/12 and the
+        # daemon that now owns /print, asserted at eval time. cups-browsed off
+        # on EVERY host that prints (it rewrote the pinned DeviceURI to
+        # implicitclass://, job 303); ensure-printers' postStart asserts the
+        # pinned URI and the urf PPD filter (the raw queue of job 304); the
+        # paper-daemon units exist on the coordinator only; the retired
+        # trust-lp flusher is gone.
+        print-plane =
+          let
+            hosts = nixpkgs.lib.attrValues (
+              nixpkgs.lib.mapAttrs (_: host: host.config) self.nixosConfigurations
+            );
+            printingHosts = builtins.filter (host: host.services.printing.enable) hosts;
+            homeOf = name: self.nixosConfigurations.${name}.config.home-manager.users.tom;
+            coordinatorHome = homeOf "coordinator";
+            daemonService = coordinatorHome.systemd.user.services.paper-daemon;
+            postStart =
+              self.nixosConfigurations.coordinator.config.systemd.services.ensure-printers.postStart;
+          in
+          assert printingHosts != [ ];
+          assert nixpkgs.lib.all (host: !host.services.printing.browsed.enable) printingHosts;
+          assert nixpkgs.lib.all (
+            host: host.systemd.services.ensure-printers.postStart == postStart
+          ) printingHosts;
+          assert nixpkgs.lib.hasInfix "ipp://10.42.0.4:631/ipp/print" postStart;
+          assert nixpkgs.lib.hasInfix ''cupsFilter2: "image/urf'' postStart;
+          assert nixpkgs.lib.hasInfix "implicitclass:" postStart;
+          assert coordinatorHome.systemd.user.paths ? paper-daemon;
+          assert coordinatorHome.systemd.user.paths.paper-daemon.Path.PathChanged == "%h/Paper/intake";
+          assert coordinatorHome.systemd.user.timers ? paper-daemon-sweep;
+          assert coordinatorHome.systemd.user.timers ? paper-daemon-flush;
+          assert coordinatorHome.systemd.user.timers.paper-daemon-flush.Timer.Persistent;
+          assert daemonService.Unit.X-RestartIfChanged == false;
+          assert !(coordinatorHome.systemd.user.services ? paper-print-flush);
+          assert nixpkgs.lib.all (
+            name:
+            !((homeOf name).systemd.user.services ? paper-daemon)
+            && !((homeOf name).systemd.user.paths ? paper-daemon)
+          ) [ "worker" "client" ];
+          pkgs.runCommand "print-plane" { } ''
+            ${builtins.head (nixpkgs.lib.toList daemonService.Service.ExecStart)} --help >/dev/null 2>&1 \
+              || { echo "paper-daemon --help failed" >&2; exit 1; }
+            ${pkgs.paper-daemon}/bin/paper-daemon check-queue --help >/dev/null
+            test -f ${pkgs.paper-daemon}/share/paper-daemon/scripts/print-auto.py
+            test -f ${pkgs.paper-daemon}/share/paper-daemon/get-jobs.test
+            test -f ${pkgs.paper-daemon}/share/paper-daemon/printer-state.test
+            touch "$out"
+          '';
 
         huggingface-cli-smoke =
           let

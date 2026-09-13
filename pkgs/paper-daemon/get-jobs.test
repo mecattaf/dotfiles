@@ -1,0 +1,20 @@
+# Get-Jobs against the printer itself, for paper-daemon's receipts (#384).
+#
+# `which` is passed with -d which=completed|not-completed. MEASURED
+# 2026-09-13 on the HL-L2445DW at 10.42.0.4: which-jobs=all is rejected with
+# client-error-attributes-or-values-not-supported, and
+# job-media-sheets-completed comes back under unsupported-attributes-tag
+# (so the answer's status is successful-ok-ignored-or-substituted-attributes
+# whenever it is requested; it is not requested here).
+{
+  NAME "Get-Jobs ($which)"
+  OPERATION Get-Jobs
+  GROUP operation-attributes-tag
+  ATTR charset attributes-charset utf-8
+  ATTR naturalLanguage attributes-natural-language en
+  ATTR uri printer-uri $uri
+  ATTR keyword which-jobs $which
+  ATTR keyword requested-attributes job-id,job-name,job-state,job-state-reasons,job-impressions-completed
+  STATUS successful-ok
+  STATUS successful-ok-ignored-or-substituted-attributes
+}

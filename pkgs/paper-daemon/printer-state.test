@@ -1,0 +1,19 @@
+# Get-Printer-Attributes, narrowed to what paper-daemon's queue guard reads.
+#
+# Deliberately NOT ipptool's stock get-printer-attributes.test: MEASURED
+# 2026-09-13, `ipptool -j` renders the HL-L2445DW's full attribute set as
+# invalid JSON (a trailing comma after its printer-resolution-supported
+# array), so a daemon parsing it sees "printer did not answer" while the
+# printer is idle and reachable. Asking for two keywords keeps the body to
+# plain integers and keywords.
+{
+  NAME "Get-Printer-Attributes (state)"
+  OPERATION Get-Printer-Attributes
+  GROUP operation-attributes-tag
+  ATTR charset attributes-charset utf-8
+  ATTR naturalLanguage attributes-natural-language en
+  ATTR uri printer-uri $uri
+  ATTR keyword requested-attributes printer-state,printer-state-reasons
+  STATUS successful-ok
+  STATUS successful-ok-ignored-or-substituted-attributes
+}

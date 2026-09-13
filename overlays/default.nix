@@ -54,10 +54,10 @@ final: prev: {
     inherit torchRocm;
   };
 
-  # Paper-loop print outbox: the quiet-hours flusher that drains
-  # ~/Paper/outbox to CUPS at 06:05. Attribute name is historical (see git
-  # history); the only binary is paper-print-flush. See home/paper.nix.
-  paper-intake = final.callPackage ../pkgs/paper-intake { };
+  # Paper loop (#384): the drop-folder print daemon that owns ~/Paper/intake
+  # end to end — render, quiet hours, queue guard, printer-sourced receipts.
+  # Replaces paper-intake (paper-print-flush). See home/paper.nix.
+  paper-daemon = final.callPackage ../pkgs/paper-daemon { };
 
   # cliamp — terminal music player (Winamp-inspired TUI). Not in nixpkgs (2026-07-06).
   # Connects to navidrome via Subsonic API. Config at home/dot_config/cliamp/.

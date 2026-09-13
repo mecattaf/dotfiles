@@ -1,4 +1,4 @@
 interface:
   display_name: "Print Paper"
-  short_description: "Render and print readable A4 documents"
-  default_prompt: "Use $print to render this Markdown as a readable A4 PDF and print it."
+  short_description: "Drop Markdown into ~/Paper/intake; the paper daemon prints it"
+  default_prompt: "Use $print to drop this Markdown into ~/Paper/intake so the paper daemon prints it."

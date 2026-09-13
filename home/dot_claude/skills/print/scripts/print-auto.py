@@ -2,7 +2,7 @@
 """Local print orchestration: markdown in, typeset PDF out.
 
 The calling session hands over ONLY a markdown file (plus an optional
-intent hint and --print). Every typesetting decision — profile, one-page
+intent hint). Every typesetting decision — profile, one-page
 enforcement, duplex, filename, title — is made by the request-scoped local
 utility model (`utility-model` wrapper), then executed by print-paper.py.
 The model has no grammar enforcement, so the JSON is validated here with
@@ -22,24 +22,28 @@ falls through to the same deterministic default that has always backed the
 model (source-serif, duplex, no one-page enforcement, kebab-case filename
 from the input stem), records provenance "fallback" in decision.json with
 the reason, says so once on stderr, and renders. Everything downstream of
-the decision — the job directory, the render-verify-submit gate, quiet
-hours — is untouched by which path produced it.
+the decision — the job directory, the length gate, and everything
+paper-daemon does afterwards — is untouched by which path produced it.
 
 Usage:
     print-auto.py INPUT.md [--intent brief|document|form|specimen]
-                  [--print] [--target-pages N] [--output-dir DIR]
+                  [--target-pages N] [--profile P] [--sides one-sided|duplex]
+                  [--output-dir DIR]
 
-Render-verify-submit gate (issue #227): this script ALWAYS renders first,
-without submitting. If --print was passed, submission is a second, separate
-subprocess call made only after the render is on disk. When --target-pages
-is given, --print is refused (exit 3, nothing sent to CUPS) unless the
-rendered page count matches exactly — so a session iterating toward a
-length target can call this repeatedly with zero pages ever reaching the
-printer, and the eventual physical print happens exactly once.
+Render only (dotfiles#384). This script never reaches CUPS. Physical
+printing belongs to paper-daemon (pkgs/paper-daemon), which calls this
+script on every file dropped into ~/Paper/intake/, reads decision.json, and
+alone decides whether, when and how the PDF is submitted — so there is one
+submitter and one receipt. --profile and --sides are the daemon's front-
+matter overrides: they beat the classifier's answer, and decision.json
+records which keys were overridden.
+
+Length gate (issue #227): with --target-pages, decision.json carries
+length_check pass|fail and a mismatch exits 3. The daemon rejects a fail
+without printing; an agent iterating by hand burns zero paper either way.
 """
 
 import argparse
-import datetime
 import json
 import re
 import shutil
@@ -218,77 +222,40 @@ def decide(text: str, intent: str | None, source: Path) -> tuple[dict, str]:
     return default_decision(source), "fallback"
 
 
-def spool_print(
-    outpath: Path,
-    jobdir: Path,
-    sides_flag: str,
-    *,
-    outbox: Path | None = None,
-    now: datetime.datetime | None = None,
-) -> Path:
-    """Atomically queue one already-rendered PDF and return its manifest.
-
-    Queue paths must be absolute. ``--output-dir`` is often relative to an
-    agent scratchpad; systemd starts the morning flusher with a different
-    working directory, so persisting that relative spelling strands an
-    otherwise valid PDF and turns the 06:05 flush into a unit failure.
-    """
-    outpath = outpath.expanduser().resolve()
-    jobdir = jobdir.expanduser().resolve()
-    if outbox is None:
-        outbox = Path.home() / "Paper" / "outbox"
-    outbox = outbox.expanduser().resolve()
-    outbox.mkdir(parents=True, exist_ok=True)
-
-    sides_lp = (
-        "one-sided" if sides_flag == "one-sided" else "two-sided-long-edge"
-    )
-    queued_at = now or datetime.datetime.now()
-    entry = {
-        "pdf": str(outpath),
-        "sides": sides_lp,
-        "job_dir": str(jobdir),
-        "queued_at": queued_at.isoformat(timespec="seconds"),
-    }
-    tmp = outbox / f".{jobdir.name}.tmp"
-    manifest = outbox / f"{jobdir.name}.json"
-    tmp.write_text(json.dumps(entry, indent=2) + "\n")
-    tmp.replace(manifest)
-    return manifest
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("input", type=Path)
     ap.add_argument("--intent", choices=["brief", "document", "form", "specimen"])
-    ap.add_argument("--print", dest="do_print", action="store_true")
-    ap.add_argument("--force", action="store_true",
-                    help="print immediately even during quiet hours (00-06)")
     ap.add_argument("--output-dir", type=Path)
     ap.add_argument(
         "--target-pages", type=int, default=None,
         help=(
-            "exact page count the user asked for (issue #227). When set, "
-            "--print is refused unless the rendered PDF matches; the render "
-            "itself always happens, so a session can call this repeatedly "
-            "while iterating without --print and burn zero paper."
+            "exact page count the user asked for (issue #227). decision.json "
+            "records length_check pass|fail and a mismatch exits 3."
         ))
+    ap.add_argument("--profile", choices=sorted(PROFILES),
+                    help="override the classifier's profile (front matter)")
+    ap.add_argument("--sides", choices=sorted(SIDES),
+                    help="override the classifier's sides (front matter)")
     args = ap.parse_args()
 
     text = args.input.read_text()
     decision, provenance = decide(text, args.intent, args.input)
+    overridden = []
+    for key in ("profile", "sides"):
+        value = getattr(args, key)
+        if value is not None and value != decision[key]:
+            decision[key] = value
+            overridden.append(key)
 
-    # Every print is a job directory under ~/Paper/jobs — the same tree the
-    # scanner's inbound batches land in, and the future reunion point for
-    # annotated pages coming back through the loop. The ordering session
-    # hands over a markdown file from anywhere (scratchpad included); it is
-    # archived here as source.md so working trees stay unpolluted.
+    # Every render is a job directory. paper-daemon passes its own work
+    # directory; a hand run without --output-dir lands under ~/Paper/jobs as
+    # it always has. The markdown is archived there as source.md so working
+    # trees stay unpolluted.
     if args.output_dir:
-        # The morning flusher runs from systemd, not from this invocation's
-        # cwd. Resolve an explicit relative directory before any receipt or
-        # queue entry records it (2026-09-10 failure episode).
         jobdir = args.output_dir.expanduser().resolve()
     else:
+        import datetime
         now = datetime.datetime.now()
         slug = re.sub(r"[^a-z0-9]+", "-", args.input.stem.lower()).strip("-")
         jobdir = (Path.home() / "Paper" / "jobs" /
@@ -299,26 +266,11 @@ def main() -> int:
         shutil.copy2(args.input, source)
     outpath = jobdir / decision["filename"]
 
-    # Quiet hours: physical printing sleeps between 00:00 and 06:00 so
-    # overnight tally runs can queue their completion one-pagers without
-    # waking the printer; a Persistent 06:05 user timer flushes
-    # ~/Paper/outbox. --force ("/print force") bypasses the window.
-    quiet = 0 <= datetime.datetime.now().hour < 6
-    spool = args.do_print and quiet and not args.force
-    sides_flag = "one-sided" if decision["sides"] == "one-sided" else "long-edge"
-
-    # Render-verify-submit gate (issue #227): this invocation ALWAYS renders
-    # without --print first — --print never reaches print-paper.py in the
-    # same call that does the rendering. Submission, if it happens at all,
-    # is a wholly separate subprocess call below, gated on the verified page
-    # count. A session iterating toward a length target can therefore call
-    # this repeatedly (with or without --print) and never put a page on the
-    # printer until the render it inspected is the render it submits.
     render_cmd = [sys.executable, str(PRINT_PAPER), str(source),
                   "--profile", decision["profile"], "-o", str(outpath)]
     if decision["require_one_page"]:
         render_cmd.append("--require-one-page")
-    if sides_flag == "one-sided":
+    if decision["sides"] == "one-sided":
         render_cmd += ["--sides", "one-sided"]
     rc = subprocess.run(render_cmd).returncode
     if rc != 0:
@@ -332,51 +284,23 @@ def main() -> int:
     else:
         length_check = "fail"
 
-    blocked = args.do_print and length_check == "fail"
-    printed = False
-    print_spooled = False
-
-    if args.do_print and not blocked:
-        if spool:
-            spool_print(outpath, jobdir, sides_flag)
-            print_spooled = True
-        else:
-            # Submit the exact PDF that was just verified — a distinct
-            # subprocess call that only ever submits, never renders, so
-            # there is no window in which unrendered or unverified content
-            # can be queued.
-            submit_cmd = [sys.executable, str(PRINT_PAPER),
-                          "--submit-only", str(outpath),
-                          "--sides", sides_flag]
-            submit_rc = subprocess.run(submit_cmd).returncode
-            if submit_rc != 0:
-                return submit_rc
-            printed = True
-
     receipt = {"decision": decision, "provenance": provenance,
+               "overridden": overridden,
                "source": str(source), "original_input": str(args.input),
                "pdf": str(outpath),
                "pages_rendered": pages_rendered,
                "target_pages": args.target_pages,
-               "length_check": length_check,
-               "printed": printed,
-               "print_spooled": print_spooled,
-               "blocked": blocked}
+               "length_check": length_check}
     (jobdir / "decision.json").write_text(
         json.dumps(receipt, indent=2) + "\n")
 
-    if blocked:
-        print(f"print-auto: rendered {pages_rendered} page(s), target was "
-              f"{args.target_pages} — NOT submitted. Revise the document and "
-              f"re-run (with --print) once the render matches.",
-              file=sys.stderr)
-        return 3
-    if print_spooled:
-        print(f"print-auto: quiet hours — spooled for the 06:05 flush "
-              f"({jobdir.name}); use --force to print now")
     print(f"print-auto: {provenance} decision -> {outpath} "
           f"({pages_rendered if pages_rendered is not None else 'unknown'} page(s), "
           f"length_check={length_check})")
+    if length_check == "fail":
+        print(f"print-auto: rendered {pages_rendered} page(s), target was "
+              f"{args.target_pages}. Revise the document.", file=sys.stderr)
+        return 3
     return 0
 
 

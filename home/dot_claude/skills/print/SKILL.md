@@ -1,181 +1,56 @@
 ---
 name: print
-description: Render Markdown, plain text, or HTML into restrained, readable A4 PDFs with local fonts and headless Chrome, compare serif typography profiles, and submit validated documents to the Brother CUPS queue. Use when the user asks to print, typeset, make a paper copy, create an A4 PDF, compare print fonts, or turn Markdown into a document for physical reading.
+description: Put a Markdown document on paper by dropping it into ~/Paper/intake/ on the coordinator; paper-daemon renders, validates, prints during working hours and writes a receipt from the printer itself. Use when the user asks to print, make a paper copy, or turn Markdown into a document for physical reading.
 ---
 
 # Print
 
-## Autopilot rendering (preferred)
+`/print` is one file write. You do not render, submit, read queues, or
+decide when printing happens: paper-daemon on the coordinator owns all of it
+(dotfiles#384).
 
-Hand over ONLY the markdown; the request-scoped local utility model makes
-every typesetting decision (profile, one-page enforcement, duplex,
-filename, title) and drives the renderer:
+## The whole contract
 
-    ~/.claude/skills/print/scripts/print-auto.py INPUT.md \
-      [--intent brief|document|form|specimen] [--print] \
-      [--target-pages N] [--output-dir DIR]
+Write the Markdown to a hidden temporary name, then rename it into place,
+on the **coordinator**:
 
-The session should not deliberate typography when using this path. Every
-print becomes a dated job directory under ~/Paper/jobs (markdown archived
-as source.md, rendered PDF, decision.json receipt recording gpu / gpu-retry
-/ fallback provenance, plus pages_rendered / target_pages / length_check).
-Fall back to direct print-paper.py below only when the user explicitly asks
-for a specific profile or layout comparison.
+    ~/Paper/intake/.<slug>.md.tmp   →   ~/Paper/intake/<slug>.md
 
-**Where the classifier runs.** The stable `utility` id resolves to the
-fleet's one inference server: the `utility-model` wrapper forwards the
-classification request to the **Halogen Flash server on the worker**
-(`http://worker:8731`). Two consequences worth knowing before you read a
-stderr line and worry:
+`<slug>` is a short kebab-case name for the document. The rename is what
+starts the job, so never write straight to `<slug>.md`. From another host,
+copy it over first (`scp FILE coordinator:~/Paper/intake/.<slug>.md.tmp`,
+then `ssh coordinator mv ~/Paper/intake/.<slug>.md.tmp ~/Paper/intake/<slug>.md`).
 
-- The `utility-model` wrapper is installed on the **coordinator only**.
-  Off that box, classification cannot run.
-- Classification failure of any kind — no wrapper, the Halogen server
-  unreachable, a timeout while the worker's unit is still starting, two
-  invalid answers — is **non-fatal**. print-auto prints one stderr line
-  naming the reason, renders with the deterministic default (source-serif,
-  duplex, no one-page enforcement, kebab-case filename from the input stem),
-  and writes provenance `"fallback"`. The print still happens. Job
-  directories already on disk under `~/Paper/jobs` may carry the provenance
-  values of earlier engines (`retired`, `npu`, `npu-retry`); leave those
-  alone when reading old jobs.
+Optional front matter, only when the user asked for it:
 
-When the fallback fires and the profile or layout actually matters, drive
-Manual rendering below rather than accepting the default.
+    ---
+    target_pages: 10        # the user gave a page count ("one-pager" = 1)
+    sides: one-sided        # one-sided | duplex (default) | short-edge
+    profile: garamond       # garamond | baskerville | source-serif | times
+    force: true             # "print force": print now even 00:00–06:00
+    ---
 
-**Render-verify-submit (issue #227) — MANDATORY when the user gave the
-document an acceptance condition** (a page count, "one-pager", "N pages",
-section/coverage requirements): pass `--target-pages N`. Every invocation
-of `print-auto.py` always renders first and never submits in that same
-step; `--print` only reaches CUPS afterward, and only if the rendered page
-count matches `--target-pages` exactly. A mismatch prints nothing, writes
-`length_check: "fail"` to decision.json, and exits 3 — revise the markdown
-and re-run. This means the session can call `print-auto.py ... --print`
-repeatedly while iterating toward the target and it is architecturally
-impossible for a page to reach the printer before the render satisfies it.
+Leave typography to the daemon unless the user named a face or layout.
+Never set `force` for convenience.
 
-**Never revise a document after `--print` has been passed.** If a
-just-submitted job turns out short or wrong, `cancel <job>` is an
-anti-pattern: by the time cancellation lands, pages are already out. Fix
-the markdown, re-render (still without `--print`, and with `--force` to
-overwrite the previous PDF), confirm the new render, and only then submit
-— once. Do not treat a queued job as a draft.
+## Where the outcome appears
 
-**Quiet hours.** Between 00:00 and 06:00 physical printing sleeps:
---print still renders and validates, but the submission is spooled to
-~/Paper/outbox and a persistent 06:05 timer flushes it to CUPS. When the
-user says "print force" (or the situation genuinely demands paper at
-night), pass **--force** to print immediately. Report honestly which
-happened: submitted to CUPS now, or spooled for the morning flush.
+Everything lands in `~/Paper/<state>/<slug>/` (a repeated slug gets a
+timestamp suffix):
 
-## Manual rendering
+| directory | meaning |
+|---|---|
+| `printed/<slug>/receipt.json` | paper is out: the printer reported the job completed with `impressions_completed` equal to the rendered pages |
+| `outbox/<slug>/` | it is 00:00–06:00; it prints at 06:05 |
+| `rejected/<slug>/reason.json` | the render did not match `target_pages` (or the front matter was invalid); nothing was printed. Revise and drop again |
+| `failed/<slug>/failure.json` | something went wrong at the queue or the printer; the evidence is beside it and the client got a notification |
 
-Use the bundled script for deterministic local rendering:
+Report to the user what the directory says, and only that. A drop with no
+directory yet is still being rendered or printed; wait, do not re-drop. Do
+not claim paper without `receipt.json`.
 
-    ~/.claude/skills/print/scripts/print-paper.py INPUT.md [options]
+## Not this skill
 
-The pipeline is local:
-
-    Markdown or HTML → print CSS → headless Chrome → A4 PDF → optional CUPS job
-
-## Workflow
-
-1. Confirm the requested content and output scope. Keep authored content outside
-   the skill; this skill owns only rendering and submission.
-2. Render before printing. The script checks that the requested font resolves
-   instead of silently accepting a fallback, and checks A4 geometry when
-   pdfinfo is available.
-3. For a one-page request, pass **--require-one-page**. All variants render and
-   validate before any of them is submitted.
-4. Inspect the PDFs when layout judgment matters. Keep the generated HTML with
-   **--keep-html** when diagnosing CSS or link behavior.
-5. **When the user gave a length or completeness target that
-   --require-one-page cannot express** (a stated page count, "make it N
-   pages", "cover all of X"), render WITHOUT **--print** first, read the
-   reported page count (or open the PDF), and only once it satisfies the
-   target run:
-
-       ~/.claude/skills/print/scripts/print-paper.py --submit-only RENDERED.pdf \
-         [--sides one-sided|long-edge|short-edge] [--printer NAME]
-
-   `--submit-only` never renders — it queues exactly the PDF path given, so
-   the submit step cannot be the same act as an unverified render. Combining
-   `--print` with the render in one call is reserved for outputs that are
-   already fully self-validating in that same call (e.g.
-   **--require-one-page**, which fails loudly before anything is queued).
-   Do not combine an un-gated render with `--print` for anything else.
-6. Pass **--print** only when the user explicitly asked for a physical print,
-   and only after step 5's verification for any targeted document. Report the
-   CUPS request IDs afterward.
-
-## Typography profiles
-
-| Profile | Face | Intended reading character |
-|---|---|---|
-| **garamond** | EB Garamond | literary, open, economical |
-| **baskerville** | Libre Baskerville | crisp, formal, high contrast |
-| **source-serif** | Source Serif 4 | contemporary editorial default |
-| **times** | Liberation Serif | Times-compatible academic control |
-
-Profiles use optical size and leading adjustments rather than forcing unlike
-faces into one nominal metric. Page geometry remains constant: A4 portrait,
-30 mm side margins, restrained black-on-white styling, widow/orphan control,
-and no browser headers or footers.
-
-Every page carries a bare 7 pt page number at the bottom right, set in the
-reserved bottom margin through a CSS **@page** margin box. Chrome's own URL,
-date, and title furniture stays disabled. The **--label** and **--compare**
-profile caption shares that margin as a centered margin box, so it neither
-overprints the last line of text nor reaches the page number.
-
-Render all four comparison sheets:
-
-    ~/.claude/skills/print/scripts/print-paper.py specimen.md \
-      --compare --require-one-page --output-dir ./print-output
-
-Render and physically print them:
-
-    ~/.claude/skills/print/scripts/print-paper.py specimen.md \
-      --compare --require-one-page --output-dir ./print-output --print
-
-Render one ordinary document without a comparison label:
-
-    ~/.claude/skills/print/scripts/print-paper.py document.md \
-      --profile source-serif -o document.pdf
-
-Use **--list-profiles** for the exact face, point size, and leading values.
-
-## Printing boundary
-
-- The default destination is **Brother_HL_L2445DW**; override it with
-  **--printer** or PRINT_PAPER_PRINTER.
-- Documents go through CUPS as already-rendered A4 PDFs. Do not use raw TCP
-  9100 for formatted material; **brother-print-text** remains only for trivial
-  plain text.
-- Printing is duplex long-edge by default, which halves the paper a multi-page
-  document costs. Pass **--sides one-sided** when the sheets must be single
-  sided (posting, scanning, single-sided forms), or **--sides short-edge** for
-  landscape-flip binding. A one-page job may carry the duplex option; it costs
-  no extra sheet.
-- Never add **--force** merely for convenience. Use it only when replacing the
-  named generated files is intended.
-- Do not claim physical completion from queue submission alone. Report that
-  CUPS accepted the jobs; inspect queue state when the user asks for delivery
-  confirmation.
-- Submission is one-shot, not a draft. Never submit a rendered document you
-  have not already verified against whatever the user asked for, and never
-  follow a submission with `cancel` to revise — render again (Workflow §5,
-  `--target-pages` for autopilot) and submit once (issue #227).
-
-## Supported source
-
-Markdown supports headings, paragraphs, emphasis, links, images, blockquotes,
-ordered and unordered lists, fenced code, rules, and simple GFM tables. Relative
-image paths resolve from the source file directory. HTML documents retain their
-content and receive the print stylesheet as the final style block.
-
-Lists follow CommonMark continuation rules, so repository Markdown written in
-the house 80-column style prints as authored: a hard-wrapped line stays inside
-its list item, nested items stay nested, and ordered numbering runs unbroken.
-Never make an unwrapped print-only copy of a document to work around list
-rendering.
+`~/Paper/inbox/` is the Huion notepad's, not a print drop. Rendering a PDF
+without printing, or comparing typefaces, uses the renderer by hand:
+`~/.claude/skills/print/scripts/README.md`.
