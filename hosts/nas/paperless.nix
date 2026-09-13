@@ -322,6 +322,19 @@ in
       # could silently precede the documents subvolume mount):
       "z ${viewDir} 0750 ${config.services.paperless.user} ${config.services.paperless.user} -"
       "z ${spoolDir} 0770 tom ${config.services.paperless.user} -"
+      # Cross-user reachability (found by the 2026-09-13 verification, before
+      # any deploy): documents/ is 0750 tom:users (storage.nix) and the
+      # paperless user is in neither, so without the first entry the
+      # consumer cannot even reach its own spool. The view tree is 0750
+      # paperless, so without the second the bridge, which runs as tom, cannot
+      # stat a projection, and every verify would report missing-projection.
+      # Named-user ACLs, traverse-only for paperless, grant exactly this
+      # much and no group membership. They work under the module's
+      # PrivateUsers=true because the kernel checks the real kuid. 'a+' only
+      # adjusts: it never creates a path before the subvolume mounts, and
+      # storage.nix's 0750 chmod keeps the mask at r-x.
+      "a+ ${documentsRoot} - - - - u:${config.services.paperless.user}:--x"
+      "a+ ${viewDir} - - - - u:tom:r-x"
     ];
 
     # The bridge CLI and its narrow root helper. The sudo rule is the entire

@@ -1869,6 +1869,10 @@
           assert nixpkgs.lib.hasInfix "ip saddr 10.42.0.2 tcp dport 28981 accept" nas.networking.firewall.extraInputRules;
           assert !(builtins.elem 28981 nas.networking.firewall.allowedTCPPorts);
           assert !(builtins.elem "tailscale0" nas.networking.firewall.trustedInterfaces);
+          # Without these two ACLs the consumer cannot reach its spool and the
+          # bridge (tom) cannot stat a projection (hosts/nas/paperless.nix).
+          assert builtins.elem "a+ /mnt/nas/documents - - - - u:paperless:--x" nas.systemd.tmpfiles.rules;
+          assert builtins.elem "a+ /mnt/nas/documents/.paperless-view - - - - u:tom:r-x" nas.systemd.tmpfiles.rules;
           assert !coordinator.myNasClient.relayAttic;
           # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
           # 2026-08-03: the staged Jellyfin alternative was deleted, not kept

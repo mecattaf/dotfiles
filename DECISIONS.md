@@ -278,6 +278,25 @@ LaCie cold dump: the sync of documents/ excludes .paperless-view and
 otherwise land a second copy of the corpus. services/paperless/{backups,bridge}
 (without the API token) is the one services/ tree that gets mirrored.
 
+Permissions, found by independent verification before the deploy:
+- /mnt/nas/documents is 0750 tom:users, and the paperless user is neither the
+  owner nor in the group. It runs with the module's PrivateUsers=true.
+- Two named-user ACLs fix reachability without group membership:
+  `u:paperless:--x` on documents/ (so the consumer reaches its spool) and
+  `u:tom:r-x` on .paperless-view (so the bridge, running as tom, can verify).
+- Readability is a separate problem. Of the 8945 canonical PDFs, 3573 are mode
+  0600, so Paperless cannot read their inode through any hardlink. The bridge
+  parks them as `unreadable` rather than stalling bulk admission, and requeues
+  them by itself once they become readable.
+- Whether to widen those files (chmod o+r, or a per-file ACL) is Tom's call
+  about private documents, not a Paperless decision: DEFERRED DF-136-3.
+- Consumptions that time out park as `consume-timeout`, keeping their spool
+  link, and are adopted when the document appears. Either way the queue head
+  cannot jam.
+- `suggest` pages through the corpus by id, so successive runs advance. On the
+  coordinator it uses the default 127.0.0.1:28981, which is the relay socket;
+  paperless.internal does not resolve on the coordinator itself.
+
 2026-09-13 the Huion Note X10 is the paper inbox; the client runs one sync.
 Tom writes on the notepad anywhere, presses its button for each new page, and
 opens the cover near the client; the pages land on the coordinator as
