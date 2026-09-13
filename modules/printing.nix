@@ -72,11 +72,51 @@ lib.mkIf (!config.myHeadless.enable) {
   # exit successfully without creating its queue; coordinator's live queue
   # had to be created by hand after that exact silent no-op. The explicit
   # lpstat postcondition turns it into a visible failure and retry.
+  #
+  # 2026-09-13 (#384): "the queue exists" is not "the queue prints". Both
+  # 2026-09-11/12 failures passed `lpstat -p`: job 303 went to a queue whose
+  # DeviceURI cups-browsed had rewritten to implicitclass:// (nothing came
+  # out, cupsd said completed), and job 304 went to a raw queue with no PPD
+  # (ten blank sheets — the Brother takes only urf/pwg, never PDF). So the
+  # postcondition is the pinned DeviceURI, the PPD carrying the urf filter
+  # (root can read the 0640 file here), and no leftover cups-browsed
+  # temporary queue: MEASURED 2026-09-13 the worker still carried
+  # `Brother_HL_L2445DW@BRW08F97E55F396.local` on implicitclass:// with a
+  # urf-less PPD from before browsed was disabled. Those are deleted, not
+  # merely reported — nothing recreates them now — and then asserted gone.
+  # paper-daemon runs this same unit as its one repair.
   systemd.services.ensure-printers = {
     startLimitIntervalSec = 0;
-    postStart = ''
-      ${pkgs.cups}/bin/lpstat -p Brother_HL_L2445DW >/dev/null
-    '';
+    postStart =
+      let
+        queue = builtins.head config.hardware.printers.ensurePrinters;
+        lpstat = "${pkgs.cups}/bin/lpstat";
+        grep = "${pkgs.gnugrep}/bin/grep";
+        sed = "${pkgs.gnused}/bin/sed";
+      in
+      ''
+        ${lpstat} -p ${queue.name} >/dev/null
+
+        ${lpstat} -v | ${sed} -n 's/^device for \(.*\): implicitclass:.*/\1/p' \
+          | while IFS= read -r stale; do
+              echo "removing stale cups-browsed queue $stale" >&2
+              ${pkgs.cups}/bin/lpadmin -x "$stale"
+            done
+        if ${lpstat} -v | ${grep} -q 'implicitclass:'; then
+          echo "an implicitclass:// queue survived removal: $(${lpstat} -v)" >&2
+          exit 1
+        fi
+
+        device="$(${lpstat} -v ${queue.name})"
+        if [ "$device" != "device for ${queue.name}: ${queue.deviceUri}" ]; then
+          echo "${queue.name} DeviceURI is not pinned: $device" >&2
+          exit 1
+        fi
+        if ! ${grep} -q 'cupsFilter2: "image/urf' /etc/cups/ppd/${queue.name}.ppd; then
+          echo "/etc/cups/ppd/${queue.name}.ppd is missing or has no image/urf filter (raw queue)" >&2
+          exit 1
+        fi
+      '';
     serviceConfig = {
       Restart = "on-failure";
       RestartSec = "5min";
