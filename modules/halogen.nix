@@ -15,12 +15,23 @@
 # mlocked weights plus a reserved KV pool) for the life of the process, which
 # is why it runs on the worker alone and the coordinator only dials it.
 #
-# Launch shape lifted from kyuz0/ai-toolbox-cockpit
-# (ai_toolbox_cockpit/backends/halogen/runner.py + the halogen-strix-halo
-# runtime profile in assets/toolboxes.json): the same device nodes, seccomp
-# unconfined, host IPC, unlimited memlock, and the HALOGEN_* environment that
-# is the server's entire configuration surface (docs/FLAGS.md upstream: no
-# config file, every flag read once at startup).
+# Launch shape now tracks UPSTREAM'S OWN docker-compose.yml, not
+# kyuz0/ai-toolbox-cockpit, which is where it came from originally. Cockpit is
+# the stalest of the references as of 2026-09-13: it pins 0.5.4, still marks
+# the backend "experimental", and its runtime profile still carries the
+# seccomp=unconfined that upstream measured to be a no-op and dropped in 0.6.1.
+# Upstream's compose file is the file upstream keeps current and it carries the
+# reasoning for every line in comments; read that before changing this one.
+# The HALOGEN_* environment is the server's entire configuration surface
+# (docs/FLAGS.md upstream: no config file, every flag read once at startup).
+#
+# WHAT THIS MODULE DELIBERATELY DOES NOT SET: anything whose value would merely
+# restate the image's own default. A copy of a default in a second file is a
+# copy that goes stale — it silently pins last release's value through an image
+# bump — so every tuning option below is nullOr/null and is emitted into the
+# container environment ONLY when an operator has actually chosen something.
+# `null` means "whatever the image ships", which is the correct answer for all
+# of them today.
 #
 # Weights follow the fleet's model-byte doctrine (DECISIONS.md 2026-09-10):
 # the bundle is a catalogue artifact (lib/local-models.nix,
@@ -76,10 +87,58 @@ let
     "--device=/dev/kfd"
     "--device=/dev/dri"
     "--group-add=keep-groups"
-    "--security-opt=seccomp=unconfined"
+    # No seccomp=unconfined. It sat here until 0.6.1, when upstream measured it
+    # to do nothing (public issue #8: the image starts and serves without it
+    # under Podman) and dropped it from the compose file and both run commands.
+    # --ipc=host is the one that IS load-bearing: without it the GPU runtime
+    # dies ~2 s into startup, and no shm_size substitutes for it.
     "--ipc=host"
     "--ulimit=memlock=-1:-1"
   ];
+
+  # The image ships /usr/local/bin/halogen-healthcheck. In `api` mode it makes
+  # /health ask the ENGINE for a PONG before answering, so it is a check on the
+  # pair rather than on the front end's own process — which is the whole point:
+  # upstream measured a green TCP connect and a green /health in front of an
+  # engine whose GPU queue had aborted, with every request hanging forever.
+  #
+  # WHY THIS IS SAFE TO ARM, AND ONLY NOW. A watchdog on this server used to be
+  # actively dangerous: reading the model's 47.7 GiB n-gram lookup table was the
+  # one step that could not answer a PING, so on a host short of page cache a
+  # WORKING server went unanswered for minutes and got killed as a wedge —
+  # twice, to one reporter (upstream #10, #22). 0.5.9 made that read answer PING
+  # on the same cadence as the rest of a prefill and 0.6.3 made the read itself
+  # ~40x faster. Both are in the 0.7.0 image this module pins. Do not backport
+  # this block to an older digest.
+  #
+  # The numbers are deliberately slacker than upstream's compose (10s/3):
+  # 30 s x 5 means roughly three minutes of sustained silence before a verdict,
+  # which is past any transient this box has ever shown, and start-period
+  # covers the cold load.
+  #
+  # IT SHIPS OBSERVE-ONLY. The binary's path is asserted by upstream's
+  # docker-compose.yml and by nothing else: the published deploy/entrypoint.sh
+  # never names it (it runs /usr/local/bin/flash_serve), and upstream has
+  # shipped a published tree that lagged its own image on exactly that file
+  # (0.6.1 changelog). A wrong path would make every probe fail, and with
+  # --health-on-failure=kill that is a kill loop against a server that is fine.
+  # So healthKill stays false until the path is confirmed ON THE BOX:
+  #
+  #   podman healthcheck run halogen && echo OK
+  #   podman inspect halogen --format '{{json .State.Health}}'
+  #
+  # Once that reports healthy, set services.halogen.healthKill = true and the
+  # unhealthy verdict becomes a non-zero exit, which unitPolicy's
+  # Restart=on-failure below then recovers from. That is the whole point of
+  # having the check, so do not leave it observe-only indefinitely.
+  healthOptions = [
+    "--health-cmd=/usr/local/bin/halogen-healthcheck api"
+    "--health-interval=30s"
+    "--health-timeout=35s"
+    "--health-retries=5"
+    "--health-start-period=20m"
+  ]
+  ++ lib.optional cfg.healthKill "--health-on-failure=kill";
   # mkForce throughout: the oci-containers module writes its own values for
   # these (no start timeout, restart always) and they are the wrong ones for
   # a cold load measured in tens of minutes.
@@ -143,8 +202,8 @@ in
       # day and a floating tag would re-pull a different engine on a restart.
       # Bump deliberately; the digest is the one printed by
       #   skopeo inspect docker://ghcr.io/peonist-ai/halogen-flash-server:<tag>
-      default = "ghcr.io/peonist-ai/halogen-flash-server@sha256:c738212d7ecc5f5288f0dca9173b2d0f0188b9fde94e7ee07f074d71f8152d89";
-      description = "OCI image reference (release 0.5.6 by digest).";
+      default = "ghcr.io/peonist-ai/halogen-flash-server@sha256:ddbdf632035483e5e716a136e7111aff1f8d963f77787dd4fcc4758cc91206c4";
+      description = "OCI image reference (release 0.7.0 by digest).";
     };
 
     artifact = lib.mkOption {
@@ -165,6 +224,17 @@ in
       description = "The OpenAI-compatible front end (HALOGEN_API_PORT).";
     };
 
+    healthKill = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Whether an unhealthy verdict kills the container so the restart policy
+        recovers it (--health-on-failure=kill). Ships false: see the note above
+        healthOptions — arm it only after `podman healthcheck run halogen`
+        has been seen to succeed on this host.
+      '';
+    };
+
     lanInterface = lib.mkOption {
       type = lib.types.str;
       default = "enp191s0";
@@ -172,31 +242,83 @@ in
     };
 
     contextPositions = lib.mkOption {
-      type = lib.types.ints.positive;
-      default = 262144;
-      description = "HALOGEN_CTX — the widest single request; the native context is the maximum without YaRN.";
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = null;
+      description = ''
+        HALOGEN_CTX — the widest single request. null leaves the image's own
+        value, which is 262144, the model's full native context and the most
+        it will take without a static YaRN factor.
+      '';
     };
 
     kvPoolPositions = lib.mkOption {
-      type = lib.types.ints.positive;
-      default = 524288;
-      description = "HALOGEN_KV_POOL_POSITIONS — the memory knob (about 35 GB at the default).";
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = null;
+      description = ''
+        HALOGEN_KV_POOL_POSITIONS — the memory knob. null leaves the image's
+        own value, 2 x HALOGEN_CTX (524288, about 35 GB on the device, two
+        full-length conversations resident). Lower it to 262144 to give the
+        n-gram lookup table more page cache; the server also lowers it itself
+        when the configured pool will not fit and says which it chose.
+      '';
     };
 
     kvSlots = lib.mkOption {
-      type = lib.types.ints.positive;
-      default = 4;
-      description = "HALOGEN_KV_SLOTS — conversations decoding at once.";
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = null;
+      description = ''
+        HALOGEN_KV_SLOTS — conversations decoding at once. null leaves the
+        image's own value of 4. This is a latency policy, not a memory
+        decision: the slots share one pool and each costs only ~115 MB.
+      '';
     };
 
     promptCache = lib.mkOption {
-      type = lib.types.enum [
-        "0"
-        "1"
-        "2"
-      ];
-      default = "2";
-      description = "HALOGEN_PROMPT_CACHE — 2 resumes any shared prefix, 1 exact repeats only, 0 off.";
+      type = lib.types.nullOr (
+        lib.types.enum [
+          "0"
+          "1"
+          "2"
+        ]
+      );
+      default = null;
+      description = ''
+        HALOGEN_PROMPT_CACHE — 2 resumes any shared prefix, 1 exact repeats
+        only, 0 off. null leaves the image's own value, 2. Note 2 is the one
+        NUMERIC setting here: a resumed answer is usually, not always, what a
+        cold run would have produced. Set "1" for anything audited.
+      '';
+    };
+
+    overlay = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        HALOGEN_CK_OVERLAY — which precision sidecar to read. null is the
+        quality sidecar beside the checkpoint, which needs no action and is
+        what this fleet serves. The alternatives are the speed arm
+        (…overlay-speed.hgn, ~2% more decode for the o_proj calibration) and
+        "none" (the bare 4-bit checkpoint, a measurement control rather than a
+        serving configuration). NUMERIC: it selects which weights run.
+      '';
+    };
+
+    maxTokensDefault = lib.mkOption {
+      type = lib.types.nullOr lib.types.ints.positive;
+      default = null;
+      description = ''
+        HALOGEN_MAX_TOKENS_DEFAULT — the budget a request that sends none
+        gets. null leaves the image's own 8192 on chat and responses.
+
+        Worth knowing before leaving it null: this budget bounds REASONING AND
+        CONTENT TOGETHER, and the chat template's own reasoning effort is
+        xhigh. A turn that thinks past the budget does not come back short, it
+        comes back EMPTY — `finish_reason: "length"`, empty `content`, the whole
+        reply stranded in `reasoning_content`, which most OpenAI clients do not
+        display and at least one agent harness reads as "no assistant message"
+        and retries, deterministically, forever. Upstream's own suggested step
+        for agentic traffic is 16384. Every client on this fleet is agentic.
+      '';
     };
 
     vision = lib.mkOption {
@@ -290,20 +412,39 @@ in
           autoStart = true;
           volumes = [ "${bundle.directory}:/models:ro" ];
           environment = {
+            # Paths and labels: facts about how this bundle is mounted, not
+            # copies of a default, so they are always written.
             HALOGEN_CHECKPOINT = "/models/${artifact.source.primary}";
-            HALOGEN_CK_OVERLAY = "/models/qwen38-flash-next-w4b.overlay.hgn";
             HALOGEN_TOKENIZER = "/models/tokenizer";
             HALOGEN_MODEL_ID = cfg.modelId;
             HALOGEN_API_PORT = toString cfg.port;
+            # HALOGEN_CK_OVERLAY is NOT set here. Unset already means "the
+            # quality sidecar beside the checkpoint", which is the file we
+            # loan, so naming it bought nothing and would have had to be
+            # re-checked at every bump. cfg.overlay below is the escape hatch.
+          }
+          // lib.optionalAttrs (cfg.contextPositions != null) {
             HALOGEN_CTX = toString cfg.contextPositions;
+          }
+          // lib.optionalAttrs (cfg.kvPoolPositions != null) {
             HALOGEN_KV_POOL_POSITIONS = toString cfg.kvPoolPositions;
+          }
+          // lib.optionalAttrs (cfg.kvSlots != null) {
             HALOGEN_KV_SLOTS = toString cfg.kvSlots;
+          }
+          // lib.optionalAttrs (cfg.promptCache != null) {
             HALOGEN_PROMPT_CACHE = cfg.promptCache;
+          }
+          // lib.optionalAttrs (cfg.overlay != null) {
+            HALOGEN_CK_OVERLAY = cfg.overlay;
+          }
+          // lib.optionalAttrs (cfg.maxTokensDefault != null) {
+            HALOGEN_MAX_TOKENS_DEFAULT = toString cfg.maxTokensDefault;
           }
           // lib.optionalAttrs cfg.vision {
             HALOGEN_VISION_TOWER = "/models/qwen38-flash-next-vision.hgn";
           };
-          extraOptions = containerOptions;
+          extraOptions = containerOptions ++ healthOptions;
         };
       }
       // lib.mapAttrs' (
@@ -342,15 +483,34 @@ in
 
       networking.firewall.interfaces.${cfg.lanInterface}.allowedTCPPorts = [ cfg.port ];
 
-      # Upstream's published reference boot line for a 128 GB Strix Halo
-      # (README "Conditions"): GTT sized to the box, no VM update mode, no
-      # retry on faults, no scatter-gather display. amd_iommu=off and the TTM
-      # page limit come from modules/strix.nix.
+      # GTT sized to the box. This is the half of upstream's reference boot
+      # line that is a SIZE rather than a flag: GTT is where every allocation
+      # this server makes on the GPU actually lands, and 126976 MiB is the
+      # 128 GB row of upstream's table. It pairs with ttm.pages_limit in
+      # modules/strix.nix, which says the same thing in 4 KiB pages; amd_iommu
+      # =off lives there too and is the one setting upstream has actually A/B'd
+      # (13-16% of prefill, and it takes the NPU with it — already decommissioned
+      # here, so the trade is free for this fleet).
+      #
+      # THE OTHER THREE ARE GONE (2026-09-13): amdgpu.vm_update_mode=0,
+      # amdgpu.noretry=0 and amdgpu.sg_display=0 were carried here as
+      # "upstream's published reference boot line". Upstream rewrote that
+      # paragraph in 0.6.1 and no longer recommends them: "listed for
+      # completeness rather than recommended... unmeasured in both directions",
+      # plus one report (#34) of an UNKILLABLE AMDGPU DEADLOCK from a boot that
+      # had the first two set. This fleet has its own amdgpu deadlock history
+      # (#244, the sp5100_tco watchdog in modules/strix.nix, journal-upload
+      # existing so a hard lockup still leaves evidence), so carrying three
+      # unmeasured amdgpu flags with a deadlock report attached to two of them
+      # is a bet with no upside. sg_display was the clearest of the three:
+      # it tunes the display scanout path on a box that has NO DISPLAY
+      # (hosts/worker/default.nix — no compositor, no greeter, no VNC).
+      #
+      # These are BOOT parameters: they apply machine-wide at every boot, not
+      # while the container runs, and dropping them takes effect on the next
+      # reboot, not on the switch that removes them. Verify with /proc/cmdline.
       boot.kernelParams = [
         "amdgpu.gttsize=126976"
-        "amdgpu.vm_update_mode=0"
-        "amdgpu.noretry=0"
-        "amdgpu.sg_display=0"
       ];
     })
 

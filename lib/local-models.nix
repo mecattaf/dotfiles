@@ -495,10 +495,10 @@ let
                 revision = "main";
               };
               quantization = "W4B";
-              notes = "Halogen Flash server bundle: 4-bit checkpoint + quality overlay + vision tower + flat tokenizer, pinned to the revision kyuz0's ai-toolbox-cockpit curates for server 0.5.x.";
+              notes = "Halogen Flash server bundle: 4-bit checkpoint + quality overlay + vision tower + flat tokenizer. Pinned to the revision whose quality overlay carries the draft head's 8-bit projections (upstream 0.6.0 reissued that one file; the earlier pin was kyuz0's ai-toolbox-cockpit revision for server 0.5.x). The mtp head and the speed overlay upstream also publishes are deliberately not carried: the head is only read on the GGUF path, which this fleet does not take.";
               source = {
                 hfUrl = "https://huggingface.co/peonist-ai/halogen-qwen3.8-flash-next";
-                revision = "ac23b1b223b4e9192d27c22367d4dbacf2b595ef";
+                revision = "8114dba56501121211d1c647d8f34e7c15df46f4";
                 layout = "snapshot";
                 primary = "qwen38-flash-next-w4b.hgn";
                 files = [
@@ -510,9 +510,9 @@ let
                   }
                   {
                     path = "qwen38-flash-next-w4b.overlay.hgn";
-                    bytes = 2477677120;
-                    oid = "737d6bdaef274d3cc22de5bc265b390b89db5fb1e709f58db75287fdc35bb276";
-                    hash = "sha256-c31r2u8nTTzCLeW8Jls5C4nbX7HnCfWNt1KH/cNbsnY=";
+                    bytes = 2572466560;
+                    oid = "1cdfc3a9f988955bfe9a71bb808d393030abbf9f99d34ffa1ef93815a49b39ab";
+                    hash = "sha256-HN/DqfmIlVv+mnG7gI05MDCrv5+Z00/6Hvk4FaSbOas=";
                   }
                   {
                     path = "qwen38-flash-next-vision.hgn";

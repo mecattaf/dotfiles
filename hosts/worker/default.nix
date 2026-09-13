@@ -234,6 +234,22 @@
   # this host's only wanted artifact (modules/strix.nix), loaned from the NAS
   # Library by an operator; the coordinator dials http://worker:8731.
   services.halogen.enable = true;
+  # The one serving default this fleet overrides, and the only one. The image
+  # ships 8192, which bounds REASONING AND CONTENT TOGETHER against a chat
+  # template whose own effort is xhigh: a turn that thinks past the budget
+  # returns finish_reason "length" with EMPTY content and the whole reply
+  # stranded in reasoning_content. Most OpenAI clients do not render that
+  # field, and at least one agent harness reads it as "no assistant message"
+  # and retries — deterministically, at temperature 0, forever. Every client
+  # that dials this box is agentic (utility-model, pi, academic-ocr-drain),
+  # so that failure is a matter of when.
+  #
+  # 16384 is upstream's own suggested step for agentic traffic and is what the
+  # reporter on upstream #44 runs on the same silicon. The cost is pool
+  # reservation, since a request reserves prompt + budget when admitted: four
+  # slots at 16384 is 65536 of the 524288-position pool before a single prompt
+  # token, which this box has room for many times over.
+  services.halogen.maxTokensDefault = 16384;
   # The alternate model on the same box: Qwen3.8-27B under halogen-server.
   # Never resident together with Flash — `halogen-switch qwen38-27b` stops
   # the Flash unit and starts this one; `halogen-switch flash` goes back.
