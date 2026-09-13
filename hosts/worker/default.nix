@@ -250,6 +250,15 @@
   # slots at 16384 is 65536 of the 524288-position pool before a single prompt
   # token, which this box has room for many times over.
   services.halogen.maxTokensDefault = 16384;
+  # Armed 2026-09-13, after the binary was verified on this box rather than
+  # assumed from upstream's compose file:
+  #   podman exec halogen ls -l /usr/local/bin/halogen-healthcheck  -> present
+  #   podman exec halogen /usr/local/bin/halogen-healthcheck api    -> exit 0
+  #   podman inspect halogen -> Health.Status healthy, FailingStreak 0
+  # An unhealthy verdict now exits the container non-zero, which the unit's
+  # Restart=on-failure recovers from: that is what makes a wedged GPU queue
+  # self-healing instead of a silent hang someone notices hours later.
+  services.halogen.healthKill = true;
   # The alternate model on the same box: Qwen3.8-27B under halogen-server.
   # Never resident together with Flash — `halogen-switch qwen38-27b` stops
   # the Flash unit and starts this one; `halogen-switch flash` goes back.
