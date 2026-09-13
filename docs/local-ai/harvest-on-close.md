@@ -5,10 +5,12 @@ Decisions: `~/research-methods/DECISIONS.md` D-E07, D-E13, D-E14.
 
 ## What it is
 
-`home/dot_claude/settings.json` declares two hooks. The first, SessionStart, is
-herdr's. The second, added here, is SessionEnd → `bash
-'/home/tom/.claude/hooks/ai-memory-harvest.sh'`, and it runs MEM-1's `harvest`
-verb over the session that is ending.
+`home/dot_claude/settings.json` declares one hook: SessionEnd → `bash
+'/home/tom/.claude/hooks/ai-memory-harvest.sh'`, added here, and it runs MEM-1's
+`harvest` verb over the session that is ending. (It used to sit beside a
+SessionStart hook naming `herdr-agent-state.sh`, a script that existed nowhere;
+MEM-2 found it and left it alone as a non-goal, and it was removed 2026-09-13,
+discharging DF-MEM-2-2.)
 
 The journal stays what Tom chose to keep: a manual `/drain` and nothing else.
 The harvest store is a second, machine-written store beside it, and the hook is
@@ -92,5 +94,6 @@ credential is borrowed; `MEM2_KEEP=1` keeps the scratch tree.
 ## Not in this unit
 
 No `Stop` and no `PreCompact` hook. No hook ever calls the drain. The
-SessionStart hook is unchanged. The enqueue-row writer that turns
+SessionStart hook was unchanged by this unit (it was removed later, see
+above). The enqueue-row writer that turns
 `unresolved_units` into rows in the live daemon's shape is MEM-3.

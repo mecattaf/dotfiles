@@ -208,11 +208,12 @@ printf '{"schema":1,"journal_dir":"%s"}\n' "$journal" \
   >"$xdg_config/ai-memory/config.json"
 
 # The RENDERED settings.json: the repository's own file with the MEM-2 hook path
-# resolved to the scratch copy. Nothing else is rewritten. The SessionStart
-# block is left byte-identical -- it is this unit's non-goal, and it fails here
-# exactly as it fails on the live box, where ~/.claude/hooks/herdr-agent-state.sh
-# is absent (MEASURED 2026-09-07). A SessionStart hook that cannot run does not
-# stop a session.
+# resolved to the scratch copy. Nothing else is rewritten. (Until 2026-09-13
+# the file also carried a SessionStart block naming
+# ~/.claude/hooks/herdr-agent-state.sh, a script that existed nowhere, MEASURED
+# 2026-09-07; it failed here exactly as on the live box, without stopping the
+# session. That block is gone — DF-MEM-2-2 discharged by removal — so the
+# rendered file now declares SessionEnd alone.)
 #
 # A settings.json carrying NO SessionEnd block is rendered anyway, verbatim.
 # That is the mutation hint's case, and the mutation must be observed the way it

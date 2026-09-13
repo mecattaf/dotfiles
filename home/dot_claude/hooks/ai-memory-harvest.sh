@@ -3,8 +3,9 @@
 #
 # UNIT: MEM-2 (dotfiles#339). CARD: /home/tom/sept7/plan/UNITS-2026-09-06.json.
 # SPEC: MECHANISM-2026-09-07 §6b ("harvest on close"); DECISIONS D-E07, D-E13.
-# EXEMPLAR: the SessionStart block in home/dot_claude/settings.json, which is
-# the only other hook this repository declares.
+# EXEMPLAR: the SessionStart block home/dot_claude/settings.json carried when
+# this was written (removed 2026-09-13, DF-MEM-2-2); this is now the only hook
+# the repository declares.
 #
 # WHAT CLAUDE CODE GIVES IT. The hook payload arrives on stdin as one JSON
 # object — session_id, transcript_path, cwd, hook_event_name, reason — and the

@@ -2264,13 +2264,14 @@
           assert lib.hasInfix "harvest_argv+=(--enqueue)" hookText;
           assert !(lib.hasInfix "$engine\" drain" hookText);
           assert !(lib.hasInfix "state/tally/" hookText);
-          # The SessionStart hook is this unit's non-goal and stays as it was.
-          assert
-            (builtins.head (builtins.head settings.hooks.SessionStart).hooks).command
-            == "bash '/home/tom/.claude/hooks/herdr-agent-state.sh' session";
+          # No SessionStart hook. The block MEM-2 found (DF-MEM-2-2) named
+          # ~/.claude/hooks/herdr-agent-state.sh, a file that existed in no
+          # repository and on no disk, so it failed on every session start; it
+          # was removed 2026-09-13 rather than restored. This assert keeps a
+          # hook naming a script the repository does not ship from coming back.
+          assert !(settings.hooks ? SessionStart);
           # The file the block names is actually delivered, as ONE link (not a
-          # whole-dir one), so ~/.claude/hooks stays a real directory beside
-          # herdr's raw hook, which this repository does not ship.
+          # whole-dir one), so ~/.claude/hooks stays a real, writable directory.
           assert homeConfig.home.file ? ".claude/hooks/ai-memory-harvest.sh";
           assert
             homeConfig.home.file.".claude/hooks/ai-memory-harvest.sh".target
