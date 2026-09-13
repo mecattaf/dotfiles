@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coordinator Chrome</title>
+<link rel="stylesheet" href="/style.css">
+<header>
+  <button id="back" aria-label="Back">←</button>
+  <button id="forward" aria-label="Forward">→</button>
+  <button id="reload" aria-label="Reload">↻</button>
+  <form id="navigation"><input id="address" aria-label="Address" spellcheck="false" placeholder="Enter a URL"><button>Go</button></form>
+  <select id="tabs" aria-label="Browser tab"></select>
+  <button id="new" aria-label="New tab">+</button>
+  <button id="reconnect">Reconnect</button>
+</header>
+<main><canvas id="screen" width="1440" height="900" tabindex="0" aria-label="Remote Chrome viewport"></canvas></main>
+<footer id="status" role="status">Connecting…</footer>
+<script src="/viewer.js" type="module"></script>
+</html>
