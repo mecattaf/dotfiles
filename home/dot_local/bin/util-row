@@ -18,6 +18,14 @@ FILE.  The live, append-only lease-events.jsonl is never an input of the replay:
 a grant landing after the row was written can no longer turn the row red.  A
 slice that already exists is never silently overwritten (--refresh-slice).
 
+A re-run of a closed day is idempotent BY COMPARISON (dotfiles#329, 2026-09-13):
+when the slice already exists, util-row re-selects it and recomputes the row, and
+exits 0 writing nothing if both reproduce the files on disk byte-for-byte.  If
+either differs it exits 2 and writes nothing — a closed night is never silently
+re-frozen or rewritten; --refresh-slice is the one way to overwrite.  A slice
+frozen from a partial day (a manual run before midnight) does not reproduce the
+full day's selection, so that case still exits 2, by design.
+
 The day is the BOX's calendar day, not the sampler's coverage: the window is
 [date 00:00, date+1 00:00) in the box's IANA zone, which every sample carries as
 `tz`, so day_hours is 23, 24 or 25 whether or not the samples span the
@@ -58,6 +66,14 @@ RECEIPT_ROOTS = (
     "/home/tom/research-methods/receipts/",
     "/home/tom/mecattaf/flashnix/results/receipts/",
 )
+# Test hooks (dotfiles#329): the hermetic tests point the three estate inputs at a
+# scratch tree.  The unit sets none of them, so live behaviour is unchanged.
+if os.environ.get("UTIL_LEASE_EVENTS"):
+    LEASE_EVENTS = os.environ["UTIL_LEASE_EVENTS"]
+if os.environ.get("UTIL_RECEIPT_ROOTS") is not None:
+    RECEIPT_ROOTS = tuple(r for r in os.environ["UTIL_RECEIPT_ROOTS"].split(":") if r)
+if os.environ.get("UTIL_COORDINATOR_LEDGER"):
+    LEDGERS["coordinator"] = os.environ["UTIL_COORDINATOR_LEDGER"]
 WORKER_SSH_HOST = "worker"
 WORKER_SAMPLER_REMOTE = "~/.local/state/tally/meters/util-sampler"
 
@@ -238,18 +254,40 @@ def select_lease_slice(lease_events_path, date_str, pool):
     return out
 
 
-def freeze_lease_slice(meters, box, date_str, lease_events_path, refresh=False):
-    """Write the slice file and return its path.  Refuses to overwrite silently.
+def lease_slice_reproduces(meters, box, date_str, lease_events_path):
+    """(path, True|False|None): does a fresh selection equal the frozen slice?
 
-    A re-run of a closed day must REPRODUCE the row, not re-freeze its inputs, so
-    an existing slice is an error unless --refresh-slice says otherwise.
+    None when no slice exists.  The comparison is byte-for-byte against what
+    freeze_lease_slice() would write, so True means a re-freeze is a no-op.
+    """
+    out = lease_slice_path(meters, box, date_str)
+    if not os.path.exists(out):
+        return out, None
+    fresh = "".join(select_lease_slice(lease_events_path, date_str,
+                                       VRAM_POOL_BY_BOX.get(box))).encode("utf-8")
+    with open(out, "rb") as fh:
+        return out, fh.read() == fresh
+
+
+def freeze_lease_slice(meters, box, date_str, lease_events_path, refresh=False):
+    """Write the slice file and return its path.  Never overwrites silently.
+
+    A re-run of a closed day must REPRODUCE the row, not re-freeze its inputs:
+    an existing slice that a fresh selection reproduces byte-for-byte is left
+    untouched (no write, no mtime churn) and its path returned; one that differs
+    is an error unless --refresh-slice says otherwise (#329).
     """
     out = lease_slice_path(meters, box, date_str)
     guard_meters_write(meters, out)
-    if os.path.exists(out) and not refresh:
-        raise SystemExit(
-            "util-row: %s already exists; a closed day must reproduce, not re-freeze "
-            "(pass --refresh-slice to overwrite)" % out)
+    if not refresh:
+        _path, same = lease_slice_reproduces(meters, box, date_str, lease_events_path)
+        if same is True:
+            return out
+        if same is False:
+            raise SystemExit(
+                "util-row: %s exists and differs from a fresh selection of %s; a closed "
+                "day must reproduce, not re-freeze (pass --refresh-slice to overwrite)"
+                % (out, lease_events_path))
     os.makedirs(os.path.dirname(out), exist_ok=True)
     pool = VRAM_POOL_BY_BOX.get(box)
     lines = select_lease_slice(lease_events_path, date_str, pool)
@@ -330,8 +368,11 @@ def pull_worker_sampler_log(meters, date_str):
                 "stderr": "%s: %s" % (type(exc).__name__, exc)}
 
 
-def build_inputs_live(box, date_str, meters, refresh_slice=False):
-    if box == "worker":
+def build_inputs_live(box, date_str, meters, refresh_slice=False, rerun=False):
+    # A re-run of a closed night (rerun=True) does NOT re-pull the worker's log:
+    # the local copy is an input the existing row names and hashes, and
+    # overwriting it would break that row's replay whatever the comparison says.
+    if box == "worker" and not rerun:
         pull_worker_sampler_log(meters, date_str)
     ledger_path = LEDGERS.get(box)
     lease_src = None
@@ -941,8 +982,12 @@ def rebuild_week(meters, box, week):
     }
     path = os.path.join(meters, "util-%s-week-%s.json" % (box, week))
     guard_meters_write(meters, path)
-    with open(path, "wb") as fh:
-        fh.write(canonical(doc))
+    blob = canonical(doc)
+    # Rewritten only when the bytes move, so an idempotent re-run leaves the
+    # week file's mtime alone too (#329).
+    if not (os.path.isfile(path) and open(path, "rb").read() == blob):
+        with open(path, "wb") as fh:
+            fh.write(blob)
     return path
 
 
@@ -970,8 +1015,9 @@ def main(argv=None):
     ap.add_argument("--weekly", action="store_true",
                     help="also regenerate the weekly rollup in --replay-mode")
     ap.add_argument("--refresh-slice", action="store_true",
-                    help="overwrite an existing <box>-<date>.lease-slice.jsonl "
-                         "(without it, an existing slice is refused: exit 2)")
+                    help="overwrite an existing <box>-<date>.lease-slice.jsonl and its row "
+                         "(without it, a re-run that reproduces both exits 0 writing "
+                         "nothing, and one that differs is refused: exit 2)")
     args = ap.parse_args(argv)
 
     if args.replay_mode:
@@ -1001,25 +1047,70 @@ def main(argv=None):
 
     boxes = default_boxes(args.box)
 
-    # The frozen slice is refused BEFORE any box is computed, so a refusal never
-    # leaves a half-written night behind.
+    # Idempotent by comparison (#329).  Everything that can refuse is checked
+    # BEFORE anything is written, for every box, so a refusal never leaves a
+    # half-written night behind:
+    #   1. an existing slice must reproduce a fresh selection byte-for-byte;
+    #   2. for such a box (a re-run of a closed night) the recomputed row must
+    #      equal the row on disk byte-for-byte.  The row is not a function of the
+    #      slice alone — receipts are selected by mtime, and a new instrument
+    #      changes writer_version — so a matching slice is not enough.
+    # Either difference exits 2 naming it.  A re-run that reproduces both writes
+    # nothing and exits 0, which is what a Persistent catch-up or a second
+    # trigger of util-row.service now does instead of failing the unit.
+    rerun = {}
     if not args.refresh_slice:
         for box in boxes:
-            existing = lease_slice_path(meters, box, date_str)
-            if os.path.exists(existing):
+            existing, same = lease_slice_reproduces(meters, box, date_str, LEASE_EVENTS)
+            if same is False:
                 sys.stderr.write(
-                    "util-row: %s already exists; a closed day must reproduce, not "
-                    "re-freeze (pass --refresh-slice to overwrite); nothing written\n"
-                    % existing)
+                    "util-row: %s exists and differs from a fresh selection of %s; a "
+                    "closed day must reproduce, not re-freeze (pass --refresh-slice to "
+                    "overwrite); nothing written\n" % (existing, LEASE_EVENTS))
                 return 2
+            if same is True:
+                rerun[box] = None
+        for box in list(rerun):
+            inputs = build_inputs_live(box, date_str, meters, False, rerun=True)
+            row = compute_row(inputs)
+            blob = canonical(row)
+            path = os.path.join(meters, "util-%s-%s.json" % (box, date_str))
+            guard_meters_write(meters, path)
+            if os.path.isfile(path):
+                with open(path, "rb") as fh:
+                    old = fh.read()
+                if old != blob:
+                    try:
+                        prev = json.loads(old.decode("utf-8"))
+                        keys = sorted(k for k in set(prev) | set(row)
+                                      if prev.get(k) != json.loads(json.dumps(row.get(k))))
+                    except Exception:
+                        keys = ["<unparseable row>"]
+                    sys.stderr.write(
+                        "util-row: %s exists and differs from a recompute (keys: %s); a "
+                        "closed day must reproduce (pass --refresh-slice to overwrite); "
+                        "nothing written\n" % (path, ", ".join(keys)))
+                    return 2
+            rerun[box] = (inputs, row, blob, path)
 
     for box in boxes:
-        inputs = build_inputs_live(box, date_str, meters, args.refresh_slice)
-        row = compute_row(inputs)
-        path = os.path.join(meters, "util-%s-%s.json" % (box, date_str))
-        guard_meters_write(meters, path)
-        with open(path, "wb") as fh:
-            fh.write(canonical(row))
+        if box in rerun:
+            inputs, row, blob, path = rerun[box]
+            if os.path.isfile(path):
+                sys.stderr.write("util-row: %s and %s reproduce byte-for-byte; nothing "
+                                 "rewritten\n" % (inputs["lease_slice"]["path"], path))
+            else:
+                # the slice was frozen but the row never landed (a crash between
+                # the two writes): the slice reproduces, so the row is written now.
+                with open(path, "wb") as fh:
+                    fh.write(blob)
+        else:
+            inputs = build_inputs_live(box, date_str, meters, args.refresh_slice)
+            row = compute_row(inputs)
+            path = os.path.join(meters, "util-%s-%s.json" % (box, date_str))
+            guard_meters_write(meters, path)
+            with open(path, "wb") as fh:
+                fh.write(canonical(row))
         print(inputs["lease_slice"]["path"])
         print(path)
         print(rebuild_week(meters, box, iso_week(date_str)))
