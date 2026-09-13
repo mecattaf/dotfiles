@@ -120,14 +120,17 @@
   # A switch that leaves herdr, tally-kernel or caddy down (having been up)
   # is rolled back.
   #
-  # POLICY rolling (Tom's #354 decision text). It was committed stage-only
-  # first and flipped in its own commit once the hermetic downgrade cases
-  # passed (checks.update-adopt); if the live downgrade refusal on the worker
-  # does not hold after deploy, revert that one commit and this box goes back
-  # to staging only.
+  # POLICY stage-only UNTIL THE LIVE DOWNGRADE REFUSAL HOLDS (#354 challenger
+  # correction 6, re-applied by the lane verifier 2026-09-13). Tom's decision
+  # text wants rolling here, and every gate below is wired for it, but this is
+  # the box that runs the live agents and nobody can reach it overnight. The
+  # hermetic downgrade cases are not the bar; the bar is the worker's LIVE
+  # refusal of an older published candidate after deploy (DEFERRED
+  # DF-354-1). Stage-only realises the candidate and reports it, and creates no
+  # activate timer. Flip this one word to "rolling" once that refusal is seen.
   myUpdateAdopt = {
     enable = true;
-    policy = "rolling";
+    policy = "stage-only";
     userManagers = [ "tom" ];
     gates = [
       {

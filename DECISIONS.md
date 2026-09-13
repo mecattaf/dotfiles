@@ -136,7 +136,8 @@ Policies: worker rolling (gates: Halogen /health in_flight/queued and live
 :8731 sessions, any active alternate); coordinator rolling (gates: any Herdr
 agent not idle/done, fara-browser-model or browser-desktop active, a
 tally-kernel row holder via rows.read, a live tally pool lease via `tally
-query pools`); client manual (R-18: discover and report only); NAS NOT
+query pools`) — shipped STAGE-ONLY until the worker's live downgrade refusal
+is observed after deploy (DEFERRED DF-354-1), then one word flips it; client manual (R-18: discover and report only); NAS NOT
 enrolled (2026-08-21 ruling stands: not built nightly, manual pinned bump).
 Common gates: another rebuild running, free space, memory PSI.
 
@@ -153,10 +154,10 @@ sd-switch 0.6.4 and home-manager 079a3b5 sources and asserted by the
 herdr-oom-isolation check; a herdr bump now needs a deliberate `systemctl
 --user restart herdr` (DF-CLIENT-7's stance). tally-kernel's restart policy is
 unchanged; the lease gate covers it instead. (3) gc-retention never prunes the
-generation at gcroots/update-adopt/last-known-good. The coordinator was
-committed stage-only first and flipped to rolling as the series' last commit,
-after the hermetic downgrade cases passed; that commit is the one to drop if
-the live downgrade refusal on the worker does not hold. Not taken:
+generation at gcroots/update-adopt/last-known-good. (4) An activation never
+undoes someone else's switch: if the system profile moves during the probe
+window the verdict is `superseded` (rc 0, no rollback), and a switch that
+outlives its wait is `switch-hung` (rc 1, no rollback racing it). Not taken:
 Kubernetes, Proxmox, a fourth node, a second package-signing system, Tally as
 the update scheduler.
 
