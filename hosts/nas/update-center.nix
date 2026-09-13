@@ -15,6 +15,11 @@
 # BlueBuild "distribution split" — build farms and their garbage live here,
 # endpoints download finished bytes at LAN speed.
 #
+# Since 2026-09-13 (#354) each pushed closure is also PUBLISHED as a signed
+# per-host candidate (see "Candidate manifests" below), which the devices'
+# modules/update-adopt.nix pulls, gates and adopts on their own. The NAS still
+# touches no device.
+#
 # What this deliberately is NOT:
 #   - a deploy mechanism. There are no SSH keys here, no push path, no
 #     fleet-deploy resurrection. A broken nightly build costs nothing but a
@@ -67,6 +72,7 @@ let
         config.nix.package
         pkgs.attic-client
         pkgs.coreutils
+        pkgs.findutils
         pkgs.jq
         pkgs.openssh
       ]
@@ -74,10 +80,51 @@ let
     export UPDATE_CENTER_HOSTS=${lib.escapeShellArg (lib.concatStringsSep " " hosts)}
     exec ${pkgs.bash}/bin/bash ${./update-center.sh}
   '';
+
+  # `sudo update-center-publish HOST STORE_PATH FLAKEREF` — publish one
+  # already-built closure (#354 live exercise; a closure built on the
+  # coordinator and `nix copy`d here). Same body, same PATH, no build.
+  publishCli = pkgs.writeShellApplication {
+    name = "update-center-publish";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = ''
+      if [ "$(id -u)" -ne 0 ]; then
+        echo "Run as root: update-center-publish HOST STORE_PATH FLAKEREF" >&2
+        exit 1
+      fi
+      export HOME=/var/lib/update-center
+      export PATH=${
+        lib.makeBinPath [
+          config.nix.package
+          pkgs.attic-client
+          pkgs.coreutils
+          pkgs.findutils
+          pkgs.jq
+          pkgs.openssh
+        ]
+      }:/run/current-system/sw/bin
+      exec ${pkgs.bash}/bin/bash ${./update-center.sh} --publish-only "$@"
+    '';
+  };
 in
 {
   options.myNas.updateCenter = {
     enable = lib.mkEnableOption "nightly fleet closure builds pushed to the local attic cache";
+    candidates = {
+      listenAddress = lib.mkOption {
+        type = lib.types.str;
+        default = "10.42.0.1";
+        description = "LAN address serving the signed per-host candidate manifests (#354).";
+      };
+      interface = lib.mkOption {
+        type = lib.types.str;
+        default = "enp1s0";
+      };
+      port = lib.mkOption {
+        type = lib.types.port;
+        default = 8734;
+      };
+    };
     schedule.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -97,6 +144,46 @@ in
       }
     ];
 
+    # ── Candidate manifests (#354, 2026-09-13) ──────────────────────────────
+    # After a host's closure is in Attic, ./update-center.sh writes
+    # public/releases/<host>-<stamp>-<hash>/manifest.json(.sig), signed with
+    # this box's SSH host key (namespace fleet-update, the omarchy publisher's
+    # doctrine — no second signing system; Nix still proves the bytes), and
+    # swaps public/candidates/<host> to it with rename(2). A host whose build
+    # or push fails keeps its previous pointer. Every enrolled device's
+    # modules/update-adopt.nix reads http://nas:8734/candidates/<host>/ over
+    # the LAN only: no tailnet, no Cloudflare, no Tally in the path.
+    environment.systemPackages = [ publishCli ];
+    systemd.tmpfiles.rules = [
+      "d /var/lib/update-center/public 0755 root root -"
+      "d /var/lib/update-center/public/releases 0755 root root -"
+      "d /var/lib/update-center/public/candidates 0755 root root -"
+    ];
+    services.nginx = {
+      enable = true;
+      virtualHosts."fleet-candidates" = {
+        listen = [
+          {
+            addr = cfg.candidates.listenAddress;
+            inherit (cfg.candidates) port;
+          }
+        ];
+        root = "/var/lib/update-center/public";
+        locations."~ ^/candidates/[a-z0-9-]+/manifest\\.json$".extraConfig = ''
+          default_type application/json;
+          add_header Cache-Control "no-store" always;
+        '';
+        locations."~ ^/candidates/[a-z0-9-]+/manifest\\.json\\.sig$".extraConfig = ''
+          default_type text/plain;
+          add_header Cache-Control "no-store" always;
+        '';
+        locations."/".return = "404";
+      };
+    };
+    networking.firewall.extraInputRules = ''
+      iifname "${cfg.candidates.interface}" ip daddr ${cfg.candidates.listenAddress} tcp dport ${toString cfg.candidates.port} accept comment "LAN signed fleet candidates (update-adopt)"
+    '';
+
     systemd.services.update-center = {
       description = "Build all fleet closures and publish them to the attic cache";
       after = [
@@ -108,6 +195,8 @@ in
         Type = "oneshot";
         ExecStart = build;
         StateDirectory = "update-center";
+        # nginx serves public/ from here, so the state dir must be traversable.
+        StateDirectoryMode = "0755";
         # A cold ROCm-class build night can be very long on this CPU; the
         # ceiling exists so a hung fetch becomes a failure, not a zombie
         # (the fleet-deploy 11.5h-hang lesson).

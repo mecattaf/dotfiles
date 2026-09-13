@@ -2247,6 +2247,34 @@
               touch "$out"
             '';
 
+        # #354 producer half and the 2026-09-13 seed preflight: per-host signed
+        # candidate publication only after a successful push, a failed host
+        # keeping its previous pointer byte-identical, release pruning,
+        # --publish-only refusals, and seed-missing naming a private input.
+        update-center =
+          let
+            nas = self.nixosConfigurations.nas.config;
+          in
+          assert nas.myNas.updateCenter.enable;
+          assert nas.myNas.updateCenter.candidates.port == 8734;
+          assert nas.services.nginx.virtualHosts ? fleet-candidates;
+          pkgs.runCommand "update-center"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.openssh
+                pkgs.jq
+                pkgs.findutils
+              ];
+            }
+            ''
+              mkdir -p hosts/nas tests/update-center
+              cp ${./hosts/nas/update-center.sh} hosts/nas/update-center.sh
+              cp ${./tests/update-center/test_update_center.py} tests/update-center/test_update_center.py
+              python -m unittest discover -v -s tests/update-center
+              touch "$out"
+            '';
+
         ai-memory =
           let
             homeConfig = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
