@@ -88,24 +88,25 @@ in
     # NFSv4 exports use EXPLICIT UNIQUE fsids per #131: subvolumes below a
     # lone fsid=0 export are a known sharp edge (each subvolume has its own
     # st_dev), so every crossing point is exported deliberately. Only the
-    # coordinator is admitted (legacy /30 address + pinned LAN lease during
-    # the 2026-08-20 cutover transition); other clients reach the relays over
-    # Tailscale and the filesystem itself never leaves that one client.
-    # No hostName bind: nfsd listening on the wildcard is fine on a box whose
-    # only network is the /30 cable, and binding 10.77.0.2 raced address
-    # assignment at boot even behind network-online.target (NM reports online
-    # before the static address exists — hit live on the first two
-    # post-cutover reboots: "nfsdctl: Cannot assign requested address").
-    # nftables scoping 2049 to 10.77.0.1 is the actual access control.
+    # coordinator is admitted, at its pinned LAN lease 10.42.0.2 only (the
+    # legacy /30 address was admitted beside it through the 2026-08-20
+    # cutover and left with the tether, #264); other clients reach the relays
+    # over Tailscale and the filesystem itself never leaves that one client.
+    # No hostName bind: nfsd listens on the wildcard. In the /30-cable era,
+    # binding 10.77.0.2 raced address assignment at boot even behind
+    # network-online.target (NM reports online before the static address
+    # exists — hit live on the first two post-cutover reboots: "nfsdctl:
+    # Cannot assign requested address"), and a specific bind would race the
+    # same way today. The nftables rule below (`ip saddr 10.42.0.2 tcp dport
+    # 2049 accept`) is the actual access control.
     services.nfs.server = {
       enable = true;
       exports =
         let
-          # The coordinator, on both transitional rails (2026-08-20 cutover):
-          # its legacy /30 address and its pinned LAN lease
-          # (hosts/nas/router.nix dhcp-host). Nothing else — the export ACL
-          # stays exactly as narrow as the nftables rule below, and the
-          # legacy client dies with the /30 in the cleanup commit.
+          # The coordinator's pinned LAN lease (hosts/nas/router.nix
+          # dhcp-host). Nothing else — the export ACL stays exactly as narrow
+          # as the nftables rule below. The legacy /30 client that sat beside
+          # it through the 2026-08-20 cutover was removed with the tether (#264).
           clients = opts: "10.42.0.2(${opts})";
         in
         ''

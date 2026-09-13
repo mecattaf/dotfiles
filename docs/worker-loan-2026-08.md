@@ -63,12 +63,19 @@ Expect to repeat (1) around the ¾ mark: the remaining papers regrow ~75–80 G.
 
 ## Networking (TB5-first, per ruling)
 
-- `tb-fleet` NM profiles both ends: coordinator `10.99.0.1/30` ↔ worker
-  `10.99.0.2/30`; worker routes `10.77.0.0/30` via coordinator.
+*(Retired, recorded 2026-09-13 for #264: the 10.77.0.0/30 NAS tether went at
+the 2026-08-21 cutover, and the Thunderbolt `tb-fleet` rail and
+`worker-nas-gateway.service` no longer exist — AGENTS.md, "the Thunderbolt and
+direct 5GbE rails between the twins no longer exist". The bullets below are
+what the loan ran on at the time, kept for the reasoning.)*
+
+- `tb-fleet` NM profiles were on both ends: coordinator `10.99.0.1/30` ↔ worker
+  `10.99.0.2/30`; the worker routed `10.77.0.0/30` via the coordinator.
 - Coordinator runtime unit `worker-nas-gateway.service` (`/run/systemd/system`,
-  `PartOf=firewall.service`) SNATs worker→NAS to `10.77.0.1`. Only needed for
-  bulk copies / merge-back — **runtime NFS is gone** (bind mount is local).
-- Worker firewall: runtime `iptables -I nixos-fw -i thunderbolt0 -s 10.99.0.1 -j ACCEPT`.
+  `PartOf=firewall.service`) SNATed worker→NAS to `10.77.0.1`. It was only
+  needed for bulk copies / merge-back — **runtime NFS was already gone** (the
+  bind mount was local).
+- Worker firewall: a runtime `iptables -I nixos-fw -i thunderbolt0 -s 10.99.0.1 -j ACCEPT`.
 - Coordinator's rotated pubkey (`tom@mesh-20260729`) appended to worker
   `~/.ssh/authorized_keys` — plain sshd over TB now works (tailscale SSH only
   intercepts on tailscale0).

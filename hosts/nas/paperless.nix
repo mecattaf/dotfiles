@@ -40,7 +40,7 @@
 #        mkdir -m 750 /mnt/nas/documents/.paperless-view    (chown paperless)
 #        mkdir -m 770 /mnt/nas/documents/.paperless-consume (chown tom:paperless)
 #        mkdir -m 755 /mnt/nas/views
-#   2. deploy; verify paperless-web answers on 10.77.0.2:28981 from the
+#   2. deploy; verify paperless-web answers on 10.42.0.1:28981 from the
 #      coordinator only, and http://paperless.internal works from a tailnet
 #      client with auto-login (needs myNasClient.relayPaperless flipped in
 #      the same commit — the checks pair them).
@@ -256,7 +256,7 @@ in
       }
     ];
 
-    # Backend admitted only from the coordinator's end of the /30 cable; the
+    # Backend admitted only from the coordinator's LAN address; the
     # tailnet reaches it through the coordinator relay + Caddy front door.
     networking.firewall.extraInputRules = ''
       ip saddr 10.42.0.2 tcp dport 28981 accept comment "paperless from coordinator (LAN; /30 retired 2026-08-21)"

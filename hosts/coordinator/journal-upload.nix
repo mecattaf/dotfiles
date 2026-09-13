@@ -50,9 +50,10 @@ in
 {
   services.journald.upload = {
     enable = true;
-    # The NAS's LAN identity (2026-08-20 rewire); reachable over the legacy
-    # /30 cable AND the BE550 LAN during the transition — same address on
-    # both wires, so the physical move never touches this line.
+    # The NAS's LAN identity (2026-08-20 rewire). During the transition it was
+    # reachable at this same address over both the /30 cable and the BE550
+    # LAN, so the physical move never touched this line; the cable retired
+    # 2026-08-21 (#264).
     settings.Upload.URL = "http://10.42.0.1:19532";
   };
 

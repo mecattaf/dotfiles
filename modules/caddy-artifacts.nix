@@ -76,13 +76,13 @@ in
 
   # Trusted-transport ingress only; nothing opens on LAN/WAN interfaces.
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 80 ];
-  # The NAS reaches the .internal front doors over the private /30 cable rather
-  # than hairpinning through this box's tailnet address (split horizon, see
-  # modules/adguardhome.nix). Without this the NAS resolves photos.internal to
-  # 10.77.0.1 and gets a closed port.
-  # (+ wlp192s0 since the 2026-08-20 rewire: LAN clients — the NAS included —
-  # reach the .internal front doors over the BE550 segment once the /30 cable
-  # retires. Inert on hosts without that interface name.)
+  # LAN clients — the NAS included — reach the .internal front doors over the
+  # BE550 segment (wlp192s0) rather than hairpinning through this box's tailnet
+  # address (split horizon, see modules/adguardhome.nix). Until 2026-08-21 the
+  # NAS used the private /30 cable instead, resolving photos.internal to
+  # 10.77.0.1; that tether is retired (#264). Without this rule a LAN client
+  # gets a closed port. Opened since the 2026-08-20 rewire; inert on hosts
+  # without that interface name.
   networking.firewall.interfaces.wlp192s0.allowedTCPPorts = [ 80 ];
 
   systemd.services.artifact-reaper = {
