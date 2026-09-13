@@ -339,6 +339,52 @@ run, with 27 job directories under `~/Paper/jobs/` (three with `"printed": true`
 the rest render iterations or `--submit-only` prints that never set the flag).
 A watcher left facing them would have reprinted about 270 KB of Markdown.
 
+2026-09-13 dictation on the client, transcribed on the coordinator (#376, route b').
+Mod+Space on the client spawns `dictate-hold` (home/dictate-hold.py, installed
+by home/client-apps.nix). It pipes the client's PipeWire DEFAULT source, so
+whatever the Shift+F9 Audio Route picker selected, over ONE ssh session into
+the coordinator's `voxtype-relay`. The relay arms the voxtype daemon with
+`voxtype record start --file=PATH`, plays the audio into the `client-mic`
+loopback, stops on EOF and prints the transcript back down the same session.
+dictate-hold holds until evdev reports the release of Space or Mod (Esc or
+Mod+Shift+Space cancels; a hold under 0.3 s is a cancel), then types the text
+into THE projector it started in with `kitten @ send-text` (literal text,
+never a bracketed paste). The kitty title reads REC while held and
+"transcribing" after, which is the issue's spinner.
+
+The model runs only on the coordinator. home/voxtype.nix is gated on the
+hostName alone (no myDisplay coupling), the evdev hotkey and OSD are off, and
+the unit is WantedBy default.target under linger with PartOf cleared.
+PIPEWIRE_NODE=client-mic-source pins the capture. The client carries no voxtype
+package, config, unit or model, and flake.nix home-profiles asserts it.
+
+Batch TDT v3, not streaming. Measured with voxtype 0.7.5:
+- streaming never honours `--file` (daemon.rs:915);
+- batch mode on the old parakeet-unified model loads but returns "" for any
+  input;
+- parakeet-tdt-0.6b-v3 returns the fixture sentence verbatim, with about 0.2 s
+  of warm inference.
+Text is delivered on release anyway, so streaming bought nothing here.
+post_process works again.
+
+Why these shapes:
+- A per-press user process, not a daemon. The 2026-09-13 thin-client entry
+  keeps the Huion sync as the client's one standing runner. dictate-hold lives
+  for a key hold, and python3-evdev sits only inside its writePython3Bin
+  closure.
+- ssh rather than a PipeWire tunnel. The same path works on the LAN and on
+  headscale, needs no new firewall door, and keeps home/ssh.nix option (B): no
+  ControlMaster, one connection per press.
+- kitty remote control rather than `herdr pane send-text`. herdr's focus is
+  server-global (`herdr pane list` reports one focused pane), so resolving
+  "this projector's pane" from the coordinator is guesswork. The projector
+  window itself always types into its own focused pane.
+
+The `client-mic` loopback is a pipewire.conf.d drop-in, so it goes live on the
+coordinator's next pipewire restart or reboot, not on the Home Manager
+switch. It becomes the coordinator's default source, since nothing else there
+is available; that is harmless on a headless box. DF-CLIENT-3 is removed.
+
 2026-09-13 full herdr on the client; herdr-kitten leaves the fleet (#385).
 The client's terminal is a herdr PROJECTOR: a kitty with app-id
 `herdr-projector` running `home/dot_local/bin/herdr-projector`, which is
