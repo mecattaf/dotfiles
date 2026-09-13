@@ -339,6 +339,27 @@ run, with 27 job directories under `~/Paper/jobs/` (three with `"printed": true`
 the rest render iterations or `--submit-only` prints that never set the flag).
 A watcher left facing them would have reprinted about 270 KB of Markdown.
 
+2026-09-13 herdr topology (#309): ruling B5 stands — ONE herdr server, on the
+coordinator; no second server on the worker or anywhere else. #309 set B5
+against `~/research-methods/PROMPTS.md` §6 ("the herdr runtime and the
+herdr-kitten home-manager module installed as units on both boxes"). §6 was
+written against a measured ABSENCE — on 2026-09-05 `which herdr` was empty and
+no herdr user unit existed — so that P09's batch would run on a herdr rail
+rather than the systemd fallback. That motive is spent: herdr 0.9.0 is on PATH
+on every interactive host and the server unit is active on the coordinator.
+The worker needs no local rail: hosts/worker/default.nix says it is "not a
+Tally executor or pool — all jobs still execute locally on the coordinator";
+it is the Halogen node, and `systemctl --user is-active herdr` there reads
+inactive. The client projects the coordinator's one server (#385), and #385
+rejected saved-machine federation precisely because it would spawn a local
+server on the laptop (herdr src/server/autodetect.rs:295-320 — contradicting
+B5). The shape stays asserted, not deferred: flake.nix `home-profiles` and
+`herdr-oom-isolation` require a `herdr` unit on the coordinator and none on
+the worker or client. DEFERRED DF-U-D15-2 is therefore deleted.
+~/research-methods/PROMPTS.md is a frozen prompt register in another repo and
+is left as written. A second server needs a new ruling that also states
+which sessions live where.
+
 2026-09-13 the Huion Note X10 is the paper inbox; the client runs one sync.
 Tom writes on the notepad anywhere, presses its button for each new page, and
 opens the cover near the client; the pages land on the coordinator as

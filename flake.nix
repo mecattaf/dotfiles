@@ -2073,7 +2073,7 @@
           # The BINARY, though, is the worker's too — the client is how you
           # reach a server at all (`herdr --remote coordinator`), and `hk` rides
           # with it. Asserting it here is what keeps U-D15's pin move from
-          # turning into a topology move: one server (ruling B5, #309 is Tom's),
+          # turning into a topology move: one server (ruling B5, #309 settled),
           # two clients, unchanged.
           assert builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") workerHome.home.packages;
           # No wayvnc on the worker since 2026-09-11: with no display there
