@@ -166,6 +166,15 @@
   # unit failures unwatched. Name the real uid.
   myFailureSurfacing.userManagerUids = [ 1001 ];
 
+  # Fleet candidate adoption (#354): MANUAL. R-18 — the client is activated
+  # only by Tom's own `nixos-rebuild switch`. It fetches and verifies its
+  # signed candidate hourly and reports it (`update-adopt status --json`),
+  # and never realises or activates anything.
+  myUpdateAdopt = {
+    enable = true;
+    policy = "manual";
+  };
+
   # ── the Thunderbolt 3 dock ─────────────────────────────────────────────────
   # This is the docking host: the coordinator's webcam/mic, Sound Blaster,
   # INZONE dongle, Glove80 and Magic Trackpad all hang off a TB3 dock on this

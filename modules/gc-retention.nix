@@ -50,6 +50,9 @@ let
 
     booted=$(readlink -f /run/booted-system 2>/dev/null || echo none)
     current=$(readlink -f "$profile" 2>/dev/null || echo none)
+    # update-adopt's last verified generation (#354): the rollback target an
+    # unattended switch proved healthy is never pruned, however old.
+    lkg=$(readlink -f /nix/var/nix/gcroots/update-adopt/last-known-good 2>/dev/null || echo none)
 
     # Generation numbers, newest first.
     gens=$(
@@ -69,8 +72,8 @@ let
       target=$(readlink -f "$profile-$gen-link" 2>/dev/null || echo none)
       # Never drop the entry for the system we are running, nor the one the
       # profile currently points at.
-      if [ "$target" = "$booted" ] || [ "$target" = "$current" ]; then
-        echo "nix-gc: keeping generation $gen (booted/current) outside the last $keep"
+      if [ "$target" = "$booted" ] || [ "$target" = "$current" ] || [ "$target" = "$lkg" ]; then
+        echo "nix-gc: keeping generation $gen (booted/current/last-known-good) outside the last $keep"
         continue
       fi
       doomed="$doomed $gen"

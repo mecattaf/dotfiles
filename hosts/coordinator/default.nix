@@ -1,4 +1,9 @@
-{ lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 # Coordinator: NAS-managed LAN routing/DNS, direct BE550 bypass, then Freebox.
 # Static 10.42.0.2 keeps NAS services reachable while bypassing a failed NAS
 # routing or DNS service. Freebox remains the independent emergency uplink.
@@ -104,6 +109,71 @@
   # system bus, against the rewrite's own state root. The live daemon on tom's
   # user bus is untouched and keeps running (modules/tally-b.nix).
   services.tally-kernel.enable = true;
+
+  # ── Fleet candidate adoption (#354, 2026-09-13) ─────────────────────────
+  # This box runs Tom's live agents, so its gates are the strict set: defer
+  # while any Herdr agent is not idle/done (`herdr agent list`), while FARA's
+  # model or the shared browser desktop is up, while a tally-kernel row has a
+  # holder (rows.read) or the live tally daemon holds a pool lease, and — in
+  # the module — while any nixos-rebuild/switch is running. Herdr itself is
+  # never restarted by a switch (home/herdr.nix X-SwitchMethod=keep-old).
+  # A switch that leaves herdr, tally-kernel or caddy down (having been up)
+  # is rolled back.
+  #
+  # POLICY stage-only UNTIL the downgrade guard is proven live on the worker
+  # (challenger correction 6): the closure is realised, never activated here.
+  myUpdateAdopt = {
+    enable = true;
+    policy = "stage-only";
+    userManagers = [ "tom" ];
+    gates = [
+      {
+        name = "herdr-agents";
+        argv = [
+          config.myUpdateAdopt.gatesBin
+          "herdr-agents-idle"
+          "tom"
+        ];
+      }
+      {
+        name = "browser-sessions";
+        argv = [
+          config.myUpdateAdopt.gatesBin
+          "units-inactive"
+          "user:tom"
+          "fara-browser-model.service"
+          "browser-desktop.service"
+        ];
+      }
+      {
+        name = "tally-kernel-leases";
+        argv = [
+          config.myUpdateAdopt.gatesBin
+          "tally-kernel-idle"
+          (lib.getExe' config.services.tally-kernel.package "tally-kernel")
+          config.services.tally-kernel.socketPath
+        ]
+        ++ map (row: row.row) config.services.tally-kernel.rows;
+      }
+      {
+        name = "tally-daemon-leases";
+        argv = [
+          config.myUpdateAdopt.gatesBin
+          "tally-daemon-idle"
+          "tom"
+          "/run/user/1000/tally/tally.sock"
+        ];
+      }
+    ];
+    criticalUnits = [
+      {
+        unit = "herdr.service";
+        user = "tom";
+      }
+      { unit = "tally-kernel.service"; }
+      { unit = "caddy.service"; }
+    ];
+  };
 
   # This box serves no model. The `utility-model` wrapper that /drain and
   # /print shell out to forwards one request to the worker's Halogen server

@@ -2197,6 +2197,56 @@
             touch "$out"
           '';
 
+        # #354 — per-host candidate adoption. The hermetic suite drives every
+        # branch of modules/update-adopt.py (identical no-op, adopt, busy and
+        # unknown gates, probe-failure rollback, switch-failure rollback,
+        # kernel → boot + pending-reboot marker, bad signature, host mismatch,
+        # manual and stage-only policies, downgrade refusal before and after
+        # download, dirty/unknown current, --force, the activation lock) and
+        # each gate verb of update-adopt-gates.sh, with fake nix/systemctl and a
+        # REAL ssh-keygen. The asserts pin the policy table: NAS not enrolled
+        # (2026-08-21 ruling), client manual (R-18), both units immune to the
+        # switch they run, and every closure recording its revision.
+        update-adopt =
+          let
+            cfgOf = host: self.nixosConfigurations.${host}.config;
+            worker = cfgOf "worker";
+            coordinator = cfgOf "coordinator";
+          in
+          assert worker.myUpdateAdopt.enable && worker.myUpdateAdopt.policy == "rolling";
+          assert
+            coordinator.myUpdateAdopt.enable
+            && builtins.elem coordinator.myUpdateAdopt.policy [
+              "stage-only"
+              "rolling"
+            ];
+          assert (cfgOf "client").myUpdateAdopt.enable && (cfgOf "client").myUpdateAdopt.policy == "manual";
+          assert !(cfgOf "nas").myUpdateAdopt.enable;
+          assert !((cfgOf "nas").systemd.services ? update-adopt-activate);
+          assert !worker.systemd.services.update-adopt-activate.restartIfChanged;
+          assert !worker.systemd.services.update-adopt-activate.stopIfChanged;
+          assert !coordinator.systemd.services.update-adopt-stage.restartIfChanged;
+          assert worker.system.configurationRevision != null;
+          assert nixpkgs.lib.hasInfix "fleet-revision.json" worker.system.systemBuilderCommands;
+          assert builtins.length coordinator.myUpdateAdopt.gates >= 4;
+          pkgs.runCommand "update-adopt"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.openssh
+                pkgs.jq
+                pkgs.gawk
+              ];
+            }
+            ''
+              mkdir -p modules tests/update-adopt
+              cp ${./modules/update-adopt.py} modules/update-adopt.py
+              cp ${./modules/update-adopt-gates.sh} modules/update-adopt-gates.sh
+              cp ${./tests/update-adopt/test_update_adopt.py} tests/update-adopt/test_update_adopt.py
+              python -m unittest discover -v -s tests/update-adopt
+              touch "$out"
+            '';
+
         ai-memory =
           let
             homeConfig = self.nixosConfigurations.coordinator.config.home-manager.users.tom;

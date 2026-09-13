@@ -351,4 +351,51 @@
   # the delivered tier re-minted for this box in the same commit decrypts on the
   # first boot of the new closure — no flash, no host-key dance.
   mySecrets.enable = true;
+
+  # ── Fleet candidate adoption (#354, 2026-09-13): ROLLING ─────────────────
+  # The worker adopts the NAS's signed nightly candidate on its own when it is
+  # safe to disturb (modules/update-adopt.nix). "Safe" here is one fact: the
+  # one inference server is not serving. halogen-idle defers on /health
+  # in_flight/queued and on any established :8731 session (Halogen runs
+  # --network=host); an ACTIVE alternate means an operator is mid-experiment
+  # (`halogen-switch qwen38-27b`), so that defers too. After a switch, Halogen
+  # must answer /health status ok within the 10-minute probe window (it
+  # re-reads a 30 GB loan on restart) or the switch is rolled back.
+  myUpdateAdopt = {
+    enable = true;
+    policy = "rolling";
+    userManagers = [ "tom" ];
+    gates = [
+      {
+        name = "halogen-idle";
+        argv = [
+          config.myUpdateAdopt.gatesBin
+          "halogen-idle"
+          "8731"
+        ];
+      }
+      {
+        name = "halogen-alternate";
+        argv = [
+          config.myUpdateAdopt.gatesBin
+          "units-inactive"
+          "system"
+        ]
+        ++ map (name: "podman-halogen-${name}.service") (
+          builtins.attrNames config.services.halogen.alternates
+        );
+      }
+    ];
+    probes = [
+      {
+        name = "halogen-healthy";
+        argv = [
+          config.myUpdateAdopt.gatesBin
+          "halogen-healthy"
+          "8731"
+        ];
+      }
+    ];
+    criticalUnits = [ { unit = "podman-halogen.service"; } ];
+  };
 }
