@@ -297,6 +297,48 @@ Permissions, found by independent verification before the deploy:
   coordinator it uses the default 127.0.0.1:28981, which is the relay socket;
   paperless.internal does not resolve on the coordinator itself.
 
+2026-09-13 /print is one file write into `~/Paper/intake/`, and paper-daemon
+owns everything after it (dotfiles#384). Tom's ruling of 2026-09-12: "you were
+just supposed to be just placing a md file in a ~/Paper folder ... and the
+printing daemon takes it from there". The agent writes `.<slug>.md.tmp` and
+renames it to `<slug>.md`; optional front matter is `target_pages`, `sides`,
+`profile`, `force`. The skill says that and where the outcomes land, nothing
+else. The drop folder is `intake/`, not the issue's `inbox/`: the entry below
+gave `inbox/` to the Huion and `intake/` to the print loop.
+
+The daemon (pkgs/paper-daemon, units in home/paper.nix, coordinator only) is
+the one submitter. It renders through print-auto.py, the utility-model
+classifier plus print-paper.py's renderer, which is now render-only with
+`--profile`/`--sides` overrides and no `--print`. It rejects a `target_pages`
+mismatch into `rejected/`, holds 00:00–06:00 drops in `outbox/` for a
+Persistent 06:05 flush, and requires the queue to be the pinned driverless
+one before every submit. That means the DeviceURI is `ipp://10.42.0.4:631/ipp/print`,
+driver options and the urf PPD filter are present, and the printer answers
+and is not stopped. It repairs once by restarting ensure-printers and
+records the repair.
+
+A receipt (`printed/<id>/receipt.json`) is written only when the PRINTER's
+own Get-Jobs says `completed` with `job-impressions-completed` equal to the
+rendered pages. cupsd's "completed" is never trusted: job 303 was "completed"
+and nothing came out. Anything else goes to `failed/` with IPP and cupsd
+evidence, a failed unit and a notify-send on the client. MEASURED against the
+HL-L2445DW: it rejects `which-jobs=all` and does not support
+`job-media-sheets-completed`, so the receipt carries impressions, not sheets.
+
+Taken with it: ensure-printers' postStart asserts the pinned URI and the urf
+filter and deletes any leftover cups-browsed `implicitclass://` queue (the
+worker still had one), and the retired flusher (pkgs/paper-intake, which
+trusted `lp`'s exit code) is gone. Not taken: a readiness age gate. rename(2)
+keeps the temp file's fresh mtime and the path unit fires once, so an age gate
+would strand correct drops until the five-minute sweep.
+
+The nine `2026-09-09-house-computer*.md` files that sat in `intake/` were
+moved, not deleted, to `intake/.adopted-2026-09-09/`, which the daemon ignores.
+They were NOT unprinted work: they are the sources of the 2026-09-09 print
+run, with 27 job directories under `~/Paper/jobs/` (three with `"printed": true`,
+the rest render iterations or `--submit-only` prints that never set the flag).
+A watcher left facing them would have reprinted about 270 KB of Markdown.
+
 2026-09-13 the Huion Note X10 is the paper inbox; the client runs one sync.
 Tom writes on the notepad anywhere, presses its button for each new page, and
 opens the cover near the client; the pages land on the coordinator as
