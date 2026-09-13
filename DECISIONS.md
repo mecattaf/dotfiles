@@ -339,6 +339,61 @@ run, with 27 job directories under `~/Paper/jobs/` (three with `"printed": true`
 the rest render iterations or `--submit-only` prints that never set the flag).
 A watcher left facing them would have reprinted about 270 KB of Markdown.
 
+2026-09-13 full herdr on the client; herdr-kitten leaves the fleet (#385).
+The client's terminal is a herdr PROJECTOR: a kitty with app-id
+`herdr-projector` running `home/dot_local/bin/herdr-projector`, which is
+`herdr --remote coordinator --remote-keybindings server` in a loop. Every
+herdr chord goes through `home/dot_local/bin/herdr-chord`, which types herdr's
+own prefix chord into ONE projector window through kitty remote control:
+Mod+Return is prefix+shift+n (a new workspace in the focused projector; with
+no projector focused, the old workspace hop, a new projector, and a fresh
+workspace in it); Mod+Ctrl+Shift+Return is prefix+b, herdr's sidebar with the
+agents panel ("instrumentalizing herdr's own sidebar is VERY desirable"); and
+Mod+Shift+N is prefix+shift+w, rename. Mod+Shift+Return stays plain kitty.
+The chords live in the RAW binds.kdl; home.nix's client slot no longer
+overrides them, and flake.nix `home-profiles` asserts both facts.
+
+Why a projector again, reversing 186b36d2's `ssh -t coordinator
+hk-new-inplace`. That spelling ran the herdr client ON the coordinator, and
+herdr's clipboard-image bridge only exists in a `--remote` client
+(src/client/clipboard_images.rs:66-73). A screenshot pasted from the laptop
+therefore never reached Claude Code or Codex, and Tom ruled image paste and
+image-file drop "important". 186b36d2's own requirement, "Mod+Return must give
+me a NEW terminal", is kept by the chord, not by leaving the projector.
+Keystrokes rather than the API because herdr's CLI focus is global: `herdr
+workspace create --focus` moves every attached window
+(server/headless/client_views.rs:857-863), and the sidebar, picker and rename
+are client-local overlays with no API verb.
+
+Reconnect is option (a), the wrapper. A plain `herdr --remote` exits 1 on a
+lost link (client/errors.rs:62-71). The wrapper retries any non-zero exit with
+1/2/5/10/30 s backoff while the window lives, stops on exit 0 (prefix+q or the
+window's hangup), and on every child exit and on HUP runs `ssh -O exit` on the
+child's `/tmp/herdr-ssh-<pid>-<n>/ctl` master and removes its
+`/tmp/herdr-remote-<pid>-*` socket, which herdr's own Drop never cleans after
+SIGHUP (remote/attach.rs:548-571). At start it also sweeps the leftovers of
+dead projectors. Option (b), saved-machine federation with herdr's native
+backoff UI, was not taken: `auto_detect_launch` spawns a LOCAL server when
+none is listening (server/autodetect.rs:295-320), which breaks ruling B5 and
+the thin-client rule. After a reattach the window lands on the server's
+default target, not necessarily the workspace it showed.
+
+herdr-kitten is removed fleet-wide, by Tom's ruling "herdr-kitten cannot cross
+ssh boundary, then we will have to live without it entirely". Gone: the input
+and its lock node, the package on all three hosts, the generated
+`kitty-herdr-nix.conf`, the three `hk` kitty maps (ctrl+b now reaches herdr;
+ctrl+g's fork gesture has no replacement; herdr's scrollback editor is
+prefix+e), `hk-new-inplace`, `hk-resume-agents`, `checks.herdr-kitten-input`,
+`tests/herdr/test-herdr-kitten-input.sh`, and voxtype's `hk voice` route and
+spinner. voxtype is enabled on no host; wtype is its only driver now, and
+#376's delivery must be herdr-native on the coordinator. `hk-prune-shells`
+never used `hk` and survives as `herdr-prune-shells`. The zenbook plan's R-16
+("the client carries no hk") is thereby implemented, by removal.
+docs/herdr/herdr-kitten-input.md is kept as history under a superseded header.
+The coordinator's herdr user unit is byte-identical before and after, so the
+switch restarts no pane. DEFERRED rows DF-U-D15-1 and DF-CLIENT-4, -5 and -10
+are deleted as moot. The sshd `ClientAlive*` question is DF-CLIENT-11.
+
 2026-09-13 herdr topology (#309): ruling B5 stands — ONE herdr server, on the
 coordinator; no second server on the worker or anywhere else. #309 set B5
 against `~/research-methods/PROMPTS.md` §6 ("the herdr runtime and the

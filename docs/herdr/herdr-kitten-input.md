@@ -1,5 +1,15 @@
 # The `herdr-kitten` input: what it pins, how it is fetched, and what checks it
 
+> **SUPERSEDED 2026-09-13 (#385).** The `herdr-kitten` input, its package,
+> the generated `kitty-herdr-nix.conf`, the `hk` kitty maps, the
+> `checks.herdr-kitten-input` check and `tests/herdr/test-herdr-kitten-input.sh`
+> are all removed fleet-wide: the kitten could not cross the ssh boundary to
+> the coordinator's one herdr server, and the client now drives a plain
+> `herdr --remote` projector (`home/dot_local/bin/herdr-projector`,
+> `herdr-chord`). DEFERRED rows DF-U-D15-1 and DF-U-D15-2 named below are
+> gone (the topology question, #309, was settled: ruling B5 stands). Kept as
+> the history of U-D15; nothing below describes the current tree.
+
 Written for U-D15 (`mecattaf/dotfiles#318`). It records the state of the
 `herdr-kitten` flake input after the round-2 re-pin — both halves of it, the rev
 and the URL form — the measurement that admitted the `github:` fetcher, and the
