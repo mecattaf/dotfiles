@@ -713,6 +713,7 @@
             chrome-stream
             crm
             dcal
+            fleet-status
             local-ai-monthly
             # `nix build .#local-models-prune` — the ONLY verb on this fleet
             # that deletes a working copy. Exposed so the guard suite can be
@@ -2543,6 +2544,52 @@
 
               touch "$out"
             '';
+
+        # fleet-status (#356): the snapshot's contract, hermetically. The suite
+        # drives the fan-out through a fake ssh playing four nodes (healthy,
+        # 30 s slow, ssh exit 255, garbage) and asserts bounded wall time,
+        # partial results, and that an absent node is UNREACHABLE/unknown and
+        # never zero; it runs the collector with no systemd on PATH, which must
+        # grade unknown, and with the appliance profile, which must grade
+        # missing-by-design. The eval asserts pin the per-host profiles every
+        # collector reads and the coordinator-only host list.
+        fleet-status =
+          let
+            etc = host: self.nixosConfigurations.${host}.config.environment.etc;
+            profile = host: builtins.fromJSON (etc host)."fleet-status/profile.json".text;
+            hostsJson = builtins.fromJSON (etc "coordinator")."fleet-status/hosts.json".text;
+          in
+          assert (profile "coordinator").name == "strix-desk";
+          assert
+            (profile "coordinator").roles == [
+              "runs"
+              "attention"
+              "fara"
+            ];
+          assert (profile "worker").name == "strix-inference";
+          assert (profile "worker").roles == [ "halogen" ];
+          assert (profile "nas").name == "appliance";
+          assert !(profile "nas").user_manager;
+          assert (profile "nas").roles == [ ];
+          assert (profile "client").name == "thin-client";
+          assert (profile "client").user_manager;
+          assert
+            map (h: h.name) hostsJson == [
+              "coordinator"
+              "worker"
+              "nas"
+              "client"
+            ];
+          assert !((etc "worker") ? "fleet-status/hosts.json");
+          pkgs.runCommand "fleet-status" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+            set -euo pipefail
+            export HOME="$TMPDIR/home"
+            export PYTHONDONTWRITEBYTECODE=1
+            export FLEET_STATUS_PY=${pkgs.fleet-status}/share/fleet-status/fleet_status.py
+            mkdir -p "$HOME"
+            python3 -m unittest discover -s ${./tests/fleet-status} -p 'test_*.py' -v
+            touch "$out"
+          '';
 
         # seats: one capacity oracle across every seat on this box. Hermetic —
         # SEATS_NO_NETWORK=1 and a home tree the test builds itself, because
