@@ -179,6 +179,37 @@ tally, tally-b and tally-lake. Not taken: a read-only GitHub token on the NAS
 (breaks the no-repo-key doctrine) and pushing the trees into Attic (its
 one-month retention would expire a pin that rarely moves).
 
+2026-09-13 fleet status is a snapshot, not a monitoring stack (#356).
+`fleet-status [--json]` on the coordinator answers "what is alive, busy,
+stale, broken, waiting or unsafe to disturb right now" by running
+`fleet-status-collect --json` on all four hosts over the existing root SSH
+mesh. The collectors run in parallel with an 8 s deadline per node, and
+partial results are allowed. There is no daemon, no timer, no exporter and no
+database. Every fact carries its source, its observation time and a grade:
+measured, unknown or missing-by-design. Each host's
+/etc/fleet-status/profile.json (modules/fleet-status.nix) is what separates
+"missing by design" (the NAS has no user manager) from "unknown" (a twin's
+user manager did not answer). A node that is silent, dead or returns garbage
+shows as TIMEOUT, UNREACHABLE or ERROR with no facts, and never as zero load.
+The client is a laptop, so an UNREACHABLE client is an expected reading, not
+a failure of the tool. pkgs/fleet-status/SCHEMA.md is the contract.
+
+The planes keep their own authorities. Failures come from systemd,
+bounded journald field matches and /var/lib/failure-markers. Update facts
+come from #354's `update-adopt status --json` and stay unknown until that
+verb is enrolled. Inference comes from the worker's Halogen `/health` and
+podman-halogen units, plus the coordinator's FARA unit; llama-swap and
+flashnext-lane no longer exist. Tally contributes unit states and IDs only,
+for both planes: tally-kernel's ledger lease IDs and tally-daemon's running
+job IDs. Herdr contributes agent states and per-pane age plus process-tree
+RSS, and it reports the server's own RSS apart from herdr.service's cgroup,
+because the cgroup holds every pane's descendants (#357).
+
+Not installed for v1: Prometheus, Grafana, Loki, Cockpit or any always-on
+store. Retention is revisited only when a real question needs history that
+the journal and the failure markers cannot answer. When that happens, export
+selected fields from this schema; do not rebuild it.
+
 2026-09-13 the Huion Note X10 is the paper inbox; the client runs one sync.
 Tom writes on the notepad anywhere, presses its button for each new page, and
 opens the cover near the client; the pages land on the coordinator as
