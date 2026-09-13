@@ -116,6 +116,50 @@ also run `nix flake lock --update-input`. They are run once by the integrator
 after the merge, not per lane. tools/u-d17-util-01-oracle.sh's SHA constants
 now track the dotfiles re-lock rather than the card's instrument_sha256.
 
+2026-09-13 fleet updates are adopted per host from signed NAS candidates
+(#354). The NAS update-center, after each host's `attic push`, publishes
+`http://nas:8734/candidates/<host>/manifest.json` + `.sig` (schema 1: host,
+rev, last_modified, store_path, built_at), signed by the NAS SSH host key in
+namespace `fleet-update`, swapped atomically; a failed host keeps its old
+pointer. `update-center-publish HOST PATH FLAKEREF` publishes a closure built
+elsewhere. Each device runs modules/update-adopt.nix: hourly stage (verify
+against mesh-registry's NAS key, realise the exact store path from Attic, no
+flake eval), activation every 30 min behind local gates, `switch` or — when
+kernel/initrd/params differ from the booted system — `boot` with a
+pending-reboot marker after 72 h (rebootPolicy notify, never an unattended
+reboot), 10-minute probes, and a local rollback to the previous generation
+that rejects the candidate and fails the unit. Busy, newer-local, manual and
+unreachable-NAS outcomes exit 0 with receipts; `update-adopt status --json`
+is the freshness surface.
+
+Policies: worker rolling (gates: Halogen /health in_flight/queued and live
+:8731 sessions, any active alternate); coordinator rolling (gates: any Herdr
+agent not idle/done, fara-browser-model or browser-desktop active, a
+tally-kernel row holder via rows.read, a live tally pool lease via `tally
+query pools`); client manual (R-18: discover and report only); NAS NOT
+enrolled (2026-08-21 ruling stands: not built nightly, manual pinned bump).
+Common gates: another rebuild running, free space, memory PSI.
+
+Three safety rules came with it. (1) Every closure records its revision —
+`system.configurationRevision` and `$out/fleet-revision.json` {rev, dirty,
+lastModified} — and adoption refuses unless the running generation is clean,
+recorded, and strictly older by commit lastModified than the candidate's own
+file; hosts switched from a local checkout ahead of main, or from a dirty
+tree, are never rolled back by a nightly (`update-adopt adopt --force` is the
+override, which never skips gates). A consequence accepted: every commit now
+changes every host's toplevel. (2) Herdr is never restarted by a switch:
+home/herdr.nix sets `X-SwitchMethod=keep-old`, verified against the pinned
+sd-switch 0.6.4 and home-manager 079a3b5 sources and asserted by the
+herdr-oom-isolation check; a herdr bump now needs a deliberate `systemctl
+--user restart herdr` (DF-CLIENT-7's stance). tally-kernel's restart policy is
+unchanged; the lease gate covers it instead. (3) gc-retention never prunes the
+generation at gcroots/update-adopt/last-known-good. The coordinator was
+committed stage-only first and flipped to rolling as the series' last commit,
+after the hermetic downgrade cases passed; that commit is the one to drop if
+the live downgrade refusal on the worker does not hold. Not taken:
+Kubernetes, Proxmox, a fourth node, a second package-signing system, Tally as
+the update scheduler.
+
 2026-09-13 the NAS update-center gets private inputs by seeding, not by a
 token. From 2026-09-10 every nightly build failed on `Failed to fetch git
 repository 'https://github.com/mecattaf/tally'`: flake.lock pins tally-b

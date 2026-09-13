@@ -120,11 +120,14 @@
   # A switch that leaves herdr, tally-kernel or caddy down (having been up)
   # is rolled back.
   #
-  # POLICY stage-only UNTIL the downgrade guard is proven live on the worker
-  # (challenger correction 6): the closure is realised, never activated here.
+  # POLICY rolling (Tom's #354 decision text). It was committed stage-only
+  # first and flipped in its own commit once the hermetic downgrade cases
+  # passed (checks.update-adopt); if the live downgrade refusal on the worker
+  # does not hold after deploy, revert that one commit and this box goes back
+  # to staging only.
   myUpdateAdopt = {
     enable = true;
-    policy = "stage-only";
+    policy = "rolling";
     userManagers = [ "tom" ];
     gates = [
       {
