@@ -32,6 +32,11 @@
 #     transcript mirror, no dcal daemon, no paper timers. Every one of those
 #     is `hostName == "coordinator"`-gated in home/; the flake's home-profiles
 #     check asserts their absence here.
+#   * not a runner of anything, with ONE exception — ./huion.nix pulls the
+#     Huion Note X10's pages over Bluetooth on connect and pushes them to
+#     coordinator:~/Paper/inbox (one udev-triggered oneshot, one retry
+#     timer, a patched bluetoothd), because the radio is here
+#     (DECISIONS.md, 2026-09-13). Nothing else is added to this box for it.
 #   * not a server of anything — no wayvnc (no VNC in the fleet since the
 #     2026-09-11 headless flip: home/remote.nix and its Remmina viewer
 #     profile went with the coordinator's session), no atuin server, no

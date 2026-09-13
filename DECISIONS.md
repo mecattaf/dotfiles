@@ -1,5 +1,49 @@
 # DECISIONS
 
+2026-09-13 the Huion Note X10 is the paper inbox; the client runs one sync.
+Tom writes on the notepad anywhere, presses its button for each new page, and
+opens the cover near the client; the pages land on the coordinator as
+`~/Paper/inbox/<YYYY-MM-DD_HHMMSS>/page{N}-DD-MM.{svg,png,json}`. "the huion
+IS the inbox" — `inbox/` holds nothing but these folders; printable markdown
+stays in `intake/`, the print loop's. OCR is a later coordinator-side
+consumer of `inbox/` and is not declared.
+
+This is a deliberate, narrow exception to the client being a thin client
+that runs nothing: the Bluetooth radio is on the client, so the client pulls
+and pushes, and nothing else. hosts/client/huion.nix is the whole of it —
+a patched bluetoothd (the extractor repo's att.c fix for the X10's duplicate
+MTU request, still needed on 5.86), a udev rule that unbinds the notepad's
+uhid device from hid-generic on every connect and wants huion-sync.service,
+that oneshot (as tom) dumping into /var/lib/huion-sync/spool and rsyncing
+to the coordinator, and huion-push.timer retrying the push alone. The
+extractor is pkgs/huion-notes.nix, Reginleif88/huion-note-x10-ble pinned to
+6f3f5e7, strokes thinned to 1.2 on its 900 px canvas (Tom's sample b).
+
+The device is CLEARED as soon as a page is on the client's disk, not after
+the push: the extractor cannot wait, so the spool is the durability buffer
+and a down coordinator costs nothing but a delay. Tom asked for the
+clearing ("this is indeed desirable"). Pairing is a one-time manual act and
+already done; no permanent agent is declared (re-pair steps: the file's
+header). Not taken: disabling BlueZ's input plugin, which would also take
+the Duo's own Bluetooth keyboard.
+
+Verified on the metal the same evening, closure deployed from the
+coordinator with `--target-host root@10.42.0.16`: patched daemon running,
+bond intact; 3 disposable test pages pulled, cleared and pushed; an empty
+opening made no folder; page A, button, page B arrived as page1+page2 of
+one folder; with `inbox/` made read-only the page stayed in the spool, the
+device was still cleared, and huion-push.timer delivered it once writable.
+Two quirks recorded, not solved: the first dump after the daemon restart
+timed out (~37 s) and only the in-script retry succeeded — every later one
+succeeded first try in 3–8 s; and a reopen can raise two HID instances a
+second apart, which merge into one run. Two fixes came out of the
+testing: huion-sync fails only when the dump fails (a failed push is
+huion-push's state, which clears itself once the batch lands), and both
+units are restartIfChanged = false after a switch killed one dump and
+started another. Not run: a reboot followed by an opening. `nixos-rebuild switch`
+does NOT restart bluetooth.service — a first deploy of a bluez change needs
+`systemctl restart bluetooth` or a reboot.
+
 2026-09-13 the client's dock carries no display; the PA27JCV never moved.
 The 2026-09-11 entry below says "the PA27JCV moves to the client's
 Thunderbolt dock". It did not, and the kanshi profiles written for it
