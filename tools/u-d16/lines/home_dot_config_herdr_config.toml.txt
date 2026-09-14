@@ -61,7 +61,6 @@ height = "85%"
 # ("{hostname}: {workspace}") would fight the terminal for it.
 if out=$(tally campaign pardon "$3" "$4" --task "$2" --reason "operator pardon from herdr lane pane $HERDR_ACTIVE_PANE_ID (prefix+shift+a); the attempt budget was spent on something other than this task's content" 2>&1); then
 # is noise (upstream default: true).
-# (it belongs to the herdr-kitten repo), tally heartbeat emission, a
 #          | jq -r .result.pane.pane_id)
 json=$(tally campaign inbox "$3" "$4" --state open --json 2>&1) || { echo "$json"; read -r _; exit 1; }
 key = "prefix+i"

@@ -1,0 +1,6 @@
+        # is gone too — herdr's own workspace/session pickers cover resume on
+        # No name seed and no pre-create: herdr owns session identity, so the
+        # old `term-<mmdd-HHMMSS>-<rand>` scheme retired with it. `desk-resume`
+    # terminal is a *projector*: it reaches the one herdr server on the
+    # The coordinator is where sessions live. On another box (a thin client) a
+        # the remote tier (ruling B18).

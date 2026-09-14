@@ -10,7 +10,6 @@
 8a10790243d72b3d31a54f7c6a080670eab87523	flows/issue-96-drain.js
 905bfd4b2c53e8362f5c6ee1eee9f5630e55f5ed	tests/nightly-record/fixtures/home/.claude/projects/proj/session.jsonl
 9082cb329b1cac079fa0506dc071b5a55b439a1b	home/dot_config/nvim/lua/plugins/lualine.lua
-90dc7a3ac51f57a75e6dafa625af6f88dcd48bb6	home/dot_local/bin/tally-steer
 a149b8777ef0770c631cac868cc637ede8164315	tests/nightly-record/fixtures/home/.claude-3/projects/proj/session.jsonl
 ac3255465da5be16ad1894b55e610146e549e273	flows/parakeet-determinism.js
 ac5f2e6527d170104a8739529a7555cffcd0ada7	home/dot_local/bin/claude-capacity
@@ -20,5 +19,4 @@ d807382d2d673cf835b07433b396a955e1bf137c	home/dot_config/niri/scripts/sleep-moni
 db1ed09246c0d18e788bb8ab3d9be1e78e3da0fd	home/dot_local/bin/claude-transcript-mirror
 debc8b743d2471cbd27c409bf50bb011af1435b1	home/dot_config/starship/starship.toml
 e7a32fe0d6a6acb38efaa4770fb3148f36bfd2a9	tests/nightly-record/fixtures/home/.claude-work/projects/proj/session.jsonl
-f85ea0a76abc7325545d98883530cc96ead8f6f0	home/dot_config/fish/conf.d/remote.fish
 fc22f4eed209d296c19023b69b0c091b20c6525d	home/nvim/plugins.lua.in

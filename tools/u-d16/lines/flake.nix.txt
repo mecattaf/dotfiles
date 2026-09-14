@@ -25,11 +25,9 @@
             # be anything but the first step back toward an executor.
             # conflated them because, while the host was retired, no row could
             #   (CONSOLIDATED §3 Q2). The GPU cooldown tripwire that used to
-    # CONSUMED AS AN INPUT, NEVER VENDORED (ruling B3): `nix flake update
     # Consume `packages.<sys>.herdr` ONLY (home/herdr.nix). Upstream composes
             #   COORDINATOR'S POOL TABLE, not an executor and not a daemon —
               cp "$TMPDIR/out" $out
-    # create/attach/resume/rename, the dictation endpoint, the recording
         # dead token — so it runs inside the sandbox with no network.
             #   declares `executors = { }`, and the worker runs no daemon
     # deleted in favour of one server holding every PTY.
@@ -46,26 +44,19 @@
               export NIGHTLY_RECORD_SCRIPT=${./home/dot_local/bin/nightly-record}
               export PYTHONDONTWRITEBYTECODE=1
             fi
-    # fixpoint (F.3) — and keep it out of `rollingInputOverrides` (F.4) for the
         # from the harness transcripts and nothing else. Same shape as
     # (github.com/herdrdev/herdr, Apache-2.0). It is the upstream PRODUCT that
             # HALF of Tom's old ruling survives, and the halves are now split
     herdr = {
-    herdr-kitten = {
-    # herdr-kitten` is the entire upgrade story. Consume
-    # herdr-kitten — the repo where herdr IS the kitty kitten: one stdlib-Python
     # herdr — the terminal workspace manager for AI coding agents
             # HOST again, never a Tally executor AND never a Tally pool.
           # how `herdr --remote coordinator` works at all), just no unit.
         # impossible to notice by eye, so they are asserted here.
         # in a temp XDG_RUNTIME_DIR with a temp HOME holding a deliberately
-      inputs.herdr.follows = "herdr";
       inputs.nixpkgs.follows = "nixpkgs";
         # into a spent subscription window, and one that turns headroom into
             # is narrower than the file it lands in.
             #   is now a per-GPU row for each of the two devices, and the second
-    # it is the reason this repo could delete its six home-grown kittens and the
-    # kitten (four gestures on kitty's GUI thread) plus the `hk` CLI (workspace
     # kitten tier, its session layer, and its title-naming pipeline are all
               mkdir -p "$HOME"
         # module and the dispatch admission gate, so its three exit codes
@@ -83,7 +74,6 @@
             #   one is named after the box that holds it. It is a ROW IN THE
           # one per device, declared vram — not a budget row, not a mutex, and
     # our one pin rather than dragging a second nixpkgs into the lock. `nix flake
-    # `packages.<sys>.herdr-kitten` only — no overlay of its own reaches our pkgs
           # Pinning the SHAPE is worth more than pinning the absence: capacity
                 pkgs.coreutils
                 pkgs.findutils
@@ -100,9 +90,7 @@
     # rust-overlay into its own pkgs fixpoint to build the Rust toolchain from
     # rust-toolchain.toml; that must never reach ours, so no overlay of theirs is
                 -s ${./tests/nightly-record} \
-    # same reason herdr is out: it fronts live PTYs.
               set -euo pipefail
-    # spinner). It is the whole integration layer between kitty and herdr, and
             #   STILL TRUE, and asserted structurally below: never an EXECUTOR.
             #   SUPERSEDED by CONSOLIDATED §3 Q1 at the sheet's default
           # Tally executor. Both directions, because `executors == { }` alone
@@ -121,5 +109,4 @@
     # update tally` bumps to the latest pushed commit (and, post-release, the tag).
                 -v
     # when Tom says so, never on a nightly resolve.
-    # whole script tier under them outright.
           # would pass a config that renamed the attribute.

@@ -6,6 +6,7 @@ flows/docs-model-split.js	lines/flows_docs-model-split.js.txt
 flows/errata-map.js	lines/flows_errata-map.js.txt
 flows/README.md	lines/flows_README.md.txt
 home/dot_claude/settings.json	lines/home_dot_claude_settings.json.txt
+home/dot_config/fish/conf.d/remote.fish	lines/home_dot_config_fish_conf.d_remote.fish.txt
 home/dot_config/herdr/config.toml	lines/home_dot_config_herdr_config.toml.txt
 home/dot_config/kitty/kitty.conf	lines/home_dot_config_kitty_kitty.conf.txt
 home/dot_config/niri/binds.kdl	lines/home_dot_config_niri_binds.kdl.txt
@@ -16,6 +17,7 @@ home/dot_config/waybar/modules	lines/home_dot_config_waybar_modules.txt
 home/dot_config/waybar/style.css	lines/home_dot_config_waybar_style.css.txt
 home/dot_local/bin/clip2path	lines/home_dot_local_bin_clip2path.txt
 home/dot_local/bin/l8-flash-probe	lines/home_dot_local_bin_l8-flash-probe.txt
+home/dot_local/bin/tally-steer	lines/home_dot_local_bin_tally-steer.txt
 home/herdr.nix	lines/home_herdr.nix.txt
 home/home.nix	lines/home_home.nix.txt
 home/voxtype.nix	lines/home_voxtype.nix.txt

@@ -3,13 +3,9 @@
       }
       },
     },
-          "herdr"
           "herdr",
-        "herdr": [
     "herdr": {
         "herdr": "herdr",
-    "herdr-kitten": {
-        "herdr-kitten": "herdr-kitten",
       "inputs": {
         "lastModified": 1783577481,
       "locked": {

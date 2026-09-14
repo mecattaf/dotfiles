@@ -68,7 +68,6 @@ fail=0
   fi
 fi
 # file there. FragmentPath is therefore the one field that says which of the
-for binary in herdr hk; do
     for gone in codex-window claude-window; do
 for leaf in settings.json skills; do
 for timer in claude-transcript-mirror.timer nightly-record.timer; do
