@@ -1813,10 +1813,14 @@
           assert nixpkgs.lib.hasInfix "ip saddr 10.42.0.2 tcp dport 28981 accept" nas.networking.firewall.extraInputRules;
           assert !(builtins.elem 28981 nas.networking.firewall.allowedTCPPorts);
           assert !(builtins.elem "tailscale0" nas.networking.firewall.trustedInterfaces);
-          # Without these two ACLs the consumer cannot reach its spool and the
-          # bridge (tom) cannot stat a projection (hosts/nas/paperless.nix).
+          # Without the ACL the consumer cannot reach its spool; without the
+          # view ownership the bridge (tom) cannot verify (hosts/nas/paperless.nix).
           assert builtins.elem "a+ /mnt/nas/documents - - - - u:paperless:--x" nas.systemd.tmpfiles.rules;
-          assert builtins.elem "a+ /mnt/nas/documents/.paperless-view - - - - u:tom:r-x" nas.systemd.tmpfiles.rules;
+          assert builtins.elem "z /mnt/nas/documents/.paperless-view 0770 tom paperless -" nas.systemd.tmpfiles.rules;
+          assert builtins.elem "z /mnt/nas/services/paperless/media/documents 0750 paperless paperless -" nas.systemd.tmpfiles.rules;
+          # The relay auto-logs in a superuser: only the client and tailnet
+          # peers may reach it, never another LAN host (2026-09-14: the worker got 200).
+          assert nixpkgs.lib.hasInfix "not remote_ip" coordinator.services.caddy.virtualHosts."http://paperless.internal".extraConfig;
           assert !coordinator.myNasClient.relayAttic;
           # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
           # 2026-08-03: the staged Jellyfin alternative was deleted, not kept

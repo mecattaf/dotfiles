@@ -924,10 +924,14 @@ def fetch_node(host: dict) -> dict:
     # hosts.json dials every node, the coordinator included, as root over
     # ssh, because update-adopt's state is root-only (modules/fleet-status.nix).
     if host.get("transport") == "local":
-        argv = [os.environ.get("FLEET_STATUS_COLLECT", "fleet-status-collect"), "--json"]
+        argv = [os.environ.get("FLEET_STATUS_COLLECT", "fleet-status-collect"), "collect", "--json"]
     else:
         ssh = os.environ.get("FLEET_STATUS_SSH", "ssh")
-        argv = [ssh, "-o", "BatchMode=yes", "-o", "ConnectTimeout=3", host["target"], "fleet-status-collect", "--json"]
+        # "collect" is named explicitly: the installed wrapper runs python3 on
+        # this file, so sys.argv[0] is fleet_status.py and argv0-based dispatch
+        # never saw "-collect" (2026-09-14 acceptance: every node read as a
+        # schema error). The subcommand works against any deployed collector.
+        argv = [ssh, "-o", "BatchMode=yes", "-o", "ConnectTimeout=3", host["target"], "fleet-status-collect", "collect", "--json"]
     started = time.monotonic()
     try:
         proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.DEVNULL, text=True, start_new_session=True)

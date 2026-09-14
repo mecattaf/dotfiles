@@ -23,9 +23,12 @@ stdenvNoCC.mkDerivation {
     runHook preInstall
     install -Dm0644 fleet_status.py $out/share/fleet-status/fleet_status.py
     install -Dm0644 SCHEMA.md $out/share/doc/fleet-status/SCHEMA.md
+    # --argv0 does not reach Python's sys.argv[0] (that is the script path),
+    # so the collector's entry point passes its subcommand explicitly.
     for bin in fleet-status fleet-status-collect; do
+      sub=""; [ "$bin" = fleet-status-collect ] && sub=collect
       makeWrapper ${python3.interpreter} $out/bin/$bin \
-        --add-flags "$out/share/fleet-status/fleet_status.py" \
+        --add-flags "$out/share/fleet-status/fleet_status.py $sub" \
         --argv0 $bin \
         --suffix PATH : ${
           lib.makeBinPath [

@@ -50,7 +50,7 @@
 # .snapshots/documents.pre-paperless-20260913T2241 were done before the flip,
 # the rest is post-deploy acceptance):
 #   1. mkdir the runbook dirs (tmpfiles 'z'-only doctrine, storage.nix):
-#        mkdir -m 750 /mnt/nas/documents/.paperless-view    (chown paperless)
+#        mkdir -m 770 /mnt/nas/documents/.paperless-view    (chown tom:paperless)
 #        mkdir -m 770 /mnt/nas/documents/.paperless-consume (chown tom:paperless)
 #        mkdir -m 755 /mnt/nas/views
 #   2. deploy; verify paperless-web answers on 10.42.0.1:28981 from the
@@ -60,9 +60,11 @@
 #      in the NixOS table) — and http://paperless.internal works from a
 #      tailnet client with auto-login (myNasClient.relayPaperless flipped in
 #      the same commit — the checks pair them).
-#   3. mint the bridge API token:
+#   3. mint the bridge API token AS ROOT (tom cannot read the secret-key env,
+#      so `sudo -u tom paperless-manage` dies on PAPERLESS_SECRET_KEY):
 #        paperless-manage drf_create_token tom \
-#          > /mnt/nas/services/paperless/bridge/api-token   (0600 tom)
+#          > /mnt/nas/services/paperless/bridge/api-token
+#        chown tom /mnt/nas/services/paperless/bridge/api-token; chmod 0600 …
 #   4. canary corpus admission per #136 §4: paperless-bridge scan / ingest
 #      --batch 4 / relink / verify on one born-digital academic, one scanned
 #      academic, one legacy scan, one general PDF; prove identical sha256 AND
@@ -320,21 +322,28 @@ in
       "d ${storageRoot}/views 0755 root root -"
       # Runbook-created ('z' adjust-only, storage.nix doctrine — a 'd' here
       # could silently precede the documents subvolume mount):
-      "z ${viewDir} 0750 ${config.services.paperless.user} ${config.services.paperless.user} -"
+      # tom:paperless 0770, not paperless-owned: documents/ is tom's, and
+      # systemd-tmpfiles refuses an owner change under a non-root parent
+      # ("unsafe path transition", 2026-09-14 acceptance), which skipped both
+      # this rule and the old u:tom ACL and left the view root:root 0750 —
+      # paperless could not write originals and tom could not verify.
+      "z ${viewDir} 0770 tom ${config.services.paperless.user} -"
       "z ${spoolDir} 0770 tom ${config.services.paperless.user} -"
       # Cross-user reachability (found by the 2026-09-13 verification, before
       # any deploy): documents/ is 0750 tom:users (storage.nix) and the
       # paperless user is in neither, so without the first entry the
-      # consumer cannot even reach its own spool. The view tree is 0750
-      # paperless, so without the second the bridge, which runs as tom, cannot
-      # stat a projection, and every verify would report missing-projection.
-      # Named-user ACLs, traverse-only for paperless, grant exactly this
+      # consumer cannot even reach its own spool. (The view tree needs no
+      # second ACL: tom owns it, paperless writes it through the group.)
+      # A named-user ACL, traverse-only for paperless, grants exactly this
       # much and no group membership. They work under the module's
       # PrivateUsers=true because the kernel checks the real kuid. 'a+' only
       # adjusts: it never creates a path before the subvolume mounts, and
       # storage.nix's 0750 chmod keeps the mask at r-x.
       "a+ ${documentsRoot} - - - - u:${config.services.paperless.user}:--x"
-      "a+ ${viewDir} - - - - u:tom:r-x"
+      # The originals bind mount creates media/documents root:root 0755 before
+      # paperless does, and every consume then failed on
+      # media/documents/thumbnails (2026-09-14). 'z' adjusts it once it exists.
+      "z ${serviceRoot}/media/documents 0750 ${config.services.paperless.user} ${config.services.paperless.user} -"
     ];
 
     # The bridge CLI and its narrow root helper. The sudo rule is the entire

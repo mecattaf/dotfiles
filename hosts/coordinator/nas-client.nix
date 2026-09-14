@@ -394,7 +394,12 @@ in
         })
       ];
 
+      # Paperless auto-logs in as tom (superuser), so this vhost answers only
+      # the client seat and tailnet peers. Without the matcher any LAN host
+      # resolving paperless.internal got the UI (2026-09-14: the worker, 200).
       services.caddy.virtualHosts."http://paperless.internal".extraConfig = ''
+        @outside not remote_ip 127.0.0.1/8 10.42.0.16/32 100.64.0.0/10
+        respond @outside 403
         reverse_proxy 127.0.0.1:28981
       '';
     })
