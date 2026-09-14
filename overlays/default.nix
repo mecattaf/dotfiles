@@ -92,6 +92,7 @@ final: prev: {
   browser-desktop = final.callPackage ../pkgs/browser-desktop { };
   # CDP screencast viewer; installed beside browser-desktop, coordinator only.
   chrome-stream = final.callPackage ../pkgs/chrome-stream { };
+  keyring-unlock = final.callPackage ../pkgs/keyring-unlock { };
 
   # Monthly local-AI update bot: deterministic Git/HF preparation, one Pi
   # judgment, deterministic verification/publication. Tally leases only Pi.

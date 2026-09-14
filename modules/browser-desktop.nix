@@ -10,7 +10,7 @@ in {
     # browser on this host: headless Chrome's CDP screencast, viewer and CDP both
     # on loopback, carried to the client by `ssh -L`. It rides this module so it
     # exists exactly where the shared browser desktop does, the coordinator.
-    environment.systemPackages = [ pkgs.browser-desktop pkgs.chrome-stream ];
+    environment.systemPackages = [ pkgs.browser-desktop pkgs.chrome-stream pkgs.keyring-unlock ];
     systemd.user.services.browser-desktop = {
       description = "Shared browser desktop (Sway and WayVNC)";
       # Keep open browser windows through configuration updates. Compositor
