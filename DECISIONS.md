@@ -47,6 +47,12 @@ written into the tree again. NOT done: rotating the Navidrome password
 (re-encrypting navidrome-credentials) or rewriting history. The only
 listener is tailscale0:4533, so exposure is limited to the tailnet. Rotation
 stays Tom's call.
+(3) 2026-09-14: docs/runbook-conventions.md does NOT carry #263's proposed
+one-boot form `systemctl mask --runtime`. Measured on the coordinator, it
+exits 0 and masks nothing on NixOS, because /etc/systemd/system (where the
+store puts the unit) outranks /run/systemd/system. The one-boot form is a
+runtime drop-in with a false Condition, which is merged from /run and does
+take effect.
 
 2026-09-13 the Huion Note X10 is the paper inbox; the client runs one sync.
 Tom writes on the notepad anywhere, presses its button for each new page, and
