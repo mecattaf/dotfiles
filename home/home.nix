@@ -159,6 +159,34 @@ in
   # ---------------------------------------------------------------------------
   # RAW configs (whole-dir per ~/.config/<name>).
   # ---------------------------------------------------------------------------
+  # cliamp's one-time move from a whole-dir link to a real directory
+  # (2026-09-14). Home Manager cannot make that move by itself: its cleanup
+  # keeps the old ~/.config/cliamp link (the new generation still has a
+  # .config/cliamp path), and its link step then backs up config.toml and
+  # themes/ THROUGH that link, i.e. inside the repo checkout, and writes
+  # store symlinks there that resolve back to themselves. Reproduced with this
+  # Home Manager's own check-link-targets/cleanup/link scripts in a scratch
+  # HOME. So before linkGeneration, drop the old link when it points into a
+  # Home Manager generation, create the real directory, and carry cliamp's
+  # history.toml and resume.json across so nothing is lost. Idempotent: once
+  # ~/.config/cliamp is a real directory the test is false. Removable once
+  # every host has switched past it.
+  home.activation.cliampRealDir = lib.hm.dag.entryBetween [ "linkGeneration" ] [ "writeBoundary" ] ''
+    cliamp_dir="$HOME/.config/cliamp"
+    if [[ -L "$cliamp_dir" && "$(readlink "$cliamp_dir")" == $(readlink -e /nix/store)/*-home-manager-files/* ]]; then
+      cliamp_old="$(readlink -e "$cliamp_dir" || true)"
+      run rm $VERBOSE_ARG "$cliamp_dir"
+      run mkdir -p $VERBOSE_ARG "$cliamp_dir"
+      if [[ -n "$cliamp_old" ]]; then
+        for f in history.toml resume.json; do
+          if [[ -f "$cliamp_old/$f" && ! -e "$cliamp_dir/$f" ]]; then
+            run cp -p $VERBOSE_ARG "$cliamp_old/$f" "$cliamp_dir/$f"
+          fi
+        done
+      fi
+    fi
+  '';
+
   xdg.configFile =
     lib.genAttrs configDirs (d: {
       source = link "dot_config/${d}";
