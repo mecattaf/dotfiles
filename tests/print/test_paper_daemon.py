@@ -142,6 +142,21 @@ def main(name):
                                "job-name": job["title"], "job-state": 5,
                                "job-state-reasons": "job-printing",
                                "job-impressions-completed": 1})
+        if state.get("glued") and which == "completed":
+            # ipptool -j as the real Brother answers two finished jobs: the
+            # second job's attributes continue the first job's object with no
+            # separator (2026-09-14, jobs 299 and 298). Not valid JSON.
+            jobs = [g for g in groups if g["group-tag"] == "job-attributes-tag"]
+            jobs.append({"group-tag": "job-attributes-tag", "job-id": 298,
+                         "job-name": "paper-older-20260914T085707", "job-state": 9,
+                         "job-state-reasons": "job-completed-successfully",
+                         "job-impressions-completed": 1})
+            blocks = [",\n".join(f'        "{k}": {json.dumps(v)}' for k, v in j.items() if k != "group-tag")
+                      for j in jobs]
+            print('[\n    {\n        "group-tag": "operation-attributes-tag"\n    },\n'
+                  '    {\n        "group-tag": "job-attributes-tag",\n' + "\n".join(blocks) + "\n    }\n]")
+            print("successful-ok")
+            return 0
         emit_ipp(groups)
         return 0
     if name == "journalctl":
@@ -299,6 +314,18 @@ class WorkingHoursTests(DaemonHarness):
         rendered = json.loads(self.render_log.read_text().splitlines()[0])
         self.assertIn("--target-pages", rendered)
         self.assertEqual(rendered[rendered.index("--sides") + 1], "one-sided")
+
+    def test_two_finished_jobs_in_one_get_jobs_answer_still_give_a_receipt(self) -> None:
+        # The first real two-page print after an earlier job failed at the
+        # deadline: strict JSON could not read ipptool's glued job list.
+        self.state["glued"] = True
+        self.save_state()
+        self.drop("second")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = self.receipt("second")
+        self.assertEqual(receipt["printer_job_state"], "completed")
+        self.assertFalse((self.paper / "failed").exists() and any((self.paper / "failed").iterdir()))
 
     def test_receipt_waits_for_the_printer_not_for_lp(self) -> None:
         self.state["polls_hidden"] = 3  # the printer lists the job only later

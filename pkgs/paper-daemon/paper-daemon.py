@@ -258,8 +258,52 @@ def ipptool_json(uri: str, test: str, *defines: str) -> tuple[list, str]:
     try:
         groups, _ = json.JSONDecoder().raw_decode(raw[start:])
     except json.JSONDecodeError:
-        return [], raw + result.stderr
+        # ipptool -j does not separate jobs: with two or more jobs in one
+        # Get-Jobs answer the second job's attributes continue the first
+        # job's object with no comma or brace (seen 2026-09-14: job 299's
+        # "job-impressions-completed": 2 followed directly by "job-id": 298).
+        # Strict JSON then fails, no job matched, and a job the printer had
+        # completed was failed at the deadline. Read it leniently instead.
+        groups = lenient_ipp_groups(raw[start:])
     return groups if isinstance(groups, list) else [], raw + result.stderr
+
+
+def lenient_ipp_groups(text: str) -> list:
+    """One dict per group; a repeated job-id inside a group starts a new job."""
+    groups: list = []
+    cur: dict | None = None
+    lines = iter(text.splitlines())
+    for line in lines:
+        s = line.strip().rstrip(",")
+        if s == "{":
+            cur = {}
+            groups.append(cur)
+            continue
+        m = re.match(r'^"([^"]+)":\s*(.*)$', s)
+        if cur is None or not m:
+            continue
+        key, value = m.group(1), m.group(2)
+        if value == "[":
+            items = []
+            for item in lines:
+                t = item.strip().rstrip(",")
+                if t == "]":
+                    break
+                try:
+                    items.append(json.loads(t))
+                except ValueError:
+                    items.append(t)
+            parsed: object = items
+        else:
+            try:
+                parsed = json.loads(value)
+            except ValueError:
+                parsed = value
+        if key == "job-id" and "job-id" in cur:
+            cur = {"group-tag": cur.get("group-tag")}
+            groups.append(cur)
+        cur[key] = parsed
+    return groups
 
 
 def queue_problems() -> tuple[list[str], dict]:
