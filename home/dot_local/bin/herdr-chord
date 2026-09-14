@@ -27,8 +27,10 @@
 #            empty trailing niri workspace of the focused output, spawn a
 #            projector there, and give it a fresh workspace ("Mod+Return must
 #            give me a NEW terminal", 186b36d2, kept).
-#   sidebar  focused projector, else the most recently focused one (focused
-#            first), else a new one.
+#   sidebar  ALWAYS a new projector window on the empty trailing workspace,
+#            opened with herdr's agents sidebar showing — never a toggle in a
+#            window already open (Tom, 2026-09-14: "a new terminal regardless
+#            of whether i already have a herdr terminal open or not").
 #   rename   focused projector only; elsewhere it does nothing.
 #
 # READY. A chord typed before the projector's herdr client has finished its
@@ -120,7 +122,7 @@ focused="$(niri msg -j focused-window 2>/dev/null || true)"
 focused_app="$(jq -r '.app_id // empty' <<<"${focused:-null}" 2>/dev/null || true)"
 focused_pid="$(jq -r '.pid // empty' <<<"${focused:-null}" 2>/dev/null || true)"
 
-if [ "$focused_app" = "$class" ] && [ -n "$focused_pid" ]; then
+if [ "$verb" != sidebar ] && [ "$focused_app" = "$class" ] && [ -n "$focused_pid" ]; then
   send_chord "$focused_pid"
   exit 0
 fi
@@ -130,19 +132,7 @@ case "$verb" in
     # Nothing to rename outside a projector; stay silent like an unbound key.
     exit 0
     ;;
-  sidebar)
-    recent="$(windows_json | jq -r --arg c "$class" '
-      [.[] | select(.app_id == $c)]
-      | max_by([(.focus_timestamp.secs // 0), (.focus_timestamp.nanos // 0)]) // empty
-      | "\(.id) \(.pid)"')"
-    if [ -n "$recent" ]; then
-      read -r id pid <<<"$recent"
-      niri msg action focus-window --id "$id"
-      send_chord "$pid"
-      exit 0
-    fi
-    ;;
-  new)
+  new | sidebar)
     # The spawn path keeps binds.kdl's workspace hop: the empty trailing
     # workspace of the focused output (dynamic workspaces guarantee one).
     idx="$(niri msg -j workspaces | jq -re 'map(select(.is_focused))[0].output as $o
