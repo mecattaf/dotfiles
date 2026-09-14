@@ -229,7 +229,13 @@ in
           // lib.optionalAttrs cfg.funnel.enable {
             personal-headscale-funnel = {
               description = "Public Headscale-only Funnel; never private NAS media";
-              wantedBy = [ "multi-user.target" ];
+              # NOT wantedBy multi-user.target: a oneshot there holds the
+              # container's boot until tailscaled is Running (up to 90 s), but
+              # the host only brings ve-nas-saas up in container@'s post-start,
+              # after the container reports booted, and container@ gives up at
+              # 1 min. That deadlock looped container@nas-saas from the first
+              # NAS boot in weeks (2026-09-14, 19+ restarts, link DOWN). The
+              # timer below starts it once the container is up.
               after = [
                 "tailscaled.service"
                 "personal-headscale.socket"
@@ -288,6 +294,15 @@ in
             };
           };
         systemd.sockets = lib.mapAttrs (_: entry: entry.socket) relays;
+        systemd.timers = lib.optionalAttrs cfg.funnel.enable {
+          personal-headscale-funnel = {
+            wantedBy = [ "timers.target" ];
+            timerConfig = {
+              OnActiveSec = "15s";
+              AccuracySec = "1s";
+            };
+          };
+        };
       };
     };
 
