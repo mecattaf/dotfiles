@@ -1,0 +1,97 @@
+[
+  {
+    "id": "vibevoice-cpp-tokenizer",
+    "files": [
+      {
+        "name": "tokenizer.gguf",
+        "bytes": 5922368,
+        "oid": "37dc3b722d5677e37e29a57df55aa05c485116eeb5459e57ff8dde616b4986f6",
+        "url": "https://huggingface.co/mudler/vibevoice.cpp-models/resolve/a67807e65e3002e187179a856e96043f75060bc9/tokenizer.gguf",
+        "path": "tokenizer.gguf"
+      }
+    ]
+  },
+  {
+    "id": "vibevoice-cpp-asr-q4-k",
+    "files": [
+      {
+        "name": "vibevoice-asr-q4_k.gguf",
+        "bytes": 10392063296,
+        "oid": "4eee48b9d0d42f71b773b804aa6728c99971c38d54f3c86cf1fd0fc1fc49a9ad",
+        "url": "https://huggingface.co/mudler/vibevoice.cpp-models/resolve/a67807e65e3002e187179a856e96043f75060bc9/vibevoice-asr-q4_k.gguf",
+        "path": "vibevoice-asr-q4_k.gguf"
+      }
+    ]
+  },
+  {
+    "id": "vibevoice-cpp-realtime-05b-q8-0",
+    "files": [
+      {
+        "name": "vibevoice-realtime-0.5B-q8_0.gguf",
+        "bytes": 1699832128,
+        "oid": "5251e3f0386d1056a90c61b6c7359a4775da44dd19402499bef1989c4b5c653a",
+        "url": "https://huggingface.co/mudler/vibevoice.cpp-models/resolve/a67807e65e3002e187179a856e96043f75060bc9/vibevoice-realtime-0.5B-q8_0.gguf",
+        "path": "vibevoice-realtime-0.5B-q8_0.gguf"
+      }
+    ]
+  },
+  {
+    "id": "vibevoice-cpp-carter",
+    "files": [
+      {
+        "name": "voice-en-Carter_man.gguf",
+        "bytes": 8472448,
+        "oid": "b15cd8b9cae6ee2c3d20b0ee6e7bfe93f13489f8b63b6834e9bbf0dfabf6505a",
+        "url": "https://huggingface.co/mudler/vibevoice.cpp-models/resolve/a67807e65e3002e187179a856e96043f75060bc9/voice-en-Carter_man.gguf",
+        "path": "voice-en-Carter_man.gguf"
+      }
+    ]
+  },
+  {
+    "id": "vibevoice-15b-bf16",
+    "files": [
+      {
+        "name": "config.json",
+        "bytes": 2762,
+        "oid": "b0d6db52f45dd5179b42217c55112aa2ee66e7ad7b40b0950833c9f6780a0f21",
+        "url": "https://huggingface.co/microsoft/VibeVoice-1.5B/resolve/c00898d257e6b46004e3e2866a47534085fb685a/config.json",
+        "path": "config.json"
+      },
+      {
+        "name": "model-00001-of-00003.safetensors",
+        "bytes": 1975317828,
+        "oid": "c5f0a61ddeaeb028e3af540ba4dee7933ad30f9f30b6e1320dd9c875a2daa033",
+        "url": "https://huggingface.co/microsoft/VibeVoice-1.5B/resolve/c00898d257e6b46004e3e2866a47534085fb685a/model-00001-of-00003.safetensors",
+        "path": "model-00001-of-00003.safetensors"
+      },
+      {
+        "name": "model-00002-of-00003.safetensors",
+        "bytes": 1983051688,
+        "oid": "81c3891f7b2493eb48a9eb6f5be0df48d4f1a4bfd952d84e21683ca6d0bf7969",
+        "url": "https://huggingface.co/microsoft/VibeVoice-1.5B/resolve/c00898d257e6b46004e3e2866a47534085fb685a/model-00002-of-00003.safetensors",
+        "path": "model-00002-of-00003.safetensors"
+      },
+      {
+        "name": "model-00003-of-00003.safetensors",
+        "bytes": 1449832938,
+        "oid": "cb6e7e5e86b4a41fffbe1f3aaf445d0d50b5e21ed47574101b777f77d75fa196",
+        "url": "https://huggingface.co/microsoft/VibeVoice-1.5B/resolve/c00898d257e6b46004e3e2866a47534085fb685a/model-00003-of-00003.safetensors",
+        "path": "model-00003-of-00003.safetensors"
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "bytes": 122616,
+        "oid": "067db9b10fdecee3a5588aa00206794156c7125f5e85f3f2234e0e6d821ee629",
+        "url": "https://huggingface.co/microsoft/VibeVoice-1.5B/resolve/c00898d257e6b46004e3e2866a47534085fb685a/model.safetensors.index.json",
+        "path": "model.safetensors.index.json"
+      },
+      {
+        "name": "preprocessor_config.json",
+        "bytes": 351,
+        "oid": "56bef7fb56db168e31dff685337c4acb6a35b5ce9c68d255128b01395b442c43",
+        "url": "https://huggingface.co/microsoft/VibeVoice-1.5B/resolve/c00898d257e6b46004e3e2866a47534085fb685a/preprocessor_config.json",
+        "path": "preprocessor_config.json"
+      }
+    ]
+  }
+]

@@ -1,0 +1,142 @@
+{
+  "parakeet-tdt-0.6b-v3-onnx": {
+    "files": 5,
+    "missing": [],
+    "manifest": "tools/speech-intake/manifests/parakeet.json"
+  },
+  "gemma4-12b-it-mmproj-f16": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/speech-intake/manifests/gemma-audio.json"
+  },
+  "gemma4-e4b-it-q8-0": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/speech-intake/manifests/gemma-audio.json"
+  },
+  "gemma4-e4b-it-mmproj-bf16": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/speech-intake/manifests/gemma-audio.json"
+  },
+  "qwen-k2so-midway-b": {
+    "files": 8,
+    "missing": [],
+    "manifest": "tools/speech-intake/manifests/k2so-midway-b.json"
+  },
+  "openwakeword-alexa-v051": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/hotword/manifests/openwakeword-alexa-v051.json"
+  },
+  "sherpa-onnx-kws-zh-en-3m-20251220": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/hotword/manifests/sherpa-kws.json"
+  },
+  "openwakeword-baker-compat-v051": {
+    "files": 3,
+    "missing": [],
+    "manifest": "tools/hotword/manifests/openwakeword-baker.json"
+  },
+  "qwen3-tts-khimaros-1.7b-base-q8-0": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/qwen-khimaros.json"
+  },
+  "qwen3-tts-khimaros-tokenizer-f16": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/qwen-khimaros.json"
+  },
+  "vibevoice-cpp-tokenizer": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/vibevoice-cpp-source.json"
+  },
+  "vibevoice-cpp-asr-q4-k": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/vibevoice-cpp-source.json"
+  },
+  "vibevoice-cpp-realtime-05b-q8-0": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/vibevoice-cpp-source.json"
+  },
+  "vibevoice-cpp-carter": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/vibevoice-cpp-source.json"
+  },
+  "vibevoice-15b-bf16": {
+    "files": 6,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/vibevoice-cpp-source.json"
+  },
+  "qwen3-tts-1.7b-base-q8-0": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/qwen-serveurperso.json"
+  },
+  "qwen3-tts-1.7b-voicedesign-q8-0": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/qwen-serveurperso.json"
+  },
+  "qwen3-tts-tokenizer-f32": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/qwen-serveurperso.json"
+  },
+  "vibevoice-large-bf16": {
+    "files": 14,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/vibevoice-large.json"
+  },
+  "vibevoice-qwen25-7b-tokenizer": {
+    "files": 4,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/vibevoice-large.json"
+  },
+  "vibevoice-asr-streaming-1.5b-bf16": {
+    "files": 12,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/vibevoice-asr-streaming.json"
+  },
+  "qwen3-tts-0.6b-base-q8-0": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/qwen-quality-controls.json"
+  },
+  "qwen3-tts-1.7b-base-bf16": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/qwen-quality-controls.json"
+  },
+  "vibevoice-cpp-15b-q8-0": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/vibevoice-cpp-15b-converted.json"
+  },
+  "vibevoice-asr-streaming-7b-bf16": {
+    "files": 17,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/vibevoice-asr-streaming-7b.json"
+  },
+  "qwen3-tts-1.7b-k2so-customvoice-xvector-q8-0": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/k2so-customvoice-derived.json"
+  },
+  "qwen3-tts-1.7b-k2so-customvoice-graft-q8-0": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/k2so-customvoice-derived.json"
+  },
+  "qwen3-tts-1.7b-k2so-customvoice-library-q8-0": {
+    "files": 1,
+    "missing": [],
+    "manifest": "tools/qwen-tts/manifests/k2so-customvoice-library.json"
+  }
+}

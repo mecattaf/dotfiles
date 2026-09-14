@@ -1,0 +1,14 @@
+[
+  {
+    "id": "sherpa-onnx-kws-zh-en-3m-20251220",
+    "files": [
+      {
+        "name": "sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2",
+        "path": "sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2",
+        "bytes": 32885699,
+        "oid": "68447f4fbc67e70eee3a93961f36e81e98f47aef73ce7e7ca00885c6cd3616a6",
+        "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20.tar.bz2"
+      }
+    ]
+  }
+]

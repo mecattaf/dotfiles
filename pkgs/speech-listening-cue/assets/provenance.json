@@ -1,0 +1,98 @@
+{
+  "recorded_at": "2026-09-14T18:30:52.606585+00:00",
+  "selected_file": "enter_voice_mode.mp3",
+  "selection_basis": "Existing filename and capture README map this cue to entering Claude voice mode. Listening cue is the local integration name; no audition-based emotional inference.",
+  "source_notes": "/home/tom/colors/waves/capture/audio/README.md",
+  "source_notes_sha256": "b44c49b4c78a21115267bc51a42732d645befb6e061cbcff21786607c567355a",
+  "no_new_download": true,
+  "assets": [
+    {
+      "file": "disconnected.mp3",
+      "source_path": "/home/tom/colors/waves/capture/audio/disconnected.mp3",
+      "sha256": "8a21b3e6f40e855572ebe0f87c084bb883de103db1584a3fc7105b109efe3655",
+      "bytes": 10762,
+      "audio_metadata": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "mp3",
+            "sample_rate": "44100",
+            "channels": 2
+          }
+        ],
+        "format": {
+          "duration": "0.731429"
+        }
+      },
+      "origin_recorded_in_capture_notes": "https://claude.ai/audio/voice/sfx/disconnected.mp3",
+      "original_unchanged": true
+    },
+    {
+      "file": "enter_voice_mode.mp3",
+      "source_path": "/home/tom/colors/waves/capture/audio/enter_voice_mode.mp3",
+      "sha256": "51680f6e9e5632fc4a0d4a8d32b63a0c24752dc728657db685af1c8759cf9bed",
+      "bytes": 9797,
+      "audio_metadata": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "mp3",
+            "sample_rate": "44100",
+            "channels": 2
+          }
+        ],
+        "format": {
+          "duration": "0.600816"
+        }
+      },
+      "origin_recorded_in_capture_notes": "https://claude.ai/audio/voice/sfx/enter_voice_mode.mp3",
+      "original_unchanged": true
+    },
+    {
+      "file": "exit_voice_mode.mp3",
+      "source_path": "/home/tom/colors/waves/capture/audio/exit_voice_mode.mp3",
+      "sha256": "9ecf7cd1d82a84388a6bbfb5d458f78a5c2ef388f6acb7451d0b6448984df178",
+      "bytes": 10471,
+      "audio_metadata": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "mp3",
+            "sample_rate": "44100",
+            "channels": 2
+          }
+        ],
+        "format": {
+          "duration": "0.966531"
+        }
+      },
+      "origin_recorded_in_capture_notes": "https://claude.ai/audio/voice/sfx/exit_voice_mode.mp3",
+      "original_unchanged": true
+    },
+    {
+      "file": "startup.mp3",
+      "source_path": "/home/tom/colors/waves/capture/audio/startup.mp3",
+      "sha256": "69f33a819d946be619ecc134f36a70012eeaba332f576016e13d2a3cf99cf51c",
+      "bytes": 16611,
+      "audio_metadata": {
+        "programs": [],
+        "stream_groups": [],
+        "streams": [
+          {
+            "codec_name": "mp3",
+            "sample_rate": "44100",
+            "channels": 1
+          }
+        ],
+        "format": {
+          "duration": "3.000000"
+        }
+      },
+      "origin_recorded_in_capture_notes": "https://claude.ai/imagine/startup.mp3 via Internet Archive",
+      "original_unchanged": true
+    }
+  ]
+}

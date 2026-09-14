@@ -1,0 +1,11 @@
+{
+  "baker_revision": "2bddeb0fc78a1a38005747d1b638629b79dca9fe",
+  "detector_sha256": "373a4dd8947ed91e06ddd3ea62c0459ec7500f67b798e5f3a56077e13587698f",
+  "nixpkgs_revision": "da39501c8d0a093136854eddcd6927c8a8bb0d8f",
+  "openvino": "2026.3.1",
+  "umd": "1.35.0",
+  "compiler": "Intel1.35.0Ubuntu24.04 userspace compiler repackaged without dpkg installation",
+  "level_zero": "1.32.0",
+  "model_storage": "NAS Library and explicit borrowing; no models in this runtime",
+  "source_license": "No license file in inspected Scott tree; retain provenance, fetch only bounded test copy, do not assume redistribution license"
+}

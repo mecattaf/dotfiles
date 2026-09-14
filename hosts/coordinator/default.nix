@@ -68,6 +68,7 @@
     ../../modules/keyring-autounlock.nix # TPM-sealed keyring unlock at boot, no typing
     ../../modules/handwriting-annotation.nix
     ../../modules/fara-browser-model.nix
+    ../../modules/qwen-tts.nix
     ../../modules/strix.nix
     # TWINS ONLY: kills the stock 127.0.0.2 self-mapping and points both twins'
     # names at their static LAN addresses (#273). Without it gethostname()
@@ -93,6 +94,7 @@
   services.browser-desktop.enable = true;
   services.handwriting-annotation.enable = true;
   services.fara-browser-model.enable = true;
+  services.qwen-tts.enable = true;
 
   # Both stay on their proven pre-migration side until the real HDD and service
   # state have passed the associated issue's cutover checklist.

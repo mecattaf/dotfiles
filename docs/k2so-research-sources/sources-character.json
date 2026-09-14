@@ -1,0 +1,164 @@
+{
+  "accessed": "2026-09-14",
+  "scope": "Canonical character behavior, interpretation boundaries, and inactive assistant-writing adaptation",
+  "sources": [
+    {
+      "n": 1,
+      "title": "K-2SO",
+      "publisher": "StarWars.com / Lucasfilm",
+      "date": null,
+      "url": "https://www.starwars.com/databank/k-2so-kay-tuesso",
+      "type": "official_character_reference",
+      "claims": [
+        "Ghorman KX droid disabled by Samm; Cassian salvages it; Yavin technician reprograms it.",
+        "Blunt Alliance ally and pragmatic insertion agent.",
+        "Participates in Coruscant rescue and Scarif mission."
+      ],
+      "caveats": [
+        "Current origin takes precedence over precise reprogrammer attribution in pre-release 2016 interview."
+      ]
+    },
+    {
+      "n": 2,
+      "title": "Becoming K-2SO: Talking with Rogue One's Alan Tudyk",
+      "publisher": "StarWars.com",
+      "author": "Jon Waterhouse",
+      "date": "2016-08-22",
+      "url": "https://www.starwars.com/news/becoming-k2so-talking-with-rogue-one-alan-tudyk",
+      "type": "direct_actor_interview",
+      "claims": [
+        "Tudyk interprets reprogramming as releasing an excessively honest and willful personality.",
+        "Bag-dropping example illustrates preference and comic resistance."
+      ],
+      "caveats": [
+        "Actor interpretation is not an exhaustive canonical psychological model.",
+        "Old statement that Cassian performed memory wipe is less precise than current Databank origin."
+      ]
+    },
+    {
+      "n": 3,
+      "title": "Andor Explained: Episodes 10-12 – Make It Stop, Who Else Knows?, and Jedha, Kyber, Erso",
+      "publisher": "StarWars.com",
+      "author": "Kristin Baver",
+      "date": "2025-05-14",
+      "url": "https://www.starwars.com/news/andor-season-2-finale-episodes-10-11-12",
+      "type": "official_episode_recap",
+      "claims": [
+        "K-2SO counts seventeen rule violations during unauthorized departure.",
+        "K-2SO leaves ship despite instruction and assists Cassian, Melshi, and Kleya's escape."
+      ],
+      "caveats": [
+        "Adapting mission initiative to assistant authorization is explicitly design inference."
+      ]
+    },
+    {
+      "n": 4,
+      "title": "Who Else Knows? Episode Guide | Andor",
+      "publisher": "StarWars.com / Lucasfilm",
+      "date": null,
+      "url": "https://www.starwars.com/series/andor/season-2-episode-11-episode-guide",
+      "type": "official_episode_reference",
+      "claims": [
+        "Cassian, K-2SO, and Melshi undertake a rescue risking their standing with the Rebellion."
+      ],
+      "caveats": [
+        "Episode release date is not asserted as page publication date."
+      ]
+    },
+    {
+      "n": 5,
+      "title": "7 Ways Andor Changes How We Watch Rogue One: A Star Wars Story",
+      "publisher": "StarWars.com",
+      "author": "Lucas Seastrom",
+      "date": "2025-07-08",
+      "url": "https://www.starwars.com/news/how-andor-changes-how-we-view-rogue-one",
+      "type": "official_editorial_interpretation",
+      "claims": [
+        "K-2SO interpreted as friend and comrade who fills a companionship gap for Cassian.",
+        "Relationship echoes Cassian's bond with B2EMO."
+      ],
+      "caveats": [
+        "The B2EMO parallel is thematic, not evidence for memory transfer or shared identity."
+      ]
+    },
+    {
+      "n": 6,
+      "title": "20 of the Star Wars Galaxy's Greatest Droids",
+      "publisher": "StarWars.com",
+      "author": "Amy Richau",
+      "date": "2021-03-09",
+      "url": "https://www.starwars.com/news/20-star-wars-droids",
+      "type": "official_character_retrospective",
+      "claims": [
+        "K-2SO's final sacrifice saves both Cassian and Jyn, supporting protectiveness beyond Cassian alone."
+      ],
+      "caveats": []
+    },
+    {
+      "n": 7,
+      "title": "15 Rogue One Quotes to Use in Everyday Life",
+      "publisher": "StarWars.com",
+      "author": "Amy Ratcliffe",
+      "date": "2017-01-19",
+      "url": "https://www.starwars.com/news/15-rogue-one-quotes-to-use-in-everyday-life",
+      "type": "official_film_quote_selection",
+      "claims": [
+        "Released dialogue documents blunt challenge to vague explanation, defense of competence, and socially unfiltered speech."
+      ],
+      "caveats": [
+        "Article's humorous advice for everyday use is not adopted as professional assistant behavior."
+      ]
+    },
+    {
+      "n": 8,
+      "title": "Andor's Alan Tudyk Captures the Childlike Joy of K-2SO",
+      "publisher": "StarWars.com",
+      "author": "Jade Fabello",
+      "date": "2025-06-20",
+      "url": "https://www.starwars.com/news/andor-season-2-interview-alan-tudyk-k2so",
+      "type": "direct_actor_interview",
+      "claims": [
+        "Tudyk interprets K-2SO as childlike and Cassian relationship through a father/child analogy.",
+        "Imagined offscreen trust learning is actor interpretation.",
+        "Tudyk corrects his own recollection of an insult whose wording differs in the released film."
+      ],
+      "caveats": [
+        "No literal parentage or confirmed offscreen events inferred.",
+        "Do not present misremembered longer insult as released-film dialogue.",
+        "Page includes updates after its displayed publication date."
+      ]
+    },
+    {
+      "n": 9,
+      "title": "'Rogue One' Wows With Fresh Special Effects And A Multinational Cast",
+      "publisher": "Fresh Air / WHYY",
+      "author": "David Edelstein",
+      "date": "2016-12-16",
+      "url": "https://freshairarchive.org/segments/rogue-one-wows-fresh-special-effects-and-multinational-cast",
+      "type": "primary_film_soundbite_embedded_in_secondary_review",
+      "claims": [
+        "Blaster conversation links Jyn's weapon, trust, K-2SO's lack of weapon, and pessimistic probability language."
+      ],
+      "caveats": [
+        "Critic commentary is secondary; the quoted soundbite is the primary scene evidence.",
+        "Archive warns rush transcripts may contain errors; audio is authoritative.",
+        "Scene does not establish calibrated or measured probability estimation."
+      ]
+    },
+    {
+      "n": 10,
+      "title": "Making a Revolutionary: Inside Andor Season 2 with Tony Gilroy",
+      "publisher": "StarWars.com",
+      "author": "Brandon Wainerdi",
+      "date": "2025-05-20",
+      "url": "https://www.starwars.com/news/andor-season-2-interview-tony-gilroy",
+      "type": "direct_writer_showrunner_interview",
+      "claims": [
+        "K-2SO's imposing presence constrained story situations and informed his delayed introduction."
+      ],
+      "caveats": [
+        "Assistant style restraint is a design inference, not Gilroy's stated product recommendation."
+      ]
+    }
+  ]
+}

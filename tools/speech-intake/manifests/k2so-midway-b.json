@@ -1,0 +1,55 @@
+[
+  {
+    "id": "qwen-k2so-midway-b",
+    "files": [
+      {
+        "name": "voice.json",
+        "bytes": 20474,
+        "oid": "f779f3279cce35da64fc697aee24dce40611573d6154606e163ee5127a450f3d",
+        "url": null
+      },
+      {
+        "name": "b-identity.spk",
+        "bytes": 8192,
+        "oid": "6b9f3b98df32ca6ac089126ec9145f43951056fa6b1d29fd3151ef71af4b63de",
+        "url": null
+      },
+      {
+        "name": "b-identity.wav",
+        "bytes": 2113004,
+        "oid": "61fd8e7a40222d977fc24c2867b7a98b1bcfecb1ecc8e1149535a20453cced68",
+        "url": null
+      },
+      {
+        "name": "b-prefix.rvq",
+        "bytes": 6930,
+        "oid": "35f8aaa039e35a2a4d06243a66df3f7924ec77d842d00d6e12eee02d883f6346",
+        "url": null
+      },
+      {
+        "name": "b-prefix.txt",
+        "bytes": 238,
+        "oid": "74248cec10afa070613d63485389c69bf6f9a92704a37f5b5c91ddd0352e1ef9",
+        "url": null
+      },
+      {
+        "name": "b-prefix.wav",
+        "bytes": 1209644,
+        "oid": "81b19b5ee63f39ddde5a85138bffc6fb578126f8eacee23f559c41c9a1a4f527",
+        "url": null
+      },
+      {
+        "name": "provenance.json",
+        "bytes": 4386,
+        "oid": "a42cfc46a477ae5c0bdf36bc0acea80030112cd7944bf03267fc5fc27e805e76",
+        "url": null
+      },
+      {
+        "name": "activation.json",
+        "bytes": 571,
+        "oid": "987a995019fc9a9087b460fc8164c6f3f02e42349c16432cc1946c3ff9abb498",
+        "url": null
+      }
+    ]
+  }
+]

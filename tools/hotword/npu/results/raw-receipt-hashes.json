@@ -1,0 +1,44 @@
+[
+  {
+    "name": "consecutive-1.jsonl",
+    "original_path": "/home/tom/tts-hotword-research-20260914/compatibility/latency-brightness-zero-v1/consecutive-1.jsonl",
+    "sha256": "98fc7af0aa009924f8746bef0c75830012f8b92133cc042780a7c55fc7ef91fa",
+    "bytes": 550
+  },
+  {
+    "name": "consecutive-1.log",
+    "original_path": "/home/tom/tts-hotword-research-20260914/compatibility/latency-brightness-zero-v1/consecutive-1.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  {
+    "name": "consecutive-3.jsonl",
+    "original_path": "/home/tom/tts-hotword-research-20260914/compatibility/latency-brightness-zero-v1/consecutive-3.jsonl",
+    "sha256": "4058e543c643e7cd6350393b7640515ee3c4f424e51b92f5ccf3493cef9b584e",
+    "bytes": 33144
+  },
+  {
+    "name": "consecutive-3.log",
+    "original_path": "/home/tom/tts-hotword-research-20260914/compatibility/latency-brightness-zero-v1/consecutive-3.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "bytes": 0
+  },
+  {
+    "name": "display-before.json",
+    "original_path": "/home/tom/tts-hotword-research-20260914/compatibility/latency-brightness-zero-v1/display-before.json",
+    "sha256": "5a2dd8f7db3438aabe08a763e1789da9669f29f5a2d28439944e4d25d4581abb",
+    "bytes": 354
+  },
+  {
+    "name": "display-during-1.json",
+    "original_path": "/home/tom/tts-hotword-research-20260914/compatibility/latency-brightness-zero-v1/display-during-1.json",
+    "sha256": "5c2a1ed6a05af2d341afc4d19d6551fa4555d488f15ebc7aea1fe58abe24f2a7",
+    "bytes": 11373
+  },
+  {
+    "name": "display-during-3.json",
+    "original_path": "/home/tom/tts-hotword-research-20260914/compatibility/latency-brightness-zero-v1/display-during-3.json",
+    "sha256": "3c3e45db5f4b8ec437a0a4b78dc832065372c07850c1c8345fbec3c6efae3875",
+    "bytes": 20469
+  }
+]

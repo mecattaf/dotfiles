@@ -1,0 +1,460 @@
+--- a/src/client/shell.rs
++++ b/src/client/shell.rs
+@@ -17,6 +17,7 @@
+ mod global_menu;
+ mod graphics;
+ mod input;
++mod dictation;
+ mod input_source;
+ mod mobile;
+ mod mouse;
+--- a/src/client/shell/state.rs
++++ b/src/client/shell/state.rs
+@@ -890,6 +890,7 @@
+ }
+ 
+ pub(crate) struct ClientShellState {
++    pub(super) dictation: super::dictation::Dictation,
+     pub(super) config: ClientShellConfig,
+     pub(super) snapshot: Option<Box<ClientShellSnapshot>>,
+     pub(super) pane_surface: Option<PaneSurfaceFrame>,
+@@ -1032,6 +1033,7 @@
+             config.agent_panel_sort = sort;
+         }
+         Self {
++            dictation: super::dictation::Dictation::from_env(),
+             config,
+             snapshot: None,
+             pane_surface: None,
+@@ -1770,7 +1772,7 @@
+     }
+ 
+     pub(crate) fn timer_delay(&self, now: std::time::Instant) -> std::time::Duration {
+-        let default = std::time::Duration::from_millis(100);
++        let default = std::time::Duration::from_millis(if self.dictation.active() { 20 } else { 100 });
+         self.selection_autoscroll_deadline
+             .map(|deadline| deadline.saturating_duration_since(now).min(default))
+             .unwrap_or(default)
+--- a/src/client/shell/input.rs
++++ b/src/client/shell/input.rs
+@@ -78,7 +78,7 @@
+ 
+ impl ClientShellState {
+     pub(crate) fn host_keyboard_report_all_requested(&self) -> bool {
+-        matches!(
++        self.dictation.enabled() || matches!(
+             self.mode,
+             ClientShellMode::Prefix | ClientShellMode::Navigate
+         )
+@@ -244,6 +244,7 @@
+                         .push(ClientMessage::ClientShellFocus { focused: true });
+                 }
+                 RawInputEvent::OuterFocusLost => {
++                    self.cancel_dictation();
+                     self.outer_focused = Some(false);
+                     self.release_input_leases(&mut outcome);
+                     outcome
+@@ -292,6 +293,7 @@
+         key: crate::input::TerminalKey,
+         outcome: &mut ClientShellInput,
+     ) {
++        if self.handle_dictation_key(&key, outcome) { return; }
+         if self.copy_operation_in_flight {
+             self.copy_input_queue.push_back(key);
+             return;
+--- a/src/client/mod.rs
++++ b/src/client/mod.rs
+@@ -2009,6 +2009,7 @@
+                     let (effects, outcome, frame) = {
+                         let shell = state.shell.as_mut().expect("checked shell mode");
+                         let mut outcome = shell.tick_selection_autoscroll(now);
++                        shell.tick_dictation(now, &mut outcome);
+                         for expired in expired_endpoints {
+                             if !shell.endpoint_is_active(&expired.endpoint_id) {
+                                 continue;
+--- /dev/null
++++ b/src/client/shell/dictation.rs
+@@ -0,0 +1,370 @@
++//! Client-only hold-Space adapter. No server state, wire changes or global focus API.
++use super::*;
++use crossterm::event::{KeyEventKind, KeyModifiers};
++use std::io::{BufRead, Write};
++use std::process::{Child, ChildStdin};
++use std::sync::mpsc::{self, Receiver};
++use std::time::{Duration, Instant};
++
++pub(super) struct Pending {
++    pane: String,
++    boot: String,
++    at: Instant,
++}
++struct Running {
++    pane: String,
++    boot: String,
++    child: Option<Child>,
++    control: Option<ChildStdin>,
++    result: Receiver<String>,
++    at: Instant,
++}
++impl Drop for Running {
++    fn drop(&mut self) {
++        if let Some(mut control) = self.control.take() {
++            let _ = control.write_all(b"cancel\n");
++        }
++        if let Some(mut child) = self.child.take() {
++            std::thread::spawn(move || {
++                for _ in 0..40 {
++                    if child.try_wait().ok().flatten().is_some() {
++                        return;
++                    }
++                    std::thread::sleep(Duration::from_millis(50));
++                }
++                let _ = child.kill();
++                let _ = child.wait();
++            });
++        }
++    }
++}
++#[derive(Default)]
++pub(super) struct Dictation {
++    command: Option<String>,
++    initial_pane: Option<String>,
++    pending: Option<Pending>,
++    running: Option<Running>,
++    swallow_release: bool,
++}
++impl Dictation {
++    pub(super) fn from_env() -> Self {
++        Self {
++            command: std::env::var("HERDR_DICTATION_COMMAND")
++                .ok()
++                .filter(|s| !s.is_empty()),
++            initial_pane: std::env::var("HERDR_INITIAL_PANE")
++                .ok()
++                .filter(|s| !s.is_empty()),
++            ..Self::default()
++        }
++    }
++    pub(super) fn enabled(&self) -> bool {
++        self.command.is_some()
++    }
++    pub(super) fn active(&self) -> bool {
++        self.initial_pane.is_some() || self.pending.is_some() || self.running.is_some()
++    }
++}
++impl ClientShellState {
++    fn dictation_target_matches(&self, pane: &str, boot: &str) -> bool {
++        self.outer_focused != Some(false)
++            && self.overlay.is_none()
++            && self.mode == ClientShellMode::Terminal
++            && !self.popup_pending
++            && self.popup_terminal_id.is_none()
++            && self
++                .snapshot
++                .as_ref()
++                .is_some_and(|s| s.boot_id == boot && s.focused_pane_id.as_deref() == Some(pane))
++    }
++    pub(super) fn cancel_dictation(&mut self) {
++        self.dictation.pending = None;
++        self.dictation.running = None;
++    }
++    fn dictation_feedback(&mut self, message: &str, outcome: &mut ClientShellInput) {
++        self.copy_feedback = Some(crate::app::state::CopyFeedback {
++            message: message.to_owned(),
++        });
++        self.copy_feedback_deadline = Some(Instant::now() + Duration::from_secs(3));
++        outcome.repaint = true;
++    }
++    fn flush_dictation_tap(&mut self, pending: Pending, outcome: &mut ClientShellInput) {
++        if self.dictation_target_matches(&pending.pane, &pending.boot) {
++            let target = ClientInputTarget::Pane(pending.pane);
++            super::push_target_event(
++                target.clone(),
++                ClientPaneInputEvent::TextCommit(" ".to_owned()),
++                outcome,
++            );
++        }
++    }
++    pub(super) fn handle_dictation_key(
++        &mut self,
++        key: &crate::input::TerminalKey,
++        outcome: &mut ClientShellInput,
++    ) -> bool {
++        if !self.dictation.enabled() {
++            return false;
++        }
++        // Audio hardware may emit media keys when a stream starts. They do not
++        // edit the pane and must not cancel the cue that opens dictation.
++        if matches!(key.code, KeyCode::Media(_) | KeyCode::Modifier(_)) {
++            return false;
++        }
++        let space = key.code == KeyCode::Char(' ') && key.modifiers == KeyModifiers::empty();
++        if key.code == KeyCode::Char(' ')
++            && key.kind == KeyEventKind::Release
++            && self.dictation.swallow_release
++        {
++            self.dictation.swallow_release = false;
++            if let Some(pending) = self.dictation.pending.take() {
++                self.flush_dictation_tap(pending, outcome);
++            }
++            if let Some(running) = self.dictation.running.as_mut() {
++                if let Some(mut control) = running.control.take() {
++                    let _ = control.write_all(b"finish\n");
++                }
++                self.dictation_feedback("Transcribing…", outcome);
++            }
++            return true;
++        }
++        if space && self.dictation.swallow_release {
++            return true;
++        }
++        if key.kind != KeyEventKind::Release {
++            if let Some(pending) = self.dictation.pending.take() {
++                self.flush_dictation_tap(pending, outcome);
++            }
++            if self.dictation.running.is_some() {
++                tracing::info!("dictation cancelled by another key press");
++                self.cancel_dictation();
++                self.dictation_feedback("Dictation cancelled", outcome);
++                if key.code == KeyCode::Esc {
++                    return true;
++                }
++            }
++        }
++        if space
++            && key.kind == KeyEventKind::Press
++            && self.overlay.is_none()
++            && self.mode == ClientShellMode::Terminal
++            && !self.popup_pending
++            && self.popup_terminal_id.is_none()
++        {
++            if let Some(snapshot) = self.snapshot.as_ref() {
++                if let Some(pane) = snapshot.focused_pane_id.clone() {
++                    self.dictation.pending = Some(Pending {
++                        pane,
++                        boot: snapshot.boot_id.clone(),
++                        at: Instant::now(),
++                    });
++                    self.dictation.swallow_release = true;
++                    return true;
++                }
++            }
++        }
++        false
++    }
++    pub(crate) fn tick_dictation(&mut self, now: Instant, outcome: &mut ClientShellInput) {
++        if self.snapshot.is_some() {
++            if let Some(pane) = self.dictation.initial_pane.take() {
++                outcome
++                    .actions
++                    .extend(self.focus_endpoint_target(ClientEndpointFocusTarget::Pane(pane)));
++            }
++        }
++        if let Some(pending) = self.dictation.pending.as_ref() {
++            if !self.dictation_target_matches(&pending.pane, &pending.boot) {
++                self.cancel_dictation();
++                return;
++            }
++            if now.duration_since(pending.at) >= Duration::from_millis(300) {
++                if let Some(pending) = self.dictation.pending.take() {
++                    let command = self.dictation.command.as_deref().unwrap_or("");
++                    match crate::platform::spawn_dictation_helper(command, &pending.pane) {
++                        Ok(mut child) => {
++                            let control = child.stdin.take();
++                            let output = child.stdout.take();
++                            let (tx, rx) = mpsc::channel();
++                            if let Some(output) = output {
++                                std::thread::spawn(move || {
++                                    for line in std::io::BufReader::new(output).lines() {
++                                        match line {
++                                            Ok(line) if line.len() <= 65536 => {
++                                                if tx.send(line).is_err() {
++                                                    break;
++                                                }
++                                            }
++                                            _ => break,
++                                        }
++                                    }
++                                });
++                            }
++                            self.dictation.running = Some(Running {
++                                pane: pending.pane,
++                                boot: pending.boot,
++                                child: Some(child),
++                                control,
++                                result: rx,
++                                at: now,
++                            });
++                            self.dictation_feedback("Preparing microphone…", outcome);
++                        }
++                        Err(error) => {
++                            self.dictation_feedback(&format!("Dictation: {error}"), outcome)
++                        }
++                    }
++                }
++            }
++        }
++        if let Some(running) = self.dictation.running.as_ref() {
++            if !self.dictation_target_matches(&running.pane, &running.boot)
++                || now.duration_since(running.at) > Duration::from_secs(150)
++            {
++                tracing::info!(outer_focused=?self.outer_focused, mode=?self.mode, "dictation target changed or deadline expired");
++                self.cancel_dictation();
++                return;
++            }
++        }
++        let message = match self.dictation.running.as_ref().map(|r| r.result.try_recv()) {
++            Some(Ok(message)) => Some(message),
++            Some(Err(mpsc::TryRecvError::Disconnected)) => {
++                self.cancel_dictation();
++                self.dictation_feedback("Dictation cancelled", outcome);
++                None
++            }
++            _ => None,
++        };
++        if let Some(message) = message {
++            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&message) {
++                if let Some(text) = value.get("text").and_then(|v| v.as_str()) {
++                    if let Some(running) = self.dictation.running.take() {
++                        if !text.is_empty()
++                            && text.len() <= 32768
++                            && !text.chars().any(|c| c.is_control())
++                        {
++                            super::push_target_event(
++                                ClientInputTarget::Pane(running.pane.clone()),
++                                ClientPaneInputEvent::Paste(text.to_owned()),
++                                outcome,
++                            );
++                        }
++                    }
++                    self.dictation_feedback("Dictation inserted", outcome);
++                } else if let Some(status) = value.get("status").and_then(|v| v.as_str()) {
++                    self.dictation_feedback(status, outcome);
++                } else if let Some(error) = value.get("error").and_then(|v| v.as_str()) {
++                    self.cancel_dictation();
++                    self.dictation_feedback(error, outcome);
++                }
++            }
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    fn state() -> ClientShellState {
++        let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
++        state.set_snapshot(Box::new(super::super::tests::snapshot()));
++        state.overlay = None;
++        state.dictation.command = Some("/nonexistent/dictation-test".into());
++        state
++    }
++    fn space(kind: KeyEventKind) -> crate::input::TerminalKey {
++        crate::input::TerminalKey::new(KeyCode::Char(' '), KeyModifiers::empty()).with_kind(kind)
++    }
++    fn text(out: &ClientShellInput) -> String {
++        out.requests
++            .iter()
++            .flat_map(|message| match message {
++                ClientMessage::ClientShellPaneInput { events, .. } => events
++                    .iter()
++                    .filter_map(|e| match e {
++                        ClientPaneInputEvent::TextCommit(t) => Some(t.clone()),
++                        _ => None,
++                    })
++                    .collect::<Vec<_>>(),
++                _ => vec![],
++            })
++            .collect()
++    }
++    #[test]
++    fn dictation_initial_pane_focus_is_client_scoped_and_once() {
++        let mut s = state();
++        let mut out = ClientShellInput::default();
++        s.dictation.initial_pane = Some("w1:p1".into());
++        s.tick_dictation(Instant::now(), &mut out);
++        assert!(!out.actions.is_empty());
++        assert!(s.dictation.initial_pane.is_none());
++        let mut second = ClientShellInput::default();
++        s.tick_dictation(Instant::now(), &mut second);
++        assert!(second.actions.is_empty());
++    }
++    #[test]
++    fn dictation_media_keys_do_not_flush_or_cancel_a_hold() {
++        let mut s = state();
++        let mut out = ClientShellInput::default();
++        s.handle_dictation_key(&space(KeyEventKind::Press), &mut out);
++        let key = crate::input::TerminalKey::new(
++            KeyCode::Media(crossterm::event::MediaKeyCode::MuteVolume),
++            KeyModifiers::empty(),
++        );
++        assert!(!s.handle_dictation_key(&key, &mut out));
++        assert!(s.dictation.pending.is_some());
++        assert!(out.requests.is_empty());
++    }
++    #[test]
++    fn dictation_tap_preserves_one_space() {
++        let mut s = state();
++        let mut out = ClientShellInput::default();
++        assert!(s.handle_dictation_key(&space(KeyEventKind::Press), &mut out));
++        assert!(out.requests.is_empty());
++        assert!(s.handle_dictation_key(&space(KeyEventKind::Release), &mut out));
++        assert_eq!(text(&out), " ");
++        assert!(!s.dictation.active());
++    }
++    #[test]
++    fn dictation_space_leader_flushes_before_next_key() {
++        let mut s = state();
++        let mut out = ClientShellInput::default();
++        s.handle_dictation_key(&space(KeyEventKind::Press), &mut out);
++        let key = crate::input::TerminalKey::new(KeyCode::Char('f'), KeyModifiers::empty());
++        assert!(!s.handle_dictation_key(&key, &mut out));
++        assert_eq!(text(&out), " ");
++        s.handle_dictation_key(&space(KeyEventKind::Release), &mut out);
++        assert_eq!(text(&out), " ");
++    }
++    #[test]
++    fn dictation_focus_loss_discards_pending_space() {
++        let mut s = state();
++        let mut out = ClientShellInput::default();
++        s.handle_dictation_key(&space(KeyEventKind::Press), &mut out);
++        s.outer_focused = Some(false);
++        s.tick_dictation(Instant::now(), &mut out);
++        s.handle_dictation_key(&space(KeyEventKind::Release), &mut out);
++        assert!(out.requests.is_empty());
++        assert!(!s.dictation.active());
++    }
++    #[test]
++    fn dictation_repeat_does_not_type_spaces() {
++        let mut s = state();
++        let mut out = ClientShellInput::default();
++        s.handle_dictation_key(&space(KeyEventKind::Press), &mut out);
++        for _ in 0..5 {
++            assert!(s.handle_dictation_key(&space(KeyEventKind::Repeat), &mut out));
++        }
++        assert!(out.requests.is_empty());
++    }
++    #[test]
++    fn dictation_disabled_and_prefix_leave_keys_alone() {
++        let mut s = state();
++        let mut out = ClientShellInput::default();
++        s.mode = ClientShellMode::Prefix;
++        assert!(!s.handle_dictation_key(&space(KeyEventKind::Press), &mut out));
++        s.mode = ClientShellMode::Terminal;
++        s.dictation.command = None;
++        assert!(!s.handle_dictation_key(&space(KeyEventKind::Press), &mut out));
++    }
++}
+--- a/src/platform/mod.rs
++++ b/src/platform/mod.rs
+@@ -619,3 +619,10 @@
+         );
+     }
+ }
++
++/// Launch the configured thin-client dictation adapter with private control pipes.
++pub(crate) fn spawn_dictation_helper(program: &str, pane: &str) -> std::io::Result<std::process::Child> {
++    let mut command = std::process::Command::new(program);
++    configure_background_command(&mut command);
++    command.env("HERDR_DICTATION_PANE", pane).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn()
++}

@@ -97,7 +97,15 @@ let
     ];
     text = ''
       weights=${lib.escapeShellArg "${modelsRoot}/weights"}
+      # Optional scoped manifest for an explicit acquisition from a worktree.
+      # The nightly job retains the complete catalog as its default.
+      manifest="''${LIBRARY_FETCH_MANIFEST:-${libraryManifest}}"
       fail=0
+      # Fail before downloads when a scoped manifest has the wrong root shape;
+      # a jq failure inside process substitution would otherwise look successful.
+      jq -e 'type == "array" and all(.[];
+        (.id | type == "string") and (.files | type == "array"))' \
+        "$manifest" >/dev/null
 
       # Authenticate when agenix has delivered the token (nas became a recipient
       # 2026-08-28). Public catalog rows never needed it; gated ones were 401ing
@@ -112,7 +120,9 @@ let
       # carrying a bearer it did not issue.
       auth=()
       token_file=/run/agenix/huggingface-token
-      if [ -r "$token_file" ]; then
+      if [ -r "$token_file" ] && jq -e \
+        'any(.[] | .files[]; (.url // "") | startswith("https://huggingface.co/"))' \
+        "$manifest" >/dev/null; then
         hdr="$(mktemp)"
         chmod 600 "$hdr"
         printf 'Authorization: Bearer %s\n' "$(cat "$token_file")" > "$hdr"
@@ -120,16 +130,27 @@ let
         auth=(-H "@$hdr")
         echo "library-fetch: authenticating to Hugging Face with the agenix token"
       else
-        echo "library-fetch: no Hugging Face token readable; anonymous fetches only"
+        echo "library-fetch: no Hugging Face authentication needed or available; anonymous fetches"
       fi
       while IFS=$'\t' read -r id name bytes oid url; do
         dest="$weights/$id/$name"
         if [ -e "$dest" ] && [ "$(stat -c %s "$dest")" = "$bytes" ]; then
           continue
         fi
+        if [ -z "$url" ] || [ "$url" = null ]; then
+          echo "library-fetch: missing local artifact $id/$name; restore its verified NAS archive" >&2
+          fail=1
+          continue
+        fi
         echo "library-fetch: downloading $id/$name ($bytes bytes)"
         mkdir -p "$(dirname "$dest")"
-        if ! curl -fL --retry 3 --retry-delay 10 "''${auth[@]}" -o "$dest.part" "$url"; then
+        # A scoped acquisition may also use GitHub release assets. The HF
+        # credential belongs only on requests to the exact Hugging Face host.
+        request_auth=()
+        case "$url" in
+          https://huggingface.co/*) request_auth=("''${auth[@]}") ;;
+        esac
+        if ! curl -fL --retry 3 --retry-delay 10 "''${request_auth[@]}" -o "$dest.part" "$url"; then
           echo "library-fetch: DOWNLOAD FAILED: $url" >&2
           rm -f "$dest.part"
           fail=1
@@ -145,7 +166,7 @@ let
         chmod 0644 "$dest.part"
         chown tom:users "$dest.part"
         mv -f "$dest.part" "$dest"
-      done < <(jq -r '.[] | .id as $id | .files[] | [$id, .name, (.bytes|tostring), .oid, .url] | @tsv' ${libraryManifest})
+      done < <(jq -r '.[] | .id as $id | .files[] | [$id, .name, (.bytes|tostring), .oid, .url] | @tsv' "$manifest")
       exit "$fail"
     '';
   };
@@ -154,6 +175,7 @@ in
   options.myNas.models.enable = lib.mkEnableOption "the model Library subvolume: weights (forever collection) + cache (static binary cache)";
 
   config = lib.mkIf cfg.enable {
+    system.build.library-fetch = fetchScript;
     assertions = [
       {
         assertion = config.myNas.storage.enable;

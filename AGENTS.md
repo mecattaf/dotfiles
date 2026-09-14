@@ -1,4 +1,4 @@
-The fleet is mono-model. Its one inference server is Halogen Flash —
+The fleet's resident language-model server is Halogen Flash —
 Qwen3.8-Flash-Next in Peonist's proprietary `.hgn` format — running on the
 worker at `http://worker:8731` via `modules/halogen.nix`: a pinned OCI image
 run by podman, with the weights loaned from the NAS Library into
@@ -30,6 +30,62 @@ wrapper — installed on the coordinator only — forwards a single
 chat-completions request to it over the wired LAN. `/drain` and `/print` dial
 that seam under the same name and with the same CLI flags as before. What must
 never come back is an NPU-backed utility deployment; the slot itself is live.
+
+**Speech decision (2026-09-14, latest correction).** Use Qwen3-TTS 1.7B
+Base Q8 through ServeurpersoCom/qwentts.cpp, with ONE K-2SO reference voice.
+Tom rejected moving forward with CustomVoice, the character/personality project,
+and multiple distilled or emotional voice profiles. Preserve completed research
+as history; do not apply its personality instructions or build tone switching.
+Use as much suitable material from across the supplied sub-three-minute montage
+as remains reliable, rather than defaulting to the opening eight seconds.
+Reference audio stays at its original speed. Validate longer generated readings
+and preserve the liked baseline while testing a broader single reference. Tom
+reported roughly seven to eight bangs in the expanded 86-second-bank demo and
+wanted a cleaner midway. He subsequently accepted midway B after listening to
+the complete 344-word reading and reported no bangs. B is now the active local
+profile: a 44.02-second identity bank spanning six scenes and a 25.20-second
+matched prefix with a quiet tail. The original favorite remains the comparison
+baseline. Enrollment and fleet activation are separate; see the integration record below.
+Word accuracy is insufficient: inspect repeated onset artifacts and listen to
+quality feedback before treating a broader reference as an improvement.
+All LLM inference for this speech/intake flow, including Gemma or a local router,
+runs on the coordinator, never the laptop. The laptop owns wake detection, cue,
+capture/transport and playback only. TTS and transcription-model inference run
+on the coordinator GPU; preparation and
+independent CPU transcription checks are explicitly labeled. The separately
+authorized lightweight wake detector runs on the client CPU or Intel NPU. The ASUS Zenbook (`client`)
+plays the returned audio. Speech weights follow NAS Library/explicit borrowing.
+`modules/qwen-tts.nix` owns on-demand synthesis, separate from Halogen; it idles
+out and has no boot target. Deterministic text chunks are stitched into one WAV.
+The human is **Tom**; use his name naturally in assistant-written addresses,
+without rewriting quoted documents or verbatim transcripts.
+Ordinary VibeVoice ASR and streaming diarized ASR remain separate evaluation
+tracks. The newly requested hotword research is a separate client input/control
+pipeline: lightweight wake detection on the Zenbook, not another TTS model or
+personality. Prioritize detection responsiveness and reliable waking; CPU usage,
+heat and fan noise are secondary. The client is always plugged in. Tom clarified
+that he deliberately restored brightness during tests: brightness is not an
+acceptance gate or a reason to pause detector comparison. Leave his display
+controls alone; listening should work at any brightness while the OS is awake.
+If a dark-display check is needed, F10 uses brightness zero with displays enabled,
+not DPMS power-off or suspend. Tom selected “Alexa” with upstream openWakeWord
+on CPU. Use the original listening nudge after accepted wake and capture readiness.
+The Niri Shift+F9 call recorder must inhibit and receive listener shutdown
+acknowledgement before capture starts; clear all queued audio on entry and exit.
+`pkgs/mykonos-wake` implements the explicit client input session;
+`home/mykonos.nix` owns its declarative user service.
+Research Intel Meteor Lake NPU support only when an existing
+wake-word implementation is documented. Scott Baker's existing openWakeWord
+CPU/NPU implementation qualifies: Tom explicitly authorized adapting its existing
+path to Meteor Lake/NixOS and testing it, despite its Panther Lake/Ubuntu example.
+Do not discard it solely for that platform difference; avoid a new detector/model
+port from scratch. Keep initial compatibility tests isolated and use saved audio
+before enabling an always-on microphone. Compare the working NPU route against
+the best practical CPU implementation, not only the same code on CPU: Tom wants
+the best complete tool for fast, reliable waking, with quiet operation secondary.
+This Intel client investigation does not reopen the retired AMD NPU path.
+No wake listener is activated by the research. Call transcription must suppress
+wake detection, per Tom's Mykonos annotations.
 
 The small GGUF models the fleet keeps — `qwen36-35b-a3b-mtp-ud-q8-k-xl`,
 `gemma4-12b-it-q8-0` with its MTP head, `fara15-9b-q8-0` with its projector —
@@ -97,3 +153,36 @@ OCR with thinking explicitly off. `docs/handwriting-intake.md` records the
 recipe, correction-evidence rules and real-Huion commissioning boundary. Do not
 reseed live review state or treat stable legacy capture files as proof of device
 page completeness.
+
+**Speech integration (2026-09-14).** Alexa/openWakeWord on client CPU is the
+selected wake path. Direct `parakeet-rs` 0.3.7 with Parakeet TDT v3 ONNX and
+MIGraphX runs on the coordinator; Voxtype and its virtual-microphone relay are
+retired from the configuration. There is no Gemma/router layer in the daily
+flow. Gemma E4B/12B and both VibeVoice ASR tracks remain research artifacts.
+`home/mykonos.nix` declares the resident coordinator transcription unit and client
+wake unit. No service startup downloads models. Use the NAS manifests and explicit
+`local-models-borrow` transactions documented in `docs/mykonos-voice-operations.md`.
+
+Alexa creates a fresh Claude Opus Herdr session using a fixed appended system
+prompt that enables speech publication. The shared `/speak` skill publishes
+visible Markdown files in `~/Speech/intake`; the daemon synthesizes and plays
+through the client during 06:00–24:00, matching paper working hours. Publishing a
+queue file is not evidence it was heard: consult playback receipts. Session
+launch records the fixed system-prompt hash. Do not repair speech behavior by
+pasting follow-up instructions into the conversation.
+
+Native Herdr client hold-Space invokes `mykonos-dictate` on the client, waits for
+capture readiness and the original cue, streams PCM to coordinator, and pastes
+the result into the originating pane without Enter. Tap-Space remains ordinary
+input. Media controls do not cancel recording; editing keys, Escape, focus or
+application changes, call recording and playback do. Kitty protocols are used by
+Herdr itself: no dedicated kitten, herdr-kitten dependency, GTK/quickshell recording
+overlay or client transcription model. New speech windows use the native projector
+with a client-scoped pane target. Keep the Herdr server's `X-SwitchMethod=keep-old`
+protection: deployment must not kill live PTYs. Existing client processes need a
+new projector launch to load a changed binary.
+
+The original montage, accepted midway B enrollment and evaluation outputs are
+preserved on NAS; superseded models have not been deleted. See
+`docs/mykonos-overnight-integration.md` for the rollout/acceptance record, rather
+than inferring activation from these declarations.

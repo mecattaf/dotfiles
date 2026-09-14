@@ -66,6 +66,7 @@
 # omission is recorded where it would have gone.
 {
   imports = [
+    ../../modules/local-models.nix
     ./hardware.nix
     ./disko.nix
     ./audio.nix # pins the iContact webcam mic (on the dock) as the default source
@@ -81,6 +82,10 @@
   ];
 
   networking.hostName = "client";
+  services.local-models.artifacts = [
+    "openwakeword-baker-compat-v051"
+    "openwakeword-alexa-v051"
+  ];
 
   # agenix delivery ON. The host key on the box IS the 2026-09-07 fleet key
   # (read live 2026-09-11, equals the registry row), so the delivered tier
@@ -112,28 +117,28 @@
   # ⚠ ensureProfiles never deletes: the hand-delivered thomas-6ghz keyfile in
   # /etc/NetworkManager/system-connections/ survives the switch beside this
   # one until an operator removes it (DECISIONS.md, 2026-09-11).
-  networking.networkmanager.ensureProfiles.environmentFiles =
-    lib.optional (builtins.pathExists ../../secrets/wifi-lan.age) config.age.secrets.wifi-lan.path;
+  networking.networkmanager.ensureProfiles.environmentFiles = lib.optional (builtins.pathExists ../../secrets/wifi-lan.age) config.age.secrets.wifi-lan.path;
   networking.networkmanager.ensureProfiles.profiles.thomas-6ghz =
-    lib.mkIf (builtins.pathExists ../../secrets/wifi-lan.age) {
-      connection = {
-        id = "thomas-6ghz";
-        type = "wifi";
-        autoconnect = true;
-        autoconnect-priority = 110;
+    lib.mkIf (builtins.pathExists ../../secrets/wifi-lan.age)
+      {
+        connection = {
+          id = "thomas-6ghz";
+          type = "wifi";
+          autoconnect = true;
+          autoconnect-priority = 110;
+        };
+        wifi = {
+          mode = "infrastructure";
+          ssid = "$BE550_SSID";
+        };
+        wifi-security = {
+          key-mgmt = "sae";
+          pmf = 3;
+          psk = "$BE550_PSK";
+        };
+        ipv4.method = "auto";
+        ipv6.method = "ignore";
       };
-      wifi = {
-        mode = "infrastructure";
-        ssid = "$BE550_SSID";
-      };
-      wifi-security = {
-        key-mgmt = "sae";
-        pmf = 3;
-        psk = "$BE550_PSK";
-      };
-      ipv4.method = "auto";
-      ipv6.method = "ignore";
-    };
   # Same INFO reasoning as the twins: wifi incidents on this fleet were once
   # forensically blind because NetworkManager logged nothing for weeks.
   networking.networkmanager.logLevel = "INFO";

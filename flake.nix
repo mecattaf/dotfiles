@@ -55,14 +55,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Voxtype — coordinator-only local streaming dictation. Consume the upstream
-    # Home Manager module and canonical AMD ONNX/MIGraphX package; model weights
-    # remain mutable user data outside both Git and the Nix store.
-    voxtype = {
-      url = "github:peteonrails/voxtype/dev";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     # Per-device hardware quirks. No nixpkgs.follows — it's just module files.
     nixos-hardware.url = "github:NixOS/nixos-hardware/master";
 
@@ -653,6 +645,13 @@
         in
         {
           inherit (pkgs)
+            qwentts
+            qwen-speech
+            speech-listening-cue
+            mykonos-wake
+            mykonos-speech
+            mykonos-parakeet
+            qwen3-tts-khimaros
             academic-ocr
             brother-print-text
             call-diarize
@@ -711,6 +710,40 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        qwen-speech =
+          pkgs.runCommand "qwen-speech-tests"
+            {
+              nativeBuildInputs = [ pkgs.python3 ];
+            }
+            ''
+              mkdir -p repo/pkgs repo/tests/qwen-speech
+              cp -r ${./pkgs/qwen-speech} repo/pkgs/qwen-speech
+              cp ${./tests/qwen-speech/test_speech.py} repo/tests/qwen-speech/test_speech.py
+              python3 repo/tests/qwen-speech/test_speech.py
+              touch "$out"
+            '';
+        qwen-speech-topology =
+          let
+            coord = self.nixosConfigurations.coordinator.config;
+            speechUnit = coord.systemd.user.services.qwen-tts;
+          in
+          assert speechUnit.wantedBy == [ ];
+          assert speechUnit.serviceConfig.Type == "notify";
+          assert
+            speechUnit.environment.VK_ICD_FILENAMES
+            == "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json";
+          assert builtins.all
+            (host: !(self.nixosConfigurations.${host}.config.systemd.user.services ? qwen-tts))
+            [
+              "client"
+              "worker"
+              "nas"
+            ];
+          assert builtins.elem pkgs.qwen-speech
+            self.nixosConfigurations.client.config.home-manager.users.tom.home.packages;
+          assert
+            !(builtins.elem pkgs.qwentts self.nixosConfigurations.client.config.home-manager.users.tom.home.packages);
+          pkgs.runCommand "qwen-speech-topology" { } ''touch "$out"'';
         coordinator-uplink =
           pkgs.runCommand "coordinator-uplink-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
             ''
@@ -886,18 +919,20 @@
         # prefill rate per halogen-flash-server#48). Hermetic: scratch meters, a
         # fake journalctl, python3 and coreutils.
         util-row-closed-day =
-          pkgs.runCommand "util-row-closed-day" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-            set -euo pipefail
-            UTIL_ROW=${./home/dot_local/bin/util-row} \
-              bash ${./tests/util-row/test-closed-day-idempotent.sh} | tee $out
-          '';
+          pkgs.runCommand "util-row-closed-day" { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              set -euo pipefail
+              UTIL_ROW=${./home/dot_local/bin/util-row} \
+                bash ${./tests/util-row/test-closed-day-idempotent.sh} | tee $out
+            '';
         util-01-halogen-tokens =
-          pkgs.runCommand "util-01-halogen-tokens" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-            set -euo pipefail
-            UTIL_SAMPLER=${./home/dot_local/bin/util-sampler} \
-            UTIL_ROW=${./home/dot_local/bin/util-row} \
-              bash ${./tests/util-01/test-halogen-token-window.sh} | tee $out
-          '';
+          pkgs.runCommand "util-01-halogen-tokens" { nativeBuildInputs = [ pkgs.python3 ]; }
+            ''
+              set -euo pipefail
+              UTIL_SAMPLER=${./home/dot_local/bin/util-sampler} \
+              UTIL_ROW=${./home/dot_local/bin/util-row} \
+                bash ${./tests/util-01/test-halogen-token-window.sh} | tee $out
+            '';
 
         l8-flash-probe-util-rows =
           pkgs.runCommand "l8-flash-probe-util-rows"
@@ -1140,7 +1175,8 @@
           # and the kit's usage drop, where every `usage_source.path_glob` the
           # kit names resolves: the kernel resolves the glob, it does not create
           # the directory.
-          assert builtins.elem "d ${state}/uplink/usage 0700 - - -" coordinatorHome.systemd.user.tmpfiles.rules;
+          assert builtins.elem "d ${state}/uplink/usage 0700 - - -"
+            coordinatorHome.systemd.user.tmpfiles.rules;
           # the non-goals: no system-bus twin of either half, and the live
           # daemon stays.
           assert !(coordinator.systemd.services ? tally-uplink);
@@ -1649,14 +1685,9 @@
           # the earlier pin named the box's idle wifi MAC and could never have
           # matched. This assert derives the address from the worker's own
           # profile, so changing one side without the other fails the build.
-          assert
-            builtins.elem
-              "9c:bf:0d:01:cc:65,worker,${
-                nixpkgs.lib.head (
-                  nixpkgs.lib.splitString "/" worker.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.address1
-                )
-              },infinite"
-              nas.services.dnsmasq.settings.dhcp-host;
+          assert builtins.elem
+            "9c:bf:0d:01:cc:65,worker,${nixpkgs.lib.head (nixpkgs.lib.splitString "/" worker.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.address1)},infinite"
+            nas.services.dnsmasq.settings.dhcp-host;
           assert
             nas.networking.networkmanager.ensureProfiles.profiles.coordinator-fast-lane.ipv4.gateway
             == "10.42.0.3";
@@ -1802,25 +1833,35 @@
           assert !(nas.systemd.timers ? paperless-bridge-bulk);
           assert nas.systemd.services.paperless-bridge-bulk.wantedBy == [ ];
           # Router safety: the NAS is the house DHCP/DNS router.
-          assert builtins.all (
-            u:
-            nas.systemd.services.${u}.serviceConfig.CPUWeight == 20
-            && nas.systemd.services.${u}.serviceConfig.IOSchedulingClass == "idle"
-            && nas.systemd.services.${u}.serviceConfig.MemoryMax == "8G"
-          ) [ "paperless-task-queue" "paperless-consumer" "paperless-bridge-bulk" ];
+          assert builtins.all
+            (
+              u:
+              nas.systemd.services.${u}.serviceConfig.CPUWeight == 20
+              && nas.systemd.services.${u}.serviceConfig.IOSchedulingClass == "idle"
+              && nas.systemd.services.${u}.serviceConfig.MemoryMax == "8G"
+            )
+            [
+              "paperless-task-queue"
+              "paperless-consumer"
+              "paperless-bridge-bulk"
+            ];
           # The backend port is admitted from the coordinator only; nothing
           # tailnet-facing on the appliance may name it.
-          assert nixpkgs.lib.hasInfix "ip saddr 10.42.0.2 tcp dport 28981 accept" nas.networking.firewall.extraInputRules;
+          assert nixpkgs.lib.hasInfix "ip saddr 10.42.0.2 tcp dport 28981 accept"
+            nas.networking.firewall.extraInputRules;
           assert !(builtins.elem 28981 nas.networking.firewall.allowedTCPPorts);
           assert !(builtins.elem "tailscale0" nas.networking.firewall.trustedInterfaces);
           # Without the ACL the consumer cannot reach its spool; without the
           # view ownership the bridge (tom) cannot verify (hosts/nas/paperless.nix).
           assert builtins.elem "a+ /mnt/nas/documents - - - - u:paperless:--x" nas.systemd.tmpfiles.rules;
-          assert builtins.elem "z /mnt/nas/documents/.paperless-view 0770 tom paperless -" nas.systemd.tmpfiles.rules;
-          assert builtins.elem "z /mnt/nas/services/paperless/media/documents 0750 paperless paperless -" nas.systemd.tmpfiles.rules;
+          assert builtins.elem "z /mnt/nas/documents/.paperless-view 0770 tom paperless -"
+            nas.systemd.tmpfiles.rules;
+          assert builtins.elem "z /mnt/nas/services/paperless/media/documents 0750 paperless paperless -"
+            nas.systemd.tmpfiles.rules;
           # The relay auto-logs in a superuser: only the client and tailnet
           # peers may reach it, never another LAN host (2026-09-14: the worker got 200).
-          assert nixpkgs.lib.hasInfix "not remote_ip" coordinator.services.caddy.virtualHosts."http://paperless.internal".extraConfig;
+          assert nixpkgs.lib.hasInfix "not remote_ip"
+            coordinator.services.caddy.virtualHosts."http://paperless.internal".extraConfig;
           assert !coordinator.myNasClient.relayAttic;
           # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
           # 2026-08-03: the staged Jellyfin alternative was deleted, not kept
@@ -1909,7 +1950,8 @@
             clientHome = self.nixosConfigurations.client.config.home-manager.users.tom;
             cfgOf = h: self.nixosConfigurations.${h}.config;
             hasChromeStream =
-              h: builtins.any (p: (p.pname or p.name or "") == "chrome-stream") (cfgOf h).environment.systemPackages;
+              h:
+              builtins.any (p: (p.pname or p.name or "") == "chrome-stream") (cfgOf h).environment.systemPackages;
             # Every host whose seat this block adjudicates — named, not
             # discovered, so a fifth host added tomorrow (a seat by default,
             # modules/display.nix) is either listed here on purpose or its
@@ -1947,19 +1989,13 @@
           assert coordinatorHome.home.username == "tom";
           assert coordinatorHome.programs.atuin.settings.auto_sync;
           assert coordinatorHome.services.tally.enable;
-          # Dictation (#376, route b'): the model and daemon run on the headless
-          # coordinator under linger, not in a graphical session that never
-          # starts there; the client only relays audio (dictate-hold, below).
-          assert coordinatorHome.programs.voxtype.enable;
-          assert !coordinatorHome.programs.voxtype.settings.hotkey.enabled;
-          assert !coordinatorHome.programs.voxtype.settings.parakeet.streaming;
-          assert coordinatorHome.systemd.user.services.voxtype.Install.WantedBy == [ "default.target" ];
-          assert coordinatorHome.systemd.user.services.voxtype.Unit.PartOf == [ ];
-          # No ExecStartPre: the switch that first starts this unit must not
-          # wait on the 2.5 GB model download (sd-switch 120 s job timeout).
-          assert !(coordinatorHome.systemd.user.services.voxtype.Service ? ExecStartPre);
-          assert coordinatorHome.xdg.configFile ? "pipewire/pipewire.conf.d/60-client-mic.conf";
-          assert nixpkgs.lib.hasInfix "client-mic" (builtins.readFile ./home/dot_local/bin/voxtype-relay);
+          # Direct Parakeet is coordinator-only; capture has no virtual mic or
+          # service-start download. Native Herdr owns client key handling.
+          assert
+            coordinatorHome.systemd.user.services.mykonos-parakeet.Install.WantedBy == [ "default.target" ];
+          assert !(coordinatorHome.systemd.user.services ? voxtype);
+          assert !(coordinatorHome.xdg.configFile ? "pipewire/pipewire.conf.d/60-client-mic.conf");
+          assert !(coordinatorHome.systemd.user.services.mykonos-parakeet.Service ? ExecStartPre);
           # ONE herdr server, coordinator only (ruling B5), and it must never be
           # tied to the compositor's lifetime (ruling B6) — the PTYs outlive it.
           assert coordinatorHome.systemd.user.services ? herdr;
@@ -2006,19 +2042,32 @@
           # which no generation renders, so they are asserted here by content
           # (precedent: the readFile assert on dot_claude/settings.json below).
           # Each one goes through herdr-chord into ONE projector window.
-          assert nixpkgs.lib.hasInfix ''spawn-sh "~/.local/bin/herdr-chord new"'' (builtins.readFile ./home/dot_config/niri/binds.kdl);
-          assert nixpkgs.lib.hasInfix ''spawn-sh "~/.local/bin/herdr-chord sidebar"'' (builtins.readFile ./home/dot_config/niri/binds.kdl);
-          assert nixpkgs.lib.hasInfix ''spawn-sh "~/.local/bin/herdr-chord rename"'' (builtins.readFile ./home/dot_config/niri/binds.kdl);
-          assert nixpkgs.lib.hasInfix ''Mod+Shift+Return hotkey-overlay-title="Terminal (plain)" { spawn "kitty" "-e" "fish"; }'' (builtins.readFile ./home/dot_config/niri/binds.kdl);
+          assert nixpkgs.lib.hasInfix ''spawn-sh "~/.local/bin/herdr-chord new"'' (
+            builtins.readFile ./home/dot_config/niri/binds.kdl
+          );
+          assert nixpkgs.lib.hasInfix ''spawn-sh "~/.local/bin/herdr-chord sidebar"'' (
+            builtins.readFile ./home/dot_config/niri/binds.kdl
+          );
+          assert nixpkgs.lib.hasInfix ''spawn-sh "~/.local/bin/herdr-chord rename"'' (
+            builtins.readFile ./home/dot_config/niri/binds.kdl
+          );
+          assert nixpkgs.lib.hasInfix
+            ''Mod+Shift+Return hotkey-overlay-title="Terminal (plain)" { spawn "kitty" "-e" "fish"; }''
+            (builtins.readFile ./home/dot_config/niri/binds.kdl);
           # kitty.conf may not map anything to the removed `hk` action: kitty
           # turns an unknown action into a bad-config overlay on every start,
           # and a `map ctrl+b …` would eat herdr's prefix before herdr sees it.
-          assert !(builtins.any (l: nixpkgs.lib.hasPrefix "map " l && (nixpkgs.lib.hasInfix " hk " l || nixpkgs.lib.hasPrefix "map ctrl+b " l)) (
-            nixpkgs.lib.splitString "\n" (builtins.readFile ./home/dot_config/kitty/kitty.conf)
-          ));
+          assert
+            !(builtins.any (
+              l:
+              nixpkgs.lib.hasPrefix "map " l
+              && (nixpkgs.lib.hasInfix " hk " l || nixpkgs.lib.hasPrefix "map ctrl+b " l)
+            ) (nixpkgs.lib.splitString "\n" (builtins.readFile ./home/dot_config/kitty/kitty.conf)));
           # Without `--remote-keybindings server` a projector strips the tally
           # [[keys.command]] popups (herdr src/client/shell/config.rs:158-162).
-          assert nixpkgs.lib.hasInfix "--remote-keybindings server" (builtins.readFile ./home/dot_local/bin/herdr-projector);
+          assert nixpkgs.lib.hasInfix "--remote-keybindings server" (
+            builtins.readFile ./home/dot_local/bin/herdr-projector
+          );
           # The worker keeps Home Manager (unlike the NAS, which stops at NixOS):
           # it is an ordinary interactive box that merely has nobody sitting at
           # it, so the shell, atuin sync and the user timers are all real. What
@@ -2028,7 +2077,7 @@
           assert workerHome.home.username == "tom";
           assert workerHome.programs.atuin.settings.auto_sync;
           assert !workerHome.services.tally.enable;
-          assert !workerHome.programs.voxtype.enable;
+          assert !(workerHome.systemd.user.services ? mykonos-parakeet);
           assert !(workerHome.systemd.user.services ? voxtype);
           # …and the herdr SERVER. The worker still gets the herdr binary (it is
           # how `herdr --remote coordinator` works at all), just no unit.
@@ -2060,12 +2109,20 @@
           assert (cfgOf "coordinator").systemd.user.services ? browser-desktop;
           assert (cfgOf "coordinator").systemd.user.services.browser-desktop.wantedBy == [ ];
           assert (cfgOf "coordinator").systemd.user.services.fara-browser-model.wantedBy == [ ];
-          assert builtins.all (h: !((cfgOf h).systemd.user.services ? browser-desktop)) [ "client" "worker" "nas" ];
+          assert builtins.all (h: !((cfgOf h).systemd.user.services ? browser-desktop)) [
+            "client"
+            "worker"
+            "nas"
+          ];
           # chrome-stream is installed with that desktop and nowhere else: the
           # client reaches it over ssh with its own Chrome (R-16 keeps the
           # client closure near-static).
           assert hasChromeStream "coordinator";
-          assert builtins.all (h: !hasChromeStream h) [ "client" "worker" "nas" ];
+          assert builtins.all (h: !hasChromeStream h) [
+            "client"
+            "worker"
+            "nas"
+          ];
           assert !(workerHome.systemd.user.services ? wayvnc);
           assert (coordinatorHome.systemd.user.services ? wayvnc) == (cfgOf "coordinator").myDisplay.enable;
           assert (coordinatorHome.systemd.user.services ? piri) == (cfgOf "coordinator").myDisplay.enable;
@@ -2094,16 +2151,20 @@
           # eDP-1 on stock niri (PR #1856 accepted as a defect, no fork).
           assert clientHome.home.username == "tom";
           assert !clientHome.services.tally.enable;
-          assert !clientHome.programs.voxtype.enable;
-          # …and no model either (#376): the client is the mic and the key, the
-          # coordinator is the model. No voxtype package, config or unit here;
-          # dictate-hold is the only dictation artefact, and it is seat-only.
-          assert !(builtins.any (p: nixpkgs.lib.hasPrefix "voxtype" (nixpkgs.lib.getName p)) clientHome.home.packages);
+          # No transcription model or Voxtype on the client. Alexa and the
+          # thin capture helper share the USB microphone with explicit inhibition.
+          assert
+            !(builtins.any (
+              p: nixpkgs.lib.hasPrefix "voxtype" (nixpkgs.lib.getName p)
+            ) clientHome.home.packages);
           assert !(clientHome.xdg.configFile ? "voxtype/config.toml");
           assert !(clientHome.systemd.user.services ? voxtype);
-          assert builtins.any (p: nixpkgs.lib.getName p == "dictate-hold") clientHome.home.packages;
-          assert !(builtins.any (p: nixpkgs.lib.getName p == "dictate-hold") coordinatorHome.home.packages);
-          assert nixpkgs.lib.hasInfix "Mod+Space repeat=false hotkey-overlay-title=\"Dictate (hold)\" { spawn \"dictate-hold\"; }" (builtins.readFile ./home/dot_config/niri/binds.kdl);
+          assert !(clientHome.systemd.user.services ? mykonos-parakeet);
+          assert clientHome.systemd.user.services.mykonos-wake.Install.WantedBy == [ "default.target" ];
+          assert !(builtins.any (p: nixpkgs.lib.getName p == "dictate-hold") clientHome.home.packages);
+          assert nixpkgs.lib.hasInfix "HERDR_DICTATION_COMMAND=mykonos-dictate" (
+            builtins.readFile ./home/dot_local/bin/herdr-projector
+          );
           assert !(clientHome.systemd.user.services ? herdr);
           assert builtins.any (p: nixpkgs.lib.getName p == "herdr") clientHome.home.packages;
           assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") clientHome.home.packages);
@@ -2113,19 +2174,20 @@
           assert coordinatorHome.systemd.user.services ? dcal-daemon;
           # A viewer profile exists exactly while there is a server to view.
           assert
-            (clientHome.xdg.dataFile ? "remmina/coordinator.remmina")
-            == (cfgOf "coordinator").myDisplay.enable;
+            (clientHome.xdg.dataFile ? "remmina/coordinator.remmina") == (cfgOf "coordinator").myDisplay.enable;
           assert !(coordinatorHome.xdg.dataFile ? "remmina/client.remmina");
           assert
             !builtins.elem 5900 (
               self.nixosConfigurations.client.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
                 or [ ]
             );
-          assert nixpkgs.lib.hasInfix "map-to-output \"eDP-1\"" clientHome.xdg.configFile."niri-local.kdl".text;
+          assert nixpkgs.lib.hasInfix "map-to-output \"eDP-1\""
+            clientHome.xdg.configFile."niri-local.kdl".text;
           # The client's generated slot overrides none of binds.kdl's herdr
           # chords: an override there would shadow herdr-chord (#385).
           assert !(nixpkgs.lib.hasInfix "Mod+Return " clientHome.xdg.configFile."niri-local.kdl".text);
-          assert !(nixpkgs.lib.hasInfix "Mod+Ctrl+Shift+Return " clientHome.xdg.configFile."niri-local.kdl".text);
+          assert
+            !(nixpkgs.lib.hasInfix "Mod+Ctrl+Shift+Return " clientHome.xdg.configFile."niri-local.kdl".text);
           assert !(nixpkgs.lib.hasInfix "Mod+Shift+N " clientHome.xdg.configFile."niri-local.kdl".text);
           assert !(nixpkgs.lib.hasInfix "binds" coordinatorHome.xdg.configFile."niri-local.kdl".text);
           assert
@@ -2134,8 +2196,7 @@
                 or [ ]
             );
           assert
-            builtins.elem 5900
-              self.nixosConfigurations.coordinator.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
+            builtins.elem 5900 self.nixosConfigurations.coordinator.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
             == (cfgOf "coordinator").myDisplay.enable;
           assert !self.nixosConfigurations.worker.config.services.tailscale.enable;
           pkgs.runCommand "home-profiles" { } ''
@@ -2456,7 +2517,11 @@
             ];
           assert (homeOf "worker").rawDotfiles.programs == [ "util-sampler" ];
           assert (homeOf "client").rawDotfiles.programs == [ "util-sampler" ];
-          assert entry.before == [ "checkLinkTargets" "writeBoundary" ];
+          assert
+            entry.before == [
+              "checkLinkTargets"
+              "writeBoundary"
+            ];
           assert lib.hasInfix "/bin/raw-dotfiles-guard" entry.data;
           pkgs.runCommand "raw-dotfiles-guard" { } ''
             # stdenv runs with errexit; the stale fixture must be allowed to fail.
@@ -3047,22 +3112,38 @@
               "gemma4-12b-it-mtp-q8-0"
               "fara15-9b-q8-0"
               "fara15-9b-mmproj-bf16"
+              "qwen3-tts-1.7b-base-q8-0"
+              "qwen-k2so-midway-b"
+              "parakeet-tdt-0.6b-v3-onnx"
+              "qwen3-tts-tokenizer-f32"
             ];
-          # The catalogue itself: sixteen artifacts and no other top-level
+          # The catalogue includes Qwen speech evaluation artifacts; no other top-level
           # attribute — no deployments, no backend kinds, no utility pointer.
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
           assert
             builtins.attrNames localModelCatalog.artifacts == [
               "fara15-9b-mmproj-bf16"
               "fara15-9b-q8-0"
+              "gemma4-12b-it-mmproj-f16"
               "gemma4-12b-it-mtp-q8-0"
               "gemma4-12b-it-q8-0"
+              "gemma4-e4b-it-mmproj-bf16"
+              "gemma4-e4b-it-q8-0"
               "halogen-qwen38-27b"
               "halogen-qwen38-flash-next"
               "mage-flow-4b-turbo-bf16"
               "mage-flow-edit-4b-turbo-bf16"
               "mage-vl-bf16"
+              "openwakeword-alexa-v051"
+              "openwakeword-baker-compat-v051"
+              "parakeet-tdt-0.6b-v3-onnx"
+              "qwen-k2so-midway-b"
               "qwen3-embedding-8b-q8-0"
+              "qwen3-tts-1.7b-base-q8-0"
+              "qwen3-tts-1.7b-voicedesign-q8-0"
+              "qwen3-tts-khimaros-1.7b-base-q8-0"
+              "qwen3-tts-khimaros-tokenizer-f16"
+              "qwen3-tts-tokenizer-f32"
               "qwen3-vl-embedding-8b-mmproj-f16"
               "qwen3-vl-embedding-8b-q8-0"
               "qwen36-35b-a3b-mtp-ud-q8-k-xl"
@@ -3321,8 +3402,7 @@
             homeOf = name: self.nixosConfigurations.${name}.config.home-manager.users.tom;
             coordinatorHome = homeOf "coordinator";
             daemonService = coordinatorHome.systemd.user.services.paper-daemon;
-            postStart =
-              self.nixosConfigurations.coordinator.config.systemd.services.ensure-printers.postStart;
+            postStart = self.nixosConfigurations.coordinator.config.systemd.services.ensure-printers.postStart;
           in
           assert printingHosts != [ ];
           assert nixpkgs.lib.all (host: !host.services.printing.browsed.enable) printingHosts;
@@ -3340,11 +3420,16 @@
           assert daemonService.Unit.X-RestartIfChanged == false;
           assert daemonService.Unit.StartLimitIntervalSec == 0;
           assert !(coordinatorHome.systemd.user.services ? paper-print-flush);
-          assert nixpkgs.lib.all (
-            name:
-            !((homeOf name).systemd.user.services ? paper-daemon)
-            && !((homeOf name).systemd.user.paths ? paper-daemon)
-          ) [ "worker" "client" ];
+          assert nixpkgs.lib.all
+            (
+              name:
+              !((homeOf name).systemd.user.services ? paper-daemon)
+              && !((homeOf name).systemd.user.paths ? paper-daemon)
+            )
+            [
+              "worker"
+              "client"
+            ];
           pkgs.runCommand "print-plane" { } ''
             ${builtins.head (nixpkgs.lib.toList daemonService.Service.ExecStart)} --help >/dev/null 2>&1 \
               || { echo "paper-daemon --help failed" >&2; exit 1; }

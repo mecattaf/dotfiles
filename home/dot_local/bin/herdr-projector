@@ -69,6 +69,11 @@
 # The full rule is beside [session] in home/dot_config/herdr/config.toml.
 set -u
 
+# Native client hold-Space support; all inference remains on coordinator.
+if [ "$(hostname)" = client ]; then
+  export HERDR_DICTATION_COMMAND=mykonos-dictate
+fi
+
 target="${HERDR_PROJECTOR_TARGET:-coordinator}"
 herdr_bin="${HERDR_BIN:-herdr}"
 ssh_bin="${HERDR_PROJECTOR_SSH:-ssh}"

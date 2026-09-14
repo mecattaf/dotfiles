@@ -1,0 +1,258 @@
+{
+  "topic": "Expressive control in chosen Qwen3-TTS12Hz1.7BBaseQ8 runtime",
+  "audited_on": "2026-09-14",
+  "runtime_revision": "71ad93d591a2811f35db77e27c02acba091c9e9b",
+  "official_revision": "022e286b98fbec7e1e916cb940cdf532cd9f488e",
+  "sources": [
+    {
+      "id": "paper",
+      "title": "Qwen3-TTS Technical Report",
+      "publisher": "Qwen Team",
+      "date": "2026-01-22",
+      "url": "https://arxiv.org/html/2601.15621v1",
+      "revision": "2601.15621v1",
+      "accessed_date": "2026-09-14",
+      "source_type": "primary",
+      "supports": [
+        "Table1 distinguishes12HzBase from25HzVoiceEditing",
+        "Section3.3 describes ICL prosody preservation",
+        "Section4.2.4 controllability is model/task specific"
+      ],
+      "limitations": "Family-level results do not establish direct instruction support for deployed12HzBaseQ8.",
+      "verbatim_words_quoted": 0
+    },
+    {
+      "id": "official_release",
+      "title": "Qwen3-TTS README: released models and design-then-clone",
+      "publisher": "QwenLM / Alibaba Qwen Team",
+      "date": "2026-03-17",
+      "url": "https://github.com/QwenLM/Qwen3-TTS/blob/022e286b98fbec7e1e916cb940cdf532cd9f488e/README.md",
+      "revision": "022e286b98fbec7e1e916cb940cdf532cd9f488e",
+      "accessed_date": "2026-09-14",
+      "source_type": "primary",
+      "supports": [
+        "1.7BBase vs1.7BCustomVoice vs1.7BVoiceDesign capability split",
+        "VoiceDesign-to-Base reference workflow"
+      ],
+      "limitations": "README repeats family-level marketing; use model table and explicit interfaces.",
+      "verbatim_words_quoted": 0
+    },
+    {
+      "id": "official_inference",
+      "title": "Qwen3TTSModel inference wrapper",
+      "publisher": "Alibaba Qwen Team",
+      "date": "2026-03-17",
+      "url": "https://github.com/QwenLM/Qwen3-TTS/blob/022e286b98fbec7e1e916cb940cdf532cd9f488e/qwen_tts/inference/qwen3_tts_model.py",
+      "revision": "022e286b98fbec7e1e916cb940cdf532cd9f488e",
+      "accessed_date": "2026-09-14",
+      "source_type": "primary",
+      "supports": [
+        "Base generate_voice_clone API",
+        "ICL vs x_vector_only conditioning",
+        "Batch prompts remain separate items"
+      ],
+      "limitations": "No supported named instruct argument on clone wrapper; arbitrary kwargs are not a guarantee of trained control.",
+      "verbatim_words_quoted": 0
+    },
+    {
+      "id": "runtime_abi",
+      "title": "qwentts.cpp public C ABI",
+      "publisher": "ServeurpersoCom and contributors",
+      "date": "2026-09-14",
+      "url": "https://github.com/ServeurpersoCom/qwentts.cpp/blob/71ad93d591a2811f35db77e27c02acba091c9e9b/src/qwen.h",
+      "revision": "71ad93d591a2811f35db77e27c02acba091c9e9b",
+      "accessed_date": "2026-09-14",
+      "source_type": "primary",
+      "supports": [
+        "Base instruct restriction",
+        "Reference extraction and ICL contracts",
+        "Sampling parameters and seed semantics"
+      ],
+      "limitations": "Pinned implementation contract; reference extraction does not claim montage speaker isolation.",
+      "verbatim_words_quoted": 0
+    },
+    {
+      "id": "runtime_validation",
+      "title": "qwentts.cpp synthesis parameter validation",
+      "publisher": "ServeurpersoCom and contributors",
+      "date": "2026-09-14",
+      "url": "https://github.com/ServeurpersoCom/qwentts.cpp/blob/71ad93d591a2811f35db77e27c02acba091c9e9b/src/qwen.cpp",
+      "revision": "71ad93d591a2811f35db77e27c02acba091c9e9b",
+      "accessed_date": "2026-09-14",
+      "source_type": "primary",
+      "supports": [
+        "Base instructions rejected",
+        "Reference conditioning restricted to Base"
+      ],
+      "limitations": "Validation evidence, not a generated-audio experiment.",
+      "verbatim_words_quoted": 0
+    },
+    {
+      "id": "runtime_http",
+      "title": "qwentts.cpp HTTP server schema",
+      "publisher": "ServeurpersoCom and contributors",
+      "date": "2026-09-14",
+      "url": "https://github.com/ServeurpersoCom/qwentts.cpp/blob/71ad93d591a2811f35db77e27c02acba091c9e9b/src/tts-server.h",
+      "revision": "71ad93d591a2811f35db77e27c02acba091c9e9b",
+      "accessed_date": "2026-09-14",
+      "source_type": "primary",
+      "supports": [
+        "instructions mapping",
+        "speed parsed but ignored",
+        "HTTP sampler fields"
+      ],
+      "limitations": "Accepted JSON is not equivalent to implemented control; speed is explicit example.",
+      "verbatim_words_quoted": 0
+    },
+    {
+      "id": "runtime_defaults",
+      "title": "qwentts.cpp sampling defaults",
+      "publisher": "ServeurpersoCom and contributors",
+      "date": "2026-09-14",
+      "url": "https://github.com/ServeurpersoCom/qwentts.cpp/blob/71ad93d591a2811f35db77e27c02acba091c9e9b/src/sampling-defaults.h",
+      "revision": "71ad93d591a2811f35db77e27c02acba091c9e9b",
+      "accessed_date": "2026-09-14",
+      "source_type": "primary",
+      "supports": [
+        "Talker0.9/50/1.0/repetition1.05",
+        "Subtalker0.9/50/1.0",
+        "max_new_tokens2048"
+      ],
+      "limitations": "Default values do not express a named emotion.",
+      "verbatim_words_quoted": 0
+    },
+    {
+      "id": "runtime_architecture",
+      "title": "qwentts.cpp architecture and prompt assembly",
+      "publisher": "ServeurpersoCom and contributors",
+      "date": "2026-09-14",
+      "url": "https://github.com/ServeurpersoCom/qwentts.cpp/blob/71ad93d591a2811f35db77e27c02acba091c9e9b/docs/ARCHITECTURE.md",
+      "revision": "71ad93d591a2811f35db77e27c02acba091c9e9b",
+      "accessed_date": "2026-09-14",
+      "source_type": "primary",
+      "supports": [
+        "Distinct text/instruct prompt construction",
+        "Documented conditioning and sampler interface"
+      ],
+      "limitations": "No documented SSML, bracketemotion or exact-pause contract in inspected controls; not proof a tag can never affect audio.",
+      "verbatim_words_quoted": 0
+    },
+    {
+      "id": "sft_guide",
+      "title": "Single-speaker Base fine-tuning guide",
+      "publisher": "Alibaba Qwen Team",
+      "date": "2026-03-17",
+      "url": "https://github.com/QwenLM/Qwen3-TTS/blob/022e286b98fbec7e1e916cb940cdf532cd9f488e/finetuning/README.md",
+      "revision": "022e286b98fbec7e1e916cb940cdf532cd9f488e",
+      "accessed_date": "2026-09-14",
+      "source_type": "primary",
+      "supports": [
+        "JSONL audio/text/ref_audio schema",
+        "Audio-code preparation and optimization",
+        "Consistent reference recommendation"
+      ],
+      "limitations": "No demonstration this three-minute film source is sufficient training data.",
+      "verbatim_words_quoted": 0
+    },
+    {
+      "id": "sft_script",
+      "title": "Official 12Hz supervised fine-tuning script",
+      "publisher": "Alibaba Qwen Team",
+      "date": "2026-03-17",
+      "url": "https://github.com/QwenLM/Qwen3-TTS/blob/022e286b98fbec7e1e916cb940cdf532cd9f488e/finetuning/sft_12hz.py",
+      "revision": "022e286b98fbec7e1e916cb940cdf532cd9f488e",
+      "accessed_date": "2026-09-14",
+      "source_type": "primary",
+      "supports": [
+        "Optimizer updates weights",
+        "Export sets custom_voice and named speaker"
+      ],
+      "limitations": "A custom_voice config label does not establish new emotionalinstruction training or C++ compatibility.",
+      "verbatim_words_quoted": 0
+    },
+    {
+      "id": "sft_dataset",
+      "title": "Official 12Hz fine-tuning dataset implementation",
+      "publisher": "Alibaba Qwen Team",
+      "date": "2026-03-17",
+      "url": "https://github.com/QwenLM/Qwen3-TTS/blob/022e286b98fbec7e1e916cb940cdf532cd9f488e/finetuning/dataset.py",
+      "revision": "022e286b98fbec7e1e916cb940cdf532cd9f488e",
+      "accessed_date": "2026-09-14",
+      "source_type": "primary",
+      "supports": [
+        "Targettext/codes and reference audio inputs",
+        "No explicit emotionalinstruction dataset field"
+      ],
+      "limitations": "Adding arbitrary metadata alone is not a supervised control mechanism.",
+      "verbatim_words_quoted": 0
+    },
+    {
+      "id": "runtime_commit",
+      "title": "Pinned runtime commit / checked currentHEAD",
+      "publisher": "ServeurpersoCom",
+      "date": "2026-09-14T11:24:22Z",
+      "url": "https://github.com/ServeurpersoCom/qwentts.cpp/commit/71ad93d591a2811f35db77e27c02acba091c9e9b",
+      "revision": "71ad93d591a2811f35db77e27c02acba091c9e9b",
+      "accessed_date": "2026-09-14",
+      "source_type": "primary",
+      "supports": [
+        "Pinned commit equals observed upstreamHEAD on access date"
+      ],
+      "limitations": "Latest is a timestamped observation, not a permanent guarantee.",
+      "verbatim_words_quoted": 0
+    },
+    {
+      "id": "official_commit",
+      "title": "Official Qwen repository HEAD",
+      "publisher": "QwenLM",
+      "date": "2026-03-17T06:38:41Z",
+      "url": "https://github.com/QwenLM/Qwen3-TTS/commit/022e286b98fbec7e1e916cb940cdf532cd9f488e",
+      "revision": "022e286b98fbec7e1e916cb940cdf532cd9f488e",
+      "accessed_date": "2026-09-14",
+      "source_type": "primary",
+      "supports": [
+        "Exact audited official source revision"
+      ],
+      "limitations": "Latest is a timestamped observation.",
+      "verbatim_words_quoted": 0
+    },
+    {
+      "id": "local_enrollment",
+      "title": "Local qwen-speech wrapper",
+      "publisher": "Local dotfiles worktree",
+      "date": "2026-09-14",
+      "path": "/home/tom/mecattaf/dotfiles-qwen-tts-zenbook/pkgs/qwen-speech/speech.py",
+      "url": null,
+      "sha256": "426a20942607c8eeac05a72638bc103dfc17d05b8ed369c9863b8c0933ccf654",
+      "source_type": "primary_local_code",
+      "access_note": "Read directly in shared workspace; no public URL asserted.",
+      "supports": [
+        "2\u201330second24kmonoPCM enrollment policy",
+        "Single enrolled assistant-main profile",
+        "Current wrapper vs underlyingHTTP controls"
+      ],
+      "limitations": "Local policy may evolve; not a universalmodel reference limit."
+    },
+    {
+      "id": "local_experiment_scope",
+      "title": "Coordinator research-track update on ongoing reference auditions",
+      "publisher": "Root task coordinator",
+      "date": "2026-09-14",
+      "url": null,
+      "source_type": "primary_local_coordination",
+      "access_note": "Direct task message received during this research; no public URL or completed experiment result asserted.",
+      "supports": [
+        "15-reference experimental HTTP matrix includes 51.42-second inputs",
+        "Additional 13-passage 74.23-second concatenated reference under evaluation",
+        "All speech inference runs on Vulkan GPU; CPU labels describe preparation/independent ASR"
+      ],
+      "limitations": "Scope/status update only; not evidence longer references improve voice identity or expression."
+    }
+  ],
+  "research_limits": [
+    "No GPU experiments, model installations or fine-tuning in this research track.",
+    "No primarysource guarantees exact actor resemblance, monotonic benefit from longer references, or reliable bracketstage directions.",
+    "Proposed matrix and deliverymetadata are recommendations, not implemented features.",
+    "Onlyprimary sources underpin technical claims."
+  ]
+}

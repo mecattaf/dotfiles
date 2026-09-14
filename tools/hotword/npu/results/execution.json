@@ -1,0 +1,25 @@
+{
+  "device_requested": "NPU",
+  "compiler_requested": "PLUGIN",
+  "openvino": "2026.3.1-000--",
+  "mic_opened": false,
+  "fixture": "generated digital silence:32 x80ms chunks, then reset and repeat",
+  "cpu_inference_threads": 1,
+  "model_sha256": {
+    "embedding_model.onnx": "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f",
+    "hey_mycroft_v0.1.onnx": "c2a311e8fa1338de89c31b3b46dc4dffd4af2f9a8d6ddead48893c2d301b1f18",
+    "melspectrogram.onnx": "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f"
+  },
+  "execution_devices": {
+    "mel": [
+      "CPU"
+    ],
+    "embedding": "NPU",
+    "classifiers": {
+      "hey_mycroft": "NPU"
+    }
+  },
+  "status": "passed_execution",
+  "silence_events": [],
+  "quality_claim": "None: silence smoke test is not wake recall/false-positive validation"
+}

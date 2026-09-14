@@ -178,18 +178,9 @@ binds {
 
     // Reserved: Mod+I — toggle top bar
 
-    // Dictation is HOLD-to-talk into the focused herdr projector, transcribed
-    // on the coordinator's GPU (#376, route b'). niri binds have no on-release
-    // trigger, so the bind only STARTS `dictate-hold` (a per-press process,
-    // not a daemon): it records the default PipeWire source (the Shift+F9
-    // Audio Route pick) over ssh into the coordinator's voxtype, watches evdev
-    // for the release of Space or Mod, and types the transcript into THAT
-    // projector with kitty remote control. repeat=false so a held key spawns
-    // it once; niri still swallows the chord, so the pane never sees a space.
-    // Outside a projector it does nothing. No model lives on the client.
-    Mod+Space repeat=false hotkey-overlay-title="Dictate (hold)" { spawn "dictate-hold"; }
-    // Cancels an in-flight dictation (so does Esc while holding): no insertion.
-    Mod+Shift+Space hotkey-overlay-title="Cancel Dictation" { spawn "dictate-hold" "--cancel"; }
+    // Dictation is native to the Herdr client: hold bare Space in its window.
+    // The client captures the pinned USB microphone; coordinator runs Parakeet.
+    // No global evdev binding or external recording overlay.
 
     Mod+Slash { show-hotkey-overlay; }
 

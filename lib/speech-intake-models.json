@@ -1,0 +1,215 @@
+{
+  "parakeet-tdt-0.6b-v3-onnx": {
+    "kind": "model",
+    "maker": "NVIDIA / istupakov",
+    "quantization": "FP32",
+    "notes": "Resident coordinator MIGraphX dictation. Imported existing Voxtype-acquired files into NAS, verified against pinned upstream objects; no model download at service startup.",
+    "source": {
+      "hfUrl": "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx",
+      "revision": "8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce",
+      "primary": "encoder-model.onnx",
+      "files": [
+        {
+          "path": "config.json",
+          "bytes": 97,
+          "oid": "666903c76b9798caf2c210afd4f6cd60b08a8dbf9800ec8d7a3bc0d2148ac466",
+          "hash": "sha256-ZmkDx2uXmMrywhCv1PbNYLCKjb+YAOyNejvA0hSKxGY="
+        },
+        {
+          "path": "decoder_joint-model.onnx",
+          "bytes": 72520893,
+          "oid": "e978ddf6688527182c10fde2eb4b83068421648985ef23f7a86be732be8706c1",
+          "hash": "sha256-6Xjd9miFJxgsEP3i60uDBoQhZImF7yP3qGvnMr6HBsE="
+        },
+        {
+          "path": "encoder-model.onnx",
+          "bytes": 41770866,
+          "oid": "98a74b21b4cc0017c1e7030319a4a96f4a9506e50f0708f3a516d02a77c96bb1",
+          "hash": "sha256-mKdLIbTMABfB5wMDGaSpb0qVBuUPBwjzpRbQKnfJa7E="
+        },
+        {
+          "path": "encoder-model.onnx.data",
+          "bytes": 2435420160,
+          "oid": "9a22d372c51455c34f13405da2520baefb7125bd16981397561423ed32d24f36",
+          "hash": "sha256-miLTcsUUVcNPE0BdolILrvtxJb0WmBOXVhQj7TLSTzY="
+        },
+        {
+          "path": "vocab.txt",
+          "bytes": 93939,
+          "oid": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d",
+          "hash": "sha256-1YVEZ56kvGrFY9H1Ret9R0vWz6Rn8KbiwdwcfTfjw10="
+        }
+      ]
+    }
+  },
+  "qwen-k2so-midway-b": {
+    "kind": "template",
+    "maker": "Tom / local reference preparation",
+    "notes": "Accepted single Base voice. 44.02s identity; 25.20s matched prefix; source montage unchanged in speed. Not a trained model or CustomVoice.",
+    "source": {
+      "imported": true,
+      "hfUrl": "local:mykonos/k2so-midway-b",
+      "revision": "f779f3279cce35da64fc697aee24dce40611573d6154606e163ee5127a450f3d",
+      "primary": "voice.json",
+      "files": [
+        {
+          "path": "voice.json",
+          "bytes": 20474,
+          "oid": "f779f3279cce35da64fc697aee24dce40611573d6154606e163ee5127a450f3d",
+          "hash": "sha256-93nzJ5zONdpk/Gl67iTc5AYRVz1hVGBuFj7lEnpFDz0="
+        },
+        {
+          "path": "b-identity.spk",
+          "bytes": 8192,
+          "oid": "6b9f3b98df32ca6ac089126ec9145f43951056fa6b1d29fd3151ef71af4b63de",
+          "hash": "sha256-a587mN8yymrAiRJuyRRfQ5UQVvprHSn9MVHvca9LY94="
+        },
+        {
+          "path": "b-identity.wav",
+          "bytes": 2113004,
+          "oid": "61fd8e7a40222d977fc24c2867b7a98b1bcfecb1ecc8e1149535a20453cced68",
+          "hash": "sha256-Yf2OekAiLZd/wkwoZ7epixvP7LHsyOEUlTWiBFPM7Wg="
+        },
+        {
+          "path": "b-prefix.rvq",
+          "bytes": 6930,
+          "oid": "35f8aaa039e35a2a4d06243a66df3f7924ec77d842d00d6e12eee02d883f6346",
+          "hash": "sha256-NfiqoDnjWipNBiQ6Zt8/eSTsd9hC0A1uEu7gLYg/Y0Y="
+        },
+        {
+          "path": "b-prefix.txt",
+          "bytes": 238,
+          "oid": "74248cec10afa070613d63485389c69bf6f9a92704a37f5b5c91ddd0352e1ef9",
+          "hash": "sha256-dCSM7BCvoHBhPWNIU4nGm/b5qScEo39bXJHd0DUuHvk="
+        },
+        {
+          "path": "b-prefix.wav",
+          "bytes": 1209644,
+          "oid": "81b19b5ee63f39ddde5a85138bffc6fb578126f8eacee23f559c41c9a1a4f527",
+          "hash": "sha256-gbGbXuY/Od3eWoUTi//G+1eBJvjqzuI/VZxByaGk9Sc="
+        },
+        {
+          "path": "provenance.json",
+          "bytes": 4386,
+          "oid": "a42cfc46a477ae5c0bdf36bc0acea80030112cd7944bf03267fc5fc27e805e76",
+          "hash": "sha256-pCz8RqR3rlwL3za8Cs6oADARLNeUS/AyZ/xfwn6AXnY="
+        },
+        {
+          "path": "activation.json",
+          "bytes": 571,
+          "oid": "987a995019fc9a9087b460fc8164c6f3f02e42349c16432cc1946c3ff9abb498",
+          "hash": "sha256-mHqZUBn8mpCHtGD8gWTG8/AuQjScFkMswZRsP/mrtJg="
+        }
+      ]
+    }
+  },
+  "openwakeword-baker-compat-v051": {
+    "kind": "model",
+    "maker": "openWakeWord",
+    "notes": "NAS Library acquisition pinned by exact content hash. Gemma rows remain parked evaluation assets.",
+    "source": {
+      "hfUrl": "https://github.com/dscripka/openWakeWord",
+      "revision": "v0.5.1",
+      "primary": "melspectrogram.onnx",
+      "files": [
+        {
+          "path": "melspectrogram.onnx",
+          "bytes": 1087958,
+          "oid": "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f",
+          "hash": "sha256-uisOD4t7h1NposicsTNg/1O6xDbyiVzO2fR5+mXrF28=",
+          "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx"
+        },
+        {
+          "path": "embedding_model.onnx",
+          "bytes": 1326578,
+          "oid": "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f",
+          "hash": "sha256-cNFkKQwdCV0dTuFJvF4AVDJQpzFrWfMdBWz/e9MHXB8=",
+          "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx"
+        },
+        {
+          "path": "hey_mycroft_v0.1.onnx",
+          "bytes": 857691,
+          "oid": "c2a311e8fa1338de89c31b3b46dc4dffd4af2f9a8d6ddead48893c2d301b1f18",
+          "hash": "sha256-wqMR6PoTON6Jwxs7RtxN/9SvL5qNbd6tSIk8LTAbHxg=",
+          "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/hey_mycroft_v0.1.onnx"
+        }
+      ]
+    }
+  },
+  "openwakeword-alexa-v051": {
+    "kind": "model",
+    "maker": "openWakeWord",
+    "notes": "NAS Library acquisition pinned by exact content hash. Gemma rows remain parked evaluation assets.",
+    "source": {
+      "hfUrl": "https://github.com/dscripka/openWakeWord",
+      "revision": "v0.5.1",
+      "primary": "alexa_v0.1.onnx",
+      "files": [
+        {
+          "path": "alexa_v0.1.onnx",
+          "bytes": 854246,
+          "oid": "6ff566a01d12670e8d9e3c59da32651db1575d17272a601b7f8a39283dfbae3e",
+          "hash": "sha256-b/VmoB0SZw6NnjxZ2jJlHbFXXRcnKmAbf4o5KD37rj4=",
+          "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/alexa_v0.1.onnx"
+        }
+      ]
+    }
+  },
+  "gemma4-12b-it-mmproj-f16": {
+    "kind": "model",
+    "maker": "Google",
+    "notes": "NAS Library acquisition pinned by exact content hash. Gemma rows remain parked evaluation assets.",
+    "source": {
+      "hfUrl": "https://huggingface.co/unsloth/gemma-4-12b-it-GGUF",
+      "revision": "fc034cfff751157913579611efad8462ac1be606",
+      "primary": "mmproj-F16.gguf",
+      "files": [
+        {
+          "path": "mmproj-F16.gguf",
+          "bytes": 175115840,
+          "oid": "91f086971e56d7a7d8d39e271873fccdb49541bd259d6e02c401a4f1cb7a219e",
+          "hash": "sha256-kfCGlx5W16fY054nGHP8zbSVQb0lnW4CxAGk8ct6IZ4=",
+          "url": "https://huggingface.co/unsloth/gemma-4-12b-it-GGUF/resolve/fc034cfff751157913579611efad8462ac1be606/mmproj-F16.gguf"
+        }
+      ]
+    }
+  },
+  "gemma4-e4b-it-q8-0": {
+    "kind": "model",
+    "maker": "Google",
+    "notes": "NAS Library acquisition pinned by exact content hash. Gemma rows remain parked evaluation assets.",
+    "source": {
+      "hfUrl": "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF",
+      "revision": "b8093469224f83f5c38f691eb906c380e9e63114",
+      "primary": "gemma-4-E4B-it-Q8_0.gguf",
+      "files": [
+        {
+          "path": "gemma-4-E4B-it-Q8_0.gguf",
+          "bytes": 8031242688,
+          "oid": "34be82b17b4942d389b9b527170c4b058027abdd32531fda063d3d97dd8ce80a",
+          "hash": "sha256-NL6CsXtJQtOJubUnFwxLBYAnq90yUx/aBj09l92M6Ao=",
+          "url": "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/b8093469224f83f5c38f691eb906c380e9e63114/gemma-4-E4B-it-Q8_0.gguf"
+        }
+      ]
+    }
+  },
+  "gemma4-e4b-it-mmproj-bf16": {
+    "kind": "model",
+    "maker": "Google",
+    "notes": "NAS Library acquisition pinned by exact content hash. Gemma rows remain parked evaluation assets.",
+    "source": {
+      "hfUrl": "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF",
+      "revision": "b8093469224f83f5c38f691eb906c380e9e63114",
+      "primary": "mmproj-gemma-4-E4B-it-BF16.gguf",
+      "files": [
+        {
+          "path": "mmproj-gemma-4-E4B-it-BF16.gguf",
+          "bytes": 991552256,
+          "oid": "f77995e4b6a569ab8f0d1bfdb7e8da4a0fa5b9e6f309b9bf3bdb76164d75e29f",
+          "hash": "sha256-93mV5LalaauPDRv9t+jaSg+luebzCbm/O9t2Fk114p8=",
+          "url": "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/b8093469224f83f5c38f691eb906c380e9e63114/mmproj-gemma-4-E4B-it-BF16.gguf"
+        }
+      ]
+    }
+  }
+}

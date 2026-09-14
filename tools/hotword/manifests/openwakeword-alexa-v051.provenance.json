@@ -1,0 +1,16 @@
+{
+  "classifier_release": "v0.5.1",
+  "classifier_sha256": "6ff566a01d12670e8d9e3c59da32651db1575d17272a601b7f8a39283dfbae3e",
+  "initial_hash_discovery": "Unauthenticated HTTPS acquisition on NAS only, then canonical Library-fetch verification",
+  "fixture_source": "https://github.com/dscripka/openWakeWord/blob/c8ef6912c5feccf1037b852d9bc6c7ed644135ba/tests/data/alexa_test.wav",
+  "fixture_sha256": "915dba88a2b936f3ba3ee91affcdbe9041ffbe532613d3aca58d8a15447fbd81",
+  "fixture_seconds": 0.625,
+  "padded_fixture_seconds": 8.625,
+  "fixture_note": "Publisher Alexa positive test recording; no independent speaker or phonetic-end annotation;5s zero lead plus3s tail; no microphone input",
+  "shared_features_local": "/var/lib/local-models/openwakeword-baker-compat-v051",
+  "classifier_local": "/var/lib/local-models/openwakeword-alexa-v051/alexa_v0.1.onnx",
+  "code_license": "Apache-2.0",
+  "classifier_license": "CC-BY-NC-SA-4.0 under upstream pretrained model terms",
+  "client_transfer": "Canonical NAS Library file streamed over SSH to temporary client staging; explicit local-models-borrow --yes with LOCAL_MODELS_LIBRARY override, installed SHA verified; staging copy removed",
+  "functional_status": "passed_one_upstream_positive_saved_fixture_no_microphone"
+}

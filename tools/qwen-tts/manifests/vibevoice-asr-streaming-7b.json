@@ -1,0 +1,157 @@
+[
+  {
+    "id": "vibevoice-asr-streaming-7b-bf16",
+    "name": "vibevoice-asr-streaming-7b-bf16",
+    "repo": "microsoft/VibeVoice-ASR-Streaming-7B",
+    "revision": "60d858b518b4e19d404af3737f848fc185b30177",
+    "path": "weights/vibevoice-asr-streaming-7b-bf16",
+    "bytes": 17359814972,
+    "files": [
+      {
+        "name": "added_tokens.json",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/added_tokens.json",
+        "bytes": 713,
+        "oid": "d0a4c6e0954c94843fae3c966a7d0b52c7b8c0787fba5731733e6ab602245b88",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/added_tokens.json",
+        "original_git_blob_sha1": "5d8043c9d7b660ff931d52e432d03f0da9342fd8"
+      },
+      {
+        "name": "config.json",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/config.json",
+        "bytes": 3709,
+        "oid": "804c6e78705f629e0e3484ce130967d43f8d5e1a728e5c1322bdd697e8704c7d",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/config.json",
+        "original_git_blob_sha1": "5ad207e145440ea25f40c6f58d4e515e0870d305"
+      },
+      {
+        "name": "merges.txt",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/merges.txt",
+        "bytes": 1671839,
+        "oid": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/merges.txt",
+        "original_git_blob_sha1": "20024bfe7c83998e9aeaf98a0cd6a2ce6306c2f0"
+      },
+      {
+        "name": "model-00001-of-00008.safetensors",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/model-00001-of-00008.safetensors",
+        "bytes": 2488346304,
+        "oid": "3685d210ad49c49521e71a0cc5418ea94b20761c801dc8fc95938c4ec1ab27b3",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/model-00001-of-00008.safetensors"
+      },
+      {
+        "name": "model-00002-of-00008.safetensors",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/model-00002-of-00008.safetensors",
+        "bytes": 2389316008,
+        "oid": "d0252f5e9bdf7e65bb0ae051c49148fd5d77e531057556eb955fc6dc72f4f0bc",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/model-00002-of-00008.safetensors"
+      },
+      {
+        "name": "model-00003-of-00008.safetensors",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/model-00003-of-00008.safetensors",
+        "bytes": 2466376400,
+        "oid": "eeeb0c24e4a3746f16512c0d4aef84732bf8bb4dc5452782e4db356eb5fc7ce7",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/model-00003-of-00008.safetensors"
+      },
+      {
+        "name": "model-00004-of-00008.safetensors",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/model-00004-of-00008.safetensors",
+        "bytes": 2466376432,
+        "oid": "02fec24aaf3e59cbc653b55d94665d6393543f2550364c2c8bc9e75e2a2ca3c0",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/model-00004-of-00008.safetensors"
+      },
+      {
+        "name": "model-00005-of-00008.safetensors",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/model-00005-of-00008.safetensors",
+        "bytes": 2499431160,
+        "oid": "a78637bdc2b44f28601f7ee12503e28f5e9faedde35ff5bcdc2e7356c9a6458e",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/model-00005-of-00008.safetensors"
+      },
+      {
+        "name": "model-00006-of-00008.safetensors",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/model-00006-of-00008.safetensors",
+        "bytes": 2483469960,
+        "oid": "5bc9dfef14c62989192ab39356da45a9ccc9f0ef82f7f7127e48c17b5bd5a2f8",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/model-00006-of-00008.safetensors"
+      },
+      {
+        "name": "model-00007-of-00008.safetensors",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/model-00007-of-00008.safetensors",
+        "bytes": 1464887514,
+        "oid": "bb6da42b3547124eb67645fc6fb92523e93310a107872643f7df6dd75f85b4d7",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/model-00007-of-00008.safetensors"
+      },
+      {
+        "name": "model-00008-of-00008.safetensors",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/model-00008-of-00008.safetensors",
+        "bytes": 1089994880,
+        "oid": "b1499fbe8bc0454eeafc1177db144679940f2456eae188299214c629d4d618b4",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/model-00008-of-00008.safetensors"
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/model.safetensors.index.json",
+        "bytes": 120115,
+        "oid": "29df2f8e046f5bd8a6d765a700fd767a9c505fa46fe9fd6d50f476c3bdcae638",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/model.safetensors.index.json",
+        "original_git_blob_sha1": "a44d30819a075268c0d0f893e923263d5fd33187"
+      },
+      {
+        "name": "preprocessor_config.json",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/preprocessor_config.json",
+        "bytes": 192,
+        "oid": "99bf76b83a21385d2a8f5226edd9ec598f63e1ff7a50384dc8cf6b7753b9f9c4",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/preprocessor_config.json",
+        "original_git_blob_sha1": "7840e091152f763d133141f3b5d924b0bddaf6d3"
+      },
+      {
+        "name": "special_tokens_map.json",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/special_tokens_map.json",
+        "bytes": 1177,
+        "oid": "cf263f1a86f252cae2cef55ca02f001fecefc92646016f0ed2f7349238b8504d",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/special_tokens_map.json",
+        "original_git_blob_sha1": "5f8c3ce6154b4c3bd285e3b165c72908a1b085ab"
+      },
+      {
+        "name": "tokenizer.json",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/tokenizer.json",
+        "bytes": 7032406,
+        "oid": "38e847ed54238171badeeaeaf8760632c949336d3d54207d2d34483c56bc7d57",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/tokenizer.json",
+        "original_git_blob_sha1": "682d41e7575c55f8535f6ca57f8c7ab315e898d1"
+      },
+      {
+        "name": "tokenizer_config.json",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/tokenizer_config.json",
+        "bytes": 9330,
+        "oid": "badef858f0481ccaea85cf86879737f1397c61d0385cdc9b785b657407606e02",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/tokenizer_config.json",
+        "original_git_blob_sha1": "e8724ae5a8c8342389f60c2620e92fb83e0bb70c"
+      },
+      {
+        "name": "vocab.json",
+        "path": "weights/vibevoice-asr-streaming-7b-bf16/vocab.json",
+        "bytes": 2776833,
+        "oid": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+        "oid_algorithm": "sha256",
+        "url": "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/resolve/60d858b518b4e19d404af3737f848fc185b30177/vocab.json",
+        "original_git_blob_sha1": "4783fe10ac3adce15ac8f358ef5462739852c569"
+      }
+    ]
+  }
+]

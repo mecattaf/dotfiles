@@ -1,0 +1,138 @@
+[
+  {
+    "id": "vibevoice-large-bf16",
+    "files": [
+      {
+        "name": "config.json",
+        "path": "config.json",
+        "bytes": 2785,
+        "oid": "695598158e43b44227bc7aa6fd851e410f7ce30b21a5ea5c3fe22983961e500a",
+        "url": "https://huggingface.co/aoi-ot/VibeVoice-Large/resolve/1b81fecc784a076dcd935678db551871f4598ebf/config.json"
+      },
+      {
+        "name": "configuration.json",
+        "path": "configuration.json",
+        "bytes": 72,
+        "oid": "30458d769bcf25aa4e8fd30bbde901f817e382a49f7c7da8c4380dd97b616876",
+        "url": "https://huggingface.co/aoi-ot/VibeVoice-Large/resolve/1b81fecc784a076dcd935678db551871f4598ebf/configuration.json"
+      },
+      {
+        "name": "preprocessor_config.json",
+        "path": "preprocessor_config.json",
+        "bytes": 349,
+        "oid": "5a26081a18cd60f48d7ed36b904e68c24271ba9711d6328b53f7ad3eed446cce",
+        "url": "https://huggingface.co/aoi-ot/VibeVoice-Large/resolve/1b81fecc784a076dcd935678db551871f4598ebf/preprocessor_config.json"
+      },
+      {
+        "name": "model.safetensors.index.json",
+        "path": "model.safetensors.index.json",
+        "bytes": 122675,
+        "oid": "dbcfc6e307494bc87684471872f3d8b785cb68b3589b6b306c43fde629b88ebd",
+        "url": "https://huggingface.co/aoi-ot/VibeVoice-Large/resolve/1b81fecc784a076dcd935678db551871f4598ebf/model.safetensors.index.json"
+      },
+      {
+        "name": "model-00001-of-00010.safetensors",
+        "path": "model-00001-of-00010.safetensors",
+        "bytes": 1886424044,
+        "oid": "ae28d5c8f3587b518c7e371e96ebb69f74d854a854119acf433952bbc1926325",
+        "url": "https://huggingface.co/aoi-ot/VibeVoice-Large/resolve/1b81fecc784a076dcd935678db551871f4598ebf/model-00001-of-00010.safetensors"
+      },
+      {
+        "name": "model-00002-of-00010.safetensors",
+        "path": "model-00002-of-00010.safetensors",
+        "bytes": 1864468520,
+        "oid": "c56b1ca707e31e435ded8b03baa4938d88275bf0ba7033935a16d8173a99ff85",
+        "url": "https://huggingface.co/aoi-ot/VibeVoice-Large/resolve/1b81fecc784a076dcd935678db551871f4598ebf/model-00002-of-00010.safetensors"
+      },
+      {
+        "name": "model-00003-of-00010.safetensors",
+        "path": "model-00003-of-00010.safetensors",
+        "bytes": 1864468520,
+        "oid": "48bfb4af453d45e488050e90d3f39da0189f1c10a77d75223c2c2ced8b035baa",
+        "url": "https://huggingface.co/aoi-ot/VibeVoice-Large/resolve/1b81fecc784a076dcd935678db551871f4598ebf/model-00003-of-00010.safetensors"
+      },
+      {
+        "name": "model-00004-of-00010.safetensors",
+        "path": "model-00004-of-00010.safetensors",
+        "bytes": 1864468544,
+        "oid": "b4893be477be68e53b8a9616422b99065f3d1431cce9efe0a1653495e9cf4df6",
+        "url": "https://huggingface.co/aoi-ot/VibeVoice-Large/resolve/1b81fecc784a076dcd935678db551871f4598ebf/model-00004-of-00010.safetensors"
+      },
+      {
+        "name": "model-00005-of-00010.safetensors",
+        "path": "model-00005-of-00010.safetensors",
+        "bytes": 1864468568,
+        "oid": "471690e9846e791def400fefa3d2103c9839dc8a3e987b175f6539c7412422d6",
+        "url": "https://huggingface.co/aoi-ot/VibeVoice-Large/resolve/1b81fecc784a076dcd935678db551871f4598ebf/model-00005-of-00010.safetensors"
+      },
+      {
+        "name": "model-00006-of-00010.safetensors",
+        "path": "model-00006-of-00010.safetensors",
+        "bytes": 1864468568,
+        "oid": "a7918d400ba895b15a1126fde242028e5d05b37bab0c0427944de81df80f901f",
+        "url": "https://huggingface.co/aoi-ot/VibeVoice-Large/resolve/1b81fecc784a076dcd935678db551871f4598ebf/model-00006-of-00010.safetensors"
+      },
+      {
+        "name": "model-00007-of-00010.safetensors",
+        "path": "model-00007-of-00010.safetensors",
+        "bytes": 1864468568,
+        "oid": "b4f00ebea5a9f76eea891b3457621955433149ae603d921afa1498e46683ba37",
+        "url": "https://huggingface.co/aoi-ot/VibeVoice-Large/resolve/1b81fecc784a076dcd935678db551871f4598ebf/model-00007-of-00010.safetensors"
+      },
+      {
+        "name": "model-00008-of-00010.safetensors",
+        "path": "model-00008-of-00010.safetensors",
+        "bytes": 1972552744,
+        "oid": "cc4b6fce97b76e847c742b59ab9463fd04b6d9fa69fc33e747ff722c2ab8cc28",
+        "url": "https://huggingface.co/aoi-ot/VibeVoice-Large/resolve/1b81fecc784a076dcd935678db551871f4598ebf/model-00008-of-00010.safetensors"
+      },
+      {
+        "name": "model-00009-of-00010.safetensors",
+        "path": "model-00009-of-00010.safetensors",
+        "bytes": 1959739938,
+        "oid": "824db8970518950117f0d6ed859740d973b9436718c24f29bc78854c4587a4b2",
+        "url": "https://huggingface.co/aoi-ot/VibeVoice-Large/resolve/1b81fecc784a076dcd935678db551871f4598ebf/model-00009-of-00010.safetensors"
+      },
+      {
+        "name": "model-00010-of-00010.safetensors",
+        "path": "model-00010-of-00010.safetensors",
+        "bytes": 1681341960,
+        "oid": "bc76bba7a46a0a748cc169efb6ccfb7617881e0fc3b533f67887d5957e1836e3",
+        "url": "https://huggingface.co/aoi-ot/VibeVoice-Large/resolve/1b81fecc784a076dcd935678db551871f4598ebf/model-00010-of-00010.safetensors"
+      }
+    ]
+  },
+  {
+    "id": "vibevoice-qwen25-7b-tokenizer",
+    "files": [
+      {
+        "name": "merges.txt",
+        "path": "merges.txt",
+        "bytes": 1671839,
+        "oid": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+        "url": "https://huggingface.co/Qwen/Qwen2.5-7B/resolve/d149729398750b98c0af14eb82c78cfe92750796/merges.txt"
+      },
+      {
+        "name": "tokenizer.json",
+        "path": "tokenizer.json",
+        "bytes": 7031645,
+        "oid": "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539",
+        "url": "https://huggingface.co/Qwen/Qwen2.5-7B/resolve/d149729398750b98c0af14eb82c78cfe92750796/tokenizer.json"
+      },
+      {
+        "name": "tokenizer_config.json",
+        "path": "tokenizer_config.json",
+        "bytes": 7228,
+        "oid": "c91efca15ceff6e9ee9424db58a6f59cd41294e550a86cbd07e3c1fb500b34f9",
+        "url": "https://huggingface.co/Qwen/Qwen2.5-7B/resolve/d149729398750b98c0af14eb82c78cfe92750796/tokenizer_config.json"
+      },
+      {
+        "name": "vocab.json",
+        "path": "vocab.json",
+        "bytes": 2776833,
+        "oid": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+        "url": "https://huggingface.co/Qwen/Qwen2.5-7B/resolve/d149729398750b98c0af14eb82c78cfe92750796/vocab.json"
+      }
+    ]
+  }
+]

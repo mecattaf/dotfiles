@@ -67,7 +67,10 @@
 let
   hostName = osConfig.networking.hostName;
   system = pkgs.stdenv.hostPlatform.system;
-  herdr = inputs.herdr.packages.${system}.herdr;
+  herdr = import ../pkgs/herdr-speech {
+    upstream = inputs.herdr.packages.${system}.herdr;
+    source = inputs.herdr;
+  };
 
   repoDir = config.rawDotfiles.repoDir; # home/raw-dotfiles-guard.nix
   link = p: config.lib.file.mkOutOfStoreSymlink "${repoDir}/home/${p}";

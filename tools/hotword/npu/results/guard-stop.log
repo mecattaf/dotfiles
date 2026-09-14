@@ -1,0 +1,9 @@
+{"completed_consecutive": 3}
+Traceback (most recent call last):
+  File "/home/tom/tts-hotword-scott-20260914/run-client-latency.py", line 21, in <module>
+    checks.append(condition())
+                  ~~~~~~~~~^^
+  File "/home/tom/tts-hotword-scott-20260914/run-client-latency.py", line 8, in condition
+    assert d['brightness'].get('/sys/class/backlight/intel_backlight/brightness')=='0',d
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: {'utc': '2026-09-14T19:15:33Z', 'brightness': {'/sys/class/backlight/card1-eDP-2-backlight/brightness': '400', '/sys/class/backlight/intel_backlight/brightness': '400', '/sys/class/backlight/asus_screenpad/brightness': '130898'}, 'dpms': {'/sys/class/drm/card1-eDP-2/dpms': 'On', '/sys/class/drm/card1-eDP-1/dpms': 'On'}}
