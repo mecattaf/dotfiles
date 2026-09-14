@@ -65,6 +65,7 @@
     ../../modules/microvm-host.nix
     ../../modules/cli-anything.nix
     ../../modules/browser-desktop.nix
+    ../../modules/handwriting-annotation.nix
     ../../modules/fara-browser-model.nix
     ../../modules/strix.nix
     # TWINS ONLY: kills the stock 127.0.0.2 self-mapping and points both twins'
@@ -89,6 +90,7 @@
   # on this host; the worker remains the resident Halogen server.
   myDisplay.enable = false;
   services.browser-desktop.enable = true;
+  services.handwriting-annotation.enable = true;
   services.fara-browser-model.enable = true;
 
   # Both stay on their proven pre-migration side until the real HDD and service

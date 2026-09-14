@@ -16,6 +16,7 @@ let
     "videos.internal"
     "paperless.internal"
     "browser.internal"
+    "handwriting.internal"
   ];
 
   # The artifact namespace, read from the one edit point rather than spelled
