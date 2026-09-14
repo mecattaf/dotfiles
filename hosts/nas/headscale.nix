@@ -66,6 +66,18 @@ let
       echo 'Refusing automatic Headscale identity or endpoint migration; existing state is preserved. Operator review required.' >&2
       return 1
     }
+    # tailscaled answers its socket before its backend has loaded state: at
+    # boot it reports BackendState=NoState for a few seconds, which the guard
+    # above rightly refuses to classify. That refusal failed this unit at
+    # every NAS boot (2026-09-01, 09-10, 09-14: NoState at 08:52:48, Running
+    # at 08:52:51) while a later manual start passed. Wait out only that
+    # initialization, bounded, before classifying; nothing about what counts
+    # as pristine, established or foreign changes.
+    for _ in $(seq 30); do
+      backend="$(tailscale status --json --peers=false 2>/dev/null | jq -r '.BackendState // empty' 2>/dev/null || true)"
+      if [ -n "$backend" ] && [ "$backend" != NoState ]; then break; fi
+      sleep 1
+    done
     if ! inspect_identity; then
       echo 'Headscale client state is unavailable or requires explicit recovery; no enrollment attempted.' >&2
       exit 1
