@@ -49,7 +49,7 @@
 # human is mid-change. `update-adopt adopt --force` is the operator's override;
 # it skips this guard and the rejected list, never the gates.
 #
-# RESTART-SENSITIVE PINS. herdr, herdr-kitten, tally-b and tally-lake are
+# RESTART-SENSITIVE PINS. herdr, tally-b and tally-lake are
 # rev-pinned and move only by commit; the rolling class is flake.nix's
 # `rollingInputOverrides`. Moving closures still must not kill live state:
 # home/herdr.nix sets X-SwitchMethod=keep-old (asserted by the

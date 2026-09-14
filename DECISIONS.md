@@ -12,6 +12,13 @@ commit: coordinator, worker, client and nas toplevel drvPaths were identical
 before and after it. Keep it that way: nothing that varies per commit
 (`self`, `self.rev`, a bare `./dir` into a types.path option) goes into a host
 closure.
+(Integration note, 2026-09-14: #354's modules/update-adopt.nix, merged the
+same night, deliberately puts the rev into every toplevel as
+`system.configurationRevision` and `$out/fleet-revision.json`, because the
+downgrade guard reads it. That is the one sanctioned exception: it reaches only
+the toplevel file and nixos-version, no unit's inputs and no Home Manager
+config, so a switch makes a new generation but restarts nothing. The rule
+above still holds for everything a unit reads.)
 
 chrome-stream (pkgs/chrome-stream) is in the overlay, `nix build
 .#chrome-stream`, and installed by modules/browser-desktop.nix, so it exists
