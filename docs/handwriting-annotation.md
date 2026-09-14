@@ -36,6 +36,37 @@ and, when names change, the NAS DNS configuration. No client-specific hosts
 file entry or public DNS record is needed. Clients already trusting the Caddy
 CA for `browser.internal` use the new HTTPS site without certificate bypasses.
 
+## Trailing correction history and offline use
+
+Every save appends an event; revising or reopening a decision does not replace
+its earlier entries. The history retains the literal reading, intended term
+separately, handwriting note, tags, crop selection and label, time, previous
+revision and source/image hashes. Immutable task and source snapshots provide
+the original model reading and surrounding line. The website's **Export
+resolution log** link downloads the complete event sequence as JSONL.
+
+The log records every decision, including ones not approved for example reuse.
+The example compiler uses only the latest writer-resolved, explicitly reusable
+revision with a labeled crop. Reopening a decision or withdrawing reuse removes
+it from future packets while preserving the historical record. Notes describe
+observed handwriting patterns, not unconditional text substitutions.
+
+```sh
+handwriting-annotation --state /var/lib/handwriting-annotation export
+handwriting-annotation --state /var/lib/handwriting-annotation compile --query 'joined rn' --exclude-page '2026-09-14/page1'
+```
+
+Compilation runs locally without inference or network access. It retrieves at
+most three approved examples and prepares image/text data for a future Qwen
+request. An empty packet is expected until relevant examples are approved.
+JSONL alone references evidence: retain the snapshot's `tasks.json`, database
+and `evidence/` alongside it for a complete offline bundle.
+
+The daily OCR consumer is not yet connected to these packets. Saving a writer
+decision currently neither calls Halogen nor rewrites the notebook nor trains
+weights. Commissioning that consumer follows adjudication of this collection;
+`/home/tom/huion/DAILY-OCR.md` records the remaining work.
+
 ## Existing NAS protection tier
 
 The coordinator previously had no automatic copy of this new application
