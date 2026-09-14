@@ -1,0 +1,471 @@
+{
+  "date": "2026-09-14",
+  "status": "measured",
+  "engine": "Scott Baker openWakeWord split CPU mel/NPU embedding+classifier",
+  "runtime": "OpenVINO2026.3.1, NPU UMD/compiler1.35.0, LevelZero1.32.0; PLUGIN compiler isolated layout",
+  "hardware": "ASUS Zenbook Duo UX8406MA; CoreUltra9 185H; NPU3720; NixOS kernel7.2.2",
+  "groups": {
+    "disabled": {
+      "cpu_core_percent": [
+        0.11135701838093379,
+        0.06582922653906462
+      ],
+      "cpu_p95_core_percent": [
+        0.13966335588404893,
+        0.08986361980416058
+      ],
+      "rss_peak_mb": [
+        29.036544,
+        29.02016
+      ],
+      "pss_peak_mb": [
+        26.244096,
+        26.228736
+      ],
+      "threads": [
+        1,
+        1
+      ],
+      "frame_processing_p95_ms": [
+        0.04864200309384614,
+        0.038316000427585095
+      ],
+      "scheduling_lag_p95_ms": [
+        0.17448499420424923,
+        0.2026149959419854
+      ],
+      "events": [
+        [],
+        []
+      ]
+    },
+    "npu": {
+      "cpu_core_percent": [
+        6.237131766065996,
+        5.034281928139889
+      ],
+      "cpu_p95_core_percent": [
+        7.066027153696841,
+        5.539725467803703
+      ],
+      "rss_peak_mb": [
+        204.066816,
+        204.128256
+      ],
+      "pss_peak_mb": [
+        199.7312,
+        199.824384
+      ],
+      "threads": [
+        5,
+        5
+      ],
+      "frame_processing_p95_ms": [
+        9.929703999659978,
+        8.365558998775668
+      ],
+      "scheduling_lag_p95_ms": [
+        0.1569379965076223,
+        0.1623579955776222
+      ],
+      "events": [
+        [],
+        []
+      ]
+    },
+    "replay": {
+      "cpu_core_percent": [
+        0.11237389491436316,
+        0.06483219795603896
+      ],
+      "cpu_p95_core_percent": [
+        0.14840200499559342,
+        0.09503823854708476
+      ],
+      "rss_peak_mb": [
+        29.036544,
+        29.044736
+      ],
+      "pss_peak_mb": [
+        26.254336,
+        26.26048
+      ],
+      "threads": [
+        1,
+        1
+      ],
+      "frame_processing_p95_ms": [
+        0.05428300210041925,
+        0.04030299896840006
+      ],
+      "scheduling_lag_p95_ms": [
+        0.15775999781908467,
+        0.1236160023836419
+      ],
+      "events": [
+        [],
+        []
+      ]
+    }
+  },
+  "positive": [
+    {
+      "events": [
+        {
+          "frame": 73,
+          "audio_seconds": 5.84,
+          "score": 1.0
+        },
+        {
+          "frame": 185,
+          "audio_seconds": 14.8,
+          "score": 1.0
+        },
+        {
+          "frame": 297,
+          "audio_seconds": 23.76,
+          "score": 1.0
+        }
+      ],
+      "expected_repetitions": 3,
+      "max_score": 1.0,
+      "fixture_sha256": "7a8e7c0b2ba8bab8f45bcdae28a3f5a94100d02226b1d906e9261df023486785",
+      "duration_seconds": 26.880192459000682,
+      "limits": "Three repetitions of one upstream voice; not three independent speakers or field-recall validation"
+    }
+  ],
+  "cpu_scope": "steady getrusage/process CPU across all threads; percent of one CPU core; compilation excluded",
+  "memory_scope": "observer RSS/PSS peaks include startup/compilation; not memory of a complete PipeWire listener",
+  "context_switch_scope": "runner getrusage deltas cover process; observer status counters main thread only",
+  "thermal_scope": "sequential short windows; all readable sensors in individual observers; RPM not audible-noise measurement",
+  "detection_limits": [
+    "One upstream positive voice repeated3times with5s pre-silence and3s tail",
+    "Two repeated first60s segments of one generated negative passage; not household false-activation rate",
+    "Negative passage contains user-reported bang artifacts",
+    "No microphone capture or USB/PipeWire overhead measured",
+    "No always-on listener activated; no final wake phrase selected"
+  ],
+  "sensors": [
+    {
+      "run": "00-disabled-60s",
+      "path": "/sys/class/hwmon/hwmon8/fan1_input",
+      "name": "asus",
+      "label": "cpu_fan",
+      "unit": "RPM",
+      "readable": true,
+      "first": 2900,
+      "last": 2900,
+      "peak": 2900,
+      "p95": 2900
+    },
+    {
+      "run": "00-disabled-60s",
+      "path": "/sys/class/hwmon/hwmon2/fan1_input",
+      "name": "acpi_fan",
+      "label": null,
+      "unit": "RPM",
+      "readable": true,
+      "first": 2909,
+      "last": 2913,
+      "peak": 2917,
+      "p95": 2913
+    },
+    {
+      "run": "00-disabled-60s",
+      "path": "/sys/class/hwmon/hwmon7/temp1_input",
+      "name": "coretemp",
+      "label": "Package id 0",
+      "unit": "millidegrees_C",
+      "readable": true,
+      "first": 56000,
+      "last": 57000,
+      "peak": 58000,
+      "p95": 58000
+    },
+    {
+      "run": "01-npu-60s",
+      "path": "/sys/class/hwmon/hwmon8/fan1_input",
+      "name": "asus",
+      "label": "cpu_fan",
+      "unit": "RPM",
+      "readable": true,
+      "first": 2900,
+      "last": 2900,
+      "peak": 2900,
+      "p95": 2900
+    },
+    {
+      "run": "01-npu-60s",
+      "path": "/sys/class/hwmon/hwmon2/fan1_input",
+      "name": "acpi_fan",
+      "label": null,
+      "unit": "RPM",
+      "readable": true,
+      "first": 2902,
+      "last": 2913,
+      "peak": 2921,
+      "p95": 2913
+    },
+    {
+      "run": "01-npu-60s",
+      "path": "/sys/class/hwmon/hwmon7/temp1_input",
+      "name": "coretemp",
+      "label": "Package id 0",
+      "unit": "millidegrees_C",
+      "readable": true,
+      "first": 57000,
+      "last": 57000,
+      "peak": 58000,
+      "p95": 58000
+    },
+    {
+      "run": "02-replay-60s",
+      "path": "/sys/class/hwmon/hwmon8/fan1_input",
+      "name": "asus",
+      "label": "cpu_fan",
+      "unit": "RPM",
+      "readable": true,
+      "first": 2900,
+      "last": 2900,
+      "peak": 2900,
+      "p95": 2900
+    },
+    {
+      "run": "02-replay-60s",
+      "path": "/sys/class/hwmon/hwmon2/fan1_input",
+      "name": "acpi_fan",
+      "label": null,
+      "unit": "RPM",
+      "readable": true,
+      "first": 2909,
+      "last": 2909,
+      "peak": 2921,
+      "p95": 2913
+    },
+    {
+      "run": "02-replay-60s",
+      "path": "/sys/class/hwmon/hwmon7/temp1_input",
+      "name": "coretemp",
+      "label": "Package id 0",
+      "unit": "millidegrees_C",
+      "readable": true,
+      "first": 58000,
+      "last": 57000,
+      "peak": 58000,
+      "p95": 58000
+    },
+    {
+      "run": "03-replay-60s",
+      "path": "/sys/class/hwmon/hwmon8/fan1_input",
+      "name": "asus",
+      "label": "cpu_fan",
+      "unit": "RPM",
+      "readable": true,
+      "first": 2900,
+      "last": 0,
+      "peak": 2900,
+      "p95": 2900
+    },
+    {
+      "run": "03-replay-60s",
+      "path": "/sys/class/hwmon/hwmon2/fan1_input",
+      "name": "acpi_fan",
+      "label": null,
+      "unit": "RPM",
+      "readable": true,
+      "first": 2902,
+      "last": 0,
+      "peak": 2913,
+      "p95": 2913
+    },
+    {
+      "run": "03-replay-60s",
+      "path": "/sys/class/hwmon/hwmon7/temp1_input",
+      "name": "coretemp",
+      "label": "Package id 0",
+      "unit": "millidegrees_C",
+      "readable": true,
+      "first": 57000,
+      "last": 57000,
+      "peak": 57000,
+      "p95": 57000
+    },
+    {
+      "run": "04-npu-60s",
+      "path": "/sys/class/hwmon/hwmon8/fan1_input",
+      "name": "asus",
+      "label": "cpu_fan",
+      "unit": "RPM",
+      "readable": true,
+      "first": 0,
+      "last": 0,
+      "peak": 2900,
+      "p95": 2900
+    },
+    {
+      "run": "04-npu-60s",
+      "path": "/sys/class/hwmon/hwmon2/fan1_input",
+      "name": "acpi_fan",
+      "label": null,
+      "unit": "RPM",
+      "readable": true,
+      "first": 0,
+      "last": 0,
+      "peak": 2941,
+      "p95": 2933
+    },
+    {
+      "run": "04-npu-60s",
+      "path": "/sys/class/hwmon/hwmon7/temp1_input",
+      "name": "coretemp",
+      "label": "Package id 0",
+      "unit": "millidegrees_C",
+      "readable": true,
+      "first": 57000,
+      "last": 56000,
+      "peak": 58000,
+      "p95": 58000
+    },
+    {
+      "run": "05-disabled-60s",
+      "path": "/sys/class/hwmon/hwmon8/fan1_input",
+      "name": "asus",
+      "label": "cpu_fan",
+      "unit": "RPM",
+      "readable": true,
+      "first": 0,
+      "last": 2900,
+      "peak": 2900,
+      "p95": 2900
+    },
+    {
+      "run": "05-disabled-60s",
+      "path": "/sys/class/hwmon/hwmon2/fan1_input",
+      "name": "acpi_fan",
+      "label": null,
+      "unit": "RPM",
+      "readable": true,
+      "first": 0,
+      "last": 2905,
+      "peak": 2937,
+      "p95": 2921
+    },
+    {
+      "run": "05-disabled-60s",
+      "path": "/sys/class/hwmon/hwmon7/temp1_input",
+      "name": "coretemp",
+      "label": "Package id 0",
+      "unit": "millidegrees_C",
+      "readable": true,
+      "first": 57000,
+      "last": 56000,
+      "peak": 57000,
+      "p95": 57000
+    },
+    {
+      "run": "06-npu-26.88s",
+      "path": "/sys/class/hwmon/hwmon8/fan1_input",
+      "name": "asus",
+      "label": "cpu_fan",
+      "unit": "RPM",
+      "readable": true,
+      "first": 2900,
+      "last": 0,
+      "peak": 2900,
+      "p95": 2900
+    },
+    {
+      "run": "06-npu-26.88s",
+      "path": "/sys/class/hwmon/hwmon2/fan1_input",
+      "name": "acpi_fan",
+      "label": null,
+      "unit": "RPM",
+      "readable": true,
+      "first": 2913,
+      "last": 0,
+      "peak": 2917,
+      "p95": 2913
+    },
+    {
+      "run": "06-npu-26.88s",
+      "path": "/sys/class/hwmon/hwmon7/temp1_input",
+      "name": "coretemp",
+      "label": "Package id 0",
+      "unit": "millidegrees_C",
+      "readable": true,
+      "first": 56000,
+      "last": 55000,
+      "peak": 56000,
+      "p95": 56000
+    }
+  ],
+  "latency": {
+    "status": "default3_completed_single1_interrupted_before_first_phrase",
+    "engine": "Scott Baker OpenVINO NPU",
+    "consecutive": 3,
+    "threshold": 0.5,
+    "fixture_sha256": "fa98f0957bfe0262e9ca2a791733cd6454580fa65f6ea63f0a698f3ce638c9dd",
+    "fixture_seconds": 51.856,
+    "events": [
+      {
+        "frame": 385,
+        "consumed_audio_end_seconds": 30.88,
+        "callback_wall_seconds_since_ready": 30.885725478001405,
+        "processing_until_callback_seconds": 0.005653480999171734,
+        "score": 1.0,
+        "source_recording_end_seconds": 30.952,
+        "callback_minus_source_eof_ms": -66.27452199859718,
+        "input_consumed_end_minus_source_eof_ms": -72.00000000000273
+      },
+      {
+        "frame": 497,
+        "consumed_audio_end_seconds": 39.84,
+        "callback_wall_seconds_since_ready": 39.845916491001844,
+        "processing_until_callback_seconds": 0.005845307998242788,
+        "score": 1.0,
+        "source_recording_end_seconds": 39.904,
+        "callback_minus_source_eof_ms": -58.08350899815906,
+        "input_consumed_end_minus_source_eof_ms": -64.00000000000006
+      },
+      {
+        "frame": 610,
+        "consumed_audio_end_seconds": 48.88,
+        "callback_wall_seconds_since_ready": 48.886315732001094,
+        "processing_until_callback_seconds": 0.006230956001672894,
+        "score": 1.0,
+        "source_recording_end_seconds": 48.856,
+        "callback_minus_source_eof_ms": 30.3157320010925,
+        "input_consumed_end_minus_source_eof_ms": 24.00000000000091
+      }
+    ],
+    "expected_repetitions": 3,
+    "condition": "OS awake; both active displays at brightness zero with DPMS On; continuous 80 ms frames and 30 seconds of initial silence",
+    "display_verification": {
+      "sampling": "54 samples at one-second intervals, including before and after the completed run. Every recorded active-panel brightness is zero and both DPMS states are On. Transient changes between samples are not observable.",
+      "samples": 54,
+      "first_utc": "2026-09-14T19:14:10Z",
+      "last_utc": "2026-09-14T19:15:03Z",
+      "receipt": "latency-brightness-zero-v1/display-during-3.json"
+    },
+    "delivery": "Each chunk is supplied at its nominal end; callback wall time is measured immediately after the detector returns.",
+    "endpoint_scope": "The reference is the source WAV file end, not a verified phonetic endpoint. Negative offsets mean acceptance before the file ends, not negative perceived latency.",
+    "cue_latency": "Not measured; no cue played",
+    "single_consecutive_test": {
+      "status": "interrupted",
+      "why": "Both panel brightness values returned to 400 at 2026-09-14T19:15:33Z. The guard terminated the child before the first phrase.",
+      "positive_events": [],
+      "may_claim_speed_result": false,
+      "rerun_status": "Paused by root pending user clarification; no display override or rerun."
+    },
+    "old_cpu_comparison": {
+      "status": "Descriptive only: CPU brightness changed during its batch, so the exact comparison condition is unverified.",
+      "same_fixture": true,
+      "npu3_callback_later_than_cpu1_ms": [
+        156.95907999906922,
+        160.00760099996114,
+        161.02983000018867
+      ],
+      "interpretation": "The observed approximately 160 ms difference matches two additional 80 ms confirmation intervals. This is not proof of a hardware speed difference: the CPU display condition is unverified and the NPU single-frame run is incomplete."
+    }
+  }
+}

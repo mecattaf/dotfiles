@@ -1,0 +1,14 @@
+[
+  {
+    "id": "openwakeword-alexa-v051",
+    "files": [
+      {
+        "name": "alexa_v0.1.onnx",
+        "path": "alexa_v0.1.onnx",
+        "bytes": 854246,
+        "oid": "6ff566a01d12670e8d9e3c59da32651db1575d17272a601b7f8a39283dfbae3e",
+        "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/alexa_v0.1.onnx"
+      }
+    ]
+  }
+]

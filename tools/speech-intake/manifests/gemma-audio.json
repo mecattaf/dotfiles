@@ -1,0 +1,38 @@
+[
+  {
+    "id": "gemma4-12b-it-mmproj-f16",
+    "files": [
+      {
+        "name": "mmproj-F16.gguf",
+        "path": "mmproj-F16.gguf",
+        "bytes": 175115840,
+        "oid": "91f086971e56d7a7d8d39e271873fccdb49541bd259d6e02c401a4f1cb7a219e",
+        "url": "https://huggingface.co/unsloth/gemma-4-12b-it-GGUF/resolve/fc034cfff751157913579611efad8462ac1be606/mmproj-F16.gguf"
+      }
+    ]
+  },
+  {
+    "id": "gemma4-e4b-it-q8-0",
+    "files": [
+      {
+        "name": "gemma-4-E4B-it-Q8_0.gguf",
+        "path": "gemma-4-E4B-it-Q8_0.gguf",
+        "bytes": 8031242688,
+        "oid": "34be82b17b4942d389b9b527170c4b058027abdd32531fda063d3d97dd8ce80a",
+        "url": "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/b8093469224f83f5c38f691eb906c380e9e63114/gemma-4-E4B-it-Q8_0.gguf"
+      }
+    ]
+  },
+  {
+    "id": "gemma4-e4b-it-mmproj-bf16",
+    "files": [
+      {
+        "name": "mmproj-gemma-4-E4B-it-BF16.gguf",
+        "path": "mmproj-gemma-4-E4B-it-BF16.gguf",
+        "bytes": 991552256,
+        "oid": "f77995e4b6a569ab8f0d1bfdb7e8da4a0fa5b9e6f309b9bf3bdb76164d75e29f",
+        "url": "https://huggingface.co/ggml-org/gemma-4-E4B-it-GGUF/resolve/b8093469224f83f5c38f691eb906c380e9e63114/mmproj-gemma-4-E4B-it-BF16.gguf"
+      }
+    ]
+  }
+]

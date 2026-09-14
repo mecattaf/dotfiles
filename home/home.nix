@@ -138,7 +138,7 @@ in
     ./tally-uplink.nix
     ./update-center-seed.nix # coordinator-only; seeds private inputs into the NAS store
     ./util-sampler.nix
-    ./voxtype.nix
+    ./mykonos.nix
   ];
 
   home.username = "tom";

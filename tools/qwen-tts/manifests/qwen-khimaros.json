@@ -1,0 +1,26 @@
+[
+  {
+    "id": "qwen3-tts-khimaros-1.7b-base-q8-0",
+    "files": [
+      {
+        "name": "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+        "path": "Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf",
+        "bytes": 2458857152,
+        "oid": "bc70c3b84b93fc44d57387e6c184ec928ce364539d58894fdf61d9de2aa01b8f",
+        "url": "https://huggingface.co/khimaros/Qwen3-TTS-12Hz-1.7B-Base-GGUF/resolve/d7b1ba934a8898f9c62083dbcd9314eb4bf87b4e/Qwen3-TTS-12Hz-1.7B-Base-Q8_0.gguf"
+      }
+    ]
+  },
+  {
+    "id": "qwen3-tts-khimaros-tokenizer-f16",
+    "files": [
+      {
+        "name": "Qwen3-TTS-Tokenizer-12Hz-F16.gguf",
+        "path": "Qwen3-TTS-Tokenizer-12Hz-F16.gguf",
+        "bytes": 341157120,
+        "oid": "f553f984c8c82ef1881f4fdb6ff0f68c02f3ac710fd971b63d044cf6ab1c5fd2",
+        "url": "https://huggingface.co/khimaros/Qwen3-TTS-Tokenizer-12Hz-GGUF/resolve/6895fdd9384847f4b37ea56fe385f4b7e0ee2f5f/Qwen3-TTS-Tokenizer-12Hz-F16.gguf"
+      }
+    ]
+  }
+]

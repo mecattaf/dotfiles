@@ -1,0 +1,12 @@
+[
+  {
+    "id": "vibevoice-cpp-15b-q8-0",
+    "files": [
+      {
+        "name": "vibevoice-1.5B-q8_0.gguf",
+        "bytes": 7215432576,
+        "oid": "751c2168e708978777e2d483dd2ee8970e7f51cceab898285c1b5b41cf195225"
+      }
+    ]
+  }
+]

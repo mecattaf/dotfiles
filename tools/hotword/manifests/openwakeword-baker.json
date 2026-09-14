@@ -1,0 +1,28 @@
+[
+  {
+    "id": "openwakeword-baker-compat-v051",
+    "files": [
+      {
+        "name": "melspectrogram.onnx",
+        "bytes": 1087958,
+        "oid": "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f",
+        "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx",
+        "path": "melspectrogram.onnx"
+      },
+      {
+        "name": "embedding_model.onnx",
+        "bytes": 1326578,
+        "oid": "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f",
+        "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx",
+        "path": "embedding_model.onnx"
+      },
+      {
+        "name": "hey_mycroft_v0.1.onnx",
+        "bytes": 857691,
+        "oid": "c2a311e8fa1338de89c31b3b46dc4dffd4af2f9a8d6ddead48893c2d301b1f18",
+        "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/hey_mycroft_v0.1.onnx",
+        "path": "hey_mycroft_v0.1.onnx"
+      }
+    ]
+  }
+]

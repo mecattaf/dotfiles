@@ -79,6 +79,12 @@ mapfile -t enqueue_argv <"$enqueue_log"
   "warning: diarization was not queued; run call-diarize-backfill later" ]]
 [[ "$(<"$stop_stdout")" == session\ closed:* ]]
 
+# The lifecycle extension uses only fake PipeWire processes. Its own temporary
+# HOME/state/runtime are independent of the backfill regressions above.
+CALL_RECORD_TEST_SCRIPT="$call_record" \
+CALL_RECORD_TEST_BASH="$test_bash" \
+  python3 "$(dirname "$0")/test_call_record_wake.py"
+
 # Replace the failing helper with the real event writer and exercise the whole
 # stop -> atomic event path. A missing daemon is deliberately only a warning.
 printf '#!%s\nexec "%s" "%s" "$@"\n' \

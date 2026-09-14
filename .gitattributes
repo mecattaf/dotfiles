@@ -1,2 +1,4 @@
 # Preserve the historical handoff's quoted upstream patch byte-for-byte.
 experiments/handwriting/2026-09-14/HANDOFF.md -whitespace
+# Unified-diff context represents an empty source line with one space.
+pkgs/herdr-speech/hold-space.patch whitespace=-blank-at-eol

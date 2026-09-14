@@ -1,0 +1,650 @@
+[
+  {
+    "utc": "2026-09-14T19:14:10Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:11Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:12Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:13Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:14Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:15Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:16Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:17Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:18Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:19Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:20Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:21Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:22Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:23Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:24Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:25Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:26Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:27Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:28Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:29Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:30Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:31Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:32Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:33Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:34Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:35Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:36Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:37Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:38Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:39Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:40Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:41Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:42Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:43Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:44Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:45Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:46Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:47Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:48Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:49Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:50Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:51Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:52Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:53Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:54Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:55Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:56Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:57Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:58Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:14:59Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:15:00Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:15:01Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:15:02Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  },
+  {
+    "utc": "2026-09-14T19:15:03Z",
+    "brightness": {
+      "/sys/class/backlight/card1-eDP-2-backlight/brightness": "0",
+      "/sys/class/backlight/intel_backlight/brightness": "0",
+      "/sys/class/backlight/asus_screenpad/brightness": "130898"
+    },
+    "dpms": {
+      "/sys/class/drm/card1-eDP-2/dpms": "On",
+      "/sys/class/drm/card1-eDP-1/dpms": "On"
+    }
+  }
+]

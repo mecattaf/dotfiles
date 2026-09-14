@@ -4,12 +4,14 @@
   makeWrapper,
   bash,
   coreutils,
+  diffutils,
   ffmpeg,
   findutils,
   jq,
   python313,
   python313Packages,
   uv,
+  util-linux,
   torchRocm,
 }:
 let
@@ -38,10 +40,12 @@ stdenvNoCC.mkDerivation {
   nativeCheckInputs = [
     bash
     coreutils
+    diffutils
     ffmpeg
     findutils
     jq
     python313
+    util-linux
   ];
   doCheck = true;
 

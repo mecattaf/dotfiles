@@ -38,7 +38,13 @@ let
       # git-lfs sha256 in hex — exactly what `sha256sum` verifies against.
       name = targetName artifact.source.layout file.path;
       inherit (file) path bytes oid;
-      url = "${lib.removeSuffix "/" artifact.source.hfUrl}/resolve/${artifact.source.revision}/${file.path}";
+      url =
+        if (artifact.source.imported or false) then
+          null
+        else if (file.url or null) != null then
+          file.url
+        else
+          "${lib.removeSuffix "/" artifact.source.hfUrl}/resolve/${artifact.source.revision}/${file.path}";
     }) artifact.source.files;
   };
 

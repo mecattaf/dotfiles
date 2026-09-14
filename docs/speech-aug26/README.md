@@ -1,5 +1,10 @@
 # Local speech on Strix Halo — August 2026 investigation
 
+**September 14 update:** Qwen TTS is now selected, with synthesis on Strix Halo
+and playback on the ASUS Zenbook client. See the
+[current project brief](../qwen-tts-zenbook-2026-09-14.md) for the carried-forward
+decisions, current ASR route, model recommendation and superseded NPU proposal.
+
 Status: investigation and architecture only. No speech runtime, service, model, or firewall rule was enabled while preparing these notes.
 
 This is the complete research suite, not a report constrained to wake words and voice cloning. It covers the `/speak` reading workflow, candidate engines, Jarvis and K-2SO voice construction, the agent harness, realtime speech-to-speech, an actual Strix Halo wake-word design, phone access, translation, and a staged final stack.

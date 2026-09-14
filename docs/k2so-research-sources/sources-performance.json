@@ -1,0 +1,195 @@
+[
+  {
+    "id": "performance-1",
+    "title": "Becoming K-2SO: Talking with Rogue One’s Alan Tudyk",
+    "publisher": "StarWars.com",
+    "author": "Jon Waterhouse",
+    "date": "2016-08-22",
+    "url": "https://www.starwars.com/news/becoming-k2so-talking-with-rogue-one-alan-tudyk",
+    "claims": [
+      "Liberation and willfulness"
+    ],
+    "source_type": "primary",
+    "notes": "Production-era backstory; does not supersede Andor.",
+    "accessed": "2026-09-14"
+  },
+  {
+    "id": "performance-2",
+    "title": "Alan Tudyk on Rogue One, R2 vs. C-3PO and why K-2SO has an English accent",
+    "publisher": "CNN / GantNews",
+    "author": "CNN",
+    "date": "2016-12-13",
+    "url": "https://gantnews.com/2016/12/13/alan-tudyk-on-rogue-one-r2-vs-c-3po-and-why-k-2so-has-an-english-accent/",
+    "claims": [
+      "Accent rationale",
+      "Sonny comparison"
+    ],
+    "source_type": "primary",
+    "notes": "CNN interview conducted October 2016; accessed in syndication.",
+    "accessed": "2026-09-14"
+  },
+  {
+    "id": "performance-3",
+    "title": "Rogue One Interview: Alan Tudyk & ILM’s Hal Hickel Talk the Creation & Performance of K-2SO",
+    "publisher": "/Film",
+    "author": "Ethan Anderton",
+    "date": "2017-04-06",
+    "url": "https://www.slashfilm.com/550215/hal-hickel-alan-tudyk-rogue-one-interview/",
+    "claims": [
+      "Audition alternatives",
+      "Gesture calibration"
+    ],
+    "source_type": "primary",
+    "notes": "Joint interview with Tudyk and Hickel.",
+    "accessed": "2026-09-14"
+  },
+  {
+    "id": "performance-4",
+    "title": "Interview: Alan Tudyk on Playing K-2SO in Rogue One",
+    "publisher": "ComingSoon",
+    "author": "Scott Chitwood",
+    "date": "2016-12-09",
+    "url": "https://www.comingsoon.net/movies/features/793135-interview-alan-tudyk-on-playing-k-2so-in-rogue-one",
+    "claims": [
+      "Accent rationale",
+      "Improvisation process"
+    ],
+    "source_type": "primary",
+    "notes": "Direct interview.",
+    "accessed": "2026-09-14"
+  },
+  {
+    "id": "performance-5",
+    "title": "Andor’s Alan Tudyk Captures the Childlike Joy of K-2SO",
+    "publisher": "StarWars.com",
+    "author": "Jade Fabello",
+    "date": "2025-06-20",
+    "url": "https://www.starwars.com/news/andor-season-2-interview-alan-tudyk-k2so",
+    "claims": [
+      "Child/father interpretation",
+      "Physical expression",
+      "Misremembered line"
+    ],
+    "source_type": "primary",
+    "notes": "Displayed date June20; present text has later Emmy update. Cockney appears in editorial paraphrase. Trust-fall and learning year are headcanon.",
+    "accessed": "2026-09-14"
+  },
+  {
+    "id": "performance-6",
+    "title": "How Alan Tudyk Became Rogue One’s K-2SO",
+    "publisher": "WIRED",
+    "author": null,
+    "date": "2016-12-19",
+    "url": "https://www.wired.com/video/watch/how-alan-tudyk-became-rogue-one-s-k-2so",
+    "claims": [
+      "Breath consideration"
+    ],
+    "source_type": "primary",
+    "notes": "Recorded Tudyk interview; official transcript read. Source word limit100.",
+    "accessed": "2026-09-14"
+  },
+  {
+    "id": "performance-7",
+    "title": "Hal Hickel breaks down his work on K-2SO and the Battle of Scarif",
+    "publisher": "Industrial Light & Magic",
+    "author": null,
+    "date": "2021-12-21",
+    "url": "https://www.ilm.com/hal-hickel-discusses-rogue-one/",
+    "claims": [
+      "Facial design",
+      "Rehearsal process"
+    ],
+    "source_type": "primary",
+    "notes": "Retrospective interview.",
+    "accessed": "2026-09-14"
+  },
+  {
+    "id": "performance-8",
+    "title": "Capone digs into the creation of Rogue One’s K-2SO with animation supervisor Hal Hinkel and actor Alan Tudyk",
+    "publisher": "Ain’t It Cool News",
+    "author": "Capone",
+    "date": "2017-04-04",
+    "url": "https://legacy.aintitcool.com/node/77568",
+    "claims": [
+      "Performance retargeting",
+      "Early father/child framing"
+    ],
+    "source_type": "primary",
+    "notes": "Headline misspells Hickel.",
+    "accessed": "2026-09-14"
+  },
+  {
+    "id": "performance-9",
+    "title": "Alan Tudyk Refuses to Be Star Wars’ Next Jar Jar Binks",
+    "publisher": "Esquire",
+    "author": "Matt Miller",
+    "date": "2016-12-13",
+    "url": "https://www.esquire.com/entertainment/movies/news/a51501/alan-tudyk-rogue-one-star-wars-interview-k-2so/",
+    "claims": [
+      "Character-based humor"
+    ],
+    "source_type": "primary",
+    "notes": "Headline editorial; direct interview statements used. Source word limit100.",
+    "accessed": "2026-09-14"
+  },
+  {
+    "id": "performance-10",
+    "title": "No One Likes You: Alan Tudyk On K-2SO’s Andor Return, Rogue One Changes & Character Deaths, & Why He Loves Playing A Star Wars Clown",
+    "publisher": "The Playlist",
+    "author": "The Playlist",
+    "date": "2025-08-13",
+    "url": "https://theplaylist.net/no-one-likes-you-alan-tudyk-on-k-2sos-andor-return-character-death-change-in-rogue-one-why-he-loves-playing-astar-wars-20250813/",
+    "claims": [
+      "Lecoq",
+      "ADR",
+      "Strike constraints",
+      "Slap recollection"
+    ],
+    "source_type": "primary",
+    "notes": "Retrospective Tudyk interview. Do not infer unbounded improvisation or exact retained takes.",
+    "accessed": "2026-09-14"
+  },
+  {
+    "id": "performance-11",
+    "title": "Star Wars Movie Scenes That Were Never Supposed to Happen",
+    "publisher": "Looper",
+    "author": "Alec Newcomb",
+    "date": "2022-05-16",
+    "url": "https://www.looper.com/864960/star-wars-movie-scenes-that-were-never-supposed-to-happen/",
+    "claims": [
+      "Conflicting slap attribution"
+    ],
+    "source_type": "secondary",
+    "notes": "Links ET video https://www.youtube.com/watch?v=EzurlarcMQM ; its spoken content not directly accessible. Used to bound uncertainty, not establish sole authorship.",
+    "accessed": "2026-09-14"
+  },
+  {
+    "id": "performance-12",
+    "title": "Making a Revolutionary: Inside Andor Season 2 with Tony Gilroy",
+    "publisher": "StarWars.com",
+    "author": "Brandon Wainerdi",
+    "date": "2025-05-20",
+    "url": "https://www.starwars.com/news/andor-season-2-interview-tony-gilroy",
+    "claims": [
+      "Delayed entrance rationale"
+    ],
+    "source_type": "primary",
+    "notes": "Gilroy interview.",
+    "accessed": "2026-09-14"
+  },
+  {
+    "id": "performance-13",
+    "title": "Disney Legends in Conversation: Alan Tudyk",
+    "publisher": "D23",
+    "author": "Zach Johnson",
+    "date": "2026-08",
+    "url": "https://d23.com/disney-legends-in-conversation-alan-tudyk/",
+    "claims": [
+      "Stilts continuity",
+      "Earlier robot preparation"
+    ],
+    "source_type": "primary",
+    "notes": "Page displays August12 and August11. Noh/mime studies explicitly concern I, Robot.",
+    "accessed": "2026-09-14"
+  }
+]

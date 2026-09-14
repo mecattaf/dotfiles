@@ -1,0 +1,69 @@
+{
+  "status": "default3_completed_single1_interrupted_before_first_phrase",
+  "engine": "Scott Baker OpenVINO NPU",
+  "consecutive": 3,
+  "threshold": 0.5,
+  "fixture_sha256": "fa98f0957bfe0262e9ca2a791733cd6454580fa65f6ea63f0a698f3ce638c9dd",
+  "fixture_seconds": 51.856,
+  "events": [
+    {
+      "frame": 385,
+      "consumed_audio_end_seconds": 30.88,
+      "callback_wall_seconds_since_ready": 30.885725478001405,
+      "processing_until_callback_seconds": 0.005653480999171734,
+      "score": 1.0,
+      "source_recording_end_seconds": 30.952,
+      "callback_minus_source_eof_ms": -66.27452199859718,
+      "input_consumed_end_minus_source_eof_ms": -72.00000000000273
+    },
+    {
+      "frame": 497,
+      "consumed_audio_end_seconds": 39.84,
+      "callback_wall_seconds_since_ready": 39.845916491001844,
+      "processing_until_callback_seconds": 0.005845307998242788,
+      "score": 1.0,
+      "source_recording_end_seconds": 39.904,
+      "callback_minus_source_eof_ms": -58.08350899815906,
+      "input_consumed_end_minus_source_eof_ms": -64.00000000000006
+    },
+    {
+      "frame": 610,
+      "consumed_audio_end_seconds": 48.88,
+      "callback_wall_seconds_since_ready": 48.886315732001094,
+      "processing_until_callback_seconds": 0.006230956001672894,
+      "score": 1.0,
+      "source_recording_end_seconds": 48.856,
+      "callback_minus_source_eof_ms": 30.3157320010925,
+      "input_consumed_end_minus_source_eof_ms": 24.00000000000091
+    }
+  ],
+  "expected_repetitions": 3,
+  "condition": "OS awake; both active displays at brightness zero with DPMS On; continuous 80 ms frames and 30 seconds of initial silence",
+  "display_verification": {
+    "sampling": "54 samples at one-second intervals, including before and after the completed run. Every recorded active-panel brightness is zero and both DPMS states are On. Transient changes between samples are not observable.",
+    "samples": 54,
+    "first_utc": "2026-09-14T19:14:10Z",
+    "last_utc": "2026-09-14T19:15:03Z",
+    "receipt": "latency-brightness-zero-v1/display-during-3.json"
+  },
+  "delivery": "Each chunk is supplied at its nominal end; callback wall time is measured immediately after the detector returns.",
+  "endpoint_scope": "The reference is the source WAV file end, not a verified phonetic endpoint. Negative offsets mean acceptance before the file ends, not negative perceived latency.",
+  "cue_latency": "Not measured; no cue played",
+  "single_consecutive_test": {
+    "status": "interrupted",
+    "why": "Both panel brightness values returned to 400 at 2026-09-14T19:15:33Z. The guard terminated the child before the first phrase.",
+    "positive_events": [],
+    "may_claim_speed_result": false,
+    "rerun_status": "Paused by root pending user clarification; no display override or rerun."
+  },
+  "old_cpu_comparison": {
+    "status": "Descriptive only: CPU brightness changed during its batch, so the exact comparison condition is unverified.",
+    "same_fixture": true,
+    "npu3_callback_later_than_cpu1_ms": [
+      156.95907999906922,
+      160.00760099996114,
+      161.02983000018867
+    ],
+    "interpretation": "The observed approximately 160 ms difference matches two additional 80 ms confirmation intervals. This is not proof of a hardware speed difference: the CPU display condition is unverified and the NPU single-frame run is incomplete."
+  }
+}

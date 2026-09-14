@@ -6,9 +6,9 @@
 # webcam itself: the coordinator's USB peripherals live on the Thunderbolt
 # dock the thin client sits on now (R-7), and the coordinator keeps only its
 # Ryzen HD Audio and Radeon HDMI — no real mic. Dictation therefore records
-# HERE and transcribes there: `dictate-hold` pipes this host's default source
-# (so this pin, or the Shift+F9 pick) over ssh to the coordinator's voxtype
-# (#376, home/voxtype.nix).
+# HERE and transcribes there: mykonos-dictate and Alexa capture this exact USB
+# node and stream PCM over SSH to coordinator Parakeet (home/mykonos.nix).
+# The voice path never follows a changed default-source selection.
 #
 # The node name carries the unit's USB serial, so the rule is the same on any
 # host the camera is plugged into. The runtime repair below is PER HOST
@@ -49,8 +49,7 @@
         # would be the default input silently reverting to the Buds.
         matches = [
           {
-            "node.name" =
-              "alsa_input.usb-DCX-241206-FAY_iContact_Camera_Pro_01.00.00-02.analog-stereo";
+            "node.name" = "alsa_input.usb-DCX-241206-FAY_iContact_Camera_Pro_01.00.00-02.analog-stereo";
           }
         ];
         actions.update-props = {

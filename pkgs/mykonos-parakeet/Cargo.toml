@@ -1,0 +1,10 @@
+[package]
+name = "mykonos-parakeet-engine"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+parakeet-rs = { version = "=0.3.7", default-features = false, features = ["load-dynamic", "migraphx", "api-27"] }
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic", "migraphx", "api-27"] }
+serde_json = "1"

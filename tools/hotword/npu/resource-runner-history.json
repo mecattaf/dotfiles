@@ -1,0 +1,5 @@
+{
+  "prior_resource_runner_sha256": "d4e15cb6f7fc0ff8091dbae2b63bfd687ccad5b1cec8fc371de1aa92223945be",
+  "scope": "Initial6resourcewindows delivered chunks at frame start; resource costs valid; rawcallbacktime unsuitable as realtime phrase-end latency. Current replay-scott.py uses frame-end availability.",
+  "original_receipt_root": "/home/tom/tts-hotword-research-20260914/compatibility"
+}
