@@ -65,6 +65,7 @@
     ../../modules/microvm-host.nix
     ../../modules/cli-anything.nix
     ../../modules/browser-desktop.nix
+    ../../modules/keyring-autounlock.nix # TPM-sealed keyring unlock at boot, no typing
     ../../modules/handwriting-annotation.nix
     ../../modules/fara-browser-model.nix
     ../../modules/strix.nix

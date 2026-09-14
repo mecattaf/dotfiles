@@ -1,4 +1,4 @@
-"""keyring-unlock [COLLECTION] -- unlock a gnome-keyring collection without a GUI prompt.
+"""keyring-unlock [--status|--lock] [COLLECTION] -- unlock a gnome-keyring collection without a GUI prompt.
 
 The coordinator boots headless: no login unlocks the keyring. Run this over
 ssh from the client (`ssh -t coordinator keyring-unlock`) and type the keyring
@@ -6,6 +6,9 @@ password once. The password is read from the terminal (or stdin when not a
 tty), never from argv, and handed to gnome-keyring's own
 UnlockWithMasterPassword over the session bus. Exit 0 only when the collection
 reports Locked=false afterwards; 1 on a wrong password; 2 on any other error.
+--status exits 0 when unlocked and 3 when locked; --lock locks it (no prompt)
+and exits 0 once it reports Locked=true. keyring-seal uses both to prove the
+TPM boot unlock end to end.
 """
 import getpass, os, sys
 from jeepney import DBusAddress, new_method_call, MessageType
@@ -32,10 +35,21 @@ def main() -> int:
         return call(path, "org.freedesktop.DBus.Properties", "Get", "ss", ("org.freedesktop.Secret.Collection", "Locked"))[0][1]
 
     try:
+        args = sys.argv[1:]
+        mode = args.pop(0)[2:] if args and args[0] in ("--status", "--lock") else "unlock"
         _, session = call(ROOT, "org.freedesktop.Secret.Service", "OpenSession", "sv", ("plain", ("s", "")))
-        collection = sys.argv[1] if len(sys.argv) > 1 else call(ROOT, "org.freedesktop.Secret.Service", "ReadAlias", "s", ("default",))[0]
+        collection = args[0] if args else call(ROOT, "org.freedesktop.Secret.Service", "ReadAlias", "s", ("default",))[0]
         if collection == "/":
             print("keyring-unlock: no default keyring", file=sys.stderr); return 2
+        if mode == "status":
+            state = locked(collection)
+            print(f"keyring-unlock: {collection} is {'locked' if state else 'unlocked'}")
+            return 3 if state else 0
+        if mode == "lock":
+            call(ROOT, "org.freedesktop.Secret.Service", "Lock", "ao", ([collection],))
+            if locked(collection):
+                print(f"keyring-unlock: {collection} locked"); return 0
+            print(f"keyring-unlock: {collection} did not lock", file=sys.stderr); return 2
         if not locked(collection):
             print(f"keyring-unlock: {collection} is already unlocked"); return 0
         password = getpass.getpass("keyring password: ") if sys.stdin.isatty() else sys.stdin.readline().rstrip("\n")

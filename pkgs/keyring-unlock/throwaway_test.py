@@ -14,10 +14,14 @@ coll = call(ROOT, "org.gnome.keyring.InternalUnsupportedGuiltRiddenInterface", "
             "a{sv}(oayays)", ({"org.freedesktop.Secret.Collection.Label": ("s", "overnight-keyring-unlock-test")}, (s, b"", b"correct-horse", "text/plain")))[0]
 print("created", coll, "locked:", locked(coll))
 call(ROOT, "org.freedesktop.Secret.Service", "Lock", "ao", ([coll],)); print("after Lock, locked:", locked(coll))
-run = lambda pw: subprocess.run([sys.executable, sys.argv[1], coll], input=pw+"\n", capture_output=True, text=True)
+run_argv = lambda: [sys.argv[1]] if os.access(sys.argv[1], os.X_OK) and not sys.argv[1].endswith(".py") else [sys.executable, sys.argv[1]]
+run = lambda pw: subprocess.run([*run_argv(), coll], input=pw+"\n", capture_output=True, text=True)
 w = run("wrong-password"); print("wrong pw -> rc", w.returncode, (w.stdout+w.stderr).strip(), "| locked:", locked(coll))
 r = run("correct-horse"); print("right pw -> rc", r.returncode, (r.stdout+r.stderr).strip(), "| locked:", locked(coll))
 a = run("x"); print("again     -> rc", a.returncode, (a.stdout+a.stderr).strip())
+st = subprocess.run([*run_argv(), "--status", coll], capture_output=True, text=True); print("--status  -> rc", st.returncode)
+lk = subprocess.run([*run_argv(), "--lock", coll], capture_output=True, text=True); print("--lock    -> rc", lk.returncode, "| locked:", locked(coll))
+st2 = subprocess.run([*run_argv(), "--status", coll], capture_output=True, text=True); print("--status  -> rc", st2.returncode)
 call(coll, "org.freedesktop.Secret.Collection", "Delete"); 
 cols = call(ROOT, "org.freedesktop.DBus.Properties", "Get", "ss", ("org.freedesktop.Secret.Service","Collections"))[0][1]
 print("deleted; remaining collections:", cols, "| default alias unchanged:", call(ROOT, "org.freedesktop.Secret.Service", "ReadAlias", "s", ("default",))[0] == default_before)
