@@ -1,0 +1,437 @@
+{
+  "version": 1,
+  "captured_utc": "2026-09-14T10:28:06.238488+00:00",
+  "source_root": "/home/tom/huion",
+  "archive_root": "/home/tom/mecattaf/dotfiles/experiments/handwriting/2026-09-14",
+  "scope": "Exact source and methodology archive only; not installed or portable by itself. Original workspace data and paths remain required. No generated transcripts, photos, raw inference outputs, databases or secret files included.",
+  "files": [
+    {
+      "archive_path": "ocr/BENCHMARK.md",
+      "source_path": "/home/tom/huion/ocr/BENCHMARK.md",
+      "sha256": "cc6d8e5ed62829852f79d86e890a9023d8ddfd95bfa01cb18eafa7594549bc66",
+      "bytes": 9366,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "ocr/CONTEXT-RESOLUTION.md",
+      "source_path": "/home/tom/huion/ocr/CONTEXT-RESOLUTION.md",
+      "sha256": "40d4a08eb168fb49e4e7462d6d2171bb134dbe1ae8894c3016d508b251bacd73",
+      "bytes": 5960,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "ocr/HALOGEN.md",
+      "source_path": "/home/tom/huion/ocr/HALOGEN.md",
+      "sha256": "af0f54de31ff034a87b16f66e98bbf1dbee49e122c1946a497cc69e2d5dc76c4",
+      "bytes": 3663,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "ocr/LOOKUP.md",
+      "source_path": "/home/tom/huion/ocr/LOOKUP.md",
+      "sha256": "4a97ff074f626c06b3aa9dbfd5f28400d60d4393146005649297eb071f4ad3df",
+      "bytes": 1777,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "ocr/OPTIMIZATION-NOTES.md",
+      "source_path": "/home/tom/huion/ocr/OPTIMIZATION-NOTES.md",
+      "sha256": "8f77a54517e1e57ef0d251c23084224c498bf937ce8482189ed1b19625e9fb8f",
+      "bytes": 4752,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "ocr/README.md",
+      "source_path": "/home/tom/huion/ocr/README.md",
+      "sha256": "282baa4c1c84ea837eed7bd0f9bc357d03370f863e8634e8bc3bd2f128c4e788",
+      "bytes": 5951,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "ocr/REVIEW.md",
+      "source_path": "/home/tom/huion/ocr/REVIEW.md",
+      "sha256": "cc4e226ff12df84a6f4bb5094ef8bcb05212d70400aa61dd1e7a615e0af74fb4",
+      "bytes": 3473,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "ocr/baseline.py",
+      "source_path": "/home/tom/huion/ocr/baseline.py",
+      "sha256": "340885f87795aea7f70e437be6744d6d8a39928dc8878b3188c4f71c46a881f9",
+      "bytes": 4445,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "ocr/compare_baseline.py",
+      "source_path": "/home/tom/huion/ocr/compare_baseline.py",
+      "sha256": "ae5ee99f4765b656c09aae0c2476b0b0392e1d80a192cc8ca2c9f095f93f4ba3",
+      "bytes": 6572,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "ocr/context_hints.py",
+      "source_path": "/home/tom/huion/ocr/context_hints.py",
+      "sha256": "3ffbbd426d37eb2bf144b102e2cea88f31044864527d19f7b01e3b47830b18c0",
+      "bytes": 6860,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "ocr/effort_benchmark.py",
+      "source_path": "/home/tom/huion/ocr/effort_benchmark.py",
+      "sha256": "86b43a2795b015e0b33616391bf89790410c4db6dfe685d54b332b766a8a3bb7",
+      "bytes": 6001,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "ocr/prepare.py",
+      "source_path": "/home/tom/huion/ocr/prepare.py",
+      "sha256": "0882b8a789d8f2c10f5996f8ec65356ed5c2bd9354b61f3551e1bac2fa80b9fd",
+      "bytes": 5372,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "ocr/summarize_efforts.py",
+      "source_path": "/home/tom/huion/ocr/summarize_efforts.py",
+      "sha256": "543dceab47ba0f97dd05605550ccd9a97e56ee75af945c17d1c38b4e5d0c5090",
+      "bytes": 3231,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "ocr/test_context_hints.py",
+      "source_path": "/home/tom/huion/ocr/test_context_hints.py",
+      "sha256": "40a56150e0445cc165d46e0108648d6bc54ab218a5803ff4a11f3fa987faa784",
+      "bytes": 2925,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "ocr/worker_memory_sampler.py",
+      "source_path": "/home/tom/huion/ocr/worker_memory_sampler.py",
+      "sha256": "921a82a0e164f01931f66f9455e9c2be10082118479bda028ed85939768a3087",
+      "bytes": 2137,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/analyze_corrections.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/analyze_corrections.py",
+      "sha256": "a971245565487aa9a3a3bfcb57186ccedea17003319f9987f40dacf6fe7d4226",
+      "bytes": 16941,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/assemble.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/assemble.py",
+      "sha256": "69d7320e2482b1f12141ac4fd3deb11fa44c7667bc05a8924767e2517be4ff2d",
+      "bytes": 7997,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/benchmark.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/benchmark.py",
+      "sha256": "9e0ce513e8e23fe8464f0070f6a6787974469b8e3b8515ae7c4be47537d711c1",
+      "bytes": 12839,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/certainty_audit.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/certainty_audit.py",
+      "sha256": "636432372d6edebeedc51c187dd763d8d03cc95e3d0c6fc8d7b6594a1378a063",
+      "bytes": 14524,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/compare_claude_first.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/compare_claude_first.py",
+      "sha256": "0dabf98b003479bd71cbe5b74c7af30218087f0d1e821601bf5ae70554447264",
+      "bytes": 34167,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/correct.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/correct.py",
+      "sha256": "e0739531c0ead0b4b7d0dd4f6859bd6966128b0fea59d4fdf801ad8a6a4a7123",
+      "bytes": 12602,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/correction_tasks.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/correction_tasks.py",
+      "sha256": "829c5898350576aaea7362975d417b0dadfa4a20b07b8e3be40597bb7e3e72d4",
+      "bytes": 9517,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/prepare_inputs.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/prepare_inputs.py",
+      "sha256": "0c47e06129b84c7e9d02a4984e9c9237d5eb2b604f88a53b1e008b1a4363d28a",
+      "bytes": 1891,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/reconstruct_pages.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/reconstruct_pages.py",
+      "sha256": "15eb6b530d0f7cc349a5b3002c5e7df51e180799f5bc609646aa3bc6f6dc3cfb",
+      "bytes": 20068,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/score_quality.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/score_quality.py",
+      "sha256": "a76456f51ef53e2aa172ec327fb3f054d1090eb3664a704b5e4c028fbd05a05c",
+      "bytes": 18206,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/summarize_runtime.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/summarize_runtime.py",
+      "sha256": "c378b3dbaf82e0cc066cfbfe8877ecc77646184cd9da4794401032de1a8c1021",
+      "bytes": 18792,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/test_analyze_corrections.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/test_analyze_corrections.py",
+      "sha256": "8678616638adcb25acf57969ea6deefa9130ee192d76568e4b328948e3001ce6",
+      "bytes": 5796,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/test_correction_selection.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/test_correction_selection.py",
+      "sha256": "3f465987d290310ebbfc4110bd4bbacb5ce548a33db614df58e928bfee6003f0",
+      "bytes": 1372,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/test_experiment_guards.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/test_experiment_guards.py",
+      "sha256": "ec5ae9d7ebc4ce1cbc91b227767344c0ed79c6330202abeca3cac2407be73082",
+      "bytes": 6736,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/test_reconstruct_pages.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/test_reconstruct_pages.py",
+      "sha256": "7549573ddf253efae8f843315955fdc11f7fd7e8695f6cb4dd2f91fe4c42ea6a",
+      "bytes": 5843,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/test_score_quality.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/test_score_quality.py",
+      "sha256": "2c89692f478ec6583615405de82ee9505b0e2b5be9b243de98bb2d31e09e7d07",
+      "bytes": 7659,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/test_tile_probe.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/test_tile_probe.py",
+      "sha256": "4f15f38a7fb89161000341eff8795ac6f43ca9664d366c1975a262a6cb76eb6c",
+      "bytes": 3053,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/experiment/tile_probe.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/experiment/tile_probe.py",
+      "sha256": "9bb319ee8a18eb0a891511af7654e2378960744e9036cf0edff9ccbe0c0bf309",
+      "bytes": 20999,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/ASSEMBLY-AUDIT.md",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/ASSEMBLY-AUDIT.md",
+      "sha256": "3ec8cd344498e23ee5fc409c0c2821d25600575d54a7cd3cbaf41eb8058b440d",
+      "bytes": 7159,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/CONTEXT-ADJUDICATION.md",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/CONTEXT-ADJUDICATION.md",
+      "sha256": "9971e405d47e042faea497daff759fa4d7f916f4850224298aaca5ccfea7e981",
+      "bytes": 7227,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/EXPERIMENT-REVIEW.md",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/EXPERIMENT-REVIEW.md",
+      "sha256": "4a6078ac538e5638c4317699f8ba293644f4fc0528be7eeacfb53ac46fad197a",
+      "bytes": 11702,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/HALOGEN-RECIPE.md",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/HALOGEN-RECIPE.md",
+      "sha256": "6449d1ffc894f0a0d88a72ad64911c6741c34607ae93b27a89271f59559a93de",
+      "bytes": 10313,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/README.md",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/README.md",
+      "sha256": "294d7376fdf3e90df84d68031d786c7e2d99791156c00cb0227d337f5daf7865",
+      "bytes": 6695,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/REPORT.md",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/REPORT.md",
+      "sha256": "fe70c8146ad89c1226d4987ac4982a8c66e124b83173e68a4892489fbb7cf929",
+      "bytes": 14714,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/SEQUENCE.md",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/SEQUENCE.md",
+      "sha256": "1fb43ea2699065667cd76fb0fbb9897219fd56b31b79a0c878f1c47f10d7eb1e",
+      "bytes": 2767,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/WORK-STATE.md",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/WORK-STATE.md",
+      "sha256": "db58719435ee32a39a955bbc55d2edb9a787b7f155e7b8dbc22b1d0496af4dad",
+      "bytes": 3887,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/runs/writer-confirmation-off/compare.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/runs/writer-confirmation-off/compare.py",
+      "sha256": "ce5e8d777d2c425c92c0a60dd97415ddaf5c70775362cd181c3201309f57f601",
+      "bytes": 2198,
+      "source_mode": "0o644",
+      "kind": "experimental_source"
+    },
+    {
+      "archive_path": "artifacts/scripts/sync-test.sh",
+      "source_path": "/home/tom/huion/artifacts/scripts/sync-test.sh",
+      "sha256": "df1bbc88cf86810fa7496e41cfa01befa62395e3c3257feaad380bbf33477e9e",
+      "bytes": 802,
+      "source_mode": "0o644",
+      "kind": "historical_capture_or_reconciliation_source"
+    },
+    {
+      "archive_path": "artifacts/scripts/bt-patched-start.sh",
+      "source_path": "/home/tom/huion/artifacts/scripts/bt-patched-start.sh",
+      "sha256": "15f9b386179e836f92f8876dd409422edb54baeb00eb30c81314c7c0343af245",
+      "bytes": 1199,
+      "source_mode": "0o644",
+      "kind": "historical_capture_or_reconciliation_source"
+    },
+    {
+      "archive_path": "artifacts/scripts/bluez-patched.nix",
+      "source_path": "/home/tom/huion/artifacts/scripts/bluez-patched.nix",
+      "sha256": "069e0b24df47b9c2f5c56a6fee2957e80694f3dd5a5c6d91067d425591838a82",
+      "bytes": 173,
+      "source_mode": "0o644",
+      "kind": "historical_capture_or_reconciliation_source"
+    },
+    {
+      "archive_path": "artifacts/scripts/bt-restore.sh",
+      "source_path": "/home/tom/huion/artifacts/scripts/bt-restore.sh",
+      "sha256": "a16d4efeb88f68dbf62f0d7c9548b719a90698242baf8fc00427c54011fa8d60",
+      "bytes": 980,
+      "source_mode": "0o644",
+      "kind": "historical_capture_or_reconciliation_source"
+    },
+    {
+      "archive_path": "artifacts/scripts/dump_traced.py",
+      "source_path": "/home/tom/huion/artifacts/scripts/dump_traced.py",
+      "sha256": "065bf71d1fc3a0918b891a530728a153e25f891950582db5d21b5e07119beece",
+      "bytes": 1019,
+      "source_mode": "0o644",
+      "kind": "historical_capture_or_reconciliation_source"
+    },
+    {
+      "archive_path": "artifacts/scripts/bt-agent-restart.sh",
+      "source_path": "/home/tom/huion/artifacts/scripts/bt-agent-restart.sh",
+      "sha256": "f1785fe42e4511d347bbb49e06a6546ff99de4e640847c305a5b089f5142b2fe",
+      "bytes": 1085,
+      "source_mode": "0o644",
+      "kind": "historical_capture_or_reconciliation_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/model-review/build_resolution.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/model-review/build_resolution.py",
+      "sha256": "0a334e2bf19a77c219f9e728546e6adfdf834a98552d522df43c229bf8a3fab9",
+      "bytes": 19529,
+      "source_mode": "0o644",
+      "kind": "historical_capture_or_reconciliation_source"
+    },
+    {
+      "archive_path": "journal-photos/2026-09-14/writer-review/20260914T100934Z/apply_writer_decisions.py",
+      "source_path": "/home/tom/huion/journal-photos/2026-09-14/writer-review/20260914T100934Z/apply_writer_decisions.py",
+      "sha256": "e644be637215685d7a241410ca4cd5de1c2bea218369417f40b27b94057bceda",
+      "bytes": 12308,
+      "source_mode": "0o644",
+      "kind": "historical_capture_or_reconciliation_source"
+    },
+    {
+      "archive_path": "DAILY-OCR.md",
+      "source_path": "/home/tom/huion/DAILY-OCR.md",
+      "sha256": "d575efcf5757b391cddfb4025f29e639f178ece379fbddb1df17501060457f41",
+      "bytes": 24202,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "DAILY-INTAKE-INTEGRATION.md",
+      "source_path": "/home/tom/huion/DAILY-INTAKE-INTEGRATION.md",
+      "sha256": "4360b92f35944048d0b7d031c7e0c2dd63b95df6b1ff2cba64c2525b74d04757",
+      "bytes": 3060,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    },
+    {
+      "archive_path": "HANDOFF.md",
+      "source_path": "/home/tom/huion/HANDOFF.md",
+      "sha256": "2e3304dd67aa15d51363f11adb148090765b9612c582213fd5f783afef7c2071",
+      "bytes": 24008,
+      "source_mode": "0o644",
+      "kind": "methodology_and_historical_findings"
+    }
+  ],
+  "file_count": 42,
+  "total_bytes": 446514,
+  "updated_utc": "2026-09-14T10:23:49.756915+00:00",
+  "files_count": 53
+}

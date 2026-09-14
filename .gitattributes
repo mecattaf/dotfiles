@@ -1,0 +1,2 @@
+# Preserve the historical handoff's quoted upstream patch byte-for-byte.
+experiments/handwriting/2026-09-14/HANDOFF.md -whitespace
