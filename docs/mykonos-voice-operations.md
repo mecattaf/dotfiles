@@ -1,8 +1,9 @@
 # Mykonos voice operations
 
-This is the intended permanent deployment. Activation and live acceptance are
-tracked in `mykonos-overnight-integration.md`; do not mistake a successful build
-for a completed fleet rollout.
+The permanent services have been activated on the fleet. Build, integration and
+rollout checkpoints are in `mykonos-overnight-integration.md`. The final machine
+receipt is archived at `/mnt/nas/models/research/mykonos/2026-09-14/deployment-receipt.json`;
+its revision and service evidence distinguish activation from a build.
 
 ## Responsibilities
 

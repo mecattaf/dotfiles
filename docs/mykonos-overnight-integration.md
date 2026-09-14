@@ -119,3 +119,32 @@ Checkpoint 23:28 CEST:
   full rehash of every historical model; canonical import receipts remain the
   hash evidence. Recent kernel log has no BO_VR/GPU fault/reset errors during the
   direct Parakeet work.
+
+
+Rollout checkpoint 23:39 CEST:
+- All four hosts successfully switched to clean source revision 49053f93. Main,
+  client and worker raw checkouts were fast-forwarded first. Coordinator README
+  edits and worker untracked quickshell files remain untouched.
+- Coordinator Herdr server PID 1716 survived. Parakeet is enabled and running
+  with MIGraphX; the speech queue path/timer are enabled. Client wake is enabled,
+  armed on the exact USB microphone, and delivered by Home Manager. Temporary
+  units/wrappers are backed up and removed. Voxtype is inactive/uninstalled; its
+  old virtual mic is gone after restarting the idle coordinator audio services.
+- Deployed Claude session 0a2adc9b-8f2f-44a0-8214-e5d7ec677982 used the fixed
+  system-prompt hash 5eada394ff4827b871c5b134973dbf2f91bd40e694b29915b3c66e60434ff1a3.
+  It automatically published a visible Markdown job; playback receipt reports
+  success at 23:35:57 (12.82s queue work). This confirms delivery, not that Tom
+  heard a muted speaker. His mute/volume settings were preserved.
+- Runtime call-mode inhibition acknowledged microphone release. The real kitty
+  tap-Space and Escape tests passed. The end-to-end digital fixture passed before
+  activation; fresh acoustic accuracy is not inferred from it.
+- Post-switch testing found and fixed the normal-kitty launcher syntax: environment
+  is passed through `env`, not the remote-control-only `--env` option. The corrected
+  packaged launcher opened a native window on w5B:p1 with hold-Space enabled.
+  This small follow-up must be included in the final merged revision and rollout.
+- Two-page Parakeet/Gemma brief was already printed successfully at 22:33:21,
+  printer job 303 / CUPS Brother_HL_L2445DW-312, two impressions. No duplicate print.
+- PR #387 contains the integration. The final merged-revision verification and
+  safe worktree retirement follow this checkpoint; authoritative final receipt is
+  stored beside the NAS research archive so recording it does not require another
+  configuration revision solely to change a deployment timestamp.
