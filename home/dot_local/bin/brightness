@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # brightness -- adjust display brightness
-# Uses brightnessctl with 5% steps and a floor of 1 raw unit.
+# Uses brightnessctl with 10% steps (Tom, 2026-09-14) and a floor of 1 raw unit.
 #
 # Usage:
 #   brightness up|down            adjust ALL internal (DRM/eDP) backlights together
@@ -10,7 +10,7 @@
 #   brightness toggle             off when lit, restore when dark
 #
 # THE FLOOR (-n 1). Every up/down call passes brightnessctl's `--min-value 1`.
-# Without it, five presses of F1 from 25% land on raw 0, and on i915 raw 0 is not
+# Without it, three presses of F1 from 25% land on raw 0, and on i915 raw 0 is not
 # "very dim", it is backlight power-off: the panel goes black and F2 is invisible
 # to press. The coordinator never hit this because it has no backlight at all.
 # The Zenbook Duo has two, and darkness there is a real dead end, so `down` now
@@ -143,8 +143,8 @@ do_toggle() {
 }
 
 case "${1:-}" in
-    up)      step "5%+" "${2:-}" ;;
-    down)    step "5%-" "${2:-}" ;;
+    up)      step "10%+" "${2:-}" ;;
+    down)    step "10%-" "${2:-}" ;;
     off)     do_off ;;
     restore) do_restore ;;
     toggle)  do_toggle ;;

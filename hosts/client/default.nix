@@ -202,14 +202,49 @@
 
   # ── panels, PSR, video ─────────────────────────────────────────────────────
   # i915 is the bound driver (xe loaded but idle); eDP PSR flicker.
-  boot.kernelParams = [ "i915.enable_psr=0" ];
+  # nvme_core.default_ps_max_latency_us=0: APST off on the WD PC SN560. Its
+  # kernel log carries "nvme … timeout, completion polled" (10 and 11 in two
+  # earlier boots, one on 2026-09-14 that stalled niri past its start limit),
+  # the lost-interrupt signature of a drive failing to leave a deep power
+  # state. The cost is idle power on a machine that lives on its dock.
+  boot.kernelParams = [
+    "i915.enable_psr=0"
+    "nvme_core.default_ps_max_latency_us=0"
+  ];
   hardware.graphics.extraPackages = [ pkgs.intel-media-driver ];
   environment.sessionVariables.LIBVA_DRIVER_NAME = "iHD";
 
-  # jul5 dual-eDP niri startup hang mitigation, NEVER live-verified: niri.service
-  # is Type=notify and was SIGKILLed at systemd's 90 s default before signalling
-  # ready. Rope for a slow (vs deadlocked) start; harmless if unneeded.
-  systemd.user.services.niri.serviceConfig.TimeoutStartSec = lib.mkForce "120";
+  # jul5 dual-eDP niri startup hang mitigation: niri.service is Type=notify and
+  # was SIGKILLed before signalling ready. 120 s was not enough on 2026-09-14:
+  # niri started 08:54:44, stalled behind a kernel "nvme … timeout, completion
+  # polled" at 08:56:14, hit the 120 s limit at 08:56:44 and was killed — greetd
+  # fell back to its login prompt, and it was rendering 10 s later. A slow start
+  # must never cost the session; a true deadlock still ends at 5 minutes.
+  systemd.user.services.niri.serviceConfig.TimeoutStartSec = lib.mkForce "300";
+
+  # Linux 7.2 like the rest of the fleet (Tom, 2026-09-14), sourced exactly as
+  # modules/strix.nix and hosts/nas/kernel.nix do: the versioned attr moves only
+  # within 7.2.x and breaks eval loudly when the series ages out.
+  boot.kernelPackages =
+    (import inputs.nixpkgs-fresh {
+      inherit (pkgs.stdenv.hostPlatform) system;
+      config.allowUnfree = true;
+    }).linuxPackages_7_2;
+
+  # A short boot menu: five generations is rollback enough on a thin client
+  # (the 20-entry fleet default left 19 stale entries here, 2026-09-14).
+  boot.loader.systemd-boot.configurationLimit = 5;
+
+  # Both panels come up at full brightness on every boot (Tom, 2026-09-14:
+  # the saved level was 4/400 and the seat woke nearly black). systemd-backlight
+  # would restore whatever was saved at shutdown, so its two DRM instances are
+  # off, and udev sets each panel to its own max_brightness as it appears.
+  # F1/F2 (bin/brightness, 10% steps) adjust from there.
+  systemd.services."systemd-backlight@backlight:intel_backlight".enable = false;
+  systemd.services."systemd-backlight@backlight:card1-eDP-2-backlight".enable = false;
+  services.udev.extraRules = ''
+    ACTION=="add", SUBSYSTEM=="backlight", KERNEL=="intel_backlight|card1-eDP-2-backlight", RUN+="${pkgs.bash}/bin/sh -c 'cat /sys/class/backlight/%k/max_brightness > /sys/class/backlight/%k/brightness'"
+  '';
 
   # The dock contract (modules/zenbook-duo-daemon.nix): keyboard on → eDP-2
   # off, backlights synced, Fn keys. kanshi's `Duo` profile covers both panels
