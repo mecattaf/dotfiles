@@ -2,10 +2,12 @@
 let
   cfg = config.services.handwriting-annotation;
   package = pkgs.callPackage ../pkgs/handwriting-annotation { };
+  intakePackage = pkgs.callPackage ../pkgs/handwriting-intake { };
 in {
   options.services.handwriting-annotation.enable = lib.mkEnableOption "private handwriting annotation";
   config = lib.mkIf cfg.enable {
-    environment.systemPackages = [ package ];
+    environment.systemPackages = [ package intakePackage ];
+    systemd.tmpfiles.rules = [ "d /var/lib/handwriting-intake 0700 tom users -" ];
     networking.hosts."127.0.0.1" = [ "handwriting.internal" ];
     networking.firewall.interfaces.wlp192s0.allowedTCPPorts = [ 443 ];
     networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 443 ];
@@ -67,6 +69,47 @@ in {
     };
     systemd.timers.handwriting-annotation-backup = {
       description = "Daily handwriting annotation snapshot";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        OnCalendar = "daily";
+        Persistent = true;
+        RandomizedDelaySec = "15m";
+      };
+    };
+    # Manual one-capture pilot: installing the CLI does not scan or OCR the inbox.
+    # Its independent source/request/export evidence joins the same NAS tier.
+    systemd.services.handwriting-intake-backup = {
+      description = "Snapshot Huion intake evidence onto the NAS documents tier";
+      unitConfig = {
+        ConditionPathExists = "/var/lib/handwriting-intake/intake.sqlite3";
+        RequiresMountsFor = [ "/mnt/nas/documents" ];
+      };
+      serviceConfig = {
+        Type = "oneshot";
+        User = "tom";
+        Group = "users";
+        UMask = "0077";
+        NoNewPrivileges = true;
+        PrivateTmp = true;
+        ProtectSystem = "strict";
+        ProtectHome = "read-only";
+        ReadWritePaths = [ "/var/lib/handwriting-intake" "/mnt/nas/documents" ];
+        Restart = "on-failure";
+        RestartSec = "5m";
+        ExecStart = pkgs.writeShellScript "handwriting-intake-backup" ''
+          set -eu
+          cd /mnt/nas/documents
+          ${pkgs.util-linux}/bin/findmnt -n -t nfs,nfs4 --target "$PWD" >/dev/null
+          destination="$PWD/handwriting-intake-backups"
+          ${pkgs.coreutils}/bin/mkdir -p "$destination"
+          stamp=$(${pkgs.coreutils}/bin/date -u +%Y%m%dT%H%M%S.%NZ)
+          exec ${intakePackage}/bin/handwriting-intake \
+            --state /var/lib/handwriting-intake snapshot --output "$destination/$stamp"
+        '';
+      };
+    };
+    systemd.timers.handwriting-intake-backup = {
+      description = "Daily Huion intake evidence snapshot";
       wantedBy = [ "timers.target" ];
       timerConfig = {
         OnCalendar = "daily";

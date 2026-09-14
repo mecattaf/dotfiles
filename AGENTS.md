@@ -85,3 +85,15 @@ points into that checkout. Bring the branch there (ff-merge or `pull
 `raw-dotfiles-guard` (`home/raw-dotfiles-guard.nix`) fails the Home Manager
 activation, before any file is written, when a user unit's
 `%h/.local/bin/<program>` is missing from that checkout.
+
+
+**Handwriting intake (2026-09-14).** `handwriting.internal` is the private
+annotation menu, declared by `modules/handwriting-annotation.nix`: NAS DNS,
+coordinator Caddy and a CPU-only service. Preserve `/var/lib/handwriting-annotation`
+and its append-only writer/model-review history across updates. Model-assisted
+resolutions are not writer labels. Huion sources arrive in `~/Paper/inbox`;
+`~/Paper/intake` is the printing route. Use the existing Halogen Flash for serial
+OCR with thinking explicitly off. `docs/handwriting-intake.md` records the
+recipe, correction-evidence rules and real-Huion commissioning boundary. Do not
+reseed live review state or treat stable legacy capture files as proof of device
+page completeness.

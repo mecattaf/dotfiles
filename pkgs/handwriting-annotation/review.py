@@ -93,7 +93,7 @@ def merge_queue(out,data):
         for key,asset in data['assets'].items():
             if key in assets and (assets[key]['sha256']!=asset['sha256'] or assets[key]['size']!=asset['size']):raise ValueError('Asset identity conflict')
             assets[key]={**assets.get(key,{}),**asset}
-        immutable=('raw','reported_raw','image','full_image','source_sha256','page_key','origin')
+        immutable=('raw','reported_raw','image','full_image','source_sha256','page_key','origin','capture_id','attempt_id','capture_completeness','family_id','parent_page_task_id')
         for task in data['tasks']:
             if task['id'] in tasks:
                 previous=tasks[task['id']]
@@ -163,14 +163,15 @@ def seed(out, collection=COLLECTION):
 
 
 def import_items(out,path):
-    """Import model disagreements as unreviewed tasks, never writer labels."""
+    """Import model proposals and whole-capture reviews, never writer labels."""
     out=Path(out);path=Path(path);document_snapshot,_=snapshot(out,path);document=read(out/document_snapshot);collection=Path(document['collection']).resolve()
     assets={};tasks=[]
     existing=read(out/'tasks.json')['tasks'] if (out/'tasks.json').exists() else []
     manifest={r['capture_order']:r for r in read(collection/'input-manifest.json')['captures']}
     for item in document['items']:
         n=item['capture'];row=manifest[n];origin=item['origin']
-        if origin not in ('claude_codex_disagreement','codex_unresolved'):raise ValueError('Unsupported imported task origin')
+        if origin not in ('claude_codex_disagreement','codex_unresolved','page_review','qwen_uncertainty'):raise ValueError('Unsupported imported task origin')
+        if origin=='page_review' and item.get('capture_completeness') not in ('unknown','incomplete','complete'):raise ValueError('Page review requires explicit capture completeness')
         source=Path(item.get('source',path));source_snapshot,source_sha=snapshot(out,source,item.get('source_sha256'))
         image=Path(item.get('image_path',collection/row.get('input',f'inputs/capture-{n:02}.png')))
         key,a=image_asset(out,image,item.get('image_sha256') or row.get('input_sha256'),capture=n,kind='full_photo');assets[key]=a
@@ -184,12 +185,15 @@ def import_items(out,path):
         if item.get('page_key',page_key)!=page_key:raise ValueError('Imported physical-page identity does not match collection')
         difficulty=item.get('difficulty','hard')
         if difficulty not in ('hard','uncertain','unreadable'):raise ValueError('Invalid imported difficulty')
-        tasks.append({'id':taskid,'capture':n,'page':row['page'],'page_key':page_key,
-                      'raw':raw,'reported_raw':item.get('reported_raw',raw),'flags':[],'difficulty':difficulty,'line':item.get('line',ctx['current']),
+        metadata={k:item[k] for k in ('capture_id','attempt_id','receipt_path','capture_completeness','family_id','coverage_flags') if k in item}
+        if item.get('parent_page_task_id'):
+            metadata['parent_page_task_id']=hashlib.sha256((str(collection)+'\0page_review\0'+str(item['parent_page_task_id'])).encode()).hexdigest()[:24]
+        tasks.append({'id':taskid,'external_id':str(item['id']),'capture':n,'page':row['page'],'page_key':page_key,
+                      'raw':raw,'reported_raw':item.get('reported_raw',raw),'flags':item.get('flags',[]),'difficulty':difficulty,'line':item.get('line',ctx['current']),
                       'context':ctx,'contexts':item.get('contexts',[ctx]),'transcription':text,'occurrences':text.count(raw) if text and raw else 0,
                       'cancelled':bool(item.get('cancelled',False)),'image':key,'full_image':key,'source':str(source),'source_snapshot':source_snapshot,
                       'source_sha256':source_sha,'origin':origin,'reason':item.get('reason','Model disagreement for writer review'),
-                      'readings':item.get('readings',{}),'selection_required':True,'model':'unreviewed model comparison','thinking':'not applicable',
+                      'readings':item.get('readings',{}),'selection_required':True,'model':item.get('model','unreviewed model comparison'),'thinking':item.get('thinking','not applicable'),**metadata,
                       **{k:item[k] for k in ('readings_format','reading_formats','readings_note','exact_reading_source_spans') if k in item},**original_info})
     return merge_queue(out,{'collection':str(collection),'assets':assets,'tasks':tasks})
 
@@ -229,15 +233,17 @@ class Store:
         if not path.is_absolute():path=self.state/path
         if digest(path)!=a['sha256']: raise ValueError('Source image changed')
         return path
-    def save(self, payload):
+    def save(self, payload, *, actor='writer', resolution_evidence=None, method=None):
         self.refresh()
+        if actor not in ('writer','model_review'):raise ValueError('Invalid review actor')
+        if actor=='model_review' and (not resolution_evidence or not method or payload.get('reuse')):raise ValueError('Model review needs evidence and cannot approve visual examples')
         if not isinstance(payload,dict):raise ValueError('Annotation must be an object')
         task=self.tasks[payload['task_id']]
         if payload['action'] not in ('resolved','absent','unreadable','deferred','reopened'): raise ValueError('Invalid action')
         if not isinstance(payload.get('op_id'),str) or not 8<=len(payload['op_id'])<=100: raise ValueError('Missing operation id')
         if type(payload.get('revision')) is not int: raise ValueError('Missing revision')
         body={k:payload.get(k,'') for k in ('literal','intended','note','tags','example_text')}
-        if any(not isinstance(v,str) or len(v)>4000 for v in body.values()): raise ValueError('Invalid annotation text')
+        if any(not isinstance(v,str) or len(v)>(65536 if k=='literal' and task.get('origin')=='page_review' else 4000) for k,v in body.items()): raise ValueError('Invalid annotation text')
         body={k:v.strip() for k,v in body.items()}
         if payload['action']=='resolved' and not body['literal']: raise ValueError('Enter the literal reading')
         if payload['action']=='absent' and body['literal']:raise ValueError('An absent word must have an empty literal reading')
@@ -258,8 +264,9 @@ class Store:
         if reuse and (payload['action']!='resolved' or box is None): raise ValueError('Reusable examples need a resolved reading and a selected crop')
         if reuse and not body['example_text']: raise ValueError('Label exactly what is inside the example crop')
         body.update(task_id=task['id'],action=payload['action'],op_id=payload['op_id'],previous_revision=payload['revision'],
-                    image=image,box=box,reuse=reuse,actor='writer',at=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),
+                    image=image,box=box,reuse=reuse,actor=actor,at=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),
                     source_sha256=task['source_sha256'],image_sha256=self.data['assets'][image]['sha256'],page_key=task['page_key'])
+        if resolution_evidence:body.update(resolution_evidence=resolution_evidence,method=method)
         with self.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             prior=db.execute('SELECT seq,body FROM events WHERE op_id=?',(payload['op_id'],)).fetchone()
@@ -269,8 +276,36 @@ class Store:
                 return {**old,'revision':prior[0]}
             revision=db.execute('SELECT COALESCE(MAX(seq),0) FROM events WHERE task_id=?',(task['id'],)).fetchone()[0]
             if revision!=payload['revision']: raise ValueError('This task changed in another window; reload before saving')
+            if actor=='model_review' and revision:
+                latest=json.loads(db.execute('SELECT body FROM events WHERE seq=?',(revision,)).fetchone()[0])
+                if latest['actor']=='writer' and latest['action'] in ('resolved','unreadable','absent'):
+                    raise ValueError('A model review cannot replace a writer decision')
             seq=db.execute('INSERT INTO events(op_id,task_id,body) VALUES(?,?,?)',(body['op_id'],task['id'],json.dumps(body,ensure_ascii=False))).lastrowid
         return {**body,'revision':seq}
+    def import_model_review(self, path):
+        """Apply explicitly reviewed evidence with model provenance; never a writer label."""
+        path=Path(path);document_snapshot,document_sha=snapshot(self.state,path)
+        document=read(self.state/document_snapshot);results=[]
+        for item in document['items']:
+            try:
+                self.refresh();task=self.tasks[item['task_id']]
+                if item['action'] not in ('resolved','unreadable','absent'):raise ValueError('Invalid model disposition')
+                if item['source_sha256']!=task['source_sha256'] or item['image_sha256']!=self.data['assets'][task['image']]['sha256']:
+                    raise ValueError('Resolution evidence targets another source')
+                evidence=[{'snapshot':document_snapshot,'sha256':document_sha,'reader':'resolution-record','location':item['task_id']}]
+                if not item.get('evidence'):raise ValueError('Missing reference evidence')
+                for reference in item['evidence']:
+                    relative,sha=snapshot(self.state,Path(reference['path']),reference['sha256'])
+                    evidence.append({'snapshot':relative,'sha256':sha,'reader':reference['reader'],'location':reference.get('location','')})
+                payload={'task_id':task['id'],'revision':item['revision'],'op_id':'model-'+hashlib.sha256((document_sha+'\0'+task['id']).encode()).hexdigest(),
+                         'action':item['action'],'literal':item.get('literal',''),'intended':item.get('intended',''),
+                         'note':item.get('note',''),'tags':'','example_text':'','reuse':False,'image':task['image'],'box':None}
+                result=self.save(payload,actor='model_review',resolution_evidence=evidence,method=item['method'])
+                results.append({'task_id':task['id'],'revision':result['revision'],'status':'saved'})
+            except (KeyError,ValueError,OSError,TypeError) as error:
+                results.append({'task_id':item.get('task_id'),'status':'rejected','error':str(error)})
+        return {'saved':sum(r['status']=='saved' for r in results),'rejected':sum(r['status']=='rejected' for r in results),'results':results}
+
     def export(self):
         return ''.join(json.dumps({**e['read_json'],'revision':e['seq']},ensure_ascii=False)+'\n' for e in self.events())
     def backup(self, output):
@@ -302,6 +337,9 @@ class Store:
                 if check!='ok':raise ValueError('Snapshot database integrity check failed')
                 events=target.execute('SELECT seq,body FROM events ORDER BY seq').fetchall()
             finally:target.close();source.close()
+            for _,body in events:
+                for evidence in json.loads(body).get('resolution_evidence',[]):
+                    preserve(evidence['snapshot'],evidence['sha256'])
             known={t['id'] for t in data['tasks']}
             if any(json.loads(body)['task_id'] not in known for _,body in events):raise ValueError('Snapshot contains an event with no source task')
             write(output/'tasks.json',data)
@@ -392,7 +430,7 @@ def serve(store, port, public_origins=()):
             if self.headers.get('X-Review-Token')!=token:return self.send(403,{'error':'Reload this review window'})
             try:
                 size=int(self.headers.get('Content-Length','0'))
-                if not 0<size<=32768:raise ValueError('Invalid request size')
+                if not 0<size<=393216:raise ValueError('Invalid request size')
                 self.send(200,store.save(json.loads(self.rfile.read(size))))
             except (KeyError,ValueError,TypeError) as e:self.send(400,{'error':str(e)})
             except (OSError,sqlite3.Error) as e:self.send(503,{'error':'Review storage unavailable; no successful save acknowledged'})
@@ -407,6 +445,7 @@ def main():
     importer=sub.add_parser('import-items');importer.add_argument('--items',type=Path,required=True)
     s=sub.add_parser('serve');s.add_argument('--port',type=int,default=8766)
     s.add_argument('--trusted-origin',action='append',default=[],help='Exact reverse-proxy origin, e.g. https://handwriting.internal; repeatable')
+    model_review=sub.add_parser('import-model-review');model_review.add_argument('--decisions',type=Path,required=True)
     sub.add_parser('export');c=sub.add_parser('compile');c.add_argument('--query',required=True);c.add_argument('--exclude-page',required=True)
     backup=sub.add_parser('snapshot');backup.add_argument('--output',type=Path,required=True)
     a=p.parse_args()
@@ -414,6 +453,7 @@ def main():
     if a.command=='import-items':print(f"Queue contains {len(import_items(a.state,a.items)['tasks'])} review tasks");return
     store=Store(a.state)
     if a.command=='serve':serve(store,a.port,a.trusted_origin+os.environ.get('REVIEW_TRUSTED_ORIGINS','').split(','))
+    elif a.command=='import-model-review':print(json.dumps(store.import_model_review(a.decisions),ensure_ascii=False,indent=2))
     elif a.command=='export':print(store.export(),end='')
     elif a.command=='compile':print(json.dumps(store.compile(a.query,a.exclude_page),ensure_ascii=False,indent=2))
     elif a.command=='snapshot':print(json.dumps(store.backup(a.output),ensure_ascii=False,indent=2))

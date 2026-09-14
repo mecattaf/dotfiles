@@ -11,6 +11,26 @@ HTML interface. Its build runs the backend unit tests. The coordinator-only
 copied from the reviewed prototype into the package before a deployment; the
 running application never executes code from the prototype directory.
 
+## Menu and review completion
+
+Opening the site shows the handwriting menu. Counts say “reviewed” and
+“remaining” separately. Priority, Qwen doubts, Huion whole-capture review and
+saved decisions remain explicit queues; completing one does not open another
+silently. An exhausted queue clears its image/form. The global caught-up state
+requires no pending or deferred items, including crossed-out items. Unreadable
+is a recorded disposition, not an accepted literal reading.
+
+Writer and model-assisted decisions have distinct provenance. Authorized
+reconciliation against existing references uses `import-model-review
+--decisions FILE`, with task revision and source/image/reference hashes. It
+appends `model_review` events and snapshots their evidence; it cannot replace a
+resolved writer decision or approve visual example reuse. Subsequent writer
+corrections retain that earlier history. Whole-capture review supports multiline
+literal text and explicitly shows capture completeness.
+
+The [intake operating view](handwriting-intake.md) records the measured default
+recipe, current evidence and next real-Huion commissioning boundary.
+
 ## Durable state and updates
 
 `/var/lib/handwriting-annotation` belongs to `tom:users`, mode0700. Preserve the
@@ -130,3 +150,15 @@ The snapshot contained 133 tasks, zero events and 149,920,161 bytes. The daily
 timer was active, with its first scheduled run on September 15 shortly after
 midnight CEST. These are initial deployment observations, not a continuing
 backup-health assertion.
+
+
+## Consolidated menu and intake deployment
+
+The current package adds the handwriting home menu, explicit reviewed/remaining
+counts, empty review states, model-assisted resolution provenance and multiline
+Huion capture review. The current backend suite has 18 tests; the companion
+intake package has 13 offline/interface tests. The module also installs
+`handwriting-intake` with managed state `/var/lib/handwriting-intake` and a
+separate daily NAS snapshot timer. It does not enable an inbox OCR dispatcher.
+See [current intake and preservation record](handwriting-intake.md) for the
+complete status, archive paths and first real-Huion trial boundary.

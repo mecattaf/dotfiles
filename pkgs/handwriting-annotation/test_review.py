@@ -6,7 +6,7 @@ import sqlite3
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from PIL import Image
-from review import Store, digest, write, merge_queue, request_allowed, trusted_origins, snapshot
+from review import Store, digest, write, merge_queue, request_allowed, trusted_origins, snapshot, import_items
 
 class ReviewTests(unittest.TestCase):
     def setUp(self):
@@ -97,6 +97,61 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(self.store.compile('rn','other/page')['examples'],[])
         with self.assertRaises(ValueError):self.store.save(self.payload(op_id='absence-bad',revision=saved['revision'],action='absent',literal='word',reuse=False))
         with self.assertRaises(ValueError):self.store.save(self.payload(op_id='absence-bad2',revision=saved['revision'],action='absent',literal='',reuse=True))
+    def test_huion_page_and_doubt_import_keep_capture_provenance(self):
+        collection=self.root/'huion-capture';collection.mkdir()
+        source=collection/'parsed.json';write(source,{'transcription':'first line\nsecond line'})
+        write(collection/'input-manifest.json',{'captures':[{'capture_order':1,'page':1}]})
+        common={'capture':1,'source':str(source),'source_sha256':digest(source),'image_path':str(self.image),
+                'image_sha256':digest(self.image),'capture_id':'capture-a','attempt_id':'attempt-a','family_id':'family-a',
+                'capture_completeness':'unknown','transcription':'first line\nsecond line'}
+        items=collection/'items.json';document={'collection':str(collection),'items':[
+            {**common,'id':'page-a','origin':'page_review','raw':'first line\nsecond line'},
+            {**common,'id':'doubt-a','origin':'qwen_uncertainty','raw':'second','parent_page_task_id':'page-a',
+             'flags':[{'text':'second','difficulty':'uncertain','reason':'joined letters','alternatives':['seconds']}]}]}
+        write(items,document);import_items(self.root,items);import_items(self.root,items)
+        queue=self.store.queue()['tasks'];page=next(t for t in queue if t.get('origin')=='page_review')
+        doubt=next(t for t in queue if t.get('origin')=='qwen_uncertainty')
+        self.assertEqual(len(queue),3);self.assertIsNone(page['review'])
+        self.assertEqual(page['capture_completeness'],'unknown');self.assertEqual(page['attempt_id'],'attempt-a')
+        self.assertEqual(doubt['parent_page_task_id'],page['id']);self.assertEqual(doubt['flags'][0]['reason'],'joined letters')
+        document['items'][0]['capture_completeness']='complete';write(items,document)
+        with self.assertRaises(ValueError):import_items(self.root,items)
+        self.assertEqual(next(t for t in self.store.queue()['tasks'] if t['id']==page['id'])['capture_completeness'],'unknown')
+    def test_whole_page_literal_supports_multiline_but_word_limits_remain(self):
+        literal=('A full handwritten line.\n'*220).strip()
+        with self.assertRaises(ValueError):self.store.save(self.payload(literal=literal,reuse=False))
+        data=json.loads((self.root/'tasks.json').read_text());data['tasks'][0]['origin']='page_review'
+        write(self.root/'tasks.json',data)
+        saved=self.store.save(self.payload(literal=literal,reuse=False))
+        self.assertEqual(saved['literal'],literal)
+        with self.assertRaises(ValueError):self.store.save(self.payload(op_id='too-long-page',revision=1,literal='a'*65537,reuse=False))
+    def model_decisions(self, revision=0):
+        reference=self.root/'codex-reading.json';write(reference,{'transcription':'m'})
+        item={'task_id':'one','revision':revision,'source_sha256':'source','image_sha256':digest(self.image),
+              'action':'resolved','literal':'m','method':'Codex/Claude visual reconciliation',
+              'evidence':[{'path':str(reference),'sha256':digest(reference),'reader':'codex-reviewed','location':'line1'}]}
+        decisions=self.root/'model-decisions.json';write(decisions,{'items':[item]});return decisions
+    def test_model_resolution_keeps_provenance_and_is_not_a_writer_example(self):
+        decisions=self.model_decisions();result=self.store.import_model_review(decisions)
+        self.assertEqual((result['saved'],result['rejected']),(1,0))
+        self.assertEqual(self.store.import_model_review(decisions)['saved'],1)
+        self.assertEqual(len(self.store.events()),1)
+        review=self.store.latest()['one'];self.assertEqual(review['actor'],'model_review')
+        self.assertEqual(self.store.compile('rn','other/page')['examples'],[])
+        with tempfile.TemporaryDirectory() as d:
+            output=Path(d)/'backup';self.store.backup(output)
+            for evidence in review['resolution_evidence']:
+                self.assertEqual(digest(output/evidence['snapshot']),evidence['sha256'])
+        self.store.save(self.payload(op_id='writer-overrides',revision=1,literal='rn',reuse=False))
+        self.assertEqual(self.store.latest()['one']['actor'],'writer')
+        self.assertEqual(len(self.store.events()),2)
+    def test_model_resolution_cannot_overwrite_writer_or_changed_reference(self):
+        self.store.save(self.payload())
+        result=self.store.import_model_review(self.model_decisions(revision=1))
+        self.assertEqual(result['rejected'],1);self.assertEqual(len(self.store.events()),1)
+        decisions=self.model_decisions();(self.root/'codex-reading.json').write_text('changed')
+        self.assertEqual(self.store.import_model_review(decisions)['rejected'],1)
+        self.assertEqual(self.store.latest()['one']['actor'],'writer')
     def test_versioned_snapshot_is_consistent_restorable_and_never_overwrites(self):
         self.store.save(self.payload())
         with tempfile.TemporaryDirectory() as d:
