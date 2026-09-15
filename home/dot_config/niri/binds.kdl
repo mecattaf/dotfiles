@@ -99,9 +99,25 @@ binds {
 
     // ── Screenshots ──────────────────────────────────────────────
 
-    Mod+S hotkey-overlay-title="Screenshot" { screenshot-screen; }
-    Mod+Shift+S hotkey-overlay-title="Screenshot Area" { screenshot; }
-    Mod+Alt+S hotkey-overlay-title="Screenshot Window" { screenshot-window; }
+    // bin/screenshot (2026-09-15): every capture is saved under
+    // ~/Pictures/Screenshots and copied to the clipboard. Screen and area are
+    // grim + slurp (the same crosshair as OCR); window stays niri's own action,
+    // the only way to capture a tiled window alone. Area and window then open
+    // Satty for optional annotation: Esc keeps the plain capture.
+    Mod+S hotkey-overlay-title="Screenshot" { spawn-sh "~/.local/bin/screenshot screen"; }
+    Mod+Shift+S hotkey-overlay-title="Screenshot Area (annotate)" { spawn-sh "~/.local/bin/screenshot area"; }
+    Mod+Alt+S hotkey-overlay-title="Screenshot Window (annotate)" { spawn-sh "~/.local/bin/screenshot window"; }
+    // Area → text: OCR on the worker's Halogen via the coordinator, into the
+    // clipboard (bin/screen-ocr-area). Nothing is saved to disk.
+    Mod+Ctrl+S hotkey-overlay-title="Screenshot Area → OCR" { spawn-sh "~/.local/bin/screen-ocr-area"; }
+
+
+    // ── Read Aloud ───────────────────────────────────────────────
+
+    // Clipboard text → the coordinator's ~/Speech/intake, the same atomic drop
+    // as the /speak skill; the speech daemon reads it on the client's speakers.
+    // Took the chord from reset-window-height, deleted as unused (2026-09-15).
+    Mod+Ctrl+R hotkey-overlay-title="Read clipboard aloud" { spawn-sh "~/.local/bin/speak-clipboard"; }
 
 
     // ── Color Picker ─────────────────────────────────────────────
@@ -332,7 +348,6 @@ binds {
     Mod+BracketRight { consume-or-expel-window-right; }
 
     Mod+Ctrl+O repeat=false { toggle-overview; }
-    Mod+Ctrl+R { reset-window-height; }
     Mod+Escape allow-inhibiting=false { toggle-keyboard-shortcuts-inhibit; }
     Mod+Shift+P { power-off-monitors; }
 

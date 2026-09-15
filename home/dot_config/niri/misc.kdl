@@ -48,12 +48,6 @@ animations {
         curve "ease-out-quad"
     }
 
-    // Screenshot UI
-    screenshot-ui-open {
-        duration-ms 25
-        curve "ease-out-quad"
-    }
-
     // Overlay notifications — bouncy spring (damping-ratio=0.6) draws attention, niri design intent
     config-notification-open-close {
         spring damping-ratio=0.6 stiffness=1000 epsilon=0.001
@@ -77,7 +71,9 @@ hotkey-overlay {
 // scroll: default_floating_border normal
 prefer-no-csd
 
-screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"
+// No screenshot-path or screenshot-ui animation: niri's screenshot UI is
+// superseded by grim + slurp, and bin/screenshot passes an explicit --path to
+// the one niri action it keeps (window), in the same naming (2026-09-15).
 
 // scroll: seat seat0 xcursor_theme Bibata-Modern-Classic 48
 // scroll: seat seat0 hide_cursor 1000

@@ -1,9 +1,57 @@
 #!/usr/bin/env bash
-# screenshot -- take a screenshot using niri native actions
-# Uses niri msg actions directly.
-case "${1:-full}" in
-    full)    niri msg action screenshot-screen ;;
-    area)    niri msg action screenshot ;;
-    window)  niri msg action screenshot-window ;;
-    *)       echo "Usage: $0 {full|area|window}"; exit 1 ;;
+# screenshot -- save a PNG, copy it to the clipboard, then offer Satty
+# Bound to Mod+S (screen), Mod+Shift+S (area) and Mod+Alt+S (window) in
+# niri/binds.kdl. Screen and area are grim (+ slurp), superseding niri's
+# screenshot UI (2026-09-15), so the area picker is the same slurp crosshair
+# Mod+Ctrl+S (bin/screen-ocr-area) uses. Files keep niri's former naming.
+#
+# Window stays niri's screenshot-window: grim only captures screen rectangles,
+# and niri's IPC reports no on-screen position for a tiled window (only
+# floating ones), so niri is the one thing that can capture the window alone.
+#
+# Area and window then open the capture in Satty for last-minute annotation.
+# The plain capture is already saved and on the clipboard, so Esc just closes
+# Satty; Enter overwrites the file with the annotated image and copies that.
+# Esc in slurp is a clean cancel.
+set -euo pipefail
+
+dir="$HOME/Pictures/Screenshots"
+file="$dir/Screenshot from $(date '+%Y-%m-%d %H-%M-%S').png"
+
+annotate() {
+    satty --filename "$file" --output-filename "$file" \
+        --copy-command wl-copy \
+        --actions-on-enter save-to-clipboard,save-to-file,exit \
+        --actions-on-escape exit \
+        --disable-notifications
+}
+
+case "${1:-}" in
+    screen)
+        output="$(niri msg -j focused-output | jq -er .name)"
+        mkdir -p "$dir"
+        grim -o "$output" "$file"
+        wl-copy --type image/png < "$file"
+        ;;
+    area)
+        geometry="$(slurp)" || exit 0
+        mkdir -p "$dir"
+        grim -g "$geometry" "$file"
+        wl-copy --type image/png < "$file"
+        annotate
+        ;;
+    window)
+        # niri encodes and writes the file on a thread: wait for its
+        # ScreenshotCaptured event for this path, not for the file to appear.
+        # The stream's first line (initial state) proves it is subscribed.
+        exec {events}< <(timeout 10 niri msg -j event-stream)
+        read -r -u "$events" _
+        niri msg action screenshot-window --path "$file"
+        jq -en --arg path "$file" 'first(inputs | select(.ScreenshotCaptured.path? == $path))' <&"$events" > /dev/null
+        annotate
+        ;;
+    *)
+        echo "Usage: $0 {screen|area|window}" >&2
+        exit 1
+        ;;
 esac
