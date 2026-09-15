@@ -72,29 +72,27 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # Apple SF Pro — kept by explicit ruling (2026-08-21: "it's too good to
-    # have, let's not skip it"), with eyes open about the failure mode this
-    # input carries: it locks Apple's CDN DMGs as `type = "file"` inputs, and
-    # Apple re-releases those DMGs in place, changing the bytes under the
-    # locked narHash. The very first update-center run failed all three
-    # fleet builds on exactly that (a box with the old DMG already in store
-    # never notices; a cold fetch — the NAS, or any fresh machine — dies).
-    # Containment: ONLY sf-pro is consumed anywhere (fonts.packages in
-    # modules/common.nix), so only SF-Pro.dmg is ever fetched; the sibling
-    # family locks (sf-compact, sf-mono, ny, …) sit inert and cannot rot a
-    # build. WHEN the nightly fails here again with "mismatch in field
-    # 'narHash'", the fix is one line: `nix flake update apple-fonts`,
-    # commit, push. The rest of the 2026-08-21 font sweep stands in part:
-    # sf-compact/sf-mono/ny uninstalled, serif alias moved to Source Serif 4.
-    apple-fonts = {
-      url = "github:Lyndeno/apple-fonts.nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    # Liga SF Mono: SF Mono ligaturized AND nerd-patched upstream — a
-    # different derived font from apple-fonts' sf-mono-nerd (glyphs only, no
-    # ligatures). Plain repo of OTFs, not a flake; consumed by
-    # pkgs/sfmono-liga.nix. DELETED in the 2026-08-21 sweep, RESTORED the
+    # TOMBSTONE — apple-fonts (Lyndeno/apple-fonts.nix), removed 2026-09-15.
+    # It locked Apple's CDN DMGs as `type = "file"` inputs, and Apple
+    # re-releases them in place, so the locked narHash rots. The old
+    # "containment" (only sf-pro is consumed, sibling locks sit inert) was
+    # false: `nix flake archive` in update-center-seed fetches EVERY lock
+    # node, and SF-Compact.dmg — never installed — failed it on 2026-09-15.
+    # SF Pro itself stays (2026-08-21 ruling: "it's too good to have") but is
+    # now pkgs/sf-pro.nix, pinned by sha256 to the fleet's own copy.
+    #
+    # ALL APPLE FONTS LIVE ON THE NAS M.2 (Tom, 2026-09-15: "i do not want to
+    # download the fonts again everytime i do an update"; "keep the fonts on
+    # the m2 ssd"): nas:/mnt/fast/fonts/apple/, one tarball per family, exact
+    # bytes installed that day, requireFile-pinned — no flake input, no
+    # download. home/update-center-seed.nix seeds them into the NAS store.
+    # Do not re-add a URL-locked font input.
+    #
+    # TOMBSTONE — sfmono-liga input (shaunsingh/SFMono-Nerd-Font-Ligaturized),
+    # removed 2026-09-15 under the rule above; pkgs/sfmono-liga.nix. Liga SF
+    # Mono: SF Mono ligaturized AND nerd-patched upstream — a different
+    # derived font from apple-fonts' sf-mono-nerd (glyphs only, no
+    # ligatures). DELETED in the 2026-08-21 sweep, RESTORED the
     # same evening: the sweep's premise ("no terminal ever used it") was
     # false — kitty.conf had named the nonexistent family "Maple Mono
     # Normal NF" since 2026-03-03 and silently rode the fontconfig
@@ -103,10 +101,6 @@
     # Tom, on seeing real Maple: "i like whatever font was in use before
     # this afternoon's pushes." kitty.conf now names this family
     # EXPLICITLY, so no future sweep can silently swap the terminal again.
-    sfmono-liga = {
-      url = "github:shaunsingh/SFMono-Nerd-Font-Ligaturized";
-      flake = false;
-    };
 
     # git-ai — AI-authorship tracking CLI (github.com/git-ai-project/git-ai).
     # Consume its flake package directly and pin it in flake.lock. The Home
@@ -166,7 +160,7 @@
     # there is nothing to consume but source, and modules/tally-b.nix does the
     # whole packaging — rustPlatform over crates/tally-socket, whose binary IS
     # `tally-kernel` (serve/call/chain/guard), run as the SYSTEM service
-    # tally-kernel.service. Same plain-source consumption sfmono-liga uses.
+    # tally-kernel.service.
     #
     # PINNED TO A REV on `main`, deliberately, the way nixpkgs-paperless and
     # herdr are bumped: `nix flake lock --update-input tally-b` must be a
@@ -445,13 +439,13 @@
       # One overlay list everywhere (top-level pkgs + every host).
       overlays = [
         self.overlays.default
-        inputs.apple-fonts.overlays.default
         (final: _prev: {
           # Whole llm-agents catalog under `pkgs.llm-agents.*` (prebuilt from its
           # own nixpkgs — no second eval of ours). home/home.nix pulls an
           # allowlisted set out of this namespace. See the input comment above.
           llm-agents = inputs.llm-agents.packages.${system};
-          sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { src = inputs.sfmono-liga; };
+          sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { };
+          sf-pro = final.callPackage ./pkgs/sf-pro.nix { };
         })
         # Pin-decoupled "hot" packages — see the nixpkgs-fresh input comment above.
         # Cherry-picked, not a wholesale pkgs swap: only packages named here track

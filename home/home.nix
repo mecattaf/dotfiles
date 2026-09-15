@@ -293,7 +293,7 @@ in
     color-scheme = "prefer-dark";
     # Interface fonts for Nautilus and every other GTK app that reads
     # font-name. sf-pro ships system-wide via modules/common.nix fonts.packages
-    # (the one apple-fonts family kept in the 2026-08-21 sweep — "too good to
+    # (the one Apple family kept in the 2026-08-21 sweep — "too good to
     # have"); before this key was set at all, GTK fell back to Adwaita Sans —
     # the "odd Nautilus font" on first boot.
     font-name = "SF Pro Display 11";
