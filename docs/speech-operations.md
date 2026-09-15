@@ -72,12 +72,15 @@ an assistant's queue-write claim, establish whether playback completed.
 
 ## Evidence and history
 
-NAS research archive:
-`models/research/mykonos/2026-09-14/voice-investigation.tar.gz`, 6,337 files,
-SHA256 `c8d433aeaa782c06e6177f710cd8232d293578f2a41e3f10acdc6570091d305b`.
+NAS listening-evidence archive (cleaned 2026-09-15):
+`models/research/mykonos/2026-09-14/voice-evidence.tar.gz`, 2,661 files,
+SHA256 `423d14f9346d9b6868bece7aa95842c3e8809beb24a48df90152c9590439fd95`.
 The original supplied MP3 is archived beside it with its own hash manifest.
-Research sources, environments and duplicate weights were excluded; model
-artifacts have separate manifests and canonical Library locations.
+`code-cleanup-receipt.json` records removal of 3,676 code/non-evidence members
+from the former archive and deletion of local experimental code and environments.
+The old code-bearing archive was deleted after verifying the evidence replacement.
+Earlier deployment receipts describe the archive as it existed then; this is the
+current archive. Model weights have separate manifests and canonical Library paths.
 
 Earlier Gemma, VibeVoice, CustomVoice, character and Intel NPU documents record
 experiments, not active architecture. Gemma E4B/12B remain parked for later audio
