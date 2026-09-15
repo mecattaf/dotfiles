@@ -527,6 +527,8 @@ in
       kanshi
       grim
       slurp
+      # annotates area/window screenshots (bin/screenshot)
+      satty
       wf-recorder
       wl-mirror
       wmctrl

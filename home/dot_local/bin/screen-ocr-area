@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# screen-ocr-area -- select an area, OCR it on Halogen, copy the text
+# Bound to Mod+Ctrl+S (niri/binds.kdl), on the client. grim hands the PNG to
+# bin/screen-ocr on the coordinator over the ssh hop call-record already uses:
+# only the coordinator dials worker:8731. Esc in slurp, a failed request or an
+# empty answer leaves the clipboard untouched. cliphist keeps the result.
+set -euo pipefail
+
+geometry="$(slurp)" || exit 0
+text="$(grim -g "$geometry" -t png - | ssh coordinator '~/.local/bin/screen-ocr')"
+[ -n "$text" ] || exit 1
+printf '%s' "$text" | wl-copy

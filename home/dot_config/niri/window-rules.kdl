@@ -15,6 +15,14 @@ window-rule {
     open-floating true
 }
 
+// Satty: the annotation step bin/screenshot opens after an area or window
+// capture. Floating and focused, so Esc/Enter land on it straight away.
+window-rule {
+    match app-id="com.gabm.satty"
+    open-floating true
+    open-focused true
+}
+
 // F10 sleep-monitors prompt: small floating kitty popup, focused on open.
 // Spawned by niri/binds.kdl F10 binding running niri/scripts/sleep-monitors.
 // Orange border = starship's local ❯ color (#DA7756).
