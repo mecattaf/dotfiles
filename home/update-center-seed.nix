@@ -38,8 +38,14 @@
 # a newly-bumped private pin unseeded. Two runs (00:45 and 01:20) shrink the
 # window, and the NAS names any gap itself: update-center's preflight logs
 # `seed-missing <node>` for every private node whose tree is absent.
+#
+# FONTS (2026-09-15). pkgs/sf-pro.nix pins SF Pro to the fleet's own copy on
+# the NAS instead of Apple's CDN. The same run adds that archive to the local
+# store and seeds + roots it on the NAS as `sf-pro-fonts`, so the nightly
+# build finds it without downloading anything.
 let
   isCoordinator = osConfig.networking.hostName == "coordinator";
+  sfProArchive = "/mnt/nas/documents/fonts/sf-pro/sf-pro-fonts.tar.zst";
 
   seed = pkgs.writeShellApplication {
     name = "update-center-seed";
@@ -73,15 +79,19 @@ let
         | select(($l.type == "git" and ($l.url // "" | test("^https://github.com/mecattaf/")))
               or ($l.type == "github" and $l.owner == "mecattaf"))
         | [.key, $l.narHash] | @tsv' <<<"$meta")"
-      if [ -z "$nodes" ]; then
-        log "no mecattaf-owned inputs in this lock; nothing to seed"
-        exit 0
-      fi
-
-      archived=0
       paths=()
       names=()
+
+      # SF Pro is not fetchable at all (pkgs/sf-pro.nix requireFile): add the
+      # fleet's NAS copy to this store, and seed it like a private tree.
+      fonts="$(nix-store --add-fixed sha256 ${lib.escapeShellArg sfProArchive})"
+      log "seed sf-pro-fonts $fonts"
+      paths+=("$fonts")
+      names+=("sf-pro-fonts")
+
+      archived=0
       while IFS=$'\t' read -r name nar; do
+        [ -n "$name" ] || continue
         path="$(nix-store --print-fixed-path --recursive sha256 \
           "$(nix hash convert --hash-algo sha256 --to nix32 "$nar")" source)"
         if ! nix-store --check-validity "$path" 2>/dev/null; then
@@ -124,7 +134,7 @@ let
         case "$keep" in *" ''${f##*/} "*) ;; *) rm -f "$f" ;; esac
       done
       REMOTE
-      log "seeded ''${#paths[@]} private source tree(s) for $url"
+      log "seeded ''${#paths[@]} source(s) for $url"
     '';
   };
 in

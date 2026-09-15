@@ -368,17 +368,15 @@
   hardware.graphics.enable = true;
 
   # --- fonts (the rule: maple-mono + jetbrains nerd + google-fonts + noto-emoji
-  #     + sf-pro, and NOTHING ELSE from apple-fonts) ---
+  #     + sf-pro) ---
   # 2026-08-21 font sweep, amended same day: SF Pro survives by explicit
   # ruling ("it's too good to have") as the ONE Apple face — the GTK
-  # interface font and Chrome's sans. Its CDN-rot story and the one-line
-  # recovery live at the apple-fonts input in flake.nix. Everything else
-  # Apple went: sf-compact/sf-mono/ny uninstalled (their locks sit inert,
-  # unfetchable-rot can't reach a build), sfmono-liga deleted outright.
-  # Maple Mono — already the kitty terminal face — takes the monospace
-  # alias. Do NOT add another apple-fonts family here without rereading the
-  # flake.nix tombstone: every consumed family is another CDN lock that can
-  # take the nightly down.
+  # interface font and Chrome's sans. Everything else Apple went:
+  # sf-compact/sf-mono/ny uninstalled, sfmono-liga deleted outright (and
+  # restored — see flake.nix). Maple Mono — already the kitty terminal face —
+  # takes the monospace alias. Since 2026-09-15 sf-pro is pkgs/sf-pro.nix,
+  # pinned to the fleet's NAS copy; the apple-fonts CDN input is tombstoned
+  # in flake.nix. Any other Apple face would need the same treatment.
   fonts.packages = with pkgs; [
     maple-mono.NF
     nerd-fonts.jetbrains-mono
