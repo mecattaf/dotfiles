@@ -10,8 +10,8 @@
 #   brightness toggle             off when lit, restore when dark
 #
 # THE FLOOR (-n 1). Every up/down call passes brightnessctl's `--min-value 1`.
-# Without it, three presses of F1 from 25% land on raw 0, and on i915 raw 0 is not
-# "very dim", it is backlight power-off: the panel goes black and F2 is invisible
+# Without it, three brightness-down presses from 25% land on raw 0, and on i915 raw 0 is not
+# "very dim", it is backlight power-off: the panel goes black and brightness-up is invisible
 # to press. The coordinator never hit this because it has no backlight at all.
 # The Zenbook Duo has two, and darkness there is a real dead end, so `down` now
 # bottoms out at 1 and only the explicit `off` verb is allowed to reach 0.

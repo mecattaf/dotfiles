@@ -13,7 +13,7 @@
 #     raises a real hotplug uevent either way, so this is compositor-agnostic —
 #     niri drops or adds the output and kanshi re-applies a profile.
 #   * copies intel_backlight (eDP-1) → card1-eDP-2-backlight every 500 ms, so
-#     F1/F2 on eDP-1 carry to eDP-2 and a brightness of 0 darkens both panels
+#     brightness keys on eDP-1 carry to eDP-2 and a brightness of 0 darkens both panels
 #     (that is what the F10 backlight toggle in home/home.nix's niri-local.kdl
 #     branch relies on). It copies without comparing: per-panel adjustment of
 #     eDP-2 alone is therefore ineffective while this runs — accepted.

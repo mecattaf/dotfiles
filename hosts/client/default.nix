@@ -244,7 +244,7 @@
   # the saved level was 4/400 and the seat woke nearly black). systemd-backlight
   # would restore whatever was saved at shutdown, so its two DRM instances are
   # off, and udev sets each panel to its own max_brightness as it appears.
-  # F1/F2 (bin/brightness, 10% steps) adjust from there.
+  # The Duo keyboard's brightness keys (bin/brightness, 10% steps) adjust from there.
   systemd.services."systemd-backlight@backlight:intel_backlight".enable = false;
   systemd.services."systemd-backlight@backlight:card1-eDP-2-backlight".enable = false;
   services.udev.extraRules = ''

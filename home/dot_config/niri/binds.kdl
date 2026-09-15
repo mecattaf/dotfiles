@@ -130,16 +130,9 @@ binds {
 
     // ── Media & Hardware Keys (F1-F10) ───────────────────────────
 
-    F1 hotkey-overlay-title="Brightness Down" { spawn-sh "~/.local/bin/brightness down"; }
-    F2 hotkey-overlay-title="Brightness Up" { spawn-sh "~/.local/bin/brightness up"; }
-    // Shift = adjust ONLY the focused screen's backlight. Written for the
-    // zenbook-duo's dual eDP, and load-bearing again since that device came back
-    // on 2026-09-11 as host `client`; `focused` maps niri's focused output -> its
-    // backlight generically, so this degrades to the default on single-screen
-    // hosts and stays harmless. bin/brightness floors every step at raw 1 — only
-    // its explicit `off` verb reaches 0, because raw 0 on i915 is power-off.
-    Shift+F1 hotkey-overlay-title="Brightness Down (focused screen)" { spawn-sh "~/.local/bin/brightness down focused"; }
-    Shift+F2 hotkey-overlay-title="Brightness Up (focused screen)" { spawn-sh "~/.local/bin/brightness up focused"; }
+    // F1 toggles the Alexa wake listener (it false-fires on sneezes). F1/F2 no
+    // longer carry brightness; the Duo keyboard's XF86MonBrightness keys do.
+    F1 hotkey-overlay-title="Alexa Wake On/Off" { spawn-sh "~/.local/bin/wake-toggle"; }
     F3 hotkey-overlay-title="Play/Pause" { spawn-sh "~/.local/bin/media play"; }
     F4 hotkey-overlay-title="Previous" { spawn-sh "~/.local/bin/media prev"; }
     F5 hotkey-overlay-title="Next" { spawn-sh "~/.local/bin/media next"; }
