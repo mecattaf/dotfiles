@@ -47,8 +47,9 @@ def fail(message: str) -> NoReturn:
     raise SystemExit(f"print-paper: {message}")
 
 
-def run(command: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(command, capture_output=True, text=True)
+def run(command: list[str], *, check: bool = True,
+        env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(command, capture_output=True, text=True, env=env)
     if check and result.returncode:
         detail = (result.stderr or result.stdout).strip()
         fail(f"command failed ({command[0]}): {detail}")
@@ -617,6 +618,12 @@ def render_pdf(chrome: str, page: str, output: Path, *, keep_html: bool) -> Path
                     html_path.resolve().as_uri(),
                 ],
                 check=False,
+                # No session bus. On the headless coordinator Chrome's portal
+                # lookup D-Bus-activates xdg-desktop-portal-gtk, which exits
+                # with "cannot open display" and raises a failure episode on
+                # every render (2026-09-15). MEASURED: with the bus disabled
+                # the PDF still renders and the portal is never started.
+                env={**os.environ, "DBUS_SESSION_BUS_ADDRESS": "disabled:"},
             )
             if result.returncode or not output.exists() or not output.stat().st_size:
                 detail = (result.stderr or result.stdout).strip()
