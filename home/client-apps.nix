@@ -58,8 +58,8 @@ in
     # Explicit one-shot feedback only; no wake detector or microphone process.
     pkgs.speech-listening-cue
     # Explicit CPU wake session; installing this CLI creates no boot listener.
-    pkgs.mykonos-speech
-    pkgs.mykonos-wake
+    pkgs.speech-session
+    pkgs.speech-wake
     # Claude Desktop — Tom's nice-to-have on the seat. Unofficial repack of the
     # vendor's Electron app from the llm-agents catalog (flake input, overlay
     # `pkgs.llm-agents`), FHS-wrapped with bubblewrap. Its portal/sandbox

@@ -10,7 +10,7 @@
   coreutils,
 }:
 stdenvNoCC.mkDerivation {
-  pname = "mykonos-speech";
+  pname = "speech-session";
   version = "0.1.0";
   src = ./.;
   nativeBuildInputs = [ makeWrapper ];
@@ -18,7 +18,7 @@ stdenvNoCC.mkDerivation {
   installPhase = ''
     mkdir -p $out/lib $out/bin
     cp *.py system.md $out/lib/
-    for spec in 'queue:mykonos-speech-queue' 'play:mykonos-play' 'session:mykonos-session'; do
+    for spec in 'queue:speech-queue' 'play:speech-play' 'session:speech-session'; do
       module="''${spec%%:*}"
       command="''${spec##*:}"
       makeWrapper ${python3}/bin/python3 $out/bin/$command \
@@ -33,8 +33,8 @@ stdenvNoCC.mkDerivation {
           ]
         }
     done
-    install -m755 projector.sh $out/bin/mykonos-projector
-    patchShebangs $out/bin/mykonos-projector
+    install -m755 projector.sh $out/bin/speech-projector
+    patchShebangs $out/bin/speech-projector
   '';
   meta = {
     description = "Markdown speech queue and dedicated persistent voice sessions";

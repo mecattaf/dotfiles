@@ -648,9 +648,9 @@
             qwentts
             qwen-speech
             speech-listening-cue
-            mykonos-wake
-            mykonos-speech
-            mykonos-parakeet
+            speech-wake
+            speech-session
+            parakeet-service
             qwen3-tts-khimaros
             academic-ocr
             brother-print-text
@@ -1992,10 +1992,10 @@
           # Direct Parakeet is coordinator-only; capture has no virtual mic or
           # service-start download. Native Herdr owns client key handling.
           assert
-            coordinatorHome.systemd.user.services.mykonos-parakeet.Install.WantedBy == [ "default.target" ];
+            coordinatorHome.systemd.user.services.parakeet-service.Install.WantedBy == [ "default.target" ];
           assert !(coordinatorHome.systemd.user.services ? voxtype);
           assert !(coordinatorHome.xdg.configFile ? "pipewire/pipewire.conf.d/60-client-mic.conf");
-          assert !(coordinatorHome.systemd.user.services.mykonos-parakeet.Service ? ExecStartPre);
+          assert !(coordinatorHome.systemd.user.services.parakeet-service.Service ? ExecStartPre);
           # ONE herdr server, coordinator only (ruling B5), and it must never be
           # tied to the compositor's lifetime (ruling B6) — the PTYs outlive it.
           assert coordinatorHome.systemd.user.services ? herdr;
@@ -2077,7 +2077,7 @@
           assert workerHome.home.username == "tom";
           assert workerHome.programs.atuin.settings.auto_sync;
           assert !workerHome.services.tally.enable;
-          assert !(workerHome.systemd.user.services ? mykonos-parakeet);
+          assert !(workerHome.systemd.user.services ? parakeet-service);
           assert !(workerHome.systemd.user.services ? voxtype);
           # …and the herdr SERVER. The worker still gets the herdr binary (it is
           # how `herdr --remote coordinator` works at all), just no unit.
@@ -2159,10 +2159,10 @@
             ) clientHome.home.packages);
           assert !(clientHome.xdg.configFile ? "voxtype/config.toml");
           assert !(clientHome.systemd.user.services ? voxtype);
-          assert !(clientHome.systemd.user.services ? mykonos-parakeet);
-          assert clientHome.systemd.user.services.mykonos-wake.Install.WantedBy == [ "default.target" ];
+          assert !(clientHome.systemd.user.services ? parakeet-service);
+          assert clientHome.systemd.user.services.speech-wake.Install.WantedBy == [ "default.target" ];
           assert !(builtins.any (p: nixpkgs.lib.getName p == "dictate-hold") clientHome.home.packages);
-          assert nixpkgs.lib.hasInfix "HERDR_DICTATION_COMMAND=mykonos-dictate" (
+          assert nixpkgs.lib.hasInfix "HERDR_DICTATION_COMMAND=speech-dictate" (
             builtins.readFile ./home/dot_local/bin/herdr-projector
           );
           assert !(clientHome.systemd.user.services ? herdr);

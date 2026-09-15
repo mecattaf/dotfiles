@@ -5,7 +5,7 @@ from pathlib import Path
 
 def main():
     if socket.gethostname() != 'client': raise RuntimeError('Playback is client-only')
-    state=Path.home()/'.local/state'; gate=state/'mykonos-wake'
+    state=Path.home()/'.local/state'; gate=state/'speech-wake'
     runtime=Path(os.environ.get('XDG_RUNTIME_DIR',f'/run/user/{os.getuid()}'))
     gate.mkdir(parents=True,exist_ok=True,mode=0o700)
     locks=runtime/'qwen-speech';locks.mkdir(parents=True,exist_ok=True,mode=0o700)
@@ -23,7 +23,7 @@ def main():
         temp=gate/f'.epoch-{os.getpid()}';temp.write_bytes(epoch);temp.replace(gate/'epoch')
         player=None
         try:
-            listener=runtime/'mykonos-wake/lock'
+            listener=runtime/'speech-wake/lock'
             listening=False
             if listener.exists():
                 with listener.open('a') as handle:
@@ -39,7 +39,7 @@ def main():
             import tempfile
             with tempfile.NamedTemporaryFile(suffix='.wav') as wavfile:
                 wavfile.write(data);wavfile.flush()
-                player=subprocess.Popen(['pw-play','--properties','{"node.name":"mykonos-speech-playback"}',wavfile.name])
+                player=subprocess.Popen(['pw-play','--properties','{"node.name":"speech-session-playback"}',wavfile.name])
                 while player.poll() is None:
                     if call():
                         player.terminate();player.wait(timeout=3);return 2
@@ -50,4 +50,4 @@ def main():
             temp.write_text(str(time.time_ns()));temp.replace(gate/'epoch');marker.unlink(missing_ok=True)
 if __name__=='__main__':
     try:sys.exit(main())
-    except Exception as exc:print(f'mykonos-play: {exc}',file=sys.stderr);sys.exit(2)
+    except Exception as exc:print(f'speech-play: {exc}',file=sys.stderr);sys.exit(2)

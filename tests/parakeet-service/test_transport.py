@@ -1,6 +1,6 @@
 import importlib.util,socket,threading,io,struct,sys
 from pathlib import Path
-spec=importlib.util.spec_from_file_location('transport',str(Path(sys.argv[1]) if len(sys.argv)>1 else Path(__file__).resolve().parents[2]/'pkgs/mykonos-parakeet/transport.py')); m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+spec=importlib.util.spec_from_file_location('transport',str(Path(sys.argv[1]) if len(sys.argv)>1 else Path(__file__).resolve().parents[2]/'pkgs/parakeet-service/transport.py')); m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 def check(data,expected):
  a,b=socket.socketpair();out=io.BytesIO()
  def send():

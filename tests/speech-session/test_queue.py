@@ -1,7 +1,7 @@
 import datetime, importlib.util, json, tempfile, unittest
 from pathlib import Path
 from unittest.mock import patch
-p=Path(__file__).parents[2]/'pkgs/mykonos-speech/queue.py'
+p=Path(__file__).parents[2]/'pkgs/speech-session/queue.py'
 spec=importlib.util.spec_from_file_location('queue_impl',p);q=importlib.util.module_from_spec(spec);spec.loader.exec_module(q)
 class QueueTests(unittest.TestCase):
     def test_print_hours(self):

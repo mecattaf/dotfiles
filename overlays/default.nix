@@ -1,9 +1,9 @@
 { torchRocm }:
 final: prev: {
   qwentts = final.callPackage ../pkgs/qwentts.nix { };
-  mykonos-parakeet = final.callPackage ../pkgs/mykonos-parakeet { };
-  mykonos-speech = final.callPackage ../pkgs/mykonos-speech { };
-  mykonos-wake = final.callPackage ../pkgs/mykonos-wake { };
+  parakeet-service = final.callPackage ../pkgs/parakeet-service { };
+  speech-session = final.callPackage ../pkgs/speech-session { };
+  speech-wake = final.callPackage ../pkgs/speech-wake { };
   qwen-speech = final.callPackage ../pkgs/qwen-speech { };
   speech-listening-cue = final.callPackage ../pkgs/speech-listening-cue { };
   qwen3-tts-khimaros = final.callPackage ../pkgs/qwen3-tts-khimaros.nix { };

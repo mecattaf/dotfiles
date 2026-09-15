@@ -31,7 +31,7 @@ def main():
     os.umask(0o077)
     runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
     state = Path(os.environ.get('XDG_STATE_HOME', str(Path.home()/'.local/state')))
-    lock = (runtime/'mykonos-dictation.lock').open('a')
+    lock = (runtime/'speech-dictation.lock').open('a')
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     inhibitors = Inhibitors(state)
     inhibitors.wake.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -59,7 +59,7 @@ def main():
     signal.signal(signal.SIGTERM, terminate); signal.signal(signal.SIGINT, terminate)
     try:
         # A running listener must acknowledge releasing its microphone first.
-        active = subprocess.run(['systemctl','--user','is-active','--quiet','mykonos-wake.service'], stdin=subprocess.DEVNULL).returncode == 0
+        active = subprocess.run(['systemctl','--user','is-active','--quiet','speech-wake.service'], stdin=subprocess.DEVNULL).returncode == 0
         deadline = time.monotonic()+2
         while active and (not (inhibitors.wake/'ack').exists() or (inhibitors.wake/'ack').read_bytes()!=epoch):
             if instruction(): return

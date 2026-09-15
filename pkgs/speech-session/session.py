@@ -13,12 +13,12 @@ def call(args):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--stdin',action='store_true',required=True)
     p.add_argument('--cwd',type=Path,default=Path.home());p.add_argument('--no-window',action='store_true')
-    p.add_argument('--projector',default='mykonos-projector');a=p.parse_args()
+    p.add_argument('--projector',default='speech-projector');a=p.parse_args()
     if socket.gethostname()!='coordinator':p.error('Session launcher belongs on coordinator')
     text=sys.stdin.read(32769).strip()
     if not text or len(text)>32768 or '\0' in text:raise ValueError('Empty or oversized transcript')
     ident=str(uuid.uuid4()); name='speech-'+ident[:8]
-    root=Path.home()/'.local/state/mykonos-sessions'/ident;root.mkdir(parents=True,mode=0o700)
+    root=Path.home()/'.local/state/speech-sessions'/ident;root.mkdir(parents=True,mode=0o700)
     (root/'transcript.txt').write_text(text+'\n');os.chmod(root/'transcript.txt',0o600)
     system_file=Path(__file__).with_name('system.md')
     system_prompt=' '.join(system_file.read_text().split())

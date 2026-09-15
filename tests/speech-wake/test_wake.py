@@ -8,7 +8,7 @@ import types
 import unittest
 from unittest.mock import patch
 
-spec = importlib.util.spec_from_file_location('wake', Path(__file__).parents[2] / 'pkgs/mykonos-wake/wake.py')
+spec = importlib.util.spec_from_file_location('wake', Path(__file__).parents[2] / 'pkgs/speech-wake/wake.py')
 wake = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(wake)
 

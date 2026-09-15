@@ -12,4 +12,4 @@ if [[ "$(@uname@ -n)" != client ]]; then
   printf '%s\n' 'speech-listening-cue playback belongs on the Zenbook (client)' >&2
   exit 1
 fi
-exec @pwPlay@ --properties '{"node.name":"mykonos-listening-cue"}' --media-role Notification --latency 50ms @cue@
+exec @pwPlay@ --properties '{"node.name":"speech-listening-cue"}' --media-role Notification --latency 50ms @cue@

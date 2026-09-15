@@ -352,7 +352,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mykonos-parakeet-engine"
+name = "parakeet-service-engine"
 version = "0.1.0"
 dependencies = [
  "ort",

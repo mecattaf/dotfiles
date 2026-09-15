@@ -1,4 +1,4 @@
-# Mykonos voice operations
+# Speech operations
 
 The permanent services have been activated on the fleet. Build, integration and
 rollout checkpoints are in `mykonos-overnight-integration.md`. The final machine
@@ -39,10 +39,10 @@ The client has no NAS filesystem mount. To restore its two small wake artifacts,
 stage only these canonical directories through the coordinator's NAS mount:
 
 ```sh
-mkdir -p /tmp/mykonos-wake-library
+mkdir -p /tmp/speech-wake-library
 ssh coordinator 'tar -C /mnt/nas/models/weights -cf - openwakeword-baker-compat-v051 openwakeword-alexa-v051' |
-  tar -C /tmp/mykonos-wake-library -xf -
-sudo env LOCAL_MODELS_LIBRARY=/tmp/mykonos-wake-library local-models-borrow --yes
+  tar -C /tmp/speech-wake-library -xf -
+sudo env LOCAL_MODELS_LIBRARY=/tmp/speech-wake-library local-models-borrow --yes
 ```
 
 Run those commands on the client after deploying its declared wanted set. The
@@ -54,8 +54,8 @@ no experimental models have been deleted as part of this integration.
 ## Controls and speech
 
 Alexa opens a new Claude Opus session with a fixed appended system prompt enabling
-speech publication. Follow-on hands-free routing to an existing conversation is
-not implemented. In a native Herdr projector, hold bare Space for 300ms, wait for
+speech publication. Hands-free follow-on routing to an existing conversation was
+explicitly dropped by Tom on 2026-09-15. In a native Herdr projector, hold bare Space for 300ms, wait for
 the listening cue, speak, and release. A tap remains a normal Space. Another key,
 Escape, focus change, call recording or playback cancels capture. Text is pasted
 into the originating pane without Enter. No external recording overlay is used.
@@ -72,13 +72,52 @@ an assistant's queue-write claim, establish whether playback completed.
 
 ## Evidence and history
 
-NAS research archive:
-`models/research/mykonos/2026-09-14/voice-investigation.tar.gz`, 6,337 files,
-SHA256 `c8d433aeaa782c06e6177f710cd8232d293578f2a41e3f10acdc6570091d305b`.
+NAS listening-evidence archive (cleaned 2026-09-15):
+`models/research/mykonos/2026-09-14/voice-evidence.tar.gz`, 2,661 files,
+SHA256 `423d14f9346d9b6868bece7aa95842c3e8809beb24a48df90152c9590439fd95`.
 The original supplied MP3 is archived beside it with its own hash manifest.
-Research sources, environments and duplicate weights were excluded; model
-artifacts have separate manifests and canonical Library locations.
+`code-cleanup-receipt.json` records removal of 3,676 code/non-evidence members
+from the former archive and deletion of local experimental code and environments.
+The old code-bearing archive was deleted after verifying the evidence replacement.
+Earlier deployment receipts describe the archive as it existed then; this is the
+current archive. Model weights have separate manifests and canonical Library paths.
 
 Earlier Gemma, VibeVoice, CustomVoice, character and Intel NPU documents record
 experiments, not active architecture. Gemma E4B/12B remain parked for later audio
 research. TTS, ordinary ASR and streaming diarized ASR comparisons are separate.
+
+## Remaining scope (2026-09-15 audit)
+
+The daily path is implemented: Alexa, cue, coordinator Parakeet, a new Claude
+Opus session, Markdown speech queue and client Qwen playback. Native Herdr
+hold-Space dictation replaces Voxtype. Existing projector processes must be
+reopened to load updated client code and command names; the server and PTYs stay.
+
+Open acceptance work: repeat ordinary human speech through the actual webcam
+microphone against known text. Clean-file GPU and transport tests pass, but
+speaker-to-microphone loopback had poor accuracy and is not human acceptance.
+
+Deferred extensions: barge-in/echo cancellation while media plays; automatic meeting detection beyond
+the integrated call recorder and explicit manual call mode; dictation longer
+than the current 60-second capture bound. Media currently inhibits waking, and
+Shift+F9 recording has an explicit inhibition handshake. These limits are not
+claims about the models' maximum capabilities.
+
+Optional housekeeping: superseded NAS models are retained, not pruned. Gemma
+audio and the separate ordinary/streaming VibeVoice ASR tracks remain research,
+not services awaiting an automatic promotion. Intel NPU waking was evaluated
+and CPU Alexa selected. CustomVoice, tone banks and character/personality work
+were explicitly dropped. They are not outstanding implementation commitments.
+
+Operational commands use functional names: `speech-wake`, `speech-dictate`,
+`speech-session`, `speech-projector`, `speech-play`, `speech-queue`,
+`parakeet-service` and `parakeet-relay`. The corresponding services are
+`speech-wake.service` (client), `parakeet-service.service` (coordinator) and
+`speech-queue.{service,path,timer}` (coordinator). Historical research paths
+retain the location name under which the investigation was originally recorded.
+
+Hands-free continuation is out of scope by Tom’s explicit decision. Production
+code lives in dotfiles. NAS research archives preserve audio and results, not
+superseded implementation code. Parakeet weights are separately declared in
+`lib/speech-intake-models.json`, requested by `modules/qwen-tts.nix`, and served
+by `home/speech.nix`; none depends on Voxtype or an experimental checkout.

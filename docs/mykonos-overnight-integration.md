@@ -83,7 +83,7 @@ Checkpoint 23:23 CEST:
 - NAS research archive has 6,337 files (959,931,124 bytes), verified SHA256
   c8d433aeaa782c06e6177f710cd8232d293578f2a41e3f10acdc6570091d305b.
   Original montage MP3 is separately archived and hash-verified beside it.
-- New `mykonos-voice-operations.md` documents explicit client wake-weight restore
+- New `speech-operations.md` documents explicit client wake-weight restore
   via canonical NAS staging, runtime boundaries and historical research status.
 - The live temporary client wake service now uses the direct Parakeet relay and
   shared-lock fix (`jlh478gdndcrh72bs493ij158cxqs3ix-mykonos-wake-0.1.0`). Its prior
