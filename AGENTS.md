@@ -72,8 +72,8 @@ not DPMS power-off or suspend. Tom selected “Alexa” with upstream openWakeWo
 on CPU. Use the original listening nudge after accepted wake and capture readiness.
 The Niri Shift+F9 call recorder must inhibit and receive listener shutdown
 acknowledgement before capture starts; clear all queued audio on entry and exit.
-`pkgs/mykonos-wake` implements the explicit client input session;
-`home/mykonos.nix` owns its declarative user service.
+`pkgs/speech-wake` implements the explicit client input session;
+`home/speech.nix` owns its declarative user service.
 Research Intel Meteor Lake NPU support only when an existing
 wake-word implementation is documented. Scott Baker's existing openWakeWord
 CPU/NPU implementation qualifies: Tom explicitly authorized adapting its existing
@@ -159,9 +159,9 @@ selected wake path. Direct `parakeet-rs` 0.3.7 with Parakeet TDT v3 ONNX and
 MIGraphX runs on the coordinator; Voxtype and its virtual-microphone relay are
 retired from the configuration. There is no Gemma/router layer in the daily
 flow. Gemma E4B/12B and both VibeVoice ASR tracks remain research artifacts.
-`home/mykonos.nix` declares the resident coordinator transcription unit and client
+`home/speech.nix` declares the resident coordinator transcription unit and client
 wake unit. No service startup downloads models. Use the NAS manifests and explicit
-`local-models-borrow` transactions documented in `docs/mykonos-voice-operations.md`.
+`local-models-borrow` transactions documented in `docs/speech-operations.md`.
 
 Alexa creates a fresh Claude Opus Herdr session using a fixed appended system
 prompt that enables speech publication. The shared `/speak` skill publishes
@@ -171,7 +171,7 @@ queue file is not evidence it was heard: consult playback receipts. Session
 launch records the fixed system-prompt hash. Do not repair speech behavior by
 pasting follow-up instructions into the conversation.
 
-Native Herdr client hold-Space invokes `mykonos-dictate` on the client, waits for
+Native Herdr client hold-Space invokes `speech-dictate` on the client, waits for
 capture readiness and the original cue, streams PCM to coordinator, and pastes
 the result into the originating pane without Enter. Tap-Space remains ordinary
 input. Media controls do not cancel recording; editing keys, Escape, focus or

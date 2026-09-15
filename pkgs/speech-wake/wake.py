@@ -43,7 +43,7 @@ class Inhibitors:
     def __init__(self, state):
         self.playback_monitor = None
         self.state = state
-        self.wake = state / 'mykonos-wake'
+        self.wake = state / 'speech-wake'
         self.runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
 
     def snapshot(self):
@@ -52,7 +52,7 @@ class Inhibitors:
         if self.playback_monitor:
             reason = self.playback_monitor.snapshot_reason()
             if reason: reasons.append(reason)
-        dictation_lock = self.runtime / 'mykonos-dictation.lock'
+        dictation_lock = self.runtime / 'speech-dictation.lock'
         if dictation_lock.exists():
             with dictation_lock.open('a') as handle:
                 try: fcntl.flock(handle, fcntl.LOCK_SH | fcntl.LOCK_NB)
@@ -111,7 +111,7 @@ def find_microphone():
 
 
 def capture(serial):
-    props = {'node.name': 'mykonos-wake-capture', 'node.dont-fallback': True,
+    props = {'node.name': 'speech-wake-capture', 'node.dont-fallback': True,
              'node.dont-reconnect': True, 'node.dont-move': True, 'node.linger': False}
     return subprocess.Popen(['pw-record', '--raw', '--target', serial,
                              '--latency', '20ms', '--rate', '16000', '--channels', '1',
@@ -370,7 +370,7 @@ def live(args, detector, inhibitors):
                             def dispatch(transcript):
                                 try:
                                     submitted = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5',
-                                                                'coordinator', 'mykonos-session', '--stdin'],
+                                                                'coordinator', 'speech-session', '--stdin'],
                                                                input=transcript, text=True, capture_output=True, timeout=100)
                                     emit('session_submitted' if submitted.returncode == 0 else 'session_needs_review',
                                          receipt=submitted.stdout, error=submitted.stderr)
@@ -428,7 +428,7 @@ def main():
         hook = Path.home() / '.local/bin/call-record'
         if not hook.is_file() or hashlib.sha256(hook.read_bytes()).hexdigest() != '@callRecordHash@':
             p.error('Install the matching tested call-record hook before live listening; the current shortcut is not protected by this build')
-    lock_dir = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')) / 'mykonos-wake'
+    lock_dir = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')) / 'speech-wake'
     lock_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     with (lock_dir / 'lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

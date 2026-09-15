@@ -24,21 +24,21 @@ in
       "qwen3-tts-tokenizer-f32"
     ];
     environment.systemPackages = [
-      pkgs.mykonos-speech
+      pkgs.speech-session
       pkgs.qwen-speech
       pkgs.qwentts
     ];
-    systemd.user.services.mykonos-speech-queue = {
+    systemd.user.services.speech-queue = {
       description = "Read queued Markdown through Qwen and the client";
       unitConfig.ConditionUser = "tom";
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = "${pkgs.mykonos-speech}/bin/mykonos-speech-queue --qwen ${pkgs.qwen-speech}/bin/qwen-speech --player ${pkgs.mykonos-speech}/bin/mykonos-play";
+        ExecStart = "${pkgs.speech-session}/bin/speech-queue --qwen ${pkgs.qwen-speech}/bin/qwen-speech --player ${pkgs.speech-session}/bin/speech-play";
         TimeoutStartSec = "infinity";
         UMask = "0077";
       };
     };
-    systemd.user.paths.mykonos-speech-queue = {
+    systemd.user.paths.speech-queue = {
       wantedBy = [ "default.target" ];
       pathConfig = {
         PathChanged = "%h/Speech/intake";
@@ -46,7 +46,7 @@ in
         DirectoryMode = "0700";
       };
     };
-    systemd.user.timers.mykonos-speech-queue = {
+    systemd.user.timers.speech-queue = {
       wantedBy = [ "timers.target" ];
       timerConfig = {
         OnCalendar = [

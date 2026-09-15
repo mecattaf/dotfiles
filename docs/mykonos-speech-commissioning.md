@@ -1,5 +1,8 @@
 # Speech pipeline commissioning — 14 September 2026
 
+> Historical investigation. For the deployed configuration and remaining scope,
+> see [Speech operations](speech-operations.md).
+
 The temporary runtime is active; the main dotfiles checkout has not been merged
 or rebuilt. The final Qwen voice has not yet been archived and no models were
 removed. All speech/transcription inference runs on coordinator; only wake/VAD,

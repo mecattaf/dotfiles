@@ -48,7 +48,7 @@
     "notes": "Accepted single Base voice. 44.02s identity; 25.20s matched prefix; source montage unchanged in speed. Not a trained model or CustomVoice.",
     "source": {
       "imported": true,
-      "hfUrl": "local:mykonos/k2so-midway-b",
+      "hfUrl": "local:speech/k2so-midway-b",
       "revision": "f779f3279cce35da64fc697aee24dce40611573d6154606e163ee5127a450f3d",
       "primary": "voice.json",
       "files": [

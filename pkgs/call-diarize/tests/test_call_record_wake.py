@@ -23,7 +23,7 @@ class WakeLifecycle(unittest.TestCase):
         self.bin = self.root / 'bin'
         for directory in (self.home, self.state, self.runtime, self.bin):
             directory.mkdir()
-        self.wake = self.state / 'mykonos-wake'
+        self.wake = self.state / 'speech-wake'
         self.current = self.state / 'call-record/current'
         self.events = self.root / 'events.jsonl'
         self.env = dict(os.environ, HOME=str(self.home), XDG_STATE_HOME=str(self.state),
@@ -35,7 +35,7 @@ class WakeLifecycle(unittest.TestCase):
 print(json.dumps([{'info': {'props': {'media.class': c, 'node.name': 'INZONE-'+c}}} for c in ['Audio/Sink', 'Audio/Source']]))
 ''')
         self.write_fake('pw-record', '''import json,os,pathlib,signal,sys,time
-state=pathlib.Path(os.environ['XDG_STATE_HOME']); wake=state/'mykonos-wake'; output=pathlib.Path(sys.argv[-1])
+state=pathlib.Path(os.environ['XDG_STATE_HOME']); wake=state/'speech-wake'; output=pathlib.Path(sys.argv[-1])
 assert (wake/'call-record').exists() and (wake/'epoch').exists()
 if os.environ.get('REQUIRE_ACK'):assert (wake/'ack').read_bytes()==(wake/'epoch').read_bytes()
 if os.environ.get('FAIL_NEAR') and output.name=='near.wav':sys.exit(2)
@@ -47,13 +47,13 @@ with open(os.environ['FAKE_EVENTS'],'a') as f:f.write(json.dumps({'event':'captu
 while True:time.sleep(.05)
 ''')
         self.write_fake('sox', '''import json,os,pathlib,sys
-state=pathlib.Path(os.environ['XDG_STATE_HOME']);assert not (state/'mykonos-wake/call-record').exists();assert not (state/'call-record/current').exists()
+state=pathlib.Path(os.environ['XDG_STATE_HOME']);assert not (state/'speech-wake/call-record').exists();assert not (state/'call-record/current').exists()
 pathlib.Path(sys.argv[4]).write_bytes(b'mixed')
 with open(os.environ['FAKE_EVENTS'],'a') as f:f.write(json.dumps({'event':'mix'})+'\\n')
 ''')
         self.write_fake('soxi', "print('00:00:01')\n")
         self.write_fake('call-diarize-backfill', '''import json,os,pathlib
-assert not (pathlib.Path(os.environ['XDG_STATE_HOME'])/'mykonos-wake/call-record').exists()
+assert not (pathlib.Path(os.environ['XDG_STATE_HOME'])/'speech-wake/call-record').exists()
 with open(os.environ['FAKE_EVENTS'],'a') as f:f.write(json.dumps({'event':'enqueue'})+'\\n')
 ''')
 
@@ -110,7 +110,7 @@ with open(os.environ['FAKE_EVENTS'],'a') as f:f.write(json.dumps({'event':'enque
         self.assertFalse((self.wake/'call-record').exists())
 
     def listener_lock(self):
-        path = self.runtime/'mykonos-wake/lock'
+        path = self.runtime/'speech-wake/lock'
         path.parent.mkdir()
         handle = path.open('w')
         fcntl.flock(handle, fcntl.LOCK_EX)

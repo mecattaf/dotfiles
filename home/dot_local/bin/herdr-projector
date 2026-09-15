@@ -71,7 +71,7 @@ set -u
 
 # Native client hold-Space support; all inference remains on coordinator.
 if [ "$(hostname)" = client ]; then
-  export HERDR_DICTATION_COMMAND=mykonos-dictate
+  export HERDR_DICTATION_COMMAND=speech-dictate
 fi
 
 target="${HERDR_PROJECTOR_TARGET:-coordinator}"

@@ -54,6 +54,6 @@ def sweep(root, qwen, player):
                 atomic(job/'failure.json',dict(error=str(exc)));job.rename(root/'failed'/job.name)
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--root',type=Path,default=Path.home()/'Speech');p.add_argument('--qwen',default='qwen-speech');p.add_argument('--player',default='mykonos-play');a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--root',type=Path,default=Path.home()/'Speech');p.add_argument('--qwen',default='qwen-speech');p.add_argument('--player',default='speech-play');a=p.parse_args()
     if socket.gethostname()!='coordinator':p.error('Speech queue belongs on coordinator')
     os.umask(0o077);sweep(a.root,a.qwen,a.player)

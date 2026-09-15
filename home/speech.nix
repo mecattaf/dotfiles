@@ -9,15 +9,15 @@ let
   client = osConfig.networking.hostName == "client";
 in
 {
-  home.packages = lib.optionals coordinator [ pkgs.mykonos-parakeet ];
-  systemd.user.services.mykonos-parakeet = lib.mkIf coordinator {
+  home.packages = lib.optionals coordinator [ pkgs.parakeet-service ];
+  systemd.user.services.parakeet-service = lib.mkIf coordinator {
     Unit = {
       Description = "Resident Parakeet TDT on coordinator GPU";
     };
     Service = {
-      ExecStart = "${pkgs.mykonos-parakeet}/bin/mykonos-parakeet serve";
-      Environment = [ "ORT_MIGRAPHX_MODEL_CACHE_PATH=%h/.cache/mykonos-parakeet/migraphx" ];
-      RuntimeDirectory = "mykonos-parakeet";
+      ExecStart = "${pkgs.parakeet-service}/bin/parakeet-service serve";
+      Environment = [ "ORT_MIGRAPHX_MODEL_CACHE_PATH=%h/.cache/parakeet-service/migraphx" ];
+      RuntimeDirectory = "parakeet-service";
       RuntimeDirectoryMode = "0700";
       UMask = "0077";
       Restart = "on-failure";
@@ -28,14 +28,14 @@ in
     };
     Install.WantedBy = [ "default.target" ];
   };
-  systemd.user.services.mykonos-wake = lib.mkIf client {
+  systemd.user.services.speech-wake = lib.mkIf client {
     Unit = {
       Description = "Alexa voice intake on the iContact USB microphone";
       After = [ "pipewire.service" ];
       Wants = [ "pipewire.service" ];
     };
     Service = {
-      ExecStart = "${pkgs.mykonos-wake}/bin/mykonos-wake --live --dispatch";
+      ExecStart = "${pkgs.speech-wake}/bin/speech-wake --live --dispatch";
       UMask = "0077";
       Restart = "on-failure";
       RestartSec = 5;

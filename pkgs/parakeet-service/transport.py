@@ -163,14 +163,14 @@ def relay(args):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('mode', choices=['serve', 'relay'])
-    p.add_argument('--socket', type=Path, default=Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')) / 'mykonos-parakeet/engine.sock')
-    p.add_argument('--engine', default='mykonos-parakeet-engine')
+    p.add_argument('--socket', type=Path, default=Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')) / 'parakeet-service/engine.sock')
+    p.add_argument('--engine', default='parakeet-service-engine')
     p.add_argument('--model', type=Path, default=Path('/var/lib/local-models/parakeet-tdt-0.6b-v3-onnx'))
     p.add_argument('--framed', action='store_true')
     args = p.parse_args()
     try: serve(args) if args.mode == 'serve' else relay(args)
     except Exception as exc:
-        print(f'mykonos-parakeet: {exc}', file=sys.stderr); return 1
+        print(f'parakeet-service: {exc}', file=sys.stderr); return 1
     return 0
 
 if __name__ == '__main__': sys.exit(main())

@@ -1,4 +1,4 @@
-# Mykonos voice operations
+# Speech operations
 
 The permanent services have been activated on the fleet. Build, integration and
 rollout checkpoints are in `mykonos-overnight-integration.md`. The final machine
@@ -39,10 +39,10 @@ The client has no NAS filesystem mount. To restore its two small wake artifacts,
 stage only these canonical directories through the coordinator's NAS mount:
 
 ```sh
-mkdir -p /tmp/mykonos-wake-library
+mkdir -p /tmp/speech-wake-library
 ssh coordinator 'tar -C /mnt/nas/models/weights -cf - openwakeword-baker-compat-v051 openwakeword-alexa-v051' |
-  tar -C /tmp/mykonos-wake-library -xf -
-sudo env LOCAL_MODELS_LIBRARY=/tmp/mykonos-wake-library local-models-borrow --yes
+  tar -C /tmp/speech-wake-library -xf -
+sudo env LOCAL_MODELS_LIBRARY=/tmp/speech-wake-library local-models-borrow --yes
 ```
 
 Run those commands on the client after deploying its declared wanted set. The
@@ -82,3 +82,34 @@ artifacts have separate manifests and canonical Library locations.
 Earlier Gemma, VibeVoice, CustomVoice, character and Intel NPU documents record
 experiments, not active architecture. Gemma E4B/12B remain parked for later audio
 research. TTS, ordinary ASR and streaming diarized ASR comparisons are separate.
+
+## Remaining scope (2026-09-15 audit)
+
+The daily path is implemented: Alexa, cue, coordinator Parakeet, a new Claude
+Opus session, Markdown speech queue and client Qwen playback. Native Herdr
+hold-Space dictation replaces Voxtype. Existing projector processes must be
+reopened to load updated client code and command names; the server and PTYs stay.
+
+Open acceptance work: repeat ordinary human speech through the actual webcam
+microphone against known text. Clean-file GPU and transport tests pass, but
+speaker-to-microphone loopback had poor accuracy and is not human acceptance.
+
+Deferred extensions: hands-free follow-on routing to an existing conversation;
+barge-in/echo cancellation while media plays; automatic meeting detection beyond
+the integrated call recorder and explicit manual call mode; dictation longer
+than the current 60-second capture bound. Media currently inhibits waking, and
+Shift+F9 recording has an explicit inhibition handshake. These limits are not
+claims about the models' maximum capabilities.
+
+Optional housekeeping: superseded NAS models are retained, not pruned. Gemma
+audio and the separate ordinary/streaming VibeVoice ASR tracks remain research,
+not services awaiting an automatic promotion. Intel NPU waking was evaluated
+and CPU Alexa selected. CustomVoice, tone banks and character/personality work
+were explicitly dropped. They are not outstanding implementation commitments.
+
+Operational commands use functional names: `speech-wake`, `speech-dictate`,
+`speech-session`, `speech-projector`, `speech-play`, `speech-queue`,
+`parakeet-service` and `parakeet-relay`. The corresponding services are
+`speech-wake.service` (client), `parakeet-service.service` (coordinator) and
+`speech-queue.{service,path,timer}` (coordinator). Historical research paths
+retain the location name under which the investigation was originally recorded.

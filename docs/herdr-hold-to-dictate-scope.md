@@ -1,5 +1,8 @@
 # Herdr hold-to-dictate: proposed unification
 
+> Historical investigation. For the deployed configuration and remaining scope,
+> see [Speech operations](speech-operations.md).
+
 Tom's intended scope: terminal-only dictation into arbitrary Herdr panes,
 including coding agents and Neovim, using the Zenbook USB microphone and
 coordinator Parakeet. This is insertion into the existing application, distinct

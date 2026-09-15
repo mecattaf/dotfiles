@@ -5,7 +5,7 @@ original `enter_voice_mode.mp3` listening nudge. The NPU experiment is retained
 as research; it is not a dependency. There is no claim that Alexa is universally
 the best-trained phrase; it is an available, tested stock model.
 
-`mykonos-wake --live --once` explicitly opens only the USB iContact Camera Pro.
+`speech-wake --live --once` explicitly opens only the USB iContact Camera Pro.
 Say **Alexa**, wait for the short listening cue, then speak one request. After
 0.8 seconds of trailing silence the command is sent to the coordinator's existing
 `voxtype-relay`. The CLI emits a structured transcript to stdout. It does not type
@@ -31,7 +31,7 @@ No passive audio is saved or sent to the coordinator.
 ## Shift+F9 call recording
 
 The existing Niri Shift+F9 menu invokes `~/.local/bin/call-record`. The updated
-helper creates `~/.local/state/mykonos-wake/call-record` and atomically changes
+helper creates `~/.local/state/speech-wake/call-record` and atomically changes
 `epoch` **before either call capture launches**. If a listener owns the runtime
 lock, the helper waits for an exact-epoch `ack`, which the listener writes only
 after closing capture, stopping its cue/transcription process, clearing buffered
@@ -47,7 +47,7 @@ reused. Uncertain cleanup retains inhibition; `call-record recover` requires
 checking the remaining capture state. The recorder preserves its original output
 and transcription handoff behavior.
 
-`mykonos-wake --call-mode on|off|status` supplies an independent manual override.
+`speech-wake --call-mode on|off|status` supplies an independent manual override.
 Stopping a call cannot clear that manual override. The held Qwen playback
 lock also inhibits the listener; arbitrary audio players do not establish a
 playback lease. Browser calls not started by this recorder require manual call
@@ -65,14 +65,13 @@ provenance. Runtime source is pinned by `tools/hotword/cpu/openwakeword.nix`.
 
 `--fixture FILE.wav` accepts mono PCM16 16 kHz saved audio and exercises the actual
 model, fresh-context reset and inhibition checks without microphone or cue.
-`tests/mykonos-wake/test_wake.py` verifies exact device selection, no fallback,
+`tests/speech-wake/test_wake.py` verifies exact device selection, no fallback,
 manual/automatic suppression, call-vs-wake races, shutdown-before-ack, and bounded
 endpointing. Recorder integration tests independently exercise its lifecycle.
 
-The package and hooks are prepared in the worktree. Installing the CLI does not
-activate an always-on listener. Before a daily live session, the updated
-`call-record` must be present in the client's raw dotfiles checkout; live mode
-verifies the exact tested hook hash before opening any microphone, and refuses
-to run if that prerequisite has not been deployed; the current
-worktree alone does not change the existing Niri shortcut. Model fixture checks
-are not a live microphone/false-activation assessment.
+The listener is declared and enabled by `home/speech.nix` on the client.
+Live mode verifies the exact `call-record` hook hash before opening a microphone
+and refuses to run if the raw checkout and installed package disagree. Deploy
+the raw checkout before switching Home Manager. Fixture checks are not a live
+microphone or false-activation assessment. See `docs/speech-operations.md` for
+current operations and remaining acceptance work.

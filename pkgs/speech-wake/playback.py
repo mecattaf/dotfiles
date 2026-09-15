@@ -27,7 +27,7 @@ class PlaybackState:
         if not self.ready: return 'playback-monitor-unavailable'
         active = any(n.get('state') == 'running' and
                      n.get('props', {}).get('media.class') == 'Stream/Output/Audio' and
-                     n.get('props', {}).get('node.name') != 'mykonos-listening-cue'
+                     n.get('props', {}).get('node.name') != 'speech-listening-cue'
                      for n in self.nodes.values())
         if active: self.last_active = time.monotonic()
         if active or time.monotonic() - self.last_active < 0.5:
