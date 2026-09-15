@@ -79,13 +79,20 @@
     # false: `nix flake archive` in update-center-seed fetches EVERY lock
     # node, and SF-Compact.dmg — never installed — failed it on 2026-09-15.
     # SF Pro itself stays (2026-08-21 ruling: "it's too good to have") but is
-    # now pkgs/sf-pro.nix, pinned by sha256 to the fleet's own copy at
-    # /mnt/nas/documents/fonts/sf-pro/. Do not re-add a CDN-locked font input.
-
-    # Liga SF Mono: SF Mono ligaturized AND nerd-patched upstream — a
-    # different derived font from apple-fonts' sf-mono-nerd (glyphs only, no
-    # ligatures). Plain repo of OTFs, not a flake; consumed by
-    # pkgs/sfmono-liga.nix. DELETED in the 2026-08-21 sweep, RESTORED the
+    # now pkgs/sf-pro.nix, pinned by sha256 to the fleet's own copy.
+    #
+    # ALL APPLE FONTS LIVE ON THE NAS M.2 (Tom, 2026-09-15: "i do not want to
+    # download the fonts again everytime i do an update"; "keep the fonts on
+    # the m2 ssd"): nas:/mnt/fast/fonts/apple/, one tarball per family, exact
+    # bytes installed that day, requireFile-pinned — no flake input, no
+    # download. home/update-center-seed.nix seeds them into the NAS store.
+    # Do not re-add a URL-locked font input.
+    #
+    # TOMBSTONE — sfmono-liga input (shaunsingh/SFMono-Nerd-Font-Ligaturized),
+    # removed 2026-09-15 under the rule above; pkgs/sfmono-liga.nix. Liga SF
+    # Mono: SF Mono ligaturized AND nerd-patched upstream — a different
+    # derived font from apple-fonts' sf-mono-nerd (glyphs only, no
+    # ligatures). DELETED in the 2026-08-21 sweep, RESTORED the
     # same evening: the sweep's premise ("no terminal ever used it") was
     # false — kitty.conf had named the nonexistent family "Maple Mono
     # Normal NF" since 2026-03-03 and silently rode the fontconfig
@@ -94,10 +101,6 @@
     # Tom, on seeing real Maple: "i like whatever font was in use before
     # this afternoon's pushes." kitty.conf now names this family
     # EXPLICITLY, so no future sweep can silently swap the terminal again.
-    sfmono-liga = {
-      url = "github:shaunsingh/SFMono-Nerd-Font-Ligaturized";
-      flake = false;
-    };
 
     # git-ai — AI-authorship tracking CLI (github.com/git-ai-project/git-ai).
     # Consume its flake package directly and pin it in flake.lock. The Home
@@ -157,7 +160,7 @@
     # there is nothing to consume but source, and modules/tally-b.nix does the
     # whole packaging — rustPlatform over crates/tally-socket, whose binary IS
     # `tally-kernel` (serve/call/chain/guard), run as the SYSTEM service
-    # tally-kernel.service. Same plain-source consumption sfmono-liga uses.
+    # tally-kernel.service.
     #
     # PINNED TO A REV on `main`, deliberately, the way nixpkgs-paperless and
     # herdr are bumped: `nix flake lock --update-input tally-b` must be a
@@ -441,7 +444,7 @@
           # own nixpkgs — no second eval of ours). home/home.nix pulls an
           # allowlisted set out of this namespace. See the input comment above.
           llm-agents = inputs.llm-agents.packages.${system};
-          sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { src = inputs.sfmono-liga; };
+          sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { };
           sf-pro = final.callPackage ./pkgs/sf-pro.nix { };
         })
         # Pin-decoupled "hot" packages — see the nixpkgs-fresh input comment above.

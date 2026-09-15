@@ -9,12 +9,12 @@
 # an update". So the input is gone and the bytes are ours.
 #
 # The source is the exact OTF/TTF set that input had installed, tarred once:
-#   /mnt/nas/documents/fonts/sf-pro/sf-pro-fonts.tar.zst
+#   nas:/mnt/fast/fonts/apple/sf-pro-fonts.tar.zst   (the NAS M.2)
 # `requireFile` pins it by sha256 and never downloads anything. Its store path
 # depends only on name + hash, so any host that already has it (or the built
 # font, substituted from the NAS attic cache) never reads the NAS either.
-# home/update-center-seed.nix adds it to the coordinator store and seeds +
-# GC-roots it in the NAS store nightly, so the fleet builds find it there.
+# home/update-center-seed.nix adds it to the NAS store and GC-roots it there
+# nightly, so the fleet builds find it. The same applies to ./sfmono-liga.nix.
 { stdenvNoCC, requireFile, zstd }:
 
 stdenvNoCC.mkDerivation {
@@ -27,7 +27,8 @@ stdenvNoCC.mkDerivation {
     message = ''
       SF Pro is pinned to the fleet's NAS copy and is not downloadable.
       Add it to the store with:
-        nix-store --add-fixed sha256 /mnt/nas/documents/fonts/sf-pro/sf-pro-fonts.tar.zst
+        scp root@nas:/mnt/fast/fonts/apple/sf-pro-fonts.tar.zst .
+        nix-store --add-fixed sha256 sf-pro-fonts.tar.zst
     '';
   };
 

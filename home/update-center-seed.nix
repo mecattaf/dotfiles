@@ -39,13 +39,17 @@
 # window, and the NAS names any gap itself: update-center's preflight logs
 # `seed-missing <node>` for every private node whose tree is absent.
 #
-# FONTS (2026-09-15). pkgs/sf-pro.nix pins SF Pro to the fleet's own copy on
-# the NAS instead of Apple's CDN. The same run adds that archive to the local
-# store and seeds + roots it on the NAS as `sf-pro-fonts`, so the nightly
-# build finds it without downloading anything.
+# FONTS (2026-09-15). pkgs/sf-pro.nix and pkgs/sfmono-liga.nix pin every Apple
+# face to the fleet's own tarballs on the NAS M.2 (nas:/mnt/fast/fonts/apple),
+# never a download. The same run has the NAS add each tarball to its own store
+# straight from that disk and root it here beside the source trees, so the
+# nightly build finds them.
 let
   isCoordinator = osConfig.networking.hostName == "coordinator";
-  sfProArchive = "/mnt/nas/documents/fonts/sf-pro/sf-pro-fonts.tar.zst";
+  fontArchives = [
+    "sf-pro-fonts.tar.zst"
+    "sfmono-liga-fonts.tar.zst"
+  ];
 
   seed = pkgs.writeShellApplication {
     name = "update-center-seed";
@@ -81,14 +85,6 @@ let
         | [.key, $l.narHash] | @tsv' <<<"$meta")"
       paths=()
       names=()
-
-      # SF Pro is not fetchable at all (pkgs/sf-pro.nix requireFile): add the
-      # fleet's NAS copy to this store, and seed it like a private tree.
-      fonts="$(nix-store --add-fixed sha256 ${lib.escapeShellArg sfProArchive})"
-      log "seed sf-pro-fonts $fonts"
-      paths+=("$fonts")
-      names+=("sf-pro-fonts")
-
       archived=0
       while IFS=$'\t' read -r name nar; do
         [ -n "$name" ] || continue
@@ -110,14 +106,18 @@ let
         names+=("$name")
       done <<<"$nodes"
 
-      nix copy --to "ssh-ng://$nas" "''${paths[@]}"
+      [ "''${#paths[@]}" -eq 0 ] || nix copy --to "ssh-ng://$nas" "''${paths[@]}"
 
       # Root each seed by node name, then drop names this lock no longer has.
       # Arguments are name=path pairs; node names and store paths carry no
-      # shell metacharacters, and the remote body is a quoted heredoc.
+      # shell metacharacters, and the remote body is a quoted heredoc. A font
+      # pair names a file on the NAS M.2 instead, which is added there first.
       pairs=()
       for i in "''${!paths[@]}"; do
         pairs+=("''${names[$i]}=''${paths[$i]}")
+      done
+      for f in ${lib.escapeShellArgs fontArchives}; do
+        pairs+=("''${f%%.*}=/mnt/fast/fonts/apple/$f")
       done
       sshnas bash -s -- "''${pairs[@]}" <<'REMOTE'
       set -eu
@@ -126,7 +126,12 @@ let
       keep=" "
       for pair in "$@"; do
         name="''${pair%%=*}"
-        nix-store --realise --add-root "$d/$name" "''${pair#*=}" >/dev/null
+        path="''${pair#*=}"
+        case "$path" in
+          /nix/store/*) ;;
+          *) path="$(nix-store --add-fixed sha256 "$path")" ;;
+        esac
+        nix-store --realise --add-root "$d/$name" "$path" >/dev/null
         keep="$keep$name "
       done
       for f in "$d"/*; do
@@ -134,7 +139,7 @@ let
         case "$keep" in *" ''${f##*/} "*) ;; *) rm -f "$f" ;; esac
       done
       REMOTE
-      log "seeded ''${#paths[@]} source(s) for $url"
+      log "seeded ''${#pairs[@]} source(s) for $url"
     '';
   };
 in
