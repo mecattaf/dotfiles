@@ -75,18 +75,23 @@ def main(name):
         print("fake lpstat -l -o")
         return 0
     if name == "lpoptions":
-        if not state["raw"]:
-            print("PageSize/Media Size: *A4 Letter")
+        # The real one resolves the queue through Avahi first; with the
+        # Brother in Deep Sleep it says this about a healthy queue (2026-09-15).
+        print(f"lpoptions: Unable to get PPD file for {QUEUE}: No such file or directory",
+              file=sys.stderr)
         return 0
     if name == "sudo":
         rest = args[1:] if args[:1] == ["-n"] else args
         if rest == ["systemctl", "restart", "ensure-printers.service"]:
             if state["repair_fixes"]:
-                state.update(device_uri=PINNED, raw=False, queue_enabled=True)
+                state.update(device_uri=PINNED, queue_enabled=True)
                 Path(os.environ["PAPER_PPD"]).write_text(URF_PPD)
                 save(state)
             return 0
         if rest[:1] == ["cat"]:
+            if state.get("sudo_denied"):
+                print("sudo: a password is required", file=sys.stderr)
+                return 1
             path = Path(rest[1])
             if not path.exists():
                 print(f"cat: {path}: No such file or directory", file=sys.stderr)
@@ -106,6 +111,11 @@ def main(name):
             print('[{"group-tag": "printer-attributes-tag", "printer-state": 3, "r": [1,],}]')
             return 0
         if test.endswith("printer-state.test"):
+            if state.get("asleep_probes", 0) > 0:
+                state["asleep_probes"] -= 1
+                save(state)
+                print("ipptool: Unable to connect to 10.42.0.4 on port 631", file=sys.stderr)
+                return 1
             if state["printer_state"] is None:
                 print("ipptool: Unable to connect to 10.42.0.4 on port 631", file=sys.stderr)
                 return 1
@@ -213,7 +223,7 @@ class DaemonHarness(unittest.TestCase):
         self.render_log = base / "render.log"
         self.state_path = base / "state.json"
         self.state = {
-            "device_uri": PINNED, "raw": False, "queue_enabled": True,
+            "device_uri": PINNED, "queue_enabled": True,
             "printer_state": 3, "repair_fixes": True,
             "printer_mode": "complete", "polls_hidden": 0, "impressions": None,
             "jobs": [], "next_id": 300, "polls": 0, "calls": [],
@@ -251,7 +261,8 @@ class DaemonHarness(unittest.TestCase):
             "PAPER_POLL_INTERVAL": "0.01",
             "PAPER_POLL_BASE_SECONDS": "0.6",
             "PAPER_POLL_PER_PAGE": "0",
-            "PAPER_NOTIFY_HOST": "tom@client.invalid",
+            "PAPER_WAKE_SECONDS": "0.3",
+            "PAPER_WAKE_INTERVAL": "0.01",
             "PYTHONDONTWRITEBYTECODE": "1",
         }
 
@@ -473,8 +484,6 @@ class QueueGuardTests(DaemonHarness):
         self.assertEqual(len(self.calls("lp")), 1)
 
     def test_raw_queue_without_ppd_is_repaired_then_printed(self) -> None:
-        self.state["raw"] = True
-        self.save_state()
         self.ppd.unlink()
         self.drop("sabotage-ppd")
         result = self.daemon("run")
@@ -508,9 +517,7 @@ class QueueGuardTests(DaemonHarness):
         self.assertIn("queue unhealthy after one repair", failure["reason"])
         self.assertEqual(len(failure["repairs"]), 1)
         self.assertEqual(self.calls("lp"), [])
-        (ssh,) = self.calls("ssh")
-        self.assertIn("tom@client.invalid", ssh)
-        self.assertIn("notify-send", ssh[-1])
+        self.assertEqual(self.calls("ssh"), [])
 
     def test_unreachable_printer_is_unhealthy(self) -> None:
         self.state["printer_state"] = None
@@ -529,6 +536,47 @@ class QueueGuardTests(DaemonHarness):
         self.assertEqual(self.load_state()["device_uri"], PINNED)
         self.assertIn("image/urf", self.ppd.read_text())
 
+    def test_a_mute_lpoptions_does_not_make_a_healthy_queue_raw(self) -> None:
+        # 2026-09-15: lpoptions failed through Avahi while the Brother slept;
+        # the PPD was on disk and the printer answered IPP.
+        self.drop("deep-sleep")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.receipt("deep-sleep")["repairs"], [])
+        self.assertEqual(self.calls("lpoptions"), [])
+        self.assertEqual(self.calls("sudo"), [])
+
+    def test_a_printer_waking_from_deep_sleep_is_waited_for_not_repaired(self) -> None:
+        self.state["asleep_probes"] = 3
+        self.save_state()
+        self.drop("waking")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.receipt("waking")["repairs"], [])
+        self.assertEqual(self.calls("sudo"), [])
+
+    def test_an_unreachable_printer_fails_without_restarting_cups(self) -> None:
+        self.state["printer_state"] = None
+        self.save_state()
+        self.drop("asleep")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 1)
+        failure = json.loads((self.paper / "failed/asleep/failure.json").read_text())
+        self.assertTrue(failure["reason"].startswith("printer unhealthy: "), failure["reason"])
+        self.assertEqual(failure["repairs"], [])
+        self.assertEqual(self.calls("sudo"), [])
+        self.assertEqual(self.calls("lp"), [])
+
+    @unittest.skipIf(os.geteuid() == 0, "root reads a 0000 file directly")
+    def test_a_ppd_nobody_can_read_is_a_problem_not_a_pass(self) -> None:
+        self.state["sudo_denied"] = True
+        self.save_state()
+        self.ppd.chmod(0)
+        result = self.daemon("check-queue")
+        self.ppd.chmod(0o600)
+        self.assertEqual(result.returncode, 1)
+        self.assertTrue(any("unreadable" in p for p in json.loads(result.stdout)["problems"]))
+
 
 class PrinterTruthTests(DaemonHarness):
     def test_impressions_mismatch_is_a_failure_not_a_receipt(self) -> None:
@@ -544,7 +592,7 @@ class PrinterTruthTests(DaemonHarness):
         self.assertEqual(failure["printer_job"]["job-impressions-completed"], 7)
         self.assertIn("completed", failure["ipp"])
         self.assertTrue((failed / "cups-journal.txt").exists())
-        self.assertEqual(len(self.calls("ssh")), 1)
+        self.assertEqual(self.calls("ssh"), [])
 
     def test_printer_abort_is_a_failure(self) -> None:
         self.state["printer_mode"] = "aborted"
@@ -615,7 +663,7 @@ class PrinterTruthTests(DaemonHarness):
         self.assertIn("KeyError", failure["traceback"])
         self.assertEqual(list((self.paper / "work").iterdir()), [])
         self.assertTrue((self.paper / "printed/b-fine/receipt.json").exists())
-        self.assertEqual(len(self.calls("ssh")), 1)
+        self.assertEqual(self.calls("ssh"), [])
 
     def test_a_broken_outbox_entry_does_not_block_the_morning_flush(self) -> None:
         self.drop("a-broken")

@@ -346,6 +346,26 @@ run, with 27 job directories under `~/Paper/jobs/` (three with `"printed": true`
 the rest render iterations or `--submit-only` prints that never set the flag).
 A watcher left facing them would have reprinted about 270 KB of Markdown.
 
+2026-09-15 paper-daemon's queue guard no longer asks `lpoptions`, a sleeping
+printer is waited for rather than repaired, and the client notify-send is
+gone. The index-of-work drop failed at 15:05 as "raw queue, no PPD". The PPD
+with the urf filter was on disk, cupsd served it, and the Brother answered IPP
+at 10.42.0.4. MEASURED: `lpoptions -l` resolves the queue through Avahi before
+it fetches the PPD, and the Brother's mDNS responder had gone mute. Both
+avahi-browse resolution and a unicast query to 10.42.0.4:5353 timed out, the
+Deep Sleep behaviour modules/printing.nix already records. The one repair
+restarted ensure-printers and cupsd, which cannot reach the printer's mDNS.
+After Tom power-cycled the printer, mDNS answered and CUPS job 314 printed with
+a receipt.
+
+So the raw-queue check is now the PPD file alone, and an unreadable PPD counts
+as a problem instead of evidence. The printer probe retries for up to 90 s,
+because an IPP connect wakes the Brother. Printer-side problems skip the
+ensure-printers restart and fail as "printer unhealthy". The ssh notify-send
+never showed anything: the client has no org.freedesktop.Notifications
+service. A failed job leaves paper-daemon.service failed, which is what the
+user-unit failure watcher (modules/failure-surfacing.nix) exists to surface.
+
 2026-09-13 dictation on the client, transcribed on the coordinator (#376, route b').
 Mod+Space on the client spawns `dictate-hold` (home/dictate-hold.py, installed
 by home/client-apps.nix). It pipes the client's PipeWire DEFAULT source, so
