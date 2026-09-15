@@ -186,3 +186,10 @@ The original montage, accepted midway B enrollment and evaluation outputs are
 preserved on NAS; superseded models have not been deleted. See
 `docs/mykonos-overnight-integration.md` for the rollout/acceptance record, rather
 than inferring activation from these declarations.
+
+**Speech cleanup (2026-09-15).** Use functional speech names, never the idea’s
+location as a product/service name. Hands-free follow-on conversation routing is
+explicitly dropped. Keep supported implementation and tests in dotfiles; delete
+superseded experimental code rather than archiving it on NAS. Keep listening
+evidence and canonical model weights separately. Parakeet is independently
+declared and remains durable after Voxtype removal.

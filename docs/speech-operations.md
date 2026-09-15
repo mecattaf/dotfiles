@@ -54,8 +54,8 @@ no experimental models have been deleted as part of this integration.
 ## Controls and speech
 
 Alexa opens a new Claude Opus session with a fixed appended system prompt enabling
-speech publication. Follow-on hands-free routing to an existing conversation is
-not implemented. In a native Herdr projector, hold bare Space for 300ms, wait for
+speech publication. Hands-free follow-on routing to an existing conversation was
+explicitly dropped by Tom on 2026-09-15. In a native Herdr projector, hold bare Space for 300ms, wait for
 the listening cue, speak, and release. A tap remains a normal Space. Another key,
 Escape, focus change, call recording or playback cancels capture. Text is pasted
 into the originating pane without Enter. No external recording overlay is used.
@@ -94,8 +94,7 @@ Open acceptance work: repeat ordinary human speech through the actual webcam
 microphone against known text. Clean-file GPU and transport tests pass, but
 speaker-to-microphone loopback had poor accuracy and is not human acceptance.
 
-Deferred extensions: hands-free follow-on routing to an existing conversation;
-barge-in/echo cancellation while media plays; automatic meeting detection beyond
+Deferred extensions: barge-in/echo cancellation while media plays; automatic meeting detection beyond
 the integrated call recorder and explicit manual call mode; dictation longer
 than the current 60-second capture bound. Media currently inhibits waking, and
 Shift+F9 recording has an explicit inhibition handshake. These limits are not
@@ -113,3 +112,9 @@ Operational commands use functional names: `speech-wake`, `speech-dictate`,
 `speech-wake.service` (client), `parakeet-service.service` (coordinator) and
 `speech-queue.{service,path,timer}` (coordinator). Historical research paths
 retain the location name under which the investigation was originally recorded.
+
+Hands-free continuation is out of scope by Tom’s explicit decision. Production
+code lives in dotfiles. NAS research archives preserve audio and results, not
+superseded implementation code. Parakeet weights are separately declared in
+`lib/speech-intake-models.json`, requested by `modules/qwen-tts.nix`, and served
+by `home/speech.nix`; none depends on Voxtype or an experimental checkout.

@@ -1,3 +1,6 @@
+> Historical results. Experimental implementation removed on 2026-09-15;
+> CPU Alexa is the supported path. Commands below document the past test.
+
 # Scott wake detector: isolated Meteor Lake NixOS test
 
 This is test tooling, not a service or a default microphone listener. Tom authorized reuse of the documented Scott Baker implementation. Do not revive the AMD NPU deployment or install the full browser-chatbot stack.

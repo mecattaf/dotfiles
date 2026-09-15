@@ -1,3 +1,6 @@
+> Historical results. Experimental implementation removed on 2026-09-15;
+> CPU Alexa is the supported path. Commands below document the past test.
+
 # Scott Baker NPU wake detector on the Meteor Lake Zenbook
 
 The existing detector executes successfully on Intel NPU3720 in the actual ASUS Zenbook Duo UX8406MA running NixOS. The mel stage remains CPU; embedding and classifier execute on NPU. No microphone listener, system service, kernel change or firmware change was introduced. The isolated runtime is reproducible in `tools/hotword/npu` in the dotfiles worktree.
