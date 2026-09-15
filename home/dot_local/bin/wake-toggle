@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# wake-toggle -- turn the Alexa wake listener (speech-wake.service) off / on.
+#
+# Stopping the unit closes the iContact microphone outright rather than merely
+# inhibiting detection, and dictation already treats a stopped listener as
+# needing no release acknowledgement. The unit stays WantedBy default.target,
+# so the next login re-arms it. The fleet has no notification daemon, so
+# re-enabling plays the listening cue as the only feedback; disabling is silent.
+set -euo pipefail
+
+unit=speech-wake.service
+case "${1:-toggle}" in
+    toggle) systemctl --user is-active --quiet "$unit" && action=off || action=on ;;
+    on|off|status) action=$1 ;;
+    *) echo "Usage: $0 {toggle|on|off|status}"; exit 1 ;;
+esac
+
+case "$action" in
+    off) systemctl --user stop "$unit" ;;
+    on)
+        systemctl --user start "$unit"
+        if command -v speech-listening-cue &>/dev/null; then
+            speech-listening-cue || true
+        fi
+        ;;
+    status) systemctl --user is-active "$unit" || true ;;
+esac
