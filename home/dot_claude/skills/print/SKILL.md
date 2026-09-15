@@ -43,7 +43,7 @@ timestamp suffix):
 | `printed/<slug>/receipt.json` | paper is out: the printer reported the job completed with `impressions_completed` equal to the rendered pages |
 | `outbox/<slug>/` | it is 00:00–06:00; it prints at 06:05 |
 | `rejected/<slug>/reason.json` | the render did not match `target_pages` (or the front matter was invalid); nothing was printed. Revise and drop again |
-| `failed/<slug>/failure.json` | something went wrong at the queue or the printer; the evidence is beside it and the client got a notification |
+| `failed/<slug>/failure.json` | something went wrong at the queue or the printer; the evidence is beside it and paper-daemon.service is left failed for the fleet's failure markers |
 
 Report to the user what the directory says, and only that. A drop with no
 directory yet is still being rendered or printed; wait, do not re-drop. Do

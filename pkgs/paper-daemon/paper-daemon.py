@@ -15,8 +15,8 @@ this program's, and nobody else's:
               │  lp -t paper-<id>-<ts>, then watch THE PRINTER over IPP
               ├─► printed/<id>/receipt.json   printer says completed AND
               │                               job-impressions-completed == pages
-              └─► failed/<id>/                anything else, with evidence, a
-                                              failed unit and a client notify
+              └─► failed/<id>/                anything else, with evidence and a
+                                              failed unit (the fleet's failure markers)
 
 Drop contract. Write `.<slug>.md.tmp`, then rename to `<slug>.md`. Dotfiles,
 `*.tmp` and subdirectories are ignored (intake/.adopted-2026-09-09/ holds the
@@ -48,6 +48,7 @@ Every external command is found on PATH (the Nix wrapper puts cups,
 poppler-utils and the renderer's closure there), and every path and clock is
 overridable through PAPER_* variables so tests/print/test_paper_daemon.py
 drives the real program against stub lp/lpstat/lpoptions/ipptool/sudo/ssh
+(lpoptions and ssh only to prove they are never called)
 without a sheet of paper.
 
 Usage:
@@ -77,7 +78,8 @@ QUEUE = os.environ.get("PAPER_QUEUE", "Brother_HL_L2445DW")
 DEVICE_URI = os.environ.get("PAPER_DEVICE_URI", "ipp://10.42.0.4:631/ipp/print")
 PPD = Path(os.environ.get("PAPER_PPD", f"/etc/cups/ppd/{QUEUE}.ppd"))
 URF_FILTER = 'cupsFilter2: "image/urf'
-NOTIFY_HOST = os.environ.get("PAPER_NOTIFY_HOST", "tom@10.42.0.16")
+# Problems that belong to the printer, not the queue: no repair of ours helps.
+PRINTER_SIDE = ("printer at ", "printer-state ")
 
 HERE = Path(__file__).resolve().parent
 PRINT_AUTO = Path(os.environ.get("PAPER_PRINT_AUTO", HERE / "scripts" / "print-auto.py"))
@@ -316,27 +318,27 @@ def queue_problems() -> tuple[list[str], dict]:
     if device.stdout.strip() != f"device for {QUEUE}: {DEVICE_URI}":
         problems.append(f"DeviceURI is not the pinned {DEVICE_URI}: {evidence['lpstat_v']!r}")
 
-    # A raw queue (no PPD) has no driver options at all — job 304's shape.
-    options = run(["lpoptions", "-p", QUEUE, "-l"])
-    if options.returncode != 0 or not options.stdout.strip():
-        problems.append("queue has no driver options (raw queue, no PPD)")
-
+    # A raw queue (no PPD) is job 304's shape, read off the PPD file cupsd
+    # itself uses. Not `lpoptions -l`: MEASURED 2026-09-15 it resolves the
+    # queue through Avahi before it fetches the PPD, and the Brother's mDNS
+    # responder goes mute in Deep Sleep (modules/printing.nix). A healthy
+    # queue read as raw, and the repair could not fix a printer's mDNS.
+    #
     # The PPD is 0640 root:lp. Read it directly if we can, else through
-    # sudo -n (tom is NOPASSWD wheel); if neither can read it, the lpoptions
-    # check above still stands and the gap is recorded, not guessed.
+    # sudo -n (tom is NOPASSWD wheel); unreadable either way is a problem.
     ppd_text = None
     try:
         ppd_text = PPD.read_text(errors="replace")
     except FileNotFoundError:
-        problems.append(f"{PPD} is missing")
+        problems.append(f"{PPD} is missing (raw queue, no PPD)")
     except PermissionError:
         viewed = run(["sudo", "-n", "cat", str(PPD)])
         if viewed.returncode == 0:
             ppd_text = viewed.stdout
         elif "No such file" in viewed.stderr:
-            problems.append(f"{PPD} is missing")
+            problems.append(f"{PPD} is missing (raw queue, no PPD)")
         else:
-            evidence["ppd"] = f"unreadable: {viewed.stderr.strip()}"
+            problems.append(f"{PPD} is unreadable: {viewed.stderr.strip()}")
     if ppd_text is not None and URF_FILTER not in ppd_text:
         problems.append(f"{PPD} has no {URF_FILTER}\" filter")
 
@@ -347,8 +349,15 @@ def queue_problems() -> tuple[list[str], dict]:
 
     # Not the stock get-printer-attributes.test: its full dump is invalid
     # JSON from ipptool -j for this printer (see printer-state.test).
-    groups, raw = ipptool_json(DEVICE_URI, str(PRINTER_TEST))
-    printer = next((g for g in groups if "printer-state" in g), None)
+    # An IPP connect wakes the Brother from Deep Sleep, but not always on the
+    # first probe, so keep asking for a bounded while before calling it gone.
+    deadline = time.monotonic() + env_float("PAPER_WAKE_SECONDS", 90)
+    while True:
+        groups, raw = ipptool_json(DEVICE_URI, str(PRINTER_TEST))
+        printer = next((g for g in groups if "printer-state" in g), None)
+        if printer is not None or time.monotonic() >= deadline:
+            break
+        time.sleep(env_float("PAPER_WAKE_INTERVAL", 5))
     if printer is None:
         problems.append(f"printer at {DEVICE_URI} did not answer get-printer-attributes")
         evidence["printer"] = raw[-2000:]
@@ -361,11 +370,18 @@ def queue_problems() -> tuple[list[str], dict]:
 
 
 def ensure_queue(repairs: list) -> list[str]:
-    """Check; on failure re-run the declared ensure-printers once and check
-    again. Returns the problems that remain (empty = healthy)."""
+    """Check; on a queue-side failure re-run the declared ensure-printers once
+    and check again. Returns the problems that remain (empty = healthy).
+
+    Printer-side problems alone (no IPP answer after the wake window, or
+    printer-state stopped) get no repair: ensure-printers restarts cupsd,
+    which can neither wake nor unjam the Brother."""
     problems, evidence = queue_problems()
     if not problems:
         return []
+    if all(p.startswith(PRINTER_SIDE) for p in problems):
+        log("printer unhealthy, no queue repair applies: " + "; ".join(problems))
+        return problems
     log("queue unhealthy, repairing: " + "; ".join(problems))
     cmd = ["sudo", "-n", "systemctl", "restart", "ensure-printers.service"]
     result = run(cmd, timeout=300)
@@ -401,17 +417,6 @@ def printer_job(title: str) -> tuple[dict | None, dict]:
     return None, dumps
 
 
-def notify(summary: str, body: str) -> None:
-    if not NOTIFY_HOST:
-        return
-    remote = ("DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus "
-              f"notify-send -u critical {shlex.quote(summary)} {shlex.quote(body)}")
-    result = run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5",
-                  NOTIFY_HOST, remote], timeout=20)
-    if result.returncode != 0:
-        log(f"client notification failed (rc {result.returncode}): {result.stderr.strip()}")
-
-
 def cancel_cups_job(cups_job: str) -> dict:
     cancel = run(["cancel", cups_job])
     return {"rc": cancel.returncode, "output": (cancel.stdout + cancel.stderr).strip()}
@@ -420,8 +425,8 @@ def cancel_cups_job(cups_job: str) -> dict:
 def crashed(jobdir: Path, what: str) -> bool:
     """An unexpected exception on one job (a malformed decision.json, a full
     disk) must neither strand work/<id>/ with no outcome directory nor abort
-    the rest of the run: it becomes a failed/ entry with the traceback and a
-    client notify, like any other failure. Called from an except block."""
+    the rest of the run: it becomes a failed/ entry with the traceback, like
+    any other failure. Called from an except block."""
     log(f"crashed on {jobdir.name} during {what}:\n{traceback.format_exc()}")
     if not jobdir.exists():
         return False  # it had already reached its outcome directory
@@ -439,7 +444,9 @@ def crashed(jobdir: Path, what: str) -> bool:
 
 
 def fail_job(jobdir: Path, meta: dict, reason: str, extra: dict) -> bool:
-    """Move the job to failed/ with its evidence, notify, and return False."""
+    """Move the job to failed/ with its evidence and return False. The run
+    then exits 1, and the failed paper-daemon.service is what the fleet's
+    user-unit failure watcher surfaces (modules/failure-surfacing.nix)."""
     since = meta.get("submitted_at") or meta.get("dropped_at")
     evidence = dict(extra)
     evidence["reason"] = reason
@@ -452,7 +459,6 @@ def fail_job(jobdir: Path, meta: dict, reason: str, extra: dict) -> bool:
     write_json(jobdir / "failure.json", evidence)
     dest = settle_into(jobdir, "failed")
     log(f"FAILED {dest.name}: {reason} (evidence in {dest})")
-    notify("print failed", f"{dest.name}: {reason}")
     return False
 
 
@@ -465,8 +471,8 @@ def submit(jobdir: Path) -> bool:
 
     remaining = ensure_queue(repairs)
     if remaining:
-        return fail_job(jobdir, meta, "queue unhealthy after one repair: "
-                            + "; ".join(remaining), {"repairs": repairs})
+        prefix = "queue unhealthy after one repair: " if repairs else "printer unhealthy: "
+        return fail_job(jobdir, meta, prefix + "; ".join(remaining), {"repairs": repairs})
     if not isinstance(pages, int) or pages < 1:
         return fail_job(jobdir, meta, f"rendered page count unknown ({pages!r})",
                             {"repairs": repairs})
