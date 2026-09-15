@@ -16,10 +16,11 @@ window-rule {
 }
 
 // Satty: the annotation step bin/screenshot opens after an area or window
-// capture. Floating and focused, so Esc/Enter land on it straight away.
+// capture. Tiled and maximized (Tom, 2026-09-15: not floating), and focused,
+// so Esc/Enter land on it straight away.
 window-rule {
     match app-id="com.gabm.satty"
-    open-floating true
+    open-maximized true
     open-focused true
 }
 
