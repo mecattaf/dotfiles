@@ -927,6 +927,46 @@
                 bash ${./tests/util-01/test-halogen-token-window.sh} | tee $out
             '';
 
+        # A deliberate stop of an inference server is not a failure (FDC-M4).
+        #
+        # `podman run` exits with the CONTAINER's status, so the SIGTERM of
+        # `podman stop` comes back as exit 143 — which systemd counts as a
+        # failure unless told otherwise. On this fleet a failed unit is not just
+        # a red line: the blanket OnFailure= of modules/failure-surfacing.nix
+        # writes a marker into /var/lib/failure-markers that an operator has to
+        # clear, so every `halogen-switch` between the two models left one
+        # behind. Nothing about that is visible from reading either module, and
+        # the units are only ever stopped by hand on a box with no display, so
+        # a regression here would go unnoticed exactly as the last one did.
+        #
+        # Asserted over EVERY podman-halogen* unit the worker declares, not a
+        # written-out list: the alternates are an attrset an operator extends
+        # (hosts/worker/default.nix), and a new model must not be able to join
+        # the fleet without this policy. 137 is asserted absent in the same
+        # breath — a container that is KILLED (the path
+        # --health-on-failure=kill takes on a wedged engine) must stay a
+        # failure, or Restart=on-failure has nothing left to recover from.
+        halogen-unit-policy =
+          let
+            worker = self.nixosConfigurations.worker.config;
+            units = nixpkgs.lib.filterAttrs (
+              name: _: nixpkgs.lib.hasPrefix "podman-halogen" name
+            ) worker.systemd.services;
+            successCodes = unit: nixpkgs.lib.splitString " " (toString unit.serviceConfig.SuccessExitStatus);
+            succeeds = code: unit: builtins.elem code (successCodes unit);
+            declared = builtins.attrValues units;
+          in
+          # The primary and one alternate today; the filter is what keeps this
+          # honest when that changes, so assert it found them both.
+          assert builtins.length declared >= 2;
+          assert units ? podman-halogen;
+          assert builtins.all (succeeds "143") declared;
+          assert builtins.all (unit: !(succeeds "137" unit)) declared;
+          assert builtins.all (unit: unit.serviceConfig.Restart == "on-failure") declared;
+          pkgs.runCommand "halogen-unit-policy" { } ''
+            touch "$out"
+          '';
+
         l8-flash-probe-util-rows =
           pkgs.runCommand "l8-flash-probe-util-rows"
             {
