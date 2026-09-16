@@ -5,6 +5,7 @@
   coreutils,
   curl,
   findutils,
+  gawk,
   git,
   gnugrep,
   gnused,
@@ -38,7 +39,12 @@
 # the wrapper would add nothing and the kit carries the package the wrapper
 # wraps: `pkgs.llm-agents.pi`, the same derivation home/pi.nix names.
 #
-# python3 carries no packages: cubs-helpers.py is stdlib only (json, re).
+# python3 carries pytest, not for cubs-helpers.py (stdlib only) but for the
+# campaign's STDIN-CONTRACT: validation commands are written against a
+# normal PATH and WP7's graders are pytest. gawk for the same reason.
+let
+  python = python3.withPackages (ps: [ ps.pytest ]);
+in
 writeShellApplication {
   name = "cubs-iteration";
   runtimeInputs = [
@@ -46,11 +52,12 @@ writeShellApplication {
     coreutils
     curl
     findutils
+    gawk
     git
     gnugrep
     gnused
     jq
-    python3
+    python
     util-linux # flock
     pi
   ];

@@ -44,6 +44,9 @@
 #       task whose receipt already says pass
 #    1  fail (setup, guard or validation red after the one repair; receipt
 #       "fail")
+#  124  timeout: a Pi process hit its wall-clock budget (receipt "timeout";
+#       not a fail, not fuse fodder; no repair is attempted on a timed-out
+#       first attempt, the budget WAS the point)
 #    2  fuse (third consecutive fail, or the fuse was already blown; receipt
 #       "fuse") — reset by removing <state>/fuse
 #   64  usage
@@ -82,7 +85,8 @@ Environment (only for hand runs and the self-test; the kernel clears it):
   TALLY_USAGE_SOURCE_PATH  where the one usage line lands (the kernel sets it)
 
 Exit codes: 0 pass | 1 fail | 2 fuse | 64 usage | 65 bad stdin | 69 outage |
-            75 lock held | 78 campaign material missing | 143 cancelled
+            75 lock held | 78 campaign material missing | 124 Pi timeout |
+            143 cancelled
 EOF
 }
 
@@ -379,6 +383,19 @@ touched_files() {
     git -C "$WORKTREE" ls-files --others --exclude-standard 2>/dev/null
   } | sort -u
 }
+# Untracked, non-ignored files outside allowed_paths + new_files at close:
+# the guard fails on them; the receipt lists them so the review sees what
+# the model tried to create.
+stray_files() {
+  # exactly ONE JSON array, always: the guard exits 1 on any violation (a stray,
+  # or "empty diff" when nothing is untracked), which under pipefail made the
+  # old `|| echo '[]'` append a second value and broke `jq --argjson stray`.
+  local out
+  out="$(git -C "$WORKTREE" ls-files --others --exclude-standard 2>/dev/null \
+    | (cd "$WORKTREE" && python3 "$CUBS_HELPERS" guard "$REPO" "$ALLOWED_JSON" "$REPO_DIR") 2>/dev/null \
+    | jq -c '.stray // []' 2>/dev/null)" || true
+  printf '%s' "${out:-[]}"
+}
 allowed_files() {
   # from the worktree: the helper compares relative paths against upstream.
   touched_files | (cd "$WORKTREE" && python3 "$CUBS_HELPERS" guard "$REPO" "$ALLOWED_JSON" "$REPO_DIR") 2>/dev/null \
@@ -423,6 +440,8 @@ write_receipt() {
     diff_sha="$(diff_now)"
   fi
   sessions="$(printf '%s' "$ATTEMPTS_JSON" | jq -c '[.[].session]')"
+  local stray='[]'
+  if [ -n "$BASE_SHA" ] && [ -e "$WORKTREE/.git" ]; then stray="$(stray_files)"; fi
   printf '%s\n' "$ATTEMPTS_JSON" | jq . >"$ATTEMPTS_FILE.tmp" && mv -f "$ATTEMPTS_FILE.tmp" "$ATTEMPTS_FILE"
   local tmp="$RECEIPT.tmp"
   jq -n \
@@ -437,7 +456,7 @@ write_receipt() {
     --arg status "$status" --argjson wall "$wall" \
     --argjson prior "$PRIOR_P_PASS" --argjson predicted "$PREDICTED_FAILURE" \
     --arg notes "$NOTES" \
-    --arg execution_id "$EXECUTION_ID" \
+    --arg execution_id "$EXECUTION_ID" --argjson stray "$stray" --arg attempts_path "$ATTEMPTS_FILE" \
     --arg started "$STARTED_AT" --arg finished "$finished" --argjson code "$code" \
     '{
       schema_version: 1,
@@ -450,6 +469,11 @@ write_receipt() {
       is_error_count: ([$attempts[].events.tool_errors // 0] | add // 0),
       repeated_identical_calls: ([$attempts[].events.repeated_identical_calls // 0] | add // 0),
       tool_call_names: ([$attempts[].events.tools_by_name // {}] | reduce .[] as $h ({}; . as $acc | $h | to_entries | reduce .[] as $e ($acc; .[$e.key] = ((.[$e.key] // 0) + $e.value)))),
+      bash_call_count: ([$attempts[].events.tools_by_name.bash // 0] | add // 0),
+      stray_files: $stray,
+      reasoning_tokens: (if ([$attempts[].events.usage.reasoning_tokens | select(. != null)] | length) > 0
+                         then ([$attempts[].events.usage.reasoning_tokens // 0] | add) else null end),
+      attempts_path: $attempts_path,
       usage: {
         prompt_tokens: ([$attempts[].events.usage.prompt_tokens // 0] | add // 0),
         completion_tokens: ([$attempts[].events.usage.completion_tokens // 0] | add // 0),
@@ -792,11 +816,22 @@ if [ "$guard_ok" = 1 ]; then
 fi
 record_attempt a1
 
+# A Pi process that hit its budget: receipt "timeout", exit 124, the fuse
+# untouched, no repair (the budget was the point; the lease has no room for
+# a second 15 min process after a 20 min one anyway).
+timeout_if_pi_expired() {
+  if [ "$LAST_PI_RC" = 124 ]; then
+    NOTES="pi_timeout: attempt $1 exceeded its budget (exit 124)"
+    log "$NOTES"
+    finish timeout 124
+  fi
+}
+
 if [ "$guard_ok" = 1 ] && [ "$val_ok" = 1 ]; then
   pass=1
 else
   pass=0
-  if [ "$LAST_PI_RC" -ne 0 ]; then outage_if_halogen_gone; fi
+  if [ "$LAST_PI_RC" -ne 0 ]; then outage_if_halogen_gone; timeout_if_pi_expired a1; fi
   # ------------------------------------------------------------ the ONE repair
   # A fresh Pi process fed the bundle, the diff and the validation transcript
   # (never the first process's narration), then fail closed.
@@ -836,6 +871,7 @@ else
     pass=1
   elif [ "$LAST_PI_RC" -ne 0 ]; then
     outage_if_halogen_gone
+    timeout_if_pi_expired a2
   fi
 fi
 

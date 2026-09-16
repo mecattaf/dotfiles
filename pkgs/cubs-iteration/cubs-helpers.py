@@ -14,7 +14,7 @@
       every touched file must match allowed_paths + new_files, no spec.md,
       no constitution, a setup copy identical to the upstream checkout is not
       a change, an empty allowed diff fails. Prints {ok, violations, files,
-      changed}; exit 1 on a violation.
+      changed, stray}; exit 1 on a violation.
 """
 import hashlib
 import json
@@ -185,6 +185,7 @@ def guard(repo, allowed_json, upstream=""):
     files = [line.rstrip("\n") for line in sys.stdin if line.strip()]
     violations = []
     changed = []
+    stray = []
     for path in files:
         full = f"{repo}/{path}"
         if os.path.basename(path) == FROZEN_BASENAME:
@@ -198,10 +199,11 @@ def guard(repo, allowed_json, upstream=""):
             continue
         if _same_as_upstream(upstream, path):
             continue
+        stray.append(path)
         violations.append(f"{path}: outside allowed_paths")
     if not violations and not changed:
         violations.append("empty diff: no changed or new file inside allowed_paths")
-    result = {"ok": not violations, "violations": violations, "files": files, "changed": changed}
+    result = {"ok": not violations, "violations": violations, "files": files, "changed": changed, "stray": stray}
     print(json.dumps(result))
     return 0 if not violations else 1
 

@@ -40,8 +40,10 @@ worklist. Termination of a task or a package is a legitimate outcome.
 
 `pkgs/cubs-iteration/` — a `writeShellApplication` (the derivation's
 shellcheck pass is its cheapest oracle) carrying bash, coreutils, curl,
-findutils, git, gnugrep, gnused, jq, python3 (stdlib only), util-linux
-(`flock`) and `pkgs.llm-agents.pi`, plus `cubs-helpers.py` (the event-stream
+findutils, gawk, git, gnugrep, gnused, jq, python3 with pytest (the
+campaign's STDIN-CONTRACT: validation commands are written against a normal
+PATH and WP7's graders are pytest), util-linux (`flock`) and
+`pkgs.llm-agents.pi`, plus `cubs-helpers.py` (the event-stream
 summariser and the built-in diff guard). It is the argv of every
 `build:CUBS-<n>` kit entry.
 
@@ -167,11 +169,15 @@ the executable adds:
 | `diff_sha256` | sha256 of the allowed-files diff at commit time; null when empty |
 | `commit_sha` | the one commit on the task branch, or null |
 | `validation.{cmd, exit, transcript_digest, seconds, transcript_path, guard_exit}` | the last validation run and the guard's exit |
-| `repair_count` 0 or 1, `terminal_status` pending/pass/fail/outage/fuse/cancelled, `wall_seconds` | the run |
+| `repair_count` 0 or 1, `terminal_status` pending/pass/fail/timeout/outage/fuse/cancelled, `wall_seconds` | the run |
 | `prior_p_pass`, `predicted_failure` | copied from the worklist line |
 | `observed_failure_mode` | null: the morning review's cell |
 | `notes` | the executable's mechanical reading (`diff_guard: …`, `validation_failed (exit N)`, `outage_before_start`, `fuse_blown_before_start`, `cancelled …`) |
 | `sessions` | the Pi session ids |
+| `bash_call_count` | `bash` tool calls summed over both Pi processes |
+| `stray_files` | untracked, non-ignored files outside allowed_paths + new_files at close (the guard fails on them; listed so the review sees what the model tried to create) |
+| `reasoning_tokens` | top-level mirror of `usage.reasoning_tokens` for the ledger |
+| `attempts_path` | `tasks/<id>/attempts.json` |
 | `execution_id`, `exit_code` | ADDED: the kernel's `TALLY_EXECUTION_ID`; the exit the receipt describes |
 
 Per-attempt detail (events summary, guard, validation per attempt) is in
@@ -187,6 +193,7 @@ names the execution back (the LOCAL-SMOKE join, over a real run).
 |---|---|---|---|
 | 0 | pass, or an idempotent no-op on a passed task | `pass` | reset to 0 |
 | 1 | fail: setup, guard or validation red after the one repair | `fail` | +1 |
+| 124 | a Pi process hit its wall-clock budget (1200 s first attempt, 900 s repair); no repair is attempted after a timed-out first attempt | `timeout` | unchanged |
 | 2 | fuse: the third consecutive fail, or the fuse already blown | `fuse` | +1 / unchanged |
 | 64 | usage | none | — |
 | 65 | the stdin JSON or worklist line is malformed | none | — |

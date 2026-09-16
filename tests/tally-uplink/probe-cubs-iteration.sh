@@ -31,6 +31,10 @@
 #   C8  SIGTERM (the lease's rail): with Pi mid-run, TERM -> rc 143 inside
 #       25 s, receipt cancelled, the WIP committed on the task branch; the
 #       retry reuses the worktree and base and passes.
+#   C8b THE RECEIPT SCHEMA: a tracked-file-only edit (nothing untracked) and a
+#       stray untracked file both leave a TERMINAL receipt (not pending) with
+#       stray_files a single JSON array, and each validates against the
+#       campaign's tools/receipt.schema.json (stdlib validator, below).
 #   C9  the events summariser: usage summed over message_end, tool counts,
 #       isError, repeated identical calls, from the stub's stream.
 #   C10 THE KIT: the pinned lake's own readKit resolves build:CUBS-1..40 and
@@ -89,11 +93,11 @@ mkrepo() { # name, file, content
 mkrepo demo src/hello.txt "placeholder"
 mkrepo spec specs/D01/spec.md "# D01 frozen"
 
-for t in T1 T2 T3 T4 T5 T6 T7 T8 T9; do printf '# bundle %s\n\nDo the task. Validation: see worklist.\n' "$t" >"$campaign/bundles/$t.md"; done
+for t in T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 CUBS-90 CUBS-91; do printf '# bundle %s\n\nDo the task. Validation: see worklist.\n' "$t" >"$campaign/bundles/$t.md"; done
 wl="$campaign/worklists/current.jsonl"
-task_line() { # id repo validation_cmd allowed
-  jq -cn --arg id "$1" --arg repo "$2" --arg v "$3" --argjson allowed "$4" --arg b "$campaign/bundles/$1.md" \
-    '{id: $id, package: "WP-stub", title: ("stub task " + $id), repo: $repo, bundle_path: $b, validation_cmd: $v,
+task_line() { # id repo validation_cmd allowed [package]
+  jq -cn --arg id "$1" --arg repo "$2" --arg v "$3" --argjson allowed "$4" --arg b "$campaign/bundles/$1.md" --arg pkg "${5:-WP-stub}" \
+    '{id: $id, package: $pkg, title: ("stub task " + $id), repo: $repo, bundle_path: $b, validation_cmd: $v,
       allowed_paths: $allowed, new_files: [], thinking: "low", prior_p_pass: 0.5, predicted_failure: "none"}'
 }
 {
@@ -106,6 +110,10 @@ task_line() { # id repo validation_cmd allowed
   task_line T7 demo 'grep -q hello src/hello.txt' '["src/**"]'
   task_line T8 demo 'true' '["src/**"]'
   task_line T9 demo 'grep -q hello src/hello.txt' '["src/**"]'
+  task_line T10 demo 'grep -q hello src/hello.txt' '["src/**"]'
+  task_line T11 demo 'true' '["src/**"]'
+  task_line CUBS-90 demo 'grep -q hello src/hello.txt' '["src/**"]' WP1
+  task_line CUBS-91 demo 'grep -q hello src/hello.txt' '["src/**"]' WP1
 } >"$wl"
 
 # the stub Pi: writes a session file (so the fresh-process rotation is real),
@@ -129,6 +137,8 @@ printf '%s\n' "$(readlink /proc/self/fd/0)" >"$sdir/stdin-of-$sid"
 case "${STUB_PI_ACTION:-edit}" in
   edit) mkdir -p src; printf 'hello\n' >>src/hello.txt ;;
   edit-no-newline) mkdir -p src; printf 'hello' >src/hello.txt ;;
+  edit-plus-stray) mkdir -p src; printf 'hello\n' >>src/hello.txt; printf 'junk\n' >junk.txt ;;
+  sleep) sleep 30 ;;
   edit-spec) printf 'changed\n' >>specs/D01/spec.md ;;
   edit-then-sleep) mkdir -p src; printf 'hello\n' >>src/hello.txt; sleep 60 ;;
   none) : ;;
@@ -206,7 +216,8 @@ fi
 # executable adds (execution_id, exit_code).
 for f in schema_version task package provider model health_version campaign_sha skill_digest bundle_digest \
          worktree_branch tool_calls is_error_count repeated_identical_calls usage diff_sha256 commit_sha validation \
-         repair_count terminal_status wall_seconds prior_p_pass predicted_failure started_at finished_at execution_id exit_code; do
+         repair_count terminal_status wall_seconds prior_p_pass predicted_failure started_at finished_at \
+         bash_call_count stray_files reasoning_tokens attempts_path execution_id exit_code; do
   jq -e --arg f "$f" 'has($f)' "$state/tasks/T1/receipt.json" >/dev/null || bad "C3 receipt lacks required field $f"
 done
 for f in model health_version campaign_sha skill_digest bundle_digest diff_sha256 wall_seconds prior_p_pass predicted_failure; do
@@ -219,7 +230,8 @@ case "$(receipt T1 .skill_digest)" in sha256:???????????????????????????????????
 [ "$(receipt T1 .model)" = halogen-qwen3.8-flash-next ] && ok "C3 model read from /v1/models" || bad "C3 model $(receipt T1 .model)"
 [ "$(cat "$state/sessions/stdin-of-T1-a1")" = /dev/null ] && ok "C3 Pi's stdin is /dev/null" || bad "C3 Pi stdin was $(cat "$state/sessions/stdin-of-T1-a1")"
 [ -e "$state/sessions/settings-of-T1-a1" ] && ok "C3 PI_CODING_AGENT_DIR carries settings.json" || bad "C3 settings.json not reachable from PI_CODING_AGENT_DIR"
-[ "$(receipt T1 '.tool_call_names.bash')" = 1 ] && ok "C3 bash calls counted in tool_call_names" || bad "C3 tool_call_names $(receipt T1 -c .tool_call_names)"
+[ "$(receipt T1 '.tool_call_names.bash')" = 1 ] && [ "$(receipt T1 .bash_call_count)" = 1 ] && ok "C3 bash calls counted (tool_call_names.bash, bash_call_count)" || bad "C3 bash count $(receipt T1 .bash_call_count)"
+[ "$(receipt T1 '.stray_files | length')" = 0 ] && ok "C3 stray_files empty on a clean pass" || bad "C3 stray_files $(receipt T1 .stray_files)"
 a1_before="$(stat -c %Y "$state/logs/T1-a1.jsonl")"
 sleep 1
 STUB_PI_ACTION=none run T1; rc=$?
@@ -267,11 +279,30 @@ fi
 [ "$(receipt T5 .validation.exit)" = null ] && [ "$(receipt T5 .validation.guard_exit)" = 1 ] && ok "C6 validation never ran behind a red guard (exit null, guard_exit 1)" || bad "C6 validation $(receipt T5 .validation)"
 
 # ---- C6b: the trailing-newline gate.
+rm -f "$state/fuse"  # each guard clause stands alone: three in a row would blow the fuse
 STUB_PI_ACTION=edit-no-newline run T9; rc=$?
 if [ "$rc" = 1 ] && receipt T9 .notes | grep -q 'no trailing newline'; then
   ok "C6 a touched file without a final newline fails the gate: $(receipt T9 .notes)"
 else
   bad "C6 newline gate rc $rc: $(receipt T9 .notes)"
+fi
+
+# ---- C6c: stray files are listed, and the guard fails on them.
+rm -f "$state/fuse"  # each guard clause stands alone: three in a row would blow the fuse
+STUB_PI_ACTION=edit-plus-stray run T10; rc=$?
+if [ "$rc" = 1 ] && [ "$(receipt T10 '.stray_files | join(",")')" = "junk.txt" ] && receipt T10 .notes | grep -q 'junk.txt: outside allowed_paths'; then
+  ok "C6 stray untracked file fails the guard and is listed: $(receipt T10 -c .stray_files 2>/dev/null || receipt T10 '.stray_files | join(",")')"
+else
+  bad "C6 stray rc $rc stray_files=$(receipt T10 '.stray_files | join(",")') notes=$(receipt T10 .notes)"
+fi
+
+# ---- C6d: a Pi process that hits its budget is "timeout", not fail, not fuse.
+fuse_before="$(cat "$state/fuse")"
+STUB_PI_ACTION=sleep run T11 CUBS_PI_TIMEOUT=2; rc=$?
+if [ "$rc" = 124 ] && [ "$(receipt T11 .terminal_status)" = timeout ] && [ "$(cat "$state/fuse")" = "$fuse_before" ] && [ ! -e "$state/logs/T11-a2.jsonl" ]; then
+  ok "C6 Pi over budget -> rc 124, receipt timeout, fuse untouched ($fuse_before), no repair"
+else
+  bad "C6 timeout rc $rc status $(receipt T11 .terminal_status) fuse $(cat "$state/fuse")"
 fi
 
 # ---- C7: outage.
@@ -309,6 +340,67 @@ else
   bad "C8 retry rc $rc session $(receipt T6 '.sessions[0]') parent $(git -C "$agency/demo" rev-parse "campaign/cubs-halogen-probe-1/T6~1")"
 fi
 [ "$(git -C "$agency/demo" for-each-ref 'refs/cubs-wip/T6/' | wc -l)" -ge 1 ] && ok "C8 the WIP stays reachable under refs/cubs-wip/T6/" || bad "C8 refs/cubs-wip"
+
+# ---- C8b: terminal receipts validate against the campaign's receipt schema.
+schema="${CUBS_RECEIPT_SCHEMA:-/home/tom/mecattaf/cubs-campaign/tools/receipt.schema.json}"
+validate_receipt() { # receipt.json -> rc 0 valid; prints the violations otherwise
+  python3 - "$schema" "$1" <<'PY'
+import json, re, sys
+schema = json.load(open(sys.argv[1])); doc = json.load(open(sys.argv[2])); errs = []
+TYPES = {"object": dict, "array": list, "string": str, "boolean": bool, "null": type(None)}
+def is_type(v, t):
+    if t == "integer": return isinstance(v, int) and not isinstance(v, bool)
+    if t == "number": return isinstance(v, (int, float)) and not isinstance(v, bool)
+    return isinstance(v, TYPES[t])
+def check(s, v, path):
+    if "type" in s:
+        ts = s["type"] if isinstance(s["type"], list) else [s["type"]]
+        if not any(is_type(v, t) for t in ts): errs.append(f"{path}: type {type(v).__name__} not in {ts}"); return
+    if "const" in s and v != s["const"]: errs.append(f"{path}: != const {s['const']!r}")
+    if "enum" in s and v not in s["enum"]: errs.append(f"{path}: {v!r} not in enum")
+    if isinstance(v, str) and "pattern" in s and not re.search(s["pattern"], v): errs.append(f"{path}: {v!r} !~ {s['pattern']}")
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        if "minimum" in s and v < s["minimum"]: errs.append(f"{path}: {v} < minimum")
+        if "maximum" in s and v > s["maximum"]: errs.append(f"{path}: {v} > maximum")
+    if isinstance(v, dict):
+        for r in s.get("required", []):
+            if r not in v: errs.append(f"{path}: missing required {r}")
+        props = s.get("properties", {}); ap = s.get("additionalProperties", True)
+        for k, x in v.items():
+            if k in props: check(props[k], x, f"{path}.{k}")
+            elif ap is False: errs.append(f"{path}: additional property {k}")
+            elif isinstance(ap, dict): check(ap, x, f"{path}.{k}")
+    if isinstance(v, list) and "items" in s:
+        for i, x in enumerate(v): check(s["items"], x, f"{path}[{i}]")
+check(schema, doc, "$")
+print("; ".join(errs)); sys.exit(1 if errs else 0)
+PY
+}
+if [ -r "$schema" ]; then
+  rm -f "$state/fuse"
+  STUB_PI_ACTION=edit run CUBS-90; rc=$?
+  st="$(receipt CUBS-90 .terminal_status)"
+  if [ "$rc" = 0 ] && [ "$st" = pass ] && [ "$(receipt CUBS-90 '.stray_files | tojson')" = "[]" ] \
+     && [ "$(receipt CUBS-90 .finished_at)" != null ]; then
+    ok "C8b tracked-file-only edit -> rc 0, terminal receipt pass, stray_files []"
+  else
+    bad "C8b tracked-only rc $rc status $st stray $(receipt CUBS-90 '.stray_files | tojson')"
+  fi
+  v="$(validate_receipt "$state/tasks/CUBS-90/receipt.json" 2>&1)" && ok "C8b CUBS-90 receipt validates against receipt.schema.json" || bad "C8b CUBS-90 schema: $v"
+  rm -f "$state/fuse"
+  STUB_PI_ACTION=edit-plus-stray run CUBS-91; rc=$?
+  st="$(receipt CUBS-91 .terminal_status)"
+  if [ "$rc" = 1 ] && [ "$st" = fail ] && [ "$(receipt CUBS-91 '.stray_files | tojson')" = '["junk.txt"]' ] \
+     && [ "$(receipt CUBS-91 .finished_at)" != null ]; then
+    ok "C8b stray untracked file -> rc 1, terminal receipt fail, stray_files [\"junk.txt\"]"
+  else
+    bad "C8b stray rc $rc status $st stray $(receipt CUBS-91 '.stray_files | tojson')"
+  fi
+  v="$(validate_receipt "$state/tasks/CUBS-91/receipt.json" 2>&1)" && ok "C8b CUBS-91 receipt validates against receipt.schema.json" || bad "C8b CUBS-91 schema: $v"
+  rm -f "$state/fuse"
+else
+  bad "C8b cannot read the receipt schema at $schema"
+fi
 
 # ---- C9: the events summariser over the stub's stream.
 ev="$(jq -c '.[0].events' "$state/tasks/T1/attempts.json")"
