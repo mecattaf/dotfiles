@@ -88,7 +88,7 @@ def end_manual():
                 time.sleep(.1)
             else:
                 raise ValueError('Chrome is waiting for confirmation. Resolve its dialog, then End session again.')
-        stop_desktop()
+        stop_desktop(wait_for_chrome=True)
 
 
 def reap_abandoned_task():

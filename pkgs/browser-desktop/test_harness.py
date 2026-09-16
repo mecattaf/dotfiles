@@ -114,6 +114,20 @@ class ChromeMenu(unittest.IsolatedAsyncioTestCase):
 
 
 class SessionCleanup(unittest.TestCase):
+    def test_closed_window_waits_for_browser_exit_before_stopping_display(self):
+        with tempfile.TemporaryDirectory() as directory, ExitStack() as stack:
+            root = Path(directory)
+            stack.enter_context(patch.object(session, 'RUNTIME', root))
+            stack.enter_context(patch.object(session, 'MANUAL', root / 'manual'))
+            stack.enter_context(patch.object(session, 'NO_VIEWERS', root / 'idle'))
+            command = stack.enter_context(patch.object(session.subprocess, 'run',
+                side_effect=[SimpleNamespace(stdout='active\n'), SimpleNamespace(stdout=''), None]))
+            delay = stack.enter_context(patch.object(session.time, 'sleep'))
+            session.stop_desktop(wait_for_chrome=True)
+            self.assertEqual(command.call_count, 3)
+            self.assertEqual(command.call_args_list[-1].args[0][2], 'stop')
+            delay.assert_called_once_with(.1)
+
     def test_failed_start_does_not_leave_a_restart_loop(self):
         with tempfile.TemporaryDirectory() as root, patch.object(session, 'RUNTIME', Path(root)), patch.object(session.subprocess, 'run', side_effect=[subprocess.CalledProcessError(1, 'systemctl'), None]) as command:
             with self.assertRaises(subprocess.CalledProcessError):

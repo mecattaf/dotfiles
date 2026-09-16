@@ -25,7 +25,18 @@ def start_desktop(manual=False):
         MANUAL.touch(mode=0o600)
 
 
-def stop_desktop():
+def stop_desktop(wait_for_chrome=False):
+    if wait_for_chrome:
+        # An empty Sway tree only means Chrome unmapped its last window.
+        # Let the browser finish saving its profile before signalling it.
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            states = subprocess.run(['systemctl', '--user', 'show',
+                'browser-chrome-*.service', '--property=ActiveState', '--value'],
+                check=True, capture_output=True, text=True).stdout.splitlines()
+            if not any(state in ('active', 'activating', 'deactivating') for state in states):
+                break
+            time.sleep(.1)
     # Each Chrome launcher unit is PartOf this service, including when a task
     # dies before reaching its own finally block. systemd stops its whole cgroup.
     subprocess.run(['systemctl', '--user', 'stop', 'browser-chrome-*.service', 'browser-desktop.service'], check=True)
@@ -39,6 +50,9 @@ def launch_chrome(data_dir, profile, env, unit=None):
     args = ['systemd-run', '--user', '--collect', '--unit=' + unit,
             '--property=PartOf=browser-desktop.service',
             '--property=After=browser-desktop.service', '--property=TimeoutStopSec=15',
+            # Ask the browser to exit first; killing its renderer/utility
+            # children simultaneously can crash the browser during shutdown.
+            '--property=KillMode=mixed',
             '--setenv=DISPLAY=']
     for name in ('XCURSOR_THEME', 'XCURSOR_SIZE', 'XCURSOR_PATH', 'WAYLAND_DISPLAY',
                  'XDG_CURRENT_DESKTOP', '__EGL_VENDOR_LIBRARY_FILENAMES',
