@@ -20,7 +20,6 @@
 # moves its facts with it:
 #   halogen    services.halogen.enable            → podman-halogen*, /health, /cache
 #   runs       services.tally-kernel.enable       → both Tally planes, IDs only
-#   fara       services.fara-browser-model.enable → the on-demand FARA unit
 #   attention  the Herdr server host (home/herdr.nix gates its unit on
 #              hostName == "coordinator", and so does this module; the
 #              flake's herdr-oom-isolation check pins that shape)
@@ -53,8 +52,7 @@ let
   roles =
     lib.optional (enabled "halogen") "halogen"
     ++ lib.optional (enabled "tally-kernel") "runs"
-    ++ lib.optional (host == "coordinator") "attention"
-    ++ lib.optional (enabled "fara-browser-model") "fara";
+    ++ lib.optional (host == "coordinator") "attention";
 
   profile = {
     name = profileNames.${host} or "unprofiled";

@@ -1507,3 +1507,54 @@ coordinator's wanted set becomes FARA 9B plus its projector, the streaming ASR,
 the Qwen speech rows and the wake words. NAS Library bytes for the retired rows
 leave by the retire runbook, with a separate yes for each deletion; this entry
 changes the declared state only.
+
+2026-09-16, addendum: both Halogen engines on both twins, and the model estate
+cut to what is in use (Tom). Tom: "i want halogen for qwen AND qwen flash … both
+models, on both devices." `modules/strix.nix` now declares the Halogen server
+and its `qwen38-27b` alternate once for the worker and the coordinator, and
+both wanted sets carry `halogen-qwen38-flash-next` and `halogen-qwen38-27b`.
+Default design, Tom's to change: the worker keeps Flash resident from boot and
+stays the fleet's `utility` endpoint (`http://worker:8731`); the coordinator
+declares the same containers with `services.halogen.autoStart = false`, so an
+operator starts either engine with `halogen-switch flash|qwen38-27b` and hands
+the GPU back with the new `halogen-switch off`. The reason is memory: upstream
+sizes Flash as leaving roughly 12 GB free on a 128 GB box, and the coordinator
+is Tom's desktop that also runs Qwen TTS, Parakeet, the 17.6 GB streaming ASR
+and live agent sessions. Its API is admitted on `wlp192s0`, its update-adopt
+defers while a Halogen unit is active, and it carries `amdgpu.gttsize=126976`,
+effective at its next reboot (it already measured 125 GiB of GTT from
+`ttm.pages_limit`, so the engines do not wait on that reboot).
+
+OUT, cumulative with the entry above, and deleted from the NAS Library and the
+twins the same night: every FARA 1.5 model (4B, 9B, 27B and projectors) with its
+consumers — `modules/fara-browser-model.nix`, `pkgs/fara-cli.nix` (and its
+`browserbase` dependency), the `fara-browser` agent loop in
+`pkgs/browser-desktop` and the house `fara-browser` skill; the noVNC browser
+desktop, its Chrome menu and `chrome-stream` stay. Every Qwen3-VL row
+(instruct, projectors, and the VL embedder). The GGUF Qwen3.6-35B-A3B,
+Qwen3.6-27B and Qwen3.8-27B (`halogen-qwen38-27b` stays). DeepSeek/DS4, GLM,
+flashnext (incl. `flashnext-fp8`, `qwen38-flash-next-fp8`), Flash-Next in other
+formats (`qwen38-flash-next-ud-iq3-xxs`, the ciru IU4 reference), every Gemma
+(supergemma included), Ornith, Muse Glimmer, `qwen3-coder-next`, the FLM NPU
+models, the sherpa-onnx keyword-spotting research model (openWakeWord stays),
+every VibeVoice except `vibevoice-asr-streaming-7b-bf16`, and every Qwen TTS
+variant except production (`qwen3-tts-1.7b-base-q8-0`,
+`qwen3-tts-tokenizer-f32`, `qwen-k2so-midway-b`): VoiceDesign, CustomVoice
+BF16/Q8, the three K-2SO CustomVoice experiments, 1.7B BF16, 0.6B and khimaros
+(`pkgs/qwen3-tts-khimaros.nix` leaves the flake with it). Their research
+manifests leave `tools/`. The catalogue is now thirteen rows. Kept on the NAS:
+both Halogen bundles, the streaming 7B ASR, the three production Qwen speech
+rows, Parakeet, both openWakeWord rows, the three Mage rows and
+`qwen3-embedding-8b-q8-0`. Left undecided and untouched:
+`qwen38-flash-next-mtp-q8-0`, `qwen38-flash-next-mtp-shared-q8-0`,
+`qwen38-27b-dflash2`, and the `models/research` and `models/acquisitions`
+trees.
+
+The K-2SO voice cannot be re-downloaded. Before any deletion it got a second
+copy, sha256-verified against `lib/speech-intake-models.json`, at
+`/mnt/nas/documents/voice-references/qwen-k2so-midway-b/` (with `SHA256SUMS`
+and a README): the documents subvolume is btrbk-snapshotted and in the LaCie
+loop. The `models` tree is in that loop too, but a mirror propagates deletions,
+so it was not counted as a second copy. The deletions are receipted, one line
+per artifact, in `/mnt/nas/models/weights/RETIRED-2026-09-16.tsv`;
+`docs/nas/model-archive.md` now opens with the Library-era runbook. Refs #397.

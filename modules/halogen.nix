@@ -4,16 +4,18 @@
   pkgs,
   ...
 }:
-# Halogen Flash — the fleet's one inference server.
+# Halogen Flash — the fleet's language-model server, declared on both twins.
 #
 # Qwen3.8-Flash-Next served by Peonist's closed-source engine
 # (ghcr.io/peonist-ai/halogen-flash-server), built for gfx1151 and nothing
 # else. It is an OCI image and only an OCI image: the ROCm 7.14 userland is
 # bundled inside it, so the host contributes exactly the amdgpu driver,
-# /dev/kfd, /dev/dri and a directory of weights. There is no model catalogue,
-# no swapping and no second model — the engine holds the box (~116 GiB of
-# mlocked weights plus a reserved KV pool) for the life of the process, which
-# is why it runs on the worker alone and the coordinator only dials it.
+# /dev/kfd, /dev/dri and a directory of weights. There is no model catalogue
+# and no hot swapping — the engine holds the box (~68 GiB of locked weights
+# plus a reserved KV pool) for the life of the process. The worker keeps it
+# resident from boot and is the fleet's `utility` endpoint; the coordinator
+# declares the same server with autoStart = false (Tom, 2026-09-16), because a
+# resident model there would starve the desktop, TTS and diarization.
 #
 # Launch shape now tracks UPSTREAM'S OWN docker-compose.yml, not
 # kyuz0/ai-toolbox-cockpit, which is where it came from originally. Cockpit is
@@ -155,27 +157,31 @@ let
   unitOf =
     name: if name == "flash" then "podman-halogen.service" else "podman-halogen-${name}.service";
   allUnits = map unitOf ([ "flash" ] ++ alternateNames);
-  # One resident model at a time: the operator's switch between them.
+  # One resident model at a time: the operator's switch between them. `off`
+  # stops every Halogen unit, which is how an on-demand host (autoStart =
+  # false) hands its GPU back.
   halogenSwitch = pkgs.writeShellApplication {
     name = "halogen-switch";
     runtimeInputs = [ pkgs.systemd ];
     text = ''
       choice=''${1:-}
       case "$choice" in
-        ${lib.concatMapStringsSep " | " (n: "${n}") ([ "flash" ] ++ alternateNames)}) ;;
+        ${lib.concatMapStringsSep " | " (n: "${n}") ([ "flash" ] ++ alternateNames ++ [ "off" ])}) ;;
         *)
-          echo "usage: halogen-switch <${lib.concatStringsSep "|" ([ "flash" ] ++ alternateNames)}>" >&2
-          echo "Stops whichever Halogen server is resident and starts the named one (a cold load: minutes)." >&2
+          echo "usage: halogen-switch <${lib.concatStringsSep "|" ([ "flash" ] ++ alternateNames ++ [ "off" ])}>" >&2
+          echo "Stops whichever Halogen server is resident and starts the named one (a cold load: minutes); off stops them all." >&2
           exit 64
           ;;
       esac
       case "$choice" in
         flash) unit=podman-halogen.service ;;
+        off) unit= ;;
         *) unit="podman-halogen-$choice.service" ;;
       esac
       for u in ${lib.escapeShellArgs allUnits}; do
         [ "$u" = "$unit" ] || systemctl stop "$u"
       done
+      [ -n "$unit" ] || exit 0
       systemctl start "$unit"
       systemctl --no-pager status "$unit" | head -5
     '';
@@ -195,6 +201,16 @@ in
 {
   options.services.halogen = {
     enable = lib.mkEnableOption "the Halogen Flash server, as a podman container on this host";
+
+    autoStart = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        Whether the Flash server starts at boot. False declares the server
+        without making it resident: an operator starts it (or an alternate)
+        with `halogen-switch` and releases the GPU with `halogen-switch off`.
+      '';
+    };
 
     image = lib.mkOption {
       type = lib.types.str;
@@ -400,8 +416,8 @@ in
           message = "Every services.halogen.alternates.<name>.artifact must be in this host's services.local-models.artifacts.";
         }
         {
-          assertion = !(cfg.alternates ? flash);
-          message = "services.halogen.alternates may not be named `flash`; that is the primary server.";
+          assertion = !(cfg.alternates ? flash) && !(cfg.alternates ? off);
+          message = "services.halogen.alternates may not be named `flash` (the primary server) or `off` (halogen-switch's stop verb).";
         }
       ];
 
@@ -409,7 +425,7 @@ in
       virtualisation.oci-containers.containers = {
         halogen = {
           image = cfg.image;
-          autoStart = true;
+          inherit (cfg) autoStart;
           volumes = [ "${bundle.directory}:/models:ro" ];
           environment = {
             # Paths and labels: facts about how this bundle is mounted, not
@@ -509,6 +525,13 @@ in
       # These are BOOT parameters: they apply machine-wide at every boot, not
       # while the container runs, and dropping them takes effect on the next
       # reboot, not on the switch that removes them. Verify with /proc/cmdline.
+      #
+      # The coordinator carries this line too since it declares the server
+      # (2026-09-16). Before its first reboot with it, that box already
+      # measured gtt_total 134309523456 bytes (125 GiB) from ttm.pages_limit
+      # alone, so its Halogen units do not wait on that reboot. It has a
+      # display, so the sg_display reasoning above no longer applies fleet-wide
+      # — but sg_display stays out regardless, for the deadlock report.
       boot.kernelParams = [
         "amdgpu.gttsize=126976"
       ];

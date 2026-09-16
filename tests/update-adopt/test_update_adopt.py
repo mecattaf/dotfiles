@@ -623,11 +623,11 @@ class GateTests(unittest.TestCase):
         self.assertEqual(self.gate("halogen-idle").returncode, 2)
 
     def test_units_inactive(self):
-        self.assertEqual(self.gate("units-inactive", "user:tom", "fara-browser-model.service").returncode, 0)
-        self.activate_unit("fara-browser-model.service", "tom")
-        r = self.gate("units-inactive", "user:tom", "browser-desktop.service", "fara-browser-model.service")
+        self.assertEqual(self.gate("units-inactive", "user:tom", "browser-desktop.service").returncode, 0)
+        self.activate_unit("browser-desktop.service", "tom")
+        r = self.gate("units-inactive", "user:tom", "browser-desktop-menu.service", "browser-desktop.service")
         self.assertEqual(r.returncode, 1)
-        self.assertIn("fara-browser-model", r.stdout)
+        self.assertIn("browser-desktop.service", r.stdout)
 
     def test_herdr_agents(self):
         self.assertEqual(self.gate("herdr-agents-idle", "tom").returncode, 0)  # herdr down

@@ -555,6 +555,13 @@ def c_inference(profile: dict) -> dict:
         except (CmdError, ValueError) as exc:
             out["halogen_units"] = unknown(src, str(exc))
         port = profile.get("halogen_port", 8731)
+        units = out["halogen_units"]
+        if units["grade"] == "measured" and "active" not in units["value"].values():
+            # An on-demand host (the coordinator) with every Halogen unit down
+            # is serving nothing by design, not failing to answer.
+            for name in ("health", "cache"):
+                out[name] = by_design(src, "no Halogen unit is active; start one with halogen-switch")
+            return out
         try:
             h = http_json(f"http://127.0.0.1:{port}/health")
             keep = ("status", "model", "context", "busy", "in_flight", "queued", "slots")
@@ -566,13 +573,6 @@ def c_inference(profile: dict) -> dict:
             out["cache"] = fact({k: c.get(k) for k in ("entries", "bytes", "hits", "misses", "hit_rate")}, f"GET 127.0.0.1:{port}/cache")
         except Exception as exc:  # noqa: BLE001
             out["cache"] = unknown(f"GET 127.0.0.1:{port}/cache", str(exc)[:160])
-    if "fara" in roles:
-        src = "systemctl --user show fara-browser-model"
-        try:
-            s = systemctl_show(["fara-browser-model.service"], ["ActiveState"], user=True)
-            out["fara_browser_model"] = fact((s.get("fara-browser-model.service") or {}).get("ActiveState"), src)
-        except CmdError as exc:
-            out["fara_browser_model"] = unknown(src, str(exc))
     if not out:
         out["server"] = by_design("profile roles", f"profile {profile.get('name')} serves no model")
     return out
@@ -1159,8 +1159,6 @@ def render_node(n: dict, color: bool) -> list[str]:
         units = F("inference", "halogen_units")
         if units["grade"] == "measured":
             lines[-1] += "  " + " ".join(f"{k.replace('.service', '')}={v}" for k, v in units["value"].items())
-    if F.has("inference", "fara_browser_model"):
-        lines.append(f"  inference fara-browser-model {val(F('inference', 'fara_browser_model'))}")
 
     if F.has("runs", "kernel_unit"):
         kl = F("runs", "kernel_leases")

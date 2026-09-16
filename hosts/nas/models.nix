@@ -12,8 +12,9 @@
 #
 #   models/weights  the forever collection — every LLM Tom downloads, kept,
 #                   laid out /weights/<artifactId>/<file> mirroring the
-#                   catalog. Includes the retired/unreproducible trees that
-#                   were the original ws4 archive (models/flm/…).
+#                   catalog. Retired rows leave by the runbook in
+#                   docs/nas/model-archive.md, with a receipt in
+#                   weights/RETIRED-<date>.tsv.
 #
 # THE FLOW (2026-08-21, decisive — same-day v2 of this header): "model
 # weights are static items, like a large pdf doc that we read." They are

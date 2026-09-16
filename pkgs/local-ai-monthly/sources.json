@@ -34,24 +34,21 @@
         "name": "coordinator",
         "hardware": "AMD Ryzen AI MAX+ 395, Radeon 8060S gfx1151, 128 GiB unified RAM",
         "policy": "NPU decommissioned 2026-08-29; IOMMU off (amd_iommu=off)",
-        "roles": ["Tally coordinator", "Pi harness", "VibeVoice ASR", "by-hand llama-server loans", "Git and PR mechanics"]
+        "roles": ["Tally coordinator", "Pi harness", "VibeVoice-ASR-Streaming-7B diarization", "Qwen TTS", "on-demand Halogen Flash / Qwen3.8-27B (halogen-switch)", "Git and PR mechanics"]
       },
       {
         "name": "worker",
         "hardware": "AMD Ryzen AI MAX+ 395, Radeon 8060S gfx1151, 128 GiB unified RAM",
         "policy": "Wired LAN only (enp191s0, static 10.42.0.5) in another room; no wifi, no compositor, no VNC",
-        "roles": ["Halogen Flash server (http://worker:8731)"]
+        "roles": ["Halogen Flash server (http://worker:8731), Qwen3.8-27B alternate via halogen-switch"]
       }
     ],
-    "runtime_policy": "Every local LLM call goes through the Halogen Flash server on the worker (http://worker:8731); small GGUF models are Library artifacts served by hand; stable diffusion is outside this route.",
+    "runtime_policy": "Every automated local LLM call goes through the Halogen Flash server on the worker (http://worker:8731); the coordinator declares the same Halogen engines for operator-started use only; stable diffusion is outside this route.",
     "change_policy": "The monthly workflow proposes catalog and source-pin changes only. It never downloads, installs, removes, or activates models."
   },
   "model_selection_policy": {
-    "summary": "The fleet is mono-model: Halogen Flash (halogen-qwen3.8-flash-next) on the worker answers every LLM call; the only other LLM weights kept are a short list of small Library artifacts an operator serves by hand.",
-    "kept_small_artifacts": [
-      "fara15-9b-q8-0",
-      "fara15-9b-mmproj-bf16"
-    ]
+    "summary": "The fleet's language models are the two Halogen engines (halogen-qwen3.8-flash-next and halogen-qwen3.8-27b), declared on both twins, with Flash resident on the worker. No small GGUF LLM is kept (Tom, 2026-09-16).",
+    "kept_small_artifacts": []
   },
   "llm_agents_allowlist": [
     "claude-code",

@@ -6,7 +6,6 @@ final: prev: {
   speech-wake = final.callPackage ../pkgs/speech-wake { };
   qwen-speech = final.callPackage ../pkgs/qwen-speech { };
   speech-listening-cue = final.callPackage ../pkgs/speech-listening-cue { };
-  qwen3-tts-khimaros = final.callPackage ../pkgs/qwen3-tts-khimaros.nix { };
   # Add-only overlay + a single scoped upstream override (niri, below).
   # Everything else is already in nixpkgs and referenced directly.
 
@@ -108,11 +107,6 @@ final: prev: {
   # Bounded academic OCR appliance: deterministic PDF mechanics, the tally
   # mutation-ladder driver, and canonical/chunk/embed/index receipt stages.
   academic-ocr = final.callPackage ../pkgs/academic-ocr { };
-
-  # Reference CLI for Microsoft's Fara1.5 computer-use-agent models. Not in
-  # nixpkgs; upstream ships no release tags, so this pins the exact commit
-  # cloned 2026-08-03. See pkgs/fara-cli.nix.
-  fara-cli = final.callPackage ../pkgs/fara-cli.nix { };
 
   # fleet-status (#356): the graded per-host collector and the coordinator's
   # bounded fan-out view. Stdlib Python; modules/fleet-status.nix installs it.

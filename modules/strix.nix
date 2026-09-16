@@ -27,31 +27,83 @@
     ./strix-ai.nix
     # Typed model catalog, guarded store materialization, and host projections.
     ./local-models.nix
-    # The fleet's one inference server (the worker enables it) and the
-    # utility-model client that dials it (the coordinator enables that).
+    # The Halogen server both twins declare (below) and the utility-model
+    # client that dials the worker's (the coordinator enables that).
     ./halogen.nix
   ];
 
   config = {
     # What each twin WANTS on its own NVMe under /var/lib/local-models — the
     # exact set local-models-borrow loans from the NAS Library and
-    # local-models-prune keeps. Nothing here serves a model: the worker's
-    # bundle is served by modules/halogen.nix; on the coordinator FARA is
-    # served on demand by modules/fara-browser-model.nix and the streaming
-    # ASR is loaded per run by call-diarize. The catalogue (lib/local-models.nix)
-    # stays broader than either list — embeddings and Mage rows are loanable on
-    # demand — and the NAS Library keeps every row regardless.
-    services.local-models.artifacts =
-      lib.optionals (config.networking.hostName == "worker") [
-        "halogen-qwen38-flash-next"
-        "halogen-qwen38-27b"
-      ]
-      ++ lib.optionals (config.networking.hostName == "coordinator") [
-        "fara15-9b-q8-0"
-        "fara15-9b-mmproj-bf16"
-        # The one diarization model (Tom, 2026-09-16), loaded by call-diarize.
-        "vibevoice-asr-streaming-7b-bf16"
-      ];
+    # local-models-prune keeps. Both twins want both Halogen bundles (Tom,
+    # 2026-09-16: "both models, on both devices"), served by modules/halogen.nix
+    # below; the coordinator also wants the streaming ASR, loaded per run by
+    # call-diarize, and its speech rows come from home/speech.nix and
+    # modules/qwen-tts.nix. The catalogue (lib/local-models.nix) stays broader
+    # than either list — the embedder and Mage rows are loanable on demand —
+    # and the NAS Library keeps every row regardless.
+    services.local-models.artifacts = [
+      "halogen-qwen38-flash-next"
+      "halogen-qwen38-27b"
+    ]
+    ++ lib.optionals (config.networking.hostName == "coordinator") [
+      # The one diarization model (Tom, 2026-09-16), loaded by call-diarize.
+      "vibevoice-asr-streaming-7b-bf16"
+    ];
+
+    # ── Halogen on both twins (Tom, 2026-09-16) ────────────────────────────
+    # The same two engines on each box, never resident together on either:
+    # Flash (the primary) and Qwen3.8-27B under halogen-server (the alternate).
+    # modules/halogen.nix has the doctrine; this block is the one declaration
+    # both twins share, so the two cannot drift apart.
+    #
+    # WHERE THEY RUN BY DEFAULT. The worker keeps Flash resident from boot and
+    # is the fleet's `utility` endpoint (http://worker:8731). The coordinator
+    # is Tom's primary desktop and also runs Qwen TTS, Parakeet, the 17.6 GB
+    # streaming ASR and live agent sessions, so nothing starts there at boot:
+    # an operator runs `halogen-switch flash|qwen38-27b` and hands the GPU back
+    # with `halogen-switch off`. Upstream's own sizing note for Flash is
+    # "roughly twelve gigabytes free" on a 128 GB machine.
+    services.halogen = {
+      enable = true;
+      autoStart = config.networking.hostName == "worker";
+      # The worker is wired on enp191s0 (the module default); the coordinator
+      # reaches the house over wifi.
+      lanInterface = if config.networking.hostName == "coordinator" then "wlp192s0" else "enp191s0";
+      # The one serving default this fleet overrides. The image ships 8192,
+      # which bounds REASONING AND CONTENT TOGETHER against a chat template
+      # whose own effort is xhigh: a turn that thinks past the budget returns
+      # finish_reason "length" with EMPTY content and the whole reply stranded
+      # in reasoning_content. Most OpenAI clients do not render that field, and
+      # at least one agent harness reads it as "no assistant message" and
+      # retries — deterministically, at temperature 0, forever. Every client
+      # that dials these servers is agentic (utility-model, pi,
+      # academic-ocr-drain), so that failure is a matter of when.
+      #
+      # 16384 is upstream's own suggested step for agentic traffic and is what
+      # the reporter on upstream #44 runs on the same silicon. The cost is pool
+      # reservation, since a request reserves prompt + budget when admitted:
+      # four slots at 16384 is 65536 of the 524288-position pool before a
+      # single prompt token, which the box has room for many times over.
+      maxTokensDefault = 16384;
+      # Armed 2026-09-13 on the worker, after the binary was verified on the
+      # box rather than assumed from upstream's compose file:
+      #   podman exec halogen ls -l /usr/local/bin/halogen-healthcheck  -> present
+      #   podman exec halogen /usr/local/bin/halogen-healthcheck api    -> exit 0
+      #   podman inspect halogen -> Health.Status healthy, FailingStreak 0
+      # The coordinator runs the same image digest, so the same path holds.
+      # An unhealthy verdict exits the container non-zero, which the unit's
+      # Restart=on-failure recovers from.
+      healthKill = true;
+      # The alternate model: Qwen3.8-27B under halogen-server. Never resident
+      # together with Flash — `halogen-switch qwen38-27b` stops the Flash unit
+      # and starts this one; `halogen-switch flash` goes back.
+      alternates.qwen38-27b = {
+        image = "ghcr.io/peonist-ai/halogen@sha256:1430491c479bee106dbaa3316e5509401546962f26f275ac777dfd1b5397589b";
+        artifact = "halogen-qwen38-27b";
+        modelId = "halogen-qwen3.8-27b";
+      };
+    };
 
     # NPU DECOMMISSIONED 2026-08-29: Tom forgoes the XDNA2 NPU permanently.
     # The nix-amd-ai import stays — its overlay is applied unconditionally and
@@ -89,18 +141,16 @@
     # were freed by explicit `flm remove` (they are not store paths, so nothing
     # about them is GC-reachable), after being rsynced to the NAS.
     #
-    # Weights archived at /mnt/nas/models/weights/flm/. Tom may choose to revive
-    # the NPU on this device specifically for gemma4-it:e4b (Gemma4-E4B-IT-NPU2 —
-    # ad-hoc multimodal utility) and qwen3.6-moe:35b-a3b (Qwen3.6-35B-A3B-NPU2 —
-    # the drain's next OCR engine, OCR-validation still pending) if flm is ever
-    # brought back. Recovery = restore modules/npu-llm.nix from git history and
+    # The NAS archive of those weights (/mnt/nas/models/weights/flm/) was
+    # deleted 2026-09-16 with every Gemma and Qwen3.6 row (Tom's ruling), so a
+    # revival would re-pull rather than restore. Recovery = restore
+    # modules/npu-llm.nix from git history and
     # re-import it above (deleted 2026-08-31 with the appliance tier, #270 —
     # its `services.npu-llm.enable = false` line went with it, since setting an
     # undeclared option fails eval) + uncomment the roster below + flip the
     # enables in hardware.amd-npu above + restore the catalog rows to canonical
     # (their backend value "npu" is retired-only in lib/local-model-backends.nix
-    # and must be re-promoted) + `flm pull`, or restore the trees from the NAS
-    # archive. AGENTS.md rules the NPU must never come back as part of the
+    # and must be re-promoted) + `flm pull`. AGENTS.md rules the NPU must never come back as part of the
     # CURRENT design; this block is the record of what a reversal would restore,
     # not an invitation.
     # services.npu-llm = {

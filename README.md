@@ -20,7 +20,7 @@ hosts/           one module per machine
 home/            home-manager: typed nix (home.nix, nvim.nix) + RAW out-of-store
                  configs (niri KDL, kitty, fish, nvim lua) linked via mkOutOfStoreSymlink
 overlays/ pkgs/  custom packages (mactahoe themes, backlog-md, …)
-docs/local-ai/  the halogen server, the 15-row model catalogue and per-host wanted sets
+docs/local-ai/  the halogen server, the model catalogue and per-host wanted sets
 docs/old/       archival stub indexing retired docs in Git history
 ```
 

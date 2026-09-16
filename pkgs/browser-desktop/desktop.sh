@@ -2,7 +2,6 @@
 umask 077
 runtime="${XDG_RUNTIME_DIR:?}/browser-desktop"
 mkdir -p "$runtime"
-export FARA_BROWSER_RUNTIME="$runtime"
 case "${1:-start}" in
   start)
     exec 9>"$runtime/session.lock"
@@ -31,7 +30,7 @@ EOF
     ;;
   inside)
     # systemd reads this for the portal services. Keep it separate from the
-    # shell-quoted environment used by the browser adapter, and publish it
+    # shell-quoted environment used by the Chrome menu, and publish it
     # before WayVNC readiness allows Chrome to launch.
     printf 'WAYLAND_DISPLAY=%s\nXDG_CURRENT_DESKTOP=sway\nXDG_SESSION_TYPE=wayland\nGDK_BACKEND=wayland\n' \
       "${WAYLAND_DISPLAY:?}" >"$runtime/portal-environment.tmp"

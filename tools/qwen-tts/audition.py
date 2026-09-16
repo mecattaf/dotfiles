@@ -17,20 +17,12 @@ def render(engine, binary, model, codec, text, reference, output, instructions=N
     output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.with_suffix(".txt").write_text(text)
-    if engine == "serveurperso":
-        command = [binary, "--model", model, "--codec", codec, "--lang", "English",
-                   "--seed", "42", "--max-new", "900", "-o", str(output)]
-        if reference:
-            command += ["--ref-wav", str(reference), "--ref-text", str(reference.with_suffix(".txt"))]
-        if instructions:
-            command += ["--instruct", instructions]
-    else:
-        command = [binary, "-m", model, "--vocoder", codec, "-t", text,
-                   "--seed", "42", "--max-tokens", "900", "-l", "en", "-o", str(output)]
-        if reference:
-            command += ["-r", str(reference), "--ref-text", reference.with_suffix(".txt").read_text().strip()]
-        if instructions:
-            command += ["--instructions", instructions]
+    command = [binary, "--model", model, "--codec", codec, "--lang", "English",
+               "--seed", "42", "--max-new", "900", "-o", str(output)]
+    if reference:
+        command += ["--ref-wav", str(reference), "--ref-text", str(reference.with_suffix(".txt"))]
+    if instructions:
+        command += ["--instruct", instructions]
     environment = dict(os.environ, VK_ICD_FILENAMES="/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json")
     started = time.monotonic()
     with output.with_suffix(".log").open("w") as log:
@@ -60,7 +52,7 @@ def render(engine, binary, model, codec, text, reference, output, instructions=N
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--engine", choices=["serveurperso", "khimaros"], required=True)
+    parser.add_argument("--engine", choices=["serveurperso"], required=True)
     parser.add_argument("--binary", required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--codec", required=True)

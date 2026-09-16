@@ -645,7 +645,6 @@
             speech-wake
             speech-session
             parakeet-service
-            qwen3-tts-khimaros
             academic-ocr
             brother-print-text
             call-diarize
@@ -2093,7 +2092,8 @@
           # The separate browser-only Sway desktop is a coordinator user service.
           assert (cfgOf "coordinator").systemd.user.services ? browser-desktop;
           assert (cfgOf "coordinator").systemd.user.services.browser-desktop.wantedBy == [ ];
-          assert (cfgOf "coordinator").systemd.user.services.fara-browser-model.wantedBy == [ ];
+          # FARA is retired (Tom, 2026-09-16): no model unit beside the desktop.
+          assert !((cfgOf "coordinator").systemd.user.services ? fara-browser-model);
           assert builtins.all (h: !((cfgOf h).systemd.user.services ? browser-desktop)) [
             "client"
             "worker"
@@ -2591,9 +2591,9 @@
           assert (profile "coordinator").name == "strix-desk";
           assert
             (profile "coordinator").roles == [
+              "halogen"
               "runs"
               "attention"
-              "fara"
             ];
           assert (profile "worker").name == "strix-inference";
           assert (profile "worker").roles == [ "halogen" ];
@@ -3086,10 +3086,10 @@
           # ── mono-model: the wanted sets, exact ─────────────────────────────
           # Exact lists, not membership tests, so a new hundred-gigabyte row
           # has to be argued for here in writing before it can cost a twin its
-          # disk. The worker wants ONE thing, the Halogen bundle it serves; the
-          # coordinator wants the small GGUFs an operator serves by hand. There
-          # is no `allow` any more: nothing is a deployment, nothing is served
-          # by a roster.
+          # disk. Both twins want the two Halogen bundles they serve (Tom,
+          # 2026-09-16); the coordinator adds the streaming ASR and its speech
+          # rows. There is no `allow` any more: nothing is a deployment,
+          # nothing is served by a roster.
           assert !(worker.services.local-models ? allow);
           assert
             worker.services.local-models.artifacts == [
@@ -3098,8 +3098,8 @@
             ];
           assert
             coordinator.services.local-models.artifacts == [
-              "fara15-9b-q8-0"
-              "fara15-9b-mmproj-bf16"
+              "halogen-qwen38-flash-next"
+              "halogen-qwen38-27b"
               "vibevoice-asr-streaming-7b-bf16"
               "openwakeword-baker-compat-v051"
               "openwakeword-alexa-v051"
@@ -3108,13 +3108,12 @@
               "parakeet-tdt-0.6b-v3-onnx"
               "qwen3-tts-tokenizer-f32"
             ];
-          # The catalogue includes Qwen speech evaluation artifacts; no other top-level
-          # attribute — no deployments, no backend kinds, no utility pointer.
+          # The catalogue is the kept estate after Tom's 2026-09-16 ruling; no
+          # other top-level attribute — no deployments, no backend kinds, no
+          # utility pointer.
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
           assert
             builtins.attrNames localModelCatalog.artifacts == [
-              "fara15-9b-mmproj-bf16"
-              "fara15-9b-q8-0"
               "halogen-qwen38-27b"
               "halogen-qwen38-flash-next"
               "mage-flow-4b-turbo-bf16"
@@ -3126,23 +3125,34 @@
               "qwen-k2so-midway-b"
               "qwen3-embedding-8b-q8-0"
               "qwen3-tts-1.7b-base-q8-0"
-              "qwen3-tts-1.7b-voicedesign-q8-0"
-              "qwen3-tts-khimaros-1.7b-base-q8-0"
-              "qwen3-tts-khimaros-tokenizer-f16"
               "qwen3-tts-tokenizer-f32"
-              "qwen3-vl-embedding-8b-mmproj-f16"
-              "qwen3-vl-embedding-8b-q8-0"
               "vibevoice-asr-streaming-7b-bf16"
             ];
           assert localModelCatalog.artifacts.halogen-qwen38-flash-next.source.layout == "snapshot";
           assert builtins.length localModelCatalog.artifacts.halogen-qwen38-flash-next.source.files == 9;
-          # ── Halogen: one server, on the worker, dialled from the coordinator ─
+          # ── Halogen: declared on both twins, resident on the worker only ───
+          # Tom, 2026-09-16: both engines on both devices. The worker keeps
+          # Flash resident from boot and is the `utility` endpoint; the
+          # coordinator (a desktop that also runs TTS and diarization) starts
+          # either engine only when an operator runs halogen-switch.
           assert worker.services.halogen.enable;
-          assert !coordinator.services.halogen.enable;
+          assert coordinator.services.halogen.enable;
+          assert worker.services.halogen.autoStart;
+          assert !coordinator.services.halogen.autoStart;
+          assert worker.virtualisation.oci-containers.containers.halogen.autoStart;
+          assert !coordinator.virtualisation.oci-containers.containers.halogen.autoStart;
           assert coordinator.services.halogen.client.enable;
           assert !worker.services.halogen.client.enable;
           assert worker.virtualisation.oci-containers.containers ? halogen;
-          assert !(coordinator.virtualisation.oci-containers.containers ? halogen);
+          # One declaration, two hosts: the containers differ only in autoStart.
+          assert
+            removeAttrs worker.virtualisation.oci-containers.containers.halogen [ "autoStart" ]
+            == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen [ "autoStart" ];
+          assert
+            worker.virtualisation.oci-containers.containers.halogen-qwen38-27b
+            == coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b;
+          assert worker.services.halogen.lanInterface == "enp191s0";
+          assert coordinator.services.halogen.lanInterface == "wlp192s0";
           assert nixpkgs.lib.hasPrefix "ghcr.io/peonist-ai/halogen-flash-server@sha256:"
             worker.virtualisation.oci-containers.containers.halogen.image;
           assert
@@ -3169,6 +3179,9 @@
           # never resident together with Flash (mutual Conflicts=), on the same
           # port so clients need not care which one answers.
           assert builtins.attrNames worker.services.halogen.alternates == [ "qwen38-27b" ];
+          assert builtins.attrNames coordinator.services.halogen.alternates == [ "qwen38-27b" ];
+          assert !coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.autoStart;
+          assert coordinator.systemd.services.podman-halogen.conflicts == [ "podman-halogen-qwen38-27b.service" ];
           assert worker.virtualisation.oci-containers.containers ? halogen-qwen38-27b;
           assert !worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.autoStart;
           assert nixpkgs.lib.hasPrefix "ghcr.io/peonist-ai/halogen@sha256:"
@@ -3184,8 +3197,24 @@
                 package: nixpkgs.lib.getName package == "halogen-switch"
               ) worker.environment.systemPackages
             ) == 1;
+          assert
+            builtins.length (
+              nixpkgs.lib.filter (
+                package: nixpkgs.lib.getName package == "halogen-switch"
+              ) coordinator.environment.systemPackages
+            ) == 1;
+          # The GTT size follows the server onto both twins; on the coordinator
+          # it takes effect at its next reboot (Tom's step).
           assert nixpkgs.lib.elem "amdgpu.gttsize=126976" worker.boot.kernelParams;
-          assert !(nixpkgs.lib.elem "amdgpu.gttsize=126976" coordinator.boot.kernelParams);
+          assert nixpkgs.lib.elem "amdgpu.gttsize=126976" coordinator.boot.kernelParams;
+          # A switch on the coordinator waits while an operator-started engine runs.
+          assert
+            builtins.any (
+              gate:
+              gate.name == "halogen-units"
+              && nixpkgs.lib.elem "podman-halogen.service" gate.argv
+              && nixpkgs.lib.elem "podman-halogen-qwen38-27b.service" gate.argv
+            ) coordinator.myUpdateAdopt.gates;
           # The utility-model wrapper lives on the coordinator only.
           assert
             builtins.length (

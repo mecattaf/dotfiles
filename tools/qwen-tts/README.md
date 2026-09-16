@@ -39,7 +39,7 @@ and SHA256s for NAS acquisition and explicit coordinator loans.
 ## Qwen playback build
 
 ```bash
-nix build .#qwentts .#qwen3-tts-khimaros .#qwen-speech
+nix build .#qwentts .#qwen-speech
 nix build .#checks.x86_64-linux.qwen-speech \
   .#checks.x86_64-linux.qwen-speech-topology
 ```

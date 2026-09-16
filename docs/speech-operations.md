@@ -83,8 +83,9 @@ Earlier deployment receipts describe the archive as it existed then; this is the
 current archive. Model weights have separate manifests and canonical Library paths.
 
 Earlier Gemma, VibeVoice, CustomVoice, character and Intel NPU documents record
-experiments, not active architecture. Gemma E4B/12B remain parked for later audio
-research. TTS, ordinary ASR and streaming diarized ASR comparisons are separate.
+experiments, not active architecture. Their model weights were deleted from the
+NAS Library on 2026-09-16 (Tom); VibeVoice-ASR-Streaming-7B is the one kept
+diarization model.
 
 ## Remaining scope (2026-09-15 audit)
 
@@ -103,9 +104,9 @@ than the current 60-second capture bound. Media currently inhibits waking, and
 Shift+F9 recording has an explicit inhibition handshake. These limits are not
 claims about the models' maximum capabilities.
 
-Optional housekeeping: superseded NAS models are retained, not pruned. Gemma
-audio and the separate ordinary/streaming VibeVoice ASR tracks remain research,
-not services awaiting an automatic promotion. Intel NPU waking was evaluated
+Superseded NAS speech models were deleted on 2026-09-16, with a receipt in
+`/mnt/nas/models/weights/RETIRED-2026-09-16.tsv`. The accepted K-2SO voice has a
+second verified copy in `/mnt/nas/documents/voice-references/qwen-k2so-midway-b/`. Intel NPU waking was evaluated
 and CPU Alexa selected. CustomVoice, tone banks and character/personality work
 were explicitly dropped. They are not outstanding implementation commitments.
 

@@ -65,7 +65,6 @@
     ../../modules/browser-desktop.nix
     ../../modules/keyring-autounlock.nix # TPM-sealed keyring unlock at boot, no typing
     ../../modules/handwriting-annotation.nix
-    ../../modules/fara-browser-model.nix
     ../../modules/qwen-tts.nix
     ../../modules/strix.nix
     # TWINS ONLY: kills the stock 127.0.0.2 self-mapping and points both twins'
@@ -93,7 +92,6 @@
   ];
   services.browser-desktop.enable = true;
   services.handwriting-annotation.enable = true;
-  services.fara-browser-model.enable = true;
   services.qwen-tts.enable = true;
 
   # Both stay on their proven pre-migration side until the real HDD and service
@@ -120,8 +118,9 @@
 
   # ── Fleet candidate adoption (#354, 2026-09-13) ─────────────────────────
   # This box runs Tom's live agents, so its gates are the strict set: defer
-  # while any Herdr agent is not idle/done (`herdr agent list`), while FARA's
-  # model or the shared browser desktop is up, while a tally-kernel row has a
+  # while any Herdr agent is not idle/done (`herdr agent list`), while the
+  # shared browser desktop or an operator-started Halogen server is up (a
+  # switch would restart it into a cold load), while a tally-kernel row has a
   # holder (rows.read) or the live tally daemon holds a pool lease, and — in
   # the module — while any nixos-rebuild/switch is running. Herdr itself is
   # never restarted by a switch (home/herdr.nix X-SwitchMethod=keep-old).
@@ -155,9 +154,20 @@
           config.myUpdateAdopt.gatesBin
           "units-inactive"
           "user:tom"
-          "fara-browser-model.service"
           "browser-desktop.service"
         ];
+      }
+      {
+        name = "halogen-units";
+        argv = [
+          config.myUpdateAdopt.gatesBin
+          "units-inactive"
+          "system"
+          "podman-halogen.service"
+        ]
+        ++ map (name: "podman-halogen-${name}.service") (
+          builtins.attrNames config.services.halogen.alternates
+        );
       }
       {
         name = "tally-kernel-leases";
@@ -189,10 +199,11 @@
     ];
   };
 
-  # This box serves no model. The `utility-model` wrapper that /drain and
-  # /print shell out to forwards one request to the worker's Halogen server
-  # (modules/halogen.nix); the small GGUF artifacts loaned here are served by
-  # hand with llama-server when wanted.
+  # Halogen Flash and the Qwen3.8-27B alternate are declared here as on the
+  # worker (modules/strix.nix), but nothing is resident: an operator starts
+  # one with `halogen-switch` and stops it with `halogen-switch off`. The
+  # `utility-model` wrapper that /drain and /print shell out to still forwards
+  # one request to the WORKER's Halogen server (modules/halogen.nix).
   services.halogen.client.enable = true;
   # Flipped post-flash after the zero-TOFU host-key check (2026-07-05): the
   # delivered /etc/ssh/ssh_host_ed25519_key matched mesh-registry.nix, so

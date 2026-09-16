@@ -185,7 +185,6 @@ let
           # existing here.
           artifacts =
             mageArtifacts
-            // (builtins.fromJSON (builtins.readFile ./qwen-tts-evaluation-models.json))
             // (builtins.fromJSON (builtins.readFile ./speech-intake-models.json))
             // {
               "qwen3-tts-1.7b-base-q8-0" = mkSingleFileArtifact {
@@ -199,17 +198,6 @@ let
                 quantization = "Q8_0";
                 notes = "Qwen speech cloning; ServeurpersoCom runtime and matching codec only.";
               };
-              "qwen3-tts-1.7b-voicedesign-q8-0" = mkSingleFileArtifact {
-                maker = "Qwen";
-                hfUrl = "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF";
-                revision = "b7ee2e8c7459c3bea99da23e3d178125a7d1713c";
-                path = "qwen-talker-1.7b-voicedesign-Q8_0.gguf";
-                bytes = 2042833824;
-                oid = "575610ab1ddcca4dca6bd9a64bcd859d93bbad8764f9cab24e1dbc0c51f62276";
-                hash = "sha256-V1YQqx3cyk3Ka9mmS82FnZO7rYdk+cqyTh28DFH2InY=";
-                quantization = "Q8_0";
-                notes = "Offline voice enrollment, not a second resident speech service.";
-              };
               qwen3-tts-tokenizer-f32 = mkSingleFileArtifact {
                 kind = "tokenizer";
                 maker = "Qwen";
@@ -220,37 +208,6 @@ let
                 oid = "b16b95557c7c7340a121757bd6855b9609e1cf4ad3fad0778b89393293ae5f3d";
                 hash = "sha256-sWuVVXx8c0ChIXV71oVblgnhz0rT+tB3i4k5MpOuXz0=";
                 notes = "Matching full-precision codec for ServeurpersoCom Qwen TTS GGUFs.";
-              };
-              fara15-9b-q8-0 = mkSingleFileArtifact {
-                maker = "Microsoft / bartowski";
-                baseCheckpoint = {
-                  url = "https://huggingface.co/microsoft/Fara1.5-9B";
-                  revision = "1a93677cd89d5601bc2ed759791e981f3a520032";
-                };
-                hfUrl = "https://huggingface.co/bartowski/Fara1.5-9B-GGUF";
-                revision = "153cb27ac91d4a2b9391ecf278542e610d040178";
-                path = "Fara1.5-9B-Q8_0.gguf";
-                bytes = 9545983104;
-                oid = "a2e30cca7aec006266308153ae781347505af16baa514bbd4e0e3f4a79ea3a22";
-                hash = "sha256-ouMMynrsAGJmMIFTrngTR1Ba8WuqUUu9Tg4/SnnqOiI=";
-                quantization = "Q8_0";
-                notes = "Q8_0 is an explicit operator choice for the mid-tier browser-computer-use appliance; do not silently down-quantize it.";
-              };
-
-              fara15-9b-mmproj-bf16 = mkSingleFileArtifact {
-                kind = "mmproj";
-                maker = "Microsoft / bartowski";
-                baseCheckpoint = {
-                  url = "https://huggingface.co/microsoft/Fara1.5-9B";
-                  revision = "1a93677cd89d5601bc2ed759791e981f3a520032";
-                };
-                hfUrl = "https://huggingface.co/bartowski/Fara1.5-9B-GGUF";
-                revision = "153cb27ac91d4a2b9391ecf278542e610d040178";
-                path = "mmproj-Fara1.5-9B-bf16.gguf";
-                bytes = 921704992;
-                oid = "42ff0ff38666cefc4b1594a05c1644fe9bfc49edfed587ec551e471e0dd8b61d";
-                hash = "sha256-Qv8P84ZmzvxLFZSgXBZE/pv8Se3+1YfsVR5HHg3Yth0=";
-                notes = "BF16 vision projector paired with the Q8_0 Fara-9B deployment.";
               };
 
               qwen3-embedding-8b-q8-0 = mkSingleFileArtifact {
@@ -267,38 +224,6 @@ let
                 hash = "sha256-0g3cceilxDRPI0NIHiQiM6mX3F6v9EJCepRYNsl7Tes=";
                 quantization = "Q8_0";
                 notes = "High-fidelity embedding companion selected for the 128 GiB coordinator.";
-              };
-
-              qwen3-vl-embedding-8b-q8-0 = mkSingleFileArtifact {
-                maker = "Qwen / mradermacher";
-                baseCheckpoint = {
-                  url = "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B";
-                  revision = "2c4565515e0f265c6511776e7193b22c0968ddc7";
-                };
-                hfUrl = "https://huggingface.co/mradermacher/Qwen3-VL-Embedding-8B-GGUF";
-                revision = "ffa49879fdb91ed1a436fbc84f37b123f714bb13";
-                path = "Qwen3-VL-Embedding-8B.Q8_0.gguf";
-                bytes = 8048295168;
-                oid = "c77299abab613f121ff918f17d085704952b21e986c73a71ec6cdc8a6e43e34b";
-                hash = "sha256-x3KZq6thPxIf+RjxfQhXBJUrIemGxzpx7Gzcim5D40s=";
-                quantization = "Q8_0";
-                notes = "Q8_0 multimodal embedder selected for text, image, screenshot, and video retrieval on the coordinator.";
-              };
-
-              qwen3-vl-embedding-8b-mmproj-f16 = mkSingleFileArtifact {
-                kind = "mmproj";
-                maker = "Qwen / mradermacher";
-                baseCheckpoint = {
-                  url = "https://huggingface.co/Qwen/Qwen3-VL-Embedding-8B";
-                  revision = "2c4565515e0f265c6511776e7193b22c0968ddc7";
-                };
-                hfUrl = "https://huggingface.co/mradermacher/Qwen3-VL-Embedding-8B-GGUF";
-                revision = "ffa49879fdb91ed1a436fbc84f37b123f714bb13";
-                path = "Qwen3-VL-Embedding-8B.mmproj-f16.gguf";
-                bytes = 1159030304;
-                oid = "c507828405f645670c829be93fa57fb890af5b7abbe2583435f4a8042d1f8ba8";
-                hash = "sha256-xQeChAX2RWcMgpvpP6V/uJCvW3q74lg0NfSoBC0fi6g=";
-                notes = "F16 vision projector paired with the Q8_0 multimodal embedding model.";
               };
 
               # ── the one diarization model: VibeVoice-ASR-Streaming-7B ──────

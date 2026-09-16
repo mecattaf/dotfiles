@@ -1,5 +1,41 @@
 # Retiring and restoring a local model
 
+## Current procedure (NAS Library era, 2026-09)
+
+Everything after this section predates the NAS Library (2026-08-21): weights
+are no longer store paths, `services.local-models.allow` no longer exists and
+GC cannot touch them. Where the two disagree, trust this section and the code
+(`hosts/nas/models.nix`, `modules/local-models.nix`,
+`pkgs/local-models-prune.nix`).
+
+A retirement that ends in deleted bytes goes in this order:
+
+1. **Irreplaceable bytes first.** If the artifact (or one still kept beside
+   it) cannot be re-downloaded, make a second sha256-verified copy in a tree
+   that is snapshotted and LaCie-mirrored before any deletion. The `models`
+   tree is in the `lacie-mirror.nix` loop, but a mirror propagates deletions
+   (into `.previous-versions`), so it is not a second copy. The K-2SO voice's
+   copy is `/mnt/nas/documents/voice-references/qwen-k2so-midway-b/`
+   (`SHA256SUMS` beside it; 2026-09-16).
+2. **Dotfiles.** Remove the catalogue row, every wanted-set entry, consumer
+   and assertion; record the ruling in `DECISIONS.md`; merge and deploy. After
+   deploy `/etc/local-models/wanted.json` on each host no longer names it.
+3. **NAS Library.** `library-fetch` never deletes. On the NAS, as root, first
+   append one line per artifact to `/mnt/nas/models/weights/RETIRED-<date>.tsv`
+   (`id`, `bytes`, `date`, `reason`, plus the upstream URL when known), then
+   delete each directory by its explicit name — re-list it first, never a glob,
+   never a computed or possibly empty variable.
+4. **Machines.** On each host, `sudo local-models-prune --dry-run`, check that
+   the plan names only artifacts absent from `wanted.json`, then `--yes`.
+
+Restoring is the reverse: re-add the row and wanted-set entry, let
+`library-fetch` re-download it (a retired row whose upstream is gone is not
+restorable, which is why step 1 exists), then `local-models-borrow`.
+
+Retirement receipts so far: `RETIRED-2026-09-16.tsv` (dotfiles#397).
+
+## Historical procedure (store-path era, #130 workstream 4)
+
 How to take a model out of service without destroying its weights, and how to
 bring it back. Refs [#130](https://github.com/mecattaf/dotfiles/issues/130)
 workstream 4.

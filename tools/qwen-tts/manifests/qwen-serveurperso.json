@@ -12,18 +12,6 @@
     ]
   },
   {
-    "id": "qwen3-tts-1.7b-voicedesign-q8-0",
-    "files": [
-      {
-        "name": "qwen-talker-1.7b-voicedesign-Q8_0.gguf",
-        "path": "qwen-talker-1.7b-voicedesign-Q8_0.gguf",
-        "bytes": 2042833824,
-        "oid": "575610ab1ddcca4dca6bd9a64bcd859d93bbad8764f9cab24e1dbc0c51f62276",
-        "url": "https://huggingface.co/Serveurperso/Qwen3-TTS-GGUF/resolve/b7ee2e8c7459c3bea99da23e3d178125a7d1713c/qwen-talker-1.7b-voicedesign-Q8_0.gguf"
-      }
-    ]
-  },
-  {
     "id": "qwen3-tts-tokenizer-f32",
     "files": [
       {

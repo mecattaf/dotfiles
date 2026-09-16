@@ -193,7 +193,7 @@ class Collector(unittest.TestCase):
         self.assertEqual([m["name"] for m in s["failure_markers"]["markers"]["value"]], ["coredump"])
 
     def test_missing_tools_grade_unknown_never_empty(self):
-        rep = self.run_collect({"name": "strix-desk", "user_manager": True, "roles": ["runs", "attention", "fara", "halogen"], "halogen_port": 1, "mounts": []})
+        rep = self.run_collect({"name": "strix-desk", "user_manager": True, "roles": ["runs", "attention", "halogen"], "halogen_port": 1, "mounts": []})
         self.assertEqual(fs.validate_node_report(rep), [])
         s = rep["sections"]
         # The sandbox has no systemd: every systemd-backed fact must be unknown.
