@@ -1,7 +1,7 @@
 # Coordinator desktop return — 2026-09-16
 
 Tom requested restoring the coordinator as his primary physical desktop with
-both ASUS PA27JCV 5K monitors upright and side by side, retaining the Zenbook
+both LG 5K monitors upright and side by side, retaining the Zenbook
 as a fully capable secondary seat. This supersedes the September 11 headless
 coordinator decision. The laptop has already been unplugged from its TB3 dock.
 
@@ -11,6 +11,8 @@ coordinator decision. The laptop has already been unplugged from its TB3 dock.
   call recorder, Chrome/PWAs, Claude Desktop and ChatGPT packages as the client.
 - Shared Kanshi Desktop profile: DP-4 left at 0,0; DP-1 right at 2560,0;
   both 5120x2880 at 60 Hz, scale 2, normal rotation. Single-output fallbacks.
+  Monitor order is immaterial; Tom will swap DisplayPort cables if needed.
+  Alt+H/L focus left/right monitors; Alt+J/K retain down/up focus.
   Zenbook Duo and DuoDocked profiles unchanged. Actual connector identities,
   left/right order and simultaneous 5K need confirmation after recabling.
 - Dock iContact and Sound Blaster GS3 WirePlumber rules imported on coordinator.

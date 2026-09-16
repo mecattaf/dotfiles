@@ -1,6 +1,6 @@
 **Physical seats (2026-09-16, supersedes older headless/client-only wording below).**
-Tom is returning the coordinator to primary-desktop duty with two upright ASUS
-PA27JCV 5K displays side by side at scale 2. Both coordinator and client have
+Tom is returning the coordinator to primary-desktop duty with two upright LG
+5K displays side by side at scale 2. Both coordinator and client have
 Niri; worker and NAS remain headless. The latest shared desktop suite belongs
 on both seats. Keep the Zenbook's display, keyboard, Huion and remote-projector
 features. The dock's iContact mic and GS3 audio rules apply on either seat.
@@ -10,6 +10,8 @@ Alexa session launch passes its originating seat. Inference stays where it was.
 Physical Niri owns the coordinator portals; the optional headless Sway desktop
 must not own or stop them. Chrome's existing cross-display profile lock remains:
 close that profile's browser normally before using it on the other desktop.
+Alt+H/L focus the left/right monitor; Alt+J/K retain down/up focus.
+Monitor order is immaterial: Tom will swap DisplayPort cables if needed.
 Do not restore physical-session VNC or restart Herdr to enable the desktop.
 
 **Runtime isolation (2026-09-16 incident).** Tests and experiments that source

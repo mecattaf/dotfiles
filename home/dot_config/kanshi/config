@@ -1,5 +1,5 @@
 # Two independent physical seats. Keep the Zenbook profiles unchanged.
-# Coordinator: two upright ASUS 5K displays, side by side, 2x scaling.
+# Coordinator: two upright LG 5K displays, side by side, 2x scaling.
 # Connector assignments retain the previously proven desktop wiring. One-output
 # fallbacks keep the first boot usable while either cable is disconnected.
 profile Desktop {

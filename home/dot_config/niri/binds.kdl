@@ -246,9 +246,11 @@ binds {
     // scroll: bindsym $mod+Alt+l move right monitor
     Mod+Alt+L { move-column-to-monitor-right; }
 
-    // addon: monitor movement (stacked layout)
+    // Monitor focus: horizontal desktop and stacked Zenbook panels.
+    Alt+H { focus-monitor-left; }
     Alt+J { focus-monitor-down; }
     Alt+K { focus-monitor-up; }
+    Alt+L { focus-monitor-right; }
 
 
     // ── Column/Window Sizing ─────────────────────────────────────
