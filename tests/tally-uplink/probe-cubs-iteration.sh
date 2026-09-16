@@ -21,9 +21,16 @@
 #       line; a second invocation is an idempotent rc 0 that runs no Pi.
 #   C4  FAIL + the ONE repair: a1 and a2 event logs, a repair prompt carrying
 #       the diff and the transcript, receipt fail with repair_count 1, fuse 1.
-#   C5  THE FUSE: two more fails -> the third exits 2 with receipt fuse; a
-#       passable task then exits 2 `fuse_blown_before_start`; removing
-#       <state>/fuse lets it pass and resets the count to 0.
+#   C5  THE FUSE, PER PACKAGE: two more fails -> the third exits 2 with receipt
+#       fuse; a passable task of the SAME package then exits 2
+#       `fuse_blown_before_start` with censored true; removing
+#       <state>/fuse.d/<package> lets it pass and resets the count to 0.
+#   C5b THE FUSE IS KEYED BY PACKAGE (cubs-M02): three forced fails in package
+#       WPA blow only WPA -- a fourth WPA item is censored without a Pi
+#       process while a WPB item passes in the same state dir; the master
+#       <state>/fuse then stops WPB too (the RETURN-CHECKLIST (g) procedure)
+#       and removing it lets WPB run again; over every receipt of that state
+#       dir, `jq` counts censored == the items that never ran.
 #   C6  THE GUARD: an edit to spec/**/spec.md fails the task by name even
 #       though the validation command would pass.
 #   C7  OUTAGE: Halogen busy past the deadline -> rc 69, receipt outage, the
@@ -93,7 +100,7 @@ mkrepo() { # name, file, content
 mkrepo demo src/hello.txt "placeholder"
 mkrepo spec specs/D01/spec.md "# D01 frozen"
 
-for t in T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 CUBS-90 CUBS-91; do printf '# bundle %s\n\nDo the task. Validation: see worklist.\n' "$t" >"$campaign/bundles/$t.md"; done
+for t in T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 CUBS-90 CUBS-91 CUBS-92 PA1 PA2 PA3 PA4 PB1 PB2 PB3; do printf '# bundle %s\n\nDo the task. Validation: see worklist.\n' "$t" >"$campaign/bundles/$t.md"; done
 wl="$campaign/worklists/current.jsonl"
 task_line() { # id repo validation_cmd allowed [package]
   jq -cn --arg id "$1" --arg repo "$2" --arg v "$3" --argjson allowed "$4" --arg b "$campaign/bundles/$1.md" --arg pkg "${5:-WP-stub}" \
@@ -114,6 +121,15 @@ task_line() { # id repo validation_cmd allowed [package]
   task_line T11 demo 'true' '["src/**"]'
   task_line CUBS-90 demo 'grep -q hello src/hello.txt' '["src/**"]' WP1
   task_line CUBS-91 demo 'grep -q hello src/hello.txt' '["src/**"]' WP1
+  task_line CUBS-92 demo 'grep -q hello src/hello.txt' '["src/**"]' WP1
+  # C5b: package WPA fails three times, package WPB is passable throughout.
+  task_line PA1 demo 'false' '["src/**"]' WPA
+  task_line PA2 demo 'false' '["src/**"]' WPA
+  task_line PA3 demo 'false' '["src/**"]' WPA
+  task_line PA4 demo 'grep -q hello src/hello.txt' '["src/**"]' WPA
+  task_line PB1 demo 'grep -q hello src/hello.txt' '["src/**"]' WPB
+  task_line PB2 demo 'grep -q hello src/hello.txt' '["src/**"]' WPB
+  task_line PB3 demo 'grep -q hello src/hello.txt' '["src/**"]' WPB
 } >"$wl"
 
 # the stub Pi: writes a session file (so the fresh-process rotation is real),
@@ -169,17 +185,26 @@ HTTP_PID=$!
 for _ in $(seq 1 50); do curl -fsS "http://127.0.0.1:$port/health" >/dev/null 2>&1 && break; sleep 0.1; done
 curl -fsS "http://127.0.0.1:$port/health" >/dev/null 2>&1 || { echo "FAIL: stub halogen did not come up"; exit 2; }
 
+# which state dir run()/receipt()/fusecount address; C5b points them at a
+# state dir of its own so its censored/unrun count is over its receipts alone.
+rstate="$state"
 run() { # id [extra env...]; stdin = the kit's pointer form
   local id="$1"; shift
   jq -cn --arg wl "$wl" --arg id "$id" '{worklist: $wl, id: $id}' \
-    | env -i HOME="$scratch/home" CUBS_CAMPAIGN_DIR="$campaign" CUBS_STATE_DIR="$state" CUBS_AGENCY_ROOT="$agency" \
+    | env -i HOME="$scratch/home" CUBS_CAMPAIGN_DIR="$campaign" CUBS_STATE_DIR="$rstate" CUBS_AGENCY_ROOT="$agency" \
         CUBS_HALOGEN_URL="http://127.0.0.1:$port" CUBS_PI_BIN="$stub_pi" CUBS_HEALTH_INTERVAL=1 CUBS_HEALTH_DEADLINE=3 \
         STUB_PI_ACTION="${STUB_PI_ACTION:-edit}" \
-        TALLY_EXECUTION_ID="exec-$id" TALLY_USAGE_SOURCE_PATH="$state/usage/cubs-$id.jsonl" "$@" \
+        TALLY_EXECUTION_ID="exec-$id" TALLY_USAGE_SOURCE_PATH="$rstate/usage/cubs-$id.jsonl" "$@" \
         "$bin" 2>>"$scratch/stderr.log"
 }
 mkdir -p "$scratch/home"
-receipt() { jq -r "$2" "$state/tasks/$1/receipt.json" 2>/dev/null; }
+receipt() { jq -r "$2" "$rstate/tasks/$1/receipt.json" 2>/dev/null; }
+# the PER-PACKAGE fuse counter, 0 when the file is absent (the script's own
+# reading); $1 package name.
+fusecount() { if [ -r "$rstate/fuse.d/$1" ]; then cat "$rstate/fuse.d/$1"; else echo 0; fi; }
+# every fuse of the current state dir, master and per package: the reset Tom
+# does in the morning review.
+fuse_reset_all() { rm -f "$rstate/fuse"; rm -rf "$rstate/fuse.d"; mkdir -p "$rstate/fuse.d"; }
 
 # ---- C2: the kit's own stdin, env -i, --dry.
 kit="$(nix eval --raw ".#nixosConfigurations.coordinator.config.home-manager.users.tom.services.tally-uplink.kit" 2>/dev/null)"
@@ -210,13 +235,14 @@ if [ "$(wc -l <"$state/usage/cubs-T1.jsonl")" = 1 ] && [ "$(jq -r .execution_id 
 else
   bad "C3 usage line: $(cat "$state/usage/cubs-T1.jsonl" 2>&1)"
 fi
-[ "$(cat "$state/fuse")" = 0 ] && ok "C3 fuse 0" || bad "C3 fuse $(cat "$state/fuse" 2>&1)"
+[ "$(fusecount WP-stub)" = 0 ] && ok "C3 package fuse WP-stub 0 after a pass" || bad "C3 fuse $(fusecount WP-stub)"
+[ ! -e "$state/fuse" ] && ok "C3 the master fuse is never written by the executable" || bad "C3 the executable wrote $state/fuse: $(cat "$state/fuse")"
 [ "$(wc -l <"$state/ledger.jsonl")" = 1 ] && ok "C3 one ledger line" || bad "C3 ledger lines $(wc -l <"$state/ledger.jsonl")"
 # the campaign's tools/receipt.schema.json `required` list, plus the two this
 # executable adds (execution_id, exit_code).
 for f in schema_version task package provider model health_version campaign_sha skill_digest bundle_digest \
          worktree_branch tool_calls is_error_count repeated_identical_calls usage diff_sha256 commit_sha validation \
-         repair_count terminal_status wall_seconds prior_p_pass predicted_failure started_at finished_at \
+         repair_count terminal_status censored wall_seconds prior_p_pass predicted_failure started_at finished_at \
          bash_call_count stray_files reasoning_tokens attempts_path execution_id exit_code; do
   jq -e --arg f "$f" 'has($f)' "$state/tasks/T1/receipt.json" >/dev/null || bad "C3 receipt lacks required field $f"
 done
@@ -224,6 +250,7 @@ for f in model health_version campaign_sha skill_digest bundle_digest diff_sha25
   v="$(receipt T1 ".$f")"; { [ -n "$v" ] && [ "$v" != null ]; } || bad "C3 receipt field $f is empty/null"
 done
 [ "$(receipt T1 .observed_failure_mode)" = null ] && ok "C3 observed_failure_mode left null for the review" || bad "C3 observed_failure_mode"
+[ "$(receipt T1 .censored)" = false ] && ok "C3 censored false on a task that ran" || bad "C3 censored $(receipt T1 .censored)"
 case "$(receipt T1 .skill_digest)" in sha256:????????????????????????????????????????????????????????????????) ok "C3 digests carry the sha256: prefix" ;; *) bad "C3 skill_digest $(receipt T1 .skill_digest)" ;; esac
 [ "$(receipt T1 '.validation.guard_exit')" = 0 ] && ok "C3 validation.guard_exit 0" || bad "C3 guard_exit $(receipt T1 .validation.guard_exit)"
 [ -s "$state/tasks/T1/attempts.json" ] && ok "C3 attempts.json beside the receipt" || bad "C3 attempts.json"
@@ -251,23 +278,84 @@ fi
 [ "$(jq 'length' "$state/tasks/T2/attempts.json")" = 2 ] && ok "C4 two attempts in attempts.json" || bad "C4 attempts"
 [ "$(receipt T2 '.sessions | join(",")')" = "T2-a1,T2-a2" ] && ok "C4 sessions T2-a1,T2-a2" || bad "C4 sessions $(receipt T2 .sessions)"
 [ "$(receipt T2 .validation.exit)" = 1 ] && ok "C4 validation exit 1 recorded" || bad "C4 validation $(receipt T2 .validation)"
-[ "$(cat "$state/fuse")" = 1 ] && ok "C4 fuse 1" || bad "C4 fuse $(cat "$state/fuse")"
+[ "$(fusecount WP-stub)" = 1 ] && ok "C4 package fuse WP-stub 1" || bad "C4 fuse $(fusecount WP-stub)"
 [ "$(receipt T2 .commit_sha)" = null ] && ok "C4 commit_sha null on fail" || bad "C4 commit on fail: $(receipt T2 .commit_sha)"
 
 # ---- C5: the fuse.
 STUB_PI_ACTION=edit run T3; rc=$?
-[ "$rc" = 1 ] && [ "$(cat "$state/fuse")" = 2 ] && ok "C5 T3 rc 1, fuse 2" || bad "C5 T3 rc $rc fuse $(cat "$state/fuse")"
+[ "$rc" = 1 ] && [ "$(fusecount WP-stub)" = 2 ] && ok "C5 T3 rc 1, package fuse 2" || bad "C5 T3 rc $rc fuse $(fusecount WP-stub)"
 STUB_PI_ACTION=edit run T4; rc=$?
 [ "$rc" = 2 ] && [ "$(receipt T4 .terminal_status)" = fuse ] && ok "C5 T4 rc 2, receipt fuse" || bad "C5 T4 rc $rc $(receipt T4 .terminal_status)"
+[ "$(receipt T4 .censored)" = false ] && ok "C5 the task that BLEW the fuse ran, so censored false" || bad "C5 T4 censored $(receipt T4 .censored)"
 STUB_PI_ACTION=edit run T7; rc=$?
-if [ "$rc" = 2 ] && [ "$(receipt T7 .terminal_status)" = fuse ] && receipt T7 .notes | grep -q fuse_blown_before_start && [ ! -e "$state/logs/T7-a1.jsonl" ]; then
-  ok "C5 T7 refused before start (rc 2, no Pi run)"
+if [ "$rc" = 2 ] && [ "$(receipt T7 .terminal_status)" = fuse ] && [ "$(receipt T7 .censored)" = true ] \
+   && receipt T7 .notes | grep -q fuse_blown_before_start && [ ! -e "$state/logs/T7-a1.jsonl" ]; then
+  ok "C5 T7 refused before start (rc 2, censored true, no Pi run)"
 else
-  bad "C5 T7 rc $rc $(receipt T7 .notes)"
+  bad "C5 T7 rc $rc censored $(receipt T7 .censored) $(receipt T7 .notes)"
 fi
-rm -f "$state/fuse"
+fuse_reset_all
 STUB_PI_ACTION=edit run T7; rc=$?
-[ "$rc" = 0 ] && [ "$(cat "$state/fuse")" = 0 ] && [ "$(receipt T7 .terminal_status)" = pass ] && ok "C5 fuse removed -> T7 passes, fuse 0" || bad "C5 after reset rc $rc"
+[ "$rc" = 0 ] && [ "$(fusecount WP-stub)" = 0 ] && [ "$(receipt T7 .terminal_status)" = pass ] && [ "$(receipt T7 .censored)" = false ] && ok "C5 fuse removed -> T7 passes, package fuse 0, censored false" || bad "C5 after reset rc $rc"
+
+# ---- C5b: the fuse is keyed by PACKAGE, in a state dir of its own so the
+# censored/unrun count below is over these receipts alone.
+state2="$scratch/state2"; mkdir -p "$state2"
+rstate="$state2"
+STUB_PI_ACTION=edit run PA1; pa1=$?
+STUB_PI_ACTION=edit run PA2; pa2=$?
+STUB_PI_ACTION=edit run PA3; pa3=$?
+if [ "$pa1" = 1 ] && [ "$pa2" = 1 ] && [ "$pa3" = 2 ] && [ "$(fusecount WPA)" = 3 ] \
+   && [ "$(receipt PA3 .terminal_status)" = fuse ] && [ "$(receipt PA3 .censored)" = false ]; then
+  ok "C5b three forced fails in WPA: rc 1,1,2, fuse.d/WPA 3, the third receipt fuse and censored false"
+else
+  bad "C5b WPA fails rc $pa1,$pa2,$pa3 fuse $(fusecount WPA) status $(receipt PA3 .terminal_status) censored $(receipt PA3 .censored)"
+fi
+STUB_PI_ACTION=edit run PA4; rc=$?
+if [ "$rc" = 2 ] && [ "$(receipt PA4 .terminal_status)" = fuse ] && [ "$(receipt PA4 .censored)" = true ] \
+   && [ ! -e "$state2/logs/PA4-a1.jsonl" ]; then
+  ok "C5b a later WPA item is censored without a Pi process (rc 2, censored true)"
+else
+  bad "C5b PA4 rc $rc status $(receipt PA4 .terminal_status) censored $(receipt PA4 .censored)"
+fi
+STUB_PI_ACTION=edit run PB1; rc=$?
+if [ "$rc" = 0 ] && [ "$(receipt PB1 .terminal_status)" = pass ] && [ "$(receipt PB1 .censored)" = false ] \
+   && [ "$(fusecount WPA)" = 3 ] && [ "$(fusecount WPB)" = 0 ]; then
+  ok "C5b PACKAGE B STILL RUNS behind a blown package A: PB1 rc 0, pass, WPA still 3, WPB 0"
+else
+  bad "C5b PB1 rc $rc status $(receipt PB1 .terminal_status) WPA $(fusecount WPA) WPB $(fusecount WPB)"
+fi
+# the master fuse: RETURN-CHECKLIST (g), one file that stops every package.
+echo 3 >"$state2/fuse"
+STUB_PI_ACTION=edit run PB2; rc=$?
+if [ "$rc" = 2 ] && [ "$(receipt PB2 .terminal_status)" = fuse ] && [ "$(receipt PB2 .censored)" = true ] \
+   && receipt PB2 .notes | grep -q 'master fuse' && [ ! -e "$state2/logs/PB2-a1.jsonl" ]; then
+  ok "C5b echo 3 > <state>/fuse stops WPB too: rc 2, censored true, notes name the master fuse"
+else
+  bad "C5b master fuse rc $rc status $(receipt PB2 .terminal_status) notes $(receipt PB2 .notes)"
+fi
+rm -f "$state2/fuse"
+STUB_PI_ACTION=edit run PB3; rc=$?
+if [ "$rc" = 0 ] && [ "$(receipt PB3 .terminal_status)" = pass ] && [ "$(receipt PB3 .censored)" = false ]; then
+  ok "C5b removing the master fuse lets WPB run again (PB3 rc 0, pass, censored false)"
+else
+  bad "C5b after master reset rc $rc status $(receipt PB3 .terminal_status)"
+fi
+# THE COUNT: censored receipts == the items no Pi process ever saw.
+censored_n="$(jq -s '[.[] | select(.censored)] | length' "$state2"/tasks/*/receipt.json)"
+unrun_n=0
+for d in "$state2"/tasks/*/; do
+  id="$(basename "$d")"
+  # "unrun" = a task this state dir holds a receipt for whose Pi never ran:
+  # no event log for any attempt of it.
+  compgen -G "$state2/logs/$id-a*.jsonl" >/dev/null || unrun_n=$((unrun_n + 1))
+done
+if [ "$censored_n" = "$unrun_n" ] && [ "$censored_n" -ge 1 ]; then
+  ok "C5b jq over the receipts: censored == unrun ($censored_n of $(ls -1 "$state2/tasks" | wc -l) receipts)"
+else
+  bad "C5b censored $censored_n != unrun $unrun_n"
+fi
+rstate="$state"
 
 # ---- C6: the guard.
 STUB_PI_ACTION=edit-spec run T5; rc=$?
@@ -279,7 +367,7 @@ fi
 [ "$(receipt T5 .validation.exit)" = null ] && [ "$(receipt T5 .validation.guard_exit)" = 1 ] && ok "C6 validation never ran behind a red guard (exit null, guard_exit 1)" || bad "C6 validation $(receipt T5 .validation)"
 
 # ---- C6b: the trailing-newline gate.
-rm -f "$state/fuse"  # each guard clause stands alone: three in a row would blow the fuse
+fuse_reset_all  # each guard clause stands alone: three in a row would blow the fuse
 STUB_PI_ACTION=edit-no-newline run T9; rc=$?
 if [ "$rc" = 1 ] && receipt T9 .notes | grep -q 'no trailing newline'; then
   ok "C6 a touched file without a final newline fails the gate: $(receipt T9 .notes)"
@@ -288,7 +376,7 @@ else
 fi
 
 # ---- C6c: stray files are listed, and the guard fails on them.
-rm -f "$state/fuse"  # each guard clause stands alone: three in a row would blow the fuse
+fuse_reset_all  # each guard clause stands alone: three in a row would blow the fuse
 STUB_PI_ACTION=edit-plus-stray run T10; rc=$?
 if [ "$rc" = 1 ] && [ "$(receipt T10 '.stray_files | join(",")')" = "junk.txt" ] && receipt T10 .notes | grep -q 'junk.txt: outside allowed_paths'; then
   ok "C6 stray untracked file fails the guard and is listed: $(receipt T10 -c .stray_files 2>/dev/null || receipt T10 '.stray_files | join(",")')"
@@ -297,21 +385,21 @@ else
 fi
 
 # ---- C6d: a Pi process that hits its budget is "timeout", not fail, not fuse.
-fuse_before="$(cat "$state/fuse")"
+fuse_before="$(fusecount WP-stub)"
 STUB_PI_ACTION=sleep run T11 CUBS_PI_TIMEOUT=2; rc=$?
-if [ "$rc" = 124 ] && [ "$(receipt T11 .terminal_status)" = timeout ] && [ "$(cat "$state/fuse")" = "$fuse_before" ] && [ ! -e "$state/logs/T11-a2.jsonl" ]; then
+if [ "$rc" = 124 ] && [ "$(receipt T11 .terminal_status)" = timeout ] && [ "$(fusecount WP-stub)" = "$fuse_before" ] && [ ! -e "$state/logs/T11-a2.jsonl" ]; then
   ok "C6 Pi over budget -> rc 124, receipt timeout, fuse untouched ($fuse_before), no repair"
 else
-  bad "C6 timeout rc $rc status $(receipt T11 .terminal_status) fuse $(cat "$state/fuse")"
+  bad "C6 timeout rc $rc status $(receipt T11 .terminal_status) fuse $(fusecount WP-stub)"
 fi
 
 # ---- C7: outage.
-fuse_before="$(cat "$state/fuse")"
+fuse_before="$(fusecount WP-stub)"
 set_health true
 STUB_PI_ACTION=edit run T8; rc=$?
 set_health false
 [ "$rc" = 69 ] && [ "$(receipt T8 .terminal_status)" = outage ] && ok "C7 busy Halogen -> rc 69, receipt outage" || bad "C7 rc $rc $(receipt T8 .terminal_status)"
-[ "$(cat "$state/fuse")" = "$fuse_before" ] && ok "C7 fuse untouched ($fuse_before)" || bad "C7 fuse moved"
+[ "$(fusecount WP-stub)" = "$fuse_before" ] && ok "C7 fuse untouched ($fuse_before)" || bad "C7 fuse moved"
 [ ! -e "$state/logs/T8-a1.jsonl" ] && ok "C7 no Pi run during the outage" || bad "C7 Pi ran"
 STUB_PI_ACTION=edit run T8; rc=$?
 [ "$rc" = 0 ] && ok "C7 T8 retries to pass once Halogen is idle" || bad "C7 retry rc $rc"
@@ -377,7 +465,7 @@ print("; ".join(errs)); sys.exit(1 if errs else 0)
 PY
 }
 if [ -r "$schema" ]; then
-  rm -f "$state/fuse"
+  fuse_reset_all
   STUB_PI_ACTION=edit run CUBS-90; rc=$?
   st="$(receipt CUBS-90 .terminal_status)"
   if [ "$rc" = 0 ] && [ "$st" = pass ] && [ "$(receipt CUBS-90 '.stray_files | tojson')" = "[]" ] \
@@ -387,7 +475,7 @@ if [ -r "$schema" ]; then
     bad "C8b tracked-only rc $rc status $st stray $(receipt CUBS-90 '.stray_files | tojson')"
   fi
   v="$(validate_receipt "$state/tasks/CUBS-90/receipt.json" 2>&1)" && ok "C8b CUBS-90 receipt validates against receipt.schema.json" || bad "C8b CUBS-90 schema: $v"
-  rm -f "$state/fuse"
+  fuse_reset_all
   STUB_PI_ACTION=edit-plus-stray run CUBS-91; rc=$?
   st="$(receipt CUBS-91 .terminal_status)"
   if [ "$rc" = 1 ] && [ "$st" = fail ] && [ "$(receipt CUBS-91 '.stray_files | tojson')" = '["junk.txt"]' ] \
@@ -397,7 +485,19 @@ if [ -r "$schema" ]; then
     bad "C8b stray rc $rc status $st stray $(receipt CUBS-91 '.stray_files | tojson')"
   fi
   v="$(validate_receipt "$state/tasks/CUBS-91/receipt.json" 2>&1)" && ok "C8b CUBS-91 receipt validates against receipt.schema.json" || bad "C8b CUBS-91 schema: $v"
-  rm -f "$state/fuse"
+  # a censored receipt is a terminal receipt too, and must validate as one:
+  # CUBS-92 is a fresh WP1 item behind a WP1 fuse that is already blown.
+  fuse_reset_all
+  printf '3\n' >"$state/fuse.d/WP1"
+  STUB_PI_ACTION=none run CUBS-92; rc=$?
+  if [ "$rc" = 2 ] && [ "$(receipt CUBS-92 .censored)" = true ] && [ "$(receipt CUBS-92 .terminal_status)" = fuse ] \
+     && [ "$(receipt CUBS-92 .exit_code)" = 2 ] && [ ! -e "$state/logs/CUBS-92-a1.jsonl" ]; then
+    ok "C8b a censored item leaves a terminal receipt (rc 2, censored true, exit_code 2, no Pi)"
+  else
+    bad "C8b censored receipt rc $rc censored $(receipt CUBS-92 .censored) status $(receipt CUBS-92 .terminal_status)"
+  fi
+  v="$(validate_receipt "$state/tasks/CUBS-92/receipt.json" 2>&1)" && ok "C8b the censored receipt validates against receipt.schema.json" || bad "C8b censored schema: $v"
+  fuse_reset_all
 else
   bad "C8b cannot read the receipt schema at $schema"
 fi

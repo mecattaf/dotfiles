@@ -28,7 +28,9 @@
 #
 # THE RECEIPT is ~/mecattaf/cubs-campaign/tools/receipt.schema.json's shape
 # (the campaign owns the schema; this script owns the bytes), plus
-# `execution_id` and `exit_code`. Per-attempt detail lives beside it in
+# `execution_id` and `exit_code`. `censored` is true exactly on an item a
+# blown fuse retired before it started, so `jq` over the receipts counts the
+# unrun items without guessing. Per-attempt detail lives beside it in
 # attempts.json. `observed_failure_mode` stays null for the morning review;
 # the executable's own mechanical reading of a failure is in `notes`.
 #
@@ -47,8 +49,13 @@
 #  124  timeout: a Pi process hit its wall-clock budget (receipt "timeout";
 #       not a fail, not fuse fodder; no repair is attempted on a timed-out
 #       first attempt, the budget WAS the point)
-#    2  fuse (third consecutive fail, or the fuse was already blown; receipt
-#       "fuse") — reset by removing <state>/fuse
+#    2  fuse (third consecutive fail IN THIS TASK'S PACKAGE, or a fuse that
+#       was already blown; receipt "fuse"). The counter is per package,
+#       <state>/fuse.d/<package>: a blown package retires only its own
+#       remaining items, which are receipted `censored: true` and never seen
+#       by Pi. <state>/fuse is the MASTER fuse and stops every package
+#       (`echo 3 > <state>/fuse`); this script only reads it. Reset by
+#       removing the file.
 #   64  usage
 #   65  the stdin JSON or the worklist line is malformed
 #   69  outage (Halogen not ok/idle within 20 min, or dropped mid-run;
@@ -87,6 +94,12 @@ Environment (only for hand runs and the self-test; the kernel clears it):
 Exit codes: 0 pass | 1 fail | 2 fuse | 64 usage | 65 bad stdin | 69 outage |
             75 lock held | 78 campaign material missing | 124 Pi timeout |
             143 cancelled
+
+The fuse is per package: <state>/fuse.d/<package> counts consecutive failures
+inside one work package and retires only that package at 3; every item it
+retires gets a receipt with terminal_status "fuse", censored true and exit 2.
+<state>/fuse is the master fuse (`echo 3 > <state>/fuse` stops every package);
+this script only reads it. Remove a file to reset that fuse.
 EOF
 }
 
@@ -261,7 +274,16 @@ RECEIPT="$TASK_DIR/receipt.json"
 ATTEMPTS_FILE="$TASK_DIR/attempts.json"
 SESSIONS="$STATE/sessions"
 LOGS="$STATE/logs"
+# THE FUSE IS KEYED BY PACKAGE (cubs-M02). Three consecutive failures inside
+# one work package retire that package's remaining items and nothing else, so
+# a bad WP1 cannot silence WP2, WP3 and WP7. <state>/fuse.d/<package> is the
+# per-package counter this script increments and resets; <state>/fuse stays as
+# the MASTER fuse, an operator file this script only ever READS, so the stop
+# procedure `echo 3 > ~/.local/state/cubs-campaign/fuse` still halts every
+# package (RETURN-CHECKLIST (g)).
 FUSE="$STATE/fuse"
+FUSE_DIR="$STATE/fuse.d"
+FUSE_PKG="$FUSE_DIR/$(printf '%s' "${PACKAGE:-none}" | tr -c 'A-Za-z0-9._-' '_')"
 
 pi_argv() {
   # $1 session id, $2 thinking. The prompt (last positional) is appended by
@@ -287,7 +309,9 @@ if [ "$DRY" = 1 ]; then
     receipt_status="$(jq -r '.terminal_status // "unreadable"' "$RECEIPT" 2>/dev/null || echo unreadable)"
   fi
   fuse_count=0
-  if [ -r "$FUSE" ]; then fuse_count="$(tr -dc 0-9 <"$FUSE")"; fi
+  if [ -r "$FUSE_PKG" ]; then fuse_count="$(tr -dc 0-9 <"$FUSE_PKG")"; fi
+  fuse_master_count=0
+  if [ -r "$FUSE" ]; then fuse_master_count="$(tr -dc 0-9 <"$FUSE")"; fi
   argv_json="$(pi_argv "$TASK_ID-a1" "$THINKING" | jq -R . | jq -s '. + ["--system-prompt", "<contents of skill/system-prompt.md>", "--", "<contents of the bundle>"]')"
   jq -n --argjson task "$task" --arg source "$TASK_SOURCE" \
     --arg state "$STATE" --arg campaign "$CAMPAIGN_DIR" --arg halogen "$HALOGEN" \
@@ -295,6 +319,7 @@ if [ "$DRY" = 1 ]; then
     --arg bundle "$BUNDLE" --arg sys "$SYSTEM_PROMPT" --arg agent_dir "$PI_AGENT_DIR" \
     --arg tools "$TOOLS" --arg subject "$COMMIT_SUBJECT" --argjson argv "$argv_json" \
     --arg receipt_status "$receipt_status" --argjson fuse "${fuse_count:-0}" \
+    --argjson fuse_master "${fuse_master_count:-0}" --arg fuse_path "$FUSE_PKG" --arg fuse_master_path "$FUSE" \
     --argjson pi_timeout "$PI_TIMEOUT" --argjson h_int "$HEALTH_INTERVAL" --argjson h_dead "$HEALTH_DEADLINE" \
     --argjson v_timeout "$VALIDATION_TIMEOUT" --arg guard "$(guard_kind)" --arg setup "$SETUP_CMD" \
     --argjson repo_ok "$(git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1 && echo true || echo false)" \
@@ -315,19 +340,21 @@ if [ "$DRY" = 1 ]; then
         commit_subject: $subject, halogen: $halogen,
         health: {interval_seconds: $h_int, deadline_seconds: $h_dead, on_deadline: "exit 69, receipt outage"},
         repair: "one fresh Pi process (a2) fed bundle + diff + validation transcript, then fail closed",
-        fuse: "3 consecutive fails -> exit 2, receipt fuse"
+        fuse: "3 consecutive fails IN THIS PACKAGE -> exit 2, receipt fuse, censored: true on every later item of the package; the master fuse stops every package"
       },
       preflight: {
         campaign_dir: $campaign, state_dir: $state,
         repo_present: $repo_ok, bundle_present: $bundle_ok,
         system_prompt_present: $sys_ok, models_json_present: $models_ok, settings_json_present: $settings_ok,
-        receipt_status: $receipt_status, fuse_count: $fuse
+        receipt_status: $receipt_status,
+        fuse_count: $fuse, fuse_path: $fuse_path,
+        fuse_master_count: $fuse_master, fuse_master_path: $fuse_master_path
       }}'
   exit 0
 fi
 
 # ---------------------------------------------------------------- state, lock
-mkdir -p "$STATE" "$STATE/worktrees" "$STATE/tasks" "$SESSIONS" "$LOGS" "$TASK_DIR"
+mkdir -p "$STATE" "$STATE/worktrees" "$STATE/tasks" "$SESSIONS" "$LOGS" "$TASK_DIR" "$FUSE_DIR"
 exec 9>"$STATE/lock"
 if ! flock -w 60 9; then
   log "another cubs-iteration holds $STATE/lock"
@@ -355,6 +382,9 @@ BASE_SHA=""
 COMMIT_SHA=""
 DIFF_SHA=""
 REPAIR_COUNT=0
+# true only on an item this run never started because a fuse was already
+# blown: an UNRUN item, retired by the fuse rather than judged by Halogen.
+CENSORED=false
 ATTEMPTS_JSON="[]"
 VALIDATION_JSON="null"
 GUARD_JSON="null"
@@ -368,9 +398,13 @@ LAST_PI_RC=0
 LAST_TRANSCRIPT=""
 
 fuse_read() {
-  if [ -r "$FUSE" ]; then tr -dc 0-9 <"$FUSE"; else printf 0; fi
+  # $1 a counter file; absent or unreadable reads as 0.
+  if [ -r "$1" ]; then tr -dc 0-9 <"$1"; else printf 0; fi
 }
-fuse_write() { printf '%s\n' "$1" >"$FUSE.tmp" && mv -f "$FUSE.tmp" "$FUSE"; }
+fuse_write() {
+  # $1 the count, $2 the counter file.
+  mkdir -p "$(dirname "$2")" && printf '%s\n' "$1" >"$2.tmp" && mv -f "$2.tmp" "$2"
+}
 
 digest_file() { printf 'sha256:%s' "$(sha256sum "$1" | cut -d' ' -f1)"; }
 
@@ -429,6 +463,9 @@ stage_allowed() {
 # ---------------------------------------------------------------- the receipt
 # $1 terminal_status, $2 exit code (recorded, not applied). The shape is the
 # campaign's tools/receipt.schema.json.
+# An item a blown fuse censored never reached the preflight, so it has no
+# campaign sha and no digests: those three are null, never the empty string
+# the schema patterns reject (the probe validates a censored receipt).
 write_receipt() {
   local status="$1" code="$2" finished wall diff_sha sessions
   finished="$(now_iso)"
@@ -453,7 +490,7 @@ write_receipt() {
     --arg diff_sha "$diff_sha" --arg commit_sha "$COMMIT_SHA" \
     --argjson validation "$VALIDATION_JSON" --argjson guard_exit "$GUARD_EXIT" --arg cmd "$VALIDATION_CMD" \
     --argjson repair_count "$REPAIR_COUNT" \
-    --arg status "$status" --argjson wall "$wall" \
+    --arg status "$status" --argjson wall "$wall" --argjson censored "$CENSORED" \
     --argjson prior "$PRIOR_P_PASS" --argjson predicted "$PREDICTED_FAILURE" \
     --arg notes "$NOTES" \
     --arg execution_id "$EXECUTION_ID" --argjson stray "$stray" --arg attempts_path "$ATTEMPTS_FILE" \
@@ -463,7 +500,9 @@ write_receipt() {
       task: $task, package: $package,
       provider: $provider, model: $model,
       health_version: (if $health_version == "" then null else $health_version end),
-      campaign_sha: $campaign_sha, skill_digest: $skill_digest, bundle_digest: $bundle_digest,
+      campaign_sha: (if $campaign_sha == "" then null else $campaign_sha end),
+      skill_digest: (if $skill_digest == "" then null else $skill_digest end),
+      bundle_digest: (if $bundle_digest == "" then null else $bundle_digest end),
       worktree_branch: $branch, worktree_path: $worktree, repo: $repo, base_sha: $base_sha,
       tool_calls: ([$attempts[].events.tool_calls // 0] | add // 0),
       is_error_count: ([$attempts[].events.tool_errors // 0] | add // 0),
@@ -487,7 +526,7 @@ write_receipt() {
                    then {cmd: $cmd, exit: null, transcript_digest: null, seconds: null, guard_exit: $guard_exit}
                    else ($validation + {guard_exit: $guard_exit}) end),
       repair_count: $repair_count,
-      terminal_status: $status, wall_seconds: $wall,
+      terminal_status: $status, wall_seconds: $wall, censored: $censored,
       prior_p_pass: $prior, predicted_failure: $predicted,
       observed_failure_mode: null,
       started_at: $started, finished_at: (if $status == "pending" then null else $finished end),
@@ -549,9 +588,21 @@ on_term() {
 trap on_term TERM INT
 
 # ---------------------------------------------------------------- fuse gate
-fuse_now="$(fuse_read)"
+# The master fuse first (Tom's stop switch, any package), then this task's own
+# package counter. Either one blown and the item never runs: no Pi, receipt
+# "fuse", `censored: true`, exit 2. The item stays re-runnable once the
+# counter is removed.
+fuse_master="$(fuse_read "$FUSE")"
+if [ "${fuse_master:-0}" -ge 3 ]; then
+  CENSORED=true
+  NOTES="fuse_blown_before_start (master fuse, consecutive_failures=$fuse_master; remove $FUSE to reset)"
+  log "$NOTES"
+  finish fuse 2
+fi
+fuse_now="$(fuse_read "$FUSE_PKG")"
 if [ "${fuse_now:-0}" -ge 3 ]; then
-  NOTES="fuse_blown_before_start (consecutive_failures=$fuse_now; remove $FUSE to reset)"
+  CENSORED=true
+  NOTES="fuse_blown_before_start (package $PACKAGE, consecutive_failures=$fuse_now; remove $FUSE_PKG to reset)"
   log "$NOTES"
   finish fuse 2
 fi
@@ -790,13 +841,15 @@ outage_if_halogen_gone() {
   fi
 }
 
+# This task RAN and lost: its package counter moves, no other package's does,
+# and the receipt is never `censored` (it was judged, not retired).
 fail_or_fuse() {
   local consecutive
-  consecutive=$(( $(fuse_read) + 1 ))
-  fuse_write "$consecutive"
-  log "FAIL ($NOTES); consecutive failures: $consecutive"
+  consecutive=$(( $(fuse_read "$FUSE_PKG") + 1 ))
+  fuse_write "$consecutive" "$FUSE_PKG"
+  log "FAIL ($NOTES); consecutive failures in package $PACKAGE: $consecutive"
   if [ "$consecutive" -ge 3 ]; then
-    NOTES="$NOTES; fuse blown at $consecutive consecutive failures (remove $FUSE to reset)"
+    NOTES="$NOTES; fuse blown for package $PACKAGE at $consecutive consecutive failures (remove $FUSE_PKG to reset; $FUSE is the master fuse for every package)"
     finish fuse 2
   fi
   finish fail 1
@@ -890,7 +943,7 @@ execution_id: ${EXECUTION_ID:-none}" >/dev/null 2>&1; then
     log "$NOTES"
     fail_or_fuse
   fi
-  fuse_write 0
+  fuse_write 0 "$FUSE_PKG"
   log "PASS: committed $COMMIT_SHA on $BRANCH (never pushed)"
   finish pass 0
 fi

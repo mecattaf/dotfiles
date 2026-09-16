@@ -80,7 +80,10 @@ another tree's oracle runs).
 2. `flock` on `~/.local/state/cubs-campaign/lock`; if `tasks/<id>/receipt.json`
    already says `pass`, exit 0 without running anything (the receipt is the
    done marker, `drain.sh` l.112).
-3. The fuse gate: `<state>/fuse` ≥ 3 → receipt `fuse`, exit 2, no Pi.
+3. The fuse gate, KEYED BY PACKAGE: the master `<state>/fuse` ≥ 3 (Tom's
+   stop switch, every package) or this task's `<state>/fuse.d/<package>` ≥ 3 →
+   receipt `fuse` with `censored: true`, exit 2, no Pi. A blown package
+   retires only its own remaining items.
 4. Preflight: campaign dir, `skill/system-prompt.md`, `pi/models.json`
    declaring provider `halogen` with model `halogen-qwen3.8-flash-next`,
    `pi/settings.json` (compaction `reserveTokens` / `keepRecentTokens` live
@@ -130,8 +133,10 @@ another tree's oracle runs).
 12. Pass: stage ONLY the files inside `allowed_paths + new_files`, commit
     `"<id>: <title>"` (identity `cubs-iteration`, body naming the bundle and
     skill digests, model, repair count, execution id). Never a push.
-13. Receipt, `ledger.jsonl` line, usage line; fuse reset to 0 on pass,
-    incremented on fail, untouched on outage or cancel.
+13. Receipt, `ledger.jsonl` line, usage line; THIS PACKAGE's fuse
+    (`<state>/fuse.d/<package>`) reset to 0 on pass, incremented on fail,
+    untouched on outage or cancel. No other package's counter moves, and the
+    master `<state>/fuse` is never written by the executable.
 
 **SIGTERM** (the lease's rail: SIGTERM, 30 s checkpoint grace, SIGKILL): the
 trap kills the running child (5 s, then KILL), stages and commits the allowed
@@ -146,7 +151,8 @@ lake, any `spec/**/spec.md`, any remote.
 ### `--dry` and `--help`
 
 `--dry` validates stdin and prints the plan as JSON (pi argv, worktree,
-branch, guard, validation, preflight booleans, receipt status, fuse count)
+branch, guard, validation, preflight booleans, receipt status, both fuse
+counts and their paths)
 without touching the state dir. MEASURED with the kit's own stdin under
 `env -i TALLY_EXECUTION_ID=e TALLY_USAGE_SOURCE_PATH=/dev/null`: rc 0,
 `resolved: false` naming the missing `worklists/current.jsonl` while the
@@ -162,7 +168,7 @@ the executable adds:
 | `schema_version` 1, `task`, `package`, `repo` | the worklist line |
 | `provider` halogen, `model` | `/v1/models` at task start, never the worklist |
 | `health_version` | `/health.version` rendered `"api X engine Y"` |
-| `campaign_sha`, `skill_digest`, `bundle_digest` | campaign HEAD; `sha256:` of the prompt and bundle bytes |
+| `campaign_sha`, `skill_digest`, `bundle_digest` | campaign HEAD; `sha256:` of the prompt and bundle bytes. All three are null on a censored item, which never reached the preflight |
 | `worktree_branch`, `worktree_path`, `base_sha` | the worktree |
 | `tool_calls`, `is_error_count`, `repeated_identical_calls`, `tool_call_names` | `tool_execution_start/end` events, summed over both Pi processes; `tool_call_names.bash` is the bash count (the "validation command only" invariant is soft, so it is counted, not enforced); per attempt in `attempts.json` |
 | `usage.{prompt_tokens, completion_tokens, reasoning_tokens, message_end_events}` | summed over `message_end` events (pi `Usage` input+cacheRead+cacheWrite / output / reasoning). The smoke found only `--thinking off` is a real cap on Flash-Next (low/medium barely move reasoning), so `task.thinking` stays the switch and the reasoning count is what the ledger reads |
@@ -172,7 +178,8 @@ the executable adds:
 | `repair_count` 0 or 1, `terminal_status` pending/pass/fail/timeout/outage/fuse/cancelled, `wall_seconds` | the run |
 | `prior_p_pass`, `predicted_failure` | copied from the worklist line |
 | `observed_failure_mode` | null: the morning review's cell |
-| `notes` | the executable's mechanical reading (`diff_guard: …`, `validation_failed (exit N)`, `outage_before_start`, `fuse_blown_before_start`, `cancelled …`) |
+| `notes` | the executable's mechanical reading (`diff_guard: …`, `validation_failed (exit N)`, `outage_before_start`, `fuse_blown_before_start (master fuse …, or package WPn …)`, `cancelled …`) |
+| `censored` | ADDED: true exactly on an UNRUN item — one a blown fuse (its package's, or the master) retired before it started, so no Pi process saw it. The task that BLEW the fuse ran and is `censored: false` with `terminal_status: fuse`. `jq -s '[.[]|select(.censored)]|length'` over the receipts is the count of items the campaign never attempted |
 | `sessions` | the Pi session ids |
 | `bash_call_count` | `bash` tool calls summed over both Pi processes |
 | `stray_files` | untracked, non-ignored files outside allowed_paths + new_files at close (the guard fails on them; listed so the review sees what the model tried to create) |
@@ -191,10 +198,10 @@ names the execution back (the LOCAL-SMOKE join, over a real run).
 
 | rc | meaning | receipt | fuse |
 |---|---|---|---|
-| 0 | pass, or an idempotent no-op on a passed task | `pass` | reset to 0 |
-| 1 | fail: setup, guard or validation red after the one repair | `fail` | +1 |
+| 0 | pass, or an idempotent no-op on a passed task | `pass` | this package reset to 0 |
+| 1 | fail: setup, guard or validation red after the one repair | `fail` | this package +1 |
 | 124 | a Pi process hit its wall-clock budget (1200 s first attempt, 900 s repair); no repair is attempted after a timed-out first attempt | `timeout` | unchanged |
-| 2 | fuse: the third consecutive fail, or the fuse already blown | `fuse` | +1 / unchanged |
+| 2 | fuse: the third consecutive fail IN THIS TASK'S PACKAGE, or a fuse (package or master) already blown | `fuse`, `censored: true` when it was already blown | this package +1 / unchanged |
 | 64 | usage | none | — |
 | 65 | the stdin JSON or worklist line is malformed | none | — |
 | 69 | outage: Halogen not ok/idle within 20 min, or gone mid-run | `outage` | unchanged |
@@ -202,12 +209,20 @@ names the execution back (the LOCAL-SMOKE join, over a real run).
 | 78 | campaign material missing | none (a `pending` one may exist) | — |
 | 143 | cancelled by SIGTERM/SIGINT | `cancelled` | unchanged |
 
-The fuse is reset by removing `~/.local/state/cubs-campaign/fuse` (Tom's act
+The fuse is keyed by package: `~/.local/state/cubs-campaign/fuse.d/<package>`
+counts the consecutive failures of one work package and, at 3, retires that
+package's remaining items and nobody else's — three bad WP1 items leave WP2,
+WP3 and WP7 running, which is the whole point of the change (with one global
+counter, day one's 28 items completed with ~17% probability).
+`~/.local/state/cubs-campaign/fuse` stays the MASTER fuse, read and never
+written by the executable, so the stop procedure `echo 3 >
+~/.local/state/cubs-campaign/fuse` still halts every package at once
+(RETURN-CHECKLIST (g)). Either fuse is reset by removing its file (Tom's act
 in the morning review). Because every non-pass exit still "finishes inside
 the lease", the lake closes the item `pass` either way (default 2 above); a
-blown fuse therefore burns through the remaining items in minutes with
-`fuse` receipts, each of which is re-runnable once the fuse is reset and the
-plan re-armed.
+blown package therefore burns through ITS remaining items in minutes with
+`fuse` receipts carrying `censored: true`, each of which is re-runnable once
+the fuse is reset and the plan re-armed.
 
 ## The kit entries (`home/tally-uplink.nix`)
 
@@ -272,7 +287,10 @@ throwaway git repos as the CUBS tree, nothing under `~/.local/state` or
 `~/agency`. Clauses C1–C11: usage and exit codes; `env -i --dry` on the kit's
 own stdin; pass with commit, usage line, ledger line, idempotent rerun; fail
 plus one repair with the repair prompt carrying diff and transcript; the fuse
-and its reset; the `spec.md` guard; outage without touching the fuse;
+and its reset; the PER-PACKAGE fuse (three forced fails in package A leave
+package B running, the master fuse still stops both, and the `censored`
+receipts equal the unrun items); the `spec.md` guard; outage without touching
+the fuse;
 SIGTERM → WIP commit + `cancelled` receipt inside 25 s and a clean retry that
 rotates the session id and leaves ONE commit above the base; the events
 summariser; `readKit` over all 600 refs with LOCAL-SMOKE kept and
