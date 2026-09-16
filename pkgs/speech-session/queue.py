@@ -14,7 +14,8 @@ def plain(source):
     p=subprocess.run(['pandoc','--from=gfm','--to=plain','--wrap=none'],input=source,text=True,capture_output=True,check=True)
     return p.stdout.strip()
 
-def sweep(root, qwen, player):
+def sweep(root, qwen, player, default_seat="coordinator"):
+    if default_seat not in ("client", "coordinator"): raise ValueError("Invalid playback seat")
     for name in ['intake','work','outbox','spoken','failed']:(root/name).mkdir(parents=True,exist_ok=True,mode=0o700)
     with (root/'.lock').open('a') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -43,12 +44,14 @@ def sweep(root, qwen, player):
                 if not audio.exists():
                     subprocess.run([qwen,'speak','--remote-command',qwen,'--file',str(txt),'--output',str(audio)],check=True,timeout=1800)
                 if quiet():job.rename(queued);break
+                seat = job.name.split('--', 1)[0] if job.name.startswith(('client--', 'coordinator--')) else default_seat
+                command = [player] if seat == socket.gethostname() else ['ssh','-o','BatchMode=yes','-o','ConnectTimeout=5',seat,player]
                 with audio.open('rb') as data:
-                    result=subprocess.run(['ssh','-o','BatchMode=yes','-o','ConnectTimeout=5','client',player],stdin=data,timeout=1800)
+                    result=subprocess.run(command,stdin=data,timeout=1800)
                 if result.returncode==75:
                     job.rename(queued);break
                 if result.returncode:raise RuntimeError(f'Playback incomplete or uncertain: exit {result.returncode}; not replayed automatically')
-                atomic(job/'receipt.json',dict(status='played',completed=datetime.datetime.now().astimezone().isoformat(),elapsed_seconds=time.monotonic()-started,voice='accepted Qwen Base K2SO',client='client',playback_evidence='pw-play exited successfully; not a microphone audibility check'))
+                atomic(job/'receipt.json',dict(status='played',completed=datetime.datetime.now().astimezone().isoformat(),elapsed_seconds=time.monotonic()-started,voice='accepted Qwen Base K2SO',client=seat,playback_evidence='pw-play exited successfully; not a microphone audibility check'))
                 job.rename(root/'spoken'/job.name)
             except Exception as exc:
                 atomic(job/'failure.json',dict(error=str(exc)));job.rename(root/'failed'/job.name)

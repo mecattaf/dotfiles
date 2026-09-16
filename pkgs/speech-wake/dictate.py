@@ -19,7 +19,7 @@ def emit(**fields): print(json.dumps(fields), flush=True)
 
 
 def main():
-    if socket.gethostname() != 'client': raise RuntimeError('Dictation capture belongs on client')
+    if socket.gethostname() not in ('client', 'coordinator'): raise RuntimeError('Dictation requires a physical seat')
     pane = os.environ.get("HERDR_DICTATION_PANE")
     if not pane or not re.fullmatch(r"[A-Za-z0-9:_-]+", pane): raise RuntimeError("Native Herdr pane identity required")
     def occupant():

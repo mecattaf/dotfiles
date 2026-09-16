@@ -2088,18 +2088,8 @@
           # the tree. The browser-only Sway service added on 2026-09-12 is
           # separate from that retired physical-session integration.
           #
-          # PHYSICAL-SESSION INVARIANT: the old VNC, voxtype and piri exist on the
-          # coordinator EXACTLY while the coordinator has a display. These are
-          # equalities against myDisplay.enable (modules/display.nix), not
-          # fixed values, so the headless flip (R-13, plan §8.3, §10 steps
-          # 10-11; landed 2026-09-11) did not have to re-key them — but a
-          # HALF flip is refused: when hosts/coordinator/default.nix sets
-          # myDisplay.enable = false, the same commit must delete the wayvnc
-          # unit, the Remmina viewer profile and the :5900 door, or this check
-          # does not build. What never flips is the topology: the client is a
-          # seat, the worker and the NAS are not — asserted separately below,
-          # because a half-move that left a session on the wrong host would
-          # look identical from either side alone.
+          # Physical Niri and optional browser Sway are independent. Restoring
+          # the coordinator seat must not resurrect physical-session VNC.
           # The separate browser-only Sway desktop is a coordinator user service.
           assert (cfgOf "coordinator").systemd.user.services ? browser-desktop;
           assert (cfgOf "coordinator").systemd.user.services.browser-desktop.wantedBy == [ ];
@@ -2119,7 +2109,7 @@
             "nas"
           ];
           assert !(workerHome.systemd.user.services ? wayvnc);
-          assert (coordinatorHome.systemd.user.services ? wayvnc) == (cfgOf "coordinator").myDisplay.enable;
+          assert !(coordinatorHome.systemd.user.services ? wayvnc);
           assert (coordinatorHome.systemd.user.services ? piri) == (cfgOf "coordinator").myDisplay.enable;
           assert clientHome.systemd.user.services ? piri;
           assert builtins.all (
@@ -2128,6 +2118,13 @@
             && (cfgOf h).services.greetd.enable == (cfgOf h).myDisplay.enable
           ) displayHosts;
           assert (cfgOf "client").myDisplay.enable;
+          assert (cfgOf "coordinator").myDisplay.enable;
+          assert builtins.all (h:
+            (self.nixosConfigurations.${h}.config.home-manager.users.tom).systemd.user.services ? speech-wake
+            && builtins.elem pkgs.speech-wake (self.nixosConfigurations.${h}.config.home-manager.users.tom).home.packages
+            && builtins.elem pkgs.llm-agents.claude-desktop (self.nixosConfigurations.${h}.config.home-manager.users.tom).home.packages
+            && builtins.elem pkgs.llm-agents.chatgpt (self.nixosConfigurations.${h}.config.home-manager.users.tom).home.packages
+          ) [ "coordinator" "client" ];
           assert !(cfgOf "worker").myDisplay.enable;
           assert !(cfgOf "nas").myDisplay.enable;
           # The thin client (2026-09-11): Tom's seat, so niri and greetd are
@@ -2167,9 +2164,9 @@
           assert !(clientHome.xdg.configFile ? "wayvnc/config");
           assert !(clientHome.systemd.user.services ? dcal-daemon);
           assert coordinatorHome.systemd.user.services ? dcal-daemon;
-          # A viewer profile exists exactly while there is a server to view.
+          # Physical-session VNC stays retired on both seats.
           assert
-            (clientHome.xdg.dataFile ? "remmina/coordinator.remmina") == (cfgOf "coordinator").myDisplay.enable;
+            !(clientHome.xdg.dataFile ? "remmina/coordinator.remmina");
           assert !(coordinatorHome.xdg.dataFile ? "remmina/client.remmina");
           assert
             !builtins.elem 5900 (
@@ -2191,8 +2188,7 @@
                 or [ ]
             );
           assert
-            builtins.elem 5900 self.nixosConfigurations.coordinator.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
-            == (cfgOf "coordinator").myDisplay.enable;
+            !builtins.elem 5900 self.nixosConfigurations.coordinator.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
           assert !self.nixosConfigurations.worker.config.services.tailscale.enable;
           pkgs.runCommand "home-profiles" { } ''
             touch "$out"
@@ -3299,13 +3295,18 @@
         browser-session-runtime =
           let
             coord = self.nixosConfigurations.coordinator.config;
-            portal = name: coord.systemd.user.services.${name};
+            portal = name: coord.systemd.user.services.${name} or { };
           in
           assert builtins.all (name:
-            builtins.elem "browser-desktop.service" (portal name).partOf
-            && builtins.elem "browser-desktop.service" (portal name).after
-            && (portal name).serviceConfig.EnvironmentFile == "%t/browser-desktop/portal-environment"
-            && (portal name).unitConfig.ConditionPathExists == "%t/browser-desktop/portal-environment"
+            if coord.myDisplay.enable then
+              !(builtins.elem "browser-desktop.service" ((portal name).partOf or [ ]))
+              && !(((portal name).unitConfig or { }) ? ConditionPathExists)
+              && !(((portal name).serviceConfig or { }) ? EnvironmentFile)
+            else
+              builtins.elem "browser-desktop.service" (portal name).partOf
+              && builtins.elem "browser-desktop.service" (portal name).after
+              && (portal name).serviceConfig.EnvironmentFile == "%t/browser-desktop/portal-environment"
+              && (portal name).unitConfig.ConditionPathExists == "%t/browser-desktop/portal-environment"
           ) [ "xdg-desktop-portal" "xdg-desktop-portal-gtk" ];
           assert builtins.elem "user@1000.service" coord.systemd.services.keyring-unlock-boot.partOf;
           assert builtins.elem "user@1000.service" coord.systemd.services.keyring-unlock-boot.wantedBy;

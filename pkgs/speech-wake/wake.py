@@ -370,7 +370,7 @@ def live(args, detector, inhibitors):
                             def dispatch(transcript):
                                 try:
                                     submitted = subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=5',
-                                                                'coordinator', 'speech-session', '--stdin'],
+                                                                'coordinator', 'speech-session', '--stdin', '--seat', socket.gethostname()],
                                                                input=transcript, text=True, capture_output=True, timeout=100)
                                     emit('session_submitted' if submitted.returncode == 0 else 'session_needs_review',
                                          receipt=submitted.stdout, error=submitted.stderr)
@@ -423,8 +423,8 @@ def main():
         emit('call_mode', reasons=inhibitors.snapshot()[0])
         return
     if args.live:
-        if socket.gethostname() != 'client':
-            p.error('Live capture is client-only')
+        if socket.gethostname() not in ('client', 'coordinator'):
+            p.error('Live capture requires a physical seat')
         hook = Path.home() / '.local/bin/call-record'
         if not hook.is_file() or hashlib.sha256(hook.read_bytes()).hexdigest() != '@callRecordHash@':
             p.error('Install the matching tested call-record hook before live listening; the current shortcut is not protected by this build')

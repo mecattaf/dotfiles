@@ -23,4 +23,18 @@ class QueueTests(unittest.TestCase):
             (job/'source.md').write_text('hello');(job/'spoken.txt').write_text('hello');(job/'speech.wav').write_bytes(b'test')
             with patch.object(q,'quiet',return_value=False),patch.object(q.subprocess,'run',return_value=type('P',(),{'returncode':75})()):q.sweep(root,'qwen','play')
             self.assertTrue((job/'speech.wav').exists());self.assertFalse((root/'spoken/turn').exists())
+    def test_playback_returns_to_requested_seat(self):
+        for name, expected in [('ordinary', ['play']), ('coordinator--turn', ['play']),
+                               ('client--turn', ['ssh','-o','BatchMode=yes','-o','ConnectTimeout=5','client','play'])]:
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temp:
+                root=Path(temp);job=root/'outbox'/name;job.mkdir(parents=True)
+                (job/'source.md').write_text('hello');(job/'spoken.txt').write_text('hello');(job/'speech.wav').write_bytes(b'test')
+                with patch.object(q,'quiet',return_value=False), patch.object(q.socket,'gethostname',return_value='coordinator'), patch.object(q.subprocess,'run',return_value=type('P',(),{'returncode':0})()) as run:
+                    q.sweep(root,'qwen','play')
+                self.assertEqual(run.call_args.args[0], expected)
+                receipt=json.loads((root/'spoken'/name/'receipt.json').read_text())
+                self.assertEqual(receipt['client'], 'client' if name.startswith('client--') else 'coordinator')
+    def test_invalid_default_seat_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with self.assertRaises(ValueError):q.sweep(Path(temp),'qwen','play','unknown')
 if __name__=='__main__':unittest.main()

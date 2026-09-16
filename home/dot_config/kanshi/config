@@ -1,32 +1,21 @@
-# kanshi — output geometry. Every profile below is the CLIENT's (the ASUS
-# Zenbook Duo UX8406MA, the fleet's only seat since 2026-09-11). The file is a
-# fleet-wide raw symlink (home/home.nix configDirs), so it is deployed
-# everywhere, but no other host matches a profile in it and none is wanted:
-# the coordinator is headless (DECISIONS.md 2026-09-11) and the worker and nas
-# have no seat.
-#
-# THE CLIENT HAS EXACTLY TWO DISPLAYS, its own two 14-inch 2880x1800 OLED
-# panels: eDP-1 (top) and eDP-2 (bottom, under the detachable keyboard). Both
-# are lit whenever the keyboard is off. The Thunderbolt dock carries hubs, a
-# NIC and peripherals and NO display — DP-1, DP-2 and HDMI-A-1 all read
-# `disconnected` on the metal (2026-09-13). The two `DuoDock*` profiles that
-# used to sit above these, matching an "ASUS PA27JCV" by description string,
-# could never have applied and are gone; Tom's note on this file (2026-09-12:
-# "it's NOT the asus pa27 it's a 14 inch display") is what caught it, and
-# DECISIONS.md 2026-09-13 records the correction. If a display is ever plugged
-# into the dock, no profile here matches and niri's own defaults govern — add
-# a measured profile then, not a guess now.
-#
-# ORDER MATTERS. kanshi applies the FIRST profile whose output set matches the
-# connected set exactly (kanshi(5)); the two sets below are disjoint, so order
-# is only a habit here: both panels first, then one.
-#
-# The keyboard axis: modules/zenbook-duo-daemon.nix forces eDP-2's DRM status
-# to `off` when the physical keyboard is snapped over the bottom panel, and
-# back `on` when it is lifted. kanshi sees a real hotplug either way, so
-# "…Docked" here means KEYBOARD-docked — one eDP — not dock-station-docked.
-#
-# Outputs are matched by CONNECTOR name (stable: the Duo's own eDP-1/eDP-2).
+# Two independent physical seats. Keep the Zenbook profiles unchanged.
+# Coordinator: two upright ASUS 5K displays, side by side, 2x scaling.
+# Connector assignments retain the previously proven desktop wiring. One-output
+# fallbacks keep the first boot usable while either cable is disconnected.
+profile Desktop {
+    output DP-4 mode 5120x2880@60Hz scale 2 position 0,0 transform normal
+    output DP-1 mode 5120x2880@60Hz scale 2 position 2560,0 transform normal
+    exec busctl --user set-property rs.wl-gammarelay /outputs/DP_4 rs.wl.gammarelay Temperature q 4000
+    exec busctl --user set-property rs.wl-gammarelay /outputs/DP_1 rs.wl.gammarelay Temperature q 4000
+}
+
+profile DesktopLeft {
+    output DP-4 mode 5120x2880@60Hz scale 2 position 0,0 transform normal
+}
+
+profile DesktopRight {
+    output DP-1 mode 5120x2880@60Hz scale 2 position 0,0 transform normal
+}
 
 profile Duo {
     output eDP-1 scale 2 position 0,0   adaptive_sync on

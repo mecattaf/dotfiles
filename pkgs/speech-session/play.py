@@ -4,7 +4,7 @@ import fcntl, io, json, os, socket, subprocess, sys, time, wave
 from pathlib import Path
 
 def main():
-    if socket.gethostname() != 'client': raise RuntimeError('Playback is client-only')
+    if socket.gethostname() not in ('client', 'coordinator'): raise RuntimeError('Playback requires a physical seat')
     state=Path.home()/'.local/state'; gate=state/'speech-wake'
     runtime=Path(os.environ.get('XDG_RUNTIME_DIR',f'/run/user/{os.getuid()}'))
     gate.mkdir(parents=True,exist_ok=True,mode=0o700)

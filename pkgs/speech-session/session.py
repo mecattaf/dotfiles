@@ -13,7 +13,7 @@ def call(args):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--stdin',action='store_true',required=True)
     p.add_argument('--cwd',type=Path,default=Path.home());p.add_argument('--no-window',action='store_true')
-    p.add_argument('--projector',default='speech-projector');a=p.parse_args()
+    p.add_argument('--projector',default='speech-projector');p.add_argument('--seat',choices=['client','coordinator'],default='client');a=p.parse_args()
     if socket.gethostname()!='coordinator':p.error('Session launcher belongs on coordinator')
     text=sys.stdin.read(32769).strip()
     if not text or len(text)>32768 or '\0' in text:raise ValueError('Empty or oversized transcript')
@@ -22,8 +22,9 @@ def main():
     (root/'transcript.txt').write_text(text+'\n');os.chmod(root/'transcript.txt',0o600)
     system_file=Path(__file__).with_name('system.md')
     system_prompt=' '.join(system_file.read_text().split())
+    system_prompt += f' This session uses the {a.seat} seat. Prefix every published speech filename with {a.seat}-- so replies play at the originating seat.'
     (root/'system-prompt.txt').write_text(system_prompt+'\n')
-    receipt=dict(session_id=ident,status='creating',cwd=str(a.cwd),transcript=str(root/'transcript.txt'),system_prompt_source=str(system_file),system_prompt_sha256=hashlib.sha256(system_prompt.encode()).hexdigest())
+    receipt=dict(seat=a.seat,session_id=ident,status='creating',cwd=str(a.cwd),transcript=str(root/'transcript.txt'),system_prompt_source=str(system_file),system_prompt_sha256=hashlib.sha256(system_prompt.encode()).hexdigest())
     def save(): (root/'session.json').write_text(json.dumps(receipt,indent=2)+'\n')
     save()
     try:
@@ -33,7 +34,7 @@ def main():
         receipt['status']='agent-ready';save()
         # Target the pane returned by creation, never the global focused terminal.
         if not a.no_window:
-            subprocess.run(['ssh','-o','BatchMode=yes','client',a.projector,receipt['pane']],check=True,timeout=20)
+            subprocess.run(['ssh','-o','BatchMode=yes',a.seat,a.projector,receipt['pane']],check=True,timeout=20)
         receipt['status']='submitting';save()
         call(['herdr','agent','prompt',name,text])
         receipt['status']='submitted';save();print(json.dumps(receipt))

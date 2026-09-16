@@ -477,8 +477,8 @@ def speak(args):
         stop()
         return
     text = read_text(args)
-    if not args.output and socket.gethostname() != "client":
-        raise RuntimeError("playback belongs on the Zenbook; use --client client or --output FILE.wav")
+    if not args.output and socket.gethostname() not in ("client", "coordinator"):
+        raise RuntimeError("playback requires a physical seat; use --client client or --output FILE.wav")
     with lock("playback.lock"):
         pidfile = runtime() / "playback.json"
         pidfile.write_text(json.dumps({"pid": os.getpid(), "start": process_start(os.getpid())}))

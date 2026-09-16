@@ -9,7 +9,7 @@ let
   root = "/var/lib/local-models";
 in
 {
-  options.services.qwen-tts.enable = lib.mkEnableOption "on-demand Qwen speech for the Zenbook";
+  options.services.qwen-tts.enable = lib.mkEnableOption "on-demand Qwen speech for the physical seats";
   config = lib.mkIf cfg.enable {
     assertions = [
       {
@@ -29,7 +29,7 @@ in
       pkgs.qwentts
     ];
     systemd.user.services.speech-queue = {
-      description = "Read queued Markdown through Qwen and the client";
+      description = "Read queued Markdown through Qwen on the selected seat";
       unitConfig.ConditionUser = "tom";
       serviceConfig = {
         Type = "oneshot";
@@ -58,7 +58,7 @@ in
     };
     # No WantedBy: requests start the unit. Boot/switch never loads weights.
     systemd.user.services.qwen-tts = {
-      description = "Qwen speech synthesis for client playback (on demand)";
+      description = "Qwen speech synthesis for seat playback (on demand)";
       unitConfig.ConditionUser = "tom";
       environment.QWEN_VOICE_PROFILE = "${root}/qwen-k2so-midway-b/voice.json";
       environment.VK_ICD_FILENAMES = "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json";

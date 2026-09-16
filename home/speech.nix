@@ -6,7 +6,7 @@
 }:
 let
   coordinator = osConfig.networking.hostName == "coordinator";
-  client = osConfig.networking.hostName == "client";
+  displayHost = osConfig.myDisplay.enable;
 in
 {
   home.packages = lib.optionals coordinator [ pkgs.parakeet-service ];
@@ -28,7 +28,7 @@ in
     };
     Install.WantedBy = [ "default.target" ];
   };
-  systemd.user.services.speech-wake = lib.mkIf client {
+  systemd.user.services.speech-wake = lib.mkIf displayHost {
     Unit = {
       Description = "Alexa voice intake on the iContact USB microphone";
       After = [ "pipewire.service" ];

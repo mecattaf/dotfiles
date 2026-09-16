@@ -43,9 +43,7 @@
     # outage: worker first (so the endpoint exists), then the NAS (so it starts
     # dialling the new one), then this box (which stops answering :3003).
     ./atuin.nix
-    # ./audio.nix MOVED to hosts/client 2026-09-11 with the iContact webcam it
-    # pinned: the USB peripherals live on the thin client's Thunderbolt dock
-    # now (R-7). This box keeps Ryzen HD Audio + Radeon HDMI and no real mic.
+    ../client/audio.nix # same dock microphone/speakers on either physical seat
     # AdGuard is NAS-only. The primary profile uses NAS DNS; the two emergency
     # tiers use independent DNS and intentionally bypass NAS filtering.
     # ./attic.nix is NOT a server any more and has not been since 2026-08-21 —
@@ -86,11 +84,13 @@
 
   networking.hostName = "coordinator";
 
-  # No physical Niri/greetd session. Browser-only work gets a separate headless
-  # Sway/WayVNC desktop, shared through stock noVNC at browser.internal on BE550.
-  # Terminal work continues through SSH/Herdr. FARA inference starts on demand
-  # on this host; the worker remains the resident Halogen server.
-  myDisplay.enable = false;
+  # Primary physical seat again (2026-09-16); Zenbook remains a second seat.
+  # Agent services stay independent of either compositor.
+  myDisplay.enable = true;
+  services.local-models.artifacts = [
+    "openwakeword-baker-compat-v051"
+    "openwakeword-alexa-v051"
+  ];
   services.browser-desktop.enable = true;
   services.handwriting-annotation.enable = true;
   services.fara-browser-model.enable = true;

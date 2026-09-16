@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-[[ $(hostname) == client ]] || exit 2
+[[ $(hostname) == client || $(hostname) == coordinator ]] || exit 2
 [[ $# == 1 && $1 =~ ^[a-zA-Z0-9]+:p[0-9]+$ ]] || exit 2
 # Native client window initially focused on this session through its own protocol.
 # Hold-Space and clipboard support stay on the laptop. No global focus API

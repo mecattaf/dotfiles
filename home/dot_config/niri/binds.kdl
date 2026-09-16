@@ -25,8 +25,7 @@ binds {
     // the pre-herdr scheme, and the reason the home-grown `new-terminal` and
     // `resume-terminal` scripts are gone rather than rewritten.
     //
-    // FULL HERDR, NO KITTEN (#385, 2026-09-13). niri runs only on the client,
-    // a thin seat onto the coordinator's ONE herdr server (ruling B5). Every
+    // FULL HERDR, NO KITTEN (#385, 2026-09-13). both physical seats attach to the coordinator's ONE herdr server (ruling B5). Every
     // herdr chord here goes through ~/.local/bin/herdr-chord, which types
     // herdr's own prefix chord into ONE projector window — a kitty with app-id
     // `herdr-projector` running ~/.local/bin/herdr-projector, i.e. `herdr

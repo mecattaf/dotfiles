@@ -70,7 +70,7 @@
 set -u
 
 # Native client hold-Space support; all inference remains on coordinator.
-if [ "$(hostname)" = client ]; then
+if [[ "$(hostname)" == client || "$(hostname)" == coordinator ]]; then
   export HERDR_DICTATION_COMMAND=speech-dictate
 fi
 

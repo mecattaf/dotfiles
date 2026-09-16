@@ -40,17 +40,19 @@ in {
         StartLimitIntervalSec = 0;
       };
     };
+    # On a physical seat Niri owns the normal user portals. These headless-only
+    # overrides must never bind them to the optional Sway service.
     # D-Bus activates portals through the user manager, which intentionally
     # has no global display on this headless host. Pass only these services
     # the current Sway display; stop them when that display goes away.
     # A headless caller must not start a compositor merely by probing portals.
-    systemd.user.services.xdg-desktop-portal = {
+    systemd.user.services.xdg-desktop-portal = lib.mkIf (!config.myDisplay.enable) {
       after = [ "browser-desktop.service" ];
       partOf = [ "browser-desktop.service" ];
       unitConfig.ConditionPathExists = "%t/browser-desktop/portal-environment";
       serviceConfig.EnvironmentFile = "%t/browser-desktop/portal-environment";
     };
-    systemd.user.services.xdg-desktop-portal-gtk = {
+    systemd.user.services.xdg-desktop-portal-gtk = lib.mkIf (!config.myDisplay.enable) {
       after = [ "browser-desktop.service" ];
       partOf = [ "browser-desktop.service" ];
       unitConfig.ConditionPathExists = "%t/browser-desktop/portal-environment";
