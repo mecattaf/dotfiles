@@ -40,6 +40,20 @@ window-rule {
     }
 }
 
+// F1 Alexa wake picker: the same compact floating prompt as F9/F10.
+window-rule {
+    match app-id="wake-prompt"
+    open-floating true
+    open-focused true
+    default-column-width { fixed 640; }
+    default-window-height { fixed 200; }
+    border {
+        width 2
+        active-color "#DA7756"
+        inactive-color "#DA7756"
+    }
+}
+
 // F9 paired output/input picker: the same compact floating prompt as F10.
 window-rule {
     match app-id="audio-route-prompt"

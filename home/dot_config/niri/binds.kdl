@@ -129,9 +129,9 @@ binds {
 
     // ── Media & Hardware Keys (F1-F10) ───────────────────────────
 
-    // F1 toggles the Alexa wake listener (it false-fires on sneezes). F1/F2 no
+    // F1 opens the Alexa wake listener menu. F1/F2 no
     // longer carry brightness; the Duo keyboard's XF86MonBrightness keys do.
-    F1 repeat=false hotkey-overlay-title="Alexa Wake On/Off" { spawn-sh "~/.local/bin/wake-toggle"; }
+    F1 repeat=false hotkey-overlay-title="Alexa Wake On/Off" { spawn-sh "kitty --class wake-prompt -e ~/.local/bin/wake-toggle menu"; }
     F3 hotkey-overlay-title="Play/Pause" { spawn-sh "~/.local/bin/media play"; }
     F4 hotkey-overlay-title="Previous" { spawn-sh "~/.local/bin/media prev"; }
     F5 hotkey-overlay-title="Next" { spawn-sh "~/.local/bin/media next"; }

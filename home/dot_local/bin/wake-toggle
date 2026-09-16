@@ -10,9 +10,31 @@ set -euo pipefail
 
 unit=speech-wake.service
 case "${1:-toggle}" in
+    menu)
+        on_marker=' '
+        off_marker='●'
+        if systemctl --user is-active --quiet "$unit"; then
+            on_marker='●'
+            off_marker=' '
+        fi
+        choice=$(printf '%s\n' \
+            "on"$'\t'"  $on_marker  On — listen for Alexa" \
+            "off"$'\t'"  $off_marker  Off — stop listening" \
+            | fzf \
+                --delimiter=$'\t' \
+                --with-nth='2..' \
+                --prompt='> ' \
+                --header='Alexa wake listener · ● current · Esc cancels' \
+                --height=100% \
+                --reverse \
+                --no-info \
+                --pointer='›' \
+                --color='prompt:bold:8,header:italic:7,pointer:5') || exit 0
+        action=${choice%%$'\t'*}
+        ;;
     toggle) systemctl --user is-active --quiet "$unit" && action=off || action=on ;;
     on|off|status) action=$1 ;;
-    *) echo "Usage: $0 {toggle|on|off|status}"; exit 1 ;;
+    *) echo "Usage: $0 {menu|toggle|on|off|status}"; exit 1 ;;
 esac
 
 case "$action" in
