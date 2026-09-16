@@ -121,4 +121,9 @@ final: prev: {
   # Huion Note X10 offline-note extractor over BLE, pinned by commit, thin
   # strokes. Only hosts/client/huion.nix consumes it. See pkgs/huion-notes.nix.
   huion-notes = final.callPackage ../pkgs/huion-notes.nix { };
+
+  # land (CNA-M07): copy-then-verify for preservation packets — manifest,
+  # README, sha256 over every row. Used by the nightly ~/today sweep and by
+  # every one-time landing lane. Stdlib Python; see pkgs/land.
+  land = final.callPackage ../pkgs/land { };
 }

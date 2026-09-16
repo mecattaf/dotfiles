@@ -654,6 +654,7 @@
             crm
             dcal
             fleet-status
+            land
             local-ai-monthly
             # `nix build .#local-models-prune` — the ONLY verb on this fleet
             # that deletes a working copy. Exposed so the guard suite can be
@@ -2622,6 +2623,34 @@
             python3 -m unittest discover -s ${./tests/fleet-status} -p 'test_*.py' -v
             touch "$out"
           '';
+
+        # land (CNA-M07): the landing tool that carries a working lane into the
+        # notes repository. The suite builds its own fixture lane in $TMPDIR --
+        # nested .git, symlink, 3-byte file, excluded glob, sparse file over the
+        # 95 MiB ceiling -- and drives copy/verify/diff over it. rsync is in the
+        # build inputs so the diff cross-check is exercised here and not only on
+        # a host that happens to have it; the sparse file costs no store space.
+        # What is pinned: a packet's row count equals `find -type f`, a flipped
+        # byte or a stray file FAILS verify, the sources are byte-identical
+        # afterwards, and the secret guard aborts before writing anything while
+        # printing the file's name and never the matched value.
+        land =
+          pkgs.runCommand "land"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.rsync
+              ];
+            }
+            ''
+              set -euo pipefail
+              export HOME="$TMPDIR/home"
+              export PYTHONDONTWRITEBYTECODE=1
+              export LAND_PY=${pkgs.land}/share/land/land.py
+              mkdir -p "$HOME"
+              python3 -m unittest discover -s ${./tests/land} -p 'test_*.py' -v
+              touch "$out"
+            '';
 
         # seats: one capacity oracle across every seat on this box. Hermetic —
         # SEATS_NO_NETWORK=1 and a home tree the test builds itself, because
