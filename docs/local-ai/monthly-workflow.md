@@ -112,9 +112,7 @@ The accepted context (`context.md`) is rendered mechanically from
 `sources.json`: the mono-model policy summary, the served-model line
 (`halogen-qwen3.8-flash-next` through provider `halogen` at
 `http://worker:8731` on `worker`), the kept small Library artifacts
-(`qwen36-35b-a3b-mtp-ud-q8-k-xl`, `gemma4-12b-it-q8-0`,
-`gemma4-12b-it-mtp-q8-0`, `fara15-9b-q8-0`, `fara15-9b-mmproj-bf16` — served
-by hand, never declaratively), the runtime and change policies, and the fleet
+(none since Tom's 2026-09-16 ruling, rendered as `none`), the runtime and change policies, and the fleet
 hardware table with each host's policy string (the coordinator's reads `NPU
 decommissioned 2026-08-29; IOMMU off (amd_iommu=off)`). Preparation refuses
 if a kept artifact is missing from the typed catalogue. The prompt tells Pi to

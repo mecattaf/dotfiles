@@ -35,13 +35,22 @@ run by podman, with the weights loaned from the NAS Library into
 liveness and discovery probe), carries the vision tower, so OCR and image
 reading go through it too, and needs no authentication. The model id is
 `halogen-qwen3.8-flash-next`; a request naming another id is not rejected.
-A second Halogen engine, halogen-server with Qwen3.8-27B, is declared on the
-same worker as `services.halogen.alternates.qwen38-27b`: same port, same launch
-shape, never resident together with Flash (the units conflict), started only by
-an operator's `halogen-switch qwen38-27b` and put back with `halogen-switch
+A second Halogen engine, halogen-server with Qwen3.8-27B, is declared as
+`services.halogen.alternates.qwen38-27b`: same port, same launch shape, never
+resident together with Flash (the units conflict), started only by an
+operator's `halogen-switch qwen38-27b` and put back with `halogen-switch
 flash`. Flash is the everyday model; the 27B is the alternate.
+**Both engines on both twins (Tom, 2026-09-16).** `modules/strix.nix` declares
+the server and the alternate once for the worker and the coordinator, and both
+wanted sets carry both bundles. Only the worker starts Flash at boot and only
+the worker is the `utility` endpoint. The coordinator has
+`services.halogen.autoStart = false`: nothing is resident there, because it is
+Tom's desktop and also runs TTS, Parakeet and diarization. Check the GPU is
+free, start an engine with `halogen-switch flash|qwen38-27b`, and release it
+with `halogen-switch off`. Do not make a coordinator engine resident or move
+`utility` off the worker without Tom.
 There is no `/v1/embeddings`, no reranking, no audio, no image generation, no
-hot reload and no second model. The token budget covers thinking: default
+hot reload and no second resident model on a host. The token budget covers thinking: default
 `max_tokens` 8192, cap 65536. Stable diffusion is outside this LLM route.
 
 **The NPU path is decommissioned — permanently, 2026-08-29.** FastFlowLM (`flm`)
@@ -114,27 +123,34 @@ This Intel client investigation does not reopen the retired AMD NPU path.
 No wake listener is activated by the research. Call transcription must suppress
 wake detection, per Tom's Mykonos annotations.
 
-The small GGUF models the fleet keeps — `qwen36-35b-a3b-mtp-ud-q8-k-xl`,
-`gemma4-12b-it-q8-0` with its MTP head, `fara15-9b-q8-0` with its projector —
-and the specialised rows (the Qwen3 text and VL embedders, VibeVoice speech,
-Mage-Flow and Mage-VL) are NAS-Library artifacts. An operator loans them onto
-a host with `local-models-borrow` and, for the GGUFs, serves them by hand with
-`llama-server` from nix-strix-halo's `llama-cpp-rocm` / `llama-cpp-vulkan`
-commands. The sole task-specific exception is FARA 1.5 9B on coordinator: the
-on-demand `modules/fara-browser-model.nix` user service listens on loopback
-8732 while `fara-browser` needs it. It uses already-loaned weights and is not
-a second resident fleet model. Other small models have no declarative service,
-timer or proxy row.
+The coordinator's other model rows are task-specific. Qwen3-TTS 1.7B Base Q8
+with the `qwen-k2so-midway-b` voice is the one TTS model (`modules/qwen-tts.nix`;
+the voice has a second verified copy at
+`/mnt/nas/documents/voice-references/qwen-k2so-midway-b/`, because it cannot be
+re-downloaded). VibeVoice-ASR-Streaming-7B is the one diarization model, loaded
+per run by `call-diarize` (Tom, 2026-09-16). Parakeet TDT v3 and the two
+openWakeWord rows serve the speech path. The Qwen3 text embedder and the Mage
+rows are NAS-Library artifacts an operator loans with `local-models-borrow` and
+runs by hand; they have no declarative service, timer or proxy row.
 Embeddings in particular have no server behind them until an operator starts
 one.
 
 Out, and not to be reintroduced: dual-node inference of any kind (the
 Thunderbolt and direct 5GbE rails between the twins no longer exist; the
 worker is wired-only on `enp191s0` at `10.42.0.5`, with no wifi, no compositor
-and no VNC), the flashnext / flashnix / vLLM-fork projects, DS4, GLM, the
-dense big models (Qwen3.8-27B, Qwen3.6-27B, Gemma 4 31B, Fara 27B), the
-Qwen3-VL OCR rows and the uncensored candidates. A new engine is a new server
-module beside `modules/halogen.nix`, or it does not serve.
+and no VNC), the flashnext / flashnix / vLLM-fork projects (flashnext-fp8 and
+qwen38-flash-next-fp8 included), DS4 / DeepSeek, GLM, every Gemma model
+(supergemma included), Ornith, Muse Glimmer, IBM Granite, the GGUF
+Qwen3.6-35B-A3B, Qwen3.6-27B and Qwen3.8-27B (the `.hgn` `halogen-qwen38-27b`
+stays), Gemma 4 31B, every Qwen3-VL row (instruct, projectors and the VL
+embedder), every FARA 1.5 model (4B, 9B, 27B) together with its browser agent,
+the FLM NPU models, Flash-Next in other formats (UD-IQ3_XXS, the ciru IU4
+reference), qwen3-coder-next, the sherpa-onnx keyword-spotting research model,
+every VibeVoice except `vibevoice-asr-streaming-7b-bf16`, every Qwen TTS variant
+except the production Base Q8 + tokenizer + K-2SO voice (VoiceDesign,
+CustomVoice, the K-2SO CustomVoice experiments, khimaros, 1.7B BF16, 0.6B), and
+the uncensored candidates (Tom, 2026-09-11 and 2026-09-16). A new engine is a
+new server module beside `modules/halogen.nix`, or it does not serve.
 
 The weight plane lives outside Nix. `hosts/nas/models.nix`'s `library-fetch`
 is the only thing that talks to Hugging Face; it fills the canonical NAS
@@ -144,19 +160,18 @@ to `/etc/local-models/wanted.json`, but activation moves no bytes:
 artifacts from the Library into `/var/lib/local-models`, and
 `sudo local-models-prune --dry-run|--yes` is the only thing that deletes a
 loaned copy, and only when the set it computed has not changed underneath it.
-`docs/nas/model-archive.md` is the retire/restore runbook.
+`docs/nas/model-archive.md` is the retire/restore runbook; retired Library
+bytes are listed in `/mnt/nas/models/weights/RETIRED-<date>.tsv`.
 
 **Shared browser desktop (2026-09-12).** Coordinator keeps `myDisplay.enable =
 false`: no physical Niri/greetd session. `modules/browser-desktop.nix` supplies a
 separate on-demand headless Sway seat with WayVNC on loopback and stock noVNC
 served by Caddy at `https://browser.internal` on BE550. The lightweight launcher
-starts at boot; Sway, WayVNC and Chrome do not. Manual sessions stop five minutes
-after the last viewer disconnects; active FARA tasks keep their session alive
-and release it on completion/cancellation unless a manual session remains. This exception is coordinator-only;
-worker and NAS remain without compositor/VNC. `fara-browser` uses Microsoft's
-pinned FARA loop against that noVNC canvas, ordinary installed Chrome profiles,
-and one task at a time. The house `fara-browser` skill documents profile/account
-selection, human keyring unlock, takeover, replay and task-window cleanup.
+starts at boot; Sway, WayVNC and Chrome do not. Sessions stop five minutes
+after the last viewer disconnects. This exception is coordinator-only; worker
+and NAS remain without compositor/VNC. The sidebar opens ordinary installed
+Chrome profiles and unlocks the keyring. The FARA agent loop (`fara-browser`,
+its model unit and skill) was removed with FARA on 2026-09-16 (Tom).
 `chrome-stream` (same module) is the lighter path: headless Chrome's CDP
 screencast in a viewer page, bound to loopback and tunnelled to the client
 over `ssh -L`.
@@ -185,7 +200,7 @@ page completeness.
 selected wake path. Direct `parakeet-rs` 0.3.7 with Parakeet TDT v3 ONNX and
 MIGraphX runs on the coordinator; Voxtype and its virtual-microphone relay are
 retired from the configuration. There is no Gemma/router layer in the daily
-flow. Gemma E4B/12B and both VibeVoice ASR tracks remain research artifacts.
+flow. Gemma and the non-streaming VibeVoice ASR are retired (2026-09-16).
 `home/speech.nix` declares the resident coordinator transcription unit and client
 wake unit. No service startup downloads models. Use the NAS manifests and explicit
 `local-models-borrow` transactions documented in `docs/speech-operations.md`.
@@ -210,7 +225,8 @@ protection: deployment must not kill live PTYs. Existing client processes need a
 new projector launch to load a changed binary.
 
 The original montage, accepted midway B enrollment and evaluation outputs are
-preserved on NAS; superseded models have not been deleted. See
+preserved on NAS; superseded speech model weights were deleted on 2026-09-16
+(receipt in `/mnt/nas/models/weights/RETIRED-2026-09-16.tsv`). See
 `docs/mykonos-overnight-integration.md` for the rollout/acceptance record, rather
 than inferring activation from these declarations.
 

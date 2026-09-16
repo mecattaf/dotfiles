@@ -1,11 +1,10 @@
-// Small takeover control added to stock noVNC. Its rendering and input stay upstream.
+// Session start and a Chrome menu added to stock noVNC. Its rendering and input stay upstream.
 import UI from './app/ui.js';
-window.faraRfb = () => UI.rfb;
 UI.updateDesktopName = (event) => {
     UI.desktopName = event.detail.name;
     document.title = 'Browser desktop';
 };
-if (!new URLSearchParams(location.search).has('agent')) {
+{
     // Only initial entry or an explicit Connect starts a manual session.
     // Transport reconnects after End session must not restart the desktop.
     let mayStartDesktop = true;
@@ -21,7 +20,7 @@ if (!new URLSearchParams(location.search).has('agent')) {
                     UI.showStatus('Session ended. Choose Start desktop to begin again.', 'normal');
                     UI.openControlbar(); return;
                 }
-                const start = await fetch('/desktop/start', {method:'POST', headers:{'X-Fara-Control':'1'}});
+                const start = await fetch('/desktop/start', {method:'POST', headers:{'X-Desktop-Control':'1'}});
                 if (!start.ok) throw Error('Unable to start desktop');
             }
             mayStartDesktop = false;
@@ -32,59 +31,10 @@ if (!new URLSearchParams(location.search).has('agent')) {
     if (connectButton.tagName === 'INPUT') connectButton.value = 'Start desktop';
     else connectButton.textContent = 'Start desktop';
     connectButton.addEventListener('click', () => { mayStartDesktop = true; }, {capture:true});
-    // Fail closed on first connect/reconnect and when control status is unavailable.
-    // Route the stock setting through the same ownership decision, including its
-    // keyboard/clipboard controls, so it cannot accidentally end spectator mode.
-    let viewOnly = true;
-    const originalViewOnly = UI.updateViewOnly.bind(UI);
-    UI.updateViewOnly = () => {
-        UI.forceSetting('view_only', viewOnly);
-        originalViewOnly();
-    };
-    const controls = document.createElement('div');
-    controls.id = 'desktop-control-status';
-    controls.style.cssText = 'position:fixed;right:12px;top:12px;z-index:10000;display:flex;align-items:center;gap:8px;background:#000000;color:white;padding:8px 12px;font:14px sans-serif';
-    const label = document.createElement('span');
-    label.id = 'desktop-ownership'; label.textContent = 'Connecting…';
-    const button = document.createElement('button'); button.id = 'desktop-take-control';
-    button.textContent = 'Take control'; button.disabled = true;
-    button.title = 'Pause FARA and disconnect its input before using the desktop';
-    controls.append(label, button); document.body.append(controls);
-    button.onclick = async () => {
-        button.disabled = true;
-        label.textContent = 'Stopping FARA…';
-        try {
-            const r = await fetch('/control/pause', {method:'POST', headers:{'X-Fara-Control':'1'}});
-            if (!r.ok) throw Error('Unable to confirm');
-            await update();
-        } catch { label.textContent = 'Ask your agent to stop FARA'; }
-    };
-    async function update() {
-        try {
-            const response = await fetch('/control/state', {cache:'no-store'});
-            if (!response.ok) throw Error('Control state unavailable');
-            const state = await response.json();
-            const human = state.owner === 'human' && state.phase !== 'pausing';
-            viewOnly = !human;
-            UI.updateViewOnly();
-            const profile = state.profile_at_start;
-            const identity = profile ? ` · ${profile.name} (${profile.directory}) · ${profile.google_account || 'No Google account recorded'}` : '';
-            label.textContent = state.phase === 'pausing' ? 'Stopping FARA…' : human ? 'You have control' : `Spectating · ${state.task_id}${identity}`;
-            controls.style.display = human ? 'none' : 'flex';
-            button.hidden = human; button.disabled = human || state.phase === 'pausing';
-        } catch {
-            controls.style.display = 'flex';
-            viewOnly = true; UI.updateViewOnly();
-            label.textContent = 'Spectating · control status unavailable';
-            button.hidden = false; button.disabled = true;
-        }
-    }
-    setInterval(update, 750);
-    update();
 }
 
 // Reuse noVNC's existing toolbar and panel styling.
-if (!new URLSearchParams(location.search).has('agent')) {
+{
     const bar = document.querySelector('#noVNC_control_bar .noVNC_scroll');
     const chrome = document.createElement('input');
     chrome.type = 'image'; chrome.src = './chrome.png'; chrome.alt = 'Chrome';
@@ -100,7 +50,7 @@ if (!new URLSearchParams(location.search).has('agent')) {
         <p><button id="chrome-open" disabled>Open window</button>
         <button id="chrome-unlock" hidden>Unlock keyring</button></p>
         <p><button id="desktop-end">End session</button></p>
-        <p style="white-space:normal">Closes five minutes after the last viewer disconnects. FARA tasks keep running.</p>
+        <p style="white-space:normal">Closes five minutes after the last viewer disconnects.</p>
         <p id="chrome-status" role="status" style="white-space:normal;overflow-wrap:anywhere;margin-bottom:0"></p>`;
     wrapper.append(panel);
     bar.querySelector('hr').after(chrome, wrapper);
@@ -130,7 +80,7 @@ if (!new URLSearchParams(location.search).has('agent')) {
             if (stateMessage) status.textContent = '';
             stateMessage = snapshot.unlocking || snapshot.busy || snapshot.keyring !== 'unlocked';
             if (snapshot.unlocking) status.textContent = 'Enter the keyring password in the desktop dialog.';
-            else if (snapshot.busy) status.textContent = 'Finish or cancel the current FARA task before opening another window.';
+            else if (snapshot.busy) status.textContent = 'Another desktop action is in progress.';
             else if (snapshot.keyring === 'locked') status.textContent = 'Unlock the desktop keyring once before opening Chrome.';
             else if (snapshot.keyring !== 'unlocked') status.textContent = 'The coordinator’s keyring cannot be reached. Its desktop session needs repair before Chrome can open.';
         } catch (error) { snapshot = null; status.textContent = error.message; }
@@ -157,7 +107,7 @@ if (!new URLSearchParams(location.search).has('agent')) {
         status.textContent = action === 'end' ? 'Closing session…' : action === 'open' ? 'Opening Chrome…' : 'Requesting keyring unlock…';
         try {
             const response = await fetch('/desktop/' + action, {method:'POST',
-                headers:{'Content-Type':'application/json','X-Fara-Control':'1'},
+                headers:{'Content-Type':'application/json','X-Desktop-Control':'1'},
                 body:JSON.stringify({profile:select.value})});
             const result = await response.json();
             if (!response.ok) throw Error(result.error || 'The request could not be completed.');

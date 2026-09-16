@@ -10,7 +10,7 @@ from measure import Meter
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--engine', choices=['serveurperso', 'khimaros'], required=True)
+    p.add_argument('--engine', choices=['serveurperso'], required=True)
     p.add_argument('--binary', required=True)
     p.add_argument('--model', required=True)
     p.add_argument('--codec', required=True)

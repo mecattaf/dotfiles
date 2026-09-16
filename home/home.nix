@@ -611,14 +611,6 @@ in
       gst_all_1.gst-plugins-good
       gst_all_1.gst-plugins-bad
       libjxl
-    ]
-    ++ lib.optionals (hostName == "coordinator") [
-      # Reference CLI for the local Fara1.5 computer-use model (overlay pkg,
-      # see pkgs/fara-cli.nix). Drives a real Chromium tab via Playwright;
-      # point it at the llama-server you started by hand on the borrowed
-      # fara15-9b-q8-0 + mmproj (docs/local-ai/README.md), e.g.:
-      #   fara-cli --base_url http://localhost:8080/v1 --model fara1.5-9b --task "..."
-      fara-cli
     ];
 
   # nvim → implemented in ./nvim.nix (imported above).

@@ -5,14 +5,15 @@ Tom's client is an ASUS Zenbook Duo UX8406MA, Intel Core Ultra 9 185H
 quiet fans on AC power and little maintenance are secondary. Battery endurance is not
 an optimization target.
 
-Three separate implementations are being measured:
+Three separate implementations were measured:
 
 - Scott Baker's existing OpenVINO detector: CPU mel frontend, Intel NPU embedding
   and classifier. Actual Meteor Lake execution succeeded with an isolated Nix
   runtime. Its original Panther Lake/Ubuntu example is a reuse source, not an
   exclusion criterion. See `npu/` for pinned runtime and saved-audio tools.
 - Native Sherpa-ONNX keyword spotting: small three-million-parameter streaming
-  model, one inference thread, configurable English phrases. See `cpu/`.
+  model, one inference thread, configurable English phrases. Its runner,
+  manifest and NAS weights were removed 2026-09-16 (Tom); openWakeWord won.
 - Upstream openWakeWord with ONNX Runtime on CPU, explicitly one inference
   thread per session, using the already borrowed Mycroft compatibility models.
 

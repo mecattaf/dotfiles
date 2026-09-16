@@ -83,9 +83,6 @@ in {
       handle /vnc {
         reverse_proxy 127.0.0.1:5901
       }
-      handle_path /control/* {
-        reverse_proxy 127.0.0.1:4782
-      }
       handle_path /desktop/* {
         reverse_proxy 127.0.0.1:4784
       }
@@ -95,17 +92,6 @@ in {
       }
       handle {
         redir * /novnc/vnc.html?autoconnect=1&path=/vnc&resize=scale&reconnect=1&reconnect_delay=2000 302
-      }
-      # The per-task control server is intentionally absent while idle.
-      handle_errors 502 {
-        @idle path /control/state /state
-        handle @idle {
-          header Content-Type application/json
-          respond `{"owner":"human","phase":"idle"}` 200
-        }
-        handle {
-          respond "{err.status_text}" {err.status_code}
-        }
       }
     '';
   };

@@ -9,19 +9,21 @@ from pathlib import Path
 import subprocess
 import time
 from aiohttp import web
-from session import MANUAL, TASK_LEASE, TASK_MODEL, NO_VIEWERS, start_desktop, stop_desktop, launch_chrome, desktop_status
-from harness import (RUNTIME, chrome_profiles, keyring_state, request_unlock,
+from session import (RUNTIME, MANUAL, NO_VIEWERS, start_desktop, stop_desktop, launch_chrome,
+                     desktop_status, chrome_profiles, keyring_state, request_unlock,
                      session_environment, ensure_chrome_on_display, windows)
 
 
 @contextlib.contextmanager
 def desktop_operation():
     RUNTIME.mkdir(parents=True, exist_ok=True)
-    with (RUNTIME / 'task.lock').open('a') as lock:
+    # One desktop change at a time, so idle expiry cannot stop a session that
+    # a concurrent Open window or End session is still changing.
+    with (RUNTIME / 'operation.lock').open('a') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise ValueError('Finish or cancel the current FARA task before opening a window.') from None
+            raise ValueError('Another desktop action is in progress. Try again shortly.') from None
         yield
 
 
@@ -65,7 +67,7 @@ def unlock():
             start_desktop(manual=True)
         else:
             return
-    # Waiting for a human password is not an active FARA task. Release the
+    # Waiting for a human password is not a desktop change. Release the
     # operation lock so disconnect expiry and End session can still stop it.
     request_unlock()
 
@@ -91,24 +93,10 @@ def end_manual():
         stop_desktop(wait_for_chrome=True)
 
 
-def reap_abandoned_task():
+def expire_idle_session():
     try:
         with desktop_operation():
-            if TASK_MODEL.exists():
-                subprocess.run(['systemctl', '--user', 'stop', 'fara-browser-model.service'], check=True)
-                TASK_MODEL.unlink()
-            running = (RUNTIME / 'environment').exists()
-            if TASK_LEASE.exists():
-                lease = json.loads(TASK_LEASE.read_text())
-                if running:
-                    env = session_environment()
-                    for window_id in set(windows(env)) - set(lease['baseline']):
-                        subprocess.run(['swaymsg', '-s', env['SWAYSOCK'], f'[con_id={window_id}] kill'],
-                                       check=True, capture_output=True)
-                subprocess.run(['systemctl', '--user', 'stop', lease['unit']], check=False, capture_output=True)
-                if not running or not (set(windows(env)) - set(lease['baseline'])):
-                    TASK_LEASE.unlink()
-            if not running:
+            if not (RUNTIME / 'environment').exists():
                 NO_VIEWERS.unlink(missing_ok=True)
                 return
             if not MANUAL.exists():
@@ -123,8 +111,7 @@ def reap_abandoned_task():
             elif time.monotonic() - float(NO_VIEWERS.read_text()) >= 300:
                 stop_desktop()
     except ValueError:
-        # An active FARA CLI holds the task lock. No spectator is required, and
-        # a manual session gets a fresh grace period after the task finishes.
+        # A menu action holds the lock, so a viewer was just present.
         NO_VIEWERS.unlink(missing_ok=True)
 
 
@@ -133,7 +120,7 @@ async def reaper(_app):
         while True:
             await asyncio.sleep(5)
             try:
-                await asyncio.to_thread(reap_abandoned_task)
+                await asyncio.to_thread(expire_idle_session)
             except Exception as error:
                 _app.logger.warning('Desktop cleanup failed: %s', error)
     task = asyncio.create_task(monitor())
@@ -160,11 +147,11 @@ def make_app(data_dir, origin):
             app.logger.warning('Keyring unlock did not complete: %s', error)
 
     async def change(request):
-        if request.headers.get('Origin') != origin or request.headers.get('X-Fara-Control') != '1':
+        if request.headers.get('Origin') != origin or request.headers.get('X-Desktop-Control') != '1':
             raise web.HTTPForbidden()
         try:
             if busy():
-                raise ValueError('Finish or cancel the current FARA task before using the Chrome menu.')
+                raise ValueError('Another desktop action is in progress. Try again shortly.')
             if request.path == '/start':
                 await asyncio.to_thread(start_manual)
                 return web.json_response({'status': 'started'})
