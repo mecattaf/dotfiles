@@ -80,11 +80,13 @@ another tree's oracle runs).
    done marker, `drain.sh` l.112).
 3. The fuse gate: `<state>/fuse` ≥ 3 → receipt `fuse`, exit 2, no Pi.
 4. Preflight: campaign dir, `skill/system-prompt.md`, `pi/models.json`
-   declaring provider `halogen` with model `halogen-qwen3.8-flash-next`, the
-   bundle, the repo. Missing → exit 78, no receipt, the task stays runnable.
+   declaring provider `halogen` with model `halogen-qwen3.8-flash-next`,
+   `pi/settings.json` (compaction `reserveTokens` / `keepRecentTokens` live
+   there, not in models.json), the bundle, the repo. Missing → exit 78, no receipt, the task stays runnable.
    A `pending` receipt is written here.
-5. Poll `GET worker:8731/health` every 10 s until `status ok`, `busy false`,
-   `engine.responds`; after 20 min → receipt `outage`, exit 69. Record the id
+5. Poll `GET worker:8731/health` (`curl --max-time 5`) every 10 s until
+   `status ok`, `busy false`, `engine.responds`; after 20 min → receipt
+   `outage`, exit 69. Record the id
    from `/v1/models` and `/health.version`.
 6. `git worktree add` of `~/agency/<repo>` at its current HEAD on branch
    `campaign/cubs-halogen-probe-1/<id>` under `<state>/worktrees/<id>`. A
@@ -99,16 +101,24 @@ another tree's oracle runs).
    --no-approve --tools read,bash,edit,grep,find,ls[,write]
    --system-prompt "<skill/system-prompt.md>" -- "<bundle>"`, with
    `PI_CODING_AGENT_DIR=~/mecattaf/cubs-campaign/pi`, `PI_TELEMETRY=0`,
-   `PI_OFFLINE=1`, under `timeout 1200`, events streamed to
+   `PI_OFFLINE=1`, stdin from `/dev/null` (`pi -p` reads a non-TTY stdin
+   to EOF as prompt text — the task JSON was this process's stdin and is
+   read in full first), under `timeout -k 30 1200` (the repair process
+   `-k 30 900`: a dropped Halogen connection leaves Pi's own auto-retry
+   hanging, so the budget is the rail), events streamed to
    `<state>/logs/<id>-a1.jsonl`. A session id that already exists in the
    session dir is rotated (`<id>-a1-r2`) rather than resumed: one fresh
-   process, always.
+   process, always. Pi's "No project session found with id …; creating a
+   new session" stderr line is the expected first-run notice.
 9. The diff guard: the campaign's `tools/spec-diff-guard.sh --task <id>
    --worklist <wl> --upstream ~/agency/<repo>` when it exists (allowed paths
    + new files, any `spec.md` frozen, the constitution frozen, `git diff
    --check`, a setup copy identical to upstream is not a change, an empty
    allowed diff fails); the built-in `cubs-helpers.py guard` with the same
-   path rules otherwise.
+   path rules otherwise. Both read untracked files (`ls-files --others`).
+   Then the trailing-newline gate over the allowed touched files: `git diff
+   --check` does not report a missing final newline, and the smoke showed
+   Flash-Next's `edit` dropping it.
 10. `validation_cmd` inside the worktree, `timeout 600`, transcript to
     `<state>/logs/<id>-v1.log`.
 11. On a red guard or validation: exactly ONE repair — a fresh Pi process
@@ -152,8 +162,8 @@ the executable adds:
 | `health_version` | `/health.version` rendered `"api X engine Y"` |
 | `campaign_sha`, `skill_digest`, `bundle_digest` | campaign HEAD; `sha256:` of the prompt and bundle bytes |
 | `worktree_branch`, `worktree_path`, `base_sha` | the worktree |
-| `tool_calls`, `is_error_count`, `repeated_identical_calls`, `tool_call_names` | `tool_execution_start/end` events, summed over both Pi processes |
-| `usage.{prompt_tokens, completion_tokens, reasoning_tokens, message_end_events}` | summed over `message_end` events (pi `Usage` input+cacheRead+cacheWrite / output) |
+| `tool_calls`, `is_error_count`, `repeated_identical_calls`, `tool_call_names` | `tool_execution_start/end` events, summed over both Pi processes; `tool_call_names.bash` is the bash count (the "validation command only" invariant is soft, so it is counted, not enforced); per attempt in `attempts.json` |
+| `usage.{prompt_tokens, completion_tokens, reasoning_tokens, message_end_events}` | summed over `message_end` events (pi `Usage` input+cacheRead+cacheWrite / output / reasoning). The smoke found only `--thinking off` is a real cap on Flash-Next (low/medium barely move reasoning), so `task.thinking` stays the switch and the reasoning count is what the ledger reads |
 | `diff_sha256` | sha256 of the allowed-files diff at commit time; null when empty |
 | `commit_sha` | the one commit on the task branch, or null |
 | `validation.{cmd, exit, transcript_digest, seconds, transcript_path, guard_exit}` | the last validation run and the guard's exit |

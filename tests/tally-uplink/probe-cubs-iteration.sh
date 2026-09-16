@@ -76,6 +76,7 @@ campaign="$scratch/campaign"; agency="$scratch/agency"; state="$scratch/state"; 
 mkdir -p "$campaign/skill" "$campaign/pi" "$campaign/bundles" "$campaign/worklists" "$agency" "$state" "$halogen_dir/v1"
 printf '# campaign system prompt (stub)\nYour prose is not evidence.\n' >"$campaign/skill/system-prompt.md"
 jq -n '{providers: {halogen: {api: "openai-completions", baseUrl: "http://stub/v1", models: [{id: "halogen-qwen3.8-flash-next"}]}}}' >"$campaign/pi/models.json"
+jq -n '{compaction: {reserveTokens: 32768, keepRecentTokens: 20000}}' >"$campaign/pi/settings.json"
 git -C "$campaign" init -q && git -C "$campaign" -c user.name=t -c user.email=t@t add -A && git -C "$campaign" -c user.name=t -c user.email=t@t commit -q -m init
 
 mkrepo() { # name, file, content
@@ -88,7 +89,7 @@ mkrepo() { # name, file, content
 mkrepo demo src/hello.txt "placeholder"
 mkrepo spec specs/D01/spec.md "# D01 frozen"
 
-for t in T1 T2 T3 T4 T5 T6 T7 T8; do printf '# bundle %s\n\nDo the task. Validation: see worklist.\n' "$t" >"$campaign/bundles/$t.md"; done
+for t in T1 T2 T3 T4 T5 T6 T7 T8 T9; do printf '# bundle %s\n\nDo the task. Validation: see worklist.\n' "$t" >"$campaign/bundles/$t.md"; done
 wl="$campaign/worklists/current.jsonl"
 task_line() { # id repo validation_cmd allowed
   jq -cn --arg id "$1" --arg repo "$2" --arg v "$3" --argjson allowed "$4" --arg b "$campaign/bundles/$1.md" \
@@ -104,6 +105,7 @@ task_line() { # id repo validation_cmd allowed
   task_line T6 demo 'grep -q hello src/hello.txt' '["src/**"]'
   task_line T7 demo 'grep -q hello src/hello.txt' '["src/**"]'
   task_line T8 demo 'true' '["src/**"]'
+  task_line T9 demo 'grep -q hello src/hello.txt' '["src/**"]'
 } >"$wl"
 
 # the stub Pi: writes a session file (so the fresh-process rotation is real),
@@ -121,8 +123,12 @@ while [ $# -gt 0 ]; do
   shift
 done
 mkdir -p "$sdir"; printf '{"type":"session","id":"%s"}\n' "$sid" >"$sdir/2026-09-16T00-00-00_$sid.jsonl"
+# what the harness handed this process on fd 0, and whether settings.json was reachable
+printf '%s\n' "$(readlink /proc/self/fd/0)" >"$sdir/stdin-of-$sid"
+[ -r "${PI_CODING_AGENT_DIR:-/nonexistent}/settings.json" ] && printf 'yes\n' >"$sdir/settings-of-$sid"
 case "${STUB_PI_ACTION:-edit}" in
   edit) mkdir -p src; printf 'hello\n' >>src/hello.txt ;;
+  edit-no-newline) mkdir -p src; printf 'hello' >src/hello.txt ;;
   edit-spec) printf 'changed\n' >>specs/D01/spec.md ;;
   edit-then-sleep) mkdir -p src; printf 'hello\n' >>src/hello.txt; sleep 60 ;;
   none) : ;;
@@ -211,6 +217,9 @@ case "$(receipt T1 .skill_digest)" in sha256:???????????????????????????????????
 [ "$(receipt T1 '.validation.guard_exit')" = 0 ] && ok "C3 validation.guard_exit 0" || bad "C3 guard_exit $(receipt T1 .validation.guard_exit)"
 [ -s "$state/tasks/T1/attempts.json" ] && ok "C3 attempts.json beside the receipt" || bad "C3 attempts.json"
 [ "$(receipt T1 .model)" = halogen-qwen3.8-flash-next ] && ok "C3 model read from /v1/models" || bad "C3 model $(receipt T1 .model)"
+[ "$(cat "$state/sessions/stdin-of-T1-a1")" = /dev/null ] && ok "C3 Pi's stdin is /dev/null" || bad "C3 Pi stdin was $(cat "$state/sessions/stdin-of-T1-a1")"
+[ -e "$state/sessions/settings-of-T1-a1" ] && ok "C3 PI_CODING_AGENT_DIR carries settings.json" || bad "C3 settings.json not reachable from PI_CODING_AGENT_DIR"
+[ "$(receipt T1 '.tool_call_names.bash')" = 1 ] && ok "C3 bash calls counted in tool_call_names" || bad "C3 tool_call_names $(receipt T1 -c .tool_call_names)"
 a1_before="$(stat -c %Y "$state/logs/T1-a1.jsonl")"
 sleep 1
 STUB_PI_ACTION=none run T1; rc=$?
@@ -256,6 +265,14 @@ else
   bad "C6 guard rc $rc: $(receipt T5 .notes)"
 fi
 [ "$(receipt T5 .validation.exit)" = null ] && [ "$(receipt T5 .validation.guard_exit)" = 1 ] && ok "C6 validation never ran behind a red guard (exit null, guard_exit 1)" || bad "C6 validation $(receipt T5 .validation)"
+
+# ---- C6b: the trailing-newline gate.
+STUB_PI_ACTION=edit-no-newline run T9; rc=$?
+if [ "$rc" = 1 ] && receipt T9 .notes | grep -q 'no trailing newline'; then
+  ok "C6 a touched file without a final newline fails the gate: $(receipt T9 .notes)"
+else
+  bad "C6 newline gate rc $rc: $(receipt T9 .notes)"
+fi
 
 # ---- C7: outage.
 fuse_before="$(cat "$state/fuse")"

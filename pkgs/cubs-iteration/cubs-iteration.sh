@@ -75,7 +75,8 @@ Environment (only for hand runs and the self-test; the kernel clears it):
   CUBS_STATE_DIR     default ~/.local/state/cubs-campaign
   CUBS_AGENCY_ROOT   default ~/agency        (the CUBS repos live under it)
   CUBS_HALOGEN_URL   default http://worker:8731
-  CUBS_PI_TIMEOUT    seconds per Pi process, default 1200
+  CUBS_PI_TIMEOUT    seconds for the first Pi process, default 1200
+  CUBS_PI_REPAIR_TIMEOUT  seconds for the repair process, default 900
   CUBS_PI_BIN, CUBS_HEALTH_DEADLINE, CUBS_HEALTH_INTERVAL,
   CUBS_VALIDATION_TIMEOUT             the self-test's seams
   TALLY_USAGE_SOURCE_PATH  where the one usage line lands (the kernel sets it)
@@ -121,6 +122,7 @@ STATE="$(expand_home "${CUBS_STATE_DIR:-$HOME/.local/state/cubs-campaign}")"
 AGENCY_ROOT="$(expand_home "${CUBS_AGENCY_ROOT:-$HOME/agency}")"
 HALOGEN="${CUBS_HALOGEN_URL:-http://worker:8731}"
 PI_TIMEOUT="${CUBS_PI_TIMEOUT:-1200}"
+PI_REPAIR_TIMEOUT="${CUBS_PI_REPAIR_TIMEOUT:-900}"
 # The self-test's seams (tests/tally-uplink/probe-cubs-iteration.sh): a stub
 # Pi and shorter clocks. Under the kernel none of these exist in the
 # environment, so the defaults are the campaign's numbers.
@@ -295,6 +297,7 @@ if [ "$DRY" = 1 ]; then
     --argjson bundle_ok "$([ -r "$BUNDLE" ] && echo true || echo false)" \
     --argjson sys_ok "$([ -r "$SYSTEM_PROMPT" ] && echo true || echo false)" \
     --argjson models_ok "$([ -r "$PI_AGENT_DIR/models.json" ] && echo true || echo false)" \
+    --argjson settings_ok "$([ -r "$PI_AGENT_DIR/settings.json" ] && echo true || echo false)" \
     '{dry: true, resolved: true, task: $task, task_source: $source,
       plan: {
         repo_dir: $repo_dir, worktree: $worktree, branch: $branch,
@@ -313,7 +316,7 @@ if [ "$DRY" = 1 ]; then
       preflight: {
         campaign_dir: $campaign, state_dir: $state,
         repo_present: $repo_ok, bundle_present: $bundle_ok,
-        system_prompt_present: $sys_ok, models_json_present: $models_ok,
+        system_prompt_present: $sys_ok, models_json_present: $models_ok, settings_json_present: $settings_ok,
         receipt_status: $receipt_status, fuse_count: $fuse
       }}'
   exit 0
@@ -534,6 +537,9 @@ preflight_fail() { log "$*"; exit 78; }
 [ -d "$CAMPAIGN_DIR" ] || preflight_fail "campaign dir $CAMPAIGN_DIR is missing"
 [ -r "$SYSTEM_PROMPT" ] || preflight_fail "system prompt $SYSTEM_PROMPT is missing"
 [ -r "$PI_AGENT_DIR/models.json" ] || preflight_fail "campaign-private $PI_AGENT_DIR/models.json is missing"
+# settings.json carries compaction.reserveTokens / keepRecentTokens (pi
+# docs/settings.md), which models.json cannot; both ship in the campaign repo.
+[ -r "$PI_AGENT_DIR/settings.json" ] || preflight_fail "campaign-private $PI_AGENT_DIR/settings.json is missing"
 [ -r "$BUNDLE" ] || preflight_fail "bundle $BUNDLE is missing"
 git -C "$REPO_DIR" rev-parse --git-dir >/dev/null 2>&1 || preflight_fail "$REPO_DIR is not a git repository"
 if ! jq -e --arg p "$PROVIDER" --arg m "$MODEL_ROW" '.providers[$p].models | any(.id == $m)' \
@@ -548,11 +554,11 @@ write_receipt pending 0
 
 # ---------------------------------------------------------------- halogen
 health_ok() {
-  curl -fsS --max-time 8 "$HALOGEN/health" 2>/dev/null \
+  curl -fsS --max-time 5 "$HALOGEN/health" 2>/dev/null \
     | jq -e '.status == "ok" and .busy == false and ((.engine.responds) // true)' >/dev/null 2>&1
 }
 health_reachable() {
-  curl -fsS --max-time 8 "$HALOGEN/health" 2>/dev/null | jq -e '.status == "ok"' >/dev/null 2>&1
+  curl -fsS --max-time 5 "$HALOGEN/health" 2>/dev/null | jq -e '.status == "ok"' >/dev/null 2>&1
 }
 wait_for_halogen() {
   local deadline
@@ -570,10 +576,10 @@ if ! wait_for_halogen; then
   log "$NOTES"
   finish outage 69
 fi
-MODEL_ID="$(curl -fsS --max-time 8 "$HALOGEN/v1/models" 2>/dev/null | jq -r '.data[0].id // empty' || true)"
+MODEL_ID="$(curl -fsS --max-time 5 "$HALOGEN/v1/models" 2>/dev/null | jq -r '.data[0].id // empty' || true)"
 # /health.version is an object on Halogen ({api, engine, match}); the schema
 # wants a string.
-HEALTH_VERSION="$(curl -fsS --max-time 8 "$HALOGEN/health" 2>/dev/null \
+HEALTH_VERSION="$(curl -fsS --max-time 5 "$HALOGEN/health" 2>/dev/null \
   | jq -r '.version | if type == "object" then ("api " + (.api|tostring) + " engine " + (.engine|tostring)) elif . == null then "" else tostring end' 2>/dev/null || true)"
 [ -n "$MODEL_ID" ] || MODEL_ID="$MODEL_ROW"
 log "halogen ready: model $MODEL_ID version ${HEALTH_VERSION:-?}"
@@ -614,7 +620,7 @@ run_setup() {
   log "setup: $SETUP_CMD"
   (
     cd "$WORKTREE" || exit 78
-    timeout --foreground --kill-after=10 "$VALIDATION_TIMEOUT" bash -c "$SETUP_CMD" >>"$transcript" 2>&1
+    timeout --foreground --kill-after=10 "$VALIDATION_TIMEOUT" bash -c "$SETUP_CMD" </dev/null >>"$transcript" 2>&1
   ) &
   CHILD_PID=$!
   wait "$CHILD_PID" || rc=$?
@@ -636,8 +642,17 @@ session_exists() {
 
 # $1 attempt tag (a1|a2), $2 prompt file. Streams JSON events to
 # logs/<id>-<tag>.jsonl. Leaves LAST_SESSION, LAST_EVENTS, LAST_PI_RC.
+#
+# STDIN IS /dev/null. `pi -p` reads a non-TTY stdin to EOF as part of the
+# prompt (MEASURED in the campaign smoke): the task JSON arrived on THIS
+# process's stdin and was read in full above, so Pi gets nothing. THE
+# TIMEOUT is per attempt (20 min first, 15 min repair) with `-k 30`: a
+# dropped Halogen connection leaves Pi's own auto-retry hanging
+# indefinitely, and the lease's SIGKILL is not the rail this script should
+# lean on.
 run_pi() {
-  local tag="$1" prompt_file="$2" sid rc
+  local tag="$1" prompt_file="$2" sid rc budget="$PI_TIMEOUT"
+  [ "$tag" = a2 ] && budget="$PI_REPAIR_TIMEOUT"
   sid="$TASK_ID-$tag"
   # ONE FRESH PROCESS: `--session-id` resumes a session that already exists in
   # --session-dir, so a retry rotates the id rather than silently continuing
@@ -650,13 +665,13 @@ run_pi() {
   [ "$n" -gt 1 ] && { out="$LOGS/$TASK_ID-$tag-r$n.jsonl"; err="$LOGS/$TASK_ID-$tag-r$n.stderr"; }
   local -a argv
   mapfile -t argv < <(pi_argv "$sid" "$THINKING")
-  log "pi $tag session $sid thinking $THINKING tools $TOOLS -> $out"
+  log "pi $tag session $sid thinking $THINKING tools $TOOLS budget ${budget}s -> $out"
   (
     cd "$WORKTREE" || exit 78
     PI_CODING_AGENT_DIR="$PI_AGENT_DIR" PI_TELEMETRY=0 PI_OFFLINE=1 \
-      timeout --foreground --kill-after=10 "$PI_TIMEOUT" \
+      timeout --foreground --kill-after=30 "$budget" \
       "${argv[@]}" --system-prompt "$(cat "$SYSTEM_PROMPT")" -- "$(cat "$prompt_file")" \
-      >"$out" 2>"$err"
+      <  /dev/null >"$out" 2>"$err"
   ) &
   CHILD_PID=$!
   wait "$CHILD_PID" && rc=0 || rc=$?
@@ -666,9 +681,22 @@ run_pi() {
 }
 
 # ---------------------------------------------------------------- guard
-# Sets GUARD_JSON and GUARD_EXIT; returns the guard's exit.
+# Sets GUARD_JSON and GUARD_EXIT; returns the guard's exit. Both guard kinds
+# already read untracked files (ls-files --others / git status), and both
+# are followed by the trailing-newline gate: `git diff --check` does not
+# report a missing final newline, and a Flash-Next `edit` drops it often
+# enough (campaign smoke) to be a gate rather than a note.
+newline_violations() {
+  local f
+  while IFS= read -r f; do
+    [ -s "$WORKTREE/$f" ] || continue
+    if [ "$(tail -c 1 "$WORKTREE/$f" | od -An -c | tr -d ' ')" != '\n' ]; then
+      printf '%s: no trailing newline\n' "$f"
+    fi
+  done < <(allowed_files)
+}
 run_guard() {
-  local rc=0 out
+  local rc=0 out nl
   case "$(guard_kind)" in
     campaign:*)
       out="$(cd "$WORKTREE" && bash "$CAMPAIGN_GUARD" --task "$TASK_ID" --worklist "$TASK_SOURCE" --upstream "$REPO_DIR" 2>&1)" || rc=$?
@@ -681,10 +709,19 @@ run_guard() {
         || jq -cn --arg out "$out" --argjson rc "$rc" '{ok: false, guard: "builtin", exit: $rc, output: $out, violations: ["guard did not answer"]}')"
       ;;
   esac
+  if [ "$rc" = 0 ]; then
+    nl="$(newline_violations)"
+    if [ -n "$nl" ]; then
+      rc=1
+      GUARD_JSON="$(printf '%s' "$GUARD_JSON" | jq -c --arg nl "$nl" '. + {ok: false, exit: 1, newline: ($nl | split("\n") | map(select(. != "")))}')"
+    fi
+  fi
   GUARD_EXIT="$rc"
   return "$rc"
 }
-guard_text() { printf '%s' "$GUARD_JSON" | jq -r '.output // (.violations | join("; ")) // "guard failed"' 2>/dev/null; }
+guard_text() {
+  printf '%s' "$GUARD_JSON" | jq -r '[(.output // (.violations // [] | join("; "))), ((.newline // []) | join("; "))] | map(select(. != "")) | join("; ") | if . == "" then "guard failed" else . end' 2>/dev/null
+}
 
 # ---------------------------------------------------------------- validation
 # $1 attempt number. Runs task.validation_cmd inside the worktree under a 10
@@ -696,7 +733,7 @@ run_validation() {
   log "validation $n: $VALIDATION_CMD"
   (
     cd "$WORKTREE" || exit 78
-    timeout --foreground --kill-after=10 "$VALIDATION_TIMEOUT" bash -c "$VALIDATION_CMD" >"$transcript" 2>&1
+    timeout --foreground --kill-after=10 "$VALIDATION_TIMEOUT" bash -c "$VALIDATION_CMD" </dev/null >"$transcript" 2>&1
   ) &
   CHILD_PID=$!
   wait "$CHILD_PID" || rc=$?
