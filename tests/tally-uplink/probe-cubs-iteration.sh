@@ -37,7 +37,7 @@
 #       campaign's tools/receipt.schema.json (stdlib validator, below).
 #   C9  the events summariser: usage summed over message_end, tool counts,
 #       isError, repeated identical calls, from the stub's stream.
-#   C10 THE KIT: the pinned lake's own readKit resolves build:CUBS-1..40 and
+#   C10 THE KIT: the pinned lake's own readKit resolves build:CUBS-1..200 and
 #       their scope()/eval() cells; argv[0] is an executable store path; stdin
 #       is a JSON pointer {worklist, id} naming the item; LOCAL-SMOKE and the
 #       claude:headless refusal are unchanged (FT-3's K2 still holds).
@@ -418,7 +418,7 @@ if [ -r "$kit" ] && [ -r "$lake/apps/uplink/src/kit.mjs" ] && [ -x "$node" ]; th
     import { readKit } from '${lake}/apps/uplink/src/kit.mjs'
     import { accessSync, constants } from 'node:fs'
     const kit = readKit(process.argv[1])
-    for (let n = 1; n <= 40; n++) {
+    for (let n = 1; n <= 200; n++) {
       const id = 'CUBS-' + n
       const w = kit.resolve('build:' + id)
       for (const f of ['argv', 'cwd', 'env_allowlist', 'usage_source', 'stdin']) if (w[f] === undefined) throw new Error(id + ' missing ' + f)
@@ -439,11 +439,11 @@ if [ -r "$kit" ] && [ -r "$lake/apps/uplink/src/kit.mjs" ] && [ -x "$node" ]; th
     try { kit.resolve('claude:headless') } catch (e) { refused = e.message }
     if (!refused) throw new Error('claude:headless resolved')
     let extra = ''
-    try { kit.resolve('build:CUBS-41') } catch (e) { extra = e.message }
-    if (!extra) throw new Error('build:CUBS-41 resolved; N is 40')
+    try { kit.resolve('build:CUBS-201') } catch (e) { extra = e.message }
+    if (!extra) throw new Error('build:CUBS-201 resolved; N is 200')
     console.log('REFS=' + kit.refs().length + ' ARGV0=' + kit.resolve('build:CUBS-1').argv[0])
   " "$kit" 2>&1)"; rc=$?
-  if [ "$rc" = 0 ]; then ok "C10 readKit(pinned lake): 40 CUBS items x 3 cells, LOCAL-SMOKE kept, claude:headless and CUBS-41 refused — $out"; else bad "C10 readKit: $out"; fi
+  if [ "$rc" = 0 ]; then ok "C10 readKit(pinned lake): 200 CUBS items x 3 cells, LOCAL-SMOKE kept, claude:headless and CUBS-201 refused — $out"; else bad "C10 readKit: $out"; fi
 else
   bad "C10 cannot resolve kit ($kit), lake ($lake) or node ($node)"
 fi

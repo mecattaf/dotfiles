@@ -211,7 +211,8 @@ plan re-armed.
 
 ## The kit entries (`home/tally-uplink.nix`)
 
-120 generated entries beside the untouched LOCAL-SMOKE trio, N = 40:
+600 generated entries beside the untouched LOCAL-SMOKE trio, N = 200
+(a label ceiling sized for campaign days 1-7 without a second switch):
 
 | ref | argv | cwd | env_allowlist | usage_source | stdin |
 |---|---|---|---|---|---|
@@ -274,8 +275,8 @@ plus one repair with the repair prompt carrying diff and transcript; the fuse
 and its reset; the `spec.md` guard; outage without touching the fuse;
 SIGTERM → WIP commit + `cancelled` receipt inside 25 s and a clean retry that
 rotates the session id and leaves ONE commit above the base; the events
-summariser; `readKit` over all 120 refs with LOCAL-SMOKE kept and
-`claude:headless` / `build:CUBS-41` refused; the topology check.
+summariser; `readKit` over all 600 refs with LOCAL-SMOKE kept and
+`claude:headless` / `build:CUBS-201` refused; the topology check.
 MEASURED 2026-09-16: `PROBE cubs-iteration: PASS`.
 
 ## The two operator acts left to Tom

@@ -375,13 +375,14 @@ let
   # `cwd` is the campaign repo, as the brief says; a run before that
   # directory exists is a spawn failure the kernel attests, not a silent pass.
   #
-  # N = 40 is a ceiling on labels, not a promise of work: a worklist line
+  # N = 200 is a ceiling on labels, not a promise of work: a worklist line
   # exists for an id or cubs-iteration exits 65 naming the id, and an item the
-  # plan never mints has an entry nobody resolves. The number is the brief's.
+  # plan never mints has an entry nobody resolves. 200 covers campaign days
+  # 1-7 (28 on day 1, ~15-30/day after) without a second coordinator switch.
   cubsIteration = pkgs.callPackage ../pkgs/cubs-iteration { pi = pkgs.llm-agents.pi; };
   cubsCampaignDir = "${config.home.homeDirectory}/mecattaf/cubs-campaign";
   cubsWorklist = "${cubsCampaignDir}/worklists/current.jsonl";
-  cubsCount = 40;
+  cubsCount = 200;
   cubsEntry = id: {
     argv = [ "${cubsIteration}/bin/cubs-iteration" ];
     cwd = cubsCampaignDir;
@@ -431,7 +432,7 @@ let
         "usage_source.kind is an OPAQUE label the kernel carries and never reads"
         "(tally docs/transport.md §2). It names no harness and nothing branches on it."
         ""
-        "ENABLED: build:CUBS-1 .. build:CUBS-40 (+ scope/eval no-ops), the"
+        "ENABLED: build:CUBS-1 .. build:CUBS-200 (+ scope/eval no-ops), the"
         "cubs-halogen-probe-1 campaign (FRONT-12 bootstrap): one store executable,"
         "cubs-iteration, per item; stdin is a POINTER {worklist, id} into"
         "~/mecattaf/cubs-campaign/worklists/current.jsonl, resolved by the script."
