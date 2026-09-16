@@ -2,8 +2,9 @@
 
 The catalogue in [`../../lib/local-models.nix`](../../lib/local-models.nix)
 (Mage manifests factored into
-[`../../lib/mage-models.nix`](../../lib/mage-models.nix)) has fifteen rows.
-This page is read off that file; every byte figure is the exact sum of the
+[`../../lib/mage-models.nix`](../../lib/mage-models.nix)) is summarised here
+(the Qwen speech-evaluation and speech-intake JSON rows it also merges are
+listed in `docs/speech-operations.md`). This page is read off that file; every byte figure is the exact sum of the
 pinned file sizes (decimal GB), and every revision is the pinned Hugging Face
 commit.
 
@@ -25,7 +26,7 @@ assertion.
 | Host | Wanted artifacts | Served by |
 |---|---|---|
 | `worker` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b` | [`../../modules/halogen.nix`](../../modules/halogen.nix) at `http://worker:8731`; Flash resident at boot, the 27B only after `halogen-switch qwen38-27b` |
-| `coordinator` | `qwen36-35b-a3b-mtp-ud-q8-k-xl`, `gemma4-12b-it-q8-0`, `gemma4-12b-it-mtp-q8-0`, `fara15-9b-q8-0`, `fara15-9b-mmproj-bf16` | an operator's hand-run `llama-server`; nothing declarative |
+| `coordinator` | `fara15-9b-q8-0`, `fara15-9b-mmproj-bf16`, `vibevoice-asr-streaming-7b-bf16`, plus the Qwen speech rows and wake words from `modules/qwen-tts.nix` and the host file | FARA on demand (`modules/fara-browser-model.nix`); streaming ASR per `call-diarize` run; Qwen TTS on demand |
 | `nas` | none; it holds the Library | — |
 
 ## The catalogue
@@ -34,17 +35,12 @@ assertion.
 |---|---|---|---|---|---|
 | `halogen-qwen38-flash-next` | model (4-bit checkpoint + quality overlay + vision tower + flat tokenizer, 9 files) | W4B `.hgn` | [`peonist-ai/halogen-qwen3.8-flash-next@ac23b1b`](https://huggingface.co/peonist-ai/halogen-qwen3.8-flash-next/tree/ac23b1b223b4e9192d27c22367d4dbacf2b595ef) (base [`Qwen/Qwen3.8-Flash-Next`](https://huggingface.co/Qwen/Qwen3.8-Flash-Next)) | 127.47 GB | Halogen Flash server on the worker; the only thing that loads these bytes |
 | `halogen-qwen38-27b` | model (dense checkpoint + flat tokenizer, 6 files) | P1W4D-D2 `.hgn` | [`peonist-ai/halogen-qwen3.8-27b@d92dc33`](https://huggingface.co/peonist-ai/halogen-qwen3.8-27b/tree/d92dc33afed1cdc073846c76e51090fa493ce74a) | 35.9 GB | `podman-halogen-qwen38-27b`, the alternate engine on `:8731`, text only |
-| `qwen36-35b-a3b-mtp-ud-q8-k-xl` | model with integrated MTP | UD-Q8_K_XL | [`unsloth/Qwen3.6-35B-A3B-MTP-GGUF@5bc3e23`](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/tree/5bc3e238d916f48a861bac2f8a1990a0e9b7e98d) | 39.10 GB | hand-run `llama-server` |
-| `gemma4-12b-it-q8-0` | model | Q8_0 | [`unsloth/gemma-4-12b-it-GGUF@fc034cf`](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF/tree/fc034cfff751157913579611efad8462ac1be606) | 12.67 GB | hand-run `llama-server` |
-| `gemma4-12b-it-mtp-q8-0` | MTP head for the row above | Q8_0 | same repository and revision | 0.47 GB | passed to that `llama-server` |
 | `fara15-9b-q8-0` | model (computer use) | Q8_0 | [`bartowski/Fara1.5-9B-GGUF@153cb27`](https://huggingface.co/bartowski/Fara1.5-9B-GGUF/tree/153cb27ac91d4a2b9391ecf278542e610d040178) | 9.55 GB | hand-run `llama-server`; `fara-cli` is the reference client |
 | `fara15-9b-mmproj-bf16` | vision projector for the row above | BF16 | same repository and revision | 0.92 GB | passed as `--mmproj` |
 | `qwen3-embedding-8b-q8-0` | model (text embeddings) | Q8_0 | [`Qwen/Qwen3-Embedding-8B-GGUF@69d0e58`](https://huggingface.co/Qwen/Qwen3-Embedding-8B-GGUF/tree/69d0e58a13e463cd99a9b83e3f5fee7c10265fab) | 8.05 GB | none; hand-run `llama-server --embedding` |
 | `qwen3-vl-embedding-8b-q8-0` | model (multimodal embeddings) | Q8_0 | [`mradermacher/Qwen3-VL-Embedding-8B-GGUF@ffa4987`](https://huggingface.co/mradermacher/Qwen3-VL-Embedding-8B-GGUF/tree/ffa49879fdb91ed1a436fbc84f37b123f714bb13) | 8.05 GB | none; hand-run `llama-server --embedding` |
 | `qwen3-vl-embedding-8b-mmproj-f16` | vision projector for the row above | F16 | same repository and revision | 1.16 GB | passed as `--mmproj` |
-| `vibevoice-asr-bf16` | model (transcription + diarization, 10 files) | BF16 | [`microsoft/VibeVoice-ASR@d0c9efd`](https://huggingface.co/microsoft/VibeVoice-ASR/tree/d0c9efdb8d614685062c04425d91e01b6f37d944) | 17.35 GB | none; upstream PyTorch runtime |
-| `vibevoice-large-bf16` | model (text-to-speech, 14 files) | BF16 | [`aoi-ot/VibeVoice-Large@1b81fec`](https://huggingface.co/aoi-ot/VibeVoice-Large/tree/1b81fecc784a076dcd935678db551871f4598ebf) — community mirror; provenance risk is explicit | 18.69 GB | none; upstream PyTorch runtime |
-| `vibevoice-qwen25-7b-tokenizer` | tokenizer sidecar for both VibeVoice rows (4 files) | — | [`Qwen/Qwen2.5-7B@d149729`](https://huggingface.co/Qwen/Qwen2.5-7B/tree/d149729398750b98c0af14eb82c78cfe92750796) | 0.01 GB | — |
+| `vibevoice-asr-streaming-7b-bf16` | model (streaming transcription + speaker labels, 17-file snapshot with its own tokenizer) | BF16 | [`microsoft/VibeVoice-ASR-Streaming-7B@60d858b`](https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/tree/60d858b518b4e19d404af3737f848fc185b30177) | 17.36 GB | `call-diarize` on the coordinator; the one diarization model |
 | `mage-flow-4b-turbo-bf16` | model (image generation, 43-file snapshot) | BF16 | [`mage-flow-community/Mage-Flow-Turbo@65bb350`](https://huggingface.co/mage-flow-community/Mage-Flow-Turbo/tree/65bb3500f0da9df6a41ec6383716fc02cf014773) | 17.51 GB | none; upstream `MageFlowPipeline`, see [`mage.md`](mage.md) |
 | `mage-flow-edit-4b-turbo-bf16` | model (image editing, 43-file snapshot) | BF16 | [`mage-flow-community/Mage-Flow-Edit-Turbo@66df6fa`](https://huggingface.co/mage-flow-community/Mage-Flow-Edit-Turbo/tree/66df6fa1aba5b40cd4120739134292eab9779da3) | 17.51 GB | none; upstream `MageFlowPipeline`, see [`mage.md`](mage.md) |
 | `mage-vl-bf16` | model (image/video understanding, 78-file snapshot) | BF16 | [`microsoft/Mage-VL@5c78cab`](https://huggingface.co/microsoft/Mage-VL/tree/5c78cab61938e73859b63724d9bf5cb88c477eaa) | 10.85 GB | none; offline Transformers |
@@ -78,9 +74,11 @@ initialising on gfx1151 with no CPU fallback.
 - One declared server. A second engine is a second module beside
   `modules/halogen.nix`, reviewed as such; it is never a row that quietly
   starts serving because it was borrowed.
-- Every loaned GGUF is Q8 (`Q8_0` or `UD-Q8_K_XL`). Projectors, MTP heads,
-  speech and Mage snapshots, tokenizers and the halogen `.hgn` bundle are
-  explicit format exceptions, not low-bit selections.
+- Every loaned GGUF is Q8 (`Q8_0` or `UD-Q8_K_XL`). Projectors, speech and
+  Mage snapshots, tokenizers and the halogen `.hgn` bundle are explicit format
+  exceptions, not low-bit selections.
+- One TTS model (Qwen3-TTS with the K-2SO voice) and one diarization model
+  (VibeVoice-ASR-Streaming-7B), per Tom's 2026-09-16 ruling in `DECISIONS.md`.
 - Runtime downloads (`-hf`, `hf download` from a service) are forbidden by
   assertion. Bytes enter through `library-fetch` on the NAS and reach a host
   through `local-models-borrow`; `local-models-prune` is the only deleter.

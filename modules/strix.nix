@@ -36,21 +36,21 @@
     # What each twin WANTS on its own NVMe under /var/lib/local-models — the
     # exact set local-models-borrow loans from the NAS Library and
     # local-models-prune keeps. Nothing here serves a model: the worker's
-    # bundle is served by modules/halogen.nix, the coordinator's small GGUFs by
-    # a hand-run llama-server. The catalogue (lib/local-models.nix) stays
-    # broader than either list — embeddings, VibeVoice speech and Mage rows are
-    # loanable on demand — and the NAS Library keeps every row regardless.
+    # bundle is served by modules/halogen.nix; on the coordinator FARA is
+    # served on demand by modules/fara-browser-model.nix and the streaming
+    # ASR is loaded per run by call-diarize. The catalogue (lib/local-models.nix)
+    # stays broader than either list — embeddings and Mage rows are loanable on
+    # demand — and the NAS Library keeps every row regardless.
     services.local-models.artifacts =
       lib.optionals (config.networking.hostName == "worker") [
         "halogen-qwen38-flash-next"
         "halogen-qwen38-27b"
       ]
       ++ lib.optionals (config.networking.hostName == "coordinator") [
-        "qwen36-35b-a3b-mtp-ud-q8-k-xl"
-        "gemma4-12b-it-q8-0"
-        "gemma4-12b-it-mtp-q8-0"
         "fara15-9b-q8-0"
         "fara15-9b-mmproj-bf16"
+        # The one diarization model (Tom, 2026-09-16), loaded by call-diarize.
+        "vibevoice-asr-streaming-7b-bf16"
       ];
 
     # NPU DECOMMISSIONED 2026-08-29: Tom forgoes the XDNA2 NPU permanently.

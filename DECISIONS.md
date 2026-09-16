@@ -1487,3 +1487,23 @@ its written prohibition are unchanged); the live daemon (never called); anything
 under `~/.local/state/tally/`, which this unit only ever READ, to take the shape
 from a real row; and the move of a validated row into the daemon's own events
 directory, which is a separate act (D-E07) carried as `DEFERRED.md` DF-MEM-3-1.
+
+2026-09-16 one TTS model, one diarization model, and a narrower model estate
+(Tom). Qwen is the only TTS family: `qwen3-tts-1.7b-base-q8-0` with the
+`qwen-k2so-midway-b` voice through `modules/qwen-tts.nix`. VibeVoice TTS
+(`vibevoice-large-bf16`, the VibeVoice 1.5B and C++ conversions) is superseded
+by it. The only diarization model is Microsoft's VibeVoice-ASR-Streaming-7B
+(`vibevoice-asr-streaming-7b-bf16`, revision 60d858b, catalogued as a snapshot
+with its own streaming tokenizer): `call-diarize` loads it on the coordinator,
+replacing the January `vibevoice-asr-bf16` and its separate Qwen2.5 tokenizer
+row, which both leave the catalogue. Tom chose the 7B over the 1.5B despite the
+1.5B's cleaner speaker split on the single-file synthetic fixture of 2026-09-14:
+call recordings already separate the two sides by track, and the 7B's long-form
+word accuracy is markedly better. OUT, and not to return, added to the
+2026-09-11 list: everything Gemma (the 12B and its MTP head, the E4B and 12B
+speech-intake projectors), Qwen3.6-35B-A3B, anything GLM, DS4, flashnext and
+flashnix (flashnext-fp8 included), Ornith, Muse Glimmer and IBM Granite. The
+coordinator's wanted set becomes FARA 9B plus its projector, the streaming ASR,
+the Qwen speech rows and the wake words. NAS Library bytes for the retired rows
+leave by the retire runbook, with a separate yes for each deletion; this entry
+changes the declared state only.

@@ -221,22 +221,6 @@ let
                 hash = "sha256-sWuVVXx8c0ChIXV71oVblgnhz0rT+tB3i4k5MpOuXz0=";
                 notes = "Matching full-precision codec for ServeurpersoCom Qwen TTS GGUFs.";
               };
-              qwen36-35b-a3b-mtp-ud-q8-k-xl = mkSingleFileArtifact {
-                maker = "Qwen";
-                baseCheckpoint = {
-                  url = "https://huggingface.co/Qwen/Qwen3.6-35B-A3B";
-                  revision = "995ad96eacd98c81ed38be0c5b274b04031597b0";
-                };
-                hfUrl = "https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF";
-                revision = "5bc3e238d916f48a861bac2f8a1990a0e9b7e98d";
-                path = "Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf";
-                bytes = 39099447584;
-                oid = "6c6b816537abad90b250a0972b345466028d861ddfe316d5f0de31ca6440f781";
-                hash = "sha256-bGuBZTerrZCyUKCXKzRUZgKNhh3f4xbV8N4xymRA94E=";
-                quantization = "UD-Q8_K_XL";
-                notes = "Operator-selected high-fidelity Q8 tier with a matched MTP block integrated in the same GGUF.";
-              };
-
               fara15-9b-q8-0 = mkSingleFileArtifact {
                 maker = "Microsoft / bartowski";
                 baseCheckpoint = {
@@ -317,15 +301,33 @@ let
                 notes = "F16 vision projector paired with the Q8_0 multimodal embedding model.";
               };
 
-              vibevoice-qwen25-7b-tokenizer = {
-                kind = "tokenizer";
-                maker = "Qwen";
-                notes = "Pinned tokenizer payload required by both VibeVoice appliances; the ASR integration derives its extra audio-token metadata from these files.";
+              # ── the one diarization model: VibeVoice-ASR-Streaming-7B ──────
+              # Tom, 2026-09-16: the only diarization model; call-diarize loads it
+              # on the coordinator. Complete snapshot including its own streaming
+              # tokenizer (<|text_chunk_end|> = 151665); never pair it with a
+              # plain Qwen2.5 tokenizer.
+              vibevoice-asr-streaming-7b-bf16 = {
+                kind = "model";
+                maker = "Microsoft";
+                notes = "Official BF16 streaming ASR with speaker labels (Qwen2.5-7B backbone, 8.67B parameters): 2.933 s chunks plus 0.533 s lookahead at 24 kHz, no timestamps. Audited 2026-09-14 on gfx1151 (~17.6 GB peak, compute RTF ~0.40); coordinator-only.";
                 source = {
-                  hfUrl = "https://huggingface.co/Qwen/Qwen2.5-7B";
-                  revision = "d149729398750b98c0af14eb82c78cfe92750796";
-                  primary = "tokenizer.json";
+                  hfUrl = "https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B";
+                  revision = "60d858b518b4e19d404af3737f848fc185b30177";
+                  layout = "snapshot";
+                  primary = "config.json";
                   files = [
+                    {
+                      path = "added_tokens.json";
+                      bytes = 713;
+                      oid = "d0a4c6e0954c94843fae3c966a7d0b52c7b8c0787fba5731733e6ab602245b88";
+                      hash = "sha256-0KTG4JVMlIQ/rjyWan0LUse4wHh/ulcxcz5qtgIkW4g=";
+                    }
+                    {
+                      path = "config.json";
+                      bytes = 3709;
+                      oid = "804c6e78705f629e0e3484ce130967d43f8d5e1a728e5c1322bdd697e8704c7d";
+                      hash = "sha256-gExueHBfYp4ONITOEwln1D+NXhpyjlwTIr3Wl+hwTH0=";
+                    }
                     {
                       path = "merges.txt";
                       bytes = 1671839;
@@ -333,192 +335,88 @@ let
                       hash = "sha256-WZurVAdQiHdLFzP96GXVvXR8vMelR8W8EmEOh04m9eM=";
                     }
                     {
+                      path = "model-00001-of-00008.safetensors";
+                      bytes = 2488346304;
+                      oid = "3685d210ad49c49521e71a0cc5418ea94b20761c801dc8fc95938c4ec1ab27b3";
+                      hash = "sha256-NoXSEK1JxJUh5xoMxUGOqUsgdhyAHcj8lZOMTsGrJ7M=";
+                    }
+                    {
+                      path = "model-00002-of-00008.safetensors";
+                      bytes = 2389316008;
+                      oid = "d0252f5e9bdf7e65bb0ae051c49148fd5d77e531057556eb955fc6dc72f4f0bc";
+                      hash = "sha256-0CUvXpvffmW7CuBRxJFI/V135TEFdVbrlV/G3HL08Lw=";
+                    }
+                    {
+                      path = "model-00003-of-00008.safetensors";
+                      bytes = 2466376400;
+                      oid = "eeeb0c24e4a3746f16512c0d4aef84732bf8bb4dc5452782e4db356eb5fc7ce7";
+                      hash = "sha256-7usMJOSjdG8WUSwNSu+Ecyv4u03FRSeC5Ns1brX8fOc=";
+                    }
+                    {
+                      path = "model-00004-of-00008.safetensors";
+                      bytes = 2466376432;
+                      oid = "02fec24aaf3e59cbc653b55d94665d6393543f2550364c2c8bc9e75e2a2ca3c0";
+                      hash = "sha256-Av7CSq8+WcvGU7VdlGZdY5NUPyVQNkwsi8nnXioso8A=";
+                    }
+                    {
+                      path = "model-00005-of-00008.safetensors";
+                      bytes = 2499431160;
+                      oid = "a78637bdc2b44f28601f7ee12503e28f5e9faedde35ff5bcdc2e7356c9a6458e";
+                      hash = "sha256-p4Y3vcK0TyhgH37hJQPij16frt3jX/W83C5zVsmmRY4=";
+                    }
+                    {
+                      path = "model-00006-of-00008.safetensors";
+                      bytes = 2483469960;
+                      oid = "5bc9dfef14c62989192ab39356da45a9ccc9f0ef82f7f7127e48c17b5bd5a2f8";
+                      hash = "sha256-W8nf7xTGKYkZKrOTVtpFqczJ8O+C9/cSfkjBe1vVovg=";
+                    }
+                    {
+                      path = "model-00007-of-00008.safetensors";
+                      bytes = 1464887514;
+                      oid = "bb6da42b3547124eb67645fc6fb92523e93310a107872643f7df6dd75f85b4d7";
+                      hash = "sha256-u22kKzVHEk62dkX8b7klI+kzEKEHhyZD999t11+FtNc=";
+                    }
+                    {
+                      path = "model-00008-of-00008.safetensors";
+                      bytes = 1089994880;
+                      oid = "b1499fbe8bc0454eeafc1177db144679940f2456eae188299214c629d4d618b4";
+                      hash = "sha256-sUmfvovARU7q/BF32xRGeZQPJFbq4YgpkhTGKdTWGLQ=";
+                    }
+                    {
+                      path = "model.safetensors.index.json";
+                      bytes = 120115;
+                      oid = "29df2f8e046f5bd8a6d765a700fd767a9c505fa46fe9fd6d50f476c3bdcae638";
+                      hash = "sha256-Kd8vjgRvW9im12WnAP12epxQX6Rv6f1tUPR2w73K5jg=";
+                    }
+                    {
+                      path = "preprocessor_config.json";
+                      bytes = 192;
+                      oid = "99bf76b83a21385d2a8f5226edd9ec598f63e1ff7a50384dc8cf6b7753b9f9c4";
+                      hash = "sha256-mb92uDohOF0qj1Im7dnsWY9j4f96UDhNyM9rd1O5+cQ=";
+                    }
+                    {
+                      path = "special_tokens_map.json";
+                      bytes = 1177;
+                      oid = "cf263f1a86f252cae2cef55ca02f001fecefc92646016f0ed2f7349238b8504d";
+                      hash = "sha256-zyY/GobyUsrizvVcoC8AH+zvySZGAW8O0vc0kji4UE0=";
+                    }
+                    {
                       path = "tokenizer.json";
-                      bytes = 7031645;
-                      oid = "c0382117ea329cdf097041132f6d735924b697924d6f6fc3945713e96ce87539";
-                      hash = "sha256-wDghF+oynN8JcEETL21zWSS2l5JNb2/DlFcT6WzodTk=";
+                      bytes = 7032406;
+                      oid = "38e847ed54238171badeeaeaf8760632c949336d3d54207d2d34483c56bc7d57";
+                      hash = "sha256-OOhH7VQjgXG63urq+HYGMslJM209VCB9LTRIPFa8fVc=";
                     }
                     {
                       path = "tokenizer_config.json";
-                      bytes = 7228;
-                      oid = "c91efca15ceff6e9ee9424db58a6f59cd41294e550a86cbd07e3c1fb500b34f9";
-                      hash = "sha256-yR78oVzv9unulCTbWKb1nNQSlOVQqGy9B+PB+1ALNPk=";
+                      bytes = 9330;
+                      oid = "badef858f0481ccaea85cf86879737f1397c61d0385cdc9b785b657407606e02";
+                      hash = "sha256-ut74WPBIHMrqhc+Gh5c38Tl8YdA4XNybeFtldAdgbgI=";
                     }
                     {
                       path = "vocab.json";
                       bytes = 2776833;
                       oid = "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910";
                       hash = "sha256-yhDX6fs+0YV13R4neiV5wW0QjjLydDloSvoOELFECRA=";
-                    }
-                  ];
-                };
-              };
-
-              vibevoice-asr-bf16 = {
-                kind = "model";
-                maker = "Microsoft";
-                notes = "Full BF16 long-form ASR, timestamping, and diarization snapshot; coordinator-only appliance artifact.";
-                source = {
-                  hfUrl = "https://huggingface.co/microsoft/VibeVoice-ASR";
-                  revision = "d0c9efdb8d614685062c04425d91e01b6f37d944";
-                  primary = "config.json";
-                  files = [
-                    {
-                      path = "config.json";
-                      bytes = 3520;
-                      oid = "1798906d016a625ffa0100182cad152e055bfee53fb228a45ffe25d8179b9b24";
-                      hash = "sha256-F5iQbQFqYl/6AQAYLK0VLgVb/uU/siikX/4l2BebmyQ=";
-                    }
-                    {
-                      path = "model.safetensors.index.json";
-                      bytes = 120151;
-                      oid = "1468c7b7c74fe27831d8db57871fbf15efd270c747f3f99caf689119ace658ba";
-                      hash = "sha256-FGjHt8dP4ngx2NtXhx+/Fe/ScMdH8/mcr2iRGazmWLo=";
-                    }
-                    {
-                      path = "model-00001-of-00008.safetensors";
-                      bytes = 2488346272;
-                      oid = "5548c67885d423ba184bc8c33f2e9f81b582a6d119cef79907e19a274b916637";
-                      hash = "sha256-VUjGeIXUI7oYS8jDPy6fgbWCptEZzveZB+GaJ0uRZjc=";
-                    }
-                    {
-                      path = "model-00002-of-00008.safetensors";
-                      bytes = 2389315976;
-                      oid = "163023c61a3fb047745cbaf53ed41c1e27e515e9786a376e122bfac2ea6e687e";
-                      hash = "sha256-FjAjxho/sEd0XLr1PtQcHiflFel4ajduEiv6wupuaH4=";
-                    }
-                    {
-                      path = "model-00003-of-00008.safetensors";
-                      bytes = 2466376368;
-                      oid = "4e021702dfac2c52e8fdd6688de82c118be7bb7ad9b5c7988725ec63c44a64fb";
-                      hash = "sha256-TgIXAt+sLFLo/dZojegsEYvnu3rZtceYhyXsY8RKZPs=";
-                    }
-                    {
-                      path = "model-00004-of-00008.safetensors";
-                      bytes = 2466376400;
-                      oid = "b17657bb151daa117a5a4671374ac1b248acb696691a2a67ac227a1115925e30";
-                      hash = "sha256-sXZXuxUdqhF6WkZxN0rBskistpZpGipnrCJ6ERWSXjA=";
-                    }
-                    {
-                      path = "model-00005-of-00008.safetensors";
-                      bytes = 2499431136;
-                      oid = "0ed4e457268f7b02dda5cffe16b3a32614ccc2ccfe5de2db39bdd79700836406";
-                      hash = "sha256-DtTkVyaPewLdpc/+FrOjJhTMwsz+XeLbOb3XlwCDZAY=";
-                    }
-                    {
-                      path = "model-00006-of-00008.safetensors";
-                      bytes = 2483469928;
-                      oid = "6de8246bb042fd853b57d40995efd289ea44e4d1b611cec2e122570b8d2122bd";
-                      hash = "sha256-begka7BC/YU7V9QJle/SiepE5NG2Ec7C4SJXC40hIr0=";
-                    }
-                    {
-                      path = "model-00007-of-00008.safetensors";
-                      bytes = 1464887482;
-                      oid = "a2ba6960d994dc7598efc6796f85ab097da7708f4dd56095f7fccf4df8dc00e5";
-                      hash = "sha256-orppYNmU3HWY78Z5b4WrCX2ncI9N1WCV9/zPTfjcAOU=";
-                    }
-                    {
-                      path = "model-00008-of-00008.safetensors";
-                      bytes = 1089994848;
-                      oid = "1b9d9b328f85a25b4efca712d31513c6eed9e178152cc8cf4a6f0c2cd2bb623f";
-                      hash = "sha256-G52bMo+FoltO/KcS0xUTxu7Z4XgVLMjPSm8MLNK7Yj8=";
-                    }
-                  ];
-                };
-              };
-
-              vibevoice-large-bf16 = {
-                kind = "model";
-                maker = "Microsoft / aoi-ot mirror";
-                notes = "Full BF16 long-form multi-speaker TTS snapshot; coordinator-only with the mirror provenance warning retained.";
-                source = {
-                  hfUrl = "https://huggingface.co/aoi-ot/VibeVoice-Large";
-                  revision = "1b81fecc784a076dcd935678db551871f4598ebf";
-                  primary = "config.json";
-                  files = [
-                    {
-                      path = "config.json";
-                      bytes = 2785;
-                      oid = "695598158e43b44227bc7aa6fd851e410f7ce30b21a5ea5c3fe22983961e500a";
-                      hash = "sha256-aVWYFY5DtEInvHqm/YUeQQ984wshpepcP+Ipg5YeUAo=";
-                    }
-                    {
-                      path = "configuration.json";
-                      bytes = 72;
-                      oid = "30458d769bcf25aa4e8fd30bbde901f817e382a49f7c7da8c4380dd97b616876";
-                      hash = "sha256-MEWNdpvPJapOj9MLvekB+BfjgqSffH2oxDgN2XthaHY=";
-                    }
-                    {
-                      path = "preprocessor_config.json";
-                      bytes = 349;
-                      oid = "5a26081a18cd60f48d7ed36b904e68c24271ba9711d6328b53f7ad3eed446cce";
-                      hash = "sha256-WiYIGhjNYPSNftNrkE5owkJxupcR1jKLU/etPu1EbM4=";
-                    }
-                    {
-                      path = "model.safetensors.index.json";
-                      bytes = 122675;
-                      oid = "dbcfc6e307494bc87684471872f3d8b785cb68b3589b6b306c43fde629b88ebd";
-                      hash = "sha256-28/G4wdJS8h2hEcYcvPYt4XLaLNYm2swbEP95im4jr0=";
-                    }
-                    {
-                      path = "model-00001-of-00010.safetensors";
-                      bytes = 1886424044;
-                      oid = "ae28d5c8f3587b518c7e371e96ebb69f74d854a854119acf433952bbc1926325";
-                      hash = "sha256-rijVyPNYe1GMfjceluu2n3TYVKhUEZrPQzlSu8GSYyU=";
-                    }
-                    {
-                      path = "model-00002-of-00010.safetensors";
-                      bytes = 1864468520;
-                      oid = "c56b1ca707e31e435ded8b03baa4938d88275bf0ba7033935a16d8173a99ff85";
-                      hash = "sha256-xWscpwfjHkNd7YsDuqSTjYgnW/C6cDOTWhbYFzqZ/4U=";
-                    }
-                    {
-                      path = "model-00003-of-00010.safetensors";
-                      bytes = 1864468520;
-                      oid = "48bfb4af453d45e488050e90d3f39da0189f1c10a77d75223c2c2ced8b035baa";
-                      hash = "sha256-SL+0r0U9ReSIBQ6Q0/OdoBifHBCnfXUiPCws7YsDW6o=";
-                    }
-                    {
-                      path = "model-00004-of-00010.safetensors";
-                      bytes = 1864468544;
-                      oid = "b4893be477be68e53b8a9616422b99065f3d1431cce9efe0a1653495e9cf4df6";
-                      hash = "sha256-tIk75He+aOU7ipYWQiuZBl89FDHM6e/goWU0lenPTfY=";
-                    }
-                    {
-                      path = "model-00005-of-00010.safetensors";
-                      bytes = 1864468568;
-                      oid = "471690e9846e791def400fefa3d2103c9839dc8a3e987b175f6539c7412422d6";
-                      hash = "sha256-RxaQ6YRueR3vQA/vo9IQPJg53Io+mHsXX2U5x0EkItY=";
-                    }
-                    {
-                      path = "model-00006-of-00010.safetensors";
-                      bytes = 1864468568;
-                      oid = "a7918d400ba895b15a1126fde242028e5d05b37bab0c0427944de81df80f901f";
-                      hash = "sha256-p5GNQAuolbFaESb94kICjl0Fs3urDAQnlE3oHfgPkB8=";
-                    }
-                    {
-                      path = "model-00007-of-00010.safetensors";
-                      bytes = 1864468568;
-                      oid = "b4f00ebea5a9f76eea891b3457621955433149ae603d921afa1498e46683ba37";
-                      hash = "sha256-tPAOvqWp927qiRs0V2IZVUMxSa5gPZIa+hSY5GaDujc=";
-                    }
-                    {
-                      path = "model-00008-of-00010.safetensors";
-                      bytes = 1972552744;
-                      oid = "cc4b6fce97b76e847c742b59ab9463fd04b6d9fa69fc33e747ff722c2ab8cc28";
-                      hash = "sha256-zEtvzpe3boR8dCtZq5Rj/QS22fpp/DPnR/9yLCq4zCg=";
-                    }
-                    {
-                      path = "model-00009-of-00010.safetensors";
-                      bytes = 1959739938;
-                      oid = "824db8970518950117f0d6ed859740d973b9436718c24f29bc78854c4587a4b2";
-                      hash = "sha256-gk24lwUYlQEX8NbthZdA2XO5Q2cYwk8pvHiFTEWHpLI=";
-                    }
-                    {
-                      path = "model-00010-of-00010.safetensors";
-                      bytes = 1681341960;
-                      oid = "bc76bba7a46a0a748cc169efb6ccfb7617881e0fc3b533f67887d5957e1836e3";
-                      hash = "sha256-vHa7p6RqCnSMwWnvtsz7dheIHg/DtTP2eIfVlX4YNuM=";
                     }
                   ];
                 };
@@ -667,40 +565,6 @@ let
                     }
                   ];
                 };
-              };
-
-              # ── the small general model on the coordinator ─────────────────
-              gemma4-12b-it-q8-0 = mkSingleFileArtifact {
-                maker = "Google";
-                baseCheckpoint = {
-                  url = "https://huggingface.co/google/gemma-4-12B-it";
-                  revision = "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7";
-                };
-                hfUrl = "https://huggingface.co/unsloth/gemma-4-12b-it-GGUF";
-                revision = "fc034cfff751157913579611efad8462ac1be606";
-                path = "gemma-4-12b-it-Q8_0.gguf";
-                bytes = 12669647680;
-                oid = "f20e7ff1be28c283eeeb18fc895733791c56a5851d5cd3fe9691b7f7d12afa72";
-                hash = "sha256-8g5/8b4owoPu6xj8iVczeRxWpYUdXNP+lpG399Eq+nI=";
-                quantization = "Q8_0";
-                notes = "Gemma 4 12B instruction model, Q8_0; served by a hand-run llama-server on the coordinator.";
-              };
-
-              gemma4-12b-it-mtp-q8-0 = mkSingleFileArtifact {
-                kind = "mtp-head";
-                maker = "Google";
-                baseCheckpoint = {
-                  url = "https://huggingface.co/google/gemma-4-12B-it";
-                  revision = "707f0a3b8a3c7ad586ed01e27eafbad8a27dd0f7";
-                };
-                hfUrl = "https://huggingface.co/unsloth/gemma-4-12b-it-GGUF";
-                revision = "fc034cfff751157913579611efad8462ac1be606";
-                path = "MTP/mtp-gemma-4-12b-it-Q8_0.gguf";
-                bytes = 465109248;
-                oid = "145db9094bc0f85f1701e255a2ed216dcc9800fc8bc8631ad00905b456bd451b";
-                hash = "sha256-FF25CUvA+F8XAeJVou0hbcyYAPyLyGMa0AkFtFa9RRs=";
-                quantization = "Q8_0";
-                notes = "Matched Q8 MTP head for gemma4-12b-it-q8-0 (llama-server --spec-type mtp).";
               };
             };
         };

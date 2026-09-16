@@ -87,21 +87,17 @@ runbook for the Library itself.
 | Host | Wanted artifacts | Served by |
 |---|---|---|
 | `worker` | `halogen-qwen38-flash-next` | `modules/halogen.nix`, always resident |
-| `coordinator` | `qwen36-35b-a3b-mtp-ud-q8-k-xl`, `gemma4-12b-it-q8-0`, `gemma4-12b-it-mtp-q8-0`, `fara15-9b-q8-0`, `fara15-9b-mmproj-bf16` | nothing declarative — an operator's `llama-server` |
+| `coordinator` | `fara15-9b-q8-0`, `fara15-9b-mmproj-bf16`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen3-tts-tokenizer-f32`, `qwen-k2so-midway-b`, `parakeet-tdt-0.6b-v3-onnx`, `openwakeword-baker-compat-v051`, `openwakeword-alexa-v051` | FARA on demand (`modules/fara-browser-model.nix`); streaming ASR per `call-diarize` run; Qwen speech on demand (`modules/qwen-tts.nix`) |
 | `nas` | none (it holds the Library) | — |
 
 ## Running a loaned GGUF by hand
 
-The coordinator's small models have no declared server. Both twins carry
+Library rows without a declared consumer (the embedders) have no server. Both twins carry
 nix-strix-halo's `llama-cpp-rocm` and `llama-cpp-vulkan` commands
 ([`../../modules/strix-ai.nix`](../../modules/strix-ai.nix)), so an operator
 who has borrowed a row starts it in a shell and stops it when done:
 
 ```console
-llama-server --port 8080 \
-  -m /var/lib/local-models/qwen36-35b-a3b-mtp-ud-q8-k-xl/Qwen3.6-35B-A3B-UD-Q8_K_XL.gguf \
-  -c 32768 -ngl 999
-
 llama-server --port 8080 \
   -m /var/lib/local-models/fara15-9b-q8-0/Fara1.5-9B-Q8_0.gguf \
   --mmproj /var/lib/local-models/fara15-9b-mmproj-bf16/mmproj-Fara1.5-9B-bf16.gguf -ngl 999
@@ -114,8 +110,11 @@ server until an operator starts one with `--embedding`.
 
 ## Other rows
 
-- **Speech (VibeVoice-ASR, VibeVoice-Large, the Qwen2.5 tokenizer)** and
-  **Mage (Mage-Flow Turbo, Mage-Flow Edit Turbo, Mage-VL)** are loanable
+- **Speech.** Qwen3-TTS 1.7B Base Q8 with the `qwen-k2so-midway-b` voice is
+  the one TTS model (`modules/qwen-tts.nix`). VibeVoice-ASR-Streaming-7B is the
+  one diarization model; `call-diarize` loads it from
+  `/var/lib/local-models/vibevoice-asr-streaming-7b-bf16`.
+- **Mage (Mage-Flow Turbo, Mage-Flow Edit Turbo, Mage-VL)** are loanable
   Library artifacts with their own upstream runtimes and no server on this
   fleet. [`mage.md`](mage.md) records the selected Mage snapshots and their
   invocation contract.

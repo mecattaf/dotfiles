@@ -49,9 +49,6 @@
   "model_selection_policy": {
     "summary": "The fleet is mono-model: Halogen Flash (halogen-qwen3.8-flash-next) on the worker answers every LLM call; the only other LLM weights kept are a short list of small Library artifacts an operator serves by hand.",
     "kept_small_artifacts": [
-      "qwen36-35b-a3b-mtp-ud-q8-k-xl",
-      "gemma4-12b-it-q8-0",
-      "gemma4-12b-it-mtp-q8-0",
       "fara15-9b-q8-0",
       "fara15-9b-mmproj-bf16"
     ]

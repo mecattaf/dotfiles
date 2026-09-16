@@ -3098,11 +3098,11 @@
             ];
           assert
             coordinator.services.local-models.artifacts == [
-              "qwen36-35b-a3b-mtp-ud-q8-k-xl"
-              "gemma4-12b-it-q8-0"
-              "gemma4-12b-it-mtp-q8-0"
               "fara15-9b-q8-0"
               "fara15-9b-mmproj-bf16"
+              "vibevoice-asr-streaming-7b-bf16"
+              "openwakeword-baker-compat-v051"
+              "openwakeword-alexa-v051"
               "qwen3-tts-1.7b-base-q8-0"
               "qwen-k2so-midway-b"
               "parakeet-tdt-0.6b-v3-onnx"
@@ -3115,11 +3115,6 @@
             builtins.attrNames localModelCatalog.artifacts == [
               "fara15-9b-mmproj-bf16"
               "fara15-9b-q8-0"
-              "gemma4-12b-it-mmproj-f16"
-              "gemma4-12b-it-mtp-q8-0"
-              "gemma4-12b-it-q8-0"
-              "gemma4-e4b-it-mmproj-bf16"
-              "gemma4-e4b-it-q8-0"
               "halogen-qwen38-27b"
               "halogen-qwen38-flash-next"
               "mage-flow-4b-turbo-bf16"
@@ -3137,10 +3132,7 @@
               "qwen3-tts-tokenizer-f32"
               "qwen3-vl-embedding-8b-mmproj-f16"
               "qwen3-vl-embedding-8b-q8-0"
-              "qwen36-35b-a3b-mtp-ud-q8-k-xl"
-              "vibevoice-asr-bf16"
-              "vibevoice-large-bf16"
-              "vibevoice-qwen25-7b-tokenizer"
+              "vibevoice-asr-streaming-7b-bf16"
             ];
           assert localModelCatalog.artifacts.halogen-qwen38-flash-next.source.layout == "snapshot";
           assert builtins.length localModelCatalog.artifacts.halogen-qwen38-flash-next.source.files == 9;

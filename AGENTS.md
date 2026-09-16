@@ -114,26 +114,26 @@ This Intel client investigation does not reopen the retired AMD NPU path.
 No wake listener is activated by the research. Call transcription must suppress
 wake detection, per Tom's Mykonos annotations.
 
-The small GGUF models the fleet keeps — `qwen36-35b-a3b-mtp-ud-q8-k-xl`,
-`gemma4-12b-it-q8-0` with its MTP head, `fara15-9b-q8-0` with its projector —
-and the specialised rows (the Qwen3 text and VL embedders, VibeVoice speech,
-Mage-Flow and Mage-VL) are NAS-Library artifacts. An operator loans them onto
-a host with `local-models-borrow` and, for the GGUFs, serves them by hand with
-`llama-server` from nix-strix-halo's `llama-cpp-rocm` / `llama-cpp-vulkan`
-commands. The sole task-specific exception is FARA 1.5 9B on coordinator: the
-on-demand `modules/fara-browser-model.nix` user service listens on loopback
-8732 while `fara-browser` needs it. It uses already-loaned weights and is not
-a second resident fleet model. Other small models have no declarative service,
-timer or proxy row.
+The coordinator's other model rows are task-specific. FARA 1.5 9B with its
+projector is served on demand by `modules/fara-browser-model.nix` on loopback
+8732 while `fara-browser` needs it; it is not a second resident fleet model.
+Qwen3-TTS 1.7B Base Q8 with the `qwen-k2so-midway-b` voice is the one TTS
+model (`modules/qwen-tts.nix`). VibeVoice-ASR-Streaming-7B is the one
+diarization model, loaded per run by `call-diarize` (Tom, 2026-09-16). The
+Qwen3 text and VL embedders and the Mage rows are NAS-Library artifacts an
+operator loans with `local-models-borrow` and runs by hand; they have no
+declarative service, timer or proxy row.
 Embeddings in particular have no server behind them until an operator starts
 one.
 
 Out, and not to be reintroduced: dual-node inference of any kind (the
 Thunderbolt and direct 5GbE rails between the twins no longer exist; the
 worker is wired-only on `enp191s0` at `10.42.0.5`, with no wifi, no compositor
-and no VNC), the flashnext / flashnix / vLLM-fork projects, DS4, GLM, the
-dense big models (Qwen3.8-27B, Qwen3.6-27B, Gemma 4 31B, Fara 27B), the
-Qwen3-VL OCR rows and the uncensored candidates. A new engine is a new server
+and no VNC), the flashnext / flashnix / vLLM-fork projects (flashnext-fp8 included), DS4,
+GLM, every Gemma model, Qwen3.6-35B-A3B, the dense big models (Qwen3.8-27B,
+Qwen3.6-27B, Gemma 4 31B, Fara 27B), Ornith, Muse Glimmer, IBM Granite, the
+Qwen3-VL OCR rows, the uncensored candidates, and VibeVoice TTS and the
+non-streaming VibeVoice-ASR. A new engine is a new server
 module beside `modules/halogen.nix`, or it does not serve.
 
 The weight plane lives outside Nix. `hosts/nas/models.nix`'s `library-fetch`
