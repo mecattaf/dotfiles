@@ -139,9 +139,10 @@ let
     "--health-start-period=20m"
   ]
   ++ lib.optional cfg.healthKill "--health-on-failure=kill";
-  # mkForce throughout: the oci-containers module writes its own values for
-  # these (no start timeout, restart always) and they are the wrong ones for
-  # a cold load measured in tens of minutes.
+  # mkForce on the three the oci-containers module writes for itself (no start
+  # timeout, restart always, a two-minute stop) — they are the wrong ones for a
+  # cold load measured in tens of minutes. SuccessExitStatus is ours alone;
+  # upstream sets nothing there, so it needs no override.
   unitPolicy = {
     TimeoutStartSec = lib.mkForce "45min";
     TimeoutStopSec = lib.mkForce "2min";
@@ -149,6 +150,21 @@ let
     # that a restart policy can recover it.
     Restart = lib.mkForce "on-failure";
     RestartSec = lib.mkForce "30s";
+    # A DELIBERATE STOP IS NOT A FAILURE (FDC-M4). ExecStart here is
+    # `podman run`, which exits with the CONTAINER's status, and a container
+    # that takes the SIGTERM of `podman stop` exits 143 (128+15). systemd reads
+    # that as exit-code 143 — a failure — so every `systemctl stop`, and every
+    # `halogen-switch` (which stops the other units before starting the chosen
+    # one), used to fail its unit, fire the fleet-wide
+    # OnFailure=failure-notify@%N (modules/failure-surfacing.nix) and leave a
+    # marker in /var/lib/failure-markers for an operator to clear. The switch
+    # between two models is a normal operation and must not write one.
+    #
+    # ONLY 143. A container killed outright exits 137 (128+9) and stays a
+    # failure, which is what keeps `Restart=on-failure` above recovering a
+    # wedged engine — the kill path that --health-on-failure=kill uses. 0 is
+    # already success to systemd and is not restated here.
+    SuccessExitStatus = "143";
   };
 
   alternateNames = builtins.attrNames cfg.alternates;
