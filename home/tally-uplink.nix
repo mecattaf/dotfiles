@@ -336,6 +336,79 @@ let
     stdin = "";
   };
 
+  # ------------------------------------------------------- THE CUBS CAMPAIGN
+  #
+  # cubs-halogen-probe-1 (FRONT-12 bootstrap; DECISIONS.md 2026-09-16; doc
+  # docs/local-ai/cubs-campaign.md). A 7-day capability probe of Halogen Flash
+  # on the CUBS tree, run as a serial backlog of ~40-minute iterations the
+  # kernel admits on the `gpu-worker` row. The acceptor mints N independent
+  # `agent()` items labelled `build:CUBS-<n>` in ONE parallel(); every one of
+  # them, with its `scope(...)` and `eval(...)` cells, needs a kit entry, so the
+  # 3N entries are generated here (launch-recipe §1: "Generate the 3N entries
+  # with lib.genList").
+  #
+  # THE ARGV IS ONE STORE EXECUTABLE. pkgs/cubs-iteration: block on
+  # worker:8731/health until `busy:false`, one fresh `pi -p --mode json`
+  # process on the task's own git worktree, the diff guard, the task's
+  # validation command, one repair process, commit on pass (never a push), a
+  # receipt.json per task, and the one usage line at $TALLY_USAGE_SOURCE_PATH
+  # the witness_record's `usage_source` points at — the same join
+  # `localSmoke` above closes, over a real run. env_allowlist is EMPTY for the
+  # same reason it is for LOCAL-SMOKE: the child sees the two TALLY_ variables
+  # and nothing else, and every program it runs is a store path it carries.
+  #
+  # WHY `stdin` IS A POINTER AND NOT THE TASK. A kit entry's `stdin` is STATIC
+  # bytes in this store file (lake apps/uplink/src/kit.mjs — the entry is
+  # `{argv, cwd, env_allowlist, usage_source, stdin}`; apps/uplink/src/
+  # uplink.mjs:623 hands `entry.stdin ?? ""` to exec.run; the kernel writes it
+  # to the child after its start marker, tally exec.rs:747). The lake's own
+  # e2e kit does put the whole item JSON there (tools/e2e-check.mjs:414-470),
+  # but that kit is MATERIALISED PER RUN by a script; this one is a reviewed
+  # store artifact that a day's worklist must not force a switch to change.
+  # So the entry hands over a pointer — {"worklist", "id"} — and
+  # cubs-iteration resolves the task line from
+  # ~/mecattaf/cubs-campaign/worklists/current.jsonl, which the morning review
+  # rewrites. Nothing the acceptor's expansion provides reaches stdin: the
+  # plan's brief goes to the lake, and `argv_ref` is the label
+  # (packages/planning/src/objects/factory.ts:621, `argv_ref = taskId`).
+  #
+  # `cwd` is the campaign repo, as the brief says; a run before that
+  # directory exists is a spawn failure the kernel attests, not a silent pass.
+  #
+  # N = 40 is a ceiling on labels, not a promise of work: a worklist line
+  # exists for an id or cubs-iteration exits 65 naming the id, and an item the
+  # plan never mints has an entry nobody resolves. The number is the brief's.
+  cubsIteration = pkgs.callPackage ../pkgs/cubs-iteration { pi = pkgs.llm-agents.pi; };
+  cubsCampaignDir = "${config.home.homeDirectory}/mecattaf/cubs-campaign";
+  cubsWorklist = "${cubsCampaignDir}/worklists/current.jsonl";
+  cubsCount = 40;
+  cubsEntry = id: {
+    argv = [ "${cubsIteration}/bin/cubs-iteration" ];
+    cwd = cubsCampaignDir;
+    env_allowlist = [ ];
+    usage_source = {
+      kind = "halogen-usage/1";
+      path_glob = "${rewriteState}/uplink/usage/cubs-*.jsonl";
+    };
+    stdin = builtins.toJSON {
+      worklist = cubsWorklist;
+      inherit id;
+    } + "\n";
+  };
+  cubsEntries = lib.listToAttrs (
+    lib.concatMap (
+      n:
+      let
+        id = "CUBS-${toString n}";
+      in
+      [
+        (lib.nameValuePair "build:${id}" (cubsEntry id))
+        (lib.nameValuePair "scope(build:${id})" (noopEntry "opaque-noop/1" "scope-noop"))
+        (lib.nameValuePair "eval(build:${id})" (noopEntry "opaque-noop/1" "eval-noop"))
+      ]
+    ) (lib.range 1 cubsCount)
+  );
+
   kitFile = pkgs.writeText "tally-uplink-kit.json" (
     builtins.toJSON {
       _note = [
@@ -357,6 +430,12 @@ let
         ""
         "usage_source.kind is an OPAQUE label the kernel carries and never reads"
         "(tally docs/transport.md §2). It names no harness and nothing branches on it."
+        ""
+        "ENABLED: build:CUBS-1 .. build:CUBS-40 (+ scope/eval no-ops), the"
+        "cubs-halogen-probe-1 campaign (FRONT-12 bootstrap): one store executable,"
+        "cubs-iteration, per item; stdin is a POINTER {worklist, id} into"
+        "~/mecattaf/cubs-campaign/worklists/current.jsonl, resolved by the script."
+        "docs/local-ai/cubs-campaign.md."
       ];
       entries =
         {
@@ -373,6 +452,7 @@ let
           "scope(build:LOCAL-SMOKE)" = noopEntry "opaque-noop/1" "scope-noop";
           "eval(build:LOCAL-SMOKE)" = noopEntry "opaque-noop/1" "eval-noop";
         }
+        // cubsEntries
         // lib.optionalAttrs enableClaudeSeat { "claude:headless" = claudeSeatEntry; };
     }
   );
