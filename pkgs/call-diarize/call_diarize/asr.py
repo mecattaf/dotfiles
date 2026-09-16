@@ -1,224 +1,89 @@
-"""Local, GPU-only VibeVoice-ASR runtime."""
+"""Local, GPU-only VibeVoice-ASR-Streaming-7B runtime."""
 
 from __future__ import annotations
 
 import json
 import os
-import re
 import time
 import wave
 from pathlib import Path
 from typing import Any
 
-from .pipeline import Window, normalize_asr_segments
+from .pipeline import (
+    CHUNK_FRAMES,
+    CHUNK_SAMPLES,
+    CHUNK_SECONDS,
+    FRAME_SAMPLES,
+    LOOKAHEAD_FRAMES,
+    LOOKAHEAD_SAMPLES,
+    SAMPLE_RATE,
+    SESSION_CHUNKS,
+    Window,
+)
 
 
-MODEL_ARTIFACT = Path("/etc/local-models/artifacts/vibevoice-asr-bf16")
-TOKENIZER_ARTIFACT = Path("/etc/local-models/artifacts/vibevoice-qwen25-7b-tokenizer")
+MODEL_ID = "vibevoice-asr-streaming-7b-bf16"
+MODEL_ARTIFACT = Path("/var/lib/local-models") / MODEL_ID
+# The loaned directory is the complete Hugging Face snapshot, including the
+# streaming tokenizer. Its <|text_chunk_end|> token ends every chunk; the base
+# Qwen2.5 vocabulary does not have it and must never be substituted.
+TEXT_CHUNK_END_ID = 151665
 MODEL_FILES = [
+    "added_tokens.json",
     "config.json",
+    "merges.txt",
     "model.safetensors.index.json",
     *(f"model-{index:05d}-of-00008.safetensors" for index in range(1, 9)),
-]
-TOKENIZER_FILES = [
-    "merges.txt",
-    "tokenizer_config.json",
+    "preprocessor_config.json",
+    "special_tokens_map.json",
     "tokenizer.json",
+    "tokenizer_config.json",
     "vocab.json",
 ]
-SUPPORT_FILES = [
-    "chat_template.jinja",
-    "generation_config.json",
-    "processor_config.json",
-]
-
-
-def _ensure_link(target: Path, source: Path, refresh_store_link: bool = False) -> None:
-    if not source.is_file():
-        raise RuntimeError(f"required local model file is missing: {source}")
-    if target.is_symlink() and target.resolve() == source.resolve():
-        return
-    if refresh_store_link and target.is_symlink():
-        existing_source = Path(os.readlink(target))
-        if str(existing_source).startswith("/nix/store/"):
-            temporary = target.with_name(f".{target.name}.{os.getpid()}.new")
-            temporary.symlink_to(source)
-            os.replace(temporary, target)
-            return
-    if target.exists() or target.is_symlink():
-        raise RuntimeError(
-            f"refusing to replace unexpected model-layout entry {target}; expected link to {source}"
-        )
-    target.symlink_to(source)
-
-
-def ensure_model_layout(state_root: Path, support_dir: Path) -> Path:
-    """Assemble the proven local snapshot/tokenizer/support symlink farm."""
-
-    model_dir = state_root / "model"
-    model_dir.mkdir(parents=True, exist_ok=True)
-    for name in MODEL_FILES:
-        _ensure_link(model_dir / name, MODEL_ARTIFACT / name)
-    for name in TOKENIZER_FILES:
-        _ensure_link(model_dir / name, TOKENIZER_ARTIFACT / name)
-    for name in SUPPORT_FILES:
-        _ensure_link(model_dir / name, support_dir / name, refresh_store_link=True)
-    return model_dir
-
-
-LEGACY_STATE_DICT_MAPPING = {
-    # Qwen language model.
-    r"^model\.language_model\.embed_tokens\.weight": (
-        r"language_model.model.embed_tokens.weight"
-    ),
-    r"^model\.language_model\.layers\.(\d+)\.self_attn\.(q|k|v|o)_proj\.": (
-        r"language_model.model.layers.\1.self_attn.\2_proj."
-    ),
-    r"^model\.language_model\.layers\.(\d+)\.mlp\.(gate|up|down)_proj\.": (
-        r"language_model.model.layers.\1.mlp.\2_proj."
-    ),
-    r"^model\.language_model\.layers\.(\d+)\.input_layernorm\.": (
-        r"language_model.model.layers.\1.input_layernorm."
-    ),
-    r"^model\.language_model\.layers\.(\d+)\.post_attention_layernorm\.": (
-        r"language_model.model.layers.\1.post_attention_layernorm."
-    ),
-    r"^model\.language_model\.norm\.": r"language_model.model.norm.",
-    r"^lm_head\.": r"language_model.lm_head.",
-    # Acoustic and semantic tokenizer encoders.
-    r"^model\.acoustic_tokenizer\.encoder\.downsample_layers\.0\.0\.conv\.": (
-        r"acoustic_tokenizer_encoder.stem.conv.conv."
-    ),
-    r"^model\.acoustic_tokenizer\.encoder\.stages\.0\.": (
-        r"acoustic_tokenizer_encoder.stem.stage."
-    ),
-    r"^model\.acoustic_tokenizer\.encoder\.downsample_layers\.(\d+)\.0\.conv\.": (
-        r"acoustic_tokenizer_encoder.conv_layers.PLACEHOLDER.conv.conv."
-    ),
-    r"^model\.acoustic_tokenizer\.encoder\.stages\.(\d+)\.": (
-        r"acoustic_tokenizer_encoder.conv_layers.PLACEHOLDER.stage."
-    ),
-    r"^model\.acoustic_tokenizer\.encoder\.head\.conv\.": (
-        r"acoustic_tokenizer_encoder.head."
-    ),
-    r"^model\.semantic_tokenizer\.encoder\.downsample_layers\.0\.0\.conv\.": (
-        r"semantic_tokenizer_encoder.stem.conv.conv."
-    ),
-    r"^model\.semantic_tokenizer\.encoder\.stages\.0\.": (
-        r"semantic_tokenizer_encoder.stem.stage."
-    ),
-    r"^model\.semantic_tokenizer\.encoder\.downsample_layers\.(\d+)\.0\.conv\.": (
-        r"semantic_tokenizer_encoder.conv_layers.PLACEHOLDER.conv.conv."
-    ),
-    r"^model\.semantic_tokenizer\.encoder\.stages\.(\d+)\.": (
-        r"semantic_tokenizer_encoder.conv_layers.PLACEHOLDER.stage."
-    ),
-    r"^model\.semantic_tokenizer\.encoder\.head\.conv\.": (
-        r"semantic_tokenizer_encoder.head."
-    ),
-    # Nested causal-conv wrappers were flattened in the HF model.
-    r"mixer\.conv\.conv\.conv\.": r"mixer.conv.",
-    r"\.conv\.conv\.conv\.": r".conv.conv.",
-    # The two original connectors became one named projector.
-    r"^model\.acoustic_connector\.fc1\.": (r"multi_modal_projector.acoustic_linear_1."),
-    r"^model\.acoustic_connector\.fc2\.": (r"multi_modal_projector.acoustic_linear_2."),
-    r"^model\.acoustic_connector\.norm\.": r"multi_modal_projector.acoustic_norm.",
-    r"^model\.semantic_connector\.fc1\.": (r"multi_modal_projector.semantic_linear_1."),
-    r"^model\.semantic_connector\.fc2\.": (r"multi_modal_projector.semantic_linear_2."),
-    r"^model\.semantic_connector\.norm\.": r"multi_modal_projector.semantic_norm.",
+# The upstream acoustic encoder samples Gaussian latents even under greedy
+# decoding. Reseeding per session keeps resumed runs reproducible.
+SEED = 42
+ASR_MODEL = {
+    "id": MODEL_ID,
+    "hf_repo": "microsoft/VibeVoice-ASR-Streaming-7B",
+    "hf_revision": "60d858b518b4e19d404af3737f848fc185b30177",
+    "source_revision": "1541f590c7099820f10ea012f48d2399282df69f",
+    "dtype": "bfloat16",
+    "attention": "sdpa",
+    "decoding": "greedy",
+    "seed_per_session": SEED,
+    "chunk_samples": CHUNK_SAMPLES,
+    "lookahead_samples": LOOKAHEAD_SAMPLES,
+    "session_chunks": SESSION_CHUNKS,
+    "time_resolution_seconds": round(CHUNK_SECONDS, 4),
 }
 
 
-def map_legacy_key(old_key: str) -> str:
-    """Apply the official conversion's ordered, potentially chained rewrites."""
+def verify_checkpoint(model_dir: Path = MODEL_ARTIFACT) -> dict[str, Any]:
+    """Refuse a missing loan or a checkpoint with different frame geometry."""
 
-    new_key = old_key
-    for pattern, target in LEGACY_STATE_DICT_MAPPING.items():
-        match = re.search(pattern, new_key)
-        if not match:
-            continue
-        replacement = target
-        if "PLACEHOLDER" in replacement:
-            replacement = replacement.replace(
-                "PLACEHOLDER", str(int(match.group(1)) - 1)
-            )
-        new_key = re.sub(pattern, replacement, new_key)
-    return new_key
-
-
-def legacy_key_mapping(model_dir: Path) -> dict[str, str]:
-    """Build exact streaming renames for every inference weight in the artifact.
-
-    The official conversion deliberately chains regex rewrites and computes a
-    shifted layer index. Precomputing each final name from the shard index keeps
-    that behavior explicit without materializing a duplicate checkpoint.
-    """
-
-    index = json.loads(
-        (model_dir / "model.safetensors.index.json").read_text(encoding="utf-8")
+    missing = [name for name in MODEL_FILES if not (model_dir / name).is_file()]
+    if missing:
+        raise RuntimeError(
+            f"streaming ASR checkpoint is incomplete at {model_dir}: missing {missing}; "
+            f"borrow {MODEL_ID} with local-models-borrow"
+        )
+    config = json.loads(
+        (model_dir / "preprocessor_config.json").read_text(encoding="utf-8")
     )
-    mapping: dict[str, str] = {}
-    for old_key in index["weight_map"]:
-        if old_key.startswith("model.acoustic_tokenizer.decoder."):
-            continue
-        new_key = map_legacy_key(old_key)
-        if new_key != old_key:
-            mapping[rf"^{re.escape(old_key)}$"] = new_key
-    return mapping
-
-
-def legacy_config(model_dir: Path) -> Any:
-    """Convert the original compositional config without mutating the artifact."""
-
-    from transformers import (
-        Qwen2Config,
-        VibeVoiceAcousticTokenizerEncoderConfig,
-        VibeVoiceAsrConfig,
-    )
-
-    original = json.loads((model_dir / "config.json").read_text(encoding="utf-8"))
-    remove = {
-        "decoder_depths",
-        "decoder_n_filters",
-        "decoder_ratios",
-        "std_dist_type",
-        "fix_std",
-        "pad_mode",
-        "conv_bias",
-        "causal",
-        "mixer_layer",
-        "layernorm",
-        "disable_last_norm",
-        "conv_norm",
-        "corpus_normalize",
-        "layernorm_elementwise_affine",
+    expected = {
+        "chunk_frames": CHUNK_FRAMES,
+        "lookahead_frames": LOOKAHEAD_FRAMES,
+        "speech_tok_compress_ratio": FRAME_SAMPLES,
+        "target_sample_rate": SAMPLE_RATE,
     }
-
-    def encoder_config(source: dict[str, Any], acoustic: bool) -> Any:
-        value = source.copy()
-        depths = value.pop("encoder_depths")
-        value["depths"] = [int(item) for item in depths.split("-")]
-        value["rms_norm_eps"] = value.pop("layernorm_eps")
-        value["downsampling_ratios"] = list(reversed(value.pop("encoder_ratios")))
-        value["num_filters"] = value.pop("encoder_n_filters")
-        value["hidden_size"] = value.pop("vae_dim")
-        if acoustic:
-            value["vae_std"] = value["fix_std"] / 0.8
-        for key in remove:
-            value.pop(key, None)
-        value.pop("model_type", None)
-        return VibeVoiceAcousticTokenizerEncoderConfig(**value)
-
-    return VibeVoiceAsrConfig(
-        acoustic_tokenizer_encoder_config=encoder_config(
-            original["acoustic_tokenizer_config"], acoustic=True
-        ),
-        semantic_tokenizer_encoder_config=encoder_config(
-            original["semantic_tokenizer_config"], acoustic=False
-        ),
-        text_config=Qwen2Config(**original["decoder_config"]),
-        dtype="bfloat16",
-    )
+    actual = {key: config.get(key) for key in expected}
+    if actual != expected:
+        raise RuntimeError(
+            f"{model_dir} is not the expected streaming checkpoint: "
+            f"frame geometry {actual}, expected {expected}"
+        )
+    return config
 
 
 def gpu_probe() -> dict[str, Any]:
@@ -243,65 +108,57 @@ def gpu_probe() -> dict[str, Any]:
 
 
 class VibeVoiceASR:
-    """One model residency shared by every initial and recursive chunk."""
+    """One model residency shared by every streaming session."""
 
-    def __init__(self, model_dir: Path, max_new_tokens: int = 1024) -> None:
+    def __init__(self, model_dir: Path, max_new_tokens: int = 256) -> None:
         import numpy as np
         import torch
-        from transformers import (
-            VibeVoiceAsrForConditionalGeneration,
-            VibeVoiceAsrProcessor,
+        import transformers
+        from vibevoice.modular.modeling_vibevoice_asr import (
+            VibeVoiceASRForConditionalGeneration,
+        )
+        from vibevoice.processor.vibevoice_asr_processor import (
+            VibeVoiceASRProcessor,
         )
 
         self.np = np
         self.torch = torch
         self.max_new_tokens = max_new_tokens
         self.gpu = gpu_probe()
+        verify_checkpoint(model_dir)
         os.environ.setdefault("HF_HUB_OFFLINE", "1")
         os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
         os.environ.setdefault("HF_DATASETS_OFFLINE", "1")
 
         started = time.monotonic()
-        self.processor = VibeVoiceAsrProcessor.from_pretrained(
-            model_dir,
-            local_files_only=True,
-        )
-        # The canonical host artifact predates the Transformers-native layout.
-        # Apply Microsoft's/Hugging Face's official conversion mapping while
-        # streaming the original shards, and prove that every inference weight
-        # (apart from the intentionally unused acoustic decoder) was consumed.
-        VibeVoiceAsrForConditionalGeneration._keys_to_ignore_on_load_unexpected = [
-            r"^model\.acoustic_tokenizer\.decoder\."
-        ]
-        loaded = VibeVoiceAsrForConditionalGeneration.from_pretrained(
-            model_dir,
-            config=legacy_config(model_dir),
+        self.tokenizer = VibeVoiceASRProcessor.from_pretrained(
+            str(model_dir), local_files_only=True
+        ).tokenizer
+        if self.tokenizer.text_chunk_end_id != TEXT_CHUNK_END_ID:
+            raise RuntimeError(
+                f"tokenizer at {model_dir} has <|text_chunk_end|> id "
+                f"{self.tokenizer.text_chunk_end_id}, expected {TEXT_CHUNK_END_ID}"
+            )
+        loaded = VibeVoiceASRForConditionalGeneration.from_pretrained(
+            str(model_dir),
             dtype=torch.bfloat16,
-            key_mapping=legacy_key_mapping(model_dir),
+            attn_implementation="sdpa",
             local_files_only=True,
-            low_cpu_mem_usage=True,
             output_loading_info=True,
         )
         self.model, loading_info = loaded
         load_errors = {
-            "missing_keys": loading_info.get("missing_keys", []),
-            "unexpected_keys": loading_info.get("unexpected_keys", []),
-            "mismatched_keys": loading_info.get("mismatched_keys", []),
-            "error_msgs": loading_info.get("error_msgs", []),
+            key: list(loading_info.get(key, []))[:20]
+            for key in ("missing_keys", "mismatched_keys", "error_msgs")
+            if loading_info.get(key)
         }
-        if any(load_errors.values()):
-            summary = {
-                key: list(value)[:20] for key, value in load_errors.items() if value
-            }
-            raise RuntimeError(
-                f"VibeVoice checkpoint conversion was incomplete: {summary}"
-            )
-        # Loading safetensors directly into GTT makes ROCm fault each mmap page
-        # through the 512 MiB aperture and eventually degrades to minutes per
-        # tensor on this APU. Finish mmap materialization in ordinary host RAM
-        # before Module.to() performs the unified-memory transfer.
+        if load_errors:
+            raise RuntimeError(f"streaming ASR checkpoint did not load cleanly: {load_errors}")
+        # Materialize the weights in host RAM first; Module.to() then performs
+        # one transfer into Strix Halo's unified GTT allocation.
         self.model.to(device="cuda")
         self.model.eval()
+        self.torch.cuda.synchronize()
         self.load_seconds = round(time.monotonic() - started, 3)
         parameter_device = next(self.model.parameters()).device
         if parameter_device.type != "cuda":
@@ -309,63 +166,99 @@ class VibeVoiceASR:
                 f"VibeVoice loaded on {parameter_device}; CPU inference is forbidden"
             )
         self.device = parameter_device
+        self.versions = {
+            "transformers": transformers.__version__,
+            "unexpected_checkpoint_keys": len(loading_info.get("unexpected_keys", [])),
+        }
 
-    def _read_audio(self, path: Path) -> Any:
-        with wave.open(str(path), "rb") as handle:
+    def _chunk_audio(self, handle: wave.Wave_read, chunk: int) -> Any:
+        """One chunk plus its lookahead, zero-padded past the end of the track."""
+
+        window_samples = CHUNK_SAMPLES + LOOKAHEAD_SAMPLES
+        start = chunk * CHUNK_SAMPLES
+        handle.setpos(start)
+        raw = handle.readframes(min(window_samples, handle.getnframes() - start))
+        audio = self.np.zeros(window_samples, dtype=self.np.float32)
+        values = self.np.frombuffer(raw, dtype="<i2").astype(self.np.float32)
+        audio[: len(values)] = values / 32768.0
+        return audio
+
+    def transcribe(self, window: Window, hotwords: str) -> dict[str, Any]:
+        """Decode one session exactly as upstream's live streaming path does:
+        prompt once, then encode_speech and streaming_generate_step per chunk."""
+
+        torch = self.torch
+        torch.manual_seed(SEED)
+        torch.cuda.reset_peak_memory_stats(self.device)
+        started = time.monotonic()
+        state = self.model.init_streaming_state(
+            self.tokenizer, context_info=hotwords or None
+        )
+        torch.cuda.synchronize(self.device)
+        prompt_seconds = time.monotonic() - started
+        chunks: list[dict[str, Any]] = []
+        with wave.open(str(window.audio_path), "rb") as handle:
             if (
-                handle.getframerate() != 24_000
+                handle.getframerate() != SAMPLE_RATE
                 or handle.getnchannels() != 1
                 or handle.getsampwidth() != 2
             ):
-                raise ValueError(f"VibeVoice input must be 24 kHz mono PCM16: {path}")
-            raw = handle.readframes(handle.getnframes())
-        return self.np.frombuffer(raw, dtype="<i2").astype(self.np.float32) / 32768.0
-
-    def transcribe(self, window: Window, hotwords: str) -> dict[str, Any]:
-        audio = self._read_audio(window.audio_path)
-        self.torch.cuda.reset_peak_memory_stats(self.device)
-        started = time.monotonic()
-        inputs = self.processor.apply_transcription_request(
-            audio=audio, prompt=hotwords
-        )
-        inputs = inputs.to(self.device, dtype=self.model.dtype)
-        input_tokens = int(inputs.input_ids.shape[1])
-        with self.torch.inference_mode():
-            output = self.model.generate(
-                **inputs,
-                max_new_tokens=self.max_new_tokens,
-                do_sample=False,
-            )
-        self.torch.cuda.synchronize(self.device)
+                raise ValueError(
+                    f"VibeVoice input must be 24 kHz mono PCM16: {window.audio_path}"
+                )
+            for offset in range(window.chunk_count):
+                index = window.first_chunk + offset
+                chunk_started = time.monotonic()
+                audio = torch.from_numpy(self._chunk_audio(handle, index)).to(
+                    self.device
+                )
+                features = self.model.encode_speech(audio.unsqueeze(0))
+                torch.cuda.synchronize(self.device)
+                encoded = time.monotonic()
+                text, state = self.model.streaming_generate_step(
+                    audio_features=features,
+                    streaming_state=state,
+                    tokenizer=self.tokenizer,
+                    max_new_tokens=self.max_new_tokens,
+                    temperature=0.0,
+                )
+                torch.cuda.synchronize(self.device)
+                chunks.append(
+                    {
+                        "index": index,
+                        "text": text,
+                        "encode_seconds": round(encoded - chunk_started, 4),
+                        "compute_seconds": round(time.monotonic() - chunk_started, 4),
+                        # Re-encoded from the decoded text: the upstream step
+                        # does not report its count. Used to flag exhaustion.
+                        "decoded_token_count": len(
+                            self.tokenizer.encode(text, add_special_tokens=False)
+                        ),
+                    }
+                )
+        del state
         elapsed = time.monotonic() - started
-        decoded = self.processor.batch_decode(
-            output[:, input_tokens:],
-            skip_special_tokens=True,
-        )[0]
-        try:
-            extracted = self.processor.extract_speaker_dict(decoded)
-        except Exception:
-            extracted = None
-        segments = (
-            normalize_asr_segments(extracted) if isinstance(extracted, list) else None
-        )
-        generated_tokens = int(output.shape[1] - input_tokens)
         return {
             "request": window.request_identity(hotwords),
-            "raw_text": decoded,
-            "segments": segments,
+            "raw_text": "".join(chunk["text"] for chunk in chunks),
+            "chunks": chunks,
             "runtime": {
                 **self.gpu,
+                **self.versions,
                 "model_load_seconds": self.load_seconds,
+                "prompt_seconds": round(prompt_seconds, 3),
                 "generation_seconds": round(elapsed, 3),
                 "audio_seconds": round(window.actual_seconds, 6),
                 "realtime_factor": round(
                     elapsed / max(window.actual_seconds, 0.001), 3
                 ),
-                "input_tokens": input_tokens,
-                "generated_tokens": generated_tokens,
+                "chunk_count": len(chunks),
+                "max_new_tokens_per_chunk": self.max_new_tokens,
                 "peak_gpu_memory_bytes": int(
-                    self.torch.cuda.max_memory_allocated(self.device)
+                    torch.cuda.max_memory_allocated(self.device)
+                ),
+                "peak_gpu_reserved_bytes": int(
+                    torch.cuda.max_memory_reserved(self.device)
                 ),
             },
         }

@@ -261,10 +261,14 @@ def run_model_shard(
             "temperature": 0,
             "top_p": 1,
             "seed": 0,
-            # Halogen's token budget covers reasoning as well as the answer;
-            # this is its default budget and bounds one shard of decisions.
+            # Halogen's token budget covers reasoning as well as the answer.
+            # These are bounded, source-accounted decisions: thinking stays off
+            # so the budget goes to the object itself.
             "max_tokens": 8192,
-            "response_format": {"type": "json_object"},
+            "chat_template_kwargs": {"enable_thinking": False},
+            # Halogen has no constrained decoding and rejects response_format
+            # with HTTP 400; the prompt asks for JSON and extract_json_object
+            # validates it.
         }
         started = time.monotonic()
         try:

@@ -1,11 +1,10 @@
-"""Command-line orchestration for the frozen VibeVoice fusion pipeline."""
+"""Command-line orchestration for streaming VibeVoice call transcription."""
 
 from __future__ import annotations
 
 import argparse
 import gc
 import hashlib
-import math
 import os
 import shutil
 import sys
@@ -15,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .asr import VibeVoiceASR, ensure_model_layout, gpu_probe
+from .asr import ASR_MODEL, MODEL_ARTIFACT, VibeVoiceASR, gpu_probe, verify_checkpoint
 from .cleanup import (
     MODELS,
     chat_completions_url,
@@ -24,16 +23,16 @@ from .cleanup import (
     run_cleanup,
 )
 from .pipeline import (
+    CHUNK_SECONDS,
+    SESSION_CHUNKS,
     AudioActivity,
-    Validation,
     Window,
     candidate_shards,
     format_time,
     load_json,
     mixed_lexical_conflicts,
-    segment_track,
-    segments_to_rows,
-    slice_track,
+    prepare_track,
+    session_rows,
     sort_rows,
     unavailable_row,
     validate_asr_result,
@@ -55,7 +54,7 @@ def parser() -> argparse.ArgumentParser:
         prog="call-diarize",
         description=(
             "Turn near.wav, far.wav, and mix.wav in one call directory into a "
-            "GPU-backed Thomas/Remote transcript."
+            "GPU-backed Thomas/Remote transcript with VibeVoice-ASR-Streaming-7B."
         ),
     )
     result.add_argument("call_dir", type=Path, help="recording directory")
@@ -97,7 +96,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument(
         "--max-new-tokens",
         type=int,
-        default=1024,
+        default=256,
         help=argparse.SUPPRESS,
     )
     result.add_argument(
@@ -115,30 +114,13 @@ def collect_hotwords(values: list[str], files: list[Path]) -> str:
         text = path.read_text(encoding="utf-8").strip()
         if text:
             pieces.append(text)
-    return "\n".join(pieces)
+    # The streaming prompt ends in a newline after this text; keep it one line.
+    return " ".join(" ".join(pieces).split())
 
 
-def _state_root() -> Path:
-    configured = os.environ.get("CALL_DIARIZE_STATE_ROOT")
-    if configured:
-        return Path(configured).expanduser()
-    xdg = os.environ.get("XDG_STATE_HOME")
-    if xdg:
-        return Path(xdg).expanduser() / "call-diarize"
-    home = os.environ.get("HOME")
-    if not home:
-        raise RuntimeError("HOME or XDG_STATE_HOME is required for call-diarize state")
-    return Path(home) / ".local" / "state" / "call-diarize"
-
-
-def _support_dir() -> Path:
-    configured = os.environ.get("CALL_DIARIZE_MODEL_SUPPORT")
-    if not configured:
-        raise RuntimeError("launcher did not set CALL_DIARIZE_MODEL_SUPPORT")
-    return Path(configured)
-
-
-def _run_config(call_dir: Path, hotwords: str) -> dict[str, Any]:
+def _run_config(
+    call_dir: Path, hotwords: str, max_new_tokens: int
+) -> dict[str, Any]:
     sources = {}
     for name in ("near.wav", "far.wav", "mix.wav"):
         stat = (call_dir / name).stat()
@@ -148,6 +130,8 @@ def _run_config(call_dir: Path, hotwords: str) -> dict[str, Any]:
         "pipeline_version": __version__,
         "hotwords_sha256": hashlib.sha256(hotwords.encode("utf-8")).hexdigest(),
         "sources": sources,
+        "asr_model": ASR_MODEL,
+        "max_new_tokens": max_new_tokens,
         "models": MODELS,
     }
 
@@ -227,14 +211,11 @@ def _load_or_transcribe(
         value = load_json(path)
         if value.get("request") != expected:
             raise RuntimeError(f"cached ASR request identity mismatch: {path}")
-        print(
-            f"ASR cached {window.track} {window.start:.2f}s/{window.nominal_seconds}s",
-            flush=True,
-        )
+        print(f"ASR cached {window.track} session at {window.start:.2f}s", flush=True)
         return value, str(relative)
     print(
-        f"ASR {window.track} {window.start:.2f}s/{window.nominal_seconds}s "
-        f"({window.actual_seconds:.2f}s audio)",
+        f"ASR {window.track} session at {window.start:.2f}s "
+        f"({window.chunk_count} chunks, {window.actual_seconds:.2f}s audio)",
         flush=True,
     )
     value = engine.transcribe(window, hotwords)
@@ -242,89 +223,53 @@ def _load_or_transcribe(
     runtime = value["runtime"]
     print(
         f"ASR done in {runtime['generation_seconds']:.1f}s "
-        f"({runtime['realtime_factor']:.2f}x realtime, {runtime['generated_tokens']} tokens)",
+        f"({runtime['realtime_factor']:.2f}x realtime, "
+        f"peak {runtime['peak_gpu_memory_bytes'] / 2**30:.1f} GiB allocated)",
         flush=True,
     )
     return value, str(relative)
 
 
-def _process_tree(
-    initial: Window,
-    levels: list[int],
-    source: Path,
-    temp_root: Path,
+def _process_session(
+    window: Window,
     engine: VibeVoiceASR,
     hotwords: str,
     raw_root: Path,
     activity: AudioActivity,
-    selected: list[tuple[Window, dict[str, Any], str]],
-    unavailable: list[tuple[Window, str, Validation]],
+    max_new_tokens: int,
+    rows: list[dict[str, Any]],
+    withheld: list[dict[str, Any]],
     rejections: list[dict[str, Any]],
     runtime_records: list[dict[str, Any]],
 ) -> None:
-    level_index = levels.index(initial.nominal_seconds)
-
-    def visit(window: Window, index: int) -> None:
-        result, raw_path = _load_or_transcribe(engine, window, hotwords, raw_root)
-        runtime = result.get("runtime")
-        if not isinstance(runtime, dict):
-            raise RuntimeError(f"ASR result lacks GPU runtime evidence: {raw_path}")
-        runtime_records.append(runtime)
-        validation = validate_asr_result(result, window, activity.support)
-        if validation.accepted:
-            selected.append((window, result, raw_path))
-            return
-
-        rejection = {
-            "track": window.track,
-            "global_start": round(window.start, 3),
-            "global_end": round(window.start + window.actual_seconds, 3),
-            "resolution_seconds": window.nominal_seconds,
-            "raw": raw_path,
-            "reasons": list(validation.reasons),
-            "low_channel_support_rows": list(validation.low_support_rows),
-        }
-        rejections.append(rejection)
+    result, raw_path = _load_or_transcribe(engine, window, hotwords, raw_root)
+    runtime = result.get("runtime")
+    if not isinstance(runtime, dict):
+        raise RuntimeError(f"ASR result lacks GPU runtime evidence: {raw_path}")
+    runtime_records.append(runtime)
+    validation = validate_asr_result(result, window)
+    if not validation.accepted:
+        rejections.append(
+            {
+                "track": window.track,
+                "global_start": round(window.start, 3),
+                "global_end": round(window.start + window.actual_seconds, 3),
+                "raw": raw_path,
+                "reasons": list(validation.reasons),
+            }
+        )
         print(
-            f"rejected {window.track} {window.start:.2f}s/{window.nominal_seconds}s: "
+            f"rejected {window.track} session at {window.start:.2f}s: "
             + "; ".join(validation.reasons),
             flush=True,
         )
-
-        if index + 1 >= len(levels):
-            unavailable.append((window, raw_path, validation))
-            return
-        child_seconds = levels[index + 1]
-        # A short tail is already no longer than the next retry size; slicing it
-        # again would submit identical audio and is not recursive refinement.
-        if window.actual_seconds <= child_seconds + 0.001:
-            unavailable.append((window, raw_path, validation))
-            return
-        child_count = max(1, math.ceil((window.actual_seconds - 0.001) / child_seconds))
-        for child_index in range(child_count):
-            child_start = window.start + child_index * child_seconds
-            if child_start >= window.start + window.actual_seconds - 0.001:
-                continue
-            child = slice_track(
-                source,
-                window.track,
-                child_start,
-                child_seconds,
-                temp_root,
-            )
-            visit(child, index + 1)
-
-    visit(initial, level_index)
-
-
-def _rows_from_selected(
-    selected: list[tuple[Window, dict[str, Any], str]],
-    activity: AudioActivity,
-) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for window, result, raw_path in selected:
-        rows.extend(segments_to_rows(result, window, raw_path, activity.support))
-    return sort_rows(rows)
+        rows.append(unavailable_row(window, raw_path, validation.reasons))
+        return
+    accepted, low_support = session_rows(
+        result, window, raw_path, activity.support, max_new_tokens
+    )
+    rows.extend(accepted)
+    withheld.extend(low_support)
 
 
 def _render_transcript(rows: list[dict[str, Any]], manifest: dict[str, Any]) -> str:
@@ -332,13 +277,17 @@ def _render_transcript(rows: list[dict[str, Any]], manifest: dict[str, Any]) -> 
         "# Call transcript",
         "",
         (
-            "Generated locally with GPU-backed VibeVoice-ASR. Thomas is fixed by the near "
-            "channel; Remote is the combined far channel. Simultaneous rows are retained."
+            "Generated locally with GPU-backed VibeVoice-ASR-Streaming-7B. Thomas is "
+            "fixed by the near channel; Remote is the combined far channel. "
+            "Simultaneous rows are retained."
         ),
         "",
         (
-            f"ASR leaves: {manifest['leaf_counts']['60']}×60 s, "
-            f"{manifest['leaf_counts']['30']}×30 s, {manifest['leaf_counts']['15']}×15 s."
+            f"Streaming ASR emits no timestamps: times are {CHUNK_SECONDS:.3f} s chunk "
+            "bounds and may trail speech by one chunk. Sessions: "
+            f"{manifest['session_counts']['near']} near, "
+            f"{manifest['session_counts']['far']} far, "
+            f"{manifest['session_counts']['mix']} mixed."
         ),
         "",
     ]
@@ -384,7 +333,12 @@ def _review_item(prefix: str, item: dict[str, Any]) -> list[str]:
             f"[{format_time(float(item['start'] if 'start' in item else item['global_start']))}–"
             f"{format_time(float(item['end'] if 'end' in item else item['global_end']))}]"
         ),
-        f"  - {item.get('text') or item.get('isolated_text') or '; '.join(item.get('reasons', []))}",
+        "  - "
+        + (
+            "; ".join(item.get("validation_reasons") or item.get("reasons", []))
+            or item.get("isolated_text")
+            or item.get("text", "")
+        ),
     ]
 
 
@@ -394,12 +348,8 @@ def _render_review(
     cleanup_failures: list[dict[str, Any]],
     lexical_conflicts: list[dict[str, Any]],
     dropped: list[dict[str, Any]],
+    low_support: list[dict[str, Any]],
 ) -> str:
-    low_support = [
-        {**row, "raw": rejection["raw"]}
-        for rejection in rejections
-        for row in rejection["low_channel_support_rows"]
-    ]
     failed_shards = {str(failure["shard_id"]) for failure in cleanup_failures}
     lines = [
         "# Call transcript review queue",
@@ -408,11 +358,11 @@ def _render_review(
         "",
         "## Summary",
         "",
-        f"- Rejected ASR windows across all retry levels: {len(rejections)}",
+        f"- Rejected streaming ASR sessions: {len(rejections)}",
         f"- Final unavailable spans: {len(final_unavailable)}",
         f"- Cleanup model/shard failures: {len(cleanup_failures)}",
         f"- Raw-ASR fallback shards: {len(failed_shards)}",
-        f"- Low-channel-support rows seen in rejected windows: {len(low_support)}",
+        f"- Low-channel-support rows withheld from the transcript: {len(low_support)}",
         f"- Near/far versus mixed lexical conflicts: {len(lexical_conflicts)}",
         f"- Proven duplicates removed: {len(dropped)}",
         "",
@@ -422,6 +372,8 @@ def _render_review(
     if final_unavailable:
         for item in final_unavailable:
             lines.extend(_review_item("unavailable", item))
+            if item.get("asr_text"):
+                lines.append(f"  - ASR text: {item['asr_text']}")
     else:
         lines.append("None.")
 
@@ -441,15 +393,15 @@ def _render_review(
     else:
         lines.append("None.")
 
-    lines.extend(["", "## Low-channel-support rows", ""])
+    lines.extend(["", "## Withheld low-channel-support rows", ""])
     if low_support:
         for item in low_support:
             lines.extend(
                 [
                     (
-                        f"- `{item['raw']}` [{format_time(item['global_start'])}–"
-                        f"{format_time(item['global_end'])}] selected activity "
-                        f"{item['activity']['selected']:.3f}"
+                        f"- `{item['source_raw']}` [{format_time(item['start'])}–"
+                        f"{format_time(item['end'])}] {item['speaker']} channel activity "
+                        f"{item['channel_activity']['selected']:.3f}"
                     ),
                     f"  - {item['text']}",
                 ]
@@ -504,9 +456,8 @@ def execute(args: argparse.Namespace) -> int:
 
     durations = validate_capture_files(call_dir)
     hotwords = collect_hotwords(args.hotwords, args.hotwords_file)
-    state_root = _state_root()
-    support_dir = _support_dir()
-    model_dir = ensure_model_layout(state_root, support_dir)
+    model_dir = MODEL_ARTIFACT
+    verify_checkpoint(model_dir)
 
     inference_endpoint = chat_completions_url(args.inference_endpoint)
     advertised_models = preflight_models(inference_endpoint)
@@ -516,47 +467,40 @@ def execute(args: argparse.Namespace) -> int:
         flush=True,
     )
 
-    run_config = _run_config(call_dir, hotwords)
+    run_config = _run_config(call_dir, hotwords, args.max_new_tokens)
     raw_root = _prepare_raw_root(call_dir, run_config)
     _ensure_run_config(raw_root, run_config)
 
-    selected_by_track: dict[str, list[tuple[Window, dict[str, Any], str]]] = {
+    rows_by_track: dict[str, list[dict[str, Any]]] = {
         "near": [],
         "far": [],
         "mix": [],
     }
-    unavailable_by_track: dict[str, list[tuple[Window, str, Validation]]] = {
-        "near": [],
-        "far": [],
-        "mix": [],
-    }
+    low_support: list[dict[str, Any]] = []
     rejections: list[dict[str, Any]] = []
     runtime_records: list[dict[str, Any]] = []
 
     with tempfile.TemporaryDirectory(prefix="call-diarize-") as temporary:
         temp_root = Path(temporary)
-        initial = {
-            "near": segment_track(call_dir / "near.wav", "near", 60, temp_root),
-            "far": segment_track(call_dir / "far.wav", "far", 60, temp_root),
-            "mix": segment_track(call_dir / "mix.wav", "mix", 30, temp_root),
+        sessions = {
+            track: prepare_track(call_dir / f"{track}.wav", track, temp_root)
+            for track in ("near", "far", "mix")
         }
         with AudioActivity(call_dir) as activity:
             engine = VibeVoiceASR(model_dir, max_new_tokens=args.max_new_tokens)
             try:
                 for track in ("near", "far", "mix"):
-                    levels = [60, 30, 15] if track != "mix" else [30, 15]
-                    for window in initial[track]:
-                        _process_tree(
+                    for window in sessions[track]:
+                        _process_session(
                             window,
-                            levels,
-                            call_dir / f"{track}.wav",
-                            temp_root,
                             engine,
                             hotwords,
                             raw_root,
                             activity,
-                            selected_by_track[track],
-                            unavailable_by_track[track],
+                            args.max_new_tokens,
+                            rows_by_track[track],
+                            # Mixed rows only cross-check the isolated channels.
+                            low_support if track != "mix" else [],
                             rejections,
                             runtime_records,
                         )
@@ -565,20 +509,14 @@ def execute(args: argparse.Namespace) -> int:
                 del engine
                 gc.collect()
 
-            isolated = _rows_from_selected(
-                selected_by_track["near"] + selected_by_track["far"], activity
-            )
-            final_unavailable = []
-            for track in ("near", "far", "mix"):
-                for window, raw_path, validation in unavailable_by_track[track]:
-                    row = unavailable_row(window, raw_path, validation.reasons)
-                    if track != "mix":
-                        isolated.append(row)
-                    final_unavailable.append(row)
-            isolated = sort_rows(isolated)
-
-            mixed = _rows_from_selected(selected_by_track["mix"], activity)
-            lexical_conflicts = mixed_lexical_conflicts(isolated, mixed)
+    isolated = sort_rows(rows_by_track["near"] + rows_by_track["far"])
+    final_unavailable = [
+        row
+        for track in ("near", "far", "mix")
+        for row in rows_by_track[track]
+        if row["kind"] == "unavailable"
+    ]
+    lexical_conflicts = mixed_lexical_conflicts(isolated, rows_by_track["mix"])
 
     shards = candidate_shards(isolated, limit=10)
     row_index = {row["source_id"]: index for index, row in enumerate(isolated)}
@@ -603,10 +541,7 @@ def execute(args: argparse.Namespace) -> int:
     )
     cleaned, dropped = reduce_decisions(isolated, decisions, cleanup_failures)
 
-    leaf_counts = {"60": 0, "30": 0, "15": 0}
-    for selected in selected_by_track.values():
-        for window, _, _ in selected:
-            leaf_counts[str(window.nominal_seconds)] += 1
+    session_counts = {track: len(windows) for track, windows in sessions.items()}
     generation_seconds = sum(
         float(item.get("generation_seconds", 0)) for item in runtime_records
     )
@@ -622,19 +557,24 @@ def execute(args: argparse.Namespace) -> int:
     manifest = {
         "schema": 1,
         "pipeline_version": __version__,
-        "method": "VibeVoice near/far 60s + mixed 30s; rejected windows recurse to 30s/15s",
+        "method": (
+            "VibeVoice-ASR-Streaming-7B live-style decoding of near/far/mix in "
+            f"{SESSION_CHUNKS}-chunk sessions; chunk-resolution times"
+        ),
         "call_dir": str(call_dir),
         "recording_durations": durations,
         "gpu": gpu,
+        "asr_model": ASR_MODEL,
         "cleanup_models": MODELS,
         "inference_endpoint": inference_endpoint,
         "inference_advertised_model_count": len(advertised_models),
-        "leaf_counts": leaf_counts,
-        "rejected_window_count": len(rejections),
+        "session_counts": session_counts,
+        "rejected_session_count": len(rejections),
         "final_unavailable_count": len(final_unavailable),
         "isolated_candidate_count": len(isolated),
         "published_row_count": len(cleaned),
         "proven_duplicate_drop_count": len(dropped),
+        "low_support_withheld_count": len(low_support),
         "cleanup_failure_count": len(cleanup_failures),
         "raw_fallback_shard_count": len(raw_fallback_shards),
         "raw_fallback_candidate_count": len(raw_fallback_candidates),
@@ -642,6 +582,10 @@ def execute(args: argparse.Namespace) -> int:
         "asr_generation_seconds": round(generation_seconds, 3),
         "asr_audio_seconds": round(audio_seconds, 3),
         "asr_realtime_factor": round(generation_seconds / max(audio_seconds, 0.001), 3),
+        "asr_peak_gpu_memory_bytes": max(
+            (int(item.get("peak_gpu_memory_bytes", 0)) for item in runtime_records),
+            default=0,
+        ),
         "all_inference_gpu_backed": bool(runtime_records)
         and all(
             item.get("device_name") == gpu["device_name"] for item in runtime_records
@@ -665,6 +609,7 @@ def execute(args: argparse.Namespace) -> int:
         cleanup_failures,
         lexical_conflicts,
         dropped,
+        low_support,
     )
     transcript = _render_transcript(cleaned, manifest)
     _publish(review_path, review, args.force)

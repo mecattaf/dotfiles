@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import bisect
 import hashlib
 import json
 import math
 import os
 import re
-import shutil
 import subprocess
 import tempfile
 import wave
@@ -34,27 +34,72 @@ UNAVAILABLE_TEXT = {
     "[no parseable asr output]",
 }
 
+# VibeVoice-ASR-Streaming frame geometry, fixed by the checkpoint's
+# preprocessor_config.json (asr.verify_checkpoint refuses any other):
+# 22 frames of advance plus 4 frames of lookahead, 3200 samples per frame.
+SAMPLE_RATE = 24_000
+FRAME_SAMPLES = 3_200
+CHUNK_FRAMES = 22
+LOOKAHEAD_FRAMES = 4
+CHUNK_SAMPLES = CHUNK_FRAMES * FRAME_SAMPLES
+LOOKAHEAD_SAMPLES = LOOKAHEAD_FRAMES * FRAME_SAMPLES
+CHUNK_SECONDS = CHUNK_SAMPLES / SAMPLE_RATE
+# One streaming session (fresh prompt and KV cache) per 102 chunks, 299.2 s:
+# inside the eight-minute recordings the model was reported for, and a
+# resumable unit of GPU work.
+SESSION_CHUNKS = 102
+# Streaming output carries no timestamps. Times are the bounds of the chunks
+# in which text was emitted, so they are only as precise as CHUNK_SECONDS and
+# can trail speech by up to one chunk. Rows break on speaker labels, on a
+# silent chunk, or once a row spans this long.
+ROW_MAX_SECONDS = 30.0
+SPEAKER_LABEL_RE = re.compile(r"(?:^|(?<=\s))Speaker[ \t]+(\d+)[ \t]*:")
+SENTENCE_RE = re.compile(r"[^.!?]+(?:[.!?]+|$)")
+# Streaming output marks pauses inline ("[Silence][Silence]") without sentence
+# punctuation. They are blanked in place so offsets still map to chunks and a
+# chunk holding only a marker counts as silent.
+NON_SPEECH_MARKER_RE = re.compile(r"\[(?:silence|noise|human sounds|music)\]", re.I)
+
 
 @dataclass(frozen=True)
 class Window:
-    """One model input window with a global offset."""
+    """One streaming session: consecutive checkpoint chunks of one track."""
 
     track: str
-    start: float
-    nominal_seconds: int
-    actual_seconds: float
+    first_chunk: int
+    chunk_count: int
+    track_samples: int
     audio_path: Path
 
     @property
+    def start(self) -> float:
+        return self.first_chunk * CHUNK_SAMPLES / SAMPLE_RATE
+
+    @property
+    def actual_seconds(self) -> float:
+        end = min(
+            self.track_samples, (self.first_chunk + self.chunk_count) * CHUNK_SAMPLES
+        )
+        return (end - self.first_chunk * CHUNK_SAMPLES) / SAMPLE_RATE
+
+    def chunk_span(self, chunk: int) -> tuple[float, float]:
+        """Global bounds of one chunk, by global chunk index."""
+
+        start = chunk * CHUNK_SAMPLES
+        end = min(self.track_samples, start + CHUNK_SAMPLES)
+        return start / SAMPLE_RATE, end / SAMPLE_RATE
+
+    @property
     def key(self) -> str:
-        start_ms = round(self.start * 1000)
-        return f"{self.track}/{self.nominal_seconds:02d}s/{start_ms:012d}.json"
+        return f"{self.track}/session-{self.first_chunk:06d}.json"
 
     def request_identity(self, hotwords: str) -> dict[str, Any]:
         return {
             "track": self.track,
-            "global_start": round(self.start, 6),
-            "nominal_seconds": self.nominal_seconds,
+            "first_chunk": self.first_chunk,
+            "chunk_count": self.chunk_count,
+            "chunk_samples": CHUNK_SAMPLES,
+            "lookahead_samples": LOOKAHEAD_SAMPLES,
             "audio_seconds": round(self.actual_seconds, 6),
             "hotwords_sha256": hashlib.sha256(hotwords.encode("utf-8")).hexdigest(),
         }
@@ -64,7 +109,6 @@ class Window:
 class Validation:
     accepted: bool
     reasons: tuple[str, ...]
-    low_support_rows: tuple[dict[str, Any], ...]
 
 
 def words(text: str) -> list[str]:
@@ -82,32 +126,6 @@ def is_non_speech(text: str) -> bool:
 def is_unavailable(text: str) -> bool:
     lowered = text.strip().lower()
     return lowered in UNAVAILABLE_TEXT or "decoder repetition" in lowered
-
-
-def normalize_asr_segments(value: object) -> object:
-    """Normalize the native v5 parser shape to the proven legacy contract."""
-
-    if not isinstance(value, list):
-        return value
-    normalized: list[object] = []
-    for segment in value:
-        if not isinstance(segment, dict):
-            normalized.append(segment)
-            continue
-        native_keys = {"Start", "End", "Content"}
-        legacy_keys = {"start_time", "end_time", "text"}
-        if native_keys <= segment.keys() and not (legacy_keys & segment.keys()):
-            item = {
-                "start_time": segment["Start"],
-                "end_time": segment["End"],
-                "text": segment["Content"],
-            }
-            if "Speaker" in segment:
-                item["speaker_id"] = segment["Speaker"]
-            normalized.append(item)
-        else:
-            normalized.append(segment)
-    return normalized
 
 
 def decoder_loop_reason(text: str) -> str | None:
@@ -162,20 +180,10 @@ def validate_capture_files(call_dir: Path) -> dict[str, float]:
     return durations
 
 
-def segment_track(
-    source: Path, track: str, seconds: int, output_dir: Path
-) -> list[Window]:
-    """Use ffmpeg's segment muxer to make aligned 24 kHz model inputs."""
+def prepare_track(source: Path, track: str, output_dir: Path) -> list[Window]:
+    """Resample one recording to 24 kHz mono and lay out its sessions."""
 
-    track_dir = output_dir / f"{track}-{seconds:02d}s"
-    # The muxer overwrites only the indexes it emits. Rebuild the directory so
-    # an old high-numbered chunk cannot survive into the new window list.
-    if track_dir.is_symlink() or track_dir.is_file():
-        track_dir.unlink()
-    elif track_dir.exists():
-        shutil.rmtree(track_dir)
-    track_dir.mkdir(parents=True, exist_ok=True)
-    pattern = track_dir / f"{track}-%06d.wav"
+    path = output_dir / f"{track}-24k.wav"
     subprocess.run(
         [
             "ffmpeg",
@@ -189,67 +197,7 @@ def segment_track(
             "-map",
             "0:a:0",
             "-ar",
-            "24000",
-            "-ac",
-            "1",
-            "-c:a",
-            "pcm_s16le",
-            "-f",
-            "segment",
-            "-segment_time",
-            str(seconds),
-            "-reset_timestamps",
-            "1",
-            str(pattern),
-        ],
-        check=True,
-    )
-    paths = sorted(track_dir.glob(f"{track}-*.wav"))
-    if not paths:
-        raise RuntimeError(f"ffmpeg produced no {track} chunks")
-    return [
-        Window(
-            track=track,
-            start=index * seconds,
-            nominal_seconds=seconds,
-            actual_seconds=wav_seconds(path, expected_rate=24_000),
-            audio_path=path,
-        )
-        for index, path in enumerate(paths)
-    ]
-
-
-def slice_track(
-    source: Path,
-    track: str,
-    start: float,
-    seconds: int,
-    output_dir: Path,
-) -> Window:
-    """Build one recursive retry window directly from the canonical source."""
-
-    retry_dir = output_dir / f"{track}-{seconds:02d}s-retries"
-    retry_dir.mkdir(parents=True, exist_ok=True)
-    start_ms = round(start * 1000)
-    path = retry_dir / f"{track}-{start_ms:012d}.wav"
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-nostdin",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-ss",
-            f"{start:.6f}",
-            "-t",
-            str(seconds),
-            "-i",
-            str(source),
-            "-map",
-            "0:a:0",
-            "-ar",
-            "24000",
+            str(SAMPLE_RATE),
             "-ac",
             "1",
             "-c:a",
@@ -258,13 +206,25 @@ def slice_track(
         ],
         check=True,
     )
-    return Window(
-        track=track,
-        start=start,
-        nominal_seconds=seconds,
-        actual_seconds=wav_seconds(path, expected_rate=24_000),
-        audio_path=path,
-    )
+    with wave.open(str(path), "rb") as handle:
+        if (
+            handle.getframerate() != SAMPLE_RATE
+            or handle.getnchannels() != 1
+            or handle.getsampwidth() != 2
+        ):
+            raise RuntimeError(f"ffmpeg did not produce 24 kHz mono PCM16: {path}")
+        samples = handle.getnframes()
+    total_chunks = math.ceil(samples / CHUNK_SAMPLES)
+    return [
+        Window(
+            track=track,
+            first_chunk=first,
+            chunk_count=min(SESSION_CHUNKS, total_chunks - first),
+            track_samples=samples,
+            audio_path=path,
+        )
+        for first in range(0, total_chunks, SESSION_CHUNKS)
+    ]
 
 
 class AudioActivity:
@@ -313,9 +273,29 @@ class AudioActivity:
         db = 20 * self._np.log10(self._np.maximum(rms, 1e-8))
         return float(self._np.mean(db > ACTIVE_DB))
 
+    def chunk_activity(self, track: str, start: float, end: float) -> float:
+        """Best chunk-sized activity over a span and the chunk before it.
+
+        Text is emitted in the chunk where the model finished hearing it, so a
+        short reply can sit in the preceding chunk and fill little of a long
+        row. A hallucination on a silent channel stays low in every slice.
+        """
+
+        cursor = max(0.0, start - CHUNK_SECONDS)
+        best = 0.0
+        while cursor < end:
+            best = max(
+                best,
+                self.activity_fraction(
+                    track, cursor, min(end, cursor + CHUNK_SECONDS)
+                ),
+            )
+            cursor += CHUNK_SECONDS
+        return best
+
     def support(self, track: str, start: float, end: float) -> dict[str, float]:
-        near = self.activity_fraction("near", start, end)
-        far = self.activity_fraction("far", start, end)
+        near = self.chunk_activity("near", start, end)
+        far = self.chunk_activity("far", start, end)
         selected = (
             near if track == "near" else far if track == "far" else max(near, far)
         )
@@ -326,148 +306,191 @@ class AudioActivity:
         }
 
 
-def _number(value: object) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    number = float(value)
-    return number if math.isfinite(number) else None
+def validate_asr_result(result: dict[str, Any], window: Window) -> Validation:
+    """Require one decoded text per requested chunk, in order."""
 
-
-def validate_asr_result(
-    result: dict[str, Any],
-    window: Window,
-    support: Callable[[str, float, float], dict[str, float]],
-) -> Validation:
-    """Apply the frozen strict structural and channel-support gate."""
-
+    chunks = result.get("chunks")
+    if not isinstance(chunks, list):
+        return Validation(False, ("ASR output has no chunk list",))
     reasons: list[str] = []
-    low_support: list[dict[str, Any]] = []
-    segments = normalize_asr_segments(result.get("segments"))
-    if not isinstance(segments, list) or not segments:
-        return Validation(
-            False, ("ASR output was not a non-empty strict segment list",), ()
+    if len(chunks) != window.chunk_count:
+        reasons.append(
+            f"ASR output has {len(chunks)} chunks; the session has {window.chunk_count}"
         )
-
-    previous_start = 0.0
-    previous_end = 0.0
-    for ordinal, segment in enumerate(segments):
-        if not isinstance(segment, dict):
-            reasons.append(f"segment {ordinal} is not an object")
+    for ordinal, chunk in enumerate(chunks):
+        expected = window.first_chunk + ordinal
+        if not isinstance(chunk, dict):
+            reasons.append(f"chunk {expected} is not an object")
             continue
-        start = _number(segment.get("start_time"))
-        end = _number(segment.get("end_time"))
-        text = segment.get("text")
-        if start is None or end is None:
-            reasons.append(f"segment {ordinal} has non-numeric or missing timestamps")
-            continue
-        if not isinstance(text, str):
-            reasons.append(f"segment {ordinal} has non-string text")
-            continue
-
-        timestamps_valid = True
-        if start < 0 or end < start or end > window.actual_seconds:
+        if chunk.get("index") != expected:
             reasons.append(
-                f"segment {ordinal} violates 0 <= start <= end <= {window.actual_seconds:.6f} "
-                f"({start:.6f}, {end:.6f})"
+                f"chunk {ordinal} has index {chunk.get('index')!r}, expected {expected}"
             )
-            timestamps_valid = False
-        if ordinal and start < previous_start:
-            reasons.append(f"segment {ordinal} start timestamp regresses")
-            timestamps_valid = False
-        if ordinal and end < previous_end:
-            reasons.append(f"segment {ordinal} end timestamp regresses")
-            timestamps_valid = False
-        previous_start = max(previous_start, start)
-        previous_end = max(previous_end, end)
+        if not isinstance(chunk.get("text"), str):
+            reasons.append(f"chunk {expected} has non-string text")
+    return Validation(not reasons, tuple(reasons))
 
-        loop = decoder_loop_reason(text)
-        if loop:
-            reasons.append(f"segment {ordinal} contains decoder loop: {loop}")
 
-        if (
-            timestamps_valid
-            and not is_non_speech(text)
-            and not is_unavailable(text)
-            and end > start
-        ):
-            global_start = window.start + start
-            global_end = window.start + end
-            evidence = support(window.track, global_start, global_end)
-            if evidence["selected"] < MIN_CHANNEL_ACTIVITY:
-                item = {
-                    "ordinal": ordinal,
-                    "text": text,
-                    "global_start": round(global_start, 3),
-                    "global_end": round(global_end, 3),
-                    "activity": evidence,
+def _utterance_spans(text: str) -> list[tuple[str | None, int, int]]:
+    labels = list(SPEAKER_LABEL_RE.finditer(text))
+    if not labels:
+        return [(None, 0, len(text))]
+    spans: list[tuple[str | None, int, int]] = []
+    if text[: labels[0].start()].strip():
+        spans.append((None, 0, labels[0].start()))
+    for ordinal, label in enumerate(labels):
+        end = labels[ordinal + 1].start() if ordinal + 1 < len(labels) else len(text)
+        spans.append((label.group(1), label.end(), end))
+    return spans
+
+
+def streaming_groups(
+    chunk_texts: list[str], first_chunk: int = 0
+) -> list[dict[str, Any]]:
+    """Split concatenated streaming text into speaker-labelled rows.
+
+    Speaker labels may straddle chunk boundaries, so parsing runs over the
+    joined text and each sentence is mapped back to the chunks that emitted
+    its first and last characters.
+    """
+
+    joined = NON_SPEECH_MARKER_RE.sub(
+        lambda marker: " " * len(marker.group()), "".join(chunk_texts)
+    )
+    offsets: list[int] = []
+    cursor = 0
+    for text in chunk_texts:
+        offsets.append(cursor)
+        cursor += len(text)
+
+    def chunk_at(position: int) -> int:
+        return first_chunk + bisect.bisect_right(offsets, position) - 1
+
+    groups: list[dict[str, Any]] = []
+    for speaker, begin, end in _utterance_spans(joined):
+        current: dict[str, Any] | None = None
+        for match in SENTENCE_RE.finditer(joined, begin, end):
+            piece = match.group()
+            stripped = " ".join(piece.split())
+            if not stripped:
+                continue
+            first = chunk_at(match.start() + len(piece) - len(piece.lstrip()))
+            last = chunk_at(match.start() + len(piece.rstrip()) - 1)
+            if current is not None and (
+                first - current["last_chunk"] > 1
+                or (last + 1 - current["first_chunk"]) * CHUNK_SECONDS > ROW_MAX_SECONDS
+            ):
+                groups.append(current)
+                current = None
+            if current is None:
+                current = {
+                    "speaker": speaker,
+                    "first_chunk": first,
+                    "last_chunk": last,
+                    "sentences": [stripped],
                 }
-                low_support.append(item)
-                reasons.append(
-                    f"segment {ordinal} has {evidence['selected']:.3f} matching channel activity"
-                )
+            else:
+                current["last_chunk"] = last
+                current["sentences"].append(stripped)
+        if current is not None:
+            groups.append(current)
+    return groups
 
-    return Validation(not reasons, tuple(reasons), tuple(low_support))
+
+def track_speaker(track: str) -> str:
+    return {"near": "Thomas", "far": "Remote", "mix": "Mixed"}.get(track, "Unknown")
 
 
-def segments_to_rows(
+def session_rows(
     result: dict[str, Any],
     window: Window,
     raw_path: str,
     support: Callable[[str, float, float], dict[str, float]],
-) -> list[dict[str, Any]]:
+    max_new_tokens: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Return transcript rows and low-channel-support rows withheld from them.
+
+    The channel fixes the speaker. The model's speaker id is kept only as a
+    session-local hint. Decoder loops and chunks that exhausted their token
+    budget become unavailable rows.
+    """
+
+    chunks = result["chunks"]
+    capped = {
+        int(chunk["index"])
+        for chunk in chunks
+        if int(chunk.get("decoded_token_count", 0)) >= max_new_tokens
+    }
     rows: list[dict[str, Any]] = []
-    segments = normalize_asr_segments(result["segments"])
-    if not isinstance(segments, list):
-        raise ValueError("ASR segments were not a list")
-    for ordinal, segment in enumerate(segments):
-        if not isinstance(segment, dict):
-            raise ValueError(f"ASR segment {ordinal} was not an object")
-        text = str(segment["text"]).strip()
+    withheld: list[dict[str, Any]] = []
+    groups = streaming_groups(
+        [str(chunk["text"]) for chunk in chunks], window.first_chunk
+    )
+    for ordinal, group in enumerate(groups):
+        text = " ".join(group["sentences"])
         if is_non_speech(text):
             continue
-        start = window.start + float(segment["start_time"])
-        end = window.start + float(segment["end_time"])
-        evidence = support(window.track, start, end)
-        rows.append(
-            {
-                "source_id": (
-                    f"{window.track}-{round(window.start * 1000):012d}-"
-                    f"{window.nominal_seconds:02d}-s{ordinal:03d}"
-                ),
-                "track": window.track,
-                "speaker": "Thomas" if window.track == "near" else "Remote",
-                "start": round(start, 3),
-                "end": round(end, 3),
-                "text": text,
-                "kind": "unavailable" if is_unavailable(text) else "speech",
-                "channel_activity": evidence,
-                "source_resolution_seconds": window.nominal_seconds,
-                "source_raw": raw_path,
-                "asr_speaker_id_chunk_local": segment.get("speaker_id"),
-            }
+        start, _ = window.chunk_span(group["first_chunk"])
+        _, end = window.chunk_span(group["last_chunk"])
+        row = {
+            "source_id": f"{window.track}-c{window.first_chunk:06d}-s{ordinal:03d}",
+            "track": window.track,
+            "speaker": track_speaker(window.track),
+            "start": round(start, 3),
+            "end": round(end, 3),
+            "text": text,
+            "kind": "unavailable" if is_unavailable(text) else "speech",
+            "channel_activity": None,
+            "time_resolution_seconds": round(CHUNK_SECONDS, 4),
+            "source_chunks": [group["first_chunk"], group["last_chunk"]],
+            "source_raw": raw_path,
+            "asr_speaker_id_session_local": group["speaker"],
+        }
+        reasons = []
+        loop = decoder_loop_reason(text)
+        if loop:
+            reasons.append(f"decoder loop: {loop}")
+        exhausted = sorted(
+            index
+            for index in capped
+            if group["first_chunk"] <= index <= group["last_chunk"]
         )
-    return rows
+        if exhausted:
+            reasons.append(f"chunks {exhausted} exhausted {max_new_tokens} tokens")
+        if reasons:
+            row.update(
+                {
+                    "kind": "unavailable",
+                    "asr_text": text,
+                    "text": "[Speech unavailable; see review queue]",
+                    "validation_reasons": reasons,
+                }
+            )
+            rows.append(row)
+            continue
+        if row["kind"] == "speech":
+            evidence = support(window.track, start, end)
+            row["channel_activity"] = evidence
+            if evidence["selected"] < MIN_CHANNEL_ACTIVITY:
+                withheld.append(row)
+                continue
+        rows.append(row)
+    return rows, withheld
 
 
 def unavailable_row(
     window: Window, raw_path: str, reasons: Iterable[str]
 ) -> dict[str, Any]:
-    speaker = {"near": "Thomas", "far": "Remote", "mix": "Mixed"}.get(
-        window.track, "Unknown"
-    )
     return {
-        "source_id": (
-            f"{window.track}-{round(window.start * 1000):012d}-"
-            f"{window.nominal_seconds:02d}-unavailable"
-        ),
+        "source_id": f"{window.track}-c{window.first_chunk:06d}-unavailable",
         "track": window.track,
-        "speaker": speaker,
+        "speaker": track_speaker(window.track),
         "start": round(window.start, 3),
         "end": round(window.start + window.actual_seconds, 3),
         "text": "[Speech unavailable; see review queue]",
         "kind": "unavailable",
         "channel_activity": None,
-        "source_resolution_seconds": window.nominal_seconds,
+        "time_resolution_seconds": round(CHUNK_SECONDS, 4),
         "source_raw": raw_path,
         "validation_reasons": list(reasons),
     }
