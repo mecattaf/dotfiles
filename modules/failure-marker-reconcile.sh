@@ -35,8 +35,14 @@ user_marker="$marker_dir/user-unit-failure"
 if [ -f "$user_marker" ] && [ "${#user_manager_uids[@]}" -gt 0 ]; then
   all_user_managers_healthy=1
   for uid in "${user_manager_uids[@]}"; do
+    # Use the manager's own socket as the user. --machine=UID@.host starts a
+    # transient PAM/login bridge: when the bus is damaged that bridge itself
+    # fails and generates another fleet failure marker on every probe.
     if ! failed_units="$(
-      systemctl --user --machine="$uid@.host" --failed --plain --no-legend --no-pager \
+      runuser -u "$(id -nu "$uid")" -- env \
+        XDG_RUNTIME_DIR="/run/user/$uid" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/systemd/private" \
+        systemctl --user --failed --plain --no-legend --no-pager \
         2>/dev/null
     )"; then
       all_user_managers_healthy=0
@@ -63,7 +69,12 @@ for marker in "$marker_dir"/*; do
   first_line="$(head -n 1 -- "$marker" 2>/dev/null || true)"
   read -r unit verb _ <<<"$first_line"
   [ "${verb:-}" = "failed" ] || continue
-  if systemctl is-failed --quiet "$unit"; then
+  # A transport error is not proof of recovery. Unloaded transient units have
+  # LoadState=not-found/ActiveState=inactive and can be cleared normally.
+  if ! state="$(systemctl show --property=ActiveState --value "$unit" 2>/dev/null)"; then
+    continue
+  fi
+  if [ -z "$state" ] || [ "$state" = failed ]; then
     continue
   fi
   clear_marker "$marker" "$unit is no longer failed"

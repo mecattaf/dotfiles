@@ -38,8 +38,11 @@ def open_window(data_dir, profile):
         known = {p['directory']: p for p in chrome_profiles(data_dir) if p['exists']}
         if profile not in known or Path(profile).name != profile:
             raise ValueError('Choose an existing Chrome profile from the list.')
-        if keyring_state() != 'unlocked':
+        keyring = keyring_state()
+        if keyring == 'locked':
             raise ValueError('Unlock the desktop keyring before opening Chrome.')
+        if keyring != 'unlocked':
+            raise ValueError('The coordinator’s keyring cannot be reached. Its desktop session needs repair before Chrome can open.')
         start_desktop(manual=True)
         env = session_environment()
         ensure_chrome_on_display(data_dir, env)

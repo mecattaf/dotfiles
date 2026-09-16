@@ -1,3 +1,14 @@
+**Runtime isolation (2026-09-16 incident).** Tests and experiments that source
+shell-script fragments, clean runtime directories, or launch test compositors
+must run through `runtime-test -- <command> [args...]` (implemented in
+`home/dot_local/bin/runtime-test`). It masks the live `/run/user` tree even if
+the test hardcodes its path; it leaves checkout files writable. If bubblewrap
+is unavailable, stop that test rather than silently running it on live sockets.
+Never source script fragments selected by an unbounded text range: extract only
+the intended function and inspect it first. A September 16 smoke test sourced
+cleanup code along with a function and deleted the live user-service sockets.
+Do not suppress unexpected coredumps or unit failures to make tests look healthy.
+
 The fleet's resident language-model server is Halogen Flash —
 Qwen3.8-Flash-Next in Peonist's proprietary `.hgn` format — running on the
 worker at `http://worker:8731` via `modules/halogen.nix`: a pinned OCI image

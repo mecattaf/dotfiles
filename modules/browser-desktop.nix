@@ -31,11 +31,30 @@ in {
         KillMode = "control-group";
         TimeoutStopSec = 15;
         UMask = "0077";
+        # Also clean up after SIGKILL or a compositor crash, when its shell
+        # trap cannot run. Never leave a stale display for portal activation.
+        ExecStopPost = "${pkgs.coreutils}/bin/rm -f %t/browser-desktop/environment %t/browser-desktop/portal-environment %t/browser-desktop/portal-environment.tmp";
       };
       unitConfig = {
         ConditionUser = "tom";
         StartLimitIntervalSec = 0;
       };
+    };
+    # D-Bus activates portals through the user manager, which intentionally
+    # has no global display on this headless host. Pass only these services
+    # the current Sway display; stop them when that display goes away.
+    # A headless caller must not start a compositor merely by probing portals.
+    systemd.user.services.xdg-desktop-portal = {
+      after = [ "browser-desktop.service" ];
+      partOf = [ "browser-desktop.service" ];
+      unitConfig.ConditionPathExists = "%t/browser-desktop/portal-environment";
+      serviceConfig.EnvironmentFile = "%t/browser-desktop/portal-environment";
+    };
+    systemd.user.services.xdg-desktop-portal-gtk = {
+      after = [ "browser-desktop.service" ];
+      partOf = [ "browser-desktop.service" ];
+      unitConfig.ConditionPathExists = "%t/browser-desktop/portal-environment";
+      serviceConfig.EnvironmentFile = "%t/browser-desktop/portal-environment";
     };
     systemd.user.services.browser-desktop-menu = {
       description = "Chrome profile menu for the shared noVNC desktop";

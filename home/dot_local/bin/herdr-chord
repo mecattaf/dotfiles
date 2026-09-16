@@ -3,7 +3,7 @@
 # ONE projector window by typing herdr's own prefix chord into it (#385 seams
 # 2, 3 and 4).
 #
-#   new      Mod+Return             prefix+shift+n  new workspace, this window only
+#   new      Mod+Return             prefix+shift+n  new workspace in a NEW window
 #   sidebar  Mod+Ctrl+Shift+Return  prefix+b        herdr's sidebar (agents panel)
 #   rename   Mod+Shift+N            prefix+shift+w  rename the focused workspace
 #
@@ -23,8 +23,7 @@
 #
 # WHICH WINDOW. A projector is a kitty with app-id `herdr-projector`
 # (herdr-projector's header).
-#   new      focused projector -> new workspace in it; otherwise hop to the
-#            empty trailing niri workspace of the focused output, spawn a
+#   new      ALWAYS hop to the empty trailing niri workspace of the focused output, spawn a
 #            projector there, and give it a fresh workspace ("Mod+Return must
 #            give me a NEW terminal", 186b36d2, kept).
 #   sidebar  ALWAYS a new projector window on the empty trailing workspace,
@@ -122,7 +121,7 @@ focused="$(niri msg -j focused-window 2>/dev/null || true)"
 focused_app="$(jq -r '.app_id // empty' <<<"${focused:-null}" 2>/dev/null || true)"
 focused_pid="$(jq -r '.pid // empty' <<<"${focused:-null}" 2>/dev/null || true)"
 
-if [ "$verb" != sidebar ] && [ "$focused_app" = "$class" ] && [ -n "$focused_pid" ]; then
+if [ "$verb" = rename ] && [ "$focused_app" = "$class" ] && [ -n "$focused_pid" ]; then
   send_chord "$focused_pid"
   exit 0
 fi

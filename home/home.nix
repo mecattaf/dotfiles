@@ -322,6 +322,8 @@ in
   # PUBLIC repo tree). Without this, a fresh box has zero skills/settings.
   home.file.".claude/skills".source = link "dot_claude/skills";
   home.file.".claude/settings.json".source = link "dot_claude/settings.json";
+  home.file.".claude/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
+  home.file.".codex/AGENTS.md".source = link "agent-runtime-rules.md";
 
   # SessionEnd -> the harvest verb (MEM-2, dotfiles#339). ONE link, not a
   # whole-dir one, for the same reason as the lines above: ~/.claude/hooks must
@@ -337,9 +339,11 @@ in
   # ~/.claude-work. Same skills + settings, separate .credentials.json/.claude.json.
   home.file.".claude-work/skills".source = link "dot_claude/skills";
   home.file.".claude-work/settings.json".source = link "dot_claude/settings.json";
+  home.file.".claude-work/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
   # Third account (2026-09-05): `cc3`/`cac3` → ~/.claude-3, same links.
   home.file.".claude-3/skills".source = link "dot_claude/skills";
   home.file.".claude-3/settings.json".source = link "dot_claude/settings.json";
+  home.file.".claude-3/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
 
   # Same canonical skill tree, exposed to Codex and `pi` (earendil-works/pi)
   # through the vendor-neutral, always-trusted Agent-Skills directory
@@ -572,6 +576,8 @@ in
       # seed via modules/secrets.nix, and DISABLE_UPDATES=1 keeps the native
       # updater from clobbering ~/.local/bin.
       llmAgentsSelected
+      # runtime-test masks live /run/user sockets during shell/compositor tests.
+      bubblewrap
       # Upstream's minimal flake output: git-ai + git-og, while programs.git below
       # remains the sole provider of the real git binary.
       inputs.git-ai.packages.${pkgs.stdenv.hostPlatform.system}.minimal

@@ -77,6 +77,16 @@ class Contract(unittest.TestCase):
 
 
 class ChromeMenu(unittest.IsolatedAsyncioTestCase):
+    async def test_unavailable_keyring_does_not_offer_a_password_fix(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'Default').mkdir()
+            (root / 'Local State').write_text(json.dumps({'profile': {'info_cache': {'Default': {'name': 'Test'}}}}))
+            with patch.object(menu, 'RUNTIME', root), patch.object(menu, 'keyring_state', return_value='unavailable'), patch.object(menu, 'start_desktop') as start:
+                with self.assertRaisesRegex(ValueError, 'session needs repair'):
+                    menu.open_window(root, 'Default')
+                start.assert_not_called()
+
     async def test_requests_validate_origin_identity_and_desktop_ownership(self):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)

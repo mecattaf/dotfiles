@@ -1,4 +1,4 @@
-# Session-local environment: do not import this display into the user manager.
+# Session-local environment: only Chrome and this desktop's portals receive it.
 umask 077
 runtime="${XDG_RUNTIME_DIR:?}/browser-desktop"
 mkdir -p "$runtime"
@@ -30,10 +30,16 @@ EOF
     exec sway --config "$runtime/sway.conf"
     ;;
   inside)
+    # systemd reads this for the portal services. Keep it separate from the
+    # shell-quoted environment used by the browser adapter, and publish it
+    # before WayVNC readiness allows Chrome to launch.
+    printf 'WAYLAND_DISPLAY=%s\nXDG_CURRENT_DESKTOP=sway\nXDG_SESSION_TYPE=wayland\nGDK_BACKEND=wayland\n' \
+      "${WAYLAND_DISPLAY:?}" >"$runtime/portal-environment.tmp"
+    mv "$runtime/portal-environment.tmp" "$runtime/portal-environment"
     printf 'export WAYLAND_DISPLAY=%q\nexport SWAYSOCK=%q\n' \
       "${WAYLAND_DISPLAY:?}" "${SWAYSOCK:?}" >"$runtime/environment"
     cleanup() {
-      rm -f "$runtime/environment"
+      rm -f "$runtime/environment" "$runtime/portal-environment"
       swaymsg exit >/dev/null 2>&1 || true
     }
     trap cleanup EXIT

@@ -1402,9 +1402,10 @@
           let
             nas = self.nixosConfigurations.nas.config;
           in
-          assert nas.myNas.omarchyUpdateCenter.enable;
-          assert nas.myNas.omarchyUpdateCenter.listenAddress == "100.64.0.1";
-          assert nas.myNas.omarchyUpdateCenter.port == 8091;
+          assert !nas.myNas.omarchyUpdateCenter.enable;
+          assert !(nas.systemd.services ? omarchy-update-keepalive);
+          assert !(nas.systemd.timers ? omarchy-update-keepalive);
+          assert !(nas.services.nginx.virtualHosts ? omarchy-updates);
           assert nas.services.headscale.settings.policy.mode == "file";
           pkgs.runCommand "omarchy-update-center-check"
             {
@@ -3294,6 +3295,42 @@
             ${./flake.nix} ${./lib} ${./modules} ${./hosts} ${./overlays} ${./home} > $out 2>&1 \
             || (cat $out; exit 1)
         '';
+
+        browser-session-runtime =
+          let
+            coord = self.nixosConfigurations.coordinator.config;
+            portal = name: coord.systemd.user.services.${name};
+          in
+          assert builtins.all (name:
+            builtins.elem "browser-desktop.service" (portal name).partOf
+            && builtins.elem "browser-desktop.service" (portal name).after
+            && (portal name).serviceConfig.EnvironmentFile == "%t/browser-desktop/portal-environment"
+            && (portal name).unitConfig.ConditionPathExists == "%t/browser-desktop/portal-environment"
+          ) [ "xdg-desktop-portal" "xdg-desktop-portal-gtk" ];
+          assert builtins.elem "user@1000.service" coord.systemd.services.keyring-unlock-boot.partOf;
+          assert builtins.elem "user@1000.service" coord.systemd.services.keyring-unlock-boot.wantedBy;
+          pkgs.browser-desktop.tests.contract;
+
+        herdr-launchers =
+          pkgs.runCommand "herdr-launchers"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.python3
+                pkgs.jq
+                pkgs.gawk
+                pkgs.coreutils
+              ];
+              HERDR_SCRIPTS = ./home/dot_local/bin;
+            }
+            ''
+              ${pkgs.shellcheck}/bin/shellcheck \
+                ${./home/dot_local/bin/herdr-chord} \
+                ${./home/dot_local/bin/herdr-projector} \
+                ${./home/dot_local/bin/runtime-test}
+              python3 ${./tests/herdr/test_launchers.py}
+              touch "$out"
+            '';
 
         failure-marker-reconcile =
           pkgs.runCommand "failure-marker-reconcile"

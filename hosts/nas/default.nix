@@ -121,7 +121,9 @@
   myNas.tailscalePersonal.funnel.policyApproved = true;
   myNas.headscale.serverUrl = "https://nas-saas.tail8dd1.ts.net:8443";
   myNas.headscale.backup.enable = true;
-  myNas.omarchyUpdateCenter.enable = true;
+  # Retired 2026-09-16: the Dell belongs to its owner; Tom no longer
+  # publishes or manages Omarchy updates. Keep historical receipts only.
+  myNas.omarchyUpdateCenter.enable = false;
   # #136 gate flip (2026-09-13), paired with the coordinator's
   # myNasClient.relayPaperless in the same commit (flake.nix nas-topology
   # asserts the pair). Pre-flip: runbook dirs created, documents snapshotted

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Run tests with private user-runtime sockets. This is runtime isolation, not
+# a filesystem sandbox: the checkout, home, /tmp and network remain available.
+set -euo pipefail
+if [ "${1:-}" = --help ] || [ "$#" -eq 0 ]; then
+  echo 'usage: runtime-test [--] command [args...]'
+  echo 'Private /run/user and PID/IPC namespaces; source files remain writable.'
+  exit 0
+fi
+[ "${1:-}" != -- ] || shift
+[ "$#" -gt 0 ] || { echo 'runtime-test: missing command' >&2; exit 2; }
+command -v bwrap >/dev/null || { echo 'runtime-test: bubblewrap is required' >&2; exit 1; }
+
+# Mask the real PATH as well as changing the environment: tests sometimes
+# hardcode /run/user/<uid>. A fresh procfs also hides host /proc/<pid>/root.
+# Never derive a cleanup target from the inherited XDG_RUNTIME_DIR.
+runtime="/run/user/$(id -u)"
+exec bwrap --die-with-parent --unshare-user --unshare-pid --unshare-ipc \
+  --bind / / --proc /proc --dev /dev --tmpfs /run/user --dir "$runtime" \
+  --chmod 0700 "$runtime" --setenv XDG_RUNTIME_DIR "$runtime" \
+  --unsetenv DBUS_SESSION_BUS_ADDRESS --unsetenv DBUS_SESSION_BUS_PID \
+  --unsetenv NOTIFY_SOCKET --unsetenv WATCHDOG_PID --unsetenv WATCHDOG_USEC \
+  --unsetenv WAYLAND_DISPLAY --unsetenv DISPLAY --unsetenv SWAYSOCK \
+  --unsetenv NIRI_SOCKET --unsetenv SSH_AUTH_SOCK --unsetenv PULSE_SERVER \
+  -- "$@"

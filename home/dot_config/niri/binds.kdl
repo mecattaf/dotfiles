@@ -39,11 +39,10 @@ binds {
     // image-file drop (herdr's clipboard bridge exists only in `--remote`).
 
     // scroll: bindsym $mod+Return exec kitty -e fish
-    // A focused projector gets a new herdr workspace in that window only
-    // (prefix+shift+n). Anywhere else niri hops to the empty trailing workspace
-    // of the focused output, a new projector opens there and gets a fresh
-    // workspace — Mod+Return always gives a NEW terminal (186b36d2's ruling,
-    // kept). No tab bar and a collapsed sidebar come from herdr/config.toml.
+    // Always open a NEW projector on the empty trailing workspace of the
+    // focused output, then create its own herdr workspace (prefix+shift+n).
+    // The previously focused terminal keeps its session visible.
+    // No tab bar and a collapsed sidebar come from herdr/config.toml.
     Mod+Return hotkey-overlay-title="Terminal (herdr)" { spawn-sh "~/.local/bin/herdr-chord new"; }
 
     // The plain tier, kept on purpose: zero herdr involvement, no pane, no
@@ -53,8 +52,8 @@ binds {
 
     // herdr's own sidebar (prefix+b): the agents panel with working / idle /
     // blocked rows, which is the way back to a detached session (Tom:
-    // "instrumentalizing herdr's own sidebar is VERY desirable"). Focused
-    // projector, else the most recently focused one, else a new one.
+    // "instrumentalizing herdr's own sidebar is VERY desirable"). Always
+    // open a new projector on the empty trailing workspace.
     Mod+Ctrl+Shift+Return hotkey-overlay-title="herdr sidebar" { spawn-sh "~/.local/bin/herdr-chord sidebar"; }
 
     // Name this session: herdr's own rename_workspace prompt (prefix+shift+w)

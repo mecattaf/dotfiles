@@ -1,5 +1,11 @@
 # Omarchy offers from the NAS
 
+**Retired September 16, 2026.** Tom no longer manages the Dell or publishes
+Omarchy updates, including through GitHub. The NAS publisher, offer listener
+and keepalive timer are disabled in configuration. The material below records
+past deployments; it is not an instruction to resume them. The separate
+NixOS update center for Tom's own machines is not this service.
+
 `myNas.omarchyUpdateCenter.enable` installs a manual publisher, a private HTTP
 manifest endpoint at `http://100.64.0.1:8091`, and a daily cache keepalive. It does
 not extend the house `update-center` build list or activate laptops. Laptops poll;

@@ -69,9 +69,12 @@ in
 
   systemd.services.keyring-unlock-boot = {
     description = "Unlock tom's gnome-keyring from the TPM-sealed password";
-    wantedBy = [ "multi-user.target" ];
+    wantedBy = [ "multi-user.target" "user@1000.service" ];
     wants = [ "user@1000.service" ];
     after = [ "user@1000.service" ];
+    # A restored user session has a new bus and keyring daemon. Do not keep
+    # yesterday's successful oneshot state across a user-manager restart.
+    partOf = [ "user@1000.service" ];
     unitConfig.ConditionPathExists = cred;
     path = [ pkgs.coreutils pkgs.util-linux ];
     serviceConfig = {

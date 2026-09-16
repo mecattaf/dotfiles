@@ -78,6 +78,10 @@ target="${HERDR_PROJECTOR_TARGET:-coordinator}"
 herdr_bin="${HERDR_BIN:-herdr}"
 ssh_bin="${HERDR_PROJECTOR_SSH:-ssh}"
 unit="${HERDR_PROJECTOR_UNIT-herdr.service}"
+# This value becomes one argument in the remote shell command.
+case "$unit" in
+  *[!a-zA-Z0-9_.@-]*) echo 'herdr-projector: invalid unit name' >&2; exit 2 ;;
+esac
 tmp="${TMPDIR:-/tmp}"
 tmp="${tmp%/}"
 
@@ -146,8 +150,24 @@ sweep_orphans
 # 0 when the target's herdr unit is active (or the check is disabled).
 server_unit_active() {
   [ -z "$unit" ] && return 0
-  "$ssh_bin" -o BatchMode=yes -o ConnectTimeout=10 "$target" \
-    "systemctl --user is-active --quiet $unit" </dev/null >/dev/null 2>&1
+  local status
+  # Keep stderr: a missing user-manager socket is not an inactive Herdr server.
+  # Bound an established but stalled SSH connection as well as initial connect.
+  if unit_check="$("$ssh_bin" -o BatchMode=yes -o ConnectTimeout=10 \
+    -o ServerAliveInterval=5 -o ServerAliveCountMax=2 "$target" \
+    "systemctl --user is-active -- '$unit'" </dev/null 2>&1)"; then
+    return 0
+  else
+    status=$?
+  fi
+  case "$status:$unit_check" in
+    255:*) unit_error="SSH connection to $target failed: $unit_check" ;;
+    *"Failed to connect"*) unit_error="cannot query $target's user service manager: $unit_check (Herdr may still be running)" ;;
+    *) unit_error="$unit check on $target failed: $unit_check" ;;
+  esac
+  # One banner per attempt even when SSH emits several diagnostic lines.
+  unit_error="${unit_error//$'\n'/; }"
+  return 1
 }
 
 delays=(1 2 5 10 30)
@@ -165,7 +185,7 @@ backoff() {
 while :; do
   if ! server_unit_active; then
     [ "$stopping" = 1 ] && exit 0
-    backoff "$unit on $target is not active (or $target is unreachable)"
+    backoff "$unit_error"
     continue
   fi
   [ "$stopping" = 1 ] && exit 0
