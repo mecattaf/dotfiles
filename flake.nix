@@ -2223,7 +2223,10 @@
         # unknown gates, probe-failure rollback, switch-failure rollback,
         # kernel → boot + pending-reboot marker, bad signature, host mismatch,
         # manual and stage-only policies, downgrade refusal before and after
-        # download, dirty/unknown current, --force, the activation lock) and
+        # download, dirty/unknown current, --force, the activation lock, a 404
+        # manifest as `no-candidate` against an unreachable NAS as
+        # `fetch-failed`, and a `status` that cannot read the root-only state
+        # exiting 1 rather than printing an empty one) and
         # each gate verb of update-adopt-gates.sh, with fake nix/systemctl and a
         # REAL ssh-keygen. The asserts pin the policy table: NAS not enrolled
         # (2026-08-21 ruling), client manual (R-18), both units immune to the
