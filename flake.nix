@@ -3103,6 +3103,18 @@
               "gemma4-12b-it-mtp-q8-0"
               "fara15-9b-q8-0"
               "fara15-9b-mmproj-bf16"
+              # The wake pair, ARGUED FOR (2026-09-16, commit 6a927315): the
+              # coordinator is a physical seat again, so `speech-wake` runs on
+              # BOTH seats and hosts/coordinator/default.nix declares the two
+              # rows its listener already defaults to
+              # (pkgs/speech-wake/wake.py --frontend, --classifier). The
+              # argument this list demands is a disk argument and it is easy
+              # here: 3.9 MiB for the pair, against the hundred-gigabyte GGUF
+              # rows above. The commit that restored the seat rewrote a dozen
+              # assertions in this file and left THIS one behind, which is why
+              # the check has been red on main since.
+              "openwakeword-baker-compat-v051"
+              "openwakeword-alexa-v051"
               "qwen3-tts-1.7b-base-q8-0"
               "qwen-k2so-midway-b"
               "parakeet-tdt-0.6b-v3-onnx"
