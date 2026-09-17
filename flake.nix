@@ -81,12 +81,15 @@
     # SF Pro itself stays (2026-08-21 ruling: "it's too good to have") but is
     # now pkgs/sf-pro.nix, pinned by sha256 to the fleet's own copy.
     #
-    # ALL APPLE FONTS LIVE ON THE NAS M.2 (Tom, 2026-09-15: "i do not want to
-    # download the fonts again everytime i do an update"; "keep the fonts on
-    # the m2 ssd"): nas:/mnt/fast/fonts/apple/, one tarball per family, exact
-    # bytes installed that day, requireFile-pinned — no flake input, no
-    # download. home/update-center-seed.nix seeds them into the NAS store.
-    # Do not re-add a URL-locked font input.
+    # ALL VENDOR FONT BYTES LIVE ON THE NAS M.2 (Tom, 2026-09-15: "i do not
+    # want to download the fonts again everytime i do an update"; "keep the
+    # fonts on the m2 ssd"): nas:/mnt/fast/fonts/<vendor>/ — apple/ since
+    # 2026-09-15, anthropic/ since 2026-09-17 — one tarball per package, exact
+    # bytes installed that day, requireFile-pinned: no flake input, no
+    # download, and no font binary in this repo (see .gitignore).
+    # home/update-center-seed.nix seeds them into the NAS store. The press that
+    # produced the anthropic/ tarballs is pkgs/fontbuilder, which ships the
+    # recipe and no bytes. Do not re-add a URL-locked font input.
     #
     # TOMBSTONE — sfmono-liga input (shaunsingh/SFMono-Nerd-Font-Ligaturized),
     # removed 2026-09-15 under the rule above; pkgs/sfmono-liga.nix. Liga SF
@@ -101,6 +104,17 @@
     # Tom, on seeing real Maple: "i like whatever font was in use before
     # this afternoon's pushes." kitty.conf now names this family
     # EXPLICITLY, so no future sweep can silently swap the terminal again.
+    #
+    # 2026-09-17: the terminal face moved to `AnthropicMono Nerd Font Mono`
+    # (pkgs/anthropic-mono-nerd.nix, pressed by pkgs/fontbuilder). Deliberate,
+    # with the family named explicitly in kitty.conf AND verified through
+    # kitty's OWN resolver (`kitty +runpy` -> get_font_files), which is the
+    # check the 2026-08-21 incident lacked: fc-scan alone would not have caught
+    # it, because kitty does not consult fontconfig for an exact-name hit and
+    # falls through to fc_match SILENTLY when it misses. sfmono-liga and sf-pro
+    # remain INSTALLED and are the revert path — a four-line kitty.conf edit
+    # plus a switch. A future sweep that removes either of them kills that
+    # revert; do not remove them without replacing the revert plan.
 
     # git-ai — AI-authorship tracking CLI (github.com/git-ai-project/git-ai).
     # Consume its flake package directly and pin it in flake.lock. The Home
@@ -446,6 +460,10 @@
           llm-agents = inputs.llm-agents.packages.${system};
           sfmono-liga = final.callPackage ./pkgs/sfmono-liga.nix { };
           sf-pro = final.callPackage ./pkgs/sf-pro.nix { };
+          anthropic-mono-nerd = final.callPackage ./pkgs/anthropic-mono-nerd.nix { };
+          anthropic-ui = final.callPackage ./pkgs/anthropic-ui.nix { };
+          anthropic-webfonts = final.callPackage ./pkgs/anthropic-webfonts.nix { };
+          fontbuilder = final.callPackage ./pkgs/fontbuilder { };
         })
         # Pin-decoupled "hot" packages — see the nixpkgs-fresh input comment above.
         # Cherry-picked, not a wholesale pkgs swap: only packages named here track
@@ -653,6 +671,14 @@
             crm
             dcal
             fleet-status
+            # `nix run .#fontbuilder -- <capture-dir> <out-dir>` — the press for
+            # the Anthropic suite. Exported because that IS the invocation. The
+            # three anthropic-* font packages stay UNEXPORTED (matching sf-pro):
+            # nothing needs to `nix build` a requireFile derivation by name, and
+            # exporting them only gives `nix flake check` more ways to trip over
+            # a tarball that is not in this machine's store. To build one anyway:
+            #   nix build --impure --expr '(builtins.getFlake "'"$DOT"'").nixosConfigurations.coordinator.pkgs.anthropic-mono-nerd'
+            fontbuilder
             local-ai-monthly
             # `nix build .#local-models-prune` — the ONLY verb on this fleet
             # that deletes a working copy. Exposed so the guard suite can be

@@ -1,0 +1,58 @@
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<!-- ===================================================================
+     fontbuilder's PRIVATE fontconfig TEMPLATE.
+
+     Tokens substituted at verify time by tests/accept.py, tests/resolve.py
+     and lib/specimen.py:
+        @CACHEDIR@  an empty directory under <out>/verify/
+        @FONTDIR@   one or more <dir> lines, already XML-escaped
+
+     THREE RULES, each of them measured, each of them load-bearing:
+
+     1. NEVER run `fc-cache`.  Measured 2026-09-17: `fc-cache -f <dir>` IGNORES
+        the <cachedir> named in the FONTCONFIG_FILE and writes a 113,904-byte
+        entry into the LIVE ~/.cache/fontconfig.  Nothing in the build or the
+        acceptance suite may invoke it.  fc-scan / fc-match / fc-list build
+        whatever they need in memory and honour <cachedir> for anything they
+        do persist.
+
+     2. `FONTCONFIG_CACHE` IS NOT A FONTCONFIG VARIABLE.  It appears in older
+        notes and in the un-hardened review command; it does nothing.  Only
+        this file's <cachedir> and XDG_CACHE_HOME control cache placement.
+
+     3. XDG_CACHE_HOME MUST BE REDIRECTED TOO.  FONTCONFIG_FILE alone is not
+        sufficient: with only it set, ~/.cache/fontconfig's DIRECTORY mtime
+        moved during a verification pass although no cache file was created
+        or modified (spec D17).  A21 snapshots
+
+            find ~/.cache/fontconfig -printf '%T@ %s %p\n' | sort | sha256sum
+
+        WITHOUT -type f, before and after the suite, and fails on any change.
+
+     There is deliberately NO <include> of /etc/fonts/fonts.conf and NO
+     conf.d: an alias-free config is what makes A1's negative control
+     meaningful (spec 11 A1, $P3/refute-C2/fcB.conf).  The suite renders a
+     SEPARATE post-switch-shaped config when it needs the generic aliases.
+     =================================================================== -->
+<fontconfig>
+  <cachedir>@CACHEDIR@</cachedir>
+@FONTDIR@
+
+  <!-- The webfonts glob reject (spec 7.3).  fontconfig indexes .woff2 that
+       sit under a scanned prefix and they then WIN over the byte-equivalent
+       TTF on directory order; pango-view was measured rasterising from the
+       woff2.  A fontformat-based reject CANNOT work: fc-scan %{fontformat}
+       on these files reads `TrueType`, not `WOFF2`, because FreeType
+       decompresses transparently.  Globs are the only form that matches.
+       A14 asserts this block works by counting woff2 rows in fc-list. -->
+  <selectfont>
+    <rejectfont>
+      <glob>*/share/webfonts/*</glob>
+      <glob>*.woff2</glob>
+      <glob>*.woff</glob>
+    </rejectfont>
+  </selectfont>
+
+  <config><rescan><int>30</int></rescan></config>
+</fontconfig>

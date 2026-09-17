@@ -296,9 +296,14 @@ in
     # (the one Apple family kept in the 2026-08-21 sweep — "too good to
     # have"); before this key was set at all, GTK fell back to Adwaita Sans —
     # the "odd Nautilus font" on first boot.
-    font-name = "SF Pro Display 11";
-    document-font-name = "Adwaita Sans 12";
-    monospace-font-name = "Adwaita Mono 11";
+    # 2026-09-17: the Anthropic suite. All three keys move together so the
+    # desktop is consistent on day one; sizes preserved so no GTK app changes
+    # metrics. sf-pro stays installed and reachable by name.
+    # fc-match "Anthropic Sans" returns the file's default instance (opsz 16 =
+    # the Text cut), the right optical size for an 11 pt UI.
+    font-name = "Anthropic Sans 11";
+    document-font-name = "Anthropic Serif 12";
+    monospace-font-name = "AnthropicMono Nerd Font Mono 11";
   };
 
   # bin/ scripts: whole-dir (the repo owns ~/.local/bin).
@@ -309,6 +314,14 @@ in
 
   # wallpapers — whole-dir at ~/.local/share/wallpapers (wallpaper.jpg + placeholder).
   home.file.".local/share/wallpapers".source = link "dot_local/share/wallpapers";
+
+  # One stable $HOME path the docs can name for the Anthropic woff2 + CSS, since
+  # the real one is the profile path /etc/profiles/per-user/tom/share/webfonts.
+  # Measured safe 2026-09-17: fontconfig's only xdg directory is
+  # `<dir prefix="xdg">fonts</dir>` (/etc/fonts/fonts.conf:104), i.e.
+  # ~/.local/share/fonts EXACTLY — so a sibling named `webfonts` is not scanned.
+  # DO NOT rename this to `fonts`.
+  home.file.".local/share/webfonts".source = "${pkgs.anthropic-webfonts}/share/webfonts";
 
   # bash login files. dot_bashrc sources ~/.env (secrets) — harmless missing-file
   # warning until that file exists.
@@ -505,6 +518,28 @@ in
     [
       # browser
       google-chrome
+
+      # Anthropic woff2 + the @font-face sheet. Installed path is
+      # /etc/profiles/per-user/tom/share/webfonts/{woff2,css} — NOT
+      # ~/.nix-profile/share/webfonts. flake.nix sets
+      # home-manager.useUserPackages = true (with useGlobalPkgs = true), which
+      # routes home.packages through users.users.tom.packages; home-manager
+      # creates no ~/.nix-profile at all, and the one that exists on this box is
+      # an unrelated imperative `nix profile` holding only brave. Verified
+      # 2026-09-17 on five packages already in this list (eza, zoxide, glow,
+      # bat, fd): all five resolve under /etc/profiles/per-user/tom/bin and
+      # none under ~/.nix-profile/bin. Do not "correct" this back.
+      #
+      # NOT in fonts.packages: see the comment in modules/common.nix.
+      # home-manager's generated ~/.config/fontconfig/conf.d/10-hm-fonts.conf
+      # adds only <profile>/share/fonts and <profile>/lib/X11/fonts, so
+      # share/webfonts is never indexed and cannot contend with the installed
+      # TTFs (re-verified against the built package: 13 fc-list rows, all from
+      # the control TTF, zero woff2; adding share/webfonts yields 15 extra
+      # woff2 rows). This entry is also the only thing that pulls the
+      # derivation into a host closure, so attic caches it and the nightly
+      # builds it.
+      anthropic-webfonts
 
       # fish init + shell
       eza

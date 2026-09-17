@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Anthropic Mono @VERSION@ - specimen</title>
+<!-- Rendered from @OUT@/webfonts by fontbuilder. Opened at bootstrap step 5,
+     the ALIGN-MODE GATE: the align mode is baked into the tarball hash, so it
+     must be decided before the tarball is cut. -->
+<style>
+@font-face { font-family:"Anthropic Mono"; src:url("../webfonts/woff2/AnthropicMono-Roman.woff2") format("woff2"); font-weight:300 800; }
+@font-face { font-family:"Anthropic Mono"; src:url("../webfonts/woff2/AnthropicMono-Italic.woff2") format("woff2"); font-weight:300 800; font-style:italic; }
+@font-face { font-family:"Anthropic Sans"; src:url("../webfonts/woff2/AnthropicSans-Roman.woff2") format("woff2"); font-weight:300 800; }
+@font-face { font-family:"Anthropic Serif"; src:url("../webfonts/woff2/AnthropicSerif-Roman.woff2") format("woff2"); font-weight:300 800; }
+body { background:#14110f; color:#e8e3dd; font-family:"Anthropic Sans",sans-serif; margin:2rem; }
+pre  { font-family:"Anthropic Mono",monospace; font-size:16px; line-height:1.25; }
+h2   { font-family:"Anthropic Serif",serif; font-weight:400; }
+</style>
+<h2>ligatures against literal hyphens and equals</h2>
+<pre>x = 1 / x == 1 / x -= 1 / x --- 1 / --flag --&gt; =&gt; != &lt;= &gt;= |&gt; :: __</pre>
+<h2>box art</h2>
+<pre>&#9484;&#9472;&#9516;&#9472;&#9488; &#9500;&#9472;&#9532;&#9472;&#9508; &#9492;&#9472;&#9524;&#9472;&#9496;</pre>
+<h2>blocks and braille (U+2800 is the BLANK cell - a tofu here is the E6 bug)</h2>
+<pre>&#9608;&#9619;&#9618;&#9617; &#10495;&#10623;&#10240;&#10432;</pre>
+<h2>donor seam - Greek/Cyrillic/math beside Latin</h2>
+<pre>Latin &#1055;&#1088;&#1080;&#1074;&#1077;&#1090; &#955; &#8721; &#120120; Latin</pre>
+<h2>weights x slopes</h2>
+<pre style="font-weight:300">Light        <i>Light Italic</i></pre>
+<pre style="font-weight:400">Regular      <i>Italic</i></pre>
+<pre style="font-weight:600">SemiBold     <i>SemiBold Italic</i></pre>
+<pre style="font-weight:800">ExtraBold    <i>ExtraBold Italic</i></pre>
