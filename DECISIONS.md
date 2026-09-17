@@ -1558,3 +1558,25 @@ loop. The `models` tree is in that loop too, but a mirror propagates deletions,
 so it was not counted as a second copy. The deletions are receipted, one line
 per artifact, in `/mnt/nas/models/weights/RETIRED-2026-09-16.tsv`;
 `docs/nas/model-archive.md` now opens with the Library-era runbook. Refs #397.
+
+2026-09-17 halogen-server 0.1.4 for the Qwen3.8-27B alternate on both twins,
+with the coordinator's memory bounds. The alternate's image moves from 0.1.3
+to `ghcr.io/peonist-ai/halogen@sha256:dc0a39a0016d6cfc58a197978febaafdf8d28403f724ded6111d98b5fb7ac0ea`
+(0.1.4, re-resolved with skopeo; reference checkout `~/today/halogen-server`
+at 5a0f952). It is serving-only over 0.1.3: chat_template_kwargs honoured,
+developer role, 300 s keep-alive, reasoning_effort "none", response_format a
+400, `/health.version`. The pin lives once in `modules/strix.nix`, shared by
+both twins. Checked in the image rather than assumed: it ships no
+`halogen-healthcheck` (so the alternate gets no podman health options) and no
+default-budget env knob (`serve_api.py` hardcodes `max_tokens` 8192), so
+Flash's `maxTokensDefault = 16384` has no 27B equivalent and clients must send
+a budget. `HALOGEN_MAX_TOKENS_CAP`/`HALOGEN_QUEUE_TIMEOUT` stay the image's
+coupled 65536/7200; `HALOGEN_KV_SLOTS` stays 1 (speculation on);
+`HALOGEN_DOWNLOAD` stays unset. Upstream's `seccomp=unconfined` is not added:
+0.1.4 loaded and served on the coordinator without it (/health
+`version.match: true`, one chat completion). On the coordinator only, the 27B
+gets `HALOGEN_CACHE_MB=8192` and Flash `HALOGEN_KV_POOL_POSITIONS=262144`, so
+an operator-started engine does not size itself against the desktop's free
+memory. Folded in: FDC-M4 (#407), `SuccessExitStatus=143` on every
+podman-halogen unit so `halogen-switch` no longer writes failure markers, with
+its check extended to both twins.

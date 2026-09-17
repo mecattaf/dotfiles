@@ -927,6 +927,50 @@
                 bash ${./tests/util-01/test-halogen-token-window.sh} | tee $out
             '';
 
+        # A deliberate stop of an inference server is not a failure (FDC-M4).
+        #
+        # `podman run` exits with the CONTAINER's status, so the SIGTERM of
+        # `podman stop` comes back as exit 143 — which systemd counts as a
+        # failure unless told otherwise. On this fleet a failed unit is not just
+        # a red line: the blanket OnFailure= of modules/failure-surfacing.nix
+        # writes a marker into /var/lib/failure-markers that an operator has to
+        # clear, so every `halogen-switch` between the two models left one
+        # behind. Nothing about that is visible from reading either module, and
+        # the units are only ever stopped by hand on a box with no display, so
+        # a regression here would go unnoticed exactly as the last one did.
+        #
+        # Asserted over EVERY podman-halogen* unit the worker declares, not a
+        # written-out list: the alternates are an attrset an operator extends
+        # (hosts/worker/default.nix), and a new model must not be able to join
+        # the fleet without this policy. 137 is asserted absent in the same
+        # breath — a container that is KILLED (the path
+        # --health-on-failure=kill takes on a wedged engine) must stay a
+        # failure, or Restart=on-failure has nothing left to recover from.
+        halogen-unit-policy =
+          let
+            # Both twins declare the Halogen units since 2026-09-16.
+            unitsOf =
+              host:
+              nixpkgs.lib.filterAttrs (
+                name: _: nixpkgs.lib.hasPrefix "podman-halogen" name
+              ) self.nixosConfigurations.${host}.config.systemd.services;
+            units = unitsOf "worker";
+            successCodes = unit: nixpkgs.lib.splitString " " (toString unit.serviceConfig.SuccessExitStatus);
+            succeeds = code: unit: builtins.elem code (successCodes unit);
+            declared = builtins.attrValues (unitsOf "worker") ++ builtins.attrValues (unitsOf "coordinator");
+          in
+          # The primary and one alternate today; the filter is what keeps this
+          # honest when that changes, so assert it found them both.
+          assert builtins.length declared >= 4;
+          assert (unitsOf "coordinator") ? podman-halogen;
+          assert units ? podman-halogen;
+          assert builtins.all (succeeds "143") declared;
+          assert builtins.all (unit: !(succeeds "137" unit)) declared;
+          assert builtins.all (unit: unit.serviceConfig.Restart == "on-failure") declared;
+          pkgs.runCommand "halogen-unit-policy" { } ''
+            touch "$out"
+          '';
+
         l8-flash-probe-util-rows =
           pkgs.runCommand "l8-flash-probe-util-rows"
             {
@@ -3144,13 +3188,30 @@
           assert coordinator.services.halogen.client.enable;
           assert !worker.services.halogen.client.enable;
           assert worker.virtualisation.oci-containers.containers ? halogen;
-          # One declaration, two hosts: the containers differ only in autoStart.
+          # One declaration, two hosts: the containers differ only in autoStart
+          # and the coordinator's two desktop memory bounds (Flash's KV pool,
+          # the 27B's prompt-cache budget).
           assert
-            removeAttrs worker.virtualisation.oci-containers.containers.halogen [ "autoStart" ]
-            == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen [ "autoStart" ];
+            removeAttrs worker.virtualisation.oci-containers.containers.halogen [ "autoStart" "environment" ]
+            == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen [ "autoStart" "environment" ];
           assert
-            worker.virtualisation.oci-containers.containers.halogen-qwen38-27b
-            == coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b;
+            removeAttrs worker.virtualisation.oci-containers.containers.halogen.environment [ "HALOGEN_KV_POOL_POSITIONS" ]
+            == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen.environment [ "HALOGEN_KV_POOL_POSITIONS" ];
+          assert !(worker.virtualisation.oci-containers.containers.halogen.environment ? HALOGEN_KV_POOL_POSITIONS);
+          assert coordinator.virtualisation.oci-containers.containers.halogen.environment.HALOGEN_KV_POOL_POSITIONS == "262144";
+          assert
+            removeAttrs worker.virtualisation.oci-containers.containers.halogen-qwen38-27b [ "environment" ]
+            == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b [ "environment" ];
+          assert !(worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment ? HALOGEN_CACHE_MB);
+          assert coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_CACHE_MB == "8192";
+          # halogen-server 0.1.4 by digest; never a runtime download.
+          assert
+            worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.image
+            == "ghcr.io/peonist-ai/halogen@sha256:dc0a39a0016d6cfc58a197978febaafdf8d28403f724ded6111d98b5fb7ac0ea";
+          assert !(coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment ? HALOGEN_DOWNLOAD);
+          assert
+            coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_TOKENIZER
+            == "/models/tokenizer";
           assert worker.services.halogen.lanInterface == "enp191s0";
           assert coordinator.services.halogen.lanInterface == "wlp192s0";
           assert nixpkgs.lib.hasPrefix "ghcr.io/peonist-ai/halogen-flash-server@sha256:"

@@ -42,8 +42,12 @@ a second resident server.
 
 ## The alternate and the switch
 
-`halogen-qwen38-27b` is served by `ghcr.io/peonist-ai/halogen` (halogen-server)
-as `podman-halogen-qwen38-27b`, on the same port and launch shape, text only.
+`halogen-qwen38-27b` is served by `ghcr.io/peonist-ai/halogen` (halogen-server
+0.1.4, pinned by digest in `modules/strix.nix`) as `podman-halogen-qwen38-27b`,
+on the same port and launch shape, text only. Unlike Flash it has no
+healthcheck binary and no server-side default-budget knob: its default
+`max_tokens` is 8192 and thinking counts against it, so an agentic client must
+send `max_tokens` itself or risk an empty reply with `finish_reason: "length"`.
 The units carry mutual `Conflicts=`, so one engine is resident at a time on a
 host:
 
@@ -62,7 +66,9 @@ and live agent sessions, and upstream sizes Flash as leaving roughly 12 GB free
 on a 128 GB box. Before starting either engine there, check that nothing else
 holds the GPU (`amdtop`, `mem_info_gtt_used`, running `call-diarize` or TTS),
 then `sudo halogen-switch flash|qwen38-27b`, and `sudo halogen-switch off`
-when done. It answers on `http://coordinator:8731` (admitted on `wlp192s0`).
+when done. Two memory bounds apply there only: Flash's KV pool is 262144
+positions (~28 GB, its floor) and the 27B's prompt cache is a fixed 8 GiB
+(`HALOGEN_CACHE_MB=8192`) instead of auto-sizing from free memory. It answers on `http://coordinator:8731` (admitted on `wlp192s0`).
 A coordinator switch defers while a Halogen unit is active (update-adopt gate
 `halogen-units`). The `utility` slot does not move: it stays on the worker.
 
