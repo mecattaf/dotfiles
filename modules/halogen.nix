@@ -199,7 +199,9 @@ let
       done
       [ -n "$unit" ] || exit 0
       systemctl start "$unit"
-      systemctl --no-pager status "$unit" | head -5
+      # Not `status | head`: head closing the pipe SIGPIPEs systemctl, and under
+      # writeShellApplication's pipefail every successful switch exited 141.
+      systemctl show "$unit" --property=Id,ActiveState,SubState,ActiveEnterTimestamp
     '';
   };
 
