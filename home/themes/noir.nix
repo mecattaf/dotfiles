@@ -61,4 +61,11 @@
     inactive = "#818898";
   };
   insertHint = "#CC7BF480";
+
+  # GTK: the OLED-black MacTahoe (pkgs/mactahoe-gtk-theme.nix, variant oled).
+  gtk = {
+    package = "mactahoe-gtk-theme"; # pkgs attr, resolved in home/theme.nix
+    theme = "MacTahoe-Dark-grey";
+    colorScheme = "prefer-dark";
+  };
 }

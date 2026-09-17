@@ -64,4 +64,12 @@
     inactive = "#97958D"; # --text-400 light
   };
   insertHint = "#8100C280";
+
+  # GTK: MacTahoe recoloured to Claude's light tokens, clay accent
+  # (pkgs/mactahoe-gtk-theme.nix, variant claude).
+  gtk = {
+    package = "mactahoe-claude-gtk-theme";
+    theme = "MacTahoe-Claude-Light-orange";
+    colorScheme = "prefer-light";
+  };
 }

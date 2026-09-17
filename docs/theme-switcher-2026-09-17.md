@@ -48,11 +48,34 @@ palette value does.
 | fish | `conf.d/colors.fish` sources the fragment; re-sources at the next prompt when the pointer moved | automatic (no universal variables: `fish_variables` is tracked) |
 | starship | already ANSI-named; the one `#F47B85` became `red` | follows kitty |
 | Claude Code | `theme` key in `~/.claude.json` ← `meta` `claude_code=` | written tmp+rename; takes effect on next start |
-| GTK / MacTahoe | **not yet** — stays Dark on every theme (Tom, 2026-09-16) | Phase 4: gsettings ×4 + gtk-4.0 CSS under the pointer; `pkgs/mactahoe-gtk-theme.nix` already builds the Light variants |
+| GTK3 | `gsettings gtk-theme` (`theme apply`) → MacTahoe-Dark-grey / MacTahoe-Claude-{Dark,Light}-orange | live: GTK3's Wayland backend reads org.gnome.desktop.interface from dconf and follows "changed". Needs the schema on XDG_DATA_DIRS (modules/common.nix) and no `GTK_THEME` env — both fixed in this PR |
+| GTK4 / libadwaita | `~/.config/gtk-4.0/{gtk.css,gtk-dark.css,assets}` → `~/.config/theme/gtk-4.0/` (home/theme.nix); `color-scheme` via gsettings | color-scheme live (portal); gtk.css on next app start |
+| icons / folder colour | `gsettings icon-theme MacTahoe[-<accent>]-{dark,light}` (`theme icons`) | live; accent from the wallpaper, polarity from the theme |
+| Chrome | follows `color-scheme` through the portal | live |
 | cliamp, zathura, qt6ct | not yet | cliamp 1.63.2 lists only built-in themes (`cliamp theme list`), so its `themes/catppuccin-noir.toml` is inert today |
 
-`Mod+Shift+T` cycles. `theme` prints the current name; `theme list`, `theme apply`
-(re-fire hooks), `theme toggle`.
+**GTK themes.** `pkgs/mactahoe-gtk-theme.nix` builds MacTahoe from source per
+`variant`: `oled` (noir, the existing OLED-black substitutions) and `claude` (both
+the light and the dark branch of `src/sass/_colors.scss` recoloured to claude.ai's
+tokens — bg-000/100/200, text-000/200/400, links = accent-100 — with the `orange`
+accent slot set to Anthropic clay `#D97757`). Theme dirs: `MacTahoe-Claude-{Dark,Light}[-solid]-orange[-(x)hdpi]`.
+`GTK_THEME` is gone from `environment.sessionVariables`: it pinned one theme for
+the whole session and could not change live. It had been load-bearing only
+because `gsettings-desktop-schemas` was never on XDG_DATA_DIRS, so GTK fell back
+to `settings.ini`; verified with `gtk-query-settings` before and after.
+
+**Wallpaper accents and folder colours.** `wallpaper <accent>` sets one of the
+seven claude.ai/imagine grounds (oat olive cactus sky fig heather coral, all
+rendered at 5120x2880 from the recovered SVG), remembers it in
+`~/.local/state/wallpaper/accent`, and calls `theme icons`.
+`pkgs/mactahoe-icon-theme.nix` prebuilds `MacTahoe-<accent>{,-light,-dark}` for all
+seven — folders in the accent's darker ground (`--bg-primary-dark`) — so every
+combination is on the system already; everything but the folder SVGs dedupes.
+
+`F2` opens an fzf picker for the theme, `Shift+F2` one for the accent (wallpaper +
+folder colour), both in the F1/F9/F10 prompt style; `Mod+Shift+T` cycles. `theme` prints the current name; `theme list`,
+`theme apply` (re-fire hooks, also run at login from startup.kdl), `theme toggle`,
+`theme icons`.
 
 ## Testing before a switch
 
@@ -98,3 +121,6 @@ to the live theme of the same name on the next switch.
   loader falls back to noir, fish and kitty fall back to their defaults — degraded,
   not broken — until the switch renders `~/.config/themes/`.
 - Kitty windows reload in place; agents' TUIs, GTK4 apps and zathura restart.
+- Fonts (Anthropic Sans/Serif/Mono from ~/colors) are NOT part of this: another
+  session owns that spec; they are proprietary brand faces and must follow the
+  NAS `requireFile` pattern of pkgs/sf-pro.nix, never land in git.

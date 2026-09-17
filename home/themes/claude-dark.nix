@@ -23,4 +23,12 @@ noir
   ansi = noir.ansi // {
     black = "#1A1A1A";
   };
+
+  # GTK: MacTahoe recoloured to Claude's dark tokens, clay accent
+  # (pkgs/mactahoe-gtk-theme.nix, variant claude).
+  gtk = {
+    package = "mactahoe-claude-gtk-theme";
+    theme = "MacTahoe-Claude-Dark-orange";
+    colorScheme = "prefer-dark";
+  };
 }

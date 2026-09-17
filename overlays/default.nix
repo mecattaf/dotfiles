@@ -32,6 +32,9 @@ final: prev: {
   # the mactahoe-oled staging repo (since deleted 2026-07-04); pkgs/ is the home.
   # Icons: stock default (blue folders); GTK: light+dark grey, dark OLED-patched.
   mactahoe-gtk-theme = final.callPackage ../pkgs/mactahoe-gtk-theme.nix { };
+  # the same source build recoloured to claude.ai's light/dark tokens, for the
+  # theme switcher's claude-dark / claude-light (home/themes/, docs/theme-switcher-2026-09-17.md)
+  mactahoe-claude-gtk-theme = final.callPackage ../pkgs/mactahoe-gtk-theme.nix { variant = "claude"; };
   mactahoe-icon-theme = final.callPackage ../pkgs/mactahoe-icon-theme.nix { };
 
   # Backlog.md — markdown-native task manager CLI (`backlog`). Not in nixpkgs;

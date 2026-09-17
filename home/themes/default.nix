@@ -138,10 +138,15 @@ let
   '';
 
   # key=value, read by ~/.local/bin/theme with `read`, never sourced.
+  # icon_suffix: the MacTahoe icon dirs are MacTahoe[-<accent>]-{dark,light};
+  # the accent comes from `wallpaper`, the polarity from here.
   meta = t: ''
     name=${t.name}
     polarity=${t.polarity}
     claude_code=${t.claudeCode}
+    gtk_theme=${t.gtk.theme}
+    color_scheme=${t.gtk.colorScheme}
+    icon_suffix=${if t.polarity == "light" then "light" else "dark"}
   '';
 in
 rec {
@@ -155,7 +160,7 @@ rec {
   # eval error deep in a string interpolation, so check up front.
   roles = [ "name" "polarity" "catppuccinFlavour" "claudeCode" "ground" "fg" "fgDim" "comment" "muted"
     "red" "green" "yellow" "blue" "magenta" "cyan" "orange" "accent" "brand" "ansi" "selection"
-    "cursor" "cursorText" "border" "tabIndicator" "insertHint" ];
+    "cursor" "cursorText" "border" "tabIndicator" "insertHint" "gtk" ];
   checked = lib.mapAttrs (n: t:
     let missing = lib.filter (r: !(t ? ${r})) roles;
     in if missing == [ ] && t.name == n then t

@@ -660,6 +660,7 @@
             # requiring the binaries to be installed on the caller's PATH.
             local-models-prune
             mactahoe-gtk-theme
+            mactahoe-claude-gtk-theme
             mactahoe-icon-theme
             music-acquire
             sfmono-liga

@@ -272,26 +272,18 @@ in
           ''
             // GENERATED per-host (home.nix). No host-specific niri config on ${hostName}.
           '';
-    }
-    // (
-      # GTK4 / libadwaita apps (Nautilus) ignore gtk-theme-name; the only override
-      # they honor is user CSS at ~/.config/gtk-4.0/. Link MacTahoe's gtk-4.0 assets
-      # there so Nautilus renders the theme from first boot — home-manager's gtk
-      # module does not do this, which is why nwg-look was needed before.
-      let
-        theme4 = "${pkgs.mactahoe-gtk-theme}/share/themes/MacTahoe-Dark-grey/gtk-4.0";
-      in
-      {
-        "gtk-4.0/gtk.css".source = "${theme4}/gtk.css";
-        "gtk-4.0/gtk-dark.css".source = "${theme4}/gtk-dark.css";
-        "gtk-4.0/assets".source = "${theme4}/assets";
-      }
-    );
+    };
+  # (The gtk-4.0/{gtk.css,gtk-dark.css,assets} links that used to sit here — a
+  # store symlink of MacTahoe-Dark-grey's gtk-4.0 — moved to home/theme.nix,
+  # where they point through the ~/.config/theme pointer at whichever theme's
+  # MacTahoe variant is selected. 2026-09-17.)
 
-  # Belt-and-suspenders for any gsettings-aware app (agrees with GTK_THEME env).
+  # gtk-theme / icon-theme / color-scheme are deliberately NOT pinned here any
+  # more (2026-09-17): the theme switcher owns them at runtime (`theme apply`
+  # → gsettings, docs/theme-switcher-2026-09-17.md), and a pinned value would
+  # snap a light session back to Dark on every switch. dconf keeps whatever
+  # `theme` last wrote. Fonts stay.
   dconf.settings."org/gnome/desktop/interface" = {
-    gtk-theme = "MacTahoe-Dark-grey";
-    color-scheme = "prefer-dark";
     # Interface fonts for Nautilus and every other GTK app that reads
     # font-name. sf-pro ships system-wide via modules/common.nix fonts.packages
     # (the one Apple family kept in the 2026-08-21 sweep — "too good to

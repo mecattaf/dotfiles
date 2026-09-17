@@ -6,6 +6,7 @@
 #   theme <name>           switch to <name> (noir | claude-dark | claude-light)
 #   theme toggle           cycle to the next theme in `theme list` order
 #   theme apply            re-fire the reload hooks for the current theme
+#   theme icons            re-pick the icon theme (polarity × wallpaper accent)
 #
 # Design: docs/theme-switcher-2026-09-17.md. Home Manager renders every theme's
 # colour fragments under ~/.config/themes/<name>/ (home/theme.nix, palettes in
@@ -19,6 +20,10 @@ link="$cfg/theme"
 themes_dir="${THEMES_DIR:-$cfg/themes}" # THEMES_DIR: preview a render before its switch
 
 die() { printf 'theme: %s\n' "$*" >&2; exit 1; }
+
+# one switch at a time (F2 mashing, a login `apply` racing a manual switch)
+exec 9> "${XDG_RUNTIME_DIR:-/tmp}/theme.lock"
+flock -w 5 9 || die "another theme switch is still running"
 
 current() {
     [[ -L "$link" ]] || return 1
@@ -49,7 +54,13 @@ reload_kitty() {
     while read -r sock; do
         kitten @ --to "unix:$sock" load-config >/dev/null 2>&1 && n=$((n + 1)) || true
     done < <(awk '$NF ~ /^@kitty-[0-9]+$/ { print $NF }' /proc/net/unix | sort -u)
-    printf '  kitty: %d instance(s) reloaded\n' "$n"
+    # a kitty without our listen_on (other config, mid-pull on the client) still
+    # reloads on SIGUSR1 — the Omarchy way; the socket path is just more precise.
+    if (( n == 0 )) && pkill -x -USR1 .kitty-wrapped 2>/dev/null; then
+        echo '  kitty: reloaded via SIGUSR1'
+    else
+        printf '  kitty: %d instance(s) reloaded\n' "$n"
+    fi
 }
 
 reload_niri() {
@@ -94,12 +105,52 @@ set_claude_code() {
     fi
 }
 
+# GTK. GTK3 follows org.gnome.desktop.interface live (its Wayland backend reads
+# gsettings/dconf — the schema is on XDG_DATA_DIRS since modules/common.nix
+# 2026-09-17). libadwaita apps take color-scheme live and their gtk.css on
+# next start (~/.config/gtk-4.0 points through ~/.config/theme, home/theme.nix).
+# Chrome follows color-scheme through the portal.
+gset() { gsettings set "$@" 2>/dev/null || printf '  gsettings: set %s failed\n' "$*" >&2; }
+
+apply_gtk() {
+    command -v gsettings >/dev/null || { echo '  gtk: no gsettings on PATH (pre-switch?)' >&2; return 0; }
+    local gtk_theme scheme
+    gtk_theme="$(meta gtk_theme || true)"; scheme="$(meta color_scheme || true)"
+    [[ -n "$gtk_theme" ]] || return 0
+    gset org.gnome.desktop.interface gtk-theme "$gtk_theme"
+    gset org.gnome.desktop.wm.preferences theme "$gtk_theme"
+    gset org.gnome.desktop.interface color-scheme "$scheme"
+    printf '  gtk: %s, %s\n' "$gtk_theme" "$scheme"
+    apply_icons
+}
+
+# MacTahoe[-<accent>]-{dark,light}: polarity from the theme, accent from the
+# wallpaper (~/.local/state/wallpaper/accent, written by ~/.local/bin/wallpaper).
+# Falls back to the stock blue folders when the accent variant is not installed.
+apply_icons() {
+    command -v gsettings >/dev/null || return 0
+    local suffix accent="" icons
+    suffix="$(meta icon_suffix || echo dark)"
+    [[ -r "${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper/accent" ]] \
+        && read -r accent < "${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper/accent"
+    icons="MacTahoe-$suffix"
+    if [[ -n "$accent" ]]; then
+        local d
+        for d in "${XDG_DATA_HOME:-$HOME/.local/share}" ${XDG_DATA_DIRS//:/ }; do
+            [[ -d "$d/icons/MacTahoe-$accent-$suffix" ]] && { icons="MacTahoe-$accent-$suffix"; break; }
+        done
+    fi
+    gset org.gnome.desktop.interface icon-theme "$icons"
+    printf '  icons: %s\n' "$icons"
+}
+
 apply() {
     local name; name="$(current)" || die "no theme selected ($link missing)"
     echo "theme: $name"
     reload_kitty
     reload_niri
     reload_nvim
+    apply_gtk
     set_claude_code "$(meta claude_code || echo dark)"
 }
 
@@ -117,6 +168,7 @@ case "${1:-}" in
     "")       current || die "no theme selected" ;;
     list)     list ;;
     apply)    apply ;;
+    icons)    [[ -L "$link" ]] || die "no theme selected"; apply_icons ;;
     toggle)
         mapfile -t names < <(list)
         cur="$(current || true)"; next="${names[0]}"
@@ -124,6 +176,6 @@ case "${1:-}" in
             if [[ "${names[$i]}" == "$cur" ]]; then next="${names[$(( (i + 1) % ${#names[@]} ))]}"; fi
         done
         switch_to "$next" ;;
-    -h|--help) sed -n '2,10p' "$0" ;;
+    -h|--help) sed -n '2,11p' "$0" ;;
     *)        switch_to "$1" ;;
 esac
