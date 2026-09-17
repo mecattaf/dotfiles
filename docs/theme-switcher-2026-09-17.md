@@ -52,7 +52,7 @@ palette value does.
 | GTK4 / libadwaita | `~/.config/gtk-4.0/{gtk.css,gtk-dark.css,assets}` → `~/.config/theme/gtk-4.0/` (home/theme.nix); `color-scheme` via gsettings | color-scheme live (portal); gtk.css on next app start |
 | icons / folder colour | `gsettings icon-theme MacTahoe[-<accent>]-{dark,light}` (`theme icons`) | live; accent from the wallpaper, polarity from the theme |
 | Chrome | follows `color-scheme` through the portal | live |
-| cliamp, zathura, qt6ct | not yet | cliamp 1.63.2 lists only built-in themes (`cliamp theme list`), so its `themes/catppuccin-noir.toml` is inert today |
+| qt6ct | not yet | — |
 
 **GTK themes.** `pkgs/mactahoe-gtk-theme.nix` builds MacTahoe from source per
 `variant`: `oled` (noir, the existing OLED-black substitutions) and `claude` (both
@@ -120,7 +120,7 @@ to the live theme of the same name on the next switch.
   including a pointer that does not exist yet. niri's include is `optional`, nvim's
   loader falls back to noir, fish and kitty fall back to their defaults — degraded,
   not broken — until the switch renders `~/.config/themes/`.
-- Kitty windows reload in place; agents' TUIs, GTK4 apps and zathura restart.
+- Kitty windows reload in place; agents' TUIs and GTK4 apps restart.
 - Fonts (Anthropic Sans/Serif/Mono from ~/colors) are NOT part of this: another
   session owns that spec; they are proprietary brand faces and must follow the
   NAS `requireFile` pattern of pkgs/sf-pro.nix, never land in git.

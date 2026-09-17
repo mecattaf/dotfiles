@@ -323,12 +323,10 @@ in
 
       # navidrome-credentials: NOT consumed by the navidrome server (which now
       # runs on the NAS, hosts/nas/media.nix, reached through the coordinator's
-      # navidrome-relay) — read client-side by the cliamp fish function, on
-      # whichever box cliamp runs from. Coordinator-only since the zenbook left
-      # the fleet (2026-08-30), matching the recipient tier in secrets.nix. The wrapper exports the
-      # file's NAVIDROME_PASSWORD under both that name (which config.toml's
-      # ${NAVIDROME_PASSWORD} placeholder interpolates) and NAVIDROME_PASS
-      # (which cliamp's config-less env fallback reads).
+      # navidrome-relay) — read client-side by the navidrome-scan fish function
+      # (NAVIDROME_USER / NAVIDROME_PASSWORD). Coordinator-only, matching the
+      # recipient tier in secrets.nix. (Its first reader, the cliamp TUI client,
+      # was removed 2026-09-17.)
       (lib.mkIf (config.networking.hostName == "coordinator") {
           age.secrets.navidrome-credentials = {
             file = ../secrets/navidrome-credentials.age;
@@ -394,8 +392,7 @@ in
       })
 
       # soundcloud-cookies: consumed by the music-consolidation drain's yt-dlp
-      # invocations (systemd user units, coordinator-only). NOT for cliamp — see
-      # secrets.nix for why cliamp needs no secret here.
+      # invocations (systemd user units, coordinator-only).
       (lib.mkIf (config.networking.hostName == "coordinator") {
         age.secrets.soundcloud-cookies = {
           file = ../secrets/soundcloud-cookies.age;

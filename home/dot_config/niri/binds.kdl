@@ -169,9 +169,8 @@ binds {
     // [scratchpads.music]; daemon: home/piri.nix). Mod+M toggles it: first press
     // (nothing captured) spawns the SoundCloud PWA pinned to the right, later
     // presses show/hide. Mod+Shift+M captures whatever window is focused INTO the
-    // music pane — the "mark this as my music window" move, for the coming
-    // cliamp-in-kitty setup (focus the cliamp window, Mod+Shift+M, then Mod+M
-    // toggles it thereafter).
+    // music pane — the "mark this as my music window" move (focus it,
+    // Mod+Shift+M, then Mod+M toggles it thereafter).
     Mod+M hotkey-overlay-title="Music (toggle)" { spawn "piri" "scratchpads" "music" "toggle"; }
     Mod+Shift+M hotkey-overlay-title="Music (capture focused)" { spawn "piri" "scratchpads" "music" "add" "fromRight"; }
     // SUPERSEDED by the music scratchpad above (Mod+M was YouTube-Music-focus).

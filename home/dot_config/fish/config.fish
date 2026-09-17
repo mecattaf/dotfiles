@@ -54,24 +54,9 @@ alias cc3='env CLAUDE_CONFIG_DIR=$HOME/.claude-3 claude --dangerously-skip-permi
 alias cac3='env CLAUDE_CONFIG_DIR=$HOME/.claude-3 claude --continue --dangerously-skip-permissions'
 
 # ── Music ────────────────────────────────────────────────────────────────
-# The library lives on the NAS and is served by Navidrome; cliamp is the client.
-# `cliamp` here is the wrapper function in functions/cliamp.fish, which injects
-# the server and credentials from agenix — so bare cliamp opens straight into
-# the Navidrome browser with no argument needed. Inside the TUI: Shift+N opens
-# Browse (By Album / By Artist / By Artist-Album), Ctrl+F searches, Q quits.
-alias m='cliamp'                                 # open the library browser
-alias music='cliamp'                             # same, spelled out
-alias mshuffle='cliamp --shuffle --auto-play'    # open it with shuffle already on
-
-# Transport control from outside the TUI. cliamp registers MPRIS as
-# org.mpris.MediaPlayer2.cliamp, so -p cliamp addresses it specifically rather
-# than whatever player playerctl happens to enumerate first (Chrome also
-# registers, and would otherwise swallow these).
-alias mp='playerctl -p cliamp play-pause'        # play/pause  (F3 does this too)
-alias mn='playerctl -p cliamp next'              # next track
-alias mb='playerctl -p cliamp previous'          # back a track
-alias mnow='playerctl -p cliamp metadata --format "{{artist}} — {{title}}"'  # what's playing
-
+# The library lives on the NAS and is served by Navidrome (hosts/nas/media.nix).
+# The cliamp TUI client and its m/music/mp/mn/mb/mnow aliases were removed
+# 2026-09-17 (unused).
 alias mscan='navidrome-scan'                     # reindex after a beets pass (--full for tag-only edits)
 
 type -q atuin || exit

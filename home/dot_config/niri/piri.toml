@@ -25,10 +25,9 @@ default_margin = 0
 # "music" — the right-side music pane (Mod+M toggles it; see binds.kdl).
 # First toggle with no captured window spawns `command` and pins it to the
 # right; subsequent toggles show/hide it. Today that's the SoundCloud PWA
-# (app_id confirmed live: chrome-soundcloud.com__-Default). Later this becomes a
-# cliamp-in-kitty pane — swap `command`/`app_id` here (hot-reloads), or capture
-# any focused window into it at runtime with `piri scratchpads music add
-# fromRight` (bound to Mod+Shift+M).
+# (app_id confirmed live: chrome-soundcloud.com__-Default). Swap `command`/`app_id`
+# here (hot-reloads), or capture any focused window into it at runtime with
+# `piri scratchpads music add fromRight` (bound to Mod+Shift+M).
 [scratchpads.music]
 direction = "fromRight"
 command = "google-chrome-stable --app=https://soundcloud.com"

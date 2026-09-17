@@ -289,7 +289,7 @@
     # piri — niri IPC extension daemon (github.com/Asthestarsfalll/piri): one
     # Rust daemon that tails niri's event stream and layers plugins on top —
     # scratchpads, marks, window/workspace rules. We use it for the "music"
-    # auto-scratchpad (Mod+M toggles a right-side SoundCloud/cliamp pane).
+    # auto-scratchpad (Mod+M toggles a right-side SoundCloud pane).
     # Third-party but consumed exactly like tally: flake input pinned in
     # flake.lock, follows nixpkgs so the Rust build resolves against our one pin.
     # piri ships packages.default + a NixOS module, but NOT a home-manager
