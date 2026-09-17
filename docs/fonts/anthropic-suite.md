@@ -625,7 +625,7 @@ ceiling = max(host_max_ink, int(cell * 1.10))      # never tighter than 1320
 The host's own glyphs exceed the cell: on the Italic, 61 glyphs pass 1200 with a maximum
 of 1444 (`.notdef`) and `integral` at 1440; on ExtraBold Italic, 176 glyphs with a maximum
 of 1538 (`dcaron`) and `slash` at 1522. The Nerd box-drawing set this same font ships
-spans x -12 to 1212, ink 1224, precisely so that cells connect. Overhang beyond the
+spans x -12 to 1212 as stored (-11 to 1213 as drawn), ink 1224, precisely so that cells connect. Overhang beyond the
 advance is normal in a monospace and is not a rejection criterion.
 
 Measured with a flat 1200 rule: the Roman skipped 80 candidates and lost U+25D8, U+25D9,
@@ -1088,7 +1088,7 @@ GSUB     calt exactly 136 lookups; 496 total lookups on Regular; features ⊇
 shaping  'x -> y' groups (2,2,…); 'c ==> d' groups (3,3,…); 'a != b', 'p <=> q', 'f /= g' likewise
          U+E0B0, U+F001, U+276F, U+2588, U+28FF, U+2800, U+03BB, U+0410, U+2718, U+1D538, U+F07E5
          each shape to one non-.notdef glyph from the main font
-box art  U+2500, U+2550, U+2588 all span x0 <= 0 and x1 >= 1200  (measured -12 … 1212)
+box art  U+2500, U+2550, U+2588 all span x0 <= 0 and x1 >= 1200  (measured: stored bbox -12 … 1212, drawn outline -11 … 1213)
 align    {shift: 100, anchor-veto: 35, clamped: 1} on every face; dy range -61 … +93
          |ycentre(lig '--') - ycentre(hyphen)| <= 8   (measured 0.0-0.5 on all 12)
          patcher changed 0 of 136 lig outlines

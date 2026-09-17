@@ -136,7 +136,7 @@ y=540, which is the host's own italic transform measured from its own `bar`, `ex
 `colon` and `I`.
 
 **Box art is Nerd's full-cell set.** The patcher replaces Anthropic's own 22 box-drawing
-glyphs with the full 160-glyph Nerd set, drawn to span the cell (x from -12 to 1212, so
+glyphs with the full 160-glyph Nerd set, drawn to span the cell (x from -12 to 1212 as stored in the glyph header, -11 to 1213 as drawn, so
 12 units of deliberate overlap each side). That is wanted: boxes connect. It is the one
 place a donor overrides the brand drawing.
 
