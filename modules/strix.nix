@@ -95,13 +95,50 @@
       # An unhealthy verdict exits the container non-zero, which the unit's
       # Restart=on-failure recovers from.
       healthKill = true;
+      # Flash's KV pool on the desktop twin: 262144 positions (~28 GB, the
+      # floor, since the pool never drops below HALOGEN_CTX) instead of the
+      # image's 2 x CTX (~35 GB), so an operator-started Flash leaves the
+      # desktop, TTS and ASR more room. The worker keeps the image default.
+      kvPoolPositions = if config.networking.hostName == "coordinator" then 262144 else null;
       # The alternate model: Qwen3.8-27B under halogen-server. Never resident
       # together with Flash — `halogen-switch qwen38-27b` stops the Flash unit
       # and starts this one; `halogen-switch flash` goes back.
+      #
+      # halogen-server 0.1.4 (2026-09-16), reference checkout ~/today/halogen-
+      # server @ 5a0f952: a serving-only release over 0.1.3 (same kernels,
+      # checkpoint and weights) that honours chat_template_kwargs, accepts the
+      # developer role, keeps idle connections 300 s, accepts reasoning_effort
+      # "none", 400s response_format and reports /health.version. Digest
+      # re-resolved with `skopeo inspect docker://ghcr.io/peonist-ai/halogen:0.1.4`.
+      #
+      # What this engine does NOT offer, checked inside the 0.1.4 image:
+      #   * no /usr/local/bin/halogen-healthcheck, so it gets no podman health
+      #     options (Flash's observe-then-kill check cannot be copied);
+      #   * no default-budget env knob: serve_api.py hardcodes max_tokens 8192
+      #     (the /health field max_tokens_default), so the empty-content trap
+      #     Flash's maxTokensDefault = 16384 closes is open here — agentic
+      #     clients must send max_tokens themselves. HALOGEN_MAX_TOKENS_CAP
+      #     (65536) and HALOGEN_QUEUE_TIMEOUT (7200) stay the image's coupled
+      #     pair, unset here.
+      # HALOGEN_DOWNLOAD stays unset (model-byte doctrine) and the tokenizer is
+      # the bundle's flat tokenizer/ directory.
+      #
+      # No --security-opt seccomp=unconfined, although upstream's run lines
+      # still carry it: 0.1.4 was run on the coordinator (2026-09-17) with
+      # exactly the shared containerOptions and no seccomp flag, loaded the
+      # checkpoint, reported /health version.match true and answered a chat
+      # completion. Same conclusion upstream reached for Flash in 0.6.1.
       alternates.qwen38-27b = {
-        image = "ghcr.io/peonist-ai/halogen@sha256:1430491c479bee106dbaa3316e5509401546962f26f275ac777dfd1b5397589b";
+        image = "ghcr.io/peonist-ai/halogen@sha256:dc0a39a0016d6cfc58a197978febaafdf8d28403f724ded6111d98b5fb7ac0ea";
         artifact = "halogen-qwen38-27b";
         modelId = "halogen-qwen3.8-27b";
+        # KV_SLOTS stays the image's 1 (speculation on). On the coordinator the
+        # prompt cache gets a fixed 8 GiB budget instead of auto-sizing from
+        # MemAvailable at startup, which on a desktop would claim whatever the
+        # TTS, ASR and browser happen not to be using at that moment.
+        environment = lib.optionalAttrs (config.networking.hostName == "coordinator") {
+          HALOGEN_CACHE_MB = "8192";
+        };
       };
     };
 

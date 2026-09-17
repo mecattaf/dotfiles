@@ -948,17 +948,21 @@
         # failure, or Restart=on-failure has nothing left to recover from.
         halogen-unit-policy =
           let
-            worker = self.nixosConfigurations.worker.config;
-            units = nixpkgs.lib.filterAttrs (
-              name: _: nixpkgs.lib.hasPrefix "podman-halogen" name
-            ) worker.systemd.services;
+            # Both twins declare the Halogen units since 2026-09-16.
+            unitsOf =
+              host:
+              nixpkgs.lib.filterAttrs (
+                name: _: nixpkgs.lib.hasPrefix "podman-halogen" name
+              ) self.nixosConfigurations.${host}.config.systemd.services;
+            units = unitsOf "worker";
             successCodes = unit: nixpkgs.lib.splitString " " (toString unit.serviceConfig.SuccessExitStatus);
             succeeds = code: unit: builtins.elem code (successCodes unit);
-            declared = builtins.attrValues units;
+            declared = builtins.attrValues (unitsOf "worker") ++ builtins.attrValues (unitsOf "coordinator");
           in
           # The primary and one alternate today; the filter is what keeps this
           # honest when that changes, so assert it found them both.
-          assert builtins.length declared >= 2;
+          assert builtins.length declared >= 4;
+          assert (unitsOf "coordinator") ? podman-halogen;
           assert units ? podman-halogen;
           assert builtins.all (succeeds "143") declared;
           assert builtins.all (unit: !(succeeds "137" unit)) declared;
@@ -3184,13 +3188,30 @@
           assert coordinator.services.halogen.client.enable;
           assert !worker.services.halogen.client.enable;
           assert worker.virtualisation.oci-containers.containers ? halogen;
-          # One declaration, two hosts: the containers differ only in autoStart.
+          # One declaration, two hosts: the containers differ only in autoStart
+          # and the coordinator's two desktop memory bounds (Flash's KV pool,
+          # the 27B's prompt-cache budget).
           assert
-            removeAttrs worker.virtualisation.oci-containers.containers.halogen [ "autoStart" ]
-            == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen [ "autoStart" ];
+            removeAttrs worker.virtualisation.oci-containers.containers.halogen [ "autoStart" "environment" ]
+            == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen [ "autoStart" "environment" ];
           assert
-            worker.virtualisation.oci-containers.containers.halogen-qwen38-27b
-            == coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b;
+            removeAttrs worker.virtualisation.oci-containers.containers.halogen.environment [ "HALOGEN_KV_POOL_POSITIONS" ]
+            == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen.environment [ "HALOGEN_KV_POOL_POSITIONS" ];
+          assert !(worker.virtualisation.oci-containers.containers.halogen.environment ? HALOGEN_KV_POOL_POSITIONS);
+          assert coordinator.virtualisation.oci-containers.containers.halogen.environment.HALOGEN_KV_POOL_POSITIONS == "262144";
+          assert
+            removeAttrs worker.virtualisation.oci-containers.containers.halogen-qwen38-27b [ "environment" ]
+            == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b [ "environment" ];
+          assert !(worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment ? HALOGEN_CACHE_MB);
+          assert coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_CACHE_MB == "8192";
+          # halogen-server 0.1.4 by digest; never a runtime download.
+          assert
+            worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.image
+            == "ghcr.io/peonist-ai/halogen@sha256:dc0a39a0016d6cfc58a197978febaafdf8d28403f724ded6111d98b5fb7ac0ea";
+          assert !(coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment ? HALOGEN_DOWNLOAD);
+          assert
+            coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_TOKENIZER
+            == "/models/tokenizer";
           assert worker.services.halogen.lanInterface == "enp191s0";
           assert coordinator.services.halogen.lanInterface == "wlp192s0";
           assert nixpkgs.lib.hasPrefix "ghcr.io/peonist-ai/halogen-flash-server@sha256:"
