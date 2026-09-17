@@ -55,6 +55,25 @@ MEASURED red against the pre-change feeder in exactly those places. Neither
 change can manufacture a reading from an expired token: re-logging in on `cc`
 and `cc3` stays Tom's (`DEFERRED.md` DF-U-D12-3).
 
+**The one red is INHERITED, and it is the `nas-topology` assertion — not an
+offline-input problem.** `nix flake check --offline --no-build` is rc 1 in this
+repository, which is why clause A of `tests/tally-b/test-tally-b-input.sh` is
+red and this item's composite oracle exits 1. The tail that reproduces now —
+MEASURED 2026-09-17 on this branch and byte-identical on a detached worktree at
+`main` (202d9c31) — is `checks.x86_64-linux.nas-topology` → `error: assertion
+'(! ((builtins).elem 8731
+(coordinator).networking.firewall.interfaces.wlp192s0.allowedTCPPorts))' failed`
+at `flake.nix:1694`: a real eval assertion about a coordinator firewall port,
+belonging to whoever opened 8731, and NOT the "an input is missing offline"
+`[ENV]` reading an earlier pass of this item gave it. That earlier pass reached
+`checks.x86_64-linux.nas-personal-tailnet` → `error: path
+'pl6rmijq3dkwqw9cf16wzpycsc7gb9m2-86byf0qaz7f0vgj7x4km4zc9q446skd0-source' is
+not valid` first instead; which of the two surfaces first depends on evaluation
+order, so a rerun may show either. Either way nothing here introduced it — this
+branch edits no `flake.nix` and no firewall or NAS configuration — and nothing
+here fences it out of a probe to make an rc green. `DEFERRED.md` `DF-FLAKE-1`
+carries both tails and who discharges them.
+
 2026-09-13 flake checkouts no longer ride into host closures, chrome-stream
 is installed, and a switch refuses a stale raw-dotfiles checkout.
 
