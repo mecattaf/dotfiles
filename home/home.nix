@@ -133,6 +133,7 @@ in
     ./seat-feeder.nix
     ./ssh.nix
     ./tally.nix
+    ./theme.nix
     ./tally-filler.nix
     ./tally-pump.nix
     ./tally-uplink.nix

@@ -81,7 +81,7 @@ components.filename = {
 -- External changes indicator
 components.external_changes = {
   require('external-changes').lualine_component,
-  color = { fg = '#9BE963', gui = 'bold' },
+  color = { gui = 'bold' }, -- fg set in setup() from the theme palette
 }
 
 -- Search count
@@ -103,7 +103,7 @@ components.recording = {
     end
     return ' REC @' .. reg
   end,
-  color = { fg = '#F47B85', gui = 'bold' },
+  color = { gui = 'bold' }, -- fg set in setup() from the theme palette
   cond = function()
     return vim.fn.reg_recording() ~= ''
   end,
@@ -139,6 +139,11 @@ components.location = {
 
 -- Setup function
 function M.setup()
+  -- Palette colours are resolved here, not at module load, so theme.reload()
+  -- can call setup() again after a `theme` switch.
+  local T = require('theme').palette()
+  components.external_changes.color.fg = T.green
+  components.recording.color.fg = T.red
   require('lualine').setup({
     options = {
       theme = 'auto',
