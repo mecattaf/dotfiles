@@ -8,8 +8,10 @@
 # tmpfiles rule sets this unit puts over the SAME two paths from two different
 # buses do not fight at switch time.
 #
-# Everything here is eval-time and --offline: nothing is built, nothing is
-# switched, no state is written, no credential is read. Each guard is shown
+# Everything here is --offline, nothing is switched, no state is written and no
+# credential is read. G1/G2/G4 are eval-time only; G3 additionally BUILDS one
+# derivation — the evaluator lock the module now serves — because a lock whose
+# rows were never recomputed is a claim and not a guard. Each guard is shown
 # GREEN at the delivered tree and RED under a one-line override, because a
 # guard nobody has seen red is not a guard.
 set -uo pipefail
@@ -59,15 +61,80 @@ else
   bad  "G2 an empty row set evaluated: $out"
 fi
 
-# --- G3: evaluatorLock is a wire, not a stub -------------------------------
-# DF-U-D13-2 defers PASSING the lock (U-A17 has not delivered the bytes to
-# lock). It does not excuse an option that is never read. Null must omit the
-# flag; a set value must appear verbatim in ExecStart.
+# --- G3: the SERVED evaluator lock recomputes, row for row -----------------
+# DF-U-D13-2 is discharged: the module no longer defers PASSING the lock, it
+# builds one. So this guard flipped with it. The old clause asserted that the
+# default (null) omitted the flag — the honest state while `apps/evaluator` had
+# not been delivered to the lake. The bytes exist now
+# (`${inputs.tally-lake}/apps/evaluator`), the module generates a lock over them
+# with the KERNEL's own tools/make-evaluator-lock.sh, and what must be guarded
+# is no longer "is the option read" but "does the served lock still mean what it
+# says": its argv row must be the digest of the wrapper this repository builds,
+# and every file row must recompute byte-for-byte from the PINNED lake input.
+#
+# That is exactly `scripts/verify-evaluator-lock.sh --lock … --root … --argv …`
+# from the pinned kernel input — the kernel's own refusal, run ahead of the
+# kernel. Nothing here is transcribed: the lock, the wrapper, the lake root and
+# the verifier all come out of this tree's two pins.
+lake=$(nix eval --offline --raw --impure --expr \
+  "(builtins.getFlake \"git+file://$repo\").inputs.tally-lake.outPath" 2>/dev/null)
+kern=$(nix eval --offline --raw --impure --expr \
+  "(builtins.getFlake \"git+file://$repo\").inputs.tally-b.outPath" 2>/dev/null)
+# The wrapper is re-derived here from pkgs/ rather than read off the lock's own
+# `# argv:` comment: reading the argv out of the artifact under test would make
+# part C of the verifier tautological.
+wrapper=$(nix eval --offline --raw --impure --expr \
+  "let f = builtins.getFlake \"git+file://$repo\";
+   in (f.nixosConfigurations.coordinator.pkgs.callPackage $repo/pkgs/tally-evaluator {
+        tallyLake = f.inputs.tally-lake;
+      }).outPath" 2>/dev/null)
+lock=$(nix build --offline --no-link --print-out-paths \
+  "$repo#nixosConfigurations.coordinator.config.services.tally-kernel.evaluatorLock" 2>/dev/null)
+case "$lock" in
+  /nix/store/*) pass "G3 the default evaluatorLock is a built store path: $lock" ;;
+  *)            bad  "G3 the default evaluatorLock did not build to a store path: ${lock:-<build failed>}" ;;
+esac
+if [ -n "$lock" ] && [ -n "$lake" ] && [ -n "$kern" ] && [ -n "$wrapper" ] \
+  && sh "$kern/scripts/verify-evaluator-lock.sh" \
+       --lock "$lock" --root "$lake" --argv "$wrapper/bin/tally-evaluator" >/dev/null 2>&1; then
+  pass "G3 verify-evaluator-lock.sh rc 0: every file row recomputes from the pinned lake, and the argv row is the digest of $wrapper/bin/tally-evaluator"
+else
+  bad  "G3 verify-evaluator-lock.sh refused the served lock (lock=${lock:-<none>} root=${lake:-<none>} argv=${wrapper:-<none>}/bin/tally-evaluator)"
+fi
+# THE RED SIDE. The same verifier, over the same lock, with the argv probe-C ran
+# BEFORE the wrapper existed (`/bin/sh <lake>/tools/e2e-evaluator.sh`, two
+# words). It must DIVERGE (rc 4) — otherwise part C is not comparing anything
+# and the green above would mean only "the file parses".
+if [ -n "$lock" ] && [ -n "$lake" ] && [ -n "$kern" ]; then
+  sh "$kern/scripts/verify-evaluator-lock.sh" \
+    --lock "$lock" --root "$lake" \
+    --argv /bin/sh --argv "$lake/tools/e2e-evaluator.sh" >/dev/null 2>&1
+  rc=$?
+  if [ "$rc" -eq 4 ]; then
+    pass "G3 the pre-wrapper two-word argv DIVERGES against the same lock (rc 4) — part C really compares"
+  else
+    bad  "G3 a foreign argv did not diverge against the served lock (rc $rc, wanted 4)"
+  fi
+else
+  bad  "G3 could not run the negative control: lock/root/kernel input unresolved"
+fi
+# The flag reaches the rendered unit, naming that same store lock.
 base=$(nix eval --offline --raw \
   '.#nixosConfigurations.coordinator.config.systemd.services.tally-kernel.serviceConfig.ExecStart' 2>/dev/null)
 case "$base" in
-  *--evaluator-lock*) bad "G3 the default (null) lock still emitted --evaluator-lock: $base" ;;
-  *)                  pass "G3 evaluatorLock=null omits the flag (the deferred, honest state)" ;;
+  *"--evaluator-lock $lock"*)
+    pass "G3 ExecStart serves it: …${base##*--evaluator-lock}" ;;
+  *)
+    bad  "G3 ExecStart does not carry --evaluator-lock $lock: ${base:-<eval failed>}" ;;
+esac
+# And null is STILL a wire, not a hole: a host with no evaluator to lock can set
+# it back and the flag disappears rather than pointing at a stale store path.
+out=$(ext 'services.tally-kernel.evaluatorLock = null;' \
+          'c.config.systemd.services.tally-kernel.serviceConfig.ExecStart')
+case "$out" in
+  *--evaluator-lock*) bad "G3 evaluatorLock=null still emitted --evaluator-lock: $out" ;;
+  *tally-kernel*)     pass "G3 evaluatorLock=null omits the flag (the option is still a wire in both directions)" ;;
+  *)                  bad "G3 could not render ExecStart with evaluatorLock=null: $out" ;;
 esac
 # G0: the delivered tree's own toplevel evaluates — the GREEN side of G1/G2,
 # so a guard that fired on everything would be caught here.
@@ -80,7 +147,7 @@ fi
 out=$(ext 'services.tally-kernel.evaluatorLock = /etc/hostname;' \
           'c.config.systemd.services.tally-kernel.serviceConfig.ExecStart')
 if [ $? -eq 0 ] && printf '%s' "$out" | grep -q -- '--evaluator-lock /nix/store/.*'; then
-  pass "G3 a set evaluatorLock reaches ExecStart: ...${out##*--evaluator-lock}"
+  pass "G3 a SET evaluatorLock still overrides the default and reaches ExecStart: ...${out##*--evaluator-lock}"
 else
   bad  "G3 evaluatorLock is not wired to ExecStart: $out"
 fi

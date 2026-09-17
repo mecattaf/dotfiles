@@ -1,5 +1,40 @@
 # DECISIONS
 
+2026-09-17 the served kernel derives verdicts.
+
+**The evaluator lock is BUILT, not pinned by hand (default, unruled).** No
+ruling says where the served `--evaluator-lock` comes from, and there were two
+ways to serve one: transcribe a generated `EVALUATOR.sha256` into this
+repository as data (the way tally carries its own `ORACLE.sha256` locks), or
+generate it in a derivation from the two inputs this repo already pins. Taken:
+the derivation. `modules/tally-b.nix` runs the KERNEL's own
+`${inputs.tally-b}/tools/make-evaluator-lock.sh` with `--root
+${inputs.tally-lake}` at build time, so not one digest is typed here and the
+lock cannot disagree with either pin without the derivation changing. The cost
+is that reading the lock means building it (guard G3 now builds one small
+derivation, offline); the gain is that a transcribed lock can rot silently
+against a bumped input and a generated one cannot. The consequence to know: a
+`tally-lake` bump CHANGES the lock, which changes the `evaluator.lock` cell of
+every verdict derived after it — that is the point, a verdict names the bytes
+that judged it, and it is why the lake is not in `rollingInputOverrides`.
+
+**The locked argv is ONE store word.** `pkgs/tally-evaluator` wraps
+`tools/e2e-evaluator.sh` so the argv the kernel hashes is
+`<store path>/bin/tally-evaluator` rather than the two words the audit's probe C
+ran (`/bin/sh <checkout>/tools/e2e-evaluator.sh`). A checkout path in a locked
+argv is a lock over a file `git pull` can move; a store path is not. Everything
+per-evaluation still travels on stdin — T7-3, and the only reason an argv can
+be pinned at all. `node` is deliberately absent from the wrapper's
+`runtimeInputs`: the stdin item names the interpreter by absolute path, because
+the node the lake's `scripts/node-env.sh` records is the one its packages were
+resolved against.
+
+**Serving the lock changes nothing for the campaign.** The kit's `eval(...)`
+entries stay `/bin/sh -c true` no-ops. `DEFERRED.md` `DF-U-D13-4` carries why:
+what a mechanical verdict for CUBS IS is Tom's line (integration G7), and the
+per-item stdin an `eval(...)` entry would need is the uplink render tool's
+second step, not this module's constant `stdin` cell.
+
 2026-09-13 flake checkouts no longer ride into host closures, chrome-stream
 is installed, and a switch refuses a stale raw-dotfiles checkout.
 

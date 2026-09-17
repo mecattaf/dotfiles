@@ -18,7 +18,8 @@
 #      network, no credential — `git ls-remote` is NOT called here)
 #   E  the unit's shape: ExecStart is the store-built tally-kernel binary with
 #      `serve`, the state root carries the tally-rewrite component, the socket
-#      is kernel.sock BESIDE that root, the rows file names exactly the
+#      is kernel.sock BESIDE that root, `--evaluator-lock` names a STORE lock
+#      (so a verdict is derived at all), the rows file names exactly the
 #      three kernel-owned rows of the rewrite's docs/rows.md, and every row's
 #      `running` is `{kind: none}` — no row probes an endpoint, because no
 #      device on this estate publishes one
@@ -146,6 +147,21 @@ case "$exec_start" in
     pass "E --socket is kernel.sock beside the chain it fronts" ;;
   *)
     bad  "E --socket is not <state>/kernel.sock: $exec_start" ;;
+esac
+# The served EVALUATOR LOCK (DEFERRED.md DF-U-D13-2, discharged). Without the
+# flag the kernel derives no verdict at all (tally docs/socket.md §4) and the
+# loop stops one rung short of a receipt, so its presence is part of the unit's
+# shape and not an option's detail. It must be a STORE path: a lock under $HOME
+# is a file anyone can edit between two evaluations, and the whole point of the
+# lock is that the bytes which judged a deliverable are named and immutable.
+# Which rows it carries, and that they recompute from the pinned lake input, is
+# guard G3 of tests/tally-b/probe-u-d13-guards.sh — the clause here is the
+# unit's, not the lock's.
+case "$exec_start" in
+  *"--evaluator-lock /nix/store/"*)
+    pass "E --evaluator-lock names a store lock: ${exec_start##*--evaluator-lock }" ;;
+  *)
+    bad  "E ExecStart carries no --evaluator-lock <store path>: $exec_start" ;;
 esac
 # The state root must NEVER be the live estate's: this is the eval-time twin of
 # the kernel's own Ledger::open refusal (ledger.rs:31-35).
