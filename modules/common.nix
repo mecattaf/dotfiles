@@ -382,9 +382,50 @@
     nerd-fonts.jetbrains-mono
     google-fonts
     noto-fonts-color-emoji
-    sf-pro # GTK interface font ("SF Pro Display 11" — dconf in home/home.nix)
-    sfmono-liga # THE terminal face — named explicitly in kitty.conf; see flake.nix input comment
+    sf-pro # kept (2026-08-21 ruling "it's too good to have"); now the sans FALLBACK and the revert path
+    sfmono-liga # kept: the previous terminal face and the revert path
+    # 2026-09-17, pressed by pkgs/fontbuilder and pinned to the NAS M.2
+    # (pkgs/anthropic-mono-nerd.nix, pkgs/anthropic-ui.nix).
+    anthropic-mono-nerd # THE terminal face — named explicitly in kitty.conf
+    anthropic-ui # Anthropic Sans/Serif + Anthropicons: GTK UI and browser generics
+    # anthropic-webfonts is DELIBERATELY ABSENT. NixOS lists font packages in
+    # /etc/fonts/conf.d/00-nixos-cache.conf by their STORE ROOT, so adding it
+    # here would put share/webfonts into fontconfig's scan path. Measured
+    # 2026-09-17 with exactly that config: fc-list returned the 2 TTFs AND all
+    # 7 woff2 (68 pattern rows) from three levels down, and with the webfonts
+    # dir scanned FIRST `fc-match "Anthropic Sans"` returned the .woff2 — so
+    # the contention is real and depends only on directory order. It reaches
+    # disk through home.packages instead (home/home.nix), where home-manager
+    # scans only share/fonts and lib/X11/fonts.
   ];
+
+  # Belt and braces for the line above: reject the webfonts by PATH and by
+  # EXTENSION, so no future edit that drops anthropic-webfonts into
+  # fonts.packages (or any other package that ships woff2 under a scanned
+  # prefix) can put a compressed face into the font namespace.
+  #
+  # It must be a <glob> reject, not the pattern form NixOS uses for Type 1
+  # (53-nixos-reject-type1.conf): `fc-scan %{fontformat}` on these .woff2 files
+  # reads "TrueType", because FreeType decompresses WOFF2 transparently, so a
+  # fontformat match never fires. Verified 2026-09-17: on a mixed tree fc-list
+  # drops to exactly the 2 TTFs and `fc-match "Anthropic Sans:italic"` no
+  # longer reaches the woff2. pkgs/fontbuilder/tests/fonts.conf carries the
+  # same block.
+  #
+  # This lands as /etc/fonts/local.conf (indirect priority 51).
+  fonts.fontconfig.localConf = ''
+    <?xml version='1.0'?>
+    <!DOCTYPE fontconfig SYSTEM 'urn:fontconfig:fonts.dtd'>
+    <fontconfig>
+      <selectfont>
+        <rejectfont>
+          <glob>*/share/webfonts/*</glob>
+          <glob>*.woff2</glob>
+          <glob>*.woff</glob>
+        </rejectfont>
+      </selectfont>
+    </fontconfig>
+  '';
 
   # Map the fontconfig generic aliases. Installing the fonts (above) is not
   # enough: apps that ask for the *generic* families — google-chrome's web

@@ -39,17 +39,60 @@
 # window, and the NAS names any gap itself: update-center's preflight logs
 # `seed-missing <node>` for every private node whose tree is absent.
 #
-# FONTS (2026-09-15). pkgs/sf-pro.nix and pkgs/sfmono-liga.nix pin every Apple
-# face to the fleet's own tarballs on the NAS M.2 (nas:/mnt/fast/fonts/apple),
-# never a download. The same run has the NAS add each tarball to its own store
-# straight from that disk and root it here beside the source trees, so the
-# nightly build finds them.
+# FONTS (2026-09-15, extended 2026-09-17). pkgs/sf-pro.nix, pkgs/sfmono-liga.nix,
+# pkgs/anthropic-mono-nerd.nix, pkgs/anthropic-ui.nix and
+# pkgs/anthropic-webfonts.nix pin every vendor face to the fleet's own tarballs
+# on the NAS M.2 (nas:/mnt/fast/fonts/{apple,anthropic}), never a download. The
+# same run has the NAS add each tarball to its own store straight from that disk
+# and root it here beside the source trees, so the nightly build finds them.
 let
   isCoordinator = osConfig.networking.hostName == "coordinator";
+  # Full paths, not bare names: since 2026-09-17 there is a second vendor
+  # directory on the M.2 (anthropic/ beside apple/). The GC-root name is the
+  # BASENAME stripped at the FIRST dot, so every basename must stay dot-free
+  # before ".tar.zst" AND unique across directories — /var/lib/update-center/
+  # seeds is one flat namespace shared with the locked flake nodes (tally,
+  # tally-b, tally-lake) and the cleanup sweep below does not descend.
+  #
+  # Two failure modes. (1) A colliding basename silently clobbers the other
+  # vendor's GC root, and the loss is discovered on the NAS at 01:30. This is
+  # the one fontRootNames catches at EVAL time — but only font-vs-font; the
+  # locked node names are discovered at RUNTIME from the lock and are invisible
+  # here, so font-vs-node is checked in the shell instead (see the pairs loop).
+  # (2) Without the basename strip, ''${f%%.*} on a PATH yields an ABSOLUTE name,
+  #     so `nix-store --realise --add-root "$d/$name"` targets a nonexistent
+  #     directory and fails. The remote body runs under `set -eu`, so the script
+  #     aborts THERE and the sweep below never runs: the failure is loud (the unit
+  #     fails, failure-surfacing sees it) and no existing root is touched.
+  #     Measured 2026-09-17.
+  # Keep the strip anyway: a loud nightly failure is still a broken seed.
   fontArchives = [
-    "sf-pro-fonts.tar.zst"
-    "sfmono-liga-fonts.tar.zst"
+    "/mnt/fast/fonts/apple/sf-pro-fonts.tar.zst"
+    "/mnt/fast/fonts/apple/sfmono-liga-fonts.tar.zst"
+    "/mnt/fast/fonts/anthropic/anthropic-mono-nerd-fonts.tar.zst"
+    "/mnt/fast/fonts/anthropic/anthropic-ui-fonts.tar.zst"
+    "/mnt/fast/fonts/anthropic/anthropic-webfonts.tar.zst"
   ];
+  # An INDEPENDENT second implementation of the shell's ''${f##*/} + ''${b%%.*}
+  # below; nothing ties the two together, so change them as a pair.
+  fontRootNames = map (p: lib.head (lib.splitString "." (baseNameOf p))) fontArchives;
+  fontRootNamesCollide = lib.length (lib.unique fontRootNames) != lib.length fontRootNames;
+  fontRootNameEmpty = lib.any (n: n == "") fontRootNames;
+  # In the second guard below, only `n == ""` can ever fire, and only for a
+  # basename beginning with a dot: `baseNameOf` cannot return a string
+  # containing "/", so a `lib.hasInfix "/" n` disjunct would be dead code (it
+  # was in the first draft). One case still slips through both guards and is
+  # accepted: a path with a TRAILING slash, for which baseNameOf returns the
+  # parent directory name (baseNameOf "/mnt/fast/fonts/anthropic/" ->
+  # "anthropic"). The message wording is the documented contract; leave it.
+  checkedFontArchives =
+    lib.throwIf fontRootNamesCollide
+      "update-center-seed: font archive basenames collide once stripped at the first dot: ${toString fontRootNames}"
+      (
+        lib.throwIf fontRootNameEmpty
+          "update-center-seed: a font archive basename yields an empty or nested GC-root name"
+          fontArchives
+      );
 
   seed = pkgs.writeShellApplication {
     name = "update-center-seed";
@@ -111,13 +154,32 @@ let
       # Root each seed by node name, then drop names this lock no longer has.
       # Arguments are name=path pairs; node names and store paths carry no
       # shell metacharacters, and the remote body is a quoted heredoc. A font
-      # pair names a file on the NAS M.2 instead, which is added there first.
+      # pair names a file on the NAS M.2 instead, which is added there first;
+      # its GC-root name is the BASENAME up to the first dot, so the directory
+      # in the value is what distinguishes apple/ from anthropic/.
       pairs=()
       for i in "''${!paths[@]}"; do
         pairs+=("''${names[$i]}=''${paths[$i]}")
       done
-      for f in ${lib.escapeShellArgs fontArchives}; do
-        pairs+=("''${f%%.*}=/mnt/fast/fonts/apple/$f")
+      # The eval-time lib.throwIf above covers font-vs-font name collisions.
+      # This covers font-vs-NODE, which it cannot: the locked node names come
+      # from the lock at RUNTIME. Measured 2026-09-17 — a font archive named
+      # tally.tar.zst evaluates cleanly and the unmodified remote heredoc then
+      # silently CLOBBERS seeds/tally with the tarball (keep contains "tally",
+      # so the sweep preserves the wrong one), surfacing only as update-center's
+      # `seed-missing tally` on the NAS at 01:30. Fail here instead.
+      for f in ${lib.escapeShellArgs checkedFontArchives}; do
+        b="''${f##*/}"
+        n="''${b%%.*}"
+        # ''${names[@]+...} keeps this safe under `set -u` when the lock names
+        # no mecattaf node at all.
+        for m in ''${names[@]+"''${names[@]}"}; do
+          if [ "$m" = "$n" ]; then
+            log "FAILED: font archive $b would take the GC-root name '$n', already claimed by locked node $m" >&2
+            exit 1
+          fi
+        done
+        pairs+=("$n=$f")
       done
       sshnas bash -s -- "''${pairs[@]}" <<'REMOTE'
       set -eu

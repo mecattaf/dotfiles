@@ -23,3 +23,24 @@ plaintext/
 /result
 .wrangler/
 
+# cliamp's runtime files. Since 2026-09-13 ~/.config/cliamp is a real directory
+# with only config.toml and themes/ linked in (home/home.nix), so these no
+# longer land here; the lines stay so a stale checkout or a revert cannot
+# commit them again. resume.json carries a Navidrome stream URL with a Subsonic
+# token — never track it.
+home/dot_config/cliamp/cliamp.log
+home/dot_config/cliamp/cliamp.sock
+home/dot_config/cliamp/cliamp.sock.pid
+home/dot_config/cliamp/history.toml
+home/dot_config/cliamp/resume.json
+
+# Font binaries never enter this repo (2026-09-17). The Anthropic faces are
+# unlicensed brand trade dress and live only on the NAS M.2; pkgs/fontbuilder
+# is the press and ships no bytes. nerd-font-patcher writes its output into the
+# CURRENT DIRECTORY under some flags (`--cell '?'` does not query, it patches),
+# which is how a 440 KB patched TTF once landed in this repo root.
+*.ttf
+*.otf
+*.woff
+*.woff2
+*.tar.zst
