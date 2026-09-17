@@ -183,8 +183,9 @@
 
   # ── the Thunderbolt 3 dock ─────────────────────────────────────────────────
   # This is the docking host: the coordinator's webcam/mic, Sound Blaster,
-  # INZONE dongle, Glove80 and Magic Trackpad all hang off a TB3 dock on this
-  # laptop's Type-C port. boltd authorizes the dock; the domain reports
+  # INZONE dongle and Glove80 all hang off a TB3 dock on this laptop's Type-C
+  # port. The Magic Trackpad left the dock on 2026-09-17 and is Bluetooth-bonded
+  # to the coordinator alone (hosts/coordinator/trackpad.nix). boltd authorizes the dock; the domain reports
   # security "iommu+user", so a plugged dock may still need one enrolment
   # (`boltctl list`, then `boltctl enroll --policy auto <uuid>` once).
   # The fleet-wide bolt line left modules/common.nix on 2026-09-11 with the
