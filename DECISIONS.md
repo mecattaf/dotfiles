@@ -1,6 +1,7 @@
 # DECISIONS
 
-2026-09-17 the served kernel derives verdicts.
+2026-09-17 the served kernel derives verdicts, and a slow seat read is not a
+stale one.
 
 **The evaluator lock is BUILT, not pinned by hand (default, unruled).** No
 ruling says where the served `--evaluator-lock` comes from, and there were two
@@ -34,6 +35,25 @@ entries stay `/bin/sh -c true` no-ops. `DEFERRED.md` `DF-U-D13-4` carries why:
 what a mechanical verdict for CUBS IS is Tom's line (integration G7), and the
 per-item stdin an `eval(...)` entry would need is the uplink render tool's
 second step, not this module's constant `stdin` cell.
+
+**The Claude seat reader is bounded at 16 s, and a failed read re-publishes the
+READER'S cache (default, unruled).** D-B54 fixes the arithmetic (30 + 1 + 20 =
+51 < 60) and leaves the reader's own bound free inside the 20-second
+`TimeoutStartSec`; the reads are concurrent, so three of them fit in one window.
+12 seconds was cutting off reads that were going to land — MEASURED over the
+uplink's `events.jsonl` for 2026-09-16T04Z → 09-17T04Z, `cc` read
+`STALE-MEASURED` on 135 of 286 wakes. And when a read genuinely cannot land, the
+retained reading is now taken from the reader's own `.window-cache-<seat>.json`
+in preference to this feeder's own last row on a tie: the cache is the
+measurement, the row is a projection of it that drops cells (the five-hour
+`resets_at`, the null `model_split`), so re-publishing the row degrades the
+retained reading a little further on every failed read while re-publishing the
+cache does not — and `reading_age_seconds` becomes the age of the measurement,
+which is what `reading_source` already claimed by naming that file.
+`tests/tally-b/probe-seat-feeder-timeout.sh` holds both halves down and was
+MEASURED red against the pre-change feeder in exactly those places. Neither
+change can manufacture a reading from an expired token: re-logging in on `cc`
+and `cc3` stays Tom's (`DEFERRED.md` DF-U-D12-3).
 
 2026-09-13 flake checkouts no longer ride into host closures, chrome-stream
 is installed, and a switch refuses a stale raw-dotfiles checkout.

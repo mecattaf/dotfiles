@@ -79,7 +79,10 @@ AND A FAILED READ KEEPS THE LAST MEASURED ONE. When the sanctioned reader
 times out, hands back an expired token or answers UNKNOWN, the honest row
 is not a blank one: it is the last MEASURED reading this box retained,
 re-published with `reading_age_seconds`, `reading_observed_at`,
-`reading_source` and the grade STALE-MEASURED. D-B92 already rules that a
+`reading_source` and the grade STALE-MEASURED. It is retained from the
+READER'S OWN cache (`.window-cache-<seat>.json`) whenever that cache is at
+least as new as the last row this feeder published, so the age published is
+the age of the measurement and not of a projection of it. D-B92 already rules that a
 reading under 45 s old is the same measurement, so under that age the
 grade stays MEASURED and only the age cell moves; over it the row says
 plainly how old its numbers are. An old reading that says its age is
@@ -115,10 +118,21 @@ KILL_GRACE_SECONDS = 10
 # section 1.1 measured. pi-qwencloud has none it can prove: absent, not zero.
 CONTEXT_WINDOW = {"claude": 200_000, "codex": 258_400}
 
-# The three readers run concurrently. Each is individually bounded at 12
-# seconds, leaving eight seconds inside the systemd service's 20-second hard
-# cap for row shaping and atomic publication (D-B54).
-CLAUDE_READER_TIMEOUT_SECONDS = 12
+# The three readers run concurrently. Each is individually bounded at 16
+# seconds, leaving four seconds inside the systemd service's 20-second hard cap
+# for row shaping and atomic publication (D-B54: 30 + 1 + 20 = 51 < 60, and the
+# 20-second term is what this bound sits inside). The reads are CONCURRENT, so
+# three of them fit in one 16-second window and not in three.
+#
+# WHY IT MOVED FROM 12. MEASURED over ~/.local/state/tally-rewrite/uplink/
+# events.jsonl for 2026-09-16T04Z -> 09-17T04Z: `cc` read STALE-MEASURED on 135
+# of 286 wakes. A read that lands in thirteen seconds is a MEASURED reading this
+# box threw away for a retained one; a read that cannot land in sixteen is a
+# reader that is not going to answer this tick. The four seconds left over are
+# for shaping and one os.replace per row, which is microseconds of work — the
+# cap exists so a hung reader cannot take the service past TimeoutStartSec, not
+# to budget the shaping.
+CLAUDE_READER_TIMEOUT_SECONDS = 16
 
 # The one sentinel this program writes into a cell it cannot fill. The kernel's
 # reader reads it as ABSENT, never as a number and never as a refusal
@@ -477,15 +491,28 @@ def reading_from_published_row(directory, seat):
 def last_measured(directory, seat):
     """The most recent MEASURED reading this box retained for the seat.
 
-    Two sources, written by two clocks and neither reliably ahead of the other:
-    the row this feeder last published (already in the contract's shape) and
-    the sanctioned reader's own D-B92 cache. The newer wins.
+    Two sources, written by two clocks: the sanctioned reader's own D-B92 cache
+    and the row this feeder last published. The newer wins — and on a TIE the
+    CACHE wins, which is the whole of this function's opinion and is deliberate.
+
+    The cache is the reading; the published row is a projection of it. Going
+    back through the row loses cells the row never promised to carry — a
+    five-hour `resets_at` the sentinel-window branch drops, a `model_split` the
+    endpoint answered null for and the row wrote as UNKNOWN — so re-publishing
+    from a row degrades the retained reading a little more on every failed read,
+    while re-publishing from the cache re-publishes the measurement itself. It
+    also makes `reading_age_seconds` the CACHE's true age rather than the age of
+    whatever the last row happened to say, which is what `reading_source`
+    already claims when it names the cache file by path.
+
+    `max` returns the FIRST maximal element, so the order of this tuple IS the
+    tie-break; it is not incidental.
     """
     kept = [
         candidate
         for candidate in (
-            reading_from_published_row(directory, seat),
             reading_from_cache(seat),
+            reading_from_published_row(directory, seat),
         )
         if candidate is not None
     ]
@@ -559,7 +586,8 @@ def claude_row(directory, seat, reading, reason):
       STALE-MEASURED over it, with the age in the row either way;
     * the read did not land at all (a timeout, an expired token, an endpoint
       error) — the last MEASURED reading this box retained is re-published
-      with its age, its origin and the failure's own reason. A row that says
+      with its age, its origin and the failure's own reason, taken from the
+      reader's own cache in preference to this feeder's own last row. A row that says
       "44% of five hours, measured 2,400 s ago" is evidence; a row with a null
       utilization is a hole, and CAP-1 exists because holes were being written.
     * the reading carries the five-hour utilization and NO reset instant (which
