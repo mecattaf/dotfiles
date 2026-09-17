@@ -665,6 +665,18 @@
             sfmono-liga
             ;
 
+          # The two executables the box's tally KIT names (home/tally-uplink.nix,
+          # home/dot_config/tally/kit.json). They are `home.packages` members, so
+          # after a coordinator switch they live at their STABLE per-user profile
+          # paths — which is what the git-tracked kit carries as argv[0], since
+          # ruling 4 (2026-09-16 evening) forbids a hashed store path there.
+          # Exposed here so `nix build .#tally-local-smoke` realises the argv
+          # BEFORE that switch: tests/tally-uplink/probe-FT-3-kit.sh clause K4
+          # runs the join against it, and clause K3 asserts the kit's own argv[0]
+          # is the profile path rather than this one.
+          tally-local-smoke = pkgs.callPackage ./pkgs/tally-local-smoke { };
+          cubs-iteration = pkgs.callPackage ./pkgs/cubs-iteration { pi = pkgs.llm-agents.pi; };
+
           # Explicit accelerator escape hatches. The host module installs the
           # operational subset safely; these aliases also make every requested
           # upstream output directly buildable with `nix build .#<name>` without
@@ -1149,18 +1161,33 @@
           assert cfg.stateDir == "${state}/uplink";
           assert cfg.executor == "coordinator";
           assert cfg.wakes == 1;
-          # THE KIT is a store file, not null and not a path on the box
-          # (TL-18 / D-B18, dotfiles#304). This is the assert FT-3 flipped:
-          # `cfg.kit == null` was the honest state while no kit named an argv
-          # for this estate, and the honest state now is that exactly one
-          # reviewed store artifact does. The three clauses say what a kit must
-          # be here — in the store (so nothing hand-edited on the box can become
-          # the argv table, Rule 9 / dotfiles#293), named by the module that
-          # builds it, and actually REACHING the unit, which the third clause
-          # reads off the rendered argv rather than off the option.
-          assert nixpkgs.lib.hasPrefix "/nix/store/" cfg.kit;
-          assert nixpkgs.lib.hasSuffix "-tally-uplink-kit.json" cfg.kit;
-          assert nixpkgs.lib.hasInfix "--kit /nix/store/" execStart;
+          # THE KIT is a RUNTIME-READ, GIT-TRACKED file — not a store path
+          # (TL-18 / D-B18, dotfiles#304; RULING 4, 2026-09-16 evening). This is
+          # the assert FT-3 set and D-A INVERTS. FT-3's clause was "in the
+          # store, so nothing hand-edited on the box can become the argv table"
+          # (Rule 9, dotfiles#293); ruling 4 answers that a table which needs a
+          # coordinator switch to gain a flow is the wrong artifact, and moves
+          # the review from the store path to the GIT OBJECT — home/home.nix's
+          # own `mkOutOfStoreSymlink` motion, so the path on the box is a link
+          # INTO the checkout and editing it IS editing the repository. The
+          # clauses now say: the option is the runtime path under
+          # ~/.config/tally/, it is NOT a store path, the committed bytes exist
+          # in THIS repository, they parse as JSON and carry the refs the estate
+          # depends on while still not carrying `claude:headless`, and the
+          # runtime path actually REACHES the unit — which the last clause reads
+          # off the rendered argv rather than off the option.
+          assert nixpkgs.lib.hasPrefix "/home/tom/.config/tally/" cfg.kit;
+          assert cfg.kit == "/home/tom/.config/tally/kit.json";
+          assert !(nixpkgs.lib.hasPrefix "/nix/store/" cfg.kit);
+          assert builtins.pathExists ./home/dot_config/tally/kit.json;
+          assert
+            let
+              kitJson = builtins.fromJSON (builtins.readFile ./home/dot_config/tally/kit.json);
+            in
+            builtins.isAttrs (kitJson.entries."build:LOCAL-SMOKE" or null)
+            && builtins.isAttrs (kitJson.entries."build:CUBS-1" or null)
+            && !(kitJson.entries ? "claude:headless");
+          assert nixpkgs.lib.hasInfix "--kit /home/tom/.config/tally/" execStart;
           # THE PLAN stays null, and null is still the honest state for it: the
           # plan body is the acceptor's and arming is Tom's act, so the unit
           # must carry no `--plan` either.

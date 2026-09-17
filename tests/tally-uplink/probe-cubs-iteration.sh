@@ -207,8 +207,16 @@ fusecount() { if [ -r "$rstate/fuse.d/$1" ]; then cat "$rstate/fuse.d/$1"; else 
 fuse_reset_all() { rm -f "$rstate/fuse"; rm -rf "$rstate/fuse.d"; mkdir -p "$rstate/fuse.d"; }
 
 # ---- C2: the kit's own stdin, env -i, --dry.
-kit="$(nix eval --raw ".#nixosConfigurations.coordinator.config.home-manager.users.tom.services.tally-uplink.kit" 2>/dev/null)"
-[ -e "$kit" ] || nix build --no-link ".#nixosConfigurations.coordinator.config.home-manager.users.tom.services.tally-uplink.kit" >/dev/null 2>&1
+# THE KIT IS A GIT-TRACKED FILE SINCE RULING 4 (2026-09-16 evening; D-A).
+# `services.tally-uplink.kit` now evaluates to /home/tom/.config/tally/kit.json,
+# an out-of-store symlink into THIS checkout that only a coordinator switch
+# installs — so the probe reads the checkout's own bytes, which are the same
+# bytes that link will point at, and falls back to the option only if a future
+# revision moves the file. Nothing is built: the kit is no longer a derivation.
+kit="$repo/home/dot_config/tally/kit.json"
+if [ ! -r "$kit" ]; then
+  kit="$(nix eval --raw ".#nixosConfigurations.coordinator.config.home-manager.users.tom.services.tally-uplink.kit" 2>/dev/null)"
+fi
 if [ -r "$kit" ]; then
   out="$(jq -r '.entries["build:CUBS-1"].stdin' "$kit" | env -i TALLY_EXECUTION_ID=e TALLY_USAGE_SOURCE_PATH=/dev/null "$bin" --dry 2>&1)"; rc=$?
   if [ "$rc" = 0 ] && printf '%s' "$out" | jq -e '.dry == true and .id == "CUBS-1" or (.task.id == "CUBS-1")' >/dev/null 2>&1; then
@@ -522,8 +530,14 @@ if [ -r "$kit" ] && [ -r "$lake/apps/uplink/src/kit.mjs" ] && [ -x "$node" ]; th
       const id = 'CUBS-' + n
       const w = kit.resolve('build:' + id)
       for (const f of ['argv', 'cwd', 'env_allowlist', 'usage_source', 'stdin']) if (w[f] === undefined) throw new Error(id + ' missing ' + f)
-      if (!w.argv[0].startsWith('/nix/store/') || !w.argv[0].endsWith('/bin/cubs-iteration')) throw new Error(id + ' argv0 ' + w.argv[0])
-      accessSync(w.argv[0], constants.X_OK)
+      // RULING 4: a git-tracked kit may not name a hashed store path — argv[0]
+      // is the STABLE per-user profile path home.packages puts there.
+      if (w.argv[0] !== '/etc/profiles/per-user/tom/bin/cubs-iteration') throw new Error(id + ' argv0 ' + w.argv[0])
+      // That path exists only after the coordinator switch this change still
+      // needs (DEFERRED.md [OPERATOR]); when it is there it must be executable.
+      let installed = true
+      try { accessSync(w.argv[0], constants.F_OK) } catch { installed = false }
+      if (installed) accessSync(w.argv[0], constants.X_OK)
       if (w.env_allowlist.length !== 0) throw new Error(id + ' env_allowlist not empty')
       if (w.usage_source.kind !== 'halogen-usage/1' || !w.usage_source.path_glob.includes('/uplink/usage/cubs-*.jsonl')) throw new Error(id + ' usage_source ' + JSON.stringify(w.usage_source))
       const p = JSON.parse(w.stdin)

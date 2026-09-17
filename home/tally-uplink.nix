@@ -188,14 +188,15 @@ let
   node = pkgs.nodejs-slim_24;
 
   # ------------------------------------------------------------------ THE KIT
-  #
-  # TL-18 / D-B18, dotfiles#304. The box's argv table: `argv_ref ->
-  # {argv, cwd, env_allowlist, usage_source, stdin}`. The lake never originates
-  # an argv (spec §2.2c) and neither does the uplink — a proposal carries the
-  # NAME and the BOX carries the command (spec §2.1: "the argv the kit names IS
-  # the harness"). This attribute set is that carriage, rendered into the store
-  # so the table the unit resolves against is a reviewed artifact and not a file
-  # somebody edited on the box (Rule 9, dotfiles#293).
+  # TL-18 / D-B18, dotfiles#304; RULING 4 (2026-09-16 evening). The box's argv
+  # table: `argv_ref -> {argv, cwd, env_allowlist, usage_source, stdin}`. The
+  # lake never originates an argv (spec §2.2c) and neither does the uplink — a
+  # proposal carries the NAME and the BOX carries the command (spec §2.1: "the
+  # argv the kit names IS the harness"). That table is no longer an attribute
+  # set rendered into the store by this module: it is the git-tracked file
+  # home/dot_config/tally/kit.json, read at every wake. See WHERE THE KIT NOW
+  # LIVES below. What stays here is the reasoning about WHAT the table names,
+  # and the two packages whose stable profile paths its argv[0]s are.
   #
   # A ref with no entry is a refusal that names the ref AND the kit file
   # (`readKit(...).resolve`, lake apps/uplink/src/kit.mjs) — the uplink never
@@ -234,13 +235,11 @@ let
   # env_clear + an EMPTY env_allowlist is the point (exec.rs:681-687): the child
   # sees the two TALLY_ variables and nothing else, so every path it touches is
   # one the store already names.
-  localSmoke = pkgs.writeShellScript "tally-local-smoke" ''
-    set -eu
-    ${pkgs.coreutils}/bin/mkdir -p "$(${pkgs.coreutils}/bin/dirname "$TALLY_USAGE_SOURCE_PATH")"
-    printf '{"kind":"tally-usage/1","execution_id":"%s","argv_ref":"build:LOCAL-SMOKE","tokens":{"out":0},"ok":true}\n' \
-      "$TALLY_EXECUTION_ID" > "$TALLY_USAGE_SOURCE_PATH"
-    exit 0
-  '';
+  # PACKAGED, not a bare `writeShellScript`, since ruling 4: a git-tracked argv
+  # may not be a hashed store path, so the kit names the stable
+  # /etc/profiles/per-user/tom/bin/tally-local-smoke and this package is the
+  # `home.packages` member that puts it there. The bytes are unchanged.
+  tallyLocalSmoke = pkgs.callPackage ../pkgs/tally-local-smoke { };
 
   # THE HEADLESS CLAUDE SEAT: DESIGNED, DOCUMENTED, AND NOT ENABLED.
   #
@@ -275,66 +274,27 @@ let
   # THE OPEN HALF OF TL-18 is the `usage_source` wrapper: `claude -p` writes its
   # usage into its own session transcript, not to $TALLY_USAGE_SOURCE_PATH, so
   # enabling this entry means wrapping the binary in a script that copies the
-  # session's usage line to the resolved path — the same motion `localSmoke`
-  # performs, over a real transcript. Until that wrapper exists this entry would
-  # attest a run with no usage record, which is the shape of a receipt that
-  # proves nothing.
-  claudeSeatEntry = {
-    argv = [
-      "claude"
-      "-p"
-      "--output-format"
-      "json"
-      "--permission-mode"
-      "dontAsk"
-      "--max-turns"
-      "20"
-      "--model"
-      "opus"
-    ];
-    # the item's own worktree, handed down by the plan; the placeholder below is
-    # not a path this module would ship enabled.
-    cwd = "${rewriteState}/uplink/worktree";
-    env_allowlist = [
-      "HOME"
-      "PATH"
-      "CLAUDE_CONFIG_DIR"
-      "LANG"
-      "TERM"
-    ];
-    usage_source = {
-      kind = "claude-code-usage/1";
-      path_glob = "${rewriteState}/uplink/usage/claude-*.jsonl";
-    };
-    # the brief, handed to the child on stdin by exec.run.
-    stdin = "";
-  };
-  enableClaudeSeat = false;
+  # session's usage line to the resolved path — the same motion
+  # `tally-local-smoke` performs, over a real transcript. Until that wrapper
+  # exists this entry would attest a run with no usage record, which is the
+  # shape of a receipt that proves nothing.
+  # The design is recorded in prose here and in
+  # docs/local-ai/tally-uplink-input.md rather than as a disabled attribute,
+  # now that the kit is rendered outside this module: an attribute nothing
+  # reads would be dead nix, and the refusal the probe asserts comes from the
+  # kit file NOT NAMING the ref, which is a property of
+  # home/dot_config/tally/kit.json and of nothing else.
 
-  # The two declared NO-OPs beside the job, under the acceptor's own taskId
+  # The two declared NO-OPs beside every job, under the acceptor's own taskId
   # scheme: a worker ref is the label, its scope and eval cells are
   # `scope(<taskId>)` and `eval(<taskId>)` (the factory proposes `argv_ref ??
   # taskId`). They exist so a whole plan resolves rather than throwing on its
-  # second cell.
-  #
-  # `/bin/sh -c true`, NOT `/bin/true`. MEASURED on this box: /bin holds exactly
-  # one entry, `sh`, a symlink into the store; an argv naming /bin/true would
-  # attest a spawn failure rather than the pass the cell is about. The lake's own
-  # fixture (fixtures/uplink/kit.json) says the same thing.
-  noopEntry = kind: glob: {
-    argv = [
-      "/bin/sh"
-      "-c"
-      "true"
-    ];
-    cwd = "/";
-    env_allowlist = [ ];
-    usage_source = {
-      inherit kind;
-      path_glob = "${rewriteState}/uplink/usage/${glob}-*.jsonl";
-    };
-    stdin = "";
-  };
+  # second cell. They are rendered by tools/render-tally-kit.py, like every
+  # other entry, and their argv is `/bin/sh -c true`, NOT `/bin/true`: MEASURED
+  # on this box, /bin holds exactly one entry, `sh`, a symlink into the store;
+  # an argv naming /bin/true would attest a spawn failure rather than the pass
+  # the cell is about. The lake's own fixture (fixtures/uplink/kit.json) says
+  # the same thing.
 
   # ------------------------------------------------------- THE CUBS CAMPAIGN
   #
@@ -353,18 +313,19 @@ let
   # validation command, one repair process, commit on pass (never a push), a
   # receipt.json per task, and the one usage line at $TALLY_USAGE_SOURCE_PATH
   # the witness_record's `usage_source` points at — the same join
-  # `localSmoke` above closes, over a real run. env_allowlist is EMPTY for the
+  # `tally-local-smoke` above closes, over a real run. env_allowlist is EMPTY for the
   # same reason it is for LOCAL-SMOKE: the child sees the two TALLY_ variables
   # and nothing else, and every program it runs is a store path it carries.
   #
   # WHY `stdin` IS A POINTER AND NOT THE TASK. A kit entry's `stdin` is STATIC
-  # bytes in this store file (lake apps/uplink/src/kit.mjs — the entry is
+  # bytes in the kit file (lake apps/uplink/src/kit.mjs — the entry is
   # `{argv, cwd, env_allowlist, usage_source, stdin}`; apps/uplink/src/
   # uplink.mjs:623 hands `entry.stdin ?? ""` to exec.run; the kernel writes it
   # to the child after its start marker, tally exec.rs:747). The lake's own
   # e2e kit does put the whole item JSON there (tools/e2e-check.mjs:414-470),
   # but that kit is MATERIALISED PER RUN by a script; this one is a reviewed
-  # store artifact that a day's worklist must not force a switch to change.
+  # GIT OBJECT, and a day's worklist must not force a commit to it either —
+  # ruling 4 removed the switch, and the pointer removes the daily churn.
   # So the entry hands over a pointer — {"worklist", "id"} — and
   # cubs-iteration resolves the task line from
   # ~/mecattaf/cubs-campaign/worklists/current.jsonl, which the morning review
@@ -380,83 +341,41 @@ let
   # plan never mints has an entry nobody resolves. 200 covers campaign days
   # 1-7 (28 on day 1, ~15-30/day after) without a second coordinator switch.
   cubsIteration = pkgs.callPackage ../pkgs/cubs-iteration { pi = pkgs.llm-agents.pi; };
-  cubsCampaignDir = "${config.home.homeDirectory}/mecattaf/cubs-campaign";
-  cubsWorklist = "${cubsCampaignDir}/worklists/current.jsonl";
-  cubsCount = 200;
-  cubsEntry = id: {
-    argv = [ "${cubsIteration}/bin/cubs-iteration" ];
-    cwd = cubsCampaignDir;
-    env_allowlist = [ ];
-    usage_source = {
-      kind = "halogen-usage/1";
-      path_glob = "${rewriteState}/uplink/usage/cubs-*.jsonl";
-    };
-    stdin = builtins.toJSON {
-      worklist = cubsWorklist;
-      inherit id;
-    } + "\n";
-  };
-  cubsEntries = lib.listToAttrs (
-    lib.concatMap (
-      n:
-      let
-        id = "CUBS-${toString n}";
-      in
-      [
-        (lib.nameValuePair "build:${id}" (cubsEntry id))
-        (lib.nameValuePair "scope(build:${id})" (noopEntry "opaque-noop/1" "scope-noop"))
-        (lib.nameValuePair "eval(build:${id})" (noopEntry "opaque-noop/1" "eval-noop"))
-      ]
-    ) (lib.range 1 cubsCount)
-  );
 
-  kitFile = pkgs.writeText "tally-uplink-kit.json" (
-    builtins.toJSON {
-      _note = [
-        "The coordinator's KIT (U-D14, TL-18/D-B18, dotfiles#304). argv_ref -> the"
-        "command, its cwd, the environment names it may see, where its usage record"
-        "lands, and what it is handed on stdin. Generated by home/tally-uplink.nix;"
-        "do not edit on the box (Rule 9, dotfiles#293) — edit the module and switch."
-        ""
-        "ENABLED: build:LOCAL-SMOKE, a deterministic local job for the mechanical row."
-        "It writes one JSON line at $TALLY_USAGE_SOURCE_PATH carrying the"
-        "$TALLY_EXECUTION_ID the kernel gave it, which is the usage_source join the"
-        "witness_record points at."
-        ""
-        "NOT ENABLED: claude:headless. The seat rows are feeder-owned (tally"
-        "docs/rows.md:41-55, modules/tally-b.nix:57-63) and no kernel lease on a"
-        "Claude seat is sanctioned; the ruling is asked in dotfiles#362. A proposal"
-        "naming it is refused by name against this file, which is the intended"
-        "outcome and not a gap."
-        ""
-        "usage_source.kind is an OPAQUE label the kernel carries and never reads"
-        "(tally docs/transport.md §2). It names no harness and nothing branches on it."
-        ""
-        "ENABLED: build:CUBS-1 .. build:CUBS-200 (+ scope/eval no-ops), the"
-        "cubs-halogen-probe-1 campaign (FRONT-12 bootstrap): one store executable,"
-        "cubs-iteration, per item; stdin is a POINTER {worklist, id} into"
-        "~/mecattaf/cubs-campaign/worklists/current.jsonl, resolved by the script."
-        "docs/local-ai/cubs-campaign.md."
-      ];
-      entries =
-        {
-          "build:LOCAL-SMOKE" = {
-            argv = [ "${localSmoke}" ];
-            cwd = "${rewriteState}/uplink";
-            env_allowlist = [ ];
-            usage_source = {
-              kind = "tally-usage/1";
-              path_glob = "${rewriteState}/uplink/usage/local-smoke-*.jsonl";
-            };
-            stdin = "";
-          };
-          "scope(build:LOCAL-SMOKE)" = noopEntry "opaque-noop/1" "scope-noop";
-          "eval(build:LOCAL-SMOKE)" = noopEntry "opaque-noop/1" "eval-noop";
-        }
-        // cubsEntries
-        // lib.optionalAttrs enableClaudeSeat { "claude:headless" = claudeSeatEntry; };
-    }
-  );
+  # ------------------------------------------------- WHERE THE KIT NOW LIVES
+  #
+  # RULING 4 (2026-09-16 evening): "Coordinator switching must NOT be required
+  # every time a Tally flow is added. A new kit entry / flow must load without a
+  # home-manager or NixOS switch. ... The kit path must become a runtime-read,
+  # git-tracked location, not a store path baked at switch time."
+  #
+  # So the 603 entries are no longer built here. They are RENDERED by
+  # tools/render-tally-kit.py into home/dot_config/tally/kit.json in this
+  # repository, committed, and installed at ~/.config/tally/kit.json by an
+  # out-of-store symlink — the same motion home/home.nix performs for the raw
+  # dotfiles. The uplink resolves `--kit` with a `readFileSync` per pass (lake
+  # apps/uplink/src/kit.mjs), so the file it reads on the NEXT timer wake is
+  # whatever the checkout holds then: adding a flow is an edit and a commit.
+  #
+  # RULE 9 (dotfiles#293, "do not edit it on the box") YIELDS FOR THIS FILE and
+  # for this file only. Rule 9 protects a reviewed artifact from a hand edit;
+  # ruling 4 moves the review from the STORE to the GIT OBJECT, which is the
+  # stronger of the two for a table that must change daily without a switch —
+  # and the path on the box is a symlink INTO the checkout, so editing it IS
+  # editing the repository. DECISIONS.md carries the entry.
+  #
+  # What the store still owns is the ARGV: both executables are `home.packages`
+  # members below, so every argv[0] in the JSON is a stable per-user profile
+  # path that survives a rebuild of its own derivation — and a hashed store path
+  # inside the JSON is a red oracle (`grep -c /nix/store` over it == 0, probe
+  # clause K0).
+  #
+  # The checkout is the SAME one every raw dotfile points at
+  # (home/raw-dotfiles-guard.nix `rawDotfiles.repoDir`), so a machine that has
+  # not cloned it dangles this symlink exactly as it dangles the others, which
+  # is the failure mode that repository already reasons about.
+  kitCheckoutFile = "${config.rawDotfiles.repoDir}/home/dot_config/tally/kit.json";
+  kitRuntimePath = "${config.home.homeDirectory}/.config/tally/kit.json";
 in
 # The two invariants this unit is graded on, at eval time and on every host that
 # imports the module (the import is unconditional; only the enablement is
@@ -512,23 +431,58 @@ assert uplinkPeriod != "";
     # `tally-uplink-topology`, so raising it here would be red.
     wakes = 1;
 
-    # THE KIT (TL-18 / D-B18, dotfiles#304) — no longer null, and this is the
-    # change U-D14 deferred as DF-U-D14-3. The box's argv table now exists as a
-    # store file: `argv_ref → {argv, cwd, env_allowlist, usage_source, stdin}`,
-    # built above. It names ONE enabled job — `build:LOCAL-SMOKE`, a local
-    # deterministic run for the `mechanical` row, whose whole purpose is to
-    # close the `usage_source` join the kernel has never yet been given — plus
-    # that job's two declared no-op cells, and it deliberately does NOT name the
-    # designed `claude:headless` entry: no kernel lease on a Claude seat is
-    # sanctioned (D-B6; the ruling is asked in dotfiles#362), and a ref with no
-    # entry is a refusal that names the ref and this file rather than a guess.
+    # THE KIT (TL-18 / D-B18, dotfiles#304; RULING 4, 2026-09-16 evening) — a
+    # RUNTIME PATH, not a store path, and this is what DF-U-D14-3 deferred and
+    # FT-3 first delivered as a store file. The option's type in the pinned lake
+    # is `nullOr str`, so a plain path is accepted, and the uplink reads it with
+    # a `readFileSync` on every timer wake (apps/uplink/src/kit.mjs): adding a
+    # flow is an edit to home/dot_config/tally/kit.json plus a commit, and never
+    # a home-manager or NixOS switch, which is ruling 4's whole content.
+    #
+    # The table it names is the 603-entry one tools/render-tally-kit.py renders:
+    # `build:LOCAL-SMOKE` and its two no-op cells, plus `build:CUBS-1..200` and
+    # theirs. It deliberately does NOT name the designed `claude:headless`
+    # entry: no kernel lease on a Claude seat is sanctioned (D-B6; the ruling is
+    # asked in dotfiles#362), and a ref with no entry is a refusal that names
+    # the ref and this file rather than a guess.
     #
     # `plan` STAYS NULL, and null is still the honest state for it: the plan
     # body is the acceptor's, re-POSTed to arm and re-arm, and authoring one
     # here would be the lake proposing from the wrong side of the seam. Arming
     # is Tom's act, not this module's.
-    kit = "${kitFile}";
+    kit = kitRuntimePath;
   };
+
+  # THE KIT ITSELF, out of store (RULING 4). `mkOutOfStoreSymlink` is the motion
+  # home/home.nix already performs for every raw dotfile: the link in
+  # ~/.config/tally/ points at the CHECKOUT, not at a store copy, so a `git
+  # pull` or a one-line edit in the repository is live at the uplink's next wake
+  # with no activation of any kind. A machine that has not cloned the repository
+  # at `rawDotfiles.repoDir` dangles this link exactly as it dangles the others,
+  # which is the failure mode home/raw-dotfiles-guard.nix already reasons about
+  # — and a dangling kit is a LEGIBLE failure ("cannot read the kit <path>",
+  # lake apps/uplink/src/kit.mjs), never a silent run with no argv table.
+  xdg.configFile = lib.mkIf isCoordinator {
+    "tally/kit.json".source = config.lib.file.mkOutOfStoreSymlink kitCheckoutFile;
+  };
+
+  # THE TWO EXECUTABLES THE KIT NAMES, at STABLE paths.
+  # `home-manager.useUserPackages = true` (flake.nix) puts every `home.packages`
+  # member under /etc/profiles/per-user/tom, so
+  # /etc/profiles/per-user/tom/bin/tally-local-smoke and
+  # /etc/profiles/per-user/tom/bin/cubs-iteration are the argv[0]s the rendered
+  # JSON carries. That indirection is the point: the JSON is git-tracked, and a
+  # hashed store path in a git-tracked file goes stale the moment its derivation
+  # rebuilds — refreshing it would be the very switch ruling 4 removed. The
+  # profile path does not move when the derivation does.
+  #
+  # Installing them is the one OPERATOR act this change still needs (DEFERRED.md
+  # DF-KIT-1): one coordinator switch installs the symlink and these two
+  # binaries, and after it no further switch is needed to add a flow.
+  home.packages = lib.mkIf isCoordinator [
+    tallyLocalSmoke
+    cubsIteration
+  ];
 
   # The uplink's own subdirectory, declared the way home/seat-feeder.nix declares
   # the rewrite's meters dir and home/tally.nix declares the live one
@@ -548,7 +502,8 @@ assert uplinkPeriod != "";
     "d ${rewriteState}/uplink 0700 - - -"
     # The kit's usage drop. Every `usage_source.path_glob` above resolves under
     # this directory, and the kernel resolves the glob but does NOT create the
-    # directory — `localSmoke` mkdir -p's it for the same reason, and this rule
+    # directory — `tally-local-smoke` mkdir -p's it for the same reason, and
+    # this rule
     # gives it the MODE (0700, as for a per-user state subtree) and its
     # existence before the first lease rather than at the mercy of the first
     # child that runs. A usage record is the artifact half of tonight's

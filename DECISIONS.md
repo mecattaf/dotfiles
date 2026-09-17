@@ -1,5 +1,73 @@
 # DECISIONS
 
+2026-09-17 D-A, the KIT becomes a runtime-read, git-tracked file (RULING 4 of
+the 2026-09-16 evening session): *"Coordinator switching must NOT be required
+every time a Tally flow is added. A new kit entry / flow must load without a
+home-manager or NixOS switch. ... The kit path must become a runtime-read,
+git-tracked location, not a store path baked at switch time."* Five lines are
+decided here; the first is the ruling's, the other four are defaults taken
+without one.
+
+(1) **RULE 9 YIELDS FOR THIS FILE, and for this file only.** Rule 9
+(dotfiles#293) is "do not edit it on the box": FT-3 satisfied it by rendering
+the kit with `pkgs.writeText`, so the argv table was a store path nobody could
+hand-edit. Ruling 4 answers that a table which needs a coordinator switch to
+gain a flow is the wrong artifact, and moves the review from the STORE PATH to
+the GIT OBJECT. The kit is now `home/dot_config/tally/kit.json`, committed here
+and installed at `~/.config/tally/kit.json` by `mkOutOfStoreSymlink` — the same
+motion `home/home.nix` performs for every raw dotfile. Rule 9's protection is
+not lost, it is relocated: the path on the box is a symlink INTO the checkout,
+so editing it *is* editing the repository, and the diff is the review. The
+uplink resolves `--kit` with a `readFileSync` per pass (lake
+`apps/uplink/src/kit.mjs`), so an edit is live at the next timer wake. This is
+Tom's ruling and is not a default.
+
+(2) **Every `argv[0]` is a stable per-user profile path — default, unruled.**
+The ruling says where the TABLE lives; it does not say what the table may name.
+A hashed store path inside a git-tracked file would go stale the moment its
+derivation rebuilt, and refreshing it would be exactly the switch ruling 4
+removed — so the two executables are named
+`/etc/profiles/per-user/tom/bin/tally-local-smoke` and
+`/etc/profiles/per-user/tom/bin/cubs-iteration`, which `home.packages` in
+`home/tally-uplink.nix` puts there under `home-manager.useUserPackages = true`.
+The store still owns the BYTES (the profile entry is a symlink into it); it
+stops owning the NAME. `grep -c /nix/store home/dot_config/tally/kit.json` == 0
+is the fence, asserted by probe clause K0 and by the item's own oracle. The
+cost is named: the kit's argv is only as correct as the last switch, so a
+renamed binary is a spawn failure the kernel attests rather than an eval error
+— which is the same failure class a missing `cwd` already has.
+
+(3) **The 603 entries are RENDERED by a checked-in tool, not hand-written —
+default, unruled.** `tools/render-tally-kit.py` writes the LOCAL-SMOKE trio and
+`build:CUBS-1..200` with their `scope(...)`/`eval(...)` cells; `--check` diffs
+the committed bytes against a fresh render and is a clause of the probe. The
+alternative (a hand-maintained 603-entry JSON) is how a table acquires a typo
+nobody reads. Hand-editing remains LEGAL — that is ruling 4's whole point — but
+an edit inside the generated ranges must be mirrored in the tool or `--check`
+goes red, which is the intended friction and not a bug.
+
+(4) **`claude:headless` stops being a disabled Nix attribute and becomes
+prose — default, unruled.** With the table rendered outside the module,
+`claudeSeatEntry` behind `enableClaudeSeat = false` would be Nix nothing reads.
+The property the probe asserts is unchanged and is stronger where it matters:
+the refusal comes from the kit file NOT NAMING the ref (`readKit(...).resolve`
+names the ref and the file), which is a property of the JSON and of nothing
+else. The design is written out in `docs/local-ai/tally-uplink-input.md` and in
+`home/tally-uplink.nix`'s prose. D-B6 and dotfiles#362 are untouched.
+
+(5) **Probe clause K7 carries one narrow fence — default, unruled.**
+`tests/tally-uplink/test-tally-uplink-input.sh` clause A is the repo-wide `nix
+flake check --offline --no-build`, red on this box for reasons with nothing to
+do with the kit: `checks.x86_64-linux.nas-topology`'s 8731 firewall assertion,
+and on an earlier pass `checks.x86_64-linux.nas-personal-tailnet`'s offline
+input. MEASURED 2026-09-17: the same suite on `main` 202d9c31 fails at the same
+single clause with the same tails, so it is inherited. `probe-FT-3-kit.sh` prints that tail and fences K7 ONLY when the
+suite's failing set is exactly `{A}`; any second failing clause is a hard FAIL,
+so a real regression cannot hide behind it. `DEFERRED.md` DF-KIT-3 carries the
+row with the tail verbatim. The alternative — a probe that can never be green
+while an unrelated repo-wide check is ENV-red — would retire the probe as an
+oracle for every later change, which is the worse of the two.
+
 2026-09-16 cubs-halogen-probe-1 (FRONT-12 bootstrap): the dotfiles half of the
 CUBS campaign is ONE store executable and 120 generated kit entries, and
 nothing else in this repository moves. `pkgs/cubs-iteration` is a
