@@ -16,10 +16,12 @@ spawn-at-startup "sh" "-c" "sleep 0.5 && kanshi"
 // boot. Mod+D is ~/.local/bin/launcher now — an fzf script in a floating kitty,
 // with no daemon to start.
 
-// No wallpaper daemon (Tom 2026-09-11): the backdrop is layout.kdl's
-// background-color #000000, which the Zenbook's OLED renders as panel-off
-// black. ~/.local/bin/wallpaper still exists for a one-off swaybg, and nothing
-// restarts one at login.
+// Wallpaper (Tom 2026-09-16): the claude.ai/imagine "olive" ribbons, rendered
+// at 5120x2880 for the PA27JCV from the recovered source SVG (~/colors/waves).
+// ~/.local/bin/wallpaper starts swaybg with that file as its default; run it
+// with a path to swap the image at runtime. layout.kdl's background-color
+// #000000 stays as the fallback under it.
+spawn-at-startup "wallpaper"
 
 
 // ── gsettings ────────────────────────────────────────────────

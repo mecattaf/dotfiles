@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # wallpaper -- set desktop wallpaper
-# Uses swaybg. Home Manager deploys the default repository wallpaper to
+# Uses swaybg. Home Manager deploys the repository wallpapers to
 # ~/.local/share/wallpapers; this script re-points it at runtime.
-DEFAULT="$HOME/.local/share/wallpapers/wallpaper.jpg"
+# Default (Tom 2026-09-16): the claude.ai/imagine "olive" wallpaper — the exact
+# recovered SVG (~/colors/waves/capture/imagine-background.svg) rasterised by
+# Chrome under Anthropic's own CSS recipe (cover/center) at 5120x2880 on the
+# olive ground #7c8b62. See ~/colors/waves/STATE.md.
+DEFAULT="$HOME/.local/share/wallpapers/imagine-olive-5120x2880.png"
 path="${1:-$DEFAULT}"
 
 if [[ ! -f "$path" ]]; then
