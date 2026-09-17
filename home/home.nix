@@ -296,9 +296,14 @@ in
     # (the one Apple family kept in the 2026-08-21 sweep — "too good to
     # have"); before this key was set at all, GTK fell back to Adwaita Sans —
     # the "odd Nautilus font" on first boot.
-    font-name = "SF Pro Display 11";
-    document-font-name = "Adwaita Sans 12";
-    monospace-font-name = "Adwaita Mono 11";
+    # 2026-09-17: the Anthropic suite. All three keys move together so the
+    # desktop is consistent on day one; sizes preserved so no GTK app changes
+    # metrics. sf-pro stays installed and reachable by name.
+    # fc-match "Anthropic Sans" returns the file's default instance (opsz 16 =
+    # the Text cut), the right optical size for an 11 pt UI.
+    font-name = "Anthropic Sans 11";
+    document-font-name = "Anthropic Serif 12";
+    monospace-font-name = "AnthropicMono Nerd Font Mono 11";
   };
 
   # bin/ scripts: whole-dir (the repo owns ~/.local/bin).
