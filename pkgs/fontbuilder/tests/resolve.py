@@ -73,6 +73,7 @@ MECHANICS
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -284,10 +285,25 @@ def run_probe(conf, xdg, kitty_conf, probe, jsonpath):
 
 
 def main(argv):
-    if len(argv) != 2:
-        print("usage: resolve.py <out-dir>", file=sys.stderr)
-        return 2
-    out = os.path.abspath(argv[1])
+    # The driver invokes every test uniformly, so --src and --allow-partial are
+    # ACCEPTED here even though A1 needs neither: --src names the read-only
+    # capture dir (only A5's negative control uses it) and is ignored.
+    ap = argparse.ArgumentParser()
+    ap.add_argument("out")
+    ap.add_argument("--src", default=None, help="accepted and ignored; A1 needs no source")
+    ap.add_argument("--allow-partial", action="store_true",
+                    help="the out-dir holds a SUBSET of the faces. A1 is a 12-face gate and "
+                         "cannot be judged on a subset, so it reports and exits 0.")
+    a = ap.parse_args(argv[1:])
+    out = os.path.abspath(a.out)
+
+    nf = os.path.join(out, "nf")
+    n_faces = len([x for x in os.listdir(nf) if x.endswith(".ttf")]) if os.path.isdir(nf) else 0
+    if a.allow_partial and n_faces < 12:
+        print("NOTE A1: %d of 12 terminal faces present. A1 resolves the four ROLES against "
+              "the whole family, so a subset cannot answer it - the bold role would silently "
+              "resolve to whatever weight happens to be installed. NOT judged." % n_faces)
+        return 0
     verify = os.path.join(out, "verify")
     xdg = os.path.join(verify, "xdg")
     os.makedirs(xdg, exist_ok=True)

@@ -36,6 +36,7 @@ nameID: S9 reassigns nameIDs (unshare -> re-point -> strip -> gc).
 """
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 
@@ -67,10 +68,15 @@ def instance_strings(f):
 
 
 def main(argv):
-    if len(argv) != 3:
-        print("usage: a12.py <capture-dir> <out-dir>", file=sys.stderr)
-        return 2
-    capture, out = os.path.abspath(argv[1]), os.path.abspath(argv[2])
+    ap = argparse.ArgumentParser()
+    ap.add_argument("capture", help="the READ-ONLY capture dir holding the untouched Serif")
+    ap.add_argument("out")
+    ap.add_argument("--src", default=None,
+                    help="accepted and ignored; the capture dir is the first positional here")
+    ap.add_argument("--allow-partial", action="store_true",
+                    help="accepted and ignored; A12 needs only the one Serif face")
+    a = ap.parse_args(argv[1:])
+    capture, out = os.path.abspath(a.capture), os.path.abspath(a.out)
     src = os.path.join(capture, "fonts-ttf", "AnthropicSerif-Roman-Web.ttf")
     dst = None
     for rel in CANDIDATES:
