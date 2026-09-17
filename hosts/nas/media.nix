@@ -200,7 +200,7 @@ in
           # Enabled && ScanOnStartup). Upstream defaults this to TRUE, and this
           # is what was actually firing: the service is socket-activated,
           # StopWhenUnneeded, behind a proxy that exits after 15 min idle, so
-          # it restarts constantly and every cliamp launch or web-UI visit
+          # it restarts constantly and every client connect or web-UI visit
           # after a quiet spell triggered a full 34k-file walk. One was watched
           # taking 9+ minutes on 2026-08-18.
           ScanOnStartup = false;

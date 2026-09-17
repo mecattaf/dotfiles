@@ -179,8 +179,9 @@ let
     "lua/plugins/neoscroll.lua"
     "lua/plugins/nvim-tree.lua"
     "lua/plugins/telescope.lua"
-    "lua/plugins/bufferline.lua"
     "lua/plugins/lualine.lua"
+    # the theme switcher's palette loader (docs/theme-switcher-2026-09-17.md)
+    "lua/theme.lua"
   ];
 
   # every binary the nvim config shells out to (replaces mason; covers all plugin CLIs)

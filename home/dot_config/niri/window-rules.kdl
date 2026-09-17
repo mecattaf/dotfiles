@@ -40,6 +40,20 @@ window-rule {
     }
 }
 
+// F2 theme picker / Shift+F2 accent picker: the same compact floating prompt.
+window-rule {
+    match app-id="theme-prompt"
+    open-floating true
+    open-focused true
+    default-column-width { fixed 640; }
+    default-window-height { fixed 300; }
+    border {
+        width 2
+        active-color "#DA7756"
+        inactive-color "#DA7756"
+    }
+}
+
 // F1 Alexa wake picker: the same compact floating prompt as F9/F10.
 window-rule {
     match app-id="wake-prompt"
@@ -155,6 +169,22 @@ window-rule {
 window-rule {
     match app-id=r#"^org\.wezfurlong\.wezterm$"#
     default-column-width {}
+}
+
+// Frosted kitty (Tom 2026-09-16, restored for the Imagine olive wallpaper):
+// kitty's background_opacity (0.96, kitty.conf) makes only the terminal bg
+// translucent; this niri-side blur frosts the wallpaper behind it so the
+// window reads as frosted glass, not see-through, and text stays crisp.
+// One rule for every kitty-derived app-id: the plain terminal, the herdr
+// projector (`kitty --class herdr-projector`), and the fzf *-prompt popups —
+// kitty.conf's opacity applies to all of them, so all of them get the blur.
+// Deleted 2026-09-11 for the Zenbook's true-black OLED; back now that the
+// coordinator has a wallpaper again.
+window-rule {
+    match app-id=r#"^(kitty|herdr-projector|[a-z-]+-prompt)$"#
+    background-effect {
+        blur true
+    }
 }
 
 // Frosted Nautilus: MacTahoe's "normal" (non -solid) gtk-4.0 variant already

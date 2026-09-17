@@ -71,15 +71,9 @@ let
     "kitty"
     "fish"
     "starship"
-    "zathura"
     "yt-dlp"
     "kanshi"
     "qt6ct"
-    # NOT cliamp: it writes its control socket, pidfile, log, play history and
-    # resume state beside its config, so a whole-dir link put all of that into
-    # the working tree (resume.json, carrying a Navidrome stream URL with its
-    # Subsonic token, was even committed). ~/.config/cliamp is a real directory
-    # now and only its config is linked, file by file, below. (2026-09-13)
   ];
 
   # Python interpreter backing the niri helper bin/ scripts (wifi-menu, fzf-nmcli, …).
@@ -133,6 +127,7 @@ in
     ./seat-feeder.nix
     ./ssh.nix
     ./tally.nix
+    ./theme.nix
     ./tally-filler.nix
     ./tally-pump.nix
     ./tally-uplink.nix
@@ -160,44 +155,11 @@ in
   # ---------------------------------------------------------------------------
   # RAW configs (whole-dir per ~/.config/<name>).
   # ---------------------------------------------------------------------------
-  # cliamp's one-time move from a whole-dir link to a real directory
-  # (2026-09-14). Home Manager cannot make that move by itself: its cleanup
-  # keeps the old ~/.config/cliamp link (the new generation still has a
-  # .config/cliamp path), and its link step then backs up config.toml and
-  # themes/ THROUGH that link, i.e. inside the repo checkout, and writes
-  # store symlinks there that resolve back to themselves. Reproduced with this
-  # Home Manager's own check-link-targets/cleanup/link scripts in a scratch
-  # HOME. So before linkGeneration, drop the old link when it points into a
-  # Home Manager generation, create the real directory, and carry cliamp's
-  # history.toml and resume.json across so nothing is lost. Idempotent: once
-  # ~/.config/cliamp is a real directory the test is false. Removable once
-  # every host has switched past it.
-  home.activation.cliampRealDir = lib.hm.dag.entryBetween [ "linkGeneration" ] [ "writeBoundary" ] ''
-    cliamp_dir="$HOME/.config/cliamp"
-    if [[ -L "$cliamp_dir" && "$(readlink "$cliamp_dir")" == $(readlink -e /nix/store)/*-home-manager-files/* ]]; then
-      cliamp_old="$(readlink -e "$cliamp_dir" || true)"
-      run rm $VERBOSE_ARG "$cliamp_dir"
-      run mkdir -p $VERBOSE_ARG "$cliamp_dir"
-      if [[ -n "$cliamp_old" ]]; then
-        for f in history.toml resume.json; do
-          if [[ -f "$cliamp_old/$f" && ! -e "$cliamp_dir/$f" ]]; then
-            run cp -p $VERBOSE_ARG "$cliamp_old/$f" "$cliamp_dir/$f"
-          fi
-        done
-      fi
-    fi
-  '';
-
   xdg.configFile =
     lib.genAttrs configDirs (d: {
       source = link "dot_config/${d}";
     })
     // {
-      # cliamp: config and themes only, so the directory itself stays writable
-      # for the runtime files (see the note in configDirs above).
-      "cliamp/config.toml".source = link "dot_config/cliamp/config.toml";
-      "cliamp/themes".source = link "dot_config/cliamp/themes";
-
       # kitty/ is a whole-dir out-of-store symlink, so the store-path fragment can't
       # nest inside it — emit at a neutral path; kitty.conf includes it by absolute
       # (env-expanded) path.
@@ -271,26 +233,18 @@ in
           ''
             // GENERATED per-host (home.nix). No host-specific niri config on ${hostName}.
           '';
-    }
-    // (
-      # GTK4 / libadwaita apps (Nautilus) ignore gtk-theme-name; the only override
-      # they honor is user CSS at ~/.config/gtk-4.0/. Link MacTahoe's gtk-4.0 assets
-      # there so Nautilus renders the theme from first boot — home-manager's gtk
-      # module does not do this, which is why nwg-look was needed before.
-      let
-        theme4 = "${pkgs.mactahoe-gtk-theme}/share/themes/MacTahoe-Dark-grey/gtk-4.0";
-      in
-      {
-        "gtk-4.0/gtk.css".source = "${theme4}/gtk.css";
-        "gtk-4.0/gtk-dark.css".source = "${theme4}/gtk-dark.css";
-        "gtk-4.0/assets".source = "${theme4}/assets";
-      }
-    );
+    };
+  # (The gtk-4.0/{gtk.css,gtk-dark.css,assets} links that used to sit here — a
+  # store symlink of MacTahoe-Dark-grey's gtk-4.0 — moved to home/theme.nix,
+  # where they point through the ~/.config/theme pointer at whichever theme's
+  # MacTahoe variant is selected. 2026-09-17.)
 
-  # Belt-and-suspenders for any gsettings-aware app (agrees with GTK_THEME env).
+  # gtk-theme / icon-theme / color-scheme are deliberately NOT pinned here any
+  # more (2026-09-17): the theme switcher owns them at runtime (`theme apply`
+  # → gsettings, docs/theme-switcher-2026-09-17.md), and a pinned value would
+  # snap a light session back to Dark on every switch. dconf keeps whatever
+  # `theme` last wrote. Fonts stay.
   dconf.settings."org/gnome/desktop/interface" = {
-    gtk-theme = "MacTahoe-Dark-grey";
-    color-scheme = "prefer-dark";
     # Interface fonts for Nautilus and every other GTK app that reads
     # font-name. sf-pro ships system-wide via modules/common.nix fonts.packages
     # (the one Apple family kept in the 2026-08-21 sweep — "too good to
@@ -553,7 +507,6 @@ in
       mpv
       imv
       vlc
-      zathura
       ffmpeg-full
       ffmpegthumbnailer
 
@@ -591,7 +544,6 @@ in
       pkgs.crm # vendored personal CRM CLI; data stays at its built-in notes path
       pkgs.dcal # vendored calendar CLI; data lives under XDG, nothing in git
       music-acquire # evidence-gated SoundCloud → YouTube → capture acquisition
-      cliamp # terminal music player → navidrome. overlay pkg, see pkgs/cliamp.nix
       uv # Astral Python pkg/project manager. "hot" overlay pkg — rides nixpkgs-fresh HEAD (flake.nix), so it stays latest independent of the main pin.
 
       # artifact system (md-artifact / presentation-beta / publish-artifact skills;

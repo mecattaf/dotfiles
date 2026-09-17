@@ -121,23 +121,8 @@ require("lazy").setup({
     'akinsho/bufferline.nvim',
     dir = dir('bufferline.nvim'),
     config = function()
-      require('bufferline').setup({
-        options = {
-          hover = {
-            enabled = true,
-            delay = 200,
-            reveal = {'close'}
-          }
-        },
-        highlights = {
-          fill = {
-            bg = "#000000"
-          },
-          background = {
-            bg = "#000000"
-          }
-        }
-      })
+      -- options + theme-ground highlights from lua/theme.lua (see catppuccin above)
+      require('bufferline').setup(require('theme').bufferline_opts())
     end
   },
   {
@@ -145,63 +130,10 @@ require("lazy").setup({
    name = 'catppuccin',
    dir = dir('catppuccin'),
    config = function()
-     require('catppuccin').setup({
-       flavour = "mocha",
-       transparent_background = true,
-       color_overrides = {
-         mocha = {
-           base = "#000000",
-           mantle = "#000000",
-           crust = "#000000",
-           text = "#EAECF0",
-           subtext1 = "#D3D7DE",
-           overlay1 = "#818898",
-           red = "#F47B85",
-           green = "#9BE963",
-           blue = "#70B8FF",
-           mauve = "#CC7BF4",
-           peach = "#FBAD60",
-           teal = "#5EEDED",
-         },
-       },
-       custom_highlights = function(colors)
-         local U = require("catppuccin.utils.colors")
-         local bg_amount = 0.095
-         local rainbow = {
-           colors.blue,   -- rainbow1 (H1)
-           colors.peach,  -- rainbow2 (H2)
-           colors.green,  -- rainbow3 (H3)
-           colors.teal,   -- rainbow4 (H4)
-           colors.yellow, -- rainbow5 (H5)
-           colors.mauve,  -- rainbow6 (H6)
-         }
-         local highlights = {}
-         for i, color in ipairs(rainbow) do
-           highlights["rainbow" .. i] = { fg = color }
-           highlights["RenderMarkdownH" .. i] = { fg = color, bold = true }
-           highlights["RenderMarkdownH" .. i .. "Bg"] = { bg = U.darken(color, bg_amount, colors.base) }
-         end
-         highlights["RenderMarkdownCode"] = { bg = U.darken(colors.text, 0.05, colors.base) }
-         highlights["RenderMarkdownCodeInline"] = { fg = colors.peach }
-         highlights["RenderMarkdownBullet"] = { fg = colors.blue }
-         highlights["RenderMarkdownDash"] = { fg = colors.overlay1 }
-         highlights["RenderMarkdownQuote"] = { fg = colors.overlay1 }
-         highlights["RenderMarkdownLink"] = { fg = colors.blue }
-         highlights["RenderMarkdownChecked"] = { fg = colors.green }
-         highlights["RenderMarkdownUnchecked"] = { fg = colors.overlay1 }
-         highlights["RenderMarkdownTableHead"] = { fg = colors.blue }
-         highlights["RenderMarkdownTableRow"] = { fg = colors.subtext1 }
-         -- catppuccin's default Underlined has no fg (just the underline style),
-         -- so man pages, :help tags, etc. render in plain text color instead of
-         -- the Claude-blue used everywhere else for links/URLs.
-         highlights["Underlined"] = { fg = colors.blue, style = { "underline" } }
-         return highlights
-       end,
-       integrations = {
-         render_markdown = true,
-       },
-     })
-     vim.cmd.colorscheme "catppuccin"
+     -- flavour, colour overrides and custom highlights all come from the RAW
+     -- lua/theme.lua, which reads ~/.config/theme/theme.lua (the theme
+     -- switcher's fragment) and can re-apply it live via reload().
+     require('theme').apply_catppuccin()
    end
   },
   {

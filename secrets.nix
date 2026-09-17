@@ -130,9 +130,7 @@ in
 
   # SoundCloud Go+ cookies.txt (Netscape format), consumed by the music-consolidation
   # drain's yt-dlp invocations (systemd user units on coordinator only — see that
-  # repo's docs/SPEC-2026-07-06-original.md). NOT for cliamp: cliamp shells to
-  # `yt-dlp --cookies-from-browser chrome` directly against a live signed-in browser
-  # and has no file-based cookie mode, so it needs no secret at all (dotfiles#70).
+  # repo's docs/SPEC-2026-07-06-original.md).
   "secrets/soundcloud-cookies.age".publicKeys = editors ++ coordinatorOnly;
 
   # YouTube Music cookies.txt (Netscape format), exported same sitting as the
@@ -141,9 +139,9 @@ in
   # by DRM. Coordinator-only, same reasoning as soundcloud-cookies.
   "secrets/youtube-music-cookies.age".publicKeys = editors ++ coordinatorOnly;
 
-  # cliamp (client) reads this on the coordinator, where navidrome's relay
-  # lives. The zenbook was the second consumer until it left the fleet
-  # (2026-08-30); the laptops tier went with it.
+  # Read client-side on the coordinator, where navidrome's relay lives, by the
+  # navidrome-scan fish function (Subsonic API). Its first consumer, the cliamp
+  # TUI client, was removed 2026-09-17; the zenbook left the fleet 2026-08-30.
   "secrets/navidrome-credentials.age".publicKeys = editors ++ coordinatorOnly;
 
   # Immich full-permissions API key (photos.internal), read client-side by agent
