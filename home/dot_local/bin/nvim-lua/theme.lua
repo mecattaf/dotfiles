@@ -1,11 +1,19 @@
--- lua/theme.lua — the palette every colour in this config comes from.
+-- theme.lua — the palette every colour in the nvim config comes from.
 --
 -- Home Manager renders ~/.config/themes/<name>/theme.lua for each theme
 -- (home/themes/*.nix); ~/.config/theme is the symlink ~/.local/bin/theme
 -- retargets. This module dofile()s the current fragment and applies it to
 -- catppuccin, bufferline and lualine — at startup from plugins.lua.in, and
 -- again on `theme <name>`, which calls reload() over --remote-expr on every
--- running nvim. RAW (live-edit), see home/nvim.nix nvimRaw.
+-- running nvim.
+--
+-- Lives in ~/.local/bin/nvim-lua/, not ~/.config/nvim/lua/ (2026-09-17): that
+-- directory is ONE out-of-store link into the checkout (home.nix
+-- `home.file.".local/bin"`) and init.lua adds it to package.path before
+-- plugins load, so require('theme') resolves the moment the checkout has this
+-- file. Under nvim/lua/ it needed its own per-file link from a rebuild, and
+-- lualine.lua (already linked) failed with "module 'theme' not found" on any
+-- machine whose checkout was ahead of its switch.
 local M = {}
 
 local FRAGMENT = vim.fn.expand('~/.config/theme/theme.lua')
