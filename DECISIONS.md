@@ -1,5 +1,162 @@
 # DECISIONS
 
+2026-09-17 D-A, the KIT becomes a runtime-read, git-tracked file (RULING 4 of
+the 2026-09-16 evening session): *"Coordinator switching must NOT be required
+every time a Tally flow is added. A new kit entry / flow must load without a
+home-manager or NixOS switch. ... The kit path must become a runtime-read,
+git-tracked location, not a store path baked at switch time."* Five lines are
+decided here; the first is the ruling's, the other four are defaults taken
+without one.
+
+(1) **RULE 9 YIELDS FOR THIS FILE, and for this file only.** Rule 9
+(dotfiles#293) is "do not edit it on the box": FT-3 satisfied it by rendering
+the kit with `pkgs.writeText`, so the argv table was a store path nobody could
+hand-edit. Ruling 4 answers that a table which needs a coordinator switch to
+gain a flow is the wrong artifact, and moves the review from the STORE PATH to
+the GIT OBJECT. The kit is now `home/dot_config/tally/kit.json`, committed here
+and installed at `~/.config/tally/kit.json` by `mkOutOfStoreSymlink` — the same
+motion `home/home.nix` performs for every raw dotfile. Rule 9's protection is
+not lost, it is relocated: the path on the box is a symlink INTO the checkout,
+so editing it *is* editing the repository, and the diff is the review. The
+uplink resolves `--kit` with a `readFileSync` per pass (lake
+`apps/uplink/src/kit.mjs`), so an edit is live at the next timer wake. This is
+Tom's ruling and is not a default.
+
+(2) **Every `argv[0]` is a stable per-user profile path — default, unruled.**
+The ruling says where the TABLE lives; it does not say what the table may name.
+A hashed store path inside a git-tracked file would go stale the moment its
+derivation rebuilt, and refreshing it would be exactly the switch ruling 4
+removed — so the two executables are named
+`/etc/profiles/per-user/tom/bin/tally-local-smoke` and
+`/etc/profiles/per-user/tom/bin/cubs-iteration`, which `home.packages` in
+`home/tally-uplink.nix` puts there under `home-manager.useUserPackages = true`.
+The store still owns the BYTES (the profile entry is a symlink into it); it
+stops owning the NAME. `grep -c /nix/store home/dot_config/tally/kit.json` == 0
+is the fence, asserted by probe clause K0 and by the item's own oracle. The
+cost is named: the kit's argv is only as correct as the last switch, so a
+renamed binary is a spawn failure the kernel attests rather than an eval error
+— which is the same failure class a missing `cwd` already has.
+
+(3) **The 603 entries are RENDERED by a checked-in tool, not hand-written —
+default, unruled.** `tools/render-tally-kit.py` writes the LOCAL-SMOKE trio and
+`build:CUBS-1..200` with their `scope(...)`/`eval(...)` cells; `--check` diffs
+the committed bytes against a fresh render and is a clause of the probe. The
+alternative (a hand-maintained 603-entry JSON) is how a table acquires a typo
+nobody reads. Hand-editing remains LEGAL — that is ruling 4's whole point — but
+an edit inside the generated ranges must be mirrored in the tool or `--check`
+goes red, which is the intended friction and not a bug.
+
+(4) **`claude:headless` stops being a disabled Nix attribute and becomes
+prose — default, unruled.** With the table rendered outside the module,
+`claudeSeatEntry` behind `enableClaudeSeat = false` would be Nix nothing reads.
+The property the probe asserts is unchanged and is stronger where it matters:
+the refusal comes from the kit file NOT NAMING the ref (`readKit(...).resolve`
+names the ref and the file), which is a property of the JSON and of nothing
+else. The design is written out in `docs/local-ai/tally-uplink-input.md` and in
+`home/tally-uplink.nix`'s prose. D-B6 and dotfiles#362 are untouched.
+
+(5) **Probe clause K7 carries one narrow fence — default, unruled.**
+`tests/tally-uplink/test-tally-uplink-input.sh` clause A is the repo-wide `nix
+flake check --offline --no-build`, red on this box for reasons with nothing to
+do with the kit: `checks.x86_64-linux.nas-topology`'s 8731 firewall assertion,
+and on an earlier pass `checks.x86_64-linux.nas-personal-tailnet`'s offline
+input. MEASURED 2026-09-17: the same suite on `main` 202d9c31 fails at the same
+single clause with the same tails, so it is inherited. `probe-FT-3-kit.sh` prints that tail and fences K7 ONLY when the
+suite's failing set is exactly `{A}`; any second failing clause is a hard FAIL,
+so a real regression cannot hide behind it. `DEFERRED.md` DF-KIT-3 carries the
+row with the tail verbatim. The alternative — a probe that can never be green
+while an unrelated repo-wide check is ENV-red — would retire the probe as an
+oracle for every later change, which is the worse of the two.
+
+2026-09-16 cubs-halogen-probe-1 (FRONT-12 bootstrap): the dotfiles half of the
+CUBS campaign is ONE store executable and 120 generated kit entries, and
+nothing else in this repository moves. `pkgs/cubs-iteration` is a
+`writeShellApplication` (bash, coreutils, curl, findutils, git, gnugrep,
+gnused, jq, python3, util-linux, `pkgs.llm-agents.pi`) in the drain.sh lineage:
+flock, the receipt as the done marker, wait-with-deadline exit 69 for a
+Halogen that is not ok/idle inside 20 min (never fed to the fuse), one fresh
+`pi -p --mode json` process per task on a git worktree of `~/agency/<repo>`,
+the campaign's diff guard, the task's validation command, exactly one repair
+process, commit on pass and never a push, a 3-consecutive-fail fuse (exit 2),
+a SIGTERM trap that commits WIP inside the kernel's 30 s grace. Doc:
+`docs/local-ai/cubs-campaign.md`. Oracle:
+`tests/tally-uplink/probe-cubs-iteration.sh` (MEASURED PASS, C1–C11). Six
+lines are decided here.
+
+(1) **The kit entry's stdin is a POINTER, not the task.** A kit entry's
+`stdin` is static bytes in a store file (lake `apps/uplink/src/kit.mjs`
+returns the entry as written; `apps/uplink/src/uplink.mjs:623` hands
+`entry.stdin ?? ""` to `exec.run`; tally `exec.rs:747` writes it after the
+start marker). The lake's e2e kit puts the whole item JSON there
+(`tools/e2e-check.mjs:414-470`) but materialises its kit per run; a reviewed
+store kit that must not need a switch per day cannot. So `build:CUBS-<n>`
+hands `{"worklist": "~/mecattaf/cubs-campaign/worklists/current.jsonl",
+"id": "CUBS-<n>"}` and the executable resolves the line; `current.jsonl` is
+what the morning review re-points. Nothing the acceptor's expansion provides
+reaches stdin (`argv_ref = taskId`, `factory.ts:621`).
+
+(2) **N = 40 labels, `lib.range` over three cells each**, the scope()/eval()
+cells the existing `noopEntry`, LOCAL-SMOKE untouched, `claude:headless` still
+absent. N is a ceiling on labels the plan may mint, not work: a missing
+worklist line is exit 65 naming the id. MEASURED: the rendered kit carries
+123 entries; `nix build .#checks.x86_64-linux.tally-uplink-topology` → rc 0
+(it does not enumerate refs, so it needed no edit); the pinned lake's own
+`readKit` resolves all 120 and refuses `build:CUBS-41`.
+
+(3) **The store `pi`, not `home/pi.nix`'s wrapper.** The wrapper's only work
+is the `-e` roster, which is empty (`extensions = { }`; MEASURED: the
+installed wrapper execs the store `pi` with no flags), and the executable
+runs `--no-extensions` under a campaign-private `PI_CODING_AGENT_DIR` (the
+`judge.sh` precedent). Carrying `pkgs.llm-agents.pi` is the same derivation
+with no seam invented in pi.nix (DF-CUBS-5).
+
+(4) **The child's environment is empty, so the script carries everything.**
+`exec.run` is `env_clear` + an empty `env_allowlist` (the LOCAL-SMOKE
+reasoning, kept). MEASURED: `env -i /bin/sh -c 'echo $PATH'` → `/no-such-path`;
+`getent` is glibc's and absent; the store bash has no `compgen`. HOME comes
+from the passwd entry via the carried python3; the two profile bins are
+appended LAST for a validation command that reaches for `nix develop`
+(home/tally-filler.nix's reasoning against pinning a second nix).
+
+(5) **The receipt is the campaign's schema plus two fields.** The campaign
+repo owns `tools/receipt.schema.json` (`schema_version 1`, `sha256:` digests,
+`is_error_count`, `worktree_branch`, `validation.guard_exit`,
+`observed_failure_mode` reserved for the morning review); the executable
+writes that shape and adds `execution_id` (the kernel's `TALLY_EXECUTION_ID`,
+so the usage line and the receipt name the execution back) and `exit_code`.
+Its own mechanical reading of a failure goes to `notes`; per-attempt detail
+to `attempts.json` beside it. The campaign's `tools/spec-diff-guard.sh` is
+THE gate when it exists (allowed paths + new files, any `spec.md` frozen,
+`git diff --check`, setup copies identical to upstream are not changes);
+the built-in guard implements the same path rules and is the self-test's.
+Only files inside allowed_paths + new_files are ever staged.
+
+(6) **A cancel keeps the WIP without moving the base.** On SIGTERM the
+allowed files are committed as `[WIP, cancelled under lease]` and parked
+under `refs/cubs-wip/<id>/<epoch>`; the retry `reset --mixed`es the branch
+to the persisted base with the WIP back in the working tree, rotates the Pi
+session id (`<id>-a1-r2`: `--session-id` RESUMES an existing session, and
+the ruling is one fresh process), and a pass leaves exactly one commit above
+the base. MEASURED in the probe: rc 143 in 137 ms with Pi mid-run.
+
+MEASURED, one real run (docs/local-ai/cubs-campaign.md): the built
+executable under `env -i`, scratch everything, real Pi 0.85.1 on real
+Halogen with a campaign-private models.json carrying `thinkingFormat qwen`
++ `supportsReasoningEffort true`, `--thinking low`, a one-line dictated edit:
+pass first try in 17 s, 4 tool calls, prompt 12337 / completion 405 /
+reasoning 74 tokens, commit on the task branch, receipt and usage line
+written. The first Pi-with-tools run against Halogen recorded on this box;
+a smoke, not a capability claim.
+
+NOT decided here: the coordinator switch and the non-dry arm (Tom's, doc
+§"The two operator acts"), the evaluator lock (DF-U-D13-2 / DF-CUBS-1), a
+floor redeploy for an `execute` member on `gpu-worker` (DF-CUBS-2), the
+`context_window` row cell (DF-CUBS-3), the pi.nix compat fix (DF-CUBS-4), the
+plan option (DF-U-D14-3, still null), and every existing kit entry.
+MEASURED: `nix flake check --offline --no-build` is red on the untouched
+`main` checkout today with the same `source.drv` error as on this branch,
+so the FT-3 probe's K7 is pre-existing red and not this change.
+
 2026-09-13 flake checkouts no longer ride into host closures, chrome-stream
 is installed, and a switch refuses a stale raw-dotfiles checkout.
 

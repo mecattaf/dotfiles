@@ -137,8 +137,9 @@ is unconditional, only the enablement is gated on `coordinator`:
   no schedule of its own, by its card's non-goal ("no scheduling logic in the
   uplink: the lake proposes, the door answers"), and the only instant it waits
   for is a `next_wake_at` the lake handed back.
-- **`kit` is a store file** (TL-18 / D-B18, dotfiles#304 — this is the change
-  DF-U-D14-3 deferred), and **`plan` stays null**. See *The kit* below.
+- **`kit` is a runtime-read, git-tracked file** — `/home/tom/.config/tally/kit.json`
+  (TL-18 / D-B18, dotfiles#304 for the table; RULING 4, 2026-09-16 evening for
+  where it lives) — and **`plan` stays null**. See *The kit* below.
 - **Two tmpfiles rules**, `d <state>/uplink 0700 - - -` and `d
   <state>/uplink/usage 0700 - - -`. The uplink creates its outbox recursively
   itself, so what the first rule adds is the MODE and its existence before the
@@ -151,17 +152,64 @@ is unconditional, only the enablement is gated on `coordinator`:
 The kit is the box's argv table: `argv_ref → {argv, cwd, env_allowlist,
 usage_source, stdin}`. The lake never originates an argv (spec §2.2c) and
 neither does the uplink — a proposal carries the NAME and the box carries the
-command (spec §2.1: *"the argv the kit names IS the harness"*). It is rendered
-into the store by `home/tally-uplink.nix` and named by
-`services.tally-uplink.kit`, so the table the unit resolves against is a
-reviewed artifact and never a file edited on the box (Rule 9, dotfiles#293).
+command (spec §2.1: *"the argv the kit names IS the harness"*).
+
+**It is a runtime-read, git-tracked file, and adding a flow is a JSON edit plus
+a commit — never a switch.** That is RULING 4 (2026-09-16 evening): *"Coordinator
+switching must NOT be required every time a Tally flow is added. A new kit entry
+/ flow must load without a home-manager or NixOS switch. … The kit path must
+become a runtime-read, git-tracked location, not a store path baked at switch
+time."*
+
+```
+home/dot_config/tally/kit.json      the committed bytes (this repository)
+        │  rendered by tools/render-tally-kit.py  (--check diffs)
+        │  mkOutOfStoreSymlink, home/tally-uplink.nix  (one switch, once)
+        ▼
+~/.config/tally/kit.json            services.tally-uplink.kit
+        │  readFileSync, every timer wake (lake apps/uplink/src/kit.mjs)
+        ▼
+    the argv the kernel runs
+```
+
+FT-3 first shipped this table as a `pkgs.writeText` store file, and Rule 9
+(dotfiles#293, *"do not edit it on the box"*) was the reason. **Rule 9 yields
+here, and for this file only.** Rule 9 protects a reviewed artifact from a hand
+edit; ruling 4 answers that a table which needs a coordinator switch to gain a
+flow is the wrong artifact, and moves the review from the store path to the
+**git object**. The review still happens — in the repository, on a diff — and
+the file is still not something to edit on the box: it is a symlink into the
+checkout, so editing it *is* editing the repository.
+
+**What the store still owns is the argv.** Every `argv[0]` in the JSON is a
+STABLE per-user profile path — `/etc/profiles/per-user/tom/bin/tally-local-smoke`
+and `/etc/profiles/per-user/tom/bin/cubs-iteration`, put there by the
+`home.packages` members of `home/tally-uplink.nix`. A hashed store path inside a
+git-tracked file would go stale the moment its derivation rebuilt, and
+refreshing it would be exactly the switch ruling 4 removed; the profile path
+does not move when the derivation does. `grep -c /nix/store
+home/dot_config/tally/kit.json` == 0 is the fence, asserted by probe clause K0.
+
+**How to add a flow.** Edit `tools/render-tally-kit.py` (or the JSON directly,
+for an entry outside the generated ranges), run `python3
+tools/render-tally-kit.py`, commit. The next timer wake reads it. No `nix`, no
+`home-manager switch`, no `nixos-rebuild`. `bash
+tests/tally-uplink/probe-FT-3-kit.sh` clause K2 re-resolves the file through the
+pinned lake's own `readKit`, and with `TALLY_KIT_LAKE`/`TALLY_KIT_NODE` set it
+does so with no `nix` invocation at all.
 
 | ref | argv | state |
 |---|---|---|
-| `build:LOCAL-SMOKE` | a `writeShellScript` that writes one usage line and exits 0 | **ENABLED** |
+| `build:LOCAL-SMOKE` | `/etc/profiles/per-user/tom/bin/tally-local-smoke` — writes one usage line and exits 0 | **ENABLED** |
 | `scope(build:LOCAL-SMOKE)` | `/bin/sh -c true` | ENABLED (declared no-op) |
 | `eval(build:LOCAL-SMOKE)` | `/bin/sh -c true` | ENABLED (declared no-op) |
+| `build:CUBS-1` … `build:CUBS-200` | `/etc/profiles/per-user/tom/bin/cubs-iteration`, stdin `{worklist, id}` | **ENABLED** (`docs/local-ai/cubs-campaign.md`) |
+| `scope(build:CUBS-<n>)`, `eval(build:CUBS-<n>)` | `/bin/sh -c true` | ENABLED (declared no-ops) |
 | `claude:headless` | `claude -p --output-format json --permission-mode dontAsk --max-turns 20 --model opus` | **DESIGNED, NOT ENABLED** |
+
+603 entries in all. `N = 200` is a ceiling on LABELS and not a promise of work:
+a worklist line exists for an id or `cubs-iteration` exits 65 naming it, and an
+item the plan never mints has an entry nobody resolves.
 
 The refs are the acceptor's own taskId scheme — a worker cell is the label and
 its two companions are `scope(<taskId>)` and `eval(<taskId>)`, which is what the
@@ -182,9 +230,11 @@ already bars unattended spend of the `codex` seat. `utility-model` (llama-swap,
 and not tonight's: a cold weight load can outrun a short lease, and the first
 unattended run should fail for a reason, not for a stopwatch.
 
-**Why `claude:headless` is written out and left out.** It is a Nix attribute
-behind `enableClaudeSeat = false`, so the design is reviewable rather than
-reconstructed later, and so a proposal naming the ref is refused **by name**
+**Why `claude:headless` is written out and left out.** The design is recorded
+here and in `home/tally-uplink.nix`'s prose rather than as a disabled attribute
+(an attribute nothing renders would be dead Nix now that the table lives
+outside the module), so it is reviewable rather than reconstructed later, and a
+proposal naming the ref is refused **by name**
 against a kit file that visibly contains no such entry (`readKit(…).resolve`,
 lake `apps/uplink/src/kit.mjs`). Whether the kernel may lease a Claude seat at
 all, and through which row, is Tom's ruling and is asked in dotfiles#362.
@@ -316,9 +366,12 @@ bare PATH.
   `tally-uplink-topology` and by `tests/tally-uplink/probe-FIX-E12.sh` (rc 0).
   It lands live at the next coordinator switch, like everything else here.
 - ~~**No kit, no plan** (DF-U-D14-3).~~ **SUPERSEDED for the kit by FT-3
-  (dotfiles#361, TL-18 / D-B18, dotfiles#304):** the box now carries a store
-  kit with one enabled local entry, and `claude:headless` designed and
-  disabled — see *The kit* above. **`plan` is still null** and still deliberate.
+  (dotfiles#361, TL-18 / D-B18, dotfiles#304), and RELOCATED by ruling 4
+  (2026-09-16 evening):** the box carries a 603-entry argv table with
+  `build:LOCAL-SMOKE` and `build:CUBS-1..200` enabled and `claude:headless`
+  designed and absent — and it is a git-tracked file read at every wake, not a
+  store path baked at switch time. See *The kit* above. **`plan` is still null**
+  and still deliberate.
 - **No evaluator lock, and that is now the settled state, not a gap.**
   `services.tally-kernel.evaluatorLock = null` (`modules/tally-b.nix:188-190`)
   is CORRECT: `exec.run` needs no verdict — it is start-and-wait, `conclude`
@@ -333,8 +386,22 @@ bare PATH.
 ```console
 $ bash tests/tally-uplink/test-tally-uplink-input.sh   # U-D14, clauses A0/A/B/C/D/E/G/H/F
 $ bash tests/tally-uplink/probe-FIX-E12.sh             # the WAKE, clauses S1..S5
-$ bash tests/tally-uplink/probe-FT-3-kit.sh            # the KIT and the join, clauses K1..K7
+$ bash tests/tally-uplink/probe-FT-3-kit.sh            # the KIT and the join, clauses K0..K7
+$ bash tests/tally-uplink/probe-cubs-iteration.sh     # the campaign executable, C1..C11
+$ python3 tools/render-tally-kit.py --check           # the committed kit IS the rendered kit
 ```
+
+`probe-FT-3-kit.sh` clause K7 re-runs the suite above and carries the one fence
+in this lane: that suite's clause A is the repo-wide `nix flake check --offline
+--no-build`, which is red on this box for reasons unrelated to the kit —
+`checks.x86_64-linux.nas-topology` (`error: assertion '(! ((builtins).elem 8731
+(coordinator).networking.firewall.interfaces.wlp192s0.allowedTCPPorts))'
+failed`), and on an earlier pass `checks.x86_64-linux.nas-personal-tailnet`
+(`error: path '…-source' is not valid`). MEASURED 2026-09-17: both tails are
+identical on `main` 202d9c31, so both are inherited. The fence fires only when
+the failing set is exactly `{A}`; a second failing clause is a hard FAIL.
+`probe-FIX-E12.sh` clause S5 is red for the same reason and is NOT fenced — it
+is rc 1 here and rc 1 on `main`. `DEFERRED.md` DF-KIT-3 carries both tails.
 
 Clauses: A0 lock-update no-op; A `nix flake check --offline --no-build`; B the
 card's eval → `true`; C the lake's exports (the module, the packaged
