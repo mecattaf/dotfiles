@@ -442,12 +442,26 @@
   # fc-scan/fc-list. NixOS appends its own DejaVu/Noto fallbacks after
   # these, so missing glyphs (CJK, symbols) still resolve.
   fonts.fontconfig.defaultFonts = {
+    # 2026-09-17: the Anthropic suite takes all three generics. The outgoing
+    # families stay as SECOND entries so a failed build degrades to the previous
+    # rendering rather than to DejaVu. Family strings verified with fc-scan on
+    # the built packages AND through kitty's own resolver (kitty +runpy ->
+    # get_font_files), the check the 2026-08-21 incident lacked. "Anthropic
+    # Sans" / "Anthropic Serif" are variable (wght+opsz) files; fc-match returns
+    # their opsz=16 Text default, the right optical size for an 11-12 pt UI.
     sansSerif = [
+      "Anthropic Sans"
       "SF Pro Display"
       "SF Pro Text"
     ];
-    serif = [ "Source Serif 4" ];
-    monospace = [ "Liga SFMono Nerd Font" ];
+    serif = [
+      "Anthropic Serif"
+      "Source Serif 4"
+    ];
+    monospace = [
+      "AnthropicMono Nerd Font Mono"
+      "Liga SFMono Nerd Font"
+    ];
     emoji = [ "Noto Color Emoji" ];
   };
 
