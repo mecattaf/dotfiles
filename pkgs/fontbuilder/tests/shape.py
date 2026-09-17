@@ -23,6 +23,7 @@ both redirected under <out>/verify; fc-cache is never invoked.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import shlex
@@ -109,10 +110,17 @@ def runpy(probe_path, env_extra, jsonpath):
 
 
 def main(argv):
-    if len(argv) != 2:
-        print("usage: shape.py <out-dir>", file=sys.stderr)
-        return 2
-    out = os.path.abspath(argv[1])
+    # The driver invokes every test uniformly, so --src and --allow-partial are
+    # ACCEPTED here: --src names the read-only capture dir and is ignored;
+    # --allow-partial lets a subset out-dir skip the families whose face is
+    # absent instead of failing on them.
+    ap = argparse.ArgumentParser()
+    ap.add_argument("out")
+    ap.add_argument("--src", default=None, help="accepted and ignored; A2 needs no source")
+    ap.add_argument("--allow-partial", action="store_true",
+                    help="skip families whose face is not in the out-dir")
+    a = ap.parse_args(argv[1:])
+    out = os.path.abspath(a.out)
     verify = os.path.join(out, "verify")
     xdg = os.path.join(verify, "xdg")
     os.makedirs(xdg, exist_ok=True)
@@ -139,8 +147,21 @@ def main(argv):
 
     fails, report = [], {}
 
+    present, absent = {}, []
+    for fam, style in FAMILIES.items():
+        if os.path.exists(os.path.join(out, "nf", "AnthropicMonoNerdFontMono-%s.ttf" % style)):
+            present[fam] = style
+        else:
+            absent.append(fam)
+    for fam in absent:
+        msg = "A2 %s: no face in the out-dir" % fam
+        if a.allow_partial:
+            print("NOTE", msg, "(not a failure under --allow-partial)")
+        else:
+            fails.append(msg)
+
     env = dict(base)
-    env["A2_FAMILIES"] = json.dumps(sorted(FAMILIES))
+    env["A2_FAMILIES"] = json.dumps(sorted(present))
     env["A2_TEXTS"] = json.dumps([t for t, _ in LIGATURES])
     res, p = runpy(lig_probe, env, os.path.join(verify, "a2-lig.json"))
     if res is None:
@@ -148,7 +169,7 @@ def main(argv):
                      % (p.stderr or p.stdout or "").strip()[-600:])
     else:
         report["ligatures"] = res
-        for fam in sorted(FAMILIES):
+        for fam in sorted(present):
             rows = res.get(fam, {})
             for text, want in LIGATURES:
                 groups = rows.get(text)
@@ -163,12 +184,9 @@ def main(argv):
     # itself gives for that codepoint - a fallback font would hand back a
     # different index.  That is the check the 2026-08-21 incident needed.
     report["codepoints"] = {}
-    for fam, style in sorted(FAMILIES.items()):
+    for fam, style in sorted(present.items()):
         report["codepoints"][fam] = {}
         face = os.path.join(out, "nf", "AnthropicMonoNerdFontMono-%s.ttf" % style)
-        if not os.path.exists(face):
-            fails.append("A2 %s: no face at %s" % (fam, face))
-            continue
         tf = TTFont(face, recalcTimestamp=False, recalcBBoxes=False)
         cmap = tf.getBestCmap()
         for label, ch in CODEPOINTS:

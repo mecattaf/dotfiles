@@ -20,6 +20,7 @@ Exit status is 0 unless kitty itself could not be run.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -61,10 +62,13 @@ def system_font_dirs():
 
 
 def main(argv):
-    if len(argv) != 2:
-        print("usage: geometry.py <out-dir>", file=sys.stderr)
-        return 2
-    out = os.path.abspath(argv[1])
+    ap = argparse.ArgumentParser()
+    ap.add_argument("out")
+    ap.add_argument("--src", default=None, help="accepted and ignored (uniform driver CLI)")
+    ap.add_argument("--allow-partial", action="store_true",
+                    help="accepted and ignored; this test asserts nothing")
+    a = ap.parse_args(argv[1:])
+    out = os.path.abspath(a.out)
     verify = os.path.join(out, "verify")
     xdg = os.path.join(verify, "xdg")
     cachedir = os.path.join(verify, "cache-geometry")
