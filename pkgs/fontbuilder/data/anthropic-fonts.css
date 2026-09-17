@@ -1,0 +1,184 @@
+/* anthropic-fonts.css — fontbuilder S11.
+ *
+ * Two identities per face:
+ *   1. the NORMALIZED families this repo installs ("Anthropic Sans" / "Anthropic
+ *      Serif" / "Anthropic Mono" / "Anthropicons"), so a local page and the
+ *      desktop render from one name;
+ *   2. the PRODUCT's own lowercase families recovered verbatim from
+ *      capture/bundles/c6a992d55-B5RomVEQ.css, so markup copied out of the
+ *      product renders unchanged.
+ *
+ * All src are relative to this file: css/ and woff2/ move together.
+ * local() is listed first so an installed desktop face is used with no download.
+ *
+ * Three deliberate deviations from the product CSS, each measured:
+ *   - Anthropicons uses format("woff2"), not the product's deprecated
+ *     format("woff2-variations"); the hint is ignored by current engines and
+ *     "woff2-variations" is dropped from the CSS Fonts 4 draft.
+ *   - anthropic-mono is declared font-weight: 300 800, not the product's 400.
+ *     The served Mono woff2 IS a wght 300-800 variable font (fvar measured
+ *     ('wght',300,400,800)); 400 still resolves to 400, and 700 now gets the
+ *     drawn bold instead of a synthesised one.
+ *   - "Anthropic Mono" deliberately does NOT carry
+ *     local("AnthropicMono Nerd Font Mono").  That installed face is the
+ *     patched terminal build: a different cell (0.600 x 1.250 em), 136 code
+ *     ligatures and ~11k Nerd Font glyphs.  Matching it from a web page would
+ *     make the page render differently depending on whether the terminal
+ *     package happens to be installed.
+ */
+
+/* ---------------------------------------------------------- Anthropic Sans */
+@font-face {
+  font-family: "Anthropic Sans";
+  src: local("Anthropic Sans"),
+       url("../woff2/AnthropicSans-Roman.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+  font-feature-settings: "dlig" 0;
+}
+@font-face {
+  font-family: "Anthropic Sans";
+  src: local("Anthropic Sans Italic"),
+       url("../woff2/AnthropicSans-Italic.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: italic;
+  font-display: swap;
+  font-feature-settings: "dlig" 0;
+}
+
+/* --------------------------------------------------------- Anthropic Serif */
+@font-face {
+  font-family: "Anthropic Serif";
+  src: local("Anthropic Serif"),
+       url("../woff2/AnthropicSerif-Roman.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Anthropic Serif";
+  src: local("Anthropic Serif Italic"),
+       url("../woff2/AnthropicSerif-Italic.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* ---------------------------------------------------------- Anthropic Mono */
+@font-face {
+  font-family: "Anthropic Mono";
+  src: url("../woff2/AnthropicMono-Roman.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Anthropic Mono";
+  src: url("../woff2/AnthropicMono-Italic.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* ------------------------------------------------------------ Anthropicons */
+@font-face {
+  font-family: "Anthropicons";
+  src: local("Anthropicons"),
+       url("../woff2/Anthropicons-Variable.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  /* block, not swap: an icon font that swaps shows a flash of wrong glyphs */
+  font-display: block;
+}
+
+/* ================= product families, recovered verbatim ================== */
+
+@font-face {
+  font-family: anthropic-sans;
+  src: url("../woff2/AnthropicSans-Roman.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+  font-feature-settings: "dlig" 0;
+}
+@font-face {
+  font-family: anthropic-sans;
+  src: url("../woff2/AnthropicSans-Italic.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: italic;
+  font-display: swap;
+  font-feature-settings: "dlig" 0;
+}
+@font-face {
+  font-family: anthropic-serif;
+  src: url("../woff2/AnthropicSerif-Roman.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: anthropic-serif;
+  src: url("../woff2/AnthropicSerif-Italic.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: anthropic-mono;
+  src: url("../woff2/AnthropicMono-Roman.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: anthropic-mono;
+  src: url("../woff2/AnthropicMono-Italic.woff2") format("woff2");
+  font-weight: 300 800;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: Anthropicons-Variable;
+  src: url("../woff2/Anthropicons-Variable.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: block;
+}
+
+/* ---- metric-matched Serif fallbacks, copied as-is from the product CSS --- */
+@font-face {
+  font-family: Anthropic Serif Fallback Georgia;
+  src: local(Georgia);
+  size-adjust: 104.79%;
+  ascent-override: 94.71%;
+  descent-override: 24.57%;
+  line-gap-override: 0%;
+  unicode-range: U+20-7E, U+A0-B4, U+B6-17F, U+2012-2015, U+2018-2022, U+2026, U+2030, U+2032-2034, U+2039-203A, U+2044;
+}
+@font-face {
+  font-family: Anthropic Serif Fallback Times;
+  src: local(Times New Roman), local(TimesNewRomanPSMT), local(Liberation Serif), local(LiberationSerif);
+  size-adjust: 114.99%;
+  ascent-override: 86.31%;
+  descent-override: 22.39%;
+  line-gap-override: 0%;
+  unicode-range: U+20-7E, U+A0-B4, U+B6-17F, U+2012-2015, U+2018-2022, U+2026, U+2030, U+2032-2034, U+2039-203A, U+2044;
+}
+@font-face {
+  font-family: Anthropic Serif Fallback DejaVu;
+  src: local(DejaVu Serif), local(DejaVuSerif);
+  size-adjust: 90.15%;
+  ascent-override: 110.1%;
+  descent-override: 28.56%;
+  line-gap-override: 0%;
+  unicode-range: U+20-7E, U+A0-B4, U+B6-17F, U+2012-2015, U+2018-2022, U+2026, U+2030, U+2032-2034, U+2039-203A, U+2044;
+}
+@font-face {
+  font-family: Anthropic Serif Fallback Noto;
+  src: local(Noto Serif), local(NotoSerif), local(NotoSerif-Regular);
+  size-adjust: 97.12%;
+  ascent-override: 102.19%;
+  descent-override: 26.51%;
+  line-gap-override: 0%;
+  unicode-range: U+20-7E, U+A0-B4, U+B6-17F, U+2012-2015, U+2018-2022, U+2026, U+2030, U+2032-2034, U+2039-203A, U+2044;
+}

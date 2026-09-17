@@ -29,3 +29,14 @@ home/dot_config/cliamp/cliamp.sock
 home/dot_config/cliamp/cliamp.sock.pid
 home/dot_config/cliamp/history.toml
 home/dot_config/cliamp/resume.json
+
+# Font binaries never enter this repo (2026-09-17). The Anthropic faces are
+# unlicensed brand trade dress and live only on the NAS M.2; pkgs/fontbuilder
+# is the press and ships no bytes. nerd-font-patcher writes its output into the
+# CURRENT DIRECTORY under some flags (`--cell '?'` does not query, it patches),
+# which is how a 440 KB patched TTF once landed in this repo root.
+*.ttf
+*.otf
+*.woff
+*.woff2
+*.tar.zst
