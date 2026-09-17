@@ -69,9 +69,10 @@ let
   # home/tally.nix's capacity oracle and home/harness-records.nix's recorders:
   # a threshold or a row field is retuned by editing a file, not by a rebuild.
   # Its delivered sha256 is
-  # 4d3dff21a6ee7d61ebe70564c090d7944c06a7a0d8f3e51f08bc4b5c1f7db4d1
-  # (CAP-1; the D-B54 repair commit recorded 76fb8cb9… before every row stated
-  # its window), following UTIL-01's motion.
+  # 59fcc77063f19767d0fdfcf94effb48cafb7f2ef26c4441c92301b147efc8813
+  # (the reader timeout raised to 16 s and the retained reading taken from the
+  # reader's own cache; CAP-1 recorded 4d3dff21…, and the D-B54 repair commit
+  # 76fb8cb9… before every row stated its window), following UTIL-01's motion.
   # A systemd user unit inherits no interactive PATH, so each unit supplies its
   # own.
   feeder = "%h/.local/bin/tally-seat-feeder";
@@ -91,8 +92,13 @@ let
   # D-B48: the period, timer accuracy, AND whole service duration belong in the
   # bound. 30 + 1 + 20 = 51 seconds, strictly inside the 60-second refusal
   # boundary. TimeoutStartSec below makes the 20-second term an enforced cap,
-  # not a timing hope; the feeder's concurrent 12-second readers leave eight
-  # seconds for shaping and atomic publication.
+  # not a timing hope; the feeder's readers are CONCURRENT, so three of them fit
+  # in ONE reader window and not in three, and at 16 seconds each that window
+  # leaves four seconds for shaping and atomic publication (one os.replace per
+  # row). 12 seconds was cutting off reads that were going to land: MEASURED
+  # over the uplink's events.jsonl for 2026-09-16T04Z -> 09-17T04Z, `cc` read
+  # STALE-MEASURED on 135 of 286 wakes. The cap is there so a HUNG reader cannot
+  # push the service past TimeoutStartSec, not to budget the shaping.
   policyTickSeconds = 60;
   feederPeriodSeconds = 30;
   timerAccuracySeconds = 1;

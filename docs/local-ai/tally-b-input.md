@@ -17,7 +17,7 @@ pins: the spec history that grew the rewrite inside it.
 
 ```nix
 tally-b = {
-  url = "git+https://github.com/mecattaf/tally?rev=26d758049bf0e89126157b3ea743085bb1b918f0";
+  url = "git+https://github.com/mecattaf/tally?rev=b3a040e423926c542d794736d3976ec514bad02f";
   flake = false;
 };
 ```
@@ -46,10 +46,18 @@ printed to establish any of this. The consequence is stated plainly in
 on a host whose git can authenticate to github.com. After that act the git
 cache and the store path make every gate `--offline`-clean anywhere.
 
-**The rev** `26d7580` is `origin/main` of mecattaf/tally at the pin: the merged
-head past U-B13 (PR #45, `k/socket`) plus the evaluator's own probe commit. It
-is the commit U-B13's deliverable sits on, and the card's oracle requires
-exactly that — "the input pinned to a pushed commit of mecattaf/tally".
+**The rev** `b3a040e` is `origin/main` of mecattaf/tally at the pin. U-D13 was
+delivered against the merged head past U-B13 (PR #45, `k/socket`, plus the
+evaluator's own probe commit); the pin has since moved 27 commits along the same
+`main` — FOLD-1/FOLD-2K, the kernel answering an unowned row as `row_unknown`
+(#50) instead of crashing the box uplink, FIX-E03, and the two `docs/rows.md`
+publications the uplink reads (capacity per row, D-E2E-5; the envelope,
+D-W03-5). It is a pushed commit, and the card's oracle requires exactly that —
+"the input pinned to a pushed commit of mecattaf/tally". The ONE place the rev
+is authoritative is `flake.nix`; this document names it so a reader can see
+which `main` the prose below was measured against, and clause D of
+`tests/tally-b/test-tally-b-input.sh` re-reads the pin from `flake.nix` and
+`flake.lock` rather than from here.
 `tests/tally-b/test-tally-b-input.sh` clause D checks the pin is an ancestor of
 the clone's `origin/main` without touching the network. Bump by editing the rev
 in `flake.nix` and running `nix flake lock --update-input tally-b`,
@@ -99,9 +107,84 @@ pin must be a NO-OP, and clause A0 asserts it.
   legible failure, never a silent no-op. They coexist with seat-feeder's
   user-bus rules over the same two paths — `d` lines are idempotent and both
   say 0700 tom.
-- **`evaluatorLock`**, default null: without `--evaluator-lock` no verdict is
-  ever derived (tally `docs/socket.md` §4), which is the right state until
-  U-A17's `apps/evaluator` exists in the lake to be locked.
+- **`evaluatorLock`**, default the BUILT lock below: with it the served kernel
+  derives a `verdict`; without it none is ever derived (tally
+  `docs/socket.md` §4). Null is still accepted and still means "derive no
+  verdict" — the honest state for a host that serves a kernel with no evaluator
+  to lock.
+
+## The evaluator lock this module serves
+
+`DEFERRED.md` `DF-U-D13-2` deferred one thing: PASSING `--evaluator-lock`, and
+it waited on one condition — `apps/evaluator` existing in the lake to be
+locked. It exists, in the pinned `tally-lake` input's own store path, so the
+row is discharged here and the flag is served.
+
+**What a lock is.** The kernel derives a `verdict` only from the attestation of
+an `exec.run` whose `argv_sha256` matches the evaluator's pinned lock (spec
+§2.1). The lock file is `sha256sum`'s format with one reserved row:
+
+```
+<64 hex>  argv                              the digest of the evaluator's ARGV
+<64 hex>  tools/e2e-evaluator.sh            one row per pinned file
+<64 hex>  apps/evaluator/bin/evaluate.mjs
+…
+```
+
+The `argv` row names no file: it is the digest of the executor's own prefix-free
+argv preimage (`crates/tally-kernel/src/exec.rs`, `argv_preimage`; transcribed
+in `tools/make-evaluator-lock.sh`). An argv that carried the card would hash
+differently every run and could not be pinned at all, which is why everything
+per-evaluation travels on STDIN (T7-3, a RULED-NEVER row of the lake's
+`DEFERRED.md`).
+
+**The fixed argv, as a package.** `pkgs/tally-evaluator/default.nix` is a
+`writeShellApplication` whose whole text is `exec /bin/sh
+${inputs.tally-lake}/tools/e2e-evaluator.sh "$@"`, with `runtimeInputs`
+`[ jq coreutils git gnused ]`. Two things follow. The argv the kernel hashes is
+ONE WORD — `<store path>/bin/tally-evaluator` — so it moves only when the
+`tally-lake` pin moves, never when a checkout is `git pull`ed under nobody's
+review. And the evaluator's PATH is the wrapper's closure rather than whatever
+environment started the kernel. `node` is deliberately NOT in that closure: the
+item on stdin names the interpreter by absolute path, because the node the
+lake's own `scripts/node-env.sh` records is the one its packages were resolved
+against.
+
+**The lock, as a derivation.** `tallyEvaluatorLock` is a `runCommand` that runs
+the KERNEL's own `${inputs.tally-b}/tools/make-evaluator-lock.sh` with
+`--root ${inputs.tally-lake}`, `--argv ${tallyEvaluator}/bin/tally-evaluator`
+and the seven `--file` rows (`tools/e2e-evaluator.sh` plus `apps/evaluator`'s
+`bin/evaluate.mjs` and `src/{evaluate,env,normalize,usage,receipt-ingestion}.mjs`).
+No digest is transcribed into this repository: the argv row is computed from
+the store path of the wrapper this repo builds, and every file row is computed
+from the pinned input, so the lock cannot drift from either pin without the
+derivation itself changing. The rendered unit therefore reads
+
+```
+tally-kernel serve --state … --rows … --socket … --evaluator-lock /nix/store/…-tally-evaluator-lock
+```
+
+**How it is checked.** Guard G3 of `tests/tally-b/probe-u-d13-guards.sh` builds
+the lock offline and runs the kernel's own
+`${inputs.tally-b}/scripts/verify-evaluator-lock.sh --lock <lock>
+--root ${inputs.tally-lake} --argv <wrapper>/bin/tally-evaluator`: part C
+recomputes the argv digest and part D recomputes every pinned file from the lake
+input. rc 0 is the green; the guard also runs the same verifier with the
+two-word argv that preceded the wrapper (`/bin/sh <lake>/tools/e2e-evaluator.sh`)
+and requires rc 4, so part C is known to be comparing something. Clause E of
+`tests/tally-b/test-tally-b-input.sh` asserts the flag reaches ExecStart and
+names a STORE path — a lock under `$HOME` would be a file anyone could edit
+between two evaluations, which is the one thing a lock exists to prevent.
+
+**A file added to `apps/evaluator` runs UNPINNED** unless it is added to that
+`--file` list. The list lives beside the argv it belongs to, in
+`modules/tally-b.nix`, rather than in a generated manifest, precisely so that
+adding one is a reviewed edit.
+
+**MEASURED**, 2026-09-17 (the integration audit's probe C): this same tool pair
+generated a lock the served kernel loaded, an `exec.run` of the wrapped launcher
+produced an attestation whose `argv_sha256` matched it, and the chain carried a
+`verdict`.
 
 ## Coexistence with the live daemon, as bytes
 

@@ -33,10 +33,21 @@ staleness bound. A service still active at 20 seconds is terminated and its
 unit fails; it cannot silently publish outside that envelope. The worker
 configuration evaluates with no feeder unit.
 
-The Claude service runs its three readers concurrently. Each reader retains
-its 12-second timeout, leaving eight seconds inside the service cap for row
-shaping and publication. As each read returns, that seat is shaped and written
-immediately; a slow seat cannot hold completed seats in a batch.
+The Claude service runs its three readers concurrently. Each reader is bounded
+at 16 seconds, leaving four seconds inside the service cap for row shaping and
+publication. Because the reads are concurrent, three of them fit inside ONE
+16-second window and not inside three. As each read returns, that seat is shaped
+and written immediately; a slow seat cannot hold completed seats in a batch.
+
+The bound was 12 seconds until 2026-09-17. MEASURED over the uplink's
+`events.jsonl` for 2026-09-16T04Z → 09-17T04Z, `cc` read `STALE-MEASURED` on
+**135 of 286** wakes: a read that lands in thirteen seconds was a MEASURED
+reading this box threw away for a retained one, and a read that cannot land in
+sixteen is a reader that is not answering this tick. The four seconds left over
+are ample — shaping is arithmetic and publication is one `os.replace` per row;
+the cap exists so a HUNG reader cannot push the service past
+`TimeoutStartSec`, not to budget the shaping. `tests/tally-b/probe-seat-feeder-timeout.sh`
+is the fixture that holds both halves down.
 
 ## Source boundaries
 
@@ -116,10 +127,15 @@ endpoint answers in whole percents. The feeder follows that through:
   `STALE-MEASURED` with `reading_age_seconds`, `reading_observed_at`,
   `reading_source` and the failure's own `stale_reason`.
 
-Two retained sources, and the newer wins: the row this feeder last published
-(already in the contract's shape) and the reader's own
-`.window-cache-<seat>.json`, whose directory the reader hard-codes and which
-`TALLY_WINDOW_CACHE_DIR` names so a fixture can redirect it. Ages chain off
+Two retained sources, and the newer wins — **and on a tie the reader's own cache
+wins**: `.window-cache-<seat>.json`, whose directory the reader hard-codes and
+which `TALLY_WINDOW_CACHE_DIR` names so a fixture can redirect it, is preferred
+over the row this feeder last published. The cache is the reading; the published
+row is a projection of it, and going back through the projection loses cells the
+row never promised to carry (the five-hour `resets_at` the sentinel-window branch
+drops, a `model_split` the endpoint answered null for). So the cache is what
+`reading_source` names and `reading_age_seconds` is the cache's true age, not the
+age of whatever the last row happened to say. Ages chain off
 `reading_observed_at`, the instant the numbers were MEASURED, never off
 publication, so re-publishing a re-publication cannot make a reading look
 younger than it is. Only when nothing at all was retained does the row fall

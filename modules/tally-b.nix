@@ -96,6 +96,58 @@ let
 
   rowsFile = pkgs.writeText "tally-b-rows.json" (builtins.toJSON cfg.rows);
 
+  # THE EVALUATOR, AND THE LOCK OVER IT (DEFERRED.md DF-U-D13-2, discharged).
+  #
+  # Without `--evaluator-lock` the served kernel derives NO verdict at all
+  # (tally docs/socket.md §4), so the admission -> lease -> execute -> witness
+  # -> VERDICT -> receipt loop stops one rung short of a receipt. The row that
+  # deferred it waited on one thing — `apps/evaluator` existing in the lake to
+  # be locked — and it exists: `${inputs.tally-lake}/apps/evaluator` is in the
+  # pinned input's store path, behind the fixed-argv launcher
+  # `tools/e2e-evaluator.sh` beside it.
+  #
+  # Two derivations, in the order the kernel reads them:
+  #
+  #   tallyEvaluator      the FIXED ARGV: one store path, `pkgs/tally-evaluator`,
+  #                       exec-ing that launcher. Everything per-evaluation
+  #                       (card, deliverable, usage source, receipt path, node)
+  #                       travels on STDIN, never in argv — T7-3, and the only
+  #                       reason an argv can be pinned at all.
+  #   tallyEvaluatorLock  the lock itself, generated at BUILD TIME by the
+  #                       KERNEL's own tools/make-evaluator-lock.sh over the
+  #                       LAKE's own bytes. Neither digest is transcribed by
+  #                       hand into this repository: the argv row is computed
+  #                       from the store path above, and every file row is
+  #                       computed from the pinned input, so the lock cannot
+  #                       drift from either pin without the derivation changing.
+  #
+  # MEASURED (2026-09-17, audit probe C): this exact tool pair generated a lock
+  # the served kernel loaded, and an `exec.run` of the wrapped launcher produced
+  # an attestation whose `argv_sha256` matched it and a `verdict` on the chain.
+  #
+  # The seven pinned files are apps/evaluator's whole reachable source plus the
+  # launcher — the bytes that decide, and nothing else. A file added to the
+  # evaluator that is not named here would run UNPINNED, which is why this list
+  # lives beside the argv it belongs to rather than in a generated manifest.
+  tallyEvaluator = pkgs.callPackage ../pkgs/tally-evaluator {
+    tallyLake = inputs.tally-lake;
+  };
+
+  tallyEvaluatorLock = pkgs.runCommand "tally-evaluator-lock" { } ''
+    sh ${inputs.tally-b}/tools/make-evaluator-lock.sh \
+      --root ${inputs.tally-lake} \
+      --title "the served coordinator kernel's evaluator, pinned by modules/tally-b.nix" \
+      --argv ${tallyEvaluator}/bin/tally-evaluator \
+      --file tools/e2e-evaluator.sh \
+      --file apps/evaluator/bin/evaluate.mjs \
+      --file apps/evaluator/src/evaluate.mjs \
+      --file apps/evaluator/src/env.mjs \
+      --file apps/evaluator/src/normalize.mjs \
+      --file apps/evaluator/src/usage.mjs \
+      --file apps/evaluator/src/receipt-ingestion.mjs \
+      --out $out
+  '';
+
   package = pkgs.rustPlatform.buildRustPackage {
     pname = "tally-b-kernel";
     version = "0.0.1"; # the workspace's own [workspace.package] version
@@ -176,11 +228,25 @@ in
 
     evaluatorLock = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
-      default = null;
+      default = tallyEvaluatorLock;
+      defaultText = lib.literalExpression "a runCommand over inputs.tally-b's tools/make-evaluator-lock.sh, pinning pkgs/tally-evaluator's argv and apps/evaluator's bytes out of inputs.tally-lake";
       description = ''
-        Path to apps/evaluator's pinned lock (EVALUATOR.sha256). Null means no
-        verdict is ever derived — the right state until U-A17's evaluator
-        exists to be locked (tally docs/socket.md §4).
+        Path to apps/evaluator's pinned lock (the EVALUATOR.sha256 shape: one
+        reserved `argv` row plus one row per pinned file). Without it the kernel
+        derives no verdict at all (tally docs/socket.md §4), so the loop stops
+        one rung short of a receipt.
+
+        The default is BUILT, never transcribed: the kernel's own
+        `tools/make-evaluator-lock.sh` runs over the pinned `tally-lake` input
+        with `pkgs/tally-evaluator`'s store path as the single argv word, so the
+        lock, the argv it pins and the bytes it pins all move together with the
+        two input pins and with nothing else.
+        `scripts/verify-evaluator-lock.sh --lock <this> --root <the tally-lake
+        input> --argv <the wrapper>/bin/tally-evaluator` recomputes every row and
+        is guard G3 of tests/tally-b/probe-u-d13-guards.sh.
+
+        Null is still accepted and still means "derive no verdict" — the honest
+        state for a host that serves a kernel with no evaluator to lock.
       '';
     };
   };

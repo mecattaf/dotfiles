@@ -1,5 +1,79 @@
 # DECISIONS
 
+2026-09-17 the served kernel derives verdicts, and a slow seat read is not a
+stale one.
+
+**The evaluator lock is BUILT, not pinned by hand (default, unruled).** No
+ruling says where the served `--evaluator-lock` comes from, and there were two
+ways to serve one: transcribe a generated `EVALUATOR.sha256` into this
+repository as data (the way tally carries its own `ORACLE.sha256` locks), or
+generate it in a derivation from the two inputs this repo already pins. Taken:
+the derivation. `modules/tally-b.nix` runs the KERNEL's own
+`${inputs.tally-b}/tools/make-evaluator-lock.sh` with `--root
+${inputs.tally-lake}` at build time, so not one digest is typed here and the
+lock cannot disagree with either pin without the derivation changing. The cost
+is that reading the lock means building it (guard G3 now builds one small
+derivation, offline); the gain is that a transcribed lock can rot silently
+against a bumped input and a generated one cannot. The consequence to know: a
+`tally-lake` bump CHANGES the lock, which changes the `evaluator.lock` cell of
+every verdict derived after it — that is the point, a verdict names the bytes
+that judged it, and it is why the lake is not in `rollingInputOverrides`.
+
+**The locked argv is ONE store word.** `pkgs/tally-evaluator` wraps
+`tools/e2e-evaluator.sh` so the argv the kernel hashes is
+`<store path>/bin/tally-evaluator` rather than the two words the audit's probe C
+ran (`/bin/sh <checkout>/tools/e2e-evaluator.sh`). A checkout path in a locked
+argv is a lock over a file `git pull` can move; a store path is not. Everything
+per-evaluation still travels on stdin — T7-3, and the only reason an argv can
+be pinned at all. `node` is deliberately absent from the wrapper's
+`runtimeInputs`: the stdin item names the interpreter by absolute path, because
+the node the lake's `scripts/node-env.sh` records is the one its packages were
+resolved against.
+
+**Serving the lock changes nothing for the campaign.** The kit's `eval(...)`
+entries stay `/bin/sh -c true` no-ops. `DEFERRED.md` `DF-U-D13-4` carries why:
+what a mechanical verdict for CUBS IS is Tom's line (integration G7), and the
+per-item stdin an `eval(...)` entry would need is the uplink render tool's
+second step, not this module's constant `stdin` cell.
+
+**The Claude seat reader is bounded at 16 s, and a failed read re-publishes the
+READER'S cache (default, unruled).** D-B54 fixes the arithmetic (30 + 1 + 20 =
+51 < 60) and leaves the reader's own bound free inside the 20-second
+`TimeoutStartSec`; the reads are concurrent, so three of them fit in one window.
+12 seconds was cutting off reads that were going to land — MEASURED over the
+uplink's `events.jsonl` for 2026-09-16T04Z → 09-17T04Z, `cc` read
+`STALE-MEASURED` on 135 of 286 wakes. And when a read genuinely cannot land, the
+retained reading is now taken from the reader's own `.window-cache-<seat>.json`
+in preference to this feeder's own last row on a tie: the cache is the
+measurement, the row is a projection of it that drops cells (the five-hour
+`resets_at`, the null `model_split`), so re-publishing the row degrades the
+retained reading a little further on every failed read while re-publishing the
+cache does not — and `reading_age_seconds` becomes the age of the measurement,
+which is what `reading_source` already claimed by naming that file.
+`tests/tally-b/probe-seat-feeder-timeout.sh` holds both halves down and was
+MEASURED red against the pre-change feeder in exactly those places. Neither
+change can manufacture a reading from an expired token: re-logging in on `cc`
+and `cc3` stays Tom's (`DEFERRED.md` DF-U-D12-3).
+
+**The one red is INHERITED, and it is the `nas-topology` assertion — not an
+offline-input problem.** `nix flake check --offline --no-build` is rc 1 in this
+repository, which is why clause A of `tests/tally-b/test-tally-b-input.sh` is
+red and this item's composite oracle exits 1. The tail that reproduces now —
+MEASURED 2026-09-17 on this branch and byte-identical on a detached worktree at
+`main` (202d9c31) — is `checks.x86_64-linux.nas-topology` → `error: assertion
+'(! ((builtins).elem 8731
+(coordinator).networking.firewall.interfaces.wlp192s0.allowedTCPPorts))' failed`
+at `flake.nix:1694`: a real eval assertion about a coordinator firewall port,
+belonging to whoever opened 8731, and NOT the "an input is missing offline"
+`[ENV]` reading an earlier pass of this item gave it. That earlier pass reached
+`checks.x86_64-linux.nas-personal-tailnet` → `error: path
+'pl6rmijq3dkwqw9cf16wzpycsc7gb9m2-86byf0qaz7f0vgj7x4km4zc9q446skd0-source' is
+not valid` first instead; which of the two surfaces first depends on evaluation
+order, so a rerun may show either. Either way nothing here introduced it — this
+branch edits no `flake.nix` and no firewall or NAS configuration — and nothing
+here fences it out of a probe to make an rc green. `DEFERRED.md` `DF-FLAKE-1`
+carries both tails and who discharges them.
+
 2026-09-13 flake checkouts no longer ride into host closures, chrome-stream
 is installed, and a switch refuses a stale raw-dotfiles checkout.
 
