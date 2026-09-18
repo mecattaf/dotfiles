@@ -8,9 +8,13 @@ adopt     stage then activate now; --force skips the downgrade guard and the
 status    print the freshness facts as JSON
 
 Exit codes are a contract with failure-surfacing: a busy host, a newer local
-generation, a manual policy or an unreachable NAS exit 0 (a receipt, not a
-failure); a bad signature, a failed realise, or a failed probe (after the
-local rollback) exit 1, so the unit fails and a marker is written.
+generation, a manual policy, an unreachable NAS or a host the NAS has not
+published a candidate for exit 0 (a receipt, not a failure); a bad signature,
+a failed realise, or a failed probe (after the local rollback) exit 1, so the
+unit fails and a marker is written. `status` exits 1 when it cannot read the
+state it is reporting on — a run as tom against the root-only state directory
+prints what /run and /nix show and says the rest is unknown, instead of an
+empty state that reads like a healthy idle host.
 
 Test seams (all unset in the real unit; see modules/update-adopt.nix):
   UPDATE_ADOPT_CONFIG     JSON config rendered by Nix (required)
@@ -108,6 +112,27 @@ def journal(state, reason, **fields):
         )
     except (OSError, subprocess.SubprocessError):
         pass
+
+
+def state_unreadable():
+    """Why this user cannot read the host's adoption state, or None.
+
+    /var/lib/update-adopt is 0700 root, so `update-adopt status` run as tom
+    opens neither the directory nor state.json — and load_state() would hand
+    back an empty dict that prints exactly like a healthy idle host. Nothing
+    staged YET is a real answer (no state file on a directory this user can
+    read, or no directory at all on a host that never ran stage); state this
+    user is not allowed to see is not.
+    """
+    try:
+        with open(os.path.join(STATE_DIR, "state.json")):
+            return None
+    except FileNotFoundError:
+        if os.path.isdir(STATE_DIR) and not os.access(STATE_DIR, os.R_OK | os.X_OK):
+            return f"{STATE_DIR} is not readable by uid {os.geteuid()}"
+        return None
+    except OSError as error:
+        return str(error)
 
 
 def load_state():
@@ -261,8 +286,18 @@ def fetch_candidate(cfg, workdir):
     manifest_path = os.path.join(workdir, "manifest.json")
     sig_path = manifest_path + ".sig"
     for url, dest in ((base + "/manifest.json", manifest_path), (base + "/manifest.json.sig", sig_path)):
-        result = run(["curl", "-fsS", "-m", "10", "-o", dest, url], timeout=30)
+        # -w prints the status line's code (000 when no HTTP answer arrived),
+        # so "the NAS published nothing for this host" is told apart from "the
+        # NAS did not answer". Both exit 0; only their names differ, and the
+        # name is what an operator reads in the journal.
+        result = run(["curl", "-fsS", "-m", "10", "-w", "%{http_code}", "-o", dest, url], timeout=30)
         if result.returncode != 0:
+            if result.stdout.strip() == "404":
+                raise Refusal(
+                    "no-candidate",
+                    f"{url}: HTTP 404 — the NAS has published no candidate for this host",
+                    rc=0,
+                )
             raise Refusal("fetch-failed", f"{url}: {result.stderr.strip()}"[:300], rc=0)
     with open(manifest_path, "rb") as stream:
         raw = stream.read()
@@ -753,9 +788,13 @@ def _activate(cfg, force):
 
 
 def status(cfg):
-    state = load_state()
+    unreadable = state_unreadable()
+    # Report no state at all rather than load_state()'s defaults: an "idle"
+    # this process never read is a claim, not a fact.
+    state = {} if unreadable else load_state()
     current = resolve(CURRENT)
     out = {
+        "state_unreadable": unreadable,
         "host": cfg["host"],
         "policy": cfg["policy"],
         "state": state.get("state"),
@@ -774,6 +813,15 @@ def status(cfg):
     }
     json.dump(out, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
+    if unreadable:
+        print(
+            f"update-adopt: {unreadable}; the state, candidate, refusal and "
+            "known-good fields above are unknown, not empty. Run it as root "
+            "(`sudo update-adopt status --json`); fleet-status collects it "
+            "over ssh as root for this reason.",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

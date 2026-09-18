@@ -22,14 +22,27 @@ SCRIPT = os.path.join(REPO, "modules", "update-adopt.py")
 GATES = os.path.join(REPO, "modules", "update-adopt-gates.sh")
 
 FAKES = {
+    # Models the two failures that look alike from the outside: a NAS that
+    # answers 404 (nothing published for this host) and a NAS that does not
+    # answer at all (curl exit 7, no status line, %{http_code} = 000).
     "curl": r"""#!/bin/sh
-dest=""; url=""
+dest=""; url=""; code=""
 while [ $# -gt 0 ]; do
-  case "$1" in -o) dest="$2"; shift 2 ;; -m) shift 2 ;; -*) shift ;; *) url="$1"; shift ;; esac
+  case "$1" in -o) dest="$2"; shift 2 ;; -m|-w) shift 2 ;; -*) shift ;; *) url="$1"; shift ;; esac
 done
+if [ -e "$FIXTURE/nas-down" ]; then
+  printf 000
+  echo "curl: (7) Failed to connect to nas.test port 8734" >&2
+  exit 7
+fi
 src="$FIXTURE/www/${url#http://nas.test/}"
-[ -f "$src" ] || exit 22
+if [ ! -f "$src" ]; then
+  printf 404
+  echo "curl: (22) The requested URL returned error: 404" >&2
+  exit 22
+fi
 if [ -n "$dest" ]; then cp "$src" "$dest"; else cat "$src"; fi
+printf 200
 """,
     "nix-store": r"""#!/bin/sh
 echo "nix-store $*" >> "$FIXTURE/calls.log"
@@ -475,8 +488,30 @@ class AdoptTests(unittest.TestCase):
         self.assertNotIn("--realise", self.fx.calls())
 
     def test_unreachable_nas_is_not_a_failure(self):
-        self.assertOk(self.fx.run("stage"))
+        open(os.path.join(self.fx.tmp, "nas-down"), "w").close()
+        result = self.fx.run("stage")
+        self.assertOk(result)
         self.assertEqual(self.fx.state()["last_refusal"]["reason"], "fetch-failed")
+        self.assertIn("reason=fetch-failed", result.stdout)
+
+    # A NAS that answers 404 has published nothing for this host. That is not
+    # a fetch that failed, and the journal must not say it was (#354 item 4).
+    def test_missing_manifest_is_no_candidate(self):
+        result = self.fx.run("stage")
+        self.assertOk(result)
+        self.assertIn("reason=no-candidate", result.stdout)
+        refusal = self.fx.state()["last_refusal"]
+        self.assertEqual(refusal["reason"], "no-candidate")
+        self.assertIn("404", refusal["detail"])
+        self.assertEqual(self.fx.receipts()[-1]["reason"], "no-candidate")
+        self.assertNotIn("--realise", self.fx.calls())
+        # And it is still a 404 once the host HAS a candidate that is unpublished
+        # again: the honest name does not depend on prior state.
+        self.fx.publish(self.fx.system("b", last_modified=2000))
+        self.assertOk(self.fx.run("stage"))
+        os.unlink(os.path.join(self.fx.tmp, "www/candidates/worker/manifest.json"))
+        self.assertOk(self.fx.run("stage"))
+        self.assertEqual(self.fx.state()["last_refusal"]["reason"], "no-candidate")
 
     # (6) manual policy → never realises
     def test_manual_policy_only_reports(self):
@@ -569,6 +604,34 @@ class AdoptTests(unittest.TestCase):
             self.assertIn(key, out)
         self.assertEqual(out["candidate"]["store_path"], b)
         self.assertEqual(out["current_revision"]["lastModified"], 1000)
+        self.assertIsNone(out["state_unreadable"])
+
+    # The real state directory is 0700 root; a run that cannot read it must
+    # not print an empty state that looks like a healthy idle host (#354).
+    @unittest.skipIf(os.geteuid() == 0, "root reads a 0700 directory anyway")
+    def test_status_without_access_to_state_exits_nonzero(self):
+        self.fx.publish(self.fx.system("b", last_modified=2000))
+        self.assertOk(self.fx.run("stage"))
+        os.chmod(self.fx.state_dir, 0o000)
+        try:
+            result = self.fx.run("status", "--json")
+        finally:
+            os.chmod(self.fx.state_dir, 0o700)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        out = json.loads(result.stdout)
+        self.assertIsNotNone(out["state_unreadable"])
+        for key in ("state", "candidate", "last_refusal", "last_known_good", "pending_reboot"):
+            self.assertIsNone(out[key], key)
+        # The facts it CAN read are still reported, and still true.
+        self.assertEqual(out["current"], self.fx.a)
+        self.assertIn("unknown, not empty", result.stderr)
+
+    def test_status_with_no_state_yet_is_not_an_error(self):
+        result = self.fx.run("status", "--json")
+        self.assertOk(result)
+        out = json.loads(result.stdout)
+        self.assertIsNone(out["state_unreadable"])
+        self.assertEqual(out["state"], "idle")
 
     def test_receipts_are_capped(self):
         for _ in range(60):
