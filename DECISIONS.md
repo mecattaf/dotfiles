@@ -1,5 +1,94 @@
 # DECISIONS
 
+2026-09-16 cubs-halogen-probe-1 (FRONT-12 bootstrap): the dotfiles half of the
+CUBS campaign is ONE store executable and 120 generated kit entries, and
+nothing else in this repository moves. `pkgs/cubs-iteration` is a
+`writeShellApplication` (bash, coreutils, curl, findutils, git, gnugrep,
+gnused, jq, python3, util-linux, `pkgs.llm-agents.pi`) in the drain.sh lineage:
+flock, the receipt as the done marker, wait-with-deadline exit 69 for a
+Halogen that is not ok/idle inside 20 min (never fed to the fuse), one fresh
+`pi -p --mode json` process per task on a git worktree of `~/agency/<repo>`,
+the campaign's diff guard, the task's validation command, exactly one repair
+process, commit on pass and never a push, a 3-consecutive-fail fuse (exit 2),
+a SIGTERM trap that commits WIP inside the kernel's 30 s grace. Doc:
+`docs/local-ai/cubs-campaign.md`. Oracle:
+`tests/tally-uplink/probe-cubs-iteration.sh` (MEASURED PASS, C1–C11). Six
+lines are decided here.
+
+(1) **The kit entry's stdin is a POINTER, not the task.** A kit entry's
+`stdin` is static bytes in a store file (lake `apps/uplink/src/kit.mjs`
+returns the entry as written; `apps/uplink/src/uplink.mjs:623` hands
+`entry.stdin ?? ""` to `exec.run`; tally `exec.rs:747` writes it after the
+start marker). The lake's e2e kit puts the whole item JSON there
+(`tools/e2e-check.mjs:414-470`) but materialises its kit per run; a reviewed
+store kit that must not need a switch per day cannot. So `build:CUBS-<n>`
+hands `{"worklist": "~/mecattaf/cubs-campaign/worklists/current.jsonl",
+"id": "CUBS-<n>"}` and the executable resolves the line; `current.jsonl` is
+what the morning review re-points. Nothing the acceptor's expansion provides
+reaches stdin (`argv_ref = taskId`, `factory.ts:621`).
+
+(2) **N = 40 labels, `lib.range` over three cells each**, the scope()/eval()
+cells the existing `noopEntry`, LOCAL-SMOKE untouched, `claude:headless` still
+absent. N is a ceiling on labels the plan may mint, not work: a missing
+worklist line is exit 65 naming the id. MEASURED: the rendered kit carries
+123 entries; `nix build .#checks.x86_64-linux.tally-uplink-topology` → rc 0
+(it does not enumerate refs, so it needed no edit); the pinned lake's own
+`readKit` resolves all 120 and refuses `build:CUBS-41`.
+
+(3) **The store `pi`, not `home/pi.nix`'s wrapper.** The wrapper's only work
+is the `-e` roster, which is empty (`extensions = { }`; MEASURED: the
+installed wrapper execs the store `pi` with no flags), and the executable
+runs `--no-extensions` under a campaign-private `PI_CODING_AGENT_DIR` (the
+`judge.sh` precedent). Carrying `pkgs.llm-agents.pi` is the same derivation
+with no seam invented in pi.nix (DF-CUBS-5).
+
+(4) **The child's environment is empty, so the script carries everything.**
+`exec.run` is `env_clear` + an empty `env_allowlist` (the LOCAL-SMOKE
+reasoning, kept). MEASURED: `env -i /bin/sh -c 'echo $PATH'` → `/no-such-path`;
+`getent` is glibc's and absent; the store bash has no `compgen`. HOME comes
+from the passwd entry via the carried python3; the two profile bins are
+appended LAST for a validation command that reaches for `nix develop`
+(home/tally-filler.nix's reasoning against pinning a second nix).
+
+(5) **The receipt is the campaign's schema plus two fields.** The campaign
+repo owns `tools/receipt.schema.json` (`schema_version 1`, `sha256:` digests,
+`is_error_count`, `worktree_branch`, `validation.guard_exit`,
+`observed_failure_mode` reserved for the morning review); the executable
+writes that shape and adds `execution_id` (the kernel's `TALLY_EXECUTION_ID`,
+so the usage line and the receipt name the execution back) and `exit_code`.
+Its own mechanical reading of a failure goes to `notes`; per-attempt detail
+to `attempts.json` beside it. The campaign's `tools/spec-diff-guard.sh` is
+THE gate when it exists (allowed paths + new files, any `spec.md` frozen,
+`git diff --check`, setup copies identical to upstream are not changes);
+the built-in guard implements the same path rules and is the self-test's.
+Only files inside allowed_paths + new_files are ever staged.
+
+(6) **A cancel keeps the WIP without moving the base.** On SIGTERM the
+allowed files are committed as `[WIP, cancelled under lease]` and parked
+under `refs/cubs-wip/<id>/<epoch>`; the retry `reset --mixed`es the branch
+to the persisted base with the WIP back in the working tree, rotates the Pi
+session id (`<id>-a1-r2`: `--session-id` RESUMES an existing session, and
+the ruling is one fresh process), and a pass leaves exactly one commit above
+the base. MEASURED in the probe: rc 143 in 137 ms with Pi mid-run.
+
+MEASURED, one real run (docs/local-ai/cubs-campaign.md): the built
+executable under `env -i`, scratch everything, real Pi 0.85.1 on real
+Halogen with a campaign-private models.json carrying `thinkingFormat qwen`
++ `supportsReasoningEffort true`, `--thinking low`, a one-line dictated edit:
+pass first try in 17 s, 4 tool calls, prompt 12337 / completion 405 /
+reasoning 74 tokens, commit on the task branch, receipt and usage line
+written. The first Pi-with-tools run against Halogen recorded on this box;
+a smoke, not a capability claim.
+
+NOT decided here: the coordinator switch and the non-dry arm (Tom's, doc
+§"The two operator acts"), the evaluator lock (DF-U-D13-2 / DF-CUBS-1), a
+floor redeploy for an `execute` member on `gpu-worker` (DF-CUBS-2), the
+`context_window` row cell (DF-CUBS-3), the pi.nix compat fix (DF-CUBS-4), the
+plan option (DF-U-D14-3, still null), and every existing kit entry.
+MEASURED: `nix flake check --offline --no-build` is red on the untouched
+`main` checkout today with the same `source.drv` error as on this branch,
+so the FT-3 probe's K7 is pre-existing red and not this change.
+
 2026-09-13 flake checkouts no longer ride into host closures, chrome-stream
 is installed, and a switch refuses a stale raw-dotfiles checkout.
 
