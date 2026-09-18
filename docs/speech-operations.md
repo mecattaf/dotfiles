@@ -35,6 +35,24 @@ coordinator, whose Library path is the existing NAS mount. This never happens
 inside activation or a service startup. Locally imported K2SO material cannot be
 re-downloaded: restore it from the NAS archive or backup if missing.
 
+The K-2SO voice (`qwen-k2so-midway-b`, eight files, about 3.3 MB) is Tom's
+production voice and is kept (Tom, 2026-09-16). Its canonical copy is
+`/mnt/nas/models/weights/qwen-k2so-midway-b/`. The backup copy is
+`/mnt/nas/documents/voice-references/qwen-k2so-midway-b/`, and its `README.txt`
+records where it came from. On 2026-09-17, the canonical copy, the coordinator
+loan and the backup were all checked against the sha256 `oid` pins in
+`lib/speech-intake-models.json`, and every file matched. Check the backup with
+`sha256sum -c SHA256SUMS` in that directory. Its `sources/` subdirectory holds
+the inputs that `provenance.json` names: the six unmodified segment WAVs whose
+hashes match `provenance.json`, their transcripts, the segment manifest, and
+the original montage MP3 with its download provenance. Check those with their
+own `SHA256SUMS`. Before this, the inputs were only in
+`~/tts-reference-refinement-20260914` and the evidence tarball under
+`models/research`, a tree whose fate is undecided. The `documents` tree gets a
+monthly btrbk snapshot, and it is copied to the LaCie when Tom plugs that drive
+in; the mirror has no timer. Mirroring alone does not make a second copy, because
+the mirror also copies deletions.
+
 The client has no NAS filesystem mount. To restore its two small wake artifacts,
 stage only these canonical directories through the coordinator's NAS mount:
 
