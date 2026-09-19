@@ -1,9 +1,9 @@
-{ symlinkJoin, runCommand, writeShellApplication, runtimeShell, bash, python3, sway, wayvnc,
-  novnc, google-chrome, bibata-cursors, mesa, gcr, systemd, util-linux, coreutils }:
+{ symlinkJoin, runCommand, writeShellApplication, runtimeShell, bash, python3, fara-cli, sway, wayvnc,
+  novnc, google-chrome, bibata-cursors, mesa, gcr, jq, curl, systemd, util-linux, coreutils }:
 let
-  python = python3.withPackages (p: [ p.aiohttp p.secretstorage ]);
-  runtimeInputs = [ bash sway wayvnc google-chrome systemd util-linux coreutils ];
-  viewer = runCommand "browser-desktop-novnc" { } ''
+  python = python3.withPackages (p: [ p.aiohttp p.playwright p.pillow p.secretstorage (p.toPythonModule fara-cli) ]);
+  runtimeInputs = [ bash sway wayvnc google-chrome jq curl systemd util-linux coreutils ];
+  viewer = runCommand "fara-novnc" { } ''
     mkdir -p "$out"
     for entry in ${novnc}/share/webapps/novnc/*; do
       ln -s "$entry" "$out/$(basename "$entry")"
@@ -19,7 +19,7 @@ let
     sed -i '/rel="apple-touch-icon"/d' "$out/vnc.html"
     cp ${./desktop.css} "$out/desktop.css"
     cp ${./desktop.svg} "$out/desktop.svg"
-    # A viewer must never request an exclusive VNC connection.
+    # A spectator must never request an exclusive VNC connection.
     rm -f "$out/mandatory.json"
     echo '{"shared":true}' > "$out/mandatory.json"
     cp ${./desktop-controls.js} "$out/desktop-controls.js"
@@ -30,10 +30,10 @@ let
     export XCURSOR_SIZE=24
     export XCURSOR_PATH=${bibata-cursors}/share/icons
     export SHELL=${runtimeShell}
-    export BROWSER_DESKTOP_ASSETS=${./.}
-    export BROWSER_DESKTOP_PYTHON=${python}/bin/python
-    export BROWSER_DESKTOP_CHROME=${google-chrome}/bin/google-chrome-stable
-    export BROWSER_DESKTOP_PROMPTER=${gcr}/libexec/gcr-prompter
+    export FARA_BROWSER_ASSETS=${./.}
+    export FARA_BROWSER_PYTHON=${python}/bin/python
+    export FARA_BROWSER_CHROME=${google-chrome}/bin/google-chrome-stable
+    export FARA_BROWSER_PROMPTER=${gcr}/libexec/gcr-prompter
     export __EGL_VENDOR_LIBRARY_FILENAMES=${mesa}/share/glvnd/egl_vendor.d/50_mesa.json
     export LIBGL_DRIVERS_PATH=${mesa}/lib/dri
     export GBM_BACKENDS_PATH=${mesa}/lib/gbm
@@ -43,25 +43,32 @@ let
     inherit runtimeInputs;
     text = environment + builtins.readFile ./desktop.sh;
   };
+  cli = writeShellApplication {
+    name = "fara-browser";
+    inherit runtimeInputs;
+    text = environment + ''
+      exec "$FARA_BROWSER_PYTHON" "$FARA_BROWSER_ASSETS/harness.py" "$@"
+    '';
+  };
   menu = writeShellApplication {
     name = "browser-desktop-menu";
     inherit runtimeInputs;
     text = environment + ''
-      exec "$BROWSER_DESKTOP_PYTHON" "$BROWSER_DESKTOP_ASSETS/menu.py" "$@"
+      exec "$FARA_BROWSER_PYTHON" "$FARA_BROWSER_ASSETS/menu.py" "$@"
     '';
   };
 in symlinkJoin {
   name = "browser-desktop";
-  paths = [ desktop menu ];
+  paths = [ desktop cli menu ];
   passthru = {
     inherit python;
     webRoot = viewer;
     assets = ./.;
     tests.contract = runCommand "browser-desktop-contract" { } ''
-      ${python}/bin/python -c 'import secretstorage'
-      PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=${./.} ${python}/bin/python ${./test_desktop.py}
+      ${python}/bin/python -c 'from fara.agents.fara.fara15_agent import Fara15Agent; import secretstorage'
+      PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=${./.} ${python}/bin/python ${./test_harness.py}
       touch "$out"
     '';
   };
-  meta.description = "Shared headless Sway and WayVNC browser desktop behind stock noVNC, with a Chrome profile menu";
+  meta.description = "Sway and WayVNC desktop with Microsoft's FARA harness adapted to noVNC";
 }

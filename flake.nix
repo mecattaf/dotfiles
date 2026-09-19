@@ -2136,8 +2136,11 @@
           # The separate browser-only Sway desktop is a coordinator user service.
           assert (cfgOf "coordinator").systemd.user.services ? browser-desktop;
           assert (cfgOf "coordinator").systemd.user.services.browser-desktop.wantedBy == [ ];
-          # FARA is retired (Tom, 2026-09-16): no model unit beside the desktop.
-          assert !((cfgOf "coordinator").systemd.user.services ? fara-browser-model);
+          # FARA is back (Tom, 2026-09-19: "FARA 9b should BE BROUGHT BACK"),
+          # and it is operator-started, never resident: the unit exists and no
+          # target wants it. `fara-browser` starts it for one task.
+          assert (cfgOf "coordinator").systemd.user.services ? fara-browser-model;
+          assert (cfgOf "coordinator").systemd.user.services.fara-browser-model.wantedBy == [ ];
           assert builtins.all (h: !((cfgOf h).systemd.user.services ? browser-desktop)) [
             "client"
             "worker"
@@ -2638,6 +2641,7 @@
               "halogen"
               "runs"
               "attention"
+              "fara"
             ];
           assert (profile "worker").name == "strix-inference";
           assert (profile "worker").roles == [ "halogen" ];
@@ -3144,6 +3148,8 @@
             coordinator.services.local-models.artifacts == [
               "halogen-qwen38-flash-next"
               "halogen-qwen38-27b"
+              "fara15-9b-q8-0"
+              "fara15-9b-mmproj-bf16"
               "vibevoice-asr-streaming-7b-bf16"
               "openwakeword-baker-compat-v051"
               "openwakeword-alexa-v051"
@@ -3158,6 +3164,8 @@
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
           assert
             builtins.attrNames localModelCatalog.artifacts == [
+              "fara15-9b-mmproj-bf16"
+              "fara15-9b-q8-0"
               "halogen-qwen38-27b"
               "halogen-qwen38-flash-next"
               "mage-flow-4b-turbo-bf16"

@@ -55,8 +55,8 @@
 # home/herdr.nix sets X-SwitchMethod=keep-old (asserted by the
 # herdr-oom-isolation check), browser-desktop is restartIfChanged=false, and
 # the coordinator's gates below refuse while any Herdr agent is not idle/done,
-# while the browser desktop or an operator-started Halogen server is active,
-# and while a tally lease is held.
+# while FARA, the browser desktop or an operator-started Halogen server is
+# active, and while a tally lease is held.
 # Both update-adopt units are restartIfChanged=false/stopIfChanged=false, so a
 # switch never kills the activation that is running it.
 #

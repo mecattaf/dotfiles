@@ -210,6 +210,43 @@ let
                 notes = "Matching full-precision codec for ServeurpersoCom Qwen TTS GGUFs.";
               };
 
+              # Restored 2026-09-19 (Tom: "FARA 9b should BE BROUGHT BACK").
+              # Bytes, oid and hash are the ones this catalogue carried until
+              # 2026-09-16; the Library copies were deleted that night
+              # (/mnt/nas/models/weights/RETIRED-2026-09-16.tsv), so
+              # library-fetch has to re-download both files from bartowski.
+              fara15-9b-q8-0 = mkSingleFileArtifact {
+                maker = "Microsoft / bartowski";
+                baseCheckpoint = {
+                  url = "https://huggingface.co/microsoft/Fara1.5-9B";
+                  revision = "1a93677cd89d5601bc2ed759791e981f3a520032";
+                };
+                hfUrl = "https://huggingface.co/bartowski/Fara1.5-9B-GGUF";
+                revision = "153cb27ac91d4a2b9391ecf278542e610d040178";
+                path = "Fara1.5-9B-Q8_0.gguf";
+                bytes = 9545983104;
+                oid = "a2e30cca7aec006266308153ae781347505af16baa514bbd4e0e3f4a79ea3a22";
+                hash = "sha256-ouMMynrsAGJmMIFTrngTR1Ba8WuqUUu9Tg4/SnnqOiI=";
+                quantization = "Q8_0";
+                notes = "Q8_0 is an explicit operator choice for the mid-tier browser-computer-use appliance; do not silently down-quantize it. A higher-precision row (BF16, or FP8 if an engine ever exists for it here) is Tom's open decision of 2026-09-19, not a silent substitution: see docs/local-ai/fara-restore-2026-09-19.md.";
+              };
+
+              fara15-9b-mmproj-bf16 = mkSingleFileArtifact {
+                kind = "mmproj";
+                maker = "Microsoft / bartowski";
+                baseCheckpoint = {
+                  url = "https://huggingface.co/microsoft/Fara1.5-9B";
+                  revision = "1a93677cd89d5601bc2ed759791e981f3a520032";
+                };
+                hfUrl = "https://huggingface.co/bartowski/Fara1.5-9B-GGUF";
+                revision = "153cb27ac91d4a2b9391ecf278542e610d040178";
+                path = "mmproj-Fara1.5-9B-bf16.gguf";
+                bytes = 921704992;
+                oid = "42ff0ff38666cefc4b1594a05c1644fe9bfc49edfed587ec551e471e0dd8b61d";
+                hash = "sha256-Qv8P84ZmzvxLFZSgXBZE/pv8Se3+1YfsVR5HHg3Yth0=";
+                notes = "BF16 vision projector paired with the Q8_0 Fara-9B deployment.";
+              };
+
               qwen3-embedding-8b-q8-0 = mkSingleFileArtifact {
                 maker = "Qwen";
                 baseCheckpoint = {

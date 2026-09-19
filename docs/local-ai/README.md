@@ -124,7 +124,7 @@ runbook for the Library itself.
 | Host | Wanted artifacts | Served by |
 |---|---|---|
 | `worker` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b` | `modules/halogen.nix`; Flash resident at boot, the 27B after `halogen-switch qwen38-27b` |
-| `coordinator` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b`, `vibevoice-asr-streaming-7b-bf16`, `openwakeword-baker-compat-v051`, `openwakeword-alexa-v051`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `parakeet-tdt-0.6b-v3-onnx`, `qwen3-tts-tokenizer-f32` | Halogen only after `halogen-switch`; streaming ASR per `call-diarize` run; Qwen speech on demand (`modules/qwen-tts.nix`); Parakeet resident (`home/speech.nix`) |
+| `coordinator` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b`, `fara15-9b-q8-0`, `fara15-9b-mmproj-bf16`, `vibevoice-asr-streaming-7b-bf16`, `openwakeword-baker-compat-v051`, `openwakeword-alexa-v051`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `parakeet-tdt-0.6b-v3-onnx`, `qwen3-tts-tokenizer-f32` | Halogen only after `halogen-switch`; FARA 9B on demand on loopback 8732 (`modules/fara-browser-model.nix`, restored 2026-09-19, see [fara-restore-2026-09-19.md](fara-restore-2026-09-19.md)); streaming ASR per `call-diarize` run; Qwen speech on demand (`modules/qwen-tts.nix`); Parakeet resident (`home/speech.nix`) |
 | `client` | `openwakeword-baker-compat-v051`, `openwakeword-alexa-v051` | the wake listener (`home/speech.nix`) |
 | `nas` | none (it holds the Library) | — |
 

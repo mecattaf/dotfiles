@@ -547,6 +547,15 @@ def http_json(url: str, timeout: float = 2.5):
 def c_inference(profile: dict) -> dict:
     roles = profile.get("roles", [])
     out: dict = {}
+    # Collected before the halogen block: that block returns early when every
+    # Halogen unit is inactive, which is the coordinator's normal state.
+    if "fara" in roles:
+        src = "systemctl --user show fara-browser-model"
+        try:
+            s = systemctl_show(["fara-browser-model.service"], ["ActiveState"], user=True)
+            out["fara_browser_model"] = fact((s.get("fara-browser-model.service") or {}).get("ActiveState"), src)
+        except CmdError as exc:
+            out["fara_browser_model"] = unknown(src, str(exc))
     if "halogen" in roles:
         src = "systemctl list-units --all podman-halogen*"
         try:
@@ -1159,6 +1168,8 @@ def render_node(n: dict, color: bool) -> list[str]:
         units = F("inference", "halogen_units")
         if units["grade"] == "measured":
             lines[-1] += "  " + " ".join(f"{k.replace('.service', '')}={v}" for k, v in units["value"].items())
+    if F.has("inference", "fara_browser_model"):
+        lines.append(f"  inference fara-browser-model {val(F('inference', 'fara_browser_model'))}")
 
     if F.has("runs", "kernel_unit"):
         kl = F("runs", "kernel_leases")

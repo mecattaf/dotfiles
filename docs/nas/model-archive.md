@@ -34,6 +34,14 @@ restorable, which is why step 1 exists), then `local-models-borrow`.
 
 Retirement receipts so far: `RETIRED-2026-09-16.tsv` (dotfiles#397).
 
+Restores so far: FARA 1.5 9B and its BF16 projector, 2026-09-19 (Tom), the
+first exercise of the reverse path. Its two rows are back in the catalogue and
+in the coordinator's wanted set, and the bytes come back from
+`bartowski/Fara1.5-9B-GGUF@153cb27`, the same revision and sha256 the
+catalogue always pinned. See `../local-ai/fara-restore-2026-09-19.md`. A
+restore does not remove the row from `RETIRED-<date>.tsv`: that file is a
+receipt of what happened, not a statement about today.
+
 ## Historical procedure (store-path era, #130 workstream 4)
 
 How to take a model out of service without destroying its weights, and how to

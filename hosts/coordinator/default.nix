@@ -65,6 +65,7 @@
     ../../modules/browser-desktop.nix
     ../../modules/keyring-autounlock.nix # TPM-sealed keyring unlock at boot, no typing
     ../../modules/handwriting-annotation.nix
+    ../../modules/fara-browser-model.nix
     ../../modules/qwen-tts.nix
     ../../modules/strix.nix
     # TWINS ONLY: kills the stock 127.0.0.2 self-mapping and points both twins'
@@ -92,6 +93,11 @@
   ];
   services.browser-desktop.enable = true;
   services.handwriting-annotation.enable = true;
+  # FARA 1.5 9B, restored 2026-09-19 (Tom). Operator-started only: the unit
+  # carries no wantedBy, so nothing is resident on this desktop; `fara-browser`
+  # starts it for the length of a task. Same doctrine as halogen autoStart =
+  # false above it.
+  services.fara-browser-model.enable = true;
   services.qwen-tts.enable = true;
 
   # Both stay on their proven pre-migration side until the real HDD and service
@@ -118,8 +124,9 @@
 
   # ── Fleet candidate adoption (#354, 2026-09-13) ─────────────────────────
   # This box runs Tom's live agents, so its gates are the strict set: defer
-  # while any Herdr agent is not idle/done (`herdr agent list`), while the
-  # shared browser desktop or an operator-started Halogen server is up (a
+  # while any Herdr agent is not idle/done (`herdr agent list`), while FARA's
+  # model, the shared browser desktop or an operator-started Halogen server is
+  # up (a
   # switch would restart it into a cold load), while a tally-kernel row has a
   # holder (rows.read) or the live tally daemon holds a pool lease, and — in
   # the module — while any nixos-rebuild/switch is running. Herdr itself is
@@ -154,6 +161,7 @@
           config.myUpdateAdopt.gatesBin
           "units-inactive"
           "user:tom"
+          "fara-browser-model.service"
           "browser-desktop.service"
         ];
       }

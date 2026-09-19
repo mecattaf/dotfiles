@@ -1580,3 +1580,31 @@ an operator-started engine does not size itself against the desktop's free
 memory. Folded in: FDC-M4 (#407), `SuccessExitStatus=143` on every
 podman-halogen unit so `halogen-switch` no longer writes failure markers, with
 its check extended to both twins.
+2026-09-19, FARA 9B comes back. Tom, this evening: "FARA 9b should BE BROUGHT
+BACK, perhaps at fp8 if not bf16; this has avenue to be optimized. should be
+easy to retrieve and apply." This supersedes the FARA half of the 2026-09-16
+retirement and nothing else: the Halogen both-twins work, the speech cut, the
+Qwen3-VL cut, the Gemma/GLM/DS4 cut and every other OUT row stand. Restored on
+`restore/fara-browser`: `modules/fara-browser-model.nix` (loopback 8732,
+llama.cpp ROCm, Q8_0 + BF16 projector), `pkgs/fara-cli.nix` with its
+`browserbase` dependency, the `fara-browser` agent loop in
+`pkgs/browser-desktop` (harness, replay page, /control Caddy route, sidebar
+control status and Take control), the house `fara-browser` skill, the two
+catalogue rows, the coordinator's wanted-set entries and the fleet-status
+`fara` role. Not restored: FARA 1.5 4B and 27B. The unit is operator-started
+and never resident (`wantedBy = [ ]`, asserted in flake.nix), the same rule as
+`services.halogen.autoStart = false` on this box, and it must not run beside a
+coordinator Halogen engine.
+
+Left for Tom, because neither is a code change: the Library bytes. Both files
+were deleted on 2026-09-16 with a receipt in
+`/mnt/nas/models/weights/RETIRED-2026-09-16.tsv`
+(`fara15-9b-q8-0` 9,545,983,104 B, `fara15-9b-mmproj-bf16` 921,704,992 B), so
+`library-fetch` has to re-download them from
+`bartowski/Fara1.5-9B-GGUF@153cb27` and `local-models-borrow` has to loan them
+before the unit's `ConditionPathExists` is met. And the precision. Tom asked
+for fp8 or bf16; this branch restores the Q8_0 row unchanged rather than
+inventing a hash for a row nobody has fetched. The trade, and why FP8 has no
+engine on this fleet today, is in
+`docs/local-ai/fara-restore-2026-09-19.md`. Do not silently substitute a
+quantization: it is an explicit operator choice, 2026-08-03 and again here.

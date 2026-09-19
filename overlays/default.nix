@@ -108,6 +108,11 @@ final: prev: {
   # mutation-ladder driver, and canonical/chunk/embed/index receipt stages.
   academic-ocr = final.callPackage ../pkgs/academic-ocr { };
 
+  # Reference CLI for Microsoft's Fara1.5 computer-use-agent models. Not in
+  # nixpkgs; upstream ships no release tags, so this pins the exact commit
+  # cloned 2026-08-03. See pkgs/fara-cli.nix. Restored 2026-09-19 (Tom).
+  fara-cli = final.callPackage ../pkgs/fara-cli.nix { };
+
   # fleet-status (#356): the graded per-host collector and the coordinator's
   # bounded fan-out view. Stdlib Python; modules/fleet-status.nix installs it.
   fleet-status = final.callPackage ../pkgs/fleet-status { };

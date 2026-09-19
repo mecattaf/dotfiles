@@ -37,7 +37,8 @@
     # exact set local-models-borrow loans from the NAS Library and
     # local-models-prune keeps. Both twins want both Halogen bundles (Tom,
     # 2026-09-16: "both models, on both devices"), served by modules/halogen.nix
-    # below; the coordinator also wants the streaming ASR, loaded per run by
+    # below; the coordinator also wants FARA 9B (served on demand by
+    # modules/fara-browser-model.nix) and the streaming ASR, loaded per run by
     # call-diarize, and its speech rows come from home/speech.nix and
     # modules/qwen-tts.nix. The catalogue (lib/local-models.nix) stays broader
     # than either list — the embedder and Mage rows are loanable on demand —
@@ -47,6 +48,11 @@
       "halogen-qwen38-27b"
     ]
     ++ lib.optionals (config.networking.hostName == "coordinator") [
+      # FARA 1.5 9B and its BF16 vision projector, restored 2026-09-19 (Tom).
+      # Served on demand by modules/fara-browser-model.nix on loopback 8732;
+      # never resident, never started at boot.
+      "fara15-9b-q8-0"
+      "fara15-9b-mmproj-bf16"
       # The one diarization model (Tom, 2026-09-16), loaded by call-diarize.
       "vibevoice-asr-streaming-7b-bf16"
     ];

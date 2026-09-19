@@ -123,6 +123,22 @@ This Intel client investigation does not reopen the retired AMD NPU path.
 No wake listener is activated by the research. Call transcription must suppress
 wake detection, per Tom's Mykonos annotations.
 
+**FARA is back (Tom, 2026-09-19).** Tom: "FARA 9b should BE BROUGHT BACK,
+perhaps at fp8 if not bf16; this has avenue to be optimized." The 2026-09-16
+retirement below is not erased, it is superseded for this one family: FARA 1.5
+**9B only** returns, with its BF16 vision projector, as
+`modules/fara-browser-model.nix` on coordinator loopback `:8732`, plus
+`pkgs/fara-cli.nix`, the `fara-browser` agent loop in `pkgs/browser-desktop`
+and the house `fara-browser` skill. The 4B and the 27B stay out. It is
+operator-started and never resident: the unit carries `wantedBy = [ ]` and
+flake.nix asserts it, exactly like `services.halogen.autoStart = false` on this
+box. Do not run FARA and a coordinator Halogen engine at the same time. The
+Library bytes were deleted on 2026-09-16 and have to be re-fetched from
+`bartowski/Fara1.5-9B-GGUF@153cb27` before the unit's
+`ConditionPathExists` is satisfied. The precision is still Q8_0 + BF16
+projector; Tom's fp8/bf16 question is open, and
+`docs/local-ai/fara-restore-2026-09-19.md` carries the trade.
+
 The coordinator's other model rows are task-specific. Qwen3-TTS 1.7B Base Q8
 with the `qwen-k2so-midway-b` voice is the one TTS model (`modules/qwen-tts.nix`;
 the voice has a second verified copy at
@@ -143,7 +159,8 @@ qwen38-flash-next-fp8 included), DS4 / DeepSeek, GLM, every Gemma model
 (supergemma included), Ornith, Muse Glimmer, IBM Granite, the GGUF
 Qwen3.6-35B-A3B, Qwen3.6-27B and Qwen3.8-27B (the `.hgn` `halogen-qwen38-27b`
 stays), Gemma 4 31B, every Qwen3-VL row (instruct, projectors and the VL
-embedder), every FARA 1.5 model (4B, 9B, 27B) together with its browser agent,
+embedder), FARA 1.5 4B and 27B (the 9B and its browser agent came back on
+2026-09-19, see above),
 the FLM NPU models, Flash-Next in other formats (UD-IQ3_XXS, the ciru IU4
 reference), qwen3-coder-next, the sherpa-onnx keyword-spotting research model,
 every VibeVoice except `vibevoice-asr-streaming-7b-bf16`, every Qwen TTS variant
@@ -171,7 +188,9 @@ starts at boot; Sway, WayVNC and Chrome do not. Sessions stop five minutes
 after the last viewer disconnects. This exception is coordinator-only; worker
 and NAS remain without compositor/VNC. The sidebar opens ordinary installed
 Chrome profiles and unlocks the keyring. The FARA agent loop (`fara-browser`,
-its model unit and skill) was removed with FARA on 2026-09-16 (Tom).
+its model unit and skill) was removed with FARA on 2026-09-16 and restored on
+2026-09-19 (Tom); active FARA tasks keep their session alive and release it on
+completion or cancellation unless a manual session remains.
 `chrome-stream` (same module) is the lighter path: headless Chrome's CDP
 screencast in a viewer page, bound to loopback and tunnelled to the client
 over `ssh -L`.

@@ -1,0 +1,23 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>FARA run __TASK__</title>
+<style>
+body { margin:24px; color:#222; background:#fafafa; font:14px "SF Pro Text",sans-serif; }
+header { display:flex; align-items:center; gap:16px; margin-bottom:16px; }
+input { flex:1; } img { max-width:100%; border:1px solid #aaa; } pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+</style>
+<header><strong>__TASK__</strong><button id="back">Previous</button><input id="position" type="range" min="0"><button id="next">Next</button><span id="count"></span></header>
+<img id="frame" alt="Recorded desktop"><pre id="detail"></pre>
+<script>
+const events = __EVENTS__;
+const slider = document.getElementById('position'); slider.max = Math.max(0,events.length-1); slider.value=0;
+function show() {
+  const i = +slider.value, event = events[i];
+  document.getElementById('count').textContent = `${i+1} / ${events.length}`;
+  document.getElementById('detail').textContent = JSON.stringify(event,null,2);
+  const image = events.slice(0,i+1).reverse().find(e=>e.image);
+  const frame = document.getElementById('frame'); frame.hidden=!image; if(image) frame.src=image.image;
+}
+slider.oninput=show;
+document.getElementById('back').onclick=()=>{slider.stepDown();show();};
+document.getElementById('next').onclick=()=>{slider.stepUp();show();};
+show();
+</script></html>
