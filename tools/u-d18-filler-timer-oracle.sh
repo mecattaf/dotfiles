@@ -120,7 +120,11 @@ exec_start=$(evapp "$home" 'h: let e = h.systemd.user.services.tally-filler.Serv
   in if builtins.isList e then builtins.concatStringsSep " " e else e')
 verb_ok=0
 case "$exec_start" in
-  */research-methods/tools/e1-loop.sh\ --all)
+  # 2026-09-20 corrections: the verb moved out of `%h/research-methods/tools/`
+  # and into the store copy this repository now carries
+  # (pkgs/tally-lane-scripts), so the pattern matches the store binary. The
+  # REGISTER is checked just below, over the E1_REGISTER_ROOT the unit passes.
+  */bin/e1-loop.sh\ --all)
     pass "B the service calls the lane's filler verb: ${exec_start##* bash }"
     verb_ok=1 ;;
   "") bad "B the service's ExecStart would not evaluate" ;;
@@ -132,6 +136,16 @@ x_verb=$(ev "$home.systemd.user.services.tally-filler.Unit.X-TallyVerb")
   && pass "B the unit NAMES its own verb (X-TallyVerb): $x_verb" \
   || bad "B X-TallyVerb is '${x_verb:-<unset>}', not 'e1-loop.sh --all'"
 
+# 2026-09-20 corrections: the REGISTER (still local by D-B12, still not an input
+# of this repository) is now named by the unit instead of being inferred from the
+# script's own location, so the oracle reads it where the unit writes it.
+reg=$(evapp "$home" 'h: builtins.concatStringsSep " " h.systemd.user.services.tally-filler.Service.Environment')
+case "$reg" in
+  *E1_REGISTER_ROOT=*research-methods*)
+    pass "B the unit NAMES the register it walks: ${reg##*E1_REGISTER_ROOT=}" ;;
+  *) bad "B the unit sets no E1_REGISTER_ROOT naming the register: ${reg:-<none>}" ;;
+esac
+
 x_level=$(ev "$home.systemd.user.services.tally-filler.Unit.X-TallyLevel")
 [ "$x_level" = filler ] \
   && pass "B the unit NAMES its level (X-TallyLevel): $x_level" \
@@ -141,7 +155,12 @@ x_level=$(ev "$home.systemd.user.services.tally-filler.Unit.X-TallyLevel")
 # and it must accept the selector. Reported, never fabricated: the register is
 # LOCAL by ruling (D-B12) and is not an input of this repository, so its absence
 # is a NOTE about the box and not a defect in this tree.
-lane="${HOME:-/home/tom}/research-methods/tools/e1-loop.sh"
+# 2026-09-20 corrections: the verb is whatever the unit's own ExecStart names
+# (a store path since the script was carried into pkgs/tally-lane-scripts), not a
+# path this oracle spells for itself; the in-repo source is the fallback for a
+# box where that store path has not been realised. Reported, never fabricated.
+lane=$(printf '%s\n' "$exec_start" | awk '{print $2}')
+[ -f "$lane" ] || lane="$repo/pkgs/tally-lane-scripts/e1-loop.sh"
 if [ -f "$lane" ]; then
   pass "B the verb resolves on this box: $lane"
   if grep -q -- '--all)' "$lane"; then
@@ -150,7 +169,7 @@ if [ -f "$lane" ]; then
     bad "B $lane does not parse --all"
   fi
 else
-  note "B the register checkout is absent here, so the verb cannot be resolved on this box: $lane (D-B12 keeps the register local; this is a statement about the box, not about the tree)"
+  note "B the verb cannot be resolved on this box: $lane (the store path is unrealised and the in-repo copy is missing)"
 fi
 
 # --- C ---------------------------------------------------------------------

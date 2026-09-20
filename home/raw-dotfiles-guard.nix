@@ -44,12 +44,16 @@ let
       k: map toString (lib.toList ((unit.Service or { }).${k} or [ ]))
     ) [ "ExecStart" "ExecStartPre" "ExecStartPost" ];
   guard = pkgs.callPackage ../pkgs/raw-dotfiles-guard.nix { };
+  # 2026-09-20 corrections: the checkout is written once, in lib/paths.nix, so
+  # this option default and modules/dotfiles-bootstrap.nix cannot drift apart
+  # across the home migration. Value unchanged.
+  paths = import ../lib/paths.nix;
 in
 {
   options.rawDotfiles = {
     repoDir = lib.mkOption {
       type = lib.types.str;
-      default = "${config.home.homeDirectory}/mecattaf/dotfiles";
+      default = paths.dotfilesDir;
       readOnly = true;
       description = "The checkout every raw dotfile links into (not the flake source).";
     };

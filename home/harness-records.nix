@@ -33,6 +33,8 @@ let
     pkgs.bash
     pkgs.rsync
     pkgs.coreutils
+    # 2026-09-20 corrections: `mountpoint`, for the NAS guard in the script.
+    pkgs.util-linux
   ];
 
   recordPath = lib.makeBinPath [ pkgs.python3 ];
@@ -47,13 +49,21 @@ in
   # plus an untracked ~/archives/claude-code-mirror/sync.sh. The script is now
   # home/dot_local/bin/claude-transcript-mirror, tracked.
   #
+  # 2026-09-20 corrections: the mirror TARGET moved from ~/archives/claude-code-
+  # mirror to /mnt/nas/documents/session-archive/claude-code-mirror/. ~/archives is
+  # on the after-switch removal list, and the NAS root does not exist yet (MEASURED
+  # 2026-09-20: /mnt/nas/documents/session-archive is absent, /mnt/nas has 1.6T
+  # free), the after-switch list creates it, rsyncs the existing home mirror onto
+  # it, and only then removes ~/archives. The script creates it if missing and
+  # refuses outright when /mnt/nas is not mounted.
+  #
   # SWITCH COLLISION — the hand-written files must be gone BEFORE the switch:
   #   systemctl --user disable --now claude-transcript-mirror.timer
   #   rm ~/.config/systemd/user/claude-transcript-mirror.{service,timer}
   # home-manager will not write over a plain file of the same name.
   #
-  # Semantics are unchanged from the hand-written pair: oneshot, Nice=10,
-  # OnBootSec=5min, OnUnitActiveSec=1h, Persistent=true.
+  # Semantics are otherwise unchanged from the hand-written pair: oneshot,
+  # Nice=10, Persistent=true. The CADENCE changed on 2026-09-20, see the timer.
   systemd.user.services.claude-transcript-mirror = lib.mkIf isCoordinator {
     Unit.Description = "Additive mirror of Claude Code transcripts";
     Service = {
@@ -62,18 +72,32 @@ in
       # compete with an interactive session for CPU. Nice=10 carried over from
       # the hand-written unit verbatim.
       Nice = 10;
+      # 2026-09-20 corrections: the script now calls `mountpoint` before it will
+      # write to /mnt/nas, so util-linux joins the unit's PATH.
       Environment = [ "PATH=${mirrorPath}" ];
       ExecStart = "%h/.local/bin/claude-transcript-mirror";
     };
   };
 
   systemd.user.timers.claude-transcript-mirror = lib.mkIf isCoordinator {
-    Unit.Description = "Hourly additive mirror of Claude Code transcripts";
+    Unit.Description = "Nightly additive mirror of Claude Code transcripts (23:55)";
     Timer = {
-      OnBootSec = "5min";
-      OnUnitActiveSec = "1h";
-      # A box that was asleep through a scheduled run still mirrors on wake:
-      # the whole value of the mirror is that it has no gaps.
+      # 2026-09-20 corrections: hourly (OnBootSec=5min, OnUnitActiveSec=1h)
+      # became one wall-clock run a night, at 23:55.
+      #
+      # WHY ONCE, AND WHY 23:55. The hourly tick was bulk rsync over every seat's
+      # project tree, twenty-four times a day, for a mirror nothing reads between
+      # runs. It is also no longer the only thing that mirrors: the memory drain
+      # runs the mirror IN-FLOW at the 00:01 seal (D13), so the sessions of a day
+      # are already carried as that day is sealed. 23:55 is five minutes ahead of
+      # that seal, which puts the scheduled sweep on the correct side of the date
+      # boundary: it closes the day it belongs to rather than racing the seal for
+      # it.
+      OnCalendar = "*-*-* 23:55:00";
+      # Kept, and it matters more now than it did hourly: with one wake a night, a
+      # box that was asleep at 23:55 would otherwise skip a whole day. A box that
+      # was asleep through a scheduled run still mirrors on wake, the whole value
+      # of the mirror is that it has no gaps.
       Persistent = true;
     };
     Install.WantedBy = [ "timers.target" ];

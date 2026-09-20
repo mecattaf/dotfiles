@@ -1,20 +1,20 @@
 ---
 name: backlog-discipline
-description: Conventions and CLI workflow for the Leger backlog at ~/leger/backlog (Sodimo pilot project tracking). Use when creating, editing, archiving, or querying tasks/decisions/docs/drafts under ~/leger/backlog; when processing daily logs under ~/leger/sodimo/ that feed the backlog; or when the user mentions the backlog board, IDs like TASK-NN / decision-NN / DRAFT-NN / m-N, or actions like "add a task", "log this", "archive that", "check the board". Prime directive — CLI only, never hand-write .md files.
-when_to_use: cd into ~/leger or any subtree; user references TASK-N / decision-N / DRAFT-N / m-N; new artifact creation; status flips; AC checks; archive/cleanup; weekly retrospective writeups.
+description: Conventions and CLI workflow for the Leger backlog at ~/sodimo/backlog (Sodimo pilot project tracking). Use when creating, editing, archiving, or querying tasks/decisions/docs/drafts under ~/sodimo/backlog; when processing daily logs under ~/sodimo/sodimo/ that feed the backlog; or when the user mentions the backlog board, IDs like TASK-NN / decision-NN / DRAFT-NN / m-N, or actions like "add a task", "log this", "archive that", "check the board". Prime directive — CLI only, never hand-write .md files.
+when_to_use: cd into ~/sodimo or any subtree; user references TASK-N / decision-N / DRAFT-N / m-N; new artifact creation; status flips; AC checks; archive/cleanup; weekly retrospective writeups.
 ---
 
 # Leger backlog discipline
 
-The Leger backlog at `~/leger/backlog/` tracks the Sodimo pilot. It is managed by the [`backlog`](https://github.com/MrLesk/Backlog.md) CLI (v1.45.1+, already installed). **The single most important rule: every artifact MUST be created via the CLI. Never hand-write `.md` files** — past hand-writing produced 34 invalid files that bypassed validation and had to be rebuilt.
+The Leger backlog at `~/sodimo/backlog/` tracks the Sodimo pilot. It is managed by the [`backlog`](https://github.com/MrLesk/Backlog.md) CLI (v1.45.1+, already installed). **The single most important rule: every artifact MUST be created via the CLI. Never hand-write `.md` files** — past hand-writing produced 34 invalid files that bypassed validation and had to be rebuilt.
 
 ## Live project facts (verify before acting)
 
 | Field | Value |
 |---|---|
-| Root | `~/leger/backlog/` |
-| Web UI | `cd ~/leger && backlog browser --port 6421` |
-| Board | `cd ~/leger && backlog board` |
+| Root | `~/sodimo/backlog/` |
+| Web UI | `cd ~/sodimo && backlog browser --port 6421` |
+| Board | `cd ~/sodimo && backlog board` |
 | Statuses (4) | `To Do`, `In Progress`, `Blocked`, `Done` |
 | `task_prefix` | `task` → IDs are `TASK-1`, `TASK-2`, ... |
 | `date_format` | `yyyy-mm-dd` (no time on this project) |
@@ -24,7 +24,7 @@ The Leger backlog at `~/leger/backlog/` tracks the Sodimo pilot. It is managed b
 Always verify the live config before structural ops:
 
 ```bash
-cd ~/leger && backlog config list
+cd ~/sodimo && backlog config list
 ```
 
 Tasks are read in agent-friendly form with `--plain`. Without it the CLI opens a TUI that will hang an agent session.
@@ -91,7 +91,7 @@ Length scales with AC count: 1–3 AC = 1–2 sentence description, no plan; 3�
 
 ## CLI cheat-sheet
 
-Run from `~/leger` (the CLI walks up from any subtree). **Always `--plain` for inspection** unless explicitly opening a TUI.
+Run from `~/sodimo` (the CLI walks up from any subtree). **Always `--plain` for inspection** unless explicitly opening a TUI.
 
 ### Create
 
@@ -107,7 +107,7 @@ backlog task create "Harden Vaultwarden and wire R2 nightly backup" \
   --plan "1. Rotate token  2. Configure fail2ban  3. Wire R2 sync  4. Drill restore" \
   --notes "Initial pass completed 2026-04-14; drill timings captured in run-log" \
   --dod "All 6 Caddy routes return HTTP 200 through CF Access" \
-  --ref ~/leger/sodimo-dev/runbooks/vaultwarden-hardening.md \
+  --ref ~/sodimo/sodimo-dev/runbooks/vaultwarden-hardening.md \
   --ref https://vaultwarden.dev/docs/install/admin \
   --doc doc-3 \
   --doc https://github.com/dani-garcia/vaultwarden/wiki \
@@ -127,7 +127,7 @@ DoD default #2 ("Refs cite a concrete file/path/url") is *only* satisfiable via 
 
 ```bash
 backlog task create "..." \
-  --ref ~/leger/sodimo-dev/runbooks/foo.md \
+  --ref ~/sodimo/sodimo-dev/runbooks/foo.md \
   --ref https://developers.cloudflare.com/workers/observability/ \
   --doc doc-7 \
   --doc https://docs.example.com/spec
@@ -373,8 +373,10 @@ backlog task archive <id>
 - Full CLI reference (every flag): `~/Downloads/backlog/CLI-INSTRUCTIONS.md`
 - Advanced config (`backlog config`, DoD wizard, on-status-change hook): `~/Downloads/backlog/ADVANCED-CONFIG.md`
 - Source reference analyses (A discipline, B dryrun scope, C changelog inventory, D sodimo-dev map): `~/Downloads/backlog/_reference-analysis-{A,B,C,D}-*.md`
-- Live config: `~/leger/backlog/config.yml`
-- Daily working logs (retro source): `~/leger/sodimo/<week>/<day>/`
-- Most recent state + open threads: `~/leger/sodimo/fifthweek/tuesday/morning-work-handoff.md`
-- Unresolved judgment calls awaiting Tom: `~/leger/sodimo/fifthweek/tuesday/contradictions-to-resolve.md`
-- Per-week Opus retrospectives: `~/leger/backlog/docs/retrospectives/doc-{7,15,18,22}-Retrospective-*.md`
+- Live config: `~/sodimo/backlog/config.yml`
+- Daily working logs (retro source): `~/sodimo/sodimo/<week>/<day>/`
+- Most recent state + open threads: `~/sodimo/sodimo/fifthweek/tuesday/morning-work-handoff.md`
+- Unresolved judgment calls awaiting Tom: `~/sodimo/sodimo/fifthweek/tuesday/contradictions-to-resolve.md`
+- Per-week Opus retrospectives: `~/sodimo/backlog/docs/retrospectives/doc-{7,15,18,22}-Retrospective-*.md`
+
+2026-09-20 corrections: every path above was `~/leger/...` until today. `~/leger` was renamed `~/sodimo` in the 2026-09-20 home migration; the PROJECT is still Leger and the pilot is still Sodimo, only the directory moved.

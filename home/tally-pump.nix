@@ -51,15 +51,29 @@
 # "PUMP: another pump holds <pid>" and this unit records that skip as a failure
 # of the tick — which is the honest reading, because that tick did not run.
 #
-# WHY THE VERB IS AN OUT-OF-STORE PATH. The lane (`~/sept7/plan/codex-lane`) is
-# a local working tree by construction: it holds the live manifest's decisions,
-# its runs/, its evals/ and its results.json, and it is not — and must not
-# become — a flake input of this repository. Naming it through `%h` is exactly
-# the seam home/tally-filler.nix uses for `%h/research-methods/tools/e1-loop.sh`
-# and home/seat-feeder.nix for its one sanctioned credential reader. A missing
-# script is therefore a LEGIBLE failure (the unit exits non-zero naming the
-# path), deliberately not a `ConditionPathExists=` that would make an absent
-# lane a silent no-op.
+# WHERE THE VERB LIVES, AND WHY THAT CHANGED ON 2026-09-20. 2026-09-20
+# corrections: the SCRIPT now comes from this repository (pkgs/tally-lane-scripts,
+# `${pkgs.tally-lane-scripts}/bin/pump.sh`), because the home migration of
+# 2026-09-20 removes `~/sept7` after landing its working copy into notes, and a
+# unit that named its own program under `%h/sept7` would have broken at the next
+# switch with no warning.
+#
+# The LANE is a different thing and it is unchanged in kind. The lane
+# (`~/sept7/plan/codex-lane`) is a local working tree by construction: it holds
+# the live manifest's decisions, its runs/, its evals/ and its results.json, and
+# it is not, and must not become, a flake input of this repository. It is still
+# named through `%h`, now as `LANE_DIR` below rather than as the directory the
+# script happens to sit in, which is the seam home/tally-filler.nix uses for
+# `E1_REGISTER_ROOT` and home/seat-feeder.nix for its one sanctioned credential
+# reader. A missing lane is therefore still a LEGIBLE failure (the tick exits
+# non-zero naming the path), deliberately not a `ConditionPathExists=` that would
+# make an absent lane a silent no-op.
+#
+# 2026-09-20 corrections, READ THIS BEFORE THE SWITCH: `~/sept7` is on the
+# after-switch removal list. `laneRoot` below is the ONE place its location is
+# written on this side, and it is UNCHANGED today so nothing breaks, but the unit
+# is only as alive as the tree it points at. Repointing it at wherever the lane
+# comes to rest is part of that removal, not of this file's present state.
 #
 # WHY MAXW=2 AND WHY IT IS SET HERE. `pump.sh` defaults to `MAXW=14` concurrent
 # workers/evaluators; both typed starts on record set `MAXW=2`, because the
@@ -96,13 +110,23 @@ let
   hostName = osConfig.networking.hostName;
   isCoordinator = hostName == "coordinator";
 
-  # The lane and its verb. `%h` and not a literal /home/tom: this is a user
-  # unit, so the two are the same value, and the specifier keeps the module free
-  # of one estate's home directory.
+  # The lane, and the verb that walks it. `%h` and not a literal /home/tom: this
+  # is a user unit, so the two are the same value, and the specifier keeps the
+  # module free of one estate's home directory.
+  #
+  # 2026-09-20 corrections: `pumpScript` moved from `${laneRoot}/pump.sh` to a
+  # store path; `laneRoot` and `pumpLog` are unchanged values and are now passed
+  # to the tick as `LANE_DIR` rather than inferred from the script's own location.
   laneRoot = "%h/sept7/plan/codex-lane";
-  pumpScript = "${laneRoot}/pump.sh";
+  pumpScript = "${pkgs.tally-lane-scripts}/bin/pump.sh";
   pumpSelector = "--once";
   pumpLog = "${laneRoot}/pump.log";
+
+  # 2026-09-20 corrections: pump.sh used to hardcode this receipts directory.
+  # It is the register's, not the lane's, and the register moves to
+  # ~/mecattaf/research-methods after the switch, so the unit names it. Value
+  # UNCHANGED today.
+  pumpReceipts = "%h/research-methods/receipts/FACTORY-2026-09-06";
 
   # The concurrency cap, spelled as the two typed starts on record spell it.
   maxWorkers = "2";
@@ -162,7 +186,12 @@ in
 # the RENDERED unit live in flake.nix's `tally-pump-topology` check, where they
 # are strictly stronger anyway (they cover ExecStart and Environment together).
 assert pumpSelector == "--once";
-assert lib.hasSuffix "/codex-lane/pump.sh" pumpScript;
+# 2026-09-20 corrections: the assert that was here read `pumpScript`, which is
+# now a store path and therefore forces `pkgs`, exactly the infinite recursion
+# this comment warns about. The lane is still asserted, over the literal that
+# names it, and the shape of the rendered ExecStart is asserted in flake.nix's
+# `tally-pump-topology` check, where it is stronger anyway.
+assert lib.hasSuffix "/codex-lane" laneRoot;
 assert maxWorkers != "";
 assert pumpCalendar != "";
 {
@@ -186,6 +215,11 @@ assert pumpCalendar != "";
       Environment = [
         "PATH=${pumpPath}"
         "MAXW=${maxWorkers}"
+        # 2026-09-20 corrections: the tick used to find the lane and the receipts
+        # by the script's own default. Run from the store it cannot, so both are
+        # named here, and these two strings are the whole of the post-switch flip.
+        "LANE_DIR=${laneRoot}"
+        "PUMP_RECEIPTS_DIR=${pumpReceipts}"
       ];
 
       ExecStart = "${pkgs.bash}/bin/bash ${pumpScript} ${pumpSelector}";

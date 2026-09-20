@@ -106,11 +106,20 @@ let
         "cc2"
         "cc3"
       ];
-      # The reader is research-methods bin/stamp-receipt.py, out of store and
-      # out of this repository on purpose: it is the ONE program authorised to
-      # open ~/.claude*/.credentials.json (D-B5), and dotfiles neither copies it
-      # nor re-implements it. Absent, the feeder still writes each row, with
-      # grade UNKNOWN and that absence as the reason.
+      # The reader is stamp-receipt.py: the ONE program authorised to open
+      # ~/.claude*/.credentials.json (D-B5). dotfiles still does not
+      # re-implement it.
+      #
+      # 2026-09-20 corrections: it used to be named as
+      # `%h/research-methods/bin/stamp-receipt.py`, out of store. The home
+      # migration of 2026-09-20 moves the register to ~/mecattaf/research-methods,
+      # which would have broken that path at the next switch, so the repository
+      # now CARRIES this one file (pkgs/tally-lane-scripts, byte-identical to the
+      # register's copy) and the feeder names a store path. The register itself is
+      # still not a flake input (D-B12); the reader has no register dependency at
+      # all, it reads ~/.claude*/ and ~/.codex/ through $HOME. Absent or failing,
+      # the feeder still writes each row, with grade UNKNOWN and that absence as
+      # the reason.
       # The seat list is COMMA-separated, and the comma is load-bearing.
       # systemd splits an unquoted `Environment=` value on whitespace into
       # SEPARATE assignments, so `TALLY_CLAUDE_SEATS=cc cc2 cc3` set the
@@ -121,7 +130,7 @@ let
       # file writes the one that cannot be split. The flake check asserts that
       # no feeder environment entry carries whitespace at all.
       environment = [
-        "TALLY_STAMP_RECEIPT=%h/research-methods/bin/stamp-receipt.py"
+        "TALLY_STAMP_RECEIPT=${pkgs.tally-lane-scripts}/bin/stamp-receipt.py"
         "TALLY_CLAUDE_SEATS=cc,cc2,cc3"
         # A user unit inherits no profile, so the HTTPS trust store is named.
         "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"

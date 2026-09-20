@@ -31,21 +31,34 @@
 # the lane's verb over the whole eligible population and is what U-D18's timer
 # calls" — so the ExecStart below is
 #
-#   bash %h/research-methods/tools/e1-loop.sh --all
+#   bash ${pkgs.tally-lane-scripts}/bin/e1-loop.sh --all
+#
+# (2026-09-20 corrections: this was `bash %h/research-methods/tools/e1-loop.sh
+# --all` until the script was carried into the repository; see below.)
 #
 # and that script is the one that walks `cards/e1-sample.tsv`'s eligible rungs,
 # one item at a time. See DECISIONS.md (U-D18) for the line and its consequence.
 #
-# WHY THE VERB IS AN OUT-OF-STORE PATH. The register (`~/research-methods`) is
-# LOCAL by ruling — ~/research-methods/DECISIONS.md D-B12, "the register stays
-# local" — so it is not, and must not become, a flake input of this repository.
-# Naming its script through `%h` is the same seam home/seat-feeder.nix already
-# uses for the one sanctioned credential reader
-# (`TALLY_STAMP_RECEIPT=%h/research-methods/bin/stamp-receipt.py`): the estate
-# points at the register, the register is never copied into the store. A missing
-# script is therefore a LEGIBLE failure — the unit exits non-zero naming the
-# path — and deliberately not a `ConditionPathExists=` that would make an absent
-# lane a silent no-op.
+# WHERE THE VERB LIVES, AND WHY THAT CHANGED ON 2026-09-20. It used to be an
+# out-of-store path, `bash %h/research-methods/tools/e1-loop.sh --all`.
+#
+# 2026-09-20 corrections: the SCRIPT now comes from this repository
+# (pkgs/tally-lane-scripts, `${pkgs.tally-lane-scripts}/bin/e1-loop.sh`) because
+# the home migration of 2026-09-20 moves the register out from under that path:
+# `~/research-methods` becomes `~/mecattaf/research-methods` after the switch, and
+# a unit that names its own program by a home path would have broken at the next
+# switch with no warning.
+#
+# What did NOT change is D-B12. The register (`~/research-methods`) is LOCAL by
+# ruling, ~/research-methods/DECISIONS.md D-B12, "the register stays local", so
+# it is not, and must not become, a flake input of this repository. Only the
+# ENTRY POINT is carried; the register TREE the lane reads and writes
+# (tools/e1-rungs.py, tools/gpu-lease.sh, tools/run-e1-worker.sh,
+# tools/check-e1.sh, bin/register, cards/, receipts/) stays out of store and is
+# named by `E1_REGISTER_ROOT` below, one variable, so the post-switch move is one
+# edit. A missing register is therefore still a LEGIBLE failure, the lane exits
+# non-zero naming the path, and deliberately not a `ConditionPathExists=` that
+# would make an absent lane a silent no-op.
 #
 # HOW THE TWO FILLERS ALTERNATE (D-B10). D-B10 rules that "the two fillers (E1
 # replay, academic drain) alternate by round-robin on `gpu-coordinator`". Two
@@ -96,11 +109,19 @@ let
   hostName = osConfig.networking.hostName;
   isCoordinator = hostName == "coordinator";
 
-  # The register checkout and the lane's verb inside it. `%h` and not a literal
-  # /home/tom: this is a user unit, so the two are the same value, and the
-  # specifier keeps the module free of one estate's home directory.
+  # 2026-09-20 corrections: the register TREE, and the lane's verb, are now two
+  # different things. The tree is still out of store and still named through `%h`
+  # (a user unit, so `%h` and /home/tom are the same value, and the specifier
+  # keeps the module free of one estate's home directory). The VERB is a store
+  # path from pkgs/tally-lane-scripts, so the unit survives the home migration.
+  #
+  # 2026-09-20 corrections: `registerRoot` is the ONE place the register's
+  # location is written. The home migration moves the register to
+  # `~/mecattaf/research-methods` AFTER the switch, and flipping this string
+  # (together with the `%h/sept7` one in home/tally-pump.nix) is the whole of that
+  # change on this side. The value is UNCHANGED today so nothing breaks.
   registerRoot = "%h/research-methods";
-  fillerScript = "${registerRoot}/tools/e1-loop.sh";
+  fillerScript = "${pkgs.tally-lane-scripts}/bin/e1-loop.sh";
   fillerSelector = "--all";
 
   # The lake checkout the lane sources its node toolchain from
@@ -175,8 +196,12 @@ in
 # asserted in flake.nix over the rendered unit, where they are strictly stronger
 # anyway: there they cover ExecStart and Environment together.
 assert fillerPeriod != "";
-assert lib.hasSuffix "/tools/e1-loop.sh" fillerScript;
-assert lib.hasInfix "/research-methods/" fillerScript;
+# 2026-09-20 corrections: the two asserts that were here read `fillerScript`,
+# which is now a store path and therefore forces `pkgs`, exactly the infinite
+# recursion the comment above forbids. The same invariants are asserted over the
+# RENDERED unit in flake.nix's `tally-filler-topology` check, which is stronger
+# anyway. What is still a literal, and still asserted here, is the register root.
+assert lib.hasSuffix "/research-methods" registerRoot;
 assert fillerSelector == "--all";
 {
   systemd.user.services.tally-filler = lib.mkIf isCoordinator {
@@ -210,6 +235,11 @@ assert fillerSelector == "--all";
       Environment = [
         "PATH=${fillerPath}"
         "E1_LAKE=${lakeRoot}"
+        # 2026-09-20 corrections: the lane used to derive its register root from
+        # its own location (`dirname $0/..`). Run from the store that is wrong, so
+        # the root is named here instead, and it is the one string to flip after
+        # the register moves to ~/mecattaf/research-methods.
+        "E1_REGISTER_ROOT=${registerRoot}"
       ];
 
       ExecStart = "${pkgs.bash}/bin/bash ${fillerScript} ${fillerSelector}";

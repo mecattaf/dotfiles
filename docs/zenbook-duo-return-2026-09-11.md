@@ -25,7 +25,7 @@ nothing in this document has to be ruled on first.**
 
 R-5 names the "agency.agency full vision" as the long-term goal and calls dotfiles "a byproduct
 of configuring things for the AI agent". Where the vision lives (VERIFIED, session A §4): the
-`~/agency` corpus (312 md files, 133 MB in the home census), the register area "agency and
+`~/cubs` corpus (312 md files, 133 MB in the home census), the register area "agency and
 moonshot: 6 projects", and the notes-backlog task `front-02 -
 Bring-Agency-from-red-corpus-to-sealed-build-handoff.md` (dirty in the notes tree). Tom made
 no statement about "agency.agency" in sessions A, B or C beyond the R-5 phrase; the invariants

@@ -465,6 +465,14 @@ in
     createDirectories = false;
     music = "/mnt/nas/music";
     videos = "/mnt/nas/videos";
+    # 2026-09-20 corrections: XDG_DESKTOP_DIR and XDG_DOCUMENTS_DIR point at the
+    # home directory itself, so no application recreates ~/Desktop or ~/Documents
+    # after the 2026-09-20 home sweep moved them to the NAS. Written through
+    # `config.home.homeDirectory` rather than a literal /home/tom for the same
+    # reason `repoDir` is (this module already takes `config` as an argument, and
+    # uses it at the top of the file for exactly that).
+    desktop = config.home.homeDirectory;
+    documents = config.home.homeDirectory;
   };
 
   # ---------------------------------------------------------------------------

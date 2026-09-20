@@ -14,7 +14,31 @@
 # Safe to re-run at any time.
 set -euo pipefail
 
-M="$HOME/archives/claude-code-mirror"
+# 2026-09-20 corrections: the mirror target moved off the home directory and onto
+# the NAS. It was "$HOME/archives/claude-code-mirror"; ~/archives is on the
+# after-switch removal list, and a mirror whose whole value is that it has no gaps
+# should not live on the box whose disk it is meant to outlive.
+#
+# The NAS root does not exist yet (MEASURED 2026-09-20: /mnt/nas/documents/
+# session-archive is absent, /mnt/nas has 1.6T free). The after-switch list
+# creates it, rsyncs the existing ~/archives/claude-code-mirror/ onto it, and only
+# then removes ~/archives. Until it exists this script creates it itself, one
+# level at a time through mkdir -p, so a first run on a warm automount just works.
+#
+# MIRROR_ROOT is honoured so a test can point this at a scratch tree without
+# touching the live mirror.
+M="${MIRROR_ROOT:-/mnt/nas/documents/session-archive/claude-code-mirror}"
+
+# Create-if-missing, and REFUSE rather than mirror into a home directory when the
+# NAS is not mounted: an unmounted /mnt/nas would otherwise get a local directory
+# silently written under the mountpoint, which is the one failure that loses the
+# gaplessness this mirror exists for.
+case "$M" in
+  /mnt/nas/*)
+    mountpoint -q /mnt/nas || { echo "claude-transcript-mirror: /mnt/nas is not mounted; refusing to mirror to $M" >&2; exit 1; }
+    ;;
+esac
+mkdir -p "$M"
 
 sync_root() { # $1 = source config dir, $2 = mirror subdir
   [ -d "$1/projects" ] || return 0

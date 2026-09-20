@@ -170,10 +170,18 @@ fi
 # --- P3 --------------------------------------------------------------------
 # The negative control for P2: is a literal-%h E1_LAKE actually harmful? Run the
 # lane's own verb with one, from a bare environment, and print what it does.
-lane="${HOME:-/home/tom}/research-methods/tools/e1-loop.sh"
+# 2026-09-20 corrections: the lane's entry point now lives in this repository
+# (pkgs/tally-lane-scripts) and runs from the store, so the control runs the
+# in-repo copy when the register checkout is not on this box, and names the
+# register explicitly through E1_REGISTER_ROOT rather than letting the script
+# infer it from its own location.
+register="${E1_REGISTER_ROOT:-${HOME:-/home/tom}/research-methods}"
+lane="$register/tools/e1-loop.sh"
+[ -f "$lane" ] || lane="$repo/pkgs/tally-lane-scripts/e1-loop.sh"
 if [ -f "$lane" ]; then
   littmp=$(mktemp)
   env -i HOME="${HOME:-/home/tom}" PATH="${got_path:-/run/current-system/sw/bin}" \
+      E1_REGISTER_ROOT="$register" \
       E1_LAKE='%h/mecattaf/tally-ts-sdk' \
       bash "$lane" --all --dry-run >"$littmp" 2>&1
   lit_rc=$?
