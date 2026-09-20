@@ -23,7 +23,10 @@
 # dir that the ConditionPathExists gate would mistake for "done" (the wedge the earlier
 # greetd-wrapper had).
 let
-  repoDir = "/home/tom/mecattaf/dotfiles";
+  # 2026-09-20 corrections: the checkout is written once, in lib/paths.nix. This
+  # is a NixOS module that runs before any user session exists, which is why that
+  # file holds a literal and not `config.home.homeDirectory`. Value unchanged.
+  repoDir = (import ../lib/paths.nix).dotfilesDir;
   repoUrl = "https://github.com/mecattaf/dotfiles.git";
   # Pin the canonical branch explicitly so a future default-branch change cannot
   # silently redirect provisioning.

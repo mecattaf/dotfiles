@@ -10,8 +10,11 @@
 let
   hostName = osConfig.networking.hostName;
   isCoordinator = hostName == "coordinator";
-  dotfiles = "/home/tom/mecattaf/dotfiles";
-  notes = "/home/tom/mecattaf/notes";
+  # 2026-09-20 corrections: both trees are written once, in lib/paths.nix, so the
+  # home migration flips them in one place. Values unchanged.
+  paths = import ../lib/paths.nix;
+  dotfiles = paths.dotfilesDir;
+  notes = paths.notesDir;
   worktrees = "/home/tom/.local/state/tally-worktrees";
   # 2026-09-13: pin each script to its own store path. The tally module types
   # `script` and `catalog` as types.path, so a bare `./X.js` rendered as

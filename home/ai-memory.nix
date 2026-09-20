@@ -8,11 +8,16 @@
 let
   cfg = config.programs.ai-memory;
   qmd = pkgs.llm-agents.qmd;
+  # 2026-09-20 corrections: the vault's location is written once, in
+  # lib/paths.nix, so this default and flake.nix's `expectedJournal` (which is
+  # asserted against what this renders) cannot drift apart across the home
+  # migration. Value unchanged.
+  paths = import ../lib/paths.nix;
 in
 {
   options.programs.ai-memory.journalDir = lib.mkOption {
     type = lib.types.str;
-    default = "${config.home.homeDirectory}/mecattaf/notes/journal";
+    default = "${paths.notesDir}/journal";
     description = ''
       Sole routing destination for manually drained AI-session journal notes.
     '';
