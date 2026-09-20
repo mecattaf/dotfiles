@@ -92,6 +92,18 @@ in
   # NAS private media HTTPS: zone-limited DNS-01 token, no broad Wrangler OAuth
   # authority. Ciphertext is provisioned before enabling personal-https.nix.
   "secrets/nas-cloudflare-dns.age".publicKeys = editors ++ nasOnly;
+  # NAS inbound Cloudflare tunnel (2026-09-20 sandbox spike, hosts/nas/cloudflared.nix).
+  # The credentials JSON from `cloudflared tunnel create nas-sink`, NOT a DNS
+  # token: this one is a ROUTE INWARD, which is why it is its own ciphertext
+  # and its own door rather than a second use of nas-cloudflare-dns above.
+  # nasOnly for the same reason every NAS secret is: the appliance decrypts
+  # exactly what it consumes (2026-08-04 ruling, hosts/nas/default.nix).
+  #
+  # THE CIPHERTEXT DOES NOT EXIST YET. This entry is the recipient ACL, which
+  # is all `agenix -e` needs to mint it; the module that reads it lands with
+  # its gate OFF until Tom walks the runbook. Mint with:
+  #   nix develop -c agenix -e secrets/nas-cloudflared-tunnel.age
+  "secrets/nas-cloudflared-tunnel.age".publicKeys = editors ++ nasOnly;
   # --- wifi PSK tier: the coordinator, whose Freebox uplink
   # (wlp192s0) is now declarative too (migrated from an imperative profile on
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r

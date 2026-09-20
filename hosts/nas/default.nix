@@ -45,6 +45,12 @@
     ./headscale.nix # 2026-09-01: the fleet's OWN tailnet control plane (supersedes #233)
     ./tailscale-personal.nix # Additional isolated SaaS ingress; never enroll the lent laptops here
     ./personal-https.nix # Gated, NAS-scoped DNS-01 certificates for private media
+    # 2026-09-20 sandbox spike: the NAS's own INBOUND tunnel, deliberately not
+    # the coordinator's Cloudflare relationship (Tom: "i like having that
+    # separated from the coordinator's interaction with cloudflare"). Gate OFF
+    # and unflippable until its ciphertext exists; read that file's header for
+    # the list of what must never be routed through it.
+    ./cloudflared.nix
     ./headscale-backup.nix # consistent identity backup before overseas handover
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
@@ -121,6 +127,15 @@
   myNas.tailscalePersonal.funnel.policyApproved = true;
   myNas.headscale.serverUrl = "https://nas-saas.tail8dd1.ts.net:8443";
   myNas.headscale.backup.enable = true;
+
+  # ── The NAS tunnel: GATE OFF, and it cannot be flipped yet ──────────────
+  # secrets/nas-cloudflared-tunnel.age does not exist in the tree: minting it
+  # needs Tom's admin age key, and the overnight spike that opened this PR has
+  # none and must never have one. Walk the runbook in ./cloudflared.nix
+  # (create the tunnel, mint the ciphertext, route the DNS name, set the
+  # tunnelId), then flip this. The sink receiver it points at is separate work
+  # and is not in this commit.
+  myNas.cloudflared.enable = false;
   # Retired 2026-09-16: the Dell belongs to its owner; Tom no longer
   # publishes or manages Omarchy updates. Keep historical receipts only.
   myNas.omarchyUpdateCenter.enable = false;
