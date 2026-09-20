@@ -1301,7 +1301,15 @@
           assert coordinatorHome.systemd.user.services ? tally-drain;
           # the service calls the lane's verb, and calls it as a pass and not
           # as a probe.
-          assert nixpkgs.lib.hasInfix "/research-methods/tools/e1-loop.sh " execStart;
+          # 2026-09-20 corrections: the verb moved from
+          # `%h/research-methods/tools/e1-loop.sh` to the store copy this
+          # repository now carries (pkgs/tally-lane-scripts), so the ExecStart
+          # infix is the store binary. The REGISTER is still asserted, one line
+          # down, over the Environment the unit passes it in: that is what the old
+          # assert was really protecting, and it is now protected explicitly.
+          assert nixpkgs.lib.hasInfix "/bin/e1-loop.sh " execStart;
+          assert nixpkgs.lib.hasInfix "E1_REGISTER_ROOT=" rendered;
+          assert nixpkgs.lib.hasInfix "/research-methods" rendered;
           assert nixpkgs.lib.hasSuffix " --all" execStart;
           assert !(nixpkgs.lib.hasInfix "--dry-run" execStart);
           assert service.Service.Type == "oneshot";
@@ -1406,7 +1414,14 @@
           assert timer.Timer ? Persistent;
           assert timer.Timer.Persistent == false;
           # the service: the lane's TICK verb, as a oneshot, not a latch.
-          assert nixpkgs.lib.hasInfix "/codex-lane/pump.sh " execStart;
+          # 2026-09-20 corrections: as for the filler, the verb moved from
+          # `%h/sept7/plan/codex-lane/pump.sh` to the store copy in
+          # pkgs/tally-lane-scripts, and the LANE it walks is now asserted over
+          # the Environment that names it rather than over the script's path.
+          assert nixpkgs.lib.hasInfix "/bin/pump.sh " execStart;
+          assert nixpkgs.lib.hasInfix "LANE_DIR=" env;
+          assert nixpkgs.lib.hasInfix "/codex-lane" env;
+          assert nixpkgs.lib.hasInfix "PUMP_RECEIPTS_DIR=" env;
           assert nixpkgs.lib.hasSuffix " --once" execStart;
           assert service.Service.Type == "oneshot";
           assert !(service.Service ? RemainAfterExit);
@@ -2343,7 +2358,10 @@
         ai-memory =
           let
             homeConfig = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
-            expectedJournal = "/home/tom/mecattaf/notes/journal";
+            # 2026-09-20 corrections: the vault is written once, in lib/paths.nix,
+            # so this check and home/ai-memory.nix cannot drift apart across the
+            # home migration. Value unchanged.
+            expectedJournal = "${(import ./lib/paths.nix).notesDir}/journal";
           in
           assert homeConfig.programs.ai-memory.journalDir == expectedJournal;
           assert

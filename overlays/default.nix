@@ -6,6 +6,11 @@ final: prev: {
   speech-wake = final.callPackage ../pkgs/speech-wake { };
   qwen-speech = final.callPackage ../pkgs/qwen-speech { };
   speech-listening-cue = final.callPackage ../pkgs/speech-listening-cue { };
+
+  # 2026-09-20 corrections: the filler lane's, seat feeder's and release
+  # station's three entry points, carried in-repo so their units name a store
+  # path and not a home path that moves in the 2026-09-20 home migration.
+  tally-lane-scripts = final.callPackage ../pkgs/tally-lane-scripts { };
   # Add-only overlay + a single scoped upstream override (niri, below).
   # Everything else is already in nixpkgs and referenced directly.
 

@@ -216,3 +216,24 @@ own word `false` the printed value rather than an attribute-missing error.
 | `DF-U-D18-3` | moving the academic drain onto a lease over the socket, so the two fillers alternate under the kernel rather than beside it — U-D11/TL-15 |
 
 See [`DEFERRED.md`](../../DEFERRED.md) for the full rows.
+
+## 2026-09-20 corrections: the verb is now a store path
+
+The `ExecStart` written above, `bash %h/research-methods/tools/e1-loop.sh --all`,
+is what this timer carried until 2026-09-20. It is now
+
+```
+bash ${pkgs.tally-lane-scripts}/bin/e1-loop.sh --all
+```
+
+with `E1_REGISTER_ROOT=%h/research-methods` in `Environment=`. Nothing about
+D-B12 changed: the register is still local and still not an input of this
+repository. What changed is that the one ENTRY POINT is carried in-repo
+(`pkgs/tally-lane-scripts/e1-loop.sh`), because the 2026-09-20 home migration
+moves the register to `~/mecattaf/research-methods` and a unit that named its own
+program under `%h/research-methods` would have broken at the next switch with no
+warning. The register TREE the lane reads and writes (`tools/e1-rungs.py`,
+`tools/gpu-lease.sh`, `tools/run-e1-worker.sh`, `tools/check-e1.sh`,
+`bin/register`, `cards/`, `receipts/`) is unchanged, out of store, and named by
+that one variable. The same applies to `TALLY_STAMP_RECEIPT` in
+`home/seat-feeder.nix` and to `pump.sh` in `home/tally-pump.nix`.
