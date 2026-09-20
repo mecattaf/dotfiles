@@ -16,3 +16,13 @@ The wrapper is runtime isolation, not a full filesystem sandbox. Home, source
 files, `/tmp`, and networking remain accessible. Do not suppress unexpected
 coredumps or service failures. Do not restart Herdr or the whole user manager
 to repair a test incident while live agent sessions must be preserved.
+
+# Harness push rule (R5 as broadened by R11, 2026-09-20)
+
+The claude and codex harnesses, and the tally jobs they run, may push and use
+`gh` (branches, PRs, issues, comments) in `mecattaf/dotfiles`, `mecattaf/tally`,
+`mecattaf/tally-ts-sdk` and `mecattaf/notes`. Every push is receipted with its
+sha in the session log, so a push is always traceable to the session that made
+it. Merges and the switch remain Tom's: a harness opens the PR, Tom merges it,
+and `nixos-rebuild switch` is never a harness's act. No force-push and no history
+rewrite without his word.

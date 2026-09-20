@@ -184,3 +184,5 @@ The manual command is installed; no automatic inbox-to-OCR dispatcher is running
 The first real Huion source/render/OCR/review/export trial remains the next
 commissioning step, as requested. The current corrected journal is already in
 `~/sept14-notepad`.
+
+2026-09-20: ~/sept14-notepad has been landed into notes at references/continuity/2026-09-14-pickup/sept14-notepad/ (with PROVENANCE.md); the ~/huion source paths cited above now resolve under /mnt/nas/documents/archive/home-sweep-2026-09-18/rescue/huion/. The home copy is removed.
