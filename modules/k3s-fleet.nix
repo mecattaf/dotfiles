@@ -52,7 +52,7 @@
 # never installed, nothing here was wasted; if it is, nothing here has to
 # change.
 #
-# ── THE FEATURE GATES, AND THE HONEST PART ───────────────────────────────
+# ── THE FEATURE GATES, AND WHAT IS NOW MEASURED ──────────────────────────
 # MEASURED from ~/Downloads/substrate, hack/create-kind-cluster.sh:104-112,
 # which is upstream's own comment on why they are not optional:
 #
@@ -69,13 +69,33 @@
 # clusterTrustBundle volume (manifests/ate-install/atelet.yaml:271-289), and
 # every Substrate component's mTLS identity comes from that signer.
 #
-# WHAT IS NOT MEASURED, and must not be claimed until the first switch: which
-# of these three gates each component actually accepts on k3s 1.35.6+k3s1.
-# ClusterTrustBundle is an apiserver-side gate and a kubelet that is handed an
-# unrecognised gate name refuses to start, so the kubelet below is given only
-# the two that are its own. If the first switch produces a kubelet that will
-# not start, the fix is in the kubeletGates list below and nowhere else. This
-# is U9 and it is the single measurement that gates all of Track S.
+# U9 IS ANSWERED, AND THE ANSWER IS YES. The first draft of this file said the
+# opposite: that nothing about these gates was measured and that the first
+# switch would tell us. A5a measured it the same night, inside a k3s
+# 1.35.6+k3s1 guest built from this exact pin, and the answer is that the
+# pinned k3s serves the group. MEASURED there:
+#
+#   kubectl get --raw /apis/certificates.k8s.io/v1beta1 | jq -r .resources[].name
+#     clustertrustbundles
+#     podcertificaterequests
+#     podcertificaterequests/status
+#   kubectl api-resources | grep -i "trustbundle\|podcertificate"
+#     clustertrustbundles     certificates.k8s.io/v1beta1  false  ClusterTrustBundle
+#     podcertificaterequests  certificates.k8s.io/v1beta1  true   PodCertificateRequest
+#
+# So Appendix J section 9's step 1 success criterion is met on the pin, its
+# fallback paragraph does not have to be taken, and no newer k3s is needed for
+# this reason. k3s_1_36 (1.36.2+k3s1) is in both stable and unstable if one is
+# ever wanted for another.
+#
+# TWO THINGS THAT WOULD HAVE BEEN WRONG WITHOUT THAT MEASUREMENT, both fixed
+# in this file and both worth knowing before editing it:
+#   1. The three gates ALONE serve nothing. See runtimeConfigFlag below: the
+#      metrics read 1 while the group version stays unserved, so a check that
+#      read only the metric would have reported a false pass.
+#   2. kubelet accepts all three gate names, including ClusterTrustBundle.
+#      This file used to hand kubelet a subset out of caution. It no longer
+#      needs to.
 #
 # ── GATE OFF ─────────────────────────────────────────────────────────────
 # Every host lands with `enable = false`. secrets/k3s-token.age does not exist
@@ -129,18 +149,38 @@ let
     x.lo <= y.hi && y.lo <= x.hi;
 
   # ── The feature gates Substrate needs (see the header) ──
-  apiserverGates = [
+  # All three, on all three components. The earlier draft of this file gave
+  # kubelet only two of them, on the reasoning that ClusterTrustBundle is
+  # apiserver-side and an unrecognised gate name is fatal to kubelet. A5a
+  # MEASURED otherwise on 2026-09-20, inside a k3s 1.35.6+k3s1 guest built from
+  # this exact pin: "the apiserver, the controller manager and the kubelet all
+  # accept all three gate names. None of the three components refused an
+  # unknown gate, and the node reached Ready in about ten seconds."
+  substrateGates = [
     "ClusterTrustBundle=true"
     "ClusterTrustBundleProjection=true"
     "PodCertificateRequest=true"
   ];
-  controllerManagerGates = apiserverGates;
-  # Deliberately a SUBSET: see the honest part in the header. ClusterTrustBundle
-  # itself is apiserver-side, and an unrecognised gate name is fatal to kubelet.
-  kubeletGates = [
-    "ClusterTrustBundleProjection=true"
-    "PodCertificateRequest=true"
-  ];
+
+  # ── THE FLAG THAT ACTUALLY DECIDES IT ─────────────────────────────────
+  # The three gates alone serve NOTHING. A5a's boot 5 held the gates on and
+  # dropped this line; MEASURED result:
+  #
+  #   kubernetes_feature_enabled{name="ClusterTrustBundle",stage="BETA"} 1
+  #   kubernetes_feature_enabled{name="ClusterTrustBundleProjection"...} 1
+  #   kubernetes_feature_enabled{name="PodCertificateRequest",stage="BETA"} 1
+  #   kubectl get --raw /apis/certificates.k8s.io | jq -c .versions
+  #     -> [{"groupVersion":"certificates.k8s.io/v1","version":"v1"}]
+  #   kubectl api-resources | grep -i "trustbundle\|podcertificate"
+  #     -> NO_RESOURCES
+  #
+  # So the gates flip to 1 while the group version stays unserved, and a check
+  # that read only the metric would have reported a false pass. The group
+  # version is turned on separately, by this flag, and podcertcontroller has
+  # nothing to talk to without it. It is quoted straight out of upstream's own
+  # kind config (hack/create-kind-cluster.sh:111-112, the `runtimeConfig`
+  # block, which is the part a reader skips).
+  runtimeConfigFlag = "runtime-config=certificates.k8s.io/v1beta1=true";
 
   serverFlags = [
     "--cluster-cidr=${podCidr}"
@@ -153,40 +193,55 @@ let
     # dial `nas`, resolved by the static pins in modules/common.nix:130 and
     # modules/fleet-hosts.nix, not by DNS.
     "--tls-san=nas"
-    "--kube-apiserver-arg=--feature-gates=${lib.concatStringsSep "," apiserverGates}"
-    "--kube-apiserver-arg=--runtime-config=certificates.k8s.io/v1beta1=true"
-    "--kube-controller-manager-arg=--feature-gates=${lib.concatStringsSep "," controllerManagerGates}"
-    "--kubelet-arg=--feature-gates=${lib.concatStringsSep "," kubeletGates}"
+    # A5a's MEASURED working form: the value inside a `-arg=` carries NO leading
+    # dashes of its own. Both flag families are required and neither is
+    # sufficient alone; see runtimeConfigFlag above.
+    "--kube-apiserver-arg=feature-gates=${lib.concatStringsSep "," substrateGates}"
+    "--kube-apiserver-arg=${runtimeConfigFlag}"
+    "--kube-controller-manager-arg=feature-gates=${lib.concatStringsSep "," substrateGates}"
+    "--kubelet-arg=feature-gates=${lib.concatStringsSep "," substrateGates}"
   ];
 
   agentFlags = [
-    "--kubelet-arg=--feature-gates=${lib.concatStringsSep "," kubeletGates}"
+    "--kubelet-arg=feature-gates=${lib.concatStringsSep "," substrateGates}"
   ];
 
   # ── containerd: add runsc WITHOUT losing the stock config ──────────────
-  # `{{ template "base" . }}` is the module's own documented way to keep
-  # k3s's generated containerd configuration and append to it (the option's
-  # example in nixos/modules/services/cluster/rancher/default.nix:628-646 is
-  # literally "Add a custom runtime"). Dropping that line replaces the whole
-  # config and the node loses its CNI, its snapshotter and its registry
-  # mirrors at once. It is one line and it is load-bearing.
+  # `{{ template "base" . }}` is the module's own documented way to keep k3s's
+  # generated containerd configuration and append to it. Dropping that line
+  # replaces the whole config and the node loses its CNI, its snapshotter and
+  # its registry mirrors at once. It is one line and it is load-bearing.
   #
-  # runc.v2 with BinaryName pointing at runsc, rather than the runsc shim:
-  # runsc is an OCI runtime, the runc.v2 shim is already in k3s, and this is
-  # the shape the module documents. The alternative (runtime_type
-  # "io.containerd.runsc.v1", which needs containerd-shim-runsc-v1 on k3s's
-  # PATH -- the nixpkgs gvisor package does build it) is the upstream-preferred
-  # path and is the first thing to try if a sandbox refuses to start. Whether
-  # Claude Code itself survives inside gVisor at all is U7 and is measured
-  # separately tonight; this module only makes the class available.
+  # ── THE KEY PATH BELOW IS NOT THE ONE THE NIXPKGS EXAMPLE SHOWS ───────
+  # The option's example (nixos/modules/services/cluster/rancher/default.nix
+  # 628-646) documents
+  #   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes."custom"]
+  # and that path is WRONG for this k3s. A5a MEASURED, 2026-09-20, reading the
+  # config that k3s 1.35.6+k3s1 actually generates at
+  # /var/lib/rancher/k3s/agent/etc/containerd/config.toml: the file starts
+  # `version = 3` and its runtime table is
+  #   [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runc]
+  # That is containerd 2.x config v3 (the node reports containerd://2.2.5-k3s2).
+  # A `grpc.v1.cri` block would be parsed, accepted and silently ignored, which
+  # is the worst of the three outcomes. Use the path below, and check it again
+  # the day the k3s pin moves a major version.
+  #
+  # ── AND runtime_path, NOT options.BinaryName ─────────────────────────
+  # The first draft of this file used runtime_type "io.containerd.runc.v2" with
+  # options.BinaryName pointing at an absolute runsc, which is the shape the
+  # nixpkgs example suggests and which looks right. A5a MEASURED it and it is a
+  # trap: a pod under that RuntimeClass reaches Running and STAYS "1/1 Running"
+  # in kubelet's view, produces NO LOGS AT ALL, and `kubectl exec` into it
+  # fails with `cannot execute in container ...: in state stopped`. The generic
+  # runc shim starts runsc but carries neither its stdio nor its state. Do not
+  # use BinaryName for gVisor. The nixpkgs gvisor package builds
+  # containerd-shim-runsc-v1 beside runsc, and that shim is what goes here.
   containerdTemplate = ''
     {{ template "base" . }}
 
-    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes."runsc"]
-      runtime_type = "io.containerd.runc.v2"
-    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes."runsc".options]
-      BinaryName = "${pkgs.gvisor}/bin/runsc"
-      SystemdCgroup = true
+    [plugins.'io.containerd.cri.v1.runtime'.containerd.runtimes.runsc]
+      runtime_type = "io.containerd.runsc.v1"
+      runtime_path = "${pkgs.gvisor}/bin/containerd-shim-runsc-v1"
   '';
 
   # The NAS registry is plain HTTP on the LAN (hosts/nas/state-services.nix
@@ -404,10 +459,34 @@ in
         containerdConfigTemplate = containerdTemplate;
       };
 
-      # runsc on PATH for the k3s unit. Not strictly needed for the
-      # BinaryName form above, which uses an absolute store path, but it is
-      # what makes switching to runtime_type "io.containerd.runsc.v1" a
-      # one-line edit rather than a second debugging session.
+      # ── runsc ON THE k3s UNIT'S PATH: REQUIRED, NOT A CONVENIENCE ──────
+      # `runtime_path` above tells containerd where the SHIM is. The shim then
+      # execs `runsc` from its OWN $PATH, and the k3s unit has essentially
+      # none: A5a MEASURED that the nixpkgs rancher module sets
+      # `path = lib.optional config.boot.zfs.enabled config.boot.zfs.package`
+      # and nothing else (default.nix:918), so the unit PATH is empty by
+      # default and k3s relies on its own wrapper for iptables and friends.
+      # Without this line every sandbox fails at creation, MEASURED:
+      #
+      #   Failed to create pod sandbox: rpc error: code = Unknown desc =
+      #   failed to start sandbox "...": failed to create containerd task:
+      #   failed to create shim task: OCI runtime create failed:
+      #   exec: "runsc": executable file not found in $PATH
+      #
+      # Note also that gVisor is NOT auto-detected. A5a MEASURED that with
+      # `gvisor` in environment.systemPackages and runsc resolvable at
+      # /run/current-system/sw/bin/runsc, the generated containerd config
+      # still contained only `runc` and `runhcs-wcow-process`. k3s ships
+      # RuntimeClasses for crun, lunatic, nvidia, slight, spin, wasmedge,
+      # wasmer, wasmtime and wws out of the box, and none for gVisor. The
+      # runtime has to be declared, which is what this module does.
+      #
+      # CAUTION FOR THE NEXT EDITOR: this assignment REPLACES the unit PATH
+      # rather than extending a populated one. A5a MEASURED `systemctl show
+      # k3s -p Environment` afterwards containing only the two gvisor
+      # directories. It did not break kube-proxy or flannel there because the
+      # nixpkgs k3s package wraps its own binary with the tools it needs, but
+      # anyone adding a second entry should append rather than assume.
       systemd.services.k3s.path = [ pkgs.gvisor ];
     })
   ];
