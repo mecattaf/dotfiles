@@ -46,6 +46,11 @@
     ./tailscale-personal.nix # Additional isolated SaaS ingress; never enroll the lent laptops here
     ./personal-https.nix # Gated, NAS-scoped DNS-01 certificates for private media
     ./headscale-backup.nix # consistent identity backup before overseas handover
+    # 2026-09-20 sandbox spike: the fleet k3s cluster. This box is the SERVER
+    # and schedules nothing (disableAgent); the machines live on the Strix
+    # boxes. The CIDR-overlap assertions in that file evaluate whether or not
+    # the gate is on, which is the point of them.
+    ../../modules/k3s-fleet.nix
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc
@@ -121,6 +126,13 @@
   myNas.tailscalePersonal.funnel.policyApproved = true;
   myNas.headscale.serverUrl = "https://nas-saas.tail8dd1.ts.net:8443";
   myNas.headscale.backup.enable = true;
+
+  # ── The k3s control plane: GATE OFF ────────────────────────────────────
+  # secrets/k3s-token.age does not exist in the tree; minting it needs Tom's
+  # admin age key. Flip all three hosts in the SAME commit -- an agent whose
+  # server is not up yet retries forever and logs nothing useful.
+  myK3sFleet.enable = false;
+  myK3sFleet.role = "server";
   # Retired 2026-09-16: the Dell belongs to its owner; Tom no longer
   # publishes or manages Omarchy updates. Keep historical receipts only.
   myNas.omarchyUpdateCenter.enable = false;

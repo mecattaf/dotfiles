@@ -79,9 +79,30 @@
     # resolves to loopback, which every distributed library happily binds — the
     # rank-1-hangs-forever failure. The NAS must NOT import this.
     ../../modules/fleet-hosts.nix
+    # 2026-09-20 sandbox spike: k3s AGENT. Idle CPU and /dev/kvm while
+    # Halogen holds only the GPU, so this is where a long batch belongs.
+    ../../modules/k3s-fleet.nix
   ];
 
   networking.hostName = "worker";
+
+  # ── k3s agent: GATE OFF (2026-09-20 sandbox spike) ─────────────────────
+  # Flip this, the coordinator's and the NAS's in the SAME commit.
+  #
+  # `fleet/gpu-proximity=halogen` is the label that earns this box its work:
+  # Halogen Flash is RESIDENT here (modules/halogen.nix, http://worker:8731)
+  # and holds the GPU and ~68 GiB of weights for the life of the process. A
+  # pod scheduled here reaches it over the LAN with no hop, and -- the part
+  # that actually matters -- Halogen holds the GPU but NOT the CPU, which is
+  # idle. So this is where a long CPU batch belongs even though the box looks
+  # busy. No `fleet/desk`: there is no display, no seat and no herdr here.
+  myK3sFleet.enable = false;
+  myK3sFleet.role = "agent";
+  myK3sFleet.nodeLabels = {
+    "fleet/role" = "compute";
+    "fleet/kvm" = "true";
+    "fleet/gpu-proximity" = "halogen";
+  };
 
   # ── no display, no compositor ──────────────────────────────────────────────
   # One line, not two forces: myDisplay.enable (modules/display.nix) is the

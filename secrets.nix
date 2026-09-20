@@ -92,6 +92,17 @@ in
   # NAS private media HTTPS: zone-limited DNS-01 token, no broad Wrangler OAuth
   # authority. Ciphertext is provisioned before enabling personal-https.nix.
   "secrets/nas-cloudflare-dns.age".publicKeys = editors ++ nasOnly;
+  # The k3s cluster join token (2026-09-20 sandbox spike, modules/k3s-fleet.nix).
+  # Read by all three cluster hosts: the NAS server mints the cluster from it
+  # and both Strix agents present it to join, so this is the one secret whose
+  # tier is genuinely "the appliance AND the twins". Written out rather than
+  # reusing `delivered`, which deliberately excludes the nas.
+  #
+  # THE CIPHERTEXT DOES NOT EXIST YET -- this is the recipient ACL, which is
+  # what `agenix -e` needs to mint it. A k3s token is any sufficiently long
+  # opaque string; `openssl rand -hex 32` is fine. Mint with:
+  #   nix develop -c agenix -e secrets/k3s-token.age
+  "secrets/k3s-token.age".publicKeys = editors ++ delivered ++ nasOnly;
   # --- wifi PSK tier: the coordinator, whose Freebox uplink
   # (wlp192s0) is now declarative too (migrated from an imperative profile on
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r
