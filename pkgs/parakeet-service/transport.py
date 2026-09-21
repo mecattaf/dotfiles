@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Private Unix socket transport for the persistent GPU worker.
+"""Private Unix socket transport for the socket-activated GPU worker.
 
 Wire: little-endian uint32 length followed by s16le PCM; zero length commits.
 Disconnect without zero cancels. One owner, no queued recordings, 60-second cap.
 SSH carries this protocol; no TCP listener or virtual microphone is involved.
+systemd owns the listening socket and starts this on the first connect; the
+model is released again after --idle-timeout so nothing sits resident.
 """
 import argparse
 import fcntl
@@ -22,6 +24,29 @@ import time
 
 MAX_BYTES = 60 * 16000 * 2
 MAX_FRAME = 65536
+LISTEN_FDS_START = 3
+
+
+def listener(args):
+    """Adopt systemd's activation socket, or bind our own when run by hand.
+
+    Returns the socket and whether we own the path: systemd created the socket
+    file and outlives us, so an activated server must not unlink it on exit.
+    The LISTEN_* variables are popped so the engine subprocess cannot inherit
+    an activation contract that is not its own.
+    """
+    count = int(os.environ.pop('LISTEN_FDS', 0) or 0)
+    pid = os.environ.pop('LISTEN_PID', None)
+    os.environ.pop('LISTEN_FDNAMES', None)
+    if count and (pid is None or int(pid) == os.getpid()):
+        if count != 1:
+            raise RuntimeError(f'expected one activation socket, got {count}')
+        return socket.socket(socket.AF_UNIX, socket.SOCK_STREAM, fileno=LISTEN_FDS_START), False
+    sock = socket.socket(socket.AF_UNIX)
+    args.socket.unlink(missing_ok=True)
+    sock.bind(str(args.socket))
+    sock.listen(4)
+    return sock, True
 
 
 def exact(stream, count):
@@ -99,9 +124,9 @@ def serve(args):
     owner = threading.Lock()
     stopping = threading.Event()
     threads = []
-    sock = socket.socket(socket.AF_UNIX)
-    args.socket.unlink(missing_ok=True)
-    sock.bind(str(args.socket)); sock.listen(4); sock.settimeout(.2)
+    sock, owns_path = listener(args)
+    sock.settimeout(.2)
+    idle_deadline = time.monotonic() + args.idle_timeout if args.idle_timeout else None
 
     def handle(conn):
         try:
@@ -127,7 +152,14 @@ def serve(args):
             if engine.proc.poll() is not None:
                 raise RuntimeError('GPU worker died')
             try: conn, _ = sock.accept()
-            except socket.timeout: continue
+            except socket.timeout:
+                threads = [t for t in threads if t.is_alive()]
+                if idle_deadline is None: continue
+                # A live handler is work, not idle: hold the deadline off.
+                if threads: idle_deadline = time.monotonic() + args.idle_timeout
+                elif time.monotonic() > idle_deadline: break
+                continue
+            if idle_deadline is not None: idle_deadline = time.monotonic() + args.idle_timeout
             if not owner.acquire(blocking=False):
                 conn.settimeout(.1)
                 try: reply(conn, {'error': 'another capture owns transcription'})
@@ -137,7 +169,8 @@ def serve(args):
             threads = [t for t in threads if t.is_alive()]
             threads.append(thread); thread.start()
     finally:
-        sock.close(); args.socket.unlink(missing_ok=True)
+        sock.close()
+        if owns_path: args.socket.unlink(missing_ok=True)
         for thread in threads: thread.join(timeout=1)
         code = engine.close()
         if code: raise RuntimeError(f'GPU worker shutdown failed: {code}')
@@ -166,6 +199,8 @@ def main():
     p.add_argument('--socket', type=Path, default=Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')) / 'parakeet-service/engine.sock')
     p.add_argument('--engine', default='parakeet-service-engine')
     p.add_argument('--model', type=Path, default=Path('/var/lib/local-models/parakeet-tdt-0.6b-v3-onnx'))
+    p.add_argument('--idle-timeout', type=float, default=0,
+                   help='seconds with no capture before the server exits and releases the model; 0 stays up')
     p.add_argument('--framed', action='store_true')
     args = p.parse_args()
     try: serve(args) if args.mode == 'serve' else relay(args)

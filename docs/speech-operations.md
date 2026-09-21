@@ -113,8 +113,11 @@ were explicitly dropped. They are not outstanding implementation commitments.
 Operational commands use functional names: `speech-wake`, `speech-dictate`,
 `speech-session`, `speech-projector`, `speech-play`, `speech-queue`,
 `parakeet-service` and `parakeet-relay`. The corresponding services are
-`speech-wake.service` (client), `parakeet-service.service` (coordinator) and
-`speech-queue.{service,path,timer}` (coordinator). Historical research paths
+`speech-wake.service` (client), `parakeet-service.{socket,service}` (coordinator)
+and `speech-queue.{service,path,timer}` (coordinator). Parakeet is socket-activated,
+not resident (#448): the socket is always listening, the first connect loads the
+model (~4.2 s, absorbed by the relay's ready handshake), and the server exits
+after 15 minutes idle so nothing holds the weights between dictations. Historical research paths
 retain the location name under which the investigation was originally recorded.
 
 Hands-free continuation is out of scope by Tom’s explicit decision. Production

@@ -30,7 +30,7 @@ rustPlatform.buildRustPackage {
       --add-flags "$out/lib/transport.py relay"
   '';
   meta = {
-    description = "Resident coordinator Parakeet TDT with private framed audio transport";
+    description = "Socket-activated coordinator Parakeet TDT with private framed audio transport";
     license = lib.licenses.mit;
     platforms = [ "x86_64-linux" ];
   };
