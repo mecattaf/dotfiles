@@ -23,35 +23,12 @@ in
 
   config = lib.mkIf cfg.enable (
     lib.mkMerge [
-      # Claude Code OAuth credential — coordinator ONLY, and the recipient tier in
-      # ../secrets.nix now matches (aug04 ruling), so this MUST stay host-gated:
-      # no other host can decrypt the ciphertext, and declaring an undecryptable
-      # secret fails activation. The zenbook was already excluded (jul12 ruling:
-      # the laptop is a standalone backup operator for when the coordinator is
-      # unreachable, so it logs in with its OWN fresh OAuth session instead of
-      # inheriting the coordinator's token — two devices refreshing one shared
-      # token can race and sign each other out); the nas joined it aug04 for the
-      # simpler reason that it has no `claude` and never spent the token.
-      (lib.mkIf (config.networking.hostName == "coordinator") {
-        age.secrets.claude-credentials = {
-          file = ../secrets/claude-credentials.age;
-          owner = "tom";
-          group = "users";
-          mode = "600";
-        };
-
-        # Seed the Claude Code OAuth credential once into a WRITABLE path Claude owns —
-        # agenix delivers a read-only /run/agenix symlink, but Claude must rewrite the
-        # file on token refresh, so copy rather than link, and only if absent.
-        system.userActivationScripts.seedClaudeCreds.text = ''
-          cred="$HOME/.claude/.credentials.json"
-          if [ ! -e "$cred" ] && [ -r "${config.age.secrets.claude-credentials.path}" ]; then
-            mkdir -p "$HOME/.claude"
-            cp "${config.age.secrets.claude-credentials.path}" "$cred"
-            chmod 600 "$cred"
-          fi
-        '';
-      })
+      # (claude-credentials — the Claude Code OAuth token seeded into
+      # ~/.claude/.credentials.json — was declared and copied here until
+      # 2026-09-22. The token had been dead since its August 4 rotation, and a
+      # seed that fires whenever the file is absent can only ever revert a fresh
+      # `/login` after a rebuild. Both Claude seats now log in by hand, once,
+      # on the coordinator: cc into ~/.claude, cc2 into ~/.claude-work.)
 
       # NOT ungated any more (2026-08-28). This block delivers ssh-user-key and
       # atuin-key, whose ciphertexts are encrypted to the `delivered` tier — and
