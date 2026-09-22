@@ -588,7 +588,6 @@ in
       cloudflared
       wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (coordinator-only cred, binary fleet-wide)
       backlog-md # bespoke pkg via overlay — see pkgs/backlog-md.nix
-      pkgs.crm # vendored personal CRM CLI; data stays at its built-in notes path
       pkgs.dcal # vendored calendar CLI; data lives under XDG, nothing in git
       music-acquire # evidence-gated SoundCloud → YouTube → capture acquisition
       cliamp # terminal music player → navidrome. overlay pkg, see pkgs/cliamp.nix

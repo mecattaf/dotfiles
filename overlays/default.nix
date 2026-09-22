@@ -38,9 +38,6 @@ final: prev: {
   # packaged from the upstream release binary (Bun compile). See pkgs/backlog-md.nix.
   backlog-md = final.callPackage ../pkgs/backlog-md.nix { };
 
-  # Personal git-backed CRM CLI, vendored with its package definition.
-  crm = final.callPackage ../pkgs/crm/nix/package.nix { };
-
   # Evidence-gated, resumable front door over the music acquisition campaign.
   music-acquire = final.callPackage ../pkgs/music-acquire { };
 
