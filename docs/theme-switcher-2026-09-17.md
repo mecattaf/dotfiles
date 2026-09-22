@@ -42,6 +42,7 @@ palette value does.
 | consumer | joins via | live reload on `theme <name>` |
 |---|---|---|
 | kitty | `include ${HOME}/.config/theme/kitty.conf` (kitty.conf) | `kitten @ --to unix:@kitty-<pid> load-config` per instance (sockets from `/proc/net/unix`) |
+| ghostty (cmux Browser panes) | `config-file = ?/home/tom/.config/theme/ghostty` LAST in ghostty/config.ghostty (a config-file loads after its parent, so the fragment wins; absolute because Ghostty resolves relative paths against the symlinked config's dir) | nothing — libghostty reads the config when cmux opens a surface; new panes follow |
 | niri | `include optional=true "~/.config/theme/niri.kdl"` LAST in config.kdl; sections merge, later wins | `niri msg action load-config-file` |
 | herdr | `[theme] name = "terminal"`: every token is an ANSI slot | nothing — kitty reports the bg change via DEC 2031 (`CSI ?997;n`), herdr re-queries OSC 10/11/4 and repaints chrome + every pane |
 | nvim | `~/.local/bin/nvim-lua/theme.lua` dofile()s `theme.lua`; catppuccin/bufferline/lualine read it | `nvim --server <sock> --remote-expr` → `require('theme').reload()` per instance |
