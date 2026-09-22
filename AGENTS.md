@@ -1,3 +1,16 @@
+**Claude seats (2026-09-22).** Two Claude Code logins live on the coordinator
+and nowhere else: `cc` is `~/.claude` (the personal Claude Max login, config file
+`~/.claude.json`), `cc2` is `~/.claude-work` (the leger.run Claude Max login,
+config file `~/.claude-work/.claude.json`), selected only by `CLAUDE_CONFIG_DIR`
+in the fish launchers (`home/dot_config/fish/config.fish`). Both share the same
+skills and settings links; login, history, sessions and trust are per seat, so a
+session id resumes only on the seat and from the cwd that created it
+(`claude-sessions` fans out over the seats). Claude never saves workspace trust
+for `$HOME`, so the launchers move into `$CLAUDE_ENVELOPE` (default `~/today`)
+when typed from `~`; never start a seat in the home directory. Logins are hand
+`/login`s, never a delivered secret (the old claude-credentials seed was removed
+this day). The seat meters are `~/.local/state/tally-rewrite/meters/<seat>.json`.
+
 **Physical seats (2026-09-16, supersedes older headless/client-only wording below).**
 Tom is returning the coordinator to primary-desktop duty with two upright LG
 5K displays side by side at scale 2. Both coordinator and client have
