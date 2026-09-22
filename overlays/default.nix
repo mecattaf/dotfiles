@@ -53,8 +53,6 @@ final: prev: {
   # comment in flake.nix, and the `let` in pkgs/ax/default.nix.
   ax = final.callPackage ../pkgs/ax { go_1_27 = go127; };
 
-  # Personal git-backed CRM CLI, vendored with its package definition.
-  crm = final.callPackage ../pkgs/crm/nix/package.nix { };
 
   # Evidence-gated, resumable front door over the music acquisition campaign.
   music-acquire = final.callPackage ../pkgs/music-acquire { };

@@ -680,7 +680,6 @@ in
     gws # Google Workspace CLI (Gmail/Calendar/Drive/Sheets/Docs/...), Discovery-doc-backed
     cloudflared
     wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (strix-only cred, binary fleet-wide)
-    pkgs.crm # vendored personal CRM CLI; data stays at its built-in notes path
     pkgs.dcal # vendored calendar CLI; data lives under XDG, nothing in git
     music-acquire # evidence-gated SoundCloud → YouTube → capture acquisition
     uv # Astral Python pkg/project manager. "hot" overlay pkg — rides nixpkgs-fresh HEAD (flake.nix), so it stays latest independent of the main pin.

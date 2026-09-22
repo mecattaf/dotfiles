@@ -7,6 +7,19 @@ document a future implementing session starts from. The web UI display of
 this backend is explicitly a **separate later journey**; this chapter is the
 CLI, the database, the sync engine, and the projections.
 
+> **Note added 2026-09-23 (dotfiles#452).** The vendored CRM CLI that this
+> record repeatedly names (`pkgs/crm`, the `crm` binary, `~/mecattaf/notes/crm/crm.db`)
+> no longer ships from this repository. The tree, the flake output, the overlay
+> entry, the `home.nix` install line, the `/crm` skill and `docs/crm/` were removed;
+> the successor is `mecattaf/crm`, a Cloudflare Worker on D1, which also carries the
+> preserved `specs/001-crm/spec.md` and `data-model.sql`. This document is left
+> otherwise unedited on purpose: it is a dated scoping record of what was ruled on
+> 2026-08-10, not a live pointer, and rewriting its references would falsify it.
+> Read every `crm`/`pkgs/crm` mention below as historical. The dcal-side surface
+> that still calls a `crm` executable (`dcal --crm`, `DCAL_CRM_BIN`, the
+> `home/dot_claude/skills/dcal/` skill) was NOT changed by #452 and is a separate
+> follow-on.
+
 ## Settled rulings (Tom, 2026-08-10)
 
 1. **Shape**: sibling of the CRM — Go + cobra + `modernc.org/sqlite`
