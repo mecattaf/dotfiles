@@ -27,6 +27,26 @@
     # writing the lock. A plain local build uses the reviewed fallback revision.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable-small";
 
+    # nixpkgs-go — pins ONE attribute, `go_1_27`, for ONE package, pkgs/ax.
+    # Same shape and same reasoning as nixpkgs-paperless below: a single
+    # upstream that needs a version no pin this flake already carries can
+    # supply, named here so it is reviewable rather than hidden in the package.
+    #
+    # google/ax v0.3.0's go.mod opens `go 1.27.1`, and Go refuses outright to
+    # build a module whose `go` directive is newer than the running toolchain
+    # (`go: go.mod requires go >= 1.27.1 (running go 1.27.0; GOTOOLCHAIN=local)`),
+    # with no network in the sandbox to fetch one. MEASURED 2026-09-23:
+    #   nixpkgs        go 1.26.5, go_1_27 1.27rc2   too old
+    #   nixpkgs-fresh  go 1.26.7, go_1_27 1.27.0    too old, by one patch release
+    #   this input     go_1_27 1.27.1               exact
+    #
+    # Pinned BY REVISION, not by branch, deliberately: nixpkgs-fresh is a rolling
+    # resolver whose whole job is to advance, and a toolchain pin has the opposite
+    # job. Retire this input the moment nixpkgs-fresh's go_1_27 reaches 1.27.1 —
+    # `nix eval .#inputs.nixpkgs-fresh.legacyPackages.x86_64-linux.go_1_27.version`
+    # is the whole test — and point overlays/default.nix back at it.
+    nixpkgs-go.url = "github:NixOS/nixpkgs/a251c42236bbff9f870fcdc513dac5873009c304";
+
     # nixpkgs-stable — pins ONLY nixosConfigurations.nas (issue #135 ruling):
     # the NAS is a frozen self-sustaining appliance on standard stable nixpkgs,
     # maintained manually every few years. It never rides the unstable
@@ -571,6 +591,9 @@
 
       overlays.default = import ./overlays {
         torchRocm = inputs.nix-strix-halo.packages.${system}.torch-rocm;
+        # One attribute out of the nixpkgs-go input, for pkgs/ax only. An
+        # overlay cannot read `inputs`, so it is passed like torchRocm above.
+        go127 = inputs.nixpkgs-go.legacyPackages.${system}.go_1_27;
       };
 
       nixosConfigurations = {
@@ -646,6 +669,11 @@
             speech-session
             parakeet-service
             academic-ocr
+            # `nix build .#ax` — the ax control plane's four binaries. Exposed
+            # because nothing installs it by default (modules/ax-client.nix
+            # lands with its gate OFF on every host), so this is the only way
+            # to build or inspect it without flipping a gate first.
+            ax
             brother-print-text
             call-diarize
             browser-desktop
@@ -715,6 +743,43 @@
               python3 repo/tests/qwen-speech/test_speech.py
               touch "$out"
             '';
+        # ax-client-topology — the gate's rendered shape (modules/ax-client.nix,
+        # #453). `nix flake check --no-build` on its own proves only that
+        # the tree EVALUATES, and it would stay green through a merge resolution
+        # that dropped ../../modules/ax-client.nix from a host's imports, that
+        # flipped a gate, or that let the module reach hosts/nas. Every assertion
+        # below is eval-time, so each runs under --no-build:
+        #   - the option EXISTS on the three interactive hosts, which is what
+        #     proves the import survived (a dropped import makes the option
+        #     undefined, not false);
+        #   - it is FALSE on all three. This is the line that goes red on the
+        #     flip, deliberately: the flip edits this check in the same commit,
+        #     so no gate on this fleet can move without a reviewer seeing it;
+        #   - kubectl and ax are therefore absent from all three systemPackages,
+        #     asserted directly rather than inferred from the gate;
+        #   - the NAS carries no myAxClient option at all — it does not import
+        #     the module, it is pinned to nixpkgs-stable, and it is an appliance.
+        ax-client-topology =
+          let
+            hostCfg = host: self.nixosConfigurations.${host}.config;
+            gated = [
+              "coordinator"
+              "worker"
+              "client"
+            ];
+          in
+          assert builtins.all (host: (hostCfg host) ? myAxClient) gated;
+          assert builtins.all (host: (hostCfg host).myAxClient.enable == false) gated;
+          assert builtins.all (
+            host:
+            !(builtins.elem pkgs.kubectl (hostCfg host).environment.systemPackages)
+            && !(builtins.elem pkgs.ax (hostCfg host).environment.systemPackages)
+          ) gated;
+          assert !((hostCfg "nas") ? myAxClient);
+          pkgs.runCommand "ax-client-topology" { } ''
+            touch "$out"
+          '';
+
         qwen-speech-topology =
           let
             coord = self.nixosConfigurations.coordinator.config;

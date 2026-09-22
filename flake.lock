@@ -737,6 +737,22 @@
         "type": "github"
       }
     },
+    "nixpkgs-go": {
+      "locked": {
+        "lastModified": 1790096505,
+        "narHash": "sha256-UbSc81aqsHU4mOficKbMitf3S7gFnJkYDAKfprVS1R8=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "a251c42236bbff9f870fcdc513dac5873009c304",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "a251c42236bbff9f870fcdc513dac5873009c304",
+        "type": "github"
+      }
+    },
     "nixpkgs-lib": {
       "locked": {
         "lastModified": 1774748309,
@@ -880,6 +896,7 @@
         "nixos-hardware": "nixos-hardware",
         "nixpkgs": "nixpkgs_5",
         "nixpkgs-fresh": "nixpkgs-fresh",
+        "nixpkgs-go": "nixpkgs-go",
         "nixpkgs-paperless": "nixpkgs-paperless",
         "nixpkgs-stable": "nixpkgs-stable",
         "piri": "piri",

@@ -1,4 +1,4 @@
-{ torchRocm }:
+{ torchRocm, go127 }:
 final: prev: {
   qwentts = final.callPackage ../pkgs/qwentts.nix { };
   parakeet-service = final.callPackage ../pkgs/parakeet-service { };
@@ -33,6 +33,15 @@ final: prev: {
   # Icons: stock default (blue folders); GTK: light+dark grey, dark OLED-patched.
   mactahoe-gtk-theme = final.callPackage ../pkgs/mactahoe-gtk-theme.nix { };
   mactahoe-icon-theme = final.callPackage ../pkgs/mactahoe-icon-theme.nix { };
+
+  # google/ax — the Kubernetes control plane for agent Tasks (v0.3.0, pinned by
+  # commit). Not in nixpkgs under any name, in any channel: upstream ships no nix
+  # packaging, no flake and no published image, so there is nothing to take.
+  # go_1_27 is threaded in from the nixpkgs-go input rather than resolved from
+  # this fixpoint because ax's go.mod requires exactly 1.27.1 and neither the
+  # main pin (1.27rc2) nor nixpkgs-fresh (1.27.0) has it — see that input's
+  # comment in flake.nix, and the `let` in pkgs/ax/default.nix.
+  ax = final.callPackage ../pkgs/ax { go_1_27 = go127; };
 
   # Backlog.md — markdown-native task manager CLI (`backlog`). Not in nixpkgs;
   # packaged from the upstream release binary (Bun compile). See pkgs/backlog-md.nix.
