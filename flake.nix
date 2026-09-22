@@ -560,7 +560,6 @@
             call-diarize
             browser-desktop
             chrome-stream
-            crm
             dcal
             fleet-status
             # `nix run .#fontbuilder -- <capture-dir> <out-dir>` — the press for
