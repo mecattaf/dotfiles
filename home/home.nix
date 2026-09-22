@@ -122,6 +122,7 @@ in
   imports = [
     ./browser-trust.nix
     ./ai-memory.nix
+    ./ax-conwip.nix # gate OFF; defines no unit on any host. docs/ax-conwip.md
     ./client-apps.nix
     ./harness-records.nix
     ./herdr.nix

@@ -780,6 +780,71 @@
             touch "$out"
           '';
 
+        # ax-conwip-topology — the CONWIP gate's rendered shape
+        # (home/ax-conwip.nix, PR #454). Home Manager gives no `assertions`
+        # option, so the invariants over the RENDERED user units live here,
+        # the same reasoning as tally-filler-topology and tally-pump-topology
+        # further down this file.
+        #
+        # Every assertion below is eval-time and sits in front of the
+        # runCommand, so each runs under `--no-build`. What each one is for:
+        #   - the option EXISTS on all three home-manager hosts, which is what
+        #     proves the import survived: dropping ./ax-conwip.nix from
+        #     home/home.nix's imports makes the option UNDEFINED, not false,
+        #     and turns the first assert red. That is the mutation hint;
+        #   - it is FALSE on all three, and this is the line that goes red on
+        #     the flip, deliberately, so the flip edits this check in the same
+        #     commit and no gate on this fleet moves without a reviewer;
+        #   - NO `ax-conwip` user unit is rendered anywhere — service, timer or
+        #     socket — asserted directly over the rendered attrsets rather than
+        #     inferred from the gate, because `lib.mkIf false` removing the key
+        #     is the property under test, not an assumption;
+        #   - no system-bus twin: this is a per-user scheduler reading per-user
+        #     seat meters, and it must never acquire a system unit;
+        #   - it writes no tmpfiles rule while off, and in particular declares
+        #     nothing over the REWRITE's meters directory, which belongs to
+        #     home/seat-feeder.nix (R44) and is an input to this module and
+        #     never an output;
+        #   - the NAS carries no home-manager at all (flake.nix:603,
+        #     `withHomeManager = false`), so it cannot carry this option; the
+        #     assert pins that rather than leaving it to be rediscovered.
+        ax-conwip-topology =
+          let
+            homeHosts = [
+              "coordinator"
+              "worker"
+              "client"
+            ];
+            homeCfg = host: self.nixosConfigurations.${host}.config.home-manager.users.tom;
+            hostCfg = host: self.nixosConfigurations.${host}.config;
+          in
+          # the import survived, on every host that has home-manager.
+          assert builtins.all (host: (homeCfg host) ? myAxConwip) homeHosts;
+          # and the gate is OFF on every one of them.
+          assert builtins.all (host: (homeCfg host).myAxConwip.enable == false) homeHosts;
+          # therefore NOTHING is rendered: no service, no timer, no socket.
+          assert builtins.all (host: !((homeCfg host).systemd.user.services ? ax-conwip)) homeHosts;
+          assert builtins.all (host: !((homeCfg host).systemd.user.timers ? ax-conwip)) homeHosts;
+          assert builtins.all (host: !((homeCfg host).systemd.user.sockets ? ax-conwip)) homeHosts;
+          # no system-bus twin, on any host, including the NAS.
+          assert builtins.all (
+            host:
+            !((hostCfg host).systemd.services ? ax-conwip) && !((hostCfg host).systemd.timers ? ax-conwip)
+          ) (homeHosts ++ [ "nas" ]);
+          # no tmpfiles rule of its own while off, and nothing at all naming
+          # the meters directory it only ever reads.
+          assert builtins.all (
+            host:
+            !(builtins.any (
+              r: nixpkgs.lib.hasInfix "ax-conwip" r
+            ) (homeCfg host).systemd.user.tmpfiles.rules)
+          ) homeHosts;
+          # the NAS has no home-manager, so it cannot carry the option.
+          assert !((hostCfg "nas") ? home-manager);
+          pkgs.runCommand "ax-conwip-topology" { } ''
+            touch "$out"
+          '';
+
         qwen-speech-topology =
           let
             coord = self.nixosConfigurations.coordinator.config;
