@@ -18,12 +18,10 @@
 # Pinned by commit, not by tag, so a retag upstream cannot move what this fleet
 # builds. d8ed0fe38bceb7842d3c47817d53d16ccdfcb601 IS tag v0.3.0 as of 2026-09-22.
 #
-# NO PATCHES. This builds pristine v0.3.0. ax hardcodes
-# SandboxClass_SANDBOX_CLASS_GVISOR at internal/substrate/client.go:273 (the only
-# SANDBOX_CLASS occurrence in the tree, MEASURED 2026-09-22 by driving a real
-# control plane against a mock Substrate), and making the sandbox class per-Task
-# is the first of the nix-side patches on the list. It belongs here as a
-# `patches = [ ... ]` entry when it is written, so the upstream clone stays clean.
+# ONE PATCH, sandbox-class.patch, described at the `patches` entry below. It is
+# the one the previous revision of this comment predicted: it makes the sandbox
+# class per-Task instead of hardcoded. The upstream clone stays clean; the patch
+# was extracted from a scratch copy of the fetched source.
 let
   # go.mod's first directive is `go 1.27.1` (MEASURED). Go refuses to build a
   # module whose `go` line is newer than the running toolchain, and the sandbox
@@ -47,8 +45,28 @@ buildGo127Module {
   };
 
   # Obtained the ordinary way: build once with lib.fakeHash, read the "got:"
-  # line off the failure, paste it back.
+  # line off the failure, paste it back. UNCHANGED by sandbox-class.patch, which
+  # touches no go.mod or go.sum line and so vendors the same module set
+  # (MEASURED 2026-09-23: the patched build reuses this hash).
   vendorHash = "sha256-iC/X6Bg1M7Pn3dT1zWs2YxuPfgl9ZKNEYQsBisIQguY=";
+
+  # sandbox-class.patch adds `string sandbox_class = 11` to TaskSpec, regenerates
+  # ax.pb.go with the same protoc-gen-go v1.36.11 upstream used, validates the
+  # value in ValidateTask, and threads it from the reconciler through
+  # BuildActorTemplate, replacing the SandboxClass_SANDBOX_CLASS_GVISOR hardcode
+  # at internal/substrate/client.go:273. Empty means gvisor, so every existing
+  # manifest behaves exactly as before.
+  #
+  # The generated Go is part of the patch on purpose: ax bridges YAML through
+  # protojson with unknown fields REJECTED, so a .proto-only edit would make
+  # every manifest naming sandboxClass fail strict decode.
+  #
+  # It does NOT give ax a workerd sandbox. Agent Substrate's SandboxClass enum
+  # has exactly three members (UNSPECIFIED, GVISOR, MICROVM; MEASURED 2026-09-23
+  # from the vendored ateapipb), so "gvisor" and "microvm" are the only values
+  # that can reach a real substrate. A workerd class needs an upstream Agent
+  # Substrate change that does not exist, and ax cannot invent the enum member.
+  patches = [ ./sandbox-class.patch ];
 
   # subPackages left unset so all four commands build, matching upstream's
   # `make build-binaries` plus the cross-compiled runner. -s -w mirrors the

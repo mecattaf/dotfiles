@@ -1,0 +1,304 @@
+diff --git a/internal/controller/reconciler.go b/internal/controller/reconciler.go
+index 31c399b..c4aebda 100644
+--- a/internal/controller/reconciler.go
++++ b/internal/controller/reconciler.go
+@@ -164,11 +164,11 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, task *v1alpha1.Task, gat
+ 	}
+ 
+ 	// If a custom image, workspace, or extra environment is specified, provision or use a dedicated ActorTemplate
+-	if task.Spec != nil && (task.Spec.Image != "" || len(extraEnv) > 0) {
++	if task.Spec != nil && (task.Spec.Image != "" || task.Spec.GetSandboxClass() != "" || len(extraEnv) > 0) {
+ 		slog.Info("ensuring custom ActorTemplate for task", "image", task.Spec.Image)
+-		customTemplateName := taskTemplateName(task.Metadata.Name, task.Spec.Image, extraEnv)
++		customTemplateName := taskTemplateName(task.Metadata.Name, task.Spec.Image, task.Spec.GetSandboxClass(), extraEnv)
+ 
+-		tmpl, err := r.client.EnsureActorTemplateWithImage(ctx, templateAtespace, templateName, atespace, customTemplateName, task.Spec.Image, extraEnv)
++		tmpl, err := r.client.EnsureActorTemplateWithImage(ctx, templateAtespace, templateName, atespace, customTemplateName, task.Spec.Image, task.Spec.GetSandboxClass(), extraEnv)
+ 		if err != nil {
+ 			slog.Warn("could not create custom ActorTemplate, falling back to default template", "error", err)
+ 		} else if tmpl != nil && tmpl.Metadata != nil {
+@@ -386,9 +386,14 @@ func (r *TaskReconciler) lookupGeminiKey(ctx context.Context, atespace string) s
+ 
+ // taskTemplateName derives the per-task ActorTemplate name from the task name and a
+ // digest of the image and container environment, so a spec change yields a new template.
+-func taskTemplateName(taskName, image string, env map[string]string) string {
++func taskTemplateName(taskName, image, sandboxClass string, env map[string]string) string {
+ 	h := sha256.New()
+ 	h.Write([]byte(image))
++	// Only mixed in when set, so that a task that does not name a sandbox class
++	// keeps the template name it had before the field existed.
++	if sandboxClass != "" {
++		h.Write([]byte("sandboxClass=" + sandboxClass + ";"))
++	}
+ 	keys := make([]string, 0, len(env))
+ 	for k := range env {
+ 		keys = append(keys, k)
+diff --git a/internal/substrate/client.go b/internal/substrate/client.go
+index bacb078..2840ce2 100644
+--- a/internal/substrate/client.go
++++ b/internal/substrate/client.go
+@@ -210,7 +210,7 @@ const (
+ )
+ 
+ // BuildActorTemplate constructs a Substrate ActorTemplate based on the standard ate-env specification.
+-func BuildActorTemplate(atespace, name, image string, envMap map[string]string, command []string, snapshotsBucket string) *ateapipb.ActorTemplate {
++func BuildActorTemplate(atespace, name, image string, envMap map[string]string, command []string, snapshotsBucket, sandboxClass string) *ateapipb.ActorTemplate {
+ 	if atespace == "" {
+ 		atespace = "default"
+ 	}
+@@ -269,15 +269,38 @@ func BuildActorTemplate(atespace, name, image string, envMap map[string]string,
+ 				FromData: ateapipb.ResumeSource_RESUME_SOURCE_GOLDEN,
+ 			},
+ 		},
+-		SandboxConfig: &ateapipb.SandboxConfig{
+-			SandboxClass: ateapipb.SandboxClass_SANDBOX_CLASS_GVISOR,
+-			ConfigName:   "gvisor-default",
+-		},
++		SandboxConfig: sandboxConfigFor(sandboxClass),
++	}
++}
++
++// sandboxConfigFor maps an ax spec.sandboxClass onto the substrate's own
++// SandboxConfig. The empty string means gVisor, which is what this function's
++// caller hardcoded before the field existed, so the default is unchanged.
++//
++// config_name names a cluster-scoped substrate SandboxConfig object and must
++// match the class. "gvisor-default" is the name ax has always used; the microVM
++// name follows the same convention, and ax neither creates nor verifies it.
++//
++// An unrecognised value should never reach here: v1alpha1.ValidateTask refuses
++// it at admission. If one does, gVisor is the fallback because it is the
++// historical default and the only class whose config object ax has ever named
++// successfully. The substrate enum has no workerd member, so no value of
++// sandboxClass can select one.
++func sandboxConfigFor(sandboxClass string) *ateapipb.SandboxConfig {
++	if sandboxClass == v1alpha1.SandboxClassMicroVM {
++		return &ateapipb.SandboxConfig{
++			SandboxClass: ateapipb.SandboxClass_SANDBOX_CLASS_MICROVM,
++			ConfigName:   "microvm-default",
++		}
++	}
++	return &ateapipb.SandboxConfig{
++		SandboxClass: ateapipb.SandboxClass_SANDBOX_CLASS_GVISOR,
++		ConfigName:   "gvisor-default",
+ 	}
+ }
+ 
+ // EnsureActorTemplateWithImage creates an ActorTemplate using the specified container image and optional environment variables.
+-func (c *Client) EnsureActorTemplateWithImage(ctx context.Context, baseAtespace, baseTemplate, targetAtespace, targetTemplate, image string, extraEnv ...map[string]string) (*ateapipb.ActorTemplate, error) {
++func (c *Client) EnsureActorTemplateWithImage(ctx context.Context, baseAtespace, baseTemplate, targetAtespace, targetTemplate, image, sandboxClass string, extraEnv ...map[string]string) (*ateapipb.ActorTemplate, error) {
+ 	existing, err := c.GetActorTemplate(ctx, targetAtespace, targetTemplate)
+ 	if err == nil && existing != nil {
+ 		return existing, nil
+@@ -290,7 +313,7 @@ func (c *Client) EnsureActorTemplateWithImage(ctx context.Context, baseAtespace,
+ 		}
+ 	}
+ 
+-	tmpl := BuildActorTemplate(targetAtespace, targetTemplate, image, envMap, nil, "")
++	tmpl := BuildActorTemplate(targetAtespace, targetTemplate, image, envMap, nil, "", sandboxClass)
+ 	req := &ateapipb.CreateActorTemplateRequest{
+ 		ActorTemplate: tmpl,
+ 	}
+diff --git a/pkg/apis/v1alpha1/ax.pb.go b/pkg/apis/v1alpha1/ax.pb.go
+index b1adb26..9a71dc0 100644
+--- a/pkg/apis/v1alpha1/ax.pb.go
++++ b/pkg/apis/v1alpha1/ax.pb.go
+@@ -15,7 +15,7 @@
+ // Code generated by protoc-gen-go. DO NOT EDIT.
+ // versions:
+ // 	protoc-gen-go v1.36.11
+-// 	protoc        v7.34.1
++// 	protoc        v7.35.1
+ // source: pkg/apis/v1alpha1/ax.proto
+ 
+ package v1alpha1
+@@ -187,7 +187,23 @@ type TaskSpec struct {
+ 	Gateway    *GatewayRef     `protobuf:"bytes,8,opt,name=gateway,proto3" json:"gateway,omitempty"`
+ 	// debug enables the in-container guest services (process execution and file
+ 	// access) that back `ax ssh`. Off by default.
+-	Debug         bool `protobuf:"varint,10,opt,name=debug,proto3" json:"debug,omitempty"`
++	Debug bool `protobuf:"varint,10,opt,name=debug,proto3" json:"debug,omitempty"`
++	// sandbox_class selects the sandbox runtime family the task's actor runs in.
++	// Empty means "gvisor", which is what every task got before this field
++	// existed, so the default is unchanged.
++	//
++	// The accepted values are exactly the members Agent Substrate's own
++	// SandboxClass enum offers, lowercased: "gvisor" and "microvm". Any other
++	// value is refused by ValidateTask rather than downgraded, because a task
++	// that silently runs in a weaker sandbox than it asked for is worse than a
++	// task that does not start. In particular there is no "workerd" value: the
++	// substrate enum has no such member, and ax cannot add one.
++	//
++	// "microvm" additionally requires a cluster-scoped substrate SandboxConfig
++	// object named "microvm-default", by analogy with the "gvisor-default" object
++	// the gVisor path has always named. ax neither creates nor verifies it; if it
++	// is absent the substrate rejects the ActorTemplate.
++	SandboxClass  string `protobuf:"bytes,11,opt,name=sandbox_class,json=sandboxClass,proto3" json:"sandbox_class,omitempty"`
+ 	unknownFields protoimpl.UnknownFields
+ 	sizeCache     protoimpl.SizeCache
+ }
+@@ -278,6 +294,13 @@ func (x *TaskSpec) GetDebug() bool {
+ 	return false
+ }
+ 
++func (x *TaskSpec) GetSandboxClass() string {
++	if x != nil {
++		return x.SandboxClass
++	}
++	return ""
++}
++
+ type EnvVar struct {
+ 	state         protoimpl.MessageState `protogen:"open.v1"`
+ 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+@@ -3165,7 +3188,7 @@ const file_pkg_apis_v1alpha1_ax_proto_rawDesc = "" +
+ 	"\x04kind\x18\x02 \x01(\tR\x04kind\x123\n" +
+ 	"\bmetadata\x18\x03 \x01(\v2\x17.ax.v1alpha1.ObjectMetaR\bmetadata\x12)\n" +
+ 	"\x04spec\x18\x04 \x01(\v2\x15.ax.v1alpha1.TaskSpecR\x04spec\x12/\n" +
+-	"\x06status\x18\x05 \x01(\v2\x17.ax.v1alpha1.TaskStatusR\x06status\"\xd4\x02\n" +
++	"\x06status\x18\x05 \x01(\v2\x17.ax.v1alpha1.TaskStatusR\x06status\"\xf9\x02\n" +
+ 	"\bTaskSpec\x12\x18\n" +
+ 	"\asuspend\x18\x02 \x01(\bR\asuspend\x12\x14\n" +
+ 	"\x05image\x18\x03 \x01(\tR\x05image\x12\x18\n" +
+@@ -3177,7 +3200,8 @@ const file_pkg_apis_v1alpha1_ax_proto_rawDesc = "" +
+ 	"workspaces\x121\n" +
+ 	"\agateway\x18\b \x01(\v2\x17.ax.v1alpha1.GatewayRefR\agateway\x12\x14\n" +
+ 	"\x05debug\x18\n" +
+-	" \x01(\bR\x05debugJ\x04\b\x01\x10\x02J\x04\b\t\x10\n" +
++	" \x01(\bR\x05debug\x12#\n" +
++	"\rsandbox_class\x18\v \x01(\tR\fsandboxClassJ\x04\b\x01\x10\x02J\x04\b\t\x10\n" +
+ 	"R\x04goalR\bpolicies\"2\n" +
+ 	"\x06EnvVar\x12\x12\n" +
+ 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+diff --git a/pkg/apis/v1alpha1/ax.proto b/pkg/apis/v1alpha1/ax.proto
+index 62bd57a..cf35316 100644
+--- a/pkg/apis/v1alpha1/ax.proto
++++ b/pkg/apis/v1alpha1/ax.proto
+@@ -91,6 +91,22 @@ message TaskSpec {
+   // debug enables the in-container guest services (process execution and file
+   // access) that back `ax ssh`. Off by default.
+   bool debug = 10;
++  // sandbox_class selects the sandbox runtime family the task's actor runs in.
++  // Empty means "gvisor", which is what every task got before this field
++  // existed, so the default is unchanged.
++  //
++  // The accepted values are exactly the members Agent Substrate's own
++  // SandboxClass enum offers, lowercased: "gvisor" and "microvm". Any other
++  // value is refused by ValidateTask rather than downgraded, because a task
++  // that silently runs in a weaker sandbox than it asked for is worse than a
++  // task that does not start. In particular there is no "workerd" value: the
++  // substrate enum has no such member, and ax cannot add one.
++  //
++  // "microvm" additionally requires a cluster-scoped substrate SandboxConfig
++  // object named "microvm-default", by analogy with the "gvisor-default" object
++  // the gVisor path has always named. ax neither creates nor verifies it; if it
++  // is absent the substrate rejects the ActorTemplate.
++  string sandbox_class = 11;
+ }
+ 
+ message EnvVar {
+diff --git a/pkg/apis/v1alpha1/types.go b/pkg/apis/v1alpha1/types.go
+index a65e626..820c19b 100644
+--- a/pkg/apis/v1alpha1/types.go
++++ b/pkg/apis/v1alpha1/types.go
+@@ -36,6 +36,16 @@ const (
+ 
+ 	DefaultTaskImage = "gcr.io/ax-substrate/ate-images/ax-task-runner"
+ 
++	// The sandbox classes TaskSpec.SandboxClass accepts. They are exactly the
++	// members of Agent Substrate's own SandboxClass enum, lowercased; ax does
++	// not own that enum and cannot add to it.
++	SandboxClassGVisor  = "gvisor"
++	SandboxClassMicroVM = "microvm"
++
++	// DefaultSandboxClass is what an empty spec.sandboxClass resolves to. It is
++	// the class every task ran in before the field existed.
++	DefaultSandboxClass = SandboxClassGVisor
++
+ 	// PhaseTerminating marks a task whose deletion has been requested and whose
+ 	// actor is being torn down. The record disappears once cleanup completes.
+ 	PhaseTerminating = "Terminating"
+@@ -252,6 +262,15 @@ func ValidateTask(t *Task) error {
+ 	if spec == nil {
+ 		return nil
+ 	}
++	switch spec.GetSandboxClass() {
++	case "", SandboxClassGVisor, SandboxClassMicroVM:
++	default:
++		// Refused, not downgraded: a task that quietly runs in a different
++		// sandbox class than it asked for is worse than a task that does not
++		// start. Agent Substrate offers no other class today.
++		return fmt.Errorf("spec.sandboxClass: %q is not a sandbox class Agent Substrate offers; supported values are %q and %q",
++			spec.GetSandboxClass(), SandboxClassGVisor, SandboxClassMicroVM)
++	}
+ 	refs := spec.WorkspaceRefs()
+ 	paths := spec.WorkspacePaths()
+ 	names := make(map[string]bool, len(refs))
+diff --git a/pkg/apis/v1alpha1/types_test.go b/pkg/apis/v1alpha1/types_test.go
+index 83deaa4..2431b97 100644
+--- a/pkg/apis/v1alpha1/types_test.go
++++ b/pkg/apis/v1alpha1/types_test.go
+@@ -137,6 +137,43 @@ func TestStrictDecoding_RejectsUnknownFields(t *testing.T) {
+ 	}
+ }
+ 
++func TestTask_SandboxClass_YAML(t *testing.T) {
++	// The point of this test is that the field is real to protojson, not just
++	// present in the .proto: strict decoding rejects anything it does not know.
++	var task v1alpha1.Task
++	if err := yaml.Unmarshal([]byte("kind: Task\nspec:\n  sandboxClass: microvm\n"), &task); err != nil {
++		t.Fatalf("decoding a manifest naming sandboxClass: %v", err)
++	}
++	if got := task.GetSpec().GetSandboxClass(); got != v1alpha1.SandboxClassMicroVM {
++		t.Errorf("spec.sandboxClass = %q, want %q", got, v1alpha1.SandboxClassMicroVM)
++	}
++
++	out, err := yaml.Marshal(&task)
++	if err != nil {
++		t.Fatalf("marshalling: %v", err)
++	}
++	if !strings.Contains(string(out), "sandboxClass: microvm") {
++		t.Errorf("round trip lost the field, got:\n%s", out)
++	}
++
++	// Empty stays empty rather than being rendered as the default, so existing
++	// manifests keep their existing YAML shape.
++	var plain v1alpha1.Task
++	if err := yaml.Unmarshal([]byte("kind: Task\nspec:\n  image: img\n"), &plain); err != nil {
++		t.Fatalf("decoding a manifest without sandboxClass: %v", err)
++	}
++	if got := plain.GetSpec().GetSandboxClass(); got != "" {
++		t.Errorf("spec.sandboxClass = %q, want empty", got)
++	}
++	out, err = yaml.Marshal(&plain)
++	if err != nil {
++		t.Fatalf("marshalling: %v", err)
++	}
++	if strings.Contains(string(out), "sandboxClass") {
++		t.Errorf("unset field should not be rendered, got:\n%s", out)
++	}
++}
++
+ func TestGateway_RoundTrip(t *testing.T) {
+ 	want := &v1alpha1.Gateway{
+ 		ApiVersion: v1alpha1.APIVersion,
+@@ -410,6 +447,19 @@ func TestValidateTask(t *testing.T) {
+ 		wantErr string
+ 	}{
+ 		{name: "nil spec"},
++		{name: "sandbox class unset", spec: &v1alpha1.TaskSpec{}},
++		{name: "sandbox class gvisor", spec: &v1alpha1.TaskSpec{SandboxClass: v1alpha1.SandboxClassGVisor}},
++		{name: "sandbox class microvm", spec: &v1alpha1.TaskSpec{SandboxClass: v1alpha1.SandboxClassMicroVM}},
++		{
++			name:    "sandbox class workerd",
++			spec:    &v1alpha1.TaskSpec{SandboxClass: "workerd"},
++			wantErr: `spec.sandboxClass: "workerd" is not a sandbox class Agent Substrate offers`,
++		},
++		{
++			name:    "sandbox class wrong case",
++			spec:    &v1alpha1.TaskSpec{SandboxClass: "gVisor"},
++			wantErr: `spec.sandboxClass: "gVisor" is not a sandbox class Agent Substrate offers`,
++		},
+ 		{name: "no workspaces", spec: &v1alpha1.TaskSpec{}},
+ 		{name: "list of one", spec: &v1alpha1.TaskSpec{Workspaces: []*v1alpha1.WorkspaceRef{{Name: "a"}}}},
+ 		{
