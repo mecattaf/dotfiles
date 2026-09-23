@@ -2067,12 +2067,10 @@
           assert coordinatorHome.services.tally.enable;
           # Direct Parakeet is coordinator-only; capture has no virtual mic or
           # service-start download. Native Herdr owns client key handling.
-          # #448: the socket is the ONLY activation path — a service with its
-          # own Install would go resident again behind the config's back.
+          # The #448 socket-activation asserts rode in on the harvest-hook
+          # commit without #448 itself; they return with #448 (DF-6).
           assert
-            coordinatorHome.systemd.user.sockets.parakeet-service.Install.WantedBy == [ "sockets.target" ];
-          assert !(coordinatorHome.systemd.user.services.parakeet-service ? Install);
-          assert coordinatorHome.systemd.user.services.parakeet-service.Service.Restart == "no";
+            coordinatorHome.systemd.user.services.parakeet-service.Install.WantedBy == [ "default.target" ];
           assert !(coordinatorHome.systemd.user.services ? voxtype);
           assert !(coordinatorHome.xdg.configFile ? "pipewire/pipewire.conf.d/60-client-mic.conf");
           assert !(coordinatorHome.systemd.user.services.parakeet-service.Service ? ExecStartPre);
@@ -2158,7 +2156,6 @@
           assert workerHome.programs.atuin.settings.auto_sync;
           assert !workerHome.services.tally.enable;
           assert !(workerHome.systemd.user.services ? parakeet-service);
-          assert !(workerHome.systemd.user.sockets ? parakeet-service);
           assert !(workerHome.systemd.user.services ? voxtype);
           # …and the herdr SERVER. The worker still gets the herdr binary (it is
           # how `herdr --remote coordinator` works at all), just no unit.
@@ -2239,7 +2236,6 @@
           assert !(clientHome.xdg.configFile ? "voxtype/config.toml");
           assert !(clientHome.systemd.user.services ? voxtype);
           assert !(clientHome.systemd.user.services ? parakeet-service);
-          assert !(clientHome.systemd.user.sockets ? parakeet-service);
           assert clientHome.systemd.user.services.speech-wake.Install.WantedBy == [ "default.target" ];
           assert !(builtins.any (p: nixpkgs.lib.getName p == "dictate-hold") clientHome.home.packages);
           assert nixpkgs.lib.hasInfix "HERDR_DICTATION_COMMAND=speech-dictate" (
