@@ -27,7 +27,8 @@ ATE = "KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl-ate"
 STUB = "http://10.42.0.5:8731"
 NS = "fleet"
 TASK_TIMEOUT = 900  # test parameter: per-Task wait for a floor report
-FAILED_FINAL = 240  # test parameter: how long Failed must persist to count as final
+FAILED_FINAL = 20  # test parameter: stock ax does not requeue a failed reconcile (MEASURED run 3: Failed held 5 min)
+MAX_ATTEMPTS = 4  # the link's requeue: a Task whose resume failed is deleted and created again as attempt n+1
 
 TASK_SCRIPT = r"""
 set -u
@@ -183,8 +184,9 @@ def diagnose(name: str) -> None:
     _, wp = nas.execute("k3s kubectl -n ate-system logs -l ax.mecattaf.dev/pool=ateom-gvisor --all-containers --tail=120 2>&1")
     _, atelet = nas.execute("k3s kubectl -n ate-system logs -l app=atelet --all-containers --tail=80 2>&1")
     _, ctl = nas.execute("k3s kubectl -n ax-system logs deploy/ax-controller --tail=60 2>&1")
+    _, pods = nas.execute("k3s kubectl -n ate-system get pods -o wide 2>&1; k3s kubectl -n ate-system logs deploy/ateapi --all-containers --tail=40 2>&1")
     _, stub = worker.execute("tail -n 20 /var/lib/halogen-stub/requests.jsonl 2>&1")
-    record(f"nop1_diag_{name}", {"workers": wp[-8000:], "atelet": atelet[-6000:], "controller": ctl[-5000:], "stub": stub[-3000:]})
+    record(f"nop1_diag_{name}", {"workers": wp[-8000:], "atelet": atelet[-6000:], "controller": ctl[-5000:], "stub": stub[-3000:], "ate_pods_api": pods[-6000:]})
 
 
 def wait_report(name: str) -> Any:
@@ -258,14 +260,23 @@ def delete_task(name: str) -> Any:
 
 
 def run_one(name: str) -> Any:
-    apply_task(name)
-    reps, before, secs = wait_report(name)
-    entry: dict[str, Any] = {"task": name, "report_seconds": secs, "before_delete": before}
-    if reps:
-        entry["floor"] = check_report(name, reps)
-    entry["actors_before_delete"] = actors()
-    entry["delete"] = delete_task(name)
-    entry["actors_after_delete"] = actors()
+    """One logical job: attempts name-a1.. until the floor has a report."""
+    failed: list[Any] = []
+    entry: dict[str, Any] = {}
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        n = f"{name}-a{attempt}"
+        apply_task(n)
+        reps, before, secs = wait_report(n)
+        entry = {"task": n, "attempt": attempt, "report_seconds": secs, "before_delete": before}
+        if reps:
+            entry["floor"] = check_report(n, reps)
+        entry["actors_before_delete"] = actors()
+        entry["delete"] = delete_task(n)
+        entry["actors_after_delete"] = actors()
+        if reps or resource_exhausted(entry):
+            break
+        failed.append({"task": n, "state": before, "delete_rc": entry["delete"]["first"]["rc"]})
+    entry["failed_attempts"] = failed
     return entry
 
 
@@ -357,6 +368,12 @@ with step("nop1 T5 concurrent: 2 rounds of 2 Tasks at once"):
         for e in entries:
             e["actors_before_delete"] = acts
             e["delete"] = delete_task(e["task"])
+        for i, e in enumerate(entries):
+            if "floor" not in e and not resource_exhausted(e):
+                # resume failed (not capacity): the link requeues it as a new attempt
+                retry = run_one(e["task"] + "-retry")
+                retry["concurrent_first_attempt"] = e
+                entries[i] = retry
         record(f"nop1_conc_round_{rnd}", entries)
         conc.extend(entries)
     for e in conc:
