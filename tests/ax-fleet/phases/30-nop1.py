@@ -184,7 +184,7 @@ def diagnose(name: str) -> None:
     _, wp = nas.execute("k3s kubectl -n ate-system logs -l ax.mecattaf.dev/pool=ateom-gvisor --all-containers --tail=120 2>&1")
     _, atelet = nas.execute("k3s kubectl -n ate-system logs -l app=atelet --all-containers --tail=80 2>&1")
     _, ctl = nas.execute("k3s kubectl -n ax-system logs deploy/ax-controller --tail=60 2>&1")
-    _, pods = nas.execute("k3s kubectl -n ate-system get pods -o wide 2>&1; k3s kubectl -n ate-system logs deploy/ateapi --all-containers --tail=40 2>&1")
+    _, pods = nas.execute("k3s kubectl -n ate-system get pods -o wide 2>&1; k3s kubectl -n ate-system logs deploy/ate-api-server --all-containers --tail=40 2>&1")
     _, stub = worker.execute("tail -n 20 /var/lib/halogen-stub/requests.jsonl 2>&1")
     record(f"nop1_diag_{name}", {"workers": wp[-8000:], "atelet": atelet[-6000:], "controller": ctl[-5000:], "stub": stub[-3000:], "ate_pods_api": pods[-6000:]})
 
@@ -244,17 +244,54 @@ def check_report(name: str, reps: Any) -> Any:
     }
 
 
+def delete_hang_diag(name: str, calls: Any) -> None:
+    """A delete that did not finish: what ax, the controller, ateapi and atelet
+    say, so a stuck Terminating Task is diagnosable (run 2 lost all of it)."""
+    diag: dict[str, Any] = {"calls": calls}
+    diag["task"] = ax(f"get task {name}")[1][-1500:]
+    diag["actors"] = actors()
+    diag["templates"] = templates()
+    _, diag["pods"] = nas.execute("k3s kubectl get pods -A -o wide 2>&1")
+    _, diag["controller"] = nas.execute("k3s kubectl -n ax-system logs deploy/ax-controller --since=30m 2>&1 | tail -n 150")
+    _, diag["controller_prev"] = nas.execute("k3s kubectl -n ax-system logs deploy/ax-controller --previous --tail=60 2>&1")
+    _, diag["ateapi"] = nas.execute(
+        "for p in $(k3s kubectl -n ate-system get pods -o name | grep ate-api-server); do echo \"== $p\"; "
+        f"k3s kubectl -n ate-system logs $p --all-containers --since=30m 2>&1 | grep -a -i -E '{name}|error|warn|terminate' | tail -n 80; done"
+    )
+    _, diag["ate_controller"] = nas.execute("k3s kubectl -n ate-system logs deploy/ate-controller --since=30m 2>&1 | tail -n 60")
+    _, diag["atelet"] = nas.execute(
+        f"k3s kubectl -n ate-system logs -l app=atelet --all-containers --since=30m 2>&1 | grep -a -i -E '{name}|Terminate|error' | tail -n 80"
+    )
+    _, diag["redis"] = nas.execute(
+        "k3s kubectl -n ax-system exec deploy/ax-redis -- sh -c "
+        "'redis-cli XINFO GROUPS ax:stream:tasks; redis-cli XINFO CONSUMERS ax:stream:tasks ax-controllers; "
+        "redis-cli XPENDING ax:stream:tasks ax-controllers; redis-cli XREVRANGE ax:stream:tasks + - COUNT 8' 2>&1"
+    )
+    _, diag["host_load"] = coordinator.execute("cat /proc/loadavg; cat /proc/pressure/cpu 2>/dev/null")
+    diag = {k: (v[-8000:] if isinstance(v, str) else v) for k, v in diag.items()}
+    record(f"nop1_delete_hang_{name}", diag)
+
+
 def delete_task(name: str) -> Any:
     """Delete as the link would; measure idempotence and the Task's removal."""
     t0 = time.monotonic()
     first = ax(f"delete task {name}")
+    first_s = round(time.monotonic() - t0, 1)
+    calls: dict[str, Any] = {"first": {"rc": first[0], "out": first[1][-300:], "done_at_s": first_s}}
+    if first[0] != 0 or first_s > 30:
+        # The client's own wait (5 min) did not see NotFound: capture now, while stuck.
+        delete_hang_diag(name, calls)
     again = ax(f"delete task {name}")  # while Terminating
-    coordinator.wait_until_succeeds(f"! {AX} get task {name} >/dev/null 2>&1", timeout=300)
+    calls["while_terminating"] = {"rc": again[0], "out": again[1][-300:], "done_at_s": round(time.monotonic() - t0, 1)}
+    try:
+        coordinator.wait_until_succeeds(f"! {AX} get task {name} >/dev/null 2>&1", timeout=300)
+    except Exception:
+        delete_hang_diag(name, calls)
+        raise
     gone_s = round(time.monotonic() - t0, 1)
     after = ax(f"delete task {name}")  # once gone
     return {
-        "first": {"rc": first[0], "out": first[1][-200:]},
-        "while_terminating": {"rc": again[0], "out": again[1][-200:]},
+        **calls,
         "after_gone": {"rc": after[0], "out": after[1][-200:]},
         "gone_seconds": gone_s,
     }
