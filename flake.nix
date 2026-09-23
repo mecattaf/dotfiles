@@ -358,6 +358,56 @@
       url = "github:microvm-nix/microvm.nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+
+    # workerd.nix (mecattaf/workerd.nix) - independent Nix packaging and checks
+    # for Cloudflare's workerd, plus the emitter that renders a declared
+    # deployment into a `config.capnp` / unit graph. Declared here so the fleet
+    # can SEE it; nothing on any host imports, installs or enables anything from
+    # it, and no NixOS module exists to import. This is deliberately the
+    # EPHEMERAL half of the same split the `microvm` input above documents: one
+    # flake input plus one `nix run`, no host module, works on any capable
+    # machine. The DURABLE half (a modules/workerd-host.nix in the shape of
+    # modules/microvm-host.nix, gate off, coordinator only) is NOT delivered;
+    # workerd.nix declines it upstream in DECISIONS.md D-A-15 on the grounds
+    # that "a module that nothing imports is dead weight and declaring
+    # workerd.nix across the fleet is a dotfiles decision rather than this
+    # repository's". See docs/workerd.md.
+    #
+    # PRIVATE repository, so the URL is the `git+https://...?rev=` form that
+    # tally-b (line 187) and tally-lake (line 276) already use rather than the
+    # `github:` shorthand: the shorthand resolves through the codeload tarball
+    # API, which answers 404 unauthenticated, while git reads the same
+    # credential helper the global gitconfig already configures. No token in
+    # this file, none in flake.lock, none needed at eval time once the rev is in
+    # the git cache and the store.
+    #
+    # PINNED TO A REV, not to a branch, the way nixpkgs-paperless, tally-b,
+    # tally-lake and herdr are pinned. The rev is the head of the UNMERGED
+    # branch `w/declared-runner-impl` (pull request mecattaf/workerd.nix#61),
+    # which is rung 1 of the ladder this pin had to climb: `main` carries
+    # `lib.{emit,mkBench,patchNativeBinary}` but NO runner at all, and
+    # `w/declared-runner-design` (#52) carries only a fail-fast stub whose build
+    # fails by design. #61 is the first revision with a REAL runner
+    # (`lib.declaredRunner` and `packages.x86_64-linux."workload-mount-runner"`,
+    # built from that repository's own pure example declaration). A branch name
+    # in a lock is a moving target that a deleted branch turns into a broken
+    # lock; a rev is reviewed like any other change.
+    #
+    # THE TEST FOR MOVING THIS PIN: when the workerd.nix pull requests merge,
+    # repin to `main` (drop the `?rev=` and add `?ref=refs/heads/main`, or bump
+    # the rev to the merged one, the way tally-b is bumped) and delete this
+    # paragraph. Until then a bump is an edit here.
+    #
+    # follows nixpkgs, matching `microvm` above, so the fleet does not carry a
+    # second nixpkgs closure for one input. Named risk: workerd.nix fetches and
+    # patches NATIVE prebuilt binaries (`lib.patchNativeBinary`), so our pin
+    # rather than its own `nixos-unstable` decides what those binaries are
+    # patched against. That is the same bargain `microvm` takes and it is
+    # reviewable here in one line.
+    workerd = {
+      url = "git+https://github.com/mecattaf/workerd.nix?ref=refs/heads/w/declared-runner-impl&rev=a5d975b93680d1dff06768701025d29c62a2b942";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -569,6 +619,13 @@
       # cited, and is now inspectable by whatever wires the rolling resolution.
       lib.rollingInputOverrides = rollingInputOverrides;
 
+      # workerd.nix's own `lib` ({ emit, mkBench, patchNativeBinary,
+      # declaredRunner }), republished so a consumer on this fleet can reach
+      # `lib.workerd.emit` without adding the input to their own flake. Same
+      # shape as rollingInputOverrides above: a passthrough, not a wrapper, and
+      # nothing here evaluates it. See docs/workerd.md.
+      lib.workerd = inputs.workerd.lib;
+
       overlays.default = import ./overlays {
         torchRocm = inputs.nix-strix-halo.packages.${system}.torch-rocm;
       };
@@ -678,6 +735,16 @@
             ;
           live-iso = strixAi.live-iso;
           nas-installer-iso = nasInstaller.config.system.build.isoImage;
+
+          # The EPHEMERAL half of the workerd.nix split (see the `workerd` input
+          # comment and docs/workerd.md): `nix run .#workerd-workload-mount-runner`
+          # supervises workerd in the foreground from a config.capnp emitted from
+          # a declared deployment, and activates NO host. This is the REAL runner
+          # of mecattaf/workerd.nix#61, not the fail-fast stub of #52, built from
+          # that repository's own pure example declaration (conformance/golden/
+          # pass/workload-mount). It is a buildable escape hatch only: no host
+          # installs it, no module imports it, and no `checks` entry asserts it.
+          workerd-workload-mount-runner = inputs.workerd.packages.${system}."workload-mount-runner";
         };
 
       # `nix build .#models.<id>` retired with the 2026-08-21 "weights leave

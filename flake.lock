@@ -885,7 +885,8 @@
         "piri": "piri",
         "tally": "tally",
         "tally-b": "tally-b",
-        "tally-lake": "tally-lake"
+        "tally-lake": "tally-lake",
+        "workerd": "workerd"
       }
     },
     "rust-overlay": {
@@ -1739,6 +1740,28 @@
         "ref": "v0.25.1",
         "repo": "vllm",
         "type": "github"
+      }
+    },
+    "workerd": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1790126005,
+        "narHash": "sha256-0p9dRBeZHQe5el+SH1L5539fbyQ39M+SGXeecN5maDs=",
+        "ref": "refs/heads/w/declared-runner-impl",
+        "rev": "a5d975b93680d1dff06768701025d29c62a2b942",
+        "revCount": 21,
+        "type": "git",
+        "url": "https://github.com/mecattaf/workerd.nix"
+      },
+      "original": {
+        "ref": "refs/heads/w/declared-runner-impl",
+        "rev": "a5d975b93680d1dff06768701025d29c62a2b942",
+        "type": "git",
+        "url": "https://github.com/mecattaf/workerd.nix"
       }
     },
     "xdna-driver-src": {
