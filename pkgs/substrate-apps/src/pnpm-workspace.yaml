@@ -1,0 +1,12 @@
+# One workspace, one effect instance (ES-3): every package declares effect as a
+# peerDependency at the same exact version as the root, so pnpm links a single
+# physical copy. test/workspace-single-effect.test.ts is the oracle.
+packages:
+  - "packages/*"
+  - "apps/*"
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: false
+  protobufjs: false
+  workerd: false
+  sharp: false

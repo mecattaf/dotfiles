@@ -1,0 +1,28 @@
+{
+  "name": "@substrate/pusher",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "The box-side gentle capacity pusher: reads the box's capacity oracle (seats --json, seat-capacity/1) under the refresh policy, converts to seat-capacity/2 and posts to the floor's POST /capacity/snapshots. The legacy seat-pusher (meters and direct usage reads) is kept for its tests only.",
+  "license": "UNLICENSED",
+  "bin": {
+    "substrate-pusher": "./bin/substrate-pusher.mjs"
+  },
+  "exports": {
+    ".": "./src/seatCapacity.mjs",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "effect": "4.0.0-rc.112"
+  },
+  "devDependencies": {
+    "fast-check": "^4.9.0",
+    "@substrate/factory": "workspace:*",
+    "@substrate/planning": "workspace:*",
+    "effect": "4.0.0-rc.112",
+    "vitest": "^3.2.4"
+  }
+}

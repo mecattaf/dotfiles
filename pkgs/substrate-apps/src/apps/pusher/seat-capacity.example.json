@@ -1,0 +1,10 @@
+{
+  "host": "coordinator",
+  "not_dispatchable": {
+    "cc3": "evicted",
+    "gpu-coordinator": "halogen is declared but not resident on the coordinator"
+  },
+  "plans": {
+    "pi-qwencloud": "2026-11-07T00:00:00Z"
+  }
+}

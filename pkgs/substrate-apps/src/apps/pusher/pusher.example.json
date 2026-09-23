@@ -1,0 +1,28 @@
+{
+  "comment": "Example gentle-pusher config. Install as ~/.config/substrate/pusher.json (a dotfiles module will own it). Values here are placeholders, not a deployment.",
+  "floorUrl": "https://substrate.example.dev",
+  "tokenFile": "~/.local/state/substrate/pusher-token",
+  "seatsBin": "~/.local/bin/seats",
+  "host": "coordinator",
+  "seats": [
+    "cc",
+    "cc2",
+    "codex",
+    "pi-qwencloud",
+    "halogen"
+  ],
+  "seatIds": {
+    "gpu-worker": "halogen"
+  },
+  "owners": {},
+  "not_dispatchable": {
+    "cc3": "evicted"
+  },
+  "plans": {},
+  "slots": {
+    "halogen": 1
+  },
+  "estimatedProviders": [
+    "qwen"
+  ]
+}
