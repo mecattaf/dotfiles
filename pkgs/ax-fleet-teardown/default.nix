@@ -2,6 +2,7 @@
   writeShellApplication,
   k3s,
   iptables,
+  nftables,
   iproute2,
   procps,
   coreutils,
@@ -19,13 +20,23 @@
 # (/var/lib/ax-fleet/sysctl-before.conf, written by the activation snippet in
 # modules/ax-fleet/k3s.nix).
 #
+# PATH is pinned (inheritPath = false). The upstream killall's
+# remove_interfaces runs `tailscale set --advertise-routes=` whenever a
+# `tailscale` binary is on PATH; on the NAS that would withdraw the
+# 10.42.0.0/24 subnet route (hosts/nas/headscale.nix). With the caller's PATH
+# cut off, `command -v tailscale` fails and the call is skipped; the killall
+# wrapper still prefixes its own dependencies. The explicit check below makes
+# the teardown refuse to run if tailscale ever becomes reachable anyway.
+#
 # Left on disk on purpose: /mnt/fast/k3s, the data-pool directories and
 # /var/lib/ax-fleet. Deleting them is Tom's call.
 writeShellApplication {
   name = "ax-fleet-teardown";
+  inheritPath = false;
   runtimeInputs = [
     k3s
     iptables
+    nftables
     iproute2
     procps
     coreutils
@@ -35,6 +46,11 @@ writeShellApplication {
   text = ''
     if [ "$(id -u)" -ne 0 ]; then
       echo "ax-fleet-teardown: run as root (sudo)" >&2
+      exit 1
+    fi
+
+    if command -v tailscale >/dev/null 2>&1; then
+      echo "ax-fleet-teardown: tailscale is on PATH; k3s-killall.sh would clear the advertised routes. Refusing." >&2
       exit 1
     fi
 
@@ -50,6 +66,9 @@ writeShellApplication {
     while iptables -w -t mangle -D FORWARD -j ax-fleet-guard 2>/dev/null; do :; done
     iptables -w -t mangle -F ax-fleet-guard 2>/dev/null || true
     iptables -w -t mangle -X ax-fleet-guard 2>/dev/null || true
+
+    echo "== NAS cluster-range guard table"
+    nft delete table inet ax-fleet-guard 2>/dev/null || true
 
     snap=/var/lib/ax-fleet/sysctl-before.conf
     if [ -s "$snap" ]; then

@@ -115,7 +115,51 @@ in
           # up, whatever order a live switch ran tmpfiles and mounts in.
           serviceConfig.ExecStartPre = [
             "${config.systemd.package}/bin/systemd-tmpfiles --create --prefix=/var/lib/rancher/k3s"
+            # --node-ip and --flannel-iface name the LAN address, which
+            # NetworkManager adds after network.target at boot (MEASURED on the
+            # NAS). Bounded wait, then start anyway (k3s's Restart covers it).
+            "${pkgs.writeShellScript "ax-fleet-k3s-wait-lan-addr" ''
+              for _ in $(${pkgs.coreutils}/bin/seq 30); do
+                ${pkgs.iproute2}/bin/ip -4 addr show dev ${cfg.lan.interface} 2>/dev/null \
+                  | ${pkgs.gnugrep}/bin/grep -qF 'inet ${cfg.lan.address}/' && exit 0
+                ${pkgs.coreutils}/bin/sleep 1
+              done
+              echo "ax-fleet: ${cfg.lan.address} not on ${cfg.lan.interface} after 30 s; starting anyway" >&2
+              exit 0
+            ''}"
           ];
+        };
+
+        # ── kubelet's kernel tunables, put back (myAxFleet.kubelet.keepHostKernelTunables) ──
+        # kubelet sets these once per start (container manager setup,
+        # protectKernelDefaults off; INFERRED from upstream kubelet, the VM test
+        # measures the result). PartOf k3s: every k3s restart re-runs this
+        # after kubelet has applied its values, which it waits for.
+        systemd.services.ax-fleet-kernel-tunables = lib.mkIf cfg.kubelet.keepHostKernelTunables {
+          description = "ax-fleet: restore the host's kernel.panic, kernel.panic_on_oops, vm.overcommit_memory after kubelet";
+          wantedBy = [ "k3s.service" ];
+          after = [ "k3s.service" ];
+          partOf = [ "k3s.service" ];
+          path = [
+            pkgs.procps
+            pkgs.coreutils
+            pkgs.gnugrep
+          ];
+          serviceConfig = {
+            Type = "oneshot";
+            RemainAfterExit = true;
+          };
+          script = ''
+            snap=/var/lib/ax-fleet/sysctl-before.conf
+            [ -s "$snap" ] || { echo "no $snap; leaving kernel tunables as they are"; exit 0; }
+            want() { [ "$(sysctl -n kernel.panic)" = 10 ] && [ "$(sysctl -n kernel.panic_on_oops)" = 1 ] && [ "$(sysctl -n vm.overcommit_memory)" = 1 ]; }
+            for _ in $(seq 900); do want && break; sleep 1; done
+            want || echo "kubelet has not set its tunables after 900 s; restoring anyway"
+            for k in kernel.panic kernel.panic_on_oops vm.overcommit_memory; do
+              v=$(grep -E "^$k = " "$snap" | cut -d' ' -f3)
+              if [ -n "$v" ]; then sysctl -w "$k=$v"; fi
+            done
+          '';
         };
 
         # ── sysctl snapshot, taken BEFORE this generation's sysctls apply ──

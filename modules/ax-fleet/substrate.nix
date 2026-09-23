@@ -209,6 +209,28 @@ in
         ${kubectl} apply -f ${registrySvc}
       '';
 
+      "25-rustfs-secret" = ''
+        # 25-rustfs-secret: the RustFS credential RustFS, ate-api and atelet
+        # read through secretKeyRef (pkgs/substrate patch 0003), in place of
+        # the kind overlay's literal default published upstream. Generated
+        # once on this host into /var/lib/ax-fleet/rustfs.env (0600 root),
+        # applied before ate-setup starts those pods. Never printed.
+        f=/var/lib/ax-fleet/rustfs.env
+        if [ ! -s "$f" ]; then
+          (
+            umask 077
+            tmp=$(mktemp /var/lib/ax-fleet/.rustfs.env.XXXXXX)
+            rnd() { head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+            printf 'access-key=ax%s\nsecret-key=%s\n' "$(rnd 10)" "$(rnd 32)" > "$tmp"
+            mv "$tmp" "$f"
+          )
+          echo "generated $f"
+        fi
+        ${kubectl} -n ${ns} create secret generic ax-fleet-rustfs --from-env-file="$f" \
+          --dry-run=client -o yaml | ${kubectl} apply -f - >/dev/null
+        echo "secret ${ns}/ax-fleet-rustfs applied"
+      '';
+
       "30-substrate" = ''
         # 30-substrate: upstream's own installer, once per (installer, images)
         # pair. The stamp lives in the cluster, so a wiped cluster re-installs.
@@ -243,18 +265,17 @@ in
       "40-gvisor-asset" = ''
         # 40-gvisor-asset: put the pinned runsc tarball where atelet's S3
         # fallback looks for gs://${images.gvisor.bucket}/${images.gvisor.key}
-        # (same bucket and key; the scheme is ignored). The upstream kind
-        # credential is read from the RustFS Deployment and kept off argv.
+        # (same bucket and key; the scheme is ignored). The credential is
+        # read from the Secret 25-rustfs-secret applied and kept off argv.
         ${kubectl} -n ${ns} rollout status deploy/rustfs --timeout=10m
         ip=$(${kubectl} -n ${ns} get svc rustfs -o jsonpath='{.spec.clusterIP}')
         base="http://$ip:9000"
         creds=$(mktemp)
         trap 'rm -f "$creds"' EXIT
         chmod 600 "$creds"
-        ${kubectl} -n ${ns} get deploy rustfs -o json | ${jq} -r '
-          .spec.template.spec.containers[0].env
-          | map({(.name): .value}) | add
-          | "user = \"\(.RUSTFS_ACCESS_KEY):\(.RUSTFS_SECRET_KEY)\""' > "$creds"
+        ${kubectl} -n ${ns} get secret ax-fleet-rustfs -o json | ${jq} -r '
+          .data
+          | "user = \"\(.["access-key"] | @base64d):\(.["secret-key"] | @base64d)\""' > "$creds"
         s3() { ${curl} -sS --aws-sigv4 "aws:amz:us-east-1:s3" -K "$creds" "$@"; }
         code=$(s3 -o /dev/null -w '%{http_code}' -I "$base/${images.gvisor.bucket}")
         if [ "$code" != 200 ]; then

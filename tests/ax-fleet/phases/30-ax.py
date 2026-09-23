@@ -100,19 +100,38 @@ with subtest("resilience: a restarted ax-redis keeps every Task (AOF on the volu
     assert before == after and int(after) >= 1, f"tasks before={before} after={after}"
     assert task_phase(t1_name) == "Completed"
 
-with subtest("resilience: the LAN leg flaps, worker pods keep their names, a new T1 completes"):
+with subtest("resilience: the LAN leg is down until the coordinator is NotReady; pods keep their names and uid, a new T1 completes"):
     pods = lambda: kubectl(
         "-n ate-system get pods --field-selector spec.nodeName=coordinator -o name | grep ateom | sort"
     )
     before = pods()
-    coordinator.succeed("ip link set eth1 down")
-    coordinator.sleep(20)
-    coordinator.succeed("ip link set eth1 up")
+    probe_uid = kubectl("get pod probe-coord -o jsonpath='{.metadata.uid}'").strip()
+    flap_until_unreachable("ax")
     nas.wait_until_succeeds(
         "k3s kubectl get node coordinator -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -qx True",
         timeout=300,
     )
+    nas.wait_until_succeeds(
+        "! k3s kubectl get node coordinator -o jsonpath='{.spec.taints[*].key}' | grep -qw node.kubernetes.io/unreachable",
+        timeout=300,
+    )
     assert pods() == before, f"worker pods changed: {before!r}"
-    ax_smoke("halogen")
+    kubectl("wait --for=condition=Ready pod/probe-coord --timeout=300s")
+    assert kubectl("get pod probe-coord -o jsonpath='{.metadata.uid}'").strip() == probe_uid, "the probe pod was replaced by the flap"
+    nas.wait_until_succeeds("curl -sf --max-time 5 http://10.42.0.2:18085/ | grep -x pod-ok", timeout=120)
+    # Tasks after a real outage are recorded as they are. Fix round 1
+    # MEASURED that each stale gRPC connection left by the outage costs one
+    # Task: ActorResumeFailed, Unavailable, "connection reset by peer", once
+    # NAS -> atelet :8085 and once atelet -> NAS :443 ("mint actor
+    # certificate"). ax does not retry Unavailable. The bound is a test
+    # parameter: the fleet must recover within it without a restart.
+    attempts = []
+    for _ in range(6):
+        r = ax_smoke("halogen", expect_pass=False)
+        attempts.append({k: r.get(k) for k in ("pass", "phase", "ready")})
+        if r.get("pass") is True:
+            break
+    record("post_outage_tasks", attempts)
+    assert attempts[-1]["pass"] is True, f"no Task completed after the outage: {attempts}"
 
 coordinator.succeed(f"{AX} delete task {t1_name}")

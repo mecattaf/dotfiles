@@ -139,7 +139,9 @@ with step("nas: bystanders untouched"):
     nas.succeed("dig +short @10.42.0.1 only-nas.test | grep -x 10.42.0.77")
     ruleset = nas.succeed("nft list ruleset")
     record("nas_kube_services_in_nft", "KUBE-SERVICES" in ruleset)
+    nas.succeed("nft list chain inet ax-fleet-guard prerouting | grep -q 'ax-fleet: cluster ranges'")
     record("sysctl_nas_after_switch", sysctls(nas))
+    kernel_keys_back(nas, base["sysctl_nas"])
 
 
 with step("switch coordinator"):
@@ -191,6 +193,9 @@ with step("coordinator: nothing changed for Tom"):
     ref = [l.split("Loaded image:")[1].strip() for l in loaded.splitlines() if "Loaded image" in l][0]
     coordinator.succeed(f"podman run --rm --network bridge {ref} curl -sf --max-time 10 http://10.88.0.1/ | grep -x caddy-ok")
     coordinator.succeed("lsmod | grep -q br_netfilter")
+    # kubelet's panic tunables are put back: an oops does not reboot the desk.
+    kernel_keys_back(coordinator, base["sysctl_coordinator"])
+    record("sysctl_coordinator_after_restore", sysctls(coordinator))
 
 
 with step("coordinator: the guards hold"):
@@ -224,6 +229,32 @@ with step("coordinator: the guards hold"):
     coordinator.succeed("iptables -t mangle -S FORWARD 1 | grep -q ax-fleet-guard")
     coordinator.fail("ip -br link | grep -qi cilium")
     record("guard_chain", coordinator.succeed("iptables -t mangle -S ax-fleet-guard").strip().splitlines())
+
+
+with step("coordinator: pods reach no private range on the LAN leg (the Freebox fallback case)"):
+    # A private subnet this module does not know, on the same leg, as when
+    # NetworkManager falls back to the Freebox profile. Discriminating: the
+    # coordinator host reaches it; a pod must not.
+    worker.succeed("ip addr add 192.168.77.5/24 dev eth1")
+    coordinator.succeed("ip route replace 192.168.77.0/24 dev eth1")
+    try:
+        coordinator.succeed("curl -sf --max-time 10 http://192.168.77.5:8731/health")
+        kubectl("exec probe-coord -- sh -c '! curl -s --max-time 5 -o /dev/null http://192.168.77.5:8731/health'")
+    finally:
+        coordinator.succeed("ip route del 192.168.77.0/24 dev eth1")
+        worker.succeed("ip addr del 192.168.77.5/24 dev eth1")
+
+
+with step("coordinator: LAN traffic routed through the NAS never reaches a harness pod"):
+    # The house default gateway is the NAS. Before fix round 1 this path
+    # (worker -> nas -> flannel.1 -> harness pod) answered (MEASURED).
+    pod_ip = jsonpath("pod probe-coord", "{.status.podIP}")
+    nas.succeed(f"curl -sf --max-time 10 http://{pod_ip}:8000/ | grep -x pod-ok")  # the path itself works
+    worker.succeed("ip route replace 10.200.0.0/16 via 10.42.0.1")
+    try:
+        worker.fail(f"curl -s --max-time 5 -o /dev/null http://{pod_ip}:8000/")
+    finally:
+        worker.succeed("ip route del 10.200.0.0/16 via 10.42.0.1")
 
 
 def diag(cmds):
@@ -265,12 +296,8 @@ with step("cluster plumbing: DNS through the NAS stand-in"):
     kubectl("exec probe-nas -- nslookup -type=a only-nas.test | grep -q 10.42.0.77")
 
 
-with step("resilience: coordinator link flap"):
-    uid = jsonpath("pod probe-coord", "{.metadata.uid}")
-    coordinator.succeed("ip link set eth1 down")
-    time.sleep(20)
-    coordinator.succeed("ip link set eth1 up")
-    node_ready("coordinator")
-    kubectl("wait --for=condition=Ready pod/probe-coord --timeout=300s")
-    assert jsonpath("pod probe-coord", "{.metadata.uid}") == uid, "the probe pod was replaced by the flap"
-    nas.wait_until_succeeds("curl -sf --max-time 5 http://10.42.0.2:18085/ | grep -x pod-ok", timeout=120)
+# The coordinator link flap runs at the END of 30-ax (fix round 1), together
+# with the Substrate/ax flap: a flap long enough to take the node NotReady
+# can leave connections to the NAS stale (INFERRED), and the Task phases before it
+# must run on a cluster that has not seen an outage. probe-coord stays up
+# until then; that subtest asserts its uid survives.

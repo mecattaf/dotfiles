@@ -17,7 +17,15 @@
 #     wifi. A conf.d drop-in plus `nmcli general reload conf` instead.
 #   - the tailnet: flannel and kube-proxy bind the LAN leg only, nothing is
 #     published, and the guard chain below keeps pods, wifi and the tailnet
-#     apart even though k3s turns ip_forward on (judge 1's second risk).
+#     apart even though k3s turns ip_forward on (judge 1's second risk). The
+#     chain covers the direct path; the path routed through the NAS into
+#     VXLAN is closed twice, by the NAS's prerouting range guard
+#     (control.nix) and by the flannel.1 source rule here. Plain VXLAN on the
+#     wifi leg is accepted by source address only (spoofable over wifi); see
+#     DESIGN.md Unknowns.
+#   - the kernel's panic behaviour: kubelet's kernel.panic / panic_on_oops /
+#     overcommit values are put back after it starts
+#     (myAxFleet.kubelet.keepHostKernelTunables, k3s.nix).
 #   - herdr and every user unit: only system units are added.
 #   - no containerd template, no runsc on PATH, no RuntimeClass (Substrate
 #     runs its own runsc in the worker pods).
@@ -44,7 +52,18 @@ let
   # reply arrives on the LAN leg from a source that is not the NAS. Only NEW
   # flows are policed, which is the property the guard exists for.
   guardRules =
-    [ "-m conntrack --ctstate ESTABLISHED,RELATED -j RETURN" ]
+    [
+      "-m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"
+      # Into pods over VXLAN only from the pod network (fix round 1). Real
+      # peers, the NAS host included (its flannel.1 address), are sourced
+      # from the pod CIDR. Defence in depth, not the fix: LAN traffic the NAS
+      # routes into VXLAN (MEASURED bypass, worker -> nas -> flannel.1 ->
+      # harness pod, rc=0) is likely masqueraded by flannel's own rule to the
+      # NAS's flannel.1 address (INFERRED), so the NAS's prerouting range
+      # guard (control.nix) is what closes that path. This rule drops VXLAN
+      # payloads whose inner source is outside the pod CIDR.
+      "-i flannel.1 ! -s ${cfg.podCidr} -j DROP"
+    ]
     ++ lib.concatMap (
       g:
       lib.concatMap (p: [
@@ -64,8 +83,20 @@ let
       # apiserver and the registry on the NAS; the internet (atelet's GCS
       # fetch) is unaffected. Everything else in-cluster rides flannel.1.
       "-i cni0 -o ${lan} -d ${cfg.serverAddress} -p tcp -m multiport --dports 6443,${registryPort} -j RETURN"
-      "-i cni0 -o ${lan} -d ${cfg.lan.cidr} -j DROP"
-    ];
+    ]
+    # Every private range, not only the house /24 (fix round 1): when
+    # NetworkManager falls back to the Freebox profile on ${lan}
+    # (hosts/coordinator/uplink-nas.nix), the leg is a DHCP subnet this
+    # module does not know, and 100.64/10 is the tailnet's range.
+    ++ map (r: "-i cni0 -o ${lan} -d ${r} -j DROP") privateRanges;
+
+  privateRanges = lib.unique [
+    cfg.lan.cidr
+    "10.0.0.0/8"
+    "172.16.0.0/12"
+    "192.168.0.0/16"
+    "100.64.0.0/10"
+  ];
 
   guardStart = ''
     # ax-fleet guard chain (idempotent)

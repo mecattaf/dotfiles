@@ -91,6 +91,38 @@ let
         )
 
 
+    KERNEL_KEYS = ("kernel.panic", "kernel.panic_on_oops", "vm.overcommit_memory")
+
+
+    def kernel_keys_back(machine, baseline):
+        """myAxFleet.kubelet.keepHostKernelTunables: kubelet's values are put back."""
+        for k in KERNEL_KEYS:
+            machine.wait_until_succeeds(f"test \"$(sysctl -n {k})\" = '{baseline[k]}'", timeout=300)
+
+
+    def flap_until_unreachable(tag):
+        """Take the coordinator's LAN leg down until the control plane has
+        reacted (Ready=Unknown and the unreachable taint), then bring it back.
+        A test parameter, not an estimate: it waits for the transition."""
+        t0 = time.monotonic()
+        coordinator.succeed("ip link set eth1 down")
+        try:
+            nas.wait_until_succeeds(
+                "k3s kubectl get node coordinator -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -qx Unknown",
+                timeout=900,
+            )
+            nas.wait_until_succeeds(
+                "k3s kubectl get node coordinator -o jsonpath='{.spec.taints[*].key}' | grep -qw node.kubernetes.io/unreachable",
+                timeout=600,
+            )
+            record(f"flap_{tag}_taints_while_down", nas.succeed("k3s kubectl get node coordinator -o jsonpath='{.spec.taints}'").strip())
+        finally:
+            coordinator.succeed("ip link set eth1 up")
+        outage = round(time.monotonic() - t0, 1)
+        record(f"flap_{tag}_outage_seconds", outage)
+        return outage
+
+
     def user_unit_pid(unit):
         return coordinator.succeed(
             "runuser -u alice -- env XDG_RUNTIME_DIR=/run/user/$(id -u alice) "

@@ -183,6 +183,17 @@ in
         };
       };
 
+      # A recording `tailscale` on the system PATH, as the real NAS has one:
+      # k3s-killall.sh's remove_interfaces runs `tailscale set
+      # --advertise-routes=` whenever the binary is reachable, which would
+      # withdraw the house subnet route. 90-rollback asserts the teardown
+      # never calls it.
+      environment.systemPackages = [
+        (pkgs.writeShellScriptBin "tailscale" ''
+          echo "$*" >> /var/log/tailscale-stub.log
+        '')
+      ];
+
       # The bystander: the NAS's shared PostgreSQL (Paperless, Immich) must
       # not restart and must not change.
       services.postgresql = {

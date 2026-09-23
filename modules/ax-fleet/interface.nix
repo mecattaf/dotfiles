@@ -153,6 +153,20 @@ in
         type = types.nullOr types.str;
         default = null;
       };
+      keepHostKernelTunables = mkOption {
+        type = types.bool;
+        default = true;
+        description = ''
+          kubelet sets kernel.panic=10, kernel.panic_on_oops=1 and
+          vm.overcommit_memory=1 when it starts (REPORTED by the VM receipt).
+          On the desk that turns any kernel oops into a reboot 10 s later,
+          dropping herdr and every seat. true: ax-fleet-kernel-tunables puts
+          the three keys back to the values recorded before k3s first ran,
+          after every kubelet start. false: kubelet's values stay. Tom's
+          ruling is pending (Waiting on you, 2026-09-23); true is the default
+          because it changes nothing for Tom at switch.
+        '';
+      };
     };
 
     workerPool = {

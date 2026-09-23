@@ -58,6 +58,37 @@ let
 
   kubectl = "${cfg.k3sPackage}/bin/kubectl";
 
+  waitLanAddr = pkgs.writeShellScript "ax-fleet-wait-lan-addr" ''
+    for _ in $(${pkgs.coreutils}/bin/seq 30); do
+      ${pkgs.iproute2}/bin/ip -4 addr show dev ${cfg.lan.interface} 2>/dev/null \
+        | ${pkgs.gnugrep}/bin/grep -qF 'inet ${cfg.lan.address}/' && exit 0
+      ${pkgs.coreutils}/bin/sleep 1
+    done
+    echo "ax-fleet: ${cfg.lan.address} not on ${cfg.lan.interface} after 30 s; starting anyway" >&2
+    exit 0
+  '';
+
+  # ── the cluster-range guard (fix round 1, 2026-09-23) ──
+  # The NAS is the house default gateway and forwards with policy accept, and
+  # kube-proxy's KUBE-SERVICES DNAT sits in PREROUTING for every interface. So
+  # without this, any LAN device that routes the pod or Service range via
+  # 10.42.0.1 reaches ClusterIPs and pods (MEASURED by the security review:
+  # ax-server 200, Redis INFO, RustFS 403; and, through VXLAN, pods on the
+  # coordinator). At priority raw, before any DNAT: destinations in the
+  # cluster ranges are accepted only from the pod-side interfaces. VXLAN
+  # outer packets target ${cfg.lan.address}, so flannel is unaffected, and
+  # traffic the NAS itself originates never passes prerouting.
+  rangeGuard = ''
+    chain prerouting {
+      type filter hook prerouting priority raw; policy accept;
+      iifname { "cni0", "flannel.1", "lo" } return
+      iifname "veth*" return
+      # The match carries the drop (never a bare drop): IPv6 and every other
+      # destination fall through to policy accept.
+      ip daddr { ${cfg.podCidr}, ${cfg.serviceCidr} } counter drop comment "ax-fleet: cluster ranges only from pods and flannel"
+    }
+  '';
+
   # ── the bootstrap steps this track owns ──
   bootstrapApi = ''
     # 10-api: wait for the apiserver and the admin kubeconfig.
@@ -153,6 +184,12 @@ in
       inherit what where;
       type = "none";
       options = "bind";
+      # Lazy: at the kill-switch switch, pods and shims outlive k3s
+      # (KillMode=process) and can keep /var/lib/kubelet busy, which made the
+      # rollback switch exit 4 (MEASURED, fix round 1 VM run 4). Detaching
+      # lazily leaves the data on /mnt/fast untouched; ax-fleet-teardown then
+      # stops what still holds it.
+      mountConfig.LazyUnmount = true;
       requires = [ "ax-fleet-dirs.service" ];
       after = [ "ax-fleet-dirs.service" ];
       wantedBy = [ "k3s.service" ];
@@ -203,6 +240,28 @@ in
       wants = [ "ax-fleet-dirs.service" ];
       after = [ "ax-fleet-dirs.service" ];
       unitConfig.RequiresMountsFor = [ cfg.registryRoot ];
+      # The explicit ${registryHost} bind races NetworkManager at boot: the
+      # static address reaches ${cfg.lan.interface} seconds after
+      # network(-online).target (MEASURED on the NAS, 2026-09-23; the same race
+      # hosts/nas/headscale.nix and modules/adguardhome.nix already guard).
+      # Wait up to 30 s for the address, then start anyway and let Restart
+      # cover a genuinely late interface.
+      serviceConfig = {
+        ExecStartPre = waitLanAddr;
+        Restart = "on-failure";
+        RestartSec = 5;
+      };
+    };
+
+    assertions = [
+      {
+        assertion = config.networking.nftables.enable;
+        message = "modules/ax-fleet/control.nix: the control role's cluster-range guard is an nftables table; the NAS runs nftables.";
+      }
+    ];
+    networking.nftables.tables.ax-fleet-guard = {
+      family = "inet";
+      content = rangeGuard;
     };
 
     # ── firewall: only what the coordinator and the pods need ──
@@ -221,7 +280,10 @@ in
     systemd.services.ax-fleet-registry-seed = {
       description = "ax-fleet: seed the NAS registry from the store, digests preserved";
       wantedBy = [ "multi-user.target" ];
-      requires = [ "docker-registry.service" ];
+      # wants, not requires: a registry that fails its first start (late LAN
+      # address) must not fail the seed on dependency, which Restart= would
+      # never retry. The script itself waits for /v2/, and Restart retries.
+      wants = [ "docker-registry.service" ];
       after = [ "docker-registry.service" ];
       path = [
         pkgs.skopeo
@@ -233,6 +295,8 @@ in
         Type = "oneshot";
         RemainAfterExit = true;
         StateDirectory = "ax-fleet";
+        Restart = "on-failure";
+        RestartSec = 15;
       };
       script = seedScript;
     };

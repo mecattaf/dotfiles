@@ -26,10 +26,16 @@ with step("rollback coordinator"):
 
 
 with step("rollback nas"):
+    # Diagnostic only: which processes hold the kubelet bind before the switch.
+    _, holders = nas.execute("ls -l /proc/[0-9]*/cwd /proc/[0-9]*/root 2>/dev/null | grep -c /var/lib/kubelet")
+    record("nas_kubelet_holders_before_rollback", holders.strip())
     nas.succeed(f"{BASE} >&2")
     nas.fail("systemctl is-active k3s.service")
     nas.fail("systemctl is-active docker-registry.service")
+    nas.succeed("command -v tailscale")  # the stub is reachable from a root shell
     nas.succeed(f"{TEARDOWN} >&2")
+    # The teardown's pinned PATH keeps k3s-killall.sh away from tailscale.
+    nas.fail("test -e /var/log/tailscale-stub.log")
     nas.fail("ip link show cni0")
     nas.fail("ip link show flannel.1")
     nas.fail("pgrep -f containerd-shim")

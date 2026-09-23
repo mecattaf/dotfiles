@@ -21,11 +21,14 @@
 # kagent-dev fork's ghcr images are ruled out), so every component image is
 # built here and seeded into the NAS registry by pkgs/substrate/images.nix.
 #
-# The two patches touch only manifests/, never Go code:
+# The three patches touch only manifests/, never Go code:
 #   0001 pauseImage -> localhost:5000/pause (atelet pulls it itself; the fleet
 #        must not depend on registry.k8s.io at sandbox start).
 #   0002 third-party images -> their linux/amd64 child digests, so the NAS
 #        seeds ~0.7 GB instead of every platform (see the patch header).
+#   0003 the kind overlay's literal RustFS credential (public in the upstream
+#        repo) -> secretKeyRef to Secret ate-system/ax-fleet-rustfs, which the
+#        bootstrap step 25-rustfs-secret generates once on the NAS.
 # ate-setup reads the manifests from its working directory's repository root
 # (it walks up to go.mod). What it reads for `deploy ate-system` is go.mod,
 # manifests/ and hack/ (kustomize overlays, CSI manifests; MEASURED grep of
@@ -52,6 +55,7 @@ let
     patches = [
       ./patches/0001-sandboxconfig-pause-localhost.patch
       ./patches/0002-images-linux-amd64-digests.patch
+      ./patches/0003-kind-rustfs-credential-secret.patch
     ];
   };
 

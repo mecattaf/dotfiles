@@ -279,45 +279,13 @@ let
         labels = labels "ax-controller";
       };
     }
-    {
-      apiVersion = "rbac.authorization.k8s.io/v1";
-      kind = "ClusterRole";
-      metadata = {
-        name = "ax-controller";
-        labels = labels "ax-controller";
-      };
-      rules = [
-        {
-          apiGroups = [ "" ];
-          resources = [ "secrets" ];
-          verbs = [
-            "get"
-            "list"
-            "watch"
-          ];
-        }
-      ];
-    }
-    {
-      apiVersion = "rbac.authorization.k8s.io/v1";
-      kind = "ClusterRoleBinding";
-      metadata = {
-        name = "ax-controller";
-        labels = labels "ax-controller";
-      };
-      subjects = [
-        {
-          kind = "ServiceAccount";
-          name = "ax-controller";
-          namespace = "ax-system";
-        }
-      ];
-      roleRef = {
-        apiGroup = "rbac.authorization.k8s.io";
-        kind = "ClusterRole";
-        name = "ax-controller";
-      };
-    }
+    # No ClusterRole (fix round 1, 2026-09-23). Upstream grants get/list/watch
+    # on every Secret cluster-wide; the controller's only read is one GET of
+    # gemini-api-secret in the Task's atespace (reconciler.go lookupGeminiKey,
+    # REPORTED from the ax source), which falls back to env and then to "".
+    # Day one is pi on Halogen with no key, so the grant bought nothing. If a
+    # Gemini key is ever ruled in: a namespaced Role in that atespace with
+    # resourceNames [ "gemini-api-secret" ] and verbs [ "get" ] only.
     {
       apiVersion = "apps/v1";
       kind = "Deployment";
@@ -336,6 +304,9 @@ let
           spec = {
             nodeSelector = controlSelector;
             serviceAccountName = "ax-controller";
+            # No API token in the pod: it holds no RBAC and needs none. The
+            # projected ateapi token below is a separate volume and stays.
+            automountServiceAccountToken = false;
             containers = [
               {
                 name = "controller";
