@@ -52,6 +52,7 @@ for i in 1 2 3 4 5; do
 done
 exit "$rc"
 """
+TASK_SCRIPT_B64 = base64.b64encode(TASK_SCRIPT.encode()).decode()
 
 
 def ax(args: str) -> tuple[int, str]:
@@ -66,7 +67,10 @@ def apply_task(name: str) -> None:
         "metadata": {"name": name, "atespace": NS},
         "spec": {
             "image": IMAGE,
-            "command": ["bash", "-c", TASK_SCRIPT],
+            # One line: stock v0.3.0's runner refuses AX_TASK_YAML when the
+            # command carries a multi-line string (MEASURED run 2: "yaml: line
+            # 30: mapping values are not allowed in this context").
+            "command": ["bash", "-c", f"echo {TASK_SCRIPT_B64} | base64 -d | bash"],
             "env": [
                 {"name": "HALOGEN_URL", "value": STUB},
                 {"name": "FLOOR_URL", "value": STUB},
