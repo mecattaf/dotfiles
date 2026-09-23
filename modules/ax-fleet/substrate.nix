@@ -116,9 +116,10 @@ let
     }
   );
 
-  # The install is re-run only when what it installs changes: the patched
-  # manifests, the installer and every image are all in these two paths.
-  stamp = "${substrate}|${images}";
+  # The install is re-run only when what it installs changes: the installer,
+  # the patched manifests and every image are all in these three paths. The
+  # component binaries themselves are not in the NAS closure, only the images.
+  stamp = "${substrate.ate-setup}|${substrate.installTree}|${images}";
 
   # ── 50: the gVisor WorkerPool, on the harness only ──
   # nodeSelector and tolerations go through spec.template (MEASURED
@@ -219,12 +220,12 @@ in
         else
           # ate-setup walks up from its working directory to go.mod and reads
           # manifests/ from there; it writes nothing under that root.
-          cd ${substrate.source}
+          cd ${substrate.installTree}
           env -u GCE_REGION -u CLUSTER_LOCATION -u NETWORK -u SUBNETWORK \
               -u MEMORYSTORE_INSTANCE -u PROJECT_ID \
             VERSION=${cfg.substrateVersion} BUCKET_NAME=ate-snapshots \
             HOME="''${HOME:-/var/lib/ax-fleet}" \
-            ${substrate}/bin/ate-setup --kind --no-dev-env \
+            ${substrate.ate-setup}/bin/ate-setup --kind --no-dev-env \
               --kubeconfig "$KUBECONFIG" --context default \
               --rollout-timeout 10m \
               --image-repo ${cfg.registry}/substrate \
