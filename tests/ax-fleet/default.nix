@@ -9,7 +9,7 @@
 #
 # The test script is phases/*.py concatenated in name order, after the
 # prelude below: 10-cluster and 90-rollback (cluster track), 20-substrate
-# (substrate track), 30-ax (ax track). Every subtest a phase runs through
+# (substrate track), 30-nop1 and 32-fleet (ax track). Every subtest a phase runs through
 # `step(...)` is named in $out/receipt.json with the values it recorded.
 let
   nodes = import ./nodes.nix { inherit pkgs lib inputs; };

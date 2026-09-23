@@ -1,6 +1,6 @@
 # Phase: the house LAN cannot reach the cluster ranges through the NAS, and
 # the credential and RBAC surface is what fix round 1 left (2026-09-23). Runs
-# after 30-ax, so ax-server, ax-redis and RustFS all exist. The worker is a
+# after 30-nop1 and 32-fleet, so ax-server, ax-redis and RustFS all exist. The worker is a
 # plain LAN host; the NAS is its default gateway on the real LAN.
 
 

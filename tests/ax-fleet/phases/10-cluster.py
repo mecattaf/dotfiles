@@ -385,7 +385,7 @@ with step("cluster plumbing: DNS through the NAS stand-in"):
     kubectl("exec probe-nas -- nslookup -type=a only-nas.test | grep -q 10.42.0.77")
 
 
-# The coordinator link flap runs at the END of 30-ax (fix round 1), together
+# The coordinator link flap runs at the END of 32-fleet (fix round 1), together
 # with the Substrate/ax flap: a flap long enough to take the node NotReady
 # can leave connections to the NAS stale (INFERRED), and the Task phases before it
 # must run on a cluster that has not seen an outage. probe-coord stays up

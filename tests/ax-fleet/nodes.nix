@@ -56,6 +56,21 @@ let
         variant = "-claude-probe";
       };
 
+  # probe/ax-fleet-nop1, test-only: Substrate's own kubectl plugin from the
+  # same pinned source, so the no-P1 phase can list actors, templates and
+  # workers (leak and worker-freed checks). Not in any host closure.
+  kubectlAte =
+    (pkgs.callPackage ../../pkgs/substrate {
+      go_1_27 = inputs.nixpkgs-go.legacyPackages.x86_64-linux.go_1_27;
+    }).ate-setup.overrideAttrs
+      (o: {
+        pname = "kubectl-ate";
+        subPackages = [ "cmd/kubectl-ate" ];
+        meta = o.meta // {
+          mainProgram = "kubectl-ate";
+        };
+      });
+
   lanAddr = address: {
     interface = "eth1";
     inherit address;
@@ -117,6 +132,7 @@ in
     token
     agentToken
     claudeProbeImage
+    kubectlAte
     ;
 
   nas =
@@ -140,6 +156,7 @@ in
         (setAddr "eth1" "10.42.0.1" 24)
       ];
       networking.hostName = "nas";
+      environment.systemPackages = [ kubectlAte ];
       virtualisation = {
         vlans = [ 1 ];
         memorySize = 10240;

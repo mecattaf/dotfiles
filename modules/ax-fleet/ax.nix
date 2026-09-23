@@ -269,7 +269,7 @@ let
       };
     }
 
-    # ── ax-controller: upstream deploy/ax-controller.yaml, plus P1's resync ──
+    # ── ax-controller: upstream deploy/ax-controller.yaml, stock args ──
     {
       apiVersion = "v1";
       kind = "ServiceAccount";
@@ -295,7 +295,7 @@ let
         labels = labels "ax-controller";
       };
       spec = {
-        # One consumer: P1's resync assumes one controller per Redis group.
+        # One consumer per Redis group, as upstream ships it.
         replicas = 1;
         strategy.type = "Recreate";
         selector.matchLabels."app.kubernetes.io/name" = "ax-controller";
@@ -320,7 +320,6 @@ let
                   "--substrate-ca-file=/run/servicedns-ca/trust-bundle.pem"
                   "--template=default-template"
                   "--template-atespace=ax-system"
-                  "--running-resync=${toString cfg.ax.runningResyncSeconds}s"
                 ];
                 env = [
                   {
@@ -440,18 +439,12 @@ let
       AX_FLEET_ATESPACE = cfg.ax.atespace;
       AX_FLEET_HALOGEN = cfg.halogenEndpoint;
       AX_FLEET_HALOGEN_CIDR = "${builtins.head (lib.splitString ":" cfg.halogenEndpoint)}/32";
-      AX_FLEET_RESYNC_SECONDS = toString cfg.ax.runningResyncSeconds;
       AX_FLEET_API = "http://${cfg.apiListen}";
     };
   };
 in
 {
   options.myAxFleet.ax = {
-    runningResyncSeconds = lib.mkOption {
-      type = lib.types.ints.positive;
-      default = 15;
-      description = "P1's --running-resync: how often ax-controller re-checks Running Tasks for a command exit. A trade between detection lag and controller load, not an estimate.";
-    };
     atespace = lib.mkOption {
       type = lib.types.str;
       default = "fleet";

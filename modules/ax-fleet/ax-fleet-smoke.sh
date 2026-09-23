@@ -1,6 +1,6 @@
 # ax-fleet-smoke: run one proof case as a real ax Task and print a JSON receipt.
 # (Wrapped by writeShellApplication in ./ax.nix: strict mode, pinned PATH, and
-# AX_FLEET_{ATESPACE,HALOGEN,HALOGEN_CIDR,RESYNC_SECONDS,API} from the module.)
+# AX_FLEET_{ATESPACE,HALOGEN,HALOGEN_CIDR,API} from the module.)
 #
 #   ax-fleet-smoke halogen     [--hold N]  one chat completion against Halogen
 #   ax-fleet-smoke pi          [--hold N]  pi against Halogen, schema-valid result
@@ -39,7 +39,8 @@ done
 [ "${#args[@]}" -ge 1 ] || { sed -n '2,21p' "$0" >&2; exit 64; }
 case_="${args[0]}"
 [ -n "$image" ] || image="$(ax-fleet-image-ref)"
-[ "$case_" != probe ] || sandbox_class="${sandbox_class:-gvisor}"
+# Stock ax has no spec.sandboxClass and rejects the unknown field, so the
+# probe sends none (ax v0.3.0 hardcodes gVisor).
 run_id="$(date +%s)-$$"
 
 # The Gateway's `port` is carried for the record only: ax v0.3.0 copies only
