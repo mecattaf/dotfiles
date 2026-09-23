@@ -30,7 +30,7 @@ def kubectl(args):
     return nas.succeed(f"k3s kubectl {args}")
 
 
-AX = "AX_SERVER=http://127.0.0.1:8080 ax -a fleet"
+AX = "AX_SERVER=http://127.0.0.1:8099 ax -a fleet"
 
 
 def task_phase(name):
@@ -53,7 +53,7 @@ with step("ax control plane is Available on the NAS, nowhere else"):
         "get pv -o jsonpath='{range .items[?(@.spec.claimRef.name==\"ax-redis-data\")]}{.spec.local.path}{.spec.hostPath.path}{end}'"
     )
     assert pv.startswith("/mnt/nas/services/ax-fleet/local-path"), f"ax-redis volume at {pv!r}"
-    coordinator.wait_until_succeeds("curl -sf http://127.0.0.1:8080/healthz", timeout=300)
+    coordinator.wait_until_succeeds("curl -sf http://127.0.0.1:8099/healthz", timeout=300)
     # No Claude credential, and no secret, in any ax object.
     kubectl("-n ax-system get secrets -o name | (! grep -q .)")
 
@@ -79,6 +79,37 @@ with step("T4 egress-deny: a non-allowlisted target is refused by the Gateway"):
     worker.succeed("curl -s -o /dev/null --max-time 10 http://10.42.0.2/")
     t4 = ax_smoke("egress-deny", "http://10.42.0.2/")
     assert t4["phase"] == "Failed", t4
+
+
+with step("T4b egress-deny: the Gateway's host on another port is refused (the NAS enforces the port)"):
+    # Fix round 3. The Gateway names 10.42.0.5/32 port 8731, but ax drops the
+    # port and Substrate never compares one: the round-3 review MEASURED
+    # curl_rc 0 from worker:2222 through the egress gateway. The NAS's pod
+    # egress chain (control.nix) is what refuses it now. Discriminating: the
+    # NAS host reaches that port.
+    nas.succeed("curl -sf --max-time 10 http://10.42.0.5:2222/ | grep -q worker-port-2222-reached")
+    t4b = ax_smoke("egress-deny", "http://10.42.0.5:2222/")
+    # The egress gateway answers 503 itself (its upstream connect is dropped
+    # on the NAS); before the fix the target answered 200 (MEASURED by the
+    # round-3 review).
+    assert t4b["refused_by"] in ("gateway-connection", "egress-upstream"), t4b
+    assert t4b["result"]["http_code"] != "200", t4b
+
+with step("security: only root and apiUsers reach the ax API and the cluster ranges from the desk"):
+    # Fix round 3. The round-3 review MEASURED alice applying a Gateway with
+    # host 0.0.0.0/0 through the loopback proxy. The owner match also covers
+    # the ClusterIP and the pod, which kube-proxy's OUTPUT DNAT would carry.
+    ax_pod = kubectl(
+        "-n ax-system get pods -l app.kubernetes.io/name=ax-server -o jsonpath='{.items[0].status.podIP}'"
+    ).strip()
+    coordinator.succeed("runuser -u tom -- curl -sf --max-time 10 http://127.0.0.1:8099/healthz")
+    coordinator.succeed("curl -sf --max-time 10 http://10.201.0.80:8080/healthz")
+    for url in ("http://127.0.0.1:8099/healthz", "http://10.201.0.80:8080/healthz", f"http://{ax_pod}:8080/healthz"):
+        coordinator.fail(f"runuser -u alice -- curl -s --max-time 5 -o /dev/null {url}")
+    # 127.0.0.1:8080 is left to ax-conwip's default and the mock stack.
+    coordinator.fail("ss -ltn | grep -q '127.0.0.1:8080 '")
+    record("api_owner_chain", coordinator.succeed("iptables -S ax-fleet-api").strip().splitlines())
+
 
 with step("T5 floor 4: four Tasks in a row on the 2-worker pool, none ResourceExhausted"):
     t5 = ax_smoke("floor", 4)

@@ -226,10 +226,16 @@ in
         (setAddr "eth2" "100.105.121.73" 10)
       ];
       networking.hostName = "coordinator";
+      # The desk's wired port (fix round 3): eth3, NetworkManager-managed,
+      # DHCP from the worker's second leg, as enp191s0's "Wired connection 1".
+      myAxFleet.lan.extraInterfaces = [ "eth3" ];
+      # myAxFleet.apiUsers defaults to [ "tom" ]; alice is the other local user.
+      users.users.tom.isNormalUser = true;
       virtualisation = {
         vlans = [
           1
           2
+          3
         ];
         memorySize = 8192;
         cores = 4;
@@ -298,15 +304,44 @@ in
           address = "10.42.0.5";
         })
         (setAddr "eth1" "10.42.0.5" 24)
+        (setAddr "eth2" "192.168.43.5" 24)
       ];
       networking.hostName = "worker";
-      virtualisation.vlans = [ 1 ];
+      virtualisation.vlans = [
+        1
+        3
+      ];
+      # vlan 3: a second LAN segment for the coordinator's wired leg (fix
+      # round 3). DHCP with no router option, so no default route moves.
+      services.dnsmasq = {
+        enable = true;
+        resolveLocalQueries = false;
+        settings = {
+          port = 0;
+          interface = [ "eth2" ];
+          bind-interfaces = true;
+          dhcp-range = [ "192.168.43.100,192.168.43.150,1h" ];
+          dhcp-option = [ "3" ];
+        };
+      };
+      # Another worker port (fix round 3): the real worker opens 22 with
+      # passwords on every interface; pods and the egress gateway must reach
+      # 8731 and nothing else.
+      systemd.services.worker-2222 = {
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig.ExecStart = "${pkgs.busybox}/bin/httpd -f -p 2222 -h ${pkgs.writeTextDir "index.html" "worker-port-2222-reached\n"}";
+      };
       # The worker is not switched in the motion; its fleet role is ON from
       # boot and renders only the 8731 assertion, as on the real host.
       myAxFleet.enable = true;
       networking.firewall = {
         enable = true;
-        interfaces.eth1.allowedTCPPorts = [ 8731 ];
+        interfaces.eth1.allowedTCPPorts = [
+          8731
+          2222
+        ];
+        interfaces.eth2.allowedTCPPorts = [ 8731 ];
+        interfaces.eth2.allowedUDPPorts = [ 67 ];
       };
       systemd.services.halogen-stub = {
         wantedBy = [ "multi-user.target" ];

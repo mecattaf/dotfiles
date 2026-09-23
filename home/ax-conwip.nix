@@ -119,6 +119,9 @@ in
         that an accidental enable on a box with no mock stack running reaches
         nothing at all, and on a box with one running reaches only the mock.
         No default here points at a live host, and none ever should.
+        On the coordinator the live ax-server proxy listens on
+        myAxFleet.apiListen (127.0.0.1:8099), never on this default
+        (ax-fleet-topology asserts they differ).
       '';
     };
 

@@ -21,7 +21,7 @@
 # kagent-dev fork's ghcr images are ruled out), so every component image is
 # built here and seeded into the NAS registry by pkgs/substrate/images.nix.
 #
-# The three patches touch only manifests/, never Go code:
+# The four patches touch only manifests/, never Go code:
 #   0001 pauseImage -> localhost:5000/pause (atelet pulls it itself; the fleet
 #        must not depend on registry.k8s.io at sandbox start).
 #   0002 third-party images -> their linux/amd64 child digests, so the NAS
@@ -29,6 +29,11 @@
 #   0003 the kind overlay's literal RustFS credential (public in the upstream
 #        repo) -> secretKeyRef to Secret ate-system/ax-fleet-rustfs, which the
 #        bootstrap step 25-rustfs-secret generates once on the NAS.
+#   0004 the kind overlay's tracing stack, bounded (fix round 3): jaeger
+#        keeps at most 10000 traces in memory, the collector gets a
+#        memory_limiter and debug at basic, and both get limits.memory
+#        512Mi. Upstream leaves them unbounded (MEASURED at d277088b), and
+#        they run on the NAS next to Immich, Paperless and NFS.
 # ate-setup reads the manifests from its working directory's repository root
 # (it walks up to go.mod). What it reads for `deploy ate-system` is go.mod,
 # manifests/ and hack/ (kustomize overlays, CSI manifests; MEASURED grep of
@@ -56,6 +61,7 @@ let
       ./patches/0001-sandboxconfig-pause-localhost.patch
       ./patches/0002-images-linux-amd64-digests.patch
       ./patches/0003-kind-rustfs-credential-secret.patch
+      ./patches/0004-kind-otel-memory-bounds.patch
     ];
   };
 

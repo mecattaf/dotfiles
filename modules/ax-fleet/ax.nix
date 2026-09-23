@@ -441,6 +441,7 @@ let
       AX_FLEET_HALOGEN = cfg.halogenEndpoint;
       AX_FLEET_HALOGEN_CIDR = "${builtins.head (lib.splitString ":" cfg.halogenEndpoint)}/32";
       AX_FLEET_RESYNC_SECONDS = toString cfg.ax.runningResyncSeconds;
+      AX_FLEET_API = "http://${cfg.apiListen}";
     };
   };
 in
@@ -484,8 +485,10 @@ in
           smoke
         ];
         # ax-server-proxy.socket (harness.nix) listens here and forwards to
-        # the ax-server ClusterIP. The ax CLI and ax-conwip both honour it.
-        environment.sessionVariables.AX_SERVER = "http://127.0.0.1:8080";
+        # the ax-server ClusterIP. The ax CLI honours it. ax-conwip does NOT
+        # read it: its serverUrl defaults to 127.0.0.1:8080, the mock stack's
+        # port, which the proxy no longer takes (fix round 3).
+        environment.sessionVariables.AX_SERVER = "http://${cfg.apiListen}";
       })
     ]
   );

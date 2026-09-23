@@ -41,6 +41,18 @@ with step("lan: routed LAN traffic never reaches a ClusterIP or pod IP"):
     record("nas_range_guard", nas.succeed("nft list chain inet ax-fleet-guard prerouting").strip().splitlines())
 
 
+with step("nas: pods reach Halogen on its port and no other private address"):
+    # Fix round 3. The round-3 review MEASURED postgres-0 reaching worker:2222;
+    # the NAS had no pod egress guard. Discriminating: the NAS host reaches
+    # both targets.
+    nas.succeed("curl -sf --max-time 10 http://10.42.0.5:2222/ | grep -q worker-port-2222-reached")
+    nas.succeed("curl -sf --max-time 10 http://10.42.0.2/ | grep -x caddy-ok")
+    kubectl("exec probe-nas -- curl -sf --max-time 10 http://10.42.0.5:8731/health")
+    kubectl("exec probe-nas -- sh -c '! curl -s --max-time 5 -o /dev/null http://10.42.0.5:2222/'")
+    kubectl("exec probe-nas -- sh -c '! curl -s --max-time 5 -o /dev/null http://10.42.0.2/'")
+    record("nas_pod_egress", nas.succeed("nft list chain inet ax-fleet-guard forward").strip().splitlines())
+
+
 with step("security: the registry is read-only to the coordinator; the seed wrote everything"):
     # Fix round 2. The round-2 review MEASURED 202 for an upload and 201 for a
     # tag overwrite from an unprivileged coordinator user.

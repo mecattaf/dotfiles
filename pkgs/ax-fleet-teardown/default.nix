@@ -14,8 +14,8 @@
 # The k3s unit runs with KillMode=process, so pods and containerd shims outlive
 # it; switching `myAxFleet.enable = false` alone leaves them, plus cni0,
 # flannel.1, the KUBE-/FLANNEL-/CNI- rules and ip_forward=1. This wraps the
-# pinned package's own k3s-killall.sh, removes the coordinator guard chain
-# (the firewall reload of the disabled generation does not know it), then
+# pinned package's own k3s-killall.sh, removes the guard chains only when the
+# running generation does not declare them (a pre-ax generation), then
 # restores the sysctls recorded before k3s first ran on this host
 # (/var/lib/ax-fleet/sysctl-before.conf, written by the activation snippet in
 # modules/ax-fleet/k3s.nix).
@@ -62,13 +62,24 @@ writeShellApplication {
     echo "== k3s-killall.sh (${k3s.version})"
     ${k3s}/bin/k3s-killall.sh || echo "k3s-killall.sh exited $?; continuing" >&2
 
-    echo "== guard chain"
-    while iptables -w -t mangle -D FORWARD -j ax-fleet-guard 2>/dev/null; do :; done
-    iptables -w -t mangle -F ax-fleet-guard 2>/dev/null || true
-    iptables -w -t mangle -X ax-fleet-guard 2>/dev/null || true
+    # Fix round 3: a harness or control generation declares the guards
+    # whatever `enable` says (the kill switch leaves pods running until this
+    # script), so they stay; a generation from before ax never had them, and
+    # then they go.
+    if [ -e /etc/ax-fleet/guard-declared ]; then
+      echo "== guards: declared by this generation ($(cat /etc/ax-fleet/guard-declared)); left in place"
+    else
+      echo "== guard chains"
+      while iptables -w -t mangle -D FORWARD -j ax-fleet-guard 2>/dev/null; do :; done
+      iptables -w -t mangle -F ax-fleet-guard 2>/dev/null || true
+      iptables -w -t mangle -X ax-fleet-guard 2>/dev/null || true
+      while iptables -w -D OUTPUT -j ax-fleet-api 2>/dev/null; do :; done
+      iptables -w -F ax-fleet-api 2>/dev/null || true
+      iptables -w -X ax-fleet-api 2>/dev/null || true
 
-    echo "== NAS cluster-range guard table"
-    nft delete table inet ax-fleet-guard 2>/dev/null || true
+      echo "== NAS guard table"
+      nft delete table inet ax-fleet-guard 2>/dev/null || true
+    fi
 
     snap=/var/lib/ax-fleet/sysctl-before.conf
     if [ -s "$snap" ]; then

@@ -17,7 +17,14 @@
 # PostgreSQL (Paperless, Immich) is not touched.
 let
   cfg = config.myAxFleet;
-  on = cfg.enable && cfg.role == "control";
+  # The guard table is the control ROLE's, whatever `enable` says (fix round
+  # 3): after the kill switch, pods (the egress gateway among them) outlive
+  # k3s until ax-fleet-teardown. Inert without cni0 and flannel.1.
+  roleOn = cfg.role == "control";
+  on = cfg.enable && roleOn;
+
+  halogenHost = lib.head (lib.splitString ":" cfg.halogenEndpoint);
+  halogenPort = lib.last (lib.splitString ":" cfg.halogenEndpoint);
 
   gates = "ClusterTrustBundle=true,ClusterTrustBundleProjection=true,PodCertificateRequest=true";
 
@@ -86,6 +93,28 @@ let
       # The match carries the drop (never a bare drop): IPv6 and every other
       # destination fall through to policy accept.
       ip daddr { ${cfg.podCidr}, ${cfg.serviceCidr} } counter drop comment "ax-fleet: cluster ranges only from pods and flannel"
+    }
+
+    # ── pod egress from the router (fix round 3) ──
+    # MEASURED by the round-3 review: postgres-0 reached worker:2222 and the
+    # egress gateway (atenet-egress, a pod on this node, which carries every
+    # sandbox's allowlisted traffic) reached every TCP port on the worker,
+    # sshd included: ax drops the Gateway's port and Substrate never compares
+    # one (REPORTED ax client.go:457-490, egresspolicy.go:133-158). Here the
+    # port IS enforced: from pods, the only private address is Halogen on its
+    # port; the tailnet and the containers are never reachable; the internet
+    # is. Pod-to-NAS-host traffic (DNS, the apiserver, the registry) is INPUT
+    # and unaffected. Same shape as the coordinator's guard (harness.nix).
+    chain forward {
+      type filter hook forward priority filter; policy accept;
+      iifname != { "cni0", "flannel.1" } return
+      ct state established,related return
+      oifname { "cni0", "flannel.1" } return
+      ip daddr ${halogenHost} tcp dport ${halogenPort} return
+      ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16 } counter drop comment "ax-fleet: pods reach no private address but Halogen"
+      ip6 daddr { fc00::/7, fe80::/10 } counter drop comment "ax-fleet: pods reach no private address but Halogen"
+      oifname { ${lib.concatMapStringsSep ", " (i: ''"${i}"'') cfg.guardInterfaces} } counter drop comment "ax-fleet: pods never reach the tailnet"
+      oifname "ve-*" counter drop comment "ax-fleet: pods never reach the NAS's containers"
     }
   '';
 
@@ -177,7 +206,22 @@ let
   '';
 in
 {
-  config = lib.mkIf on {
+  config = lib.mkMerge [
+  (lib.mkIf roleOn {
+    assertions = [
+      {
+        assertion = config.networking.nftables.enable;
+        message = "modules/ax-fleet/control.nix: the control role's cluster-range guard is an nftables table; the NAS runs nftables.";
+      }
+    ];
+    networking.nftables.tables.ax-fleet-guard = {
+      family = "inet";
+      content = rangeGuard;
+    };
+    # The teardown leaves a guard the generation declares (pkgs/ax-fleet-teardown).
+    environment.etc."ax-fleet/guard-declared".text = "control\n";
+  })
+  (lib.mkIf on {
     myAxFleet.kubelet = {
       # Protects DNS, DHCP, headscale, Paperless and Immich on 8 cores / 22 GiB.
       systemReserved = lib.mkDefault "cpu=2,memory=8Gi";
@@ -290,16 +334,6 @@ in
       };
     };
 
-    assertions = [
-      {
-        assertion = config.networking.nftables.enable;
-        message = "modules/ax-fleet/control.nix: the control role's cluster-range guard is an nftables table; the NAS runs nftables.";
-      }
-    ];
-    networking.nftables.tables.ax-fleet-guard = {
-      family = "inet";
-      content = rangeGuard;
-    };
 
     # ── firewall: only what the coordinator and the pods need ──
     # #447 opened 6443 to the whole LAN and #446 opened 5432/9000/5000 to the
@@ -387,5 +421,6 @@ in
         echo "== ax-fleet-bootstrap complete: ${toString (lib.length stepNames)} step(s)"
       '';
     };
-  };
+  })
+  ];
 }

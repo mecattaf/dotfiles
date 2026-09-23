@@ -102,6 +102,10 @@
     lan = {
       interface = "wlp192s0";
       address = "10.42.0.2";
+      # The wired port: "Wired connection 1" autoconnects with DHCP (MEASURED
+      # nmcli, 2026-09-23). The guard covers it and it never takes the LAN
+      # routes from the wifi (fix round 3).
+      extraInterfaces = [ "enp191s0" ];
     };
   };
 

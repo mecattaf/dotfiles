@@ -1,12 +1,12 @@
 # ax-fleet-smoke: run one proof case as a real ax Task and print a JSON receipt.
 # (Wrapped by writeShellApplication in ./ax.nix: strict mode, pinned PATH, and
-# AX_FLEET_{ATESPACE,HALOGEN,HALOGEN_CIDR,RESYNC_SECONDS} from the module.)
+# AX_FLEET_{ATESPACE,HALOGEN,HALOGEN_CIDR,RESYNC_SECONDS,API} from the module.)
 #
 #   ax-fleet-smoke halogen     [--hold N]  one chat completion against Halogen
 #   ax-fleet-smoke pi          [--hold N]  pi against Halogen, schema-valid result
 #   ax-fleet-smoke exit N      [--hold N]  the command exits N (Failed ExitCode=N)
 #   ax-fleet-smoke egress-deny [URL]       GET a non-allowlisted URL (default the
-#                                          coordinator's LAN address); must fail
+#                                          coordinator's LAN address); must be refused
 #   ax-fleet-smoke floor N                 N Tasks in a row; none ResourceExhausted
 #   ax-fleet-smoke probe       [--hold N]  `claude --version` and a GET of Halogen's
 #                                          /v1/models, sandboxClass gvisor; needs an
@@ -18,7 +18,7 @@
 # fleet image, ax-fleet-image-ref), --sandbox-class C (spec.sandboxClass; empty
 # means gVisor). Exit 0 only when the case passes. The receipt carries no secret: Tasks carry none (DESIGN.md 11).
 
-export AX_SERVER="${AX_SERVER:-http://127.0.0.1:8080}"
+export AX_SERVER="${AX_SERVER:-$AX_FLEET_API}"
 ns="$AX_FLEET_ATESPACE"
 hold=0
 timeout=900
@@ -42,6 +42,12 @@ case_="${args[0]}"
 [ "$case_" != probe ] || sandbox_class="${sandbox_class:-gvisor}"
 run_id="$(date +%s)-$$"
 
+# The Gateway's `port` is carried for the record only: ax v0.3.0 copies only
+# the host into a CIDR rule and Substrate's evaluator never compares ports
+# (REPORTED ax client.go:457-490, egresspolicy.go:133-158; MEASURED by the
+# round-3 review: worker:2222 answered through this Gateway). The port is
+# enforced on the NAS instead: its pods reach ${AX_FLEET_HALOGEN} and no other
+# private address (modules/ax-fleet/control.nix, podEgress).
 ensure_gateway() {
   ax -a "$ns" apply -f - >/dev/null <<YAML
 apiVersion: ax.io/v1alpha1
@@ -140,8 +146,16 @@ exit)
 egress-deny)
   url="${args[1]:-http://10.42.0.2/}"
   r="$(run_task "smoke-egress-$run_id" ax-agent fetch "$url")"
+  # Refused either at the Gateway (the connection fails: curl rc != 0) or,
+  # for an allowlisted host on a port the NAS drops (fix round 3), by the
+  # egress gateway's own upstream error (502/503/504, the target never
+  # answered). Any other HTTP status is the target answering: fail.
   jq -c --arg case "$case_" --arg url "$url" \
-    '. + {case:$case, url:$url, pass:(.phase=="Failed" and .ready.reason=="CommandExited" and (.exit_code // 0) != 0)}' <<<"$r"
+    '. + {case:$case, url:$url,
+          refused_by:(if (.result.curl_rc // 0) != 0 then "gateway-connection"
+                      elif ((.result.http_code // "") | test("^50[234]$")) then "egress-upstream"
+                      else null end)}
+       | . + {pass:(.refused_by != null and .ready.reason=="CommandExited")}' <<<"$r"
   ;;
 floor)
   n="${args[1]:?usage: ax-fleet-smoke floor N}"

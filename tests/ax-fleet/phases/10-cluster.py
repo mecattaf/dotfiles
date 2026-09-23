@@ -285,6 +285,55 @@ with step("coordinator: pods reach no private range on the LAN leg (the Freebox 
         worker.succeed("ip addr del 192.168.77.5/24 dev eth1")
 
 
+with step("coordinator: a second LAN leg (the desk's wired port) is guarded and never takes the routes"):
+    # Fix round 3. eth3 stands in for enp191s0: NetworkManager-managed, DHCP
+    # from the worker's second leg (vlan 3). Round 2's guard named only eth1,
+    # so pod egress and inbound hostPorts over eth3 matched no DROP.
+    rc, _ = coordinator.execute("timeout 120 sh -c 'until ip -4 -o addr show dev eth3 | grep -q \"inet 192.168.43.\"; do sleep 2; done'")
+    if rc != 0:
+        record("eth3_profile_added", True)
+        coordinator.succeed("nmcli con add type ethernet ifname eth3 con-name wired-eth3 ipv4.method auto ipv6.method ignore")
+    record("eth3_routes_before_reactivation", coordinator.succeed("ip -4 route show dev eth3").strip().splitlines())
+    # The drop-in's metric applies at the next activation, as on the desk,
+    # where the wired port is down today.
+    coordinator.succeed("nmcli device disconnect eth3 && nmcli device connect eth3")
+    coordinator.wait_until_succeeds("ip -4 -o addr show dev eth3 | grep -q 'inet 192.168.43.'", timeout=120)
+    routes = coordinator.succeed("ip -4 route show dev eth3").strip().splitlines()
+    record("eth3_routes", routes)
+    assert routes and all("metric 700" in r for r in routes), routes
+    addr3 = coordinator.succeed("ip -4 -o addr show dev eth3 | awk '{print $4}' | cut -d/ -f1").strip()
+    pod_ip = jsonpath("pod probe-coord", "{.status.podIP}")
+    # Out: the host reaches the worker's second leg; a pod does not.
+    coordinator.succeed("curl -sf --max-time 10 http://192.168.43.5:8731/health")
+    kubectl("exec probe-coord -- sh -c '! curl -s --max-time 5 -o /dev/null http://192.168.43.5:8731/health'")
+    # In: Caddy answers on the second leg; the pod hostPort and a routed
+    # path into the pod network do not.
+    worker.succeed(f"curl -sf --max-time 10 http://{addr3}/ | grep -x caddy-ok")
+    worker.fail(f"curl -s --max-time 5 -o /dev/null http://{addr3}:18085/")
+    worker.succeed(f"ip route replace 10.200.0.0/16 via {addr3}")
+    try:
+        worker.fail(f"curl -s --max-time 5 -o /dev/null http://{pod_ip}:8000/")
+    finally:
+        worker.succeed(f"ip route del 10.200.0.0/16 via {addr3}")
+
+
+with step("coordinator: proxy ARP on the pod interfaces only, never on a LAN leg or a NIC that appears later"):
+    # Fix round 3. Round 2 set conf.default, which every later NIC copies
+    # (the desk's NICs appear after systemd-sysctl at boot).
+    veth = coordinator.succeed("ip -o link show type veth | awk -F': ' '{print $2}' | cut -d@ -f1 | head -1").strip()
+    coordinator.succeed("ip link add axprobe0 type dummy && udevadm settle")
+    try:
+        parp = {
+            i: coordinator.succeed(f"cat /proc/sys/net/ipv4/conf/{i}/proxy_arp").strip()
+            for i in ("default", "all", "eth1", "eth2", "eth3", "axprobe0", "cni0", "flannel.1", veth)
+        }
+    finally:
+        coordinator.succeed("ip link del axprobe0")
+    record("proxy_arp", parp)
+    assert parp["cni0"] == "1" and parp["flannel.1"] == "1" and parp[veth] == "1", parp
+    assert all(parp[i] == "0" for i in ("default", "all", "eth1", "eth2", "eth3", "axprobe0")), parp
+
+
 with step("coordinator: LAN traffic routed through the NAS never reaches a harness pod"):
     # The house default gateway is the NAS. Before fix round 1 this path
     # (worker -> nas -> flannel.1 -> harness pod) answered (MEASURED).

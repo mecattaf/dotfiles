@@ -52,6 +52,43 @@ in
         type = types.str;
         default = "10.42.0.0/24";
       };
+      extraInterfaces = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        example = [ "enp191s0" ];
+        description = ''
+          Other NICs that can reach the house LAN (fix round 3): the
+          coordinator's wired port enp191s0 has an autoconnecting DHCP profile.
+          On the harness role the guard chain treats them as LAN legs, and a
+          NetworkManager drop-in gives them `extraRouteMetric`, so the LAN
+          routes stay on `interface` while it is up. Tests use [ "eth3" ].
+        '';
+      };
+      extraRouteMetric = mkOption {
+        type = types.int;
+        default = 700;
+        description = "Route metric for `extraInterfaces` (NetworkManager's wifi default is 600, ethernet 100).";
+      };
+    };
+
+    apiListen = mkOption {
+      type = types.str;
+      default = "127.0.0.1:8099";
+      description = ''
+        Loopback address of ax-server-proxy.socket on the harness (fix round 3:
+        not 127.0.0.1:8080, which ax-conwip's default and ax-mockstack own).
+        AX_SERVER points here.
+      '';
+    };
+    apiUsers = mkOption {
+      type = types.listOf types.str;
+      default = [ "tom" ];
+      description = ''
+        Local users (besides root) that may open connections to `apiListen`
+        and to the cluster ranges from the harness host (fix round 3). The ax
+        API has no authentication (upstream #376); everyone else is refused by
+        an owner match in OUTPUT.
+      '';
     };
 
     guardInterfaces = mkOption {

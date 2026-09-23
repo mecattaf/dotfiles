@@ -116,7 +116,9 @@ Three of those defaults are choices worth defending:
 - **`serverUrl` defaults to loopback**, specifically the address the mock stack
   listens on by default (`ax-mockstack -addr 127.0.0.1:8080`). No default here
   points at a live host and none ever should: an accidental enable on a box with
-  no mock stack running reaches nothing at all. Note that this is a gRPC target
+  no mock stack running reaches nothing at all. On the coordinator the live
+  ax-server proxy listens on `myAxFleet.apiListen` (127.0.0.1:8099), never on
+  this default; ax-fleet-topology asserts that. Note that this is a gRPC target
   and not a URL. The transport is plain h2c with insecure credentials, so there
   is no scheme to write.
 - **`wipCap` defaults to 1**, which is stricter than the program's own default

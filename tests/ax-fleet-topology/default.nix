@@ -53,8 +53,25 @@ let
     && !(c.environment.etc ? "NetworkManager/conf.d/90-ax-fleet.conf")
     && !(c.environment.etc ? "rancher/k3s/registries.yaml")
     && !(c.system.activationScripts ? ax-fleet-sysctl-snapshot)
-    && !(lib.hasInfix "ax-fleet-guard" c.networking.firewall.extraCommands)
-    && !(lib.hasInfix "ax-fleet:" (c.networking.firewall.extraInputRules or ""));
+    && !(lib.hasInfix "ax-fleet:" (c.networking.firewall.extraInputRules or ""))
+    && !(c.boot.kernel.sysctl ? "net.ipv4.conf.veth*.proxy_arp");
+
+  # ...except the guards, which stay for the role whatever `enable` says (fix
+  # round 3): the kill switch leaves pods running until the teardown.
+  guardsKept =
+    host:
+    let
+      c = offCfg host;
+    in
+    if host == "coordinator" then
+      lib.hasInfix "ax-fleet-guard" c.networking.firewall.extraCommands
+      && lib.hasInfix "ax-fleet-pod-input" c.networking.firewall.extraCommands
+      && lib.hasInfix "ax-fleet-api" c.networking.firewall.extraCommands
+    else if host == "nas" then
+      lib.hasInfix "hook forward" c.networking.nftables.tables.ax-fleet-guard.content
+    else
+      !(lib.hasInfix "ax-fleet-guard" c.networking.firewall.extraCommands)
+      && !(c.networking.nftables.tables ? ax-fleet-guard);
 
   # ── parity with the VM test: flags and firewall text, interfaces substituted ──
   testNodes = self.checks.x86_64-linux.ax-fleet.nodes;
@@ -84,12 +101,17 @@ let
   coordSubst = {
     "wlp192s0" = "eth1";
     "tailscale0" = "eth2";
+    "enp191s0" = "eth3";
   };
   guardText =
     subst: cfg:
     map (lib.replaceStrings (lib.attrNames subst) (lib.attrValues subst)) (
       lib.filter (
-        l: lib.hasInfix "ax-fleet-guard" l || lib.hasInfix "8472" l || lib.hasInfix "ax-fleet-pod-input" l
+        l:
+        lib.hasInfix "ax-fleet-guard" l
+        || lib.hasInfix "8472" l
+        || lib.hasInfix "ax-fleet-pod-input" l
+        || lib.hasInfix "ax-fleet-api" l
       ) (lib.splitString "\n" cfg.networking.firewall.extraCommands)
     );
   pkgNames = cfg: map (p: p.pname or p.name or "") cfg.environment.systemPackages;
@@ -161,13 +183,29 @@ assert
 assert
   coord.networking.networkmanager.unmanaged == (offCfg "coordinator")
   .networking.networkmanager.unmanaged;
-assert coord.boot.kernel.sysctl."net.ipv4.conf.default.proxy_arp" == 1;
-assert
-  !(coord.boot.kernel.sysctl ? "net.ipv4.conf.all.proxy_arp")
-  || coord.boot.kernel.sysctl."net.ipv4.conf.all.proxy_arp" == null;
+# proxy ARP only on the pod interfaces, never through all/default (fix round 3)
+assert coord.boot.kernel.sysctl."net.ipv4.conf.veth*.proxy_arp" == 1;
+assert coord.boot.kernel.sysctl."net.ipv4.conf.cni0.proxy_arp" == 1;
+assert coord.boot.kernel.sysctl."net.ipv4.conf.flannel/1.proxy_arp" == 1;
+assert builtins.all (
+  k: !(coord.boot.kernel.sysctl ? ${k}) || coord.boot.kernel.sysctl.${k} == null
+) [ "net.ipv4.conf.all.proxy_arp" "net.ipv4.conf.default.proxy_arp" ];
+# the wired port is a guarded LAN leg with a route metric above the wifi's
+assert (ax coord).lan.extraInterfaces == [ "enp191s0" ];
+assert lib.hasInfix "-i cni0 -o enp191s0 -j RETURN" coord.networking.firewall.extraCommands;
+assert lib.hasInfix "-i cni0 -d 10.0.0.0/8 -j DROP" coord.networking.firewall.extraCommands;
+assert lib.hasInfix "-o cni0 -j DROP" coord.networking.firewall.extraCommands;
+assert lib.hasInfix "match-device=interface-name:enp191s0" coord.environment.etc."NetworkManager/conf.d/90-ax-fleet.conf".text;
+assert lib.hasInfix "ipv4.route-metric=700" coord.environment.etc."NetworkManager/conf.d/90-ax-fleet.conf".text;
+# the ax API: only root, tom and the proxy (fix round 3)
+assert lib.hasInfix "--uid-owner tom -j RETURN" coord.networking.firewall.extraCommands;
+assert coord.systemd.services.ax-server-proxy.serviceConfig.User == "ax-server-proxy";
 assert (coord.boot.kernel.sysctl."net.ipv6.conf.all.forwarding" or 0) == 0;
 assert coord.services.tailscale.useRoutingFeatures == "none";
-assert coord.systemd.sockets.ax-server-proxy.listenStreams == [ "127.0.0.1:8080" ];
+assert coord.systemd.sockets.ax-server-proxy.listenStreams == [ "127.0.0.1:8099" ];
+assert coord.environment.sessionVariables.AX_SERVER == "http://127.0.0.1:8099";
+# never the address ax-conwip's default (and the mock stack) points at
+assert !(builtins.elem coord.home-manager.users.tom.myAxConwip.serverUrl coord.systemd.sockets.ax-server-proxy.listenStreams);
 assert coord.myAxClient.enable;
 
 # worker: inference, nothing at runtime
@@ -227,6 +265,16 @@ assert builtins.all killed [
   "coordinator"
   "worker"
 ];
+assert builtins.all guardsKept [
+  "nas"
+  "coordinator"
+  "worker"
+];
+# the NAS's pods: Halogen on its port, no other private address (fix round 3)
+assert lib.hasInfix "ip daddr 10.42.0.5 tcp dport 8731 return" nas.networking.nftables.tables.ax-fleet-guard.content;
+assert
+  lib.replaceStrings [ "tailscale0" ] [ "eth2" ] nas.networking.nftables.tables.ax-fleet-guard.content
+  == (testOn "nas").networking.nftables.tables.ax-fleet-guard.content;
 
 # parity with the VM test
 assert normFlags nasSubst nas == normFlags { } (testOn "nas");

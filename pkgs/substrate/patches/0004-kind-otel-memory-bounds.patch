@@ -1,0 +1,77 @@
+--- a/manifests/ate-install/kind/otel-collector.yaml	2026-09-23 13:06:34.261419536 +0200
++++ b/manifests/ate-install/kind/otel-collector.yaml	2026-09-23 13:06:45.024736968 +0200
+@@ -32,6 +32,13 @@
+           http:
+             endpoint: 0.0.0.0:4318
+     processors:
++      # mecattaf fleet: the collector runs on the NAS (22 GB RAM, shared with
++      # Immich, Paperless and NFS). memory_limiter refuses data before the
++      # container limit below is reached, instead of being OOM-killed.
++      memory_limiter:
++        check_interval: 1s
++        limit_mib: 400
++        spike_limit_mib: 100
+       batch:
+ 
+       # The count connector below sends deltas, and the Prometheus exporter
+@@ -95,17 +102,19 @@
+           insecure: true
+       prometheus:
+         endpoint: 0.0.0.0:8889
++      # mecattaf fleet: basic, not detailed; detailed writes every span and
++      # log record to the pod log.
+       debug:
+-        verbosity: detailed
++        verbosity: basic
+     service:
+       pipelines:
+         traces:
+           receivers: [otlp]
+-          processors: [batch]
++          processors: [memory_limiter, batch]
+           exporters: [otlp/jaeger, debug]
+         metrics:
+           receivers: [otlp]
+-          processors: [batch]
++          processors: [memory_limiter, batch]
+           exporters: [prometheus, debug]
+ 
+         # Every ate event, plus any workload that sends OTLP logs. debug is the
+@@ -115,7 +124,7 @@
+         # record reports a stale state with no sign that anything is missing.
+         logs:
+           receivers: [otlp]
+-          processors: [batch]
++          processors: [memory_limiter, batch]
+           exporters: [debug]
+ 
+         # The count pipelines read the same receiver as the pipelines above,
+@@ -180,6 +189,12 @@
+         image: otel/opentelemetry-collector-contrib:0.157.0@sha256:4eb842091c796156d4d3c994eb22ba793590f5723719dbf6b8436cb4dfc17f48
+         args:
+         - --config=/conf/otel-collector-config.yaml
++        # mecattaf fleet: bounded (see memory_limiter above).
++        resources:
++          requests:
++            memory: 128Mi
++          limits:
++            memory: 512Mi
+         volumeMounts:
+         - name: config
+           mountPath: /conf
+@@ -243,6 +258,15 @@
+       containers:
+       - name: jaeger
+         image: jaegertracing/all-in-one:1.55@sha256:d5bbf80eb37e3a0d1b1644f17d1c3a7b88abd74177ec06198d4a289b58b41798
++        # mecattaf fleet: in-memory storage keeps every trace with no bound
++        # by default. Cap the trace count and the container.
++        args:
++        - --memory.max-traces=10000
++        resources:
++          requests:
++            memory: 128Mi
++          limits:
++            memory: 512Mi
+         ports:
+         - name: otlp-grpc
+           containerPort: 4317

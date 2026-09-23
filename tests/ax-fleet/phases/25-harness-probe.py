@@ -18,7 +18,7 @@ import re
 
 PROBE_HOLD = 60
 PROBE_EVERY = 5
-PROBE_AX = "AX_SERVER=http://127.0.0.1:8080 ax -a fleet"
+PROBE_AX = "AX_SERVER=http://127.0.0.1:8099 ax -a fleet"
 PROBE_STUB_LOG = "/var/lib/halogen-stub/requests.jsonl"
 
 
@@ -45,7 +45,7 @@ with step("probe: k3s nodes Ready, Substrate healthy, ax-server and ax-controlle
     )
     for d in ("ax-redis", "ax-server", "ax-controller"):
         kubectl(f"-n ax-system rollout status deploy/{d} --timeout=600s")
-    coordinator.wait_until_succeeds("curl -sf http://127.0.0.1:8080/healthz", timeout=300)
+    coordinator.wait_until_succeeds("curl -sf http://127.0.0.1:8099/healthz", timeout=300)
     record("probe_nodes", kubectl("get nodes -o wide").strip().splitlines())
     record("probe_ax_pods", kubectl("-n ax-system get pods -o wide").strip().splitlines())
     workers_wide = kubectl("-n ate-system get pods -l ax.mecattaf.dev/pool=ateom-gvisor -o wide")

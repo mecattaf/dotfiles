@@ -6,9 +6,27 @@ BASE = "/run/booted-system/bin/switch-to-configuration test"
 LEFTOVER_RULES = "iptables-save 2>/dev/null | grep -E 'KUBE-|FLANNEL|CNI-'"
 
 
+def pod_netns_pid(machine):
+    # A pod sandbox's pause process in a network namespace other than the host's.
+    return machine.succeed(
+        "host=$(readlink /proc/1/ns/net); for p in $(pgrep -x pause); do "
+        "[ \"$(readlink /proc/$p/ns/net)\" != \"$host\" ] && { echo $p; break; }; done"
+    ).strip()
+
+
 with step("rollback coordinator"):
     coordinator.succeed(f"{BASE} >&2")
     coordinator.fail("systemctl is-active k3s.service")
+    # Fix round 3: between the kill switch and the teardown the pods still
+    # run (KillMode=process). The role-scoped guards keep them off the host.
+    pid = pod_netns_pid(coordinator)
+    assert pid, "no pod network namespace survived the kill switch"
+    coordinator.succeed("timeout 10 bash -c 'exec 3<>/dev/tcp/10.42.0.2/22'")  # sshd is up
+    coordinator.fail(f"nsenter -t {pid} -n timeout 5 bash -c 'exec 3<>/dev/tcp/10.42.0.2/22'")
+    coordinator.fail(f"nsenter -t {pid} -n timeout 5 bash -c 'exec 3<>/dev/tcp/100.105.121.73/22'")
+    coordinator.fail(f"nsenter -t {pid} -n timeout 5 bash -c 'exec 3<>/dev/tcp/10.42.0.5/8731'")
+    assert coordinator.succeed("iptables -S nixos-fw | grep -c ax-fleet-pod-input").strip() == "2"
+    coordinator.succeed("iptables -t mangle -S FORWARD 1 | grep -q ax-fleet-guard")
     # As documented (fix round 2): the teardown from the rolled-back host's
     # own PATH, no checkout, no injected store path.
     coordinator.succeed("test -x /run/current-system/sw/bin/ax-fleet-teardown")
@@ -17,7 +35,10 @@ with step("rollback coordinator"):
     coordinator.fail("ip link show flannel.1")
     coordinator.fail(LEFTOVER_RULES)
     coordinator.fail("pgrep -f containerd-shim")
-    coordinator.fail("iptables -t mangle -S ax-fleet-guard")
+    # The guards belong to the harness role's every generation (fix round 3);
+    # the teardown leaves them, inert without cni0 and flannel.1.
+    coordinator.succeed("iptables -t mangle -S ax-fleet-guard | grep -q DROP")
+    coordinator.succeed("iptables -S OUTPUT 1 | grep -q ax-fleet-api")
     after = sysctls(coordinator)
     record("sysctl_coordinator_after_rollback", after)
     assert after == base["sysctl_coordinator"], (after, base["sysctl_coordinator"])
@@ -44,8 +65,10 @@ with step("rollback nas"):
     nas.fail("ip link show flannel.1")
     nas.fail("pgrep -f containerd-shim")
     ruleset = nas.succeed("nft -s list ruleset")
-    for marker in ("KUBE-", "FLANNEL", "CNI-", "ax-fleet"):
+    for marker in ("KUBE-", "FLANNEL", "CNI-"):
         assert marker not in ruleset, f"{marker} left in the NAS ruleset"
+    # The control role's guard table stays in every generation (fix round 3).
+    nas.succeed("nft list chain inet ax-fleet-guard forward | grep -q 'tcp dport 8731'")
     nixos_fw = nas.succeed("nft -s list table inet nixos-fw")
     assert nixos_fw == base["nas_nixos_fw"], "the NAS firewall table differs from the baseline"
     record("nas_ruleset_equal_baseline", ruleset == base["nas_nft"])

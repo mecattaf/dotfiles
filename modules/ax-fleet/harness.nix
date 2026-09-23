@@ -34,9 +34,19 @@
 #     runs its own runsc in the worker pods).
 let
   cfg = config.myAxFleet;
-  on = cfg.enable && cfg.role == "harness";
+  # The firewall half (guard chain, pod-input refusal, API owner match) is
+  # rendered for the harness ROLE, whatever `enable` says (fix round 3): the
+  # kill switch stops k3s with KillMode=process, so gVisor pods, cni0 and
+  # flannel.1 outlive the switch until ax-fleet-teardown runs. The rules are
+  # inert once those interfaces are gone.
+  roleOn = cfg.role == "harness";
+  on = cfg.enable && roleOn;
 
   lan = cfg.lan.interface;
+  # Every NIC that can reach the house LAN (fix round 3): the desk's wired
+  # port enp191s0 has an autoconnecting DHCP profile (MEASURED nmcli).
+  lans = [ lan ] ++ cfg.lan.extraInterfaces;
+  apiPort = lib.last (lib.splitString ":" cfg.apiListen);
   podIfs = [
     "cni0"
     "flannel.1"
@@ -55,6 +65,11 @@ let
   # (atelet's anonymous GCS fetch, a worker pod reaching the LAN), because the
   # reply arrives on the LAN leg from a source that is not the NAS. Only NEW
   # flows are policed, which is the property the guard exists for.
+  #
+  # Deny by default (fix round 3). Round 2 listed interfaces (`-o ${lan}`),
+  # so a second LAN leg (the wired port, a podman bridge) matched no DROP.
+  # Now: pod egress is policed by DESTINATION on every output interface, and
+  # nothing enters a pod interface unless a rule below lets it.
   guardRules = [
     "-m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"
     # Into pods over VXLAN only from the pod network (fix round 1). Real
@@ -66,32 +81,42 @@ let
     # guard (control.nix) is what closes that path. This rule drops VXLAN
     # payloads whose inner source is outside the pod CIDR.
     "-i flannel.1 ! -s ${cfg.podCidr} -j DROP"
+    # In-cluster: bridge-local and across nodes.
+    "-i cni0 -o cni0 -j RETURN"
+    "-i cni0 -o flannel.1 -j RETURN"
+    "-i flannel.1 -o cni0 -j RETURN"
   ]
+  # Into pods from outside the cluster: only the NAS host (hostPorts, the
+  # apiserver), on a LAN leg. Everything else, any interface, is dropped.
+  ++ map (l: "-i ${l} -o cni0 -s ${cfg.serverAddress} -j RETURN") lans
+  ++ [
+    "-o cni0 -j DROP"
+    "-o flannel.1 -j DROP"
+    "-i flannel.1 -j DROP"
+    # Out of pods. Pod traffic leaving a LAN leg is masqueraded to this
+    # host's address and would inherit every NAS rule that trusts the
+    # coordinator (ssh, NFS, media, paperless). From pods, the LAN gets only
+    # the apiserver and the registry on the NAS; the internet (atelet's GCS
+    # fetch) is unaffected. Everything else in-cluster rides flannel.1.
+    "-i cni0 -d ${cfg.serverAddress} -p tcp -m multiport --dports 6443,${registryPort} -j RETURN"
+  ]
+  # Every private range, not only the house /24 (fix round 1), on ANY output
+  # interface (fix round 3): when NetworkManager falls back to the Freebox
+  # profile (hosts/coordinator/uplink-nas.nix) the leg is a DHCP subnet this
+  # module does not know, and 100.64/10 is the tailnet's range.
+  ++ map (r: "-i cni0 -d ${r} -j DROP") privateRanges
+  # The internet, over a LAN leg only; tailscale0, podman0 and anything else
+  # a pod could be routed to are dropped.
+  ++ map (l: "-i cni0 -o ${l} -j RETURN") lans
+  ++ [ "-i cni0 -j DROP" ]
+  # The tailnet and the house LAN never forward into each other, on any leg.
   ++ lib.concatMap (
     g:
-    lib.concatMap (p: [
-      "-i ${g} -o ${p} -j DROP"
-      "-i ${p} -o ${g} -j DROP"
-    ]) podIfs
-    ++ [
-      "-i ${lan} -o ${g} -j DROP"
-      "-i ${g} -o ${lan} -j DROP"
-    ]
-  ) cfg.guardInterfaces
-  ++ [
-    "-i ${lan} -o cni0 ! -s ${cfg.serverAddress} -j DROP"
-    # Pod traffic leaving on the LAN leg is masqueraded to this host's LAN
-    # address and would inherit every NAS rule that trusts the coordinator
-    # (ssh, NFS, media, paperless). From pods, the LAN gets only the
-    # apiserver and the registry on the NAS; the internet (atelet's GCS
-    # fetch) is unaffected. Everything else in-cluster rides flannel.1.
-    "-i cni0 -o ${lan} -d ${cfg.serverAddress} -p tcp -m multiport --dports 6443,${registryPort} -j RETURN"
-  ]
-  # Every private range, not only the house /24 (fix round 1): when
-  # NetworkManager falls back to the Freebox profile on ${lan}
-  # (hosts/coordinator/uplink-nas.nix), the leg is a DHCP subnet this
-  # module does not know, and 100.64/10 is the tailnet's range.
-  ++ map (r: "-i cni0 -o ${lan} -d ${r} -j DROP") privateRanges;
+    lib.concatMap (l: [
+      "-i ${l} -o ${g} -j DROP"
+      "-i ${g} -o ${l} -j DROP"
+    ]) lans
+  ) cfg.guardInterfaces;
 
   privateRanges = lib.unique [
     cfg.lan.cidr
@@ -115,6 +140,25 @@ let
     "-I nixos-fw 1 -i ${p} -m conntrack --ctstate NEW -m comment --comment ax-fleet-pod-input -j nixos-fw-refuse"
   ]) podIfs;
 
+  # ── the ax API and the cluster ranges: root, apiUsers and the proxy only ──
+  # (fix round 3) The round-3 review MEASURED an unprivileged user applying a
+  # Gateway with host 0.0.0.0/0 through the loopback proxy (the API has no
+  # authentication, upstream #376). The same user could reach the ax-server
+  # ClusterIP or pod directly through kube-proxy's OUTPUT DNAT, so the match
+  # covers the cluster ranges as well as the proxy's port. filter OUTPUT sees
+  # the post-DNAT address. Packets without a full socket (kernel replies,
+  # TIME_WAIT) pass.
+  apiUsersAll = [ "root" ] ++ cfg.apiUsers ++ [ "ax-server-proxy" ];
+  apiRules = [
+    "-m owner ! --socket-exists -j RETURN"
+  ]
+  ++ map (u: "-m owner --uid-owner ${u} -j RETURN") apiUsersAll
+  ++ [
+    "-d 127.0.0.1 -p tcp --dport ${apiPort} -j REJECT --reject-with tcp-reset"
+    "-d ${cfg.podCidr} -j REJECT"
+    "-d ${cfg.serviceCidr} -j REJECT"
+  ];
+
   guardStart = ''
     # ax-fleet guard chain (idempotent)
     ${ipt} -t mangle -N ax-fleet-guard 2>/dev/null || true
@@ -122,18 +166,25 @@ let
     while ${ipt} -t mangle -D FORWARD -j ax-fleet-guard 2>/dev/null; do :; done
     ${ipt} -t mangle -I FORWARD 1 -j ax-fleet-guard
     ${lib.concatMapStringsSep "\n" (r: "${ipt} -t mangle -A ax-fleet-guard ${r}") guardRules}
-    # flannel VXLAN from the NAS only; no TCP port is opened.
-    ${ipt} -A nixos-fw -i ${lan} -s ${cfg.serverAddress} -p udp --dport 8472 -j nixos-fw-accept
     # pods to the host: refused (podInput; nixos-fw is rebuilt on every reload)
     ${lib.concatMapStringsSep "\n" (
       r: "${ipt} ${r}" + lib.optionalString config.networking.enableIPv6 "\n${ip6t} ${r}"
     ) podInput}
+    # the ax API and the cluster ranges from this host: owner match (fix round 3)
+    ${ipt} -N ax-fleet-api 2>/dev/null || true
+    ${ipt} -F ax-fleet-api
+    while ${ipt} -D OUTPUT -j ax-fleet-api 2>/dev/null; do :; done
+    ${ipt} -I OUTPUT 1 -j ax-fleet-api
+    ${lib.concatMapStringsSep "\n" (r: "${ipt} -A ax-fleet-api ${r}") apiRules}
   '';
 
   guardStop = ''
     while ${ipt} -t mangle -D FORWARD -j ax-fleet-guard 2>/dev/null; do :; done
     ${ipt} -t mangle -F ax-fleet-guard 2>/dev/null || true
     ${ipt} -t mangle -X ax-fleet-guard 2>/dev/null || true
+    while ${ipt} -D OUTPUT -j ax-fleet-api 2>/dev/null; do :; done
+    ${ipt} -F ax-fleet-api 2>/dev/null || true
+    ${ipt} -X ax-fleet-api 2>/dev/null || true
   '';
 
   nmDropIn = ''
@@ -141,6 +192,18 @@ let
     # NetworkManager's. Appended (+=) to whatever NetworkManager.conf lists.
     [keyfile]
     unmanaged-devices+=interface-name:cni0;interface-name:flannel*;interface-name:veth*
+  ''
+  # (fix round 3) The other LAN-capable NICs never take the house routes from
+  # ${lan} while it is up: a profile that leaves ipv4.route-metric at -1 (the
+  # desk's "Wired connection 1", MEASURED) takes this default instead of
+  # ethernet's 100, which beat the wifi's 600. The NAS admits the harness to
+  # 6443, the registry and VXLAN by ${lan}'s address only.
+  + lib.optionalString (cfg.lan.extraInterfaces != [ ]) ''
+
+    [connection-ax-fleet-extra-lan]
+    match-device=${lib.concatMapStringsSep ";" (i: "interface-name:${i}") cfg.lan.extraInterfaces}
+    ipv4.route-metric=${toString cfg.lan.extraRouteMetric}
+    ipv6.route-metric=${toString cfg.lan.extraRouteMetric}
   '';
 
   kubeconfigScript = pkgs.writeShellApplication {
@@ -165,7 +228,31 @@ let
   };
 in
 {
-  config = lib.mkIf on {
+  config = lib.mkMerge [
+  (lib.mkIf roleOn {
+    networking.firewall.extraCommands = guardStart;
+    networking.firewall.extraStopCommands = guardStop;
+    # A fixed uid for the proxy, so the owner match can name it (DynamicUser
+    # allocates from a range any other DynamicUser unit shares).
+    users.users.ax-server-proxy = {
+      isSystemUser = true;
+      group = "ax-server-proxy";
+    };
+    users.groups.ax-server-proxy = { };
+    # The teardown leaves a guard the generation declares (see pkgs/ax-fleet-teardown).
+    environment.etc."ax-fleet/guard-declared".text = "harness\n";
+    assertions = [
+      {
+        assertion = builtins.all (u: config.users.users ? ${u}) cfg.apiUsers;
+        message = "modules/ax-fleet/harness.nix: every myAxFleet.apiUsers entry must be a declared user (iptables resolves the name when the firewall starts).";
+      }
+      {
+        assertion = !(builtins.elem lan cfg.lan.extraInterfaces);
+        message = "modules/ax-fleet/harness.nix: myAxFleet.lan.extraInterfaces must not repeat lan.interface.";
+      }
+    ];
+  })
+  (lib.mkIf on {
     myAxFleet.kubelet = {
       # Memory: Tom's seats, Chrome and a coordinator Halogen feel pressure
       # after the sandboxes are evicted, never before. CPU is the slices below:
@@ -205,14 +292,24 @@ in
 
     # k3s turns ip_forward on at start anyway; the guard chain is what keeps
     # it safe. IPv6 forwarding stays 0 (the wifi leg keeps accepting RAs).
-    boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
-    # `default`, not `all`: only interfaces created after this applies (cni0,
-    # veth*, flannel.1) get proxy ARP; wlp192s0 never answers ARP for
-    # addresses it routes elsewhere. `all` is Tom's call (DESIGN Unknowns 11).
-    boot.kernel.sysctl."net.ipv4.conf.default.proxy_arp" = 1;
+    # flannel VXLAN from the NAS only; no TCP port is opened. With the switch
+    # on only: an accept, unlike the guards above.
+    networking.firewall.extraCommands = ''
+      ${ipt} -A nixos-fw -i ${lan} -s ${cfg.serverAddress} -p udp --dport 8472 -j nixos-fw-accept
+    '';
 
-    networking.firewall.extraCommands = guardStart;
-    networking.firewall.extraStopCommands = guardStop;
+    boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
+    # Proxy ARP on the pod interfaces only (fix round 3). Round 2 set
+    # `conf.default`, but every NIC created after systemd-sysctl copies
+    # `default`, and the desk's NICs are renamed after it runs (MEASURED boot
+    # journal: sysctl 6.356 s, enp191s0 6.497 s, wlp192s0 7.493 s), so
+    # wlp192s0 would have answered ARP for the whole LAN after a reboot.
+    # systemd's udev rule (99-systemd.rules) runs systemd-sysctl for each new
+    # interface, which applies these by name and glob as each one appears.
+    # `flannel/1` is sysctl.d's spelling of flannel.1.
+    boot.kernel.sysctl."net.ipv4.conf.cni0.proxy_arp" = 1;
+    boot.kernel.sysctl."net.ipv4.conf.flannel/1.proxy_arp" = 1;
+    boot.kernel.sysctl."net.ipv4.conf.veth*.proxy_arp" = 1;
 
     # ── NetworkManager: a drop-in and a config reload, never a restart ──
     environment.etc."NetworkManager/conf.d/90-ax-fleet.conf".text = nmDropIn;
@@ -231,25 +328,32 @@ in
     };
     systemd.services.k3s.wants = [ "ax-fleet-nm-unmanaged.service" ];
 
-    # ── ax-server on 127.0.0.1:8080, through kube-proxy's OUTPUT rules ──
+    # ── ax-server on ${cfg.apiListen}, through kube-proxy's OUTPUT rules ──
     # The ClusterIP is never a NodePort: ax's API has no authentication
-    # (upstream #376). Loopback only.
+    # (upstream #376). Loopback only, and only root, apiUsers and this proxy
+    # may connect (apiRules). Not 127.0.0.1:8080 (fix round 3): that is
+    # ax-conwip's default and ax-mockstack's, which must reach nothing live.
     systemd.sockets.ax-server-proxy = {
-      description = "ax-fleet: ax-server on 127.0.0.1:8080";
+      description = "ax-fleet: ax-server on ${cfg.apiListen}";
       wantedBy = [ "sockets.target" ];
-      listenStreams = [ "127.0.0.1:8080" ];
+      listenStreams = [ cfg.apiListen ];
     };
     systemd.services.ax-server-proxy = {
-      description = "ax-fleet: proxy 127.0.0.1:8080 to the ax-server ClusterIP";
+      description = "ax-fleet: proxy ${cfg.apiListen} to the ax-server ClusterIP";
       requires = [ "ax-server-proxy.socket" ];
       after = [ "ax-server-proxy.socket" ];
       serviceConfig = {
         ExecStart = "${config.systemd.package}/lib/systemd/systemd-socket-proxyd ${cfg.axServerClusterIP}:8080";
-        DynamicUser = true;
+        User = "ax-server-proxy";
+        Group = "ax-server-proxy";
         PrivateTmp = true;
+        NoNewPrivileges = true;
+        ProtectSystem = "strict";
+        ProtectHome = true;
       };
     };
 
     environment.systemPackages = [ kubeconfigScript ];
-  };
+  })
+  ];
 }
