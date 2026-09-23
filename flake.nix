@@ -703,6 +703,18 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        # DF-5: the vendored Cargo.lock must equal upstream's at the pinned rev.
+        # A build-time comparison, not an evaluation-time read, so evaluation
+        # never needs the fetched source (no import-from-derivation).
+        zenbook-duo-daemon-lock =
+          let
+            daemon = self.nixosConfigurations.client.config.services.zenbook-duo-daemon.package;
+          in
+          pkgs.runCommand "zenbook-duo-daemon-lock-check" { } ''
+            cmp ${daemon.src}/Cargo.lock ${./pkgs/zenbook-duo-daemon.Cargo.lock}
+            touch "$out"
+          '';
+
         qwen-speech =
           pkgs.runCommand "qwen-speech-tests"
             {
