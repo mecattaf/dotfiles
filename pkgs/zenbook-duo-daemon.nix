@@ -26,7 +26,13 @@ rustPlatform.buildRustPackage rec {
     hash = "sha256-ucyjhbF/qA8/J81mwqZfC0CLTQoU0eBwO0qSScVmuRY=";
   };
 
-  cargoLock.lockFile = "${src}/Cargo.lock";
+  # Vendored copy of ${src}/Cargo.lock at the pinned rev (DF-5, 2026-09-23).
+  # Reading "${src}/Cargo.lock" was an import-from-derivation: evaluation had to
+  # fetch src first, so `nix flake check --no-build` passed or failed on whether
+  # the source happened to be in the store (#455). The copy keeps evaluation
+  # store-independent; checks.zenbook-duo-daemon-lock fails at build time if a
+  # rev bump leaves this file behind upstream's.
+  cargoLock.lockFile = ./zenbook-duo-daemon.Cargo.lock;
 
   nativeBuildInputs = [ pkg-config ];
   buildInputs = [ libevdev ];
