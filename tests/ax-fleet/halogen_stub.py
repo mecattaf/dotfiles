@@ -37,6 +37,13 @@ def reply_for(req):
     return REPLY
 LOCK = threading.Lock()
 
+# probe/ax-fleet-nop1: a stand-in floor. A Task's command POSTs its own
+# completion to /floor/complete (the in-sandbox adapter reporting straight to
+# the floor, LINK-DESIGN L7); the test driver, standing in for the link, reads
+# GET /floor/results and then deletes the Task. Every POST is kept, so a
+# golden-snapshot pre-run of the command would show as a second report.
+FLOOR = []
+
 
 def make_handler(log_path):
     class Handler(BaseHTTPRequestHandler):
@@ -68,6 +75,10 @@ def make_handler(log_path):
 
         def do_GET(self):
             rid = self._record(b"")
+            if self.path.rstrip("/") == "/floor/results":
+                with LOCK:
+                    self._json(200, {"reports": list(FLOOR)})
+                return
             if self.path.rstrip("/") == "/health":
                 self._json(200, {"status": "ok", "in_flight": 0, "queued": 0, "request_id": rid})
             elif self.path.rstrip("/") == "/v1/models":
@@ -79,6 +90,17 @@ def make_handler(log_path):
             length = int(self.headers.get("Content-Length") or 0)
             body = self.rfile.read(length) if length else b""
             rid = self._record(body)
+            if self.path.rstrip("/") == "/floor/complete":
+                try:
+                    report = json.loads(body or b"{}")
+                except json.JSONDecodeError:
+                    self._json(400, {"error": "bad json", "request_id": rid})
+                    return
+                with LOCK:
+                    FLOOR.append({"received": time.time(), "src": self.client_address[0], "request_id": rid, "report": report})
+                    n = len(FLOOR)
+                self._json(200, {"ok": True, "request_id": rid, "n": n})
+                return
             if self.path.rstrip("/") != "/v1/chat/completions":
                 self._json(404, {"error": "not found", "request_id": rid})
                 return

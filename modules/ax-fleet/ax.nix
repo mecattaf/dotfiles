@@ -349,7 +349,7 @@ let
                   "--substrate-ca-file=/run/servicedns-ca/trust-bundle.pem"
                   "--template=default-template"
                   "--template-atespace=ax-system"
-                  "--running-resync=${toString cfg.ax.runningResyncSeconds}s"
+                  # probe/ax-fleet-nop1: stock v0.3.0 has no --running-resync (P1 removed).
                 ];
                 env = [
                   {

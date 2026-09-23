@@ -98,7 +98,8 @@ buildGo127Module {
   # that without an exit report the third is refused ResourceExhausted.
   patches = [
     ./patches/sandbox-class.patch
-    ./patches/p1-completion.patch
+    # probe/ax-fleet-nop1: p1-completion.patch removed; completion is reported
+    # by the Task to the floor and the link deletes the Task.
   ];
 
   # subPackages left unset so all four commands build, matching upstream's
