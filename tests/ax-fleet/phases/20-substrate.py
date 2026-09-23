@@ -118,6 +118,10 @@ with step("substrate: WorkerPool ateom-gvisor Ready 2 on the coordinator"):
         assert p["spec"]["nodeName"] == "coordinator", p["spec"]["nodeName"]
         lims = [c.get("resources", {}).get("limits", {}).get("memory") for c in p["spec"]["containers"]]
         assert any(lims), f"worker pod has no memory limit: {lims}"
+        # Fix round 4: the writable layer is bounded per pod too.
+        eph = [c.get("resources", {}).get("limits", {}).get("ephemeral-storage") for c in p["spec"]["containers"]]
+        assert any(eph), f"worker pod has no ephemeral-storage limit: {eph}"
+        record("worker_ephemeral_storage_limit", eph)
 
 with step("substrate: gVisor fetched through the RustFS fallback"):
     # No internet in the VM: atelet's anonymous GCS open of gs://gvisor/...

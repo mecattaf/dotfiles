@@ -136,9 +136,16 @@ let
   # kubectl exec/logs ride the agent tunnel. First rules of nixos-fw, so they
   # run before its ESTABLISHED accept and every port rule; IPv6 too (link-local
   # addresses on cni0 and the veths).
-  podInput = lib.concatMap (p: [
-    "-I nixos-fw 1 -i ${p} -m conntrack --ctstate NEW -m comment --comment ax-fleet-pod-input -j nixos-fw-refuse"
-  ]) podIfs;
+  # Idempotent (fix round 4): deleted, then inserted, so guardApply can re-run
+  # it over a live nixos-fw without duplicating a rule.
+  podInputSpecs = map (
+    p: "-i ${p} -m conntrack --ctstate NEW -m comment --comment ax-fleet-pod-input -j nixos-fw-refuse"
+  ) podIfs;
+  podInputCmds =
+    t:
+    lib.concatMapStringsSep "\n" (spec: ''
+      while ${t} -D nixos-fw ${spec} 2>/dev/null; do :; done
+      ${t} -I nixos-fw 1 ${spec}'') podInputSpecs;
 
   # ── the ax API and the cluster ranges: root, apiUsers and the proxy only ──
   # (fix round 3) The round-3 review MEASURED an unprivileged user applying a
@@ -166,10 +173,9 @@ let
     while ${ipt} -t mangle -D FORWARD -j ax-fleet-guard 2>/dev/null; do :; done
     ${ipt} -t mangle -I FORWARD 1 -j ax-fleet-guard
     ${lib.concatMapStringsSep "\n" (r: "${ipt} -t mangle -A ax-fleet-guard ${r}") guardRules}
-    # pods to the host: refused (podInput; nixos-fw is rebuilt on every reload)
-    ${lib.concatMapStringsSep "\n" (
-      r: "${ipt} ${r}" + lib.optionalString config.networking.enableIPv6 "\n${ip6t} ${r}"
-    ) podInput}
+    # pods to the host: refused (podInputSpecs)
+    ${podInputCmds ipt}
+    ${lib.optionalString config.networking.enableIPv6 (podInputCmds ip6t)}
     # the ax API and the cluster ranges from this host: owner match (fix round 3)
     ${ipt} -N ax-fleet-api 2>/dev/null || true
     ${ipt} -F ax-fleet-api
@@ -177,6 +183,15 @@ let
     ${ipt} -I OUTPUT 1 -j ax-fleet-api
     ${lib.concatMapStringsSep "\n" (r: "${ipt} -A ax-fleet-api ${r}") apiRules}
   '';
+
+  # (fix round 4) The same rules as a script the teardown runs after
+  # k3s-killall.sh: the killall's `iptables-save | grep -iv flannel |
+  # iptables-restore` (REPORTED k3s-killall.sh:90 in the pinned k3s) deletes
+  # every rule naming flannel.1, the guard's and the pod-input refusal's
+  # included, and nothing reloads the firewall before k3s starts again.
+  guardApply = pkgs.writeShellScript "ax-fleet-guard-apply" (''
+    set -eu
+  '' + guardStart);
 
   guardStop = ''
     while ${ipt} -t mangle -D FORWARD -j ax-fleet-guard 2>/dev/null; do :; done
@@ -241,6 +256,7 @@ in
     users.groups.ax-server-proxy = { };
     # The teardown leaves a guard the generation declares (see pkgs/ax-fleet-teardown).
     environment.etc."ax-fleet/guard-declared".text = "harness\n";
+    environment.etc."ax-fleet/guard-apply".source = guardApply;
     assertions = [
       {
         assertion = builtins.all (u: config.users.users ? ${u}) cfg.apiUsers;
@@ -260,7 +276,13 @@ in
       # nothing.
       systemReserved = lib.mkDefault "cpu=8,memory=32Gi";
       kubeReserved = lib.mkDefault "cpu=1,memory=2Gi";
-      evictionHard = lib.mkDefault "memory.available<8Gi";
+      # Every signal, not only memory (fix round 4): a set --eviction-hard
+      # REPLACES kubelet's whole default map (MEASURED in the round-3 VM log:
+      # HardEvictionThresholds=[memory.available] only), which dropped k3s's
+      # nodefs/imagefs defaults. / here is also /nix/store, journald and the
+      # coordinator's postgres (MEASURED findmnt: one nvme partition), so a
+      # sandbox filling its writable layer must be evicted before they ENOSPC.
+      evictionHard = lib.mkDefault "memory.available<8Gi,nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<15%,imagefs.inodesFree<5%";
     };
 
     # ── CPU: the desk outweighs the sandboxes (fix round 2) ──

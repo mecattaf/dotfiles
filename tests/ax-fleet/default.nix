@@ -23,6 +23,7 @@ let
   prelude = ''
     import json
     import os
+    import re
     import time
     from contextlib import contextmanager
 

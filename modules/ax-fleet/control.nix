@@ -116,6 +116,22 @@ let
       oifname { ${lib.concatMapStringsSep ", " (i: ''"${i}"'') cfg.guardInterfaces} } counter drop comment "ax-fleet: pods never reach the tailnet"
       oifname "ve-*" counter drop comment "ax-fleet: pods never reach the NAS's containers"
     }
+
+    # ── the cluster from the NAS's own processes: root only (fix round 4) ──
+    # The coordinator's owner match (harness.nix apiRules) had no counterpart
+    # here: prerouting never sees locally generated packets, so paperless,
+    # immich, atticd, headscale or nginx (MEASURED uid-map) could open the
+    # unauthenticated ax-server API and the password-less ax-redis, and, while
+    # a seed runs, push to the loopback writer. Only NEW connections are
+    # policed: replies from AdGuard or the registry to pods are established.
+    chain output {
+      type filter hook output priority filter; policy accept;
+      ct state != new return
+      meta skuid 0 return
+      ${lib.optionalString (cfg.clusterClientUids != [ ]) "meta skuid { ${lib.concatMapStringsSep ", " toString cfg.clusterClientUids} } return"}
+      ip daddr { ${cfg.podCidr}, ${cfg.serviceCidr} } counter reject comment "ax-fleet: the cluster ranges from this host, root only"
+      ip daddr 127.0.0.1 tcp dport ${lib.last (lib.splitString ":" seedAddr)} counter reject with tcp reset comment "ax-fleet: the seed's writable registry, root only"
+    }
   '';
 
   # ── the bootstrap steps this track owns ──

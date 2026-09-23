@@ -16,7 +16,10 @@
 # Options: --hold N (re-read the phase after N seconds), --timeout N (per Task,
 # default 900), --keep (do not delete the Tasks), --image REF (default: the
 # fleet image, ax-fleet-image-ref), --sandbox-class C (spec.sandboxClass; empty
-# means gVisor). Exit 0 only when the case passes. The receipt carries no secret: Tasks carry none (DESIGN.md 11).
+# means gVisor), --gateway NAME (spec.gateway.name, default halogen; `none`
+# omits the gateway; ax-fleet-gateway-default then points the Task at the
+# atespace's default Gateway, since stock ax would give it allow-all).
+# Exit 0 only when the case passes. The receipt carries no secret: Tasks carry none (DESIGN.md 11).
 
 export AX_SERVER="${AX_SERVER:-$AX_FLEET_API}"
 ns="$AX_FLEET_ATESPACE"
@@ -25,6 +28,7 @@ timeout=900
 keep=0
 image=""
 sandbox_class=""
+gateway=halogen
 args=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -33,6 +37,7 @@ while [ $# -gt 0 ]; do
   --keep) keep=1; shift ;;
   --image) image="$2"; shift 2 ;;
   --sandbox-class) sandbox_class="$2"; shift 2 ;;
+  --gateway) gateway="$2"; shift 2 ;;
   *) args+=("$1"); shift ;;
   esac
 done
@@ -80,6 +85,9 @@ run_task() {
   cmd_json="$(jq -cn '$ARGS.positional' --args -- "$@")"
   local class_line=""
   [ -z "$sandbox_class" ] || class_line="  sandboxClass: \"$sandbox_class\""
+  local gateway_lines=""
+  [ "$gateway" = none ] || gateway_lines="  gateway:
+    name: \"$gateway\""
   ax -a "$ns" apply -f - >/dev/null <<YAML
 apiVersion: ax.io/v1alpha1
 kind: Task
@@ -93,8 +101,7 @@ $class_line
   env:
     - name: HALOGEN_URL
       value: "http://$AX_FLEET_HALOGEN"
-  gateway:
-    name: halogen
+$gateway_lines
 YAML
   local t0 t phase="" deadline
   t0="$(date +%s)"
@@ -122,6 +129,7 @@ YAML
     --argjson t "$t" --argjson result "$result" --argjson secs "$((settled - t0))" --argjson hold "$hold" \
     '{task:$name, phase:$phase, phase_after_hold:$after, hold_seconds:$hold, settle_seconds:$secs,
       ready:(($t.status.conditions // []) | map(select(.type=="Ready")) | .[0] // null | if . then {reason, message} else null end),
+      gateway_ready:(($t.status.conditions // []) | map(select(.type=="GatewayReady")) | .[0] // null | if . then {status, reason} else null end),
       exit_code:(if ($t.status.command.exited // false) then ($t.status.command.exitCode // 0) else null end), result_bytes:($t.status.command.resultBytes // null),
       result_sha256:($t.status.command.resultSha256 // null), result:$result}'
   if [ "$keep" -eq 0 ]; then ax -a "$ns" delete task "$name" >/dev/null 2>&1 || true; fi
@@ -150,11 +158,15 @@ egress-deny)
   # Refused either at the Gateway (the connection fails: curl rc != 0) or,
   # for an allowlisted host on a port the NAS drops (fix round 3), by the
   # egress gateway's own upstream error (502/503/504, the target never
-  # answered). Any other HTTP status is the target answering: fail.
-  jq -c --arg case "$case_" --arg url "$url" \
-    '. + {case:$case, url:$url,
+  # answered), or by Substrate's egress router refusing the actor outright
+  # (403 "egress denied": no policy, or a policy with no rules). Any other
+  # HTTP status
+  # is the target answering: fail. The deny targets in the VM answer 200.
+  jq -c --arg case "$case_" --arg url "$url" --arg gw "$gateway" \
+    '. + {case:$case, url:$url, gateway:$gw,
           refused_by:(if (.result.curl_rc // 0) != 0 then "gateway-connection"
                       elif ((.result.http_code // "") | test("^50[234]$")) then "egress-upstream"
+                      elif (.result.http_code // "") == "403" then "egress-policy"
                       else null end)}
        | . + {pass:(.refused_by != null and .ready.reason=="CommandExited")}' <<<"$r"
   ;;

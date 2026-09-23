@@ -40,6 +40,18 @@ with step("lan: routed LAN traffic never reaches a ClusterIP or pod IP"):
         worker.succeed("ip route del 10.201.0.0/16 via 10.42.0.1")
     record("nas_range_guard", nas.succeed("nft list chain inet ax-fleet-guard prerouting").strip().splitlines())
 
+    # Fix round 4: the NAS's own non-root processes (paperless, immich, ...)
+    # get none of it; root, above, still does. `nobody` and the dnsmasq
+    # stand-in's user stand in for them.
+    for u in ("nobody", "dnsmasq"):
+        nas.fail(f"runuser -u {u} -- curl -s --max-time 5 -o /dev/null http://{ax_ip}:8080/healthz")
+        nas.fail(f"runuser -u {u} -- curl -s --max-time 5 -o /dev/null http://{ax_pod}:8080/healthz")
+        nas.fail(f"runuser -u {u} -- {tcp_open(redis_ip, 6379)}")
+    nas.succeed(f"curl -sf --max-time 10 http://{ax_ip}:8080/healthz")
+    # Pods still resolve through the NAS's AdGuard stand-in (replies are not NEW).
+    kubectl("exec probe-nas -- sh -c 'nslookup only-nas.test 10.42.0.1 | grep -q 10.42.0.77'")
+    record("nas_output_guard", nas.succeed("nft list chain inet ax-fleet-guard output").strip().splitlines())
+
 
 with step("nas: pods reach Halogen on its port and no other private address"):
     # Fix round 3. The round-3 review MEASURED postgres-0 reaching worker:2222;

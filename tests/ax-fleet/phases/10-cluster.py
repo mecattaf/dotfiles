@@ -218,6 +218,18 @@ with step("coordinator: the desk outweighs kubepods for CPU"):
     assert w["user.slice"] > w["kubepods.slice"] and w["system.slice"] > w["kubepods.slice"], w
 
 
+with step("coordinator: kubelet evicts on disk pressure, not only memory"):
+    # Fix round 4: a set --eviction-hard replaces kubelet's defaults, so the
+    # harness renders every signal. The kubelet logs the map it runs with.
+    line = coordinator.succeed(
+        "journalctl -u k3s --no-pager -o cat | grep -o 'HardEvictionThresholds.*' | tail -n1 | cut -c1-2000"
+    )
+    signals = sorted(set(re.findall(r'"Signal":"([a-z.A-Z]+)"', line)))
+    record("coordinator_hard_eviction_signals", signals)
+    for s in ("memory.available", "nodefs.available", "nodefs.inodesFree", "imagefs.available"):
+        assert s in signals, (s, signals)
+
+
 with step("coordinator: the guards hold"):
     pod_ip = jsonpath("pod probe-coord", "{.status.podIP}")
     record("probe_coord_ip", pod_ip)

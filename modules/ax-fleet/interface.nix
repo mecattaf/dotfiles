@@ -235,11 +235,34 @@ in
         type = types.str;
         default = "16Gi";
       };
+      # (fix round 4) Each worker pod's writable layer, emptyDirs and logs
+      # live on the harness node's / (the desk's /nix/store disk). The limit
+      # evicts one runaway sandbox's pod before the node-level nodefs
+      # threshold (kubelet.evictionHard) has to evict everything.
+      ephemeralStorageRequest = mkOption {
+        type = types.str;
+        default = "1Gi";
+      };
+      ephemeralStorageLimit = mkOption {
+        type = types.str;
+        default = "32Gi";
+      };
       unreachableTolerationSeconds = mkOption {
         type = types.ints.unsigned;
         default = 3600;
         description = "A configuration value, not an estimate: how long worker pods tolerate an unreachable or not-ready coordinator.";
       };
+    };
+
+    clusterClientUids = mkOption {
+      type = types.listOf types.ints.unsigned;
+      default = [ ];
+      description = ''
+        Control role (fix round 4): numeric uids, besides root, that may open
+        connections from the NAS host to the pod and Service ranges. Numeric
+        because nftables resolves user names at load time and the ruleset is
+        checked in the build sandbox. Default: none.
+      '';
     };
 
     halogenEndpoint = mkOption {

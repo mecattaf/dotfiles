@@ -9,9 +9,16 @@
 # production one; only interface names (eth1, eth2), the token and the kubelet
 # reservations differ, and ax-fleet-topology pins that parity.
 #
-# Each base config is "today", with ax OFF. `specialisation.ax-on` sets
-# myAxFleet.enable = true, and the test script switches to it live, NAS first,
-# exactly as Tom will.
+# Each base config is "today": it does NOT import modules/ax-fleet at all, as
+# origin/main's hosts/{nas,coordinator} do not (fix round 4: the round-3 base
+# carried the role, so every role-scoped guard was already in place before the
+# switch). Two specialisations import the fleet module:
+#   ax-on   myAxFleet.enable = true; the test switches to it live, NAS first,
+#           exactly as Tom will.
+#   ax-off  the role declared, enable = false: the kill switch (DESIGN 13).
+# 90-rollback runs the kill switch on the coordinator, and the generation
+# rollback (back to this base) on both hosts. The worker is not switched in the
+# motion and keeps its role in the base.
 let
   # A plain file, test-only, not a secret: the fleet reads agenix instead.
   token = pkgs.writeText "ax-fleet-vm-token" "ax-fleet-vm-test-token-0123456789abcdef";
@@ -80,7 +87,8 @@ let
     networking.interfaces.${iface}.ipv4.addresses = lib.mkForce [ { inherit address prefixLength; } ];
   };
 
-  # Everything that makes a node a fleet node in the test.
+  # Everything that makes a node a fleet node in the test (the ax-on and
+  # ax-off specialisations import it; the base does not).
   fleetNode =
     { role, address }:
     {
@@ -92,7 +100,6 @@ let
         ../../modules/ax-client.nix
         inputs.agenix.nixosModules.default
       ];
-      system.switch.enable = true;
       myAxFleet = {
         inherit role;
         lan = lanAddr address;
@@ -100,63 +107,72 @@ let
         k3sAgentTokenFile = "${agentToken}";
         guardInterfaces = [ "eth2" ];
       };
-      environment.systemPackages = [
+    };
+
+  # The test tools, in the base: identical in every state.
+  testBase = {
+    system.switch.enable = true;
+    environment.systemPackages = [
         pkgs.jq
         pkgs.curl
         pkgs.iptables
         pkgs.nftables
         pkgs.iproute2
-        pkgs.dnsutils
-      ];
-    };
-
-  axOn = extra: {
-    specialisation.ax-on.configuration = lib.mkMerge [
-      {
-        myAxFleet.enable = true;
-        services.k3s.images = [ probeImage ];
-      }
-      extra
+      pkgs.dnsutils
     ];
   };
 
-  vmReservations = {
-    systemReserved = "cpu=500m,memory=512Mi";
-    kubeReserved = "cpu=250m,memory=256Mi";
-    evictionHard = "memory.available<256Mi";
+  # fleet: the host's fleet module (fleetNode plus host-specific settings).
+  # extra: ax-on only (test images, reservations).
+  axStates = fleet: extra: {
+    specialisation.ax-on.configuration = {
+      imports = [
+        fleet
+        extra
+      ];
+      myAxFleet.enable = true;
+      services.k3s.images = [ probeImage ];
+    };
+    specialisation.ax-off.configuration = {
+      imports = [ fleet ];
+    };
   };
-in
-{
-  inherit
-    probeImage
-    token
-    agentToken
-    claudeProbeImage
-    kubectlAte
-    ;
 
-  nas =
+  nasFleet = fleetNode {
+    role = "control";
+    address = "10.42.0.1";
+  };
+
+  coordinatorFleet = {
+    imports = [
+      (fleetNode {
+        role = "harness";
+        address = "10.42.0.2";
+      })
+    ];
+    # The desk's wired port (fix round 3): eth3, NetworkManager-managed,
+    # DHCP from the worker's second leg, as enp191s0's "Wired connection 1".
+    myAxFleet.lan.extraInterfaces = [ "eth3" ];
+  };
+
+  # The NAS as it is today, before ax (shared with ax-fleet-boot, which adds
+  # nasFleet in its base and boots it).
+  nasBase =
     { ... }:
     {
       imports = [
-        (fleetNode {
-          role = "control";
-          address = "10.42.0.1";
-        })
-        (axOn {
-          myAxFleet.kubelet = {
-            systemReserved = "cpu=1,memory=1Gi";
-          };
-          myAxFleet.registrySeed.ax-agent-claude-probe = {
-            oci = claudeProbeImage;
-            repo = "ax/ax-agent-claude-probe";
-            inherit (claudeProbeImage.passthru) tag;
-          };
-        })
+        testBase
         (setAddr "eth1" "10.42.0.1" 24)
       ];
       networking.hostName = "nas";
-      environment.systemPackages = [ kubectlAte ];
+      # The internet stand-in (fix round 4): TEST-NET-2 lives on the worker.
+      networking.interfaces.eth1.ipv4.routes = [
+        {
+          address = "198.51.100.0";
+          prefixLength = 24;
+          via = "10.42.0.5";
+        }
+      ];
       virtualisation = {
         vlans = [ 1 ];
         memorySize = 10240;
@@ -217,6 +233,7 @@ in
       # withdraw the house subnet route. 90-rollback asserts the teardown
       # never calls it.
       environment.systemPackages = [
+        kubectlAte
         (pkgs.writeShellScriptBin "tailscale" ''
           echo "$*" >> /var/log/tailscale-stub.log
         '')
@@ -230,22 +247,54 @@ in
       };
     };
 
+
+  vmReservations = {
+    systemReserved = "cpu=500m,memory=512Mi";
+    kubeReserved = "cpu=250m,memory=256Mi";
+    # The full signal set, as harness.nix renders it (fix round 4): a set flag
+    # replaces every kubelet default.
+    evictionHard = "memory.available<256Mi,nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<15%,imagefs.inodesFree<5%";
+  };
+in
+{
+  inherit
+    probeImage
+    token
+    agentToken
+    claudeProbeImage
+    kubectlAte
+    nasBase
+    nasFleet
+    ;
+
+  nas =
+    { ... }:
+    {
+      imports = [
+        nasBase
+        (axStates nasFleet {
+          myAxFleet.kubelet = {
+            systemReserved = "cpu=1,memory=1Gi";
+          };
+          myAxFleet.registrySeed.ax-agent-claude-probe = {
+            oci = claudeProbeImage;
+            repo = "ax/ax-agent-claude-probe";
+            inherit (claudeProbeImage.passthru) tag;
+          };
+        })
+      ];
+    };
+
   coordinator =
     { ... }:
     {
       imports = [
-        (fleetNode {
-          role = "harness";
-          address = "10.42.0.2";
-        })
-        (axOn { myAxFleet.kubelet = vmReservations; })
+        testBase
+        (axStates coordinatorFleet { myAxFleet.kubelet = vmReservations; })
         (setAddr "eth1" "10.42.0.2" 24)
         (setAddr "eth2" "100.105.121.73" 10)
       ];
       networking.hostName = "coordinator";
-      # The desk's wired port (fix round 3): eth3, NetworkManager-managed,
-      # DHCP from the worker's second leg, as enp191s0's "Wired connection 1".
-      myAxFleet.lan.extraInterfaces = [ "eth3" ];
       # myAxFleet.apiUsers defaults to [ "tom" ]; alice is the other local user.
       users.users.tom.isNormalUser = true;
       virtualisation = {
@@ -316,11 +365,25 @@ in
     { ... }:
     {
       imports = [
+        testBase
         (fleetNode {
           role = "inference";
           address = "10.42.0.5";
         })
-        (setAddr "eth1" "10.42.0.5" 24)
+        # 198.51.100.5 (TEST-NET-2): a public address for the egress tests
+        # (fix round 4), routed to the worker by the NAS.
+        {
+          networking.interfaces.eth1.ipv4.addresses = lib.mkForce [
+            {
+              address = "10.42.0.5";
+              prefixLength = 24;
+            }
+            {
+              address = "198.51.100.5";
+              prefixLength = 32;
+            }
+          ];
+        }
         (setAddr "eth2" "192.168.43.5" 24)
       ];
       networking.hostName = "worker";
@@ -344,6 +407,18 @@ in
       # Another worker port (fix round 3): the real worker opens 22 with
       # passwords on every interface; pods and the egress gateway must reach
       # 8731 and nothing else.
+      # The public target (fix round 4): what a Task with no Gateway must not
+      # reach, while the NAS host does.
+      systemd.services.public-8000 = {
+        wantedBy = [ "multi-user.target" ];
+        # All addresses: binding 198.51.100.5 raced its assignment (MEASURED,
+        # fix-round-4 run 1: the unit exited 1 before network-addresses-eth1
+        # added the address).
+        serviceConfig = {
+          ExecStart = "${pkgs.busybox}/bin/httpd -f -p 8000 -h ${pkgs.writeTextDir "index.html" "public-reached\n"}";
+          Restart = "always";
+        };
+      };
       systemd.services.worker-2222 = {
         wantedBy = [ "multi-user.target" ];
         serviceConfig.ExecStart = "${pkgs.busybox}/bin/httpd -f -p 2222 -h ${pkgs.writeTextDir "index.html" "worker-port-2222-reached\n"}";
@@ -356,6 +431,7 @@ in
         interfaces.eth1.allowedTCPPorts = [
           8731
           2222
+          8000
         ];
         interfaces.eth2.allowedTCPPorts = [ 8731 ];
         interfaces.eth2.allowedUDPPorts = [ 67 ];

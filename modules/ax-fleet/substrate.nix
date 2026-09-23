@@ -163,11 +163,18 @@ let
           tolerationSeconds = cfg.workerPool.unreachableTolerationSeconds;
         }
       ];
+      # ephemeral-storage (fix round 4): passed through unchanged by
+      # atecontroller's applyWorkerPoolPodTemplate (REPORTED
+      # workerpool_apply.go:522-528 at d277088b).
       resources = {
-        limits.memory = cfg.workerPool.memoryLimit;
+        limits = {
+          memory = cfg.workerPool.memoryLimit;
+          ephemeral-storage = cfg.workerPool.ephemeralStorageLimit;
+        };
         requests = {
           cpu = "250m";
           memory = "1Gi";
+          ephemeral-storage = cfg.workerPool.ephemeralStorageRequest;
         };
       };
     };

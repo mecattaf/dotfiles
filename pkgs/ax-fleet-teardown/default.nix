@@ -59,6 +59,7 @@ writeShellApplication {
       echo "  k3s-killall.sh stops it now, and it starts again at the next boot or switch." >&2
     fi
 
+    guard_failed=0
     echo "== k3s-killall.sh (${k3s.version})"
     ${k3s}/bin/k3s-killall.sh || echo "k3s-killall.sh exited $?; continuing" >&2
 
@@ -67,6 +68,18 @@ writeShellApplication {
     # script), so they stay; a generation from before ax never had them, and
     # then they go.
     if [ -e /etc/ax-fleet/guard-declared ]; then
+      # Fix round 4: the killall's `grep -iv flannel` pipeline just deleted
+      # every guard rule naming flannel.1 (the VXLAN source rule, the
+      # cross-node returns, the pod-input refusal). Re-apply the generation's
+      # guards rather than trust them; the NAS's are an nftables table the
+      # iptables pipeline never touches.
+      if [ -x /etc/ax-fleet/guard-apply ]; then
+        echo "== guards: re-applying this generation's ($(cat /etc/ax-fleet/guard-declared))"
+        if ! /etc/ax-fleet/guard-apply; then
+          echo "ax-fleet-teardown: WARNING: re-applying the guards failed; pods of a restarted k3s would reach this host over flannel.1. Reload the firewall." >&2
+          guard_failed=1
+        fi
+      fi
       echo "== guards: declared by this generation ($(cat /etc/ax-fleet/guard-declared)); left in place"
     else
       echo "== guard chains"
@@ -76,6 +89,12 @@ writeShellApplication {
       while iptables -w -D OUTPUT -j ax-fleet-api 2>/dev/null; do :; done
       iptables -w -F ax-fleet-api 2>/dev/null || true
       iptables -w -X ax-fleet-api 2>/dev/null || true
+      # The pod-input refusal, if this generation's firewall reload left it.
+      for ifc in cni0 flannel.1; do
+        for t in iptables ip6tables; do
+          while $t -w -D nixos-fw -i "$ifc" -m conntrack --ctstate NEW -m comment --comment ax-fleet-pod-input -j nixos-fw-refuse 2>/dev/null; do :; done
+        done
+      done
 
       echo "== NAS guard table"
       nft delete table inet ax-fleet-guard 2>/dev/null || true
@@ -95,6 +114,10 @@ writeShellApplication {
     ip -br link show 2>/dev/null | grep -E '^(cni0|flannel\.1|veth)' || true
     iptables-save 2>/dev/null | grep -cE 'KUBE-|FLANNEL|CNI-' || true
     pgrep -a containerd-shim || true
+    if [ "$guard_failed" -ne 0 ]; then
+      echo "ax-fleet-teardown: done, with the guard re-apply FAILED (see above)" >&2
+      exit 1
+    fi
     echo "ax-fleet-teardown: done"
   '';
 }

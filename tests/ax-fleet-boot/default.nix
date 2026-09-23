@@ -28,7 +28,12 @@ stablePkgs.testers.runNixOSTest {
   name = "ax-fleet-boot";
   node.specialArgs = { inherit inputs; };
   nodes.nas = {
-    imports = [ nodes.nas ];
+    # The pre-ax NAS plus its fleet module, ON from boot (fix round 4: the
+    # ax-fleet test's base no longer imports the module).
+    imports = [
+      nodes.nasBase
+      nodes.nasFleet
+    ];
     myAxFleet.enable = true;
     boot.initrd.systemd.enable = true;
     # The NAS's kernel (hosts/nas/kernel.nix: freshPkgs.linuxPackages_7_2);
