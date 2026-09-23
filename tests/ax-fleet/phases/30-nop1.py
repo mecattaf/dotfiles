@@ -240,6 +240,7 @@ def check_report(name: str, reps: Any) -> Any:
         "intact": intact,
         "src": reps[0]["src"],
         "gvisor": "gvisor" in rep.get("kernel", ""),
+        "kernel": rep.get("kernel", ""),
     }
 
 
