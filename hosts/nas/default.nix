@@ -45,6 +45,11 @@
     ./headscale.nix # 2026-09-01: the fleet's OWN tailnet control plane (supersedes #233)
     ./tailscale-personal.nix # Additional isolated SaaS ingress; never enroll the lent laptops here
     ./personal-https.nix # Gated, NAS-scoped DNS-01 certificates for private media
+    # 2026-09-20 sandbox spike: the three state services the sandbox lane
+    # reads -- a second database on the PostgreSQL ./media.nix already runs,
+    # an S3-compatible object store on the NVMe, and a container registry.
+    # State here, machines on the Strix boxes (Appendix J section 5). Gate OFF.
+    ./state-services.nix
     ./headscale-backup.nix # consistent identity backup before overseas handover
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
@@ -121,6 +126,14 @@
   myNas.tailscalePersonal.funnel.policyApproved = true;
   myNas.headscale.serverUrl = "https://nas-saas.tail8dd1.ts.net:8443";
   myNas.headscale.backup.enable = true;
+
+  # ── State services for the sandbox lane: GATE OFF ───────────────────────
+  # Three runbook-placed root-owned files stand between this and a flip (the
+  # rustfs key pair, the registry and object-store directories on /mnt/fast,
+  # and the Substrate role's password) -- ./state-services.nix's header has
+  # the commands. The appliance's no-agenix doctrine (./attic.nix) is why
+  # they are files placed by hand and not ciphertexts.
+  myNas.stateServices.enable = false;
   # Retired 2026-09-16: the Dell belongs to its owner; Tom no longer
   # publishes or manages Omarchy updates. Keep historical receipts only.
   myNas.omarchyUpdateCenter.enable = false;
