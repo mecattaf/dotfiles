@@ -70,6 +70,7 @@ in
     ./inference.nix
     ./substrate.nix
     ./ax.nix
+    ./gateways.nix
   ];
 
   config = lib.mkMerge [
