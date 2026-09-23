@@ -108,6 +108,17 @@ in
       description = "The egress Gateway every Task names. A missing Gateway means open egress on v0.3.0, so the link leases nothing while GetGateway answers NotFound or the Gateway allows * (B10).";
     };
 
+    uid = mkOption {
+      type = types.ints.between 400 999;
+      default = 941;
+      description = ''
+        Static uid (and gid) of the substrate-link system user. Static, not DynamicUser: the NAS output chain
+        (modules/ax-fleet/control.nix, fix round 4) lets only root and myAxFleet.clusterClientUids open connections to
+        the Service range, so a dynamic uid could never reach ax-server's ClusterIP and the link would sit at capacity 0
+        (codex review 1, finding O1). This uid is added to clusterClientUids when the link is enabled.
+      '';
+    };
+
     maxInFlight = mkOption {
       type = types.ints.positive;
       default = 2;
@@ -187,6 +198,15 @@ in
       }
     ];
 
+    # Codex review 1 (O1): a stable identity the NAS output chain can allow to reach ax-server's ClusterIP.
+    users.users.substrate-link = {
+      isSystemUser = true;
+      group = "substrate-link";
+      inherit (cfg) uid;
+    };
+    users.groups.substrate-link.gid = cfg.uid;
+    myAxFleet.clusterClientUids = [ cfg.uid ];
+
     age.secrets.floor-link-token = {
       file = cfg.tokenAgeFile;
       mode = "0400";
@@ -217,7 +237,8 @@ in
       // lib.optionalAttrs (cfg.guestCompleteUrl != null) { LINK_GUEST_COMPLETE_URL = cfg.guestCompleteUrl; };
       serviceConfig = {
         ExecStart = lib.getExe cfg.package;
-        DynamicUser = true;
+        User = "substrate-link";
+        Group = "substrate-link";
         StateDirectory = "substrate-link"; # journal.jsonl, session-id, floor-endpoint; a few fsynced lines per job
         StateDirectoryMode = "0700";
         LoadCredential = [ "floor-link-token:${config.age.secrets.floor-link-token.path}" ];
