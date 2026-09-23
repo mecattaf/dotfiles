@@ -35,7 +35,9 @@ pkgs.testers.runNixOSTest {
         "k3s kubectl get node nas -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -x True",
         timeout=600,
     )
-    assert nas.succeed("k3s kubectl get node nas -o jsonpath='{.spec.taints}'").strip() == ""
+    # k3s's own transient taints (uninitialized, not-ready) clear on their own;
+    # the NAS carries no taint of ours.
+    nas.wait_until_succeeds("test -z \"$(k3s kubectl get node nas -o jsonpath='{.spec.taints}')\"", timeout=300)
     nas.succeed("k3s kubectl -n kube-system wait --for=condition=Available deploy/coredns deploy/local-path-provisioner --timeout=600s")
     nas.succeed("test -s /etc/ax-fleet/admin.kubeconfig")
     # The snapshot was taken at first activation, before k3s ever ran.

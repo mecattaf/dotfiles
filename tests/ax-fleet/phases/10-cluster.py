@@ -95,7 +95,8 @@ with step("nas: k3s state on the fast tier, links on that disk"):
 
 with step("nas: node Ready, untainted, control labels"):
     node_ready("nas")
-    assert jsonpath("node nas", "{.spec.taints}") == "", "the NAS must be untainted"
+    # k3s's own transient taints (uninitialized, not-ready) clear on their own.
+    nas.wait_until_succeeds("test -z \"$(k3s kubectl get node nas -o jsonpath='{.spec.taints}')\"", timeout=300)
     labels = json.loads(kubectl("get node nas -o jsonpath='{.metadata.labels}'"))
     assert labels.get("ax.mecattaf.dev/role") == "control", labels
     assert labels.get("ate.dev/substrate-version") == "none", labels
@@ -155,7 +156,8 @@ with step("coordinator: Ready with the harness taint and labels"):
     assert labels.get("ate.dev/substrate-version") == "d277088b", labels
     ip = jsonpath("node coordinator", "{.status.addresses[?(@.type==\"InternalIP\")].address}")
     assert ip == "10.42.0.2", ip
-    coordinator.succeed("ip -d link show flannel.1 | grep -q 'dev eth1'")
+    # flannel.1 appears shortly after the node registers; wait for it.
+    coordinator.wait_until_succeeds("ip -d link show flannel.1 | grep -q 'dev eth1'", timeout=180)
     record("sysctl_coordinator_after_switch", sysctls(coordinator))
 
 
@@ -224,9 +226,43 @@ with step("coordinator: the guards hold"):
     record("guard_chain", coordinator.succeed("iptables -t mangle -S ax-fleet-guard").strip().splitlines())
 
 
+def diag(cmds):
+    out = {}
+    for name, (machine, cmd) in cmds.items():
+        _, text = machine.execute(cmd + " 2>&1")
+        out[name] = text[-3000:]
+    return out
+
+
+with step("cluster plumbing: pod to pod across nodes (flannel VXLAN)"):
+    nas_pod_ip = jsonpath("pod probe-nas", "{.status.podIP}")
+    status, _ = nas.execute(f"k3s kubectl exec probe-coord -- curl -sf --max-time 10 http://{nas_pod_ip}:8000/")
+    if status != 0:
+        record("diag_flannel", diag({
+            "coord_routes": (coordinator, "ip route; ip -d link show flannel.1"),
+            "nas_routes": (nas, "ip route; ip -d link show flannel.1"),
+            "coord_fw": (coordinator, "iptables -S nixos-fw; iptables -t mangle -S ax-fleet-guard"),
+            "nas_nft_input": (nas, "nft list chain inet nixos-fw input-allow"),
+        }))
+    nas.succeed(f"k3s kubectl exec probe-coord -- curl -sf --max-time 10 http://{nas_pod_ip}:8000/ | grep -x pod-ok")
+
+
 with step("cluster plumbing: DNS through the NAS stand-in"):
-    kubectl("exec probe-coord -- nslookup only-nas.test | grep -q 10.42.0.77")
-    kubectl("exec probe-nas -- nslookup only-nas.test | grep -q 10.42.0.77")
+    # A records only: the stand-in has no upstream, so AAAA answers REFUSED.
+    status, _ = nas.execute("k3s kubectl exec probe-coord -- nslookup -type=a only-nas.test 2>&1 | grep -q 10.42.0.77")
+    if status != 0:
+        record("diag_dns", diag({
+            "coord_nslookup": (nas, "k3s kubectl exec probe-coord -- nslookup only-nas.test"),
+            "coord_nslookup_svc": (nas, "k3s kubectl exec probe-coord -- nslookup kubernetes.default.svc.cluster.local"),
+            "nas_pod_direct": (nas, "k3s kubectl exec probe-nas -- nslookup only-nas.test 10.42.0.1"),
+            "nas_pod_coredns": (nas, "k3s kubectl exec probe-nas -- nslookup only-nas.test"),
+            "coredns_logs": (nas, "k3s kubectl -n kube-system logs deploy/coredns --tail=50"),
+            "coredns_pod_resolv": (nas, "k3s kubectl -n kube-system exec deploy/coredns -- cat /etc/resolv.conf"),
+            "dnsmasq": (nas, "journalctl -u dnsmasq --no-pager | tail -30; ss -lunp | grep :53"),
+            "nas_nft": (nas, "nft list table inet nixos-fw"),
+        }))
+    kubectl("exec probe-coord -- nslookup -type=a only-nas.test | grep -q 10.42.0.77")
+    kubectl("exec probe-nas -- nslookup -type=a only-nas.test | grep -q 10.42.0.77")
 
 
 with step("resilience: coordinator link flap"):

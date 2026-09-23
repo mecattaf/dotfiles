@@ -38,7 +38,11 @@ let
         "vm.overcommit_memory",
     ]
 
-    receipt = {"test": "ax-fleet", "subtests": [], "values": {}}
+    from typing import Any
+
+    receipt_subtests: list[dict[str, Any]] = []
+    receipt_values: dict[str, Any] = {}
+    receipt: dict[str, Any] = {"test": "ax-fleet", "subtests": receipt_subtests, "values": receipt_values}
 
 
     def save_receipt():
@@ -49,7 +53,9 @@ let
 
 
     def record(key, value):
-        receipt["values"][key] = value
+        receipt_values[key] = value
+        # Also into the build log: a failed build keeps no $out.
+        print(f"AXFLEET-RECORD {key} = {json.dumps(value, sort_keys=True)}")
         save_receipt()
 
 
@@ -58,7 +64,7 @@ let
         t0 = time.monotonic()
         with subtest(name):
             yield
-        receipt["subtests"].append({"name": name, "result": "pass", "seconds": round(time.monotonic() - t0, 1)})
+        receipt_subtests.append({"name": name, "result": "pass", "seconds": round(time.monotonic() - t0, 1)})
         save_receipt()
 
 

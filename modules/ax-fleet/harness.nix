@@ -104,7 +104,7 @@ let
       mkdir -p "$HOME/.kube"
       tmp=$(mktemp "$HOME/.kube/.config.XXXXXX")
       trap 'rm -f "$tmp"' EXIT
-      ssh ''${AX_FLEET_NAS:-nas} cat /etc/ax-fleet/admin.kubeconfig > "$tmp"
+      ssh "''${AX_FLEET_NAS:-nas}" cat /etc/ax-fleet/admin.kubeconfig > "$tmp"
       [ -s "$tmp" ] || { echo "ax-fleet-kubeconfig: empty kubeconfig from the NAS" >&2; exit 1; }
       mv "$tmp" "$HOME/.kube/config"
       trap - EXIT
