@@ -46,6 +46,12 @@
     ./tailscale-personal.nix # Additional isolated SaaS ingress; never enroll the lent laptops here
     ./personal-https.nix # Gated, NAS-scoped DNS-01 certificates for private media
     ./headscale-backup.nix # consistent identity backup before overseas handover
+    # ax on the fleet (2026-09-23): this box is the CONTROL node. k3s server
+    # with its kubelet, Substrate's and ax's control planes, the registry.
+    # "hypervisor on NAS" (Tom, 2026-09-23). The CIDR-overlap assertions in
+    # that module evaluate whether or not the switch below is on.
+    ../../modules/ax-fleet
+    ./substrate-link.nix # 2026-09-23: Cloudflare floor (Substrate) -> ax link, outbound only; gate OFF (LINK-DESIGN.md)
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc
@@ -121,6 +127,24 @@
   myNas.tailscalePersonal.funnel.policyApproved = true;
   myNas.headscale.serverUrl = "https://nas-saas.tail8dd1.ts.net:8443";
   myNas.headscale.backup.enable = true;
+
+  # ── ax on the fleet: THE kill switch for this host ─────────────────────
+  # One line. `false`, switch (from the coordinator, --target-host nas), then
+  # `ssh -t nas sudo ax-fleet-teardown` (k3s-killall.sh, the guard table and
+  # the sysctl restore). The teardown stays on this host's PATH with the
+  # switch off; there is no dotfiles checkout here. It removes every trace but
+  # the data left on purpose under /mnt/fast/k3s and /mnt/nas/services/ax-fleet.
+  # The k3s credentials are the agenix secrets secrets/k3s-token.age (server,
+  # this host only) and secrets/k3s-agent-token.age (mySecrets is on here).
+  # Switch order: this host first, then the coordinator.
+  myAxFleet = {
+    enable = true;
+    role = "control";
+    lan = {
+      interface = "enp1s0";
+      address = "10.42.0.1";
+    };
+  };
   # Retired 2026-09-16: the Dell belongs to its owner; Tom no longer
   # publishes or manages Omarchy updates. Keep historical receipts only.
   myNas.omarchyUpdateCenter.enable = false;

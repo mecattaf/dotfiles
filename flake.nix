@@ -27,6 +27,26 @@
     # writing the lock. A plain local build uses the reviewed fallback revision.
     nixpkgs-fresh.url = "github:NixOS/nixpkgs/nixos-unstable-small";
 
+    # nixpkgs-go — pins ONE attribute, `go_1_27`, for ONE package, pkgs/ax.
+    # Same shape and same reasoning as nixpkgs-paperless below: a single
+    # upstream that needs a version no pin this flake already carries can
+    # supply, named here so it is reviewable rather than hidden in the package.
+    #
+    # google/ax v0.3.0's go.mod opens `go 1.27.1`, and Go refuses outright to
+    # build a module whose `go` directive is newer than the running toolchain
+    # (`go: go.mod requires go >= 1.27.1 (running go 1.27.0; GOTOOLCHAIN=local)`),
+    # with no network in the sandbox to fetch one. MEASURED 2026-09-23:
+    #   nixpkgs        go 1.26.5, go_1_27 1.27rc2   too old
+    #   nixpkgs-fresh  go 1.26.7, go_1_27 1.27.0    too old, by one patch release
+    #   this input     go_1_27 1.27.1               exact
+    #
+    # Pinned BY REVISION, not by branch, deliberately: nixpkgs-fresh is a rolling
+    # resolver whose whole job is to advance, and a toolchain pin has the opposite
+    # job. Retire this input the moment nixpkgs-fresh's go_1_27 reaches 1.27.1 —
+    # `nix eval .#inputs.nixpkgs-fresh.legacyPackages.x86_64-linux.go_1_27.version`
+    # is the whole test — and point overlays/default.nix back at it.
+    nixpkgs-go.url = "github:NixOS/nixpkgs/a251c42236bbff9f870fcdc513dac5873009c304";
+
     # nixpkgs-stable — pins ONLY nixosConfigurations.nas (issue #135 ruling):
     # the NAS is a frozen self-sustaining appliance on standard stable nixpkgs,
     # maintained manually every few years. It never rides the unstable
@@ -571,6 +591,9 @@
 
       overlays.default = import ./overlays {
         torchRocm = inputs.nix-strix-halo.packages.${system}.torch-rocm;
+        # One attribute out of the nixpkgs-go input, for pkgs/ax only. An
+        # overlay cannot read `inputs`, so it is passed like torchRocm above.
+        go127 = inputs.nixpkgs-go.legacyPackages.${system}.go_1_27;
       };
 
       nixosConfigurations = {
@@ -646,6 +669,11 @@
             speech-session
             parakeet-service
             academic-ocr
+            # `nix build .#ax` — the ax control plane's four binaries. Exposed
+            # because nothing installs it by default (modules/ax-client.nix
+            # lands with its gate OFF on every host), so this is the only way
+            # to build or inspect it without flipping a gate first.
+            ax
             brother-print-text
             call-diarize
             browser-desktop
@@ -679,7 +707,38 @@
             ;
           live-iso = strixAi.live-iso;
           nas-installer-iso = nasInstaller.config.system.build.isoImage;
+          # The second half of the ax-fleet kill switch (pkgs/ax-fleet-teardown).
+          ax-fleet-teardown = pkgs.callPackage ./pkgs/ax-fleet-teardown {
+            k3s = inputs.nixpkgs.legacyPackages.${system}.k3s_1_36;
+          };
+          # The fleet's ax Task image (OCI layout plus `digest`), built exactly
+          # as modules/ax-fleet/ax.nix builds the one the NAS seeds: the flake's
+          # nixpkgs, the patched `ax`, pi from llm-agents. pi only, no claude-code.
+          ax-agent-image = inputs.nixpkgs.legacyPackages.${system}.callPackage ./pkgs/ax-agent-image {
+            inherit (self.packages.${system}) ax;
+            inherit (inputs.llm-agents.packages.${system}) pi;
+          };
+          # Upstream Agent Substrate d277088b: the six component images, the
+          # third-party images by digest and the gVisor asset (pkgs/substrate).
+          substrate-images = pkgs.callPackage ./pkgs/substrate/images.nix {
+            substrate = pkgs.callPackage ./pkgs/substrate {
+              go_1_27 = inputs.nixpkgs-go.legacyPackages.${system}.go_1_27;
+            };
+          };
         };
+
+      # The same teardown the control and harness roles keep on their PATH
+      # (`sudo ax-fleet-teardown` after `myAxFleet.enable = false` and a
+      # switch). This app is for a generation rollback from a checkout, where
+      # the older generation predates the package: on the coordinator
+      # `sudo nix run ~/dotfiles#ax-fleet-teardown`; for the NAS, which holds
+      # no checkout, `nix copy --to ssh-ng://nas .#ax-fleet-teardown`, then
+      # `ssh -t nas sudo <out>/bin/ax-fleet-teardown`.
+      apps.${system}.ax-fleet-teardown = {
+        type = "app";
+        program = "${self.packages.${system}.ax-fleet-teardown}/bin/ax-fleet-teardown";
+        meta.description = "Tear down ax-fleet's k3s leftovers and restore the pre-k3s sysctls";
+      };
 
       # `nix build .#models.<id>` retired with the 2026-08-21 "weights leave
       # nix" ruling: weights are no longer derivations, so there is nothing to
@@ -704,6 +763,22 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        # ax on the fleet (modules/ax-fleet, DESIGN.md 12). ax-fleet is the
+        # 4-VM switch/rollback proof, ax-fleet-boot the NAS-from-boot proof,
+        # ax-fleet-topology the evaluation-only assertions over the real hosts.
+        ax-fleet = import ./tests/ax-fleet {
+          inherit pkgs inputs;
+          inherit (nixpkgs) lib;
+        };
+        ax-fleet-boot = import ./tests/ax-fleet-boot {
+          inherit pkgs inputs;
+          inherit (nixpkgs) lib;
+        };
+        ax-fleet-topology = import ./tests/ax-fleet-topology {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
+
         # DF-5: the vendored Cargo.lock must equal upstream's at the pinned rev.
         # A build-time comparison, not an evaluation-time read, so evaluation
         # never needs the fetched source (no import-from-derivation).
@@ -753,6 +828,154 @@
               python3 repo/tests/qwen-speech/test_speech.py
               touch "$out"
             '';
+        # ax-client-topology — the gate's rendered shape (modules/ax-client.nix,
+        # #453). `nix flake check --no-build` on its own proves only that
+        # the tree EVALUATES, and it would stay green through a merge resolution
+        # that dropped ../../modules/ax-client.nix from a host's imports, that
+        # flipped a gate, or that let the module reach hosts/nas. Every assertion
+        # below is eval-time, so each runs under --no-build:
+        #   - the option EXISTS on the three interactive hosts, which is what
+        #     proves the import survived (a dropped import makes the option
+        #     undefined, not false);
+        #   - it is FALSE on all three. This is the line that goes red on the
+        #     flip, deliberately: the flip edits this check in the same commit,
+        #     so no gate on this fleet can move without a reviewer seeing it;
+        #   - kubectl and ax are therefore absent from all three systemPackages,
+        #     asserted directly rather than inferred from the gate;
+        #   - the NAS carries no myAxClient option at all — it does not import
+        #     the module, it is pinned to nixpkgs-stable, and it is an appliance.
+        ax-client-topology =
+          let
+            hostCfg = host: self.nixosConfigurations.${host}.config;
+            gated = [
+              "coordinator"
+              "worker"
+              "client"
+            ];
+          in
+          assert builtins.all (host: (hostCfg host) ? myAxClient) gated;
+          # ON on the coordinator only, as a mkDefault consequence of
+          # myAxFleet's harness role (modules/ax-fleet/default.nix); OFF on the
+          # worker (inference role) and the client (no fleet role).
+          assert (hostCfg "coordinator").myAxFleet.enable && (hostCfg "coordinator").myAxFleet.role == "harness";
+          assert (hostCfg "coordinator").myAxClient.enable;
+          assert builtins.all (host: (hostCfg host).myAxClient.enable == false) [
+            "worker"
+            "client"
+          ];
+          assert builtins.all (
+            host:
+            !(builtins.elem pkgs.kubectl (hostCfg host).environment.systemPackages)
+            && !(builtins.elem pkgs.ax (hostCfg host).environment.systemPackages)
+          ) [
+            "worker"
+            "client"
+          ];
+          assert !((hostCfg "nas") ? myAxClient);
+          pkgs.runCommand "ax-client-topology" { } ''
+            touch "$out"
+          '';
+
+        # ax-conwip-topology — the CONWIP gate's rendered shape
+        # (home/ax-conwip.nix, PR #454). Home Manager gives no `assertions`
+        # option, so the invariants over the RENDERED user units live here,
+        # the same reasoning as tally-filler-topology and tally-pump-topology
+        # further down this file.
+        #
+        # Every assertion below is eval-time and sits in front of the
+        # runCommand, so each runs under `--no-build`. What each one is for:
+        #   - the option EXISTS on all three home-manager hosts, which is what
+        #     proves the import survived: dropping ./ax-conwip.nix from
+        #     home/home.nix's imports makes the option UNDEFINED, not false,
+        #     and turns the first assert red. That is the mutation hint;
+        #   - it is FALSE on all three, and this is the line that goes red on
+        #     the flip, deliberately, so the flip edits this check in the same
+        #     commit and no gate on this fleet moves without a reviewer;
+        #   - NO `ax-conwip` user unit is rendered anywhere — service, timer or
+        #     socket — asserted directly over the rendered attrsets rather than
+        #     inferred from the gate, because `lib.mkIf false` removing the key
+        #     is the property under test, not an assumption;
+        #   - no system-bus twin: this is a per-user scheduler reading per-user
+        #     seat meters, and it must never acquire a system unit;
+        #   - it writes no tmpfiles rule while off, and in particular declares
+        #     nothing over the REWRITE's meters directory, which belongs to
+        #     home/seat-feeder.nix (R44) and is an input to this module and
+        #     never an output;
+        #   - the NAS carries no home-manager at all (flake.nix:603,
+        #     `withHomeManager = false`), so it cannot carry this option; the
+        #     assert pins that rather than leaving it to be rediscovered.
+        ax-conwip-topology =
+          let
+            homeHosts = [
+              "coordinator"
+              "worker"
+              "client"
+            ];
+            homeCfg = host: self.nixosConfigurations.${host}.config.home-manager.users.tom;
+            hostCfg = host: self.nixosConfigurations.${host}.config;
+          in
+          # the import survived, on every host that has home-manager.
+          assert builtins.all (host: (homeCfg host) ? myAxConwip) homeHosts;
+          # and the gate is OFF on every one of them.
+          assert builtins.all (host: (homeCfg host).myAxConwip.enable == false) homeHosts;
+          # therefore NOTHING is rendered: no service, no timer, no socket.
+          assert builtins.all (host: !((homeCfg host).systemd.user.services ? ax-conwip)) homeHosts;
+          assert builtins.all (host: !((homeCfg host).systemd.user.timers ? ax-conwip)) homeHosts;
+          assert builtins.all (host: !((homeCfg host).systemd.user.sockets ? ax-conwip)) homeHosts;
+          # no system-bus twin, on any host, including the NAS.
+          assert builtins.all (
+            host:
+            !((hostCfg host).systemd.services ? ax-conwip) && !((hostCfg host).systemd.timers ? ax-conwip)
+          ) (homeHosts ++ [ "nas" ]);
+          # no tmpfiles rule of its own while off, and nothing at all naming
+          # the meters directory it only ever reads.
+          assert builtins.all (
+            host:
+            !(builtins.any (
+              r: nixpkgs.lib.hasInfix "ax-conwip" r
+            ) (homeCfg host).systemd.user.tmpfiles.rules)
+          ) homeHosts;
+          # the NAS has no home-manager, so it cannot carry the option.
+          assert !((hostCfg "nas") ? home-manager);
+          # AND, with the gate flipped IN MEMORY through extendModules — which
+          # changes no rendered byte on any host and writes nothing anywhere —
+          # the argument list the unit would run is the one the program accepts.
+          #
+          # Until 2026-09-23 `ExecStart` ran `src/cli.ts`, which reads the
+          # records directory once, prints its ledger and exits: this file
+          # declared a long-running service whose program was a oneshot in
+          # everything but name. It now runs `src/serve.ts`, which polls,
+          # admits under a cap that holds for the life of the process, reads
+          # the meters directory, and exits 0 on SIGTERM. These asserts are
+          # what keep the module's argument list and the program's contract
+          # from drifting apart again, and they are cheap and eval-time:
+          #   - the entry point IS src/serve.ts and is NOT src/cli.ts;
+          #   - `--meters` is passed, so the AX_CONWIP_METERS this unit already
+          #     set is no longer read by nothing;
+          #   - `--live` is ABSENT. The live dispatch path is gated three ways
+          #     inside the program and this module must never be one of the
+          #     ways in;
+          #   - there is still NO Install section on the flipped unit, so
+          #     declaring it and arming it stay two separate acts.
+          assert (
+            let
+              flipped = self.nixosConfigurations.coordinator.extendModules {
+                modules = [ { home-manager.users.tom.myAxConwip.enable = true; } ];
+              };
+              unit = flipped.config.home-manager.users.tom.systemd.user.services.ax-conwip;
+              raw = unit.Service.ExecStart;
+              exec = if builtins.isList raw then builtins.concatStringsSep " " raw else raw;
+            in
+            nixpkgs.lib.hasInfix "src/serve.ts" exec
+            && !(nixpkgs.lib.hasInfix "src/cli.ts" exec)
+            && nixpkgs.lib.hasInfix "--meters" exec
+            && !(nixpkgs.lib.hasInfix "--live" exec)
+            && !(unit ? Install)
+          );
+          pkgs.runCommand "ax-conwip-topology" { } ''
+            touch "$out"
+          '';
+
         qwen-speech-topology =
           let
             coord = self.nixosConfigurations.coordinator.config;

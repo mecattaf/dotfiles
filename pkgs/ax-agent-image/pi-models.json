@@ -1,0 +1,26 @@
+{
+  "providers": {
+    "halogen": {
+      "api": "openai-completions",
+      "apiKey": "none",
+      "authHeader": false,
+      "baseUrl": "@HALOGEN_URL@/v1",
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": false,
+        "supportsStore": false
+      },
+      "models": [
+        {
+          "id": "halogen-qwen3.8-flash-next",
+          "name": "Qwen3.8-Flash-Next (Halogen, worker)",
+          "contextWindow": 262144,
+          "maxTokens": 32768,
+          "input": ["text", "image"],
+          "reasoning": true,
+          "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 }
+        }
+      ]
+    }
+  }
+}

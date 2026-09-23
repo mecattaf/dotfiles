@@ -92,6 +92,20 @@ in
   # NAS private media HTTPS: zone-limited DNS-01 token, no broad Wrangler OAuth
   # authority. Ciphertext is provisioned before enabling personal-https.nix.
   "secrets/nas-cloudflare-dns.age".publicKeys = editors ++ nasOnly;
+  # The k3s credentials (ax on the fleet, modules/ax-fleet/k3s.nix), split in
+  # fix round 2 (2026-09-23). k3s-token.age is the SERVER token: read by the
+  # NAS only; with it comes the k3s:server role (/v1-k3s/token, /cacerts,
+  # /encrypt/config). k3s-agent-token.age is the agent join credential: the
+  # NAS passes it as --agent-token-file, the coordinator joins with it. Both
+  # were minted fresh from /dev/urandom with `age -R` over these lists, never
+  # displayed; the 643a4196 ciphertext (also decryptable by the worker and the
+  # client) was replaced, not re-encrypted, before any cluster used it.
+  # Rotate with: nix develop -c agenix -e secrets/<name>.age
+  "secrets/k3s-token.age".publicKeys = editors ++ nasOnly;
+  "secrets/k3s-agent-token.age".publicKeys = editors ++ coordinatorOnly ++ nasOnly;
+  # substrate-link bearer (hosts/nas/substrate-link.nix): one token per link identity, minted by Tom as a
+  # Worker secret on the floor and sealed here. NAS only: the link runs on the NAS host.
+  "secrets/floor-link-token.age".publicKeys = editors ++ nasOnly;
   # --- wifi PSK tier: the coordinator, whose Freebox uplink
   # (wlp192s0) is now declarative too (migrated from an imperative profile on
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r

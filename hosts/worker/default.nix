@@ -80,9 +80,30 @@
     # resolves to loopback, which every distributed library happily binds — the
     # rank-1-hangs-forever failure. The NAS must NOT import this.
     ../../modules/fleet-hosts.nix
+    # ax on the fleet (2026-09-23): the INFERENCE role, see myAxFleet below.
+    ../../modules/ax-fleet
+    # kubectl + the google/ax binaries, behind myAxClient.enable. Imported on
+    # all three interactive hosts, OFF on all three; read that module's header
+    # for the runbook and for what it deliberately does not declare.
+    ../../modules/ax-client.nix
   ];
 
   networking.hostName = "worker";
+
+  # ── ax on the fleet: the INFERENCE role ─────────────────────────────────
+  # "halogen inference mainly on worker" (Tom, 2026-09-23). Halogen stays this
+  # box's host service; ax sandboxes on the coordinator reach 10.42.0.5:8731
+  # through Substrate's egress gateway on the NAS. This role renders nothing
+  # at runtime (no k3s, no unit): modules/ax-fleet/inference.nix only asserts
+  # that 8731 stays open on enp191s0. This host is not switched in the motion.
+  myAxFleet = {
+    enable = true;
+    role = "inference";
+    lan = {
+      interface = "enp191s0";
+      address = "10.42.0.5";
+    };
+  };
 
   # gVisor runsc for direct rootless `runsc run` jobs (modules/gvisor.nix).
   # OFF until Tom flips it; the lane recommends the worker first.
@@ -322,6 +343,13 @@
   # the delivered tier re-minted for this box in the same commit decrypts on the
   # first boot of the new closure — no flash, no host-key dance.
   mySecrets.enable = true;
+
+  # OFF, and it lands OFF (modules/ax-client.nix). There is no cluster on this
+  # fleet to point kubectl at and no Agent Substrate for ax to delegate to, so
+  # flipping this today installs two binaries with nothing to talk to. The flip
+  # is Tom's, one host at a time, and ax-client-topology in flake.nix goes red
+  # on it by design.
+  myAxClient.enable = false;
 
   # ── Fleet candidate adoption (#354, 2026-09-13): ROLLING ─────────────────
   # The worker adopts the NAS's signed nightly candidate on its own when it is

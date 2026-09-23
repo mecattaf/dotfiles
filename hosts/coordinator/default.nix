@@ -75,14 +75,40 @@
     # this: it carries its own pins in hosts/nas/network.nix and keeps the
     # stock loopback mapping.
     ../../modules/fleet-hosts.nix
+    # ax on the fleet (2026-09-23): the HARNESS node, see myAxFleet below.
+    ../../modules/ax-fleet
     # The REWRITE kernel (github.com/mecattaf/tally, U-B1…U-B13) as one system
     # service against ~/.local/state/tally-rewrite/, coexisting with the live
     # user-bus tally-daemon.service (U-D13). Declared here, installed by U-D19's
     # switch — never hand-started (DEFERRED.md DF-U-D13-1).
     ../../modules/tally-b.nix
+    # kubectl + the google/ax binaries, behind myAxClient.enable. Imported on
+    # all three interactive hosts, OFF on all three; read that module's header
+    # for the runbook and for what it deliberately does not declare.
+    ../../modules/ax-client.nix
   ];
 
   networking.hostName = "coordinator";
+
+  # ── ax on the fleet: THE kill switch for this host ─────────────────────
+  # The HARNESS node (modules/ax-fleet/harness.nix): a k3s agent tainted
+  # ate.dev/sandboxClass=gvisor:NoSchedule, so only atelet and the gVisor
+  # WorkerPool land here. "agent harnesses on coordinator" (Tom, 2026-09-23).
+  # Switch the NAS first. `false`, switch, then `sudo ax-fleet-teardown`
+  # (on PATH whatever the switch says) is the whole rollback. This
+  # also turns myAxClient (kubectl, ax) on by mkDefault.
+  myAxFleet = {
+    enable = true;
+    role = "harness";
+    lan = {
+      interface = "wlp192s0";
+      address = "10.42.0.2";
+      # The wired port: "Wired connection 1" autoconnects with DHCP (MEASURED
+      # nmcli, 2026-09-23). The guard covers it and it never takes the LAN
+      # routes from the wifi (fix round 3).
+      extraInterfaces = [ "enp191s0" ];
+    };
+  };
 
   # gVisor runsc for direct rootless `runsc run` jobs (modules/gvisor.nix).
   # OFF until Tom flips it; the lane recommends the worker first.
@@ -114,6 +140,10 @@
   # #136: the tailnet front door (paperless.internal) for the NAS Paperless
   # backend; flips with the NAS's myNas.paperless.enable (2026-09-13).
   myNasClient.relayPaperless = true;
+
+  # myAxClient (kubectl + ax) is ON here by mkDefault from myAxFleet's
+  # harness role (modules/ax-fleet/default.nix); ax-client-topology in
+  # flake.nix pins that.
 
   # The rewrite's served kernel: ONE kernel, on the coordinator (spec §2.4 Q2 —
   # the worker twin is a ROW this kernel serves, not a second kernel), on the
