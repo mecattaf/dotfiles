@@ -13,8 +13,10 @@ SUB_CONTROL_DEPLOYMENTS = [
     "ate-api-server",
     "ate-controller",
     "atenet-router",
-    "podcertificate-controller",
 ]
+# ate-setup installs the pod-certificate controller in its own namespace
+# (manifests/ate-install/pod-certificate-controller.yaml), not in ate-system.
+SUB_PODCERT_NS = "podcertificate-controller-system"
 
 
 def sub_k(args, timeout=120):
@@ -27,10 +29,12 @@ def sub_json(args):
 
 with subtest("substrate: bootstrap steps 20-50 ran"):
     nas.wait_for_unit("ax-fleet-bootstrap.service", timeout=3600)
-    log = nas.succeed("journalctl -b -u ax-fleet-bootstrap.service --no-pager")
-    for step in ["20-registry-svc", "30-substrate", "40-gvisor-asset", "50-workerpool"]:
-        assert f"step {step}" in log, f"bootstrap step {step} did not run"
-    assert "gvisor asset verified" in log, "40-gvisor-asset did not verify the tarball"
+    boot_log = nas.succeed("journalctl -b -u ax-fleet-bootstrap.service --no-pager")
+    # Not `step`: that name is the prelude's receipt context manager, which
+    # 90-rollback still needs.
+    for step_name in ["20-registry-svc", "30-substrate", "40-gvisor-asset", "50-workerpool"]:
+        assert f"step {step_name}" in boot_log, f"bootstrap step {step_name} did not run"
+    assert "gvisor asset verified" in boot_log, "40-gvisor-asset did not verify the tarball"
     stamp = sub_k(
         "-n kube-system get configmap ax-fleet-substrate -o jsonpath='{.data.version}'"
     ).strip()
@@ -51,6 +55,12 @@ with subtest("substrate: every control workload Available, on the NAS"):
     assert any(n.startswith("atenet-egress") for n in names | sts), "no atenet-egress"
     assert "postgres" in sts, f"postgres StatefulSet missing: {sorted(sts)}"
     sub_k(f"-n {SUB_NS} rollout status statefulset/postgres --timeout=600s", timeout=660)
+    sub_k(
+        f"-n {SUB_PODCERT_NS} wait --for=condition=Available deploy/podcertificate-controller --timeout=600s",
+        timeout=660,
+    )
+    for pod in sub_json(f"-n {SUB_PODCERT_NS} get pods")["items"]:
+        assert pod["spec"].get("nodeName") == "nas", f"{pod['metadata']['name']} on {pod['spec'].get('nodeName')!r}"
     for pod in sub_json(f"-n {SUB_NS} get pods")["items"]:
         owner = (pod["metadata"].get("ownerReferences") or [{}])[0].get("kind", "")
         name = pod["metadata"]["name"]
@@ -106,8 +116,8 @@ with subtest("substrate: WorkerPool ateom-gvisor Ready 2 on the coordinator"):
     assert len(workers) == 2, f"{len(workers)} worker pods"
     for p in workers:
         assert p["spec"]["nodeName"] == "coordinator", p["spec"]["nodeName"]
-        lim = p["spec"]["containers"][0]["resources"]["limits"]["memory"]
-        assert lim, "worker pod has no memory limit"
+        lims = [c.get("resources", {}).get("limits", {}).get("memory") for c in p["spec"]["containers"]]
+        assert any(lims), f"worker pod has no memory limit: {lims}"
 
 with subtest("substrate: gVisor fetched through the RustFS fallback"):
     # No internet in the VM: atelet's anonymous GCS open of gs://gvisor/...

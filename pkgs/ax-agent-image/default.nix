@@ -24,6 +24,10 @@
   # pi from llm-agents. Halogen only on day one; no claude-code in this image
   # until Tom rules on Claude credentials in sandboxes (DESIGN.md section 11).
   pi,
+  # Test-only variants (tests/ax-fleet): extra store paths linked into /bin and
+  # a name suffix. The fleet image passes neither: pi only, no claude-code.
+  extraPaths ? [ ],
+  variant ? "",
 }:
 # The ax Task image for the fleet (DESIGN.md section 10.2): `ax-agent`.
 #
@@ -55,6 +59,26 @@ let
   '';
 
   # The runner at the path Substrate's template names.
+  # pi with its ELF program headers in the order the ELF spec asks for. pi
+  # 0.85.1's bun binary lists PT_LOAD out of p_vaddr order; Linux runs it, but
+  # gVisor's loader refuses it (ENOEXEC, exit 126 inside the sandbox, MEASURED
+  # in the ax-fleet VM test, INTEGRATE.md). Only table entries move; segments,
+  # addresses and bytes stay. The name keeps pi's, so the store path length is
+  # unchanged; only the text wrapper in bin/ is repointed.
+  piSandbox = runCommand pi.name { nativeBuildInputs = [ python3 ]; } ''
+    cp -a ${pi} $out
+    chmod -R u+w $out
+    find $out -type f -print0 | while IFS= read -r -d "" f; do
+      if [ "$(head -c 4 "$f" | od -An -c | tr -d ' ')" = '177ELF' ]; then
+        python3 ${./elf-sort-load.py} "$f"
+      fi
+    done
+    for f in $out/bin/*; do
+      substituteInPlace "$f" --replace-quiet ${pi} $out
+    done
+    chmod -R a-w $out
+  '';
+
   runner = runCommand "ax-task-runner-usr-local" { } ''
     mkdir -p $out/usr/local/bin
     ln -s ${ax}/bin/ax-task-runner $out/usr/local/bin/ax-task-runner
@@ -90,9 +114,10 @@ let
       gnutar
       gzip
       git
-      pi
+      piSandbox
       ax-agent
-    ];
+    ]
+    ++ extraPaths;
     pathsToLink = [
       "/bin"
       "/etc/ssl"
@@ -101,7 +126,7 @@ let
   };
 
   image = dockerTools.buildLayeredImage {
-    name = "ax/ax-agent";
+    name = "ax/ax-agent${variant}";
     tag = "v${ax.version}-p1";
     contents = [
       env
@@ -128,13 +153,13 @@ let
   };
 in
 (ociLayout {
-  name = "ax/ax-agent";
+  name = "ax/ax-agent${variant}";
   tag = "v${ax.version}-p1";
   inherit image;
 }).overrideAttrs
   (old: {
     passthru = old.passthru // {
-      inherit ax-agent image;
+      inherit ax-agent image piSandbox;
     };
     meta = {
       description = "ax Task image for the fleet: ax-task-runner, pi, and the ax-agent adapter (OCI layout)";

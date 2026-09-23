@@ -21,6 +21,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MODEL = "halogen-qwen3.8-flash-next"
 REPLY = "halogen-stub-ok"
+# The pi mode asks for one JSON object against a JSON Schema in its system
+# prompt; the adapter's default schema wants {"answer": <integer>}.
+JSON_REPLY = '{"answer": 42}'
+
+
+def reply_for(req):
+    """REPLY, or JSON_REPLY when any message mentions a JSON Schema."""
+    for msg in req.get("messages") or []:
+        content = msg.get("content") if isinstance(msg, dict) else None
+        if isinstance(content, list):
+            content = " ".join(str(p.get("text", "")) for p in content if isinstance(p, dict))
+        if isinstance(content, str) and "JSON Schema" in content:
+            return JSON_REPLY
+    return REPLY
 LOCK = threading.Lock()
 
 
@@ -86,7 +100,7 @@ def make_handler(log_path):
                         "choices": [
                             {
                                 "index": 0,
-                                "message": {"role": "assistant", "content": REPLY},
+                                "message": {"role": "assistant", "content": reply_for(req)},
                                 "finish_reason": "stop",
                             }
                         ],
@@ -101,7 +115,7 @@ def make_handler(log_path):
             self.end_headers()
             chunks = [
                 {"role": "assistant", "content": ""},
-                {"content": REPLY},
+                {"content": reply_for(req)},
             ]
             for i, delta in enumerate(chunks + [None]):
                 choice = {"index": 0, "delta": delta or {}, "finish_reason": None if delta else "stop"}

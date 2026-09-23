@@ -29,6 +29,9 @@ let
     TEARDOWN = "${teardown}/bin/ax-fleet-teardown"
     PROBE_IMAGE = "ax-fleet-probe:test"
     PROBE_TARBALL = "${nodes.probeImage}"
+    # Test-only task image variant with claude-code (nodes.nix); its OCI layout
+    # carries the manifest digest the Task names.
+    CLAUDE_PROBE_OCI = "${nodes.claudeProbeImage}"
     LOCAL_PATH_ROOT = "/mnt/nas/services/ax-fleet/local-path"
     SYSCTLS = [
         "net.ipv4.ip_forward",

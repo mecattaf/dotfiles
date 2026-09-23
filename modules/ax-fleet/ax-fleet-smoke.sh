@@ -8,28 +8,38 @@
 #   ax-fleet-smoke egress-deny [URL]       GET a non-allowlisted URL (default the
 #                                          coordinator's LAN address); must fail
 #   ax-fleet-smoke floor N                 N Tasks in a row; none ResourceExhausted
+#   ax-fleet-smoke probe       [--hold N]  `claude --version` and a GET of Halogen's
+#                                          /v1/models, sandboxClass gvisor; needs an
+#                                          --image that carries claude-code (the
+#                                          fleet image does not, DESIGN.md 11)
 #
 # Options: --hold N (re-read the phase after N seconds), --timeout N (per Task,
-# default 900), --keep (do not delete the Tasks). Exit 0 only when the case
-# passes. The receipt carries no secret: Tasks carry none (DESIGN.md 11).
+# default 900), --keep (do not delete the Tasks), --image REF (default: the
+# fleet image, ax-fleet-image-ref), --sandbox-class C (spec.sandboxClass; empty
+# means gVisor). Exit 0 only when the case passes. The receipt carries no secret: Tasks carry none (DESIGN.md 11).
 
 export AX_SERVER="${AX_SERVER:-http://127.0.0.1:8080}"
 ns="$AX_FLEET_ATESPACE"
 hold=0
 timeout=900
 keep=0
+image=""
+sandbox_class=""
 args=()
 while [ $# -gt 0 ]; do
   case "$1" in
   --hold) hold="$2"; shift 2 ;;
   --timeout) timeout="$2"; shift 2 ;;
   --keep) keep=1; shift ;;
+  --image) image="$2"; shift 2 ;;
+  --sandbox-class) sandbox_class="$2"; shift 2 ;;
   *) args+=("$1"); shift ;;
   esac
 done
-[ "${#args[@]}" -ge 1 ] || { sed -n '2,14p' "$0" >&2; exit 64; }
+[ "${#args[@]}" -ge 1 ] || { sed -n '2,21p' "$0" >&2; exit 64; }
 case_="${args[0]}"
-image="$(ax-fleet-image-ref)"
+[ -n "$image" ] || image="$(ax-fleet-image-ref)"
+[ "$case_" != probe ] || sandbox_class="${sandbox_class:-gvisor}"
 run_id="$(date +%s)-$$"
 
 ensure_gateway() {
@@ -48,7 +58,9 @@ spec:
 YAML
 }
 
-# task_json NAME: the Task as JSON (empty object when absent).
+# task_json NAME: the Task as JSON (empty object when absent). The status is
+# protobuf JSON, which omits zero values: an exited command with exit code 0
+# carries `exited: true` and no `exitCode` (MEASURED in the VM test).
 task_json() {
   ax -a "$ns" get task "$1" 2>/dev/null | yq -o json '.' 2>/dev/null || echo '{}'
 }
@@ -59,6 +71,8 @@ run_task() {
   shift
   local cmd_json
   cmd_json="$(jq -cn '$ARGS.positional' --args -- "$@")"
+  local class_line=""
+  [ -z "$sandbox_class" ] || class_line="  sandboxClass: \"$sandbox_class\""
   ax -a "$ns" apply -f - >/dev/null <<YAML
 apiVersion: ax.io/v1alpha1
 kind: Task
@@ -67,6 +81,7 @@ metadata:
   atespace: $ns
 spec:
   image: "$image"
+$class_line
   command: $cmd_json
   env:
     - name: HALOGEN_URL
@@ -100,7 +115,7 @@ YAML
     --argjson t "$t" --argjson result "$result" --argjson secs "$((settled - t0))" --argjson hold "$hold" \
     '{task:$name, phase:$phase, phase_after_hold:$after, hold_seconds:$hold, settle_seconds:$secs,
       ready:(($t.status.conditions // []) | map(select(.type=="Ready")) | .[0] // null | if . then {reason, message} else null end),
-      exit_code:($t.status.command.exitCode // null), result_bytes:($t.status.command.resultBytes // null),
+      exit_code:(if ($t.status.command.exited // false) then ($t.status.command.exitCode // 0) else null end), result_bytes:($t.status.command.resultBytes // null),
       result_sha256:($t.status.command.resultSha256 // null), result:$result}'
   if [ "$keep" -eq 0 ]; then ax -a "$ns" delete task "$name" >/dev/null 2>&1 || true; fi
 }
@@ -137,6 +152,13 @@ floor)
   done
   jq -c --arg case "floor $n" --argjson n "$n" \
     '{case:$case, tasks:., pass:((length == $n) and all(.[]; .phase=="Completed" and ((.ready.message // "") | test("ResourceExhausted") | not)))}' <<<"$all"
+  ;;
+probe)
+  r="$(run_task "smoke-probe-$run_id" ax-agent probe)"
+  jq -c --arg case "$case_" --arg class "$sandbox_class" --arg image "$image" \
+    '. + {case:$case, sandbox_class:$class, image:$image,
+          pass:(.phase=="Completed" and .phase_after_hold=="Completed" and .exit_code==0
+                and .result.claude_rc==0 and .result.http_code=="200")}' <<<"$r"
   ;;
 *)
   echo "unknown case: $case_" >&2

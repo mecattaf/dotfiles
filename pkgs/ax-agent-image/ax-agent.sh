@@ -5,6 +5,11 @@
 #   ax-agent pi              pi against Halogen, result validated against a
 #                            JSON Schema (the probe's adapter-pi.sh, e1)
 #   ax-agent fetch URL       GET URL; exits with curl's code (egress checks)
+#   ax-agent probe           what a sandbox can do without a credential:
+#                            `claude --version` (only in an image that carries
+#                            claude-code; the fleet image does not) and one GET
+#                            of Halogen's /v1/models; records /proc/version,
+#                            which names gVisor's kernel inside a sandbox
 #   ax-agent exit N          exit with code N
 #
 # Every mode writes its result to $AX_RESULT_PATH (default .ax/result.json
@@ -56,8 +61,10 @@ pi)
   vrc=$?
   jq -n --arg label "${AX_CONWIP_LABEL:-}" --arg model "$model" --arg effort "${AX_CONWIP_EFFORT:-low}" \
     --argjson rc "$rc" --argjson v "$verdict" --arg secs "$(python3 -c "print($t1-$t0)")" --arg cwd "$PWD" \
+    --arg err "$(tail -c 2000 "$out.stderr" 2>/dev/null)" \
     '{label:$label, model:$model, effort:$effort, harness:"pi", harness_rc:$rc,
-      valid:$v.valid, errors:$v.errors, result:$v.value, seconds:($secs|tonumber), cwd:$cwd}' >"$out"
+      valid:$v.valid, errors:$v.errors, result:$v.value, seconds:($secs|tonumber), cwd:$cwd,
+      stderr_tail:$err}' >"$out"
   echo "ax-agent pi: valid=$(jq .valid "$out") rc=$rc vrc=$vrc"
   [ "$rc" -eq 0 ] && [ "$vrc" -eq 0 ]
   ;;
@@ -71,6 +78,26 @@ fetch)
   exit "$rc"
   ;;
 
+probe)
+  kernel=$(cat /proc/version 2>/dev/null)
+  if command -v claude >/dev/null 2>&1; then
+    cv=$(claude --version 2>&1)
+    crc=$?
+  else
+    cv="claude: not in this image"
+    crc=127
+  fi
+  code=$(curl -sS -o "$out.models" -w '%{http_code}' --max-time 60 "$halogen/v1/models")
+  hrc=$?
+  seen=$(jq -r '.data[0].id // empty' "$out.models" 2>/dev/null)
+  jq -n --arg cv "$cv" --argjson crc "$crc" --arg url "$halogen" --argjson hrc "$hrc" --arg code "$code" \
+    --arg seen "$seen" --arg kernel "$kernel" \
+    '{mode:"probe", claude_version:$cv, claude_rc:$crc, halogen:$url, curl_rc:$hrc, http_code:$code,
+      model:$seen, proc_version:$kernel, ok:($crc == 0 and $hrc == 0 and $code == "200")}' >"$out"
+  echo "ax-agent probe: claude_rc=$crc curl_rc=$hrc http=$code"
+  [ "$crc" -eq 0 ] && [ "$hrc" -eq 0 ] && [ "$code" = 200 ]
+  ;;
+
 exit)
   n="${1:-0}"
   jq -n --argjson n "$n" '{mode:"exit", code:$n}' >"$out"
@@ -78,7 +105,7 @@ exit)
   ;;
 
 *)
-  echo "usage: ax-agent halogen-smoke | pi | fetch URL | exit N" >&2
+  echo "usage: ax-agent halogen-smoke | pi | fetch URL | probe | exit N" >&2
   exit 64
   ;;
 esac

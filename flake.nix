@@ -710,6 +710,20 @@
           ax-fleet-teardown = pkgs.callPackage ./pkgs/ax-fleet-teardown {
             k3s = inputs.nixpkgs.legacyPackages.${system}.k3s_1_36;
           };
+          # The fleet's ax Task image (OCI layout plus `digest`), built exactly
+          # as modules/ax-fleet/ax.nix builds the one the NAS seeds: the flake's
+          # nixpkgs, the patched `ax`, pi from llm-agents. pi only, no claude-code.
+          ax-agent-image = inputs.nixpkgs.legacyPackages.${system}.callPackage ./pkgs/ax-agent-image {
+            inherit (self.packages.${system}) ax;
+            inherit (inputs.llm-agents.packages.${system}) pi;
+          };
+          # Upstream Agent Substrate d277088b: the six component images, the
+          # third-party images by digest and the gVisor asset (pkgs/substrate).
+          substrate-images = pkgs.callPackage ./pkgs/substrate/images.nix {
+            substrate = pkgs.callPackage ./pkgs/substrate {
+              go_1_27 = inputs.nixpkgs-go.legacyPackages.${system}.go_1_27;
+            };
+          };
         };
 
       # `sudo nix run ~/dotfiles#ax-fleet-teardown` after `myAxFleet.enable =

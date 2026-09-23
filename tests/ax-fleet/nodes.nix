@@ -40,6 +40,20 @@ let
     ];
   };
 
+  # Test-only: the fleet task image (pkgs/ax-agent-image, the same ax and pi
+  # the fleet seeds) plus claude-code, for 25-harness-probe's `claude
+  # --version`. No credential exists in it or in any Task. The fleet image
+  # itself stays pi-only on day one (DESIGN.md 10.2 and 11); only the NAS test
+  # node seeds this variant, from its ax-on specialisation.
+  claudeProbeImage =
+    inputs.nixpkgs.legacyPackages.x86_64-linux.callPackage ../../pkgs/ax-agent-image
+      {
+        ax = inputs.self.packages.x86_64-linux.ax;
+        pi = inputs.llm-agents.packages.x86_64-linux.pi;
+        extraPaths = [ inputs.llm-agents.packages.x86_64-linux.claude-code ];
+        variant = "-claude-probe";
+      };
+
   lanAddr = address: {
     interface = "eth1";
     inherit address;
@@ -55,6 +69,10 @@ let
     {
       imports = [
         ../../modules/ax-fleet
+        # As on the real hosts (hosts/{coordinator,worker,client}): the harness
+        # role turns myAxClient on by mkDefault, which puts `ax` and `kubectl`
+        # on the coordinator's PATH for the Task phases.
+        ../../modules/ax-client.nix
         inputs.agenix.nixosModules.default
       ];
       system.switch.enable = true;
@@ -91,7 +109,7 @@ let
   };
 in
 {
-  inherit probeImage token;
+  inherit probeImage token claudeProbeImage;
 
   nas =
     { ... }:
@@ -104,6 +122,11 @@ in
         (axOn {
           myAxFleet.kubelet = {
             systemReserved = "cpu=1,memory=1Gi";
+          };
+          myAxFleet.registrySeed.ax-agent-claude-probe = {
+            oci = claudeProbeImage;
+            repo = "ax/ax-agent-claude-probe";
+            inherit (claudeProbeImage.passthru) tag;
           };
         })
         (setAddr "eth1" "10.42.0.1" 24)
