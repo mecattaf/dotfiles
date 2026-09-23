@@ -1,0 +1,122 @@
+Pin every third-party image the kind install pulls to its linux/amd64 manifest.
+
+Upstream pins each image by its multi-arch index digest. Seeding an index
+digest-preserved means copying every platform it lists (postgres:18-alpine
+lists 16 manifests), several GB that would sit in the NAS's /nix/store on its
+57 GB eMMC root. Each digest below is the linux/amd64 child listed in the
+upstream-pinned index (MEASURED 2026-09-23 with `skopeo inspect --raw`), so
+the content pin is the same Merkle chain, one level down. The fleet is
+x86_64-only. pkgs/substrate/images.nix fetches each child by this digest and
+checks at fetch time that the upstream index lists it for linux/amd64.
+
+diff -ru a/manifests/ate-install/atenet-egress-with-sdsmint.yaml b/manifests/ate-install/atenet-egress-with-sdsmint.yaml
+--- a/manifests/ate-install/atenet-egress-with-sdsmint.yaml
++++ b/manifests/ate-install/atenet-egress-with-sdsmint.yaml
+@@ -1111,7 +1111,7 @@
+           readOnly: true
+       containers:
+       - name: envoy
+-        image: envoyproxy/envoy:v1.39-latest@sha256:57e14a549d7bd43c8d3f6d03e8cfa653e037d4b38e133acd9b54f38c524401b4
++        image: envoyproxy/envoy:v1.39-latest@sha256:be87c8b52663c1164a5bdf3c5419017a269cb3d8c74be1ec93638a71f1ffbd4b
+         securityContext:
+           allowPrivilegeEscalation: false
+           capabilities:
+diff -ru a/manifests/ate-install/atenet-egress.yaml b/manifests/ate-install/atenet-egress.yaml
+--- a/manifests/ate-install/atenet-egress.yaml
++++ b/manifests/ate-install/atenet-egress.yaml
+@@ -601,7 +601,7 @@
+       terminationGracePeriodSeconds: 60
+       containers:
+       - name: envoy
+-        image: envoyproxy/envoy:v1.39-latest@sha256:57e14a549d7bd43c8d3f6d03e8cfa653e037d4b38e133acd9b54f38c524401b4
++        image: envoyproxy/envoy:v1.39-latest@sha256:be87c8b52663c1164a5bdf3c5419017a269cb3d8c74be1ec93638a71f1ffbd4b
+         securityContext:
+           allowPrivilegeEscalation: false
+           capabilities:
+diff -ru a/manifests/ate-install/atenet-router.yaml b/manifests/ate-install/atenet-router.yaml
+--- a/manifests/ate-install/atenet-router.yaml
++++ b/manifests/ate-install/atenet-router.yaml
+@@ -243,7 +243,7 @@
+         - name: "drain-signal"
+           mountPath: "/var/run/atenet"
+       - name: envoy
+-        image: envoyproxy/envoy:v1.39-latest@sha256:57e14a549d7bd43c8d3f6d03e8cfa653e037d4b38e133acd9b54f38c524401b4
++        image: envoyproxy/envoy:v1.39-latest@sha256:be87c8b52663c1164a5bdf3c5419017a269cb3d8c74be1ec93638a71f1ffbd4b
+         command:
+         - "/usr/local/bin/envoy"
+         - "-c"
+diff -ru a/manifests/ate-install/kind/otel-collector.yaml b/manifests/ate-install/kind/otel-collector.yaml
+--- a/manifests/ate-install/kind/otel-collector.yaml
++++ b/manifests/ate-install/kind/otel-collector.yaml
+@@ -177,7 +177,7 @@
+     spec:
+       containers:
+       - name: otel-collector
+-        image: otel/opentelemetry-collector-contrib:0.157.0@sha256:f2f01157055a9b2aab9df7118e1f1c9abf345e99b23bc7a2bc791db374a7d0f6
++        image: otel/opentelemetry-collector-contrib:0.157.0@sha256:4eb842091c796156d4d3c994eb22ba793590f5723719dbf6b8436cb4dfc17f48
+         args:
+         - --config=/conf/otel-collector-config.yaml
+         volumeMounts:
+@@ -242,7 +242,7 @@
+     spec:
+       containers:
+       - name: jaeger
+-        image: jaegertracing/all-in-one:1.55@sha256:f6b5d09073f14f76873d300f565a6691d815e81bea8e07e1dc3ff67e0596dd4e
++        image: jaegertracing/all-in-one:1.55@sha256:d5bbf80eb37e3a0d1b1644f17d1c3a7b88abd74177ec06198d4a289b58b41798
+         ports:
+         - name: otlp-grpc
+           containerPort: 4317
+diff -ru a/manifests/ate-install/kind/prometheus.yaml b/manifests/ate-install/kind/prometheus.yaml
+--- a/manifests/ate-install/kind/prometheus.yaml
++++ b/manifests/ate-install/kind/prometheus.yaml
+@@ -172,7 +172,7 @@
+           type: RuntimeDefault
+       containers:
+       - name: prometheus
+-        image: prom/prometheus:v3.5.3@sha256:ddc2493835a1509976d5e4e0c94199c4f843ce1f42dd6bcfc8231ba734a93ff7
++        image: prom/prometheus:v3.5.3@sha256:442634af681c5988a3ccbd4c6e6ab57e077dc89eead4a31e2abf410501874a92
+         args:
+           - --config.file=/etc/prometheus/prometheus.yml
+           - --storage.tsdb.path=/prometheus
+diff -ru a/manifests/ate-install/kind/rustfs.yaml b/manifests/ate-install/kind/rustfs.yaml
+--- a/manifests/ate-install/kind/rustfs.yaml
++++ b/manifests/ate-install/kind/rustfs.yaml
+@@ -62,7 +62,7 @@
+         fsGroup: 10001
+       containers:
+       - name: rustfs
+-        image: rustfs/rustfs:1.0.0-beta.3@sha256:378642b05b7dcb4849fb77ebe6aca4ced1c3f66e7e504247df95a5c9018d3358
++        image: rustfs/rustfs:1.0.0-beta.3@sha256:d441111efe3af5bbd6e29eba7cd124f96bb7d49a0612390907f9216d5f970382
+         imagePullPolicy: IfNotPresent
+         ports:
+         - containerPort: 9000
+@@ -102,7 +102,7 @@
+       restartPolicy: OnFailure
+       containers:
+       - name: create-bucket
+-        image: amazon/aws-cli:2.17.0@sha256:643507c10ada7964ca6157b3d799f030b90577643da9955d319a77399ed80d73
++        image: amazon/aws-cli:2.17.0@sha256:7b7edf789765c22d75e61ad6f307c06950e15357b79ea1749104641ce3a11fec
+         env:
+         - name: AWS_ACCESS_KEY_ID
+           value: rustfsadmin
+diff -ru a/manifests/ate-install/postgres/postgres.yaml b/manifests/ate-install/postgres/postgres.yaml
+--- a/manifests/ate-install/postgres/postgres.yaml
++++ b/manifests/ate-install/postgres/postgres.yaml
+@@ -120,7 +120,7 @@
+       initContainers:
+       - name: tls-reloader
+         restartPolicy: Always
+-        image: postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
++        image: postgres:18-alpine@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b
+         securityContext:
+           runAsUser: 70
+         command:
+@@ -143,7 +143,7 @@
+             memory: 32Mi
+       containers:
+       - name: postgres
+-        image: postgres:18-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
++        image: postgres:18-alpine@sha256:b6a16ed0eb96e2c362811f7eeb951eac8b459e7b40be4149ea5444aa7c65569b
+         lifecycle:
+           postStart:
+             exec:
