@@ -1,5 +1,37 @@
 # DECISIONS
 
+2026-09-23 the SessionEnd harvest hook is REMOVED; `harvest` stays a manual
+verb.
+
+MEM-2 (dotfiles#339) wired SessionEnd -> `harvest` so a closing session
+distilled itself. The script was careful — it always exited 0, it always
+logged one line, it timed itself out under Claude Code's own timeout — and
+none of that was the problem. The problem is structural: the session process
+WAITS for a SessionEnd hook before it exits. On the runs that actually
+harvested, that wait reached 57 s, and Claude Code aborted the hook and
+printed `SessionEnd hook [...] failed: Hook cancelled` at every close. The
+ledger it kept is the argument against it: of the last 101 runs, 46 created a
+note, 1 updated one, and 54 skipped — most of those `one cleaned
+user/assistant turn exceeds the declared utility context`. Every session end
+paid the latency; fewer than half bought anything with it.
+
+Removed: the hook script, its home.nix link, the SessionEnd block in
+home/dot_claude/settings.json, `checks.ai-memory-harvest-hook`,
+tests/ai-memory-hook/, tools/mem-2-hook-oracle.sh, tools/mem-2-eval-probe.sh.
+docs/local-ai/harvest-on-close.md is kept, banner-marked as removed.
+
+Kept: `ai_memory.py`, the `harvest` verb, its `--enqueue` leg (FIX-E08,
+dotfiles#348) and MEM-3's probe. The `drain` skill still runs the verb on
+demand, so the capability is intact — only the automatic leg is gone.
+
+The 2026-09-13 entry below noted that the ai-memory-harvest-hook check
+asserted there is no SessionStart block, so a hook naming an unshipped script
+could not return by accident. That guard is not lost: it is replaced by
+`checks.no-claude-code-hooks`, which is strictly broader — it fails on ANY
+hook block in settings.json, and on anything delivered into ~/.claude/hooks.
+~/.claude/hooks itself stays a real, writable directory owned by no link.
+Re-adding a hook of any kind is now a deliberate edit to that check.
+
 2026-09-13 flake checkouts no longer ride into host closures, chrome-stream
 is installed, and a switch refuses a stale raw-dotfiles checkout.
 

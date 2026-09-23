@@ -280,15 +280,17 @@ in
   home.file.".claude/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
   home.file.".codex/AGENTS.md".source = link "agent-runtime-rules.md";
 
-  # SessionEnd -> the harvest verb (MEM-2, dotfiles#339). ONE link, not a
-  # whole-dir one, for the same reason as the lines above: ~/.claude/hooks must
-  # stay a real, writable directory, so a hook that is not delivered from this
-  # repository can still live beside it (the dead SessionStart hook that once
-  # named herdr-agent-state.sh there was removed 2026-09-13). settings.json is
-  # shared by all three Claude config dirs and names this hook by ABSOLUTE path,
-  # so one link serves ~/.claude, ~/.claude-work and ~/.claude-3 alike.
-  home.file.".claude/hooks/ai-memory-harvest.sh".source =
-    link "dot_claude/hooks/ai-memory-harvest.sh";
+  # NO hook is delivered here any more. The SessionEnd harvest hook (MEM-2,
+  # dotfiles#339) was removed 2026-09-23: it blocked session exit for up to 57 s
+  # on the runs that actually harvested, and Claude Code reported the abort as
+  # "SessionEnd hook [...] failed: Hook cancelled" on every close. Of its last
+  # 101 logged runs, 54 were skips. The harvest verb itself is unchanged and
+  # still reachable on demand through the `drain` skill.
+  #
+  # ~/.claude/hooks is deliberately left as a real, writable directory owned by
+  # nobody: a hook that is not delivered from this repository can still live
+  # there (the dead SessionStart hook that once named herdr-agent-state.sh was
+  # removed the same way, 2026-09-13).
 
   # Second Claude account (work): `cc2`/`cac2` in fish set CLAUDE_CONFIG_DIR to
   # ~/.claude-work. Same skills + settings, separate .credentials.json/.claude.json.
