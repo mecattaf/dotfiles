@@ -46,8 +46,36 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.4)(supports-color@10.2.2)(tsx@4.23.15)
 
+  apps/cli:
+    dependencies:
+      '@substrate/api':
+        specifier: workspace:*
+        version: link:../../packages/api
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.15
+    devDependencies:
+      '@substrate/floor':
+        specifier: workspace:*
+        version: link:../floor
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.4
+      effect:
+        specifier: 4.0.0-rc.112
+        version: 4.0.0-rc.112
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@22.20.4)(supports-color@10.2.2)(tsx@4.23.15)
+
   apps/floor:
     dependencies:
+      '@substrate/api':
+        specifier: workspace:*
+        version: link:../../packages/api
       '@substrate/factory':
         specifier: workspace:*
         version: link:../../packages/factory
@@ -102,6 +130,71 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.4)(supports-color@10.2.2)(tsx@4.23.15)
 
+  apps/mcp:
+    dependencies:
+      '@substrate/api':
+        specifier: workspace:*
+        version: link:../../packages/api
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.4
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.15
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+    devDependencies:
+      '@substrate/floor':
+        specifier: workspace:*
+        version: link:../floor
+      ajv:
+        specifier: ^8.17.1
+        version: 8.20.0
+      effect:
+        specifier: 4.0.0-rc.112
+        version: 4.0.0-rc.112
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@22.20.4)(supports-color@10.2.2)(tsx@4.23.15)
+
+  apps/puller:
+    dependencies:
+      '@substrate/api':
+        specifier: workspace:*
+        version: link:../../packages/api
+      '@substrate/interpreter':
+        specifier: workspace:*
+        version: link:../../packages/interpreter
+      '@substrate/link':
+        specifier: workspace:*
+        version: link:../link
+      '@substrate/runners':
+        specifier: workspace:*
+        version: link:../../packages/runners
+      substrate:
+        specifier: workspace:*
+        version: link:../..
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.15
+    devDependencies:
+      '@substrate/floor':
+        specifier: workspace:*
+        version: link:../floor
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.4
+      effect:
+        specifier: 4.0.0-rc.112
+        version: 4.0.0-rc.112
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@22.20.4)(supports-color@10.2.2)(tsx@4.23.15)
+
   apps/pusher:
     devDependencies:
       '@substrate/factory':
@@ -116,6 +209,28 @@ importers:
       fast-check:
         specifier: ^4.9.0
         version: 4.10.2
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@22.20.4)(supports-color@10.2.2)(tsx@4.23.15)
+
+  packages/api:
+    dependencies:
+      '@substrate/link':
+        specifier: workspace:*
+        version: link:../../apps/link
+      smol-toml:
+        specifier: ^1.4.2
+        version: 1.8.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.4
+      effect:
+        specifier: 4.0.0-rc.112
+        version: 4.0.0-rc.112
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
       vitest:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.4)(supports-color@10.2.2)(tsx@4.23.15)

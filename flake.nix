@@ -728,11 +728,13 @@
               go_1_27 = inputs.nixpkgs-go.legacyPackages.${system}.go_1_27;
             };
           };
-          # `nix build .#substrate-pusher`, `.#substrate-apps-link`: the coordinator's
-          # gentle capacity pusher and the floor-to-ax link from the same pinned
+          # `nix build .#substrate-pusher`, `.#substrate-puller`, `.#substrate-apps-link`:
+          # the coordinator's gentle capacity pusher, its interpreter-host puller and
+          # the floor-to-ax link from the same pinned
           # substrate sha (pkgs/substrate-apps). Installed by modules/substrate.nix
           # (gates OFF) and hosts/nas/substrate-link.nix (still on pkgs/substrate-link).
           substrate-pusher = substrateApps.pusher;
+          substrate-puller = substrateApps.puller;
           substrate-apps-link = substrateApps.link;
         };
 

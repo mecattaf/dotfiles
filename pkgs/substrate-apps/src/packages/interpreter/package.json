@@ -1,0 +1,32 @@
+{
+  "name": "@substrate/interpreter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./meta": "./src/meta.ts"
+  },
+  "description": "Naive clean-room interpreter for Claude Code workflow scripts: meta literal, agent/parallel/pipeline/phase/log/budget/workflow, chained resume journal, mock and replay backends. No live model calls.",
+  "bin": {
+    "naive-run": "./bin/naive-run.mjs"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json",
+    "naive-run": "node bin/naive-run.mjs"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "effect": "4.0.0-rc.112"
+  },
+  "peerDependencies": {
+    "effect": "4.0.0-rc.112"
+  }
+}

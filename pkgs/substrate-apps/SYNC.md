@@ -2,13 +2,16 @@
 
 - Upstream: agency-agency/substrate (private; the repo formerly named ax-conwip, Tom 2026-09-23 E10), local
   checkout `/home/tom/mecattaf/substrate`, branch `main`.
-- Source sha: `dc7cd1d05b1e3938dace9d3d3cddc1a22d98d6cc` (synced 2026-09-23T21:40Z, apps/puller absent)
-  "capacity: floor capacity service, gentle seats pusher, floor as the gate's default (G4)".
+- Source sha: `b1051790f376c103ba4e901619ba11efeb78cef6` (synced 2026-09-23T21:27:53Z, apps/puller present)
+  "docs: DEPLOY.md, deploying your own floor from a fresh clone to a verified live Worker"; the puller landed one
+  commit earlier, 017893d "interfaces: typed HTTP API with /openapi.json, substrate CLI, MCP server in code mode,
+  coordinator puller (E11)". First vendored at dc7cd1d (link and pusher only), resynced the same night.
 - Taken with `git archive <sha> package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig.json
-  apps/link apps/pusher`, unchanged (`./sync.sh /home/tom/mecattaf/substrate <sha>` does exactly this). The root
-  `src/`, `test/`, `proto/`, `packages/*` and `apps/floor` are not vendored: the link bundle imports none of them,
-  the pusher's bin and src import only node: builtins and each other (MEASURED grep), and the floor is the
-  Cloudflare Worker, deployed from the substrate repo itself.
+  src proto packages deploy apps/link apps/pusher apps/puller`, unchanged (`./sync.sh /home/tom/mecattaf/substrate
+  <sha>` does exactly this; 303 files, 3.2 MB). The puller imports the workspace root (`substrate/src/...`),
+  `@substrate/api`, `@substrate/link`, `@substrate/interpreter` and `@substrate/runners`, hence `src/`, `proto/` and
+  `packages/*`. Not vendored: `test/`, `tools/`, `docs/`, `apps/floor` (the Cloudflare Worker, deployed from the
+  substrate repo), `apps/cli` and `apps/mcp` (operator interfaces, not services of a box).
 - Not vendored on purpose: the pusher's own vitest suite depends on `@substrate/planning` and `@substrate/factory`
   (workspace packages); it runs upstream (1530 passed at this sha, REPORTED substrate/RECEIPT.md). The nix
   checkPhase runs one dry tick against `apps/pusher/test/fixtures/seats-v1.json` instead.
@@ -23,17 +26,17 @@
 |---|---|---|---|
 | `link` | `apps/link` | NAS (system unit) | `hosts/nas/substrate-link.nix` (still on pkgs/substrate-link a021003) |
 | `pusher` | `apps/pusher/bin/substrate-pusher.mjs` | coordinator (user unit) | `modules/substrate.nix` `services.substrate.pusher` |
-| `puller` | `apps/puller` | coordinator (user unit) | `modules/substrate.nix` `services.substrate.puller` |
+| `puller` | `apps/puller/bin/substrate-puller.mjs` | coordinator (user unit) | `modules/substrate.nix` `services.substrate.puller` |
 
-## Pending: apps/puller
+## How the puller is installed
 
-At the pinned sha no branch of agency-agency/substrate has `apps/puller` (MEASURED `git ls-tree` over every ref,
-2026-09-23 about 21:35Z; Lane B's Interfaces round was still open). The floor handoff names it: "the coordinator
-puller (interpreter host). It leases runtime:interpreter, GETs /runs/:id/script, runs the interpreter with a floor
-backend that POSTs /runs/:id/jobs and polls /runs/:id/events or /jobs/:id/output, then Completes the run." When it
-lands: `./sync.sh <checkout> <sha>` picks it up, add a `puller` derivation here (bundle `apps/puller/src/main.ts`
-the way `link` is bundled, or install its files the way `pusher` is), export it in the set, and drop the
-`puller.package = null` default in `modules/substrate.nix`.
+Upstream starts it as `node apps/puller/bin/substrate-puller.mjs`, which registers tsx's ESM loader and imports
+`src/main.ts`; nothing is bundled upstream. The derivation keeps that: `pnpm install --prod --offline
+--frozen-lockfile` from the shared `pnpmDeps`, then the whole tree with its production `node_modules` is copied to
+`$out/lib/substrate-apps` and `bin/substrate-puller` wraps node over it. Its checkPhase starts it with no config
+and requires exit 78 with a `config-invalid` line: every import resolved through tsx and the workspace links, and
+`main()` ran to its first config check. Its configuration is the `[puller]` table of a client `config.toml`
+(`packages/api/src/config.ts`, `deploy/client.config.example.toml`), which the module renders.
 
 ## To resync
 

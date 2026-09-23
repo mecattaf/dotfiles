@@ -1,0 +1,18 @@
+{
+  "name": "@substrate/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The floor's HTTP API described once as Effect Schema (HttpApi): the generated OpenAPI 3.1 document, a typed Promise client, and the operator config shared by the CLI, the MCP server and the puller.",
+  "license": "UNLICENSED",
+  "exports": { ".": "./src/index.ts", "./*": "./src/*" },
+  "scripts": { "check": "tsc --noEmit -p .", "test": "vitest run" },
+  "dependencies": { "smol-toml": "^1.4.2", "@substrate/link": "workspace:*" },
+  "peerDependencies": { "effect": "4.0.0-rc.112" },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "effect": "4.0.0-rc.112",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

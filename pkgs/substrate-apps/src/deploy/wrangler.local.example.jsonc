@@ -1,0 +1,43 @@
+{
+  // deploy/wrangler.local.example.jsonc: the deploy-local Worker config.
+  //
+  // Copy to apps/floor/wrangler.local.jsonc (gitignored by *.local.jsonc) and
+  // fill in YOUR account, route and seat names. Deploy with:
+  //   cd apps/floor && wrangler deploy --config wrangler.local.jsonc
+  // The committed apps/floor/wrangler.jsonc names no account and no route, so
+  // no command run from a fresh clone can publish anything by accident.
+  "name": "substrate-floor",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-18",
+  "account_id": "<your Cloudflare account id>",
+  "routes": [{ "pattern": "substrate.example.com", "custom_domain": true }],
+  "durable_objects": {
+    "bindings": [
+      { "name": "FACTORY", "class_name": "Factory" },
+      { "name": "FLOOR", "class_name": "Floor" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Factory"] },
+    { "tag": "v2", "new_sqlite_classes": ["Floor"] }
+  ],
+  // Secrets are never vars. Set each with `wrangler secret put <NAME> --config wrangler.local.jsonc`:
+  //   FLOOR_TOKEN           operator bearer (intake API, CLI, capacity pusher)
+  //   LINK_TOKENS           JSON {"<sha256 hex of a per-link token>": {"holder": "...", "labels": ["seat:...", "runtime:..."], "guest": false}}
+  //   LEASE_TOKEN_KEY       HMAC key for guest lease tokens (only needed when a holder has "guest": true)
+  //   ACCESS_CLIENT_ID      optional: a Cloudflare Access service token accepted in place of FLOOR_TOKEN
+  //   ACCESS_CLIENT_SECRET
+  "vars": {
+    // The CONWIP cap over agent jobs, and the runs held by interpreter hosts at once.
+    "FLOOR_CAP": "2",
+    "FLOOR_RUN_CAP": "4",
+    // The seat an interpreter host (runtime:interpreter) serves; runs are handed out on it.
+    "FLOOR_INTERPRETER_SEAT": "coordinator",
+    // Seats admitted without a capacity reading (comma list). Every other seat needs a fresh seat-capacity/2 row.
+    "FLOOR_UNGATED_SEATS": "coordinator",
+    // runs-on seat name -> capacity seat id, when they differ (e.g. a GPU slot row).
+    "FLOOR_SEAT_CAPACITY_MAP": "{\"gpu\": \"gpu-worker\"}",
+    // Per-label caps, JSON.
+    "FLOOR_LABEL_CAPS": "{}"
+  }
+}

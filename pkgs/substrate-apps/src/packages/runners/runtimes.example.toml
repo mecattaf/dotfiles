@@ -1,0 +1,66 @@
+# ~/.config/substrate/runtimes.toml  (or AX_CONWIP_RUNTIMES=/path/to/file)
+#
+# Where agent() calls run. No file at all means every call runs on "host".
+# Per call:  agent(prompt, { runtime: "gvisor" })
+# Per phase: the [phases] table below.  Otherwise: `default`.
+
+default = "host"
+
+[phases]
+"Review" = "gvisor"          # every agent() in the "Review" phase
+"Scout" = "ssh:worker"       # ssh:<host> needs no table unless you want to change its harness
+
+[credentials]
+claude = "~/.claude"          # the seat config dir; MOUNTED into sandboxes, never copied
+mode = "rw"                   # rw seat config mount (Tom, 2026-09-21)
+
+[runtime.gvisor]
+type = "gvisor"
+runsc = "/nix/store/da343m78crf7s2d2b3yrb7hjpsb44gq4-gvisor-20260406.0/bin/runsc"
+# state = "~/.local/state/substrate/runsc"   # runsc --root; never under /run/user
+# network = "host"                           # or "none"
+
+[runtime.herdr]
+type = "herdr"
+# mode = "action"             # plugin action with native exit_code/stdout/stderr; "pane" for a visible pane
+# socket = "~/.config/herdr/herdr.sock"
+
+[runtime.vm]
+type = "microvm"              # builds a microvm.nix declaredRunner; boots only where /dev/kvm is reachable under runtime-test
+# vcpu = 2
+# memMiB = 2048
+
+[runtime."ssh:worker"]
+type = "ssh"
+host = "worker"
+harness = "pi"                # pi against Halogen, which runs on the worker
+
+[runtime.edge]
+type = "workerd"              # Worker-shaped jobs only; agent() calls are refused
+# workerd = "/nix/store/...-workerd-.../bin/workerd"   # else built from github:mecattaf/workerd.nix#workerd
+
+[runtime.ax]
+type = "ax"                   # spec only: writes the Task an ax dispatch would send, dispatches nothing
+
+# The model allowlist (src/models.ts). Absent, the built-in list applies:
+# claude-opus-5-5 (default, alias "opus"), claude-fable-5-1 (alias "fable",
+# model-scoped ceiling 90), and the Halogen model for pi. A call naming a model
+# outside the list runs the harness default, and the route records the request.
+# Ceilings are percent used; at or above one the capacity gate refuses that
+# model while the seat still takes others.
+#
+# [[models]]
+# id = "claude-opus-5-5"
+# harness = "claude"
+# aliases = ["opus"]
+# default = true
+# ceilings = { five_hour = 95, seven_day = 95 }
+#
+# [[models]]
+# id = "claude-fable-5-1"
+# harness = "claude"
+# aliases = ["fable"]
+# ceilings = { model_scoped = 90 }
+#
+# A real codex runs only when [seats] binds it: codex = "codex". With no
+# `default = true` codex entry, codex runs its own configured default model.

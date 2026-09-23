@@ -1,0 +1,14 @@
+{
+  "name": "@substrate/puller",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The coordinator-side interpreter host: leases runs (runtime:interpreter) from the floor over /rpc, runs each with the interpreter and the repo's runners (or dispatches its nodes back to the floor), heartbeats, completes, and resumes from the run's journal after a kill. A plain long-lived process with a pidfile.",
+  "license": "UNLICENSED",
+  "bin": { "substrate-puller": "./bin/substrate-puller.mjs" },
+  "exports": { ".": "./src/puller.ts", "./*": "./src/*" },
+  "scripts": { "check": "tsc --noEmit -p .", "test": "vitest run" },
+  "dependencies": { "substrate": "workspace:*", "@substrate/api": "workspace:*", "@substrate/link": "workspace:*", "@substrate/interpreter": "workspace:*", "@substrate/runners": "workspace:*", "tsx": "^4.19.2" },
+  "peerDependencies": { "effect": "4.0.0-rc.112" },
+  "devDependencies": { "@substrate/floor": "workspace:*", "@types/node": "^22.10.2", "effect": "4.0.0-rc.112", "typescript": "^5.9.3", "vitest": "^3.2.4" }
+}

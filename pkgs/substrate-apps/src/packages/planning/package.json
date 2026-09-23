@@ -1,0 +1,26 @@
+{
+  "name": "@substrate/planning",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Production planning for the CONWIP floor: caps, levels, release, capacity projection and admission, the Factory object. Ported from tally-ts-sdk packages/planning.",
+  "license": "UNLICENSED",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "check": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "effect": "4.0.0-rc.112"
+  },
+  "devDependencies": {
+    "effect": "4.0.0-rc.112",
+    "fast-check": "^4.9.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

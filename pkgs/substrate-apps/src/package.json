@@ -6,7 +6,7 @@
   "description": "CONWIP factory: turns Claude ultracode workflow run records into ax Tasks under a WIP cap, plus the Effect workspace (schema, serializer, planning, factory) and the Cloudflare floor.",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p packages/schema && tsc --noEmit -p packages/serializer && tsc --noEmit -p packages/planning && tsc --noEmit -p packages/factory && tsc --noEmit -p apps/floor && tsc --noEmit -p packages/interpreter && tsc --noEmit -p packages/runners && tsc --noEmit -p apps/link",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p packages/schema && tsc --noEmit -p packages/serializer && tsc --noEmit -p packages/planning && tsc --noEmit -p packages/factory && tsc --noEmit -p apps/floor && tsc --noEmit -p packages/interpreter && tsc --noEmit -p packages/runners && tsc --noEmit -p apps/link && tsc --noEmit -p packages/api && tsc --noEmit -p apps/floor/tsconfig.node.json && tsc --noEmit -p apps/cli && tsc --noEmit -p apps/mcp && tsc --noEmit -p apps/puller",
     "check:fences": "node tools/check-fences.mjs",
     "check": "pnpm typecheck && pnpm check:fences && pnpm test",
     "conwip": "tsx src/cli.ts",

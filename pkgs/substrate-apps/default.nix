@@ -14,8 +14,11 @@
 #                        copy, a021003, stays the NAS module's default until hosts/nas is re-pointed).
 #   pusher  apps/pusher  the coordinator's gentle capacity pusher: `seats --json --no-spend` under the
 #                        refresh policy, converted to seat-capacity/2 and posted to the floor.
-#   puller  apps/puller  PENDING: not in the source tree at the pinned sha (SYNC.md). The module
-#                        services.substrate.puller takes it as an option and refuses to arm without it.
+#   puller  apps/puller  the coordinator's interpreter host: leases runs (runtime:interpreter) from the
+#                        floor, runs them with the interpreter and the runners, heartbeats, completes,
+#                        resumes from the run's journal after a kill. Upstream runs it through tsx's ESM
+#                        loader over the workspace packages (substrate, @substrate/{api,link,interpreter,
+#                        runners}), so it is installed as the whole tree with its production node_modules.
 #
 # One pnpm workspace, one fixed-output dependency tree (pnpmDeps) shared by every program that needs
 # node_modules. The pusher needs none: its bin and src import only node: builtins and each other
@@ -26,8 +29,8 @@
 let
   version = "0.1.0-unstable-2026-09-23";
   src = ./src;
-  # The upstream commit ./src was taken from. Keep in step with SYNC.md.
-  sourceSha = "dc7cd1d05b1e3938dace9d3d3cddc1a22d98d6cc";
+  # The upstream commit ./src was taken from. Keep in step with SYNC.md (sync.sh rewrites both).
+  sourceSha = "b1051790f376c103ba4e901619ba11efeb78cef6";
 
   pnpmDeps = pnpm_10.fetchDeps {
     pname = "substrate-apps";
@@ -110,13 +113,59 @@ let
       platforms = lib.platforms.linux;
     };
   };
+
+  puller = stdenvNoCC.mkDerivation {
+    pname = "substrate-puller";
+    inherit version src pnpmDeps;
+    nativeBuildInputs = [
+      nodejs_24
+      pnpm_10.configHook
+      makeWrapper
+    ];
+    # Production dependencies only: tsx, effect, smol-toml, grpc and the workspace links. vitest,
+    # typescript and fast-check stay out of the closure.
+    pnpmInstallFlags = [ "--prod" ];
+    dontBuild = true;
+    doCheck = true;
+    # Start it with no config: every import resolves through tsx and the workspace links, main() runs,
+    # and it exits 78 with a `config-invalid` line ("[puller] holder is required"). Anything else, a
+    # missing module above all, is a different exit.
+    checkPhase = ''
+      runHook preCheck
+      export HOME=$PWD/home
+      mkdir -p $HOME
+      set +e
+      log=$(node apps/puller/bin/substrate-puller.mjs 2>&1)
+      rc=$?
+      set -e
+      printf '%s\n' "$log" | tail -n 3
+      if [ "$rc" != 78 ]; then echo "expected exit 78 (config-invalid) with no config, got $rc"; exit 1; fi
+      printf '%s\n' "$log" | grep -q '"config-invalid"'
+      runHook postCheck
+    '';
+    installPhase = ''
+      runHook preInstall
+      rm -rf home
+      mkdir -p $out/lib
+      cp -a . $out/lib/substrate-apps
+      makeWrapper ${lib.getExe nodejs_24} $out/bin/substrate-puller \
+        --add-flags $out/lib/substrate-apps/apps/puller/bin/substrate-puller.mjs
+      runHook postInstall
+    '';
+    passthru = { inherit sourceSha; };
+    meta = {
+      description = "The Substrate interpreter host: leases runs from the floor and runs them on this box's runtimes";
+      mainProgram = "substrate-puller";
+      platforms = lib.platforms.linux;
+    };
+  };
 in
 {
   inherit
     link
     pusher
+    puller
     pnpmDeps
     sourceSha
     ;
-  # puller: absent at ${sourceSha}; added by the next sync once apps/puller lands upstream.
 }

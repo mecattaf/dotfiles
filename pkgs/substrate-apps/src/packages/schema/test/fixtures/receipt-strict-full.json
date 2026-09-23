@@ -1,0 +1,141 @@
+{
+  "id": "U-A16-FIXTURE-0",
+  "kind": "build",
+  "attempt": 1,
+  "card_sha256": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "prior_lock_commit": "0000000000000000000000000000000000000001",
+  "repo": "mecattaf/substrate",
+  "seat": "a-fixture-seat",
+  "row": "a-fixture-row",
+  "harness": "a-fixture-harness",
+  "model": "a-fixture-model",
+  "arm": {
+    "harness": "a-fixture-harness",
+    "model": "a-fixture-model",
+    "seat": "a-fixture-seat"
+  },
+  "thread_id": "00000000-0000-4000-8000-000000000001",
+  "window_id": "2026-09-06T13:39:59Z",
+  "started_at": "2026-09-06T12:00:00Z",
+  "finished_at": "2026-09-06T12:04:25Z",
+  "observed_at": "2026-09-06T12:04:30Z",
+  "seconds": 265,
+  "tokens": {
+    "in_uncached": 6996,
+    "cache_read": 10880,
+    "cache_write": 1024,
+    "out": 15306,
+    "reasoning": 2048,
+    "total": 34206
+  },
+  "tokens_source": {
+    "kind": "a-fixture-parser-v1",
+    "path": "/nonexistent/fixture/usage.jsonl",
+    "first_event": 1,
+    "last_event": 42
+  },
+  "context_window": 200000,
+  "max_context_used": 18900,
+  "tok_per_s": {
+    "prefill": 812.5,
+    "decode": 47.25
+  },
+  "load_seconds": 3.5,
+  "concurrent_requests": 0,
+  "gpu_seconds": 0,
+  "sampling": {
+    "temperature": 0,
+    "seed": 7
+  },
+  "commit_sha": "0000000000000000000000000000000000000002",
+  "branch": "lake/receipt-strict",
+  "oracle_argv": [["sh", "-c", "true"]],
+  "oracle_sha256": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "oracle_rc": 0,
+  "oracle_output_sha256": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "oracle_output_normalization": "a-fixture-normalization-v1",
+  "mutation": {
+    "kind": "hint",
+    "rc": 1
+  },
+  "artifact_sha256": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+  "pins_sha256": "none",
+  "evaluator": {
+    "argv_sha256": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "lock": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "tokens": {
+      "in_uncached": 0,
+      "cache_read": 0,
+      "cache_write": 0,
+      "out": 0,
+      "reasoning": 0,
+      "total": 0
+    },
+    "seconds": 12,
+    "execution_id": "a-fixture-execution"
+  },
+  "cost_at_release": {
+    "row": "a-fixture-row",
+    "price_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    "unit": "window_percent",
+    "value": 1.5
+  },
+  "runtime_cap_seconds": 1800,
+  "disposition": "CRASH",
+  "crash_reason": "runtime_cap",
+  "outcome_for_calibration": "fail",
+  "outcome_ruled": "DISCARD",
+  "prior": {
+    "difficulty": 2,
+    "difficulty_scale": "1-5",
+    "p_pass": 0.8,
+    "predicted_tokens": 150000,
+    "predicted_tokens_cell": "out",
+    "basis": "text",
+    "p_pass_basis": "text",
+    "difficulty_basis": "text",
+    "prior_source": "scoping-node",
+    "prior_executor": "a-fixture-executor",
+    "thompson": {
+      "seed": 7,
+      "alpha": 1,
+      "beta": 1
+    }
+  },
+  "difficulty_scoped": 2,
+  "prior_gap": {
+    "tokens_by_cell": {
+      "out": -134694,
+      "in_uncached+out": -127698,
+      "total": -115794
+    },
+    "tokens_in_declared_cell": -134694,
+    "p_pass_vs_outcome": -0.8
+  },
+  "notes": "a fixture receipt. It names no card, no run and no register entry; it exists so §2.3's field list is checkable.",
+  "control_receipt_id": "U-A16-FIXTURE-CONTROL-0",
+  "baseline": {
+    "metric": "oracle_rc",
+    "value": 1,
+    "receipt_id": "U-A16-FIXTURE-CONTROL-0"
+  },
+  "disposition_class": "a-fixture-disposition-class",
+  "not_evidence_for": ["the arm's throughput on a shared device"],
+  "confirmation_of": "none",
+  "setup_seconds": 8,
+  "post_conditions": [
+    { "name": "worktree clean", "rc": 0 },
+    { "name": "package-lock unchanged", "rc": 0 }
+  ],
+  "population": {
+    "cards": 170,
+    "schema_valid": 164,
+    "tests_passing": 58
+  },
+  "supersedes": "none",
+  "superseded_by": "none",
+  "shape": {
+    "unit": "U-A16",
+    "lane": "A"
+  }
+}

@@ -1,0 +1,24 @@
+# ~/.config/substrate/config.toml: what the substrate CLI, the MCP server and the puller read.
+# It names the floor and WHERE each credential is, never a credential. Every file named here is mode 600.
+# SUBSTRATE_CLIENT_CONFIG moves this file; SUBSTRATE_URL and SUBSTRATE_TOKEN_FILE override the first two keys.
+
+floor_url = "https://substrate.example.dev"
+token_file = "~/.local/state/substrate/floor-token"          # the operator bearer (FLOOR_TOKEN)
+# access_client_id_file = "~/.local/state/substrate/access-client-id"          # a Cloudflare Access service
+# access_client_secret_file = "~/.local/state/substrate/access-client-secret"  # token pair, instead of or beside it
+
+[puller]
+holder = "coordinator"                                        # the holder its link token is bound to (LINK_TOKENS)
+link_token_file = "~/.local/state/substrate/link-token-coordinator"
+state_dir = "~/.local/state/substrate/puller"                  # held leases, verdict outbox, runs/<id>/ journals
+pidfile = "~/.local/state/substrate/puller.pid"
+max_runs = 1                                                  # runs held at once (the Lease capacity)
+node_dispatch = "local"                                       # "local": the runners here; "floor": nodes go back to the floor
+# local
+runtimes = "~/.config/substrate/runtimes.toml"
+seat = "cc"                                                   # the seat the capacity gate reads for this host's calls
+cap = 2                                                       # the WIP cap across this puller's calls
+default_model = "claude-opus-5-5"
+# ax_server = "nas:7070"                                      # probed only to say why an ax node is refused here
+# floor
+node_runs_on = ["seat:halogen", "runtime:gvisor"]             # runs-on for a node that names none

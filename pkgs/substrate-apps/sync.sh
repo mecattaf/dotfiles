@@ -8,7 +8,7 @@ checkout=${1:?usage: sync.sh <substrate checkout> <sha>}
 sha=${2:?usage: sync.sh <substrate checkout> <sha>}
 here=$(cd "$(dirname "$0")" && pwd)
 full=$(git -C "$checkout" rev-parse --verify "$sha^{commit}")
-paths=(package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig.json apps/link apps/pusher)
+paths=(package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig.json src proto packages deploy apps/link apps/pusher)
 puller=absent
 if git -C "$checkout" cat-file -e "$full:apps/puller" 2>/dev/null; then
   paths+=(apps/puller)
