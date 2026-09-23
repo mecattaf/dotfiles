@@ -54,7 +54,7 @@ The consequences are the reason this module has the shape it has:
 - **There is therefore no package.** There is no `pkgs/ax-conwip.nix` and no
   `.#ax-conwip`, because packaging follows the input.
 - **So the unit runs a checkout in place.** `WorkingDirectory` is the
-  `sourceDir` option, and `ExecStart` is `pnpm exec tsx src/cli.ts`, resolved
+  `sourceDir` option, and `ExecStart` is `pnpm exec tsx src/serve.ts`, resolved
   against the `node_modules` that checkout already carries. That is a
   development shape, not a delivered one, and it is the single biggest reason
   `enable` must stay false.
@@ -67,7 +67,27 @@ care about.
 ## What the module would run
 
 One long-running user service, `ax-conwip.service`, on whichever host has the
-gate set. No timer: the release signal is a `WatchTask` stream, not a poll, so
+gate set, running `src/serve.ts`.
+
+Until 2026-09-23 the unit's `ExecStart` ran `src/cli.ts`, which reads the records
+directory once, runs the loop over what it found, prints its ledger and exits: a
+`Type = oneshot` in everything but name. `src/serve.ts` is the program that makes
+the unit's own claim true. It polls the records directory every
+`--poll-interval-ms` (2000 by default, and this module passes no other value),
+derives each new `wf_*.json` exactly once keyed by absolute path, admits under a
+cap that HOLDS FOR THE LIFE OF THE PROCESS rather than per tick, reads
+`--meters` for seat admission through the same pure refusal rule the seat dry run
+uses, and exits 0 on SIGTERM after appending a final `stop` line to its ledger.
+Dispatch is DRY RUN by default; the live path needs all three of `--live`,
+`AX_CONWIP_LIVE_HALOGEN=1` and a seat on the `["halogen"]` allow list in the
+program's own `src/seats.ts`, and this module never passes `--live`.
+
+Two startup refusals are worth knowing before flipping anything: a `recordsDir`
+that does not exist is exit 2, not a watcher that polls nothing forever, and an
+ax server unreachable at startup is exit 4, because `Restart = no` means a dead
+process is a fact to read in the journal rather than a thing to paper over.
+
+No timer: the release signal is a `WatchTask` stream, not a poll, so
 there is nothing to wake on a cadence.
 
 `Type=simple`, `Restart=no`, `Nice=10`. `Restart=no` is deliberate: the
@@ -85,10 +105,10 @@ deliberate act. There are two gates here, not one, and that is on purpose.
 |---|---|---|---|
 | `enable` | bool | `false` | the gate. Set nowhere on this fleet. |
 | `serverUrl` | str | `"127.0.0.1:8080"` | the ax server to dispatch to, as `host:port` |
-| `metersDir` | path | `~/.local/state/tally-rewrite/meters` | the seat meters, READ ONLY |
+| `metersDir` | path | `~/.local/state/tally-rewrite/meters` | the seat meters, READ ONLY. Passed both as `AX_CONWIP_METERS` and as the program's `--meters` |
 | `wipCap` | positive int | `1` | how many Tasks may be admitted at once |
 | `sourceDir` | path | `/home/tom/mecattaf/ax-conwip` | where the program lives, because it is not packaged |
-| `recordsDir` | path | `~/.local/state/ax-conwip/records` | the `wf_*.json` run records to derive from |
+| `recordsDir` | path | `~/.local/state/ax-conwip/records` | the `wf_*.json` run records to derive from, and to WATCH |
 | `stateDir` | path | `~/.local/state/ax-conwip` | this module's own state root |
 
 Three of those defaults are choices worth defending:
@@ -127,8 +147,11 @@ Each step is separate and each is reversible. Do them in order.
    where the default `metersDir` has anything in it.
 
 2. **Put run records where the scheduler will look**, or point `recordsDir` at
-   where they already are. The default path does not exist; `src/cli.ts` exits 2
-   without `--records`.
+   where they already are. The default path does not exist; `src/serve.ts` exits
+   2 without `--records`, and exits 2 again if the directory it is pointed at
+   does not exist. Records may also be dropped in AFTER the service is running:
+   that is the whole point of the serve entry point, and a file is derived
+   exactly once, so a record that is edited in place is not re-admitted.
 
 3. **Set the option**, in the host's home-manager configuration:
 
@@ -143,7 +166,10 @@ Each step is separate and each is reversible. Do them in order.
 4. **Edit `checks.x86_64-linux.ax-conwip-topology` in `flake.nix` in the same
    commit.** Its `enable == false` assertion goes red on the flip, deliberately,
    so that no gate on this fleet moves without a reviewer seeing it. Do not
-   delete the check; narrow it to the hosts that are still off.
+   delete the check; narrow it to the hosts that are still off. Keep the
+   flipped-unit assertions that follow it: they pin that `ExecStart` names
+   `src/serve.ts`, carries `--meters`, does NOT carry `--live`, and that the
+   flipped unit still has no `Install` section.
 
 5. **Check it evaluates before rebuilding anything:**
 

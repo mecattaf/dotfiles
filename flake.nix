@@ -841,6 +841,41 @@
           ) homeHosts;
           # the NAS has no home-manager, so it cannot carry the option.
           assert !((hostCfg "nas") ? home-manager);
+          # AND, with the gate flipped IN MEMORY through extendModules — which
+          # changes no rendered byte on any host and writes nothing anywhere —
+          # the argument list the unit would run is the one the program accepts.
+          #
+          # Until 2026-09-23 `ExecStart` ran `src/cli.ts`, which reads the
+          # records directory once, prints its ledger and exits: this file
+          # declared a long-running service whose program was a oneshot in
+          # everything but name. It now runs `src/serve.ts`, which polls,
+          # admits under a cap that holds for the life of the process, reads
+          # the meters directory, and exits 0 on SIGTERM. These asserts are
+          # what keep the module's argument list and the program's contract
+          # from drifting apart again, and they are cheap and eval-time:
+          #   - the entry point IS src/serve.ts and is NOT src/cli.ts;
+          #   - `--meters` is passed, so the AX_CONWIP_METERS this unit already
+          #     set is no longer read by nothing;
+          #   - `--live` is ABSENT. The live dispatch path is gated three ways
+          #     inside the program and this module must never be one of the
+          #     ways in;
+          #   - there is still NO Install section on the flipped unit, so
+          #     declaring it and arming it stay two separate acts.
+          assert (
+            let
+              flipped = self.nixosConfigurations.coordinator.extendModules {
+                modules = [ { home-manager.users.tom.myAxConwip.enable = true; } ];
+              };
+              unit = flipped.config.home-manager.users.tom.systemd.user.services.ax-conwip;
+              raw = unit.Service.ExecStart;
+              exec = if builtins.isList raw then builtins.concatStringsSep " " raw else raw;
+            in
+            nixpkgs.lib.hasInfix "src/serve.ts" exec
+            && !(nixpkgs.lib.hasInfix "src/cli.ts" exec)
+            && nixpkgs.lib.hasInfix "--meters" exec
+            && !(nixpkgs.lib.hasInfix "--live" exec)
+            && !(unit ? Install)
+          );
           pkgs.runCommand "ax-conwip-topology" { } ''
             touch "$out"
           '';

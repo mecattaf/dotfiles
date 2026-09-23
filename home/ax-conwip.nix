@@ -51,9 +51,15 @@
 #      `node_modules` that checkout already carries. That is honest about what
 #      it is: a development shape, not a delivered one. It is the single
 #      biggest reason `enable` must stay false.
-#   3. NO TIMER. The release signal is a `WatchTask` stream, not a poll, so the
-#      scheduler is a long-running service and there is nothing to wake on a
-#      cadence. Compare home/seat-feeder.nix, which is all timers and no
+#   3. NO TIMER, and as of 2026-09-23 that is a statement about the PROGRAM and
+#      not only about this module. `ExecStart` runs `src/serve.ts`, which polls
+#      the records directory on its own interval and holds each admitted slot on
+#      a `WatchTask` stream until the CONWIP's release rule gives it back, so the
+#      cap holds for the life of the process. There is nothing for a timer to
+#      wake, and restarting on a cadence would re-derive and re-admit. Until this
+#      date the unit ran `src/cli.ts`, which reads the directory once and exits:
+#      a `Type = oneshot` in everything but name, and the mismatch this change
+#      closes. Compare home/seat-feeder.nix, which is all timers and no
 #      long-running anything, because its job is freshness.
 #   4. NOTHING ENABLED, AND NOTHING ARMED EITHER. `enable` defaults to false and
 #      is set nowhere, so this module defines NO unit on any host today; the
@@ -65,11 +71,20 @@
 #
 # ONE OPTION BEYOND THE SIX THE BRIEF NAMED, said plainly: `recordsDir`. The
 # scheduler's entry point refuses to start without `--records <dir>`
-# (src/cli.ts prints usage and exits 2), so a skeleton without it could not form
-# a command line at all, and a skeleton that cannot form a command line is not a
-# skeleton, it is a comment. Its default is deliberately a path that does not
-# exist, so an accidental enable produces a legible failure and not a silent
-# pass over an empty directory.
+# (src/serve.ts prints usage and exits 2), so a skeleton without it could not
+# form a command line at all, and a skeleton that cannot form a command line is
+# not a skeleton, it is a comment. Its default is deliberately a path that does
+# not exist, and `src/serve.ts` exits 2 on a records directory that is absent
+# rather than polling it forever, so an accidental enable produces a legible
+# failure and not a silent pass over nothing.
+#
+# NO SEVENTH OPTION WAS ADDED. `src/serve.ts` also takes `--poll-interval-ms`,
+# `--max-ticks`, `--staleness-bound-seconds` and `--live`, and this module
+# passes none of them: every one has a conservative default in the program, and
+# an option is a thing Tom has to review. `--live` in particular is not passed
+# and must never grow a way to be. Dispatch is dry run by default, and the live
+# path needs all three of `--live`, `AX_CONWIP_LIVE_HALOGEN=1` and a seat on the
+# `["halogen"]` allow list in the program's own `src/seats.ts`.
 let
   cfg = config.myAxConwip;
 
@@ -114,6 +129,15 @@ in
         The seat meter directory, read-only, the rewrite's and not branch
         (a)'s. home/seat-feeder.nix declares it and its timers write it; this
         module only reads it and declares no tmpfiles rule over it.
+
+        It is passed BOTH as `AX_CONWIP_METERS` below and as the program's
+        `--meters` flag. Until 2026-09-23 only the environment variable was
+        set and nothing read it: `src/cli.ts` took no `--meters` and read no
+        variable. `src/serve.ts` reads `<metersDir>/<the seat's row>.json`
+        once per tick and lets the pure refusal rule decide admission, and a
+        refusal costs throughput and never a slot. The scheduler opens those
+        files read-only and its ledger writer refuses any path under this
+        directory outright.
       '';
     };
 
@@ -136,7 +160,7 @@ in
       description = ''
         Where the CONWIP program lives, as a DIRECTORY on this box, because it
         is not packaged and there is no flake input to package it from: the
-        repository has no remote. The unit runs `pnpm exec tsx src/cli.ts`
+        repository has no remote. The unit runs `pnpm exec tsx src/serve.ts`
         with this as its working directory, against the `node_modules` that
         checkout already carries. Nothing in the Nix store is built from it
         and nothing here pretends otherwise.
@@ -148,9 +172,12 @@ in
       default = "${config.home.homeDirectory}/.local/state/ax-conwip/records";
       description = ''
         The directory of `wf_*.json` ultracode run records the scheduler
-        derives work items from. `src/cli.ts` exits 2 without it. The default
-        points at a path that does not exist today, so an accidental enable
-        fails legibly instead of passing silently over nothing.
+        derives work items from, and then WATCHES: `src/serve.ts` re-lists it
+        every poll interval and derives each new file exactly once, keyed by
+        absolute path. `src/serve.ts` exits 2 without this flag, and exits 2
+        again if the directory does not exist, so the default below — a path
+        that does not exist today — makes an accidental enable fail legibly
+        instead of passing silently over nothing.
       '';
     };
 
@@ -158,11 +185,13 @@ in
       type = lib.types.path;
       default = "${config.home.homeDirectory}/.local/state/ax-conwip";
       description = ''
-        This module's own state root, under %h/.local/state/. v1's ledger is
-        in memory and printed to the journal, so nothing is written here yet;
-        the directory is declared because the ledger will land in it and
-        because a missing directory turns a first run into a silent no-op
-        rather than a legible failure (the same reasoning as dotfiles#292).
+        This module's own state root, under %h/.local/state/. Nothing is
+        written here yet: `src/serve.ts` puts its jsonl ledgers under the
+        checkout's own gitignored `out/ledger/`, so run output never becomes
+        source. The directory is declared because the ledger belongs here once
+        the program is packaged, and because a missing directory turns a first
+        run into a silent no-op rather than a legible failure (the same
+        reasoning as dotfiles#292).
       '';
     };
   };
@@ -186,10 +215,13 @@ in
       };
 
       Service = {
-        # Long-running, not a oneshot: the release signal is a WatchTask
-        # stream. The scheduler holds slots for the whole life of the process,
-        # so restarting it silently would re-derive and re-admit. If it dies,
-        # that is a fact to read in the journal, not a thing to paper over.
+        # Long-running, not a oneshot, and `src/serve.ts` is the program that
+        # makes that true: it polls the records directory, admits under a cap
+        # that holds for the LIFE OF THE PROCESS, and gives a slot back only
+        # when the release rule says so. Restarting it silently would re-derive
+        # and re-admit. If it dies, that is a fact to read in the journal, not
+        # a thing to paper over. It exits 0 on SIGTERM, so a deliberate stop is
+        # not reported as a signal death.
         Type = "simple";
         Restart = "no";
         Nice = 10;
@@ -200,17 +232,22 @@ in
           "AX_CONWIP_METERS=${cfg.metersDir}"
         ];
         # The whole argument list, as data. Every value is an option above.
+        # Every flag here is one the program prints under `--print-flags`, and
+        # `checks.ax-conwip-topology` asserts the entry point and `--meters`.
+        # `--live` is absent and must stay absent.
         ExecStart = lib.escapeShellArgs [
           "${pkgs.pnpm}/bin/pnpm"
           "exec"
           "tsx"
-          "src/cli.ts"
+          "src/serve.ts"
           "--records"
           "${cfg.recordsDir}"
           "--addr"
           "${cfg.serverUrl}"
           "--cap"
           "${toString cfg.wipCap}"
+          "--meters"
+          "${cfg.metersDir}"
         ];
       };
 
