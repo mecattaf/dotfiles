@@ -64,6 +64,17 @@
   # Wiped blank before the physical move (no partition table, no bootloader),
   # then laid out here.
   #
+  # ── OWNERSHIP (Tom, 2026-09-19) ─────────────────────────────────────────────
+  # THIS DISK BELONGS TO SODIMO. It is one of exactly two sodimo-owned items in
+  # the fleet, the other being the `worker` chassis. It is here only because the
+  # 2026-08-30 transition fitted Tom's own 1TB (26051Y809195) into worker and
+  # moved this one across.
+  #
+  # It LEAVES with worker (2+ months out as of 2026-09-19; per FRONT-10 no agent
+  # invents or enforces that date). /home lives on it, so that departure is a
+  # migration off this disk, not an unplug — plan it as one. Afterwards the
+  # coordinator runs on its own 1TB anchor 25140U804698 with no secondary.
+  #
   # ── The rule this disk exists to enforce ────────────────────────────────────
   # The 1TB anchor holds the OS and only the OS: the nix store and everything
   # NixOS derives from it, /etc, /var, and the local-models weight collection.

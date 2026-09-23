@@ -69,6 +69,7 @@ let
   configDirs = [
     "niri"
     "kitty"
+    "ghostty" # kitty.conf's twin, read by libghostty in cmux Browser's panes
     "fish"
     "starship"
     "yt-dlp"

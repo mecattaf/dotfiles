@@ -68,6 +68,48 @@ let
     inactive_border_color ${t.ground.base}
   '';
 
+  # Ghostty (libghostty inside cmux Browser's terminal panes): the kitty
+  # fragment, key for key, in Ghostty's `key = value` grammar.
+  ghostty = t: ''
+    ${header t "#"}
+    # Joined by ghostty/config.ghostty's `config-file = ?/home/tom/.config/theme/ghostty`.
+    background = ${t.ground.base}
+    foreground = ${t.fg}
+    selection-background = ${t.selection.bg}
+    selection-foreground = ${t.selection.fg}
+    cursor-color = ${t.cursor}
+    cursor-text = ${t.cursorText}
+
+    # black
+    palette = 0=${t.ansi.black}
+    palette = 8=${t.ansi.brightBlack}
+    # red
+    palette = 1=${t.red}
+    palette = 9=${t.red}
+    # green
+    palette = 2=${t.green}
+    palette = 10=${t.green}
+    # yellow
+    palette = 3=${t.yellow}
+    palette = 11=${t.yellow}
+    # blue
+    palette = 4=${t.blue}
+    palette = 12=${t.blue}
+    # magenta
+    palette = 5=${t.magenta}
+    palette = 13=${t.magenta}
+    # cyan
+    palette = 6=${t.cyan}
+    palette = 14=${t.cyan}
+    # white
+    palette = 7=${t.ansi.white}
+    palette = 15=${t.ansi.brightWhite}
+
+    # splits: as kitty, the divider is niri's INACTIVE window border.
+    split-divider-color = ${t.border.inactive}
+    unfocused-split-fill = ${t.ground.base}
+  '';
+
   niri = t: ''
     ${header t "//"}
     // Joined by niri/config.kdl's `include optional=true "~/.config/theme/niri.kdl"`,
@@ -168,6 +210,7 @@ rec {
 
   render = t: {
     "kitty.conf" = kitty t;
+    "ghostty" = ghostty t;
     "niri.kdl" = niri t;
     "colors.fish" = fish t;
     "theme.lua" = lua t;

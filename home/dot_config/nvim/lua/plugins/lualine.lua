@@ -141,7 +141,10 @@ components.location = {
 function M.setup()
   -- Palette colours are resolved here, not at module load, so theme.reload()
   -- can call setup() again after a `theme` switch.
-  local T = require('theme').palette()
+  -- pcall: a missing theme module must never cost the status line (noir
+  -- fallback values, the same as theme.lua's own).
+  local ok, theme = pcall(require, 'theme')
+  local T = ok and theme.palette() or { green = '#9BE963', red = '#F47B85' }
   components.external_changes.color.fg = T.green
   components.recording.color.fg = T.red
   require('lualine').setup({

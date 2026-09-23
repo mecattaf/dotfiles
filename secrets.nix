@@ -150,14 +150,8 @@ in
   # cleanup — as agenix ciphertext it survives reflash and never needs re-minting.
   "secrets/immich-api-key.age".publicKeys = editors ++ coordinatorOnly;
 
-  # Claude Code OAuth credential. Demoted from the common tier to coordinator-only
-  # (2026-08-04, Tom's ruling): the nas holds no `claude` binary and never ran an
-  # agent, so it had no use for the token; zenbook-duo was already excluded from
-  # delivery (jul12 ruling — it logs in with its OWN session, since two devices
-  # refreshing one shared token race and sign each other out). That left the
-  # coordinator as the only real consumer, so the recipient tier now says so —
-  # a token this wide should not be decryptable by boxes that never spend it.
-  "secrets/claude-credentials.age".publicKeys = editors ++ coordinatorOnly;
+  # (claude-credentials.age removed 2026-09-22: the seat logins are hand
+  # `/login`s on the coordinator, never a delivered secret; see modules/secrets.nix.)
 
   # Brother HL-L2445DW Web Based Management admin password, set 2026-08-21 when
   # the printer's forced default-password change gated its move onto the thomas

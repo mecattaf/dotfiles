@@ -6,6 +6,22 @@
   # 500GB paired against the coordinator's 1TB was the fleet's dual-node
   # capacity ceiling.
   #
+  # ── OWNERSHIP (Tom, 2026-09-19) ─────────────────────────────────────────────
+  # THIS DISK IS TOM'S, NOT SODIMO'S. sodimo owns exactly two items in this
+  # fleet: the `worker` chassis and the 500GB SN7100 260538801482 — and that
+  # 500GB is fitted in the COORDINATOR today, not here. When worker goes back
+  # (2+ months out as of 2026-09-19; per FRONT-10 no agent invents or enforces
+  # that date), the 500GB returns to this chassis and THIS 1TB COMES OUT.
+  #
+  # Do not read "worker's boot disk" as "unavailable". That is a filesystem
+  # fact, not an ownership fact, and conflating the two sent the silent-desk
+  # planning down a wrong path until it was corrected on 2026-09-19.
+  #
+  # The freed 1TB is the fleet's ENTIRE NVMe surplus. It is spoken for: either
+  # it becomes the fanless desk NUC's disk, or it upgrades the NAS /mnt/fast
+  # (256GB -> 1TB) and the NAS's Fanxiang 256GB goes to the NUC instead.
+  # Undecided. Standing constraint (Tom, 2026-09-19): NO NEW M.2 IS PURCHASED.
+  #
   # ── Why the attr is `w1t` and NOT `main` ────────────────────────────────────
   # disko derives GPT partition NAMES from the attr: `main` yields
   # `disk-main-ESP` / `disk-main-root`. The coordinator's anchor uses those same
