@@ -33,11 +33,11 @@ with step("gateways: a Task without a gateway, or naming a missing one, is point
     worker.wait_for_unit("public-8000.service")
     nas.wait_until_succeeds(f"curl -sf --max-time 10 {PUBLIC} | grep -q public-reached", timeout=120)
     results = {}
-    for label, gw in (("none", None), ("missing", "no-such-gateway")):
+    for label, missing_gw in (("none", None), ("missing", "no-such-gateway")):
         name = f"gwdef-{label}"
         n = f"{name}-a1"
         t0 = time.monotonic()
-        fleet_task(n, late_curl_body(PUBLIC, 30), gateway=gw)
+        fleet_task(n, late_curl_body(PUBLIC, 30), gateway=missing_gw)
         coordinator.wait_until_succeeds(
             f"{AX} get task {n} | grep -A1 -E '^\\s+gateway:' | grep -qE 'name:\\s*\"?default\"?'", timeout=120
         )
