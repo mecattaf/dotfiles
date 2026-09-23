@@ -67,6 +67,7 @@
     ../../modules/handwriting-annotation.nix
     ../../modules/qwen-tts.nix
     ../../modules/strix.nix
+    ../../modules/gvisor.nix # runsc on PATH; gate below (G1, 2026-09-23)
     # TWINS ONLY: kills the stock 127.0.0.2 self-mapping and points both twins'
     # names at their static LAN addresses (#273). Without it gethostname()
     # resolves to loopback, which every distributed library happily binds — the
@@ -82,6 +83,10 @@
   ];
 
   networking.hostName = "coordinator";
+
+  # gVisor runsc for direct rootless `runsc run` jobs (modules/gvisor.nix).
+  # OFF until Tom flips it; the lane recommends the worker first.
+  myGvisor.enable = false;
 
   # Primary physical seat again (2026-09-16); Zenbook remains a second seat.
   # Agent services stay independent of either compositor.

@@ -3,7 +3,11 @@ let
   lib = pkgs.lib;
   make =
     extra:
-    (import "${pkgs.path}/nixos/lib/eval-config.nix" {
+    # Path arithmetic, not string interpolation (DF-5, 2026-09-23): "${pkgs.path}"
+    # forces a store copy of the whole nixpkgs source, and under
+    # `nix flake check --no-build` that copy is not guaranteed to be valid, so
+    # the check failed with "path '...-source' is not valid" after a GC.
+    (import (pkgs.path + "/nixos/lib/eval-config.nix") {
       system = pkgs.stdenv.hostPlatform.system;
       modules = [
         ../../hosts/nas/tailscale-personal.nix

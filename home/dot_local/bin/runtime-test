@@ -1,11 +1,29 @@
 #!/usr/bin/env bash
 # Run tests with private user-runtime sockets. This is runtime isolation, not
 # a filesystem sandbox: the checkout, home, /tmp and network remain available.
+#
+# --allow-kvm (#453) adds exactly one device node, /dev/kvm, to the otherwise
+# minimal /dev, so a KVM guest (a microvm.nix declaredRunner) can start. It
+# widens nothing else: /run/user stays private, the PID and IPC namespaces and
+# every --unsetenv below are unchanged, and the checkout, $HOME, /tmp and the
+# network stay as accessible as they already are. It is one flag for one
+# device on purpose; there is no general --dev-bind passthrough.
 set -euo pipefail
 if [ "${1:-}" = --help ] || [ "$#" -eq 0 ]; then
-  echo 'usage: runtime-test [--] command [args...]'
+  echo 'usage: runtime-test [--allow-kvm] [--] command [args...]'
   echo 'Private /run/user and PID/IPC namespaces; source files remain writable.'
+  echo '--allow-kvm also binds /dev/kvm (and nothing else) for KVM guests.'
   exit 0
+fi
+devices=()
+if [ "${1:-}" = --allow-kvm ]; then
+  shift
+  # Fail loudly rather than run the guest without the device it asked for.
+  if [ ! -c /dev/kvm ] || [ ! -r /dev/kvm ] || [ ! -w /dev/kvm ]; then
+    echo 'runtime-test: --allow-kvm given but /dev/kvm is absent or not read-write for this user' >&2
+    exit 1
+  fi
+  devices=(--dev-bind /dev/kvm /dev/kvm)
 fi
 [ "${1:-}" != -- ] || shift
 [ "$#" -gt 0 ] || { echo 'runtime-test: missing command' >&2; exit 2; }
@@ -16,7 +34,7 @@ command -v bwrap >/dev/null || { echo 'runtime-test: bubblewrap is required' >&2
 # Never derive a cleanup target from the inherited XDG_RUNTIME_DIR.
 runtime="/run/user/$(id -u)"
 exec bwrap --die-with-parent --unshare-user --unshare-pid --unshare-ipc \
-  --bind / / --proc /proc --dev /dev --tmpfs /run/user --dir "$runtime" \
+  --bind / / --proc /proc --dev /dev "${devices[@]}" --tmpfs /run/user --dir "$runtime" \
   --chmod 0700 "$runtime" --setenv XDG_RUNTIME_DIR "$runtime" \
   --unsetenv DBUS_SESSION_BUS_ADDRESS --unsetenv DBUS_SESSION_BUS_PID \
   --unsetenv NOTIFY_SOCKET --unsetenv WATCHDOG_PID --unsetenv WATCHDOG_USEC \
