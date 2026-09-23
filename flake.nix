@@ -787,6 +787,12 @@
           inherit pkgs self;
           inherit (nixpkgs) lib;
         };
+        # modules/substrate.nix rendered OFF on the coordinator and armed with
+        # fixtures (tests/substrate-modules); every assertion is eval-time.
+        substrate-modules = import ./tests/substrate-modules {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
 
         qwen-speech =
           pkgs.runCommand "qwen-speech-tests"

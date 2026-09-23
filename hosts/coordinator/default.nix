@@ -85,9 +85,26 @@
     # all three interactive hosts, OFF on all three; read that module's header
     # for the runbook and for what it deliberately does not declare.
     ../../modules/ax-client.nix
+    # The Cloudflare Substrate's coordinator side (2026-09-23, E1/A2): the
+    # gentle capacity pusher and the interpreter-host puller, both declared
+    # OFF below. The NAS side is hosts/nas/substrate-link.nix.
+    ../../modules/substrate.nix
   ];
 
   networking.hostName = "coordinator";
+
+  # ── Substrate on this box: declared, OFF ───────────────────────────────
+  # modules/substrate.nix. Arming either needs the floor live at floorUrl,
+  # the sealed FLOOR_TOKEN (secrets/substrate-floor-token.age, owner tom) and,
+  # for the puller, its package (pkgs/substrate-apps/SYNC.md: pending).
+  services.substrate = {
+    floorUrl = "https://substrate.mecattaf.dev";
+    pusher = {
+      enable = false;
+      owners.codex = "tom"; # E6 (2026-09-23): the codex login is Tom's
+    };
+    puller.enable = false;
+  };
 
   # ── ax on the fleet: THE kill switch for this host ─────────────────────
   # The HARNESS node (modules/ax-fleet/harness.nix): a k3s agent tainted
