@@ -273,6 +273,33 @@ in
       description = "The only interface the unauthenticated API is admitted on.";
     };
 
+    openLanPort = lib.mkOption {
+      type = lib.types.bool;
+      default = cfg.autoStart;
+      defaultText = lib.literalExpression "config.services.halogen.autoStart";
+      description = ''
+        Whether to admit `port` on `lanInterface`. Declaring the server and
+        SERVING the fleet are different things, and this is the second one
+        (dotfiles#460).
+
+        The API has no authentication, so the door belongs only to the host
+        that is the fleet's endpoint. That host is the one that keeps a model
+        resident from boot, which is why this follows `autoStart`: the worker
+        (autoStart = true) opens it, the coordinator (autoStart = false, an
+        operator-driven `halogen-switch` box) does not. Before this option the
+        line keyed off `enable`, so the 2026-09-16 change that declared the
+        server on both twins also opened :8731 on the coordinator's WIFI
+        uplink — a segment the "every client is a pinned house device"
+        argument above was never making a claim about.
+
+        Turning it on is how a host declares itself a fleet endpoint. It is
+        deliberately separate from `enable` so that is a visible choice and not
+        a side effect. Loopback is never filtered, so a host with this off
+        still serves `http://localhost:${toString cfg.port}` to its own
+        clients after `halogen-switch`.
+      '';
+    };
+
     contextPositions = lib.mkOption {
       type = lib.types.nullOr lib.types.ints.positive;
       default = null;
@@ -513,7 +540,10 @@ in
 
       environment.systemPackages = [ halogenSwitch ];
 
-      networking.firewall.interfaces.${cfg.lanInterface}.allowedTCPPorts = [ cfg.port ];
+      # Gated on openLanPort, NOT on enable: see that option (dotfiles#460).
+      networking.firewall.interfaces = lib.mkIf cfg.openLanPort {
+        ${cfg.lanInterface}.allowedTCPPorts = [ cfg.port ];
+      };
 
       # GTT sized to the box. This is the half of upstream's reference boot
       # line that is a SIZE rather than a flag: GTT is where every allocation
