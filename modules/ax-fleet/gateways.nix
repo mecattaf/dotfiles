@@ -42,11 +42,29 @@ let
     host = "${halogenHost}/32";
     port = halogenPort;
   };
-  allowAll = [
-    "*"
-    "0.0.0.0/0"
-    "::/0"
-  ];
+  # Codex review 1 (E3): a host is open when it is "*" or empty, or when it is a
+  # CIDR that does not parse or is at or wider than /8 (IPv4) or /16 (IPv6), so
+  # `0.0.0.0/1` plus `128.0.0.0/1` no longer passes. Same rule as the link's
+  # B10 check (pkgs/substrate-link/src/apps/link/src/ax.ts cidrIsOpen): ax sends
+  # every host containing "/" to Substrate as a CIDR.
+  hostIsOpen =
+    host:
+    let
+      h = lib.toLower (lib.trim host);
+      parts = lib.splitString "/" h;
+      addr = builtins.head parts;
+      len = lib.last parts;
+      lenOk = builtins.length parts == 2 && builtins.match "[0-9]{1,3}" len != null;
+      n = lib.toInt len;
+      v4 = builtins.match "[0-9]{1,3}(\\.[0-9]{1,3}){3}" addr != null;
+      v6 = builtins.match "[0-9a-f:]*:[0-9a-f:.]*" addr != null;
+    in
+    h == "*"
+    || h == ""
+    || (
+      lib.hasInfix "/" h
+      && (!lenOk || (if v4 then n > 32 || n <= 8 else if v6 then n > 128 || n <= 16 else true))
+    );
 
   hostRule = lib.types.submodule {
     options = {
@@ -128,8 +146,8 @@ in
             message = "myAxFleet.ax.atespaces.${ns}: the default Gateway \"${a.defaultGateway}\" has an empty allowlist, which stock ax treats as allow-all.";
           }
           {
-            assertion = lib.all (r: !(lib.elem r.host allowAll)) (a.gateways.${a.defaultGateway} or [ ]);
-            message = "myAxFleet.ax.atespaces.${ns}: the default Gateway \"${a.defaultGateway}\" must not allow every host.";
+            assertion = lib.all (r: !(hostIsOpen r.host)) (a.gateways.${a.defaultGateway} or [ ]);
+            message = "myAxFleet.ax.atespaces.${ns}: the default Gateway \"${a.defaultGateway}\" must not allow every host (no \"*\", no CIDR that fails to parse or is /8 or wider for IPv4, /16 or wider for IPv6).";
           }
         ]) cfg.ax.atespaces
       )
