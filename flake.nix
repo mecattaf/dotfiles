@@ -715,6 +715,31 @@
             touch "$out"
           '';
 
+        # G1: modules/gvisor.nix is imported on both twins with the gate OFF,
+        # puts nothing on PATH while off, and puts exactly pkgs.gvisor there
+        # when a host flips it (evaluated through extendModules, never switched).
+        gvisor-module =
+          let
+            hasGvisor = c: builtins.any (p: (p.pname or "") == "gvisor") c.environment.systemPackages;
+            coordinator = self.nixosConfigurations.coordinator.config;
+            worker = self.nixosConfigurations.worker.config;
+            workerOn =
+              (self.nixosConfigurations.worker.extendModules {
+                modules = [ { myGvisor.enable = nixpkgs.lib.mkForce true; } ];
+              }).config;
+          in
+          assert !coordinator.myGvisor.enable;
+          assert !worker.myGvisor.enable;
+          assert !(hasGvisor coordinator);
+          assert !(hasGvisor worker);
+          assert hasGvisor workerOn;
+          assert builtins.all (a: a.assertion) workerOn.assertions;
+          pkgs.runCommand "gvisor-module-check" { } ''
+            test -x ${workerOn.myGvisor.package}/bin/runsc
+            test -x ${workerOn.myGvisor.package}/bin/containerd-shim-runsc-v1
+            touch "$out"
+          '';
+
         qwen-speech =
           pkgs.runCommand "qwen-speech-tests"
             {
