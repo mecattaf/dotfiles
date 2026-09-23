@@ -18,10 +18,12 @@
 # Pinned by commit, not by tag, so a retag upstream cannot move what this fleet
 # builds. d8ed0fe38bceb7842d3c47817d53d16ccdfcb601 IS tag v0.3.0 as of 2026-09-22.
 #
-# ONE PATCH, sandbox-class.patch, described at the `patches` entry below. It is
-# the one the previous revision of this comment predicted: it makes the sandbox
-# class per-Task instead of hardcoded. The upstream clone stays clean; the patch
-# was extracted from a scratch copy of the fetched source.
+# TWO CARRIED PATCHES in ./patches, applied in order, described at the `patches`
+# entry below: sandbox-class.patch (a per-Task sandbox class) and
+# p1-completion.patch (a finished command frees its worker). The upstream clone
+# stays clean; each patch was extracted from a scratch copy of the fetched
+# source, one commit per patch. The vendored Substrate client stays at
+# 672533541dbf: no patch touches go.mod or go.sum.
 let
   # go.mod's first directive is `go 1.27.1` (MEASURED). Go refuses to build a
   # module whose `go` line is newer than the running toolchain, and the sandbox
@@ -45,8 +47,8 @@ buildGo127Module {
   };
 
   # Obtained the ordinary way: build once with lib.fakeHash, read the "got:"
-  # line off the failure, paste it back. UNCHANGED by sandbox-class.patch, which
-  # touches no go.mod or go.sum line and so vendors the same module set
+  # line off the failure, paste it back. UNCHANGED by both patches, which
+  # touch no go.mod or go.sum line and so vendors the same module set
   # (MEASURED 2026-09-23: the patched build reuses this hash).
   vendorHash = "sha256-iC/X6Bg1M7Pn3dT1zWs2YxuPfgl9ZKNEYQsBisIQguY=";
 
@@ -66,7 +68,38 @@ buildGo127Module {
   # from the vendored ateapipb), so "gvisor" and "microvm" are the only values
   # that can reach a real substrate. A workerd class needs an upstream Agent
   # Substrate change that does not exist, and ax cannot invent the enum member.
-  patches = [ ./sandbox-class.patch ];
+  #
+  # p1-completion.patch (REQUIRED for ax on the fleet). Stock v0.3.0 never learns
+  # that a Task's command exited: the Task stays Running, its actor keeps its
+  # worker, and a small WorkerPool is exhausted after a few finished Tasks
+  # (MEASURED by the 2026-09-23 Substrate probe: the third Task on a 3-worker
+  # pool failed ResourceExhausted; evals-2026-09-23/substrate/probe-build.md 4).
+  # The patch:
+  #   - runner: records the command's own exit and serves
+  #     /metadata/v1alpha1/ax/{exit,result,usage} on the metadata port; result
+  #     is the file at AX_RESULT_PATH (default <workspace>/.ax/result.json),
+  #     capped at 1 MiB (413 above that, never truncated);
+  #   - controller: a terminal guard (Completed, or Failed with Ready reason
+  #     CommandExited, is never resumed again), an exit read after each resume,
+  #     and a --running-resync loop (default 15s) that re-checks Running Tasks,
+  #     because nothing publishes an event when a command exits. On exit it
+  #     writes Completed (0) or Failed (Ready False CommandExited, ExitCode=N),
+  #     TaskStatus.command, usage, stores the result, then SuspendActor frees
+  #     the worker. A CRASHED actor with no exit report becomes Failed
+  #     ActorCrashed instead of being silently recreated;
+  #   - API: TaskStatus.command = 8, UsageStats.tool_calls = 3, rpc
+  #     GetTaskResult (store key task-result:<atespace>:<name>), and
+  #     `ax result task <name>`. ax.pb.go and ax_grpc.pb.go are regenerated
+  #     with protoc-gen-go v1.36.11 and protoc-gen-go-grpc v1.6.2.
+  # Its tests run in checkPhase below: the exit write-back for 0 and 3, the
+  # terminal guard (the flipped probe TestProbe_CompletedWriteBackIsOverwritten),
+  # the resync, a crashed actor, the runner's endpoints, and the floor test:
+  # four Tasks in a row on a 2-worker pool all Completed, next to the contrast
+  # that without an exit report the third is refused ResourceExhausted.
+  patches = [
+    ./patches/sandbox-class.patch
+    ./patches/p1-completion.patch
+  ];
 
   # subPackages left unset so all four commands build, matching upstream's
   # `make build-binaries` plus the cross-compiled runner. -s -w mirrors the
