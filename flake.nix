@@ -706,7 +706,19 @@
             ;
           live-iso = strixAi.live-iso;
           nas-installer-iso = nasInstaller.config.system.build.isoImage;
+          # The second half of the ax-fleet kill switch (pkgs/ax-fleet-teardown).
+          ax-fleet-teardown = pkgs.callPackage ./pkgs/ax-fleet-teardown {
+            k3s = inputs.nixpkgs.legacyPackages.${system}.k3s_1_36;
+          };
         };
+
+      # `sudo nix run ~/dotfiles#ax-fleet-teardown` after `myAxFleet.enable =
+      # false` and a switch: k3s-killall.sh, the guard chain, the sysctl restore.
+      apps.${system}.ax-fleet-teardown = {
+        type = "app";
+        program = "${self.packages.${system}.ax-fleet-teardown}/bin/ax-fleet-teardown";
+        meta.description = "Tear down ax-fleet's k3s leftovers and restore the pre-k3s sysctls";
+      };
 
       # `nix build .#models.<id>` retired with the 2026-08-21 "weights leave
       # nix" ruling: weights are no longer derivations, so there is nothing to
@@ -731,6 +743,22 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        # ax on the fleet (modules/ax-fleet, DESIGN.md 12). ax-fleet is the
+        # 4-VM switch/rollback proof, ax-fleet-boot the NAS-from-boot proof,
+        # ax-fleet-topology the evaluation-only assertions over the real hosts.
+        ax-fleet = import ./tests/ax-fleet {
+          inherit pkgs inputs;
+          inherit (nixpkgs) lib;
+        };
+        ax-fleet-boot = import ./tests/ax-fleet-boot {
+          inherit pkgs inputs;
+          inherit (nixpkgs) lib;
+        };
+        ax-fleet-topology = import ./tests/ax-fleet-topology {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
+
         qwen-speech =
           pkgs.runCommand "qwen-speech-tests"
             {
@@ -769,12 +797,23 @@
             ];
           in
           assert builtins.all (host: (hostCfg host) ? myAxClient) gated;
-          assert builtins.all (host: (hostCfg host).myAxClient.enable == false) gated;
+          # ON on the coordinator only, as a mkDefault consequence of
+          # myAxFleet's harness role (modules/ax-fleet/default.nix); OFF on the
+          # worker (inference role) and the client (no fleet role).
+          assert (hostCfg "coordinator").myAxFleet.enable && (hostCfg "coordinator").myAxFleet.role == "harness";
+          assert (hostCfg "coordinator").myAxClient.enable;
+          assert builtins.all (host: (hostCfg host).myAxClient.enable == false) [
+            "worker"
+            "client"
+          ];
           assert builtins.all (
             host:
             !(builtins.elem pkgs.kubectl (hostCfg host).environment.systemPackages)
             && !(builtins.elem pkgs.ax (hostCfg host).environment.systemPackages)
-          ) gated;
+          ) [
+            "worker"
+            "client"
+          ];
           assert !((hostCfg "nas") ? myAxClient);
           pkgs.runCommand "ax-client-topology" { } ''
             touch "$out"
