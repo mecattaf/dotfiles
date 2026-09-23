@@ -1,0 +1,22 @@
+{
+  "name": "ax-conwip",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CONWIP scheduler that turns Claude ultracode workflow run records into ax Tasks under a fixed work-in-progress cap.",
+  "scripts": {
+    "test": "vitest run",
+    "conwip": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.12.6",
+    "@grpc/proto-loader": "^0.7.13",
+    "effect": "4.0.0-rc.112"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
