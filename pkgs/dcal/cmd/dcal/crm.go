@@ -13,6 +13,12 @@ import (
 
 const defaultCRMBinary = "crm"
 
+// dotfiles stopped shipping a crm binary (issue #452, pull request #456), so the
+// pointer is optional now. Name the variable and the successor's wrapper rather
+// than a path that may not exist on this machine.
+const crmMissingRefusal = "no crm executable on PATH: set DCAL_CRM_BIN to a CRM command, " +
+	"such as the scripts/crm-cli.sh wrapper in github.com/mecattaf/crm"
+
 type crmContact struct {
 	Ref  string `json:"ref"`
 	Name string `json:"name"`
@@ -22,22 +28,35 @@ type crmInteraction struct {
 	OccurredOn string `json:"occurred_on"`
 }
 
-func crmBinary() string {
+// crmBinary resolves the CRM executable before anything is spawned. DCAL_CRM_BIN
+// wins and is honoured verbatim, including an absolute path PATH cannot reach.
+// Otherwise the optional crm must resolve on PATH; a refusal by name beats an
+// exec error naming a binary the fleet no longer installs.
+func crmBinary() (string, error) {
 	if configured := strings.TrimSpace(os.Getenv("DCAL_CRM_BIN")); configured != "" {
-		return configured
+		return configured, nil
 	}
-	return defaultCRMBinary
+	resolved, err := exec.LookPath(defaultCRMBinary)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "dcal: %s\n", crmMissingRefusal)
+		return "", reportedWithCode(exitFailure, errors.New(crmMissingRefusal))
+	}
+	return resolved, nil
 }
 
 // runCRM preserves the CRM contract: stdout is structured data, while stderr
 // is passed through unchanged. In particular, CRM's not-found/ambiguous exit
 // codes (2/3) become dcal's exit codes without another wrapper line.
 func runCRM(ctx context.Context, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, crmBinary(), args...)
+	binary, err := crmBinary()
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, binary, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err := cmd.Run()
+	err = cmd.Run()
 	if stderr.Len() > 0 {
 		_, _ = os.Stderr.Write(stderr.Bytes())
 	}
@@ -53,7 +72,7 @@ func runCRM(ctx context.Context, args ...string) ([]byte, error) {
 		}
 		return nil, reportedWithCode(code, err)
 	}
-	return nil, fmt.Errorf("run %s: %w", crmBinary(), err)
+	return nil, fmt.Errorf("run %s: %w", binary, err)
 }
 
 func resolveCRMContact(ctx context.Context, ref string) (crmContact, error) {
