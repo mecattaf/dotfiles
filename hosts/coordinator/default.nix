@@ -74,6 +74,11 @@
     # this: it carries its own pins in hosts/nas/network.nix and keeps the
     # stock loopback mapping.
     ../../modules/fleet-hosts.nix
+    # 2026-09-20 sandbox spike: k3s AGENT. The desk box is where an
+    # interactive session's sandbox wants to be, because herdr and the seat
+    # are here; ../../modules/k3s-fleet.nix carries the numbers and the
+    # RuntimeClass wiring for both twins.
+    ../../modules/k3s-fleet.nix
     # The REWRITE kernel (github.com/mecattaf/tally, U-B1…U-B13) as one system
     # service against ~/.local/state/tally-rewrite/, coexisting with the live
     # user-bus tally-daemon.service (U-D13). Declared here, installed by U-D19's
@@ -82,6 +87,28 @@
   ];
 
   networking.hostName = "coordinator";
+
+  # ── k3s agent: GATE OFF (2026-09-20 sandbox spike) ─────────────────────
+  # Flip this, the worker's and the NAS's in the SAME commit: an agent whose
+  # server is not up retries forever and logs nothing useful.
+  #
+  # The labels are what the ultracode DAG schedules against, so they describe
+  # capability and not hardware. `fleet/desk` is the one that matters and the
+  # one only this box can have: herdr, the seat and the human are here, so an
+  # item that needs to be watched, teleported into, or answered belongs on
+  # this node and nowhere else. `fleet/kvm` is true on both twins (nested KVM
+  # MEASURED = 1 on both, 2026-09-20) and is the micro-VM sandbox class's
+  # precondition. There is no `fleet/gpu-proximity` here on purpose: Halogen
+  # is declared on this box with autoStart = false ("a resident model there
+  # would starve the desktop, TTS and diarization", modules/halogen.nix), so
+  # a GPU-adjacent item belongs on the worker.
+  myK3sFleet.enable = false;
+  myK3sFleet.role = "agent";
+  myK3sFleet.nodeLabels = {
+    "fleet/role" = "desk";
+    "fleet/desk" = "true";
+    "fleet/kvm" = "true";
+  };
 
   # Primary physical seat again (2026-09-16); Zenbook remains a second seat.
   # Agent services stay independent of either compositor.

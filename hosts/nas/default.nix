@@ -51,6 +51,11 @@
     # State here, machines on the Strix boxes (Appendix J section 5). Gate OFF.
     ./state-services.nix
     ./headscale-backup.nix # consistent identity backup before overseas handover
+    # 2026-09-20 sandbox spike: the fleet k3s cluster. This box is the SERVER
+    # and schedules nothing (disableAgent); the machines live on the Strix
+    # boxes. The CIDR-overlap assertions in that file evaluate whether or not
+    # the gate is on, which is the point of them.
+    ../../modules/k3s-fleet.nix
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc
@@ -134,6 +139,13 @@
   # the commands. The appliance's no-agenix doctrine (./attic.nix) is why
   # they are files placed by hand and not ciphertexts.
   myNas.stateServices.enable = false;
+
+  # ── The k3s control plane: GATE OFF ────────────────────────────────────
+  # secrets/k3s-token.age does not exist in the tree; minting it needs Tom's
+  # admin age key. Flip all three hosts in the SAME commit -- an agent whose
+  # server is not up yet retries forever and logs nothing useful.
+  myK3sFleet.enable = false;
+  myK3sFleet.role = "server";
   # Retired 2026-09-16: the Dell belongs to its owner; Tom no longer
   # publishes or manages Omarchy updates. Keep historical receipts only.
   myNas.omarchyUpdateCenter.enable = false;
