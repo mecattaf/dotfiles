@@ -56,7 +56,6 @@ let
   # ko push.
   toOci =
     {
-      name,
       image,
       tag,
       repo,
@@ -113,7 +112,7 @@ let
       };
     in
     toOci {
-      inherit name image;
+      inherit image;
       tag = version;
       repo = "substrate/${name}";
     };
