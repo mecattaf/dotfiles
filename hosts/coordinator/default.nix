@@ -74,11 +74,8 @@
     # this: it carries its own pins in hosts/nas/network.nix and keeps the
     # stock loopback mapping.
     ../../modules/fleet-hosts.nix
-    # 2026-09-20 sandbox spike: k3s AGENT. The desk box is where an
-    # interactive session's sandbox wants to be, because herdr and the seat
-    # are here; ../../modules/k3s-fleet.nix carries the numbers and the
-    # RuntimeClass wiring for both twins.
-    ../../modules/k3s-fleet.nix
+    # ax on the fleet (2026-09-23): the HARNESS node, see myAxFleet below.
+    ../../modules/ax-fleet
     # The REWRITE kernel (github.com/mecattaf/tally, U-B1…U-B13) as one system
     # service against ~/.local/state/tally-rewrite/, coexisting with the live
     # user-bus tally-daemon.service (U-D13). Declared here, installed by U-D19's
@@ -92,26 +89,20 @@
 
   networking.hostName = "coordinator";
 
-  # ── k3s agent: GATE OFF (2026-09-20 sandbox spike) ─────────────────────
-  # Flip this, the worker's and the NAS's in the SAME commit: an agent whose
-  # server is not up retries forever and logs nothing useful.
-  #
-  # The labels are what the ultracode DAG schedules against, so they describe
-  # capability and not hardware. `fleet/desk` is the one that matters and the
-  # one only this box can have: herdr, the seat and the human are here, so an
-  # item that needs to be watched, teleported into, or answered belongs on
-  # this node and nowhere else. `fleet/kvm` is true on both twins (nested KVM
-  # MEASURED = 1 on both, 2026-09-20) and is the micro-VM sandbox class's
-  # precondition. There is no `fleet/gpu-proximity` here on purpose: Halogen
-  # is declared on this box with autoStart = false ("a resident model there
-  # would starve the desktop, TTS and diarization", modules/halogen.nix), so
-  # a GPU-adjacent item belongs on the worker.
-  myK3sFleet.enable = false;
-  myK3sFleet.role = "agent";
-  myK3sFleet.nodeLabels = {
-    "fleet/role" = "desk";
-    "fleet/desk" = "true";
-    "fleet/kvm" = "true";
+  # ── ax on the fleet: THE kill switch for this host ─────────────────────
+  # The HARNESS node (modules/ax-fleet/harness.nix): a k3s agent tainted
+  # ate.dev/sandboxClass=gvisor:NoSchedule, so only atelet and the gVisor
+  # WorkerPool land here. "agent harnesses on coordinator" (Tom, 2026-09-23).
+  # Switch the NAS first. `false`, switch, then
+  # `sudo nix run ~/dotfiles#ax-fleet-teardown` is the whole rollback. This
+  # also turns myAxClient (kubectl, ax) on by mkDefault.
+  myAxFleet = {
+    enable = true;
+    role = "harness";
+    lan = {
+      interface = "wlp192s0";
+      address = "10.42.0.2";
+    };
   };
 
   # Primary physical seat again (2026-09-16); Zenbook remains a second seat.
@@ -141,12 +132,9 @@
   # backend; flips with the NAS's myNas.paperless.enable (2026-09-13).
   myNasClient.relayPaperless = true;
 
-  # OFF, and it lands OFF (modules/ax-client.nix). There is no cluster on this
-  # fleet to point kubectl at and no Agent Substrate for ax to delegate to, so
-  # flipping this today installs two binaries with nothing to talk to. The flip
-  # is Tom's, one host at a time, and ax-client-topology in flake.nix goes red
-  # on it by design.
-  myAxClient.enable = false;
+  # myAxClient (kubectl + ax) is ON here by mkDefault from myAxFleet's
+  # harness role (modules/ax-fleet/default.nix); ax-client-topology in
+  # flake.nix pins that.
 
   # The rewrite's served kernel: ONE kernel, on the coordinator (spec §2.4 Q2 —
   # the worker twin is a ROW this kernel serves, not a second kernel), on the

@@ -45,17 +45,12 @@
     ./headscale.nix # 2026-09-01: the fleet's OWN tailnet control plane (supersedes #233)
     ./tailscale-personal.nix # Additional isolated SaaS ingress; never enroll the lent laptops here
     ./personal-https.nix # Gated, NAS-scoped DNS-01 certificates for private media
-    # 2026-09-20 sandbox spike: the three state services the sandbox lane
-    # reads -- a second database on the PostgreSQL ./media.nix already runs,
-    # an S3-compatible object store on the NVMe, and a container registry.
-    # State here, machines on the Strix boxes (Appendix J section 5). Gate OFF.
-    ./state-services.nix
     ./headscale-backup.nix # consistent identity backup before overseas handover
-    # 2026-09-20 sandbox spike: the fleet k3s cluster. This box is the SERVER
-    # and schedules nothing (disableAgent); the machines live on the Strix
-    # boxes. The CIDR-overlap assertions in that file evaluate whether or not
-    # the gate is on, which is the point of them.
-    ../../modules/k3s-fleet.nix
+    # ax on the fleet (2026-09-23): this box is the CONTROL node. k3s server
+    # with its kubelet, Substrate's and ax's control planes, the registry.
+    # "hypervisor on NAS" (Tom, 2026-09-23). The CIDR-overlap assertions in
+    # that module evaluate whether or not the switch below is on.
+    ../../modules/ax-fleet
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc
@@ -132,20 +127,20 @@
   myNas.headscale.serverUrl = "https://nas-saas.tail8dd1.ts.net:8443";
   myNas.headscale.backup.enable = true;
 
-  # ── State services for the sandbox lane: GATE OFF ───────────────────────
-  # Three runbook-placed root-owned files stand between this and a flip (the
-  # rustfs key pair, the registry and object-store directories on /mnt/fast,
-  # and the Substrate role's password) -- ./state-services.nix's header has
-  # the commands. The appliance's no-agenix doctrine (./attic.nix) is why
-  # they are files placed by hand and not ciphertexts.
-  myNas.stateServices.enable = false;
-
-  # ── The k3s control plane: GATE OFF ────────────────────────────────────
-  # secrets/k3s-token.age does not exist in the tree; minting it needs Tom's
-  # admin age key. Flip all three hosts in the SAME commit -- an agent whose
-  # server is not up yet retries forever and logs nothing useful.
-  myK3sFleet.enable = false;
-  myK3sFleet.role = "server";
+  # ── ax on the fleet: THE kill switch for this host ─────────────────────
+  # One line. `false`, switch, then `sudo nix run ~/dotfiles#ax-fleet-teardown`
+  # (k3s-killall.sh plus the sysctl restore) removes every trace but the data
+  # left on purpose under /mnt/fast/k3s and /mnt/nas/services/ax-fleet. The
+  # k3s token is the agenix secret secrets/k3s-token.age (mySecrets is on
+  # here). Switch order: this host first, then the coordinator.
+  myAxFleet = {
+    enable = true;
+    role = "control";
+    lan = {
+      interface = "enp1s0";
+      address = "10.42.0.1";
+    };
+  };
   # Retired 2026-09-16: the Dell belongs to its owner; Tom no longer
   # publishes or manages Omarchy updates. Keep historical receipts only.
   myNas.omarchyUpdateCenter.enable = false;
