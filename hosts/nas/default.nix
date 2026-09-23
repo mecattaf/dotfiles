@@ -128,11 +128,14 @@
   myNas.headscale.backup.enable = true;
 
   # ── ax on the fleet: THE kill switch for this host ─────────────────────
-  # One line. `false`, switch, then `sudo nix run ~/dotfiles#ax-fleet-teardown`
-  # (k3s-killall.sh plus the sysctl restore) removes every trace but the data
-  # left on purpose under /mnt/fast/k3s and /mnt/nas/services/ax-fleet. The
-  # k3s token is the agenix secret secrets/k3s-token.age (mySecrets is on
-  # here). Switch order: this host first, then the coordinator.
+  # One line. `false`, switch (from the coordinator, --target-host nas), then
+  # `ssh -t nas sudo ax-fleet-teardown` (k3s-killall.sh, the guard table and
+  # the sysctl restore). The teardown stays on this host's PATH with the
+  # switch off; there is no dotfiles checkout here. It removes every trace but
+  # the data left on purpose under /mnt/fast/k3s and /mnt/nas/services/ax-fleet.
+  # The k3s credentials are the agenix secrets secrets/k3s-token.age (server,
+  # this host only) and secrets/k3s-agent-token.age (mySecrets is on here).
+  # Switch order: this host first, then the coordinator.
   myAxFleet = {
     enable = true;
     role = "control";

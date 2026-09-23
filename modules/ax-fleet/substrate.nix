@@ -24,12 +24,18 @@ let
 
   inherit (pkgs.stdenv.hostPlatform) system;
 
-  # The NAS evaluates on nixpkgs-stable; the Go toolchain still comes from the
-  # nixpkgs-go input, the same derivation pkgs/ax uses.
-  substrate = pkgs.callPackage ../../pkgs/substrate {
+  # ONE image set for every evaluator (fix round 2), as ax.nix already does:
+  # built from the flake's own nixpkgs pin, never the host's `pkgs`. The NAS
+  # evaluates on nixpkgs-stable, and the round-2 review MEASURED that the six
+  # component images the real NAS would seed (ateapi, atecontroller, atelet,
+  # atenet, ateom-gvisor, podcertcontroller) had other digests than the ones
+  # the VM test ran. The Go toolchain comes from the nixpkgs-go input, the
+  # same derivation pkgs/ax uses. ax-fleet-topology asserts the parity.
+  fleetPkgs = inputs.nixpkgs.legacyPackages.${system};
+  substrate = fleetPkgs.callPackage ../../pkgs/substrate {
     go_1_27 = inputs.nixpkgs-go.legacyPackages.${system}.go_1_27;
   };
-  images = pkgs.callPackage ../../pkgs/substrate/images.nix { inherit substrate; };
+  images = fleetPkgs.callPackage ../../pkgs/substrate/images.nix { inherit substrate; };
 
   kubectl = "${cfg.k3sPackage}/bin/kubectl";
   jq = "${pkgs.jq}/bin/jq";

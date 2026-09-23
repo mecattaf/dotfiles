@@ -727,8 +727,13 @@
           };
         };
 
-      # `sudo nix run ~/dotfiles#ax-fleet-teardown` after `myAxFleet.enable =
-      # false` and a switch: k3s-killall.sh, the guard chain, the sysctl restore.
+      # The same teardown the control and harness roles keep on their PATH
+      # (`sudo ax-fleet-teardown` after `myAxFleet.enable = false` and a
+      # switch). This app is for a generation rollback from a checkout, where
+      # the older generation predates the package: on the coordinator
+      # `sudo nix run ~/dotfiles#ax-fleet-teardown`; for the NAS, which holds
+      # no checkout, `nix copy --to ssh-ng://nas .#ax-fleet-teardown`, then
+      # `ssh -t nas sudo <out>/bin/ax-fleet-teardown`.
       apps.${system}.ax-fleet-teardown = {
         type = "app";
         program = "${self.packages.${system}.ax-fleet-teardown}/bin/ax-fleet-teardown";

@@ -73,7 +73,9 @@ writeShellApplication {
     snap=/var/lib/ax-fleet/sysctl-before.conf
     if [ -s "$snap" ]; then
       echo "== sysctl restore from $snap"
-      sysctl -p "$snap"
+      # -e: a conntrack key recorded while nf_conntrack was loaded may be
+      # absent now; skip it rather than abort the restore.
+      sysctl -e -p "$snap"
     else
       echo "ax-fleet-teardown: no $snap; sysctls left as they are" >&2
     fi

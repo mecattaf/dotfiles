@@ -9,7 +9,10 @@ LEFTOVER_RULES = "iptables-save 2>/dev/null | grep -E 'KUBE-|FLANNEL|CNI-'"
 with step("rollback coordinator"):
     coordinator.succeed(f"{BASE} >&2")
     coordinator.fail("systemctl is-active k3s.service")
-    coordinator.succeed(f"{TEARDOWN} >&2")
+    # As documented (fix round 2): the teardown from the rolled-back host's
+    # own PATH, no checkout, no injected store path.
+    coordinator.succeed("test -x /run/current-system/sw/bin/ax-fleet-teardown")
+    coordinator.succeed("ax-fleet-teardown >&2")
     coordinator.fail("ip link show cni0")
     coordinator.fail("ip link show flannel.1")
     coordinator.fail(LEFTOVER_RULES)
@@ -33,7 +36,8 @@ with step("rollback nas"):
     nas.fail("systemctl is-active k3s.service")
     nas.fail("systemctl is-active docker-registry.service")
     nas.succeed("command -v tailscale")  # the stub is reachable from a root shell
-    nas.succeed(f"{TEARDOWN} >&2")
+    nas.succeed("test -x /run/current-system/sw/bin/ax-fleet-teardown")
+    nas.succeed("ax-fleet-teardown >&2")
     # The teardown's pinned PATH keeps k3s-killall.sh away from tailscale.
     nas.fail("test -e /var/log/tailscale-stub.log")
     nas.fail("ip link show cni0")

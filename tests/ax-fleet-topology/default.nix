@@ -64,8 +64,11 @@ let
   volatile =
     f:
     f == "--token-file"
+    || f == "--agent-token-file"
     || lib.hasSuffix "/k3s-token" f
+    || lib.hasSuffix "/k3s-agent-token" f
     || lib.hasSuffix "-ax-fleet-vm-token" f
+    || lib.hasSuffix "-ax-fleet-vm-agent-token" f
     || lib.hasInfix "reserved=" f
     || lib.hasInfix "eviction-hard=" f;
   normFlags =
@@ -85,10 +88,17 @@ let
   guardText =
     subst: cfg:
     map (lib.replaceStrings (lib.attrNames subst) (lib.attrValues subst)) (
-      lib.filter (l: lib.hasInfix "ax-fleet-guard" l || lib.hasInfix "8472" l) (
-        lib.splitString "\n" cfg.networking.firewall.extraCommands
-      )
+      lib.filter (
+        l: lib.hasInfix "ax-fleet-guard" l || lib.hasInfix "8472" l || lib.hasInfix "ax-fleet-pod-input" l
+      ) (lib.splitString "\n" cfg.networking.firewall.extraCommands)
     );
+  pkgNames = cfg: map (p: p.pname or p.name or "") cfg.environment.systemPackages;
+  hasTeardown = cfg: builtins.elem "ax-fleet-teardown" (pkgNames cfg);
+
+  # every image the real NAS seeds is the store path the VM NAS seeds (fix round 2)
+  seedPaths = cfg: lib.mapAttrs (_: s: s.oci.outPath) cfg.myAxFleet.registrySeed;
+  nasSeeds = seedPaths nas;
+  vmSeeds = seedPaths (testOn "nas");
 in
 # nas: the control node
 assert (ax nas).enable && (ax nas).role == "control";
@@ -112,14 +122,18 @@ assert builtins.length (axLines nas.networking.firewall.extraInputRules) == 4;
 assert builtins.all (l: lib.hasInfix "ip saddr" l && lib.hasInfix "iifname" l) (
   axLines nas.networking.firewall.extraInputRules
 );
-assert !(builtins.any (lib.hasInfix "tailscale0") (axLines nas.networking.firewall.extraInputRules));
+assert
+  !(builtins.any (lib.hasInfix "tailscale0") (axLines nas.networking.firewall.extraInputRules));
 assert nas.services.dockerRegistry.listenAddress == "10.42.0.1";
 assert !nas.services.dockerRegistry.openFirewall;
 assert lib.hasPrefix "/mnt/nas/" nas.services.dockerRegistry.storagePath;
 assert builtins.all (m: lib.hasPrefix "/mnt/fast/" m.what) (
-  lib.filter (m: m.where == "/var/lib/rancher" || m.where == "/var/lib/kubelet" || m.where == "/var/log/pods") nas.systemd.mounts
+  lib.filter (
+    m: m.where == "/var/lib/rancher" || m.where == "/var/lib/kubelet" || m.where == "/var/log/pods"
+  ) nas.systemd.mounts
 );
-assert builtins.length (lib.filter (m: lib.hasPrefix "/mnt/fast/k3s" m.what) nas.systemd.mounts) == 3;
+assert
+  builtins.length (lib.filter (m: lib.hasPrefix "/mnt/fast/k3s" m.what) nas.systemd.mounts) == 3;
 # the shared PostgreSQL is not touched: identical settings with the switch off
 assert nas.services.postgresql.settings == (offCfg "nas").services.postgresql.settings;
 assert nas.services.postgresql.authentication == (offCfg "nas").services.postgresql.authentication;
@@ -142,11 +156,15 @@ assert !(coord.networking.firewall.interfaces ? cni0);
 assert coord.environment.etc ? "NetworkManager/conf.d/90-ax-fleet.conf";
 # NO NetworkManager restart trigger: NetworkManager.conf renders byte-identical with the switch off
 assert
-  coord.environment.etc."NetworkManager/NetworkManager.conf".source
-  == (offCfg "coordinator").environment.etc."NetworkManager/NetworkManager.conf".source;
-assert coord.networking.networkmanager.unmanaged == (offCfg "coordinator").networking.networkmanager.unmanaged;
+  coord.environment.etc."NetworkManager/NetworkManager.conf".source == (offCfg "coordinator")
+  .environment.etc."NetworkManager/NetworkManager.conf".source;
+assert
+  coord.networking.networkmanager.unmanaged == (offCfg "coordinator")
+  .networking.networkmanager.unmanaged;
 assert coord.boot.kernel.sysctl."net.ipv4.conf.default.proxy_arp" == 1;
-assert !(coord.boot.kernel.sysctl ? "net.ipv4.conf.all.proxy_arp") || coord.boot.kernel.sysctl."net.ipv4.conf.all.proxy_arp" == null;
+assert
+  !(coord.boot.kernel.sysctl ? "net.ipv4.conf.all.proxy_arp")
+  || coord.boot.kernel.sysctl."net.ipv4.conf.all.proxy_arp" == null;
 assert (coord.boot.kernel.sysctl."net.ipv6.conf.all.forwarding" or 0) == 0;
 assert coord.services.tailscale.useRoutingFeatures == "none";
 assert coord.systemd.sockets.ax-server-proxy.listenStreams == [ "127.0.0.1:8080" ];
@@ -160,7 +178,50 @@ assert builtins.elem 8731 worker.networking.firewall.interfaces.enp191s0.allowed
 assert !(client ? myAxFleet);
 assert !client.services.k3s.enable;
 
-# the kill switch
+# the registry is read-only to the network; the seed writes on loopback only
+assert nas.services.dockerRegistry.extraConfig.storage.maintenance.readonly.enabled;
+assert !nas.services.dockerRegistry.enableDelete;
+# two k3s credentials: the server token stays on the NAS
+assert lib.hasSuffix "/k3s-token" nas.services.k3s.tokenFile;
+assert lib.hasSuffix "/k3s-agent-token" nas.services.k3s.agentTokenFile;
+assert lib.hasSuffix "/k3s-agent-token" coord.services.k3s.tokenFile;
+assert !(coord.age.secrets ? k3s-token);
+# pods never open a connection to the desk itself; the desk outweighs kubepods
+assert lib.hasInfix
+  "-i cni0 -m conntrack --ctstate NEW -m comment --comment ax-fleet-pod-input -j nixos-fw-refuse"
+  coord.networking.firewall.extraCommands;
+assert coord.systemd.slices.user.sliceConfig.CPUWeight == 10000;
+assert coord.systemd.slices.system.sliceConfig.CPUWeight == 10000;
+# kube-proxy leaves the host's conntrack table as it is
+assert builtins.all
+  (
+    h:
+    has h "--kube-proxy-arg=conntrack-tcp-timeout-established=0s"
+    && has h "--kube-proxy-arg=conntrack-max-per-core=0"
+  )
+  [
+    nas
+    coord
+  ];
+# the VM coordinator runs the desk's kernel
+assert
+  coord.boot.kernelPackages.kernel.outPath == (testOn "coordinator")
+  .boot.kernelPackages.kernel.outPath;
+# the NAS-from-boot VM runs the NAS's release line and kernel
+assert
+  self.checks.x86_64-linux.ax-fleet-boot.nodes.nas.system.nixos.release == nas.system.nixos.release;
+assert
+  self.checks.x86_64-linux.ax-fleet-boot.nodes.nas.boot.kernelPackages.kernel.outPath
+  == nas.boot.kernelPackages.kernel.outPath;
+# image parity with the VM
+assert builtins.all (n: vmSeeds ? ${n} && vmSeeds.${n} == nasSeeds.${n}) (lib.attrNames nasSeeds);
+
+# the kill switch; the teardown stays on the host's PATH with the switch off
+assert builtins.all (h: hasTeardown (offCfg h)) [
+  "nas"
+  "coordinator"
+];
+assert !(hasTeardown worker);
 assert builtins.all killed [
   "nas"
   "coordinator"

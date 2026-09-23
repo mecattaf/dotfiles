@@ -41,6 +41,23 @@ with step("lan: routed LAN traffic never reaches a ClusterIP or pod IP"):
     record("nas_range_guard", nas.succeed("nft list chain inet ax-fleet-guard prerouting").strip().splitlines())
 
 
+with step("security: the registry is read-only to the coordinator; the seed wrote everything"):
+    # Fix round 2. The round-2 review MEASURED 202 for an upload and 201 for a
+    # tag overwrite from an unprivileged coordinator user.
+    reg = "http://10.42.0.1:5000"
+    alice = "runuser -u alice -- curl -s -o /dev/null -w '%{http_code}' --max-time 10"
+    assert coordinator.succeed(f"{alice} {reg}/v2/_catalog").strip() == "200"
+    codes = {
+        "upload": coordinator.succeed(f"{alice} -X POST {reg}/v2/secprobe/blobs/uploads/").strip(),
+        "mount": coordinator.succeed(f"{alice} -X POST '{reg}/v2/secprobe/blobs/uploads/?mount=sha256:0000000000000000000000000000000000000000000000000000000000000000&from=ax/ax-redis'").strip(),
+        "delete": coordinator.succeed(f"{alice} -X DELETE {reg}/v2/ax/ax-redis/manifests/sha256:0000000000000000000000000000000000000000000000000000000000000000").strip(),
+    }
+    record("registry_write_codes", codes)
+    assert all(c not in ("201", "202") for c in codes.values()), codes
+    nas.fail("ss -ltn | grep -q '127.0.0.1:5001'")  # the seed's writer is gone
+    nas.succeed("ss -ltn | grep -q '10.42.0.1:5000'")
+
+
 with step("security: ax-controller holds no Secret grant and no API token"):
     nas.fail("k3s kubectl get clusterrole ax-controller")
     nas.fail("k3s kubectl get clusterrolebinding ax-controller")

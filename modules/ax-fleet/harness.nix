@@ -18,6 +18,9 @@
 #   - the tailnet: flannel and kube-proxy bind the LAN leg only, nothing is
 #     published, and the guard chain below keeps pods, wifi and the tailnet
 #     apart even though k3s turns ip_forward on (judge 1's second risk). The
+#     guard chain polices FORWARD only; pods reaching the coordinator HOST
+#     (sshd, which accepts passwords) go through INPUT, so pod interfaces get
+#     their own refusal at the head of nixos-fw (fix round 2, see podInput). The
 #     chain covers the direct path; the path routed through the NAS into
 #     VXLAN is closed twice, by the NAS's prerouting range guard
 #     (control.nix) and by the flannel.1 source rule here. Plain VXLAN on the
@@ -40,6 +43,7 @@ let
   ];
 
   ipt = "${pkgs.iptables}/bin/iptables -w";
+  ip6t = "${pkgs.iptables}/bin/ip6tables -w";
   registryPort = lib.last (lib.splitString ":" cfg.registry);
 
   # ── the guard chain (DESIGN 6.4), in mangle FORWARD, position 1 ──
@@ -51,44 +55,43 @@ let
   # (atelet's anonymous GCS fetch, a worker pod reaching the LAN), because the
   # reply arrives on the LAN leg from a source that is not the NAS. Only NEW
   # flows are policed, which is the property the guard exists for.
-  guardRules =
-    [
-      "-m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"
-      # Into pods over VXLAN only from the pod network (fix round 1). Real
-      # peers, the NAS host included (its flannel.1 address), are sourced
-      # from the pod CIDR. Defence in depth, not the fix: LAN traffic the NAS
-      # routes into VXLAN (MEASURED bypass, worker -> nas -> flannel.1 ->
-      # harness pod, rc=0) is likely masqueraded by flannel's own rule to the
-      # NAS's flannel.1 address (INFERRED), so the NAS's prerouting range
-      # guard (control.nix) is what closes that path. This rule drops VXLAN
-      # payloads whose inner source is outside the pod CIDR.
-      "-i flannel.1 ! -s ${cfg.podCidr} -j DROP"
-    ]
-    ++ lib.concatMap (
-      g:
-      lib.concatMap (p: [
-        "-i ${g} -o ${p} -j DROP"
-        "-i ${p} -o ${g} -j DROP"
-      ]) podIfs
-      ++ [
-        "-i ${lan} -o ${g} -j DROP"
-        "-i ${g} -o ${lan} -j DROP"
-      ]
-    ) cfg.guardInterfaces
+  guardRules = [
+    "-m conntrack --ctstate ESTABLISHED,RELATED -j RETURN"
+    # Into pods over VXLAN only from the pod network (fix round 1). Real
+    # peers, the NAS host included (its flannel.1 address), are sourced
+    # from the pod CIDR. Defence in depth, not the fix: LAN traffic the NAS
+    # routes into VXLAN (MEASURED bypass, worker -> nas -> flannel.1 ->
+    # harness pod, rc=0) is likely masqueraded by flannel's own rule to the
+    # NAS's flannel.1 address (INFERRED), so the NAS's prerouting range
+    # guard (control.nix) is what closes that path. This rule drops VXLAN
+    # payloads whose inner source is outside the pod CIDR.
+    "-i flannel.1 ! -s ${cfg.podCidr} -j DROP"
+  ]
+  ++ lib.concatMap (
+    g:
+    lib.concatMap (p: [
+      "-i ${g} -o ${p} -j DROP"
+      "-i ${p} -o ${g} -j DROP"
+    ]) podIfs
     ++ [
-      "-i ${lan} -o cni0 ! -s ${cfg.serverAddress} -j DROP"
-      # Pod traffic leaving on the LAN leg is masqueraded to this host's LAN
-      # address and would inherit every NAS rule that trusts the coordinator
-      # (ssh, NFS, media, paperless). From pods, the LAN gets only the
-      # apiserver and the registry on the NAS; the internet (atelet's GCS
-      # fetch) is unaffected. Everything else in-cluster rides flannel.1.
-      "-i cni0 -o ${lan} -d ${cfg.serverAddress} -p tcp -m multiport --dports 6443,${registryPort} -j RETURN"
+      "-i ${lan} -o ${g} -j DROP"
+      "-i ${g} -o ${lan} -j DROP"
     ]
-    # Every private range, not only the house /24 (fix round 1): when
-    # NetworkManager falls back to the Freebox profile on ${lan}
-    # (hosts/coordinator/uplink-nas.nix), the leg is a DHCP subnet this
-    # module does not know, and 100.64/10 is the tailnet's range.
-    ++ map (r: "-i cni0 -o ${lan} -d ${r} -j DROP") privateRanges;
+  ) cfg.guardInterfaces
+  ++ [
+    "-i ${lan} -o cni0 ! -s ${cfg.serverAddress} -j DROP"
+    # Pod traffic leaving on the LAN leg is masqueraded to this host's LAN
+    # address and would inherit every NAS rule that trusts the coordinator
+    # (ssh, NFS, media, paperless). From pods, the LAN gets only the
+    # apiserver and the registry on the NAS; the internet (atelet's GCS
+    # fetch) is unaffected. Everything else in-cluster rides flannel.1.
+    "-i cni0 -o ${lan} -d ${cfg.serverAddress} -p tcp -m multiport --dports 6443,${registryPort} -j RETURN"
+  ]
+  # Every private range, not only the house /24 (fix round 1): when
+  # NetworkManager falls back to the Freebox profile on ${lan}
+  # (hosts/coordinator/uplink-nas.nix), the leg is a DHCP subnet this
+  # module does not know, and 100.64/10 is the tailnet's range.
+  ++ map (r: "-i cni0 -o ${lan} -d ${r} -j DROP") privateRanges;
 
   privateRanges = lib.unique [
     cfg.lan.cidr
@@ -97,6 +100,20 @@ let
     "192.168.0.0/16"
     "100.64.0.0/10"
   ];
+
+  # ── pods never open a connection to the coordinator host (fix round 2) ──
+  # MEASURED by the round-2 review: from a pod, `nc 10.200.0.1 22` and the
+  # node's LAN address answered SSH-2.0-OpenSSH, because nixos-fw accepts 22 on
+  # every interface and the guard chain above sees FORWARD only. Nothing on
+  # the Substrate path needs a NEW pod-to-host flow: hostPorts and ClusterIPs
+  # are DNATed through FORWARD, kubelet reaches pods (OUTPUT, replies are
+  # ESTABLISHED), atelet talks to kubelet and containerd over unix sockets, and
+  # kubectl exec/logs ride the agent tunnel. First rules of nixos-fw, so they
+  # run before its ESTABLISHED accept and every port rule; IPv6 too (link-local
+  # addresses on cni0 and the veths).
+  podInput = lib.concatMap (p: [
+    "-I nixos-fw 1 -i ${p} -m conntrack --ctstate NEW -m comment --comment ax-fleet-pod-input -j nixos-fw-refuse"
+  ]) podIfs;
 
   guardStart = ''
     # ax-fleet guard chain (idempotent)
@@ -107,6 +124,10 @@ let
     ${lib.concatMapStringsSep "\n" (r: "${ipt} -t mangle -A ax-fleet-guard ${r}") guardRules}
     # flannel VXLAN from the NAS only; no TCP port is opened.
     ${ipt} -A nixos-fw -i ${lan} -s ${cfg.serverAddress} -p udp --dport 8472 -j nixos-fw-accept
+    # pods to the host: refused (podInput; nixos-fw is rebuilt on every reload)
+    ${lib.concatMapStringsSep "\n" (
+      r: "${ipt} ${r}" + lib.optionalString config.networking.enableIPv6 "\n${ip6t} ${r}"
+    ) podInput}
   '';
 
   guardStop = ''
@@ -146,12 +167,27 @@ in
 {
   config = lib.mkIf on {
     myAxFleet.kubelet = {
-      # Tom's seats, Chrome and a coordinator Halogen feel pressure after the
-      # sandboxes are evicted, never before.
+      # Memory: Tom's seats, Chrome and a coordinator Halogen feel pressure
+      # after the sandboxes are evicted, never before. CPU is the slices below:
+      # system-reserved only shrinks kubepods.slice's weight, it protects
+      # nothing.
       systemReserved = lib.mkDefault "cpu=8,memory=32Gi";
       kubeReserved = lib.mkDefault "cpu=1,memory=2Gi";
       evictionHard = lib.mkDefault "memory.available<8Gi";
     };
+
+    # ── CPU: the desk outweighs the sandboxes (fix round 2) ──
+    # kubelet gives kubepods.slice cpu.weight = 1 + ((allocatable_mcpu * 1024
+    # / 1000 - 2) * 9999) / 262142: MEASURED 274 for 7 allocatable CPUs in the
+    # review VM, INFERRED 899 for the desk's 32 - 8 - 1 = 23. user.slice and
+    # system.slice are 100 on the live box (MEASURED), so under contention the
+    # gVisor workers (no CPU limit, substrate.nix) would take about 90 % of the
+    # CPU from niri, herdr, the seats and Chrome. Weights are work-conserving:
+    # idle desk CPU still goes to the sandboxes. Both slices get the same
+    # weight, so their ratio to each other is unchanged. switch-to-configuration
+    # never restarts a slice; daemon-reload applies the property.
+    systemd.slices.user.sliceConfig.CPUWeight = lib.mkDefault cfg.kubelet.deskCpuWeight;
+    systemd.slices.system.sliceConfig.CPUWeight = lib.mkDefault cfg.kubelet.deskCpuWeight;
 
     services.k3s = {
       role = "agent";

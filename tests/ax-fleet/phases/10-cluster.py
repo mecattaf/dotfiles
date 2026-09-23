@@ -91,6 +91,8 @@ with step("nas: k3s state on the fast tier, links on that disk"):
     nas.succeed("stat -c '%a %U %G' /etc/ax-fleet/admin.kubeconfig | grep -x '640 root wheel'")
     nas.succeed("grep -q 'server: https://10.42.0.1:6443' /etc/ax-fleet/admin.kubeconfig")
     nas.succeed("test -s /var/lib/ax-fleet/sysctl-before.conf")
+    # The house router's forwarding is what the snapshot says (fix round 2).
+    nas.succeed("grep -x 'net.ipv4.ip_forward = 1' /var/lib/ax-fleet/sysctl-before.conf")
 
 
 with step("nas: node Ready, untainted, control labels"):
@@ -198,6 +200,24 @@ with step("coordinator: nothing changed for Tom"):
     record("sysctl_coordinator_after_restore", sysctls(coordinator))
 
 
+with step("coordinator: kubelet's tunables are put back whenever they appear, not only after a k3s start"):
+    # Fix round 2. kubelet applies them when its container manager starts,
+    # which on an agent is when the server first answers, possibly long after
+    # k3s.service started (MEASURED by the review). Write kubelet's values with
+    # no k3s restart, well after the switch: the watcher must restore them.
+    nrestarts = coordinator.succeed("systemctl show k3s.service -p NRestarts --value").strip()
+    coordinator.succeed("sysctl -w kernel.panic=10 kernel.panic_on_oops=1 vm.overcommit_memory=1")
+    kernel_keys_back(coordinator, base["sysctl_coordinator"])
+    assert coordinator.succeed("systemctl show k3s.service -p NRestarts --value").strip() == nrestarts
+    coordinator.succeed("systemctl is-active ax-fleet-kernel-tunables.service")
+
+
+with step("coordinator: the desk outweighs kubepods for CPU"):
+    w = {s: int(coordinator.succeed(f"cat /sys/fs/cgroup/{s}/cpu.weight").strip()) for s in ("user.slice", "system.slice", "kubepods.slice")}
+    record("cpu_weights", w)
+    assert w["user.slice"] > w["kubepods.slice"] and w["system.slice"] > w["kubepods.slice"], w
+
+
 with step("coordinator: the guards hold"):
     pod_ip = jsonpath("pod probe-coord", "{.status.podIP}")
     record("probe_coord_ip", pod_ip)
@@ -229,6 +249,26 @@ with step("coordinator: the guards hold"):
     coordinator.succeed("iptables -t mangle -S FORWARD 1 | grep -q ax-fleet-guard")
     coordinator.fail("ip -br link | grep -qi cilium")
     record("guard_chain", coordinator.succeed("iptables -t mangle -S ax-fleet-guard").strip().splitlines())
+
+
+with step("coordinator: pods never reach the coordinator host (sshd accepts passwords)"):
+    # Fix round 2. Discriminating: sshd answers the worker on the LAN, and
+    # port 22 is open on every interface (openFirewall), so only the pod-input
+    # refusal stops a pod.
+    worker.succeed("timeout 10 bash -c 'exec 3<>/dev/tcp/10.42.0.2/22; head -c 7 <&3' | grep -x SSH-2.0")
+    gw = coordinator.succeed("ip -4 -o addr show dev cni0 | awk '{print $4}' | cut -d/ -f1").strip()
+    fl = coordinator.succeed("ip -4 -o addr show dev flannel.1 | awk '{print $4}' | cut -d/ -f1").strip()
+    record("pod_input_targets", {"cni0": gw, "flannel.1": fl})
+    for ip in ("10.42.0.2", gw, fl, "100.105.121.73"):
+        kubectl(f"exec probe-coord -- sh -c '! (nc -w 5 {ip} 22 </dev/null 2>/dev/null | grep -q SSH)'")
+    # The NAS's pods, over VXLAN, neither.
+    kubectl(f"exec probe-nas -- sh -c '! (nc -w 5 {fl} 22 </dev/null 2>/dev/null | grep -q SSH)'")
+    # Pod reachability of the host's own hostPort and of Services is unchanged.
+    code = kubectl("exec probe-coord -- curl -sk -o /dev/null -w '%{http_code}' --max-time 10 https://10.201.0.1/readyz").strip()
+    assert code != "000", "a coordinator pod lost the apiserver Service"
+    refused = coordinator.succeed("iptables -S nixos-fw | grep -c ax-fleet-pod-input").strip()
+    assert refused == "2", refused
+    coordinator.succeed("ip6tables -S nixos-fw | grep -q 'cni0.*ax-fleet-pod-input'")
 
 
 with step("coordinator: pods reach no private range on the LAN leg (the Freebox fallback case)"):

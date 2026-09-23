@@ -93,8 +93,8 @@
   # The HARNESS node (modules/ax-fleet/harness.nix): a k3s agent tainted
   # ate.dev/sandboxClass=gvisor:NoSchedule, so only atelet and the gVisor
   # WorkerPool land here. "agent harnesses on coordinator" (Tom, 2026-09-23).
-  # Switch the NAS first. `false`, switch, then
-  # `sudo nix run ~/dotfiles#ax-fleet-teardown` is the whole rollback. This
+  # Switch the NAS first. `false`, switch, then `sudo ax-fleet-teardown`
+  # (on PATH whatever the switch says) is the whole rollback. This
   # also turns myAxClient (kubectl, ax) on by mkDefault.
   myAxFleet = {
     enable = true;

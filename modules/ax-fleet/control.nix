@@ -116,24 +116,58 @@ let
   '';
 
   stepNames = lib.sort (a: b: a < b) (lib.attrNames cfg.bootstrap);
-  stepScript = name: pkgs.writeShellScript "ax-fleet-step-${name}" ''
-    set -euo pipefail
-    ${cfg.bootstrap.${name}}
-  '';
+  stepScript =
+    name:
+    pkgs.writeShellScript "ax-fleet-step-${name}" ''
+      set -euo pipefail
+      ${cfg.bootstrap.${name}}
+    '';
+
+  # ── the registry: read-only to the network, writable only to the seed ──
+  # (fix round 2) The round-2 review MEASURED an unprivileged user on the
+  # coordinator pushing blobs (202), mounting across repos (201) and
+  # overwriting substrate/atelet:d277088b's tag (201): the source-address rule
+  # admits every uid and every pod on the coordinator (masqueraded to its LAN
+  # address). ate-setup resolves --image-tag to a digest at install time, so a
+  # rewritten tag is what would get pinned. Now the served instance on
+  # ${cfg.registry} runs with storage.maintenance.readonly, and delete is off;
+  # the seed pushes through a second, loopback-only instance on the same root
+  # directory that lives only for the seed run, as the registry user.
+  seedAddr = "127.0.0.1:5001";
+  registryBase = {
+    version = "0.1";
+    log.fields.service = "registry";
+    storage = {
+      cache.blobdescriptor = "inmemory";
+      delete.enabled = false;
+      filesystem.rootdirectory = cfg.registryRoot;
+    };
+    http.headers.X-Content-Type-Options = [ "nosniff" ];
+  };
+  seedRegistryConfig = pkgs.writeText "ax-fleet-seed-registry.json" (
+    builtins.toJSON (lib.recursiveUpdate registryBase { http.addr = seedAddr; })
+  );
 
   seedScript = ''
     set -euo pipefail
+    # The writable instance, loopback only, gone when this script exits.
+    setpriv --reuid=docker-registry --regid=docker-registry --init-groups \
+      ${lib.getExe config.services.dockerRegistry.package} serve ${seedRegistryConfig} &
+    writer=$!
+    trap 'kill $writer 2>/dev/null || true; wait $writer 2>/dev/null || true' EXIT
     for _ in $(seq 1 120); do
-      curl -fsS -o /dev/null http://${cfg.registry}/v2/ && break
+      curl -fsS -o /dev/null http://${cfg.registry}/v2/ && curl -fsS -o /dev/null http://${seedAddr}/v2/ && break
       sleep 1
     done
     curl -fsS -o /dev/null http://${cfg.registry}/v2/
+    curl -fsS -o /dev/null http://${seedAddr}/v2/
     ${lib.concatStrings (
       lib.mapAttrsToList (name: s: ''
         echo "seed ${name}: ${s.repo}:${s.tag}"
         digest=$(tr -d '[:space:]' < ${s.oci}/digest)
         skopeo --insecure-policy copy --all --preserve-digests --dest-tls-verify=false \
-          oci:${s.oci} docker://${cfg.registry}/${s.repo}:${s.tag}
+          oci:${s.oci} docker://${seedAddr}/${s.repo}:${s.tag}
+        # Read back through the served, read-only instance: what pods pull.
         skopeo --insecure-policy inspect --raw --tls-verify=false \
           docker://${cfg.registry}/${s.repo}@"$digest" >/dev/null
         echo "seeded ${s.repo}@$digest"
@@ -231,7 +265,10 @@ in
       listenAddress = registryHost;
       port = registryPort;
       storagePath = cfg.registryRoot;
-      enableDelete = true;
+      # Read-only to the network (see seedAddr); garbage collection is
+      # offline and needs no delete API.
+      enableDelete = false;
+      extraConfig.storage.maintenance.readonly.enabled = true;
       enableGarbageCollect = true;
       garbageCollectDates = "weekly";
       # openFirewall NOT used: the source-scoped rule below is the access control.
@@ -289,6 +326,7 @@ in
         pkgs.skopeo
         pkgs.curl
         pkgs.coreutils
+        pkgs.util-linux
       ];
       environment.HOME = "/var/lib/ax-fleet";
       serviceConfig = {

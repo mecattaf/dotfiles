@@ -9,15 +9,35 @@
 # on the /mnt/fast side, the registry seed and the bootstrap succeed, and the
 # node is Ready and untainted. The substrate track adds its Available checks
 # here through the same bootstrap.
+#
+# Built from nixpkgs-STABLE, as the real NAS is (fix round 2): the round-2
+# review MEASURED that every other ax-fleet VM runs NixOS 26.11 and systemd
+# 261 while the NAS runs 26.05 and systemd 260, so the NAS's own module set
+# (k3s, docker-registry, nftables, systemd) had never run. The NAS boots with
+# the systemd initrd, as the real one does (boot.initrd.systemd.enable is
+# true on it, MEASURED nix eval), because that is where the boot-time
+# activation runs.
 let
-  nodes = import ../ax-fleet/nodes.nix { inherit pkgs lib inputs; };
+  stablePkgs = inputs.nixpkgs-stable.legacyPackages.x86_64-linux;
+  nodes = import ../ax-fleet/nodes.nix {
+    pkgs = stablePkgs;
+    inherit lib inputs;
+  };
 in
-pkgs.testers.runNixOSTest {
+stablePkgs.testers.runNixOSTest {
   name = "ax-fleet-boot";
   node.specialArgs = { inherit inputs; };
   nodes.nas = {
     imports = [ nodes.nas ];
     myAxFleet.enable = true;
+    boot.initrd.systemd.enable = true;
+    # The NAS's kernel (hosts/nas/kernel.nix: freshPkgs.linuxPackages_7_2);
+    # ax-fleet-topology asserts it is the same derivation.
+    boot.kernelPackages =
+      (import inputs.nixpkgs-fresh {
+        system = "x86_64-linux";
+        config.allowUnfree = true;
+      }).linuxPackages_7_2;
     myAxFleet.kubelet.systemReserved = "cpu=1,memory=1Gi";
     # The real NAS gets 10.42.0.1 from NetworkManager seconds AFTER
     # network(-online).target (MEASURED 2026-09-23: target at 11.78 s, address
@@ -70,8 +90,18 @@ pkgs.testers.runNixOSTest {
     nas.wait_until_succeeds("test -z \"$(k3s kubectl get node nas -o jsonpath='{.spec.taints}')\"", timeout=300)
     nas.succeed("k3s kubectl -n kube-system wait --for=condition=Available deploy/coredns deploy/local-path-provisioner --timeout=600s")
     nas.succeed("test -s /etc/ax-fleet/admin.kubeconfig")
-    # The snapshot was taken at first activation, before k3s ever ran.
+    # The snapshot was taken at first activation, before k3s ever ran, and at
+    # boot it carries the host's declared values, not the kernel defaults the
+    # boot activation sees (fix round 2: it had recorded ip_forward = 0 on
+    # the router, which the teardown would have applied).
+    print("AXFLEET-BOOT snapshot:\n" + nas.succeed("cat /var/lib/ax-fleet/sysctl-before.conf"))
+    print("AXFLEET-BOOT release=" + nas.succeed("nixos-version").strip() + " systemd=" + nas.succeed("systemctl --version | head -1").strip())
+    nas.succeed("test \"$(sysctl -n net.ipv4.ip_forward)\" = 1")
+    nas.succeed("grep -x 'net.ipv4.ip_forward = 1' /var/lib/ax-fleet/sysctl-before.conf")
     nas.succeed("grep -q '^kernel.panic = ' /var/lib/ax-fleet/sysctl-before.conf")
+    # kubelet ran; its panic values are not what the host is left with.
+    snap_panic = nas.succeed("sed -n 's/^kernel.panic = //p' /var/lib/ax-fleet/sysctl-before.conf").strip()
+    nas.wait_until_succeeds(f"test \"$(sysctl -n kernel.panic)\" = '{snap_panic}'", timeout=300)
     nas.fail("findmnt -n -T /var/lib/rancher/k3s -o SOURCE | grep -q vda")
   '';
 }

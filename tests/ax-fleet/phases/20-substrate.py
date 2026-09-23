@@ -27,7 +27,7 @@ def sub_json(args):
     return json.loads(sub_k(f"{args} -o json"))
 
 
-with subtest("substrate: bootstrap steps 20-50 ran"):
+with step("substrate: bootstrap steps 20-50 ran"):
     nas.wait_for_unit("ax-fleet-bootstrap.service", timeout=3600)
     boot_log = nas.succeed("journalctl -b -u ax-fleet-bootstrap.service --no-pager")
     # Not `step`: that name is the prelude's receipt context manager, which
@@ -40,7 +40,7 @@ with subtest("substrate: bootstrap steps 20-50 ran"):
     ).strip()
     assert stamp == "d277088b", f"install stamp version {stamp!r}"
 
-with subtest("substrate: every control workload Available, on the NAS"):
+with step("substrate: every control workload Available, on the NAS"):
     nas.wait_until_succeeds(
         f"KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl -n {SUB_NS} wait "
         "--for=condition=Available deploy --all --timeout=10s",
@@ -73,7 +73,7 @@ with subtest("substrate: every control workload Available, on the NAS"):
             continue
         assert node == "nas", f"control pod {name} landed on {node!r}"
 
-with subtest("substrate: nas keeps substrate-version=none, coordinator carries the version"):
+with step("substrate: nas keeps substrate-version=none, coordinator carries the version"):
     nodes = {n["metadata"]["name"]: n for n in sub_json("get nodes")["items"]}
     assert nodes["nas"]["metadata"]["labels"].get("ate.dev/substrate-version") == "none"
     assert (
@@ -81,7 +81,7 @@ with subtest("substrate: nas keeps substrate-version=none, coordinator carries t
         == "d277088b"
     )
 
-with subtest("substrate: atelet runs on the coordinator only"):
+with step("substrate: atelet runs on the coordinator only"):
     # The atelet DaemonSet is version-keyed by ate-setup; find it by label.
     ds = sub_k(f"-n {SUB_NS} get ds -l app=atelet -o jsonpath='{{.items[0].metadata.name}}'").strip()
     sub_k(f"-n {SUB_NS} rollout status ds/{ds} --timeout=600s", timeout=660)
@@ -96,12 +96,12 @@ with subtest("substrate: atelet runs on the coordinator only"):
             f"atelet on {p['spec']['nodeName']}"
         )
 
-with subtest("substrate: ClusterTrustBundles and pod certificates served"):
+with step("substrate: ClusterTrustBundles and pod certificates served"):
     res = sub_k("get --raw /apis/certificates.k8s.io/v1beta1")
     assert "clustertrustbundles" in res and "podcertificaterequests" in res, res
     assert sub_json("get clustertrustbundles")["items"], "no ClusterTrustBundle objects"
 
-with subtest("substrate: WorkerPool ateom-gvisor Ready 2 on the coordinator"):
+with step("substrate: WorkerPool ateom-gvisor Ready 2 on the coordinator"):
     nas.wait_until_succeeds(
         "test \"$(KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl -n ate-system get "
         "workerpool ateom-gvisor -o jsonpath='{.status.readyReplicas}')\" = 2",
@@ -119,7 +119,7 @@ with subtest("substrate: WorkerPool ateom-gvisor Ready 2 on the coordinator"):
         lims = [c.get("resources", {}).get("limits", {}).get("memory") for c in p["spec"]["containers"]]
         assert any(lims), f"worker pod has no memory limit: {lims}"
 
-with subtest("substrate: gVisor fetched through the RustFS fallback"):
+with step("substrate: gVisor fetched through the RustFS fallback"):
     # No internet in the VM: atelet's anonymous GCS open of gs://gvisor/...
     # fails, then its S3 client reads the same bucket and key from the
     # in-cluster RustFS (40-gvisor-asset). The prewarmer logs "Sandbox assets
@@ -135,7 +135,7 @@ with subtest("substrate: gVisor fetched through the RustFS fallback"):
     print("\n".join(l for l in logs.splitlines() if "gvisor" in l.lower())[-4000:])
     assert "gVisor release download complete" in logs or "gvisor" in logs.lower()
 
-with subtest("substrate: every PersistentVolume on the data pool"):
+with step("substrate: every PersistentVolume on the data pool"):
     pvs = sub_json("get pv")["items"]
     assert pvs, "no PersistentVolumes"
     for pv in pvs:
@@ -153,7 +153,7 @@ with subtest("substrate: every PersistentVolume on the data pool"):
         ]
         assert "coordinator" not in values, f"PV {pv['metadata']['name']} on the coordinator"
 
-with subtest("substrate: every image came from the NAS registry by digest"):
+with step("substrate: every image came from the NAS registry by digest"):
     pods = sub_json(f"-n {SUB_NS} get pods")["items"]
     for p in pods:
         for c in p["spec"].get("containers", []) + p["spec"].get("initContainers", []):

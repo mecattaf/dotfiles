@@ -26,6 +26,8 @@ let
     import time
     from contextlib import contextmanager
 
+    # 90-rollback runs the teardown from the host's PATH, as documented; this
+    # store path is only compared against it.
     TEARDOWN = "${teardown}/bin/ax-fleet-teardown"
     PROBE_IMAGE = "ax-fleet-probe:test"
     PROBE_TARBALL = "${nodes.probeImage}"
@@ -39,6 +41,11 @@ let
         "kernel.panic",
         "kernel.panic_on_oops",
         "vm.overcommit_memory",
+        # kube-proxy's conntrack keys (fix round 2): the house router's NAT
+        # table must keep the host's timeouts.
+        "net.netfilter.nf_conntrack_max",
+        "net.netfilter.nf_conntrack_tcp_timeout_established",
+        "net.netfilter.nf_conntrack_tcp_timeout_close_wait",
     ]
 
     from typing import Any

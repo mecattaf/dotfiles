@@ -15,6 +15,8 @@
 let
   # A plain file, test-only, not a secret: the fleet reads agenix instead.
   token = pkgs.writeText "ax-fleet-vm-token" "ax-fleet-vm-test-token-0123456789abcdef";
+  # The agent credential, distinct from the server token as on the fleet.
+  agentToken = pkgs.writeText "ax-fleet-vm-agent-token" "ax-fleet-vm-agent-token-fedcba9876543210";
 
   # busybox (httpd, nslookup) plus curl, imported by k3s from the images
   # directory on both nodes, so probe pods need no registry and no network.
@@ -80,6 +82,7 @@ let
         inherit role;
         lan = lanAddr address;
         k3sTokenFile = "${token}";
+        k3sAgentTokenFile = "${agentToken}";
         guardInterfaces = [ "eth2" ];
       };
       environment.systemPackages = [
@@ -109,7 +112,12 @@ let
   };
 in
 {
-  inherit probeImage token claudeProbeImage;
+  inherit
+    probeImage
+    token
+    agentToken
+    claudeProbeImage
+    ;
 
   nas =
     { ... }:
@@ -155,6 +163,9 @@ in
         };
       };
       boot.supportedFilesystems = [ "btrfs" ];
+      # The house router, as hosts/nas/router.nix declares it (fix round 2):
+      # the snapshot and the teardown must keep it.
+      boot.kernel.sysctl."net.ipv4.ip_forward" = 1;
 
       # The NAS firewall as the real one is shaped: nftables, interface-scoped
       # extraInputRules, filterForward off, strict rpfilter, and a reload that
@@ -241,6 +252,22 @@ in
         "eth2"
       ];
       zramSwap.enable = true;
+      # The desk's kernel, where runsc runs (fix round 2: the VM had run the
+      # pin's default kernel). The same expression as modules/strix.nix, so
+      # the same derivation; ax-fleet-topology asserts it.
+      boot.kernelPackages =
+        (import inputs.nixpkgs-fresh {
+          system = "x86_64-linux";
+          config.allowUnfree = true;
+        }).linuxPackages_7_2;
+      # The desk's sshd as modules/common.nix renders it: port 22 open on every
+      # interface, passwords accepted (fix round 2). Pods must not reach it.
+      services.openssh = {
+        enable = true;
+        openFirewall = true;
+        settings.PasswordAuthentication = true;
+        settings.KbdInteractiveAuthentication = true;
+      };
 
       services.caddy = {
         enable = true;

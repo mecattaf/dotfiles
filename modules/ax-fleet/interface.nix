@@ -108,6 +108,17 @@ in
       '';
     };
 
+    k3sAgentTokenFile = mkOption {
+      type = types.nullOr types.str;
+      default = null;
+      description = ''
+        The agent join credential (server --agent-token-file, agent
+        --token-file). null (the default) means the agenix secret
+        secrets/k3s-agent-token.age, declared by ./k3s.nix. Tests set a path
+        to a plain file instead.
+      '';
+    };
+
     stateRoot = mkOption {
       type = types.str;
       default = "/mnt/fast";
@@ -152,6 +163,15 @@ in
       evictionHard = mkOption {
         type = types.nullOr types.str;
         default = null;
+      };
+      deskCpuWeight = mkOption {
+        type = types.ints.between 1 10000;
+        default = 10000;
+        description = ''
+          Harness role: cpu.weight for user.slice and system.slice, against
+          kubepods.slice's kubelet-computed weight (INFERRED 899 on the desk).
+          The desk wins CPU contention; idle CPU still goes to the sandboxes.
+        '';
       };
       keepHostKernelTunables = mkOption {
         type = types.bool;
