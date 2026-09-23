@@ -1,0 +1,3545 @@
+diff --git a/cmd/ax-controller/main.go b/cmd/ax-controller/main.go
+index 9d1020e..f882e2d 100644
+--- a/cmd/ax-controller/main.go
++++ b/cmd/ax-controller/main.go
+@@ -21,6 +21,7 @@ import (
+ 	"os"
+ 	"os/signal"
+ 	"syscall"
++	"time"
+ 
+ 	"github.com/google/ax/internal/controller"
+ 	"github.com/google/ax/internal/store/redis"
+@@ -42,6 +43,7 @@ func main() {
+ 		redisPassword           string
+ 		redisGroup              string
+ 		redisConsumer           string
++		runningResync           time.Duration
+ 	)
+ 
+ 	flag.StringVar(&redisAddr, "redis-addr", "localhost:6379", "Redis server address (e.g. localhost:6379)")
+@@ -56,6 +58,7 @@ func main() {
+ 	flag.BoolVar(&substratePlaintext, "substrate-plaintext", false, "Use insecure plaintext gRPC connection to Substrate")
+ 	flag.StringVar(&defaultTemplate, "template", "default-template", "Default Substrate ActorTemplate name")
+ 	flag.StringVar(&defaultTemplateAtespace, "template-atespace", "ax-system", "Default Substrate ActorTemplate atespace")
++	flag.DurationVar(&runningResync, "running-resync", controller.DefaultRunningResync, "How often Running tasks are re-checked for a command exit (0 disables)")
+ 	flag.Parse()
+ 
+ 	if envRedis := os.Getenv("REDIS_ADDR"); envRedis != "" {
+@@ -104,6 +107,7 @@ func main() {
+ 
+ 	rStore := redis.NewStore(rClient, redis.Options{})
+ 	worker := controller.NewWorker(rStore, reconciler, redisGroup, redisConsumer)
++	worker.RunningResync = runningResync
+ 	if err := worker.Run(ctx); err != nil && err != context.Canceled {
+ 		slog.Error("redis worker stopped with error", "error", err)
+ 		os.Exit(1)
+diff --git a/cmd/ax/main.go b/cmd/ax/main.go
+index 7b2922e..fff6379 100644
+--- a/cmd/ax/main.go
++++ b/cmd/ax/main.go
+@@ -147,6 +147,8 @@ func main() {
+ 		err = runDelete(serverURL, atespace, cleanArgs)
+ 	case "ssh":
+ 		err = runSSH(serverURL, atespace, kubeContext, cleanArgs)
++	case "result":
++		err = runResult(serverURL, atespace, cleanArgs)
+ 	default:
+ 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", cmd)
+ 		printUsage()
+@@ -183,6 +185,7 @@ Available Commands:
+   ssh <task-name> [-- cmd] Run a command or shell inside the running task container
+   suspend task <name>     Suspend execution of a task and checkpoint state
+   resume task <name>      Resume execution of a suspended task
++  result task <name>      Print the result file a finished task's command wrote
+   delete task <name>      Delete a task
+   delete gateway <name>   Delete a gateway
+   delete workspace <name> Delete a workspace
+@@ -1228,3 +1231,33 @@ func runSSH(serverURL, atespace, kubeContext string, args []string) error {
+ 
+ 	return nil
+ }
++
++// runResult prints the result content the controller copied from a finished
++// task's sandbox, byte for byte, to stdout.
++func runResult(serverURL, atespace string, args []string) error {
++	name := ""
++	switch {
++	case len(args) == 1:
++		name = args[0]
++	case len(args) >= 2 && (args[0] == "task" || args[0] == "tasks"):
++		name = args[1]
++	default:
++		return fmt.Errorf("usage: ax result task <name>")
++	}
++
++	client, conn, err := getAXClient(serverURL)
++	if err != nil {
++		return err
++	}
++	defer conn.Close()
++
++	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
++	defer cancel()
++
++	res, err := client.GetTaskResult(ctx, &v1alpha1.GetTaskResultRequest{Atespace: atespace, Name: name})
++	if err != nil {
++		return fmt.Errorf("getting task result: %w", err)
++	}
++	_, err = os.Stdout.Write(res.GetContent())
++	return err
++}
+diff --git a/internal/controller/completion_test.go b/internal/controller/completion_test.go
+new file mode 100644
+index 0000000..d286b42
+--- /dev/null
++++ b/internal/controller/completion_test.go
+@@ -0,0 +1,396 @@
++// Copyright 2026 Google LLC
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++package controller_test
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"net"
++	"net/http"
++	"net/http/httptest"
++	"sync"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/agent-substrate/substrate/pkg/proto/ateapipb"
++	"github.com/google/ax/internal/controller"
++	"github.com/google/ax/internal/metadata"
++	"github.com/google/ax/internal/store"
++	"github.com/google/ax/internal/store/memory"
++	"github.com/google/ax/internal/substrate"
++	"github.com/google/ax/pkg/apis/v1alpha1"
++	"google.golang.org/grpc"
++	"google.golang.org/grpc/codes"
++	"google.golang.org/grpc/credentials/insecure"
++	"google.golang.org/grpc/status"
++)
++
++// poolControl is a Substrate mock with a fixed number of workers. A resumed
++// actor holds a worker until it is suspended or deleted; with every worker
++// held, ResumeActor fails ResourceExhausted, as the real scheduler does.
++type poolControl struct {
++	ateapipb.UnimplementedControlServer
++	mu       sync.Mutex
++	workers  int
++	workerIP string
++	running  map[string]bool
++	crashed  map[string]bool
++	resumes  map[string]int
++	suspends map[string]int
++}
++
++func newPoolControl(workers int, workerIP string) *poolControl {
++	return &poolControl{workers: workers, workerIP: workerIP, running: map[string]bool{}, crashed: map[string]bool{}, resumes: map[string]int{}, suspends: map[string]int{}}
++}
++
++func (m *poolControl) CreateAtespace(ctx context.Context, req *ateapipb.CreateAtespaceRequest) (*ateapipb.Atespace, error) {
++	return &ateapipb.Atespace{Metadata: req.GetAtespace().GetMetadata()}, nil
++}
++
++func (m *poolControl) CreateActorTemplate(ctx context.Context, req *ateapipb.CreateActorTemplateRequest) (*ateapipb.ActorTemplate, error) {
++	return req.GetActorTemplate(), nil
++}
++
++func (m *poolControl) GetActorTemplate(ctx context.Context, req *ateapipb.GetActorTemplateRequest) (*ateapipb.ActorTemplate, error) {
++	return &ateapipb.ActorTemplate{Metadata: &ateapipb.ResourceMetadata{Atespace: req.GetActorTemplate().GetAtespace(), Name: req.GetActorTemplate().GetName()}}, nil
++}
++
++func (m *poolControl) CreateActor(ctx context.Context, req *ateapipb.CreateActorRequest) (*ateapipb.Actor, error) {
++	return &ateapipb.Actor{Metadata: req.GetActor().GetMetadata(), Status: &ateapipb.ActorStatus{State: ateapipb.ActorState_ACTOR_STATE_SUSPENDED}}, nil
++}
++
++func (m *poolControl) CreateActorEgressPolicy(ctx context.Context, req *ateapipb.CreateActorEgressPolicyRequest) (*ateapipb.EgressPolicy, error) {
++	return &ateapipb.EgressPolicy{}, nil
++}
++
++func (m *poolControl) GetActor(ctx context.Context, req *ateapipb.GetActorRequest) (*ateapipb.Actor, error) {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++	name := req.GetActor().GetName()
++	state := ateapipb.ActorState_ACTOR_STATE_SUSPENDED
++	switch {
++	case m.crashed[name]:
++		state = ateapipb.ActorState_ACTOR_STATE_CRASHED
++	case m.running[name]:
++		state = ateapipb.ActorState_ACTOR_STATE_RUNNING
++	}
++	return &ateapipb.Actor{Metadata: &ateapipb.ResourceMetadata{Name: name}, Status: &ateapipb.ActorStatus{State: state}}, nil
++}
++
++func (m *poolControl) ResumeActor(ctx context.Context, req *ateapipb.ResumeActorRequest) (*ateapipb.ResumeActorResponse, error) {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++	name := req.GetActor().GetName()
++	m.resumes[name]++
++	if !m.running[name] {
++		if len(m.running) >= m.workers {
++			return nil, status.Error(codes.ResourceExhausted, "no free workers available")
++		}
++		m.running[name] = true
++	}
++	return &ateapipb.ResumeActorResponse{Actor: &ateapipb.Actor{
++		Metadata: &ateapipb.ResourceMetadata{Name: name},
++		Status: &ateapipb.ActorStatus{
++			State:            ateapipb.ActorState_ACTOR_STATE_RUNNING,
++			WorkerAssignment: &ateapipb.WorkerAssignment{WorkerPod: "w", WorkerPodIp: m.workerIP},
++		},
++	}, Resumed: true}, nil
++}
++
++func (m *poolControl) SuspendActor(ctx context.Context, req *ateapipb.SuspendActorRequest) (*ateapipb.SuspendActorResponse, error) {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++	name := req.GetActor().GetName()
++	m.suspends[name]++
++	delete(m.running, name)
++	return &ateapipb.SuspendActorResponse{}, nil
++}
++
++func (m *poolControl) resumeCount(name string) int {
++	m.mu.Lock()
++	defer m.mu.Unlock()
++	return m.resumes[name]
++}
++
++// fakeRunner serves the runner's metadata endpoints. exited toggles whether
++// the command has exited; exitCode is what it reports.
++type fakeRunner struct {
++	exited   atomic.Bool
++	exitCode atomic.Int32
++	result   string
++}
++
++func (f *fakeRunner) handler() http.Handler {
++	mux := http.NewServeMux()
++	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
++	mux.HandleFunc("/metadata/v1alpha1/ax/exit", func(w http.ResponseWriter, r *http.Request) {
++		_ = json.NewEncoder(w).Encode(metadata.CommandExitStatus{Exited: f.exited.Load(), ExitCode: int(f.exitCode.Load()), FinishedAt: time.Now()})
++	})
++	mux.HandleFunc("/metadata/v1alpha1/ax/result", func(w http.ResponseWriter, r *http.Request) {
++		if !f.exited.Load() {
++			http.Error(w, "not exited", http.StatusConflict)
++			return
++		}
++		if f.result == "" {
++			http.NotFound(w, r)
++			return
++		}
++		_, _ = w.Write([]byte(f.result))
++	})
++	mux.HandleFunc("/metadata/v1alpha1/ax/usage", func(w http.ResponseWriter, r *http.Request) {
++		_, _ = w.Write([]byte(`{"prompt_tokens":11,"completion_tokens":7,"tool_calls":2}`))
++	})
++	return mux
++}
++
++type harness struct {
++	pool       *poolControl
++	runner     *fakeRunner
++	reconciler *controller.TaskReconciler
++	store      *memory.MemoryStore
++}
++
++func newHarness(t *testing.T, workers int) *harness {
++	t.Helper()
++	fr := &fakeRunner{result: `{"answer":42}`}
++	hs := httptest.NewServer(fr.handler())
++	t.Cleanup(hs.Close)
++	pool := newPoolControl(workers, hs.Listener.Addr().String())
++
++	lis, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	gs := grpc.NewServer()
++	ateapipb.RegisterControlServer(gs, pool)
++	go gs.Serve(lis)
++	t.Cleanup(gs.Stop)
++	client, err := substrate.NewClient(lis.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { client.Close() })
++	r := controller.NewTaskReconciler(client, "default-template", "ax-system")
++	r.SecretResolver = noSecrets
++	r.WorkspaceReadyTimeout = 100 * time.Millisecond
++	return &harness{pool: pool, runner: fr, reconciler: r, store: memory.NewStore()}
++}
++
++func newTask(name string) *v1alpha1.Task {
++	return &v1alpha1.Task{
++		Metadata: &v1alpha1.ObjectMeta{Name: name, Atespace: "fleet"},
++		Spec:     &v1alpha1.TaskSpec{Image: "localhost:5000/ax/ax-agent@sha256:00", Command: []string{"true"}},
++	}
++}
++
++func readyReason(task *v1alpha1.Task) string {
++	for _, c := range task.GetStatus().GetConditions() {
++		if c.GetType() == "Ready" {
++			return c.GetReason()
++		}
++	}
++	return ""
++}
++
++func TestReconcile_ExitWriteBack(t *testing.T) {
++	ctx := context.Background()
++	for _, tc := range []struct {
++		code      int32
++		wantPhase string
++	}{{0, "Completed"}, {3, "Failed"}} {
++		t.Run(tc.wantPhase, func(t *testing.T) {
++			h := newHarness(t, 2)
++			h.runner.exited.Store(true)
++			h.runner.exitCode.Store(tc.code)
++			var saved []byte
++			h.reconciler.SaveResult = func(ctx context.Context, atespace, name string, content []byte) error {
++				saved = content
++				return nil
++			}
++			task, err := h.reconciler.Reconcile(ctx, newTask("t"), nil)
++			if err != nil {
++				t.Fatal(err)
++			}
++			if task.Status.Phase != tc.wantPhase {
++				t.Fatalf("phase = %q, want %q", task.Status.Phase, tc.wantPhase)
++			}
++			if readyReason(task) != "CommandExited" {
++				t.Fatalf("Ready reason = %q", readyReason(task))
++			}
++			if want := fmt.Sprintf("ExitCode=%d", tc.code); task.Status.Conditions[len(task.Status.Conditions)-1].GetMessage() != want && !hasMessage(task, want) {
++				t.Fatalf("no condition message %q", want)
++			}
++			if c := task.Status.GetCommand(); !c.GetExited() || c.GetExitCode() != tc.code || c.GetResultBytes() != int64(len(`{"answer":42}`)) || c.GetResultSha256() == "" {
++				t.Fatalf("command status = %v", c)
++			}
++			if string(saved) != `{"answer":42}` {
++				t.Fatalf("saved result = %q", saved)
++			}
++			if u := task.Status.GetUsage(); u.GetPromptTokens() != 11 || u.GetToolCalls() != 2 {
++				t.Fatalf("usage = %v", u)
++			}
++			if h.pool.suspends["t"] != 1 || task.Status.WorkerIp != "" {
++				t.Fatalf("worker not freed: suspends=%d workerIP=%q", h.pool.suspends["t"], task.Status.WorkerIp)
++			}
++			if !controller.IsTerminal(task) {
++				t.Fatal("finished task is not terminal")
++			}
++		})
++	}
++}
++
++func hasMessage(task *v1alpha1.Task, msg string) bool {
++	for _, c := range task.GetStatus().GetConditions() {
++		if c.GetMessage() == msg {
++			return true
++		}
++	}
++	return false
++}
++
++// The probe measured that stock v0.3.0 turns a Completed write-back into
++// Running and resumes the actor again. With the terminal guard it stays put.
++func TestWorker_CompletedWriteBackIsNotOverwritten(t *testing.T) {
++	ctx, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	h := newHarness(t, 2)
++	task := newTask("done")
++	task.Status = &v1alpha1.TaskStatus{Phase: "Completed"}
++	if err := h.store.SaveTask(ctx, task); err != nil {
++		t.Fatal(err)
++	}
++	w := controller.NewWorker(h.store, h.reconciler, "g", "c")
++	go func() { _ = w.Run(ctx) }()
++	time.Sleep(300 * time.Millisecond)
++	got, err := h.store.GetTask(ctx, "fleet", "done")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got.Status.Phase != "Completed" {
++		t.Fatalf("phase = %q, want Completed", got.Status.Phase)
++	}
++	if n := h.pool.resumeCount("done"); n != 0 {
++		t.Fatalf("terminal task resumed %d times", n)
++	}
++}
++
++// runSequence applies n tasks one after another through a worker, each command
++// exiting after its first resume, and returns the final phase of each.
++func runSequence(t *testing.T, h *harness, n int) []*v1alpha1.Task {
++	t.Helper()
++	ctx, cancel := context.WithCancel(context.Background())
++	defer cancel()
++	w := controller.NewWorker(h.store, h.reconciler, "g", "c")
++	w.RunningResync = 50 * time.Millisecond
++	go func() { _ = w.Run(ctx) }()
++	var out []*v1alpha1.Task
++	for i := 0; i < n; i++ {
++		name := fmt.Sprintf("floor-%d", i)
++		if err := h.store.SaveTask(ctx, newTask(name)); err != nil {
++			t.Fatal(err)
++		}
++		var got *v1alpha1.Task
++		deadline := time.Now().Add(5 * time.Second)
++		for time.Now().Before(deadline) {
++			tk, err := h.store.GetTask(ctx, "fleet", name)
++			if err == nil && tk.Status.GetPhase() != "Pending" && tk.Status.GetPhase() != "Running" {
++				got = tk
++				break
++			}
++			if err == nil && tk.Status.GetPhase() == "Running" && !h.runner.exited.Load() {
++				// Without an exit report a Running task never finishes.
++				got = tk
++				break
++			}
++			time.Sleep(20 * time.Millisecond)
++		}
++		if got == nil {
++			t.Fatalf("%s did not settle", name)
++		}
++		out = append(out, got)
++	}
++	return out
++}
++
++// Four Tasks in a row on a 2-worker pool: every one reaches a terminal phase
++// and none fails ResourceExhausted, because each finished Task frees its worker.
++func TestWorker_FloorFourOnTwoWorkers(t *testing.T) {
++	h := newHarness(t, 2)
++	h.runner.exited.Store(true)
++	for _, tk := range runSequence(t, h, 4) {
++		if tk.Status.Phase != "Completed" {
++			t.Fatalf("%s: phase %q reason %q, want Completed", tk.Metadata.Name, tk.Status.Phase, readyReason(tk))
++		}
++	}
++}
++
++// The contrast the probe measured on stock v0.3.0: when no exit is reported,
++// finished work keeps its worker and the third Task on 2 workers is refused.
++func TestWorker_NoExitReportExhaustsPool(t *testing.T) {
++	h := newHarness(t, 2)
++	tasks := runSequence(t, h, 3)
++	if tasks[2].Status.Phase != "Failed" || readyReason(tasks[2]) != "ActorResumeFailed" {
++		t.Fatalf("third task: phase %q reason %q, want Failed ActorResumeFailed", tasks[2].Status.Phase, readyReason(tasks[2]))
++	}
++}
++
++func TestWorker_ResyncFinishesRunningTask(t *testing.T) {
++	ctx := context.Background()
++	h := newHarness(t, 2)
++	w := controller.NewWorker(h.store, h.reconciler, "g", "c")
++	task, err := h.reconciler.Reconcile(ctx, newTask("slow"), nil)
++	if err != nil || task.Status.Phase != "Running" {
++		t.Fatalf("reconcile: %v phase %q", err, task.GetStatus().GetPhase())
++	}
++	if err := h.store.SaveTask(ctx, task); err != nil {
++		t.Fatal(err)
++	}
++	if n := w.ResyncOnce(ctx); n != 0 {
++		t.Fatalf("resync changed %d tasks before exit", n)
++	}
++	h.runner.exited.Store(true)
++	if n := w.ResyncOnce(ctx); n != 1 {
++		t.Fatalf("resync changed %d tasks after exit, want 1", n)
++	}
++	got, _ := h.store.GetTask(ctx, "fleet", "slow")
++	if got.Status.Phase != "Completed" {
++		t.Fatalf("phase = %q", got.Status.Phase)
++	}
++	if b, err := h.store.GetTaskResult(ctx, "fleet", "slow"); err != nil || string(b) != `{"answer":42}` {
++		t.Fatalf("stored result = %q, %v", b, err)
++	}
++	if _, err := h.store.GetTaskResult(ctx, "fleet", "nope"); err != store.ErrNotFound {
++		t.Fatalf("missing result err = %v", err)
++	}
++}
++
++func TestResync_CrashedActorIsFailed(t *testing.T) {
++	ctx := context.Background()
++	h := newHarness(t, 2)
++	task, err := h.reconciler.Reconcile(ctx, newTask("boom"), nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	h.pool.mu.Lock()
++	h.pool.crashed["boom"] = true
++	h.pool.mu.Unlock()
++	task.Status.WorkerIp = "127.0.0.1:1" // runner unreachable
++	changed, _ := h.reconciler.ResyncRunning(ctx, task)
++	if !changed || task.Status.Phase != "Failed" || readyReason(task) != "ActorCrashed" {
++		t.Fatalf("changed=%v phase=%q reason=%q", changed, task.Status.Phase, readyReason(task))
++	}
++}
+diff --git a/internal/controller/reconciler.go b/internal/controller/reconciler.go
+index c4aebda..a4692ca 100644
+--- a/internal/controller/reconciler.go
++++ b/internal/controller/reconciler.go
+@@ -17,8 +17,11 @@ package controller
+ import (
+ 	"context"
+ 	"crypto/sha256"
++	"encoding/hex"
++	"encoding/json"
+ 	"errors"
+ 	"fmt"
++	"io"
+ 	"log/slog"
+ 	"net"
+ 	"net/http"
+@@ -28,6 +31,8 @@ import (
+ 	"strings"
+ 	"time"
+ 
++	"github.com/agent-substrate/substrate/pkg/proto/ateapipb"
++	"github.com/google/ax/internal/metadata"
+ 	"github.com/google/ax/internal/model"
+ 	"github.com/google/ax/internal/substrate"
+ 	"github.com/google/ax/pkg/apis/v1alpha1"
+@@ -70,6 +75,10 @@ type TaskReconciler struct {
+ 	// WorkspaceReadyTimeout bounds how long Reconcile waits for the actor's workspace
+ 	// to report ready before recording it as still initializing.
+ 	WorkspaceReadyTimeout time.Duration
++
++	// SaveResult stores the result content copied from a finished task's
++	// sandbox. Nil drops the content; the digest and size still reach status.
++	SaveResult func(ctx context.Context, atespace, name string, content []byte) error
+ }
+ 
+ // NewTaskReconciler creates a new TaskReconciler.
+@@ -111,6 +120,14 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, task *v1alpha1.Task, gat
+ 		task.Spec.Image = v1alpha1.DefaultTaskImage
+ 	}
+ 
++	// Terminal guard: a task whose command already exited is never resumed
++	// again. Without it every later event (an apply, a status write-back that
++	// republishes) would resume the actor and flip the phase back to Running.
++	if IsTerminal(task) {
++		slog.Info("task is terminal, not reconciling", "name", task.Metadata.Name, "atespace", atespace, "phase", task.Status.Phase)
++		return task, nil
++	}
++
+ 	slog.Info("reconciling task", "name", task.Metadata.Name, "atespace", atespace, "image", task.Spec.Image)
+ 
+ 	now := time.Now()
+@@ -293,6 +310,15 @@ func (r *TaskReconciler) Reconcile(ctx context.Context, task *v1alpha1.Task, gat
+ 	}
+ DonePolling:
+ 
++	// A short command may already have finished; if so, record it now.
++	if workerIP != "" {
++		if done, err := r.finishIfExited(ctx, task, host, port); err != nil {
++			slog.Warn("could not read command exit", "name", task.Metadata.Name, "error", err)
++		} else if done {
++			return task, nil
++		}
++	}
++
+ 	// The task is Ready only once its actor is running and the workspace inside it is set up.
+ 	if workspaceReady {
+ 		if !r.conditionTrue(task, condWorkspaceReady) {
+@@ -317,6 +343,11 @@ DonePolling:
+ 
+ // Condition types reported on Task status.
+ const (
++	// reasonCommandExited is the Ready reason on a task whose command exited.
++	reasonCommandExited = "CommandExited"
++	// reasonActorCrashed is the Ready reason on a task whose actor crashed.
++	reasonActorCrashed = "ActorCrashed"
++
+ 	// condReady reports whether the task as a whole is ready to do work: its actor is
+ 	// running and the workspace inside it has finished setting up.
+ 	condReady = "Ready"
+@@ -483,3 +514,172 @@ func marshalWorkspaces(workspaces []*v1alpha1.Workspace) (string, error) {
+ 	}
+ 	return sb.String(), nil
+ }
++
++// IsTerminal reports whether the task's command has finished: phase Completed,
++// or Failed with the Ready reason CommandExited. Such a task is never resumed.
++func IsTerminal(task *v1alpha1.Task) bool {
++	st := task.GetStatus()
++	switch st.GetPhase() {
++	case "Completed":
++		return true
++	case "Failed":
++		for _, c := range st.GetConditions() {
++			if c.GetType() == condReady && c.GetReason() == reasonCommandExited {
++				return true
++			}
++		}
++	}
++	return false
++}
++
++// ResyncRunning re-checks a Running task, because no event fires when its
++// command exits. It returns true when it changed the task's status: the command
++// exited (Completed or Failed, worker freed) or the actor crashed (Failed).
++func (r *TaskReconciler) ResyncRunning(ctx context.Context, task *v1alpha1.Task) (bool, error) {
++	if task.GetStatus().GetPhase() != "Running" || task.GetMetadata() == nil || IsTerminal(task) {
++		return false, nil
++	}
++	atespace := task.Metadata.Atespace
++	if atespace == "" {
++		atespace = "default"
++	}
++	host, port := task.Status.WorkerIp, "80"
++	if h, p, err := net.SplitHostPort(host); err == nil {
++		host, port = h, p
++	}
++	done, exitErr := r.finishIfExited(ctx, task, host, port)
++	if done {
++		return true, nil
++	}
++	// No exit report: a crashed actor is Failed, not restarted behind the
++	// caller's back.
++	state, err := r.client.ActorState(ctx, atespace, task.Metadata.Name)
++	if err == nil && state == ateapipb.ActorState_ACTOR_STATE_CRASHED {
++		task.Status.Phase = "Failed"
++		task.Status.WorkerIp = ""
++		r.setNotReady(task, reasonActorCrashed, "Substrate reports the actor CRASHED", time.Now())
++		return true, nil
++	}
++	if exitErr != nil {
++		return false, exitErr
++	}
++	return false, err
++}
++
++// finishIfExited asks the runner whether the command exited. If it did, it
++// copies the result and usage, writes the outcome into status, and suspends
++// the actor so its worker is free for the next task.
++func (r *TaskReconciler) finishIfExited(ctx context.Context, task *v1alpha1.Task, host, port string) (bool, error) {
++	atespace := task.Metadata.Atespace
++	actorName := task.Metadata.Name
++	body, err := r.metadataGet(ctx, atespace, actorName, host, port, "/metadata/v1alpha1/ax/exit")
++	if err != nil {
++		return false, err
++	}
++	var exit metadata.CommandExitStatus
++	if err := json.Unmarshal(body, &exit); err != nil {
++		return false, fmt.Errorf("decoding exit status: %w", err)
++	}
++	if !exit.Exited {
++		return false, nil
++	}
++
++	now := time.Now()
++	cmdStatus := &v1alpha1.CommandStatus{Exited: true, ExitCode: int32(exit.ExitCode)}
++	if !exit.FinishedAt.IsZero() {
++		cmdStatus.FinishedAt = timestamppb.New(exit.FinishedAt)
++	} else {
++		cmdStatus.FinishedAt = timestamppb.New(now)
++	}
++	if result, err := r.metadataGet(ctx, atespace, actorName, host, port, "/metadata/v1alpha1/ax/result"); err == nil {
++		sum := sha256.Sum256(result)
++		cmdStatus.ResultBytes = int64(len(result))
++		cmdStatus.ResultSha256 = hex.EncodeToString(sum[:])
++		if r.SaveResult != nil {
++			if err := r.SaveResult(ctx, atespace, actorName, result); err != nil {
++				slog.Warn("could not store task result", "name", actorName, "error", err)
++			}
++		}
++	} else {
++		slog.Info("task produced no result", "name", actorName, "reason", err)
++	}
++	if usageBody, err := r.metadataGet(ctx, atespace, actorName, host, port, "/metadata/v1alpha1/ax/usage"); err == nil {
++		var u struct {
++			PromptTokens     int32 `json:"prompt_tokens"`
++			CompletionTokens int32 `json:"completion_tokens"`
++			ToolCalls        int32 `json:"tool_calls"`
++		}
++		if json.Unmarshal(usageBody, &u) == nil {
++			task.Status.Usage = &v1alpha1.UsageStats{PromptTokens: u.PromptTokens, CompletionTokens: u.CompletionTokens, ToolCalls: u.ToolCalls}
++		}
++	}
++	task.Status.Command = cmdStatus
++
++	msg := fmt.Sprintf("ExitCode=%d", exit.ExitCode)
++	if exit.ExitCode == 0 {
++		task.Status.Phase = "Completed"
++	} else {
++		task.Status.Phase = "Failed"
++	}
++	r.setCondition(task, condReady, "False", reasonCommandExited, msg, now)
++
++	// Free the worker. The DATA snapshot keeps /workspace for inspection.
++	if err := r.client.SuspendActor(ctx, atespace, actorName); err != nil {
++		slog.Warn("could not suspend finished task's actor", "name", actorName, "error", err)
++		r.setCondition(task, condReady, "False", reasonCommandExited, msg+"; suspend failed: "+err.Error(), now)
++	} else {
++		task.Status.WorkerIp = ""
++	}
++	slog.Info("task command exited", "name", actorName, "atespace", atespace, "exitCode", exit.ExitCode, "phase", task.Status.Phase)
++	return true, nil
++}
++
++// metadataGet reads a runner metadata path, directly from the worker first and
++// then through the atenet router when ATENET_ROUTER_ADDR is set.
++func (r *TaskReconciler) metadataGet(ctx context.Context, atespace, actorName, host, port, path string) ([]byte, error) {
++	var errs []error
++	if host != "" {
++		b, err := r.fetch(ctx, fmt.Sprintf("http://%s%s", net.JoinHostPort(host, port), path), "")
++		if err == nil {
++			return b, nil
++		}
++		errs = append(errs, err)
++	}
++	if routerAddr := os.Getenv("ATENET_ROUTER_ADDR"); routerAddr != "" {
++		b, err := r.fetch(ctx, fmt.Sprintf("http://%s%s", routerAddr, path), fmt.Sprintf("%s/%s", atespace, actorName))
++		if err == nil {
++			return b, nil
++		}
++		errs = append(errs, err)
++	}
++	if len(errs) == 0 {
++		return nil, errors.New("no route to the task's metadata server")
++	}
++	return nil, errors.Join(errs...)
++}
++
++func (r *TaskReconciler) fetch(ctx context.Context, url, targetActor string) ([]byte, error) {
++	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
++	if err != nil {
++		return nil, err
++	}
++	if targetActor != "" {
++		req.Header.Set("ate-target-actor", targetActor)
++	}
++	resp, err := r.httpClient.Do(req)
++	if err != nil {
++		return nil, err
++	}
++	defer resp.Body.Close()
++	body, err := io.ReadAll(io.LimitReader(resp.Body, metadata.MaxResultBytes+1))
++	if err != nil {
++		return nil, err
++	}
++	if resp.StatusCode != http.StatusOK {
++		return nil, fmt.Errorf("GET %s: %s", url, resp.Status)
++	}
++	if int64(len(body)) > metadata.MaxResultBytes {
++		return nil, fmt.Errorf("GET %s: body over %d bytes", url, metadata.MaxResultBytes)
++	}
++	return body, nil
++}
+diff --git a/internal/controller/worker.go b/internal/controller/worker.go
+index 398b090..c783e8a 100644
+--- a/internal/controller/worker.go
++++ b/internal/controller/worker.go
+@@ -20,6 +20,7 @@ import (
+ 	"fmt"
+ 	"log/slog"
+ 	"os"
++	"sync"
+ 	"time"
+ 
+ 	"github.com/google/ax/internal/store"
+@@ -31,6 +32,9 @@ const (
+ 	// readRetryDelay is how long the worker waits after a transient error from the
+ 	// event queue before trying again.
+ 	readRetryDelay = time.Second
++	// DefaultRunningResync is how often Running tasks are re-checked for a
++	// command exit, since nothing publishes an event when a command exits.
++	DefaultRunningResync = 15 * time.Second
+ )
+ 
+ // Worker consumes task events from the store's event queue and reconciles each
+@@ -41,6 +45,14 @@ type Worker struct {
+ 	reconciler *TaskReconciler
+ 	group      string
+ 	consumer   string
++
++	// RunningResync is the period of the Running-task re-check. Zero or less
++	// disables it.
++	RunningResync time.Duration
++
++	// mu serializes event handling and the resync, so one task is never
++	// reconciled twice at once by this worker.
++	mu sync.Mutex
+ }
+ 
+ // NewWorker creates a worker that joins group as consumer. An empty group uses the
+@@ -53,11 +65,15 @@ func NewWorker(s store.Store, reconciler *TaskReconciler, group, consumer string
+ 		hostname, _ := os.Hostname()
+ 		consumer = fmt.Sprintf("%s-%d", hostname, time.Now().UnixNano()%10000)
+ 	}
++	if reconciler != nil && reconciler.SaveResult == nil {
++		reconciler.SaveResult = s.SaveTaskResult
++	}
+ 	return &Worker{
+-		store:      s,
+-		reconciler: reconciler,
+-		group:      group,
+-		consumer:   consumer,
++		store:         s,
++		reconciler:    reconciler,
++		group:         group,
++		consumer:      consumer,
++		RunningResync: DefaultRunningResync,
+ 	}
+ }
+ 
+@@ -73,6 +89,10 @@ func (w *Worker) Run(ctx context.Context) error {
+ 	}
+ 	defer sub.Close()
+ 
++	if w.RunningResync > 0 {
++		go w.resyncLoop(ctx)
++	}
++
+ 	for {
+ 		ev, err := sub.Next(ctx)
+ 		if err != nil {
+@@ -89,7 +109,10 @@ func (w *Worker) Run(ctx context.Context) error {
+ 			continue
+ 		}
+ 
+-		if err := w.processEvent(ctx, ev); err != nil {
++		w.mu.Lock()
++		err = w.processEvent(ctx, ev)
++		w.mu.Unlock()
++		if err != nil {
+ 			slog.Error("error processing task event",
+ 				"id", ev.ID,
+ 				"atespace", ev.Atespace,
+@@ -165,3 +188,53 @@ func (w *Worker) processEvent(ctx context.Context, ev store.TaskEvent) error {
+ 
+ 	return nil
+ }
++
++// resyncLoop re-checks every Running task each RunningResync until ctx is done.
++func (w *Worker) resyncLoop(ctx context.Context) {
++	ticker := time.NewTicker(w.RunningResync)
++	defer ticker.Stop()
++	for {
++		select {
++		case <-ctx.Done():
++			return
++		case <-ticker.C:
++			w.ResyncOnce(ctx)
++		}
++	}
++}
++
++// ResyncOnce re-checks every Running task once and writes back any that
++// finished. It returns how many tasks changed.
++func (w *Worker) ResyncOnce(ctx context.Context) int {
++	w.mu.Lock()
++	defer w.mu.Unlock()
++	tasks, err := w.store.ListTasks(ctx, "", 0, 0)
++	if err != nil {
++		slog.Warn("resync: listing tasks", "error", err)
++		return 0
++	}
++	changed := 0
++	for _, t := range tasks {
++		if t.GetStatus().GetPhase() != "Running" {
++			continue
++		}
++		// Re-read so a status written since the list is not overwritten.
++		task, err := w.store.GetTask(ctx, t.Metadata.Atespace, t.Metadata.Name)
++		if err != nil || task.GetStatus().GetPhase() != "Running" {
++			continue
++		}
++		ok, err := w.reconciler.ResyncRunning(ctx, task)
++		if err != nil {
++			slog.Debug("resync: task not finished or unreachable", "atespace", task.Metadata.Atespace, "name", task.Metadata.Name, "error", err)
++		}
++		if !ok {
++			continue
++		}
++		if err := w.store.UpdateTaskStatus(ctx, task.Metadata.Atespace, task.Metadata.Name, task.Status); err != nil {
++			slog.Error("resync: writing task status", "name", task.Metadata.Name, "error", err)
++			continue
++		}
++		changed++
++	}
++	return changed
++}
+diff --git a/internal/metadata/exit_test.go b/internal/metadata/exit_test.go
+new file mode 100644
+index 0000000..85da1c1
+--- /dev/null
++++ b/internal/metadata/exit_test.go
+@@ -0,0 +1,118 @@
++// Copyright 2026 Google LLC
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++package metadata_test
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"io"
++	"net"
++	"net/http"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/google/ax/internal/metadata"
++	"github.com/google/ax/pkg/apis/v1alpha1"
++)
++
++func freePort(t *testing.T) int {
++	t.Helper()
++	l, err := net.Listen("tcp", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer l.Close()
++	return l.Addr().(*net.TCPAddr).Port
++}
++
++func get(t *testing.T, url string) (int, string) {
++	t.Helper()
++	var resp *http.Response
++	var err error
++	for i := 0; i < 50; i++ {
++		resp, err = http.Get(url)
++		if err == nil {
++			break
++		}
++		time.Sleep(20 * time.Millisecond)
++	}
++	if err != nil {
++		t.Fatalf("GET %s: %v", url, err)
++	}
++	defer resp.Body.Close()
++	b, _ := io.ReadAll(resp.Body)
++	return resp.StatusCode, string(b)
++}
++
++func TestMetadataServer_ExitAndResult(t *testing.T) {
++	dir := t.TempDir()
++	resultPath := filepath.Join(dir, "result.json")
++	usagePath := filepath.Join(dir, "usage.json")
++	port := freePort(t)
++	task := &v1alpha1.Task{Metadata: &v1alpha1.ObjectMeta{Name: "t1"}, Spec: &v1alpha1.TaskSpec{}}
++	s := metadata.NewServer(port, task, nil, metadata.ServerOptions{ResultPath: resultPath, UsagePath: usagePath})
++	if err := s.Start(); err != nil {
++		t.Fatal(err)
++	}
++	defer s.Stop(context.Background())
++	base := fmt.Sprintf("http://127.0.0.1:%d/metadata/v1alpha1/ax", port)
++
++	// Before exit: exit says not exited, result is refused.
++	code, body := get(t, base+"/exit")
++	var st metadata.CommandExitStatus
++	if code != http.StatusOK || json.Unmarshal([]byte(body), &st) != nil || st.Exited {
++		t.Fatalf("exit before command exit = %d %q", code, body)
++	}
++	if code, _ := get(t, base+"/result"); code != http.StatusConflict {
++		t.Fatalf("result before exit = %d, want 409", code)
++	}
++
++	if err := os.WriteFile(resultPath, []byte(`{"ok":true}`), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(usagePath, []byte(`{"prompt_tokens":3}`), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	s.SetCommandExit(3, time.Now())
++	s.SetCommandExit(0, time.Now()) // only the first report counts
++
++	code, body = get(t, base+"/exit")
++	if err := json.Unmarshal([]byte(body), &st); err != nil || code != http.StatusOK || !st.Exited || st.ExitCode != 3 {
++		t.Fatalf("exit after command exit = %d %q", code, body)
++	}
++	if code, body := get(t, base+"/result"); code != http.StatusOK || body != `{"ok":true}` {
++		t.Fatalf("result = %d %q", code, body)
++	}
++	if code, body := get(t, base+"/usage"); code != http.StatusOK || !strings.Contains(body, "prompt_tokens") {
++		t.Fatalf("usage = %d %q", code, body)
++	}
++
++	// Over the cap: refused, not truncated.
++	if err := os.WriteFile(resultPath, make([]byte, metadata.MaxResultBytes+1), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if code, _ := get(t, base+"/result"); code != http.StatusRequestEntityTooLarge {
++		t.Fatalf("oversized result = %d, want 413", code)
++	}
++	// Missing: 404.
++	_ = os.Remove(resultPath)
++	if code, _ := get(t, base+"/result"); code != http.StatusNotFound {
++		t.Fatalf("missing result = %d, want 404", code)
++	}
++}
+diff --git a/internal/metadata/server.go b/internal/metadata/server.go
+index fb4feba..909e879 100644
+--- a/internal/metadata/server.go
++++ b/internal/metadata/server.go
+@@ -16,13 +16,17 @@ package metadata
+ 
+ import (
+ 	"context"
++	"encoding/json"
+ 	"errors"
+ 	"fmt"
++	"io"
+ 	"log/slog"
+ 	"net"
+ 	"net/http"
++	"os"
+ 	"strings"
+ 	"sync"
++	"time"
+ 
+ 	"github.com/agent-substrate/env/guest"
+ 	"github.com/google/ax/pkg/apis/v1alpha1"
+@@ -41,12 +45,31 @@ type Server struct {
+ 	task           *v1alpha1.Task
+ 	workspaces     []*v1alpha1.Workspace
+ 	workspaceReady bool
++	resultPath     string
++	usagePath      string
++	exit           *CommandExitStatus
++}
++
++// MaxResultBytes caps the result file served at /metadata/v1alpha1/ax/result.
++// A larger file is refused with 413 rather than truncated.
++const MaxResultBytes = 1 << 20
++
++// CommandExitStatus is the JSON body of /metadata/v1alpha1/ax/exit.
++type CommandExitStatus struct {
++	Exited     bool      `json:"exited"`
++	ExitCode   int       `json:"exitCode"`
++	FinishedAt time.Time `json:"finishedAt,omitempty"`
+ }
+ 
+ // ServerOptions configures optional settings for the metadata and guest server.
+ type ServerOptions struct {
+ 	WorkspacePath string
+ 	LogDir        string
++	// ResultPath is the file served at /metadata/v1alpha1/ax/result once the
++	// command has exited. Empty disables the endpoint.
++	ResultPath string
++	// UsagePath is the JSON usage file served at /metadata/v1alpha1/ax/usage.
++	UsagePath string
+ }
+ 
+ // NewServer creates a new metadata and guest server serving the task and its
+@@ -65,6 +88,8 @@ func NewServer(port int, task *v1alpha1.Task, workspaces []*v1alpha1.Workspace,
+ 	if len(opts) > 0 {
+ 		opt = opts[0]
+ 	}
++	s.resultPath = opt.ResultPath
++	s.usagePath = opt.UsagePath
+ 
+ 	// Guest services expose process execution and file access inside the container,
+ 	// so they are only served when the task opts in via spec.debug.
+@@ -98,6 +123,12 @@ func NewServer(port int, task *v1alpha1.Task, workspaces []*v1alpha1.Workspace,
+ 	// /metadata/v1alpha1/ax/workspaces  every bound Workspace, as a YAML stream
+ 	mux.HandleFunc("/metadata/v1alpha1/ax/task", s.handleTask)
+ 	mux.HandleFunc("/metadata/v1alpha1/ax/workspaces", s.handleWorkspaces)
++	// /metadata/v1alpha1/ax/exit    whether the command exited, and its code
++	// /metadata/v1alpha1/ax/result  the command's result file, after exit
++	// /metadata/v1alpha1/ax/usage   the command's usage file, after exit
++	mux.HandleFunc("/metadata/v1alpha1/ax/exit", s.handleExit)
++	mux.HandleFunc("/metadata/v1alpha1/ax/result", s.handleResult)
++	mux.HandleFunc("/metadata/v1alpha1/ax/usage", s.handleUsage)
+ 
+ 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+ 		if s.grpcServer != nil && r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
+@@ -236,3 +267,72 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
+ 		http.Error(w, err.Error(), http.StatusInternalServerError)
+ 	}
+ }
++
++// SetCommandExit records that the task command exited on its own with code.
++// Only the first call counts.
++func (s *Server) SetCommandExit(code int, at time.Time) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if s.exit == nil {
++		s.exit = &CommandExitStatus{Exited: true, ExitCode: code, FinishedAt: at.UTC()}
++	}
++}
++
++func (s *Server) commandExit() *CommandExitStatus {
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	if s.exit == nil {
++		return nil
++	}
++	cp := *s.exit
++	return &cp
++}
++
++// handleExit reports whether the command has exited. It always answers 200
++// with a JSON body, so a caller can tell "still running" from "unreachable".
++func (s *Server) handleExit(w http.ResponseWriter, r *http.Request) {
++	st := s.commandExit()
++	if st == nil {
++		st = &CommandExitStatus{}
++	}
++	w.Header().Set("Content-Type", "application/json")
++	_ = json.NewEncoder(w).Encode(st)
++}
++
++func (s *Server) handleResult(w http.ResponseWriter, r *http.Request) {
++	s.serveAfterExit(w, s.resultPath, MaxResultBytes)
++}
++
++func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
++	s.serveAfterExit(w, s.usagePath, 64<<10)
++}
++
++// serveAfterExit serves the file at path once the command has exited: 409
++// before that, 404 when there is no file, 413 when it exceeds limit.
++func (s *Server) serveAfterExit(w http.ResponseWriter, path string, limit int64) {
++	if s.commandExit() == nil {
++		http.Error(w, "command has not exited", http.StatusConflict)
++		return
++	}
++	if path == "" {
++		http.Error(w, "not configured", http.StatusNotFound)
++		return
++	}
++	f, err := os.Open(path)
++	if err != nil {
++		http.Error(w, "no file", http.StatusNotFound)
++		return
++	}
++	defer f.Close()
++	fi, err := f.Stat()
++	if err != nil || !fi.Mode().IsRegular() {
++		http.Error(w, "no file", http.StatusNotFound)
++		return
++	}
++	if fi.Size() > limit {
++		http.Error(w, fmt.Sprintf("file is %d bytes, over the %d byte cap", fi.Size(), limit), http.StatusRequestEntityTooLarge)
++		return
++	}
++	w.Header().Set("Content-Type", "application/octet-stream")
++	_, _ = io.Copy(w, io.LimitReader(f, limit))
++}
+diff --git a/internal/server/server.go b/internal/server/server.go
+index 27e89ab..669cbac 100644
+--- a/internal/server/server.go
++++ b/internal/server/server.go
+@@ -16,6 +16,8 @@ package server
+ 
+ import (
+ 	"context"
++	"crypto/sha256"
++	"encoding/hex"
+ 	"errors"
+ 	"net/http"
+ 	"strings"
+@@ -88,6 +90,27 @@ func (s *Server) GetTask(ctx context.Context, req *v1alpha1.GetTaskRequest) (*v1
+ 	return task, nil
+ }
+ 
++// GetTaskResult returns the result content the controller copied from the
++// task's sandbox when its command exited.
++func (s *Server) GetTaskResult(ctx context.Context, req *v1alpha1.GetTaskResultRequest) (*v1alpha1.TaskResult, error) {
++	if req == nil || req.Name == "" {
++		return nil, status.Error(codes.InvalidArgument, "missing task name")
++	}
++	atespace := req.Atespace
++	if atespace == "" {
++		atespace = "default"
++	}
++	content, err := s.store.GetTaskResult(ctx, atespace, req.Name)
++	if err != nil {
++		if errors.Is(err, store.ErrNotFound) {
++			return nil, status.Errorf(codes.NotFound, "no result for task %q in atespace %q", req.Name, atespace)
++		}
++		return nil, status.Errorf(codes.Internal, "getting task result: %v", err)
++	}
++	sum := sha256.Sum256(content)
++	return &v1alpha1.TaskResult{Content: content, Sha256: hex.EncodeToString(sum[:])}, nil
++}
++
+ func (s *Server) ListTasks(ctx context.Context, req *v1alpha1.ListTasksRequest) (*v1alpha1.ListTasksResponse, error) {
+ 	atespace := ""
+ 	limit := int64(50)
+diff --git a/internal/store/memory/store.go b/internal/store/memory/store.go
+index 8a0b13d..215f9a4 100644
+--- a/internal/store/memory/store.go
++++ b/internal/store/memory/store.go
+@@ -47,6 +47,7 @@ type MemoryStore struct {
+ 	workspaces map[string]*v1alpha1.Workspace
+ 	events     chan store.TaskEvent
+ 	watchers   map[string][]chan *v1alpha1.Task
++	results    map[string][]byte
+ }
+ 
+ // NewStore creates a new in-memory Store.
+@@ -58,9 +59,29 @@ func NewStore() *MemoryStore {
+ 		workspaces: make(map[string]*v1alpha1.Workspace),
+ 		events:     make(chan store.TaskEvent, 1000),
+ 		watchers:   make(map[string][]chan *v1alpha1.Task),
++		results:    make(map[string][]byte),
+ 	}
+ }
+ 
++// SaveTaskResult stores a copy of the task's result content.
++func (s *MemoryStore) SaveTaskResult(ctx context.Context, atespace, name string, content []byte) error {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	s.results[taskKey(atespace, name)] = append([]byte(nil), content...)
++	return nil
++}
++
++// GetTaskResult returns a copy of the stored result content.
++func (s *MemoryStore) GetTaskResult(ctx context.Context, atespace, name string) ([]byte, error) {
++	s.mu.RLock()
++	defer s.mu.RUnlock()
++	content, ok := s.results[taskKey(atespace, name)]
++	if !ok {
++		return nil, store.ErrNotFound
++	}
++	return append([]byte(nil), content...), nil
++}
++
+ func taskKey(atespace, name string) string {
+ 	if atespace == "" {
+ 		atespace = "default"
+@@ -216,6 +237,7 @@ func (s *MemoryStore) DeleteTask(ctx context.Context, atespace, name string) err
+ 	s.mu.Lock()
+ 	defer s.mu.Unlock()
+ 	delete(s.tasks, taskKey(atespace, name))
++	delete(s.results, taskKey(atespace, name))
+ 	return nil
+ }
+ 
+diff --git a/internal/store/redis/store.go b/internal/store/redis/store.go
+index 0bbf7aa..34da35b 100644
+--- a/internal/store/redis/store.go
++++ b/internal/store/redis/store.go
+@@ -82,6 +82,37 @@ func (s *Store) taskKey(atespace, name string) string {
+ 	return fmt.Sprintf("%s:task:%s:%s", s.opts.KeyPrefix, atespace, name)
+ }
+ 
++func (s *Store) taskResultKey(atespace, name string) string {
++	return fmt.Sprintf("%s:task-result:%s:%s", s.opts.KeyPrefix, atespace, name)
++}
++
++// SaveTaskResult stores the task's result content under its own key, so task
++// records, lists and watches stay small. It publishes no event.
++func (s *Store) SaveTaskResult(ctx context.Context, atespace, name string, content []byte) error {
++	if atespace == "" {
++		atespace = "default"
++	}
++	if err := s.client.Set(ctx, s.taskResultKey(atespace, name), content, s.opts.TTL).Err(); err != nil {
++		return fmt.Errorf("saving task result in redis: %w", err)
++	}
++	return nil
++}
++
++// GetTaskResult returns the stored result content, or store.ErrNotFound.
++func (s *Store) GetTaskResult(ctx context.Context, atespace, name string) ([]byte, error) {
++	if atespace == "" {
++		atespace = "default"
++	}
++	content, err := s.client.Get(ctx, s.taskResultKey(atespace, name)).Bytes()
++	if err != nil {
++		if errors.Is(err, redis.Nil) {
++			return nil, store.ErrNotFound
++		}
++		return nil, fmt.Errorf("getting task result from redis: %w", err)
++	}
++	return content, nil
++}
++
+ func (s *Store) gwKey(atespace, name string) string {
+ 	return fmt.Sprintf("%s:gw:%s:%s", s.opts.KeyPrefix, atespace, name)
+ }
+@@ -335,6 +366,7 @@ func (s *Store) DeleteTask(ctx context.Context, atespace, name string) error {
+ 
+ 	pipe := s.client.TxPipeline()
+ 	pipe.Del(ctx, s.taskKey(atespace, name))
++	pipe.Del(ctx, s.taskResultKey(atespace, name))
+ 	pipe.ZRem(ctx, s.taskIndexKey(), member)
+ 	pipe.ZRem(ctx, s.taskAtespaceIndexKey(atespace), name)
+ 	if _, err := pipe.Exec(ctx); err != nil {
+diff --git a/internal/store/store.go b/internal/store/store.go
+index 1e84a0f..684f140 100644
+--- a/internal/store/store.go
++++ b/internal/store/store.go
+@@ -86,5 +86,11 @@ type Store interface {
+ 	DeleteModel(ctx context.Context, atespace, name string) error
+ 
+ 	WatchTask(ctx context.Context, atespace, name string) (<-chan *v1alpha1.Task, io.Closer, error)
++
++	// SaveTaskResult stores the result file a task's command wrote, as copied
++	// by the controller once the command exited. It publishes no event.
++	SaveTaskResult(ctx context.Context, atespace, name string, content []byte) error
++	// GetTaskResult returns the stored result. ErrNotFound when none was saved.
++	GetTaskResult(ctx context.Context, atespace, name string) ([]byte, error)
+ 	Close() error
+ }
+diff --git a/internal/substrate/client.go b/internal/substrate/client.go
+index 2840ce2..3693e99 100644
+--- a/internal/substrate/client.go
++++ b/internal/substrate/client.go
+@@ -389,6 +389,17 @@ func (c *Client) EnsureActor(ctx context.Context, atespace, actorName, templateA
+ 	return actor, nil
+ }
+ 
++// ActorState returns the actor's current state as Substrate reports it.
++func (c *Client) ActorState(ctx context.Context, atespace, actorName string) (ateapipb.ActorState, error) {
++	actor, err := c.control.GetActor(ctx, &ateapipb.GetActorRequest{
++		Actor: &ateapipb.ObjectRef{Atespace: atespace, Name: actorName},
++	})
++	if err != nil {
++		return ateapipb.ActorState_ACTOR_STATE_UNSPECIFIED, fmt.Errorf("getting actor %s/%s: %w", atespace, actorName, err)
++	}
++	return actor.GetStatus().GetState(), nil
++}
++
+ // ResumeActor resumes the specified actor onto a worker and returns the worker details.
+ func (c *Client) ResumeActor(ctx context.Context, atespace, actorName string) (*ateapipb.Actor, string, error) {
+ 	req := &ateapipb.ResumeActorRequest{
+diff --git a/pkg/apis/v1alpha1/ax.pb.go b/pkg/apis/v1alpha1/ax.pb.go
+index 9a71dc0..0ce2bf0 100644
+--- a/pkg/apis/v1alpha1/ax.pb.go
++++ b/pkg/apis/v1alpha1/ax.pb.go
+@@ -571,8 +571,10 @@ type TaskStatus struct {
+ 	PendingApproval *PendingApproval `protobuf:"bytes,5,opt,name=pending_approval,json=pendingApproval,proto3" json:"pending_approval,omitempty"`
+ 	Usage           *UsageStats      `protobuf:"bytes,6,opt,name=usage,proto3" json:"usage,omitempty"`
+ 	Conditions      []*Condition     `protobuf:"bytes,7,rep,name=conditions,proto3" json:"conditions,omitempty"`
+-	unknownFields   protoimpl.UnknownFields
+-	sizeCache       protoimpl.SizeCache
++	// command reports how the task's command finished. Unset while it runs.
++	Command       *CommandStatus `protobuf:"bytes,8,opt,name=command,proto3" json:"command,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
+ }
+ 
+ func (x *TaskStatus) Reset() {
+@@ -654,6 +656,92 @@ func (x *TaskStatus) GetConditions() []*Condition {
+ 	return nil
+ }
+ 
++func (x *TaskStatus) GetCommand() *CommandStatus {
++	if x != nil {
++		return x.Command
++	}
++	return nil
++}
++
++// CommandStatus is written by the controller once the runner reports that the
++// task's command exited. The result content itself is served by GetTaskResult.
++type CommandStatus struct {
++	state      protoimpl.MessageState `protogen:"open.v1"`
++	Exited     bool                   `protobuf:"varint,1,opt,name=exited,proto3" json:"exited,omitempty"`
++	ExitCode   int32                  `protobuf:"varint,2,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
++	FinishedAt *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
++	// result_bytes is the size of the copied result, 0 when there was none.
++	ResultBytes   int64  `protobuf:"varint,4,opt,name=result_bytes,json=resultBytes,proto3" json:"result_bytes,omitempty"`
++	ResultSha256  string `protobuf:"bytes,5,opt,name=result_sha256,json=resultSha256,proto3" json:"result_sha256,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *CommandStatus) Reset() {
++	*x = CommandStatus{}
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[9]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *CommandStatus) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*CommandStatus) ProtoMessage() {}
++
++func (x *CommandStatus) ProtoReflect() protoreflect.Message {
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[9]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use CommandStatus.ProtoReflect.Descriptor instead.
++func (*CommandStatus) Descriptor() ([]byte, []int) {
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{9}
++}
++
++func (x *CommandStatus) GetExited() bool {
++	if x != nil {
++		return x.Exited
++	}
++	return false
++}
++
++func (x *CommandStatus) GetExitCode() int32 {
++	if x != nil {
++		return x.ExitCode
++	}
++	return 0
++}
++
++func (x *CommandStatus) GetFinishedAt() *timestamppb.Timestamp {
++	if x != nil {
++		return x.FinishedAt
++	}
++	return nil
++}
++
++func (x *CommandStatus) GetResultBytes() int64 {
++	if x != nil {
++		return x.ResultBytes
++	}
++	return 0
++}
++
++func (x *CommandStatus) GetResultSha256() string {
++	if x != nil {
++		return x.ResultSha256
++	}
++	return ""
++}
++
+ type PendingApproval struct {
+ 	state         protoimpl.MessageState `protogen:"open.v1"`
+ 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+@@ -665,7 +753,7 @@ type PendingApproval struct {
+ 
+ func (x *PendingApproval) Reset() {
+ 	*x = PendingApproval{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[9]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[10]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -677,7 +765,7 @@ func (x *PendingApproval) String() string {
+ func (*PendingApproval) ProtoMessage() {}
+ 
+ func (x *PendingApproval) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[9]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[10]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -690,7 +778,7 @@ func (x *PendingApproval) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use PendingApproval.ProtoReflect.Descriptor instead.
+ func (*PendingApproval) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{9}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{10}
+ }
+ 
+ func (x *PendingApproval) GetId() string {
+@@ -718,13 +806,14 @@ type UsageStats struct {
+ 	state            protoimpl.MessageState `protogen:"open.v1"`
+ 	PromptTokens     int32                  `protobuf:"varint,1,opt,name=prompt_tokens,json=promptTokens,proto3" json:"prompt_tokens,omitempty"`
+ 	CompletionTokens int32                  `protobuf:"varint,2,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
++	ToolCalls        int32                  `protobuf:"varint,3,opt,name=tool_calls,json=toolCalls,proto3" json:"tool_calls,omitempty"`
+ 	unknownFields    protoimpl.UnknownFields
+ 	sizeCache        protoimpl.SizeCache
+ }
+ 
+ func (x *UsageStats) Reset() {
+ 	*x = UsageStats{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[10]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[11]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -736,7 +825,7 @@ func (x *UsageStats) String() string {
+ func (*UsageStats) ProtoMessage() {}
+ 
+ func (x *UsageStats) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[10]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[11]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -749,7 +838,7 @@ func (x *UsageStats) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use UsageStats.ProtoReflect.Descriptor instead.
+ func (*UsageStats) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{10}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{11}
+ }
+ 
+ func (x *UsageStats) GetPromptTokens() int32 {
+@@ -766,6 +855,13 @@ func (x *UsageStats) GetCompletionTokens() int32 {
+ 	return 0
+ }
+ 
++func (x *UsageStats) GetToolCalls() int32 {
++	if x != nil {
++		return x.ToolCalls
++	}
++	return 0
++}
++
+ type Condition struct {
+ 	state              protoimpl.MessageState `protogen:"open.v1"`
+ 	Type               string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`
+@@ -779,7 +875,7 @@ type Condition struct {
+ 
+ func (x *Condition) Reset() {
+ 	*x = Condition{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[11]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[12]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -791,7 +887,7 @@ func (x *Condition) String() string {
+ func (*Condition) ProtoMessage() {}
+ 
+ func (x *Condition) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[11]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[12]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -804,7 +900,7 @@ func (x *Condition) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use Condition.ProtoReflect.Descriptor instead.
+ func (*Condition) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{11}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{12}
+ }
+ 
+ func (x *Condition) GetType() string {
+@@ -854,7 +950,7 @@ type Gateway struct {
+ 
+ func (x *Gateway) Reset() {
+ 	*x = Gateway{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[12]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[13]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -866,7 +962,7 @@ func (x *Gateway) String() string {
+ func (*Gateway) ProtoMessage() {}
+ 
+ func (x *Gateway) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[12]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[13]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -879,7 +975,7 @@ func (x *Gateway) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use Gateway.ProtoReflect.Descriptor instead.
+ func (*Gateway) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{12}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{13}
+ }
+ 
+ func (x *Gateway) GetApiVersion() string {
+@@ -920,7 +1016,7 @@ type GatewaySpec struct {
+ 
+ func (x *GatewaySpec) Reset() {
+ 	*x = GatewaySpec{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[13]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[14]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -932,7 +1028,7 @@ func (x *GatewaySpec) String() string {
+ func (*GatewaySpec) ProtoMessage() {}
+ 
+ func (x *GatewaySpec) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[13]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[14]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -945,7 +1041,7 @@ func (x *GatewaySpec) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use GatewaySpec.ProtoReflect.Descriptor instead.
+ func (*GatewaySpec) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{13}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{14}
+ }
+ 
+ func (x *GatewaySpec) GetListeners() []*Listener {
+@@ -973,7 +1069,7 @@ type Listener struct {
+ 
+ func (x *Listener) Reset() {
+ 	*x = Listener{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[14]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[15]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -985,7 +1081,7 @@ func (x *Listener) String() string {
+ func (*Listener) ProtoMessage() {}
+ 
+ func (x *Listener) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[14]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[15]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -998,7 +1094,7 @@ func (x *Listener) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use Listener.ProtoReflect.Descriptor instead.
+ func (*Listener) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{14}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{15}
+ }
+ 
+ func (x *Listener) GetName() string {
+@@ -1031,7 +1127,7 @@ type EgressConfig struct {
+ 
+ func (x *EgressConfig) Reset() {
+ 	*x = EgressConfig{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[15]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[16]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1043,7 +1139,7 @@ func (x *EgressConfig) String() string {
+ func (*EgressConfig) ProtoMessage() {}
+ 
+ func (x *EgressConfig) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[15]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[16]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1056,7 +1152,7 @@ func (x *EgressConfig) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use EgressConfig.ProtoReflect.Descriptor instead.
+ func (*EgressConfig) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{15}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{16}
+ }
+ 
+ func (x *EgressConfig) GetAllowlist() *EgressAllowlist {
+@@ -1075,7 +1171,7 @@ type EgressAllowlist struct {
+ 
+ func (x *EgressAllowlist) Reset() {
+ 	*x = EgressAllowlist{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[16]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[17]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1087,7 +1183,7 @@ func (x *EgressAllowlist) String() string {
+ func (*EgressAllowlist) ProtoMessage() {}
+ 
+ func (x *EgressAllowlist) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[16]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[17]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1100,7 +1196,7 @@ func (x *EgressAllowlist) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use EgressAllowlist.ProtoReflect.Descriptor instead.
+ func (*EgressAllowlist) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{16}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{17}
+ }
+ 
+ func (x *EgressAllowlist) GetHosts() []*HostRule {
+@@ -1120,7 +1216,7 @@ type HostRule struct {
+ 
+ func (x *HostRule) Reset() {
+ 	*x = HostRule{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[17]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[18]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1132,7 +1228,7 @@ func (x *HostRule) String() string {
+ func (*HostRule) ProtoMessage() {}
+ 
+ func (x *HostRule) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[17]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[18]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1145,7 +1241,7 @@ func (x *HostRule) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use HostRule.ProtoReflect.Descriptor instead.
+ func (*HostRule) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{17}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{18}
+ }
+ 
+ func (x *HostRule) GetHost() string {
+@@ -1174,7 +1270,7 @@ type Workspace struct {
+ 
+ func (x *Workspace) Reset() {
+ 	*x = Workspace{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[18]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[19]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1186,7 +1282,7 @@ func (x *Workspace) String() string {
+ func (*Workspace) ProtoMessage() {}
+ 
+ func (x *Workspace) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[18]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[19]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1199,7 +1295,7 @@ func (x *Workspace) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use Workspace.ProtoReflect.Descriptor instead.
+ func (*Workspace) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{18}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{19}
+ }
+ 
+ func (x *Workspace) GetApiVersion() string {
+@@ -1241,7 +1337,7 @@ type WorkspaceSpec struct {
+ 
+ func (x *WorkspaceSpec) Reset() {
+ 	*x = WorkspaceSpec{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[19]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[20]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1253,7 +1349,7 @@ func (x *WorkspaceSpec) String() string {
+ func (*WorkspaceSpec) ProtoMessage() {}
+ 
+ func (x *WorkspaceSpec) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[19]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[20]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1266,7 +1362,7 @@ func (x *WorkspaceSpec) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use WorkspaceSpec.ProtoReflect.Descriptor instead.
+ func (*WorkspaceSpec) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{19}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{20}
+ }
+ 
+ func (x *WorkspaceSpec) GetGit() []*GitRepo {
+@@ -1303,7 +1399,7 @@ type GitRepo struct {
+ 
+ func (x *GitRepo) Reset() {
+ 	*x = GitRepo{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[20]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[21]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1315,7 +1411,7 @@ func (x *GitRepo) String() string {
+ func (*GitRepo) ProtoMessage() {}
+ 
+ func (x *GitRepo) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[20]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[21]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1328,7 +1424,7 @@ func (x *GitRepo) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use GitRepo.ProtoReflect.Descriptor instead.
+ func (*GitRepo) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{20}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{21}
+ }
+ 
+ func (x *GitRepo) GetName() string {
+@@ -1376,7 +1472,7 @@ type MCPConfig struct {
+ 
+ func (x *MCPConfig) Reset() {
+ 	*x = MCPConfig{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[21]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[22]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1388,7 +1484,7 @@ func (x *MCPConfig) String() string {
+ func (*MCPConfig) ProtoMessage() {}
+ 
+ func (x *MCPConfig) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[21]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[22]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1401,7 +1497,7 @@ func (x *MCPConfig) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use MCPConfig.ProtoReflect.Descriptor instead.
+ func (*MCPConfig) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{21}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{22}
+ }
+ 
+ func (x *MCPConfig) GetRegistries() []*MCPRegistry {
+@@ -1430,7 +1526,7 @@ type MCPRegistry struct {
+ 
+ func (x *MCPRegistry) Reset() {
+ 	*x = MCPRegistry{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[22]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[23]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1442,7 +1538,7 @@ func (x *MCPRegistry) String() string {
+ func (*MCPRegistry) ProtoMessage() {}
+ 
+ func (x *MCPRegistry) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[22]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[23]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1455,7 +1551,7 @@ func (x *MCPRegistry) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use MCPRegistry.ProtoReflect.Descriptor instead.
+ func (*MCPRegistry) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{22}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{23}
+ }
+ 
+ func (x *MCPRegistry) GetProvider() string {
+@@ -1498,7 +1594,7 @@ type MCPServer struct {
+ 
+ func (x *MCPServer) Reset() {
+ 	*x = MCPServer{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[23]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[24]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1510,7 +1606,7 @@ func (x *MCPServer) String() string {
+ func (*MCPServer) ProtoMessage() {}
+ 
+ func (x *MCPServer) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[23]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[24]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1523,7 +1619,7 @@ func (x *MCPServer) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use MCPServer.ProtoReflect.Descriptor instead.
+ func (*MCPServer) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{23}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{24}
+ }
+ 
+ func (x *MCPServer) GetName() string {
+@@ -1564,7 +1660,7 @@ type SkillsConfig struct {
+ 
+ func (x *SkillsConfig) Reset() {
+ 	*x = SkillsConfig{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[24]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[25]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1576,7 +1672,7 @@ func (x *SkillsConfig) String() string {
+ func (*SkillsConfig) ProtoMessage() {}
+ 
+ func (x *SkillsConfig) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[24]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[25]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1589,7 +1685,7 @@ func (x *SkillsConfig) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use SkillsConfig.ProtoReflect.Descriptor instead.
+ func (*SkillsConfig) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{24}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{25}
+ }
+ 
+ func (x *SkillsConfig) GetRegistries() []*SkillRegistry {
+@@ -1617,7 +1713,7 @@ type SkillRegistry struct {
+ 
+ func (x *SkillRegistry) Reset() {
+ 	*x = SkillRegistry{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[25]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[26]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1629,7 +1725,7 @@ func (x *SkillRegistry) String() string {
+ func (*SkillRegistry) ProtoMessage() {}
+ 
+ func (x *SkillRegistry) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[25]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[26]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1642,7 +1738,7 @@ func (x *SkillRegistry) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use SkillRegistry.ProtoReflect.Descriptor instead.
+ func (*SkillRegistry) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{25}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{26}
+ }
+ 
+ func (x *SkillRegistry) GetProvider() string {
+@@ -1678,7 +1774,7 @@ type Model struct {
+ 
+ func (x *Model) Reset() {
+ 	*x = Model{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[26]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[27]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1690,7 +1786,7 @@ func (x *Model) String() string {
+ func (*Model) ProtoMessage() {}
+ 
+ func (x *Model) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[26]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[27]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1703,7 +1799,7 @@ func (x *Model) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use Model.ProtoReflect.Descriptor instead.
+ func (*Model) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{26}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{27}
+ }
+ 
+ func (x *Model) GetApiVersion() string {
+@@ -1748,7 +1844,7 @@ type ModelSpec struct {
+ 
+ func (x *ModelSpec) Reset() {
+ 	*x = ModelSpec{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[27]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[28]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1760,7 +1856,7 @@ func (x *ModelSpec) String() string {
+ func (*ModelSpec) ProtoMessage() {}
+ 
+ func (x *ModelSpec) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[27]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[28]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1773,7 +1869,7 @@ func (x *ModelSpec) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ModelSpec.ProtoReflect.Descriptor instead.
+ func (*ModelSpec) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{27}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{28}
+ }
+ 
+ func (x *ModelSpec) GetProvider() string {
+@@ -1814,7 +1910,7 @@ type SecretKeyRef struct {
+ 
+ func (x *SecretKeyRef) Reset() {
+ 	*x = SecretKeyRef{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[28]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[29]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1826,7 +1922,7 @@ func (x *SecretKeyRef) String() string {
+ func (*SecretKeyRef) ProtoMessage() {}
+ 
+ func (x *SecretKeyRef) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[28]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[29]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1839,7 +1935,7 @@ func (x *SecretKeyRef) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use SecretKeyRef.ProtoReflect.Descriptor instead.
+ func (*SecretKeyRef) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{28}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{29}
+ }
+ 
+ func (x *SecretKeyRef) GetName() string {
+@@ -1867,7 +1963,7 @@ type GetTaskRequest struct {
+ 
+ func (x *GetTaskRequest) Reset() {
+ 	*x = GetTaskRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[29]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[30]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1879,7 +1975,7 @@ func (x *GetTaskRequest) String() string {
+ func (*GetTaskRequest) ProtoMessage() {}
+ 
+ func (x *GetTaskRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[29]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[30]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1892,7 +1988,7 @@ func (x *GetTaskRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use GetTaskRequest.ProtoReflect.Descriptor instead.
+ func (*GetTaskRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{29}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{30}
+ }
+ 
+ func (x *GetTaskRequest) GetAtespace() string {
+@@ -1909,6 +2005,110 @@ func (x *GetTaskRequest) GetName() string {
+ 	return ""
+ }
+ 
++type GetTaskResultRequest struct {
++	state         protoimpl.MessageState `protogen:"open.v1"`
++	Atespace      string                 `protobuf:"bytes,1,opt,name=atespace,proto3" json:"atespace,omitempty"`
++	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *GetTaskResultRequest) Reset() {
++	*x = GetTaskResultRequest{}
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[31]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *GetTaskResultRequest) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*GetTaskResultRequest) ProtoMessage() {}
++
++func (x *GetTaskResultRequest) ProtoReflect() protoreflect.Message {
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[31]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use GetTaskResultRequest.ProtoReflect.Descriptor instead.
++func (*GetTaskResultRequest) Descriptor() ([]byte, []int) {
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{31}
++}
++
++func (x *GetTaskResultRequest) GetAtespace() string {
++	if x != nil {
++		return x.Atespace
++	}
++	return ""
++}
++
++func (x *GetTaskResultRequest) GetName() string {
++	if x != nil {
++		return x.Name
++	}
++	return ""
++}
++
++type TaskResult struct {
++	state         protoimpl.MessageState `protogen:"open.v1"`
++	Content       []byte                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
++	Sha256        string                 `protobuf:"bytes,2,opt,name=sha256,proto3" json:"sha256,omitempty"`
++	unknownFields protoimpl.UnknownFields
++	sizeCache     protoimpl.SizeCache
++}
++
++func (x *TaskResult) Reset() {
++	*x = TaskResult{}
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[32]
++	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++	ms.StoreMessageInfo(mi)
++}
++
++func (x *TaskResult) String() string {
++	return protoimpl.X.MessageStringOf(x)
++}
++
++func (*TaskResult) ProtoMessage() {}
++
++func (x *TaskResult) ProtoReflect() protoreflect.Message {
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[32]
++	if x != nil {
++		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
++		if ms.LoadMessageInfo() == nil {
++			ms.StoreMessageInfo(mi)
++		}
++		return ms
++	}
++	return mi.MessageOf(x)
++}
++
++// Deprecated: Use TaskResult.ProtoReflect.Descriptor instead.
++func (*TaskResult) Descriptor() ([]byte, []int) {
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{32}
++}
++
++func (x *TaskResult) GetContent() []byte {
++	if x != nil {
++		return x.Content
++	}
++	return nil
++}
++
++func (x *TaskResult) GetSha256() string {
++	if x != nil {
++		return x.Sha256
++	}
++	return ""
++}
++
+ type ListTasksRequest struct {
+ 	state         protoimpl.MessageState `protogen:"open.v1"`
+ 	Atespace      string                 `protobuf:"bytes,1,opt,name=atespace,proto3" json:"atespace,omitempty"`
+@@ -1920,7 +2120,7 @@ type ListTasksRequest struct {
+ 
+ func (x *ListTasksRequest) Reset() {
+ 	*x = ListTasksRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[30]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[33]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1932,7 +2132,7 @@ func (x *ListTasksRequest) String() string {
+ func (*ListTasksRequest) ProtoMessage() {}
+ 
+ func (x *ListTasksRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[30]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[33]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -1945,7 +2145,7 @@ func (x *ListTasksRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ListTasksRequest.ProtoReflect.Descriptor instead.
+ func (*ListTasksRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{30}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{33}
+ }
+ 
+ func (x *ListTasksRequest) GetAtespace() string {
+@@ -1978,7 +2178,7 @@ type ListTasksResponse struct {
+ 
+ func (x *ListTasksResponse) Reset() {
+ 	*x = ListTasksResponse{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[31]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[34]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -1990,7 +2190,7 @@ func (x *ListTasksResponse) String() string {
+ func (*ListTasksResponse) ProtoMessage() {}
+ 
+ func (x *ListTasksResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[31]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[34]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2003,7 +2203,7 @@ func (x *ListTasksResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ListTasksResponse.ProtoReflect.Descriptor instead.
+ func (*ListTasksResponse) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{31}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{34}
+ }
+ 
+ func (x *ListTasksResponse) GetTasks() []*Task {
+@@ -2022,7 +2222,7 @@ type UpdateTaskRequest struct {
+ 
+ func (x *UpdateTaskRequest) Reset() {
+ 	*x = UpdateTaskRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[32]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[35]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2034,7 +2234,7 @@ func (x *UpdateTaskRequest) String() string {
+ func (*UpdateTaskRequest) ProtoMessage() {}
+ 
+ func (x *UpdateTaskRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[32]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[35]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2047,7 +2247,7 @@ func (x *UpdateTaskRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use UpdateTaskRequest.ProtoReflect.Descriptor instead.
+ func (*UpdateTaskRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{32}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{35}
+ }
+ 
+ func (x *UpdateTaskRequest) GetTask() *Task {
+@@ -2067,7 +2267,7 @@ type DeleteTaskRequest struct {
+ 
+ func (x *DeleteTaskRequest) Reset() {
+ 	*x = DeleteTaskRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[33]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[36]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2079,7 +2279,7 @@ func (x *DeleteTaskRequest) String() string {
+ func (*DeleteTaskRequest) ProtoMessage() {}
+ 
+ func (x *DeleteTaskRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[33]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[36]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2092,7 +2292,7 @@ func (x *DeleteTaskRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use DeleteTaskRequest.ProtoReflect.Descriptor instead.
+ func (*DeleteTaskRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{33}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{36}
+ }
+ 
+ func (x *DeleteTaskRequest) GetAtespace() string {
+@@ -2117,7 +2317,7 @@ type DeleteTaskResponse struct {
+ 
+ func (x *DeleteTaskResponse) Reset() {
+ 	*x = DeleteTaskResponse{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[34]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[37]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2129,7 +2329,7 @@ func (x *DeleteTaskResponse) String() string {
+ func (*DeleteTaskResponse) ProtoMessage() {}
+ 
+ func (x *DeleteTaskResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[34]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[37]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2142,7 +2342,7 @@ func (x *DeleteTaskResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use DeleteTaskResponse.ProtoReflect.Descriptor instead.
+ func (*DeleteTaskResponse) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{34}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{37}
+ }
+ 
+ type SuspendTaskRequest struct {
+@@ -2155,7 +2355,7 @@ type SuspendTaskRequest struct {
+ 
+ func (x *SuspendTaskRequest) Reset() {
+ 	*x = SuspendTaskRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[35]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[38]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2167,7 +2367,7 @@ func (x *SuspendTaskRequest) String() string {
+ func (*SuspendTaskRequest) ProtoMessage() {}
+ 
+ func (x *SuspendTaskRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[35]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[38]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2180,7 +2380,7 @@ func (x *SuspendTaskRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use SuspendTaskRequest.ProtoReflect.Descriptor instead.
+ func (*SuspendTaskRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{35}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{38}
+ }
+ 
+ func (x *SuspendTaskRequest) GetAtespace() string {
+@@ -2207,7 +2407,7 @@ type ResumeTaskRequest struct {
+ 
+ func (x *ResumeTaskRequest) Reset() {
+ 	*x = ResumeTaskRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[36]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[39]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2219,7 +2419,7 @@ func (x *ResumeTaskRequest) String() string {
+ func (*ResumeTaskRequest) ProtoMessage() {}
+ 
+ func (x *ResumeTaskRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[36]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[39]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2232,7 +2432,7 @@ func (x *ResumeTaskRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ResumeTaskRequest.ProtoReflect.Descriptor instead.
+ func (*ResumeTaskRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{36}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{39}
+ }
+ 
+ func (x *ResumeTaskRequest) GetAtespace() string {
+@@ -2259,7 +2459,7 @@ type WatchTaskRequest struct {
+ 
+ func (x *WatchTaskRequest) Reset() {
+ 	*x = WatchTaskRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[37]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[40]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2271,7 +2471,7 @@ func (x *WatchTaskRequest) String() string {
+ func (*WatchTaskRequest) ProtoMessage() {}
+ 
+ func (x *WatchTaskRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[37]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[40]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2284,7 +2484,7 @@ func (x *WatchTaskRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use WatchTaskRequest.ProtoReflect.Descriptor instead.
+ func (*WatchTaskRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{37}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{40}
+ }
+ 
+ func (x *WatchTaskRequest) GetAtespace() string {
+@@ -2311,7 +2511,7 @@ type WatchTaskResponse struct {
+ 
+ func (x *WatchTaskResponse) Reset() {
+ 	*x = WatchTaskResponse{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[38]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[41]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2323,7 +2523,7 @@ func (x *WatchTaskResponse) String() string {
+ func (*WatchTaskResponse) ProtoMessage() {}
+ 
+ func (x *WatchTaskResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[38]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[41]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2336,7 +2536,7 @@ func (x *WatchTaskResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use WatchTaskResponse.ProtoReflect.Descriptor instead.
+ func (*WatchTaskResponse) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{38}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{41}
+ }
+ 
+ func (x *WatchTaskResponse) GetTask() *Task {
+@@ -2364,7 +2564,7 @@ type GetGatewayRequest struct {
+ 
+ func (x *GetGatewayRequest) Reset() {
+ 	*x = GetGatewayRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[39]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[42]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2376,7 +2576,7 @@ func (x *GetGatewayRequest) String() string {
+ func (*GetGatewayRequest) ProtoMessage() {}
+ 
+ func (x *GetGatewayRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[39]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[42]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2389,7 +2589,7 @@ func (x *GetGatewayRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use GetGatewayRequest.ProtoReflect.Descriptor instead.
+ func (*GetGatewayRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{39}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{42}
+ }
+ 
+ func (x *GetGatewayRequest) GetAtespace() string {
+@@ -2415,7 +2615,7 @@ type ListGatewaysRequest struct {
+ 
+ func (x *ListGatewaysRequest) Reset() {
+ 	*x = ListGatewaysRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[40]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[43]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2427,7 +2627,7 @@ func (x *ListGatewaysRequest) String() string {
+ func (*ListGatewaysRequest) ProtoMessage() {}
+ 
+ func (x *ListGatewaysRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[40]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[43]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2440,7 +2640,7 @@ func (x *ListGatewaysRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ListGatewaysRequest.ProtoReflect.Descriptor instead.
+ func (*ListGatewaysRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{40}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{43}
+ }
+ 
+ func (x *ListGatewaysRequest) GetAtespace() string {
+@@ -2459,7 +2659,7 @@ type ListGatewaysResponse struct {
+ 
+ func (x *ListGatewaysResponse) Reset() {
+ 	*x = ListGatewaysResponse{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[41]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[44]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2471,7 +2671,7 @@ func (x *ListGatewaysResponse) String() string {
+ func (*ListGatewaysResponse) ProtoMessage() {}
+ 
+ func (x *ListGatewaysResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[41]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[44]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2484,7 +2684,7 @@ func (x *ListGatewaysResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ListGatewaysResponse.ProtoReflect.Descriptor instead.
+ func (*ListGatewaysResponse) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{41}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{44}
+ }
+ 
+ func (x *ListGatewaysResponse) GetGateways() []*Gateway {
+@@ -2503,7 +2703,7 @@ type UpdateGatewayRequest struct {
+ 
+ func (x *UpdateGatewayRequest) Reset() {
+ 	*x = UpdateGatewayRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[42]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[45]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2515,7 +2715,7 @@ func (x *UpdateGatewayRequest) String() string {
+ func (*UpdateGatewayRequest) ProtoMessage() {}
+ 
+ func (x *UpdateGatewayRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[42]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[45]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2528,7 +2728,7 @@ func (x *UpdateGatewayRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use UpdateGatewayRequest.ProtoReflect.Descriptor instead.
+ func (*UpdateGatewayRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{42}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{45}
+ }
+ 
+ func (x *UpdateGatewayRequest) GetGateway() *Gateway {
+@@ -2548,7 +2748,7 @@ type DeleteGatewayRequest struct {
+ 
+ func (x *DeleteGatewayRequest) Reset() {
+ 	*x = DeleteGatewayRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[43]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[46]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2560,7 +2760,7 @@ func (x *DeleteGatewayRequest) String() string {
+ func (*DeleteGatewayRequest) ProtoMessage() {}
+ 
+ func (x *DeleteGatewayRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[43]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[46]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2573,7 +2773,7 @@ func (x *DeleteGatewayRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use DeleteGatewayRequest.ProtoReflect.Descriptor instead.
+ func (*DeleteGatewayRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{43}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{46}
+ }
+ 
+ func (x *DeleteGatewayRequest) GetAtespace() string {
+@@ -2598,7 +2798,7 @@ type DeleteGatewayResponse struct {
+ 
+ func (x *DeleteGatewayResponse) Reset() {
+ 	*x = DeleteGatewayResponse{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[44]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[47]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2610,7 +2810,7 @@ func (x *DeleteGatewayResponse) String() string {
+ func (*DeleteGatewayResponse) ProtoMessage() {}
+ 
+ func (x *DeleteGatewayResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[44]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[47]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2623,7 +2823,7 @@ func (x *DeleteGatewayResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use DeleteGatewayResponse.ProtoReflect.Descriptor instead.
+ func (*DeleteGatewayResponse) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{44}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{47}
+ }
+ 
+ // Workspaces
+@@ -2637,7 +2837,7 @@ type GetWorkspaceRequest struct {
+ 
+ func (x *GetWorkspaceRequest) Reset() {
+ 	*x = GetWorkspaceRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[45]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[48]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2649,7 +2849,7 @@ func (x *GetWorkspaceRequest) String() string {
+ func (*GetWorkspaceRequest) ProtoMessage() {}
+ 
+ func (x *GetWorkspaceRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[45]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[48]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2662,7 +2862,7 @@ func (x *GetWorkspaceRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use GetWorkspaceRequest.ProtoReflect.Descriptor instead.
+ func (*GetWorkspaceRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{45}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{48}
+ }
+ 
+ func (x *GetWorkspaceRequest) GetAtespace() string {
+@@ -2688,7 +2888,7 @@ type ListWorkspacesRequest struct {
+ 
+ func (x *ListWorkspacesRequest) Reset() {
+ 	*x = ListWorkspacesRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[46]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[49]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2700,7 +2900,7 @@ func (x *ListWorkspacesRequest) String() string {
+ func (*ListWorkspacesRequest) ProtoMessage() {}
+ 
+ func (x *ListWorkspacesRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[46]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[49]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2713,7 +2913,7 @@ func (x *ListWorkspacesRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ListWorkspacesRequest.ProtoReflect.Descriptor instead.
+ func (*ListWorkspacesRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{46}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{49}
+ }
+ 
+ func (x *ListWorkspacesRequest) GetAtespace() string {
+@@ -2732,7 +2932,7 @@ type ListWorkspacesResponse struct {
+ 
+ func (x *ListWorkspacesResponse) Reset() {
+ 	*x = ListWorkspacesResponse{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[47]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[50]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2744,7 +2944,7 @@ func (x *ListWorkspacesResponse) String() string {
+ func (*ListWorkspacesResponse) ProtoMessage() {}
+ 
+ func (x *ListWorkspacesResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[47]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[50]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2757,7 +2957,7 @@ func (x *ListWorkspacesResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ListWorkspacesResponse.ProtoReflect.Descriptor instead.
+ func (*ListWorkspacesResponse) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{47}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{50}
+ }
+ 
+ func (x *ListWorkspacesResponse) GetWorkspaces() []*Workspace {
+@@ -2776,7 +2976,7 @@ type UpdateWorkspaceRequest struct {
+ 
+ func (x *UpdateWorkspaceRequest) Reset() {
+ 	*x = UpdateWorkspaceRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[48]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[51]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2788,7 +2988,7 @@ func (x *UpdateWorkspaceRequest) String() string {
+ func (*UpdateWorkspaceRequest) ProtoMessage() {}
+ 
+ func (x *UpdateWorkspaceRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[48]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[51]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2801,7 +3001,7 @@ func (x *UpdateWorkspaceRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use UpdateWorkspaceRequest.ProtoReflect.Descriptor instead.
+ func (*UpdateWorkspaceRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{48}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{51}
+ }
+ 
+ func (x *UpdateWorkspaceRequest) GetWorkspace() *Workspace {
+@@ -2821,7 +3021,7 @@ type DeleteWorkspaceRequest struct {
+ 
+ func (x *DeleteWorkspaceRequest) Reset() {
+ 	*x = DeleteWorkspaceRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[49]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[52]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2833,7 +3033,7 @@ func (x *DeleteWorkspaceRequest) String() string {
+ func (*DeleteWorkspaceRequest) ProtoMessage() {}
+ 
+ func (x *DeleteWorkspaceRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[49]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[52]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2846,7 +3046,7 @@ func (x *DeleteWorkspaceRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use DeleteWorkspaceRequest.ProtoReflect.Descriptor instead.
+ func (*DeleteWorkspaceRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{49}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{52}
+ }
+ 
+ func (x *DeleteWorkspaceRequest) GetAtespace() string {
+@@ -2871,7 +3071,7 @@ type DeleteWorkspaceResponse struct {
+ 
+ func (x *DeleteWorkspaceResponse) Reset() {
+ 	*x = DeleteWorkspaceResponse{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[50]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[53]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2883,7 +3083,7 @@ func (x *DeleteWorkspaceResponse) String() string {
+ func (*DeleteWorkspaceResponse) ProtoMessage() {}
+ 
+ func (x *DeleteWorkspaceResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[50]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[53]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2896,7 +3096,7 @@ func (x *DeleteWorkspaceResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use DeleteWorkspaceResponse.ProtoReflect.Descriptor instead.
+ func (*DeleteWorkspaceResponse) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{50}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{53}
+ }
+ 
+ // Models
+@@ -2910,7 +3110,7 @@ type GetModelRequest struct {
+ 
+ func (x *GetModelRequest) Reset() {
+ 	*x = GetModelRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[51]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[54]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2922,7 +3122,7 @@ func (x *GetModelRequest) String() string {
+ func (*GetModelRequest) ProtoMessage() {}
+ 
+ func (x *GetModelRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[51]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[54]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2935,7 +3135,7 @@ func (x *GetModelRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use GetModelRequest.ProtoReflect.Descriptor instead.
+ func (*GetModelRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{51}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{54}
+ }
+ 
+ func (x *GetModelRequest) GetAtespace() string {
+@@ -2961,7 +3161,7 @@ type ListModelsRequest struct {
+ 
+ func (x *ListModelsRequest) Reset() {
+ 	*x = ListModelsRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[52]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[55]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -2973,7 +3173,7 @@ func (x *ListModelsRequest) String() string {
+ func (*ListModelsRequest) ProtoMessage() {}
+ 
+ func (x *ListModelsRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[52]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[55]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -2986,7 +3186,7 @@ func (x *ListModelsRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ListModelsRequest.ProtoReflect.Descriptor instead.
+ func (*ListModelsRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{52}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{55}
+ }
+ 
+ func (x *ListModelsRequest) GetAtespace() string {
+@@ -3005,7 +3205,7 @@ type ListModelsResponse struct {
+ 
+ func (x *ListModelsResponse) Reset() {
+ 	*x = ListModelsResponse{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[53]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[56]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -3017,7 +3217,7 @@ func (x *ListModelsResponse) String() string {
+ func (*ListModelsResponse) ProtoMessage() {}
+ 
+ func (x *ListModelsResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[53]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[56]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -3030,7 +3230,7 @@ func (x *ListModelsResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use ListModelsResponse.ProtoReflect.Descriptor instead.
+ func (*ListModelsResponse) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{53}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{56}
+ }
+ 
+ func (x *ListModelsResponse) GetModels() []*Model {
+@@ -3049,7 +3249,7 @@ type UpdateModelRequest struct {
+ 
+ func (x *UpdateModelRequest) Reset() {
+ 	*x = UpdateModelRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[54]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[57]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -3061,7 +3261,7 @@ func (x *UpdateModelRequest) String() string {
+ func (*UpdateModelRequest) ProtoMessage() {}
+ 
+ func (x *UpdateModelRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[54]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[57]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -3074,7 +3274,7 @@ func (x *UpdateModelRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use UpdateModelRequest.ProtoReflect.Descriptor instead.
+ func (*UpdateModelRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{54}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{57}
+ }
+ 
+ func (x *UpdateModelRequest) GetModel() *Model {
+@@ -3094,7 +3294,7 @@ type DeleteModelRequest struct {
+ 
+ func (x *DeleteModelRequest) Reset() {
+ 	*x = DeleteModelRequest{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[55]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[58]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -3106,7 +3306,7 @@ func (x *DeleteModelRequest) String() string {
+ func (*DeleteModelRequest) ProtoMessage() {}
+ 
+ func (x *DeleteModelRequest) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[55]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[58]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -3119,7 +3319,7 @@ func (x *DeleteModelRequest) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use DeleteModelRequest.ProtoReflect.Descriptor instead.
+ func (*DeleteModelRequest) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{55}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{58}
+ }
+ 
+ func (x *DeleteModelRequest) GetAtespace() string {
+@@ -3144,7 +3344,7 @@ type DeleteModelResponse struct {
+ 
+ func (x *DeleteModelResponse) Reset() {
+ 	*x = DeleteModelResponse{}
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[56]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[59]
+ 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 	ms.StoreMessageInfo(mi)
+ }
+@@ -3156,7 +3356,7 @@ func (x *DeleteModelResponse) String() string {
+ func (*DeleteModelResponse) ProtoMessage() {}
+ 
+ func (x *DeleteModelResponse) ProtoReflect() protoreflect.Message {
+-	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[56]
++	mi := &file_pkg_apis_v1alpha1_ax_proto_msgTypes[59]
+ 	if x != nil {
+ 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+ 		if ms.LoadMessageInfo() == nil {
+@@ -3169,7 +3369,7 @@ func (x *DeleteModelResponse) ProtoReflect() protoreflect.Message {
+ 
+ // Deprecated: Use DeleteModelResponse.ProtoReflect.Descriptor instead.
+ func (*DeleteModelResponse) Descriptor() ([]byte, []int) {
+-	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{56}
++	return file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP(), []int{59}
+ }
+ 
+ var File_pkg_apis_v1alpha1_ax_proto protoreflect.FileDescriptor
+@@ -3218,7 +3418,7 @@ const file_pkg_apis_v1alpha1_ax_proto_rawDesc = "" +
+ 	"\x04goal\x18\x03 \x01(\tR\x04goal\" \n" +
+ 	"\n" +
+ 	"GatewayRef\x12\x12\n" +
+-	"\x04name\x18\x01 \x01(\tR\x04name\"\x95\x02\n" +
++	"\x04name\x18\x01 \x01(\tR\x04name\"\xcb\x02\n" +
+ 	"\n" +
+ 	"TaskStatus\x12\x14\n" +
+ 	"\x05phase\x18\x01 \x01(\tR\x05phase\x12\x0e\n" +
+@@ -3229,15 +3429,25 @@ const file_pkg_apis_v1alpha1_ax_proto_rawDesc = "" +
+ 	"\x05usage\x18\x06 \x01(\v2\x17.ax.v1alpha1.UsageStatsR\x05usage\x126\n" +
+ 	"\n" +
+ 	"conditions\x18\a \x03(\v2\x16.ax.v1alpha1.ConditionR\n" +
+-	"conditions\"x\n" +
++	"conditions\x124\n" +
++	"\acommand\x18\b \x01(\v2\x1a.ax.v1alpha1.CommandStatusR\acommand\"\xc9\x01\n" +
++	"\rCommandStatus\x12\x16\n" +
++	"\x06exited\x18\x01 \x01(\bR\x06exited\x12\x1b\n" +
++	"\texit_code\x18\x02 \x01(\x05R\bexitCode\x12;\n" +
++	"\vfinished_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
++	"finishedAt\x12!\n" +
++	"\fresult_bytes\x18\x04 \x01(\x03R\vresultBytes\x12#\n" +
++	"\rresult_sha256\x18\x05 \x01(\tR\fresultSha256\"x\n" +
+ 	"\x0fPendingApproval\x12\x0e\n" +
+ 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x16\n" +
+ 	"\x06action\x18\x02 \x01(\tR\x06action\x12=\n" +
+-	"\frequested_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\vrequestedAt\"^\n" +
++	"\frequested_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\vrequestedAt\"}\n" +
+ 	"\n" +
+ 	"UsageStats\x12#\n" +
+ 	"\rprompt_tokens\x18\x01 \x01(\x05R\fpromptTokens\x12+\n" +
+-	"\x11completion_tokens\x18\x02 \x01(\x05R\x10completionTokens\"\xb7\x01\n" +
++	"\x11completion_tokens\x18\x02 \x01(\x05R\x10completionTokens\x12\x1d\n" +
++	"\n" +
++	"tool_calls\x18\x03 \x01(\x05R\ttoolCalls\"\xb7\x01\n" +
+ 	"\tCondition\x12\x12\n" +
+ 	"\x04type\x18\x01 \x01(\tR\x04type\x12\x16\n" +
+ 	"\x06status\x18\x02 \x01(\tR\x06status\x12L\n" +
+@@ -3324,7 +3534,14 @@ const file_pkg_apis_v1alpha1_ax_proto_rawDesc = "" +
+ 	"\x03key\x18\x02 \x01(\tR\x03key\"@\n" +
+ 	"\x0eGetTaskRequest\x12\x1a\n" +
+ 	"\batespace\x18\x01 \x01(\tR\batespace\x12\x12\n" +
+-	"\x04name\x18\x02 \x01(\tR\x04name\"\\\n" +
++	"\x04name\x18\x02 \x01(\tR\x04name\"F\n" +
++	"\x14GetTaskResultRequest\x12\x1a\n" +
++	"\batespace\x18\x01 \x01(\tR\batespace\x12\x12\n" +
++	"\x04name\x18\x02 \x01(\tR\x04name\">\n" +
++	"\n" +
++	"TaskResult\x12\x18\n" +
++	"\acontent\x18\x01 \x01(\fR\acontent\x12\x16\n" +
++	"\x06sha256\x18\x02 \x01(\tR\x06sha256\"\\\n" +
+ 	"\x10ListTasksRequest\x12\x1a\n" +
+ 	"\batespace\x18\x01 \x01(\tR\batespace\x12\x14\n" +
+ 	"\x05limit\x18\x02 \x01(\x03R\x05limit\x12\x16\n" +
+@@ -3389,7 +3606,7 @@ const file_pkg_apis_v1alpha1_ax_proto_rawDesc = "" +
+ 	"\x12DeleteModelRequest\x12\x1a\n" +
+ 	"\batespace\x18\x01 \x01(\tR\batespace\x12\x12\n" +
+ 	"\x04name\x18\x02 \x01(\tR\x04name\"\x15\n" +
+-	"\x13DeleteModelResponse2\x9e\v\n" +
++	"\x13DeleteModelResponse2\xeb\v\n" +
+ 	"\x02AX\x129\n" +
+ 	"\aGetTask\x12\x1b.ax.v1alpha1.GetTaskRequest\x1a\x11.ax.v1alpha1.Task\x12J\n" +
+ 	"\tListTasks\x12\x1d.ax.v1alpha1.ListTasksRequest\x1a\x1e.ax.v1alpha1.ListTasksResponse\x12?\n" +
+@@ -3400,7 +3617,8 @@ const file_pkg_apis_v1alpha1_ax_proto_rawDesc = "" +
+ 	"\vSuspendTask\x12\x1f.ax.v1alpha1.SuspendTaskRequest\x1a\x11.ax.v1alpha1.Task\x12?\n" +
+ 	"\n" +
+ 	"ResumeTask\x12\x1e.ax.v1alpha1.ResumeTaskRequest\x1a\x11.ax.v1alpha1.Task\x12L\n" +
+-	"\tWatchTask\x12\x1d.ax.v1alpha1.WatchTaskRequest\x1a\x1e.ax.v1alpha1.WatchTaskResponse0\x01\x12B\n" +
++	"\tWatchTask\x12\x1d.ax.v1alpha1.WatchTaskRequest\x1a\x1e.ax.v1alpha1.WatchTaskResponse0\x01\x12K\n" +
++	"\rGetTaskResult\x12!.ax.v1alpha1.GetTaskResultRequest\x1a\x17.ax.v1alpha1.TaskResult\x12B\n" +
+ 	"\n" +
+ 	"GetGateway\x12\x1e.ax.v1alpha1.GetGatewayRequest\x1a\x14.ax.v1alpha1.Gateway\x12S\n" +
+ 	"\fListGateways\x12 .ax.v1alpha1.ListGatewaysRequest\x1a!.ax.v1alpha1.ListGatewaysResponse\x12H\n" +
+@@ -3428,7 +3646,7 @@ func file_pkg_apis_v1alpha1_ax_proto_rawDescGZIP() []byte {
+ 	return file_pkg_apis_v1alpha1_ax_proto_rawDescData
+ }
+ 
+-var file_pkg_apis_v1alpha1_ax_proto_msgTypes = make([]protoimpl.MessageInfo, 57)
++var file_pkg_apis_v1alpha1_ax_proto_msgTypes = make([]protoimpl.MessageInfo, 60)
+ var file_pkg_apis_v1alpha1_ax_proto_goTypes = []any{
+ 	(*ObjectMeta)(nil),              // 0: ax.v1alpha1.ObjectMeta
+ 	(*Task)(nil),                    // 1: ax.v1alpha1.Task
+@@ -3439,59 +3657,62 @@ var file_pkg_apis_v1alpha1_ax_proto_goTypes = []any{
+ 	(*WorkspaceRef)(nil),            // 6: ax.v1alpha1.WorkspaceRef
+ 	(*GatewayRef)(nil),              // 7: ax.v1alpha1.GatewayRef
+ 	(*TaskStatus)(nil),              // 8: ax.v1alpha1.TaskStatus
+-	(*PendingApproval)(nil),         // 9: ax.v1alpha1.PendingApproval
+-	(*UsageStats)(nil),              // 10: ax.v1alpha1.UsageStats
+-	(*Condition)(nil),               // 11: ax.v1alpha1.Condition
+-	(*Gateway)(nil),                 // 12: ax.v1alpha1.Gateway
+-	(*GatewaySpec)(nil),             // 13: ax.v1alpha1.GatewaySpec
+-	(*Listener)(nil),                // 14: ax.v1alpha1.Listener
+-	(*EgressConfig)(nil),            // 15: ax.v1alpha1.EgressConfig
+-	(*EgressAllowlist)(nil),         // 16: ax.v1alpha1.EgressAllowlist
+-	(*HostRule)(nil),                // 17: ax.v1alpha1.HostRule
+-	(*Workspace)(nil),               // 18: ax.v1alpha1.Workspace
+-	(*WorkspaceSpec)(nil),           // 19: ax.v1alpha1.WorkspaceSpec
+-	(*GitRepo)(nil),                 // 20: ax.v1alpha1.GitRepo
+-	(*MCPConfig)(nil),               // 21: ax.v1alpha1.MCPConfig
+-	(*MCPRegistry)(nil),             // 22: ax.v1alpha1.MCPRegistry
+-	(*MCPServer)(nil),               // 23: ax.v1alpha1.MCPServer
+-	(*SkillsConfig)(nil),            // 24: ax.v1alpha1.SkillsConfig
+-	(*SkillRegistry)(nil),           // 25: ax.v1alpha1.SkillRegistry
+-	(*Model)(nil),                   // 26: ax.v1alpha1.Model
+-	(*ModelSpec)(nil),               // 27: ax.v1alpha1.ModelSpec
+-	(*SecretKeyRef)(nil),            // 28: ax.v1alpha1.SecretKeyRef
+-	(*GetTaskRequest)(nil),          // 29: ax.v1alpha1.GetTaskRequest
+-	(*ListTasksRequest)(nil),        // 30: ax.v1alpha1.ListTasksRequest
+-	(*ListTasksResponse)(nil),       // 31: ax.v1alpha1.ListTasksResponse
+-	(*UpdateTaskRequest)(nil),       // 32: ax.v1alpha1.UpdateTaskRequest
+-	(*DeleteTaskRequest)(nil),       // 33: ax.v1alpha1.DeleteTaskRequest
+-	(*DeleteTaskResponse)(nil),      // 34: ax.v1alpha1.DeleteTaskResponse
+-	(*SuspendTaskRequest)(nil),      // 35: ax.v1alpha1.SuspendTaskRequest
+-	(*ResumeTaskRequest)(nil),       // 36: ax.v1alpha1.ResumeTaskRequest
+-	(*WatchTaskRequest)(nil),        // 37: ax.v1alpha1.WatchTaskRequest
+-	(*WatchTaskResponse)(nil),       // 38: ax.v1alpha1.WatchTaskResponse
+-	(*GetGatewayRequest)(nil),       // 39: ax.v1alpha1.GetGatewayRequest
+-	(*ListGatewaysRequest)(nil),     // 40: ax.v1alpha1.ListGatewaysRequest
+-	(*ListGatewaysResponse)(nil),    // 41: ax.v1alpha1.ListGatewaysResponse
+-	(*UpdateGatewayRequest)(nil),    // 42: ax.v1alpha1.UpdateGatewayRequest
+-	(*DeleteGatewayRequest)(nil),    // 43: ax.v1alpha1.DeleteGatewayRequest
+-	(*DeleteGatewayResponse)(nil),   // 44: ax.v1alpha1.DeleteGatewayResponse
+-	(*GetWorkspaceRequest)(nil),     // 45: ax.v1alpha1.GetWorkspaceRequest
+-	(*ListWorkspacesRequest)(nil),   // 46: ax.v1alpha1.ListWorkspacesRequest
+-	(*ListWorkspacesResponse)(nil),  // 47: ax.v1alpha1.ListWorkspacesResponse
+-	(*UpdateWorkspaceRequest)(nil),  // 48: ax.v1alpha1.UpdateWorkspaceRequest
+-	(*DeleteWorkspaceRequest)(nil),  // 49: ax.v1alpha1.DeleteWorkspaceRequest
+-	(*DeleteWorkspaceResponse)(nil), // 50: ax.v1alpha1.DeleteWorkspaceResponse
+-	(*GetModelRequest)(nil),         // 51: ax.v1alpha1.GetModelRequest
+-	(*ListModelsRequest)(nil),       // 52: ax.v1alpha1.ListModelsRequest
+-	(*ListModelsResponse)(nil),      // 53: ax.v1alpha1.ListModelsResponse
+-	(*UpdateModelRequest)(nil),      // 54: ax.v1alpha1.UpdateModelRequest
+-	(*DeleteModelRequest)(nil),      // 55: ax.v1alpha1.DeleteModelRequest
+-	(*DeleteModelResponse)(nil),     // 56: ax.v1alpha1.DeleteModelResponse
+-	(*timestamppb.Timestamp)(nil),   // 57: google.protobuf.Timestamp
+-	(*structpb.Struct)(nil),         // 58: google.protobuf.Struct
++	(*CommandStatus)(nil),           // 9: ax.v1alpha1.CommandStatus
++	(*PendingApproval)(nil),         // 10: ax.v1alpha1.PendingApproval
++	(*UsageStats)(nil),              // 11: ax.v1alpha1.UsageStats
++	(*Condition)(nil),               // 12: ax.v1alpha1.Condition
++	(*Gateway)(nil),                 // 13: ax.v1alpha1.Gateway
++	(*GatewaySpec)(nil),             // 14: ax.v1alpha1.GatewaySpec
++	(*Listener)(nil),                // 15: ax.v1alpha1.Listener
++	(*EgressConfig)(nil),            // 16: ax.v1alpha1.EgressConfig
++	(*EgressAllowlist)(nil),         // 17: ax.v1alpha1.EgressAllowlist
++	(*HostRule)(nil),                // 18: ax.v1alpha1.HostRule
++	(*Workspace)(nil),               // 19: ax.v1alpha1.Workspace
++	(*WorkspaceSpec)(nil),           // 20: ax.v1alpha1.WorkspaceSpec
++	(*GitRepo)(nil),                 // 21: ax.v1alpha1.GitRepo
++	(*MCPConfig)(nil),               // 22: ax.v1alpha1.MCPConfig
++	(*MCPRegistry)(nil),             // 23: ax.v1alpha1.MCPRegistry
++	(*MCPServer)(nil),               // 24: ax.v1alpha1.MCPServer
++	(*SkillsConfig)(nil),            // 25: ax.v1alpha1.SkillsConfig
++	(*SkillRegistry)(nil),           // 26: ax.v1alpha1.SkillRegistry
++	(*Model)(nil),                   // 27: ax.v1alpha1.Model
++	(*ModelSpec)(nil),               // 28: ax.v1alpha1.ModelSpec
++	(*SecretKeyRef)(nil),            // 29: ax.v1alpha1.SecretKeyRef
++	(*GetTaskRequest)(nil),          // 30: ax.v1alpha1.GetTaskRequest
++	(*GetTaskResultRequest)(nil),    // 31: ax.v1alpha1.GetTaskResultRequest
++	(*TaskResult)(nil),              // 32: ax.v1alpha1.TaskResult
++	(*ListTasksRequest)(nil),        // 33: ax.v1alpha1.ListTasksRequest
++	(*ListTasksResponse)(nil),       // 34: ax.v1alpha1.ListTasksResponse
++	(*UpdateTaskRequest)(nil),       // 35: ax.v1alpha1.UpdateTaskRequest
++	(*DeleteTaskRequest)(nil),       // 36: ax.v1alpha1.DeleteTaskRequest
++	(*DeleteTaskResponse)(nil),      // 37: ax.v1alpha1.DeleteTaskResponse
++	(*SuspendTaskRequest)(nil),      // 38: ax.v1alpha1.SuspendTaskRequest
++	(*ResumeTaskRequest)(nil),       // 39: ax.v1alpha1.ResumeTaskRequest
++	(*WatchTaskRequest)(nil),        // 40: ax.v1alpha1.WatchTaskRequest
++	(*WatchTaskResponse)(nil),       // 41: ax.v1alpha1.WatchTaskResponse
++	(*GetGatewayRequest)(nil),       // 42: ax.v1alpha1.GetGatewayRequest
++	(*ListGatewaysRequest)(nil),     // 43: ax.v1alpha1.ListGatewaysRequest
++	(*ListGatewaysResponse)(nil),    // 44: ax.v1alpha1.ListGatewaysResponse
++	(*UpdateGatewayRequest)(nil),    // 45: ax.v1alpha1.UpdateGatewayRequest
++	(*DeleteGatewayRequest)(nil),    // 46: ax.v1alpha1.DeleteGatewayRequest
++	(*DeleteGatewayResponse)(nil),   // 47: ax.v1alpha1.DeleteGatewayResponse
++	(*GetWorkspaceRequest)(nil),     // 48: ax.v1alpha1.GetWorkspaceRequest
++	(*ListWorkspacesRequest)(nil),   // 49: ax.v1alpha1.ListWorkspacesRequest
++	(*ListWorkspacesResponse)(nil),  // 50: ax.v1alpha1.ListWorkspacesResponse
++	(*UpdateWorkspaceRequest)(nil),  // 51: ax.v1alpha1.UpdateWorkspaceRequest
++	(*DeleteWorkspaceRequest)(nil),  // 52: ax.v1alpha1.DeleteWorkspaceRequest
++	(*DeleteWorkspaceResponse)(nil), // 53: ax.v1alpha1.DeleteWorkspaceResponse
++	(*GetModelRequest)(nil),         // 54: ax.v1alpha1.GetModelRequest
++	(*ListModelsRequest)(nil),       // 55: ax.v1alpha1.ListModelsRequest
++	(*ListModelsResponse)(nil),      // 56: ax.v1alpha1.ListModelsResponse
++	(*UpdateModelRequest)(nil),      // 57: ax.v1alpha1.UpdateModelRequest
++	(*DeleteModelRequest)(nil),      // 58: ax.v1alpha1.DeleteModelRequest
++	(*DeleteModelResponse)(nil),     // 59: ax.v1alpha1.DeleteModelResponse
++	(*timestamppb.Timestamp)(nil),   // 60: google.protobuf.Timestamp
++	(*structpb.Struct)(nil),         // 61: google.protobuf.Struct
+ }
+ var file_pkg_apis_v1alpha1_ax_proto_depIdxs = []int32{
+-	57, // 0: ax.v1alpha1.ObjectMeta.creation_timestamp:type_name -> google.protobuf.Timestamp
++	60, // 0: ax.v1alpha1.ObjectMeta.creation_timestamp:type_name -> google.protobuf.Timestamp
+ 	0,  // 1: ax.v1alpha1.Task.metadata:type_name -> ax.v1alpha1.ObjectMeta
+ 	2,  // 2: ax.v1alpha1.Task.spec:type_name -> ax.v1alpha1.TaskSpec
+ 	8,  // 3: ax.v1alpha1.Task.status:type_name -> ax.v1alpha1.TaskStatus
+@@ -3501,82 +3722,86 @@ var file_pkg_apis_v1alpha1_ax_proto_depIdxs = []int32{
+ 	7,  // 7: ax.v1alpha1.TaskSpec.gateway:type_name -> ax.v1alpha1.GatewayRef
+ 	5,  // 8: ax.v1alpha1.ResourceReqs.requests:type_name -> ax.v1alpha1.ResourceList
+ 	5,  // 9: ax.v1alpha1.ResourceReqs.limits:type_name -> ax.v1alpha1.ResourceList
+-	9,  // 10: ax.v1alpha1.TaskStatus.pending_approval:type_name -> ax.v1alpha1.PendingApproval
+-	10, // 11: ax.v1alpha1.TaskStatus.usage:type_name -> ax.v1alpha1.UsageStats
+-	11, // 12: ax.v1alpha1.TaskStatus.conditions:type_name -> ax.v1alpha1.Condition
+-	57, // 13: ax.v1alpha1.PendingApproval.requested_at:type_name -> google.protobuf.Timestamp
+-	57, // 14: ax.v1alpha1.Condition.last_transition_time:type_name -> google.protobuf.Timestamp
+-	0,  // 15: ax.v1alpha1.Gateway.metadata:type_name -> ax.v1alpha1.ObjectMeta
+-	13, // 16: ax.v1alpha1.Gateway.spec:type_name -> ax.v1alpha1.GatewaySpec
+-	14, // 17: ax.v1alpha1.GatewaySpec.listeners:type_name -> ax.v1alpha1.Listener
+-	15, // 18: ax.v1alpha1.GatewaySpec.egress:type_name -> ax.v1alpha1.EgressConfig
+-	16, // 19: ax.v1alpha1.EgressConfig.allowlist:type_name -> ax.v1alpha1.EgressAllowlist
+-	17, // 20: ax.v1alpha1.EgressAllowlist.hosts:type_name -> ax.v1alpha1.HostRule
+-	0,  // 21: ax.v1alpha1.Workspace.metadata:type_name -> ax.v1alpha1.ObjectMeta
+-	19, // 22: ax.v1alpha1.Workspace.spec:type_name -> ax.v1alpha1.WorkspaceSpec
+-	20, // 23: ax.v1alpha1.WorkspaceSpec.git:type_name -> ax.v1alpha1.GitRepo
+-	21, // 24: ax.v1alpha1.WorkspaceSpec.mcp:type_name -> ax.v1alpha1.MCPConfig
+-	24, // 25: ax.v1alpha1.WorkspaceSpec.skills:type_name -> ax.v1alpha1.SkillsConfig
+-	22, // 26: ax.v1alpha1.MCPConfig.registries:type_name -> ax.v1alpha1.MCPRegistry
+-	23, // 27: ax.v1alpha1.MCPConfig.servers:type_name -> ax.v1alpha1.MCPServer
+-	23, // 28: ax.v1alpha1.MCPRegistry.servers:type_name -> ax.v1alpha1.MCPServer
+-	25, // 29: ax.v1alpha1.SkillsConfig.registries:type_name -> ax.v1alpha1.SkillRegistry
+-	0,  // 30: ax.v1alpha1.Model.metadata:type_name -> ax.v1alpha1.ObjectMeta
+-	27, // 31: ax.v1alpha1.Model.spec:type_name -> ax.v1alpha1.ModelSpec
+-	28, // 32: ax.v1alpha1.ModelSpec.secret_key:type_name -> ax.v1alpha1.SecretKeyRef
+-	58, // 33: ax.v1alpha1.ModelSpec.parameters:type_name -> google.protobuf.Struct
+-	1,  // 34: ax.v1alpha1.ListTasksResponse.tasks:type_name -> ax.v1alpha1.Task
+-	1,  // 35: ax.v1alpha1.UpdateTaskRequest.task:type_name -> ax.v1alpha1.Task
+-	1,  // 36: ax.v1alpha1.WatchTaskResponse.task:type_name -> ax.v1alpha1.Task
+-	12, // 37: ax.v1alpha1.ListGatewaysResponse.gateways:type_name -> ax.v1alpha1.Gateway
+-	12, // 38: ax.v1alpha1.UpdateGatewayRequest.gateway:type_name -> ax.v1alpha1.Gateway
+-	18, // 39: ax.v1alpha1.ListWorkspacesResponse.workspaces:type_name -> ax.v1alpha1.Workspace
+-	18, // 40: ax.v1alpha1.UpdateWorkspaceRequest.workspace:type_name -> ax.v1alpha1.Workspace
+-	26, // 41: ax.v1alpha1.ListModelsResponse.models:type_name -> ax.v1alpha1.Model
+-	26, // 42: ax.v1alpha1.UpdateModelRequest.model:type_name -> ax.v1alpha1.Model
+-	29, // 43: ax.v1alpha1.AX.GetTask:input_type -> ax.v1alpha1.GetTaskRequest
+-	30, // 44: ax.v1alpha1.AX.ListTasks:input_type -> ax.v1alpha1.ListTasksRequest
+-	32, // 45: ax.v1alpha1.AX.UpdateTask:input_type -> ax.v1alpha1.UpdateTaskRequest
+-	33, // 46: ax.v1alpha1.AX.DeleteTask:input_type -> ax.v1alpha1.DeleteTaskRequest
+-	35, // 47: ax.v1alpha1.AX.SuspendTask:input_type -> ax.v1alpha1.SuspendTaskRequest
+-	36, // 48: ax.v1alpha1.AX.ResumeTask:input_type -> ax.v1alpha1.ResumeTaskRequest
+-	37, // 49: ax.v1alpha1.AX.WatchTask:input_type -> ax.v1alpha1.WatchTaskRequest
+-	39, // 50: ax.v1alpha1.AX.GetGateway:input_type -> ax.v1alpha1.GetGatewayRequest
+-	40, // 51: ax.v1alpha1.AX.ListGateways:input_type -> ax.v1alpha1.ListGatewaysRequest
+-	42, // 52: ax.v1alpha1.AX.UpdateGateway:input_type -> ax.v1alpha1.UpdateGatewayRequest
+-	43, // 53: ax.v1alpha1.AX.DeleteGateway:input_type -> ax.v1alpha1.DeleteGatewayRequest
+-	45, // 54: ax.v1alpha1.AX.GetWorkspace:input_type -> ax.v1alpha1.GetWorkspaceRequest
+-	46, // 55: ax.v1alpha1.AX.ListWorkspaces:input_type -> ax.v1alpha1.ListWorkspacesRequest
+-	48, // 56: ax.v1alpha1.AX.UpdateWorkspace:input_type -> ax.v1alpha1.UpdateWorkspaceRequest
+-	49, // 57: ax.v1alpha1.AX.DeleteWorkspace:input_type -> ax.v1alpha1.DeleteWorkspaceRequest
+-	51, // 58: ax.v1alpha1.AX.GetModel:input_type -> ax.v1alpha1.GetModelRequest
+-	52, // 59: ax.v1alpha1.AX.ListModels:input_type -> ax.v1alpha1.ListModelsRequest
+-	54, // 60: ax.v1alpha1.AX.UpdateModel:input_type -> ax.v1alpha1.UpdateModelRequest
+-	55, // 61: ax.v1alpha1.AX.DeleteModel:input_type -> ax.v1alpha1.DeleteModelRequest
+-	1,  // 62: ax.v1alpha1.AX.GetTask:output_type -> ax.v1alpha1.Task
+-	31, // 63: ax.v1alpha1.AX.ListTasks:output_type -> ax.v1alpha1.ListTasksResponse
+-	1,  // 64: ax.v1alpha1.AX.UpdateTask:output_type -> ax.v1alpha1.Task
+-	34, // 65: ax.v1alpha1.AX.DeleteTask:output_type -> ax.v1alpha1.DeleteTaskResponse
+-	1,  // 66: ax.v1alpha1.AX.SuspendTask:output_type -> ax.v1alpha1.Task
+-	1,  // 67: ax.v1alpha1.AX.ResumeTask:output_type -> ax.v1alpha1.Task
+-	38, // 68: ax.v1alpha1.AX.WatchTask:output_type -> ax.v1alpha1.WatchTaskResponse
+-	12, // 69: ax.v1alpha1.AX.GetGateway:output_type -> ax.v1alpha1.Gateway
+-	41, // 70: ax.v1alpha1.AX.ListGateways:output_type -> ax.v1alpha1.ListGatewaysResponse
+-	12, // 71: ax.v1alpha1.AX.UpdateGateway:output_type -> ax.v1alpha1.Gateway
+-	44, // 72: ax.v1alpha1.AX.DeleteGateway:output_type -> ax.v1alpha1.DeleteGatewayResponse
+-	18, // 73: ax.v1alpha1.AX.GetWorkspace:output_type -> ax.v1alpha1.Workspace
+-	47, // 74: ax.v1alpha1.AX.ListWorkspaces:output_type -> ax.v1alpha1.ListWorkspacesResponse
+-	18, // 75: ax.v1alpha1.AX.UpdateWorkspace:output_type -> ax.v1alpha1.Workspace
+-	50, // 76: ax.v1alpha1.AX.DeleteWorkspace:output_type -> ax.v1alpha1.DeleteWorkspaceResponse
+-	26, // 77: ax.v1alpha1.AX.GetModel:output_type -> ax.v1alpha1.Model
+-	53, // 78: ax.v1alpha1.AX.ListModels:output_type -> ax.v1alpha1.ListModelsResponse
+-	26, // 79: ax.v1alpha1.AX.UpdateModel:output_type -> ax.v1alpha1.Model
+-	56, // 80: ax.v1alpha1.AX.DeleteModel:output_type -> ax.v1alpha1.DeleteModelResponse
+-	62, // [62:81] is the sub-list for method output_type
+-	43, // [43:62] is the sub-list for method input_type
+-	43, // [43:43] is the sub-list for extension type_name
+-	43, // [43:43] is the sub-list for extension extendee
+-	0,  // [0:43] is the sub-list for field type_name
++	10, // 10: ax.v1alpha1.TaskStatus.pending_approval:type_name -> ax.v1alpha1.PendingApproval
++	11, // 11: ax.v1alpha1.TaskStatus.usage:type_name -> ax.v1alpha1.UsageStats
++	12, // 12: ax.v1alpha1.TaskStatus.conditions:type_name -> ax.v1alpha1.Condition
++	9,  // 13: ax.v1alpha1.TaskStatus.command:type_name -> ax.v1alpha1.CommandStatus
++	60, // 14: ax.v1alpha1.CommandStatus.finished_at:type_name -> google.protobuf.Timestamp
++	60, // 15: ax.v1alpha1.PendingApproval.requested_at:type_name -> google.protobuf.Timestamp
++	60, // 16: ax.v1alpha1.Condition.last_transition_time:type_name -> google.protobuf.Timestamp
++	0,  // 17: ax.v1alpha1.Gateway.metadata:type_name -> ax.v1alpha1.ObjectMeta
++	14, // 18: ax.v1alpha1.Gateway.spec:type_name -> ax.v1alpha1.GatewaySpec
++	15, // 19: ax.v1alpha1.GatewaySpec.listeners:type_name -> ax.v1alpha1.Listener
++	16, // 20: ax.v1alpha1.GatewaySpec.egress:type_name -> ax.v1alpha1.EgressConfig
++	17, // 21: ax.v1alpha1.EgressConfig.allowlist:type_name -> ax.v1alpha1.EgressAllowlist
++	18, // 22: ax.v1alpha1.EgressAllowlist.hosts:type_name -> ax.v1alpha1.HostRule
++	0,  // 23: ax.v1alpha1.Workspace.metadata:type_name -> ax.v1alpha1.ObjectMeta
++	20, // 24: ax.v1alpha1.Workspace.spec:type_name -> ax.v1alpha1.WorkspaceSpec
++	21, // 25: ax.v1alpha1.WorkspaceSpec.git:type_name -> ax.v1alpha1.GitRepo
++	22, // 26: ax.v1alpha1.WorkspaceSpec.mcp:type_name -> ax.v1alpha1.MCPConfig
++	25, // 27: ax.v1alpha1.WorkspaceSpec.skills:type_name -> ax.v1alpha1.SkillsConfig
++	23, // 28: ax.v1alpha1.MCPConfig.registries:type_name -> ax.v1alpha1.MCPRegistry
++	24, // 29: ax.v1alpha1.MCPConfig.servers:type_name -> ax.v1alpha1.MCPServer
++	24, // 30: ax.v1alpha1.MCPRegistry.servers:type_name -> ax.v1alpha1.MCPServer
++	26, // 31: ax.v1alpha1.SkillsConfig.registries:type_name -> ax.v1alpha1.SkillRegistry
++	0,  // 32: ax.v1alpha1.Model.metadata:type_name -> ax.v1alpha1.ObjectMeta
++	28, // 33: ax.v1alpha1.Model.spec:type_name -> ax.v1alpha1.ModelSpec
++	29, // 34: ax.v1alpha1.ModelSpec.secret_key:type_name -> ax.v1alpha1.SecretKeyRef
++	61, // 35: ax.v1alpha1.ModelSpec.parameters:type_name -> google.protobuf.Struct
++	1,  // 36: ax.v1alpha1.ListTasksResponse.tasks:type_name -> ax.v1alpha1.Task
++	1,  // 37: ax.v1alpha1.UpdateTaskRequest.task:type_name -> ax.v1alpha1.Task
++	1,  // 38: ax.v1alpha1.WatchTaskResponse.task:type_name -> ax.v1alpha1.Task
++	13, // 39: ax.v1alpha1.ListGatewaysResponse.gateways:type_name -> ax.v1alpha1.Gateway
++	13, // 40: ax.v1alpha1.UpdateGatewayRequest.gateway:type_name -> ax.v1alpha1.Gateway
++	19, // 41: ax.v1alpha1.ListWorkspacesResponse.workspaces:type_name -> ax.v1alpha1.Workspace
++	19, // 42: ax.v1alpha1.UpdateWorkspaceRequest.workspace:type_name -> ax.v1alpha1.Workspace
++	27, // 43: ax.v1alpha1.ListModelsResponse.models:type_name -> ax.v1alpha1.Model
++	27, // 44: ax.v1alpha1.UpdateModelRequest.model:type_name -> ax.v1alpha1.Model
++	30, // 45: ax.v1alpha1.AX.GetTask:input_type -> ax.v1alpha1.GetTaskRequest
++	33, // 46: ax.v1alpha1.AX.ListTasks:input_type -> ax.v1alpha1.ListTasksRequest
++	35, // 47: ax.v1alpha1.AX.UpdateTask:input_type -> ax.v1alpha1.UpdateTaskRequest
++	36, // 48: ax.v1alpha1.AX.DeleteTask:input_type -> ax.v1alpha1.DeleteTaskRequest
++	38, // 49: ax.v1alpha1.AX.SuspendTask:input_type -> ax.v1alpha1.SuspendTaskRequest
++	39, // 50: ax.v1alpha1.AX.ResumeTask:input_type -> ax.v1alpha1.ResumeTaskRequest
++	40, // 51: ax.v1alpha1.AX.WatchTask:input_type -> ax.v1alpha1.WatchTaskRequest
++	31, // 52: ax.v1alpha1.AX.GetTaskResult:input_type -> ax.v1alpha1.GetTaskResultRequest
++	42, // 53: ax.v1alpha1.AX.GetGateway:input_type -> ax.v1alpha1.GetGatewayRequest
++	43, // 54: ax.v1alpha1.AX.ListGateways:input_type -> ax.v1alpha1.ListGatewaysRequest
++	45, // 55: ax.v1alpha1.AX.UpdateGateway:input_type -> ax.v1alpha1.UpdateGatewayRequest
++	46, // 56: ax.v1alpha1.AX.DeleteGateway:input_type -> ax.v1alpha1.DeleteGatewayRequest
++	48, // 57: ax.v1alpha1.AX.GetWorkspace:input_type -> ax.v1alpha1.GetWorkspaceRequest
++	49, // 58: ax.v1alpha1.AX.ListWorkspaces:input_type -> ax.v1alpha1.ListWorkspacesRequest
++	51, // 59: ax.v1alpha1.AX.UpdateWorkspace:input_type -> ax.v1alpha1.UpdateWorkspaceRequest
++	52, // 60: ax.v1alpha1.AX.DeleteWorkspace:input_type -> ax.v1alpha1.DeleteWorkspaceRequest
++	54, // 61: ax.v1alpha1.AX.GetModel:input_type -> ax.v1alpha1.GetModelRequest
++	55, // 62: ax.v1alpha1.AX.ListModels:input_type -> ax.v1alpha1.ListModelsRequest
++	57, // 63: ax.v1alpha1.AX.UpdateModel:input_type -> ax.v1alpha1.UpdateModelRequest
++	58, // 64: ax.v1alpha1.AX.DeleteModel:input_type -> ax.v1alpha1.DeleteModelRequest
++	1,  // 65: ax.v1alpha1.AX.GetTask:output_type -> ax.v1alpha1.Task
++	34, // 66: ax.v1alpha1.AX.ListTasks:output_type -> ax.v1alpha1.ListTasksResponse
++	1,  // 67: ax.v1alpha1.AX.UpdateTask:output_type -> ax.v1alpha1.Task
++	37, // 68: ax.v1alpha1.AX.DeleteTask:output_type -> ax.v1alpha1.DeleteTaskResponse
++	1,  // 69: ax.v1alpha1.AX.SuspendTask:output_type -> ax.v1alpha1.Task
++	1,  // 70: ax.v1alpha1.AX.ResumeTask:output_type -> ax.v1alpha1.Task
++	41, // 71: ax.v1alpha1.AX.WatchTask:output_type -> ax.v1alpha1.WatchTaskResponse
++	32, // 72: ax.v1alpha1.AX.GetTaskResult:output_type -> ax.v1alpha1.TaskResult
++	13, // 73: ax.v1alpha1.AX.GetGateway:output_type -> ax.v1alpha1.Gateway
++	44, // 74: ax.v1alpha1.AX.ListGateways:output_type -> ax.v1alpha1.ListGatewaysResponse
++	13, // 75: ax.v1alpha1.AX.UpdateGateway:output_type -> ax.v1alpha1.Gateway
++	47, // 76: ax.v1alpha1.AX.DeleteGateway:output_type -> ax.v1alpha1.DeleteGatewayResponse
++	19, // 77: ax.v1alpha1.AX.GetWorkspace:output_type -> ax.v1alpha1.Workspace
++	50, // 78: ax.v1alpha1.AX.ListWorkspaces:output_type -> ax.v1alpha1.ListWorkspacesResponse
++	19, // 79: ax.v1alpha1.AX.UpdateWorkspace:output_type -> ax.v1alpha1.Workspace
++	53, // 80: ax.v1alpha1.AX.DeleteWorkspace:output_type -> ax.v1alpha1.DeleteWorkspaceResponse
++	27, // 81: ax.v1alpha1.AX.GetModel:output_type -> ax.v1alpha1.Model
++	56, // 82: ax.v1alpha1.AX.ListModels:output_type -> ax.v1alpha1.ListModelsResponse
++	27, // 83: ax.v1alpha1.AX.UpdateModel:output_type -> ax.v1alpha1.Model
++	59, // 84: ax.v1alpha1.AX.DeleteModel:output_type -> ax.v1alpha1.DeleteModelResponse
++	65, // [65:85] is the sub-list for method output_type
++	45, // [45:65] is the sub-list for method input_type
++	45, // [45:45] is the sub-list for extension type_name
++	45, // [45:45] is the sub-list for extension extendee
++	0,  // [0:45] is the sub-list for field type_name
+ }
+ 
+ func init() { file_pkg_apis_v1alpha1_ax_proto_init() }
+@@ -3590,7 +3815,7 @@ func file_pkg_apis_v1alpha1_ax_proto_init() {
+ 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
+ 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_pkg_apis_v1alpha1_ax_proto_rawDesc), len(file_pkg_apis_v1alpha1_ax_proto_rawDesc)),
+ 			NumEnums:      0,
+-			NumMessages:   57,
++			NumMessages:   60,
+ 			NumExtensions: 0,
+ 			NumServices:   1,
+ 		},
+diff --git a/pkg/apis/v1alpha1/ax.proto b/pkg/apis/v1alpha1/ax.proto
+index cf35316..072305b 100644
+--- a/pkg/apis/v1alpha1/ax.proto
++++ b/pkg/apis/v1alpha1/ax.proto
+@@ -34,6 +34,9 @@ service AX {
+   rpc SuspendTask(SuspendTaskRequest) returns (Task);
+   rpc ResumeTask(ResumeTaskRequest) returns (Task);
+   rpc WatchTask(WatchTaskRequest) returns (stream WatchTaskResponse);
++  // GetTaskResult returns the result file the task's command wrote, as copied
++  // by the controller when the command exited. NotFound until then.
++  rpc GetTaskResult(GetTaskResultRequest) returns (TaskResult);
+ 
+   // Gateways
+   rpc GetGateway(GetGatewayRequest) returns (Gateway);
+@@ -143,6 +146,19 @@ message TaskStatus {
+   PendingApproval pending_approval = 5;
+   UsageStats usage = 6;
+   repeated Condition conditions = 7;
++  // command reports how the task's command finished. Unset while it runs.
++  CommandStatus command = 8;
++}
++
++// CommandStatus is written by the controller once the runner reports that the
++// task's command exited. The result content itself is served by GetTaskResult.
++message CommandStatus {
++  bool exited = 1;
++  int32 exit_code = 2;
++  google.protobuf.Timestamp finished_at = 3;
++  // result_bytes is the size of the copied result, 0 when there was none.
++  int64 result_bytes = 4;
++  string result_sha256 = 5;
+ }
+ 
+ message PendingApproval {
+@@ -154,6 +170,7 @@ message PendingApproval {
+ message UsageStats {
+   int32 prompt_tokens = 1;
+   int32 completion_tokens = 2;
++  int32 tool_calls = 3;
+ }
+ 
+ message Condition {
+@@ -285,6 +302,16 @@ message GetTaskRequest {
+   string name = 2;
+ }
+ 
++message GetTaskResultRequest {
++  string atespace = 1;
++  string name = 2;
++}
++
++message TaskResult {
++  bytes content = 1;
++  string sha256 = 2;
++}
++
+ message ListTasksRequest {
+   string atespace = 1;
+   int64 limit = 2;
+diff --git a/pkg/apis/v1alpha1/ax_grpc.pb.go b/pkg/apis/v1alpha1/ax_grpc.pb.go
+index d106157..a8b2ca8 100644
+--- a/pkg/apis/v1alpha1/ax_grpc.pb.go
++++ b/pkg/apis/v1alpha1/ax_grpc.pb.go
+@@ -14,8 +14,8 @@
+ 
+ // Code generated by protoc-gen-go-grpc. DO NOT EDIT.
+ // versions:
+-// - protoc-gen-go-grpc v1.6.0
+-// - protoc             v7.34.1
++// - protoc-gen-go-grpc v1.6.2
++// - protoc             v7.35.1
+ // source: pkg/apis/v1alpha1/ax.proto
+ 
+ package v1alpha1
+@@ -40,6 +40,7 @@ const (
+ 	AX_SuspendTask_FullMethodName     = "/ax.v1alpha1.AX/SuspendTask"
+ 	AX_ResumeTask_FullMethodName      = "/ax.v1alpha1.AX/ResumeTask"
+ 	AX_WatchTask_FullMethodName       = "/ax.v1alpha1.AX/WatchTask"
++	AX_GetTaskResult_FullMethodName   = "/ax.v1alpha1.AX/GetTaskResult"
+ 	AX_GetGateway_FullMethodName      = "/ax.v1alpha1.AX/GetGateway"
+ 	AX_ListGateways_FullMethodName    = "/ax.v1alpha1.AX/ListGateways"
+ 	AX_UpdateGateway_FullMethodName   = "/ax.v1alpha1.AX/UpdateGateway"
+@@ -68,6 +69,9 @@ type AXClient interface {
+ 	SuspendTask(ctx context.Context, in *SuspendTaskRequest, opts ...grpc.CallOption) (*Task, error)
+ 	ResumeTask(ctx context.Context, in *ResumeTaskRequest, opts ...grpc.CallOption) (*Task, error)
+ 	WatchTask(ctx context.Context, in *WatchTaskRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WatchTaskResponse], error)
++	// GetTaskResult returns the result file the task's command wrote, as copied
++	// by the controller when the command exited. NotFound until then.
++	GetTaskResult(ctx context.Context, in *GetTaskResultRequest, opts ...grpc.CallOption) (*TaskResult, error)
+ 	// Gateways
+ 	GetGateway(ctx context.Context, in *GetGatewayRequest, opts ...grpc.CallOption) (*Gateway, error)
+ 	ListGateways(ctx context.Context, in *ListGatewaysRequest, opts ...grpc.CallOption) (*ListGatewaysResponse, error)
+@@ -172,6 +176,16 @@ func (c *aXClient) WatchTask(ctx context.Context, in *WatchTaskRequest, opts ...
+ // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+ type AX_WatchTaskClient = grpc.ServerStreamingClient[WatchTaskResponse]
+ 
++func (c *aXClient) GetTaskResult(ctx context.Context, in *GetTaskResultRequest, opts ...grpc.CallOption) (*TaskResult, error) {
++	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
++	out := new(TaskResult)
++	err := c.cc.Invoke(ctx, AX_GetTaskResult_FullMethodName, in, out, cOpts...)
++	if err != nil {
++		return nil, err
++	}
++	return out, nil
++}
++
+ func (c *aXClient) GetGateway(ctx context.Context, in *GetGatewayRequest, opts ...grpc.CallOption) (*Gateway, error) {
+ 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+ 	out := new(Gateway)
+@@ -306,6 +320,9 @@ type AXServer interface {
+ 	SuspendTask(context.Context, *SuspendTaskRequest) (*Task, error)
+ 	ResumeTask(context.Context, *ResumeTaskRequest) (*Task, error)
+ 	WatchTask(*WatchTaskRequest, grpc.ServerStreamingServer[WatchTaskResponse]) error
++	// GetTaskResult returns the result file the task's command wrote, as copied
++	// by the controller when the command exited. NotFound until then.
++	GetTaskResult(context.Context, *GetTaskResultRequest) (*TaskResult, error)
+ 	// Gateways
+ 	GetGateway(context.Context, *GetGatewayRequest) (*Gateway, error)
+ 	ListGateways(context.Context, *ListGatewaysRequest) (*ListGatewaysResponse, error)
+@@ -352,6 +369,9 @@ func (UnimplementedAXServer) ResumeTask(context.Context, *ResumeTaskRequest) (*T
+ func (UnimplementedAXServer) WatchTask(*WatchTaskRequest, grpc.ServerStreamingServer[WatchTaskResponse]) error {
+ 	return status.Error(codes.Unimplemented, "method WatchTask not implemented")
+ }
++func (UnimplementedAXServer) GetTaskResult(context.Context, *GetTaskResultRequest) (*TaskResult, error) {
++	return nil, status.Error(codes.Unimplemented, "method GetTaskResult not implemented")
++}
+ func (UnimplementedAXServer) GetGateway(context.Context, *GetGatewayRequest) (*Gateway, error) {
+ 	return nil, status.Error(codes.Unimplemented, "method GetGateway not implemented")
+ }
+@@ -528,6 +548,24 @@ func _AX_WatchTask_Handler(srv interface{}, stream grpc.ServerStream) error {
+ // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+ type AX_WatchTaskServer = grpc.ServerStreamingServer[WatchTaskResponse]
+ 
++func _AX_GetTaskResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
++	in := new(GetTaskResultRequest)
++	if err := dec(in); err != nil {
++		return nil, err
++	}
++	if interceptor == nil {
++		return srv.(AXServer).GetTaskResult(ctx, in)
++	}
++	info := &grpc.UnaryServerInfo{
++		Server:     srv,
++		FullMethod: AX_GetTaskResult_FullMethodName,
++	}
++	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
++		return srv.(AXServer).GetTaskResult(ctx, req.(*GetTaskResultRequest))
++	}
++	return interceptor(ctx, in, info, handler)
++}
++
+ func _AX_GetGateway_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+ 	in := new(GetGatewayRequest)
+ 	if err := dec(in); err != nil {
+@@ -775,6 +813,10 @@ var AX_ServiceDesc = grpc.ServiceDesc{
+ 			MethodName: "ResumeTask",
+ 			Handler:    _AX_ResumeTask_Handler,
+ 		},
++		{
++			MethodName: "GetTaskResult",
++			Handler:    _AX_GetTaskResult_Handler,
++		},
+ 		{
+ 			MethodName: "GetGateway",
+ 			Handler:    _AX_GetGateway_Handler,
+diff --git a/runner/exit_test.go b/runner/exit_test.go
+new file mode 100644
+index 0000000..a340da9
+--- /dev/null
++++ b/runner/exit_test.go
+@@ -0,0 +1,65 @@
++// Copyright 2026 Google LLC
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++package runner_test
++
++import (
++	"encoding/json"
++	"fmt"
++	"io"
++	"net/http"
++	"testing"
++	"time"
++
++	"github.com/google/ax/internal/metadata"
++)
++
++// The runner reports the command's exit and serves its result file from the
++// default path under the workspace, which is what the controller reads back.
++func TestRun_ServesExitAndResult(t *testing.T) {
++	h := newHarness(t)
++	h.task.Spec.Command = []string{"/bin/sh", "-c", `mkdir -p .ax && printf '{"ok":1}' > .ax/result.json && exit 5`}
++	h.start(t)
++
++	select {
++	case e := <-h.exited:
++		if e.ExitCode != 5 {
++			t.Fatalf("exit code = %d, want 5", e.ExitCode)
++		}
++	case <-time.After(10 * time.Second):
++		t.Fatal("command did not exit")
++	}
++
++	base := fmt.Sprintf("http://127.0.0.1:%d/metadata/v1alpha1/ax", h.cfg.Port)
++	resp, err := http.Get(base + "/exit")
++	if err != nil {
++		t.Fatal(err)
++	}
++	var st metadata.CommandExitStatus
++	err = json.NewDecoder(resp.Body).Decode(&st)
++	resp.Body.Close()
++	if err != nil || !st.Exited || st.ExitCode != 5 {
++		t.Fatalf("exit status = %+v, %v", st, err)
++	}
++
++	resp, err = http.Get(base + "/result")
++	if err != nil {
++		t.Fatal(err)
++	}
++	body, _ := io.ReadAll(resp.Body)
++	resp.Body.Close()
++	if resp.StatusCode != http.StatusOK || string(body) != `{"ok":1}` {
++		t.Fatalf("result = %d %q", resp.StatusCode, body)
++	}
++}
+diff --git a/runner/runner.go b/runner/runner.go
+index 4eaadb0..7ec8da9 100644
+--- a/runner/runner.go
++++ b/runner/runner.go
+@@ -28,6 +28,7 @@ import (
+ 	"log/slog"
+ 	"os"
+ 	"os/exec"
++	"path/filepath"
+ 	"syscall"
+ 	"time"
+ 
+@@ -44,6 +45,12 @@ const (
+ 	// binds no workspaces.
+ 	DefaultWorkspacePath = v1alpha1.DefaultWorkspacePath
+ 
++	// DefaultResultPath is where the task command writes its result, relative
++	// to the first workspace, unless AX_RESULT_PATH says otherwise.
++	DefaultResultPath = ".ax/result.json"
++	// DefaultUsagePath is where the task command writes its usage JSON.
++	DefaultUsagePath = ".ax/usage.json"
++
+ 	// stopGracePeriod is how long a running task command gets to exit after
+ 	// SIGTERM before it is killed during shutdown.
+ 	stopGracePeriod = 10 * time.Second
+@@ -143,7 +150,11 @@ func Run(ctx context.Context, cfg Config) error {
+ 		_ = os.Setenv(e.GetName(), e.GetValue())
+ 	}
+ 
+-	metaServer := metadata.NewServer(port, cfg.Task, workspaces, metadata.ServerOptions{WorkspacePath: wsPath})
++	metaServer := metadata.NewServer(port, cfg.Task, workspaces, metadata.ServerOptions{
++		WorkspacePath: wsPath,
++		ResultPath:    outputPath(wsPath, DefaultResultPath, "AX_RESULT_PATH", "AX_CONWIP_RESULT_PATH"),
++		UsagePath:     outputPath(wsPath, DefaultUsagePath, "AX_USAGE_PATH", "AX_CONWIP_USAGE_PATH"),
++	})
+ 	if err := metaServer.Start(); err != nil {
+ 		return fmt.Errorf("starting metadata server: %w", err)
+ 	}
+@@ -191,6 +202,13 @@ func Run(ctx context.Context, cfg Config) error {
+ 
+ 	select {
+ 	case err := <-exited:
++		// Only a command that exited on its own is reported as finished; a
++		// command stopped at shutdown is not, so a suspend never reads as exit.
++		code := -1
++		if cmd.ProcessState != nil {
++			code = cmd.ProcessState.ExitCode()
++		}
++		metaServer.SetCommandExit(code, time.Now())
+ 		reportExit(cfg, cmd, err)
+ 		// Keep the sandbox up and inspectable until told to stop.
+ 		<-ctx.Done()
+@@ -244,3 +262,19 @@ func commandEnv(task *v1alpha1.Task, port int) []string {
+ 	}
+ 	return env
+ }
++
++// outputPath resolves a command output file: the first of envVars that is set,
++// else def; a relative path is taken relative to the workspace.
++func outputPath(wsPath, def string, envVars ...string) string {
++	p := def
++	for _, v := range envVars {
++		if val := os.Getenv(v); val != "" {
++			p = val
++			break
++		}
++	}
++	if !filepath.IsAbs(p) {
++		p = filepath.Join(wsPath, p)
++	}
++	return p
++}
