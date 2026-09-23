@@ -79,9 +79,8 @@
     # resolves to loopback, which every distributed library happily binds — the
     # rank-1-hangs-forever failure. The NAS must NOT import this.
     ../../modules/fleet-hosts.nix
-    # 2026-09-20 sandbox spike: k3s AGENT. Idle CPU and /dev/kvm while
-    # Halogen holds only the GPU, so this is where a long batch belongs.
-    ../../modules/k3s-fleet.nix
+    # ax on the fleet (2026-09-23): the INFERENCE role, see myAxFleet below.
+    ../../modules/ax-fleet
     # kubectl + the google/ax binaries, behind myAxClient.enable. Imported on
     # all three interactive hosts, OFF on all three; read that module's header
     # for the runbook and for what it deliberately does not declare.
@@ -90,22 +89,19 @@
 
   networking.hostName = "worker";
 
-  # ── k3s agent: GATE OFF (2026-09-20 sandbox spike) ─────────────────────
-  # Flip this, the coordinator's and the NAS's in the SAME commit.
-  #
-  # `fleet/gpu-proximity=halogen` is the label that earns this box its work:
-  # Halogen Flash is RESIDENT here (modules/halogen.nix, http://worker:8731)
-  # and holds the GPU and ~68 GiB of weights for the life of the process. A
-  # pod scheduled here reaches it over the LAN with no hop, and -- the part
-  # that actually matters -- Halogen holds the GPU but NOT the CPU, which is
-  # idle. So this is where a long CPU batch belongs even though the box looks
-  # busy. No `fleet/desk`: there is no display, no seat and no herdr here.
-  myK3sFleet.enable = false;
-  myK3sFleet.role = "agent";
-  myK3sFleet.nodeLabels = {
-    "fleet/role" = "compute";
-    "fleet/kvm" = "true";
-    "fleet/gpu-proximity" = "halogen";
+  # ── ax on the fleet: the INFERENCE role ─────────────────────────────────
+  # "halogen inference mainly on worker" (Tom, 2026-09-23). Halogen stays this
+  # box's host service; ax sandboxes on the coordinator reach 10.42.0.5:8731
+  # through Substrate's egress gateway on the NAS. This role renders nothing
+  # at runtime (no k3s, no unit): modules/ax-fleet/inference.nix only asserts
+  # that 8731 stays open on enp191s0. This host is not switched in the motion.
+  myAxFleet = {
+    enable = true;
+    role = "inference";
+    lan = {
+      interface = "enp191s0";
+      address = "10.42.0.5";
+    };
   };
 
   # ── no display, no compositor ──────────────────────────────────────────────
