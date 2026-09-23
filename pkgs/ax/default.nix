@@ -96,11 +96,14 @@ buildGo127Module {
   # the resync, a crashed actor, the runner's endpoints, and the floor test:
   # four Tasks in a row on a 2-worker pool all Completed, next to the contrast
   # that without an exit report the third is refused ResourceExhausted.
-  patches = [
-    ./patches/sandbox-class.patch
-    # probe/ax-fleet-nop1: p1-completion.patch removed; completion is reported
-    # by the Task to the floor and the link deletes the Task.
-  ];
+  # PROBE VARIANT probe/ax-fleet-nosc: sandbox-class.patch removed to measure
+  # whether stock v0.3.0's hardcoded SANDBOX_CLASS_GVISOR / gvisor-default is
+  # enough (evals-2026-09-23/zero-patch/no-sandboxclass.md). P1 kept.
+  # PROBE VARIANT probe/ax-fleet-zeropatch: BOTH carried patches removed.
+  # p1-completion.patch: completion is reported by the Task to the floor and
+  # the link deletes the Task (no-p1.md). sandbox-class.patch: stock v0.3.0
+  # already hardcodes SANDBOX_CLASS_GVISOR / gvisor-default (no-sandboxclass.md).
+  patches = [ ];
 
   # subPackages left unset so all four commands build, matching upstream's
   # `make build-binaries` plus the cross-compiled runner. -s -w mirrors the

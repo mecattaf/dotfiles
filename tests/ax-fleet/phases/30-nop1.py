@@ -270,6 +270,7 @@ def run_one(name: str) -> Any:
         entry = {"task": n, "attempt": attempt, "report_seconds": secs, "before_delete": before}
         if reps:
             entry["floor"] = check_report(n, reps)
+            assert entry["floor"]["gvisor"], reps
         entry["actors_before_delete"] = actors()
         entry["delete"] = delete_task(n)
         entry["actors_after_delete"] = actors()
@@ -306,6 +307,23 @@ with step("nop1: stock ax control plane up (no P1, no --running-resync)"):
     worker.succeed("curl -sf http://127.0.0.1:8731/floor/results")
     record("nop1_workers_baseline", ate_json("get workers"))
     leak_snapshot("baseline")
+
+with step("zeropatch: the running ax is stock, it refuses spec.sandboxClass"):
+    # Negative control ported from probe/ax-fleet-nosc: with sandbox-class.patch
+    # removed, strict protojson decode must reject the unknown field.
+    ctl_task: dict[str, Any] = {
+        "apiVersion": "ax.io/v1alpha1",
+        "kind": "Task",
+        "metadata": {"name": "nosc-control", "atespace": NS},
+        "spec": {"image": IMAGE, "sandboxClass": "gvisor", "command": ["true"]},
+    }
+    nosc_rc, nosc_out = coordinator.execute(
+        f"echo {base64.b64encode(json.dumps(ctl_task).encode()).decode()} | base64 -d | {AX} apply -f - 2>&1"
+    )
+    record("nosc_sandboxclass_refused", {"rc": nosc_rc, "out": nosc_out[-2000:]})
+    coordinator.execute(f"{AX} delete task nosc-control 2>&1 || true")
+    assert nosc_rc != 0, nosc_out
+
 
 with step("nop1 shape check: the P1 runs' command form, [ax-agent, halogen-smoke] (recorded, not asserted)"):
     shape: dict[str, Any] = {"name": "nop1-shape"}

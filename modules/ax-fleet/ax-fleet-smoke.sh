@@ -39,7 +39,8 @@ done
 [ "${#args[@]}" -ge 1 ] || { sed -n '2,21p' "$0" >&2; exit 64; }
 case_="${args[0]}"
 [ -n "$image" ] || image="$(ax-fleet-image-ref)"
-[ "$case_" != probe ] || sandbox_class="${sandbox_class:-gvisor}"
+# PROBE VARIANT probe/ax-fleet-nosc: stock ax has no spec.sandboxClass and
+# rejects the unknown field, so the probe sends none (ax hardcodes gVisor).
 run_id="$(date +%s)-$$"
 
 ensure_gateway() {
