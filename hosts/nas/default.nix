@@ -51,6 +51,7 @@
     # "hypervisor on NAS" (Tom, 2026-09-23). The CIDR-overlap assertions in
     # that module evaluate whether or not the switch below is on.
     ../../modules/ax-fleet
+    ./substrate-link.nix # 2026-09-23: Cloudflare floor (Substrate) -> ax link, outbound only; gate OFF (LINK-DESIGN.md)
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc

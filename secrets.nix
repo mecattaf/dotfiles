@@ -103,6 +103,9 @@ in
   # Rotate with: nix develop -c agenix -e secrets/<name>.age
   "secrets/k3s-token.age".publicKeys = editors ++ nasOnly;
   "secrets/k3s-agent-token.age".publicKeys = editors ++ coordinatorOnly ++ nasOnly;
+  # substrate-link bearer (hosts/nas/substrate-link.nix): one token per link identity, minted by Tom as a
+  # Worker secret on the floor and sealed here. NAS only: the link runs on the NAS host.
+  "secrets/floor-link-token.age".publicKeys = editors ++ nasOnly;
   # --- wifi PSK tier: the coordinator, whose Freebox uplink
   # (wlp192s0) is now declarative too (migrated from an imperative profile on
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r
