@@ -43,6 +43,13 @@ with step("gateways: a Task without a gateway, or naming a missing one, is point
         )
         repoint_s = round(time.monotonic() - t0, 1)
         reps, before, secs = wait_report(n)
+        tries = 0
+        while not reps and tries < REAPPLY_RESUME and resume_failed_transient(before):
+            # Same recovery as fleet_run (32-fleet): apply again, never delete a
+            # Task whose resume failed on a stale connection.
+            tries += 1
+            fleet_task(n, late_curl_body(PUBLIC, 30), gateway=missing_gw)
+            reps, before, secs = wait_report(n)
         assert reps, f"{n}: no floor report (the default Gateway allows the floor): {before}"
         rep = reps[0]["report"]
         res = json.loads(base64.b64decode(rep["result_b64"]) or b"{}")

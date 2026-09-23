@@ -48,6 +48,20 @@ def fleet_task(name: str, body: str, gateway: Any = "halogen", image: Any = None
     coordinator.succeed(f"echo {b} | base64 -d | {AX} apply -f -")
 
 
+REAPPLY_RESUME = 3  # test parameter: re-applies of a Task whose resume failed transiently
+
+
+def resume_failed_transient(st: Any) -> bool:
+    """Failed with ActorResumeFailed for a reason other than a full pool."""
+    msg = json.dumps(st)
+    return (
+        st.get("phase") == "Failed"
+        and (st.get("ready") or {}).get("reason") == "ActorResumeFailed"
+        and "ResourceExhausted" not in msg
+        and "no free workers" not in msg
+    )
+
+
 def fleet_run(name: str, body: str, gateway: Any = "halogen", image: Any = None, attempts: int = MAX_ATTEMPTS) -> Any:
     """Attempts NAME-a1.. until the floor has a report; returns the decoded result."""
     tried: list[Any] = []
@@ -55,7 +69,19 @@ def fleet_run(name: str, body: str, gateway: Any = "halogen", image: Any = None,
         n = f"{name}-a{attempt}"
         fleet_task(n, body, gateway, image)
         reps, before, secs = wait_report(n)
-        entry: dict[str, Any] = {"task": n, "report_seconds": secs, "before_delete": before}
+        reapplied: list[Any] = []
+        # A resume that failed on a stale gRPC connection (ActorResumeFailed,
+        # Unavailable) left the actor placed but never restored: atelet wrote
+        # no sandbox record, and Substrate's Terminate then fails on every
+        # delete (MEASURED r1 run 2, cmd/atelet/main.go:1281). Deleting that
+        # attempt strands it in ACTOR_STATE_DELETING. Stock ax reconciles on
+        # every save and re-runs ResumeActor with no phase guard, so the
+        # recovery is to apply the same Task again, not to delete it.
+        while not reps and len(reapplied) < REAPPLY_RESUME and resume_failed_transient(before):
+            reapplied.append({"state": before, "after_s": secs})
+            fleet_task(n, body, gateway, image)
+            reps, before, secs = wait_report(n)
+        entry: dict[str, Any] = {"task": n, "report_seconds": secs, "before_delete": before, "reapplied": reapplied}
         if reps:
             rep = reps[0]["report"]
             raw = base64.b64decode(rep["result_b64"]) if rep.get("result_b64") else b"{}"
