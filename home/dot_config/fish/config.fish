@@ -42,36 +42,51 @@ alias l.="eza -a | grep -E \"^\.\""
 alias cd='z'
 # zi command
 
-# Claude Code
-alias cc='claude --dangerously-skip-permissions'
-alias cac='claude --continue --dangerously-skip-permissions'
-# Second Claude account (work). CLAUDE_CONFIG_DIR isolates login, history and
-# state in ~/.claude-work; skills/settings are the same dotfiles links (home.nix).
-alias cc2='env CLAUDE_CONFIG_DIR=$HOME/.claude-work claude --dangerously-skip-permissions'
-alias cac2='env CLAUDE_CONFIG_DIR=$HOME/.claude-work claude --continue --dangerously-skip-permissions'
+# Claude Code: two seats, one launcher shape (2026-09-22).
+#   cc  / cac   -> ~/.claude       the personal Claude Max login (gmail org)
+#   cc2 / cac2  -> ~/.claude-work  the leger.run Claude Max login
+# CLAUDE_CONFIG_DIR isolates login, history and state per seat; skills and
+# settings are the same dotfiles links for both (home.nix). TALLY_SEAT names the
+# seat to hooks and receipts. Claude Code never saves workspace trust for $HOME
+# (docs, security: "trust acceptance is held for the current session only and
+# is not written to disk"), so a seat started in ~ shows "Accessing workspace"
+# on every launch. Both launchers therefore move into the desk envelope when
+# typed from ~; the shell stays there afterwards, which is where the desk
+# session's files belong (~/today/CLAUDE.md section 4).
+set -q CLAUDE_ENVELOPE; or set -gx CLAUDE_ENVELOPE $HOME/today
+function __claude_seat --description 'start one Claude seat outside $HOME'
+    set -l seat $argv[1]
+    set -l config_dir $argv[2]
+    set -l args $argv[3..]
+    if test (pwd) = $HOME
+        if not test -d $CLAUDE_ENVELOPE
+            echo "$seat: \$CLAUDE_ENVELOPE ($CLAUDE_ENVELOPE) does not exist; cd into a project first" >&2
+            return 1
+        end
+        builtin cd $CLAUDE_ENVELOPE
+        echo "($seat: started in $CLAUDE_ENVELOPE, not in ~)" >&2
+    end
+    # A terminal opened from inside a cc2 session already carries
+    # CLAUDE_CONFIG_DIR, so `cc` must clear it explicitly or it silently starts
+    # cc2 (measured 2026-09-22). Each seat sets its own value or none.
+    if test -n "$config_dir"
+        env CLAUDE_CONFIG_DIR=$config_dir TALLY_SEAT=$seat claude --dangerously-skip-permissions $args
+    else
+        env -u CLAUDE_CONFIG_DIR TALLY_SEAT=$seat claude --dangerously-skip-permissions $args
+    end
+end
+function cc;   __claude_seat cc  "" $argv; end
+function cac;  __claude_seat cc  "" --continue $argv; end
+function cc2;  __claude_seat cc2 $HOME/.claude-work $argv; end
+function cac2; __claude_seat cc2 $HOME/.claude-work --continue $argv; end
 # Third Claude account (2026-09-05), same rotation: state in ~/.claude-3.
 alias cc3='env CLAUDE_CONFIG_DIR=$HOME/.claude-3 claude --dangerously-skip-permissions'
 alias cac3='env CLAUDE_CONFIG_DIR=$HOME/.claude-3 claude --continue --dangerously-skip-permissions'
 
 # ── Music ────────────────────────────────────────────────────────────────
-# The library lives on the NAS and is served by Navidrome; cliamp is the client.
-# `cliamp` here is the wrapper function in functions/cliamp.fish, which injects
-# the server and credentials from agenix — so bare cliamp opens straight into
-# the Navidrome browser with no argument needed. Inside the TUI: Shift+N opens
-# Browse (By Album / By Artist / By Artist-Album), Ctrl+F searches, Q quits.
-alias m='cliamp'                                 # open the library browser
-alias music='cliamp'                             # same, spelled out
-alias mshuffle='cliamp --shuffle --auto-play'    # open it with shuffle already on
-
-# Transport control from outside the TUI. cliamp registers MPRIS as
-# org.mpris.MediaPlayer2.cliamp, so -p cliamp addresses it specifically rather
-# than whatever player playerctl happens to enumerate first (Chrome also
-# registers, and would otherwise swallow these).
-alias mp='playerctl -p cliamp play-pause'        # play/pause  (F3 does this too)
-alias mn='playerctl -p cliamp next'              # next track
-alias mb='playerctl -p cliamp previous'          # back a track
-alias mnow='playerctl -p cliamp metadata --format "{{artist}} — {{title}}"'  # what's playing
-
+# The library lives on the NAS and is served by Navidrome (hosts/nas/media.nix).
+# The cliamp TUI client and its m/music/mp/mn/mb/mnow aliases were removed
+# 2026-09-17 (unused).
 alias mscan='navidrome-scan'                     # reindex after a beets pass (--full for tag-only edits)
 
 type -q atuin || exit

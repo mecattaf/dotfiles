@@ -16,32 +16,30 @@ spawn-at-startup "sh" "-c" "sleep 0.5 && kanshi"
 // boot. Mod+D is ~/.local/bin/launcher now — an fzf script in a floating kitty,
 // with no daemon to start.
 
-// No wallpaper daemon (Tom 2026-09-11): the backdrop is layout.kdl's
-// background-color #000000, which the Zenbook's OLED renders as panel-off
-// black. ~/.local/bin/wallpaper still exists for a one-off swaybg, and nothing
-// restarts one at login.
+// Wallpaper (Tom 2026-09-16): the claude.ai/imagine "olive" ribbons, rendered
+// at 5120x2880 for the PA27JCV from the recovered source SVG (~/colors/waves).
+// ~/.local/bin/wallpaper starts swaybg with that file as its default; run it
+// with a path to swap the image at runtime. layout.kdl's background-color
+// #000000 stays as the fallback under it.
+spawn-at-startup "wallpaper"
 
 
 // ── gsettings ────────────────────────────────────────────────
 // scroll: exec_always {
 // scroll:         gsettings set $gnome-schema cursor-theme 'Bibata-Modern-Classic'
 spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "cursor-theme" "Bibata-Modern-Classic"
-// scroll:         gsettings set $gnome-schema color-scheme 'prefer-dark'
-spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "color-scheme" "prefer-dark"
 // scroll:         gsettings set $gnome-schema cursor-size '48'
 spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "cursor-size" "48"
 // scroll:         gsettings set $gnome-schema text-scaling-factor '1.0'
 spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "text-scaling-factor" "1.0"
-// scroll:         gsettings set $gnome-schema gtk-theme 'Catppuccin-Noir-Standard-Green-Dark'
-// ^ scroll-era catppuccin dropped 2026-07-04 — MacTahoe OLED end-to-end, matching home.nix gtk.theme
-spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "gtk-theme" "MacTahoe-Dark-grey"
-// scroll:         gsettings set org.gnome.desktop.interface.wm.preferences theme 'Catppuccin-Noir-Standard-Green-Dark'
-// ^ corrected schema: org.gnome.desktop.wm.preferences (not .interface.wm.preferences)
-spawn-at-startup "gsettings" "set" "org.gnome.desktop.wm.preferences" "theme" "MacTahoe-Dark-grey"
 // scroll:         gsettings set org.gnome.desktop.wm.preferences button-layout ""
 spawn-at-startup "gsettings" "set" "org.gnome.desktop.wm.preferences" "button-layout" ""
-// scroll:         #gsettings set $gnome-schema icon-theme 'Your icon theme'
-spawn-at-startup "gsettings" "set" "org.gnome.desktop.interface" "icon-theme" "MacTahoe-dark"
+// gtk-theme, wm theme, icon-theme and color-scheme (2026-09-17): set by
+// `theme apply` from the selected theme + wallpaper accent, idempotently, so a
+// login re-asserts whatever ~/.config/theme points at. (The four gsettings
+// lines that were here had been failing silently — no gsettings on the session
+// PATH; GTK_THEME did the theming. Both fixed in modules/common.nix.)
+spawn-at-startup "theme" "apply"
 // scroll: }
 // ^ note: exec_always re-ran on reload. spawn-at-startup runs once. gsettings persist, so fine.
 

@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# theme -- switch the dotfiles-wide colour theme at runtime, no rebuild.
+#
+#   theme                  print the current theme
+#   theme list             list the themes this generation rendered
+#   theme <name>           switch to <name> (noir | claude-dark | claude-light)
+#   theme toggle           cycle to the next theme in `theme list` order
+#   theme apply            re-fire the reload hooks for the current theme
+#   theme icons            re-pick the icon theme (polarity × wallpaper accent)
+#
+# Design: docs/theme-switcher-2026-09-17.md. Home Manager renders every theme's
+# colour fragments under ~/.config/themes/<name>/ (home/theme.nix, palettes in
+# home/themes/*.nix). The RAW config files include ~/.config/theme/<fragment>,
+# where ~/.config/theme is a plain symlink this script retargets. A symlink
+# retarget fires no file-watcher event, so every reload below is load-bearing.
+set -euo pipefail
+
+cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
+link="$cfg/theme"
+themes_dir="${THEMES_DIR:-$cfg/themes}" # THEMES_DIR: preview a render before its switch
+
+die() { printf 'theme: %s\n' "$*" >&2; exit 1; }
+
+# one switch at a time (F2 mashing, a login `apply` racing a manual switch)
+exec 9> "${XDG_RUNTIME_DIR:-/tmp}/theme.lock"
+flock -w 5 9 || die "another theme switch is still running"
+
+current() {
+    [[ -L "$link" ]] || return 1
+    basename "$(readlink "$link")"
+}
+
+list() {
+    [[ -d "$themes_dir" ]] || die "no rendered themes at $themes_dir (switch a generation with home/theme.nix first)"
+    find "$themes_dir" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort
+}
+
+# meta is key=value, one per line, written by home/themes/default.nix. Read,
+# never sourced.
+meta() {
+    local key="$1" k v
+    while IFS='=' read -r k v; do
+        [[ "$k" == "$key" ]] && { printf '%s\n' "$v"; return 0; }
+    done < "$link/meta"
+    return 1
+}
+
+# --- reload hooks -----------------------------------------------------------
+
+reload_kitty() {
+    # One abstract socket per instance: kitty.conf's `listen_on unix:@kitty-{kitty_pid}`.
+    # `load-config` with no file re-reads the running config, includes and all.
+    local sock n=0
+    while read -r sock; do
+        kitten @ --to "unix:$sock" load-config >/dev/null 2>&1 && n=$((n + 1)) || true
+    done < <(awk '$NF ~ /^@kitty-[0-9]+$/ { print $NF }' /proc/net/unix | sort -u)
+    # a kitty without our listen_on (other config, mid-pull on the client) still
+    # reloads on SIGUSR1 — the Omarchy way; the socket path is just more precise.
+    if (( n == 0 )) && pkill -x -USR1 .kitty-wrapped 2>/dev/null; then
+        echo '  kitty: reloaded via SIGUSR1'
+    else
+        printf '  kitty: %d instance(s) reloaded\n' "$n"
+    fi
+}
+
+reload_niri() {
+    if [[ -n "${NIRI_SOCKET:-}" ]] || compgen -G "${XDG_RUNTIME_DIR:-/run/user/$UID}/niri.*.sock" >/dev/null; then
+        if niri msg action load-config-file >/dev/null 2>&1; then
+            echo '  niri: config reloaded'
+        else
+            echo '  niri: reload failed (is a session running?)' >&2
+        fi
+    fi
+}
+
+reload_nvim() {
+    # nvim >= 0.9 listens on $XDG_RUNTIME_DIR/nvim.<pid>.0. lua/theme.lua's
+    # reload() re-applies catppuccin, bufferline and lualine from the new fragment.
+    local sock n=0
+    for sock in "${XDG_RUNTIME_DIR:-/run/user/$UID}"/nvim.*.0; do
+        [[ -S "$sock" ]] || continue
+        nvim --server "$sock" --remote-expr 'luaeval("require(\"theme\").reload() or \"ok\"")' >/dev/null 2>&1 && n=$((n + 1)) || true
+    done
+    printf '  nvim: %d instance(s) reloaded\n' "$n"
+}
+
+# herdr: nothing to do. Its [theme] name = "terminal" paints every token from
+# kitty's ANSI palette, and kitty reports the background change to it through
+# DEC mode 2031 (CSI ?997;n) on reload, whereupon herdr re-queries OSC 10/11/4
+# and re-themes its chrome and every pane. Fish: conf.d/colors.fish re-sources
+# the fragment at the next prompt when the pointer has moved.
+
+set_claude_code() {
+    # Claude Code reads ~/.claude.json at start, and rewrites it itself, so:
+    # tmp + rename, and a lost update against a running instance is accepted.
+    local want="$1" f="$HOME/.claude.json" tmp
+    [[ -f "$f" ]] || return 0
+    command -v jq >/dev/null || return 0
+    tmp="$(mktemp "$f.XXXXXX")"
+    if jq --arg t "$want" '.theme = $t' "$f" > "$tmp"; then
+        mv -T "$tmp" "$f"
+        printf '  claude code: theme=%s (takes effect on next start)\n' "$want"
+    else
+        rm -f "$tmp"
+    fi
+}
+
+# GTK. GTK3 follows org.gnome.desktop.interface live (its Wayland backend reads
+# gsettings/dconf — the schema is on XDG_DATA_DIRS since modules/common.nix
+# 2026-09-17). libadwaita apps take color-scheme live and their gtk.css on
+# next start (~/.config/gtk-4.0 points through ~/.config/theme, home/theme.nix).
+# Chrome follows color-scheme through the portal.
+gset() { gsettings set "$@" 2>/dev/null || printf '  gsettings: set %s failed\n' "$*" >&2; }
+
+apply_gtk() {
+    command -v gsettings >/dev/null || { echo '  gtk: no gsettings on PATH (pre-switch?)' >&2; return 0; }
+    local gtk_theme scheme
+    gtk_theme="$(meta gtk_theme || true)"; scheme="$(meta color_scheme || true)"
+    [[ -n "$gtk_theme" ]] || return 0
+    gset org.gnome.desktop.interface gtk-theme "$gtk_theme"
+    gset org.gnome.desktop.wm.preferences theme "$gtk_theme"
+    gset org.gnome.desktop.interface color-scheme "$scheme"
+    printf '  gtk: %s, %s\n' "$gtk_theme" "$scheme"
+    apply_icons
+}
+
+# MacTahoe[-<accent>]-{dark,light}: polarity from the theme, accent from the
+# wallpaper (~/.local/state/wallpaper/accent, written by ~/.local/bin/wallpaper).
+# Falls back to the stock blue folders when the accent variant is not installed.
+apply_icons() {
+    command -v gsettings >/dev/null || return 0
+    local suffix accent="" icons
+    suffix="$(meta icon_suffix || echo dark)"
+    [[ -r "${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper/accent" ]] \
+        && read -r accent < "${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper/accent"
+    icons="MacTahoe-$suffix"
+    if [[ -n "$accent" ]]; then
+        local d
+        for d in "${XDG_DATA_HOME:-$HOME/.local/share}" ${XDG_DATA_DIRS//:/ }; do
+            [[ -d "$d/icons/MacTahoe-$accent-$suffix" ]] && { icons="MacTahoe-$accent-$suffix"; break; }
+        done
+    fi
+    gset org.gnome.desktop.interface icon-theme "$icons"
+    printf '  icons: %s\n' "$icons"
+}
+
+apply() {
+    local name; name="$(current)" || die "no theme selected ($link missing)"
+    echo "theme: $name"
+    reload_kitty
+    reload_niri
+    reload_nvim
+    apply_gtk
+    set_claude_code "$(meta claude_code || echo dark)"
+}
+
+switch_to() {
+    local name="$1"
+    [[ -d "$themes_dir/$name" && -f "$themes_dir/$name/meta" ]] \
+        || die "unknown theme '$name' — try: $(list | tr '\n' ' ')"
+    # atomic retarget: build the new link beside the old one, then rename over it
+    ln -sfn "$themes_dir/$name" "$link.tmp"
+    mv -T "$link.tmp" "$link"
+    apply
+}
+
+case "${1:-}" in
+    "")       current || die "no theme selected" ;;
+    list)     list ;;
+    apply)    apply ;;
+    icons)    [[ -L "$link" ]] || die "no theme selected"; apply_icons ;;
+    toggle)
+        mapfile -t names < <(list)
+        cur="$(current || true)"; next="${names[0]}"
+        for i in "${!names[@]}"; do
+            if [[ "${names[$i]}" == "$cur" ]]; then next="${names[$(( (i + 1) % ${#names[@]} ))]}"; fi
+        done
+        switch_to "$next" ;;
+    -h|--help) sed -n '2,11p' "$0" ;;
+    *)        switch_to "$1" ;;
+esac

@@ -23,7 +23,7 @@ function navidrome-scan --description "Trigger a Navidrome library rescan and wa
 
     set -l url $NAVIDROME_URL
     test -n "$url"; or set url http://coordinator.tail8dd1.ts.net:4533
-    set -l auth "u=$user&p=$pass&v=1.16.1&c=cliamp&f=json"
+    set -l auth "u=$user&p=$pass&v=1.16.1&c=navidrome-scan&f=json"
 
     # First contact wakes the relay and the sleeping NAS service; the HDD may
     # also have to spin up, so allow a generous timeout here.

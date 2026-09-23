@@ -1,0 +1,83 @@
+# ghostty — kitty.conf's twin (2026-09-17).
+#
+# The only Ghostty on the fleet today is libghostty inside cmux Browser's
+# terminal panes (cmux-tui; ~/.local/opt/cmux-browser-nightly, not packaged yet).
+# Its settings page's "Use Ghostty config" reads THIS file,
+# $XDG_CONFIG_HOME/ghostty/config.ghostty. Every value below mirrors kitty.conf
+# key for key, so a cmux pane looks like a kitty window — a kitty change
+# belongs here too. Where Ghostty has no equivalent, the kitty key is named
+# and the gap stated. The colours are NOT here: they join through the theme
+# fragment at the bottom, like kitty's `include ${HOME}/.config/theme/kitty.conf`.
+
+# shell fish — kitty.conf says why: the login shell is bash fleet-wide (#236),
+# fish stays the terminal UI.
+command = fish
+shell-integration = fish
+
+# Font — kitty's EXPLICIT families (2026-08-21): Liga SFMono Nerd Font, bold is
+# SemiBold on purpose (the weight the fontconfig fallback actually served).
+# Ghostty takes family + style, where kitty takes the full face name.
+font-family = Liga SFMono Nerd Font
+font-family-bold = Liga SFMono Nerd Font
+font-style-bold = SemiBold
+font-family-italic = Liga SFMono Nerd Font
+font-style-italic = Italic
+font-family-bold-italic = Liga SFMono Nerd Font
+font-style-bold-italic = SemiBold Italic
+# font_size 16.0 (2026-09-16): 14 + one legacy ctrl+= press.
+font-size = 16
+# disable_ligatures never: ligatures are Ghostty's default, nothing to set.
+
+# Cursor: cursor_blink_interval 0. kitty's cursor_trail has no Ghostty
+# equivalent (cursor_trail_color in the fragment is kitty-only).
+cursor-style = block
+cursor-style-blink = false
+
+# window_padding_width 10
+window-padding-x = 10
+window-padding-y = 10
+
+# detect_urls yes / open_url_with default (xdg-open here too).
+# underline_hyperlinks always: Ghostty underlines a link on hover only.
+link-url = true
+# confirm_os_window_close 0
+confirm-close-surface = false
+# scrollback_lines 100000 — Ghostty caps scrollback in BYTES per surface
+# (lazily allocated, compressed when idle): 100 MB ≈ 100k lines of 1 KB.
+scrollback-limit = 100000000
+# enable_audio_bell no — Ghostty's default rings the system bell; cmux may
+# still flag the surface (attention/title), never sound.
+bell-features = no-system,no-audio
+# copy_on_select clipboard
+copy-on-select = clipboard
+# THE THIN-CLIENT CLIPBOARD CONTRACT (kitty.conf, 2026-09-11), the OSC 52
+# half: a remote program may WRITE this seat's clipboard (write-clipboard) and
+# a remote READ prompts (read-clipboard-ask). `clipboard-read = allow` would
+# let anything the coordinator runs exfiltrate the clipboard silently, so it
+# must never be set.
+clipboard-write = allow
+clipboard-read = ask
+
+# map ctrl+equal / ctrl+minus — kitty's legacy increase_font_size step is a
+# fixed +2.0pt (0.48.0 boss.py); Ghostty's default step is 1, so pass the amount.
+keybind = ctrl+equal=increase_font_size:2
+keybind = ctrl+minus=decrease_font_size:2
+# kitty_mod+h / kitty_mod+g (kitty-scrollback.nvim) and enabled_layouts splits
+# have no Ghostty side: cmux owns splits, tabs and the scrollback viewer.
+
+# Frosted terminal (2026-09-16): background_opacity 0.96. The compositor blur
+# rides on the kitty app-ids in niri's window-rules.kdl; cmux is a different
+# app-id, so its panes are translucent without the frost until a rule lands.
+background-opacity = 0.96
+# kitty does not dim inactive splits; Ghostty's default is 0.7.
+unfocused-split-opacity = 1
+
+# Colours: the theme fragment home/theme.nix renders from home/themes/*.nix
+# under ~/.config/themes/<name>/ghostty, joined through the ~/.config/theme
+# pointer that ~/.local/bin/theme retargets. Ghostty resolves a relative
+# config-file against the directory of THIS file — which is a symlink into the
+# checkout — so the path is absolute; $HOME is /home/tom on every host
+# (home.homeDirectory). `?` = no error while the fragment is not rendered yet.
+# A config-file loads AFTER the file that names it, so the fragment wins.
+# No live reload: cmux reads the config when it opens a surface.
+config-file = ?/home/tom/.config/theme/ghostty

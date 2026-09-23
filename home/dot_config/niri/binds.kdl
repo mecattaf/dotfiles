@@ -69,6 +69,11 @@ binds {
     // scroll: bindsym $mod+E exec thunar
     Mod+E hotkey-overlay-title="File Manager" { spawn "nautilus"; }
 
+    // Cycle noir -> claude-dark -> claude-light (~/.local/bin/theme, 2026-09-17):
+    // one symlink flip plus live reloads of kitty, niri and nvim; herdr and
+    // fish follow on their own. Mod+T is still free.
+    Mod+Shift+T hotkey-overlay-title="Theme (cycle)" { spawn-sh "~/.local/bin/theme toggle"; }
+
     // scroll: bindsym Ctrl+N exec flatpak run com.google.Chrome
     // scroll: bindsym Ctrl+Shift+N exec flatpak run com.google.Chrome --incognito
     // Chrome is installed from nixpkgs; invoke its stable binary directly.
@@ -131,6 +136,11 @@ binds {
     // F1 opens the Alexa wake listener menu. F1/F2 no
     // longer carry brightness; the Duo keyboard's XF86MonBrightness keys do.
     F1 repeat=false hotkey-overlay-title="Alexa Wake On/Off" { spawn-sh "kitty --class wake-prompt -e ~/.local/bin/wake-toggle menu"; }
+    // F2 (2026-09-17): pick the theme — noir / claude-dark / claude-light.
+    // Shift+F2: pick the colour accent — one of the seven claude.ai/imagine
+    // grounds, as wallpaper AND matching folder colour (bin/wallpaper).
+    F2 repeat=false hotkey-overlay-title="Theme" { spawn-sh "kitty --class theme-prompt -e ~/.local/bin/theme-prompt theme"; }
+    Shift+F2 repeat=false hotkey-overlay-title="Accent (wallpaper + folders)" { spawn-sh "kitty --class theme-prompt -e ~/.local/bin/theme-prompt accent"; }
     F3 hotkey-overlay-title="Play/Pause" { spawn-sh "~/.local/bin/media play"; }
     F4 hotkey-overlay-title="Previous" { spawn-sh "~/.local/bin/media prev"; }
     F5 hotkey-overlay-title="Next" { spawn-sh "~/.local/bin/media next"; }
@@ -159,9 +169,8 @@ binds {
     // [scratchpads.music]; daemon: home/piri.nix). Mod+M toggles it: first press
     // (nothing captured) spawns the SoundCloud PWA pinned to the right, later
     // presses show/hide. Mod+Shift+M captures whatever window is focused INTO the
-    // music pane — the "mark this as my music window" move, for the coming
-    // cliamp-in-kitty setup (focus the cliamp window, Mod+Shift+M, then Mod+M
-    // toggles it thereafter).
+    // music pane — the "mark this as my music window" move (focus it,
+    // Mod+Shift+M, then Mod+M toggles it thereafter).
     Mod+M hotkey-overlay-title="Music (toggle)" { spawn "piri" "scratchpads" "music" "toggle"; }
     Mod+Shift+M hotkey-overlay-title="Music (capture focused)" { spawn "piri" "scratchpads" "music" "add" "fromRight"; }
     // SUPERSEDED by the music scratchpad above (Mod+M was YouTube-Music-focus).

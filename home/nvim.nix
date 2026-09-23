@@ -179,8 +179,10 @@ let
     "lua/plugins/neoscroll.lua"
     "lua/plugins/nvim-tree.lua"
     "lua/plugins/telescope.lua"
-    "lua/plugins/bufferline.lua"
     "lua/plugins/lualine.lua"
+    # NOT lua/theme.lua: the theme switcher's palette loader lives in
+    # ~/.local/bin/nvim-lua/ (a whole-dir RAW link on init.lua's package.path),
+    # so a checkout pulled ahead of its switch still finds it. See its header.
   ];
 
   # every binary the nvim config shells out to (replaces mason; covers all plugin CLIs)
