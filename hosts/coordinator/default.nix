@@ -84,6 +84,10 @@
     # user-bus tally-daemon.service (U-D13). Declared here, installed by U-D19's
     # switch — never hand-started (DEFERRED.md DF-U-D13-1).
     ../../modules/tally-b.nix
+    # kubectl + the google/ax binaries, behind myAxClient.enable. Imported on
+    # all three interactive hosts, OFF on all three; read that module's header
+    # for the runbook and for what it deliberately does not declare.
+    ../../modules/ax-client.nix
   ];
 
   networking.hostName = "coordinator";
@@ -136,6 +140,13 @@
   # #136: the tailnet front door (paperless.internal) for the NAS Paperless
   # backend; flips with the NAS's myNas.paperless.enable (2026-09-13).
   myNasClient.relayPaperless = true;
+
+  # OFF, and it lands OFF (modules/ax-client.nix). There is no cluster on this
+  # fleet to point kubectl at and no Agent Substrate for ax to delegate to, so
+  # flipping this today installs two binaries with nothing to talk to. The flip
+  # is Tom's, one host at a time, and ax-client-topology in flake.nix goes red
+  # on it by design.
+  myAxClient.enable = false;
 
   # The rewrite's served kernel: ONE kernel, on the coordinator (spec §2.4 Q2 —
   # the worker twin is a ROW this kernel serves, not a second kernel), on the

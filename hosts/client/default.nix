@@ -79,6 +79,10 @@
     inputs.nixos-hardware.nixosModules.common-pc-laptop
     inputs.nixos-hardware.nixosModules.common-pc-laptop-ssd
     ../../modules/zenbook-duo-daemon.nix
+    # kubectl + the google/ax binaries, behind myAxClient.enable. Imported on
+    # all three interactive hosts, OFF on all three; read that module's header
+    # for the runbook and for what it deliberately does not declare.
+    ../../modules/ax-client.nix
   ];
 
   networking.hostName = "client";
@@ -93,6 +97,13 @@
   # this closure — no flash, no host-key dance. Same pattern as the worker's
   # 2026-08-21 return.
   mySecrets.enable = true;
+
+  # OFF, and it lands OFF (modules/ax-client.nix). There is no cluster on this
+  # fleet to point kubectl at and no Agent Substrate for ax to delegate to, so
+  # flipping this today installs two binaries with nothing to talk to. The flip
+  # is Tom's, one host at a time, and ax-client-topology in flake.nix goes red
+  # on it by design.
+  myAxClient.enable = false;
 
   # ── names ──────────────────────────────────────────────────────────────────
   # `nas` is fleet-wide (modules/common.nix). The two twins are pinned here

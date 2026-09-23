@@ -82,6 +82,10 @@
     # 2026-09-20 sandbox spike: k3s AGENT. Idle CPU and /dev/kvm while
     # Halogen holds only the GPU, so this is where a long batch belongs.
     ../../modules/k3s-fleet.nix
+    # kubectl + the google/ax binaries, behind myAxClient.enable. Imported on
+    # all three interactive hosts, OFF on all three; read that module's header
+    # for the runbook and for what it deliberately does not declare.
+    ../../modules/ax-client.nix
   ];
 
   networking.hostName = "worker";
@@ -338,6 +342,13 @@
   # the delivered tier re-minted for this box in the same commit decrypts on the
   # first boot of the new closure — no flash, no host-key dance.
   mySecrets.enable = true;
+
+  # OFF, and it lands OFF (modules/ax-client.nix). There is no cluster on this
+  # fleet to point kubectl at and no Agent Substrate for ax to delegate to, so
+  # flipping this today installs two binaries with nothing to talk to. The flip
+  # is Tom's, one host at a time, and ax-client-topology in flake.nix goes red
+  # on it by design.
+  myAxClient.enable = false;
 
   # ── Fleet candidate adoption (#354, 2026-09-13): ROLLING ─────────────────
   # The worker adopts the NAS's signed nightly candidate on its own when it is
