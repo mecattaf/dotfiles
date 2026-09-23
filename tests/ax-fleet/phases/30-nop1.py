@@ -27,6 +27,7 @@ ATE = "KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl-ate"
 STUB = "http://10.42.0.5:8731"
 NS = "fleet"
 TASK_TIMEOUT = 900  # test parameter: per-Task wait for a floor report
+FAILED_FINAL = 240  # test parameter: how long Failed must persist to count as final
 
 TASK_SCRIPT = r"""
 set -u
@@ -167,17 +168,47 @@ def leak_snapshot(tag: str) -> Any:
     return snap
 
 
+DIAGNOSED: list[str] = []
+
+
+def diagnose(name: str) -> None:
+    """Once per Task: the logs that say why a resume failed."""
+    if name in DIAGNOSED:
+        return
+    DIAGNOSED.append(name)
+    _, wp = nas.execute("k3s kubectl -n ate-system logs -l ax.mecattaf.dev/pool=ateom-gvisor --all-containers --tail=120 2>&1")
+    _, atelet = nas.execute("k3s kubectl -n ate-system logs -l app=atelet --all-containers --tail=80 2>&1")
+    _, ctl = nas.execute("k3s kubectl -n ax-system logs deploy/ax-controller --tail=60 2>&1")
+    _, stub = worker.execute("tail -n 20 /var/lib/halogen-stub/requests.jsonl 2>&1")
+    record(f"nop1_diag_{name}", {"workers": wp[-8000:], "atelet": atelet[-6000:], "controller": ctl[-5000:], "stub": stub[-3000:]})
+
+
 def wait_report(name: str) -> Any:
-    """Poll the floor for NAME's report; stop early if the Task fails."""
+    """Poll the floor for NAME's report. Stock ax marks a Task Failed on a
+    reconcile error and requeues it, so Failed is final only when it says
+    ResourceExhausted or has lasted FAILED_FINAL seconds."""
     t0 = time.monotonic()
+    failed_since: Any = None
+    states: list[Any] = []
     while time.monotonic() - t0 < TASK_TIMEOUT:
         reps = floor_reports(name)
         if reps:
             return reps, task_state(name), round(time.monotonic() - t0, 1)
         st = task_state(name)
+        key = (st.get("phase"), (st.get("ready") or {}).get("reason"))
+        if not states or states[-1]["key"] != list(key):
+            states.append({"t": round(time.monotonic() - t0, 1), "key": list(key)})
+            record(f"nop1_states_{name}", states)
         if st.get("phase") == "Failed":
-            return [], st, round(time.monotonic() - t0, 1)
+            diagnose(name)
+            failed_since = failed_since or time.monotonic()
+            msg = json.dumps(st)
+            if "ResourceExhausted" in msg or "no free workers" in msg or time.monotonic() - failed_since > FAILED_FINAL:
+                return [], st, round(time.monotonic() - t0, 1)
+        else:
+            failed_since = None
         time.sleep(2)
+    diagnose(name)
     return [], task_state(name), round(time.monotonic() - t0, 1)
 
 
@@ -260,6 +291,37 @@ with step("nop1: stock ax control plane up (no P1, no --running-resync)"):
     worker.succeed("curl -sf http://127.0.0.1:8731/floor/results")
     record("nop1_workers_baseline", ate_json("get workers"))
     leak_snapshot("baseline")
+
+with step("nop1 shape check: the P1 runs' command form, [ax-agent, halogen-smoke] (recorded, not asserted)"):
+    shape: dict[str, Any] = {"name": "nop1-shape"}
+    shape_task: dict[str, Any] = {
+        "apiVersion": "ax.io/v1alpha1",
+        "kind": "Task",
+        "metadata": {"name": "nop1-shape", "atespace": NS},
+        "spec": {
+            "image": IMAGE,
+            "command": ["ax-agent", "halogen-smoke"],
+            "env": [{"name": "HALOGEN_URL", "value": STUB}],
+            "gateway": {"name": "halogen"},
+        },
+    }
+    coordinator.succeed(f"echo {base64.b64encode(json.dumps(shape_task).encode()).decode()} | base64 -d | {AX} apply -f -")
+    shape_states: list[Any] = []
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < 300:
+        st = task_state("nop1-shape")
+        key = [st.get("phase"), (st.get("ready") or {}).get("reason")]
+        if not shape_states or shape_states[-1]["key"] != key:
+            shape_states.append({"t": round(time.monotonic() - t0, 1), "key": key, "ready": st.get("ready")})
+        if key == ["Running", "TaskRunning"]:
+            break
+        time.sleep(2)
+    shape["states"] = shape_states
+    shape["actors"] = actors()
+    if shape_states[-1]["key"] != ["Running", "TaskRunning"]:
+        diagnose("nop1-shape")
+    shape["delete"] = delete_task("nop1-shape")
+    record("nop1_shape", shape)
 
 with step("nop1 T5 sequential: 6 Tasks in a row on the 2-worker pool, reported to the floor, deleted by the driver"):
     seq: list[Any] = []
