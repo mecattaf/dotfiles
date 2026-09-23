@@ -25,6 +25,20 @@ onboarding = false
 # default prefix can't silently move every binding under it.
 prefix = "ctrl+b"
 
+[theme]
+# "terminal" (2026-09-17): every token is an ANSI slot or Reset
+# (src/app/state.rs Palette::terminal), so kitty paints herdr — chrome AND every
+# pane — in whatever theme ~/.local/bin/theme has selected, and re-paints it
+# live: herdr enables DEC mode 2031 on the host (src/terminal_theme.rs), kitty
+# reports a changed default background as CSI ?997;n on reload, and herdr
+# answers with a full OSC 10/11/4 re-query. Nothing here ever changes again for
+# a theme switch. Before this there was no [theme] section at all, i.e. herdr's
+# default catppuccin — not noir. Do NOT pick a theme from herdr's in-app
+# settings overlay: it upserts `name` and `auto_switch = false` into THIS
+# tracked file (src/config/write.rs). auto_switch stays off — it only chooses
+# between two built-in names and ignores `name` while on.
+name = "terminal"
+
 [terminal]
 # fish is the terminal UI here; bash is only the LOGIN shell (#236). herdr's
 # default for this key is empty, which means "$SHELL, then /bin/sh" — and the

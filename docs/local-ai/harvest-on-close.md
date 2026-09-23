@@ -1,4 +1,28 @@
-# Harvest on close — the SessionEnd hook
+# Harvest on close — the SessionEnd hook (REMOVED 2026-09-23)
+
+> **This mechanism no longer exists.** The SessionEnd hook, its script, its
+> contract test, its flake check and its oracle were all removed on 2026-09-23.
+> The document is kept as the record of what MEM-2 built and why it was undone;
+> everything below describes the mechanism in the present tense as it stood
+> until that date. Nothing below is live.
+>
+> **Why it went.** The session process WAITS for a SessionEnd hook before it
+> exits. The runs that actually harvested took up to 57 s, so Claude Code
+> aborted the hook and printed `SessionEnd hook [...] failed: Hook cancelled`
+> on every close. Of the last 101 logged runs, 54 were skips — most of them
+> `one cleaned user/assistant turn exceeds the declared utility context`. The
+> cost was paid on every session end; the benefit landed on fewer than half.
+>
+> **What survives.** The `harvest` verb and `ai_memory.py` are untouched, and
+> the `drain` skill still invokes them on demand. Only the automatic
+> close-triggered leg is gone. MEM-3's probe (`tools/mem-3-eval-probe.sh`)
+> still covers the verb.
+>
+> **The guard.** `flake.nix` now carries `checks.no-claude-code-hooks`, which
+> fails if any hook block returns to `home/dot_claude/settings.json` or if
+> anything is delivered into `~/.claude/hooks`. Re-adding a hook is a
+> deliberate edit to that check.
+
 
 MEM-2 (dotfiles#339). Mechanism: `~/sept8/MECHANISM-2026-09-07.md` §6b.
 Decisions: `~/research-methods/DECISIONS.md` D-E07, D-E13, D-E14.

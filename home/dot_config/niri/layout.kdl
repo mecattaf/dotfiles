@@ -21,12 +21,11 @@ layout {
     }
 
     // scroll: default_border pixel 1
+    // Colours (active/inactive/urgent) come from the theme fragment included
+    // last in config.kdl (~/.config/theme/niri.kdl); geometry lives here.
     border {
         on
         width 1
-        active-color "#555451"
-        inactive-color "#373735"
-        urgent-color "#F47B85"
     }
 
     center-focused-column "on-overflow"
@@ -54,17 +53,7 @@ layout {
     // scroll: layout_default_height 1.0
     // ^ NO NIRI EQUIVALENT
 
-    tab-indicator {
-        active-color "#CC7BF4"
-        inactive-color "#818898"
-        urgent-color "#F47B85"
-    }
-
-    insert-hint {
-        color "#CC7BF480"
-    }
-
-    background-color "#000000"
+    // tab-indicator, insert-hint and background-color: theme fragment.
 
     struts {}
 

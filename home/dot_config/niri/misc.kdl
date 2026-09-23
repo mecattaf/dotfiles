@@ -90,9 +90,7 @@ cursor {
 // scroll: exec hash dbus-update-activation-environment 2>/dev/null && \
 // scroll:         dbus-update-activation-environment --systemd DISPLAY WAYLAND_DISPLAY SWAYSOCK XDG_CURRENT_DESKTOP=sway
 // ^ DELETE: niri-session handles env export and D-Bus activation natively
-overview {
-    backdrop-color "#000000"
-}
+// overview { backdrop-color } is set by the theme fragment (see config.kdl).
 
 gestures {
     hot-corners {

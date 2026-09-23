@@ -13,19 +13,5 @@
   "effortLevel": "high",
   "skipDangerousModePermissionPrompt": true,
   "skipAutoPermissionPrompt": true,
-  "voiceEnabled": true,
-  "hooks": {
-    "SessionEnd": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash '/home/tom/.claude/hooks/ai-memory-harvest.sh'",
-            "timeout": 600
-          }
-        ]
-      }
-    ]
-  }
+  "voiceEnabled": true
 }

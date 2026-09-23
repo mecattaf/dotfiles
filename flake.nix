@@ -289,7 +289,7 @@
     # piri — niri IPC extension daemon (github.com/Asthestarsfalll/piri): one
     # Rust daemon that tails niri's event stream and layers plugins on top —
     # scratchpads, marks, window/workspace rules. We use it for the "music"
-    # auto-scratchpad (Mod+M toggles a right-side SoundCloud/cliamp pane).
+    # auto-scratchpad (Mod+M toggles a right-side SoundCloud pane).
     # Third-party but consumed exactly like tally: flake input pinned in
     # flake.lock, follows nixpkgs so the Rust build resolves against our one pin.
     # piri ships packages.default + a NixOS module, but NOT a home-manager
@@ -660,6 +660,7 @@
             # requiring the binaries to be installed on the caller's PATH.
             local-models-prune
             mactahoe-gtk-theme
+            mactahoe-claude-gtk-theme
             mactahoe-icon-theme
             music-acquire
             sfmono-liga
@@ -2066,6 +2067,8 @@
           assert coordinatorHome.services.tally.enable;
           # Direct Parakeet is coordinator-only; capture has no virtual mic or
           # service-start download. Native Herdr owns client key handling.
+          # The #448 socket-activation asserts rode in on the harvest-hook
+          # commit without #448 itself; they return with #448 (DF-6).
           assert
             coordinatorHome.systemd.user.services.parakeet-service.Install.WantedBy == [ "default.target" ];
           assert !(coordinatorHome.systemd.user.services ? voxtype);
@@ -2440,76 +2443,39 @@
               touch "$out"
             '';
 
-        # MEM-2 (dotfiles#339): SessionEnd -> the harvest verb. The asserts
-        # are EVALUATION-time on purpose — `nix flake check --offline --no-build`
-        # evaluates and does not build, so the wiring this unit adds (the hook
-        # block, the path it names, the timeout ordering, the delivered file) is
-        # checked by the same command the unit's oracle already runs.
-        ai-memory-harvest-hook =
+        # NO Claude Code hook is declared, and none is delivered. The MEM-2
+        # SessionEnd harvest hook (dotfiles#339) was removed 2026-09-23: the
+        # session process WAITS for a SessionEnd hook, and the runs that
+        # actually harvested took up to 57 s, so Claude Code aborted the hook
+        # and reported "SessionEnd hook [...] failed: Hook cancelled" on every
+        # close. Of its last 101 logged runs 54 were skips. The harvest verb is
+        # untouched and still reachable on demand through the `drain` skill.
+        #
+        # This check is the GUARD on that removal, and it is deliberately
+        # broader than the block it replaces: it fails if ANY hook comes back
+        # into settings.json, not just a SessionEnd one. The original reason
+        # still holds — the dead SessionStart hook removed 2026-09-13 named
+        # ~/.claude/hooks/herdr-agent-state.sh, a file that existed in no
+        # repository and on no disk, so it failed on every session start. A
+        # hook naming a script the repository does not ship must not come back.
+        # Re-adding a hook here is a deliberate edit to this check.
+        #
+        # EVALUATION-time on purpose, like the block it replaces:
+        # `nix flake check --offline --no-build` evaluates and does not build.
+        no-claude-code-hooks =
           let
-            lib = nixpkgs.lib;
             homeConfig = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
             settings = builtins.fromJSON (builtins.readFile ./home/dot_claude/settings.json);
-            hookPath = "/home/tom/.claude/hooks/ai-memory-harvest.sh";
-            hookText = builtins.readFile ./home/dot_claude/hooks/ai-memory-harvest.sh;
-            sessionEnd = settings.hooks.SessionEnd;
-            entry = builtins.head (builtins.head sessionEnd).hooks;
-            # The script's own timeout must fire BEFORE Claude Code's, so the
-            # hook always ends by its own hand and always writes its log line.
-            scriptTimeout = 420;
           in
-          # Exactly one SessionEnd matcher, carrying exactly one command hook.
-          assert builtins.length sessionEnd == 1;
-          assert builtins.length (builtins.head sessionEnd).hooks == 1;
-          assert entry.type == "command";
-          assert entry.command == "bash '${hookPath}'";
-          assert entry.timeout > scriptTimeout;
-          assert lib.hasInfix "AI_MEMORY_HARVEST_HOOK_TIMEOUT:-${toString scriptTimeout}}" hookText;
-          # The hook runs `harvest` and nothing else: the drain verb, the
-          # journal and branch (a)'s live state dir are absent from the script.
-          assert lib.hasInfix "python3 \"$engine\" \"\${harvest_argv[@]}\"" hookText;
-          # FIX-E08 (dotfiles#348): the close -> row -> floor leg is wired. The
-          # verb is still `harvest` and the flag is `--enqueue`, so a hook that
-          # writes a note but no rows cannot pass evaluation again.
-          assert lib.hasInfix "harvest_argv=(harvest)" hookText;
-          assert lib.hasInfix "harvest_argv+=(--enqueue)" hookText;
-          assert !(lib.hasInfix "$engine\" drain" hookText);
-          assert !(lib.hasInfix "state/tally/" hookText);
-          # No SessionStart hook. The block MEM-2 found (DF-MEM-2-2) named
-          # ~/.claude/hooks/herdr-agent-state.sh, a file that existed in no
-          # repository and on no disk, so it failed on every session start; it
-          # was removed 2026-09-13 rather than restored. This assert keeps a
-          # hook naming a script the repository does not ship from coming back.
-          assert !(settings.hooks ? SessionStart);
-          # The file the block names is actually delivered, as ONE link (not a
-          # whole-dir one), so ~/.claude/hooks stays a real, writable directory.
-          assert homeConfig.home.file ? ".claude/hooks/ai-memory-harvest.sh";
-          assert
-            homeConfig.home.file.".claude/hooks/ai-memory-harvest.sh".target
-            == ".claude/hooks/ai-memory-harvest.sh";
-          # mkOutOfStoreSymlink names its store entry after the file it points
-          # at, so this is the out-of-store link and not a copied-in blob: the
-          # hook stays editable in the checkout, like every other raw dotfile.
-          assert lib.hasSuffix "-hm_aimemoryharvest.sh" (
-            toString homeConfig.home.file.".claude/hooks/ai-memory-harvest.sh".source
-          );
+          assert !(settings ? hooks);
+          # Nothing is delivered into ~/.claude/hooks, and the directory itself
+          # is still not a whole-dir link, so it stays real and writable.
+          assert !(homeConfig.home.file ? ".claude/hooks/ai-memory-harvest.sh");
           assert !(homeConfig.home.file ? ".claude/hooks");
-          pkgs.runCommand "ai-memory-harvest-hook"
-            {
-              nativeBuildInputs = [ pkgs.python3 ];
-            }
-            ''
-              set -euo pipefail
-
-              export HOME="$TMPDIR/home"
-              export PYTHONDONTWRITEBYTECODE=1
-              export MEM2_HOOK=${./home/dot_claude/hooks/ai-memory-harvest.sh}
-              mkdir -p "$HOME"
-
-              bash ${./tests/ai-memory-hook/harvest-hook-test.sh}
-
-              touch "$out"
-            '';
+          pkgs.runCommand "no-claude-code-hooks" { } ''
+            set -euo pipefail
+            touch "$out"
+          '';
 
         print-paper =
           pkgs.runCommand "print-paper"

@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# F2 / Shift+F2 -> the theme picker and the accent picker: compact floating fzf
+# prompts in the F1 (wake) / F9 (audio route) / F10 (sleep monitors) style.
+# niri/binds.kdl runs `kitty --class theme-prompt -e ~/.local/bin/theme-prompt
+# <mode>`, window-rules.kdl floats it.
+#
+#   theme-prompt theme     noir | claude-dark | claude-light  -> ~/.local/bin/theme <name>
+#   theme-prompt accent    oat olive cactus sky fig heather coral
+#                          -> ~/.local/bin/wallpaper <accent> (wallpaper + folder colour)
+#
+# Esc is a clean cancel. Everything a pick triggers is live (kitty, niri,
+# herdr, fish, GTK3, folder colours); GTK4 apps and agent TUIs re-theme on
+# their next start.
+set -euo pipefail
+
+mode="${1:-theme}"
+
+mark() { [[ "$1" == "$2" ]] && echo '●' || echo ' '; }
+
+case "$mode" in
+    theme)
+        cur="$(theme 2>/dev/null || echo '-')"
+        rows() {
+            local t
+            for t in $(theme list 2>/dev/null || printf 'noir\nclaude-dark\nclaude-light\n'); do
+                printf '%-13s %s\n' "$t" "$(mark "$t" "$cur")"
+            done
+        }
+        prompt='theme ❯ ' ;;
+    accent)
+        cur="olive"
+        [[ -r "${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper/accent" ]] \
+            && read -r cur < "${XDG_STATE_HOME:-$HOME/.local/state}/wallpaper/accent"
+        rows() {
+            local a
+            for a in $(wallpaper list); do
+                printf '%-13s %s\n' "$a" "$(mark "$a" "$cur")"
+            done
+        }
+        prompt='accent ❯ ' ;;
+    *) printf 'theme-prompt: theme | accent\n' >&2; exit 1 ;;
+esac
+
+pick="$(rows | fzf --prompt="$prompt" --header='● = current   Esc cancels' --no-info --reverse --no-sort || true)"
+[[ -n "$pick" ]] || exit 0
+name="$(awk '{print $1}' <<< "$pick")"
+
+case "$mode" in
+    theme)  theme "$name" ;;
+    accent) wallpaper "$name" ;;
+esac

@@ -413,11 +413,15 @@
   # --- env (qt + gtk theming) ---
   environment.sessionVariables = {
     QT_QPA_PLATFORMTHEME = "qt6ct";
-    # GTK reads GTK_THEME with the highest priority. niri has no XSettings/settings
-    # daemon, so this system-wide export (reaching GUI apps via the PAM session) is
-    # what makes GTK3 apps like Nautilus honor the theme without nwg-look. It must be
-    # here, not home.sessionVariables (which only reaches interactive shells).
-    GTK_THEME = "MacTahoe-Dark-grey";
+    # GTK_THEME is gone (2026-09-17). It pinned MacTahoe-Dark-grey for every GTK
+    # app because niri has no settings daemon — but GTK3's Wayland backend reads
+    # org.gnome.desktop.interface straight from gsettings/dconf and follows it
+    # LIVE, provided the schema is installed; it never was (no gschemas.compiled
+    # with that schema anywhere on XDG_DATA_DIRS), which is the actual reason
+    # gsettings-driven theming looked dead here. gsettings-desktop-schemas is in
+    # systemPackages below, and ~/.local/bin/theme sets gtk-theme / icon-theme /
+    # color-scheme per theme. An env var cannot change under a running session,
+    # so it had to go for the theme switcher to work without a re-login.
     # Chromium/Electron (google-chrome + PWA launchers) only run native Wayland
     # under niri with this set; otherwise they fall back to X11 and blur/fail.
     NIXOS_OZONE_WL = "1";
@@ -434,6 +438,19 @@
 
   # --- base system packages (the rest are user packages in home/) ---
   environment.systemPackages = with pkgs; [
+    # --- gsettings-driven GTK theming (theme switcher, 2026-09-17) ---
+    # glib: the `gsettings` CLI ~/.local/bin/theme calls (it was on no PATH in
+    # the session, so startup.kdl's old `spawn-at-startup "gsettings" …` lines
+    # had been failing silently). The schemas: nixpkgs installs them under
+    # share/gsettings-schemas/<pkg>/, which only wrapped apps see; GTK's own
+    # lookup is $XDG_DATA_DIRS/glib-2.0/schemas, so re-home them there
+    # (precompiled — no glib-compile-schemas pass depends on glib.dev).
+    glib
+    (runCommand "gsettings-desktop-schemas-on-xdg-data-dirs" { } ''
+      mkdir -p $out/share/glib-2.0/schemas
+      cp ${gsettings-desktop-schemas}/share/gsettings-schemas/*/glib-2.0/schemas/* $out/share/glib-2.0/schemas/
+      test -f $out/share/glib-2.0/schemas/gschemas.compiled
+    '')
     git
     vim
     wl-clipboard
