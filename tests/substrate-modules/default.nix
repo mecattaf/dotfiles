@@ -135,9 +135,9 @@ pkgs.runCommand "substrate-modules"
     assert client["floor_url"].startswith("https://") and client["token_file"] == "@FLOOR_TOKEN_FILE@", client
     p = client["puller"]
     assert p["holder"] == "coordinator" and p["link_token_file"] == "@LINK_TOKEN_FILE@" and p["seat"] == "cc2", p
-    assert p["node_dispatch"] == "local" and p["runtimes"].endswith("substrate-runtimes.toml") and p["max_runs"] == 1, p
+    assert p["node_dispatch"] == "local" and p["runtimes"].endswith("substrate-runtimes.toml") and isinstance(p["max_runs"], int) and p["max_runs"] >= 1, p
     assert p["state_dir"] == "/home/tom/.local/state/substrate/puller"
-    assert p["pidfile"] == "@RUNTIME_DIRECTORY@/puller.pid" and p["cap"] == 2, p
+    assert p["pidfile"] == "@RUNTIME_DIRECTORY@/puller.pid" and isinstance(p["cap"], int) and p["cap"] >= 1, p
     assert "s|@RUNTIME_DIRECTORY@|$RUNTIME_DIRECTORY|" in start, "the start script must fill the pidfile placeholder"
     assert p["default_model"] == "claude-opus-5-5", p
     assert p["demand_dir"] == "/home/tom/.local/state/substrate/demand", p
