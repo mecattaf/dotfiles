@@ -168,6 +168,9 @@ let
     export SUBSTRATE_CLIENT_CONFIG="$RUNTIME_DIRECTORY/config.toml"
     # [puller].runtimes is the primary; loadRuntimes (packages/runners/src/config.ts) still falls back to this.
     export AX_CONWIP_RUNTIMES=${runtimesToml}
+    # Review 2026-09-24 (low): hostHarnessEnv passes CREDENTIALS_DIRECTORY through to every host agent. The token
+    # paths are already in the rendered files, so the variable is dropped here; the directory stays readable.
+    unset CREDENTIALS_DIRECTORY
     exec ${pullerExec}
   '';
 
@@ -543,6 +546,12 @@ in
         description = "src/deploy-config.ts keys (SUBSTRATE_CONFIG, read by the capacity gate). capacityFloorUrl and capacityFloorTokenFile are set by the unit from floorUrl and the credential.";
       };
 
+      workingDirectory = mkOption {
+        type = types.str;
+        default = "${home}/mecattaf/substrate";
+        defaultText = lib.literalExpression ''"''${home}/mecattaf/substrate"'';
+        description = "The unit's WorkingDirectory. The live puller ran from the substrate checkout: the runners derive a worktree from process.cwd() for agent({isolation = \"worktree\"}) calls and the interpreter's fallback resolver looks in cwd/.claude/workflows, so a git checkout keeps parity with the proof (review 2026-09-24).";
+      };
       extraPath = mkOption {
         type = types.listOf types.package;
         default = [ ];
@@ -634,7 +643,24 @@ in
         ];
         # Above drain_timeout_s, so the first SIGTERM's drain can finish before systemd escalates.
         TimeoutStopSec = "${toString (cfg.puller.drainTimeoutS + 30)}s";
-        MemoryMax = "2G";
+        # Review 2026-09-24 (medium): the default KillMode=control-group would SIGTERM every claude, codex and pi
+        # child at once and defeat the puller's own drain ladder; mixed signals only the puller, which drains its
+        # nodes (drain_timeout_s) and kills its live groups itself. One OOM-killed node must not stop the puller.
+        KillMode = "mixed";
+        OOMPolicy = "continue";
+        WorkingDirectory = cfg.puller.workingDirectory;
+        # Two claude agents at ~400 MB each plus the puller and tool builds approach 2G; 2G is the reclaim line,
+        # 4G the hard limit (review 2026-09-24, low).
+        MemoryHigh = "2G";
+        MemoryMax = "4G";
+        # The proof ran inside runtime-test with a private /run/user. The unit keeps the real one (herdr and ssh
+        # stay reachable) but the desktop session's sockets are not something a headless agent should inherit.
+        UnsetEnvironment = [
+          "DBUS_SESSION_BUS_ADDRESS"
+          "WAYLAND_DISPLAY"
+          "DISPLAY"
+          "NIRI_SOCKET"
+        ];
       };
     };
   };
