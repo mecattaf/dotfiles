@@ -1,0 +1,28 @@
+{
+  "name": "@substrate/schema",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Effect Schema for receipt, rung, card, and the run record (runtime, placement, egress, credential). Ported from tally-ts-sdk packages/schema.",
+  "license": "UNLICENSED",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "check": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "effect": "4.0.0-rc.112"
+  },
+  "devDependencies": {
+    "effect": "4.0.0-rc.112",
+    "fast-check": "^4.9.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "@types/node": "^22.10.2",
+    "@substrate/serializer": "workspace:*"
+  }
+}

@@ -1,0 +1,33 @@
+# tally-bands/v1
+# deterministic: no timestamp; one row per (use_case_class x arm) cell
+# posterior: Beta(2+passes, 2+fails); the pseudo-count 4 makes shrinkage_weight = n/(n+4) exact (D-U-E6-1)
+# band: 5th-95th percentile of 20000 numpy Beta draws under seed 0
+# n = attempts, m = distinct rungs behind them (spec §4.1)
+# no score column: a band is a belief about a cell, never a ranking (§3 U-E6)
+# source: priors/calibration.tsv token-table, file sha256:9bd3b3e4ce2a8168ecf686b5db791f9404730dfb08c41496e99bb6f4036a25b2
+
+class	arm	n	m	passes	fails	alpha	beta	mean	p05	p95	shrinkage_weight
+benchmark-harness	claude-workflow/opus	1	1	0	1	2	3	0.400000	0.097769	0.752572	0.200000
+calibration-seam	claude-workflow/opus	1	1	0	1	2	3	0.400000	0.097769	0.752572	0.200000
+nix-module-authoring	cc/claude-code/workflow-subagent/claude-opus-5	1	1	1	0	3	2	0.600000	0.248339	0.901846	0.200000
+nix-module-authoring	claude/claude-opus-5	2	2	2	0	4	2	0.666667	0.343069	0.922881	0.333333
+nix-module-authoring	codex/codex-cli/gpt-5.6-sol	2	2	2	0	4	2	0.666667	0.343069	0.922881	0.333333
+nix-module-authoring	nayla-codex/codex/gpt-5.6-sol	4	4	3	1	5	3	0.625000	0.338163	0.868092	0.500000
+nix-module-authoring	pi-qwencloud/pi/qwen3.8-max	2	2	2	0	4	2	0.666667	0.343069	0.922881	0.333333
+rust-kernel-work	cc/claude-code/workflow-subagent/claude-opus-5	3	3	3	0	5	2	0.714286	0.419409	0.936604	0.428571
+rust-kernel-work	cc2/claude-code-headless/claude-opus-5	3	3	3	0	5	2	0.714286	0.419409	0.936604	0.428571
+rust-kernel-work	claude/claude-opus-5	3	3	3	0	5	2	0.714286	0.419409	0.936604	0.428571
+rust-kernel-work	codex/codex-cli/gpt-5.6-sol	6	6	6	0	8	2	0.800000	0.572010	0.958613	0.600000
+spec-and-report-writing	cc/claude-code/workflow-subagent/claude-opus-5	1	1	1	0	3	2	0.600000	0.248339	0.901846	0.200000
+spec-and-report-writing	cc3/claude-code-headless/claude-opus-5	1	1	1	0	3	2	0.600000	0.248339	0.901846	0.200000
+spec-and-report-writing	claude-workflow/opus	1	1	1	0	3	2	0.600000	0.248339	0.901846	0.200000
+spec-and-report-writing	claude/claude-opus-5	1	1	1	0	3	2	0.600000	0.248339	0.901846	0.200000
+spec-and-report-writing	codex/codex-cli/gpt-5.6-sol	3	3	3	0	5	2	0.714286	0.419409	0.936604	0.428571
+spec-and-report-writing	pi-qwencloud/pi/qwen3.8-max	1	1	1	0	3	2	0.600000	0.248339	0.901846	0.200000
+terminal-tooling-python	claude/claude-opus-5	4	4	4	0	6	2	0.750000	0.481582	0.945939	0.500000
+terminal-tooling-python	pi-qwencloud/pi/qwen3.8-max	1	1	1	0	3	2	0.600000	0.248339	0.901846	0.200000
+typescript-on-workers	cc/claude-code/workflow-subagent/claude-opus-5	3	3	3	0	5	2	0.714286	0.419409	0.936604	0.428571
+typescript-on-workers	cc2/claude-code-headless/claude-opus-5	6	6	6	0	8	2	0.800000	0.572010	0.958613	0.600000
+typescript-on-workers	claude/claude-opus-5	7	7	7	0	9	2	0.818182	0.606643	0.962885	0.636364
+typescript-on-workers	codex/codex-cli/gpt-5.6-sol	6	5	6	0	8	2	0.800000	0.572010	0.958613	0.600000
+typescript-on-workers	nayla-codex/codex/gpt-5.6-sol	15	15	15	0	17	2	0.894737	0.763778	0.979972	0.789474

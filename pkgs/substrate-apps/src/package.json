@@ -1,0 +1,31 @@
+{
+  "name": "substrate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CONWIP factory: turns Claude ultracode workflow run records into ax Tasks under a WIP cap, plus the Effect workspace (schema, serializer, planning, factory) and the Cloudflare floor.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p packages/schema && tsc --noEmit -p packages/serializer && tsc --noEmit -p packages/planning && tsc --noEmit -p packages/factory && tsc --noEmit -p apps/floor && tsc --noEmit -p packages/interpreter && tsc --noEmit -p packages/runners && tsc --noEmit -p apps/link && tsc --noEmit -p packages/api && tsc --noEmit -p apps/floor/tsconfig.node.json && tsc --noEmit -p apps/cli && tsc --noEmit -p apps/mcp && tsc --noEmit -p apps/puller",
+    "check:fences": "node tools/check-fences.mjs",
+    "check": "pnpm typecheck && pnpm check:fences && pnpm test",
+    "conwip": "tsx src/cli.ts",
+    "conwip-run": "tsx src/run-cli.ts"
+  },
+  "dependencies": {
+    "@grpc/grpc-js": "^1.12.6",
+    "@grpc/proto-loader": "^0.7.13",
+    "effect": "4.0.0-rc.112",
+    "@substrate/planning": "workspace:*",
+    "@substrate/schema": "workspace:*",
+    "@substrate/interpreter": "workspace:*",
+    "@substrate/runners": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "fast-check": "^4.9.0"
+  }
+}

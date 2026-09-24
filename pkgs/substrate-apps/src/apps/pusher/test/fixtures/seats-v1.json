@@ -1,0 +1,269 @@
+{
+ "schema_version": "seat-capacity/1",
+ "generated_at": "2026-09-23T20:00:00Z",
+ "host": "example-box",
+ "recommend": "cc",
+ "thresholds": {
+  "wall_pct": 95.0,
+  "warn_pct": 80.0
+ },
+ "allowance_changes": [],
+ "seats": [
+  {
+   "id": "cc",
+   "provider": "claude",
+   "label": "Claude (personal)",
+   "owner": "tom",
+   "state": "open",
+   "usable": true,
+   "grade": "MEASURED",
+   "detail": "",
+   "note": "",
+   "source": {
+    "kind": "seat-feeder-cache",
+    "config_dir": "/home/example/.claude",
+    "reading_age_seconds": 40
+   },
+   "windows": [
+    {
+     "binding": true,
+     "id": "five_hour",
+     "is_active": false,
+     "label": "session (5h)",
+     "minutes": 300,
+     "pace_pct_per_hour": null,
+     "projected_pct_at_reset": null,
+     "remaining_pct": 100.0,
+     "resets_at": "",
+     "resets_in_seconds": null,
+     "scope": null,
+     "severity": "normal",
+     "used_pct": 0.0,
+     "wall_eta": ""
+    },
+    {
+     "binding": true,
+     "id": "seven_day",
+     "is_active": false,
+     "label": "weekly (7d)",
+     "minutes": 10080,
+     "pace_pct_per_hour": null,
+     "projected_pct_at_reset": null,
+     "remaining_pct": 94.0,
+     "resets_at": "2026-09-30T09:59:59Z",
+     "resets_in_seconds": null,
+     "scope": null,
+     "severity": "normal",
+     "used_pct": 6.0,
+     "wall_eta": ""
+    },
+    {
+     "binding": false,
+     "id": "weekly:fable",
+     "is_active": false,
+     "label": "weekly \u00b7 Fable",
+     "minutes": 10080,
+     "pace_pct_per_hour": null,
+     "projected_pct_at_reset": null,
+     "remaining_pct": 98.0,
+     "resets_at": "2026-09-30T09:59:59Z",
+     "resets_in_seconds": null,
+     "scope": "Fable",
+     "severity": "normal",
+     "used_pct": 2.0,
+     "wall_eta": ""
+    }
+   ]
+  },
+  {
+   "id": "cc2",
+   "provider": "claude",
+   "label": "Claude (work)",
+   "owner": "tom",
+   "state": "tight",
+   "usable": true,
+   "grade": "CACHED",
+   "detail": "",
+   "note": "",
+   "source": {
+    "kind": "own-cache",
+    "reading_age_seconds": 1500
+   },
+   "windows": [
+    {
+     "binding": true,
+     "id": "five_hour",
+     "is_active": false,
+     "label": "session (5h)",
+     "minutes": 300,
+     "pace_pct_per_hour": null,
+     "projected_pct_at_reset": null,
+     "remaining_pct": 86.0,
+     "resets_at": "2026-09-23T23:40:00Z",
+     "resets_in_seconds": null,
+     "scope": null,
+     "severity": "normal",
+     "used_pct": 14.0,
+     "wall_eta": ""
+    },
+    {
+     "binding": true,
+     "id": "seven_day",
+     "is_active": false,
+     "label": "weekly (7d)",
+     "minutes": 10080,
+     "pace_pct_per_hour": null,
+     "projected_pct_at_reset": null,
+     "remaining_pct": 24.0,
+     "resets_at": "2026-09-24T06:00:00Z",
+     "resets_in_seconds": null,
+     "scope": null,
+     "severity": "warning",
+     "used_pct": 76.0,
+     "wall_eta": ""
+    },
+    {
+     "binding": false,
+     "id": "weekly:fable",
+     "is_active": false,
+     "label": "weekly \u00b7 Fable",
+     "minutes": 10080,
+     "pace_pct_per_hour": null,
+     "projected_pct_at_reset": null,
+     "remaining_pct": 0.0,
+     "resets_at": "2026-09-24T06:00:00Z",
+     "resets_in_seconds": null,
+     "scope": "Fable",
+     "severity": "critical",
+     "used_pct": 100.0,
+     "wall_eta": ""
+    }
+   ]
+  },
+  {
+   "id": "cc3",
+   "provider": "claude",
+   "label": "Claude (third)",
+   "owner": "tom",
+   "state": "unauth",
+   "usable": false,
+   "grade": "UNKNOWN",
+   "detail": "sign-in expired, see /home/example/.claude-3/.credentials.json",
+   "note": "",
+   "source": {},
+   "windows": []
+  },
+  {
+   "id": "codex",
+   "provider": "codex",
+   "label": "Codex CLI",
+   "owner": "third-party",
+   "state": "open",
+   "usable": true,
+   "grade": "MEASURED",
+   "detail": "",
+   "note": "",
+   "source": {
+    "kind": "codex-rollout-rate-limits",
+    "path": "/home/example/.codex/sessions/x.jsonl",
+    "observed_at": "2026-09-23T19:50:00Z"
+   },
+   "windows": [
+    {
+     "binding": true,
+     "id": "codex:primary",
+     "is_active": false,
+     "label": "weekly (7d)",
+     "minutes": 10080,
+     "pace_pct_per_hour": null,
+     "projected_pct_at_reset": null,
+     "remaining_pct": 96.0,
+     "resets_at": "2026-09-28T19:07:31Z",
+     "resets_in_seconds": null,
+     "scope": null,
+     "severity": "",
+     "used_pct": 4.0,
+     "wall_eta": ""
+    },
+    {
+     "binding": true,
+     "id": "codex:odd",
+     "is_active": false,
+     "label": "odd (1d)",
+     "minutes": 1440,
+     "pace_pct_per_hour": null,
+     "projected_pct_at_reset": null,
+     "remaining_pct": 90.0,
+     "resets_at": "2026-09-24T19:00:00Z",
+     "resets_in_seconds": null,
+     "scope": null,
+     "severity": "",
+     "used_pct": 10.0,
+     "wall_eta": ""
+    }
+   ]
+  },
+  {
+   "id": "pi-qwencloud",
+   "provider": "qwen",
+   "label": "Qwen Cloud",
+   "owner": "tom",
+   "state": "open",
+   "usable": true,
+   "grade": "MEASURED-FROM-REFUSAL",
+   "detail": "",
+   "note": "",
+   "source": {
+    "kind": "429-refusal-text",
+    "key_source": "/run/agenix/example-token"
+   },
+   "windows": [
+    {
+     "binding": true,
+     "id": "qwen:weekly",
+     "is_active": false,
+     "label": "weekly (7d)",
+     "minutes": 10080,
+     "pace_pct_per_hour": null,
+     "projected_pct_at_reset": null,
+     "remaining_pct": null,
+     "resets_at": "",
+     "resets_in_seconds": null,
+     "scope": null,
+     "severity": "",
+     "used_pct": null,
+     "wall_eta": ""
+    }
+   ]
+  },
+  {
+   "id": "gpu-coordinator",
+   "provider": "none",
+   "label": "Local GPU",
+   "owner": "kernel",
+   "state": "n/a",
+   "usable": false,
+   "grade": "UNKNOWN",
+   "detail": "serves nothing",
+   "note": "",
+   "source": {},
+   "windows": []
+  },
+  {
+   "id": "gpu-worker",
+   "provider": "halogen",
+   "label": "Halogen",
+   "owner": "kernel",
+   "state": "open",
+   "usable": true,
+   "grade": "MEASURED",
+   "detail": "up",
+   "note": "",
+   "source": {
+    "kind": "halogen-health",
+    "endpoint": "http://worker.example:8731/health"
+   },
+   "windows": []
+  }
+ ]
+}

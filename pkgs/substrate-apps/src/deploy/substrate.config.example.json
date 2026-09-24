@@ -1,0 +1,21 @@
+{
+  "comment": "Copy to ~/.config/substrate/substrate.json or point SUBSTRATE_CONFIG at it. Every key is optional; see src/deploy-config.ts.",
+  "forbiddenReadPrefixes": [
+    "~/private",
+    "~/.local/state/secrets"
+  ],
+  "forbiddenLedgerPrefixes": [
+    "/run/user",
+    "~/.local/state/substrate/meters"
+  ],
+  "metersDir": "~/.local/state/substrate/meters",
+  "axProtoFallbackPath": null,
+  "realSeats": [
+    "claude-main",
+    "codex",
+    "gpu-worker"
+  ],
+  "codexWorkdir": "~/src/my-project",
+  "capacityFloorUrl": "https://substrate.example.dev",
+  "capacityFloorTokenFile": "~/.local/state/substrate/floor-token"
+}

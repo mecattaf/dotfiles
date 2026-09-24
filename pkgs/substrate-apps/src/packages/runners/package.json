@@ -1,0 +1,32 @@
+{
+  "name": "@substrate/runners",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The Runner seam: where one agent() call or one Worker-shaped job actually executes. Adapters for host, herdr, gVisor (runsc), microvm.nix, ssh, workerd, and an ax spec seam that never dispatches.",
+  "bin": {
+    "substrate-runners": "./bin/substrate-runners.mjs"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json",
+    "fences": "node tools/check-fences.mjs",
+    "live": "tsx scripts/live-checks.ts"
+  },
+  "dependencies": {
+    "smol-toml": "^1.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "effect": "4.0.0-rc.112"
+  },
+  "peerDependencies": {
+    "effect": "4.0.0-rc.112"
+  }
+}

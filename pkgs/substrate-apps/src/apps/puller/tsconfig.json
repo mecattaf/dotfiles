@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "exactOptionalPropertyTypes": false, "types": ["node"], "allowImportingTsExtensions": true, "lib": ["ES2022", "DOM"] },
+  "include": ["src/**/*.ts", "test/**/*.ts", "../floor/src/cf-types.d.ts"]
+}

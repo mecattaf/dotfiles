@@ -659,6 +659,9 @@
         let
           amdAi = inputs.nix-amd-ai.packages.${system};
           strixAi = inputs.nix-strix-halo.packages.${system};
+          # The Cloudflare Substrate's box-side programs, vendored from
+          # agency-agency/substrate at the sha in pkgs/substrate-apps/SYNC.md.
+          substrateApps = pkgs.callPackage ./pkgs/substrate-apps { };
         in
         {
           inherit (pkgs)
@@ -725,6 +728,14 @@
               go_1_27 = inputs.nixpkgs-go.legacyPackages.${system}.go_1_27;
             };
           };
+          # `nix build .#substrate-pusher`, `.#substrate-puller`, `.#substrate-apps-link`:
+          # the coordinator's gentle capacity pusher, its interpreter-host puller and
+          # the floor-to-ax link from the same pinned
+          # substrate sha (pkgs/substrate-apps). Installed by modules/substrate.nix
+          # (gates OFF) and hosts/nas/substrate-link.nix (still on pkgs/substrate-link).
+          substrate-pusher = substrateApps.pusher;
+          substrate-puller = substrateApps.puller;
+          substrate-apps-link = substrateApps.link;
         };
 
       # The same teardown the control and harness roles keep on their PATH
@@ -775,6 +786,12 @@
           inherit (nixpkgs) lib;
         };
         ax-fleet-topology = import ./tests/ax-fleet-topology {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
+        # modules/substrate.nix rendered OFF on the coordinator and armed with
+        # fixtures (tests/substrate-modules); every assertion is eval-time.
+        substrate-modules = import ./tests/substrate-modules {
           inherit pkgs self;
           inherit (nixpkgs) lib;
         };

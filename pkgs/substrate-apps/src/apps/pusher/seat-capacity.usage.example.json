@@ -1,0 +1,9 @@
+{
+  "host": "coordinator",
+  "usage": {
+    "cc": { "kind": "oauth", "credentials": "<the seat's config dir>/.credentials.json", "config_dir": "<the seat's config dir>" },
+    "cc2": { "kind": "cache-file", "path": "<a file in the usage endpoint's answer shape>" }
+  },
+  "not_dispatchable": { "cc3": "evicted" },
+  "plans": { "pi-qwencloud": "2026-11-07T00:00:00Z" }
+}

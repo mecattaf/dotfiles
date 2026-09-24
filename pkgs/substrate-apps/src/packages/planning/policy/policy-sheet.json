@@ -1,0 +1,127 @@
+{
+  "schema": "substrate/policy-sheet@1",
+  "ported_from": {
+    "repo": "tally-ts-sdk",
+    "commit": "897f9015",
+    "path": "docs/policy-sheet.json",
+    "schema": "tally-ts-sdk/policy-sheet@1",
+    "note": "Ported as data on 2026-09-24 (critique pass, parity gap PT-02). The bound source files are byte-identical in substrate, so every anchor carries over unchanged."
+  },
+  "unit": "U-A9 LAKE-POLICY",
+  "written_by": "tools/policy-sheet-diff.mjs is the reader; this file is the data",
+  "source": {
+    "sheet": "RUL-01",
+    "card": "/home/tom/research-methods/cards/RUL-01.md",
+    "card_sha256": "bb812861c95bf40a98d9ba8a1e919c3b4c77fb6a17142c8c92b8e6808067d94b",
+    "card_sha256_banked_at": "/home/tom/research-methods/receipts/RUL-01/sha256-before-tom-commit.txt line 1",
+    "as_printed": "/home/tom/research-methods/receipts/RUL-01/RUL-01-sheet-as-printed.md",
+    "measured_on": "2026-09-06",
+    "note": "The card is READ-ONLY to this repository. Nothing here writes on a `>` line (R-2026-09-05-03). `--against-card` re-reads the card and compares the transcription below to it."
+  },
+  "acceptance": {
+    "ruling_line": "TL-2",
+    "decision": "D-B2",
+    "decision_file": "/home/tom/research-methods/DECISIONS.md",
+    "tom_verbatim": "Q3–Q5, Q12 and Q13 are accepted at the sheet's defaults",
+    "tom_at": "2026-09-05T23:23",
+    "durable_store_status": "the sentence is in a transcript, not in RULINGS.md; every line below therefore stays `default, unruled` and DEFERRED.md carries the [OPERATOR] row"
+  },
+  "lines": [
+    {
+      "id": "B-Q3",
+      "question": "CONSOLIDATED Q3: routing preference order",
+      "default_proposed": "Adopt the ReleasePolicy default preference order and let a loaded batch supply the values; do not set it explicitly now.",
+      "status": "default, unruled",
+      "ruled_by": "none",
+      "blocks": "P17",
+      "card_lines": "cards/RUL-01.md:444-455 (Section B), :1288-1298 (appendix)",
+      "bindings": [
+        {
+          "kind": "policyField",
+          "field": "routingPreference",
+          "value": "routerOrder",
+          "file": "packages/planning/src/release/evaluator.ts",
+          "declaration_anchor": "  readonly routingPreference: RoutingPreference;",
+          "value_anchor": "  routingPreference: \"routerOrder\",",
+          "why": "\"Adopt the default\" is exactly `defaultReleasePolicy.routingPreference`; a loaded batch supplies its own by passing a ReleasePolicy, which is data."
+        }
+      ]
+    },
+    {
+      "id": "B-Q4",
+      "question": "CONSOLIDATED Q4: congestion policy",
+      "default_proposed": "Wait when the preferred member is congested, with escalation on capability floor, deadline, or a failed verdict only — a closed list of three triggers.",
+      "status": "default, unruled",
+      "ruled_by": "none",
+      "blocks": "P17",
+      "card_lines": "cards/RUL-01.md:457-468 (Section B), :1300-1310 (appendix)",
+      "bindings": [
+        {
+          "kind": "policyField",
+          "field": "congestion",
+          "value": {
+            "_tag": "Wait"
+          },
+          "file": "packages/planning/src/release/evaluator.ts",
+          "declaration_anchor": "  readonly congestion: CongestionPolicy;",
+          "value_anchor": "  congestion: { _tag: \"Wait\" }",
+          "why": "\"Wait when the preferred member is congested\" is the `Wait` tag; `EscalateAfter` is the other reading and is not the default."
+        },
+        {
+          "kind": "closedList",
+          "typeName": "EscalationReason",
+          "members": [
+            "capabilityFloor",
+            "deadline",
+            "failedVerdict"
+          ],
+          "file": "packages/planning/src/heuristics/localFirst.ts",
+          "declaration_anchor": "export type EscalationReason =",
+          "why": "The second half of the line — \"escalation on capability floor, deadline, or a failed verdict only\" — is a closed list of three, and the union is where the closure lives. A fourth member added to the union widens the sheet's answer without a ruling."
+        }
+      ]
+    },
+    {
+      "id": "B-Q5",
+      "question": "CONSOLIDATED Q5: the length exponent",
+      "default_proposed": "1.0 until measurement, so the attended/unattended flip is a sign change and nothing more.",
+      "status": "default, unruled",
+      "ruled_by": "none",
+      "blocks": "P17",
+      "card_lines": "cards/RUL-01.md:470-481 (Section B), :1312-1323 (appendix)",
+      "bindings": [
+        {
+          "kind": "policyField",
+          "field": "lengthExponent",
+          "value": 1,
+          "file": "packages/planning/src/release/evaluator.ts",
+          "declaration_anchor": "  readonly lengthExponent: number;",
+          "value_anchor": "  lengthExponent: DEFAULT_LENGTH_EXPONENT,",
+          "why": "The field carries the exponent; the default reaches it through the named constant below, so the two must agree."
+        },
+        {
+          "kind": "constant",
+          "name": "DEFAULT_LENGTH_EXPONENT",
+          "value": 1,
+          "file": "packages/planning/src/heuristics/lengthTermFlip.ts",
+          "declaration_anchor": "export const DEFAULT_LENGTH_EXPONENT = 1;",
+          "why": "`defaultReleasePolicy.lengthExponent` is not a literal; it is this constant. A repin of the constant is a repin of the sheet's answer and is caught here."
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "F-A9-01",
+      "field": "dropMeteredWhenFreePreferred",
+      "disposition": "filed, not adopted",
+      "rides_unchanged_value": true,
+      "file": "packages/planning/src/release/evaluator.ts",
+      "value_anchor": "  dropMeteredWhenFreePreferred: true,",
+      "declaration_anchor": "  readonly dropMeteredWhenFreePreferred: boolean;",
+      "sheet_line": "none",
+      "filed_at": "docs/findings/proposed-B-line-dropMeteredWhenFreePreferred.md",
+      "why": "TL-2 / D-B2: the fourth lifted rule has no RUL-01 line at all. U-A7 copied the sketch byte-identically and this unit files the finding rather than quietly adopting the value as a fourth accepted default. It rides unchanged at `true`; the PROPOSED Section B line is drafted beside the card, never applied."
+    }
+  ]
+}
