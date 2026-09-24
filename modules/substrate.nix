@@ -66,6 +66,17 @@ let
   anyEnabled = cfg.pusher.enable || cfg.puller.enable;
   credentialPath = config.age.secrets.${cfg.tokenSecret}.path;
 
+  # NixOS renders a unit's `path` as Environment=PATH=..., which REPLACES the user manager's PATH rather than
+  # extending it. The runners spawn bare `claude`, `pi` and `codex` (packages/runners/src/harness.ts) and `seats`
+  # spawns bare `codex` for the codex seat, so both units carry the user's own profile explicitly (each entry
+  # gets /bin appended), in the manager's order: ~/.local/bin (seats), the per-user profile (claude, codex, pi,
+  # herdr), then the system profile.
+  userProfilePath = [
+    "${home}/.local"
+    "/etc/profiles/per-user/${cfg.user}"
+    "/run/current-system/sw"
+  ];
+
   # The pusher's config file: apps/pusher/pusher.example.json shape, minus tokenFile (given as --token-file).
   pusherConfig = pkgs.writeText "substrate-pusher.json" (
     builtins.toJSON (
@@ -527,7 +538,7 @@ in
       extraPath = mkOption {
         type = types.listOf types.package;
         default = [ ];
-        description = "Packages on the unit's PATH besides openssh and coreutils (claude, pi, herdr come from the user profile).";
+        description = "Packages on the unit's PATH besides openssh, coreutils and the user's profile directories (~/.local/bin, /etc/profiles/per-user/<user>/bin, /run/current-system/sw/bin), which supply claude, pi, codex and herdr.";
       };
     };
   };
@@ -572,7 +583,8 @@ in
       path = [
         pkgs.python3
         pkgs.coreutils
-      ];
+      ]
+      ++ userProfilePath;
       serviceConfig = commonService // {
         ExecStart = "${lib.getExe cfg.pusher.package} --config ${pusherConfig} --token-file %d/floor-token";
         # 2 usage, 3 another pusher holds the pidfile: neither is cured by a restart.
@@ -592,7 +604,8 @@ in
         pkgs.openssh
         pkgs.coreutils
       ]
-      ++ cfg.puller.extraPath;
+      ++ cfg.puller.extraPath
+      ++ userProfilePath;
       environment = {
         CLAUDE_CONFIG_DIR = cfg.puller.claudeConfigDir;
         TALLY_SEAT = cfg.puller.claudeSeat;

@@ -73,6 +73,13 @@ assert hasInfix "--token-file %d/floor-token" pusherUnit.serviceConfig.ExecStart
 assert pusherUnit.unitConfig.ConditionUser == "tom";
 assert pullerUnit.environment.CLAUDE_CONFIG_DIR == "/home/tom/.claude-work";
 assert pullerUnit.environment.TALLY_SEAT == "cc2";
+# Environment=PATH replaces the manager's PATH: both units must name the user's profile themselves, or the
+# runners' bare claude/pi/codex and seats' bare codex fail with ENOENT.
+assert hasInfix "/etc/profiles/per-user/tom/bin" pullerUnit.environment.PATH;
+assert hasInfix "/home/tom/.local/bin" pullerUnit.environment.PATH;
+assert hasInfix "/etc/profiles/per-user/tom/bin" pusherUnit.environment.PATH;
+assert hasInfix "/home/tom/.local/bin" pusherUnit.environment.PATH;
+assert hasInfix "/etc/profiles/per-user/tom/bin" declared.systemd.user.services.substrate-puller.environment.PATH;
 assert pullerUnit.serviceConfig.RuntimeDirectory == "substrate-puller";
 pkgs.runCommand "substrate-modules"
   {
