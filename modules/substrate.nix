@@ -31,11 +31,20 @@
 # which is a test harness: a private /run/user and PID/IPC namespaces. A unit is not a test. The puller runs on the
 # user manager with the real /run/user so herdr's socket and the ssh agent stay reachable, and the host runtimes
 # see the same session a login shell does (runtimeTestWrapper stays available, off, for the microvm runtime).
-# Consequence at cutover: the hand-started processes wrote their pidfiles from inside the namespace, so
-# ~/.local/state/substrate/puller.pid holds namespace pid 2. Seen from the host, pid 2 is a kernel thread the puller
-# cannot signal (EPERM), which apps/puller/src/pidfile.ts counts as alive, so the unit would exit 3 until that
-# pidfile is removed. Retire the nohup processes first (SIGTERM their HOST pids, RUN.md), then remove
-# ~/.local/state/substrate/{puller,pusher}.pid, then start the units.
+#
+# THE PULLER'S PIDFILE LIVES IN ITS RuntimeDirectory ($RUNTIME_DIRECTORY/puller.pid, placeholder @RUNTIME_DIRECTORY@
+# filled at start), not on persistent disk. apps/puller/src/pidfile.ts counts any pid it cannot signal (EPERM) as a
+# live puller, so a pidfile left on disk by a crash, SIGKILL, OOM kill or power loss, whose pid is later taken by a
+# root or other-user process, would make every start exit 3. systemd clears the RuntimeDirectory on unit stop and
+# at boot, and the unit already guarantees one instance, so that trap cannot arise; 3 is also no longer in
+# RestartPreventExitStatus, so a transient hold is retried every RestartSec.
+#
+# CUTOVER from the hand-started processes: they wrote ~/.local/state/substrate/{puller,pusher}.pid from inside the
+# runtime-test namespace, so both hold namespace pid 2 (a kernel thread on the host). The unit puller no longer
+# reads that path; the unit pusher treats pid 2 as stale and REPLACES it, so a unit pusher started beside a live
+# nohup pusher runs as a second pusher on one gentle-state.json. Order: (1) SIGTERM both nohup processes by their
+# HOST pids (RUN.md) and confirm they exited; (2) rm -f ~/.local/state/substrate/{puller.pid,pusher.pid,
+# puller.host.pid,puller.supervisor.pid}; (3) only then switch / start the units.
 #
 # THE TOKENS ARE PATHS, NEVER VALUES. The floor's operator bearer (FLOOR_TOKEN) and the puller's per-link token
 # (one entry of the floor's LINK_TOKENS, bound to `holder`) are agenix secrets, decrypted at /run/agenix/<name>
@@ -120,7 +129,7 @@ let
       holder = cfg.puller.holder;
       link_token_file = "@LINK_TOKEN_FILE@";
       state_dir = cfg.puller.stateDir;
-      pidfile = cfg.puller.pidfile;
+      pidfile = if cfg.puller.pidfile == null then "@RUNTIME_DIRECTORY@/puller.pid" else cfg.puller.pidfile;
       max_runs = cfg.puller.maxRuns;
       node_dispatch = cfg.puller.nodeDispatch;
       runtimes = "${runtimesToml}";
@@ -154,7 +163,7 @@ let
     test -r "$link" || { echo "substrate-puller: no link-token credential" >&2; exit 78; }
     umask 077
     ${pkgs.gnused}/bin/sed "s|@FLOOR_TOKEN_FILE@|$token|" ${deployConfigTemplate} > "$RUNTIME_DIRECTORY/substrate.json"
-    ${pkgs.gnused}/bin/sed -e "s|@FLOOR_TOKEN_FILE@|$token|" -e "s|@LINK_TOKEN_FILE@|$link|" ${clientConfigTemplate} > "$RUNTIME_DIRECTORY/config.toml"
+    ${pkgs.gnused}/bin/sed -e "s|@FLOOR_TOKEN_FILE@|$token|" -e "s|@LINK_TOKEN_FILE@|$link|" -e "s|@RUNTIME_DIRECTORY@|$RUNTIME_DIRECTORY|" ${clientConfigTemplate} > "$RUNTIME_DIRECTORY/config.toml"
     export SUBSTRATE_CONFIG="$RUNTIME_DIRECTORY/substrate.json"
     export SUBSTRATE_CLIENT_CONFIG="$RUNTIME_DIRECTORY/config.toml"
     # [puller].runtimes is the primary; loadRuntimes (packages/runners/src/config.ts) still falls back to this.
@@ -407,10 +416,9 @@ in
       };
 
       pidfile = mkOption {
-        type = types.str;
-        default = "${home}/.local/state/substrate/puller.pid";
-        defaultText = lib.literalExpression ''"''${home}/.local/state/substrate/puller.pid"'';
-        description = "[puller].pidfile: one puller per box (a second exits 3).";
+        type = types.nullOr types.str;
+        default = null;
+        description = "[puller].pidfile: one puller per box (a second exits 3). null (the default) renders $RUNTIME_DIRECTORY/puller.pid, which systemd clears on unit stop and at boot, so a pidfile left by an unclean exit cannot block the next start. A path on persistent disk brings that stale-pidfile trap back.";
       };
 
       clientConfigFile = mkOption {
@@ -617,10 +625,10 @@ in
         ];
         RuntimeDirectory = "substrate-puller";
         RuntimeDirectoryMode = "0700";
-        # 3 another puller holds the pidfile, 75 another session holds this holder (L5), 78 bad config or token:
-        # none is cured by a restart.
+        # 75 another session holds this holder (L5), 78 bad config or token: neither is cured by a restart. 3 (another
+        # puller holds the pidfile) is retried every RestartSec: the pidfile is in the RuntimeDirectory, so a hold is
+        # transient and a restart is the cure.
         RestartPreventExitStatus = [
-          3
           75
           78
         ];

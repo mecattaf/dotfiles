@@ -81,6 +81,9 @@ assert hasInfix "/etc/profiles/per-user/tom/bin" pusherUnit.environment.PATH;
 assert hasInfix "/home/tom/.local/bin" pusherUnit.environment.PATH;
 assert hasInfix "/etc/profiles/per-user/tom/bin" declared.systemd.user.services.substrate-puller.environment.PATH;
 assert pullerUnit.serviceConfig.RuntimeDirectory == "substrate-puller";
+# The pidfile is in the RuntimeDirectory, so a hold is transient: 3 must be retried, not terminal.
+assert !(builtins.elem 3 pullerUnit.serviceConfig.RestartPreventExitStatus);
+assert builtins.elem 75 pullerUnit.serviceConfig.RestartPreventExitStatus;
 pkgs.runCommand "substrate-modules"
   {
     nativeBuildInputs = [ pkgs.python3 ];
@@ -131,7 +134,8 @@ pkgs.runCommand "substrate-modules"
     assert p["holder"] == "coordinator" and p["link_token_file"] == "@LINK_TOKEN_FILE@" and p["seat"] == "cc2", p
     assert p["node_dispatch"] == "local" and p["runtimes"].endswith("substrate-runtimes.toml") and p["max_runs"] == 1, p
     assert p["state_dir"] == "/home/tom/.local/state/substrate/puller"
-    assert p["pidfile"] == "/home/tom/.local/state/substrate/puller.pid" and p["cap"] == 2, p
+    assert p["pidfile"] == "@RUNTIME_DIRECTORY@/puller.pid" and p["cap"] == 2, p
+    assert "s|@RUNTIME_DIRECTORY@|$RUNTIME_DIRECTORY|" in start, "the start script must fill the pidfile placeholder"
     assert p["default_model"] == "claude-opus-5-5", p
     assert p["demand_dir"] == "/home/tom/.local/state/substrate/demand", p
     assert p["drain_timeout_s"] == 60 and p["capacity_wait_s"] == 600, p

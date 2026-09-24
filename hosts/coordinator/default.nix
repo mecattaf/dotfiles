@@ -102,10 +102,12 @@
   # "inherit"). Tokens: secrets/substrate-floor-token.age (FLOOR_TOKEN) and
   # secrets/substrate-link-token-coordinator.age (this holder's LINK_TOKENS
   # entry), delivered to tom 0400. No runtime-test wrapper: the puller runs
-  # with the real /run/user so herdr and ssh stay reachable. Cutover: SIGTERM
-  # the nohup processes by their HOST pids, remove
-  # ~/.local/state/substrate/{puller,pusher}.pid (they hold namespace pid 2),
-  # then switch. Rollback: both `false` and switch.
+  # with the real /run/user so herdr and ssh stay reachable. Cutover, in this
+  # order: (1) SIGTERM both nohup processes by their HOST pids and confirm
+  # they exited (a unit pusher treats the namespace pid 2 in pusher.pid as
+  # stale and would run beside a live nohup pusher); (2) rm -f
+  # ~/.local/state/substrate/{puller.pid,pusher.pid,puller.host.pid,puller.supervisor.pid};
+  # (3) only then switch. Rollback: both `false` and switch.
   services.substrate = {
     floorUrl = "https://substrate.mecattaf.dev";
     pusher = {
