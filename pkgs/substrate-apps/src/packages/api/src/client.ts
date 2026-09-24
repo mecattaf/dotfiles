@@ -18,6 +18,8 @@ export interface ClientOptions {
   readonly access?: { readonly clientId: string; readonly clientSecret: string }
   readonly fetch?: typeof globalThis.fetch
   readonly timeoutMs?: number
+  /** G-BK5: the live lease a run-scoped write is made under, sent as x-substrate-lease: <leaseId>:<attempt>. */
+  readonly lease?: { readonly leaseId: string; readonly attempt: number }
 }
 
 export interface SeatRow {
@@ -48,6 +50,7 @@ export class SubstrateClient {
     const h = new Headers(extra)
     if (this.#o.token) h.set("authorization", `Bearer ${this.#o.token}`)
     if (this.#o.access) { h.set("cf-access-client-id", this.#o.access.clientId); h.set("cf-access-client-secret", this.#o.access.clientSecret) }
+    if (this.#o.lease) h.set("x-substrate-lease", `${this.#o.lease.leaseId}:${this.#o.lease.attempt}`)
     return h
   }
 
@@ -75,6 +78,8 @@ export class SubstrateClient {
     try { return JSON.parse(r.text) } catch { throw new SubstrateError(r.status, "not-json", `${method} ${path} answered a non-JSON body`) }
   }
   private p = (s: string) => encodeURIComponent(s)
+  /** G-BK5: the same client, its run-scoped writes made under a live lease (Buildkite's job token). */
+  underLease(leaseId: string, attempt: number): SubstrateClient { return new SubstrateClient({ ...this.#o, lease: { leaseId, attempt } }) }
 
   // ---- runs
   /** Submit a workflow script (source text) or AgentJobs. Idempotent when `id` is given. */
@@ -102,7 +107,38 @@ export class SubstrateClient {
   // ---- jobs
   async job(name: string): Promise<S.JobView> { return decode(JobReply, await this.json("GET", `/jobs/${this.p(name)}`), "job").job }
   async output(name: string): Promise<S.JobOutput> { return decode(S.JobOutput, await this.json("GET", `/jobs/${this.p(name)}/output`), "output") }
+  /** G-BK3: append one live log chunk for the live attempt `leaseId`/`attempt` of job `name`. Idempotent by (leaseId, seq). */
+  async appendLog(name: string, c: { leaseId: string; attempt: number; seq: number; data: string }): Promise<{ duplicate: boolean; id: number; offset: number }> {
+    return await this.json("POST", `/jobs/${this.p(name)}/log`, c) as { duplicate: boolean; id: number; offset: number }
+  }
+  /** G-BK3: a job's live log chunks after cursor `after`. */
+  async jobLog(name: string, after = 0): Promise<{ chunks: ReadonlyArray<{ id: number; leaseId: string; attempt: number; seq: number; offset: number; bytes: number; data: string; at: number }>; next: number }> {
+    return await this.json("GET", `/jobs/${this.p(name)}/log?after=${after}`) as never
+  }
   async cancelJob(name: string): Promise<S.JobView> { return decode(JobReply, await this.json("POST", `/jobs/${this.p(name)}/cancel`), "cancelJob").job }
+  // ---- transcripts (AUDIT-transcripts TX2)
+  async transcripts(name: string): Promise<S.TranscriptManifest> { return decode(S.TranscriptManifest, await this.json("GET", `/jobs/${this.p(name)}/transcript`), "transcripts") }
+  async transcript(name: string, part: string, o: { partial?: boolean; idx?: number } = {}): Promise<string> {
+    const q = new URLSearchParams({ ...(o.partial ? { partial: "1" } : {}), ...(o.idx !== undefined ? { idx: String(o.idx) } : {}) }).toString()
+    return (await this.request("GET", `/jobs/${this.p(name)}/transcript/${this.p(part)}${q ? `?${q}` : ""}`)).text
+  }
+  /** Upload one part in chunks (each under the floor's 1 MB) and seal it with its sha256. Idempotent: a replay of the
+   *  same text re-stores the same chunks and the commit answers duplicate. */
+  async uploadTranscript(name: string, part: string, text: string, o: { chunkChars?: number } = {}): Promise<{ sha256: string; bytes: number; chunks: number }> {
+    const step = o.chunkChars ?? 300_000 // UTF-16 units; at most 3 bytes each, so a chunk stays under 1 MB
+    const chunks: Array<string> = []
+    for (let i = 0; i < text.length;) {
+      let end = Math.min(text.length, i + step)
+      if (end < text.length && end - i > 1) { const c = text.charCodeAt(end - 1); if (c >= 0xd800 && c <= 0xdbff) end-- } // never split a pair
+      chunks.push(text.slice(i, end)); i = end
+    }
+    if (chunks.length === 0) chunks.push("")
+    for (const [i, c] of chunks.entries()) await this.request("PUT", `/jobs/${this.p(name)}/transcript/${this.p(part)}/${i}`, { text: c, contentType: "text/plain; charset=utf-8" })
+    const bytes = new TextEncoder().encode(text).length
+    const sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)))].map((x) => x.toString(16).padStart(2, "0")).join("")
+    await this.json("POST", `/jobs/${this.p(name)}/transcript/${this.p(part)}/commit`, { sha256, bytes, chunks: chunks.length })
+    return { sha256, bytes, chunks: chunks.length }
+  }
   async events(after = 0): Promise<ReadonlyArray<S.FloorEvent>> { return decode(EventsReply, await this.json("GET", `/events?after=${after}`), "events").events }
 
   // ---- capacity and seats

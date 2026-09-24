@@ -59,6 +59,7 @@ export function hostRunner(name = "host", opts: { timeoutMs?: number } = {}): Ru
         env: { ...hostHarnessEnv(process.env), ...job.env },
         timeoutMs: job.timeoutMs ?? opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         signal,
+        ...(job.cancelGraceMs !== undefined ? { cancelGraceMs: job.cancelGraceMs } : {}),
         ...(job.procFile ? { procFile: job.procFile } : {}),
       });
       return { runtime: name, jobId: job.id, ...r };

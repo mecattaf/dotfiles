@@ -12,3 +12,4 @@ export { workerdRunner, workerdConfig, AGENT_REFUSAL, type WorkerdOptions } from
 export { axRunner, axTaskSpec, fold, AX_NOT_DISPATCHED, INLINE_ENV_BUDGET, type AxCall, type AxTask } from "./ax.ts";
 export { runnerFor } from "./registry.ts";
 export { RunnerBackend, credentialMount, credentialMounts, seatShadowRoot, sweepSeatShadows, writeFresh, reapWorktreeRecords, worktreeRecordFile, testSeatGuard, TEST_SEAT_ENV, type Route, type RunnerCall, type RunnerAgentOutcome, type RunnerBackendOptions } from "./backend.ts";
+export { archiveShadowTranscripts, copyCapped, storeText, capBytes, findClaudeSession, findCodexRollout, transcriptRootFor, transcriptSummary, DEFAULT_TRANSCRIPT_CAP, MAX_TRANSCRIPT_FILES, type TranscriptFile } from "./transcripts.ts";

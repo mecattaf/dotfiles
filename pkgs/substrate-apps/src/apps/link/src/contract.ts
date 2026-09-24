@@ -8,6 +8,7 @@
 //   Complete.withdrew  round 2: the leaseId of attempt n+1 that rule 4b withdrew when it accepted attempt n's verdict.
 //                      The link releases n+1 only when it is named here; it never infers a withdrawal (a duplicate
 //                      answer or a delivered retryable failure withdrew nothing)
+//   Grant.reassignSeconds  red team double-run-r1-1: when another holder may get n+1, so the link fences itself first
 //   Complete.withdrewTransitions  round 3: the leaseTransitions of the generation rule 4b withdrew. A floor that
 //                      requeues the withdrawn attempt under the same leaseId grants it again with a higher value; the
 //                      link treats a grant as withdrawn only when its generation matches
@@ -24,7 +25,7 @@ const Labels = Schema.Record(Schema.String, Schema.String)
 export const PromptRef = Schema.Struct({
   sha256: Schema.String, // content address; the guest refuses on mismatch (FIELD-MAP 5a AX_CONWIP_PROMPT_SHA256)
   bytes: Schema.Int,
-  uri: Schema.String // journal://<runId>/<index>/prompt.md
+  uri: Schema.String // journal://<runId>/<journal-key>/prompt.md (metadata: not part of a job's enqueue identity)
 })
 export const AgentJob = Schema.Struct({
   apiVersion: Schema.Literal("ultracode.mecattaf.dev/v1alpha1"),
@@ -84,7 +85,11 @@ export const Grant = Schema.Struct({
   lease: LeaseSpec,
   supersedes: Schema.optionalKey(Schema.Array(Schema.String)), // L3
   leaseToken: Schema.optionalKey(Schema.String), // L7, only while the guest completes (pre-P1)
-  deadline: Schema.optionalKey(Schema.Number) // epoch ms; acquireTime + timeout-minutes
+  deadline: Schema.optionalKey(Schema.Number), // epoch ms; acquireTime + timeout-minutes
+  // Red team double-run-r1-1: seconds after the last renewal past which the floor may grant attempt n+1 to ANOTHER
+  // holder (lease + grace + the rule 7b pin). A link that cannot renew deletes its Task before then, since that holder's
+  // supersedes fence cannot reach this executor.
+  reassignSeconds: Schema.optionalKey(Schema.Number)
 })
 export type Grant = typeof Grant.Type
 export const Usage = Schema.Struct({ prompt_tokens: Schema.Int, completion_tokens: Schema.Int, tool_calls: Schema.Int })
@@ -177,5 +182,7 @@ export const RETRYABLE = new Set([
 ])
 // Round 2, final (not in RETRYABLE): `infra/verdict-undeliverable` (the floor answered every delivery of the real
 // verdict with a server error; a rerun would most likely produce the same bytes) and `agent/output-too-large` (the
-// result is over the link's cap, below the floor's 2 MB row limit).
+// result is over the link's cap, below the floor's 2 MB row limit). Critique D.2: `infra/delete-stuck` (a superseded
+// attempt stayed Terminating through the fence timeout; retried, the floor would place attempt n+1 on the same holder,
+// which fences the same stuck name again, so it is final until the floor can avoid a holder).
 export const isRetryableReason = (reason: string) => RETRYABLE.has(reason)

@@ -319,6 +319,7 @@ export function gvisorRunner(name: string, o: GvisorOptions): Runner {
           stdin: job.stdin,
           timeoutMs: job.timeoutMs ?? o.timeoutMs ?? DEFAULT_TIMEOUT_MS,
           signal,
+          ...(job.cancelGraceMs !== undefined ? { cancelGraceMs: job.cancelGraceMs } : {}),
           // The runsc and pasta tree is recorded like a host job's, so reapProcFiles finds it.
           ...(job.procFile ? { procFile: job.procFile } : {}),
         });

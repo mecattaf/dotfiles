@@ -52,3 +52,15 @@ describe("config", () => {
     expect(JSON.stringify(d.paths)).not.toContain("\"500\"")
   })
 })
+
+describe("G-BK5 underLease", () => {
+  it("sends x-substrate-lease on every request of the derived client, and only there", async () => {
+    const seen: Array<string | null> = []
+    const fetch = (async (_u: unknown, init?: RequestInit) => { seen.push(new Headers(init?.headers).get("x-substrate-lease")); return new Response("{\"enqueued\":[]}", { status: 201 }) }) as typeof globalThis.fetch
+    const { SubstrateClient } = await import("../src/client.ts")
+    const c = new SubstrateClient({ url: "http://f.test", token: "t", fetch })
+    await c.request("POST", "/runs/r1/jobs", { json: [] })
+    await c.underLease("run-r1-a2", 2).request("POST", "/runs/r1/jobs", { json: [] })
+    expect(seen).toEqual([null, "run-r1-a2:2"])
+  })
+})

@@ -96,6 +96,7 @@ export function sshRunner(name: string, o: SshOptions): Runner {
           stdin: job.stdin,
           timeoutMs: job.timeoutMs ?? o.timeoutMs ?? DEFAULT_TIMEOUT_MS,
           signal,
+          ...(job.cancelGraceMs !== undefined ? { cancelGraceMs: job.cancelGraceMs } : {}),
         });
       } catch (e) {
         if (record) rmSync(record, { force: true });

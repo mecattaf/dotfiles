@@ -54,6 +54,17 @@ export const JobOutput = Schema.Struct({
 }).annotate({ identifier: "JobOutput", description: "A job's recorded verdict and output." })
 export type JobOutput = typeof JobOutput.Type
 
+export const TranscriptPart = Schema.Struct({
+  part: Schema.String, sha256: Schema.NullOr(Schema.String), bytes: Schema.Number, chunks: Schema.Number,
+  committed: Schema.Boolean, committedAt: Schema.NullOr(Schema.Number)
+}).annotate({ identifier: "TranscriptPart", description: "One part of a job's harness transcript (AUDIT-transcripts TX2): sealed by a sha256 commit." })
+export type TranscriptPart = typeof TranscriptPart.Type
+export const TranscriptManifest = Schema.Struct({ name: Schema.String, parts: Schema.Array(TranscriptPart) })
+  .annotate({ identifier: "TranscriptManifest", description: "A job's stored transcript parts." })
+export type TranscriptManifest = typeof TranscriptManifest.Type
+export const TranscriptCommit = Schema.Struct({ sha256: Schema.String, bytes: Schema.Number, chunks: Schema.Number })
+  .annotate({ identifier: "TranscriptCommit", description: "What an uploader says the assembled part is; the floor checks it." })
+
 export const FloorEvent = Schema.Struct({
   seq: Schema.Number, run_id: Schema.NullOr(Schema.String), name: Schema.String, lease_id: Schema.NullOr(Schema.String),
   attempt: Schema.Number, result: Schema.String, reason: Schema.NullOr(Schema.String), at_ms: Schema.Number

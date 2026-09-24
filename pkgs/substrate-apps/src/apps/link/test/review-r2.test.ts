@@ -192,7 +192,10 @@ describe("review round 2: fixed", () => {
     w.floor.enqueue(job("2"))
     await until("job 2 leased", () => J(w, "2").state !== "queued", 3000)
     await until("job 1 closed", () => J(w).state === "done", 3000)
-    expect([J(w).result, (J(w).output as any)?.reason, refused]).toEqual(["failure", "infra/verdict-undeliverable", 4])
+    expect([J(w).result, (J(w).output as any)?.reason]).toEqual(["failure", "infra/verdict-undeliverable"])
+    // critique pass 2026-09-24 (durability-r2-8): a try is charged only when a Lease or Heartbeat succeeded since the
+    // previous one, so the ceiling of 4 charges takes at least 4 refusals (the first try is never charged)
+    expect(refused).toBeGreaterThanOrEqual(4)
     expect(l.has("verdict-replaced", "wf-test-1-a1")).toBe(true)
     await l.drain()
   })
@@ -375,7 +378,8 @@ describe("review round 2: fixed", () => {
     const ax = new FakeAx()
     ax.gateways.set("halogen", gw(["worker", "::/0"]))
     const logs = await runStub({}, ax, stubFloor([grantOf("w")]), 400)
-    expect([logs.some((l) => l.ev === "gateway-missing"), ax.tasks.has("wf-test-w-a1")]).toEqual([true, false])
+    // critique D.2 item 5: an existing Gateway that allows everything is logged gateway-open, not gateway-missing
+    expect([logs.some((l) => l.ev === "gateway-open"), ax.tasks.has("wf-test-w-a1")]).toEqual([true, false])
   })
 
   // ---------------------------------------------------------------- R2-9: nothing from before an ax outage opens the gate

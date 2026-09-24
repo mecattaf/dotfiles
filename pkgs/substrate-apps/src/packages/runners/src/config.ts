@@ -52,6 +52,12 @@ const common = {
    * seat here is bound to no seat (never the local [seats].claude).
    */
   seat: Schema.optionalKey(Schema.String),
+  /**
+   * codex's own sandbox for its tool calls. Default `read-only`; an
+   * implementation node that must write in its job dir names
+   * `workspace-write`. Only on a codex-harness table.
+   */
+  codexSandbox: Schema.optionalKey(Schema.Literals(["read-only", "workspace-write"])),
 };
 
 export const HostRuntime = Schema.Struct({ type: Schema.Literal("host"), ...common });
@@ -84,6 +90,14 @@ export const GvisorRuntime = Schema.Struct({
   network: Schema.optionalKey(Schema.Literals(["isolated", "host", "none"])),
   /** The pasta binary for `isolated`. Default: `pasta` on PATH. */
   pasta: Schema.optionalKey(Schema.String),
+  /**
+   * false: no seat credential is mounted (default true); desk context, being
+   * read-only, still is.
+   * A claude harness is refused on such a table; the reserved runtime name
+   * `locked` must be a gVisor table with credential = false and a network
+   * other than `host` (guardrail: untrusted input never sees a seat).
+   */
+  credential: Schema.optionalKey(Schema.Boolean),
 });
 
 export const MicrovmRuntime = Schema.Struct({
@@ -95,6 +109,8 @@ export const MicrovmRuntime = Schema.Struct({
   nixpkgs: Schema.optionalKey(Schema.String),
   vcpu: Schema.optionalKey(Schema.Int),
   memMiB: Schema.optionalKey(Schema.Int),
+  /** false: no seat credential is mounted (see the gVisor table). */
+  credential: Schema.optionalKey(Schema.Boolean),
 });
 
 export const SshRuntime = Schema.Struct({
@@ -151,6 +167,13 @@ export type Runtime = typeof Runtime.Type;
 export const Credentials = Schema.Struct({
   /** The Claude seat config dir, mounted (never copied) into runtimes that need it. Default `~/.claude`. */
   claude: Schema.optionalKey(Schema.String),
+  /**
+   * AUDIT-transcripts TX5: capacity seat id -> the Claude config dir that IS that seat, e.g.
+   * `seat_dirs = { cc = "~/.claude", cc2 = "~/.claude-work" }`. When present, a claude call runs with the dir of the
+   * seat its route spends (a runtime's `seat`, else `[seats].claude`, else the run's --seat), and a call whose seat
+   * has no entry is refused: the gate must never admit on one seat while another seat's window is spent.
+   */
+  seat_dirs: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   /** Default `rw` (Tom, 2026-09-21: a rw seat config mount). */
   mode: Schema.optionalKey(Schema.Literals(["ro", "rw"])),
   /**
@@ -160,6 +183,23 @@ export const Credentials = Schema.Struct({
    * 09-21 form, which lets a job rewrite host hooks). A ruling question for Tom.
    */
   scope: Schema.optionalKey(Schema.Literals(["credential", "dir"])),
+  /**
+   * Seat id -> that seat's Claude config dir, e.g. `cc = "~/.claude"`,
+   * `cc2 = "~/.claude-work"` (critique pass 2026-09-24, RG-1: one global
+   * `claude` dir let a job gated and ledgered as cc2 spend cc). A claude job
+   * mounts the dir of the seat it is gated on, never another. With this map
+   * present every claude runtime with a local credential must name a seat in
+   * it; without it `claude` serves only when it is set explicitly and at most
+   * one claude seat is bound in the file.
+   */
+  seats: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  /**
+   * Desk context bound READ-ONLY into a sandboxed (gVisor) job's config dir,
+   * e.g. `["~/today/CLAUDE.md", "~/.claude/skills",
+   * "~/mecattaf/dotfiles/home/agent-runtime-rules.md"]` (guardrail 5): the job
+   * reads the rules, and cannot rewrite what the next host session runs.
+   */
+  context: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
 const Ceilings = Schema.Struct({
@@ -186,6 +226,21 @@ export const RuntimesFile = Schema.Struct({
   phases: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   credentials: Schema.optionalKey(Credentials),
   runtime: Schema.optionalKey(Schema.Record(Schema.String, Runtime)),
+  /** G-BK1: SIGTERM-then-SIGKILL grace on cancel, stop, supersede or a lost lease. Default 10000; 0 kills at once. */
+  cancel_grace_ms: Schema.optionalKey(Schema.Number),
+  /**
+   * G-BK8, Buildkite's agent lifecycle hooks. Operator-owned argv run on the
+   * host around every agent() call; a job never supplies hooks. pre_start
+   * exiting non-zero vetoes the call (its stderr is the reason); pre_exit runs
+   * after the harness ends, even on cancel, to upload or preserve artifacts.
+   * Each hook gets SUBSTRATE_JOB_ID, SUBSTRATE_JOB_DIR, SUBSTRATE_RUNTIME and,
+   * for pre_exit, SUBSTRATE_EXIT_CODE and SUBSTRATE_ABORTED.
+   */
+  hooks: Schema.optionalKey(Schema.Struct({
+    pre_start: Schema.optionalKey(Schema.Array(Schema.String)),
+    pre_exit: Schema.optionalKey(Schema.Array(Schema.String)),
+    timeout_ms: Schema.optionalKey(Schema.Number),
+  })),
 });
 export type RuntimesFile = typeof RuntimesFile.Type;
 
@@ -193,7 +248,19 @@ export type RuntimesFile = typeof RuntimesFile.Type;
 export interface RuntimesConfig {
   readonly default: string;
   readonly phases: Readonly<Record<string, string>>;
-  readonly credentials: { readonly claude: string; readonly mode: "ro" | "rw"; readonly scope: "credential" | "dir" };
+  readonly credentials: {
+    readonly claude: string;
+    readonly mode: "ro" | "rw";
+    readonly scope: "credential" | "dir";
+    /** Seat id -> Claude config dir (absolute): `[credentials.seats]` merged with the TX5 spelling `seat_dirs`. */
+    readonly seats?: Readonly<Record<string, string>>;
+    /** Whether `claude` was set by the file (true) or is the `~/.claude` default (false or absent). */
+    readonly claudeExplicit?: boolean;
+    /** Desk context paths (absolute) bound read-only into gVisor jobs. */
+    readonly context?: readonly string[];
+    /** Seats that `seat_dirs` and `[credentials.seats]` both name with different dirs (a load error). */
+    readonly seatSpellingConflicts?: readonly string[];
+  };
   readonly runtimes: Readonly<Record<string, Runtime>>;
   /** The call-override allow list, when the file has one. */
   readonly allow?: readonly string[];
@@ -203,6 +270,10 @@ export interface RuntimesConfig {
   readonly source: string;
   /** The model allowlist; absent means DEFAULT_MODEL_ALLOWLIST. */
   readonly models?: ModelAllowlist;
+  /** G-BK1: cancel grace for every runtime's harness (ms). Absent: DEFAULT_CANCEL_GRACE_MS. */
+  readonly cancelGraceMs?: number;
+  /** G-BK8: operator lifecycle hooks. */
+  readonly hooks?: { readonly preStart?: readonly string[]; readonly preExit?: readonly string[]; readonly timeoutMs?: number };
 }
 
 export const DEFAULT_PATH = "~/.config/substrate/runtimes.toml";
@@ -228,6 +299,18 @@ export class RuntimesConfigError extends Error {
 
 const PATH_KEYS = ["socket", "runsc", "state", "workerd"] as const;
 
+/**
+ * `[credentials.seats]` (RG-1) and `seat_dirs` (TX5) are two spellings of one map, merged at the 2026-09-24
+ * integrate. A seat both name with different dirs is recorded and refused at load.
+ */
+function seatMaps(seats: Readonly<Record<string, string>> | undefined, seatDirs: Readonly<Record<string, string>> | undefined, home: string) {
+  if (seats === undefined && seatDirs === undefined) return {};
+  const a = Object.fromEntries(Object.entries(seats ?? {}).map(([k, v]) => [k, expandHome(v, home)]));
+  const b = Object.fromEntries(Object.entries(seatDirs ?? {}).map(([k, v]) => [k, expandHome(v, home)]));
+  const conflicts = Object.keys(b).filter((k) => a[k] !== undefined && a[k] !== b[k]);
+  return { seats: { ...b, ...a }, ...(conflicts.length ? { seatSpellingConflicts: conflicts } : {}) };
+}
+
 /** Decode and check a parsed document. Throws RuntimesConfigError with every problem found. */
 export function decodeRuntimes(doc: unknown, source: string, home = homedir()): RuntimesConfig {
   let file: RuntimesFile;
@@ -251,14 +334,31 @@ export function decodeRuntimes(doc: unknown, source: string, home = homedir()): 
       claude: expandHome(file.credentials?.claude ?? "~/.claude", home),
       mode: file.credentials?.mode ?? "rw",
       scope: file.credentials?.scope ?? "credential",
+      ...seatMaps(file.credentials?.seats, file.credentials?.seat_dirs, home),
+      ...(file.credentials?.claude !== undefined ? { claudeExplicit: true } : {}),
+      ...(file.credentials?.context !== undefined ? { context: file.credentials.context.map((p) => expandHome(p, home)) } : {}),
     },
     runtimes,
     ...(file.allow !== undefined ? { allow: file.allow } : {}),
     seats: file.seats ?? {},
     source,
     ...(file.models !== undefined ? { models: file.models } : {}),
+    ...(file.cancel_grace_ms !== undefined ? { cancelGraceMs: file.cancel_grace_ms } : {}),
+    ...(file.hooks !== undefined ? { hooks: {
+      ...(file.hooks.pre_start?.length ? { preStart: file.hooks.pre_start } : {}),
+      ...(file.hooks.pre_exit?.length ? { preExit: file.hooks.pre_exit } : {}),
+      ...(file.hooks.timeout_ms !== undefined ? { timeoutMs: file.hooks.timeout_ms } : {}),
+    } } : {}),
   };
   const problems: string[] = [...(file.models !== undefined ? modelAllowlistProblems(file.models) : [])];
+  if (file.cancel_grace_ms !== undefined && !(Number.isFinite(file.cancel_grace_ms) && file.cancel_grace_ms >= 0 && file.cancel_grace_ms <= 600_000))
+    problems.push("cancel_grace_ms must be a number of milliseconds from 0 to 600000");
+  if (file.hooks?.timeout_ms !== undefined && !(Number.isFinite(file.hooks.timeout_ms) && file.hooks.timeout_ms > 0 && file.hooks.timeout_ms <= 600_000))
+    problems.push("hooks.timeout_ms must be a number of milliseconds from 1 to 600000");
+  for (const k of ["pre_start", "pre_exit"] as const) {
+    const h = file.hooks?.[k];
+    if (h !== undefined && h.length > 0 && !h[0]!.startsWith("/")) problems.push(`hooks.${k} must be an argv whose first element is an absolute path`);
+  }
   const known = (n: string) => lookupRuntime(config, n) !== undefined;
   if (!known(config.default)) problems.push(`default = ${JSON.stringify(config.default)} names no runtime`);
   for (const [phase, n] of Object.entries(config.phases)) {
@@ -277,6 +377,14 @@ export function decodeRuntimes(doc: unknown, source: string, home = homedir()): 
   for (const n of config.allow ?? []) if (!known(n)) problems.push(`allow names ${JSON.stringify(n)}, which is no runtime`);
   for (const h of Object.keys(config.seats)) if (!["claude", "pi", "codex"].includes(h)) problems.push(`seats.${h}: no such harness`);
   if (!config.credentials.claude.startsWith("/")) problems.push(`credentials.claude must be absolute`);
+  problems.push(...guardrailProblems(config));
+  for (const s of config.credentials.seatSpellingConflicts ?? []) problems.push(`credentials: seat ${s} has one dir in [credentials.seats] and another in seat_dirs`);
+  const byDir = new Map<string, string>();
+  for (const [seat, dir] of Object.entries(config.credentials.seats ?? {})) {
+    const other = byDir.get(dir);
+    if (other !== undefined) problems.push(`credentials.seats: ${other} and ${seat} name the same dir ${dir}; one config dir is one seat`);
+    byDir.set(dir, seat);
+  }
   if (problems.length) throw new RuntimesConfigError(`${source}:\n  ${problems.join("\n  ")}`);
   return config;
 }
@@ -311,7 +419,8 @@ export function loadRuntimes(path?: string, home = homedir()): RuntimesConfig {
 export interface Selection {
   readonly name: string;
   readonly runtime: Runtime;
-  readonly via: "call" | "phase" | "default";
+  /** `seat`: the call named a seat (agent({seat}) or runs-on seat:X) and this is the one runtime that spends it. */
+  readonly via: "call" | "phase" | "default" | "seat";
 }
 
 /** Pick the runtime for one agent() call. Throws when the call or phase names an unknown runtime. */
@@ -335,7 +444,7 @@ export function selectRuntime(
     const refuse = (why: string) => {
       throw new RuntimesConfigError(`agent({runtime: ${JSON.stringify(call.runtime)}}) refused: ${why} (${config.source})`);
     };
-    if (call.runtime !== base.name) {
+    if (call.runtime !== base.name && !isLockedTable(config, call.runtime)) {
       if (config.allow !== undefined) {
         if (!config.allow.includes(call.runtime)) refuse(`not on the file's allow list [${config.allow.join(", ")}]`);
       } else {
@@ -378,4 +487,188 @@ function baseSelection(config: RuntimesConfig, phase: string | undefined): Selec
     }
   }
   return { name: config.default, runtime: lookupRuntime(config, config.default)!, via: "default" };
+}
+
+/** Runtime types whose claude harness reads a LOCAL seat config dir (credentialMount). */
+export const LOCAL_CREDENTIAL = new Set<Runtime["type"]>(["host", "runtime-test", "herdr", "gvisor", "microvm"]);
+
+/** The harness a runtime runs an agent() call with. */
+export const harnessOf = (r: Runtime): "claude" | "pi" | "codex" => r.harness ?? "claude";
+
+/** Whether a runtime table carries a seat credential at all (`credential = false` on gVisor or microvm says no). */
+export const carriesCredential = (r: Runtime): boolean => !((r.type === "gvisor" || r.type === "microvm") && r.credential === false);
+
+/**
+ * The capacity seat a call on this runtime spends: the table's own `seat`,
+ * else `[seats][harness]`, else (claude only) the run's --seat. An ssh claude
+ * spends the remote login, so with no table seat it spends none here. codex
+ * on ax is never rendered (backend.ts), so it spends none.
+ */
+export function seatOf(config: Pick<RuntimesConfig, "seats">, r: Runtime, defaultSeat?: string): string | undefined {
+  const h = harnessOf(r);
+  if (r.type === "ax" && h === "codex") return undefined;
+  if (r.seat !== undefined) return r.seat;
+  if (r.type === "ssh" && h === "claude") return undefined;
+  return config.seats[h] ?? (h === "claude" ? defaultSeat : undefined);
+}
+
+/**
+ * The Claude config dir a claude job gated on `seat` must spend (RG-1), or
+ * why none can be named. With `[credentials.seats]`: that seat's entry, and a
+ * seat not in it is refused. Without it: the explicit `[credentials].claude`
+ * (decodeRuntimes has checked that at most one claude seat is bound), or,
+ * for a call bound to no seat at all, the default dir. A bound seat against
+ * the implicit `~/.claude` default is refused: nothing says that dir is the seat.
+ */
+export function credentialDirFor(
+  config: Pick<RuntimesConfig, "credentials">,
+  seat: string | undefined,
+  /** The seat came from the run's --seat, not from the file: without a map it keeps the pre-RG-1 default dir (the receipt marks it). */
+  fromRunSeat = false,
+): { dir: string; unverified?: true } | { refused: string } {
+  const map = config.credentials.seats ?? {};
+  if (seat !== undefined && map[seat] !== undefined) return { dir: map[seat]! };
+  if (Object.keys(map).length > 0) {
+    return { refused: seat === undefined
+      ? `a claude job bound to no capacity seat cannot pick a dir from [credentials.seats] (${Object.keys(map).join(", ")})`
+      : `seat ${seat} has no Claude config dir in [credentials.seats] (declared: ${Object.keys(map).join(", ")}); a job gated on ${seat} never spends another seat's dir` };
+  }
+  if (seat === undefined || config.credentials.claudeExplicit === true) return { dir: config.credentials.claude };
+  if (fromRunSeat) return { dir: config.credentials.claude, unverified: true };
+  return { refused: `seat ${seat} is bound to no Claude config dir: declare [credentials.seats] ${seat} = "<dir>" (the implicit ${config.credentials.claude} default is not tied to any seat, so a job gated on ${seat} could spend another)` };
+}
+
+/** Load-time guardrail checks (critique pass 2026-09-24): seat credentials, locked, codexSandbox, context. */
+function guardrailProblems(config: RuntimesConfig): string[] {
+  const problems: string[] = [];
+  const map = config.credentials.seats ?? {};
+  for (const [s, d] of Object.entries(map)) if (!d.startsWith("/")) problems.push(`credentials.seats.${s} must be absolute, got ${d}`);
+  const ctx = config.credentials.context ?? [];
+  const names = new Set<string>();
+  for (const c of ctx) {
+    if (!c.startsWith("/")) problems.push(`credentials.context entry must be absolute, got ${c}`);
+    const b = c.replace(/\/+$/, "").split("/").pop() ?? "";
+    // The credential file's name is reserved: a context entry never shadows it.
+    if (b === "" || b.startsWith(".credentials") || b === "context") problems.push(`credentials.context entry ${c} has a reserved or empty name`);
+    if (names.has(b)) problems.push(`credentials.context has two entries named ${b}`);
+    names.add(b);
+  }
+  // Every runtime a call can reach by default: the declared tables plus a built-in default.
+  const reachable: Array<[string, Runtime]> = Object.entries(config.runtimes);
+  if (config.runtimes[config.default] === undefined) {
+    const d = lookupRuntime(config, config.default);
+    if (d) reachable.push([config.default, d]);
+  }
+  const claudeSeats = new Set<string>();
+  for (const [name, r] of reachable) {
+    const h = harnessOf(r);
+    if (r.codexSandbox !== undefined && h !== "codex") problems.push(`runtime.${name}.codexSandbox applies to the codex harness only (harness is ${h})`);
+    if (!carriesCredential(r) && h === "claude") problems.push(`runtime.${name}: credential = false with the claude harness, which cannot run without a seat credential`);
+    if (name === "locked") {
+      if (r.type !== "gvisor") problems.push(`runtime.locked must be type = "gvisor" (got ${r.type}): the reserved name promises no credential and no host loopback`);
+      else {
+        if (r.credential !== false) problems.push(`runtime.locked must set credential = false`);
+        if (r.network === "host") problems.push(`runtime.locked must not use network = "host"`);
+      }
+    }
+    if (h !== "claude" || !LOCAL_CREDENTIAL.has(r.type) || !carriesCredential(r)) continue;
+    const seat = seatOf(config, r);
+    if (seat === undefined) continue; // bound at run time by --seat; credentialDirFor judges it then
+    claudeSeats.add(seat);
+    const d = credentialDirFor(config, seat);
+    if ("refused" in d) problems.push(`runtime.${name}: ${d.refused}`);
+  }
+  if (Object.keys(map).length === 0 && config.credentials.claudeExplicit === true && claudeSeats.size > 1) {
+    problems.push(`credentials.claude is one dir but the file binds ${claudeSeats.size} claude seats (${[...claudeSeats].join(", ")}); declare [credentials.seats]`);
+  }
+  return problems;
+}
+
+/**
+ * A declared gVisor table with no credential and no host network: a call
+ * moving INTO it gives up authority, so the allow list never bars it.
+ */
+function isLockedTable(config: Pick<RuntimesConfig, "runtimes">, name: string): boolean {
+  const r = config.runtimes[name];
+  return r !== undefined && r.type === "gvisor" && r.credential === false && r.network !== "host";
+}
+
+/** The routing opts of one agent() call (interpreter key.ts ROUTE_OPTS). */
+export interface CallRoute {
+  readonly runtime?: unknown;
+  readonly seat?: unknown;
+  readonly runsOn?: unknown;
+  readonly phase?: string | undefined;
+}
+
+/**
+ * Pick the runtime for one call from ALL its routing opts (critique pass
+ * 2026-09-24, RG-2: `agent({seat:'codex'})` was keyed but ignored, and ran
+ * claude). Honoured or refused, never dropped:
+ *
+ *   - `runsOn` is a list of `seat:<id>` and `runtime:<name>` labels (the
+ *     floor's runs-on); any other label is refused here, where no holder
+ *     matches labels.
+ *   - a named runtime goes through selectRuntime's confinement; a named seat
+ *     must then be the seat that runtime spends.
+ *   - a seat alone picks the ONE runtime this file permits the call that
+ *     spends that seat: the phase or default runtime when it does, else the
+ *     unique permitted table. None, or several, is a refusal naming them.
+ */
+export function selectForCall(config: RuntimesConfig, call: CallRoute, defaultSeat?: string): Selection {
+  const refuse = (why: string): never => {
+    throw new RuntimesConfigError(`agent() route refused: ${why} (${config.source})`);
+  };
+  let runtime = call.runtime;
+  let seat = call.seat;
+  if (seat !== undefined && typeof seat !== "string") refuse(`agent({seat}) must be a string, got ${typeof seat}`);
+  if (call.runsOn !== undefined) {
+    if (!Array.isArray(call.runsOn) || call.runsOn.some((l) => typeof l !== "string")) refuse(`agent({runsOn}) must be an array of labels`);
+    for (const l of call.runsOn as string[]) {
+      const m = /^(seat|runtime):(.+)$/.exec(l);
+      if (!m) refuse(`runs-on label ${JSON.stringify(l)} is neither seat:<id> nor runtime:<name>; a local dispatch cannot honour it`);
+      const [, k, v] = m!;
+      if (k === "seat") {
+        if (seat !== undefined && seat !== v) refuse(`runs-on seat:${v} contradicts seat ${String(seat)}`);
+        seat = v;
+      } else {
+        if (runtime !== undefined && runtime !== v) refuse(`runs-on runtime:${v} contradicts runtime ${String(runtime)}`);
+        runtime = v;
+      }
+    }
+  }
+  if (runtime !== undefined) {
+    const sel = selectRuntime(config, { runtime, phase: call.phase });
+    if (seat !== undefined) {
+      const spends = seatOf(config, sel.runtime, defaultSeat);
+      if (spends !== seat) refuse(`runtime ${sel.name} spends seat ${spends ?? "(none)"}, not ${String(seat)}`);
+    }
+    return sel;
+  }
+  if (seat === undefined) return selectRuntime(config, { phase: call.phase });
+  // The phase or default runtime wins when it already spends the seat (no move at all).
+  let base: Selection | undefined;
+  try {
+    base = selectRuntime(config, { phase: call.phase });
+  } catch {
+    base = undefined;
+  }
+  if (base && seatOf(config, base.runtime, defaultSeat) === seat) return base;
+  const names = [...new Set([...Object.keys(config.runtimes), ...(config.allow ?? []), config.default])];
+  const matches: Selection[] = [];
+  for (const n of names) {
+    let sel: Selection;
+    try {
+      sel = selectRuntime(config, { runtime: n, phase: call.phase });
+    } catch {
+      continue; // not permitted to this call
+    }
+    if (seatOf(config, sel.runtime, defaultSeat) === seat) matches.push(sel);
+  }
+  if (matches.length === 0) {
+    const served = names.map((n) => [n, lookupRuntime(config, n)] as const).filter(([, r]) => r).map(([n, r]) => `${n}=${seatOf(config, r!, defaultSeat) ?? "(none)"}`);
+    refuse(`no runtime this file permits the call spends seat ${seat} (runtime=seat: ${served.join(", ")})`);
+  }
+  if (matches.length > 1) refuse(`seat ${seat} is spent by ${matches.length} permitted runtimes (${matches.map((m) => m.name).join(", ")}); name one with agent({runtime})`);
+  return { ...matches[0]!, via: "seat" };
 }

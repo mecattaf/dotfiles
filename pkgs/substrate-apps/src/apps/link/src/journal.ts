@@ -21,6 +21,9 @@ export type Entry =
   | { ev: "lease-key"; requestKey: string } // B8: a Lease is in flight with this key; reuse it until its reply lands
   | { ev: "lease-replied"; requestKey: string; abandoned?: true } // the reply's grants are journaled; the next Lease draws a new key
   | { ev: "tomb"; leaseId: string; gen: Gen } // round 3: written by compaction for a finished lease; refuses its redelivery
+  | { ev: "renewed"; leaseId: string } // red team double-run-r1-1: the floor renewed this grant at `t` (the send time); the self-fence clock survives a restart
+  | { ev: "delete-retry"; leaseId: string; n: number } // critique D.2 ladder: DeleteTask re-sent for the n-th time while the Task stays Terminating
+  | { ev: "delete-stuck"; leaseId: string; freeProven: boolean } // critique D.2 ladder: the delete is given up on; `freeProven` only from a Substrate read
 
 /** Round 3: a grant generation. `acquireTime` is absent when only the floor's `withdrewTransitions` is known. */
 export interface Gen { readonly leaseTransitions: number; readonly acquireTime?: number }
@@ -48,6 +51,11 @@ export interface LeaseRec {
   released?: string
   deleting?: string // why: cancel, lost, dropped, janitor, pre-start, deadline, superseded
   deleted?: boolean
+  renewedAt?: number // red team double-run-r1-1: the latest journaled renewal of this grant generation (local ms)
+  deletingAt?: number // critique D.2: when the FIRST DeleteTask intent was journaled; the Terminating ladder's clock (survives compaction)
+  deleteRetries?: number // critique D.2: DeleteTask re-sends journaled by the ladder
+  deleteStuck?: boolean // critique D.2: the ladder gave up on this name (delete-stuck)
+  freeProven?: boolean // critique D.2: a Substrate read proved the stuck Task holds no worker; only then is its slot released
   at: number // when this record was last touched (ms)
 }
 
@@ -91,6 +99,10 @@ export class Journal {
     }
     if (e.ev === "grant-invalid") { if (!this.recs.has(e.leaseId) && !this.invalid.has(e.leaseId)) this.invalid.set(e.leaseId, { attempt: e.attempt, message: e.message, at: t }); return }
     const r = this.recs.get(e.leaseId)
+    if (e.ev === "renewed") { if (r) r.renewedAt = Math.max(r.renewedAt ?? 0, t); return } // not a touch: `at` stays
+    // Critique D.2: ladder bookkeeping is not a touch either, so `at` (the janitor's and the tomb's clock) stays
+    if (e.ev === "delete-retry") { if (r) r.deleteRetries = Math.max(r.deleteRetries ?? 0, e.n); return }
+    if (e.ev === "delete-stuck") { if (r) { r.deleteStuck = true; r.freeProven = e.freeProven } return }
     if (!r) {
       const x = this.invalid.get(e.leaseId)
       if (x && e.ev === "reported") x.reported = true
@@ -98,7 +110,9 @@ export class Journal {
       if (x && e.ev === "released") x.released ??= e.why
       return
     }
-    r.at = t
+    // Critique D.2: compaction rewrites lines with their own times (the deleting line carries deletingAt, which is
+    // earlier than the last touch), so `at` is the latest time seen, not the time of the last line replayed.
+    r.at = Math.max(r.at, t)
     switch (e.ev) {
       case "creating": r.creating = true; delete r.notMine; if (e.digest !== undefined) r.creatingDigest = e.digest; break
       case "not-mine": r.notMine = true; delete r.creating; break
@@ -107,7 +121,7 @@ export class Journal {
       case "reported": r.reported = true; r.duplicate = e.duplicate; if (e.withdrew !== undefined) { r.withdrew = e.withdrew; if (e.withdrewGen !== undefined) r.withdrewGen = e.withdrewGen } break
       case "dropped": r.dropped = e.code; break
       case "released": r.released ??= e.why; break
-      case "deleting": r.deleting ??= e.why; break
+      case "deleting": r.deleting ??= e.why; r.deletingAt ??= t; break
       case "deleted": r.deleted = true; break
     }
   }
@@ -153,7 +167,10 @@ export class Journal {
         if (r.dropped !== undefined) lines.push({ ev: "dropped", leaseId: id, code: r.dropped })
         if (r.released !== undefined) lines.push({ ev: "released", leaseId: id, why: r.released })
         if (r.deleting !== undefined) lines.push({ ev: "deleting", leaseId: id, why: r.deleting })
-        for (const l of lines) writeSync(fd, JSON.stringify({ t: l.ev === "created" || l.ev === "grant" ? (r.createdAt ?? r.at) : r.at, ...l }) + "\n")
+        for (const l of lines) writeSync(fd, JSON.stringify({ t: l.ev === "created" || l.ev === "grant" ? (r.createdAt ?? r.at) : l.ev === "deleting" ? (r.deletingAt ?? r.at) : r.at, ...l }) + "\n")
+        if (r.deleteRetries !== undefined) writeSync(fd, JSON.stringify({ t: r.at, ev: "delete-retry", leaseId: id, n: r.deleteRetries }) + "\n")
+        if (r.deleteStuck) writeSync(fd, JSON.stringify({ t: r.at, ev: "delete-stuck", leaseId: id, freeProven: r.freeProven === true }) + "\n")
+        if (r.renewedAt !== undefined) writeSync(fd, JSON.stringify({ t: r.renewedAt, ev: "renewed", leaseId: id }) + "\n")
       }
       const now = Date.now()
       for (const [id, x] of this.tombs) {

@@ -55,6 +55,8 @@ export interface ProcessJob {
    * the same run can find and kill an orphan (successor review 2026-09-23).
    */
   readonly procFile?: string;
+  /** G-BK1: SIGTERM, then this long before SIGKILL, when the call is aborted (cancel, stop, supersede, lost). */
+  readonly cancelGraceMs?: number;
 }
 
 export interface WorkerJob {

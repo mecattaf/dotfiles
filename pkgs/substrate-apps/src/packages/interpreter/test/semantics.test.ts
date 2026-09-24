@@ -48,6 +48,30 @@ describe("realm isolation and determinism guards", () => {
     const r = await run(`return [new Date(0).toISOString(), Date.UTC(2026, 8, 23), Date.parse('2026-09-23T00:00:00Z'), new Date(0) instanceof Date]`);
     expect(r.result).toEqual(["1970-01-01T00:00:00.000Z", Date.UTC(2026, 8, 23), Date.UTC(2026, 8, 23), true]);
   });
+  it.each([
+    ["argless Intl format() (D17)", "new Intl.DateTimeFormat('en-US', { timeStyle: 'medium', timeZone: 'UTC' }).format()"],
+    ["argless Intl formatToParts() (D17)", "Intl.DateTimeFormat().formatToParts()"],
+  ])("%s throws", async (_n, expr) => {
+    const r = await run(`return ${expr}`);
+    expect(r.status).toBe("failed");
+    expect(r.error).toMatch(/Intl\.DateTimeFormat format(ToParts)?\(\) with no date is not available in a workflow script/);
+  });
+  it("D17: Intl and toLocaleString default to UTC, not the host zone; a given date and zone still format", async () => {
+    // Mirrors critique-pass/scratch/parity-tally/probe/d17.js, which read "Europe/Paris" and the wall clock before.
+    const r = await run(`return [Intl.DateTimeFormat().resolvedOptions().timeZone, new Intl.DateTimeFormat('en-US', { timeStyle: 'short' }).format(new Date(0)),
+      new Intl.DateTimeFormat('en-US', { timeStyle: 'short', timeZone: 'Asia/Tokyo' }).format(new Date(0)), new Date(0).toLocaleString('en-US'),
+      typeof Intl.DateTimeFormat.supportedLocalesOf, new Intl.DateTimeFormat('en-US', { timeZone: 'UTC' }).formatToParts(new Date(0)).length > 0]`);
+    expect(r.status).toBe("completed");
+    expect(r.result).toEqual(["UTC", "12:00 AM", "9:00 AM", "1/1/1970, 12:00:00 AM", "function", true]);
+  });
+  it("D17: Date's local-time accessors and multi-field constructor answer in UTC", async () => {
+    const r = await run(`const d = new Date(0); const e = new Date(2026, 8, 23, 7); e.setHours(9); return [d.getHours(), d.getTimezoneOffset(), d.toString(), d.toDateString(), d.toTimeString(), e.toISOString(), e.getDay()]`);
+    expect(r.result).toEqual([0, 0, "Thu, 01 Jan 1970 00:00:00 GMT", "Thu, 01 Jan 1970", "00:00:00 GMT", "2026-09-23T09:00:00.000Z", 3]);
+  });
+  it("D17: the Intl guard cannot be undone by the script", async () => {
+    const r = await run(`try { Intl.DateTimeFormat = function () {} } catch {}; try { Date.prototype.toLocaleString = () => 'x' } catch {}; return [(() => { try { Intl.DateTimeFormat().format(); return 'ran' } catch { return 'threw' } })(), new Date(0).toLocaleString('en-US')]`);
+    expect(r.result).toEqual(["threw", "1/1/1970, 12:00:00 AM"]);
+  });
   it("a guard cannot be undone by the script", async () => {
     const r = await run(`try { Math.random = () => 4 } catch {}; try { globalThis.Date = function () {} } catch {}; return [typeof (()=>{ try { return Math.random() } catch { return 'threw' } })(), (()=>{ try { Date.now(); return 'ran' } catch { return 'threw' } })()]`);
     expect(r.result).toEqual(["string", "threw"]);

@@ -199,3 +199,22 @@ export const snapshotFromSeatsV1 = (doc, config, now) => {
     skipped
   }
 }
+
+// ---- the oracle's environment (parity gap PT-01, 2026-09-24).
+// The dotfiles `seats` oracle consults a peer cache before the network; its default is the tally-rewrite feeder's
+// meters directory. The pusher points it at a substrate-owned directory instead, so no substrate process reads a
+// tally-era path. `peerCacheDir: "inherit"` keeps the oracle's own default (the old behaviour), for a box where the
+// tally feeder still runs and its readings are wanted to spare the rate-limited usage endpoint.
+export const DEFAULT_PEER_CACHE_SUBDIR = "seats-peer-cache"
+
+/** The environment the pusher runs `seats` with. Pure: `stateDir` is the substrate state directory. */
+export const oracleEnv = (config = {}, stateDir, env = {}) => {
+  const configured = config.peerCacheDir ?? undefined
+  if (configured === "inherit") return { ...env }
+  if (configured !== undefined && (typeof configured !== "string" || configured === "")) {
+    throw new SeatsFormatError("peerCacheDir must be a non-empty path or \"inherit\"")
+  }
+  const dir = configured ?? `${stateDir.replace(/\/+$/, "")}/${DEFAULT_PEER_CACHE_SUBDIR}`
+  if (/tally-rewrite/.test(dir)) throw new SeatsFormatError("peerCacheDir must not be a tally-rewrite path; use \"inherit\" to keep the oracle's own default")
+  return { ...env, SEATS_PEER_CACHE_DIR: dir }
+}

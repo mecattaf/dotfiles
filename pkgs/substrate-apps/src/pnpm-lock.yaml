@@ -71,6 +71,19 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.4)(supports-color@10.2.2)(tsx@4.23.15)
 
+  apps/evaluator:
+    dependencies:
+      '@substrate/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
+    devDependencies:
+      effect:
+        specifier: 4.0.0-rc.112
+        version: 4.0.0-rc.112
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@22.20.4)(supports-color@10.2.2)(tsx@4.23.15)
+
   apps/floor:
     dependencies:
       '@substrate/api':

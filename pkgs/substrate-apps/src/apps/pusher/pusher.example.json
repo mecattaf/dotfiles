@@ -3,6 +3,7 @@
   "floorUrl": "https://substrate.example.dev",
   "tokenFile": "~/.local/state/substrate/pusher-token",
   "seatsBin": "~/.local/bin/seats",
+  "peerCacheDir": "~/.local/state/substrate/seats-peer-cache",
   "host": "coordinator",
   "seats": [
     "cc",

@@ -8,10 +8,9 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Deferred, Effect } from "effect"
 import { grpcAx } from "./ax.ts"
-import { ConfigInvalid, readLinkEnv } from "./config.ts"
+import { ConfigInvalid, linkConfigOf, readLinkEnv } from "./config.ts"
 import type { LinkEnv } from "./config.ts"
 import { rpcFloor } from "./floor.ts"
-import { seatOf } from "./jobs.ts"
 import { Journal } from "./journal.ts"
 import { runLink } from "./link.ts"
 
@@ -57,36 +56,21 @@ try { ax = grpcAx(c.axServer, c.atespace, undefined, c.axProtoPath) } catch (e) 
 }
 const program = Effect.gen(function*() {
   const stop = yield* Deferred.make<void>()
+  // G-BK4: with LINK_DRAIN_TIMEOUT_SECONDS > 0 the first signal drains (no new leases; the link exits once every Task
+  // it holds has ended and its verdict is delivered, or at the timeout), the second stops at once. Default 0: stop at
+  // once, as before (ax Tasks keep running and are re-adopted by the next start).
+  const drain = yield* Deferred.make<void>()
+  const drainS = Number(process.env.LINK_DRAIN_TIMEOUT_SECONDS ?? "0")
+  let signals = 0
   for (const sig of ["SIGTERM", "SIGINT"] as const)
-    process.once(sig, () => { log("stop-requested", { signal: sig }); Effect.runFork(Deferred.succeed(stop, undefined)) })
+    process.on(sig, () => {
+      signals++
+      if (signals === 1 && Number.isFinite(drainS) && drainS > 0) { log("drain-requested", { signal: sig, drainTimeoutS: drainS }); Effect.runFork(Deferred.succeed(drain, undefined)); return }
+      log("stop-requested", { signal: sig }); Effect.runFork(Deferred.succeed(stop, undefined))
+    })
   const floor = yield* rpcFloor({ url: floorUrl, token, sessionId })
-  yield* runLink({
-    holder: c.holder,
-    maxInFlight: c.maxInFlight,
-    servedLabels: c.servedLabels,
-    shape: {
-      atespace: c.atespace,
-      image: c.image,
-      gateway: c.gateway,
-      command: (job) => { const seat = seatOf(job); return seat === undefined ? undefined : c.seatCommands[seat] }, // B7: no default seat
-      ...(c.guestCompleteUrl !== undefined ? { completeUrl: c.guestCompleteUrl } : {})
-    },
-    completion: c.completion,
-    secondMs: 1000,
-    resyncMs: c.resyncSeconds * 1000,
-    pendingTimeoutMs: c.pendingTimeoutSeconds * 1000,
-    deleteAfterMs: c.deleteAfterSeconds * 1000,
-    deadlineBackstopMs: c.deadlineBackstopSeconds * 1000,
-    createAttempts: c.createAttempts,
-    outboxBackoffMs: [c.outboxBackoffSeconds[0] * 1000, c.outboxBackoffSeconds[1] * 1000],
-    fenceTimeoutMs: c.fenceTimeoutSeconds * 1000,
-    resultReadTries: c.resultReadTries,
-    verdictAttempts: c.verdictAttempts,
-    maxOutputBytes: c.maxOutputBytes,
-    internalHosts: c.internalHosts,
-    floorUrls
-  }, {
-    ax, floor, journal, log, stop, floorUrl,
+  yield* runLink(linkConfigOf(c, floorUrls), {
+    ax, floor, journal, log, stop, floorUrl, drain, ...(drainS > 0 ? { drainTimeoutMs: drainS * 1000 } : {}),
     onEndpoint: (url) => { // B18: persist, drain, exit 75 so systemd restarts onto the new URL
       writeFileSync(endpointPath, url + "\n", { mode: 0o600 })
       restartForEndpoint = true

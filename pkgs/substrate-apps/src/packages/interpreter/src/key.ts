@@ -83,7 +83,22 @@ export const KEY_PATTERN = /^v\d+:[0-9a-f]{64}$/;
  * journal's `key` (harness compatibility); this rides beside it as `cid`.
  */
 export function contentHash(prompt: string, opts: Record<string, unknown> | undefined | null): string {
-  return createHash("sha256").update(prompt).update("\0").update(canonicalOpts(opts)).digest("hex");
+  const h = createHash("sha256").update(prompt).update("\0").update(canonicalOpts(opts));
+  // codex review 3, C3-8: where a call runs is part of what it is. Two calls with one prompt on different runtimes
+  // or seats must not share a cid, or a resume that reaches them in another order hands one the other's result.
+  // Added only when a route is named, so the cid of every call without one is unchanged (journals stay valid).
+  const route = routeOpts(opts);
+  if (route !== "{}") h.update("\0route\0").update(route);
+  return h.digest("hex");
+}
+
+const ROUTE_OPTS = ["runtime", "seat", "runsOn"] as const;
+/** The routing subset of opts (not part of the harness chain key), serialized canonically. */
+export function routeOpts(opts: Record<string, unknown> | undefined | null): string {
+  if (!opts) return "{}";
+  const picked: Record<string, unknown> = {};
+  for (const k of ROUTE_OPTS) if (opts[k] !== undefined && typeof opts[k] !== "function") picked[k] = opts[k];
+  return JSON.stringify(canon(picked));
 }
 export const contentId = (hash: string, occurrence: number): string => `c1:${hash}#${occurrence}`;
 export const CID_PATTERN = /^c1:[0-9a-f]{64}#[1-9][0-9]*$/;

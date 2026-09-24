@@ -273,7 +273,10 @@ describe("conwip link failure matrix", () => {
   })
 
   it("F13 deadline passes while the floor is unreachable: the local backstop deletes the Task and queues the verdict", async () => {
-    const w = guestWorld(); w.floor.enqueue(job("1", { "timeout-minutes": 1 }))
+    // red team double-run-r1-1: a pin (rule 7b) long enough that the grant's reassignSeconds outlasts the deadline, so the
+    // deadline backstop acts before the self-fence would (lease 6 + grace 15 + pin 300 s against timeout 60 + 15 s)
+    const w = world({ tokens: { "tok-nas": { holder: "nas-link-1", guest: true } }, pinSeconds: 300 }); w.ax.p1 = false
+    w.floor.enqueue(job("1", { "timeout-minutes": 1 }))
     const l = start(w, dir, GUEST)
     await until("running", () => w.ax.tasks.get("wf-test-1-a1")?.phase === "Running")
     w.floor.down = true

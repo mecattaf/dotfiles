@@ -16,6 +16,9 @@
 //                       (config tokenFile; default ~/.local/state/substrate/pusher-token)
 //   --seats-bin PATH    the oracle (config seatsBin; default ~/.local/bin/seats)
 //   --seats-json FILE   read the oracle's answer from a file instead of running it
+//   --peer-cache-dir D  the oracle's peer cache (config peerCacheDir; default
+//                       ~/.local/state/substrate/seats-peer-cache; "inherit" keeps
+//                       the oracle's own default)
 //   --state PATH        default ~/.local/state/substrate/pusher/gentle-state.json
 //   --pidfile PATH      default ~/.local/state/substrate/pusher.pid
 //   --demand-dir DIR    default ~/.local/state/substrate/demand; a file touched here marks the box active
@@ -34,6 +37,7 @@ import { dirname, join } from "node:path"
 import { parseArgs } from "node:util"
 
 import { initialGentleState, postSnapshot, tick } from "../src/gentle.mjs"
+import { oracleEnv } from "../src/seatsOracle.mjs"
 import { tokenFromFile } from "../src/token.mjs"
 
 const home = homedir()
@@ -50,7 +54,7 @@ try {
     options: {
       config: { type: "string" }, url: { type: "string" }, "token-file": { type: "string" },
       "seats-bin": { type: "string" }, "seats-json": { type: "string" }, state: { type: "string" },
-      pidfile: { type: "string" }, "demand-dir": { type: "string" },
+      pidfile: { type: "string" }, "demand-dir": { type: "string" }, "peer-cache-dir": { type: "string" },
       once: { type: "boolean", default: false }, "dry-run": { type: "boolean", default: false }
     },
     strict: true
@@ -75,6 +79,13 @@ const dryRun = args["dry-run"]
 const url = args.url ?? config.floorUrl
 const tokenFile = expand(args["token-file"] ?? config.tokenFile ?? join(stateDir, "pusher-token"))
 const seatsBin = expand(args["seats-bin"] ?? config.seatsBin ?? join(home, ".local", "bin", "seats"))
+let seatsEnv
+try {
+  const peer = args["peer-cache-dir"] ?? config.peerCacheDir
+  seatsEnv = oracleEnv({ ...config, peerCacheDir: peer === undefined || peer === "inherit" ? peer : expand(peer) }, stateDir, process.env)
+} catch (error) {
+  fail(2, error.message)
+}
 const seatsJson = args["seats-json"] === undefined ? null : expand(args["seats-json"])
 const statePath = expand(args.state ?? join(stateDir, "pusher", "gentle-state.json"))
 const pidfile = expand(args.pidfile ?? join(stateDir, "pusher.pid"))
@@ -155,7 +166,7 @@ const runOracle = () =>
   seatsJson !== null
     ? Promise.resolve(JSON.parse(readFileSync(seatsJson, "utf8")))
     : new Promise((resolve, reject) => {
-        execFile(seatsBin, ["--json", "--no-spend"], { timeout: 90_000, maxBuffer: 16 * 1024 * 1024 }, (error, stdout) => {
+        execFile(seatsBin, ["--json", "--no-spend"], { timeout: 90_000, maxBuffer: 16 * 1024 * 1024, env: seatsEnv }, (error, stdout) => {
           if (error) return reject(new Error(`the oracle failed: ${error.code ?? error.signal ?? error.name}`))
           try {
             resolve(JSON.parse(stdout))

@@ -36,7 +36,9 @@ it("FP-1 a short lease granted during the first long heartbeat sleep is renewed 
 })
 
 it("FP-2 attempt n+1 is never created beside a live attempt n, even when the floor omits supersedes", async () => {
-  const w = world({ leaseSeconds: 6, graceSeconds: 2, heartbeatSeconds: 2 })
+  // red team double-run-r1-1: a pin (rule 7b) long enough that the link's own lease-expired fence does not delete a1
+  // before a2's dispatch; this case is about the dispatch fence set, which must still catch a1
+  const w = world({ leaseSeconds: 6, graceSeconds: 2, heartbeatSeconds: 2, pinSeconds: 60 })
   let failHeartbeat = false
   const strip = (s: string) => s.replace(/,"supersedes":\[[^\]]*\]/g, "").replace(/"supersedes":\[[^\]]*\],/g, "")
   const fetch: typeof globalThis.fetch = async (input, init) => {

@@ -118,6 +118,15 @@ export interface ProcSpec {
    * before giving up on them (a detached helper may hold the pipes). Default 2000.
    */
   readonly drainGraceMs?: number;
+  /**
+   * Buildkite's cancel-signal / cancel-grace-period (G-BK1): on abort the whole
+   * group first gets `cancelSignal` (default SIGTERM), so an agent can save its
+   * session, transcript or partial result; whatever is left after
+   * `cancelGraceMs` (default DEFAULT_CANCEL_GRACE_MS) gets SIGKILL. 0 kills at once.
+   * A timeout still kills at once: its budget is already spent.
+   */
+  readonly cancelSignal?: NodeJS.Signals;
+  readonly cancelGraceMs?: number;
 }
 
 export interface ProcResult {
@@ -126,7 +135,14 @@ export interface ProcResult {
   readonly stderr: string;
   readonly durationMs: number;
   readonly timedOut: boolean;
+  /** True when the abort signal ended the process (the cancel path, graceful or not). */
+  readonly aborted?: boolean;
+  /** True when the grace ran out and the group got SIGKILL after the cancel signal. */
+  readonly killedAfterGrace?: boolean;
 }
+
+/** Default cancel grace (G-BK1): Buildkite's cancel-grace-period is 10 s. */
+export const DEFAULT_CANCEL_GRACE_MS = 10_000;
 
 /** Exit code reported when the process could not be started at all (ENOENT, EACCES). */
 export const SPAWN_FAILED = 127;
@@ -181,13 +197,17 @@ export function runProc(spec: ProcSpec): Promise<ProcResult> {
         }
       }
     }
-    const killGroup = () => {
+    const signalGroup = (sig: NodeJS.Signals) => {
       try {
-        if (child.pid !== undefined) process.kill(-child.pid, "SIGKILL");
+        if (child.pid !== undefined) process.kill(-child.pid, sig);
       } catch {
-        child.kill("SIGKILL");
+        try { child.kill(sig); } catch { /* gone */ }
       }
     };
+    const killGroup = () => signalGroup("SIGKILL");
+    let aborted = false;
+    let killedAfterGrace = false;
+    let graceTimer: NodeJS.Timeout | undefined;
     let exited: number | undefined;
     let drain: NodeJS.Timeout | undefined;
     const giveUpOnPipes = () => {
@@ -213,7 +233,19 @@ export function runProc(spec: ProcSpec): Promise<ProcResult> {
             }, spec.drainGraceMs ?? 2000).unref();
           }, spec.timeoutMs)
         : undefined;
-    const onAbort = () => killGroup();
+    const onAbort = () => {
+      aborted = true;
+      if (exited !== undefined) return;
+      const grace = spec.cancelGraceMs ?? DEFAULT_CANCEL_GRACE_MS;
+      if (grace <= 0) return killGroup();
+      signalGroup(spec.cancelSignal ?? "SIGTERM");
+      graceTimer = setTimeout(() => {
+        // The leader may have exited while a descendant ignores the signal: the group still goes.
+        killedAfterGrace = true;
+        killGroup();
+      }, grace);
+      graceTimer.unref();
+    };
     spec.signal?.addEventListener("abort", onAbort, { once: true });
     child.stdout.on("data", (b: Buffer) => {
       if (outN < max) out.push(b.subarray(0, max - outN));
@@ -229,6 +261,7 @@ export function runProc(spec: ProcSpec): Promise<ProcResult> {
       if (child.pid !== undefined) liveGroups.delete(child.pid);
       if (timer) clearTimeout(timer);
       if (drain) clearTimeout(drain);
+      if (graceTimer) clearTimeout(graceTimer);
       // The leader is gone; the rest of its group goes with it, before the
       // record that would let a reaper find them is removed.
       if (child.pid !== undefined && !timedOut) {
@@ -248,6 +281,8 @@ export function runProc(spec: ProcSpec): Promise<ProcResult> {
         stderr,
         durationMs: Math.round(performance.now() - t0),
         timedOut,
+        ...(aborted ? { aborted: true } : {}),
+        ...(killedAfterGrace ? { killedAfterGrace: true } : {}),
       });
     };
     child.on("error", (e) => finish(SPAWN_FAILED, `[runner: spawn failed: ${e.message}]`));

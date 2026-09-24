@@ -153,24 +153,51 @@ export function embedsResult(prompt: string, result: unknown, producerPrompt = "
  * Journal positions by agentId: the first `started` line and the last terminal
  * (`result` or `failed`) line. A line that does not parse is skipped.
  */
-function journalOrder(text: string): { started: Map<string, number>; ended: Map<string, number>; results: Map<string, unknown> } {
+function journalOrder(text: string): { started: Map<string, number>; ended: Map<string, number>; results: Map<string, unknown>; lanes: Map<string, string> } {
+  const lanes = new Map<string, string>();
   const started = new Map<string, number>();
   const ended = new Map<string, number>();
   const results = new Map<string, unknown>();
   text.split("\n").forEach((line, i) => {
     if (line.trim() === "") return;
-    let e: { type?: unknown; agentId?: unknown; result?: unknown };
+    let e: { type?: unknown; agentId?: unknown; result?: unknown; lane?: unknown };
     try {
       e = JSON.parse(line) as typeof e;
     } catch {
       return;
     }
     if (typeof e.agentId !== "string" || e.agentId === "") return;
-    if (e.type === "started" && !started.has(e.agentId)) started.set(e.agentId, i);
+    if (e.type === "started" && !started.has(e.agentId)) {
+      started.set(e.agentId, i);
+      if (typeof e.lane === "string" && e.lane !== "") lanes.set(e.agentId, e.lane);
+    }
     if (e.type === "result" || e.type === "failed") ended.set(e.agentId, i);
     if (e.type === "result") results.set(e.agentId, e.result);
   });
-  return { started, ended, results };
+  return { started, ended, results, lanes };
+}
+
+/**
+ * D06: true when two calls ran on independent chains of one combinator: their
+ * lanes (`<epoch>.r<realm>/<combinator>:<item>/...`, journaled on `started`)
+ * share the epoch and realm, and the first combinator where they differ is the
+ * same combinator with different items. A call with no lane is never a
+ * sibling, so it keeps the conservative rule. INFERRED limit: a script that
+ * passes data between items through shared mutable state defeats this; the
+ * interpreter cannot see that flow.
+ */
+export function siblingLanes(a: string | undefined, b: string | undefined): boolean {
+  if (a === undefined || b === undefined) return false;
+  const [ra, ...sa] = a.split("/");
+  const [rb, ...sb] = b.split("/");
+  if (ra !== rb) return false;
+  for (let i = 0; i < Math.min(sa.length, sb.length); i++) {
+    const [ca, ia] = sa[i]!.split(":");
+    const [cb, ib] = sb[i]!.split(":");
+    if (ca !== cb) return false;
+    if (ia !== ib) return true;
+  }
+  return false;
 }
 
 /** Derive every WorkItem of one run record. One item per `workflow_agent` entry. */
@@ -298,6 +325,7 @@ export function derive(raw: unknown, journal?: string, transcripts?: ReadonlyMap
         continue;
       }
       const xp = promptOf(x);
+      const xl = order.lanes.get(agentIds.get(x.index) ?? "");
       const after = snapshot
         .filter((w) => w.index !== x.index)
         .filter((w) => {
@@ -310,7 +338,10 @@ export function derive(raw: unknown, journal?: string, transcripts?: ReadonlyMap
           // records per-chain lineage on the started line, every call that
           // ended before X started is a dependency. This over-serialises
           // independent pipeline items (D06), which is slow, never wrong.
-          return we !== undefined && we < xs;
+          // D06 (critique pass 2026-09-24): the started line now carries the
+          // call's lane, and a call on a sibling lane of the same combinator
+          // (another pipeline item, another parallel thunk) is not an edge.
+          return we !== undefined && we < xs && !siblingLanes(xl, order.lanes.get(wa));
         })
         .map((w) => w.index);
       items[k] = decodeWorkItem({ ...x, after });

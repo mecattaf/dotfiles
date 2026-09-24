@@ -17,6 +17,7 @@ import { acquirePidfile, PidfileHeld } from "./pidfile.ts"
 import { Puller } from "./puller.ts"
 import type { Executor } from "./puller.ts"
 import { PullerState } from "./state.ts"
+import { serveHealth } from "./health.ts"
 
 const log = (ev: string, f: Record<string, unknown> = {}) => process.stdout.write(JSON.stringify({ t: new Date().toISOString(), ev, ...f }) + "\n")
 
@@ -35,23 +36,39 @@ export const main = async (env: NodeJS.ProcessEnv = process.env): Promise<number
     const state = new PullerState(stateDir)
     let execute: Executor
     if ((p.node_dispatch ?? "local") === "floor") {
-      execute = floorExecutor({ client, defaultRunsOn: p.node_runs_on ?? ["seat:halogen", "runtime:gvisor"], defaultModel: p.default_model ?? "claude-opus-5-5", pollMs: 5000 })
+      execute = floorExecutor({ client, defaultRunsOn: p.node_runs_on ?? ["seat:halogen", "runtime:gvisor"], defaultModel: p.default_model ?? "claude-opus-5-5", pollMs: 5000,
+        ...(p.runtimes ? { runtimes: loadRuntimes(expandHome(p.runtimes)) } : {}) })
     } else {
       if (!p.seat) throw new ConfigError("[puller] seat is required for node_dispatch = \"local\" (the seat the capacity gate reads)")
       const runtimes = loadRuntimes(p.runtimes ? expandHome(p.runtimes) : undefined)
       let capacity: CapacityGate
       try { capacity = new CapacityGate(defaultCapacitySource(), p.seat) } catch (e) { throw new ConfigError(String((e as Error).message)) }
-      execute = localExecutor({ runtimes, seat: p.seat, defaultModel: p.default_model ?? "claude-opus-5-5", cap: p.cap ?? 2, capacity, ...(p.ax_server ? { axServer: p.ax_server } : {}) })
+      const waitS = p.capacity_wait_s ?? 600
+      execute = localExecutor({
+        runtimes, seat: p.seat, defaultModel: p.default_model ?? "claude-opus-5-5", cap: p.cap ?? 2, capacity,
+        demandDir: expandHome(p.demand_dir ?? join(homedir(), ".local/state/substrate/demand")),
+        ...(waitS > 0 ? { capacityWait: { delayMs: 30_000, maxWaitMs: waitS * 1000 } } : {}),
+        ...(p.ax_server ? { axServer: p.ax_server } : {}),
+        transcripts: { client } // TX2: node transcripts reach the floor before the run's verdict
+      })
     }
     const floor = await connectFloor({ url: cfg.floor_url, token: linkToken, sessionId: state.sessionId() })
-    const puller = new Puller({ holder: p.holder, maxRuns: p.max_runs ?? 1, stateDir, pollMs: 5000, heartbeatMs: 10_000 }, { floor: floor.port, client, execute, log })
-    let signalled = false
+    const puller = new Puller({ holder: p.holder, maxRuns: p.max_runs ?? 1, stateDir, pollMs: 5000, heartbeatMs: 10_000, serverPoll: true },
+      { floor: floor.port, client, execute, log, appendLog: (name, c) => client.appendLog(name, c) })
+    // G-BK4, Buildkite's stop ladder: the first signal drains (no new leases; runs finish up to drain_timeout_s), the
+    // second aborts every run (each harness gets its cancel grace, G-BK1), the third SIGKILLs every group and exits.
+    let signals = 0
+    const drainS = p.drain_timeout_s ?? 60
     for (const sig of ["SIGTERM", "SIGINT", "SIGHUP"] as const) process.on(sig, () => {
-      if (signalled) { killLiveGroups("SIGKILL"); process.exit(130) }
-      signalled = true; log("stop-requested", { signal: sig }); puller.stop()
+      signals++
+      if (signals >= 3) { killLiveGroups("SIGKILL"); process.exit(130) }
+      if (signals === 2) { log("stop-requested", { signal: sig }); puller.stop(); return }
+      log("drain-requested", { signal: sig, drainTimeoutS: drainS }); puller.drain(drainS * 1000)
     })
+    const health = p.health_addr ? await serveHealth(p.health_addr, puller) : undefined
+    if (health) log("health", { addr: health.addr })
     log("start", { holder: p.holder, stateDir, nodeDispatch: p.node_dispatch ?? "local", maxRuns: p.max_runs ?? 1, held: Object.keys(puller.held).length })
-    try { await puller.run() } finally { await floor.close() }
+    try { await puller.run() } finally { await floor.close(); health?.close() }
     log("stopped")
     return 0
   } catch (e) {

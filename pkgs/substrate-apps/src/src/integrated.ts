@@ -22,6 +22,8 @@
  *   <dir>/ledger.jsonl   the CONWIP ledger (derive/admit/dispatch/outcome/release/refuse)
  *   <dir>/jobs/<id>/     one job dir per runner attempt, with receipt.json
  *   <dir>/jobs/<id>.proc.json  the runner-side record of a local child's group
+ *   <dir>/jobs/<runId>-c<hash>o<occurrence>-a<n>.outcome.json  a finished attempt's outcome, adopted by a resume
+ *                        that finds no journal line for it (C3-4)
  *   <dir>/record.json    the run record, written when the run ends
  *   <dir>/result.json    status, return value, per-call states, written when the run ends
  */
@@ -92,6 +94,12 @@ export interface IntegratedOptions {
   /** Interpreter concurrency (calls in flight before admission). Default 4. */
   readonly concurrency?: number;
   readonly maxAttempts?: number;
+  /**
+   * C3-5: a resume "retry"s a journaled terminal failure (default, the
+   * CODEX-TRIAGE default) or "replay"s it as the same null, as the
+   * floor-dispatch path does. Pending Tom's ruling (IMPL-reverify-interp).
+   */
+  readonly resumeFailures?: "retry" | "replay";
   /** Absent means no gate: only for a fake seat under test. */
   readonly capacity?: CapacityGate;
   readonly capacityWait?: { readonly delayMs: number; readonly maxWaitMs: number };
@@ -309,11 +317,15 @@ async function runLocked(
     return { model: r.model, seat: r.seat, harness: r.harness, runtime: r.selection.name };
   };
   let dispatched = 0;
+  let adopted = 0;
   const counting: CallBackend = {
     name: backend.name,
-    run: (call, admitted) => {
-      dispatched++;
-      return backend.run(call, admitted);
+    // C3-4: an outcome adopted from an earlier start's finished job ran nothing here.
+    run: async (call, admitted) => {
+      const out = await backend.run(call, admitted);
+      if ((out as { adoptedFrom?: string }).adoptedFrom !== undefined) adopted++;
+      else dispatched++;
+      return out;
     },
   };
   const ledgerPath = join(dir, "ledger.jsonl");
@@ -376,6 +388,7 @@ async function runLocked(
       }
     },
     ...(o.maxAttempts !== undefined ? { maxAttempts: o.maxAttempts } : {}),
+    ...(o.resumeFailures !== undefined ? { resumeFailures: o.resumeFailures } : {}),
     journal: new FileJournal(journalPath),
     events: new FileEventSink(join(dir, "events.jsonl")),
     ...(resumed ? { resumeFrom: parseJournal(journalText) } : {}),
@@ -408,6 +421,7 @@ async function runLocked(
         error: result.error ?? null,
         result: result.result,
         dispatchedThisProcess: dispatched,
+        ...(adopted ? { adoptedThisProcess: adopted } : {}),
         peakConcurrency: result.peakConcurrency,
         slotsInUseAtEnd: conwip.slotsInUse,
         abortedInFlight,

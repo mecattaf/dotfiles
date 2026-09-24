@@ -19,6 +19,10 @@ runtimes = "~/.config/substrate/runtimes.toml"
 seat = "cc"                                                   # the seat the capacity gate reads for this host's calls
 cap = 2                                                       # the WIP cap across this puller's calls
 default_model = "claude-opus-5-5"
+demand_dir = "~/.local/state/substrate/demand"                # marked while a run is held: the pusher reads at its active cadence
+drain_timeout_s = 60                                          # first SIGTERM: runs may finish this long; 2nd signal aborts (cancel grace), 3rd kills
+# health_addr = "127.0.0.1:9311"                              # loopback GET /status.json and /metrics
+capacity_wait_s = 600                                         # a node waits this long for capacity (a stale reading) before it fails
 # ax_server = "nas:7070"                                      # probed only to say why an ax node is refused here
 # floor
 node_runs_on = ["seat:halogen", "runtime:gvisor"]             # runs-on for a node that names none

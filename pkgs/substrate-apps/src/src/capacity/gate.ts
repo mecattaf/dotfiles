@@ -74,6 +74,19 @@ export interface GateContext {
  */
 export const HARNESS_PROVIDER: Readonly<Record<string, string | null>> = { claude: "claude", ax: "claude", pi: "halogen", codex: "codex" };
 
+/**
+ * The model a capacity source is asked about. Only a model that names one known
+ * family can match a model-scoped limit, and `decideCapacity` reads the model
+ * only on a Claude seat, where an id naming no family is refused locally
+ * (`model-unrecognized`). Any other id (`codex`, the codex harness running its
+ * own configured default; a Halogen id) is asked about seat-wide, so the
+ * source's own verdict cannot refuse it as "no known model family" on a seat
+ * that publishes no model-scoped limit (prove lane 2026-09-23: the live floor
+ * refused every codex node with window-unknown).
+ */
+export const sourceModel = (model: string | null): string | null =>
+  model !== null && modelFamily(model) !== undefined ? model : null;
+
 /** Pure: judge one read for one job at one instant. */
 export function decideCapacity(
   seatId: string,
@@ -226,7 +239,7 @@ export class CapacityGate {
   async refresh(model: string | null, asOfMs: number, seatId: string = this.seatId): Promise<void> {
     if (this.source.prepare === undefined) return;
     try {
-      await this.source.prepare(seatId, { model, asOfMs, minHeadroomPct: this.policy.minHeadroomPct });
+      await this.source.prepare(seatId, { model: sourceModel(model), asOfMs, minHeadroomPct: this.policy.minHeadroomPct });
     } catch {
       // The source's contract: a failed prepare leaves read failing closed.
     }
@@ -235,7 +248,7 @@ export class CapacityGate {
   decide(model: string | null, asOfMs: number, seatId: string = this.seatId, ctx: GateContext = {}): GateDecision {
     let read: SeatCapacityRead;
     try {
-      read = this.source.read(seatId, { model });
+      read = this.source.read(seatId, { model: sourceModel(model) });
     } catch (e) {
       read = { ok: false, error: `source threw: ${(e as Error).message}`, from: this.source.name };
     }

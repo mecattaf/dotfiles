@@ -39,6 +39,7 @@ type Job = {
   leaseId?: string; holder?: string; acquire?: number; renew?: number; orphanedAt?: number; transitions: number
   cancel?: string; result?: string; output?: unknown; usage?: unknown; supersedes: Array<string>; token?: string; deadline?: number
   history: Array<string>; infraSpent: number; agentSpent: number; holders: Record<string, string>
+  pin?: { holder: string; until: number } // rule 7b (red team double-run-r1-1)
 }
 export type TokenBinding = string | { holder: string; labels?: Array<string>; guest?: boolean }
 export interface FloorConfig {
@@ -52,6 +53,7 @@ export interface FloorConfig {
   overGrant?: number // a broken floor that grants this many more than asked (B11's test)
   skewedEncode?: boolean // round 1: a floor whose schema drifted from the link's; grants go out without validation
   sendWithdrewGen?: boolean // round 3: Complete names the generation withdrawn (default true)
+  pinSeconds?: number // rule 7b: a grace release keeps n+1 for n's holder this long, or until it heartbeats (default graceSeconds)
 }
 const DEFAULT_LABELS = ["seat:halogen", "runtime:gvisor"]
 const INFRA = new Set(["omitted", "grace", "infra/task-lost", "pre-start/pending-timeout", "pre-start/ax-unavailable", "pre-start/resource-exhausted", "pre-start/superseded-verdict-pending", "infra/link-defect"])
@@ -108,7 +110,10 @@ export class FakeFloor {
   /** An orphan the fleet side no longer vouches for: a cancelled job ends cancelled, any other goes back to the queue. */
   private release(j: Job, why: string) {
     if (j.cancel) { j.history.push(`released:${why}`); return this.finish(j, "cancelled", { reason: j.cancel }) }
+    const h = j.holder
     this.requeue(j, why)
+    const pin = this.o.pinSeconds ?? this.o.graceSeconds
+    if (why === "grace" && h !== undefined && j.state === "queued" && pin > 0) j.pin = { holder: h, until: Date.now() + this.ms(pin) } // rule 7b
   }
   private requeue(j: Job, why: string) {
     j.history.push(`requeue:${why}`)
@@ -152,6 +157,7 @@ export class FakeFloor {
       for (const j of this.jobs.values()) {
         if (rows.length >= free) break
         if (!this.grantable(j, b.labels, extra)) continue
+        if (j.pin !== undefined && j.pin.holder !== p.holderIdentity && j.pin.until > Date.now()) continue // rule 7b
         rows.push(j)
         for (const l of j.job.spec["runs-on"]) extra.set(l, (extra.get(l) ?? 0) + 1)
       }
@@ -159,7 +165,7 @@ export class FakeFloor {
       for (const j of rows) {
         const tm = j.job.spec["timeout-minutes"]
         const leaseId = `${j.name}-a${j.attempt}`
-        Object.assign(j, { state: "leased", leaseId, holder: p.holderIdentity, acquire: now, renew: now, token: b.guest ? randomUUID() : undefined,
+        Object.assign(j, { pin: undefined, state: "leased", leaseId, holder: p.holderIdentity, acquire: now, renew: now, token: b.guest ? randomUUID() : undefined,
           deadline: tm === undefined ? undefined : now + this.ms(tm * 60) })
         j.holders[leaseId] = p.holderIdentity
         j.history.push(`leased:a${j.attempt}`)
@@ -175,7 +181,7 @@ export class FakeFloor {
       grants: rows.map((j) => ({
         leaseId: j.leaseId!, attempt: j.attempt, job: j.job,
         lease: { holderIdentity: j.holder!, leaseDurationSeconds: this.o.leaseSeconds, acquireTime: j.acquire!, renewTime: j.renew!, leaseTransitions: j.transitions },
-        ...(j.supersedes.length ? { supersedes: [...j.supersedes] } : {}), ...(j.token ? { leaseToken: j.token } : {}), ...(j.deadline !== undefined ? { deadline: j.deadline } : {})
+        ...(j.supersedes.length ? { supersedes: [...j.supersedes] } : {}), ...(j.token ? { leaseToken: j.token } : {}), ...(j.deadline !== undefined ? { deadline: j.deadline } : {}), reassignSeconds: this.o.leaseSeconds + this.o.graceSeconds + (this.o.pinSeconds ?? this.o.graceSeconds)
       })),
       stats: this.stats(), nextPollSeconds: this.paused.has(p.holderIdentity) ? this.o.pollSeconds * 10 : this.o.pollSeconds, heartbeatSeconds: this.o.heartbeatSeconds
     }
@@ -184,6 +190,7 @@ export class FakeFloor {
   heartbeat(p: { holderIdentity: string; leaseIds: ReadonlyArray<string>; pendingRequestKey?: string }) {
     this.sweep()
     this.calls.push({ rpc: "Heartbeat", holder: p.holderIdentity, leaseIds: p.leaseIds })
+    for (const j of this.jobs.values()) if (j.pin?.holder === p.holderIdentity) j.pin = undefined // rule 7b: it hears lost now
     const byKey = new Set(this.vouchByKey && p.pendingRequestKey !== undefined ? this.grants.get(p.pendingRequestKey) ?? [] : [])
     for (const id of byKey) { // rule 6b: vouched for by key, not listed (the holder never saw these ids)
       if (p.leaseIds.includes(id)) continue
@@ -227,7 +234,7 @@ export class FakeFloor {
         j = q
       } else return { code: "stale-attempt" as const }
     }
-    if (holder !== undefined && j.holders[p.leaseId] !== holder) return { code: "stale-attempt" as const } // rule 11
+    if (holder !== undefined && j.holders[p.leaseId] !== holder) return { code: "unknown-lease" as const } // rule 11 (red team auth r2-7: no oracle for a stranger)
     if (j.state === "done") return { duplicate: true, stats: this.stats() }
     if ((j.state !== "leased" && j.state !== "orphaned") || j.attempt !== p.attempt) return { code: "stale-attempt" as const }
     const reason = (p.output as FailureOutput | undefined)?.reason

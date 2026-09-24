@@ -10,7 +10,7 @@ import { SubstrateClient } from "@substrate/api"
 import { localFloor } from "@substrate/floor/local.ts"
 import { parseRuntimesToml } from "@substrate/runners"
 import { connectFloor } from "../src/connect.ts"
-import { FloorBackend, floorExecutor, localExecutor } from "../src/execute.ts"
+import { FloorBackend, floorExecutor, localExecutor, outcomeOf, transcriptPartName } from "../src/execute.ts"
 import { acquirePidfile, PidfileHeld } from "../src/pidfile.ts"
 import { Puller } from "../src/puller.ts"
 import type { Executor } from "../src/puller.ts"
@@ -73,10 +73,10 @@ describe("lease loop, floor dispatch", () => {
     const exec = floorExecutor({ client: w.client, defaultRunsOn: ["seat:t", "runtime:gvisor"], defaultModel: "test-model", pollMs: 25, onBackend: (b) => backends.push(b) })
 
     const first = await w.start(exec)
-    await until("node 1 enqueued", async () => (await w.client.runJobs("pullrun0001")).some((j) => j.name.startsWith("n1-")))
+    await until("node 1 enqueued", async () => (await w.client.runJobs("pullrun0001")).filter((j) => j.kind === "agent").length >= 1)
     expect((await w.client.job("run-pullrun0001")).holder).toBe("coord")
     expect(await w.serveNodes((p) => (p === "first" ? "A" : undefined))).toBe(1)
-    await until("node 2 enqueued", async () => (await w.client.runJobs("pullrun0001")).some((j) => j.name.startsWith("n2-")))
+    await until("node 2 enqueued", async () => (await w.client.runJobs("pullrun0001")).filter((j) => j.kind === "agent").length >= 2)
     // The kill: the process stops with node 2 in flight. No verdict is sent; the lease is kept for re-adoption.
     first.p.stop(); await first.done
     expect(Object.keys(JSON.parse(readFileSync(join(w.stateDir, "held.json"), "utf8")))).toEqual(["run-pullrun0001-a1"])
@@ -104,7 +104,7 @@ describe("lease loop, floor dispatch", () => {
     await w.client.submitScript(TWO_STEP, { id: "pullrun0002" })
     const exec = floorExecutor({ client: w.client, defaultRunsOn: ["seat:t"], defaultModel: "test-model", pollMs: 25 })
     const s = await w.start(exec)
-    await until("node 1 enqueued", async () => (await w.client.runJobs("pullrun0002")).some((j) => j.name.startsWith("n1-")))
+    await until("node 1 enqueued", async () => (await w.client.runJobs("pullrun0002")).filter((j) => j.kind === "agent").length >= 1)
     await w.client.cancelRun("pullrun0002")
     await until("cancel requested", () => s.events.some((e) => e.ev === "cancel-requested"))
     await until("interpreter job done", async () => (await w.client.job("run-pullrun0002")).state === "done")
@@ -143,6 +143,29 @@ describe("local executor (the repo's runners)", () => {
     expect([run.state, run.result]).toEqual(["done", "success"])
     expect((await w.client.output("run-pullrun0004")).output).toMatchObject({ status: "completed", result: "Au", outcome: "all-done" })
     expect(existsSync(join(w.stateDir, "runs", "pullrun0004", "journal.jsonl"))).toBe(true)
+  })
+
+  it("AUDIT-transcripts TX2: every node's archived transcript reaches the floor under the run's job before the verdict", async () => {
+    const w = await world()
+    await w.client.submitScript(`export const meta = { name: "txs", description: "d" }\nreturn await agent("say gold")\n`, { id: "pullrun0006" })
+    const runtimes = parseRuntimesToml(`default = "h"\n[runtime.h]\ntype = "host"\nharness = "claude"\n`, "test")
+    await w.start(localExecutor({ runtimes, seat: "fake", defaultModel: "fake-model", cap: 1, maxAttempts: 1, transcripts: { client: w.client } }))
+    const run = await w.client.waitRun("pullrun0006", { timeoutMs: 30_000, pollMs: 25 })
+    expect([run.state, run.result]).toEqual(["done", "success"])
+    const out = (await w.client.output("run-pullrun0006")).output as { transcripts: { uploaded: number; failed: Array<unknown> } }
+    expect(out.transcripts.uploaded).toBeGreaterThan(0)
+    expect(out.transcripts.failed).toEqual([])
+    const m = await w.client.transcripts("run-pullrun0006")
+    const stdout = m.parts.find((p) => p.part.endsWith("__harness.stdout"))!
+    expect(stdout.committed).toBe(true)
+    expect(await w.client.transcript("run-pullrun0006", stdout.part)).toContain("Au")
+  })
+
+  it("the floor-dispatch outcome carries a reported session id as agentId (TX3)", () => {
+    expect(outcomeOf({ result: "success", output: { text: "x", sessionId: "sess-1" }, usage: null }, false)).toEqual({ text: "x", agentId: "sess-1" })
+    expect(outcomeOf({ result: "success", output: { text: "x" }, usage: null }, false)).toEqual({ text: "x" })
+    expect(transcriptPartName("wf_a-1-a1", "claude-x/y.jsonl")).toBe("wf_a-1-a1__claude-x_y.jsonl")
+    expect(transcriptPartName("j", "f".repeat(300)).length).toBe(200)
   })
 
   it("an ax runtime is refused with the reason, and the run fails with it", async () => {

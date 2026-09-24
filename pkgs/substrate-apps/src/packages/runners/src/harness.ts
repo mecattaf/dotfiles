@@ -40,6 +40,8 @@ export interface HarnessCall {
    * sees what to correct (successor review r2: retries resent the identical prompt).
    */
   readonly previousErrors?: readonly string[];
+  /** codex `--sandbox`; default `read-only` (a runtime table's `codexSandbox`). */
+  readonly codexSandbox?: "read-only" | "workspace-write";
 }
 
 /** Options a harness can honour; a call asking for another is refused, never silently dropped. */
@@ -106,7 +108,7 @@ export function codexInvocation(call: HarnessCall): HarnessInvocation {
     ? `${withCorrections(call.prompt, call.previousErrors)}\n\nReply with one JSON value only, no prose and no code fence, valid against this JSON Schema:\n${JSON.stringify(call.schema)}`
     : withCorrections(call.prompt, call.previousErrors);
   return {
-    argv: ["codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", "read-only", ...(call.model !== undefined ? ["-m", call.model] : []), "-"],
+    argv: ["codex", "exec", "--json", "--skip-git-repo-check", "--sandbox", call.codexSandbox ?? "read-only", ...(call.model !== undefined ? ["-m", call.model] : []), "-"],
     stdin: prompt,
   };
 }
@@ -117,9 +119,47 @@ export const invocationFor = (h: HarnessName, call: HarnessCall): HarnessInvocat
 export interface Parsed {
   readonly text?: string;
   readonly object?: unknown;
-  readonly usage?: { readonly inputTokens: number; readonly outputTokens: number };
+  readonly usage?: Usage;
   readonly agentId?: string;
   readonly error?: string;
+  /** The model(s) that answered, as the harness reports them (claude `modelUsage` keys), comma-joined. */
+  readonly answeringModel?: string;
+}
+
+/**
+ * Token usage from a harness envelope. inputTokens and outputTokens are what budgets count (D10); the cache and
+ * reasoning counts are carried when the harness reports them (parity gap PT-04: tally's usage parsers kept them,
+ * the port had dropped them). A key is present only when the envelope carried it.
+ */
+export interface Usage {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly cacheCreationTokens?: number;
+  readonly cacheReadTokens?: number;
+  readonly reasoningTokens?: number;
+}
+
+const count = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : undefined);
+const extra = (o: Record<string, number | undefined>): Partial<Usage> =>
+  Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<Usage>;
+
+/** Claude Code's envelope usage: cache_creation_input_tokens, cache_read_input_tokens, output_tokens_details.thinking_tokens. */
+export function claudeUsage(u: Record<string, unknown>): Usage {
+  const details = (u.output_tokens_details ?? {}) as Record<string, unknown>;
+  return {
+    inputTokens: count(u.input_tokens) ?? 0,
+    outputTokens: count(u.output_tokens) ?? 0,
+    ...extra({ cacheCreationTokens: count(u.cache_creation_input_tokens), cacheReadTokens: count(u.cache_read_input_tokens), reasoningTokens: count(details.thinking_tokens) }),
+  };
+}
+
+/** codex `turn.completed` usage: cached_input_tokens, cache_write_input_tokens, reasoning_output_tokens. */
+export function codexUsage(u: Record<string, unknown>): Usage {
+  return {
+    inputTokens: count(u.input_tokens) ?? 0,
+    outputTokens: count(u.output_tokens) ?? 0,
+    ...extra({ cacheCreationTokens: count(u.cache_write_input_tokens), cacheReadTokens: count(u.cached_input_tokens), reasoningTokens: count(u.reasoning_output_tokens) }),
+  };
 }
 
 const stripFence = (s: string) => {
@@ -148,10 +188,12 @@ export function parseClaude(stdout: string, wantObject: boolean): Parsed {
   } catch (e) {
     return { error: `claude stdout is not a JSON envelope: ${(e as Error).message}: ${stdout.slice(0, 200)}` };
   }
-  const u = env.usage as { input_tokens?: number; output_tokens?: number } | undefined;
-  const usage = u ? { inputTokens: u.input_tokens ?? 0, outputTokens: u.output_tokens ?? 0 } : undefined;
+  const u = env.usage as Record<string, unknown> | undefined;
+  const usage = u && typeof u === "object" ? claudeUsage(u) : undefined;
   const agentId = typeof env.session_id === "string" ? env.session_id : undefined;
-  const base = { ...(usage ? { usage } : {}), ...(agentId ? { agentId } : {}) };
+  const mu = env.modelUsage;
+  const models = mu !== null && typeof mu === "object" && !Array.isArray(mu) ? Object.keys(mu).sort() : [];
+  const base = { ...(usage ? { usage } : {}), ...(agentId ? { agentId } : {}), ...(models.length ? { answeringModel: models.join(",") } : {}) };
   if (env.is_error === true || (typeof env.subtype === "string" && env.subtype !== "success")) {
     return { ...base, error: `claude reported ${String(env.subtype)}: ${String(env.result ?? "").slice(0, 300)}` };
   }
@@ -185,8 +227,8 @@ export function parseCodex(stdout: string, wantObject: boolean): Parsed {
     if (ev.type === "thread.started" && typeof ev.thread_id === "string") agentId = ev.thread_id;
     if (ev.type === "item.completed" && item?.type === "agent_message" && typeof item.text === "string") text = item.text;
     if (ev.type === "turn.completed") {
-      const u = ev.usage as { input_tokens?: number; output_tokens?: number } | undefined;
-      if (u) usage = { inputTokens: u.input_tokens ?? 0, outputTokens: u.output_tokens ?? 0 };
+      const u = ev.usage as Record<string, unknown> | undefined;
+      if (u && typeof u === "object") usage = codexUsage(u);
     }
     if (ev.type === "turn.failed" || ev.type === "error") failure = JSON.stringify(ev).slice(0, 300);
   }

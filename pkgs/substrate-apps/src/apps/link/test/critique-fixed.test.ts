@@ -117,13 +117,13 @@ describe("critique 2026-09-23: the defects, fixed", () => {
     const del = w.ax.deleteTask
     w.ax.deleteTask = (name) => name === "wf-test-1-a1" ? Effect.fail(new AxError(UNAVAILABLE, "unavailable")) : del(name)
     const l = start(w, dir, { pendingTimeoutMs: 200 })
-    await until("fence failed", () => l.has("fence-failed", "wf-test-1-a2"), 8000)
-    expect(l.verdict("pre-start/ax-unavailable")).toBe(true)
+    // Critique pass 2026-09-24 (red team double-run-r3-1b): a1's pending-timeout verdict now waits for its delete to
+    // land, so the floor never makes attempt 2 while a1 may still start. Never two at once still holds, one step earlier.
+    await until("a1's verdict deferred", () => l.has("pre-start-deferred", "wf-test-1-a1"), 8000)
+    await sleep(1000)
+    expect(J(w).attempt).toBe(1)
     expect(w.ax.updates.has("wf-test-1-a2")).toBe(false)
-    await until("the infra budget is spent", () => J(w).state === "done", 10000)
-    expect([J(w).result, (J(w).output as { reason: string }).reason]).toEqual(["failure", "infra/retry-budget-spent"])
     expect([...w.ax.updates.keys()]).toEqual(["wf-test-1-a1"]) // only ever one attempt in ax
-    expect(J(w).supersedes.length).toBeGreaterThan(1) // rule 7 amended: every unconfirmed old attempt is listed
     await l.drain()
   })
 

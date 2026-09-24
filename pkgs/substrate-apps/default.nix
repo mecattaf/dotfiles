@@ -22,20 +22,21 @@
 #
 # One pnpm workspace, one fixed-output dependency tree (pnpmDeps) shared by every program that needs
 # node_modules. The pusher needs none: its bin and src import only node: builtins and each other
-# (MEASURED grep, 2026-09-23), so it is installed as files and smoke-run in its checkPhase.
+# (MEASURED grep, 2026-09-23, again at fc2f8bd 2026-09-24), so it is installed as files and smoke-run in its checkPhase.
 #
 # Re-vendor: ./sync.sh <substrate checkout> <sha>, then refresh pnpmDeps.hash (lib.fakeHash, build,
 # paste the got: value). E1: the code that wraps ax lives in dotfiles, pinned by sha, never a flake input.
 let
-  version = "0.1.0-unstable-2026-09-23";
+  version = "0.1.0-unstable-2026-09-24";
   src = ./src;
   # The upstream commit ./src was taken from. Keep in step with SYNC.md (sync.sh rewrites both).
-  sourceSha = "b1051790f376c103ba4e901619ba11efeb78cef6";
+  sourceSha = "fc2f8bd5d1492343585914b4ed343d001a192f33";
 
   pnpmDeps = pnpm_10.fetchDeps {
     pname = "substrate-apps";
     inherit version src;
-    # nix build .#substrate-apps-link with lib.fakeHash, then the "got:" value (MEASURED 2026-09-23).
+    # nix build .#substrate-apps-link with lib.fakeHash, then the "got:" value (MEASURED 2026-09-23; unchanged at
+    # fc2f8bd, 2026-09-24: its lockfile only adds the apps/evaluator importer, no new packages).
     hash = "sha256-/10ykNk5FGChNhjBxfP8lfrUJI4G5O4kE+phfewLODc=";
     fetcherVersion = 3;
   };
@@ -138,7 +139,7 @@ let
       log=$(node apps/puller/bin/substrate-puller.mjs 2>&1)
       rc=$?
       set -e
-      printf '%s\n' "$log" | tail -n 3
+      printf '%s\n' "$log" | tail -n 40
       if [ "$rc" != 78 ]; then echo "expected exit 78 (config-invalid) with no config, got $rc"; exit 1; fi
       printf '%s\n' "$log" | grep -q '"config-invalid"'
       runHook postCheck

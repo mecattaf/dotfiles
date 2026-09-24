@@ -6,7 +6,7 @@
  *   conwip-run <script.js> --dir <run dir> --seat <seat> --runtimes <runtimes.toml>
  *              (--meters <dir> | --capacity-snapshot <file> | --capacity-floor <url> | --no-capacity)
  *              [--model <id>] [--cap N] [--concurrency N] [--max-attempts N]
- *              [--capacity-wait-ms N] [--budget N] [--args <json>]
+ *              [--capacity-wait-ms N] [--budget N] [--args <json>] [--resume-failures retry|replay]
  *
  * With no capacity flag the gate reads the floor the substrate config names
  * (capacityFloorUrl, bearer from capacityFloorTokenFile); none configured is an
@@ -38,7 +38,7 @@ import { summaryLine } from "./run-outcome.ts";
 import { MachineSlots } from "./slots.ts";
 
 const USAGE =
-  "usage: conwip-run <script.js> --dir <dir> --seat <seat> --runtimes <file> [--capacity-floor <url> | --capacity-snapshot <file> | --meters <dir> | --no-capacity] [--model <id>] [--cap N] [--concurrency N] [--max-attempts N] [--capacity-wait-ms N] [--budget N] [--args <json>]";
+  "usage: conwip-run <script.js> --dir <dir> --seat <seat> --runtimes <file> [--capacity-floor <url> | --capacity-snapshot <file> | --meters <dir> | --no-capacity] [--model <id>] [--cap N] [--concurrency N] [--max-attempts N] [--capacity-wait-ms N] [--budget N] [--args <json>] [--resume-failures retry|replay]";
 
 /** Seats that spend a real login or the one Halogen slot: never run ungated. */
 export const REAL_SEATS: ReadonlySet<string> = new Set(deployConfig().realSeats);
@@ -100,6 +100,7 @@ export async function main(argv: readonly string[], signal?: AbortSignal): Promi
     cap: int("--cap", 2),
     concurrency: int("--concurrency", 4),
     maxAttempts: int("--max-attempts", 2),
+    ...(flags.has("--resume-failures") ? { resumeFailures: resumeFailuresFlag(flags.get("--resume-failures")!) } : {}),
     ...(source ? { capacity: new CapacityGate(source, seat) } : {}),
     capacityWait: { delayMs: 15_000, maxWaitMs: int("--capacity-wait-ms", 0) },
     ...(flags.has("--budget") ? { budgetTotal: int("--budget", 0) } : {}),
@@ -161,4 +162,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
       process.exitCode = 2;
     },
   );
+}
+
+function resumeFailuresFlag(v: string): "retry" | "replay" {
+  if (v !== "retry" && v !== "replay") throw new Error("--resume-failures must be retry or replay");
+  return v;
 }

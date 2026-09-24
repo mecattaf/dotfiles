@@ -30,6 +30,13 @@ export const JournalEvent = Schema.Union([
     phase: Schema.optionalKey(Schema.String),
     /** The call's content identity (key.ts contentId); absent in harness journals. */
     cid: Schema.optionalKey(Cid),
+    /**
+     * D06: the call's lane, `<epoch>.r<realm>/<combinator>:<item>/...`, when it
+     * was invoked synchronously inside a parallel() thunk or a pipeline() stage;
+     * absent otherwise. Two calls whose lanes differ first in the item of one
+     * combinator ran on independent chains (see record.ts siblingLanes).
+     */
+    lane: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({ type: Schema.Literal("result"), key: Key, agentId: Schema.String, result: Schema.Unknown, tokens: Schema.optionalKey(Tokens) }),
   /** `error`: the failure reason (D08); absent in harness journals, which drop unknown keys. */
@@ -71,6 +78,12 @@ export interface LoadedJournal {
    * run throws BudgetExhaustedError as the original did instead of reading null.
    */
   readonly budgetFailed: ReadonlySet<string>;
+  /**
+   * Keys whose LAST started/result/failed line is `failed` (C3-5): a terminal
+   * failure that no later start retried. A key retried and killed in flight
+   * (a later `started` with no terminal line) is not in it.
+   */
+  readonly lastFailed: ReadonlySet<string>;
 }
 
 export function parseJournal(text: string): LoadedJournal {
@@ -98,12 +111,15 @@ export function parseJournal(text: string): LoadedJournal {
   const tokens = new Map<string, number>();
   const failReasons = new Map<string, string>();
   const budgetFailed = new Set<string>();
+  const lastFailed = new Set<string>();
   let tokensSpent = 0;
   for (const e of events) {
     if ((e.type === "result" || e.type === "failed") && e.tokens !== undefined) {
       tokensSpent += e.tokens;
       tokens.set(e.key, e.tokens);
     }
+    if (e.type === "failed") lastFailed.add(e.key);
+    else if (e.type === "result" || e.type === "started") lastFailed.delete(e.key);
     if (e.type === "result") {
       results.set(e.key, e.result);
       const i = terminal.indexOf(e.key);
@@ -130,7 +146,7 @@ export function parseJournal(text: string): LoadedJournal {
       }
     }
   }
-  return { events, results, started, failed, startOrder, terminalOrder: terminal, skippedLines, byCid, tokensSpent, tokens, failReasons, budgetFailed };
+  return { events, results, started, failed, startOrder, terminalOrder: terminal, skippedLines, byCid, tokensSpent, tokens, failReasons, budgetFailed, lastFailed };
 }
 
 /**
@@ -215,6 +231,13 @@ export interface JournalSink {
 export class FileJournal implements JournalSink {
   constructor(readonly path: string) {
     mkdirSync(dirname(path), { recursive: true });
+    // codex review 3, C3-6: a kill mid-append can leave the last line without its newline. Terminate it before the
+    // first append, so a complete last event stays its own line and a torn one stays one skipped line, never merged
+    // with the next event into a line that loses both.
+    if (existsSync(path)) {
+      const text = readFileSync(path, "utf8");
+      if (text.length > 0 && !text.endsWith("\n")) appendFileSync(path, "\n", "utf8");
+    }
   }
   append(ev: JournalEvent): void {
     appendFileSync(this.path, JSON.stringify(ev) + "\n", "utf8");

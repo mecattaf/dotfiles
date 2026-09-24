@@ -51,13 +51,32 @@ export interface LinkConfig {
   /** Round 3: consecutive undecodable or server-error Lease replies for one journaled requestKey before the key is
    *  abandoned (its grants are then released by the floor's own expiry and requeued). Default 5. */
   readonly leaseKeyAttempts?: number
+  /** Critique D.2 (DELETE-HANG ladder): a Task that stays Terminating after its journaled DeleteTask is asked again every
+   *  `terminatingRetryMs` (default 60 s) up to `terminatingRetries` times (default 5), escalated by log (and a Substrate
+   *  read, when one is wired) at `terminatingEscalateMs` (default 5 min) and journaled `delete-stuck` at
+   *  `terminatingGiveUpMs` (default 15 min). All measured from `deletingAt`, which survives restarts and compaction. */
+  readonly terminatingRetryMs?: number
+  readonly terminatingEscalateMs?: number
+  readonly terminatingGiveUpMs?: number
+  readonly terminatingRetries?: number
+}
+
+/** Critique D.2: the optional read port the ladder uses to PROVE a stuck Task holds no Substrate worker (DELETE-HANG
+ *  step 3). Absent in production until a Substrate read credential is granted; without it no slot is ever released. */
+export interface SubstrateRead {
+  readonly actor: (task: string, atespace: string) => Effect.Effect<"absent" | "deleting" | "present", unknown>
 }
 
 export type Log = (ev: string, fields?: Record<string, unknown>) => void
 export interface LinkDeps {
   readonly ax: AxApi; readonly floor: FloorApi; readonly journal: Journal; readonly log: Log; readonly stop: Deferred.Deferred<void>
+  /** G-BK4, Buildkite's graceful stop: once done, the link leases nothing more and stops by itself when no Task it
+   *  holds is live and no verdict is undelivered, or after drainTimeoutMs; `stop` still stops it at once. */
+  readonly drain?: Deferred.Deferred<void>
+  readonly drainTimeoutMs?: number
   readonly floorUrl?: string // the URL in use, to tell a real endpoint switch from an echo
   readonly onEndpoint?: (url: string) => void // B18: called once for an allowed switch; main persists it and restarts
+  readonly substrate?: SubstrateRead // critique D.2: optional; see SubstrateRead
 }
 
 const TERMINAL = new Set(["Completed", "Failed"])
@@ -90,7 +109,12 @@ export const isFleetInternalUrl = (raw: string | undefined, internalHosts: Reado
 }
 
 export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*() {
-  const { ax, floor, journal: j, log } = deps
+  const { ax, journal: j, log } = deps
+  // Red team loss-and-wip r3-3 (critique pass KEEP-4): every floor reply that is not an error proves the floor serves
+  // this link, so an HTTP 5xx that follows one is about the bytes of that call, not the whole floor.
+  let floorAnswered = 0
+  const answered = <A, E>(e: Effect.Effect<A, E>) => e.pipe(Effect.tap(() => Effect.sync(() => { floorAnswered++ })))
+  const floor: FloorApi = { lease: (p) => answered(deps.floor.lease(p)), heartbeat: (p) => answered(deps.floor.heartbeat(p)), complete: (p) => answered(deps.floor.complete(p)) }
   const fatal = yield* Deferred.make<never, FloorError>()
   const fenceTimeoutMs = cfg.fenceTimeoutMs ?? 120_000
   const resultReadTries = cfg.resultReadTries ?? 5
@@ -100,12 +124,21 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
   let pollSeconds = defaultPoll, hbAsked: number | undefined // round 3: the floor's raw heartbeatSeconds, bounded at use
   let clampLogged = ""
   const leaseKeyAttempts = cfg.leaseKeyAttempts ?? 5
+  const termRetryMs = cfg.terminatingRetryMs ?? 60_000
+  const termEscalateMs = cfg.terminatingEscalateMs ?? 300_000
+  const termGiveUpMs = cfg.terminatingGiveUpMs ?? 900_000
+  const termRetries = cfg.terminatingRetries ?? 5
+  const escalated = new Set<string>() // critique D.2: ax-delete-escalate is logged once per lease per process
   let leaseKeyFailures = 0
   let axUp = false, resynced = false
   let serverP1: boolean | undefined // the probe's answer; cleared on every ax-up transition (B6)
   let gatewayOk: boolean | undefined // B10
+  let gatewayState: string | undefined // critique D.2 item 5: ok, open, missing (with the code); logged on change
   const guestUrlOk = cfg.completion !== "guest" || isFleetInternalUrl(cfg.shape.completeUrl, cfg.internalHosts)
   if (!guestUrlOk) log("guest-url-invalid", { completion: "guest" })
+  /** Critique D.2 item 6: `auto` falls back to guest when a Complete URL is declared and fleet-internal. */
+  const autoGuestOk = cfg.completion === "auto" && cfg.shape.completeUrl !== undefined && isFleetInternalUrl(cfg.shape.completeUrl, cfg.internalHosts)
+  if (cfg.completion === "auto" && cfg.shape.completeUrl !== undefined && !autoGuestOk) log("guest-url-invalid", { completion: "auto" })
   let last = new Map<string, AxObserved>()
   let outboxWaitUntil = 0, outboxBackoff = cfg.outboxBackoffMs[0]
   let outboxNotBefore = 0 // round 3: the floor's own Retry-After on Complete; Lease does not cut it short (B15 does not)
@@ -116,6 +149,14 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
   const resultFailures = new Map<string, number>() // B4
   const verdictFailures = new Map<string, number>() // round 2: server errors per verdict (a restart grants a fresh budget)
   const verdictNotBefore = new Map<string, number>() // round 2: per-verdict backoff after a server error
+  const verdictAnsweredMark = new Map<string, number>() // KEEP-4: floorAnswered when this verdict last failed with an HTTP 5xx
+  // Critique pass 2026-09-24 (red team durability-r2-8): a server error is charged to a verdict only when the floor
+  // answered a Lease or Heartbeat between two tries of it; a floor-wide outage charges nothing, so a success is never
+  // replaced by infra/verdict-undeliverable because the whole floor was down. Since the 2026-09-24 integrate this
+  // stands beside KEEP-4 (the same finding, fixed on two branches): a 5xx is charged only when both say the floor served.
+  const verdictTriedAt = new Map<string, number>()
+  let floorOkAt = 0
+  const markFloorOk = () => Effect.sync(() => { floorOkAt = Date.now() })
   const pendingResume = new Set<string>() // B13: journaled, never created; resumed only once the floor renews them
   /** Round 4 (Buildkite reserve-with-expiry): the local time of the last call the floor answered by renewing this
    *  grant generation (the Lease that granted it, then every Heartbeat listing it in `renewed`). The send time is taken,
@@ -130,14 +171,64 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
     return Date.now() < at + ms - ms / 4
   }
   const deadlinePassed = (g: Grant) => g.deadline !== undefined && Date.now() >= g.deadline
+  /** Red team double-run-r1-1 (Kubernetes Lease, Temporal heartbeat timeout: the holder stops before the server may
+   *  reassign). Past lease + grace the floor may requeue attempt n+1 to a holder whose own executor cannot see this
+   *  one's Task, so its supersedes fence finds nothing and both attempts run. The floor sends that bound as the grant's
+   *  reassignSeconds (lease + grace + the rule 7b pin); the link deletes a still-running Task it has not seen renewed
+   *  for reassignSeconds less half a lease (a floor that sends no bound promises no grace: one lease), measured from the
+   *  send time of the last renewing call, which is never later than the floor's own renewTime. */
+  const renewedLocal = (id: string, g: Grant, at: number) => {
+    renewedAt.set(g, Math.max(renewedAt.get(g) ?? 0, at))
+    const r = j.recs.get(id)
+    if (r?.grant !== g) return
+    // journaled at most every half lease, so a restart measures from a recent renewal without one fsync per beat
+    if ((r.renewedAt ?? 0) + (g.lease.leaseDurationSeconds * cfg.secondMs) / 2 <= at) j.append({ ev: "renewed", leaseId: id }, at)
+  }
+  const selfFenceAt = (r: LeaseRec) => {
+    const g = r.grant
+    const base = Math.max(renewedAt.get(g) ?? 0, r.renewedAt ?? 0) || (r.createdAt ?? r.at)
+    const lease = g.lease.leaseDurationSeconds * cfg.secondMs
+    const bound = g.reassignSeconds !== undefined && Number.isFinite(g.reassignSeconds) ? g.reassignSeconds * cfg.secondMs : lease
+    return base + Math.max(lease / 2, bound - lease / 2)
+  }
+  /** A Task this link may have created, runs (no verdict read), and is still held: the ones a fence must stop. */
+  const fenceable = (r: LeaseRec) => r.released === undefined && r.report === undefined && !r.reported && r.dropped === undefined
+    && !r.notMine && r.deleting === undefined && !r.deleted && Journal.maybeCreated(r)
+  /** Only a Task that still RUNS is fenced. A finished one (P1: suspended, holding no worker) has its verdict read
+   *  and journaled by salvage and stays held with it in the outbox (rule 4b may still accept it); a Task ax cannot
+   *  answer for is tried again at the next resync. */
+  const fenceSelf = (id: string, why: string, fields: Record<string, unknown> = {}) => Effect.gen(function*() {
+    const r = j.recs.get(id)
+    if (!r || !fenceable(r)) return
+    if ((yield* salvage(id)) !== "live") return
+    j.append({ ev: "released", leaseId: id, why })
+    abandoned.set(id, "lost")
+    pendingResume.delete(id)
+    log(why, { leaseId: id, ...fields })
+    yield* del(id, why)
+  })
+  const selfFence = Effect.gen(function*() {
+    const now = Date.now()
+    for (const [id, r] of [...j.recs]) if (fenceable(r) && now >= selfFenceAt(r))
+      yield* fenceSelf(id, "lease-expired", { lastRenewal: Math.max(renewedAt.get(r.grant) ?? 0, r.renewedAt ?? 0) || null })
+  })
   let wake = yield* Deferred.make<void>() // B17: a verdict that frees a slot leases at once
   let hbWake = yield* Deferred.make<void>() // final pass (R3-1): a Lease reply re-times a heartbeat sleep already begun
-  const failFatal = (e: FloorError) => Deferred.fail(fatal, e).pipe(Effect.asVoid)
+  /** Red team double-run-r1-2: a 409 means another session holds this identity and may already run attempt n+1 of
+   *  every lease held here; this process can never hear `lost` again. Every running Task is fenced before the exit. */
+  const failFatal = (e: FloorError): Effect.Effect<void> => Effect.gen(function*() {
+    if (e.kind === "session-conflict") for (const [id, r] of [...j.recs]) if (fenceable(r)) yield* fenceSelf(id, "session-lost")
+    yield* Deferred.fail(fatal, e)
+  })
 
-  /** The mode the link may create in, or undefined while it is unproven (capacity 0). */
+  /** The mode the link may create in, or undefined while it is unproven (capacity 0). Critique D.2 item 6: `auto`
+   *  is p1 when the probe proved P1, guest when the probe proved its absence and a fleet-internal Complete URL is
+   *  declared, and undefined while the probe has not answered (an outage never flips the mode). */
   const mode = (): "p1" | "guest" | undefined => {
     if (cfg.completion === "guest") return guestUrlOk ? "guest" : undefined
-    return serverP1 === true ? "p1" : undefined
+    if (serverP1 === true) return "p1"
+    if (serverP1 === false && autoGuestOk) return "guest"
+    return undefined
   }
   const canCreate = () => axUp && resynced && gatewayOk === true && mode() !== undefined
 
@@ -188,23 +279,34 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
           log("withdrawn", { leaseId: withdrew, by: p.leaseId }) // of it is not taken for a duplicate
         }
         outboxBackoff = cfg.outboxBackoffMs[0]
-        verdictFailures.delete(p.leaseId); verdictNotBefore.delete(p.leaseId)
+        verdictFailures.delete(p.leaseId); verdictNotBefore.delete(p.leaseId); verdictAnsweredMark.delete(p.leaseId); verdictTriedAt.delete(p.leaseId)
       } else if (r.failure._tag === "CompleteRefused") { // done/keep/drop: the floor refused these bytes for good
         j.append({ ev: "dropped", leaseId: p.leaseId, code: r.failure.code })
         log("complete-dropped", { leaseId: p.leaseId, code: r.failure.code })
+      } else if (r.failure.kind === "server-error" && r.failure.status !== undefined && (verdictAnsweredMark.get(p.leaseId) ?? -1) >= floorAnswered) {
+        // KEEP-4: an HTTP 5xx with no floor reply since this verdict last failed is not evidence against these bytes
+        // (a floor-wide 500 answers every call alike): the verdict waits with its own backoff and is not charged.
+        const wait = jitter(cfg.outboxBackoffMs[1])
+        verdictAnsweredMark.set(p.leaseId, floorAnswered); verdictNotBefore.set(p.leaseId, Date.now() + wait)
+        log("outbox-keep", { leaseId: p.leaseId, kind: r.failure.kind, charged: false, waitMs: wait })
+        continue
       } else if (r.failure.kind === "server-error") {
+        if (r.failure.status !== undefined) verdictAnsweredMark.set(p.leaseId, floorAnswered)
         // Round 2: the floor answered and refused THESE bytes (a 500, an RPC Defect such as SQLITE_TOOBIG). Counted per
         // verdict; the rest of the outbox still goes out. At the ceiling the verdict is replaced by a small final
         // failure the floor can store; if that fails as well it is dead-lettered, so one verdict never gates Lease.
-        const n = (verdictFailures.get(p.leaseId) ?? 0) + 1
+        const prevTry = verdictTriedAt.get(p.leaseId)
+        verdictTriedAt.set(p.leaseId, Date.now())
+        const charged = prevTry !== undefined && floorOkAt > prevTry // durability-r2-8
+        const n = (verdictFailures.get(p.leaseId) ?? 0) + (charged ? 1 : 0)
         verdictFailures.set(p.leaseId, n)
         if (n < verdictAttempts) {
-          const wait = jitter(Math.min(cfg.outboxBackoffMs[0] * 2 ** (n - 1), cfg.outboxBackoffMs[1]))
+          const wait = jitter(Math.min(cfg.outboxBackoffMs[0] * 2 ** Math.max(0, n - 1), cfg.outboxBackoffMs[1]))
           verdictNotBefore.set(p.leaseId, Date.now() + wait)
-          log("outbox-keep", { leaseId: p.leaseId, kind: r.failure.kind, try: n, waitMs: wait })
+          log("outbox-keep", { leaseId: p.leaseId, kind: r.failure.kind, try: n, charged, waitMs: wait })
           continue
         }
-        verdictFailures.delete(p.leaseId); verdictNotBefore.delete(p.leaseId)
+        verdictFailures.delete(p.leaseId); verdictNotBefore.delete(p.leaseId); verdictTriedAt.delete(p.leaseId)
         const rec = j.recs.get(p.leaseId)
         if (rec !== undefined && !p.replace) {
           const digest = createHash("sha256").update(JSON.stringify(p.output ?? null)).digest("hex")
@@ -276,31 +378,53 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
       })))
   })
 
-  /** B2: an old attempt is gone only when GetTask answers NotFound; until then attempt n+1 is not created. */
+  /** B2: an old attempt is gone only when GetTask answers NotFound; until then attempt n+1 is not created.
+   *  Critique D.2 (P2): a Task that stays Terminating is asked again every terminatingRetryMs, and a fence that times
+   *  out on a Task ax still shows is `stuck` (infra/delete-stuck, final), not an ax outage: a retryable reason sent the
+   *  job straight back to this holder, which fenced the same stuck name again until the attempts were spent. */
   const fence = (old: string) => Effect.gen(function*() {
     const until = Date.now() + fenceTimeoutMs
-    let asked = false
+    let askedAt: number | undefined
+    let seen: "terminating" | "other" = "other" // only a Task last SEEN Terminating is a stuck delete; a refused DeleteTask is an ax outage
     for (;;) {
-      if (j.recs.get(old)?.notMine) return true // round 3: not this link's Task; nothing of attempt n runs under it
+      if (j.recs.get(old)?.notMine) return "gone" as const // round 3: not this link's Task; nothing of attempt n runs under it
       const r = yield* ax.getTask(old).pipe(Effect.result)
       if (r._tag === "Success" && r.success === undefined) {
         if (j.recs.has(old) && !j.recs.get(old)!.deleted) j.append({ ev: "deleted", leaseId: old })
-        return true
+        return "gone" as const
       }
-      if (r._tag === "Success" && (!asked || r.success!.phase !== "Terminating")) asked = (yield* del(old, "superseded")) || asked
-      if (Date.now() >= until) return false
+      seen = r._tag === "Success" && r.success!.phase === "Terminating" ? "terminating" : "other"
+      if (r._tag === "Success") {
+        const terminating = r.success!.phase === "Terminating"
+        if (askedAt === undefined || !terminating) { if (yield* del(old, "superseded")) askedAt ??= Date.now() }
+        else if (Date.now() - askedAt >= termRetryMs) {
+          askedAt = Date.now()
+          const again = yield* ax.deleteTask(old).pipe(Effect.result)
+          log("delete-retry", { task: old, where: "fence", ...(again._tag === "Failure" ? { code: again.failure.code } : {}) })
+        }
+      }
+      if (Date.now() >= until) return seen === "terminating" ? "stuck" as const : "unanswered" as const
       yield* Effect.sleep(Math.min(cfg.resyncMs, 2 * cfg.secondMs))
     }
   })
+  const fenceFailure = (old: string, f: "stuck" | "unanswered"): FailureOutput => f === "stuck"
+    ? { reason: "infra/delete-stuck", message: `superseded attempt ${old} still Terminating in ax after the fence timeout` } // final
+    : { reason: "pre-start/ax-unavailable", message: `superseded attempt ${old} not confirmed deleted` }
 
   /** B11: never more live Tasks than maxInFlight. Busy = live Tasks in the atespace (anyone's) U admitted leases
    *  not known finished. Synchronous, so two dispatch fibers cannot both take the last slot. */
+  /** Critique D.2: a Task the ladder gave up on (delete-stuck) whose worker a Substrate read proved gone. Only such a
+   *  name stops counting against maxInFlight; without the read port it counts until an operator clears it. */
+  const provenFree = (name: string) => { const r = j.recs.get(name); return r?.deleteStuck === true && r.freeProven === true }
   const busy = () => {
+    // HF link-ladder (VERIFY LL-4 M1 root cause): a finished admitted lease leaves `admitted`, but its name is not
+    // removed from the set: while ax still lists its Task live (Running, or stuck Terminating) it holds a worker, and
+    // only the provably-free exclusion above may stop it counting. Before, `b.delete(id)` dropped it for one call.
     const b = new Set<string>()
-    for (const [name, t] of last) if (!TERMINAL.has(t.phase)) b.add(name)
+    for (const [name, t] of last) if (!TERMINAL.has(t.phase) && !provenFree(name)) b.add(name)
     for (const id of admitted) {
       const r = j.recs.get(id), t = last.get(id)
-      if (!r || r.report || r.released !== undefined || r.dropped !== undefined || r.deleted || (t && TERMINAL.has(t.phase))) { admitted.delete(id); b.delete(id); continue }
+      if (!r || r.report || r.released !== undefined || r.dropped !== undefined || r.deleted || (t && TERMINAL.has(t.phase))) { admitted.delete(id); continue } // HF link-ladder: a live Task in the snapshot still counts
       b.add(id)
     }
     return b
@@ -383,7 +507,16 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
         const e = r.failure
         if (e.resourceExhausted) return yield* failG(g, { reason: "pre-start/resource-exhausted", message: e.message }) // B5
         if (!e.unavailable) return yield* failG(g, { reason: "pre-start/invalid-spec", message: e.message })
-        if (i >= cfg.createAttempts) return yield* failG(g, { reason: "pre-start/ax-unavailable", message: e.message })
+        if (i >= cfg.createAttempts) {
+          // Critique pass 2026-09-24 (red team double-run-r3-1): an UpdateTask whose reply was lost may have landed. A
+          // retryable pre-start verdict lets the floor hand attempt n+1 to another holder at once, so it is sent only
+          // once GetTask answers NotFound; otherwise the grant goes back to waiting, and the next try adopts a landed Task.
+          const seen = yield* ax.getTask(id).pipe(Effect.result)
+          if (seen._tag === "Success" && seen.success === undefined) return yield* failG(g, { reason: "pre-start/ax-unavailable", message: e.message })
+          log("create-unconfirmed", { leaseId: id, try: i, code: e.code })
+          yield* Effect.sleep(cfg.resyncMs)
+          break
+        }
         yield* Effect.sleep(jitter(2 ** i * 100))
       }
     }
@@ -461,9 +594,10 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
       const rec = j.recs.get(old)
       if (rec && rec.released === undefined) j.append({ ev: "released", leaseId: old, why: "superseded" })
       if (rec && Journal.maybeCreated(rec)) {
-        if (!(yield* fence(old))) {
-          log("fence-failed", { leaseId: g.leaseId, old })
-          return yield* failG(g, { reason: "pre-start/ax-unavailable", message: `superseded attempt ${old} not confirmed deleted` })
+        const f = yield* fence(old)
+        if (f !== "gone") {
+          log("fence-failed", { leaseId: g.leaseId, old, why: f })
+          return yield* failG(g, fenceFailure(old, f))
         }
         continue
       }
@@ -475,9 +609,10 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
         return yield* failG(g, { reason: "pre-start/ax-unavailable", message: `superseded attempt ${old} not confirmed absent` })
       if (r.success !== undefined && ownEarlierAttempt(old, g, r.success)) {
         log("supersedes-unjournaled-own", { leaseId: g.leaseId, old })
-        if (!(yield* fence(old))) {
-          log("fence-failed", { leaseId: g.leaseId, old })
-          return yield* failG(g, { reason: "pre-start/ax-unavailable", message: `superseded attempt ${old} not confirmed deleted` })
+        const f = yield* fence(old)
+        if (f !== "gone") {
+          log("fence-failed", { leaseId: g.leaseId, old, why: f })
+          return yield* failG(g, fenceFailure(old, f))
         }
         continue
       }
@@ -560,6 +695,44 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
     return j.recs.get(id)?.report !== undefined ? "read" as const : "unknown" as const
   })
 
+  /** Critique D.2 (DELETE-HANG ladder). The Task's DeleteTask is journaled and ax still shows it Terminating (stock ax
+   *  ACKs a delete event and may drop it). Every step is timed from `deletingAt`, so a restart or a compaction does not
+   *  reset the clock: re-delete k is due at deletingAt + k * retry (k <= retries), the escalation at escalate, the
+   *  give-up at giveUp. The slot is released only when a Substrate read proves the actor absent. */
+  const classify = (id: string) => deps.substrate === undefined ? Effect.succeed(undefined)
+    : deps.substrate.actor(id, cfg.shape.atespace).pipe(Effect.result, Effect.map((x) => x._tag === "Success" ? x.success : "unknown" as const))
+  const terminatingStep = (id: string, now: number) => Effect.gen(function*() {
+    const r = j.recs.get(id)
+    if (!r || r.deleting === undefined || r.deleted) return
+    const since = r.deletingAt ?? r.at
+    const age = now - since
+    if (r.deleteStuck) { // given up: only a newly proven-free actor changes anything
+      if (!r.freeProven && deps.substrate !== undefined && (yield* classify(id)) === "absent") {
+        j.append({ ev: "delete-stuck", leaseId: id, freeProven: true })
+        log("delete-stuck", { task: id, freeProven: true, since })
+        yield* Deferred.succeed(wake, undefined)
+      }
+      return
+    }
+    const n = r.deleteRetries ?? 0
+    if (n < termRetries && age >= (n + 1) * termRetryMs) {
+      j.append({ ev: "delete-retry", leaseId: id, n: n + 1 }) // write-ahead, like `deleting`
+      const again = yield* ax.deleteTask(id).pipe(Effect.result)
+      log("delete-retry", { task: id, n: n + 1, since, ...(again._tag === "Failure" ? { code: again.failure.code } : {}) })
+    }
+    if (age >= termEscalateMs && !escalated.has(id)) {
+      escalated.add(id)
+      const actor = yield* classify(id)
+      log("ax-delete-escalate", { task: id, atespace: cfg.shape.atespace, since, retries: j.recs.get(id)?.deleteRetries ?? 0, actor: actor ?? "no-reader" })
+    }
+    if (age >= termGiveUpMs) {
+      const freeProven = (yield* classify(id)) === "absent"
+      j.append({ ev: "delete-stuck", leaseId: id, freeProven })
+      log("delete-stuck", { task: id, why: r.deleting, since, retries: j.recs.get(id)?.deleteRetries ?? 0, freeProven })
+      if (freeProven) yield* Deferred.succeed(wake, undefined)
+    }
+  })
+
   const reconcile = (id: string, r: LeaseRec, listed: AxObserved | undefined, now: number) => Effect.gen(function*() {
     if (!Journal.maybeCreated(r)) return // not created yet: dispatch owns it (or a restart resumes it)
     let t = listed
@@ -575,6 +748,11 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
       if (gone) {
         j.append({ ev: "deleted", leaseId: id })
         if (r.deleting === "cancel" && !r.report && r.released === undefined) yield* report(id, "cancelled")
+        // double-run-r3-1b: a pending-timeout whose DeleteTask was deferred is reported once the Task is gone
+        else if (r.deleting === "pre-start" && !r.report && !r.reported && r.released === undefined && r.dropped === undefined)
+          yield* fail(id, { reason: "pre-start/pending-timeout", message: "deleted after the pending timeout" })
+      } else if (t !== undefined && t.phase === "Terminating") {
+        yield* terminatingStep(id, now)
       } else if (t !== undefined && t.phase !== "Terminating") { // round 3: a journaled DeleteTask that did not land
         if (r.released !== undefined && r.report === undefined && !r.reported && r.dropped === undefined && TERMINAL.has(t.phase)) {
           yield* outcomeOf(id, t, true) // a released lease's finished Task is read before it is deleted
@@ -607,7 +785,9 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
     if (t === undefined) return
     if (TERMINAL.has(t.phase)) return yield* outcomeOf(id, t)
     if ((t.phase === "" || t.phase === "Pending") && now - (r.createdAt ?? r.at) > cfg.pendingTimeoutMs) {
-      yield* del(id, "pre-start")
+      // Critique pass 2026-09-24 (red team double-run-r3-1b): a DeleteTask that did not land leaves a Task that may
+      // still start; the retryable verdict waits until the delete lands (the `deleting` branch above reports it).
+      if (!(yield* del(id, "pre-start"))) return log("pre-start-deferred", { leaseId: id, why: "delete-unconfirmed" })
       return yield* fail(id, { reason: "pre-start/pending-timeout", phase: t.phase || "Pending" })
     }
     const deadline = r.grant.deadline
@@ -632,9 +812,18 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
 
   const checkGateway = Effect.gen(function*() { // B10
     const g = yield* ax.getGateway(cfg.shape.gateway).pipe(Effect.result)
-    const ok = g._tag === "Success" && g.success !== undefined && !gatewayAllowsAll(g.success)
-    if (ok !== gatewayOk) log(ok ? "gateway-ok" : "gateway-missing", { gateway: cfg.shape.gateway, ...(g._tag === "Failure" ? { code: g.failure.code } : g.success === undefined ? { found: false } : { allowsAll: true }) })
-    gatewayOk = ok
+    const open = g._tag === "Success" && g.success !== undefined && gatewayAllowsAll(g.success)
+    const ok = g._tag === "Success" && g.success !== undefined && !open
+    // Critique D.2 item 5 (V2): three events. `gateway-ok` carries the allowlist size, an existing Gateway that
+    // allows everything is `gateway-open`, and only an absent Gateway or a failed lookup is `gateway-missing`.
+    const state = g._tag === "Failure" ? `missing:${g.failure.code}` : g.success === undefined ? "missing" : open ? "open" : "ok"
+    if (ok !== gatewayOk || state !== gatewayState) {
+      if (g._tag === "Failure") log("gateway-missing", { gateway: cfg.shape.gateway, code: g.failure.code })
+      else if (g.success === undefined) log("gateway-missing", { gateway: cfg.shape.gateway, found: false })
+      else if (open) log("gateway-open", { gateway: cfg.shape.gateway, allowsAll: true })
+      else log("gateway-ok", { gateway: cfg.shape.gateway, hosts: g.success.hosts.length })
+    }
+    gatewayOk = ok; gatewayState = state
   })
 
   const resync = Effect.gen(function*() {
@@ -645,7 +834,7 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
       // Round 2: nothing read before the outage opens the gate after it. Guest mode does not depend on serverP1, so
       // the Gateway verdict and the resync flag are cleared too; canCreate() opens only after a full resync.
       resynced = false
-      gatewayOk = undefined
+      gatewayOk = undefined; gatewayState = undefined
       return
     }
     const wasDown = !axUp
@@ -667,7 +856,7 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
   // the executor's list, agent-stack-k8s limiter.go). A P1-terminal Task is suspended and holds no worker.
   const occupancy = () => {
     const b = new Set<string>()
-    for (const [name, t] of last) if (!TERMINAL.has(t.phase)) b.add(name)
+    for (const [name, t] of last) if (!TERMINAL.has(t.phase) && !provenFree(name)) b.add(name)
     for (const id of j.held()) { const t = last.get(id); if (!(t && TERMINAL.has(t.phase))) b.add(id) }
     return b.size
   }
@@ -682,13 +871,13 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
     const current = (id: string) => sent.has(id) && j.recs.get(id)?.grant === sent.get(id)
     const sentAt = Date.now()
     const pendingRequestKey = j.pendingLeaseKey // round 4: vouch for grants under a key whose reply never landed (B8)
-    const r = yield* floor.heartbeat({ holderIdentity: cfg.holder, leaseIds: ids, ...(pendingRequestKey !== undefined ? { pendingRequestKey } : {}) }).pipe(Effect.result)
+    const r = yield* floor.heartbeat({ holderIdentity: cfg.holder, leaseIds: ids, ...(pendingRequestKey !== undefined ? { pendingRequestKey } : {}) }).pipe(Effect.tap(markFloorOk), Effect.result)
     if (r._tag === "Failure") {
       if (r.failure.fatal) { yield* failFatal(r.failure); return undefined }
       log("heartbeat-error", { kind: r.failure.kind })
       return undefined
     }
-    for (const id of r.success.renewed) { const g = sent.get(id); if (g !== undefined && current(id)) renewedAt.set(g, Math.max(renewedAt.get(g) ?? 0, sentAt)) }
+    for (const id of r.success.renewed) { const g = sent.get(id); if (g !== undefined && current(id)) renewedLocal(id, g, sentAt) }
     for (const id of r.success.lost) { // fencing: the lease is gone, so the Task goes; no report
       if (!current(id)) { log("stale-heartbeat-reply", { leaseId: id, about: "lost" }); continue }
       const rec = j.recs.get(id)
@@ -775,7 +964,8 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
     // own budget replaces or dead-letters it, and a grant that supersedes it waits at dispatch, bounded).
     const undelivered = j.outbox().filter((p) => !verdictFailures.has(p.leaseId)).length
     if (undelivered > 0) log("lease-gated-by-outbox", { undelivered })
-    const free = undelivered === 0 && canCreate() ? Math.max(0, cfg.maxInFlight - occupancy()) : 0
+    const draining = deps.drain !== undefined && (yield* Deferred.isDone(deps.drain))
+    const free = !draining && undelivered === 0 && canCreate() ? Math.max(0, cfg.maxInFlight - occupancy()) : 0
     // B8: a key is journaled before the call and reused until a reply is journaled, so a lost reply is replayed,
     // not stranded. A capacity-0 call can grant nothing, so it is not journaled.
     let requestKey = j.pendingLeaseKey
@@ -795,7 +985,7 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
   })
 
   const callLease = (capacity: number, requestKey: string) => floor.lease({ holderIdentity: cfg.holder, capacity, requestKey }).pipe(
-    Effect.retry({ times: 2, while: (e: FloorError) => e.kind === "transient", schedule: Schedule.exponential(Math.max(1, cfg.secondMs / 5)).pipe(Schedule.jittered) }), Effect.result)
+    Effect.tap(markFloorOk), Effect.retry({ times: 2, while: (e: FloorError) => e.kind === "transient", schedule: Schedule.exponential(Math.max(1, cfg.secondMs / 5)).pipe(Schedule.jittered) }), Effect.result)
   const leaseFailed = (e: FloorError, requestKey: string) => {
     log("lease-error", { kind: e.kind, pendingKey: j.pendingLeaseKey !== undefined, message: e.message.slice(0, 200) })
     // Round 3: a journaled key is replayed through outages (B8), but not through replies the floor keeps answering
@@ -865,12 +1055,12 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
         }
         const reusable = prior.released !== undefined && !Journal.pending(prior) && (!Journal.maybeCreated(prior) || prior.deleted === true)
         if (!(newer && reusable)) { log("duplicate-grant", { leaseId: g.leaseId }); continue } // at-least-once delivery
-        for (const m of [abandoned, absent, resultFailures, verdictFailures, verdictNotBefore]) m.delete(g.leaseId)
+        for (const m of [abandoned, absent, resultFailures, verdictFailures, verdictNotBefore, verdictTriedAt]) m.delete(g.leaseId)
         admitted.delete(g.leaseId); pendingResume.delete(g.leaseId)
         j.append({ ev: "grant", leaseId: g.leaseId, grant: g, regrant: true })
         log("regrant", { leaseId: g.leaseId, was: prior.released })
       } else j.append({ ev: "grant", leaseId: g.leaseId, grant: g })
-      renewedAt.set(g, sentAt) // round 4: the floor acquired it no earlier than this call was sent
+      renewedLocal(g.leaseId, g, sentAt) // round 4: the floor acquired it no earlier than this call was sent
       log("leased", { leaseId: g.leaseId, attempt: g.attempt, supersedes: g.supersedes ?? [] })
       yield* Effect.forkScoped(dispatch(g))
     }
@@ -893,6 +1083,7 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
 
   const body = Effect.gen(function*() {
     yield* resync // limiter and outcomes rebuilt before the first heartbeat or lease
+    yield* selfFence // red team double-run-r1-1: a Task left unrenewed past lease + grace by a down link goes first
     for (const [id, r] of j.recs) // grants journaled by a previous process but never created (B13: resumed on renewal)
       if (r.created === undefined && !r.report && r.released === undefined && r.dropped === undefined && !r.notMine) pendingResume.add(id)
     yield* replayPendingLease // round 4: a key left pending by a kill is answered before the first Heartbeat
@@ -901,13 +1092,24 @@ export const runLink = (cfg: LinkConfig, deps: LinkDeps) => Effect.gen(function*
     // Round 3: renewal and resync start now, before any Complete or Lease can stall (a 429 Retry-After, a timeout
     // chain): held leases keep being renewed whatever the first Lease does. Both re-read their interval every time.
     yield* Effect.forkScoped(heartbeatLoop)
-    yield* Effect.forkScoped(every("resync", () => cfg.resyncMs, resync.pipe(Effect.andThen(drainOutbox))))
+    yield* Effect.forkScoped(every("resync", () => cfg.resyncMs, resync.pipe(Effect.andThen(selfFence), Effect.andThen(drainOutbox))))
     yield* drainOutbox // replay before new work (uplink)
     yield* Effect.raceFirst(leaseOnce, Deferred.await(deps.stop)) // its reply sets the server-driven intervals
+    let drainDeadline: number | undefined
     while (!(yield* Deferred.isDone(deps.stop))) {
       const w = wake
-      yield* Effect.raceFirst(Effect.raceFirst(Effect.suspend(() => Effect.sleep(jitter(pollSeconds * cfg.secondMs))), Deferred.await(w)), Deferred.await(deps.stop))
+      // G-BK4: while draining, look every resync (not every poll) for the moment nothing is held any more
+      const draining = deps.drain !== undefined && (yield* Deferred.isDone(deps.drain))
+      const nap = draining ? Math.min(cfg.resyncMs, pollSeconds * cfg.secondMs) : jitter(pollSeconds * cfg.secondMs)
+      const drainWake = deps.drain !== undefined && !draining ? Deferred.await(deps.drain) : Effect.never
+      yield* Effect.raceFirst(Effect.raceFirst(Effect.raceFirst(Effect.suspend(() => Effect.sleep(nap)), Deferred.await(w)), Deferred.await(deps.stop)), drainWake)
       if (yield* Deferred.isDone(deps.stop)) break
+      if (deps.drain !== undefined && (yield* Deferred.isDone(deps.drain))) {
+        drainDeadline ??= Date.now() + (deps.drainTimeoutMs ?? Infinity)
+        const outbox = j.outbox().length
+        if (occupancy() === 0 && outbox === 0) { log("drain-complete", {}); break }
+        if (Date.now() >= drainDeadline) { log("drain-timeout", { occupancy: occupancy(), outbox }); break }
+      }
       if (yield* Deferred.isDone(w)) wake = yield* Deferred.make<void>()
       yield* Effect.raceFirst(leaseOnce, Deferred.await(deps.stop))
     }

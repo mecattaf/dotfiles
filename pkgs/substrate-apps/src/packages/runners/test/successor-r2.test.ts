@@ -127,7 +127,7 @@ describe("schema retries", () => {
 
 describe("the seat of a call is a property of (runtime, harness)", () => {
   it("a claude call on ssh:<host> is bound to no seat unless the runtime table names one", () => {
-    const allow = parseRuntimesToml(`allow = ["ssh:worker"]\n[seats]\nclaude = "cc"\n`, "t", "/home/u");
+    const allow = parseRuntimesToml(`allow = ["ssh:worker"]\n[seats]\nclaude = "cc"\n[credentials.seats]\ncc = "~/.claude"\n`, "t", "/home/u"); // RG-1: a bound claude seat names its dir
     expect(new RunnerBackend(allow, { jobsRoot: "/x", runId: "r", defaultSeat: "cc" }).route({ opts: { runtime: "ssh:worker" }, phase: undefined }).seat).toBeUndefined();
     const dflt = parseRuntimesToml(`default = "ssh:worker"\n`, "t", "/home/u");
     expect(new RunnerBackend(dflt, { jobsRoot: "/x", runId: "r", defaultSeat: "cc" }).route({ opts: {}, phase: undefined }).seat).toBeUndefined();

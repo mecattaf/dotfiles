@@ -13,6 +13,25 @@ default = "host"
 [credentials]
 claude = "~/.claude"          # the seat config dir; MOUNTED into sandboxes, never copied
 mode = "rw"                   # rw seat config mount (Tom, 2026-09-21)
+# Desk context bound READ-ONLY into gVisor jobs (never microvm: 9p shares dirs only):
+# context = ["~/today/CLAUDE.md", "~/.claude/skills", "~/mecattaf/dotfiles/home/agent-runtime-rules.md"]
+
+# Seat id -> that seat's Claude config dir. A claude job mounts the dir of the seat it is
+# gated on and never another. Required as soon as a claude runtime binds a seat (runtime
+# `seat = ...` or [seats].claude), unless `claude` above is set and only one seat is bound.
+# [credentials.seats]
+# cc = "~/.claude"
+# cc2 = "~/.claude-work"
+
+# Untrusted input: no seat credential, no host loopback. The name `locked` is reserved for
+# exactly this shape (gVisor, credential = false, network not "host"); a call may always
+# move into it, allow list or not. A claude harness is refused there (it needs a credential).
+# [runtime.locked]
+# type = "gvisor"
+# runsc = "/nix/store/...-gvisor/bin/runsc"
+# harness = "pi"
+# credential = false
+# network = "isolated"
 
 [runtime.gvisor]
 type = "gvisor"
@@ -64,3 +83,12 @@ type = "ax"                   # spec only: writes the Task an ax dispatch would 
 #
 # A real codex runs only when [seats] binds it: codex = "codex". With no
 # `default = true` codex entry, codex runs its own configured default model.
+
+# Seat routing: agent(p, { seat: "codex" }) or runsOn: ["seat:codex"] runs on the ONE runtime
+# this file permits the call that spends that seat (the phase/default runtime first), else it is
+# refused with the runtime=seat list. codex tables may let codex write in its job dir:
+# [runtime.codex]
+# type = "host"
+# harness = "codex"
+# seat = "codex"
+# codexSandbox = "workspace-write"   # default "read-only"

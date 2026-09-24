@@ -241,6 +241,7 @@ export function microvmRunner(name: string, o: MicrovmOptions = {}): Runner {
         cwd: b.flakeDir,
         timeoutMs: job.timeoutMs ?? o.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         signal,
+        ...(job.cancelGraceMs !== undefined ? { cancelGraceMs: job.cancelGraceMs } : {}),
       });
       // The guest owns /job (a rw 9p share): a file there may be a symlink it
       // planted to a host path. Read only regular files, never through a link,

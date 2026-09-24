@@ -49,7 +49,7 @@ describe("runtimes.toml", () => {
   it("decodes the documented example, expanding ~ in path fields", () => {
     const c = parseRuntimesToml(EXAMPLE, "example", HOME);
     expect(c.default).toBe("gvisor");
-    expect(c.credentials).toEqual({ claude: "/home/u/.claude", mode: "rw", scope: "credential" });
+    expect(c.credentials).toEqual({ claude: "/home/u/.claude", mode: "rw", scope: "credential", claudeExplicit: true });
     const g = c.runtimes.gvisor!;
     expect(g.type === "gvisor" && g.state).toBe("/home/u/.local/state/substrate/runsc");
     expect(c.runtimes["ssh:worker"]).toMatchObject({ type: "ssh", host: "worker", harness: "pi" });

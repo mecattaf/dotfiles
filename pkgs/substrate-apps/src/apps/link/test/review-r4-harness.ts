@@ -8,7 +8,7 @@ import type { AgentJob } from "../src/contract.ts"
 import { rpcFloor } from "../src/floor.ts"
 import { Journal } from "../src/journal.ts"
 import { runLink } from "../src/link.ts"
-import type { LinkConfig } from "../src/link.ts"
+import type { LinkConfig, LinkDeps } from "../src/link.ts"
 import { FakeAx } from "./fake-ax.ts"
 import { FakeFloor } from "./fake-floor.ts"
 import type { FloorConfig } from "./fake-floor.ts"
@@ -26,7 +26,7 @@ export const world = (o: Partial<FloorConfig> = {}) => ({
   ax: new FakeAx()
 })
 export type World = ReturnType<typeof world>
-export function start(w: World, dir = mkdtempSync(join(tmpdir(), "r4-fix-")), over: Partial<LinkConfig> = {}, fetch?: typeof globalThis.fetch) {
+export function start(w: World, dir = mkdtempSync(join(tmpdir(), "r4-fix-")), over: Partial<LinkConfig> = {}, fetch?: typeof globalThis.fetch, extra: Pick<LinkDeps, "substrate"> = {}) {
   const logs: Array<Record<string, unknown>> = []
   const stop = Effect.runSync(Deferred.make<void>())
   const cfg: LinkConfig = {
@@ -37,7 +37,7 @@ export function start(w: World, dir = mkdtempSync(join(tmpdir(), "r4-fix-")), ov
   }
   const fiber = Effect.runFork(Effect.scoped(Effect.gen(function*() {
     const floor = yield* rpcFloor({ url: "http://floor.test", token: "tok-nas", sessionId: `s:${dir}`, fetch: fetch ?? w.floor.fetch })
-    return yield* runLink(cfg, { ax: w.ax, floor, journal: Journal.open(dir), log: (ev, f) => logs.push({ t: Date.now(), ev, ...f }), stop, floorUrl: "http://floor.test" })
+    return yield* runLink(cfg, { ax: w.ax, floor, journal: Journal.open(dir), log: (ev, f) => logs.push({ t: Date.now(), ev, ...f }), stop, floorUrl: "http://floor.test", ...extra })
   })))
   return {
     dir, logs, fiber,

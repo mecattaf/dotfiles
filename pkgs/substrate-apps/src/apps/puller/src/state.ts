@@ -30,6 +30,7 @@ export class PullerState {
     return readdirSync(join(this.dir, "outbox")).filter((f) => f.endsWith(".json")).sort().map((f) => JSON.parse(readFileSync(join(this.dir, "outbox", f), "utf8")) as CompletePayload)
   }
   putVerdict(v: CompletePayload) { atomic(join(this.dir, "outbox", `${v.leaseId}.json`), JSON.stringify(v)) }
+  hasVerdict(leaseId: string) { return existsSync(join(this.dir, "outbox", `${leaseId}.json`)) }
   dropVerdict(leaseId: string) { rmSync(join(this.dir, "outbox", `${leaseId}.json`), { force: true }) }
   runDir(runId: string) { const d = join(this.dir, "runs", runId); mkdirSync(d, { recursive: true }); return d }
 }

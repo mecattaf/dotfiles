@@ -48,7 +48,7 @@ describe("the codex harness is real behind the same runner interface", () => {
       { type: "item.completed", item: { id: "item_0", type: "agent_message", text: '{"answer":"ok"}' } },
       { type: "turn.completed", usage: { input_tokens: 10, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 5, reasoning_output_tokens: 0 } },
     ].map((e) => JSON.stringify(e)).join("\n");
-    expect(parseCodex(out, true)).toEqual({ object: { answer: "ok" }, usage: { inputTokens: 10, outputTokens: 5 }, agentId: "019a-t" });
+    expect(parseCodex(out, true)).toEqual({ object: { answer: "ok" }, usage: { inputTokens: 10, outputTokens: 5, cacheCreationTokens: 0, cacheReadTokens: 0, reasoningTokens: 0 }, agentId: "019a-t" });
   });
 
   it("with a declared codex seat and no test guard, the runner is reached with the codex argv", async () => {

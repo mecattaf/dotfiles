@@ -149,7 +149,32 @@ export interface RunOptions {
    * back to the chained key, still with no prefix rule.
    */
   readonly cacheIdentity?: "chain" | "content";
+  /**
+   * What a resume does with a call whose journal ends in a terminal `failed`
+   * line (C3-5). "retry" (default, the harness's rule and the CODEX-TRIAGE
+   * default): it runs again from attempt 1, so a null can become a value.
+   * "replay": it is answered from the journal as the same null, with no
+   * dispatch, as the floor-dispatch path already does by node name. A failure
+   * where nothing ran, or that a new start can cure (budget, capacity, abort,
+   * a refused route; see `retryableFailure`), is retried in either mode.
+   */
+  readonly resumeFailures?: "retry" | "replay";
+  /** Override the classifier for "replay": true = retry this journaled failure. */
+  readonly isRetryableFailure?: (reason: string) => boolean;
 }
+
+/**
+ * Journaled failure reasons that "replay" still retries (C3-5): the call never
+ * ran, or ran into a limit a new start can lift. Anything else (a harness
+ * verdict, a schema mismatch after every attempt) is replayed as a null.
+ * Errs toward retry: an unknown reason that names one of these is retried.
+ */
+const HARNESS_VERDICT = /^runtime [^\s:]+: [^\s:]+ exited -?\d+/;
+export const retryableFailure = (reason: string): boolean =>
+  // A harness that ran and exited nonzero is a verdict, whatever its output says ("connection refused", "aborted" in
+  // its stderr): the backend's message is `runtime <name>: <harness> exited <code>...` (runners backend.ts).
+  !HARNESS_VERDICT.test(reason) &&
+  /budget exhausted|capacity refused|aborted|conwip refused|runner threw|refused|already exists|^skipped$|^journal: failed$/i.test(reason);
 
 export interface CallRecord {
   readonly index: number;
@@ -208,6 +233,9 @@ interface Shared {
   readonly occurrences: Map<string, number>;
   tick: number;
   readonly cacheOrder: ReplayBackend | undefined;
+  /** D06: realms compiled so far, and this start's lane epoch (distinct per start on one journal). */
+  realms: number;
+  readonly laneEpoch: string;
 }
 
 const newRunId = () => `wf_${randomBytes(4).toString("hex")}-${randomBytes(2).toString("hex").slice(0, 3)}`;
@@ -272,6 +300,8 @@ export async function runWorkflow(source: string, options: RunOptions): Promise<
     spent: options.resumeFrom?.tokensSpent ?? 0,
     occurrences: new Map(),
     tick: 0,
+    realms: 0,
+    laneEpoch: `e${options.resumeFrom?.events.length ?? 0}`,
     cacheOrder:
       options.resumeFrom !== undefined && options.cacheRelease === "recorded" ? new ReplayBackend(options.resumeFrom) : undefined,
   };
@@ -331,7 +361,9 @@ async function runScript(
     emit({ type: "log", message, depth });
   };
 
-  const agent = async (prompt: unknown, optsJson: string | undefined): Promise<string> => {
+  const realmLane = `${shared.laneEpoch}.r${++shared.realms}`;
+  const agent = async (prompt: unknown, optsJson: string | undefined, laneIn?: string): Promise<string> => {
+    const lane = typeof laneIn === "string" && laneIn !== "" ? `${realmLane}${laneIn}` : undefined;
     // Everything up to the first await runs synchronously at the call site, so
     // the chained key follows the script's own invocation order, as in the harness.
     if (typeof prompt !== "string") throw new TypeError("agent(prompt, opts): prompt must be a string");
@@ -373,13 +405,23 @@ async function runScript(
         rejected = `schema mismatch: ${(v as { errors: string[] }).errors.join("; ")}`;
       }
     }
+    // C3-5, "replay": a journaled terminal failure is answered from the
+    // journal (same key lookup as a hit), unless a new start can cure it.
+    let replayFail: string | undefined;
+    if (
+      !hit && rejected === undefined && cache !== undefined && cacheKey !== undefined && o.resumeFailures === "replay" &&
+      (byContent || !shared.prefixBroken) && cache.lastFailed.has(cacheKey) && !cache.budgetFailed.has(cacheKey)
+    ) {
+      const reason = cache.failReasons.get(cacheKey) ?? "journal: failed";
+      if (!(o.isRetryableFailure ?? retryableFailure)(reason)) replayFail = reason;
+    }
     // The budget ceiling at invocation, for calls that will actually run: a
     // cache hit spends nothing, so a resumed run still replays its cache. The
     // throwing call takes no index and does not advance the chain.
-    if (!hit && total !== null && shared.spent >= total) {
+    if (!hit && replayFail === undefined && total !== null && shared.spent >= total) {
       throw new BudgetExhaustedError(`agent(): budget exhausted (${shared.spent} of ${total} tokens spent)`);
     }
-    if (!byContent && cache !== undefined && !hit && !shared.prefixBroken) {
+    if (!byContent && cache !== undefined && !hit && replayFail === undefined && !shared.prefixBroken) {
       const inFlight = rejected === undefined && (cache.started.get(key)?.length ?? 0) > 0 && !cache.failed.has(key);
       if (!inFlight) shared.prefixBroken = true;
     }
@@ -409,10 +451,24 @@ async function runScript(
       emit({ type: "agent_cached", index, key, label });
       if (shared.cacheOrder) await shared.cacheOrder.run({ index, key: cacheKey!, prompt, opts, phase, attempt: 1 });
       if (o.copyCachedToJournal === true && o.journal) {
-        o.journal.append({ type: "started", key, agentId: rec.agentId ?? "", ...(label !== undefined && { label }), ...(phase !== undefined && { phase }), cid });
+        o.journal.append({ type: "started", key, agentId: rec.agentId ?? "", ...(label !== undefined && { label }), ...(phase !== undefined && { phase }), cid, ...(lane !== undefined && { lane }) });
         o.journal.append({ type: "result", key, agentId: rec.agentId ?? "", result: value, tokens: rec.tokens });
       }
       return JSON.stringify(value ?? null);
+    }
+
+    if (replayFail !== undefined) {
+      rec.state = "null";
+      rec.error = replayFail;
+      rec.agentId = cache!.started.get(cacheKey!)?.at(-1)?.agentId;
+      rec.tokens = cache!.tokens.get(cacheKey!) ?? 0;
+      if (shared.cacheOrder) await shared.cacheOrder.run({ index, key: cacheKey!, prompt, opts, phase, attempt: 1 });
+      if (o.copyCachedToJournal === true && o.journal) {
+        o.journal.append({ type: "started", key, agentId: rec.agentId ?? "", ...(label !== undefined && { label }), ...(phase !== undefined && { phase }), cid, ...(lane !== undefined && { lane }) });
+        o.journal.append({ type: "failed", key, agentId: rec.agentId ?? "", tokens: rec.tokens, error: replayFail });
+      }
+      emit({ type: "agent_done", index, key, state: "null", reason: `replayed from the journal: ${replayFail}` });
+      return "null";
     }
 
     await shared.sem.acquire();
@@ -430,7 +486,7 @@ async function runScript(
       const agentId = o.newAgentId?.() ?? defaultAgentId();
       rec.agentId = agentId;
       rec.error = reason;
-      o.journal?.append({ type: "started", key, agentId, ...(label !== undefined && { label }), ...(phase !== undefined && { phase }), cid });
+      o.journal?.append({ type: "started", key, agentId, ...(label !== undefined && { label }), ...(phase !== undefined && { phase }), cid, ...(lane !== undefined && { lane }) });
       o.journal?.append({ type: "failed", key, agentId, error: reason, budgetExhausted: true });
       writeLog(`[${label ?? `#${index}`}] failed: ${reason}`);
       emit({ type: "agent_done", index, key, state: "failed", reason });
@@ -449,7 +505,7 @@ async function runScript(
         const agentId = o.newAgentId?.() ?? defaultAgentId();
         rec.agentId = agentId;
         // One `started` line per CALL, as in the harness: attempts are not journaled.
-        if (attempt === 1) o.journal?.append({ type: "started", key, agentId, ...(label !== undefined && { label }), ...(phase !== undefined && { phase }), cid });
+        if (attempt === 1) o.journal?.append({ type: "started", key, agentId, ...(label !== undefined && { label }), ...(phase !== undefined && { phase }), cid, ...(lane !== undefined && { lane }) });
         emit({ type: "agent_started", index, key, agentId, attempt });
         const call: AgentCall = {
           index, key, prompt, opts: { ...opts, ...(model !== undefined && { model }) }, phase, attempt, ...(previousErrors && { previousErrors }),
