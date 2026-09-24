@@ -61,8 +61,29 @@ with step("rollback coordinator (a): the teardown inside ax-on re-applies the gu
     # Discriminating: the NAS's pod reaches a coordinator pod over VXLAN, and
     # the coordinator's sshd listens on its flannel.1 address, yet the pod
     # gets no SSH banner from it.
-    coord_pod = jsonpath("pod probe-coord", "{.status.podIP}")
-    nas.wait_until_succeeds(f"k3s kubectl exec probe-nas -- curl -sf --max-time 5 http://{coord_pod}:8000/ | grep -x pod-ok", timeout=300)
+    # The teardown killed the sandboxes; `kubectl wait` above can pass on the
+    # pre-teardown status (MEASURED r1 run 3: 0.24 s), so podIP may still name
+    # the old sandbox for a while. Read it on every try, never once.
+    record("probe_coord_ip_stale_read", jsonpath("pod probe-coord", "{.status.podIP}"))
+    try:
+        nas.wait_until_succeeds(
+            "ip=$(k3s kubectl get pod probe-coord -o jsonpath='{.status.podIP}') && "
+            "k3s kubectl exec probe-nas -- curl -sf --max-time 5 http://$ip:8000/ | grep -x pod-ok",
+            timeout=300,
+        )
+    except Exception:
+        record("rollback_a_pod_path_diag", {
+            "pod": nas.execute("k3s kubectl get pod probe-coord -o wide 2>&1")[1],
+            "curl": nas.execute("ip=$(k3s kubectl get pod probe-coord -o jsonpath='{.status.podIP}'); "
+                                "k3s kubectl exec probe-nas -- curl -sv --max-time 5 http://$ip:8000/ 2>&1 | tail -5")[1],
+            "coord_cni0": coordinator.execute("ip -4 -o addr show dev cni0; ip neigh show dev cni0 2>&1")[1],
+            "coord_forward": coordinator.execute("sysctl -n net.ipv4.ip_forward; iptables -S FORWARD 2>&1 | head -30")[1],
+            "coord_flannel": coordinator.execute("ip -d link show flannel.1 2>&1 | head -3; ip route 2>&1")[1],
+            "nas_fdb": nas.execute("bridge fdb show dev flannel.1 2>&1; ip neigh show dev flannel.1 2>&1")[1],
+            "coord_listen": coordinator.execute("ss -ltnp 2>&1 | grep -w 8000 || true")[1],
+        })
+        raise
+    record("probe_coord_ip_after_k3s_restart", jsonpath("pod probe-coord", "{.status.podIP}"))
     fl = coordinator.succeed("ip -4 -o addr show dev flannel.1 | awk '{print $4}' | cut -d/ -f1").strip()
     coordinator.succeed(f"timeout 10 bash -c 'exec 3<>/dev/tcp/{fl}/22'")
     kubectl(f"exec probe-nas -- sh -c '! (nc -w 5 {fl} 22 </dev/null 2>/dev/null | grep -q SSH)'")

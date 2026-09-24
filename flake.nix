@@ -796,6 +796,43 @@
           inherit (nixpkgs) lib;
         };
 
+        # DF-5: the vendored Cargo.lock must equal upstream's at the pinned rev.
+        # A build-time comparison, not an evaluation-time read, so evaluation
+        # never needs the fetched source (no import-from-derivation).
+        zenbook-duo-daemon-lock =
+          let
+            daemon = self.nixosConfigurations.client.config.services.zenbook-duo-daemon.package;
+          in
+          pkgs.runCommand "zenbook-duo-daemon-lock-check" { } ''
+            cmp ${daemon.src}/Cargo.lock ${./pkgs/zenbook-duo-daemon.Cargo.lock}
+            touch "$out"
+          '';
+
+        # G1: modules/gvisor.nix is imported on both twins with the gate OFF,
+        # puts nothing on PATH while off, and puts exactly pkgs.gvisor there
+        # when a host flips it (evaluated through extendModules, never switched).
+        gvisor-module =
+          let
+            hasGvisor = c: builtins.any (p: (p.pname or "") == "gvisor") c.environment.systemPackages;
+            coordinator = self.nixosConfigurations.coordinator.config;
+            worker = self.nixosConfigurations.worker.config;
+            workerOn =
+              (self.nixosConfigurations.worker.extendModules {
+                modules = [ { myGvisor.enable = nixpkgs.lib.mkForce true; } ];
+              }).config;
+          in
+          assert !coordinator.myGvisor.enable;
+          assert !worker.myGvisor.enable;
+          assert !(hasGvisor coordinator);
+          assert !(hasGvisor worker);
+          assert hasGvisor workerOn;
+          assert builtins.all (a: a.assertion) workerOn.assertions;
+          pkgs.runCommand "gvisor-module-check" { } ''
+            test -x ${workerOn.myGvisor.package}/bin/runsc
+            test -x ${workerOn.myGvisor.package}/bin/containerd-shim-runsc-v1
+            touch "$out"
+          '';
+
         qwen-speech =
           pkgs.runCommand "qwen-speech-tests"
             {
