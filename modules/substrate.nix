@@ -484,7 +484,7 @@ in
               type = "host";
               harness = "claude";
               seat = cfg.puller.claudeSeat;
-              timeoutMs = 900000;
+              timeoutMs = cfg.puller.callTimeoutMs."opus";
             };
             # pi on the coordinator against the Halogen server on the worker (the proven pattern). ssh:worker was
             # refused in the proof and never exercised, so it is not declared.
@@ -492,13 +492,13 @@ in
               type = "host";
               harness = "pi";
               seat = "halogen";
-              timeoutMs = 1800000;
+              timeoutMs = cfg.puller.callTimeoutMs."halogen";
             };
             codex = {
               type = "host";
               harness = "codex";
               seat = "codex";
-              timeoutMs = 900000;
+              timeoutMs = cfg.puller.callTimeoutMs."codex";
               codexSandbox = "read-only";
             };
             # The build-node runtime: codex may write in its job dir.
@@ -506,7 +506,7 @@ in
               type = "host";
               harness = "codex";
               seat = "codex";
-              timeoutMs = 900000;
+              timeoutMs = cfg.puller.callTimeoutMs."codex-rw";
               codexSandbox = "workspace-write";
             };
           };
@@ -546,6 +546,16 @@ in
         description = "src/deploy-config.ts keys (SUBSTRATE_CONFIG, read by the capacity gate). capacityFloorUrl and capacityFloorTokenFile are set by the unit from floorUrl and the credential.";
       };
 
+      callTimeoutMs = mkOption {
+        type = types.attrsOf types.ints.positive;
+        default = {
+          opus = 1800000;
+          halogen = 1800000;
+          codex = 1800000;
+          codex-rw = 2700000;
+        };
+        description = "Per-runtime wall-clock ceiling for one agent() call (timeoutMs in runtimes.toml). A call may shorten it, never extend it. Raised from 15 min on 2026-09-24 17:35: three codex-rw implement nodes of the crm and email builds hit exit 124 at 900000 ms while still executing commands.";
+      };
       workingDirectory = mkOption {
         type = types.str;
         default = "${home}/mecattaf/substrate";
