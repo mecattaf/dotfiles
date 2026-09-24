@@ -7,6 +7,13 @@ Module: `home/ax-conwip.nix`. Option namespace: `myAxConwip`. Check:
 this module defines no unit on any host today.** The flake check asserts exactly
 that, and it is written so that it goes red on the flip. Flipping it is Tom's.
 
+**2026-09-24 note.** The repository this page describes was renamed substrate
+(E10). Its box-side programs are not run through this module: the capacity
+pusher and the interpreter-host puller are the user units `substrate-pusher`
+and `substrate-puller` from `modules/substrate.nix`, declared ON on the
+coordinator as of 2026-09-24. They replace the hand-started nohup processes of
+`~/today/wednesday-prep-2026-09-23/substrate` (RUN.md), with the same configs.
+
 ## What the CONWIP is
 
 `/home/tom/mecattaf/ax-conwip` is a CONWIP scheduler. CONWIP is constant

@@ -88,23 +88,31 @@
     ../../modules/ax-client.nix
     # The Cloudflare Substrate's coordinator side (2026-09-23, E1/A2): the
     # gentle capacity pusher and the interpreter-host puller, both declared
-    # OFF below. The NAS side is hosts/nas/substrate-link.nix.
+    # ON below (2026-09-24). The NAS side is hosts/nas/substrate-link.nix.
     ../../modules/substrate.nix
   ];
 
   networking.hostName = "coordinator";
 
-  # ── Substrate on this box: declared, OFF ───────────────────────────────
-  # modules/substrate.nix. Arming either needs the floor live at floorUrl,
-  # the sealed FLOOR_TOKEN (secrets/substrate-floor-token.age, owner tom) and,
-  # for the puller, its package (pkgs/substrate-apps/SYNC.md: pending).
+  # ── Substrate on this box: declared ON (2026-09-24) ────────────────────
+  # modules/substrate.nix. Two user units on tom's manager, replacing the
+  # hand-started nohup processes of
+  # ~/today/wednesday-prep-2026-09-23/substrate (RUN.md) with the same
+  # configuration (runtimes opus/halogen/codex/codex-rw, pusher peerCacheDir
+  # "inherit"). Tokens: secrets/substrate-floor-token.age (FLOOR_TOKEN) and
+  # secrets/substrate-link-token-coordinator.age (this holder's LINK_TOKENS
+  # entry), delivered to tom 0400. No runtime-test wrapper: the puller runs
+  # with the real /run/user so herdr and ssh stay reachable. Cutover: SIGTERM
+  # the nohup processes by their HOST pids, remove
+  # ~/.local/state/substrate/{puller,pusher}.pid (they hold namespace pid 2),
+  # then switch. Rollback: both `false` and switch.
   services.substrate = {
     floorUrl = "https://substrate.mecattaf.dev";
     pusher = {
-      enable = false;
+      enable = true;
       owners.codex = "tom"; # E6 (2026-09-23): the codex login is Tom's
     };
-    puller.enable = false;
+    puller.enable = true;
   };
 
   # ── ax on the fleet: THE kill switch for this host ─────────────────────

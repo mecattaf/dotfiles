@@ -4,7 +4,8 @@
   pkgs,
   ...
 }:
-# services.substrate: the coordinator's two box-side programs of the Cloudflare Substrate, declared and OFF.
+# services.substrate: the coordinator's two box-side programs of the Cloudflare Substrate, declared ON on the
+# coordinator since 2026-09-24.
 #
 # CODE: pkgs/substrate-apps (vendored from agency-agency/substrate at the sha in its SYNC.md). ARCHITECTURE:
 # ~/today/wednesday-prep-2026-09-23/03-substrate-ax-conwip.md section 2. RULING: E1 (2026-09-23), the code that
@@ -16,14 +17,25 @@
 #           posts seat-capacity/2 snapshots to the floor's POST /capacity/snapshots. A dead pusher fails closed
 #           at the floor: readings grade STALE after 1200 s and admission stops.
 #   puller  the interpreter host: leases runs (runtime:interpreter) from the floor with its per-link token, runs
-#           each workflow's agent() calls on the runtimes this module renders into runtimes.toml (host, herdr,
-#           gvisor, ssh:worker) with the cc2 seat's config dir by path, heartbeats, completes, resumes from the
-#           run's journal. Its config is the [puller] table of a client config.toml (packages/api/src/config.ts),
+#           each workflow's agent() calls on the runtimes this module renders into runtimes.toml (opus, halogen,
+#           codex, codex-rw: all host runtimes, the shape proven live on 2026-09-24), each claude seat spending
+#           its own config dir by path ([credentials.seats], RG-1), heartbeats, completes, resumes from the run's
+#           journal. Its config is the [puller] table of a client config.toml (packages/api/src/config.ts),
 #           rendered here with placeholders for the two credential paths and filled at unit start.
 #
 # WHY USER UNITS. Both programs speak for Tom's logins: `seats` reads each Claude seat's OAuth usage from its
 # config dir, and the puller runs claude, herdr and ssh as Tom. A system unit with User=tom would carry none of
 # the session (herdr socket, ssh agent, XDG dirs). ConditionUser pins each unit to that one user's manager.
+#
+# NO runtime-test WRAPPER. The hand-started proof (2026-09-23/24) ran both programs inside ~/.local/bin/runtime-test,
+# which is a test harness: a private /run/user and PID/IPC namespaces. A unit is not a test. The puller runs on the
+# user manager with the real /run/user so herdr's socket and the ssh agent stay reachable, and the host runtimes
+# see the same session a login shell does (runtimeTestWrapper stays available, off, for the microvm runtime).
+# Consequence at cutover: the hand-started processes wrote their pidfiles from inside the namespace, so
+# ~/.local/state/substrate/puller.pid holds namespace pid 2. Seen from the host, pid 2 is a kernel thread the puller
+# cannot signal (EPERM), which apps/puller/src/pidfile.ts counts as alive, so the unit would exit 3 until that
+# pidfile is removed. Retire the nohup processes first (SIGTERM their HOST pids, RUN.md), then remove
+# ~/.local/state/substrate/{puller,pusher}.pid, then start the units.
 #
 # THE TOKENS ARE PATHS, NEVER VALUES. The floor's operator bearer (FLOOR_TOKEN) and the puller's per-link token
 # (one entry of the floor's LINK_TOKENS, bound to `holder`) are agenix secrets, decrypted at /run/agenix/<name>
@@ -33,9 +45,13 @@
 # capacityFloorTokenFile. Nothing here reads, prints or interpolates a value; every rendered file carries paths.
 # Minting (wrangler secret put FLOOR_TOKEN and LINK_TOKENS, the two age files) is Tom's hand.
 #
-# THE GATE. Both `enable`s default to false and hosts/coordinator sets them false explicitly. Arming needs the
-# floor deployed at floorUrl and the sealed tokens. tests/substrate-modules renders both units armed with fixtures
-# so the shape is proven at evaluation time without a token on disk.
+# THE GATE. Both `enable`s default to false. hosts/coordinator sets both true as of 2026-09-24, replacing the
+# hand-started processes of ~/today/wednesday-prep-2026-09-23/substrate (RUN.md), with the floor live at floorUrl
+# and the two tokens sealed as secrets/substrate-floor-token.age and secrets/substrate-link-token-coordinator.age
+# (secrets.nix, editors ++ coordinatorOnly). The rendered files match that proven deployment: prove/runtimes.toml,
+# prove/client.config.toml, tom.pusher.config.json and tom.substrate.config.json (axProtoFallbackPath excepted:
+# null here, the vendored ax.proto). tests/substrate-modules renders both units armed with fixtures, so the shape is
+# proven at evaluation time without a token on disk.
 let
   cfg = config.services.substrate;
   inherit (lib)
@@ -64,6 +80,7 @@ let
         plans = cfg.pusher.plans;
         slots = cfg.pusher.slots;
         estimatedProviders = cfg.pusher.estimatedProviders;
+        peerCacheDir = cfg.pusher.peerCacheDir;
       }
       // cfg.pusher.extraConfig
     )
@@ -100,8 +117,12 @@ let
       cap = cfg.puller.cap;
       default_model = cfg.puller.defaultModel;
       node_runs_on = cfg.puller.nodeRunsOn;
+      demand_dir = cfg.puller.demandDir;
+      drain_timeout_s = cfg.puller.drainTimeoutS;
+      capacity_wait_s = cfg.puller.capacityWaitS;
     }
-    // lib.optionalAttrs (cfg.puller.axServer != null) { ax_server = cfg.puller.axServer; };
+    // lib.optionalAttrs (cfg.puller.axServer != null) { ax_server = cfg.puller.axServer; }
+    // lib.optionalAttrs (cfg.puller.healthAddr != null) { health_addr = cfg.puller.healthAddr; };
   });
 
   pullerExec = lib.escapeShellArgs (
@@ -125,6 +146,7 @@ let
     ${pkgs.gnused}/bin/sed -e "s|@FLOOR_TOKEN_FILE@|$token|" -e "s|@LINK_TOKEN_FILE@|$link|" ${clientConfigTemplate} > "$RUNTIME_DIRECTORY/config.toml"
     export SUBSTRATE_CONFIG="$RUNTIME_DIRECTORY/substrate.json"
     export SUBSTRATE_CLIENT_CONFIG="$RUNTIME_DIRECTORY/config.toml"
+    # [puller].runtimes is the primary; loadRuntimes (packages/runners/src/config.ts) still falls back to this.
     export AX_CONWIP_RUNTIMES=${runtimesToml}
     exec ${pullerExec}
   '';
@@ -167,7 +189,7 @@ in
     };
 
     pusher = {
-      enable = mkEnableOption "the gentle capacity pusher (seats --json to the floor). OFF; see this file's header";
+      enable = mkEnableOption "the gentle capacity pusher (seats --json to the floor). ON on the coordinator; see this file's header";
 
       package = mkOption {
         type = types.package;
@@ -230,6 +252,7 @@ in
         type = types.attrsOf types.str;
         default = {
           cc3 = "evicted";
+          gpu-coordinator = "halogen is declared but not resident on the coordinator";
         };
         description = "Seats never published, with the reason.";
       };
@@ -254,6 +277,12 @@ in
         description = "Providers whose readings grade ESTIMATED (never admitted unless the floor ungates them).";
       };
 
+      peerCacheDir = mkOption {
+        type = types.str;
+        default = "inherit";
+        description = "pusher.json peerCacheDir: the seats oracle's peer cache. `inherit` (the proven setting) keeps the oracle's own default, so `seats` reuses the tally seat-feeder cache and adds no usage-endpoint calls; a path gives the pusher its own cache (never a tally-rewrite path; apps/pusher/src/seatsOracle.mjs refuses one).";
+      };
+
       extraConfig = mkOption {
         type = types.attrs;
         default = { };
@@ -262,7 +291,7 @@ in
     };
 
     puller = {
-      enable = mkEnableOption "the coordinator puller (the interpreter host). OFF; see this file's header";
+      enable = mkEnableOption "the coordinator puller (the interpreter host). ON on the coordinator; see this file's header";
 
       package = mkOption {
         type = types.package;
@@ -333,6 +362,32 @@ in
         description = "[puller].ax_server: probed only to say why an ax node is refused here (the NAS link dispatches ax).";
       };
 
+      demandDir = mkOption {
+        type = types.str;
+        default = "${home}/.local/state/substrate/demand";
+        defaultText = lib.literalExpression ''"''${home}/.local/state/substrate/demand"'';
+        description = "[puller].demand_dir: marked while a run is held, so the pusher (same dir by default) reads at its active cadence.";
+      };
+
+      drainTimeoutS = mkOption {
+        type = types.ints.unsigned;
+        default = 60;
+        description = "[puller].drain_timeout_s: on the first SIGTERM, how long in-flight runs may finish before they are aborted. Keep TimeoutStopSec above it.";
+      };
+
+      capacityWaitS = mkOption {
+        type = types.ints.unsigned;
+        default = 600;
+        description = "[puller].capacity_wait_s: how long a node waits for capacity (a stale or refused reading) before it fails.";
+      };
+
+      healthAddr = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "127.0.0.1:9311";
+        description = "[puller].health_addr: loopback host:port for GET /status.json and /metrics. null: no endpoint (key omitted).";
+      };
+
       stateDir = mkOption {
         type = types.str;
         default = "${home}/.local/state/substrate/puller";
@@ -377,12 +432,12 @@ in
       runtimes = mkOption {
         type = tomlFormat.type;
         default = {
-          default = "host";
+          default = "opus";
           allow = [
-            "host"
-            "herdr"
-            "gvisor"
-            "ssh:worker"
+            "opus"
+            "halogen"
+            "codex"
+            "codex-rw"
           ];
           seats = {
             claude = cfg.puller.claudeSeat;
@@ -393,34 +448,48 @@ in
             claude = cfg.puller.claudeConfigDir;
             mode = "rw";
             scope = "credential";
+            # RG-1 (critique pass 2026-09-24): a claude job mounts the dir of the seat it is gated on, never another.
+            # cc is ~/.claude; claudeSeat (cc2) is claudeConfigDir. `//` so claudeSeat = "cc" overrides, not clashes.
+            seats = {
+              cc = "${home}/.claude";
+            }
+            // {
+              ${cfg.puller.claudeSeat} = cfg.puller.claudeConfigDir;
+            };
           };
           runtime = {
-            host = {
+            opus = {
               type = "host";
               harness = "claude";
+              seat = cfg.puller.claudeSeat;
+              timeoutMs = 900000;
             };
-            herdr = {
-              type = "herdr";
-              harness = "claude";
-              mode = "action";
-            };
-            gvisor = {
-              type = "gvisor";
-              harness = "claude";
-              runsc = "${pkgs.gvisor}/bin/runsc";
-              pasta = "${pkgs.passt}/bin/pasta";
-              state = "${home}/.local/state/substrate/runsc";
-              network = "isolated";
-            };
-            "ssh:worker" = {
-              type = "ssh";
-              host = "worker";
+            # pi on the coordinator against the Halogen server on the worker (the proven pattern). ssh:worker was
+            # refused in the proof and never exercised, so it is not declared.
+            halogen = {
+              type = "host";
               harness = "pi";
               seat = "halogen";
+              timeoutMs = 1800000;
+            };
+            codex = {
+              type = "host";
+              harness = "codex";
+              seat = "codex";
+              timeoutMs = 900000;
+              codexSandbox = "read-only";
+            };
+            # The build-node runtime: codex may write in its job dir.
+            codex-rw = {
+              type = "host";
+              harness = "codex";
+              seat = "codex";
+              timeoutMs = 900000;
+              codexSandbox = "workspace-write";
             };
           };
         };
-        description = "The runtimes file (packages/runners/src/config.ts), rendered to TOML and passed as AX_CONWIP_RUNTIMES. Defaults: host, herdr, gvisor (nix runsc and pasta) and ssh:worker (pi on Halogen), default host, cc2's config dir as the claude credential.";
+        description = "The runtimes file (packages/runners/src/config.ts), rendered to TOML and named by [puller].runtimes (and AX_CONWIP_RUNTIMES). Default: the shape proven live on 2026-09-24. opus (host, claude on claudeSeat), halogen (host, pi against the worker's Halogen server), codex (read-only) and codex-rw (workspace-write), default opus, each claude seat bound to its config dir in [credentials.seats]. herdr, gvisor and ssh:worker tables are not declared by default (never exercised); override this option to add them.";
       };
 
       runtimesFile = mkOption {
@@ -535,7 +604,15 @@ in
         ];
         RuntimeDirectory = "substrate-puller";
         RuntimeDirectoryMode = "0700";
-        RestartPreventExitStatus = [ 78 ];
+        # 3 another puller holds the pidfile, 75 another session holds this holder (L5), 78 bad config or token:
+        # none is cured by a restart.
+        RestartPreventExitStatus = [
+          3
+          75
+          78
+        ];
+        # Above drain_timeout_s, so the first SIGTERM's drain can finish before systemd escalates.
+        TimeoutStopSec = "${toString (cfg.puller.drainTimeoutS + 30)}s";
         MemoryMax = "2G";
       };
     };

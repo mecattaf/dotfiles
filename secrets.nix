@@ -142,6 +142,17 @@ in
   # coordinator only (hosts/coordinator/attic.nix), so only it may decrypt (#42).
   "secrets/atticd-server-token.age".publicKeys = editors ++ coordinatorOnly;
 
+  # The Cloudflare Substrate's coordinator side (modules/substrate.nix, ON
+  # since 2026-09-24). substrate-floor-token is the floor's operator bearer
+  # (the Worker secret FLOOR_TOKEN), read by the capacity pusher and the
+  # puller; substrate-link-token-coordinator is the puller's entry in the
+  # floor's LINK_TOKENS, bound to holder "coordinator". Both delivered to tom
+  # 0400 and handed to the user units by LoadCredential, never as values.
+  # Minted by Tom with `age -R` over these lists (78bcc517); the NAS link's
+  # own bearer is floor-link-token above, a different identity.
+  "secrets/substrate-floor-token.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/substrate-link-token-coordinator.age".publicKeys = editors ++ coordinatorOnly;
+
   # SoundCloud Go+ cookies.txt (Netscape format), consumed by the music-consolidation
   # drain's yt-dlp invocations (systemd user units on coordinator only — see that
   # repo's docs/SPEC-2026-07-06-original.md).
