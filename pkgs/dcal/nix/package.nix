@@ -45,6 +45,10 @@ buildGoModule rec {
 
   # systemd-analyze, call-diarize, and crm are intentionally resolved from PATH
   # at runtime so dcal does not pull those optional workflows into its closure.
+  # crm is optional: dotfiles no longer ships it (issue #452, pull request #456).
+  # dcal takes it from DCAL_CRM_BIN or from PATH, and refuses by name when
+  # neither resolves. The successor is github.com/mecattaf/crm, whose
+  # scripts/crm-cli.sh wrapper is what DCAL_CRM_BIN should point at.
   meta = {
     description = "Headless CLI for local and synced calendars";
     homepage = "https://github.com/AvengeMedia/dankcalendar";

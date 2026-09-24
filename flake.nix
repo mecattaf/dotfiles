@@ -678,7 +678,6 @@
             call-diarize
             browser-desktop
             chrome-stream
-            crm
             dcal
             fleet-status
             local-ai-monthly
