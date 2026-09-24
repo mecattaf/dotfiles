@@ -114,7 +114,13 @@
       enable = true;
       owners.codex = "tom"; # E6 (2026-09-23): the codex login is Tom's
     };
-    puller.enable = true;
+    puller = {
+      enable = true;
+      # 2026-09-24 16:00: two builds (crm, email) submitted at once, six nodes in flight across them
+      # (codex-rw implementers plus opus verifiers). The proof ran at 1/2.
+      maxRuns = 2;
+      cap = 6;
+    };
   };
 
   # ── ax on the fleet: THE kill switch for this host ─────────────────────
