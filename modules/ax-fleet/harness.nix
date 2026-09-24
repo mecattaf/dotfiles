@@ -124,6 +124,9 @@ let
     "172.16.0.0/12"
     "192.168.0.0/16"
     "100.64.0.0/10"
+    # Codex review 1 triage: link-local (cloud metadata, NM's ipv4.link-local
+    # routes) was dropped on the NAS forward chain but not here.
+    "169.254.0.0/16"
   ];
 
   # ── pods never open a connection to the coordinator host (fix round 2) ──
