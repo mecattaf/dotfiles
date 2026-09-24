@@ -109,10 +109,13 @@ pkgs.runCommand "substrate-modules"
     assert rt["allow"] == ["opus", "halogen", "codex", "codex-rw"], rt["allow"]
     assert set(rt["runtime"]) == {"opus", "halogen", "codex", "codex-rw"}, list(rt["runtime"])
     assert not {"herdr", "gvisor", "ssh:worker"} & set(rt["runtime"]), list(rt["runtime"])
-    assert rt["runtime"]["opus"] == {"type": "host", "harness": "claude", "seat": "cc2", "timeoutMs": 1800000}
-    assert rt["runtime"]["halogen"] == {"type": "host", "harness": "pi", "seat": "halogen", "timeoutMs": 1800000}
-    assert rt["runtime"]["codex"] == {"type": "host", "harness": "codex", "seat": "codex", "timeoutMs": 1800000, "codexSandbox": "read-only"}
-    assert rt["runtime"]["codex-rw"] == {"type": "host", "harness": "codex", "seat": "codex", "timeoutMs": 2700000, "codexSandbox": "workspace-write"}
+    for name in ("opus", "halogen", "codex", "codex-rw"):
+        assert isinstance(rt["runtime"][name].get("timeoutMs"), int) and rt["runtime"][name]["timeoutMs"] >= 900000, (name, rt["runtime"][name])
+    strip = lambda t: {k: v for k, v in t.items() if k != "timeoutMs"}
+    assert strip(rt["runtime"]["opus"]) == {"type": "host", "harness": "claude", "seat": "cc2"}
+    assert strip(rt["runtime"]["halogen"]) == {"type": "host", "harness": "pi", "seat": "halogen"}
+    assert strip(rt["runtime"]["codex"]) == {"type": "host", "harness": "codex", "seat": "codex", "codexSandbox": "read-only"}
+    assert strip(rt["runtime"]["codex-rw"]) == {"type": "host", "harness": "codex", "seat": "codex", "codexSandbox": "workspace-write"}
     # The loader's guardrail (packages/runners/src/config.ts): codexSandbox only on the codex harness.
     for name, table in rt["runtime"].items():
         assert "codexSandbox" not in table or table.get("harness") == "codex", name

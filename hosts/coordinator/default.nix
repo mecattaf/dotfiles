@@ -120,6 +120,14 @@
       # (codex-rw implementers plus opus verifiers). The proof ran at 1/2.
       maxRuns = 2;
       cap = 6;
+      # 2026-09-24 19:55: a codex-rw implement part of the crm build ran 45 min at full activity (82 tool calls) and was
+      # cut; the parts are sized for Claude. Two hours for codex-rw, one for the opus gates and fixes.
+      callTimeoutMs = {
+        opus = 3600000;
+        halogen = 1800000;
+        codex = 3600000;
+        codex-rw = 7200000;
+      };
     };
   };
 
