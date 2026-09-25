@@ -198,6 +198,22 @@ in
           group = "users";
           mode = "600";
         };
+        # The single full-scope Cloudflare API token (secrets.nix has the provenance).
+        # Same copy-not-link delivery as wrangler-config; the runbooks of the crm,
+        # email and backlog services read the copied file by that exact path.
+        age.secrets.cloudflare-api-token = {
+          file = ../secrets/cloudflare-api-token.age;
+          owner = "tom";
+          group = "users";
+          mode = "600";
+        };
+        # Every login shell exports CLOUDFLARE_API_TOKEN from the delivered file, so
+        # wrangler and the curl-based runbooks authenticate without a browser session.
+        environment.extraInit = ''
+          if [ -r "$HOME/.local/state/cloudflare/api-token" ]; then
+            export CLOUDFLARE_API_TOKEN="$(cat "$HOME/.local/state/cloudflare/api-token")"
+          fi
+        '';
 
         system.userActivationScripts.seedOperatorCreds.text = ''
           gh="$HOME/.config/gh/hosts.yml"
@@ -211,6 +227,13 @@ in
             mkdir -p "$HOME/.config/.wrangler/config"
             cp "${config.age.secrets.wrangler-config.path}" "$wr"
             chmod 600 "$wr"
+          fi
+          cf="$HOME/.local/state/cloudflare/api-token"
+          if [ ! -e "$cf" ] && [ -r "${config.age.secrets.cloudflare-api-token.path}" ]; then
+            mkdir -p "$HOME/.local/state/cloudflare"
+            chmod 700 "$HOME/.local/state/cloudflare"
+            cp "${config.age.secrets.cloudflare-api-token.path}" "$cf"
+            chmod 600 "$cf"
           fi
         '';
 
