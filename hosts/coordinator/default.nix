@@ -90,6 +90,9 @@
     # gentle capacity pusher and the interpreter-host puller, both declared
     # ON below (2026-09-24). The NAS side is hosts/nas/substrate-link.nix.
     ../../modules/substrate.nix
+    # The academic OCR drain's standing submit (services.academicDrain.standing, ON below): a nightly lane B run on
+    # the floor this box's puller serves (2026-09-25).
+    ../../modules/academic-drain.nix
   ];
 
   networking.hostName = "coordinator";
@@ -151,6 +154,23 @@
         seat = "halogen";
       };
     };
+  };
+
+  # ── The academic OCR drain, standing on the floor (2026-09-25) ─────────
+  # modules/academic-drain.nix: a nightly user timer submits lane B
+  # (~/mecattaf/academic-drain/ocr.substrate.workflow.js) under the per-night
+  # run id acadlb<YYYYMMDD>, idempotent at the floor, and skips while a drain
+  # run is in flight, the lane-b lock is held, the worker's sticky STOP or the
+  # kill-switch file exists, lane B is exhausted, or the puller is down.
+  # RELEASE WINDOW, Tom's ruling to make (01:30 is the planning pass's
+  # proposal): substrate has no priority; the floor hands queued runs out
+  # FIFO by seq (apps/floor/src/link/engine.ts:479), and a drain run holds one
+  # of this puller's maxRuns = 2 slots for its whole night. 01:30 keeps the
+  # evening build block ahead of it. maxRuns is deliberately unchanged.
+  # Kill switch: touch ~/.local/state/academic-drain/STANDING-OFF.
+  services.academicDrain.standing = {
+    enable = true;
+    onCalendar = "*-*-* 01:30:00";
   };
 
   # ── ax on the fleet: THE kill switch for this host ─────────────────────

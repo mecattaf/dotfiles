@@ -384,6 +384,19 @@
           builtins.attrNames config.services.halogen.alternates
         );
       }
+      # The academic OCR drain's lane B batch (2026-09-25; the coordinator submits it nightly,
+      # hosts/coordinator services.academicDrain.standing). lane_b_batch.py holds this flock for a whole
+      # batch (lane_b_batch.py:361-365), but halogen-idle can read idle between two pages, so a switch
+      # that restarts podman-halogen mid-batch would end the night as an 'outage' yield
+      # (ocr.substrate.workflow.js:127, INFERRED). Defer while the lock is held; a missing file is free.
+      {
+        name = "academic-drain-lane-b";
+        argv = [
+          config.myUpdateAdopt.gatesBin
+          "flock-free"
+          "/home/tom/.local/state/academic-drain/lane-b/main/.lane-b.lock"
+        ];
+      }
     ];
     probes = [
       {

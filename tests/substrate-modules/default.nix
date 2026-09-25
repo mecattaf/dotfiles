@@ -14,7 +14,10 @@
 # opus/halogen/codex/codex-rw and ssh:worker (type ssh, host worker, harness pi, seat halogen: lane B's pi runs on
 # the worker through the ssh runner, merged in from puller.sshRuntimes; still no herdr or gvisor), [credentials.seats]
 # with cc2 = ~/.claude-work, pusher.json with peerCacheDir and no tokenFile, the [puller] table with the two
-# credential placeholders, and no rendered file carrying a token-shaped key or a credential path.
+# credential placeholders, and no rendered file carrying a token-shaped key or a credential path. It also pins the
+# academic drain's standing submit (modules/academic-drain.nix, ON on the coordinator since 2026-09-25): the user
+# service and timer, the timer's OnCalendar, the floor token as a credential, and a rendered script with no
+# token-shaped literal.
 let
   coord = self.nixosConfigurations.coordinator;
   declared = coord.config;
@@ -34,6 +37,8 @@ let
         }
       ];
     }).config;
+  standing = declared.systemd.user.services.academic-drain-standing;
+  standingTimer = declared.systemd.user.timers.academic-drain-standing;
   pusherUnit = armed.systemd.user.services.substrate-pusher;
   pullerUnit = armed.systemd.user.services.substrate-puller;
   inherit (lib) hasInfix;
@@ -83,6 +88,16 @@ assert hasInfix "/home/tom/.local/bin" pusherUnit.environment.PATH;
 assert hasInfix "/etc/profiles/per-user/tom/bin"
   declared.systemd.user.services.substrate-puller.environment.PATH;
 assert pullerUnit.serviceConfig.RuntimeDirectory == "substrate-puller";
+# The standing lane B submit: a oneshot user service on a Persistent=false timer, the bearer by LoadCredential.
+assert declared.services.academicDrain.standing.enable;
+assert standing.serviceConfig.Type == "oneshot";
+assert standing.unitConfig.ConditionUser == "tom";
+assert standing.serviceConfig.LoadCredential == [ "floor-token:/run/agenix/substrate-floor-token" ];
+assert !(standing ? wantedBy) || standing.wantedBy == [ ];
+assert standingTimer.timerConfig.OnCalendar == "*-*-* 01:30:00";
+assert standingTimer.timerConfig.Persistent == false;
+assert standingTimer.wantedBy == [ "timers.target" ];
+assert declared.services.academicDrain.standing.args.runtime == "ssh:worker";
 # puller.sshRuntimes MERGES into the default runtimes (a hand-set runtimes.runtime."ssh:worker" would replace it).
 assert declared.services.substrate.puller.sshRuntimes ? "ssh:worker";
 assert
@@ -103,9 +118,10 @@ pkgs.runCommand "substrate-modules"
     runtimesToml = armed.services.substrate.puller.runtimesFile;
     clientToml = armed.services.substrate.puller.clientConfigFile;
     pullerStart = pullerUnit.serviceConfig.ExecStart;
+    standingScript = standing.serviceConfig.ExecStart;
   }
   ''
-    python3 - "$pusherJson" "$runtimesToml" "$pullerStart" "$clientToml" <<'PY'
+    python3 - "$pusherJson" "$runtimesToml" "$pullerStart" "$clientToml" "$standingScript" <<'PY'
     import json, re, sys, tomllib
     pusher = json.load(open(sys.argv[1]))
     assert pusher["floorUrl"].startswith("https://"), pusher
@@ -165,7 +181,14 @@ pkgs.runCommand "substrate-modules"
         # No token-shaped value anywhere; store paths are masked first (their hashes are 32 base32 chars).
         masked = re.sub(r"/nix/store/[a-z0-9]{32}-", "/nix/store/HASH-", text)
         assert not token_shaped.search(masked), (f, token_shaped.search(masked).group(0))
-    print("substrate-modules: pusher.json, runtimes.toml and config.toml render the 2026-09-24 proven shape plus ssh:worker")
+    standing = open(sys.argv[5]).read()
+    assert "CREDENTIALS_DIRECTORY" in standing and "/floor-token" in standing, "the standing submit reads the bearer from its credential"
+    assert "authorization: Bearer %s" in standing and "@<(auth)" in standing, "the bearer goes to curl as a header file, never argv"
+    assert "acadlb" in standing and "academic-drain-lane-b" in standing and "/runs" in standing
+    assert "/run/agenix" not in standing and "/.local/state/substrate/floor-token" not in standing
+    masked = re.sub(r"/nix/store/[a-z0-9]{32}-", "/nix/store/HASH-", standing)
+    assert not token_shaped.search(masked), ("standing submit", token_shaped.search(masked).group(0))
+    print("substrate-modules: pusher.json, runtimes.toml and config.toml render the 2026-09-24 proven shape plus ssh:worker; the standing submit carries no token")
     PY
     touch "$out"
   ''
