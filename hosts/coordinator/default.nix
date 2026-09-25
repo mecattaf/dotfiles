@@ -127,6 +127,28 @@
         halogen = 1800000;
         codex = 3600000;
         codex-rw = 7200000;
+        # The halogen ceiling: ocr.substrate.workflow.js sizes a lane B node (DEADLINE_S 1620 plus the relay) to it.
+        "ssh:worker" = 1800000;
+      };
+      # 2026-09-25, lane B of the academic OCR drain. Tom: "it would be better to have the changes made durable,
+      # in dotfiles through PR's. that way the academic ocr task drain is "permamnently" registered on the
+      # factory floor". The node's pi runs ON the worker through the ssh runner, which starts the remote job in
+      # its own session, kills that process group over a second ssh on timeout or abort, and reaps leftover
+      # groups after a runner crash (packages/runners/src/ssh.ts:28-38, 108-113, 171-193). That replaces the
+      # 2026-09-25 relay (pi on the coordinator running `ssh worker lane_b_batch.py ...` through its bash tool),
+      # where a coordinator-side abort killed only the local pi and ssh client and left the remote batch running
+      # and holding <out>/.lane-b.lock, so a resumed node would stop on 'locked' (INFERRED: sshd sends a -T
+      # session no SIGHUP). The worker needs no floor token and no new secret: pi and the halogen provider
+      # (~/.pi/agent/models.json) are on its ssh PATH (MEASURED 2026-09-25). Both halogen and ssh:worker spend
+      # seat halogen, so an agent() call that names only {seat: "halogen"} is refused as ambiguous
+      # (config.ts:672); the ocr and backlog workflows name their runtime. The workflow side: academic-drain
+      # da28725 makes ssh:worker its default and drops the `ssh ... worker` wrapper there (ON_WORKER), so the
+      # batch runs under pi on the worker with no second hop; at a1ee049 (run 96b9568118826fac) it still
+      # wrapped every command, a worker-to-worker hop whose inner session the pgid kill would not reach.
+      sshRuntimes."ssh:worker" = {
+        host = "worker";
+        harness = "pi";
+        seat = "halogen";
       };
     };
   };

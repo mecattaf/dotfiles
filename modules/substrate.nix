@@ -18,7 +18,8 @@
 #           at the floor: readings grade STALE after 1200 s and admission stops.
 #   puller  the interpreter host: leases runs (runtime:interpreter) from the floor with its per-link token, runs
 #           each workflow's agent() calls on the runtimes this module renders into runtimes.toml (opus, halogen,
-#           codex, codex-rw: all host runtimes, the shape proven live on 2026-09-24), each claude seat spending
+#           codex, codex-rw: all host runtimes, the shape proven live on 2026-09-24; plus one type = "ssh" table
+#           per puller.sshRuntimes entry, e.g. ssh:worker since 2026-09-25), each claude seat spending
 #           its own config dir by path ([credentials.seats], RG-1), heartbeats, completes, resumes from the run's
 #           journal. Its config is the [puller] table of a client config.toml (packages/api/src/config.ts),
 #           rendered here with placeholders for the two credential paths and filled at unit start.
@@ -108,6 +109,20 @@ let
 
   runtimesToml = tomlFormat.generate "substrate-runtimes.toml" cfg.puller.runtimes;
 
+  # puller.sshRuntimes, rendered as [runtime."ssh:<host>"] tables in the shape of SshRuntime in
+  # packages/runners/src/config.ts:116-121 (type "ssh", host, plus the common harness, seat and timeoutMs of
+  # :44-58). MERGED into the default runtimes below and appended to its allow list: a host that instead sets
+  # puller.runtimes.runtime."ssh:worker" REPLACES the whole default and drops opus, halogen, codex, codex-rw,
+  # allow, seats and credentials (MEASURED 2026-09-25 by nix eval through extendModules).
+  # The name is the loader's SSH_SHORTHAND (config.ts:284); builtins.match anchors the whole string.
+  sshRuntimeNameRe = "ssh:[A-Za-z0-9][A-Za-z0-9_.@-]*";
+  sshRuntimeTables = lib.mapAttrs (name: r: {
+    type = "ssh";
+    inherit (r) host harness seat;
+    # A runtime with no callTimeoutMs entry of its own gets halogen's ceiling (the seat ssh:worker spends).
+    timeoutMs = cfg.puller.callTimeoutMs.${name} or cfg.puller.callTimeoutMs.halogen;
+  }) cfg.puller.sshRuntimes;
+
   # The deploy config (src/deploy-config.ts) with the bearer path left as a placeholder; the unit fills it from
   # $CREDENTIALS_DIRECTORY at start, into its RuntimeDirectory, so no path to a credential is guessed at eval.
   deployConfigTemplate = pkgs.writeText "substrate.json.in" (
@@ -129,7 +144,8 @@ let
       holder = cfg.puller.holder;
       link_token_file = "@LINK_TOKEN_FILE@";
       state_dir = cfg.puller.stateDir;
-      pidfile = if cfg.puller.pidfile == null then "@RUNTIME_DIRECTORY@/puller.pid" else cfg.puller.pidfile;
+      pidfile =
+        if cfg.puller.pidfile == null then "@RUNTIME_DIRECTORY@/puller.pid" else cfg.puller.pidfile;
       max_runs = cfg.puller.maxRuns;
       node_dispatch = cfg.puller.nodeDispatch;
       runtimes = "${runtimesToml}";
@@ -451,6 +467,45 @@ in
         description = "When set, ExecStart runs under this wrapper (`<wrapper> -- <puller> ...`): a private /run/user tree and PID/IPC namespaces, which the microvm runtime requires (packages/runners/src/microvm.ts). Off by default: herdr and ssh want the live session.";
       };
 
+      sshRuntimes = mkOption {
+        type = types.attrsOf (
+          types.submodule {
+            options = {
+              host = mkOption {
+                type = types.str;
+                example = "worker";
+                description = "The ssh destination: a Host of `user`'s ~/.ssh/config (SshRuntime.host, packages/runners/src/config.ts).";
+              };
+              harness = mkOption {
+                type = types.enum [
+                  "claude"
+                  "pi"
+                  "codex"
+                ];
+                default = "pi";
+                description = "The harness CLI the runner starts on the remote host (it must be on the remote non-interactive ssh PATH).";
+              };
+              seat = mkOption {
+                type = types.str;
+                example = "halogen";
+                description = "The capacity seat a call on this runtime spends. An ssh runtime spends the REMOTE login (config.ts common.seat), so it is named here, never inherited from [seats].";
+              };
+            };
+          }
+        );
+        default = { };
+        example = lib.literalExpression ''
+          {
+            "ssh:worker" = {
+              host = "worker";
+              harness = "pi";
+              seat = "halogen";
+            };
+          }
+        '';
+        description = "Extra type = \"ssh\" runtimes, one [runtime.\"<name>\"] table each (name ^ssh:[A-Za-z0-9][A-Za-z0-9_.@-]*$), MERGED into the default `runtimes` and appended to its allow list; timeoutMs is callTimeoutMs.<name>, else callTimeoutMs.halogen. The runner (packages/runners/src/ssh.ts) runs the job in its own remote session, kills that process group on timeout or abort over a second ssh, and reaps leftover groups after a runner crash. Setting `runtimes` by hand drops these (an assertion says so).";
+      };
+
       runtimes = mkOption {
         type = tomlFormat.type;
         default = {
@@ -460,7 +515,8 @@ in
             "halogen"
             "codex"
             "codex-rw"
-          ];
+          ]
+          ++ builtins.attrNames cfg.puller.sshRuntimes;
           seats = {
             claude = cfg.puller.claudeSeat;
             pi = "halogen";
@@ -486,8 +542,13 @@ in
               seat = cfg.puller.claudeSeat;
               timeoutMs = cfg.puller.callTimeoutMs."opus";
             };
-            # pi on the coordinator against the Halogen server on the worker (the proven pattern). ssh:worker was
-            # refused in the proof and never exercised, so it is not declared.
+            # pi on the coordinator against the Halogen server on the worker (the proven pattern). A pi that must
+            # run ON the worker is an ssh runtime from puller.sshRuntimes (ssh:worker, merged below). The proof's
+            # ssh refusal ("Bad owner or permissions on ~/.ssh/config", ~/today/wednesday-prep-2026-09-23/
+            # substrate/PROVE.md:68) came from runtime-test's user namespace, where the home-manager ssh config
+            # belongs to an unmapped uid; the unit runs without that wrapper (header, NO runtime-test WRAPPER), and
+            # on 2026-09-25 `ssh -o BatchMode=yes worker ...` from inside the unit ran with rc 0 (MEASURED: run
+            # 96b9568118826fac, journal entry 3, gate[0].rc).
             halogen = {
               type = "host";
               harness = "pi";
@@ -509,9 +570,10 @@ in
               timeoutMs = cfg.puller.callTimeoutMs."codex-rw";
               codexSandbox = "workspace-write";
             };
-          };
+          }
+          // sshRuntimeTables;
         };
-        description = "The runtimes file (packages/runners/src/config.ts), rendered to TOML and named by [puller].runtimes (and AX_CONWIP_RUNTIMES). Default: the shape proven live on 2026-09-24. opus (host, claude on claudeSeat), halogen (host, pi against the worker's Halogen server), codex (read-only) and codex-rw (workspace-write), default opus, each claude seat bound to its config dir in [credentials.seats]. herdr, gvisor and ssh:worker tables are not declared by default (never exercised); override this option to add them.";
+        description = "The runtimes file (packages/runners/src/config.ts), rendered to TOML and named by [puller].runtimes (and AX_CONWIP_RUNTIMES). Default: the shape proven live on 2026-09-24. opus (host, claude on claudeSeat), halogen (host, pi against the worker's Halogen server), codex (read-only) and codex-rw (workspace-write), default opus, each claude seat bound to its config dir in [credentials.seats], plus one ssh table per puller.sshRuntimes entry (on allow too). herdr and gvisor tables are not declared by default (never exercised); override this option to add them, and restate the ssh tables when you do.";
       };
 
       runtimesFile = mkOption {
@@ -554,7 +616,7 @@ in
           codex = 1800000;
           codex-rw = 2700000;
         };
-        description = "Per-runtime wall-clock ceiling for one agent() call (timeoutMs in runtimes.toml). A call may shorten it, never extend it. Raised from 15 min on 2026-09-24 17:35: three codex-rw implement nodes of the crm and email builds hit exit 124 at 900000 ms while still executing commands.";
+        description = "Per-runtime wall-clock ceiling for one agent() call (timeoutMs in runtimes.toml). A call may shorten it, never extend it. Raised from 15 min on 2026-09-24 17:35: three codex-rw implement nodes of the crm and email builds hit exit 124 at 900000 ms while still executing commands. A puller.sshRuntimes entry with no key here gets the halogen value. A host that sets this option replaces the whole default, so it names every runtime it declares.";
       };
       workingDirectory = mkOption {
         type = types.str;
@@ -584,7 +646,20 @@ in
         assertion = !cfg.pusher.enable || !(cfg.pusher.extraConfig ? tokenFile);
         message = "services.substrate.pusher.extraConfig must not name a tokenFile: the bearer arrives as the credential floor-token.";
       }
-    ];
+    ]
+    ++ lib.concatMap (name: [
+      {
+        assertion = builtins.match sshRuntimeNameRe name != null;
+        message = "services.substrate.puller.sshRuntimes.\"${name}\": the name must match ^${sshRuntimeNameRe}$ (packages/runners/src/config.ts SSH_SHORTHAND).";
+      }
+      {
+        # A hand-set `runtimes` replaces the default this option merges into.
+        assertion =
+          (cfg.puller.runtimes.runtime or { }) ? ${name}
+          && (!(cfg.puller.runtimes ? allow) || builtins.elem name cfg.puller.runtimes.allow);
+        message = "services.substrate.puller.sshRuntimes.\"${name}\" is not in the rendered runtimes (table and allow): puller.runtimes was set by hand, which drops the merged ssh tables; restate it there or drop the override.";
+      }
+    ]) (builtins.attrNames cfg.puller.sshRuntimes);
 
     age.secrets = lib.mkMerge [
       {
