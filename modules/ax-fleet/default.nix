@@ -12,12 +12,17 @@
 #   harness   coordinator  k3s agent tainted ate.dev/sandboxClass=gvisor, the
 #                          atelet DaemonSet and the gVisor WorkerPool. "Agent
 #                          harnesses on coordinator."
-#   inference worker       Halogen as today, as a host service. Nothing from
-#                          this PR runs there; one evaluation assertion only.
+#   inference worker       k3s agent tainted ax.mecattaf.dev/role=inference
+#                          and labelled ate.dev/substrate-version=none, so
+#                          nothing lands there until a workload tolerates the
+#                          taint; Halogen stays a host service. "the amd strix
+#                          halo worker SHOULD be available in the cluster (not
+#                          just halogen inference)" (Tom, 2026-09-25).
 #
-# The agent roles share ./agent.nix (the guard chain, the pod-input refusal,
-# the cluster-range owner match, the VXLAN peers, the NetworkManager
-# drop-in); ./harness.nix holds what is the desk's alone.
+# The two agent roles share ./agent.nix (the guard chain, the pod-input
+# refusal, the cluster-range owner match, the VXLAN peers, the
+# NetworkManager drop-in); ./harness.nix and ./inference.nix hold what is
+# each host's alone.
 #
 # Folded in and deleted: modules/k3s-fleet.nix (#447; its CIDRs, assertions,
 # feature gates and runtime-config are kept below and in ./k3s.nix; its Cilium,

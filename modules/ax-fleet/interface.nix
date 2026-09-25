@@ -9,7 +9,9 @@
 # (2026-09-23, verbatim): "this is a dotfiles task to do on my nixos fleet. the
 # decisions there were already made: hypervisor on NAS, agent harnesses on
 # coordinator, halogen inference mainly on worker (can also run on coordinator
-# if we need redundancy or a second parallel halogen task)."
+# if we need redundancy or a second parallel halogen task)." And on
+# 2026-09-25, verbatim: "the amd strix halo worker SHOULD be available in the
+# cluster (not just halogen inference)": the inference role is a k3s agent.
 #
 # `enable` is THE kill switch. Its default is false, so a host that imports
 # this module and says nothing renders nothing from it. The substrate and ax
@@ -31,9 +33,13 @@ in
       ];
       description = ''
         control = the NAS (k3s server, Substrate and ax control planes, the
-        registry). harness = the coordinator (k3s agent, gVisor sandboxes).
-        inference = the worker (Halogen as a host service; nothing from this
-        PR at runtime). Asserted against the hostname in ./default.nix.
+        registry). harness = the coordinator (k3s agent tainted
+        ate.dev/sandboxClass=gvisor, gVisor sandboxes). inference = the worker
+        (since 2026-09-25 a k3s agent tainted `inferenceTaint` and labelled
+        ate.dev/substrate-version=none, so nothing lands there unless it
+        tolerates the taint; Halogen stays a host service, outside the
+        cluster). Every role but control is a k3s agent. Asserted against the
+        hostname in ./default.nix.
       '';
     };
 
@@ -198,24 +204,39 @@ in
       default = "ate.dev/sandboxClass=gvisor:NoSchedule";
       description = "Upstream Substrate's own taint key (atelet tolerates it).";
     };
+    inferenceTaint = mkOption {
+      type = types.str;
+      default = "ax.mecattaf.dev/role=inference:NoSchedule";
+      description = ''
+        The worker's taint, from its first registration (k3s applies
+        --node-taint at registration). Nothing in the cluster tolerates it
+        (MEASURED live 2026-09-25, kubectl get pods -A: Substrate's control pods, CoreDNS and
+        local-path tolerate only the not-ready, unreachable, control-plane
+        and CriticalAddonsOnly keys; atelet and the WorkerPool only
+        ate.dev/sandboxClass), so the worker runs a pod only when that pod
+        opts in. A key of our own, not the harness's: a pod that tolerates the
+        sandboxes' taint must not land on the Halogen box by accident.
+      '';
+    };
+
     kubelet = {
       systemReserved = mkOption {
         type = types.nullOr types.str;
         default = null;
-        description = "kubelet --system-reserved. Defaults per role in control.nix / harness.nix; tests shrink it.";
+        description = "kubelet --system-reserved. Defaults per role in control.nix / harness.nix / inference.nix; tests shrink it.";
       };
       kubeReserved = mkOption {
         type = types.nullOr types.str;
         default = null;
-        description = "kubelet --kube-reserved. Defaults per role in harness.nix; tests shrink it.";
+        description = "kubelet --kube-reserved. Defaults per role in harness.nix / inference.nix; tests shrink it.";
       };
       evictionHard = mkOption {
         type = types.nullOr types.str;
         default = null;
         description = ''
-          kubelet --eviction-hard. Defaults per role in harness.nix, always
-          the full signal set: a set flag replaces kubelet's whole default
-          map (fix round 4).
+          kubelet --eviction-hard. Defaults per role in harness.nix /
+          inference.nix, always the full signal set: a set flag replaces
+          kubelet's whole default map (fix round 4).
         '';
       };
       deskCpuWeight = mkOption {
@@ -234,7 +255,8 @@ in
           kubelet sets kernel.panic=10, kernel.panic_on_oops=1 and
           vm.overcommit_memory=1 when it starts (REPORTED by the VM receipt).
           On the desk that turns any kernel oops into a reboot 10 s later,
-          dropping herdr and every seat. true: ax-fleet-kernel-tunables puts
+          dropping herdr and every seat; on the worker, the Halogen server.
+          true: ax-fleet-kernel-tunables puts
           the three keys back to the values recorded before k3s first ran,
           after every kubelet start. false: kubelet's values stay. Tom's
           ruling is pending (Waiting on you, 2026-09-23); true is the default

@@ -51,7 +51,8 @@ with step("baseline"):
     )
     worker.succeed("curl -sf --max-time 10 http://10.42.0.2/ | grep -x caddy-ok")
     peer.succeed("curl -sf --max-time 10 http://100.105.121.73/ | grep -x caddy-ok")
-    # Not a k3s node, never switched: nothing from the fleet module runs here.
+    # Not a k3s node yet: its base is the inference role's kill switch (the
+    # guards only); 38-worker-join switches it to ax-on.
     worker.fail("systemctl cat k3s.service")
     nas.fail("systemctl cat k3s.service")
     coordinator.fail("systemctl cat k3s.service")

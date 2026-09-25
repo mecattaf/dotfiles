@@ -5,12 +5,12 @@
   ...
 }:
 # The k3s agents' shared half: every node that joins the NAS's cluster as an
-# agent. Today that is the coordinator (harness, 2026-09-23); the worker
-# (inference) joins next, on Tom's ruling of 2026-09-25, verbatim: "the amd
-# strix halo worker SHOULD be available in the cluster (not just halogen
-# inference)". Split out of ./harness.nix, which keeps the desk-only parts.
-# Every rule below renders byte-identical on the coordinator, except one:
-# VXLAN is now accepted from every peer, not only the NAS.
+# agent. That was the coordinator alone (harness, 2026-09-23); since
+# 2026-09-25 it is the worker too (inference). Tom's ruling that day,
+# verbatim: "the amd strix halo worker SHOULD be available in the cluster (not
+# just halogen inference)". Split out of ./harness.nix, which keeps the
+# desk-only parts. Every rule below renders byte-identical on the coordinator,
+# except one: VXLAN is now accepted from every peer, not only the NAS.
 #
 # What each piece is for, on either host:
 #   - the guard chain (mangle FORWARD): pods, the LAN legs and the tailnet
@@ -41,8 +41,7 @@ let
   # kill switch stops k3s with KillMode=process, so pods, cni0 and flannel.1
   # outlive the switch until ax-fleet-teardown runs. The rules are inert once
   # those interfaces are gone.
-  # The inference role joins in the next change, with ./inference.nix.
-  roleOn = cfg.role == "harness";
+  roleOn = cfg.role == "harness" || cfg.role == "inference";
   on = cfg.enable && roleOn;
   isHarness = cfg.role == "harness";
 

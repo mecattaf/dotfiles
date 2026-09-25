@@ -80,7 +80,8 @@
     # resolves to loopback, which every distributed library happily binds — the
     # rank-1-hangs-forever failure. The NAS must NOT import this.
     ../../modules/fleet-hosts.nix
-    # ax on the fleet (2026-09-23): the INFERENCE role, see myAxFleet below.
+    # ax on the fleet: the INFERENCE role, a tainted k3s agent of the NAS
+    # since 2026-09-25; see myAxFleet below.
     ../../modules/ax-fleet
     # kubectl + the google/ax binaries, behind myAxClient.enable. Imported on
     # all three interactive hosts, OFF on all three; read that module's header
@@ -90,12 +91,27 @@
 
   networking.hostName = "worker";
 
-  # ── ax on the fleet: the INFERENCE role ─────────────────────────────────
-  # "halogen inference mainly on worker" (Tom, 2026-09-23). Halogen stays this
-  # box's host service; ax sandboxes on the coordinator reach 10.42.0.5:8731
-  # through Substrate's egress gateway on the NAS. This role renders nothing
-  # at runtime (no k3s, no unit): modules/ax-fleet/inference.nix only asserts
-  # that 8731 stays open on enp191s0. This host is not switched in the motion.
+  # ── ax on the fleet: THE kill switch for this host (the INFERENCE role) ──
+  # "halogen inference mainly on worker" (Tom, 2026-09-23), and on 2026-09-25,
+  # verbatim: "the amd strix halo worker SHOULD be available in the cluster
+  # (not just halogen inference)". This box is a k3s AGENT of the NAS
+  # (modules/ax-fleet/inference.nix), tainted
+  # ax.mecattaf.dev/role=inference:NoSchedule and labelled
+  # ate.dev/substrate-version=none, so no pod that runs today lands here: the
+  # node is available to a workload that tolerates the taint, and to nothing
+  # else. Halogen stays this box's host service, outside the cluster; ax
+  # sandboxes on the coordinator still reach 10.42.0.5:8731 through
+  # Substrate's egress gateway on the NAS. The kubelet reserves 100Gi for the
+  # system, which caps kubepods.slice near 23 GiB of the 125 whatever Halogen
+  # is doing (INFERRED from kubelet's default enforce-node-allocatable=pods).
+  #
+  # Switch order: the NAS (admits 10.42.0.5), then the coordinator (accepts
+  # the worker's VXLAN), then this host; and only once
+  # secrets/k3s-agent-token.age names this host's key (the gate below). This
+  # host adopts candidates on its own (rolling, below); the gate is what keeps
+  # an unready join out of a candidate. Rollback: `enable = false`, switch,
+  # then `sudo ax-fleet-teardown` (on PATH whatever the switch says). The
+  # guards stay for the role whatever `enable` says (modules/ax-fleet/agent.nix).
   myAxFleet = {
     enable = true;
     role = "inference";
@@ -103,6 +119,10 @@
       interface = "enp191s0";
       address = "10.42.0.5";
     };
+    # No tailnet on this box (services.tailscale.enable = mkForce false,
+    # below): there is no tailscale0 to isolate from the LAN leg, so the
+    # guard chain renders no tailnet rules here.
+    guardInterfaces = [ ];
   };
 
   # gVisor runsc for direct rootless `runsc run` jobs (modules/gvisor.nix).
@@ -344,11 +364,79 @@
   # first boot of the new closure — no flash, no host-key dance.
   mySecrets.enable = true;
 
-  # OFF, and it lands OFF (modules/ax-client.nix). There is no cluster on this
-  # fleet to point kubectl at and no Agent Substrate for ax to delegate to, so
-  # flipping this today installs two binaries with nothing to talk to. The flip
-  # is Tom's, one host at a time, and ax-client-topology in flake.nix goes red
-  # on it by design.
+  # ── the agent token must name THIS host before k3s runs here ─────────────
+  # modules/ax-fleet/k3s.nix delivers secrets/k3s-agent-token.age here as
+  # k3s's --token-file. secrets.nix lists this host as a recipient since
+  # 2026-09-25, but a recipient list is not a ciphertext: the file minted on
+  # 2026-09-23 is sealed to the admin key, the coordinator (b4VnIg) and the NAS
+  # (sKUETw) only (MEASURED, `grep -a '^->'`). Switched before the rekey,
+  # agenix cannot decrypt it and k3s restarts forever with no token
+  # (Type=exec, Restart=always), unattended: this host adopts the NAS's
+  # candidates on its own (rolling, below). So the refusal lives in the build,
+  # where the NAS's nightly build of this host fails and publishes nothing:
+  #   - evaluation: the worker-less mint, by content hash. Reading the stanza
+  #     tags at evaluation is not an option: builtins.readFile refuses a file
+  #     holding a NUL byte ("cannot be represented as a Nix string", and
+  #     tryEval does not catch it; MEASURED on Nix 2.34.8), and an age payload
+  #     is random bytes, 96 of them after this file's 388-byte header, so a
+  #     re-mint has about a 31 % chance (1 - (255/256)^96) of holding one.
+  #   - build (system.checks): the ciphertext's header carries this host's
+  #     stanza, `-> ssh-ed25519 <tag> ...`, with the tag derived from the
+  #     registry key the way age derives it (base64, unpadded, of the first
+  #     4 bytes of the SHA-256 of the SSH wire-format public key). TKMZIQ for
+  #     today's key: MEASURED 2026-09-25, computed from the registry and
+  #     stamped by age itself on a test mint; it matches the tag REPORTED in
+  #     ~/today/evals-2026-09-23/ax-fleet/REVIEW-LOG.md:82.
+  #     This one stays as the standing check: a mint without this host, or a
+  #     reflash with a new host key, fails it too.
+  # Both only where the agenix ciphertext is what this host would read
+  # (a test token file declares no secret, see k3s.nix).
+  # The rekey, Tom's (same plaintext: the live NAS and coordinator use it):
+  #   cd ~/mecattaf/dotfiles && EDITOR=: nix develop -c agenix -e secrets/k3s-agent-token.age -i <admin identity>
+  # never `agenix -r`, which re-encrypts every file in secrets.nix.
+  assertions =
+    let
+      # sha256 of secrets/k3s-agent-token.age as minted 2026-09-23 (MEASURED
+      # `sha256sum`, at origin/main 47f3b540).
+      workerlessMint = "8365a83e47425623da5250b0693111eea902768307c5152e0cb57eccf5635c2b";
+    in
+    [
+      {
+        assertion =
+          !(config.age.secrets ? k3s-agent-token)
+          || builtins.hashFile "sha256" config.age.secrets.k3s-agent-token.file != workerlessMint;
+        message = ''
+          hosts/worker/default.nix: secrets/k3s-agent-token.age is still the 2026-09-23 mint (sha256 ${workerlessMint}), sealed to the admin key, the coordinator and the NAS only. This host cannot decrypt it, so its k3s agent would restart forever with no token. Re-encrypt that one file to the recipients secrets.nix lists (the worker among them), keeping the plaintext, and commit it:
+            cd ~/mecattaf/dotfiles && EDITOR=: nix develop -c agenix -e secrets/k3s-agent-token.age -i <admin identity>
+          Not `agenix -r` (it re-encrypts every secret). Check: grep -a '^-> ssh-ed25519' secrets/k3s-agent-token.age | cut -d' ' -f3 lists TKMZIQ. Then switch the NAS, the coordinator, and this host last.'';
+      }
+    ];
+  system.checks = lib.optional (config.age.secrets ? k3s-agent-token) (
+    pkgs.runCommand "ax-fleet-agent-token-names-worker"
+      {
+        hostKey = (import ../../modules/mesh-registry.nix).worker.hostKey;
+        ciphertext = config.age.secrets.k3s-agent-token.file;
+      }
+      ''
+        tag=$(printf '%s' "$hostKey" | cut -d' ' -f2 | base64 -d | sha256sum | cut -c1-8 \
+          | tr a-f A-F | basenc --base16 -d | base64 | tr -d '=')
+        # The header only: every line before the `--- <mac>` line.
+        awk '/^--- /{exit} {print}' "$ciphertext" > header
+        if ! grep -q -x -E -- "-> ssh-ed25519 $tag [A-Za-z0-9+/]+" header; then
+          echo "secrets/k3s-agent-token.age has no stanza for the worker (ssh-ed25519 tag $tag, from modules/mesh-registry.nix); it carries:" >&2
+          grep -- '^-> ' header | cut -d' ' -f2,3 >&2
+          echo "Re-encrypt it, same plaintext: cd ~/mecattaf/dotfiles && EDITOR=: nix develop -c agenix -e secrets/k3s-agent-token.age -i <admin identity>" >&2
+          exit 1
+        fi
+        echo "k3s-agent-token.age names the worker (tag $tag)" > "$out"
+      ''
+  );
+
+  # OFF, and it stays OFF (modules/ax-client.nix). This host is a cluster
+  # node now, but an agent is not a client: kubectl and ax are the
+  # coordinator's (the harness role turns them on there), and nothing here
+  # needs the admin kubeconfig. The flip is Tom's, one host at a time, and
+  # ax-client-topology in flake.nix goes red on it by design.
   myAxClient.enable = false;
 
   # ── Fleet candidate adoption (#354, 2026-09-13): ROLLING ─────────────────

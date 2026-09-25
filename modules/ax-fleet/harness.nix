@@ -26,8 +26,8 @@
 #     by the NAS's prerouting range guard (control.nix) and by the flannel.1
 #     source rule. Plain VXLAN on the wifi leg is accepted by source address
 #     only (spoofable over wifi); see DESIGN.md Unknowns. All of these are
-#     every agent's, not the desk's, and live in ./agent.nix, byte-identical
-#     on this host.
+#     every agent's since the worker joined (2026-09-25) and live in
+#     ./agent.nix, byte-identical on this host.
 #   - the kernel's panic behaviour: kubelet's kernel.panic / panic_on_oops /
 #     overcommit values are put back after it starts
 #     (myAxFleet.kubelet.keepHostKernelTunables, k3s.nix).

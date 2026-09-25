@@ -110,9 +110,9 @@ in
   # this ONE file, with the admin identity,
   #   cd ~/mecattaf/dotfiles && EDITOR=: nix develop -c agenix -e secrets/k3s-agent-token.age -i <admin identity>
   # (EDITOR=: skips both the edit and agenix's "wasn't changed" short-cut),
-  # never `agenix -r`, which re-encrypts every file here. Rekey before the
-  # worker joins: until then only the admission side (NAS, coordinator) uses
-  # the new recipient list.
+  # never `agenix -r`, which re-encrypts every file here. Until it is
+  # re-encrypted to the worker, the worker's system refuses to evaluate and
+  # to build (the gate in hosts/worker/default.nix).
   "secrets/k3s-token.age".publicKeys = editors ++ nasOnly;
   "secrets/k3s-agent-token.age".publicKeys = editors ++ coordinatorOnly ++ nasOnly ++ workerOnly;
   # substrate-link bearer (hosts/nas/substrate-link.nix): one token per link identity, minted by Tom as a

@@ -7,6 +7,12 @@
 # assertions over the REAL host configurations. Every assert is eval-time and
 # sits in front of the runCommand, so each runs under --no-build.
 #
+# The worker is read as it is, gate and all: nothing here forces its toplevel
+# or its `assertions`, so the agent-token gate in hosts/worker/default.nix
+# (which fails evaluation of the toplevel until secrets/k3s-agent-token.age is
+# re-encrypted to the worker) does not fire here, and the agenix wiring below
+# is the real one, not a test token's.
+#
 # Not asserted here, on purpose: "no 8731 on the coordinator's wlp192s0". That
 # is #461's change; nas-topology already asserts exactly it and fails on
 # origin/main until #461 is merged (inherited, not introduced). Duplicating it
@@ -69,8 +75,11 @@ let
       && lib.hasInfix "ax-fleet-api" c.networking.firewall.extraCommands
     else if host == "nas" then
       lib.hasInfix "hook forward" c.networking.nftables.tables.ax-fleet-guard.content
+    # the worker, an agent since 2026-09-25: the same guards as the coordinator
     else
-      !(lib.hasInfix "ax-fleet-guard" c.networking.firewall.extraCommands)
+      lib.hasInfix "ax-fleet-guard" c.networking.firewall.extraCommands
+      && lib.hasInfix "ax-fleet-pod-input" c.networking.firewall.extraCommands
+      && lib.hasInfix "ax-fleet-api" c.networking.firewall.extraCommands
       && !(c.networking.nftables.tables ? ax-fleet-guard);
 
   # ── parity with the VM test: flags and firewall text, interfaces substituted ──
@@ -102,6 +111,9 @@ let
     "wlp192s0" = "eth1";
     "tailscale0" = "eth2";
     "enp191s0" = "eth3";
+  };
+  workerSubst = {
+    "enp191s0" = "eth1";
   };
   guardText =
     subst: cfg:
@@ -229,10 +241,66 @@ assert
   !(builtins.elem coord.home-manager.users.tom.myAxConwip.serverUrl coord.systemd.sockets.ax-server-proxy.listenStreams);
 assert coord.myAxClient.enable;
 
-# worker: inference, nothing at runtime
+# worker: inference, a tainted k3s agent since 2026-09-25 (Tom: "the amd strix
+# halo worker SHOULD be available in the cluster (not just halogen inference)")
 assert (ax worker).enable && (ax worker).role == "inference";
-assert !worker.services.k3s.enable;
+assert worker.services.k3s.enable && worker.services.k3s.role == "agent";
+assert has worker "--server";
+assert has worker "https://10.42.0.1:6443";
+assert has worker "--flannel-iface=enp191s0";
+assert has worker "--node-ip=10.42.0.5";
+assert has worker "--node-taint=${(ax worker).inferenceTaint}";
+assert (ax worker).inferenceTaint == "ax.mecattaf.dev/role=inference:NoSchedule";
+assert has worker "--node-label=ate.dev/substrate-version=none";
+assert has worker "--node-label=ax.mecattaf.dev/role=inference";
+# never a cluster of its own (k3s's default range is the house LAN)
+assert !(hasPrefix worker "--cluster-cidr");
+# a key of its own: whatever tolerates the sandboxes' taint stays off the Halogen box
+assert
+  lib.head (lib.splitString "=" (ax worker).inferenceTaint)
+  != lib.head (lib.splitString "=" (ax coord).harnessTaint);
+# the agent credential only, from agenix; the same k3s as the NAS
+assert lib.hasSuffix "/k3s-agent-token" worker.services.k3s.tokenFile;
+assert worker.services.k3s.agentTokenFile == null;
+assert worker.age.secrets ? k3s-agent-token;
+assert !(worker.age.secrets ? k3s-token);
+assert worker.services.k3s.package == nas.services.k3s.package;
+# ...and the agent token must name this host: the build-time half of the gate
+assert builtins.any (
+  d: lib.hasPrefix "ax-fleet-agent-token-names-worker" (d.name or "")
+) worker.system.checks;
+# Halogen's port stays open on the LAN leg (the egress gateway's path)
 assert builtins.elem 8731 worker.networking.firewall.interfaces.enp191s0.allowedTCPPorts;
+# VXLAN from the NAS and the coordinator; the guards, with no tailnet to isolate
+assert lib.hasInfix "-i enp191s0 -s 10.42.0.1 -p udp --dport 8472"
+  worker.networking.firewall.extraCommands;
+assert lib.hasInfix "-i enp191s0 -s 10.42.0.2 -p udp --dport 8472"
+  worker.networking.firewall.extraCommands;
+assert !(lib.hasInfix "-s 10.42.0.5 -p udp --dport 8472" worker.networking.firewall.extraCommands);
+assert (ax worker).guardInterfaces == [ ];
+assert !(lib.hasInfix "tailscale0" worker.networking.firewall.extraCommands);
+assert lib.hasInfix
+  "-i cni0 -m conntrack --ctstate NEW -m comment --comment ax-fleet-pod-input -j nixos-fw-refuse"
+  worker.networking.firewall.extraCommands;
+assert !(worker.networking.firewall.interfaces ? cni0);
+assert worker.environment.etc."ax-fleet/guard-declared".text == "inference\n";
+# the owner match without the desk's proxy, which does not exist here
+assert lib.hasInfix "--uid-owner tom -j RETURN" worker.networking.firewall.extraCommands;
+assert !(lib.hasInfix "ax-server-proxy" worker.networking.firewall.extraCommands);
+assert !(worker.users.users ? ax-server-proxy);
+# the desk's parts stay on the desk
+assert !(worker.systemd.sockets ? ax-server-proxy);
+assert !(worker.boot.kernel.sysctl ? "net.ipv4.conf.veth*.proxy_arp");
+# NetworkManager runs here too: a drop-in, and no restart trigger
+assert worker.environment.etc ? "NetworkManager/conf.d/90-ax-fleet.conf";
+assert
+  worker.environment.etc."NetworkManager/NetworkManager.conf".source == (offCfg "worker")
+  .environment.etc."NetworkManager/NetworkManager.conf".source;
+# Halogen outweighs kubepods for CPU; the kubelet caps pods far below its memory
+assert worker.systemd.slices.machine.sliceConfig.CPUWeight == 10000;
+assert has worker "--kubelet-arg=system-reserved=cpu=8,memory=100Gi";
+assert has worker
+  "--kubelet-arg=eviction-hard=memory.available<4Gi,nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<15%,imagefs.inodesFree<5%";
 # client: untouched
 assert !(client ? myAxFleet);
 assert !client.services.k3s.enable;
@@ -261,6 +329,7 @@ assert builtins.all
   [
     nas
     coord
+    worker
   ];
 # the VM coordinator runs the desk's kernel
 assert
@@ -279,8 +348,9 @@ assert builtins.all (n: vmSeeds ? ${n} && vmSeeds.${n} == nasSeeds.${n}) (lib.at
 assert builtins.all (h: hasTeardown (offCfg h)) [
   "nas"
   "coordinator"
+  "worker"
 ];
-assert !(hasTeardown worker);
+assert hasTeardown worker;
 assert builtins.all killed [
   "nas"
   "coordinator"
@@ -305,6 +375,8 @@ assert
   map (lib.replaceStrings [ "enp1s0" ] [ "eth1" ]) (axLines nas.networking.firewall.extraInputRules)
   == axLines (testOn "nas").networking.firewall.extraInputRules;
 assert guardText coordSubst coord == guardText { } (testOn "coordinator");
+assert normFlags workerSubst worker == normFlags { } (testOn "worker");
+assert guardText workerSubst worker == guardText { } (testOn "worker");
 
 pkgs.runCommand "ax-fleet-topology" { } ''
   touch "$out"
