@@ -15,6 +15,10 @@
 #   inference worker       Halogen as today, as a host service. Nothing from
 #                          this PR runs there; one evaluation assertion only.
 #
+# The agent roles share ./agent.nix (the guard chain, the pod-input refusal,
+# the cluster-range owner match, the VXLAN peers, the NetworkManager
+# drop-in); ./harness.nix holds what is the desk's alone.
+#
 # Folded in and deleted: modules/k3s-fleet.nix (#447; its CIDRs, assertions,
 # feature gates and runtime-config are kept below and in ./k3s.nix; its Cilium,
 # containerd template and runsc RuntimeClass are dropped because Substrate runs
@@ -64,8 +68,13 @@ in
 {
   imports = [
     ./interface.nix
+    # 2026-09-25: the admission list covers every agent now, not only the
+    # harness. Any out-of-tree setter of the old name keeps working (with an
+    # evaluation warning).
+    (lib.mkRenamedOptionModule [ "myAxFleet" "harnessAddresses" ] [ "myAxFleet" "agentAddresses" ])
     ./k3s.nix
     ./control.nix
+    ./agent.nix
     ./harness.nix
     ./inference.nix
     ./substrate.nix

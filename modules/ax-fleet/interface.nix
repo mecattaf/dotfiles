@@ -59,9 +59,10 @@ in
         description = ''
           Other NICs that can reach the house LAN (fix round 3): the
           coordinator's wired port enp191s0 has an autoconnecting DHCP profile.
-          On the harness role the guard chain treats them as LAN legs, and a
-          NetworkManager drop-in gives them `extraRouteMetric`, so the LAN
-          routes stay on `interface` while it is up. Tests use [ "eth3" ].
+          On an agent role the guard chain treats them as LAN legs
+          (./agent.nix); on the harness role a NetworkManager drop-in also
+          gives them `extraRouteMetric`, so the LAN routes stay on `interface`
+          while it is up (./harness.nix). Tests use [ "eth3" ].
         '';
       };
       extraRouteMetric = mkOption {
@@ -85,27 +86,38 @@ in
       default = [ "tom" ];
       description = ''
         Local users (besides root) that may open connections to `apiListen`
-        and to the cluster ranges from the harness host (fix round 3). The ax
-        API has no authentication (upstream #376); everyone else is refused by
-        an owner match in OUTPUT.
+        and to the cluster ranges from an agent host, the harness and the
+        worker (fix round 3). The ax API has no authentication (upstream
+        #376); everyone else is refused by an owner match in OUTPUT
+        (./agent.nix).
       '';
     };
 
     guardInterfaces = mkOption {
       type = types.listOf types.str;
       default = [ "tailscale0" ];
-      description = "Interfaces the coordinator guard chain isolates from pods and from the LAN leg (the tailnet). Tests use [ \"eth2\" ].";
+      description = "Interfaces an agent's guard chain isolates from pods and from the LAN legs (the tailnet). The worker has none and sets [ ]. Tests use [ \"eth2\" ].";
     };
 
     serverAddress = mkOption {
       type = types.str;
       default = "10.42.0.1";
-      description = "The k3s server the harness agent dials: the IP, never the name.";
+      description = "The k3s server every agent dials: the IP, never the name.";
     };
-    harnessAddresses = mkOption {
+    # Was harnessAddresses (renamed 2026-09-25, when the worker joined;
+    # ./default.nix keeps the old name working through mkRenamedOptionModule).
+    agentAddresses = mkOption {
       type = types.listOf types.str;
-      default = [ "10.42.0.2" ];
-      description = "LAN addresses of harness nodes: the only sources the NAS admits to 6443, the registry and VXLAN.";
+      default = [
+        "10.42.0.2"
+        "10.42.0.5"
+      ];
+      description = ''
+        LAN addresses of every k3s agent (the coordinator, the worker): the
+        only sources the NAS admits to 6443, the registry and VXLAN
+        (./control.nix), and, with serverAddress, the peers every agent
+        accepts flannel VXLAN from (./agent.nix).
+      '';
     };
     podCidr = mkOption {
       type = types.str;
@@ -173,7 +185,7 @@ in
     registry = mkOption {
       type = types.str;
       default = "10.42.0.1:5000";
-      description = "The NAS registry, plain HTTP, LAN only, scoped to the coordinator by nftables.";
+      description = "The NAS registry, plain HTTP, LAN only, scoped to agentAddresses by nftables.";
     };
 
     substrateVersion = mkOption {
@@ -186,7 +198,6 @@ in
       default = "ate.dev/sandboxClass=gvisor:NoSchedule";
       description = "Upstream Substrate's own taint key (atelet tolerates it).";
     };
-
     kubelet = {
       systemReserved = mkOption {
         type = types.nullOr types.str;
@@ -196,10 +207,16 @@ in
       kubeReserved = mkOption {
         type = types.nullOr types.str;
         default = null;
+        description = "kubelet --kube-reserved. Defaults per role in harness.nix; tests shrink it.";
       };
       evictionHard = mkOption {
         type = types.nullOr types.str;
         default = null;
+        description = ''
+          kubelet --eviction-hard. Defaults per role in harness.nix, always
+          the full signal set: a set flag replaces kubelet's whole default
+          map (fix round 4).
+        '';
       };
       deskCpuWeight = mkOption {
         type = types.ints.between 1 10000;

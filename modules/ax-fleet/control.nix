@@ -7,7 +7,7 @@
 # The control node: the NAS. "Hypervisor on NAS" (Tom, 2026-09-23) read as
 # everything that schedules or remembers: the k3s server WITH its kubelet and
 # NO taint (so CoreDNS, local-path, Substrate's and ax's control pods and every
-# PersistentVolume land here by elimination, because the coordinator is
+# PersistentVolume land here by elimination, because every agent is
 # tainted), the registry, and the two runners that seed it and bootstrap the
 # cluster. DESIGN.md sections 6.2, 6.3, 7, 8, 9.
 #
@@ -104,7 +104,7 @@ let
     # port IS enforced: from pods, the only private address is Halogen on its
     # port; the tailnet and the containers are never reachable; the internet
     # is. Pod-to-NAS-host traffic (DNS, the apiserver, the registry) is INPUT
-    # and unaffected. Same shape as the coordinator's guard (harness.nix).
+    # and unaffected. Same shape as the agents' guard (agent.nix).
     chain forward {
       type filter hook forward priority filter; policy accept;
       iifname != { "cni0", "flannel.1" } return
@@ -118,7 +118,7 @@ let
     }
 
     # ── the cluster from the NAS's own processes: root only (fix round 4) ──
-    # The coordinator's owner match (harness.nix apiRules) had no counterpart
+    # The agents' owner match (agent.nix apiRules) had no counterpart
     # here: prerouting never sees locally generated packets, so paperless,
     # immich, atticd, headscale or nginx (MEASURED uid-map) could open the
     # unauthenticated ax-server API and the password-less ax-redis, and, while
@@ -351,14 +351,15 @@ in
     };
 
 
-    # ── firewall: only what the coordinator and the pods need ──
+    # ── firewall: only what the agents and the pods need ──
     # #447 opened 6443 to the whole LAN and #446 opened 5432/9000/5000 to the
-    # whole LAN. Now: 6443, 5000 and VXLAN only from the coordinator; DNS and
-    # the apiserver from pods on cni0. 5432, 6379 and 9000 are never opened on
-    # the host. Nothing on tailscale0.
+    # whole LAN. Now: 6443, 5000 and VXLAN only from the agents
+    # (agentAddresses: the coordinator and, since 2026-09-25, the worker); DNS
+    # and the apiserver from pods on cni0. 5432, 6379 and 9000 are never
+    # opened on the host. Nothing on tailscale0.
     networking.firewall.extraInputRules = ''
-      iifname "${cfg.lan.interface}" ip saddr { ${lib.concatStringsSep ", " cfg.harnessAddresses} } tcp dport { 6443, ${toString registryPort} } accept comment "ax-fleet: kube API and registry, coordinator only"
-      iifname "${cfg.lan.interface}" ip saddr { ${lib.concatStringsSep ", " cfg.harnessAddresses} } udp dport 8472 accept comment "ax-fleet: flannel VXLAN, coordinator only"
+      iifname "${cfg.lan.interface}" ip saddr { ${lib.concatStringsSep ", " cfg.agentAddresses} } tcp dport { 6443, ${toString registryPort} } accept comment "ax-fleet: kube API and registry, agents only"
+      iifname "${cfg.lan.interface}" ip saddr { ${lib.concatStringsSep ", " cfg.agentAddresses} } udp dport 8472 accept comment "ax-fleet: flannel VXLAN, agents only"
       iifname "cni0" ip saddr ${cfg.podCidr} tcp dport { 53, 6443 } accept comment "ax-fleet: pods to AdGuard and the apiserver"
       iifname "cni0" ip saddr ${cfg.podCidr} udp dport 53 accept comment "ax-fleet: pods to AdGuard"
     '';

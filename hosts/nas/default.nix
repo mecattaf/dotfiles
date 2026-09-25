@@ -135,8 +135,10 @@
   # switch off; there is no dotfiles checkout here. It removes every trace but
   # the data left on purpose under /mnt/fast/k3s and /mnt/nas/services/ax-fleet.
   # The k3s credentials are the agenix secrets secrets/k3s-token.age (server,
-  # this host only) and secrets/k3s-agent-token.age (mySecrets is on here).
-  # Switch order: this host first, then the coordinator.
+  # this host only) and secrets/k3s-agent-token.age (mySecrets is on here),
+  # which both agents, the coordinator and (since 2026-09-25) the worker, join
+  # with. Switch order: this host first (it admits every agent by
+  # myAxFleet.agentAddresses), then the coordinator, then the worker.
   myAxFleet = {
     enable = true;
     role = "control";

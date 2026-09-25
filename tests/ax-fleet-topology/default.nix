@@ -141,6 +141,18 @@ assert nas.services.k3s.package == (ax nas).k3sPackage;
 assert (ax nas).k3sPackage.version == "1.36.2+k3s1";
 # every ax-fleet NAS rule is scoped to a source and to an interface, none to the tailnet
 assert builtins.length (axLines nas.networking.firewall.extraInputRules) == 4;
+# both agents are admitted to 6443, the registry and VXLAN (2026-09-25)
+assert
+  (ax nas).agentAddresses == [
+    "10.42.0.2"
+    "10.42.0.5"
+  ];
+assert
+  builtins.length (
+    lib.filter (l: lib.hasInfix "ip saddr { 10.42.0.2, 10.42.0.5 }" l) (
+      axLines nas.networking.firewall.extraInputRules
+    )
+  ) == 2;
 assert builtins.all (l: lib.hasInfix "ip saddr" l && lib.hasInfix "iifname" l) (
   axLines nas.networking.firewall.extraInputRules
 );
@@ -174,6 +186,10 @@ assert coord.services.k3s.containerdConfigTemplate == null;
 assert coord.services.k3s.package == nas.services.k3s.package;
 assert lib.hasInfix "ax-fleet-guard" coord.networking.firewall.extraCommands;
 assert lib.hasInfix "-s 10.42.0.1 -p udp --dport 8472" coord.networking.firewall.extraCommands;
+# flannel is a full mesh: VXLAN from the worker too, never from itself
+assert lib.hasInfix "-i wlp192s0 -s 10.42.0.5 -p udp --dport 8472"
+  coord.networking.firewall.extraCommands;
+assert !(lib.hasInfix "-s 10.42.0.2 -p udp --dport 8472" coord.networking.firewall.extraCommands);
 assert !(coord.networking.firewall.interfaces ? cni0);
 assert coord.environment.etc ? "NetworkManager/conf.d/90-ax-fleet.conf";
 # NO NetworkManager restart trigger: NetworkManager.conf renders byte-identical with the switch off
@@ -187,16 +203,20 @@ assert
 assert coord.boot.kernel.sysctl."net.ipv4.conf.veth*.proxy_arp" == 1;
 assert coord.boot.kernel.sysctl."net.ipv4.conf.cni0.proxy_arp" == 1;
 assert coord.boot.kernel.sysctl."net.ipv4.conf.flannel/1.proxy_arp" == 1;
-assert builtins.all (
-  k: !(coord.boot.kernel.sysctl ? ${k}) || coord.boot.kernel.sysctl.${k} == null
-) [ "net.ipv4.conf.all.proxy_arp" "net.ipv4.conf.default.proxy_arp" ];
+assert builtins.all (k: !(coord.boot.kernel.sysctl ? ${k}) || coord.boot.kernel.sysctl.${k} == null)
+  [
+    "net.ipv4.conf.all.proxy_arp"
+    "net.ipv4.conf.default.proxy_arp"
+  ];
 # the wired port is a guarded LAN leg with a route metric above the wifi's
 assert (ax coord).lan.extraInterfaces == [ "enp191s0" ];
 assert lib.hasInfix "-i cni0 -o enp191s0 -j RETURN" coord.networking.firewall.extraCommands;
 assert lib.hasInfix "-i cni0 -d 10.0.0.0/8 -j DROP" coord.networking.firewall.extraCommands;
 assert lib.hasInfix "-o cni0 -j DROP" coord.networking.firewall.extraCommands;
-assert lib.hasInfix "match-device=interface-name:enp191s0" coord.environment.etc."NetworkManager/conf.d/90-ax-fleet.conf".text;
-assert lib.hasInfix "ipv4.route-metric=700" coord.environment.etc."NetworkManager/conf.d/90-ax-fleet.conf".text;
+assert lib.hasInfix "match-device=interface-name:enp191s0"
+  coord.environment.etc."NetworkManager/conf.d/90-ax-fleet.conf".text;
+assert lib.hasInfix "ipv4.route-metric=700"
+  coord.environment.etc."NetworkManager/conf.d/90-ax-fleet.conf".text;
 # the ax API: only root, tom and the proxy (fix round 3)
 assert lib.hasInfix "--uid-owner tom -j RETURN" coord.networking.firewall.extraCommands;
 assert coord.systemd.services.ax-server-proxy.serviceConfig.User == "ax-server-proxy";
@@ -205,7 +225,8 @@ assert coord.services.tailscale.useRoutingFeatures == "none";
 assert coord.systemd.sockets.ax-server-proxy.listenStreams == [ "127.0.0.1:8099" ];
 assert coord.environment.sessionVariables.AX_SERVER == "http://127.0.0.1:8099";
 # never the address ax-conwip's default (and the mock stack) points at
-assert !(builtins.elem coord.home-manager.users.tom.myAxConwip.serverUrl coord.systemd.sockets.ax-server-proxy.listenStreams);
+assert
+  !(builtins.elem coord.home-manager.users.tom.myAxConwip.serverUrl coord.systemd.sockets.ax-server-proxy.listenStreams);
 assert coord.myAxClient.enable;
 
 # worker: inference, nothing at runtime
@@ -271,7 +292,8 @@ assert builtins.all guardsKept [
   "worker"
 ];
 # the NAS's pods: Halogen on its port, no other private address (fix round 3)
-assert lib.hasInfix "ip daddr 10.42.0.5 tcp dport 8731 return" nas.networking.nftables.tables.ax-fleet-guard.content;
+assert lib.hasInfix "ip daddr 10.42.0.5 tcp dport 8731 return"
+  nas.networking.nftables.tables.ax-fleet-guard.content;
 assert
   lib.replaceStrings [ "tailscale0" ] [ "eth2" ] nas.networking.nftables.tables.ax-fleet-guard.content
   == (testOn "nas").networking.nftables.tables.ax-fleet-guard.content;

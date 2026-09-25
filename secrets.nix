@@ -101,8 +101,20 @@ in
   # displayed; the 643a4196 ciphertext (also decryptable by the worker and the
   # client) was replaced, not re-encrypted, before any cluster used it.
   # Rotate with: nix develop -c agenix -e secrets/<name>.age
+  #
+  # 2026-09-25: the worker joins the cluster as a second agent (Tom: "the amd
+  # strix halo worker SHOULD be available in the cluster (not just halogen
+  # inference)"), so it joins the agent token's recipients; never the server
+  # token's. The live NAS serves this plaintext as --agent-token-file and the
+  # coordinator joined with it, so the rekey keeps the plaintext: re-encrypt
+  # this ONE file, with the admin identity,
+  #   cd ~/mecattaf/dotfiles && EDITOR=: nix develop -c agenix -e secrets/k3s-agent-token.age -i <admin identity>
+  # (EDITOR=: skips both the edit and agenix's "wasn't changed" short-cut),
+  # never `agenix -r`, which re-encrypts every file here. Rekey before the
+  # worker joins: until then only the admission side (NAS, coordinator) uses
+  # the new recipient list.
   "secrets/k3s-token.age".publicKeys = editors ++ nasOnly;
-  "secrets/k3s-agent-token.age".publicKeys = editors ++ coordinatorOnly ++ nasOnly;
+  "secrets/k3s-agent-token.age".publicKeys = editors ++ coordinatorOnly ++ nasOnly ++ workerOnly;
   # substrate-link bearer (hosts/nas/substrate-link.nix): one token per link identity, minted by Tom as a
   # Worker secret on the floor and sealed here. NAS only: the link runs on the NAS host.
   "secrets/floor-link-token.age".publicKeys = editors ++ nasOnly;
