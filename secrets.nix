@@ -190,6 +190,14 @@ in
   # authenticated operator box — gh + wrangler stay off the laptops).
   "secrets/gh-hosts.age".publicKeys = editors ++ coordinatorOnly;
   "secrets/wrangler-config.age".publicKeys = editors ++ coordinatorOnly;
+  # Cloudflare API token: ONE full-scope User API Token ("coordinator-full-2026-09-25",
+  # minted 2026-09-25 through the dashboard plus the /user/tokens API: every account
+  # and zone permission group except API-token management, plus user details and
+  # memberships read/write). It replaces the wrangler OAuth session, whose refresh
+  # token died on 2026-09-06 and left every agent deploy blocked. wrangler reads it
+  # from CLOUDFLARE_API_TOKEN (exported by modules/secrets.nix); the crm/email/backlog
+  # runbooks read ~/.local/state/cloudflare/api-token.
+  "secrets/cloudflare-api-token.age".publicKeys = editors ++ coordinatorOnly;
   # Hugging Face read token. Provisioned 2026-08-28 (fine-grained, HF display
   # name `nixOS`) after carrying a declaration with no ciphertext since the
   # declarative CLI landed — `builtins.pathExists` meant the coordinator simply
