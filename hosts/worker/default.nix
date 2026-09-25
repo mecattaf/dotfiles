@@ -185,9 +185,12 @@
   # forever. Halogen serves whatever is already local.
   boot.supportedFilesystems = [ "nfs" ];
   fileSystems."/mnt/library" = {
-    # `nas:/` — the models tree is this host's whole NFSv4 pseudo-root (its
-    # export line carries fsid=0; see hosts/nas/models.nix).
-    device = "nas:/";
+    # `nas:/models` — since 2026-09-25 this host's NFSv4 pseudo-root is the
+    # NAS storage root (read-only, hosts/nas/storage.nix), so the models tree
+    # is a path under it, fsid=6, exactly as the coordinator sees it (see
+    # hosts/nas/models.nix). Before that the models tree was the pseudo-root
+    # and the device was `nas:/`.
+    device = "nas:/models";
     fsType = "nfs4";
     options = [
       "ro"
@@ -205,6 +208,41 @@
       "x-systemd.requires=library-reachable.service"
     ];
   };
+
+  # ── The academic-papers corpus, read from the NAS (2026-09-25) ────────────
+  # Tom: "nas is where the pdf files are"; "all running on the worker
+  # overnight". mecattaf/academic-drain runs lane A (pdftotext) and lane B
+  # (Halogen vision) on this host and records every PDF by its coordinator
+  # path, /mnt/nas/documents/academic-papers/..., so the same path must
+  # resolve here. This is the ONLY resurrection of /mnt/nas on this box, and
+  # it is a read-only NFS automount of the documents export, not the
+  # loan-era bind of /home/tom/nas-local (retired 2026-08-21, see above).
+  # Same hardening as /mnt/library: soft, nofail, lazy automount gated on the
+  # NAS answering; a dead NAS costs the drain a page (exit 69, no row), never
+  # this box's boot. The staged copy under
+  # ~/.local/state/academic-drain/corpus that carried the first night can be
+  # deleted once `ls /mnt/nas/documents/academic-papers/originals` answers.
+  fileSystems."/mnt/nas/documents" = {
+    device = "nas:/documents";
+    fsType = "nfs4";
+    options = [
+      "ro"
+      "soft"
+      "timeo=30"
+      "retrans=3"
+      "nofail"
+      "_netdev"
+      "x-systemd.automount"
+      "x-systemd.idle-timeout=10min"
+      "x-systemd.requires=library-reachable.service"
+    ];
+  };
+
+  # drain.internal: the academic-drain dashboard (dashboard/serve.sh
+  # --bind 10.42.0.5 --port 8740) is fronted by the coordinator's Caddy
+  # (hosts/coordinator/default.nix) and resolved by AdGuard
+  # (modules/adguardhome.nix). LAN interface only, like immich-ml's :3003.
+  networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 8740 ];
   systemd.services.library-reachable = {
     description = "Wait for the NAS Library export to answer before NFS mounts it";
     serviceConfig = {

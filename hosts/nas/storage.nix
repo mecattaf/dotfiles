@@ -87,8 +87,11 @@ in
     #
     # NFSv4 exports use EXPLICIT UNIQUE fsids per #131: subvolumes below a
     # lone fsid=0 export are a known sharp edge (each subvolume has its own
-    # st_dev), so every crossing point is exported deliberately. Only the
-    # coordinator is admitted, at its pinned LAN lease 10.42.0.2 only (the
+    # st_dev), so every crossing point is exported deliberately. The
+    # coordinator is admitted read-write at its pinned LAN lease 10.42.0.2, and
+    # since 2026-09-25 the worker read-only at 10.42.0.5 (storage root and
+    # documents only; the models line lives in models.nix). Before that only
+    # the coordinator was admitted (the
     # legacy /30 address was admitted beside it through the 2026-08-20
     # cutover and left with the tether, #264); other clients reach the relays
     # over Tailscale and the filesystem itself never leaves that one client.
@@ -109,6 +112,16 @@ in
           # it through the 2026-08-20 cutover was removed with the tether (#264).
           clients = opts: "10.42.0.2(${opts})";
         in
+        # The worker (10.42.0.5, hosts/nas/router.nix dhcp-host) is a full
+        # fleet member again (Tom, 2026-09-25: "the worker loan is mine, and a
+        # full part of the nixos fleet"; "nas is where the pdf files are"). It
+        # reads the academic-papers corpus under documents/ for the
+        # academic-drain lanes (mecattaf/academic-drain, all on the worker),
+        # READ-ONLY and root-squashed. The storage root is its NFSv4
+        # pseudo-root (fsid=0 for this client), so `nas:/documents` and
+        # `nas:/models` both resolve; models.nix carries the models line for
+        # the same client (fsid=6, no longer fsid=0). Every other subvolume
+        # stays invisible to it: no entry, no crossing (#131).
         ''
           ${storageRoot} ${clients "rw,sync,fsid=0,no_subtree_check,no_root_squash"}
           ${storageRoot}/photos ${clients "rw,sync,fsid=1,no_subtree_check,no_root_squash"}
@@ -116,6 +129,8 @@ in
           ${storageRoot}/documents ${clients "rw,sync,fsid=3,no_subtree_check,no_root_squash"}
           ${storageRoot}/services ${clients "rw,sync,fsid=4,no_subtree_check,no_root_squash"}
           ${storageRoot}/videos ${clients "rw,sync,fsid=5,no_subtree_check,no_root_squash"}
+          ${storageRoot} 10.42.0.5(ro,sync,fsid=0,no_subtree_check,root_squash)
+          ${storageRoot}/documents 10.42.0.5(ro,sync,fsid=3,no_subtree_check,root_squash)
         '';
     };
     networking.firewall.extraInputRules = ''
