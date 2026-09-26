@@ -226,7 +226,11 @@ queue file is not evidence it was heard: consult playback receipts. Session
 launch records the fixed system-prompt hash. Do not repair speech behavior by
 pasting follow-up instructions into the conversation.
 
-Native Herdr client hold-Space invokes `speech-dictate` on the client, waits for
+**Hold-Space dictation is OFF (Tom, 2026-09-26):** `myHerdr.holdSpaceDictation.enable`
+(`home/herdr.nix`, default false) selects upstream herdr, which ignores the
+projector's `HERDR_DICTATION_COMMAND`. Keep the patch and `speech-dictate`; the
+`herdr-hold-space-dictation` flake check keeps the patch building. When enabled,
+native Herdr client hold-Space invokes `speech-dictate` on the client, waits for
 capture readiness and the original cue, streams PCM to coordinator, and pastes
 the result into the originating pane without Enter. Tap-Space remains ordinary
 input. Media controls do not cancel recording; editing keys, Escape, focus or
