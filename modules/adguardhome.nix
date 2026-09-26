@@ -17,6 +17,7 @@ let
     "paperless.internal"
     "browser.internal"
     "handwriting.internal"
+    "drain.internal"
   ];
 
   # The artifact namespace, read from the one edit point rather than spelled

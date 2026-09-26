@@ -182,6 +182,15 @@
   # backend; flips with the NAS's myNas.paperless.enable (2026-09-13).
   myNasClient.relayPaperless = true;
 
+  # drain.internal (2026-09-25): the academic-drain dashboard the worker
+  # serves on its LAN address (mecattaf/academic-drain dashboard/serve.sh
+  # --bind 10.42.0.5 --port 8740; port opened in hosts/worker/default.nix).
+  # Every `.internal` name answers this host (modules/adguardhome.nix), so
+  # Caddy fronts it here like the media relays in ./nas-client.nix.
+  services.caddy.virtualHosts."http://drain.internal".extraConfig = ''
+    reverse_proxy 10.42.0.5:8740
+  '';
+
   # myAxClient (kubectl + ax) is ON here by mkDefault from myAxFleet's
   # harness role (modules/ax-fleet/default.nix); ax-client-topology in
   # flake.nix pins that.
