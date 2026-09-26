@@ -7,7 +7,7 @@
   ...
 }:
 # herdr — the terminal workspace manager for AI coding agents
-# (github.com/herdrdev/herdr), pinned in flake.lock at 0.9.0. This file IS the
+# (github.com/herdrdev/herdr), pinned in flake.lock at 0.9.1. This file IS the
 # module: herdr ships packages.<sys>.herdr and nothing else — no NixOS module,
 # no home-manager module — so package + user service + config live here, the
 # way home/piri.nix does the same job for piri.
@@ -67,53 +67,70 @@
 let
   hostName = osConfig.networking.hostName;
   system = pkgs.stdenv.hostPlatform.system;
-  herdr = import ../pkgs/herdr-speech {
-    upstream = inputs.herdr.packages.${system}.herdr;
-    source = inputs.herdr;
-  };
+  upstream = inputs.herdr.packages.${system}.herdr;
+  # Hold-Space dictation lives in pkgs/herdr-speech (our patch over upstream).
+  # Off, herdr is upstream unchanged and ignores the projector's
+  # HERDR_DICTATION_COMMAND, so the feature is inert with no other edit.
+  herdr =
+    if config.myHerdr.holdSpaceDictation.enable then
+      import ../pkgs/herdr-speech {
+        inherit upstream;
+        source = inputs.herdr;
+      }
+    else
+      upstream;
 
   repoDir = config.rawDotfiles.repoDir; # home/raw-dotfiles-guard.nix
   link = p: config.lib.file.mkOutOfStoreSymlink "${repoDir}/home/${p}";
 in
 {
-  # `herdr` client + server on PATH, every interactive host.
-  home.packages = [ herdr ];
+  options.myHerdr.holdSpaceDictation.enable = lib.mkEnableOption ''
+    native Herdr hold-Space dictation (pkgs/herdr-speech: hold Space in a pane,
+    speech-dictate captures, Parakeet on the coordinator transcribes, the text
+    is pasted without Enter). OFF since 2026-09-26 (Tom: Parakeet ate the
+    usage); the patch and speech-dictate stay in the repo. Set it on the
+    client and the coordinator together, since the projector runs on both'';
 
-  # RAW single-file symlink; see CONFIG above. `onboarding = false` is the first
-  # assignment in that file precisely so herdr's first run never decides to
-  # write its own config over a tracked path.
-  xdg.configFile."herdr/config.toml".source = link "dot_config/herdr/config.toml";
+  config = {
+    # `herdr` client + server on PATH, every interactive host.
+    home.packages = [ herdr ];
 
-  systemd.user.services.herdr = lib.mkIf (hostName == "coordinator") {
-    Unit = {
-      Description = "herdr — terminal workspace manager for AI coding agents";
-      # NO PartOf/After/Wants on graphical-session.target: this server must
-      # survive the compositor, not follow it (ruling B6).
-      Documentation = [ "https://herdr.dev" ];
-      # SWITCH RULING (#354, 2026-09-13). A switch never restarts this server.
-      # home-manager's startServices drives sd-switch, and sd-switch restarts
-      # a changed, running unit by default. For herdr that would kill every
-      # live PTY, so an unattended update-adopt switch (or Tom's own) that
-      # moved the herdr package or this unit file would take down all panes.
-      # `keep-old` is sd-switch's own key: VERIFIED against the pinned
-      # sd-switch 0.6.4 source (src/systemd/ini.rs KEY_X_SWITCHMETHOD,
-      # "keep-old" => UnitSwitchMethod::KeepOld; src/lib.rs keeps the old
-      # unit running for that method) and home-manager 079a3b5's
-      # modules/systemd.nix X-SwitchMethod enum. The new version therefore
-      # lands only on a deliberate `systemctl --user restart herdr`, the same
-      # stance DF-CLIENT-7 takes. Asserted by the herdr-oom-isolation check.
-      X-SwitchMethod = "keep-old";
+    # RAW single-file symlink; see CONFIG above. `onboarding = false` is the first
+    # assignment in that file precisely so herdr's first run never decides to
+    # write its own config over a tracked path.
+    xdg.configFile."herdr/config.toml".source = link "dot_config/herdr/config.toml";
+
+    systemd.user.services.herdr = lib.mkIf (hostName == "coordinator") {
+      Unit = {
+        Description = "herdr — terminal workspace manager for AI coding agents";
+        # NO PartOf/After/Wants on graphical-session.target: this server must
+        # survive the compositor, not follow it (ruling B6).
+        Documentation = [ "https://herdr.dev" ];
+        # SWITCH RULING (#354, 2026-09-13). A switch never restarts this server.
+        # home-manager's startServices drives sd-switch, and sd-switch restarts
+        # a changed, running unit by default. For herdr that would kill every
+        # live PTY, so an unattended update-adopt switch (or Tom's own) that
+        # moved the herdr package or this unit file would take down all panes.
+        # `keep-old` is sd-switch's own key: VERIFIED against the pinned
+        # sd-switch 0.6.4 source (src/systemd/ini.rs KEY_X_SWITCHMETHOD,
+        # "keep-old" => UnitSwitchMethod::KeepOld; src/lib.rs keeps the old
+        # unit running for that method) and home-manager 079a3b5's
+        # modules/systemd.nix X-SwitchMethod enum. The new version therefore
+        # lands only on a deliberate `systemctl --user restart herdr`, the same
+        # stance DF-CLIENT-7 takes. Asserted by the herdr-oom-isolation check.
+        X-SwitchMethod = "keep-old";
+      };
+      Service = {
+        ExecStart = "${lib.getExe herdr} server";
+        Restart = "on-failure";
+        RestartSec = 3;
+        # One pane child being selected by the kernel OOM killer must not make
+        # systemd tear down the server and every other pane (#352).
+        OOMPolicy = "continue";
+      };
+      # default.target, not graphical-session.target — starts with the user
+      # manager under linger, before and independently of any Wayland session.
+      Install.WantedBy = [ "default.target" ];
     };
-    Service = {
-      ExecStart = "${lib.getExe herdr} server";
-      Restart = "on-failure";
-      RestartSec = 3;
-      # One pane child being selected by the kernel OOM killer must not make
-      # systemd tear down the server and every other pane (#352).
-      OOMPolicy = "continue";
-    };
-    # default.target, not graphical-session.target — starts with the user
-    # manager under linger, before and independently of any Wayland session.
-    Install.WantedBy = [ "default.target" ];
   };
 }

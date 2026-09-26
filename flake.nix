@@ -327,7 +327,7 @@
     # kitten tier, its session layer, and its title-naming pipeline are all
     # deleted in favour of one server holding every PTY.
     #
-    # PINNED TO A REV, not a branch: 0.9.0 is the current reviewed release
+    # PINNED TO A REV, not a branch: v0.9.1 (2026-09-16) is the current release
     # (plugin API + the agent sidebar), and nixpkgs carries an older release. Bump by
     # editing the rev here, deliberately, the way nixpkgs-paperless is bumped.
     #
@@ -338,7 +338,7 @@
     # NOT in `rollingInputOverrides`: herdr owns live PTYs, so its version moves
     # when Tom says so, never on a nightly resolve.
     herdr = {
-      url = "github:herdrdev/herdr/b99002ac99b09e00b4ca692436cb15a6b0d676f1";
+      url = "github:herdrdev/herdr/065ef9d6a531c49fb8bee7e818ef837065b21ee9"; # v0.9.1, wire PROTOCOL_VERSION 22 as in 0.9.0
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -794,6 +794,14 @@
         substrate-modules = import ./tests/substrate-modules {
           inherit pkgs self;
           inherit (nixpkgs) lib;
+        };
+
+        # Hold-Space dictation is OFF (myHerdr.holdSpaceDictation, home/herdr.nix)
+        # but kept: this builds the patched herdr and runs its dictation_ tests,
+        # so a herdr bump that breaks the dormant patch fails here, not on re-enable.
+        herdr-hold-space-dictation = import ./pkgs/herdr-speech {
+          upstream = inputs.herdr.packages.${system}.herdr;
+          source = inputs.herdr;
         };
 
         # DF-5: the vendored Cargo.lock must equal upstream's at the pinned rev.
