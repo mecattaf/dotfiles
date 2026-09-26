@@ -2581,6 +2581,7 @@
                 pkgs.openssh
                 pkgs.jq
                 pkgs.gawk
+                pkgs.util-linux # flock(1) for the flock-free gate, against a real flock(2)
               ];
             }
             ''

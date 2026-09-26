@@ -10,10 +10,14 @@
 # secrets declared from the two named age files) and armed through extendModules with fixtures (a stub puller,
 # files standing in for the age files), which renders both user units, the pusher.json, the runtimes.toml and the
 # puller's config.toml without a token on disk. `nix build .#checks.<system>.substrate-modules` then parses the
-# three files against the 2026-09-24 proven deployment: runtimes opus/halogen/codex/codex-rw (no herdr, gvisor or
-# ssh:worker), [credentials.seats] with cc2 = ~/.claude-work, pusher.json with peerCacheDir and no tokenFile, the
-# [puller] table with the two credential placeholders, and no rendered file carrying a token-shaped key or a
-# credential path.
+# three files against the 2026-09-24 proven deployment plus the 2026-09-25 ssh runtime: runtimes
+# opus/halogen/codex/codex-rw and ssh:worker (type ssh, host worker, harness pi, seat halogen: lane B's pi runs on
+# the worker through the ssh runner, merged in from puller.sshRuntimes; still no herdr or gvisor), [credentials.seats]
+# with cc2 = ~/.claude-work, pusher.json with peerCacheDir and no tokenFile, the [puller] table with the two
+# credential placeholders, and no rendered file carrying a token-shaped key or a credential path. It also pins the
+# academic drain's standing submit (modules/academic-drain.nix, ON on the coordinator since 2026-09-25): the user
+# service and timer, the timer's OnCalendar, the floor token as a credential, and a rendered script with no
+# token-shaped literal.
 let
   coord = self.nixosConfigurations.coordinator;
   declared = coord.config;
@@ -33,6 +37,8 @@ let
         }
       ];
     }).config;
+  standing = declared.systemd.user.services.academic-drain-standing;
+  standingTimer = declared.systemd.user.timers.academic-drain-standing;
   pusherUnit = armed.systemd.user.services.substrate-pusher;
   pullerUnit = armed.systemd.user.services.substrate-puller;
   inherit (lib) hasInfix;
@@ -79,8 +85,29 @@ assert hasInfix "/etc/profiles/per-user/tom/bin" pullerUnit.environment.PATH;
 assert hasInfix "/home/tom/.local/bin" pullerUnit.environment.PATH;
 assert hasInfix "/etc/profiles/per-user/tom/bin" pusherUnit.environment.PATH;
 assert hasInfix "/home/tom/.local/bin" pusherUnit.environment.PATH;
-assert hasInfix "/etc/profiles/per-user/tom/bin" declared.systemd.user.services.substrate-puller.environment.PATH;
+assert hasInfix "/etc/profiles/per-user/tom/bin"
+  declared.systemd.user.services.substrate-puller.environment.PATH;
 assert pullerUnit.serviceConfig.RuntimeDirectory == "substrate-puller";
+# The standing lane B submit: a oneshot user service on a Persistent=false timer, the bearer by LoadCredential.
+assert declared.services.academicDrain.standing.enable;
+assert standing.serviceConfig.Type == "oneshot";
+assert standing.unitConfig.ConditionUser == "tom";
+assert standing.serviceConfig.LoadCredential == [ "floor-token:/run/agenix/substrate-floor-token" ];
+assert !(standing ? wantedBy) || standing.wantedBy == [ ];
+assert standingTimer.timerConfig.OnCalendar == "*-*-* 01:30:00";
+assert standingTimer.timerConfig.Persistent == false;
+assert standingTimer.wantedBy == [ "timers.target" ];
+assert declared.services.academicDrain.standing.args.runtime == "ssh:worker";
+# puller.sshRuntimes MERGES into the default runtimes (a hand-set runtimes.runtime."ssh:worker" would replace it).
+assert declared.services.substrate.puller.sshRuntimes ? "ssh:worker";
+assert
+  builtins.attrNames declared.services.substrate.puller.runtimes.runtime == [
+    "codex"
+    "codex-rw"
+    "halogen"
+    "opus"
+    "ssh:worker"
+  ];
 # The pidfile is in the RuntimeDirectory, so a hold is transient: 3 must be retried, not terminal.
 assert !(builtins.elem 3 pullerUnit.serviceConfig.RestartPreventExitStatus);
 assert builtins.elem 75 pullerUnit.serviceConfig.RestartPreventExitStatus;
@@ -91,9 +118,10 @@ pkgs.runCommand "substrate-modules"
     runtimesToml = armed.services.substrate.puller.runtimesFile;
     clientToml = armed.services.substrate.puller.clientConfigFile;
     pullerStart = pullerUnit.serviceConfig.ExecStart;
+    standingScript = standing.serviceConfig.ExecStart;
   }
   ''
-    python3 - "$pusherJson" "$runtimesToml" "$pullerStart" "$clientToml" <<'PY'
+    python3 - "$pusherJson" "$runtimesToml" "$pullerStart" "$clientToml" "$standingScript" <<'PY'
     import json, re, sys, tomllib
     pusher = json.load(open(sys.argv[1]))
     assert pusher["floorUrl"].startswith("https://"), pusher
@@ -106,16 +134,18 @@ pkgs.runCommand "substrate-modules"
     for name, table in rt["runtime"].items():
         assert table["type"] in known, (name, table)
     assert rt["default"] == "opus", rt["default"]
-    assert rt["allow"] == ["opus", "halogen", "codex", "codex-rw"], rt["allow"]
-    assert set(rt["runtime"]) == {"opus", "halogen", "codex", "codex-rw"}, list(rt["runtime"])
-    assert not {"herdr", "gvisor", "ssh:worker"} & set(rt["runtime"]), list(rt["runtime"])
-    for name in ("opus", "halogen", "codex", "codex-rw"):
+    assert rt["allow"] == ["opus", "halogen", "codex", "codex-rw", "ssh:worker"], rt["allow"]
+    assert set(rt["runtime"]) == {"opus", "halogen", "codex", "codex-rw", "ssh:worker"}, list(rt["runtime"])
+    assert not {"herdr", "gvisor"} & set(rt["runtime"]), list(rt["runtime"])
+    for name in ("opus", "halogen", "codex", "codex-rw", "ssh:worker"):
         assert isinstance(rt["runtime"][name].get("timeoutMs"), int) and rt["runtime"][name]["timeoutMs"] >= 900000, (name, rt["runtime"][name])
     strip = lambda t: {k: v for k, v in t.items() if k != "timeoutMs"}
     assert strip(rt["runtime"]["opus"]) == {"type": "host", "harness": "claude", "seat": "cc2"}
     assert strip(rt["runtime"]["halogen"]) == {"type": "host", "harness": "pi", "seat": "halogen"}
     assert strip(rt["runtime"]["codex"]) == {"type": "host", "harness": "codex", "seat": "codex", "codexSandbox": "read-only"}
     assert strip(rt["runtime"]["codex-rw"]) == {"type": "host", "harness": "codex", "seat": "codex", "codexSandbox": "workspace-write"}
+    # SshRuntime (packages/runners/src/config.ts:116-121): type, host, and the common harness, seat, timeoutMs.
+    assert rt["runtime"]["ssh:worker"] == {"type": "ssh", "host": "worker", "harness": "pi", "seat": "halogen", "timeoutMs": 1800000}, rt["runtime"]["ssh:worker"]
     # The loader's guardrail (packages/runners/src/config.ts): codexSandbox only on the codex harness.
     for name, table in rt["runtime"].items():
         assert "codexSandbox" not in table or table.get("harness") == "codex", name
@@ -151,7 +181,14 @@ pkgs.runCommand "substrate-modules"
         # No token-shaped value anywhere; store paths are masked first (their hashes are 32 base32 chars).
         masked = re.sub(r"/nix/store/[a-z0-9]{32}-", "/nix/store/HASH-", text)
         assert not token_shaped.search(masked), (f, token_shaped.search(masked).group(0))
-    print("substrate-modules: pusher.json, runtimes.toml and config.toml render the 2026-09-24 proven shape")
+    standing = open(sys.argv[5]).read()
+    assert "CREDENTIALS_DIRECTORY" in standing and "/floor-token" in standing, "the standing submit reads the bearer from its credential"
+    assert "authorization: Bearer %s" in standing and "@<(auth)" in standing, "the bearer goes to curl as a header file, never argv"
+    assert "acadlb" in standing and "academic-drain-lane-b" in standing and "/runs" in standing
+    assert "/run/agenix" not in standing and "/.local/state/substrate/floor-token" not in standing
+    masked = re.sub(r"/nix/store/[a-z0-9]{32}-", "/nix/store/HASH-", standing)
+    assert not token_shaped.search(masked), ("standing submit", token_shaped.search(masked).group(0))
+    print("substrate-modules: pusher.json, runtimes.toml and config.toml render the 2026-09-24 proven shape plus ssh:worker; the standing submit carries no token")
     PY
     touch "$out"
   ''

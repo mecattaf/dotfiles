@@ -78,6 +78,34 @@ case "$verb" in
     exit 0
     ;;
 
+  flock-free)
+    # flock-free <path>... — busy while another process holds a flock(2) lock
+    # on any path (e.g. lane_b_batch.py's <out>/.lane-b.lock, taken LOCK_EX |
+    # LOCK_NB for a whole batch). A missing file is free, and is never created:
+    # the shell opens the file read-only (no O_CREAT) and flock(1) locks that
+    # descriptor, so this root gate cannot leave a root-owned file in a user's
+    # tree. The probe holds the lock for the life of one flock process; a
+    # LOCK_NB taker starting in that same instant is refused once.
+    for path in "$@"; do
+      [ -e "$path" ] || continue
+      if [ ! -r "$path" ]; then
+        echo "$path is not readable"
+        exit 2
+      fi
+      rc=0
+      flock -n -E 75 9 9<"$path" || rc=$?
+      if [ "$rc" -eq 75 ]; then
+        echo "$path is locked"
+        exit 1
+      fi
+      if [ "$rc" -ne 0 ]; then
+        echo "flock on $path failed with rc $rc"
+        exit 2
+      fi
+    done
+    exit 0
+    ;;
+
   herdr-agents-idle)
     # herdr-agents-idle <user> — busy while any agent is not idle/done.
     # `herdr agent list` prints JSON by default (no --json flag, verified

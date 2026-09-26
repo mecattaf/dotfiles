@@ -629,6 +629,26 @@ class GateTests(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("browser-desktop.service", r.stdout)
 
+    def test_flock_free(self):
+        # The lane-b drain's lock (hosts/worker): a real flock(2), as lane_b_batch.py takes it.
+        import fcntl
+        lock = os.path.join(self.fx.tmp, "lane-b", ".lane-b.lock")
+        r = self.gate("flock-free", lock)
+        self.assertEqual(r.returncode, 0, r.stdout)  # no file: free
+        self.assertFalse(os.path.exists(lock), "the gate must not create the lock file")
+        os.makedirs(os.path.dirname(lock))
+        with open(lock, "w") as held:
+            self.assertEqual(self.gate("flock-free", lock).returncode, 0)  # exists, unlocked
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            r = self.gate("flock-free", os.path.join(self.fx.tmp, "absent.lock"), lock)
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn(".lane-b.lock is locked", r.stdout)
+            fcntl.flock(held, fcntl.LOCK_UN)
+        self.assertEqual(self.gate("flock-free", lock).returncode, 0)
+        # The probe released its own lock: the next LOCK_NB taker gets it.
+        with open(lock, "w") as again:
+            fcntl.flock(again, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
     def test_herdr_agents(self):
         self.assertEqual(self.gate("herdr-agents-idle", "tom").returncode, 0)  # herdr down
         self.activate_unit("herdr.service", "tom")
