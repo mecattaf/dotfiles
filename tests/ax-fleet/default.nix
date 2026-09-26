@@ -5,11 +5,12 @@
 }:
 # checks.x86_64-linux.ax-fleet: the 4-VM proof before any switch (DESIGN.md
 # 12.1). The script mirrors the real motion: baseline, switch the NAS, switch
-# the coordinator (the worker is not switched), Tasks, resilience, rollback.
+# the coordinator, Tasks, resilience, the LAN guard, then switch the worker
+# (a tainted inference agent since 2026-09-25), rollback.
 #
 # The test script is phases/*.py concatenated in name order, after the
-# prelude below: 10-cluster and 90-rollback (cluster track), 20-substrate
-# (substrate track), 30-nop1 and 32-fleet (ax track). Every subtest a phase runs through
+# prelude below: 10-cluster, 38-worker-join and 90-rollback (cluster track),
+# 20-substrate (substrate track), 30-nop1 and 32-fleet (ax track). Every subtest a phase runs through
 # `step(...)` is named in $out/receipt.json with the values it recorded.
 let
   nodes = import ./nodes.nix { inherit pkgs lib inputs; };

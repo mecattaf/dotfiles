@@ -5,7 +5,8 @@
   options,
   ...
 }:
-# k3s, common to the two cluster nodes (control = nas, harness = coordinator).
+# k3s, common to the cluster nodes (control = nas, harness = coordinator,
+# inference = worker since 2026-09-25).
 # DESIGN.md sections 6.2, 6.5 and 7. What the 2026-09-23 probe MEASURED
 # working on k3s 1.36.2 (probe-build/vm/flake.nix) is the core: k3s_1_36 from
 # the dotfiles nixpkgs pin, the three feature gates on every component, the
@@ -23,7 +24,16 @@
 #     (./control.nix).
 let
   cfg = config.myAxFleet;
-  clusterRole = options.myAxFleet.role.isDefined && (cfg.role == "control" || cfg.role == "harness");
+  # Every role is a cluster node (2026-09-25, Tom: "the amd strix halo worker
+  # SHOULD be available in the cluster (not just halogen inference)"). The
+  # role, not a second switch, says so: `enable` stays the one kill switch.
+  clusterRole =
+    options.myAxFleet.role.isDefined
+    && builtins.elem cfg.role [
+      "control"
+      "harness"
+      "inference"
+    ];
   cluster = cfg.enable && clusterRole;
 
   teardown = pkgs.callPackage ../../pkgs/ax-fleet-teardown { k3s = cfg.k3sPackage; };
@@ -168,8 +178,8 @@ in
             # Two credentials (fix round 2). The server token is the NAS's
             # alone; with no agent token k3s gives agents the server password
             # (MEASURED deps.go getNodePass), i.e. the k3s:server role on
-            # /v1-k3s/token, /cacerts and /encrypt/config. The coordinator joins
-            # with the agent token only.
+            # /v1-k3s/token, /cacerts and /encrypt/config. The agents (the
+            # coordinator, the worker) join with the agent token only.
             tokenFile = if cfg.role == "control" then serverToken else agentToken;
             agentTokenFile = if cfg.role == "control" then agentToken else null;
             nodeIP = cfg.lan.address;
@@ -178,6 +188,19 @@ in
             images = [ cfg.k3sPackage.airgap-images ];
             extraFlags = commonFlags;
           };
+
+          # services.k3s.role defaults to "server" (MEASURED on the worker,
+          # 2026-09-25: nix eval ...services.k3s.role -> "server"). A cluster
+          # role that forgot to say "agent" would start a cluster of its own on
+          # k3s's default pod range 10.42.0.0/16, the house LAN, on a host
+          # whose only way in is that LAN (the worker). Evaluation fails
+          # instead.
+          assertions = [
+            {
+              assertion = cfg.role == "control" || config.services.k3s.role == "agent";
+              message = "modules/ax-fleet/k3s.nix: only the control role may run a k3s server; ${config.networking.hostName} has role \"${cfg.role}\" and services.k3s.role \"${config.services.k3s.role}\" (set role = \"agent\" in the role's module).";
+            }
+          ];
 
           environment.etc."rancher/k3s/registries.yaml".text = registriesYaml;
           # The kubelet's (and so CoreDNS's) upstream resolver: AdGuard on the
@@ -297,8 +320,9 @@ in
 
         # The tokens: agenix secrets, never printed. k3s-token.age is the
         # server's (recipients editors ++ nasOnly); k3s-agent-token.age is the
-        # agent credential (editors ++ coordinatorOnly ++ nasOnly). Only
-        # declared where agenix is imported and no test token is given.
+        # agent credential (editors ++ coordinatorOnly ++ nasOnly ++
+        # workerOnly, secrets.nix). Only declared where agenix is imported and
+        # no test token is given.
         (lib.optionalAttrs (options ? age) {
           age.secrets = lib.mkMerge [
             (lib.mkIf (cfg.role == "control" && cfg.k3sTokenFile == null) {

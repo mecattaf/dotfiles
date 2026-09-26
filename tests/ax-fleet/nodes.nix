@@ -17,8 +17,17 @@
 #           exactly as Tom will.
 #   ax-off  the role declared, enable = false: the kill switch (DESIGN 13).
 # 90-rollback runs the kill switch on the coordinator, and the generation
-# rollback (back to this base) on both hosts. The worker is not switched in the
-# motion and keeps its role in the base.
+# rollback (back to this base) on both hosts.
+#
+# The worker is different, as on the fleet, where it has imported the module
+# since 2026-09-23: its base carries the inference role with enable = false,
+# so the role's guards render from boot (modules/ax-fleet/agent.nix) and it
+# serves the earlier phases as the plain LAN host and internet stand-in. Its
+# ax-on specialisation joins the cluster as the tainted inference agent
+# (2026-09-25: "the amd strix halo worker SHOULD be available in the cluster
+# (not just halogen inference)"); 38-worker-join switches to it after
+# 35-lan-guard, whose negative probes need a worker that is not a node.
+# Its kill switch is the base itself.
 let
   # A plain file, test-only, not a secret: the fleet reads agenix instead.
   token = pkgs.writeText "ax-fleet-vm-token" "ax-fleet-vm-test-token-0123456789abcdef";
@@ -88,9 +97,14 @@ let
   };
 
   # Everything that makes a node a fleet node in the test (the ax-on and
-  # ax-off specialisations import it; the base does not).
+  # ax-off specialisations import it; the base does not, except the worker's).
   fleetNode =
-    { role, address }:
+    {
+      role,
+      address,
+      # The coordinator's stand-in tailnet; the worker has none, as on the fleet.
+      guardInterfaces ? [ "eth2" ],
+    }:
     {
       imports = [
         ../../modules/ax-fleet
@@ -105,7 +119,7 @@ let
         lan = lanAddr address;
         k3sTokenFile = "${token}";
         k3sAgentTokenFile = "${agentToken}";
-        guardInterfaces = [ "eth2" ];
+        inherit guardInterfaces;
       };
     };
 
@@ -113,11 +127,11 @@ let
   testBase = {
     system.switch.enable = true;
     environment.systemPackages = [
-        pkgs.jq
-        pkgs.curl
-        pkgs.iptables
-        pkgs.nftables
-        pkgs.iproute2
+      pkgs.jq
+      pkgs.curl
+      pkgs.iptables
+      pkgs.nftables
+      pkgs.iproute2
       pkgs.dnsutils
     ];
   };
@@ -247,7 +261,6 @@ let
       };
     };
 
-
   vmReservations = {
     systemReserved = "cpu=500m,memory=512Mi";
     kubeReserved = "cpu=250m,memory=256Mi";
@@ -369,6 +382,7 @@ in
         (fleetNode {
           role = "inference";
           address = "10.42.0.5";
+          guardInterfaces = [ ];
         })
         # 198.51.100.5 (TEST-NET-2): a public address for the egress tests
         # (fix round 4), routed to the worker by the NAS.
@@ -387,10 +401,29 @@ in
         (setAddr "eth2" "192.168.43.5" 24)
       ];
       networking.hostName = "worker";
-      virtualisation.vlans = [
-        1
-        3
-      ];
+      virtualisation = {
+        vlans = [
+          1
+          3
+        ];
+        # A k3s agent from 38-worker-join on: containerd, the airgap images,
+        # the kubelet's reservations (vmReservations) and a probe pod.
+        memorySize = 4096;
+        cores = 2;
+        diskSize = 8192;
+      };
+      # myAxFleet.apiUsers defaults to [ "tom" ], as on the real worker.
+      users.users.tom.isNormalUser = true;
+      # sshd on port 22, open on every interface as on the real worker
+      # (hosts/worker/default.nix), passwords on as in the coordinator
+      # stand-in: the worst case. Pods on the worker must not reach it
+      # (38-worker-join).
+      services.openssh = {
+        enable = true;
+        openFirewall = true;
+        settings.PasswordAuthentication = true;
+        settings.KbdInteractiveAuthentication = true;
+      };
       # vlan 3: a second LAN segment for the coordinator's wired leg (fix
       # round 3). DHCP with no router option, so no default route moves.
       services.dnsmasq = {
@@ -423,9 +456,15 @@ in
         wantedBy = [ "multi-user.target" ];
         serviceConfig.ExecStart = "${pkgs.busybox}/bin/httpd -f -p 2222 -h ${pkgs.writeTextDir "index.html" "worker-port-2222-reached\n"}";
       };
-      # The worker is not switched in the motion; its fleet role is ON from
-      # boot and renders only the 8731 assertion, as on the real host.
-      myAxFleet.enable = true;
+      # The base is the kill switch: the role declared, `enable` left at its
+      # default (false; ax-on inherits the base, so the base must not define
+      # it). The guards render, k3s does not. 38-worker-join switches to
+      # ax-on, as Tom will, after the NAS and the coordinator.
+      specialisation.ax-on.configuration = {
+        myAxFleet.enable = true;
+        myAxFleet.kubelet = vmReservations;
+        services.k3s.images = [ probeImage ];
+      };
       networking.firewall = {
         enable = true;
         interfaces.eth1.allowedTCPPorts = [

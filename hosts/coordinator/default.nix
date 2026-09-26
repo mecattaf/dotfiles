@@ -177,9 +177,12 @@
   # The HARNESS node (modules/ax-fleet/harness.nix): a k3s agent tainted
   # ate.dev/sandboxClass=gvisor:NoSchedule, so only atelet and the gVisor
   # WorkerPool land here. "agent harnesses on coordinator" (Tom, 2026-09-23).
-  # Switch the NAS first. `false`, switch, then `sudo ax-fleet-teardown`
-  # (on PATH whatever the switch says) is the whole rollback. This
-  # also turns myAxClient (kubectl, ax) on by mkDefault.
+  # Switch order: the NAS, then this host, then the worker (a second agent
+  # since 2026-09-25): this host accepts flannel VXLAN from every peer
+  # (modules/ax-fleet/agent.nix), and until it accepts the worker's, pods on
+  # the two agents cannot reach each other. `false`, switch, then
+  # `sudo ax-fleet-teardown` (on PATH whatever the switch says) is the whole
+  # rollback. This also turns myAxClient (kubectl, ax) on by mkDefault.
   myAxFleet = {
     enable = true;
     role = "harness";

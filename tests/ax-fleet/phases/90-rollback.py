@@ -8,6 +8,9 @@
 #               the teardown from the host's PATH;
 #               (c) the generation rollback to the pre-ax base, then the
 #               flake's teardown (the pre-ax PATH has none).
+#   worker      (2026-09-25) the kill switch, which is its base (role
+#               declared, enable false), then the teardown from its PATH:
+#               the guards stay, Halogen is never restarted.
 #   nas         the generation rollback straight from ax-on, pods still
 #               running, then the flake's teardown.
 
@@ -141,6 +144,40 @@ with step("rollback coordinator (c): the generation rollback to the pre-ax base,
     coordinator.fail("test -e /etc/NetworkManager/conf.d/90-ax-fleet.conf")
     worker.succeed("curl -sf --max-time 10 http://10.42.0.2/ | grep -x caddy-ok")
     peer.succeed("curl -sf --max-time 10 http://100.105.121.73/ | grep -x caddy-ok")
+
+
+with step("rollback worker: the kill switch (its base), then the teardown from PATH"):
+    worker.succeed(f"{PRE_AX} >&2")
+    worker.fail("systemctl is-active k3s.service")
+    # Between the kill switch and the teardown the pods still run
+    # (KillMode=process); the role's guards keep them off the host.
+    pid = pod_netns_pid(worker)
+    assert pid, "no pod network namespace survived the kill switch on the worker"
+    worker.succeed("timeout 10 bash -c 'exec 3<>/dev/tcp/10.42.0.5/22'")  # sshd is up
+    for port in (22, 2222):
+        worker.fail(f"nsenter -t {pid} -n timeout 5 bash -c 'exec 3<>/dev/tcp/10.42.0.5/{port}'")
+    assert guards(worker) == EXPECTED_GUARDS, guards(worker)
+    worker.succeed("iptables -t mangle -S FORWARD 1 | grep -q ax-fleet-guard")
+    worker.succeed("test -x /run/current-system/sw/bin/ax-fleet-teardown")
+    worker.succeed("ax-fleet-teardown >&2")
+    worker.fail("ip link show cni0")
+    worker.fail("ip link show flannel.1")
+    worker.fail(LEFTOVER_RULES)
+    worker.fail("pgrep -f containerd-shim")
+    # The guards belong to the inference role's every generation, re-applied
+    # whole after the killall (fix round 4), as on the coordinator.
+    g = guards(worker)
+    record("guards_after_worker_teardown", g)
+    assert g == EXPECTED_GUARDS, g
+    worker.succeed("iptables -S OUTPUT 1 | grep -q ax-fleet-api")
+    worker.succeed("grep -x inference /etc/ax-fleet/guard-declared")
+    worker.fail("iptables -S nixos-fw | grep -q 'dport 8472'")
+    after = sysctls(worker)
+    record("sysctl_worker_after_rollback", after)
+    assert after == base["sysctl_worker"], (after, base["sysctl_worker"])
+    assert unit_invocation(worker, "halogen-stub.service") == base["halogen_invocation"], "the Halogen stand-in restarted"
+    worker.wait_for_open_port(8731)
+    worker.succeed("curl -sf --max-time 10 http://127.0.0.1:8731/health")
 
 
 with step("rollback nas: the generation rollback straight from ax-on, then the flake's teardown"):
