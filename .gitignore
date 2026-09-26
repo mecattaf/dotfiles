@@ -7,6 +7,10 @@ __pycache__/
 # is operating in. They are mutable machine state, not shared configuration.
 **/.claude/settings.local.json
 
+# Claude Code syncs claude.ai skills into ~/.claude/skills/synced/, which is a
+# link into this checkout. They are per-account downloads, not dotfiles.
+home/dot_claude/skills/synced/
+
 # Never commit secret key material / plaintext
 *.age.key
 *_ed25519
