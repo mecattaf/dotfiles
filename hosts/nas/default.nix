@@ -53,6 +53,8 @@
     ../../modules/ax-fleet
     ./substrate-link.nix # 2026-09-23: Cloudflare floor (Substrate) -> ax link, outbound only; gate OFF (LINK-DESIGN.md)
     ../../modules/adguardhome.nix
+    # 2026-09-26: lane R of the academic ingest, the arXiv-complete text corpus onto the pool (services.academicIngest.arxivFetch below).
+    ../../modules/academic-ingest/arxiv-fetch.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc
   ];
@@ -232,6 +234,19 @@
     # nightly, with no login flow and nothing written into $HF_HOME.
     pkgs.huggingface-cli
   ];
+
+  # ── arXiv-complete on the pool (2026-09-26) ───────────────────────────
+  # Tom: "re arxiv-complete: let's get that in on NAS. i m happy to start searching
+  # through." Hand-started (`systemctl start arxiv-fetch`; no timer): one pinned
+  # revision, about 75 GB (indexes 4.4 GB, then the 50 text shards), sha-verified,
+  # landing under /mnt/nas/documents/academic-papers/arxiv/. The pool has 1.6 TB
+  # free (MEASURED 2026-09-26). `touch .../arxiv/FETCH-OFF` parks it.
+  services.academicIngest.arxivFetch = {
+    enable = true;
+    # Hub main at 2026-09-19T20:39:46Z (MEASURED via the tree API); PR #4 on the
+    # dataset proposes deleting a shard, so the sha is pinned, never `main`.
+    revision = "cee894837962fede5612cccf2a4c7cacf49b4c3a";
+  };
 
   system.stateVersion = "26.05";
 }
