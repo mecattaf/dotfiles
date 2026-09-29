@@ -229,6 +229,11 @@ in
   # subscription, not a per-token bill, so every box that can decrypt it can burn
   # the shared 7-day credit pool. The coordinator is the only agent host.
   "secrets/qwencloud-token.age".publicKeys = editors ++ coordinatorOnly;
+  # OpenRouter API key (created 2026-09-29, $40 of one-time credits, plus the
+  # free-model daily allowance). Coordinator-only for the same reason as the
+  # Qwen key: any box that can decrypt it can spend the prepaid balance, and the
+  # coordinator is the only agent host.
+  "secrets/openrouter-token.age".publicKeys = editors ++ coordinatorOnly;
   # Codex CLI ChatGPT-subscription login (~/.codex/auth.json: id/access/refresh
   # tokens + account_id, auth_mode "chatgpt"). Re-logged 2026-09-05 onto the
   # Pro-plan account; this ciphertext is that session so a reflash restores

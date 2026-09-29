@@ -145,6 +145,42 @@ let
     };
   };
 
+  # ── OpenRouter (prepaid credits + free models) ───────────────────────────
+  # pi ships `openrouter` as a BUILT-IN provider with its own catalog, so this
+  # only (a) supplies the key, gated like the Qwen key on agenix delivery, and
+  # (b) upserts the free stealth model the catalog does not know. Same `!cat`
+  # reasoning as above: the key never enters the agent's environment.
+  openrouterTokenPath = lib.attrByPath [ "age" "secrets" "openrouter-token" "path" ] null osConfig;
+  hasOpenrouter = openrouterTokenPath != null;
+
+  openrouterModelsJson = {
+    providers.openrouter = {
+      apiKey = "!cat ${toString openrouterTokenPath}";
+      models = [
+        # Free while it lasts (stealth models are withdrawn without notice, and
+        # the provider logs prompts). Metadata from GET /api/v1/models and one
+        # real completion on 2026-09-29: 1M context, 524,288 max completion,
+        # text+image input, reasoning via `reasoning.effort`. Counts against
+        # the key's 1,000 free-model requests a day, not the prepaid balance.
+        # Delete this entry once the model is withdrawn or renamed.
+        {
+          id = "stealth/space-bunny-alpha";
+          name = "Space Bunny Alpha (stealth, free)";
+          api = "openai-completions";
+          baseUrl = "https://openrouter.ai/api/v1";
+          reasoning = true;
+          input = [
+            "text"
+            "image"
+          ];
+          contextWindow = 1000000;
+          maxTokens = 524288;
+          cost = zeroCost;
+        }
+      ];
+    };
+  };
+
   # ── the local inference provider ─────────────────────────────────────────
   # Declared HERE, in the generated models.json, and unconditionally: a
   # provider entry is an inert endpoint declaration that pi dials only when a
@@ -210,11 +246,12 @@ let
     };
   };
 
-  # The cloud provider is the only one that needs a host gate: its key is an
-  # agenix path that does not exist off the fleet. Local rows are always present.
-  modelsJson = lib.recursiveUpdate localModelsJson (
-    lib.optionalAttrs hasQwenTokenPlan qwenModelsJson
-  );
+  # The cloud providers are the only ones that need a host gate: their keys are
+  # agenix paths that do not exist off the fleet. Local rows are always present.
+  modelsJson = lib.foldl' lib.recursiveUpdate localModelsJson [
+    (lib.optionalAttrs hasQwenTokenPlan qwenModelsJson)
+    (lib.optionalAttrs hasOpenrouter openrouterModelsJson)
+  ];
 
   # ── extension roster ─────────────────────────────────────────────────────
   # One entry per extension — the whole "standard": a name, an `enable` toggle,

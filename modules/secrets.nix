@@ -354,6 +354,19 @@ in
         };
       })
 
+      # openrouter-token: OpenRouter API key, same shape and same reasoning as
+      # qwencloud-token above. pi resolves it per request through the `!cat`
+      # apiKey on its built-in `openrouter` provider (home/pi.nix); it is never
+      # exported as OPENROUTER_API_KEY.
+      (lib.mkIf (config.networking.hostName == "coordinator") {
+        age.secrets.openrouter-token = {
+          file = ../secrets/openrouter-token.age;
+          owner = "tom";
+          group = "users";
+          mode = "400";
+        };
+      })
+
       # codex-auth: the Codex CLI ChatGPT-subscription session (Pro plan,
       # re-logged 2026-09-05). Same shape as claude-credentials above, for the
       # same reason: Codex REWRITES auth.json on every token refresh, so agenix's
