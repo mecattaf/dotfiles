@@ -15,8 +15,8 @@
 # the worker through the ssh runner, merged in from puller.sshRuntimes; still no herdr or gvisor), [credentials.seats]
 # with cc2 = ~/.claude-work, pusher.json with peerCacheDir and no tokenFile, the [puller] table with the two
 # credential placeholders, and no rendered file carrying a token-shaped key or a credential path. It also pins the
-# academic drain's standing submit (modules/academic-drain.nix, ON on the coordinator since 2026-09-25): the user
-# service and timer, the timer's OnCalendar, the floor token as a credential, and a rendered script with no
+# academic drain's standing submit (modules/academic-drain.nix; ON 2026-09-25, OFF on the coordinator since
+# 2026-09-30, so it is armed here): the user service and timer, the timer's OnCalendar, the floor token as a credential, and a rendered script with no
 # token-shaped literal.
 let
   coord = self.nixosConfigurations.coordinator;
@@ -34,11 +34,14 @@ let
             tokenAgeFile = pkgs.writeText "substrate-floor-token.age" "eval fixture, not a secret";
             puller.linkTokenAgeFile = pkgs.writeText "substrate-link-token-coordinator.age" "eval fixture, not a secret";
           };
+          # OFF on the real host since 2026-09-30 (no scheduled agent work in dotfiles); armed here so
+          # the module's rendered shape stays proven for a hand run or a factory schedule.
+          services.academicDrain.standing.enable = lib.mkForce true;
         }
       ];
     }).config;
-  standing = declared.systemd.user.services.academic-drain-standing;
-  standingTimer = declared.systemd.user.timers.academic-drain-standing;
+  standing = armed.systemd.user.services.academic-drain-standing;
+  standingTimer = armed.systemd.user.timers.academic-drain-standing;
   pusherUnit = armed.systemd.user.services.substrate-pusher;
   pullerUnit = armed.systemd.user.services.substrate-puller;
   inherit (lib) hasInfix;
@@ -89,7 +92,8 @@ assert hasInfix "/etc/profiles/per-user/tom/bin"
   declared.systemd.user.services.substrate-puller.environment.PATH;
 assert pullerUnit.serviceConfig.RuntimeDirectory == "substrate-puller";
 # The standing lane B submit: a oneshot user service on a Persistent=false timer, the bearer by LoadCredential.
-assert declared.services.academicDrain.standing.enable;
+assert !declared.services.academicDrain.standing.enable;
+assert !(declared.systemd.user.timers ? academic-drain-standing);
 assert standing.serviceConfig.Type == "oneshot";
 assert standing.unitConfig.ConditionUser == "tom";
 assert standing.serviceConfig.LoadCredential == [ "floor-token:/run/agenix/substrate-floor-token" ];

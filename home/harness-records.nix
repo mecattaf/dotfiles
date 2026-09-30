@@ -52,8 +52,7 @@ in
   #   rm ~/.config/systemd/user/claude-transcript-mirror.{service,timer}
   # home-manager will not write over a plain file of the same name.
   #
-  # Semantics are unchanged from the hand-written pair: oneshot, Nice=10,
-  # OnBootSec=5min, OnUnitActiveSec=1h, Persistent=true.
+  # The service is unchanged from the hand-written unit: oneshot, Nice=10.
   systemd.user.services.claude-transcript-mirror = lib.mkIf isCoordinator {
     Unit.Description = "Additive mirror of Claude Code transcripts";
     Service = {
@@ -67,17 +66,10 @@ in
     };
   };
 
-  systemd.user.timers.claude-transcript-mirror = lib.mkIf isCoordinator {
-    Unit.Description = "Hourly additive mirror of Claude Code transcripts";
-    Timer = {
-      OnBootSec = "5min";
-      OnUnitActiveSec = "1h";
-      # A box that was asleep through a scheduled run still mirrors on wake:
-      # the whole value of the mirror is that it has no gaps.
-      Persistent = true;
-    };
-    Install.WantedBy = [ "timers.target" ];
-  };
+  # No timer (Tom, 2026-09-30: no scheduled agent work in dotfiles; the
+  # hourly jsonl mirror is exactly the case he named out). Run it by hand:
+  #   systemctl --user start claude-transcript-mirror
+  # The sources stay in ~/.claude*, so nothing is lost between runs.
 
   # ── the nightly record (mined 10: outside tally) ───────────────────────────
   #
@@ -99,17 +91,7 @@ in
     };
   };
 
-  systemd.user.timers.nightly-record = lib.mkIf isCoordinator {
-    Unit.Description = "Daily per-seat token record";
-    Timer = {
-      # Default OnCalendar = daily is 00:00; the program reads the PREVIOUS
-      # day, so it never races a day that is still being written.
-      OnCalendar = "daily";
-      # A box that was off at midnight still records that day on next boot.
-      # This is the field that makes the record gapless, which is the only
-      # property that makes a weekly budget row checkable against it.
-      Persistent = true;
-    };
-    Install.WantedBy = [ "timers.target" ];
-  };
+  # No timer (Tom, 2026-09-30): hand-run `systemctl --user start
+  # nightly-record` (yesterday), or `~/.local/bin/nightly-record --date
+  # YYYY-MM-DD` for a missed day; the transcripts stay on disk.
 }

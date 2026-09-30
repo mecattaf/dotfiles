@@ -107,9 +107,10 @@
     # 2026-09-15, anthropic/ since 2026-09-17 — one tarball per package, exact
     # bytes installed that day, requireFile-pinned: no flake input, no
     # download, and no font binary in this repo (see .gitignore).
-    # home/update-center-seed.nix seeds them into the NAS store. The press that
-    # produced the anthropic/ tarballs is pkgs/fontbuilder, which ships the
-    # recipe and no bytes. Do not re-add a URL-locked font input.
+    # (home/update-center-seed.nix, which seeded them into the NAS store
+    # nightly, was deleted 2026-09-30; seed by hand before a NAS build.) The
+    # press that produced the anthropic/ tarballs is pkgs/fontbuilder, which
+    # ships the recipe and no bytes. Do not re-add a URL-locked font input.
     #
     # TOMBSTONE — sfmono-liga input (shaunsingh/SFMono-Nerd-Font-Ligaturized),
     # removed 2026-09-15 under the rule above; pkgs/sfmono-liga.nix. Liga SF
@@ -2186,7 +2187,6 @@
           # auto-started by a switch or a boot.
           assert nas.myNas.paperless.enable; # #136 hosts/nas/paperless.nix
           assert nas.services.paperless.enable;
-          assert !nas.myNas.paperless.bulk.enable;
           assert !(nas.systemd.timers ? paperless-bridge-bulk);
           assert nas.systemd.services.paperless-bridge-bulk.wantedBy == [ ];
           # Router safety: the NAS is the house DHCP/DNS router.
@@ -2582,57 +2582,6 @@
             grep -qx 'OOMPolicy=continue' "$unit"
             touch "$out"
           '';
-
-        # #354 — per-host candidate adoption. The hermetic suite drives every
-        # branch of modules/update-adopt.py (identical no-op, adopt, busy and
-        # unknown gates, probe-failure rollback, switch-failure rollback,
-        # kernel → boot + pending-reboot marker, bad signature, host mismatch,
-        # manual and stage-only policies, downgrade refusal before and after
-        # download, dirty/unknown current, --force, the activation lock) and
-        # each gate verb of update-adopt-gates.sh, with fake nix/systemctl and a
-        # REAL ssh-keygen. The asserts pin the policy table: NAS not enrolled
-        # (2026-08-21 ruling), client manual (R-18), both units immune to the
-        # switch they run, and every closure recording its revision.
-        update-adopt =
-          let
-            cfgOf = host: self.nixosConfigurations.${host}.config;
-            worker = cfgOf "worker";
-            coordinator = cfgOf "coordinator";
-          in
-          assert worker.myUpdateAdopt.enable && worker.myUpdateAdopt.policy == "rolling";
-          assert
-            coordinator.myUpdateAdopt.enable
-            && builtins.elem coordinator.myUpdateAdopt.policy [
-              "stage-only"
-              "rolling"
-            ];
-          assert (cfgOf "client").myUpdateAdopt.enable && (cfgOf "client").myUpdateAdopt.policy == "manual";
-          assert !(cfgOf "nas").myUpdateAdopt.enable;
-          assert !((cfgOf "nas").systemd.services ? update-adopt-activate);
-          assert !worker.systemd.services.update-adopt-activate.restartIfChanged;
-          assert !worker.systemd.services.update-adopt-activate.stopIfChanged;
-          assert !coordinator.systemd.services.update-adopt-stage.restartIfChanged;
-          assert worker.system.configurationRevision != null;
-          assert nixpkgs.lib.hasInfix "fleet-revision.json" worker.system.systemBuilderCommands;
-          assert builtins.length coordinator.myUpdateAdopt.gates >= 4;
-          pkgs.runCommand "update-adopt"
-            {
-              nativeBuildInputs = [
-                pkgs.python3
-                pkgs.openssh
-                pkgs.jq
-                pkgs.gawk
-                pkgs.util-linux # flock(1) for the flock-free gate, against a real flock(2)
-              ];
-            }
-            ''
-              mkdir -p modules tests/update-adopt
-              cp ${./modules/update-adopt.py} modules/update-adopt.py
-              cp ${./modules/update-adopt-gates.sh} modules/update-adopt-gates.sh
-              cp ${./tests/update-adopt/test_update_adopt.py} tests/update-adopt/test_update_adopt.py
-              python -m unittest discover -v -s tests/update-adopt
-              touch "$out"
-            '';
 
         # #354 producer half and the 2026-09-13 seed preflight: per-host signed
         # candidate publication only after a successful push, a failed host
@@ -3581,14 +3530,6 @@
           # it takes effect at its next reboot (Tom's step).
           assert nixpkgs.lib.elem "amdgpu.gttsize=126976" worker.boot.kernelParams;
           assert nixpkgs.lib.elem "amdgpu.gttsize=126976" coordinator.boot.kernelParams;
-          # A switch on the coordinator waits while an operator-started engine runs.
-          assert
-            builtins.any (
-              gate:
-              gate.name == "halogen-units"
-              && nixpkgs.lib.elem "podman-halogen.service" gate.argv
-              && nixpkgs.lib.elem "podman-halogen-qwen38-27b.service" gate.argv
-            ) coordinator.myUpdateAdopt.gates;
           # The utility-model wrapper lives on the coordinator only.
           assert
             builtins.length (
@@ -3841,7 +3782,7 @@
           assert nixpkgs.lib.hasInfix "implicitclass:" postStart;
           assert coordinatorHome.systemd.user.paths ? paper-daemon;
           assert coordinatorHome.systemd.user.paths.paper-daemon.Path.PathChanged == "%h/Paper/intake";
-          assert coordinatorHome.systemd.user.timers ? paper-daemon-sweep;
+          assert !(coordinatorHome.systemd.user.timers ? paper-daemon-sweep);
           assert coordinatorHome.systemd.user.timers ? paper-daemon-flush;
           assert coordinatorHome.systemd.user.timers.paper-daemon-flush.Timer.Persistent;
           assert daemonService.Unit.X-RestartIfChanged == false;

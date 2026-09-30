@@ -126,8 +126,8 @@ log "candidate $rev"
 # ── Seed preflight (2026-09-13) ─────────────────────────────────────────────
 # Private locked inputs (mecattaf/tally, mecattaf/tally-ts-sdk, and anything
 # else mecattaf-owned) cannot be fetched here: there is no repo credential on
-# the appliance. The coordinator's update-center-seed copies their exact trees
-# in and roots them under $state/seeds. Name every gap BEFORE building, so a
+# the appliance. The coordinator's update-center-seed (deleted 2026-09-30) used
+# to copy their exact trees in and root them under $state/seeds. Name every gap BEFORE building, so a
 # failed night reads "seed-missing tally-b" rather than a git auth error three
 # hosts deep. A gap does not stop the loop: a host that does not need the tree
 # may still build.
@@ -139,7 +139,7 @@ while IFS=$'\t' read -r name nar url; do
   if nix-store --check-validity "$path" 2>/dev/null; then
     log "seed present: $name $path"
   else
-    log "seed-missing $name $url ($path) — run update-center-seed on the coordinator" >&2
+    log "seed-missing $name $url ($path) — nix copy it from a host that can fetch it" >&2
     seeds_ok=0
   fi
 done < <(jq -r '

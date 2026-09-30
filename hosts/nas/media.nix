@@ -255,40 +255,9 @@ in
       };
     };
 
-    # Independent nightly DB dump to the HDD. Immich has its own nightly
-    # backup, but it runs inside immich-server — which is socket-activated
-    # and asleep most nights, so it cannot be the safety net for the NVMe
-    # dataDir. This timer talks straight to PostgreSQL. Dumps land in the
-    # real photos/backups (HDD + quarterly LaCie mirror); 14 kept, matching
-    # Immich's own retention.
-    systemd.services.nas-db-dump = {
-      description = "Nightly pg_dump of the media database to the HDD";
-      requires = [ "postgresql.service" ];
-      after = [ "postgresql.service" ];
-      unitConfig.RequiresMountsFor = [ storageRoot ];
-      # Root, not User=postgres: photos/ is tom 0700 and the dump target must
-      # stay inside the mirrored photos tree, so the shell runs as root (which
-      # traverses) and only the pg_dump itself drops to postgres for peer auth.
-      serviceConfig = {
-        Type = "oneshot";
-        ExecStart = pkgs.writeShellScript "nas-db-dump" ''
-          set -eu
-          out="${storageRoot}/photos/backups/db/nas-pg-dump-$(date +%Y%m%dT%H%M%S).sql.gz"
-          ${pkgs.util-linux}/bin/runuser -u postgres -- \
-            ${config.services.postgresql.package}/bin/pg_dump --clean --if-exists tom \
-            | ${pkgs.gzip}/bin/gzip > "$out"
-          ls -1t ${storageRoot}/photos/backups/db/nas-pg-dump-*.sql.gz \
-            | tail -n +15 | ${pkgs.findutils}/bin/xargs -r rm --
-        '';
-      };
-    };
-    systemd.timers.nas-db-dump = {
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "*-*-* 02:15:00";
-        Persistent = true;
-      };
-    };
+    # nas-db-dump (the independent nightly Immich pg_dump) was deleted on
+    # 2026-09-30 (Tom: "not needed"; it kept the HDD awake). Immich's own
+    # backup remains.
 
     # Plex serves the videos subvolume (Tom's 2026-08-02 call: Plex over
     # Jellyfin). Unlike Immich/Navidrome it stays resident — Plex keeps

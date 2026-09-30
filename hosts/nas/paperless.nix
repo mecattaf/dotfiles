@@ -72,8 +72,8 @@
 #   5. measure idle/import RSS + disk wakeups alongside Immich/Navidrome
 #      and canary throughput before bulk admission; then
 #        systemctl start paperless-bridge-bulk
-#      (never auto-started: no wantedBy; its nightly timer is the separate
-#      myNas.paperless.bulk.enable gate, off). Resumable from the ledger.
+#      (never auto-started: no wantedBy and no timer since 2026-09-30).
+#      Resumable from the ledger.
 #   6. AI: tag candidates only, via `paperless-bridge suggest` run on the
 #      COORDINATOR, whose utility-model wrapper is the fleet's one seam to
 #      the worker's resident Halogen server (AGENTS.md) — never a direct call
@@ -115,10 +115,6 @@ in
   imports = [ "${inputs.nixpkgs-paperless}/nixos/modules/services/misc/paperless.nix" ];
 
   options.myNas.paperless.enable = lib.mkEnableOption "Paperless-ngx v3 as the same-inode PDF projection of /mnt/nas/documents (#136)";
-  options.myNas.paperless.bulk.enable = lib.mkEnableOption ''
-    the nightly timer for paperless-bridge-bulk (#136). Off until canary
-    throughput and RSS are measured; the service itself is always declared
-    but never auto-started, so an operator starts a run by hand'';
 
   config = lib.mkIf cfg.enable {
     assertions = [
@@ -219,8 +215,8 @@ in
       // {
         # Guarded, resumable bulk admission (pkgs/paperless-bridge bulk).
         # Deliberately NO wantedBy: a switch or a reboot never starts it; an
-        # operator does (`systemctl start paperless-bridge-bulk`), or the
-        # myNas.paperless.bulk.enable timer once measurements justify it.
+        # operator does (`systemctl start paperless-bridge-bulk`); there is no
+        # timer (removed 2026-09-30).
         # Exit 75 = paused by a guard or no progress (receipt says which);
         # rerunning resumes from the ledger.
         paperless-bridge-bulk = {
@@ -270,14 +266,13 @@ in
           '';
         };
 
-        # Nightly pg_dump of the paperless DB to the HDD services subvolume,
-        # same doctrine and retention as nas-db-dump in ./media.nix (the
-        # postgres dataDir lives on the NVMe fast tier). The full
+        # On-demand pg_dump of the paperless DB to the HDD services subvolume,
+        # 14 kept (the postgres dataDir lives on the NVMe fast tier). The full
         # document-exporter snapshot is deliberately NOT enabled here: with
         # originals it would be a same-disk payload copy of the whole corpus —
         # it belongs on the #130 backup target when that gate flips.
         paperless-db-dump = {
-          description = "Nightly pg_dump of the paperless database to the HDD";
+          description = "pg_dump of the paperless database to the HDD (hand-run)";
           requires = [ "postgresql.service" ];
           after = [ "postgresql.service" ];
           unitConfig.RequiresMountsFor = [ storageRoot ];
@@ -295,22 +290,10 @@ in
           };
         };
       };
-    systemd.timers.paperless-bridge-bulk = lib.mkIf cfg.bulk.enable {
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        # Overnight window; a run that is still going when this fires again
-        # is left alone (oneshot already active).
-        OnCalendar = "*-*-* 23:30:00";
-        Persistent = false;
-      };
-    };
-    systemd.timers.paperless-db-dump = {
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "*-*-* 02:45:00";
-        Persistent = true;
-      };
-    };
+    # No timers (Tom, 2026-09-30: no scheduled agent or data work in
+    # dotfiles). paperless-bridge-bulk and paperless-db-dump are hand-run:
+    #   systemctl start paperless-bridge-bulk
+    #   systemctl start paperless-db-dump
 
     systemd.tmpfiles.rules = [
       "d ${serviceRoot} 0711 root root -"

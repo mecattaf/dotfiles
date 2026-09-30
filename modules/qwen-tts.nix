@@ -46,13 +46,13 @@ in
         DirectoryMode = "0700";
       };
     };
+    # Silent-hours release only: the 06:05 run plays what was held overnight.
+    # New drops are the path unit's job; the old 30 s poll is gone (Tom,
+    # 2026-09-30: no clocks for agent work in dotfiles).
     systemd.user.timers.speech-queue = {
       wantedBy = [ "timers.target" ];
       timerConfig = {
-        OnCalendar = [
-          "*-*-* *:*:00,30"
-          "*-*-* 06:05:00"
-        ];
+        OnCalendar = "*-*-* 06:05:00";
         Persistent = true;
       };
     };

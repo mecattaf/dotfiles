@@ -155,7 +155,7 @@
   # asserts the pair). Pre-flip: runbook dirs created, documents snapshotted
   # read-only as .snapshots/documents.pre-paperless-20260913T2241, input
   # bumped to 3.1.3 while the database is empty. Bulk admission stays a
-  # manual start (myNas.paperless.bulk.enable is the separate timer gate).
+  # manual start (there is no bulk timer since 2026-09-30).
   myNas.paperless.enable = true;
 
   # Preserve graphics/VA-API for headless Immich video transcoding. This does
@@ -200,6 +200,11 @@
   # symptom stop without fixing the siting, which was the wrong answer. The
   # store now lives on the 256G M.2, so the farm has room to do its job.
   myNas.updateCenter.enable = true;
+  # Nightly build parked (Tom, 2026-09-28): it peaked at 15.5G + 1.4G swap on
+  # this 24G router, and builds belong on the desktops, run by hand. The
+  # service stays hand-startable and the candidates keep being served, so
+  # update-adopt on the devices sees the last good closure, not an error.
+  myNas.updateCenter.schedule.enable = false;
 
   # ── /nix on the M.2 (#232) ──────────────────────────────────────────────
   # Flipped after the runbook in ./nix-on-nvme.nix was walked on the real

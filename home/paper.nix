@@ -22,8 +22,9 @@ lib.mkIf isCoordinator {
   # loop while anything sits in the directory, and intake/ legitimately keeps
   # a subdirectory (.adopted-2026-09-09/) the daemon ignores. PathChanged
   # fires on the rename that completes a drop; a drop that lands while a job
-  # is being watched is picked up by the run's own re-scan, and the sweep
-  # below is the backstop for anything else.
+  # is being watched is picked up by the run's own re-scan. The five-minute
+  # sweep timer is gone (no clocks for agent work, Tom 2026-09-30); a missed
+  # event is recovered by hand: `systemctl --user start paper-daemon`.
   systemd.user.paths.paper-daemon = {
     Unit.Description = "Watch ~/Paper/intake for print drops";
     Path = {
@@ -39,7 +40,7 @@ lib.mkIf isCoordinator {
       Description = "Print loop: render, validate and submit ~/Paper/intake drops";
       # A switch must never kill a job the daemon is watching over IPP: the
       # sheets are already moving, and a restart would leave work/<id>/
-      # stranded with no receipt. The next path event or sweep runs the new
+      # stranded with no receipt. The next path event runs the new
       # generation.
       X-RestartIfChanged = false;
       # No start rate limit. One drop is several inotify events (the .tmp
@@ -51,7 +52,7 @@ lib.mkIf isCoordinator {
       # and it never watches again, even after the window passes, until
       # someone resets it. With StartLimitIntervalSec=0 the same twelve rapid
       # triggers all ran and the path stayed active. Nothing here can loop
-      # by itself: only an outside write or the sweep starts a run.
+      # by itself: only an outside write or a hand start runs it.
       StartLimitIntervalSec = 0;
     };
     Service = {
@@ -60,15 +61,6 @@ lib.mkIf isCoordinator {
       # Serial jobs, each allowed 120 s + 20 s/page at the printer.
       TimeoutStartSec = "6h";
     };
-  };
-
-  systemd.user.timers.paper-daemon-sweep = {
-    Unit.Description = "Backstop sweep of ~/Paper/intake every five minutes";
-    Timer = {
-      OnCalendar = "*:0/5";
-      Unit = "paper-daemon.service";
-    };
-    Install.WantedBy = [ "timers.target" ];
   };
 
   # Quiet hours end. Persistent catches a machine that was asleep at 06:05;

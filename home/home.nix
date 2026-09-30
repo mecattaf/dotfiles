@@ -133,7 +133,6 @@ in
     ./tally-filler.nix
     ./tally-pump.nix
     ./tally-uplink.nix
-    ./update-center-seed.nix # coordinator-only; seeds private inputs into the NAS store
     ./util-sampler.nix
     ./speech.nix
   ];

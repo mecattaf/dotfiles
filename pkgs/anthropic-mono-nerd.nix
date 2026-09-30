@@ -11,8 +11,11 @@
 # (head is pinned to SOURCE_DATE_EPOCH; --verify-repro proves it). Per-glyph
 # donor provenance ships inside the tarball as PROVENANCE.tsv.
 #
-# Same scheme and rationale as ./sf-pro.nix: requireFile, never a download, and
-# home/update-center-seed.nix roots the tarball in the NAS store nightly.
+# Same scheme and rationale as ./sf-pro.nix: requireFile, never a download.
+# home/update-center-seed.nix used to root the tarball in the NAS store
+# nightly; it was deleted on 2026-09-30, so a NAS-side build needs it
+# `nix store add`ed by hand first (as for ./anthropic-ui.nix and
+# ./anthropic-webfonts.nix).
 {
   stdenvNoCC,
   requireFile,

@@ -56,11 +56,6 @@ in
       type = lib.types.port;
       default = 8091;
     };
-    keepalive.enable = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = "Daily no-build refresh of current and previous signed closures in Attic.";
-    };
   };
   config = lib.mkIf cfg.enable {
     assertions = [
@@ -122,13 +117,6 @@ in
         MemoryMax = "2G";
       };
     };
-    systemd.timers.omarchy-update-keepalive = lib.mkIf cfg.keepalive.enable {
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "04:30";
-        Persistent = false;
-        RandomizedDelaySec = "15min";
-      };
-    };
+    # No keepalive timer (removed 2026-09-30); the service is hand-run.
   };
 }
