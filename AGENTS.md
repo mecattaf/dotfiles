@@ -9,7 +9,33 @@ session id resumes only on the seat and from the cwd that created it
 for `$HOME`, so the launchers move into `$CLAUDE_ENVELOPE` (default `~/today`)
 when typed from `~`; never start a seat in the home directory. Logins are hand
 `/login`s, never a delivered secret (the old claude-credentials seed was removed
-this day). The seat meters are `~/.local/state/tally-rewrite/meters/<seat>.json`.
+this day). `seats` reads its peer cache from `~/.local/state/tally-rewrite/meters`
+(the directory name outlives Tally, which was removed on 2026-09-30).
+
+**Scheduled work (Tom, 2026-09-30).** No scheduled agent work is declared in dotfiles. Silent-hours releases (paper 06:05, speech 06:05) stay. Reactive triggers (a Huion scan drops → process when there is bandwidth) are fine. A midnight script that moves jsonl files to the NAS is out. Everything scheduled comes from the factory (substrate).
+
+The one named exception is box upkeep, which is not agent work. These are the
+only clocks dotfiles may declare (sweep 2026-09-30, D40–D51); anything else is a
+hand-run service, a path/udev/session trigger, or a factory schedule:
+
+| # | Unit(s) | Hosts | Declared in |
+|---|---|---|---|
+| D40 | uplink-failover-watchdog (30 s), uplink-rail-reconcile (20 s), uplink-rail-revert (04:00) | coordinator | `hosts/coordinator/uplink-nas.nix` |
+| D41 | failure-marker-reconcile | all | `modules/failure-surfacing.nix` |
+| D42 | tripwire-coredump, tripwire-user-unit-failure (all); tripwire-nas-reachability, tripwire-attic-cache-health (coordinator) | all | `modules/tripwire.nix` |
+| D43 | nix-gc (weekly), gc-root-reaper (daily) | all | `modules/gc-retention.nix`, `modules/gc-root-reaper.nix` |
+| D44 | atticd GC every 12 h | NAS | `hosts/nas/attic.nix` |
+| D45 | btrbk-nas (first Saturday 08:00), btrfs-scrub-mnt-nas (monthly) | NAS | `hosts/nas/snapshots.nix`, `hosts/nas/storage.nix` |
+| D46 | headscale-backup (Sunday 08:30) | NAS | `hosts/nas/headscale-backup.nix` |
+| D47 | docker-registry-garbage-collect (weekly) | NAS | `modules/ax-fleet/control.nix` |
+| D48 | artifact-reaper (daily) | coordinator | `modules/caddy-artifacts.nix` |
+| D49 | fstrim, logrotate, fwupd-refresh, systemd-tmpfiles-clean (system and user) | all | NixOS defaults |
+| D50 | smartd (`-n standby,q`; a daemon, not a timer) | NAS | `hosts/nas/storage.nix` |
+| D51 | the podman healthcheck transient timer (not declared) | worker | podman, for Halogen |
+
+Besides these, the silent-hours releases are `paper-daemon-flush.timer` and the
+06:05 entry of `speech-queue.timer` on the coordinator. Adding any other timer or
+`OnCalendar` to this repository needs Tom.
 
 **Physical seats (2026-09-16, supersedes older headless/client-only wording below).**
 Tom is returning the coordinator to primary-desktop duty with two upright LG
