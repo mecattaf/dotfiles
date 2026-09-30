@@ -2671,19 +2671,16 @@
               "qwen-k2so-midway-b"
               "qwen3-tts-tokenizer-f32"
             ];
-          # The catalogue is the kept estate after Tom's 2026-09-16 ruling; no
-          # other top-level attribute — no deployments, no backend kinds, no
-          # utility pointer.
+          # The catalogue is the kept estate after Tom's 2026-09-16 ruling,
+          # narrowed on 2026-09-30 (sweep F1: the three Mage rows and the text
+          # embedder retired); no other top-level attribute — no deployments,
+          # no backend kinds, no utility pointer.
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
           assert
             builtins.attrNames localModelCatalog.artifacts == [
               "halogen-qwen38-27b"
               "halogen-qwen38-flash-next"
-              "mage-flow-4b-turbo-bf16"
-              "mage-flow-edit-4b-turbo-bf16"
-              "mage-vl-bf16"
               "qwen-k2so-midway-b"
-              "qwen3-embedding-8b-q8-0"
               "qwen3-tts-1.7b-base-q8-0"
               "qwen3-tts-tokenizer-f32"
               "vibevoice-asr-streaming-7b-bf16"

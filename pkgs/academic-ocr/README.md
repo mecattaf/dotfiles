@@ -108,8 +108,10 @@ The base URL defaults to `http://worker:8731` and is overridable through
 well as the transcription, so the per-page cap is 16384 tokens.
 
 Halogen serves no `/v1/embeddings`. The embed node names `qwen3-embedding-8b`,
-a loanable NAS-Library artifact an operator serves by hand with `llama-server`
-on the coordinator. `academic-ocr-plan-assemble` reads that server's base URL
+served by hand by an operator with `llama-server`. Its GGUF
+(`qwen3-embedding-8b-q8-0`) left the catalogue and the NAS Library on
+2026-09-30 (sweep F1), so an operator who wants embeddings fetches it again from
+`Qwen/Qwen3-Embedding-8B-GGUF` first. `academic-ocr-plan-assemble` reads that server's base URL
 from `ACADEMIC_OCR_EMBEDDINGS_URL`, which has no default: when it is unset the
 planner says so on stderr, writes `embedding.endpoint: null`, and the
 `academic-assemble` flow skips the embed and index nodes and receipts both as

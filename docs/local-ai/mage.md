@@ -1,5 +1,10 @@
 # Microsoft Mage family
 
+**Retired 2026-09-30 (sweep F1).** The three rows below left the catalogue,
+`lib/mage-models.nix` was deleted, and the NAS Library copies are removed after
+this merges. This page stays as the selection record; restoring a row starts
+from `lib/mage-models.nix` in git history.
+
 Status: selected for declarative coordinator materialization on 2026-07-29.
 The source checkout used for the review is `/home/tom/Downloads/Mage` at
 `8c94a0ac905167f40b05b09332b78752b7f9fbef`.
