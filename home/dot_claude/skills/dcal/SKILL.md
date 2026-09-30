@@ -58,6 +58,11 @@ ref, marks the event as a call, and supplies `call with <name>` when no title
 was given. An explicit title is still allowed. Do not pass another value to
 `--kind`; the only accepted kind is `call`.
 
+`--crm` needs a CRM binary that dotfiles no longer installs. `DCAL_CRM_BIN`
+names it; the successor's wrapper is `scripts/crm-cli.sh` in `mecattaf/crm`.
+With `DCAL_CRM_BIN` unset and no `crm` on `PATH`, dcal refuses by name and
+exits 1 without creating the event.
+
 Exit 2 means the CRM contact or calendar was not found. Exit 3 means a ref was
 ambiguous: show the candidates from stderr and ask the user to choose; never
 guess.

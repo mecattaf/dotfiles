@@ -147,7 +147,10 @@ Use the higher-level event verbs instead of raw IPC for normal agent work.
 - `DCAL_SOCKET`: select a running daemon socket.
 - `DCAL_GOOGLE_CLIENT_ID`, `DCAL_GOOGLE_CLIENT_SECRET`: custom Google OAuth
   client pair.
-- `DCAL_CRM_BIN`: CRM executable used for linked calls.
+- `DCAL_CRM_BIN`: CRM executable used for linked calls. dotfiles no longer
+  installs a `crm` binary, so this variable is how the CRM is named. Point it
+  at the successor's `scripts/crm-cli.sh` wrapper from `mecattaf/crm`. With it
+  unset and no `crm` on `PATH`, `--crm` and `dcal done` refuse by name.
 - `DCAL_CALL_DIARIZE_BIN`: diarizer used by `dcal done`.
 - `DCAL_RECORDINGS_ROOT` or `CALL_RECORDINGS_ROOT`: call recording root.
 - `DCAL_CRM_BASE` or the directory containing `CRM_DB`: CRM transcript root.

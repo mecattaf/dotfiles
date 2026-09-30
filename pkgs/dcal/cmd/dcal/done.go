@@ -131,8 +131,16 @@ func buildDonePlan(event eventRecord, dryRun bool) (donePlan, error) {
 		plan.TranscriptTarget = filepath.Join(crmBase, relative)
 	}
 	if event.CRMRef != "" {
+		crmBin, crmBinErr := crmBinary()
+		if crmBinErr != nil {
+			if !dryRun {
+				return donePlan{}, crmBinErr
+			}
+			// A dry run still reports the argv it would have spawned.
+			crmBin = defaultCRMBinary
+		}
 		plan.CRMLogArgv = []string{
-			crmBinary(), "log",
+			crmBin, "log",
 			"--kind", "call",
 			"--transcript", filepath.ToSlash(relative),
 			"--refs", event.CRMRef,

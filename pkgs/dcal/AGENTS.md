@@ -105,6 +105,10 @@ authorized contract change lands.
   `YYYY-MM-DD`, with the date-form `--to` inclusive.
 - `dcal add --crm` must resolve exactly one CRM contact, persist its canonical
   ref, and use kind `call`. Preserve CRM exit 2/3 and stderr without wrapping.
+- The CRM binary is optional: `DCAL_CRM_BIN` first, then `PATH`. dotfiles no
+  longer ships one (#452, #456); the successor is `mecattaf/crm` and its
+  `scripts/crm-cli.sh` wrapper. Refuse by name before spawning when neither
+  resolves.
 - `dcal done` is the sole composed post-call transition: resolve one finished
   CRM call, diarize, publish transcript evidence safely, and log the CRM
   interaction.
