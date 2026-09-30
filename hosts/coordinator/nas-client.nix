@@ -71,6 +71,16 @@ in
           "retrans=3"
           "x-systemd.automount"
           "x-systemd.mount-timeout=30s"
+          # F2-3 (2026-09-30): same idle timeout as the worker's /mnt/library
+          # and /mnt/nas/documents automounts (hosts/worker/default.nix:
+          # 222-223, 255-256). An idle mount does not spin the NAS HDD by
+          # itself (sheet 06 §F, "Writer" table) — this exists so the
+          # autofs trigger unmounts after a day of no use rather than
+          # staying mounted forever, not as part of the disk-spindown chain.
+          # nas-automount-warm (#139, below) re-triggers the mount every
+          # graphical login regardless of whether it timed out meanwhile, so
+          # this does not reintroduce the cold-mount sidebar bug it fixed.
+          "x-systemd.idle-timeout=10min"
           "_netdev"
           # Boot race, reproduced here 2026-08-29 (first 7.2 boot): an early
           # access can pull this lazy mount up before wifi has associated,
@@ -141,9 +151,13 @@ in
       # bookmark at /mnt/nas. When the automount is still cold at session start
       # those paths do not resolve, GLib drops them, and the Nautilus sidebar
       # comes up without them — `nautilus -q` plus a relaunch on a warm mount
-      # was the manual workaround. Nothing sets TimeoutIdleSec on the automount,
-      # so mounting it once at session start keeps it up for the rest of the
-      # boot and every later-launched app sees real directories.
+      # was the manual workaround. Before F2-3 (2026-09-30) nothing set an
+      # idle timeout on the automount, so mounting it once at session start
+      # kept it up for the rest of the boot; now it is `x-systemd.
+      # idle-timeout=10min` above, but this warm step still runs on every
+      # graphical login, so a mount that timed out earlier in a long session
+      # gets re-triggered here regardless, and every later-launched app sees
+      # real directories.
       #
       # Ordered Before= but only Wants=/WantedBy= graphical-session.target: niri
       # itself is likewise Before= that target, so the compositor comes up in

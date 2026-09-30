@@ -1,6 +1,7 @@
 {
   config,
   lib,
+  pkgs,
   ...
 }:
 let
@@ -64,6 +65,41 @@ in
           options = "-a -n standby,q -W 4,45,50";
         }
       ];
+    };
+
+    # ── hd-idle: spin the HDD down after 20 min idle (F2-4) ──────────────────
+    # smartd above (D50) only watches health and is deliberately `-n
+    # standby,q` so its own polling never wakes the disk — it does not spin
+    # anything down by itself. hd-idle is the thing that issues the actual
+    # spindown command. Upstream (adelolmo/hd-idle) warns it is "not
+    # compatible with the usage of disk monitoring tools like smartmontools";
+    # in practice the two have coexisted here because smartd's `standby,q`
+    # mode checks power state first and skips the test instead of forcing a
+    # spin-up — if F2-6's 48h acceptance check ever shows the start/stop
+    # count climbing, suspect this interaction first.
+    #
+    # `-i 0` sets the default idle timeout to 0 (never spin down) for every
+    # disk hd-idle can see, then the `-a <device> -i 1200` pair overrides
+    # that for this HDD only (1200s = 20min). The NAS nix store and
+    # everything else on this box live on NVMe and must never be told to
+    # spin down. Do NOT use `hdparm -S`: WD Red firmware is known to ignore
+    # it (sheet F2-4).
+    #
+    # NOTE: this alone does not get the disk to standby yet. The k3s
+    # local-path PVs on it (ax postgres, rustfs, redis —
+    # modules/ax-fleet/interface.nix:182-186) write continuously and will
+    # keep waking it until ax is parked and those volumes are torn down or
+    # moved (ruling pending: B1/C10/F2-1).
+    systemd.services.hd-idle = {
+      description = "Spin down the NAS HDD after 20 min idle (F2-4)";
+      wantedBy = [ "multi-user.target" ];
+      after = [ "local-fs.target" ];
+      serviceConfig = {
+        Type = "simple";
+        ExecStart = "${lib.getExe pkgs.hd-idle} -i 0 -a ${cfg.smartDevice} -i 1200";
+        Restart = "on-failure";
+        RestartSec = "10s";
+      };
     };
 
     # ── Subvolume layout (the #130 "decide before data lands" decision) ──────
