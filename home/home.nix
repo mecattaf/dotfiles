@@ -128,7 +128,6 @@ in
     ./raw-dotfiles-guard.nix
     ./ssh.nix
     ./theme.nix
-    ./speech.nix
   ];
 
   home.username = "tom";

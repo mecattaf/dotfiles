@@ -1,11 +1,8 @@
 { torchRocm, go127 }:
 final: prev: {
   qwentts = final.callPackage ../pkgs/qwentts.nix { };
-  parakeet-service = final.callPackage ../pkgs/parakeet-service { };
   speech-session = final.callPackage ../pkgs/speech-session { };
-  speech-wake = final.callPackage ../pkgs/speech-wake { };
   qwen-speech = final.callPackage ../pkgs/qwen-speech { };
-  speech-listening-cue = final.callPackage ../pkgs/speech-listening-cue { };
   # Add-only overlay + a single scoped upstream override (niri, below).
   # Everything else is already in nixpkgs and referenced directly.
 

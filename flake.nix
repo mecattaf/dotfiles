@@ -545,10 +545,7 @@
           inherit (pkgs)
             qwentts
             qwen-speech
-            speech-listening-cue
-            speech-wake
             speech-session
-            parakeet-service
             academic-ocr
             # `nix build .#ax` — the ax control plane's four binaries. Exposed
             # because nothing installs it by default (modules/ax-client.nix
@@ -681,14 +678,6 @@
         substrate-modules = import ./tests/substrate-modules {
           inherit pkgs self;
           inherit (nixpkgs) lib;
-        };
-
-        # Hold-Space dictation is OFF (myHerdr.holdSpaceDictation, home/herdr.nix)
-        # but kept: this builds the patched herdr and runs its dictation_ tests,
-        # so a herdr bump that breaks the dormant patch fails here, not on re-enable.
-        herdr-hold-space-dictation = import ./pkgs/herdr-speech {
-          upstream = inputs.herdr.packages.${system}.herdr;
-          source = inputs.herdr;
         };
 
         # DF-5: the vendored Cargo.lock must equal upstream's at the pinned rev.
@@ -1656,15 +1645,12 @@
             builtins.attrNames coordinatorHome.systemd.user.services
             ++ builtins.attrNames coordinatorHome.systemd.user.timers
           ));
-          # Direct Parakeet is coordinator-only; capture has no virtual mic or
-          # service-start download. Native Herdr owns client key handling.
-          # The #448 socket-activation asserts rode in on the harvest-hook
-          # commit without #448 itself; they return with #448 (DF-6).
-          assert
-            coordinatorHome.systemd.user.services.parakeet-service.Install.WantedBy == [ "default.target" ];
+          # speech-wake and Parakeet are gone (2026-09-30): no transcription
+          # unit, no virtual mic, no Voxtype on any seat.
+          assert !(coordinatorHome.systemd.user.services ? parakeet-service);
+          assert !(coordinatorHome.systemd.user.services ? speech-wake);
           assert !(coordinatorHome.systemd.user.services ? voxtype);
           assert !(coordinatorHome.xdg.configFile ? "pipewire/pipewire.conf.d/60-client-mic.conf");
-          assert !(coordinatorHome.systemd.user.services.parakeet-service.Service ? ExecStartPre);
           # ONE herdr server, coordinator only (ruling B5), and it must never be
           # tied to the compositor's lifetime (ruling B6) — the PTYs outlive it.
           assert coordinatorHome.systemd.user.services ? herdr;
@@ -1767,9 +1753,7 @@
           assert (cfgOf "client").myDisplay.enable;
           assert (cfgOf "coordinator").myDisplay.enable;
           assert builtins.all (h:
-            (self.nixosConfigurations.${h}.config.home-manager.users.tom).systemd.user.services ? speech-wake
-            && builtins.elem pkgs.speech-wake (self.nixosConfigurations.${h}.config.home-manager.users.tom).home.packages
-            && builtins.elem pkgs.llm-agents.claude-desktop (self.nixosConfigurations.${h}.config.home-manager.users.tom).home.packages
+            builtins.elem pkgs.llm-agents.claude-desktop (self.nixosConfigurations.${h}.config.home-manager.users.tom).home.packages
             && builtins.elem pkgs.llm-agents.chatgpt (self.nixosConfigurations.${h}.config.home-manager.users.tom).home.packages
           ) [ "coordinator" "client" ];
           assert !(cfgOf "worker").myDisplay.enable;
@@ -1790,8 +1774,8 @@
           # eDP-1 on stock niri (PR #1856 accepted as a defect, no fork).
           assert clientHome.home.username == "tom";
           assert !(clientHome.services ? tally);
-          # No transcription model or Voxtype on the client. Alexa and the
-          # thin capture helper share the USB microphone with explicit inhibition.
+          # No transcription model, wake listener or Voxtype on the client
+          # (speech-wake and Parakeet removed 2026-09-30).
           assert
             !(builtins.any (
               p: nixpkgs.lib.hasPrefix "voxtype" (nixpkgs.lib.getName p)
@@ -1799,11 +1783,11 @@
           assert !(clientHome.xdg.configFile ? "voxtype/config.toml");
           assert !(clientHome.systemd.user.services ? voxtype);
           assert !(clientHome.systemd.user.services ? parakeet-service);
-          assert clientHome.systemd.user.services.speech-wake.Install.WantedBy == [ "default.target" ];
+          assert !(clientHome.systemd.user.services ? speech-wake);
           assert !(builtins.any (p: nixpkgs.lib.getName p == "dictate-hold") clientHome.home.packages);
-          assert nixpkgs.lib.hasInfix "HERDR_DICTATION_COMMAND=speech-dictate" (
+          assert !(nixpkgs.lib.hasInfix "HERDR_DICTATION_COMMAND" (
             builtins.readFile ./home/dot_local/bin/herdr-projector
-          );
+          ));
           assert !(clientHome.systemd.user.services ? herdr);
           assert builtins.any (p: nixpkgs.lib.getName p == "herdr") clientHome.home.packages;
           assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") clientHome.home.packages);
@@ -2659,8 +2643,9 @@
           # has to be argued for here in writing before it can cost a twin its
           # disk. Both twins want the two Halogen bundles they serve (Tom,
           # 2026-09-16); the coordinator adds the streaming ASR and its speech
-          # rows. There is no `allow` any more: nothing is a deployment,
-          # nothing is served by a roster.
+          # (TTS) rows; the wake and Parakeet rows left on 2026-09-30. There is
+          # no `allow` any more: nothing is a deployment, nothing is served by a
+          # roster.
           assert !(worker.services.local-models ? allow);
           assert
             worker.services.local-models.artifacts == [
@@ -2672,11 +2657,8 @@
               "halogen-qwen38-flash-next"
               "halogen-qwen38-27b"
               "vibevoice-asr-streaming-7b-bf16"
-              "openwakeword-baker-compat-v051"
-              "openwakeword-alexa-v051"
               "qwen3-tts-1.7b-base-q8-0"
               "qwen-k2so-midway-b"
-              "parakeet-tdt-0.6b-v3-onnx"
               "qwen3-tts-tokenizer-f32"
             ];
           # The catalogue is the kept estate after Tom's 2026-09-16 ruling; no
@@ -2690,9 +2672,6 @@
               "mage-flow-4b-turbo-bf16"
               "mage-flow-edit-4b-turbo-bf16"
               "mage-vl-bf16"
-              "openwakeword-alexa-v051"
-              "openwakeword-baker-compat-v051"
-              "parakeet-tdt-0.6b-v3-onnx"
               "qwen-k2so-midway-b"
               "qwen3-embedding-8b-q8-0"
               "qwen3-tts-1.7b-base-q8-0"

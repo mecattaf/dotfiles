@@ -59,7 +59,7 @@
     #
     # WHERE THEY RUN BY DEFAULT. The worker keeps Flash resident from boot and
     # is the fleet's `utility` endpoint (http://worker:8731). The coordinator
-    # is Tom's primary desktop and also runs Qwen TTS, Parakeet, the 17.6 GB
+    # is Tom's primary desktop and also runs Qwen TTS, the 17.6 GB
     # streaming ASR and live agent sessions, so nothing starts there at boot:
     # an operator runs `halogen-switch flash|qwen38-27b` and hands the GPU back
     # with `halogen-switch off`. Upstream's own sizing note for Flash is

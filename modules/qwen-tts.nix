@@ -20,7 +20,6 @@ in
     services.local-models.artifacts = lib.mkAfter [
       "qwen3-tts-1.7b-base-q8-0"
       "qwen-k2so-midway-b"
-      "parakeet-tdt-0.6b-v3-onnx"
       "qwen3-tts-tokenizer-f32"
     ];
     environment.systemPackages = [

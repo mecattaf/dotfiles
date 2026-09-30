@@ -202,10 +202,6 @@
   # Primary physical seat again (2026-09-16); Zenbook remains a second seat.
   # Agent services stay independent of either compositor.
   myDisplay.enable = true;
-  services.local-models.artifacts = [
-    "openwakeword-baker-compat-v051"
-    "openwakeword-alexa-v051"
-  ];
   services.browser-desktop.enable = true;
   services.handwriting-annotation.enable = true;
   services.qwen-tts.enable = true;

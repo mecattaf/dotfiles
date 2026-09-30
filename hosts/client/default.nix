@@ -86,10 +86,6 @@
   ];
 
   networking.hostName = "client";
-  services.local-models.artifacts = [
-    "openwakeword-baker-compat-v051"
-    "openwakeword-alexa-v051"
-  ];
 
   # agenix delivery ON. The host key on the box IS the 2026-09-07 fleet key
   # (read live 2026-09-11, equals the registry row), so the delivered tier
