@@ -44,6 +44,7 @@
     # dialling the new one), then this box (which stops answering :3003).
     ./atuin.nix
     ../client/audio.nix # same dock microphone/speakers on either physical seat
+    ./trackpad.nix # Magic Trackpad bonded over Bluetooth, re-pair notes
     # AdGuard is NAS-only. The primary profile uses NAS DNS; the two emergency
     # tiers use independent DNS and intentionally bypass NAS filtering.
     # ./attic.nix is NOT a server any more and has not been since 2026-08-21 —
