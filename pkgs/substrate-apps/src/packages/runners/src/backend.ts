@@ -20,12 +20,12 @@
  */
 import { accessSync, closeSync, constants as fsc, existsSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { carriesCredential, credentialDirFor, seatOf, selectForCall, type RuntimesConfig, type Runtime, type Selection } from "./config.ts";
+import { carriesCredential, credentialDirFor, piProviderOf, seatOf, selectForCall, type RuntimesConfig, type Runtime, type Selection } from "./config.ts";
 import { DEFAULT_TIMEOUT_MS } from "./host.ts";
 import { isRefusal, type Mount, type ProcessJob, type Runner } from "./job.ts";
 import { runnerFor } from "./registry.ts";
 import { DEFAULT_MODEL_ALLOWLIST, resolveModel, type ModelCeilings } from "./models.ts";
-import { CLAUDE_MODEL, HALOGEN_MODEL, HALOGEN_PROVIDER, HARNESS_OPTIONS, invocationFor, parseFor, type HarnessName, type Usage } from "./harness.ts";
+import { CLAUDE_MODEL, HALOGEN_MODEL, HALOGEN_PROVIDER, HARNESS_OPTIONS, invocationFor, parseFor, PI_DEFAULT_MODEL, PI_PROVIDERS, type HarnessName, type PiProvider, type Usage } from "./harness.ts";
 import { spawnSync } from "node:child_process";
 import { axTaskSpec } from "./ax.ts";
 import { SANDBOX_HOME } from "./gvisor.ts";
@@ -390,6 +390,10 @@ export interface Route {
   readonly ceilings?: ModelCeilings;
   /** The capacity seat this harness spends, or undefined when `[seats]` binds none. */
   readonly seat: string | undefined;
+  /** pi only: the provider the call runs against (harness.ts PI_PROVIDERS). */
+  readonly provider?: PiProvider;
+  /** pi only: the provider its seat's capacity reading must carry (the gate checks it). */
+  readonly seatProvider?: string;
 }
 
 export class RunnerBackend {
@@ -421,8 +425,9 @@ export class RunnerBackend {
   route(call: { readonly opts: { readonly runtime?: unknown; readonly model?: unknown; readonly seat?: unknown; readonly runsOn?: unknown }; readonly phase: string | undefined }): Route {
     const sel = this.select(call);
     const declared = typeof call.opts.model === "string" ? call.opts.model : undefined;
+    const provider = piProviderOf(sel.runtime);
     const pick = (h: HarnessName, fallback: string) => {
-      const r = resolveModel(this.config.models ?? DEFAULT_MODEL_ALLOWLIST, h, declared);
+      const r = resolveModel(this.config.models ?? DEFAULT_MODEL_ALLOWLIST, h, declared, h === "pi" ? provider : undefined);
       return {
         model: r.id ?? fallback,
         ...(r.requested !== undefined ? { requestedModel: r.requested } : {}),
@@ -441,7 +446,11 @@ export class RunnerBackend {
       if (h === "codex") return { selection: sel, harness: "codex", ...pick("codex", "codex"), seat: undefined };
       return { selection: sel, harness: "ax", ...pick("claude", CLAUDE_MODEL), seat };
     }
-    return { selection: sel, harness: h, ...pick(h, h === "claude" ? CLAUDE_MODEL : h === "pi" ? HALOGEN_MODEL : "codex"), seat };
+    if (h === "pi") {
+      const p = provider ?? HALOGEN_PROVIDER;
+      return { selection: sel, harness: h, ...pick(h, PI_DEFAULT_MODEL[p]), seat, provider: p, seatProvider: PI_PROVIDERS[p].seatProvider };
+    }
+    return { selection: sel, harness: h, ...pick(h, h === "claude" ? CLAUDE_MODEL : "codex"), seat };
   }
 
   /** The runtime for one call from all its routing opts: runtime, seat, runsOn (config.ts selectForCall). Throws on a refusal. */
@@ -577,8 +586,10 @@ export class RunnerBackend {
       writeFileSync(worktreeRecordFile(this.options.jobsRoot, id), JSON.stringify({ ...wt, runnerPid: process.pid, runnerStart: procStartTicks(process.pid) }) + "\n");
     }
     const declaredModel = typeof (call.opts as { model?: unknown }).model === "string" ? (call.opts as { model: string }).model : undefined;
-    const resolved = resolveModel(this.config.models ?? DEFAULT_MODEL_ALLOWLIST, harness, declaredModel);
+    const piProvider = piProviderOf(sel.runtime);
+    const resolved = resolveModel(this.config.models ?? DEFAULT_MODEL_ALLOWLIST, harness, declaredModel, piProvider);
     const inv = invocationFor(harness, {
+      ...(piProvider !== undefined ? { piProvider } : {}),
       prompt: call.prompt,
       ...(resolved.id !== undefined ? { model: resolved.id } : {}),
       ...(call.opts.schema ? { schema: call.opts.schema } : {}),

@@ -84,7 +84,8 @@ export function verdictFromFloorAdmit(body: unknown): { ok: true; value: Upstrea
   if (b["admit"] === true) return { ok: true, value: null };
   const reason = typeof b["reason"] === "string" && b["reason"].length > 0 ? b["reason"] : "floor-refused";
   const detail = typeof b["detail"] === "string" ? b["detail"] : "";
-  return { ok: true, value: { reason, detail: `floor refused: ${detail}`, raiseDemand: b["raise_demand"] === true } };
+  const retryAt = typeof b["retry_at"] === "string" && Number.isFinite(Date.parse(b["retry_at"])) ? { retryAt: b["retry_at"] } : {};
+  return { ok: true, value: { reason, detail: `floor refused: ${detail}`, raiseDemand: b["raise_demand"] === true, ...retryAt } };
 }
 
 export function floorCapacitySource(baseUrl: string, opts: FloorSourceOptions = {}): CapacitySource {

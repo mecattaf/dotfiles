@@ -2,7 +2,12 @@
 
 - Upstream: agency-agency/substrate (private; the repo formerly named ax-conwip, Tom 2026-09-23 E10), local
   checkout `/home/tom/mecattaf/substrate`, branch `main`.
-- Source sha: `fc2f8bd5d1492343585914b4ed343d001a192f33` (synced 2026-09-24T12:01:48Z, apps/puller present)
+- Source sha: `d455c3f0512ecec44b5f9075e52366cb47edb225` (synced 2026-09-30T18:51:39Z, apps/puller present)
+  2026-09-30: synced to d455c3f, the HEAD of the UNMERGED branch `feat/providers-openrouter-qwen`
+  (agency-agency/substrate#1: pi providers qwen-token-plan / openrouter / openrouter-free, credit-metered
+  admission, fail-fast refusals) on top of fc2f8bd, so tonight's rebuild carries it. If that PR changes before it
+  merges, re-run `./sync.sh /home/tom/mecattaf/substrate <merge sha>`. The lockfile did not change, so
+  `pnpmDeps.hash` is unchanged.
   "DECISIONS: D-S13, queued jobs never expire (ruling M2)", committed 2026-09-24 09:04 CEST. It is 6f681d3 (the
   checkout the live coordinator puller and pusher were hand-started from on 2026-09-24) plus two floor-only commits
   (78b285d, fc2f8bd), so the box-side programs here are the ones proven live. History: first vendored at dc7cd1d

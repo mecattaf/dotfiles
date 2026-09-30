@@ -7,7 +7,7 @@
 import type { SeatRow } from "./client.ts"
 
 /** Grades that carry a number worth planning on. UNKNOWN never does. */
-const NUMBERED = new Set(["MEASURED", "STALE", "PROJECTED", "ESTIMATED"])
+const NUMBERED = new Set(["MEASURED", "MEASURED-CREDIT", "STALE", "PROJECTED", "ESTIMATED"])
 
 /** A row with a number: a grade other than UNKNOWN and a headroom the floor computed. */
 export const measurable = (r: SeatRow): boolean => NUMBERED.has(r.grade) && r.headroom_pct !== null

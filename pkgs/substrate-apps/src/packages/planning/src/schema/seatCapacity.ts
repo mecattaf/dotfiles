@@ -177,7 +177,39 @@ export const SeatCapacity = Schema.Struct({
    * job for a model that has no window here is refused `window-unknown`: an
    * unread model limit is UNKNOWN, never headroom.
    */
-  model_windows_complete: Schema.optionalKey(Schema.Boolean)
+  model_windows_complete: Schema.optionalKey(Schema.Boolean),
+  /**
+   * A credit counter, for a seat metered in credits, money or requests rather
+   * than in five-hour and weekly percentages (a token plan's weekly credits, a
+   * paid key under a soft cap, a free-model daily request quota).
+   *
+   * A reading that carries one states its own headroom, so admission reads the
+   * counter (`admitSeat`, grade MEASURED-CREDIT) instead of refusing the
+   * reading as an estimate. A reading without one is judged as before: an
+   * ESTIMATED reading with no counter never admits.
+   *
+   * Optional and additive: a floor built before this key decodes a snapshot
+   * that carries it and drops the key (the struct ignores excess keys), and
+   * then refuses the seat exactly as it did before.
+   */
+  credits: Schema.optionalKey(
+    Schema.Struct({
+      /** What is counted: `credits`, `usd`, `requests`. Data, never read for meaning. */
+      unit: Schema.String,
+      /** Spent in the current period, in `unit`. */
+      used: Percent,
+      /** The period's allowance or the operator's soft cap, in `unit`. Must be positive to admit. */
+      limit: Percent,
+      /** When the counter resets; null when it never does (a prepaid balance under a cap). */
+      resets_at: Schema.NullOr(Instant),
+      /**
+       * `provider`: the provider's own counter (a credits or key endpoint).
+       * `plan-ratio`: counted locally from billable tokens at the plan's
+       * measured tokens-per-credit ratio (Qwen's token plan).
+       */
+      basis: Schema.Literals(["provider", "plan-ratio"])
+    })
+  )
 });
 /** One seat's capacity, as the fleet observed it. */
 export type SeatCapacity = typeof SeatCapacity.Type;

@@ -266,6 +266,9 @@ in
           "codex"
           "pi-qwencloud"
           "halogen"
+          # 2026-09-30: credit-metered seats read by `seats` from OpenRouter's /credits and /key endpoints.
+          "openrouter"
+          "openrouter-free"
         ];
         description = "Seats published to the floor (runs-on seat ids).";
       };
@@ -304,10 +307,16 @@ in
 
       slots = mkOption {
         type = types.attrsOf types.int;
+        # 2026-09-30 (Tom's budget rulings): the Qwen token plan allows at most 4 concurrent agents; OpenRouter paid 4
+        # and the free model 8 are the chosen parallelism. Slots on a credit seat need substrate >= the providers
+        # change (pusher: slots on any configured seat; floor/puller: the credit branch of admitSeat).
         default = {
           halogen = 1;
+          pi-qwencloud = 4;
+          openrouter = 4;
+          openrouter-free = 8;
         };
-        description = "Slot capacity for seats the oracle reports no holders for (rule 15: the floor subtracts its own WIP).";
+        description = "Slot capacity per seat (rule 15: the floor and the puller subtract their own WIP). Halogen is a slot row whenever it is up (1 unless set here); any other seat is one only when it is named here.";
       };
 
       estimatedProviders = mkOption {
@@ -515,6 +524,9 @@ in
             "halogen"
             "codex"
             "codex-rw"
+            "qwen"
+            "openrouter"
+            "openrouter-free"
           ]
           ++ builtins.attrNames cfg.puller.sshRuntimes;
           seats = {
@@ -570,6 +582,36 @@ in
               timeoutMs = cfg.puller.callTimeoutMs."codex-rw";
               codexSandbox = "workspace-write";
             };
+            # 2026-09-30, pi against the cloud providers of ~/.pi/agent/models.json (substrate D-S14): the runtime
+            # table names the pi provider, the model is agent({model}) resolved against that provider's allowlist
+            # (packages/runners/src/models.ts), and each spends its own credit-metered seat. pi reads each key itself
+            # (`!cat /run/agenix/...` in models.json); nothing here names a credential.
+            #   qwen             pi --provider qwen-token-plan --model qwen3.8-max          seat pi-qwencloud (4 slots)
+            #   openrouter       pi --provider openrouter --model deepseek/deepseek-v4-pro  seat openrouter ($12 soft cap, 4)
+            #   openrouter-free  pi --provider openrouter --model stealth/space-bunny-alpha seat openrouter-free (8)
+            # A puller older than that substrate change drops `provider` and runs pi against Halogen: the gate then
+            # refuses the call as a seat-provider mismatch (fail closed), so land the re-vendor with this.
+            qwen = {
+              type = "host";
+              harness = "pi";
+              provider = "qwen-token-plan";
+              seat = "pi-qwencloud";
+              timeoutMs = cfg.puller.callTimeoutMs."qwen";
+            };
+            openrouter = {
+              type = "host";
+              harness = "pi";
+              provider = "openrouter";
+              seat = "openrouter";
+              timeoutMs = cfg.puller.callTimeoutMs."openrouter";
+            };
+            openrouter-free = {
+              type = "host";
+              harness = "pi";
+              provider = "openrouter-free";
+              seat = "openrouter-free";
+              timeoutMs = cfg.puller.callTimeoutMs."openrouter-free";
+            };
           }
           // sshRuntimeTables;
         };
@@ -602,6 +644,9 @@ in
             "cc3"
             "halogen"
             "codex"
+            "pi-qwencloud"
+            "openrouter"
+            "openrouter-free"
           ];
           codexWorkdir = "~/mecattaf/substrate";
         };
@@ -615,6 +660,9 @@ in
           halogen = 1800000;
           codex = 1800000;
           codex-rw = 2700000;
+          qwen = 3600000;
+          openrouter = 3600000;
+          openrouter-free = 3600000;
         };
         description = "Per-runtime wall-clock ceiling for one agent() call (timeoutMs in runtimes.toml). A call may shorten it, never extend it. Raised from 15 min on 2026-09-24 17:35: three codex-rw implement nodes of the crm and email builds hit exit 124 at 900000 ms while still executing commands. A puller.sshRuntimes entry with no key here gets the halogen value. A host that sets this option replaces the whole default, so it names every runtime it declares.";
       };
@@ -734,10 +782,12 @@ in
         KillMode = "mixed";
         OOMPolicy = "continue";
         WorkingDirectory = cfg.puller.workingDirectory;
-        # Two claude agents at ~400 MB each plus the puller and tool builds approach 2G; 2G is the reclaim line,
-        # 4G the hard limit (review 2026-09-24, low).
-        MemoryHigh = "2G";
-        MemoryMax = "4G";
+        # Two claude agents at ~400 MB each plus the puller and tool builds approach 2G; 2G was the reclaim line,
+        # 4G the hard limit (review 2026-09-24, low). 2026-09-30: the coordinator's cap rises to 12 for the credit
+        # seats (up to 4 qwen + 4 openrouter + 8 openrouter-free pi agents, a few hundred MB each, beside claude),
+        # so the lines move to 6G and 10G (the coordinator has 125 GiB).
+        MemoryHigh = "6G";
+        MemoryMax = "10G";
         # The proof ran inside runtime-test with a private /run/user. The unit keeps the real one (herdr and ssh
         # stay reachable) but the desktop session's sockets are not something a headless agent should inherit.
         UnsetEnvironment = [
