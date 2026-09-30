@@ -13,8 +13,11 @@
 #
 # Nothing churns on the 57 GB eMMC root: k3s's datastore, containerd and
 # kubelet state are bind-mounted from the fast tier (stateRoot), and every
-# PersistentVolume and the registry live on the data pool. The NAS's shared
-# PostgreSQL (Paperless, Immich) is not touched.
+# PersistentVolume and the registry live on the fast tier too, since
+# 2026-09-30 (sweep F2-1 option b: they were on the data pool — the HDD —
+# and their continuous writes were the thing keeping it from reaching
+# standby; docs/nas/ax-volumes-nvme-2026-09-30.md is the migration
+# runbook). The NAS's shared PostgreSQL (Paperless, Immich) is not touched.
 let
   cfg = config.myAxFleet;
   # The guard table is the control ROLE's, whatever `enable` says (fix round
@@ -291,7 +294,7 @@ in
     }) binds;
 
     systemd.services.ax-fleet-dirs = {
-      description = "ax-fleet: create the k3s state and data-pool directories";
+      description = "ax-fleet: create the k3s state and fast-tier directories";
       unitConfig = {
         DefaultDependencies = false;
         RequiresMountsFor = [
@@ -319,7 +322,7 @@ in
       unitConfig.RequiresMountsFor = (lib.attrNames binds) ++ [ cfg.localPathRoot ];
     };
 
-    # ── the registry (moved from #446), on the data pool ──
+    # ── the registry (moved from #446), on the fast tier since 2026-09-30 ──
     services.dockerRegistry = {
       enable = true;
       listenAddress = registryHost;

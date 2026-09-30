@@ -142,7 +142,7 @@ assert has nas "--flannel-backend=vxlan";
 assert !(hasPrefix nas "--node-taint");
 assert has nas "--node-label=ate.dev/substrate-version=none";
 assert has nas "--node-label=ax.mecattaf.dev/role=control";
-assert has nas "--default-local-storage-path=/mnt/nas/services/ax-fleet/local-path";
+assert has nas "--default-local-storage-path=/mnt/fast/ax-fleet/local-path";
 assert !(builtins.any (lib.hasInfix "local-storage") nas.services.k3s.disable);
 assert has nas "--kube-apiserver-arg=runtime-config=certificates.k8s.io/v1beta1=true";
 assert has nas "--service-node-port-range=30000-30999";
@@ -172,7 +172,7 @@ assert
   !(builtins.any (lib.hasInfix "tailscale0") (axLines nas.networking.firewall.extraInputRules));
 assert nas.services.dockerRegistry.listenAddress == "10.42.0.1";
 assert !nas.services.dockerRegistry.openFirewall;
-assert lib.hasPrefix "/mnt/nas/" nas.services.dockerRegistry.storagePath;
+assert lib.hasPrefix "/mnt/fast/" nas.services.dockerRegistry.storagePath;
 assert builtins.all (m: lib.hasPrefix "/mnt/fast/" m.what) (
   lib.filter (
     m: m.where == "/var/lib/rancher" || m.where == "/var/lib/kubelet" || m.where == "/var/log/pods"
