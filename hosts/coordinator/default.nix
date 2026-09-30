@@ -118,7 +118,9 @@
       # 2026-09-24 16:00: two builds (crm, email) submitted at once, six nodes in flight across them
       # (codex-rw implementers plus opus verifiers). The proof ran at 1/2.
       maxRuns = 2;
-      cap = 6;
+      # 2026-09-30 (Tom's budget rulings: Qwen plan full utilization, OpenRouter paid and free, cc2 to the max): the
+      # per-seat slots bound each provider (qwen 4, openrouter 4, openrouter-free 8, halogen 1); this is the total.
+      cap = 12;
       # 2026-09-24 19:55: a codex-rw implement part of the crm build ran 45 min at full activity (82 tool calls) and was
       # cut; the parts are sized for Claude. Two hours for codex-rw, one for the opus gates and fixes.
       callTimeoutMs = {
@@ -126,6 +128,10 @@
         halogen = 1800000;
         codex = 3600000;
         codex-rw = 7200000;
+        # 2026-09-30: pi on the cloud providers (substrate D-S14). An hour each, like opus.
+        qwen = 3600000;
+        openrouter = 3600000;
+        openrouter-free = 3600000;
         # The halogen ceiling: ocr.substrate.workflow.js sizes a lane B node (DEADLINE_S 1620 plus the relay) to it.
         "ssh:worker" = 1800000;
       };
