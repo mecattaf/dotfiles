@@ -7,7 +7,13 @@
  *   OI-6: aliases drifted to other models), JSON envelope out, the schema
  *   passed through `--json-schema` when the call has one. The prompt goes on
  *   stdin so it never appears in a process listing.
- * - `pi`: pi against Halogen, which runs on the worker only. No session is
+ * - `pi`: pi against one PROVIDER of `~/.pi/agent/models.json` (PI_PROVIDERS):
+ *   Halogen on the worker (the default, unchanged), the Qwen token plan, or
+ *   OpenRouter (paid models, and the free stealth model as its own provider
+ *   key so it spends its own seat). The runtime table names the provider
+ *   (`provider = "..."`, config.ts); the model comes from the allowlist of that
+ *   provider (models.ts). pi resolves each key itself (`!cat /run/agenix/...`
+ *   in models.json), so no credential passes through here. No session is
  *   saved. A schema becomes an instruction plus a JSON parse of the reply,
  *   because pi has no structured-output flag.
  * - `codex`: `codex exec --json`, non-interactive, prompt on stdin (`-`),
@@ -24,6 +30,23 @@ export const HALOGEN_PROVIDER = "halogen";
 export const HALOGEN_MODEL = "halogen-qwen3.8-flash-next";
 
 export type HarnessName = "claude" | "pi" | "codex";
+
+/**
+ * The pi providers a runtime table may name (`provider = "..."`), each with
+ * the `--provider` pi is started with and the seat PROVIDER its capacity
+ * reading carries (the gate refuses a call whose seat is another provider's).
+ * `openrouter-free` is OpenRouter's free model: the same pi provider, its own
+ * seat (a daily request quota, not the paid soft cap).
+ */
+export const PI_PROVIDERS = {
+  halogen: { pi: "halogen", seatProvider: "halogen", seat: "halogen" },
+  "qwen-token-plan": { pi: "qwen-token-plan", seatProvider: "qwen", seat: "pi-qwencloud" },
+  openrouter: { pi: "openrouter", seatProvider: "openrouter", seat: "openrouter" },
+  "openrouter-free": { pi: "openrouter", seatProvider: "openrouter", seat: "openrouter-free" },
+} as const satisfies Readonly<Record<string, { readonly pi: string; readonly seatProvider: string; readonly seat: string }>>;
+export type PiProvider = keyof typeof PI_PROVIDERS;
+export const PI_PROVIDER_NAMES = Object.keys(PI_PROVIDERS) as readonly PiProvider[];
+export const isPiProvider = (v: unknown): v is PiProvider => typeof v === "string" && Object.hasOwn(PI_PROVIDERS, v);
 
 export interface HarnessCall {
   readonly prompt: string;
@@ -42,6 +65,8 @@ export interface HarnessCall {
   readonly previousErrors?: readonly string[];
   /** codex `--sandbox`; default `read-only` (a runtime table's `codexSandbox`). */
   readonly codexSandbox?: "read-only" | "workspace-write";
+  /** pi's provider (a runtime table's `provider`); default `halogen`. */
+  readonly piProvider?: PiProvider;
 }
 
 /** Options a harness can honour; a call asking for another is refused, never silently dropped. */
@@ -93,12 +118,24 @@ export function claudeInvocation(call: HarnessCall): HarnessInvocation {
   };
 }
 
+/**
+ * Each pi provider's pinned model when the allowlist resolves none (models.ts
+ * DEFAULT_MODEL_ALLOWLIST names the same ids as its defaults).
+ */
+export const PI_DEFAULT_MODEL: Readonly<Record<PiProvider, string>> = {
+  halogen: HALOGEN_MODEL,
+  "qwen-token-plan": "qwen3.8-max",
+  openrouter: "deepseek/deepseek-v4-pro",
+  "openrouter-free": "stealth/space-bunny-alpha",
+};
+
 export function piInvocation(call: HarnessCall): HarnessInvocation {
+  const provider: PiProvider = call.piProvider ?? HALOGEN_PROVIDER;
   const prompt = call.schema
     ? `${withCorrections(call.prompt, call.previousErrors)}\n\nReply with one JSON value only, no prose and no code fence, valid against this JSON Schema:\n${JSON.stringify(call.schema)}`
     : withCorrections(call.prompt, call.previousErrors);
   return {
-    argv: ["pi", "-p", "--no-session", "--provider", HALOGEN_PROVIDER, "--model", call.model ?? HALOGEN_MODEL, "--mode", "text"],
+    argv: ["pi", "-p", "--no-session", "--provider", PI_PROVIDERS[provider].pi, "--model", call.model ?? PI_DEFAULT_MODEL[provider], "--mode", "text"],
     stdin: prompt,
   };
 }

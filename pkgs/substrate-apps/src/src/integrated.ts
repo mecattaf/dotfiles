@@ -314,7 +314,7 @@ async function runLocked(
   });
   const routeOf = (c: { opts: { runtime?: unknown }; phase: string | undefined }) => {
     const r = backend.route(c);
-    return { model: r.model, seat: r.seat, harness: r.harness, runtime: r.selection.name };
+    return { model: r.model, seat: r.seat, harness: r.harness, runtime: r.selection.name, ...(r.seatProvider !== undefined ? { seatProvider: r.seatProvider } : {}) };
   };
   let dispatched = 0;
   let adopted = 0;

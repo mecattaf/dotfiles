@@ -37,7 +37,40 @@ export type GateDecision =
       readonly detail: string;
       /** A fresh provider reading would help: the caller may raise demand. */
       readonly raiseDemand: boolean;
+      /** The earliest instant asking again could help (a window's or a counter's reset); absent when unknown. */
+      readonly retryAt?: string;
     };
+
+/**
+ * Refusals that waiting cannot clear within a capacity wait: the seat is not
+ * Tom's to dispatch onto (auth-failed, third-party, evicted), the call is on
+ * the wrong kind of seat, the seat was never published, its plan lapsed, it
+ * publishes nothing a job can be measured against, or its counter is broken.
+ * A call refused for one of these fails at once with the reason, instead of
+ * sleeping through `capacity_wait_s` (600 s on the coordinator) first.
+ */
+export const TERMINAL_REFUSALS: ReadonlySet<string> = new Set([
+  "not-dispatchable",
+  "seat-provider-mismatch",
+  "model-unrecognized",
+  "unknown-seat",
+  "plan-expired",
+  "no-binding-window",
+  "credits-invalid",
+]);
+
+/**
+ * Why a refusal should not be waited on, or undefined when it should: a
+ * terminal reason, or a retry instant later than the wait could reach.
+ */
+export function failFastReason(d: { readonly reason: string; readonly retryAt?: string }, nowMs: number, waitLeftMs: number): string | undefined {
+  if (TERMINAL_REFUSALS.has(d.reason)) return `${d.reason} does not clear by waiting`;
+  if (d.retryAt !== undefined) {
+    const at = Date.parse(d.retryAt);
+    if (Number.isFinite(at) && at > nowMs + waitLeftMs) return `it clears at ${d.retryAt}, after the ${Math.round(waitLeftMs / 1000)} s capacity wait`;
+  }
+  return undefined;
+}
 
 /** The model families the providers' scoped rows name. */
 const FAMILIES = ["fable", "opus", "sonnet", "haiku"] as const;
@@ -61,6 +94,12 @@ export function modelFamily(model: string): string | undefined {
  */
 export interface GateContext {
   readonly harness?: string;
+  /**
+   * pi only: the provider the seat's reading must carry, from the route (the
+   * runtime table's pi provider: halogen, qwen, openrouter). Without it a pi
+   * call spends a halogen seat, as before.
+   */
+  readonly seatProvider?: string;
   readonly inflight?: number;
   /** The model allowlist's ceilings for the model that runs (runners models.ts), in percent used. */
   readonly ceilings?: { readonly five_hour?: number; readonly seven_day?: number; readonly model_scoped?: number };
@@ -101,7 +140,10 @@ export function decideCapacity(
   }
   let seat = read.seat;
   if (ctx.harness !== undefined) {
-    const want = Object.hasOwn(HARNESS_PROVIDER, ctx.harness) ? HARNESS_PROVIDER[ctx.harness] : undefined;
+    const want =
+      ctx.harness === "pi" && ctx.seatProvider !== undefined
+        ? ctx.seatProvider
+        : Object.hasOwn(HARNESS_PROVIDER, ctx.harness) ? HARNESS_PROVIDER[ctx.harness] : undefined;
     if (want === null || want === undefined || seat.provider !== want) {
       return {
         kind: "REFUSE",
@@ -119,7 +161,13 @@ export function decideCapacity(
   // The source's own verdict (the floor's /capacity/admit) binds after the
   // harness check; the gate's own checks below still apply to whatever it admits.
   if (read.upstream !== undefined) {
-    return { kind: "REFUSE", reason: read.upstream.reason, detail: `${read.from}: ${read.upstream.detail}`, raiseDemand: read.upstream.raiseDemand };
+    return {
+      kind: "REFUSE",
+      reason: read.upstream.reason,
+      detail: `${read.from}: ${read.upstream.detail}`,
+      raiseDemand: read.upstream.raiseDemand,
+      ...(read.upstream.retryAt !== undefined ? { retryAt: read.upstream.retryAt } : {}),
+    };
   }
   // Calls this CONWIP already sent to a slot seat hold slots the reading may
   // not show yet (successor review r3: three pi calls held Halogen's one slot).
@@ -143,7 +191,7 @@ export function decideCapacity(
   const asOf = new Date(asOfMs).toISOString();
   const d: AdmissionDecision = admitSeat(seatId, seat, { model: family, min_headroom_pct: policy.minHeadroomPct }, asOf);
   if (!d.admit) {
-    return { kind: "REFUSE", reason: d.reason, detail: d.detail, raiseDemand: d.raise_demand };
+    return { kind: "REFUSE", reason: d.reason, detail: d.detail, raiseDemand: d.raise_demand, ...(d.retry_at !== null ? { retryAt: d.retry_at } : {}) };
   }
   const ageS = (asOfMs - Date.parse(seat.observed_at)) / 1000;
   if (ageS > policy.dispatchMaxAgeSeconds) {

@@ -92,3 +92,26 @@ type = "ax"                   # spec only: writes the Task an ax dispatch would 
 # harness = "codex"
 # seat = "codex"
 # codexSandbox = "workspace-write"   # default "read-only"
+
+# pi against another provider of ~/.pi/agent/models.json (2026-09-30). `provider` is pi-only:
+# halogen (default), qwen-token-plan, openrouter, openrouter-free. Without `seat`, each spends its
+# provider's own seat (pi-qwencloud, openrouter, openrouter-free), never [seats].pi. Host-side
+# runtimes only (host, runtime-test, herdr, ssh): a sandbox gets a Halogen-only models.json.
+# The model is agent({model}) resolved against that provider's allowlist (models.ts).
+# [runtime.qwen]
+# type = "host"
+# harness = "pi"
+# provider = "qwen-token-plan"      # pi --provider qwen-token-plan --model qwen3.8-max
+# seat = "pi-qwencloud"
+#
+# [runtime.openrouter]
+# type = "host"
+# harness = "pi"
+# provider = "openrouter"           # --model deepseek/deepseek-v4-pro unless the call names an allowlisted id
+# seat = "openrouter"
+#
+# [runtime.openrouter-free]
+# type = "host"
+# harness = "pi"
+# provider = "openrouter-free"      # --provider openrouter --model stealth/space-bunny-alpha
+# seat = "openrouter-free"

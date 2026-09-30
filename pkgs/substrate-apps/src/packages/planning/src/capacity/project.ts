@@ -293,7 +293,45 @@ type RefusalReason =
   | "severity-critical"
   | "window-exhausted"
   | "slots-unknown"
-  | "slots-full";
+  | "slots-full"
+  | "credits-invalid"
+  | "credits-exhausted";
+
+/**
+ * The least free share a credit counter must keep to admit, in percent, whatever
+ * the job asks: a counter is coarser than a provider's window (a plan ratio is
+ * good to about ten percent), so the last five percent is never spent by the gate.
+ */
+export const CREDIT_MIN_HEADROOM_PCT = 5;
+
+/**
+ * The grade an admission on a credit counter carries: the reading's own counter
+ * (a provider's credits endpoint, or a plan's local tokens-per-credit ratio)
+ * with headroom above the floor. Never a wire grade: the reading keeps the grade
+ * its publisher gave it, and only the answer and the capacity view say this.
+ */
+export const MEASURED_CREDIT = "MEASURED-CREDIT" as const;
+
+/** The credit counter a reading carries, when it carries a usable one. */
+export const creditCounter = (seat: SeatCapacity) => seat.credits;
+
+/** The free share of a credit counter, in percent (0 when the limit is not positive). */
+export const creditFreePct = (credits: NonNullable<SeatCapacity["credits"]>): number =>
+  credits.limit > 0 ? Math.min(100, Math.max(0, (100 * (credits.limit - credits.used)) / credits.limit)) : 0;
+
+/**
+ * The grade to show for a seat at `asOf`: for a reading that carries a credit
+ * counter, MEASURED-CREDIT while the reading is younger than 1200 s (and
+ * graded MEASURED or ESTIMATED by its publisher), else its age class (STALE,
+ * UNKNOWN); for any other reading, the projected reading's own grade. The age
+ * is read directly: the worse-of order ranks ESTIMATED below STALE, so an
+ * aged ESTIMATED reading would otherwise still say ESTIMATED.
+ */
+export const displayGrade = (projected: SeatCapacity, asOf: string): CapacityGrade | typeof MEASURED_CREDIT => {
+  if (projected.credits === undefined || !(projected.grade === "MEASURED" || projected.grade === "ESTIMATED")) return projected.grade;
+  const age = classifyStaleness(projected.observed_at, asOf).grade;
+  return age === "MEASURED" ? MEASURED_CREDIT : age;
+};
 
 /** The headroom oracle's coarse signal, as `capacity.ts` spells it. */
 type SeatSignal = "GO" | "SLOW" | "STOP";
@@ -308,6 +346,8 @@ interface Admitted {
   readonly headroom_pct: number | null;
   readonly signal: Exclude<SeatSignal, "STOP">;
   readonly checked: ReadonlyArray<{ readonly kind: WindowKind; readonly model: string | null }>;
+  /** Present when the answer came from the reading's credit counter. */
+  readonly grade?: typeof MEASURED_CREDIT;
 }
 
 /** A no, with why, and what would change it. */
@@ -370,6 +410,61 @@ const bindsJob = (windowModel: string | null, job: string | null): boolean => {
 /** A model-scoped window whose model this reader cannot place in any family. */
 const unplaceable = (window: CapacityWindow): boolean =>
   window.kind === "model_scoped" && (window.model === null || modelFamilies(window.model).size === 0);
+
+/**
+ * The credit branch of `admitSeat`: a fresh reading whose counter leaves more
+ * than `max(job.min_headroom_pct, CREDIT_MIN_HEADROOM_PCT)` free, and a free
+ * slot when the reading counts slots. Fails closed on a counter that has reset
+ * since the reading (a new reading is needed) or one that cannot be read.
+ */
+const admitCredits = (
+  seatId: string,
+  seat: SeatCapacity,
+  credits: NonNullable<SeatCapacity["credits"]>,
+  job: SeatJob,
+  now: number,
+  refuse: (
+    reason: RefusalReason,
+    detail: string,
+    options?: { retry_at?: string | null; raise_demand?: boolean; signal?: "SLOW" | "STOP" }
+  ) => Refused
+): AdmissionDecision => {
+  const spent = `${credits.used} of ${credits.limit} ${credits.unit}`;
+  if (!(credits.limit > 0) || !Number.isFinite(credits.used)) {
+    return refuse("credits-invalid", `the credit counter states no positive limit (${spent})`);
+  }
+  if (credits.resets_at !== null && parse(credits.resets_at) <= now) {
+    return refuse("projected", `the credit counter reset at ${credits.resets_at}, after the reading; a new reading is needed`, {
+      raise_demand: true
+    });
+  }
+  const freePct = creditFreePct(credits);
+  const floor = Math.max(job.min_headroom_pct, CREDIT_MIN_HEADROOM_PCT);
+  if (freePct <= floor) {
+    return refuse(
+      "credits-exhausted",
+      `${spent} used (${credits.basis}), ${freePct.toFixed(1)} percent free, floor ${floor} percent`,
+      { retry_at: credits.resets_at === null ? null : iso(parse(credits.resets_at)) }
+    );
+  }
+  if (seat.slots !== null) {
+    if (seat.slots.holders >= seat.slots.capacity) {
+      return refuse("slots-full", `${seat.slots.holders} of ${seat.slots.capacity} slots held`, { raise_demand: true });
+    }
+  }
+  const measuredUntil = parse(seat.observed_at) + MEASURED_MAX_AGE_S * SECOND_MS;
+  const planUntil = seat.plan === null ? Number.POSITIVE_INFINITY : parse(seat.plan.expires_at);
+  const resetUntil = credits.resets_at === null ? Number.POSITIVE_INFINITY : parse(credits.resets_at);
+  return {
+    admit: true,
+    seat: seatId,
+    until: iso(Math.min(measuredUntil, planUntil, resetUntil)),
+    headroom_pct: freePct,
+    signal: freePct <= 2 * floor ? "SLOW" : "GO",
+    checked: [],
+    grade: MEASURED_CREDIT
+  };
+};
 
 /**
  * Can `seat` take a job of class `job` at `asOf`, and until when?
@@ -439,6 +534,17 @@ export const admitSeat = (
       raise_demand: true,
       signal: "SLOW"
     });
+  }
+  // A credit-metered seat: the reading carries its own counter, so its headroom
+  // is stated rather than guessed. Judged on the counter alone (its windows, if
+  // any, restate the same counter as a percentage), then on its slots.
+  const credits = creditCounter(seat);
+  if (credits !== undefined && (projected.grade === "MEASURED" || projected.grade === "ESTIMATED")) {
+    // An ESTIMATED reading is not made STALE by age in the worse-of order (ESTIMATED ranks below STALE), so the
+    // counter's own age is checked here: a counter is headroom only while its reading is MEASURED-young.
+    if (staleness.grade === "UNKNOWN") return refuse("unknown", age, { raise_demand: true });
+    if (staleness.grade === "STALE") return refuse("stale", age, { raise_demand: true, signal: "SLOW" });
+    return admitCredits(seatId, seat, credits, job, now, refuse);
   }
   if (projected.grade === "ESTIMATED") return refuse("estimated", "an estimate never admits a metered job");
   if (seat.grade === "PROJECTED") {

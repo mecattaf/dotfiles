@@ -30,6 +30,8 @@ export interface UpstreamRefusal {
   readonly reason: string;
   readonly detail: string;
   readonly raiseDemand: boolean;
+  /** The floor's retry_at: the earliest instant asking again could help; absent when only a new reading can. */
+  readonly retryAt?: string;
 }
 
 /** One read: a reading, or why there is none. Never both. */

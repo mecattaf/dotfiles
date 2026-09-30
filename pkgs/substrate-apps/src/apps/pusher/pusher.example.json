@@ -10,7 +10,9 @@
     "cc2",
     "codex",
     "pi-qwencloud",
-    "halogen"
+    "halogen",
+    "openrouter",
+    "openrouter-free"
   ],
   "seatIds": {
     "gpu-worker": "halogen"
@@ -21,7 +23,10 @@
   },
   "plans": {},
   "slots": {
-    "halogen": 1
+    "halogen": 1,
+    "pi-qwencloud": 4,
+    "openrouter": 4,
+    "openrouter-free": 8
   },
   "estimatedProviders": [
     "qwen"

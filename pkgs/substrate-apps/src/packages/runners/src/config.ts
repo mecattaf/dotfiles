@@ -37,8 +37,10 @@ import { homedir } from "node:os";
 import { Schema } from "effect";
 import { parse as parseToml } from "smol-toml";
 import { modelAllowlistProblems, type ModelAllowlist } from "./models.ts";
+import { PI_PROVIDER_NAMES, PI_PROVIDERS, type PiProvider } from "./harness.ts";
 
 const Harness = Schema.Literals(["claude", "pi", "codex"]);
+const PiProviderSchema = Schema.Literals(PI_PROVIDER_NAMES as unknown as readonly [PiProvider, ...PiProvider[]]);
 
 /** Fields every runtime table may carry. */
 const common = {
@@ -58,6 +60,16 @@ const common = {
    * `workspace-write`. Only on a codex-harness table.
    */
   codexSandbox: Schema.optionalKey(Schema.Literals(["read-only", "workspace-write"])),
+  /**
+   * pi only: which provider of `~/.pi/agent/models.json` the call runs against
+   * (harness.ts PI_PROVIDERS): `halogen` (default), `qwen-token-plan`,
+   * `openrouter`, `openrouter-free`. With no `seat` on the table, the call
+   * spends that provider's own seat (pi-qwencloud, openrouter,
+   * openrouter-free), never `[seats].pi`. A provider other than halogen runs
+   * only where the host's models.json is read (host, runtime-test, herdr,
+   * ssh): a sandbox gets a generated Halogen-only models.json.
+   */
+  provider: Schema.optionalKey(PiProviderSchema),
 };
 
 export const HostRuntime = Schema.Struct({ type: Schema.Literal("host"), ...common });
@@ -210,6 +222,7 @@ const Ceilings = Schema.Struct({
 const ModelEntrySchema = Schema.Struct({
   id: Schema.String,
   harness: Harness,
+  provider: Schema.optionalKey(PiProviderSchema),
   aliases: Schema.optionalKey(Schema.Array(Schema.String)),
   default: Schema.optionalKey(Schema.Boolean),
   ceilings: Schema.optionalKey(Ceilings),
@@ -495,6 +508,12 @@ export const LOCAL_CREDENTIAL = new Set<Runtime["type"]>(["host", "runtime-test"
 /** The harness a runtime runs an agent() call with. */
 export const harnessOf = (r: Runtime): "claude" | "pi" | "codex" => r.harness ?? "claude";
 
+/** The pi provider a runtime's pi calls run against (default halogen); undefined for another harness. */
+export const piProviderOf = (r: Runtime): PiProvider | undefined => (harnessOf(r) === "pi" ? (r.provider ?? "halogen") : undefined);
+
+/** Runtime types that read the HOST's pi models.json (and so every provider in it). */
+const HOST_PI_CONFIG = new Set<Runtime["type"]>(["host", "runtime-test", "herdr", "ssh"]);
+
 /** Whether a runtime table carries a seat credential at all (`credential = false` on gVisor or microvm says no). */
 export const carriesCredential = (r: Runtime): boolean => !((r.type === "gvisor" || r.type === "microvm") && r.credential === false);
 
@@ -509,6 +528,9 @@ export function seatOf(config: Pick<RuntimesConfig, "seats">, r: Runtime, defaul
   if (r.type === "ax" && h === "codex") return undefined;
   if (r.seat !== undefined) return r.seat;
   if (r.type === "ssh" && h === "claude") return undefined;
+  // A pi provider other than Halogen spends its own seat, never [seats].pi (which is Halogen's slot).
+  const provider = piProviderOf(r);
+  if (provider !== undefined && provider !== "halogen") return PI_PROVIDERS[provider].seat;
   return config.seats[h] ?? (h === "claude" ? defaultSeat : undefined);
 }
 
@@ -563,6 +585,10 @@ function guardrailProblems(config: RuntimesConfig): string[] {
   for (const [name, r] of reachable) {
     const h = harnessOf(r);
     if (r.codexSandbox !== undefined && h !== "codex") problems.push(`runtime.${name}.codexSandbox applies to the codex harness only (harness is ${h})`);
+    if (r.provider !== undefined && h !== "pi") problems.push(`runtime.${name}.provider applies to the pi harness only (harness is ${h})`);
+    if (r.provider !== undefined && r.provider !== "halogen" && !HOST_PI_CONFIG.has(r.type)) {
+      problems.push(`runtime.${name}: provider ${r.provider} needs the host's pi models.json (host, runtime-test, herdr, ssh); a ${r.type} job gets a Halogen-only one`);
+    }
     if (!carriesCredential(r) && h === "claude") problems.push(`runtime.${name}: credential = false with the claude harness, which cannot run without a seat credential`);
     if (name === "locked") {
       if (r.type !== "gvisor") problems.push(`runtime.locked must be type = "gvisor" (got ${r.type}): the reserved name promises no credential and no host loopback`);

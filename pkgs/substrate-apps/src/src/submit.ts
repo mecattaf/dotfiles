@@ -21,7 +21,7 @@
  */
 import type { AxTask } from "./axclient.ts";
 import type { MachineSlots, SlotHold } from "./slots.ts";
-import type { CapacityGate } from "./capacity/gate.ts";
+import { failFastReason, type CapacityGate } from "./capacity/gate.ts";
 import { Ledger, type LedgerEntry } from "./ledger.ts";
 import { defaultSleep } from "./loop.ts";
 import type { WorkItem } from "./schema.ts";
@@ -82,6 +82,8 @@ export interface CallRoute {
   readonly seat: string | undefined;
   readonly harness: string;
   readonly runtime: string;
+  /** pi only: the provider the seat's reading must carry (qwen, openrouter, halogen); the gate checks it. */
+  readonly seatProvider?: string;
 }
 
 /** Runs ONE admitted Task to its end and reports what came back. */
@@ -285,6 +287,7 @@ export class Conwip {
     const seatKey = seat ?? gate?.seatId ?? this.opts.seat;
     const gateCtx = () => ({
       ...(route ? { harness: route.harness } : {}),
+      ...(route?.seatProvider !== undefined ? { seatProvider: route.seatProvider } : {}),
       ...(route?.ceilings ? { ceilings: route.ceilings } : {}),
       inflight: this.#seatInflight.get(seatKey) ?? 0,
     });
@@ -305,6 +308,13 @@ export class Conwip {
         if (d.reason === "slots-full" && (this.#seatInflight.get(seatKey) ?? 0) > 0 && !call.signal?.aborted) {
           await this.#seatFreed(seatKey, call.signal);
           continue;
+        }
+        // A refusal waiting cannot clear (auth-failed, never published, a reset
+        // days away) fails now with its reason, not after the whole wait.
+        const fast = failFastReason(d, this.#nowMs(), Math.max(0, wait.maxWaitMs - waited));
+        if (fast !== undefined && wait.maxWaitMs > 0) {
+          this.#rec({ ...base, event: "refuse", reason: `capacity ${d.reason} (fail fast: ${fast}): ${d.detail}` });
+          return { error: `conwip capacity refused (${d.reason}, not waited on: ${fast}): ${d.detail}` };
         }
         if (call.signal?.aborted || waited + wait.delayMs > wait.maxWaitMs) {
           this.#rec({ ...base, event: "refuse", reason: `capacity ${d.reason}: ${d.detail}` });

@@ -456,7 +456,9 @@ export const fingerprint = (seat) =>
     dispatchable: seat.dispatchable,
     dispatchable_reason: seat.dispatchable_reason,
     slots: seat.slots,
-    plan: seat.plan
+    plan: seat.plan,
+    // A credit counter moving (credits, dollars or requests spent) is a changed reading.
+    ...(seat.credits === undefined ? {} : { credits: seat.credits })
   })
 
 /**
@@ -482,7 +484,11 @@ export const decidePush = (state, snapshot, nowMs, policy = DEFAULT_POLICY) => {
     return { push: true, reason: "heartbeat", changed: [] }
   }
   const slotBeat = policy.slotHeartbeatSeconds ?? DEFAULT_POLICY.slotHeartbeatSeconds
-  const liveSlots = snapshot.seats.some((seat) => seat.provider === "halogen" && seat.dispatchable)
+  // A slot row, or a credit counter (whose fingerprint may sit still while no one spends), is re-sent on the
+  // slot beat so the floor's copy never ages past MEASURED while the seat is dispatchable.
+  const liveSlots = snapshot.seats.some(
+    (seat) => seat.dispatchable && (seat.provider === "halogen" || (seat.slots ?? null) !== null || seat.credits !== undefined)
+  )
   if (liveSlots && since >= slotBeat) {
     return { push: true, reason: "heartbeat", changed: [] }
   }

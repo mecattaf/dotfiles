@@ -102,6 +102,32 @@ const windowOf = (entry, grade) => {
   }
 }
 
+/**
+ * The oracle's credit counter as the /2 `credits` key, or undefined when the
+ * seat states none or one that cannot be read. The oracle states
+ * `{ used, allowance | limit, unit?, resets_at?, counter? }`; `counter` is
+ * `provider` (the provider's own endpoint) or `plan-ratio` (counted locally,
+ * Qwen's token plan). Without `counter`, an ESTIMATED oracle seat's counter
+ * is its plan ratio. A counter with no reset of its own takes the earliest
+ * binding window reset the seat states (the Qwen weekly window is its credits'
+ * window). Nothing else from the oracle's credits object is copied.
+ */
+const creditsOf = (raw, windows) => {
+  const c = raw?.credits
+  if (c === null || typeof c !== "object" || Array.isArray(c)) return undefined
+  const used = percent(c.used)
+  const limit = percent(c.limit ?? c.allowance)
+  if (used === null || limit === null || !(limit > 0)) return undefined
+  const unit = text(c.unit) ?? "credits"
+  const stated = instant(c.resets_at)
+  const windowReset = windows
+    .filter((w) => w.binding && w.kind !== "model_scoped" && w.resets_at !== null)
+    .map((w) => w.resets_at)
+    .sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? null
+  const counter = c.counter === "provider" || c.counter === "plan-ratio" ? c.counter : raw.grade === "ESTIMATED" ? "plan-ratio" : "provider"
+  return { unit: unit.slice(0, 32), used, limit, resets_at: stated ?? windowReset, basis: counter }
+}
+
 /** The /2 grade of an oracle seat. CACHED is a provider answer that has aged: MEASURED, dated by its age. */
 const gradeOf = (seat, provider, settings) => {
   if (seat.grade === "UNKNOWN" || seat.grade === undefined) return "UNKNOWN"
@@ -166,10 +192,14 @@ export const snapshotFromSeatsV1 = (doc, config, now) => {
           ? `the oracle served a cached reading ${ageS} s old`
           : null
     const slotCount = settings.slots[id]
+    const credits = grade === "UNKNOWN" ? undefined : creditsOf(raw, windows)
+    // Halogen is a slot row whenever it is up (one slot unless configured). Any other seat is one only when the
+    // config gives it a slot count: a credit seat's concurrency cap (the Qwen plan's four agents, OpenRouter's
+    // configured parallelism), counted against the floor's and the puller's own in-flight work.
     const slots =
-      provider === "halogen" && raw.state === "open"
-        ? { capacity: Number.isInteger(slotCount) && slotCount >= 0 ? slotCount : 1, holders: 0 }
-        : null
+      provider === "halogen"
+        ? raw.state === "open" ? { capacity: Number.isInteger(slotCount) && slotCount >= 0 ? slotCount : 1, holders: 0 } : null
+        : Number.isInteger(slotCount) && slotCount >= 0 ? { capacity: slotCount, holders: 0 } : null
     const plan = instant(settings.plans[id])
     seats.push({
       seat: id,
@@ -183,7 +213,8 @@ export const snapshotFromSeatsV1 = (doc, config, now) => {
       source: { kind: "seats-oracle", detail: scrub(`${SOURCE_SCHEMA} ${text(raw.source?.kind) ?? "no-source"}`) },
       grade,
       stale_reason: staleReason,
-      model_windows_complete: grade !== "UNKNOWN" && unmapped === 0
+      model_windows_complete: grade !== "UNKNOWN" && unmapped === 0,
+      ...(credits === undefined ? {} : { credits })
     })
   }
   for (const id of settings.seats) {
