@@ -8,7 +8,7 @@
 import json
 
 SUB_NS = "ate-system"
-SUB_LOCAL_PATH = "/mnt/nas/services/ax-fleet/local-path/"
+SUB_LOCAL_PATH = "/mnt/fast/ax-fleet/local-path/"
 SUB_CONTROL_DEPLOYMENTS = [
     "ate-api-server",
     "ate-controller",
@@ -139,7 +139,7 @@ with step("substrate: gVisor fetched through the RustFS fallback"):
     print("\n".join(l for l in logs.splitlines() if "gvisor" in l.lower())[-4000:])
     assert "gVisor release download complete" in logs or "gvisor" in logs.lower()
 
-with step("substrate: every PersistentVolume on the data pool"):
+with step("substrate: every PersistentVolume on the fast tier"):
     pvs = sub_json("get pv")["items"]
     assert pvs, "no PersistentVolumes"
     for pv in pvs:

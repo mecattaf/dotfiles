@@ -115,7 +115,11 @@ with step("nas: certificates.k8s.io/v1beta1 serves the Substrate resources"):
     assert "clustertrustbundles" in names and "podcertificaterequests" in names, names
 
 
-with step("nas: PersistentVolumes land on the data pool"):
+with step("nas: PersistentVolumes land on the fast tier"):
+    # 2026-09-30 (sweep F2-1 option b): local-path PVs moved off the data
+    # pool (/mnt/nas, the HDD) onto the fast tier (/mnt/fast, the NVMe) —
+    # the continuous PV churn was the thing keeping the HDD from reaching
+    # standby. /dev/vdb is /mnt/fast in nodes.nix; /dev/vdc is /mnt/nas.
     nas.succeed(
         "cat > /tmp/pvc.yaml <<'EOF'\n"
         "apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata: {name: ax-fleet-probe-pvc, namespace: default}\n"
@@ -124,15 +128,15 @@ with step("nas: PersistentVolumes land on the data pool"):
     )
     kubectl("apply -f /tmp/pvc.yaml")
     apply_probe("probe-nas", "control", 18086, pvc="ax-fleet-probe-pvc")
-    kubectl("exec probe-nas -- sh -c 'echo data-pool > /data/marker'")
+    kubectl("exec probe-nas -- sh -c 'echo fast-tier > /data/marker'")
     paths = kubectl(
         "get pv -o jsonpath='{range .items[*]}{.spec.hostPath.path}{.spec.local.path}{\"\\n\"}{end}'"
     ).split()
     record("pv_paths", paths)
     assert paths and all(p.startswith(LOCAL_PATH_ROOT) for p in paths), paths
-    nas.succeed(f"grep -rqx data-pool {LOCAL_PATH_ROOT}")
+    nas.succeed(f"grep -rqx fast-tier {LOCAL_PATH_ROOT}")
     src = nas.succeed(f"findmnt -n -o SOURCE -T {LOCAL_PATH_ROOT}").strip()
-    assert src.startswith("/dev/vdc"), f"local-path root is on {src}, not the data pool"
+    assert src.startswith("/dev/vdb"), f"local-path root is on {src}, not the fast tier"
 
 
 with step("nas: bystanders untouched"):

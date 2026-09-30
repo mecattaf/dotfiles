@@ -78,7 +78,7 @@ let
       };
     }
 
-    # ── ax-redis: AOF on a local-path volume (the data pool on the NAS) ──
+    # ── ax-redis: AOF on a local-path volume (the NVMe fast tier on the NAS) ──
     {
       apiVersion = "v1";
       kind = "PersistentVolumeClaim";

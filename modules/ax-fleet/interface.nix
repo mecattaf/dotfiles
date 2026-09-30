@@ -181,12 +181,26 @@ in
     };
     localPathRoot = mkOption {
       type = types.str;
-      default = "/mnt/nas/services/ax-fleet/local-path";
-      description = "Every PersistentVolume (k3s local-path), on the data pool.";
+      default = "/mnt/fast/ax-fleet/local-path";
+      description = ''
+        Every PersistentVolume (k3s local-path). Moved from the data pool
+        (/mnt/nas/services/ax-fleet/local-path, the HDD) to the NVMe fast
+        tier 2026-09-30 (sweep F2-1 option b, Tom: "moving ax to the NAS ssd
+        where it will NOT make the nas hdd run constantly is the move - and
+        it always was"): the continuous PV writes (ax postgres, rustfs,
+        redis) were the main thing keeping the HDD from reaching standby.
+        docs/nas/ax-volumes-nvme-2026-09-30.md is the migration runbook for
+        the three PVCs that predate this default.
+      '';
     };
     registryRoot = mkOption {
       type = types.str;
-      default = "/mnt/nas/services/ax-fleet/registry";
+      default = "/mnt/fast/ax-fleet/registry";
+      description = ''
+        The NAS registry's storage, on the NVMe fast tier since 2026-09-30
+        (sweep F2-1 option b; see localPathRoot). Was
+        /mnt/nas/services/ax-fleet/registry on the data pool (HDD).
+      '';
     };
     registry = mkOption {
       type = types.str;

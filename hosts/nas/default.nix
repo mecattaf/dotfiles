@@ -133,7 +133,7 @@
   # `ssh -t nas sudo ax-fleet-teardown` (k3s-killall.sh, the guard table and
   # the sysctl restore). The teardown stays on this host's PATH with the
   # switch off; there is no dotfiles checkout here. It removes every trace but
-  # the data left on purpose under /mnt/fast/k3s and /mnt/nas/services/ax-fleet.
+  # the data left on purpose under /mnt/fast/k3s and /mnt/fast/ax-fleet.
   # The k3s credentials are the agenix secrets secrets/k3s-token.age (server,
   # this host only) and secrets/k3s-agent-token.age (mySecrets is on here),
   # which both agents, the coordinator and (since 2026-09-25) the worker, join
@@ -146,6 +146,16 @@
       interface = "enp1s0";
       address = "10.42.0.1";
     };
+    # 2026-09-30 (sweep F2-1 option b, Tom: "moving ax to the NAS ssd where
+    # it will NOT make the nas hdd run constantly is the move - and it
+    # always was"): PVs and the registry moved off the data pool (the HDD,
+    # sda WD40EFZZ) onto the NVMe fast tier. These were the module's
+    # defaults before this date (/mnt/nas/services/ax-fleet/{local-path,
+    # registry}); set explicitly here so the host's own file states the
+    # decision, not just interface.nix. Migration runbook for the three
+    # PVCs that predate the move: docs/nas/ax-volumes-nvme-2026-09-30.md.
+    localPathRoot = "/mnt/fast/ax-fleet/local-path";
+    registryRoot = "/mnt/fast/ax-fleet/registry";
   };
   # Retired 2026-09-16: the Dell belongs to its owner; Tom no longer
   # publishes or manages Omarchy updates. Keep historical receipts only.
