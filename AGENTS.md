@@ -9,7 +9,33 @@ session id resumes only on the seat and from the cwd that created it
 for `$HOME`, so the launchers move into `$CLAUDE_ENVELOPE` (default `~/today`)
 when typed from `~`; never start a seat in the home directory. Logins are hand
 `/login`s, never a delivered secret (the old claude-credentials seed was removed
-this day). The seat meters are `~/.local/state/tally-rewrite/meters/<seat>.json`.
+this day). `seats` reads its peer cache from `~/.local/state/tally-rewrite/meters`
+(the directory name outlives Tally, which was removed on 2026-09-30).
+
+**Scheduled work (Tom, 2026-09-30).** No scheduled agent work is declared in dotfiles. Silent-hours releases (paper 06:05, speech 06:05) stay. Reactive triggers (a Huion scan drops → process when there is bandwidth) are fine. A midnight script that moves jsonl files to the NAS is out. Everything scheduled comes from the factory (substrate).
+
+The one named exception is box upkeep, which is not agent work. These are the
+only clocks dotfiles may declare (sweep 2026-09-30, D40–D51); anything else is a
+hand-run service, a path/udev/session trigger, or a factory schedule:
+
+| # | Unit(s) | Hosts | Declared in |
+|---|---|---|---|
+| D40 | uplink-failover-watchdog (30 s), uplink-rail-reconcile (20 s), uplink-rail-revert (04:00) | coordinator | `hosts/coordinator/uplink-nas.nix` |
+| D41 | failure-marker-reconcile | all | `modules/failure-surfacing.nix` |
+| D42 | tripwire-coredump, tripwire-user-unit-failure (all); tripwire-nas-reachability, tripwire-attic-cache-health (coordinator) | all | `modules/tripwire.nix` |
+| D43 | nix-gc (weekly), gc-root-reaper (daily) | all | `modules/gc-retention.nix`, `modules/gc-root-reaper.nix` |
+| D44 | atticd GC every 12 h | NAS | `hosts/nas/attic.nix` |
+| D45 | btrbk-nas (first Saturday 08:00), btrfs-scrub-mnt-nas (monthly) | NAS | `hosts/nas/snapshots.nix`, `hosts/nas/storage.nix` |
+| D46 | headscale-backup (Sunday 08:30) | NAS | `hosts/nas/headscale-backup.nix` |
+| D47 | docker-registry-garbage-collect (weekly) | NAS | `modules/ax-fleet/control.nix` |
+| D48 | artifact-reaper (daily) | coordinator | `modules/caddy-artifacts.nix` |
+| D49 | fstrim, logrotate, fwupd-refresh, systemd-tmpfiles-clean (system and user) | all | NixOS defaults |
+| D50 | smartd (`-n standby,q`; a daemon, not a timer) | NAS | `hosts/nas/storage.nix` |
+| D51 | the podman healthcheck transient timer (not declared) | worker | podman, for Halogen |
+
+Besides these, the silent-hours releases are `paper-daemon-flush.timer` and the
+06:05 entry of `speech-queue.timer` on the coordinator. Adding any other timer or
+`OnCalendar` to this repository needs Tom.
 
 **Physical seats (2026-09-16, supersedes older headless/client-only wording below).**
 Tom is returning the coordinator to primary-desktop duty with two upright LG
@@ -17,9 +43,9 @@ Tom is returning the coordinator to primary-desktop duty with two upright LG
 Niri; worker and NAS remain headless. The latest shared desktop suite belongs
 on both seats. Keep the Zenbook's display, keyboard, Huion and remote-projector
 features. The dock's iContact mic and GS3 audio rules apply on either seat.
-Speech capture/playback accepts both seats; unaddressed queue jobs play on the
+Speech playback accepts both seats; unaddressed queue jobs play on the
 coordinator, and `client--` / `coordinator--` filename prefixes select a seat.
-Alexa session launch passes its originating seat. Inference stays where it was.
+Inference stays where it was.
 Physical Niri owns the coordinator portals; the optional headless Sway desktop
 must not own or stop them. Chrome's existing cross-display profile lock remains:
 close that profile's browser normally before using it on the other desktop.
@@ -58,7 +84,7 @@ the server and the alternate once for the worker and the coordinator, and both
 wanted sets carry both bundles. Only the worker starts Flash at boot and only
 the worker is the `utility` endpoint. The coordinator has
 `services.halogen.autoStart = false`: nothing is resident there, because it is
-Tom's desktop and also runs TTS, Parakeet and diarization. Check the GPU is
+Tom's desktop and also runs TTS and diarization. Check the GPU is
 free, start an engine with `halogen-switch flash|qwen38-27b`, and release it
 with `halogen-switch off`. Do not make a coordinator engine resident or move
 `utility` off the worker without Tom.
@@ -97,52 +123,24 @@ matched prefix with a quiet tail. The original favorite remains the comparison
 baseline. Enrollment and fleet activation are separate; see the integration record below.
 Word accuracy is insufficient: inspect repeated onset artifacts and listen to
 quality feedback before treating a broader reference as an improvement.
-All LLM inference for this speech/intake flow, including Gemma or a local router,
-runs on the coordinator, never the laptop. The laptop owns wake detection, cue,
-capture/transport and playback only. TTS and transcription-model inference run
-on the coordinator GPU; preparation and
-independent CPU transcription checks are explicitly labeled. The separately
-authorized lightweight wake detector runs on the client CPU or Intel NPU. The ASUS Zenbook (`client`)
+TTS inference runs on the coordinator GPU; the ASUS Zenbook (`client`) only
 plays the returned audio. Speech weights follow NAS Library/explicit borrowing.
 `modules/qwen-tts.nix` owns on-demand synthesis, separate from Halogen; it idles
 out and has no boot target. Deterministic text chunks are stitched into one WAV.
 The human is **Tom**; use his name naturally in assistant-written addresses,
 without rewriting quoted documents or verbatim transcripts.
-Ordinary VibeVoice ASR and streaming diarized ASR remain separate evaluation
-tracks. The newly requested hotword research is a separate client input/control
-pipeline: lightweight wake detection on the Zenbook, not another TTS model or
-personality. Prioritize detection responsiveness and reliable waking; CPU usage,
-heat and fan noise are secondary. The client is always plugged in. Tom clarified
-that he deliberately restored brightness during tests: brightness is not an
-acceptance gate or a reason to pause detector comparison. Leave his display
-controls alone; listening should work at any brightness while the OS is awake.
-If a dark-display check is needed, F10 uses brightness zero with displays enabled,
-not DPMS power-off or suspend. Tom selected “Alexa” with upstream openWakeWord
-on CPU. Use the original listening nudge after accepted wake and capture readiness.
-The Niri Shift+F9 call recorder must inhibit and receive listener shutdown
-acknowledgement before capture starts; clear all queued audio on entry and exit.
-`pkgs/speech-wake` implements the explicit client input session;
-`home/speech.nix` owns its declarative user service.
-Research Intel Meteor Lake NPU support only when an existing
-wake-word implementation is documented. Scott Baker's existing openWakeWord
-CPU/NPU implementation qualifies: Tom explicitly authorized adapting its existing
-path to Meteor Lake/NixOS and testing it, despite its Panther Lake/Ubuntu example.
-Do not discard it solely for that platform difference; avoid a new detector/model
-port from scratch. Keep initial compatibility tests isolated and use saved audio
-before enabling an always-on microphone. Compare the working NPU route against
-the best practical CPU implementation, not only the same code on CPU: Tom wants
-the best complete tool for fast, reliable waking, with quiet operation secondary.
-This Intel client investigation does not reopen the retired AMD NPU path.
-No wake listener is activated by the research. Call transcription must suppress
-wake detection, per Tom's Mykonos annotations.
+**Speech input is OUT (Tom, 2026-09-30):** the Alexa/openWakeWord wake listener
+(`speech-wake`), Parakeet transcription, native Herdr hold-Space dictation and
+the wake toggle were removed from every host, the Zenbook included. Do not
+reintroduce a wake detector, a resident transcription service or a dictation
+patch without Tom.
 
 The coordinator's other model rows are task-specific. Qwen3-TTS 1.7B Base Q8
 with the `qwen-k2so-midway-b` voice is the one TTS model (`modules/qwen-tts.nix`;
 the voice has a second verified copy at
 `/mnt/nas/documents/voice-references/qwen-k2so-midway-b/`, because it cannot be
 re-downloaded). VibeVoice-ASR-Streaming-7B is the one diarization model, loaded
-per run by `call-diarize` (Tom, 2026-09-16). Parakeet TDT v3 and the two
-openWakeWord rows serve the speech path. The Qwen3 text embedder and the Mage
+per run by `call-diarize` (Tom, 2026-09-16). The Qwen3 text embedder and the Mage
 rows are NAS-Library artifacts an operator loans with `local-models-borrow` and
 runs by hand; they have no declarative service, timer or proxy row.
 Embeddings in particular have no server behind them until an operator starts
@@ -209,37 +207,20 @@ recipe, correction-evidence rules and real-Huion commissioning boundary. Do not
 reseed live review state or treat stable legacy capture files as proof of device
 page completeness.
 
-**Speech integration (2026-09-14).** Alexa/openWakeWord on client CPU is the
-selected wake path. Direct `parakeet-rs` 0.3.7 with Parakeet TDT v3 ONNX and
-MIGraphX runs on the coordinator; Voxtype and its virtual-microphone relay are
-retired from the configuration. There is no Gemma/router layer in the daily
-flow. Gemma and the non-streaming VibeVoice ASR are retired (2026-09-16).
-`home/speech.nix` declares the resident coordinator transcription unit and client
-wake unit. No service startup downloads models. Use the NAS manifests and explicit
-`local-models-borrow` transactions documented in `docs/speech-operations.md`.
+**Speech integration (2026-09-14, input half removed 2026-09-30).** There is
+no Gemma/router layer in the daily flow. Gemma and the non-streaming VibeVoice
+ASR are retired (2026-09-16). No service startup downloads models. Use the NAS
+manifests and explicit `local-models-borrow` transactions documented in
+`docs/speech-operations.md`.
 
-Alexa creates a fresh Claude Opus Herdr session using a fixed appended system
-prompt that enables speech publication. The shared `/speak` skill publishes
-visible Markdown files in `~/Speech/intake`; the daemon synthesizes and plays
-through the client during 06:00–24:00, matching paper working hours. Publishing a
-queue file is not evidence it was heard: consult playback receipts. Session
-launch records the fixed system-prompt hash. Do not repair speech behavior by
-pasting follow-up instructions into the conversation.
+The shared `/speak` skill publishes visible Markdown files in `~/Speech/intake`;
+the daemon synthesizes and plays through a seat during 06:00–24:00, matching
+paper working hours, with a 06:05 release for anything held overnight.
+Publishing a queue file is not evidence it was heard: consult playback receipts.
 
-**Hold-Space dictation is OFF (Tom, 2026-09-26):** `myHerdr.holdSpaceDictation.enable`
-(`home/herdr.nix`, default false) selects upstream herdr, which ignores the
-projector's `HERDR_DICTATION_COMMAND`. Keep the patch and `speech-dictate`; the
-`herdr-hold-space-dictation` flake check keeps the patch building. When enabled,
-native Herdr client hold-Space invokes `speech-dictate` on the client, waits for
-capture readiness and the original cue, streams PCM to coordinator, and pastes
-the result into the originating pane without Enter. Tap-Space remains ordinary
-input. Media controls do not cancel recording; editing keys, Escape, focus or
-application changes, call recording and playback do. Kitty protocols are used by
-Herdr itself: no dedicated kitten, herdr-kitten dependency, GTK/quickshell recording
-overlay or client transcription model. New speech windows use the native projector
-with a client-scoped pane target. Keep the Herdr server's `X-SwitchMethod=keep-old`
-protection: deployment must not kill live PTYs. Existing client processes need a
-new projector launch to load a changed binary.
+Keep the Herdr server's `X-SwitchMethod=keep-old` protection: deployment must
+not kill live PTYs. Existing client processes need a new projector launch to
+load a changed binary.
 
 The original montage, accepted midway B enrollment and evaluation outputs are
 preserved on NAS; superseded speech model weights were deleted on 2026-09-16
@@ -251,5 +232,4 @@ than inferring activation from these declarations.
 location as a product/service name. Hands-free follow-on conversation routing is
 explicitly dropped. Keep supported implementation and tests in dotfiles; delete
 superseded experimental code rather than archiving it on NAS. Keep listening
-evidence and canonical model weights separately. Parakeet is independently
-declared and remains durable after Voxtype removal.
+evidence and canonical model weights separately.

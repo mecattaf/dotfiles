@@ -221,9 +221,9 @@ in
     # ── library-fetch: the ONLY thing that ever talks to Hugging Face ───────
     # Converges weights/ toward the full catalog manifest: present + right
     # size → untouched; missing → download once, sha256-verify (the catalog's
-    # git-lfs oid IS the sha256), land atomically. Never deletes. Nightly at
-    # 02:30, independently of update-center and every device activation. Run it
-    # by hand (`systemctl start library-fetch`) to stock a new model immediately.
+    # git-lfs oid IS the sha256), land atomically. Never deletes. On demand
+    # only (`systemctl start library-fetch`), independently of update-center
+    # and every device activation.
     systemd.services.library-fetch = {
       description = "Download missing catalog model weights from Hugging Face into the Library";
       after = [ "network-online.target" ];
@@ -239,13 +239,7 @@ in
         IOSchedulingClass = "idle";
       };
     };
-    systemd.timers.library-fetch = {
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "02:30";
-        Persistent = false;
-        AccuracySec = "15min";
-      };
-    };
+    # No timer (Tom, 2026-09-30): the nightly re-stat spun the HDD for nothing.
+    # Run it on demand when a catalogue row changes.
   };
 }

@@ -22,7 +22,7 @@
     ./artifacts.nix # myArtifacts options; serving plane is coordinator-only (caddy-artifacts.nix)
     ./printing.nix # CUPS + Brother IPP/raw-text path (active fleet + future hosts)
     ./failure-surfacing.nix # OnFailure + coredump surfacing, fleet-wide — refs #134
-    ./update-adopt.nix # per-host candidate adoption (#354); off unless a host enables it
+    ./fleet-revision.nix # every closure records its flake revision (was in update-adopt.nix)
   ];
 
   myFailureSurfacing = {

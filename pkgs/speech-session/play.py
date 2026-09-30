@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Client-only final-WAV playback with wake inhibition and call gating."""
+"""Seat final-WAV playback with call gating.
+
+The speech-wake listener was removed on 2026-09-30; its state directory keeps
+the name because call-record writes the call marker there, and the listener
+handshake below is skipped when no listener lock exists."""
 import fcntl, io, json, os, socket, subprocess, sys, time, wave
 from pathlib import Path
 

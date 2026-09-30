@@ -30,13 +30,11 @@
 #     pinned ~6-month manual bump, by the operator, and never before.
 #
 # Source trust: the repo is public, fetched by commit over https — no repo
-# key on the appliance (doctrine holds). Its PRIVATE locked inputs (tally-b =
-# mecattaf/tally, tally-lake = mecattaf/tally-ts-sdk) are not fetched here at
-# all: since 2026-09-13 the coordinator's update-center-seed user timer
-# (home/update-center-seed.nix, 00:45 and 01:20) copies their exact
-# narHash-addressed trees into this store and GC-roots them under
-# /var/lib/update-center/seeds, and the script's preflight logs
-# `seed-missing <node>` for any gap. Nix uses a valid locked store path
+# key on the appliance (doctrine holds). Its PRIVATE locked inputs (tally-b,
+# tally-lake) left the lock with the Tally sunset on 2026-09-30, together with
+# the coordinator's update-center-seed timer that copied their trees into this
+# store; the script's preflight still logs `seed-missing <node>` should a
+# private mecattaf input ever come back. Nix uses a valid locked store path
 # without fetching (measured: fresh-HOME eval exits 0), so still no credential. Push trust: the attic token is
 # minted LOCALLY each run via atticd-atticadm (the RS256 secret lives here,
 # runbook-placed) — no fleet secret involved.

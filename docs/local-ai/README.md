@@ -124,14 +124,16 @@ runbook for the Library itself.
 | Host | Wanted artifacts | Served by |
 |---|---|---|
 | `worker` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b` | `modules/halogen.nix`; Flash resident at boot, the 27B after `halogen-switch qwen38-27b` |
-| `coordinator` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b`, `vibevoice-asr-streaming-7b-bf16`, `openwakeword-baker-compat-v051`, `openwakeword-alexa-v051`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `parakeet-tdt-0.6b-v3-onnx`, `qwen3-tts-tokenizer-f32` | Halogen only after `halogen-switch`; streaming ASR per `call-diarize` run; Qwen speech on demand (`modules/qwen-tts.nix`); Parakeet resident (`home/speech.nix`) |
-| `client` | `openwakeword-baker-compat-v051`, `openwakeword-alexa-v051` | the wake listener (`home/speech.nix`) |
+| `coordinator` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b`, `vibevoice-asr-streaming-7b-bf16`, `qwen3-tts-1.7b-base-q8-0`, `qwen-k2so-midway-b`, `qwen3-tts-tokenizer-f32` | Halogen only after `halogen-switch`; streaming ASR per `call-diarize` run; Qwen speech on demand (`modules/qwen-tts.nix`) |
+| `client` | none (speech-wake and Parakeet were removed on 2026-09-30) | — |
 | `nas` | none (it holds the Library) | — |
 
 ## Running a loaned GGUF by hand
 
-Library rows without a declared consumer (the text embedder) have no server.
-Both twins carry nix-strix-halo's `llama-cpp-rocm` and `llama-cpp-vulkan`
+Since 2026-09-30 every catalogue row has a declared consumer; the text
+embedder and the Mage rows were retired from the catalogue and the NAS Library
+(sweep F1). A GGUF that an operator brings back by hand (re-adding its row
+first, so `library-fetch` fills the Library) has no server. Both twins carry nix-strix-halo's `llama-cpp-rocm` and `llama-cpp-vulkan`
 commands ([`../../modules/strix-ai.nix`](../../modules/strix-ai.nix)), so an
 operator who has borrowed a row starts it in a shell and stops it when done:
 
@@ -150,18 +152,17 @@ or not at all. There is no embeddings server until an operator starts one.
   the one TTS model (`modules/qwen-tts.nix`). VibeVoice-ASR-Streaming-7B is the
   one diarization model; `call-diarize` loads it from
   `/var/lib/local-models/vibevoice-asr-streaming-7b-bf16`.
-- **Mage (Mage-Flow Turbo, Mage-Flow Edit Turbo, Mage-VL)** are loanable
-  Library artifacts with their own upstream runtimes and no server on this
-  fleet. [`mage.md`](mage.md) records the selected Mage snapshots and their
-  invocation contract.
+- **Mage (Mage-Flow Turbo, Mage-Flow Edit Turbo, Mage-VL)** were retired on
+  2026-09-30 (sweep F1): catalogue rows, `lib/mage-models.nix` and the NAS
+  Library copies. [`mage.md`](mage.md) keeps the selection record and the
+  pinned revisions, so a restore starts from git history.
 - **Voxtype** (streaming dictation, `parakeet-unified-en-0.6b`) is not a
   catalogue artifact: `home/voxtype.nix` lets the tool own its own model
   directory on the coordinator.
 
 ## Sources of truth
 
-1. [`../../lib/local-models.nix`](../../lib/local-models.nix) and
-   [`../../lib/mage-models.nix`](../../lib/mage-models.nix) — the typed
+1. [`../../lib/local-models.nix`](../../lib/local-models.nix) — the typed
    catalogue: identity, pinned revision, bytes, hashes.
 2. [`../../modules/halogen.nix`](../../modules/halogen.nix) — the Halogen
    server; [`../../modules/strix.nix`](../../modules/strix.nix) — its

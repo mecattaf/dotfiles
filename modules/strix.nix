@@ -38,10 +38,10 @@
     # local-models-prune keeps. Both twins want both Halogen bundles (Tom,
     # 2026-09-16: "both models, on both devices"), served by modules/halogen.nix
     # below; the coordinator also wants the streaming ASR, loaded per run by
-    # call-diarize, and its speech rows come from home/speech.nix and
-    # modules/qwen-tts.nix. The catalogue (lib/local-models.nix) stays broader
-    # than either list — the embedder and Mage rows are loanable on demand —
-    # and the NAS Library keeps every row regardless.
+    # call-diarize, and its speech rows come from modules/qwen-tts.nix. The
+    # catalogue (lib/local-models.nix) is now exactly the wanted rows: the
+    # embedder and the three Mage rows were retired on 2026-09-30 (sweep F1).
+    # The NAS Library keeps every catalogue row.
     services.local-models.artifacts = [
       "halogen-qwen38-flash-next"
       "halogen-qwen38-27b"
@@ -59,7 +59,7 @@
     #
     # WHERE THEY RUN BY DEFAULT. The worker keeps Flash resident from boot and
     # is the fleet's `utility` endpoint (http://worker:8731). The coordinator
-    # is Tom's primary desktop and also runs Qwen TTS, Parakeet, the 17.6 GB
+    # is Tom's primary desktop and also runs Qwen TTS, the 17.6 GB
     # streaming ASR and live agent sessions, so nothing starts there at boot:
     # an operator runs `halogen-switch flash|qwen38-27b` and hands the GPU back
     # with `halogen-switch off`. Upstream's own sizing note for Flash is

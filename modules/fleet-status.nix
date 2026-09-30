@@ -19,7 +19,7 @@
 # Roles come from the configuration, not from hostnames, so a moved service
 # moves its facts with it:
 #   halogen    services.halogen.enable            → podman-halogen*, /health, /cache
-#   runs       services.tally-kernel.enable       → both Tally planes, IDs only
+#   (runs, the Tally planes, went with the Tally sunset on 2026-09-30)
 #   attention  the Herdr server host (home/herdr.nix gates its unit on
 #              hostName == "coordinator", and so does this module; the
 #              flake's herdr-oom-isolation check pins that shape)
@@ -50,9 +50,7 @@ let
   enabled = name: config.services.${name}.enable or false;
 
   roles =
-    lib.optional (enabled "halogen") "halogen"
-    ++ lib.optional (enabled "tally-kernel") "runs"
-    ++ lib.optional (host == "coordinator") "attention";
+    lib.optional (enabled "halogen") "halogen" ++ lib.optional (host == "coordinator") "attention";
 
   profile = {
     name = profileNames.${host} or "unprofiled";

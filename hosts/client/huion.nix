@@ -1,4 +1,4 @@
-{ pkgs, ... }:
+{ lib, pkgs, ... }:
 # client — the Huion Note X10 is the paper inbox. Tom writes on it anywhere,
 # presses the button for each new page, and opens the cover near this laptop;
 # the pages come off the notepad over Bluetooth and land on the coordinator.
@@ -61,13 +61,15 @@
 #      "is indeed desirable"). The extractor deletes a page only once its SVG
 #      and JSON are on local disk and never an incomplete one; it cannot wait
 #      for the push, so the spool is the durability buffer, not the device.
-#   2. pushes every spooled batch, oldest first, to
-#      coordinator:~/Paper/inbox/<ts>/ and removes the local copy only after
-#      rsync succeeded.
+#   2. on exit (success or failure) starts huion-push.service, which pushes
+#      every spooled batch, oldest first, to coordinator:~/Paper/inbox/<ts>/
+#      and removes the local copy only after rsync succeeded.
 #
-# huion-push.timer re-runs step 2 alone (never a dump: that only happens when
-# the notepad connects) for anything a down or unreachable coordinator left in
-# the spool. One lock serialises the two.
+# The push is reactive: it follows each capture (Tom, 2026-09-30: a Huion scan
+# drops → process it; no clock). There is no retry timer any more: a batch a
+# down or unreachable coordinator left in the spool goes with the next
+# capture, or by hand with `systemctl start huion-push`. One lock serialises
+# the two.
 #
 # Why a folder per sync: filenames are page{N}-{DD}-{MM} and N restarts at 1
 # after every clearing sync, so two syncs on one day would overwrite each
@@ -99,8 +101,8 @@ let
       spool=$state/spool
       mkdir -p "$spool"
 
-      # Wait rather than skip: a timer push holding the lock is seconds, and
-      # the notepad stays connected until the cover closes.
+      # Wait rather than skip: a push holding the lock is seconds, and the
+      # notepad stays connected until the cover closes.
       exec 9>"$state/lock"
       flock -w 300 9
 
@@ -116,7 +118,7 @@ let
             rmdir "$d"
             echo "pushed $batch -> coordinator:~/Paper/inbox/$batch/"
           else
-            echo "push of $batch failed; kept in $spool for huion-push.timer" >&2
+            echo "push of $batch failed; kept in $spool for the next capture" >&2
             rc=1
           fi
         done
@@ -149,12 +151,9 @@ let
               rc=1
             fi
           fi
-          # A failed push is not this unit's failure: the batch is safe in the
-          # spool, and huion-push.service owns that state — it fails on its
-          # next tick while the coordinator is unreachable and recovers on
-          # its own once the batch lands. Failing here would leave this unit
-          # red until the next opening, long after the pages arrived.
-          push || true
+          # The push is not this unit's job: huion-sync.service starts
+          # huion-push.service on exit (ExecStopPost below), so a failed push
+          # never turns the dump red, and the spool is the durability buffer.
           exit "$rc"
           ;;
         push) push ;;
@@ -165,7 +164,7 @@ let
 
   unit = verb: {
     after = [ "bluetooth.service" ];
-    # Only udev and the timer start these. Left to its defaults, a switch
+    # Only udev (and huion-sync, for the push) start these. Left to its defaults, a switch
     # restarts a changed unit that is failed — seen 2026-09-13: it killed one
     # dump and started another with the notepad in reach. A deploy must never
     # dump, nor kill a dump mid-transfer.
@@ -194,18 +193,17 @@ in
   # Every opening is a new HID instance (.000E, .0010, …), so the add — and
   # the want — fires once per opening; a start while a run is still active
   # merges into it.
-  systemd.services.huion-sync = unit "dump" // {
+  #
+  # Capture completion pushes: ExecStopPost runs whether the dump succeeded or
+  # not (a partial dump still spooled pages), with "+" because User=tom cannot
+  # start a system unit; --no-block so the push runs after this unit's lock is
+  # released.
+  systemd.services.huion-sync = lib.recursiveUpdate (unit "dump") {
     description = "Pull pages off the Huion Note X10 into coordinator:~/Paper/inbox";
+    serviceConfig.ExecStopPost = "+${pkgs.systemd}/bin/systemctl start --no-block huion-push.service";
   };
 
   systemd.services.huion-push = unit "push" // {
     description = "Push spooled Huion pages to coordinator:~/Paper/inbox";
-  };
-  systemd.timers.huion-push = {
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnBootSec = "2min";
-      OnUnitActiveSec = "15min";
-    };
   };
 }

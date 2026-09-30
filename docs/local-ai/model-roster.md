@@ -1,8 +1,7 @@
 # Local model roster
 
 The catalogue in [`../../lib/local-models.nix`](../../lib/local-models.nix)
-(Mage manifests factored into
-[`../../lib/mage-models.nix`](../../lib/mage-models.nix)) is summarised here
+is summarised here
 (the speech-intake JSON rows it also merges are listed in
 `docs/speech-operations.md`). This page is read off that file; every byte figure is the exact sum of the
 pinned file sizes (decimal GB), and every revision is the pinned Hugging Face
@@ -36,11 +35,12 @@ assertion.
 |---|---|---|---|---|---|
 | `halogen-qwen38-flash-next` | model (4-bit checkpoint + quality overlay + vision tower + flat tokenizer, 9 files) | W4B `.hgn` | [`peonist-ai/halogen-qwen3.8-flash-next@ac23b1b`](https://huggingface.co/peonist-ai/halogen-qwen3.8-flash-next/tree/ac23b1b223b4e9192d27c22367d4dbacf2b595ef) (base [`Qwen/Qwen3.8-Flash-Next`](https://huggingface.co/Qwen/Qwen3.8-Flash-Next)) | 127.47 GB | Halogen Flash server (resident on the worker, operator-started on the coordinator); the only thing that loads these bytes |
 | `halogen-qwen38-27b` | model (dense checkpoint + flat tokenizer, 6 files) | P1W4D-D2 `.hgn` | [`peonist-ai/halogen-qwen3.8-27b@d92dc33`](https://huggingface.co/peonist-ai/halogen-qwen3.8-27b/tree/d92dc33afed1cdc073846c76e51090fa493ce74a) | 35.9 GB | `podman-halogen-qwen38-27b`, the alternate engine on `:8731` of either twin, text only |
-| `qwen3-embedding-8b-q8-0` | model (text embeddings) | Q8_0 | [`Qwen/Qwen3-Embedding-8B-GGUF@69d0e58`](https://huggingface.co/Qwen/Qwen3-Embedding-8B-GGUF/tree/69d0e58a13e463cd99a9b83e3f5fee7c10265fab) | 8.05 GB | none; hand-run `llama-server --embedding` |
 | `vibevoice-asr-streaming-7b-bf16` | model (streaming transcription + speaker labels, 17-file snapshot with its own tokenizer) | BF16 | [`microsoft/VibeVoice-ASR-Streaming-7B@60d858b`](https://huggingface.co/microsoft/VibeVoice-ASR-Streaming-7B/tree/60d858b518b4e19d404af3737f848fc185b30177) | 17.36 GB | `call-diarize` on the coordinator; the one diarization model |
-| `mage-flow-4b-turbo-bf16` | model (image generation, 43-file snapshot) | BF16 | [`mage-flow-community/Mage-Flow-Turbo@65bb350`](https://huggingface.co/mage-flow-community/Mage-Flow-Turbo/tree/65bb3500f0da9df6a41ec6383716fc02cf014773) | 17.51 GB | none; upstream `MageFlowPipeline`, see [`mage.md`](mage.md) |
-| `mage-flow-edit-4b-turbo-bf16` | model (image editing, 43-file snapshot) | BF16 | [`mage-flow-community/Mage-Flow-Edit-Turbo@66df6fa`](https://huggingface.co/mage-flow-community/Mage-Flow-Edit-Turbo/tree/66df6fa1aba5b40cd4120739134292eab9779da3) | 17.51 GB | none; upstream `MageFlowPipeline`, see [`mage.md`](mage.md) |
-| `mage-vl-bf16` | model (image/video understanding, 78-file snapshot) | BF16 | [`microsoft/Mage-VL@5c78cab`](https://huggingface.co/microsoft/Mage-VL/tree/5c78cab61938e73859b63724d9bf5cb88c477eaa) | 10.85 GB | none; offline Transformers |
+
+Retired on 2026-09-30 (sweep F1), from the catalogue and the NAS Library:
+`qwen3-embedding-8b-q8-0`, `mage-flow-4b-turbo-bf16`,
+`mage-flow-edit-4b-turbo-bf16` and `mage-vl-bf16`. Their pinned revisions are in
+git history (`lib/mage-models.nix`, `lib/local-models.nix`).
 
 ## The utility model
 

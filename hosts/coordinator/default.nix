@@ -78,11 +78,6 @@
     ../../modules/fleet-hosts.nix
     # ax on the fleet (2026-09-23): the HARNESS node, see myAxFleet below.
     ../../modules/ax-fleet
-    # The REWRITE kernel (github.com/mecattaf/tally, U-B1…U-B13) as one system
-    # service against ~/.local/state/tally-rewrite/, coexisting with the live
-    # user-bus tally-daemon.service (U-D13). Declared here, installed by U-D19's
-    # switch — never hand-started (DEFERRED.md DF-U-D13-1).
-    ../../modules/tally-b.nix
     # kubectl + the google/ax binaries, behind myAxClient.enable. Imported on
     # all three interactive hosts, OFF on all three; read that module's header
     # for the runbook and for what it deliberately does not declare.
@@ -169,8 +164,11 @@
   # of this puller's maxRuns = 2 slots for its whole night. 01:30 keeps the
   # evening build block ahead of it. maxRuns is deliberately unchanged.
   # Kill switch: touch ~/.local/state/academic-drain/STANDING-OFF.
+  # OFF (Tom, 2026-09-30): no scheduled agent work is declared in dotfiles.
+  # The PDF pass is a one-time activity finished by hand; a nightly lane B
+  # submit comes back, if ever, as a substrate (factory) schedule.
   services.academicDrain.standing = {
-    enable = true;
+    enable = false;
     onCalendar = "*-*-* 01:30:00";
   };
 
@@ -204,10 +202,6 @@
   # Primary physical seat again (2026-09-16); Zenbook remains a second seat.
   # Agent services stay independent of either compositor.
   myDisplay.enable = true;
-  services.local-models.artifacts = [
-    "openwakeword-baker-compat-v051"
-    "openwakeword-alexa-v051"
-  ];
   services.browser-desktop.enable = true;
   services.handwriting-annotation.enable = true;
   services.qwen-tts.enable = true;
@@ -240,95 +234,6 @@
   # myAxClient (kubectl + ax) is ON here by mkDefault from myAxFleet's
   # harness role (modules/ax-fleet/default.nix); ax-client-topology in
   # flake.nix pins that.
-
-  # The rewrite's served kernel: ONE kernel, on the coordinator (spec §2.4 Q2 —
-  # the worker twin is a ROW this kernel serves, not a second kernel), on the
-  # system bus, against the rewrite's own state root. The live daemon on tom's
-  # user bus is untouched and keeps running (modules/tally-b.nix).
-  services.tally-kernel.enable = true;
-
-  # ── Fleet candidate adoption (#354, 2026-09-13) ─────────────────────────
-  # This box runs Tom's live agents, so its gates are the strict set: defer
-  # while any Herdr agent is not idle/done (`herdr agent list`), while the
-  # shared browser desktop or an operator-started Halogen server is up (a
-  # switch would restart it into a cold load), while a tally-kernel row has a
-  # holder (rows.read) or the live tally daemon holds a pool lease, and — in
-  # the module — while any nixos-rebuild/switch is running. Herdr itself is
-  # never restarted by a switch (home/herdr.nix X-SwitchMethod=keep-old).
-  # A switch that leaves herdr, tally-kernel or caddy down (having been up)
-  # is rolled back.
-  #
-  # POLICY stage-only UNTIL THE LIVE DOWNGRADE REFUSAL HOLDS (#354 challenger
-  # correction 6, re-applied by the lane verifier 2026-09-13). Tom's decision
-  # text wants rolling here, and every gate below is wired for it, but this is
-  # the box that runs the live agents and nobody can reach it overnight. The
-  # hermetic downgrade cases are not the bar; the bar is the worker's LIVE
-  # refusal of an older published candidate after deploy (DEFERRED
-  # DF-354-1). Stage-only realises the candidate and reports it, and creates no
-  # activate timer. Flip this one word to "rolling" once that refusal is seen.
-  myUpdateAdopt = {
-    enable = true;
-    policy = "stage-only";
-    userManagers = [ "tom" ];
-    gates = [
-      {
-        name = "herdr-agents";
-        argv = [
-          config.myUpdateAdopt.gatesBin
-          "herdr-agents-idle"
-          "tom"
-        ];
-      }
-      {
-        name = "browser-sessions";
-        argv = [
-          config.myUpdateAdopt.gatesBin
-          "units-inactive"
-          "user:tom"
-          "browser-desktop.service"
-        ];
-      }
-      {
-        name = "halogen-units";
-        argv = [
-          config.myUpdateAdopt.gatesBin
-          "units-inactive"
-          "system"
-          "podman-halogen.service"
-        ]
-        ++ map (name: "podman-halogen-${name}.service") (
-          builtins.attrNames config.services.halogen.alternates
-        );
-      }
-      {
-        name = "tally-kernel-leases";
-        argv = [
-          config.myUpdateAdopt.gatesBin
-          "tally-kernel-idle"
-          (lib.getExe' config.services.tally-kernel.package "tally-kernel")
-          config.services.tally-kernel.socketPath
-        ]
-        ++ map (row: row.row) config.services.tally-kernel.rows;
-      }
-      {
-        name = "tally-daemon-leases";
-        argv = [
-          config.myUpdateAdopt.gatesBin
-          "tally-daemon-idle"
-          "tom"
-          "/run/user/1000/tally/tally.sock"
-        ];
-      }
-    ];
-    criticalUnits = [
-      {
-        unit = "herdr.service";
-        user = "tom";
-      }
-      { unit = "tally-kernel.service"; }
-      { unit = "caddy.service"; }
-    ];
-  };
 
   # Halogen Flash and the Qwen3.8-27B alternate are declared here as on the
   # worker (modules/strix.nix), but nothing is resident: an operator starts

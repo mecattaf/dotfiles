@@ -13,9 +13,15 @@
 # `requireFile` pins it by sha256 and never downloads anything. Its store path
 # depends only on name + hash, so any host that already has it (or the built
 # font, substituted from the NAS attic cache) never reads the NAS either.
-# home/update-center-seed.nix adds it to the NAS store and GC-roots it there
-# nightly, so the fleet builds find it. The same applies to ./sfmono-liga.nix.
-{ stdenvNoCC, requireFile, zstd }:
+# home/update-center-seed.nix used to add it to the NAS store nightly; that
+# timer was deleted on 2026-09-30 (no scheduled agent work in dotfiles), so a
+# NAS-side build needs it `nix store add`ed by hand first. The same applies to
+# ./sfmono-liga.nix.
+{
+  stdenvNoCC,
+  requireFile,
+  zstd,
+}:
 
 stdenvNoCC.mkDerivation {
   pname = "sf-pro";

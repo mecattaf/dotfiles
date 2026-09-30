@@ -1612,3 +1612,18 @@ an operator-started engine does not size itself against the desktop's free
 memory. Folded in: FDC-M4 (#407), `SuccessExitStatus=143` on every
 podman-halogen unit so `halogen-switch` no longer writes failure markers, with
 its check extended to both twins.
+
+2026-09-30 the Mage rows and the text embedder leave the catalogue (cleanup
+sweep 2026-09-30, F1; ruled by default, with F1.2 keeping `halogen-qwen38-27b`
+on both twins). Removed: `mage-flow-4b-turbo-bf16`,
+`mage-flow-edit-4b-turbo-bf16`, `mage-vl-bf16` (and with them
+`lib/mage-models.nix`) and `qwen3-embedding-8b-q8-0`. No host wanted any of
+them, and no module consumed them. `library-fetch` would re-download any row
+still in the catalogue, so the rows go before the NAS copies (about 51 GB),
+which are deleted after this merges and receipted in
+`/mnt/nas/models/weights/RETIRED-2026-09-30.tsv`, per the runbook in
+`docs/nas/model-archive.md`. The catalogue is now the coordinator's six wanted
+rows. The academic-ocr embed stage keeps its `qwen3-embedding-8b` label and
+still skips itself when no operator names an embeddings endpoint.
+`models/research` (including `mykonos`) is left in place: `docs/speech-operations.md`
+names files inside it.

@@ -110,7 +110,7 @@ let
   # WORKING server went unanswered for minutes and got killed as a wedge —
   # twice, to one reporter (upstream #10, #22). 0.5.9 made that read answer PING
   # on the same cadence as the rest of a prefill and 0.6.3 made the read itself
-  # ~40x faster. Both are in the 0.7.0 image this module pins. Do not backport
+  # ~40x faster. Both are in the 0.13.8 image this module pins. Do not backport
   # this block to an older digest.
   #
   # The numbers are deliberately slacker than upstream's compose (10s/3):
@@ -184,7 +184,9 @@ let
       case "$choice" in
         ${lib.concatMapStringsSep " | " (n: "${n}") ([ "flash" ] ++ alternateNames ++ [ "off" ])}) ;;
         *)
-          echo "usage: halogen-switch <${lib.concatStringsSep "|" ([ "flash" ] ++ alternateNames ++ [ "off" ])}>" >&2
+          echo "usage: halogen-switch <${
+            lib.concatStringsSep "|" ([ "flash" ] ++ alternateNames ++ [ "off" ])
+          }>" >&2
           echo "Stops whichever Halogen server is resident and starts the named one (a cold load: minutes); off stops them all." >&2
           exit 64
           ;;
@@ -236,8 +238,31 @@ in
       # day and a floating tag would re-pull a different engine on a restart.
       # Bump deliberately; the digest is the one printed by
       #   skopeo inspect docker://ghcr.io/peonist-ai/halogen-flash-server:<tag>
-      default = "ghcr.io/peonist-ai/halogen-flash-server@sha256:ddbdf632035483e5e716a136e7111aff1f8d963f77787dd4fcc4758cc91206c4";
-      description = "OCI image reference (release 0.7.0 by digest).";
+      # 0.13.8, built 2026-09-23, upstream revision 1edba8f9e828. Bumped from
+      # 0.7.0 on 2026-09-25 (Tom's ruling of 2026-09-13: "bump pin to the latest
+      # version of halogen"). Every HALOGEN_* variable this module sets still
+      # exists under the same name in docs/FLAGS.md at this release. What the
+      # changelog says changes for us between 0.7.0 and 0.13.8:
+      #   0.11.9  a silent engine under memory compaction is now taken down and
+      #           restarted; amdgpu.noretry=0 is named as harmful under pressure
+      #           (we dropped it on 2026-09-13, see below).
+      #   0.12.1  bring-your-own-GGUF repacks third-party GGUFs; `convert` writes
+      #           a GGUF as an .hgn once. This is the serving path for a grafted
+      #           n-gram table (friday-today ENGRAM-REPORT-2026-09-25.md).
+      #   0.13.1  the front end probes the engine's context at start; a failed
+      #           probe can no longer shrink the context below HALOGEN_CTX.
+      #   0.13.2  amdgpu.gttsize and ttm.pages_limit are measured as not
+      #           required on a 128 GB machine; our gttsize line stays until
+      #           measured here.
+      #   0.13.3  HALOGEN_CACHE_BRANCHES (default 2) now derives the prompt
+      #           cache's entry cap; a conversation can no longer lose its
+      #           history to another's cache entry.
+      #   0.13.4  HALOGEN_EOS_GUARD (default on): an agent turn that would end
+      #           empty keeps the end-of-turn as text. Behaviour change on
+      #           tool-call loops; /health.end_of_turn_guard reports it.
+      #   0.13.8  logprobs and top_logprobs at temperature 0 on the first token.
+      default = "ghcr.io/peonist-ai/halogen-flash-server@sha256:6e626c979d536ab1edb07898e278be6686afd353758ea268817457f801d687dd";
+      description = "OCI image reference (release 0.13.8 by digest).";
     };
 
     artifact = lib.mkOption {

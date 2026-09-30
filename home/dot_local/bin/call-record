@@ -28,9 +28,12 @@ RATE=48000
 WAKE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/speech-wake"
 WAKE_MARKER="$WAKE_DIR/call-record"
 
+# The speech-wake listener was removed on 2026-09-30. The marker directory keeps
+# its old name because speech-play (pkgs/speech-session/play.py) still reads
+# the call-record marker there to hold playback during a call, and the
+# listener-ack wait below returns at once when no listener lock exists.
 # Presence inhibits waking. An atomic new epoch on entry AND exit invalidates
 # buffered PCM/detector state even if a listener misses a short marker lifetime.
-# The listener also checks CURRENT for recordings begun by older versions.
 bump_wake_epoch() {
     local temporary
     temporary=$(mktemp "$WAKE_DIR/.epoch.XXXXXX")

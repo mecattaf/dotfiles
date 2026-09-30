@@ -1,47 +1,4 @@
 {
-  "parakeet-tdt-0.6b-v3-onnx": {
-    "kind": "model",
-    "maker": "NVIDIA / istupakov",
-    "quantization": "FP32",
-    "notes": "Resident coordinator MIGraphX dictation. Imported existing Voxtype-acquired files into NAS, verified against pinned upstream objects; no model download at service startup.",
-    "source": {
-      "hfUrl": "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx",
-      "revision": "8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce",
-      "primary": "encoder-model.onnx",
-      "files": [
-        {
-          "path": "config.json",
-          "bytes": 97,
-          "oid": "666903c76b9798caf2c210afd4f6cd60b08a8dbf9800ec8d7a3bc0d2148ac466",
-          "hash": "sha256-ZmkDx2uXmMrywhCv1PbNYLCKjb+YAOyNejvA0hSKxGY="
-        },
-        {
-          "path": "decoder_joint-model.onnx",
-          "bytes": 72520893,
-          "oid": "e978ddf6688527182c10fde2eb4b83068421648985ef23f7a86be732be8706c1",
-          "hash": "sha256-6Xjd9miFJxgsEP3i60uDBoQhZImF7yP3qGvnMr6HBsE="
-        },
-        {
-          "path": "encoder-model.onnx",
-          "bytes": 41770866,
-          "oid": "98a74b21b4cc0017c1e7030319a4a96f4a9506e50f0708f3a516d02a77c96bb1",
-          "hash": "sha256-mKdLIbTMABfB5wMDGaSpb0qVBuUPBwjzpRbQKnfJa7E="
-        },
-        {
-          "path": "encoder-model.onnx.data",
-          "bytes": 2435420160,
-          "oid": "9a22d372c51455c34f13405da2520baefb7125bd16981397561423ed32d24f36",
-          "hash": "sha256-miLTcsUUVcNPE0BdolILrvtxJb0WmBOXVhQj7TLSTzY="
-        },
-        {
-          "path": "vocab.txt",
-          "bytes": 93939,
-          "oid": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d",
-          "hash": "sha256-1YVEZ56kvGrFY9H1Ret9R0vWz6Rn8KbiwdwcfTfjw10="
-        }
-      ]
-    }
-  },
   "qwen-k2so-midway-b": {
     "kind": "template",
     "maker": "Tom / local reference preparation",
@@ -99,58 +56,6 @@
           "bytes": 571,
           "oid": "987a995019fc9a9087b460fc8164c6f3f02e42349c16432cc1946c3ff9abb498",
           "hash": "sha256-mHqZUBn8mpCHtGD8gWTG8/AuQjScFkMswZRsP/mrtJg="
-        }
-      ]
-    }
-  },
-  "openwakeword-baker-compat-v051": {
-    "kind": "model",
-    "maker": "openWakeWord",
-    "notes": "NAS Library acquisition pinned by exact content hash. Gemma rows remain parked evaluation assets.",
-    "source": {
-      "hfUrl": "https://github.com/dscripka/openWakeWord",
-      "revision": "v0.5.1",
-      "primary": "melspectrogram.onnx",
-      "files": [
-        {
-          "path": "melspectrogram.onnx",
-          "bytes": 1087958,
-          "oid": "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f",
-          "hash": "sha256-uisOD4t7h1NposicsTNg/1O6xDbyiVzO2fR5+mXrF28=",
-          "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx"
-        },
-        {
-          "path": "embedding_model.onnx",
-          "bytes": 1326578,
-          "oid": "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f",
-          "hash": "sha256-cNFkKQwdCV0dTuFJvF4AVDJQpzFrWfMdBWz/e9MHXB8=",
-          "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx"
-        },
-        {
-          "path": "hey_mycroft_v0.1.onnx",
-          "bytes": 857691,
-          "oid": "c2a311e8fa1338de89c31b3b46dc4dffd4af2f9a8d6ddead48893c2d301b1f18",
-          "hash": "sha256-wqMR6PoTON6Jwxs7RtxN/9SvL5qNbd6tSIk8LTAbHxg=",
-          "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/hey_mycroft_v0.1.onnx"
-        }
-      ]
-    }
-  },
-  "openwakeword-alexa-v051": {
-    "kind": "model",
-    "maker": "openWakeWord",
-    "notes": "NAS Library acquisition pinned by exact content hash. Gemma rows remain parked evaluation assets.",
-    "source": {
-      "hfUrl": "https://github.com/dscripka/openWakeWord",
-      "revision": "v0.5.1",
-      "primary": "alexa_v0.1.onnx",
-      "files": [
-        {
-          "path": "alexa_v0.1.onnx",
-          "bytes": 854246,
-          "oid": "6ff566a01d12670e8d9e3c59da32651db1575d17272a601b7f8a39283dfbae3e",
-          "hash": "sha256-b/VmoB0SZw6NnjxZ2jJlHbFXXRcnKmAbf4o5KD37rj4=",
-          "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/alexa_v0.1.onnx"
         }
       ]
     }

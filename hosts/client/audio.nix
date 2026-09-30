@@ -5,10 +5,10 @@
 # election. Moved here from hosts/coordinator/audio.nix on 2026-09-11 with the
 # webcam itself: the coordinator's USB peripherals live on the Thunderbolt
 # dock the thin client sits on now (R-7), and the coordinator keeps only its
-# Ryzen HD Audio and Radeon HDMI — no real mic. Dictation therefore records
-# HERE and transcribes there: speech-dictate and Alexa capture this exact USB
-# node and stream PCM over SSH to coordinator Parakeet (home/speech.nix).
-# The voice path never follows a changed default-source selection.
+# Ryzen HD Audio and Radeon HDMI — no real mic. Call recording therefore
+# captures this exact USB node (dictation, the Alexa wake listener and
+# Parakeet were removed on 2026-09-30). The voice path never follows a changed
+# default-source selection.
 #
 # The node name carries the unit's USB serial, so the rule is the same on any
 # host the camera is plugged into. The runtime repair below is PER HOST

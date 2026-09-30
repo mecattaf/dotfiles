@@ -86,10 +86,6 @@
   ];
 
   networking.hostName = "client";
-  services.local-models.artifacts = [
-    "openwakeword-baker-compat-v051"
-    "openwakeword-alexa-v051"
-  ];
 
   # agenix delivery ON. The host key on the box IS the 2026-09-07 fleet key
   # (read live 2026-09-11, equals the registry row), so the delivered tier
@@ -182,15 +178,6 @@
   # transient unit surfaced as its own episode — and left this user manager's
   # unit failures unwatched. Name the real uid.
   myFailureSurfacing.userManagerUids = [ 1001 ];
-
-  # Fleet candidate adoption (#354): MANUAL. R-18 — the client is activated
-  # only by Tom's own `nixos-rebuild switch`. It fetches and verifies its
-  # signed candidate hourly and reports it (`update-adopt status --json`),
-  # and never realises or activates anything.
-  myUpdateAdopt = {
-    enable = true;
-    policy = "manual";
-  };
 
   # ── the Thunderbolt 3 dock ─────────────────────────────────────────────────
   # This is the docking host: the coordinator's webcam/mic, Sound Blaster,

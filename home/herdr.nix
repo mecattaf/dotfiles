@@ -68,29 +68,14 @@ let
   hostName = osConfig.networking.hostName;
   system = pkgs.stdenv.hostPlatform.system;
   upstream = inputs.herdr.packages.${system}.herdr;
-  # Hold-Space dictation lives in pkgs/herdr-speech (our patch over upstream).
-  # Off, herdr is upstream unchanged and ignores the projector's
-  # HERDR_DICTATION_COMMAND, so the feature is inert with no other edit.
-  herdr =
-    if config.myHerdr.holdSpaceDictation.enable then
-      import ../pkgs/herdr-speech {
-        inherit upstream;
-        source = inputs.herdr;
-      }
-    else
-      upstream;
+  # Upstream herdr, unpatched. Hold-Space dictation (pkgs/herdr-speech) was
+  # removed with speech-wake and Parakeet on 2026-09-30.
+  herdr = upstream;
 
   repoDir = config.rawDotfiles.repoDir; # home/raw-dotfiles-guard.nix
   link = p: config.lib.file.mkOutOfStoreSymlink "${repoDir}/home/${p}";
 in
 {
-  options.myHerdr.holdSpaceDictation.enable = lib.mkEnableOption ''
-    native Herdr hold-Space dictation (pkgs/herdr-speech: hold Space in a pane,
-    speech-dictate captures, Parakeet on the coordinator transcribes, the text
-    is pasted without Enter). OFF since 2026-09-26 (Tom: Parakeet ate the
-    usage); the patch and speech-dictate stay in the repo. Set it on the
-    client and the coordinator together, since the projector runs on both'';
-
   config = {
     # `herdr` client + server on PATH, every interactive host.
     home.packages = [ herdr ];

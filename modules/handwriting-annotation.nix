@@ -1,12 +1,21 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.services.handwriting-annotation;
   package = pkgs.callPackage ../pkgs/handwriting-annotation { };
   intakePackage = pkgs.callPackage ../pkgs/handwriting-intake { };
-in {
+in
+{
   options.services.handwriting-annotation.enable = lib.mkEnableOption "private handwriting annotation";
   config = lib.mkIf cfg.enable {
-    environment.systemPackages = [ package intakePackage ];
+    environment.systemPackages = [
+      package
+      intakePackage
+    ];
     systemd.tmpfiles.rules = [ "d /var/lib/handwriting-intake 0700 tom users -" ];
     networking.hosts."127.0.0.1" = [ "handwriting.internal" ];
     networking.firewall.interfaces.wlp192s0.allowedTCPPorts = [ 443 ];
@@ -35,6 +44,17 @@ in {
         ReadWritePaths = [ "/var/lib/handwriting-annotation" ];
       };
     };
+    # ── backups: hand-run, no timers (Tom, 2026-09-30, ruling D17) ──────────
+    # No scheduled agent work is declared in dotfiles, so the two daily
+    # snapshot timers are gone; both services stay and are part of the manual
+    # run until the factory (substrate) owns it:
+    #   sudo systemctl start handwriting-annotation-backup handwriting-intake-backup
+    # The two functions Tom wants preserved through that move:
+    #   (A) his own corrections made via handwriting.internal are saved and
+    #       feed back, so the recogniser keeps improving from them;
+    #   (B) the written contents of each capture become a Markdown file in
+    #       ~/today that he references during the day.
+    #
     # Application-consistent export into the existing NAS documents tier.
     # That subvolume already has btrbk snapshots and the house cold mirror;
     # SQLite's online backup API is used by the app, never a copy of live WAL.
@@ -53,7 +73,10 @@ in {
         PrivateTmp = true;
         ProtectSystem = "strict";
         ProtectHome = "read-only";
-        ReadWritePaths = [ "/var/lib/handwriting-annotation" "/mnt/nas/documents" ];
+        ReadWritePaths = [
+          "/var/lib/handwriting-annotation"
+          "/mnt/nas/documents"
+        ];
         ExecStart = pkgs.writeShellScript "handwriting-annotation-backup" ''
           set -eu
           # Trigger the automount, then refuse an unmounted local lookalike.
@@ -65,15 +88,6 @@ in {
           exec ${package}/bin/handwriting-annotation \
             --state /var/lib/handwriting-annotation snapshot --output "$destination/$stamp"
         '';
-      };
-    };
-    systemd.timers.handwriting-annotation-backup = {
-      description = "Daily handwriting annotation snapshot";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "daily";
-        Persistent = true;
-        RandomizedDelaySec = "15m";
       };
     };
     # Manual one-capture pilot: installing the CLI does not scan or OCR the inbox.
@@ -93,7 +107,10 @@ in {
         PrivateTmp = true;
         ProtectSystem = "strict";
         ProtectHome = "read-only";
-        ReadWritePaths = [ "/var/lib/handwriting-intake" "/mnt/nas/documents" ];
+        ReadWritePaths = [
+          "/var/lib/handwriting-intake"
+          "/mnt/nas/documents"
+        ];
         Restart = "on-failure";
         RestartSec = "5m";
         ExecStart = pkgs.writeShellScript "handwriting-intake-backup" ''
@@ -106,15 +123,6 @@ in {
           exec ${intakePackage}/bin/handwriting-intake \
             --state /var/lib/handwriting-intake snapshot --output "$destination/$stamp"
         '';
-      };
-    };
-    systemd.timers.handwriting-intake-backup = {
-      description = "Daily Huion intake evidence snapshot";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "daily";
-        Persistent = true;
-        RandomizedDelaySec = "15m";
       };
     };
     services.caddy.virtualHosts."http://handwriting.internal".extraConfig = ''
