@@ -180,6 +180,7 @@ class SeatsFixture:
                "SEATS_PEER_CACHE_DIR": str(self.peer),
                "SEATS_QWEN_HOLD": str(self.state / "qwen-hold.json"),
                "SEATS_QWEN_KEY_FILE": str(self.state / "no-such-key"),
+               "SEATS_OPENROUTER_KEY_FILE": str(self.state / "no-such-openrouter-key"),
                "PYTHONDONTWRITEBYTECODE": "1",
                "NO_COLOR": "1"}
         env.pop("XDG_RUNTIME_DIR", None)   # never touch the caller's live cache
@@ -238,8 +239,8 @@ class SeatsTest(unittest.TestCase):
     def test_every_seat_produces_exactly_one_row(self):
         report, seats = self.box.report()
         self.assertEqual(report["schema_version"], "seat-capacity/1")
-        self.assertEqual(len(report["seats"]), 7)
-        self.assertEqual(len(seats), 7, "seat ids must be unique")
+        self.assertEqual(len(report["seats"]), 9)
+        self.assertEqual(len(seats), 9, "seat ids must be unique")
         for seat in report["seats"]:
             self.assertIn("state", seat)
             self.assertIn(seat["grade"],
@@ -596,7 +597,7 @@ class SeatsTest(unittest.TestCase):
 
         jsonl = self.box.run("--jsonl")
         rows = [json.loads(line) for line in jsonl.stdout.splitlines()]
-        self.assertEqual(len(rows), 7)
+        self.assertEqual(len(rows), 9)
         self.assertTrue(all("generated_at" in row for row in rows))
 
     def test_only_filters_by_id_and_by_provider(self):
@@ -692,3 +693,100 @@ class CodexLivePayloadTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OpenRouterRowTest(unittest.TestCase):
+    """The OpenRouter rows, from captured numbers (the endpoints cannot run hermetically).
+
+    Pins: the soft cap reads spent at used >= cap; the larger of the key's and
+    the account's usage is the spend; the cap never promises more than the key
+    or the account can pay; the free quota resets at 00:00 UTC; a missing key is
+    unauth (the pusher then marks the seat auth-failed and the factory refuses
+    at once); no key material reaches a row.
+    """
+
+    def setUp(self):
+        spec = importlib.util.spec_from_loader(
+            "seats_mod_or", importlib.machinery.SourceFileLoader("seats_mod_or", SCRIPT))
+        self.mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.mod)
+        self.paid = next(s for s in self.mod.DEFAULT_SEATS if s["id"] == "openrouter")
+        self.free = next(s for s in self.mod.DEFAULT_SEATS if s["id"] == "openrouter-free")
+        self.cfg = {"cap_usd": 12.0, "baseline_usd": 0.0, "source": "test"}
+
+    def reading(self, usage=0.0, total_usage=0.0, total_credits=40.0, limit_remaining=40.0,
+                free_used=0.0, free_limit=1000.0):
+        return {"key": {"usage": usage, "limit": 40.0, "limit_remaining": limit_remaining,
+                        "usage_daily": usage, "free_used": free_used, "free_limit": free_limit,
+                        "free_remaining": free_limit - free_used},
+                "credits": {"total_credits": total_credits, "total_usage": total_usage},
+                "credits_error": ""}
+
+    def row(self, spec, reading, cfg=None, error=None):
+        return self.mod.openrouter_row(spec, reading, 0.0, error, cfg or self.cfg, "/run/agenix/openrouter-token")
+
+    def test_the_soft_cap_spends_the_seat(self):
+        open_row = self.row(self.paid, self.reading(usage=3.0, total_usage=3.0))
+        self.assertEqual(open_row["state"], "open")
+        self.assertEqual(open_row["grade"], "MEASURED")
+        self.assertEqual(open_row["credits"]["unit"], "usd")
+        self.assertEqual(open_row["credits"]["limit"], 12.0)
+        self.assertEqual(open_row["credits"]["used"], 3.0)
+        self.assertIsNone(open_row["credits"]["resets_at"])
+        self.assertEqual(open_row["credits"]["counter"], "provider")
+        spent = self.row(self.paid, self.reading(usage=12.0, total_usage=12.0))
+        self.assertEqual(spent["state"], "spent")
+        self.assertFalse(spent["usable"])
+        self.assertEqual(spent["free_at"], "", "a prepaid balance never resets")
+        tight = self.row(self.paid, self.reading(usage=10.0, total_usage=10.0))
+        self.assertEqual(tight["state"], "tight")
+
+    def test_the_larger_usage_and_the_baseline(self):
+        row = self.row(self.paid, self.reading(usage=1.0, total_usage=5.0))
+        self.assertEqual(row["credits"]["used"], 5.0)
+        row = self.row(self.paid, self.reading(usage=15.0, total_usage=15.0),
+                       cfg={"cap_usd": 12.0, "baseline_usd": 10.0, "source": "test"})
+        self.assertEqual(row["credits"]["used"], 5.0)
+        self.assertEqual(row["state"], "open")
+
+    def test_the_cap_never_exceeds_what_can_be_paid(self):
+        row = self.row(self.paid, self.reading(usage=38.0, total_usage=38.0, limit_remaining=2.0),
+                       cfg={"cap_usd": 100.0, "baseline_usd": 0.0, "source": "test"})
+        self.assertEqual(row["credits"]["limit"], 40.0)
+        self.assertEqual(row["credits"]["remaining"], 2.0)
+
+    def test_the_free_quota_is_daily(self):
+        row = self.row(self.free, self.reading(free_used=10.0))
+        self.assertEqual(row["credits"]["unit"], "requests")
+        self.assertEqual(row["credits"]["limit"], 1000.0)
+        reset = self.mod.parse_ts(row["credits"]["resets_at"])
+        self.assertEqual((reset.hour, reset.minute, reset.second), (0, 0, 0))
+        self.assertGreater(reset, NOW)
+        self.assertLessEqual(reset - NOW, timedelta(days=1))
+        spent = self.row(self.free, self.reading(free_used=1000.0))
+        self.assertEqual(spent["state"], "spent")
+        self.assertEqual(spent["free_at"], row["credits"]["resets_at"])
+
+    def test_no_key_is_unauth_and_an_outage_is_unknown(self):
+        self.assertEqual(self.row(self.paid, None, error="no api key on this box")["state"], "unauth")
+        self.assertEqual(self.row(self.paid, None, error="HTTP 401 Unauthorized: {}")["state"], "unauth")
+        down = self.row(self.paid, None, error="unreachable: timed out")
+        self.assertEqual((down["state"], down["grade"]), ("unknown", "UNKNOWN"))
+        self.assertNotIn("credits", down)
+
+    def test_the_cap_is_configurable(self):
+        os.environ["SEATS_OPENROUTER_CAP_USD"] = "5"
+        try:
+            self.assertEqual(self.mod.openrouter_config()["cap_usd"], 5.0)
+        finally:
+            del os.environ["SEATS_OPENROUTER_CAP_USD"]
+        self.assertEqual(self.mod.openrouter_config()["cap_usd"], 12.0)
+
+    def test_the_offline_rows_hold_no_number(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            box = SeatsFixture(pathlib.Path(tmp))
+            _, seats = box.report("--only", "openrouter")
+            self.assertEqual(sorted(seats), ["openrouter", "openrouter-free"])
+            for row in seats.values():
+                self.assertEqual(row["state"], "unauth")
+                self.assertNotIn("credits", row)
