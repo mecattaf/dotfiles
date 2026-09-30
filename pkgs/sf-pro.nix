@@ -17,7 +17,11 @@
 # timer was deleted on 2026-09-30 (no scheduled agent work in dotfiles), so a
 # NAS-side build needs it `nix store add`ed by hand first. The same applies to
 # ./sfmono-liga.nix.
-{ stdenvNoCC, requireFile, zstd }:
+{
+  stdenvNoCC,
+  requireFile,
+  zstd,
+}:
 
 stdenvNoCC.mkDerivation {
   pname = "sf-pro";

@@ -50,8 +50,7 @@ let
   enabled = name: config.services.${name}.enable or false;
 
   roles =
-    lib.optional (enabled "halogen") "halogen"
-    ++ lib.optional (host == "coordinator") "attention";
+    lib.optional (enabled "halogen") "halogen" ++ lib.optional (host == "coordinator") "attention";
 
   profile = {
     name = profileNames.${host} or "unprofiled";

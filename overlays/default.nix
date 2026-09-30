@@ -31,7 +31,9 @@ final: prev: {
   mactahoe-gtk-theme = final.callPackage ../pkgs/mactahoe-gtk-theme.nix { };
   # the same source build recoloured to claude.ai's light/dark tokens, for the
   # theme switcher's claude-dark / claude-light (home/themes/, docs/theme-switcher-2026-09-17.md)
-  mactahoe-claude-gtk-theme = final.callPackage ../pkgs/mactahoe-gtk-theme.nix { variant = "claude"; };
+  mactahoe-claude-gtk-theme = final.callPackage ../pkgs/mactahoe-gtk-theme.nix {
+    variant = "claude";
+  };
   mactahoe-icon-theme = final.callPackage ../pkgs/mactahoe-icon-theme.nix { };
 
   # google/ax — the Kubernetes control plane for agent Tasks (v0.3.0, pinned by
@@ -73,7 +75,6 @@ final: prev: {
   # end to end — render, quiet hours, queue guard, printer-sourced receipts.
   # Replaces paper-intake (paper-print-flush). See home/paper.nix.
   paper-daemon = final.callPackage ../pkgs/paper-daemon { };
-
 
   # CLI-Anything — pinned cli-hub Python app plus immutable Codex/Claude/Pi
   # integrations. Upstream has no flake; see modules/cli-anything.nix.

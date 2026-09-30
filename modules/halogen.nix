@@ -184,7 +184,9 @@ let
       case "$choice" in
         ${lib.concatMapStringsSep " | " (n: "${n}") ([ "flash" ] ++ alternateNames ++ [ "off" ])}) ;;
         *)
-          echo "usage: halogen-switch <${lib.concatStringsSep "|" ([ "flash" ] ++ alternateNames ++ [ "off" ])}>" >&2
+          echo "usage: halogen-switch <${
+            lib.concatStringsSep "|" ([ "flash" ] ++ alternateNames ++ [ "off" ])
+          }>" >&2
           echo "Stops whichever Halogen server is resident and starts the named one (a cold load: minutes); off stops them all." >&2
           exit 64
           ;;

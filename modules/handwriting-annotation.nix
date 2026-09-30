@@ -1,12 +1,21 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.services.handwriting-annotation;
   package = pkgs.callPackage ../pkgs/handwriting-annotation { };
   intakePackage = pkgs.callPackage ../pkgs/handwriting-intake { };
-in {
+in
+{
   options.services.handwriting-annotation.enable = lib.mkEnableOption "private handwriting annotation";
   config = lib.mkIf cfg.enable {
-    environment.systemPackages = [ package intakePackage ];
+    environment.systemPackages = [
+      package
+      intakePackage
+    ];
     systemd.tmpfiles.rules = [ "d /var/lib/handwriting-intake 0700 tom users -" ];
     networking.hosts."127.0.0.1" = [ "handwriting.internal" ];
     networking.firewall.interfaces.wlp192s0.allowedTCPPorts = [ 443 ];
@@ -64,7 +73,10 @@ in {
         PrivateTmp = true;
         ProtectSystem = "strict";
         ProtectHome = "read-only";
-        ReadWritePaths = [ "/var/lib/handwriting-annotation" "/mnt/nas/documents" ];
+        ReadWritePaths = [
+          "/var/lib/handwriting-annotation"
+          "/mnt/nas/documents"
+        ];
         ExecStart = pkgs.writeShellScript "handwriting-annotation-backup" ''
           set -eu
           # Trigger the automount, then refuse an unmounted local lookalike.
@@ -95,7 +107,10 @@ in {
         PrivateTmp = true;
         ProtectSystem = "strict";
         ProtectHome = "read-only";
-        ReadWritePaths = [ "/var/lib/handwriting-intake" "/mnt/nas/documents" ];
+        ReadWritePaths = [
+          "/var/lib/handwriting-intake"
+          "/mnt/nas/documents"
+        ];
         Restart = "on-failure";
         RestartSec = "5m";
         ExecStart = pkgs.writeShellScript "handwriting-intake-backup" ''

@@ -764,20 +764,23 @@
           # ON on the coordinator only, as a mkDefault consequence of
           # myAxFleet's harness role (modules/ax-fleet/default.nix); OFF on the
           # worker (inference role) and the client (no fleet role).
-          assert (hostCfg "coordinator").myAxFleet.enable && (hostCfg "coordinator").myAxFleet.role == "harness";
+          assert
+            (hostCfg "coordinator").myAxFleet.enable && (hostCfg "coordinator").myAxFleet.role == "harness";
           assert (hostCfg "coordinator").myAxClient.enable;
           assert builtins.all (host: (hostCfg host).myAxClient.enable == false) [
             "worker"
             "client"
           ];
-          assert builtins.all (
-            host:
-            !(builtins.elem pkgs.kubectl (hostCfg host).environment.systemPackages)
-            && !(builtins.elem pkgs.ax (hostCfg host).environment.systemPackages)
-          ) [
-            "worker"
-            "client"
-          ];
+          assert builtins.all
+            (
+              host:
+              !(builtins.elem pkgs.kubectl (hostCfg host).environment.systemPackages)
+              && !(builtins.elem pkgs.ax (hostCfg host).environment.systemPackages)
+            )
+            [
+              "worker"
+              "client"
+            ];
           assert !((hostCfg "nas") ? myAxClient);
           pkgs.runCommand "ax-client-topology" { } ''
             touch "$out"
@@ -831,16 +834,13 @@
           assert builtins.all (host: !((homeCfg host).systemd.user.sockets ? ax-conwip)) homeHosts;
           # no system-bus twin, on any host, including the NAS.
           assert builtins.all (
-            host:
-            !((hostCfg host).systemd.services ? ax-conwip) && !((hostCfg host).systemd.timers ? ax-conwip)
+            host: !((hostCfg host).systemd.services ? ax-conwip) && !((hostCfg host).systemd.timers ? ax-conwip)
           ) (homeHosts ++ [ "nas" ]);
           # no tmpfiles rule of its own while off, and nothing at all naming
           # the meters directory it only ever reads.
           assert builtins.all (
             host:
-            !(builtins.any (
-              r: nixpkgs.lib.hasInfix "ax-conwip" r
-            ) (homeCfg host).systemd.user.tmpfiles.rules)
+            !(builtins.any (r: nixpkgs.lib.hasInfix "ax-conwip" r) (homeCfg host).systemd.user.tmpfiles.rules)
           ) homeHosts;
           # the NAS has no home-manager, so it cannot carry the option.
           assert !((hostCfg "nas") ? home-manager);
@@ -1641,10 +1641,11 @@
           assert coordinatorHome.programs.atuin.settings.auto_sync;
           # Tally is gone (sunset 2026-09-30): no module, no option, no unit.
           assert !(coordinatorHome.services ? tally);
-          assert !(builtins.any (n: nixpkgs.lib.hasPrefix "tally" n) (
-            builtins.attrNames coordinatorHome.systemd.user.services
-            ++ builtins.attrNames coordinatorHome.systemd.user.timers
-          ));
+          assert
+            !(builtins.any (n: nixpkgs.lib.hasPrefix "tally" n) (
+              builtins.attrNames coordinatorHome.systemd.user.services
+              ++ builtins.attrNames coordinatorHome.systemd.user.timers
+            ));
           # speech-wake and Parakeet are gone (2026-09-30): no transcription
           # unit, no virtual mic, no Voxtype on any seat.
           assert !(coordinatorHome.systemd.user.services ? parakeet-service);
@@ -1752,10 +1753,19 @@
           ) displayHosts;
           assert (cfgOf "client").myDisplay.enable;
           assert (cfgOf "coordinator").myDisplay.enable;
-          assert builtins.all (h:
-            builtins.elem pkgs.llm-agents.claude-desktop (self.nixosConfigurations.${h}.config.home-manager.users.tom).home.packages
-            && builtins.elem pkgs.llm-agents.chatgpt (self.nixosConfigurations.${h}.config.home-manager.users.tom).home.packages
-          ) [ "coordinator" "client" ];
+          assert builtins.all
+            (
+              h:
+              builtins.elem pkgs.llm-agents.claude-desktop
+                (self.nixosConfigurations.${h}.config.home-manager.users.tom).home.packages
+              &&
+                builtins.elem pkgs.llm-agents.chatgpt
+                  (self.nixosConfigurations.${h}.config.home-manager.users.tom).home.packages
+            )
+            [
+              "coordinator"
+              "client"
+            ];
           assert !(cfgOf "worker").myDisplay.enable;
           assert !(cfgOf "nas").myDisplay.enable;
           # The thin client (2026-09-11): Tom's seat, so niri and greetd are
@@ -1785,9 +1795,10 @@
           assert !(clientHome.systemd.user.services ? parakeet-service);
           assert !(clientHome.systemd.user.services ? speech-wake);
           assert !(builtins.any (p: nixpkgs.lib.getName p == "dictate-hold") clientHome.home.packages);
-          assert !(nixpkgs.lib.hasInfix "HERDR_DICTATION_COMMAND" (
-            builtins.readFile ./home/dot_local/bin/herdr-projector
-          ));
+          assert
+            !(nixpkgs.lib.hasInfix "HERDR_DICTATION_COMMAND" (
+              builtins.readFile ./home/dot_local/bin/herdr-projector
+            ));
           assert !(clientHome.systemd.user.services ? herdr);
           assert builtins.any (p: nixpkgs.lib.getName p == "herdr") clientHome.home.packages;
           assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") clientHome.home.packages);
@@ -1796,8 +1807,7 @@
           assert !(clientHome.systemd.user.services ? dcal-daemon);
           assert coordinatorHome.systemd.user.services ? dcal-daemon;
           # Physical-session VNC stays retired on both seats.
-          assert
-            !(clientHome.xdg.dataFile ? "remmina/coordinator.remmina");
+          assert !(clientHome.xdg.dataFile ? "remmina/coordinator.remmina");
           assert !(coordinatorHome.xdg.dataFile ? "remmina/client.remmina");
           assert
             !builtins.elem 5900 (
@@ -2698,23 +2708,45 @@
           # and the coordinator's two desktop memory bounds (Flash's KV pool,
           # the 27B's prompt-cache budget).
           assert
-            removeAttrs worker.virtualisation.oci-containers.containers.halogen [ "autoStart" "environment" ]
-            == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen [ "autoStart" "environment" ];
+            removeAttrs worker.virtualisation.oci-containers.containers.halogen [
+              "autoStart"
+              "environment"
+            ] == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen [
+              "autoStart"
+              "environment"
+            ];
           assert
-            removeAttrs worker.virtualisation.oci-containers.containers.halogen.environment [ "HALOGEN_KV_POOL_POSITIONS" ]
-            == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen.environment [ "HALOGEN_KV_POOL_POSITIONS" ];
-          assert !(worker.virtualisation.oci-containers.containers.halogen.environment ? HALOGEN_KV_POOL_POSITIONS);
-          assert coordinator.virtualisation.oci-containers.containers.halogen.environment.HALOGEN_KV_POOL_POSITIONS == "262144";
+            removeAttrs worker.virtualisation.oci-containers.containers.halogen.environment [
+              "HALOGEN_KV_POOL_POSITIONS"
+            ] == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen.environment [
+              "HALOGEN_KV_POOL_POSITIONS"
+            ];
+          assert
+            !(worker.virtualisation.oci-containers.containers.halogen.environment ? HALOGEN_KV_POOL_POSITIONS);
+          assert
+            coordinator.virtualisation.oci-containers.containers.halogen.environment.HALOGEN_KV_POOL_POSITIONS
+            == "262144";
           assert
             removeAttrs worker.virtualisation.oci-containers.containers.halogen-qwen38-27b [ "environment" ]
-            == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b [ "environment" ];
-          assert !(worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment ? HALOGEN_CACHE_MB);
-          assert coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_CACHE_MB == "8192";
+            == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b [
+              "environment"
+            ];
+          assert
+            !(
+              worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment ? HALOGEN_CACHE_MB
+            );
+          assert
+            coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_CACHE_MB
+            == "8192";
           # halogen-server 0.1.4 by digest; never a runtime download.
           assert
             worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.image
             == "ghcr.io/peonist-ai/halogen@sha256:dc0a39a0016d6cfc58a197978febaafdf8d28403f724ded6111d98b5fb7ac0ea";
-          assert !(coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment ? HALOGEN_DOWNLOAD);
+          assert
+            !(
+              coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment
+              ? HALOGEN_DOWNLOAD
+            );
           assert
             coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_TOKENIZER
             == "/models/tokenizer";
@@ -2748,7 +2780,8 @@
           assert builtins.attrNames worker.services.halogen.alternates == [ "qwen38-27b" ];
           assert builtins.attrNames coordinator.services.halogen.alternates == [ "qwen38-27b" ];
           assert !coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.autoStart;
-          assert coordinator.systemd.services.podman-halogen.conflicts == [ "podman-halogen-qwen38-27b.service" ];
+          assert
+            coordinator.systemd.services.podman-halogen.conflicts == [ "podman-halogen-qwen38-27b.service" ];
           assert worker.virtualisation.oci-containers.containers ? halogen-qwen38-27b;
           assert !worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.autoStart;
           assert nixpkgs.lib.hasPrefix "ghcr.io/peonist-ai/halogen@sha256:"
@@ -2876,17 +2909,23 @@
             coord = self.nixosConfigurations.coordinator.config;
             portal = name: coord.systemd.user.services.${name} or { };
           in
-          assert builtins.all (name:
-            if coord.myDisplay.enable then
-              !(builtins.elem "browser-desktop.service" ((portal name).partOf or [ ]))
-              && !(((portal name).unitConfig or { }) ? ConditionPathExists)
-              && !(((portal name).serviceConfig or { }) ? EnvironmentFile)
-            else
-              builtins.elem "browser-desktop.service" (portal name).partOf
-              && builtins.elem "browser-desktop.service" (portal name).after
-              && (portal name).serviceConfig.EnvironmentFile == "%t/browser-desktop/portal-environment"
-              && (portal name).unitConfig.ConditionPathExists == "%t/browser-desktop/portal-environment"
-          ) [ "xdg-desktop-portal" "xdg-desktop-portal-gtk" ];
+          assert builtins.all
+            (
+              name:
+              if coord.myDisplay.enable then
+                !(builtins.elem "browser-desktop.service" ((portal name).partOf or [ ]))
+                && !(((portal name).unitConfig or { }) ? ConditionPathExists)
+                && !(((portal name).serviceConfig or { }) ? EnvironmentFile)
+              else
+                builtins.elem "browser-desktop.service" (portal name).partOf
+                && builtins.elem "browser-desktop.service" (portal name).after
+                && (portal name).serviceConfig.EnvironmentFile == "%t/browser-desktop/portal-environment"
+                && (portal name).unitConfig.ConditionPathExists == "%t/browser-desktop/portal-environment"
+            )
+            [
+              "xdg-desktop-portal"
+              "xdg-desktop-portal-gtk"
+            ];
           assert builtins.elem "user@1000.service" coord.systemd.services.keyring-unlock-boot.partOf;
           assert builtins.elem "user@1000.service" coord.systemd.services.keyring-unlock-boot.wantedBy;
           pkgs.browser-desktop.tests.contract;

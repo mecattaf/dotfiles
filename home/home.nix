@@ -463,138 +463,136 @@ in
   # ---------------------------------------------------------------------------
   # user packages.
   # ---------------------------------------------------------------------------
-  home.packages =
-    with pkgs;
-    [
-      # browser
-      google-chrome
+  home.packages = with pkgs; [
+    # browser
+    google-chrome
 
-      # Anthropic woff2 + the @font-face sheet. Installed path is
-      # /etc/profiles/per-user/tom/share/webfonts/{woff2,css} — NOT
-      # ~/.nix-profile/share/webfonts. flake.nix sets
-      # home-manager.useUserPackages = true (with useGlobalPkgs = true), which
-      # routes home.packages through users.users.tom.packages; home-manager
-      # creates no ~/.nix-profile at all, and the one that exists on this box is
-      # an unrelated imperative `nix profile` holding only brave. Verified
-      # 2026-09-17 on five packages already in this list (eza, zoxide, glow,
-      # bat, fd): all five resolve under /etc/profiles/per-user/tom/bin and
-      # none under ~/.nix-profile/bin. Do not "correct" this back.
-      #
-      # NOT in fonts.packages: see the comment in modules/common.nix.
-      # home-manager's generated ~/.config/fontconfig/conf.d/10-hm-fonts.conf
-      # adds only <profile>/share/fonts and <profile>/lib/X11/fonts, so
-      # share/webfonts is never indexed and cannot contend with the installed
-      # TTFs (re-verified against the built package: 13 fc-list rows, all from
-      # the control TTF, zero woff2; adding share/webfonts yields 15 extra
-      # woff2 rows). This entry is also the only thing that pulls the
-      # derivation into a host closure, so attic caches it and the nightly
-      # builds it.
-      anthropic-webfonts
+    # Anthropic woff2 + the @font-face sheet. Installed path is
+    # /etc/profiles/per-user/tom/share/webfonts/{woff2,css} — NOT
+    # ~/.nix-profile/share/webfonts. flake.nix sets
+    # home-manager.useUserPackages = true (with useGlobalPkgs = true), which
+    # routes home.packages through users.users.tom.packages; home-manager
+    # creates no ~/.nix-profile at all, and the one that exists on this box is
+    # an unrelated imperative `nix profile` holding only brave. Verified
+    # 2026-09-17 on five packages already in this list (eza, zoxide, glow,
+    # bat, fd): all five resolve under /etc/profiles/per-user/tom/bin and
+    # none under ~/.nix-profile/bin. Do not "correct" this back.
+    #
+    # NOT in fonts.packages: see the comment in modules/common.nix.
+    # home-manager's generated ~/.config/fontconfig/conf.d/10-hm-fonts.conf
+    # adds only <profile>/share/fonts and <profile>/lib/X11/fonts, so
+    # share/webfonts is never indexed and cannot contend with the installed
+    # TTFs (re-verified against the built package: 13 fc-list rows, all from
+    # the control TTF, zero woff2; adding share/webfonts yields 15 extra
+    # woff2 rows). This entry is also the only thing that pulls the
+    # derivation into a host closure, so attic caches it and the nightly
+    # builds it.
+    anthropic-webfonts
 
-      # fish init + shell
-      eza
-      zoxide
-      starship
-      fzf
-      bat
-      ripgrep
-      fd
-      jq
-      yq-go
-      glow
+    # fish init + shell
+    eza
+    zoxide
+    starship
+    fzf
+    bat
+    ripgrep
+    fd
+    jq
+    yq-go
+    glow
 
-      # niri / wayland desktop tooling. xwayland-satellite: niri's X11 path — X11 apps
-      # and Chrome fallbacks need it on the session PATH.
-      xwayland-satellite
-      acpi
-      brightnessctl
-      playerctl
-      swaybg
-      wl-clipboard
-      cliphist
-      wl-gammarelay-rs
-      kanshi
-      grim
-      slurp
-      # annotates area/window screenshots (bin/screenshot)
-      satty
-      wf-recorder
-      wl-mirror
-      wmctrl
-      wtype
-      lisgd
-      ddcutil
-      cava
-      pamixer
-      pavucontrol
-      nwg-look
+    # niri / wayland desktop tooling. xwayland-satellite: niri's X11 path — X11 apps
+    # and Chrome fallbacks need it on the session PATH.
+    xwayland-satellite
+    acpi
+    brightnessctl
+    playerctl
+    swaybg
+    wl-clipboard
+    cliphist
+    wl-gammarelay-rs
+    kanshi
+    grim
+    slurp
+    # annotates area/window screenshots (bin/screenshot)
+    satty
+    wf-recorder
+    wl-mirror
+    wmctrl
+    wtype
+    lisgd
+    ddcutil
+    cava
+    pamixer
+    pavucontrol
+    nwg-look
 
-      # the python interpreter the niri helper scripts need
-      pythonForNiri
+    # the python interpreter the niri helper scripts need
+    pythonForNiri
 
-      # media / viewers
-      yt-dlp
-      aria2
-      mpv
-      imv
-      vlc
-      ffmpeg-full
-      ffmpegthumbnailer
+    # media / viewers
+    yt-dlp
+    aria2
+    mpv
+    imv
+    vlc
+    ffmpeg-full
+    ffmpegthumbnailer
 
-      # screen/game recording — exposes the vkcapture host layer + obs-gamecapture on PATH.
-      obs-studio-plugins.obs-vkcapture
+    # screen/game recording — exposes the vkcapture host layer + obs-gamecapture on PATH.
+    obs-studio-plugins.obs-vkcapture
 
-      # files / nautilus + open-any-terminal + archive GUI
-      nautilus
-      nautilus-open-any-terminal
-      xdg-terminal-exec
-      xarchiver
+    # files / nautilus + open-any-terminal + archive GUI
+    nautilus
+    nautilus-open-any-terminal
+    xdg-terminal-exec
+    xarchiver
 
-      # terminal
-      kitty
+    # terminal
+    kitty
 
-      # agent / dev tooling. A curated slice of the llm-agents.nix catalog
-      # (claude-code, ccusage, ck, claude-agent-acp, qmd, pi, codex, spec-kit) lands via
-      # llmAgentsSelected — see the allowlist buildEnv in the `let` block above.
-      # claude-code comes from there (newest, decoupled from nixpkgs); creds still
-      # seed via modules/secrets.nix, and DISABLE_UPDATES=1 keeps the native
-      # updater from clobbering ~/.local/bin.
-      llmAgentsSelected
-      # runtime-test masks live /run/user sockets during shell/compositor tests.
-      bubblewrap
-      # Upstream's minimal flake output: git-ai + git-og, while programs.git below
-      # remains the sole provider of the real git binary.
-      inputs.git-ai.packages.${pkgs.stdenv.hostPlatform.system}.minimal
-      huggingface-cli # metadata CLI; agenix authentication is coordinator-only
-      gh
-      google-cloud-sdk
-      gws # Google Workspace CLI (Gmail/Calendar/Drive/Sheets/Docs/...), Discovery-doc-backed
-      cloudflared
-      wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (coordinator-only cred, binary fleet-wide)
-      backlog-md # bespoke pkg via overlay — see pkgs/backlog-md.nix
-      pkgs.crm # vendored personal CRM CLI; data stays at its built-in notes path
-      pkgs.dcal # vendored calendar CLI; data lives under XDG, nothing in git
-      music-acquire # evidence-gated SoundCloud → YouTube → capture acquisition
-      uv # Astral Python pkg/project manager. "hot" overlay pkg — rides nixpkgs-fresh HEAD (flake.nix), so it stays latest independent of the main pin.
+    # agent / dev tooling. A curated slice of the llm-agents.nix catalog
+    # (claude-code, ccusage, ck, claude-agent-acp, qmd, pi, codex, spec-kit) lands via
+    # llmAgentsSelected — see the allowlist buildEnv in the `let` block above.
+    # claude-code comes from there (newest, decoupled from nixpkgs); creds still
+    # seed via modules/secrets.nix, and DISABLE_UPDATES=1 keeps the native
+    # updater from clobbering ~/.local/bin.
+    llmAgentsSelected
+    # runtime-test masks live /run/user sockets during shell/compositor tests.
+    bubblewrap
+    # Upstream's minimal flake output: git-ai + git-og, while programs.git below
+    # remains the sole provider of the real git binary.
+    inputs.git-ai.packages.${pkgs.stdenv.hostPlatform.system}.minimal
+    huggingface-cli # metadata CLI; agenix authentication is coordinator-only
+    gh
+    google-cloud-sdk
+    gws # Google Workspace CLI (Gmail/Calendar/Drive/Sheets/Docs/...), Discovery-doc-backed
+    cloudflared
+    wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (coordinator-only cred, binary fleet-wide)
+    backlog-md # bespoke pkg via overlay — see pkgs/backlog-md.nix
+    pkgs.crm # vendored personal CRM CLI; data stays at its built-in notes path
+    pkgs.dcal # vendored calendar CLI; data lives under XDG, nothing in git
+    music-acquire # evidence-gated SoundCloud → YouTube → capture acquisition
+    uv # Astral Python pkg/project manager. "hot" overlay pkg — rides nixpkgs-fresh HEAD (flake.nix), so it stays latest independent of the main pin.
 
-      # artifact system (md-artifact / presentation-beta / publish-artifact skills;
-      # knobs in modules/artifacts-defaults.nix). render = md→snapshot dir;
-      # view = bounded chrome --app window (rung 0, no publish); deck-init =
-      # scaffold reveal deck with nix-vendored assets (no CDN).
-      artifact-render
-      artifact-view
-      artifact-deck
+    # artifact system (md-artifact / presentation-beta / publish-artifact skills;
+    # knobs in modules/artifacts-defaults.nix). render = md→snapshot dir;
+    # view = bounded chrome --app window (rung 0, no publish); deck-init =
+    # scaffold reveal deck with nix-vendored assets (no CDN).
+    artifact-render
+    artifact-view
+    artifact-deck
 
-      # cursors (theme dep)
-      bibata-cursors
+    # cursors (theme dep)
+    bibata-cursors
 
-      # codecs/gstreamer plugins for thumbnailers + portals
-      gst_all_1.gstreamer
-      gst_all_1.gst-plugins-base
-      gst_all_1.gst-plugins-good
-      gst_all_1.gst-plugins-bad
-      libjxl
-    ];
+    # codecs/gstreamer plugins for thumbnailers + portals
+    gst_all_1.gstreamer
+    gst_all_1.gst-plugins-base
+    gst_all_1.gst-plugins-good
+    gst_all_1.gst-plugins-bad
+    libjxl
+  ];
 
   # nvim → implemented in ./nvim.nix (imported above).
 
