@@ -1,21 +1,5 @@
 {
   "nodes": {
-    "advisory-db": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1785173221,
-        "narHash": "sha256-S9GKKXql6KlBZM6lV2aTP1ZOzqDte31b8PfS9fDiWdI=",
-        "owner": "rustsec",
-        "repo": "advisory-db",
-        "rev": "0bfde9d6a469ae503f8a6147c2dd552856cd5999",
-        "type": "github"
-      },
-      "original": {
-        "owner": "rustsec",
-        "repo": "advisory-db",
-        "type": "github"
-      }
-    },
     "agenix": {
       "inputs": {
         "darwin": "darwin",
@@ -141,7 +125,6 @@
           "nixpkgs"
         ],
         "utils": [
-          "tally",
           "flake-utils"
         ]
       },
@@ -339,7 +322,7 @@
     },
     "flake-utils": {
       "inputs": {
-        "systems": "systems_4"
+        "systems": "systems_2"
       },
       "locked": {
         "lastModified": 1731533236,
@@ -358,7 +341,6 @@
     "git-ai": {
       "inputs": {
         "flake-utils": [
-          "tally",
           "flake-utils"
         ],
         "nixpkgs": [
@@ -414,27 +396,6 @@
         "owner": "nix-community",
         "repo": "home-manager",
         "rev": "079a3b5d1aa6a719920a51316253b7d6dd22738d",
-        "type": "github"
-      },
-      "original": {
-        "owner": "nix-community",
-        "repo": "home-manager",
-        "type": "github"
-      }
-    },
-    "home-manager_2": {
-      "inputs": {
-        "nixpkgs": [
-          "tally",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1784489491,
-        "narHash": "sha256-j9maqjx1T8+ljAVntAdSI5hSGCm77QNZz64JF1rJNu0=",
-        "owner": "nix-community",
-        "repo": "home-manager",
-        "rev": "3139deb8cafbe73b39b24451255b2fdd3426077e",
         "type": "github"
       },
       "original": {
@@ -499,7 +460,7 @@
         "bun2nix": "bun2nix",
         "flake-parts": "flake-parts",
         "nixpkgs": "nixpkgs",
-        "systems": "systems_2",
+        "systems": "systems_3",
         "treefmt-nix": "treefmt-nix"
       },
       "locked": {
@@ -562,7 +523,7 @@
           "nix-strix-halo",
           "nixpkgs"
         ],
-        "systems": "systems_3",
+        "systems": "systems_4",
         "treefmt-nix": "treefmt-nix_2"
       },
       "locked": {
@@ -886,6 +847,7 @@
         "agenix": "agenix",
         "deploy-rs": "deploy-rs",
         "disko": "disko",
+        "flake-utils": "flake-utils",
         "git-ai": "git-ai",
         "herdr": "herdr",
         "home-manager": "home-manager",
@@ -899,10 +861,7 @@
         "nixpkgs-go": "nixpkgs-go",
         "nixpkgs-paperless": "nixpkgs-paperless",
         "nixpkgs-stable": "nixpkgs-stable",
-        "piri": "piri",
-        "tally": "tally",
-        "tally-b": "tally-b",
-        "tally-lake": "tally-lake"
+        "piri": "piri"
       }
     },
     "rust-overlay": {
@@ -1040,62 +999,6 @@
         "owner": "nix-systems",
         "repo": "default",
         "type": "github"
-      }
-    },
-    "tally": {
-      "inputs": {
-        "advisory-db": "advisory-db",
-        "flake-utils": "flake-utils",
-        "home-manager": "home-manager_2",
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1788128154,
-        "narHash": "sha256-/eDzumQo2wfq0LCSTDOCCdU4NwSZE6lP9WhHYiKKK88=",
-        "owner": "mecattaf",
-        "repo": "tally.nix",
-        "rev": "62fac87cb92044c4c8c227e4c480550459ede3d8",
-        "type": "github"
-      },
-      "original": {
-        "owner": "mecattaf",
-        "repo": "tally.nix",
-        "type": "github"
-      }
-    },
-    "tally-b": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1789295562,
-        "narHash": "sha256-li26FayZfWbNKRBdie7TnQ41MFSglDYJEGZ1ZsZYuGw=",
-        "ref": "refs/heads/main",
-        "rev": "b3a040e423926c542d794736d3976ec514bad02f",
-        "revCount": 121,
-        "type": "git",
-        "url": "https://github.com/mecattaf/tally"
-      },
-      "original": {
-        "rev": "b3a040e423926c542d794736d3976ec514bad02f",
-        "type": "git",
-        "url": "https://github.com/mecattaf/tally"
-      }
-    },
-    "tally-lake": {
-      "locked": {
-        "lastModified": 1788818925,
-        "narHash": "sha256-akCLcSbleNs9wVW8cTK+nPxVmr9tlVilnMHdJ6sqDs8=",
-        "ref": "refs/heads/main",
-        "rev": "897f9015e7c22304c3bfd7ca2ec990b294966ded",
-        "revCount": 230,
-        "type": "git",
-        "url": "https://github.com/mecattaf/tally-ts-sdk"
-      },
-      "original": {
-        "rev": "897f9015e7c22304c3bfd7ca2ec990b294966ded",
-        "type": "git",
-        "url": "https://github.com/mecattaf/tally-ts-sdk"
       }
     },
     "therock-src-7-15-gfx1151-base-half-011b45bd": {

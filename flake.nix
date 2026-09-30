@@ -147,7 +147,7 @@
     git-ai = {
       url = "github:git-ai-project/git-ai";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.flake-utils.follows = "tally/flake-utils";
+      inputs.flake-utils.follows = "flake-utils";
     };
 
     # llm-agents.nix — numtide's daily-rebuilt catalog of ~100 AI coding agents
@@ -164,161 +164,20 @@
     # modules/common.nix). home/home.nix installs the entire set via buildEnv.
     llm-agents.url = "github:numtide/llm-agents.nix";
 
-    # tally — contention and proof for agent sessions (a Rust workspace: one
-    # daemon + CLI, embedded taskchampion, witness ledger). THE packaging
-    # channel is this flake input + `homeManagerModules.tally`: the module is
-    # load-bearing — it generates the systemd user units, the producer
-    # timers/services and the build-time `checkedConfig` validator, which a bare
-    # pkg can't deliver; NO bespoke pkgs/tally.nix. home/tally.nix imports the
-    # module and enables the daemon on the coordinator only. Other hosts leave
-    # the module off. Composes onto whatever terminal substrate the dotfiles own —
-    # tally ships none of it. follows nixpkgs so the Rust build resolves against
-    # our one pin rather than dragging a second nixpkgs into the lock. `nix flake
-    # update tally` bumps to the latest pushed commit (and, post-release, the tag).
-    #
-    # Repo is mecattaf/tally.nix (NOT mecattaf/tally, which is the pre-rebuild
-    # spec history). It is public, so use the native `github:` fetcher: fleet
-    # auto-upgrades need no GitHub credential helper or access token.
-    # tally's one law: contention and proof, never content or control.
-    tally = {
-      url = "github:mecattaf/tally.nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    # flake-utils — shared by git-ai and deploy-rs through `follows`. It used to
+    # be reached as "tally/flake-utils"; the Tally inputs (tally, tally-b,
+    # tally-lake) were removed with the Tally sunset on 2026-09-30, and this
+    # node keeps the exact rev that input had locked.
+    flake-utils.url = "github:numtide/flake-utils";
 
-    # tally-b — the REWRITE kernel (github.com/mecattaf/tally, the repo whose
-    # pre-rebuild spec history the `tally` comment above names): the Rust
-    # workspace of TALLY-SPEC §2.1 — admission, leases, the witness chain and
-    # the typed socket — delivered by U-B1…U-B13 on `main`.
-    #
-    # `flake = false` because the repo ships NO flake of its own: it is a cargo
-    # workspace (std-only crates, no build.rs, no external dependency), so
-    # there is nothing to consume but source, and modules/tally-b.nix does the
-    # whole packaging — rustPlatform over crates/tally-socket, whose binary IS
-    # `tally-kernel` (serve/call/chain/guard), run as the SYSTEM service
-    # tally-kernel.service.
-    #
-    # PINNED TO A REV on `main`, deliberately, the way nixpkgs-paperless and
-    # herdr are bumped: `nix flake lock --update-input tally-b` must be a
-    # NO-OP at the pin (asserted by tests/tally-b/test-tally-b-input.sh), and
-    # moving the kernel is an edit here, reviewed like any other change.
-    #
-    # The repo is PRIVATE (`gh repo view mecattaf/tally --json isPrivate` →
-    # true, MEASURED 2026-09-06) and this unit flips no visibility — no
-    # executor does; contrast U-D15's herdr-kitten input (removed by #385), whose `github:` form a Tom
-    # line had already cleared (R-2026-09-06-22) before the flip. The native
-    # `github:` fetcher was MEASURED against that wall: it downloads the
-    # codeload tarball with nix's own `access-tokens`, of which this fleet has
-    # none configured, and answers `HTTP error 404` on the private repo. So
-    # the URL is the `git+https://` form, which fetches through git and
-    # therefore through the machine's OWN persistent credential path — the
-    # `gh auth git-credential` helper in root's and tom's global gitconfig —
-    # with no token in this file, in flake.lock or in the environment nix
-    # needs at eval time. Consequence, stated plainly and recorded in
-    # DECISIONS.md: the ONE network act (the lock update / first fetch) works
-    # only on a host whose git can authenticate to github.com; after that the
-    # git cache and store path make every gate `--offline`-clean anywhere.
-    # Nothing was printed or read from any credential store to establish this.
-    tally-b = {
-      url = "git+https://github.com/mecattaf/tally?rev=b3a040e423926c542d794736d3976ec514bad02f";
-      flake = false;
-    };
-
-    # tally-lake — the LAKE (github.com/mecattaf/tally-ts-sdk), TALLY-SPEC §2.2:
-    # packages/schema, packages/factory (the CONWIP release station), apps/worker
-    # (the deployed Durable Object, `tally-lake` on Tom's own account) and
-    # apps/uplink (W-03, the box side: probe every row, POST the reading, pull
-    # /proposals, admit over the socket, POST /outcomes, execute under lease,
-    # mirror the chain, re-arm the plan). The lake PROPOSES; the kernel answers.
-    #
-    # The THIRD tally-named input in this file, and the three are easy to
-    # confuse, so here they are side by side:
-    #   tally       mecattaf/tally.nix      the LIVE daemon's public packaging flake
-    #   tally-b     mecattaf/tally          the REWRITE kernel's cargo workspace
-    #   tally-lake  mecattaf/tally-ts-sdk   the LAKE that proposes to that kernel
-    #
-    # CONSUMED AS A FLAKE, unlike tally-b: this repo DOES ship a flake.nix.
-    # W-03 added it (lake commit c29fdfb, "packages.uplink and
-    # homeManagerModules.tally-uplink (D-B65)") under an explicit supersession
-    # of that repo's own CONTRIBUTING §2 rule 6 ("No Nix in this deliverable"),
-    # because U-D14's card assigns the package derivation and the home-manager
-    # module to the lake and no other unit was chartered to build them. So there
-    # is no `flake = false` here, and home/tally-uplink.nix imports
-    # `inputs.tally-lake.homeManagerModules.tally-uplink` exactly the way
-    # home/tally.nix imports `inputs.tally.homeManagerModules.tally` — the
-    # motion this unit replicates (the card's exemplar).
-    #
-    # NO `inputs.nixpkgs.follows`, because there is nothing to follow: the
-    # lake's flake takes NO inputs at all, on purpose (its own comment: a
-    # nixpkgs input would be a fetch, and its lock would pin bytes nobody in
-    # that repository chose). It records the node store path its
-    # scripts/node-env.sh records and refuses to evaluate if the two disagree,
-    # so our pin drags no second package universe along and our nixpkgs cannot
-    # move its toolchain under it.
-    #
-    # `git+https://`, NOT `github:`, for the wall U-D13 established over
-    # mecattaf/tally and re-MEASURED here for THIS repo on 2026-09-07: it is
-    # PRIVATE (`gh repo view mecattaf/tally-ts-sdk --json isPrivate,visibility`
-    # → {"isPrivate":true,"visibility":"PRIVATE"}) and no executor flips
-    # visibility. `nix flake metadata
-    # github:mecattaf/tally-ts-sdk/a233c303246efb6eceb8e84ac409f85d3d41879b`
-    # answers `HTTP error 404` (MEASURED) because the tarball fetcher spends
-    # nix's own `access-tokens`, of which this fleet configures none. The
-    # `git+https://` form fetches through git and therefore through the
-    # machine's own persistent credential path (`gh auth git-credential` in the
-    # global gitconfig) — no token in this file, none in flake.lock, none needed
-    # in the environment at eval time, and none read or printed to establish any
-    # of it. Same stated consequence as tally-b: the ONE network act (the lock
-    # update / a cold fetch) works only on a host whose git can authenticate to
-    # github.com; after it, the git cache and the store path make every gate
-    # `--offline`-clean anywhere.
-    #
-    # PINNED TO A REV on `main`, deliberately, the way tally-b and
-    # nixpkgs-paperless are bumped: `nix flake lock --update-input tally-lake`
-    # must be a NO-OP at the pin (asserted as clause A0 of
-    # tests/tally-uplink/test-tally-uplink-input.sh), and moving the lake is an
-    # edit here, reviewed like any other change. NOT in
-    # `rollingInputOverrides`: the lake proposes work onto this box's rows, so
-    # its version moves when Tom says so, never on a nightly resolve — the same
-    # reason herdr is out.
-    #
-    # REV: 897f901 = origin/main of mecattaf/tally-ts-sdk on 2026-09-10
-    # (MEASURED: `git rev-parse origin/main` in the local clone; 32 commits
-    # ahead of the previous pin 38a526ba, and the whole range is on `main`).
-    # The lineage of this line, so a reader can see what each bump bought:
-    #   a233c30  W-03's delivery (PR #99 `lake/uplink`, merged as e3249b7,
-    #            whose flake.nix commit c29fdfb is an ancestor) plus U-A22's
-    #            evaluator probe — the first `main` that exports
-    #            `homeManagerModules.tally-uplink` at all; anything before
-    #            c29fdfb has no flake to import and this input cannot evaluate.
-    #   38a526ba the pin this bump replaces.
-    #   897f901  THIS pin. What it carries that 38a526ba lacks (TL-18 /
-    #            dotfiles#304, runbook step 3 of tally-ts-sdk docs/deploy.md):
-    #            packages/planning/src/objects/factory.ts:617 `level_rank` and
-    #            the uplink's `level_rank` passthrough — without it a proposal
-    #            arrives without the level the floor ranks it by; FIX-E04, the
-    #            uplink SHUTTING THE DOOR on the lake's 5xx instead of retrying
-    #            into it (the deployed Worker answers 500 FactoryError /
-    #            PersistenceFailed today, tally-ts-sdk docs/e2e.md:178-186, so
-    #            this is the difference between a legible refusal every five
-    #            minutes and a hot loop); FIX-E05 and FIX-E10.
-    # BUMPING THE PIN IS NOT DEPLOYING THE LAKE and is not a switch: this line
-    # moves the bytes the BOX evaluates against. The deployed Worker
-    # (f95beed) already carries the factory fix; only the box-side pin lacked
-    # it. The switch that installs the result is Tom's (dotfiles#322 U-D19),
-    # and so is any further bump once FT-2/FT-4/FT-5/FT-6 merge.
-    # See docs/local-ai/tally-uplink-input.md.
-    tally-lake = {
-      url = "git+https://github.com/mecattaf/tally-ts-sdk?rev=897f9015e7c22304c3bfd7ca2ec990b294966ded";
-    };
-
-    # deploy-rs — the fleet's one NixOS activation engine. Tally remains the
-    # scheduler/admission/proof plane; deploy-rs runs inside that one durable job
-    # and contributes target copy, activation, SSH confirmation, and automatic
+    # deploy-rs — the fleet's one NixOS activation engine. (Tally, once the
+    # scheduler/admission/proof plane around it, was removed 2026-09-30.) It
+    # contributes target copy, activation, SSH confirmation, and automatic
     # rollback. Following our nixpkgs avoids a second package universe.
     deploy-rs = {
       url = "github:serokell/deploy-rs";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.utils.follows = "tally/flake-utils";
+      inputs.utils.follows = "flake-utils";
     };
 
     # piri — niri IPC extension daemon (github.com/Asthestarsfalll/piri): one
@@ -1134,85 +993,6 @@
               cp "$TMPDIR/out" $out
             '';
 
-        # The UTIL-01 reconciliation's own topology (U-D17, #320, #311, #314).
-        #
-        # `nix flake check --offline --no-build` is this unit's DOMINANT gate,
-        # and on its own it only proves the merged tree EVALUATES. That catches
-        # the mutation the unit is graded against — a conflict marker left in a
-        # .nix file is a syntax error and evaluation dies — but it would stay
-        # green through a resolution that silently dropped
-        # `./util-sampler.nix` from home/home.nix's imports, or that resolved
-        # the merge by taking main's side of a file the branch had edited. This
-        # check is the difference: every assertion below is an eval-time one, so
-        # it runs under --no-build, and each names a property of the SAMPLER's
-        # semantics, which this reconciliation's non-goal says it must not
-        # change.
-        #
-        # Nothing here restates the card (/home/tom/research-methods/cards/
-        # UTIL-01.md) or adds a threshold. The last two assertions are the
-        # sharpest: the card's `instrument_sha256` locks the two programs at
-        # arming, and `abort_on` makes a row written by any other instrument a
-        # CRASH — so a merge that touched either program is not a merge that can
-        # be graded. Both digests were re-locked 2026-09-13 for the Halogen
-        # journal token window (#312, util-sample/3, util-row/2) and the
-        # closed-day idempotence (#329); UTIL-01's instrument_sha256 must be
-        # re-armed to them.
-        util-sampler-topology =
-          let
-            coordinator = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
-            worker = self.nixosConfigurations.worker.config.home-manager.users.tom;
-            samplerPath =
-              box:
-              builtins.head (
-                builtins.filter (nixpkgs.lib.hasPrefix "PATH=") box.systemd.user.services.util-sampler.Service.Environment
-              );
-            metersRule = "d %h/.local/state/tally/meters/util-sampler 0700 - - -";
-          in
-          # ── the import line survived the merge ─────────────────────────────
-          # home/home.nix is the ONE file both branches touched, and its imports
-          # list is where the resolution happened. These four say the resolution
-          # kept all three entries: two units on the coordinator, one on the
-          # worker, none of which exist if ./util-sampler.nix was dropped.
-          assert coordinator.systemd.user.timers ? util-sampler;
-          assert coordinator.systemd.user.timers ? util-row;
-          assert worker.systemd.user.timers ? util-sampler;
-          # The row writer is the JOINER — it reads both boxes' logs, the
-          # coordinator's lease events and the drain ledger — so it is
-          # coordinator-gated, and a copy on the worker would pull from itself.
-          assert !(worker.systemd.user.timers ? util-row);
-          # ── the sampler's own semantics ────────────────────────────────────
-          # Persistent=false on the sampler is a measurement decision, not a
-          # style one: a catch-up burst would write several samples carrying one
-          # instant, each a fabricated reading of a GPU nobody was watching. A
-          # box that was off must show as ABSENT samples. The row writer is the
-          # opposite — a row is a pure function of a sampler log that is already
-          # closed, so catching up fabricates nothing.
-          assert coordinator.systemd.user.timers.util-sampler.Timer.Persistent == false;
-          assert coordinator.systemd.user.timers.util-row.Timer.Persistent == true;
-          assert worker.systemd.user.timers.util-sampler.Timer.Persistent == false;
-          # `tally` on the COORDINATOR sampler's PATH and nowhere else: the
-          # worker has no tally daemon and no tally binary, so putting it there
-          # would be a lie about what that box can answer. The sampler records a
-          # failed pools call with its error string, never as zero.
-          assert nixpkgs.lib.hasInfix "-tally-" (samplerPath coordinator);
-          assert !(nixpkgs.lib.hasInfix "-tally-" (samplerPath worker));
-          # The one tmpfiles rule, on both boxes. systemd-tmpfiles creates the
-          # missing parent for a `d` line, which is why the worker gets the
-          # whole path from this rule alone and no duplicate is emitted for the
-          # parent home/tally.nix already declares on the coordinator.
-          assert builtins.elem metersRule coordinator.systemd.user.tmpfiles.rules;
-          assert builtins.elem metersRule worker.systemd.user.tmpfiles.rules;
-          # ── the programs are byte-for-byte the ones the card locked ────────
-          assert
-            builtins.hashFile "sha256" ./home/dot_local/bin/util-sampler
-            == "7d3e97ad57e767b2002d7421384ceab6be9fadf05b75250917dd6743d460e338";
-          assert
-            builtins.hashFile "sha256" ./home/dot_local/bin/util-row
-            == "13e6de94ae3f44f3a293701bc4baa9de10ec0d80ee95f40ea057562c9e212af9";
-          pkgs.runCommand "util-sampler-topology" { } ''
-            touch "$out"
-          '';
-
         # The two UTIL-01 rows l8-flash-probe gained with the reconciliation
         # (U-D17, #320). Same reasoning as l8-flash-probe-row above: both rows
         # ship RED, because nothing has switched yet and neither timer has a
@@ -1305,461 +1085,6 @@
                 bash ${./tests/l8-flash-probe/test-util-timer-rows.sh} | tee "$TMPDIR/out"
               cp "$TMPDIR/out" $out
             '';
-
-        # The tally-b topology (U-D13, #316). Same reasoning as
-        # util-sampler-topology: `nix flake check --offline --no-build` on its
-        # own only proves the tree EVALUATES, and it would stay green through a
-        # merge resolution that dropped ../../modules/tally-b.nix from
-        # hosts/coordinator/default.nix's imports or that repointed the unit at
-        # the live estate's state root. Every assertion is eval-time, so each
-        # runs under --no-build, and each names a property the card's non-goals
-        # or the kernel's own refusals make load-bearing:
-        #   - the service exists on the coordinator and ONLY there (one kernel,
-        #     spec §2.4 Q2 — the worker twin is a row, not a second kernel);
-        #   - its state root carries the tally-rewrite component, because the
-        #     kernel's Ledger::open refuses branch (a)'s paths by name
-        #     (ledger.rs:31-35) — a unit pointed at ~/.local/state/tally is a
-        #     crash loop, caught here instead;
-        #   - the socket is kernel.sock BESIDE that root (tally-socket's own
-        #     default_socket_path: SOCKET_BASENAME beside the chain it fronts);
-        #   - ExecStart is the store-built binary with all three flags;
-        #   - the live user-bus tally-daemon declaration still evaluates — the
-        #     card's non-goal "the live tally-daemon.service stays" as bytes —
-        #     and no system-bus twin of it appeared.
-        tally-b-topology =
-          let
-            coordinator = self.nixosConfigurations.coordinator.config;
-            worker = self.nixosConfigurations.worker.config;
-            nas = self.nixosConfigurations.nas.config;
-            svc = coordinator.systemd.services.tally-kernel;
-            execStart = svc.serviceConfig.ExecStart;
-            coordinatorHome = coordinator.home-manager.users.tom;
-          in
-          assert svc.enable;
-          assert !(worker.systemd.services ? tally-kernel);
-          assert !(nas.systemd.services ? tally-kernel);
-          assert svc.serviceConfig.User == "tom";
-          assert coordinator.services.tally-kernel.stateDir == "/home/tom/.local/state/tally-rewrite";
-          assert
-            coordinator.services.tally-kernel.socketPath == "/home/tom/.local/state/tally-rewrite/kernel.sock";
-          assert nixpkgs.lib.hasInfix "-tally-b-kernel-" execStart;
-          assert nixpkgs.lib.hasInfix "/bin/tally-kernel serve " execStart;
-          assert nixpkgs.lib.hasInfix "--state /home/tom/.local/state/tally-rewrite " execStart;
-          assert nixpkgs.lib.hasInfix "--socket /home/tom/.local/state/tally-rewrite/kernel.sock" execStart;
-          assert !(nixpkgs.lib.hasInfix "state/tally/" execStart);
-          assert builtins.elem "d /home/tom/.local/state/tally-rewrite 0700 tom users - -"
-            coordinator.systemd.tmpfiles.rules;
-          assert builtins.elem "d /home/tom/.local/state/tally-rewrite/meters 0700 tom users - -"
-            coordinator.systemd.tmpfiles.rules;
-          # the rows are exactly the three kernel-owned rows of the rewrite's
-          # docs/rows.md, each carrying every cell row_from_json refuses to
-          # default (a missing grace is a startup refusal by name).
-          assert
-            builtins.map (r: r.row) coordinator.services.tally-kernel.rows == [
-              "gpu-coordinator"
-              "gpu-worker"
-              "mechanical"
-            ];
-          assert builtins.all (
-            r:
-            builtins.all (c: r ? ${c}) [
-              "row"
-              "capacity"
-              "context_window"
-              "checkpoint_grace_seconds"
-              "kill_grace_seconds"
-              "per_attempt_token_cap"
-              "running"
-            ]
-          ) coordinator.services.tally-kernel.rows;
-          # the non-goal: the live daemon stays, on the user bus, and this unit
-          # did not grow a system-bus twin of it.
-          assert coordinatorHome.systemd.user.services ? tally-daemon;
-          assert !(coordinator.systemd.services ? tally-daemon);
-          pkgs.runCommand "tally-b-topology" { } ''
-            touch "$out"
-          '';
-
-        # tally-uplink-topology (U-D14, dotfiles#317) — the LAKE's box-side
-        # loop, declared on the coordinator's USER bus by home/tally-uplink.nix
-        # importing inputs.tally-lake.homeManagerModules.tally-uplink.
-        #
-        # This check is where a home-manager module's eval-time guard lives in
-        # this repository. modules/tally-b.nix could put its invariants in
-        # NixOS `assertions`; home-manager gives no option of that kind
-        # (MEASURED: no `options.assertions` anywhere in the pinned
-        # home-manager's modules/), and a top-level `assert` over `config` in a
-        # home module recurses. So the RENDERED unit is asserted here, under
-        # `nix flake check --offline --no-build`, which is the card's own first
-        # clause.
-        #
-        # Each assert names a property the card's oracle, its non-goals, or the
-        # kernel's own refusals make load-bearing:
-        #   - the service is DECLARED, on the coordinator and only there (one
-        #     uplink per box that serves a kernel, spec §2.4 Q2 — the worker
-        #     twin is a row the coordinator's kernel serves, not a second
-        #     uplink); this pair is the mutation hint's target, so dropping
-        #     `./tally-uplink.nix` from home/home.nix turns the first of them
-        #     false and this check red;
-        #   - every path it runs against is under ~/.local/state/tally-rewrite,
-        #     never branch (a)'s ~/.local/state/tally — the served kernel's
-        #     Ledger::open refuses those paths by name (tally
-        #     crates/tally-kernel/src/ledger.rs:31-35) and the two estates are
-        #     kept apart by declaration rather than by discovery at first run;
-        #   - the rows file is the PINNED kernel's docs/rows.md out of the
-        #     store, so the rows probed and the kernel they are probed against
-        #     are one pin and cannot drift; a live checkout path would let a
-        #     `git checkout` move the unit under nobody's review;
-        #   - the token is a PATH and the SERVICE carries no `Install` section —
-        #     no secret in the store, and no target this unit installs itself
-        #     onto (DEFERRED.md DF-U-D14-2);
-        #   - the KIT is a store file that reaches the rendered argv, and the
-        #     PLAN is still null with no `--plan` on it (TL-18 / D-B18,
-        #     dotfiles#304): the argv table the box resolves against must be a
-        #     reviewed artifact, never a file edited on the box (Rule 9,
-        #     dotfiles#293), and arming remains Tom's act and not this module's;
-        #   - the WAKE exists and is a timer's, not a human's (FIX-E12, spec id
-        #     `uplink-has-no-trigger`, dotfiles#351, D-E24): MEASURED, the
-        #     service had been failed for 7h with TriggeredBy/WantedBy/
-        #     RequiredBy/Wants all empty, no .timer file, and no reverse
-        #     dependency, so nothing on the box could ever start it again. The
-        #     asserts below require the TIMER on the coordinator and NOT on the
-        #     worker, in the monotonic form (`OnUnitInactiveSec`, which measures
-        #     from the end of the previous pass — failures included — so wakes
-        #     cannot pile up behind a red run) at the drain's own declared
-        #     cadence, armed by `timers.target`, with no `Persistent` catch-up;
-        #     `Install.WantedBy` is this unit's mutation target, so dropping
-        #     that one line makes this check red;
-        #   - and the service is still the oneshot it was: `Type=oneshot`,
-        #     `--wakes 1`, no `Install` of its own — the timer owns the cadence,
-        #     the uplink owns the pass;
-        #   - the non-goals as bytes: no system-bus twin of the uplink, and the
-        #     live user-bus tally-daemon declaration still evaluates.
-        tally-uplink-topology =
-          let
-            coordinator = self.nixosConfigurations.coordinator.config;
-            coordinatorHome = coordinator.home-manager.users.tom;
-            workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
-            cfg = coordinatorHome.services.tally-uplink;
-            unit = coordinatorHome.systemd.user.services.tally-uplink;
-            timer = coordinatorHome.systemd.user.timers.tally-uplink;
-            # The drain's own cadence, read from its declaration rather than
-            # retyped: FIX-E12 ties the uplink's wake to it (as
-            # home/tally-filler.nix ties the filler's), so a move on either side
-            # is red instead of silent.
-            drain = coordinatorHome.systemd.user.timers.tally-drain;
-            # home-manager renders Service.ExecStart through a settings type
-            # that admits either form; join whatever it produced so the infix
-            # assertions below read the argv as one string.
-            execStart =
-              let
-                e = unit.Service.ExecStart;
-              in
-              if builtins.isList e then builtins.concatStringsSep " " e else e;
-            state = "/home/tom/.local/state/tally-rewrite";
-          in
-          # DECLARED on the coordinator, and nowhere else.
-          assert coordinatorHome.systemd.user.services ? tally-uplink;
-          assert !(workerHome.systemd.user.services ? tally-uplink);
-          assert cfg.enable;
-          # the options, as this estate sets them.
-          assert cfg.tokenFile == "${state}/lake-token";
-          assert cfg.socket == "${state}/kernel.sock";
-          assert cfg.ledger == "${state}/ledger.jsonl";
-          assert cfg.stateDir == "${state}/uplink";
-          assert cfg.executor == "coordinator";
-          assert cfg.wakes == 1;
-          # THE KIT is a store file, not null and not a path on the box
-          # (TL-18 / D-B18, dotfiles#304). This is the assert FT-3 flipped:
-          # `cfg.kit == null` was the honest state while no kit named an argv
-          # for this estate, and the honest state now is that exactly one
-          # reviewed store artifact does. The three clauses say what a kit must
-          # be here — in the store (so nothing hand-edited on the box can become
-          # the argv table, Rule 9 / dotfiles#293), named by the module that
-          # builds it, and actually REACHING the unit, which the third clause
-          # reads off the rendered argv rather than off the option.
-          assert nixpkgs.lib.hasPrefix "/nix/store/" cfg.kit;
-          assert nixpkgs.lib.hasSuffix "-tally-uplink-kit.json" cfg.kit;
-          assert nixpkgs.lib.hasInfix "--kit /nix/store/" execStart;
-          # THE PLAN stays null, and null is still the honest state for it: the
-          # plan body is the acceptor's and arming is Tom's act, so the unit
-          # must carry no `--plan` either.
-          assert cfg.plan == null;
-          assert !(nixpkgs.lib.hasInfix "--plan" execStart);
-          # the rows file is the pinned kernel's, out of the store.
-          assert nixpkgs.lib.hasPrefix "/nix/store/" cfg.rows;
-          assert nixpkgs.lib.hasSuffix "/docs/rows.md" cfg.rows;
-          assert !(nixpkgs.lib.hasInfix "/home/tom/" cfg.rows);
-          # the rendered argv says what it runs against.
-          assert nixpkgs.lib.hasInfix "/bin/node " execStart;
-          assert nixpkgs.lib.hasInfix "/bin/uplink.mjs " execStart;
-          assert nixpkgs.lib.hasInfix "--rows /nix/store/" execStart;
-          assert nixpkgs.lib.hasInfix "--token-file ${state}/lake-token" execStart;
-          assert nixpkgs.lib.hasInfix "--socket ${state}/kernel.sock" execStart;
-          assert nixpkgs.lib.hasInfix "--ledger ${state}/ledger.jsonl" execStart;
-          assert nixpkgs.lib.hasInfix "--executor coordinator" execStart;
-          assert nixpkgs.lib.hasInfix "--state ${state}/uplink" execStart;
-          assert nixpkgs.lib.hasInfix "--wakes 1" execStart;
-          # branch (a)'s live root appears nowhere in it.
-          assert !(nixpkgs.lib.hasInfix "state/tally/" execStart);
-          # the SERVICE still installs itself onto no target and still does one
-          # pass per invocation: the timer below owns the cadence, and the unit
-          # it wakes is the same oneshot U-D14 declared.
-          assert !(unit ? Install);
-          assert unit.Service.Type == "oneshot";
-          # the WAKE (FIX-E12, dotfiles#351): DECLARED on the coordinator, and
-          # nowhere else.
-          assert coordinatorHome.systemd.user.timers ? tally-uplink;
-          assert !(workerHome.systemd.user.timers ? tally-uplink);
-          # in the monotonic form, at the drain's own cadence, with the first
-          # wake a full period after the timer is armed — never a wall clock.
-          assert timer.Timer ? OnUnitInactiveSec;
-          assert timer.Timer.OnUnitInactiveSec != "";
-          assert timer.Timer.OnUnitInactiveSec == drain.Timer.OnUnitActiveSec;
-          assert timer.Timer.OnActiveSec == timer.Timer.OnUnitInactiveSec;
-          assert !(timer.Timer ? OnCalendar);
-          # no catch-up burst at switch time, declared false rather than omitted.
-          assert timer.Timer.Persistent == false;
-          # it wakes ITS OWN service, and it is armed by timers.target — the
-          # line whose removal is this unit's mutation.
-          assert timer.Timer.Unit == "tally-uplink.service";
-          assert builtins.elem "timers.target" (timer.Install.WantedBy or [ ]);
-          # a clock and nothing else: no argv, no path, no credential in it.
-          assert !(timer ? Service);
-          assert !(nixpkgs.lib.hasInfix "lake-token" (builtins.toJSON timer));
-          # the uplink's own outbox, declared with its mode.
-          assert builtins.elem "d ${state}/uplink 0700 - - -" coordinatorHome.systemd.user.tmpfiles.rules;
-          # and the kit's usage drop, where every `usage_source.path_glob` the
-          # kit names resolves: the kernel resolves the glob, it does not create
-          # the directory.
-          assert builtins.elem "d ${state}/uplink/usage 0700 - - -"
-            coordinatorHome.systemd.user.tmpfiles.rules;
-          # the non-goals: no system-bus twin of either half, and the live
-          # daemon stays.
-          assert !(coordinator.systemd.services ? tally-uplink);
-          assert !(coordinator.systemd.timers ? tally-uplink);
-          assert coordinatorHome.systemd.user.services ? tally-daemon;
-          pkgs.runCommand "tally-uplink-topology" { } ''
-            touch "$out"
-          '';
-
-        # tally-filler-topology (U-D18, dotfiles#321) — the filler lane's
-        # CLOCK: home/tally-filler.nix's user timer and the oneshot it wakes.
-        #
-        # Same reasoning as tally-uplink-topology directly above: home-manager
-        # gives no `assertions` option, so the invariants over the RENDERED
-        # units live here, under `nix flake check --offline --no-build`, which
-        # is the card's own first clause. The card's second clause — "nix eval
-        # shows tally-filler.timer declared on the coordinator with
-        # OnUnitActiveSec set and the service calling the uplink's filler
-        # verb" — is asserted here as well as read out by
-        # tools/u-d18-filler-timer-oracle.sh, so the two halves are one gate.
-        #
-        # Each assert names a property the card's oracle, its non-goals or
-        # D-B10 makes load-bearing:
-        #   - the TIMER is declared, on the coordinator and only there, with
-        #     OnUnitActiveSec set and pointing at its own service; this pair is
-        #     the mutation hint's target ("remove the timer -> the eval is
-        #     false"), so dropping ./tally-filler.nix from home/home.nix turns
-        #     the first of them false and this check red;
-        #   - its period EQUALS the drain's own declared period, because D-B10
-        #     rules the two fillers alternate by round-robin: a literal here
-        #     would let the upstream drain's cadence move without a review, and
-        #     the equality makes that drift red instead;
-        #   - the service calls the lane's verb — e1-loop.sh with `--all`
-        #     (D-U-E1LOOP-7) — and does NOT carry `--dry-run`, which is the
-        #     probe's selector and never the installed unit's;
-        #   - the non-goals as bytes: no llama-swap, no :9292, no unload
-        #     anywhere in the rendered unit, and no system-bus twin;
-        #   - nothing under ~/.local/state is written by it, and branch (a)'s
-        #     live root ~/.local/state/tally/ appears nowhere in it;
-        #   - the uplink is given no schedule by THIS unit: it still renders
-        #     with no Install section. (DF-U-D14-4 was to be discharged by a
-        #     timer of the filler's own; MEASURED, it never was — the lane's
-        #     e1-loop.sh names the uplink nowhere — so FIX-E12 discharged it in
-        #     home/tally-uplink.nix with a tally-uplink.timer instead, and the
-        #     assert below still holds: a timer wakes the service, nothing
-        #     installs it.)
-        tally-filler-topology =
-          let
-            coordinator = self.nixosConfigurations.coordinator.config;
-            coordinatorHome = coordinator.home-manager.users.tom;
-            workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
-            timer = coordinatorHome.systemd.user.timers.tally-filler;
-            service = coordinatorHome.systemd.user.services.tally-filler;
-            drain = coordinatorHome.systemd.user.timers.tally-drain;
-            execStart =
-              let
-                e = service.Service.ExecStart;
-              in
-              if builtins.isList e then builtins.concatStringsSep " " e else e;
-            fillerPath = nixpkgs.lib.removePrefix "PATH=" (
-              nixpkgs.lib.findFirst (
-                value: nixpkgs.lib.hasPrefix "PATH=" value
-              ) (throw "tally-filler.service has no PATH environment") service.Service.Environment
-            );
-            # Everything the unit says, as one string, so the non-goal
-            # assertions cannot be satisfied by a value hiding in Environment.
-            rendered = execStart + " " + builtins.concatStringsSep " " service.Service.Environment;
-          in
-          # DECLARED on the coordinator, and nowhere else.
-          assert coordinatorHome.systemd.user.timers ? tally-filler;
-          assert coordinatorHome.systemd.user.services ? tally-filler;
-          assert !(workerHome.systemd.user.timers ? tally-filler);
-          assert !(workerHome.systemd.user.services ? tally-filler);
-          # the timer: OnUnitActiveSec SET, pointing at its own service, armed
-          # by timers.target, and not a wall-clock backlog.
-          assert timer.Timer ? OnUnitActiveSec;
-          assert timer.Timer.OnUnitActiveSec != "";
-          assert timer.Timer.Unit == "tally-filler.service";
-          assert builtins.elem "timers.target" timer.Install.WantedBy;
-          assert !(timer.Timer ? Persistent);
-          # D-B10: the two fillers alternate, so the filler's period IS the
-          # drain's period. Asserted as an equality against the other filler's
-          # own declaration, never as a literal.
-          assert timer.Timer.OnUnitActiveSec == drain.Timer.OnUnitActiveSec;
-          assert coordinatorHome.systemd.user.services ? tally-drain;
-          # the service calls the lane's verb, and calls it as a pass and not
-          # as a probe.
-          assert nixpkgs.lib.hasInfix "/research-methods/tools/e1-loop.sh " execStart;
-          assert nixpkgs.lib.hasSuffix " --all" execStart;
-          assert !(nixpkgs.lib.hasInfix "--dry-run" execStart);
-          assert service.Service.Type == "oneshot";
-          # and it is a PASS, not a latch: no RemainAfterExit, so every wake
-          # actually starts the lane again. (The oracle's transient probe DOES
-          # set RemainAfterExit, so its exit status stays readable after it
-          # fires; that difference is the probe's, never this unit's.)
-          assert !(service.Service ? RemainAfterExit);
-          # the non-goals as bytes: it never calls llama-swap, never unloads.
-          assert !(nixpkgs.lib.hasInfix "llama" rendered);
-          assert !(nixpkgs.lib.hasInfix "9292" rendered);
-          assert !(nixpkgs.lib.hasInfix "unload" rendered);
-          # no state of its own: the lane's state is the register's git tree.
-          assert !(nixpkgs.lib.hasInfix "/.local/state/" rendered);
-          assert
-            !(builtins.any (
-              r: nixpkgs.lib.hasInfix "tally-filler" r
-            ) coordinatorHome.systemd.user.tmpfiles.rules);
-          # no system-bus twin, and the uplink still carries no schedule.
-          assert !(coordinator.systemd.services ? tally-filler);
-          assert !(coordinator.systemd.timers ? tally-filler);
-          assert !(coordinatorHome.systemd.user.services.tally-uplink ? Install);
-          pkgs.runCommand "tally-filler-topology" { } ''
-            set -euo pipefail
-            # #346: use the rendered service PATH, not the check derivation's
-            # nativeBuildInputs. The first python3 the timer can see must own
-            # numpy; falling through to Tom's mutable profile is not a unit
-            # dependency and is exactly how calibrate failed after verdicts.
-            export PATH=${nixpkgs.lib.escapeShellArg fillerPath}
-            python3 -c 'import numpy'
-            touch "$out"
-          '';
-
-        # tally-pump-topology (FIX-E11, dotfiles#350) — the RELEASE STATION's
-        # clock: home/tally-pump.nix's user timer and the oneshot tick it wakes.
-        #
-        # Same reasoning as tally-filler-topology and tally-uplink-topology
-        # above: home-manager gives no `assertions` option, so the invariants
-        # over the RENDERED units live here, under `nix flake check`, and the
-        # unit's own file asserts only literals (a top-level assert that forces
-        # `pkgs` dies "infinite recursion encountered" — U-D14's finding).
-        #
-        # What each assert holds, and why it is load-bearing:
-        #   - the pair is DECLARED on the coordinator and NOWHERE ELSE. The
-        #     worker holds no seat, no manifest and no lane, so a pump there
-        #     would be a second release station racing this one; and the
-        #     coordinator-only shape is also the mutation target (drop
-        #     ./tally-pump.nix from home/home.nix -> the first assert is false
-        #     and this check goes red, exactly as the `nix eval` half does);
-        #   - the timer is a five-minute WALL CLOCK schedule pointing at its own
-        #     service, armed by timers.target, and explicitly NOT Persistent:
-        #     a catch-up burst at switch time would be a burst of ticks each
-        #     able to launch paid workers;
-        #   - the service calls the lane's verb as `pump.sh --once` — the tick,
-        #     never the loop — is a oneshot, and is not a latch (no
-        #     RemainAfterExit, so every wake really runs a tick);
-        #   - MAXW is set, and set to the value the two typed starts on record
-        #     used, because the seat budget and not the machine is the scarce
-        #     resource here;
-        #   - the tick's PATH carries what the tick actually shells out to
-        #     (python3, git, gh) plus the harness profile dir launch.sh execs
-        #     `claude`/`codex`/`pi` from;
-        #   - the non-goals as bytes: no llama-swap, no :9292, no unload
-        #     anywhere in the rendered unit (the release station never touches
-        #     the GPU lane), nothing written under ~/.local/state, no tmpfiles
-        #     rule of its own, and no system-bus twin.
-        tally-pump-topology =
-          let
-            coordinator = self.nixosConfigurations.coordinator.config;
-            coordinatorHome = coordinator.home-manager.users.tom;
-            workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
-            timer = coordinatorHome.systemd.user.timers.tally-pump;
-            service = coordinatorHome.systemd.user.services.tally-pump;
-            execStart =
-              let
-                e = service.Service.ExecStart;
-              in
-              if builtins.isList e then builtins.concatStringsSep " " e else e;
-            # Everything the unit says, as one string, so a non-goal cannot be
-            # satisfied by a value hiding in Environment or in a redirect.
-            rendered =
-              execStart
-              + " "
-              + builtins.concatStringsSep " " service.Service.Environment
-              + " "
-              + service.Service.StandardOutput
-              + " "
-              + service.Service.StandardError;
-            env = builtins.concatStringsSep " " service.Service.Environment;
-          in
-          # DECLARED on the coordinator, and nowhere else.
-          assert coordinatorHome.systemd.user.timers ? tally-pump;
-          assert coordinatorHome.systemd.user.services ? tally-pump;
-          assert !(workerHome.systemd.user.timers ? tally-pump);
-          assert !(workerHome.systemd.user.services ? tally-pump);
-          # the timer: a five-minute wall-clock schedule, its own service,
-          # armed by timers.target, and no catch-up backlog.
-          assert timer.Timer ? OnCalendar;
-          assert timer.Timer.OnCalendar == "*:0/5";
-          assert timer.Timer.Unit == "tally-pump.service";
-          assert builtins.elem "timers.target" timer.Install.WantedBy;
-          assert timer.Timer ? Persistent;
-          assert timer.Timer.Persistent == false;
-          # the service: the lane's TICK verb, as a oneshot, not a latch.
-          assert nixpkgs.lib.hasInfix "/codex-lane/pump.sh " execStart;
-          assert nixpkgs.lib.hasSuffix " --once" execStart;
-          assert service.Service.Type == "oneshot";
-          assert !(service.Service ? RemainAfterExit);
-          assert !(service.Service ? Restart);
-          # the cap the two typed starts on record used.
-          assert nixpkgs.lib.hasInfix "MAXW=2" env;
-          # what the tick shells out to, and where the harnesses live.
-          # matched on the store-path segment (".../<name>-<version>/bin") and
-          # not on "/bin/<name>", which is not what makeBinPath renders.
-          assert nixpkgs.lib.hasInfix "-python3-" env;
-          assert nixpkgs.lib.hasInfix "-git-" env;
-          assert nixpkgs.lib.hasInfix "-gh-" env;
-          assert nixpkgs.lib.hasInfix "/etc/profiles/per-user/tom/bin" env;
-          # one log for both forms.
-          assert nixpkgs.lib.hasInfix "append:" service.Service.StandardOutput;
-          assert nixpkgs.lib.hasSuffix "/codex-lane/pump.log" service.Service.StandardOutput;
-          assert service.Service.StandardError == service.Service.StandardOutput;
-          # the non-goals as bytes: it never touches the GPU lane.
-          assert !(nixpkgs.lib.hasInfix "llama" rendered);
-          assert !(nixpkgs.lib.hasInfix "9292" rendered);
-          assert !(nixpkgs.lib.hasInfix "unload" rendered);
-          # no state of its own: the station's state is the lane's own files.
-          assert !(nixpkgs.lib.hasInfix "/.local/state/" rendered);
-          assert
-            !(builtins.any (
-              r: nixpkgs.lib.hasInfix "tally-pump" r
-            ) coordinatorHome.systemd.user.tmpfiles.rules);
-          # no system-bus twin.
-          assert !(coordinator.systemd.services ? tally-pump);
-          assert !(coordinator.systemd.timers ? tally-pump);
-          pkgs.runCommand "tally-pump-topology" { } ''
-            touch "$out"
-          '';
 
         omarchy-update-center =
           let
@@ -2322,30 +1647,15 @@
               "worker"
               "nas"
             ];
-            seatFeederNames = [
-              "tally-seat-feeder-claude"
-              "tally-seat-feeder-codex"
-              "tally-seat-feeder-pi-qwencloud"
-            ];
-            seatFeederRows = {
-              tally-seat-feeder-claude = "cc,cc2,cc3";
-              tally-seat-feeder-codex = "codex";
-              tally-seat-feeder-pi-qwencloud = "pi-qwencloud";
-            };
-            isSeatFeeder = name: builtins.match "tally-seat-feeder-.*" name != null;
-            coordinatorSeatFeeders = builtins.filter isSeatFeeder (
-              builtins.attrNames coordinatorHome.systemd.user.timers
-            );
-            workerSeatFeeders = builtins.filter isSeatFeeder (
-              builtins.attrNames workerHome.systemd.user.timers
-            );
-            clientSeatFeeders = builtins.filter isSeatFeeder (
-              builtins.attrNames clientHome.systemd.user.timers
-            );
           in
           assert coordinatorHome.home.username == "tom";
           assert coordinatorHome.programs.atuin.settings.auto_sync;
-          assert coordinatorHome.services.tally.enable;
+          # Tally is gone (sunset 2026-09-30): no module, no option, no unit.
+          assert !(coordinatorHome.services ? tally);
+          assert !(builtins.any (n: nixpkgs.lib.hasPrefix "tally" n) (
+            builtins.attrNames coordinatorHome.systemd.user.services
+            ++ builtins.attrNames coordinatorHome.systemd.user.timers
+          ));
           # Direct Parakeet is coordinator-only; capture has no virtual mic or
           # service-start download. Native Herdr owns client key handling.
           # The #448 socket-activation asserts rode in on the harvest-hook
@@ -2360,36 +1670,8 @@
           assert coordinatorHome.systemd.user.services ? herdr;
           assert !(coordinatorHome.systemd.user.services.herdr.Unit ? PartOf);
           assert coordinatorHome.systemd.user.services.herdr.Install.WantedBy == [ "default.target" ];
-          # U-D12 / D-B54: exactly three coordinator-only feeder clocks. The
-          # enforced freshness arithmetic is period 30 + accuracy 1 + service
-          # cap 20 = 51 seconds, strictly inside the kernel's 60-second bound.
-          # Rows and duration live on the service as evaluated data so the
-          # fixture cannot silently replay a friendlier clock than the estate.
-          assert coordinatorSeatFeeders == seatFeederNames;
-          assert workerSeatFeeders == [ ];
-          assert clientSeatFeeders == [ ];
-          assert builtins.all (
-            name:
-            let
-              timer = coordinatorHome.systemd.user.timers.${name};
-              service = coordinatorHome.systemd.user.services.${name};
-            in
-            timer.Timer.OnUnitActiveSec == "30s"
-            && timer.Timer.AccuracySec == "1s"
-            && timer.Timer.Unit == "${name}.service"
-            && timer.Install.WantedBy == [ "timers.target" ]
-            && service.Unit.X-TallyRows == seatFeederRows.${name}
-            && service.Unit.X-TallyTickSeconds == "60"
-            && service.Unit.X-TallyServiceDurationSeconds == "20"
-            && service.Service.TimeoutStartSec == "20s"
-            # CAP-1: no feeder environment entry may carry whitespace. systemd
-            # splits an unquoted `Environment=` value on whitespace into
-            # separate assignments, and `TALLY_CLAUDE_SEATS=cc cc2 cc3` was
-            # therefore reaching the program as `cc` alone — one Claude row on
-            # disk for three seats, MEASURED 2026-09-07 17:0xZ. A list this
-            # module writes with a comma cannot be silently truncated again.
-            && builtins.all (entry: builtins.match ".*[[:space:]].*" entry == null) service.Service.Environment
-          ) seatFeederNames;
+          # The seats oracle's peer cache and substrate's metersDir outlive the
+          # seat feeder that used to write it (home/harness-records.nix).
           assert builtins.elem "d %h/.local/state/tally-rewrite/meters 0700 - - -"
             coordinatorHome.systemd.user.tmpfiles.rules;
           # herdr WITHOUT the kitten (#385, 2026-09-13). herdr-kitten is gone
@@ -2435,7 +1717,7 @@
           # session itself (no display output on that box: Tom's ruling).
           assert workerHome.home.username == "tom";
           assert workerHome.programs.atuin.settings.auto_sync;
-          assert !workerHome.services.tally.enable;
+          assert !(workerHome.services ? tally);
           assert !(workerHome.systemd.user.services ? parakeet-service);
           assert !(workerHome.systemd.user.services ? voxtype);
           # …and the herdr SERVER. The worker still gets the herdr binary (it is
@@ -2507,7 +1789,7 @@
           # seat-feeder clocks. Touch is mapped globally to
           # eDP-1 on stock niri (PR #1856 accepted as a defect, no fork).
           assert clientHome.home.username == "tom";
-          assert !clientHome.services.tally.enable;
+          assert !(clientHome.services ? tally);
           # No transcription model or Voxtype on the client. Alexa and the
           # thin capture helper share the USB microphone with explicit inhibition.
           assert
@@ -2780,12 +2062,9 @@
             (homeOf "coordinator").rawDotfiles.programs == [
               "claude-transcript-mirror"
               "nightly-record"
-              "tally-seat-feeder"
-              "util-row"
-              "util-sampler"
             ];
-          assert (homeOf "worker").rawDotfiles.programs == [ "util-sampler" ];
-          assert (homeOf "client").rawDotfiles.programs == [ "util-sampler" ];
+          assert (homeOf "worker").rawDotfiles.programs == [ ];
+          assert (homeOf "client").rawDotfiles.programs == [ ];
           assert
             entry.before == [
               "checkLinkTargets"
@@ -2870,7 +2149,6 @@
           assert
             (profile "coordinator").roles == [
               "halogen"
-              "runs"
               "attention"
             ];
           assert (profile "worker").name == "strix-inference";
@@ -3081,7 +2359,6 @@
             # A pool row and an executor are different objects; the old guard
             # conflated them because, while the host was retired, no row could
             # be anything but the first step back toward an executor.
-            devicePool = strixWorker + "-gpu";
             # The sweep below is now TWO sweeps, because the relaxation Q1 needs
             # is narrower than the file it lands in.
             #
@@ -3104,7 +2381,7 @@
               (strixWorker + "Flake")
               (strixWorker + "Models")
             ];
-            # The bare name subsumes devicePool ("<host>-gpu"): a flow may name
+            # The bare name subsumes the "<host>-gpu" pool name: a flow may name
             # neither.
             retiredFlowHostPattern = strixWorker;
             activeHostSets = [
@@ -3363,21 +2640,9 @@
           # NAS downloads remain a separate timer/operator action, never an
           # update-center or activation dependency.
           assert (nas.systemd.services.library-fetch.wantedBy or [ ]) == [ ];
-          # The executor half, still asserted in the NEGATIVE: a host, never a
-          # Tally executor. Both directions, because `executors == { }` alone
-          # would pass a config that renamed the attribute.
-          assert !(builtins.hasAttr strixWorker coordinator.home-manager.users.tom.services.tally.executors);
-          assert coordinator.home-manager.users.tom.services.tally.executors == { };
-          # The pool half, now asserted in the POSITIVE (Q1; dotfiles#310).
-          # Pinning the SHAPE is worth more than pinning the absence: capacity
-          # one per device, declared vram — not a budget row, not a mutex, and
-          # never given a budgetGb, because a GB budget means nothing until an
-          # enqueue states how much VRAM it wants and none of them does.
-          assert builtins.hasAttr devicePool coordinator.home-manager.users.tom.services.tally.pools;
-          assert coordinator.home-manager.users.tom.services.tally.pools.${devicePool}.resource == "vram";
-          assert coordinator.home-manager.users.tom.services.tally.pools.${devicePool}.capacity == 1;
-          assert coordinator.home-manager.users.tom.services.tally.pools.${devicePool}.budgetGb == null;
-          assert !worker.home-manager.users.tom.services.tally.enable;
+          # Tally is gone (sunset 2026-09-30), so there is no executor or pool
+          # table left to hold a row for the worker.
+          assert !(coordinator.home-manager.users.tom.services ? tally);
           # ...but very much present in the SSH mesh, in both directions. This
           # assertion was the inverse until #229 and was failing at HEAD, since
           # the audit had already added the registry row.
@@ -3557,7 +2822,6 @@
           assert !coordinator.services.adguardhome.enable;
           assert coordinator.microvm.host.enable;
           assert !(self.nixosConfigurations.coordinator.options.myArtifacts ? livePortRange);
-          assert !coordinator.home-manager.users.tom.services.tally.pools.coordinator-gpu.hardPreempt;
           # Crash surfacing (#134): the blanket OnFailure handler and both journal watchers exist.
           assert coordinator.systemd.services."failure-notify@".serviceConfig.Type == "oneshot";
           assert coordinator.systemd.timers ? tripwire-coredump;
@@ -3609,7 +2873,7 @@
               exit 1
             fi
             if ${pkgs.ripgrep}/bin/rg --line-number '${retiredExecutionPattern}' \
-              ${./home/tally.nix} ${./flows}; then
+              ${./flows}; then
               echo "retired Tally executor attribute found" >&2
               exit 1
             fi

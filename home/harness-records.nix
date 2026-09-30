@@ -6,20 +6,17 @@
 }:
 # harness-records — what the agent harnesses leave behind, kept and counted.
 #
-# Two coordinator-only user timers, both OUTSIDE tally by ruling (mined 18: no
-# agent-harness logic in tally, the meter is external; mined 10: the nightly
-# record is outside tally). Neither reads or writes tally state; tally's own
-# meters directory is declared in home/tally.nix and fed by nobody yet
-# (dotfiles#304).
+# Two coordinator-only user services, hand-run since 2026-09-30 (no scheduled
+# agent work in dotfiles; the factory owns any schedule). Neither reads or
+# writes Tally state (Tally itself was removed the same day).
 #
 #   claude-transcript-mirror  keeps every Claude Code session past the
 #                             harness's own retention (dotfiles#293)
 #   nightly-record            counts what each seat spent, per lane, per day
 #                             (dotfiles#298)
 #
-# Coordinator-gated for the same reason the tally drain is: these read seat
-# state that exists on this box, and an ungated definition would ship the
-# worker a timer with nothing to do.
+# Coordinator-gated: these read seat state that exists on this box, and an
+# ungated definition would ship the worker a unit with nothing to do.
 let
   hostName = osConfig.networking.hostName;
   isCoordinator = hostName == "coordinator";
@@ -94,4 +91,21 @@ in
   # No timer (Tom, 2026-09-30): hand-run `systemctl --user start
   # nightly-record` (yesterday), or `~/.local/bin/nightly-record --date
   # YYYY-MM-DD` for a missed day; the transcripts stay on disk.
+
+  # ── seat meters directory (outlives the Tally seat feeder) ────────────────
+  # `seats` reads its peer cache here and substrate's pusher names it as
+  # metersDir (modules/substrate.nix). The seat feeder that used to write it
+  # (home/seat-feeder.nix) went with the Tally sunset on 2026-09-30; the
+  # directory stays declared so neither reader meets a missing path.
+  systemd.user.tmpfiles.rules = lib.mkIf isCoordinator [
+    "d %h/.local/state/tally-rewrite/meters 0700 - - -"
+  ];
+
+  # Tools home/tally.nix used to install on the coordinator, kept: call
+  # diarization runs by hand now (its Tally events drop has no drain), and the
+  # monthly local-AI review is hand-run too.
+  home.packages = lib.optionals isCoordinator [
+    pkgs.call-diarize
+    pkgs.local-ai-monthly
+  ];
 }

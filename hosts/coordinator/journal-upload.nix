@@ -10,8 +10,8 @@
 # same trust domain as NFSv4 on the same segment).
 let
   # Weekly NVMe→HDD archive on the NAS (#135 workstream 1, final checkbox).
-  # Runs coordinator-side because only the coordinator holds credentials and
-  # tally; the argv is SSH to the NAS. Rotated remote-*@*.journal files are
+  # Runs coordinator-side because only the coordinator holds the credential;
+  # the argv is SSH to the NAS. Rotated remote-*@*.journal files are
   # immutable once renamed, so the move is safe; the active file stays on the
   # NVMe so the HDD keeps spinning down between bursts.
   #
@@ -76,9 +76,11 @@ in
     SystemMaxUse=4G
   '';
 
-  # Started exclusively by the tally weekly producer (home/tally.nix), which
-  # runs it as a tally job (coordinator-nas-io pool) so the run carries a
-  # witnessed verdict — including the liveness FAIL described above.
+  # No clock (D32, Tom 2026-09-30): the weekly Tally producer that started it
+  # went with the Tally sunset. The unit is the whole workflow, so it stays
+  # replicable by any caller: `sudo systemctl start journal-archive` by hand,
+  # or a factory (substrate) schedule running that same command over ssh. Its
+  # exit code carries the liveness verdict described above.
   systemd.services.journal-archive = {
     description = "Move rotated remote journal files from NAS NVMe to HDD";
     serviceConfig = {

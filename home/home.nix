@@ -126,14 +126,8 @@ in
     ./pi.nix
     ./piri.nix
     ./raw-dotfiles-guard.nix
-    ./seat-feeder.nix
     ./ssh.nix
-    ./tally.nix
     ./theme.nix
-    ./tally-filler.nix
-    ./tally-pump.nix
-    ./tally-uplink.nix
-    ./util-sampler.nix
     ./speech.nix
   ];
 
