@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 import wave
 from pathlib import Path
 from unittest import mock
 
-from call_diarize.asr import map_legacy_key
+from call_diarize.asr import verify_checkpoint
 from call_diarize.cleanup import (
     chat_completions_url,
     extract_json_object,
@@ -15,21 +16,36 @@ from call_diarize.cleanup import (
     validate_decisions,
 )
 from call_diarize.pipeline import (
+    CHUNK_SAMPLES,
+    CHUNK_SECONDS,
+    SAMPLE_RATE,
+    SESSION_CHUNKS,
     Window,
     candidate_shards,
     decoder_loop_reason,
     lexical_duplicate_target,
     load_json,
-    normalize_asr_segments,
-    segment_track,
-    slice_track,
+    prepare_track,
+    session_rows,
+    streaming_groups,
     unavailable_row,
     validate_asr_result,
 )
 
 
-def window(seconds: float = 30.0) -> Window:
-    return Window("near", 0.0, 30, seconds, Path("unused.wav"))
+def window(chunks: int = 10, first: int = 0) -> Window:
+    return Window(
+        "near", first, chunks, (first + chunks) * CHUNK_SAMPLES, Path("unused.wav")
+    )
+
+
+def result(texts: list[str], first: int = 0, tokens: int = 5) -> dict:
+    return {
+        "chunks": [
+            {"index": first + ordinal, "text": text, "decoded_token_count": tokens}
+            for ordinal, text in enumerate(texts)
+        ]
+    }
 
 
 def support(value: float = 0.8):
@@ -48,114 +64,161 @@ def row(source_id: str, text: str, start: float, end: float) -> dict:
     }
 
 
-class SegmentExtractionTests(unittest.TestCase):
-    def test_initial_and_retry_extraction_replace_interrupted_outputs(self) -> None:
+class TrackPreparationTests(unittest.TestCase):
+    def test_sessions_cover_every_chunk_of_the_resampled_track(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            source = root / "mix.wav"
+            source = root / "near.wav"
+            seconds = SESSION_CHUNKS * CHUNK_SECONDS + 1.0
             with wave.open(str(source), "wb") as handle:
                 handle.setnchannels(1)
                 handle.setsampwidth(2)
                 handle.setframerate(48_000)
-                handle.writeframes(b"\0\0" * 48_000)
+                handle.writeframes(b"\0\0" * round(seconds * 48_000))
 
-            first_segments = segment_track(source, "mix", 1, root)
-            stale_segment = first_segments[0].audio_path.with_name("mix-999999.wav")
-            stale_segment.write_bytes(first_segments[0].audio_path.read_bytes())
-            first_segments[0].audio_path.write_bytes(b"interrupted initial extraction")
-            second_segments = segment_track(source, "mix", 1, root)
-            self.assertEqual(
-                [window.audio_path for window in second_segments],
-                [window.audio_path for window in first_segments],
+            sessions = prepare_track(source, "near", root)
+
+            self.assertEqual(len(sessions), 2)
+            self.assertEqual(sessions[0].chunk_count, SESSION_CHUNKS)
+            self.assertEqual(sessions[1].first_chunk, SESSION_CHUNKS)
+            self.assertEqual(sessions[1].chunk_count, 1)
+            self.assertAlmostEqual(sessions[1].actual_seconds, 1.0, places=2)
+            self.assertAlmostEqual(
+                sum(item.actual_seconds for item in sessions), seconds, places=2
             )
-            self.assertFalse(stale_segment.exists())
-            self.assertAlmostEqual(second_segments[0].actual_seconds, 1.0)
+            with wave.open(str(sessions[0].audio_path), "rb") as handle:
+                self.assertEqual(handle.getframerate(), SAMPLE_RATE)
+            # A rerun overwrites the interrupted conversion in place.
+            sessions[0].audio_path.write_bytes(b"interrupted")
+            self.assertEqual(prepare_track(source, "near", root), sessions)
 
-            first_retry = slice_track(source, "mix", 0.0, 1, root)
-            first_retry.audio_path.write_bytes(b"interrupted retry extraction")
-            second_retry = slice_track(source, "mix", 0.0, 1, root)
-            self.assertEqual(second_retry.audio_path, first_retry.audio_path)
-            self.assertAlmostEqual(second_retry.actual_seconds, 1.0)
+
+class CheckpointTests(unittest.TestCase):
+    def test_refuses_incomplete_loan_and_foreign_frame_geometry(self) -> None:
+        from call_diarize.asr import MODEL_FILES
+
+        with tempfile.TemporaryDirectory() as temporary:
+            model_dir = Path(temporary)
+            with self.assertRaisesRegex(RuntimeError, "incomplete"):
+                verify_checkpoint(model_dir)
+            for name in MODEL_FILES:
+                (model_dir / name).write_text("{}", encoding="utf-8")
+            config = {
+                "chunk_frames": 22,
+                "lookahead_frames": 4,
+                "speech_tok_compress_ratio": 3200,
+                "target_sample_rate": 24000,
+            }
+            (model_dir / "preprocessor_config.json").write_text(
+                json.dumps(config), encoding="utf-8"
+            )
+            self.assertEqual(verify_checkpoint(model_dir), config)
+            config["chunk_frames"] = 20
+            (model_dir / "preprocessor_config.json").write_text(
+                json.dumps(config), encoding="utf-8"
+            )
+            with self.assertRaisesRegex(RuntimeError, "frame geometry"):
+                verify_checkpoint(model_dir)
+
+
+class StreamingParseTests(unittest.TestCase):
+    def test_labels_straddling_chunks_map_to_chunk_bounds(self) -> None:
+        groups = streaming_groups(
+            [" \n Speaker 0:I am listening. The system ", "is running. \n Spea", "ker 1:Hello."],
+            first_chunk=100,
+        )
+        self.assertEqual(
+            [(g["speaker"], g["first_chunk"], g["last_chunk"]) for g in groups],
+            [("0", 100, 101), ("1", 102, 102)],
+        )
+        self.assertEqual(
+            groups[0]["sentences"], ["I am listening.", "The system is running."]
+        )
+
+    def test_silent_chunk_and_row_length_split_rows(self) -> None:
+        groups = streaming_groups(["Before a pause.", "", "After it."])
+        self.assertEqual(len(groups), 2)
+        groups = streaming_groups(
+            [
+                "[Silence]",
+                "[Silence]Speaker 0:Before a pause. [Silence]",
+                "[Silence][Noise]",
+                "After it.",
+            ]
+        )
+        self.assertEqual(
+            [(g["first_chunk"], g["last_chunk"], g["sentences"]) for g in groups],
+            [(1, 1, ["Before a pause."]), (3, 3, ["After it."])],
+        )
+        long_speech = ["Sentence." for _ in range(12)]
+        groups = streaming_groups(long_speech)
+        self.assertEqual(len(groups), 2)
+        self.assertLessEqual(
+            (groups[0]["last_chunk"] + 1 - groups[0]["first_chunk"]) * CHUNK_SECONDS,
+            30.0,
+        )
+
+    def test_rows_have_chunk_resolution_and_fixed_channel_speaker(self) -> None:
+        rows, withheld = session_rows(
+            result(["", "Speaker 3:Hello there.", "", ""], first=102),
+            window(4, first=102),
+            "near/session-000102.json",
+            support(),
+            256,
+        )
+        self.assertEqual(withheld, [])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["speaker"], "Thomas")
+        self.assertEqual(rows[0]["asr_speaker_id_session_local"], "3")
+        self.assertAlmostEqual(rows[0]["start"], 103 * CHUNK_SECONDS, places=3)
+        self.assertAlmostEqual(rows[0]["end"], 104 * CHUNK_SECONDS, places=3)
+        self.assertEqual(rows[0]["source_id"], "near-c000102-s000")
+
+    def test_final_chunk_is_clamped_to_track_end(self) -> None:
+        tail = Window("far", 0, 2, CHUNK_SAMPLES + SAMPLE_RATE, Path("unused.wav"))
+        rows, _ = session_rows(
+            result(["", "Bye."]), tail, "far/session-000000.json", support(), 256
+        )
+        self.assertAlmostEqual(rows[0]["end"], CHUNK_SECONDS + 1.0, places=3)
+        self.assertEqual(rows[0]["speaker"], "Remote")
 
 
 class StructuralValidationTests(unittest.TestCase):
-    def test_official_checkpoint_mapping_chains_rewrites(self) -> None:
-        old_key = (
-            "model.acoustic_tokenizer.encoder.stages.3.0.mixer.conv.conv.conv.weight"
-        )
-        self.assertEqual(
-            map_legacy_key(old_key),
-            "acoustic_tokenizer_encoder.conv_layers.2.stage.0.mixer.conv.weight",
-        )
-        self.assertEqual(
-            map_legacy_key(
-                "model.semantic_tokenizer.encoder."
-                "downsample_layers.1.0.conv.conv.weight"
-            ),
-            "semantic_tokenizer_encoder.conv_layers.0.conv.conv.weight",
-        )
-
-    def test_accepts_strict_supported_segments(self) -> None:
-        result = {
-            "segments": [
-                {
-                    "start_time": 0.0,
-                    "end_time": 2.0,
-                    "speaker_id": 7,
-                    "text": "Hello there.",
-                },
-                {"start_time": 2.0, "end_time": 30.0, "text": "[Silence]"},
-            ]
-        }
-        validation = validate_asr_result(result, window(), support())
-        self.assertTrue(validation.accepted)
-        self.assertEqual(validation.reasons, ())
-
-    def test_normalizes_transformers_v5_segment_shape(self) -> None:
-        value = [{"Start": 0.0, "End": 2.0, "Speaker": 4, "Content": "Hello."}]
-        self.assertEqual(
-            normalize_asr_segments(value),
-            [{"start_time": 0.0, "end_time": 2.0, "speaker_id": 4, "text": "Hello."}],
-        )
-        validation = validate_asr_result({"segments": value}, window(), support())
+    def test_accepts_one_text_per_chunk(self) -> None:
+        validation = validate_asr_result(result(["a", "b"]), window(2))
         self.assertTrue(validation.accepted)
 
-    def test_rejects_timestamp_outside_actual_tail(self) -> None:
-        result = {"segments": [{"start_time": 0.0, "end_time": 6.1, "text": "Hello."}]}
-        validation = validate_asr_result(result, window(6.0), support())
-        self.assertFalse(validation.accepted)
-        self.assertIn("violates", validation.reasons[0])
+    def test_rejects_missing_or_misordered_chunks(self) -> None:
+        self.assertFalse(validate_asr_result({}, window(2)).accepted)
+        short = validate_asr_result(result(["a"]), window(2))
+        self.assertIn("has 1 chunks", short.reasons[0])
+        misordered = result(["a", "b"])
+        misordered["chunks"].reverse()
+        self.assertFalse(validate_asr_result(misordered, window(2)).accepted)
+        bad_text = result(["a", "b"])
+        bad_text["chunks"][1]["text"] = 7
+        self.assertIn("non-string", validate_asr_result(bad_text, window(2)).reasons[0])
 
-    def test_malformed_segment_is_rejected_without_activity_probe(self) -> None:
-        def unexpected_support(_track: str, _start: float, _end: float) -> dict:
-            raise AssertionError("structurally invalid rows have no valid activity span")
-
-        bad_text = validate_asr_result(
-            {"segments": [{"start_time": 0.0, "end_time": 1.0, "text": 7}]},
-            window(),
-            unexpected_support,
-        )
-        self.assertFalse(bad_text.accepted)
-        self.assertIn("non-string text", bad_text.reasons[0])
-
-        bad_time = validate_asr_result(
-            {"segments": [{"start_time": 0.0, "end_time": 31.0, "text": "Hello."}]},
-            window(),
-            unexpected_support,
-        )
-        self.assertFalse(bad_time.accepted)
-        self.assertIn("violates", bad_time.reasons[0])
-
-    def test_rejects_decoder_loop(self) -> None:
+    def test_decoder_loop_becomes_unavailable_row(self) -> None:
         text = "where " * 12
         self.assertIsNotNone(decoder_loop_reason(text))
-        validation = validate_asr_result(
-            {"segments": [{"start_time": 0.0, "end_time": 2.0, "text": text}]},
-            window(),
-            support(),
+        rows, _ = session_rows(
+            result([text]), window(1), "near/session-000000.json", support(), 256
         )
-        self.assertFalse(validation.accepted)
-        self.assertTrue(any("decoder loop" in reason for reason in validation.reasons))
+        self.assertEqual(rows[0]["kind"], "unavailable")
+        self.assertEqual(rows[0]["asr_text"], text.strip())
+        self.assertIn("decoder loop", rows[0]["validation_reasons"][0])
+
+    def test_exhausted_token_budget_becomes_unavailable_row(self) -> None:
+        rows, _ = session_rows(
+            result(["Words that ran on."], tokens=256),
+            window(1),
+            "near/session-000000.json",
+            support(),
+            256,
+        )
+        self.assertEqual(rows[0]["kind"], "unavailable")
+        self.assertIn("exhausted", rows[0]["validation_reasons"][0])
 
     def test_rejects_seven_token_decoder_cycle(self) -> None:
         phrase = "alpha bravo charlie delta echo foxtrot golf"
@@ -163,17 +226,21 @@ class StructuralValidationTests(unittest.TestCase):
         self.assertIsNotNone(decoder_loop_reason(text))
 
     def test_mixed_unavailable_span_is_not_attributed_to_remote(self) -> None:
-        mixed = Window("mix", 30.0, 15, 15.0, Path("unused.wav"))
-        item = unavailable_row(mixed, "mix/15s/000030000.json", ["bad JSON"])
+        mixed = Window("mix", 10, 5, 15 * CHUNK_SAMPLES, Path("unused.wav"))
+        item = unavailable_row(mixed, "mix/session-000010.json", ["bad JSON"])
         self.assertEqual(item["speaker"], "Mixed")
 
-    def test_rejects_low_channel_support(self) -> None:
-        result = {
-            "segments": [{"start_time": 0.0, "end_time": 2.0, "text": "Real words."}]
-        }
-        validation = validate_asr_result(result, window(), support(0.05))
-        self.assertFalse(validation.accepted)
-        self.assertEqual(len(validation.low_support_rows), 1)
+    def test_low_channel_support_is_withheld(self) -> None:
+        rows, withheld = session_rows(
+            result(["Real words."]),
+            window(1),
+            "near/session-000000.json",
+            support(0.05),
+            256,
+        )
+        self.assertEqual(rows, [])
+        self.assertEqual(len(withheld), 1)
+        self.assertEqual(withheld[0]["channel_activity"]["selected"], 0.05)
 
 
 class CleanupContractTests(unittest.TestCase):
@@ -286,11 +353,11 @@ class CleanupContractTests(unittest.TestCase):
 
     def test_unavailable_row_ignores_non_earlier_duplicate_target(self) -> None:
         unavailable = unavailable_row(
-            Window("near", 480.0, 15, 15.0, Path("unused.wav")),
-            "near/15s/000000480000.json",
+            window(102, first=102),
+            "near/session-000102.json",
             ["forced unavailable"],
         )
-        source_id = "near-000000480000-15-unavailable"
+        source_id = "near-c000102-unavailable"
         self.assertEqual(unavailable["source_id"], source_id)
         shard = {
             "shard_id": "006",

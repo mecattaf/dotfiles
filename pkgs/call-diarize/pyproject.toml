@@ -1,7 +1,7 @@
 [project]
 name = "call-diarize"
-version = "1.0.0"
-description = "GPU-backed VibeVoice transcription for split call recordings"
+version = "2.0.0"
+description = "GPU-backed VibeVoice-ASR-Streaming-7B transcription for split call recordings"
 requires-python = "==3.13.*"
 dependencies = []
 
