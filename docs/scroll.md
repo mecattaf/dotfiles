@@ -37,11 +37,41 @@ xdg-desktop-portal-gnome, ScreenCast and Screenshot are xdg-desktop-portal-wlr
 The module asserts, and checks at build time, that gnome-shell, mutter,
 gnome-session and gdm are not in the system closure.
 
+## Theming
+
+MacTahoe on scroll exactly as on niri (non-negotiable). Home Manager's `gtk`
+block (`home/home.nix`) keeps MacTahoe for GTK3 with its icons;
+`home/theme.nix` points `~/.config/gtk-4.0/{gtk.css,gtk-dark.css,assets}`
+through `~/.config/theme` at the selected theme's MacTahoe `gtk-4.0`;
+`startup.conf` runs `theme apply` at login as `niri/startup.kdl` does, which
+writes gtk-theme, icon-theme and an explicit `color-scheme` (never "default").
+There is no libadwaita colour sheet. scroll has no blur, so MacTahoe's
+translucent Nautilus surfaces are unfrosted here; blur belongs in the owned
+scroll-based fork, not in GTK CSS.
+
+## Tools
+
+- Colour picker, `$mod+c` (niri `Mod+C`): `~/.local/bin/colorpicker`, slurp
+  `-p` plus a native-scale grim PPM read, to the clipboard. No hyprpicker, no
+  ImageMagick, no notification. On niri it stays `niri msg pick-color`.
+- Monitors off: `scroll/scripts/monitors-off`, a one-shot `swayidle` to wake on
+  input. No screen locker is bound (none ever was).
+- piri and xwayland-satellite stay installed while niri is supported. piri runs
+  only when `NIRI_SOCKET` is in the user manager; `scroll-session` unsets a
+  stale one before importing its environment.
+
 ## Rollback
 
 Set `myDisplay.session = "niri";` (per host or in `modules/display.nix`),
 rebuild, reboot or restart greetd. While `keepNiri` is on, `niri-session` also
-works by hand from a VT2 console.
+works by hand from a VT2 console. `nix flake check` stays green either way:
+`home-profiles` evaluates the niri rollback in memory (niri-session, niri
+portals, piri, xwayland-satellite, MacTahoe) and `scroll-config` always checks
+the scroll config.
+
+## Headless browser desktop
+
+`modules/browser-desktop.nix` still runs stock sway; replacing it is for later.
 
 ## Master bump
 
