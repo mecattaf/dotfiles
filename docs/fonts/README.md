@@ -22,7 +22,10 @@ re-centred like any donor, and SF Mono is the first gap donor ahead of JetBrains
 `❯` prompt chevron is Apple's too). Letters, digits, marks and spaces stay Anthropic. The
 face is openly a chimera: Anthropic letterforms, Apple symbols. The rule and its reasons
 live in `pkgs/fontbuilder/lib/merge.py`; overridden glyphs keep their host names and are
-listed per face in `merge-report/merge-<Style>.json` under `overridden`.
+listed per face in `merge-report/merge-<Style>.json` under `overridden`. One carve-out, same
+day: the dot-built punctuation `! ? . , : ; ¡ ¿ …` comes from Fira Code, the ligature donor,
+at Fira's raw scale, so a single `!` or `.` is the same round dot as inside `!!`, `!=`, `..`
+and `::`; SF Mono's square dots sat too close to the stem for Tom.
 
 | page | what it holds |
 |---|---|

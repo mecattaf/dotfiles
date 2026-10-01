@@ -17,8 +17,10 @@ import json
 import os
 import subprocess
 
-TAGS = ("sf", "sfs", "jb", "dv", "maple", "dvr", "jbs", "dvs", "mps", "dvrs", "synth", "apua")
+TAGS = ("fira", "firas", "sf", "sfs", "jb", "dv", "maple", "dvr", "jbs", "dvs", "mps", "dvrs", "synth", "apua")
 LICENCES = {
+    "fira": "Fira Code 3.001, the dot-built punctuation ! ? . , : ; (SIL OFL-1.1)",
+    "firas": "Fira Code 3.001 upright, sheared 10 deg (SIL OFL-1.1)",
     "sf": "Apple SF Mono via Liga SFMono Nerd Font (Apple proprietary; personal use, never redistributed)",
     "sfs": "Apple SF Mono upright cut, sheared 10 deg (Apple proprietary; personal use, never redistributed)",
     "jb": "JetBrains Mono 2.304 via nerd-fonts.jetbrains-mono (SIL OFL-1.1)",

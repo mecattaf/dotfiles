@@ -76,6 +76,14 @@ BRAILLE = [(0x2800, 0x28FF)]
 # replaced by the override donor's glyph when it has one. P = punctuation,
 # S = symbols (math, currency, modifier, other). PUA is Co and never matches.
 OVERRIDE_CATEGORIES = ("P", "S")
+# Tom, 2026-10-01 (second rule): the DOT-BUILT punctuation comes from Fira Code,
+# the font that draws the !! != ?? ?. .. ... :: ;; ligatures, so a single `!`
+# or `.` is the same round dot at the same distance from the stem as inside the
+# ligature, and typing the second `.` changes only the spacing, never the dot.
+# SF Mono's dots are square and sit close to the stem ("too close to the bar").
+# Copied at Fira's RAW scale (scale_exact 1.0, upm 1950 against 2000), exactly
+# as S5/Ligaturizer copies the ligature glyphs, so single and doubled match.
+DOTTED = [0x21, 0x3F, 0x2E, 0x2C, 0x3A, 0x3B, 0xA1, 0xBF, 0x2026]
 # Cu2Qu tolerance when a CFF (cubic) donor is converted to TrueType quadratics;
 # 1 unit at upm 2000 is far below any rasteriser's resolution.
 CU2QU_MAX_ERR = 1.0
@@ -138,7 +146,17 @@ def donor_table(style):
             "SemiBold": "Semibold", "Bold": "Bold", "ExtraBold": "Heavy"}[base]
     sff = os.path.join(sfd, "LigaSFMonoNerdFont-%s%s.otf" % (sf_w, "Italic" if italic else ""))
     sfu = os.path.join(sfd, "LigaSFMonoNerdFont-%s.otf" % sf_w)
+    # Fira Code (the S5 ligature donor): six uprights, no italics, so italics
+    # shear the upright like jbs/dvs/mps. ExtraBold takes Bold.
+    fira = os.environ["FONTBUILDER_FIRA"]
+    fira_w = {"Light": "Light", "Regular": "Regular", "Medium": "Medium",
+              "SemiBold": "SemiBold", "Bold": "Bold", "ExtraBold": "Bold"}[base]
+    firaf = os.path.join(fira, "FiraCode-%s.otf" % fira_w)
+    dotted = [(cp, cp) for cp in DOTTED]
     out = [
+        dict(tag="firas" if italic else "fira", path=firaf, ranges=dotted,
+             override=("P", "S"), override_cps=set(DOTTED), scale_exact=1.0,
+             **({"shear": SHEAR_DEG} if italic else {}), licence="OFL-1.1"),
         dict(tag="sf", path=sff, ranges=TEXTISH, override=OVERRIDE_CATEGORIES,
              licence="Apple SF Mono (personal use, never redistributed)"),
     ]
@@ -242,14 +260,14 @@ def graft(host_path, dons, out_path, report_path=None, braille_dy=0):
             # Ligaturizer's by-name lookups and S6's anchors keep working.
             n_before = len(overridden)
             done = {cp for cp, _, _ in overridden}
-            for cp in sorted(host_cps):
+            for cp in sorted(d["override_cps"] & host_cps if d.get("override_cps") else host_cps):
                 if cp in done or unicodedata.category(chr(cp))[0] not in d["override"]:
                     continue
                 gn = dcm.get(cp)
                 if gn is None:
                     continue
                 hostname = hcmap[cp]
-                g, meas = build(dfont, dgs, gn, d, s_ink, cp)
+                g, meas = build(dfont, dgs, gn, d, d.get("scale_exact") or s_ink, cp)
                 if g.numberOfContours and meas > ceiling:
                     oversize.append(("U+%04X" % cp, gn, d["tag"] + "-override", meas))
                     continue
@@ -265,7 +283,7 @@ def graft(host_path, dons, out_path, report_path=None, braille_dy=0):
             if gn is None:
                 continue
             is_braille = 0x2800 <= cp <= 0x28FF
-            s = d["braille_exact"] if (is_braille and d.get("braille_exact")) else s_ink
+            s = d["braille_exact"] if (is_braille and d.get("braille_exact")) else (d.get("scale_exact") or s_ink)
             g, meas = build(dfont, dgs, gn, d, s, cp)
             if g.numberOfContours and meas > ceiling:
                 oversize.append(("U+%04X" % cp, gn, d["tag"], meas))
