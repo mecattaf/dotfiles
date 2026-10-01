@@ -1802,8 +1802,10 @@
               ) c.services.greetd.settings.initial_session.command
             )
           ) displayHosts;
-          # The branch default: both seats run scroll, niri kept for rollback.
-          assert builtins.all (h: (cfgOf h).myDisplay.session == "scroll" && (cfgOf h).myDisplay.keepNiri) [
+          # niri is never dropped without a decision: each seat either runs
+          # niri or keeps it installed beside scroll (myDisplay.keepNiri), so a
+          # rollback to session = "niri" keeps these checks green.
+          assert builtins.all (h: (cfgOf h).myDisplay.keepNiri || (cfgOf h).myDisplay.session == "niri") [
             "coordinator"
             "client"
           ];
@@ -1832,21 +1834,53 @@
             && !(nixpkgs.lib.hasInfix "I3SOCK" sessionConf)
             && c.systemd.user.services.scroll.restartIfChanged == false
             && c.systemd.user.services.scroll.enableDefaultPath == false
+          ) (builtins.filter (h: (cfgOf h).programs.scroll.enable) [
+            "coordinator"
+            "client"
+          ]);
+          # The niri rollback, evaluated in memory (never switched): with
+          # session = "niri" each seat gets exactly the niri desktop main had —
+          # greetd starts niri-session, scroll is off, niri's portal table is
+          # the one the scroll default carries for it, piri's service and
+          # xwayland-satellite are installed.
+          assert builtins.all (
+            h:
+            let
+              c = cfgOf h;
+              r =
+                (self.nixosConfigurations.${h}.extendModules {
+                  modules = [ { myDisplay.session = nixpkgs.lib.mkForce "niri"; } ];
+                }).config;
+              rh = r.home-manager.users.tom;
+            in
+            r.programs.niri.enable
+            && !r.programs.scroll.enable
+            && nixpkgs.lib.hasSuffix "/bin/niri-session" r.services.greetd.settings.initial_session.command
+            && r.xdg.portal.config.niri == c.xdg.portal.config.niri
+            && rh.systemd.user.services ? piri
+            && rh.systemd.user.services.piri.Unit.ConditionEnvironment == "NIRI_SOCKET"
+            && builtins.any (p: nixpkgs.lib.getName p == "xwayland-satellite") rh.home.packages
+            && builtins.any (p: nixpkgs.lib.getName p == "piri") rh.home.packages
+            && rh.gtk.enable
+            && rh.xdg.configFile ? "niri-local.kdl"
           ) [
             "coordinator"
             "client"
           ];
-          # GTK single writer: Home Manager pins no GTK theme key on either seat;
-          # libadwaita's gtk.css is the generated variables-only fragment.
+          # MacTahoe on every session (non-negotiable): Home Manager's gtk
+          # block keeps MacTahoe for GTK3 and its icons, and GTK4's gtk.css,
+          # gtk-dark.css and assets point through ~/.config/theme at the
+          # selected theme's MacTahoe gtk-4.0 dir. No generated libadwaita
+          # colour sheet stands in for it.
           assert builtins.all (
             hm:
-            !hm.gtk.enable
-            && !(hm.dconf.settings."org/gnome/desktop/interface" ? gtk-theme)
-            && !(hm.dconf.settings."org/gnome/desktop/interface" ? icon-theme)
-            && !(hm.dconf.settings."org/gnome/desktop/interface" ? cursor-theme)
-            && !(hm.dconf.settings."org/gnome/desktop/interface" ? color-scheme)
-            && nixpkgs.lib.hasInfix "--window-bg-color: #000000;" hm.xdg.configFile."themes/noir/gtk4.css".text
-            && !(nixpkgs.lib.hasInfix "@define-color" hm.xdg.configFile."themes/noir/gtk4.css".text)
+            hm.gtk.enable
+            && nixpkgs.lib.hasPrefix "MacTahoe-" hm.gtk.theme.name
+            && nixpkgs.lib.hasPrefix "MacTahoe" hm.gtk.iconTheme.name
+            && builtins.all (f: hm.xdg.configFile ? "gtk-4.0/${f}") [ "gtk.css" "gtk-dark.css" "assets" ]
+            && hm.xdg.configFile ? "themes/noir/gtk-4.0"
+            && nixpkgs.lib.hasInfix "MacTahoe" (toString hm.xdg.configFile."themes/noir/gtk-4.0".source)
+            && !(hm.xdg.configFile ? "themes/noir/gtk4.css")
           ) [
             coordinatorHome
             clientHome
@@ -3027,7 +3061,12 @@
         # command bodies are only checked when they run.
         scroll-config =
           let
-            client = self.nixosConfigurations.client.config;
+            # Always the scroll config, whichever session the client selects,
+            # so a niri rollback leaves this check green.
+            client =
+              (self.nixosConfigurations.client.extendModules {
+                modules = [ { myDisplay.session = nixpkgs.lib.mkForce "scroll"; } ];
+              }).config;
             clientHome = client.home-manager.users.tom;
             themeNames = builtins.attrNames (import ./home/themes { inherit (nixpkgs) lib; }).themes;
           in
