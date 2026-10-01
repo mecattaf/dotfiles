@@ -67,7 +67,8 @@ let
 
   # Whole-dir RAW config dirs, one per ~/.config/<name>.
   configDirs = [
-    "niri"
+    "scroll" # the physical seats' compositor on scroll/transition (dawsers/scroll master)
+    "niri" # kept beside scroll for rollback until niri retirement (myDisplay.keepNiri)
     "kitty"
     "ghostty" # kitty.conf's twin, read by libghostty in cmux Browser's panes
     "fish"
@@ -227,17 +228,75 @@ in
           ''
             // GENERATED per-host (home.nix). No host-specific niri config on ${hostName}.
           '';
-    };
-  # (The gtk-4.0/{gtk.css,gtk-dark.css,assets} links that used to sit here — a
-  # store symlink of MacTahoe-Dark-grey's gtk-4.0 — moved to home/theme.nix,
-  # where they point through the ~/.config/theme pointer at whichever theme's
-  # MacTahoe variant is selected. 2026-09-17.)
 
-  # gtk-theme / icon-theme / color-scheme are deliberately NOT pinned here any
-  # more (2026-09-17): the theme switcher owns them at runtime (`theme apply`
-  # → gsettings, docs/theme-switcher-2026-09-17.md), and a pinned value would
-  # snap a light session back to Dark on every switch. dconf keeps whatever
-  # `theme` last wrote. Fonts stay.
+      # Per-HOST scroll config: the scroll twin of niri-local.kdl, same reasons
+      # (scroll/ is a whole-dir RAW symlink shared by every host). Included by
+      # scroll/config after binds.conf and before the theme fragment, so the
+      # client's chords override binds.conf (a later bindsym wins; --no-warn
+      # silences the duplicate notice). Store-managed, re-emitted on switch.
+      #
+      # Touch: sway-family input blocks map PER DEVICE, which closes the
+      # accepted R-10 defect niri could not (stock niri maps every touch device
+      # to one output). The type-wide line keeps today's niri behaviour
+      # (everything on eDP-1); the two per-device lines are the R-10 fix, left
+      # commented until `scrollmsg -t get_inputs` on the client confirms which
+      # ELAN panel is which (identifiers inferred from the scroll-era
+      # lisgd-start device names, 0x04F3 = 1267, 0x425A/B = 16986/16987).
+      #
+      # Lid: niri turned eDP-1 off on lid close by itself and hosts/client/
+      # lid.nix relies on that (logind ignores the lid). sway-family
+      # compositors do not, so bindswitch does it; --reload re-applies the
+      # state after a config reload.
+      #
+      # F10 / XF86: as niri-local.kdl (backlight toggle; the Duo daemon's
+      # re-emitted Fn keys).
+      "scroll-local.conf".text =
+        if hostName == "client" then
+          ''
+            # GENERATED per-host (home.nix). client — ASUS Zenbook Duo UX8406MA.
+            input type:touch map_to_output eDP-1
+            # R-10 per-device mapping (verify ids with `scrollmsg -t get_inputs`):
+            # input "1267:16986:ELAN9008:00_04F3:425A" map_to_output eDP-1
+            # input "1267:16987:ELAN9008:00_04F3:425B" map_to_output eDP-2
+
+            bindswitch --reload --locked lid:on output eDP-1 disable
+            bindswitch --reload --locked lid:off output eDP-1 enable
+
+            # @title Backlight off / restore
+            bindsym --no-warn F10 exec ~/.local/bin/brightness toggle
+            bindsym --locked XF86MonBrightnessDown exec ~/.local/bin/brightness down
+            bindsym --locked XF86MonBrightnessUp exec ~/.local/bin/brightness up
+            bindsym --locked XF86AudioMicMute exec ~/.local/bin/volume micmute
+          ''
+        else
+          ''
+            # GENERATED per-host (home.nix). No host-specific scroll config on ${hostName}.
+          '';
+    }
+    # Photos gets a plain bookmark, not an XDG dir (see xdg.userDirs below):
+    # XDG_PICTURES_DIR is where screenshot tools save, and /mnt/nas/photos is
+    # Immich's library root — stray screenshots must not land inside it.
+    # Written directly since HM's gtk module (gtk3.bookmarks) is off (2026-10-01).
+    // lib.optionalAttrs (hostName == "coordinator") {
+      "gtk-3.0/bookmarks".text = ''
+        file:///mnt/nas/photos Photos
+      '';
+    };
+  # (~/.config/gtk-4.0/gtk.css is home/theme.nix's: the generated,
+  # variables-only libadwaita fragment, through the ~/.config/theme pointer.)
+
+  # GTK SINGLE WRITER (scroll/transition, 2026-10-01). ~/.local/bin/theme is
+  # the ONE writer of gtk-theme, the WM theme, icon-theme and color-scheme
+  # (gsettings, on every `theme apply`, which startup.conf runs at login).
+  # Nothing here writes them. The comment that stood here until this date
+  # claimed the same, but it was false: the `gtk = { enable = true; theme;
+  # iconTheme; cursorTheme; }` block further down made Home Manager re-write
+  # gtk-theme, icon-theme, cursor-theme and cursor-size into dconf on EVERY
+  # activation (its gtk3 module's dconf.settings) and pin them again in
+  # gtk-3.0/gtk-4.0 settings.ini — while writing no color-scheme at all, so
+  # the Settings portal answered "no preference" and libadwaita and Chrome
+  # rendered light under a dark theme. That block is now `gtk.enable = false`
+  # (below). Only the FONT keys are declared here: they are not theme-owned.
   dconf.settings."org/gnome/desktop/interface" = {
     # Interface fonts for Nautilus and every other GTK app that reads
     # font-name. sf-pro ships system-wide via modules/common.nix fonts.packages
@@ -387,28 +446,19 @@ in
   # ---------------------------------------------------------------------------
   # gtk/icon/cursor theming — mactahoe (overlay). GTK dirs are
   # MacTahoe-<Color>[-solid]-grey[-(x)hdpi]; icon dirs MacTahoe[-light|-dark].
+  #
+  # Home Manager does NOT write GTK theme keys (2026-10-01, see the dconf
+  # comment above): `gtk.enable = false` stops its dconf re-pinning and its
+  # settings.ini files. The packages it used to install are listed here (and
+  # every theme's GTK3 package in home/theme.nix); the keys are written by
+  # ~/.local/bin/theme; the cursor by the compositor config (scroll
+  # misc.conf/startup.conf: Bibata-Modern-Classic 48 on both seats — the
+  # coordinator's HM-pinned Bibata-Modern-Amber is gone with the pin).
   # ---------------------------------------------------------------------------
-  gtk = {
-    enable = true;
-    theme = {
-      name = "MacTahoe-Dark-grey";
-      package = pkgs.mactahoe-gtk-theme;
-    };
-    iconTheme = {
-      name = "MacTahoe-dark";
-      package = pkgs.mactahoe-icon-theme;
-    };
-    cursorTheme = {
-      name = if hostName == "coordinator" then "Bibata-Modern-Amber" else "Bibata-Modern-Classic";
-      package = pkgs.bibata-cursors;
-    };
-    # Photos gets a plain bookmark, not an XDG dir (see xdg.userDirs below):
-    # XDG_PICTURES_DIR is where screenshot tools save, and /mnt/nas/photos is
-    # Immich's library root — stray screenshots must not land inside it.
-    gtk3.bookmarks = lib.optionals (hostName == "coordinator") [
-      "file:///mnt/nas/photos Photos"
-    ];
-  };
+  gtk.enable = false;
+  # (mactahoe-icon-theme and bibata-cursors: home.packages below. The Photos
+  # bookmark HM's gtk3.bookmarks wrote: xdg.configFile."gtk-3.0/bookmarks" in
+  # the RAW-configs block above.)
 
   # ---------------------------------------------------------------------------
   # NAS media in the Nautilus sidebar (coordinator only). Music/Videos become
@@ -501,9 +551,16 @@ in
     yq-go
     glow
 
-    # niri / wayland desktop tooling. xwayland-satellite: niri's X11 path — X11 apps
-    # and Chrome fallbacks need it on the session PATH.
+    # wayland desktop tooling. xwayland-satellite: niri's X11 path — X11 apps
+    # and Chrome fallbacks need it on the session PATH under niri; scroll has
+    # native Xwayland. Kept while niri is the rollback (myDisplay.keepNiri).
     xwayland-satellite
+    # scroll/scripts/monitors-off: sway-family compositors do not wake outputs
+    # on input, so a one-shot swayidle resume does it (niri's power-off-monitors).
+    swayidle
+    # icons for the theme switcher's MacTahoe[-<accent>]-{dark,light}; HM's gtk
+    # module used to install it (gtk.enable is off since 2026-10-01).
+    mactahoe-icon-theme
     acpi
     brightnessctl
     playerctl
