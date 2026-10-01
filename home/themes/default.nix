@@ -152,57 +152,6 @@ let
     workspace_labels_color ${t.brand}
   '';
 
-  # libadwaita (GTK4): VARIABLES ONLY. libadwaita forces its own Adwaita
-  # stylesheet and honours user CSS custom properties (libadwaita >= 1.6), so
-  # this paints Tom's grounds onto Adwaita's shapes — exact colours instead of
-  # MacTahoe's full gtk-4.0 sheet, which carried no variables (unrestyled
-  # widgets kept Adwaita colours) and translucent surfaces that assumed niri's
-  # blur. `@define-color` is not honoured by libadwaita and is not used.
-  # The accent is the brand clay, exact: the portal accent would be snapped to
-  # one of libadwaita's nine named accents.
-  gtk4 = t: ''
-    /* ${header t ""} */
-    /* ~/.config/gtk-4.0/gtk.css -> ~/.config/theme/gtk4.css (home/theme.nix). */
-    :root {
-      --window-bg-color: ${t.ground.base};
-      --window-fg-color: ${t.fg};
-      --view-bg-color: ${t.ground.base};
-      --view-fg-color: ${t.fg};
-      --headerbar-bg-color: ${t.ground.dim};
-      --headerbar-fg-color: ${t.fg};
-      --headerbar-backdrop-color: ${t.ground.base};
-      --headerbar-border-color: ${t.border.inactive};
-      --headerbar-shade-color: ${t.border.inactive};
-      --sidebar-bg-color: ${t.ground.dim};
-      --sidebar-fg-color: ${t.fg};
-      --sidebar-backdrop-color: ${t.ground.dim};
-      --sidebar-border-color: ${t.border.inactive};
-      --sidebar-shade-color: ${t.border.inactive};
-      --secondary-sidebar-bg-color: ${t.ground.dim};
-      --secondary-sidebar-fg-color: ${t.fg};
-      --secondary-sidebar-backdrop-color: ${t.ground.dim};
-      --secondary-sidebar-border-color: ${t.border.inactive};
-      --secondary-sidebar-shade-color: ${t.border.inactive};
-      --card-bg-color: ${t.ground.raised};
-      --card-fg-color: ${t.fg};
-      --card-shade-color: ${t.border.inactive};
-      --dialog-bg-color: ${t.ground.raised};
-      --dialog-fg-color: ${t.fg};
-      --popover-bg-color: ${t.ground.raised};
-      --popover-fg-color: ${t.fg};
-      --popover-shade-color: ${t.border.inactive};
-      --thumbnail-bg-color: ${t.ground.raised};
-      --thumbnail-fg-color: ${t.fg};
-      --accent-bg-color: ${t.brand};
-      --accent-fg-color: #ffffff;
-      --accent-color: ${t.brand};
-      --destructive-color: ${t.red};
-      --success-color: ${t.green};
-      --warning-color: ${t.yellow};
-      --error-color: ${t.red};
-    }
-  '';
-
   # fish wants bare hex, no '#'.
   bare = c: lib.removePrefix "#" c;
   fish = t: ''
@@ -279,7 +228,6 @@ rec {
     "ghostty" = ghostty t;
     "niri.kdl" = niri t;
     "scroll.conf" = scroll t;
-    "gtk4.css" = gtk4 t;
     "colors.fish" = fish t;
     "theme.lua" = lua t;
     "meta" = meta t;

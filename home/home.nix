@@ -272,31 +272,17 @@ in
           ''
             # GENERATED per-host (home.nix). No host-specific scroll config on ${hostName}.
           '';
-    }
-    # Photos gets a plain bookmark, not an XDG dir (see xdg.userDirs below):
-    # XDG_PICTURES_DIR is where screenshot tools save, and /mnt/nas/photos is
-    # Immich's library root — stray screenshots must not land inside it.
-    # Written directly since HM's gtk module (gtk3.bookmarks) is off (2026-10-01).
-    // lib.optionalAttrs (hostName == "coordinator") {
-      "gtk-3.0/bookmarks".text = ''
-        file:///mnt/nas/photos Photos
-      '';
     };
-  # (~/.config/gtk-4.0/gtk.css is home/theme.nix's: the generated,
-  # variables-only libadwaita fragment, through the ~/.config/theme pointer.)
+  # (The gtk-4.0/{gtk.css,gtk-dark.css,assets} links that used to sit here — a
+  # store symlink of MacTahoe-Dark-grey's gtk-4.0 — moved to home/theme.nix,
+  # where they point through the ~/.config/theme pointer at whichever theme's
+  # MacTahoe variant is selected. 2026-09-17.)
 
-  # GTK SINGLE WRITER (scroll/transition, 2026-10-01). ~/.local/bin/theme is
-  # the ONE writer of gtk-theme, the WM theme, icon-theme and color-scheme
-  # (gsettings, on every `theme apply`, which startup.conf runs at login).
-  # Nothing here writes them. The comment that stood here until this date
-  # claimed the same, but it was false: the `gtk = { enable = true; theme;
-  # iconTheme; cursorTheme; }` block further down made Home Manager re-write
-  # gtk-theme, icon-theme, cursor-theme and cursor-size into dconf on EVERY
-  # activation (its gtk3 module's dconf.settings) and pin them again in
-  # gtk-3.0/gtk-4.0 settings.ini — while writing no color-scheme at all, so
-  # the Settings portal answered "no preference" and libadwaita and Chrome
-  # rendered light under a dark theme. That block is now `gtk.enable = false`
-  # (below). Only the FONT keys are declared here: they are not theme-owned.
+  # gtk-theme / icon-theme / color-scheme are deliberately NOT pinned here any
+  # more (2026-09-17): the theme switcher owns them at runtime (`theme apply`
+  # → gsettings, docs/theme-switcher-2026-09-17.md), and a pinned value would
+  # snap a light session back to Dark on every switch. dconf keeps whatever
+  # `theme` last wrote. Fonts stay.
   dconf.settings."org/gnome/desktop/interface" = {
     # Interface fonts for Nautilus and every other GTK app that reads
     # font-name. sf-pro ships system-wide via modules/common.nix fonts.packages
@@ -446,19 +432,28 @@ in
   # ---------------------------------------------------------------------------
   # gtk/icon/cursor theming — mactahoe (overlay). GTK dirs are
   # MacTahoe-<Color>[-solid]-grey[-(x)hdpi]; icon dirs MacTahoe[-light|-dark].
-  #
-  # Home Manager does NOT write GTK theme keys (2026-10-01, see the dconf
-  # comment above): `gtk.enable = false` stops its dconf re-pinning and its
-  # settings.ini files. The packages it used to install are listed here (and
-  # every theme's GTK3 package in home/theme.nix); the keys are written by
-  # ~/.local/bin/theme; the cursor by the compositor config (scroll
-  # misc.conf/startup.conf: Bibata-Modern-Classic 48 on both seats — the
-  # coordinator's HM-pinned Bibata-Modern-Amber is gone with the pin).
   # ---------------------------------------------------------------------------
-  gtk.enable = false;
-  # (mactahoe-icon-theme and bibata-cursors: home.packages below. The Photos
-  # bookmark HM's gtk3.bookmarks wrote: xdg.configFile."gtk-3.0/bookmarks" in
-  # the RAW-configs block above.)
+  gtk = {
+    enable = true;
+    theme = {
+      name = "MacTahoe-Dark-grey";
+      package = pkgs.mactahoe-gtk-theme;
+    };
+    iconTheme = {
+      name = "MacTahoe-dark";
+      package = pkgs.mactahoe-icon-theme;
+    };
+    cursorTheme = {
+      name = if hostName == "coordinator" then "Bibata-Modern-Amber" else "Bibata-Modern-Classic";
+      package = pkgs.bibata-cursors;
+    };
+    # Photos gets a plain bookmark, not an XDG dir (see xdg.userDirs below):
+    # XDG_PICTURES_DIR is where screenshot tools save, and /mnt/nas/photos is
+    # Immich's library root — stray screenshots must not land inside it.
+    gtk3.bookmarks = lib.optionals (hostName == "coordinator") [
+      "file:///mnt/nas/photos Photos"
+    ];
+  };
 
   # ---------------------------------------------------------------------------
   # NAS media in the Nautilus sidebar (coordinator only). Music/Videos become
@@ -558,9 +553,6 @@ in
     # scroll/scripts/monitors-off: sway-family compositors do not wake outputs
     # on input, so a one-shot swayidle resume does it (niri's power-off-monitors).
     swayidle
-    # icons for the theme switcher's MacTahoe[-<accent>]-{dark,light}; HM's gtk
-    # module used to install it (gtk.enable is off since 2026-10-01).
-    mactahoe-icon-theme
     acpi
     brightnessctl
     playerctl

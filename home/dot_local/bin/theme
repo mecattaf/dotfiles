@@ -126,10 +126,12 @@ set_claude_code() {
 gset() { gsettings set "$@" 2>/dev/null || printf '  gsettings: set %s failed\n' "$*" >&2; }
 
 #
-# This script is the ONE writer of these keys (Home Manager's gtk module is off
-# since 2026-10-01, home/home.nix). color-scheme is ALWAYS written explicitly,
-# never left at "default": an unset key makes the Settings portal answer "no
-# preference", and libadwaita and Chrome then render light under a dark theme.
+# The theme is MacTahoe on every session (niri and scroll alike): the gtk-theme
+# written here is the selected theme's MacTahoe variant, and Home Manager's gtk
+# block (home/home.nix) keeps its MacTahoe defaults and settings.ini files.
+# color-scheme is ALWAYS written explicitly, never left at "default": an unset
+# key makes the Settings portal answer "no preference", and libadwaita and
+# Chrome then render light under a dark MacTahoe theme.
 apply_gtk() {
     command -v gsettings >/dev/null || { echo '  gtk: no gsettings on PATH (pre-switch?)' >&2; return 0; }
     local gtk_theme scheme
