@@ -99,11 +99,22 @@ class RenderOnlyTests(unittest.TestCase):
         self.assertNotIn("--sides", commands[0])
 
     def test_target_mismatch_is_recorded_and_exits_3(self) -> None:
-        rc, _, receipt = self.render("--target-pages", "1", pages=2)
+        rc, _, receipt = self.render("--target-pages", "1", pages=4)
         self.assertEqual(rc, 3)
         self.assertEqual(receipt["length_check"], "fail")
-        self.assertEqual(receipt["pages_rendered"], 2)
+        self.assertEqual(receipt["pages_rendered"], 4)
         self.assertEqual(receipt["target_pages"], 1)
+        self.assertEqual(receipt["page_slack"], 2)
+
+    def test_within_default_slack_passes(self) -> None:
+        rc, _, receipt = self.render("--target-pages", "20", pages=22)
+        self.assertEqual(rc, 0)
+        self.assertEqual(receipt["length_check"], "pass")
+
+    def test_zero_slack_is_exact(self) -> None:
+        rc, _, receipt = self.render("--target-pages", "1", "--page-slack", "0", pages=2)
+        self.assertEqual(rc, 3)
+        self.assertEqual(receipt["length_check"], "fail")
 
     def test_target_match_passes(self) -> None:
         rc, _, receipt = self.render("--target-pages", "2", pages=2)

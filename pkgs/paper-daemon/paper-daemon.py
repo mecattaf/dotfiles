@@ -8,7 +8,7 @@ this program's, and nobody else's:
     intake/<slug>.md
         │  render through print-auto.py (the utility-model classifier and
         │  print-paper.py's renderer — the one render path), front matter wins
-        ├─► rejected/<id>/   rendered page count != target_pages (nothing sent)
+        ├─► rejected/<id>/   rendered pages outside target_pages ± page_slack
         ├─► outbox/<id>/     00:00–06:00 quiet hours, unless `force: true`
         └─► submit
               │  queue must be the pinned driverless one; else repair once
@@ -27,7 +27,9 @@ correct drop until the sweep. A size that is still changing between two
 stats is waited out inside this run instead.
 
 Optional front matter (a leading `---` block of `key: value` lines):
-    target_pages: 10          exact page count; a mismatch is rejected
+    target_pages: 10          page count; outside ± page_slack is rejected
+    page_slack: 2             pages either side that still pass (default 2;
+                              0 = exact, as for a one-pager)
     sides: one-sided|duplex|short-edge
     profile: garamond|baskerville|source-serif|times
     force: true               print now even inside quiet hours
@@ -178,6 +180,10 @@ def parse_front_matter(text: str) -> dict:
             if not re.fullmatch(r"[1-9][0-9]*", value):
                 raise Rejected(f"target_pages must be a positive integer, got {value!r}")
             options["target_pages"] = int(value)
+        elif key == "page_slack":
+            if not re.fullmatch(r"[0-9]+", value):
+                raise Rejected(f"page_slack must be a non-negative integer, got {value!r}")
+            options["page_slack"] = int(value)
         elif key == "sides":
             if value not in ("one-sided", "duplex", "short-edge"):
                 raise Rejected(f"sides must be one-sided, duplex or short-edge, got {value!r}")
@@ -612,6 +618,8 @@ def process_job(jobdir: Path, source: Path, meta: dict, at: dt.datetime) -> bool
     cmd = [sys.executable, str(PRINT_AUTO), str(source), "--output-dir", str(jobdir)]
     if "target_pages" in options:
         cmd += ["--target-pages", str(options["target_pages"])]
+    if "page_slack" in options:
+        cmd += ["--page-slack", str(options["page_slack"])]
     if "profile" in options:
         cmd += ["--profile", options["profile"]]
     if "sides" in options:
@@ -627,13 +635,15 @@ def process_job(jobdir: Path, source: Path, meta: dict, at: dt.datetime) -> bool
 
     if decision.get("length_check") == "fail":
         write_json(jobdir / "reason.json", {
-            "reason": "rendered page count does not match target_pages",
+            "reason": "rendered page count is outside target_pages ± page_slack",
             "pages_rendered": decision.get("pages_rendered"),
             "target_pages": decision.get("target_pages"),
+            "page_slack": decision.get("page_slack"),
         })
         dest = settle_into(jobdir, "rejected")
         log(f"rejected {dest.name}: rendered {decision.get('pages_rendered')} pages, "
-            f"target {decision.get('target_pages')}; nothing was sent")
+            f"target {decision.get('target_pages')} ±{decision.get('page_slack')}; "
+            "nothing was sent")
         return True
 
     if quiet_hours(at) and not options.get("force"):

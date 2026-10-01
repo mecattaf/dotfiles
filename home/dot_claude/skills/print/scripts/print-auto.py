@@ -39,7 +39,9 @@ matter overrides: they beat the classifier's answer, and decision.json
 records which keys were overridden.
 
 Length gate (issue #227): with --target-pages, decision.json carries
-length_check pass|fail and a mismatch exits 3. The daemon rejects a fail
+length_check pass|fail and a miss exits 3. A render within --page-slack
+pages of the target (default 2, Tom 2026-10-01) passes; --page-slack 0
+asks for the exact count. The daemon rejects a fail
 without printing; an agent iterating by hand burns zero paper either way.
 """
 
@@ -230,9 +232,12 @@ def main() -> int:
     ap.add_argument(
         "--target-pages", type=int, default=None,
         help=(
-            "exact page count the user asked for (issue #227). decision.json "
-            "records length_check pass|fail and a mismatch exits 3."
+            "page count the user asked for (issue #227). decision.json "
+            "records length_check pass|fail and a miss exits 3."
         ))
+    ap.add_argument(
+        "--page-slack", type=int, default=2,
+        help="pages either side of --target-pages that still pass (default 2)")
     ap.add_argument("--profile", choices=sorted(PROFILES),
                     help="override the classifier's profile (front matter)")
     ap.add_argument("--sides", choices=sorted(SIDES),
@@ -279,7 +284,8 @@ def main() -> int:
     pages_rendered = pdf_page_count(outpath)
     if args.target_pages is None:
         length_check = "not_applicable"
-    elif pages_rendered == args.target_pages:
+    elif (pages_rendered is not None
+          and abs(pages_rendered - args.target_pages) <= args.page_slack):
         length_check = "pass"
     else:
         length_check = "fail"
@@ -290,6 +296,7 @@ def main() -> int:
                "pdf": str(outpath),
                "pages_rendered": pages_rendered,
                "target_pages": args.target_pages,
+               "page_slack": args.page_slack,
                "length_check": length_check}
     (jobdir / "decision.json").write_text(
         json.dumps(receipt, indent=2) + "\n")
@@ -299,7 +306,7 @@ def main() -> int:
           f"length_check={length_check})")
     if length_check == "fail":
         print(f"print-auto: rendered {pages_rendered} page(s), target was "
-              f"{args.target_pages}. Revise the document.", file=sys.stderr)
+              f"{args.target_pages} ±{args.page_slack}. Revise the document.", file=sys.stderr)
         return 3
     return 0
 

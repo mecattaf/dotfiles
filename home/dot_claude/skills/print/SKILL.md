@@ -25,10 +25,15 @@ Optional front matter, only when the user asked for it:
 
     ---
     target_pages: 10        # the user gave a page count ("one-pager" = 1)
+    page_slack: 0           # only for "exactly N" or a one-pager; default 2
     sides: one-sided        # one-sided | duplex (default) | short-edge
     profile: garamond       # garamond | baskerville | source-serif | times
     force: true             # "print force": print now even 00:00–06:00
     ---
+
+Any `target_pages: N` passes when the render is N−2 to N+2 pages (the
+default `page_slack` of 2, for every N). Do not trim or pad to hit N exactly.
+Set `page_slack: 0` only for a one-pager or when the user said "exactly".
 
 Leave typography to the daemon unless the user named a face or layout.
 Never set `force` for convenience.
@@ -42,7 +47,7 @@ timestamp suffix):
 |---|---|
 | `printed/<slug>/receipt.json` | paper is out: the printer reported the job completed with `impressions_completed` equal to the rendered pages |
 | `outbox/<slug>/` | it is 00:00–06:00; it prints at 06:05 |
-| `rejected/<slug>/reason.json` | the render did not match `target_pages` (or the front matter was invalid); nothing was printed. Revise and drop again |
+| `rejected/<slug>/reason.json` | the render fell outside `target_pages` ± `page_slack` (or the front matter was invalid); nothing was printed. Revise and drop again |
 | `failed/<slug>/failure.json` | something went wrong at the queue or the printer; the evidence is beside it and paper-daemon.service is left failed for the fleet's failure markers |
 
 Report to the user what the directory says, and only that. A drop with no

@@ -184,6 +184,7 @@ ap = argparse.ArgumentParser()
 ap.add_argument("input", type=Path)
 ap.add_argument("--output-dir", type=Path, required=True)
 ap.add_argument("--target-pages", type=int)
+ap.add_argument("--page-slack", type=int, default=2)
 ap.add_argument("--profile")
 ap.add_argument("--sides")
 args = ap.parse_args()
@@ -202,10 +203,11 @@ decision = {"profile": args.profile or "source-serif", "require_one_page": False
             "sides": args.sides or "duplex", "filename": "doc.pdf", "title": "Doc"}
 (args.output_dir / "doc.pdf").write_text(f"%PDF fake PAGES={pages}\n")
 check = ("not_applicable" if args.target_pages is None
-         else "pass" if args.target_pages == pages else "fail")
+         else "pass" if abs(args.target_pages - pages) <= args.page_slack else "fail")
 (args.output_dir / "decision.json").write_text(json.dumps({
     "decision": decision, "provenance": "fallback", "overridden": [],
     "pages_rendered": pages, "target_pages": args.target_pages,
+    "page_slack": args.page_slack,
     "length_check": check}))
 sys.exit(3 if check == "fail" else 0)
 '''
@@ -443,14 +445,30 @@ class QuietHoursTests(DaemonHarness):
 
 class RejectionTests(DaemonHarness):
     def test_target_mismatch_is_rejected_and_nothing_is_sent(self) -> None:
-        self.drop("long", "# Long\n<!-- pages: 2 -->\n", "target_pages: 1")
+        self.drop("long", "# Long\n<!-- pages: 2 -->\n", "target_pages: 1\npage_slack: 0")
         result = self.daemon("run")
         self.assertEqual(result.returncode, 0, result.stderr)
         reason = json.loads((self.paper / "rejected/long/reason.json").read_text())
         self.assertEqual(reason["pages_rendered"], 2)
         self.assertEqual(reason["target_pages"], 1)
+        self.assertEqual(reason["page_slack"], 0)
         self.assertTrue((self.paper / "rejected/long/source.md").exists())
         self.assertEqual(self.calls("lp"), [])
+
+    def test_render_within_default_slack_prints(self) -> None:
+        self.drop("near", "# Near\n<!-- pages: 22 -->\n", "target_pages: 20")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.receipt("near")["pages"], 22)
+        rendered = json.loads(self.render_log.read_text().splitlines()[0])
+        self.assertNotIn("--page-slack", rendered)
+
+    def test_page_slack_front_matter_reaches_the_renderer(self) -> None:
+        self.drop("exact", "# Exact\n<!-- pages: 3 -->\n", "target_pages: 3\npage_slack: 0")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rendered = json.loads(self.render_log.read_text().splitlines()[0])
+        self.assertEqual(rendered[rendered.index("--page-slack") + 1], "0")
 
     def test_invalid_front_matter_is_rejected_before_rendering(self) -> None:
         self.drop("bad", front="target_pages: ten")

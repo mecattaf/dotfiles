@@ -10,7 +10,7 @@ hand: make a PDF without printing, and compare typefaces.
 ## print-auto.py — the daemon's render step
 
     print-auto.py INPUT.md [--intent brief|document|form|specimen] \
-      [--target-pages N] [--profile P] [--sides one-sided|duplex] [--output-dir DIR]
+      [--target-pages N] [--page-slack N] [--profile P] [--sides one-sided|duplex] [--output-dir DIR]
 
 The request-scoped utility model (`utility-model` on the coordinator, which
 forwards to the Halogen server on the worker) picks profile, one-page
@@ -19,7 +19,8 @@ Classification failure is non-fatal: one stderr line, the deterministic
 default (source-serif, duplex, no one-page enforcement), provenance
 `"fallback"`. The job directory (default `~/Paper/jobs/<date>-print-<slug>-<time>`)
 gets `source.md`, the PDF and `decision.json` (`pages_rendered`,
-`target_pages`, `length_check`). A `--target-pages` mismatch exits 3. It has
+`target_pages`, `page_slack`, `length_check`). A render more than
+`--page-slack` pages (default 2) from `--target-pages` exits 3. It has
 no `--print`: nothing here reaches CUPS.
 
 ## print-paper.py — the renderer
