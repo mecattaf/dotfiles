@@ -9,7 +9,11 @@ set -euo pipefail
 # environment: scroll (`scrollmsg exec`, SCROLLSOCK comes from the user manager,
 # exported by /etc/scroll/config.d/10-session.conf) or niri (the rollback).
 # $1 is validated above to [a-zA-Z0-9:p], so it is safe inside the quoted exec.
-if systemctl --user show-environment | grep -q '^SCROLLSOCK='; then
+# A SCROLLSOCK left in the manager by an unclean scroll exit must not send a
+# later niri session's projector to scrollmsg: require a live socket.
+scrollsock=$(systemctl --user show-environment | grep -m1 '^SCROLLSOCK=' || true)
+scrollsock=${scrollsock#SCROLLSOCK=}
+if [[ -n $scrollsock && -S $scrollsock ]]; then
   systemd-run --user --quiet --collect --unit="speech-projector-$$" -- \
     scrollmsg "exec env HERDR_INITIAL_PANE=$1 kitty --class herdr-projector --title 'Tom — speech' -e \"\$HOME/.local/bin/herdr-projector\""
 else

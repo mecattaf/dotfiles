@@ -77,6 +77,10 @@ let
     unset SCROLLSOCK SWAYSOCK I3SOCK NIRI_SOCKET
 
     ${pkgs.systemd}/bin/systemctl --user reset-failed
+    # import-environment only adds: a NIRI_SOCKET left in the user manager by
+    # an unclean niri exit would pass piri's ConditionEnvironment on scroll and
+    # crash-loop it into tripwire. Drop it (and stale scroll/sway paths) first.
+    ${pkgs.systemd}/bin/systemctl --user unset-environment NIRI_SOCKET SCROLLSOCK SWAYSOCK I3SOCK
     # The whole login environment, as niri-session does (PATH, hm-session-vars).
     ${pkgs.systemd}/bin/systemctl --user import-environment 2>/dev/null
     ${pkgs.dbus}/bin/dbus-update-activation-environment --all 2>/dev/null || true
