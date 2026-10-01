@@ -24,6 +24,14 @@ final: prev: {
     '';
   });
 
+  # scroll (dawsers/scroll MASTER, pinned rev + hash) for the physical seats,
+  # consumed by modules/scroll.nix (programs.scroll). Add-only: the name shadows
+  # nothing, and pkgs.sway / sway-unwrapped are NOT touched — the headless
+  # browser desktop (modules/browser-desktop.nix) runs stock sway, and flake.nix
+  # asserts that. Do not swap this for a third-party scroll overlay that
+  # overrides sway-unwrapped (Diax170/scroll-flake does).
+  scroll = final.callPackage ../pkgs/scroll { };
+
   # mactahoe — the PROVEN source-build + OLED postPatch (NOT nix-test's prebuilt
   # tarball). Built/verified in a nixos/nix container 2026-06-19. Originated in
   # the mactahoe-oled staging repo (since deleted 2026-07-04); pkgs/ is the home.
