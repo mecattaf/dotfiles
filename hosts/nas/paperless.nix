@@ -202,9 +202,32 @@ in
       ];
     };
 
+    # Service state (celery beat schedule + its WAL, the whoosh index, logs)
+    # lives on the NVMe: it was the last periodic writer on the HDD (every
+    # ~5 min, 2026-09-30 idle watch) once ax/k3s moved. A BIND MOUNT, so
+    # dataDir, the module's tmpfiles ownership and ReadWritePaths all stay as
+    # they are; only the spindle changes. Same doctrine as attic.nix: nofail
+    # (never emergency mode on the router) + RequiresMountsFor on every unit
+    # (never start on an empty HDD directory). Runbook, one-off:
+    #   systemctl stop paperless-{web,scheduler,consumer,task-queue}
+    #   mkdir -p /mnt/fast/paperless && rsync -aHAX /mnt/nas/services/paperless/data/ /mnt/fast/paperless/data/
+    #   nixos-rebuild switch (mounts the bind; the HDD copy stays underneath, unused)
+    # No tmpfiles rule for /mnt/fast/paperless: the copy is a runbook step
+    # and a 'd' rule would race it with an empty directory.
+    fileSystems."${serviceRoot}/data" = {
+      device = "/mnt/fast/paperless/data";
+      fsType = "none";
+      options = [
+        "bind"
+        "nofail"
+        "x-systemd.requires-mounts-for=/mnt/fast"
+        "x-systemd.requires-mounts-for=${storageRoot}"
+      ];
+    };
+
     systemd.services =
       lib.genAttrs (map (lib.removeSuffix ".service") paperlessUnits) (unit: {
-        unitConfig.RequiresMountsFor = [ storageRoot ];
+        unitConfig.RequiresMountsFor = [ storageRoot "${serviceRoot}/data" ];
         # OCR and indexing happen in the task queue; the consumer does the
         # copy-in. The web and scheduler units stay at normal priority.
         serviceConfig = lib.optionalAttrs (builtins.elem unit [
