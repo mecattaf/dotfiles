@@ -1,11 +1,15 @@
-# AnthropicMono Nerd Font Mono — pressed locally by pkgs/fontbuilder, stored on
+# AnthropicMono Nerd Font — pressed locally by pkgs/fontbuilder, stored on
 # the fleet's NAS M.2, never downloaded and never in git.
 #
 # Built from the anthropic.com "Web" variable cuts (26.043.1): instanced to 12
 # statics with fontTools, name-normalized, completeness-merged from JetBrains
 # Mono 2.304 + DejaVu Sans Mono 2.37 + Maple Mono NF 7.9, ligaturized from Fira
 # Code 3.001 (rev e9943d2d), ligature-aligned, then Nerd-patched with
-# nerd-font-patcher 3.4.0 --complete --mono --makegroups 4.
+# nerd-font-patcher --complete --makegroups 4. NOT --mono (dropped 2026-10-01):
+# the 2026-09-17 press used it and every icon was squeezed into one cell
+# (U+F07B 0.600 x 0.525 em, against 0.923 x 0.808 em in JetBrainsMono NF and
+# Maple Mono NF). Icons now keep the 1200 advance and overflow the cell like
+# every stock Nerd Font; the family is `AnthropicMono Nerd Font` / NF.
 #
 # `nix run .#fontbuilder -- <capture-dir> <out-dir>` reproduces the exact bytes
 # (head is pinned to SOURCE_DATE_EPOCH; --verify-repro proves it). Per-glyph
@@ -24,11 +28,13 @@
 
 stdenvNoCC.mkDerivation {
   pname = "anthropic-mono-nerd-font";
-  version = "2026-09-17";
+  version = "2026-10-01";
 
   src = requireFile {
     name = "anthropic-mono-nerd-fonts.tar.zst";
-    sha256 = "df043254517d186e6107caedae706436182c29d3e69aaedae031825b0a030fdc";
+    # 2026-10-01 press (no --mono). The 2026-09-17 --mono press was
+    # df043254517d186e6107caedae706436182c29d3e69aaedae031825b0a030fdc.
+    sha256 = "98962a82cea66e8902bfa073eb4c061825c734bccf346ade27b3cdf534c0952a";
     message = ''
       Anthropic Mono is pinned to the fleet's NAS copy and is not downloadable.
       Add it to the store with:

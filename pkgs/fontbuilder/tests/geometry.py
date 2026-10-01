@@ -28,7 +28,7 @@ import shlex
 import subprocess
 import sys
 
-FAMILIES = ["AnthropicMono NFM", "Liga SFMono Nerd Font", "JetBrainsMono NFM"]
+FAMILIES = ["AnthropicMono NF", "Liga SFMono Nerd Font", "JetBrainsMono NFM"]
 SIZES = [16.0]
 DPIS = [96.0, 192.0]
 

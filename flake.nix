@@ -126,7 +126,7 @@
     # this afternoon's pushes." kitty.conf now names this family
     # EXPLICITLY, so no future sweep can silently swap the terminal again.
     #
-    # 2026-09-17: the terminal face moved to `AnthropicMono Nerd Font Mono`
+    # 2026-09-17: the terminal face moved to `AnthropicMono Nerd Font`
     # (pkgs/anthropic-mono-nerd.nix, pressed by pkgs/fontbuilder). Deliberate,
     # with the family named explicitly in kitty.conf AND verified through
     # kitty's OWN resolver (`kitty +runpy` -> get_font_files), which is the

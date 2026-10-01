@@ -34,9 +34,14 @@ bytes and `sfmono-liga-fonts.tar.zst` is 3,093,475 bytes. Ours:
 
 | tarball | top-level dirs | bytes | sha256 |
 |---|---|---|---|
-| `anthropic-mono-nerd-fonts.tar.zst` | `truetype/` | 2571132 | `df043254517d186e6107caedae706436182c29d3e69aaedae031825b0a030fdc` |
+| `anthropic-mono-nerd-fonts.tar.zst` | `truetype/` | 2425439 | `98962a82cea66e8902bfa073eb4c061825c734bccf346ade27b3cdf534c0952a` |
 | `anthropic-ui-fonts.tar.zst` | `truetype/` | 726204 | `070d34426a6eab50dd8dd3ae19cf847a52af86adb03d0a4f0d5d1d0de4393c77` |
-| `anthropic-webfonts.tar.zst` | `css/`, `woff2/` | 830195 | `8da31eca13b2c55bce504567256462d579ccdbee6b8fe713fc33feb65ef40239` |
+| `anthropic-webfonts.tar.zst` | `css/`, `woff2/` | 830170 | `b06edf0b28e9c0f26cd4f9cb4b90410e6743945a5d959ef11c3956fb7c103b5f` |
+
+Re-pressed 2026-10-01 without `--mono` (see `README.md`): the mono tarball changed, the
+webfonts tarball changed only in one CSS comment, the UI tarball is byte-identical. The
+2026-09-17 originals (`df043254…`, `8da31eca…`) stay on the NAS as
+`*.tar.zst.2026-09-17-mono` for the revert path.
 
 Three tarballs, not five. `sf-pro-fonts.tar.zst` already proves one archive may carry
 several families. Every basename is dot-free before `.tar.zst` and unique against `tally`,
@@ -366,7 +371,7 @@ SFMono**, which is the very font the review compares against, so the command gat
 before spawning:
 
 ```bash
-OV=( --override 'font_family=family="AnthropicMono Nerd Font Mono"' … --override 'window_padding_width=14' )
+OV=( --override 'font_family=family="AnthropicMono Nerd Font"' … --override 'window_padding_width=14' )
 REVIEW_ARGV=$(printf '%s\x1f' "${OV[@]}"); export REVIEW_ARGV
 kitty +runpy "exec(compile(open('$ASSERT').read(),'a','exec'),{'__name__':'__main__'})" \
   || { echo "REFUSING TO OPEN: the overrides do not resolve to the Anthropic faces"; exit 1; }

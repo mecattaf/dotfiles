@@ -22,8 +22,8 @@ enough - with only it set, ~/.cache/fontconfig's DIRECTORY mtime moved.
 without -type f, before and after the whole suite.
 
 EVERY nameID ASSERTION IS SET MEMBERSHIP (A4).  The name table carries TWO
-nameID16 records with different strings (`AnthropicMono Nerd Font Mono` and
-`AnthropicMono NFM`); a dict keyed by nameID silently keeps only the last and
+nameID16 records with different strings (`AnthropicMono Nerd Font` and
+`AnthropicMono NF`); a dict keyed by nameID silently keeps only the last and
 makes A4 fail on a correct font.
 """
 from __future__ import annotations
@@ -57,8 +57,8 @@ FC_STYLE = {
     "Italic": "Italic", "MediumItalic": "Medium Italic", "SemiBoldItalic": "SemiBold Italic",
     "BoldItalic": "Bold Italic", "ExtraBoldItalic": "ExtraBold Italic",
 }
-LONG_FAMILY = "AnthropicMono Nerd Font Mono"
-SHORT_FAMILY = "AnthropicMono NFM"
+LONG_FAMILY = "AnthropicMono Nerd Font"
+SHORT_FAMILY = "AnthropicMono NF"
 CELL = 1200
 
 # A4.  The patcher version is NOT hardcoded.  The flake's pinned nixpkgs moved
@@ -71,11 +71,11 @@ NF_STAMP_RE = re.compile(r";Nerd Fonts \d+\.\d+\.\d+")
 NF_VERSION_RE = re.compile(r"v(\d+\.\d+\.\d+)")
 
 # A4.  nameID6.  Patcher 3.5.1 added FontnameParser._remove_regular, so the
-# RIBBI Regular face ships the bare `AnthropicMonoNFM` with no -Regular token,
-# while the Regular-weight italic stays `AnthropicMonoNFM-Italic` and every
+# RIBBI Regular face ships the bare `AnthropicMonoNF` with no -Regular token,
+# while the Regular-weight italic stays `AnthropicMonoNF-Italic` and every
 # other face keeps its -<Style> suffix.  That is the patcher's own convention
 # and we accept it; 12 unique PostScript names still holds.
-PS_NAME_RE = re.compile(r"^AnthropicMonoNFM(-[A-Za-z]+)?$")
+PS_NAME_RE = re.compile(r"^AnthropicMonoNF(-[A-Za-z]+)?$")
 
 # A7 line box, measured identical on all 12 terminal faces and the 4 variable
 # desktop faces.  Anthropicons is the exception (spec S10 / D16).
@@ -396,11 +396,28 @@ def a4(R, out, fonts, patcher_version=None):
 # --------------------------------------------------------------------------
 def a5(R, out, conf, xdg, faces, fonts, src):
     for st, f in fonts.items():
-        adv = {a for a, _ in f["hmtx"].metrics.values()}
-        R.check(adv == {CELL}, "A5", st, "hmtx advances %s != {1200}" % sorted(adv))
+        # Every MAPPED glyph is one cell. Without --mono (2026-10-01) the
+        # patcher no longer forces widths on existing glyphs, so the unmapped
+        # TrueType ".null" keeps its advance 0, exactly as JetBrainsMono NF
+        # and Maple Mono NF ship it; fc-scan spacing stays 100 (checked below).
+        mapped = set(f.getBestCmap().values())
+        adv = {a for g, (a, _) in f["hmtx"].metrics.items() if g in mapped}
+        R.check(adv == {CELL}, "A5", st, "mapped-glyph hmtx advances %s != {1200}" % sorted(adv))
+        stray = sorted(g for g, (a, _) in f["hmtx"].metrics.items() if g not in mapped and a != CELL and g != ".null")
+        R.check(not stray, "A5", st, "unmapped non-cell glyphs other than .null: %s" % stray[:8])
     for st, path in faces.items():
         rc, so, _ = fc(conf, xdg, ["fc-scan", "--format", "%{spacing}\n", path])
         R.check(so.strip().splitlines()[:1] == ["100"], "A5", st, "fc-scan spacing %r" % so.strip())
+    # 2026-10-01: icons are the stock DOUBLE-width Nerd Font boxes, never
+    # --mono. The advance stays 1200 (checked above) while the drawn glyph
+    # overflows the cell: U+F07B measured 0.923 x 0.808 em in JetBrainsMono NF
+    # and Maple Mono NF, against 0.600 x 0.525 em on the rejected --mono press.
+    for st, f in fonts.items():
+        g = f.getBestCmap().get(0xF07B)
+        gl = f["glyf"][g] if g else None
+        w = (gl.xMax - gl.xMin) if gl is not None and hasattr(gl, "xMax") else 0
+        R.check(w > CELL, "A5", st, "U+F07B spans %d units, expected > %d: icons must be "
+                                   "double-width (the patcher was run with --mono?)" % (w, CELL))
 
     if not src:
         R.note("A5", "no --src: the NEGATIVE CONTROL was not run, so A5 could go "
@@ -965,7 +982,7 @@ def main(argv):
 
     faces = {}
     for st in STYLES:
-        p = os.path.join(out, "nf", "AnthropicMonoNerdFontMono-%s.ttf" % st)
+        p = os.path.join(out, "nf", "AnthropicMonoNerdFont-%s.ttf" % st)
         if os.path.exists(p):
             faces[st] = p
         else:

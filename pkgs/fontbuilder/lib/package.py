@@ -104,7 +104,7 @@ and never downloads them; no font binary is in that repo.
 
 | file | family | consumer |
 |---|---|---|
-| anthropic-mono-nerd-fonts.tar.zst | AnthropicMono Nerd Font Mono (12 statics, ligaturized + Nerd-patched) | pkgs/anthropic-mono-nerd.nix (kitty terminal face, `monospace`) |
+| anthropic-mono-nerd-fonts.tar.zst | AnthropicMono Nerd Font (12 statics, ligaturized + Nerd-patched) | pkgs/anthropic-mono-nerd.nix (kitty terminal face, `monospace`) |
 | anthropic-ui-fonts.tar.zst | Anthropic Sans, Anthropic Serif (variable), Anthropicons | pkgs/anthropic-ui.nix (GTK UI, Chrome `sans-serif`/`serif`) |
 | anthropic-webfonts.tar.zst | woff2 of the same faces + css/anthropic-fonts.css | pkgs/anthropic-webfonts.nix (webapps; installed OUTSIDE fontconfig's scan path) |
 

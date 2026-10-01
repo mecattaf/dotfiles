@@ -117,7 +117,7 @@ UI_SERIF = (
     "The repaired fvar default means index 0 is Text Regular at weight 80, not Light.\n"
 )
 UI_MONO = (
-    "AnthropicMono NFM 11 - terminal at UI size\n"
+    "AnthropicMono NF 11 - terminal at UI size\n"
     "$ git log --oneline -5 | grep -E 'font|kitty'   # -> => != <= >= ::\n"
     "├── pkgs/fontbuilder/   └── tests/   "
     "⠀⠁⠃⣿  ❯\n"
@@ -252,8 +252,13 @@ def main(argv):
     os.makedirs(spec, exist_ok=True)
     os.makedirs(xdg, exist_ok=True)
 
+    # Under `nix run` lib/ and tests/ are SEPARATE store paths (default.nix
+    # exports each as FONTBUILDER_*), so "../tests" from this file resolves to
+    # /nix/store/tests and does not exist. Measured 2026-10-01: the press
+    # packaged and then exited 1 on exactly that FileNotFoundError.
     here = os.path.dirname(os.path.abspath(__file__))
-    tplpath = os.path.join(os.path.dirname(here), "tests", "fonts.conf.in")
+    tests = os.environ.get("FONTBUILDER_TESTS", os.path.join(os.path.dirname(here), "tests"))
+    tplpath = os.path.join(tests, "fonts.conf.in")
     tpl = open(tplpath).read()
 
     pv = find_tool("pango-view", "pango")
@@ -265,7 +270,7 @@ def main(argv):
         rows = []
         for style, label in (("Regular", "Regular"), ("SemiBold", "SemiBold"),
                              ("Italic", "Italic"), ("SemiBoldItalic", "SemiBold Italic")):
-            p = os.path.join(out, "nf", "AnthropicMonoNerdFontMono-%s.ttf" % style)
+            p = os.path.join(out, "nf", "AnthropicMonoNerdFont-%s.ttf" % style)
             if os.path.exists(p):
                 rows.append((label, p, LIG_ROW_1))
         svg = hermetic_svg(rows, os.path.join(spec, "four-styles.svg"))
@@ -277,14 +282,14 @@ def main(argv):
                        [os.path.join(out, "nf"), os.path.join(out, "desktop")],
                        os.path.join(verify, "fonts-specimen.conf"))
 
-    MONO = [("mono-regular.png", "AnthropicMono NFM 16",
-             "AnthropicMono Nerd Font Mono  Regular  16 pt"),
-            ("mono-semibold.png", "AnthropicMono NFM SemiBold 16",
-             "AnthropicMono Nerd Font Mono  SemiBold  16 pt"),
-            ("mono-italic.png", "AnthropicMono NFM Italic 16",
-             "AnthropicMono Nerd Font Mono  Italic  16 pt"),
-            ("mono-semibold-italic.png", "AnthropicMono NFM SemiBold Italic 16",
-             "AnthropicMono Nerd Font Mono  SemiBold Italic  16 pt")]
+    MONO = [("mono-regular.png", "AnthropicMono NF 16",
+             "AnthropicMono Nerd Font  Regular  16 pt"),
+            ("mono-semibold.png", "AnthropicMono NF SemiBold 16",
+             "AnthropicMono Nerd Font  SemiBold  16 pt"),
+            ("mono-italic.png", "AnthropicMono NF Italic 16",
+             "AnthropicMono Nerd Font  Italic  16 pt"),
+            ("mono-semibold-italic.png", "AnthropicMono NF SemiBold Italic 16",
+             "AnthropicMono Nerd Font  SemiBold Italic  16 pt")]
     sheets = []
     for name, font, label in MONO:
         p = pango_sheet(pv, conf, xdg, font, mono_text(label), os.path.join(spec, name),
@@ -294,7 +299,7 @@ def main(argv):
 
     for name, font, text in (("ui-sans-11.png", "Anthropic Sans 11", UI_SANS),
                              ("ui-serif-12.png", "Anthropic Serif 12", UI_SERIF),
-                             ("ui-mono-11.png", "AnthropicMono NFM 11", UI_MONO)):
+                             ("ui-mono-11.png", "AnthropicMono NF 11", UI_MONO)):
         written.append(pango_sheet(pv, conf, xdg, font, text, os.path.join(spec, name),
                                    a.dpi, textdir))
 

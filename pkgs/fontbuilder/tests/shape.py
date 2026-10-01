@@ -35,10 +35,10 @@ from fontTools.ttLib import TTFont
 # family string -> the face it must resolve to.  The bare nameID4 forms are
 # used here deliberately: shape_string takes a family, not a FontSpec, and
 # these are exactly the strings A1 demotes but does not forbid.
-FAMILIES = {"AnthropicMono NFM": "Regular",
-            "AnthropicMono NFM SemiBold": "SemiBold",
-            "AnthropicMono NFM Italic": "Italic",
-            "AnthropicMono NFM SemiBold Italic": "SemiBoldItalic"}
+FAMILIES = {"AnthropicMono NF": "Regular",
+            "AnthropicMono NF SemiBold": "SemiBold",
+            "AnthropicMono NF Italic": "Italic",
+            "AnthropicMono NF SemiBold Italic": "SemiBoldItalic"}
 LIGATURES = [("x -> y", 2), ("c ==> d", 3), ("a != b", 2), ("p <=> q", 3), ("f /= g", 2)]
 CODEPOINTS = [("U+E0B0", ""), ("U+F001", ""), ("U+276F", "❯"),
               ("U+2588", "█"), ("U+28FF", "⣿"), ("U+2800", "⠀"),
@@ -69,7 +69,7 @@ ch = json.loads(os.environ["A2_CHAR"])
 # path= loads THIS face as the main font: the question is whether kitty shapes
 # the codepoint from the face itself or reaches for a fallback, and a bare
 # family string (the demoted nameID4 form) can resolve to a different face or
-# to none under a private fontconfig - measured 2026-09-17 on "AnthropicMono NFM
+# to none under a private fontconfig - measured 2026-09-17 on "AnthropicMono NF
 # SemiBold Italic", which shaped from a fallback while the family=/style= form
 # resolved correctly.
 res = shape_string(ch, family=fam, size=16.0, path=os.environ["A2_PATH"])
@@ -149,7 +149,7 @@ def main(argv):
 
     present, absent = {}, []
     for fam, style in FAMILIES.items():
-        if os.path.exists(os.path.join(out, "nf", "AnthropicMonoNerdFontMono-%s.ttf" % style)):
+        if os.path.exists(os.path.join(out, "nf", "AnthropicMonoNerdFont-%s.ttf" % style)):
             present[fam] = style
         else:
             absent.append(fam)
@@ -186,7 +186,7 @@ def main(argv):
     report["codepoints"] = {}
     for fam, style in sorted(present.items()):
         report["codepoints"][fam] = {}
-        face = os.path.join(out, "nf", "AnthropicMonoNerdFontMono-%s.ttf" % style)
+        face = os.path.join(out, "nf", "AnthropicMonoNerdFont-%s.ttf" % style)
         tf = TTFont(face, recalcTimestamp=False, recalcBBoxes=False)
         cmap = tf.getBestCmap()
         for label, ch in CODEPOINTS:

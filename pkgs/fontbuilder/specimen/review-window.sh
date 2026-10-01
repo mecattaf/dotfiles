@@ -57,10 +57,10 @@ ASSERT="$HERE/assert_ov.py"
 # ONE source of truth for the override strings - pre-flight and spawn
 # cannot diverge, because they read the same array.
 OV=(
-  --override 'font_family=family="AnthropicMono Nerd Font Mono"'
-  --override 'bold_font=family="AnthropicMono Nerd Font Mono" style="SemiBold"'
-  --override 'italic_font=family="AnthropicMono Nerd Font Mono" style="Italic"'
-  --override 'bold_italic_font=family="AnthropicMono Nerd Font Mono" style="SemiBold Italic"'
+  --override 'font_family=family="AnthropicMono Nerd Font"'
+  --override 'bold_font=family="AnthropicMono Nerd Font" style="SemiBold"'
+  --override 'italic_font=family="AnthropicMono Nerd Font" style="Italic"'
+  --override 'bold_italic_font=family="AnthropicMono Nerd Font" style="SemiBold Italic"'
   --override 'font_size=16.0'
   --override 'disable_ligatures=never'
   --override 'window_padding_width=14'

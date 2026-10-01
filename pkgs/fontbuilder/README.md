@@ -17,10 +17,14 @@ the capture tree, `nix build .#fontbuilder` and its `checkPhase` both pass while
 `fontbuilder: source tree does not match the pinned digests` plus one `missing` line per
 pinned file.
 
-**Pinned tools.** Everything comes from the flake's own nixpkgs (rev
-`da39501c8d0a093136854eddcd6927c8a8bb0d8f`): **nerd-font-patcher 3.5.1** through the local
-override, **nerd-fonts.jetbrains-mono 3.5.0** carrying JetBrains Mono 2.304, fontforge
-20251009, fontTools 4.63, plus the three third-party pins fetched by hash (Ligaturizer
+**Pinned tools.** **nerd-font-patcher 3.5.1** is pinned by `nerd-font-patcher.nix` itself
+(version, `FontPatcher.zip` hash and the vendored 3.5.1 `use-nix-paths` patch), NOT by the
+nixpkgs pin: measured 2026-10-01, the flake's effective nixpkgs (`e2587ca`, the root
+`nixpkgs_5` node, unchanged since before the first press) ships 3.4.0, which has 214 fewer
+icons and keeps `-Regular` in the RIBBI PostScript name, and a press on it silently produced
+a different font. Everything else comes from that nixpkgs: **nerd-fonts.jetbrains-mono**
+carrying JetBrains Mono 2.304, fontforge 20251009, fontTools 4.63, plus the three third-party
+pins fetched by hash (Ligaturizer
 `c4065187a544a8fab40826fc91db1c6180a2d342`, Fira Code 3.001 at
 `e9943d2d631a4558613d7a77c58ed1d3cb790992`, and `glyphnames.json` at the v3.5.1 tag). Most
 measurements quoted here and in the suite document were first taken on patcher 3.4.0 from
@@ -39,7 +43,7 @@ and deployment.
 
 | output | contents |
 |---|---|
-| `nf/` | 12 terminal statics, `AnthropicMonoNerdFontMono-<Style>.ttf` |
+| `nf/` | 12 terminal statics, `AnthropicMonoNerdFont-<Style>.ttf` |
 | `desktop/` | `AnthropicSans-{Roman,Italic}.ttf`, `AnthropicSerif-{Roman,Italic}.ttf`, still **variable** |
 | `icons/` | `Anthropicons-Regular.ttf`, pinned at `wght=400 opsz=20 ANIM=0 ANM2=0` |
 | `webfonts/` | `woff2/` (7 files), `css/anthropic-fonts.css` |
@@ -93,8 +97,8 @@ Three ordering traps worth stating outright:
 
 **The patcher owns the Regular face's PostScript name, and 3.5.1 changed it.**
 `FontnameParser._remove_regular` makes the RIBBI Regular face ship nameID 6
-`AnthropicMonoNFM` and nameID 4 `AnthropicMono NFM`, where 3.4.0 gave
-`AnthropicMonoNFM-Regular`. The Regular-weight italic stays `AnthropicMonoNFM-Italic` and
+`AnthropicMonoNF` and nameID 4 `AnthropicMono NF`, where 3.4.0 gave
+`AnthropicMonoNF-Regular`. The Regular-weight italic stays `AnthropicMonoNF-Italic` and
 every other face keeps `-<Style>`. This is accepted as-is rather than fought, because the
 patcher is the last writer of names and kitty's `family=`/`style=` form does not depend on
 the spelling. Any assertion or tooling that pattern-matches nameID 6 must allow the bare
@@ -126,7 +130,8 @@ identical either way, so it is a provenance change only, but it adds **35,585 by
 | `nerd-font-patcher --cell '?'` | it does **not** query anything. It runs the full patch and writes into the **current working directory**. That is how a 440 KB patched TTF once landed in the dotfiles repo root. fontbuilder always passes `--outputdir` and runs from a scratch cwd. |
 | `--copy-character-glyphs` | measured crash on Python 3 at `ligaturize.py:88`, `'float' object cannot be interpreted as an integer`, unconditional for this font because `\|1231-1200\|/1200 = 0.026 < 0.1`. It would also splice Fira's punctuation into an Anthropic face. |
 | `--careful` | it preserves the PUA but stops the patcher redrawing cell-filling box and block art: U+2588 becomes `(-50,0,1250,1440)` instead of a box spanning x -12 to 1212 (stored bbox; -11 to 1213 as drawn), so full block would no longer fill the cell. The PUA problem is solved by stage S7b instead. |
-| explicit icon-set flags instead of `--complete` | omitting `--pomicons` by enumerating the sets makes `FontnameParser` append every set name, yielding nameID 16 `AnthropicMono Nerd Font Mono Plus Font Awesome Plus …` at **183 characters** with `ERROR` lines. |
+| explicit icon-set flags instead of `--complete` | omitting `--pomicons` by enumerating the sets makes `FontnameParser` append every set name, yielding nameID 16 `AnthropicMono Nerd Font Plus Font Awesome Plus …` at **183 characters** with `ERROR` lines. |
+| `--mono` | it squeezes every icon into one cell (U+F07B 0.600 x 0.525 em on the 2026-09-17 press, which carried it) and appends `Mono`/`M` to the names. Stock Nerd Fonts (JetBrainsMono NF, Maple Mono NF, measured 2026-10-01) keep the one-cell advance and overflow to 0.923 x 0.808 em; A5 still holds without the flag. Tom rejected the one-cell icons on 2026-10-01. |
 | `--adjust-line-height` | a no-op here that would still rewrite hhea and OS/2: it only adds +1 when `winAscent + winDescent` is odd, and 1985 + 515 = 2500. The 1985/-515/0 line box is what every kitty layout depends on. |
 | `--removeligs` | inert without `--configfile`, and its name invites someone to pass it after S5 has just installed 136 ligatures. |
 | `tar --pax-option` with `--format=gnu` | GNU tar 1.35 exits **2** and writes **zero** bytes. The 13-byte artifact that gets blamed on it is **zstd's empty-frame overhead**, reachable only when tar's exit status is discarded by an unguarded pipeline. `set -o pipefail` is load-bearing in `lib/package.py`'s shell, and the file-count assertion guards a different failure: an under-populated stage directory, where tar exits 0, zstd writes a valid 66-byte tarball, and every other check passes. |

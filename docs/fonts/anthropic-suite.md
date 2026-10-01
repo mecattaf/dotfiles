@@ -5,6 +5,15 @@ be known after the final press it is a substituted token. Nothing here is estima
 four claims that were once stated confidently and turned out to be wrong are recorded as
 corrections rather than quietly deleted.
 
+**2026-10-01.** The terminal face was re-pressed without `--mono` (see
+[`README.md`](README.md)). Every `AnthropicMono Nerd Font Mono` / `NFM` / `AnthropicMonoNFM`
+/ `AnthropicMonoNerdFontMono-*` name below, and every icon bounding box, describes the
+2026-09-17 press and is kept as the measured record; the current names drop the
+`Mono` / `M` and the per-face digests are those of the new `SHA256SUMS`. The patcher is
+3.5.1 as stated below, but since 2026-10-01 it is pinned by `pkgs/fontbuilder/nerd-font-patcher.nix`
+itself; the nixpkgs rev quoted in the next paragraph is history, the flake's effective
+nixpkgs ships 3.4.0.
+
 **Tool versions.** The press runs against the flake's pinned nixpkgs (rev
 `da39501c8d0a093136854eddcd6927c8a8bb0d8f`): **nerd-font-patcher 3.5.1**,
 **nerd-fonts.jetbrains-mono 3.5.0** carrying JetBrains Mono 2.304, fontforge 20251009 and

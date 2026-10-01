@@ -35,11 +35,14 @@
 
 stdenvNoCC.mkDerivation {
   pname = "anthropic-webfonts";
-  version = "2026-09-17";
+  version = "2026-10-01";
 
   src = requireFile {
     name = "anthropic-webfonts.tar.zst";
-    sha256 = "8da31eca13b2c55bce504567256462d579ccdbee6b8fe713fc33feb65ef40239";
+    # 2026-10-01: only css/anthropic-fonts.css changed (the comment naming the
+    # terminal face lost its "Mono"); the 7 woff2 are byte-identical to the
+    # 2026-09-17 tarball 8da31eca13b2c55bce504567256462d579ccdbee6b8fe713fc33feb65ef40239.
+    sha256 = "b06edf0b28e9c0f26cd4f9cb4b90410e6743945a5d959ef11c3956fb7c103b5f";
     message = ''
       The Anthropic webfonts are pinned to the fleet's NAS copy and are not downloadable.
       Add them to the store with:

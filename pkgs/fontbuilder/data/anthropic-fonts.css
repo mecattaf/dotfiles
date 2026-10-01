@@ -20,7 +20,7 @@
  *     ('wght',300,400,800)); 400 still resolves to 400, and 700 now gets the
  *     drawn bold instead of a synthesised one.
  *   - "Anthropic Mono" deliberately does NOT carry
- *     local("AnthropicMono Nerd Font Mono").  That installed face is the
+ *     local("AnthropicMono Nerd Font").  That installed face is the
  *     patched terminal build: a different cell (0.600 x 1.250 em), 136 code
  *     ligatures and ~11k Nerd Font glyphs.  Matching it from a web page would
  *     make the page render differently depending on whether the terminal

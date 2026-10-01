@@ -4,7 +4,7 @@
 #   nerdpatch.sh <aligned.ttf> <output-dir> <log-file>
 #
 # LAST because it is the only stage that validates and rewrites the whole name
-# table (31-char nameID1/16 ceiling, nameID16/17, the NFM abbreviation, the
+# table (31-char nameID1/16 ceiling, nameID16/17, the NF abbreviation, the
 # conventional filename, ";Nerd Fonts <patcher version>" in nameID5). It is explicitly
 # ligature-aware (set_sourcefont_glyph_widths skips glyphs already at cell
 # width: "Ligatures will have these"), so it cannot flatten S5's negative
@@ -27,6 +27,14 @@
 #   --pomicons etc.     naming sets instead of --complete makes nameID16 183
 #                       chars ("... Plus Font Awesome Plus ...") with ERRORs;
 #                       the Pomicons overwrite of U+E001-E00A is undone by S7b
+#   --mono              shrinks every icon into ONE cell and names the family
+#                       "... Nerd Font Mono" / NFM. The 2026-09-17 press carried
+#                       it: U+F07B measured 0.600 x 0.525 em, against 0.923 x
+#                       0.808 em in JetBrainsMono NF and Maple Mono NF, and Tom
+#                       rejected the small icons on 2026-10-01. Without it the
+#                       patcher keeps the 1200 advance (A5 still holds, fc-scan
+#                       spacing stays 100) and lets the icon overflow the cell,
+#                       which is what every stock Nerd Font (non-Mono) does.
 #   --adjust-line-height no-op here (1985+515 is even) and confusing
 #   --removeligs        inert without --configfile; never ask for it
 #   --makegroups 1      folds the weight into nameID1 and overflows 31 chars
@@ -36,7 +44,7 @@ set -euo pipefail
 src="$1"; outdir="$2"; log="$3"
 mkdir -p "$outdir"
 cd "$outdir"
-nerd-font-patcher --complete --mono --makegroups 4 --outputdir "$outdir" "$src" >"$log" 2>&1 || {
+nerd-font-patcher --complete --makegroups 4 --outputdir "$outdir" "$src" >"$log" 2>&1 || {
   echo "nerdpatch: patcher exited non-zero, see $log" >&2; exit 1; }
 if grep -qE '^ERROR|^CRITICAL' "$log"; then
   echo "nerdpatch: ERROR/CRITICAL lines in $log:" >&2

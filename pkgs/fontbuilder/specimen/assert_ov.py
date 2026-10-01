@@ -22,10 +22,10 @@ from kitty.fonts.common import get_font_files
 # Patcher 3.5.1 added FontnameParser._remove_regular: the RIBBI Regular face
 # ships the BARE PostScript name, no -Regular token.  The Regular-weight
 # italic is still -Italic and every other face keeps its -<Style> suffix.
-WANT = {"medium": "AnthropicMonoNFM",
-        "bold": "AnthropicMonoNFM-SemiBold",
-        "italic": "AnthropicMonoNFM-Italic",
-        "bi": "AnthropicMonoNFM-SemiBoldItalic"}
+WANT = {"medium": "AnthropicMonoNF",
+        "bold": "AnthropicMonoNF-SemiBold",
+        "italic": "AnthropicMonoNF-Italic",
+        "bi": "AnthropicMonoNF-SemiBoldItalic"}
 
 argv = [a for a in os.environ["REVIEW_ARGV"].split("\x1f") if a]
 cli, rest = parse_args(args=argv + ["--hold"], result_class=CLIOptions, usage=None,

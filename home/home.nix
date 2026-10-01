@@ -251,7 +251,7 @@ in
     # the Text cut), the right optical size for an 11 pt UI.
     font-name = "Anthropic Sans 11";
     document-font-name = "Anthropic Serif 12";
-    monospace-font-name = "AnthropicMono Nerd Font Mono 11";
+    monospace-font-name = "AnthropicMono Nerd Font 11";
   };
 
   # bin/ scripts: whole-dir (the repo owns ~/.local/bin).

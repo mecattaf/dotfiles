@@ -13,7 +13,7 @@ set -u
 b=$'\e[1m'; i=$'\e[3m'; bi=$'\e[1;3m'; d=$'\e[2m'; r=$'\e[0m'
 c1=$'\e[38;5;179m'; c2=$'\e[38;5;108m'; c3=$'\e[38;5;110m'
 
-printf '%s\n' "${d}face: AnthropicMono Nerd Font Mono   size: 16.0   cell 26x54 px @ scale 2${r}"
+printf '%s\n' "${d}face: AnthropicMono Nerd Font   size: 16.0   cell 26x54 px @ scale 2${r}"
 echo
 echo "${c1}ligatures${r}    -> => != === <= >= :: |> <- ~> www <=> --> |-> /* */"
 echo "${c1}ligatures${r}    ++ -- == /= =~ ?: ;; !! && || <> #{ 0xFF ->> =<< <|>"

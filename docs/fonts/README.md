@@ -5,6 +5,16 @@ Pressed on 2026-09-17 by `pkgs/fontbuilder` from the brand faces captured in
 sha256, and installed on every host through `modules/common.nix`. No font binary is in
 this repository and none is ever downloaded.
 
+**2026-10-01: the terminal face was re-pressed without the patcher's `--mono` flag.**
+The 2026-09-17 press squeezed every Nerd icon into one cell (U+F07B measured
+0.600 x 0.525 em) and Tom rejected the small `ls` icons. Stock Nerd Fonts (JetBrainsMono
+NF, Maple Mono NF) keep the one-cell advance and let the icon overflow to 0.923 x 0.808
+em; the press now does the same. With the flag went the `Mono`/`NFM` naming: the family is
+`AnthropicMono Nerd Font`, nameID 1 `AnthropicMono NF`, PostScript `AnthropicMonoNF-<Style>`,
+files `AnthropicMonoNerdFont-<Style>.ttf`. Ligatures and the line box are untouched (the
+flag only governs icon scaling and the suffix). `anthropic-suite.md` still records the
+2026-09-17 names and icon measurements as history.
+
 | page | what it holds |
 |---|---|
 | this file | what is installed, the standing rules, the daily-driver notes, how to check and how to revert |
@@ -18,15 +28,15 @@ this repository and none is ever downloaded.
 
 | package | family (fontconfig) | files | reaches disk via | consumer |
 |---|---|---|---|---|
-| `anthropic-mono-nerd` | `AnthropicMono Nerd Font Mono` | 12 statics `AnthropicMonoNerdFontMono-<Style>.ttf` | `fonts.packages` | kitty, foot, any monospace generic |
+| `anthropic-mono-nerd` | `AnthropicMono Nerd Font` | 12 statics `AnthropicMonoNerdFont-<Style>.ttf` | `fonts.packages` | kitty, foot, any monospace generic |
 | `anthropic-ui` | `Anthropic Sans`, `Anthropic Serif`, `Anthropicons` | 4 variable TTFs + 1 pinned static | `fonts.packages` | GTK, Nautilus, Chrome generics |
 | `anthropic-webfonts` | none, deliberately | 7 woff2 + `css/anthropic-fonts.css` | `home.packages` | local web pages only |
 
 The 12 terminal statics are Light, Regular, Medium, SemiBold, Bold and ExtraBold, each in
-Roman and Italic. PostScript names are `AnthropicMonoNFM-<Style>`, except the RIBBI Regular
-face, which is the bare `AnthropicMonoNFM` because nerd-font-patcher 3.5.1 strips `Regular`
-from it. nameID 1 is `AnthropicMono NFM[ Weight]` and nameID 16 is the full
-`AnthropicMono Nerd Font Mono`.
+Roman and Italic. PostScript names are `AnthropicMonoNF-<Style>`, except the RIBBI Regular
+face, which is the bare `AnthropicMonoNF` because nerd-font-patcher 3.5.1 strips `Regular`
+from it. nameID 1 is `AnthropicMono NF[ Weight]` and nameID 16 is the full
+`AnthropicMono Nerd Font`.
 
 Sans and Serif ship **variable** (`wght` 300 to 800, `opsz` 16 to 48). FontForge never
 touches them, so `fvar`, `gvar`, `STAT` and the optical-size axis survive and one file
@@ -84,26 +94,26 @@ same pattern as `pkgs/sf-pro.nix`, one directory over.
 `kitty.conf` names the family explicitly, in the `family=`/`style=` form:
 
 ```conf
-font_family      family="AnthropicMono Nerd Font Mono"
-bold_font        family="AnthropicMono Nerd Font Mono" style="SemiBold"
-italic_font      family="AnthropicMono Nerd Font Mono" style="Italic"
-bold_italic_font family="AnthropicMono Nerd Font Mono" style="SemiBold Italic"
+font_family      family="AnthropicMono Nerd Font"
+bold_font        family="AnthropicMono Nerd Font" style="SemiBold"
+italic_font      family="AnthropicMono Nerd Font" style="Italic"
+bold_italic_font family="AnthropicMono Nerd Font" style="SemiBold Italic"
 font_size        16.0
 disable_ligatures never
 ```
 
 That form is used because it is the only one whose result does not depend on the
 fontconfig `monospace` alias or on nameID 4 surviving a future patcher release. The bare
-string `AnthropicMono Nerd Font Mono SemiBold` is **forbidden**: kitty looks a setting
+string `AnthropicMono Nerd Font SemiBold` is **forbidden**: kitty looks a setting
 string up verbatim in its name maps and otherwise falls through to `fc_match` silently,
 and `--makegroups 4` caps nameID 4 at 31 characters, so this face's nameID 4 is the
-abbreviated `AnthropicMono NFM SemiBold` and the 37-character long form is not a key.
+abbreviated `AnthropicMono NF SemiBold` and the 32-character long form is not a key.
 The four style spellings `SemiBold`, `Italic`, `SemiBold Italic` are load-bearing
 literals: a typo empties kitty's candidate list and falls silently to its last resort,
 `fc-match monospace`. Where that lands depends on the configuration and is never what you
 asked for. Under the live system configuration `style="Semi Bold"` resolves to
 `LigaSFMonoNerdFont-Bold`; under an alias-free configuration and again after the
-`defaultFonts` commit it resolves to `AnthropicMonoNFM-Bold`, so the typo silently costs
+`defaultFonts` commit it resolves to `AnthropicMonoNF-Bold`, so the typo silently costs
 two weights inside the right family.
 
 **Bold is SemiBold, not Bold.** That is the 2026-08-21 ruling, kept because SemiBold is
@@ -113,7 +123,7 @@ kitty's own `auto` picks SemiBold for this family too.
 **Geometry against Liga SFMono at `font_size 16.0`,** measured with kitty's own
 `create_test_font_group`:
 
-| | AnthropicMono NFM | Liga SFMono |
+| | AnthropicMono NF | Liga SFMono |
 |---|---|---|
 | cell @96dpi | 13 x 27 px | 13 x 26 px |
 | cell @192dpi | 26 x 54 px | 26 x 51 px |
@@ -187,8 +197,8 @@ ff = get_font_files(load_config(\"$HOME/.config/kitty/kitty.conf\"))
 print(json.dumps({k: ff[k].get(\"postscript_name\") for k in (\"medium\",\"bold\",\"italic\",\"bi\")}, indent=1))'" /dev/null
 
 # Is the family installed at all, and is it monospaced to fontconfig?
-fc-list | grep -c AnthropicMonoNerdFontMono            # expect 12
-fc-list --format '%{file}\n' | grep AnthropicMonoNerdFontMono-Regular.ttf | head -1 | \
+fc-list | grep -c AnthropicMonoNerdFont            # expect 12
+fc-list --format '%{file}\n' | grep AnthropicMonoNerdFont-Regular.ttf | head -1 | \
   xargs fc-scan --format '%{family}|%{style}|%{weight}|%{slant}|%{spacing}\n'
 
 # Do the generics point where you think?
@@ -213,7 +223,7 @@ silently does not change.
 
 **Reverting is two files, not one.** After the second commit the fontconfig `monospace`
 alias points at the Anthropic family, so `Liga SFMono Nerd Font SemiBold Italic` resolves
-to the plain `AnthropicMonoNFM`. Reverting `kitty.conf` alone gives the wrong family for
+to the plain `AnthropicMonoNF`. Reverting `kitty.conf` alone gives the wrong family for
 every non-exact line. Revert together:
 
 1. `modules/common.nix` `fonts.fontconfig.defaultFonts` back to SF Pro / Source Serif 4 /

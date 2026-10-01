@@ -459,7 +459,7 @@
       "Source Serif 4"
     ];
     monospace = [
-      "AnthropicMono Nerd Font Mono"
+      "AnthropicMono Nerd Font"
       "Liga SFMono Nerd Font"
     ];
     emoji = [ "Noto Color Emoji" ];
