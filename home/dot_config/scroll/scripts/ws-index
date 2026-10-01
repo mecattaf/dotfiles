@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# ws-index focus|move N — niri's per-output workspace indices on scroll.
+#
+# niri's `focus-workspace N` means the Nth workspace OF THE FOCUSED OUTPUT
+# (and the last one when there are fewer); sway/scroll workspace numbers are
+# global. This picks the focused output's workspaces in number order, takes
+# the Nth, and when N is past the end goes to a fresh workspace numbered after
+# every existing one (niri's empty trailing workspace), created on the focused
+# output. `move` sends the focused container there and follows it, like niri's
+# move-column-to-workspace.
+set -euo pipefail
+
+verb="${1:-}"; n="${2:-}"
+case "$verb" in focus|move) ;; *) echo 'usage: ws-index focus|move N' >&2; exit 2 ;; esac
+[[ "$n" =~ ^[0-9]+$ ]] && (( n >= 1 )) || { echo 'ws-index: N must be a positive integer' >&2; exit 2; }
+
+target="$(scrollmsg -t get_workspaces | jq -r --argjson n "$n" '
+  (map(select(.focused))[0].output) as $out
+  | (map(select(.output == $out)) | sort_by(.num)) as $mine
+  | if ($mine | length) >= $n then $mine[$n - 1].name
+    else ((map(.num) | max) + 1 | tostring)
+    end')"
+[[ -n "$target" ]] || exit 1
+
+# Names may contain spaces; scroll command strings take double-quoted args.
+quoted="\"${target//\"/\\\"}\""
+case "$verb" in
+  focus) scrollmsg "workspace $quoted" >/dev/null ;;
+  move)  scrollmsg "move container to workspace $quoted; workspace $quoted" >/dev/null ;;
+esac
