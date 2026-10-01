@@ -33,6 +33,7 @@
   nerd-fonts,
   dejavu_fonts,
   maple-mono,
+  sfmono-liga, # 2026-10-01: the override donor for every punctuation/symbol glyph
 }:
 
 let
@@ -99,6 +100,7 @@ writeShellApplication {
     export FONTBUILDER_TESTS=${./tests}
     export FONTBUILDER_LIGATURIZER=${ligaturizer}
     export FONTBUILDER_FIRA=${firaCode}/distr/otf
+    export FONTBUILDER_DONOR_SF=${sfmono-liga}/share/fonts/opentype
     export FONTBUILDER_DONOR_JBM=${jbmDir}
     export FONTBUILDER_DONOR_DEJAVU=${dejavu_fonts}/share/fonts/truetype
     export FONTBUILDER_DONOR_MAPLE=${maple-mono.NF}/share/fonts/truetype

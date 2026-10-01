@@ -98,8 +98,12 @@ CALT_LOOKUPS = 136
 PUA_S7B = range(0xE001, 0xE00B)
 
 # A10
-ALIGN_CENSUS = {"shift": 100, "anchor-veto": 35, "clamped": 1}
-DY_LO, DY_HI = -70, 100          # measured -61..+93; the band the spec pins
+# 2026-10-01, SF Mono symbols: asciicircum_equal measures dy -149 on Light
+# (shift) and -164..-168 elsewhere (clamped at 0.08 em = 160), so the census is
+# 35 vetoes and 101 shift-or-clamped, and the dy band is the clamp itself.
+ALIGN_VETOES = 35
+ALIGN_DECIDED = 101              # shift + clamped
+DY_LO, DY_HI = -160, 100         # measured -149..+93 across the 12 faces
 LIG_CENTRE_TOL = 8
 CROSS_TOL = 70                   # spec 5 / A10 "cross-ligature consistency"
 # A10 "the patcher changed 0 of 136 lig outlines".  The defect it guards is the
@@ -670,8 +674,10 @@ def a10(R, out, fonts):
             continue
         rep = json.load(open(rp))["ligatures"]
         census = dict(collections.Counter(e["mode"] for e in rep))
-        R.check(census == ALIGN_CENSUS, "A10", st,
-                "align census %s != %s" % (census, ALIGN_CENSUS))
+        R.check(census.get("anchor-veto") == ALIGN_VETOES
+                and census.get("shift", 0) + census.get("clamped", 0) == ALIGN_DECIDED
+                and set(census) <= {"shift", "clamped", "anchor-veto"}, "A10", st,
+                "align census %s != %d vetoes + %d shift/clamped" % (census, ALIGN_VETOES, ALIGN_DECIDED))
         dys = [e["dy"] for e in rep if e["mode"] == "shift"]
         lo, hi = (min(dys), max(dys)) if dys else (0, 0)
         R.check(DY_LO <= lo and hi <= DY_HI, "A10", st,
@@ -735,11 +741,27 @@ def a10(R, out, fonts):
                         "(an un-sheared ligature in an italic face)" % (a, b, abs(a - b), SLOPE_TOL_DEG))
 
         # cross-ligature consistency, TOL = 70 units (spec 5)
+        # 2026-10-01: SF Mono's own `|` is centred 0.084 em BELOW its braces
+        # (546 vs 718 host units), so bar_bar, which S6 aligns to the host bar,
+        # legitimately sits lower than the brace/bracket ligatures, which the
+        # ANCHOR veto keeps at Fira's brace height. The bar family is therefore
+        # two families: bar_bar against the host bar itself (below), and the
+        # brace/bracket bars against each other.
         cross = {}
-        fams = [("bar", ["bar_bar", "braceleft_bar", "bar_braceright",
-                         "bracketleft_bar", "bar_bracketright"], "vert"),
+        fams = [("bar-in-brackets", ["braceleft_bar", "bar_braceright",
+                                     "bracketleft_bar", "bar_bracketright"], "vert"),
                 ("equal", ["equal_equal", "numbersign_equal"], "horiz"),
                 ("slash", ["slash_slash", "backslash_slash", "slash_backslash"], "bbox")]
+        bb = byname.get("bar_bar")
+        if bb and bb in glyf and "bar" in glyf:
+            stems = [c for c in contour_boxes(glyf, bb) if (c[3] - c[1]) > 400 and (c[2] - c[0]) < 700]
+            host = [c for c in contour_boxes(glyf, "bar") if (c[3] - c[1]) > 400]
+            if stems and host:
+                d = abs(sum((c[1] + c[3]) / 2.0 for c in stems) / len(stems)
+                        - sum((c[1] + c[3]) / 2.0 for c in host) / len(host))
+                cross["bar_bar-vs-bar"] = round(d, 2)
+                R.check(d <= CROSS_TOL, "A10", st,
+                        "bar_bar stems sit %.1f units from the host bar centre (> %d)" % (d, CROSS_TOL))
         for label, members, kind in fams:
             cent = {}
             for m in members:

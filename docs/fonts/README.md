@@ -15,6 +15,15 @@ files `AnthropicMonoNerdFont-<Style>.ttf`. Ligatures and the line box are untouc
 flag only governs icon scaling and the suffix). `anthropic-suite.md` still records the
 2026-09-17 names and icon measurements as history.
 
+**Same day, the symbols are Apple's.** Tom rejected the Anthropic tilde and asked for "all
+the SF Mono ones": the merge stage now REPLACES every punctuation and symbol glyph the host
+draws (Unicode categories P* and S*, 142 codepoints on Regular) with SF Mono's, scaled and
+re-centred like any donor, and SF Mono is the first gap donor ahead of JetBrains (so the
+`❯` prompt chevron is Apple's too). Letters, digits, marks and spaces stay Anthropic. The
+face is openly a chimera: Anthropic letterforms, Apple symbols. The rule and its reasons
+live in `pkgs/fontbuilder/lib/merge.py`; overridden glyphs keep their host names and are
+listed per face in `merge-report/merge-<Style>.json` under `overridden`.
+
 | page | what it holds |
 |---|---|
 | this file | what is installed, the standing rules, the daily-driver notes, how to check and how to revert |

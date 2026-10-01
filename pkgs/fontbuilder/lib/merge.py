@@ -1,11 +1,21 @@
 #!/usr/bin/env python3
 """fontbuilder stage S4 - completeness merge ("the sweep against JetBrains Mono").
 
-Strictly ADDITIVE: a host codepoint is never overwritten. Every grafted glyph is
-named <donorGlyphName>.<tag> so the shipped font carries its own provenance in
-the post table (PROVENANCE.tsv is regenerated from it, never maintained by hand).
+Additive for everything the host lacks, with ONE override rule (Tom, 2026-10-01):
+every host PUNCTUATION or SYMBOL codepoint (Unicode category P* or S*) that SF
+Mono draws is REPLACED by SF Mono's glyph, scaled like any donor and re-centred
+in the cell. Letters, digits, marks and spaces stay Anthropic. Tom rejected the
+Anthropic tilde ("really looks bad") and the JetBrains-donated prompt chevron,
+and chose "all the SF Mono ones" over per-glyph picks; the result is openly a
+chimera: Anthropic letterforms, Apple symbols. Overridden glyphs KEEP their host
+names (Ligaturizer and S6 address hyphen/equal/underscore by name) and are
+listed in the merge report under "overridden"; grafted gap glyphs are named
+<donorGlyphName>.<tag> so the post table carries their provenance
+(PROVENANCE.tsv is regenerated from it, never maintained by hand). SF Mono is
+also the FIRST gap donor, ahead of JetBrains, for the same reason.
 
-Tags: jb  JetBrains Mono NFM (OFL-1.1)          dv  DejaVu Sans Mono (Bitstream Vera/Arev)
+Tags: sf  SF Mono via Liga SFMono Nerd Font (Apple, personal use, never redistributed)
+      jb  JetBrains Mono NFM (OFL-1.1)          dv  DejaVu Sans Mono (Bitstream Vera/Arev)
       maple Maple Mono NF (OFL-1.1)               dvr DejaVu REGULAR weight, the weight fall-through
       jbs/dvs/mps/dvrs  the same donors' UPRIGHT cut sheared 10 deg, the slope fall-through
       synth  the U+2800 blank braille cell when no donor maps it
@@ -35,12 +45,14 @@ MEASURED rules (SPEC-v2 S4, 2026-09-17):
 """
 import argparse
 import json
+import unicodedata
 import math
 import os
 import sys
 
 from fontTools.misc.transform import Transform
 from fontTools.pens.boundsPen import BoundsPen
+from fontTools.pens.cu2quPen import Cu2QuPen
 from fontTools.pens.recordingPen import DecomposingRecordingPen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
@@ -60,6 +72,13 @@ TEXTISH = [
     (0x2C60, 0x2C7F), (0x2E00, 0x2E7F), (0x1D400, 0x1D7FF),
 ]
 BRAILLE = [(0x2800, 0x28FF)]
+# The override rule: host codepoints in these Unicode general categories are
+# replaced by the override donor's glyph when it has one. P = punctuation,
+# S = symbols (math, currency, modifier, other). PUA is Co and never matches.
+OVERRIDE_CATEGORIES = ("P", "S")
+# Cu2Qu tolerance when a CFF (cubic) donor is converted to TrueType quadratics;
+# 1 unit at upm 2000 is far below any rasteriser's resolution.
+CU2QU_MAX_ERR = 1.0
 NEVER = {0x000D, 0xFEFF}
 SHEAR_PIVOT = 540.0   # half the host's 1080 ink x-height (S6 uses the same pivot)
 SHEAR_DEG = 10.0
@@ -112,7 +131,27 @@ def donor_table(style):
     }
     dvf = os.path.join(dvd, dv[(heavy, italic)])
     dvu = os.path.join(dvd, dv[(heavy, False)])
+    # SF Mono ships all twelve cuts, so no weight or slope fall-through is
+    # needed for it: ExtraBold takes Heavy, the rest map by name.
+    sfd = os.environ["FONTBUILDER_DONOR_SF"]
+    sf_w = {"Light": "Light", "Regular": "Regular", "Medium": "Medium",
+            "SemiBold": "Semibold", "Bold": "Bold", "ExtraBold": "Heavy"}[base]
+    sff = os.path.join(sfd, "LigaSFMonoNerdFont-%s%s.otf" % (sf_w, "Italic" if italic else ""))
+    sfu = os.path.join(sfd, "LigaSFMonoNerdFont-%s.otf" % sf_w)
     out = [
+        dict(tag="sf", path=sff, ranges=TEXTISH, override=OVERRIDE_CATEGORIES,
+             licence="Apple SF Mono (personal use, never redistributed)"),
+    ]
+    if italic:
+        # SF Mono's italic cuts map 50 fewer TEXTISH codepoints than the
+        # uprights (arrows U+2190-2199, circled digits U+2460-2468, U+2713 ...;
+        # measured 2026-10-01) and some italic glyphs are wider than the
+        # ceiling. Without this the Roman would carry SF symbols the italic
+        # does not (A8 parity) and italic overrides would silently stay
+        # Anthropic: the sheared upright cut fills both, as jbs/dvs/mps do.
+        out.append(dict(tag="sfs", path=sfu, ranges=TEXTISH, override=OVERRIDE_CATEGORIES,
+                        shear=SHEAR_DEG, licence="Apple SF Mono (personal use, never redistributed)"))
+    out += [
         dict(tag="jb", path=jbf, ranges=TEXTISH, licence="OFL-1.1"),
         dict(tag="dv", path=dvf, ranges=TEXTISH, licence="Bitstream Vera / Arev"),
         dict(tag="maple", path=mpf, ranges=BRAILLE + TEXTISH, braille_exact=2.0, licence="OFL-1.1"),
@@ -151,13 +190,74 @@ def graft(host_path, dons, out_path, report_path=None, braille_dy=0):
                        for n in hglyf.keys() if hglyf[n].numberOfContours)
     ceiling = max(host_max_ink, int(cell * 1.10))
     print("merge: host x-height %d, cell %d, host max ink %d -> ceiling %d" % (hx, cell, host_max_ink, ceiling))
-    log, oversize, total = [], [], 0
+    log, oversize, total, overridden = [], [], 0, []
+    # The override pass may only touch the HOST's own glyphs. Snapshot the cmap
+    # before any donor adds to it: measured 2026-10-01, without this the
+    # sheared-upright pass (sfs) re-overrode 50 glyphs the italic SF cut had
+    # just grafted, replacing true italics with sheared uprights.
+    host_cps = set(hcmap)
+
+    def build(dfont, dgs, gn, d, s, cp):
+        """Scale, centre and (for italic fall-through) shear one donor glyph.
+        Returns (glyph, ink width); the width is measured UNSHEARED. Cu2QuPen
+        converts CFF cubics (SF Mono) to TrueType quadratics and passes
+        quadratic donors through unchanged; a bare TTGlyphPen would store
+        cubic-flagged points that FontForge and the patcher do not read."""
+        is_braille = 0x2800 <= cp <= 0x28FF
+        dadv = dfont["hmtx"][gn][0]
+        dx0 = (cell - dadv * s) / 2.0
+        dy = braille_dy if is_braille else 0
+        rec = DecomposingRecordingPen(dgs)
+        dgs[gn].draw(rec)
+        sh = d.get("shear")
+        if sh:
+            tan = math.tan(math.radians(sh))
+            xf = Transform(s, 0, tan * s, s, dx0 - tan * SHEAR_PIVOT, dy)
+            # measure the UNSHEARED outline (SPEC-v2 S4(2))
+            mpen = TTGlyphPen(None)
+            rec.replay(Cu2QuPen(TransformPen(mpen, Transform(s, 0, 0, s, dx0, dy)), CU2QU_MAX_ERR))
+            mg = mpen.glyph()
+            mg.recalcBounds(hglyf)
+            meas = (mg.xMax - mg.xMin) if mg.numberOfContours else 0
+        else:
+            xf = Transform(s, 0, 0, s, dx0, dy)
+            meas = None
+        pen = TTGlyphPen(None)
+        rec.replay(Cu2QuPen(TransformPen(pen, xf), CU2QU_MAX_ERR))
+        g = pen.glyph()
+        g.recalcBounds(hglyf)
+        if meas is None:
+            meas = (g.xMax - g.xMin) if g.numberOfContours else 0
+        return g, meas
+
     for d in dons:
         dfont = TTFont(d["path"], lazy=False)
         dgs, dcm = dfont.getGlyphSet(), dfont.getBestCmap()
         dx = xheight(dfont)
         s_ink = hx / float(dx)
         added = 0
+        if d.get("override"):
+            # THE OVERRIDE PASS: replace the host's own punctuation and symbols
+            # in place. Names, cmap entries and glyph order are untouched, so
+            # Ligaturizer's by-name lookups and S6's anchors keep working.
+            n_before = len(overridden)
+            done = {cp for cp, _, _ in overridden}
+            for cp in sorted(host_cps):
+                if cp in done or unicodedata.category(chr(cp))[0] not in d["override"]:
+                    continue
+                gn = dcm.get(cp)
+                if gn is None:
+                    continue
+                hostname = hcmap[cp]
+                g, meas = build(dfont, dgs, gn, d, s_ink, cp)
+                if g.numberOfContours and meas > ceiling:
+                    oversize.append(("U+%04X" % cp, gn, d["tag"] + "-override", meas))
+                    continue
+                hglyf.glyphs[hostname] = g
+                hhmtx.metrics[hostname] = (cell, g.xMin if g.numberOfContours else 0)
+                overridden.append((cp, hostname, gn))
+            print("merge: %-5s override pass replaced %d host %s glyphs in place" % (
+                d["tag"], len(overridden) - n_before, "/".join(d["override"])))
         for cp in sorted(ranges(d["ranges"])):
             if cp in hcmap:
                 continue
@@ -166,30 +266,7 @@ def graft(host_path, dons, out_path, report_path=None, braille_dy=0):
                 continue
             is_braille = 0x2800 <= cp <= 0x28FF
             s = d["braille_exact"] if (is_braille and d.get("braille_exact")) else s_ink
-            dadv = dfont["hmtx"][gn][0]
-            dx0 = (cell - dadv * s) / 2.0
-            dy = braille_dy if is_braille else 0
-            rec = DecomposingRecordingPen(dgs)
-            dgs[gn].draw(rec)
-            sh = d.get("shear")
-            if sh:
-                tan = math.tan(math.radians(sh))
-                xf = Transform(s, 0, tan * s, s, dx0 - tan * SHEAR_PIVOT, dy)
-                # measure the UNSHEARED outline (SPEC-v2 S4(2))
-                mpen = TTGlyphPen(None)
-                rec.replay(TransformPen(mpen, Transform(s, 0, 0, s, dx0, dy)))
-                mg = mpen.glyph()
-                mg.recalcBounds(hglyf)
-                meas = (mg.xMax - mg.xMin) if mg.numberOfContours else 0
-            else:
-                xf = Transform(s, 0, 0, s, dx0, dy)
-                meas = None
-            pen = TTGlyphPen(None)
-            rec.replay(TransformPen(pen, xf))
-            g = pen.glyph()
-            g.recalcBounds(hglyf)
-            if meas is None:
-                meas = (g.xMax - g.xMin) if g.numberOfContours else 0
+            g, meas = build(dfont, dgs, gn, d, s, cp)
             if g.numberOfContours and meas > ceiling:
                 oversize.append(("U+%04X" % cp, gn, d["tag"], meas))
                 continue
@@ -247,12 +324,14 @@ def graft(host_path, dons, out_path, report_path=None, braille_dy=0):
     rep = dict(host_xheight=hx, cell=cell, host_max_ink=host_max_ink, ceiling=ceiling,
                braille_dy=braille_dy, donors=log, total_added=total, braille=braille,
                synthesised_2800=synth, oversize_skipped=oversize,
+               overridden=[("U+%04X" % cp, hn, gn) for cp, hn, gn in overridden],
+               overridden_count=len(overridden),
                codepoints=len(hcmap), glyphs=len(host.getGlyphOrder()))
     if report_path:
         with open(report_path, "w", encoding="utf-8") as fh:
             json.dump(rep, fh, indent=1)
-    print("merge: total added %d -> %d codepoints / %d glyphs, braille %d/256, oversize skipped %d"
-          % (total, len(hcmap), len(host.getGlyphOrder()), braille, len(oversize)))
+    print("merge: total added %d -> %d codepoints / %d glyphs, braille %d/256, oversize skipped %d, overridden %d"
+          % (total, len(hcmap), len(host.getGlyphOrder()), braille, len(oversize), len(overridden)))
     return rep
 
 

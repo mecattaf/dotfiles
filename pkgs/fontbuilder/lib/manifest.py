@@ -17,8 +17,10 @@ import json
 import os
 import subprocess
 
-TAGS = ("jb", "dv", "maple", "dvr", "jbs", "dvs", "mps", "dvrs", "synth", "apua")
+TAGS = ("sf", "sfs", "jb", "dv", "maple", "dvr", "jbs", "dvs", "mps", "dvrs", "synth", "apua")
 LICENCES = {
+    "sf": "Apple SF Mono via Liga SFMono Nerd Font (Apple proprietary; personal use, never redistributed)",
+    "sfs": "Apple SF Mono upright cut, sheared 10 deg (Apple proprietary; personal use, never redistributed)",
     "jb": "JetBrains Mono 2.304 via nerd-fonts.jetbrains-mono (SIL OFL-1.1)",
     "jbs": "JetBrains Mono 2.304 upright cut, sheared 10 deg (SIL OFL-1.1)",
     "dv": "DejaVu Sans Mono 2.37 (Bitstream Vera + Arev, permissive)",
@@ -58,7 +60,7 @@ def tool_versions():
     except Exception:  # noqa: BLE001
         pass
     for key in ("FONTBUILDER_LIGATURIZER", "FONTBUILDER_FIRA", "FONTBUILDER_GLYPHNAMES",
-                "FONTBUILDER_DONOR_JBM", "FONTBUILDER_DONOR_DEJAVU", "FONTBUILDER_DONOR_MAPLE"):
+                "FONTBUILDER_DONOR_SF", "FONTBUILDER_DONOR_JBM", "FONTBUILDER_DONOR_DEJAVU", "FONTBUILDER_DONOR_MAPLE"):
         out[key] = os.environ.get(key, "")
     return out
 

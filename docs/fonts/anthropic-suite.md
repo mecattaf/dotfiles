@@ -12,7 +12,10 @@ corrections rather than quietly deleted.
 `Mono` / `M` and the per-face digests are those of the new `SHA256SUMS`. The patcher is
 3.5.1 as stated below, but since 2026-10-01 it is pinned by `pkgs/fontbuilder/nerd-font-patcher.nix`
 itself; the nixpkgs rev quoted in the next paragraph is history, the flake's effective
-nixpkgs ships 3.4.0.
+nixpkgs ships 3.4.0. Same day, S4 replaces every host punctuation and symbol glyph with SF
+Mono's and takes gap glyphs from SF Mono before JetBrains (Tom: "pull all the SF Mono ones");
+the per-glyph measurements of Anthropic's own symbols below are history, see
+[`README.md`](README.md).
 
 **Tool versions.** The press runs against the flake's pinned nixpkgs (rev
 `da39501c8d0a093136854eddcd6927c8a8bb0d8f`): **nerd-font-patcher 3.5.1**,

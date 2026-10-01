@@ -24,10 +24,14 @@ constituent characters, so it is right for every weight and for the italics:
     outline so xMin == stored lsb, translating each sheared ligature by up to
     120 units. On the sheared path lsb is set to xMin. Roman lsb is untouched.
 
-Measured outcome on all 12 faces: {shift: 100, anchor-veto: 35, clamped: 1},
-dy range -61..+93 (63 of 100 shifts below +76; slash-family -61 self-corrects).
-Known accepted residuals (pinned by tests, TOL=70): bar in || vs {| [| (53.5 u),
-equal in == vs #= (66.75 u), underscore in __ vs _ (104.5 u, vetoed).
+Measured outcome on all 12 faces (2026-09-17 press): {shift: 100, anchor-veto: 35,
+clamped: 1}, dy range -61..+93 (63 of 100 shifts below +76; slash-family -61
+self-corrects). Known accepted residuals (pinned by tests, TOL=70): bar in || vs
+{| [| (53.5 u), equal in == vs #= (66.75 u), underscore in __ vs _ (104.5 u, vetoed).
+2026-10-01, with SF Mono's symbols as the host's: asciicircum_equal lands at
+-149 on Light (a shift, not a clamp) and SF's `|` is centred 172 u below its
+braces, so || aligns to the bar while {| [| stay at brace height; the tests
+pin bar_bar against the host bar and the bracket bars against each other.
 """
 import argparse
 import collections

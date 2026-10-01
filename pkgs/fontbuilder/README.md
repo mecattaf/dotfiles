@@ -60,6 +60,7 @@ The order is the design. Each row says why it sits where it sits.
 
 | # | stage | why here |
 |---|---|---|
+| (S4 note) | override | 2026-10-01: S4 is no longer purely additive. SF Mono (`sfmono-liga`, tag `sf`) replaces every host P*/S* glyph in place and is the first gap donor; see the merge.py docstring. |
 | S0 | verify-sources | fail closed against 14 pinned digests. This is the inertness gate, and it exits **2** so a caller can tell "no material" from "build broke" |
 | S1 | repair-source | the STAT `' Italic'` doubling and the 37 advance-2400 combining marks must be fixed **on the variable file**, because the instancer bakes both in and every instance inherits the repair |
 | S2 | instance | before any FontForge stage: FontForge accepts a variable TTF, exits 0, and silently flattens it to the wght=400 default with fvar, gvar and STAT gone |

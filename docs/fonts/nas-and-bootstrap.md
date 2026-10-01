@@ -34,7 +34,7 @@ bytes and `sfmono-liga-fonts.tar.zst` is 3,093,475 bytes. Ours:
 
 | tarball | top-level dirs | bytes | sha256 |
 |---|---|---|---|
-| `anthropic-mono-nerd-fonts.tar.zst` | `truetype/` | 2425439 | `98962a82cea66e8902bfa073eb4c061825c734bccf346ade27b3cdf534c0952a` |
+| `anthropic-mono-nerd-fonts.tar.zst` | `truetype/` | 2827802 | `80d9503c6bc7253cb925b208eff8c2ae1dd1c78bfe91ae0ca1ea7a820cced654` |
 | `anthropic-ui-fonts.tar.zst` | `truetype/` | 726204 | `070d34426a6eab50dd8dd3ae19cf847a52af86adb03d0a4f0d5d1d0de4393c77` |
 | `anthropic-webfonts.tar.zst` | `css/`, `woff2/` | 830170 | `b06edf0b28e9c0f26cd4f9cb4b90410e6743945a5d959ef11c3956fb7c103b5f` |
 

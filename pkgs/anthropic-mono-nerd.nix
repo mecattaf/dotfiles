@@ -34,7 +34,7 @@ stdenvNoCC.mkDerivation {
     name = "anthropic-mono-nerd-fonts.tar.zst";
     # 2026-10-01 press (no --mono). The 2026-09-17 --mono press was
     # df043254517d186e6107caedae706436182c29d3e69aaedae031825b0a030fdc.
-    sha256 = "98962a82cea66e8902bfa073eb4c061825c734bccf346ade27b3cdf534c0952a";
+    sha256 = "80d9503c6bc7253cb925b208eff8c2ae1dd1c78bfe91ae0ca1ea7a820cced654";
     message = ''
       Anthropic Mono is pinned to the fleet's NAS copy and is not downloadable.
       Add it to the store with:
