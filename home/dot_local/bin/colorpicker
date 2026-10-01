@@ -1,8 +1,21 @@
 #!/usr/bin/env bash
-# colorpicker -- pick a color from screen using niri native, copy hex to clipboard
-# Uses niri msg pick-color directly.
-output=$(niri msg pick-color) || exit 1
-hex=$(echo "$output" | grep -oP '#[0-9a-f]{6}')
+# colorpicker -- pick a color from screen, copy its hex to the clipboard (Mod+C)
+#
+# scroll (scroll/transition) has no pick-color action, so on scroll the pick is
+# slurp's single-point mode (-p) plus a 1x1 grim capture at scale 1 in binary
+# PPM: the last three bytes of that file are the pixel's R, G, B. No new
+# dependency (grim and slurp are already the screenshot tier). On niri (the
+# rollback, NIRI_SOCKET set and SCROLLSOCK not) it stays `niri msg pick-color`.
+set -euo pipefail
+
+if [ -n "${SCROLLSOCK:-}" ] || [ -z "${NIRI_SOCKET:-}" ]; then
+    point="$(slurp -p)" || exit 0
+    hex="#$(grim -s 1 -g "$point" -t ppm - | tail -c 3 | od -An -tx1 | tr -d ' \n')"
+else
+    output=$(niri msg pick-color) || exit 1
+    hex=$(echo "$output" | grep -oP '#[0-9a-f]{6}')
+fi
+[[ "$hex" =~ ^#[0-9a-f]{6}$ ]] || { echo "colorpicker: could not read a colour" >&2; exit 1; }
 printf '%s' "$hex" | wl-copy
 # The copy is the whole job; the toast is garnish. No host in the fleet ships a
 # notification daemon or notify-send (verified 2026-09-11), so guard it rather
