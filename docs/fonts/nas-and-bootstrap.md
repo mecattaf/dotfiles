@@ -19,6 +19,10 @@ Companion pages: [`README.md`](README.md) for what is installed,
 /mnt/fast/fonts/anthropic/anthropic-mono-nerd-fonts.tar.zst   0444 root:root
 /mnt/fast/fonts/anthropic/anthropic-ui-fonts.tar.zst          0444 root:root
 /mnt/fast/fonts/anthropic/anthropic-webfonts.tar.zst          0444 root:root
+/mnt/fast/fonts/anthropic/capture/                  0755 root:root  (2026-10-01)
+/mnt/fast/fonts/anthropic/capture/SHA256SUMS        0444  = pkgs/fontbuilder/data/sources.sha256
+/mnt/fast/fonts/anthropic/capture/FONTS.md          0644
+/mnt/fast/fonts/anthropic/capture/{fonts-anthropic-com,fonts-claude-ai,fonts-ttf}/  0444 files
 ```
 
 This reproduces `apple/` exactly, which was reconnoitred read-only: `apple/README.md` is
@@ -40,8 +44,9 @@ bytes and `sfmono-liga-fonts.tar.zst` is 3,093,475 bytes. Ours:
 
 Re-pressed 2026-10-01 without `--mono` (see `README.md`): the mono tarball changed, the
 webfonts tarball changed only in one CSS comment, the UI tarball is byte-identical. The
-2026-09-17 originals (`df043254…`, `8da31eca…`) stay on the NAS as
-`*.tar.zst.2026-09-17-mono` for the revert path.
+2026-09-17 `--mono` tarballs were deleted from the NAS on 2026-10-01 (Tom: this font is
+"mine", replace and delete the old one); the revert path is git history plus a re-press
+from `capture/`, which is now the canonical copy of the 14 source files.
 
 Three tarballs, not five. `sf-pro-fonts.tar.zst` already proves one archive may carry
 several families. Every basename is dot-free before `.tar.zst` and unique against `tally`,

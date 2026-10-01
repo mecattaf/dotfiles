@@ -5,7 +5,8 @@ nix run .#fontbuilder -- /home/tom/colors/waves/capture ~/build/anthropic-fonts-
 ```
 
 This package ships the **recipe and no bytes**. The Anthropic faces are unlicensed brand
-trade dress; they live on the fleet's NAS M.2 only (`nas:/mnt/fast/fonts/anthropic/`), are
+trade dress; they live on the fleet's NAS M.2 only (`nas:/mnt/fast/fonts/anthropic/`, the
+pressed tarballs, and `capture/` beneath it, the 14 pinned source files since 2026-10-01), are
 pinned by sha256 in `pkgs/anthropic-mono-nerd.nix`, `pkgs/anthropic-ui.nix` and
 `pkgs/anthropic-webfonts.nix`, and never enter this repo, which `.gitignore` enforces.
 

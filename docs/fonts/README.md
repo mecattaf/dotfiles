@@ -66,11 +66,12 @@ contends with the installed TTF for the family name, which is why the directory 
 
 ```
 nas:/mnt/fast/fonts/anthropic/
-  anthropic-mono-nerd-fonts.tar.zst   2571132 B   sha256 df043254517d186e6107caedae706436182c29d3e69aaedae031825b0a030fdc
+  anthropic-mono-nerd-fonts.tar.zst   2823685 B   sha256 38ca9698e563911c03f11728639d2ae2d9ed969bc6b4c82d5d38ad4ff3a0583e
   anthropic-ui-fonts.tar.zst          726204 B     sha256 070d34426a6eab50dd8dd3ae19cf847a52af86adb03d0a4f0d5d1d0de4393c77
-  anthropic-webfonts.tar.zst          830195 B    sha256 8da31eca13b2c55bce504567256462d579ccdbee6b8fe713fc33feb65ef40239
+  anthropic-webfonts.tar.zst          830170 B    sha256 b06edf0b28e9c0f26cd4f9cb4b90410e6743945a5d959ef11c3956fb7c103b5f
   SHA256SUMS                          0444
   README.md                           0644
+  capture/                            the 14 pinned source files + FONTS.md + SHA256SUMS (2026-10-01)
 ```
 
 `pkgs/anthropic-mono-nerd.nix`, `pkgs/anthropic-ui.nix` and `pkgs/anthropic-webfonts.nix`
@@ -90,8 +91,14 @@ same pattern as `pkgs/sf-pro.nix`, one directory over.
   `load_config` on the real `kitty.conf` and assert `get_font_files()` returns the four
   expected PostScript names. `fc-scan` alone would not have caught the 2026-08-21
   incident; a bare `find_best_match` would not have caught it either.
-- **`~/colors/waves/capture` is read-only and is the only copy.** It is 274 MB, not a git
-  repository, and not on any remote. The press reads it; nothing writes it.
+- **The capture lives on the NAS at `nas:/mnt/fast/fonts/anthropic/capture/` (Tom,
+  2026-10-01: "keep the originals on NAS so I don't have to do them again").** The
+  2026-08-31 working copy in `~/colors/waves/capture` was deleted after the first press;
+  the 14 pinned files were re-downloaded from the same anthropic.com / claude.ai URLs on
+  2026-10-01 and matched `sources.sha256` byte for byte, then went to the NAS with their
+  digests. To press again on a fresh box: `scp -r root@nas:/mnt/fast/fonts/anthropic/capture
+  ~/colors/waves/` and `nix run .#fontbuilder -- ~/colors/waves/capture <out>`; S0 checks
+  the 14 digests. Nothing else from the old 274 MB tree is needed.
 - **Never run `fc-cache` from a build or a test.** Measured: `fc-cache -f <dir>` ignores
   the `<cachedir>` in a private `FONTCONFIG_FILE` and wrote 113,904 bytes into the live
   `~/.cache/fontconfig`. Verification sets `FONTCONFIG_FILE` **and** `XDG_CACHE_HOME`.
