@@ -795,6 +795,11 @@ in
           "WAYLAND_DISPLAY"
           "DISPLAY"
           "NIRI_SOCKET"
+          # scroll's IPC socket is a full command channel (`exit`, `exec`) with no authorization, and scroll
+          # exports it under all three names (sway/ipc-server.c:116-118). A headless agent inherits none.
+          "SCROLLSOCK"
+          "SWAYSOCK"
+          "I3SOCK"
         ];
       };
     };
