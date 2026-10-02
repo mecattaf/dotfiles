@@ -212,7 +212,7 @@
     # NOT in `rollingInputOverrides`: herdr owns live PTYs, so its version moves
     # when Tom says so, never on a nightly resolve.
     herdr = {
-      url = "github:herdrdev/herdr/065ef9d6a531c49fb8bee7e818ef837065b21ee9"; # v0.9.1, wire PROTOCOL_VERSION 22 as in 0.9.0
+      url = "github:herdrdev/herdr/7b116c05bfda646af39d2524c54e70c751f57ee8"; # v0.9.3, wire PROTOCOL_VERSION 22 as in 0.9.0
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
