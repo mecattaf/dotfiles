@@ -1331,8 +1331,10 @@
           assert !(builtins.elem 9292 coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts);
           assert !(builtins.elem 8731 coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts);
           assert !(builtins.elem 3003 coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts);
-          # Worker LAN doors: Immich ML (dialled by nas.services.immich above)
-          # and the Halogen API (modules/halogen.nix). Nothing else — and no
+          # Worker LAN doors: Immich ML (dialled by nas.services.immich above),
+          # the Halogen API (modules/halogen.nix) and the academic drain that
+          # the coordinator's Caddy fronts as drain.internal
+          # (hosts/worker/default.nix). Nothing else — and no
           # tailnet to hide behind, which is exactly why these stay
           # interface-scoped rather than global. On enp191s0: the worker is
           # WIRED into the BE550 and has no wifi profile at all.
@@ -1340,6 +1342,7 @@
             worker.networking.firewall.interfaces.enp191s0.allowedTCPPorts == [
               3003 # immich-ml
               8731 # halogen
+              8740 # academic drain
             ];
           assert !(worker.networking.firewall.interfaces ? wlp192s0);
           assert !(builtins.elem "enp191s0" worker.networking.firewall.trustedInterfaces);
