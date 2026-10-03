@@ -15,7 +15,7 @@
 # API verb at all (src/client/shell/actions.rs:13-35). Only the projector's own
 # keybinding lane is per-window, so the chord is typed into that window through
 # kitty remote control: kitty.conf sets `allow_remote_control yes` and
-# `listen_on unix:@kitty-{kitty_pid}`, and niri reports each window's pid.
+# `listen_on unix:@kitty-{kitty_pid}`, and the compositor reports each window's pid.
 # The projector's shell routes only Press events through the prefix state
 # machine and drops the releases of keys it consumed
 # (src/client/shell/input.rs:301-338), so an injected chord cannot leave the
@@ -23,7 +23,7 @@
 #
 # WHICH WINDOW. A projector is a kitty with app-id `herdr-projector`
 # (herdr-projector's header).
-#   new      ALWAYS hop to the empty trailing niri workspace of the focused output, spawn a
+#   new      ALWAYS hop to an empty workspace of the focused output (see COMPOSITOR), spawn a
 #            projector there, and give it a fresh workspace ("Mod+Return must
 #            give me a NEW terminal", 186b36d2, kept).
 #   sidebar  ALWAYS a new projector window on the empty trailing workspace,
@@ -38,6 +38,13 @@
 # client's own "endpoint handshake succeeded" line in herdr-client.log, then
 # settles briefly. Timeout 20 s (the first attach may have to open the ssh
 # master).
+#
+# COMPOSITOR. scroll when SCROLLSOCK is set, niri when NIRI_SOCKET is set,
+# otherwise scroll (the seats' default since scroll/transition); niri stays
+# supported while it is the rollback. HERDR_CHORD_WM=scroll|niri overrides.
+# scroll reports pid and app_id in get_tree; a new projector on scroll lands
+# on the focused workspace when it is empty, else on a fresh one numbered
+# after all others (niri: its empty trailing workspace).
 set -euo pipefail
 
 verb="${1:-}"
@@ -62,7 +69,7 @@ die() {
   exit 1
 }
 
-# kitty pid of the projector window with this niri id
+# type the chord into the projector kitty whose pid is $1
 send_chord() {
   local pid="$1"
   local to="unix:@kitty-$pid"
@@ -93,12 +100,71 @@ wait_ready() {
   return 1
 }
 
-windows_json() { niri msg -j windows; }
+wm="${HERDR_CHORD_WM:-}"
+if [ -z "$wm" ]; then
+  if [ -n "${SCROLLSOCK:-}" ]; then wm=scroll
+  elif [ -n "${NIRI_SOCKET:-}" ]; then wm=niri
+  else wm=scroll
+  fi
+fi
+
+# [{id, app_id, pid}] for every window
+windows_json() {
+  case "$wm" in
+    niri) niri msg -j windows ;;
+    scroll) scrollmsg -r -t get_tree | jq -c '[.. | objects | select(.app_id? != null and .pid? != null) | {id, app_id, pid}]' ;;
+  esac
+}
+
+# {app_id, pid} of the focused window, or null
+focused_window() {
+  case "$wm" in
+    niri) niri msg -j focused-window 2>/dev/null || true ;;
+    scroll)
+      scrollmsg -r -t get_tree 2>/dev/null |
+        jq -c 'first(.. | objects | select(.focused? == true and .app_id? != null) | {app_id, pid}) // null' 2>/dev/null || true
+      ;;
+  esac
+}
+
+# Spawn through the compositor, so the window gets the session's environment
+# even when this script runs outside it.
+spawn_kitty() {
+  case "$wm" in
+    niri) niri msg action spawn -- kitty --class "$class" -e "$projector" ;;
+    scroll) scrollmsg -r -- "exec kitty --class $class -e '$projector'" >/dev/null ;;
+  esac
+}
+
+# The workspace hop before a spawn: an empty workspace on the focused output.
+hop_to_empty_workspace() {
+  local idx num
+  case "$wm" in
+    niri)
+      # niri's dynamic workspaces guarantee an empty trailing one per output.
+      idx="$(niri msg -j workspaces | jq -re 'map(select(.is_focused))[0].output as $o
+        | map(select(.output == $o)) | max_by(.idx) | .idx' 2>/dev/null || true)"
+      [ -n "$idx" ] && niri msg action focus-workspace "$idx"
+      ;;
+    scroll)
+      # Stay when the focused workspace is already empty; otherwise open a
+      # fresh one numbered after all others (it sorts last, as niri's does,
+      # and sway creates it on the focused output).
+      num="$(scrollmsg -r -t get_tree | jq -r '
+        [.. | objects | select(.type? == "workspace" and .name != "__i3_scratch")] as $ws
+        | first($ws[] | select(any(.. | objects; .focused? == true))) as $f
+        | if (($f.nodes | length) + ($f.floating_nodes | length)) == 0 then empty
+          else ([$ws[].num // 0] | max) + 1 end' 2>/dev/null || true)"
+      [ -n "$num" ] && scrollmsg -r -- "workspace number $num" >/dev/null
+      ;;
+  esac
+  return 0
+}
 
 spawn_projector() {
   local before after id pid deadline
   before="$(windows_json | jq -c --arg c "$class" '[.[] | select(.app_id == $c) | .id]')"
-  niri msg action spawn -- kitty --class "$class" -e "$projector"
+  spawn_kitty
   deadline=$((SECONDS + timeout_s))
   while [ "$SECONDS" -lt "$deadline" ]; do
     after="$(windows_json | jq -c --arg c "$class" --argjson b "$before" \
@@ -117,7 +183,7 @@ spawn_projector() {
   return 1
 }
 
-focused="$(niri msg -j focused-window 2>/dev/null || true)"
+focused="$(focused_window)"
 focused_app="$(jq -r '.app_id // empty' <<<"${focused:-null}" 2>/dev/null || true)"
 focused_pid="$(jq -r '.pid // empty' <<<"${focused:-null}" 2>/dev/null || true)"
 
@@ -132,11 +198,7 @@ case "$verb" in
     exit 0
     ;;
   new | sidebar)
-    # The spawn path keeps binds.kdl's workspace hop: the empty trailing
-    # workspace of the focused output (dynamic workspaces guarantee one).
-    idx="$(niri msg -j workspaces | jq -re 'map(select(.is_focused))[0].output as $o
-      | map(select(.output == $o)) | max_by(.idx) | .idx' 2>/dev/null || true)"
-    [ -n "$idx" ] && niri msg action focus-workspace "$idx"
+    hop_to_empty_workspace
     ;;
 esac
 

@@ -34,6 +34,13 @@ lib.mkIf osConfig.myDisplay.enable {
       After = [ "graphical-session.target" ];
       Wants = [ "graphical-session.target" ];
       PartOf = [ "graphical-session.target" ];
+      # niri-only. On a scroll seat (scroll/transition) graphical-session.target
+      # still pulls this unit in; with no niri socket it would crash-loop into
+      # tripwire-user-unit-failure. niri imports NIRI_SOCKET into the user
+      # manager and niri-session unsets it on exit, so a scroll session skips
+      # the unit (a failed Condition is not a unit failure) while a rollback
+      # niri session still gets it. piri retires with niri (scoping S9).
+      ConditionEnvironment = "NIRI_SOCKET";
     };
     Service = {
       ExecStart = "${lib.getExe piri} daemon";

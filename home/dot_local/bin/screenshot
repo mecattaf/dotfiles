@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # screenshot -- save a PNG, copy it to the clipboard, then offer Satty
 # Bound to Mod+S (screen), Mod+Shift+S (area) and Mod+Alt+S (window) in
-# niri/binds.kdl. Screen and area are grim (+ slurp), superseding niri's
+# scroll/binds.conf (niri/binds.kdl). Screen and area are grim (+ slurp), superseding niri's
 # screenshot UI (2026-09-15), so the area picker is the same slurp crosshair
 # Mod+Ctrl+S (bin/screen-ocr-area) uses. Files keep niri's former naming.
 #
-# Window stays niri's screenshot-window: grim only captures screen rectangles,
-# and niri's IPC reports no on-screen position for a tiled window (only
-# floating ones), so niri is the one thing that can capture the window alone.
+# Window, on scroll (scroll/transition): grim -T captures the focused window
+# alone through ext-image-copy-capture, by the foreign_toplevel_identifier
+# scroll reports in get_tree (untested on a live seat: whether a window
+# scrolled partly off screen comes out whole). On niri (the rollback) window stays niri's screenshot-window:
+# niri's IPC reports no on-screen position for a tiled window.
+# The compositor is scroll when SCROLLSOCK is set or NIRI_SOCKET is not.
 #
 # Area and window then open the capture in Satty for last-minute annotation.
 # The plain capture is already saved and on the clipboard, so Esc just closes
@@ -26,9 +29,15 @@ annotate() {
         --disable-notifications
 }
 
+on_scroll() { [ -n "${SCROLLSOCK:-}" ] || [ -z "${NIRI_SOCKET:-}" ]; }
+
 case "${1:-}" in
     screen)
-        output="$(niri msg -j focused-output | jq -er .name)"
+        if on_scroll; then
+            output="$(scrollmsg -r -t get_outputs | jq -er 'map(select(.focused))[0].name')"
+        else
+            output="$(niri msg -j focused-output | jq -er .name)"
+        fi
         mkdir -p "$dir"
         grim -o "$output" "$file"
         wl-copy --type image/png < "$file"
@@ -41,6 +50,16 @@ case "${1:-}" in
         annotate
         ;;
     window)
+        if on_scroll; then
+            toplevel="$(scrollmsg -r -t get_tree | jq -er 'first(.. | objects
+                | select(.focused? == true and .foreign_toplevel_identifier? != null)
+                | .foreign_toplevel_identifier)')"
+            mkdir -p "$dir"
+            grim -T "$toplevel" "$file"
+            wl-copy --type image/png < "$file"
+            annotate
+            exit 0
+        fi
         # niri encodes and writes the file on a thread: wait for its
         # ScreenshotCaptured event for this path, not for the file to appear.
         # The stream's first line (initial state) proves it is subscribed.

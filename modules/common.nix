@@ -10,7 +10,8 @@
   imports = [
     ./browser-trust.nix
     ./headless.nix # opt-in appliance profile without home-manager or desktop
-    ./display.nix # myDisplay.enable — does a human sit at this box (default true)
+    ./display.nix # myDisplay.enable — does a human sit at this box (default true); .session picks the compositor
+    ./scroll.nix # programs.scroll — the fleet's own module for dawsers/scroll master
     ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
     ./user-password.nix # tom's login password via agenix hashedPasswordFile (#54)
@@ -211,37 +212,49 @@
   # path at all.
   security.sudo.wheelNeedsPassword = false;
 
-  # --- session: greetd → niri ---
-  # Both derive from myDisplay.enable (./display.nix, default true): a host
-  # with a seat gets the compositor and the greeter, one without gets neither.
-  # The greetd settings below stay unconditional — the module ignores them
-  # when the service is off — so the only thing a host flips is the option.
-  programs.niri.enable = config.myDisplay.enable;
-  services.greetd = {
-    enable = config.myDisplay.enable;
-    # NB: do NOT wrap these session blocks in lib.mkDefault — greetd's freeform TOML
-    # settings replace (not deep-merge) the attrset, and a whole-attrset mkDefault
-    # loses the command, producing "default_session contains no command" (jul5).
-    settings.default_session = {
-      command = "${pkgs.greetd}/bin/agreety --cmd niri-session";
-      user = "greeter";
+  # --- session: greetd → scroll (or niri) ---
+  # All derive from myDisplay (./display.nix): enable (default true) says a
+  # human sits here; session (default "scroll" on scroll/transition) says which
+  # compositor greetd starts; keepNiri keeps niri installed beside scroll for
+  # rollback. A host without a seat gets no compositor and no greeter. The
+  # greetd settings below stay unconditional — the module ignores them when
+  # the service is off — so a host only ever flips the options.
+  programs.scroll.enable = config.myDisplay.enable && config.myDisplay.session == "scroll";
+  programs.niri.enable =
+    config.myDisplay.enable && (config.myDisplay.session == "niri" || config.myDisplay.keepNiri);
+  services.greetd =
+    let
+      sessionCommand =
+        if config.myDisplay.session == "scroll" then
+          "${config.programs.scroll.sessionPackage}/bin/scroll-session"
+        else
+          "${config.programs.niri.package}/bin/niri-session";
+    in
+    {
+      enable = config.myDisplay.enable;
+      # NB: do NOT wrap these session blocks in lib.mkDefault — greetd's freeform TOML
+      # settings replace (not deep-merge) the attrset, and a whole-attrset mkDefault
+      # loses the command, producing "default_session contains no command" (jul5).
+      settings.default_session = {
+        command = "${pkgs.greetd}/bin/agreety --cmd ${sessionCommand}";
+        user = "greeter";
+      };
+      # Autologin tom → the seat's compositor at boot on every display host
+      # (myDisplay.enable, modules/display.nix). tom is a locked/key-only account:
+      # passwordless login + passwordless sudo (wheelNeedsPassword=false) means no
+      # password is ever prompted. The out-of-store config checkout is guaranteed
+      # present before this runs by ./dotfiles-bootstrap.nix (ordered before greetd).
+      #
+      # NB: there is NO usable interactive fallback — default_session (agreety) prompts
+      # for a password tom does not have, so it cannot log him in. Real recovery if this
+      # session fails is the VT2-6 getty autologin below (Ctrl+Alt+F2) or a reboot.
+      settings.initial_session = {
+        command = sessionCommand;
+        user = "tom";
+      };
     };
-    # Autologin tom → niri at boot on every display host (myDisplay.enable,
-    # modules/display.nix). tom is a locked/key-only account: passwordless
-    # login + passwordless sudo (wheelNeedsPassword=false) means no password is ever
-    # prompted. The out-of-store config checkout is guaranteed present before this
-    # runs by ./dotfiles-bootstrap.nix (ordered before greetd).
-    #
-    # NB: there is NO usable interactive fallback — default_session (agreety) prompts
-    # for a password tom does not have, so it cannot log him in. Real recovery if this
-    # session fails is the VT2-6 getty autologin below (Ctrl+Alt+F2) or a reboot.
-    settings.initial_session = {
-      command = "${config.programs.niri.package}/bin/niri-session";
-      user = "tom";
-    };
-  };
 
-  # Console recovery: greetd autologins tom→niri on VT1. If the compositor ever fails
+  # Console recovery: greetd autologins tom→the seat compositor on VT1. If the compositor ever fails
   # to start (as on the jul5 duo dual-eDP hang), a locked/key-only account would leave
   # nobody able to log in at the screen. agetty autologin on the other VTs gives tom a
   # guaranteed console shell (Ctrl+Alt+F2). Secret-free and consistent with the fleet's

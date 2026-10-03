@@ -40,7 +40,8 @@ in {
         StartLimitIntervalSec = 0;
       };
     };
-    # On a physical seat Niri owns the normal user portals. These headless-only
+    # On a physical seat the physical session (scroll since scroll/transition,
+    # niri on rollback) owns the normal user portals. These headless-only
     # overrides must never bind them to the optional Sway service.
     # D-Bus activates portals through the user manager, which intentionally
     # has no global display on this headless host. Pass only these services

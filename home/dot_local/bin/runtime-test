@@ -39,5 +39,6 @@ exec bwrap --die-with-parent --unshare-user --unshare-pid --unshare-ipc \
   --unsetenv DBUS_SESSION_BUS_ADDRESS --unsetenv DBUS_SESSION_BUS_PID \
   --unsetenv NOTIFY_SOCKET --unsetenv WATCHDOG_PID --unsetenv WATCHDOG_USEC \
   --unsetenv WAYLAND_DISPLAY --unsetenv DISPLAY --unsetenv SWAYSOCK \
-  --unsetenv NIRI_SOCKET --unsetenv SSH_AUTH_SOCK --unsetenv PULSE_SERVER \
+  --unsetenv NIRI_SOCKET --unsetenv SCROLLSOCK --unsetenv I3SOCK \
+  --unsetenv SSH_AUTH_SOCK --unsetenv PULSE_SERVER \
   -- "$@"

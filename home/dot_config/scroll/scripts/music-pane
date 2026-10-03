@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# music-pane toggle|capture — piri's `scratchpads music` on scroll's native
+# scratchpad. The music window is whatever carries the mark `music`.
+#
+#   toggle   show/hide the music window; spawn the SoundCloud PWA when no
+#            window carries the mark (rules.conf marks, floats, sizes and
+#            parks it on arrival)
+#   capture  make the focused window the music window: mark it, float it on
+#            the right 40 % of the output, park it in the scratchpad and show
+#            it again (Mod+Shift+M, piri's `add fromRight`)
+set -euo pipefail
+
+geometry='floating enable, resize set width 40 ppt height 100 ppt, move position 60 ppt 0 ppt'
+
+case "${1:-toggle}" in
+  toggle)
+    if scrollmsg -t get_marks | jq -e 'index("music")' >/dev/null; then
+      # On a visible scratchpad window `scratchpad show` hides it again.
+      scrollmsg '[con_mark="^music$"] scratchpad show' >/dev/null
+    else
+      setsid -f google-chrome-stable --app=https://soundcloud.com >/dev/null 2>&1
+    fi
+    ;;
+  capture)
+    scrollmsg "mark --add music, $geometry, move scratchpad, scratchpad show" >/dev/null
+    ;;
+  *) echo 'usage: music-pane toggle|capture' >&2; exit 2 ;;
+esac

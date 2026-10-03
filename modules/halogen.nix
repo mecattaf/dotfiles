@@ -110,7 +110,7 @@ let
   # WORKING server went unanswered for minutes and got killed as a wedge —
   # twice, to one reporter (upstream #10, #22). 0.5.9 made that read answer PING
   # on the same cadence as the rest of a prefill and 0.6.3 made the read itself
-  # ~40x faster. Both are in the 0.13.8 image this module pins. Do not backport
+  # ~40x faster. Both are in every image since 0.13.8. Do not backport
   # this block to an older digest.
   #
   # The numbers are deliberately slacker than upstream's compose (10s/3):
@@ -261,8 +261,24 @@ in
       #           empty keeps the end-of-turn as text. Behaviour change on
       #           tool-call loops; /health.end_of_turn_guard reports it.
       #   0.13.8  logprobs and top_logprobs at temperature 0 on the first token.
-      default = "ghcr.io/peonist-ai/halogen-flash-server@sha256:6e626c979d536ab1edb07898e278be6686afd353758ea268817457f801d687dd";
-      description = "OCI image reference (release 0.13.8 by digest).";
+      # 0.16.0, built 2026-10-01, upstream revision f1611623b582. Bumped from
+      # 0.13.8 on 2026-10-02 (Tom: "same with halogen: give me the latest").
+      # Every HALOGEN_* variable this module sets is still in docs/ at this
+      # release. Between 0.13.8 and 0.16.0:
+      #   0.14.0  the draft head proposes two tokens a round (~+15-18% decode);
+      #           a fixed seed samples differently; with the vision tower on
+      #           the KV pool starts at 262,144 positions instead of 524,288.
+      #   0.14.2  an omitted top_k/top_p now means the model's 20/0.95.
+      #   0.15.0  the default checkpoint became qwen38-flash-next-v2.hgn plus a
+      #           separate -ngram.hgn. HALOGEN_CHECKPOINT is set explicitly
+      #           here, so the borrowed w4b bundle keeps serving; v2 is a
+      #           Library fetch and a new artifact, not part of this bump.
+      #   0.15.1  the Anthropic Messages API (/v1/messages).
+      #   0.16.0  a cancel during a long prompt stops it within ~1 s; NPU
+      #           side models (HALOGEN_NPU_MODELS) stay unset, the NPU path is
+      #           decommissioned.
+      default = "ghcr.io/peonist-ai/halogen-flash-server@sha256:f51a7d81cc6098fb8e30b88da7180117957e7d6828591a78275762c786fd7d74";
+      description = "OCI image reference (release 0.16.0 by digest).";
     };
 
     artifact = lib.mkOption {

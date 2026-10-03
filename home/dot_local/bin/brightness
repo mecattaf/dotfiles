@@ -4,7 +4,7 @@
 #
 # Usage:
 #   brightness up|down            adjust ALL internal (DRM/eDP) backlights together
-#   brightness up|down focused    adjust ONLY the niri-focused output's backlight
+#   brightness up|down focused    adjust ONLY the focused output's backlight (scroll or niri)
 #   brightness off                save the current level, then blank the backlight
 #   brightness restore            put back the level `off` saved (50% if none)
 #   brightness toggle             off when lit, restore when dark
@@ -19,7 +19,7 @@
 # The `focused` mode was written for the zenbook-duo's two eDP panels. That
 # device came BACK on 2026-09-11 as the fleet's only seat, host `client`, so the
 # mode is load-bearing again rather than merely generic: it reads
-# `niri msg focused-output`, then finds the backlight whose sysfs path carries
+# the focused output (scroll get_outputs, or `niri msg focused-output`), then finds the backlight whose sysfs path carries
 # that connector name (e.g. eDP-2 -> .../card1-eDP-2/card1-eDP-2-backlight,
 # eDP-1 -> .../card1-eDP-1/intel_backlight). Fully generic -- no per-host device
 # names -- so it is harmless on single-screen hosts (falls back to all-internal).
@@ -80,7 +80,11 @@ step() {
     local op="$1"
     if [ "${2:-}" = "focused" ]; then
         local out dev
-        out="$(niri msg -j focused-output | jq -r '.name // empty')"
+        if [ -n "${SCROLLSOCK:-}" ] || [ -z "${NIRI_SOCKET:-}" ]; then
+            out="$(scrollmsg -r -t get_outputs | jq -r 'map(select(.focused))[0].name // empty')"
+        else
+            out="$(niri msg -j focused-output | jq -r '.name // empty')"
+        fi
         dev="$(backlight_for_output "$out")"
         if [ -n "$dev" ]; then
             brightnessctl -n 1 -d "$dev" set "$op"
