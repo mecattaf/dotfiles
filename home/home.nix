@@ -327,7 +327,6 @@ in
   # .credentials.json into (a whole-dir symlink would push the credential into the
   # PUBLIC repo tree). Without this, a fresh box has zero skills/settings.
   home.file.".claude/skills".source = link "dot_claude/skills";
-  home.file.".claude/settings.json".source = link "dot_claude/settings.json";
   home.file.".claude/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
   home.file.".codex/AGENTS.md".source = link "agent-runtime-rules.md";
 
@@ -346,12 +345,23 @@ in
   # Second Claude account (work): `cc2`/`cac2` in fish set CLAUDE_CONFIG_DIR to
   # ~/.claude-work. Same skills + settings, separate .credentials.json/.claude.json.
   home.file.".claude-work/skills".source = link "dot_claude/skills";
-  home.file.".claude-work/settings.json".source = link "dot_claude/settings.json";
   home.file.".claude-work/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
   # Third account (2026-09-05): `cc3`/`cac3` → ~/.claude-3, same links.
   home.file.".claude-3/skills".source = link "dot_claude/skills";
-  home.file.".claude-3/settings.json".source = link "dot_claude/settings.json";
   home.file.".claude-3/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
+
+  # settings.json is NOT a home.file: Claude Code writes it (/effort, /model,
+  # /config) by resolving ONE symlink hop and renaming a temp file into that
+  # directory. Through home.file the hop lands in the read-only
+  # home-manager-files store dir (EROFS, 2026-10-03). Each seat instead gets a
+  # direct symlink to the checkout file, so in-app changes land in
+  # home/dot_claude/settings.json, shared by every seat, visible to git.
+  home.activation.claudeSettings = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    for seat in .claude .claude-work .claude-3; do
+      run mkdir -p $VERBOSE_ARG "$HOME/$seat"
+      run ln -sfn $VERBOSE_ARG "${dots}/dot_claude/settings.json" "$HOME/$seat/settings.json"
+    done
+  '';
 
   # Same canonical skill tree, exposed to Codex and `pi` (earendil-works/pi)
   # through the vendor-neutral, always-trusted Agent-Skills directory
