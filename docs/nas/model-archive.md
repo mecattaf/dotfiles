@@ -32,8 +32,9 @@ Restoring is the reverse: re-add the row and wanted-set entry, let
 `library-fetch` re-download it (a retired row whose upstream is gone is not
 restorable, which is why step 1 exists), then `local-models-borrow`.
 
-Retirement receipts so far: `RETIRED-2026-09-16.tsv` (dotfiles#397) and
-`RETIRED-2026-09-30.tsv` (the 2026-09-30 sweep, F1).
+Retirement receipts so far: `RETIRED-2026-09-16.tsv` (dotfiles#397),
+`RETIRED-2026-09-30.tsv` (the 2026-09-30 sweep, F1) and
+`RETIRED-2026-10-03.tsv` (the two openWakeWord rows).
 
 ## Historical procedure (store-path era, #130 workstream 4)
 
