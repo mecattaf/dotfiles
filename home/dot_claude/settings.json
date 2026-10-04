@@ -1,4 +1,5 @@
 {
+  "cleanupPeriodDays": 365,
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "DISABLE_UPDATES": "1"
@@ -6,14 +7,10 @@
   "permissions": {
     "defaultMode": "auto"
   },
-  "autoMemoryEnabled": false,
-  "cleanupPeriodDays": 365,
   "model": "opus",
-  "tui": "fullscreen",
-  "effortLevel": "high",
-  "skipDangerousModePermissionPrompt": true,
-  "skipAutoPermissionPrompt": true,
-  "voiceEnabled": true,
+  "enabledPlugins": {
+    "cloudflare@cloudflare": true
+  },
   "extraKnownMarketplaces": {
     "cloudflare": {
       "source": {
@@ -22,7 +19,15 @@
       }
     }
   },
-  "enabledPlugins": {
-    "cloudflare@cloudflare": true
+  "effortLevel": "high",
+  "tui": "fullscreen",
+  "autoMemoryEnabled": false,
+  "skipDangerousModePermissionPrompt": true,
+  "skipAutoPermissionPrompt": true,
+  "voiceEnabled": true,
+  "modelSettings": {
+    "claude-opus-5-5": {
+      "effortLevel": "xhigh"
+    }
   }
 }
