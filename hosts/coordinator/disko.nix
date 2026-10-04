@@ -59,96 +59,23 @@
     };
   };
 
-  # ── The secondary: /home on the 500GB (2026-08-30, #261) ────────────────────
-  # The WD_BLACK SN7100 500GB moved over from the worker, serial 260538801482.
-  # Wiped blank before the physical move (no partition table, no bootloader),
-  # then laid out here.
+  # ── INTERIM (2026-10-04): no secondary; /home lives on the anchor ────────────
+  # The 500GB SN7100 260538801482 is SODIMO'S and left with the `worker`
+  # chassis on 2026-10-04. Before it left, /home was copied onto this anchor
+  # (rsync -aHAXSx into the anchor's own /home directory, verified with a
+  # checksum dry-run), so dropping the `data` disk below IS the cutover: /home
+  # is now a plain directory on `/`.
   #
-  # ── OWNERSHIP (Tom, 2026-09-19) ─────────────────────────────────────────────
-  # THIS DISK BELONGS TO SODIMO. It is one of exactly two sodimo-owned items in
-  # the fleet, the other being the `worker` chassis. It is here only because the
-  # 2026-08-30 transition fitted Tom's own 1TB (26051Y809195) into worker and
-  # moved this one across.
+  # This knowingly breaks the anchor=OS-only rule for a while. Tom's own 1TB
+  # 26051Y809195 (formerly the worker's disk) is now fitted in this box as the
+  # next /home secondary (ruling 2026-10-04: both 1TBs go to this host, which
+  # supersedes the 09-19 "NUC or NAS /mnt/fast" note). /home moves onto it in a
+  # second short outage: format it STANDALONE (never `disko --flake
+  # .#coordinator`, which would act on the anchor too), copy, then declare it
+  # here as a new attr `h1t` with a fresh partition uuid, nofail and
+  # x-systemd.device-timeout=10s exactly as the 500GB had them.
   #
-  # It LEAVES with worker (2+ months out as of 2026-09-19; per FRONT-10 no agent
-  # invents or enforces that date). /home lives on it, so that departure is a
-  # migration off this disk, not an unplug — plan it as one. Afterwards the
-  # coordinator runs on its own 1TB anchor 25140U804698 with no secondary.
-  #
-  # ── The rule this disk exists to enforce ────────────────────────────────────
-  # The 1TB anchor holds the OS and only the OS: the nix store and everything
-  # NixOS derives from it, /etc, /var, and the local-models weight collection.
-  # EVERYTHING ELSE — the whole of /home — lives here. That is a durable
-  # policy, not a one-off space reclaim: work that leaves large residue
-  # (a from-source chromium, a stray 50GB build tree, a hand-run model's logs)
-  # lands in $HOME and therefore lands on this disk, where filling it up
-  # cannot threaten the system's ability to boot or rebuild.
-  #
-  # Note what this does NOT move. `~/mecattaf/dotfiles` is the git checkout
-  # tom edits, so it is ordinary user data and lives here with every other
-  # `mecattaf/` repo. The configuration NixOS actually reads is the evaluated
-  # closure under /nix/store (/run/current-system, /etc/static) and stays on
-  # the anchor. Verified before the split: nothing under /etc, /var/lib or
-  # /run/current-system symlinks into /home, so the root filesystem has no
-  # dependency on this disk being present.
-  #
-  # `uuid` is declared for the same reason as the anchor's partitions: disko
-  # then derives device = /dev/disk/by-partuuid/<uuid>, so neither a format nor
-  # a mount can be resolved by a writable label or an unstable nvmeXn1 name.
-  # Attr name `data` is deliberately disjoint from the anchor's `main` (and the
-  # worker's `w1t`) — a duplicate `disk-main-*` label pair on one machine is
-  # exactly the collision the transition had to defuse by hand.
-  #
-  # ⚠️ DESTRUCTIVE: an explicit disko/disko-install run wipes this disk.
-  # `nixos-rebuild switch` never partitions and is safe.
-  disko.devices.disk.data = {
-    type = "disk";
-    device = "/dev/disk/by-id/nvme-WD_BLACK_SN7100_500GB_260538801482";
-    content = {
-      type = "gpt";
-      partitions = {
-        home = {
-          size = "100%";
-          uuid = "7a1c9d2e-0b64-4f8a-9c31-5e2d8f4a6b70";
-          content = {
-            type = "filesystem";
-            format = "ext4";
-            mountpoint = "/home";
-            # -m 1: the ext4 default reserves 5% for root, which on a 465GB
-            # non-root filesystem is ~23GB spent to protect against a class of
-            # failure (root cannot log in to clean up) that does not apply.
-            extraArgs = [
-              "-m"
-              "1"
-            ];
-            # ── nofail is NOT optional on this host (#261) ─────────────────
-            # local-fs.target carries OnFailure=emergency.target with
-            # OnFailureJobMode=replace-irreversibly, root's shadow entry is
-            # `!`, and SYSTEMD_SULOGIN_FORCE is set nowhere in the closure. A
-            # REQUIRED /home that never appears therefore hangs for the 90s
-            # DefaultDeviceTimeout and then drops the fleet's control node into
-            # an emergency console that refuses to log in — recoverable only
-            # with external media. That is a worse outcome than every failure
-            # it could be protecting against.
-            #
-            # So this degrades the way the NAS mount does
-            # (hosts/coordinator/nas-client.nix): soft, visible, never a hung
-            # boot. 10s because an NVMe that is present is enumerated on the
-            # PCIe bus long before that, so the timeout only ever pays out when
-            # the disk is genuinely absent.
-            #
-            # The cost of nofail is that a missing /home becomes SILENT — the
-            # box boots into an empty one and services scribble on the anchor.
-            # home-on-secondary.service (hosts/coordinator/default.nix) is what
-            # makes it loud again; do not remove one without the other.
-            mountOptions = [
-              "defaults"
-              "nofail"
-              "x-systemd.device-timeout=10s"
-            ];
-          };
-        };
-      };
-    };
-  };
+  # Until then home-on-secondary.service (./default.nix) asserts the interim
+  # shape instead: /home must NOT be a separate mount and must hold the
+  # dotfiles checkout.
 }

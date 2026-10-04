@@ -289,50 +289,33 @@
     '';
   };
 
-  # ── /home is on the secondary, and a missing one must be LOUD (#261) ────────
-  # ./disko.nix mounts /home from the 500GB with `nofail`, because a required
-  # mount that never appears drops this box into an emergency console it cannot
-  # be logged into. The price of nofail is silence: the machine would boot
-  # perfectly, /home would be an empty directory on the anchor, and services
-  # would start writing into it — the same shadowed-/home shape the SSD
-  # transition had to reclaim 161G from, except nothing would announce it.
-  #
-  # This is the announcement. It asserts the STRONG property, not merely that
-  # something is mounted: that /home is a mountpoint AND that its source
-  # carries the declared PARTUUID, so a wrong disk answering to the name fails
-  # too. modules/failure-surfacing.nix installs OnFailure=failure-notify@%N on
-  # every service through a top-level drop-in, so failing here writes a marker
-  # and surfaces on the next interactive fish login with no wiring of its own.
-  #
-  # After local-fs.target: by then systemd has either mounted /home or given up
-  # on it, and either way it has stopped waiting.
+  # ── INTERIM (2026-10-04): /home is on the anchor, and must stay that way ─────
+  # The 500GB secondary left with the worker; /home was copied onto the anchor
+  # and is a plain directory on `/` until it moves onto the 1TB 26051Y809195
+  # (see ./disko.nix). The two failure shapes worth announcing now are the
+  # inverse of #261's: something mounting over /home (e.g. a stale generation
+  # or a stray unit pulling in the old disk), and an empty /home (the staged
+  # copy missing). modules/failure-surfacing.nix still surfaces a failure here
+  # on the next interactive fish login. When /home moves to the 1TB, restore
+  # the PARTUUID assertion from git history with the new disk's uuid.
   systemd.services.home-on-secondary = {
-    description = "Assert /home is the 500GB secondary, not an empty dir on the anchor";
+    description = "Interim: assert /home is the staged copy on the anchor";
     after = [ "local-fs.target" ];
     wantedBy = [ "multi-user.target" ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;
-      ExecStart = pkgs.writeShellScript "check-home-on-secondary" ''
+      ExecStart = pkgs.writeShellScript "check-home-on-anchor" ''
         set -u
-        want=7a1c9d2e-0b64-4f8a-9c31-5e2d8f4a6b70
-
-        src="$(${pkgs.util-linux}/bin/findmnt --noheadings --output SOURCE \
-          --mountpoint /home || true)"
-        if [ -z "$src" ]; then
-          echo "/home is NOT a mountpoint — the 500GB secondary did not mount," >&2
-          echo "and nofail let the boot continue. Anything written to /home is" >&2
-          echo "landing on the anchor and shadowing the real one. Check the disk" >&2
-          echo "before starting work: lsblk, journalctl -b -u home.mount" >&2
+        if ${pkgs.util-linux}/bin/findmnt --noheadings --mountpoint /home >/dev/null; then
+          echo "/home is a separate mount, but during the 2026-10-04 interim it" >&2
+          echo "must be the plain directory on the anchor. Find out what mounted it" >&2
+          echo "before writing anything: findmnt /home; journalctl -b -u home.mount" >&2
           exit 1
         fi
-
-        got="$(${pkgs.util-linux}/bin/lsblk --noheadings --output PARTUUID "$src" \
-          | ${pkgs.coreutils}/bin/head -1 | ${pkgs.coreutils}/bin/tr -d ' ')"
-        if [ "$got" != "$want" ]; then
-          echo "/home is mounted from $src (PARTUUID $got), which is not the" >&2
-          echo "declared secondary $want. Some other filesystem is answering to" >&2
-          echo "/home; do not write to it until that is explained." >&2
+        if [ ! -d /home/tom/mecattaf/dotfiles/.git ]; then
+          echo "/home/tom has no dotfiles checkout: the staged copy is missing or" >&2
+          echo "incomplete. Do not start work until it is explained." >&2
           exit 1
         fi
       '';
