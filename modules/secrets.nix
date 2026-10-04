@@ -368,7 +368,7 @@ in
       })
 
       # codex-auth: the Codex CLI ChatGPT-subscription session (Pro plan,
-      # re-logged 2026-09-05). Same shape as claude-credentials above, for the
+      # re-logged 2026-10-04). Same shape as claude-credentials above, for the
       # same reason: Codex REWRITES auth.json on every token refresh, so agenix's
       # read-only /run symlink cannot be the live file. Seed once into ~/.codex
       # (Codex's default CODEX_HOME) only if absent; after that the live file is

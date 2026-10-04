@@ -235,7 +235,7 @@ in
   # coordinator is the only agent host.
   "secrets/openrouter-token.age".publicKeys = editors ++ coordinatorOnly;
   # Codex CLI ChatGPT-subscription login (~/.codex/auth.json: id/access/refresh
-  # tokens + account_id, auth_mode "chatgpt"). Re-logged 2026-09-05 onto the
+  # tokens + account_id, auth_mode "chatgpt"). Re-logged 2026-10-04 onto the
   # Pro-plan account; this ciphertext is that session so a reflash restores
   # `codex` without a browser login. Coordinator-only for exactly the
   # claude-credentials reasons above: the coordinator is the only agent host,
