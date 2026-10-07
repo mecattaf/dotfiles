@@ -27,6 +27,11 @@ let
       "SHELL"
       "XDG_DATA_DIRS"
       "XDG_CONFIG_DIRS"
+      # A compositor restart in a lingering manager must use this login,
+      # not the session ID left over from the previous physical desktop.
+      "XDG_SESSION_ID"
+      "XDG_SEAT"
+      "XDG_VTNR"
       "XDG_CURRENT_DESKTOP"
       "XDG_SESSION_DESKTOP"
       "XDG_SESSION_TYPE"
