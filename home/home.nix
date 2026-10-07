@@ -67,6 +67,7 @@ let
 
   # Whole-dir RAW config dirs, one per ~/.config/<name>.
   configDirs = [
+    "sway" # stock Sway physical-seat pilot; coordinator keeps its selected compositor
     "scroll" # the physical seats' compositor on scroll/transition (dawsers/scroll master)
     "niri" # kept beside scroll for rollback until niri retirement (myDisplay.keepNiri)
     "kitty"
@@ -129,6 +130,7 @@ in
     ./raw-dotfiles-guard.nix
     ./ssh.nix
     ./theme.nix
+    ./vicinae.nix
   ];
 
   home.username = "tom";
@@ -161,6 +163,21 @@ in
       "kitty-scrollback-nix.conf".text = ''
         # GENERATED — Nix-store path for kitty-scrollback.nvim kittens (offline-safe).
         action_alias kitty_scrollback_nvim kitten ${pkgs.vimPlugins.kitty-scrollback-nvim}/python/kitty_scrollback_nvim.py
+      '';
+
+      "sway-local.conf".text = lib.optionalString (hostName == "client") ''
+        # Zenbook Duo: logical 1440x900 panels, vertically stacked.
+        output eDP-1 scale 2 position 0 0
+        output eDP-2 scale 2 position 0 900
+        # Preserve the verified top-panel mapping until both device IDs are
+        # measured on this laptop. Do not turn inferred ELAN IDs into policy.
+        input type:touch map_to_output eDP-1
+        bindswitch --reload --locked lid:on output eDP-1 disable
+        bindswitch --reload --locked lid:off output eDP-1 enable
+        bindsym --no-warn F10 exec ~/.local/bin/brightness toggle
+        bindsym --locked XF86MonBrightnessDown exec ~/.local/bin/brightness down
+        bindsym --locked XF86MonBrightnessUp exec ~/.local/bin/brightness up
+        bindsym --locked XF86AudioMicMute exec ~/.local/bin/volume micmute
       '';
 
       # Per-HOST niri config — the real per-host slot niri/local.kdl never had (that

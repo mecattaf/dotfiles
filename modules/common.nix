@@ -11,6 +11,7 @@
     ./browser-trust.nix
     ./headless.nix # opt-in appliance profile without home-manager or desktop
     ./display.nix # myDisplay.enable — does a human sit at this box (default true); .session picks the compositor
+    ./sway.nix # physical native Sway session, separate from the headless browser
     ./scroll.nix # programs.scroll — the fleet's own module for dawsers/scroll master
     ./mesh.nix # SSH mesh trust (known_hosts + authorized_keys)
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
@@ -212,13 +213,14 @@
   # path at all.
   security.sudo.wheelNeedsPassword = false;
 
-  # --- session: greetd → scroll (or niri) ---
+  # --- session: greetd → the selected physical compositor ---
   # All derive from myDisplay (./display.nix): enable (default true) says a
   # human sits here; session (default "scroll" on scroll/transition) says which
-  # compositor greetd starts; keepNiri keeps niri installed beside scroll for
+  # compositor greetd starts; keepNiri keeps niri installed beside it for
   # rollback. A host without a seat gets no compositor and no greeter. The
   # greetd settings below stay unconditional — the module ignores them when
   # the service is off — so a host only ever flips the options.
+  programs.swayPhysical.enable = config.myDisplay.enable && config.myDisplay.session == "sway";
   programs.scroll.enable = config.myDisplay.enable && config.myDisplay.session == "scroll";
   programs.niri.enable =
     config.myDisplay.enable && (config.myDisplay.session == "niri" || config.myDisplay.keepNiri);
@@ -227,6 +229,8 @@
       sessionCommand =
         if config.myDisplay.session == "scroll" then
           "${config.programs.scroll.sessionPackage}/bin/scroll-session"
+        else if config.myDisplay.session == "sway" then
+          "${config.programs.swayPhysical.sessionPackage}/bin/sway-physical-session"
         else
           "${config.programs.niri.package}/bin/niri-session";
     in

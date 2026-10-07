@@ -39,9 +39,10 @@
 # settles briefly. Timeout 20 s (the first attach may have to open the ssh
 # master).
 #
-# COMPOSITOR. scroll when SCROLLSOCK is set, niri when NIRI_SOCKET is set,
+# COMPOSITOR. Sway uses one projector per numbered workspace through herdr-picker.
+# Scroll when SCROLLSOCK is set, niri when NIRI_SOCKET is set,
 # otherwise scroll (the seats' default since scroll/transition); niri stays
-# supported while it is the rollback. HERDR_CHORD_WM=scroll|niri overrides.
+# supported while it is the rollback. HERDR_CHORD_WM=sway|scroll|niri overrides.
 # scroll reports pid and app_id in get_tree; a new projector on scroll lands
 # on the focused workspace when it is empty, else on a fresh one numbered
 # after all others (niri: its empty trailing workspace).
@@ -103,9 +104,14 @@ wait_ready() {
 wm="${HERDR_CHORD_WM:-}"
 if [ -z "$wm" ]; then
   if [ -n "${SCROLLSOCK:-}" ]; then wm=scroll
+  elif [ -n "${SWAYSOCK:-}" ]; then wm=sway
   elif [ -n "${NIRI_SOCKET:-}" ]; then wm=niri
   else wm=scroll
   fi
+fi
+
+if [ "$wm" = sway ]; then
+  exec "$(dirname "$(readlink -f "$0")")/herdr-picker" --chord "$verb"
 fi
 
 # [{id, app_id, pid}] for every window

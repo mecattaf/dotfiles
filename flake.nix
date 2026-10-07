@@ -195,6 +195,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    # Client desktop pilot: package and Home Manager module from one release.
+    # Keep upstream's nixpkgs so its signed binary cache remains usable.
+    vicinae.url = "github:vicinaehq/vicinae/v0.29.1";
+
     # herdr — the terminal workspace manager for AI coding agents
     # (github.com/herdrdev/herdr, Apache-2.0). It is the upstream PRODUCT that
     # replaces everything this repo used to invent for itself: the home-grown
@@ -1797,14 +1801,30 @@
             in
             c.services.greetd.enable == d.enable
             && c.programs.scroll.enable == (d.enable && d.session == "scroll")
+            && c.programs.swayPhysical.enable == (d.enable && d.session == "sway")
             && c.programs.niri.enable == (d.enable && (d.session == "niri" || d.keepNiri))
             && (
               !d.enable
               || nixpkgs.lib.hasSuffix (
-                if d.session == "scroll" then "/bin/scroll-session" else "/bin/niri-session"
+                if d.session == "scroll" then "/bin/scroll-session"
+                else if d.session == "sway" then "/bin/sway-physical-session"
+                else "/bin/niri-session"
               ) c.services.greetd.settings.initial_session.command
             )
           ) displayHosts;
+          # The client pilot never moves the Herdr server or coordinator seat.
+          assert (cfgOf "client").myDisplay.session == "sway";
+          assert (cfgOf "coordinator").myDisplay.session == "scroll";
+          assert (cfgOf "client").programs.sway.enable;
+          assert !(cfgOf "client").programs.scroll.enable;
+          assert clientHome.programs.vicinae.enable;
+          assert clientHome.services.mako.enable;
+          assert !clientHome.programs.waybar.enable;
+          assert !coordinatorHome.programs.vicinae.enable;
+          assert (cfgOf "client").systemd.user.services.sway-physical.restartIfChanged == false;
+          assert clientHome.programs.vicinae.settings.font.normal.family == "Anthropic Sans";
+          assert clientHome.services.mako.settings.font == "Anthropic Sans 11";
+          assert clientHome.xdg.configFile ? "sway-local.conf";
           # niri is never dropped without a decision: each seat either runs
           # niri or keeps it installed beside scroll (myDisplay.keepNiri), so a
           # rollback to session = "niri" keeps these checks green.
@@ -3161,8 +3181,11 @@
               ${pkgs.shellcheck}/bin/shellcheck \
                 ${./home/dot_local/bin/herdr-chord} \
                 ${./home/dot_local/bin/herdr-projector} \
+                ${./home/dot_local/bin/sway-workspace} \
+                ${./home/dot_local/bin/theme} \
                 ${./home/dot_local/bin/runtime-test}
               python3 ${./tests/herdr/test_launchers.py}
+              python3 ${./tests/herdr/test_sway_picker.py}
               touch "$out"
             '';
 

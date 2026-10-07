@@ -97,6 +97,23 @@ reload_nvim() {
     printf '  nvim: %d instance(s) reloaded\n' "$n"
 }
 
+reload_sway() {
+    if [[ "${XDG_CURRENT_DESKTOP:-}" == sway-physical && -n "${SWAYSOCK:-}" ]]; then
+        swaymsg reload >/dev/null || echo '  sway: reload failed' >&2
+    fi
+}
+
+reload_desktop_tools() {
+    # Do not D-Bus-activate tools belonging to another desktop or launch a server.
+    if systemctl --user -q is-active mako.service; then
+        makoctl reload || echo '  mako: reload failed' >&2
+    fi
+    if systemctl --user -q is-active vicinae.service; then
+        # set rescans the theme files and reloads even when the ID is unchanged.
+        vicinae theme set dotfiles-current || echo '  vicinae: reload failed' >&2
+    fi
+}
+
 # herdr: nothing to do. Its [theme] name = "terminal" paints every token from
 # kitty's ANSI palette, and kitty reports the background change to it through
 # DEC mode 2031 (CSI ?997;n) on reload, whereupon herdr re-queries OSC 10/11/4
@@ -174,6 +191,8 @@ apply() {
     echo "theme: $name"
     reload_kitty
     reload_scroll
+    reload_sway
+    reload_desktop_tools
     reload_niri
     reload_nvim
     apply_gtk

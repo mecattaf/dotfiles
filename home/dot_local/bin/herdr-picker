@@ -1,0 +1,547 @@
+#!/usr/bin/env python3
+"""Vicinae's Sway/Herdr bridge. Herdr APIs are read-only; focus stays in Sway.
+
+A Sway slot owns one projector, including while parked. Native Herdr navigation
+can change its view; an unverifiable view explicitly shows its assigned workspace
+status. Never infer current identity from the server's global focus.
+"""
+import argparse
+from contextlib import contextmanager
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import shlex
+import socket
+import struct
+import subprocess
+import sys
+import time
+import uuid
+
+CLASS = 'herdr-projector'
+SLOT = re.compile(r'^herdr-slot-([1-9])$')
+LABEL = re.compile(r'^herdr-label-(client-slot-[1-9]-[a-f0-9]{6})$')
+NAME = re.compile(r'^herdr-name-([a-f0-9]+)$')
+ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
+
+
+class BridgeError(Exception):
+    pass
+
+
+def run(argv, *, data=None, timeout=8, check=True):
+    try:
+        p = subprocess.run(argv, input=data, text=True, capture_output=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise BridgeError(f'{argv[0]}: {e}') from e
+    if check and p.returncode:
+        raise BridgeError(f'{argv[0]}: {clean(p.stderr or p.stdout) or "command failed"}')
+    return p
+
+
+def clean(text):
+    return ' '.join(ANSI.sub('', str(text or '')).split())[:220]
+
+
+def ipc(command):
+    result = json.loads(run(['swaymsg', '-r', '--', command]).stdout)
+    if not result or any(not row.get('success') for row in result):
+        raise BridgeError('Sway refused command: ' + clean(result))
+
+
+def tree():
+    if not os.environ.get('SWAYSOCK'):
+        raise BridgeError('Run this command inside the physical Sway session.')
+    return json.loads(run(['swaymsg', '-r', '-t', 'get_tree']).stdout)
+
+
+def walk(node, workspace=None):
+    if node.get('type') == 'workspace':
+        workspace = node
+    yield node, workspace
+    for child in node.get('nodes', []) + node.get('floating_nodes', []):
+        yield from walk(child, workspace)
+
+
+def views(root):
+    return [(n, w) for n, w in walk(root) if n.get('app_id') or n.get('window')]
+
+
+def slot_of(node, ws):
+    number = (ws or {}).get('num', -1)
+    if 1 <= number <= 9:
+        return number
+    marks = [int(m.group(1)) for s in node.get('marks', []) if (m := SLOT.fullmatch(s))]
+    return marks[0] if len(marks) == 1 else None
+
+
+def projectors(root):
+    return [(n, w) for n, w in views(root) if n.get('app_id') == CLASS]
+
+
+def focused_workspace(root):
+    for node, ws in walk(root):
+        if node.get('focused') and ws and ws.get('num', -1) >= 0:
+            return ws
+    # A layer-shell launcher may be focused without any container reporting it.
+    rows = json.loads(run(['swaymsg', '-r', '-t', 'get_workspaces']).stdout)
+    current = next((w for w in rows if w.get('focused')), None)
+    if current:
+        return current
+    raise BridgeError('No focused Sway workspace.')
+
+
+def available_slot(root):
+    occupied = {w.get('num') for n, w in walk(root) if n.get('type') == 'workspace' and w}
+    occupied.update(slot_of(n, w) for n, w in projectors(root))
+    for slot in range(1, 10):
+        if slot not in occupied:
+            return slot
+    raise BridgeError('All nine Herdr slots are occupied or parked. Reopen one with Mod+K; detach a view to release its slot.')
+
+
+def quote_sway(value):
+    # Sway does not decode JSON escapes in workspace names. Keep a literal
+    # quoted argument, rejecting characters with parser/variable semantics.
+    if any(c in value for c in ('"', '\\', '$')) or any(ord(c) < 32 for c in value):
+        raise BridgeError('Workspace names cannot contain double quotes, backslashes, dollar signs, or control characters.')
+    return '"' + value + '"'
+
+
+@contextmanager
+def desktop_lock():
+    runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
+    with (runtime / 'herdr-sway.lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise BridgeError('A Herdr workspace action is already in progress.')
+        yield
+
+
+def focus_view(view_id, expected=None):
+    root = tree()
+    match = next(((n, w) for n, w in views(root) if n['id'] == view_id), None)
+    if not match:
+        raise BridgeError('That window has closed. Open the picker again.')
+    node, ws = match
+    if expected and any(node.get(k) != expected.get(k) for k in ('pid', 'app_id')):
+        raise BridgeError('That window identity changed. Open the picker again.')
+    if ws and ws.get('name') == '__i3_scratch':
+        slot = slot_of(node, ws)
+        if slot is None:
+            raise BridgeError('Parked projector has no dedicated workspace number.')
+        conflicting = [n for n, w in projectors(root) if slot_of(n, w) == slot and n['id'] != view_id]
+        if conflicting:
+            raise BridgeError(f'Slot {slot} already owns another projector; refusing to merge them.')
+        current_slots = [n for n, _ in walk(root) if n.get('type') == 'workspace' and n.get('num') == slot]
+        if len(current_slots) > 1:
+            raise BridgeError(f'Multiple Sway workspaces use number {slot}. Resolve their names before reopening this projector.')
+        old_names = [bytes.fromhex(m.group(1)).decode('utf-8') for mark in node.get('marks', [])
+                     if (m := NAME.fullmatch(mark))]
+        name = old_names[0] if len(old_names) == 1 else str(slot)
+        if not re.match(rf'^{slot}($|:)', name):
+            name = str(slot)
+        # Workspace identity is its complete name. Reuse an existing numbered
+        # workspace instead of creating a second number with the parked name.
+        if current_slots:
+            name = current_slots[0]['name']
+        ipc('workspace ' + quote_sway(name))
+        ipc(f'[con_id={int(view_id)}] move container to workspace ' + quote_sway(name))
+        ipc(f'[con_id={int(view_id)}] floating disable')
+    ipc(f'[con_id={int(view_id)}] focus')
+
+
+def remote_snapshot():
+    target = os.environ.get('HERDR_PROJECTOR_TARGET', 'coordinator')
+    if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.@:-]*', target):
+        raise BridgeError('Invalid HERDR_PROJECTOR_TARGET.')
+    # A bounded, read-only CLI call: never `herdr --remote`, session attach or
+    # machine auto-discovery, which could start an unmanaged server.
+    out = run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=3',
+               '-o', 'ServerAliveInterval=2', '-o', 'ServerAliveCountMax=1',
+               target, 'herdr api snapshot'], timeout=6).stdout
+    value = json.loads(out)
+    if not isinstance(value, dict):
+        raise BridgeError('Unexpected Herdr snapshot format.')
+    snapshot = value.get('result', {}).get('snapshot', value)
+    if not isinstance(snapshot, dict) or not isinstance(snapshot.get('workspaces'), list) or not isinstance(snapshot.get('agents'), list):
+        raise BridgeError('Unexpected Herdr snapshot format.')
+    if any(not isinstance(row, dict) for key in ('workspaces', 'agents') for row in snapshot[key]):
+        raise BridgeError('Unexpected Herdr snapshot rows.')
+    return snapshot
+
+
+def identity(node, snapshot):
+    title = node.get('name', '')
+    hostname = os.environ.get('HERDR_PICKER_HOSTNAME', 'coordinator')
+    matching = [w for w in snapshot.get('workspaces', [])
+                if w.get('label') and title == f'{hostname}: {w["label"]}']
+    # Even marks are only hints: reconnects and native Herdr navigation can
+    # change a projector's selected workspace. Re-resolve from its live title.
+    return matching[0] if len(matching) == 1 else None
+
+
+def assigned_identity(node, snapshot):
+    labels = [m.group(1) for mark in node.get('marks', []) if (m := LABEL.fullmatch(mark))]
+    matching = [w for w in snapshot.get('workspaces', []) if w.get('label') in labels]
+    return matching[0] if len(matching) == 1 else None
+
+
+def remember_name(node, name):
+    for mark in node.get('marks', []):
+        if NAME.fullmatch(mark):
+            ipc(f'[con_id={int(node["id"])}] unmark ' + mark)
+    ipc(f'[con_id={int(node["id"])}] mark --add herdr-name-' + name.encode('utf-8').hex())
+
+
+def vicinae_menu(rows, prompt):
+    """Use the pinned 0.29.1 menu protocol with a distinct request identity.
+
+    Upstream's CLI starts every connection at ID 1, while the server routes
+    pending asynchronous replies by ID alone. A concurrent CLI/browser call
+    can steal dmenu's reply. A random high ID avoids those small counters and
+    lets Mod+D, browser updates and theme commands coexist with this menu.
+    Protocol: tagged figura/ipc.fig and src/cli/src/ipc-client.hpp.
+    """
+    request_id = (1 << 30) | secrets.randbits(30)
+    request = {'jsonrpc': '2.0', 'id': request_id, 'method': 'Ipc/dmenu',
+               'params': {'req': {'rawContent': '\n'.join(rows),
+                                   'placeholder': prompt, 'format': 'Data',
+                                   'noSection': True, 'noQuickLook': True,
+                                   'noIcon': False, 'noMetadata': False,
+                                   'noFooter': False, 'password': False}}}
+    payload = json.dumps(request, ensure_ascii=False).encode('utf-8')
+    runtime = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(3)
+        try:
+            connection.connect(str(runtime / 'vicinae/vicinae.sock'))
+        except OSError as e:
+            raise BridgeError('Vicinae is unavailable. Check its user service.') from e
+        connection.sendall(struct.pack('=I', len(payload)) + payload)
+        connection.settimeout(None)  # Human selection has no deadline.
+
+        def receive(size):
+            data = bytearray()
+            while len(data) < size:
+                chunk = connection.recv(size - len(data))
+                if not chunk:
+                    raise BridgeError('Vicinae closed the menu connection.')
+                data.extend(chunk)
+            return bytes(data)
+
+        size = struct.unpack('=I', receive(4))[0]
+        if not 0 < size <= 1048576:
+            raise BridgeError('Invalid Vicinae response size.')
+        response = json.loads(receive(size))
+    if not isinstance(response, dict) or response.get('id') != request_id:
+        raise BridgeError('Vicinae returned an unexpected menu response identity.')
+    if response.get('error'):
+        raise BridgeError('Vicinae: ' + clean(response['error']))
+    result = response.get('result')
+    if not isinstance(result, dict) or not isinstance(result.get('output'), str):
+        raise BridgeError('Vicinae returned an invalid menu selection.')
+    return result['output']
+
+
+def dmenu(rows, prompt, *, free_text=False):
+    result = ANSI.sub('', vicinae_menu(rows, prompt)).strip()
+    if not result:
+        return None
+    if not free_text and result not in rows:
+        raise BridgeError('Choose an existing row; typed text is not a command.')
+    return result
+
+
+def kitty(node, *args, timeout=4):
+    pid = node.get('pid')
+    if not isinstance(pid, int) or pid <= 0:
+        raise BridgeError('Sway did not report the Kitty process identity.')
+    return run(['kitten', '@', '--to', f'unix:@kitty-{pid}', *args], timeout=timeout).stdout
+
+
+def chord(node, key):
+    kitty(node, 'send-key', '--match', 'recent:0', 'ctrl+b')
+    kitty(node, 'send-key', '--match', 'recent:0', key)
+
+
+def wait_for(callback, seconds, message):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        value = callback()
+        if value:
+            return value
+        time.sleep(0.1)
+    raise BridgeError(message)
+
+
+def client_ready(node):
+    try:
+        os_windows = json.loads(kitty(node, 'ls'))
+    except (BridgeError, json.JSONDecodeError):
+        return False
+    clients = [p.get('pid') for o in os_windows for t in o.get('tabs', [])
+               for w in t.get('windows', []) for p in w.get('foreground_processes', [])
+               if len(p.get('cmdline', [])) >= 2 and Path(p['cmdline'][0]).name == 'herdr'
+               and p['cmdline'][1] == 'client']
+    logfile = Path(os.environ.get('HERDR_CLIENT_LOG', str(Path.home() / '.config/herdr/herdr-client.log')))
+    try:
+        log = logfile.read_text(errors='replace')[-524288:]
+    except OSError:
+        return False
+    for pid in clients:
+        start = re.search(r'herdr starting[^\n]* pid=' + str(pid) + r'\s*\n', log)
+        if start and 'endpoint handshake succeeded' in log[start.end():]:
+            return True
+    return False
+
+
+def workspace_form_input(screen):
+    """Recognize Herdr 0.9.3's complete 56x7 naming panel, not pane prose.
+
+    overlays.rs renders title, blank, input, save/clear/cancel, blank between
+    box borders. Narrow/clipped windows deliberately fail closed. A matching
+    phrase in the sidebar or an agent's output is not evidence of a form.
+    """
+    lines = ANSI.sub('', screen).splitlines()
+    top = '┌' + '─' * 54 + '┐'
+    bottom = '└' + '─' * 54 + '┘'
+    fields = []
+    for offset in range(len(lines) - 6):
+        if top not in lines[offset] or bottom not in lines[offset + 6]:
+            continue
+        rows = [re.findall(r'│([^│\n]{54})│', line)
+                for line in lines[offset + 1:offset + 6]]
+        if any(len(row) != 1 for row in rows):
+            continue
+        title, blank, value, buttons, trailing = [row[0].strip() for row in rows]
+        if (title == 'new workspace' and not blank and not trailing
+                and buttons.split() == ['↵', 'save', '^c', 'clear', 'esc', 'cancel']):
+            fields.append(value)
+    return fields[0] if len(fields) == 1 else None
+
+
+def ensure_projector(*, create_workspace=True):
+    root = tree()
+    ws = focused_workspace(root)
+    slot = ws.get('num', -1)
+    if not 1 <= slot <= 9:
+        slot = available_slot(root)
+        ipc(f'workspace number {slot}')
+    existing = [(n, w) for n, w in projectors(root) if slot_of(n, w) == slot]
+    if len(existing) > 1:
+        raise BridgeError(f'Slot {slot} already has multiple projectors; detach extras before continuing.')
+    if existing:
+        node = existing[0][0]
+        ipc(f'[con_id={int(node["id"])}] mark --add herdr-slot-{slot}')
+        focus_view(node['id'])
+        return node, False
+    previous = {n['id'] for n, _ in projectors(root)}
+    projector = os.environ.get('HERDR_PROJECTOR', str(Path.home() / '.local/bin/herdr-projector'))
+    # Spawn command contains only shell-quoted executable arguments, never data
+    # taken from terminal titles, remote labels, or dmenu output.
+    command = shlex.join(['kitty', '--class', CLASS, '-e', projector])
+    ipc('exec ' + command)
+
+    def appeared():
+        candidates = [n for n, w in projectors(tree()) if n['id'] not in previous and (w or {}).get('num') == slot]
+        if len(candidates) > 1:
+            raise BridgeError('Multiple new projectors appeared; refusing to type into any of them.')
+        return candidates[0] if candidates else None
+
+    node = wait_for(appeared, 8, 'No projector appeared in the selected workspace.')
+    ipc(f'[con_id={int(node["id"])}] mark --add herdr-slot-{slot}')
+    wait_for(lambda: client_ready(node), 20, 'Projector did not finish attaching. Its window remains open for diagnosis.')
+    if create_workspace:
+        # Only our freshly created client receives input, never an existing pane.
+        # The new-workspace form is enabled declaratively in Herdr config.
+        label = f'client-slot-{slot}-{uuid.uuid4().hex[:6]}'
+        before = kitty(node, 'get-text', '--match', 'recent:0', '--extent', 'screen')
+        if workspace_form_input(before) is not None:
+            raise BridgeError('A naming form was already visible. Finish in Herdr manually; no text was entered.')
+        chord(node, 'shift+n')
+
+        def form_visible():
+            if not client_ready(node):
+                return False
+            screen = kitty(node, 'get-text', '--match', 'recent:0', '--extent', 'screen')
+            return workspace_form_input(screen) is not None
+
+        wait_for(form_visible, 5, 'Herdr new-workspace form did not appear. No text was entered; finish in Herdr manually.')
+        kitty(node, 'send-text', '--match', 'recent:0', label)
+
+        def entered():
+            if not client_ready(node):
+                return False
+            screen = kitty(node, 'get-text', '--match', 'recent:0', '--extent', 'screen')
+            return workspace_form_input(screen) == label
+
+        wait_for(entered, 5, 'Could not verify the new workspace name. It has not been submitted.')
+        kitty(node, 'send-key', '--match', 'recent:0', 'enter')
+        ipc(f'[con_id={int(node["id"])}] mark --add herdr-label-{label}')
+    return node, True
+
+
+def rename_workspace():
+    ws = focused_workspace(tree())
+    num = ws.get('num', -1)
+    if not 1 <= num <= 9:
+        raise BridgeError('Rename a Herdr workspace numbered 1–9; Mod+0 remains Chrome.')
+    name = dmenu([], f'Name workspace {num}', free_text=True)
+    if name is None:
+        return
+    if any(ord(c) < 32 or c in '\u2028\u2029' for c in name) or len(name) > 100:
+        raise BridgeError('Use a single-line workspace name of at most 100 characters.')
+    new_name = f'{num}: {name}'
+    ipc(f'rename workspace {quote_sway(ws["name"])} to {quote_sway(new_name)}')
+    for node, current in projectors(tree()):
+        if slot_of(node, current) == num:
+            remember_name(node, new_name)
+
+
+def workspace_action(action):
+    if action == 'rename':
+        rename_workspace()
+        return
+    root = tree()
+    ws = focused_workspace(root)
+    if action == 'new':
+        ipc(f'workspace number {available_slot(root)}')
+    elif action == 'detach':
+        focused = next((n for n, _ in views(root) if n.get('focused')), None)
+        if focused:
+            # Closing Kitty detaches the remote client; never close the server pane.
+            ipc(f'[con_id={int(focused["id"])}] kill')
+    elif action == 'close':
+        slot = ws.get('num', -1)
+        members = [(n, w) for n, w in views(root) if w and w.get('id') == ws.get('id')]
+        for node, current in members:
+            cid = int(node['id'])
+            if node.get('app_id') == CLASS:
+                if not 1 <= slot <= 9:
+                    raise BridgeError('Move this projector to a dedicated workspace 1–9 before parking it.')
+                ipc(f'[con_id={cid}] mark --add herdr-slot-{slot}')
+                remember_name(node, ws['name'])
+                ipc(f'[con_id={cid}] move scratchpad')
+            else:
+                ipc(f'[con_id={cid}] kill')
+        # Switching away lets Sway remove the now-empty workspace.
+        other = sorted({w.get('num') for n, w in walk(root) if n.get('type') == 'workspace'
+                        and w and w.get('num', -1) > 0 and w.get('num') != slot})
+        ipc(f'workspace number {other[0] if other else 10}')
+    else:
+        raise BridgeError('Unknown workspace action.')
+
+
+def picker_rows(root, snapshot, error=None):
+    rows = []
+    for node, ws in sorted(projectors(root), key=lambda nw: (slot_of(*nw) or 99, nw[0]['id'])):
+        slot = slot_of(node, ws)
+        state = identity(node, snapshot)
+        assigned = False
+        if not state:
+            state = assigned_identity(node, snapshot)
+            assigned = state is not None
+        status = state.get('agent_status', 'unknown') if state else 'unknown'
+        parked = (ws or {}).get('name') == '__i3_scratch'
+        location = f'{slot or "?"}' if parked else clean((ws or {}).get('name', '?'))
+        label = clean(state.get('label')) if state else clean(node.get('name'))
+        action = 'Reopen' if parked else 'Focus'
+        scope = 'assigned ' if assigned else ''
+        text = f'{action} {location} · {scope}{status} · {label or "Herdr"} · view {node["id"]}'
+        rows.append((text, ('view', node['id'])))
+    for node, ws in views(root):
+        if node.get('app_id') == CLASS or (ws or {}).get('name') == '__i3_scratch':
+            continue
+        rows.append((f'Window {clean((ws or {}).get("name", "?"))} · {clean(node.get("name"))} · view {node["id"]}', ('view', node['id'])))
+    for agent in snapshot.get('agents', []):
+        label = clean(agent.get('title') or agent.get('terminal_title_stripped') or agent.get('pane_id'))
+        text = f'Agent · {clean(agent.get("agent_status", "unknown"))} · {clean(agent.get("agent"))} · {label} · {clean(agent.get("pane_id"))} · open navigator'
+        rows.append((text, ('agent', agent.get('pane_id'))))
+    if error:
+        rows.append((f'Status unavailable · {clean(error)} · select to retry', ('refresh', None)))
+    rows.extend([('New Sway workspace · first available 1–9', ('new', None)),
+                 ('Rename current Sway workspace', ('rename', None)),
+                 ('Open Herdr in current workspace', ('open', None)),
+                 ('Refresh Herdr status', ('refresh', None))])
+    return rows
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--workspace', choices=['new', 'close', 'detach', 'rename'])
+    parser.add_argument('--chord', choices=['new', 'sidebar', 'rename'])
+    parser.add_argument('--json', action='store_true', help='read-only picker rows and actions; no GUI')
+    args = parser.parse_args()
+    if args.workspace:
+        with desktop_lock():
+            workspace_action(args.workspace)
+        return
+    if args.chord:
+        with desktop_lock():
+            if args.chord == 'rename':
+                rename_workspace()
+                return
+            node, created = ensure_projector(create_workspace=args.chord == 'new')
+            if args.chord == 'sidebar':
+                chord(node, 'g')
+        return
+    while True:
+        root = tree()
+        snapshot, error = {}, None
+        try:
+            snapshot = remote_snapshot()
+        except (BridgeError, json.JSONDecodeError) as e:
+            error = str(e)
+        rows = picker_rows(root, snapshot, error)
+        if args.json:
+            print(json.dumps([{'label': label, 'action': action} for label, action in rows], ensure_ascii=False))
+            return
+        picked = dmenu([r[0] for r in rows], 'Workspaces and Herdr · status at open · Esc to dismiss')
+        if picked is None:
+            return
+        action, value = dict(rows)[picked]
+        if action == 'refresh':
+            continue
+        with desktop_lock():
+            if action == 'view':
+                expected = next((n for n, _ in views(root) if n['id'] == value), None)
+                focus_view(value, expected=expected)
+            elif action == 'open':
+                ensure_projector()
+            elif action in ('new', 'rename'):
+                workspace_action(action)
+            elif action == 'agent':
+                # No unsafe API focus or automatic Enter. Herdr's client-local
+                # navigator is the final authority for selecting a server pane.
+                agent = next((a for a in snapshot.get('agents', []) if a.get('pane_id') == value), {})
+                candidate = None
+                for view, _ in projectors(tree()):
+                    assigned = identity(view, snapshot) or assigned_identity(view, snapshot)
+                    if assigned and assigned.get('workspace_id') == agent.get('workspace_id'):
+                        candidate = view
+                        break
+                if candidate:
+                    focus_view(candidate['id'], expected=candidate)
+                    node = candidate
+                else:
+                    node, _ = ensure_projector(create_workspace=False)
+                chord(node, 'g')
+                run(['notify-send', 'Herdr navigation', f'Select {clean(value)} in the Herdr navigator.'], check=False)
+        return
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (BridgeError, OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+        print(f'herdr-picker: {e}', file=sys.stderr)
+        try:
+            run(['notify-send', 'Herdr / Sway', str(e)], timeout=2, check=False)
+        except BridgeError:
+            pass
+        sys.exit(1)
