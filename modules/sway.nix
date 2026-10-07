@@ -55,6 +55,11 @@ let
       fi
     done
 
+    # Raw fish config does not source HM's POSIX session fragment. Set the
+    # declared values here so compositor children and activation agree.
+    ${lib.concatStringsSep "\n" (lib.mapAttrsToList
+      (name: value: "export ${name}=${lib.escapeShellArg value}")
+      config.home-manager.users.tom.home.sessionVariables)}
     export XDG_CURRENT_DESKTOP=sway-physical
     export XDG_SESSION_DESKTOP=sway XDG_SESSION_TYPE=wayland
     # Nix keeps these schemas outside the ordinary profile share directory.
