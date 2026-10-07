@@ -170,9 +170,10 @@ The systemd session hooks are deliberately
 inert there, so this test does not certify a real greetd login or portal
 activation on the laptop.
 
-The client was unreachable over SSH during preparation. A local headless
-test cannot prove the Duo's actual touch-device mapping, dock transitions,
-audio peripherals, Chrome profile behavior, or physical display scaling.
+The client was unreachable during initial preparation, then deployed and
+checked on the real laptop once it was powered on. See the rollout receipt
+below. The headless test cannot prove the Duo's actual touch-device mapping,
+dock transitions, audio peripherals or portal behavior.
 On first login, test both screens, lid/dock behavior, Mod+0/1/9, rename,
 park/reopen, repeated Mod+Return, launcher placement, browser tabs, Mako and
 a client disconnect/reconnect. Use `swaymsg -t get_inputs` before replacing
@@ -183,6 +184,34 @@ restore the previous Git branch in `~/mecattaf/dotfiles` as well, because raw
 configuration follows the checkout. Niri remains installed as a recovery
 option; a declarative rollback changes `myDisplay.session` to `"niri"`.
 Do not stop Herdr, the user manager or the remote agent processes.
+
+## Live client rollout, 2026-10-07
+
+The branch is deployed on the Zenbook. The first real login exposed two
+integration gaps that are now fixed: declaring a Home Manager Mako unit
+replaced its vendor unit without inheriting `ExecStart`, and plain GTK
+settings commands lacked Nix's schema directories. Mako now has a complete
+D-Bus service definition, checked by the profile assertions. The physical
+session imports both desktop and Nautilus schema paths before it starts.
+
+Verified on the laptop after the corrected boot:
+
+- Sway, Vicinae and Mako are active; no failed user services.
+- Anthropic Sans resolves correctly; GTK reports Anthropic Sans 11,
+  `prefer-dark`, and Kitty as Nautilus's terminal.
+- The docked top panel runs at 2880×1800, 120 Hz, scale 2. The kernel reports
+  the lower panel disconnected in the current physical configuration.
+- A real client projector attached to coordinator on workspace 1 and created
+  its dedicated Herdr workspace. The picker retrieved three agent rows with
+  no remote-status error.
+- Chrome is assigned to workspace 10. The declared extension installed, its
+  native-messaging process runs, and Vicinae exposes browser-tab search.
+
+Chrome opened an existing Unlock Keyring dialog, which is left for the user
+to handle locally. Authentication and stored browser secrets were not changed.
+Undocking, lower-panel touch, lid transitions and portal screen sharing still
+need physical acceptance testing. Coordinator and client networking were left
+unchanged; Strix remains on Wi-Fi.
 
 ## Strix cupboard move
 
