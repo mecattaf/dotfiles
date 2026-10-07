@@ -88,6 +88,20 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+    # Google Chrome policy and the signed upstream launcher cache on both seats.
+    programs.chromium = {
+      enable = true;
+      extensions = [
+        "kcmipingpfbohfjckomimmahknoddnke;https://clients2.google.com/service/update2/crx"
+      ];
+    };
+    nix.settings = {
+      extra-substituters = [ "https://vicinae.cachix.org" ];
+      extra-trusted-public-keys = [
+        "vicinae.cachix.org-1:1kDrfienkGHPYbkpNj1mWTr7Fm1+zcenzgTizIcI3oc="
+      ];
+    };
+
     programs.sway = {
       enable = true;
       # The service already has a bus and a deliberate desktop identity.

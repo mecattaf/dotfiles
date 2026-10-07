@@ -23,7 +23,8 @@ import uuid
 
 CLASS = 'herdr-projector'
 SLOT = re.compile(r'^herdr-slot-([1-9])$')
-LABEL = re.compile(r'^herdr-label-(client-slot-[1-9]-[a-f0-9]{6})$')
+LABEL = re.compile(r'^herdr-label-((?:client|coordinator)-slot-[1-9]-[a-f0-9]{6})$')
+CLOSED = re.compile(r'^herdr-closed-([0-9]+)$')
 NAME = re.compile(r'^herdr-name-([a-f0-9]+)$')
 ANSI = re.compile(r'\x1b\[[0-?]*[ -/]*[@-~]')
 
@@ -100,7 +101,7 @@ def available_slot(root):
     for slot in range(1, 10):
         if slot not in occupied:
             return slot
-    raise BridgeError('All nine Herdr slots are occupied or parked. Reopen one with Mod+K; detach a view to release its slot.')
+    raise BridgeError('All nine Herdr slots are occupied or parked. Reopen one with Mod+Ctrl+Space; detach a view to release its slot.')
 
 
 def quote_sway(value):
@@ -153,17 +154,23 @@ def focus_view(view_id, expected=None):
         ipc(f'[con_id={int(view_id)}] move container to workspace ' + quote_sway(name))
         ipc(f'[con_id={int(view_id)}] floating disable')
     ipc(f'[con_id={int(view_id)}] focus')
+    for mark in node.get('marks', []):
+        if CLOSED.fullmatch(mark):
+            ipc(f'[con_id={int(view_id)}] unmark ' + mark)
 
 
 def remote_snapshot():
-    target = os.environ.get('HERDR_PROJECTOR_TARGET', 'coordinator')
-    if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.@:-]*', target):
-        raise BridgeError('Invalid HERDR_PROJECTOR_TARGET.')
-    # A bounded, read-only CLI call: never `herdr --remote`, session attach or
-    # machine auto-discovery, which could start an unmanaged server.
-    out = run(['ssh', '-n', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=3',
-               '-o', 'ServerAliveInterval=2', '-o', 'ServerAliveCountMax=1',
-               target, 'herdr api snapshot'], timeout=6).stdout
+    # Read-only on either route. Explicit local client attachment never SSHs
+    # back into the coordinator or enters auto-discovery/server startup.
+    if os.environ.get('HERDR_SWAY_LOCAL') == '1':
+        out = run(['herdr', 'api', 'snapshot'], timeout=6).stdout
+    else:
+        target = os.environ.get('HERDR_PROJECTOR_TARGET', 'coordinator')
+        if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.@:-]*', target):
+            raise BridgeError('Invalid HERDR_PROJECTOR_TARGET.')
+        out = run(['ssh', '-n', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=3',
+                   '-o', 'ServerAliveInterval=2', '-o', 'ServerAliveCountMax=1',
+                   target, 'herdr api snapshot'], timeout=6).stdout
     value = json.loads(out)
     if not isinstance(value, dict):
         raise BridgeError('Unexpected Herdr snapshot format.')
@@ -341,7 +348,7 @@ def ensure_projector(*, create_workspace=True):
         focus_view(node['id'])
         return node, False
     previous = {n['id'] for n, _ in projectors(root)}
-    projector = os.environ.get('HERDR_PROJECTOR', str(Path.home() / '.local/bin/herdr-projector'))
+    projector = os.environ.get('HERDR_PROJECTOR', str(Path.home() / '.local/bin/herdr-sway-projector'))
     # Spawn command contains only shell-quoted executable arguments, never data
     # taken from terminal titles, remote labels, or dmenu output.
     command = shlex.join(['kitty', '--class', CLASS, '-e', projector])
@@ -359,7 +366,10 @@ def ensure_projector(*, create_workspace=True):
     if create_workspace:
         # Only our freshly created client receives input, never an existing pane.
         # The new-workspace form is enabled declaratively in Herdr config.
-        label = f'client-slot-{slot}-{uuid.uuid4().hex[:6]}'
+        seat = os.environ.get('HERDR_SWAY_SEAT', 'client')
+        if seat not in ('client', 'coordinator'):
+            raise BridgeError('Invalid HERDR_SWAY_SEAT.')
+        label = f'{seat}-slot-{slot}-{uuid.uuid4().hex[:6]}'
         before = kitty(node, 'get-text', '--match', 'recent:0', '--extent', 'screen')
         if workspace_form_input(before) is not None:
             raise BridgeError('A naming form was already visible. Finish in Herdr manually; no text was entered.')
@@ -408,6 +418,15 @@ def workspace_action(action):
         rename_workspace()
         return
     root = tree()
+    if action == 'restore':
+        parked = [(int(m.group(1)), n) for n, w in projectors(root)
+                  if (w or {}).get('name') == '__i3_scratch'
+                  for mark in n.get('marks', []) if (m := CLOSED.fullmatch(mark))]
+        if not parked:
+            raise BridgeError('No closed Herdr workspace to restore. Browse older parked views in Vicinae.')
+        node = max(parked, key=lambda item: item[0])[1]
+        focus_view(node['id'], expected=node)
+        return
     ws = focused_workspace(root)
     if action == 'new':
         ipc(f'workspace number {available_slot(root)}')
@@ -426,6 +445,10 @@ def workspace_action(action):
                     raise BridgeError('Move this projector to a dedicated workspace 1–9 before parking it.')
                 ipc(f'[con_id={cid}] mark --add herdr-slot-{slot}')
                 remember_name(node, ws['name'])
+                for mark in node.get('marks', []):
+                    if CLOSED.fullmatch(mark):
+                        ipc(f'[con_id={cid}] unmark ' + mark)
+                ipc(f'[con_id={cid}] mark --add herdr-closed-{time.time_ns()}')
                 ipc(f'[con_id={cid}] move scratchpad')
             else:
                 ipc(f'[con_id={cid}] kill')
@@ -465,6 +488,7 @@ def picker_rows(root, snapshot, error=None):
     if error:
         rows.append((f'Status unavailable · {clean(error)} · select to retry', ('refresh', None)))
     rows.extend([('New Sway workspace · first available 1–9', ('new', None)),
+                 ('Restore last closed Herdr workspace', ('restore', None)),
                  ('Rename current Sway workspace', ('rename', None)),
                  ('Open Herdr in current workspace', ('open', None)),
                  ('Refresh Herdr status', ('refresh', None))])
@@ -473,7 +497,7 @@ def picker_rows(root, snapshot, error=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--workspace', choices=['new', 'close', 'detach', 'rename'])
+    parser.add_argument('--workspace', choices=['new', 'close', 'detach', 'rename', 'restore'])
     parser.add_argument('--chord', choices=['new', 'sidebar', 'rename'])
     parser.add_argument('--json', action='store_true', help='read-only picker rows and actions; no GUI')
     args = parser.parse_args()
@@ -513,7 +537,7 @@ def main():
                 focus_view(value, expected=expected)
             elif action == 'open':
                 ensure_projector()
-            elif action in ('new', 'rename'):
+            elif action in ('new', 'rename', 'restore'):
                 workspace_action(action)
             elif action == 'agent':
                 # No unsafe API focus or automatic Enter. Herdr's client-local

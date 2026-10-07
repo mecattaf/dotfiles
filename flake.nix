@@ -1812,9 +1812,9 @@
               ) c.services.greetd.settings.initial_session.command
             )
           ) displayHosts;
-          # The client pilot never moves the Herdr server or coordinator seat.
+          # Both physical seats share Sway; the Herdr server remains independent.
           assert (cfgOf "client").myDisplay.session == "sway";
-          assert (cfgOf "coordinator").myDisplay.session == "scroll";
+          assert (cfgOf "coordinator").myDisplay.session == "sway";
           assert (cfgOf "client").programs.sway.enable;
           assert !(cfgOf "client").programs.scroll.enable;
           assert clientHome.programs.vicinae.enable;
@@ -1823,7 +1823,12 @@
           assert clientHome.systemd.user.services.mako.Service.BusName == "org.freedesktop.Notifications";
           assert clientHome.systemd.user.services.mako.Service.ExecStart == [ "${clientHome.services.mako.package}/bin/mako" ];
           assert !clientHome.programs.waybar.enable;
-          assert !coordinatorHome.programs.vicinae.enable;
+          assert coordinatorHome.programs.vicinae.enable;
+          assert coordinatorHome.services.mako.enable;
+          assert !coordinatorHome.programs.waybar.enable;
+          assert coordinatorHome.home.sessionVariables.HERDR_SWAY_LOCAL == "1";
+          assert clientHome.home.sessionVariables.HERDR_SWAY_LOCAL == "0";
+          assert coordinatorHome.systemd.user.services.herdr.Unit.X-SwitchMethod == "keep-old";
           assert (cfgOf "client").systemd.user.services.sway-physical.restartIfChanged == false;
           assert clientHome.programs.vicinae.settings.font.normal.family == "Anthropic Sans";
           assert clientHome.services.mako.settings.font == "Anthropic Sans 11";
@@ -3184,6 +3189,7 @@
               ${pkgs.shellcheck}/bin/shellcheck \
                 ${./home/dot_local/bin/herdr-chord} \
                 ${./home/dot_local/bin/herdr-projector} \
+                ${./home/dot_local/bin/herdr-sway-projector} \
                 ${./home/dot_local/bin/sway-workspace} \
                 ${./home/dot_local/bin/theme} \
                 ${./home/dot_local/bin/runtime-test}

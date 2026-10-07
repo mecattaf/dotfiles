@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# One Sway surface, one Herdr client. Server lifetime belongs to its own unit.
+set -euo pipefail
+export HERDR_CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/herdr/sway-client.toml"
+if [[ ${HERDR_SWAY_LOCAL:-0} == 1 ]]; then
+  if ! systemctl --user --quiet is-active herdr.service; then
+    echo 'Herdr server is not active; refusing to start an unmanaged server.' >&2
+    exit 1
+  fi
+  exec herdr client
+fi
+exec "$(dirname "$(readlink -f "$0")")/herdr-projector"

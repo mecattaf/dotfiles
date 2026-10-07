@@ -46,6 +46,39 @@ def workspace_form(value='today'):
 
 
 class SwayPicker(unittest.TestCase):
+    def setUp(self):
+        self.environment = patch.dict(os.environ, {'HERDR_SWAY_LOCAL': '0', 'HERDR_SWAY_SEAT': 'client'})
+        self.environment.start()
+        self.addCleanup(self.environment.stop)
+
+    def test_local_snapshot_never_uses_ssh(self):
+        response = subprocess.CompletedProcess([], 0, json.dumps(SNAPSHOT), '')
+        with patch.dict(os.environ, {'HERDR_SWAY_LOCAL': '1'}), patch.object(picker, 'run', return_value=response) as run:
+            self.assertEqual(picker.remote_snapshot(), SNAPSHOT)
+        run.assert_called_once_with(['herdr', 'api', 'snapshot'], timeout=6)
+
+    def test_restore_chooses_latest_parked_view_only(self):
+        older, newer, visible = view(10, slot=1), view(11, slot=2), view(12, slot=3)
+        for node, stamp in [(older, 10), (newer, 20), (visible, 30)]:
+            node['marks'].append(f'herdr-closed-{stamp}')
+        data = root(ws(3, [visible]), ws(-1, [older, newer], name='__i3_scratch'))
+        with patch.object(picker, 'tree', return_value=data), patch.object(picker, 'focus_view') as focus:
+            picker.workspace_action('restore')
+        focus.assert_called_once_with(11, expected=newer)
+
+    def test_restore_empty_does_not_create_or_mutate(self):
+        with patch.object(picker, 'tree', return_value=root(ws(1))), patch.object(picker, 'ipc') as command:
+            with self.assertRaisesRegex(picker.BridgeError, 'No closed'):
+                picker.workspace_action('restore')
+            command.assert_not_called()
+
+    def test_reopen_removes_closed_marker(self):
+        node = view(slot=1)
+        node['marks'].append('herdr-closed-10')
+        with patch.object(picker, 'tree', return_value=root(ws(-1, [node], name='__i3_scratch'))), patch.object(picker, 'ipc') as command:
+            picker.focus_view(10)
+        self.assertEqual(command.call_args.args, ('[con_id=10] unmark herdr-closed-10',))
+
     def test_workspace_form_requires_complete_dialog_and_exact_input(self):
         self.assertEqual(picker.workspace_form_input(workspace_form()), 'today')
         self.assertIsNone(picker.workspace_form_input('+ new workspace\nclient-slot-1-abcdef'))
@@ -179,9 +212,9 @@ class SwayPicker(unittest.TestCase):
     def test_close_parks_herdr_and_closes_only_other_views(self):
         data = root(ws(2, [view(10, slot=2, focused=True), view(20, app='org.example.Editor')]), ws(10))
         commands = []
-        with patch.object(picker, 'tree', return_value=data), patch.object(picker, 'ipc', side_effect=commands.append):
+        with patch.object(picker, 'tree', return_value=data), patch.object(picker, 'ipc', side_effect=commands.append), patch.object(picker.time, 'time_ns', return_value=42):
             picker.workspace_action('close')
-        self.assertEqual(commands, ['[con_id=10] mark --add herdr-slot-2', '[con_id=10] mark --add herdr-name-32', '[con_id=10] move scratchpad',
+        self.assertEqual(commands, ['[con_id=10] mark --add herdr-slot-2', '[con_id=10] mark --add herdr-name-32', '[con_id=10] mark --add herdr-closed-42', '[con_id=10] move scratchpad',
                                     '[con_id=20] kill', 'workspace number 10'])
         self.assertNotIn('[con_id=10] kill', commands)
 

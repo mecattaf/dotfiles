@@ -76,7 +76,7 @@ name = "terminal"
     bridge["workspace_action"]("close")
     parked = next((n, w) for n, w in bridge["projectors"](bridge["tree"]()) if n["id"] == node["id"])
     assert parked[1]["name"] == "__i3_scratch"
-    bridge["focus_view"](node["id"])
+    bridge["workspace_action"]("restore")
     reopened = next((n, w) for n, w in bridge["projectors"](bridge["tree"]()) if n["id"] == node["id"])
     assert reopened[1]["num"] == 3
     assert len(snapshot()["workspaces"]) == len(after["workspaces"])

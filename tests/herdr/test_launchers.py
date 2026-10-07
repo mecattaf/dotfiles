@@ -58,6 +58,8 @@ elif name == 'scrollmsg':
         print('[{"success": true}]')
 elif name == 'kitten' and args[-1] == 'ls':
     print(json.dumps([{'tabs': [{'windows': [{'foreground_processes': [{'cmdline': ['/bin/herdr', 'client'], 'pid': 300}]}]}]}]))
+elif name == 'systemctl':
+    sys.exit(int(os.environ.get('UNIT_STATUS', '0')))
 elif name == 'ssh':
     print(os.environ.get('SSH_OUTPUT', ''), file=sys.stderr)
     sys.exit(int(os.environ.get('SSH_STATUS', '1')))
@@ -73,7 +75,7 @@ class Launchers(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.bin = self.root / 'bin'
         self.bin.mkdir()
-        for name in ('niri', 'scrollmsg', 'kitten', 'ssh', 'sleep', 'herdr'):
+        for name in ('niri', 'scrollmsg', 'kitten', 'ssh', 'sleep', 'herdr', 'systemctl'):
             p = self.bin / name
             p.write_text('#!' + os.sys.executable + '\n' + MOCK)
             p.chmod(0o755)
@@ -89,6 +91,17 @@ class Launchers(unittest.TestCase):
 
     def calls(self):
         return [json.loads(x) for x in (self.root / 'calls').read_text().splitlines()]
+
+    def test_local_sway_projector_attaches_without_ssh_or_auto_start(self):
+        p = self.run_script('herdr-sway-projector', HERDR_SWAY_LOCAL='1')
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertEqual(self.calls(), [['systemctl', '--user', '--quiet', 'is-active', 'herdr.service'], ['herdr', 'client']])
+
+    def test_local_sway_projector_refuses_inactive_server(self):
+        p = self.run_script('herdr-sway-projector', HERDR_SWAY_LOCAL='1', UNIT_STATUS='3')
+        self.assertEqual(p.returncode, 1)
+        self.assertIn('refusing to start', p.stderr)
+        self.assertEqual(len(self.calls()), 1)
 
     def test_new_preserves_focused_projector(self):
         p = self.run_script('herdr-chord', 'new')

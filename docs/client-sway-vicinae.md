@@ -1,9 +1,9 @@
-# Zenbook Sway and Vicinae trial
+# Sway, Vicinae and Herdr on both physical seats
 
-Branch: `desktop/sway-vicinae-client`. Target: `client`, the Zenbook Duo.
-Herdr and every agent stay on Strix, whose current hostname remains
-`coordinator`. This branch changes the client desktop selection, not the
-coordinator's selected compositor, network, or Herdr server.
+Branch: `desktop/sway-vicinae-client`. Targets: `client` (Zenbook Duo) and
+`coordinator` (Strix). Herdr and agents stay on Strix; the coordinator's
+projectors attach locally, while the Zenbook attaches over SSH. Network
+configuration is unchanged; Strix remains wireless until the wired move.
 
 The desktop is stock Sway, Kitty, Chrome, Vicinae 0.29.1 and Mako. There is no
 Waybar, overview, animated compositor or wallpaper image. The background is
@@ -48,9 +48,13 @@ there. Do not restart Strix's Herdr service to test this desktop.
 | Mod+1 through Mod+9 | Dedicated Herdr workspace slots |
 | Mod+0 | Chrome, Sway workspace number 10 |
 | Mod+D or Mod+Space | Vicinae root launcher |
-| Mod+K or Mod+Ctrl+Space | Vicinae Herdr/workspace picker |
+| Mod+Ctrl+Space | Vicinae Herdr/workspace picker |
+| Mod+K | Sway focus up |
+| Mod+V | Vicinae built-in clipboard history |
+| Mod+Ctrl+V | Vertical split |
 | Mod+Return | Focus/reopen the slot's projector, or create one if absent |
 | Mod+T | First unused slot from 1 to 9, initially empty |
+| Mod+Shift+T | Restore the most recently closed Herdr workspace |
 | Mod+W | Park this workspace's Herdr view and close its other windows |
 | Mod+Shift+Q | Close the focused local window; a projector detaches |
 | Mod+Shift+N | Rename this Sway workspace through Vicinae |
@@ -62,7 +66,7 @@ there. Do not restart Strix's Herdr service to test this desktop.
 
 One slot owns one Herdr projector, even when it is parked. Mod+Return on
 Chrome's slot chooses a free Herdr slot. A parked view still occupies its
-slot, so opening a new workspace cannot overwrite it. Mod+K reopens it with
+slot, so opening a new workspace cannot overwrite it. The Vicinae picker reopens it with
 its Sway name intact. When all nine slots are occupied or parked, creation
 stops with an explanation; it never silently allocates workspace 11.
 Native Sway numbering survives names such as `3: project review`. The rename
@@ -73,13 +77,17 @@ round-trip JSON-style escapes in workspace names.
 Mod+W follows the requested Chrome-like close behavior. Other application
 windows in that workspace receive Sway's ordinary close request, while the
 Herdr projector is moved into Sway's scratchpad. Mod+Shift+Q closes Kitty
-and detaches the view. Neither action terminates the remote Herdr pane or
+and detaches the view. Mod+Shift+T restores the newest parked projector,
+including its name and running session. This restore history lasts for the
+current Sway session; it does not reopen a Kitty window explicitly killed
+with Mod+Shift+Q. Chrome retains its own Ctrl+Shift+T tab restore. Neither action terminates the remote Herdr pane or
 agent. End a remote shell/agent explicitly inside Herdr when that is wanted.
 
 ## What the Herdr picker reports
 
 The picker obtains a bounded, read-only snapshot from
-`ssh coordinator herdr api snapshot`. It never starts a local Herdr server,
+`herdr api snapshot` locally on Strix, or
+`ssh coordinator herdr api snapshot` on the Zenbook. It never starts a Herdr server,
 never sends global Herdr focus commands, and never infers agent state from
 window titles. Status is a snapshot taken when the picker opens; choose
 Refresh to fetch it again. If SSH fails, local window selection still works
@@ -87,9 +95,9 @@ and the error is shown as unavailable, not idle.
 
 Fresh slots receive a unique Herdr workspace label. The launcher verifies
 Herdr's new-workspace form before entering the label and verifies it again
-before submitting. Existing projectors receive no such input. The client
-has its own generated configuration enabling that form; the coordinator's
-configuration and live server are unchanged.
+before submitting. Existing projectors receive no such input. Each Sway projector
+uses a separate generated UI configuration enabling that form; the server's
+configuration and live process are unchanged.
 
 Strix currently disables Herdr-generated window titles. Consequently,
 `assigned working` means the originally assigned Herdr workspace is working;
@@ -144,7 +152,7 @@ Herdr server's notification delivery or claim to forward all remote toasts.
 The complete client closure built successfully on Strix before publication.
 All 39 launcher/picker tests passed. The profile checks
 assert Sway/Vicinae/Mako on the client, no Waybar and no client Herdr service,
-and an unchanged coordinator compositor. Herdr's keep-old and independent
+and a shared Sway desktop on both physical seats. Herdr's keep-old and independent
 server lifetime remain checked. Helper tests cover slot exhaustion,
 duplicate prevention, focus identity checks, parking, rename, remote errors,
 and guarded input into newly created projectors. All runtime experiments

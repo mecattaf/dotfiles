@@ -65,25 +65,8 @@
 # hosts/zenbook-duo/hardware.nix merged with 77eac406^'s host module; each
 # omission is recorded where it would have gone.
 {
-  # Dedicated branch trial: Sway + Vicinae on the Zenbook only.
-  # Niri remains installed for VT recovery; coordinator keeps its own session.
+  # Shared Sway + Vicinae desktop; hardware stays host-specific.
   myDisplay.session = "sway";
-
-  # The browser integration and launcher cache belong to this client trial.
-  # NixOS writes these policies for Google Chrome too; it does not install
-  # a second Chromium browser. Native messaging is wired by home/vicinae.nix.
-  programs.chromium = {
-    enable = true;
-    extensions = [
-      "kcmipingpfbohfjckomimmahknoddnke;https://clients2.google.com/service/update2/crx"
-    ];
-  };
-  nix.settings = {
-    extra-substituters = [ "https://vicinae.cachix.org" ];
-    extra-trusted-public-keys = [
-      "vicinae.cachix.org-1:1kDrfienkGHPYbkpNj1mWTr7Fm1+zcenzgTizIcI3oc="
-    ];
-  };
 
   imports = [
     ../../modules/local-models.nix

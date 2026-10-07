@@ -76,6 +76,7 @@ in
         };
         favorites = [
           "applications:herdr-picker"
+          "clipboard:history"
           "browser-extension:browse-tabs"
           "media:now-playing"
           "core:search-tray"
@@ -135,6 +136,9 @@ in
       sway-workspace-new =
         command "New Herdr workspace" "Create an empty dedicated workspace"
           "${config.home.homeDirectory}/.local/bin/sway-workspace new";
+      sway-workspace-restore =
+        command "Restore Herdr workspace" "Reopen the last closed workspace with its running session"
+          "${config.home.homeDirectory}/.local/bin/sway-workspace restore";
       sway-workspace-rename =
         command "Rename workspace" "Rename the current Sway workspace"
           "${config.home.homeDirectory}/.local/bin/sway-workspace rename";

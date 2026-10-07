@@ -2,7 +2,7 @@
 # Native Sway workspace operations, with durable Herdr projector parking.
 set -euo pipefail
 case "${1:-}" in
-  new|close|detach|rename) ;;
-  *) echo 'usage: sway-workspace <new|close|detach|rename>' >&2; exit 2 ;;
+  new|close|detach|rename|restore) ;;
+  *) echo 'usage: sway-workspace <new|close|detach|rename|restore>' >&2; exit 2 ;;
 esac
 exec "$(dirname "$(readlink -f "$0")")/herdr-picker" --workspace "$1"

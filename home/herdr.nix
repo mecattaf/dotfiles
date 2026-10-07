@@ -83,19 +83,18 @@ in
     # RAW single-file symlink; see CONFIG above. `onboarding = false` is the first
     # assignment in that file precisely so herdr's first run never decides to
     # write its own config over a tracked path.
-    # Remote keybindings come from Strix, but Herdr 0.9.3 keeps UI settings
-    # local. The Sway launcher verifies the new-workspace form before entering
-    # a unique slot label. No coordinator reload or live server change needed.
-    xdg.configFile."herdr/config.toml".source =
-      if hostName == "client" && osConfig.myDisplay.session == "sway" then
-        pkgs.writeText "herdr-client.toml" (
-          builtins.replaceStrings
-            [ "[ui]\n" ]
-            [ "[ui]\nprompt_new_workspace_name = true\n" ]
-            (builtins.readFile ./dot_config/herdr/config.toml)
-        )
-      else
-        link "dot_config/herdr/config.toml";
+    xdg.configFile."herdr/config.toml".source = link "dot_config/herdr/config.toml";
+    # UI-only configuration for new Sway projectors. The running server keeps
+    # its original config and socket; no reload or server replacement occurs.
+    xdg.configFile."herdr/sway-client.toml" = lib.mkIf (osConfig.myDisplay.session == "sway") {
+      text = builtins.replaceStrings [ "[ui]\n" ] [ "[ui]\nprompt_new_workspace_name = true\n" ] (
+        builtins.readFile ./dot_config/herdr/config.toml
+      );
+    };
+    home.sessionVariables = lib.mkIf (osConfig.myDisplay.session == "sway") {
+      HERDR_SWAY_LOCAL = if hostName == "coordinator" then "1" else "0";
+      HERDR_SWAY_SEAT = hostName;
+    };
 
     systemd.user.services.herdr = lib.mkIf (hostName == "coordinator") {
       Unit = {
