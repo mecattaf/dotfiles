@@ -240,3 +240,58 @@ JSON bridge later. Actual remote attachment and physical Duo behavior remain
 client acceptance checks. Sway owns workspace names; Herdr owns session names
 and lifecycle. Ethernet and the Strix hostname move are separate operations
 and are not performed by this branch.
+
+
+## Coordinator rollout and pause receipt — 2026-10-07
+
+Strix is now on the shared Sway/Vicinae/Mako desktop. Chrome was reopened with
+`--restore-last-session`; the existing Vicinae extension started its native
+messaging host. The active system is
+`/nix/store/md34rzlr6n891a42lyy2xwyq9lmibv5p-nixos-system-coordinator-26.11.20260723.e2587ca`.
+Herdr remained PID 1809, started October 5; all 149 terminal IDs from the
+pre-switch snapshot were still present after restoration. Wi-Fi is unchanged.
+
+The first physical Sway start failed because the lingering manager still held
+an obsolete `XDG_SESSION_ID`. The launcher now imports the current login ID,
+seat and VT explicitly. It also exports declared Home Manager session values:
+the raw Fish configuration does not load HM's POSIX session-vars fragment.
+The latter launcher fix is installed for the next login; the running desktop
+was not logged out again. The raw helpers now determine the local coordinator
+route when invoked from an older desktop without those new variables.
+
+Recovery rebuilt the visible views using existing Herdr panes. Source evidence
+was the pre-switch Sway tree and Herdr connection/creation logs; generic old
+window titles did not preserve an exact per-client selection map. The recovered
+layout is:
+
+| Sway slot | Existing Herdr pane / view |
+|---|---|
+| 1 | `wE5:p1`, Claude backlog and workflow priorities |
+| 2 | User's newly opened `wednesday-today-pt2.md` view, preserved |
+| 3 | `wEP:p1`, previous Claude terminal, already back at shell before logout |
+| 4 | `wEQ:p1`, this Codex desktop session |
+| 5 | `wES:p1`, original `wednesday-today.md` editor |
+| 8 | `wEJ:p1`, shell; its old window had closed shortly before logout |
+| 10 / Mod+0 | Chrome |
+
+Restored views carry Herdr workspace-ID marks so the picker can report assigned
+status. Those marks remain hints after manual navigation, as described above.
+Future migrations must capture client selections and restore surfaces before
+calling the desktop ready. Do not repeat a logout merely to adopt helper fixes.
+
+The final local checks passed: 33 bridge fixtures, 12 launcher fixtures, and the
+real isolated Sway/Vicinae/Herdr smoke test at
+`/tmp/sway-vicinae-smoke-m252fxcj`. Both host closures built; Sway, Vicinae,
+Mako and Herdr are active, with no failed user units. One system journal-upload
+attempt received an empty reply from the LAN collector during activation;
+the service recovered through its existing restart policy. Nothing was reset
+or hidden. That activation completed but returned nonzero, preventing a chained
+compositor restart; the current desktop stayed running.
+
+The Zenbook was unreachable during the coordinator follow-up. The corrected
+bindings, local/remote wrapper and restored-workspace support are pushed on the
+same branch, but its newer host generation still needs adoption there.
+
+Tom paused further feature work after this recovery. Clipboard paste polish,
+Wi-Fi, Bluetooth, native volume HUD, and deeper Herdr/Vicinae integration are
+tracked as GitHub issues; do not resume automatically.
