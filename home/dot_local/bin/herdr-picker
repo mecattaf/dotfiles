@@ -161,7 +161,7 @@ def remote_snapshot():
         raise BridgeError('Invalid HERDR_PROJECTOR_TARGET.')
     # A bounded, read-only CLI call: never `herdr --remote`, session attach or
     # machine auto-discovery, which could start an unmanaged server.
-    out = run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=3',
+    out = run(['ssh', '-n', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=3',
                '-o', 'ServerAliveInterval=2', '-o', 'ServerAliveCountMax=1',
                target, 'herdr api snapshot'], timeout=6).stdout
     value = json.loads(out)

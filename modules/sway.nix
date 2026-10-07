@@ -8,6 +8,10 @@
 # Stock Sway supplies tiling and IPC; this module only owns session lifetime.
 let
   cfg = config.programs.swayPhysical;
+  schemaDirs = lib.concatMapStringsSep ":" (p: "${p}/share/gsettings-schemas/${p.name}") [
+    pkgs.gsettings-desktop-schemas
+    pkgs.nautilus-open-any-terminal
+  ];
   sessionVars = [
     "WAYLAND_DISPLAY"
     "DISPLAY"
@@ -48,6 +52,9 @@ let
 
     export XDG_CURRENT_DESKTOP=sway-physical
     export XDG_SESSION_DESKTOP=sway XDG_SESSION_TYPE=wayland
+    # Nix keeps these schemas outside the ordinary profile share directory.
+    # Plain gsettings, GTK clients and manager-launched apps need the same path.
+    export XDG_DATA_DIRS="${schemaDirs}:''${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
     unset SWAYSOCK I3SOCK SCROLLSOCK NIRI_SOCKET WAYLAND_DISPLAY DISPLAY
     # Physical seats own the user's ordinary portals. The optional headless
     # browser compositor keeps its private display environment in its service.

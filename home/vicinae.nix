@@ -109,8 +109,18 @@ in
     };
     systemd.user.services.mako = {
       Unit = {
+        Description = "Physical Sway notifications";
+        ConditionEnvironment = "WAYLAND_DISPLAY";
         After = [ "sway-physical-session.target" ];
         PartOf = lib.mkForce [ "sway-physical-session.target" ];
+      };
+      # HM installs the vendor unit but does not declare its Service section.
+      # A unit here replaces that file, so it must include the executable.
+      Service = {
+        Type = "dbus";
+        BusName = "org.freedesktop.Notifications";
+        ExecStart = "${config.services.mako.package}/bin/mako";
+        ExecReload = "${config.services.mako.package}/bin/makoctl reload";
       };
       Install.WantedBy = lib.mkForce [ "sway-physical-session.target" ];
     };

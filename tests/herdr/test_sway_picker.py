@@ -253,6 +253,7 @@ class SwayPicker(unittest.TestCase):
         args, kwargs = run.call_args
         self.assertEqual(args[0][-1], 'herdr api snapshot')
         self.assertEqual(args[0][0], 'ssh')
+        self.assertIn('-n', args[0])  # Snapshot reads must not consume caller input.
         self.assertEqual(kwargs['timeout'], 6)
         self.assertIn('BatchMode=yes', args[0])
 

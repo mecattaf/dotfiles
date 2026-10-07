@@ -1819,6 +1819,9 @@
           assert !(cfgOf "client").programs.scroll.enable;
           assert clientHome.programs.vicinae.enable;
           assert clientHome.services.mako.enable;
+          assert clientHome.systemd.user.services.mako.Service.Type == "dbus";
+          assert clientHome.systemd.user.services.mako.Service.BusName == "org.freedesktop.Notifications";
+          assert clientHome.systemd.user.services.mako.Service.ExecStart == [ "${clientHome.services.mako.package}/bin/mako" ];
           assert !clientHome.programs.waybar.enable;
           assert !coordinatorHome.programs.vicinae.enable;
           assert (cfgOf "client").systemd.user.services.sway-physical.restartIfChanged == false;
