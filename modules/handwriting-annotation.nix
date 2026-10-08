@@ -18,7 +18,7 @@ in
     ];
     systemd.tmpfiles.rules = [ "d /var/lib/handwriting-intake 0700 tom users -" ];
     networking.hosts."127.0.0.1" = [ "handwriting.internal" ];
-    networking.firewall.interfaces.wlp192s0.allowedTCPPorts = [ 443 ];
+    networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 443 ];
     networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 443 ];
     systemd.services.handwriting-annotation = {
       description = "Writer-confirmed handwriting annotation";

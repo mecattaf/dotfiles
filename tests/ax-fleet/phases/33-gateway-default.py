@@ -3,7 +3,7 @@
 # allow-all; the fleet closes it without an ax patch: the bootstrap declared a
 # default Gateway (Halogen and the floor only) and ax-fleet-gateway-default
 # points the Task at it. Discriminating: the NAS host reaches the public
-# stand-in (TEST-NET-2 on the worker, fix round 4), and a Gateway that
+# stand-in (TEST-NET-2 on the probe, fix round 4), and a Gateway that
 # allowlists it gets its 200 through the same egress path.
 import re
 
@@ -25,12 +25,12 @@ def late_curl_body(url: str, wait: int) -> str:
 
 with step("gateways: the bootstrap declared a default Gateway in every declared atespace"):
     for ns in ("fleet", "default"):
-        coordinator.succeed(f"AX_SERVER=http://127.0.0.1:8099 ax -a {ns} get gateway default")
+        strix.succeed(f"AX_SERVER=http://127.0.0.1:8099 ax -a {ns} get gateway default")
     nas.succeed("systemctl is-active ax-fleet-gateway-default.service")
     record("gateway_default_unit", nas.succeed("systemctl show ax-fleet-gateway-default -p ExecStart --value").strip())
 
 with step("gateways: a Task without a gateway, or naming a missing one, is pointed at the default and cannot reach the public stand-in"):
-    worker.wait_for_unit("public-8000.service")
+    probe.wait_for_unit("public-8000.service")
     nas.wait_until_succeeds(f"curl -sf --max-time 10 {PUBLIC} | grep -q public-reached", timeout=120)
     results = {}
     for label, missing_gw in (("none", None), ("missing", "no-such-gateway")):
@@ -38,7 +38,7 @@ with step("gateways: a Task without a gateway, or naming a missing one, is point
         n = f"{name}-a1"
         t0 = time.monotonic()
         fleet_task(n, late_curl_body(PUBLIC, 30), gateway=missing_gw)
-        coordinator.wait_until_succeeds(
+        strix.wait_until_succeeds(
             f"{AX} get task {n} | grep -A1 -E '^\\s+gateway:' | grep -qE 'name:\\s*\"?default\"?'", timeout=120
         )
         repoint_s = round(time.monotonic() - t0, 1)
@@ -60,16 +60,16 @@ with step("gateways: a Task without a gateway, or naming a missing one, is point
         delete_task(n)
 
 with step("gateways: positive control, a Gateway allowlisting the public stand-in reaches it"):
-    coordinator.succeed(
+    strix.succeed(
         "AX_SERVER=http://127.0.0.1:8099 ax -a fleet apply -f - <<'EOF'\n"
         "apiVersion: ax.io/v1alpha1\nkind: Gateway\nmetadata:\n  name: public-test\n  atespace: fleet\n"
         "spec:\n  egress:\n    allowlist:\n      hosts:\n"
         "        - host: \"198.51.100.5/32\"\n          port: 8000\n"
-        "        - host: \"10.42.0.5/32\"\n          port: 8731\n"
+        "        - host: \"10.42.0.2/32\"\n          port: 8731\n"
         "EOF"
     )
     ok = fleet_run("gw-public", curl_body(PUBLIC), gateway="public-test")
     record("gateway_public_positive_control", ok["result"])
     assert ok["result"]["http_code"] == "200", ok
     assert task_gateway("gw-public-a1") in (None, "public-test")
-    coordinator.execute("AX_SERVER=http://127.0.0.1:8099 ax -a fleet delete gateway public-test")
+    strix.execute("AX_SERVER=http://127.0.0.1:8099 ax -a fleet delete gateway public-test")

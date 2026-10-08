@@ -22,7 +22,7 @@
 # must keep reporting "ax is down" to the floor while k3s is down, its journal must outlive the
 # cluster, and its bearer must never become a Kubernetes Secret: ax-controller's ClusterRole reads
 # secrets cluster-wide (ax-fleet DESIGN section 9). ax-server's ClusterIP answers host processes on
-# a k3s node through kube-proxy, the same path the coordinator's socket proxy uses (DESIGN D13).
+# a k3s node through kube-proxy, the same path the strix's socket proxy uses (DESIGN D13).
 #
 # THE TOKEN IS A PATH, NEVER A VALUE. agenix decrypts floor-link-token.age for root only (0400);
 # LoadCredential hands the unit a private copy under $CREDENTIALS_DIRECTORY. The program reads it
@@ -35,22 +35,55 @@
 # floorUrls was persisted) retries after RestartSec.
 let
   cfg = config.myNas.substrateLink;
-  inherit (lib) mkEnableOption mkIf mkOption types;
+  inherit (lib)
+    mkEnableOption
+    mkIf
+    mkOption
+    types
+    ;
   # N1: one source for ax-server's address. When modules/ax-fleet is imported its pinned ClusterIP wins.
-  axFleetIP = if options ? myAxFleet && options.myAxFleet ? axServerClusterIP then config.myAxFleet.axServerClusterIP else null;
+  axFleetIP =
+    if options ? myAxFleet && options.myAxFleet ? axServerClusterIP then
+      config.myAxFleet.axServerClusterIP
+    else
+      null;
   # N3 (critique A5): a guest must post to a fleet-internal relay, never to a public Workers host.
   publicWorkersHost = u: lib.hasInfix ".workers.dev" u || lib.hasInfix ".pages.dev" u;
   # Review round 2: mirrors isFleetInternalUrl (apps/link/src/link.ts). Private ranges match only IPv4 literals
   # (10.evil.example and 127.0.0.1.nip.io are names), names only under .internal/.lan/.local/.home.arpa, IPv6 only
   # ::1 and ULA, a single label only when listed in internalHosts. Stricter than the program where they differ.
-  hostOf = u: let m = builtins.match "[a-z]+://([^@/]*@)?(\\[[^]]*]|[^/:?#]+).*" (lib.toLower u); in if m == null then "" else builtins.elemAt m 1;
+  hostOf =
+    u:
+    let
+      m = builtins.match "[a-z]+://([^@/]*@)?(\\[[^]]*]|[^/:?#]+).*" (lib.toLower u);
+    in
+    if m == null then "" else builtins.elemAt m 1;
   ipv4Of = h: builtins.match "([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})" h;
-  privateV4 = o: let a = lib.toInt (builtins.elemAt o 0); b = lib.toInt (builtins.elemAt o 1); in
-    a == 127 || a == 10 || (a == 192 && b == 168) || (a == 172 && b >= 16 && b <= 31) || (a == 100 && b >= 64 && b <= 127);
-  fleetInternalUrl = u: let h = hostOf u; o = ipv4Of h; in
-    if o != null then privateV4 o
-    else if lib.hasPrefix "[" h then h == "[::1]" || builtins.match "\\[f[cd][0-9a-f]{2}:.*" h != null
-    else h == "localhost" || lib.elem h cfg.internalHosts || builtins.match "([a-z0-9-]+\\.)+(internal|lan|local|home\\.arpa)" h != null;
+  privateV4 =
+    o:
+    let
+      a = lib.toInt (builtins.elemAt o 0);
+      b = lib.toInt (builtins.elemAt o 1);
+    in
+    a == 127
+    || a == 10
+    || (a == 192 && b == 168)
+    || (a == 172 && b >= 16 && b <= 31)
+    || (a == 100 && b >= 64 && b <= 127);
+  fleetInternalUrl =
+    u:
+    let
+      h = hostOf u;
+      o = ipv4Of h;
+    in
+    if o != null then
+      privateV4 o
+    else if lib.hasPrefix "[" h then
+      h == "[::1]" || builtins.match "\\[f[cd][0-9a-f]{2}:.*" h != null
+    else
+      h == "localhost"
+      || lib.elem h cfg.internalHosts
+      || builtins.match "([a-z0-9-]+\\.)+(internal|lan|local|home\\.arpa)" h != null;
 in
 {
   options.myNas.substrateLink = {
@@ -131,7 +164,7 @@ in
         "seat:halogen"
         "runtime:gvisor"
       ];
-      description = "runs-on labels this link accepts. Claude seats stay on the coordinator until Tom rules (W6).";
+      description = "runs-on labels this link accepts. Claude seats stay on the strix until Tom rules (W6).";
     };
 
     seatCommands = mkOption {
@@ -189,11 +222,18 @@ in
         message = "substrate-link runs on the hypervisor host only (placement ruling: NAS = k3s server, Substrate, ax-server).";
       }
       {
-        assertion = cfg.completion != "guest" || (cfg.guestCompleteUrl != null && !(publicWorkersHost cfg.guestCompleteUrl) && fleetInternalUrl cfg.guestCompleteUrl);
+        assertion =
+          cfg.completion != "guest"
+          || (
+            cfg.guestCompleteUrl != null
+            && !(publicWorkersHost cfg.guestCompleteUrl)
+            && fleetInternalUrl cfg.guestCompleteUrl
+          );
         message = "completion = guest needs a fleet-internal guestCompleteUrl: a private IPv4 literal, ::1 or ULA, or a name under .internal/.lan/.local/.home.arpa, never a workers.dev or pages.dev host (critique A5, review round 2).";
       }
       {
-        assertion = lib.all (u: lib.hasPrefix "https://" u) cfg.floorUrls && lib.elem cfg.floorUrl cfg.floorUrls;
+        assertion =
+          lib.all (u: lib.hasPrefix "https://" u) cfg.floorUrls && lib.elem cfg.floorUrl cfg.floorUrls;
         message = "myNas.substrateLink.floorUrls must be https:// URLs and include floorUrl.";
       }
     ];
@@ -234,7 +274,9 @@ in
         LINK_COMPLETION = cfg.completion;
         LINK_INTERNAL_HOSTS = lib.concatStringsSep "," cfg.internalHosts;
       }
-      // lib.optionalAttrs (cfg.guestCompleteUrl != null) { LINK_GUEST_COMPLETE_URL = cfg.guestCompleteUrl; };
+      // lib.optionalAttrs (cfg.guestCompleteUrl != null) {
+        LINK_GUEST_COMPLETE_URL = cfg.guestCompleteUrl;
+      };
       serviceConfig = {
         ExecStart = lib.getExe cfg.package;
         User = "substrate-link";

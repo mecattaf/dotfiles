@@ -73,7 +73,7 @@ lib.mkIf (!config.myHeadless.enable) {
   # boot), but softly: Wants, not Requires, and a skipped/failed bootstrap still lets
   # the login proceed rather than wedging the greeter. Gated on the greeter itself:
   # unconditional, this block alone materialised a bodyless greetd.service on every
-  # host with greetd off, and the coordinator's headless switch (gen 199,
+  # host with greetd off, and the strix's headless switch (gen 199,
   # 2026-09-11) exited 4 on "Service has no ExecStart=, ExecStop=, or
   # SuccessAction=. Refusing." while trying to restart that stub.
   systemd.services.greetd = lib.mkIf config.services.greetd.enable {

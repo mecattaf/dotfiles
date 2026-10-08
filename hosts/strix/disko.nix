@@ -71,7 +71,7 @@
   # next /home secondary (ruling 2026-10-04: both 1TBs go to this host, which
   # supersedes the 09-19 "NUC or NAS /mnt/fast" note). /home moves onto it in a
   # second short outage: format it STANDALONE (never `disko --flake
-  # .#coordinator`, which would act on the anchor too), copy, then declare it
+  # .#strix`, which would act on the anchor too), copy, then declare it
   # here as a new attr `h1t` with a fresh partition uuid, nofail and
   # x-systemd.device-timeout=10s exactly as the 500GB had them.
   #

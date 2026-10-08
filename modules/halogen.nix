@@ -13,7 +13,7 @@
 # /dev/kfd, /dev/dri and a directory of weights. There is no model catalogue
 # and no hot swapping — the engine holds the box (~68 GiB of locked weights
 # plus a reserved KV pool) for the life of the process. The worker keeps it
-# resident from boot and is the fleet's `utility` endpoint; the coordinator
+# resident from boot and is the fleet's `utility` endpoint; the strix
 # declares the same server with autoStart = false (Tom, 2026-09-16), because a
 # resident model there would starve the desktop, TTS and diarization.
 #
@@ -328,10 +328,10 @@ in
         The API has no authentication, so the door belongs only to the host
         that is the fleet's endpoint. That host is the one that keeps a model
         resident from boot, which is why this follows `autoStart`: the worker
-        (autoStart = true) opens it, the coordinator (autoStart = false, an
+        (autoStart = true) opens it, the strix (autoStart = false, an
         operator-driven `halogen-switch` box) does not. Before this option the
         line keyed off `enable`, so the 2026-09-16 change that declared the
-        server on both twins also opened :8731 on the coordinator's WIFI
+        server on both twins also opened :8731 on the strix's WIFI
         uplink — a segment the "every client is a pinned house device"
         argument above was never making a claim about.
 
@@ -468,7 +468,7 @@ in
 
       endpoint = lib.mkOption {
         type = lib.types.str;
-        default = "http://worker:8731";
+        default = "http://strix:8731";
         description = "Where the fleet's Halogen server answers.";
       };
 
@@ -609,13 +609,13 @@ in
       # unmeasured amdgpu flags with a deadlock report attached to two of them
       # is a bet with no upside. sg_display was the clearest of the three:
       # it tunes the display scanout path on a box that has NO DISPLAY
-      # (hosts/worker/default.nix — no compositor, no greeter, no VNC).
+      # (hosts/strix/default.nix — no compositor, no greeter, no VNC).
       #
       # These are BOOT parameters: they apply machine-wide at every boot, not
       # while the container runs, and dropping them takes effect on the next
       # reboot, not on the switch that removes them. Verify with /proc/cmdline.
       #
-      # The coordinator carries this line too since it declares the server
+      # The strix carries this line too since it declares the server
       # (2026-09-16). Before its first reboot with it, that box already
       # measured gtt_total 134309523456 bytes (125 GiB) from ttm.pages_limit
       # alone, so its Halogen units do not wait on that reboot. It has a

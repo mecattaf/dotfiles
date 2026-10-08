@@ -48,7 +48,7 @@ stdenvNoCC.mkDerivation {
     CORE=${coreutils}/bin
     GREP=${gnugrep}/bin/grep
     AWK=${gawk}/bin/gawk
-    INFERENCE_URL=\''${ACADEMIC_OCR_INFERENCE_URL:-http://worker:8731}
+    INFERENCE_URL=\''${ACADEMIC_OCR_INFERENCE_URL:-http://strix:8731}
     EOF
 
     for entry in academic-drain:drain.sh academic-drain-stop:drain-stop.sh academic-drain-backfill-tables:backfill-tables.sh; do

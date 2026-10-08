@@ -1,7 +1,7 @@
 { lib, ... }:
 # Fleet-wide artifact options (defaults from artifacts-defaults.nix — edit
 # THERE, not here). The serving plane
-# (Caddy + reaper) is coordinator-only and lives in caddy-artifacts.nix.
+# (Caddy + reaper) is strix-only and lives in caddy-artifacts.nix.
 let
   defaults = import ./artifacts-defaults.nix;
 in

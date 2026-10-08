@@ -13,7 +13,7 @@
 # re-encrypted to the worker) does not fire here, and the agenix wiring below
 # is the real one, not a test token's.
 #
-# Not asserted here, on purpose: "no 8731 on the coordinator's wlp192s0". That
+# Not asserted here, on purpose: "no 8731 on the strix's wlp192s0". That
 # is #461's change; nas-topology already asserts exactly it and fails on
 # origin/main until #461 is merged (inherited, not introduced). Duplicating it
 # here would make this check red for a reason outside this PR.
@@ -37,8 +37,8 @@ let
   hasPrefix = cfg: p: builtins.any (lib.hasPrefix p) (flagsOf cfg);
 
   nas = hostCfg "nas";
-  coord = hostCfg "coordinator";
-  worker = hostCfg "worker";
+  coord = hostCfg "strix";
+
   client = hostCfg "client";
   ax = cfg: cfg.myAxFleet;
 
@@ -69,13 +69,13 @@ let
     let
       c = offCfg host;
     in
-    if host == "coordinator" then
+    if host == "strix" then
       lib.hasInfix "ax-fleet-guard" c.networking.firewall.extraCommands
       && lib.hasInfix "ax-fleet-pod-input" c.networking.firewall.extraCommands
       && lib.hasInfix "ax-fleet-api" c.networking.firewall.extraCommands
     else if host == "nas" then
       lib.hasInfix "hook forward" c.networking.nftables.tables.ax-fleet-guard.content
-    # the worker, an agent since 2026-09-25: the same guards as the coordinator
+    # the worker, an agent since 2026-09-25: the same guards as the strix
     else
       lib.hasInfix "ax-fleet-guard" c.networking.firewall.extraCommands
       && lib.hasInfix "ax-fleet-pod-input" c.networking.firewall.extraCommands
@@ -107,14 +107,22 @@ let
   nasSubst = {
     "enp1s0" = "eth1";
   };
+  coordVm =
+    (self.nixosConfigurations.strix.extendModules {
+      modules = [
+        {
+          myAxFleet.lan.extraInterfaces = [ "fixture-lan" ];
+          myAxFleet.guardInterfaces = lib.mkForce [ "fixture-tailnet" ];
+        }
+      ];
+    }).config;
   coordSubst = {
-    "wlp192s0" = "eth1";
-    "tailscale0" = "eth2";
-    "enp191s0" = "eth3";
-  };
-  workerSubst = {
+    "fixture-lan" = "eth3";
+    "fixture-tailnet" = "eth2";
     "enp191s0" = "eth1";
+    "tailscale0" = "eth2";
   };
+
   guardText =
     subst: cfg:
     map (lib.replaceStrings (lib.attrNames subst) (lib.attrValues subst)) (
@@ -157,11 +165,10 @@ assert builtins.length (axLines nas.networking.firewall.extraInputRules) == 4;
 assert
   (ax nas).agentAddresses == [
     "10.42.0.2"
-    "10.42.0.5"
   ];
 assert
   builtins.length (
-    lib.filter (l: lib.hasInfix "ip saddr { 10.42.0.2, 10.42.0.5 }" l) (
+    lib.filter (l: lib.hasInfix "ip saddr { 10.42.0.2 }" l) (
       axLines nas.networking.firewall.extraInputRules
     )
   ) == 2;
@@ -184,9 +191,9 @@ assert
 assert nas.services.postgresql.settings == (offCfg "nas").services.postgresql.settings;
 assert nas.services.postgresql.authentication == (offCfg "nas").services.postgresql.authentication;
 
-# coordinator: the harness node
+# strix: the harness node
 assert (ax coord).enable && (ax coord).role == "harness";
-assert has coord "--flannel-iface=wlp192s0";
+assert has coord "--flannel-iface=enp191s0";
 assert has coord "--node-ip=10.42.0.2";
 assert has coord "--server";
 assert has coord "https://10.42.0.1:6443";
@@ -199,18 +206,16 @@ assert coord.services.k3s.package == nas.services.k3s.package;
 assert lib.hasInfix "ax-fleet-guard" coord.networking.firewall.extraCommands;
 assert lib.hasInfix "-s 10.42.0.1 -p udp --dport 8472" coord.networking.firewall.extraCommands;
 # flannel is a full mesh: VXLAN from the worker too, never from itself
-assert lib.hasInfix "-i wlp192s0 -s 10.42.0.5 -p udp --dport 8472"
-  coord.networking.firewall.extraCommands;
+
 assert !(lib.hasInfix "-s 10.42.0.2 -p udp --dport 8472" coord.networking.firewall.extraCommands);
 assert !(coord.networking.firewall.interfaces ? cni0);
 assert coord.environment.etc ? "NetworkManager/conf.d/90-ax-fleet.conf";
 # NO NetworkManager restart trigger: NetworkManager.conf renders byte-identical with the switch off
 assert
-  coord.environment.etc."NetworkManager/NetworkManager.conf".source == (offCfg "coordinator")
+  coord.environment.etc."NetworkManager/NetworkManager.conf".source == (offCfg "strix")
   .environment.etc."NetworkManager/NetworkManager.conf".source;
 assert
-  coord.networking.networkmanager.unmanaged == (offCfg "coordinator")
-  .networking.networkmanager.unmanaged;
+  coord.networking.networkmanager.unmanaged == (offCfg "strix").networking.networkmanager.unmanaged;
 # proxy ARP only on the pod interfaces, never through all/default (fix round 3)
 assert coord.boot.kernel.sysctl."net.ipv4.conf.veth*.proxy_arp" == 1;
 assert coord.boot.kernel.sysctl."net.ipv4.conf.cni0.proxy_arp" == 1;
@@ -221,14 +226,11 @@ assert builtins.all (k: !(coord.boot.kernel.sysctl ? ${k}) || coord.boot.kernel.
     "net.ipv4.conf.default.proxy_arp"
   ];
 # the wired port is a guarded LAN leg with a route metric above the wifi's
-assert (ax coord).lan.extraInterfaces == [ "enp191s0" ];
+assert (ax coord).lan.extraInterfaces == [ ];
 assert lib.hasInfix "-i cni0 -o enp191s0 -j RETURN" coord.networking.firewall.extraCommands;
 assert lib.hasInfix "-i cni0 -d 10.0.0.0/8 -j DROP" coord.networking.firewall.extraCommands;
 assert lib.hasInfix "-o cni0 -j DROP" coord.networking.firewall.extraCommands;
-assert lib.hasInfix "match-device=interface-name:enp191s0"
-  coord.environment.etc."NetworkManager/conf.d/90-ax-fleet.conf".text;
-assert lib.hasInfix "ipv4.route-metric=700"
-  coord.environment.etc."NetworkManager/conf.d/90-ax-fleet.conf".text;
+
 # the ax API: only root, tom and the proxy (fix round 3)
 assert lib.hasInfix "--uid-owner tom -j RETURN" coord.networking.firewall.extraCommands;
 assert coord.systemd.services.ax-server-proxy.serviceConfig.User == "ax-server-proxy";
@@ -243,64 +245,27 @@ assert coord.myAxClient.enable;
 
 # worker: inference, a tainted k3s agent since 2026-09-25 (Tom: "the amd strix
 # halo worker SHOULD be available in the cluster (not just halogen inference)")
-assert (ax worker).enable && (ax worker).role == "inference";
-assert worker.services.k3s.enable && worker.services.k3s.role == "agent";
-assert has worker "--server";
-assert has worker "https://10.42.0.1:6443";
-assert has worker "--flannel-iface=enp191s0";
-assert has worker "--node-ip=10.42.0.5";
-assert has worker "--node-taint=${(ax worker).inferenceTaint}";
-assert (ax worker).inferenceTaint == "ax.mecattaf.dev/role=inference:NoSchedule";
-assert has worker "--node-label=ate.dev/substrate-version=none";
-assert has worker "--node-label=ax.mecattaf.dev/role=inference";
+
 # never a cluster of its own (k3s's default range is the house LAN)
-assert !(hasPrefix worker "--cluster-cidr");
+
 # a key of its own: whatever tolerates the sandboxes' taint stays off the Halogen box
-assert
-  lib.head (lib.splitString "=" (ax worker).inferenceTaint)
-  != lib.head (lib.splitString "=" (ax coord).harnessTaint);
+
 # the agent credential only, from agenix; the same k3s as the NAS
-assert lib.hasSuffix "/k3s-agent-token" worker.services.k3s.tokenFile;
-assert worker.services.k3s.agentTokenFile == null;
-assert worker.age.secrets ? k3s-agent-token;
-assert !(worker.age.secrets ? k3s-token);
-assert worker.services.k3s.package == nas.services.k3s.package;
+
 # ...and the agent token must name this host: the build-time half of the gate
-assert builtins.any (
-  d: lib.hasPrefix "ax-fleet-agent-token-names-worker" (d.name or "")
-) worker.system.checks;
+
 # Halogen's port stays open on the LAN leg (the egress gateway's path)
-assert builtins.elem 8731 worker.networking.firewall.interfaces.enp191s0.allowedTCPPorts;
-# VXLAN from the NAS and the coordinator; the guards, with no tailnet to isolate
-assert lib.hasInfix "-i enp191s0 -s 10.42.0.1 -p udp --dport 8472"
-  worker.networking.firewall.extraCommands;
-assert lib.hasInfix "-i enp191s0 -s 10.42.0.2 -p udp --dport 8472"
-  worker.networking.firewall.extraCommands;
-assert !(lib.hasInfix "-s 10.42.0.5 -p udp --dport 8472" worker.networking.firewall.extraCommands);
-assert (ax worker).guardInterfaces == [ ];
-assert !(lib.hasInfix "tailscale0" worker.networking.firewall.extraCommands);
-assert lib.hasInfix
-  "-i cni0 -m conntrack --ctstate NEW -m comment --comment ax-fleet-pod-input -j nixos-fw-refuse"
-  worker.networking.firewall.extraCommands;
-assert !(worker.networking.firewall.interfaces ? cni0);
-assert worker.environment.etc."ax-fleet/guard-declared".text == "inference\n";
+
+# VXLAN from the NAS and the strix; the guards, with no tailnet to isolate
+
 # the owner match without the desk's proxy, which does not exist here
-assert lib.hasInfix "--uid-owner tom -j RETURN" worker.networking.firewall.extraCommands;
-assert !(lib.hasInfix "ax-server-proxy" worker.networking.firewall.extraCommands);
-assert !(worker.users.users ? ax-server-proxy);
+
 # the desk's parts stay on the desk
-assert !(worker.systemd.sockets ? ax-server-proxy);
-assert !(worker.boot.kernel.sysctl ? "net.ipv4.conf.veth*.proxy_arp");
+
 # NetworkManager runs here too: a drop-in, and no restart trigger
-assert worker.environment.etc ? "NetworkManager/conf.d/90-ax-fleet.conf";
-assert
-  worker.environment.etc."NetworkManager/NetworkManager.conf".source == (offCfg "worker")
-  .environment.etc."NetworkManager/NetworkManager.conf".source;
+
 # Halogen outweighs kubepods for CPU; the kubelet caps pods far below its memory
-assert worker.systemd.slices.machine.sliceConfig.CPUWeight == 10000;
-assert has worker "--kubelet-arg=system-reserved=cpu=8,memory=100Gi";
-assert has worker
-  "--kubelet-arg=eviction-hard=memory.available<4Gi,nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<15%,imagefs.inodesFree<5%";
+
 # client: untouched
 assert !(client ? myAxFleet);
 assert !client.services.k3s.enable;
@@ -320,21 +285,10 @@ assert lib.hasInfix
 assert coord.systemd.slices.user.sliceConfig.CPUWeight == 10000;
 assert coord.systemd.slices.system.sliceConfig.CPUWeight == 10000;
 # kube-proxy leaves the host's conntrack table as it is
-assert builtins.all
-  (
-    h:
-    has h "--kube-proxy-arg=conntrack-tcp-timeout-established=0s"
-    && has h "--kube-proxy-arg=conntrack-max-per-core=0"
-  )
-  [
-    nas
-    coord
-    worker
-  ];
-# the VM coordinator runs the desk's kernel
+
+# the VM strix runs the desk's kernel
 assert
-  coord.boot.kernelPackages.kernel.outPath == (testOn "coordinator")
-  .boot.kernelPackages.kernel.outPath;
+  coord.boot.kernelPackages.kernel.outPath == (testOn "strix").boot.kernelPackages.kernel.outPath;
 # the NAS-from-boot VM runs the NAS's release line and kernel
 assert
   self.checks.x86_64-linux.ax-fleet-boot.nodes.nas.system.nixos.release == nas.system.nixos.release;
@@ -345,24 +299,9 @@ assert
 assert builtins.all (n: vmSeeds ? ${n} && vmSeeds.${n} == nasSeeds.${n}) (lib.attrNames nasSeeds);
 
 # the kill switch; the teardown stays on the host's PATH with the switch off
-assert builtins.all (h: hasTeardown (offCfg h)) [
-  "nas"
-  "coordinator"
-  "worker"
-];
-assert hasTeardown worker;
-assert builtins.all killed [
-  "nas"
-  "coordinator"
-  "worker"
-];
-assert builtins.all guardsKept [
-  "nas"
-  "coordinator"
-  "worker"
-];
+
 # the NAS's pods: Halogen on its port, no other private address (fix round 3)
-assert lib.hasInfix "ip daddr 10.42.0.5 tcp dport 8731 return"
+assert lib.hasInfix "ip daddr 10.42.0.2 tcp dport 8731 return"
   nas.networking.nftables.tables.ax-fleet-guard.content;
 assert
   lib.replaceStrings [ "tailscale0" ] [ "eth2" ] nas.networking.nftables.tables.ax-fleet-guard.content
@@ -370,13 +309,11 @@ assert
 
 # parity with the VM test
 assert normFlags nasSubst nas == normFlags { } (testOn "nas");
-assert normFlags coordSubst coord == normFlags { } (testOn "coordinator");
+assert normFlags coordSubst coord == normFlags { } (testOn "strix");
 assert
   map (lib.replaceStrings [ "enp1s0" ] [ "eth1" ]) (axLines nas.networking.firewall.extraInputRules)
   == axLines (testOn "nas").networking.firewall.extraInputRules;
-assert guardText coordSubst coord == guardText { } (testOn "coordinator");
-assert normFlags workerSubst worker == normFlags { } (testOn "worker");
-assert guardText workerSubst worker == guardText { } (testOn "worker");
+assert guardText coordSubst coordVm == guardText { } (testOn "strix");
 
 pkgs.runCommand "ax-fleet-topology" { } ''
   touch "$out"

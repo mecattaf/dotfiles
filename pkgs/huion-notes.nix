@@ -29,7 +29,7 @@ in
 # Not a Python project upstream (no pyproject, no release tags): the package
 # directory plus huion_ble_driver.py, which huion_notes/transport.py imports,
 # go on PYTHONPATH as they are. Pinned to the exact commit proven end to end on
-# the client on 2026-09-13 (~/huion/HANDOFF.md on the coordinator).
+# the client on 2026-09-13 (~/huion/HANDOFF.md on the strix).
 #
 # Upstream's README is stale for this unit: it says "cover closed" for note
 # mode (the X10 syncs with the cover OPEN, LED green; closed is asleep) and

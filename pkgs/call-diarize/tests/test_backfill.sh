@@ -24,7 +24,7 @@ for event in "${event_files[@]}"; do
     .argv[0] == "call-diarize" and
     (.argv[1] | startswith("/")) and
     .adapter == "shell" and
-    .pool == ["coordinator-gpu"] and
+    .pool == ["strix-gpu"] and
     .priority == "low" and
     .source == "events-dir" and
     .dedupKey == ("call-diarize:" + (.argv[1] | split("/")[-1])) and

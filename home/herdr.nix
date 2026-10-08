@@ -12,10 +12,10 @@
 # no home-manager module — so package + user service + config live here, the
 # way home/piri.nix does the same job for piri.
 #
-# TOPOLOGY (ruling B5). ONE server, coordinator only. Every host with an
+# TOPOLOGY (ruling B5). ONE server, strix only. Every host with an
 # interactive profile gets the BINARY, because the client is how you reach a
-# server at all: on the coordinator `herdr` attaches to the local one, and off
-# it `herdr --remote coordinator` attaches over the tailnet — on the client
+# server at all: on the strix `herdr` attaches to the local one, and off
+# it `herdr --remote strix` attaches over the tailnet — on the client
 # as ~/.local/bin/herdr-projector, the window every herdr chord there targets
 # (home/dot_config/niri/binds.kdl, #385), and `desk` in
 # home/dot_config/fish/conf.d/remote.fish. herdr-kitten (`hk`) was removed
@@ -29,7 +29,7 @@
 # panes are still running when a client comes back. Binding it to the graphical
 # session would kill every session on a compositor restart, which is exactly
 # the failure the deleted home-grown tier had. `loginctl enable-linger tom`
-# holds on the coordinator (see home/home.nix) and is what keeps it up with no
+# holds on the strix (see home/home.nix) and is what keeps it up with no
 # login session open.
 #
 # OOM RULING (#352). The server must survive its own pane children just as B6
@@ -59,8 +59,8 @@
 #   * `herdr --remote` may offer, interactively, to STOP and REPLACE this
 #     server — killing every pane — if it judges the server incompatible.
 #     Today the policy is keep-running (endpoint generation 1 on both ends).
-#     Any herdr bump must land on the coordinator before or with the client.
-#   * If no generation-1 `herdr` is on the coordinator's PATH, the projector
+#     Any herdr bump must land on the strix before or with the client.
+#   * If no generation-1 `herdr` is on the strix's PATH, the projector
 #     offers to install a non-Nix binary into ~/.local/bin/herdr. Decline.
 #   * The unit below must not change as a side effect of an edit elsewhere:
 #     a changed unit restarts on the next switch and kills every pane.
@@ -92,11 +92,11 @@ in
       );
     };
     home.sessionVariables = lib.mkIf (osConfig.myDisplay.session == "sway") {
-      HERDR_SWAY_LOCAL = if hostName == "coordinator" then "1" else "0";
+      HERDR_SWAY_LOCAL = if hostName == "strix" && osConfig.myDisplay.enable then "1" else "0";
       HERDR_SWAY_SEAT = hostName;
     };
 
-    systemd.user.services.herdr = lib.mkIf (hostName == "coordinator") {
+    systemd.user.services.herdr = lib.mkIf (hostName == "strix") {
       Unit = {
         Description = "herdr — terminal workspace manager for AI coding agents";
         # NO PartOf/After/Wants on graphical-session.target: this server must

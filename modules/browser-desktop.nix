@@ -1,6 +1,13 @@
-{ config, lib, pkgs, ... }:
-let cfg = config.services.browser-desktop;
-in {
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  cfg = config.services.browser-desktop;
+in
+{
   options.services.browser-desktop.enable = lib.mkEnableOption "the shared headless Sway browser desktop";
   config = lib.mkIf cfg.enable {
     # Keep the local agent independent of tailnet split-DNS for .internal.
@@ -9,8 +16,12 @@ in {
     # chrome-stream (pkgs/chrome-stream, 2026-09-13) is the other way to reach a
     # browser on this host: headless Chrome's CDP screencast, viewer and CDP both
     # on loopback, carried to the client by `ssh -L`. It rides this module so it
-    # exists exactly where the shared browser desktop does, the coordinator.
-    environment.systemPackages = [ pkgs.browser-desktop pkgs.chrome-stream pkgs.keyring-unlock ];
+    # exists exactly where the shared browser desktop does, the strix.
+    environment.systemPackages = [
+      pkgs.browser-desktop
+      pkgs.chrome-stream
+      pkgs.keyring-unlock
+    ];
     systemd.user.services.browser-desktop = {
       description = "Shared browser desktop (Sway and WayVNC)";
       # Keep open browser windows through configuration updates. Compositor
@@ -72,7 +83,7 @@ in {
       };
       unitConfig.ConditionUser = "tom";
     };
-    networking.firewall.interfaces.wlp192s0.allowedTCPPorts = [ 443 ];
+    networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 443 ];
     networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 443 ];
     services.caddy.virtualHosts."http://browser.internal".extraConfig = ''
       redir https://browser.internal{uri} 308

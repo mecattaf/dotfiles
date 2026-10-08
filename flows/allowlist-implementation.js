@@ -37,7 +37,7 @@ export const meta = {
       "to the new option shape. Ruling in force: the wanted set REPLACES the",
       "flag — do not keep both. Populate the initial per-host sets from",
       "docs/local-ai/model-roster.md (halogen host: halogen-qwen38-flash-next;",
-      "coordinator: the five small GGUF rows). Also fold in issue #90: package",
+      "strix: the five small GGUF rows). Also fold in issue #90: package",
       "the Hugging Face `hf` CLI declaratively (pinned), with noninteractive auth",
       "via the secrets layer and a smoke check; neither activation nor tally jobs",
       "may run `hf download`. Read gh issues 95 and 90 for full acceptance",

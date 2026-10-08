@@ -40,7 +40,7 @@ lib.mkIf (!config.myHeadless.enable) {
 
   # Discovery alone creates an on-demand temporary queue, which Chrome does
   # not reliably enumerate. Keep one persistent A4 queue with the name already
-  # used on coordinator.
+  # used on strix.
   #
   # The queue dials the printer's PINNED LAN ADDRESS, not its mDNS name
   # (2026-08-21): in Deep Sleep the Brother's mDNS responder goes fully mute
@@ -69,7 +69,7 @@ lib.mkIf (!config.myHeadless.enable) {
   # `lpadmin -m everywhere` fetches capabilities from the live printer. A
   # sleeping/offline household printer must not permanently poison a fleet
   # update, so retry slowly. NixOS ensure-printers has also been observed to
-  # exit successfully without creating its queue; coordinator's live queue
+  # exit successfully without creating its queue; strix's live queue
   # had to be created by hand after that exact silent no-op. The explicit
   # lpstat postcondition turns it into a visible failure and retry.
   #

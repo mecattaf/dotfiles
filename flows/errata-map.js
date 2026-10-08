@@ -62,7 +62,7 @@ export const meta = {
   log(`errata-map: ${rows.length} candidate rows, inspecting ${bounded.length}`);
 
   // Per-row verdicts from the one local member the mono-model fleet has: the
-  // Halogen server behind http://worker:8731 (flows/catalog.json). A single
+  // Halogen server behind http://strix:8731 (flows/catalog.json). A single
   // verdict, not a quorum — there is no second served family to diversify
   // across.
   const selected = members("errata-review", { count: 1 });

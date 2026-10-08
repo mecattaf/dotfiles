@@ -13,12 +13,12 @@
 # whole-dir out-of-store symlink (home/dot_config/niri/piri.toml, see
 # home/home.nix configDirs) so it hot-reloads with the rest of the niri config.
 #
-# Not gated on a HOST NAME (unlike tally, which is coordinator-only), but gated
+# Not gated on a HOST NAME (unlike tally, which is strix-only), but gated
 # all the same: piri is a general niri extension, so it belongs on every
 # DISPLAY host (myDisplay.enable, modules/display.nix) and on no other. The
 # older claim here — "every host in the fleet runs niri, so it runs everywhere"
 # — was never true of the worker or the NAS, which run no compositor for this
-# daemon's IPC to reach; it stops being true of the coordinator at the headless
+# daemon's IPC to reach; it stops being true of the strix at the headless
 # flip (R-13). Auto-started with the graphical session.
 let
   piri = inputs.piri.packages.${pkgs.stdenv.hostPlatform.system}.default;

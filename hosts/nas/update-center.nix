@@ -32,7 +32,7 @@
 # Source trust: the repo is public, fetched by commit over https — no repo
 # key on the appliance (doctrine holds). Its PRIVATE locked inputs (tally-b,
 # tally-lake) left the lock with the Tally sunset on 2026-09-30, together with
-# the coordinator's update-center-seed timer that copied their trees into this
+# the strix's update-center-seed timer that copied their trees into this
 # store; the script's preflight still logs `seed-missing <node>` should a
 # private mecattaf input ever come back. Nix uses a valid locked store path
 # without fetching (measured: fresh-HOME eval exits 0), so still no credential. Push trust: the attic token is
@@ -55,8 +55,8 @@
 let
   cfg = config.myNas.updateCenter;
   hosts = [
-    "coordinator"
-    "worker"
+    "strix"
+
     # The thin client (2026-09-11). Built here so its rare manual pull is a
     # cache hit; never pushed to, never activated from here.
     "client"
@@ -81,7 +81,7 @@ let
 
   # `sudo update-center-publish HOST STORE_PATH FLAKEREF` — publish one
   # already-built closure (#354 live exercise; a closure built on the
-  # coordinator and `nix copy`d here). Same body, same PATH, no build.
+  # strix and `nix copy`d here). Same body, same PATH, no build.
   publishCli = pkgs.writeShellApplication {
     name = "update-center-publish";
     runtimeInputs = [ pkgs.coreutils ];

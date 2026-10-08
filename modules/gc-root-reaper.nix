@@ -6,7 +6,7 @@
 # worktrees under /tmp; every such build registers a symlink in
 # /nix/var/nix/gcroots/auto pointing at the session's `result`. The sessions
 # end; the roots stay; nix can never collect what they pin. Found live on the
-# coordinator 2026-08-20: 322 auto roots, of which 310 were dead sessions or
+# strix 2026-08-20: 322 auto roots, of which 310 were dead sessions or
 # dangling — pinning ~80 GB on a root filesystem at 90%. The one-off reap is
 # history; this unit is the retention policy that stops the regrowth.
 #

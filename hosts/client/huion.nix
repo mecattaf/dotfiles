@@ -1,13 +1,13 @@
 { lib, pkgs, ... }:
 # client — the Huion Note X10 is the paper inbox. Tom writes on it anywhere,
 # presses the button for each new page, and opens the cover near this laptop;
-# the pages come off the notepad over Bluetooth and land on the coordinator.
+# the pages come off the notepad over Bluetooth and land on the strix.
 # The radio is on this box, so this file is the client's one deliberate
 # exception to "runs nothing" (DECISIONS.md, 2026-09-13).
 #
 # Proven by hand on this metal on 2026-09-13 before a line of it was declared
 # (the handoff bundle, transcripts, frame traces and bluetoothd logs are in
-# coordinator:~/huion/). Three things stood between stock NixOS and a dump,
+# strix:~/huion/). Three things stood between stock NixOS and a dump,
 # hit in this order:
 #
 # ── 1. BlueZ drops the link on the X10's duplicate MTU request ──────────────
@@ -62,12 +62,12 @@
 #      and JSON are on local disk and never an incomplete one; it cannot wait
 #      for the push, so the spool is the durability buffer, not the device.
 #   2. on exit (success or failure) starts huion-push.service, which pushes
-#      every spooled batch, oldest first, to coordinator:~/Paper/inbox/<ts>/
+#      every spooled batch, oldest first, to strix:~/Paper/inbox/<ts>/
 #      and removes the local copy only after rsync succeeded.
 #
 # The push is reactive: it follows each capture (Tom, 2026-09-30: a Huion scan
 # drops → process it; no clock). There is no retry timer any more: a batch a
-# down or unreachable coordinator left in the spool goes with the next
+# down or unreachable strix left in the spool goes with the next
 # capture, or by hand with `systemctl start huion-push`. One lock serialises
 # the two.
 #
@@ -75,7 +75,7 @@
 # after every clearing sync, so two syncs on one day would overwrite each
 # other in a flat inbox. `inbox/` holds nothing but these folders — printable
 # markdown is `intake/`, the print loop's (home/paper.nix). OCR is a later
-# coordinator-side consumer of `inbox/` and is not declared anywhere yet.
+# strix-side consumer of `inbox/` and is not declared anywhere yet.
 #
 # A system unit with User=tom rather than a user unit: udev can want a system
 # unit directly, and tom is all it needs — his ssh key and config for the push,
@@ -114,9 +114,9 @@ let
           batch=$(basename "$d")
           if rsync -a --remove-source-files --timeout=60 \
             -e 'ssh -o BatchMode=yes -o ConnectTimeout=10' \
-            "$d" "coordinator:Paper/inbox/$batch/"; then
+            "$d" "strix:Paper/inbox/$batch/"; then
             rmdir "$d"
-            echo "pushed $batch -> coordinator:~/Paper/inbox/$batch/"
+            echo "pushed $batch -> strix:~/Paper/inbox/$batch/"
           else
             echo "push of $batch failed; kept in $spool for the next capture" >&2
             rc=1
@@ -199,11 +199,11 @@ in
   # start a system unit; --no-block so the push runs after this unit's lock is
   # released.
   systemd.services.huion-sync = lib.recursiveUpdate (unit "dump") {
-    description = "Pull pages off the Huion Note X10 into coordinator:~/Paper/inbox";
+    description = "Pull pages off the Huion Note X10 into strix:~/Paper/inbox";
     serviceConfig.ExecStopPost = "+${pkgs.systemd}/bin/systemctl start --no-block huion-push.service";
   };
 
   systemd.services.huion-push = unit "push" // {
-    description = "Push spooled Huion pages to coordinator:~/Paper/inbox";
+    description = "Push spooled Huion pages to strix:~/Paper/inbox";
   };
 }

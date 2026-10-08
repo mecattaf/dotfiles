@@ -71,7 +71,7 @@
 #      mv /mnt/nas/models/models /mnt/nas/models/weights
 #   2. btrfs property get /mnt/nas/models compression   # -> none (inherited)
 #   3. Deploy the NAS (tmpfiles adjusts perms, exportfs re-exports fsid=6).
-#   4. From the coordinator: ls /mnt/nas/models/weights  # flm/… visible
+#   4. From the strix: ls /mnt/nas/models/weights  # flm/… visible
 #   5. Next LaCie dump: the mirror sees `models` as a new tree — the old
 #      `archive` copy parks under .previous-versions/<date>/ and the 17G
 #      recopies. Expected, accepted (one extra hour of USB time).
@@ -197,7 +197,7 @@ in
     # fsid=6, continuing storage.nix's explicit-per-subvolume export list. A
     # subvolume with no entry is invisible to NFSv4 clients (that is how
     # .snapshots and backups stay contained); this one is exported ON PURPOSE:
-    # rw for the coordinator (archive/restore procedures over its /mnt/nas
+    # rw for the strix (archive/restore procedures over its /mnt/nas
     # mount), and READ-ONLY + root-squashed for the worker — its
     # explicit local-models-borrow transactions read weights from here (mounted
     # at /mnt/library, hosts/worker/default.nix). The ACL still names hosts, per
@@ -212,11 +212,8 @@ in
     # and the worker mounts `nas:/models` (hosts/worker/default.nix).
     services.nfs.server.exports = ''
       ${modelsRoot} 10.42.0.2(rw,sync,fsid=6,no_subtree_check,no_root_squash)
-      ${modelsRoot} 10.42.0.5(ro,sync,fsid=6,no_subtree_check,root_squash)
     '';
-    networking.firewall.extraInputRules = ''
-      ip saddr 10.42.0.5 tcp dport 2049 accept comment "NFSv4 from worker (models export, read-only)"
-    '';
+    networking.firewall.extraInputRules = "";
 
     # ── library-fetch: the ONLY thing that ever talks to Hugging Face ───────
     # Converges weights/ toward the full catalog manifest: present + right

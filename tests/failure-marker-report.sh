@@ -58,10 +58,10 @@ printf '%s\n' \
 chmod +x "$fake_bin/journalctl"
 
 printf '%s\n' \
-  '{"__REALTIME_TIMESTAMP":"1786715301893875","MESSAGE":"intentional tally test abort","SYSLOG_IDENTIFIER":"systemd-coredump","_HOSTNAME":"coordinator","COREDUMP_COMM":"tally-5a1153098","COREDUMP_CMDLINE":"/build/source/target/x86_64-unknown-linux-gnu/release/deps/tally-5a11530984080fbb --exact cli::campaign::tests::release_execute_crash_child --nocapture --test-threads=1"}' \
-  '{"__REALTIME_TIMESTAMP":"1786715301893876","MESSAGE":"live tally daemon abort","SYSLOG_IDENTIFIER":"systemd-coredump","_HOSTNAME":"coordinator","COREDUMP_COMM":"tally","COREDUMP_CMDLINE":"/nix/store/example-tally/bin/tally daemon run"}' \
-  '{"__REALTIME_TIMESTAMP":"1786715301893877","MESSAGE":"chrome renderer abort","SYSLOG_IDENTIFIER":"systemd-coredump","_HOSTNAME":"coordinator","COREDUMP_COMM":"chrome","COREDUMP_CMDLINE":"/nix/store/example-chrome/bin/chrome --type=renderer"}' \
-  '{"__REALTIME_TIMESTAMP":"1786715301893878","MESSAGE":"unrelated process abort","SYSLOG_IDENTIFIER":"systemd-coredump","_HOSTNAME":"coordinator","COREDUMP_COMM":"other","COREDUMP_CMDLINE":"/nix/store/example/bin/other"}' \
+  '{"__REALTIME_TIMESTAMP":"1786715301893875","MESSAGE":"intentional tally test abort","SYSLOG_IDENTIFIER":"systemd-coredump","_HOSTNAME":"strix","COREDUMP_COMM":"tally-5a1153098","COREDUMP_CMDLINE":"/build/source/target/x86_64-unknown-linux-gnu/release/deps/tally-5a11530984080fbb --exact cli::campaign::tests::release_execute_crash_child --nocapture --test-threads=1"}' \
+  '{"__REALTIME_TIMESTAMP":"1786715301893876","MESSAGE":"live tally daemon abort","SYSLOG_IDENTIFIER":"systemd-coredump","_HOSTNAME":"strix","COREDUMP_COMM":"tally","COREDUMP_CMDLINE":"/nix/store/example-tally/bin/tally daemon run"}' \
+  '{"__REALTIME_TIMESTAMP":"1786715301893877","MESSAGE":"chrome renderer abort","SYSLOG_IDENTIFIER":"systemd-coredump","_HOSTNAME":"strix","COREDUMP_COMM":"chrome","COREDUMP_CMDLINE":"/nix/store/example-chrome/bin/chrome --type=renderer"}' \
+  '{"__REALTIME_TIMESTAMP":"1786715301893878","MESSAGE":"unrelated process abort","SYSLOG_IDENTIFIER":"systemd-coredump","_HOSTNAME":"strix","COREDUMP_COMM":"other","COREDUMP_CMDLINE":"/nix/store/example/bin/other"}' \
   > "$fixture"
 
 pattern='^/build/source/target/[^ ]+/release/deps/tally-[0-9a-f]+ --exact cli::campaign::tests::release_execute_crash_child --nocapture --test-threads=1$'
@@ -81,8 +81,8 @@ sensor_output="$(
 )"
 
 [[ "$sensor_output" == "2 coredump" ]]
-grep -Fqx '2026-08-14T13:48:21+0000 coordinator systemd-coredump: live tally daemon abort' "$sensor_state/coredump.new"
-grep -Fqx '2026-08-14T13:48:21+0000 coordinator systemd-coredump: unrelated process abort' "$sensor_state/coredump.new"
+grep -Fqx '2026-08-14T13:48:21+0000 strix systemd-coredump: live tally daemon abort' "$sensor_state/coredump.new"
+grep -Fqx '2026-08-14T13:48:21+0000 strix systemd-coredump: unrelated process abort' "$sensor_state/coredump.new"
 ! grep -Fq 'intentional tally test abort' "$sensor_state/coredump.new"
 ! grep -Fq 'chrome renderer abort' "$sensor_state/coredump.new"
 

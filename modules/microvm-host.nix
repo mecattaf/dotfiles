@@ -4,7 +4,7 @@
 # state dir + tmpfiles, and the `microvm` system user — i.e. the DURABLE path
 # from the /microvm skill (declarative `microvm.vms` + `microvm -c/-Ru`).
 #
-# Enabled on the coordinator, the durable execution and artifact front door.
+# Enabled on the strix, the durable execution and artifact front door.
 # Guests are recreated from their declarative source; no mutable VM state is
 # imported from another host. The EPHEMERAL default path
 # (`nix run …config.microvm.declaredRunner`) needs none of this — only the flake

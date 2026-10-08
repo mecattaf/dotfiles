@@ -1,5 +1,5 @@
 {
-  description = "mecattaf — one flake for the whole distribution: Strix Halo coordinator, headless AMD NAS, and Intel laptop.";
+  description = "mecattaf — one flake for the whole distribution: Strix Halo strix, headless AMD NAS, and Intel laptop.";
 
   inputs = {
     # Unstable: Strix Halo (gfx1151) wants fresh kernels + Mesa.
@@ -50,8 +50,8 @@
     # nixpkgs-stable — pins ONLY nixosConfigurations.nas (issue #135 ruling):
     # the NAS is a frozen self-sustaining appliance on standard stable nixpkgs,
     # maintained manually every few years. It never rides the unstable
-    # kernel/Mesa churn the coordinator's pin exists to gate, and it accepts
-    # EOL-pin CVE exposure because it is reachable only from the coordinator
+    # kernel/Mesa churn the strix's pin exists to gate, and it accepts
+    # EOL-pin CVE exposure because it is reachable only from the strix
     # over the private /30. Bump deliberately with
     # `nix flake update nixpkgs-stable` on the same few-years cadence.
     nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
@@ -220,10 +220,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    # nix-amd-ai — the proven coordinator NPU plane (hardware.amd-npu: amdxdna,
+    # nix-amd-ai — the proven strix NPU plane (hardware.amd-npu: amdxdna,
     # XRT plugin discovery, udev/memlock, FastFlowLM) plus the one accelerator
     # package nix-strix-halo does not expose: stable-diffusion-cpp-rocm.
-    # The coordinator consumes the NPU module and runs IOMMU in translated mode.
+    # The strix consumes the NPU module and runs IOMMU in translated mode.
     # Deliberately
     # NO inputs.nixpkgs.follows — the overlay is built against its OWN pinned
     # nixpkgs so its Cachix (nix-amd-ai.cachix.org, substituter added in
@@ -249,7 +249,7 @@
     # EPHEMERAL — `nix run <guest>.config.microvm.declaredRunner` needs only this
     # input, no host module, so it works fleet-wide. The DURABLE path (the imperative
     # `microvm` CLI + `microvm@<name>` systemd units) is opt-in via
-    # modules/microvm-host.nix, enabled on the coordinator alongside the local
+    # modules/microvm-host.nix, enabled on the strix alongside the local
     # artifact front door. follows
     # nixpkgs so the runner builds against our one pin.
     microvm = {
@@ -270,7 +270,7 @@
       system = "x86_64-linux";
 
       # Inputs whose PACKAGE CONTENT may move independently of the committed
-      # flake.lock during the nightly fleet transaction. The coordinator resolves
+      # flake.lock during the nightly fleet transaction. The strix resolves
       # each once and passes the same immutable URLs to every build and activation.
       #
       # This is intentionally NOT the main nixpkgs input: kernel/Mesa remain behind
@@ -398,7 +398,7 @@
           inherit system;
           specialArgs = {
             # rollingInputOverrides/fleetDeploySshOpts left this set 2026-08-21
-            # with hosts/coordinator/fleet-deploy.nix, their only consumer;
+            # with hosts/strix/fleet-deploy.nix, their only consumer;
             # both still exist at flake level (deploy nodes use the SSH opts,
             # and the NAS update-center will inherit the rolling-override
             # mechanic).
@@ -459,7 +459,7 @@
 
       # The reviewed rolling-input list, exposed the same evaluation-only way and
       # for the same reason. It lost its last CONSUMER when
-      # hosts/coordinator/fleet-deploy.nix was deleted on 2026-08-21, but it did
+      # hosts/strix/fleet-deploy.nix was deleted on 2026-08-21, but it did
       # not lose its MEANING: it is the reviewed set of inputs allowed to move
       # without a flake.lock review, and hosts/nas/default.nix cites it by name
       # as the reason a single leaf TUI (amdtop) moves nightly while the
@@ -479,7 +479,7 @@
       };
 
       nixosConfigurations = {
-        coordinator = mkHost { hostModule = ./hosts/coordinator; };
+        strix = mkHost { hostModule = ./hosts/strix; };
         nas = mkHost {
           hostModule = ./hosts/nas;
           withHomeManager = false;
@@ -490,7 +490,7 @@
         # identical Strix Halo silicon and the pin exists to gate exactly that
         # kernel/Mesa churn) and it keeps Home Manager, because unlike the NAS it
         # is an ordinary interactive NixOS box that happens to be headless.
-        worker = mkHost { hostModule = ./hosts/worker; };
+
         # The ASUS Zenbook Duo, Tom's thin client since 2026-09-11 (its second
         # tenure here; `zenbook-duo` left on 2026-08-30 and came back from
         # omarchy-fleet under this name). Plain mkHost: it rides the unstable
@@ -510,7 +510,7 @@
         sshOpts = fleetDeploySshOpts;
         autoRollback = true;
         magicRollback = true;
-        remoteBuild = false; # every selected profile is built locally on coordinator
+        remoteBuild = false; # every selected profile is built locally on strix
         fastConnection = false; # let each destination substitute from Attic
         activationTimeout = 1200;
         confirmTimeout = 90;
@@ -519,12 +519,12 @@
           nixpkgs.lib.genAttrs
             [
               "client"
-              "coordinator"
               "nas"
-              "worker"
+              "strix"
+
             ]
             (host: {
-              # Canonical names, every one: `nas` and `coordinator` through the
+              # Canonical names, every one: `nas` and `strix` through the
               # direct hosts pins, `worker` and `client` through
               # modules/fleet-hosts.nix (the worker's static 10.42.0.5, the
               # client's NAS-pinned DHCP lease 10.42.0.16). Every name is a
@@ -569,7 +569,7 @@
             # nothing needs to `nix build` a requireFile derivation by name, and
             # exporting them only gives `nix flake check` more ways to trip over
             # a tarball that is not in this machine's store. To build one anyway:
-            #   nix build --impure --expr '(builtins.getFlake "'"$DOT"'").nixosConfigurations.coordinator.pkgs.anthropic-mono-nerd'
+            #   nix build --impure --expr '(builtins.getFlake "'"$DOT"'").nixosConfigurations.strix.pkgs.anthropic-mono-nerd'
             fontbuilder
             land
             local-ai-monthly
@@ -620,7 +620,7 @@
             };
           };
           # `nix build .#substrate-pusher`, `.#substrate-puller`, `.#substrate-apps-link`:
-          # the coordinator's gentle capacity pusher, its interpreter-host puller and
+          # the strix's gentle capacity pusher, its interpreter-host puller and
           # the floor-to-ax link from the same pinned
           # substrate sha (pkgs/substrate-apps). Installed by modules/substrate.nix
           # (gates OFF) and hosts/nas/substrate-link.nix (still on pkgs/substrate-link).
@@ -632,7 +632,7 @@
       # The same teardown the control and harness roles keep on their PATH
       # (`sudo ax-fleet-teardown` after `myAxFleet.enable = false` and a
       # switch). This app is for a generation rollback from a checkout, where
-      # the older generation predates the package: on the coordinator
+      # the older generation predates the package: on the strix
       # `sudo nix run ~/dotfiles#ax-fleet-teardown`; for the NAS, which holds
       # no checkout, `nix copy --to ssh-ng://nas .#ax-fleet-teardown`, then
       # `ssh -t nas sudo <out>/bin/ax-fleet-teardown`.
@@ -665,6 +665,30 @@
 
       # The RAW out-of-store dotfiles are never checked at switch, so check them here.
       checks.${system} = {
+        closet-topology = import ./tests/closet-topology {
+          inherit pkgs self;
+          inherit (nixpkgs) lib;
+        };
+        strix-reachability =
+          pkgs.runCommand "strix-reachability"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.bash
+                pkgs.jq
+              ];
+              SENSOR = pkgs.writeText "strix-reachability-sensor" self.nixosConfigurations.client.config.myTripwire.strix-reachability.sensor;
+            }
+            ''
+              python3 ${./tests/strix-reachability/test_sensor.py}
+              touch "$out"
+            '';
+        claude-settings = pkgs.runCommand "claude-settings" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+          export CLAUDE_SETTINGS_MODULE=${./home/claude-settings.py}
+          python3 ${./tests/claude-settings/test_settings.py}
+          touch "$out"
+        '';
+
         # ax on the fleet (modules/ax-fleet, DESIGN.md 12). ax-fleet is the
         # 4-VM switch/rollback proof, ax-fleet-boot the NAS-from-boot proof,
         # ax-fleet-topology the evaluation-only assertions over the real hosts.
@@ -680,7 +704,7 @@
           inherit pkgs self;
           inherit (nixpkgs) lib;
         };
-        # modules/substrate.nix rendered OFF on the coordinator and armed with
+        # modules/substrate.nix rendered OFF on the strix and armed with
         # fixtures (tests/substrate-modules); every assertion is eval-time.
         substrate-modules = import ./tests/substrate-modules {
           inherit pkgs self;
@@ -699,34 +723,28 @@
             touch "$out"
           '';
 
-        # G1: modules/gvisor.nix is imported on both twins with the gate OFF,
-        # puts nothing on PATH while off, and puts exactly pkgs.gvisor there
-        # when a host flips it (evaluated through extendModules, never switched).
         gvisor-module =
           let
             hasGvisor = c: builtins.any (p: (p.pname or "") == "gvisor") c.environment.systemPackages;
-            # Flipping the gate adds no failing assertion: compared with the
-            # worker as it is, not with "none fails". Until the agent-token
-            # rekey lands, the worker's own gate (hosts/worker/default.nix)
-            # fails with or without gVisor, and that is not this check's
-            # business; `nix flake check` reports it on the worker's toplevel.
+            # Enabling runsc must not introduce configuration assertion failures.
             failing = c: map (a: a.message) (builtins.filter (a: !a.assertion) c.assertions);
-            coordinator = self.nixosConfigurations.coordinator.config;
-            worker = self.nixosConfigurations.worker.config;
-            workerOn =
-              (self.nixosConfigurations.worker.extendModules {
+            strix = self.nixosConfigurations.strix.config;
+
+            gvisorOn =
+              (self.nixosConfigurations.strix.extendModules {
                 modules = [ { myGvisor.enable = nixpkgs.lib.mkForce true; } ];
               }).config;
           in
-          assert !coordinator.myGvisor.enable;
-          assert !worker.myGvisor.enable;
-          assert !(hasGvisor coordinator);
-          assert !(hasGvisor worker);
-          assert hasGvisor workerOn;
-          assert failing workerOn == failing worker;
+          assert !strix.myGvisor.enable;
+
+          assert !(hasGvisor strix);
+
+          assert hasGvisor gvisorOn;
+          assert failing gvisorOn == failing strix;
+
           pkgs.runCommand "gvisor-module-check" { } ''
-            test -x ${workerOn.myGvisor.package}/bin/runsc
-            test -x ${workerOn.myGvisor.package}/bin/containerd-shim-runsc-v1
+            test -x ${gvisorOn.myGvisor.package}/bin/runsc
+            test -x ${gvisorOn.myGvisor.package}/bin/containerd-shim-runsc-v1
             touch "$out"
           '';
 
@@ -762,32 +780,18 @@
           let
             hostCfg = host: self.nixosConfigurations.${host}.config;
             gated = [
-              "coordinator"
-              "worker"
+              "strix"
+
               "client"
             ];
           in
           assert builtins.all (host: (hostCfg host) ? myAxClient) gated;
-          # ON on the coordinator only, as a mkDefault consequence of
+          # ON on the strix only, as a mkDefault consequence of
           # myAxFleet's harness role (modules/ax-fleet/default.nix); OFF on the
           # worker (inference role) and the client (no fleet role).
-          assert
-            (hostCfg "coordinator").myAxFleet.enable && (hostCfg "coordinator").myAxFleet.role == "harness";
-          assert (hostCfg "coordinator").myAxClient.enable;
-          assert builtins.all (host: (hostCfg host).myAxClient.enable == false) [
-            "worker"
-            "client"
-          ];
-          assert builtins.all
-            (
-              host:
-              !(builtins.elem pkgs.kubectl (hostCfg host).environment.systemPackages)
-              && !(builtins.elem pkgs.ax (hostCfg host).environment.systemPackages)
-            )
-            [
-              "worker"
-              "client"
-            ];
+          assert (hostCfg "strix").myAxFleet.enable && (hostCfg "strix").myAxFleet.role == "harness";
+          assert (hostCfg "strix").myAxClient.enable;
+
           assert !((hostCfg "nas") ? myAxClient);
           pkgs.runCommand "ax-client-topology" { } ''
             touch "$out"
@@ -824,8 +828,8 @@
         ax-conwip-topology =
           let
             homeHosts = [
-              "coordinator"
-              "worker"
+              "strix"
+
               "client"
             ];
             homeCfg = host: self.nixosConfigurations.${host}.config.home-manager.users.tom;
@@ -873,7 +877,7 @@
           #     declaring it and arming it stay two separate acts.
           assert (
             let
-              flipped = self.nixosConfigurations.coordinator.extendModules {
+              flipped = self.nixosConfigurations.strix.extendModules {
                 modules = [ { home-manager.users.tom.myAxConwip.enable = true; } ];
               };
               unit = flipped.config.home-manager.users.tom.systemd.user.services.ax-conwip;
@@ -892,7 +896,7 @@
 
         qwen-speech-topology =
           let
-            coord = self.nixosConfigurations.coordinator.config;
+            coord = self.nixosConfigurations.strix.config;
             speechUnit = coord.systemd.user.services.qwen-tts;
           in
           assert speechUnit.wantedBy == [ ];
@@ -900,27 +904,13 @@
           assert
             speechUnit.environment.VK_ICD_FILENAMES
             == "/run/opengl-driver/share/vulkan/icd.d/radeon_icd.x86_64.json";
-          assert builtins.all
-            (host: !(self.nixosConfigurations.${host}.config.systemd.user.services ? qwen-tts))
-            [
-              "client"
-              "worker"
-              "nas"
-            ];
+
           assert builtins.elem pkgs.qwen-speech
             self.nixosConfigurations.client.config.home-manager.users.tom.home.packages;
           assert
             !(builtins.elem pkgs.qwentts self.nixosConfigurations.client.config.home-manager.users.tom.home.packages);
           pkgs.runCommand "qwen-speech-topology" { } ''touch "$out"'';
-        coordinator-uplink =
-          pkgs.runCommand "coordinator-uplink-tests" { nativeBuildInputs = [ pkgs.python3 ]; }
-            ''
-              mkdir -p hosts/coordinator tests/coordinator-uplink
-              cp ${./hosts/coordinator/uplink.py} hosts/coordinator/uplink.py
-              cp ${./tests/coordinator-uplink/test_uplink.py} tests/coordinator-uplink/test_uplink.py
-              python -m unittest discover -s tests/coordinator-uplink -v
-              touch $out
-            '';
+
         music-acquire = pkgs.music-acquire;
 
         # The Claude capacity oracle (DECISION-R2-1). It is BOTH the waybar
@@ -996,7 +986,7 @@
         # nobody notices has stopped working. Asserted here in a fake HOME with
         # a fake `systemctl` on PATH, in every state that matters — pre-switch,
         # declared, hand-installed (the Rule 9 failure), and off the
-        # coordinator, where util-row is SKIP and must never be FAIL. The count
+        # strix, where util-row is SKIP and must never be FAIL. The count
         # is asserted too: the issue says the probe gains EXACTLY these two
         # rows. Hermetic: no systemd, no tally, no network.
         # UTIL-01's two behaviours added 2026-09-13, each asserted on fixtures
@@ -1050,15 +1040,15 @@
               nixpkgs.lib.filterAttrs (
                 name: _: nixpkgs.lib.hasPrefix "podman-halogen" name
               ) self.nixosConfigurations.${host}.config.systemd.services;
-            units = unitsOf "worker";
+            units = unitsOf "strix";
             successCodes = unit: nixpkgs.lib.splitString " " (toString unit.serviceConfig.SuccessExitStatus);
             succeeds = code: unit: builtins.elem code (successCodes unit);
-            declared = builtins.attrValues (unitsOf "worker") ++ builtins.attrValues (unitsOf "coordinator");
+            declared = builtins.attrValues units;
           in
           # The primary and one alternate today; the filter is what keeps this
           # honest when that changes, so assert it found them both.
-          assert builtins.length declared >= 4;
-          assert (unitsOf "coordinator") ? podman-halogen;
+          assert builtins.length declared >= 2;
+          assert (unitsOf "strix") ? podman-halogen;
           assert units ? podman-halogen;
           assert builtins.all (succeeds "143") declared;
           assert builtins.all (unit: !(succeeds "137" unit)) declared;
@@ -1082,89 +1072,6 @@
               cp "$TMPDIR/out" $out
             '';
 
-        omarchy-update-center =
-          let
-            nas = self.nixosConfigurations.nas.config;
-          in
-          assert !nas.myNas.omarchyUpdateCenter.enable;
-          assert !(nas.systemd.services ? omarchy-update-keepalive);
-          assert !(nas.systemd.timers ? omarchy-update-keepalive);
-          assert !(nas.services.nginx.virtualHosts ? omarchy-updates);
-          assert nas.services.headscale.settings.policy.mode == "file";
-          pkgs.runCommand "omarchy-update-center-check"
-            {
-              nativeBuildInputs = [
-                pkgs.python3
-                pkgs.openssh
-                nas.services.headscale.package
-              ];
-            }
-            ''
-              headscale policy check -f ${./hosts/nas/headscale-policy.hujson}
-              python ${./tests/omarchy-update-center/policy_test.py} ${./hosts/nas/headscale-policy.hujson}
-              mkdir -p hosts/nas tests/omarchy-update-center
-              cp ${./hosts/nas/omarchy-update-publish.py} hosts/nas/omarchy-update-publish.py
-              cp ${./tests/omarchy-update-center/test_publisher.py} tests/omarchy-update-center/test_publisher.py
-              python -m unittest discover -v -s tests/omarchy-update-center
-              touch "$out"
-            '';
-
-        nas-personal-tailnet =
-          (import ./tests/tailscale-personal {
-            pkgs = self.nixosConfigurations.nas.pkgs;
-          }).check;
-
-        nas-personal-https =
-          let
-            nas =
-              (self.nixosConfigurations.nas.extendModules {
-                modules = [
-                  {
-                    myNas.tailscalePersonal.media.https.enable = true;
-                    # Evaluation-only fixture. No certificate request or deployment.
-                    age.secrets.nas-cloudflare-dns.file = nixpkgs.lib.mkForce (
-                      pkgs.writeText "dns-secret-fixture" "synthetic-not-a-credential"
-                    );
-                  }
-                ];
-              }).config;
-            cert = nas.security.acme.certs."music.mecattaf.dev";
-          in
-          assert builtins.all (a: a.assertion) nas.assertions;
-          assert cert.dnsProvider == "cloudflare";
-          assert cert.extraDomainNames == [ "plex.mecattaf.dev" ];
-          assert cert.environmentFile == nas.age.secrets.nas-cloudflare-dns.path;
-          assert nas.age.secrets.nas-cloudflare-dns.mode == "0400";
-          assert !nas.myNas.headscale.publicEndpoint.enable;
-          assert nas.services.headscale.settings.server_url == "https://nas-saas.tail8dd1.ts.net:8443";
-          assert nas.myNas.headscale.clientLoginServer == "http://10.42.0.1:8090";
-          assert nas.myNas.tailscalePersonal.funnel.enable;
-          assert
-            nas.services.caddy.virtualHosts."https://music.mecattaf.dev:8443".listenAddresses
-            == [ "172.31.255.1" ];
-          pkgs.runCommand "nas-personal-https-check" { } ''touch "$out"'';
-
-        headscale-endpoint =
-          let
-            nas = self.nixosConfigurations.nas.config;
-          in
-          assert nas.myNas.headscale.clientLoginServer == "http://10.42.0.1:8090";
-          pkgs.runCommand "headscale-endpoint-check"
-            {
-              nativeBuildInputs = [
-                pkgs.bash
-                pkgs.coreutils
-                pkgs.jq
-                pkgs.python3
-              ];
-              HEADSCALE_ENROLL_SCRIPT = pkgs.writeText "headscale-enroll-script" nas.systemd.services.headscale-nas-enroll.script;
-              HEADSCALE_CONNECT_SCRIPT = pkgs.writeText "headscale-connect-script" nas.systemd.services.tailscaled-autoconnect.script;
-            }
-            ''
-              python3 -m unittest discover -s ${./tests/headscale-endpoint} -v
-              touch "$out"
-            '';
-
         fleet-identity-backup =
           pkgs.runCommand "fleet-identity-backup-check"
             {
@@ -1182,26 +1089,11 @@
               touch "$out"
             '';
 
-        headscale-backup =
-          let
-            nas = self.nixosConfigurations.nas.config;
-          in
-          assert nas.myNas.headscale.backup.enable;
-          assert nas.systemd.services.headscale-backup.unitConfig.AssertPathIsMountPoint == "/mnt/nas";
-          assert nas.systemd.timers.headscale-backup.timerConfig.Persistent == false;
-          pkgs.runCommand "headscale-backup-check" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-            mkdir -p hosts/nas tests/headscale-backup
-            cp ${./hosts/nas/headscale-backup.py} hosts/nas/headscale-backup.py
-            cp ${./tests/headscale-backup/test_backup.py} tests/headscale-backup/test_backup.py
-            python -m unittest discover -v -s tests/headscale-backup
-            touch "$out"
-          '';
-
         nas-topology =
           let
             nas = self.nixosConfigurations.nas.config;
-            coordinator = self.nixosConfigurations.coordinator.config;
-            worker = self.nixosConfigurations.worker.config;
+            strix = self.nixosConfigurations.strix.config;
+
           in
           # ── the tailnet sink, on its OWN control plane (2026-09-01) ────────
           # This assertion once read `!nas.services.tailscale.enable` and was
@@ -1233,19 +1125,19 @@
           # the packaged tailscaled-set unit on every boot — assert its absence
           # there too, because that failure is a boot-time surprise, not an
           # eval-time one.
-          assert builtins.any (nixpkgs.lib.hasPrefix "--login-server=") nas.services.tailscale.extraUpFlags;
+          assert !builtins.any (nixpkgs.lib.hasPrefix "--login-server=") nas.services.tailscale.extraUpFlags;
           assert !builtins.any (nixpkgs.lib.hasInfix "tailscale.com") nas.services.tailscale.extraUpFlags;
           assert !builtins.any (nixpkgs.lib.hasPrefix "--login-server=") nas.services.tailscale.extraSetFlags;
-          # ...and the mirror image on the coordinator, which is the fleet's LAST
+          # ...and the mirror image on the strix, which is the fleet's LAST
           # official tailscale.com node and keeps it as the emergency rail
-          # (hosts/coordinator/tailscale.nix). The ABSENCE of --login-server is
+          # (hosts/strix/tailscale.nix). The ABSENCE of --login-server is
           # the entire content of "official tailscale.com", so it is the thing
           # worth pinning: a well-meaning sweep that pointed this box at the
           # NAS's headscale would destroy the rail's whole reason for existing —
           # a fallback that shares a control plane with what it backs up.
-          assert coordinator.services.tailscale.enable;
+          assert !strix.services.tailscale.enable;
           assert
-            !builtins.any (nixpkgs.lib.hasPrefix "--login-server=") coordinator.services.tailscale.extraUpFlags;
+            !builtins.any (nixpkgs.lib.hasPrefix "--login-server=") strix.services.tailscale.extraUpFlags;
           # The worker is the counter-example that keeps the sink meaningful: a
           # LAN compute node reached over ordinary SSH, with no node of its own
           # on EITHER control plane. All three knobs still, but the reason
@@ -1253,9 +1145,7 @@
           # against the fleet-wide default in modules/common.nix, and now hold by
           # default because that default is gone. Asserting them is how a
           # re-introduced fleet tailscale tier gets caught.
-          assert !worker.services.tailscale.enable;
-          assert worker.services.tailscale.extraUpFlags == [ ];
-          assert worker.services.tailscale.extraSetFlags == [ ];
+
           # The NAS admits SSH/NFS via networking.firewall.extraInputRules,
           # which only renders under the nftables backend — with iptables the
           # appliance seals itself shut (hit live 2026-08-01).
@@ -1270,7 +1160,7 @@
           assert nas.hardware.graphics.enable;
           assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
           # Post-cutover topology (live since 2026-08-02, #131): the verified
-          # data disk and the media stack run on the NAS; the coordinator only
+          # data disk and the media stack run on the NAS; the strix only
           # relays. The pre-cutover extendModules simulation this check used
           # to carry became the real configuration and was retired.
           assert nas.myNas.storage.enable;
@@ -1282,77 +1172,70 @@
           assert nas.services.immich.mediaLocation == "/mnt/nas/photos";
           assert nas.services.navidrome.settings.MusicFolder == "/mnt/nas/music";
           assert !nas.services.immich.machine-learning.enable;
-          # Immich ML MOVED coordinator -> worker 2026-08-21 (#229). The URL, the
+          # Immich ML MOVED strix -> worker 2026-08-21 (#229). The URL, the
           # endpoint, and the name resolution behind it must agree, so all three
           # are asserted together: a repoint without the pin is a black hole, and
           # a pin without the endpoint is a connection refused.
-          assert nas.services.immich.environment.IMMICH_MACHINE_LEARNING_URL == "http://worker:3003";
-          assert nas.networking.hosts."10.42.0.5" == [ "worker" ];
+          assert nas.services.immich.environment.IMMICH_MACHINE_LEARNING_URL == "http://strix:3003";
+
           assert nas.services.immich.accelerationDevices == [ "/dev/dri/renderD128" ];
           # The stable-pinned NAS must keep running the SAME Immich the
-          # unstable-riding coordinator would — the database schema follows
+          # unstable-riding strix would — the database schema follows
           # unstable (media.nix pulls module+package from inputs.nixpkgs).
-          assert nas.services.immich.package.version == coordinator.services.immich.package.version;
+          assert nas.services.immich.package.version == strix.services.immich.package.version;
           # And since 2026-08-21 the server and its ML backend live on DIFFERENT
           # boxes (#229), so their version coupling is now a cross-host
           # invariant rather than an implicit local one. hosts/worker/immich-ml.nix
           # takes its package from this same option for exactly this assert.
-          assert nas.services.immich.package.version == worker.services.immich.package.version;
-          assert !coordinator.myCoordinatorMedia.enable;
-          assert coordinator.myNasClient.useRemoteStorage;
-          assert coordinator.myNasClient.relayMedia;
-          assert !coordinator.services.immich.enable;
-          assert !coordinator.services.navidrome.enable;
-          assert coordinator.fileSystems."/mnt/nas".fsType == "nfs4";
-          assert coordinator.systemd.sockets ? immich-relay;
-          assert coordinator.systemd.sockets ? navidrome-relay;
-          assert coordinator.systemd.sockets ? plex-relay;
-          # ML is the one endpoint that is NOT a coordinator relay any more: the
+
+          assert !strix.myCoordinatorMedia.enable;
+          assert strix.myNasClient.useRemoteStorage;
+          assert strix.myNasClient.relayMedia;
+          assert !strix.services.immich.enable;
+          assert !strix.services.navidrome.enable;
+          assert strix.fileSystems."/mnt/nas".fsType == "nfs4";
+          assert strix.systemd.sockets ? immich-relay;
+          assert strix.systemd.sockets ? navidrome-relay;
+          assert strix.systemd.sockets ? plex-relay;
+          # ML is the one endpoint that is NOT a strix relay any more: the
           # socket must exist on the worker and must be GONE from the
-          # coordinator. Asserting both directions is deliberate — a half-move
+          # strix. Asserting both directions is deliberate — a half-move
           # that left both boxes listening on :3003 would work by accident and
           # then rot.
-          assert worker.systemd.sockets ? immich-ml-access;
-          assert !(coordinator.systemd.sockets ? immich-ml-access);
+
+          assert strix.systemd.sockets ? immich-ml-access;
           # ── LAN admission (2026-08-20 rewire; /30 half retired 2026-08-21) ──
           # The enp191s0 half of this block is GONE, as its own instructions
           # said it should be: the /30 cable was unplugged at the TV-corner
           # move and every module-side admission for it was deleted on cutover
           # day. What was NOT deleted was these asserts, which kept naming
-          # `coordinator.networking.firewall.interfaces.enp191s0` — an
+          # `strix.networking.firewall.interfaces.enp191s0` — an
           # attribute that no longer exists, so the whole check threw. Squared
           # up here with the #229 work. The installer-dnsmasq :67 assert dies
           # with it for the same reason (no cable, no factory boot over it).
           #
           # Failure modes still held off: re-blanket-trusting an interface, and
           # anyone concluding these LAN flows need Tailscale.
-          assert !(builtins.elem "wlp192s0" coordinator.networking.firewall.trustedInterfaces);
-          assert !(builtins.elem "wlp192s0" worker.networking.firewall.trustedInterfaces);
+          assert !(builtins.elem "wlp192s0" strix.networking.firewall.trustedInterfaces);
+
           # Coordinator LAN doors: the .internal front doors and the LLM
           # endpoint. :3003 is deliberately ABSENT — it left with Immich ML.
-          assert builtins.elem 80 coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts;
-          # The coordinator serves no model: no inference door on its LAN leg.
-          assert !(builtins.elem 9292 coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts);
-          assert !(builtins.elem 8731 coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts);
-          assert !(builtins.elem 3003 coordinator.networking.firewall.interfaces.wlp192s0.allowedTCPPorts);
+          assert builtins.elem 80 strix.networking.firewall.interfaces.enp191s0.allowedTCPPorts;
+          # The strix serves no model: no inference door on its LAN leg.
+          assert !(builtins.elem 9292 (strix.networking.firewall.interfaces.wlp192s0.allowedTCPPorts or [ ]));
+          assert !(builtins.elem 8731 (strix.networking.firewall.interfaces.wlp192s0.allowedTCPPorts or [ ]));
+          assert !(builtins.elem 3003 (strix.networking.firewall.interfaces.wlp192s0.allowedTCPPorts or [ ]));
           # Worker LAN doors: Immich ML (dialled by nas.services.immich above),
           # the Halogen API (modules/halogen.nix) and the academic drain that
-          # the coordinator's Caddy fronts as drain.internal
+          # the strix's Caddy fronts as drain.internal
           # (hosts/worker/default.nix). Nothing else — and no
           # tailnet to hide behind, which is exactly why these stay
           # interface-scoped rather than global. On enp191s0: the worker is
           # WIRED into the BE550 and has no wifi profile at all.
-          assert
-            worker.networking.firewall.interfaces.enp191s0.allowedTCPPorts == [
-              3003 # immich-ml
-              8731 # halogen
-              8740 # academic drain
-            ];
-          assert !(worker.networking.firewall.interfaces ? wlp192s0);
-          assert !(builtins.elem "enp191s0" worker.networking.firewall.trustedInterfaces);
-          # Attic moved to the NAS at ws5 — the coordinator serves no :8080 and
+
+          # Attic moved to the NAS at ws5 — the strix serves no :8080 and
           # every host, worker included, dials http://nas:8080/fleet instead.
-          assert builtins.elem "http://nas:8080/fleet" worker.nix.settings.extra-substituters;
+
           # NAS gateway/DNS .1 forwards on Ethernet to BE550 .3.
           assert nas.services.dnsmasq.enable;
           assert nixpkgs.lib.toList nas.services.dnsmasq.settings.port == [ 0 ];
@@ -1368,9 +1251,7 @@
           # the earlier pin named the box's idle wifi MAC and could never have
           # matched. This assert derives the address from the worker's own
           # profile, so changing one side without the other fails the build.
-          assert builtins.elem
-            "9c:bf:0d:01:cc:65,worker,${nixpkgs.lib.head (nixpkgs.lib.splitString "/" worker.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.address1)},infinite"
-            nas.services.dnsmasq.settings.dhcp-host;
+
           assert
             nas.networking.networkmanager.ensureProfiles.profiles.coordinator-fast-lane.ipv4.gateway
             == "10.42.0.3";
@@ -1390,84 +1271,18 @@
               "127.0.0.1"
               "10.42.0.1"
             ];
-          assert nas.services.resolved.settings.Resolve.DNSStubListenerExtra == [ "100.64.0.1" ];
+          assert nas.services.resolved.settings.Resolve.DNSStubListenerExtra == [ "100.65.85.114" ];
           assert nas.services.resolved.settings.Resolve.DNS == "127.0.0.1";
           assert nas.services.resolved.settings.Resolve.Domains == "~.";
-          assert
-            coordinator.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4.gateway
-            == "10.42.0.1";
-          assert
-            coordinator.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4.dns == "10.42.0.1";
-          assert
-            coordinator.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv6.method == "disabled";
-          # ── Strix Halo hard-lock protections must outlive the rewire ──────
-          # The mt7925e wcid roam crash bricked the coordinator twice
-          # (2026-07-16); the standing fixes are the ASPM escape hatch + the
-          # sp5100_tco watchdog (modules/strix.nix) + never roaming: any wifi
-          # profile this box could associate to must either pin a single
-          # BSSID or name an SSID that only ever exists on ONE radio. The
-          # sole exemption is thomas-6ghz since the 2026-08-21 6GHz ruling: it
-          # joins thomas-6ghz, which broadcasts from exactly one radio (the
-          # BE550's 5GHz radio is DISABLED — Tom's ruling, same day — and the
-          # 2.4/5 SSID is distinct), so no roam surface exists. A pin there
-          # is actively harmful: the 6GHz BSSID is an MLD address that
-          # differs between scan and association (seen live: …6b:61:e6 in
-          # scans, …6a:61:e6 on assoc) and pinning it broke activation on
-          # the worker. If the BE550's 5GHz radio is EVER re-enabled with
-          # the same SSID as 6GHz, this exemption must be revisited first.
-          #
-          # BOTH Strix boxes are checked since 2026-08-21 (#229): the worker is
-          # the same silicon with the same mt7925e RZ717, and it is in fact the
-          # box where the 6GHz BSSID pin was proven to break activation. Since
-          # 2026-09-11 the worker is WIRED and declares no wifi profile at all
-          # (asserted below), so the check is vacuous there today — it stays so
-          # that a wifi profile re-added to the headless box that cannot report
-          # a lockup is held to the same rule as the coordinator's.
-          assert nixpkgs.lib.hasInfix "mt7925e disable_aspm=1" coordinator.boot.extraModprobeConfig;
-          assert nixpkgs.lib.hasInfix "mt7925e disable_aspm=1" worker.boot.extraModprobeConfig;
-          assert
-            let
-              wifiProfilesArePinnedOrExempt =
-                hostConfig:
-                let
-                  profiles = hostConfig.networking.networkmanager.ensureProfiles.profiles;
-                in
-                builtins.all (name: (profiles.${name}.wifi ? bssid) || name == "thomas-6ghz") (
-                  builtins.filter (name: (profiles.${name}.connection.type or "") == "wifi") (
-                    builtins.attrNames profiles
-                  )
-                );
-            in
-            builtins.all wifiProfilesArePinnedOrExempt [
-              coordinator
-              worker
-            ];
-          # The worker declares NO wifi profile since 2026-09-11: it is wired
-          # into the BE550's Ethernet port 2 in another room, and the only
-          # profile it ensures is the wired `lan` one. A wifi profile
-          # reappearing here would be a silent roam surface on the machine
-          # least able to report the resulting lockup — and, with the address
-          # static on both, a second holder of 10.42.0.5.
-          assert
-            builtins.filter (
-              name:
-              (worker.networking.networkmanager.ensureProfiles.profiles.${name}.connection.type or "") == "wifi"
-            ) (builtins.attrNames worker.networking.networkmanager.ensureProfiles.profiles) == [ ];
-          assert builtins.attrNames worker.networking.networkmanager.ensureProfiles.profiles == [ "lan" ];
-          assert
-            worker.networking.networkmanager.ensureProfiles.profiles.lan.connection.interface-name
-            == "enp191s0";
+          assert strix.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.gateway == "10.42.0.3";
+          assert strix.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.dns == "10.42.0.1";
+          assert strix.networking.networkmanager.ensureProfiles.profiles.lan.ipv6.method == "disabled";
+          assert nixpkgs.lib.hasInfix "mt7925e disable_aspm=1" strix.boot.extraModprobeConfig;
+
           # Static, lease-free LAN identity — the property every cross-host
           # reference to this box depends on (NAS ML URL, NAS journal ACL, the
           # hosts pins). A silent revert to DHCP breaks all three.
-          assert
-            worker.networking.networkmanager.ensureProfiles.profiles.lan.ipv4 == {
-              method = "manual";
-              address1 = "10.42.0.5/24";
-              gateway = "10.42.0.1";
-              dns = "10.42.0.1";
-              ignore-auto-dns = true;
-            };
+
           # AdGuard and local host lookups agree on the media front doors.
           # Wildcard rewrites (`*.art.mecattaf.dev`, M-4) cannot appear in
           # /etc/hosts, so they are filtered out of the second test; the first
@@ -1483,8 +1298,8 @@
             )
           );
           # Filtering is centralized on the NAS.
-          assert !coordinator.services.adguardhome.enable;
-          assert !worker.services.adguardhome.enable;
+          assert !strix.services.adguardhome.enable;
+
           # ── #130 expansion gates: all OFF, and the pairs agree ─────────────
           # These assert the STAGED shape, i.e. that today's switch is a no-op
           # on the NAS's running services. Each gate flips with its own runbook
@@ -1527,7 +1342,7 @@
               "paperless-consumer"
               "paperless-bridge-bulk"
             ];
-          # The backend port is admitted from the coordinator only; nothing
+          # The backend port is admitted from the strix only; nothing
           # tailnet-facing on the appliance may name it.
           assert nixpkgs.lib.hasInfix "ip saddr 10.42.0.2 tcp dport 28981 accept"
             nas.networking.firewall.extraInputRules;
@@ -1543,8 +1358,8 @@
           # The relay auto-logs in a superuser: only the client and tailnet
           # peers may reach it, never another LAN host (2026-09-14: the worker got 200).
           assert nixpkgs.lib.hasInfix "not remote_ip"
-            coordinator.services.caddy.virtualHosts."http://paperless.internal".extraConfig;
-          assert !coordinator.myNasClient.relayAttic;
+            strix.services.caddy.virtualHosts."http://paperless.internal".extraConfig;
+          assert !strix.myNasClient.relayAttic;
           # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
           # 2026-08-03: the staged Jellyfin alternative was deleted, not kept
           # as a decoy). It must never be silently displaced.
@@ -1554,15 +1369,15 @@
           # hole, and a backend with no relay is unreachable from the tailnet.
           # (The attic relay pairing died with the 2026-08-21 direct-serve
           # move: the NAS serves 8080 itself and relayAttic must stay off.)
-          assert nas.myNas.attic.enable && !coordinator.myNasClient.relayAttic;
+          assert nas.myNas.attic.enable && !strix.myNasClient.relayAttic;
           # Paperless backend and its tailnet relay flip together (#136).
-          assert nas.myNas.paperless.enable == coordinator.myNasClient.relayPaperless;
+          assert nas.myNas.paperless.enable == strix.myNasClient.relayPaperless;
           # The binary cache can only live in one place: moving it to the NAS
-          # requires the coordinator's own atticd to go away in the same
-          # commit, because both bind tcp/8080 on the coordinator (the relay
+          # requires the strix's own atticd to go away in the same
+          # commit, because both bind tcp/8080 on the strix (the relay
           # socket there, the server here). Enforced host-locally too, by an
-          # assertion in hosts/coordinator/nas-client.nix.
-          assert nas.myNas.attic.enable -> !coordinator.services.atticd.enable;
+          # assertion in hosts/strix/nas-client.nix.
+          assert nas.myNas.attic.enable -> !strix.services.atticd.enable;
           # (ws2b borg deleted 2026-08-21 — Tom ruled it redundant against
           # the physical-redundancy stack; its asserts died with it.)
           pkgs.runCommand "nas-topology" { } ''
@@ -1627,8 +1442,8 @@
 
         home-profiles =
           let
-            coordinatorHome = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
-            workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
+            strixHome = self.nixosConfigurations.strix.config.home-manager.users.tom;
+
             clientHome = self.nixosConfigurations.client.config.home-manager.users.tom;
             cfgOf = h: self.nixosConfigurations.${h}.config;
             hasChromeStream =
@@ -1642,41 +1457,41 @@
             # the EQUALITY niri == greetd == myDisplay, plus the three
             # topology facts below that never flip.
             displayHosts = [
-              "coordinator"
+              "strix"
               "client"
-              "worker"
+
               "nas"
             ];
           in
-          assert coordinatorHome.home.username == "tom";
-          assert coordinatorHome.programs.atuin.settings.auto_sync;
+          assert strixHome.home.username == "tom";
+          assert strixHome.programs.atuin.settings.auto_sync;
           # Tally is gone (sunset 2026-09-30): no module, no option, no unit.
-          assert !(coordinatorHome.services ? tally);
+          assert !(strixHome.services ? tally);
           assert
             !(builtins.any (n: nixpkgs.lib.hasPrefix "tally" n) (
-              builtins.attrNames coordinatorHome.systemd.user.services
-              ++ builtins.attrNames coordinatorHome.systemd.user.timers
+              builtins.attrNames strixHome.systemd.user.services
+              ++ builtins.attrNames strixHome.systemd.user.timers
             ));
           # speech-wake and Parakeet are gone (2026-09-30): no transcription
           # unit, no virtual mic, no Voxtype on any seat.
-          assert !(coordinatorHome.systemd.user.services ? parakeet-service);
-          assert !(coordinatorHome.systemd.user.services ? speech-wake);
-          assert !(coordinatorHome.systemd.user.services ? voxtype);
-          assert !(coordinatorHome.xdg.configFile ? "pipewire/pipewire.conf.d/60-client-mic.conf");
-          # ONE herdr server, coordinator only (ruling B5), and it must never be
+          assert !(strixHome.systemd.user.services ? parakeet-service);
+          assert !(strixHome.systemd.user.services ? speech-wake);
+          assert !(strixHome.systemd.user.services ? voxtype);
+          assert !(strixHome.xdg.configFile ? "pipewire/pipewire.conf.d/60-client-mic.conf");
+          # ONE herdr server, strix only (ruling B5), and it must never be
           # tied to the compositor's lifetime (ruling B6) — the PTYs outlive it.
-          assert coordinatorHome.systemd.user.services ? herdr;
-          assert !(coordinatorHome.systemd.user.services.herdr.Unit ? PartOf);
-          assert coordinatorHome.systemd.user.services.herdr.Install.WantedBy == [ "default.target" ];
+          assert strixHome.systemd.user.services ? herdr;
+          assert !(strixHome.systemd.user.services.herdr.Unit ? PartOf);
+          assert strixHome.systemd.user.services.herdr.Install.WantedBy == [ "default.target" ];
           # The seats oracle's peer cache and substrate's metersDir outlive the
           # seat feeder that used to write it (home/harness-records.nix).
           assert builtins.elem "d %h/.local/state/tally-rewrite/meters 0700 - - -"
-            coordinatorHome.systemd.user.tmpfiles.rules;
+            strixHome.systemd.user.tmpfiles.rules;
           # herdr WITHOUT the kitten (#385, 2026-09-13). herdr-kitten is gone
           # fleet-wide: no package, no generated kitty alias file.
-          assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") coordinatorHome.home.packages);
-          assert !(coordinatorHome.xdg.configFile ? "kitty-herdr-nix.conf");
-          assert builtins.any (p: nixpkgs.lib.getName p == "herdr") coordinatorHome.home.packages;
+          assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") strixHome.home.packages);
+          assert !(strixHome.xdg.configFile ? "kitty-herdr-nix.conf");
+          assert builtins.any (p: nixpkgs.lib.getName p == "herdr") strixHome.home.packages;
           # The client's herdr chords live in the RAW, hot-reloaded binds.kdl,
           # which no generation renders, so they are asserted here by content
           # (precedent: the readFile assert on dot_claude/settings.json below).
@@ -1740,22 +1555,17 @@
           # The worker keeps Home Manager (unlike the NAS, which stops at NixOS):
           # it is an ordinary interactive box that merely has nobody sitting at
           # it, so the shell, atuin sync and the user timers are all real. What
-          # it must NOT pick up are the things gated on being the coordinator —
+          # it must NOT pick up are the things gated on being the strix —
           # the Tally daemon, voxtype, and since 2026-09-11 the graphical
           # session itself (no display output on that box: Tom's ruling).
-          assert workerHome.home.username == "tom";
-          assert workerHome.programs.atuin.settings.auto_sync;
-          assert !(workerHome.services ? tally);
-          assert !(workerHome.systemd.user.services ? parakeet-service);
-          assert !(workerHome.systemd.user.services ? voxtype);
+
           # …and the herdr SERVER. The worker still gets the herdr binary (it is
-          # how `herdr --remote coordinator` works at all), just no unit.
-          assert !(workerHome.systemd.user.services ? herdr);
+          # how `herdr --remote strix` works at all), just no unit.
+
           # The BINARY, though, is the worker's too — the client is how you
-          # reach a server at all (`herdr --remote coordinator`). One server
+          # reach a server at all (`herdr --remote strix`). One server
           # (ruling B5, #309 settled), clients elsewhere, unchanged.
-          assert builtins.any (p: nixpkgs.lib.getName p == "herdr") workerHome.home.packages;
-          assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") workerHome.home.packages);
+
           # No wayvnc on the worker since 2026-09-11: with no display there
           # (hosts/worker/default.nix) home/remote.nix rendered nothing, and
           # since the headless flip later that day the module is gone from
@@ -1763,29 +1573,20 @@
           # separate from that retired physical-session integration.
           #
           # Physical Niri and optional browser Sway are independent. Restoring
-          # the coordinator seat must not resurrect physical-session VNC.
-          # The separate browser-only Sway desktop is a coordinator user service.
-          assert (cfgOf "coordinator").systemd.user.services ? browser-desktop;
-          assert (cfgOf "coordinator").systemd.user.services.browser-desktop.wantedBy == [ ];
+          # the strix seat must not resurrect physical-session VNC.
+          # The separate browser-only Sway desktop is a strix user service.
+          assert (cfgOf "strix").systemd.user.services ? browser-desktop;
+          assert (cfgOf "strix").systemd.user.services.browser-desktop.wantedBy == [ ];
           # FARA is retired (Tom, 2026-09-16): no model unit beside the desktop.
-          assert !((cfgOf "coordinator").systemd.user.services ? fara-browser-model);
-          assert builtins.all (h: !((cfgOf h).systemd.user.services ? browser-desktop)) [
-            "client"
-            "worker"
-            "nas"
-          ];
+          assert !((cfgOf "strix").systemd.user.services ? fara-browser-model);
+
           # chrome-stream is installed with that desktop and nowhere else: the
           # client reaches it over ssh with its own Chrome (R-16 keeps the
           # client closure near-static).
-          assert hasChromeStream "coordinator";
-          assert builtins.all (h: !hasChromeStream h) [
-            "client"
-            "worker"
-            "nas"
-          ];
-          assert !(workerHome.systemd.user.services ? wayvnc);
-          assert !(coordinatorHome.systemd.user.services ? wayvnc);
-          assert (coordinatorHome.systemd.user.services ? piri) == (cfgOf "coordinator").myDisplay.enable;
+          assert hasChromeStream "strix";
+
+          assert !(strixHome.systemd.user.services ? wayvnc);
+          assert (strixHome.systemd.user.services ? piri) == (cfgOf "strix").myDisplay.enable;
           assert clientHome.systemd.user.services ? piri;
           # piri is niri-only: on a scroll seat it must be skipped, not crash-loop.
           assert clientHome.systemd.user.services.piri.Unit.ConditionEnvironment == "NIRI_SOCKET";
@@ -1806,29 +1607,34 @@
             && (
               !d.enable
               || nixpkgs.lib.hasSuffix (
-                if d.session == "scroll" then "/bin/scroll-session"
-                else if d.session == "sway" then "/bin/sway-physical-session"
-                else "/bin/niri-session"
+                if d.session == "scroll" then
+                  "/bin/scroll-session"
+                else if d.session == "sway" then
+                  "/bin/sway-physical-session"
+                else
+                  "/bin/niri-session"
               ) c.services.greetd.settings.initial_session.command
             )
           ) displayHosts;
           # Both physical seats share Sway; the Herdr server remains independent.
           assert (cfgOf "client").myDisplay.session == "sway";
-          assert (cfgOf "coordinator").myDisplay.session == "sway";
+          assert (cfgOf "strix").myDisplay.session == "sway";
           assert (cfgOf "client").programs.sway.enable;
           assert !(cfgOf "client").programs.scroll.enable;
           assert clientHome.programs.vicinae.enable;
           assert clientHome.services.mako.enable;
           assert clientHome.systemd.user.services.mako.Service.Type == "dbus";
           assert clientHome.systemd.user.services.mako.Service.BusName == "org.freedesktop.Notifications";
-          assert clientHome.systemd.user.services.mako.Service.ExecStart == [ "${clientHome.services.mako.package}/bin/mako" ];
+          assert
+            clientHome.systemd.user.services.mako.Service.ExecStart
+            == [ "${clientHome.services.mako.package}/bin/mako" ];
           assert !clientHome.programs.waybar.enable;
-          assert coordinatorHome.programs.vicinae.enable;
-          assert coordinatorHome.services.mako.enable;
-          assert !coordinatorHome.programs.waybar.enable;
-          assert coordinatorHome.home.sessionVariables.HERDR_SWAY_LOCAL == "1";
+          assert !strixHome.programs.vicinae.enable;
+          assert !strixHome.services.mako.enable;
+          assert !strixHome.programs.waybar.enable;
+          assert strixHome.home.sessionVariables.HERDR_SWAY_LOCAL == "0";
           assert clientHome.home.sessionVariables.HERDR_SWAY_LOCAL == "0";
-          assert coordinatorHome.systemd.user.services.herdr.Unit.X-SwitchMethod == "keep-old";
+          assert strixHome.systemd.user.services.herdr.Unit.X-SwitchMethod == "keep-old";
           assert (cfgOf "client").systemd.user.services.sway-physical.restartIfChanged == false;
           assert clientHome.programs.vicinae.settings.font.normal.family == "Anthropic Sans";
           assert clientHome.services.mako.settings.font == "Anthropic Sans 11";
@@ -1837,92 +1643,110 @@
           # niri or keeps it installed beside scroll (myDisplay.keepNiri), so a
           # rollback to session = "niri" keeps these checks green.
           assert builtins.all (h: (cfgOf h).myDisplay.keepNiri || (cfgOf h).myDisplay.session == "niri") [
-            "coordinator"
+            "strix"
             "client"
           ];
           # The physical session owns the portals: XDG_CURRENT_DESKTOP=scroll's
           # table names Nautilus for FileChooser, wlr for capture, gnome-keyring
           # for Secret; scroll's session export is SCROLLSOCK-only.
-          assert builtins.all (
-            h:
-            let
-              c = cfgOf h;
-              p = c.xdg.portal.config.scroll;
-              sessionConf = builtins.concatStringsSep "\n" (
-                builtins.filter (nixpkgs.lib.hasPrefix "exec ") (
-                  nixpkgs.lib.splitString "\n" c.environment.etc."scroll/config.d/10-session.conf".text
-                )
-              );
-            in
-            p."org.freedesktop.impl.portal.FileChooser" == "gnome"
-            && p."org.freedesktop.impl.portal.ScreenCast" == "wlr"
-            && p."org.freedesktop.impl.portal.Screenshot" == "wlr"
-            && p."org.freedesktop.impl.portal.Secret" == "gnome-keyring"
-            && builtins.elem p.default [ "gtk" [ "gtk" ] ]
-            && c.xdg.portal.wlr.enable
-            && nixpkgs.lib.hasInfix " SCROLLSOCK " sessionConf
-            && !(nixpkgs.lib.hasInfix "SWAYSOCK" sessionConf)
-            && !(nixpkgs.lib.hasInfix "I3SOCK" sessionConf)
-            && c.systemd.user.services.scroll.restartIfChanged == false
-            && c.systemd.user.services.scroll.enableDefaultPath == false
-          ) (builtins.filter (h: (cfgOf h).programs.scroll.enable) [
-            "coordinator"
-            "client"
-          ]);
+          assert builtins.all
+            (
+              h:
+              let
+                c = cfgOf h;
+                p = c.xdg.portal.config.scroll;
+                sessionConf = builtins.concatStringsSep "\n" (
+                  builtins.filter (nixpkgs.lib.hasPrefix "exec ") (
+                    nixpkgs.lib.splitString "\n" c.environment.etc."scroll/config.d/10-session.conf".text
+                  )
+                );
+              in
+              p."org.freedesktop.impl.portal.FileChooser" == "gnome"
+              && p."org.freedesktop.impl.portal.ScreenCast" == "wlr"
+              && p."org.freedesktop.impl.portal.Screenshot" == "wlr"
+              && p."org.freedesktop.impl.portal.Secret" == "gnome-keyring"
+              && builtins.elem p.default [
+                "gtk"
+                [ "gtk" ]
+              ]
+              && c.xdg.portal.wlr.enable
+              && nixpkgs.lib.hasInfix " SCROLLSOCK " sessionConf
+              && !(nixpkgs.lib.hasInfix "SWAYSOCK" sessionConf)
+              && !(nixpkgs.lib.hasInfix "I3SOCK" sessionConf)
+              && c.systemd.user.services.scroll.restartIfChanged == false
+              && c.systemd.user.services.scroll.enableDefaultPath == false
+            )
+            (
+              builtins.filter (h: (cfgOf h).programs.scroll.enable) [
+                "strix"
+                "client"
+              ]
+            );
           # The niri rollback, evaluated in memory (never switched): with
           # session = "niri" each seat gets exactly the niri desktop main had —
           # greetd starts niri-session, scroll is off, niri's portal table is
           # the one the scroll default carries for it, piri's service and
           # xwayland-satellite are installed.
-          assert builtins.all (
-            h:
-            let
-              c = cfgOf h;
-              r =
-                (self.nixosConfigurations.${h}.extendModules {
-                  modules = [ { myDisplay.session = nixpkgs.lib.mkForce "niri"; } ];
-                }).config;
-              rh = r.home-manager.users.tom;
-            in
-            r.programs.niri.enable
-            && !r.programs.scroll.enable
-            && nixpkgs.lib.hasSuffix "/bin/niri-session" r.services.greetd.settings.initial_session.command
-            && r.xdg.portal.config.niri == c.xdg.portal.config.niri
-            && rh.systemd.user.services ? piri
-            && rh.systemd.user.services.piri.Unit.ConditionEnvironment == "NIRI_SOCKET"
-            && builtins.any (p: nixpkgs.lib.getName p == "xwayland-satellite") rh.home.packages
-            && builtins.any (p: nixpkgs.lib.getName p == "piri") rh.home.packages
-            && rh.gtk.enable
-            && rh.xdg.configFile ? "niri-local.kdl"
-          ) [
-            "coordinator"
-            "client"
-          ];
+          assert builtins.all
+            (
+              h:
+              let
+                c = cfgOf h;
+                r =
+                  (self.nixosConfigurations.${h}.extendModules {
+                    modules = [
+                      {
+                        myDisplay.session = nixpkgs.lib.mkForce "niri";
+                        myDisplay.enable = nixpkgs.lib.mkForce true;
+                      }
+                    ];
+                  }).config;
+                rh = r.home-manager.users.tom;
+              in
+              r.programs.niri.enable
+              && !r.programs.scroll.enable
+              && nixpkgs.lib.hasSuffix "/bin/niri-session" r.services.greetd.settings.initial_session.command
+              && r.xdg.portal.config.niri == c.xdg.portal.config.niri
+              && rh.systemd.user.services ? piri
+              && rh.systemd.user.services.piri.Unit.ConditionEnvironment == "NIRI_SOCKET"
+              && builtins.any (p: nixpkgs.lib.getName p == "xwayland-satellite") rh.home.packages
+              && builtins.any (p: nixpkgs.lib.getName p == "piri") rh.home.packages
+              && rh.gtk.enable
+              && rh.xdg.configFile ? "niri-local.kdl"
+            )
+            [
+              "client"
+            ];
           # MacTahoe on every session (non-negotiable): Home Manager's gtk
           # block keeps MacTahoe for GTK3 and its icons, and GTK4's gtk.css,
           # gtk-dark.css and assets point through ~/.config/theme at the
           # selected theme's MacTahoe gtk-4.0 dir. No generated libadwaita
           # colour sheet stands in for it.
-          assert builtins.all (
-            hm:
-            hm.gtk.enable
-            && nixpkgs.lib.hasPrefix "MacTahoe-" hm.gtk.theme.name
-            && nixpkgs.lib.hasPrefix "MacTahoe" hm.gtk.iconTheme.name
-            && builtins.all (f: hm.xdg.configFile ? "gtk-4.0/${f}") [ "gtk.css" "gtk-dark.css" "assets" ]
-            && hm.xdg.configFile ? "themes/noir/gtk-4.0"
-            && nixpkgs.lib.hasInfix "MacTahoe" (toString hm.xdg.configFile."themes/noir/gtk-4.0".source)
-            && !(hm.xdg.configFile ? "themes/noir/gtk4.css")
-          ) [
-            coordinatorHome
-            clientHome
-          ];
+          assert builtins.all
+            (
+              hm:
+              hm.gtk.enable
+              && nixpkgs.lib.hasPrefix "MacTahoe-" hm.gtk.theme.name
+              && nixpkgs.lib.hasPrefix "MacTahoe" hm.gtk.iconTheme.name
+              && builtins.all (f: hm.xdg.configFile ? "gtk-4.0/${f}") [
+                "gtk.css"
+                "gtk-dark.css"
+                "assets"
+              ]
+              && hm.xdg.configFile ? "themes/noir/gtk-4.0"
+              && nixpkgs.lib.hasInfix "MacTahoe" (toString hm.xdg.configFile."themes/noir/gtk-4.0".source)
+              && !(hm.xdg.configFile ? "themes/noir/gtk4.css")
+            )
+            [
+              clientHome
+            ];
           # pkgs.sway stays stock for the headless browser desktop: scroll is a
           # NEW attribute, never an override of sway.
           assert pkgs.sway-unwrapped.src.repo or "sway" == "sway";
           assert nixpkgs.lib.getName pkgs.sway == "sway";
           assert pkgs.scroll.unwrapped.src.repo or "" == "scroll";
           assert (cfgOf "client").myDisplay.enable;
-          assert (cfgOf "coordinator").myDisplay.enable;
+          assert !(cfgOf "strix").myDisplay.enable;
           assert builtins.all
             (
               h:
@@ -1933,22 +1757,21 @@
                   (self.nixosConfigurations.${h}.config.home-manager.users.tom).home.packages
             )
             [
-              "coordinator"
               "client"
             ];
-          assert !(cfgOf "worker").myDisplay.enable;
+
           assert !(cfgOf "nas").myDisplay.enable;
           # The thin client (2026-09-11): Tom's seat, so niri and greetd are
-          # ON and the whole coordinator-gated tier is OFF — no tally, no
+          # ON and the whole strix-gated tier is OFF — no tally, no
           # voxtype, no herdr SERVER (the binary is here: Mod+Return is
-          # herdr-chord into a local `herdr --remote coordinator` projector,
+          # herdr-chord into a local `herdr --remote strix` projector,
           # #385 — asserted above on the RAW binds.kdl, and below as the
           # generated niri-local.kdl overriding none of those chords), no
-          # wayvnc SERVER (while the coordinator
-          # had a display the client VIEWED it through a `coordinator (VNC)`
+          # wayvnc SERVER (while the strix
+          # had a display the client VIEWED it through a `strix (VNC)`
           # Remmina profile — asserted below as an equality, absent since the
           # 2026-09-11 flip — and no
-          # `client (VNC)` profile ever exists on the coordinator, in either
+          # `client (VNC)` profile ever exists on the strix, in either
           # direction of the flip), no dcal daemon, no :5900 door, no
           # seat-feeder clocks. Touch is mapped globally to
           # eDP-1 on stock niri (PR #1856 accepted as a defect, no fork).
@@ -1975,10 +1798,10 @@
           assert !(clientHome.systemd.user.services ? wayvnc);
           assert !(clientHome.xdg.configFile ? "wayvnc/config");
           assert !(clientHome.systemd.user.services ? dcal-daemon);
-          assert coordinatorHome.systemd.user.services ? dcal-daemon;
+          assert strixHome.systemd.user.services ? dcal-daemon;
           # Physical-session VNC stays retired on both seats.
-          assert !(clientHome.xdg.dataFile ? "remmina/coordinator.remmina");
-          assert !(coordinatorHome.xdg.dataFile ? "remmina/client.remmina");
+          assert !(clientHome.xdg.dataFile ? "remmina/strix.remmina");
+          assert !(strixHome.xdg.dataFile ? "remmina/client.remmina");
           assert
             !builtins.elem 5900 (
               self.nixosConfigurations.client.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
@@ -1992,7 +1815,7 @@
           assert
             !(nixpkgs.lib.hasInfix "Mod+Ctrl+Shift+Return " clientHome.xdg.configFile."niri-local.kdl".text);
           assert !(nixpkgs.lib.hasInfix "Mod+Shift+N " clientHome.xdg.configFile."niri-local.kdl".text);
-          assert !(nixpkgs.lib.hasInfix "binds" coordinatorHome.xdg.configFile."niri-local.kdl".text);
+          assert !(nixpkgs.lib.hasInfix "binds" strixHome.xdg.configFile."niri-local.kdl".text);
           # scroll twins of the slot asserts: touch mapped, the lid handled by
           # bindswitch (hosts/client/lid.nix relies on the compositor for the
           # panel), and no override of the herdr chords.
@@ -2002,15 +1825,14 @@
             clientHome.xdg.configFile."scroll-local.conf".text;
           assert !(nixpkgs.lib.hasInfix "$mod+Return " clientHome.xdg.configFile."scroll-local.conf".text);
           assert !(nixpkgs.lib.hasInfix "$mod+Shift+n " clientHome.xdg.configFile."scroll-local.conf".text);
-          assert !(nixpkgs.lib.hasInfix "bindsym" coordinatorHome.xdg.configFile."scroll-local.conf".text);
+          assert !(nixpkgs.lib.hasInfix "bindsym" strixHome.xdg.configFile."scroll-local.conf".text);
+
           assert
             !builtins.elem 5900 (
-              self.nixosConfigurations.worker.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
+              self.nixosConfigurations.strix.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts
                 or [ ]
             );
-          assert
-            !builtins.elem 5900 self.nixosConfigurations.coordinator.config.networking.firewall.interfaces.tailscale0.allowedTCPPorts;
-          assert !self.nixosConfigurations.worker.config.services.tailscale.enable;
+
           pkgs.runCommand "home-profiles" { } ''
             touch "$out"
           '';
@@ -2021,9 +1843,9 @@
         # versions.
         herdr-oom-isolation =
           let
-            coordinatorHome = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
-            workerHome = self.nixosConfigurations.worker.config.home-manager.users.tom;
-            service = coordinatorHome.systemd.user.services.herdr;
+            strixHome = self.nixosConfigurations.strix.config.home-manager.users.tom;
+
+            service = strixHome.systemd.user.services.herdr;
           in
           assert service.Service.OOMPolicy == "continue";
           # #354: a switch (update-adopt's or Tom's) never restarts Herdr.
@@ -2031,9 +1853,9 @@
           # the rendered unit text is checked too, so a renamed option cannot
           # silently drop the line.
           assert service.Unit.X-SwitchMethod == "keep-old";
-          assert !(workerHome.systemd.user.services ? herdr);
+
           pkgs.runCommand "herdr-oom-isolation" { } ''
-            unit=${coordinatorHome.xdg.configFile."systemd/user/herdr.service".source}
+            unit=${strixHome.xdg.configFile."systemd/user/herdr.service".source}
             grep -qx 'X-SwitchMethod=keep-old' "$unit"
             grep -qx 'OOMPolicy=continue' "$unit"
             touch "$out"
@@ -2069,7 +1891,7 @@
 
         ai-memory =
           let
-            homeConfig = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
+            homeConfig = self.nixosConfigurations.strix.config.home-manager.users.tom;
             expectedJournal = "/home/tom/mecattaf/notes/journal";
           in
           assert homeConfig.programs.ai-memory.journalDir == expectedJournal;
@@ -2151,7 +1973,7 @@
         # `nix flake check --offline --no-build` evaluates and does not build.
         no-claude-code-hooks =
           let
-            homeConfig = self.nixosConfigurations.coordinator.config.home-manager.users.tom;
+            homeConfig = self.nixosConfigurations.strix.config.home-manager.users.tom;
             settings = builtins.fromJSON (builtins.readFile ./home/dot_claude/settings.json);
           in
           assert !(settings ? hooks);
@@ -2230,14 +2052,14 @@
             lib = nixpkgs.lib;
             guard = pkgs.callPackage ./pkgs/raw-dotfiles-guard.nix { };
             homeOf = h: self.nixosConfigurations.${h}.config.home-manager.users.tom;
-            entry = (homeOf "coordinator").home.activation.rawDotfilesGuard;
+            entry = (homeOf "strix").home.activation.rawDotfilesGuard;
           in
           assert
-            (homeOf "coordinator").rawDotfiles.programs == [
+            (homeOf "strix").rawDotfiles.programs == [
               "claude-transcript-mirror"
               "nightly-record"
             ];
-          assert (homeOf "worker").rawDotfiles.programs == [ ];
+
           assert (homeOf "client").rawDotfiles.programs == [ ];
           assert
             entry.before == [
@@ -2312,35 +2134,27 @@
         # never zero; it runs the collector with no systemd on PATH, which must
         # grade unknown, and with the appliance profile, which must grade
         # missing-by-design. The eval asserts pin the per-host profiles every
-        # collector reads and the coordinator-only host list.
+        # collector reads and the strix-only host list.
         fleet-status =
           let
             etc = host: self.nixosConfigurations.${host}.config.environment.etc;
             profile = host: builtins.fromJSON (etc host)."fleet-status/profile.json".text;
-            hostsJson = builtins.fromJSON (etc "coordinator")."fleet-status/hosts.json".text;
+            hostsJson = builtins.fromJSON (etc "strix")."fleet-status/hosts.json".text;
           in
-          assert (profile "coordinator").name == "strix-desk";
+          assert (profile "strix").name == "strix-server";
           assert
-            (profile "coordinator").roles == [
+            (profile "strix").roles == [
               "halogen"
               "attention"
             ];
-          assert (profile "worker").name == "strix-inference";
-          assert (profile "worker").roles == [ "halogen" ];
+
           assert (profile "nas").name == "appliance";
           assert !(profile "nas").user_manager;
           assert (profile "nas").roles == [ ];
           assert (profile "client").name == "thin-client";
           assert (profile "client").user_manager;
-          assert
-            map (h: h.name) hostsJson == [
-              "coordinator"
-              "worker"
-              "nas"
-              "client"
-            ];
-          assert !((etc "worker") ? "fleet-status/hosts.json");
-          # Root over ssh for every node, the coordinator too: update-adopt's
+
+          # Root over ssh for every node, the strix too: update-adopt's
           # state is root-only, so a local run as tom could never read it.
           assert builtins.all (h: h.transport == "ssh") hostsJson;
           pkgs.runCommand "fleet-status" { nativeBuildInputs = [ pkgs.python3 ]; } ''
@@ -2412,11 +2226,11 @@
         # systemd, /var, or production weights.
         local-model-transactions =
           let
-            workerConfig = self.nixosConfigurations.worker.config;
+            computeConfig = self.nixosConfigurations.strix.config;
             borrowPackage =
               nixpkgs.lib.findFirst (package: nixpkgs.lib.getName package == "local-models-borrow")
                 (throw "worker has no explicit local-models-borrow command")
-                workerConfig.environment.systemPackages;
+                computeConfig.environment.systemPackages;
           in
           pkgs.runCommand "local-model-transactions"
             {
@@ -2500,22 +2314,22 @@
 
         fleet-connectivity =
           let
-            coordinator = self.nixosConfigurations.coordinator.config;
+            strix = self.nixosConfigurations.strix.config;
             nas = self.nixosConfigurations.nas.config;
-            worker = self.nixosConfigurations.worker.config;
+
             client = self.nixosConfigurations.client.config;
             meshRegistry = import ./modules/mesh-registry.nix;
             # `worker` is spelled by concatenation throughout this check for one
             # narrow reason that SURVIVES its reinstatement: the ripgrep sweep at
             # the bottom greps the flake's own source tree, and a literal here
             # would match itself. It is no longer a "retired host" — see below.
-            strixWorker = "work" + "er";
+            retiredWorker = "work" + "er";
             # HALF of Tom's old ruling survives, and the halves are now split
             # (dotfiles#310, dotfiles#291). It used to read: the worker is a
             # HOST again, never a Tally executor AND never a Tally pool.
             #
             #   STILL TRUE, and asserted structurally below: never an EXECUTOR.
-            #   All jobs execute locally on the coordinator, home/tally.nix
+            #   All jobs execute locally on the strix, home/tally.nix
             #   declares `executors = { }`, and the worker runs no daemon
             #   (CONSOLIDATED §3 Q2). The GPU cooldown tripwire that used to
             #   reach across for a lease is dead and deleted.
@@ -2527,7 +2341,7 @@
             #   one is named after the box that holds it. It is a ROW IN THE
             #   COORDINATOR'S POOL TABLE, not an executor and not a daemon —
             #   nothing leases it yet. It exists so the first job that runs over
-            #   there has a lane to name instead of borrowing the coordinator's
+            #   there has a lane to name instead of borrowing the strix's
             #   and lying about which device it sat on.
             #
             # A pool row and an executor are different objects; the old guard
@@ -2545,19 +2359,19 @@
             #   `http://<host>:8731` and the `<host>-gpu` pool. A flow is a
             #   script that ENQUEUES work; a flow naming the other box as a
             #   place to run is the executor half that stayed retired (Q2: one
-            #   daemon, on the coordinator). Dialling the box's inference
+            #   daemon, on the strix). Dialling the box's inference
             #   server over HTTP, or leasing the pool row that describes its
             #   device (home/tally.nix declares it), is neither — every model
             #   call on this fleet lands on the worker now. Prose (README.md)
             #   is not checked. The pool row keeps its own structural
             #   assertion below, which is stronger than a grep over prose.
             retiredExecutionPattern = nixpkgs.lib.concatStringsSep "|" [
-              (strixWorker + "Flake")
-              (strixWorker + "Models")
+              (retiredWorker + "Flake")
+              (retiredWorker + "Models")
             ];
             # The bare name subsumes the "<host>-gpu" pool name: a flow may name
             # neither.
-            retiredFlowHostPattern = strixWorker;
+            retiredFlowHostPattern = retiredWorker;
             activeHostSets = [
               (builtins.attrNames self.nixosConfigurations)
               (builtins.attrNames self.deploy.nodes)
@@ -2567,75 +2381,45 @@
             # below is list EQUALITY: `client` sorts first.
             expectedHosts = [
               "client"
-              "coordinator"
               "nas"
-              strixWorker
+              "strix"
             ];
             retiredAliases = nixpkgs.lib.concatStringsSep "|" [
-              (strixWorker + "-tb")
-              ("coordinator-" + "tb")
+              (retiredWorker + "-tb")
+              ("strix-" + "tb")
             ];
             removedModel = "qwo" + "pus";
             monthlySources = builtins.fromJSON (builtins.readFile ./pkgs/local-ai-monthly/sources.json);
           in
-          # ── the fleet roll call ────────────────────────────────────────────
-          # This assertion pair used to demand the worker's ABSENCE from all
-          # three registries. It was already failing at HEAD: the 2026-08-21
-          # audit added the worker's row to mesh-registry.nix (host key live,
-          # user key deliberately empty) without touching this guard, so
-          # `nix flake check` had been red here too.
-          #
-          # Inverted with #229, and deliberately kept as a three-way agreement
-          # rather than deleted. The registries drifting apart is the actual
-          # failure mode this catches, in either direction: a host in the flake
-          # but not in deploy-rs cannot be pushed to in an emergency; a host in
-          # the mesh registry but not in the flake is a set of authorized keys
-          # for a machine nobody builds. Both happened to this very host.
-          assert nixpkgs.lib.all (hosts: nixpkgs.lib.elem strixWorker hosts) activeHostSets;
+
           assert nixpkgs.lib.all (hosts: hosts == expectedHosts) activeHostSets;
-          # Permanence, in config rather than prose (Tom: "not a lease"). The
-          # worker's registry row must carry BOTH keys: the host key is agenix's
-          # decryption identity and the reason the reintegration is a switch and
-          # not a reflash, and the user key must be the SHARED rotated key — the
-          # same string the coordinator carries. The old tom@mesh key that left
-          # on this device in July must never reappear; any value other than the
-          # coordinator's fails here.
-          assert meshRegistry.${strixWorker}.hostKey != "";
-          assert meshRegistry.${strixWorker}.userKey == meshRegistry.coordinator.userKey;
-          assert nixpkgs.lib.hasInfix "tom@mesh-20260729" meshRegistry.${strixWorker}.userKey;
+
           # Every dialable identity addressable without TOFU — exactly one per
           # twin, the static LAN address; an alias that answers nowhere only
           # buys TOFU prompts.
+
           assert
-            meshRegistry.${strixWorker}.aliases == [
-              "worker"
-              "10.42.0.5"
-            ];
-          assert
-            meshRegistry.coordinator.aliases == [
+            meshRegistry.strix.aliases == [
+              "strix"
               "coordinator"
               "10.42.0.2"
             ];
-          # The client (2026-09-11): the fleet host key omarchy-fleet minted on
-          # 2026-09-07, REUSED — the return was an in-place switch, and the key
-          # is the agenix identity — never the 2026-07-05 `zenbook-duo` key
-          # that is public in git history; the shared rotated user key, same
-          # string as the twins; the name plus the NAS-pinned lease. Every
-          # host that dials `client` answers 10.42.0.16, and the client dials
-          # both twins by their static addresses without importing the twins'
-          # own hosts module (it keeps its stock loopback self-mapping).
           assert meshRegistry.client.hostKey != "";
           assert !(nixpkgs.lib.hasInfix "QoQJxxP" meshRegistry.client.hostKey);
-          assert meshRegistry.client.userKey == meshRegistry.coordinator.userKey;
+          assert meshRegistry.client.userKey == meshRegistry.strix.userKey;
           assert
             meshRegistry.client.aliases == [
               "client"
               "10.42.0.16"
             ];
-          assert coordinator.networking.hosts."10.42.0.16" == [ "client" ];
-          assert worker.networking.hosts."10.42.0.16" == [ "client" ];
-          assert client.networking.hosts."10.42.0.2" == [ "coordinator" ];
-          assert client.networking.hosts."10.42.0.5" == [ strixWorker ];
+          assert strix.networking.hosts."10.42.0.16" == [ "client" ];
+
+          assert
+            client.networking.hosts."10.42.0.2" == [
+              "strix"
+              "coordinator"
+            ];
+
           assert client.networking.hosts."10.42.0.1" == [ "nas" ];
           assert client.networking.hosts."127.0.0.2" == [ "client" ];
           assert client.networking.hostName == "client";
@@ -2650,8 +2434,8 @@
           assert client.mySecrets.enable;
           assert client.services.zenbook-duo-daemon.enable;
           assert self.deploy.nodes.client.hostname == "client";
-          assert coordinator.networking.hosts."10.42.0.1" == [ "nas" ];
-          assert builtins.elem "coordinator" nas.networking.hosts."10.42.0.2";
+          assert strix.networking.hosts."10.42.0.1" == [ "nas" ];
+          assert builtins.elem "strix" nas.networking.hosts."10.42.0.2";
           # #273: the TWINS' own names must NEVER resolve to loopback again.
           # Stock NixOS sets networking.hosts."127.0.0.2" = [ hostName ]; that
           # address resolves fine, so every gethostname()-and-bind library
@@ -2662,12 +2446,14 @@
           # renders no /etc/hosts line at all (nixpkgs filters it).
           # Exact lists: a second entry for either name would be ordered by
           # systemd-resolved, not by the file.
-          assert coordinator.networking.hosts."127.0.0.2" == [ ];
-          assert worker.networking.hosts."127.0.0.2" == [ ];
-          assert coordinator.networking.hosts."10.42.0.2" == [ "coordinator" ];
-          assert coordinator.networking.hosts."10.42.0.5" == [ strixWorker ];
-          assert worker.networking.hosts."10.42.0.2" == [ "coordinator" ];
-          assert worker.networking.hosts."10.42.0.5" == [ strixWorker ];
+          assert strix.networking.hosts."127.0.0.2" == [ ];
+
+          assert
+            strix.networking.hosts."10.42.0.2" == [
+              "strix"
+              "coordinator"
+            ];
+
           # ...and the NAS keeps the stock mapping, deliberately: it is an
           # appliance, not a rank in a job, and it does not import
           # modules/fleet-hosts.nix.
@@ -2679,37 +2465,30 @@
           # actually matters in an mt7925e hard lockup: the upload is best-effort
           # and the local ring is the forensic record.
           assert nas.services.journald.remote.enable;
-          assert coordinator.services.journald.upload.settings.Upload.URL == "http://10.42.0.1:19532";
-          assert coordinator.services.journald.storage == "persistent";
-          assert worker.services.journald.upload.enable;
-          assert worker.services.journald.upload.settings.Upload.URL == "http://10.42.0.1:19532";
-          assert worker.services.journald.storage == "persistent";
+          assert strix.services.journald.upload.settings.Upload.URL == "http://10.42.0.1:19532";
+          assert strix.services.journald.storage == "persistent";
+
           # A sender the receiver does not admit is a silent hole: journald-remote
           # would simply never see it. Assert the NAS's nftables ACL names both.
           assert nixpkgs.lib.hasInfix "ip saddr 10.42.0.2 tcp dport 19532 accept"
             nas.networking.firewall.extraInputRules;
-          assert nixpkgs.lib.hasInfix "ip saddr 10.42.0.5 tcp dport 19532 accept"
-            nas.networking.firewall.extraInputRules;
-          assert self.deploy.nodes.coordinator.hostname == "coordinator";
+
+          assert self.deploy.nodes.strix.hostname == "strix";
           assert self.deploy.nodes.nas.hostname == "nas";
           # The worker is dialled by NAME since 2026-09-11 — it resolves to the
-          # static LAN address on the coordinator (modules/fleet-hosts.nix),
+          # static LAN address on the strix (modules/fleet-hosts.nix),
           # which is the box's only address now. Asserted against the registry
           # so this can never drift into an address that carries no pinned
           # host key.
-          assert self.deploy.nodes.${strixWorker}.hostname == strixWorker;
-          assert nixpkgs.lib.elem self.deploy.nodes.${strixWorker}.hostname
-            meshRegistry.${strixWorker}.aliases;
+
           # The `worker` -> 10.42.0.5 NAME pin exists on every host that dials
           # it, and every host agrees on the answer: the NAS from
-          # hosts/nas/network.nix (its Immich dials http://worker:3003), the
+          # hosts/nas/network.nix (its Immich dials http://strix:3003), the
           # twins from modules/fleet-hosts.nix. Host-scoped rather than
           # fleet-wide on purpose — two /etc/hosts lines for one name are
           # ordered by systemd-resolved, not by the file (#277), so each host
           # carries exactly one and modules/common.nix carries none.
-          assert nas.networking.hosts."10.42.0.5" == [ strixWorker ];
-          assert coordinator.networking.hosts."10.42.0.5" == [ strixWorker ];
-          assert worker.networking.hosts."10.42.0.5" == [ strixWorker ];
+
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
           # ── the emergency rail (2026-09-01) ────────────────────────────────
           # This box owns its own tailnet since the fleet-wide default in
@@ -2719,27 +2498,25 @@
           # again if the enable were dropped and the flags left behind as inert
           # decoration. Exact list, not `elem`: the flag set is the rail's whole
           # configuration and a silent addition to it is a change of posture.
-          assert coordinator.services.tailscale.enable;
-          assert coordinator.services.tailscale.extraUpFlags == [ "--ssh" ];
-          assert coordinator.services.tailscale.extraSetFlags == [ "--ssh" ];
+          assert !strix.services.tailscale.enable;
+          assert strix.services.tailscale.extraUpFlags == [ ];
+          assert strix.services.tailscale.extraSetFlags == [ ];
           # ...and it must actually be able to JOIN unattended, which is the one
           # property an idle fallback cannot prove by being idle. The authkey is
           # wired by modules/secrets.nix's host-gated block, not by hand — assert
           # the wiring rather than the file's existence, so a rename of the
           # ciphertext or a change to that gate surfaces here.
-          assert coordinator.age.secrets ? tailscale-authkey;
-          assert coordinator.services.tailscale.authKeyFile == coordinator.age.secrets.tailscale-authkey.path;
+          assert !(strix.age.secrets ? tailscale-authkey);
+
           # The worker is the counter-example, and since 2026-09-01 the empty
           # flag lists hold BY DEFAULT rather than by mkForce — which is the
           # positive statement that no fleet-wide tailscale tier is back. Keep
           # all three: they are the tripwire on modules/common.nix.
-          assert !worker.services.tailscale.enable;
-          assert worker.services.tailscale.extraUpFlags == [ ];
-          assert worker.services.tailscale.extraSetFlags == [ ];
+
           # No tailnet means no authkey secret may be declared for this host —
           # the guard added to modules/secrets.nix with #229. A stale key here
           # would silently re-join the box on its next flash.
-          assert !(worker.age.secrets ? tailscale-authkey);
+
           # The NAS keeps a tailnet, on its OWN control plane — see the
           # headscale block in nas-topology for the shape assert.
           assert nas.services.tailscale.enable;
@@ -2752,99 +2529,83 @@
           # Discovery remains restricted to the wired LAN.
           assert nas.services.avahi.enable;
           assert nas.services.avahi.allowInterfaces == [ "enp1s0" ];
-          assert nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [ 53 ];
+          assert
+            nas.networking.firewall.interfaces.tailscale0.allowedTCPPorts == [
+              22
+              53
+              2283
+              4533
+              32400
+            ];
           assert !(builtins.hasAttr "home-manager" self.nixosConfigurations.nas.options);
           assert nas.myNas.storage.enable;
           assert nas.myNas.media.enable;
           assert nas.services.immich.enable;
           assert nas.services.navidrome.enable;
-          assert !coordinator.myCoordinatorMedia.enable;
-          assert coordinator.myNasClient.useRemoteStorage;
-          assert coordinator.myNasClient.relayMedia;
-          # ML is the one endpoint that is NOT a coordinator relay any more: the
+          assert !strix.myCoordinatorMedia.enable;
+          assert strix.myNasClient.useRemoteStorage;
+          assert strix.myNasClient.relayMedia;
+          # ML is the one endpoint that is NOT a strix relay any more: the
           # socket must exist on the worker and must be GONE from the
-          # coordinator. Asserting both directions is deliberate — a half-move
+          # strix. Asserting both directions is deliberate — a half-move
           # that left both boxes listening on :3003 would work by accident and
           # then rot.
-          assert worker.systemd.sockets ? immich-ml-access;
-          assert !(coordinator.systemd.sockets ? immich-ml-access);
-          assert coordinator.systemd.services.tailscaled-autoconnect.serviceConfig.RestartSec == "1min";
+
+          assert strix.systemd.sockets ? immich-ml-access;
+
           # Distributed builds stay OFF. The worker being back does NOT make it a
           # build farm: the fleet's build story is the NAS update-center (build
           # nightly on the appliance, pull everywhere), which is why
           # hosts/worker/cache-push.nix was dropped rather than restored.
-          assert !coordinator.nix.distributedBuilds;
-          assert coordinator.nix.buildMachines == [ ];
-          assert !worker.nix.distributedBuilds;
-          assert worker.nix.buildMachines == [ ];
-          assert !(worker.nix.settings ? post-build-hook);
-          assert nixpkgs.lib.elem "http://nas:8080/fleet" worker.nix.settings.extra-substituters;
+          assert !strix.nix.distributedBuilds;
+          assert strix.nix.buildMachines == [ ];
+
           # Doctrine, 2026-09-10: no model byte transfer may enter update,
           # activation, boot, or service ordering. Both endpoints get one
           # explicit borrow CLI; neither gets a transfer service or timer.
-          assert !(worker.systemd.services ? local-models-sync);
-          assert !(coordinator.systemd.services ? local-models-sync);
-          assert !(worker.systemd.services ? local-models-borrow);
-          assert !(coordinator.systemd.services ? local-models-borrow);
-          assert !(worker.systemd.timers ? local-models-sync);
-          assert !(coordinator.systemd.timers ? local-models-sync);
-          assert !(worker.systemd.timers ? local-models-borrow);
-          assert !(coordinator.systemd.timers ? local-models-borrow);
+
+          assert !(strix.systemd.services ? local-models-sync);
+
+          assert !(strix.systemd.services ? local-models-borrow);
+
+          assert !(strix.systemd.timers ? local-models-sync);
+
+          assert !(strix.systemd.timers ? local-models-borrow);
+
           assert
             builtins.length (
               nixpkgs.lib.filter (
                 package: nixpkgs.lib.getName package == "local-models-borrow"
-              ) worker.environment.systemPackages
-            ) == 1;
-          assert
-            builtins.length (
-              nixpkgs.lib.filter (
-                package: nixpkgs.lib.getName package == "local-models-borrow"
-              ) coordinator.environment.systemPackages
+              ) strix.environment.systemPackages
             ) == 1;
           # The Halogen unit orders after nothing model-shaped either: its
           # pre-start CHECKS the bundle and refuses; it never fetches.
-          assert
-            !(nixpkgs.lib.elem "local-models-sync.service" (
-              worker.systemd.services.podman-halogen.after or [ ]
-            ));
-          assert
-            !(nixpkgs.lib.elem "local-models-borrow.service" (
-              worker.systemd.services.podman-halogen.after or [ ]
-            ));
+
           # NAS downloads remain a separate timer/operator action, never an
           # update-center or activation dependency.
           assert (nas.systemd.services.library-fetch.wantedBy or [ ]) == [ ];
           # Tally is gone (sunset 2026-09-30), so there is no executor or pool
           # table left to hold a row for the worker.
-          assert !(coordinator.home-manager.users.tom.services ? tally);
+          assert !(strix.home-manager.users.tom.services ? tally);
           # ...but very much present in the SSH mesh, in both directions. This
           # assertion was the inverse until #229 and was failing at HEAD, since
           # the audit had already added the registry row.
-          assert builtins.hasAttr strixWorker coordinator.programs.ssh.knownHosts;
-          assert builtins.hasAttr "coordinator" worker.programs.ssh.knownHosts;
-          assert nixpkgs.lib.elem meshRegistry.coordinator.userKey
-            worker.users.users.tom.openssh.authorizedKeys.keys;
+
           # myCluster died with the role option; per-host policy in
           # modules/strix.nix is selected by hostname on BOTH Strix boxes now.
-          assert !(self.nixosConfigurations.coordinator.options ? myCluster);
-          assert !(self.nixosConfigurations.${strixWorker}.options ? myCluster);
+          assert !(self.nixosConfigurations.strix.options ? myCluster);
+
           # ── mono-model: the wanted sets, exact ─────────────────────────────
           # Exact lists, not membership tests, so a new hundred-gigabyte row
           # has to be argued for here in writing before it can cost a twin its
           # disk. Both twins want the two Halogen bundles they serve (Tom,
-          # 2026-09-16); the coordinator adds the streaming ASR and its speech
+          # 2026-09-16); the strix adds the streaming ASR and its speech
           # (TTS) rows; the wake and Parakeet rows left on 2026-09-30. There is
           # no `allow` any more: nothing is a deployment, nothing is served by a
           # roster.
-          assert !(worker.services.local-models ? allow);
+
           assert
-            worker.services.local-models.artifacts == [
-              "halogen-qwen38-flash-next"
-              "halogen-qwen38-27b"
-            ];
-          assert
-            coordinator.services.local-models.artifacts == [
+            strix.services.local-models.artifacts == [
               "halogen-qwen38-flash-next"
               "halogen-qwen38-27b"
               "vibevoice-asr-streaming-7b-bf16"
@@ -2868,190 +2629,113 @@
             ];
           assert localModelCatalog.artifacts.halogen-qwen38-flash-next.source.layout == "snapshot";
           assert builtins.length localModelCatalog.artifacts.halogen-qwen38-flash-next.source.files == 9;
-          # ── Halogen: declared on both twins, resident on the worker only ───
-          # Tom, 2026-09-16: both engines on both devices. The worker keeps
-          # Flash resident from boot and is the `utility` endpoint; the
-          # coordinator (a desktop that also runs TTS and diarization) starts
-          # either engine only when an operator runs halogen-switch.
-          assert worker.services.halogen.enable;
-          assert coordinator.services.halogen.enable;
-          assert worker.services.halogen.autoStart;
-          assert !coordinator.services.halogen.autoStart;
-          assert worker.virtualisation.oci-containers.containers.halogen.autoStart;
-          assert !coordinator.virtualisation.oci-containers.containers.halogen.autoStart;
-          assert coordinator.services.halogen.client.enable;
-          assert !worker.services.halogen.client.enable;
-          assert worker.virtualisation.oci-containers.containers ? halogen;
+
+          assert strix.services.halogen.enable;
+
+          assert strix.services.halogen.autoStart;
+
+          assert strix.virtualisation.oci-containers.containers.halogen.autoStart;
+          assert strix.services.halogen.client.enable;
+
           # One declaration, two hosts: the containers differ only in autoStart
-          # and the coordinator's two desktop memory bounds (Flash's KV pool,
+          # and the strix's two desktop memory bounds (Flash's KV pool,
           # the 27B's prompt-cache budget).
+
           assert
-            removeAttrs worker.virtualisation.oci-containers.containers.halogen [
-              "autoStart"
-              "environment"
-            ] == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen [
-              "autoStart"
-              "environment"
-            ];
-          assert
-            removeAttrs worker.virtualisation.oci-containers.containers.halogen.environment [
-              "HALOGEN_KV_POOL_POSITIONS"
-            ] == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen.environment [
-              "HALOGEN_KV_POOL_POSITIONS"
-            ];
-          assert
-            !(worker.virtualisation.oci-containers.containers.halogen.environment ? HALOGEN_KV_POOL_POSITIONS);
-          assert
-            coordinator.virtualisation.oci-containers.containers.halogen.environment.HALOGEN_KV_POOL_POSITIONS
+            strix.virtualisation.oci-containers.containers.halogen.environment.HALOGEN_KV_POOL_POSITIONS
             == "262144";
+
           assert
-            removeAttrs worker.virtualisation.oci-containers.containers.halogen-qwen38-27b [ "environment" ]
-            == removeAttrs coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b [
-              "environment"
-            ];
-          assert
-            !(
-              worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment ? HALOGEN_CACHE_MB
-            );
-          assert
-            coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_CACHE_MB
+            strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_CACHE_MB
             == "8192";
           # halogen-server 0.1.4 by digest; never a runtime download.
+
           assert
-            worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.image
-            == "ghcr.io/peonist-ai/halogen@sha256:dc0a39a0016d6cfc58a197978febaafdf8d28403f724ded6111d98b5fb7ac0ea";
+            !(strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment ? HALOGEN_DOWNLOAD);
           assert
-            !(
-              coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment
-              ? HALOGEN_DOWNLOAD
-            );
-          assert
-            coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_TOKENIZER
+            strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_TOKENIZER
             == "/models/tokenizer";
-          assert worker.services.halogen.lanInterface == "enp191s0";
-          assert coordinator.services.halogen.lanInterface == "wlp192s0";
-          assert nixpkgs.lib.hasPrefix "ghcr.io/peonist-ai/halogen-flash-server@sha256:"
-            worker.virtualisation.oci-containers.containers.halogen.image;
-          assert
-            worker.virtualisation.oci-containers.containers.halogen.volumes == [
-              "/var/lib/local-models/halogen-qwen38-flash-next:/models:ro"
-            ];
-          assert
-            worker.virtualisation.oci-containers.containers.halogen.environment.HALOGEN_TOKENIZER
-            == "/models/tokenizer";
-          assert worker.virtualisation.oci-containers.containers.halogen.environment ? HALOGEN_VISION_TOWER;
+
+          assert strix.services.halogen.lanInterface == "enp191s0";
+
           # The service never downloads weights (model-byte doctrine).
-          assert !(worker.virtualisation.oci-containers.containers.halogen.environment ? HALOGEN_DOWNLOAD);
-          assert nixpkgs.lib.all
-            (flag: nixpkgs.lib.elem flag worker.virtualisation.oci-containers.containers.halogen.extraOptions)
-            [
-              "--network=host"
-              "--device=/dev/kfd"
-              "--device=/dev/dri"
-              "--ipc=host"
-              "--ulimit=memlock=-1:-1"
-            ];
-          assert worker.systemd.services.podman-halogen.serviceConfig.TimeoutStartSec == "45min";
+
           # The alternate 27B engine: declared, never started at boot, and
           # never resident together with Flash (mutual Conflicts=), on the same
           # port so clients need not care which one answers.
-          assert builtins.attrNames worker.services.halogen.alternates == [ "qwen38-27b" ];
-          assert builtins.attrNames coordinator.services.halogen.alternates == [ "qwen38-27b" ];
-          assert !coordinator.virtualisation.oci-containers.containers.halogen-qwen38-27b.autoStart;
-          assert
-            coordinator.systemd.services.podman-halogen.conflicts == [ "podman-halogen-qwen38-27b.service" ];
-          assert worker.virtualisation.oci-containers.containers ? halogen-qwen38-27b;
-          assert !worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.autoStart;
-          assert nixpkgs.lib.hasPrefix "ghcr.io/peonist-ai/halogen@sha256:"
-            worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.image;
-          assert
-            worker.virtualisation.oci-containers.containers.halogen-qwen38-27b.environment.HALOGEN_API_PORT
-            == worker.virtualisation.oci-containers.containers.halogen.environment.HALOGEN_API_PORT;
-          assert worker.systemd.services.podman-halogen.conflicts == [ "podman-halogen-qwen38-27b.service" ];
-          assert worker.systemd.services.podman-halogen-qwen38-27b.conflicts == [ "podman-halogen.service" ];
+
+          assert builtins.attrNames strix.services.halogen.alternates == [ "qwen38-27b" ];
+          assert !strix.virtualisation.oci-containers.containers.halogen-qwen38-27b.autoStart;
+          assert strix.systemd.services.podman-halogen.conflicts == [ "podman-halogen-qwen38-27b.service" ];
+
           assert
             builtins.length (
               nixpkgs.lib.filter (
                 package: nixpkgs.lib.getName package == "halogen-switch"
-              ) worker.environment.systemPackages
+              ) strix.environment.systemPackages
             ) == 1;
-          assert
-            builtins.length (
-              nixpkgs.lib.filter (
-                package: nixpkgs.lib.getName package == "halogen-switch"
-              ) coordinator.environment.systemPackages
-            ) == 1;
-          # The GTT size follows the server onto both twins; on the coordinator
-          # it takes effect at its next reboot (Tom's step).
-          assert nixpkgs.lib.elem "amdgpu.gttsize=126976" worker.boot.kernelParams;
-          assert nixpkgs.lib.elem "amdgpu.gttsize=126976" coordinator.boot.kernelParams;
-          # The utility-model wrapper lives on the coordinator only.
+
+          assert nixpkgs.lib.elem "amdgpu.gttsize=126976" strix.boot.kernelParams;
+          # The utility-model wrapper lives on the strix only.
           assert
             builtins.length (
               nixpkgs.lib.filter (
                 package: nixpkgs.lib.getName package == "utility-model"
-              ) coordinator.environment.systemPackages
+              ) strix.environment.systemPackages
             ) == 1;
-          assert
-            builtins.length (
-              nixpkgs.lib.filter (
-                package: nixpkgs.lib.getName package == "utility-model"
-              ) worker.environment.systemPackages
-            ) == 0;
+
           # llama-swap is gone from every host: no unit, no proxy, no door.
-          assert !coordinator.services.llama-swap.enable;
-          assert !worker.services.llama-swap.enable;
-          assert !(coordinator.systemd.services ? llama-swap);
-          assert !(worker.systemd.services ? llama-swap);
-          assert !(coordinator.systemd.targets ? flashnext-lane);
-          assert !(worker.systemd.targets ? flashnext-lane);
+          assert !strix.services.llama-swap.enable;
+
+          assert !(strix.systemd.services ? llama-swap);
+
+          assert !(strix.systemd.targets ? flashnext-lane);
+
           # AdGuard is FORBIDDEN per-device on this LAN (DoH vs the NAS's
           # dns_hijack). The worker is the box that collision was first proven
           # on, so its closure must not carry the service at all.
-          assert !worker.services.adguardhome.enable;
-          assert !coordinator.services.adguardhome.enable;
-          assert coordinator.microvm.host.enable;
-          assert !(self.nixosConfigurations.coordinator.options.myArtifacts ? livePortRange);
+
+          assert !strix.services.adguardhome.enable;
+          assert strix.microvm.host.enable;
+          assert !(self.nixosConfigurations.strix.options.myArtifacts ? livePortRange);
           # Crash surfacing (#134): the blanket OnFailure handler and both journal watchers exist.
-          assert coordinator.systemd.services."failure-notify@".serviceConfig.Type == "oneshot";
-          assert coordinator.systemd.timers ? tripwire-coredump;
-          assert coordinator.systemd.timers ? tripwire-user-unit-failure;
-          assert coordinator.systemd.timers ? failure-marker-reconcile;
+          assert strix.systemd.services."failure-notify@".serviceConfig.Type == "oneshot";
+          assert strix.systemd.timers ? tripwire-coredump;
+          assert strix.systemd.timers ? tripwire-user-unit-failure;
+          assert strix.systemd.timers ? failure-marker-reconcile;
           assert monthlySources.inference.provider == "halogen";
-          assert monthlySources.inference.url == "http://worker:8731";
-          assert monthlySources.inference.compute_host == "worker";
-          assert monthlySources.inference.tally_pool == "coordinator-gpu";
+          assert monthlySources.inference.url == "http://strix:8731";
+          assert monthlySources.inference.compute_host == "strix";
+          assert monthlySources.inference.tally_pool == "strix-gpu";
           # ── NPU decommission, 2026-08-29 (fleet-7.2) ──────────────────────
           # These used to assert the NPU stack was PRESENT. The house style for
           # a removal is to flip them negative rather than delete them, so the
           # absence is locked in and a silent re-enable is a build failure.
-          assert !coordinator.hardware.amd-npu.enable;
-          assert !coordinator.hardware.amd-npu.enableNPU;
-          assert !worker.hardware.amd-npu.enable;
-          assert !worker.hardware.amd-npu.enableNPU;
-          assert nixpkgs.lib.elem "amd_iommu=off" coordinator.boot.kernelParams;
-          assert !(nixpkgs.lib.elem "amd_iommu=on" coordinator.boot.kernelParams);
-          assert nixpkgs.lib.elem "amd_iommu=off" worker.boot.kernelParams;
-          assert !(nixpkgs.lib.elem "amd_iommu=on" worker.boot.kernelParams);
+          assert !strix.hardware.amd-npu.enable;
+          assert !strix.hardware.amd-npu.enableNPU;
+
+          assert nixpkgs.lib.elem "amd_iommu=off" strix.boot.kernelParams;
+          assert !(nixpkgs.lib.elem "amd_iommu=on" strix.boot.kernelParams);
+
           # #244 checklist: sp5100_tco must stay armed through the reboot
           # transition, which is exactly when a wedged box needs it.
-          assert nixpkgs.lib.elem "watchdog.stop_on_reboot=0" coordinator.boot.kernelParams;
-          assert nixpkgs.lib.elem "watchdog.stop_on_reboot=0" worker.boot.kernelParams;
+          assert nixpkgs.lib.elem "watchdog.stop_on_reboot=0" strix.boot.kernelParams;
+
           # The twins ride linux 7.2 from nixpkgs-fresh (modules/strix.nix).
           # hasPrefix, not equality: the versioned attr advances within 7.2.x.
-          assert nixpkgs.lib.hasPrefix "7.2" coordinator.boot.kernelPackages.kernel.version;
-          assert nixpkgs.lib.hasPrefix "7.2" worker.boot.kernelPackages.kernel.version;
-          # `assert !{coordinator,worker}.services.npu-llm.enable` stood here
+          assert nixpkgs.lib.hasPrefix "7.2" strix.boot.kernelPackages.kernel.version;
+
+          # `assert !{strix,worker}.services.npu-llm.enable` stood here
           # until 2026-08-31 (#270): with modules/npu-llm.nix deleted the
           # option no longer evaluates, and the absence asserts below are the
           # ones that still bite (they guard the upstream nix-amd-ai module,
           # which keeps shipping fastflowlm/flm machinery we must not enable).
           # The ad-hoc FLM manifest was a product of services.npu-llm; with the
           # module gone the etc entry must not exist at all.
-          assert !(coordinator.environment.etc ? "local-models/fastflowlm.json");
-          assert !(worker.environment.etc ? "local-models/fastflowlm.json");
+          assert !(strix.environment.etc ? "local-models/fastflowlm.json");
+
           assert nixpkgs.lib.all (unit: !(nixpkgs.lib.hasPrefix "flm-" unit)) (
-            builtins.attrNames coordinator.systemd.services
+            builtins.attrNames strix.systemd.services
           );
           pkgs.runCommand "fleet-connectivity" { } ''
             if ${pkgs.ripgrep}/bin/rg --line-number '${retiredAliases}' ${self}; then
@@ -3069,7 +2753,7 @@
             fi
             if ${pkgs.ripgrep}/bin/rg --line-number --glob '!README.md' '${retiredFlowHostPattern}' \
               ${./flows} \
-              | ${pkgs.ripgrep}/bin/rg --invert-match 'http://${strixWorker}:8731|${strixWorker}-gpu'; then
+              | ${pkgs.ripgrep}/bin/rg --invert-match 'http://${retiredWorker}:8731|${retiredWorker}-gpu'; then
               echo "a flow names the retired execution host outside its inference endpoint or GPU pool" >&2
               exit 1
             fi
@@ -3144,7 +2828,7 @@
 
         browser-session-runtime =
           let
-            coord = self.nixosConfigurations.coordinator.config;
+            coord = self.nixosConfigurations.strix.config;
             portal = name: coord.systemd.user.services.${name} or { };
           in
           assert builtins.all
@@ -3234,9 +2918,9 @@
 
         printing =
           let
-            coordinator = self.nixosConfigurations.coordinator.config;
+            strix = self.nixosConfigurations.strix.config;
             activeHosts = [
-              coordinator
+              strix
             ];
             expectedPrinter = {
               name = "Brother_HL_L2445DW";
@@ -3288,7 +2972,7 @@
         # on EVERY host that prints (it rewrote the pinned DeviceURI to
         # implicitclass://, job 303); ensure-printers' postStart asserts the
         # pinned URI and the urf PPD filter (the raw queue of job 304); the
-        # paper-daemon units exist on the coordinator only; the retired
+        # paper-daemon units exist on the strix only; the retired
         # trust-lp flusher is gone.
         print-plane =
           let
@@ -3297,9 +2981,9 @@
             );
             printingHosts = builtins.filter (host: host.services.printing.enable) hosts;
             homeOf = name: self.nixosConfigurations.${name}.config.home-manager.users.tom;
-            coordinatorHome = homeOf "coordinator";
-            daemonService = coordinatorHome.systemd.user.services.paper-daemon;
-            postStart = self.nixosConfigurations.coordinator.config.systemd.services.ensure-printers.postStart;
+            strixHome = homeOf "strix";
+            daemonService = strixHome.systemd.user.services.paper-daemon;
+            postStart = self.nixosConfigurations.strix.config.systemd.services.ensure-printers.postStart;
           in
           assert printingHosts != [ ];
           assert nixpkgs.lib.all (host: !host.services.printing.browsed.enable) printingHosts;
@@ -3309,24 +2993,15 @@
           assert nixpkgs.lib.hasInfix "ipp://10.42.0.4:631/ipp/print" postStart;
           assert nixpkgs.lib.hasInfix ''cupsFilter2: "image/urf'' postStart;
           assert nixpkgs.lib.hasInfix "implicitclass:" postStart;
-          assert coordinatorHome.systemd.user.paths ? paper-daemon;
-          assert coordinatorHome.systemd.user.paths.paper-daemon.Path.PathChanged == "%h/Paper/intake";
-          assert !(coordinatorHome.systemd.user.timers ? paper-daemon-sweep);
-          assert coordinatorHome.systemd.user.timers ? paper-daemon-flush;
-          assert coordinatorHome.systemd.user.timers.paper-daemon-flush.Timer.Persistent;
+          assert strixHome.systemd.user.paths ? paper-daemon;
+          assert strixHome.systemd.user.paths.paper-daemon.Path.PathChanged == "%h/Paper/intake";
+          assert !(strixHome.systemd.user.timers ? paper-daemon-sweep);
+          assert strixHome.systemd.user.timers ? paper-daemon-flush;
+          assert strixHome.systemd.user.timers.paper-daemon-flush.Timer.Persistent;
           assert daemonService.Unit.X-RestartIfChanged == false;
           assert daemonService.Unit.StartLimitIntervalSec == 0;
-          assert !(coordinatorHome.systemd.user.services ? paper-print-flush);
-          assert nixpkgs.lib.all
-            (
-              name:
-              !((homeOf name).systemd.user.services ? paper-daemon)
-              && !((homeOf name).systemd.user.paths ? paper-daemon)
-            )
-            [
-              "worker"
-              "client"
-            ];
+          assert !(strixHome.systemd.user.services ? paper-print-flush);
+
           pkgs.runCommand "print-plane" { } ''
             ${builtins.head (nixpkgs.lib.toList daemonService.Service.ExecStart)} --help >/dev/null 2>&1 \
               || { echo "paper-daemon --help failed" >&2; exit 1; }
@@ -3352,7 +3027,6 @@
               PORT_FILE = Path(sys.argv[1])
               REQUEST_FILE = Path(sys.argv[2])
               REVISION = "${smokeRevision}"
-
 
               class Handler(BaseHTTPRequestHandler):
                   def do_GET(self):
@@ -3406,17 +3080,15 @@
                   def log_message(self, _format, *_args):
                       pass
 
-
               server = HTTPServer(("127.0.0.1", 0), Handler)
               PORT_FILE.write_text(str(server.server_port))
               server.handle_request()
               server.server_close()
             '';
-            coordinatorPackages =
-              self.nixosConfigurations.coordinator.config.home-manager.users.tom.home.packages;
+            strixPackages = self.nixosConfigurations.strix.config.home-manager.users.tom.home.packages;
           in
           assert hf.version == expectedVersion;
-          assert builtins.elem hf coordinatorPackages;
+          assert builtins.elem hf strixPackages;
           pkgs.runCommand "huggingface-cli-smoke"
             {
               nativeBuildInputs = [

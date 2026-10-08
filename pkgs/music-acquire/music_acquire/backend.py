@@ -112,7 +112,7 @@ class LiveBackend:
         campaign_repo: Path,
         *,
         no_capture: bool = False,
-        capture_host: str = "worker",
+        capture_host: str = "strix",
         environ: dict[str, str] | None = None,
     ):
         self.state = state

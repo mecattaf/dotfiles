@@ -1,9 +1,10 @@
-**Claude seats (2026-09-22).** Two Claude Code logins live on the coordinator
+**Claude seats (2026-09-22).** Two Claude Code logins live on the strix
 and nowhere else: `cc` is `~/.claude` (the personal Claude Max login, config file
 `~/.claude.json`), `cc2` is `~/.claude-work` (the leger.run Claude Max login,
 config file `~/.claude-work/.claude.json`), selected only by `CLAUDE_CONFIG_DIR`
-in the fish launchers (`home/dot_config/fish/config.fish`). Both share the same
-skills and settings links; login, history, sessions and trust are per seat, so a
+in the fish launchers (`home/dot_config/fish/config.fish`). Both share skills and writable settings at
+`~/.local/state/claude/settings.json`; no model or effort is pinned by Nix.
+The initializer preserves existing choices and never resets them on activation; login, history, sessions and trust are per seat, so a
 session id resumes only on the seat and from the cwd that created it
 (`claude-sessions` fans out over the seats). Claude never saves workspace trust
 for `$HOME`, so the launchers move into `$CLAUDE_ENVELOPE` (default `~/today`)
@@ -20,38 +21,29 @@ hand-run service, a path/udev/session trigger, or a factory schedule:
 
 | # | Unit(s) | Hosts | Declared in |
 |---|---|---|---|
-| D40 | uplink-failover-watchdog (30 s), uplink-rail-reconcile (20 s), uplink-rail-revert (04:00) | coordinator | `hosts/coordinator/uplink-nas.nix` |
 | D41 | failure-marker-reconcile | all | `modules/failure-surfacing.nix` |
-| D42 | tripwire-coredump, tripwire-user-unit-failure (all); tripwire-nas-reachability, tripwire-attic-cache-health (coordinator) | all | `modules/tripwire.nix` |
+| D42 | tripwire-coredump, tripwire-user-unit-failure (all); tripwire-nas-reachability, tripwire-attic-cache-health (strix); tripwire-strix-reachability (client, #514) | all | `modules/tripwire.nix` |
 | D43 | nix-gc (weekly), gc-root-reaper (daily) | all | `modules/gc-retention.nix`, `modules/gc-root-reaper.nix` |
 | D44 | atticd GC every 12 h | NAS | `hosts/nas/attic.nix` |
 | D45 | btrbk-nas (first Saturday 08:00), btrfs-scrub-mnt-nas (monthly) | NAS | `hosts/nas/snapshots.nix`, `hosts/nas/storage.nix` |
-| D46 | headscale-backup (Sunday 08:30) | NAS | `hosts/nas/headscale-backup.nix` |
 | D47 | docker-registry-garbage-collect (weekly) | NAS | `modules/ax-fleet/control.nix` |
-| D48 | artifact-reaper (daily) | coordinator | `modules/caddy-artifacts.nix` |
+| D48 | artifact-reaper (daily) | strix | `modules/caddy-artifacts.nix` |
 | D49 | fstrim, logrotate, fwupd-refresh, systemd-tmpfiles-clean (system and user) | all | NixOS defaults |
 | D50 | smartd (`-n standby,q`; a daemon, not a timer) | NAS | `hosts/nas/storage.nix` |
-| D51 | the podman healthcheck transient timer (not declared) | worker | podman, for Halogen |
 
 Besides these, the silent-hours releases are `paper-daemon-flush.timer` and the
-06:05 entry of `speech-queue.timer` on the coordinator. Adding any other timer or
+06:05 entry of `speech-queue.timer` on the strix. Adding any other timer or
 `OnCalendar` to this repository needs Tom.
 
-**Physical seats (2026-09-16, supersedes older headless/client-only wording below).**
-Tom is returning the coordinator to primary-desktop duty with two upright LG
-5K displays side by side at scale 2. Both coordinator and client have
-Niri; worker and NAS remain headless. The latest shared desktop suite belongs
-on both seats. Keep the Zenbook's display, keyboard, Huion and remote-projector
-features. The dock's iContact mic and GS3 audio rules apply on either seat.
-Speech playback accepts both seats; unaddressed queue jobs play on the
-coordinator, and `client--` / `coordinator--` filename prefixes select a seat.
-Inference stays where it was.
-Physical Niri owns the coordinator portals; the optional headless Sway desktop
-must not own or stop them. Chrome's existing cross-display profile lock remains:
-close that profile's browser normally before using it on the other desktop.
-Alt+H/L focus the left/right monitor; Alt+J/K retain down/up focus.
-Monitor order is immaterial: Tom will swap DisplayPort cables if needed.
-Do not restore physical-session VNC or restart Herdr to enable the desktop.
+**Closet and physical seat (Tom, 2026-10-08).** Strix (formerly coordinator)
+is permanently headless in the closet, with the NAS, BE550 and Freebox. Both
+closet computers use Ethernet. Strix is 10.42.0.2 on enp191s0; Wi-Fi is disabled
+on reboot. NAS is the sole ordinary Tailscale node and advertises the closet
+LAN; Strix has no Tailscale daemon. The worker is retired and must not return.
+The Zenbook client is the physical seat, with Sway, Huion and Magic Trackpad.
+Otto is rejected. Speech defaults to client; synthesis remains on Strix.
+Preserve Herdr sessions: stage this network change for a deliberate reboot,
+never activate it during an attached working session.
 
 **Runtime isolation (2026-09-16 incident).** Tests and experiments that source
 shell-script fragments, clean runtime directories, or launch test compositors
@@ -66,7 +58,7 @@ Do not suppress unexpected coredumps or unit failures to make tests look healthy
 
 The fleet's resident language-model server is Halogen Flash —
 Qwen3.8-Flash-Next in Peonist's proprietary `.hgn` format — running on the
-worker at `http://worker:8731` via `modules/halogen.nix`: a pinned OCI image
+Strix at `http://strix:8731` via `modules/halogen.nix`: a pinned OCI image
 run by podman, with the weights loaned from the NAS Library into
 `/var/lib/local-models/halogen-qwen38-flash-next`. It is OpenAI-compatible
 (`/v1/chat/completions` streaming and non-streaming with tool calls,
@@ -79,29 +71,24 @@ A second Halogen engine, halogen-server with Qwen3.8-27B, is declared as
 resident together with Flash (the units conflict), started only by an
 operator's `halogen-switch qwen38-27b` and put back with `halogen-switch
 flash`. Flash is the everyday model; the 27B is the alternate.
-**Both engines on both twins (Tom, 2026-09-16).** `modules/strix.nix` declares
-the server and the alternate once for the worker and the coordinator, and both
-wanted sets carry both bundles. Only the worker starts Flash at boot and only
-the worker is the `utility` endpoint. The coordinator has
-`services.halogen.autoStart = false`: nothing is resident there, because it is
-Tom's desktop and also runs TTS and diarization. Check the GPU is
-free, start an engine with `halogen-switch flash|qwen38-27b`, and release it
-with `halogen-switch off`. Do not make a coordinator engine resident or move
-`utility` off the worker without Tom.
+**One compute host (Tom, 2026-10-08).** `modules/strix.nix` declares both
+engines on Strix. Flash starts at boot and is the utility endpoint. The alternate
+remains an operator switch. Immich ML also moved to Strix; its socket starts it
+on demand, with a 15-minute idle shutdown. There is no worker host.
 There is no `/v1/embeddings`, no reranking, no audio, no image generation, no
 hot reload and no second resident model on a host. The token budget covers thinking: default
 `max_tokens` 8192, cap 65536. Stable diffusion is outside this LLM route.
 
 **The NPU path is decommissioned — permanently, 2026-08-29.** FastFlowLM (`flm`)
 is no longer installed on any host, and the XDNA2 NPU is not an inference target
-on either Strix Halo twin. Both twins now boot with `amd_iommu=off`, which is by
+on Strix. Strix boots with `amd_iommu=off`, which is by
 itself enough to make the old NPU path unbootable; this is a decommission, not a
 pause. Do not add a `flm` invocation, an `flm serve` unit, or an NPU backend row
 back.
 
 **The `utility` slot forwards to halogen.** The stable ID `utility` resolves to
-the worker's Halogen Flash server, and the request-scoped `utility-model`
-wrapper — installed on the coordinator only — forwards a single
+Strix's Halogen Flash server, and the request-scoped `utility-model`
+wrapper — installed on the strix only — forwards a single
 chat-completions request to it over the wired LAN. `/drain` and `/print` dial
 that seam under the same name and with the same CLI flags as before. What must
 never come back is an NPU-backed utility deployment; the slot itself is live.
@@ -123,7 +110,7 @@ matched prefix with a quiet tail. The original favorite remains the comparison
 baseline. Enrollment and fleet activation are separate; see the integration record below.
 Word accuracy is insufficient: inspect repeated onset artifacts and listen to
 quality feedback before treating a broader reference as an improvement.
-TTS inference runs on the coordinator GPU; the ASUS Zenbook (`client`) only
+TTS inference runs on the strix GPU; the ASUS Zenbook (`client`) only
 plays the returned audio. Speech weights follow NAS Library/explicit borrowing.
 `modules/qwen-tts.nix` owns on-demand synthesis, separate from Halogen; it idles
 out and has no boot target. Deterministic text chunks are stitched into one WAV.
@@ -135,7 +122,7 @@ the wake toggle were removed from every host, the Zenbook included. Do not
 reintroduce a wake detector, a resident transcription service or a dictation
 patch without Tom.
 
-The coordinator's other model rows are task-specific. Qwen3-TTS 1.7B Base Q8
+The strix's other model rows are task-specific. Qwen3-TTS 1.7B Base Q8
 with the `qwen-k2so-midway-b` voice is the one TTS model (`modules/qwen-tts.nix`;
 the voice has a second verified copy at
 `/mnt/nas/documents/voice-references/qwen-k2so-midway-b/`, because it cannot be
@@ -146,10 +133,7 @@ runs by hand; they have no declarative service, timer or proxy row.
 Embeddings in particular have no server behind them until an operator starts
 one.
 
-Out, and not to be reintroduced: dual-node inference of any kind (the
-Thunderbolt and direct 5GbE rails between the twins no longer exist; the
-worker is wired-only on `enp191s0` at `10.42.0.5`, with no wifi, no compositor
-and no VNC), the flashnext / flashnix / vLLM-fork projects (flashnext-fp8 and
+Out, and not to be reintroduced: dual-node inference of any kind (the Thunderbolt and direct 5GbE rails are retired), the flashnext / flashnix / vLLM-fork projects (flashnext-fp8 and
 qwen38-flash-next-fp8 included), DS4 / DeepSeek, GLM, every Gemma model
 (supergemma included), Ornith, Muse Glimmer, IBM Granite, the GGUF
 Qwen3.6-35B-A3B, Qwen3.6-27B and Qwen3.8-27B (the `.hgn` `halogen-qwen38-27b`
@@ -174,13 +158,12 @@ loaned copy, and only when the set it computed has not changed underneath it.
 `docs/nas/model-archive.md` is the retire/restore runbook; retired Library
 bytes are listed in `/mnt/nas/models/weights/RETIRED-<date>.tsv`.
 
-**Shared browser desktop (2026-09-12).** Coordinator keeps `myDisplay.enable =
+**Shared browser desktop (2026-09-12).** Strix keeps `myDisplay.enable =
 false`: no physical Niri/greetd session. `modules/browser-desktop.nix` supplies a
 separate on-demand headless Sway seat with WayVNC on loopback and stock noVNC
 served by Caddy at `https://browser.internal` on BE550. The lightweight launcher
 starts at boot; Sway, WayVNC and Chrome do not. Sessions stop five minutes
-after the last viewer disconnects. This exception is coordinator-only; worker
-and NAS remain without compositor/VNC. The sidebar opens ordinary installed
+after the last viewer disconnects. This exception is Strix-only; NAS has no compositor/VNC. The sidebar opens ordinary installed
 Chrome profiles and unlocks the keyring. The FARA agent loop (`fara-browser`,
 its model unit and skill) was removed with FARA on 2026-09-16 (Tom).
 `chrome-stream` (same module) is the lighter path: headless Chrome's CDP
@@ -198,7 +181,7 @@ activation, before any file is written, when a user unit's
 
 **Handwriting intake (2026-09-14).** `handwriting.internal` is the private
 annotation menu, declared by `modules/handwriting-annotation.nix`: NAS DNS,
-coordinator Caddy and a CPU-only service. Preserve `/var/lib/handwriting-annotation`
+strix Caddy and a CPU-only service. Preserve `/var/lib/handwriting-annotation`
 and its append-only writer/model-review history across updates. Model-assisted
 resolutions are not writer labels. Huion sources arrive in `~/Paper/inbox`;
 `~/Paper/intake` is the printing route. Use the existing Halogen Flash for serial

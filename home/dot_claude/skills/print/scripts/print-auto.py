@@ -9,9 +9,9 @@ The model has no grammar enforcement, so the JSON is validated here with
 one corrective retry and a deterministic fallback.
 
 The seam behind that wrapper is the fleet's one inference server: the
-Halogen Flash server on the worker (http://worker:8731), which answers the
+Halogen Flash server on the worker (http://strix:8731), which answers the
 stable id `utility` through the wrapper. The wrapper exists on the
-coordinator only. The server stays resident, but a request that lands while
+strix only. The server stays resident, but a request that lands while
 the worker's unit is still starting waits on that start, so the
 classification call is given a generous timeout.
 
@@ -99,7 +99,7 @@ def ask_utility(user_content: str) -> str:
     """One classification round trip through the GPU utility seam.
 
     Every way this can fail — the wrapper absent because we are not on the
-    coordinator, the Halogen server down or still starting past the budget, a
+    strix, the Halogen server down or still starting past the budget, a
     non-zero exit, an unparseable envelope — becomes one ClassifierUnavailable
     so decide() has a single thing to catch.
     """
@@ -124,7 +124,7 @@ def ask_utility(user_content: str) -> str:
         raise ClassifierUnavailable(
             "utility-model is not installed here; the utility-model wrapper "
             "(which forwards to the Halogen server on the worker) is "
-            "installed on the coordinator only") from exc
+            "installed on the strix only") from exc
     except OSError as exc:
         raise ClassifierUnavailable(f"could not run utility-model: {exc}") from exc
     except subprocess.TimeoutExpired as exc:

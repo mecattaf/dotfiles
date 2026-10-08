@@ -4,13 +4,13 @@
   pkgs,
   ...
 }:
-# services.substrate: the coordinator's two box-side programs of the Cloudflare Substrate, declared ON on the
-# coordinator since 2026-09-24.
+# services.substrate: the strix's two box-side programs of the Cloudflare Substrate, declared ON on the
+# strix since 2026-09-24.
 #
 # CODE: pkgs/substrate-apps (vendored from agency-agency/substrate at the sha in its SYNC.md). ARCHITECTURE:
 # ~/today/wednesday-prep-2026-09-23/03-substrate-ax-conwip.md section 2. RULING: E1 (2026-09-23), the code that
-# wraps ax lives in dotfiles; A2, the NAS link, the coordinator puller and the capacity pusher are dotfiles
-# packages and modules. The NAS side is hosts/nas/substrate-link.nix (Lane A); this file is the coordinator side.
+# wraps ax lives in dotfiles; A2, the NAS link, the strix puller and the capacity pusher are dotfiles
+# packages and modules. The NAS side is hosts/nas/substrate-link.nix (Lane A); this file is the strix side.
 #
 #   pusher  reads `seats --json --no-spend` (the box's one capacity oracle, ~/.local/bin/seats) under the gentle
 #           policy (120 s floor, 900 s idle, 300 s active, 180 s above 85 percent, one read at reset + 90 s) and
@@ -19,7 +19,7 @@
 #   puller  the interpreter host: leases runs (runtime:interpreter) from the floor with its per-link token, runs
 #           each workflow's agent() calls on the runtimes this module renders into runtimes.toml (opus, halogen,
 #           codex, codex-rw: all host runtimes, the shape proven live on 2026-09-24; plus one type = "ssh" table
-#           per puller.sshRuntimes entry, e.g. ssh:worker since 2026-09-25), each claude seat spending
+#           per puller.sshRuntimes entry, e.g. ssh:strix since 2026-09-25), each claude seat spending
 #           its own config dir by path ([credentials.seats], RG-1), heartbeats, completes, resumes from the run's
 #           journal. Its config is the [puller] table of a client config.toml (packages/api/src/config.ts),
 #           rendered here with placeholders for the two credential paths and filled at unit start.
@@ -55,10 +55,10 @@
 # capacityFloorTokenFile. Nothing here reads, prints or interpolates a value; every rendered file carries paths.
 # Minting (wrangler secret put FLOOR_TOKEN and LINK_TOKENS, the two age files) is Tom's hand.
 #
-# THE GATE. Both `enable`s default to false. hosts/coordinator sets both true as of 2026-09-24, replacing the
+# THE GATE. Both `enable`s default to false. hosts/strix sets both true as of 2026-09-24, replacing the
 # hand-started processes of ~/today/wednesday-prep-2026-09-23/substrate (RUN.md), with the floor live at floorUrl
-# and the two tokens sealed as secrets/substrate-floor-token.age and secrets/substrate-link-token-coordinator.age
-# (secrets.nix, editors ++ coordinatorOnly). The rendered files match that proven deployment: prove/runtimes.toml,
+# and the two tokens sealed as secrets/substrate-floor-token.age and secrets/substrate-link-token-strix.age
+# (secrets.nix, editors ++ strixOnly). The rendered files match that proven deployment: prove/runtimes.toml,
 # prove/client.config.toml, tom.pusher.config.json and tom.substrate.config.json (axProtoFallbackPath excepted:
 # null here, the vendored ax.proto). tests/substrate-modules renders both units armed with fixtures, so the shape is
 # proven at evaluation time without a token on disk.
@@ -112,14 +112,14 @@ let
   # puller.sshRuntimes, rendered as [runtime."ssh:<host>"] tables in the shape of SshRuntime in
   # packages/runners/src/config.ts:116-121 (type "ssh", host, plus the common harness, seat and timeoutMs of
   # :44-58). MERGED into the default runtimes below and appended to its allow list: a host that instead sets
-  # puller.runtimes.runtime."ssh:worker" REPLACES the whole default and drops opus, halogen, codex, codex-rw,
+  # puller.runtimes.runtime."ssh:strix" REPLACES the whole default and drops opus, halogen, codex, codex-rw,
   # allow, seats and credentials (MEASURED 2026-09-25 by nix eval through extendModules).
   # The name is the loader's SSH_SHORTHAND (config.ts:284); builtins.match anchors the whole string.
   sshRuntimeNameRe = "ssh:[A-Za-z0-9][A-Za-z0-9_.@-]*";
   sshRuntimeTables = lib.mapAttrs (name: r: {
     type = "ssh";
     inherit (r) host harness seat;
-    # A runtime with no callTimeoutMs entry of its own gets halogen's ceiling (the seat ssh:worker spends).
+    # A runtime with no callTimeoutMs entry of its own gets halogen's ceiling (the seat ssh:strix spends).
     timeoutMs = cfg.puller.callTimeoutMs.${name} or cfg.puller.callTimeoutMs.halogen;
   }) cfg.puller.sshRuntimes;
 
@@ -224,11 +224,11 @@ in
       type = types.path;
       default = ../secrets/substrate-floor-token.age;
       defaultText = lib.literalExpression "../secrets/substrate-floor-token.age";
-      description = "The sealed bearer (secrets.nix: editors ++ the coordinator key). Evaluated only when a unit is enabled.";
+      description = "The sealed bearer (secrets.nix: editors ++ the strix key). Evaluated only when a unit is enabled.";
     };
 
     pusher = {
-      enable = mkEnableOption "the gentle capacity pusher (seats --json to the floor). ON on the coordinator; see this file's header";
+      enable = mkEnableOption "the gentle capacity pusher (seats --json to the floor). ON on the strix; see this file's header";
 
       package = mkOption {
         type = types.package;
@@ -276,7 +276,7 @@ in
       seatIds = mkOption {
         type = types.attrsOf types.str;
         default = {
-          gpu-worker = "halogen";
+          gpu-strix = "halogen";
         };
         description = "Oracle seat id to runs-on seat id.";
       };
@@ -294,7 +294,6 @@ in
         type = types.attrsOf types.str;
         default = {
           cc3 = "evicted";
-          gpu-coordinator = "halogen is declared but not resident on the coordinator";
         };
         description = "Seats never published, with the reason.";
       };
@@ -339,7 +338,7 @@ in
     };
 
     puller = {
-      enable = mkEnableOption "the coordinator puller (the interpreter host). ON on the coordinator; see this file's header";
+      enable = mkEnableOption "the strix puller (the interpreter host). ON on the strix; see this file's header";
 
       package = mkOption {
         type = types.package;
@@ -350,20 +349,20 @@ in
 
       holder = mkOption {
         type = types.str;
-        default = "coordinator";
-        description = "The holder its link token is bound to in the floor's LINK_TOKENS (which also binds the runs-on labels it may lease, runtime:interpreter and seat:coordinator in docs/DEPLOY.md). One session per holder (L5, exit 75).";
+        default = "coordinator"; # Existing remote LINK_TOKENS identity; independent of hostname.
+        description = "The holder its link token is bound to in the floor's LINK_TOKENS (which also binds the runs-on labels it may lease, runtime:interpreter and seat:strix in docs/DEPLOY.md). One session per holder (L5, exit 75).";
       };
 
       linkTokenSecret = mkOption {
         type = types.str;
-        default = "substrate-link-token-coordinator";
+        default = "substrate-link-token-strix";
         description = "The agenix secret NAME holding this puller's per-link token (the LINK_TOKENS entry for `holder`). Handed to the unit as the credential `link-token`. A name, never a value.";
       };
 
       linkTokenAgeFile = mkOption {
         type = types.path;
-        default = ../secrets/substrate-link-token-coordinator.age;
-        defaultText = lib.literalExpression "../secrets/substrate-link-token-coordinator.age";
+        default = ../secrets/substrate-link-token-strix.age;
+        defaultText = lib.literalExpression "../secrets/substrate-link-token-strix.age";
         description = "The sealed per-link token. Evaluated only when the puller is enabled.";
       };
 
@@ -505,8 +504,8 @@ in
         default = { };
         example = lib.literalExpression ''
           {
-            "ssh:worker" = {
-              host = "worker";
+            "ssh:strix" = {
+              host = "strix";
               harness = "pi";
               seat = "halogen";
             };
@@ -554,8 +553,8 @@ in
               seat = cfg.puller.claudeSeat;
               timeoutMs = cfg.puller.callTimeoutMs."opus";
             };
-            # pi on the coordinator against the Halogen server on the worker (the proven pattern). A pi that must
-            # run ON the worker is an ssh runtime from puller.sshRuntimes (ssh:worker, merged below). The proof's
+            # pi on the strix against the Halogen server on the worker (the proven pattern). A pi that must
+            # run ON the worker is an ssh runtime from puller.sshRuntimes (ssh:strix, merged below). The proof's
             # ssh refusal ("Bad owner or permissions on ~/.ssh/config", ~/today/wednesday-prep-2026-09-23/
             # substrate/PROVE.md:68) came from runtime-test's user namespace, where the home-manager ssh config
             # belongs to an unmapped uid; the unit runs without that wrapper (header, NO runtime-test WRAPPER), and
@@ -783,9 +782,9 @@ in
         OOMPolicy = "continue";
         WorkingDirectory = cfg.puller.workingDirectory;
         # Two claude agents at ~400 MB each plus the puller and tool builds approach 2G; 2G was the reclaim line,
-        # 4G the hard limit (review 2026-09-24, low). 2026-09-30: the coordinator's cap rises to 12 for the credit
+        # 4G the hard limit (review 2026-09-24, low). 2026-09-30: the strix's cap rises to 12 for the credit
         # seats (up to 4 qwen + 4 openrouter + 8 openrouter-free pi agents, a few hundred MB each, beside claude),
-        # so the lines move to 6G and 10G (the coordinator has 125 GiB).
+        # so the lines move to 6G and 10G (the strix has 125 GiB).
         MemoryHigh = "6G";
         MemoryMax = "10G";
         # The proof ran inside runtime-test with a private /run/user. The unit keeps the real one (herdr and ssh

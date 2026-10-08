@@ -6,7 +6,7 @@
 }:
 # harness-records — what the agent harnesses leave behind, kept and counted.
 #
-# Two coordinator-only user services, hand-run since 2026-09-30 (no scheduled
+# Two strix-only user services, hand-run since 2026-09-30 (no scheduled
 # agent work in dotfiles; the factory owns any schedule). Neither reads or
 # writes Tally state (Tally itself was removed the same day).
 #
@@ -19,7 +19,7 @@
 # ungated definition would ship the worker a unit with nothing to do.
 let
   hostName = osConfig.networking.hostName;
-  isCoordinator = hostName == "coordinator";
+  isCoordinator = hostName == "strix";
 
   # A systemd user unit does not inherit the interactive session PATH, and both
   # scripts are RAW dotfiles reached through the whole-dir ~/.local/bin
@@ -101,7 +101,7 @@ in
     "d %h/.local/state/tally-rewrite/meters 0700 - - -"
   ];
 
-  # Tools home/tally.nix used to install on the coordinator, kept: call
+  # Tools home/tally.nix used to install on the strix, kept: call
   # diarization runs by hand now (its Tally events drop has no drain), and the
   # monthly local-AI review is hand-run too.
   home.packages = lib.optionals isCoordinator [

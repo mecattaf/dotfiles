@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """util-sampler — UTIL-01 §signal.instrument. ONE sample per invocation.
 
-Reads: sysfs (gfx1151 amdgpu), `tally query pools` (coordinator only), the
+Reads: sysfs (gfx1151 amdgpu), `tally query pools` (strix only), the
 worker's halogen liveness and model-list endpoints, Halogen's journal since the
 previous sample (worker only; the token window), the box's drain ledger.
 Writes: exactly one JSON line to $UTIL_METERS/util-sampler/<box>-<date>.jsonl.
@@ -76,7 +76,7 @@ SYSFS_FIELDS = {
 # liveness probe and GET /v1/models as the list of what it serves.  The base
 # URL is the *_INFERENCE_URL convention; the override exists for a hand-run
 # llama-server, not for a second declared server.
-INFERENCE_URL = (os.environ.get("UTIL_SAMPLER_INFERENCE_URL") or "http://worker:8731").rstrip("/")
+INFERENCE_URL = (os.environ.get("UTIL_SAMPLER_INFERENCE_URL") or "http://strix:8731").rstrip("/")
 
 # Halogen serves no prometheus /metrics (GET /metrics is a 404), so every probe's
 # `metrics` is None and `metrics_reason` says why in the sample itself.  Its
@@ -112,16 +112,10 @@ LINE_RE = re.compile(
     r"(?: \| (?P<rounds>\d+) rounds, commit (?P<commit>[\d.]+)/round)?"
     r" \| prompt (?P<prompt>\d+)(?: \((?P<cached>\d+) cached\))?, prefill (?P<prefill_s>[\d.]+)s")
 
-# The coordinator serves nothing declaratively — the small GGUF artifacts loaned
-# there are run by hand, and a hand-run llama-server is not a declared probe —
-# so its probe list is empty and its sample carries sysfs, pools and the ledger.
-# The client — the Zenbook Duo, a full member of the fleet from 2026-09-13 —
-# serves nothing and holds no GPU pool: its sample is the clock, the zone and
-# an all-None sysfs block, which is what "this box ran nothing" looks like.
+# Strix owns the resident Halogen probe; the client has no model server.
 SERVE_PROBES = {
     "client": [],
-    "coordinator": [],
-    "worker": [
+    "strix": [
         {"name": "halogen",
          "health": INFERENCE_URL + "/health",
          "arms": INFERENCE_URL + "/v1/models",
@@ -131,13 +125,12 @@ SERVE_PROBES = {
 
 LEDGERS = {
     "client": None,
-    "coordinator": "/home/tom/.local/state/academic-ocr/drain/completed.jsonl",
-    "worker": None,
+    "strix": "/home/tom/.local/state/academic-ocr/drain/completed.jsonl",
 }
 
-VRAM_POOL_BY_BOX = {"coordinator": "coordinator-gpu", "worker": "worker-gpu"}
+VRAM_POOL_BY_BOX = {"strix": "strix-gpu"}
 
-# Three declared boxes: the two Strix twins and the client.  A sample from
+# Declared sampler hosts: Strix and client.  A sample from
 # anything else is not a sample of this estate, and its name must never reach
 # a filesystem path.
 KNOWN_BOXES = tuple(sorted(set(SERVE_PROBES) | set(VRAM_POOL_BY_BOX) | set(LEDGERS)))
@@ -469,7 +462,7 @@ def read_pools(box, clock):
 
     Bounded by whatever is left of the invocation budget; an exhausted budget is
     recorded as a failure with its reason, never as held 0 (R-04)."""
-    if box != "coordinator":
+    if box != "strix":
         return None
     budget = min(POOLS_TIMEOUT_S, clock.remaining())
     if budget <= 0:

@@ -9,9 +9,9 @@
 #
 #   control   nas          k3s server + kubelet (untainted), Substrate and ax
 #                          control planes, the registry. "Hypervisor on NAS."
-#   harness   coordinator  k3s agent tainted ate.dev/sandboxClass=gvisor, the
+#   harness   strix  k3s agent tainted ate.dev/sandboxClass=gvisor, the
 #                          atelet DaemonSet and the gVisor WorkerPool. "Agent
-#                          harnesses on coordinator."
+#                          harnesses on strix."
 #   inference worker       k3s agent tainted ax.mecattaf.dev/role=inference
 #                          and labelled ate.dev/substrate-version=none, so
 #                          nothing lands there until a workload tolerates the
@@ -66,8 +66,8 @@ let
 
   roleHost = {
     control = "nas";
-    harness = "coordinator";
-    inference = "worker";
+    harness = "strix";
+
   };
 in
 {
@@ -81,7 +81,6 @@ in
     ./control.nix
     ./agent.nix
     ./harness.nix
-    ./inference.nix
     ./substrate.nix
     ./ax.nix
     ./gateways.nix
@@ -118,7 +117,7 @@ in
         {
           # The test VMs carry the production hostnames, so this holds there too.
           assertion = config.networking.hostName == roleHost.${cfg.role};
-          message = "modules/ax-fleet: ${config.networking.hostName} has role \"${cfg.role}\", which belongs to ${roleHost.${cfg.role}}. nas is control, coordinator is harness, worker is inference.";
+          message = "modules/ax-fleet: ${config.networking.hostName} has role \"${cfg.role}\", which belongs to ${roleHost.${cfg.role}}. nas is control, strix is harness.";
         }
         {
           assertion = inCidr cfg.lan.address cfg.lan.cidr;

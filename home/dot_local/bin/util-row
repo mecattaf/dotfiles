@@ -56,9 +56,9 @@ FRAC_FLOOR = 0.5
 EVIDENCE_MIN_COMPLETION_TOKENS = 128
 ROUND = 6
 
-VRAM_POOL_BY_BOX = {"coordinator": "coordinator-gpu", "worker": "worker-gpu"}
+VRAM_POOL_BY_BOX = {"strix": "strix-gpu", "worker": "worker-gpu"}
 LEDGERS = {
-    "coordinator": "/home/tom/.local/state/academic-ocr/drain/completed.jsonl",
+    "strix": "/home/tom/.local/state/academic-ocr/drain/completed.jsonl",
     "worker": None,
 }
 LEASE_EVENTS = "/home/tom/.local/state/tally/lease-events.jsonl"
@@ -73,9 +73,7 @@ if os.environ.get("UTIL_LEASE_EVENTS"):
 if os.environ.get("UTIL_RECEIPT_ROOTS") is not None:
     RECEIPT_ROOTS = tuple(r for r in os.environ["UTIL_RECEIPT_ROOTS"].split(":") if r)
 if os.environ.get("UTIL_COORDINATOR_LEDGER"):
-    LEDGERS["coordinator"] = os.environ["UTIL_COORDINATOR_LEDGER"]
-WORKER_SSH_HOST = "worker"
-WORKER_SAMPLER_REMOTE = "~/.local/state/tally/meters/util-sampler"
+    LEDGERS["strix"] = os.environ["UTIL_COORDINATOR_LEDGER"]
 
 PROMPT_COUNTERS = ("llamacpp:prompt_tokens_total", "vllm:prompt_tokens_total")
 OUTPUT_COUNTERS = ("llamacpp:tokens_predicted_total", "vllm:generation_tokens_total")
@@ -350,34 +348,11 @@ def walk_evidence_receipts(date_str):
     return counted
 
 
-def pull_worker_sampler_log(meters, date_str):
-    """READ-ONLY scp of the worker's sampler log into the local util-sampler/.
-    A missing remote file is not a crash: the row then reports 0 samples."""
-    outdir = os.path.join(meters, "util-sampler")
-    os.makedirs(outdir, exist_ok=True)
-    remote = "%s:%s/worker-%s.jsonl" % (WORKER_SSH_HOST, WORKER_SAMPLER_REMOTE, date_str)
-    try:
-        proc = subprocess.run(
-            ["scp", "-o", "BatchMode=yes", "-p", remote, outdir + os.sep],
-            capture_output=True, text=True, timeout=120,
-        )
-        return {"attempted": True, "returncode": proc.returncode,
-                "stderr": (proc.stderr or "").strip()[:300]}
-    except Exception as exc:
-        return {"attempted": True, "returncode": None,
-                "stderr": "%s: %s" % (type(exc).__name__, exc)}
-
-
 def build_inputs_live(box, date_str, meters, refresh_slice=False, rerun=False):
-    # A re-run of a closed night (rerun=True) does NOT re-pull the worker's log:
-    # the local copy is an input the existing row names and hashes, and
-    # overwriting it would break that row's replay whatever the comparison says.
-    if box == "worker" and not rerun:
-        pull_worker_sampler_log(meters, date_str)
     ledger_path = LEDGERS.get(box)
     lease_src = None
-    if box != "coordinator":
-        coord_log = sampler_log_path(meters, "coordinator", date_str)
+    if box != "strix":
+        coord_log = sampler_log_path(meters, "strix", date_str)
         lease_src = _ref(coord_log, coord_log)
     log = sampler_log_path(meters, box, date_str)
     slice_path = freeze_lease_slice(meters, box, date_str, LEASE_EVENTS, refresh_slice)
@@ -544,8 +519,8 @@ def read_lease_slice_file(path):
 
 
 def resolve_held(samples, pool, lease_source):
-    """held for each sample.  On the coordinator the pools answer rides in the
-    sample itself; for the worker it is joined from the coordinator's log at the
+    """held for each sample.  On the strix the pools answer rides in the
+    sample itself; for the worker it is joined from the strix's log at the
     nearest sample within 90 s.  None means UNKNOWN, never false."""
     def held_of(sample):
         pools = sample.get("pools")
@@ -1129,15 +1104,15 @@ def default_boxes(explicit):
         return [explicit]
     import socket
     host = socket.gethostname().split(".")[0]
-    if host == "coordinator":
-        return ["coordinator", "worker"]
+    if host == "strix":
+        return ["strix"]
     return [host]
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="UTIL-01 row writer: one row per box per night.")
     ap.add_argument("--date", default=None, help="YYYY-MM-DD (default: yesterday, local)")
-    ap.add_argument("--box", default=None, help="coordinator | worker")
+    ap.add_argument("--box", default=None, help="box name (strix by default; historical names for replay)")
     ap.add_argument("--meters", default=None, help="meters root (default: $UTIL_METERS)")
     ap.add_argument("--replay-mode", default=None, metavar="DIR",
                     help="read inputs from an inputs bundle (DIR/INPUTS.json); "

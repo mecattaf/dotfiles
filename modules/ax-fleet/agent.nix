@@ -4,36 +4,10 @@
   pkgs,
   ...
 }:
-# The k3s agents' shared half: every node that joins the NAS's cluster as an
-# agent. That was the coordinator alone (harness, 2026-09-23); since
-# 2026-09-25 it is the worker too (inference). Tom's ruling that day,
-# verbatim: "the amd strix halo worker SHOULD be available in the cluster (not
-# just halogen inference)". Split out of ./harness.nix, which keeps the
-# desk-only parts. Every rule below renders byte-identical on the coordinator,
-# except one: VXLAN is now accepted from every peer, not only the NAS.
-#
-# What each piece is for, on either host:
-#   - the guard chain (mangle FORWARD): pods, the LAN legs and the tailnet
-#     stay apart once k3s turns ip_forward on. On the worker it is also the
-#     only police of pod egress: those pods leave masqueraded to 10.42.0.5 and
-#     enter the NAS on enp1s0, where the NAS forward guard (./control.nix)
-#     returns early for anything not arriving on cni0 or flannel.1 (INFERRED,
-#     fleet map 2026-09-25).
-#   - the pod-input refusal: pods never open a connection to the host. sshd
-#     accepts passwords on the desk; on the worker :22 is open on every
-#     interface and :8731/:3003 are open on enp191s0 (hosts/worker/default.nix,
-#     hosts/worker/immich-ml.nix).
-#   - the cluster-range owner match (OUTPUT): once kube-proxy runs on a host,
-#     every local process reaches every ClusterIP and pod IP, the
-#     unauthenticated ax-server and the password-less ax-redis included
-#     (INFERRED from harness.nix's fix round 3 and control.nix's round 4).
-#     Root and apiUsers only; the harness adds its proxy.
-#   - flannel VXLAN from every peer: the vxlan backend is a full mesh, so
-#     worker <-> coordinator pod traffic goes directly between 10.42.0.5 and
-#     10.42.0.2 (INFERRED from flannel's design), and each outer direction is
-#     its own flow that ESTABLISHED does not cover. Every agent accepts 8472
-#     from the server and from every other agent (agentAddresses).
-#   - NetworkManager never manages k3s's interfaces: both hosts run it.
+# Shared guard rules for the Strix k3s agent. NAS is the only peer. Pods may
+# reach the declared Halogen endpoint, registry and cluster APIs, but must not
+# inherit the host's SSH, storage or tailnet authority. Keep guards active
+# across a kill-switch transition until the explicit teardown removes pods.
 let
   cfg = config.myAxFleet;
   # The firewall half (guard chain, pod-input refusal, API owner match) is
@@ -41,7 +15,7 @@ let
   # kill switch stops k3s with KillMode=process, so pods, cni0 and flannel.1
   # outlive the switch until ax-fleet-teardown runs. The rules are inert once
   # those interfaces are gone.
-  roleOn = cfg.role == "harness" || cfg.role == "inference";
+  roleOn = cfg.role == "harness";
   on = cfg.enable && roleOn;
   isHarness = cfg.role == "harness";
 
@@ -99,7 +73,7 @@ let
     "-i flannel.1 -j DROP"
     # Out of pods. Pod traffic leaving a LAN leg is masqueraded to this
     # host's address and would inherit every NAS rule that trusts this host
-    # (the coordinator's ssh, NFS, media, paperless; the worker's journal
+    # (the strix's ssh, NFS, media, paperless; the worker's journal
     # upload and models export). From pods, the LAN gets only the apiserver
     # and the registry on the NAS; the internet (atelet's GCS fetch) is
     # unaffected. Everything else in-cluster rides flannel.1.
@@ -107,7 +81,7 @@ let
   ]
   # Every private range, not only the house /24 (fix round 1), on ANY output
   # interface (fix round 3): when NetworkManager falls back to the Freebox
-  # profile (hosts/coordinator/uplink-nas.nix) the leg is a DHCP subnet this
+  # profile (hosts/strix/uplink-nas.nix) the leg is a DHCP subnet this
   # module does not know, and 100.64/10 is the tailnet's range.
   ++ map (r: "-i cni0 -d ${r} -j DROP") privateRanges
   # The internet, over a LAN leg only; tailscale0, podman0 and anything else
@@ -132,7 +106,7 @@ let
   ];
 
   # ── pods never open a connection to the agent host (fix round 2) ──
-  # MEASURED by the round-2 review on the coordinator: from a pod,
+  # MEASURED by the round-2 review on the strix: from a pod,
   # `nc 10.200.0.1 22` and the node's LAN address answered SSH-2.0-OpenSSH,
   # because nixos-fw accepts 22 on every interface and the guard chain above
   # sees FORWARD only. Nothing on the Substrate path needs a NEW pod-to-host
@@ -221,8 +195,8 @@ let
 
   # The drop-in's [keyfile] half. The text still names harness.nix, where it
   # was written: any byte change here re-runs `nmcli general reload conf` on
-  # the coordinator at its next switch (restartTriggers below), and the split
-  # that moved it here changes nothing on the coordinator but the VXLAN peer
+  # the strix at its next switch (restartTriggers below), and the split
+  # that moved it here changes nothing on the strix but the VXLAN peer
   # rule. ./harness.nix appends the desk's extra-LAN section (lines merge).
   nmDropIn = ''
     # ax-fleet (modules/ax-fleet/harness.nix): k3s's own interfaces are never

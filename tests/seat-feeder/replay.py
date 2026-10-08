@@ -73,18 +73,18 @@ def fail(failures, message):
     failures.append(message)
 
 
-def check_config(coordinator_path, worker_path, timers, failures):
+def check_config(strix_path, worker_path, timers, failures):
     """Tie the replay table to the Home Manager objects evaluated by Nix."""
-    coordinator = read_json(coordinator_path)
+    strix = read_json(strix_path)
     worker = read_json(worker_path)
-    coordinator_timers = coordinator.get("timers") or {}
-    coordinator_services = coordinator.get("services") or {}
+    strix_timers = strix.get("timers") or {}
+    strix_services = strix.get("services") or {}
     worker_timers = worker.get("timers") or {}
     worker_services = worker.get("services") or {}
 
-    actual = sorted(name for name in coordinator_timers if name.startswith(FEEDER_PREFIX))
+    actual = sorted(name for name in strix_timers if name.startswith(FEEDER_PREFIX))
     if actual != DECLARED_FEEDERS:
-        fail(failures, f"C1 coordinator timers are {actual!r}, wanted {DECLARED_FEEDERS!r}")
+        fail(failures, f"C1 strix timers are {actual!r}, wanted {DECLARED_FEEDERS!r}")
     worker_actual = sorted(name for name in worker_timers if name.startswith(FEEDER_PREFIX))
     if worker_actual:
         fail(failures, f"C2 worker unexpectedly declares feeder timers {worker_actual!r}")
@@ -100,8 +100,8 @@ def check_config(coordinator_path, worker_path, timers, failures):
 
     for unit, instrument, row_csv, cadence, accuracy, duration in timers:
         name = unit.removesuffix(".timer")
-        timer = coordinator_timers.get(name)
-        service = coordinator_services.get(name)
+        timer = strix_timers.get(name)
+        service = strix_services.get(name)
         if timer is None or service is None:
             fail(failures, f"C4 {unit} has no matching timer+service pair")
             continue
@@ -137,7 +137,7 @@ def check_config(coordinator_path, worker_path, timers, failures):
             fail(failures, f"C8 {unit} does not enforce its {duration}s duration cap")
 
     expected_dir = "d %h/.local/state/tally-rewrite/meters 0700 - - -"
-    if expected_dir not in (coordinator.get("tmpfiles") or []):
+    if expected_dir not in (strix.get("tmpfiles") or []):
         fail(failures, "C9 Home Manager does not create the rewrite meters directory")
 
 
@@ -608,7 +608,7 @@ def replay(args):
         return 2
 
     failures = []
-    check_config(args.coordinator_config, args.worker_config, timers, failures)
+    check_config(args.strix_config, args.worker_config, timers, failures)
     check_live_tree_refusal(repo, workdir, failures)
     check_codex_read_boundary(repo, workdir, failures)
     runtime_case, order_case = check_claude_publication(repo, workdir, failures)
@@ -926,7 +926,7 @@ def main(argv=None):
     parser.add_argument("--repo", required=True)
     parser.add_argument("--workdir", required=True)
     parser.add_argument("--admit", required=True)
-    parser.add_argument("--coordinator-config", required=True)
+    parser.add_argument("--strix-config", required=True)
     parser.add_argument("--worker-config", required=True)
     parser.add_argument("--ticks", type=int, default=60)
     parser.add_argument("--log", required=True)

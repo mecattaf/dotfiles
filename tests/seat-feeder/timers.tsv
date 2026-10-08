@@ -19,7 +19,7 @@
 # pi-qwencloud is deliberately not the mutation witness.)
 #
 # Clause 2 of the oracle asserts, through `nix eval`, that every timer named
-# here is declared in the coordinator's config with this cadence and this row
+# here is declared in the strix's config with this cadence and this row
 # list, so the table cannot drift away from the estate it claims to describe.
 #
 # columns, tab-separated:

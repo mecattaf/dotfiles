@@ -114,7 +114,7 @@ jq -e --arg directory "$call_dir" '
   . == {
     argv: ["call-diarize", $directory],
     adapter: "shell",
-    pool: ["coordinator-gpu"],
+    pool: ["strix-gpu"],
     priority: "low",
     source: "events-dir",
     dedupKey: "call-diarize:2026-08-09-dry-event",

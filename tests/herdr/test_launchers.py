@@ -173,8 +173,8 @@ class Launchers(unittest.TestCase):
     def test_projector_diagnoses_failures_without_starting_unmanaged_server(self):
         cases = [
             ('1', 'Failed to connect to user scope bus via local transport: No such file or directory', 'Herdr may still be running'),
-            ('255', 'ssh: connect to host coordinator: Connection refused', 'SSH connection to coordinator failed'),
-            ('3', 'inactive', 'herdr.service check on coordinator failed: inactive'),
+            ('255', 'ssh: connect to host strix: Connection refused', 'SSH connection to strix failed'),
+            ('3', 'inactive', 'herdr.service check on strix failed: inactive'),
         ]
         for status, output, expected in cases:
             with self.subTest(status=status):

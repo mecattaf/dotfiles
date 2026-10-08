@@ -163,7 +163,7 @@ class Collector(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp())
         (tmp / "profile.json").write_text(json.dumps(profile))
         # An empty PATH makes the sandbox's "no systemd here" true on any box
-        # the suite runs on, including a live coordinator.
+        # the suite runs on, including a live strix.
         (tmp / "bin").mkdir()
         env = dict(os.environ, PATH=str(tmp / "bin"), FLEET_STATUS_TOM_BIN_DIR=str(tmp / "bin"), FLEET_STATUS_PROFILE=str(tmp / "profile.json"), FLEET_STATUS_MARKER_DIR=str(tmp / "markers"))
         (tmp / "markers").mkdir()
@@ -239,7 +239,7 @@ class RenderAndFolds(unittest.TestCase):
             {"seq": 2, "payload": {"kind": "lease_grant", "lease": "lease:b"}},
             {"seq": 3, "payload": {"kind": "lease_debit", "lease": "lease:a"}},
             {"seq": 4, "payload": {"kind": "lease_release", "lease": "lease:a"}},
-            {"seq": 5, "payload": {"kind": "admission_transition", "seat": "gpu-worker"}},
+            {"seq": 5, "payload": {"kind": "admission_transition", "seat": "gpu-strix"}},
         ]
         ids, last = fs.open_leases([json.dumps(r) for r in rows] + ["not json"])
         self.assertEqual((ids, last), (["lease:b"], 5))

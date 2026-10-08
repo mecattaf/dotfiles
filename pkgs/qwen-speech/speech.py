@@ -1,4 +1,4 @@
-"""Qwen output: on-demand coordinator synthesis, client PipeWire playback."""
+"""Qwen output: on-demand strix synthesis, client PipeWire playback."""
 
 import argparse
 import base64
@@ -464,7 +464,7 @@ def stop():
 
 def speak(args):
     if args.client:
-        command = [args.remote_command, "speak", "--coordinator", args.coordinator,
+        command = [args.remote_command, "speak", "--strix", args.strix,
                    "--remote-command", args.remote_command]
         if args.stop:
             command.append("--stop")
@@ -477,14 +477,14 @@ def speak(args):
         stop()
         return
     text = read_text(args)
-    if not args.output and socket.gethostname() not in ("client", "coordinator"):
+    if not args.output and socket.gethostname() not in ("client", "strix"):
         raise RuntimeError("playback requires a physical seat; use --client client or --output FILE.wav")
     with lock("playback.lock"):
         pidfile = runtime() / "playback.json"
         pidfile.write_text(json.dumps({"pid": os.getpid(), "start": process_start(os.getpid())}))
         producer = player = None
         try:
-            producer = subprocess.Popen(ssh(args.coordinator, [args.remote_command, "relay"]),
+            producer = subprocess.Popen(ssh(args.strix, [args.remote_command, "relay"]),
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             producer.stdin.write(text.encode())
             producer.stdin.close()
@@ -528,7 +528,7 @@ def main():
     play.add_argument("--file")
     play.add_argument("--output", help="save a WAV instead of playing")
     play.add_argument("--client", help="forward playback to this client (normally client)")
-    play.add_argument("--coordinator", default="coordinator")
+    play.add_argument("--strix", default="strix")
     play.add_argument("--remote-command", default="qwen-speech")
     play.add_argument("--stop", action="store_true")
     sub.add_parser("relay")

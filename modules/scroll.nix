@@ -21,7 +21,7 @@
 #      /etc/scroll/config.d/* explicitly (home/dot_config/scroll/config), and
 #      this module owns exactly one file there.
 #   2. Its nixos.conf exports SWAYSOCK and I3SOCK into the systemd and D-Bus
-#      activation environment. On the coordinator that environment also hosts
+#      activation environment. On the strix that environment also hosts
 #      the headless browser SWAY (modules/browser-desktop.nix), so a bare
 #      `swaymsg` from any user unit would reach scroll. Here only SCROLLSOCK is
 #      exported.
@@ -130,9 +130,11 @@ in
       default = true;
     };
 
-    closureGuard = lib.mkEnableOption "the build-time check that no GNOME shell/session/gdm package is in the system closure" // {
-      default = true;
-    };
+    closureGuard =
+      lib.mkEnableOption "the build-time check that no GNOME shell/session/gdm package is in the system closure"
+      // {
+        default = true;
+      };
   };
 
   config = lib.mkIf cfg.enable (
@@ -149,7 +151,9 @@ in
           }
           {
             assertion =
-              !(builtins.any (p: builtins.elem (lib.getName p) forbiddenInClosure) config.environment.systemPackages);
+              !(builtins.any (
+                p: builtins.elem (lib.getName p) forbiddenInClosure
+              ) config.environment.systemPackages);
             message = "programs.scroll: ${lib.concatStringsSep ", " forbiddenInClosure} must not be in environment.systemPackages.";
           }
           {

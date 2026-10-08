@@ -111,7 +111,7 @@ and never downloads them; no font binary is in that repo.
 Origins:
 %(origins)s
 
-The coordinator's `update-center-seed` adds these to the NAS store each night
+The strix's `update-center-seed` adds these to the NAS store each night
 and GC-roots them under /var/lib/update-center/seeds. Manual recovery on a host:
 
     scp root@nas:/mnt/fast/fonts/anthropic/<file> . && nix-store --add-fixed sha256 <file>

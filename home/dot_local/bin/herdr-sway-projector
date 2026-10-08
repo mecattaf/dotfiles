@@ -6,7 +6,7 @@ export HERDR_CONFIG_PATH="${XDG_CONFIG_HOME:-$HOME/.config}/herdr/sway-client.to
 local_server=${HERDR_SWAY_LOCAL:-}
 if [[ -z $local_server ]]; then
   local_server=0
-  [[ $(uname -n) != coordinator ]] || local_server=1
+  [[ $(uname -n) != strix ]] || local_server=1
 fi
 if [[ $local_server == 1 ]]; then
   if ! systemctl --user --quiet is-active herdr.service; then

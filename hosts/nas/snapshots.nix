@@ -24,7 +24,7 @@
 # story, and it is why the per-subvolume export list in storage.nix is written
 # out longhand instead of relying on a single fsid=0 root export. The snapshots
 # btrbk creates below are themselves nested subvolumes INSIDE .snapshots, so
-# they are two boundaries away from anything the coordinator can reach.
+# they are two boundaries away from anything the strix can reach.
 #
 # RUNBOOK — enable
 #   1. Confirm the layout is real, not directories (this is the one thing that

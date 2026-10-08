@@ -9,7 +9,7 @@
 let
   cfg = config.myNas.media;
   # The NAS base system rides nixpkgs-stable (#135), but the Immich database
-  # was created by the coordinator's unstable Immich (3.0.3 at migration time)
+  # was created by the strix's unstable Immich (3.0.3 at migration time)
   # and its schema must never run under an older server (stable had 2.7.5).
   # So the media stack's version-coupled piece — Immich module + package —
   # comes from the main unstable input (`unstablePkgs`, see
@@ -18,7 +18,7 @@ let
   # and vectorchord were identical across both pins when this was wired
   # (2026-08-02); they stay stable-sourced.
   #
-  # Deliberately identical to the coordinator's historical media root. Immich
+  # Deliberately identical to the strix's historical media root. Immich
   # and Navidrome can then retain every stored absolute path after restore.
   storageRoot = "/mnt/nas";
   # The NVMe fast tier (disko.nix, 2026-08-02 role widening): database and
@@ -72,7 +72,7 @@ in
       machine-learning.enable = false;
       # Keep Smart Search and Face Detection off this appliance and on a Strix
       # Halo box. That box is the WORKER since 2026-08-21 (#229): it is the same
-      # silicon as the coordinator and nobody is typing on it, so the ML batches
+      # silicon as the strix and nobody is typing on it, so the ML batches
       # land where they cost nothing. `worker` resolves through the
       # networking.hosts pin in ./network.nix (-> 10.42.0.5, the worker's static
       # LAN identity, guarded by the dhcp-host pin in ./router.nix) — pinned on
@@ -82,7 +82,7 @@ in
       # on the first request and retiring after 15 idle minutes. It admits only
       # its LAN interface and has no tailnet door, so the reachable path is this
       # segment — the same trust boundary the old private link gave it.
-      environment.IMMICH_MACHINE_LEARNING_URL = lib.mkForce "http://worker:3003";
+      environment.IMMICH_MACHINE_LEARNING_URL = lib.mkForce "http://strix:3003";
       accelerationDevices = [ "/dev/dri/renderD128" ];
     };
 
@@ -262,7 +262,7 @@ in
     # Plex serves the videos subvolume (Tom's 2026-08-02 call: Plex over
     # Jellyfin). Unlike Immich/Navidrome it stays resident — Plex keeps
     # long-lived plex.tv sessions and library state that socket activation
-    # would thrash. Reachable only through the coordinator's 32400 relay.
+    # would thrash. Reachable only through the strix's 32400 relay.
     # No hardware-transcode config until a Plex Pass exists (precondition
     # not true yet); CPU direct-play/remux is the baseline.
     # ── dataDir moved to the NVMe 2026-08-22 ────────────────────────────
@@ -294,7 +294,7 @@ in
     ];
 
     networking.firewall.extraInputRules = ''
-      ip saddr 10.42.0.2 tcp dport { 2283, 4533, 32400 } accept comment "media from coordinator (LAN; /30 retired 2026-08-21)"
+      ip saddr 10.42.0.2 tcp dport { 2283, 4533, 32400 } accept comment "media from strix (LAN; /30 retired 2026-08-21)"
     '';
   };
 }

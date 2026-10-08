@@ -64,14 +64,10 @@ THE SEATS, and where each one's truth lives:
                 GET /api/v1/key free_model_daily_requests {used, limit,
                 remaining}. A counter of requests that resets at 00:00 UTC.
 
-  gpu-worker    The fleet's one inference server, Halogen Flash on the worker
-                (http://worker:8731, GET /health). No window, no quota: the
+  gpu-strix    The fleet's one inference server, Halogen Flash on Strix
+                (http://strix:8731, GET /health). No window, no quota: the
                 row says whether the server is up and which model id it
                 answers to.
-  gpu-coordinator
-                Serves nothing declaratively: the small GGUF artifacts loaned
-                there are run by hand, and a hand-run llama-server is not a
-                seat. The row is UNKNOWN / not-applicable and says why.
 
 FRESHNESS AND THE 429. /api/oauth/usage rate-limits — polling it by hand a few
 times in one minute already returned 429 (measured 2026-09-02). Every reading
@@ -136,10 +132,10 @@ OPENROUTER_KEY_FILE = os.environ.get("SEATS_OPENROUTER_KEY_FILE") or "/run/ageni
 # factory stops dispatching. Overridable without editing the program.
 OPENROUTER_CAP_USD = 12.0
 
-# The fleet's one inference server, Halogen Flash on the worker
+# The fleet's one inference server, Halogen Flash on Strix
 # (modules/halogen.nix). The base URL follows the *_INFERENCE_URL convention;
 # the override is for a hand-run llama-server, not a second declared server.
-INFERENCE_URL = (os.environ.get("SEATS_INFERENCE_URL") or "http://worker:8731").rstrip("/")
+INFERENCE_URL = (os.environ.get("SEATS_INFERENCE_URL") or "http://strix:8731").rstrip("/")
 
 # ── the Qwen Cloud plan, and how a credit was priced ────────────────────────
 # Qwen Cloud meters in CREDITS and publishes no endpoint, so a percentage has
@@ -235,11 +231,7 @@ DEFAULT_SEATS = [
      "owner": "tom", "meter": "usd"},
     {"id": "openrouter-free", "provider": "openrouter", "label": "OpenRouter free model (daily requests)",
      "owner": "tom", "meter": "free-requests"},
-    {"id": "gpu-coordinator", "provider": "none", "label": "Local GPU (coordinator)",
-     "owner": "kernel",
-     "reason": "serves nothing declaratively; the fleet's inference server is Halogen "
-               "on the worker, and a GGUF loaned here is run by hand"},
-    {"id": "gpu-worker", "provider": "halogen", "label": "Local GPU (worker, Halogen Flash)",
+    {"id": "gpu-strix", "provider": "halogen", "label": "Local GPU (Strix, Halogen Flash)",
      "owner": "kernel", "endpoint": INFERENCE_URL},
 ]
 
@@ -1082,7 +1074,7 @@ def qwen_events(spend_root: Path):
 
     events  sorted [(epoch, input, output)] for messages billed to the token
             plan — and ONLY those. The same session store carries locally
-            served traffic (the Halogen server on the worker, a hand-run
+            served traffic (the Halogen server on Strix, a hand-run
             llama-server), which costs this subscription nothing; counting it
             would inflate the meter with locally-served tokens.
     resets  every reset stamp the provider has ever stated in a refusal here.
@@ -1668,7 +1660,7 @@ def _events_pi(path):
     """pi, token-plan traffic only.
 
     The same session store carries locally served messages — the Halogen
-    server on the worker, a hand-run llama-server. Those cost the subscription
+    server on Strix, a hand-run llama-server. Those cost the subscription
     nothing, so counting them here would inflate a meter with local tokens.
     """
     events = []

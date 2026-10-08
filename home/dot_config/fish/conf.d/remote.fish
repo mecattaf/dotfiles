@@ -1,8 +1,8 @@
-if test (hostname) != "coordinator"
-    # The coordinator is where sessions live. On another box (a thin client) a
+if test (hostname) != "strix"
+    # The strix is where sessions live. On another box (a thin client) a
     # terminal is a *projector*: it reaches the one herdr server on the
-    # coordinator over the tailnet. herdr-projector (~/.local/bin) runs
-    # `herdr --remote coordinator --remote-keybindings server` and reattaches by
+    # strix over the tailnet. herdr-projector (~/.local/bin) runs
+    # `herdr --remote strix --remote-keybindings server` and reattaches by
     # itself when the link drops; the session keeps running server-side
     # meanwhile. `--remote-keybindings server` is what keeps the tally popup
     # keys working from here (#385).

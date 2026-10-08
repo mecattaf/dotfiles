@@ -5,21 +5,21 @@
 }:
 # substrate-modules: the rendered shape of modules/substrate.nix, proven at evaluation time.
 #
-# `nix flake check --no-build` evaluates this derivation's inputs, which forces the coordinator's
+# `nix flake check --no-build` evaluates this derivation's inputs, which forces the strix's
 # services.substrate config twice: as declared (both gates ON since 2026-09-24, both units rendered, both
 # secrets declared from the two named age files) and armed through extendModules with fixtures (a stub puller,
 # files standing in for the age files), which renders both user units, the pusher.json, the runtimes.toml and the
 # puller's config.toml without a token on disk. `nix build .#checks.<system>.substrate-modules` then parses the
 # three files against the 2026-09-24 proven deployment plus the 2026-09-25 ssh runtime: runtimes
-# opus/halogen/codex/codex-rw and ssh:worker (type ssh, host worker, harness pi, seat halogen: lane B's pi runs on
+# opus/halogen/codex/codex-rw and ssh:strix (type ssh, host worker, harness pi, seat halogen: lane B's pi runs on
 # the worker through the ssh runner, merged in from puller.sshRuntimes; still no herdr or gvisor), [credentials.seats]
 # with cc2 = ~/.claude-work, pusher.json with peerCacheDir and no tokenFile, the [puller] table with the two
 # credential placeholders, and no rendered file carrying a token-shaped key or a credential path. It also pins the
-# academic drain's standing submit (modules/academic-drain.nix; ON 2026-09-25, OFF on the coordinator since
+# academic drain's standing submit (modules/academic-drain.nix; ON 2026-09-25, OFF on the strix since
 # 2026-09-30, so it is armed here): the user service and timer, the timer's OnCalendar, the floor token as a credential, and a rendered script with no
 # token-shaped literal.
 let
-  coord = self.nixosConfigurations.coordinator;
+  coord = self.nixosConfigurations.strix;
   declared = coord.config;
   armed =
     (coord.extendModules {
@@ -32,7 +32,7 @@ let
             # package is asserted on the declared host below (evaluated, not built).
             puller.package = pkgs.writeShellScriptBin "substrate-puller" "exit 78";
             tokenAgeFile = pkgs.writeText "substrate-floor-token.age" "eval fixture, not a secret";
-            puller.linkTokenAgeFile = pkgs.writeText "substrate-link-token-coordinator.age" "eval fixture, not a secret";
+            puller.linkTokenAgeFile = pkgs.writeText "substrate-link-token-strix.age" "eval fixture, not a secret";
           };
           # OFF on the real host since 2026-09-30 (no scheduled agent work in dotfiles); armed here so
           # the module's rendered shape stays proven for a hand run or a factory schedule.
@@ -56,27 +56,26 @@ assert declared.systemd.user.services ? substrate-pusher;
 assert declared.systemd.user.services ? substrate-puller;
 assert baseNameOf declared.age.secrets.substrate-floor-token.file == "substrate-floor-token.age";
 assert
-  baseNameOf declared.age.secrets.substrate-link-token-coordinator.file
-  == "substrate-link-token-coordinator.age";
+  baseNameOf declared.age.secrets.substrate-link-token-strix.file == "substrate-link-token-strix.age";
 assert declared.age.secrets.substrate-floor-token.owner == "tom";
 assert declared.age.secrets.substrate-floor-token.mode == "0400";
-assert declared.age.secrets.substrate-link-token-coordinator.owner == "tom";
-assert declared.age.secrets.substrate-link-token-coordinator.mode == "0400";
-# secrets.nix names both, coordinator-only (read as data, never imported into the host eval).
+assert declared.age.secrets.substrate-link-token-strix.owner == "tom";
+assert declared.age.secrets.substrate-link-token-strix.mode == "0400";
+# secrets.nix names both, strix-only (read as data, never imported into the host eval).
 assert (import ../../secrets.nix) ? "secrets/substrate-floor-token.age";
-assert (import ../../secrets.nix) ? "secrets/substrate-link-token-coordinator.age";
+assert (import ../../secrets.nix) ? "secrets/substrate-link-token-strix.age";
 # The real packages are the defaults (evaluated here, not built).
 assert declared.services.substrate.puller.package.pname == "substrate-puller";
 assert declared.services.substrate.pusher.package.pname == "substrate-pusher";
 # Armed: both units exist, both take their bearers as credentials, never as values.
 assert armed.age.secrets.substrate-floor-token.owner == "tom";
-assert armed.age.secrets.substrate-link-token-coordinator.owner == "tom";
+assert armed.age.secrets.substrate-link-token-strix.owner == "tom";
 assert
   pusherUnit.serviceConfig.LoadCredential == [ "floor-token:/run/agenix/substrate-floor-token" ];
 assert
   pullerUnit.serviceConfig.LoadCredential == [
     "floor-token:/run/agenix/substrate-floor-token"
-    "link-token:/run/agenix/substrate-link-token-coordinator"
+    "link-token:/run/agenix/substrate-link-token-strix"
   ];
 assert hasInfix "--token-file %d/floor-token" pusherUnit.serviceConfig.ExecStart;
 assert pusherUnit.unitConfig.ConditionUser == "tom";
@@ -101,16 +100,19 @@ assert !(standing ? wantedBy) || standing.wantedBy == [ ];
 assert standingTimer.timerConfig.OnCalendar == "*-*-* 01:30:00";
 assert standingTimer.timerConfig.Persistent == false;
 assert standingTimer.wantedBy == [ "timers.target" ];
-assert declared.services.academicDrain.standing.args.runtime == "ssh:worker";
-# puller.sshRuntimes MERGES into the default runtimes (a hand-set runtimes.runtime."ssh:worker" would replace it).
-assert declared.services.substrate.puller.sshRuntimes ? "ssh:worker";
+assert declared.services.academicDrain.standing.args.runtime == "ssh:strix";
+# puller.sshRuntimes MERGES into the default runtimes (a hand-set runtimes.runtime."ssh:strix" would replace it).
+assert declared.services.substrate.puller.sshRuntimes ? "ssh:strix";
 assert
   builtins.attrNames declared.services.substrate.puller.runtimes.runtime == [
     "codex"
     "codex-rw"
     "halogen"
+    "openrouter"
+    "openrouter-free"
     "opus"
-    "ssh:worker"
+    "qwen"
+    "ssh:strix"
   ];
 # The pidfile is in the RuntimeDirectory, so a hold is transient: 3 must be retried, not terminal.
 assert !(builtins.elem 3 pullerUnit.serviceConfig.RestartPreventExitStatus);
@@ -130,18 +132,18 @@ pkgs.runCommand "substrate-modules"
     pusher = json.load(open(sys.argv[1]))
     assert pusher["floorUrl"].startswith("https://"), pusher
     assert "tokenFile" not in pusher and not any("token" in k.lower() for k in pusher), list(pusher)
-    assert pusher["seats"] == ["cc", "cc2", "codex", "pi-qwencloud", "halogen"], pusher["seats"]
-    assert pusher["seatIds"] == {"gpu-worker": "halogen"}
+    assert pusher["seats"] == ["cc", "cc2", "codex", "pi-qwencloud", "halogen", "openrouter", "openrouter-free"], pusher["seats"]
+    assert pusher["seatIds"] == {"gpu-strix": "halogen"}
     assert pusher["seatsBin"] == "/home/tom/.local/bin/seats"
     rt = tomllib.load(open(sys.argv[2], "rb"))
     known = {"host", "runtime-test", "herdr", "gvisor", "microvm", "ssh", "workerd", "ax"}
     for name, table in rt["runtime"].items():
         assert table["type"] in known, (name, table)
     assert rt["default"] == "opus", rt["default"]
-    assert rt["allow"] == ["opus", "halogen", "codex", "codex-rw", "ssh:worker"], rt["allow"]
-    assert set(rt["runtime"]) == {"opus", "halogen", "codex", "codex-rw", "ssh:worker"}, list(rt["runtime"])
+    assert rt["allow"] == ["opus", "halogen", "codex", "codex-rw", "qwen", "openrouter", "openrouter-free", "ssh:strix"], rt["allow"]
+    assert set(rt["runtime"]) == {"opus", "halogen", "codex", "codex-rw", "qwen", "openrouter", "openrouter-free", "ssh:strix"}, list(rt["runtime"])
     assert not {"herdr", "gvisor"} & set(rt["runtime"]), list(rt["runtime"])
-    for name in ("opus", "halogen", "codex", "codex-rw", "ssh:worker"):
+    for name in ("opus", "halogen", "codex", "codex-rw", "qwen", "openrouter", "openrouter-free", "ssh:strix"):
         assert isinstance(rt["runtime"][name].get("timeoutMs"), int) and rt["runtime"][name]["timeoutMs"] >= 900000, (name, rt["runtime"][name])
     strip = lambda t: {k: v for k, v in t.items() if k != "timeoutMs"}
     assert strip(rt["runtime"]["opus"]) == {"type": "host", "harness": "claude", "seat": "cc2"}
@@ -149,7 +151,7 @@ pkgs.runCommand "substrate-modules"
     assert strip(rt["runtime"]["codex"]) == {"type": "host", "harness": "codex", "seat": "codex", "codexSandbox": "read-only"}
     assert strip(rt["runtime"]["codex-rw"]) == {"type": "host", "harness": "codex", "seat": "codex", "codexSandbox": "workspace-write"}
     # SshRuntime (packages/runners/src/config.ts:116-121): type, host, and the common harness, seat, timeoutMs.
-    assert rt["runtime"]["ssh:worker"] == {"type": "ssh", "host": "worker", "harness": "pi", "seat": "halogen", "timeoutMs": 1800000}, rt["runtime"]["ssh:worker"]
+    assert rt["runtime"]["ssh:strix"] == {"type": "ssh", "host": "strix", "harness": "pi", "seat": "halogen", "timeoutMs": 1800000}, rt["runtime"]["ssh:strix"]
     # The loader's guardrail (packages/runners/src/config.ts): codexSandbox only on the codex harness.
     for name, table in rt["runtime"].items():
         assert "codexSandbox" not in table or table.get("harness") == "codex", name
@@ -160,7 +162,7 @@ pkgs.runCommand "substrate-modules"
     assert all(d.startswith("/") for d in cred["seats"].values())
     assert len(set(cred["seats"].values())) == len(cred["seats"]), "one config dir is one seat"
     assert pusher["peerCacheDir"] == "inherit", pusher
-    assert pusher["not_dispatchable"] == {"cc3": "evicted", "gpu-coordinator": "halogen is declared but not resident on the coordinator"}
+    assert pusher["not_dispatchable"] == {"cc3": "evicted"}
     assert pusher["owners"] == {"codex": "tom"}
     start = open(sys.argv[3]).read()
     assert "@FLOOR_TOKEN_FILE@" in start and "@LINK_TOKEN_FILE@" in start and "CREDENTIALS_DIRECTORY" in start
@@ -192,7 +194,7 @@ pkgs.runCommand "substrate-modules"
     assert "/run/agenix" not in standing and "/.local/state/substrate/floor-token" not in standing
     masked = re.sub(r"/nix/store/[a-z0-9]{32}-", "/nix/store/HASH-", standing)
     assert not token_shaped.search(masked), ("standing submit", token_shaped.search(masked).group(0))
-    print("substrate-modules: pusher.json, runtimes.toml and config.toml render the 2026-09-24 proven shape plus ssh:worker; the standing submit carries no token")
+    print("substrate-modules: pusher.json, runtimes.toml and config.toml render the 2026-09-24 proven shape plus ssh:strix; the standing submit carries no token")
     PY
     touch "$out"
   ''

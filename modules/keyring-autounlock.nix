@@ -1,8 +1,13 @@
-{ config, lib, pkgs, ... }:
-# Automatic gnome-keyring unlock on the headless coordinator (Tom, 2026-09-14:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+# Automatic gnome-keyring unlock on the headless strix (Tom, 2026-09-14:
 # "prefer NOT having to type pwd at all").
 #
-# The coordinator boots with no login, so nothing unlocks Default_Keyring and
+# The strix boots with no login, so nothing unlocks Default_Keyring and
 # the browser desktop's Chrome waits on a prompt. Instead the keyring password
 # is sealed ONCE to this board's TPM2 with systemd-creds, bound to PCR 7
 # (firmware / Secure Boot state — stable across kernel and NixOS updates on
@@ -14,7 +19,7 @@
 # the same boundary the unencrypted root already sets. A firmware or Secure
 # Boot change breaks the seal: the keyring then stays LOCKED (fail safe), and
 # `keyring-seal` once more re-arms it. Manual fallback, always:
-#   ssh -t coordinator keyring-unlock
+#   ssh -t strix keyring-unlock
 #
 # Setup / re-seal (verifies itself end to end; restores on failure):
 #   sudo keyring-seal            # reads the password silently from the tty
@@ -28,7 +33,12 @@ let
   '';
   keyring-seal = pkgs.writeShellApplication {
     name = "keyring-seal";
-    runtimeInputs = [ pkgs.coreutils pkgs.diffutils pkgs.util-linux config.systemd.package ];
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.diffutils
+      pkgs.util-linux
+      config.systemd.package
+    ];
     text = ''
       [ "$(id -u)" = 0 ] || { echo "keyring-seal: run as root (sudo keyring-seal)" >&2; exit 2; }
       u() { ${unlockAsUser} }
@@ -69,14 +79,20 @@ in
 
   systemd.services.keyring-unlock-boot = {
     description = "Unlock tom's gnome-keyring from the TPM-sealed password";
-    wantedBy = [ "multi-user.target" "user@1000.service" ];
+    wantedBy = [
+      "multi-user.target"
+      "user@1000.service"
+    ];
     wants = [ "user@1000.service" ];
     after = [ "user@1000.service" ];
     # A restored user session has a new bus and keyring daemon. Do not keep
     # yesterday's successful oneshot state across a user-manager restart.
     partOf = [ "user@1000.service" ];
     unitConfig.ConditionPathExists = cred;
-    path = [ pkgs.coreutils pkgs.util-linux ];
+    path = [
+      pkgs.coreutils
+      pkgs.util-linux
+    ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;

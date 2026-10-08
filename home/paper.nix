@@ -14,7 +14,7 @@
 #
 # Coordinator-only: the printer queue and the print skill live here.
 let
-  isCoordinator = osConfig.networking.hostName == "coordinator";
+  isCoordinator = osConfig.networking.hostName == "strix";
   daemon = lib.getExe pkgs.paper-daemon;
 in
 lib.mkIf isCoordinator {

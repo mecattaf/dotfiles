@@ -12,7 +12,7 @@ let
 in
 {
   home.packages = lib.optionals displayHost [
-    # PCM transport/player only; Qwen weights and inference stay on coordinator.
+    # PCM transport/player only; Qwen weights and inference stay on strix.
     pkgs.qwen-speech
     # Speech queue playback and voice sessions (speech-wake and Parakeet were
     # removed on 2026-09-30).

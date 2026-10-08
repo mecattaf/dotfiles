@@ -103,7 +103,7 @@ class UpdateCenterTests(unittest.TestCase):
             "FIXTURE": self.tmp,
             "FAIL_BUILD": fail_build,
             "FAIL_PUSH": fail_push,
-            "UPDATE_CENTER_HOSTS": "coordinator worker client",
+            "UPDATE_CENTER_HOSTS": "strix worker client",
             "UPDATE_CENTER_STATE_DIR": self.state,
             "UPDATE_CENTER_SIGNING_KEY": self.key,
             "UPDATE_CENTER_STORE_DIR": self.store,
@@ -129,7 +129,7 @@ class UpdateCenterTests(unittest.TestCase):
     def test_all_hosts_publish_signed_manifests(self):
         r = self.run_center()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        for host in ("coordinator", "worker", "client"):
+        for host in ("strix", "worker", "client"):
             self.assertEqual(self.verify(host), 0)
             m = json.loads(self.manifest(host))
             self.assertEqual(m["schema"], 1)
@@ -142,19 +142,19 @@ class UpdateCenterTests(unittest.TestCase):
 
     def test_failed_build_keeps_previous_pointer(self):
         self.assertEqual(self.run_center().returncode, 0)
-        before = self.manifest("coordinator")
-        before_link = os.readlink(self.pointer("coordinator"))
+        before = self.manifest("strix")
+        before_link = os.readlink(self.pointer("strix"))
         worker_before = os.readlink(self.pointer("worker"))
         META2 = dict(META, lastModified=META["lastModified"] + 10)
         with open(os.path.join(self.tmp, "meta.json"), "w") as stream:
             json.dump(META2, stream)
         import time
         time.sleep(1.1)  # a distinct release stamp
-        r = self.run_center(fail_build="coordinator")
+        r = self.run_center(fail_build="strix")
         self.assertEqual(r.returncode, 1)
-        self.assertIn("build FAILED for coordinator", r.stderr)
-        self.assertEqual(self.manifest("coordinator"), before)
-        self.assertEqual(os.readlink(self.pointer("coordinator")), before_link)
+        self.assertIn("build FAILED for strix", r.stderr)
+        self.assertEqual(self.manifest("strix"), before)
+        self.assertEqual(os.readlink(self.pointer("strix")), before_link)
         self.assertNotEqual(os.readlink(self.pointer("worker")), worker_before)
         self.assertEqual(json.loads(self.manifest("worker"))["last_modified"], META2["lastModified"])
         self.assertEqual(self.verify("worker"), 0)
@@ -191,7 +191,7 @@ class UpdateCenterTests(unittest.TestCase):
         self.assertNotIn("nix build", open(os.path.join(self.tmp, "calls.log")).read())
 
     def test_publish_only_refuses_wrong_or_missing_closure(self):
-        coord = os.path.join(self.store, "c" * 32 + "-nixos-system-coordinator-26.11")
+        coord = os.path.join(self.store, "c" * 32 + "-nixos-system-strix-26.11")
         os.makedirs(coord)
         r = self.run_center("--publish-only", "worker", coord, "github:mecattaf/dotfiles/abc123")
         self.assertEqual(r.returncode, 2)

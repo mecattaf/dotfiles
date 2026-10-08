@@ -246,12 +246,12 @@ class StructuralValidationTests(unittest.TestCase):
 class CleanupContractTests(unittest.TestCase):
     def test_endpoint_accepts_base_or_chat_completions_url(self) -> None:
         self.assertEqual(
-            chat_completions_url("http://worker:8731"),
-            "http://worker:8731/v1/chat/completions",
+            chat_completions_url("http://strix:8731"),
+            "http://strix:8731/v1/chat/completions",
         )
         self.assertEqual(
-            chat_completions_url("http://worker:8731/v1/chat/completions/"),
-            "http://worker:8731/v1/chat/completions",
+            chat_completions_url("http://strix:8731/v1/chat/completions/"),
+            "http://strix:8731/v1/chat/completions",
         )
 
     def test_shards_never_exceed_ten(self) -> None:

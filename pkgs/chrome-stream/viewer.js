@@ -8,7 +8,7 @@ let ws, active;
 const status = text => { $('status').textContent = text; };
 function send(value) { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(value)); }
 function connect() {
-  if (!token) return status('Open the viewer link from the coordinator to connect.');
+  if (!token) return status('Open the viewer link from the strix to connect.');
   if (ws && ws.readyState < 2) ws.close();
   ws = new WebSocket(`ws://${location.host}/ws?token=${encodeURIComponent(token)}`);
   ws.onopen = () => status('Connected · Click the page to type · Paste with Ctrl+V');

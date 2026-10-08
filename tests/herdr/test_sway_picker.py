@@ -18,7 +18,7 @@ picker = importlib.util.module_from_spec(spec)
 loader.exec_module(picker)
 
 
-def view(cid=10, *, slot=None, title='coordinator: client-slot-1-ab1234', app='herdr-projector', focused=False):
+def view(cid=10, *, slot=None, title='strix: client-slot-1-ab1234', app='herdr-projector', focused=False):
     return dict(id=cid, type='con', app_id=app, name=title, pid=100 + cid,
                 marks=[f'herdr-slot-{slot}'] if slot else [], focused=focused,
                 nodes=[], floating_nodes=[])
@@ -227,11 +227,11 @@ class SwayPicker(unittest.TestCase):
     def test_identity_never_uses_global_focus_or_stale_mark(self):
         node = view()
         node['marks'].append('herdr-workspace-wA')
-        with patch.dict(os.environ, {'HERDR_PICKER_HOSTNAME': 'coordinator'}):
+        with patch.dict(os.environ, {'HERDR_PICKER_HOSTNAME': 'strix'}):
             self.assertEqual(picker.identity(node, SNAPSHOT)['workspace_id'], 'wA')
             node['name'] = 'kitty'
             self.assertIsNone(picker.identity(node, SNAPSHOT))
-            node['name'] = 'coordinator: today'
+            node['name'] = 'strix: today'
             duplicated = {'workspaces': [{'workspace_id': 'wB', 'label': 'today'}, {'workspace_id': 'wC', 'label': 'today'}]}
             self.assertIsNone(picker.identity(node, duplicated))
 
