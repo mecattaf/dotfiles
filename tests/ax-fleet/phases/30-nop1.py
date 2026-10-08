@@ -103,7 +103,7 @@ def task_state(name: str) -> Any:
 
 
 def floor_reports(name: Any = None) -> Any:
-    out = probe.succeed("curl -sf http://127.0.0.1:8731/floor/results")
+    out = strix.succeed("curl -sf http://127.0.0.1:8731/floor/results")
     reps = json.loads(out)["reports"]
     if name is None:
         return reps
@@ -184,7 +184,7 @@ def diagnose(name: str) -> None:
     _, atelet = nas.execute("k3s kubectl -n ate-system logs -l app=atelet --all-containers --tail=80 2>&1")
     _, ctl = nas.execute("k3s kubectl -n ax-system logs deploy/ax-controller --tail=60 2>&1")
     _, pods = nas.execute("k3s kubectl -n ate-system get pods -o wide 2>&1; k3s kubectl -n ate-system logs deploy/ate-api-server --all-containers --tail=40 2>&1")
-    _, stub = probe.execute("tail -n 20 /var/lib/halogen-stub/requests.jsonl 2>&1")
+    _, stub = strix.execute("tail -n 20 /var/lib/halogen-stub/requests.jsonl 2>&1")
     record(f"nop1_diag_{name}", {"workers": wp[-8000:], "atelet": atelet[-6000:], "controller": ctl[-5000:], "stub": stub[-3000:], "ate_pods_api": pods[-6000:]})
 
 
@@ -338,10 +338,10 @@ with step("nop1: stock ax control plane up (no P1, no --running-resync)"):
         "apiVersion": "ax.io/v1alpha1",
         "kind": "Gateway",
         "metadata": {"name": "halogen", "atespace": NS},
-        "spec": {"egress": {"allowlist": {"hosts": [{"host": "10.42.0.99/32", "port": 8731}]}}},
+        "spec": {"egress": {"allowlist": {"hosts": [{"host": "10.42.0.2/32", "port": 8731}]}}},
     }
     strix.succeed(f"echo {base64.b64encode(json.dumps(gw).encode()).decode()} | base64 -d | {AX} apply -f -")
-    probe.succeed("curl -sf http://127.0.0.1:8731/floor/results")
+    strix.succeed("curl -sf http://127.0.0.1:8731/floor/results")
     record("nop1_workers_baseline", ate_json("get workers"))
     leak_snapshot("baseline")
 

@@ -65,7 +65,7 @@ with step("gateways: positive control, a Gateway allowlisting the public stand-i
         "apiVersion: ax.io/v1alpha1\nkind: Gateway\nmetadata:\n  name: public-test\n  atespace: fleet\n"
         "spec:\n  egress:\n    allowlist:\n      hosts:\n"
         "        - host: \"198.51.100.5/32\"\n          port: 8000\n"
-        "        - host: \"10.42.0.99/32\"\n          port: 8731\n"
+        "        - host: \"10.42.0.2/32\"\n          port: 8731\n"
         "EOF"
     )
     ok = fleet_run("gw-public", curl_body(PUBLIC), gateway="public-test")

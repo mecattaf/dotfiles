@@ -106,7 +106,7 @@ def curl_body(url: str) -> str:
 with step("probe: a gVisor ax Task runs claude --version and reaches Halogen through the Gateway (floor report)"):
     digest = strix.succeed(f"cat {CLAUDE_PROBE_OCI}/digest").strip()
     assert digest.startswith("sha256:"), digest
-    stub_before = len(probe.succeed("cat /var/lib/halogen-stub/requests.jsonl 2>/dev/null || true").splitlines())
+    stub_before = len(strix.succeed("cat /var/lib/halogen-stub/requests.jsonl 2>/dev/null || true").splitlines())
     host_kernel = strix.succeed("cat /proc/version").strip()
     body = (
         "v=$(claude --version 2>&1); vrc=$?\n"
@@ -119,7 +119,7 @@ with step("probe: a gVisor ax Task runs claude --version and reaches Halogen thr
     assert res["claude_rc"] == 0 and re.search(r"\d+\.\d+\.\d+", res["claude_version"]), res
     assert res["curl_rc"] == 0 and "halogen-qwen3.8-flash-next" in res["models"], res
     assert p["kernel"] != host_kernel, (p["kernel"], host_kernel)
-    new = probe.succeed("cat /var/lib/halogen-stub/requests.jsonl 2>/dev/null || true").splitlines()[stub_before:]
+    new = strix.succeed("cat /var/lib/halogen-stub/requests.jsonl 2>/dev/null || true").splitlines()[stub_before:]
     assert any("/v1/models" in l for l in new), new
     nas.fail("pgrep -f '[r]unsc'")
 
