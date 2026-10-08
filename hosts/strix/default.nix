@@ -18,6 +18,7 @@
     # including this one, pulls and activates on its own schedule. Manual
     # deploys still work via the flake's deploy-rs nodes (`deploy .#nas`).
     ./uplink-nas.nix
+    ./tailscale.nix
 
     ./journal-upload.nix # fleet journald substrate sender — refs #135
     ./nas-client.nix
