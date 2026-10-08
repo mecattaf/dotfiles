@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """Seat final-WAV playback with call gating.
 
-The speech-wake listener was removed on 2026-09-30; its state directory keeps
-the name because call-record writes the call marker there, and the listener
-handshake below is skipped when no listener lock exists."""
-import fcntl, io, json, os, socket, subprocess, sys, time, wave
+call-record holds playback with call-record/active for the whole call, and
+call-record/current while its session is published."""
+import fcntl, io, os, socket, subprocess, sys, time, wave
 from pathlib import Path
 
 def main():
     if socket.gethostname() not in ('client', 'coordinator'): raise RuntimeError('Playback requires a physical seat')
-    state=Path.home()/'.local/state'; gate=state/'speech-wake'
+    calls=Path.home()/'.local/state/call-record'
     runtime=Path(os.environ.get('XDG_RUNTIME_DIR',f'/run/user/{os.getuid()}'))
-    gate.mkdir(parents=True,exist_ok=True,mode=0o700)
     locks=runtime/'qwen-speech';locks.mkdir(parents=True,exist_ok=True,mode=0o700)
-    def call(): return any(p.exists() for p in [gate/'call-record',gate/'manual-call',state/'call-record/current'])
+    def call(): return any(p.exists() for p in [calls/'active',calls/'current'])
     if call(): return 75
     data=sys.stdin.buffer.read(128*1024*1024+1)
     if len(data)>128*1024*1024: raise ValueError('WAV too large')
@@ -23,22 +21,8 @@ def main():
     with (locks/'playback.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX)
         if call(): return 75
-        epoch=str(time.time_ns()).encode();marker=gate/'playback';marker.touch(mode=0o600)
-        temp=gate/f'.epoch-{os.getpid()}';temp.write_bytes(epoch);temp.replace(gate/'epoch')
         player=None
         try:
-            listener=runtime/'speech-wake/lock'
-            listening=False
-            if listener.exists():
-                with listener.open('a') as handle:
-                    try: fcntl.flock(handle,fcntl.LOCK_EX|fcntl.LOCK_NB)
-                    except BlockingIOError: listening=True
-            if listening:
-                deadline=time.monotonic()+2
-                while not ((gate/'ack').exists() and (gate/'ack').read_bytes()==epoch):
-                    if time.monotonic()>deadline: return 75
-                    time.sleep(.02)
-            if call(): return 75
             # Use a private file so monitoring cannot block behind a full stdin pipe.
             import tempfile
             with tempfile.NamedTemporaryFile(suffix='.wav') as wavfile:
@@ -51,7 +35,6 @@ def main():
                 return 0 if player.returncode==0 else 2
         finally:
             if player and player.poll() is None: player.terminate();player.wait(timeout=3)
-            temp.write_text(str(time.time_ns()));temp.replace(gate/'epoch');marker.unlink(missing_ok=True)
 if __name__=='__main__':
     try:sys.exit(main())
     except Exception as exc:print(f'speech-play: {exc}',file=sys.stderr);sys.exit(2)

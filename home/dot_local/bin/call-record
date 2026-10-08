@@ -25,66 +25,19 @@ STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/call-record"
 CURRENT="$STATE_DIR/current"
 OUT_ROOT="$HOME/Recordings/calls"
 RATE=48000
-WAKE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/speech-wake"
-WAKE_MARKER="$WAKE_DIR/call-record"
+HOLD_MARKER="$STATE_DIR/active"
 
-# The speech-wake listener was removed on 2026-09-30. The marker directory keeps
-# its old name because speech-play (pkgs/speech-session/play.py) still reads
-# the call-record marker there to hold playback during a call, and the
-# listener-ack wait below returns at once when no listener lock exists.
-# Presence inhibits waking. An atomic new epoch on entry AND exit invalidates
-# buffered PCM/detector state even if a listener misses a short marker lifetime.
-bump_wake_epoch() {
-    local temporary
-    temporary=$(mktemp "$WAKE_DIR/.epoch.XXXXXX")
-    printf '%s-%s\n' "$(date +%s%N)" "$BASHPID" > "$temporary"
-    mv -f -- "$temporary" "$WAKE_DIR/epoch"
+# Presence of the hold marker tells speech-play (pkgs/speech-session/play.py)
+# to keep speech playback off the seat for the whole call, including the
+# moments before CURRENT is published and after it is removed. It is written
+# before capture starts and retained (fail closed) when shutdown is uncertain.
+hold_playback() {
+    mkdir -p "$STATE_DIR"
+    printf '%s\n' "${dir:-unknown}" > "$HOLD_MARKER"
 }
 
-inhibit_wake() {
-    mkdir -p "$WAKE_DIR"
-    printf '%s\n' "${dir:-unknown}" > "$WAKE_MARKER"
-    bump_wake_epoch
-}
-
-release_wake() {
-    # If updating the epoch fails, retain the marker (fail closed).
-    bump_wake_epoch
-    rm -f -- "$WAKE_MARKER"
-}
-
-wait_for_listener_ack() {
-    local dictation_lock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/speech-dictation.lock"
-    local dictation_fd
-    if [[ -e "$dictation_lock" ]]; then
-        exec {dictation_fd}>>"$dictation_lock"
-        if ! flock -w 2 "$dictation_fd"; then
-            exec {dictation_fd}>&-
-            retain_inhibit=1
-            echo "held dictation did not release microphone; no call capture started" >&2
-            return 1
-        fi
-        exec {dictation_fd}>&-
-    fi
-    local runtime_lock="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/speech-wake/lock"
-    local probe_fd
-    [[ -e "$runtime_lock" ]] || return 0
-    exec {probe_fd}>>"$runtime_lock"
-    for _ in {1..40}; do
-        if flock -n "$probe_fd"; then
-            exec {probe_fd}>&-
-            return 0
-        fi
-        if cmp -s "$WAKE_DIR/epoch" "$WAKE_DIR/ack"; then
-            exec {probe_fd}>&-
-            return 0
-        fi
-        sleep 0.05
-    done
-    exec {probe_fd}>&-
-    retain_inhibit=1
-    echo "wake listener did not acknowledge call inhibition; no capture started, marker retained" >&2
-    return 1
+release_playback() {
+    rm -f -- "$HOLD_MARKER"
 }
 
 process_start() {
@@ -118,7 +71,7 @@ legacy_capture_matches() {
 finish_failed_start() {
     local status=$? i pending=false
     trap - EXIT
-    if [[ "${published:-0}" != 1 && "${wake_owned:-0}" == 1 ]]; then
+    if [[ "${published:-0}" != 1 && "${hold_owned:-0}" == 1 ]]; then
         for i in far near; do
             local pid_variable="${i}_pid" stamp_variable="${i}_start"
             local pid="${!pid_variable:-}" stamp="${!stamp_variable:-}"
@@ -136,10 +89,10 @@ finish_failed_start() {
             [[ "$pending" == false ]] && break
             sleep 0.1
         done
-        if [[ "$pending" == false && "${retain_inhibit:-0}" != 1 && "${launching:-0}" != 1 ]]; then
-            release_wake || true
-        elif [[ "$pending" == true || "${launching:-0}" == 1 ]]; then
-            echo "capture shutdown is uncertain; wake remains inhibited" >&2
+        if [[ "$pending" == false && "${launching:-0}" != 1 ]]; then
+            release_playback || true
+        else
+            echo "capture shutdown is uncertain; speech playback remains held" >&2
         fi
     fi
     exit "$status"
@@ -170,8 +123,8 @@ start)
         echo "a session is already running ($(cat "$CURRENT")); run 'call-record stop' first" >&2
         exit 1
     fi
-    if [[ -e "$WAKE_MARKER" ]]; then
-        echo "stale wake inhibition exists; inspect captures and run 'call-record recover'" >&2
+    if [[ -e "$HOLD_MARKER" ]]; then
+        echo "stale playback hold exists; inspect captures and run 'call-record recover'" >&2
         exit 1
     fi
 
@@ -182,21 +135,20 @@ start)
 
     dir="$OUT_ROOT/$(date +%F)-$slug"
     mkdir -p "$dir" "$STATE_DIR"
-    published=0 wake_owned=0 launching=0
+    published=0 hold_owned=0 launching=0
     far_pid='' near_pid='' far_start='' near_start=''
     trap finish_failed_start EXIT
     trap 'exit 130' HUP INT TERM
     # Set ownership before the write so a partial hook failure is cleaned up
     # only when this invocation has launched no surviving captures.
-    wake_owned=1
-    inhibit_wake
-    wait_for_listener_ack
+    hold_owned=1
+    hold_playback
 
     # The Shift+F9 controller runs in a short-lived kitty popup. Start each
     # capture in its own session with no terminal file descriptors so closing
     # that popup cannot send the recorders SIGHUP or hold the window open.
     : > "$dir/capture.log"
-    # A signal between fork and storing $! must retain inhibition: the new
+    # A signal between fork and storing $! must retain the hold: the new
     # child might exist even though its PID is not yet available to cleanup.
     launching=1
     setsid pw-record --target "$sink" -P '{ stream.capture.sink = true }' \
@@ -236,14 +188,14 @@ stop)
     [[ -e "$CURRENT" ]] || { echo "no session running" >&2; exit 1; }
     { read -r dir; read -r far_pid; read -r near_pid;
       read -r far_start || far_start=; read -r near_start || near_start=; } < "$CURRENT"
-    inhibit_wake
+    hold_playback
 
     for side in far near; do
         pid_variable="${side}_pid" stamp_variable="${side}_start"
         pid="${!pid_variable}" stamp="${!stamp_variable}"
-        [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || { echo "invalid recorder PID; wake remains inhibited" >&2; exit 1; }
+        [[ "$pid" =~ ^[0-9]+$ && "$pid" -gt 1 ]] || { echo "invalid recorder PID; speech playback remains held" >&2; exit 1; }
         if capture_running "$pid" "$stamp" && [[ -z "$stamp" ]] && ! legacy_capture_matches "$pid" "$dir/$side.wav"; then
-            echo "cannot identify legacy recorder PID $pid; wake remains inhibited" >&2
+            echo "cannot identify legacy recorder PID $pid; speech playback remains held" >&2
             exit 1
         fi
     done
@@ -258,11 +210,11 @@ stop)
         sleep 0.1
     done
     if capture_running "$far_pid" "$far_start" || capture_running "$near_pid" "$near_start"; then
-        echo "recorders did not stop; wake remains inhibited" >&2
+        echo "recorders did not stop; speech playback remains held" >&2
         exit 1
     fi
     rm -f "$CURRENT"
-    release_wake
+    release_playback
 
     mix_written=false
     if [[ -s "$dir/far.wav" && -s "$dir/near.wav" ]]; then
@@ -322,7 +274,7 @@ stop)
 
 recover)
     [[ ! -e "$CURRENT" ]] || { echo "a session exists; use 'call-record stop'" >&2; exit 1; }
-    [[ -e "$WAKE_MARKER" ]] || { echo "no stale wake inhibition"; exit 0; }
+    [[ -e "$HOLD_MARKER" ]] || { echo "no stale playback hold"; exit 0; }
     # Explicit recovery never kills unknown processes. Refuse while any call
     # capture remains, including one orphaned before CURRENT was published.
     for process in /proc/[0-9]*; do
@@ -332,15 +284,15 @@ recover)
             case "$argument" in
             "$OUT_ROOT"/*/far.wav|"$OUT_ROOT"/*/near.wav)
                 if legacy_capture_matches "${process##*/}" "$argument"; then
-                    echo "call capture still exists; wake remains inhibited" >&2
+                    echo "call capture still exists; speech playback remains held" >&2
                     exit 1
                 fi
                 ;;
             esac
         done
     done
-    release_wake
-    echo "stale wake inhibition cleared; fresh listener state required"
+    release_playback
+    echo "stale playback hold cleared"
     ;;
 
 status)

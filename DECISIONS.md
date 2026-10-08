@@ -1650,3 +1650,18 @@ rows. The academic-ocr embed stage keeps its `qwen3-embedding-8b` label and
 still skips itself when no operator names an embeddings endpoint.
 `models/research` (including `mykonos`) is left in place: `docs/speech-operations.md`
 names files inside it.
+
+2026-10-03 openWakeWord is gone everywhere (Tom: "remove everything that has
+to do with openwakeword"). The listener and its catalogue rows left on
+2026-09-30; what remained was the dormant handshake around it. `call-record`
+no longer writes `~/.local/state/speech-wake/` epochs or waits for a listener
+or dictation lock, and `speech-play` no longer stamps playback epochs for a
+listener to ignore. The call-time playback hold stays: `call-record` writes
+`~/.local/state/call-record/active` for the whole call (retained, fail
+closed, when recorder shutdown is uncertain; `call-record recover` clears it),
+and `speech-play` holds on that marker or `call-record/current`. The NAS
+copies `openwakeword-alexa-v051` and `openwakeword-baker-compat-v051` (about
+4 MB) were deleted and receipted in
+`/mnt/nas/models/weights/RETIRED-2026-10-03.tsv`. The `flake.nix` assertions
+that no host carries a `speech-wake` unit stay, as reintroduction guards;
+dated research and decision records keep their history.
