@@ -26,7 +26,7 @@ window-rule {
 }
 
 // F10 sleep-monitors prompt: small floating kitty popup, focused on open.
-// Spawned by niri/binds.kdl F10 binding running niri/scripts/sleep-monitors.
+// Spawned by niri/binds.kdl F10 binding running bin/sleep-monitors.
 // Orange border = starship's local ❯ color (#DA7756).
 window-rule {
     match app-id="sleep-monitors-prompt"

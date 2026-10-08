@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# F10 → "Sleep monitors?" prompt. Powers the displays off without suspending
+# the system — the local DNS filter (AdGuard), NAS frontend, Immich, Navidrome
+# and every terminal session keep running. Move the mouse or press any key to
+# wake the displays.
+#
+# Spawned in a small floating kitty popup by sway/binds.conf or niri/binds.kdl
+# (F10); the float and size come from sway/rules.conf or niri/window-rules.kdl
+# (app-id matches the --class flag). On Sway, bin/monitors-off arms the wake
+# (Sway does not wake outputs on input by itself); niri does it natively.
+set -euo pipefail
+
+choice=$(printf '%s\n' \
+    '  Yes — sleep monitors' \
+    '  No — cancel' \
+| fzf \
+    --prompt='> ' \
+    --header='Sleep monitors?' \
+    --height=100% \
+    --reverse \
+    --no-info \
+    --pointer='›' \
+    --color='prompt:bold:8,header:italic:7,pointer:5')
+
+case "$choice" in
+    *'Yes'*)
+        if [ -n "${SWAYSOCK:-}" ]; then
+            # setsid: the prompt's kitty closes right after; the watcher must outlive it.
+            setsid -f "$HOME/.local/bin/monitors-off"
+        else
+            niri msg action power-off-monitors
+        fi
+        ;;
+esac

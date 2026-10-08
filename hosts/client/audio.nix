@@ -60,7 +60,7 @@
       # The Sound Blaster GS3 on the same dock is the sink Tom listens on;
       # pinned the same way so the default output never drifts to the INZONE
       # dongle or the laptop's own codec across replugs (doc §7.2). Same
-      # USB-serial node name niri/scripts/audio-route dials.
+      # USB-serial node name bin/audio-route dials.
       {
         matches = [
           {
