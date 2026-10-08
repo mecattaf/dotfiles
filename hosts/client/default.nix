@@ -151,6 +151,10 @@
           psk = "$BE550_PSK";
         };
         ipv4.method = "auto";
+        # Prefer the direct home LAN over accepted Tailscale subnet routes.
+        # NetworkManager removes this rule when this Wi-Fi profile goes down,
+        # so roaming still uses the NAS subnet route without manual toggles.
+        ipv4.routing-rule1 = "priority 2500 to 10.42.0.0/24 table 254";
         ipv6.method = "ignore";
       };
   # Same INFO reasoning as the twins: wifi incidents on this fleet were once

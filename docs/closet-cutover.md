@@ -14,7 +14,9 @@ The network move and headless transition take effect on a deliberate reboot.
   The `nas-saas` container and Headscale services are retired; their data stays.
   NAS advertises 10.42.0.0/24 and exit-node capability. Strix has no tailnet daemon.
 - Zenbook is the physical Sway seat, with Huion unchanged and Magic Trackpad
-  configuration moved there. Mod+Enter targets Strix. A client-side inbound
+  configuration moved there. Mod+Enter targets Strix. The home Wi-Fi profile
+  prefers direct LAN routing over the accepted Tailscale subnet route; that
+  preference is removed when leaving the home Wi-Fi. A client-side inbound
   SSH probe creates a failure marker after 90 seconds of sustained failure
   on the managed LAN or a Tailscale route. Recovery clears that marker.
 - Halogen Flash runs on Strix at boot; the 27B alternate remains manual.
@@ -75,7 +77,8 @@ Historical journals, receipts and upstream test fixtures may retain old names.
    hostnames are wanted. An always-on NAS needs an explicit key-expiry policy:
    its current key expires 2027-03-09. Confirm remote access using a genuinely
    external connection (for example the Zenbook on a phone hotspot), then
-   return to the home LAN before the Strix reboot.
+   return to the home LAN before the Strix reboot. Check `ip route get 10.42.0.2`
+   uses home Wi-Fi directly at home and tailscale0 on the hotspot.
 5. Fast-forward Strix's raw checkout to the reviewed commit immediately before
    staging the already built closure with `nixos-rebuild boot --flake .#strix`.
    **Do not use switch.** This prepares the boot entry; it must not move the
