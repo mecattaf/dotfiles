@@ -12,7 +12,9 @@ The network move and headless transition take effect on a deliberate reboot.
 - NAS remains wired at 10.42.0.1. Its native tailscaled reuses the existing
   SaaS identity, 100.65.85.114, from `/var/lib/tailscale-personal/tailscaled.state`.
   The `nas-saas` container and Headscale services are retired; their data stays.
-  NAS advertises 10.42.0.0/24 and exit-node capability. Strix has no tailnet daemon.
+  NAS advertises 10.42.0.0/24 and exit-node capability. Strix retains its existing
+  SaaS identity at 100.105.121.73 as an independent fallback, per Tom's final
+  decision. Its public DNS and BE550 gateway remain independent of NAS.
 - Zenbook is the physical Sway seat, with Huion unchanged and Magic Trackpad
   configuration moved there. Mod+Enter targets Strix. The home Wi-Fi profile
   prefers direct LAN routing over the accepted Tailscale subnet route; that
@@ -92,7 +94,8 @@ Historical journals, receipts and upstream test fixtures may retain old names.
 
 - `hostname` is strix; `ip -br addr` shows .2 on enp191s0, no Wi-Fi address;
   `ip route` uses gateway .3. Private DNS resolves through NAS and public DNS
-  works. Strix has no tailscaled, greetd or Bluetooth service.
+  works. Strix has no greetd or Bluetooth service. Its tailscaled retains the
+  existing SaaS identity, with no accepted routes or DNS and normal OpenSSH.
 - From a fresh client login, Mod+Enter attaches without manual repair. NAS and
   client SSH still work. The client reachability sensor reports a healthy
   sample; inspect `journalctl -u tripwire-strix-reachability`.

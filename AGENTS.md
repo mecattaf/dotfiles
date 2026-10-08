@@ -38,8 +38,10 @@ Besides these, the silent-hours releases are `paper-daemon-flush.timer` and the
 **Closet and physical seat (Tom, 2026-10-08).** Strix (formerly coordinator)
 is permanently headless in the closet, with the NAS, BE550 and Freebox. Both
 closet computers use Ethernet. Strix is 10.42.0.2 on enp191s0; Wi-Fi is disabled
-on reboot. NAS is the sole ordinary Tailscale node and advertises the closet
-LAN; Strix has no Tailscale daemon. The worker is retired and must not return.
+on reboot. NAS advertises the closet LAN through ordinary Tailscale. Strix
+retains its own Tailscale identity as an independent fallback, per Tom's final
+decision; Zenbook is also enrolled. Use ordinary OpenSSH on both paths.
+The worker is retired and must not return.
 The Zenbook client is the physical seat, with Sway, Huion and Magic Trackpad.
 Otto is rejected. Speech defaults to client; synthesis remains on Strix.
 Preserve Herdr sessions: stage this network change for a deliberate reboot,

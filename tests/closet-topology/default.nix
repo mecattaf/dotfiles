@@ -35,7 +35,10 @@ assert s.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.address1 == 
 assert s.networking.networkmanager.ensureProfiles.profiles.lan.ipv4.gateway == "10.42.0.3";
 assert builtins.elem "mt7925e" s.boot.blacklistedKernelModules;
 assert !s.myDisplay.enable && !s.services.greetd.enable;
-assert !s.services.tailscale.enable;
+assert s.services.tailscale.enable;
+assert builtins.elem "--accept-dns=false" s.services.tailscale.extraSetFlags;
+assert builtins.elem "--accept-routes=false" s.services.tailscale.extraSetFlags;
+assert builtins.elem "--ssh=false" s.services.tailscale.extraSetFlags;
 assert !s.hardware.bluetooth.enable;
 assert c.myTripwire.strix-reachability.enable;
 assert c.myTripwire.strix-reachability.sustainSeconds == 90;
