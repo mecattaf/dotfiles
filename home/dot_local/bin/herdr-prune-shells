@@ -9,7 +9,7 @@
 # shell was never used, or its agent was exited by hand before the window
 # closed, the leftover is a fish prompt at ~ that herdr's sidebar and pickers
 # list forever. MEASURED
-# 2026-09-11: 99 workspaces on the coordinator, 98 of them exactly that.
+# 2026-09-11: 99 workspaces on the strix, 98 of them exactly that.
 #
 # A workspace is pruned only when EVERY pane in it has agent_status "unknown"
 # AND its foreground process is the shell itself (herdr `pane process-info`

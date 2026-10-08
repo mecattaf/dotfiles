@@ -300,7 +300,7 @@
   </g>
   <g class="node do" data-k="coorddo">
     <rect x="865" y="620" width="210" height="110"/>
-    <text class="t" x="885" y="650">Workspace coordinator</text>
+    <text class="t" x="885" y="650">Workspace strix</text>
     <text class="m" x="885" y="672">one per workspace · lazy</text>
     <text class="m" x="885" y="690">sole pusher to the repo</text>
     <text class="m" x="885" y="708">expiry alarm</text>
@@ -370,8 +370,8 @@ const DETAIL = {
   parties:   { t:"/parties/* WS door", m:"WebSocket upgrade", b:"Humans connect here for live editing. <code>onBeforeConnect</code> resolves doc → workspace, runs the same gate, then hands the socket to that document's DO. Cookie-session only by design (agents use HTTP)." },
   bridge:    { t:"Agent edit bridge", m:"getServerByName().applyAgentEdit()", b:"After the gate passes, an agent's PUT/PATCH bridges into the <b>same Document DO</b> via init-safe RPC. The edit merges through Yjs and broadcasts to live editors instantly — one writer, no second path." },
   spub:      { t:"/s/* public reads", m:"cookieless · cacheable", b:"The hot path. Never mounts authenticate, never wakes a DO: a KV visibility pointer gates (fail-closed), then the body serves from edge cache. Checkpoint-fresh (~10s), like Google Docs published links." },
-  docdo:     { t:"Document DO", m:"durable object · one per document", b:"The live document. Browsers sync over WebSocket, agents write over RPC — <b>all merge in one Yjs doc</b>. SQLite hot tier makes edits durable between checkpoints; debounced checkpoints flow to the coordinator." },
-  coorddo:   { t:"Workspace coordinator", m:"durable object · one per workspace", b:"Born lazily at the first save. The <b>only thing that pushes to the workspace's git repo</b> (structural single-writer), updates the D1 commits projection inline, and owns the expiry alarm. Cold during browsing." },
+  docdo:     { t:"Document DO", m:"durable object · one per document", b:"The live document. Browsers sync over WebSocket, agents write over RPC — <b>all merge in one Yjs doc</b>. SQLite hot tier makes edits durable between checkpoints; debounced checkpoints flow to the strix." },
+  coorddo:   { t:"Workspace strix", m:"durable object · one per workspace", b:"Born lazily at the first save. The <b>only thing that pushes to the workspace's git repo</b> (structural single-writer), updates the D1 commits projection inline, and owns the expiry alarm. Cold during browsing." },
   workos:    { t:"WorkOS", m:"external · identity", b:"Hosted login (email, Google, GitHub), users, organizations. We mirror nothing but IDs; membership and org come from the verified JWT. SSO/SCIM are a config flip later, not a rewrite." },
   d1:        { t:"D1", m:"SQL · metadata source of truth", b:"One database: workspaces (ownership + visibility), documents (paths), annotations, hashed API keys, and the commits projection (history keyed by <b>document id</b>, so renames never lose it)." },
   artifacts: { t:"Cloudflare Artifacts", m:"git · content source of truth", b:"One repo per workspace; each document is a file. Every save-point is a commit; the API's <code>version</code> is the file's content fingerprint (blob SHA). History, restore, and <code>?version=</code> reads all come from here." },
@@ -390,7 +390,7 @@ const FLOWS = {
     name: "Live edit — human in the browser",
     edges: ["e-spa","e-ws","e-pardo","e-docoord","e-coordart","e-coordd1"],
     nodes: ["browser","spa","parties","docdo","coorddo","artifacts","d1"],
-    steps: ["SPA opens a WebSocket per document","The door runs the same gate, hands the socket to the Document DO","Keystrokes merge via Yjs; SQLite makes them durable","Every 2–10s the coordinator commits a save-point to git"]
+    steps: ["SPA opens a WebSocket per document","The door runs the same gate, hands the socket to the Document DO","Keystrokes merge via Yjs; SQLite makes them durable","Every 2–10s the strix commits a save-point to git"]
   },
   agent: {
     name: "Agent edit — curl as a collaborator",

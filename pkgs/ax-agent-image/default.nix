@@ -39,7 +39,7 @@
 #
 # No secret is baked in: pi-models.json names Halogen, which has no auth, and
 # the endpoint is filled at run time from $HALOGEN_URL (default the worker,
-# http://10.42.0.5:8731), so one image digest serves every host.
+# http://10.42.0.2:8731), so one image digest serves every host.
 let
   ociLayout = callPackage ../ax/oci-layout.nix { };
 
@@ -147,7 +147,7 @@ let
         "PATH=/usr/local/bin:/bin"
         "HOME=/workspace/.home"
         "SSL_CERT_FILE=${cacert}/etc/ssl/certs/ca-bundle.crt"
-        "HALOGEN_URL=http://10.42.0.5:8731"
+        "HALOGEN_URL=http://10.42.0.2:8731"
       ];
     };
   };

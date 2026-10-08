@@ -1115,7 +1115,7 @@ def utility_content(response: dict[str, object] | str) -> str:
 # The stable id `utility` is served by the fleet's one inference server, the
 # Halogen Flash server on the worker (modules/halogen.nix): `utility-model`
 # forwards one chat-completions request to it over the wired LAN and answers
-# under the stable id. That wrapper is installed on the coordinator alone, so
+# under the stable id. That wrapper is installed on the strix alone, so
 # an absent wrapper means "not this host", never "the model is gone". Failure
 # stays closed and bounded through the same MemoryError path every other
 # failure uses, so callers, `main`, and the tests keep their exit and return
@@ -1123,7 +1123,7 @@ def utility_content(response: dict[str, object] | str) -> str:
 UTILITY_UNAVAILABLE = (
     "local utility-model is not installed here; the utility-model wrapper "
     "(which forwards to the Halogen server on the worker) is installed on the "
-    "coordinator only"
+    "strix only"
 )
 
 

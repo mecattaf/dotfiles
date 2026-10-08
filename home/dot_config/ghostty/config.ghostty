@@ -53,7 +53,7 @@ copy-on-select = clipboard
 # THE THIN-CLIENT CLIPBOARD CONTRACT (kitty.conf, 2026-09-11), the OSC 52
 # half: a remote program may WRITE this seat's clipboard (write-clipboard) and
 # a remote READ prompts (read-clipboard-ask). `clipboard-read = allow` would
-# let anything the coordinator runs exfiltrate the clipboard silently, so it
+# let anything the strix runs exfiltrate the clipboard silently, so it
 # must never be set.
 clipboard-write = allow
 clipboard-read = ask

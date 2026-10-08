@@ -1,6 +1,6 @@
 # Shared browser desktop
 
-A human-operated Google Chrome desktop on the coordinator, reached through stock
+A human-operated Google Chrome desktop on the strix, reached through stock
 noVNC. Sway provides a headless 1440×900 output; WayVNC transports its pixels,
 keyboard, mouse and clipboard. The target is ordinary Google Chrome, using its
 existing profile directories.
@@ -27,12 +27,12 @@ or URLs.
 
 The human entrance is `https://browser.internal` on BE550, using the existing
 Caddy and AdGuard conventions. `modules/browser-desktop.nix` declares the
-coordinator service. The physical Niri/greetd stack remains disabled.
+strix service. The physical Niri/greetd stack remains disabled.
 
 The lightweight menu service starts at boot. Sway and WayVNC start only when the
 human opens the viewer or uses the Chrome menu. The service waits for WayVNC
 readiness and restarts automatically; the viewer reconnects after transport
-interruptions. The coordinator resolves its own viewer locally, independent of
+interruptions. The strix resolves its own viewer locally, independent of
 Tailscale's `.internal` split-DNS. The client uses NAS DNS. The existing
 Kitty/SSH/Herdr terminal route remains separate and unchanged.
 
@@ -56,8 +56,8 @@ keyring prompt, not a polkit authentication policy change.
 
 Caddy terminates HTTPS/WSS at `https://browser.internal`; HTTP redirects there.
 WayVNC stays on loopback. Only the public Caddy root is versioned in
-`certs/browser-root.crt`. NixOS trusts it on client/coordinator, and Home Manager
-imports it into the Chrome NSS database. Preserve the private CA in coordinator's
+`certs/browser-root.crt`. NixOS trusts it on client/strix, and Home Manager
+imports it into the Chrome NSS database. Preserve the private CA in strix's
 `/var/lib/caddy/.local/share/caddy/pki/authorities/local`; replacing that CA requires
 updating the pinned public certificate and rebuilding both machines.
 
@@ -73,7 +73,7 @@ The remote seat uses Bibata Modern Amber at 24px.
 ## Validation
 
 Coordinator and NAS were activated on 2026-09-12. Client-side checks verified DNS,
-the HTTPS viewer and WebSocket upgrade, in Chrome on both client and coordinator
+the HTTPS viewer and WebSocket upgrade, in Chrome on both client and strix
 without certificate bypasses. Terminating the desktop processes verified
 automatic restart and viewer reconnection. Live checks covered End session, cold
 restart, two viewers, reconnect resetting the grace period, and actual shutdown

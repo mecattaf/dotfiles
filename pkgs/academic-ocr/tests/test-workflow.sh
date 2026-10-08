@@ -247,7 +247,7 @@ run_action recognize "$work/vlm-brief.json" "$work/vlm.out"
 jq -e --arg protocol "$vlm_protocol" '
   .protocolId == $protocol
   and .confidencePermille == 900
-  and .provenance.endpoint == "http://worker:8731"
+  and .provenance.endpoint == "http://strix:8731"
   and (.provenance.promptDigest | test("^sha256:[0-9a-f]{64}$"))
   and .provenance.finishReason == "stop"
   and (.wordCount | type == "number" and . > 0)

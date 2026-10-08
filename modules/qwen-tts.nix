@@ -13,8 +13,8 @@ in
   config = lib.mkIf cfg.enable {
     assertions = [
       {
-        assertion = config.networking.hostName == "coordinator";
-        message = "Qwen TTS inference belongs on the coordinator; the client only plays audio.";
+        assertion = config.networking.hostName == "strix";
+        message = "Qwen TTS inference belongs on the strix; the client only plays audio.";
       }
     ];
     services.local-models.artifacts = lib.mkAfter [

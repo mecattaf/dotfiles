@@ -1,16 +1,9 @@
 # The Apple Magic Trackpad (2, 004C:0265) on Bluetooth, not the dock's USB.
-# Since 2026-09-17 it is bonded to this box's MediaTek radio (0e8d:0717) and
-# charged over its cable only now and then. Plugged in, it is a USB device
-# again (05AC:0265). Unplugged, it pages back here on the next click.
-#
-# The bond itself is state, not config: the link key lives in
-# /var/lib/bluetooth/AC:F2:3C:35:1E:D2/C0:95:6D:05:4A:4E and a reinstall
-# loses it. Re-pair as tom, cable out, trackpad switched off then on so it
-# is discoverable. Order matters. The first attempt paired the plain way
-# (scan, pair, then trust and connect ~12 s later). bluetoothd dropped the
-# link right after "Pairing successful", every connect from this side failed
-# with "control_connect_cb() … Invalid exchange (52)", clicks did nothing, and
-# a scan showed the trackpad still discoverable, so it had not kept the bond.
+# Moving from Strix to the Zenbook (2026-10-08). Bluetooth bonds are per adapter;
+# the old Strix key cannot be copied to the client's A0:B3:39:06:75:AB adapter.
+# Pair physically with the cable unplugged and the trackpad switched off/on.
+# Leave the Huion bond intact. Remove the old Strix bond only after client input
+# is verified. The steps below record the successful pairing sequence.
 # What worked, in ONE bluetoothctl session holding the agent (a bluetoothctl
 # with no stdin hangs, see ../client/huion.nix):
 #

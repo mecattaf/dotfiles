@@ -81,7 +81,7 @@ publish() {
 }
 
 if [ "${1:-}" = --publish-only ]; then
-  # For the live exercise and for closures built elsewhere (the coordinator
+  # For the live exercise and for closures built elsewhere (the strix
   # builds, `nix copy`s here, and this pushes and publishes): no build, and no
   # pointer unless the path is valid here, is this host's system, and reaches
   # Attic.
@@ -126,7 +126,7 @@ log "candidate $rev"
 # ── Seed preflight (2026-09-13) ─────────────────────────────────────────────
 # Private locked inputs (mecattaf/tally, mecattaf/tally-ts-sdk, and anything
 # else mecattaf-owned) cannot be fetched here: there is no repo credential on
-# the appliance. The coordinator's update-center-seed (deleted 2026-09-30) used
+# the appliance. The strix's update-center-seed (deleted 2026-09-30) used
 # to copy their exact trees in and root them under $state/seeds. Name every gap BEFORE building, so a
 # failed night reads "seed-missing tally-b" rather than a git auth error three
 # hosts deep. A gap does not stop the loop: a host that does not need the tree

@@ -12,7 +12,7 @@
 # THE FLOOR (-n 1). Every up/down call passes brightnessctl's `--min-value 1`.
 # Without it, three brightness-down presses from 25% land on raw 0, and on i915 raw 0 is not
 # "very dim", it is backlight power-off: the panel goes black and brightness-up is invisible
-# to press. The coordinator never hit this because it has no backlight at all.
+# to press. The strix never hit this because it has no backlight at all.
 # The Zenbook Duo has two, and darkness there is a real dead end, so `down` now
 # bottoms out at 1 and only the explicit `off` verb is allowed to reach 0.
 #
@@ -32,7 +32,7 @@
 # /tmp, so `restore` after a reboot has nothing to read and falls to 50%, by
 # design -- a lit screen is always the safe answer.
 #
-# Hosts with no DRM backlight (the coordinator, every headless box) get a
+# Hosts with no DRM backlight (the strix, every headless box) get a
 # one-line notice and exit 0 from off/restore/toggle: there is nothing to blank,
 # and failing the bind would be noise.
 

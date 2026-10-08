@@ -54,7 +54,7 @@
 #        mkdir -m 770 /mnt/nas/documents/.paperless-consume (chown tom:paperless)
 #        mkdir -m 755 /mnt/nas/views
 #   2. deploy; verify paperless-web answers on 10.42.0.1:28981 from the
-#      coordinator (10.42.0.2) only — NOT from the worker, a 10.42.0.x
+#      strix (10.42.0.2) only — NOT from the worker, a 10.42.0.x
 #      client, or a tailnet node via 100.64.0.1 (the NAS is a headscale node
 #      and subnet router since 2026-08-21/09-01; tailscale0 admits only DNS
 #      in the NixOS table) — and http://paperless.internal works from a
@@ -227,7 +227,10 @@ in
 
     systemd.services =
       lib.genAttrs (map (lib.removeSuffix ".service") paperlessUnits) (unit: {
-        unitConfig.RequiresMountsFor = [ storageRoot "${serviceRoot}/data" ];
+        unitConfig.RequiresMountsFor = [
+          storageRoot
+          "${serviceRoot}/data"
+        ];
         # OCR and indexing happen in the task queue; the consumer does the
         # copy-in. The web and scheduler units stay at normal priority.
         serviceConfig = lib.optionalAttrs (builtins.elem unit [
@@ -369,11 +372,11 @@ in
       }
     ];
 
-    # Backend admitted only from the coordinator (10.42.0.2 on the house LAN;
+    # Backend admitted only from the strix (10.42.0.2 on the house LAN;
     # the /30 cable is retired); the tailnet reaches it through the
-    # coordinator relay + Caddy front door, never via this box's tailscale0.
+    # strix relay + Caddy front door, never via this box's tailscale0.
     networking.firewall.extraInputRules = ''
-      ip saddr 10.42.0.2 tcp dport 28981 accept comment "paperless from coordinator (LAN; /30 retired 2026-08-21)"
+      ip saddr 10.42.0.2 tcp dport 28981 accept comment "paperless from strix (LAN; /30 retired 2026-08-21)"
     '';
   };
 }

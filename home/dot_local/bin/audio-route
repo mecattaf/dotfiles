@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # F9 -> paired audio route picker. The DOCK era (2026-09-11): the Sound
 # Blaster GS3, the iContact webcam mic and the INZONE dongle hang off the
-# client's Thunderbolt dock, not off the coordinator, and hosts/client/audio.nix
+# client's Thunderbolt dock, not off the strix, and hosts/client/audio.nix
 # pins the iContact as the default source at boot. This script is what moves off
 # that default for a call and back again.
 #
@@ -27,7 +27,7 @@ readonly INZONE_SOURCE='alsa_input.usb-Sony_INZONE_Buds-00.mono-fallback'
 #
 # Never read off a live pw-dump on the laptop, so it is written to MISS
 # SILENTLY: no match means no `internal` row, and the two dock rows are
-# untouched. On the coordinator, whose internal card announces itself as
+# untouched. On the strix, whose internal card announces itself as
 # "HD-Audio Generic", the row is correctly absent.
 readonly INTERNAL_SINK_PREFIX='^alsa_output\.pci-'
 readonly INTERNAL_SOURCE_PREFIX='^alsa_input\.pci-'

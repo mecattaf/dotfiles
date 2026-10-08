@@ -11,7 +11,7 @@
 # hysteresis state in a file under /var/lib. There is no daemon, no scrape
 # endpoint and no polling agent to keep alive.
 #
-# The generalisation exists because the coordinator's GPU thermal poller was a
+# The generalisation exists because the strix's GPU thermal poller was a
 # bespoke bash state machine, and the second one would have been another. What
 # is genuinely per-tripwire is the sensor and the action; the arming,
 # accumulating, firing, and re-arming are the same every time and live in

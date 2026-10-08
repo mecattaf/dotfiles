@@ -5,13 +5,13 @@
   ...
 }:
 # services.academicDrain.standing: lane B of the academic OCR drain, standing on the substrate (conwip) floor.
-# Declared ON on the coordinator since 2026-09-25.
+# Declared ON on the strix since 2026-09-25.
 #
 # RULING. Tom, 2026-09-25 17:51Z: "it would be better to have the changes made durable, in dotfiles through
 # PR's. that way the academic ocr task drain is "permamnently" registered on the factory floor". Registered here
 # means: every night at `onCalendar` a user timer submits ~/mecattaf/academic-drain/ocr.substrate.workflow.js to
 # the floor under the per-night run id acadlb<YYYYMMDD>, with `args` plus day = today. The shared receipt root
-# (<out>/ledger.jsonl on the worker) makes each night resume where the last stopped, and the run id is an
+# (<out>/ledger.jsonl on Strix) makes each night resume where the last stopped, and the run id is an
 # idempotency key: the same id with the same script sha256 and args answers created:false, the same id with other
 # work answers 409 (apps/floor/src/link/floor-object.ts:317-329), so a second fire on one day is harmless.
 #
@@ -21,32 +21,32 @@
 # a unit failure (exit 1, nothing submitted) rather than a logged skip; /runs is read with limit=500, not 50.
 #
 # THE SKIP RULES (standing-submit logs `skip: <rule>: <evidence>` and exits 0 when any holds; it exits non-zero
-# only on a real error: no credential, no workflow file, the floor or the worker unreachable, a 409 or another
+# only on a real error: no credential, no workflow file, the floor or Strix unreachable, a 409 or another
 # refusal; it never submits without evaluating every rule):
 #   1. the kill-switch file exists on this box (killSwitchFile; `touch` it to park the drain, `rm` to resume);
 #   2. substrate-puller is not active in this user manager (a switch or a stop in progress), or the RUNNING puller
 #      does not permit args.runtime: its runtimes file (named by [puller].runtimes of the SUBSTRATE_CLIENT_CONFIG
 #      in its /proc environ, else AX_CONWIP_RUNTIMES) lacks it on allow. The contract's "must not enable the timer
-#      before the runtime is live": a switch that renders ssh:worker does not by itself restart the puller;
+#      before the runtime is live": a switch that renders ssh:strix does not by itself restart the puller;
 #   3. GET <floorUrl>/runs?limit=500 lists a run named academic-drain-lane-b (its meta.name) whose state is not
 #      done, failed or cancelled (RunView, packages/api/src/schema.ts:35-48; the floor's states are running and
 #      done);
-#   4. the sticky STOP file exists on the worker (<out>/STOP or args.stop_file): a person reads it and clears it
+#   4. the sticky STOP file exists on Strix (<out>/STOP or args.stop_file): a person reads it and clears it
 #      with `lane_b_batch.py clear-stop`; the timer never does;
-#   5. <out>/.lane-b.lock is held on the worker (a lane_b_batch.py run is in progress: lane_b_batch.py:361-365);
+#   5. <out>/.lane-b.lock is held on Strix (a lane_b_batch.py run is in progress: lane_b_batch.py:361-365);
 #   6. the newest of <out>/batches/*.json and <out>/NIGHT-*.md says lane B is exhausted: a batch summary with
 #      stopped = "exhausted" or pending_after = 0 (lane_b_batch.py:517-518) or a night receipt whose "deferred
 #      pages still pending" row is 0. pending() skips failure rows and keeps a pdf-missing page out until its PDF
 #      resolves (lane_b_batch.py:302-313), so exhausted means only such pages are left. Sticky by design: a
 #      person resubmits by hand (or runs one batch) once PDFs resolve.
-# The floor is read before the worker, and the lock is probed last, so while a drain run is in flight the probe
+# The floor is read before Strix, and the lock is probed last, so while a drain run is in flight the probe
 # never touches the lock. The probe opens the lock read-only (no O_CREAT) and holds it for the life of one
 # flock(1) process; a lane_b_batch.py starting in that same instant would stop on 'locked' (LOCK_NB, INFERRED
 # negligible outside a hand run, since rule 3 already excludes a floor run).
 #
 # RUN IT NOW: `systemctl --user start academic-drain-standing.service` (then `journalctl --user -u
 # academic-drain-standing`). DRY RUN (prints the decision and the would-be POST body with the script elided to its
-# sha256, sends nothing; still reads the floor and ssh-probes the worker):
+# sha256, sends nothing; still reads the floor and ssh-probes Strix):
 #   "$(systemctl --user cat academic-drain-standing.service | sed -n 's/^ExecStart=//p')" --dry-run \
 #     --token-file ~/.local/state/substrate/floor-token
 #
@@ -58,9 +58,9 @@
 # declares for services.substrate.tokenSecret) reaches the unit by LoadCredential, as for the puller; the script
 # reads it into a curl header through a process substitution, so it is never in argv, on disk or in the journal.
 #
-# RUNTIME. args.runtime = "ssh:worker" puts lane B's pi on the worker through the ssh runner
-# (services.substrate.puller.sshRuntimes, hosts/coordinator); an assertion requires the runtime on the puller's
-# allow list. NOT HERE: a puller on the worker (a puller leases runs, and runs cannot be targeted:
+# RUNTIME. args.runtime = "ssh:strix" puts lane B's pi on Strix through the ssh runner
+# (services.substrate.puller.sshRuntimes, hosts/strix); an assertion requires the runtime on the puller's
+# allow list. NOT HERE: a puller on Strix (a puller leases runs, and runs cannot be targeted:
 # apps/floor/src/link/intake.ts:94, engine.ts:479-485) and the k3s/ax path (ax Tasks carry no volumes).
 let
   cfg = config.services.academicDrain.standing;
@@ -293,14 +293,14 @@ in
         out = "~/.local/state/academic-drain/lane-b/main";
         max_pages = 1500;
         batch_size = 25;
-        runtime = "ssh:worker";
+        runtime = "ssh:strix";
       };
       description = "The workflow's args (ocr.substrate.workflow.js: paths are paths ON THE WORKER), without day, which the script sets to today. Setting this replaces the whole default.";
     };
 
     worker = mkOption {
       type = types.str;
-      default = "worker";
+      default = "strix";
       description = "The ssh destination holding <out> (the skip probes run there).";
     };
 

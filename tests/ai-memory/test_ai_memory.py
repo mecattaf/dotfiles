@@ -266,9 +266,9 @@ class SkillBoundaryTests(unittest.TestCase):
         # is gone, and must not send a session off to change a host's
         # configuration and retry.
         self.assertIn("Halogen", drain)
-        self.assertIn("http://worker:8731", drain)
-        self.assertIn("coordinator only", drain)
-        self.assertNotIn("switch the coordinator configuration", drain)
+        self.assertIn("http://strix:8731", drain)
+        self.assertIn("strix only", drain)
+        self.assertNotIn("switch the strix configuration", drain)
         self.assertNotIn("distillation path is retired", drain)
 
 
@@ -606,7 +606,7 @@ class DrainTests(unittest.TestCase):
         self.assertTrue(all(req["stream"] is False for req in forwarded))
 
     def test_absent_wrapper_fails_closed_naming_the_gpu_seam_not_the_npu(self) -> None:
-        # The wrapper is installed on the coordinator alone, so an absent one
+        # The wrapper is installed on the strix alone, so an absent one
         # means "not this host" — it must say that, and it must fail closed
         # through the ordinary bounded MemoryError path: same exit semantics as
         # every other failure, no traceback, no partial note. It must not blame
@@ -626,9 +626,9 @@ class DrainTests(unittest.TestCase):
                 )
         message = str(caught.exception)
         self.assertIn("Halogen", message)
-        self.assertIn("coordinator only", message)
+        self.assertIn("strix only", message)
         self.assertNotIn("NPU", message)
-        self.assertNotIn("switch the coordinator configuration", message)
+        self.assertNotIn("switch the strix configuration", message)
         self.assertFalse(list(self.journal.rglob("*.md")))
 
     def test_a_bounded_seam_failure_exits_one_through_main_without_a_traceback(

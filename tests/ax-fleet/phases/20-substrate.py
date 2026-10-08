@@ -1,9 +1,9 @@
 # Phase 20: Substrate (track substrate; DESIGN.md sections 12.1 phases 2 and 3,
 # and section 14 S4). Concatenated after 10-cluster.py, so both switches have
 # happened: the NAS runs k3s, the registry seed and the bootstrap, and the
-# coordinator has joined as the tainted harness node.
+# strix has joined as the tainted harness node.
 #
-# Uses only the machine objects `nas` and `coordinator`. Every kubectl runs on
+# Uses only the machine objects `nas` and `strix`. Every kubectl runs on
 # the NAS as root against /etc/rancher/k3s/k3s.yaml.
 import json
 
@@ -73,15 +73,15 @@ with step("substrate: every control workload Available, on the NAS"):
             continue
         assert node == "nas", f"control pod {name} landed on {node!r}"
 
-with step("substrate: nas keeps substrate-version=none, coordinator carries the version"):
+with step("substrate: nas keeps substrate-version=none, strix carries the version"):
     nodes = {n["metadata"]["name"]: n for n in sub_json("get nodes")["items"]}
     assert nodes["nas"]["metadata"]["labels"].get("ate.dev/substrate-version") == "none"
     assert (
-        nodes["coordinator"]["metadata"]["labels"].get("ate.dev/substrate-version")
+        nodes["strix"]["metadata"]["labels"].get("ate.dev/substrate-version")
         == "d277088b"
     )
 
-with step("substrate: atelet runs on the coordinator only"):
+with step("substrate: atelet runs on the strix only"):
     # The atelet DaemonSet is version-keyed by ate-setup; find it by label.
     ds = sub_k(f"-n {SUB_NS} get ds -l app=atelet -o jsonpath='{{.items[0].metadata.name}}'").strip()
     sub_k(f"-n {SUB_NS} rollout status ds/{ds} --timeout=600s", timeout=660)
@@ -92,7 +92,7 @@ with step("substrate: atelet runs on the coordinator only"):
     ]
     assert atelet, "no atelet pod"
     for p in atelet:
-        assert p["spec"]["nodeName"] == "coordinator", (
+        assert p["spec"]["nodeName"] == "strix", (
             f"atelet on {p['spec']['nodeName']}"
         )
 
@@ -101,7 +101,7 @@ with step("substrate: ClusterTrustBundles and pod certificates served"):
     assert "clustertrustbundles" in res and "podcertificaterequests" in res, res
     assert sub_json("get clustertrustbundles")["items"], "no ClusterTrustBundle objects"
 
-with step("substrate: WorkerPool ateom-gvisor Ready 2 on the coordinator"):
+with step("substrate: WorkerPool ateom-gvisor Ready 2 on the strix"):
     nas.wait_until_succeeds(
         "test \"$(KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl -n ate-system get "
         "workerpool ateom-gvisor -o jsonpath='{.status.readyReplicas}')\" = 2",
@@ -113,14 +113,14 @@ with step("substrate: WorkerPool ateom-gvisor Ready 2 on the coordinator"):
         p
         for p in sub_json(f"-n {SUB_NS} get pods -l ax.mecattaf.dev/pool=ateom-gvisor")["items"]
     ]
-    assert len(workers) == 2, f"{len(workers)} worker pods"
+    assert len(workers) == 2, f"{len(workers)} probe pods"
     for p in workers:
-        assert p["spec"]["nodeName"] == "coordinator", p["spec"]["nodeName"]
+        assert p["spec"]["nodeName"] == "strix", p["spec"]["nodeName"]
         lims = [c.get("resources", {}).get("limits", {}).get("memory") for c in p["spec"]["containers"]]
-        assert any(lims), f"worker pod has no memory limit: {lims}"
+        assert any(lims), f"probe pod has no memory limit: {lims}"
         # Fix round 4: the writable layer is bounded per pod too.
         eph = [c.get("resources", {}).get("limits", {}).get("ephemeral-storage") for c in p["spec"]["containers"]]
-        assert any(eph), f"worker pod has no ephemeral-storage limit: {eph}"
+        assert any(eph), f"probe pod has no ephemeral-storage limit: {eph}"
         record("worker_ephemeral_storage_limit", eph)
 
 with step("substrate: gVisor fetched through the RustFS fallback"):
@@ -155,7 +155,7 @@ with step("substrate: every PersistentVolume on the fast tier"):
             for e in t.get("matchExpressions", [])
             for v in e.get("values", [])
         ]
-        assert "coordinator" not in values, f"PV {pv['metadata']['name']} on the coordinator"
+        assert "strix" not in values, f"PV {pv['metadata']['name']} on the strix"
 
 with step("substrate: every image came from the NAS registry by digest"):
     pods = sub_json(f"-n {SUB_NS} get pods")["items"]

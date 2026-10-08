@@ -95,7 +95,7 @@ let
       numpy
       ijson
     ]
-    ++ lib.optionals (hostName == "coordinator") [
+    ++ lib.optionals (hostName == "strix") [
       # CLI-Anything's generated harnesses and validation workflow assume these
       # are importable from the ordinary `python3`, not only inside cli-hub.
       click
@@ -166,7 +166,7 @@ in
       '';
 
       "sway-local.conf".text =
-        lib.optionalString (hostName == "coordinator") ''
+        lib.optionalString (hostName == "strix") ''
           output DP-4 scale 2 position 0 0
           output DP-1 scale 2 position 2560 0
         ''
@@ -190,7 +190,7 @@ in
       # (niri/ is a whole-dir symlink, can't nest a generated file inside) and pulled
       # in by an ABSOLUTE include in niri/config.kdl (niri expands neither ~ nor $HOME).
       # Written on EVERY host (no `optional` include on the pinned niri). The
-      # coordinator gets an inert file. The client — the ASUS Zenbook Duo, back
+      # strix gets an inert file. The client — the ASUS Zenbook Duo, back
       # on 2026-09-11 — gets the ONLY per-host niri content in the fleet, and
       # this slot is the only place such content may live: niri/ itself is a
       # whole-dir RAW symlink shared by every host, so binds.kdl carries over
@@ -210,11 +210,11 @@ in
       #
       # Mod+Return / Mod+Ctrl+Shift+Return are NOT overridden here any more
       # (#385, 2026-09-13): binds.kdl's own chords call ~/.local/bin/herdr-chord,
-      # which targets the coordinator through a local `herdr --remote`
+      # which targets the strix through a local `herdr --remote`
       # projector, so the RAW file is already right on the client and nothing
       # needs a rebuild to re-cut them. The ssh-tty spellings that lived here
       # (`hk-new-inplace`, `hk-resume-agents`) ran the herdr client ON the
-      # coordinator, where no clipboard image can ever be read.
+      # strix, where no clipboard image can ever be read.
       #
       # F10: binds.kdl's "sleep monitors" popup (power-off-monitors behind an
       # fzf prompt) becomes a popup-free BACKLIGHT toggle — brightness to zero
@@ -372,17 +372,12 @@ in
   home.file.".claude-3/skills".source = link "dot_claude/skills";
   home.file.".claude-3/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
 
-  # settings.json is NOT a home.file: Claude Code writes it (/effort, /model,
-  # /config) by resolving ONE symlink hop and renaming a temp file into that
-  # directory. Through home.file the hop lands in the read-only
-  # home-manager-files store dir (EROFS, 2026-10-03). Each seat instead gets a
-  # direct symlink to the checkout file, so in-app changes land in
-  # home/dot_claude/settings.json, shared by every seat, visible to git.
+  # Claude owns mutable preferences. One direct symlink hop reaches writable
+  # shared state, never the Nix store or Git checkout. Activation seeds only
+  # once and preserves /model and /effort changes on every later switch.
   home.activation.claudeSettings = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
-    for seat in .claude .claude-work .claude-3; do
-      run mkdir -p $VERBOSE_ARG "$HOME/$seat"
-      run ln -sfn $VERBOSE_ARG "${dots}/dot_claude/settings.json" "$HOME/$seat/settings.json"
-    done
+    run ${pkgs.python3}/bin/python3 ${./claude-settings.py} \
+      --home "$HOME" --template ${./dot_claude/settings.json}
   '';
 
   # Same canonical skill tree, exposed to Codex and `pi` (earendil-works/pi)
@@ -427,13 +422,13 @@ in
 
   # ---------------------------------------------------------------------------
   # atuin — shell history, synced fleet-wide through a self-hosted server on the
-  # coordinator (hosts/coordinator/services.nix), tailnet-only. The package here
+  # strix (hosts/strix/services.nix), tailnet-only. The package here
   # replaces the old bare `atuin` entry in home.packages; fish's own init call +
   # the Ctrl+E rebind stay in dot_config/fish/config.fish untouched
   # (enableFishIntegration = false avoids home-manager wiring a second one).
   #
-  # sync_address: the coordinator talks to its own server over localhost; every
-  # other host reaches it via MagicDNS (`coordinator`, tailnet-only — see the
+  # sync_address: the strix talks to its own server over localhost; every
+  # other host reaches it via MagicDNS (`strix`, tailnet-only — see the
   # firewall rule on the server side).
   #
   # The encryption key itself is fleet state, not per-host state: it's minted
@@ -445,19 +440,18 @@ in
     enableFishIntegration = false;
     settings = {
       auto_sync = true;
-      # port must match services.atuin.port in hosts/coordinator/services.nix.
-      sync_address =
-        if hostName == "coordinator" then "http://localhost:27321" else "http://coordinator:27321";
+      # port must match services.atuin.port in hosts/strix/services.nix.
+      sync_address = if hostName == "strix" then "http://localhost:27321" else "http://strix:27321";
     };
   };
 
   # ---------------------------------------------------------------------------
-  # `loginctl enable-linger tom` (already set on the coordinator) is what keeps
+  # `loginctl enable-linger tom` (already set on the strix) is what keeps
   # user-level services running when no login session is open. The posture it
   # now serves is ONE long-lived server per user, not N daemons forked per
-  # session: the coordinator hosts the single herdr server and every PTY lives
+  # session: the strix hosts the single herdr server and every PTY lives
   # inside it, so a laptop that reconnects later finds its panes still alive.
-  # Linger is therefore load-bearing for the coordinator alone — no other host
+  # Linger is therefore load-bearing for the strix alone — no other host
   # runs a server (ruling B5/B6).
   # ---------------------------------------------------------------------------
 
@@ -476,19 +470,19 @@ in
       package = pkgs.mactahoe-icon-theme;
     };
     cursorTheme = {
-      name = if hostName == "coordinator" then "Bibata-Modern-Amber" else "Bibata-Modern-Classic";
+      name = if hostName == "strix" then "Bibata-Modern-Amber" else "Bibata-Modern-Classic";
       package = pkgs.bibata-cursors;
     };
     # Photos gets a plain bookmark, not an XDG dir (see xdg.userDirs below):
     # XDG_PICTURES_DIR is where screenshot tools save, and /mnt/nas/photos is
     # Immich's library root — stray screenshots must not land inside it.
-    gtk3.bookmarks = lib.optionals (hostName == "coordinator") [
+    gtk3.bookmarks = lib.optionals (hostName == "strix") [
       "file:///mnt/nas/photos Photos"
     ];
   };
 
   # ---------------------------------------------------------------------------
-  # NAS media in the Nautilus sidebar (coordinator only). Music/Videos become
+  # NAS media in the Nautilus sidebar (strix only). Music/Videos become
   # the REAL XDG user dirs pointing into the NFS automount, so Nautilus (and
   # anything using g_get_user_special_dir) treats the NAS library as native
   # local folders; first click triggers the automount. createDirectories stays
@@ -496,11 +490,11 @@ in
   # activation would hang or spray errors.
   #
   # These entries (and the Photos bookmark above) only survive into the sidebar
-  # because hosts/coordinator/nas-client.nix warms the automount before
+  # because hosts/strix/nas-client.nix warms the automount before
   # graphical-session.target: a path that isn't there when the session starts is
   # silently dropped, which is #139.
   # ---------------------------------------------------------------------------
-  xdg.userDirs = lib.mkIf (hostName == "coordinator") {
+  xdg.userDirs = lib.mkIf (hostName == "strix") {
     enable = true;
     createDirectories = false;
     music = "/mnt/nas/music";
@@ -525,7 +519,7 @@ in
   # Coordinator only (2026-09-11): the calendar CLI and its agents run there;
   # the thin client has no consumer, and the unit was the one fleet-wide
   # user service with no host gate at all.
-  systemd.user.services.dcal-daemon = lib.mkIf (hostName == "coordinator") {
+  systemd.user.services.dcal-daemon = lib.mkIf (hostName == "strix") {
     Unit = {
       Description = "dcal calendar daemon";
       After = [ "graphical-session.target" ];
@@ -644,12 +638,12 @@ in
     # Upstream's minimal flake output: git-ai + git-og, while programs.git below
     # remains the sole provider of the real git binary.
     inputs.git-ai.packages.${pkgs.stdenv.hostPlatform.system}.minimal
-    huggingface-cli # metadata CLI; agenix authentication is coordinator-only
+    huggingface-cli # metadata CLI; agenix authentication is strix-only
     gh
     google-cloud-sdk
     gws # Google Workspace CLI (Gmail/Calendar/Drive/Sheets/Docs/...), Discovery-doc-backed
     cloudflared
-    wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (coordinator-only cred, binary fleet-wide)
+    wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (strix-only cred, binary fleet-wide)
     backlog-md # bespoke pkg via overlay — see pkgs/backlog-md.nix
     pkgs.crm # vendored personal CRM CLI; data stays at its built-in notes path
     pkgs.dcal # vendored calendar CLI; data lives under XDG, nothing in git

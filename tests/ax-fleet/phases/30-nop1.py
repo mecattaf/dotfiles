@@ -2,17 +2,17 @@
 # probe/ax-fleet-nop1 and probe/ax-fleet-zeropatch; the controller runs
 # without --running-resync). Instead of the controller learning
 # that a command exited, each Task's command reports its own completion to a
-# stand-in floor (POST /floor/complete on the worker's stub, the one allowlisted
+# stand-in floor (POST /floor/complete on the probe's stub, the one allowlisted
 # egress target), and this driver, standing in for the link, reads the floor
 # and then DELETES the Task through the stock ax client. Measured here:
 #   - the Task's phase just before the delete (stock ax: expected Running);
 #   - T5 shape without P1: 6 Tasks in a row, then 2 rounds of 2 at once, on the
-#     2-worker pool; none ResourceExhausted, every result intact;
-#   - the delete frees the worker (the next Task gets one) and is idempotent;
+#     2-probe pool; none ResourceExhausted, every result intact;
+#   - the delete frees the probe (the next Task gets one) and is idempotent;
 #   - leaks after delete: ax Tasks, Substrate actors and templates, PVs, the
 #     RustFS volume;
 #   - control: without the delete the 3rd Task is refused (the P1 failure);
-#   - side: SuspendTask instead of delete also frees a worker.
+#   - side: SuspendTask instead of delete also frees a probe.
 # Everything is recorded with record(); assertions are only the acceptance
 # items above.
 import base64
@@ -23,7 +23,7 @@ from typing import Any
 
 AX = "AX_SERVER=http://127.0.0.1:8099 ax -a fleet"  # ax-server-proxy.socket (fix round 3 moved it off :8080)
 ATE = "KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl-ate"
-STUB = "http://10.42.0.5:8731"
+STUB = "http://10.42.0.2:8731"
 NS = "fleet"
 TASK_TIMEOUT = 900  # test parameter: per-Task wait for a floor report
 FAILED_FINAL = 20  # test parameter: stock ax does not requeue a failed reconcile (MEASURED run 3: Failed held 5 min)
@@ -56,7 +56,7 @@ TASK_SCRIPT_B64 = base64.b64encode(TASK_SCRIPT.encode()).decode()
 
 
 def ax(args: str) -> tuple[int, str]:
-    rc, out = coordinator.execute(f"{AX} {args} 2>&1")
+    rc, out = strix.execute(f"{AX} {args} 2>&1")
     return rc, out.strip()
 
 
@@ -80,7 +80,7 @@ def apply_task(name: str) -> None:
         },
     }
     b = base64.b64encode(json.dumps(task).encode()).decode()
-    coordinator.succeed(f"echo {b} | base64 -d | {AX} apply -f -")
+    strix.succeed(f"echo {b} | base64 -d | {AX} apply -f -")
 
 
 def task_state(name: str) -> Any:
@@ -103,7 +103,7 @@ def task_state(name: str) -> Any:
 
 
 def floor_reports(name: Any = None) -> Any:
-    out = worker.succeed("curl -sf http://127.0.0.1:8731/floor/results")
+    out = probe.succeed("curl -sf http://127.0.0.1:8731/floor/results")
     reps = json.loads(out)["reports"]
     if name is None:
         return reps
@@ -121,7 +121,7 @@ def ate_json(args: str) -> Any:
 
 
 def actors() -> Any:
-    """Actors in the fleet atespace: [{name, state, worker}], or the error."""
+    """Actors in the fleet atespace: [{name, state, probe}], or the error."""
     j = ate_json(f"get actors --atespace {NS}")
     if isinstance(j, dict) and ("error" in j or "unparsed" in j):
         return j
@@ -133,7 +133,7 @@ def actors() -> Any:
             {
                 "name": (a.get("metadata") or {}).get("name"),
                 "state": st.get("state") or st.get("phase"),
-                "worker": ((st.get("workerAssignment") or {}).get("worker") or {}).get("name"),
+                "probe": ((st.get("workerAssignment") or {}).get("probe") or {}).get("name"),
             }
         )
     return res
@@ -184,7 +184,7 @@ def diagnose(name: str) -> None:
     _, atelet = nas.execute("k3s kubectl -n ate-system logs -l app=atelet --all-containers --tail=80 2>&1")
     _, ctl = nas.execute("k3s kubectl -n ax-system logs deploy/ax-controller --tail=60 2>&1")
     _, pods = nas.execute("k3s kubectl -n ate-system get pods -o wide 2>&1; k3s kubectl -n ate-system logs deploy/ate-api-server --all-containers --tail=40 2>&1")
-    _, stub = worker.execute("tail -n 20 /var/lib/halogen-stub/requests.jsonl 2>&1")
+    _, stub = probe.execute("tail -n 20 /var/lib/halogen-stub/requests.jsonl 2>&1")
     record(f"nop1_diag_{name}", {"workers": wp[-8000:], "atelet": atelet[-6000:], "controller": ctl[-5000:], "stub": stub[-3000:], "ate_pods_api": pods[-6000:]})
 
 
@@ -266,7 +266,7 @@ def delete_hang_diag(name: str, calls: Any) -> None:
         "'redis-cli XINFO GROUPS ax:stream:tasks; redis-cli XINFO CONSUMERS ax:stream:tasks ax-controllers; "
         "redis-cli XPENDING ax:stream:tasks ax-controllers; redis-cli XREVRANGE ax:stream:tasks + - COUNT 8' 2>&1"
     )
-    _, diag["host_load"] = coordinator.execute("cat /proc/loadavg; cat /proc/pressure/cpu 2>/dev/null")
+    _, diag["host_load"] = strix.execute("cat /proc/loadavg; cat /proc/pressure/cpu 2>/dev/null")
     diag = {k: (v[-8000:] if isinstance(v, str) else v) for k, v in diag.items()}
     record(f"nop1_delete_hang_{name}", diag)
 
@@ -283,7 +283,7 @@ def delete_task(name: str) -> Any:
     again = ax(f"delete task {name}")  # while Terminating
     calls["while_terminating"] = {"rc": again[0], "out": again[1][-300:], "done_at_s": round(time.monotonic() - t0, 1)}
     try:
-        coordinator.wait_until_succeeds(f"! {AX} get task {name} >/dev/null 2>&1", timeout=300)
+        strix.wait_until_succeeds(f"! {AX} get task {name} >/dev/null 2>&1", timeout=300)
     except Exception:
         delete_hang_diag(name, calls)
         raise
@@ -326,22 +326,22 @@ def resource_exhausted(entry: Any) -> bool:
 with step("nop1: stock ax control plane up (no P1, no --running-resync)"):
     for d in ["ax-redis", "ax-server", "ax-controller"]:
         kubectl(f"-n ax-system rollout status deploy/{d} --timeout=600s")
-    coordinator.wait_until_succeeds("curl -sf http://127.0.0.1:8099/healthz", timeout=300)
+    strix.wait_until_succeeds("curl -sf http://127.0.0.1:8099/healthz", timeout=300)
     args = kubectl("-n ax-system get deploy ax-controller -o jsonpath='{.spec.template.spec.containers[0].args}'")
     record("nop1_controller_args", args)
     assert "running-resync" not in args, args
     rc, out = ax("result task nothing")
     record("nop1_ax_result_verb", {"rc": rc, "out": out[-200:]})
-    IMAGE = coordinator.succeed("ax-fleet-image-ref").strip()
+    IMAGE = strix.succeed("ax-fleet-image-ref").strip()
     record("nop1_image", IMAGE)
     gw: dict[str, Any] = {
         "apiVersion": "ax.io/v1alpha1",
         "kind": "Gateway",
         "metadata": {"name": "halogen", "atespace": NS},
-        "spec": {"egress": {"allowlist": {"hosts": [{"host": "10.42.0.5/32", "port": 8731}]}}},
+        "spec": {"egress": {"allowlist": {"hosts": [{"host": "10.42.0.99/32", "port": 8731}]}}},
     }
-    coordinator.succeed(f"echo {base64.b64encode(json.dumps(gw).encode()).decode()} | base64 -d | {AX} apply -f -")
-    worker.succeed("curl -sf http://127.0.0.1:8731/floor/results")
+    strix.succeed(f"echo {base64.b64encode(json.dumps(gw).encode()).decode()} | base64 -d | {AX} apply -f -")
+    probe.succeed("curl -sf http://127.0.0.1:8731/floor/results")
     record("nop1_workers_baseline", ate_json("get workers"))
     leak_snapshot("baseline")
 
@@ -354,11 +354,11 @@ with step("zeropatch: the running ax is stock, it refuses spec.sandboxClass"):
         "metadata": {"name": "nosc-control", "atespace": NS},
         "spec": {"image": IMAGE, "sandboxClass": "gvisor", "command": ["true"]},
     }
-    nosc_rc, nosc_out = coordinator.execute(
+    nosc_rc, nosc_out = strix.execute(
         f"echo {base64.b64encode(json.dumps(ctl_task).encode()).decode()} | base64 -d | {AX} apply -f - 2>&1"
     )
     record("nosc_sandboxclass_refused", {"rc": nosc_rc, "out": nosc_out[-2000:]})
-    coordinator.execute(f"{AX} delete task nosc-control 2>&1 || true")
+    strix.execute(f"{AX} delete task nosc-control 2>&1 || true")
     assert nosc_rc != 0, nosc_out
 
 
@@ -375,7 +375,7 @@ with step("nop1 shape check: the P1 runs' command form, [ax-agent, halogen-smoke
             "gateway": {"name": "halogen"},
         },
     }
-    coordinator.succeed(f"echo {base64.b64encode(json.dumps(shape_task).encode()).decode()} | base64 -d | {AX} apply -f -")
+    strix.succeed(f"echo {base64.b64encode(json.dumps(shape_task).encode()).decode()} | base64 -d | {AX} apply -f -")
     shape_states: list[Any] = []
     t0 = time.monotonic()
     while time.monotonic() - t0 < 300:
@@ -393,7 +393,7 @@ with step("nop1 shape check: the P1 runs' command form, [ax-agent, halogen-smoke
     shape["delete"] = delete_task("nop1-shape")
     record("nop1_shape", shape)
 
-with step("nop1 T5 sequential: 6 Tasks in a row on the 2-worker pool, reported to the floor, deleted by the driver"):
+with step("nop1 T5 sequential: 6 Tasks in a row on the 2-probe pool, reported to the floor, deleted by the driver"):
     seq: list[Any] = []
     for i in range(1, 7):
         e = run_one(f"nop1-seq-{i}")
@@ -458,7 +458,7 @@ with step("nop1 control: without the delete, the 3rd Task on 2 workers"):
     record("nop1_control", ctl)
     assert ctl["after"].get("floor", {}).get("intact") is True, ctl["after"]
 
-with step("nop1 side: SuspendTask instead of delete frees a worker"):
+with step("nop1 side: SuspendTask instead of delete frees a probe"):
     side: dict[str, Any] = {}
     for n in ("nop1-sus-1", "nop1-sus-2"):
         apply_task(n)

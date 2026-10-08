@@ -19,28 +19,28 @@
 # the boot menu as the rollback.
 #
 # WHAT IT IS, in one line: a thin client. It shows Tom niri, kitty, Chrome and
-# the dock's peripherals, and everything that thinks runs on the coordinator
+# the dock's peripherals, and everything that thinks runs on the strix
 # (herdr server, the Claude/Codex/pi seats, tally, the artifact and microVM
 # planes) or the worker (Halogen). Mod+Return on this box is a herdr window
-# INTO the coordinator (~/.local/bin/herdr-projector, `herdr --remote
-# coordinator`, driven by herdr-chord from binds.kdl, #385); `desk` is the fish
+# INTO the strix (~/.local/bin/herdr-projector, `herdr --remote
+# strix`, driven by herdr-chord from binds.kdl, #385); `desk` is the fish
 # spelling of the same thing.
 #
 # WHAT IT IS NOT:
-#   * not an agent host — no herdr server (home/herdr.nix is coordinator-
-#     gated), no Claude/Codex credential (secrets.nix: coordinatorOnly, the
+#   * not an agent host — no herdr server (home/herdr.nix is strix-
+#     gated), no Claude/Codex credential (secrets.nix: strixOnly, the
 #     jul12 "own session" ruling stands), no tally clocks, no voxtype, no
 #     transcript mirror, no dcal daemon, no paper timers. Every one of those
-#     is `hostName == "coordinator"`-gated in home/; the flake's home-profiles
+#     is `hostName == "strix"`-gated in home/; the flake's home-profiles
 #     check asserts their absence here.
 #   * not a runner of anything, with ONE exception — ./huion.nix pulls the
 #     Huion Note X10's pages over Bluetooth on connect and pushes them to
-#     coordinator:~/Paper/inbox (one udev-triggered oneshot, one retry
+#     strix:~/Paper/inbox (one udev-triggered oneshot, one retry
 #     timer, a patched bluetoothd), because the radio is here
 #     (DECISIONS.md, 2026-09-13). Nothing else is added to this box for it.
 #   * not a server of anything — no wayvnc (no VNC in the fleet since the
 #     2026-09-11 headless flip: home/remote.nix and its Remmina viewer
-#     profile went with the coordinator's session), no atuin server, no
+#     profile went with the strix's session), no atuin server, no
 #     caddy, no immich or
 #     navidrome relay, no journal upload to the NAS (hosts/nas/journal.nix
 #     admits the twins only), no printing queue (forced off below), no
@@ -59,7 +59,7 @@
 #     switched; activation is Tom, docked, running
 #       sudo nixos-rebuild switch --flake github:mecattaf/dotfiles/main#client
 #     Coordinator first whenever herdr is bumped (the two speak a versioned
-#     protocol and the laptop projects the coordinator's server).
+#     protocol and the laptop projects the strix's server).
 #
 # The hardware layer below is omarchy-fleet's profiles/zenbook-duo.nix +
 # hosts/zenbook-duo/hardware.nix merged with 77eac406^'s host module; each
@@ -74,6 +74,8 @@
     ./disko.nix
     ./audio.nix # pins the iContact webcam mic (on the dock) as the default source
     ./lid.nix # the lid does nothing to logind; niri (per-host slot) owns the backlight half
+    ./strix-reachability.nix
+    ./trackpad.nix
     ./huion.nix # the Huion Note X10 paper inbox: patched bluetoothd, hid-generic unbind
     # No dedicated nixos-hardware module for the UX8406; compose the generics.
     # common-pc-laptop does NOT enable bolt — modules/common.nix does, fleet-
@@ -110,10 +112,12 @@
   # the 127.0.0.2 self-mapping, which this box has no reason to lose. The
   # NAS resolver does not serve DHCP client names (checked 2026-09-11:
   # `resolvectl query zenbook-duo` → not found while the box held a lease),
-  # so a laptop that dials `coordinator` needs its own answer. One answer per
+  # so a laptop that dials `strix` needs its own answer. One answer per
   # name per host, registry aliases both, so ssh stays TOFU-free.
-  networking.hosts."10.42.0.2" = [ "coordinator" ];
-  networking.hosts."10.42.0.5" = [ "worker" ];
+  networking.hosts."10.42.0.2" = [
+    "strix"
+    "coordinator"
+  ];
 
   # ── the LAN identity: thomas-6ghz, DHCP ────────────────────────────────────
   # Same profile the box already associates with (the fleet delivered one by
@@ -153,24 +157,11 @@
   # forensically blind because NetworkManager logged nothing for weeks.
   networking.networkmanager.logLevel = "INFO";
 
-  # ── tailnet: declared, dormant ─────────────────────────────────────────────
-  # Tom's ruling 2026-09-11: on the LAN, nothing but the LAN. The daemon is
-  # enabled so the node state omarchy-fleet left under /var/lib/tailscale is
-  # kept and so a later, MANUAL
-  #   sudo tailscale up --login-server=https://nas-saas.tail8dd1.ts.net:8443
-  # joins the NAS headscale (the fleet rail's control URL, from omarchy-fleet
-  # modules/fleet-rail.nix) — never tailscale.com: the SaaS `zenbook-duo` node
-  # was removed on 2026-09-10 with "will never touch this again". No
-  # secrets/tailscale-authkey-client.age exists, so modules/secrets.nix wires
-  # no authKeyFile and no autoconnect unit; extraUpFlags only records the
-  # control plane a future key would go to. The fleet's own rail (a second,
-  # userspace tailscaled with state in /var/lib/tailscale-fleet, headscale
-  # node 4 `zenbook-duo-fleet`) is not declared here; its state dir is left in
-  # place for the operator to reuse or delete. Kernel-mode tailscaled (the
-  # NixOS default; the fleet rail was userspace with --accept-routes=false),
-  # so a future NAS subnet route for 10.42.0.0/24 can actually be used.
+  # Ordinary Tailscale for roaming access through the NAS subnet router.
+  # Enrollment is interactive; no auth key is embedded or re-applied at boot.
   services.tailscale.enable = true;
-  services.tailscale.extraUpFlags = [ "--login-server=https://nas-saas.tail8dd1.ts.net:8443" ];
+  services.tailscale.extraUpFlags = [ "--accept-routes" ];
+  services.tailscale.extraSetFlags = [ "--accept-routes" ];
 
   # ── failure surfacing: tom is uid 1001 here ────────────────────────────────
   # modules/failure-surfacing.nix watches the user manager of uid 1000 by
@@ -183,10 +174,10 @@
   myFailureSurfacing.userManagerUids = [ 1001 ];
 
   # ── the Thunderbolt 3 dock ─────────────────────────────────────────────────
-  # This is the docking host: the coordinator's webcam/mic, Sound Blaster,
+  # This is the docking host: the strix's webcam/mic, Sound Blaster,
   # INZONE dongle and Glove80 all hang off a TB3 dock on this laptop's Type-C
   # port. The Magic Trackpad left the dock on 2026-09-17 and is Bluetooth-bonded
-  # to the coordinator alone (hosts/coordinator/trackpad.nix). boltd authorizes the dock; the domain reports
+  # to the strix alone (hosts/strix/trackpad.nix). boltd authorizes the dock; the domain reports
   # security "iommu+user", so a plugged dock may still need one enrolment
   # (`boltctl list`, then `boltctl enroll --policy auto <uuid>` once).
   # The fleet-wide bolt line left modules/common.nix on 2026-09-11 with the
@@ -195,13 +186,13 @@
   # themselves again, and does not reach a laptop whose whole peripheral
   # plane sits behind a dock. Declared here, host-scoped, on purpose.
   services.hardware.bolt.enable = true;
-  # lsusb for dock inspection over ssh; the coordinator has it, this box
+  # lsusb for dock inspection over ssh; the strix has it, this box
   # otherwise would not.
   environment.systemPackages = [ pkgs.usbutils ];
 
   # ── no printing queue on a thin client ─────────────────────────────────────
   # modules/printing.nix is fleet-wide for interactive hosts; printing from
-  # here goes through a Chrome tab on the coordinator or the print skill
+  # here goes through a Chrome tab on the strix or the print skill
   # there. Off, and its ensure-printers unit masked so the module's drop-in
   # cannot leave a half-defined service behind.
   services.printing.enable = lib.mkForce false;

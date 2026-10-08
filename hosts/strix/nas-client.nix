@@ -194,7 +194,7 @@ in
       assertions = [
         {
           assertion = !config.myCoordinatorMedia.enable;
-          message = "coordinator media core and NAS relay cannot own ports 2283/4533 together";
+          message = "strix media core and NAS relay cannot own ports 2283/4533 together";
         }
       ];
 
@@ -279,15 +279,15 @@ in
         };
       };
 
-      # Existing clients keep coordinator.tail8dd1.ts.net. "Only coordinator has
+      # Existing clients keep strix.tail8dd1.ts.net. "Only strix has
       # a Tailscale identity" was the reason, and since 2026-09-01 it needs its
-      # qualifier: only coordinator has a TAILSCALE.COM identity. The NAS has a
+      # qualifier: only strix has a TAILSCALE.COM identity. The NAS has a
       # tailnet too now, on the headscale it runs itself
       # (hosts/nas/headscale.nix), and these two nodes cannot see each other over
       # either — different control planes, no shared netmap. Which is fine and is
       # not what these sockets ride: they relay over the house LAN, and the
       # tailnet is only how a ROAMING client reaches this door.
-      networking.firewall.interfaces.tailscale0.allowedTCPPorts = [
+      networking.firewall.interfaces.enp191s0.allowedTCPPorts = [
         2283
         4533
         32400
@@ -296,8 +296,8 @@ in
       # Memorable intranet front doors ADDED on top of the port URLs, never
       # replacing them: photos/music/videos.internal resolve fleet-wide via
       # the per-box AdGuard rewrites (modules/adguardhome.nix) to whichever
-      # coordinator address is closest to the asking host — loopback here, the
-      # coordinator's LAN lease 10.42.0.2 on the NAS, the tailnet only from a
+      # strix address is closest to the asking host — loopback here, the
+      # strix's LAN lease 10.42.0.2 on the NAS, the tailnet only from a
       # roaming host — and
       # Caddy (:80, see caddy-artifacts.nix for the matching firewall zones)
       # hands them to the same socket relays the port URLs use. Plain HTTP by
@@ -395,12 +395,12 @@ in
         };
       };
 
-      networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 28981 ];
+      networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 28981 ];
 
       # `paperless-bridge suggest` runs HERE, not on the NAS: the
       # utility-model wrapper (modules/halogen.nix client) is the fleet's one
       # accounted seam to the worker's resident Halogen server (AGENTS.md),
-      # and it exists on the coordinator only. The package records the
+      # and it exists on the strix only. The package records the
       # concrete served model id beside every ai-candidate/* tag (#136).
       environment.systemPackages = [
         (pkgs.callPackage ../../pkgs/paperless-bridge {

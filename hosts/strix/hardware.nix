@@ -1,6 +1,6 @@
 { lib, modulesPath, ... }:
 # Module list reconciled against `nixos-generate-config --show-hardware-config`
-# on the live coordinator (2026-07-11). Dropped the earlier guesses
+# on the live strix (2026-07-11). Dropped the earlier guesses
 # `ahci` (no SATA root — root is nvme) and `usb_storage` (superseded by `uas`,
 # the modern USB-Attached-SCSI driver the generator detects), added `uas`.
 # Filesystems come from ./disko.nix (disk verified 2026-07-05).

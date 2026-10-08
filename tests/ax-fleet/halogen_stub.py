@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Halogen stand-in for the ax-fleet VM test (DESIGN.md 12.1, node `worker`).
+"""Halogen stand-in for the ax-fleet VM test (DESIGN.md 12.1, node `probe`).
 
 OpenAI-compatible enough for the ax task image's two model paths:
   - `halogen-smoke`: one non-streaming POST /v1/chat/completions (curl);

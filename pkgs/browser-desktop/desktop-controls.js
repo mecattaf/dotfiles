@@ -82,7 +82,7 @@ UI.updateDesktopName = (event) => {
             if (snapshot.unlocking) status.textContent = 'Enter the keyring password in the desktop dialog.';
             else if (snapshot.busy) status.textContent = 'Another desktop action is in progress.';
             else if (snapshot.keyring === 'locked') status.textContent = 'Unlock the desktop keyring once before opening Chrome.';
-            else if (snapshot.keyring !== 'unlocked') status.textContent = 'The coordinator’s keyring cannot be reached. Its desktop session needs repair before Chrome can open.';
+            else if (snapshot.keyring !== 'unlocked') status.textContent = 'The strix’s keyring cannot be reached. Its desktop session needs repair before Chrome can open.';
         } catch (error) { snapshot = null; status.textContent = error.message; }
         buttons();
     }

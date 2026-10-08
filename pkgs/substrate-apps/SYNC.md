@@ -105,3 +105,12 @@ and requires exit 78 with a `config-invalid` line: every import resolved through
 - Whether `pkgs/substrate-link` (a021003) is retired in favour of this set's `link`. Default: yes, in the follow-up
   that re-points `hosts/nas/substrate-link.nix`, after Lane A's 4-VM test is green on ax/fleet-zero; not in this lane
   (hosts/ is Lane A's).
+
+## Local fleet patch (2026-10-08)
+
+`packages/runners/src/backend.ts` and its successor-r4 assertion point the
+Halogen client at `strix`, following worker retirement. The pinned upstream
+source is otherwise unchanged. Carry this two-line endpoint patch when syncing
+until upstream accepts configurable fleet endpoints. Deployment config maps
+`gpu-strix` to the stable `halogen` seat. The authenticated puller holder remains
+`coordinator` until the remote token binding is migrated separately.

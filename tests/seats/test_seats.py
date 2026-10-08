@@ -239,8 +239,8 @@ class SeatsTest(unittest.TestCase):
     def test_every_seat_produces_exactly_one_row(self):
         report, seats = self.box.report()
         self.assertEqual(report["schema_version"], "seat-capacity/1")
-        self.assertEqual(len(report["seats"]), 9)
-        self.assertEqual(len(seats), 9, "seat ids must be unique")
+        self.assertEqual(len(report["seats"]), 8)
+        self.assertEqual(len(seats), 8, "seat ids must be unique")
         for seat in report["seats"]:
             self.assertIn("state", seat)
             self.assertIn(seat["grade"],
@@ -522,25 +522,18 @@ class SeatsTest(unittest.TestCase):
         _, seats = self.box.report()
         # The worker's row is the Halogen server's liveness probe; with the
         # network off it is offline, graded UNKNOWN, and names where it asked.
-        self.assertEqual(seats["gpu-worker"]["provider"], "halogen")
-        self.assertEqual(seats["gpu-worker"]["state"], "offline")
-        self.assertEqual(seats["gpu-worker"]["grade"], "UNKNOWN")
-        self.assertFalse(seats["gpu-worker"]["windows"])
-        self.assertEqual(seats["gpu-worker"]["source"]["endpoint"], "http://worker:8731/health")
-        # The coordinator serves nothing: not-applicable, never headroom, and
+        self.assertEqual(seats["gpu-strix"]["provider"], "halogen")
+        self.assertEqual(seats["gpu-strix"]["state"], "offline")
+        self.assertEqual(seats["gpu-strix"]["grade"], "UNKNOWN")
+        self.assertFalse(seats["gpu-strix"]["windows"])
+        self.assertEqual(seats["gpu-strix"]["source"]["endpoint"], "http://strix:8731/health")
+        # The strix serves nothing: not-applicable, never headroom, and
         # the row says why rather than pretending to have probed something.
-        self.assertEqual(seats["gpu-coordinator"]["provider"], "none")
-        self.assertEqual(seats["gpu-coordinator"]["state"], "n/a")
-        self.assertEqual(seats["gpu-coordinator"]["grade"], "UNKNOWN")
-        self.assertFalse(seats["gpu-coordinator"]["usable"])
-        self.assertIn("serves nothing", seats["gpu-coordinator"]["detail"])
 
-    # ── the oracles ─────────────────────────────────────────────────────────
     def test_check_exit_codes(self):
         self.assertEqual(self.box.run("--check", "cc").returncode, 0)
         self.assertEqual(self.box.run("--check", "cc2").returncode, 1)
-        self.assertEqual(self.box.run("--check", "gpu-worker").returncode, 2)
-        self.assertEqual(self.box.run("--check", "gpu-coordinator").returncode, 2)
+        self.assertEqual(self.box.run("--check", "gpu-strix").returncode, 2)
         self.assertEqual(self.box.run("--check", "no-such-seat").returncode, 2)
 
     def test_check_honours_window_and_threshold(self):
@@ -597,7 +590,7 @@ class SeatsTest(unittest.TestCase):
 
         jsonl = self.box.run("--jsonl")
         rows = [json.loads(line) for line in jsonl.stdout.splitlines()]
-        self.assertEqual(len(rows), 9)
+        self.assertEqual(len(rows), 8)
         self.assertTrue(all("generated_at" in row for row in rows))
 
     def test_only_filters_by_id_and_by_provider(self):

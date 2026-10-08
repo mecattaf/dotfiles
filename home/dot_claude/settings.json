@@ -7,7 +7,6 @@
   "permissions": {
     "defaultMode": "auto"
   },
-  "model": "fable",
   "enabledPlugins": {
     "cloudflare@cloudflare": true
   },
@@ -17,12 +16,6 @@
         "source": "github",
         "repo": "cloudflare/skills"
       }
-    }
-  },
-  "effortLevel": "high",
-  "modelSettings": {
-    "claude-opus-5-5": {
-      "effortLevel": "xhigh"
     }
   },
   "tui": "fullscreen",

@@ -5,13 +5,9 @@
 }:
 # ax on the fleet: the options, and nothing else.
 #
-# Design: ~/today/evals-2026-09-23/ax-fleet/DESIGN.md section 5. Tom's ruling
-# (2026-09-23, verbatim): "this is a dotfiles task to do on my nixos fleet. the
-# decisions there were already made: hypervisor on NAS, agent harnesses on
-# coordinator, halogen inference mainly on worker (can also run on coordinator
-# if we need redundancy or a second parallel halogen task)." And on
-# 2026-09-25, verbatim: "the amd strix halo worker SHOULD be available in the
-# cluster (not just halogen inference)": the inference role is a k3s agent.
+# Closet topology (2026-10-08): NAS runs the control plane; Strix is the sole
+# harness/agent and resident Halogen host. The former inference node is retired.
+# The original multi-node design remains in Git history.
 #
 # `enable` is THE kill switch. Its default is false, so a host that imports
 # this module and says nothing renders nothing from it. The substrate and ax
@@ -29,17 +25,12 @@ in
       type = types.enum [
         "control"
         "harness"
-        "inference"
       ];
       description = ''
         control = the NAS (k3s server, Substrate and ax control planes, the
-        registry). harness = the coordinator (k3s agent tainted
-        ate.dev/sandboxClass=gvisor, gVisor sandboxes). inference = the worker
-        (since 2026-09-25 a k3s agent tainted `inferenceTaint` and labelled
-        ate.dev/substrate-version=none, so nothing lands there unless it
-        tolerates the taint; Halogen stays a host service, outside the
-        cluster). Every role but control is a k3s agent. Asserted against the
-        hostname in ./default.nix.
+        registry). harness = Strix, the k3s agent tainted
+        ate.dev/sandboxClass=gvisor for gVisor sandboxes. Halogen stays a
+        host service. Roles are asserted against hostnames in ./default.nix.
       '';
     };
 
@@ -47,7 +38,7 @@ in
       interface = mkOption {
         type = types.str;
         example = "enp1s0";
-        description = "The LAN leg: enp1s0 (nas), wlp192s0 (coordinator), enp191s0 (worker). Tests use eth1.";
+        description = "The LAN leg: enp1s0 (nas), enp191s0 (strix). Tests use eth1.";
       };
       address = mkOption {
         type = types.str;
@@ -64,7 +55,7 @@ in
         example = [ "enp191s0" ];
         description = ''
           Other NICs that can reach the house LAN (fix round 3): the
-          coordinator's wired port enp191s0 has an autoconnecting DHCP profile.
+          strix's wired port enp191s0 has an autoconnecting DHCP profile.
           On an agent role the guard chain treats them as LAN legs
           (./agent.nix); on the harness role a NetworkManager drop-in also
           gives them `extraRouteMetric`, so the LAN routes stay on `interface`
@@ -92,8 +83,7 @@ in
       default = [ "tom" ];
       description = ''
         Local users (besides root) that may open connections to `apiListen`
-        and to the cluster ranges from an agent host, the harness and the
-        worker (fix round 3). The ax API has no authentication (upstream
+        and to the cluster ranges from an agent host, Strix. The ax API has no authentication (upstream
         #376); everyone else is refused by an owner match in OUTPUT
         (./agent.nix).
       '';
@@ -102,7 +92,7 @@ in
     guardInterfaces = mkOption {
       type = types.listOf types.str;
       default = [ "tailscale0" ];
-      description = "Interfaces an agent's guard chain isolates from pods and from the LAN legs (the tailnet). The worker has none and sets [ ]. Tests use [ \"eth2\" ].";
+      description = "Interfaces an agent's guard chain isolates from pods and from the LAN legs (the tailnet). Strix has none and sets [ ]. Tests use [ \"eth2\" ].";
     };
 
     serverAddress = mkOption {
@@ -116,10 +106,9 @@ in
       type = types.listOf types.str;
       default = [
         "10.42.0.2"
-        "10.42.0.5"
       ];
       description = ''
-        LAN addresses of every k3s agent (the coordinator, the worker): the
+        LAN addresses of every k3s agent (currently Strix): the
         only sources the NAS admits to 6443, the registry and VXLAN
         (./control.nix), and, with serverAddress, the peers every agent
         accepts flannel VXLAN from (./agent.nix).
@@ -144,7 +133,7 @@ in
     nodePortRange = mkOption {
       type = types.str;
       default = "30000-30999";
-      description = "Kept below 32400 (Plex on the NAS, a listener on the coordinator).";
+      description = "Kept below 32400 (Plex on the NAS, a listener on the strix).";
     };
 
     k3sPackage = mkOption {
@@ -218,20 +207,6 @@ in
       default = "ate.dev/sandboxClass=gvisor:NoSchedule";
       description = "Upstream Substrate's own taint key (atelet tolerates it).";
     };
-    inferenceTaint = mkOption {
-      type = types.str;
-      default = "ax.mecattaf.dev/role=inference:NoSchedule";
-      description = ''
-        The worker's taint, from its first registration (k3s applies
-        --node-taint at registration). Nothing in the cluster tolerates it
-        (MEASURED live 2026-09-25, kubectl get pods -A: Substrate's control pods, CoreDNS and
-        local-path tolerate only the not-ready, unreachable, control-plane
-        and CriticalAddonsOnly keys; atelet and the WorkerPool only
-        ate.dev/sandboxClass), so the worker runs a pod only when that pod
-        opts in. A key of our own, not the harness's: a pod that tolerates the
-        sandboxes' taint must not land on the Halogen box by accident.
-      '';
-    };
 
     kubelet = {
       systemReserved = mkOption {
@@ -269,7 +244,7 @@ in
           kubelet sets kernel.panic=10, kernel.panic_on_oops=1 and
           vm.overcommit_memory=1 when it starts (REPORTED by the VM receipt).
           On the desk that turns any kernel oops into a reboot 10 s later,
-          dropping herdr and every seat; on the worker, the Halogen server.
+          dropping Herdr, every seat and the Halogen server.
           true: ax-fleet-kernel-tunables puts
           the three keys back to the values recorded before k3s first ran,
           after every kubelet start. false: kubelet's values stay. Tom's
@@ -303,7 +278,7 @@ in
       unreachableTolerationSeconds = mkOption {
         type = types.ints.unsigned;
         default = 3600;
-        description = "A configuration value, not an estimate: how long worker pods tolerate an unreachable or not-ready coordinator.";
+        description = "A configuration value, not an estimate: how long worker pods tolerate an unreachable or not-ready strix.";
       };
     };
 
@@ -319,8 +294,8 @@ in
     };
 
     halogenEndpoint = mkOption {
+      default = "10.42.0.2:8731";
       type = types.str;
-      default = "10.42.0.5:8731";
     };
 
     # ── Extension points. The substrate and ax tracks write ONLY these. ──

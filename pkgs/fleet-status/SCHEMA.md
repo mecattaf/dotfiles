@@ -46,8 +46,8 @@ All thirteen sections are always present and non-empty. The collector has a
 | timers | system, user: {timers, non_success[{unit,result,active}]} | list-timers joined with each triggered unit's Result |
 | events | coredumps, unit_failures, oom_kills, update_adopt: [{at, message, …}] ≤ 50 each, last 6 h | journalctl field matches only |
 | inference | both twins: halogen_units, health, cache (health/cache missing-by-design while every Halogen unit is inactive). Otherwise server is missing-by-design | systemd, Halogen `/health` and `/cache` on loopback |
-| runs | coordinator: kernel_unit, kernel_leases{open_lease_ids, ledger, last_seq}, daemon_unit, daemon_running_jobs{job_ids}, daemon_pools | tally-kernel (system unit plus its ledger), tally-daemon (user unit plus `tally query`) |
-| attention | coordinator: agents{by_status, agents[]}, server{main_pid, server_rss, cgroup_memory_current, cgroup_anon}, panes{count, panes[{pane_id, agent, status, age_s, tree_rss, tree_procs}]} | `herdr agent list`, `herdr pane list`, `herdr pane process-info`, /proc |
+| runs | strix: kernel_unit, kernel_leases{open_lease_ids, ledger, last_seq}, daemon_unit, daemon_running_jobs{job_ids}, daemon_pools | tally-kernel (system unit plus its ledger), tally-daemon (user unit plus `tally query`) |
+| attention | strix: agents{by_status, agents[]}, server{main_pid, server_rss, cgroup_memory_current, cgroup_anon}, panes{count, panes[{pane_id, agent, status, age_s, tree_rss, tree_procs}]} | `herdr agent list`, `herdr pane list`, `herdr pane process-info`, /proc |
 
 Only IDs, states and counts cross the Tally and Herdr seams. No lake rows,
 transcripts or pane contents appear here. `server_rss` is the Herdr server

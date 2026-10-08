@@ -19,10 +19,10 @@ let
       exit 1
     '';
 in
-# The coordinator's media services — Immich (photos) and Navidrome (music) — as
+# The strix's media services — Immich (photos) and Navidrome (music) — as
 # NATIVE NixOS modules. Migrated 2026-07-13 from the rootless podman quadlets
 # they were ported to on 2026-07-05 (see git history for the old .container
-# stack). This removes the last containers from the coordinator entirely: no
+# stack). This removes the last containers from the strix entirely: no
 # podman network, no aardvark DNS workaround, no user lingering for quadlets,
 # and updates now ride the one fleet flake-rebuild path instead of a second
 # AutoUpdate=registry mechanism.
@@ -44,7 +44,7 @@ in
 # services.immich also subsumes the redis + machine-learning sidecars natively.
 # The navidrome-credentials secret is unrelated to the server — it is consumed
 # client-side by the navidrome-scan fish function — and is delivered in
-# modules/secrets.nix (coordinator only).
+# modules/secrets.nix (strix only).
 #
 # Reachability: both bind 0.0.0.0, but the firewall opens their ports ONLY on
 # tailscale0 (the trust model the wayvnc door used until the 2026-09-11 flip
@@ -65,7 +65,7 @@ in
   options.myCoordinatorMedia.enable = lib.mkOption {
     type = lib.types.bool;
     default = true;
-    description = "Keep the pre-cutover Immich and Navidrome core on the coordinator";
+    description = "Keep the pre-cutover Immich and Navidrome core on the strix";
   };
 
   config = lib.mkIf config.myCoordinatorMedia.enable {
@@ -86,7 +86,7 @@ in
       # running as tom, which we must do for LaCie write access — see header.
       database.user = "tom";
       database.name = "tom";
-      # ML is a separate, socket-activated coordinator service (immich-ml.nix),
+      # ML is a separate, socket-activated strix service (immich-ml.nix),
       # so it survives the later core-service cutover to the NAS.
       machine-learning.enable = false;
     };
@@ -217,7 +217,7 @@ in
     };
 
     # The two service front doors are reachable across the tailnet only.
-    networking.firewall.interfaces.tailscale0.allowedTCPPorts = [
+    networking.firewall.interfaces.enp191s0.allowedTCPPorts = [
       2283
       4533
     ];

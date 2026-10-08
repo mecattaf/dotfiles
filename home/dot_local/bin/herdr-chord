@@ -10,7 +10,7 @@
 # WHY KEYSTROKES AND NOT THE API. herdr's CLI focus is GLOBAL: `herdr workspace
 # create --focus` and every other focus verb on the API socket re-focus EVERY
 # attached client (src/server/headless/client_views.rs:857-863,162-186), so
-# `ssh coordinator herdr workspace create --focus` would move every projector
+# `ssh strix herdr workspace create --focus` would move every projector
 # at once. The sidebar, the picker and rename are client-local overlays with no
 # API verb at all (src/client/shell/actions.rs:13-35). Only the projector's own
 # keybinding lane is per-window, so the chord is typed into that window through
@@ -210,5 +210,5 @@ esac
 
 spawned="$(spawn_projector)" || die "no herdr-projector window appeared within ${timeout_s}s"
 read -r id pid <<<"$spawned"
-wait_ready "$pid" || die "projector (kitty $pid) did not finish attaching to the coordinator within ${timeout_s}s"
+wait_ready "$pid" || die "projector (kitty $pid) did not finish attaching to the strix within ${timeout_s}s"
 send_chord "$pid"

@@ -23,7 +23,7 @@ import uuid
 
 CLASS = 'herdr-projector'
 SLOT = re.compile(r'^herdr-slot-([1-9])$')
-LABEL = re.compile(r'^herdr-label-((?:client|coordinator)-slot-[1-9]-[a-f0-9]{6})$')
+LABEL = re.compile(r'^herdr-label-((?:client|strix)-slot-[1-9]-[a-f0-9]{6})$')
 WORKSPACE = re.compile(r'^herdr-workspace-(w[A-Za-z0-9]+)$')
 CLOSED = re.compile(r'^herdr-closed-([0-9]+)$')
 NAME = re.compile(r'^herdr-name-([a-f0-9]+)$')
@@ -162,11 +162,11 @@ def focus_view(view_id, expected=None):
 
 def remote_snapshot():
     # Read-only on either route. Explicit local client attachment never SSHs
-    # back into the coordinator or enters auto-discovery/server startup.
-    if os.environ.get('HERDR_SWAY_LOCAL', '1' if socket.gethostname() == 'coordinator' else '0') == '1':
+    # back into the strix or enters auto-discovery/server startup.
+    if os.environ.get('HERDR_SWAY_LOCAL', '1' if socket.gethostname() == 'strix' else '0') == '1':
         out = run(['herdr', 'api', 'snapshot'], timeout=6).stdout
     else:
-        target = os.environ.get('HERDR_PROJECTOR_TARGET', 'coordinator')
+        target = os.environ.get('HERDR_PROJECTOR_TARGET', 'strix')
         if not re.fullmatch(r'[A-Za-z0-9_][A-Za-z0-9_.@:-]*', target):
             raise BridgeError('Invalid HERDR_PROJECTOR_TARGET.')
         out = run(['ssh', '-n', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=3',
@@ -185,7 +185,7 @@ def remote_snapshot():
 
 def identity(node, snapshot):
     title = node.get('name', '')
-    hostname = os.environ.get('HERDR_PICKER_HOSTNAME', 'coordinator')
+    hostname = os.environ.get('HERDR_PICKER_HOSTNAME', 'strix')
     matching = [w for w in snapshot.get('workspaces', [])
                 if w.get('label') and title == f'{hostname}: {w["label"]}']
     # Even marks are only hints: reconnects and native Herdr navigation can
@@ -369,8 +369,8 @@ def ensure_projector(*, create_workspace=True):
     if create_workspace:
         # Only our freshly created client receives input, never an existing pane.
         # The new-workspace form is enabled declaratively in Herdr config.
-        seat = os.environ.get('HERDR_SWAY_SEAT', 'coordinator' if socket.gethostname() == 'coordinator' else 'client')
-        if seat not in ('client', 'coordinator'):
+        seat = os.environ.get('HERDR_SWAY_SEAT', 'strix' if socket.gethostname() == 'strix' else 'client')
+        if seat not in ('client', 'strix'):
             raise BridgeError('Invalid HERDR_SWAY_SEAT.')
         label = f'{seat}-slot-{slot}-{uuid.uuid4().hex[:6]}'
         before = kitty(node, 'get-text', '--match', 'recent:0', '--extent', 'screen')

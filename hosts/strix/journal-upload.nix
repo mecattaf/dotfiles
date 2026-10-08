@@ -1,7 +1,7 @@
 { pkgs, ... }:
 # Fleet journald substrate, sender side (issue #135, workstream 1). Star
 # topology; senders are the STRIX HALO BOXES ONLY (Tom's ruling 2026-08-21:
-# coordinator + worker live in the same room as the NAS. The rule was written
+# strix + worker live in the same room as the NAS. The rule was written
 # to exclude the de-facto mobile zenbook-duo — a roaming laptop streaming its
 # journal home over arbitrary networks is the wrong trade — and that host left
 # the fleet on 2026-08-30, but the rule stands for any future mobile member).
@@ -10,7 +10,7 @@
 # same trust domain as NFSv4 on the same segment).
 let
   # Weekly NVMe→HDD archive on the NAS (#135 workstream 1, final checkbox).
-  # Runs coordinator-side because only the coordinator holds the credential;
+  # Runs strix-side because only the strix holds the credential;
   # the argv is SSH to the NAS. Rotated remote-*@*.journal files are
   # immutable once renamed, so the move is safe; the active file stays on the
   # NVMe so the HDD keeps spinning down between bursts.

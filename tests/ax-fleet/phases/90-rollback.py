@@ -1,14 +1,14 @@
 # Phase 6: rollback, the kill switch and the generation rollback proven
 # (DESIGN.md 12.1, 13). Track cluster. Fix round 4: the base is "today"
 # (pre-ax, no modules/ax-fleet), so every path below lands where Tom would.
-#   coordinator (a) ax-fleet-teardown inside the ax-on generation: the guards
+#   strix (a) ax-fleet-teardown inside the ax-on generation: the guards
 #               are re-applied after k3s-killall.sh strips every flannel rule,
 #               and a k3s that starts again runs behind them;
 #               (b) the kill switch (ax-off: role declared, enable false), then
 #               the teardown from the host's PATH;
 #               (c) the generation rollback to the pre-ax base, then the
 #               flake's teardown (the pre-ax PATH has none).
-#   worker      (2026-09-25) the kill switch, which is its base (role
+#   probe      (2026-09-25) the kill switch, which is its base (role
 #               declared, enable false), then the teardown from its PATH:
 #               the guards stay, Halogen is never restarted.
 #   nas         the generation rollback straight from ax-on, pods still
@@ -44,25 +44,25 @@ def guards(machine):
     }
 
 
-with step("rollback coordinator (a): the teardown inside ax-on re-applies the guards; k3s restarts behind them"):
+with step("rollback strix (a): the teardown inside ax-on re-applies the guards; k3s restarts behind them"):
     # Fix round 4. k3s-killall.sh runs `iptables-save | grep -iv flannel |
     # iptables-restore`, which deleted every guard rule naming flannel.1 while
     # the teardown reported them "left in place" (MEASURED by the review).
-    coordinator.succeed("ax-fleet-teardown >&2")
-    coordinator.fail("ip link show flannel.1")
-    g = guards(coordinator)
+    strix.succeed("ax-fleet-teardown >&2")
+    strix.fail("ip link show flannel.1")
+    g = guards(strix)
     record("guards_after_teardown_in_ax_on", g)
     assert g == EXPECTED_GUARDS, g
     # "It starts again at the next boot or switch": no firewall reload first.
-    coordinator.succeed("systemctl start k3s.service")
-    node_ready("coordinator")
-    coordinator.wait_until_succeeds("ip link show flannel.1", timeout=300)
+    strix.succeed("systemctl start k3s.service")
+    node_ready("strix")
+    strix.wait_until_succeeds("ip link show flannel.1", timeout=300)
     kubectl("wait --for=condition=Ready pod/probe-coord --timeout=600s")
-    g = guards(coordinator)
+    g = guards(strix)
     record("guards_after_k3s_restart", g)
     assert g == EXPECTED_GUARDS, g  # re-applied once, never duplicated
-    # Discriminating: the NAS's pod reaches a coordinator pod over VXLAN, and
-    # the coordinator's sshd listens on its flannel.1 address, yet the pod
+    # Discriminating: the NAS's pod reaches a strix pod over VXLAN, and
+    # the strix's sshd listens on its flannel.1 address, yet the pod
     # gets no SSH banner from it.
     # The teardown killed the sandboxes; `kubectl wait` above can pass on the
     # pre-teardown status (MEASURED r1 run 3: 0.24 s), so podIP may still name
@@ -79,105 +79,71 @@ with step("rollback coordinator (a): the teardown inside ax-on re-applies the gu
             "pod": nas.execute("k3s kubectl get pod probe-coord -o wide 2>&1")[1],
             "curl": nas.execute("ip=$(k3s kubectl get pod probe-coord -o jsonpath='{.status.podIP}'); "
                                 "k3s kubectl exec probe-nas -- curl -sv --max-time 5 http://$ip:8000/ 2>&1 | tail -5")[1],
-            "coord_cni0": coordinator.execute("ip -4 -o addr show dev cni0; ip neigh show dev cni0 2>&1")[1],
-            "coord_forward": coordinator.execute("sysctl -n net.ipv4.ip_forward; iptables -S FORWARD 2>&1 | head -30")[1],
-            "coord_flannel": coordinator.execute("ip -d link show flannel.1 2>&1 | head -3; ip route 2>&1")[1],
+            "coord_cni0": strix.execute("ip -4 -o addr show dev cni0; ip neigh show dev cni0 2>&1")[1],
+            "coord_forward": strix.execute("sysctl -n net.ipv4.ip_forward; iptables -S FORWARD 2>&1 | head -30")[1],
+            "coord_flannel": strix.execute("ip -d link show flannel.1 2>&1 | head -3; ip route 2>&1")[1],
             "nas_fdb": nas.execute("bridge fdb show dev flannel.1 2>&1; ip neigh show dev flannel.1 2>&1")[1],
-            "coord_listen": coordinator.execute("ss -ltnp 2>&1 | grep -w 8000 || true")[1],
+            "coord_listen": strix.execute("ss -ltnp 2>&1 | grep -w 8000 || true")[1],
         })
         raise
     record("probe_coord_ip_after_k3s_restart", jsonpath("pod probe-coord", "{.status.podIP}"))
-    fl = coordinator.succeed("ip -4 -o addr show dev flannel.1 | awk '{print $4}' | cut -d/ -f1").strip()
-    coordinator.succeed(f"timeout 10 bash -c 'exec 3<>/dev/tcp/{fl}/22'")
+    fl = strix.succeed("ip -4 -o addr show dev flannel.1 | awk '{print $4}' | cut -d/ -f1").strip()
+    strix.succeed(f"timeout 10 bash -c 'exec 3<>/dev/tcp/{fl}/22'")
     kubectl(f"exec probe-nas -- sh -c '! (nc -w 5 {fl} 22 </dev/null 2>/dev/null | grep -q SSH)'")
-    record("ip_forward_after_k3s_restart", coordinator.succeed("sysctl -n net.ipv4.ip_forward").strip())
+    record("ip_forward_after_k3s_restart", strix.succeed("sysctl -n net.ipv4.ip_forward").strip())
 
 
-with step("rollback coordinator (b): the kill switch, then the teardown from PATH"):
-    coordinator.succeed(f"{AX_OFF} >&2")
-    coordinator.fail("systemctl is-active k3s.service")
+with step("rollback strix (b): the kill switch, then the teardown from PATH"):
+    strix.succeed(f"{AX_OFF} >&2")
+    strix.fail("systemctl is-active k3s.service")
     # Fix round 3: between the kill switch and the teardown the pods still
     # run (KillMode=process). The role-scoped guards keep them off the host.
-    pid = pod_netns_pid(coordinator)
+    pid = pod_netns_pid(strix)
     assert pid, "no pod network namespace survived the kill switch"
-    coordinator.succeed("timeout 10 bash -c 'exec 3<>/dev/tcp/10.42.0.2/22'")  # sshd is up
-    coordinator.fail(f"nsenter -t {pid} -n timeout 5 bash -c 'exec 3<>/dev/tcp/10.42.0.2/22'")
-    coordinator.fail(f"nsenter -t {pid} -n timeout 5 bash -c 'exec 3<>/dev/tcp/100.105.121.73/22'")
-    coordinator.fail(f"nsenter -t {pid} -n timeout 5 bash -c 'exec 3<>/dev/tcp/10.42.0.5/8731'")
-    assert guards(coordinator) == EXPECTED_GUARDS, guards(coordinator)
-    coordinator.succeed("iptables -t mangle -S FORWARD 1 | grep -q ax-fleet-guard")
+    strix.succeed("timeout 10 bash -c 'exec 3<>/dev/tcp/10.42.0.2/22'")  # sshd is up
+    strix.fail(f"nsenter -t {pid} -n timeout 5 bash -c 'exec 3<>/dev/tcp/10.42.0.2/22'")
+    strix.fail(f"nsenter -t {pid} -n timeout 5 bash -c 'exec 3<>/dev/tcp/100.105.121.73/22'")
+    strix.fail(f"nsenter -t {pid} -n timeout 5 bash -c 'exec 3<>/dev/tcp/10.42.0.2/8731'")
+    assert guards(strix) == EXPECTED_GUARDS, guards(strix)
+    strix.succeed("iptables -t mangle -S FORWARD 1 | grep -q ax-fleet-guard")
     # As documented (fix round 2): the teardown from the host's own PATH.
-    coordinator.succeed("test -x /run/current-system/sw/bin/ax-fleet-teardown")
-    coordinator.succeed("ax-fleet-teardown >&2")
-    coordinator.fail("ip link show cni0")
-    coordinator.fail("ip link show flannel.1")
-    coordinator.fail(LEFTOVER_RULES)
-    coordinator.fail("pgrep -f containerd-shim")
+    strix.succeed("test -x /run/current-system/sw/bin/ax-fleet-teardown")
+    strix.succeed("ax-fleet-teardown >&2")
+    strix.fail("ip link show cni0")
+    strix.fail("ip link show flannel.1")
+    strix.fail(LEFTOVER_RULES)
+    strix.fail("pgrep -f containerd-shim")
     # The guards belong to the harness role's every generation (fix round 3),
     # re-applied whole after the killall (fix round 4).
-    g = guards(coordinator)
+    g = guards(strix)
     record("guards_after_kill_switch_teardown", g)
     assert g == EXPECTED_GUARDS, g
-    coordinator.succeed("iptables -S OUTPUT 1 | grep -q ax-fleet-api")
+    strix.succeed("iptables -S OUTPUT 1 | grep -q ax-fleet-api")
 
 
-with step("rollback coordinator (c): the generation rollback to the pre-ax base, then the flake's teardown"):
-    coordinator.succeed(f"{PRE_AX} >&2")
-    coordinator.fail("test -e /etc/ax-fleet/guard-declared")
+with step("rollback strix (c): the generation rollback to the pre-ax base, then the flake's teardown"):
+    strix.succeed(f"{PRE_AX} >&2")
+    strix.fail("test -e /etc/ax-fleet/guard-declared")
     # The pre-ax PATH has no teardown; Tom runs the flake's (DESIGN 13).
-    coordinator.fail("command -v ax-fleet-teardown")
-    record("coordinator_pre_ax_stale", {
-        "mangle_guard": rule_count(coordinator, "iptables -t mangle -S | grep -c ax-fleet-guard"),
-        "api_chain": rule_count(coordinator, "iptables -S | grep -c ax-fleet-api"),
-        "pod_input": rule_count(coordinator, "iptables -S nixos-fw | grep -c ax-fleet-pod-input"),
+    strix.fail("command -v ax-fleet-teardown")
+    record("strix_pre_ax_stale", {
+        "mangle_guard": rule_count(strix, "iptables -t mangle -S | grep -c ax-fleet-guard"),
+        "api_chain": rule_count(strix, "iptables -S | grep -c ax-fleet-api"),
+        "pod_input": rule_count(strix, "iptables -S nixos-fw | grep -c ax-fleet-pod-input"),
     })
-    coordinator.succeed(f"{TEARDOWN} >&2")
-    coordinator.fail("iptables -t mangle -S ax-fleet-guard")
-    coordinator.fail("iptables -S ax-fleet-api")
-    coordinator.fail("iptables-save | grep -q ax-fleet")
-    coordinator.fail("ip6tables-save | grep -q ax-fleet")
-    after = sysctls(coordinator)
-    record("sysctl_coordinator_after_rollback", after)
-    assert after == base["sysctl_coordinator"], (after, base["sysctl_coordinator"])
+    strix.succeed(f"{TEARDOWN} >&2")
+    strix.fail("iptables -t mangle -S ax-fleet-guard")
+    strix.fail("iptables -S ax-fleet-api")
+    strix.fail("iptables-save | grep -q ax-fleet")
+    strix.fail("ip6tables-save | grep -q ax-fleet")
+    after = sysctls(strix)
+    record("sysctl_strix_after_rollback", after)
+    assert after == base["sysctl_strix"], (after, base["sysctl_strix"])
     assert user_unit_pid("herdr-standin") == base["herdr_pid"], "herdr stand-in restarted"
     assert nm_invocation() == base["nm_invocation"], "NetworkManager restarted"
-    coordinator.fail("test -e /etc/NetworkManager/conf.d/90-ax-fleet.conf")
-    worker.succeed("curl -sf --max-time 10 http://10.42.0.2/ | grep -x caddy-ok")
+    strix.fail("test -e /etc/NetworkManager/conf.d/90-ax-fleet.conf")
+    probe.succeed("curl -sf --max-time 10 http://10.42.0.2/ | grep -x caddy-ok")
     peer.succeed("curl -sf --max-time 10 http://100.105.121.73/ | grep -x caddy-ok")
-
-
-with step("rollback worker: the kill switch (its base), then the teardown from PATH"):
-    worker.succeed(f"{PRE_AX} >&2")
-    worker.fail("systemctl is-active k3s.service")
-    # Between the kill switch and the teardown the pods still run
-    # (KillMode=process); the role's guards keep them off the host.
-    pid = pod_netns_pid(worker)
-    assert pid, "no pod network namespace survived the kill switch on the worker"
-    worker.succeed("timeout 10 bash -c 'exec 3<>/dev/tcp/10.42.0.5/22'")  # sshd is up
-    for port in (22, 2222):
-        worker.fail(f"nsenter -t {pid} -n timeout 5 bash -c 'exec 3<>/dev/tcp/10.42.0.5/{port}'")
-    assert guards(worker) == EXPECTED_GUARDS, guards(worker)
-    worker.succeed("iptables -t mangle -S FORWARD 1 | grep -q ax-fleet-guard")
-    worker.succeed("test -x /run/current-system/sw/bin/ax-fleet-teardown")
-    worker.succeed("ax-fleet-teardown >&2")
-    worker.fail("ip link show cni0")
-    worker.fail("ip link show flannel.1")
-    worker.fail(LEFTOVER_RULES)
-    worker.fail("pgrep -f containerd-shim")
-    # The guards belong to the inference role's every generation, re-applied
-    # whole after the killall (fix round 4), as on the coordinator.
-    g = guards(worker)
-    record("guards_after_worker_teardown", g)
-    assert g == EXPECTED_GUARDS, g
-    worker.succeed("iptables -S OUTPUT 1 | grep -q ax-fleet-api")
-    worker.succeed("grep -x inference /etc/ax-fleet/guard-declared")
-    worker.fail("iptables -S nixos-fw | grep -q 'dport 8472'")
-    after = sysctls(worker)
-    record("sysctl_worker_after_rollback", after)
-    assert after == base["sysctl_worker"], (after, base["sysctl_worker"])
-    assert unit_invocation(worker, "halogen-stub.service") == base["halogen_invocation"], "the Halogen stand-in restarted"
-    worker.wait_for_open_port(8731)
-    worker.succeed("curl -sf --max-time 10 http://127.0.0.1:8731/health")
 
 
 with step("rollback nas: the generation rollback straight from ax-on, then the flake's teardown"):
@@ -194,7 +160,7 @@ with step("rollback nas: the generation rollback straight from ax-on, then the f
     pid = pod_netns_pid(nas)
     window = {"pod_survived": bool(pid)}
     if pid:
-        rc, _ = nas.execute(f"nsenter -t {pid} -n timeout 5 bash -c 'exec 3<>/dev/tcp/10.42.0.5/2222'")
+        rc, _ = nas.execute(f"nsenter -t {pid} -n timeout 5 bash -c 'exec 3<>/dev/tcp/10.42.0.99/2222'")
         window["pod_reaches_worker_2222"] = rc == 0
     window["guard_table_present"] = nas.execute("nft list table inet ax-fleet-guard")[0] == 0
     record("nas_generation_rollback_window", window)

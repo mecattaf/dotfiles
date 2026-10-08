@@ -39,8 +39,7 @@ prepare() {
     and (.model_selection_policy.summary | type == "string" and length > 0)
     and (.model_selection_policy.kept_small_artifacts | type == "array")
     and (.hardware_context.nodes | type == "array")
-    and ([.hardware_context.nodes[].name] | index("coordinator") != null)
-    and ([.hardware_context.nodes[].name] | index("worker") != null)
+    and ([.hardware_context.nodes[].name] | index("strix") != null)
   ' "$registry" >/dev/null
   if ! jq -e --slurpfile catalog "$catalog" '
     .model_selection_policy.kept_small_artifacts - ($catalog[0].artifacts | keys) | length == 0
@@ -64,7 +63,7 @@ prepare() {
   fi
   jq -n --arg provider "$(jq -r '.inference.provider' "$registry")" \
     --arg endpoint "$(jq -r '.inference.url' "$registry")" \
-    --arg compute_host "$(jq -r '.inference.compute_host // "worker"' "$registry")" \
+    --arg compute_host "$(jq -r '.inference.compute_host // "strix"' "$registry")" \
     --arg model "$model_id" \
     '{provider: $provider, endpoint: $endpoint, compute_host: $compute_host, model_id: $model}' \
     > "$out/model.json"
@@ -230,7 +229,7 @@ prepare() {
       "$model_id" \
       "$(jq -r '.inference.provider' "$registry")" \
       "$(jq -r '.inference.url' "$registry")" \
-      "$(jq -r '.inference.compute_host // "worker"' "$registry")"
+      "$(jq -r '.inference.compute_host // "strix"' "$registry")"
     printf -- '- Kept small Library artifacts: %s.\n' \
       "$(jq -r '.model_selection_policy.kept_small_artifacts | if length == 0 then "none" else "`" + join("`, `") + "`" end' "$registry")"
     printf -- '- Runtime policy: %s\n' "$(jq -r '.hardware_context.runtime_policy' "$registry")"

@@ -122,11 +122,11 @@ check() { # $1 = name, $2 = want, $3 = got
 # ── 1. pre-switch: neither unit exists — the state on the box today ────────
 fragment util-sampler.timer ""
 fragment util-row.timer ""
-out="$(run coordinator)"
+out="$(run strix)"
 check "pre-switch: util-sampler.timer -> FAIL" FAIL "$(row "$out" util-sampler.timer)"
 check "pre-switch: util-row.timer -> FAIL"     FAIL "$(row "$out" util-row.timer)"
 # The count the issue names: exactly two rows come from this section, so the
-# probe gains exactly two FAIL rows on the coordinator and no more.
+# probe gains exactly two FAIL rows on the strix and no more.
 n="$(printf '%s\n' "$out" | grep -cE ' (util-sampler|util-row)\.timer declared')"
 check "pre-switch: exactly 2 util rows" 2 "$n"
 
@@ -137,7 +137,7 @@ check "pre-switch: exactly 2 util rows" 2 "$n"
 # accepted. Both are declared and both must PASS.
 fragment util-sampler.timer "$(declared_link util-sampler.timer)"
 fragment util-row.timer "$STORE_FILE"
-out="$(run coordinator)"
+out="$(run strix)"
 check "declared: util-sampler.timer -> PASS" PASS "$(row "$out" util-sampler.timer)"
 check "declared: util-row.timer -> PASS"     PASS "$(row "$out" util-row.timer)"
 
@@ -147,13 +147,13 @@ check "declared: util-row.timer -> PASS"     PASS "$(row "$out" util-row.timer)"
 # still reports success, so "the unit exists" must never be enough.
 fragment util-sampler.timer "$(hand_installed_file util-sampler.timer)"
 fragment util-row.timer "$(declared_link util-row.timer)"
-out="$(run coordinator)"
+out="$(run strix)"
 check "hand-installed sampler -> FAIL" FAIL "$(row "$out" util-sampler.timer)"
 check "hand-installed sampler leaves row writer PASS" PASS "$(row "$out" util-row.timer)"
 
 # ── 4. the worker: the sampler runs there, the row writer does not ─────────
 # util-sampler.timer is declared on BOTH boxes, so its row is real off the
-# coordinator; util-row.timer is coordinator-gated (it pulls the worker's log),
+# strix; util-row.timer is strix-gated (it pulls the worker's log),
 # so its row is SKIP there and must never FAIL.
 fragment util-sampler.timer "$(declared_link util-sampler.timer)"
 fragment util-row.timer ""

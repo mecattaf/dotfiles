@@ -25,11 +25,11 @@ binds {
     // the pre-herdr scheme, and the reason the home-grown `new-terminal` and
     // `resume-terminal` scripts are gone rather than rewritten.
     //
-    // FULL HERDR, NO KITTEN (#385, 2026-09-13). both physical seats attach to the coordinator's ONE herdr server (ruling B5). Every
+    // FULL HERDR, NO KITTEN (#385, 2026-09-13). both physical seats attach to the strix's ONE herdr server (ruling B5). Every
     // herdr chord here goes through ~/.local/bin/herdr-chord, which types
     // herdr's own prefix chord into ONE projector window — a kitty with app-id
     // `herdr-projector` running ~/.local/bin/herdr-projector, i.e. `herdr
-    // --remote coordinator --remote-keybindings server` with reconnect and
+    // --remote strix --remote-keybindings server` with reconnect and
     // cleanup — through kitty remote control. Keystrokes, not herdr's API,
     // because every API focus verb moves EVERY attached window while a prefix
     // chord moves only its own. herdr-kitten (`hk`) is gone from the fleet: it
@@ -110,14 +110,14 @@ binds {
     Mod+S hotkey-overlay-title="Screenshot" { spawn-sh "~/.local/bin/screenshot screen"; }
     Mod+Shift+S hotkey-overlay-title="Screenshot Area (annotate)" { spawn-sh "~/.local/bin/screenshot area"; }
     Mod+Alt+S hotkey-overlay-title="Screenshot Window (annotate)" { spawn-sh "~/.local/bin/screenshot window"; }
-    // Area → text: OCR on the worker's Halogen via the coordinator, into the
+    // Area → text: OCR on the worker's Halogen via the strix, into the
     // clipboard (bin/screen-ocr-area). Nothing is saved to disk.
     Mod+Ctrl+S hotkey-overlay-title="Screenshot Area → OCR" { spawn-sh "~/.local/bin/screen-ocr-area"; }
 
 
     // ── Read Aloud ───────────────────────────────────────────────
 
-    // Clipboard text → the coordinator's ~/Speech/intake, the same atomic drop
+    // Clipboard text → the strix's ~/Speech/intake, the same atomic drop
     // as the /speak skill; the speech daemon reads it on the client's speakers.
     // Took the chord from reset-window-height, deleted as unused (2026-09-15).
     Mod+Ctrl+R hotkey-overlay-title="Read clipboard aloud" { spawn-sh "~/.local/bin/speak-clipboard"; }

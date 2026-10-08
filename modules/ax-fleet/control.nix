@@ -84,7 +84,7 @@ let
   # without this, any LAN device that routes the pod or Service range via
   # 10.42.0.1 reaches ClusterIPs and pods (MEASURED by the security review:
   # ax-server 200, Redis INFO, RustFS 403; and, through VXLAN, pods on the
-  # coordinator). At priority raw, before any DNAT: destinations in the
+  # strix). At priority raw, before any DNAT: destinations in the
   # cluster ranges are accepted only from the pod-side interfaces. VXLAN
   # outer packets target ${cfg.lan.address}, so flannel is unaffected, and
   # traffic the NAS itself originates never passes prerouting.
@@ -116,7 +116,9 @@ let
       ip daddr ${halogenHost} tcp dport ${halogenPort} return
       ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 169.254.0.0/16 } counter drop comment "ax-fleet: pods reach no private address but Halogen"
       ip6 daddr { fc00::/7, fe80::/10 } counter drop comment "ax-fleet: pods reach no private address but Halogen"
-      oifname { ${lib.concatMapStringsSep ", " (i: ''"${i}"'') cfg.guardInterfaces} } counter drop comment "ax-fleet: pods never reach the tailnet"
+      oifname { ${
+        lib.concatMapStringsSep ", " (i: ''"${i}"'') cfg.guardInterfaces
+      } } counter drop comment "ax-fleet: pods never reach the tailnet"
       oifname "ve-*" counter drop comment "ax-fleet: pods never reach the NAS's containers"
     }
 
@@ -131,7 +133,9 @@ let
       type filter hook output priority filter; policy accept;
       ct state != new return
       meta skuid 0 return
-      ${lib.optionalString (cfg.clusterClientUids != [ ]) "meta skuid { ${lib.concatMapStringsSep ", " toString cfg.clusterClientUids} } return"}
+      ${lib.optionalString (cfg.clusterClientUids != [ ])
+        "meta skuid { ${lib.concatMapStringsSep ", " toString cfg.clusterClientUids} } return"
+      }
       ip daddr { ${cfg.podCidr}, ${cfg.serviceCidr} } counter reject comment "ax-fleet: the cluster ranges from this host, root only"
       ip daddr 127.0.0.1 tcp dport ${lib.last (lib.splitString ":" seedAddr)} counter reject with tcp reset comment "ax-fleet: the seed's writable registry, root only"
     }
@@ -153,7 +157,7 @@ let
 
   bootstrapKubeconfig = ''
     # 60-kubeconfig: the admin kubeconfig for ax-fleet-kubeconfig on the
-    # coordinator (read over the existing ssh trust). 0640 root:wheel, never
+    # strix (read over the existing ssh trust). 0640 root:wheel, never
     # printed.
     install -d -m 0755 /etc/ax-fleet
     tmp=$(mktemp /etc/ax-fleet/.admin.kubeconfig.XXXXXX)
@@ -173,9 +177,9 @@ let
 
   # ── the registry: read-only to the network, writable only to the seed ──
   # (fix round 2) The round-2 review MEASURED an unprivileged user on the
-  # coordinator pushing blobs (202), mounting across repos (201) and
+  # strix pushing blobs (202), mounting across repos (201) and
   # overwriting substrate/atelet:d277088b's tag (201): the source-address rule
-  # admits every uid and every pod on the coordinator (masqueraded to its LAN
+  # admits every uid and every pod on the strix (masqueraded to its LAN
   # address). ate-setup resolves --image-tag to a digest at install time, so a
   # rewritten tag is what would get pinned. Now the served instance on
   # ${cfg.registry} runs with storage.maintenance.readonly, and delete is off;
@@ -226,221 +230,220 @@ let
 in
 {
   config = lib.mkMerge [
-  (lib.mkIf roleOn {
-    assertions = [
-      {
-        assertion = config.networking.nftables.enable;
-        message = "modules/ax-fleet/control.nix: the control role's cluster-range guard is an nftables table; the NAS runs nftables.";
-      }
-    ];
-    networking.nftables.tables.ax-fleet-guard = {
-      family = "inet";
-      content = rangeGuard;
-    };
-    # The teardown leaves a guard the generation declares (pkgs/ax-fleet-teardown).
-    environment.etc."ax-fleet/guard-declared".text = "control\n";
-  })
-  (lib.mkIf on {
-    myAxFleet.kubelet = {
-      # Protects DNS, DHCP, headscale, Paperless and Immich on 8 cores / 22 GiB.
-      systemReserved = lib.mkDefault "cpu=2,memory=8Gi";
-    };
-
-    myAxFleet.bootstrap = {
-      "10-api" = bootstrapApi;
-      "60-kubeconfig" = bootstrapKubeconfig;
-    };
-
-    services.k3s = {
-      role = "server";
-      disable = [
-        "traefik"
-        "servicelb"
-        "metrics-server"
+    (lib.mkIf roleOn {
+      assertions = [
+        {
+          assertion = config.networking.nftables.enable;
+          message = "modules/ax-fleet/control.nix: the control role's cluster-range guard is an nftables table; the NAS runs nftables.";
+        }
       ];
-      # No nodeTaint: the NAS is untainted (DESIGN D5). The `none` version
-      # value keeps Substrate's version-keyed atelet DaemonSet off the NAS
-      # (ate-setup only labels nodes that lack the key).
-      nodeLabel = [
-        "ax.mecattaf.dev/role=control"
-        "ate.dev/substrate-version=none"
-      ];
-      extraFlags = serverFlags;
-      manifests = lib.mapAttrs (name: m: {
-        inherit (m) source;
-        target = "${name}.yaml";
-      }) cfg.manifests;
-    };
+      networking.nftables.tables.ax-fleet-guard = {
+        family = "inet";
+        content = rangeGuard;
+      };
+      # The teardown leaves a guard the generation declares (pkgs/ax-fleet-teardown).
+      environment.etc."ax-fleet/guard-declared".text = "control\n";
+    })
+    (lib.mkIf on {
+      myAxFleet.kubelet = {
+        # Protects DNS, DHCP, headscale, Paperless and Immich on 8 cores / 22 GiB.
+        systemReserved = lib.mkDefault "cpu=2,memory=8Gi";
+      };
 
-    # ── bind mounts: k3s state on the fast tier ──
-    # systemd mount units, not fileSystems: they stay out of local-fs.target
-    # (a failed bind cannot drop the router into emergency mode at boot; only
-    # k3s, which RequiresMountsFor them, would fail), and the VM test runs the
-    # exact same units (qemu-vm replaces `fileSystems` wholesale).
-    systemd.mounts = lib.mapAttrsToList (where: what: {
-      inherit what where;
-      type = "none";
-      options = "bind";
-      # Lazy: at the kill-switch switch, pods and shims outlive k3s
-      # (KillMode=process) and can keep /var/lib/kubelet busy, which made the
-      # rollback switch exit 4 (MEASURED, fix round 1 VM run 4). Detaching
-      # lazily leaves the data on /mnt/fast untouched; ax-fleet-teardown then
-      # stops what still holds it.
-      mountConfig.LazyUnmount = true;
-      requires = [ "ax-fleet-dirs.service" ];
-      after = [ "ax-fleet-dirs.service" ];
-      wantedBy = [ "k3s.service" ];
-      before = [ "k3s.service" ];
-    }) binds;
+      myAxFleet.bootstrap = {
+        "10-api" = bootstrapApi;
+        "60-kubeconfig" = bootstrapKubeconfig;
+      };
 
-    systemd.services.ax-fleet-dirs = {
-      description = "ax-fleet: create the k3s state and fast-tier directories";
-      unitConfig = {
-        DefaultDependencies = false;
-        RequiresMountsFor = [
-          cfg.stateRoot
-          cfg.localPathRoot
-          cfg.registryRoot
+      services.k3s = {
+        role = "server";
+        disable = [
+          "traefik"
+          "servicelb"
+          "metrics-server"
         ];
+        # No nodeTaint: the NAS is untainted (DESIGN D5). The `none` version
+        # value keeps Substrate's version-keyed atelet DaemonSet off the NAS
+        # (ate-setup only labels nodes that lack the key).
+        nodeLabel = [
+          "ax.mecattaf.dev/role=control"
+          "ate.dev/substrate-version=none"
+        ];
+        extraFlags = serverFlags;
+        manifests = lib.mapAttrs (name: m: {
+          inherit (m) source;
+          target = "${name}.yaml";
+        }) cfg.manifests;
       };
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
+
+      # ── bind mounts: k3s state on the fast tier ──
+      # systemd mount units, not fileSystems: they stay out of local-fs.target
+      # (a failed bind cannot drop the router into emergency mode at boot; only
+      # k3s, which RequiresMountsFor them, would fail), and the VM test runs the
+      # exact same units (qemu-vm replaces `fileSystems` wholesale).
+      systemd.mounts = lib.mapAttrsToList (where: what: {
+        inherit what where;
+        type = "none";
+        options = "bind";
+        # Lazy: at the kill-switch switch, pods and shims outlive k3s
+        # (KillMode=process) and can keep /var/lib/kubelet busy, which made the
+        # rollback switch exit 4 (MEASURED, fix round 1 VM run 4). Detaching
+        # lazily leaves the data on /mnt/fast untouched; ax-fleet-teardown then
+        # stops what still holds it.
+        mountConfig.LazyUnmount = true;
+        requires = [ "ax-fleet-dirs.service" ];
+        after = [ "ax-fleet-dirs.service" ];
+        wantedBy = [ "k3s.service" ];
+        before = [ "k3s.service" ];
+      }) binds;
+
+      systemd.services.ax-fleet-dirs = {
+        description = "ax-fleet: create the k3s state and fast-tier directories";
+        unitConfig = {
+          DefaultDependencies = false;
+          RequiresMountsFor = [
+            cfg.stateRoot
+            cfg.localPathRoot
+            cfg.registryRoot
+          ];
+        };
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+        };
+        script = ''
+          ${lib.concatMapStringsSep "\n" (d: "${pkgs.coreutils}/bin/install -d -m 0711 ${d}") (
+            lib.attrValues binds
+          )}
+          ${pkgs.coreutils}/bin/install -d -m 0711 ${cfg.localPathRoot}
+          ${pkgs.coreutils}/bin/install -d -m 0750 -o docker-registry -g docker-registry ${cfg.registryRoot}
+        '';
       };
-      script = ''
-        ${lib.concatMapStringsSep "\n" (d: "${pkgs.coreutils}/bin/install -d -m 0711 ${d}") (
-          lib.attrValues binds
-        )}
-        ${pkgs.coreutils}/bin/install -d -m 0711 ${cfg.localPathRoot}
-        ${pkgs.coreutils}/bin/install -d -m 0750 -o docker-registry -g docker-registry ${cfg.registryRoot}
+
+      systemd.services.k3s = {
+        wants = [ "ax-fleet-dirs.service" ];
+        after = [ "ax-fleet-dirs.service" ];
+        unitConfig.RequiresMountsFor = (lib.attrNames binds) ++ [ cfg.localPathRoot ];
+      };
+
+      # ── the registry (moved from #446), on the fast tier since 2026-09-30 ──
+      services.dockerRegistry = {
+        enable = true;
+        listenAddress = registryHost;
+        port = registryPort;
+        storagePath = cfg.registryRoot;
+        # Read-only to the network (see seedAddr); garbage collection is
+        # offline and needs no delete API.
+        enableDelete = false;
+        extraConfig.storage.maintenance.readonly.enabled = true;
+        enableGarbageCollect = true;
+        garbageCollectDates = "weekly";
+        # openFirewall NOT used: the source-scoped rule below is the access control.
+      };
+      systemd.services.docker-registry = {
+        wants = [ "ax-fleet-dirs.service" ];
+        after = [ "ax-fleet-dirs.service" ];
+        unitConfig.RequiresMountsFor = [ cfg.registryRoot ];
+        # The explicit ${registryHost} bind races NetworkManager at boot: the
+        # static address reaches ${cfg.lan.interface} seconds after
+        # network(-online).target (MEASURED on the NAS, 2026-09-23; the same race
+        # hosts/nas/headscale.nix and modules/adguardhome.nix already guard).
+        # Wait up to 30 s for the address, then start anyway and let Restart
+        # cover a genuinely late interface.
+        serviceConfig = {
+          ExecStartPre = waitLanAddr;
+          Restart = "on-failure";
+          RestartSec = 5;
+        };
+      };
+
+      # ── firewall: only what the agents and the pods need ──
+      # #447 opened 6443 to the whole LAN and #446 opened 5432/9000/5000 to the
+      # whole LAN. Now: 6443, 5000 and VXLAN only from the agents
+      # (agentAddresses: the strix and, since 2026-09-25, the worker); DNS
+      # and the apiserver from pods on cni0. 5432, 6379 and 9000 are never
+      # opened on the host. Nothing on tailscale0.
+      networking.firewall.extraInputRules = ''
+        iifname "${cfg.lan.interface}" ip saddr { ${lib.concatStringsSep ", " cfg.agentAddresses} } tcp dport { 6443, ${toString registryPort} } accept comment "ax-fleet: kube API and registry, agents only"
+        iifname "${cfg.lan.interface}" ip saddr { ${lib.concatStringsSep ", " cfg.agentAddresses} } udp dport 8472 accept comment "ax-fleet: flannel VXLAN, agents only"
+        iifname "cni0" ip saddr ${cfg.podCidr} tcp dport { 53, 6443 } accept comment "ax-fleet: pods to AdGuard and the apiserver"
+        iifname "cni0" ip saddr ${cfg.podCidr} udp dport 53 accept comment "ax-fleet: pods to AdGuard"
       '';
-    };
 
-    systemd.services.k3s = {
-      wants = [ "ax-fleet-dirs.service" ];
-      after = [ "ax-fleet-dirs.service" ];
-      unitConfig.RequiresMountsFor = (lib.attrNames binds) ++ [ cfg.localPathRoot ];
-    };
-
-    # ── the registry (moved from #446), on the fast tier since 2026-09-30 ──
-    services.dockerRegistry = {
-      enable = true;
-      listenAddress = registryHost;
-      port = registryPort;
-      storagePath = cfg.registryRoot;
-      # Read-only to the network (see seedAddr); garbage collection is
-      # offline and needs no delete API.
-      enableDelete = false;
-      extraConfig.storage.maintenance.readonly.enabled = true;
-      enableGarbageCollect = true;
-      garbageCollectDates = "weekly";
-      # openFirewall NOT used: the source-scoped rule below is the access control.
-    };
-    systemd.services.docker-registry = {
-      wants = [ "ax-fleet-dirs.service" ];
-      after = [ "ax-fleet-dirs.service" ];
-      unitConfig.RequiresMountsFor = [ cfg.registryRoot ];
-      # The explicit ${registryHost} bind races NetworkManager at boot: the
-      # static address reaches ${cfg.lan.interface} seconds after
-      # network(-online).target (MEASURED on the NAS, 2026-09-23; the same race
-      # hosts/nas/headscale.nix and modules/adguardhome.nix already guard).
-      # Wait up to 30 s for the address, then start anyway and let Restart
-      # cover a genuinely late interface.
-      serviceConfig = {
-        ExecStartPre = waitLanAddr;
-        Restart = "on-failure";
-        RestartSec = 5;
+      # ── the registry seed: from store paths in the NAS closure ──
+      systemd.services.ax-fleet-registry-seed = {
+        description = "ax-fleet: seed the NAS registry from the store, digests preserved";
+        wantedBy = [ "multi-user.target" ];
+        # wants, not requires: a registry that fails its first start (late LAN
+        # address) must not fail the seed on dependency, which Restart= would
+        # never retry. The script itself waits for /v2/, and Restart retries.
+        wants = [ "docker-registry.service" ];
+        after = [ "docker-registry.service" ];
+        path = [
+          pkgs.skopeo
+          pkgs.curl
+          pkgs.coreutils
+          pkgs.util-linux
+        ];
+        environment.HOME = "/var/lib/ax-fleet";
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          StateDirectory = "ax-fleet";
+          Restart = "on-failure";
+          RestartSec = 15;
+        };
+        script = seedScript;
       };
-    };
 
-
-    # ── firewall: only what the agents and the pods need ──
-    # #447 opened 6443 to the whole LAN and #446 opened 5432/9000/5000 to the
-    # whole LAN. Now: 6443, 5000 and VXLAN only from the agents
-    # (agentAddresses: the coordinator and, since 2026-09-25, the worker); DNS
-    # and the apiserver from pods on cni0. 5432, 6379 and 9000 are never
-    # opened on the host. Nothing on tailscale0.
-    networking.firewall.extraInputRules = ''
-      iifname "${cfg.lan.interface}" ip saddr { ${lib.concatStringsSep ", " cfg.agentAddresses} } tcp dport { 6443, ${toString registryPort} } accept comment "ax-fleet: kube API and registry, agents only"
-      iifname "${cfg.lan.interface}" ip saddr { ${lib.concatStringsSep ", " cfg.agentAddresses} } udp dport 8472 accept comment "ax-fleet: flannel VXLAN, agents only"
-      iifname "cni0" ip saddr ${cfg.podCidr} tcp dport { 53, 6443 } accept comment "ax-fleet: pods to AdGuard and the apiserver"
-      iifname "cni0" ip saddr ${cfg.podCidr} udp dport 53 accept comment "ax-fleet: pods to AdGuard"
-    '';
-
-    # ── the registry seed: from store paths in the NAS closure ──
-    systemd.services.ax-fleet-registry-seed = {
-      description = "ax-fleet: seed the NAS registry from the store, digests preserved";
-      wantedBy = [ "multi-user.target" ];
-      # wants, not requires: a registry that fails its first start (late LAN
-      # address) must not fail the seed on dependency, which Restart= would
-      # never retry. The script itself waits for /v2/, and Restart retries.
-      wants = [ "docker-registry.service" ];
-      after = [ "docker-registry.service" ];
-      path = [
-        pkgs.skopeo
-        pkgs.curl
-        pkgs.coreutils
-        pkgs.util-linux
-      ];
-      environment.HOME = "/var/lib/ax-fleet";
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        StateDirectory = "ax-fleet";
-        Restart = "on-failure";
-        RestartSec = 15;
+      # ── the bootstrap: myAxFleet.bootstrap, in name order ──
+      systemd.services.ax-fleet-bootstrap = {
+        description = "ax-fleet: bootstrap the cluster (idempotent steps, in name order)";
+        wantedBy = [ "multi-user.target" ];
+        wants = [
+          "k3s.service"
+          "docker-registry.service"
+          "ax-fleet-registry-seed.service"
+        ];
+        after = [
+          "k3s.service"
+          "docker-registry.service"
+          "ax-fleet-registry-seed.service"
+        ];
+        path = [
+          cfg.k3sPackage
+          pkgs.coreutils
+          pkgs.gnugrep
+          pkgs.gnused
+          pkgs.gawk
+          pkgs.findutils
+          pkgs.jq
+          pkgs.curl
+          pkgs.skopeo
+          pkgs.util-linux
+          pkgs.bash
+        ];
+        environment = {
+          KUBECONFIG = "/etc/rancher/k3s/k3s.yaml";
+          HOME = "/var/lib/ax-fleet";
+        };
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          Restart = "on-failure";
+          RestartSec = 30;
+          TimeoutStartSec = "45min";
+          StateDirectory = "ax-fleet";
+        };
+        script = ''
+          set -euo pipefail
+          ${lib.concatMapStringsSep "\n" (n: ''
+            echo "== ax-fleet-bootstrap step ${n}"
+            ${stepScript n}
+          '') stepNames}
+          echo "== ax-fleet-bootstrap complete: ${toString (lib.length stepNames)} step(s)"
+        '';
       };
-      script = seedScript;
-    };
-
-    # ── the bootstrap: myAxFleet.bootstrap, in name order ──
-    systemd.services.ax-fleet-bootstrap = {
-      description = "ax-fleet: bootstrap the cluster (idempotent steps, in name order)";
-      wantedBy = [ "multi-user.target" ];
-      wants = [
-        "k3s.service"
-        "docker-registry.service"
-        "ax-fleet-registry-seed.service"
-      ];
-      after = [
-        "k3s.service"
-        "docker-registry.service"
-        "ax-fleet-registry-seed.service"
-      ];
-      path = [
-        cfg.k3sPackage
-        pkgs.coreutils
-        pkgs.gnugrep
-        pkgs.gnused
-        pkgs.gawk
-        pkgs.findutils
-        pkgs.jq
-        pkgs.curl
-        pkgs.skopeo
-        pkgs.util-linux
-        pkgs.bash
-      ];
-      environment = {
-        KUBECONFIG = "/etc/rancher/k3s/k3s.yaml";
-        HOME = "/var/lib/ax-fleet";
-      };
-      serviceConfig = {
-        Type = "oneshot";
-        RemainAfterExit = true;
-        Restart = "on-failure";
-        RestartSec = 30;
-        TimeoutStartSec = "45min";
-        StateDirectory = "ax-fleet";
-      };
-      script = ''
-        set -euo pipefail
-        ${lib.concatMapStringsSep "\n" (n: ''
-          echo "== ax-fleet-bootstrap step ${n}"
-          ${stepScript n}
-        '') stepNames}
-        echo "== ax-fleet-bootstrap complete: ${toString (lib.length stepNames)} step(s)"
-      '';
-    };
-  })
+    })
   ];
 }

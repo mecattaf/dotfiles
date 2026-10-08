@@ -1,6 +1,6 @@
 # Phase: the house LAN cannot reach the cluster ranges through the NAS, and
 # the credential and RBAC surface is what fix round 1 left (2026-09-23). Runs
-# after 30-nop1 and 32-fleet, so ax-server, ax-redis and RustFS all exist. The worker is a
+# after 30-nop1 and 32-fleet, so ax-server, ax-redis and RustFS all exist. The probe is a
 # plain LAN host; the NAS is its default gateway on the real LAN.
 
 
@@ -21,23 +21,23 @@ with step("lan: routed LAN traffic never reaches a ClusterIP or pod IP"):
     record("lan_probe_targets", {"ax": ax_ip, "redis": redis_ip, "rustfs": rustfs_ip, "ax_pod": ax_pod})
 
     # Positive controls from the NAS host (OUTPUT path, not prerouting): the
-    # endpoints are up, so a failure from the worker is the guard.
+    # endpoints are up, so a failure from the probe is the guard.
     nas.succeed(f"curl -sf --max-time 10 http://{ax_ip}:8080/healthz")
     nas.succeed(tcp_open(redis_ip, 6379))
     nas.succeed(f"curl -s --max-time 10 -o /dev/null http://{rustfs_ip}:9000/")
 
-    worker.succeed("ip route replace 10.200.0.0/16 via 10.42.0.1")
-    worker.succeed("ip route replace 10.201.0.0/16 via 10.42.0.1")
+    probe.succeed("ip route replace 10.200.0.0/16 via 10.42.0.1")
+    probe.succeed("ip route replace 10.201.0.0/16 via 10.42.0.1")
     try:
         # curl without -f: rc 0 on ANY HTTP answer, so fail() means no answer.
-        worker.fail(f"curl -s --max-time 5 -o /dev/null http://{ax_ip}:8080/healthz")
-        worker.fail(f"curl -s --max-time 5 -o /dev/null http://{ax_pod}:8080/healthz")
-        worker.fail(f"curl -s --max-time 5 -o /dev/null http://{rustfs_ip}:9000/")
-        worker.fail(tcp_open(redis_ip, 6379))
-        worker.fail("dig +time=2 +tries=1 @10.201.0.10 ax-server.ax-system.svc.cluster.local")
+        probe.fail(f"curl -s --max-time 5 -o /dev/null http://{ax_ip}:8080/healthz")
+        probe.fail(f"curl -s --max-time 5 -o /dev/null http://{ax_pod}:8080/healthz")
+        probe.fail(f"curl -s --max-time 5 -o /dev/null http://{rustfs_ip}:9000/")
+        probe.fail(tcp_open(redis_ip, 6379))
+        probe.fail("dig +time=2 +tries=1 @10.201.0.10 ax-server.ax-system.svc.cluster.local")
     finally:
-        worker.succeed("ip route del 10.200.0.0/16 via 10.42.0.1")
-        worker.succeed("ip route del 10.201.0.0/16 via 10.42.0.1")
+        probe.succeed("ip route del 10.200.0.0/16 via 10.42.0.1")
+        probe.succeed("ip route del 10.201.0.0/16 via 10.42.0.1")
     record("nas_range_guard", nas.succeed("nft list chain inet ax-fleet-guard prerouting").strip().splitlines())
 
     # Fix round 4: the NAS's own non-root processes (paperless, immich, ...)
@@ -54,27 +54,27 @@ with step("lan: routed LAN traffic never reaches a ClusterIP or pod IP"):
 
 
 with step("nas: pods reach Halogen on its port and no other private address"):
-    # Fix round 3. The round-3 review MEASURED postgres-0 reaching worker:2222;
+    # Fix round 3. The round-3 review MEASURED postgres-0 reaching probe:2222;
     # the NAS had no pod egress guard. Discriminating: the NAS host reaches
     # both targets.
-    nas.succeed("curl -sf --max-time 10 http://10.42.0.5:2222/ | grep -q worker-port-2222-reached")
+    nas.succeed("curl -sf --max-time 10 http://10.42.0.99:2222/ | grep -q probe-port-2222-reached")
     nas.succeed("curl -sf --max-time 10 http://10.42.0.2/ | grep -x caddy-ok")
-    kubectl("exec probe-nas -- curl -sf --max-time 10 http://10.42.0.5:8731/health")
-    kubectl("exec probe-nas -- sh -c '! curl -s --max-time 5 -o /dev/null http://10.42.0.5:2222/'")
+    kubectl("exec probe-nas -- curl -sf --max-time 10 http://10.42.0.2:8731/health")
+    kubectl("exec probe-nas -- sh -c '! curl -s --max-time 5 -o /dev/null http://10.42.0.99:2222/'")
     kubectl("exec probe-nas -- sh -c '! curl -s --max-time 5 -o /dev/null http://10.42.0.2/'")
     record("nas_pod_egress", nas.succeed("nft list chain inet ax-fleet-guard forward").strip().splitlines())
 
 
-with step("security: the registry is read-only to the coordinator; the seed wrote everything"):
+with step("security: the registry is read-only to the strix; the seed wrote everything"):
     # Fix round 2. The round-2 review MEASURED 202 for an upload and 201 for a
-    # tag overwrite from an unprivileged coordinator user.
+    # tag overwrite from an unprivileged strix user.
     reg = "http://10.42.0.1:5000"
     alice = "runuser -u alice -- curl -s -o /dev/null -w '%{http_code}' --max-time 10"
-    assert coordinator.succeed(f"{alice} {reg}/v2/_catalog").strip() == "200"
+    assert strix.succeed(f"{alice} {reg}/v2/_catalog").strip() == "200"
     codes = {
-        "upload": coordinator.succeed(f"{alice} -X POST {reg}/v2/secprobe/blobs/uploads/").strip(),
-        "mount": coordinator.succeed(f"{alice} -X POST '{reg}/v2/secprobe/blobs/uploads/?mount=sha256:0000000000000000000000000000000000000000000000000000000000000000&from=ax/ax-redis'").strip(),
-        "delete": coordinator.succeed(f"{alice} -X DELETE {reg}/v2/ax/ax-redis/manifests/sha256:0000000000000000000000000000000000000000000000000000000000000000").strip(),
+        "upload": strix.succeed(f"{alice} -X POST {reg}/v2/secprobe/blobs/uploads/").strip(),
+        "mount": strix.succeed(f"{alice} -X POST '{reg}/v2/secprobe/blobs/uploads/?mount=sha256:0000000000000000000000000000000000000000000000000000000000000000&from=ax/ax-redis'").strip(),
+        "delete": strix.succeed(f"{alice} -X DELETE {reg}/v2/ax/ax-redis/manifests/sha256:0000000000000000000000000000000000000000000000000000000000000000").strip(),
     }
     record("registry_write_codes", codes)
     assert all(c not in ("201", "202") for c in codes.values()), codes

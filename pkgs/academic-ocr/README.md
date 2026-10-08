@@ -1,6 +1,6 @@
 # Academic OCR
 
-This package implements the bounded coordinator-only slice in dotfiles issue
+This package implements the bounded strix-only slice in dotfiles issue
 `#124`. It keeps all source blobs, renders, protocol artifacts, canonical files,
 chunks, embeddings, the disposable SQLite index, and receipts below:
 
@@ -103,7 +103,7 @@ empty or near-empty extraction. The standard tier is the fleet's one inference
 server, Halogen Flash on the worker, addressed as protocol and model id
 `halogen-qwen3.8-flash-next` through its OpenAI-compatible
 `/v1/chat/completions` with `image_url` content parts and temperature zero.
-The base URL defaults to `http://worker:8731` and is overridable through
+The base URL defaults to `http://strix:8731` and is overridable through
 `ACADEMIC_OCR_INFERENCE_URL`. Halogen's token budget covers its reasoning as
 well as the transcription, so the per-page cap is 16384 tokens.
 

@@ -6,7 +6,7 @@
 #   ax-fleet-smoke pi          [--hold N]  pi against Halogen, schema-valid result
 #   ax-fleet-smoke exit N      [--hold N]  the command exits N (Failed ExitCode=N)
 #   ax-fleet-smoke egress-deny [URL]       GET a non-allowlisted URL (default the
-#                                          coordinator's LAN address); must be refused
+#                                          strix's LAN address); must be refused
 #   ax-fleet-smoke floor N                 N Tasks in a row; none ResourceExhausted
 #   ax-fleet-smoke probe       [--hold N]  `claude --version` and a GET of Halogen's
 #                                          /v1/models, sandboxClass gvisor; needs an

@@ -12,7 +12,7 @@ hand: make a PDF without printing, and compare typefaces.
     print-auto.py INPUT.md [--intent brief|document|form|specimen] \
       [--target-pages N] [--page-slack N] [--profile P] [--sides one-sided|duplex] [--output-dir DIR]
 
-The request-scoped utility model (`utility-model` on the coordinator, which
+The request-scoped utility model (`utility-model` on the strix, which
 forwards to the Halogen server on the worker) picks profile, one-page
 enforcement, duplex, filename and title; `--profile`/`--sides` override it.
 Classification failure is non-fatal: one stderr line, the deterministic

@@ -6,7 +6,7 @@
 }:
 let
   cfg = config.myNas.storage;
-  # Keep the same absolute root the coordinator used for Immich and Navidrome.
+  # Keep the same absolute root the strix used for Immich and Navidrome.
   # Their databases contain media paths, so preserving /mnt/nas makes the
   # restore a data move rather than an in-database path rewrite.
   storageRoot = "/mnt/nas";
@@ -124,10 +124,10 @@ in
     # NFSv4 exports use EXPLICIT UNIQUE fsids per #131: subvolumes below a
     # lone fsid=0 export are a known sharp edge (each subvolume has its own
     # st_dev), so every crossing point is exported deliberately. The
-    # coordinator is admitted read-write at its pinned LAN lease 10.42.0.2, and
+    # strix is admitted read-write at its pinned LAN lease 10.42.0.2, and
     # since 2026-09-25 the worker read-only at 10.42.0.5 (storage root and
     # documents only; the models line lives in models.nix). Before that only
-    # the coordinator was admitted (the
+    # the strix was admitted (the
     # legacy /30 address was admitted beside it through the 2026-08-20
     # cutover and left with the tether, #264); other clients reach the relays
     # over Tailscale and the filesystem itself never leaves that one client.
@@ -142,7 +142,7 @@ in
       enable = true;
       exports =
         let
-          # The coordinator's pinned LAN lease (hosts/nas/router.nix
+          # The strix's pinned LAN lease (hosts/nas/router.nix
           # dhcp-host). Nothing else — the export ACL stays exactly as narrow
           # as the nftables rule below. The legacy /30 client that sat beside
           # it through the 2026-08-20 cutover was removed with the tether (#264).
@@ -165,12 +165,10 @@ in
           ${storageRoot}/documents ${clients "rw,sync,fsid=3,no_subtree_check,no_root_squash"}
           ${storageRoot}/services ${clients "rw,sync,fsid=4,no_subtree_check,no_root_squash"}
           ${storageRoot}/videos ${clients "rw,sync,fsid=5,no_subtree_check,no_root_squash"}
-          ${storageRoot} 10.42.0.5(ro,sync,fsid=0,no_subtree_check,root_squash)
-          ${storageRoot}/documents 10.42.0.5(ro,sync,fsid=3,no_subtree_check,root_squash)
         '';
     };
     networking.firewall.extraInputRules = ''
-      ip saddr 10.42.0.2 tcp dport 2049 accept comment "NFSv4 from coordinator (LAN; /30 retired 2026-08-21)"
+      ip saddr 10.42.0.2 tcp dport 2049 accept comment "NFSv4 from strix (LAN; /30 retired 2026-08-21)"
     '';
 
     # With the wildcard bind the address race is gone, but nfsd must still not
@@ -190,7 +188,7 @@ in
     # ownership/mode on what the runbook created.
     systemd.tmpfiles.rules = [
       # Plain directory INSIDE the services subvolume (not a subvolume root, so
-      # 'd' is safe here): destination of the coordinator-driven weekly journal
+      # 'd' is safe here): destination of the strix-driven weekly journal
       # archive (#135). Never NFS-exported.
       "d ${storageRoot}/services/journal-archive 0700 root root -"
       "z ${storageRoot}/music 0750 tom users -"

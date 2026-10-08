@@ -42,7 +42,7 @@ let
   # renders this, falling back to the fleet convention where that module is
   # not imported.
   halogen = lib.attrByPath [ "services" "halogen" ] null osConfig;
-  halogenEndpoint = if halogen != null then halogen.client.endpoint else "http://worker:8731";
+  halogenEndpoint = if halogen != null then halogen.client.endpoint else "http://strix:8731";
   halogenModelId = if halogen != null then halogen.modelId else "halogen-qwen3.8-flash-next";
 
   # ── Qwen Token Plan (Alibaba MaaS subscription) ──────────────────────────
@@ -219,7 +219,7 @@ let
         models = [
           {
             id = halogenModelId;
-            name = "Qwen3.8-Flash-Next (Halogen, worker)";
+            name = "Qwen3.8-Flash-Next (Halogen, Strix)";
             contextWindow = 262144;
             maxTokens = 32768;
             input = [
@@ -234,7 +234,7 @@ let
           # any model id, so this row is what pi shows while the 27B is up.
           {
             id = "halogen-qwen3.8-27b";
-            name = "Qwen3.8-27B (Halogen alternate, worker)";
+            name = "Qwen3.8-27B (Halogen alternate, Strix)";
             contextWindow = 262144;
             maxTokens = 16384;
             input = [ "text" ];

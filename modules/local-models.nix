@@ -290,7 +290,7 @@ in
       type = lib.types.str;
       default = "/mnt/nas/models/weights";
       description = ''
-        Where this host reads the NAS model Library from (the coordinator's
+        Where this host reads the NAS model Library from (the strix's
         NFS mount by default; the worker mounts the read-only models export
         at /mnt/library). The explicit local-models-borrow transaction reads
         wanted artifacts here and copies them into /var/lib/local-models.

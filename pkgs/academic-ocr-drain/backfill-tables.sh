@@ -19,7 +19,7 @@
 # Runs ALONGSIDE the live drain, deliberately, on its own lock: the drain skips
 # any paper carrying a receipt, and every paper in this queue has one, so the
 # two never contend for a paper. The shared blob directory is sha-keyed, and
-# tally's low-priority coordinator-gpu pool arbitrates GPU time exactly as it
+# tally's low-priority strix-gpu pool arbitrates GPU time exactly as it
 # does between the drain and interactive work. Interruption is safe at any
 # point: a paper keeps its old receipt and old paper.md until the new ones
 # replace them atomically at the end of its flow.

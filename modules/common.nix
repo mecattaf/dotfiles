@@ -17,11 +17,11 @@
     ./secrets.nix # agenix secret delivery (gated by mySecrets.enable, default off)
     ./user-password.nix # tom's login password via agenix hashedPasswordFile (#54)
     ./rollback-offline.nix # network-free `rollback-offline` command (#106)
-    ./fleet-status.nix # graded per-host collector; the fan-out view on the coordinator (#356)
+    ./fleet-status.nix # graded per-host collector; the fan-out view on the strix (#356)
     ./gc-retention.nix # nix.gc + keep-last-K-plus-booted generation retention (#133)
     ./gc-root-reaper.nix # daily reap of stale agent-session auto GC roots (#133)
     ./dotfiles-bootstrap.nix # ensure ~/mecattaf/dotfiles exists before the session
-    ./artifacts.nix # myArtifacts options; serving plane is coordinator-only (caddy-artifacts.nix)
+    ./artifacts.nix # myArtifacts options; serving plane is strix-only (caddy-artifacts.nix)
     ./printing.nix # CUPS + Brother IPP/raw-text path (active fleet + future hosts)
     ./failure-surfacing.nix # OnFailure + coredump surfacing, fleet-wide — refs #134
     ./fleet-revision.nix # every closure records its flake revision (was in update-adopt.nix)
@@ -82,7 +82,7 @@
     # every input is pinned in flake.lock.
     flake-registry = "";
 
-    # Fleet-deploy hardening: a dead substituter (coordinator down, or a member
+    # Fleet-deploy hardening: a dead substituter (strix down, or a member
     # off-tailnet) must delay an unattended build by seconds, not hang it; and a
     # transfer that dies midway must fall back to building rather than fail closed.
     connect-timeout = 5;
@@ -104,7 +104,7 @@
     # each from source; with it they're fetched. Key from the upstream flake's
     # nixConfig.
     # numtide → the llm-agents catalog; nix-amd-ai → prebuilt XRT/FastFlowLM for
-    # the coordinator's NPU; hellas → its gfx1151/TheRock package graph. Both AMD
+    # the strix's NPU; hellas → its gfx1151/TheRock package graph. Both AMD
     # flakes keep their own nixpkgs/provider pins, so daemon-level cache trust —
     # NOT a flake-local nixConfig — is what avoids multi-hour source builds.
     extra-substituters = [
@@ -112,7 +112,7 @@
       "https://nix-amd-ai.cachix.org"
       "https://cache.hellas.ai"
       # Fleet binary cache — atticd on the NAS since 2026-08-21 (ws5,
-      # hosts/nas/attic.nix; state MOVED from the coordinator, signing key
+      # hosts/nas/attic.nix; state MOVED from the strix, signing key
       # intact). `nas` resolves via the fleet-wide hosts pin below. On the
       # home LAN every device pulls directly at 2.5GbE/6GHz speed; a host
       # away from home finds this substituter dead and falls back to the
@@ -132,7 +132,7 @@
       #   attic cache create fleet && attic cache configure fleet --public
       #   attic cache info fleet   # copy the public key line below, then rebuild
       # Until then the substituter above is inert (nix won't trust its signatures) —
-      # safe: hosts just fall back to building. See hosts/coordinator/attic.nix.
+      # safe: hosts just fall back to building. See hosts/strix/attic.nix.
       # Rotated 2026-08-03: the atticd DB was recreated schema-only at the
       # Jul 26 12:02 restart, losing the cache AND its server-side keypair —
       # every pull 401'd and every nightly push failed for a week, silently.
@@ -146,7 +146,7 @@
   # that dials `nas` must resolve it identically on all hosts — the LAN
   # resolver doesn't serve bare hostnames and mDNS isn't universal, so a
   # static pin is the boring, correct answer (moved here from
-  # hosts/coordinator/uplink-nas.nix at the 2026-08-21 attic move).
+  # hosts/strix/uplink-nas.nix at the 2026-08-21 attic move).
   networking.hosts."10.42.0.1" = [ "nas" ];
 
   # The `worker` -> 10.42.0.5 pin that lived here from 2026-08-21 (#229) MOVED
@@ -340,8 +340,8 @@
   #
   # So the tailnet is now declared per host, where the host's reason for having
   # one lives:
-  #   coordinator  official tailscale.com, always connected but idle — the
-  #                emergency rail when the NAS is down (hosts/coordinator/tailscale.nix)
+  #   strix  official tailscale.com, always connected but idle — the
+  #                emergency rail when the NAS is down (hosts/strix/tailscale.nix)
   #   nas          its own headscale control plane, and its own client of it
   #                (hosts/nas/headscale.nix)
   #   worker       no tailnet at all, by ruling (hosts/worker/default.nix)
@@ -350,14 +350,14 @@
   # this module's pleasure goes dark the moment this module changes its mind,
   # which is the whole reason the NAS took ownership of its own enable. The
   # `--ssh` narrative (both flag paths, and the tag:mesh ACL rule it needs)
-  # moved to hosts/coordinator/tailscale.nix with the flags themselves.
+  # moved to hosts/strix/tailscale.nix with the flags themselves.
   #
   # The tailscale0 wayvnc door moved with it. It lived here as
   # `mkIf (!myHeadless.enable) [ 5900 ]`, which read as a fleet posture but
-  # resolved to two hosts: the coordinator, which wanted it, and the worker,
+  # resolved to two hosts: the strix, which wanted it, and the worker,
   # which has no tailscale0 for it to land on — and no compositor at all
   # (hosts/worker/default.nix forces the greetd→niri session below off), so
-  # the coordinator is the only host this session block actually lights. The
+  # the strix is the only host this session block actually lights. The
   # NAS's own :5900 was never this line's.
   services.resolved.enable = true;
   networking.firewall.enable = true;
@@ -532,7 +532,7 @@
     sox
     # attic client — `attic login`/`attic push` against the fleet cache (#42).
     # Present fleet-wide so any host can pull-login or explicitly push a built
-    # closure. Server pkg is pulled by hosts/coordinator.
+    # closure. Server pkg is pulled by hosts/strix.
     attic-client
   ];
 

@@ -9,7 +9,7 @@
 # AdGuard from starting. Filter history and the retired workaround live in Git.
 let
   isLanResolver = config.networking.hostName == "nas";
-  coordinatorAddr = if isLanResolver then "10.42.0.2" else "127.0.0.1";
+  strixAddr = if isLanResolver then "10.42.0.2" else "127.0.0.1";
   internalNames = [
     "photos.internal"
     "music.internal"
@@ -29,10 +29,10 @@ let
   # SPLIT HORIZON FOR ARTIFACTS (2026-09-11, R-15). Exactly the same trick the
   # `.internal` names above use, applied to a namespace that also exists in
   # public DNS. The tailnet rung publishes <slug>.<namespace> as an
-  # unproxied record pointing at the coordinator's tailscale.com address — an
+  # unproxied record pointing at the strix's tailscale.com address — an
   # address the client cannot route to, because the client's tailnet is the
   # NAS's headscale and the two control planes share no netmap. On the LAN,
-  # though, Caddy is already listening for these names on the coordinator's own
+  # though, Caddy is already listening for these names on the strix's own
   # LAN interface (modules/caddy-artifacts.nix:86 opens :80 on wlp192s0), so
   # the only thing missing was a resolver willing to say so. This is that.
   #
@@ -54,7 +54,7 @@ let
   artifactRewrite = {
     enabled = true;
     domain = "*.${artifacts.namespace}";
-    answer = coordinatorAddr;
+    answer = strixAddr;
   };
 in
 {
@@ -103,8 +103,7 @@ in
         ]
         ++ lib.optionals isLanResolver [
           "10.42.0.1"
-          "10.42.0.2" # coordinator
-          "10.42.0.5" # worker
+          "10.42.0.2" # strix
         ];
       };
 
@@ -113,14 +112,15 @@ in
         filtering_enabled = true;
 
         # The `.internal` front doors, then the artifact wildcard. Both point at
-        # the coordinator; only the second one shadows a name that also exists
+        # the strix; only the second one shadows a name that also exists
         # in public DNS (see artifactRewrite above).
-        rewrites = (map (domain: {
-          enabled = true;
-          inherit domain;
-          answer = coordinatorAddr;
-        }) internalNames)
-        ++ [ artifactRewrite ];
+        rewrites =
+          (map (domain: {
+            enabled = true;
+            inherit domain;
+            answer = strixAddr;
+          }) internalNames)
+          ++ [ artifactRewrite ];
       };
 
       filters = [
@@ -166,11 +166,11 @@ in
     DNS = "127.0.0.1";
     Domains = "~.";
     # resolved uses freebind: tailnet enrollment is not a LAN DNS dependency.
-    DNSStubListenerExtra = lib.optionals isLanResolver [ "100.64.0.1" ];
+    DNSStubListenerExtra = lib.optionals isLanResolver [ "100.65.85.114" ];
   };
 
   networking.hosts = lib.optionalAttrs isLanResolver {
-    ${coordinatorAddr} = internalNames;
+    ${strixAddr} = internalNames;
   };
 
   systemd.services.adguardhome = lib.mkIf isLanResolver {

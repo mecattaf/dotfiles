@@ -10,6 +10,7 @@
     ./kernel.nix # retain the validated kernel series during the network move
     ./hardware.nix
     ./disko.nix
+    ./tailscale.nix
     ./network.nix
     ./router.nix # Gateway, DHCP and DNS; Ethernet upstream through BE550
     # printer-keepalive.nix DELETED same-day it was born (Tom: "there has to
@@ -42,10 +43,6 @@
     ./update-center.nix # nightly fleet builds -> attic (the App Store model)
     ./omarchy-update-center.nix # manual signed offers; owners choose installation
     ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate ON 2026-09-13
-    ./headscale.nix # 2026-09-01: the fleet's OWN tailnet control plane (supersedes #233)
-    ./tailscale-personal.nix # Additional isolated SaaS ingress; never enroll the lent laptops here
-    ./personal-https.nix # Gated, NAS-scoped DNS-01 certificates for private media
-    ./headscale-backup.nix # consistent identity backup before overseas handover
     # ax on the fleet (2026-09-23): this box is the CONTROL node. k3s server
     # with its kubelet, Substrate's and ax's control planes, the registry.
     # "hypervisor on NAS" (Tom, 2026-09-23). The CIDR-overlap assertions in
@@ -83,62 +80,13 @@
   # TAILSCALE ON — Tom's ruling 2026-08-21: "everything at home goes through
   # the NAS! so let's have the NAS be the tailscale sink." That reversed the
   # 2026-08-04-era mkForce-disables (which belonged to the world where the
-  # coordinator was the only door to the internet), and it still holds: this
+  # strix was the only door to the internet), and it still holds: this
   # box is the tailnet node, and it is a SUBNET ROUTER advertising the whole
   # LAN so a roaming laptop reaches every home device — NAS services,
-  # printer, coordinator — through one node.
+  # printer, strix — through one node.
   #
-  # What changed 2026-09-01, on Tom's ruling that "self-hosted headscale
-  # lands on the NAS and becomes the control plane for everything": the
-  # tailnet this box is a node OF is now its OWN. The sink is still a sink;
-  # the server holding its node key is no longer controlplane.tailscale.com
-  # but headscale on 10.42.0.1. This SUPERSEDES #233, whose design had the
-  # NAS and the coordinator both on official tailscale.com.
-  #
-  # Two consequences worth stating where the old comment stood:
-  #   - "Login is interactive, no authkey secret lands on the appliance" is
-  #     now "the key is minted at runtime by the headscale on this very box
-  #     and lives only in /run" — the property that mattered (no credential
-  #     at rest on the appliance, no new agenix door) is preserved, by a
-  #     different and strictly more automatic mechanism.
-  #   - "the advertised route must be APPROVED once in the Tailscale admin
-  #     console" becomes `headscale nodes approve-routes` on this box. There
-  #     is no admin console any more; there is a policy file in git.
-  #
-  # The coordinator does NOT follow. It keeps official tailscale.com,
-  # always-connected-but-idle, as the EMERGENCY RAIL — coordinator + Freebox
-  # is the off-NAS escape hatch, and an escape hatch that lives on the box
-  # that might be the thing failing is not one. It needs no code change to
-  # stay that way (it inherits modules/common.nix's defaults) and it must not
-  # be "cleaned up" because headscale exists now.
-  #
-  # Every knob — useRoutingFeatures, both flag lists, the authKeyFile, the
-  # enroll unit, the firewall doors — lives in ./headscale.nix so that the
-  # server and this box's membership in it cannot drift apart. Read that file
-  # before touching anything tailnet-shaped on this host.
-  myNas.headscale.enable = true;
-  # Personal SaaS access is additive (2026-09-10). It has its own container,
-  # state and routes; the host's Headscale client and fleet ACL remain intact.
-  # HTTPS and public Funnel stay gated until credentials and live tests pass.
-  myNas.tailscalePersonal.enable = true;
-  # Public control ingress only. The personal NAS remains a separate SaaS
-  # identity; existing Headscale clients and the NAS's own LAN login persist.
-  myNas.tailscalePersonal.funnel.enable = true;
-  myNas.tailscalePersonal.funnel.policyApproved = true;
-  myNas.headscale.serverUrl = "https://nas-saas.tail8dd1.ts.net:8443";
-  myNas.headscale.backup.enable = true;
+  # The NAS is the sole official Tailscale subnet router (2026-10-08).
 
-  # ── ax on the fleet: THE kill switch for this host ─────────────────────
-  # One line. `false`, switch (from the coordinator, --target-host nas), then
-  # `ssh -t nas sudo ax-fleet-teardown` (k3s-killall.sh, the guard table and
-  # the sysctl restore). The teardown stays on this host's PATH with the
-  # switch off; there is no dotfiles checkout here. It removes every trace but
-  # the data left on purpose under /mnt/fast/k3s and /mnt/fast/ax-fleet.
-  # The k3s credentials are the agenix secrets secrets/k3s-token.age (server,
-  # this host only) and secrets/k3s-agent-token.age (mySecrets is on here),
-  # which both agents, the coordinator and (since 2026-09-25) the worker, join
-  # with. Switch order: this host first (it admits every agent by
-  # myAxFleet.agentAddresses), then the coordinator, then the worker.
   myAxFleet = {
     enable = true;
     role = "control";
@@ -160,7 +108,7 @@
   # Retired 2026-09-16: the Dell belongs to its owner; Tom no longer
   # publishes or manages Omarchy updates. Keep historical receipts only.
   myNas.omarchyUpdateCenter.enable = false;
-  # #136 gate flip (2026-09-13), paired with the coordinator's
+  # #136 gate flip (2026-09-13), paired with the strix's
   # myNasClient.relayPaperless in the same commit (flake.nix nas-topology
   # asserts the pair). Pre-flip: runbook dirs created, documents snapshotted
   # read-only as .snapshots/documents.pre-paperless-20260913T2241, input
@@ -181,24 +129,18 @@
     smartDevice = "/dev/disk/by-id/ata-WDC_WD40EFZZ-68CPAN0_WD-WXB2D166SAR7";
   };
   # Flipped by the Day-2 runbook once the LaCie data landed on the verified
-  # disk; deployment order (NAS restore first, then the coordinator cutover)
+  # disk; deployment order (NAS restore first, then the strix cutover)
   # is sequenced manually in #131.
   myNas.media.enable = true;
-  # The model Library (migration runbook in models.nix): weights/ holds the
-  # forever collection — every row of lib/local-models.nix, the halogen bundle
-  # the worker serves included — and cache/ is the nightly static binary
-  # cache. compression=none subvolume. Hosts take working copies through the
-  # explicit local-models-borrow transaction (modules/local-models.nix);
-  # docs/nas/model-archive.md is the retire/restore runbook.
   myNas.models.enable = true;
   # ws2a snapshots — flipped 2026-08-21 per the runbook in ./snapshots.nix:
   # subvolume layout verified live (photos/music/documents/videos/services/
-  # .snapshots all real subvolumes), dry-run + coordinator containment check
+  # .snapshots all real subvolumes), dry-run + strix containment check
   # done at deploy time. Cadence: MONTHLY, first Saturday 08:00 (see the COST
   # paragraph in snapshots.nix for the ruling trail).
   myNas.snapshots.enable = true;
   # ws5 — flipped 2026-08-21 per the runbook in ./attic.nix: state rsynced
-  # from the coordinator with atticd stopped, signing key verified intact,
+  # from the strix with atticd stopped, signing key verified intact,
   # env file placed on the root NVMe.
   myNas.attic.enable = true;
   # The App Store's build half — nightly 01:30, capped to the bottom of every
@@ -224,7 +166,7 @@
   # it means the house router does not come up.
   myNas.nixOnNvme.enable = true;
 
-  # amdtop — the same telemetry TUI the coordinator runs (modules/strix-ai.nix).
+  # amdtop — the same telemetry TUI the strix runs (modules/strix-ai.nix).
   # This box is AMD on both halves: common-cpu-amd/kvm-amd, plus the radeonsi
   # iGPU already driving Immich's VA-API transcodes above, so the GPU pane is
   # live here rather than empty. The XDNA pane stays empty — no NPU on this

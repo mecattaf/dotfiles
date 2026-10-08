@@ -6,7 +6,7 @@
 }:
 # Fleet binary cache — SERVED FROM THE NAS since 2026-08-21 (ws5 executed;
 # hosts/nas/attic.nix has the story and the runbook). This file used to run
-# atticd here; what remains on the coordinator is:
+# atticd here; what remains on the strix is:
 #
 #   1. NOTHING server-shaped. atticd is off; the RS256 secret is no longer
 #      delivered here (the NAS holds it as a runbook-placed file). The old

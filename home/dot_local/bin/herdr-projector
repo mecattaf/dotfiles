@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# herdr-projector -- a herdr window INTO the coordinator's one server, that
+# herdr-projector -- a herdr window INTO the strix's one server, that
 # comes back by itself when the link drops and leaves nothing behind when it
 # goes (#385 seams 1 and 6).
 #
@@ -8,11 +8,11 @@
 # and `desk` in fish/conf.d/remote.fish. The kitty class is how herdr-chord
 # tells a projector apart from any other kitty.
 #
-# WHY A PROJECTOR (`herdr --remote`) AND NOT `ssh -t coordinator herdr ...`:
+# WHY A PROJECTOR (`herdr --remote`) AND NOT `ssh -t strix herdr ...`:
 # herdr's clipboard-image bridge only runs in a `--remote` client, because the
 # image must be read from the LAPTOP's Wayland clipboard and staged on the
 # server (herdr src/client/clipboard_images.rs:66-73). Under a plain ssh tty
-# the herdr client runs on the coordinator, which has no display, and Claude
+# the herdr client runs on the strix, which has no display, and Claude
 # Code / Codex there see no image at all — the 2026-09-12 failure #385 exists
 # for.
 #
@@ -27,7 +27,7 @@
 # src/main.rs run_remote -> exit 1). herdr's native backoff UI exists only for
 # saved machines, and that launch path always spawns a LOCAL server on the
 # laptop when none is listening (src/server/autodetect.rs:295-320), which
-# breaks ruling B5 (one server, on the coordinator) and the thin-client rule.
+# breaks ruling B5 (one server, on the strix) and the thin-client rule.
 # So this loop is the reconnect: exit 0 is a deliberate end (prefix+q detach,
 # or the window's own hangup) and ends the loop; any other status is a lost
 # link and is retried with bounded backoff (1, 2, 5, 10, then every 30 s) for
@@ -51,7 +51,7 @@
 # server is listening, the remote `remote-client-bridge` does not fail: it
 # spawns an UNMANAGED server daemon (herdr src/remote/host_unix.rs:72,
 # ensure_remote_server_running), which then fights the unit over herdr.sock.
-# An unattended reconnect loop would do exactly that during a coordinator
+# An unattended reconnect loop would do exactly that during a strix
 # reboot, when sshd answers before user@1000 has started herdr.service. So an
 # inactive unit, or a failed check, is treated like a lost link: banner and
 # backoff. HERDR_PROJECTOR_UNIT= (empty) skips the check for a target that
@@ -64,12 +64,12 @@
 # in the terminal's foreground process group and reads the tty normally.
 #
 # LIFECYCLE (#355): closing this window or prefix+q DETACHES; the panes live
-# on in the coordinator's server. Only an explicit exit inside a pane ends
-# it; `herdr-panes close <id>` on the coordinator ends one deliberately.
+# on in the strix's server. Only an explicit exit inside a pane ends
+# it; `herdr-panes close <id>` on the strix ends one deliberately.
 # The full rule is beside [session] in home/dot_config/herdr/config.toml.
 set -u
 
-target="${HERDR_PROJECTOR_TARGET:-coordinator}"
+target="${HERDR_PROJECTOR_TARGET:-strix}"
 herdr_bin="${HERDR_BIN:-herdr}"
 ssh_bin="${HERDR_PROJECTOR_SSH:-ssh}"
 unit="${HERDR_PROJECTOR_UNIT-herdr.service}"

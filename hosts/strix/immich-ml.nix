@@ -4,35 +4,10 @@
   pkgs,
   ...
 }:
-# Immich machine learning — MOVED here from the coordinator 2026-08-21 (#229,
-# Tom's ruling: he uses this box rarely, so the ML batches belong on it rather
-# than on the machine he is actually typing on).
-#
-# Shape is unchanged from hosts/coordinator/immich-ml.nix (now deleted): the
-# backend is standalone from services.immich — which lives on the NAS since the
-# 2026-08-02 cutover — and is woken on demand by a socket-activated proxy that
-# retires after 15 idle minutes. Only the admitted interface and the identity of
-# the box changed. The NAS's Immich now dials http://worker:3003
-# (hosts/nas/media.nix), which resolves through the networking.hosts pin for
-# 10.42.0.5 in hosts/nas/network.nix — host-scoped to the NAS since #277 (it
-# was fleet-wide in modules/common.nix, which also made the TWINS resolve
-# `worker` to the house wifi). Unaffected here: the socket below binds
-# 0.0.0.0:3003 explicitly, so this endpoint never depended on resolving its own
-# name — which is exactly why #273's 127.0.0.2 kill cannot break Immich ML.
-#
-# Why this host and not the NAS itself: the NAS is a stable-pinned appliance
-# with no accelerator worth the name, and Immich's own
-# services.immich.machine-learning stays disabled there (asserted in the flake).
-# Why on-demand and not resident: the model TTL is 300s and Tom triggers ML
-# rarely, so a resident worker process would hold memory for nothing.
-#
-# VERSION COUPLING, now across a host boundary. The server (NAS) and this ML
-# backend are halves of one application and must be the same Immich. That was
-# implicit while both lived beside each other and is not implicit any more, so
-# the package is taken from `services.immich.package` — the same option the NAS
-# sets from inputs.nixpkgs — rather than reaching for pkgs.immich directly. The
-# flake asserts the two versions are equal; if they ever drift, that is a build
-# failure instead of a confusing runtime error mid-batch.
+# Immich ML moved intact from the retired worker to Strix. The NAS calls
+# http://strix:3003 over Ethernet. Socket activation wakes the local backend;
+# models expire after five minutes and the idle proxy stops after fifteen.
+# Use the same Immich package as the NAS server (asserted by closet-topology).
 let
   socketProxyd = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd";
   waitForMl = pkgs.writeShellScript "immich-ml-wait-for-http" ''
@@ -49,7 +24,7 @@ let
 in
 {
   systemd.services.immich-machine-learning = {
-    description = "Immich machine learning on worker";
+    description = "Immich machine learning on Strix";
     after = [ "network.target" ];
     wantedBy = [ ];
     environment = {
@@ -91,7 +66,7 @@ in
   # to open it on. The requesting party is the NAS at 10.42.0.1.
   networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 3003 ];
   systemd.sockets.immich-ml-access = {
-    description = "Wake worker Immich ML on the first private request";
+    description = "Wake Strix Immich ML on the first private request";
     wantedBy = [ "sockets.target" ];
     socketConfig = {
       ListenStream = "0.0.0.0:3003";
@@ -99,7 +74,7 @@ in
     };
   };
   systemd.services.immich-ml-access = {
-    description = "On-demand private proxy for worker Immich ML";
+    description = "On-demand private proxy for Strix Immich ML";
     requires = [ "immich-machine-learning.service" ];
     after = [ "immich-machine-learning.service" ];
     serviceConfig = {

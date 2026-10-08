@@ -28,7 +28,7 @@ in
       # 2026-09-22. The token had been dead since its August 4 rotation, and a
       # seed that fires whenever the file is absent can only ever revert a fresh
       # `/login` after a rebuild. Both Claude seats now log in by hand, once,
-      # on the coordinator: cc into ~/.claude, cc2 into ~/.claude-work.)
+      # on the strix: cc into ~/.claude, cc2 into ~/.claude-work.)
 
       # NOT ungated any more (2026-08-28). This block delivers ssh-user-key and
       # atuin-key, whose ciphertexts are encrypted to the `delivered` tier — and
@@ -72,7 +72,7 @@ in
           fi
         '';
 
-        # atuin's shared fleet-wide history-encryption key (hosts/coordinator/services.nix
+        # atuin's shared fleet-wide history-encryption key (hosts/strix/services.nix
         # runs the sync server; home.nix's programs.atuin points every host at it).
         # Unlike the OAuth creds above, atuin's client NEVER rewrites this file once it
         # exists (`load_key` only writes if the path is absent) — there's no local
@@ -96,96 +96,11 @@ in
 
       })
 
-      # Tailscale: join the tailnet on first boot with this host's own pre-auth key
-      # (per-host .age; single-use, non-ephemeral, preauthorized, tag:mesh — tagged
-      # nodes get key expiry disabled on first auth, so the device never logs out).
-      # The autoconnect unit only runs `tailscale up` while BackendState=NeedsLogin,
-      # so an already-joined node never re-auths on rebuilds, and rotating the .age
-      # ciphertext is a no-op until a `tailscale logout`.
-      #
-      # GATED, since 2026-08-21 (#229). This block used to be unconditional inside
-      # the delivered tier, which silently assumed every agenix host is a tailnet
-      # host. That stopped being true when the NAS became the fleet's single
-      # tailscale sink and the worker came back with
-      # `services.tailscale.enable = mkForce false`: the unconditional line
-      # `../secrets + "/tailscale-authkey-worker.age"` would have referenced a
-      # ciphertext that does not exist (it was deleted with the 2026-07-29
-      # retirement and is deliberately not re-minted), failing EVAL of the whole
-      # host — the reintegration's first and most boring wall.
-      #
-      # Both halves of the guard are meaningful and neither alone is enough:
-      #   * services.tailscale.enable — intent. A host that has been taken off the
-      #     tailnet must not keep an authkey declared, or a stale key silently
-      #     re-joins it on the next flash.
-      #   * pathExists — reality. Declaring an agenix secret whose ciphertext is
-      #     absent fails eval, and declaring one this host cannot decrypt fails
-      #     activation; both are worse than having no tailnet.
-      #
-      # SINCE 2026-09-01 this block serves exactly ONE host and each of the other
-      # two misses it for a different reason, which is worth spelling out because
-      # the fleet-wide `services.tailscale.enable` that used to make the first
-      # half trivially true everywhere is gone (modules/common.nix tombstone):
-      #   * coordinator — fires. This is where the emergency rail's key is
-      #     delivered and where authKeyFile gets set, so the enable in
-      #     hosts/coordinator/tailscale.nix is what arms the join; there is no
-      #     hand-wired authKeyFile on that host and there must not be one.
-      #   * worker — fails the FIRST half (mkForce false), which is the whole
-      #     point of keeping that line: no key is declared for a box that must
-      #     not rejoin a tailnet.
-      #   * nas — has a tailnet, so it passes the first half, and misses on the
-      #     SECOND: there is no secrets/tailscale-authkey-nas.age and there must
-      #     not be. That box mints its key at runtime from its own headscale and
-      #     sets authKeyFile to a /run path itself (hosts/nas/headscale.nix). So
-      #     `pathExists` is now load-bearing in a direction it was not written
-      #     for — minting that ciphertext would not ADD a fallback, it would
-      #     silently OVERRIDE the appliance's runtime-minted key with a
-      #     tailscale.com one and re-register the node against the control plane
-      #     it deliberately left. Do not create that file.
-      (lib.mkIf
-        (
-          config.services.tailscale.enable
-          && builtins.pathExists (../secrets + "/tailscale-authkey-${config.networking.hostName}.age")
-        )
-        {
-          age.secrets.tailscale-authkey.file =
-            ../secrets + "/tailscale-authkey-${config.networking.hostName}.age";
-
-          # No authKeyParameters: they append `?ephemeral=…&preauthorized=…` to the key,
-          # which the control plane accepts only for OAuth client secrets used as auth
-          # keys — a pre-minted tskey-auth key gets rejected as "invalid key" (bit a
-          # first-boot host live, Jul 5). Our keys carry those properties from mint time.
-          services.tailscale.authKeyFile = config.age.secrets.tailscale-authkey.path;
-
-          # The stock autoconnect unit orders only after tailscaled; make it wait for
-          # agenix's /run/agenix.d mount too, or it can race the key's decryption at boot.
-          # It also raced the uplink on the coordinator's first boot (the boot-time
-          # `tailscale up` predated wifi, so the join needed a manual restart, refs #37):
-          # order after network-online.target and retry so a late uplink (wifi
-          # associating after the unit fired) self-heals instead of staying down.
-          # A minute keeps permanent auth/config failures from creating a tight
-          # restart storm while still recovering promptly from a late network.
-          systemd.services.tailscaled-autoconnect = {
-            after = [
-              "run-agenix.d.mount"
-              "network-online.target"
-            ];
-            wants = [
-              "run-agenix.d.mount"
-              "network-online.target"
-            ];
-            serviceConfig = {
-              Restart = "on-failure";
-              RestartSec = "1min";
-            };
-          };
-        }
-      )
-
-      # Operator CLI credentials — coordinator ONLY (the ciphertexts aren't decryptable
+      # Operator CLI credentials — strix ONLY (the ciphertexts aren't decryptable
       # by other hosts, and declaring an undecryptable secret fails activation, so the
       # whole block must be host-gated). Same copy-don't-link pattern as the claude
       # cred: both CLIs rewrite their file on token refresh.
-      (lib.mkIf (config.networking.hostName == "coordinator") {
+      (lib.mkIf (config.networking.hostName == "strix") {
         age.secrets.gh-hosts = {
           file = ../secrets/gh-hosts.age;
           owner = "tom";
@@ -237,7 +152,7 @@ in
           fi
         '';
 
-        # gws (Google Workspace CLI, personal account) — coordinator-only, same
+        # gws (Google Workspace CLI, personal account) — strix-only, same
         # ruling as gh/wrangler above. Four files, copy-not-link throughout: gws
         # rewrites credentials.enc + token_cache.json on token refresh, and
         # client_secret.json/.encryption_key travel alongside them for consistency.
@@ -291,7 +206,7 @@ in
         '';
       })
 
-      # Hugging Face read token — coordinator AND nas since 2026-08-28. The
+      # Hugging Face read token — strix AND nas since 2026-08-28. The
       # ciphertext stays optional (pathExists) so the tree still evaluates on a
       # checkout that carries no credential; it went absent-but-declared for the
       # whole life of the declarative CLI, which is precisely why `hf` had been
@@ -300,42 +215,41 @@ in
       # The nas is the REAL consumer, not a convenience copy: hosts/nas/models.nix
       # runs library-fetch — "the ONLY thing that ever talks to Hugging Face" —
       # and it curls catalog weights anonymously, so a gated repo 401s the
-      # nightly. The coordinator keeps it for interactive `hf` (Tom, same day:
-      # "hf-on-coordinator is just there as a fallback, honestly").
+      # nightly. The strix keeps it for interactive `hf` (Tom, same day:
+      # "hf-on-strix is just there as a fallback, honestly").
       #
       # Owner stays `tom` on both: on the nas library-fetch runs as root, which
       # reads a 0400 tom-owned file regardless, and keeping the owner uniform
       # means the interactive `hf` wrapper works on either box unchanged.
       (lib.mkIf
         (
-          (config.networking.hostName == "coordinator" || config.networking.hostName == "nas")
+          (config.networking.hostName == "strix" || config.networking.hostName == "nas")
           && builtins.pathExists hfTokenCiphertext
         )
         {
-        age.secrets.huggingface-token = {
-          file = hfTokenCiphertext;
-          owner = "tom";
-          group = "users";
-          mode = "400";
-        };
-        }
-      )
-
-      # navidrome-credentials: NOT consumed by the navidrome server (which now
-      # runs on the NAS, hosts/nas/media.nix, reached through the coordinator's
-      # navidrome-relay) — read client-side by the navidrome-scan fish function
-      # (NAVIDROME_USER / NAVIDROME_PASSWORD). Coordinator-only, matching the
-      # recipient tier in secrets.nix. (Its first reader, the cliamp TUI client,
-      # was removed 2026-09-17.)
-      (lib.mkIf (config.networking.hostName == "coordinator") {
-          age.secrets.navidrome-credentials = {
-            file = ../secrets/navidrome-credentials.age;
+          age.secrets.huggingface-token = {
+            file = hfTokenCiphertext;
             owner = "tom";
             group = "users";
             mode = "400";
           };
         }
       )
+
+      # navidrome-credentials: NOT consumed by the navidrome server (which now
+      # runs on the NAS, hosts/nas/media.nix, reached through the strix's
+      # navidrome-relay) — read client-side by the navidrome-scan fish function
+      # (NAVIDROME_USER / NAVIDROME_PASSWORD). Coordinator-only, matching the
+      # recipient tier in secrets.nix. (Its first reader, the cliamp TUI client,
+      # was removed 2026-09-17.)
+      (lib.mkIf (config.networking.hostName == "strix") {
+        age.secrets.navidrome-credentials = {
+          file = ../secrets/navidrome-credentials.age;
+          owner = "tom";
+          group = "users";
+          mode = "400";
+        };
+      })
 
       # qwencloud-token: Qwen Token Plan API key, read client-side by pi through
       # the `!cat` apiKey in ~/.pi/agent/models.json (home/pi.nix). Same shape as
@@ -345,7 +259,7 @@ in
       # QWEN_TOKEN_PLAN_API_KEY in pi's environment: that would hand the key to
       # every subprocess pi's bash tool spawns. models.json resolves it per
       # request instead, so it never enters the agent's process environment.
-      (lib.mkIf (config.networking.hostName == "coordinator") {
+      (lib.mkIf (config.networking.hostName == "strix") {
         age.secrets.qwencloud-token = {
           file = ../secrets/qwencloud-token.age;
           owner = "tom";
@@ -358,7 +272,7 @@ in
       # qwencloud-token above. pi resolves it per request through the `!cat`
       # apiKey on its built-in `openrouter` provider (home/pi.nix); it is never
       # exported as OPENROUTER_API_KEY.
-      (lib.mkIf (config.networking.hostName == "coordinator") {
+      (lib.mkIf (config.networking.hostName == "strix") {
         age.secrets.openrouter-token = {
           file = ../secrets/openrouter-token.age;
           owner = "tom";
@@ -373,7 +287,7 @@ in
       # read-only /run symlink cannot be the live file. Seed once into ~/.codex
       # (Codex's default CODEX_HOME) only if absent; after that the live file is
       # Codex's, and a re-login means re-minting the ciphertext (secrets.nix).
-      (lib.mkIf (config.networking.hostName == "coordinator") {
+      (lib.mkIf (config.networking.hostName == "strix") {
         age.secrets.codex-auth = {
           file = ../secrets/codex-auth.age;
           owner = "tom";
@@ -392,10 +306,10 @@ in
       })
 
       # immich-api-key: full-permissions Immich key (photos.internal), read
-      # client-side by agent sessions on the coordinator for indexing/dedup
+      # client-side by agent sessions on the strix for indexing/dedup
       # passes. Delivered to /run/agenix/immich-api-key; replaces the loose
       # ~/immichkey file so the credential survives reflash without re-minting.
-      (lib.mkIf (config.networking.hostName == "coordinator") {
+      (lib.mkIf (config.networking.hostName == "strix") {
         age.secrets.immich-api-key = {
           file = ../secrets/immich-api-key.age;
           owner = "tom";
@@ -405,8 +319,8 @@ in
       })
 
       # soundcloud-cookies: consumed by the music-consolidation drain's yt-dlp
-      # invocations (systemd user units, coordinator-only).
-      (lib.mkIf (config.networking.hostName == "coordinator") {
+      # invocations (systemd user units, strix-only).
+      (lib.mkIf (config.networking.hostName == "strix") {
         age.secrets.soundcloud-cookies = {
           file = ../secrets/soundcloud-cookies.age;
           owner = "tom";
@@ -417,22 +331,13 @@ in
 
       # youtube-music-cookies: parked for the music-consolidation YT-Music-fallback
       # work (dotfiles secret only — no consumer wired up yet).
-      (lib.mkIf (config.networking.hostName == "coordinator") {
+      (lib.mkIf (config.networking.hostName == "strix") {
         age.secrets.youtube-music-cookies = {
           file = ../secrets/youtube-music-cookies.age;
           owner = "tom";
           group = "users";
           mode = "400";
         };
-      })
-
-      # Coordinator's Freebox wifi uplink (wlp192s0) PSK — delivered as a root-owned
-      # NetworkManager environment file that uplink-nas.nix's ensureProfiles reads
-      # via `$FREEBOX_PSK`. Guarded on the ciphertext EXISTING so eval/activation
-      # never break if secrets/wifi.age is ever absent; it is committed (since
-      # 2026-07-11, refs #37) so this delivery + the freebox-uplink profile are live.
-      (lib.mkIf (config.networking.hostName == "coordinator" && builtins.pathExists ../secrets/wifi.age) {
-        age.secrets.wifi.file = ../secrets/wifi.age;
       })
 
       # BE550-LAN wifi credentials ($BE550_SSID/$BE550_PSK) — same shape and
@@ -445,7 +350,6 @@ in
       (lib.mkIf
         (
           builtins.elem config.networking.hostName [
-            "coordinator"
             # The thin client (hosts/client/default.nix): its only LAN path.
             "client"
           ]

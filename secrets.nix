@@ -23,33 +23,10 @@ let
   # history or future ciphertext.
   editors = [ admin ];
 
-  # Hosts that actually run agenix delivery, and therefore the widest tier any
-  # secret gets. There is deliberately no every-host tier: hosts/nas/default.nix
-  # sets `mySecrets.enable = false` ("NO SECRET LIVES ON THIS BOX"), so the appliance is delivered nothing and must not
-  # hold standing decryption authority over ciphertext it never reads (2026-08-04
-  # ruling — it had been a recipient of the whole common tier, including tom's
-  # password hash and the fleet SSH private key). If the nas ever flips
-  # mySecrets.enable on (ws5 attic is the likely trigger — hosts/nas/attic.nix),
-  # add its key back here for the specific secrets it consumes, not wholesale.
-  #
-  # DERIVED, not enumerated — which is why the worker's 2026-08-21 reintegration
-  # (#229) needed no edit here: adding its row to the registry put it in this
-  # tier automatically. What that does NOT do is rewrite the ciphertexts, which
-  # are encrypted to a fixed recipient list at mint time. Every delivered-tier
-  # secret was re-minted in that same commit (`age -R` over this list) so the
-  # box can actually decrypt what this file says it may decrypt. Adding a host
-  # here without re-minting yields a config that evaluates and an activation
-  # that fails.
   delivered = nonEmpty (map (h: registry.${h}.hostKey) (builtins.filter (h: h != "nas") names));
 
-  coordinatorOnly = nonEmpty [ registry.coordinator.hostKey ];
-  # The reintegrated worker (#229, 2026-08-21). It joins the `delivered` tier
-  # automatically above — that list is derived from the registry, so its row
-  # landing was enough — but wifi credentials are their own tier and have to say
-  # so explicitly.
-  workerOnly = nonEmpty [ registry.worker.hostKey ];
-  # The thin client (2026-09-11). It joins `delivered` automatically like the
-  # worker did; the wifi tier below names it explicitly.
+  strixOnly = nonEmpty [ registry.strix.hostKey ];
+
   clientOnly = nonEmpty [ registry.client.hostKey ];
   # The appliance. It held NO agenix secret at all until 2026-08-28 (see the
   # `delivered` comment above). Tom's ruling that day, on being shown the
@@ -65,13 +42,13 @@ in
   # --- delivered tier (every host that runs agenix — i.e. all but the nas) ---
   # (hermes-credentials removed 2026-08-04: the Nous Research harness is no longer
   # in use anywhere in the fleet — no package, no service, no consumer left.)
-  "secrets/env.age".publicKeys = editors ++ delivered;
+
   # Rotated fleet SSH user key — delivered only to the remaining hosts so mutual
   # SSH works. It is not an editor recipient for itself or any other ciphertext.
   "secrets/ssh-user-key.age".publicKeys = editors ++ delivered;
   # atuin's shared encryption key — every host with a shell history to sync needs
   # it to decrypt the others' against the self-hosted server
-  # (hosts/coordinator/services.nix). Minted once from the coordinator's
+  # (hosts/strix/services.nix). Minted once from the strix's
   # pre-existing local key (it already had one from ordinary local use, predating
   # this sync setup); force-copied on every activation, not seed-once — see
   # modules/secrets.nix.
@@ -88,54 +65,18 @@ in
   # --- per-host tier (tailscale pre-auth keys: single-use, non-ephemeral,
   # preauthorized, tag:mesh — minted 2026-07-05 via the fleet OAuth client;
   # only the owning host can decrypt its key) ---
-  "secrets/tailscale-authkey-coordinator.age".publicKeys = editors ++ coordinatorOnly;
+
   # NAS private media HTTPS: zone-limited DNS-01 token, no broad Wrangler OAuth
   # authority. Ciphertext is provisioned before enabling personal-https.nix.
   "secrets/nas-cloudflare-dns.age".publicKeys = editors ++ nasOnly;
-  # The k3s credentials (ax on the fleet, modules/ax-fleet/k3s.nix), split in
-  # fix round 2 (2026-09-23). k3s-token.age is the SERVER token: read by the
-  # NAS only; with it comes the k3s:server role (/v1-k3s/token, /cacerts,
-  # /encrypt/config). k3s-agent-token.age is the agent join credential: the
-  # NAS passes it as --agent-token-file, the coordinator joins with it. Both
-  # were minted fresh from /dev/urandom with `age -R` over these lists, never
-  # displayed; the 643a4196 ciphertext (also decryptable by the worker and the
-  # client) was replaced, not re-encrypted, before any cluster used it.
-  # Rotate with: nix develop -c agenix -e secrets/<name>.age
-  #
-  # 2026-09-25: the worker joins the cluster as a second agent (Tom: "the amd
-  # strix halo worker SHOULD be available in the cluster (not just halogen
-  # inference)"), so it joins the agent token's recipients; never the server
-  # token's. The live NAS serves this plaintext as --agent-token-file and the
-  # coordinator joined with it, so the rekey keeps the plaintext: re-encrypt
-  # this ONE file, with the admin identity,
-  #   cd ~/mecattaf/dotfiles && EDITOR=: nix develop -c agenix -e secrets/k3s-agent-token.age -i <admin identity>
-  # (EDITOR=: skips both the edit and agenix's "wasn't changed" short-cut),
-  # never `agenix -r`, which re-encrypts every file here. Until it is
-  # re-encrypted to the worker, the worker's system refuses to evaluate and
-  # to build (the gate in hosts/worker/default.nix).
   "secrets/k3s-token.age".publicKeys = editors ++ nasOnly;
-  "secrets/k3s-agent-token.age".publicKeys = editors ++ coordinatorOnly ++ nasOnly ++ workerOnly;
-  # substrate-link bearer (hosts/nas/substrate-link.nix): one token per link identity, minted by Tom as a
-  # Worker secret on the floor and sealed here. NAS only: the link runs on the NAS host.
+  "secrets/k3s-agent-token.age".publicKeys = editors ++ strixOnly ++ nasOnly;
   "secrets/floor-link-token.age".publicKeys = editors ++ nasOnly;
-  # --- wifi PSK tier: the coordinator, whose Freebox uplink
+  # --- wifi PSK tier: the strix, whose Freebox uplink
   # (wlp192s0) is now declarative too (migrated from an imperative profile on
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r
-  "secrets/wifi.age".publicKeys = editors ++ coordinatorOnly;
-  # BE550 LAN credentials ($BE550_SSID / $BE550_PSK) — the thomas-6ghz
-  # profile on the coordinator (hosts/coordinator/uplink-nas.nix) and on the
-  # client (hosts/client/default.nix), the two hosts that associate to that
-  # SSID. The worker was a recipient from its 2026-08-21 reintegration until
-  # 2026-09-11, when it went wired-only on enp191s0 with no wifi profile at
-  # all; DECISIONS.md's operator act (4) of that day said "drop it at the next
-  # rekey", and the client's admission was that rekey. Re-minted with exactly
-  # these recipients.
-  #
-  # Deliberately written out rather than reusing `delivered`: the two mean
-  # different things (one is "every agenix host", the other is "every host that
-  # associates to this SSID") and they diverge — the worker is in one and not
-  # the other.
-  "secrets/wifi-lan.age".publicKeys = editors ++ coordinatorOnly ++ clientOnly;
+  "secrets/wifi.age".publicKeys = editors;
+  "secrets/wifi-lan.age".publicKeys = editors ++ clientOnly;
 
   # --- operator vault (admin key ONLY — a tar.gz of everything that is not
   # otherwise in git: pre-generated host keys + wifi profiles (staging), tom's ssh
@@ -145,74 +86,66 @@ in
   #   nix-secrets-staging -C ~ .ssh tailscale.md | age -r <admin> -o <this file> ---
   "secrets/vault/operator-vault-20260705.age".publicKeys = [ admin ];
 
-  # --- coordinator-only tier (service credentials) ---
+  # --- strix-only tier (service credentials) ---
   # (cloudflare-tunnel + twenty/openwebui slots removed 2026-07-05 — deprecated per Tom.
   # immich-db removed 2026-07-13: services.immich now uses a unix-socket postgres
   # with peer auth, so no DB password secret is needed. nas-credentials removed
   # with the BE550 (SMB share retired for the direct-USB LaCie).)
   # atticd RS256 JWT signing secret — the fleet binary-cache server runs on the
-  # coordinator only (hosts/coordinator/attic.nix), so only it may decrypt (#42).
-  "secrets/atticd-server-token.age".publicKeys = editors ++ coordinatorOnly;
+  # strix only (hosts/strix/attic.nix), so only it may decrypt (#42).
+  "secrets/atticd-server-token.age".publicKeys = editors ++ strixOnly;
 
-  # The Cloudflare Substrate's coordinator side (modules/substrate.nix, ON
-  # since 2026-09-24). substrate-floor-token is the floor's operator bearer
-  # (the Worker secret FLOOR_TOKEN), read by the capacity pusher and the
-  # puller; substrate-link-token-coordinator is the puller's entry in the
-  # floor's LINK_TOKENS, bound to holder "coordinator". Both delivered to tom
-  # 0400 and handed to the user units by LoadCredential, never as values.
-  # Minted by Tom with `age -R` over these lists (78bcc517); the NAS link's
-  # own bearer is floor-link-token above, a different identity.
-  "secrets/substrate-floor-token.age".publicKeys = editors ++ coordinatorOnly;
-  "secrets/substrate-link-token-coordinator.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/substrate-floor-token.age".publicKeys = editors ++ strixOnly;
+  "secrets/substrate-link-token-strix.age".publicKeys = editors ++ strixOnly;
 
   # SoundCloud Go+ cookies.txt (Netscape format), consumed by the music-consolidation
-  # drain's yt-dlp invocations (systemd user units on coordinator only — see that
+  # drain's yt-dlp invocations (systemd user units on strix only — see that
   # repo's docs/SPEC-2026-07-06-original.md).
-  "secrets/soundcloud-cookies.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/soundcloud-cookies.age".publicKeys = editors ++ strixOnly;
 
   # YouTube Music cookies.txt (Netscape format), exported same sitting as the
   # SoundCloud ones (2026-08-03) for the parked YouTube-Music-library issue in
   # music-consolidation — that repo's fallback for SoundCloud Go+ tracks blocked
   # by DRM. Coordinator-only, same reasoning as soundcloud-cookies.
-  "secrets/youtube-music-cookies.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/youtube-music-cookies.age".publicKeys = editors ++ strixOnly;
 
-  # Read client-side on the coordinator, where navidrome's relay lives, by the
+  # Read client-side on the strix, where navidrome's relay lives, by the
   # navidrome-scan fish function (Subsonic API). Its first consumer, the cliamp
   # TUI client, was removed 2026-09-17; the zenbook left the fleet 2026-08-30.
-  "secrets/navidrome-credentials.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/navidrome-credentials.age".publicKeys = editors ++ strixOnly;
 
   # Immich full-permissions API key (photos.internal), read client-side by agent
-  # sessions on the coordinator for indexing/dedup/library passes. Replaces the
+  # sessions on the strix for indexing/dedup/library passes. Replaces the
   # loose ~/immichkey file, which was once world-readable and then lost in the
   # cleanup — as agenix ciphertext it survives reflash and never needs re-minting.
-  "secrets/immich-api-key.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/immich-api-key.age".publicKeys = editors ++ strixOnly;
 
   # (claude-credentials.age removed 2026-09-22: the seat logins are hand
-  # `/login`s on the coordinator, never a delivered secret; see modules/secrets.nix.)
+  # `/login`s on the strix, never a delivered secret; see modules/secrets.nix.)
 
   # Brother HL-L2445DW Web Based Management admin password, set 2026-08-21 when
   # the printer's forced default-password change gated its move onto the thomas
   # LAN. Operator recall secret — no service consumes it; CUPS speaks IPP with
   # no auth. Minted with `age -R` directly (not agenix -e), same ciphertext
-  # format. Recall on the coordinator without the admin key:
+  # format. Recall on the strix without the admin key:
   #   sudo age -d -i /etc/ssh/ssh_host_ed25519_key secrets/printer-admin.age
-  "secrets/printer-admin.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/printer-admin.age".publicKeys = editors ++ strixOnly;
 
-  # Operator CLI credentials (Tom's ruling: the coordinator is the fleet's only
+  # Operator CLI credentials (Tom's ruling: the strix is the fleet's only
   # authenticated operator box — gh + wrangler stay off the laptops).
-  "secrets/gh-hosts.age".publicKeys = editors ++ coordinatorOnly;
-  "secrets/wrangler-config.age".publicKeys = editors ++ coordinatorOnly;
-  # Cloudflare API token: ONE full-scope User API Token ("coordinator-full-2026-09-25",
+  "secrets/gh-hosts.age".publicKeys = editors ++ strixOnly;
+  "secrets/wrangler-config.age".publicKeys = editors ++ strixOnly;
+  # Cloudflare API token: ONE full-scope User API Token ("strix-full-2026-09-25",
   # minted 2026-09-25 through the dashboard plus the /user/tokens API: every account
   # and zone permission group except API-token management, plus user details and
   # memberships read/write). It replaces the wrangler OAuth session, whose refresh
   # token died on 2026-09-06 and left every agent deploy blocked. wrangler reads it
   # from CLOUDFLARE_API_TOKEN (exported by modules/secrets.nix); the crm/email/backlog
   # runbooks read ~/.local/state/cloudflare/api-token.
-  "secrets/cloudflare-api-token.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/cloudflare-api-token.age".publicKeys = editors ++ strixOnly;
   # Hugging Face read token. Provisioned 2026-08-28 (fine-grained, HF display
   # name `nixOS`) after carrying a declaration with no ciphertext since the
-  # declarative CLI landed — `builtins.pathExists` meant the coordinator simply
+  # declarative CLI landed — `builtins.pathExists` meant the strix simply
   # evaluated the delivery to nothing and `hf` ran unauthenticated.
   #
   # The nas joined the recipients the same day, and it is the ONLY secret the
@@ -221,37 +154,37 @@ in
   # ONLY thing that ever talks to Hugging Face", which curls catalog weights
   # anonymously and therefore 401s on anything gated. Coordinator keeps it for
   # the CLI.
-  "secrets/huggingface-token.age".publicKeys = editors ++ coordinatorOnly ++ nasOnly;
+  "secrets/huggingface-token.age".publicKeys = editors ++ strixOnly ++ nasOnly;
 
   # Qwen Token Plan API key (Alibaba MaaS, ap-southeast-1 — the OpenAI-compatible
   # subscription endpoint pi ships as the built-in `qwen-token-plan` provider).
   # Coordinator-only for the same reason as claude-credentials: it is a metered
   # subscription, not a per-token bill, so every box that can decrypt it can burn
-  # the shared 7-day credit pool. The coordinator is the only agent host.
-  "secrets/qwencloud-token.age".publicKeys = editors ++ coordinatorOnly;
+  # the shared 7-day credit pool. The strix is the only agent host.
+  "secrets/qwencloud-token.age".publicKeys = editors ++ strixOnly;
   # OpenRouter API key (created 2026-09-29, $40 of one-time credits, plus the
   # free-model daily allowance). Coordinator-only for the same reason as the
   # Qwen key: any box that can decrypt it can spend the prepaid balance, and the
-  # coordinator is the only agent host.
-  "secrets/openrouter-token.age".publicKeys = editors ++ coordinatorOnly;
+  # strix is the only agent host.
+  "secrets/openrouter-token.age".publicKeys = editors ++ strixOnly;
   # Codex CLI ChatGPT-subscription login (~/.codex/auth.json: id/access/refresh
   # tokens + account_id, auth_mode "chatgpt"). Re-logged 2026-10-04 onto the
   # Pro-plan account; this ciphertext is that session so a reflash restores
   # `codex` without a browser login. Coordinator-only for exactly the
-  # claude-credentials reasons above: the coordinator is the only agent host,
+  # claude-credentials reasons above: the strix is the only agent host,
   # and two devices refreshing one OAuth session sign each other out.
   # Delivered by modules/secrets.nix as a seed-once COPY (Codex rewrites the
   # file on token refresh). Re-mint after any re-login:
   #   age -R <(nix eval --raw --impure --expr 'builtins.concatStringsSep "\n" (import ./secrets.nix)."secrets/codex-auth.age".publicKeys') \
   #       -o secrets/codex-auth.age ~/.codex/auth.json
   # (no admin key needed — creating a ciphertext only uses public keys).
-  "secrets/codex-auth.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/codex-auth.age".publicKeys = editors ++ strixOnly;
   # gws (Google Workspace CLI, personal account thomasmecattaf@gmail.com) — same
   # operator-box ruling as gh/wrangler above. client_secret identifies the OAuth
   # app; credentials.enc + .encryption_key + token_cache.json are the actual
   # logged-in state (see ~/.config/gws/HANDOFF.md for full provenance, 2026-07-10).
-  "secrets/gws-client-secret.age".publicKeys = editors ++ coordinatorOnly;
-  "secrets/gws-credentials.age".publicKeys = editors ++ coordinatorOnly;
-  "secrets/gws-encryption-key.age".publicKeys = editors ++ coordinatorOnly;
-  "secrets/gws-token-cache.age".publicKeys = editors ++ coordinatorOnly;
+  "secrets/gws-client-secret.age".publicKeys = editors ++ strixOnly;
+  "secrets/gws-credentials.age".publicKeys = editors ++ strixOnly;
+  "secrets/gws-encryption-key.age".publicKeys = editors ++ strixOnly;
+  "secrets/gws-token-cache.age".publicKeys = editors ++ strixOnly;
 }

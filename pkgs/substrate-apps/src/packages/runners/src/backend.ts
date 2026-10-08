@@ -160,7 +160,7 @@ export function credentialMount(config: RuntimesConfig, runtime: Runtime, harnes
  * no auth; the apiKey is a placeholder. Only the worker serves it (ruling:
  * Halogen is never resident on the coordinator).
  */
-export const HALOGEN_BASE_URL = "http://worker:8731/v1";
+export const HALOGEN_BASE_URL = "http://strix:8731/v1";
 export function piHalogenModels(): string {
   return JSON.stringify({
     providers: {

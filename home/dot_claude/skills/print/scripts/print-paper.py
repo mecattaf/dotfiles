@@ -618,7 +618,7 @@ def render_pdf(chrome: str, page: str, output: Path, *, keep_html: bool) -> Path
                     html_path.resolve().as_uri(),
                 ],
                 check=False,
-                # No session bus. On the headless coordinator Chrome's portal
+                # No session bus. On the headless strix Chrome's portal
                 # lookup D-Bus-activates xdg-desktop-portal-gtk, which exits
                 # with "cannot open display" and raises a failure episode on
                 # every render (2026-09-15). MEASURED: with the bus disabled

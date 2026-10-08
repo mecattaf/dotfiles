@@ -7,14 +7,14 @@
 }:
 # ax on the fleet, track ax (DESIGN.md sections 9, 10 and 14 A3). This module
 # writes only the myAxFleet extension points (manifests, registrySeed) and, on
-# the harness, the coordinator's ax scripts and AX_SERVER. Everything else
+# the harness, the strix's ax scripts and AX_SERVER. Everything else
 # (k3s, the registry, the bootstrap runner, ax-server-proxy.socket) belongs to
 # the cluster modules next to this file.
 #
 # ONE image set for every host. The images are built from the flake's own
 # nixpkgs pin and the flake's `ax` package, never from the host's `pkgs`: the
 # NAS evaluates from nixpkgs-stable, and the digest the NAS seeds must be the
-# digest the coordinator's `ax-fleet-image-ref` prints.
+# digest the strix's `ax-fleet-image-ref` prints.
 #
 # Day one: pi against Halogen only. No Claude credential, no claude-code in the
 # task image, no secret in any Task or manifest (DESIGN.md section 11).

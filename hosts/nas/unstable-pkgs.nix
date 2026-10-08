@@ -7,7 +7,7 @@
 # version-coupled to data or to a server this box already runs and must come
 # from the main unstable input instead — currently the Immich module/package
 # (hosts/nas/media.nix) and attic-server (hosts/nas/attic.nix: its SQLite
-# migrations were written by the coordinator's unstable attic; stable's
+# migrations were written by the strix's unstable attic; stable's
 # older attic refuses the "future" database).
 #
 # Instantiating unstable is not free, so it happens exactly once here and is

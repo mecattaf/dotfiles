@@ -16,7 +16,7 @@
 #   bootstrap      20-registry-svc, 30-substrate, 40-gvisor-asset, 50-workerpool
 # and an assertion that the version is one string everywhere. It renders
 # nothing on a host where myAxFleet.enable is false, and the extension points
-# are consumed only on the control role (the NAS), so the coordinator and the
+# are consumed only on the control role (the NAS), so the strix and the
 # worker see an unchanged closure from this file.
 let
   cfg = config.myAxFleet;

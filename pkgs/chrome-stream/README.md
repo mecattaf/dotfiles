@@ -1,6 +1,6 @@
 # chrome-stream
 
-Chrome runs on the coordinator without a compositor. A web page on the Client
+Chrome runs on the strix without a compositor. A web page on the Client
 laptop displays CDP screencast frames and forwards mouse, wheel, keyboard and
 paste input. The toolbar has an address field, history, reload, a tab selector
 and a new-tab button. JavaScript alerts, confirmations and prompts appear in
@@ -9,7 +9,7 @@ the viewer. One viewer controls the browser at a time.
 ## Control an already running graphical Chrome
 
 In that Chrome, open `chrome://inspect/#remote-debugging` and enable remote
-debugging. Then run `chrome-stream --attach` on the coordinator and accept
+debugging. Then run `chrome-stream --attach` on the strix and accept
 Chrome's connection dialog. The launcher can also be started first: it waits
 up to ten minutes for authorization. The link is written to
 `~/.local/share/chrome-stream/live/viewer-url`; use the same SSH tunnel and
@@ -34,7 +34,7 @@ systemd-run --user --unit=chrome-stream-nayla --collect \
   --url https://dash.cloudflare.com
 ```
 
-The coordinator's package list also includes `chrome-stream` for the next
+The strix's package list also includes `chrome-stream` for the next
 normal NixOS activation. A system rebuild is not needed to use the build above.
 
 On the Client laptop:
@@ -42,8 +42,8 @@ On the Client laptop:
 ```sh
 systemd-run --user --unit=chrome-stream-tunnel --collect \
   ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
-  -L 127.0.0.1:4780:127.0.0.1:4780 coordinator
-google-chrome-stable --app="$(ssh coordinator cat \
+  -L 127.0.0.1:4780:127.0.0.1:4780 strix
+google-chrome-stable --app="$(ssh strix cat \
   /home/tom/.local/share/chrome-stream/Profile-2/viewer-url)"
 ```
 
@@ -51,7 +51,7 @@ The link contains a per-launch access token. The viewer stores it in the tab's
 session storage and removes it from the address bar. CDP and the viewer bind
 only to loopback; SSH carries the connection. WebSockets require both the token
 and the viewer's origin. No firewall changes or public endpoint are needed.
-Reload the viewer link after restarting the coordinator process, since its
+Reload the viewer link after restarting the strix process, since its
 token changes. Use Reconnect after a temporary tunnel interruption.
 
 The first launch copies the selected Chrome profile and `Local State` to
@@ -66,9 +66,9 @@ whatever Chrome renders, including login and verification pages.
 This streams the page viewport. Browser settings windows, extension UI, file
 pickers, audio/video streaming, clipboard copy from remote to local, and
 download transfer are not implemented. Plain-text paste into the remote page
-works with Ctrl+V. Downloads remain on the coordinator.
+works with Ctrl+V. Downloads remain on the strix.
 
-Stop on the coordinator:
+Stop on the strix:
 
 ```sh
 systemctl --user stop chrome-stream-nayla
