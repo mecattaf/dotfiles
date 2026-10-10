@@ -21,8 +21,30 @@
  * can never run a Halogen id or the reverse.
  *
  * Absent `[[models]]`, DEFAULT_MODEL_ALLOWLIST applies.
+ *
+ * 2026-10-10 (Tom: "i dnt think it s a g ood idea to have things like that
+ * tied to nixos dotfiles"): the catalog is RUNTIME DATA. runtimes.toml names a
+ * `models_file` (a plain TOML file of `[[models]]` tables, by default seeded by
+ * the operator's deployment at `~/.config/substrate/models.toml`) and the
+ * runners re-read it on every call (`catalogFor`, cached by mtime and size):
+ * an edit is live on the next call, no restart, no rebuild. Precedence:
+ * `models_file`, else inline `[[models]]`, else DEFAULT_MODEL_ALLOWLIST. A file
+ * that stops parsing refuses every call with the error (fail closed, never a
+ * silent fallback).
+ *
+ * A pi provider with NO entry is PARKED: the route is refused at once ("no
+ * model configured"), route policies fall through, nothing is dialled. The
+ * openrouter-free lane ships parked (its stealth model was withdrawn on
+ * 2026-10-10; Tom: "i know they will release a new one soon so let s keep the
+ * mechanics for it"). An entry may carry a `[models.pi]` table describing a
+ * model pi's own catalog does not know (a stealth model on release day): the
+ * runner then injects it into a job-scoped pi agent dir (backend.ts
+ * piAgentModelsJson) and the id runs with no change to the host's models.json.
  */
-import type { HarnessName, PiProvider } from "./harness.ts";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { Schema } from "effect";
+import { parse as parseToml } from "smol-toml";
+import { PI_PROVIDER_NAMES, type HarnessName, type PiProvider } from "./harness.ts";
 
 /** Utilization ceilings in percent: at or above one, the capacity gate refuses this model. */
 export interface ModelCeilings {
@@ -30,6 +52,22 @@ export interface ModelCeilings {
   readonly seven_day?: number;
   /** The provider's model-scoped window for this model's family (for example the weekly Fable bar). */
   readonly model_scoped?: number;
+}
+
+/**
+ * pi only: what pi needs to dial a model its built-in provider catalog does not
+ * know (the `models` upsert of a provider in pi's models.json, in TOML
+ * spelling). `api` and `base_url` default per provider (OpenRouter's
+ * OpenAI-compatible endpoint, MEASURED 2026-09-29 for the last stealth model).
+ */
+export interface PiModelMeta {
+  readonly name?: string;
+  readonly api?: string;
+  readonly base_url?: string;
+  readonly reasoning?: boolean;
+  readonly input?: readonly string[];
+  readonly context_window?: number;
+  readonly max_tokens?: number;
 }
 
 export interface ModelEntry {
@@ -41,6 +79,8 @@ export interface ModelEntry {
   /** The harness default when a call names no allowed model. At most one per harness (per provider for pi). */
   readonly default?: boolean;
   readonly ceilings?: ModelCeilings;
+  /** pi only: declares the model to pi when its catalog does not know it (see PiModelMeta). */
+  readonly pi?: PiModelMeta;
 }
 
 export type ModelAllowlist = readonly ModelEntry[];
@@ -61,7 +101,8 @@ export type ModelAllowlist = readonly ModelEntry[];
  *       minimax/minimax-m3           $0.30 / $1.20  (agentic coding, 1M ctx)
  *       qwen/qwen3.8-max-0902        $2.00 / $6.00
  *       anthropic/claude-sonnet-5.5  $2.00 / $10.00 (explicit only: one long node can spend dollars)
- *   - openrouter-free: stealth/space-bunny-alpha, $0 (1,000 free requests a day on the key; 1M ctx, tools, reasoning).
+ *   - openrouter-free: PARKED since 2026-10-10 (stealth/space-bunny-alpha was withdrawn: 404 "No endpoints
+ *     found", run smoke1010r1). No entry here; the models file activates the lane with one table.
  */
 export const DEFAULT_MODEL_ALLOWLIST: ModelAllowlist = [
   { id: "claude-opus-5-5", harness: "claude", aliases: ["opus"], default: true },
@@ -72,7 +113,6 @@ export const DEFAULT_MODEL_ALLOWLIST: ModelAllowlist = [
   { id: "minimax/minimax-m3", harness: "pi", provider: "openrouter", aliases: ["minimax"] },
   { id: "qwen/qwen3.8-max-0902", harness: "pi", provider: "openrouter", aliases: ["qwen-max"] },
   { id: "anthropic/claude-sonnet-5.5", harness: "pi", provider: "openrouter" },
-  { id: "stealth/space-bunny-alpha", harness: "pi", provider: "openrouter-free", default: true },
 ];
 
 /** The provider an entry belongs to: its own for pi (default halogen), none for the other harnesses. */
@@ -107,6 +147,11 @@ export function modelAllowlistProblems(list: ModelAllowlist): string[] {
     if (ids.has(e.id)) problems.push(`models: ${e.id} is listed twice`);
     ids.add(e.id);
     if (e.provider !== undefined && e.harness !== "pi") problems.push(`models: ${e.id} names provider ${e.provider}, which only a pi entry may`);
+    if (e.pi !== undefined && e.harness !== "pi") problems.push(`models: ${e.id} carries a [models.pi] table, which only a pi entry may`);
+    for (const k of ["context_window", "max_tokens"] as const) {
+      const v = e.pi?.[k];
+      if (v !== undefined && !(Number.isInteger(v) && v > 0)) problems.push(`models: ${e.id} pi.${k} must be a positive integer`);
+    }
     const slot = e.harness === "pi" ? `pi (provider ${providerOf(e)})` : e.harness;
     if (e.default) defaults.set(slot, (defaults.get(slot) ?? 0) + 1);
     for (const [k, v] of Object.entries(e.ceilings ?? {})) {
@@ -115,4 +160,89 @@ export function modelAllowlistProblems(list: ModelAllowlist): string[] {
   }
   for (const [h, n] of defaults) if (n > 1) problems.push(`models: harness ${h} has ${n} defaults, at most one`);
   return problems;
+}
+
+/** The reason a call's catalog could not be read; the backend refuses the call with it. */
+export class ModelsFileError extends Error {
+  override readonly name = "ModelsFileError";
+}
+
+const Ceilings = Schema.Struct({
+  five_hour: Schema.optionalKey(Schema.Number),
+  seven_day: Schema.optionalKey(Schema.Number),
+  model_scoped: Schema.optionalKey(Schema.Number),
+});
+const PiMeta = Schema.Struct({
+  name: Schema.optionalKey(Schema.String),
+  api: Schema.optionalKey(Schema.String),
+  base_url: Schema.optionalKey(Schema.String),
+  reasoning: Schema.optionalKey(Schema.Boolean),
+  input: Schema.optionalKey(Schema.Array(Schema.String)),
+  context_window: Schema.optionalKey(Schema.Number),
+  max_tokens: Schema.optionalKey(Schema.Number),
+});
+/** One `[[models]]` table (runtimes.toml inline, or the models file). */
+export const ModelEntrySchema = Schema.Struct({
+  id: Schema.String,
+  harness: Schema.Literals(["claude", "pi", "codex"]),
+  provider: Schema.optionalKey(Schema.Literals(PI_PROVIDER_NAMES as unknown as readonly [PiProvider, ...PiProvider[]])),
+  aliases: Schema.optionalKey(Schema.Array(Schema.String)),
+  default: Schema.optionalKey(Schema.Boolean),
+  ceilings: Schema.optionalKey(Ceilings),
+  pi: Schema.optionalKey(PiMeta),
+});
+const ModelsFileSchema = Schema.Struct({ models: Schema.optionalKey(Schema.Array(ModelEntrySchema)) });
+
+/** Decode a models document (`{ models: [...] }`) and check it; throws ModelsFileError naming `source`. */
+export function decodeModelsDoc(doc: unknown, source: string): ModelAllowlist {
+  let file: typeof ModelsFileSchema.Type;
+  try {
+    file = Schema.decodeUnknownSync(ModelsFileSchema)(doc);
+  } catch (e) {
+    throw new ModelsFileError(`${source}: ${(e as Error).message}`);
+  }
+  const list: ModelAllowlist = file.models ?? [];
+  const problems = modelAllowlistProblems(list);
+  if (problems.length) throw new ModelsFileError(`${source}:\n  ${problems.join("\n  ")}`);
+  return list;
+}
+
+export function parseModelsToml(text: string, source: string): ModelAllowlist {
+  let doc: unknown;
+  try {
+    doc = parseToml(text);
+  } catch (e) {
+    throw new ModelsFileError(`${source}: TOML: ${(e as Error).message}`);
+  }
+  return decodeModelsDoc(doc, source);
+}
+
+const fileCache = new Map<string, { readonly mtimeMs: number; readonly size: number; readonly list: ModelAllowlist }>();
+
+/**
+ * The catalog in a models file, re-read whenever the file's mtime or size
+ * changed (one stat per call otherwise). A missing or unparsable file throws
+ * ModelsFileError: the operator's edit is wrong, and every call says so.
+ */
+export function loadModelsFile(path: string): ModelAllowlist {
+  if (!existsSync(path)) throw new ModelsFileError(`models file ${path} does not exist (runtimes.toml models_file); seed it or unset models_file`);
+  const st = statSync(path);
+  const hit = fileCache.get(path);
+  if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.list;
+  const list = parseModelsToml(readFileSync(path, "utf8"), path);
+  fileCache.set(path, { mtimeMs: st.mtimeMs, size: st.size, list });
+  return list;
+}
+
+/** The catalog a call resolves against: the models file, else the inline list, else the compiled default. */
+export function catalogFor(config: { readonly models?: ModelAllowlist; readonly modelsFile?: string }): ModelAllowlist {
+  if (config.modelsFile !== undefined) return loadModelsFile(config.modelsFile);
+  return config.models ?? DEFAULT_MODEL_ALLOWLIST;
+}
+
+/** The entry that `resolveModel` chose, for its metadata (ceilings, pi). */
+export function entryFor(list: ModelAllowlist, harness: HarnessName, id: string | undefined, provider?: PiProvider): ModelEntry | undefined {
+  if (id === undefined) return undefined;
+  const want = harness === "pi" ? (provider ?? "halogen") : undefined;
+  return list.find((e) => e.harness === harness && providerOf(e) === want && e.id === id);
 }

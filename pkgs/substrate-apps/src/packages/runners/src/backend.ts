@@ -24,8 +24,8 @@ import { carriesCredential, credentialDirFor, piProviderOf, seatOf, selectForCal
 import { DEFAULT_TIMEOUT_MS } from "./host.ts";
 import { isRefusal, type Mount, type ProcessJob, type Runner } from "./job.ts";
 import { runnerFor } from "./registry.ts";
-import { DEFAULT_MODEL_ALLOWLIST, resolveModel, type ModelCeilings } from "./models.ts";
-import { CLAUDE_MODEL, HALOGEN_MODEL, HALOGEN_PROVIDER, HARNESS_OPTIONS, invocationFor, parseFor, PI_DEFAULT_MODEL, PI_PROVIDERS, type HarnessName, type PiProvider, type Usage } from "./harness.ts";
+import { catalogFor, entryFor, resolveModel, type ModelAllowlist, type ModelCeilings, type ModelEntry } from "./models.ts";
+import { CLAUDE_MODEL, HALOGEN_MODEL, HALOGEN_PROVIDER, HARNESS_OPTIONS, invocationFor, parseFor, PI_PROVIDERS, type HarnessName, type PiProvider, type Usage } from "./harness.ts";
 import { spawnSync } from "node:child_process";
 import { axTaskSpec } from "./ax.ts";
 import { SANDBOX_HOME } from "./gvisor.ts";
@@ -114,6 +114,8 @@ export interface RunnerBackendOptions {
   readonly seatShadowRoot?: string;
   /** The script's meta phase index for a phase title (1-based), for a Task this backend builds itself. */
   readonly phaseIndexOf?: (title: string) => number | undefined;
+  /** pi's host agent dir whose models.json seeds a job-scoped one (tests). Default: piHostAgentDir(). */
+  readonly piHostAgentDir?: string;
   /** Where job transcripts are archived (never a run dir). Default: transcriptRootFor(seatShadowRoot). */
   readonly transcriptRoot?: string;
 }
@@ -157,8 +159,8 @@ export function credentialMount(config: RuntimesConfig, runtime: Runtime, harnes
  * pi in gVisor exited 1 "Unknown provider halogen", because the sandbox HOME
  * is empty). It is generated from constants, never copied from the host's
  * models.json (which also names cloud providers and their keys). Halogen has
- * no auth; the apiKey is a placeholder. Only the worker serves it (ruling:
- * Halogen is never resident on the coordinator).
+ * no auth; the apiKey is a placeholder. The strix serves it since the worker's
+ * retirement (dotfiles, 2026-10-08; carried as a local patch until 2026-10-10).
  */
 export const HALOGEN_BASE_URL = "http://strix:8731/v1";
 export function piHalogenModels(): string {
@@ -170,10 +172,59 @@ export function piHalogenModels(): string {
         authHeader: true,
         baseUrl: HALOGEN_BASE_URL,
         compat: { supportsDeveloperRole: false, supportsReasoningEffort: false, supportsStore: false },
-        models: [{ id: HALOGEN_MODEL, name: "Halogen (worker)", reasoning: true, input: ["text"], contextWindow: 262144, maxTokens: 32768 }],
+        models: [{ id: HALOGEN_MODEL, name: "Halogen (strix)", reasoning: true, input: ["text"], contextWindow: 262144, maxTokens: 32768 }],
       },
     },
   }, null, 1) + "\n";
+}
+
+/** pi's own agent dir on this host (where it reads models.json); `PI_CODING_AGENT_DIR` when the puller runs with one. */
+export const piHostAgentDir = (): string => process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
+
+/** Per-provider defaults for a `[models.pi]` table that names no endpoint (MEASURED 2026-09-29 for the OpenRouter stealth model). */
+const PI_PROVIDER_ENDPOINT: Readonly<Partial<Record<PiProvider, { api: string; baseUrl: string }>>> = {
+  openrouter: { api: "openai-completions", baseUrl: "https://openrouter.ai/api/v1" },
+  "openrouter-free": { api: "openai-completions", baseUrl: "https://openrouter.ai/api/v1" },
+};
+
+/**
+ * The models.json of a job-scoped pi agent dir for a catalog entry pi's own
+ * catalog does not know (`[models.pi]`, 2026-10-10): the HOST's models.json
+ * parsed and copied as data (its provider keys are `!cat <path>` REFERENCES,
+ * kept verbatim as strings, never resolved, never logged) with the entry
+ * upserted under the provider pi is started with. A host without the file
+ * yields the provider table with just the model. Pure; the caller writes it
+ * 0600 into the 0700 shadow and names the dir in PI_CODING_AGENT_DIR.
+ */
+export function piAgentModelsJson(hostModelsJson: string | undefined, provider: PiProvider, entry: ModelEntry): string {
+  let doc: { providers?: Record<string, Record<string, unknown>> } = {};
+  if (hostModelsJson !== undefined) {
+    try {
+      const parsed: unknown = JSON.parse(hostModelsJson);
+      if (parsed !== null && typeof parsed === "object") doc = parsed as typeof doc;
+    } catch {
+      doc = {};
+    }
+  }
+  const providers = (doc.providers ??= {});
+  const key = PI_PROVIDERS[provider].pi;
+  const table = (providers[key] ??= {});
+  const meta = entry.pi ?? {};
+  const endpoint = PI_PROVIDER_ENDPOINT[provider];
+  const model: Record<string, unknown> = {
+    id: entry.id,
+    name: meta.name ?? entry.id,
+    ...(meta.api ?? endpoint?.api ? { api: meta.api ?? endpoint!.api } : {}),
+    ...(meta.base_url ?? endpoint?.baseUrl ? { baseUrl: meta.base_url ?? endpoint!.baseUrl } : {}),
+    reasoning: meta.reasoning ?? false,
+    input: meta.input ?? ["text"],
+    ...(meta.context_window !== undefined ? { contextWindow: meta.context_window } : {}),
+    ...(meta.max_tokens !== undefined ? { maxTokens: meta.max_tokens } : {}),
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  };
+  const models = Array.isArray(table["models"]) ? (table["models"] as Record<string, unknown>[]).filter((m) => m["id"] !== entry.id) : [];
+  table["models"] = [...models, model];
+  return JSON.stringify(doc, null, 1) + "\n";
 }
 
 /**
@@ -426,8 +477,9 @@ export class RunnerBackend {
     const sel = this.select(call);
     const declared = typeof call.opts.model === "string" ? call.opts.model : undefined;
     const provider = piProviderOf(sel.runtime);
+    const catalog = this.catalog(); // throws ModelsFileError: the route is refused with the file's own error
     const pick = (h: HarnessName, fallback: string) => {
-      const r = resolveModel(this.config.models ?? DEFAULT_MODEL_ALLOWLIST, h, declared, h === "pi" ? provider : undefined);
+      const r = resolveModel(catalog, h, declared, h === "pi" ? provider : undefined);
       return {
         model: r.id ?? fallback,
         ...(r.requested !== undefined ? { requestedModel: r.requested } : {}),
@@ -448,9 +500,18 @@ export class RunnerBackend {
     }
     if (h === "pi") {
       const p = provider ?? HALOGEN_PROVIDER;
-      return { selection: sel, harness: h, ...pick(h, PI_DEFAULT_MODEL[p]), seat, provider: p, seatProvider: PI_PROVIDERS[p].seatProvider };
+      // No pinned fallback for pi (2026-10-10): a provider the catalog does not list is PARKED and refused here,
+      // before admission, so a route policy falls through at once.
+      const r = resolveModel(catalog, h, declared, p);
+      if (r.id === undefined) throw new Error(parkedReason(sel.name, p, this.config.modelsFile));
+      return { selection: sel, harness: h, ...pick(h, r.id), seat, provider: p, seatProvider: PI_PROVIDERS[p].seatProvider };
     }
     return { selection: sel, harness: h, ...pick(h, h === "claude" ? CLAUDE_MODEL : "codex"), seat };
+  }
+
+  /** The model catalog for THIS call: the models file as it is now, else the inline list, else the default (models.ts). */
+  catalog(): ModelAllowlist {
+    return catalogFor(this.config);
   }
 
   /** The runtime for one call from all its routing opts: runtime, seat, runsOn (config.ts selectForCall). Throws on a refusal. */
@@ -587,9 +648,48 @@ export class RunnerBackend {
     }
     const declaredModel = typeof (call.opts as { model?: unknown }).model === "string" ? (call.opts as { model: string }).model : undefined;
     const piProvider = piProviderOf(sel.runtime);
-    const resolved = resolveModel(this.config.models ?? DEFAULT_MODEL_ALLOWLIST, harness, declaredModel, piProvider);
+    let catalog: ModelAllowlist;
+    try {
+      catalog = this.catalog();
+    } catch (e) {
+      return refuse((e as Error).message);
+    }
+    const resolved = resolveModel(catalog, harness, declaredModel, piProvider);
+    if (harness === "pi" && resolved.id === undefined) return refuse(parkedReason(sel.name, piProvider ?? HALOGEN_PROVIDER, this.config.modelsFile).replace(/^runtime \S+: /, ""));
+    // The seat shadow lives OUTSIDE the run dir and is removed when the job
+    // is over, refused or not (successor review r3: a hard link to the seat
+    // credential was left in <run dir>/jobs/<id>.seat/, and run dirs under
+    // ~/today are landed into notes and pushed every night).
+    const shadow = join(seatShadowRoot(this.config, this.options.seatShadowRoot), id);
+    // pi on a host-side runtime (2026-10-10): the session is saved in the job's shadow (archived with the
+    // transcripts, so the seats oracle counts factory spend; CMP-2), and a catalog entry pi's own catalog does not
+    // know rides in a job-scoped agent dir whose models.json is the host's plus that one model (piAgentModelsJson).
+    let piDirs: { piSessionDir: string; piAgentDir?: string } | undefined;
+    if (harness === "pi" && (sel.runtime.type === "host" || sel.runtime.type === "runtime-test" || sel.runtime.type === "herdr")) {
+      const agentDir = join(shadow, "pi-agent");
+      const sessions = join(agentDir, "sessions");
+      try {
+        mkdirSync(sessions, { recursive: true, mode: 0o700 });
+      } catch (e) {
+        return refuse(`cannot create the pi session dir ${sessions}: ${(e as Error).message}`);
+      }
+      piDirs = { piSessionDir: sessions };
+      const entry = entryFor(catalog, harness, resolved.id, piProvider);
+      if (entry?.pi !== undefined) {
+        const hostFile = join(this.options.piHostAgentDir ?? piHostAgentDir(), "models.json");
+        let host: string | undefined;
+        try {
+          host = readFileSync(hostFile, "utf8");
+        } catch {
+          host = undefined;
+        }
+        writeFileSync(join(agentDir, "models.json"), piAgentModelsJson(host, piProvider ?? HALOGEN_PROVIDER, entry), { mode: 0o600 });
+        piDirs.piAgentDir = agentDir;
+      }
+    }
     const inv = invocationFor(harness, {
       ...(piProvider !== undefined ? { piProvider } : {}),
+      ...(piDirs ?? {}),
       prompt: call.prompt,
       ...(resolved.id !== undefined ? { model: resolved.id } : {}),
       ...(call.opts.schema ? { schema: call.opts.schema } : {}),
@@ -600,11 +700,6 @@ export class RunnerBackend {
     });
     const seat = seatOf(this.config, sel.runtime, this.options.defaultSeat);
     const fromRunSeat = seat !== undefined && seatOf(this.config, sel.runtime) === undefined;
-    // The seat shadow lives OUTSIDE the run dir and is removed when the job
-    // is over, refused or not (successor review r3: a hard link to the seat
-    // credential was left in <run dir>/jobs/<id>.seat/, and run dirs under
-    // ~/today are landed into notes and pushed every night).
-    const shadow = join(seatShadowRoot(this.config, this.options.seatShadowRoot), id);
     const mounts = credentialMounts(this.config, sel.runtime, harness, shadow, { seat, fromRunSeat });
     if ("refused" in mounts) {
       rmSync(shadow, { recursive: true, force: true });
@@ -762,6 +857,8 @@ export class RunnerBackend {
       const t = sel.runtime.type;
       if (t === "gvisor" || t === "microvm") files.push(...archiveShadowTranscripts(shadow, dest));
       else if (t === "host" || t === "runtime-test" || t === "herdr") {
+        // pi saves its session into the job's shadow (`--session-dir`, run()); the archive is what seats reads.
+        if (harness === "pi") files.push(...archiveShadowTranscripts(shadow, dest));
         if (harness === "claude" && sessionId !== undefined && cred !== undefined) {
           const p = findClaudeSession(cred.source, sessionId);
           if (p) push(copyCapped(p, dest, `claude-${sessionId}.jsonl`, "host-session"));
@@ -778,6 +875,10 @@ export class RunnerBackend {
     }
   }
 }
+
+/** Why a pi call on a provider the catalog does not list is refused (the lane is parked; models.ts). */
+export const parkedReason = (runtime: string, provider: PiProvider, modelsFile: string | undefined): string =>
+  `runtime ${runtime}: no model configured for pi provider ${provider} (the lane is parked); add a [[models]] table with provider = "${provider}" and default = true to ${modelsFile ?? "the catalog ([[models]] in runtimes.toml, or models_file)"}`;
 
 const git = (args: string[]) => spawnSync("git", args, { encoding: "utf8" });
 

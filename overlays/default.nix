@@ -136,4 +136,18 @@ final: prev: {
   # README, sha256 over every row. Used by the nightly ~/today sweep and by
   # every one-time landing lane. Stdlib Python; see pkgs/land.
   land = final.callPackage ../pkgs/land { };
+
+  # pnpm 11.17.0: the stack v1 pin (Tom's ruling G4, 2026-09-29: whatever upstream
+  # cloudflare-os used, Node 24 and pnpm 11.17.0). nixpkgs here ships 11.15.0.
+  # Used on the substrate puller PATH (modules/substrate.nix puller.extraPath) so
+  # a spec-task gate runs bare `pnpm`. Add-only: pkgs.pnpm itself is untouched.
+  # The upstream derivation derives its src url from finalAttrs.version, so
+  # both are overridden together; the hash is the registry tarball's sha256.
+  pnpm_11_17 = final.pnpm.overrideAttrs (old: {
+    version = "11.17.0";
+    src = final.fetchurl {
+      url = "https://registry.npmjs.org/pnpm/-/pnpm-11.17.0.tgz";
+      hash = "sha256-ZE61B5ZU6H2uWaB+YtfwmBYrnOWPBgdzKLXd78ochUE=";
+    };
+  });
 }

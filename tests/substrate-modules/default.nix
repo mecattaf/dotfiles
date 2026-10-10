@@ -17,7 +17,10 @@
 # credential placeholders, and no rendered file carrying a token-shaped key or a credential path. It also pins the
 # academic drain's standing submit (modules/academic-drain.nix; ON 2026-09-25, OFF on the strix since
 # 2026-09-30, so it is armed here): the user service and timer, the timer's OnCalendar, the floor token as a credential, and a rendered script with no
-# token-shaped literal.
+# token-shaped literal. Since 2026-10-10 it also pins the model catalog seam (Tom: model ids are not nix data):
+# runtimes.toml carries models_file = ~/.config/substrate/models.toml, the puller start script seeds that file from
+# the store copy only when absent, the seed parses as TOML with one default per harness (per provider for pi) and no
+# openrouter-free entry (the lane is parked), and the puller PATH carries nodejs 24 and pnpm 11.17.0 for the gates.
 let
   coord = self.nixosConfigurations.strix;
   declared = coord.config;
@@ -117,6 +120,17 @@ assert
 # The pidfile is in the RuntimeDirectory, so a hold is transient: 3 must be retried, not terminal.
 assert !(builtins.elem 3 pullerUnit.serviceConfig.RestartPreventExitStatus);
 assert builtins.elem 75 pullerUnit.serviceConfig.RestartPreventExitStatus;
+# The model catalog is runtime data in $HOME (2026-10-10), named by runtimes.toml and seeded, never owned, by the unit.
+assert declared.services.substrate.puller.modelsFile == "/home/tom/.config/substrate/models.toml";
+assert
+  armed.services.substrate.puller.runtimes.models_file == "/home/tom/.config/substrate/models.toml";
+# The gate toolchain of stack v1 rides on the puller PATH: nodejs 24 and pnpm 11.17.0 (overlays/default.nix pnpm_11_17).
+assert lib.any (
+  p: lib.isDerivation p && lib.hasPrefix "nodejs" (lib.getName p) && lib.hasPrefix "24." p.version
+) pullerUnit.path;
+assert lib.any (
+  p: lib.isDerivation p && lib.getName p == "pnpm" && p.version == "11.17.0"
+) pullerUnit.path;
 pkgs.runCommand "substrate-modules"
   {
     nativeBuildInputs = [ pkgs.python3 ];
@@ -125,9 +139,10 @@ pkgs.runCommand "substrate-modules"
     clientToml = armed.services.substrate.puller.clientConfigFile;
     pullerStart = pullerUnit.serviceConfig.ExecStart;
     standingScript = standing.serviceConfig.ExecStart;
+    modelsSeed = pkgs.writeText "substrate-models-seed-under-test.toml" armed.services.substrate.puller.modelsSeed;
   }
   ''
-    python3 - "$pusherJson" "$runtimesToml" "$pullerStart" "$clientToml" "$standingScript" <<'PY'
+    python3 - "$pusherJson" "$runtimesToml" "$pullerStart" "$clientToml" "$standingScript" "$modelsSeed" <<'PY'
     import json, re, sys, tomllib
     pusher = json.load(open(sys.argv[1]))
     assert pusher["floorUrl"].startswith("https://"), pusher
@@ -167,6 +182,30 @@ pkgs.runCommand "substrate-modules"
     start = open(sys.argv[3]).read()
     assert "@FLOOR_TOKEN_FILE@" in start and "@LINK_TOKEN_FILE@" in start and "CREDENTIALS_DIRECTORY" in start
     assert "AX_CONWIP_RUNTIMES=" in start and "SUBSTRATE_CLIENT_CONFIG=" in start and "SUBSTRATE_CONFIG=" in start
+    # The model catalog (2026-10-10): runtimes.toml names the mutable file in $HOME; the start script seeds it from the
+    # store copy only when it is absent (an existing file is Tom's and is never overwritten) and never rewrites it.
+    assert rt["models_file"] == "/home/tom/.config/substrate/models.toml", rt.get("models_file")
+    assert 'models_file = "/home/tom/.config/substrate/models.toml"' in open(sys.argv[2]).read()
+    assert "substrate-models-seed" in start and "models.toml" in start, "the start script must seed the catalog"
+    assert re.search(r'if \[ ! -e "\$models" \]', start), "seed only when absent"
+    assert "install -m 600" in start, "the seeded catalog is private to the user"
+    seed = tomllib.load(open(sys.argv[6], "rb"))
+    ids = [m["id"] for m in seed["models"]]
+    assert len(ids) == len(set(ids)), ids
+    assert "claude-opus-5-5" in ids and "halogen-qwen3.8-flash-next" in ids and "qwen3.8-max" in ids, ids
+    assert not any(m.get("provider") == "openrouter-free" for m in seed["models"]), "openrouter-free is parked (no entry)"
+    assert not any("space-bunny" in m["id"] for m in seed["models"]), "the withdrawn stealth model is gone"
+    for m in seed["models"]:
+        assert m["harness"] in {"claude", "pi", "codex"}, m
+        assert "provider" not in m or m["harness"] == "pi", m
+    lanes = {}
+    for m in seed["models"]:
+        if m.get("default"):
+            lane = (m["harness"], m.get("provider", "halogen") if m["harness"] == "pi" else None)
+            assert lane not in lanes, ("two defaults on one lane", lane, lanes[lane], m["id"])
+            lanes[lane] = m["id"]
+    assert lanes[("claude", None)] == "claude-opus-5-5" and lanes[("pi", "halogen")] == "halogen-qwen3.8-flash-next", lanes
+    assert ("pi", "qwen-token-plan") in lanes and ("pi", "openrouter") in lanes, lanes
     client = tomllib.load(open(sys.argv[4], "rb"))
     assert client["floor_url"].startswith("https://") and client["token_file"] == "@FLOOR_TOKEN_FILE@", client
     p = client["puller"]
@@ -194,7 +233,7 @@ pkgs.runCommand "substrate-modules"
     assert "/run/agenix" not in standing and "/.local/state/substrate/floor-token" not in standing
     masked = re.sub(r"/nix/store/[a-z0-9]{32}-", "/nix/store/HASH-", standing)
     assert not token_shaped.search(masked), ("standing submit", token_shaped.search(masked).group(0))
-    print("substrate-modules: pusher.json, runtimes.toml and config.toml render the 2026-09-24 proven shape plus ssh:strix; the standing submit carries no token")
+    print("substrate-modules: pusher.json, runtimes.toml and config.toml render the 2026-09-24 proven shape plus ssh:strix and the 2026-10-10 models_file seam; the standing submit carries no token")
     PY
     touch "$out"
   ''

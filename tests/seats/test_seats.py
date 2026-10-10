@@ -18,6 +18,8 @@ What it pins:
     CUMULATIVE token totals are differenced rather than summed
   * the Qwen window is parsed out of the provider's own 429 text, year and all,
     and an expired hold stops holding
+  * Qwen credits sum pi's live sessions AND the pi sessions the substrate
+    factory archived, skipping the other harnesses' archives beside them
   * spend counts from the seat's own weekly window start, not a rolling week,
     and excludes events before it
   * --check returns 0 headroom / 1 spent / 2 unmeasurable
@@ -146,13 +148,7 @@ class SeatsFixture:
         depend on one."""
         session = self.home / ".pi/agent/sessions/-proj"
         session.mkdir(parents=True, exist_ok=True)
-        lines = []
-        for when, tin, tout, cache, provider in messages:
-            lines.append(json.dumps({
-                "type": "message", "timestamp": iso(when),
-                "message": {"provider": provider, "model": "qwen3.8-max",
-                            "usage": {"input": tin, "output": tout,
-                                      "cacheRead": cache, "cacheWrite": 0}}}))
+        lines = [self.pi_message(*row) for row in messages]
         for when, reset in refusals:
             lines.append(json.dumps({
                 "type": "error", "timestamp": iso(when),
@@ -169,6 +165,24 @@ class SeatsFixture:
         # same second with the same length must not be served from it.
         for stale in self.state.glob("qwen-events.json"):
             stale.unlink()
+        return path
+
+    @staticmethod
+    def pi_message(when, tin, tout, cache, provider):
+        """One pi session record, the shape live and archived files share."""
+        return json.dumps({
+            "type": "message", "timestamp": iso(when),
+            "message": {"provider": provider, "model": "qwen3.8-max",
+                        "usage": {"input": tin, "output": tout,
+                                  "cacheRead": cache, "cacheWrite": 0}}})
+
+    def substrate_archive(self, name, messages, job="run1/job1"):
+        """A harness session the factory archived at job end, beside the job's
+        other harness archives: <transcripts>/<run>/<job>/<name>.jsonl."""
+        job_dir = self.home / ".local/state/substrate/transcripts" / job
+        job_dir.mkdir(parents=True, exist_ok=True)
+        path = job_dir / f"{name}.jsonl"
+        path.write_text("\n".join(self.pi_message(*row) for row in messages) + "\n")
         return path
 
     # ── driving the program ─────────────────────────────────────────────────
@@ -334,6 +348,42 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(credits["remaining"], 9_500)
         self.assertEqual(qwen["windows"][0]["used_pct"], 5.0)
         self.assertEqual(qwen["state"], "open")
+
+    def test_factory_archived_pi_sessions_are_billed_too(self):
+        # CMP-2: the factory saves its pi sessions and archives them under
+        # substrate's transcripts at job end; those tokens are this seat's
+        # spend as much as a hand-run pi session is, and the two roots sum.
+        self.box.substrate_archive("pi-session", [
+            (self.qwen_opened + timedelta(hours=2), 10_000, 1_000, 500_000, "qwen-token-plan")])
+        _, seats = self.box.report()
+        qwen = seats["pi-qwencloud"]
+        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 11_000)
+        self.assertEqual(qwen["spend"]["tokens_in"], 90_000 + 10_000)
+        self.assertEqual(qwen["spend"]["tokens_out"], 6_250 + 1_000)
+        self.assertEqual(qwen["spend"]["sessions"], 2, "the live file and the archive")
+
+    def test_other_harnesses_archives_beside_pi_are_not_billed(self):
+        # The same job dir holds claude-*.jsonl and codex-*.jsonl; a qwen-looking
+        # line in one of those is another seat's record, skipped by basename.
+        looks_like_qwen = [(self.qwen_opened + timedelta(hours=2),
+                            999_999, 999_999, 0, "qwen-token-plan")]
+        self.box.substrate_archive("pi-session", [
+            (self.qwen_opened + timedelta(hours=2), 10_000, 1_000, 0, "qwen-token-plan")])
+        self.box.substrate_archive("claude-x", looks_like_qwen)
+        self.box.substrate_archive("codex-y", looks_like_qwen)
+        _, seats = self.box.report()
+        qwen = seats["pi-qwencloud"]
+        self.assertEqual(qwen["credits"]["billable_tokens"], 96_250 + 11_000)
+        self.assertEqual(qwen["spend"]["sessions"], 2)
+
+    def test_the_pi_seat_names_both_spend_roots(self):
+        spec = importlib.util.spec_from_loader(
+            "seats_mod_pi", importlib.machinery.SourceFileLoader("seats_mod_pi", SCRIPT))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        pi = next(s for s in mod.DEFAULT_SEATS if s["id"] == "pi-qwencloud")
+        self.assertEqual(pi["spend_root"],
+                         ["~/.pi/agent/sessions", "~/.local/state/substrate/transcripts"])
 
     def test_qwen_local_traffic_is_never_billed(self):
         _, seats = self.box.report()

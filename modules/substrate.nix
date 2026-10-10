@@ -22,7 +22,11 @@
 #           per puller.sshRuntimes entry, e.g. ssh:strix since 2026-09-25), each claude seat spending
 #           its own config dir by path ([credentials.seats], RG-1), heartbeats, completes, resumes from the run's
 #           journal. Its config is the [puller] table of a client config.toml (packages/api/src/config.ts),
-#           rendered here with placeholders for the two credential paths and filled at unit start.
+#           rendered here with placeholders for the two credential paths and filled at unit start. Model ids
+#           are NOT nix data (Tom, 2026-10-10: "i dnt think it s a g ood idea to have things like that tied to
+#           nixos dotfiles"): runtimes.toml names `models_file`, the mutable catalog puller.modelsFile
+#           (~/.config/substrate/models.toml) that the runners read on every call; the unit seeds it from
+#           puller.modelsSeed only when the file is absent and never rewrites it, so a model edit needs no rebuild.
 #
 # WHY USER UNITS. Both programs speak for Tom's logins: `seats` reads each Claude seat's OAuth usage from its
 # config dir, and the puller runs claude, herdr and ssh as Tom. A system unit with User=tom would carry none of
@@ -109,6 +113,10 @@ let
 
   runtimesToml = tomlFormat.generate "substrate-runtimes.toml" cfg.puller.runtimes;
 
+  # The model catalog's seed: installed to puller.modelsFile at unit start only when that file is absent. The store
+  # copy is never the file the runners read; the one in $HOME is Tom's, mutable, and survives every switch.
+  modelsSeedFile = pkgs.writeText "substrate-models-seed.toml" cfg.puller.modelsSeed;
+
   # puller.sshRuntimes, rendered as [runtime."ssh:<host>"] tables in the shape of SshRuntime in
   # packages/runners/src/config.ts:116-121 (type "ssh", host, plus the common harness, seat and timeoutMs of
   # :44-58). MERGED into the default runtimes below and appended to its allow list: a host that instead sets
@@ -184,6 +192,14 @@ let
     export SUBSTRATE_CLIENT_CONFIG="$RUNTIME_DIRECTORY/config.toml"
     # [puller].runtimes is the primary; loadRuntimes (packages/runners/src/config.ts) still falls back to this.
     export AX_CONWIP_RUNTIMES=${runtimesToml}
+    # The model catalog (runtimes.toml models_file): seeded once if absent, then Tom's. Never overwritten here; a
+    # set but missing models_file is a config error in the puller, so the seed is what makes a fresh box start.
+    models=${lib.escapeShellArg cfg.puller.modelsFile}
+    ${pkgs.coreutils}/bin/mkdir -p "$(${pkgs.coreutils}/bin/dirname "$models")"
+    if [ ! -e "$models" ]; then
+      ${pkgs.coreutils}/bin/install -m 600 ${modelsSeedFile} "$models"
+      echo "substrate-puller: seeded $models" >&2
+    fi
     # Review 2026-09-24 (low): hostHarnessEnv passes CREDENTIALS_DIRECTORY through to every host agent. The token
     # paths are already in the rendered files, so the variable is dropped here; the directory stays readable.
     unset CREDENTIALS_DIRECTORY
@@ -518,6 +534,8 @@ in
         type = tomlFormat.type;
         default = {
           default = "opus";
+          # The model catalog lives outside the store (puller.modelsFile); the runners re-read it on every call.
+          models_file = cfg.puller.modelsFile;
           allow = [
             "opus"
             "halogen"
@@ -582,12 +600,13 @@ in
               codexSandbox = "workspace-write";
             };
             # 2026-09-30, pi against the cloud providers of ~/.pi/agent/models.json (substrate D-S14): the runtime
-            # table names the pi provider, the model is agent({model}) resolved against that provider's allowlist
-            # (packages/runners/src/models.ts), and each spends its own credit-metered seat. pi reads each key itself
-            # (`!cat /run/agenix/...` in models.json); nothing here names a credential.
-            #   qwen             pi --provider qwen-token-plan --model qwen3.8-max          seat pi-qwencloud (4 slots)
-            #   openrouter       pi --provider openrouter --model deepseek/deepseek-v4-pro  seat openrouter ($12 soft cap, 4)
-            #   openrouter-free  pi --provider openrouter --model stealth/space-bunny-alpha seat openrouter-free (8)
+            # table names the pi provider, the model is agent({model}) resolved against that provider's entries in
+            # the models_file catalog (packages/runners/src/models.ts; since 2026-10-10 the mutable puller.modelsFile,
+            # not nix), and each spends its own credit-metered seat. pi reads each key itself (`!cat /run/agenix/...`
+            # in models.json); nothing here names a credential or a model id.
+            #   qwen             pi --provider qwen-token-plan   seat pi-qwencloud (4 slots)
+            #   openrouter       pi --provider openrouter        seat openrouter ($12 soft cap, 4)
+            #   openrouter-free  pi --provider openrouter        seat openrouter-free (8); PARKED while models.toml has no entry
             # A puller older than that substrate change drops `provider` and runs pi against Halogen: the gate then
             # refuses the call as a seat-provider mismatch (fail closed), so land the re-vendor with this.
             qwen = {
@@ -614,7 +633,7 @@ in
           }
           // sshRuntimeTables;
         };
-        description = "The runtimes file (packages/runners/src/config.ts), rendered to TOML and named by [puller].runtimes (and AX_CONWIP_RUNTIMES). Default: the shape proven live on 2026-09-24. opus (host, claude on claudeSeat), halogen (host, pi against the worker's Halogen server), codex (read-only) and codex-rw (workspace-write), default opus, each claude seat bound to its config dir in [credentials.seats], plus one ssh table per puller.sshRuntimes entry (on allow too). herdr and gvisor tables are not declared by default (never exercised); override this option to add them, and restate the ssh tables when you do.";
+        description = "The runtimes file (packages/runners/src/config.ts), rendered to TOML and named by [puller].runtimes (and AX_CONWIP_RUNTIMES). Default: the shape proven live on 2026-09-24, plus models_file = puller.modelsFile (2026-10-10). opus (host, claude on claudeSeat), halogen (host, pi against the worker's Halogen server), codex (read-only) and codex-rw (workspace-write), default opus, each claude seat bound to its config dir in [credentials.seats], plus one ssh table per puller.sshRuntimes entry (on allow too). herdr and gvisor tables are not declared by default (never exercised); override this option to add them, and restate the ssh tables when you do.";
       };
 
       runtimesFile = mkOption {
@@ -622,6 +641,98 @@ in
         readOnly = true;
         default = runtimesToml;
         description = "The rendered runtimes.toml (read-only; for tests).";
+      };
+
+      modelsFile = mkOption {
+        type = types.str;
+        default = "${home}/.config/substrate/models.toml";
+        defaultText = lib.literalExpression ''"''${home}/.config/substrate/models.toml"'';
+        description = "The mutable model catalog (runtimes.toml models_file), read at run time by the runners on every call. Seeded from modelsSeed if absent at unit start, never rewritten by nix: edit it to change a model with no rebuild (Tom 2026-10-10: model names are not nixos dotfiles data). An absolute path; ~ is not expanded.";
+      };
+
+      modelsSeed = mkOption {
+        type = types.lines;
+        default = ''
+          # ~/.config/substrate/models.toml: the model catalog substrate's runners read on EVERY call (no restart, no rebuild).
+          # Seeded once by the substrate-puller unit (dotfiles modules/substrate.nix) when this file is absent; edits here are
+          # yours and survive every switch. Shape: packages/runners/src/models.ts in agency-agency/substrate.
+          #
+          #   [[models]]
+          #   id = "<full model id>"          # what goes on the wire, never an alias
+          #   harness = "claude" | "pi" | "codex"
+          #   provider = "halogen" | "qwen-token-plan" | "openrouter" | "openrouter-free"   # pi only; absent means halogen
+          #   aliases = ["short"]             # optional
+          #   default = true                  # at most one per harness (per provider for pi); the model a call gets when it names none
+          #   ceilings = { model_scoped = 90 } # optional utilization ceilings in percent
+          #   [models.pi]                     # optional, pi only: declares a model pi's own catalog does not know (a stealth model)
+          #   name = "..."; reasoning = true; input = ["text", "image"]; context_window = 1000000; max_tokens = 524288
+          #
+          # A pi provider with NO entry here is PARKED: substrate refuses its runtime at once with "no model configured", and
+          # route policies fall through to the next runtime. The openrouter-free lane is parked since 2026-10-10 (Tom: "i know
+          # they will release a new one soon so let s keep the mechanics for it"). To activate it, uncomment the last table and
+          # set the new stealth id; the change is live on the next call.
+
+          [[models]]
+          id = "claude-opus-5-5"
+          harness = "claude"
+          aliases = ["opus"]
+          default = true
+
+          [[models]]
+          id = "claude-fable-5-1"
+          harness = "claude"
+          aliases = ["fable"]
+          ceilings = { model_scoped = 90 }
+
+          [[models]]
+          id = "halogen-qwen3.8-flash-next"
+          harness = "pi"
+          default = true
+
+          [[models]]
+          id = "qwen3.8-max"
+          harness = "pi"
+          provider = "qwen-token-plan"
+          default = true
+
+          [[models]]
+          id = "deepseek/deepseek-v4-pro"
+          harness = "pi"
+          provider = "openrouter"
+          aliases = ["deepseek"]
+          default = true
+
+          [[models]]
+          id = "minimax/minimax-m3"
+          harness = "pi"
+          provider = "openrouter"
+          aliases = ["minimax"]
+
+          [[models]]
+          id = "qwen/qwen3.8-max-0902"
+          harness = "pi"
+          provider = "openrouter"
+          aliases = ["qwen-max"]
+
+          [[models]]
+          id = "anthropic/claude-sonnet-5.5"
+          harness = "pi"
+          provider = "openrouter"
+
+          # openrouter-free: PARKED. Uncomment and set the id when OpenRouter releases a new stealth model.
+          # [[models]]
+          # id = "stealth/<new-model>"
+          # harness = "pi"
+          # provider = "openrouter-free"
+          # default = true
+          # [models.pi]
+          # name = "<display name> (stealth, free)"
+          # reasoning = true
+          # input = ["text", "image"]
+          # context_window = 1000000
+          # max_tokens = 524288
+        '';
+        description = "The TOML text installed at modelsFile when that file is absent at unit start (mode 600). Mirrors the compiled default list of packages/runners/src/models.ts with the openrouter-free lane parked. Changing this option changes only what a FRESH box gets; an existing file is never touched.";
       };
 
       deployConfig = mkOption {
@@ -673,8 +784,12 @@ in
       };
       extraPath = mkOption {
         type = types.listOf types.package;
-        default = [ ];
-        description = "Packages on the unit's PATH besides openssh, coreutils and the user's profile directories (~/.local/bin, /etc/profiles/per-user/<user>/bin, /run/current-system/sw/bin), which supply claude, pi, codex and herdr.";
+        default = [
+          pkgs.nodejs_24
+          pkgs.pnpm_11_17
+        ];
+        defaultText = lib.literalExpression "[ pkgs.nodejs_24 pkgs.pnpm_11_17 ]";
+        description = "Packages on the unit's PATH besides openssh, coreutils and the user's profile directories (~/.local/bin, /etc/profiles/per-user/<user>/bin, /run/current-system/sw/bin), which supply claude, pi, codex and herdr. Default: the gate toolchain of stack v1 (Node 24, pnpm 11.17.0; overlays/default.nix pnpm_11_17) so a spec-task gate runs `node` and `pnpm` bare in a worktree (factory defect 6, 2026-10-10); git and gh come from the user profile as before. Overridable.";
       };
     };
   };
