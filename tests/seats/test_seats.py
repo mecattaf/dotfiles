@@ -354,6 +354,44 @@ class SeatsTest(unittest.TestCase):
         self.assertEqual(qwen["credits"]["remaining"], 0,
                          "the provider saying exhausted beats an estimate saying otherwise")
 
+    def test_an_elapsed_qwen_window_rolls_to_the_next_first_use(self):
+        # Defect 5: a window that ran its seven days without a refusal must not
+        # be reported forever; the next one opens on the first use after it.
+        first = NOW - timedelta(days=18)
+        latest = NOW - timedelta(hours=2)
+        self.box.qwen(
+            messages=[(first, 500_000, 0, 0, "qwen-token-plan"),
+                      (latest, 15_000, 4_250, 0, "qwen-token-plan")],
+            refusals=[(NOW - timedelta(days=21), NOW - timedelta(days=20))])
+        _, seats = self.box.report()
+        qwen = seats["pi-qwencloud"]
+        entry = qwen["windows"][0]
+        self.assertEqual(entry["window_start"], iso(latest))
+        self.assertEqual(entry["resets_at"], iso(latest + timedelta(days=7)))
+        self.assertEqual(qwen["credits"]["resets_at"], iso(latest + timedelta(days=7)))
+        self.assertEqual(qwen["credits"]["billable_tokens"], 19_250,
+                         "only the new window's tokens count")
+        self.assertEqual(qwen["state"], "open")
+
+    def test_qwen_windows_chain_across_several_elapsed_weeks(self):
+        uses = [NOW - timedelta(days=18), NOW - timedelta(days=9), NOW - timedelta(hours=1)]
+        self.box.qwen(
+            messages=[(when, 1_000, 1_000, 0, "qwen-token-plan") for when in uses],
+            refusals=[(NOW - timedelta(days=21), NOW - timedelta(days=20))])
+        _, seats = self.box.report()
+        self.assertEqual(seats["pi-qwencloud"]["windows"][0]["window_start"], iso(uses[-1]))
+
+    def test_an_elapsed_qwen_window_with_no_later_use_reads_full(self):
+        self.box.qwen(
+            messages=[(NOW - timedelta(days=18), 500_000, 0, 0, "qwen-token-plan")],
+            refusals=[(NOW - timedelta(days=21), NOW - timedelta(days=20))])
+        _, seats = self.box.report()
+        qwen = seats["pi-qwencloud"]
+        self.assertEqual(qwen["state"], "open")
+        self.assertEqual(qwen["credits"]["remaining"], 10_000)
+        self.assertIsNone(qwen["credits"]["resets_at"])
+        self.assertIn("opens on first use", qwen["detail"])
+
     def test_qwen_with_no_use_since_the_reset_holds_the_full_allowance(self):
         self.box.qwen(refusals=[(NOW - timedelta(days=3), NOW - timedelta(days=1))])
         _, seats = self.box.report()
