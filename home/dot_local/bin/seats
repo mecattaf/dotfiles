@@ -1264,6 +1264,19 @@ def read_qwen(spec, opts):
         window_start = datetime.fromtimestamp(events[0][0], timezone.utc)
         window_end = window_start + timedelta(days=plan["window_days"])
 
+    # A window that ran its seven days without a refusal ends on its own; the
+    # provider states no reset for it, so nothing above moves past it. The
+    # next window opens on the first use after it ended, by the same rule.
+    # Without this the seat kept reporting a window that ended weeks ago, and
+    # the substrate floor refused the seat as 'projected' (factory defect 5).
+    while window_end is not None and window_end <= now():
+        after = [e for e in events if e[0] > window_end.timestamp()]
+        if not after:
+            window_start = window_end = None
+            break
+        window_start = datetime.fromtimestamp(after[0][0], timezone.utc)
+        window_end = window_start + timedelta(days=plan["window_days"])
+
     billable = credits = utilization = None
     if window_start is not None:
         floor, ceiling = window_start.timestamp(), (window_end or now()).timestamp()
