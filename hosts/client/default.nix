@@ -84,6 +84,7 @@
     inputs.nixos-hardware.nixosModules.common-pc-laptop
     inputs.nixos-hardware.nixosModules.common-pc-laptop-ssd
     ../../modules/zenbook-duo-daemon.nix
+    ../../modules/keyring-autounlock.nix # TPM-sealed keyring unlock; greetd autologin types no password
     # kubectl + the google/ax binaries, behind myAxClient.enable. Imported on
     # all three interactive hosts, OFF on all three; read that module's header
     # for the runbook and for what it deliberately does not declare.
@@ -161,6 +162,19 @@
   # forensically blind because NetworkManager logged nothing for weeks.
   networking.networkmanager.logLevel = "INFO";
 
+  # wpa_supplicant (NetworkManager's backend) is pulled in by multi-user.target
+  # in the same instant iwlwifi registers wlan0, and the wpa_supplicant
+  # module's udev rule `try-restart`s it on that add event. When the restart
+  # lands in the unit's ExecStartPre chmod/chown, the SIGTERM marks the unit
+  # failed and surfaces an episode, although it comes straight back up (three
+  # of six boots, 2026-10-07..10). Start it once udev has finished with the
+  # card, so the restart finds nothing running. A missing card costs the
+  # device timeout, not a failure.
+  systemd.services.wpa_supplicant = {
+    wants = [ "sys-subsystem-net-devices-wlo1.device" ];
+    after = [ "sys-subsystem-net-devices-wlo1.device" ];
+  };
+
   # Ordinary Tailscale for roaming access through the NAS subnet router.
   # Enrollment is interactive; no auth key is embedded or re-applied at boot.
   services.tailscale.enable = true;
@@ -176,6 +190,8 @@
   # transient unit surfaced as its own episode — and left this user manager's
   # unit failures unwatched. Name the real uid.
   myFailureSurfacing.userManagerUids = [ 1001 ];
+  # The same uid for the keyring unlock's user manager.
+  myKeyringAutounlock.uid = 1001;
 
   # ── the Thunderbolt 3 dock ─────────────────────────────────────────────────
   # This is the docking host: the strix's webcam/mic, Sound Blaster,

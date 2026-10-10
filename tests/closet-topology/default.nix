@@ -68,4 +68,9 @@ assert !(settings ? model) && !(settings ? effortLevel) && !(settings ? modelSet
 assert builtins.all (host: !lib.hasInfix "10.42.0.5" host.services.nfs.server.exports) [ n ];
 assert n.myAxFleet.agentAddresses == [ "10.42.0.2" ];
 assert s.myAxFleet.lan.interface == "enp191s0" && s.myAxFleet.lan.extraInterfaces == [ ];
+assert builtins.elem "user@1000.service" s.systemd.services.keyring-unlock-boot.wantedBy;
+assert builtins.elem "user@1001.service" c.systemd.services.keyring-unlock-boot.wantedBy;
+assert builtins.elem "user@1001.service" c.systemd.services.keyring-unlock-boot.partOf;
+assert builtins.elem "sys-subsystem-net-devices-wlo1.device"
+  c.systemd.services.wpa_supplicant.after;
 pkgs.runCommand "closet-topology" { } ''touch "$out"''
