@@ -19,6 +19,9 @@
 let
   version = "2.0.0";
   callRecord = ../../home/dot_local/bin/call-record;
+  # What `call-record stop` hands a closed recording to since 2026-10-10 (Tally retired): tested here end to
+  # end against a fake systemd-run, because this package is the diarizer it starts.
+  callDiarizeStart = ../../home/dot_local/bin/call-diarize-start;
   python = torchRocm.pythonModule;
   pythonPackages = python313Packages;
   sitePackages = pythonPackages.python.sitePackages;
@@ -138,6 +141,7 @@ stdenvNoCC.mkDerivation {
     runHook preCheck
     ${bash}/bin/bash -n \
       ${callRecord} \
+      ${callDiarizeStart} \
       launcher.sh \
       backfill.sh \
       tests/test_backfill.sh \
@@ -153,7 +157,7 @@ stdenvNoCC.mkDerivation {
     ${bash}/bin/bash tests/test_call_record.sh \
       ${callRecord} \
       ${bash}/bin/bash \
-      $PWD/backfill.sh
+      ${callDiarizeStart}
     PYTHONPATH=$PWD ${python313}/bin/python -m unittest discover -s tests -v
     ${python313}/bin/python -m compileall -q call_diarize
     # The runtime path must import upstream's streaming classes against the
