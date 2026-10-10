@@ -61,12 +61,19 @@ type = "workerd"              # Worker-shaped jobs only; agent() calls are refus
 [runtime.ax]
 type = "ax"                   # spec only: writes the Task an ax dispatch would send, dispatches nothing
 
-# The model allowlist (src/models.ts). Absent, the built-in list applies:
-# claude-opus-5-5 (default, alias "opus"), claude-fable-5-1 (alias "fable",
-# model-scoped ceiling 90), and the Halogen model for pi. A call naming a model
-# outside the list runs the harness default, and the route records the request.
-# Ceilings are percent used; at or above one the capacity gate refuses that
-# model while the seat still takes others.
+# The model catalog (src/models.ts) is RUNTIME DATA (2026-10-10): name a plain TOML file of
+# [[models]] tables and the runners re-read it on every call (an edit is live at once, no
+# restart, no rebuild). It must exist at load. It outranks the inline [[models]] below; absent
+# both, the built-in list applies: claude-opus-5-5 (default, alias "opus"), claude-fable-5-1
+# (alias "fable", model-scoped ceiling 90), the Halogen model for pi, qwen3.8-max for
+# qwen-token-plan, deepseek/deepseek-v4-pro (default) and three more for openrouter, and NO
+# entry for openrouter-free (parked, see below).
+# models_file = "~/.config/substrate/models.toml"
+#
+# A call naming a model outside the list runs the harness default, and the route records the
+# request. Ceilings are percent used; at or above one the capacity gate refuses that model while
+# the seat still takes others. A pi PROVIDER with no entry is PARKED: its runtime is refused at
+# the route with "no model configured", route policies fall through, pi is never dialled.
 #
 # [[models]]
 # id = "claude-opus-5-5"
@@ -113,5 +120,25 @@ type = "ax"                   # spec only: writes the Task an ax dispatch would 
 # [runtime.openrouter-free]
 # type = "host"
 # harness = "pi"
-# provider = "openrouter-free"      # --provider openrouter --model stealth/space-bunny-alpha
+# provider = "openrouter-free"      # --provider openrouter --model <the catalog's openrouter-free entry>; PARKED while none
 # seat = "openrouter-free"
+#
+# A stealth model pi's own catalog does not know yet is declared in the models file with a
+# [models.pi] table; the runner injects it into a job-scoped pi agent dir (the host's
+# models.json as data plus that one model, PI_CODING_AGENT_DIR), so activating the lane is one
+# table in the data file:
+# [[models]]
+# id = "stealth/<new-model>"
+# harness = "pi"
+# provider = "openrouter-free"
+# default = true
+# [models.pi]
+# name = "<display name> (stealth, free)"
+# reasoning = true
+# input = ["text", "image"]
+# context_window = 1000000
+# max_tokens = 524288
+#
+# Host-side pi jobs save their session in the job's shadow (`--session-dir`) and it is archived
+# with the transcripts (~/.local/state/substrate/transcripts/<run>/<job>/pi-*.jsonl), which is
+# what the seats oracle reads to count factory spend on a credit-metered seat.

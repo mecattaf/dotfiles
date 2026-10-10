@@ -36,7 +36,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { Schema } from "effect";
 import { parse as parseToml } from "smol-toml";
-import { modelAllowlistProblems, type ModelAllowlist } from "./models.ts";
+import { loadModelsFile, modelAllowlistProblems, ModelEntrySchema, ModelsFileError, type ModelAllowlist } from "./models.ts";
 import { PI_PROVIDER_NAMES, PI_PROVIDERS, type PiProvider } from "./harness.ts";
 
 const Harness = Schema.Literals(["claude", "pi", "codex"]);
@@ -214,23 +214,15 @@ export const Credentials = Schema.Struct({
   context: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
-const Ceilings = Schema.Struct({
-  five_hour: Schema.optionalKey(Schema.Number),
-  seven_day: Schema.optionalKey(Schema.Number),
-  model_scoped: Schema.optionalKey(Schema.Number),
-});
-const ModelEntrySchema = Schema.Struct({
-  id: Schema.String,
-  harness: Harness,
-  provider: Schema.optionalKey(PiProviderSchema),
-  aliases: Schema.optionalKey(Schema.Array(Schema.String)),
-  default: Schema.optionalKey(Schema.Boolean),
-  ceilings: Schema.optionalKey(Ceilings),
-});
-
 export const RuntimesFile = Schema.Struct({
-  /** The model allowlist (models.ts). Absent: DEFAULT_MODEL_ALLOWLIST. */
+  /** The model allowlist (models.ts), inline. Absent: `models_file`, else DEFAULT_MODEL_ALLOWLIST. */
   models: Schema.optionalKey(Schema.Array(ModelEntrySchema)),
+  /**
+   * The model catalog as RUNTIME DATA (models.ts, 2026-10-10): a TOML file of
+   * `[[models]]` tables, re-read on every call, so a model changes with an
+   * edit and no restart. It must exist at load; it outranks inline `models`.
+   */
+  models_file: Schema.optionalKey(Schema.String),
   default: Schema.optionalKey(Schema.String),
   /** Runtimes a call may name with agent({runtime}). Absent: declared tables only, never an escalation. */
   allow: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -281,8 +273,10 @@ export interface RuntimesConfig {
   readonly seats: Readonly<Record<string, string>>;
   /** Where it came from, for receipts. */
   readonly source: string;
-  /** The model allowlist; absent means DEFAULT_MODEL_ALLOWLIST. */
+  /** The inline model allowlist; absent means `modelsFile`, else DEFAULT_MODEL_ALLOWLIST. */
   readonly models?: ModelAllowlist;
+  /** The mutable catalog file (absolute), read on every call (models.ts catalogFor). */
+  readonly modelsFile?: string;
   /** G-BK1: cancel grace for every runtime's harness (ms). Absent: DEFAULT_CANCEL_GRACE_MS. */
   readonly cancelGraceMs?: number;
   /** G-BK8: operator lifecycle hooks. */
@@ -356,6 +350,7 @@ export function decodeRuntimes(doc: unknown, source: string, home = homedir()): 
     seats: file.seats ?? {},
     source,
     ...(file.models !== undefined ? { models: file.models } : {}),
+    ...(file.models_file !== undefined ? { modelsFile: expandHome(file.models_file, home) } : {}),
     ...(file.cancel_grace_ms !== undefined ? { cancelGraceMs: file.cancel_grace_ms } : {}),
     ...(file.hooks !== undefined ? { hooks: {
       ...(file.hooks.pre_start?.length ? { preStart: file.hooks.pre_start } : {}),
@@ -364,6 +359,17 @@ export function decodeRuntimes(doc: unknown, source: string, home = homedir()): 
     } } : {}),
   };
   const problems: string[] = [...(file.models !== undefined ? modelAllowlistProblems(file.models) : [])];
+  if (config.modelsFile !== undefined) {
+    if (!config.modelsFile.startsWith("/")) problems.push(`models_file must be absolute (or ~/...), got ${file.models_file}`);
+    else {
+      // Read once here so a deployment with a missing or broken seed fails at start (exit 78), not on its first call.
+      try {
+        loadModelsFile(config.modelsFile);
+      } catch (e) {
+        problems.push(e instanceof ModelsFileError ? e.message : `models_file: ${(e as Error).message}`);
+      }
+    }
+  }
   if (file.cancel_grace_ms !== undefined && !(Number.isFinite(file.cancel_grace_ms) && file.cancel_grace_ms >= 0 && file.cancel_grace_ms <= 600_000))
     problems.push("cancel_grace_ms must be a number of milliseconds from 0 to 600000");
   if (file.hooks?.timeout_ms !== undefined && !(Number.isFinite(file.hooks.timeout_ms) && file.hooks.timeout_ms > 0 && file.hooks.timeout_ms <= 600_000))

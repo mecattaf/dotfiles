@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# call-diarize-start: kick off diarization of one closed call recording as a
+# detached transient user unit, and return at once.
+#
+#   call-diarize-start [--force] [--dry-run] <call_dir> [call-diarize args...]
+#
+# WHY THIS EXISTS (handoff 2026-10-10). `call-record stop` used to hand the
+# closed recording dir to `call-diarize-backfill --enqueue`, which wrote a Tally
+# event and relied on the tally daemon to pick it up. Tally was removed on
+# 2026-09-30 (AGENTS.md, dotfiles #480), so those events only pile up in
+# ~/.local/state/tally/events and nothing ever transcribes. By rule there is no
+# timer or scheduled sweep for this (AGENTS.md "Scheduled work", 2026-09-30):
+# the Shift+F9 stop of a call is the ONLY trigger for its diarization. So the
+# stop itself must start the work, directly, on the host that owns the GPU.
+#
+# `call-diarize <dir>` (pkgs/call-diarize, installed by home/harness-records.nix
+# on the strix only) is the real worker: VibeVoice-ASR on the GPU plus a Halogen
+# Flash cleanup. It runs for minutes, so it must not run in the Shift+F9 popup
+# or inside an ssh session that the thin client will close. systemd-run with
+# --no-block gives it a life of its own under the user manager; --collect
+# removes the unit on exit even when it failed, so a second call on a fixed-up
+# dir is never blocked by a dead unit of the same name. Output goes to
+# <dir>/diarize.log beside the evidence files, which is where a human looks
+# first when transcript.md never showed up.
+#
+# This script is on PATH on every host (~/.local/bin is the dotfiles bin dir),
+# but the diarizer is not: on a host without call-diarize it refuses and says
+# so, which is the thin client's cue to hand the dir to the strix (call-record
+# does that over ssh and calls this script on the far side).
+set -euo pipefail
+
+usage() {
+    echo "usage: call-diarize-start [--force] [--dry-run] <call_dir> [call-diarize args...]" >&2
+}
+
+force=0
+dry_run=0
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --force) force=1; shift ;;
+    --dry-run) dry_run=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    --) shift; break ;;
+    -*) echo "unknown option: $1" >&2; usage; exit 1 ;;
+    *) break ;;
+    esac
+done
+
+[[ $# -ge 1 ]] || { usage; exit 1; }
+raw_dir="$1"
+shift
+# Everything after the dir belongs to call-diarize (for example --hotwords).
+extra=("$@")
+
+[[ -d "$raw_dir" ]] || { echo "not a directory: $raw_dir" >&2; exit 1; }
+dir=$(realpath -- "$raw_dir")
+[[ -f "$dir/mix.wav" ]] || { echo "no mix.wav in $dir; not a closed call recording" >&2; exit 1; }
+if [[ -e "$dir/transcript.md" && "$force" != 1 ]]; then
+    echo "$dir already has transcript.md; pass --force to diarize again" >&2
+    exit 1
+fi
+if ! command -v call-diarize >/dev/null 2>&1; then
+    echo "this host has no diarizer; hand the dir to the strix" >&2
+    exit 1
+fi
+
+# One unit per recording dir. The basename is already slug-shaped from
+# call-record start, but anything outside the systemd-safe set is squashed so a
+# hand-made dir name cannot break the unit name.
+base=$(basename -- "$dir")
+unit="call-diarize-$(printf '%s' "$base" | tr -c 'A-Za-z0-9_.-' '_')"
+log="$dir/diarize.log"
+
+argv=(
+    systemd-run --user --no-block --collect --quiet
+    --unit "$unit"
+    --description "call-diarize $dir"
+    -p "WorkingDirectory=$dir"
+    -p "StandardOutput=append:$log"
+    -p "StandardError=append:$log"
+    -- call-diarize "$dir"
+)
+if [[ ${#extra[@]} -gt 0 ]]; then
+    argv+=("${extra[@]}")
+fi
+
+if [[ "$dry_run" == 1 ]]; then
+    printf '%s\n' "${argv[@]}"
+    exit 0
+fi
+
+# systemd-run exits non-zero when a unit of that name already exists. That is
+# the "already running" case, not an error: the recording is being handled.
+if "${argv[@]}" 2>"$dir/.diarize-start.err"; then
+    rm -f -- "$dir/.diarize-start.err"
+    echo "diarization started: $unit (log $log)"
+    exit 0
+fi
+if systemctl --user is-active --quiet "$unit" 2>/dev/null \
+    || grep -q "already exists\|already loaded" "$dir/.diarize-start.err" 2>/dev/null; then
+    rm -f -- "$dir/.diarize-start.err"
+    echo "diarization already running: $unit (log $log)"
+    exit 0
+fi
+echo "could not start $unit:" >&2
+cat "$dir/.diarize-start.err" >&2 || true
+rm -f -- "$dir/.diarize-start.err"
+exit 1

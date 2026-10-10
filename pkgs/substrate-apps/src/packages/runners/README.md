@@ -26,13 +26,23 @@ runsc = "/nix/store/...-gvisor-20260406.0/bin/runsc"
 Per call: `agent(prompt, { runtime: "gvisor" })`. Order: call, phase, default, `host`.
 `ssh:<host>` needs no table.
 
+**Models are runtime data** (2026-10-10). `models_file = "~/.config/substrate/models.toml"`
+names a TOML file of `[[models]]` tables (id, harness, provider, aliases, default, ceilings,
+and for pi an optional `[models.pi]` table describing a model pi's catalog does not know).
+The runners re-read it on every call, so a model changes with an edit, no restart or rebuild.
+A pi provider with no entry is parked: its runtime is refused at the route ("no model
+configured"), and a route policy falls through at once. A file that stops parsing refuses every
+call with the error. Precedence: `models_file`, inline `[[models]]`, the compiled default.
+Host-side pi jobs save their session in the job's shadow (`--session-dir`), archived with the
+transcripts so the seats oracle counts factory spend.
+
 | type | runs | notes |
 |---|---|---|
 | `host` | child process | baseline, no isolation |
 | `herdr` | herdr plugin action (default) or a visible pane | only its own workspaces; `substrate-runners herdr-link` once per server |
 | `gvisor` | `runsc run` on a generated OCI bundle, rootless | `--root` under `~/.local/state`; ro root and store; job dir rw at /work |
 | `microvm` | microvm.nix `declaredRunner`, built per job shape | boots only with `/dev/kvm` inside runtime-test; else a clear refusal |
-| `ssh` | `ssh <host>` | remote seat; `harness = "pi"` for Halogen on the worker |
+| `ssh` | `ssh <host>` | remote seat; `harness = "pi"` for pi on the remote host |
 | `workerd` | `workerd test` | Worker-shaped jobs only; agent() is refused |
 | `ax` | nothing | writes the FIELD-MAP Task it would send |
 

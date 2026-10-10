@@ -47,7 +47,11 @@ THE SEATS, and where each one's truth lives:
                 429 this box received, never a made-up TTL. A free GET /models
                 confirms the key still authenticates; the quota-spending probe
                 is opt-in (--probe-qwen) because asking costs the thing being
-                measured.
+                measured. Credits are counted from pi's live session logs
+                (~/.pi/agent/sessions) AND from the pi sessions the substrate
+                factory archives under ~/.local/state/substrate/transcripts;
+                a factory job's tokens appear when its job ends, because the
+                archive is written at job end.
 
   openrouter    OpenRouter, the paid key pi's `openrouter` provider uses (the
                 token lives at /run/agenix/openrouter-token and is read at call
@@ -226,7 +230,8 @@ DEFAULT_SEATS = [
      "config_dir": "~/.codex", "owner": "third-party", "spend_root": "~/.codex/sessions",
      "note": "RULINGS R-2026-09-06-02: this login is not Tom's — read by name, never spent."},
     {"id": "pi-qwencloud", "provider": "qwen", "label": "Qwen Cloud (token-plan, via pi)",
-     "owner": "tom", "spend_root": "~/.pi/agent/sessions"},
+     "owner": "tom",
+     "spend_root": ["~/.pi/agent/sessions", "~/.local/state/substrate/transcripts"]},
     {"id": "openrouter", "provider": "openrouter", "label": "OpenRouter (paid key, soft cap)",
      "owner": "tom", "meter": "usd"},
     {"id": "openrouter-free", "provider": "openrouter", "label": "OpenRouter free model (daily requests)",
@@ -249,6 +254,40 @@ def expand(value) -> Path | None:
     if text.startswith("~"):
         return Path(str(HOME) + text[1:])
     return Path(text)
+
+
+# The substrate factory archives every harness's session beside the job it
+# ran for (~/.local/state/substrate/transcripts/<run>/<job>/), so a directory
+# that holds pi-*.jsonl also holds the other harnesses' archives. Those are
+# another seat's spend and are skipped by basename, never read.
+OTHER_HARNESS_PREFIXES = ("claude-", "codex-")
+
+
+def spend_roots(spec, default=None) -> list[Path]:
+    """The directories a seat's `spend_root` names, keeping only those present.
+
+    `spend_root` is one path or a list of them: the harness's live session
+    store plus any archive of the same sessions kept elsewhere (for pi, the
+    factory's transcripts). A root that does not exist is skipped without a
+    word, so a box without the factory reports from the live store alone.
+    """
+    value = spec.get("spend_root") or default
+    values = value if isinstance(value, (list, tuple)) else [value]
+    roots = []
+    for item in values:
+        path = expand(item)
+        if path is not None and path.is_dir():
+            roots.append(path)
+    return roots
+
+
+def spend_files(roots):
+    """Every *.jsonl under the roots, minus other harnesses' archives."""
+    for root in roots:
+        for path in root.rglob("*.jsonl"):
+            if path.name.startswith(OTHER_HARNESS_PREFIXES):
+                continue
+            yield path
 
 
 def parse_ts(value):
@@ -1069,8 +1108,8 @@ QWEN_EVENTS_CACHE_VERSION = 2   # bump when the scan changes what it extracts
 QWEN_PROVIDER = "qwen-token-plan"
 
 
-def qwen_events(spend_root: Path):
-    """(events, resets) from pi's own session logs.
+def qwen_events(roots):
+    """(events, resets) from pi's own session logs, under every root given.
 
     events  sorted [(epoch, input, output)] for messages billed to the token
             plan — and ONLY those. The same session store carries locally
@@ -1082,10 +1121,11 @@ def qwen_events(spend_root: Path):
             recovered from history, not from a state file someone has to keep.
 
     Cached per file by (mtime, size). A month of this seat is ~3000 messages,
-    so the whole cache is small enough to keep whole.
+    so the whole cache is small enough to keep whole. The key is the full
+    path, so files under several roots never collide in it.
     """
     events, resets = [], set()
-    if not spend_root.is_dir():
+    if not roots:
         return events, resets
     try:
         blob = json.loads(QWEN_EVENTS_CACHE.read_text(encoding="utf-8"))
@@ -1093,7 +1133,7 @@ def qwen_events(spend_root: Path):
     except (OSError, ValueError):
         cache = {}
     fresh = {}
-    for path in spend_root.rglob("*.jsonl"):
+    for path in spend_files(roots):
         try:
             stat = path.stat()
         except OSError:
@@ -1236,7 +1276,7 @@ def read_qwen(spec, opts):
     #    reset the provider has ever stated here is recovered, so the current
     #    window's start is derivable without any endpoint at all.
     plan = load_qwen_plan()
-    events, resets = qwen_events(expand(spec.get("spend_root")) or (HOME / ".pi/agent/sessions"))
+    events, resets = qwen_events(spend_roots(spec, default="~/.pi/agent/sessions"))
     if held_until:
         resets.add(held_until)
     past = sorted(r for r in resets if r <= now())
@@ -1711,14 +1751,14 @@ def spend_since(spec, start: datetime, cache):
     they are never opened: a seven-day question does not need 255 project
     directories re-read from the beginning of time.
     """
-    root = expand(spec.get("spend_root"))
+    roots = spend_roots(spec)
     extract = EXTRACTORS.get(spec["provider"])
-    if root is None or extract is None or not root.is_dir():
+    if not roots or extract is None:
         return None
     floor = start.timestamp() - 3600
     totals = [0, 0, 0]
     files = sessions = 0
-    for path in root.rglob("*.jsonl"):
+    for path in spend_files(roots):
         try:
             stat = path.stat()
         except OSError:

@@ -2220,6 +2220,36 @@
               touch "$out"
             '';
 
+        # call-diarize-start: the detached launcher that `call-record stop`
+        # calls now that Tally (the old queue) is gone (removed 2026-09-30,
+        # handoff 2026-10-10). Hermetic: a fake systemd-run records its argv and
+        # a fake call-diarize only satisfies the PATH check; nothing is launched.
+        call-diarize-start =
+          pkgs.runCommand "call-diarize-start"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.bash
+                pkgs.coreutils
+              ];
+            }
+            ''
+              set -euo pipefail
+
+              export HOME="$TMPDIR/home"
+              export PYTHONDONTWRITEBYTECODE=1
+              export CALL_DIARIZE_START_SCRIPT=${./home/dot_local/bin/call-diarize-start}
+              export CALL_RECORD_SCRIPT=${./home/dot_local/bin/call-record}
+              mkdir -p "$HOME"
+
+              python3 -m unittest discover \
+                -s ${./tests/call-diarize-start} \
+                -p 'test_*.py' \
+                -v
+
+              touch "$out"
+            '';
+
         # Model bytes are explicit transactions, never activation work. Drive
         # the evaluated worker borrow binary against tiny fixtures, then keep
         # the guarded prune contract from dotfiles#296. Hermetic: no network,

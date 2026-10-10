@@ -8,14 +8,19 @@
  *   passed through `--json-schema` when the call has one. The prompt goes on
  *   stdin so it never appears in a process listing.
  * - `pi`: pi against one PROVIDER of `~/.pi/agent/models.json` (PI_PROVIDERS):
- *   Halogen on the worker (the default, unchanged), the Qwen token plan, or
- *   OpenRouter (paid models, and the free stealth model as its own provider
- *   key so it spends its own seat). The runtime table names the provider
- *   (`provider = "..."`, config.ts); the model comes from the allowlist of that
- *   provider (models.ts). pi resolves each key itself (`!cat /run/agenix/...`
- *   in models.json), so no credential passes through here. No session is
- *   saved. A schema becomes an instruction plus a JSON parse of the reply,
- *   because pi has no structured-output flag.
+ *   Halogen on the strix (the default, unchanged), the Qwen token plan, or
+ *   OpenRouter (paid models, and the free lane as its own provider key so it
+ *   spends its own seat). The runtime table names the provider
+ *   (`provider = "..."`, config.ts); the model comes from the catalog of that
+ *   provider (models.ts; a provider with no entry is parked and the backend
+ *   refuses before anything is dialled, so this builder always gets a model).
+ *   pi resolves each key itself (`!cat /run/agenix/...` in models.json), so no
+ *   credential passes through here. Since 2026-10-10 the session is SAVED into
+ *   the job's own dir (`--session-dir`, archived with the transcripts so the
+ *   seats oracle counts factory spend; CMP-2); a caller that gives none keeps
+ *   `--no-session`. An uncatalogued model rides in a job-scoped agent dir
+ *   (`PI_CODING_AGENT_DIR`, backend.ts). A schema becomes an instruction plus
+ *   a JSON parse of the reply, because pi has no structured-output flag.
  * - `codex`: `codex exec --json`, non-interactive, prompt on stdin (`-`),
  *   `-m <id>` when the allowlist names one (else codex's own default). A real
  *   codex runs only when `[seats]` binds the codex harness to a capacity seat
@@ -67,6 +72,10 @@ export interface HarnessCall {
   readonly codexSandbox?: "read-only" | "workspace-write";
   /** pi's provider (a runtime table's `provider`); default `halogen`. */
   readonly piProvider?: PiProvider;
+  /** pi: where this job's session is written (`--session-dir`); absent means `--no-session`. */
+  readonly piSessionDir?: string;
+  /** pi: a job-scoped agent dir carrying a generated models.json (`PI_CODING_AGENT_DIR`); absent means pi's own. */
+  readonly piAgentDir?: string;
 }
 
 /** Options a harness can honour; a call asking for another is refused, never silently dropped. */
@@ -118,25 +127,28 @@ export function claudeInvocation(call: HarnessCall): HarnessInvocation {
   };
 }
 
-/**
- * Each pi provider's pinned model when the allowlist resolves none (models.ts
- * DEFAULT_MODEL_ALLOWLIST names the same ids as its defaults).
- */
-export const PI_DEFAULT_MODEL: Readonly<Record<PiProvider, string>> = {
-  halogen: HALOGEN_MODEL,
-  "qwen-token-plan": "qwen3.8-max",
-  openrouter: "deepseek/deepseek-v4-pro",
-  "openrouter-free": "stealth/space-bunny-alpha",
-};
-
 export function piInvocation(call: HarnessCall): HarnessInvocation {
   const provider: PiProvider = call.piProvider ?? HALOGEN_PROVIDER;
+  // The backend resolves the model from the catalog and refuses a parked provider first (models.ts); a bare call
+  // with no model is a programming error, never a silent default (the pinned PI_DEFAULT_MODEL table is gone).
+  if (call.model === undefined) throw new Error(`pi harness: no model for provider ${provider} (the catalog has no entry for it; the lane is parked)`);
   const prompt = call.schema
     ? `${withCorrections(call.prompt, call.previousErrors)}\n\nReply with one JSON value only, no prose and no code fence, valid against this JSON Schema:\n${JSON.stringify(call.schema)}`
     : withCorrections(call.prompt, call.previousErrors);
   return {
-    argv: ["pi", "-p", "--no-session", "--provider", PI_PROVIDERS[provider].pi, "--model", call.model ?? PI_DEFAULT_MODEL[provider], "--mode", "text"],
+    argv: [
+      "pi",
+      "-p",
+      ...(call.piSessionDir !== undefined ? ["--session-dir", call.piSessionDir] : ["--no-session"]),
+      "--provider",
+      PI_PROVIDERS[provider].pi,
+      "--model",
+      call.model,
+      "--mode",
+      "text",
+    ],
     stdin: prompt,
+    ...(call.piAgentDir !== undefined ? { env: { PI_CODING_AGENT_DIR: call.piAgentDir } } : {}),
   };
 }
 
