@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # speak-clipboard -- queue the clipboard's text for reading aloud
 # Bound to Mod+Ctrl+R (niri/binds.kdl), on the client. Publishes one Markdown
-# file into the coordinator's ~/Speech/intake exactly as the /speak skill does:
+# file into the strix's ~/Speech/intake exactly as the /speak skill does:
 # a hidden .md.tmp, renamed to a visible .md only once fully written. The
 # speech-queue daemon owns synthesis, working hours (06:00-24:00), playback
 # and receipts. A clipboard with no text (an image, or blank) does nothing.
@@ -11,5 +11,5 @@ text="$(wl-paste --no-newline --type text 2>/dev/null)" || exit 0
 [ -n "${text//[[:space:]]/}" ] || exit 0
 
 name="$(hostname)--clipboard-$(date +%Y%m%dT%H%M%S)-$RANDOM$RANDOM"
-printf '%s\n' "$text" | ssh coordinator \
+printf '%s\n' "$text" | ssh strix \
     "mkdir -p ~/Speech/intake && cat > ~/Speech/intake/.$name.md.tmp && mv ~/Speech/intake/.$name.md.tmp ~/Speech/intake/$name.md"

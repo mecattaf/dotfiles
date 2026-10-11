@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# osd -- one replaceable on-screen notification for the hardware keys
+#
+# Usage:
+#   osd <title> <body> [percent]
+#
+# Brightness and volume keys call this after every press, the way Tom's 2024
+# hypr scripts did with a bare notify-send (restored 2026-10-10). One slot:
+# the notification id from the previous call is kept in $XDG_RUNTIME_DIR, so a
+# run of presses updates a single popup instead of stacking four of them
+# (mako's max-visible). When the popup has already expired, notify-send -r on
+# the stale id simply creates a fresh one, verified against mako 1.11 on the
+# client. With a percent, the `value` hint draws mako's progress bar
+# (progress-color in the theme fragment).
+#
+# Hosts without a notification daemon or notify-send (the strix, headless
+# boxes) get nothing and exit 0: the key's real work has already happened.
+
+set -u
+
+title="${1:?usage: osd <title> <body> [percent]}"
+body="${2:-}"
+percent="${3:-}"
+
+command -v notify-send >/dev/null 2>&1 || exit 0
+
+idfile="${XDG_RUNTIME_DIR:-/tmp}/osd-notify.id"
+args=(-p -t 1500 -a osd)
+if [ -s "$idfile" ]; then
+    args+=(-r "$(cat "$idfile")")
+fi
+if [ -n "$percent" ]; then
+    args+=(-h "int:value:$percent")
+fi
+
+id="$(notify-send "${args[@]}" "$title" "$body" 2>/dev/null)" || exit 0
+[ -n "$id" ] && printf '%s\n' "$id" > "$idfile"
+exit 0

@@ -2,13 +2,13 @@
 # tests/l8-flash-probe/test-handwritten-row.sh — the probe's hand-written-pair
 # row, exercised BOTH ways (dotfiles#319, #293).
 #
-# The row that matters is the one that will still be FAILing on the coordinator
+# The row that matters is the one that will still be FAILing on the strix
 # when this lands, because its subject is Tom's shell act in P05 walkthrough
 # step 4 (DEFERRED.md DF-U-D16-1). A row that is red on the day it is written is
 # exactly the row nobody notices is broken, so it is tested here against a fake
 # HOME in both states, and the test asserts the VERDICT, not the wording.
 #
-# Hermetic: a temp HOME, L8_FLASH_HOST=coordinator so the coordinator-only
+# Hermetic: a temp HOME, L8_FLASH_HOST=strix so the strix-only
 # branch is taken on any box and inside the nix sandbox, and no systemd, tally
 # or network call is consulted for this row. A fake `ssh` earlier on PATH
 # refuses every connection, so the probe's worker row (read over `ssh worker`
@@ -29,7 +29,7 @@ printf '#!%s\nexit 255\n' "$(command -v bash)" > "$tmp/bin/ssh"
 chmod 755 "$tmp/bin/ssh"
 
 run() { # $1 = fake HOME; prints the target row's line
-  PATH="$tmp/bin:$PATH" HOME="$1" L8_FLASH_HOST=coordinator bash "$PROBE" 2>/dev/null \
+  PATH="$tmp/bin:$PATH" HOME="$1" L8_FLASH_HOST=strix bash "$PROBE" 2>/dev/null \
     | grep -F "$ROW" || true
 }
 
@@ -45,7 +45,7 @@ check() { # $1 = name, $2 = want, $3 = got, $4 = whole line
   fi
 }
 
-# ── 1. the pair present as plain files: the state on the coordinator today ──
+# ── 1. the pair present as plain files: the state on the strix today ──
 h1="$tmp/present"; mkdir -p "$h1/.config/systemd/user"
 printf '[Unit]\n' > "$h1/.config/systemd/user/claude-transcript-mirror.service"
 printf '[Unit]\n' > "$h1/.config/systemd/user/claude-transcript-mirror.timer"
@@ -75,9 +75,9 @@ ln -s "$h4/fake-store/claude-transcript-mirror.timer" "$h4/.config/systemd/user/
 line="$(run "$h4")"
 check "declared symlinks -> PASS" PASS "$(verdict "$line")" "$line"
 
-# ── 5. off the coordinator the row does not apply ──────────────────────────
+# ── 5. off the strix the row does not apply ──────────────────────────
 line="$(PATH="$tmp/bin:$PATH" HOME="$h1" L8_FLASH_HOST=worker bash "$PROBE" 2>/dev/null | grep -F "$ROW" || true)"
-check "non-coordinator -> SKIP" SKIP "$(verdict "$line")" "$line"
+check "non-strix -> SKIP" SKIP "$(verdict "$line")" "$line"
 
 echo "$((5 - fails))/5 cases passed"
 test "$fails" -eq 0

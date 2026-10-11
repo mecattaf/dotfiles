@@ -14,14 +14,14 @@
 # preserving the broken one. Count-based retention structurally cannot do that.
 #
 # Why an explicit booted-generation exemption on top of the count: K alone is a
-# bet on churn rate, and the coordinator's churn is not gentle — generations
+# bet on churn rate, and the strix's churn is not gentle — generations
 # 49→96 landed in 8.7 days (2026-07-25 → 2026-08-03), i.e. ~5.5/day during
 # active work, ~3.4/day averaged since the flash. At that rate any K small
 # enough to be useful for disk is small enough to prune the generation you are
 # running from. So the booted generation is excluded by name, and K just sets
 # how much *extra* history to keep.
 #
-# INCIDENT (2026-08-20): found the coordinator holding exactly ONE system
+# INCIDENT (2026-08-20): found the strix holding exactly ONE system
 # generation — rollback depth zero on the daily driver. Cause: a hand-run
 # `nix-collect-garbage -d` against the 90%-full disk. `-d` deletes every
 # non-current generation FIRST and only then collects, silently defeating

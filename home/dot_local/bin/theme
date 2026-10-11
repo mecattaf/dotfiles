@@ -73,6 +73,19 @@ reload_niri() {
     fi
 }
 
+reload_scroll() {
+    # scroll/config includes ~/.config/theme/scroll.conf (client.* colours)
+    # last. `reload` validates first and keeps the old config on a parse
+    # failure; it re-runs exec_always (none in scroll/) but not exec.
+    if [[ -n "${SCROLLSOCK:-}" ]] && command -v scrollmsg >/dev/null; then
+        if scrollmsg reload >/dev/null 2>&1; then
+            echo '  scroll: config reloaded'
+        else
+            echo '  scroll: reload failed (is a session running?)' >&2
+        fi
+    fi
+}
+
 reload_nvim() {
     # nvim >= 0.9 listens on $XDG_RUNTIME_DIR/nvim.<pid>.0. lua/theme.lua's
     # reload() re-applies catppuccin, bufferline and lualine from the new fragment.
@@ -82,6 +95,23 @@ reload_nvim() {
         nvim --server "$sock" --remote-expr 'luaeval("require(\"theme\").reload() or \"ok\"")' >/dev/null 2>&1 && n=$((n + 1)) || true
     done
     printf '  nvim: %d instance(s) reloaded\n' "$n"
+}
+
+reload_sway() {
+    if [[ "${XDG_CURRENT_DESKTOP:-}" == sway-physical && -n "${SWAYSOCK:-}" ]]; then
+        swaymsg reload >/dev/null || echo '  sway: reload failed' >&2
+    fi
+}
+
+reload_desktop_tools() {
+    # Do not D-Bus-activate tools belonging to another desktop or launch a server.
+    if systemctl --user -q is-active mako.service; then
+        makoctl reload || echo '  mako: reload failed' >&2
+    fi
+    if systemctl --user -q is-active vicinae.service; then
+        # set rescans the theme files and reloads even when the ID is unchanged.
+        vicinae theme set dotfiles-current || echo '  vicinae: reload failed' >&2
+    fi
 }
 
 # herdr: nothing to do. Its [theme] name = "terminal" paints every token from
@@ -112,15 +142,27 @@ set_claude_code() {
 # Chrome follows color-scheme through the portal.
 gset() { gsettings set "$@" 2>/dev/null || printf '  gsettings: set %s failed\n' "$*" >&2; }
 
+#
+# The theme is MacTahoe on every session (niri and scroll alike): the gtk-theme
+# written here is the selected theme's MacTahoe variant, and Home Manager's gtk
+# block (home/home.nix) keeps its MacTahoe defaults and settings.ini files.
+# color-scheme is ALWAYS written explicitly, never left at "default": an unset
+# key makes the Settings portal answer "no preference", and libadwaita and
+# Chrome then render light under a dark MacTahoe theme.
 apply_gtk() {
     command -v gsettings >/dev/null || { echo '  gtk: no gsettings on PATH (pre-switch?)' >&2; return 0; }
     local gtk_theme scheme
     gtk_theme="$(meta gtk_theme || true)"; scheme="$(meta color_scheme || true)"
-    [[ -n "$gtk_theme" ]] || return 0
-    gset org.gnome.desktop.interface gtk-theme "$gtk_theme"
-    gset org.gnome.desktop.wm.preferences theme "$gtk_theme"
+    case "$scheme" in
+        prefer-dark|prefer-light) ;;
+        *) scheme="prefer-$(meta polarity || echo dark)" ;;
+    esac
     gset org.gnome.desktop.interface color-scheme "$scheme"
-    printf '  gtk: %s, %s\n' "$gtk_theme" "$scheme"
+    if [[ -n "$gtk_theme" ]]; then
+        gset org.gnome.desktop.interface gtk-theme "$gtk_theme"
+        gset org.gnome.desktop.wm.preferences theme "$gtk_theme"
+    fi
+    printf '  gtk: %s, %s\n' "${gtk_theme:-(unchanged)}" "$scheme"
     apply_icons
 }
 
@@ -148,6 +190,9 @@ apply() {
     local name; name="$(current)" || die "no theme selected ($link missing)"
     echo "theme: $name"
     reload_kitty
+    reload_scroll
+    reload_sway
+    reload_desktop_tools
     reload_niri
     reload_nvim
     apply_gtk

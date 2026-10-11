@@ -31,7 +31,7 @@
 # a declared hash ONLY when it is creating the shadow entry; for a user that
 # already has one it preserves whatever is there. So:
 #   * a newly flashed host gets the password automatically — the #54 case;
-#   * the coordinator, whose tom already exists with `!`, needs one
+#   * the strix, whose tom already exists with `!`, needs one
 #     `sudo passwd tom`, once. (The zenbook-duo was in the same position until
 #     it left the fleet on 2026-08-30.)
 # Making it authoritative everywhere would mean `users.mutableUsers = false`,
@@ -57,19 +57,19 @@ in
   # that excludes it by construction, so without this guard the flip would have
   # pointed `users.users.tom.hashedPasswordFile` at a secret the box cannot
   # decrypt — locking the account out of the appliance, not merely failing loudly.
-  config = lib.mkIf (
-    config.mySecrets.enable && havePasswordHash && config.networking.hostName != "nas"
-  ) {
-    age.secrets.tom-password-hash = {
-      file = ciphertext;
-      # Read by update-users-groups.pl as root. tom must NOT be able to read his
-      # own hash back out of /run, so this stays root:root 0400 rather than
-      # following the owner = "tom" pattern of the seeded credentials.
-      owner = "root";
-      group = "root";
-      mode = "400";
-    };
+  config =
+    lib.mkIf (config.mySecrets.enable && havePasswordHash && config.networking.hostName != "nas")
+      {
+        age.secrets.tom-password-hash = {
+          file = ciphertext;
+          # Read by update-users-groups.pl as root. tom must NOT be able to read his
+          # own hash back out of /run, so this stays root:root 0400 rather than
+          # following the owner = "tom" pattern of the seeded credentials.
+          owner = "root";
+          group = "root";
+          mode = "400";
+        };
 
-    users.users.tom.hashedPasswordFile = config.age.secrets.tom-password-hash.path;
-  };
+        users.users.tom.hashedPasswordFile = config.age.secrets.tom-password-hash.path;
+      };
 }

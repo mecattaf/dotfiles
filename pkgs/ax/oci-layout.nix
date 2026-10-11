@@ -27,7 +27,7 @@ runCommand "${lib.replaceStrings [ "/" ] [ "-" ] name}-oci"
   }
   ''
     export HOME=$TMPDIR
-    # gzip layers: these images cross the coordinator's wifi leg when pulled.
+    # gzip layers: these images cross the strix's wifi leg when pulled.
     skopeo --insecure-policy --tmpdir "$TMPDIR" copy --quiet \
       --dest-compress --dest-compress-format gzip \
       docker-archive:${image} oci:$out:${tag}

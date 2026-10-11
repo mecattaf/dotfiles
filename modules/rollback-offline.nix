@@ -11,7 +11,7 @@
 # lookup. This flake registers no channel, has no
 # /nix/var/nix/profiles/per-user/root/channels and no /etc/nixos/configuration.nix,
 # so `<nixpkgs/nixos>` cannot resolve and the command aborts — with or without an
-# uplink. That was discovered the hard way on 2026-07-25, when the coordinator
+# uplink. That was discovered the hard way on 2026-07-25, when the strix
 # lost its wifi after activating a bad generation and the only way back was a
 # physical reboot into the boot menu.
 #

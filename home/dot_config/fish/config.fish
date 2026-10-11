@@ -82,6 +82,13 @@ function cac2; __claude_seat cc2 $HOME/.claude-work --continue $argv; end
 # Third Claude account (2026-09-05), same rotation: state in ~/.claude-3.
 alias cc3='env CLAUDE_CONFIG_DIR=$HOME/.claude-3 claude --dangerously-skip-permissions'
 alias cac3='env CLAUDE_CONFIG_DIR=$HOME/.claude-3 claude --continue --dangerously-skip-permissions'
+# Codex, same shape: cx starts, cax resumes the newest session. codex 0.160.0
+# auto-starts a shared app-server daemon that copies its install into
+# ~/.codex/packages and needs the codex-package.json manifest the Nix build does
+# not ship ("this CLI has no complete local package", 2026-10-04), so the
+# launchers run the embedded server as before 0.160.
+alias cx='codex --disable daemon_auto_start --dangerously-bypass-approvals-and-sandbox'
+alias cax='codex resume --last --disable daemon_auto_start --dangerously-bypass-approvals-and-sandbox'
 
 # ── Music ────────────────────────────────────────────────────────────────
 # The library lives on the NAS and is served by Navidrome (hosts/nas/media.nix).

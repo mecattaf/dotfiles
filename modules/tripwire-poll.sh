@@ -106,7 +106,7 @@ if [ "$over" -eq 1 ]; then
     # been continuously over-threshold for `renotify` seconds fires again
     # rather than accumulating forever. Without this, a source that never
     # yields a quiet poll (a unit flapping at the poll cadence) latches the
-    # watcher silent — the coordinator's drain-dashboard-dns failed 2,258
+    # watcher silent — the strix's drain-dashboard-dns failed 2,258
     # times over 8 days and was reported once. The episode that fires here
     # is the post-fire accumulation, so it carries its own fresh episode id
     # and the marker/banner genuinely resurface.

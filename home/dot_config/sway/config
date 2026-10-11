@@ -1,0 +1,10 @@
+# Native Sway, physical seat. All raw files come from the dotfiles checkout.
+# No bar: Vicinae is the command surface; Mako owns notifications.
+include /etc/sway/physical-session.conf
+include ~/.config/sway/input.conf
+include ~/.config/sway/layout.conf
+include ~/.config/sway/binds.conf
+include ~/.config/sway/rules.conf
+include ~/.config/sway/startup.conf
+include ~/.config/sway-local.conf
+include ~/.config/theme/sway.conf

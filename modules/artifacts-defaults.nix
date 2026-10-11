@@ -8,11 +8,11 @@
 # point HERE as their verify-before-acting source — keep this file boring.
 {
   # Cloudflare zone the namespace lives in (same CF account wrangler is
-  # authenticated against — see secrets/wrangler-config.age, coordinator-only).
+  # authenticated against — see secrets/wrangler-config.age, strix-only).
   zone = "mecattaf.dev";
 
   # Every artifact is <slug>.<namespace>. Stable across rungs (split-horizon):
-  # tailnet rung = unproxied DNS record -> coordinator tailnet IP; public rung =
+  # tailnet rung = unproxied DNS record -> strix tailnet IP; public rung =
   # same name, proxied (Pages custom domain / tunnel). URL never changes.
   namespace = "art.mecattaf.dev";
 

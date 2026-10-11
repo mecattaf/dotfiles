@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One serial sweep of the coordinator's Markdown speech queue."""
+"""One serial sweep of the strix's Markdown speech queue."""
 import argparse, datetime, fcntl, json, os, shutil, socket, subprocess, time
 from pathlib import Path
 
@@ -14,8 +14,8 @@ def plain(source):
     p=subprocess.run(['pandoc','--from=gfm','--to=plain','--wrap=none'],input=source,text=True,capture_output=True,check=True)
     return p.stdout.strip()
 
-def sweep(root, qwen, player, default_seat="coordinator"):
-    if default_seat not in ("client", "coordinator"): raise ValueError("Invalid playback seat")
+def sweep(root, qwen, player, default_seat="client"):
+    if default_seat not in ("client", "strix"): raise ValueError("Invalid playback seat")
     for name in ['intake','work','outbox','spoken','failed']:(root/name).mkdir(parents=True,exist_ok=True,mode=0o700)
     with (root/'.lock').open('a') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -44,7 +44,8 @@ def sweep(root, qwen, player, default_seat="coordinator"):
                 if not audio.exists():
                     subprocess.run([qwen,'speak','--remote-command',qwen,'--file',str(txt),'--output',str(audio)],check=True,timeout=1800)
                 if quiet():job.rename(queued);break
-                seat = job.name.split('--', 1)[0] if job.name.startswith(('client--', 'coordinator--')) else default_seat
+                seat = job.name.split('--', 1)[0] if job.name.startswith(('client--', 'strix--', 'coordinator--')) else default_seat
+                if seat == "coordinator": seat = "strix"
                 command = [player] if seat == socket.gethostname() else ['ssh','-o','BatchMode=yes','-o','ConnectTimeout=5',seat,player]
                 with audio.open('rb') as data:
                     result=subprocess.run(command,stdin=data,timeout=1800)
@@ -58,5 +59,5 @@ def sweep(root, qwen, player, default_seat="coordinator"):
 
 if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--root',type=Path,default=Path.home()/'Speech');p.add_argument('--qwen',default='qwen-speech');p.add_argument('--player',default='speech-play');a=p.parse_args()
-    if socket.gethostname()!='coordinator':p.error('Speech queue belongs on coordinator')
+    if socket.gethostname() not in ('strix', 'coordinator'):p.error('Speech queue belongs on strix')
     os.umask(0o077);sweep(a.root,a.qwen,a.player)

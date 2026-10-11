@@ -67,14 +67,14 @@ enqueue_directory() {
   fi
 
   # For /home/tom/Recordings/calls/2026-08-09-demo this writes exactly:
-  # {"argv":["call-diarize","/home/tom/Recordings/calls/2026-08-09-demo"],"adapter":"shell","pool":["coordinator-gpu"],"priority":"low","source":"events-dir","dedupKey":"call-diarize:2026-08-09-demo","submission":{"mode":"full"},"evidence":["exit:0"],"runtimeMaxSec":21600,"noEnqueue":true}
+  # {"argv":["call-diarize","/home/tom/Recordings/calls/2026-08-09-demo"],"adapter":"shell","pool":["strix-gpu"],"priority":"low","source":"events-dir","dedupKey":"call-diarize:2026-08-09-demo","submission":{"mode":"full"},"evidence":["exit:0"],"runtimeMaxSec":21600,"noEnqueue":true}
   if ! jq -cn \
     --arg call_dir "$call_dir" \
     --arg dedup_key "$dedup_key" \
     '{
       argv: ["call-diarize", $call_dir],
       adapter: "shell",
-      pool: ["coordinator-gpu"],
+      pool: ["strix-gpu"],
       priority: "low",
       source: "events-dir",
       dedupKey: $dedup_key,

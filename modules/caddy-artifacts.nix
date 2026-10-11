@@ -5,7 +5,7 @@
   ...
 }:
 # Artifact serving plane — COORDINATOR only. Static snapshots live in the
-# drop-dir and optional live origins bind to coordinator loopback, so Caddy
+# drop-dir and optional live origins bind to strix loopback, so Caddy
 # never depends on a remote origin. Realizes the publish-artifact skill's
 # tailnet rung:
 #
@@ -77,13 +77,13 @@ in
   # Trusted-transport ingress only; nothing opens on LAN/WAN interfaces.
   networking.firewall.interfaces.tailscale0.allowedTCPPorts = [ 80 ];
   # LAN clients — the NAS included — reach the .internal front doors over the
-  # BE550 segment (wlp192s0) rather than hairpinning through this box's tailnet
+  # BE550 segment (enp191s0) rather than hairpinning through this box's tailnet
   # address (split horizon, see modules/adguardhome.nix). Until 2026-08-21 the
   # NAS used the private /30 cable instead, resolving photos.internal to
   # 10.77.0.1; that tether is retired (#264). Without this rule a LAN client
   # gets a closed port. Opened since the 2026-08-20 rewire; inert on hosts
   # without that interface name.
-  networking.firewall.interfaces.wlp192s0.allowedTCPPorts = [ 80 ];
+  networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 80 ];
 
   systemd.services.artifact-reaper = {
     description = "Reap expired artifacts (drop-dir TTL sweep)";

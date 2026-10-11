@@ -2,7 +2,7 @@
 
 Flow scripts for the post-LaCie campaign: local-model materialization (lane A) and
 the notes-reshape/drain arc (lane B), run concurrently. They are registered on
-coordinator against tally.nix 0.1.0 (`6b250541`) but remain unscheduled: every
+strix against tally.nix 0.1.0 (`6b250541`) but remain unscheduled: every
 entry has `onCalendar = null` and runs only through an explicit
 `tally flow run`. Dotfiles issue #104 is closed; lane A's weight step is now the
 operator's `local-models-borrow` transaction, and the flow that once wrapped it
@@ -10,7 +10,7 @@ refuses (see below).
 
 Codex is the agentic harness for all implementation nodes (ruled 2026-07-25);
 Claude Code is not used as a flow node. Local quorum work goes through `local()`
-members that dial the worker's Halogen Flash server (`http://worker:8731`,
+members that dial the worker's Halogen Flash server (`http://strix:8731`,
 model `halogen-qwen3.8-flash-next`; the one member is in `catalog.json`).
 
 ## T0 — flow-era readiness record
@@ -20,7 +20,7 @@ model `halogen-qwen3.8-flash-next`; the one member is in `catalog.json`).
 - `inputs.tally` is pinned to tally.nix 0.1.0 at `6b250541`, past the original
   flow-era minimum `e7ae081`.
 - The Home Manager module exports `services.tally.flows`; `home/tally.nix`
-  imports this registry on coordinator only.
+  imports this registry on strix only.
 - The Codex lane used to be a cooperative capacity-one mutex pool named after
   the harness window. It was retired on 2026-09-06 (dotfiles#291, dotfiles#302)
   and replaced by per-seat `budget` rows in `home/tally.nix`. Flows deliberately
@@ -29,7 +29,7 @@ model `halogen-qwen3.8-flash-next`; the one member is in `catalog.json`).
 - Tally 0.1.0 reserves `build` for `drv()` nodes. Shell nodes use
   `flow-build`; the nightly deploy leases both lanes to retain exclusivity.
 - The returned compute host is removed under #117. There is no remote-first
-  activation; the operator performs the coordinator switch and test drive
+  activation; the operator performs the strix switch and test drive
   manually. This repository change does not deploy or switch a host.
 - The ORACLE-DELTAS reconciliation remains Tom's separate, non-blocking item.
 
@@ -67,7 +67,7 @@ visible rather than being deleted with them.
 
 Affected: `allowlist-implementation`, `parakeet-determinism`, `docs-model-split`,
 `issue-96-drain`, `errata-map`. Their `sh()` nodes are unaffected — those name
-`flow-build` and `coordinator-gpu`, which still exist. Their `codex()` nodes are
+`flow-build` and `strix-gpu`, which still exist. Their `codex()` nodes are
 **refused at admission** and will stay refused until a later tally lands
 seat-named sugar.
 
@@ -93,8 +93,8 @@ The upstream ask is dotfiles#305.
 
 ## Notes
 
-- Pool names reference the live coordinator daemon config (`home/tally.nix`):
-  `flow-build`, `coordinator-gpu` and `worker-gpu`. The catalog member leases
+- Pool names reference the live strix daemon config (`home/tally.nix`):
+  `flow-build`, `strix-gpu` and `worker-gpu`. The catalog member leases
   `worker-gpu`, the row that describes the halogen box's device; the nightly
   deploy leases `flow-build`.
 - `materialize-model-weights` keeps its `flake` and `models` args so the

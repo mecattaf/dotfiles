@@ -19,28 +19,28 @@
 # the boot menu as the rollback.
 #
 # WHAT IT IS, in one line: a thin client. It shows Tom niri, kitty, Chrome and
-# the dock's peripherals, and everything that thinks runs on the coordinator
+# the dock's peripherals, and everything that thinks runs on the strix
 # (herdr server, the Claude/Codex/pi seats, tally, the artifact and microVM
 # planes) or the worker (Halogen). Mod+Return on this box is a herdr window
-# INTO the coordinator (~/.local/bin/herdr-projector, `herdr --remote
-# coordinator`, driven by herdr-chord from binds.kdl, #385); `desk` is the fish
+# INTO the strix (~/.local/bin/herdr-projector, `herdr --remote
+# strix`, driven by herdr-chord from binds.kdl, #385); `desk` is the fish
 # spelling of the same thing.
 #
 # WHAT IT IS NOT:
-#   * not an agent host — no herdr server (home/herdr.nix is coordinator-
-#     gated), no Claude/Codex credential (secrets.nix: coordinatorOnly, the
+#   * not an agent host — no herdr server (home/herdr.nix is strix-
+#     gated), no Claude/Codex credential (secrets.nix: strixOnly, the
 #     jul12 "own session" ruling stands), no tally clocks, no voxtype, no
 #     transcript mirror, no dcal daemon, no paper timers. Every one of those
-#     is `hostName == "coordinator"`-gated in home/; the flake's home-profiles
+#     is `hostName == "strix"`-gated in home/; the flake's home-profiles
 #     check asserts their absence here.
 #   * not a runner of anything, with ONE exception — ./huion.nix pulls the
 #     Huion Note X10's pages over Bluetooth on connect and pushes them to
-#     coordinator:~/Paper/inbox (one udev-triggered oneshot, one retry
+#     strix:~/Paper/inbox (one udev-triggered oneshot, one retry
 #     timer, a patched bluetoothd), because the radio is here
 #     (DECISIONS.md, 2026-09-13). Nothing else is added to this box for it.
 #   * not a server of anything — no wayvnc (no VNC in the fleet since the
 #     2026-09-11 headless flip: home/remote.nix and its Remmina viewer
-#     profile went with the coordinator's session), no atuin server, no
+#     profile went with the strix's session), no atuin server, no
 #     caddy, no immich or
 #     navidrome relay, no journal upload to the NAS (hosts/nas/journal.nix
 #     admits the twins only), no printing queue (forced off below), no
@@ -54,23 +54,31 @@
 #     re-uses the state on disk) but there is no auth key, no autoconnect
 #     unit and no `up` in any activation. On the LAN there is nothing but
 #     the LAN. See the tailscale block below.
-#   * not pushed to — like every device it pulls: the NAS builds this
-#     closure nightly (hosts/nas/update-center.nix) once that box is
-#     switched; activation is Tom, docked, running
-#       sudo nixos-rebuild switch --flake github:mecattaf/dotfiles/main#client
-#     Coordinator first whenever herdr is bumped (the two speak a versioned
-#     protocol and the laptop projects the coordinator's server).
+#   * not a builder: updates are evaluated and built on the strix and pushed
+#     (Tom, 2026-10-11: "can't that be done on the strix side of things?
+#     since it's a much more powerful device"). From the strix:
+#       deploy github:mecattaf/dotfiles/<rev>#client   (deploy.nodes.client)
+#     A local `sudo nixos-rebuild switch --flake github:mecattaf/dotfiles/main#client`
+#     still works but evaluates and builds here, which ran one core at
+#     101 C and the fan at 3400 rpm on 2026-10-11.
+#     Strix first whenever herdr is bumped (the two speak a versioned
+#     protocol and the laptop projects the strix's server).
 #
 # The hardware layer below is omarchy-fleet's profiles/zenbook-duo.nix +
 # hosts/zenbook-duo/hardware.nix merged with 77eac406^'s host module; each
 # omission is recorded where it would have gone.
 {
+  # Shared Sway + Vicinae desktop; hardware stays host-specific.
+  myDisplay.session = "sway";
+
   imports = [
     ../../modules/local-models.nix
     ./hardware.nix
     ./disko.nix
     ./audio.nix # pins the iContact webcam mic (on the dock) as the default source
     ./lid.nix # the lid does nothing to logind; niri (per-host slot) owns the backlight half
+    ./strix-reachability.nix
+    ./trackpad.nix
     ./huion.nix # the Huion Note X10 paper inbox: patched bluetoothd, hid-generic unbind
     # No dedicated nixos-hardware module for the UX8406; compose the generics.
     # common-pc-laptop does NOT enable bolt — modules/common.nix does, fleet-
@@ -79,6 +87,7 @@
     inputs.nixos-hardware.nixosModules.common-pc-laptop
     inputs.nixos-hardware.nixosModules.common-pc-laptop-ssd
     ../../modules/zenbook-duo-daemon.nix
+    ../../modules/keyring-autounlock.nix # TPM-sealed keyring unlock; greetd autologin types no password
     # kubectl + the google/ax binaries, behind myAxClient.enable. Imported on
     # all three interactive hosts, OFF on all three; read that module's header
     # for the runbook and for what it deliberately does not declare.
@@ -107,10 +116,12 @@
   # the 127.0.0.2 self-mapping, which this box has no reason to lose. The
   # NAS resolver does not serve DHCP client names (checked 2026-09-11:
   # `resolvectl query zenbook-duo` → not found while the box held a lease),
-  # so a laptop that dials `coordinator` needs its own answer. One answer per
+  # so a laptop that dials `strix` needs its own answer. One answer per
   # name per host, registry aliases both, so ssh stays TOFU-free.
-  networking.hosts."10.42.0.2" = [ "coordinator" ];
-  networking.hosts."10.42.0.5" = [ "worker" ];
+  networking.hosts."10.42.0.2" = [
+    "strix"
+    "coordinator"
+  ];
 
   # ── the LAN identity: thomas-6ghz, DHCP ────────────────────────────────────
   # Same profile the box already associates with (the fleet delivered one by
@@ -144,30 +155,34 @@
           psk = "$BE550_PSK";
         };
         ipv4.method = "auto";
+        # Prefer the direct home LAN over accepted Tailscale subnet routes.
+        # NetworkManager removes this rule when this Wi-Fi profile goes down,
+        # so roaming still uses the NAS subnet route without manual toggles.
+        ipv4.routing-rule1 = "priority 2500 to 10.42.0.0/24 table 254";
         ipv6.method = "ignore";
       };
   # Same INFO reasoning as the twins: wifi incidents on this fleet were once
   # forensically blind because NetworkManager logged nothing for weeks.
   networking.networkmanager.logLevel = "INFO";
 
-  # ── tailnet: declared, dormant ─────────────────────────────────────────────
-  # Tom's ruling 2026-09-11: on the LAN, nothing but the LAN. The daemon is
-  # enabled so the node state omarchy-fleet left under /var/lib/tailscale is
-  # kept and so a later, MANUAL
-  #   sudo tailscale up --login-server=https://nas-saas.tail8dd1.ts.net:8443
-  # joins the NAS headscale (the fleet rail's control URL, from omarchy-fleet
-  # modules/fleet-rail.nix) — never tailscale.com: the SaaS `zenbook-duo` node
-  # was removed on 2026-09-10 with "will never touch this again". No
-  # secrets/tailscale-authkey-client.age exists, so modules/secrets.nix wires
-  # no authKeyFile and no autoconnect unit; extraUpFlags only records the
-  # control plane a future key would go to. The fleet's own rail (a second,
-  # userspace tailscaled with state in /var/lib/tailscale-fleet, headscale
-  # node 4 `zenbook-duo-fleet`) is not declared here; its state dir is left in
-  # place for the operator to reuse or delete. Kernel-mode tailscaled (the
-  # NixOS default; the fleet rail was userspace with --accept-routes=false),
-  # so a future NAS subnet route for 10.42.0.0/24 can actually be used.
+  # wpa_supplicant (NetworkManager's backend) is pulled in by multi-user.target
+  # in the same instant iwlwifi registers wlan0, and the wpa_supplicant
+  # module's udev rule `try-restart`s it on that add event. When the restart
+  # lands in the unit's ExecStartPre chmod/chown, the SIGTERM marks the unit
+  # failed and surfaces an episode, although it comes straight back up (three
+  # of six boots, 2026-10-07..10). Start it once udev has finished with the
+  # card, so the restart finds nothing running. A missing card costs the
+  # device timeout, not a failure.
+  systemd.services.wpa_supplicant = {
+    wants = [ "sys-subsystem-net-devices-wlo1.device" ];
+    after = [ "sys-subsystem-net-devices-wlo1.device" ];
+  };
+
+  # Ordinary Tailscale for roaming access through the NAS subnet router.
+  # Enrollment is interactive; no auth key is embedded or re-applied at boot.
   services.tailscale.enable = true;
-  services.tailscale.extraUpFlags = [ "--login-server=https://nas-saas.tail8dd1.ts.net:8443" ];
+  services.tailscale.extraUpFlags = [ "--accept-routes" ];
+  services.tailscale.extraSetFlags = [ "--accept-routes" ];
 
   # ── failure surfacing: tom is uid 1001 here ────────────────────────────────
   # modules/failure-surfacing.nix watches the user manager of uid 1000 by
@@ -178,12 +193,14 @@
   # transient unit surfaced as its own episode — and left this user manager's
   # unit failures unwatched. Name the real uid.
   myFailureSurfacing.userManagerUids = [ 1001 ];
+  # The same uid for the keyring unlock's user manager.
+  myKeyringAutounlock.uid = 1001;
 
   # ── the Thunderbolt 3 dock ─────────────────────────────────────────────────
-  # This is the docking host: the coordinator's webcam/mic, Sound Blaster,
+  # This is the docking host: the strix's webcam/mic, Sound Blaster,
   # INZONE dongle and Glove80 all hang off a TB3 dock on this laptop's Type-C
   # port. The Magic Trackpad left the dock on 2026-09-17 and is Bluetooth-bonded
-  # to the coordinator alone (hosts/coordinator/trackpad.nix). boltd authorizes the dock; the domain reports
+  # to the strix alone (hosts/strix/trackpad.nix). boltd authorizes the dock; the domain reports
   # security "iommu+user", so a plugged dock may still need one enrolment
   # (`boltctl list`, then `boltctl enroll --policy auto <uuid>` once).
   # The fleet-wide bolt line left modules/common.nix on 2026-09-11 with the
@@ -192,13 +209,13 @@
   # themselves again, and does not reach a laptop whose whole peripheral
   # plane sits behind a dock. Declared here, host-scoped, on purpose.
   services.hardware.bolt.enable = true;
-  # lsusb for dock inspection over ssh; the coordinator has it, this box
+  # lsusb for dock inspection over ssh; the strix has it, this box
   # otherwise would not.
   environment.systemPackages = [ pkgs.usbutils ];
 
   # ── no printing queue on a thin client ─────────────────────────────────────
   # modules/printing.nix is fleet-wide for interactive hosts; printing from
-  # here goes through a Chrome tab on the coordinator or the print skill
+  # here goes through a Chrome tab on the strix or the print skill
   # there. Off, and its ensure-printers unit masked so the module's drop-in
   # cannot leave a half-defined service behind.
   services.printing.enable = lib.mkForce false;
@@ -217,6 +234,24 @@
   ];
   hardware.graphics.extraPackages = [ pkgs.intel-media-driver ];
   environment.sessionVariables.LIBVA_DRIVER_NAME = "iHD";
+
+  # Chrome on this box: VA-API hardware encode for Meet's outgoing camera.
+  # Decode is already hardware by default (2026-10-11, measured in a throwaway
+  # profile: AV1/VP9 playback on the video engine at ~5% of one core, WebRTC
+  # decoder "VaapiVideoDecoder"). Encode was libvpx in software (VP9 1280x720
+  # camera loopback 26.7% of one core); with AcceleratedVideoEncoder it is
+  # "VaapiVideoEncodeAccelerator" at 14.8%. VP8 stays software: Meteor Lake
+  # has no VP8 encoder. WaylandWindowDecorations is repeated because the
+  # wrapper's own NIXOS_OZONE_WL --enable-features comes earlier on the line.
+  # mkAfter: the override must wrap the nixpkgs-fresh google-chrome that the
+  # flake's overlay list installs, not be replaced by it.
+  nixpkgs.overlays = lib.mkAfter [
+    (_final: prev: {
+      google-chrome = prev.google-chrome.override {
+        commandLineArgs = "--enable-features=WaylandWindowDecorations,AcceleratedVideoEncoder";
+      };
+    })
+  ];
 
   # jul5 dual-eDP niri startup hang mitigation: niri.service is Type=notify and
   # was SIGKILLed before signalling ready. 120 s was not enough on 2026-09-14:
@@ -277,6 +312,76 @@
   # burns its five restarts in a second (omarchy-fleet R37).
   services.asusd.enable = true;
   systemd.tmpfiles.rules = [ "d /etc/asusd 0755 root root -" ];
+
+  # Quiet, on AC and on battery (Tom, 2026-10-11: "it really should not be in
+  # performance mode", then, after the measurement below, "sure re Quiet let's
+  # do that and i ll let you know if it's too slow or something, we'll move
+  # back to the other mode"; the other mode is Balanced). Same 1080p VP9
+  # playback: Balanced kept the fan at about 2250 rpm (62 C), Quiet at 0 rpm
+  # (54 C) with the video still on the video engine at about 11% of one core.
+  # This is a thin client: web, YouTube and Meet are the heaviest it ever
+  # runs. To go back, set both platform_profile lines to Balanced. Until now asusd's own
+  # undeclared default (platform_profile_on_ac: Performance, EPP performance)
+  # fired on boot and on every dock replug, so the box sat in Performance on
+  # the dock 24/7 and the fan ran at about 4000 rpm with a video playing.
+  # Declared here so a replug or a wiped /etc/asusd cannot bring it back.
+  # NixOS copies this as a 0644 file (not a store symlink), so asusd can still
+  # rewrite it at runtime; every activation puts this text back.
+  # profile_quiet_epp stays Power (what Quiet measured with). profile_balanced_epp
+  # is BalancePerformance, the EPP power-profiles-daemon
+  # applied with Balanced during the measurement, not asusd's BalancePower.
+  services.asusd.asusdConfig.text = ''
+    (
+        charge_control_end_threshold: 60,
+        base_charge_control_end_threshold: 100,
+        disable_nvidia_powerd_on_battery: true,
+        ac_command: "",
+        bat_command: "",
+        platform_profile_linked_epp: true,
+        platform_profile_on_battery: Quiet,
+        change_platform_profile_on_battery: true,
+        platform_profile_on_ac: Quiet,
+        change_platform_profile_on_ac: true,
+        profile_quiet_epp: Power,
+        profile_balanced_epp: BalancePerformance,
+        profile_custom_epp: Performance,
+        profile_performance_epp: Performance,
+        ac_profile_tunings: {
+            Performance: (
+                enabled: false,
+                group: {},
+            ),
+            Quiet: (
+                enabled: false,
+                group: {},
+            ),
+        },
+        dc_profile_tunings: {
+            Quiet: (
+                enabled: false,
+                group: {},
+            ),
+        },
+        armoury_settings: {},
+    )
+  '';
+  # asusd reads that file only at start and the upstream unit has no trigger,
+  # so a switch that changes it restarts asusd; otherwise the old in-memory
+  # Performance rule would keep firing until the next boot.
+  systemd.services.asusd.restartTriggers = [ config.environment.etc."asusd/asusd.ron".text ];
+  # asusd is the one owner of the platform profile here, as on the strix
+  # (hosts/strix/default.nix). The fleet-wide power-profiles-daemon
+  # (modules/common.nix) wrote the same sysfs knob and restored its own saved
+  # profile seven seconds after asusd set one at boot (2026-10-11 journal).
+  # Nothing in home/ talks to it.
+  services.power-profiles-daemon.enable = lib.mkForce false;
+  # And no TLP. nixos-hardware's common-pc-laptop (imported above) sets
+  # `services.tlp.enable = lib.mkDefault (!power-profiles-daemon.enable)`, so
+  # turning ppd off started TLP on the 2026-10-11 switch. Its defaults carry
+  # PLATFORM_PROFILE_ON_AC="performance" (the exact rule removed above) and
+  # USB autosuspend, which it applied to the Bluetooth adapter and the
+  # iContact camera. asusd stays the single owner.
+  services.tlp.enable = false;
   # thermald is OFF on this box (2026-09-13), measured: the UX8406MA gives it
   # nothing to act on — every ACPI trip is at 103 °C or above, the EC owns the
   # fan and exposes no curve (asusctl's fan-curve verb aborts with a core dump

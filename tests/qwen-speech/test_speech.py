@@ -207,7 +207,7 @@ class SpeechTests(unittest.TestCase):
         target = Path(self.tmp.name) / "saved.wav"; target.write_bytes(b"previous successful recording")
         producer = Mock(stdin=io.BytesIO(), stdout=io.BytesIO(b"\0\0" * 100))
         producer.wait.return_value = 1; producer.poll.return_value = 1
-        args = SimpleNamespace(client=None, remote_command="qwen-speech", coordinator="coordinator", stop=False, output=str(target))
+        args = SimpleNamespace(client=None, remote_command="qwen-speech", strix="strix", stop=False, output=str(target))
         with patch.object(speech, "read_text", return_value="Exact text, Tom."), \
                 patch.object(speech.subprocess, "Popen", return_value=producer):
             with self.assertRaisesRegex(RuntimeError, "partial audio retained"):

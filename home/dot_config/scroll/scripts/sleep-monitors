@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# F10 → "Sleep monitors?" prompt. Powers the displays off without suspending
+# the system — the local DNS filter (AdGuard), NAS frontend, Immich, Navidrome
+# and every terminal session keep running. Move the mouse or press any key to
+# wake the displays (scripts/monitors-off arms that; scroll, unlike niri, does
+# not wake outputs on input by itself).
+#
+# Spawned in a small floating kitty popup by scroll/binds.conf (F10), sized by
+# scroll/rules.conf (app_id matches the --class flag).
+set -euo pipefail
+
+choice=$(printf '%s\n' \
+    '  Yes — sleep monitors' \
+    '  No — cancel' \
+| fzf \
+    --prompt='> ' \
+    --header='Sleep monitors?' \
+    --height=100% \
+    --reverse \
+    --no-info \
+    --pointer='›' \
+    --color='prompt:bold:8,header:italic:7,pointer:5')
+
+case "$choice" in
+    # setsid: the prompt's kitty closes right after; the watcher must outlive it.
+    *'Yes'*) setsid -f "$HOME/.config/scroll/scripts/monitors-off" ;;
+esac

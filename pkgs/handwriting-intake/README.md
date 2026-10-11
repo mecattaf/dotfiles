@@ -1,6 +1,6 @@
 # Handwriting intake: manual Huion pilot
 
-This coordinator CLI receives **one explicitly selected Huion JSON/SVG group**, submits one page to the existing Halogen Flash server, and prepares a writer-review packet. It has no scanner, inference timer, device-clear operation, automatic annotation acceptance, or new model service. Received originals remain untouched.
+This strix CLI receives **one explicitly selected Huion JSON/SVG group**, submits one page to the existing Halogen Flash server, and prepares a writer-review packet. It has no scanner, inference timer, device-clear operation, automatic annotation acceptance, or new model service. Received originals remain untouched.
 
 The packaged command defaults to `/var/lib/handwriting-intake`; an explicit `--state PATH` before the subcommand overrides it. Direct Python execution defaults to `~/Paper/ocr`.
 

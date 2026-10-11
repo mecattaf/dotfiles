@@ -16,7 +16,7 @@
 #     brick) is accepted until the upstream ordering fix reaches a stable the
 #     fleet pin already carries. Follow-up, not a footnote.
 #   * hardware.cpu.intel.npu.enable — AGENTS.md's NPU decommission is worded
-#     for the XDNA2 twins, but a thin client with all inference on the worker
+#     for the XDNA2 twins, but a thin client with all inference on Strix
 #     has no consumer for Intel NPU firmware either; the surface stays closed.
 {
   imports = [ (modulesPath + "/installer/scan/not-detected.nix") ];

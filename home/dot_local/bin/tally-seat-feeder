@@ -9,7 +9,7 @@ tick_ms 60_000 and stale_ticks 1 (tally crates/tally-kernel/src/admission.rs
 :126-139), and rung 4 of `decide` turns any row older than one tick into
 SLOW stale_observation (:501-510). SLOW is a refusal — Signal::is_refusal
 (:46-48) — so a row nobody re-stamps is a door that is shut by arithmetic
-alone. The rows the kernel owns (gpu-coordinator, gpu-worker, mechanical)
+alone. The rows the kernel owns (gpu-strix, gpu-strix, mechanical)
 are re-stamped by the kernel at every admit probe, so their freshness is
 probe time. The rows TOM owns have no such writer. This program is it.
 
@@ -365,7 +365,7 @@ def claude_seats():
     bug: `Environment=` in a systemd unit splits an UNQUOTED value on
     whitespace into SEPARATE assignments, so `TALLY_CLAUDE_SEATS=cc cc2 cc3`
     reached this program as `cc` alone and two words systemd tried and failed
-    to parse as further assignments. On 2026-09-07 17:0xZ the live coordinator
+    to parse as further assignments. On 2026-09-07 17:0xZ the live strix
     had one Claude row on disk for three seats for exactly that reason. Both
     separators are read here so that neither spelling can lose a seat again.
     """

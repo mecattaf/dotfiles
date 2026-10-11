@@ -539,7 +539,7 @@ def main(argv: list[str] | None = None, *, environ: dict[str, str] | None = None
                     out,
                     campaign_repo,
                     no_capture=no_capture,
-                    capture_host=environ.get("MUSIC_ACQUIRE_CAPTURE_HOST", "worker"),
+                    capture_host=environ.get("MUSIC_ACQUIRE_CAPTURE_HOST", "strix"),
                     environ=environ,
                 )
                 items, request = _enumerate(args, backend)
@@ -581,7 +581,7 @@ def main(argv: list[str] | None = None, *, environ: dict[str, str] | None = None
             out,
             campaign_repo,
             no_capture=no_capture,
-            capture_host=environ.get("MUSIC_ACQUIRE_CAPTURE_HOST", "worker"),
+            capture_host=environ.get("MUSIC_ACQUIRE_CAPTURE_HOST", "strix"),
             environ=environ,
         )
     capture = backend.prepare()

@@ -2,7 +2,7 @@
 # Fleet journald substrate, receiver side (issue #135, workstream 1). The NAS
 # holds the fleet's remote journal on the dedicated NVMe (disko mounts it at
 # /var/log/journal/remote — journal-remote's default output). SplitMode = "host"
-# below keeps each sender in its own file set, so the coordinator and the worker
+# below keeps each sender in its own file set, so the strix and the worker
 # (admitted since 2026-08-21, #229) never interleave. Continuous
 # writeback is why this lives on the SSD: it would be wear on the eMMC and
 # spin-up poison for the HDD. The weekly NVMe→HDD archive job and its
@@ -31,7 +31,7 @@
     # transport is the same point-to-point /30 that already carries NFSv4.
     listen = "http";
     settings.Remote = {
-      # ~40% of the NVMe; coordinator keeps 80 days locally and weekly
+      # ~40% of the NVMe; strix keeps 80 days locally and weekly
       # archives will land on the HDD, so NVMe loss loses almost nothing.
       MaxUse = "100G";
       SplitMode = "host";
@@ -56,13 +56,12 @@
   # somebody has to make, not a lease somebody happens to get.
   #
   # Both sender addresses are STATIC on their own side
-  # (hosts/coordinator/uplink-nas.nix, hosts/worker/default.nix) with dhcp-host
+  # (hosts/strix/uplink-nas.nix, hosts/worker/default.nix) with dhcp-host
   # pins in ./router.nix as the pool guard, so this ACL cannot be defeated by a
   # lease shuffle.
   #
   # This renders because the NAS runs the nftables backend (see network.nix).
   networking.firewall.extraInputRules = ''
-    ip saddr 10.42.0.2 tcp dport 19532 accept comment "journald-remote upload from coordinator (LAN; /30 retired 2026-08-21)"
-    ip saddr 10.42.0.5 tcp dport 19532 accept comment "journald-remote upload from worker (LAN; reintegrated 2026-08-21, refs #229)"
+    ip saddr 10.42.0.2 tcp dport 19532 accept comment "journald-remote upload from strix (LAN; /30 retired 2026-08-21)"
   '';
 }

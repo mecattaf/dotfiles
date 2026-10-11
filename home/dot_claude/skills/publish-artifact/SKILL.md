@@ -10,8 +10,8 @@ when_to_use: something rendered/built/running needs a URL; sharing with a device
 ## Mental model (read first)
 
 - **Rendering-blind.** An artifact is a snapshot dir or a `host:port`. Never ask where it came from; never render here. The microvm is the workshop, not the gallery — static content NEVER holds a VM alive.
-- **Stable URL across rungs.** `<slug>.art.mecattaf.dev` is minted at first publish and survives promotion (split-horizon DNS: tailnet rung = unproxied record → coordinator tailnet IP, unroutable off-tailnet; public rung = same name, proxied).
-- **Rung 0 exists and is free.** `artifact-view <dir>` (bounded app window from file://) needs nothing from this skill. Publish only to cross a device/person boundary. On a host without a display (the coordinator after 2026-09-11) `artifact-view` exits 2 and prints the publish rung; the seat (`client`) opens the URL — rung 0 is the CLIENT's rung.
+- **Stable URL across rungs.** `<slug>.art.mecattaf.dev` is minted at first publish and survives promotion (split-horizon DNS: tailnet rung = unproxied record → strix tailnet IP, unroutable off-tailnet; public rung = same name, proxied).
+- **Rung 0 exists and is free.** `artifact-view <dir>` (bounded app window from file://) needs nothing from this skill. Publish only to cross a device/person boundary. On a host without a display (the strix after 2026-09-11) `artifact-view` exits 2 and prints the publish rung; the seat (`client`) opens the URL — rung 0 is the CLIENT's rung.
 - **Ephemerality lives in ONE place:** the drop-dir (TTL in the FILENAME) plus CF metadata (expiry in the DNS comment / project name). No side registry, ever.
 
 ## Live facts (verify before acting)
@@ -19,12 +19,12 @@ when_to_use: something rendered/built/running needs a URL; sharing with a device
 | Field | Value |
 |---|---|
 | Config edit point | `modules/artifacts-defaults.nix` — namespace `art.mecattaf.dev`, zone `mecattaf.dev`, stateDir, TTL 7d |
-| Publish host | coordinator ONLY (gh + wrangler creds live there — operator-box ruling, secrets.nix) |
+| Publish host | strix ONLY (gh + wrangler creds live there — operator-box ruling, secrets.nix) |
 | Drop-dir | `/var/lib/artifacts/` — `<slug>.until-YYYYMMDD.caddy` + `<slug>/` snapshot; owned by tom, read by caddy |
-| Reaper | `artifact-reaper.timer` daily on coordinator — LOCAL sweep only for now; CF-side sweep pending API wiring |
+| Reaper | `artifact-reaper.timer` daily on strix — LOCAL sweep only for now; CF-side sweep pending API wiring |
 | Tailnet serving | Caddy :80 on tailscale0, plain HTTP v1 (TLS via caddy-dns/cloudflare DNS-01 = pending follow-up) |
 | Public live | PENDING: cloudflared tunnel credential must be re-minted (deliberate reversal of the 2026-07-05 removal, ruled 2026-07-11) — one static wildcard ingress `*.art.mecattaf.dev` → localhost Caddy |
-| Live origins | coordinator loopback only (`127.0.0.1:PORT`; see microvm skill "publishing a port out of a VM") |
+| Live origins | strix loopback only (`127.0.0.1:PORT`; see microvm skill "publishing a port out of a VM") |
 | Inventory | `wrangler pages project list --json` (Git Provider column: git-integrated = durable, direct-upload = transient) + `ls /var/lib/artifacts/` |
 
 ## Path decision — pick before you publish
@@ -37,7 +37,7 @@ STATIC (snapshot dir) → audience?
                   unless Tom says otherwise (the capability URL is the password)
   forever       → GRADUATE: gh repo create + Pages git integration.
                   Exits this skill; per-repo doctrine takes over.
-LIVE (host:port) → origin must be coordinator-local and outlive the TTL
+LIVE (host:port) → origin must be strix-local and outlive the TTL
                    (⇒ durable `microvm -c`, never a foreground ephemeral VM).
                    Audience?
   tailnet → drop a reverse_proxy block, TTL
@@ -47,7 +47,7 @@ LIVE (host:port) → origin must be coordinator-local and outlive the TTL
 
 In doubt: tailnet, 7 days, human slug.
 
-## Verbs (run on the coordinator)
+## Verbs (run on the strix)
 
 ### Publish static to tailnet
 
@@ -61,14 +61,14 @@ http://$slug.art.mecattaf.dev:80 {
 }
 EOF
 sudo systemctl reload caddy
-# DNS (once per slug): unproxied A record -> coordinator tailnet IP, comment "artifact expires=$until"
+# DNS (once per slug): unproxied A record -> strix tailnet IP, comment "artifact expires=$until"
 ```
 
 ### Publish live origin to tailnet
 
 Same drop-file with `reverse_proxy 127.0.0.1:PORT` instead of
 `root`/`file_server`. Reject non-loopback live origins: Caddy and the durable VM
-host share the coordinator, so no tailnet firewall hole or remote dependency is
+host share the strix, so no tailnet firewall hole or remote dependency is
 needed.
 
 ### Publish static public (Pages)
@@ -99,7 +99,7 @@ wrangler pages project delete "$slug" --yes 2>/dev/null || true   # if it went p
 ## Hard rules
 
 1. Every publish gets a TTL; default 7 days. "Indefinite" = git (repo or nix), never a long TTL.
-2. Publish only from the coordinator (credential doctrine).
+2. Publish only from the strix (credential doctrine).
 3. Unexpose BEFORE destroying a live origin — microvm destroy step 0 points here.
 4. Exposure TTL ≤ origin lifetime; public+live ⇒ durable microvm path.
 5. Transient public artifacts get unguessable slugs; human slugs are for tailnet or graduated things.

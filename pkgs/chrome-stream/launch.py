@@ -163,7 +163,7 @@ def main():
             link = f"http://127.0.0.1:{a.port}/#" + env['CHROME_STREAM_TOKEN']
             (state/'viewer-url').write_text(link + '\n')
             print(f'Ready. Viewer link: {state}/viewer-url', flush=True)
-            print(f'On the client: ssh -N -L {a.port}:127.0.0.1:{a.port} coordinator', flush=True)
+            print(f'On the client: ssh -N -L {a.port}:127.0.0.1:{a.port} strix', flush=True)
             while all(c.poll() is None for c in children):
                 time.sleep(.5)
     except KeyboardInterrupt:

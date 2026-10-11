@@ -2,7 +2,12 @@
 
 - Upstream: agency-agency/substrate (private; the repo formerly named ax-conwip, Tom 2026-09-23 E10), local
   checkout `/home/tom/mecattaf/substrate`, branch `main`.
-- Source sha: `d455c3f0512ecec44b5f9075e52366cb47edb225` (synced 2026-09-30T18:51:39Z, apps/puller present)
+- Source sha: `d2c1125b738ae6e8a05f2bc64227936abb3123ac` (synced 2026-10-10T17:33:38Z, apps/puller present)
+  2026-10-10: synced to d2c1125, the HEAD of the branch `fix/models-file-pi-sessions` (agency-agency/substrate#9,
+  open: the model catalog is runtime data (`models_file`, D-S17), a pi provider with no entry is parked (D-S18),
+  host-side pi jobs save their session for seats (D-S19), Halogen base URL on strix). The lockfile did not change
+  (MEASURED `git diff --stat` on the vendored pnpm-lock.yaml: empty), so `pnpmDeps.hash` is unchanged. If #9 merges
+  with a merge commit, re-run `./sync.sh /home/tom/mecattaf/substrate <merge sha>` (content-identical, sha line only).
   2026-09-30: synced to d455c3f, the HEAD of the UNMERGED branch `feat/providers-openrouter-qwen`
   (agency-agency/substrate#1: pi providers qwen-token-plan / openrouter / openrouter-free, credit-metered
   admission, fail-fast refusals) on top of fc2f8bd, so tonight's rebuild carries it. If that PR changes before it
@@ -105,3 +110,24 @@ and requires exit 78 with a `config-invalid` line: every import resolved through
 - Whether `pkgs/substrate-link` (a021003) is retired in favour of this set's `link`. Default: yes, in the follow-up
   that re-points `hosts/nas/substrate-link.nix`, after Lane A's 4-VM test is green on ax/fleet-zero; not in this lane
   (hosts/ is Lane A's).
+
+## Local fleet patch (2026-10-08, upstreamed 2026-10-10)
+
+`packages/runners/src/backend.ts` and its successor-r4 assertion pointed the
+Halogen client at `strix` as a local patch after the worker's retirement. That
+patch is upstream since d2c1125 (substrate#9), so `src/` is again a clean
+`git archive` of the sha above and nothing is carried by hand. Deployment config
+maps `gpu-strix` to the stable `halogen` seat. The authenticated puller holder
+remains `coordinator` until the remote token binding is migrated separately.
+
+## What changed between d455c3f and d2c1125 that matters to the box (2026-10-10)
+
+- `runtimes.toml` top level gains `models_file` (the mutable model catalog, re-read on every call; it must exist at
+  load, so `modules/substrate.nix` seeds it from the puller unit when absent). `[[models]]` entries may carry a
+  `[models.pi]` table for a model pi's catalog does not know; the runner injects it into a job-scoped pi agent dir.
+- A pi provider with no catalog entry is parked: the route is refused at once ("no model configured"). The compiled
+  default has no `openrouter-free` entry, so the rendered runtimes keep that runtime and seat while the data file
+  holds no model for it.
+- Host-side pi jobs run `--session-dir <shadow>/pi-agent/sessions`; the session is archived under
+  `~/.local/state/substrate/transcripts/<run>/<job>/pi-*.jsonl` (what `seats` reads for the Qwen seat).
+- `HALOGEN_BASE_URL` is `http://strix:8731/v1` upstream (was the local patch).

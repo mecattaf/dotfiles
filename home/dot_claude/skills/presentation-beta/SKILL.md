@@ -31,7 +31,7 @@ artifact-view ~/decks/q3-allhands           # rehearse, file://
 # broadcast -> publish-artifact skill
 ```
 
-On a host without a display (the coordinator after 2026-09-11) `artifact-view` exits 2 and prints the publish rung; the seat (`client`) opens the URL — rung 0 is the CLIENT's rung.
+On a host without a display (the strix after 2026-09-11) `artifact-view` exits 2 and prints the publish rung; the seat (`client`) opens the URL — rung 0 is the CLIENT's rung.
 
 ## Hard rules
 

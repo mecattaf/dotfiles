@@ -84,7 +84,7 @@ check("1c sums: 5 requests, 1 unparsed, access line skipped",
 check("1d prompt/cached/completion totals",
       (acc["prompt_tokens"], acc["cached_tokens"], acc["completion_tokens"]) == (4666, 674, 1224))
 
-spec_ = m.SERVE_PROBES["worker"][0]
+spec_ = m.SERVE_PROBES["strix"][0]
 clock = m.Clock()
 os.environ["FAKE_MODE"] = "lines"
 w = m.read_token_window(spec_, "s=prev", clock)

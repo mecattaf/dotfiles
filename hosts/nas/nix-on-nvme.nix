@@ -5,7 +5,7 @@
 # to the NVMe and added min-free/max-free, and that was NOT ENOUGH — it
 # treated a capacity problem as a hygiene problem. Measured 2026-08-22 with
 # min-free confirmed live in the daemon (min-free=5G, max-free=20G,
-# min-free-check-interval=5) while update-center built the coordinator:
+# min-free-check-interval=5) while update-center built the strix:
 #
 #   08:09:09 free=4188M     08:10:33 free=2067M
 #   08:09:45 free=4103M     08:10:45 free=1373M
@@ -61,8 +61,7 @@
 #      (Do NOT delete in the same session that flips the gate — the old copy
 #      is the entire rollback story if step 6 goes wrong.)
 {
-  options.myNas.nixOnNvme.enable = lib.mkEnableOption
-    "back /nix with the 256G M.2 instead of the 57G eMMC (REBOOT-ONLY, see #232)";
+  options.myNas.nixOnNvme.enable = lib.mkEnableOption "back /nix with the 256G M.2 instead of the 57G eMMC (REBOOT-ONLY, see #232)";
 
   config = lib.mkIf config.myNas.nixOnNvme.enable {
     # Both are neededForBoot: the initrd must mount /mnt/fast before it can

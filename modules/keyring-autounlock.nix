@@ -1,20 +1,28 @@
-{ config, lib, pkgs, ... }:
-# Automatic gnome-keyring unlock on the headless coordinator (Tom, 2026-09-14:
-# "prefer NOT having to type pwd at all").
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+# Automatic gnome-keyring unlock on the headless strix (Tom, 2026-09-14:
+# "prefer NOT having to type pwd at all"), and on the client seat since
+# 2026-10-10, where greetd autologs in and so never hands PAM a password.
 #
-# The coordinator boots with no login, so nothing unlocks Default_Keyring and
-# the browser desktop's Chrome waits on a prompt. Instead the keyring password
-# is sealed ONCE to this board's TPM2 with systemd-creds, bound to PCR 7
-# (firmware / Secure Boot state — stable across kernel and NixOS updates on
-# systemd-boot), and a boot oneshot decrypts it and feeds it to keyring-unlock.
+# The strix boots with no login and the client logs in without one, so
+# nothing unlocks Default_Keyring and Chrome waits on a prompt. Instead the
+# keyring password is sealed ONCE to this board's TPM2 with systemd-creds,
+# bound to PCR 7 (firmware / Secure Boot state — stable across kernel and
+# NixOS updates on systemd-boot), and a boot oneshot decrypts it and feeds it
+# to keyring-unlock.
 #
 # Threat model: the sealed file is useless off this board (a stolen or imaged
 # disk cannot unseal it) and the secret never enters the Nix store. Anyone
 # with root, or physical access to boot the box, gets the keyring unlocked —
-# the same boundary the unencrypted root already sets. A firmware or Secure
+# the same boundary the unencrypted root already sets (on the client too, whose
+# root is unencrypted and whose seat autologs in). A firmware or Secure
 # Boot change breaks the seal: the keyring then stays LOCKED (fail safe), and
 # `keyring-seal` once more re-arms it. Manual fallback, always:
-#   ssh -t coordinator keyring-unlock
+#   ssh -t strix keyring-unlock     # or answer Chrome's prompt on the client
 #
 # Setup / re-seal (verifies itself end to end; restores on failure):
 #   sudo keyring-seal            # reads the password silently from the tty
@@ -22,13 +30,19 @@
 let
   cred = "/etc/credstore.encrypted/keyring-password.cred";
   user = "tom";
+  userManager = "user@${toString config.myKeyringAutounlock.uid}.service";
   unlockAsUser = ''
     uid="$(id -u ${user})"
     runuser -u ${user} -- env DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$uid/bus" ${pkgs.keyring-unlock}/bin/keyring-unlock "$@"
   '';
   keyring-seal = pkgs.writeShellApplication {
     name = "keyring-seal";
-    runtimeInputs = [ pkgs.coreutils pkgs.diffutils pkgs.util-linux config.systemd.package ];
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.diffutils
+      pkgs.util-linux
+      config.systemd.package
+    ];
     text = ''
       [ "$(id -u)" = 0 ] || { echo "keyring-seal: run as root (sudo keyring-seal)" >&2; exit 2; }
       u() { ${unlockAsUser} }
@@ -65,18 +79,30 @@ let
   };
 in
 {
-  environment.systemPackages = [ keyring-seal ];
+  options.myKeyringAutounlock.uid = lib.mkOption {
+    type = lib.types.int;
+    default = 1000;
+    description = "tom's uid, whose user manager runs the keyring daemon.";
+  };
 
-  systemd.services.keyring-unlock-boot = {
+  config.environment.systemPackages = [ keyring-seal ];
+
+  config.systemd.services.keyring-unlock-boot = {
     description = "Unlock tom's gnome-keyring from the TPM-sealed password";
-    wantedBy = [ "multi-user.target" "user@1000.service" ];
-    wants = [ "user@1000.service" ];
-    after = [ "user@1000.service" ];
+    wantedBy = [
+      "multi-user.target"
+      userManager
+    ];
+    wants = [ userManager ];
+    after = [ userManager ];
     # A restored user session has a new bus and keyring daemon. Do not keep
     # yesterday's successful oneshot state across a user-manager restart.
-    partOf = [ "user@1000.service" ];
+    partOf = [ userManager ];
     unitConfig.ConditionPathExists = cred;
-    path = [ pkgs.coreutils pkgs.util-linux ];
+    path = [
+      pkgs.coreutils
+      pkgs.util-linux
+    ];
     serviceConfig = {
       Type = "oneshot";
       RemainAfterExit = true;

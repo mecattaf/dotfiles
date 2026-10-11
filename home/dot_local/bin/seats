@@ -47,7 +47,11 @@ THE SEATS, and where each one's truth lives:
                 429 this box received, never a made-up TTL. A free GET /models
                 confirms the key still authenticates; the quota-spending probe
                 is opt-in (--probe-qwen) because asking costs the thing being
-                measured.
+                measured. Credits are counted from pi's live session logs
+                (~/.pi/agent/sessions) AND from the pi sessions the substrate
+                factory archives under ~/.local/state/substrate/transcripts;
+                a factory job's tokens appear when its job ends, because the
+                archive is written at job end.
 
   openrouter    OpenRouter, the paid key pi's `openrouter` provider uses (the
                 token lives at /run/agenix/openrouter-token and is read at call
@@ -64,14 +68,10 @@ THE SEATS, and where each one's truth lives:
                 GET /api/v1/key free_model_daily_requests {used, limit,
                 remaining}. A counter of requests that resets at 00:00 UTC.
 
-  gpu-worker    The fleet's one inference server, Halogen Flash on the worker
-                (http://worker:8731, GET /health). No window, no quota: the
+  gpu-strix    The fleet's one inference server, Halogen Flash on Strix
+                (http://strix:8731, GET /health). No window, no quota: the
                 row says whether the server is up and which model id it
                 answers to.
-  gpu-coordinator
-                Serves nothing declaratively: the small GGUF artifacts loaned
-                there are run by hand, and a hand-run llama-server is not a
-                seat. The row is UNKNOWN / not-applicable and says why.
 
 FRESHNESS AND THE 429. /api/oauth/usage rate-limits — polling it by hand a few
 times in one minute already returned 429 (measured 2026-09-02). Every reading
@@ -136,10 +136,10 @@ OPENROUTER_KEY_FILE = os.environ.get("SEATS_OPENROUTER_KEY_FILE") or "/run/ageni
 # factory stops dispatching. Overridable without editing the program.
 OPENROUTER_CAP_USD = 12.0
 
-# The fleet's one inference server, Halogen Flash on the worker
+# The fleet's one inference server, Halogen Flash on Strix
 # (modules/halogen.nix). The base URL follows the *_INFERENCE_URL convention;
 # the override is for a hand-run llama-server, not a second declared server.
-INFERENCE_URL = (os.environ.get("SEATS_INFERENCE_URL") or "http://worker:8731").rstrip("/")
+INFERENCE_URL = (os.environ.get("SEATS_INFERENCE_URL") or "http://strix:8731").rstrip("/")
 
 # ── the Qwen Cloud plan, and how a credit was priced ────────────────────────
 # Qwen Cloud meters in CREDITS and publishes no endpoint, so a percentage has
@@ -230,16 +230,13 @@ DEFAULT_SEATS = [
      "config_dir": "~/.codex", "owner": "third-party", "spend_root": "~/.codex/sessions",
      "note": "RULINGS R-2026-09-06-02: this login is not Tom's — read by name, never spent."},
     {"id": "pi-qwencloud", "provider": "qwen", "label": "Qwen Cloud (token-plan, via pi)",
-     "owner": "tom", "spend_root": "~/.pi/agent/sessions"},
+     "owner": "tom",
+     "spend_root": ["~/.pi/agent/sessions", "~/.local/state/substrate/transcripts"]},
     {"id": "openrouter", "provider": "openrouter", "label": "OpenRouter (paid key, soft cap)",
      "owner": "tom", "meter": "usd"},
     {"id": "openrouter-free", "provider": "openrouter", "label": "OpenRouter free model (daily requests)",
      "owner": "tom", "meter": "free-requests"},
-    {"id": "gpu-coordinator", "provider": "none", "label": "Local GPU (coordinator)",
-     "owner": "kernel",
-     "reason": "serves nothing declaratively; the fleet's inference server is Halogen "
-               "on the worker, and a GGUF loaned here is run by hand"},
-    {"id": "gpu-worker", "provider": "halogen", "label": "Local GPU (worker, Halogen Flash)",
+    {"id": "gpu-strix", "provider": "halogen", "label": "Local GPU (Strix, Halogen Flash)",
      "owner": "kernel", "endpoint": INFERENCE_URL},
 ]
 
@@ -257,6 +254,40 @@ def expand(value) -> Path | None:
     if text.startswith("~"):
         return Path(str(HOME) + text[1:])
     return Path(text)
+
+
+# The substrate factory archives every harness's session beside the job it
+# ran for (~/.local/state/substrate/transcripts/<run>/<job>/), so a directory
+# that holds pi-*.jsonl also holds the other harnesses' archives. Those are
+# another seat's spend and are skipped by basename, never read.
+OTHER_HARNESS_PREFIXES = ("claude-", "codex-")
+
+
+def spend_roots(spec, default=None) -> list[Path]:
+    """The directories a seat's `spend_root` names, keeping only those present.
+
+    `spend_root` is one path or a list of them: the harness's live session
+    store plus any archive of the same sessions kept elsewhere (for pi, the
+    factory's transcripts). A root that does not exist is skipped without a
+    word, so a box without the factory reports from the live store alone.
+    """
+    value = spec.get("spend_root") or default
+    values = value if isinstance(value, (list, tuple)) else [value]
+    roots = []
+    for item in values:
+        path = expand(item)
+        if path is not None and path.is_dir():
+            roots.append(path)
+    return roots
+
+
+def spend_files(roots):
+    """Every *.jsonl under the roots, minus other harnesses' archives."""
+    for root in roots:
+        for path in root.rglob("*.jsonl"):
+            if path.name.startswith(OTHER_HARNESS_PREFIXES):
+                continue
+            yield path
 
 
 def parse_ts(value):
@@ -1077,12 +1108,12 @@ QWEN_EVENTS_CACHE_VERSION = 2   # bump when the scan changes what it extracts
 QWEN_PROVIDER = "qwen-token-plan"
 
 
-def qwen_events(spend_root: Path):
-    """(events, resets) from pi's own session logs.
+def qwen_events(roots):
+    """(events, resets) from pi's own session logs, under every root given.
 
     events  sorted [(epoch, input, output)] for messages billed to the token
             plan — and ONLY those. The same session store carries locally
-            served traffic (the Halogen server on the worker, a hand-run
+            served traffic (the Halogen server on Strix, a hand-run
             llama-server), which costs this subscription nothing; counting it
             would inflate the meter with locally-served tokens.
     resets  every reset stamp the provider has ever stated in a refusal here.
@@ -1090,10 +1121,11 @@ def qwen_events(spend_root: Path):
             recovered from history, not from a state file someone has to keep.
 
     Cached per file by (mtime, size). A month of this seat is ~3000 messages,
-    so the whole cache is small enough to keep whole.
+    so the whole cache is small enough to keep whole. The key is the full
+    path, so files under several roots never collide in it.
     """
     events, resets = [], set()
-    if not spend_root.is_dir():
+    if not roots:
         return events, resets
     try:
         blob = json.loads(QWEN_EVENTS_CACHE.read_text(encoding="utf-8"))
@@ -1101,7 +1133,7 @@ def qwen_events(spend_root: Path):
     except (OSError, ValueError):
         cache = {}
     fresh = {}
-    for path in spend_root.rglob("*.jsonl"):
+    for path in spend_files(roots):
         try:
             stat = path.stat()
         except OSError:
@@ -1244,7 +1276,7 @@ def read_qwen(spec, opts):
     #    reset the provider has ever stated here is recovered, so the current
     #    window's start is derivable without any endpoint at all.
     plan = load_qwen_plan()
-    events, resets = qwen_events(expand(spec.get("spend_root")) or (HOME / ".pi/agent/sessions"))
+    events, resets = qwen_events(spend_roots(spec, default="~/.pi/agent/sessions"))
     if held_until:
         resets.add(held_until)
     past = sorted(r for r in resets if r <= now())
@@ -1270,6 +1302,19 @@ def read_qwen(spec, opts):
             window_end = window_start + timedelta(days=plan["window_days"])
     elif events:
         window_start = datetime.fromtimestamp(events[0][0], timezone.utc)
+        window_end = window_start + timedelta(days=plan["window_days"])
+
+    # A window that ran its seven days without a refusal ends on its own; the
+    # provider states no reset for it, so nothing above moves past it. The
+    # next window opens on the first use after it ended, by the same rule.
+    # Without this the seat kept reporting a window that ended weeks ago, and
+    # the substrate floor refused the seat as 'projected' (factory defect 5).
+    while window_end is not None and window_end <= now():
+        after = [e for e in events if e[0] > window_end.timestamp()]
+        if not after:
+            window_start = window_end = None
+            break
+        window_start = datetime.fromtimestamp(after[0][0], timezone.utc)
         window_end = window_start + timedelta(days=plan["window_days"])
 
     billable = credits = utilization = None
@@ -1668,7 +1713,7 @@ def _events_pi(path):
     """pi, token-plan traffic only.
 
     The same session store carries locally served messages — the Halogen
-    server on the worker, a hand-run llama-server. Those cost the subscription
+    server on Strix, a hand-run llama-server. Those cost the subscription
     nothing, so counting them here would inflate a meter with local tokens.
     """
     events = []
@@ -1706,14 +1751,14 @@ def spend_since(spec, start: datetime, cache):
     they are never opened: a seven-day question does not need 255 project
     directories re-read from the beginning of time.
     """
-    root = expand(spec.get("spend_root"))
+    roots = spend_roots(spec)
     extract = EXTRACTORS.get(spec["provider"])
-    if root is None or extract is None or not root.is_dir():
+    if not roots or extract is None:
         return None
     floor = start.timestamp() - 3600
     totals = [0, 0, 0]
     files = sessions = 0
-    for path in root.rglob("*.jsonl"):
+    for path in spend_files(roots):
         try:
             stat = path.stat()
         except OSError:

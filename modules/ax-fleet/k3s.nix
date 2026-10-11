@@ -5,7 +5,7 @@
   options,
   ...
 }:
-# k3s, common to the cluster nodes (control = nas, harness = coordinator,
+# k3s, common to the cluster nodes (control = nas, harness = strix,
 # inference = worker since 2026-09-25).
 # DESIGN.md sections 6.2, 6.5 and 7. What the 2026-09-23 probe MEASURED
 # working on k3s 1.36.2 (probe-build/vm/flake.nix) is the core: k3s_1_36 from
@@ -32,7 +32,6 @@ let
     && builtins.elem cfg.role [
       "control"
       "harness"
-      "inference"
     ];
   cluster = cfg.enable && clusterRole;
 
@@ -179,7 +178,7 @@ in
             # alone; with no agent token k3s gives agents the server password
             # (MEASURED deps.go getNodePass), i.e. the k3s:server role on
             # /v1-k3s/token, /cacerts and /encrypt/config. The agents (the
-            # coordinator, the worker) join with the agent token only.
+            # strix, the worker) join with the agent token only.
             tokenFile = if cfg.role == "control" then serverToken else agentToken;
             agentTokenFile = if cfg.role == "control" then agentToken else null;
             nodeIP = cfg.lan.address;
@@ -204,7 +203,7 @@ in
 
           environment.etc."rancher/k3s/registries.yaml".text = registriesYaml;
           # The kubelet's (and so CoreDNS's) upstream resolver: AdGuard on the
-          # NAS, never the coordinator's systemd-resolved stub.
+          # NAS, never the strix's systemd-resolved stub.
           environment.etc."ax-fleet/resolv.conf".text = "nameserver ${cfg.serverAddress}\n";
 
           boot.kernelModules = [
@@ -320,7 +319,7 @@ in
 
         # The tokens: agenix secrets, never printed. k3s-token.age is the
         # server's (recipients editors ++ nasOnly); k3s-agent-token.age is the
-        # agent credential (editors ++ coordinatorOnly ++ nasOnly ++
+        # agent credential (editors ++ strixOnly ++ nasOnly ++
         # workerOnly, secrets.nix). Only declared where agenix is imported and
         # no test token is given.
         (lib.optionalAttrs (options ? age) {

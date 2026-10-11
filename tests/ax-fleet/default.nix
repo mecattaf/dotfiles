@@ -5,11 +5,11 @@
 }:
 # checks.x86_64-linux.ax-fleet: the 4-VM proof before any switch (DESIGN.md
 # 12.1). The script mirrors the real motion: baseline, switch the NAS, switch
-# the coordinator, Tasks, resilience, the LAN guard, then switch the worker
+# the strix, Tasks, resilience, the LAN guard, then switch the probe
 # (a tainted inference agent since 2026-09-25), rollback.
 #
 # The test script is phases/*.py concatenated in name order, after the
-# prelude below: 10-cluster, 38-worker-join and 90-rollback (cluster track),
+# prelude below: 10-cluster, 38-probe-join and 90-rollback (cluster track),
 # 20-substrate (substrate track), 30-nop1 and 32-fleet (ax track). Every subtest a phase runs through
 # `step(...)` is named in $out/receipt.json with the values it recorded.
 let
@@ -56,20 +56,17 @@ let
     receipt_values: dict[str, Any] = {}
     receipt: dict[str, Any] = {"test": "ax-fleet", "subtests": receipt_subtests, "values": receipt_values}
 
-
     def save_receipt():
         out = os.environ.get("out", ".")
         os.makedirs(out, exist_ok=True)
         with open(os.path.join(out, "receipt.json"), "w") as f:
             json.dump(receipt, f, indent=2, sort_keys=True)
 
-
     def record(key, value):
         receipt_values[key] = value
         # Also into the build log: a failed build keeps no $out.
         print(f"AXFLEET-RECORD {key} = {json.dumps(value, sort_keys=True)}")
         save_receipt()
-
 
     @contextmanager
     def step(name):
@@ -79,19 +76,15 @@ let
         receipt_subtests.append({"name": name, "result": "pass", "seconds": round(time.monotonic() - t0, 1)})
         save_receipt()
 
-
     def kubectl(args):
         """kubectl on the NAS, as root, with the k3s admin kubeconfig."""
         return nas.succeed(f"k3s kubectl {args}")
 
-
     def jsonpath(obj, path):
         return kubectl(f"get {obj} -o jsonpath='{path}'").strip()
 
-
     def sysctls(machine):
         return {k: machine.succeed(f"sysctl -n {k}").strip() for k in SYSCTLS}
-
 
     def node_ready(name):
         nas.wait_until_succeeds(
@@ -99,49 +92,43 @@ let
             timeout=600,
         )
 
-
     KERNEL_KEYS = ("kernel.panic", "kernel.panic_on_oops", "vm.overcommit_memory")
-
 
     def kernel_keys_back(machine, baseline):
         """myAxFleet.kubelet.keepHostKernelTunables: kubelet's values are put back."""
         for k in KERNEL_KEYS:
             machine.wait_until_succeeds(f"test \"$(sysctl -n {k})\" = '{baseline[k]}'", timeout=300)
 
-
     def flap_until_unreachable(tag):
-        """Take the coordinator's LAN leg down until the control plane has
+        """Take the strix's LAN leg down until the control plane has
         reacted (Ready=Unknown and the unreachable taint), then bring it back.
         A test parameter, not an estimate: it waits for the transition."""
         t0 = time.monotonic()
-        coordinator.succeed("ip link set eth1 down")
+        strix.succeed("ip link set eth1 down")
         try:
             nas.wait_until_succeeds(
-                "k3s kubectl get node coordinator -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -qx Unknown",
+                "k3s kubectl get node strix -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' | grep -qx Unknown",
                 timeout=900,
             )
             nas.wait_until_succeeds(
-                "k3s kubectl get node coordinator -o jsonpath='{.spec.taints[*].key}' | grep -qw node.kubernetes.io/unreachable",
+                "k3s kubectl get node strix -o jsonpath='{.spec.taints[*].key}' | grep -qw node.kubernetes.io/unreachable",
                 timeout=600,
             )
-            record(f"flap_{tag}_taints_while_down", nas.succeed("k3s kubectl get node coordinator -o jsonpath='{.spec.taints}'").strip())
+            record(f"flap_{tag}_taints_while_down", nas.succeed("k3s kubectl get node strix -o jsonpath='{.spec.taints}'").strip())
         finally:
-            coordinator.succeed("ip link set eth1 up")
+            strix.succeed("ip link set eth1 up")
         outage = round(time.monotonic() - t0, 1)
         record(f"flap_{tag}_outage_seconds", outage)
         return outage
 
-
     def user_unit_pid(unit):
-        return coordinator.succeed(
+        return strix.succeed(
             "runuser -u alice -- env XDG_RUNTIME_DIR=/run/user/$(id -u alice) "
             f"systemctl --user show {unit} -p MainPID --value"
         ).strip()
 
-
     def nm_invocation():
-        return coordinator.succeed("systemctl show NetworkManager -p InvocationID --value").strip()
-
+        return strix.succeed("systemctl show NetworkManager -p InvocationID --value").strip()
 
     def unit_invocation(machine, unit):
         return machine.succeed(f"systemctl show {unit} -p InvocationID --value").strip()
@@ -154,8 +141,8 @@ pkgs.testers.runNixOSTest {
   nodes = {
     inherit (nodes)
       nas
-      coordinator
-      worker
+      strix
+      probe
       peer
       ;
   };

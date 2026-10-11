@@ -31,7 +31,7 @@
 #     timeout must keep the last MEASURED reading, never blank the row — and a
 #     row grading itself STALE-MEASURED must say how old its reading is
 #     (`reading_age_seconds`);
-#   * the kernel's own rows (gpu-coordinator, gpu-worker, mechanical) are
+#   * the kernel's own rows (gpu-coordinator, gpu-coordinator, mechanical) are
 #     skipped BY NAME: the kernel re-stamps them at probe time and this unit
 #     changes nothing about them;
 #
@@ -66,7 +66,7 @@ CLAUDE_ROWS=(cc cc2 cc3)
 NUMERIC_ROWS=(cc cc2 cc3 codex)
 # Named so the skip is a decision and not an accident of globbing: these are
 # the kernel's own rows, re-stamped by the kernel at every admit probe.
-KERNEL_ROWS=(gpu-coordinator gpu-worker mechanical)
+KERNEL_ROWS=(gpu-coordinator gpu-coordinator mechanical)
 
 usage() {
   printf 'usage: bash tools/seat-rows-oracle.sh [meters-dir]\n' >&2

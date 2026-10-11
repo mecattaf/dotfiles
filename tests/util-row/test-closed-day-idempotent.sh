@@ -10,7 +10,7 @@
 # nothing is written; --refresh-slice overwrites.
 #
 # Hermetic: the lease events, receipt roots and drain ledger are pointed at a
-# scratch tree through util-row's UTIL_* test hooks, the box is the coordinator
+# scratch tree through util-row's UTIL_* test hooks, the box is the strix
 # (so no scp of a worker log is attempted), and every write lands in a scratch
 # meters root. python3 and coreutils only.
 set -euo pipefail
@@ -34,29 +34,29 @@ ok() { pass=$((pass + 1)); echo "PASS  $*"; }
 no() { fail=$((fail + 1)); echo "FAIL  $*"; }
 
 grant() { # $1 = HH:MM, $2 = unit
-  printf '{"event":{"kind":"granted","grant":{"grantedAt":"%sT%s:00Z","pools":["coordinator-gpu"],"unit":"%s"}}}\n' "$D" "$1" "$2" >> "$UTIL_LEASE_EVENTS"
+  printf '{"event":{"kind":"granted","grant":{"grantedAt":"%sT%s:00Z","pools":["strix-gpu"],"unit":"%s"}}}\n' "$D" "$1" "$2" >> "$UTIL_LEASE_EVENTS"
 }
 grant 11:00 unit-a
 grant 13:00 unit-b
 # a grant for another pool and one for another day: neither is in the slice
 printf '{"event":{"kind":"granted","grant":{"grantedAt":"%sT12:00:00Z","pools":["worker-gpu"],"unit":"w"}}}\n' "$D" >> "$UTIL_LEASE_EVENTS"
-printf '{"event":{"kind":"granted","grant":{"grantedAt":"2026-09-10T12:00:00Z","pools":["coordinator-gpu"],"unit":"old"}}}\n' >> "$UTIL_LEASE_EVENTS"
+printf '{"event":{"kind":"granted","grant":{"grantedAt":"2026-09-10T12:00:00Z","pools":["strix-gpu"],"unit":"old"}}}\n' >> "$UTIL_LEASE_EVENTS"
 
 # Three samples around midday UTC, so the local date is the 12th in any zone
 # within +-11 h. No `tz` key: the row falls back to the running box's zone, the
 # same on every run of this test.
 for t in 1789214400 1789214460 1789214520; do
   ts="$(python3 -c "import datetime,sys; print(datetime.datetime.fromtimestamp($t).astimezone().isoformat())")"
-  printf '{"schema":"util-sample/2","ts":"%s","ts_epoch":%s,"box":"coordinator","sysfs":{"gpu_busy_percent":50,"gtt_used":100,"vram_used":1},"pools":{"ok":true,"held":{"coordinator-gpu":1}},"probes":[],"ledger":{}}\n' "$ts" "$t" >> "$M/util-sampler/coordinator-$D.jsonl"
+  printf '{"schema":"util-sample/2","ts":"%s","ts_epoch":%s,"box":"strix","sysfs":{"gpu_busy_percent":50,"gtt_used":100,"vram_used":1},"pools":{"ok":true,"held":{"strix-gpu":1}},"probes":[],"ledger":{}}\n' "$ts" "$t" >> "$M/util-sampler/strix-$D.jsonl"
 done
 
-SLICE="$M/util-sampler/coordinator-$D.lease-slice.jsonl"
-RROW="$M/util-coordinator-$D.json"
-WEEK="$M/util-coordinator-week-2026-W37.json"
+SLICE="$M/util-sampler/strix-$D.lease-slice.jsonl"
+RROW="$M/util-strix-$D.json"
+WEEK="$M/util-strix-week-2026-W37.json"
 state() { for f in "$SLICE" "$RROW" "$WEEK"; do sha256sum "$f" | cut -d' ' -f1; stat -c %y "$f"; done; }
 run() { # stderr to $tmp/err, rc echoed
   set +e
-  python3 "$ROW" --box coordinator --date "$D" --meters "$M" "$@" > "$tmp/out" 2> "$tmp/err"
+  python3 "$ROW" --box strix --date "$D" --meters "$M" "$@" > "$tmp/out" 2> "$tmp/err"
   local rc=$?
   set -e
   echo "$rc"

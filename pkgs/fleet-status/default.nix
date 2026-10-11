@@ -8,7 +8,7 @@
 }:
 # fleet-status (#356): one stdlib Python file, two entry points.
 #   fleet-status-collect  — installed on every host by modules/fleet-status.nix
-#   fleet-status          — the coordinator's fan-out and terminal view
+#   fleet-status          — the strix's fan-out and terminal view
 # The host's own systemctl/journalctl/findmnt come FIRST on PATH (suffix, not
 # prefix): a collector must speak the systemd of the box it runs on, and the
 # NAS rides a different nixpkgs than this package may be built from. openssh

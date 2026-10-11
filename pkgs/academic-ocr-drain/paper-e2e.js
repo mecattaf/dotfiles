@@ -2,7 +2,7 @@ export const meta = {
   name: "paper-e2e",
   description:
     "One paper end-to-end: fetch, per-page mech-first OCR with VLM consensus fallback, assemble, chunk, embed, index, receipt",
-  pools: ["worker-gpu", "coordinator-gpu", "flow-build"],
+  pools: ["worker-gpu", "strix-gpu", "flow-build"],
   argsSchema: {
     type: "object",
     required: [
@@ -289,13 +289,13 @@ async function resolvePage(page) {
     evidence: ["exit:0", `artifact:${chunks}`, "hash:sha256"]
   });
 
-  // The embeddings backend is an operator-run llama-server on the coordinator
-  // (coordinator-gpu). Without one the paper still assembles and chunks; the
+  // The embeddings backend is an operator-run llama-server on the strix
+  // (strix-gpu). Without one the paper still assembles and chunks; the
   // receipt records the two skipped stages so they can be rebuilt from
   // chunks.json later.
   if (args.embeddingsUrl !== null) {
     await run("embed", [chunks, args.embedModel, args.embeddingsUrl, embeddings], {
-      pools: ["coordinator-gpu"],
+      pools: ["strix-gpu"],
       priority: "low",
       runtimeMaxSec: 3600,
       key: "embed",

@@ -30,7 +30,7 @@ let
   version = "0.1.0-unstable-2026-09-24";
   src = ./src;
   # The upstream commit ./src was taken from. Keep in step with SYNC.md (sync.sh rewrites both).
-  sourceSha = "d455c3f0512ecec44b5f9075e52366cb47edb225";
+  sourceSha = "d2c1125b738ae6e8a05f2bc64227936abb3123ac";
 
   pnpmDeps = pnpm_10.fetchDeps {
     pname = "substrate-apps";

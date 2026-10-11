@@ -33,7 +33,7 @@
 # action: the seat has to answer the lid the same way every time.
 #
 # ── why ignore rather than suspend ─────────────────────────────────────────
-# The client is a thin client into the coordinator: the work is ssh sessions
+# The client is a thin client into the strix: the work is ssh sessions
 # and a herdr projector, and suspending the seat tears down exactly the state
 # Tom is in the middle of. "Go dark" also happens far more often than "go
 # away" on a two-panel laptop that lives open on a desk. So the lid is made

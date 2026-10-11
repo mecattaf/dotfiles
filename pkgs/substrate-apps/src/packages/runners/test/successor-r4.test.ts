@@ -152,7 +152,7 @@ describe("final verification: a sandboxed pi gets the Halogen provider, generate
     expect(Array.isArray(m) && m).toMatchObject([{ target: "/home/agent/.pi/agent" }]);
     const models = JSON.parse(readFileSync(join(shadow, "pi-agent", "models.json"), "utf8"));
     expect(Object.keys(models.providers)).toEqual(["halogen"]);
-    expect(models.providers.halogen.baseUrl).toBe("http://worker:8731/v1");
+    expect(models.providers.halogen.baseUrl).toBe("http://strix:8731/v1");
     expect(models.providers.halogen.models.map((x: { id: string }) => x.id)).toEqual(["halogen-qwen3.8-flash-next"]);
     const mv = parseRuntimesToml(`default = "v"\n[runtime.v]\ntype = "microvm"\nharness = "pi"\n`, "t");
     expect(credentialMounts(mv, mv.runtimes["v"]!, "pi", join(tmp(), "s2"))).toMatchObject([{ target: "/root/.pi/agent" }]);

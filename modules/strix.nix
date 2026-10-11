@@ -5,71 +5,34 @@
   pkgs,
   ...
 }:
-# AMD Strix Halo layer — imported by `coordinator` and `worker`, the two
-# identical Ryzen AI MAX+ 395 (gfx1151) boxes. Everything above the roster is
-# uniform: same silicon, same accelerator stack, same crash hardening, same
-# unified-memory tuning. Only WHICH models each box is authorized to materialize
-# differs, and that is selected below by networking.hostName.
-#
-# It used to be selected by `myCluster.role`, a bespoke enum option this module
-# declared. That option is GONE (the flake asserts its absence) — it duplicated
-# the hostname with an extra failure mode, namely a host whose role and name
-# disagreed. Reading the hostname is the same pattern modules/secrets.nix uses
-# for its per-host tiers, so the fleet now has one idiom instead of two.
 {
   imports = [
     # Framework Desktop / Ryzen AI Max 300 series (gfx1151). Pulls amd cpu+gpu+ssd tuning.
     inputs.nixos-hardware.nixosModules.framework-desktop-amd-ai-max-300-series
-    # XDNA2 NPU stack — both boxes expose it.
+    # Hardware definitions only; the NPU remains disabled below.
     inputs.nix-amd-ai.nixosModules.default
     # Accelerated inference/tooling packages from nix-strix-halo plus the one
     # noamsto-only GPU backend.
     ./strix-ai.nix
     # Typed model catalog, guarded store materialization, and host projections.
     ./local-models.nix
-    # The Halogen server both twins declare (below) and the utility-model
-    # client that dials the worker's (the coordinator enables that).
     ./halogen.nix
   ];
 
   config = {
-    # What each twin WANTS on its own NVMe under /var/lib/local-models — the
-    # exact set local-models-borrow loans from the NAS Library and
-    # local-models-prune keeps. Both twins want both Halogen bundles (Tom,
-    # 2026-09-16: "both models, on both devices"), served by modules/halogen.nix
-    # below; the coordinator also wants the streaming ASR, loaded per run by
-    # call-diarize, and its speech rows come from modules/qwen-tts.nix. The
-    # catalogue (lib/local-models.nix) is now exactly the wanted rows: the
-    # embedder and the three Mage rows were retired on 2026-09-30 (sweep F1).
-    # The NAS Library keeps every catalogue row.
     services.local-models.artifacts = [
       "halogen-qwen38-flash-next"
       "halogen-qwen38-27b"
     ]
-    ++ lib.optionals (config.networking.hostName == "coordinator") [
+    ++ lib.optionals (config.networking.hostName == "strix") [
       # The one diarization model (Tom, 2026-09-16), loaded by call-diarize.
       "vibevoice-asr-streaming-7b-bf16"
     ];
 
-    # ── Halogen on both twins (Tom, 2026-09-16) ────────────────────────────
-    # The same two engines on each box, never resident together on either:
-    # Flash (the primary) and Qwen3.8-27B under halogen-server (the alternate).
-    # modules/halogen.nix has the doctrine; this block is the one declaration
-    # both twins share, so the two cannot drift apart.
-    #
-    # WHERE THEY RUN BY DEFAULT. The worker keeps Flash resident from boot and
-    # is the fleet's `utility` endpoint (http://worker:8731). The coordinator
-    # is Tom's primary desktop and also runs Qwen TTS, the 17.6 GB
-    # streaming ASR and live agent sessions, so nothing starts there at boot:
-    # an operator runs `halogen-switch flash|qwen38-27b` and hands the GPU back
-    # with `halogen-switch off`. Upstream's own sizing note for Flash is
-    # "roughly twelve gigabytes free" on a 128 GB machine.
     services.halogen = {
       enable = true;
-      autoStart = config.networking.hostName == "worker";
-      # The worker is wired on enp191s0 (the module default); the coordinator
-      # reaches the house over wifi.
-      lanInterface = if config.networking.hostName == "coordinator" then "wlp192s0" else "enp191s0";
+      autoStart = true;
+      lanInterface = "enp191s0";
       # The one serving default this fleet overrides. The image ships 8192,
       # which bounds REASONING AND CONTENT TOGETHER against a chat template
       # whose own effort is xhigh: a turn that thinks past the budget returns
@@ -86,20 +49,8 @@
       # four slots at 16384 is 65536 of the 524288-position pool before a
       # single prompt token, which the box has room for many times over.
       maxTokensDefault = 16384;
-      # Armed 2026-09-13 on the worker, after the binary was verified on the
-      # box rather than assumed from upstream's compose file:
-      #   podman exec halogen ls -l /usr/local/bin/halogen-healthcheck  -> present
-      #   podman exec halogen /usr/local/bin/halogen-healthcheck api    -> exit 0
-      #   podman inspect halogen -> Health.Status healthy, FailingStreak 0
-      # The coordinator runs the same image digest, so the same path holds.
-      # An unhealthy verdict exits the container non-zero, which the unit's
-      # Restart=on-failure recovers from.
       healthKill = true;
-      # Flash's KV pool on the desktop twin: 262144 positions (~28 GB, the
-      # floor, since the pool never drops below HALOGEN_CTX) instead of the
-      # image's 2 x CTX (~35 GB), so an operator-started Flash leaves the
-      # desktop, TTS and ASR more room. The worker keeps the image default.
-      kvPoolPositions = if config.networking.hostName == "coordinator" then 262144 else null;
+      kvPoolPositions = if config.networking.hostName == "strix" then 262144 else null;
       # The alternate model: Qwen3.8-27B under halogen-server. Never resident
       # together with Flash — `halogen-switch qwen38-27b` stops the Flash unit
       # and starts this one; `halogen-switch flash` goes back.
@@ -124,7 +75,7 @@
       # the bundle's flat tokenizer/ directory.
       #
       # No --security-opt seccomp=unconfined, although upstream's run lines
-      # still carry it: 0.1.4 was run on the coordinator (2026-09-17) with
+      # still carry it: 0.1.4 was run on the strix (2026-09-17) with
       # exactly the shared containerOptions and no seccomp flag, loaded the
       # checkpoint, reported /health version.match true and answered a chat
       # completion. Same conclusion upstream reached for Flash in 0.6.1.
@@ -132,35 +83,16 @@
         image = "ghcr.io/peonist-ai/halogen@sha256:dc0a39a0016d6cfc58a197978febaafdf8d28403f724ded6111d98b5fb7ac0ea";
         artifact = "halogen-qwen38-27b";
         modelId = "halogen-qwen3.8-27b";
-        # KV_SLOTS stays the image's 1 (speculation on). On the coordinator the
+        # KV_SLOTS stays the image's 1 (speculation on). On the strix the
         # prompt cache gets a fixed 8 GiB budget instead of auto-sizing from
         # MemAvailable at startup, which on a desktop would claim whatever the
         # TTS, ASR and browser happen not to be using at that moment.
-        environment = lib.optionalAttrs (config.networking.hostName == "coordinator") {
+        environment = lib.optionalAttrs (config.networking.hostName == "strix") {
           HALOGEN_CACHE_MB = "8192";
         };
       };
     };
 
-    # NPU DECOMMISSIONED 2026-08-29: Tom forgoes the XDNA2 NPU permanently.
-    # The nix-amd-ai import stays — its overlay is applied unconditionally and
-    # keeps pkgs.fastflowlm resolvable — but this gate removes amdxdna, the
-    # accel udev rules, the XRT env vars, the @video/@render memlock limits,
-    # and the flm package from both twins. Recovery is flipping these back and
-    # restoring the catalog rows to canonical. (utility-model survived the
-    # decommission: it migrated to the GPU seam the same day and now installs
-    # via modules/halogen.nix on the coordinator only, dialing the worker's
-    # Halogen server.)
-    #
-    # The memlock loss is not a serving regression: the Halogen container runs
-    # with an unlimited memlock ulimit of its own (modules/halogen.nix), so the
-    # GPU inference path never depended on the @video/@render limits this gate
-    # drops.
-    #
-    # linux 7.2 ships amdxdna IN-TREE, so disabling the nix-amd-ai module no
-    # longer keeps the driver off the bus — observed bound (0 users) on the
-    # worker's first 7.2 boot. Blacklist it: the NPU is decommissioned and,
-    # with amd_iommu=off, unusable regardless. Remove this line on revival.
     boot.blacklistedKernelModules = [ "amdxdna" ];
     hardware.amd-npu = {
       enable = false;
@@ -193,7 +125,7 @@
     # services.npu-llm = {
     #   enable = true;
     #   models =
-    #     lib.optionals (config.networking.hostName == "coordinator") [
+    #     lib.optionals (config.networking.hostName == "strix") [
     #       "gemma4-it:e4b"
     #       # gpt-oss:20b ruled out 2026-08-20 (old and outdated; dotfiles#229).
     #       # The catalog row is status = "retired"; the ~14G runtime-owned snapshot
@@ -219,75 +151,18 @@
       cores = 8;
     };
 
-    # ── Linux 7.2 on the twins (#244) ──────────────────────────────────────
-    #
-    # Same sourcing doctrine as hosts/nas/kernel.nix, applied to the boxes that
-    # actually motivated the migration:
-    #
-    #   * The main `nixpkgs` pin predates 7.2 (it sits at 7.1.4) and does NOT
-    #     move for this — it gates the whole Mesa/ROCm userland these two boxes
-    #     are built around, and dragging it forward to chase a kernel would
-    #     re-qualify the entire gfx1151 inference stack.
-    #   * freshPkgs.linuxPackages_latest — rejected: it would silently jump to
-    #     7.3 the next time nixpkgs-fresh moves for something unrelated.
-    #   * linuxPackages_7_2 — CHOSEN: the versioned attr advances only within
-    #     the 7.2.x stable series (point fixes yes, series jumps never), and
-    #     when 7.2 ages out of nixpkgs entirely eval breaks LOUDLY and this
-    #     stanza gets a deliberate successor. Fail-loud, not drift.
-    #
-    # Why now: 7.1.4 carries the amdgpu ISM dc_lock reboot deadlock (#244) —
-    # the twins can wedge on the way down and need a hand at the power button.
-    # 7.2 fixes it. No mkForce: modules/common.nix:45 sets kernelPackages with
-    # mkDefault, so this plain assignment wins on both twins.
-    #
-    # Nothing out-of-tree rides this kernel, so a 7.2.x point release is just
-    # a point release.
     boot.kernelPackages =
       (import inputs.nixpkgs-fresh {
         inherit (pkgs.stdenv.hostPlatform) system;
         config.allowUnfree = true;
       }).linuxPackages_7_2;
 
-    # Strix Halo unified-memory tuning.
-    #
-    # ttm.pages_limit=33554432 is 33554432 × 4 KiB = exactly 128 GiB, i.e. the
-    # whole machine: a deliberate CEILING for a box whose entire point is that
-    # the iGPU reaches system RAM. It is NOT a memory policy and it reserves
-    # nothing — amdgpu sizes the GTT pool from it and then clamps to system
-    # RAM (measured on both twins: "Capping GTT to 128087M", gtt_total =
-    # MemTotal to the byte), so today the RAM cap, not this number, sets the
-    # pool. Push it below MemTotal and it becomes load-bearing directly.
-    # The worker's Halogen server plans its KV pool against that GTT figure
-    # (modules/halogen.nix); whoever lowers this ceiling re-checks
-    # HALOGEN_KV_POOL_POSITIONS in the same change.
-    #
-    # IOMMU is explicitly OFF since the 2026-08-29 NPU decommission. It was on
-    # for amdxdna, the only consumer on these boxes that ever needed translated
-    # mode; with amdxdna gone nothing on the twins does, so the DMA translation
-    # cost buys nothing — and Halogen's own measurements put amd_iommu=off at
-    # 13–16 % of prefill.
-    #
-    # watchdog.stop_on_reboot=0 keeps sp5100_tco armed across the reboot
-    # transition (#244 checklist): the watchdog exists precisely to catch a box
-    # that hangs on the way down, which is exactly when the kernel would
-    # otherwise disarm it.
     boot.kernelParams = [
       "amd_iommu=off"
       "ttm.pages_limit=33554432"
       "watchdog.stop_on_reboot=0"
     ];
 
-    # --- mt7925e (RZ717 wifi) crash hardening, 2026-07-16 ---
-    # The MT7925 driver has a remaining wcid list-corruption race on the STA
-    # teardown/setup path (kernel BUG at lib/list_debug.c:32 → instant hard
-    # lockup: LEDs on, zero video, zero network, manual power-cycle needed).
-    # Fired twice on the coordinator within 12h of the BIOS 3.02→3.05 update
-    # after weeks of silence on 3.02 — prime suspect is 3.05 changing PCIe
-    # ASPM/power-state timing. Kernel 7.1 already has the upstream fixes for
-    # the KNOWN instances of this bug class (zbowling v7 series), so until the
-    # remaining race is fixed upstream we keep the card out of ASPM low-power
-    # states via the driver's own escape hatch. Cost: ~1W idle. The roam trigger
-    # is separately removed by the BSSID pin in hosts/coordinator/uplink-nas.nix.
     boot.extraModprobeConfig = "options mt7925e disable_aspm=1";
 
     # Hardware watchdog (sp5100_tco, /dev/watchdog0 — present but unfed until
@@ -300,7 +175,7 @@
     # 2m, not 30s: on 2026-08-02 a hung NFS mount stalled PID 1 mid
     # `nixos-rebuild switch` past the old 30s window and the TCO hard-reset a
     # live, recoverable box. The mount is soft-bounded now (~15s worst case,
-    # hosts/coordinator/nas-client.nix), so 2m keeps every plausible transient
+    # hosts/strix/nas-client.nix), so 2m keeps every plausible transient
     # stall inside the window while still catching real lockups within minutes,
     # not hours.
     systemd.settings.Manager = {

@@ -3,7 +3,7 @@
   pkgs,
   ...
 }:
-# Accelerated AI package plane for the coordinator.
+# Accelerated AI package plane for the strix.
 #
 # Source split (deliberate, after inspecting both upstreams at their 2026-07-21
 # heads):
@@ -13,10 +13,10 @@
 #     llama.cpp ROCm and Vulkan builds an operator serves the small GGUF
 #     artifacts with by hand, amdtop, and the MES firmware. The big model is
 #     not served from here at all — it is Halogen Flash, a self-contained OCI
-#     image on the worker (modules/halogen.nix).
+#     image on Strix (modules/halogen.nix).
 #
 # XRT is intentionally absent here. hardware.amd-npu already composes and exports
-# nix-amd-ai's XRT + amdxdna plugin on coordinator. Hellas currently pins the exact
+# nix-amd-ai's XRT + amdxdna plugin on strix. Hellas currently pins the exact
 # same upstream commits, and putting both implementations in the system profile
 # would collide. They are not imported or re-exported: all NPU components have one
 # source of truth, the already-live nix-amd-ai module.
@@ -79,5 +79,5 @@ in
   #
   # Also not a system dependency: `.#live-iso`. Rooting an installer ISO in every
   # generation would force a multi-GiB image build on each nightly switch; keeping it
-  # as a flake package gives the coordinator a reproducible on-demand build instead.
+  # as a flake package gives the strix a reproducible on-demand build instead.
 }

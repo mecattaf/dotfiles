@@ -1,5 +1,28 @@
 # DECISIONS
 
+2026-10-01 DIRECTION (not yet landed): drop Caddy for artifacts; Cloudflare
+Pages serves them.
+
+Tom, 2026-10-01: "we can drop `caddy` altogether since cloudflare pages can
+handle all of that much cleaner. i'm \"getting out of the ai's way\""
+
+What prompted it (MEASURED the same day, publishing `knee-khoury-1001`): the
+tailnet rung of the publish-artifact skill cannot open in a browser. `.dev` is
+on the HSTS preload list, so Chrome upgrades `http://<slug>.art.mecattaf.dev`
+to https, and Caddy serves artifacts on plain :80 only (`curl https://...`
+exits 35). The wildcard also resolves to the LAN address 10.42.0.2, not the
+tailnet address, so it is home-network only. curl over http from the
+coordinator served the page correctly after `systemctl reload caddy`.
+
+Scope still to settle before any edit: Caddy on the coordinator also fronts
+`handwriting.internal` (modules/handwriting-annotation.nix),
+`browser.internal` (modules/browser-desktop.nix) and `drain.internal`
+(hosts/coordinator/default.nix). "Altogether" read literally removes those
+too; the artifact lane (modules/caddy-artifacts.nix, the drop-dir, the
+reaper, the publish-artifact and md-artifact skills) is the part Pages
+replaces directly. Private artifacts on Pages need Cloudflare Access or an
+unguessable slug, since Pages is public by default.
+
 2026-09-23 the SessionEnd harvest hook is REMOVED; `harvest` stays a manual
 verb.
 

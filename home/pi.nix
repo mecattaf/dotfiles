@@ -42,7 +42,7 @@ let
   # renders this, falling back to the fleet convention where that module is
   # not imported.
   halogen = lib.attrByPath [ "services" "halogen" ] null osConfig;
-  halogenEndpoint = if halogen != null then halogen.client.endpoint else "http://worker:8731";
+  halogenEndpoint = if halogen != null then halogen.client.endpoint else "http://strix:8731";
   halogenModelId = if halogen != null then halogen.modelId else "halogen-qwen3.8-flash-next";
 
   # ── Qwen Token Plan (Alibaba MaaS subscription) ──────────────────────────
@@ -147,37 +147,21 @@ let
 
   # ── OpenRouter (prepaid credits + free models) ───────────────────────────
   # pi ships `openrouter` as a BUILT-IN provider with its own catalog, so this
-  # only (a) supplies the key, gated like the Qwen key on agenix delivery, and
-  # (b) upserts the free stealth model the catalog does not know. Same `!cat`
-  # reasoning as above: the key never enters the agent's environment.
+  # only supplies the key, gated like the Qwen key on agenix delivery. Same
+  # `!cat` reasoning as above: the key never enters the agent's environment.
+  #
+  # No `models` here since 2026-10-10. The free stealth model this used to
+  # upsert (stealth/space-bunny-alpha) was withdrawn (404 on 2026-10-10), and
+  # per-model declarations for the factory now live in the mutable
+  # ~/.config/substrate/models.toml (seeded by modules/substrate.nix, then
+  # Tom's): substrate injects an uncatalogued model into a job-scoped pi agent
+  # dir itself, so nothing in nix names a model. Only the key reference stays.
   openrouterTokenPath = lib.attrByPath [ "age" "secrets" "openrouter-token" "path" ] null osConfig;
   hasOpenrouter = openrouterTokenPath != null;
 
   openrouterModelsJson = {
     providers.openrouter = {
       apiKey = "!cat ${toString openrouterTokenPath}";
-      models = [
-        # Free while it lasts (stealth models are withdrawn without notice, and
-        # the provider logs prompts). Metadata from GET /api/v1/models and one
-        # real completion on 2026-09-29: 1M context, 524,288 max completion,
-        # text+image input, reasoning via `reasoning.effort`. Counts against
-        # the key's 1,000 free-model requests a day, not the prepaid balance.
-        # Delete this entry once the model is withdrawn or renamed.
-        {
-          id = "stealth/space-bunny-alpha";
-          name = "Space Bunny Alpha (stealth, free)";
-          api = "openai-completions";
-          baseUrl = "https://openrouter.ai/api/v1";
-          reasoning = true;
-          input = [
-            "text"
-            "image"
-          ];
-          contextWindow = 1000000;
-          maxTokens = 524288;
-          cost = zeroCost;
-        }
-      ];
     };
   };
 
@@ -219,7 +203,7 @@ let
         models = [
           {
             id = halogenModelId;
-            name = "Qwen3.8-Flash-Next (Halogen, worker)";
+            name = "Qwen3.8-Flash-Next (Halogen, Strix)";
             contextWindow = 262144;
             maxTokens = 32768;
             input = [
@@ -234,7 +218,7 @@ let
           # any model id, so this row is what pi shows while the 27B is up.
           {
             id = "halogen-qwen3.8-27b";
-            name = "Qwen3.8-27B (Halogen alternate, worker)";
+            name = "Qwen3.8-27B (Halogen alternate, Strix)";
             contextWindow = 262144;
             maxTokens = 16384;
             input = [ "text" ];

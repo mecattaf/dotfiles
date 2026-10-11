@@ -33,7 +33,7 @@ class Contract(unittest.TestCase):
     def test_sway_pid_proves_existing_chrome_display(self):
         with tempfile.TemporaryDirectory() as root:
             root = Path(root)
-            (root / 'SingletonLock').symlink_to('coordinator-12345')
+            (root / 'SingletonLock').symlink_to('strix-12345')
             with patch.object(session, 'windows', return_value={4: {'pid': 12345}}):
                 session.ensure_chrome_on_display(root, {'WAYLAND_DISPLAY': 'wayland-test'})
 

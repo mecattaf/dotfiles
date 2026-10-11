@@ -53,7 +53,7 @@
     # and it is emphatically NOT `-d` (see ../../modules/gc-retention.nix for
     # why that flag is banned on this fleet).
     #
-    # Deliberately scoped to this host and not to the fleet: the coordinator
+    # Deliberately scoped to this host and not to the fleet: the strix
     # and worker have roomy NVMe roots where the weekly sweep in
     # gc-retention.nix is sufficient, and nothing else in the fleet runs a
     # nightly three-host build farm on 57G of eMMC.

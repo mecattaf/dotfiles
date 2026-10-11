@@ -2,9 +2,9 @@
 # client audio intake — the iContact Camera Pro webcam mic is the mic Tom
 # actually speaks into (meetings, the call-record scripts), so it is pinned as
 # the default PipeWire source rather than left to WirePlumber's priority
-# election. Moved here from hosts/coordinator/audio.nix on 2026-09-11 with the
-# webcam itself: the coordinator's USB peripherals live on the Thunderbolt
-# dock the thin client sits on now (R-7), and the coordinator keeps only its
+# election. Moved here from hosts/strix/audio.nix on 2026-09-11 with the
+# webcam itself: the strix's USB peripherals live on the Thunderbolt
+# dock the thin client sits on now (R-7), and the strix keeps only its
 # Ryzen HD Audio and Radeon HDMI — no real mic. Call recording therefore
 # captures this exact USB node (dictation and Parakeet were removed on
 # 2026-09-30). The voice path never follows a changed
@@ -60,7 +60,7 @@
       # The Sound Blaster GS3 on the same dock is the sink Tom listens on;
       # pinned the same way so the default output never drifts to the INZONE
       # dongle or the laptop's own codec across replugs (doc §7.2). Same
-      # USB-serial node name niri/scripts/audio-route dials.
+      # USB-serial node name bin/audio-route dials.
       {
         matches = [
           {

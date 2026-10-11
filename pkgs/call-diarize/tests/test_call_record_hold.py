@@ -49,7 +49,10 @@ pathlib.Path(sys.argv[4]).write_bytes(b'mixed')
 with open(os.environ['FAKE_EVENTS'],'a') as f:f.write(json.dumps({'event':'mix'})+'\\n')
 ''')
         self.write_fake('soxi', "print('00:00:01')\n")
-        self.write_fake('call-diarize-backfill', '''import json,os,pathlib
+        # 2026-10-10: the stop hands the dir to call-diarize-start (Tally retired); the
+        # local branch is taken only when call-diarize itself is on PATH.
+        self.write_fake('call-diarize', "import sys;sys.exit(99)\n")
+        self.write_fake('call-diarize-start', '''import json,os,pathlib
 assert not (pathlib.Path(os.environ['XDG_STATE_HOME'])/'call-record/active').exists()
 with open(os.environ['FAKE_EVENTS'],'a') as f:f.write(json.dumps({'event':'enqueue'})+'\\n')
 ''')

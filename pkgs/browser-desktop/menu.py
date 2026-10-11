@@ -44,7 +44,7 @@ def open_window(data_dir, profile):
         if keyring == 'locked':
             raise ValueError('Unlock the desktop keyring before opening Chrome.')
         if keyring != 'unlocked':
-            raise ValueError('The coordinator’s keyring cannot be reached. Its desktop session needs repair before Chrome can open.')
+            raise ValueError('The strix’s keyring cannot be reached. Its desktop session needs repair before Chrome can open.')
         start_desktop(manual=True)
         env = session_environment()
         ensure_chrome_on_display(data_dir, env)

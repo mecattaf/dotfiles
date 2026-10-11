@@ -10,23 +10,23 @@
 # reservations differ, and ax-fleet-topology pins that parity.
 #
 # Each base config is "today": it does NOT import modules/ax-fleet at all, as
-# origin/main's hosts/{nas,coordinator} do not (fix round 4: the round-3 base
+# origin/main's hosts/{nas,strix} do not (fix round 4: the round-3 base
 # carried the role, so every role-scoped guard was already in place before the
 # switch). Two specialisations import the fleet module:
 #   ax-on   myAxFleet.enable = true; the test switches to it live, NAS first,
 #           exactly as Tom will.
 #   ax-off  the role declared, enable = false: the kill switch (DESIGN 13).
-# 90-rollback runs the kill switch on the coordinator, and the generation
+# 90-rollback runs the kill switch on the strix, and the generation
 # rollback (back to this base) on both hosts.
 #
-# The worker is different, as on the fleet, where it has imported the module
+# The probe is different, as on the fleet, where it has imported the module
 # since 2026-09-23: its base carries the inference role with enable = false,
 # so the role's guards render from boot (modules/ax-fleet/agent.nix) and it
 # serves the earlier phases as the plain LAN host and internet stand-in. Its
 # ax-on specialisation joins the cluster as the tainted inference agent
-# (2026-09-25: "the amd strix halo worker SHOULD be available in the cluster
-# (not just halogen inference)"); 38-worker-join switches to it after
-# 35-lan-guard, whose negative probes need a worker that is not a node.
+# (2026-09-25: "the amd strix halo probe SHOULD be available in the cluster
+# (not just halogen inference)"); 38-probe-join switches to it after
+# 35-lan-guard, whose negative probes need a probe that is not a node.
 # Its kill switch is the base itself.
 let
   # A plain file, test-only, not a secret: the fleet reads agenix instead.
@@ -74,7 +74,7 @@ let
 
   # probe/ax-fleet-nop1, test-only: Substrate's own kubectl plugin from the
   # same pinned source, so the no-P1 phase can list actors, templates and
-  # workers (leak and worker-freed checks). Not in any host closure.
+  # workers (leak and probe-freed checks). Not in any host closure.
   kubectlAte =
     (pkgs.callPackage ../../pkgs/substrate {
       go_1_27 = inputs.nixpkgs-go.legacyPackages.x86_64-linux.go_1_27;
@@ -97,20 +97,20 @@ let
   };
 
   # Everything that makes a node a fleet node in the test (the ax-on and
-  # ax-off specialisations import it; the base does not, except the worker's).
+  # ax-off specialisations import it; the base does not, except the probe's).
   fleetNode =
     {
       role,
       address,
-      # The coordinator's stand-in tailnet; the worker has none, as on the fleet.
+      # The strix's stand-in tailnet; the probe has none, as on the fleet.
       guardInterfaces ? [ "eth2" ],
     }:
     {
       imports = [
         ../../modules/ax-fleet
-        # As on the real hosts (hosts/{coordinator,worker,client}): the harness
+        # As on the real hosts (hosts/{strix,probe,client}): the harness
         # role turns myAxClient on by mkDefault, which puts `ax` and `kubectl`
-        # on the coordinator's PATH for the Task phases.
+        # on the strix's PATH for the Task phases.
         ../../modules/ax-client.nix
         inputs.agenix.nixosModules.default
       ];
@@ -157,7 +157,7 @@ let
     address = "10.42.0.1";
   };
 
-  coordinatorFleet = {
+  strixFleet = {
     imports = [
       (fleetNode {
         role = "harness";
@@ -165,7 +165,7 @@ let
       })
     ];
     # The desk's wired port (fix round 3): eth3, NetworkManager-managed,
-    # DHCP from the worker's second leg, as enp191s0's "Wired connection 1".
+    # DHCP from the probe's second leg, as enp191s0's "Wired connection 1".
     myAxFleet.lan.extraInterfaces = [ "eth3" ];
   };
 
@@ -179,12 +179,12 @@ let
         (setAddr "eth1" "10.42.0.1" 24)
       ];
       networking.hostName = "nas";
-      # The internet stand-in (fix round 4): TEST-NET-2 lives on the worker.
+      # The internet stand-in (fix round 4): TEST-NET-2 lives on the probe.
       networking.interfaces.eth1.ipv4.routes = [
         {
           address = "198.51.100.0";
           prefixLength = 24;
-          via = "10.42.0.5";
+          via = "10.42.0.99";
         }
       ];
       virtualisation = {
@@ -298,16 +298,16 @@ in
       ];
     };
 
-  coordinator =
+  strix =
     { ... }:
     {
       imports = [
         testBase
-        (axStates coordinatorFleet { myAxFleet.kubelet = vmReservations; })
+        (axStates strixFleet { myAxFleet.kubelet = vmReservations; })
         (setAddr "eth1" "10.42.0.2" 24)
         (setAddr "eth2" "100.105.121.73" 10)
       ];
-      networking.hostName = "coordinator";
+      networking.hostName = "strix";
       # myAxFleet.apiUsers defaults to [ "tom" ]; alice is the other local user.
       users.users.tom.isNormalUser = true;
       virtualisation = {
@@ -367,6 +367,14 @@ in
         isNormalUser = true;
         linger = true;
       };
+      systemd.services.halogen-stub = {
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig = {
+          ExecStart = "${pkgs.python3}/bin/python3 ${./halogen_stub.py} --port 8731 --log /var/lib/halogen-stub/requests.jsonl";
+          StateDirectory = "halogen-stub";
+        };
+      };
+      networking.firewall.interfaces.eth1.allowedTCPPorts = [ 8731 ];
       systemd.user.services.herdr-standin = {
         wantedBy = [ "default.target" ];
         unitConfig."X-SwitchMethod" = "keep-old";
@@ -374,22 +382,17 @@ in
       };
     };
 
-  worker =
+  probe =
     { ... }:
     {
       imports = [
         testBase
-        (fleetNode {
-          role = "inference";
-          address = "10.42.0.5";
-          guardInterfaces = [ ];
-        })
         # 198.51.100.5 (TEST-NET-2): a public address for the egress tests
-        # (fix round 4), routed to the worker by the NAS.
+        # (fix round 4), routed to the probe by the NAS.
         {
           networking.interfaces.eth1.ipv4.addresses = lib.mkForce [
             {
-              address = "10.42.0.5";
+              address = "10.42.0.99";
               prefixLength = 24;
             }
             {
@@ -400,31 +403,31 @@ in
         }
         (setAddr "eth2" "192.168.43.5" 24)
       ];
-      networking.hostName = "worker";
+      networking.hostName = "probe";
       virtualisation = {
         vlans = [
           1
           3
         ];
-        # A k3s agent from 38-worker-join on: containerd, the airgap images,
+        # A k3s agent from 38-probe-join on: containerd, the airgap images,
         # the kubelet's reservations (vmReservations) and a probe pod.
         memorySize = 4096;
         cores = 2;
         diskSize = 8192;
       };
-      # myAxFleet.apiUsers defaults to [ "tom" ], as on the real worker.
+      # myAxFleet.apiUsers defaults to [ "tom" ], as on the real probe.
       users.users.tom.isNormalUser = true;
-      # sshd on port 22, open on every interface as on the real worker
-      # (hosts/worker/default.nix), passwords on as in the coordinator
-      # stand-in: the worst case. Pods on the worker must not reach it
-      # (38-worker-join).
+      # sshd on port 22, open on every interface as on the real probe
+      # (hosts/probe/default.nix), passwords on as in the strix
+      # stand-in: the worst case. Pods on the probe must not reach it
+      # (38-probe-join).
       services.openssh = {
         enable = true;
         openFirewall = true;
         settings.PasswordAuthentication = true;
         settings.KbdInteractiveAuthentication = true;
       };
-      # vlan 3: a second LAN segment for the coordinator's wired leg (fix
+      # vlan 3: a second LAN segment for the strix's wired leg (fix
       # round 3). DHCP with no router option, so no default route moves.
       services.dnsmasq = {
         enable = true;
@@ -437,7 +440,7 @@ in
           dhcp-option = [ "3" ];
         };
       };
-      # Another worker port (fix round 3): the real worker opens 22 with
+      # Another probe port (fix round 3): the real probe opens 22 with
       # passwords on every interface; pods and the egress gateway must reach
       # 8731 and nothing else.
       # The public target (fix round 4): what a Task with no Gateway must not
@@ -452,19 +455,14 @@ in
           Restart = "always";
         };
       };
-      systemd.services.worker-2222 = {
+      systemd.services.probe-2222 = {
         wantedBy = [ "multi-user.target" ];
-        serviceConfig.ExecStart = "${pkgs.busybox}/bin/httpd -f -p 2222 -h ${pkgs.writeTextDir "index.html" "worker-port-2222-reached\n"}";
+        serviceConfig.ExecStart = "${pkgs.busybox}/bin/httpd -f -p 2222 -h ${pkgs.writeTextDir "index.html" "probe-port-2222-reached\n"}";
       };
       # The base is the kill switch: the role declared, `enable` left at its
       # default (false; ax-on inherits the base, so the base must not define
-      # it). The guards render, k3s does not. 38-worker-join switches to
-      # ax-on, as Tom will, after the NAS and the coordinator.
-      specialisation.ax-on.configuration = {
-        myAxFleet.enable = true;
-        myAxFleet.kubelet = vmReservations;
-        services.k3s.images = [ probeImage ];
-      };
+      # it). The guards render, k3s does not. 38-probe-join switches to
+      # ax-on, as Tom will, after the NAS and the strix.
       networking.firewall = {
         enable = true;
         interfaces.eth1.allowedTCPPorts = [

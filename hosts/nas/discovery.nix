@@ -18,7 +18,7 @@
 #
 # ── Deliberate scope decisions ──────────────────────────────────────────────
 # READ-ONLY, guest, no Samba passwords: the write path stays NFS (the
-# coordinator's mounts), so smbd holds no credential state and cannot be a
+# strix's mounts), so smbd holds no credential state and cannot be a
 # second mutation path to the data. This also honors the appliance doctrine —
 # no new secrets on this box ("NO SECRET LIVES ON THIS BOX" — the 2026-08-04
 # ruling recorded in secrets.nix; an smbpasswd database is exactly the kind of standing state that
@@ -27,7 +27,7 @@
 # SMB admission is LAN-WIDE (10.42.0.0/24) — Tom's ruling, 2026-08-21: "only
 # me and my family use this wifi (feature not a bug)". The wifi PSK is the
 # access control; anyone on `thomas` may browse all four trees read-only.
-# (First deploy pinned this to the coordinator alone; widened the same day.)
+# (First deploy pinned this to the strix alone; widened the same day.)
 #
 # services/ is NOT shared: live service state has no business in a file
 # browser. models/ IS shared (Tom, 2026-08-21: "would be nice to check them

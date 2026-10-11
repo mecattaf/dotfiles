@@ -15,14 +15,14 @@ function navidrome-scan --description "Trigger a Navidrome library rescan and wa
 
     set -l creds /run/agenix/navidrome-credentials
     if not test -r $creds
-        echo "navidrome-scan: $creds unreadable (coordinator only)" >&2
+        echo "navidrome-scan: $creds unreadable (strix only)" >&2
         return 1
     end
     set -l user (grep '^NAVIDROME_USER=' $creds | string replace 'NAVIDROME_USER=' '')
     set -l pass (grep '^NAVIDROME_PASSWORD=' $creds | string replace 'NAVIDROME_PASSWORD=' '')
 
     set -l url $NAVIDROME_URL
-    test -n "$url"; or set url http://coordinator.tail8dd1.ts.net:4533
+    test -n "$url"; or set url http://strix.tail8dd1.ts.net:4533
     set -l auth "u=$user&p=$pass&v=1.16.1&c=navidrome-scan&f=json"
 
     # First contact wakes the relay and the sleeping NAS service; the HDD may

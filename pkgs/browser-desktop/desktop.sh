@@ -6,7 +6,7 @@ case "${1:-start}" in
   start)
     exec 9>"$runtime/session.lock"
     flock -n 9 || { echo 'The browser desktop is already running.' >&2; exit 1; }
-    unset DISPLAY WAYLAND_DISPLAY SWAYSOCK NIRI_SOCKET
+    unset DISPLAY WAYLAND_DISPLAY SWAYSOCK I3SOCK SCROLLSOCK NIRI_SOCKET
     export WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 WLR_RENDERER=pixman
     export XDG_CURRENT_DESKTOP=sway XDG_SESSION_TYPE=wayland
     cat >"$runtime/sway.conf" <<EOF

@@ -98,30 +98,30 @@ check() { # $1 = name, $2 = want, $3 = got
 
 # ── 1. on the worker, the declared state: active, Restart=on-failure ───────
 unit active 'Restart=on-failure'
-out="$(run worker refuse)"
+out="$(run strix refuse)"
 check "worker, unit up -> active PASS" PASS "$(row "$out" "$ACTIVE_ROW")"
 check "worker, unit up -> restart PASS" PASS "$(row "$out" "$RESTART_ROW")"
 
 # ── 2. on the worker, the unit down and its policy missing ─────────────────
 unit inactive 'Restart=no'
-out="$(run worker refuse)"
+out="$(run strix refuse)"
 check "worker, unit down -> active FAIL" FAIL "$(row "$out" "$ACTIVE_ROW")"
 check "worker, Restart=no -> restart FAIL" FAIL "$(row "$out" "$RESTART_ROW")"
 
 # ── 3. off the worker, the bus reached over ssh: measured, not guessed ─────
 unit active 'Restart=on-failure'
-out="$(run coordinator forward)"
-check "coordinator, ssh forwards -> active PASS" PASS "$(row "$out" "$ACTIVE_ROW")"
-check "coordinator, ssh forwards -> restart PASS" PASS "$(row "$out" "$RESTART_ROW")"
+out="$(run client forward)"
+check "strix, ssh forwards -> active PASS" PASS "$(row "$out" "$ACTIVE_ROW")"
+check "strix, ssh forwards -> restart PASS" PASS "$(row "$out" "$RESTART_ROW")"
 unit inactive 'Restart=on-failure'
-out="$(run coordinator forward)"
-check "coordinator, ssh forwards, unit down -> FAIL" FAIL "$(row "$out" "$ACTIVE_ROW")"
+out="$(run client forward)"
+check "strix, ssh forwards, unit down -> FAIL" FAIL "$(row "$out" "$ACTIVE_ROW")"
 
 # ── 4. off the worker with the worker unreachable: UNKNOWN, never a verdict ─
 unit active 'Restart=on-failure'
-out="$(run coordinator refuse)"
-check "coordinator, ssh refused -> active UNKNOWN" UNKNOWN "$(row "$out" "$ACTIVE_ROW")"
-check "coordinator, ssh refused -> restart UNKNOWN" UNKNOWN "$(row "$out" "$RESTART_ROW")"
+out="$(run client refuse)"
+check "strix, ssh refused -> active UNKNOWN" UNKNOWN "$(row "$out" "$ACTIVE_ROW")"
+check "strix, ssh refused -> restart UNKNOWN" UNKNOWN "$(row "$out" "$RESTART_ROW")"
 n="$(printf '%s\n' "$out" | grep -c 'podman-halogen.service')"
 check "exactly 2 halogen rows" 2 "$n"
 

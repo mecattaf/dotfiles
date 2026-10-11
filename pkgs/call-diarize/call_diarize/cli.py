@@ -42,7 +42,7 @@ from .pipeline import (
 )
 
 
-DEFAULT_INFERENCE_URL = "http://worker:8731"
+DEFAULT_INFERENCE_URL = "http://strix:8731"
 DEFAULT_CONTEXT = (
     "English-language business call. Preserve personal names, organization names, "
     "acronyms, and technical vocabulary exactly as spoken."
@@ -84,7 +84,7 @@ def parser() -> argparse.ArgumentParser:
         metavar="URL",
         help=(
             "Halogen Flash base URL or its /v1/chat/completions URL "
-            "(default: $CALL_DIARIZE_INFERENCE_URL or http://worker:8731)"
+            "(default: $CALL_DIARIZE_INFERENCE_URL or http://strix:8731)"
         ),
     )
     result.add_argument(

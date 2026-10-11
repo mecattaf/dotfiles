@@ -53,7 +53,7 @@ log "inference backend: $INFERENCE_URL"
 # condition is evaluated once, and an unmet one marks the job *skipped* — the
 # unit never starts, so Restart=always never applies and nothing retries. The
 # 2026-08-05 18:33 reboot hit exactly that: /mnt/nas is an x-systemd.automount
-# (hosts/coordinator/nas-client.nix), it was still cold at user-manager start,
+# (hosts/strix/nas-client.nix), it was still cold at user-manager start,
 # and the 24/7 ruling silently degraded to 'until the next reboot' for 2h.
 #
 # So the condition moves in here, where failing is a *restartable* outcome:

@@ -23,13 +23,13 @@ DOTFILES="${L8_FLASH_DOTFILES:-/home/tom/mecattaf/dotfiles}"
 REPO_DIR="$HOME/mecattaf/dotfiles"
 # The host this probe is running on. The override exists for ONE reader: the
 # committed test in tests/l8-flash-probe/, which must be able to exercise a
-# coordinator-only row on any box and inside the nix sandbox. Nothing on a
+# strix-only row on any box and inside the nix sandbox. Nothing on a
 # real box sets it, and a probe run with it set is a test run, not evidence.
 HOST="${L8_FLASH_HOST:-$(hostname)}"
-COORDINATOR="coordinator"
+COORDINATOR="strix"
 # The box that serves inference: the Halogen Flash server's podman unit lives
 # there (modules/halogen.nix), and `worker` resolves from every host.
-WORKER="worker"
+COMPUTE_HOST="strix"
 
 pass=0
 fail=0
@@ -59,7 +59,7 @@ unk() {
   report UNKNOWN "$@"
 }
 
-coordinator_only() { [ "$HOST" = "$COORDINATOR" ]; }
+strix_only() { [ "$HOST" = "$COORDINATOR" ]; }
 
 # FragmentPath as systemd PRINTS it, resolved to what it POINTS AT. A declared
 # unit's fragment is almost never a bare store path: home-manager links its
@@ -114,11 +114,11 @@ echo
 # ── 1. the pool rows tally actually serves ──────────────────────────────────
 # `tally query pools` is the pin's own verb (doc/src/operating/cli.md,
 # "Producers, pools, render, and stand-up"). The daemon runs on the
-# coordinator only, so this is where the rows can be READ; the file checks
+# strix only, so this is where the rows can be READ; the file checks
 # below run everywhere.
-if coordinator_only; then
+if strix_only; then
   if pools_out="$(tally query pools 2>&1)"; then
-    for want in cc cc2 cc3 codex pi coordinator-gpu worker-gpu; do
+    for want in cc cc2 cc3 codex pi strix-gpu worker-gpu; do
       if names_pool "$pools_out" "$want"; then
         ok "[E] pool present: $want" "tally query pools | names_pool $want"
       else
@@ -136,7 +136,7 @@ if coordinator_only; then
     no "[E] tally query pools answers" "tally query pools"
   fi
 else
-  na "[E] tally pool rows (coordinator only)" "tally query pools"
+  na "[E] tally pool rows (strix only)" "tally query pools"
 fi
 
 # ── 2. the meters directory the module now creates ──────────────────────────
@@ -145,7 +145,7 @@ fi
 # MODE is what only the declared rule produces: systemd-tmpfiles `d ... 0700`
 # both creates the directory and chmods an existing one, so 0700 is the switch,
 # and 0755 is somebody's mkdir -p.
-if coordinator_only; then
+if strix_only; then
   mode="$(stat -c '%a' "$HOME/.local/state/tally/meters" 2>/dev/null)"
   if [ "$mode" = "700" ]; then
     ok "[E] meters dir 0700" "stat -c %a ~/.local/state/tally/meters"
@@ -153,7 +153,7 @@ if coordinator_only; then
     no "[E] meters dir 0700 (got '$mode')" "stat -c %a ~/.local/state/tally/meters"
   fi
 else
-  na "[E] meters dir (coordinator only)" "stat -c %a ~/.local/state/tally/meters"
+  na "[E] meters dir (strix only)" "stat -c %a ~/.local/state/tally/meters"
 fi
 
 # ── 3. the retired pin, by absence ──────────────────────────────────────────
@@ -177,7 +177,7 @@ else
 fi
 
 # ── 4. the fleet's one inference serve: podman-halogen on the WORKER ────────
-# The coordinator serves nothing; the Halogen Flash server is the worker's
+# The strix serves nothing; the Halogen Flash server is the worker's
 # podman-halogen.service (modules/halogen.nix), declared Restart=on-failure so
 # the engine's own watchdog exit is recovered. The unit is read on the worker's
 # own system bus: directly when this probe runs there, over `ssh worker`
@@ -186,29 +186,29 @@ fi
 HALOGEN_UNIT="podman-halogen.service"
 halogen_ctl=()
 halogen_via=""
-if [ "$HOST" = "$WORKER" ]; then
+if [ "$HOST" = "$COMPUTE_HOST" ]; then
   halogen_ctl=(systemctl)
   halogen_via="systemctl"
 elif command -v ssh >/dev/null 2>&1; then
-  halogen_ctl=(ssh -o BatchMode=yes -o ConnectTimeout=5 "$WORKER" systemctl)
-  halogen_via="ssh $WORKER systemctl"
+  halogen_ctl=(ssh -o BatchMode=yes -o ConnectTimeout=5 "$COMPUTE_HOST" systemctl)
+  halogen_via="ssh $COMPUTE_HOST systemctl"
 fi
 if [ -z "$halogen_via" ]; then
-  unk "[P] $HALOGEN_UNIT active on $WORKER (no ssh on this box)" "ssh $WORKER systemctl is-active $HALOGEN_UNIT"
-  unk "[P] $HALOGEN_UNIT Restart=on-failure (no ssh on this box)" "ssh $WORKER systemctl show $HALOGEN_UNIT -p Restart"
+  unk "[P] $HALOGEN_UNIT active on $COMPUTE_HOST (no ssh on this box)" "ssh $COMPUTE_HOST systemctl is-active $HALOGEN_UNIT"
+  unk "[P] $HALOGEN_UNIT Restart=on-failure (no ssh on this box)" "ssh $COMPUTE_HOST systemctl show $HALOGEN_UNIT -p Restart"
 else
   state="$("${halogen_ctl[@]}" is-active "$HALOGEN_UNIT" 2>/dev/null)"
   rc=$?
-  if [ "$HOST" != "$WORKER" ] && [ "$rc" -eq 255 ]; then
+  if [ "$HOST" != "$COMPUTE_HOST" ] && [ "$rc" -eq 255 ]; then
     # 255 is ssh's own exit for a connection it could not make; systemctl
     # never returns it. The worker is unreachable, so nothing was measured.
-    unk "[P] $HALOGEN_UNIT active on $WORKER ($WORKER unreachable over ssh)" "$halogen_via is-active $HALOGEN_UNIT"
-    unk "[P] $HALOGEN_UNIT Restart=on-failure ($WORKER unreachable over ssh)" "$halogen_via show $HALOGEN_UNIT -p Restart"
+    unk "[P] $HALOGEN_UNIT active on $COMPUTE_HOST ($COMPUTE_HOST unreachable over ssh)" "$halogen_via is-active $HALOGEN_UNIT"
+    unk "[P] $HALOGEN_UNIT Restart=on-failure ($COMPUTE_HOST unreachable over ssh)" "$halogen_via show $HALOGEN_UNIT -p Restart"
   else
     if [ "$state" = "active" ]; then
-      ok "[P] $HALOGEN_UNIT active on $WORKER" "$halogen_via is-active $HALOGEN_UNIT"
+      ok "[P] $HALOGEN_UNIT active on $COMPUTE_HOST" "$halogen_via is-active $HALOGEN_UNIT"
     else
-      no "[P] $HALOGEN_UNIT active on $WORKER (got '$state')" "$halogen_via is-active $HALOGEN_UNIT"
+      no "[P] $HALOGEN_UNIT active on $COMPUTE_HOST (got '$state')" "$halogen_via is-active $HALOGEN_UNIT"
     fi
     restart="$("${halogen_ctl[@]}" show "$HALOGEN_UNIT" -p Restart 2>/dev/null)"
     if [ "$restart" = "Restart=on-failure" ]; then
@@ -221,7 +221,7 @@ fi
 
 # ── 5. the two user timers, and the DECLARED units behind them ──────────────
 # `active` alone is NOT evidence for the mirror: the hand-written timer this PR
-# replaces (dotfiles#293) is active on the coordinator today, and it would stay
+# replaces (dotfiles#293) is active on the strix today, and it would stay
 # active — green here — while the declared service failed on fire. So each
 # timer is checked twice. A home-manager unit's fragment lives in /nix/store
 # and is linked into ~/.config/systemd/user; a hand-written unit IS the plain
@@ -236,7 +236,7 @@ for timer in claude-transcript-mirror.timer nightly-record.timer; do
     claude-transcript-mirror.timer) active_tag="[P]" ;;
     *) active_tag="[E]" ;;
   esac
-  if coordinator_only; then
+  if strix_only; then
     if systemctl --user is-active --quiet "$timer"; then
       ok "$active_tag $timer active" "systemctl --user is-active $timer"
     else
@@ -253,8 +253,8 @@ for timer in claude-transcript-mirror.timer nightly-record.timer; do
         ;;
     esac
   else
-    na "$active_tag $timer (coordinator only)" "systemctl --user is-active $timer"
-    na "[E] $timer declared (coordinator only)" "systemctl --user show $timer -p FragmentPath"
+    na "$active_tag $timer (strix only)" "systemctl --user is-active $timer"
+    na "[E] $timer declared (strix only)" "systemctl --user show $timer -p FragmentPath"
   fi
 done
 
@@ -264,14 +264,14 @@ done
 # program absent is exactly the half-delivery a switch taken from the wrong
 # checkout produces, and it is silent: the timer is active, the service fails
 # on fire, the mirror stops.
-if coordinator_only; then
+if strix_only; then
   if [ -x "$HOME/.local/bin/claude-transcript-mirror" ]; then
     ok "[P] mirror program executable" "test -x ~/.local/bin/claude-transcript-mirror"
   else
     no "[P] mirror program executable" "test -x ~/.local/bin/claude-transcript-mirror"
   fi
 else
-  na "[P] mirror program (coordinator only)" "test -x ~/.local/bin/claude-transcript-mirror"
+  na "[P] mirror program (strix only)" "test -x ~/.local/bin/claude-transcript-mirror"
 fi
 
 # ── 5b. the hand-written pair the declared units replace (#293, #319) ───────
@@ -288,7 +288,7 @@ fi
 #
 # [E], not [P]: a green row here means the deletion has happened. Before it
 # this row is expected to FAIL, and that FAIL is the reminder.
-if coordinator_only; then
+if strix_only; then
   left=""
   for suffix in service timer; do
     unit="$HOME/.config/systemd/user/claude-transcript-mirror.$suffix"
@@ -305,7 +305,7 @@ if coordinator_only; then
     no "[E] hand-written pair gone (still plain:$left)" "test ! -f ~/.config/systemd/user/claude-transcript-mirror.{service,timer}"
   fi
 else
-  na "[E] hand-written pair gone (coordinator only)" "test ! -f ~/.config/systemd/user/claude-transcript-mirror.{service,timer}"
+  na "[E] hand-written pair gone (strix only)" "test ! -f ~/.config/systemd/user/claude-transcript-mirror.{service,timer}"
 fi
 
 # ── 5c. the UTIL-01 timers, declared not hand-installed (#311, #320) ────────
@@ -321,16 +321,16 @@ fi
 # same through `is-active`, while FragmentPath separates them the instant the
 # unit exists. Two rows, one per timer — the count matters: before the switch
 # the probe must exit 1 with exactly these two additional FAIL rows on the
-# coordinator and the same PASS rows it had before (#320).
+# strix and the same PASS rows it had before (#320).
 #
 # util-sampler.timer is declared on BOTH boxes (the sampler picks its own probe
 # list and lease pool by hostname; no Nix conditional selects them), so its row
-# runs everywhere. util-row.timer is coordinator-gated — it is the joiner that
-# pulls the worker's log — so off the coordinator it is SKIP, never FAIL.
-util_fragment_row() { # $1 = timer, $2 = "both" | "coordinator"
+# runs everywhere. util-row.timer is strix-gated — it is the joiner that
+# pulls the worker's log — so off the strix it is SKIP, never FAIL.
+util_fragment_row() { # $1 = timer, $2 = "both" | "strix"
   local timer="$1" scope="$2" raw frag
-  if [ "$scope" = "coordinator" ] && ! coordinator_only; then
-    na "[E] $timer declared (coordinator only)" "systemctl --user show $timer -p FragmentPath"
+  if [ "$scope" = "strix" ] && ! strix_only; then
+    na "[E] $timer declared (strix only)" "systemctl --user show $timer -p FragmentPath"
     return
   fi
   raw="$(systemctl --user show "$timer" -p FragmentPath --value 2>/dev/null)"
@@ -345,7 +345,7 @@ util_fragment_row() { # $1 = timer, $2 = "both" | "coordinator"
   esac
 }
 util_fragment_row util-sampler.timer both
-util_fragment_row util-row.timer coordinator
+util_fragment_row util-row.timer strix
 
 # ── 6. the cc3 links, resolved ──────────────────────────────────────────────
 # Compared against $REPO_DIR, never $DOTFILES: these links can resolve nowhere
@@ -355,7 +355,7 @@ util_fragment_row util-row.timer coordinator
 for leaf in settings.json skills; do
   target="$(readlink -f "$HOME/.claude-3/$leaf" 2>/dev/null)"
   case "$target" in
-    "$REPO_DIR/home/dot_claude"/*)
+    "$REPO_DIR/home/dot_claude"/*|"$HOME/.local/state/claude/settings.json")
       ok "[P] cc3 link resolves: $leaf" "readlink -f ~/.claude-3/$leaf"
       ;;
     *)
@@ -364,7 +364,7 @@ for leaf in settings.json skills; do
   esac
 done
 
-# ── 7. herdr: binaries everywhere, one server on the coordinator (ruling B5) ─
+# ── 7. herdr: binaries everywhere, one server on the strix (ruling B5) ─
 for binary in herdr; do
   if command -v "$binary" >/dev/null 2>&1; then
     ok "[E] $binary on PATH" "command -v $binary"
@@ -372,7 +372,7 @@ for binary in herdr; do
     no "[E] $binary on PATH" "command -v $binary"
   fi
 done
-if coordinator_only; then
+if strix_only; then
   if systemctl --user is-active --quiet herdr; then
     ok "[E] herdr server active" "systemctl --user is-active herdr"
   else
@@ -380,8 +380,8 @@ if coordinator_only; then
   fi
 else
   # NOT a failure on the worker: ruling B5 in home/herdr.nix puts ONE server on
-  # the coordinator and the client binaries everywhere. See dotfiles#309.
-  na "[E] herdr server (coordinator only, ruling B5)" "systemctl --user is-active herdr"
+  # the strix and the client binaries everywhere. See dotfiles#309.
+  na "[E] herdr server (strix only, ruling B5)" "systemctl --user is-active herdr"
 fi
 
 # ── 8. cleanupPeriodDays, read from the seat that actually uses it ──────────

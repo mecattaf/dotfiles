@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# monitors-off — niri's power-off-monitors on Sway: every output off now, all
+# back on at the first input. Sway does not wake outputs on input, so a
+# one-shot swayidle does it: `timeout 1` powers off once the seat has been
+# idle for a second, `resume` powers on and then kills this swayidle (its
+# commands run under `sh -c`, so $PPID is swayidle itself).
+# Mod+Shift+P (sway/binds.conf) and the F10 prompt (bin/sleep-monitors).
+set -euo pipefail
+command -v swayidle >/dev/null || { echo 'monitors-off: swayidle not on PATH' >&2; exit 1; }
+exec swayidle -w \
+    timeout 1 'swaymsg output "*" power off' \
+    resume 'swaymsg output "*" power on; kill $PPID'

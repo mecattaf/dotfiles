@@ -1,7 +1,8 @@
-{ writeShellApplication
-, google-chrome
-, coreutils
-, namespace
+{
+  writeShellApplication,
+  google-chrome,
+  coreutils,
+  namespace,
 }:
 # artifact-view <snapshot-dir | slug | URL> — rung 0 of the artifact ladder.
 # Opens an artifact in a BOUNDED Chrome app window (no tab bar) — the same
@@ -11,7 +12,7 @@
 # publish-artifact skill chains on top only to broadcast. `namespace` is
 # injected from modules/artifacts-defaults.nix via overlays/default.nix.
 #
-# RUNG 0 IS THE SEAT'S RUNG (2026-09-11). Agents run on the coordinator, which
+# RUNG 0 IS THE SEAT'S RUNG (2026-09-11). Agents run on the strix, which
 # is headless; the only display in the fleet belongs to the client. So on a host
 # with no Wayland or X display this command does not fail obscurely inside
 # Chrome — it refuses, explains that rung 0 does not exist there, and prints the
@@ -49,7 +50,7 @@ writeShellApplication {
     # of dying inside Chrome. See the header.
     if [ -z "''${WAYLAND_DISPLAY:-}" ] && [ -z "''${DISPLAY:-}" ]; then
       {
-        echo "artifact-view: $(uname -n) has no display: rung 0 does not exist here (the coordinator is headless since 2026-09-11)."
+        echo "artifact-view: $(uname -n) has no display: rung 0 does not exist here (the strix is headless since 2026-09-11)."
         echo "The seat (client) is the only host with a screen. Give the artifact a URL and open it there."
         if [ -n "$slug" ]; then
           until_date="$(date -d '+7 days' +%Y%m%d 2>/dev/null || echo YYYYMMDD)"

@@ -5,7 +5,7 @@ Two entry points share this file and its schema (SCHEMA.md):
 
   fleet-status-collect --json   on EVERY host: local facts only, each one
                                 {value, source, observed_at, grade[, reason]}.
-  fleet-status [--json]         on the coordinator: fans the collector out over
+  fleet-status [--json]         on the strix: fans the collector out over
                                 the root SSH mesh in parallel, one hard deadline
                                 per node, and renders a compact terminal view.
 
@@ -557,7 +557,7 @@ def c_inference(profile: dict) -> dict:
         port = profile.get("halogen_port", 8731)
         units = out["halogen_units"]
         if units["grade"] == "measured" and "active" not in units["value"].values():
-            # An on-demand host (the coordinator) with every Halogen unit down
+            # An on-demand host (the strix) with every Halogen unit down
             # is serving nothing by design, not failing to answer.
             for name in ("health", "cache"):
                 out[name] = by_design(src, "no Halogen unit is active; start one with halogen-switch")
@@ -921,7 +921,7 @@ def fetch_node(host: dict) -> dict:
     name = host["name"]
     base = {"name": name, "profile": host.get("profile"), "target": host.get("target"), "report": None}
     # "local" is a seam only (FLEET_STATUS_HOSTS_FILE fixtures). The rendered
-    # hosts.json dials every node, the coordinator included, as root over
+    # hosts.json dials every node, the strix included, as root over
     # ssh, because update-adopt's state is root-only (modules/fleet-status.nix).
     if host.get("transport") == "local":
         argv = [os.environ.get("FLEET_STATUS_COLLECT", "fleet-status-collect"), "collect", "--json"]

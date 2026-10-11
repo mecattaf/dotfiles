@@ -1,7 +1,7 @@
 export const meta = {
   name: "academic-assemble",
   description: "Assemble canonical academic OCR artifacts, chunk, embed, index, and receipt",
-  pools: ["academic-ocr-cpu", "coordinator-gpu"],
+  pools: ["academic-ocr-cpu", "strix-gpu"],
   argsSchema: {
     type: "object",
     required: [
@@ -287,7 +287,7 @@ function witnessed(result) {
           embedding: args.embedding
         },
         embeddingsPath,
-        ["coordinator-gpu"],
+        ["strix-gpu"],
         "embed",
         embeddingSchema
       );

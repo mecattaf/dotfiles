@@ -119,7 +119,7 @@ let
       # But "re-arms on the first quiet poll" assumed a one-off crash. A unit
       # flapping at (or faster than) the poll cadence never grants a quiet
       # poll, so the watcher latched disarmed — 8 days blind on the
-      # coordinator (#245), swallowing not just the flapper but every OTHER
+      # strix (#245), swallowing not just the flapper but every OTHER
       # failure on the box. The renotify floor bounds that blindness: a
       # condition still over-threshold this long after a fire fires again.
       threshold = 1;
@@ -144,24 +144,23 @@ let
       ];
       onFire = builtins.readFile ./tripwire-journal-onfire.sh;
 
-      environment =
-        {
-          JOURNAL_KIND = kind;
-          JOURNAL_LABEL = label;
-          JOURNAL_MATCH = match;
-          FAILURE_MARKER_DIR = cfg.markerDir;
-        }
-        // lib.optionalAttrs (excludeField != null && excludeValues != [ ]) {
-          JOURNAL_EXCLUDE_FIELD = excludeField;
-          JOURNAL_EXCLUDE_VALUES = lib.concatStringsSep " " excludeValues;
-        }
-        // lib.optionalAttrs (excludeRegexField != null && excludeRegexPatterns != [ ]) {
-          JOURNAL_EXCLUDE_REGEX_FIELD = excludeRegexField;
-          JOURNAL_EXCLUDE_REGEX_PATTERNS = builtins.toJSON excludeRegexPatterns;
-        };
+      environment = {
+        JOURNAL_KIND = kind;
+        JOURNAL_LABEL = label;
+        JOURNAL_MATCH = match;
+        FAILURE_MARKER_DIR = cfg.markerDir;
+      }
+      // lib.optionalAttrs (excludeField != null && excludeValues != [ ]) {
+        JOURNAL_EXCLUDE_FIELD = excludeField;
+        JOURNAL_EXCLUDE_VALUES = lib.concatStringsSep " " excludeValues;
+      }
+      // lib.optionalAttrs (excludeRegexField != null && excludeRegexPatterns != [ ]) {
+        JOURNAL_EXCLUDE_REGEX_FIELD = excludeRegexField;
+        JOURNAL_EXCLUDE_REGEX_PATTERNS = builtins.toJSON excludeRegexPatterns;
+      };
     };
 
-  # systemd catalog message IDs, both verified live on the coordinator journal.
+  # systemd catalog message IDs, both verified live on the strix journal.
   coredumpMessageId = "fc2e22bc6ee647b6b90729ab34a250b1";
   unitFailedMessageId = "be02cf6855d2428ba40df7e9d022f03d";
 in

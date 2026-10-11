@@ -9,7 +9,7 @@
 #     handle_pane_died -> ws.remove_pane, mark_session_dirty), and the next
 #     snapshot no longer carries it, so nothing can resume it.
 #   - Closing a kitty projector, or prefix+q, only DETACHES. The PTY lives on
-#     in the coordinator's herdr server, resumable from any projector
+#     in the strix's herdr server, resumable from any projector
 #     (herdr's sidebar on Mod+Ctrl+Shift+Return, #385).
 #   - A herdr SERVER restart restores the saved layout. resume_agents_on_restore
 #     relaunches an agent only for a pane whose snapshot carries an agent
@@ -34,7 +34,7 @@
 # activity of THAT harness in THAT directory", not a per-pane clock. Anything
 # else prints `unavailable`, never a guess.
 #
-# Runs where the server is (the coordinator); elsewhere `herdr` has no socket.
+# Runs where the server is (the strix); elsewhere `herdr` has no socket.
 set -euo pipefail
 
 usage() {

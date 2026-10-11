@@ -170,7 +170,7 @@ class CleanupFallbackTests(unittest.TestCase):
             manifest = load_json(call_dir / "asr-raw/manifest.json")
             self.assertEqual(
                 manifest["inference_endpoint"],
-                "http://worker:8731/v1/chat/completions",
+                "http://strix:8731/v1/chat/completions",
             )
             self.assertEqual(manifest["cleanup_failure_count"], 1)
             self.assertEqual(manifest["session_counts"], {"near": 1, "far": 1, "mix": 1})

@@ -1,0 +1,2 @@
+#!/bin/sh
+exec "$HOME/.local/state/agency/mail/node/bin/node" '/home/tom/agency-agency/mail/packages/cli/dist/mail.js' "$@"

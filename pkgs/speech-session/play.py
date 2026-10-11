@@ -7,7 +7,7 @@ import fcntl, io, os, socket, subprocess, sys, time, wave
 from pathlib import Path
 
 def main():
-    if socket.gethostname() not in ('client', 'coordinator'): raise RuntimeError('Playback requires a physical seat')
+    if socket.gethostname() not in ('client', 'strix'): raise RuntimeError('Playback requires a physical seat')
     calls=Path.home()/'.local/state/call-record'
     runtime=Path(os.environ.get('XDG_RUNTIME_DIR',f'/run/user/{os.getuid()}'))
     locks=runtime/'qwen-speech';locks.mkdir(parents=True,exist_ok=True,mode=0o700)

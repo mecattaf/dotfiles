@@ -11,8 +11,8 @@ opt.titlestring = 'nvim %f'
 -- nvim almost always runs on the COORDINATOR, inside a herdr pane projected
 -- into the laptop's kitty. Every herdr pane carries WAYLAND_DISPLAY=wayland-1,
 -- so `unnamedplus` below would pick the wl-copy provider and land the yank on
--- the coordinator's clipboard — a clipboard nobody is sitting in front of; once
--- the coordinator goes headless (M-1) wl-copy fails outright.
+-- the strix's clipboard — a clipboard nobody is sitting in front of; once
+-- the strix goes headless (M-1) wl-copy fails outright.
 --
 -- Fix: when the session is remote (a herdr pane sets HERDR_ENV; a plain remote
 -- shell sets SSH_TTY), drive the clipboard over OSC 52 instead, so the yank
@@ -70,7 +70,7 @@ opt.termguicolors = true
 -- timeout stuff
 opt.updatetime = 100
 opt.timeout = true
-opt.timeoutlen = 300 
+opt.timeoutlen = 300
 opt.ttimeoutlen = 0
 
 -- status, tab, number, sign line

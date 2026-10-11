@@ -4,7 +4,7 @@
   pkgs,
   ...
 }:
-# The harness node: the coordinator. "Agent harnesses on coordinator" (Tom,
+# The harness node: the strix. "Agent harnesses on strix" (Tom,
 # 2026-09-23). A k3s agent tainted with upstream Substrate's own key, so only
 # atelet and the WorkerPool's gVisor worker pods land here; nothing that
 # schedules or remembers does (the wifi leg is the least available link).
@@ -19,7 +19,7 @@
 #   - the tailnet: flannel and kube-proxy bind the LAN leg only, nothing is
 #     published, and the guard chain keeps pods, wifi and the tailnet apart
 #     even though k3s turns ip_forward on (judge 1's second risk). The guard
-#     chain polices FORWARD only; pods reaching the coordinator HOST (sshd,
+#     chain polices FORWARD only; pods reaching the strix HOST (sshd,
 #     which accepts passwords) go through INPUT, so pod interfaces get their
 #     own refusal at the head of nixos-fw (fix round 2). The chain covers the
 #     direct path; the path routed through the NAS into VXLAN is closed twice,
@@ -97,7 +97,7 @@ in
     })
     (lib.mkIf on {
       myAxFleet.kubelet = {
-        # Memory: Tom's seats, Chrome and a coordinator Halogen feel pressure
+        # Memory: Tom's seats, Chrome and a strix Halogen feel pressure
         # after the sandboxes are evicted, never before. CPU is the slices below:
         # system-reserved only shrinks kubepods.slice's weight, it protects
         # nothing.
@@ -107,7 +107,7 @@ in
         # REPLACES kubelet's whole default map (MEASURED in the round-3 VM log:
         # HardEvictionThresholds=[memory.available] only), which dropped k3s's
         # nodefs/imagefs defaults. / here is also /nix/store, journald and the
-        # coordinator's postgres (MEASURED findmnt: one nvme partition), so a
+        # strix's postgres (MEASURED findmnt: one nvme partition), so a
         # sandbox filling its writable layer must be evicted before they ENOSPC.
         evictionHard = lib.mkDefault "memory.available<8Gi,nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<15%,imagefs.inodesFree<5%";
       };
@@ -131,7 +131,7 @@ in
         serverAddr = "https://${cfg.serverAddress}:6443";
         nodeTaint = [ cfg.harnessTaint ];
         # Registered WITH the version label: ate-setup only labels nodes that
-        # exist when it runs (MEASURED version.go:113-131), and the coordinator
+        # exist when it runs (MEASURED version.go:113-131), and the strix
         # joins after the NAS. Without it atelet (version-keyed) never lands.
         nodeLabel = [
           "ax.mecattaf.dev/role=harness"

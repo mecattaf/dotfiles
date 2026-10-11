@@ -294,11 +294,11 @@ class UtilityOwnerProvenanceTests(unittest.TestCase):
     def test_owner_records_where_the_seam_runs_and_why_it_is_in_tree(self) -> None:
         # Pin both halves of where this seam lives: the upstream it forwards
         # to (the Halogen server on the worker) and the host the wrapper is
-        # installed on (the coordinator), and that the flake check imports it
+        # installed on (the strix), and that the flake check imports it
         # by path regardless of installation.
         source = UTILITY_OWNER.read_text(encoding="utf-8")
         self.assertIn("halogen", source.lower())
-        self.assertIn("coordinator", source)
+        self.assertIn("strix", source)
         self.assertIn("flake check", source)
         self.assertIn("by path", source)
         # The wrapper owns no child process and takes no lock: one bounded

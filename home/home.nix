@@ -67,7 +67,9 @@ let
 
   # Whole-dir RAW config dirs, one per ~/.config/<name>.
   configDirs = [
-    "niri"
+    "sway" # shared physical desktop
+    "scroll" # the physical seats' compositor on scroll/transition (dawsers/scroll master)
+    "niri" # kept beside scroll for rollback until niri retirement (myDisplay.keepNiri)
     "kitty"
     "ghostty" # kitty.conf's twin, read by libghostty in cmux Browser's panes
     "fish"
@@ -93,7 +95,7 @@ let
       numpy
       ijson
     ]
-    ++ lib.optionals (hostName == "coordinator") [
+    ++ lib.optionals (hostName == "strix") [
       # CLI-Anything's generated harnesses and validation workflow assume these
       # are importable from the ordinary `python3`, not only inside cli-hub.
       click
@@ -128,6 +130,7 @@ in
     ./raw-dotfiles-guard.nix
     ./ssh.nix
     ./theme.nix
+    ./vicinae.nix
   ];
 
   home.username = "tom";
@@ -162,12 +165,38 @@ in
         action_alias kitty_scrollback_nvim kitten ${pkgs.vimPlugins.kitty-scrollback-nvim}/python/kitty_scrollback_nvim.py
       '';
 
+      "sway-local.conf".text =
+        lib.optionalString (hostName == "strix") ''
+          output DP-4 scale 2 position 0 0
+          output DP-1 scale 2 position 2560 0
+        ''
+        + lib.optionalString (hostName == "client") ''
+          # Zenbook Duo: logical 1440x900 panels, vertically stacked.
+          output eDP-1 scale 2 position 0 0
+          output eDP-2 scale 2 position 0 900
+          # Preserve the verified top-panel mapping until both device IDs are
+          # measured on this laptop. Do not turn inferred ELAN IDs into policy.
+          input type:touch map_to_output eDP-1
+          bindswitch --reload --locked lid:on output eDP-1 disable
+          bindswitch --reload --locked lid:off output eDP-1 enable
+          bindsym --no-warn F10 exec ~/.local/bin/brightness toggle
+          bindsym --locked XF86MonBrightnessDown exec ~/.local/bin/brightness down
+          bindsym --locked XF86MonBrightnessUp exec ~/.local/bin/brightness up
+          # Shift+F5/F6: 2% fine steps (Tom, 2026-10-10). The XF86 keysym comes
+          # from the daemon's virtual keyboard while Shift is held on the
+          # physical one; Sway's default keyboard_grouping=smart groups both
+          # (same keymap and repeat info), so the modifier carries across.
+          bindsym --locked Shift+XF86MonBrightnessDown exec ~/.local/bin/brightness down 2%
+          bindsym --locked Shift+XF86MonBrightnessUp exec ~/.local/bin/brightness up 2%
+          bindsym --locked XF86AudioMicMute exec ~/.local/bin/volume micmute
+        '';
+
       # Per-HOST niri config — the real per-host slot niri/local.kdl never had (that
       # file is shared by the whole-dir symlink). Emitted at a neutral ~/.config path
       # (niri/ is a whole-dir symlink, can't nest a generated file inside) and pulled
       # in by an ABSOLUTE include in niri/config.kdl (niri expands neither ~ nor $HOME).
       # Written on EVERY host (no `optional` include on the pinned niri). The
-      # coordinator gets an inert file. The client — the ASUS Zenbook Duo, back
+      # strix gets an inert file. The client — the ASUS Zenbook Duo, back
       # on 2026-09-11 — gets the ONLY per-host niri content in the fleet, and
       # this slot is the only place such content may live: niri/ itself is a
       # whole-dir RAW symlink shared by every host, so binds.kdl carries over
@@ -187,11 +216,11 @@ in
       #
       # Mod+Return / Mod+Ctrl+Shift+Return are NOT overridden here any more
       # (#385, 2026-09-13): binds.kdl's own chords call ~/.local/bin/herdr-chord,
-      # which targets the coordinator through a local `herdr --remote`
+      # which targets the strix through a local `herdr --remote`
       # projector, so the RAW file is already right on the client and nothing
       # needs a rebuild to re-cut them. The ssh-tty spellings that lived here
       # (`hk-new-inplace`, `hk-resume-agents`) ran the herdr client ON the
-      # coordinator, where no clipboard image can ever be read.
+      # strix, where no clipboard image can ever be read.
       #
       # F10: binds.kdl's "sleep monitors" popup (power-off-monitors behind an
       # fzf prompt) becomes a popup-free BACKLIGHT toggle — brightness to zero
@@ -220,12 +249,60 @@ in
                 F10 hotkey-overlay-title="Backlight off / restore" { spawn-sh "~/.local/bin/brightness toggle"; }
                 XF86MonBrightnessDown allow-when-locked=true { spawn-sh "~/.local/bin/brightness down"; }
                 XF86MonBrightnessUp allow-when-locked=true { spawn-sh "~/.local/bin/brightness up"; }
+                Shift+XF86MonBrightnessDown allow-when-locked=true { spawn-sh "~/.local/bin/brightness down 2%"; }
+                Shift+XF86MonBrightnessUp allow-when-locked=true { spawn-sh "~/.local/bin/brightness up 2%"; }
                 XF86AudioMicMute allow-when-locked=true { spawn-sh "~/.local/bin/volume micmute"; }
             }
           ''
         else
           ''
             // GENERATED per-host (home.nix). No host-specific niri config on ${hostName}.
+          '';
+
+      # Per-HOST scroll config: the scroll twin of niri-local.kdl, same reasons
+      # (scroll/ is a whole-dir RAW symlink shared by every host). Included by
+      # scroll/config after binds.conf and before the theme fragment, so the
+      # client's chords override binds.conf (a later bindsym wins; --no-warn
+      # silences the duplicate notice). Store-managed, re-emitted on switch.
+      #
+      # Touch: sway-family input blocks map PER DEVICE, which closes the
+      # accepted R-10 defect niri could not (stock niri maps every touch device
+      # to one output). The type-wide line keeps today's niri behaviour
+      # (everything on eDP-1); the two per-device lines are the R-10 fix, left
+      # commented until `scrollmsg -t get_inputs` on the client confirms which
+      # ELAN panel is which (identifiers inferred from the scroll-era
+      # lisgd-start device names, 0x04F3 = 1267, 0x425A/B = 16986/16987).
+      #
+      # Lid: niri turned eDP-1 off on lid close by itself and hosts/client/
+      # lid.nix relies on that (logind ignores the lid). sway-family
+      # compositors do not, so bindswitch does it; --reload re-applies the
+      # state after a config reload.
+      #
+      # F10 / XF86: as niri-local.kdl (backlight toggle; the Duo daemon's
+      # re-emitted Fn keys).
+      "scroll-local.conf".text =
+        if hostName == "client" then
+          ''
+            # GENERATED per-host (home.nix). client — ASUS Zenbook Duo UX8406MA.
+            input type:touch map_to_output eDP-1
+            # R-10 per-device mapping (verify ids with `scrollmsg -t get_inputs`):
+            # input "1267:16986:ELAN9008:00_04F3:425A" map_to_output eDP-1
+            # input "1267:16987:ELAN9008:00_04F3:425B" map_to_output eDP-2
+
+            bindswitch --reload --locked lid:on output eDP-1 disable
+            bindswitch --reload --locked lid:off output eDP-1 enable
+
+            # @title Backlight off / restore
+            bindsym --no-warn F10 exec ~/.local/bin/brightness toggle
+            bindsym --locked XF86MonBrightnessDown exec ~/.local/bin/brightness down
+            bindsym --locked XF86MonBrightnessUp exec ~/.local/bin/brightness up
+            bindsym --locked Shift+XF86MonBrightnessDown exec ~/.local/bin/brightness down 2%
+            bindsym --locked Shift+XF86MonBrightnessUp exec ~/.local/bin/brightness up 2%
+            bindsym --locked XF86AudioMicMute exec ~/.local/bin/volume micmute
+          ''
+        else
+          ''
+            # GENERATED per-host (home.nix). No host-specific scroll config on ${hostName}.
           '';
     };
   # (The gtk-4.0/{gtk.css,gtk-dark.css,assets} links that used to sit here — a
@@ -282,7 +359,6 @@ in
   # .credentials.json into (a whole-dir symlink would push the credential into the
   # PUBLIC repo tree). Without this, a fresh box has zero skills/settings.
   home.file.".claude/skills".source = link "dot_claude/skills";
-  home.file.".claude/settings.json".source = link "dot_claude/settings.json";
   home.file.".claude/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
   home.file.".codex/AGENTS.md".source = link "agent-runtime-rules.md";
 
@@ -301,12 +377,18 @@ in
   # Second Claude account (work): `cc2`/`cac2` in fish set CLAUDE_CONFIG_DIR to
   # ~/.claude-work. Same skills + settings, separate .credentials.json/.claude.json.
   home.file.".claude-work/skills".source = link "dot_claude/skills";
-  home.file.".claude-work/settings.json".source = link "dot_claude/settings.json";
   home.file.".claude-work/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
   # Third account (2026-09-05): `cc3`/`cac3` → ~/.claude-3, same links.
   home.file.".claude-3/skills".source = link "dot_claude/skills";
-  home.file.".claude-3/settings.json".source = link "dot_claude/settings.json";
   home.file.".claude-3/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
+
+  # Claude owns mutable preferences. One direct symlink hop reaches writable
+  # shared state, never the Nix store or Git checkout. Activation seeds only
+  # once and preserves /model and /effort changes on every later switch.
+  home.activation.claudeSettings = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    run ${pkgs.python3}/bin/python3 ${./claude-settings.py} \
+      --home "$HOME" --template ${./dot_claude/settings.json}
+  '';
 
   # Same canonical skill tree, exposed to Codex and `pi` (earendil-works/pi)
   # through the vendor-neutral, always-trusted Agent-Skills directory
@@ -350,13 +432,13 @@ in
 
   # ---------------------------------------------------------------------------
   # atuin — shell history, synced fleet-wide through a self-hosted server on the
-  # coordinator (hosts/coordinator/services.nix), tailnet-only. The package here
+  # strix (hosts/strix/services.nix), tailnet-only. The package here
   # replaces the old bare `atuin` entry in home.packages; fish's own init call +
   # the Ctrl+E rebind stay in dot_config/fish/config.fish untouched
   # (enableFishIntegration = false avoids home-manager wiring a second one).
   #
-  # sync_address: the coordinator talks to its own server over localhost; every
-  # other host reaches it via MagicDNS (`coordinator`, tailnet-only — see the
+  # sync_address: the strix talks to its own server over localhost; every
+  # other host reaches it via MagicDNS (`strix`, tailnet-only — see the
   # firewall rule on the server side).
   #
   # The encryption key itself is fleet state, not per-host state: it's minted
@@ -368,19 +450,18 @@ in
     enableFishIntegration = false;
     settings = {
       auto_sync = true;
-      # port must match services.atuin.port in hosts/coordinator/services.nix.
-      sync_address =
-        if hostName == "coordinator" then "http://localhost:27321" else "http://coordinator:27321";
+      # port must match services.atuin.port in hosts/strix/services.nix.
+      sync_address = if hostName == "strix" then "http://localhost:27321" else "http://strix:27321";
     };
   };
 
   # ---------------------------------------------------------------------------
-  # `loginctl enable-linger tom` (already set on the coordinator) is what keeps
+  # `loginctl enable-linger tom` (already set on the strix) is what keeps
   # user-level services running when no login session is open. The posture it
   # now serves is ONE long-lived server per user, not N daemons forked per
-  # session: the coordinator hosts the single herdr server and every PTY lives
+  # session: the strix hosts the single herdr server and every PTY lives
   # inside it, so a laptop that reconnects later finds its panes still alive.
-  # Linger is therefore load-bearing for the coordinator alone — no other host
+  # Linger is therefore load-bearing for the strix alone — no other host
   # runs a server (ruling B5/B6).
   # ---------------------------------------------------------------------------
 
@@ -399,19 +480,19 @@ in
       package = pkgs.mactahoe-icon-theme;
     };
     cursorTheme = {
-      name = if hostName == "coordinator" then "Bibata-Modern-Amber" else "Bibata-Modern-Classic";
+      name = if hostName == "strix" then "Bibata-Modern-Amber" else "Bibata-Modern-Classic";
       package = pkgs.bibata-cursors;
     };
     # Photos gets a plain bookmark, not an XDG dir (see xdg.userDirs below):
     # XDG_PICTURES_DIR is where screenshot tools save, and /mnt/nas/photos is
     # Immich's library root — stray screenshots must not land inside it.
-    gtk3.bookmarks = lib.optionals (hostName == "coordinator") [
+    gtk3.bookmarks = lib.optionals (hostName == "strix") [
       "file:///mnt/nas/photos Photos"
     ];
   };
 
   # ---------------------------------------------------------------------------
-  # NAS media in the Nautilus sidebar (coordinator only). Music/Videos become
+  # NAS media in the Nautilus sidebar (strix only). Music/Videos become
   # the REAL XDG user dirs pointing into the NFS automount, so Nautilus (and
   # anything using g_get_user_special_dir) treats the NAS library as native
   # local folders; first click triggers the automount. createDirectories stays
@@ -419,11 +500,11 @@ in
   # activation would hang or spray errors.
   #
   # These entries (and the Photos bookmark above) only survive into the sidebar
-  # because hosts/coordinator/nas-client.nix warms the automount before
+  # because hosts/strix/nas-client.nix warms the automount before
   # graphical-session.target: a path that isn't there when the session starts is
   # silently dropped, which is #139.
   # ---------------------------------------------------------------------------
-  xdg.userDirs = lib.mkIf (hostName == "coordinator") {
+  xdg.userDirs = lib.mkIf (hostName == "strix") {
     enable = true;
     createDirectories = false;
     music = "/mnt/nas/music";
@@ -448,7 +529,7 @@ in
   # Coordinator only (2026-09-11): the calendar CLI and its agents run there;
   # the thin client has no consumer, and the unit was the one fleet-wide
   # user service with no host gate at all.
-  systemd.user.services.dcal-daemon = lib.mkIf (hostName == "coordinator") {
+  systemd.user.services.dcal-daemon = lib.mkIf (hostName == "strix") {
     Unit = {
       Description = "dcal calendar daemon";
       After = [ "graphical-session.target" ];
@@ -501,9 +582,13 @@ in
     yq-go
     glow
 
-    # niri / wayland desktop tooling. xwayland-satellite: niri's X11 path — X11 apps
-    # and Chrome fallbacks need it on the session PATH.
+    # wayland desktop tooling. xwayland-satellite: niri's X11 path — X11 apps
+    # and Chrome fallbacks need it on the session PATH under niri; scroll has
+    # native Xwayland. Kept while niri is the rollback (myDisplay.keepNiri).
     xwayland-satellite
+    # scroll/scripts/monitors-off: sway-family compositors do not wake outputs
+    # on input, so a one-shot swayidle resume does it (niri's power-off-monitors).
+    swayidle
     acpi
     brightnessctl
     playerctl
@@ -563,12 +648,12 @@ in
     # Upstream's minimal flake output: git-ai + git-og, while programs.git below
     # remains the sole provider of the real git binary.
     inputs.git-ai.packages.${pkgs.stdenv.hostPlatform.system}.minimal
-    huggingface-cli # metadata CLI; agenix authentication is coordinator-only
+    huggingface-cli # metadata CLI; agenix authentication is strix-only
     gh
     google-cloud-sdk
     gws # Google Workspace CLI (Gmail/Calendar/Drive/Sheets/Docs/...), Discovery-doc-backed
     cloudflared
-    wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (coordinator-only cred, binary fleet-wide)
+    wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (strix-only cred, binary fleet-wide)
     backlog-md # bespoke pkg via overlay — see pkgs/backlog-md.nix
     pkgs.crm # vendored personal CRM CLI; data stays at its built-in notes path
     pkgs.dcal # vendored calendar CLI; data lives under XDG, nothing in git

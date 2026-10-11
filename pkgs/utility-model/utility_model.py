@@ -6,7 +6,7 @@ request on stdin and one response on stdout.  Callers may name only the stable
 model ID ``utility``.  Nix supplies the endpoint of the fleet's Halogen Flash
 server and the concrete served model ID (modules/halogen.nix).
 
-Installed on the coordinator only; the request itself runs on the worker, the
+Installed on the strix only; the request itself runs on the worker, the
 box that serves Halogen.  This file forwards one request there and rewrites
 ``utility`` to the concrete served ID on the way out and back.  No lock and no
 child process: the server is resident for the life of its unit, so the only
@@ -32,7 +32,7 @@ from typing import BinaryIO
 STABLE_MODEL_ID = "utility"
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
-DEFAULT_ENDPOINT = "http://worker:8731"
+DEFAULT_ENDPOINT = "http://strix:8731"
 CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 # A request that arrives during the worker's cold load can wait most of that
 # load out before a single token is generated; leave room for the generation.

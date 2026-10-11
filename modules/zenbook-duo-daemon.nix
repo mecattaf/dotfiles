@@ -37,6 +37,11 @@ let
   configToml = pkgs.writeText "zenbook-duo-daemon-config.toml" ''
     usb_vendor_id = "${cfg.usbVendorId}"
     usb_product_id = "${cfg.usbProductId}"
+    # Upstream's own gloss: "fn_lock = true  # To input F1-F12, you need to
+    # press Fn + F1-F12". So with it on, a bare F1/F2/F3 is mute / volume
+    # down / volume up, F4 the keyboard backlight, F5/F6 brightness, which is
+    # what Tom wants from the laptop keyboard (2026-10-10). Flipping it would
+    # turn the row back into plain F-keys and silence every media binding.
     fn_lock = true
     secondary_display_status_path = "${cfg.drmStatusPath}"
     primary_backlight_path = "/sys/class/backlight/intel_backlight/brightness"

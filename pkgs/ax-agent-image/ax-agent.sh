@@ -22,7 +22,7 @@ mode="${1:-}"
 [ $# -gt 0 ] && shift
 out="${AX_RESULT_PATH:-${AX_CONWIP_RESULT_PATH:-.ax/result.json}}"
 mkdir -p "$(dirname "$out")"
-halogen="${HALOGEN_URL:-http://10.42.0.5:8731}"
+halogen="${HALOGEN_URL:-http://10.42.0.2:8731}"
 model="${AX_AGENT_MODEL:-${AX_CONWIP_MODEL:-halogen-qwen3.8-flash-next}}"
 share="@share@"
 

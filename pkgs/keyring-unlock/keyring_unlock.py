@@ -1,7 +1,7 @@
 """keyring-unlock [--status|--lock] [COLLECTION] -- unlock a gnome-keyring collection without a GUI prompt.
 
-The coordinator boots headless: no login unlocks the keyring. Run this over
-ssh from the client (`ssh -t coordinator keyring-unlock`) and type the keyring
+The strix boots headless: no login unlocks the keyring. Run this over
+ssh from the client (`ssh -t strix keyring-unlock`) and type the keyring
 password once. The password is read from the terminal (or stdin when not a
 tty), never from argv, and handed to gnome-keyring's own
 UnlockWithMasterPassword over the session bus. Exit 0 only when the collection

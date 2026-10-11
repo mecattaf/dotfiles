@@ -6,7 +6,7 @@
 #
 # The fixture suite (test_bridge.py: real catalog layout, fake Paperless API,
 # fake utility model) runs as the install check, so every host that installs
-# the bridge — nas, and the coordinator for `suggest` — refuses to build a
+# the bridge — nas, and the strix for `suggest` — refuses to build a
 # bridge whose enrichment, tag round-trip or bulk guards regressed.
 {
   lib,

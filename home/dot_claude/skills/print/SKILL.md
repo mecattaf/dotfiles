@@ -1,25 +1,25 @@
 ---
 name: print
-description: Put a Markdown document on paper by dropping it into ~/Paper/intake/ on the coordinator; paper-daemon renders, validates, prints during working hours and writes a receipt from the printer itself. Use when the user asks to print, make a paper copy, or turn Markdown into a document for physical reading.
+description: Put a Markdown document on paper by dropping it into ~/Paper/intake/ on the strix; paper-daemon renders, validates, prints during working hours and writes a receipt from the printer itself. Use when the user asks to print, make a paper copy, or turn Markdown into a document for physical reading.
 ---
 
 # Print
 
 `/print` is one file write. You do not render, submit, read queues, or
-decide when printing happens: paper-daemon on the coordinator owns all of it
+decide when printing happens: paper-daemon on the strix owns all of it
 (dotfiles#384).
 
 ## The whole contract
 
 Write the Markdown to a hidden temporary name, then rename it into place,
-on the **coordinator**:
+on the **strix**:
 
     ~/Paper/intake/.<slug>.md.tmp   →   ~/Paper/intake/<slug>.md
 
 `<slug>` is a short kebab-case name for the document. The rename is what
 starts the job, so never write straight to `<slug>.md`. From another host,
-copy it over first (`scp FILE coordinator:~/Paper/intake/.<slug>.md.tmp`,
-then `ssh coordinator mv ~/Paper/intake/.<slug>.md.tmp ~/Paper/intake/<slug>.md`).
+copy it over first (`scp FILE strix:~/Paper/intake/.<slug>.md.tmp`,
+then `ssh strix mv ~/Paper/intake/.<slug>.md.tmp ~/Paper/intake/<slug>.md`).
 
 Optional front matter, only when the user asked for it:
 

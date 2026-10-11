@@ -67,10 +67,10 @@ ACADEMIC_ROOT = os.environ.get(
 # so a fixture tree (or a future re-home) resolves the same rows.
 ACADEMIC_RECORDED_ROOT = "/mnt/nas/documents/academic-papers"
 # The fleet's utility seam (AGENTS.md): one chat-completions request on stdin,
-# one response on stdout. Only the coordinator has `utility-model`, so
-# `suggest` runs there, against the default PAPERLESS_URL: on the coordinator
+# one response on stdout. Only the strix has `utility-model`, so
+# `suggest` runs there, against the default PAPERLESS_URL: on the strix
 # 127.0.0.1:28981 is the paperless-relay socket to nas:28981 (paperless.internal
-# does not resolve on the coordinator itself; it is a client-side name).
+# does not resolve on the strix itself; it is a client-side name).
 UTILITY_CMD = os.environ.get("BRIDGE_UTILITY_CMD", "utility-model")
 SUGGEST_MODEL = os.environ.get("BRIDGE_SUGGEST_MODEL", "utility")
 SUGGEST_NOTE_MARKER = "paperless-bridge suggest"
@@ -167,7 +167,7 @@ def digests(path):
 
 
 def token():
-    # PAPERLESS_TOKEN lets the coordinator-side `suggest` carry the token for
+    # PAPERLESS_TOKEN lets the strix-side `suggest` carry the token for
     # one invocation without a copy of the NAS token file at rest.
     if os.environ.get("PAPERLESS_TOKEN"):
         return os.environ["PAPERLESS_TOKEN"].strip()
@@ -888,7 +888,7 @@ def cmd_suggest(args):
     """Bounded AI tag-candidate batch. Concurrency 1 by construction (serial
     loop + a host lock), one utility-model request per document, never a new
     model: the request lands on the worker's resident Halogen server through
-    the coordinator's utility-model seam. Writes only ai-candidate/<slug>
+    the strix's utility-model seam. Writes only ai-candidate/<slug>
     tags plus one audit note carrying model, taxonomy version and confidence;
     a human accepts by retagging into the owning namespace."""
     lock = suggest_lock()
