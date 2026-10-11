@@ -232,6 +232,24 @@
   hardware.graphics.extraPackages = [ pkgs.intel-media-driver ];
   environment.sessionVariables.LIBVA_DRIVER_NAME = "iHD";
 
+  # Chrome on this box: VA-API hardware encode for Meet's outgoing camera.
+  # Decode is already hardware by default (2026-10-11, measured in a throwaway
+  # profile: AV1/VP9 playback on the video engine at ~5% of one core, WebRTC
+  # decoder "VaapiVideoDecoder"). Encode was libvpx in software (VP9 1280x720
+  # camera loopback 26.7% of one core); with AcceleratedVideoEncoder it is
+  # "VaapiVideoEncodeAccelerator" at 14.8%. VP8 stays software: Meteor Lake
+  # has no VP8 encoder. WaylandWindowDecorations is repeated because the
+  # wrapper's own NIXOS_OZONE_WL --enable-features comes earlier on the line.
+  # mkAfter: the override must wrap the nixpkgs-fresh google-chrome that the
+  # flake's overlay list installs, not be replaced by it.
+  nixpkgs.overlays = lib.mkAfter [
+    (_final: prev: {
+      google-chrome = prev.google-chrome.override {
+        commandLineArgs = "--enable-features=WaylandWindowDecorations,AcceleratedVideoEncoder";
+      };
+    })
+  ];
+
   # jul5 dual-eDP niri startup hang mitigation: niri.service is Type=notify and
   # was SIGKILLed before signalling ready. 120 s was not enough on 2026-09-14:
   # niri started 08:54:44, stalled behind a kernel "nvme … timeout, completion
@@ -291,6 +309,63 @@
   # burns its five restarts in a second (omarchy-fleet R37).
   services.asusd.enable = true;
   systemd.tmpfiles.rules = [ "d /etc/asusd 0755 root root -" ];
+
+  # Balanced, on AC and on battery (Tom, 2026-10-11: "it really should not be
+  # in performance mode", "prefer balanced over quiet"). This is a thin client:
+  # web, YouTube and Meet are the heaviest it ever runs. Until now asusd's own
+  # undeclared default (platform_profile_on_ac: Performance, EPP performance)
+  # fired on boot and on every dock replug, so the box sat in Performance on
+  # the dock 24/7 and the fan ran at about 4000 rpm with a video playing.
+  # Declared here so a replug or a wiped /etc/asusd cannot bring it back.
+  # NixOS copies this as a 0644 file (not a store symlink), so asusd can still
+  # rewrite it at runtime; every activation puts this text back.
+  # profile_balanced_epp is BalancePerformance, the EPP power-profiles-daemon
+  # applied with Balanced during the measurement, not asusd's BalancePower.
+  services.asusd.asusdConfig.text = ''
+    (
+        charge_control_end_threshold: 60,
+        base_charge_control_end_threshold: 100,
+        disable_nvidia_powerd_on_battery: true,
+        ac_command: "",
+        bat_command: "",
+        platform_profile_linked_epp: true,
+        platform_profile_on_battery: Balanced,
+        change_platform_profile_on_battery: true,
+        platform_profile_on_ac: Balanced,
+        change_platform_profile_on_ac: true,
+        profile_quiet_epp: Power,
+        profile_balanced_epp: BalancePerformance,
+        profile_custom_epp: Performance,
+        profile_performance_epp: Performance,
+        ac_profile_tunings: {
+            Performance: (
+                enabled: false,
+                group: {},
+            ),
+            Quiet: (
+                enabled: false,
+                group: {},
+            ),
+        },
+        dc_profile_tunings: {
+            Quiet: (
+                enabled: false,
+                group: {},
+            ),
+        },
+        armoury_settings: {},
+    )
+  '';
+  # asusd reads that file only at start and the upstream unit has no trigger,
+  # so a switch that changes it restarts asusd; otherwise the old in-memory
+  # Performance rule would keep firing until the next boot.
+  systemd.services.asusd.restartTriggers = [ config.environment.etc."asusd/asusd.ron".text ];
+  # asusd is the one owner of the platform profile here, as on the strix
+  # (hosts/strix/default.nix). The fleet-wide power-profiles-daemon
+  # (modules/common.nix) wrote the same sysfs knob and restored its own saved
+  # profile seven seconds after asusd set one at boot (2026-10-11 journal).
+  # Nothing in home/ talks to it.
+  services.power-profiles-daemon.enable = lib.mkForce false;
   # thermald is OFF on this box (2026-09-13), measured: the UX8406MA gives it
   # nothing to act on — every ACPI trip is at 103 °C or above, the EC owns the
   # fan and exposes no curve (asusctl's fan-curve verb aborts with a core dump
