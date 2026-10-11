@@ -1665,3 +1665,16 @@ copies `openwakeword-alexa-v051` and `openwakeword-baker-compat-v051` (about
 `/mnt/nas/models/weights/RETIRED-2026-10-03.tsv`. The `flake.nix` assertions
 that no host carries a `speech-wake` unit stay, as reintroduction guards;
 dated research and decision records keep their history.
+
+2026-10-11 openWakeWord removal finished (Tom: "remove openwakeword fully, i
+dnt want it at all"). The 2026-10-03 change above is merged with main's newer
+`call-record`, which since 2026-10-10 starts diarization through
+`call-diarize-start` instead of a Tally enqueue; both stand, and the playback
+hold (`call-record/active`) is released before `call-diarize-start` runs. No
+code reads or writes `~/.local/state/speech-wake/` any more; a host that ran
+the listener may still hold that directory as inert leftover state. Kept on
+purpose: the `flake.nix` assertions that no seat carries a `speech-wake` unit,
+the rule in `AGENTS.md` against reintroducing a wake detector, the
+`--hotwords` option of `call-diarize` and `call-diarize-start` (VibeVoice ASR
+vocabulary context, not a wake word), and the dated speech research and
+commissioning records, which keep their history.
