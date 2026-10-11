@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import signal
 import subprocess
 import sys
@@ -114,6 +115,28 @@ with open(os.environ['FAKE_EVENTS'],'a') as f:f.write(json.dumps({'event':'enque
         self.assertEqual(sorted([first.returncode,second.returncode]), [0,1])
         self.assertEqual(len(self.records()), 2)
         self.assertEqual(self.invoke('stop', timeout=4).returncode, 0)
+
+    def test_thin_client_records_into_hidden_spool_and_keeps_it_on_failed_handoff(self):
+        # 2026-10-11: a host without call-diarize that is not the strix (the
+        # client) records into ~/.local/state/call-record/spool, never
+        # ~/Recordings; with the strix unreachable the closed session stays there.
+        if shutil.which('call-diarize', path=os.environ['PATH']):
+            self.skipTest('a real call-diarize is on PATH; this case needs a host without one')
+        (self.bin / 'call-diarize').unlink()
+        self.write_fake('hostname', "print('client')\n")
+        self.write_fake('ssh', "import sys;sys.stdin.buffer.read();sys.exit(255)\n")
+        started = self.invoke('start', 'thin')
+        self.assertEqual(started.returncode, 0, started.stderr)
+        session = Path(self.current.read_text().splitlines()[0])
+        self.assertEqual(session.parent, self.state / 'call-record/spool')
+        self.assertTrue((session / 'far.wav').exists())
+        stopped = self.invoke('stop')
+        self.assertEqual(stopped.returncode, 0, stopped.stderr)
+        self.assertIn(f'the local copy is kept at {session}', stopped.stderr)
+        self.assertTrue((session / 'mix.wav').exists())
+        self.assertFalse((self.home / 'Recordings').exists())
+        self.assertFalse(self.hold.exists())
+        self.assertFalse(self.current.exists())
 
 
 if __name__ == '__main__':

@@ -22,12 +22,19 @@
 # Clone-to-temp + atomic mv means an interrupted clone never leaves a half-populated
 # dir that the ConditionPathExists gate would mistake for "done" (the wedge the earlier
 # greetd-wrapper had).
+#
+# Not on a host whose raw dotfiles come from the Nix store
+# (home-manager.users.tom.rawDotfiles.inStore, the client since 2026-10-11): it
+# links nothing into a checkout, and a clone there would put ~/mecattaf back
+# into a home that is meant to stay clean.
 let
   repoDir = "/home/tom/mecattaf/dotfiles";
   repoUrl = "https://github.com/mecattaf/dotfiles.git";
   # Pin the canonical branch explicitly so a future default-branch change cannot
   # silently redirect provisioning.
   repoBranch = "main";
+  # The host links nothing into a checkout (see the note above the let).
+  inStore = config.home-manager.users.tom.rawDotfiles.inStore or false;
   cloneScript = pkgs.writeShellScript "dotfiles-bootstrap-clone" ''
     set -u
     repo="${repoDir}"
@@ -46,7 +53,7 @@ let
     fi
   '';
 in
-lib.mkIf (!config.myHeadless.enable) {
+lib.mkIf (!config.myHeadless.enable && !inStore) {
   systemd.services.dotfiles-bootstrap = {
     description = "Ensure ${repoDir} checkout exists (home-manager out-of-store configs need it)";
     wantedBy = [ "multi-user.target" ];

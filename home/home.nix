@@ -14,11 +14,11 @@
 # That checkout, not the flake switched from, supplies the raw half of every
 # switch: ./raw-dotfiles-guard.nix fails the activation, before writeBoundary,
 # when a user unit's %h/.local/bin/<program> is missing from it (#313), and
-# AGENTS.md carries the ordering rule.
+# AGENTS.md carries the ordering rule. Exception: a host with
+# rawDotfiles.inStore (the client) gets the same files from the Nix store and
+# has no checkout (./raw-dotfiles-guard.nix).
 let
-  repoDir = config.rawDotfiles.repoDir;
-  dots = "${repoDir}/home";
-  link = path: config.lib.file.mkOutOfStoreSymlink "${dots}/${path}";
+  link = config.lib.rawDotfiles.link;
 
   hostName = osConfig.networking.hostName;
 
@@ -110,7 +110,7 @@ let
   pwaIcon = name: icon: url: {
     inherit name;
     exec = "${chrome} --profile-directory=Default --app=${url}";
-    icon = "${dots}/dot_local/share/icons/${icon}.png";
+    icon = config.lib.rawDotfiles.path "dot_local/share/icons/${icon}.png";
     categories = [ "Network" ];
   };
   pwa = name: pwaIcon name name;
@@ -503,13 +503,43 @@ in
   # because hosts/strix/nas-client.nix warms the automount before
   # graphical-session.target: a path that isn't there when the session starts is
   # silently dropped, which is #139.
+  #
+  # The client (2026-10-11): Tom wants its home CLEAN, Downloads (Chrome's) and
+  # hidden dirs only. Nothing creates the user dirs (createDirectories off, no
+  # xdg-user-dirs package, so no xdg-user-dirs-update either), Downloads stays
+  # where Chrome expects it, and every other XDG user dir points under the
+  # hidden ~/.local/share/user-dirs/: an app that saves into "Pictures" or
+  # "Videos" by the XDG default no longer makes ~/Pictures or ~/Videos.
+  # Screenshots and call recordings do not use these at all on the client;
+  # they leave for the strix (bin/screenshot, bin/call-record).
   # ---------------------------------------------------------------------------
-  xdg.userDirs = lib.mkIf (hostName == "strix") {
-    enable = true;
-    createDirectories = false;
-    music = "/mnt/nas/music";
-    videos = "/mnt/nas/videos";
-  };
+  xdg.userDirs = lib.mkMerge [
+    (lib.mkIf (hostName == "strix") {
+      enable = true;
+      createDirectories = false;
+      music = "/mnt/nas/music";
+      videos = "/mnt/nas/videos";
+    })
+    (lib.mkIf (hostName == "client") (
+      let
+        hidden = name: "${config.xdg.dataHome}/user-dirs/${name}";
+      in
+      {
+        enable = true;
+        package = null;
+        createDirectories = false;
+        download = "${config.home.homeDirectory}/Downloads";
+        desktop = hidden "Desktop";
+        documents = hidden "Documents";
+        music = hidden "Music";
+        pictures = hidden "Pictures";
+        projects = hidden "Projects";
+        publicShare = hidden "Public";
+        templates = hidden "Templates";
+        videos = hidden "Videos";
+      }
+    ))
+  ];
 
   # ---------------------------------------------------------------------------
   # OBS Studio — the module wraps OBS so the plugin loads. obs-vkcapture is also

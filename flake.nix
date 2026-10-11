@@ -1776,6 +1776,34 @@
           # seat-feeder clocks. Touch is mapped globally to
           # eDP-1 on stock niri (PR #1856 accepted as a defect, no fork).
           assert clientHome.home.username == "tom";
+          # The client's home stays clean by construction (2026-10-11): every
+          # file Home Manager places there is hidden, no XDG user dir but
+          # Downloads is visible or created, and no activation names
+          # ~/mecattaf (the checkout and the journal lane are gone there).
+          assert builtins.all (f: nixpkgs.lib.hasPrefix "." f.target) (
+            builtins.attrValues clientHome.home.file
+          );
+          assert clientHome.xdg.userDirs.enable;
+          assert !clientHome.xdg.userDirs.createDirectories;
+          assert clientHome.xdg.userDirs.package == null;
+          assert clientHome.xdg.userDirs.download == "/home/tom/Downloads";
+          assert builtins.all (nixpkgs.lib.hasPrefix "/home/tom/.local/share/user-dirs/") (
+            with clientHome.xdg.userDirs;
+            [
+              desktop
+              documents
+              music
+              pictures
+              projects
+              publicShare
+              templates
+              videos
+            ]
+          );
+          assert
+            !(builtins.any (a: nixpkgs.lib.hasInfix "/home/tom/mecattaf" a.data) (
+              builtins.attrValues clientHome.home.activation
+            ));
           assert !(clientHome.services ? tally);
           # No transcription model, wake listener or Voxtype on the client
           # (speech-wake and Parakeet removed 2026-09-30).
@@ -1892,9 +1920,14 @@
         ai-memory =
           let
             homeConfig = self.nixosConfigurations.strix.config.home-manager.users.tom;
+            clientHome = self.nixosConfigurations.client.config.home-manager.users.tom;
             expectedJournal = "/home/tom/mecattaf/notes/journal";
           in
           assert homeConfig.programs.ai-memory.journalDir == expectedJournal;
+          assert homeConfig.home.activation ? aiMemoryJournal;
+          # Strix only: on the client it recreated ~/mecattaf/notes/journal.
+          assert !(clientHome.home.activation ? aiMemoryJournal);
+          assert !(clientHome.xdg.configFile ? "ai-memory/config.json");
           assert
             (builtins.fromJSON homeConfig.xdg.configFile."ai-memory/config.json".text) == {
               schema = 1;
@@ -2061,6 +2094,19 @@
             ];
 
           assert (homeOf "client").rawDotfiles.programs == [ ];
+          # The client carries no checkout (2026-10-11): its raw dotfiles come
+          # from the store, so it has no guard to run, no bootstrap clone and
+          # not one home file linked into ~/mecattaf. The strix keeps the
+          # out-of-store links and the guard.
+          assert (homeOf "client").rawDotfiles.inStore;
+          assert !((homeOf "client").home.activation ? rawDotfilesGuard);
+          assert !(self.nixosConfigurations.client.config.systemd.services ? dotfiles-bootstrap);
+          assert
+            !(builtins.any (
+              f: builtins.isAttrs f.source && lib.hasInfix "/mecattaf/" (f.source.buildCommand or "")
+            ) (builtins.attrValues (homeOf "client").home.file));
+          assert !(homeOf "strix").rawDotfiles.inStore;
+          assert self.nixosConfigurations.strix.config.systemd.services ? dotfiles-bootstrap;
           assert
             entry.before == [
               "checkLinkTargets"
@@ -2217,6 +2263,29 @@
                 -p 'test_*.py' \
                 -v
 
+              touch "$out"
+            '';
+
+        # bin/screenshot on the client (2026-10-11): hidden spool, push to
+        # strix:~/Pictures/Screenshots, local delete only after a sha256 match,
+        # kept while the strix is down, never an overwrite there; other hosts
+        # unchanged. Hermetic: the "strix" is a temp home behind a fake ssh.
+        screenshot-spool =
+          pkgs.runCommand "screenshot-spool"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.findutils
+                pkgs.gnugrep
+                pkgs.jq
+                pkgs.rsync
+                pkgs.util-linux
+              ];
+            }
+            ''
+              set -euo pipefail
+              bash ${./tests/screenshot/test-spool.sh} ${./home/dot_local/bin/screenshot}
               touch "$out"
             '';
 
