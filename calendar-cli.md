@@ -19,6 +19,12 @@ CLI, the database, the sync engine, and the projections.
 > that still calls a `crm` executable (`dcal --crm`, `DCAL_CRM_BIN`, the
 > `home/dot_claude/skills/dcal/` skill) was NOT changed by #452 and is a separate
 > follow-on.
+>
+> **Amended 2026-10-11 (CRM cutover).** The live successor is `agency-agency/crm`,
+> deployed at `crm.mecattaf.dev`. `crm` is again on PATH, now as the wrapper
+> `home/dot_local/bin/crm` over that repo's CLI bundle, and the `/crm` skill is
+> vendored from its `skills/crm/`. `mecattaf/crm` is the earlier repository that
+> holds the preserved `spec.md` and `data-model.sql`. `crm.db` is frozen on the NAS.
 
 ## Settled rulings (Tom, 2026-08-10)
 
