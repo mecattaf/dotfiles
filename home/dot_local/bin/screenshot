@@ -17,17 +17,96 @@
 # The plain capture is already saved and on the clipboard, so Esc just closes
 # Satty; Enter overwrites the file with the annotated image and copies that.
 # Esc in slurp is a clean cancel.
+#
+# On the client (the Zenbook thin client, 2026-10-11) no image stays on the
+# box. Tom: "Pictures (i guess screenshots) must be sync'd with the strix halo
+# as i want no images saved on the zenbook which is a thin client (transient
+# ones eg. clipboard are fine)". Capture, clipboard and Satty are unchanged,
+# but the file is written under a hidden spool,
+# ~/.local/state/screenshot-spool/, and every run ends (cancelled ones too) by
+# pushing every spooled file to strix:~/Pictures/Screenshots/ with rsync over
+# ssh. --ignore-existing: a different file of the same name on the strix is
+# never replaced. A local file is deleted only once the strix holds the same
+# bytes (sha256, compared over ssh). If the strix is unreachable the file
+# stays in the spool and goes with the next screenshot; nothing else retries
+# (no timers). A capture sits in .pending/ until its own run, Satty included,
+# is done, so a concurrent run never pushes a file Satty may still rewrite; a
+# capture whose run died there (a logout with Satty open) is adopted by the
+# next run that finds no capture in progress. Every other host saves to
+# ~/Pictures/Screenshots exactly as before.
 set -euo pipefail
 
 dir="$HOME/Pictures/Screenshots"
+spool=""
+ssh_cmd="ssh -o BatchMode=yes -o ConnectTimeout=10"
+
+# Copy what the strix lacks, then delete each spooled file the strix holds
+# byte for byte. Serialised; never fails the screenshot itself.
+push_spool() {
+    local f sum status
+    local -a ready=()
+    exec 9>"$spool/.push.lock"
+    if ! flock -w 120 9; then
+        echo "screenshot: another push is still running; $spool keeps its files" >&2
+        return 0
+    fi
+    if flock -n -x 8; then
+        for f in "$spool/.pending"/*; do
+            if [[ -f "$f" ]]; then mv -f -- "$f" "$spool/"; fi
+        done
+        flock -u 8
+    fi
+    for f in "$spool"/*; do
+        if [[ -f "$f" ]]; then ready+=("$f"); fi
+    done
+    ((${#ready[@]})) || return 0
+    if ! rsync -a --ignore-existing --mkpath -e "$ssh_cmd" -- "${ready[@]}" strix:Pictures/Screenshots/; then
+        echo "screenshot: push to the strix failed; kept in $spool for the next screenshot" >&2
+    fi
+    # One `sha256sum --check --status` per file on the strix: its exit status
+    # is the verdict, so no output format is parsed. ssh exits 255 when the
+    # strix cannot be reached; then the rest is not tried.
+    for f in "${ready[@]}"; do
+        sum=$(cd "$spool" && sha256sum -- "${f##*/}") || continue
+        if printf '%s\n' "$sum" \
+            | $ssh_cmd strix 'cd ~/Pictures/Screenshots && sha256sum --check --status -' 2>/dev/null; then
+            rm -f -- "$f"
+        else
+            status=$?
+            if ((status == 255)); then
+                echo "screenshot: strix unreachable; kept in $spool for the next screenshot" >&2
+                break
+            fi
+            echo "screenshot: kept, the strix has no identical copy (a different file has its name there?): $f" >&2
+        fi
+    done
+    return 0
+}
+
+# The EXIT trap on the client: release this run's capture, then push.
+finish_client() {
+    if [[ -f "${file:-}" ]]; then mv -f -- "$file" "$spool/" || true; fi
+    flock -u 8 || true
+    push_spool || true
+}
+
+if [[ "$(hostname)" == client ]]; then
+    spool="${XDG_STATE_HOME:-$HOME/.local/state}/screenshot-spool"
+    dir="$spool/.pending"
+    mkdir -p "$dir"
+    exec 8>"$spool/.capture.lock"
+    flock -s 8
+    trap finish_client EXIT
+fi
 file="$dir/Screenshot from $(date '+%Y-%m-%d %H-%M-%S').png"
 
+# fd 8 holds the client's capture lock; the clipboard daemon must not keep it.
 annotate() {
     satty --filename "$file" --output-filename "$file" \
         --copy-command wl-copy \
         --actions-on-enter save-to-clipboard,save-to-file,exit \
         --actions-on-escape exit \
-        --disable-notifications
+        --disable-notifications 8>&-
 }
 
 on_sway() { [ -n "${SWAYSOCK:-}" ]; }
@@ -41,13 +120,13 @@ case "${1:-}" in
         fi
         mkdir -p "$dir"
         grim -o "$output" "$file"
-        wl-copy --type image/png < "$file"
+        wl-copy --type image/png < "$file" 8>&-
         ;;
     area)
         geometry="$(slurp)" || exit 0
         mkdir -p "$dir"
         grim -g "$geometry" "$file"
-        wl-copy --type image/png < "$file"
+        wl-copy --type image/png < "$file" 8>&-
         annotate
         ;;
     window)
@@ -57,7 +136,7 @@ case "${1:-}" in
                 | "\(.rect.x + .window_rect.x),\(.rect.y + .window_rect.y) \(.window_rect.width)x\(.window_rect.height)"')"
             mkdir -p "$dir"
             grim -g "$geometry" "$file"
-            wl-copy --type image/png < "$file"
+            wl-copy --type image/png < "$file" 8>&-
             annotate
             exit 0
         fi

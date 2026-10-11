@@ -2238,6 +2238,29 @@
               touch "$out"
             '';
 
+        # bin/screenshot on the client (2026-10-11): hidden spool, push to
+        # strix:~/Pictures/Screenshots, local delete only after a sha256 match,
+        # kept while the strix is down, never an overwrite there; other hosts
+        # unchanged. Hermetic: the "strix" is a temp home behind a fake ssh.
+        screenshot-spool =
+          pkgs.runCommand "screenshot-spool"
+            {
+              nativeBuildInputs = [
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.findutils
+                pkgs.gnugrep
+                pkgs.jq
+                pkgs.rsync
+                pkgs.util-linux
+              ];
+            }
+            ''
+              set -euo pipefail
+              bash ${./tests/screenshot/test-spool.sh} ${./home/dot_local/bin/screenshot}
+              touch "$out"
+            '';
+
         # call-diarize-start: the detached launcher that `call-record stop`
         # calls now that Tally (the old queue) is gone (removed 2026-09-30,
         # handoff 2026-10-10). Hermetic: a fake systemd-run records its argv and
