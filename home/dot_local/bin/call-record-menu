@@ -48,7 +48,12 @@ start)
     ;;
 stop)
     if "$recorder" stop; then
-        printf '\nSaved in %s\n' "$recording_dir"
+        if [[ -d "$recording_dir" ]]; then
+            printf '\nSaved in %s\n' "$recording_dir"
+        else
+            # The client hands a verified session to the strix and keeps no copy.
+            printf '\nOn the strix: ~/Recordings/calls/%s\n' "$(basename "$recording_dir")"
+        fi
         read -r -t 3 || true
     else
         printf '\nPress Enter to close.\n'

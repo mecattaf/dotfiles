@@ -5,28 +5,43 @@
 #   call-record start <slug>   begin capturing far (call audio) + near (mic)
 #   call-record stop           finish, mix, print file paths
 #   call-record status         show current session, levels sanity
+#   call-record handoff <dir>  thin client: retry a failed hand-off by hand
 #
 # Far side  = monitor of the INZONE Buds sink (what you hear).
 # Near side = INZONE Buds mono mic (what you say).
 # Both mono s16 48 kHz; mix.wav is the diarization test input, the split
 # tracks are per-speaker ground truth. Evidence files, keep all three.
 #
-# WHERE RECORDINGS END UP, on a thin client (2026-09-11). Capture happens where
-# the dongle is — the seat, i.e. the laptop — so ~/Recordings/calls on the
-# CLIENT is always the first and permanent copy. Diarization happens where the
-# GPU is, on the strix, and the client does not carry call-diarize. So `stop`
-# copies the closed session dir across and starts the diarizer there via
-# call-diarize-start, keeping the local copy. On the strix itself nothing is
-# copied: call-diarize is found locally and call-diarize-start launches it as a
-# detached user unit. Until 2026-10-10 this step enqueued a Tally event
-# instead; Tally was removed on 2026-09-30, so the stop now starts the work
-# itself. No timer backs this up by rule: the stop is the only trigger.
+# WHERE RECORDINGS END UP, on a thin client (2026-09-11, 2026-10-11). Capture
+# happens where the dongle is: the seat, i.e. the laptop. Diarization happens
+# where the GPU is, on the strix, and the client does not carry call-diarize.
+# So `stop` copies the closed session dir across and starts the diarizer there
+# via call-diarize-start. Since 2026-10-11 the strix copy is the only one: Tom,
+# "huion and Recordings i believe are also to be mirrored into the strix and
+# deleted from the thin client as soon as possible". A host that hands off
+# (no call-diarize here, not the strix: the client) records into a hidden
+# spool, ~/.local/state/call-record/spool/, never ~/Recordings; once the strix
+# holds every file of the session byte for byte (sha256, checked on the strix)
+# the local copy is deleted. On any failure it stays in the spool, `stop` says
+# where, and `call-record handoff <dir>` retries. On the strix itself nothing
+# is copied: call-diarize is found locally and call-diarize-start launches it
+# as a detached user unit, and recordings stay in ~/Recordings/calls. Until
+# 2026-10-10 this step enqueued a Tally event instead; Tally was removed on
+# 2026-09-30, so the stop now starts the work itself. No timer backs this up
+# by rule: the stop is the only trigger.
 set -euo pipefail
 umask 077
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/call-record"
 CURRENT="$STATE_DIR/current"
-OUT_ROOT="$HOME/Recordings/calls"
+# hostname's own "not found" stays quiet: a host without it is not the strix.
+if command -v call-diarize >/dev/null 2>&1 || [[ "$(hostname 2>/dev/null)" == strix ]]; then
+    HANDS_OFF=false
+    OUT_ROOT="$HOME/Recordings/calls"
+else
+    HANDS_OFF=true
+    OUT_ROOT="$STATE_DIR/spool"
+fi
 RATE=48000
 HOLD_MARKER="$STATE_DIR/active"
 
@@ -104,12 +119,61 @@ finish_failed_start() {
 # Serialize start, stop and explicit stale-marker recovery. In particular a
 # second start cannot replace CURRENT while stop is closing its recorders.
 case "${1:-}" in
-start|stop|recover)
+start|stop|recover|handoff)
     mkdir -p "$STATE_DIR"
     exec 9>"$STATE_DIR/control.lock"
     flock -x 9
     ;;
 esac
+
+# Thin client: stream one closed session dir to strix:~/Recordings/calls over
+# the fleet ssh block (home/ssh.nix gives `strix` its key, user and
+# StrictHostKeyChecking; the client holds ~/.ssh/id_ed25519 via agenix) and
+# start the diarizer on arrival. On the LAN this is a direct 10.42.0.16 ->
+# 10.42.0.2 copy; off-LAN it rides the NAS's subnet route, which is slow but
+# correct. Then every file of the session is checked on the strix against its
+# local sha256 (`sha256sum --check --status`: the exit status is the verdict).
+# Succeeds only when the strix holds all of it; the caller then deletes the
+# local copy. A failure is a warning, never a failed `stop`.
+hand_off() { # $1 = closed session dir
+    local session="$1" base remote manifest started=true
+    base=$(basename "$session")
+    # The tilde is deliberate and deliberately unexpanded HERE: this
+    # path is interpreted by the strix's shell, whose $HOME is the
+    # one that matters, not this box's.
+    # shellcheck disable=SC2088
+    remote="~/Recordings/calls/$base"
+    # Deliberate local expansion: slug was validated on start.
+    # shellcheck disable=SC2029
+    if ! tar -C "$(dirname "$session")" -cf - "$base" \
+        | ssh strix "mkdir -p ~/Recordings/calls && tar -C ~/Recordings/calls -xf - && call-diarize-start $remote"; then
+        started=false
+    fi
+    # Regular files only: a session holding anything else is never deleted.
+    # shellcheck disable=SC2029
+    if [[ -z "$(find "$session" -mindepth 1 ! -type f -print -quit)" ]] \
+        && manifest=$(cd "$session" && shopt -s dotglob nullglob && files=(*) \
+            && ((${#files[@]})) && sha256sum -- "${files[@]}") \
+        && printf '%s\n' "$manifest" | ssh strix "cd $remote && sha256sum --check --status -"; then
+        if [[ "$started" != true ]]; then
+            echo "warning: the strix holds the recording but diarization was not started; on the strix run: call-diarize-start $remote" >&2
+        fi
+        echo "handed to strix: $remote (every file verified by sha256)"
+        return 0
+    fi
+    echo "warning: hand-off to the strix failed; the local copy is kept at $session" >&2
+    echo "         re-run: call-record handoff $session" >&2
+    return 1
+}
+
+# Print the closed session's tracks; $1 = where they are now, as shown.
+summary() {
+    local f
+    echo "session closed:"
+    for f in far near mix; do
+        [[ -f "$dir/$f.wav" ]] && printf '  %-8s %s  (%s)\n' "$f.wav" "$1/$f.wav" "$(soxi -d "$dir/$f.wav" 2>/dev/null || echo '?')"
+    done
+}
 
 find_node() { # $1 = media.class, $2 = case-insensitive description/name pattern
     pw-dump | jq -r --arg class "$1" --arg pat "$2" '
@@ -220,6 +284,7 @@ stop)
     release_playback
 
     mix_written=false
+    handed_off=false
     if [[ -s "$dir/far.wav" && -s "$dir/near.wav" ]]; then
         sox -m "$dir/far.wav" "$dir/near.wav" "$dir/mix.wav" gain -n -1
         mix_written=true
@@ -238,43 +303,45 @@ stop)
                 echo "warning: diarization was not started; run call-diarize-start $dir later" >&2
             fi
         elif [[ "$(hostname)" != "strix" ]]; then
-            # Thin client: the recording exists here, the diarizer lives there.
-            # Stream the whole session dir over the fleet ssh block (home/ssh.nix
-            # gives `strix` its key, user and StrictHostKeyChecking; the
-            # client holds ~/.ssh/id_ed25519 via agenix) and start the
-            # diarizer on arrival.
-            # On the LAN this is a direct 10.42.0.16 -> 10.42.0.2 copy; off-LAN it
-            # rides the NAS's subnet route, which is slow but correct.
-            # Same doctrine as the local branch: a failed hand-off is a warning,
-            # never a failed `stop`. The local copy is kept either way, so the
-            # printed command line is always re-runnable by hand.
-            base=$(basename "$dir")
-            # The tilde is deliberate and deliberately unexpanded HERE: this
-            # path is interpreted by the strix's shell, whose $HOME is the
-            # one that matters, not this box's.
-            # shellcheck disable=SC2088
-            remote="~/Recordings/calls/$base"
-            handoff="tar -C \"$(dirname "$dir")\" -cf - \"$base\" | ssh strix \"mkdir -p ~/Recordings/calls && tar -C ~/Recordings/calls -xf - && call-diarize-start $remote\""
-            # Deliberate local expansion: slug was validated on start.
-            # shellcheck disable=SC2029
-            if ! tar -C "$(dirname "$dir")" -cf - "$base" \
-                | ssh strix "mkdir -p ~/Recordings/calls && tar -C ~/Recordings/calls -xf - && call-diarize-start $remote"; then
-                echo "warning: hand-off to the strix failed; the local copy is intact." >&2
-                echo "         re-run: $handoff" >&2
-            else
-                echo "handed to strix: $remote (local copy kept at $dir)"
+            # Thin client: the recording exists here, the diarizer lives there
+            # (hand_off above). Same doctrine as the local branch: a failed
+            # hand-off is a warning, never a failed `stop`; the session then
+            # stays in the spool and the printed command retries it.
+            if hand_off "$dir"; then
+                handed_off=true
             fi
         else
             echo "warning: call-diarize is unavailable on this host; diarization was not started" >&2
         fi
     else
         echo "warning: diarization was not started because mix.wav was not produced" >&2
+        if [[ "$HANDS_OFF" == true ]]; then
+            echo "         the recording is kept at $dir; hand it to the strix with: call-record handoff $dir" >&2
+        fi
     fi
 
-    echo "session closed:"
-    for f in far near mix; do
-        [[ -f "$dir/$f.wav" ]] && printf '  %-8s %s  (%s)\n' "$f.wav" "$dir/$f.wav" "$(soxi -d "$dir/$f.wav" 2>/dev/null || echo '?')"
-    done
+    # The summary reads the local files, so a handed-off copy goes after it.
+    if [[ "$handed_off" == true ]]; then
+        summary "strix:~/Recordings/calls/$(basename "$dir")" || true
+        rm -rf -- "$dir"
+        echo "local copy removed: $dir"
+    else
+        summary "$dir"
+    fi
+    ;;
+
+handoff)
+    session="${2:?usage: call-record handoff <session dir>}"
+    [[ "$HANDS_OFF" == true ]] || { echo "this host keeps its recordings in $OUT_ROOT; nothing to hand off" >&2; exit 1; }
+    [[ -d "$session" ]] || { echo "no such session dir: $session" >&2; exit 1; }
+    session=$(realpath -- "$session")
+    if [[ -e "$CURRENT" ]] && [[ "$(head -n 1 "$CURRENT")" == "$session" ]]; then
+        echo "$session is still recording; run 'call-record stop'" >&2
+        exit 1
+    fi
+    hand_off "$session" || exit 1
+    rm -rf -- "$session"
+    echo "local copy removed: $session"
     ;;
 
 recover)
@@ -311,7 +378,7 @@ status)
     ;;
 
 *)
-    echo "usage: call-record start <slug> | stop | status | recover" >&2
+    echo "usage: call-record start <slug> | stop | status | recover | handoff <dir>" >&2
     exit 1
     ;;
 esac
