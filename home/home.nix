@@ -503,13 +503,43 @@ in
   # because hosts/strix/nas-client.nix warms the automount before
   # graphical-session.target: a path that isn't there when the session starts is
   # silently dropped, which is #139.
+  #
+  # The client (2026-10-11): Tom wants its home CLEAN, Downloads (Chrome's) and
+  # hidden dirs only. Nothing creates the user dirs (createDirectories off, no
+  # xdg-user-dirs package, so no xdg-user-dirs-update either), Downloads stays
+  # where Chrome expects it, and every other XDG user dir points under the
+  # hidden ~/.local/share/user-dirs/: an app that saves into "Pictures" or
+  # "Videos" by the XDG default no longer makes ~/Pictures or ~/Videos.
+  # Screenshots and call recordings do not use these at all on the client;
+  # they leave for the strix (bin/screenshot, bin/call-record).
   # ---------------------------------------------------------------------------
-  xdg.userDirs = lib.mkIf (hostName == "strix") {
-    enable = true;
-    createDirectories = false;
-    music = "/mnt/nas/music";
-    videos = "/mnt/nas/videos";
-  };
+  xdg.userDirs = lib.mkMerge [
+    (lib.mkIf (hostName == "strix") {
+      enable = true;
+      createDirectories = false;
+      music = "/mnt/nas/music";
+      videos = "/mnt/nas/videos";
+    })
+    (lib.mkIf (hostName == "client") (
+      let
+        hidden = name: "${config.xdg.dataHome}/user-dirs/${name}";
+      in
+      {
+        enable = true;
+        package = null;
+        createDirectories = false;
+        download = "${config.home.homeDirectory}/Downloads";
+        desktop = hidden "Desktop";
+        documents = hidden "Documents";
+        music = hidden "Music";
+        pictures = hidden "Pictures";
+        projects = hidden "Projects";
+        publicShare = hidden "Public";
+        templates = hidden "Templates";
+        videos = hidden "Videos";
+      }
+    ))
+  ];
 
   # ---------------------------------------------------------------------------
   # OBS Studio — the module wraps OBS so the plugin loads. obs-vkcapture is also

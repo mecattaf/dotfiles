@@ -1776,6 +1776,34 @@
           # seat-feeder clocks. Touch is mapped globally to
           # eDP-1 on stock niri (PR #1856 accepted as a defect, no fork).
           assert clientHome.home.username == "tom";
+          # The client's home stays clean by construction (2026-10-11): every
+          # file Home Manager places there is hidden, no XDG user dir but
+          # Downloads is visible or created, and no activation names
+          # ~/mecattaf (the checkout and the journal lane are gone there).
+          assert builtins.all (f: nixpkgs.lib.hasPrefix "." f.target) (
+            builtins.attrValues clientHome.home.file
+          );
+          assert clientHome.xdg.userDirs.enable;
+          assert !clientHome.xdg.userDirs.createDirectories;
+          assert clientHome.xdg.userDirs.package == null;
+          assert clientHome.xdg.userDirs.download == "/home/tom/Downloads";
+          assert builtins.all (nixpkgs.lib.hasPrefix "/home/tom/.local/share/user-dirs/") (
+            with clientHome.xdg.userDirs;
+            [
+              desktop
+              documents
+              music
+              pictures
+              projects
+              publicShare
+              templates
+              videos
+            ]
+          );
+          assert
+            !(builtins.any (a: nixpkgs.lib.hasInfix "/home/tom/mecattaf" a.data) (
+              builtins.attrValues clientHome.home.activation
+            ));
           assert !(clientHome.services ? tally);
           # No transcription model, wake listener or Voxtype on the client
           # (speech-wake and Parakeet removed 2026-09-30).
