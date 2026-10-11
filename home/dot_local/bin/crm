@@ -1,0 +1,14 @@
+#!/bin/sh
+# crm: the Worker CRM CLI (agency-agency/crm, Worker at crm.mecattaf.dev). Same shape as ./mail:
+# a per-app node link under ~/.local/state/agency and the bundle from the main checkout.
+node="$HOME/.local/state/agency/crm/node/bin/node"
+bundle='/home/tom/agency-agency/crm/packages/cli/dist/crm.mjs'
+if [ ! -x "$node" ]; then
+  echo "crm: no node at $node; run: nix build --out-link ~/.local/state/agency/crm/node \"\$(readlink -f ~/.local/state/agency/mail/node)\"" >&2
+  exit 6
+fi
+if [ ! -f "$bundle" ]; then
+  echo "crm: no bundle at $bundle; run: nix shell nixpkgs#nodejs_24 nixpkgs#pnpm -c bash -c 'cd ~/agency-agency/crm && pnpm install --frozen-lockfile && pnpm -C packages/cli build'" >&2
+  exit 6
+fi
+exec "$node" "$bundle" "$@"
