@@ -54,11 +54,14 @@
 #     re-uses the state on disk) but there is no auth key, no autoconnect
 #     unit and no `up` in any activation. On the LAN there is nothing but
 #     the LAN. See the tailscale block below.
-#   * not pushed to — like every device it pulls: the NAS builds this
-#     closure nightly (hosts/nas/update-center.nix) once that box is
-#     switched; activation is Tom, docked, running
-#       sudo nixos-rebuild switch --flake github:mecattaf/dotfiles/main#client
-#     Coordinator first whenever herdr is bumped (the two speak a versioned
+#   * not a builder: updates are evaluated and built on the strix and pushed
+#     (Tom, 2026-10-11: "can't that be done on the strix side of things?
+#     since it's a much more powerful device"). From the strix:
+#       deploy github:mecattaf/dotfiles/<rev>#client   (deploy.nodes.client)
+#     A local `sudo nixos-rebuild switch --flake github:mecattaf/dotfiles/main#client`
+#     still works but evaluates and builds here, which ran one core at
+#     101 C and the fan at 3400 rpm on 2026-10-11.
+#     Strix first whenever herdr is bumped (the two speak a versioned
 #     protocol and the laptop projects the strix's server).
 #
 # The hardware layer below is omarchy-fleet's profiles/zenbook-duo.nix +
@@ -310,16 +313,22 @@
   services.asusd.enable = true;
   systemd.tmpfiles.rules = [ "d /etc/asusd 0755 root root -" ];
 
-  # Balanced, on AC and on battery (Tom, 2026-10-11: "it really should not be
-  # in performance mode", "prefer balanced over quiet"). This is a thin client:
-  # web, YouTube and Meet are the heaviest it ever runs. Until now asusd's own
+  # Quiet, on AC and on battery (Tom, 2026-10-11: "it really should not be in
+  # performance mode", then, after the measurement below, "sure re Quiet let's
+  # do that and i ll let you know if it's too slow or something, we'll move
+  # back to the other mode"; the other mode is Balanced). Same 1080p VP9
+  # playback: Balanced kept the fan at about 2250 rpm (62 C), Quiet at 0 rpm
+  # (54 C) with the video still on the video engine at about 11% of one core.
+  # This is a thin client: web, YouTube and Meet are the heaviest it ever
+  # runs. To go back, set both platform_profile lines to Balanced. Until now asusd's own
   # undeclared default (platform_profile_on_ac: Performance, EPP performance)
   # fired on boot and on every dock replug, so the box sat in Performance on
   # the dock 24/7 and the fan ran at about 4000 rpm with a video playing.
   # Declared here so a replug or a wiped /etc/asusd cannot bring it back.
   # NixOS copies this as a 0644 file (not a store symlink), so asusd can still
   # rewrite it at runtime; every activation puts this text back.
-  # profile_balanced_epp is BalancePerformance, the EPP power-profiles-daemon
+  # profile_quiet_epp stays Power (what Quiet measured with). profile_balanced_epp
+  # is BalancePerformance, the EPP power-profiles-daemon
   # applied with Balanced during the measurement, not asusd's BalancePower.
   services.asusd.asusdConfig.text = ''
     (
@@ -329,9 +338,9 @@
         ac_command: "",
         bat_command: "",
         platform_profile_linked_epp: true,
-        platform_profile_on_battery: Balanced,
+        platform_profile_on_battery: Quiet,
         change_platform_profile_on_battery: true,
-        platform_profile_on_ac: Balanced,
+        platform_profile_on_ac: Quiet,
         change_platform_profile_on_ac: true,
         profile_quiet_epp: Power,
         profile_balanced_epp: BalancePerformance,
