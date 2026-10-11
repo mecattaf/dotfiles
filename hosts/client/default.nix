@@ -375,6 +375,13 @@
   # profile seven seconds after asusd set one at boot (2026-10-11 journal).
   # Nothing in home/ talks to it.
   services.power-profiles-daemon.enable = lib.mkForce false;
+  # And no TLP. nixos-hardware's common-pc-laptop (imported above) sets
+  # `services.tlp.enable = lib.mkDefault (!power-profiles-daemon.enable)`, so
+  # turning ppd off started TLP on the 2026-10-11 switch. Its defaults carry
+  # PLATFORM_PROFILE_ON_AC="performance" (the exact rule removed above) and
+  # USB autosuspend, which it applied to the Bluetooth adapter and the
+  # iContact camera. asusd stays the single owner.
+  services.tlp.enable = false;
   # thermald is OFF on this box (2026-09-13), measured: the UX8406MA gives it
   # nothing to act on — every ACPI trip is at 103 °C or above, the EC owns the
   # fan and exposes no curve (asusctl's fan-curve verb aborts with a core dump
