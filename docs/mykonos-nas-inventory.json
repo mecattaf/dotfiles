@@ -24,20 +24,10 @@
     "missing": [],
     "manifest": "tools/speech-intake/manifests/k2so-midway-b.json"
   },
-  "openwakeword-alexa-v051": {
-    "files": 1,
-    "missing": [],
-    "manifest": "tools/hotword/manifests/openwakeword-alexa-v051.json"
-  },
   "sherpa-onnx-kws-zh-en-3m-20251220": {
     "files": 1,
     "missing": [],
     "manifest": "tools/hotword/manifests/sherpa-kws.json"
-  },
-  "openwakeword-baker-compat-v051": {
-    "files": 3,
-    "missing": [],
-    "manifest": "tools/hotword/manifests/openwakeword-baker.json"
   },
   "qwen3-tts-khimaros-1.7b-base-q8-0": {
     "files": 1,

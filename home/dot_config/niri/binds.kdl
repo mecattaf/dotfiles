@@ -133,8 +133,7 @@ binds {
 
     // ── Media & Hardware Keys (F1-F10) ───────────────────────────
 
-    // F1 is free: the Alexa wake listener menu went with speech-wake
-    // (2026-09-30). F1/F2 no longer carry brightness; the Duo keyboard's
+    // F1 is free (2026-09-30). F1/F2 no longer carry brightness; the Duo keyboard's
     // XF86MonBrightness keys do.
     // F2 (2026-09-17): pick the theme — noir / claude-dark / claude-light.
     // Shift+F2: pick the colour accent — one of the seven claude.ai/imagine

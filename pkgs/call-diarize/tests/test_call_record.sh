@@ -84,7 +84,7 @@ HOME="$test_home" \
 # HOME/state/runtime are independent of the hand-off regressions above.
 CALL_RECORD_TEST_SCRIPT="$call_record" \
 CALL_RECORD_TEST_BASH="$test_bash" \
-  python3 "$(dirname "$0")/test_call_record_wake.py"
+  python3 "$(dirname "$0")/test_call_record_hold.py"
 
 # Replace the fake with the REAL call-diarize-start and exercise the whole
 # stop -> detached transient unit path against a fake systemd-run that records

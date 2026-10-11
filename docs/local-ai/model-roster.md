@@ -26,7 +26,7 @@ assertion.
 | Host | Wanted artifacts | Served by |
 |---|---|---|
 | `worker` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b` | [`../../modules/halogen.nix`](../../modules/halogen.nix) at `http://worker:8731`; Flash resident at boot, the 27B only after `halogen-switch qwen38-27b` |
-| `coordinator` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b`, `vibevoice-asr-streaming-7b-bf16`, plus the Qwen speech rows, Parakeet and wake words from `modules/qwen-tts.nix`, `home/speech.nix` and the host file | Halogen at `http://coordinator:8731` only after `halogen-switch`; streaming ASR per `call-diarize` run; Qwen TTS on demand |
+| `coordinator` | `halogen-qwen38-flash-next`, `halogen-qwen38-27b`, `vibevoice-asr-streaming-7b-bf16`, plus the Qwen speech rows from `modules/qwen-tts.nix` | Halogen at `http://coordinator:8731` only after `halogen-switch`; streaming ASR per `call-diarize` run; Qwen TTS on demand |
 | `nas` | none; it holds the Library | — |
 
 ## The catalogue

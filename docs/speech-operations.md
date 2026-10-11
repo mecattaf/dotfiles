@@ -78,7 +78,7 @@ diarization model.
 Operational commands: `speech-session`, `speech-projector`, `speech-play`,
 `speech-queue`. Superseded NAS speech models were deleted on 2026-09-16, with a
 receipt in `/mnt/nas/models/weights/RETIRED-2026-09-16.tsv`; the Parakeet and
-openWakeWord rows leave the catalogue on 2026-09-30 (their Library bytes are
-retired separately). The accepted K-2SO voice has a second verified copy in
+openWakeWord rows left the catalogue on 2026-09-30, and the openWakeWord Library
+bytes were deleted on 2026-10-03 (receipt `RETIRED-2026-10-03.tsv`). The accepted K-2SO voice has a second verified copy in
 `/mnt/nas/documents/voice-references/qwen-k2so-midway-b/`. CustomVoice, tone
 banks and character/personality work were explicitly dropped.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # F2 / Shift+F2 -> the theme picker and the accent picker: compact floating fzf
-# prompts in the F1 (wake) / F9 (audio route) / F10 (sleep monitors) style.
+# prompts in the F9 (audio route) / F10 (sleep monitors) style.
 # niri/binds.kdl runs `kitty --class theme-prompt -e ~/.local/bin/theme-prompt
 # <mode>`, window-rules.kdl floats it.
 #
