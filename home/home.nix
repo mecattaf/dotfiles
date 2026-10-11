@@ -182,6 +182,12 @@ in
           bindsym --no-warn F10 exec ~/.local/bin/brightness toggle
           bindsym --locked XF86MonBrightnessDown exec ~/.local/bin/brightness down
           bindsym --locked XF86MonBrightnessUp exec ~/.local/bin/brightness up
+          # Shift+F5/F6: 2% fine steps (Tom, 2026-10-10). The XF86 keysym comes
+          # from the daemon's virtual keyboard while Shift is held on the
+          # physical one; Sway's default keyboard_grouping=smart groups both
+          # (same keymap and repeat info), so the modifier carries across.
+          bindsym --locked Shift+XF86MonBrightnessDown exec ~/.local/bin/brightness down 2%
+          bindsym --locked Shift+XF86MonBrightnessUp exec ~/.local/bin/brightness up 2%
           bindsym --locked XF86AudioMicMute exec ~/.local/bin/volume micmute
         '';
 
@@ -243,6 +249,8 @@ in
                 F10 hotkey-overlay-title="Backlight off / restore" { spawn-sh "~/.local/bin/brightness toggle"; }
                 XF86MonBrightnessDown allow-when-locked=true { spawn-sh "~/.local/bin/brightness down"; }
                 XF86MonBrightnessUp allow-when-locked=true { spawn-sh "~/.local/bin/brightness up"; }
+                Shift+XF86MonBrightnessDown allow-when-locked=true { spawn-sh "~/.local/bin/brightness down 2%"; }
+                Shift+XF86MonBrightnessUp allow-when-locked=true { spawn-sh "~/.local/bin/brightness up 2%"; }
                 XF86AudioMicMute allow-when-locked=true { spawn-sh "~/.local/bin/volume micmute"; }
             }
           ''
@@ -288,6 +296,8 @@ in
             bindsym --no-warn F10 exec ~/.local/bin/brightness toggle
             bindsym --locked XF86MonBrightnessDown exec ~/.local/bin/brightness down
             bindsym --locked XF86MonBrightnessUp exec ~/.local/bin/brightness up
+            bindsym --locked Shift+XF86MonBrightnessDown exec ~/.local/bin/brightness down 2%
+            bindsym --locked Shift+XF86MonBrightnessUp exec ~/.local/bin/brightness up 2%
             bindsym --locked XF86AudioMicMute exec ~/.local/bin/volume micmute
           ''
         else
