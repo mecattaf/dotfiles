@@ -14,11 +14,11 @@
 # That checkout, not the flake switched from, supplies the raw half of every
 # switch: ./raw-dotfiles-guard.nix fails the activation, before writeBoundary,
 # when a user unit's %h/.local/bin/<program> is missing from it (#313), and
-# AGENTS.md carries the ordering rule.
+# AGENTS.md carries the ordering rule. Exception: a host with
+# rawDotfiles.inStore (the client) gets the same files from the Nix store and
+# has no checkout (./raw-dotfiles-guard.nix).
 let
-  repoDir = config.rawDotfiles.repoDir;
-  dots = "${repoDir}/home";
-  link = path: config.lib.file.mkOutOfStoreSymlink "${dots}/${path}";
+  link = config.lib.rawDotfiles.link;
 
   hostName = osConfig.networking.hostName;
 
@@ -110,7 +110,7 @@ let
   pwaIcon = name: icon: url: {
     inherit name;
     exec = "${chrome} --profile-directory=Default --app=${url}";
-    icon = "${dots}/dot_local/share/icons/${icon}.png";
+    icon = config.lib.rawDotfiles.path "dot_local/share/icons/${icon}.png";
     categories = [ "Network" ];
   };
   pwa = name: pwaIcon name name;

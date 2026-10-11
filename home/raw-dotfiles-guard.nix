@@ -30,8 +30,23 @@
 # and change every host's toplevel drvPath on every commit, the whole-source
 # coupling flows/tally-flows.nix just removed. `git -C ~/mecattaf/dotfiles
 # log -1` answers the same question on demand.
+#
+# IN-STORE HOSTS (`rawDotfiles.inStore`, 2026-10-11). A host that sets it
+# carries no checkout at all: every raw dotfile is copied from the flake source
+# into the Nix store, so both halves of a switch come from the same rev and the
+# deploy is the only update path. The client sets it (hosts/client/default.nix,
+# Tom: "i dnt need here" about ~/dotfiles and ~/mecattaf on the thin client),
+# which also turns off this guard there (nothing to check) and
+# modules/dotfiles-bootstrap.nix (nothing to clone). Hot-reload by editing is
+# given up on such a host; nothing there writes into the raw tree at runtime.
+# Every other host keeps the out-of-store links unchanged.
+#
+# The three readers (home.nix, herdr.nix, nvim.nix) build their links with
+# config.lib.rawDotfiles.{link,path}, so the choice is made here once.
 let
   cfg = config.rawDotfiles;
+  # `p` is relative to home/ in this repository.
+  inStoreSource = p: ./. + "/${p}";
   programOf =
     cmd:
     let
@@ -47,6 +62,15 @@ let
 in
 {
   options.rawDotfiles = {
+    inStore = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Copy every raw dotfile from the flake source into the Nix store instead
+        of linking it out of store into `repoDir`. The host then needs no
+        checkout, and a switch or deploy is its only update path.
+      '';
+    };
     repoDir = lib.mkOption {
       type = lib.types.str;
       default = "${config.home.homeDirectory}/mecattaf/dotfiles";
@@ -68,10 +92,28 @@ in
     };
   };
 
-  # Before checkLinkTargets as well as writeBoundary: with
-  # home-manager.backupFileExtension set (flake.nix), checkLinkTargets already
-  # moves colliding files aside, which is a write.
-  config.home.activation.rawDotfilesGuard = lib.hm.dag.entryBefore [ "checkLinkTargets" "writeBoundary" ] ''
-    ${lib.getExe guard} ${lib.escapeShellArgs ([ cfg.repoDir ] ++ cfg.programs)}
-  '';
+  config = {
+    # link: a Home Manager `source` for one raw file or directory.
+    # path: the same thing as an absolute path string (a .desktop Icon=).
+    # Out of store, both are byte-identical to what the readers built before.
+    lib.rawDotfiles = {
+      link =
+        p:
+        if cfg.inStore then
+          inStoreSource p
+        else
+          config.lib.file.mkOutOfStoreSymlink "${cfg.repoDir}/home/${p}";
+      path = p: if cfg.inStore then "${inStoreSource p}" else "${cfg.repoDir}/home/${p}";
+    };
+
+    # Before checkLinkTargets as well as writeBoundary: with
+    # home-manager.backupFileExtension set (flake.nix), checkLinkTargets already
+    # moves colliding files aside, which is a write. An in-store host has no
+    # checkout to check: its programs are in the generation itself.
+    home.activation.rawDotfilesGuard = lib.mkIf (!cfg.inStore) (
+      lib.hm.dag.entryBefore [ "checkLinkTargets" "writeBoundary" ] ''
+        ${lib.getExe guard} ${lib.escapeShellArgs ([ cfg.repoDir ] ++ cfg.programs)}
+      ''
+    );
+  };
 }

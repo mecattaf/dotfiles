@@ -96,6 +96,14 @@
 
   networking.hostName = "client";
 
+  # No dotfiles checkout on the thin client (Tom, 2026-10-11, about ~/dotfiles
+  # and ~/mecattaf here: "i dnt need here"). Every raw dotfile (sway, kitty,
+  # fish, ~/.local/bin, herdr's config.toml, nvim) comes from the Nix store,
+  # so a deploy from the strix carries both halves at one rev and nothing has
+  # to be pulled here afterwards. This also turns off raw-dotfiles-guard and
+  # modules/dotfiles-bootstrap.nix on this host (home/raw-dotfiles-guard.nix).
+  home-manager.users.tom.rawDotfiles.inStore = true;
+
   # agenix delivery ON. The host key on the box IS the 2026-09-07 fleet key
   # (read live 2026-09-11, equals the registry row), so the delivered tier
   # re-minted for this host in the same commit decrypts on the first boot of

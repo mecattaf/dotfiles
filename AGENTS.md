@@ -180,7 +180,10 @@ points into that checkout. Bring the branch there (ff-merge or `pull
 --ff-only`) before `nixos-rebuild switch`, even when switching from a worktree.
 `raw-dotfiles-guard` (`home/raw-dotfiles-guard.nix`) fails the Home Manager
 activation, before any file is written, when a user unit's
-`%h/.local/bin/<program>` is missing from that checkout.
+`%h/.local/bin/<program>` is missing from that checkout. The client is the
+exception (2026-10-11): `rawDotfiles.inStore` copies the same files into the
+Nix store, so it has no checkout, no guard and no bootstrap clone, and a
+`deploy` from the strix is its only update path. Do not clone the repo there.
 
 
 **Handwriting intake (2026-09-14).** `handwriting.internal` is the private

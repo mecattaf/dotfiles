@@ -2061,6 +2061,19 @@
             ];
 
           assert (homeOf "client").rawDotfiles.programs == [ ];
+          # The client carries no checkout (2026-10-11): its raw dotfiles come
+          # from the store, so it has no guard to run, no bootstrap clone and
+          # not one home file linked into ~/mecattaf. The strix keeps the
+          # out-of-store links and the guard.
+          assert (homeOf "client").rawDotfiles.inStore;
+          assert !((homeOf "client").home.activation ? rawDotfilesGuard);
+          assert !(self.nixosConfigurations.client.config.systemd.services ? dotfiles-bootstrap);
+          assert
+            !(builtins.any (
+              f: builtins.isAttrs f.source && lib.hasInfix "/mecattaf/" (f.source.buildCommand or "")
+            ) (builtins.attrValues (homeOf "client").home.file));
+          assert !(homeOf "strix").rawDotfiles.inStore;
+          assert self.nixosConfigurations.strix.config.systemd.services ? dotfiles-bootstrap;
           assert
             entry.before == [
               "checkLinkTargets"

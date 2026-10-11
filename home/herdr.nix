@@ -72,8 +72,7 @@ let
   # removed with speech-wake and Parakeet on 2026-09-30.
   herdr = upstream;
 
-  repoDir = config.rawDotfiles.repoDir; # home/raw-dotfiles-guard.nix
-  link = p: config.lib.file.mkOutOfStoreSymlink "${repoDir}/home/${p}";
+  link = config.lib.rawDotfiles.link; # home/raw-dotfiles-guard.nix
 in
 {
   config = {
