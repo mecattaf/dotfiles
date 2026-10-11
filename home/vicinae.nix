@@ -96,7 +96,7 @@ in
       enable = true;
       settings = {
         font = "Anthropic Sans 11";
-        anchor = "top-right";
+        anchor = "top-center"; # Tom, 2026-10-11: "top and center not top right"
         width = 390;
         margin = 12;
         padding = 14;

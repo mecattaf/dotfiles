@@ -3,18 +3,29 @@
 # Uses brightnessctl with 10% steps (Tom, 2026-09-14) and a floor of 1 raw unit.
 #
 # Usage:
-#   brightness up|down            adjust ALL internal (DRM/eDP) backlights together
-#   brightness up|down focused    adjust ONLY the focused output's backlight (scroll or niri)
+#   brightness up|down [N%]          adjust ALL internal (DRM/eDP) backlights together
+#   brightness up|down focused [N%]  adjust ONLY the focused output's backlight (scroll or niri)
+#                                    N% overrides the 10% step (Shift+F5/F6 on the Duo: 2%)
 #   brightness off                save the current level, then blank the backlight
 #   brightness restore            put back the level `off` saved (50% if none)
 #   brightness toggle             off when lit, restore when dark
 #
-# THE FLOOR (-n 1). Every up/down call passes brightnessctl's `--min-value 1`.
+# THE FLOOR (--min-value=1). Every up/down call passes brightnessctl's minimum.
 # Without it, three brightness-down presses from 25% land on raw 0, and on i915 raw 0 is not
 # "very dim", it is backlight power-off: the panel goes black and brightness-up is invisible
 # to press. The strix never hit this because it has no backlight at all.
 # The Zenbook Duo has two, and darkness there is a real dead end, so `down` now
 # bottoms out at 1 and only the explicit `off` verb is allowed to reach 0.
+#
+# The flag MUST be spelled `--min-value=1` (or `-n1`), never `-n 1`: the value
+# is an optional argument, so getopt reads `-n 1` as a bare `-n` followed by a
+# positional `1`, which brightnessctl takes as the operation. It then prints
+# the device info and never writes. From 2026-09-14 to 2026-10-10 every Duo
+# brightness key did exactly that (verified: the intel_backlight sysfs mtime
+# was still boot time after a day of presses).
+#
+# Every verb ends with one `osd` popup (bin/osd) showing the new level, the
+# way the 2024 hypr scripts did; it is a no-op where there is no notifier.
 #
 # The `focused` mode was written for the zenbook-duo's two eDP panels. That
 # device came BACK on 2026-09-11 as the fleet's only seat, host `client`, so the
@@ -76,9 +87,21 @@ no_backlight_notice() {
     echo "brightness: no DRM backlight on this host; nothing to ${1}."
 }
 
+# step up|down [focused] [N%]: the remaining words, in any order, are the
+# `focused` switch and an optional step size (digits, % optional).
 step() {
-    local op="$1"
-    if [ "${2:-}" = "focused" ]; then
+    local dir="$1" focused="" size="10" op word
+    shift
+    for word in "$@"; do
+        case "$word" in
+            focused)        focused=1 ;;
+            [0-9]*)         size="${word%\%}" ;;
+            "")             ;;
+            *)              echo "brightness: unknown argument '$word'" >&2; exit 1 ;;
+        esac
+    done
+    op="${size}%${dir}"
+    if [ -n "$focused" ]; then
         local out dev
         if [ -n "${SCROLLSOCK:-}" ] || [ -z "${NIRI_SOCKET:-}" ]; then
             out="$(scrollmsg -r -t get_outputs | jq -r 'map(select(.focused))[0].name // empty')"
@@ -87,19 +110,19 @@ step() {
         fi
         dev="$(backlight_for_output "$out")"
         if [ -n "$dev" ]; then
-            brightnessctl -n 1 -d "$dev" set "$op"
+            brightnessctl --min-value=1 -d "$dev" set "$op"
         else
             # Unknown/external focused output -- fall back to brightnessctl default.
-            brightnessctl -n 1 set "$op"
+            brightnessctl --min-value=1 set "$op"
         fi
     else
         local devs dev
         mapfile -t devs < <(drm_backlights)
         if [ "${#devs[@]}" -eq 0 ]; then
-            brightnessctl -n 1 set "$op"
+            brightnessctl --min-value=1 set "$op"
         else
             for dev in "${devs[@]}"; do
-                brightnessctl -n 1 -d "$dev" set "$op"
+                brightnessctl --min-value=1 -d "$dev" set "$op"
             done
         fi
     fi
@@ -127,7 +150,7 @@ do_restore() {
     for dev in "${devs[@]}"; do
         # No save file (fresh boot -- brightnessctl keeps it under /tmp): land on
         # something visible rather than leaving the panel dark.
-        brightnessctl -r -d "$dev" || brightnessctl -n 1 -d "$dev" set 50%
+        brightnessctl -r -d "$dev" || brightnessctl --min-value=1 -d "$dev" set 50%
     done
 }
 
@@ -146,11 +169,29 @@ do_toggle() {
     fi
 }
 
+# Pop the OSD with the level of the first device the verb acted on (on the
+# Duo that is intel_backlight either way; the daemon mirrors it to eDP-2).
+report() {
+    local dev cur max pct
+    dev="$(blank_devices | head -n1)"
+    [ -n "$dev" ] || return 0
+    cur="$(brightnessctl -d "$dev" get)"
+    max="$(brightnessctl -d "$dev" max)"
+    [ "${max:-0}" -gt 0 ] || return 0
+    pct=$(( (cur * 100 + max / 2) / max ))
+    if [ "$cur" -eq 0 ]; then
+        osd "Backlight off" "" 0
+    else
+        osd "Brightness" "${pct}%" "$pct"
+    fi
+}
+
 case "${1:-}" in
-    up)      step "10%+" "${2:-}" ;;
-    down)    step "10%-" "${2:-}" ;;
+    up)      step "+" "${@:2}" ;;
+    down)    step "-" "${@:2}" ;;
     off)     do_off ;;
     restore) do_restore ;;
     toggle)  do_toggle ;;
-    *)       echo "Usage: $0 {up|down|off|restore|toggle} [focused]"; exit 1 ;;
+    *)       echo "Usage: $0 {up|down|off|restore|toggle} [focused] [N%]"; exit 1 ;;
 esac
+report

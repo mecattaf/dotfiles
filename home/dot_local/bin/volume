@@ -1,12 +1,37 @@
 #!/usr/bin/env bash
 # volume -- PipeWire volume control via wpctl
-# Uses PipeWire directly.
+# Uses PipeWire directly. Every verb ends with one `osd` popup (bin/osd)
+# showing the new level, the way the 2024 hypr scripts did (restored
+# 2026-10-10); it is a no-op on a host without a notifier.
+
+# "Volume: 0.88 [MUTED]" -> percent and mute flag of the named node.
+level() {
+    local line
+    line="$(wpctl get-volume "$1" 2>/dev/null)" || return 1
+    pct="$(awk '{printf "%d", $2 * 100 + 0.5}' <<<"$line")"
+    case "$line" in *MUTED*) muted=1 ;; *) muted=0 ;; esac
+}
+
+report_sink() {
+    level @DEFAULT_AUDIO_SINK@ || return 0
+    if [ "$muted" -eq 1 ]; then
+        osd "Muted" "" 0
+    else
+        osd "Volume" "${pct}%" "$pct"
+    fi
+}
+
 case "$1" in
-    up)    wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%+ ;;
-    down)  wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%- ;;
-    mute)  wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
-    # The Duo's own XF86AudioMicMute key (niri binds it on the client) has one
-    # script to call, same as the three sink verbs above.
-    micmute) wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle ;;
+    up)    wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%+; report_sink ;;
+    down)  wpctl set-volume @DEFAULT_AUDIO_SINK@ 3%-; report_sink ;;
+    mute)  wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle; report_sink ;;
+    # The Duo's own XF86AudioMicMute key (sway-local.conf binds it on the
+    # client) has one script to call, same as the three sink verbs above.
+    micmute)
+        wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+        if level @DEFAULT_AUDIO_SOURCE@; then
+            if [ "$muted" -eq 1 ]; then osd "Microphone muted" ""; else osd "Microphone on" "${pct}%"; fi
+        fi
+        ;;
     *)     echo "Usage: $0 {up|down|mute|micmute}"; exit 1 ;;
 esac
