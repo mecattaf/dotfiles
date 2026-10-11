@@ -1892,9 +1892,14 @@
         ai-memory =
           let
             homeConfig = self.nixosConfigurations.strix.config.home-manager.users.tom;
+            clientHome = self.nixosConfigurations.client.config.home-manager.users.tom;
             expectedJournal = "/home/tom/mecattaf/notes/journal";
           in
           assert homeConfig.programs.ai-memory.journalDir == expectedJournal;
+          assert homeConfig.home.activation ? aiMemoryJournal;
+          # Strix only: on the client it recreated ~/mecattaf/notes/journal.
+          assert !(clientHome.home.activation ? aiMemoryJournal);
+          assert !(clientHome.xdg.configFile ? "ai-memory/config.json");
           assert
             (builtins.fromJSON homeConfig.xdg.configFile."ai-memory/config.json".text) == {
               schema = 1;
