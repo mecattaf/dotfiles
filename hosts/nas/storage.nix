@@ -85,11 +85,8 @@ in
     # spin down. Do NOT use `hdparm -S`: WD Red firmware is known to ignore
     # it (sheet F2-4).
     #
-    # NOTE: this alone does not get the disk to standby yet. The k3s
-    # local-path PVs on it (ax postgres, rustfs, redis —
-    # modules/ax-fleet/interface.nix:182-186) write continuously and will
-    # keep waking it until ax is parked and those volumes are torn down or
-    # moved (ruling pending: B1/C10/F2-1).
+    # The k3s volumes that used to keep this disk awake moved to the NVMe on
+    # 2026-09-30, and ax and k3s were retired from the fleet on 2026-10-13.
     systemd.services.hd-idle = {
       description = "Spin down the NAS HDD after 20 min idle (F2-4)";
       wantedBy = [ "multi-user.target" ];

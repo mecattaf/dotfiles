@@ -43,12 +43,6 @@
     ./update-center.nix # nightly fleet builds -> attic (the App Store model)
     ./omarchy-update-center.nix # manual signed offers; owners choose installation
     ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate ON 2026-09-13
-    # ax on the fleet (2026-09-23): this box is the CONTROL node. k3s server
-    # with its kubelet, Substrate's and ax's control planes, the registry.
-    # "hypervisor on NAS" (Tom, 2026-09-23). The CIDR-overlap assertions in
-    # that module evaluate whether or not the switch below is on.
-    ../../modules/ax-fleet
-    ./substrate-link.nix # 2026-09-23: Cloudflare floor (Substrate) -> ax link, outbound only; gate OFF (LINK-DESIGN.md)
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
     inputs.nixos-hardware.nixosModules.common-pc
@@ -87,24 +81,6 @@
   #
   # The NAS is the sole official Tailscale subnet router (2026-10-08).
 
-  myAxFleet = {
-    enable = true;
-    role = "control";
-    lan = {
-      interface = "enp1s0";
-      address = "10.42.0.1";
-    };
-    # 2026-09-30 (sweep F2-1 option b, Tom: "moving ax to the NAS ssd where
-    # it will NOT make the nas hdd run constantly is the move - and it
-    # always was"): PVs and the registry moved off the data pool (the HDD,
-    # sda WD40EFZZ) onto the NVMe fast tier. These were the module's
-    # defaults before this date (/mnt/nas/services/ax-fleet/{local-path,
-    # registry}); set explicitly here so the host's own file states the
-    # decision, not just interface.nix. Migration runbook for the three
-    # PVCs that predate the move: docs/nas/ax-volumes-nvme-2026-09-30.md.
-    localPathRoot = "/mnt/fast/ax-fleet/local-path";
-    registryRoot = "/mnt/fast/ax-fleet/registry";
-  };
   # Retired 2026-09-16: the Dell belongs to its owner; Tom no longer
   # publishes or manages Omarchy updates. Keep historical receipts only.
   myNas.omarchyUpdateCenter.enable = false;

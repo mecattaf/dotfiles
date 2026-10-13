@@ -1,4 +1,4 @@
-{ torchRocm, go127 }:
+{ torchRocm }:
 final: prev: {
   qwentts = final.callPackage ../pkgs/qwentts.nix { };
   speech-session = final.callPackage ../pkgs/speech-session { };
@@ -35,15 +35,6 @@ final: prev: {
     variant = "claude";
   };
   mactahoe-icon-theme = final.callPackage ../pkgs/mactahoe-icon-theme.nix { };
-
-  # google/ax — the Kubernetes control plane for agent Tasks (v0.3.0, pinned by
-  # commit). Not in nixpkgs under any name, in any channel: upstream ships no nix
-  # packaging, no flake and no published image, so there is nothing to take.
-  # go_1_27 is threaded in from the nixpkgs-go input rather than resolved from
-  # this fixpoint because ax's go.mod requires exactly 1.27.1 and neither the
-  # main pin (1.27rc2) nor nixpkgs-fresh (1.27.0) has it — see that input's
-  # comment in flake.nix, and the `let` in pkgs/ax/default.nix.
-  ax = final.callPackage ../pkgs/ax { go_1_27 = go127; };
 
   # Evidence-gated, resumable front door over the music acquisition campaign.
   music-acquire = final.callPackage ../pkgs/music-acquire { };
