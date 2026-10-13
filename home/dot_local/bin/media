@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# media -- MPRIS playback control (bound to F3-F5 in niri/binds.kdl)
+# media -- MPRIS playback control (bound to F3-F5 in sway/binds.conf)
 #
 # Acts on playerctl's default player. (Until 2026-09-17 this preferred cliamp
 # when it was running; cliamp was removed, unused.)

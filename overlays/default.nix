@@ -3,26 +3,8 @@ final: prev: {
   qwentts = final.callPackage ../pkgs/qwentts.nix { };
   speech-session = final.callPackage ../pkgs/speech-session { };
   qwen-speech = final.callPackage ../pkgs/qwen-speech { };
-  # Add-only overlay + a single scoped upstream override (niri, below).
-  # Everything else is already in nixpkgs and referenced directly.
-
-  # Silence the upstream niri-session deprecation warning that prints (orange) at
-  # every session start: "Calling 'import-environment' without a list of variable
-  # names is deprecated". It comes from the ONE bare `systemctl --user
-  # import-environment` in niri's resources/niri-session; the upstream fix is still
-  # unmerged as of jul5 (niri #254/#3572). Redirect just that call's stderr — zero
-  # behaviour change, only the deprecation text is dropped. --replace-fail makes a
-  # future upstream rename fail the build loudly instead of silently no-op'ing.
-  # Flows fleet-wide via programs.niri.package. NB: makes niri a from-source rebuild.
-  # This stock+patch niri is what the Strix coordinator runs.
-  niri = prev.niri.overrideAttrs (old: {
-    postPatch = (old.postPatch or "") + ''
-      substituteInPlace resources/niri-session \
-        --replace-fail \
-          'systemctl --user import-environment' \
-          'systemctl --user import-environment 2>/dev/null'
-    '';
-  });
+  # Add-only overlay. Everything else is already in nixpkgs and referenced
+  # directly.
 
   # mactahoe — the PROVEN source-build + OLED postPatch (NOT nix-test's prebuilt
   # tarball). Built/verified in a nixos/nix container 2026-06-19. Originated in

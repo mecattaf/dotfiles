@@ -4,7 +4,7 @@
 #
 # Usage:
 #   brightness up|down [N%]          adjust ALL internal (DRM/eDP) backlights together
-#   brightness up|down focused [N%]  adjust ONLY the focused output's backlight (Sway or niri)
+#   brightness up|down focused [N%]  adjust ONLY the focused output's backlight (Sway)
 #                                    N% overrides the 10% step (Shift+F5/F6 on the Duo: 2%)
 #   brightness off                save the current level, then blank the backlight
 #   brightness restore            put back the level `off` saved (50% if none)
@@ -30,13 +30,13 @@
 # The `focused` mode was written for the zenbook-duo's two eDP panels. That
 # device came BACK on 2026-09-11 as the fleet's only seat, host `client`, so the
 # mode is load-bearing again rather than merely generic: it reads
-# the focused output (Sway get_outputs, or `niri msg focused-output`), then finds the backlight whose sysfs path carries
+# the focused output (Sway get_outputs), then finds the backlight whose sysfs path carries
 # that connector name (e.g. eDP-2 -> .../card1-eDP-2/card1-eDP-2-backlight,
 # eDP-1 -> .../card1-eDP-1/intel_backlight). Fully generic -- no per-host device
 # names -- so it is harmless on single-screen hosts (falls back to all-internal).
 #
-# off/restore/toggle are the script-side home of what the client's generated
-# ~/.config/niri-local.kdl used to inline on F10. On the Duo, writing
+# off/restore/toggle are the script-side home of the client's F10 bind in its
+# generated ~/.config/sway-local.conf. On the Duo, writing
 # intel_backlight is enough for BOTH panels: the dock daemon mirrors eDP-1's
 # level onto card1-eDP-2-backlight every 500 ms. On any other host we save and
 # zero every DRM backlight we can see. brightnessctl's save file lives under
@@ -61,7 +61,7 @@ drm_backlights() {
     done
 }
 
-# Backlight device whose sysfs path matches niri connector $1 (e.g. "eDP-2").
+# Backlight device whose sysfs path matches output connector $1 (e.g. "eDP-2").
 backlight_for_output() {
     local out="$1" b
     for b in /sys/class/backlight/*; do
@@ -103,11 +103,7 @@ step() {
     op="${size}%${dir}"
     if [ -n "$focused" ]; then
         local out dev
-        if [ -n "${SWAYSOCK:-}" ] || [ -z "${NIRI_SOCKET:-}" ]; then
-            out="$(swaymsg -r -t get_outputs | jq -r 'map(select(.focused))[0].name // empty')"
-        else
-            out="$(niri msg -j focused-output | jq -r '.name // empty')"
-        fi
+        out="$(swaymsg -r -t get_outputs | jq -r 'map(select(.focused))[0].name // empty')"
         dev="$(backlight_for_output "$out")"
         if [ -n "$dev" ]; then
             brightnessctl --min-value=1 -d "$dev" set "$op"

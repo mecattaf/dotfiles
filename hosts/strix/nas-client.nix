@@ -14,7 +14,7 @@ let
   # timeo=100 now and may outlive the poke — fine, findmnt below is what
   # decides), and the
   # retry loop gives up 10s in — the retries exist only for the cold-boot case,
-  # where greetd autologins tom→niri (modules/common.nix) while enp191s0 or the
+  # where greetd autologins tom into the seat (modules/common.nix) while enp191s0 or the
   # NAS itself is still a couple of seconds behind. Success is checked against
   # the kernel, not against `ls`: a failed automount leaves the empty autofs
   # trigger directory in place, which `ls` reports as an ordinary empty dir.
@@ -158,10 +158,10 @@ in
       # gets re-triggered here regardless, and every later-launched app sees
       # real directories.
       #
-      # Ordered Before= but only Wants=/WantedBy= graphical-session.target: niri
-      # itself is likewise Before= that target, so the compositor comes up in
-      # parallel and even the worst case delays session-scoped services (portals,
-      # piri), never the desktop appearing. A dead NAS therefore degrades to
+      # Ordered Before= but only Wants=/WantedBy= graphical-session.target: the
+      # compositor is likewise Before= that target, so it comes up in
+      # parallel and even the worst case delays session-scoped services
+      # (portals), never the desktop appearing. A dead NAS therefore degrades to
       # exactly today's behaviour — sidebar entries absent — bounded by the
       # script's own 10s deadline, with TimeoutStartSec as the hard backstop for
       # the pathological case where the poke is stuck in the kernel (a start-job

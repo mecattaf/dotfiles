@@ -152,7 +152,7 @@ let
   );
 
   # mappings.lua rendered too: `kitty @ launch` children spawn from the kitty daemon
-  # (niri's env), NOT from wrapped nvim, so extraPackages' PATH never reaches
+  # (the compositor's env), NOT from wrapped nvim, so extraPackages' PATH never reaches
   # <leader>kg lazygit / <leader>ko nested nvim — bake absolute store paths.
   mappingsLua = pkgs.writeText "mappings.lua" (
     builtins.replaceStrings

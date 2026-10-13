@@ -64,8 +64,8 @@ let
     mark1_foreground ${t.ground.base}
     mark1_background ${t.magenta}
 
-    # splits: the divider matches niri's INACTIVE window border, so a kitty
-    # split reads as a quiet niri-native divider (Tom 2026-07-15).
+    # splits: the divider matches the inactive window border, so a kitty
+    # split reads as a quiet divider (Tom 2026-07-15).
     active_border_color ${t.border.inactive}
     inactive_border_color ${t.ground.base}
   '';
@@ -107,36 +107,9 @@ let
     palette = 7=${t.ansi.white}
     palette = 15=${t.ansi.brightWhite}
 
-    # splits: as kitty, the divider is niri's INACTIVE window border.
+    # splits: as kitty, the divider is the inactive window border colour.
     split-divider-color = ${t.border.inactive}
     unfocused-split-fill = ${t.ground.base}
-  '';
-
-  niri = t: ''
-    ${header t "//"}
-    // Joined by niri/config.kdl's `include optional=true "~/.config/theme/niri.kdl"`,
-    // LAST, so these merge over layout.kdl / misc.kdl (niri merges sections
-    // across includes; later wins per property — wiki, Configuration: Include).
-    layout {
-        border {
-            on
-            active-color "${t.border.active}"
-            inactive-color "${t.border.inactive}"
-            urgent-color "${t.border.urgent}"
-        }
-        tab-indicator {
-            active-color "${t.tabIndicator.active}"
-            inactive-color "${t.tabIndicator.inactive}"
-            urgent-color "${t.border.urgent}"
-        }
-        insert-hint {
-            color "${t.insertHint}"
-        }
-        background-color "${t.ground.desktop}"
-    }
-    overview {
-        backdrop-color "${t.ground.desktop}"
-    }
   '';
 
   sway = t: ''
@@ -308,7 +281,6 @@ rec {
   render = t: {
     "kitty.conf" = kitty t;
     "ghostty" = ghostty t;
-    "niri.kdl" = niri t;
     "sway.conf" = sway t;
     "mako.conf" = mako t;
     "vicinae.toml" = vicinae t;

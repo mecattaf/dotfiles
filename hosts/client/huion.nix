@@ -79,7 +79,7 @@
 #
 # A system unit with User=tom rather than a user unit: udev can want a system
 # unit directly, and tom is all it needs — his ssh key and config for the push,
-# the system bus for BlueZ. It runs whether or not a niri session is up.
+# the system bus for BlueZ. It runs whether or not a graphical session is up.
 let
   mac = "25:6C:20:F5:D8:25";
 

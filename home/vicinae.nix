@@ -7,7 +7,7 @@
   ...
 }:
 let
-  enabled = osConfig.myDisplay.enable && osConfig.myDisplay.session == "sway";
+  enabled = osConfig.myDisplay.enable;
   package = inputs.vicinae.packages.${pkgs.stdenv.hostPlatform.system}.default;
   cfgHome = config.xdg.configHome;
   command = name: title: exec: {

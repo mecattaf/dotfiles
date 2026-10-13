@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # F2 / Shift+F2 -> the theme picker and the accent picker: compact floating fzf
 # prompts in the F9 (audio route) / F10 (sleep monitors) style.
-# niri/binds.kdl runs `kitty --class theme-prompt -e ~/.local/bin/theme-prompt
-# <mode>`, window-rules.kdl floats it.
+# sway/binds.conf runs `kitty --class theme-prompt -e ~/.local/bin/theme-prompt
+# <mode>`, sway/rules.conf floats it.
 #
 #   theme-prompt theme     noir | claude-dark | claude-light  -> ~/.local/bin/theme <name>
 #   theme-prompt accent    oat olive cactus sky fig heather coral
 #                          -> ~/.local/bin/wallpaper <accent> (wallpaper + folder colour)
 #
-# Esc is a clean cancel. Everything a pick triggers is live (kitty, niri,
+# Esc is a clean cancel. Everything a pick triggers is live (kitty, Sway,
 # herdr, fish, GTK3, folder colours); GTK4 apps and agent TUIs re-theme on
 # their next start.
 set -euo pipefail

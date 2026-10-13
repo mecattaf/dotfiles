@@ -8,7 +8,7 @@ if [ -f ~/.bashrc ]; then
     . ~/.bashrc
 fi
 
-# Source Home Manager session vars before niri starts so niri, kitty, and
+# Source Home Manager session vars before the compositor starts so it, kitty, and
 # `kitty @ launch` children inherit Nix-provided tools on the session PATH.
 if [ -f "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh" ]; then
     . "$HOME/.nix-profile/etc/profile.d/hm-session-vars.sh"

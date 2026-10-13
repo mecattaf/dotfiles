@@ -118,10 +118,9 @@
 
   myGvisor.enable = false;
 
-  # Primary physical seat again (2026-09-16); Zenbook remains a second seat.
-  # Agent services stay independent of either compositor.
+  # No physical seat (headless in the closet); the Zenbook is the seat.
+  # Agent services stay independent of any compositor.
   myDisplay.enable = false;
-  myDisplay.session = "sway";
   services.browser-desktop.enable = true;
   services.handwriting-annotation.enable = true;
   services.qwen-tts.enable = true;

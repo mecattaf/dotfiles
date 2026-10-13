@@ -9,7 +9,7 @@
 # daemon for the ASUS Zenbook Duo UX8406 (host `client`). MIT. Talks to the
 # detachable keyboard as generic USB HID + evdev and flips the bottom panel by
 # writing the DRM connector's force-status file, so it needs NO kernel patch
-# and never talks to the compositor: niri simply sees a hotplug event and
+# and never talks to the compositor: Sway simply sees a hotplug event and
 # kanshi re-applies a profile. Carried from omarchy-fleet
 # pkgs/zenbook-duo-daemon.nix on 2026-09-11, when the laptop returned to this
 # tree; the fleet's copy ran on the same metal for three days.

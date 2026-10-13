@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # screen-ocr-area -- select an area, OCR it on Halogen, copy the text
-# Bound to Mod+Ctrl+S (niri/binds.kdl), on the client. grim hands the PNG to
+# Bound to Mod+Ctrl+S (sway/binds.conf), on the client. grim hands the PNG to
 # bin/screen-ocr on the strix over the ssh hop call-record already uses:
 # only the strix dials worker:8731. Esc in slurp, a failed request or an
 # empty answer leaves the clipboard untouched. cliphist keeps the result.

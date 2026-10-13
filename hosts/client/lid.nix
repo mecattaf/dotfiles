@@ -18,11 +18,9 @@
 #
 #   keyboard detached → eDP-1 and eDP-2 are both connected → more than one
 #     display → the *Docked* action (ignore) → closing the lid does not
-#     suspend. niri then turns the internal panel off on its own ("niri will
-#     already automatically turn the internal laptop monitor on and off in
-#     accordance with the laptop lid", niri 26.04 wiki
-#     Configuration:-Switch-Events.md), so eDP-1 goes dark and every window
-#     migrates onto eDP-2 — the panel underneath the closed lid.
+#     suspend. The compositor's lid bindswitch (sway-local.conf) turns the
+#     internal panel off, so eDP-1 goes dark and every window migrates onto
+#     eDP-2, the panel underneath the closed lid.
 #
 #   keyboard snapped on → modules/zenbook-duo-daemon.nix forces eDP-2's DRM
 #     status to `off` → exactly one display → the *plain* action (suspend) →
@@ -55,17 +53,15 @@
 # ── the recovery path, if the eDP-1-off migration is the real nuisance ──────
 # Step 8 of the plan exercises lid-close in both dock states. If windows
 # sliding onto the panel under the closed lid turns out to be what actually
-# annoys, the countermeasure is a niri switch-events block in the CLIENT's
-# generated ~/.config/niri-local.kdl (written by home/home.nix), NOT here:
+# annoys, the countermeasure is a Sway bindswitch in the CLIENT's generated
+# ~/.config/sway-local.conf (written by home/home.nix), NOT here:
 #
-#   switch-events {
-#       lid-close { spawn-sh "~/.local/bin/brightness off"; }
-#       lid-open  { spawn-sh "~/.local/bin/brightness restore"; }
-#   }
+#   bindswitch lid:on  exec ~/.local/bin/brightness off
+#   bindswitch lid:off exec ~/.local/bin/brightness restore
 #
 # (~/.local/bin/brightness has had off/restore/toggle since M-3; F10 on the
 # client already calls `toggle`). That is a compositor concern and
-# belongs in the per-host niri slot; this file stays the logind half of the
+# belongs in the per-host Sway slot; this file stays the logind half of the
 # answer either way.
 {
   services.logind.settings.Login = {

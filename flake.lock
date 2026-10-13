@@ -844,26 +844,6 @@
         "type": "github"
       }
     },
-    "piri": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1784612020,
-        "narHash": "sha256-6ziXFviRvi4u5OOl+cwknoftCBtx2NUtowgkW6YGBaA=",
-        "owner": "Asthestarsfalll",
-        "repo": "piri",
-        "rev": "122d085b30d2963e1db54092394e3feada379778",
-        "type": "github"
-      },
-      "original": {
-        "owner": "Asthestarsfalll",
-        "repo": "piri",
-        "type": "github"
-      }
-    },
     "root": {
       "inputs": {
         "agenix": "agenix",
@@ -881,7 +861,6 @@
         "nixpkgs": "nixpkgs_5",
         "nixpkgs-fresh": "nixpkgs-fresh",
         "nixpkgs-stable": "nixpkgs-stable",
-        "piri": "piri",
         "vicinae": "vicinae"
       }
     },
