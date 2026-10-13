@@ -61,28 +61,33 @@ the intended function and inspect it first. A September 16 smoke test sourced
 cleanup code along with a function and deleted the live user-service sockets.
 Do not suppress unexpected coredumps or unit failures to make tests look healthy.
 
-The fleet's resident language-model server is Halogen Flash —
-Qwen3.8-Flash-Next in Peonist's proprietary `.hgn` format — running on the
-Strix at `http://strix:8731` via `modules/halogen.nix`: a pinned OCI image
-run by podman, with the weights loaned from the NAS Library into
-`/var/lib/local-models/halogen-qwen38-flash-next`. It is OpenAI-compatible
-(`/v1/chat/completions` streaming and non-streaming with tool calls,
-`/v1/responses`, `/v1/completions`, `/v1/models`, `GET /health` as the
-liveness and discovery probe), carries the vision tower, so OCR and image
-reading go through it too, and needs no authentication. The model id is
-`halogen-qwen3.8-flash-next`; a request naming another id is not rejected.
-A second Halogen engine, halogen-server with Qwen3.8-27B, is declared as
-`services.halogen.alternates.qwen38-27b`: same port, same launch shape, never
-resident together with Flash (the units conflict), started only by an
-operator's `halogen-switch qwen38-27b` and put back with `halogen-switch
-flash`. Flash is the everyday model; the 27B is the alternate.
-**One compute host (Tom, 2026-10-08).** `modules/strix.nix` declares both
-engines on Strix. Flash starts at boot and is the utility endpoint. The alternate
-remains an operator switch. Immich ML also moved to Strix; its socket starts it
-on demand, with a 15-minute idle shutdown. There is no worker host.
-There is no `/v1/embeddings`, no reranking, no audio, no image generation, no
-hot reload and no second resident model on a host. The token budget covers thinking: default
-`max_tokens` 8192, cap 65536. Stable diffusion is outside this LLM route.
+**Gufo replaces Halogen (Tom, 2026-10-13).** Tom: "i said let  move to
+gufo!! not halogen!!!!" and "use that as the full collection of modles that we
+use". The engine is `gufo` from github:gufo-org/gufo (flake input `gufo`,
+`modules/gufo.nix`): one native gfx1151 binary, one systemd unit per model, no
+container. Its model collection is the fleet's model set, catalogued in
+`lib/gufo-models.json` at the revisions Gufo's docs pin:
+- Qwen3.8 Flash-Next (UD-Q4_K_XL GGUF with the MTP predictor and the vision
+  projector): the resident text model, served as `qwen3.8-flash-next` on
+  `http://strix:8731` (`gufo-llm.service`);
+- Qwen3.8-27B (UD-Q4_K_XL with the DFlash2 draft) and DeepSeek V4 Flash (with
+  DSpark): alternates on the same port, started only by `gufo-switch <name>`;
+- Qwen3-TTS 12Hz 1.7B Base, Qwen3-ASR 1.7B and Qwen-Image-2.1: on-demand
+  loopback units with no boot target (ASR runs per job, never resident);
+- MiniMax H3 FL2VA: held by `source.gate` until Tom accepts its licence himself.
+Gufo answers 404 to a request naming any other model id, so callers send the
+exact served id. It has no `/v1/embeddings` (501), no reranking and no
+diarization.
+
+**Until the cutover, Halogen still serves.** Halogen Flash
+(`modules/halogen.nix`: Qwen3.8-Flash-Next in Peonist's `.hgn` format, model id
+`halogen-qwen3.8-flash-next`, alternate `halogen-switch qwen38-27b`) stays the
+live endpoint at `strix:8731` until `services.gufo.enable` is switched on with
+`services.halogen.autoStart = false`. The Gufo and Halogen units conflict, so
+they never hold the GPU together. Do no Halogen-specific work (Tom,
+2026-10-13); after the cutover the `.hgn` rows and `modules/halogen.nix` are
+retired. Immich ML also runs on Strix; its socket starts it on demand, with a
+15-minute idle shutdown. There is no worker host.
 
 **The NPU path is decommissioned — permanently, 2026-08-29.** FastFlowLM (`flm`)
 is no longer installed on any host, and the XDNA2 NPU is not an inference target
@@ -91,8 +96,9 @@ itself enough to make the old NPU path unbootable; this is a decommission, not a
 pause. Do not add a `flm` invocation, an `flm serve` unit, or an NPU backend row
 back.
 
-**The `utility` slot forwards to halogen.** The stable ID `utility` resolves to
-Strix's Halogen Flash server, and the request-scoped `utility-model`
+**The `utility` slot forwards to the local text model.** The stable ID
+`utility` resolves to Strix's resident text model (Halogen Flash until the
+Gufo cutover, then Gufo's Flash-Next), and the request-scoped `utility-model`
 wrapper — installed on the strix only — forwards a single
 chat-completions request to it over the wired LAN. `/drain` and `/print` dial
 that seam under the same name and with the same CLI flags as before. What must
@@ -132,25 +138,24 @@ with the `qwen-k2so-midway-b` voice is the one TTS model (`modules/qwen-tts.nix`
 the voice has a second verified copy at
 `/mnt/nas/documents/voice-references/qwen-k2so-midway-b/`, because it cannot be
 re-downloaded). VibeVoice-ASR-Streaming-7B is the one diarization model, loaded
-per run by `call-diarize` (Tom, 2026-09-16). The Qwen3 text embedder and the Mage
-rows are NAS-Library artifacts an operator loans with `local-models-borrow` and
-runs by hand; they have no declarative service, timer or proxy row.
-Embeddings in particular have no server behind them until an operator starts
-one.
+per run by `call-diarize` (Tom, 2026-09-16); Gufo has no diarization, so it
+stays. There is no embedder row in the catalog and no embeddings server.
 
 Out, and not to be reintroduced: dual-node inference of any kind (the Thunderbolt and direct 5GbE rails are retired), the flashnext / flashnix / vLLM-fork projects (flashnext-fp8 and
-qwen38-flash-next-fp8 included), DS4 / DeepSeek, GLM, every Gemma model
+qwen38-flash-next-fp8 included), GLM, every Gemma model
 (supergemma included), Ornith, Muse Glimmer, IBM Granite, the GGUF
-Qwen3.6-35B-A3B, Qwen3.6-27B and Qwen3.8-27B (the `.hgn` `halogen-qwen38-27b`
-stays), Gemma 4 31B, every Qwen3-VL row (instruct, projectors and the VL
+Qwen3.6-35B-A3B and Qwen3.6-27B, Gemma 4 31B, every Qwen3-VL row (instruct, projectors and the VL
 embedder), every FARA 1.5 model (4B, 9B, 27B) together with its browser agent,
-the FLM NPU models, Flash-Next in other formats (UD-IQ3_XXS, the ciru IU4
-reference), qwen3-coder-next, the sherpa-onnx keyword-spotting research model,
+the FLM NPU models, Flash-Next in formats other than Gufo's UD-Q4_K_XL
+(UD-IQ3_XXS, the ciru IU4 reference), qwen3-coder-next, the sherpa-onnx keyword-spotting research model,
 every VibeVoice except `vibevoice-asr-streaming-7b-bf16`, every Qwen TTS variant
-except the production Base Q8 + tokenizer + K-2SO voice (VoiceDesign,
-CustomVoice, the K-2SO CustomVoice experiments, khimaros, 1.7B BF16, 0.6B), and
-the uncensored candidates (Tom, 2026-09-11 and 2026-09-16). A new engine is a
-new server module beside `modules/halogen.nix`, or it does not serve.
+except the production Base Q8 + tokenizer + K-2SO voice and Gufo's 1.7B BF16
+Base (VoiceDesign, CustomVoice, the K-2SO CustomVoice experiments, khimaros,
+0.6B), and
+the uncensored candidates (Tom, 2026-09-11 and 2026-09-16; Gufo's collection,
+2026-10-13, overrides the lines it conflicted with: DeepSeek, the GGUF
+Qwen3.8-27B, Flash-Next as GGUF, the BF16 TTS Base). A new engine is a new
+server module beside `modules/gufo.nix`, or it does not serve.
 
 The weight plane lives outside Nix. `hosts/nas/models.nix`'s `library-fetch`
 is the only thing that talks to Hugging Face; it fills the canonical NAS

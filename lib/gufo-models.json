@@ -1,0 +1,978 @@
+{
+  "qwen38-flash-next-gguf": {
+    "kind": "model",
+    "maker": "unsloth",
+    "baseCheckpoint": {
+      "url": "https://huggingface.co/Qwen/Qwen3.8-Flash-Next",
+      "revision": "main"
+    },
+    "quantization": "UD-Q4_K_XL",
+    "notes": "Gufo's everyday text and image model (gufo-llm): the four UD-Q4_K_XL shards (gufo discovers shards 2-4 beside the first), the shared-Q8 MTP predictor and the BF16 vision projector, at the revision Gufo's docs pin.",
+    "source": {
+      "hfUrl": "https://huggingface.co/unsloth/Qwen3.8-Flash-Next-GGUF",
+      "revision": "38bb39ee97821de2c9009abb7e93950eec396e66",
+      "layout": "snapshot",
+      "primary": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+      "files": [
+        {
+          "path": "MTP/mtp-Qwen3.8-Flash-Next-shared-Q8_0.gguf",
+          "bytes": 2786568256,
+          "oid": "5ff54097406a905cf3a724c709124ceb0e3e10235ee862298969e91c96fa96e6",
+          "hash": "sha256-X/VAl0BqkFzzpyTHCRJM6w4+ECNe6GIpiWnpHJb6luY="
+        },
+        {
+          "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00001-of-00004.gguf",
+          "bytes": 10946624,
+          "oid": "4448186216b3af4cc558bbce2c3213f01608f8f8b2e5267a9767971dd3ec8082",
+          "hash": "sha256-REgYYhazr0zFWLvOLDIT8BYI+Piy5SZ6l2eXHdPsgII="
+        },
+        {
+          "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00002-of-00004.gguf",
+          "bytes": 49859583136,
+          "oid": "3f342f1c1580473f1ee94ddd5b28206e8c07a70fa1a366f59d1d6c922919a6c9",
+          "hash": "sha256-PzQvHBWARz8e6U3dWyggbowHpw+ho2b1nR1skikZpsk="
+        },
+        {
+          "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00003-of-00004.gguf",
+          "bytes": 49376141504,
+          "oid": "56758f40269cad5cd9b0d3d6fbae0f40f6d5be6de49e4ab392dbe83157d9cbd3",
+          "hash": "sha256-VnWPQCacrVzZsNPW+64PQPbVvm3knkqzktvoMVfZy9M="
+        },
+        {
+          "path": "UD-Q4_K_XL/Qwen3.8-Flash-Next-UD-Q4_K_XL-00004-of-00004.gguf",
+          "bytes": 12087983520,
+          "oid": "753bda48b98ba4f1636134a90a967de1b2d3908a236c026e464777342e53510a",
+          "hash": "sha256-dTvaSLmLpPFjYTSpCpZ94bLTkIojbAJuRkd3NC5TUQo="
+        },
+        {
+          "path": "mmproj-BF16.gguf",
+          "bytes": 907542944,
+          "oid": "2e788f8c511d8093c7b43cb87b2fd7e14228340318057f8fb20c86df2efe2355",
+          "hash": "sha256-LniPjFEdgJPHtDy4ey/X4UIoNAMYBX+PsgyG3y7+I1U="
+        }
+      ]
+    }
+  },
+  "qwen38-27b-gguf": {
+    "kind": "model",
+    "maker": "unsloth",
+    "baseCheckpoint": {
+      "url": "https://huggingface.co/Qwen/Qwen3.8-27B",
+      "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+    },
+    "quantization": "UD-Q4_K_XL",
+    "notes": "Gufo's dense alternate (gufo-switch qwen38-27b): the UD-Q4_K_XL target with its BF16 vision projector beside it. Q8_K_XL is the documented heavier choice and is not carried.",
+    "source": {
+      "hfUrl": "https://huggingface.co/unsloth/Qwen3.8-27B-GGUF",
+      "revision": "4ca720788d1e01f1bff70c033e0d0028fd02e502",
+      "layout": "flat",
+      "primary": "Qwen3.8-27B-UD-Q4_K_XL.gguf",
+      "files": [
+        {
+          "path": "Qwen3.8-27B-UD-Q4_K_XL.gguf",
+          "bytes": 17559178144,
+          "oid": "3f227079003add2511437e5b1e94812e363385225bf6a9b47b0054a72bc8b01e",
+          "hash": "sha256-PyJweQA63SURQ35bHpSBLjYzhSJb9qm0ewBUpyvIsB4="
+        },
+        {
+          "path": "mmproj-BF16.gguf",
+          "bytes": 931146432,
+          "oid": "83ee4f4f205fa514161778c41df1ea14144faa0f713510893b63c2395f5c2d53",
+          "hash": "sha256-g+5PTyBfpRQWF3jEHfHqFBRPqg9xNRCJO2PCOV9cLVM="
+        }
+      ]
+    }
+  },
+  "qwen38-27b-dflash2-gguf": {
+    "kind": "draft",
+    "maker": "z-lab",
+    "quantization": "Q4_K_M",
+    "notes": "DFlash2 draft for the 27B (--speculative dflash2 --dflash-model).",
+    "source": {
+      "hfUrl": "https://huggingface.co/z-lab/Qwen3.8-27B-DFlash2-GGUF",
+      "revision": "2d9571f8ce46e151f61c6499c99dee6079e1d610",
+      "layout": "flat",
+      "primary": "Qwen3.8-27B-DFlash2-Q4_K_M.gguf",
+      "files": [
+        {
+          "path": "Qwen3.8-27B-DFlash2-Q4_K_M.gguf",
+          "bytes": 1143006816,
+          "oid": "1a25c56858e1ebe93f2718ac1d49d1151f9323325c1bbfd6209370f4db131ebd",
+          "hash": "sha256-GiXFaFjh6+k/JxisHUnRFR+TIzJcG7/WIJNw9NsTHr0="
+        }
+      ]
+    }
+  },
+  "deepseek-v4-flash-gguf": {
+    "kind": "model",
+    "maker": "antirez",
+    "quantization": "IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8",
+    "notes": "Gufo's large text model (gufo-switch deepseek-v4-flash): DeepSeek V4 Flash 0731, text only, 80.76 GiB, never resident with Flash-Next.",
+    "source": {
+      "hfUrl": "https://huggingface.co/antirez/deepseek-v4-gguf",
+      "revision": "1cd7b564460821938add0475a60b942c409295e0",
+      "layout": "flat",
+      "primary": "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+      "files": [
+        {
+          "path": "DeepSeek-V4-Flash-IQ2XXS-w2Q2K-AProjQ8-SExpQ8-OutQ8-chat-v2-imatrix-0731.gguf",
+          "bytes": 86720111488,
+          "oid": "ca22ae2f838e14077c22bc1c1417b71b45b5e5a3687bd96c2ac6e17fdb6261c0",
+          "hash": "sha256-yiKuL4OOFAd8IrwcFBe3G0W15aNoe9lsKsbhf9tiYcA="
+        }
+      ]
+    }
+  },
+  "deepseek-v4-flash-dspark-gguf": {
+    "kind": "draft",
+    "maker": "antirez",
+    "notes": "DSpark support model for DeepSeek V4 Flash (--dspark-model); optional.",
+    "source": {
+      "hfUrl": "https://huggingface.co/antirez/deepseek-v4-gguf",
+      "revision": "e7f04037032990db0346398d249baf9fb9df1ccc",
+      "layout": "flat",
+      "primary": "DeepSeek-V4-Flash-DSpark-support-0731.gguf",
+      "files": [
+        {
+          "path": "DeepSeek-V4-Flash-DSpark-support-0731.gguf",
+          "bytes": 5989114272,
+          "oid": "7e319924541db3f7a163ed7e11d7532a70d48228ab59d36cb81e1d4511885360",
+          "hash": "sha256-fjGZJFQds/ehY+1+EddTKnDUgiirWdNsuB4dRRGIU2A="
+        }
+      ]
+    }
+  },
+  "qwen3-asr-1.7b": {
+    "kind": "model",
+    "maker": "Qwen",
+    "notes": "Gufo speech to text (gufo transcribe / gufo-asr). Per job only: speech input stays out (Tom, 2026-09-30), so nothing keeps it resident.",
+    "source": {
+      "hfUrl": "https://huggingface.co/Qwen/Qwen3-ASR-1.7B",
+      "revision": "7278e1e70fe206f11671096ffdd38061171dd6e5",
+      "layout": "snapshot",
+      "primary": "config.json",
+      "files": [
+        {
+          "path": "chat_template.json",
+          "bytes": 1161,
+          "oid": "75a8cfca24f00de72d796fbfed6858fc9614ef3dabd8696684cc3bc03a9c58ff",
+          "hash": "sha256-dajPyiTwDecteW+/7WhY/JYU7z2r2GlmhMw7wDqcWP8="
+        },
+        {
+          "path": "config.json",
+          "bytes": 6194,
+          "oid": "2e74a751548b8ad7d7526d29365ad8144c345d8b412b1152d25dc6698452712f",
+          "hash": "sha256-LnSnUVSLitfXUm0pNlrYFEw0XYtBKxFS0l3GaYRScS8="
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 142,
+          "oid": "1da527824d81e07118facff437e03f2e24a23311e3bdeb2368973fe77e5f275c",
+          "hash": "sha256-HaUngk2B4HEY+s/0N+A/LiSiMxHjvesjaJc/535fJ1w="
+        },
+        {
+          "path": "merges.txt",
+          "bytes": 1671853,
+          "oid": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+          "hash": "sha256-iDHk8aBERxNA98CoPXvXEwaluGfpX9hw900MUwipBNU="
+        },
+        {
+          "path": "model-00001-of-00002.safetensors",
+          "bytes": 4220320824,
+          "oid": "a4cd1f1a04d90b757dc7f7dd26254e69a013b19e80efe590a83c6a3bde8608d6",
+          "hash": "sha256-pM0fGgTZC3V9x/fdJiVOaaATsZ6A7+WQqDxqO96GCNY="
+        },
+        {
+          "path": "model-00002-of-00002.safetensors",
+          "bytes": 478200688,
+          "oid": "6e0b9d9e09e2e0238e7ef3cc8a484ab387e91b90f1900bedf88bc92d7929ccfc",
+          "hash": "sha256-bgudngni4COOfvPMikhKs4fpG5DxkAvt+IvJLXkpzPw="
+        },
+        {
+          "path": "model.safetensors.index.json",
+          "bytes": 64821,
+          "oid": "f994739fe38e5210b9e3e8ce6c6307315e2ceac3cb630e7b7414d69dce520f60",
+          "hash": "sha256-+ZRzn+OOUhC54+jObGMHMV4s6sPLYw57dBTWnc5SD2A="
+        },
+        {
+          "path": "preprocessor_config.json",
+          "bytes": 330,
+          "oid": "45e120a4eda2c20c5d7f2ea9354e63536bf35e27aa573fb7cdf78017b378770d",
+          "hash": "sha256-ReEgpO2iwgxdfy6pNU5jU2vzXieqVz+3zfeAF7N4dw0="
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 12487,
+          "oid": "4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c",
+          "hash": "sha256-SULQBWBCZoCTCcq8n06cuJzoVdWbFGgf3A4cxi6ibEw="
+        },
+        {
+          "path": "vocab.json",
+          "bytes": 2776833,
+          "oid": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+          "hash": "sha256-yhDX6fs+0YV13R4neiV5wW0QjjLydDloSvoOELFECRA="
+        }
+      ]
+    }
+  },
+  "qwen3-tts-12hz-1.7b-base": {
+    "kind": "model",
+    "maker": "Qwen",
+    "notes": "Gufo speech synthesis (gufo-tts), BF16 Base with reference-voice cloning. Revision pinned to the Hugging Face head on 2026-10-13 (Gufo's docs pin none). The live voice path stays qwentts.cpp with qwen3-tts-1.7b-base-q8-0 until Tom has listened to this one with the K-2SO bank.",
+    "source": {
+      "hfUrl": "https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+      "revision": "fd4b254389122332181a7c3db7f27e918eec64e3",
+      "layout": "snapshot",
+      "primary": "config.json",
+      "files": [
+        {
+          "path": "config.json",
+          "bytes": 4494,
+          "oid": "b4f01752d15a488abde3e1ab44723ae4f4b9e68a4037257b098b3737893cc1f9",
+          "hash": "sha256-tPAXUtFaSIq94+GrRHI65PS55opANyV7CYs3N4k8wfk="
+        },
+        {
+          "path": "generation_config.json",
+          "bytes": 245,
+          "oid": "f1b90b4513f3b34c62851049e2492d7b4c5940daf1276f89c82b8ef04127f3aa",
+          "hash": "sha256-8bkLRRPzs0xihRBJ4kkte0xZQNrxJ2+JyCuO8EEn86o="
+        },
+        {
+          "path": "merges.txt",
+          "bytes": 1671839,
+          "oid": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+          "hash": "sha256-WZurVAdQiHdLFzP96GXVvXR8vMelR8W8EmEOh04m9eM="
+        },
+        {
+          "path": "model.safetensors",
+          "bytes": 3857413744,
+          "oid": "38fc7fc51c5e776e840414b6fd443962e9411b9654888fd7913e4da643cb857c",
+          "hash": "sha256-OPx/xRxed26EBBS2/UQ5YulBG5ZUiI/XkT5NpkPLhXw="
+        },
+        {
+          "path": "preprocessor_config.json",
+          "bytes": 127,
+          "oid": "efdde1022ea9d76928bf7a9cd53139138f5ba2e466e837f08f6105ab1af1c119",
+          "hash": "sha256-793hAi6p12kov3qc1TE5E49bouRm6Dfwj2EFqxrxwRk="
+        },
+        {
+          "path": "speech_tokenizer/config.json",
+          "bytes": 2336,
+          "oid": "ee65bb901c876664ab8707c487157aa1a6ee57c65969b28fb5ec9dc211e68167",
+          "hash": "sha256-7mW7kByHZmSrhwfEhxV6oabuV8ZZabKPteydwhHmgWc="
+        },
+        {
+          "path": "speech_tokenizer/configuration.json",
+          "bytes": 76,
+          "oid": "6bc26d64eb5024b4d1dab5a52371958b429256d6c9d59787f1f5294a54e0cebd",
+          "hash": "sha256-a8JtZOtQJLTR2rWlI3GVi0KSVtbJ1ZeH8fUpSlTgzr0="
+        },
+        {
+          "path": "speech_tokenizer/model.safetensors",
+          "bytes": 682293092,
+          "oid": "836b7b357f5ea43e889936a3709af68dfe3751881acefe4ecf0dbd30ba571258",
+          "hash": "sha256-g2t7NX9epD6ImTajcJr2jf43UYgazv5Ozw29MLpXElg="
+        },
+        {
+          "path": "speech_tokenizer/preprocessor_config.json",
+          "bytes": 234,
+          "oid": "fcb3805e597e786d4067706e602f6688524640f8d3396790e2e09b5942fcbdfb",
+          "hash": "sha256-/LOAXll+eG1AZ3BuYC9miFJGQPjTOWeQ4uCbWUL8vfs="
+        },
+        {
+          "path": "tokenizer_config.json",
+          "bytes": 7344,
+          "oid": "dc3c31c3bdaedd5016382bb3cbe07323026775ad51f5a4fb564505992ae4a670",
+          "hash": "sha256-3Dwxw72u3VAWOCuzy+BzIwJnda1R9aT7VkUFmSrkpnA="
+        },
+        {
+          "path": "vocab.json",
+          "bytes": 2776833,
+          "oid": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+          "hash": "sha256-yhDX6fs+0YV13R4neiV5wW0QjjLydDloSvoOELFECRA="
+        }
+      ]
+    }
+  },
+  "qwen-image-2.1": {
+    "kind": "model",
+    "maker": "Qwen",
+    "notes": "Gufo image generation and editing (gufo-image). Non-commercial Qwen Research License (LICENSE in the snapshot).",
+    "source": {
+      "hfUrl": "https://huggingface.co/Qwen/Qwen-Image-2.1",
+      "revision": "b3179ad355be050328e483a9dfdd9e60cd62adfa",
+      "layout": "snapshot",
+      "primary": "model_index.json",
+      "files": [
+        {
+          "path": "LICENSE",
+          "bytes": 7831,
+          "oid": "8dc973f024ff95966bea25866efa443fd16776dcb1001e681e3d467ea572b28d",
+          "hash": "sha256-jclz8CT/lZZr6iWGbvpEP9FndtyxAB5oHj1GfqVyso0="
+        },
+        {
+          "path": "model_index.json",
+          "bytes": 447,
+          "oid": "cf1ecd104ea090855d60d8cec0895c1e9d6ee41b2f87e231b678beecd1cf7809",
+          "hash": "sha256-zx7NEE6gkIVdYNjOwIlcHp1u5Bsvh+Ixtni+7NHPeAk="
+        },
+        {
+          "path": "processor/added_tokens.json",
+          "bytes": 707,
+          "oid": "c0284b582e14987fbd3d5a2cb2bd139084371ed9acbae488829a1c900833c680",
+          "hash": "sha256-wChLWC4UmH+9PVossr0TkIQ3HtmsuuSIgpockAgzxoA="
+        },
+        {
+          "path": "processor/chat_template.jinja",
+          "bytes": 5292,
+          "oid": "3636d0f0bd6bef02654cdffdc447b79cb2cef8ab02cc75267345946291a489e4",
+          "hash": "sha256-NjbQ8L1r7wJlTN/9xEe3nLLO+KsCzHUmc0WUYpGkieQ="
+        },
+        {
+          "path": "processor/merges.txt",
+          "bytes": 1671853,
+          "oid": "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5",
+          "hash": "sha256-iDHk8aBERxNA98CoPXvXEwaluGfpX9hw900MUwipBNU="
+        },
+        {
+          "path": "processor/preprocessor_config.json",
+          "bytes": 782,
+          "oid": "93585062a80db5e8ca038efc7726a3e6411d9db948472d81d63c6303993be8c5",
+          "hash": "sha256-k1hQYqgNtejKA478dyaj5kEdnblIRy2B1jxjA5k76MU="
+        },
+        {
+          "path": "processor/special_tokens_map.json",
+          "bytes": 613,
+          "oid": "76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd",
+          "hash": "sha256-doYudlJmuFqpRZdn4zy68Tlw8yeg6I0cZYRsLd06Hs0="
+        },
+        {
+          "path": "processor/tokenizer.json",
+          "bytes": 11422654,
+          "oid": "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4",
+          "hash": "sha256-rrEzB6cazY/oGGHZStVKtonfdzMYgJ7tPL55S0SS2uQ="
+        },
+        {
+          "path": "processor/tokenizer_config.json",
+          "bytes": 5445,
+          "oid": "81ec7bb9530159b326c0bef1d0b6c33d392090524014ea3f0123a3c1eb9c2af5",
+          "hash": "sha256-gex7uVMBWbMmwL7x0LbDPTkgkFJAFOo/ASOjweucKvU="
+        },
+        {
+          "path": "processor/video_preprocessor_config.json",
+          "bytes": 817,
+          "oid": "59c5c9eb52182eb14c06ffb10ca9effd29adce5f238a95de23ca14a38dbd2cb1",
+          "hash": "sha256-WcXJ61IYLrFMBv+xDKnv/Smtzl8jipXeI8oUo429LLE="
+        },
+        {
+          "path": "processor/vocab.json",
+          "bytes": 2776833,
+          "oid": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+          "hash": "sha256-yhDX6fs+0YV13R4neiV5wW0QjjLydDloSvoOELFECRA="
+        },
+        {
+          "path": "scheduler/scheduler_config.json",
+          "bytes": 485,
+          "oid": "5895f3a167c14a967fe9ac70c64924ae5acc79799e0679fd12907e594a713cd1",
+          "hash": "sha256-WJXzoWfBSpZ/6axwxkkkrlrMeXmeBnn9EpB+WUpxPNE="
+        },
+        {
+          "path": "text_encoder/config.json",
+          "bytes": 1517,
+          "oid": "6001331949f7f86ab6d791a80b12246d4f8da5159fa08c3e62368a39f36d63a9",
+          "hash": "sha256-YAEzGUn3+Gq215GoCxIkbU+NpRWfoIw+YjaKOfNtY6k="
+        },
+        {
+          "path": "text_encoder/generation_config.json",
+          "bytes": 213,
+          "oid": "4d9818c3d27895c0058828a5f68bc7a4de80c3ae1bcdac90936ce24178063f59",
+          "hash": "sha256-TZgYw9J4lcAFiCil9ovHpN6Aw64bzayQk2ziQXgGP1k="
+        },
+        {
+          "path": "text_encoder/model-00001-of-00004.safetensors",
+          "bytes": 4998056552,
+          "oid": "dde00291b5f7fb92013895310a3da0ddba78674df9f10d505d375243dc01fc6f",
+          "hash": "sha256-3eACkbX3+5IBOJUxCj2g3bp4Z0358Q1QXTdSQ9wB/G8="
+        },
+        {
+          "path": "text_encoder/model-00002-of-00004.safetensors",
+          "bytes": 4915962464,
+          "oid": "9047faccc0a6d98496a52d55f27be1c94a9c259d1e283fbea0128d054a948d42",
+          "hash": "sha256-kEf6zMCm2YSWpS1V8nvhyUqcJZ0eKD++oBKNBUqUjUI="
+        },
+        {
+          "path": "text_encoder/model-00003-of-00004.safetensors",
+          "bytes": 4915962496,
+          "oid": "8c54187654c0176b73ae73785bf791dc9a14c9df7fb4310083a09d42048cb57e",
+          "hash": "sha256-jFQYdlTAF2tzrnN4W/eR3JoUyd9/tDEAg6CdQgSMtX4="
+        },
+        {
+          "path": "text_encoder/model-00004-of-00004.safetensors",
+          "bytes": 2704357976,
+          "oid": "5311532aaaeae3259eb6a7b2c600636be1159adf7ded35f53579f7d0e7d43cdd",
+          "hash": "sha256-UxFTKqrq4yWetqeyxgBja+EVmt997TX1NXn30OfUPN0="
+        },
+        {
+          "path": "text_encoder/model.safetensors.index.json",
+          "bytes": 67795,
+          "oid": "859146bff8db1d617fca8b457a5223edff963bb70076b3645f2189fe0540a147",
+          "hash": "sha256-hZFGv/jbHWF/yotFelIj7f+WO7cAdrNkXyGJ/gVAoUc="
+        },
+        {
+          "path": "transformer/config.json",
+          "bytes": 370,
+          "oid": "56ae3281c4e6c2d1aa3658252d187488071815fd79bef15808bb0205fc1a2241",
+          "hash": "sha256-Vq4ygcTmwtGqNlglLRh0iAcYFf15vvFYCLsCBfwaIkE="
+        },
+        {
+          "path": "transformer/diffusion_pytorch_model-00001-of-00002.safetensors",
+          "bytes": 9968332504,
+          "oid": "9e6bc2d641e67bf277895ea8777141044a38f3edb7101bc469b2961dd7c36b4b",
+          "hash": "sha256-nmvC1kHme/J3iV6od3FBBEo48+23EBvEabKWHdfDa0s="
+        },
+        {
+          "path": "transformer/diffusion_pytorch_model-00002-of-00002.safetensors",
+          "bytes": 4261951904,
+          "oid": "3aaf234dcbe128530479735854a346b5e3e66283b7c11db56f836bbd1c13ebaa",
+          "hash": "sha256-Oq8jTcvhKFMEeXNYVKNGtePmYoO3wR21b4NrvRwT66o="
+        },
+        {
+          "path": "transformer/diffusion_pytorch_model.safetensors.index.json",
+          "bytes": 30283,
+          "oid": "17987f6623b1c814d0ef55a137d99142b7b3b040eb1bf241b5575dd35af803a2",
+          "hash": "sha256-F5h/ZiOxyBTQ71WhN9mRQrezsEDrG/JBtVdd01r4A6I="
+        },
+        {
+          "path": "vae/config.json",
+          "bytes": 2079,
+          "oid": "9785d527b278cb8b210e9f48a8028d92a4190968ce7e24c8fc85d9d1b82f6ba2",
+          "hash": "sha256-l4XVJ7J4y4shDp9IqAKNkqQZCWjOfiTI/IXZ0bgva6I="
+        },
+        {
+          "path": "vae/diffusion_pytorch_model.safetensors",
+          "bytes": 1350989512,
+          "oid": "a07a1b7c4ee2966a1b3bdc37de9b4f983d56937e46619f709a80b6e490675417",
+          "hash": "sha256-oHobfE7ilmobO9w33ptPmD1Wk35GYZ9wmoC25JBnVBc="
+        }
+      ]
+    }
+  },
+  "minimax-h3-fl2va": {
+    "kind": "model",
+    "maker": "MiniMaxAI",
+    "notes": "Gufo text to video with audio (gufo video), upstream still in progress. BF16 FL2VA family plus the root LICENSE, README and model_index.json Gufo's manifest verifies.",
+    "source": {
+      "hfUrl": "https://huggingface.co/MiniMaxAI/MiniMax-H3",
+      "revision": "42ed227ee7df40d41602854ae760620d6eb651fe",
+      "layout": "snapshot",
+      "primary": "FL2VA/model_index.json",
+      "gate": "Tom accepts the MiniMax H3 Community License Agreement (2026-08-02) himself; until this field is removed, library-fetch skips the row and no host may want it.",
+      "files": [
+        {
+          "path": "FL2VA/audio_vae/config.json",
+          "bytes": 1973,
+          "oid": "d8f3bcc62e23c7e9806970fa63cca6139c06faa3797cf9c94034f60db8512771",
+          "hash": "sha256-2PO8xi4jx+mAaXD6Y8ymE5wG+qN5fPnJQDT2DbhRJ3E="
+        },
+        {
+          "path": "FL2VA/audio_vae/config.yaml",
+          "bytes": 91,
+          "oid": "259f675c9f71eedc24ca4f23965cd32a1b3878fc894f56664c40328d99831a5e",
+          "hash": "sha256-JZ9nXJ9x7twkyk8jllzTKhs4ePyJT1ZmTEAyjZmDGl4="
+        },
+        {
+          "path": "FL2VA/audio_vae/dac_activations.py",
+          "bytes": 2189,
+          "oid": "74ca8bb9e8039f1ff362ca4219eee5240a7df9502f3dbdc3161d4e86fbd6dc04",
+          "hash": "sha256-dMqLuegDnx/zYspCGe7lJAp9+VAvPb3DFh1OhvvW3AQ="
+        },
+        {
+          "path": "FL2VA/audio_vae/dac_alias_free_act.py",
+          "bytes": 835,
+          "oid": "db8761e66c0eaf9fce2dcccb59162d52b22ca0de9f699cf7d21ec7cd507e86fd",
+          "hash": "sha256-24dh5mwOr5/OLczLWRYtUrIsoN6faZz30h7HzVB+hv0="
+        },
+        {
+          "path": "FL2VA/audio_vae/dac_alias_free_filter.py",
+          "bytes": 3300,
+          "oid": "a369523cd7f14f4f299d8e2e47f3c473da76ed1910e6e9134fd7a9fce02537e8",
+          "hash": "sha256-o2lSPNfxT08pnY4uR/PEc9p27RkQ5ukTT9ep/OAlN+g="
+        },
+        {
+          "path": "FL2VA/audio_vae/dac_alias_free_resample.py",
+          "bytes": 1740,
+          "oid": "fe35055893833c563e42adc5e5882cbe7628c82d48d33c300fcf0a9576997910",
+          "hash": "sha256-/jUFWJODPFY+Qq3F5YgsvnYoyC1I0zwwD88KlXaZeRA="
+        },
+        {
+          "path": "FL2VA/audio_vae/dac_attn_proj.py",
+          "bytes": 3317,
+          "oid": "0e04556fa5fd38d4a71e62fcf4d3242fd9a2464fd72ed62baef2ec0980d910c6",
+          "hash": "sha256-DgRVb6X9ONSnHmL89NMkL9miRk/XLtYrrvLsCYDZEMY="
+        },
+        {
+          "path": "FL2VA/audio_vae/dac_audio_vae.py",
+          "bytes": 7266,
+          "oid": "ec04939602d4710d039e83f558a7572547669652f7fa967e3de0a3b6c48cfd48",
+          "hash": "sha256-7ASTlgLUcQ0DnoP1WKdXJUdmllL3+pZ+PeCjtsSM/Ug="
+        },
+        {
+          "path": "FL2VA/audio_vae/dac_bigvgan.py",
+          "bytes": 7102,
+          "oid": "f5df4e6f633e74da479549ef7a6d2684964e4b65ac42c6765be42f9c7fcb7bd2",
+          "hash": "sha256-9d9Ob2M+dNpHlUnvem0mhJZOS2WsQsZ2W+QvnH/Le9I="
+        },
+        {
+          "path": "FL2VA/audio_vae/dac_utils.py",
+          "bytes": 362,
+          "oid": "74ef0ba2c2a11ca35a7c0cc166fe88e564de01230000a0bcc8429103312ad9f0",
+          "hash": "sha256-dO8LosKhHKNafAzBZv6I5WTeASMAAKC8yEKRAzEq2fA="
+        },
+        {
+          "path": "FL2VA/audio_vae/metadata.json",
+          "bytes": 440,
+          "oid": "755d0529d43b2b5c83590f6f44ca659bc68e6a21b01d5669c93e8b2965749bff",
+          "hash": "sha256-dV0FKdQ7K1yDWQ9vRMplm8aOaiGwHVZpyT6LKWV0m/8="
+        },
+        {
+          "path": "FL2VA/audio_vae/minimax_h3_audio_vae.py",
+          "bytes": 3532,
+          "oid": "63bc0dab6def69480cfd77ea820f9a9a84fc4bd6e56868e4f45ec1e1e200578f",
+          "hash": "sha256-Y7wNq23vaUgM/Xfqgg+amoT8S9blaGjk9F7B4eIAV48="
+        },
+        {
+          "path": "FL2VA/audio_vae/model.safetensors",
+          "bytes": 605429308,
+          "oid": "37dddc2f3e6d5d5139d823d5ea283bbf304dadcb885b1ccda818aa13dade5ea2",
+          "hash": "sha256-N93cLz5tXVE52CPV6ig7vzBNrcuIWxzNqBiqE9reXqI="
+        },
+        {
+          "path": "FL2VA/model_index.json",
+          "bytes": 719,
+          "oid": "d1113e0f123c69f79cd0de35ca1771606ebc3ec924270d257b771f96f584aa6b",
+          "hash": "sha256-0RE+DxI8afec0N41yhdxYG68PskkJw0le3cflvWEqms="
+        },
+        {
+          "path": "FL2VA/processor/chat_template.json",
+          "bytes": 5499,
+          "oid": "5c72a170d2a4a1a3bc5adad2e689ae28138a9700e5b8c96c0266331e86c0acce",
+          "hash": "sha256-XHKhcNKkoaO8WtrS5omuKBOKlwDluMlsAmYzHobArM4="
+        },
+        {
+          "path": "FL2VA/processor/merges.txt",
+          "bytes": 1671839,
+          "oid": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+          "hash": "sha256-WZurVAdQiHdLFzP96GXVvXR8vMelR8W8EmEOh04m9eM="
+        },
+        {
+          "path": "FL2VA/processor/preprocessor_config.json",
+          "bytes": 390,
+          "oid": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516",
+          "hash": "sha256-JyJUUKycZSmHLuGST8sJYv9WNINPgXBA9EQRgRb05RY="
+        },
+        {
+          "path": "FL2VA/processor/tokenizer.json",
+          "bytes": 7032403,
+          "oid": "a5d85b6dcc535e6b93115a9ef287e6132fdbf30270da6218194ba742261173c7",
+          "hash": "sha256-pdhbbcxTXmuTEVqe8ofmEy/b8wJw2mIYGUunQiYRc8c="
+        },
+        {
+          "path": "FL2VA/processor/tokenizer_config.json",
+          "bytes": 11003,
+          "oid": "a07e942ac874baa13758de8d1fbdb186683cc03416b5589e1b6671c6b3057c68",
+          "hash": "sha256-oH6UKsh0uqE3WN6NH72xhmg8wDQWtVieG2ZxxrMFfGg="
+        },
+        {
+          "path": "FL2VA/processor/video_preprocessor_config.json",
+          "bytes": 385,
+          "oid": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13",
+          "hash": "sha256-d2ivJ8H6+pzJARwdwgBn4D+JFeA7Y1BFUOEdUGaYbRM="
+        },
+        {
+          "path": "FL2VA/processor/vocab.json",
+          "bytes": 2776833,
+          "oid": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+          "hash": "sha256-yhDX6fs+0YV13R4neiV5wW0QjjLydDloSvoOELFECRA="
+        },
+        {
+          "path": "FL2VA/text_encoder/chat_template.json",
+          "bytes": 5499,
+          "oid": "5c72a170d2a4a1a3bc5adad2e689ae28138a9700e5b8c96c0266331e86c0acce",
+          "hash": "sha256-XHKhcNKkoaO8WtrS5omuKBOKlwDluMlsAmYzHobArM4="
+        },
+        {
+          "path": "FL2VA/text_encoder/config.json",
+          "bytes": 1474,
+          "oid": "d2dd0c60d01b9e195d9447c52da61c7302d28828524914c044d9c6e1b81d0427",
+          "hash": "sha256-0t0MYNAbnhldlEfFLaYccwLSiChSSRTARNnG4bgdBCc="
+        },
+        {
+          "path": "FL2VA/text_encoder/merges.txt",
+          "bytes": 1671839,
+          "oid": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+          "hash": "sha256-WZurVAdQiHdLFzP96GXVvXR8vMelR8W8EmEOh04m9eM="
+        },
+        {
+          "path": "FL2VA/text_encoder/model-00001-of-00014.safetensors",
+          "bytes": 4932328944,
+          "oid": "6b9dfbc930e505402ae9d7e5091a9d7d656cda5f34614f01cfe70bfb0cca27cb",
+          "hash": "sha256-a537yTDlBUAq6dflCRqdfWVs2l80YU8Bz+cL+wzKJ8s="
+        },
+        {
+          "path": "FL2VA/text_encoder/model-00002-of-00014.safetensors",
+          "bytes": 4875990528,
+          "oid": "d8bb44b4ff303fe76fe9e894022fb3dc71b15a2e716592790fe0e3c3e60478fa",
+          "hash": "sha256-2LtEtP8wP+dv6eiUAi+z3HGxWi5xZZJ5D+Djw+YEePo="
+        },
+        {
+          "path": "FL2VA/text_encoder/model-00003-of-00014.safetensors",
+          "bytes": 4875990552,
+          "oid": "54f22e8b3168f8dc962fac0d313607ebf52a12b433d4cf3098a0d82d9f042940",
+          "hash": "sha256-VPIuizFo+NyWL6wNMTYH6/UqErQz1M8wmKDYLZ8EKUA="
+        },
+        {
+          "path": "FL2VA/text_encoder/model-00004-of-00014.safetensors",
+          "bytes": 4875990584,
+          "oid": "ad09c74d3c13ee29b5d0d84548fd8a3424a651564eaccd519946c296e59c557f",
+          "hash": "sha256-rQnHTTwT7im10NhFSP2KNCSmUVZOrM1RmUbCluWcVX8="
+        },
+        {
+          "path": "FL2VA/text_encoder/model-00005-of-00014.safetensors",
+          "bytes": 4875990584,
+          "oid": "fc993c8a0e2a5b0570f383e1a95dc3a1281d1b224b6f3ee908f4827941e1dfc2",
+          "hash": "sha256-/Jk8ig4qWwVw84PhqV3DoSgdGyJLbz7pCPSCeUHh38I="
+        },
+        {
+          "path": "FL2VA/text_encoder/model-00006-of-00014.safetensors",
+          "bytes": 4875990584,
+          "oid": "82f05620d1f718a90c362b221d6a184ff1a0f53301d706882d3df49695fa1974",
+          "hash": "sha256-gvBWINH3GKkMNisiHWoYT/Gg9TMB1waILT30lpX6GXQ="
+        },
+        {
+          "path": "FL2VA/text_encoder/model-00007-of-00014.safetensors",
+          "bytes": 4875990584,
+          "oid": "fb91da8cb01ff4de3eef0eab1c3e769a734b3a1aafc61734068638a0d6c86934",
+          "hash": "sha256-+5HajLAf9N4+7w6rHD52mnNLOhqvxhc0BoY4oNbIaTQ="
+        },
+        {
+          "path": "FL2VA/text_encoder/model-00008-of-00014.safetensors",
+          "bytes": 4875990584,
+          "oid": "431ca56535c8781944ce3801f5eb61c45531e853ecc5846d936ebaf4761b764f",
+          "hash": "sha256-QxylZTXIeBlEzjgB9ethxFUx6FPsxYRtk2669HYbdk8="
+        },
+        {
+          "path": "FL2VA/text_encoder/model-00009-of-00014.safetensors",
+          "bytes": 4875990584,
+          "oid": "3825e3f4302f4d2f7d76aa7430d2ce0864fde6b9e540a5806bf0d8e38e4d9f47",
+          "hash": "sha256-OCXj9DAvTS99dqp0MNLOCGT95rnlQKWAa/DY445Nn0c="
+        },
+        {
+          "path": "FL2VA/text_encoder/model-00010-of-00014.safetensors",
+          "bytes": 4875990584,
+          "oid": "aded5a4d1d5e22dbd8b6f79266b6eb88c840411b09527c53917a1419ace22e2f",
+          "hash": "sha256-re1aTR1eItvYtveSZrbriMhAQRsJUnxTkXoUGaziLi8="
+        },
+        {
+          "path": "FL2VA/text_encoder/model-00011-of-00014.safetensors",
+          "bytes": 4875990584,
+          "oid": "3820ffe8d8d6477f6fe8d614ef3c87abb264ee39accebf43a1507b970d80946f",
+          "hash": "sha256-OCD/6NjWR39v6NYU7zyHq7Jk7jmszr9DoVB7lw2AlG8="
+        },
+        {
+          "path": "FL2VA/text_encoder/model-00012-of-00014.safetensors",
+          "bytes": 4875990584,
+          "oid": "05ad2d08ce71963121c9b03f1d9ec5d7641052f4b23c6c12b80d71065eb8e98e",
+          "hash": "sha256-Ba0tCM5xljEhybA/HZ7F12QQUvSyPGwSuA1xBl646Y4="
+        },
+        {
+          "path": "FL2VA/text_encoder/model-00013-of-00014.safetensors",
+          "bytes": 4875990584,
+          "oid": "b64f2289871261fdd1abbd3b78bcd66011b341de3dc8eeb2ed1a473ee7c8d95c",
+          "hash": "sha256-tk8iiYcSYf3Rq707eLzWYBGzQd49yO6y7RpHPufI2Vw="
+        },
+        {
+          "path": "FL2VA/text_encoder/model-00014-of-00014.safetensors",
+          "bytes": 3270697008,
+          "oid": "e45b6c9998c77ee5a6577f9f47bc76416c1d4d387169e50c4c9d3134ea51b13b",
+          "hash": "sha256-5FtsmZjHfuWmV3+fR7x2QWwdTThxaeUMTJ0xNOpRsTs="
+        },
+        {
+          "path": "FL2VA/text_encoder/model.safetensors.index.json",
+          "bytes": 97831,
+          "oid": "06c952c569285870b811989b794b9766493e280fb77fbcb957fc4e5fcf25403a",
+          "hash": "sha256-BslSxWkoWHC4EZibeUuXZkk+KA+3f7y5V/xOX88lQDo="
+        },
+        {
+          "path": "FL2VA/text_encoder/preprocessor_config.json",
+          "bytes": 390,
+          "oid": "27225450ac9c6529872ee1924fcb0962ff5634834f817040f444118116f4e516",
+          "hash": "sha256-JyJUUKycZSmHLuGST8sJYv9WNINPgXBA9EQRgRb05RY="
+        },
+        {
+          "path": "FL2VA/text_encoder/tokenizer.json",
+          "bytes": 7032403,
+          "oid": "a5d85b6dcc535e6b93115a9ef287e6132fdbf30270da6218194ba742261173c7",
+          "hash": "sha256-pdhbbcxTXmuTEVqe8ofmEy/b8wJw2mIYGUunQiYRc8c="
+        },
+        {
+          "path": "FL2VA/text_encoder/tokenizer_config.json",
+          "bytes": 11003,
+          "oid": "a07e942ac874baa13758de8d1fbdb186683cc03416b5589e1b6671c6b3057c68",
+          "hash": "sha256-oH6UKsh0uqE3WN6NH72xhmg8wDQWtVieG2ZxxrMFfGg="
+        },
+        {
+          "path": "FL2VA/text_encoder/video_preprocessor_config.json",
+          "bytes": 385,
+          "oid": "7768af27c1fafa9cc9011c1dc20067e03f8915e03b63504550e11d5066986d13",
+          "hash": "sha256-d2ivJ8H6+pzJARwdwgBn4D+JFeA7Y1BFUOEdUGaYbRM="
+        },
+        {
+          "path": "FL2VA/text_encoder/vocab.json",
+          "bytes": 2776833,
+          "oid": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+          "hash": "sha256-yhDX6fs+0YV13R4neiV5wW0QjjLydDloSvoOELFECRA="
+        },
+        {
+          "path": "FL2VA/tokenizer/merges.txt",
+          "bytes": 1671839,
+          "oid": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+          "hash": "sha256-WZurVAdQiHdLFzP96GXVvXR8vMelR8W8EmEOh04m9eM="
+        },
+        {
+          "path": "FL2VA/tokenizer/tokenizer.json",
+          "bytes": 7032403,
+          "oid": "a5d85b6dcc535e6b93115a9ef287e6132fdbf30270da6218194ba742261173c7",
+          "hash": "sha256-pdhbbcxTXmuTEVqe8ofmEy/b8wJw2mIYGUunQiYRc8c="
+        },
+        {
+          "path": "FL2VA/tokenizer/tokenizer_config.json",
+          "bytes": 11003,
+          "oid": "a07e942ac874baa13758de8d1fbdb186683cc03416b5589e1b6671c6b3057c68",
+          "hash": "sha256-oH6UKsh0uqE3WN6NH72xhmg8wDQWtVieG2ZxxrMFfGg="
+        },
+        {
+          "path": "FL2VA/tokenizer/vocab.json",
+          "bytes": 2776833,
+          "oid": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+          "hash": "sha256-yhDX6fs+0YV13R4neiV5wW0QjjLydDloSvoOELFECRA="
+        },
+        {
+          "path": "FL2VA/transformer/config.json",
+          "bytes": 604,
+          "oid": "f619093a231fcfbcc3d035bec26c50ad864e7331a500d5c519f5045dc1e50458",
+          "hash": "sha256-9hkJOiMfz7zD0DW+wmxQrYZOczGlANXFGfUEXcHlBFg="
+        },
+        {
+          "path": "FL2VA/transformer/model-00001-of-00013.safetensors",
+          "bytes": 5227812968,
+          "oid": "0b3386565e476bfdea287e9ea9f269d036e5c649ed14bb9b4afac1dc4661bd2a",
+          "hash": "sha256-CzOGVl5Ha/3qKH6eqfJp0DblxkntFLubSvrB3EZhvSo="
+        },
+        {
+          "path": "FL2VA/transformer/model-00002-of-00013.safetensors",
+          "bytes": 5164578856,
+          "oid": "9c98fd4579c9bc96d1b1bbf65c1243f9256df60bccd229570cecc61897773003",
+          "hash": "sha256-nJj9RXnJvJbRsbv2XBJD+SVt9gvM0ilXDOzGGJd3MAM="
+        },
+        {
+          "path": "FL2VA/transformer/model-00003-of-00013.safetensors",
+          "bytes": 5164578872,
+          "oid": "fa484c940d4170199fb69f5016739df2daf6ecd1150631b12a297e06e3964730",
+          "hash": "sha256-+khMlA1BcBmftp9QFnOd8tr27NEVBjGxKil+BuOWRzA="
+        },
+        {
+          "path": "FL2VA/transformer/model-00004-of-00013.safetensors",
+          "bytes": 5164578896,
+          "oid": "4a851df37cce2d14b39cb58df41def7b591b1f11b8520a32b421a5fa3e997c9f",
+          "hash": "sha256-SoUd83zOLRSznLWN9B3ve1kbHxG4UgoytCGl+j6ZfJ8="
+        },
+        {
+          "path": "FL2VA/transformer/model-00005-of-00013.safetensors",
+          "bytes": 5164578896,
+          "oid": "3fe6ff94dc9d3107c6776a25277d2b72b5443f88cf0f4ed835fd5b65a94ea5d4",
+          "hash": "sha256-P+b/lNydMQfGd2olJ30rcrVEP4jPD07YNf1bZalOpdQ="
+        },
+        {
+          "path": "FL2VA/transformer/model-00006-of-00013.safetensors",
+          "bytes": 5164578896,
+          "oid": "79b47e1b9ff03a2c6f06dd15a28972acf32c0867172ee34e5aa6e96b99494127",
+          "hash": "sha256-ebR+G5/wOixvBt0VoolyrPMsCGcXLuNOWqbpa5lJQSc="
+        },
+        {
+          "path": "FL2VA/transformer/model-00007-of-00013.safetensors",
+          "bytes": 5164578896,
+          "oid": "6ac4d6ce639786b722a8dd99843ed56dcab48a0d174a4b0f9b8cdcbe5160fb0f",
+          "hash": "sha256-asTWzmOXhrciqN2ZhD7Vbcq0ig0XSksPm4zcvlFg+w8="
+        },
+        {
+          "path": "FL2VA/transformer/model-00008-of-00013.safetensors",
+          "bytes": 5164578896,
+          "oid": "03531812243fb0a333e01efa7e3d39750580bca8cbf2ba0529da419278eab736",
+          "hash": "sha256-A1MYEiQ/sKMz4B76fj05dQWAvKjL8roFKdpBknjqtzY="
+        },
+        {
+          "path": "FL2VA/transformer/model-00009-of-00013.safetensors",
+          "bytes": 5164578896,
+          "oid": "7e82a80b0d0d267026eb841b81523069cc7b956c1ebd8a18c07e462ffb262487",
+          "hash": "sha256-foKoCw0NJnAm64QbgVIwacx7lWwevYoYwH5GL/smJIc="
+        },
+        {
+          "path": "FL2VA/transformer/model-00010-of-00013.safetensors",
+          "bytes": 5164578896,
+          "oid": "ef0a1f6b65145232543dd2232d58d91a4d31f44b0da5084acf22cea123255481",
+          "hash": "sha256-7wofa2UUUjJUPdIjLVjZGk0x9EsNpQhKzyLOoSMlVIE="
+        },
+        {
+          "path": "FL2VA/transformer/model-00011-of-00013.safetensors",
+          "bytes": 5164578896,
+          "oid": "bf885b8f2f078c5499b75fded21094a26bfe0e6e00bee276e499443ecd2f298d",
+          "hash": "sha256-v4hbjy8HjFSZt1/e0hCUomv+Dm4AvuJ25JlEPs0vKY0="
+        },
+        {
+          "path": "FL2VA/transformer/model-00012-of-00013.safetensors",
+          "bytes": 5164578896,
+          "oid": "dc717572d014ebf8527e35af815d10eb2f5a6bc87253b8a7d2f456965192db69",
+          "hash": "sha256-3HF1ctAU6/hSfjWvgV0Q6y9aa8hyU7in0vRWllGS22k="
+        },
+        {
+          "path": "FL2VA/transformer/model-00013-of-00013.safetensors",
+          "bytes": 4242305176,
+          "oid": "8bfd852d5817e9836de1d3ec8dbac1c5446b167568b717371f08282b22291aa2",
+          "hash": "sha256-i/2FLVgX6YNt4dPsjbrBxURrFnVotxc3HwgoKyIpGqI="
+        },
+        {
+          "path": "FL2VA/transformer/model.safetensors.index.json",
+          "bytes": 38323,
+          "oid": "fb457a26ffa6294660e249b0ddd03a337f2e5393f770b5c34c8b8f90a29a7efb",
+          "hash": "sha256-+0V6Jv+mKUZg4kmw3dA6M38uU5P3cLXDTIuPkKKafvs="
+        },
+        {
+          "path": "FL2VA/video_vae/attention.py",
+          "bytes": 5785,
+          "oid": "c9db8465c57f0bfb40c0194227be6e34b2c1ff7c5b5d63abca9964eed6283767",
+          "hash": "sha256-yduEZcV/C/tAwBlCJ75uNLLB/3xbXWOryplk7tYoN2c="
+        },
+        {
+          "path": "FL2VA/video_vae/base_module.py",
+          "bytes": 9520,
+          "oid": "0e7ddf5086179a306298693ac461ffcbc27ccb28dbc786b1a05060de7a3357c0",
+          "hash": "sha256-Dn3fUIYXmjBimGk6xGH/y8J8yyjbx4axoFBg3nozV8A="
+        },
+        {
+          "path": "FL2VA/video_vae/config.json",
+          "bytes": 1807,
+          "oid": "3edd2cdd1ebc823c868be55ef917e1b3b8a398fde4d3150dae44a3bf05d9f627",
+          "hash": "sha256-Pt0s3R68gjyGi+Ve+Rfhs7ijmP3k0xUNrkSjvwXZ9ic="
+        },
+        {
+          "path": "FL2VA/video_vae/conv.py",
+          "bytes": 4487,
+          "oid": "b3adee35f27e5d372543242aa86ce5e0138f13b794b6c81f919001e3e2346723",
+          "hash": "sha256-s63uNfJ+XTclQyQqqGzl4BOPE7eUtsgfkZAB4+I0ZyM="
+        },
+        {
+          "path": "FL2VA/video_vae/flash.py",
+          "bytes": 5763,
+          "oid": "c1918463d303a16f278a670bb4f33d3f8d6f7653b0d473313ff5835699b86d04",
+          "hash": "sha256-wZGEY9MDoW8nimcLtPM9P41vdlOw1HMxP/WDVpm4bQQ="
+        },
+        {
+          "path": "FL2VA/video_vae/func.py",
+          "bytes": 5840,
+          "oid": "0612c26a65f095699cc7acd51937cd153584fa5a0476956e46a4679aa575c22d",
+          "hash": "sha256-BhLCamXwlWmcx6zVGTfNFTWE+loEdpVuRqRnmqV1wi0="
+        },
+        {
+          "path": "FL2VA/video_vae/klvae.py",
+          "bytes": 48594,
+          "oid": "d05a22b4918ad303f147d6b0d0ae9038bd1af1f810a5553b04f3542ab9bcff96",
+          "hash": "sha256-0FoitJGK0wPxR9aw0K6QOL0a8fgQpVU7BPNUKrm8/5Y="
+        },
+        {
+          "path": "FL2VA/video_vae/minimax_h3_video_vae.py",
+          "bytes": 5123,
+          "oid": "77fdea69a48485b5434f65d08096657b5d78b78b7cdf24e1241038f237720138",
+          "hash": "sha256-d/3qaaSEhbVDT2XQgJZle114t4t83yThJBA48jdyATg="
+        },
+        {
+          "path": "FL2VA/video_vae/norm.py",
+          "bytes": 10686,
+          "oid": "258b120ca8d9a16366d7b811fe93eebf98fe1564db0995e8b7747229c651919a",
+          "hash": "sha256-JYsSDKjZoWNm17gR/pPuv5j+FWTbCZXot3RyKcZRkZo="
+        },
+        {
+          "path": "FL2VA/video_vae/normalize.py",
+          "bytes": 1200,
+          "oid": "8db651acb9eb551c906a2850bbca8e9d851f00d07b30ccf66ceb6057da687a13",
+          "hash": "sha256-jbZRrLnrVRyQaihQu8qOnYUfANB7MMz2bOtgV9poehM="
+        },
+        {
+          "path": "FL2VA/video_vae/parallel.py",
+          "bytes": 12997,
+          "oid": "7193522beafd65bc3dbe40b9843e360ab8da3a0bb211e9bfb67bb0d5d0e66919",
+          "hash": "sha256-cZNSK+r9Zbw9vkC5hD42CrjaOguyEem/tnuw1dDmaRk="
+        },
+        {
+          "path": "FL2VA/video_vae/source/config.json",
+          "bytes": 1164,
+          "oid": "66c68f541e6578ce613ce7a0fc985eb59097038829e49f7535e6d08e6d95ab12",
+          "hash": "sha256-ZsaPVB5leM5hPOeg/JhetZCXA4gp5J91NebQjm2VqxI="
+        },
+        {
+          "path": "FL2VA/video_vae/source/model.safetensors",
+          "bytes": 10415548320,
+          "oid": "5f0c2e161d895a9fee7645ca32d4a7e3a22b90cacfcbeba62ec999cdbbefe0d3",
+          "hash": "sha256-XwwuFh2JWp/udkXKMtSn46IrkMrPy+umLsmZzbvv4NM="
+        },
+        {
+          "path": "FL2VA/video_vae/utils.py",
+          "bytes": 764,
+          "oid": "309e45e9d9e33cd5516a10eac2d207eb9f940079a6d9bbe0ee80aaaf7eb42dcd",
+          "hash": "sha256-MJ5F6dnjPNVRahDqwtIH65+UAHmm2bvg7oCqr360Lc0="
+        },
+        {
+          "path": "FL2VA/video_vae/vae_cnn.py",
+          "bytes": 8836,
+          "oid": "3949b701e6893bd2ea070cd5b18ed8135a7c21d884290df449b1997212d65b11",
+          "hash": "sha256-OUm3AeaJO9LqBwzVsY7YE1p8IdiEKQ30SbGZchLWWxE="
+        },
+        {
+          "path": "FL2VA/video_vae/vae_module.py",
+          "bytes": 1884,
+          "oid": "9558fb302e10a619f198e12e04701c68988e897d0b627f958f33d27fd2a30d94",
+          "hash": "sha256-lVj7MC4QphnxmOEuBHAcaJiOiX0LYn+VjzPSf9KjDZQ="
+        },
+        {
+          "path": "FL2VA/video_vae/vae_processor.py",
+          "bytes": 8369,
+          "oid": "32870580a1802d9163104a4d68170e35a4772106867181e1bd343dff11f87d2e",
+          "hash": "sha256-MocFgKGALZFjEEpNaBcONaR3IQaGcYHhvTQ9/xH4fS4="
+        },
+        {
+          "path": "FL2VA/video_vae/vae_vit.py",
+          "bytes": 13490,
+          "oid": "a372c28441b56ec2dbc6041dbd6ce2766c64c0e61b2c69a16594a97a11da3f58",
+          "hash": "sha256-o3LChEG1bsLbxgQdvWzidmxkwOYbLGmhZZSpehHaP1g="
+        },
+        {
+          "path": "LICENSE",
+          "bytes": 17604,
+          "oid": "59b99642b95ea21630e311198ddbfffbfe05aadba0c2f5d884cbdf4efcc90f44",
+          "hash": "sha256-WbmWQrleohYw4xEZjdv/+/4FqtugwvXYhMvfTvzJD0Q="
+        },
+        {
+          "path": "README.md",
+          "bytes": 38406,
+          "oid": "f0116a90332496bdfcc827320c603a26b849c73bf804f2674d03682fbbd2334a",
+          "hash": "sha256-8BFqkDMklr38yCcyDGA6JrhJxzv4BPJnTQNoL7vSM0o="
+        },
+        {
+          "path": "model_index.json",
+          "bytes": 2936,
+          "oid": "5a587fe13b2371427415ac892463142683aefcd8d322e274a3a095eac37ac7d2",
+          "hash": "sha256-Wlh/4TsjcUJ0FayJJGMUJoOu/NjTIuJ0o6CV6sN6x9I="
+        }
+      ]
+    }
+  }
+}

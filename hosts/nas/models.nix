@@ -85,8 +85,14 @@ let
   # The Library wants EVERY catalog artifact — canonical, candidate, and the
   # aux/appliance sets — because it is the archive; per-host selection happens
   # device-side via wanted.json. Retired rows keep their artifacts here too.
+  # The one exception is a gated row (source.gate, lib/local-models.nix): it
+  # waits for a step only Tom can take, so library-fetch does not download it.
   libraryManifest = (pkgs.formats.json { }).generate "library-manifest.json" (
-    modelStore.manifestFor (builtins.attrNames catalog.artifacts)
+    modelStore.manifestFor (
+      builtins.filter (id: catalog.artifacts.${id}.source.gate == null) (
+        builtins.attrNames catalog.artifacts
+      )
+    )
   );
 
   fetchScript = pkgs.writeShellApplication {
