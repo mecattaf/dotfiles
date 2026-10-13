@@ -41,7 +41,6 @@
     ./models.nix # the model Library: weights forever-collection + static cache
     ./attic.nix # ws5  fleet binary cache, served directly (executed 2026-08-21)
     ./update-center.nix # nightly fleet builds -> attic (the App Store model)
-    ./omarchy-update-center.nix # manual signed offers; owners choose installation
     ./paperless.nix # #136 Paperless v3 same-inode PDF projection, gate ON 2026-09-13
     ../../modules/adguardhome.nix
     inputs.nixos-hardware.nixosModules.common-cpu-amd
@@ -81,9 +80,6 @@
   #
   # The NAS is the sole official Tailscale subnet router (2026-10-08).
 
-  # Retired 2026-09-16: the Dell belongs to its owner; Tom no longer
-  # publishes or manages Omarchy updates. Keep historical receipts only.
-  myNas.omarchyUpdateCenter.enable = false;
   # #136 gate flip (2026-09-13), paired with the strix's
   # myNasClient.relayPaperless in the same commit (flake.nix nas-topology
   # asserts the pair). Pre-flip: runbook dirs created, documents snapshotted
@@ -132,7 +128,6 @@
   # this 24G router, and builds belong on the desktops, run by hand. The
   # service stays hand-startable and the candidates keep being served, so
   # update-adopt on the devices sees the last good closure, not an error.
-  myNas.updateCenter.schedule.enable = false;
 
   # ── /nix on the M.2 (#232) ──────────────────────────────────────────────
   # Flipped after the runbook in ./nix-on-nvme.nix was walked on the real

@@ -16,7 +16,7 @@
 # with cc2 = ~/.claude-work, pusher.json with peerCacheDir and no tokenFile, the [puller] table with the two
 # credential placeholders, and no rendered file carrying a token-shaped key or a credential path. It also pins the
 # academic drain's standing submit (modules/academic-drain.nix; ON 2026-09-25, OFF on the strix since
-# 2026-09-30, so it is armed here): the user service and timer, the timer's OnCalendar, the floor token as a credential, and a rendered script with no
+# 2026-09-30, so it is armed here): the user service with no timer (none since 2026-10-13, #484), the floor token as a credential, and a rendered script with no
 # token-shaped literal. Since 2026-10-10 it also pins the model catalog seam (Tom: model ids are not nix data):
 # runtimes.toml carries models_file = ~/.config/substrate/models.toml, the puller start script seeds that file from
 # the store copy only when absent, the seed parses as TOML with one default per harness (per provider for pi) and no
@@ -44,7 +44,6 @@ let
       ];
     }).config;
   standing = armed.systemd.user.services.academic-drain-standing;
-  standingTimer = armed.systemd.user.timers.academic-drain-standing;
   pusherUnit = armed.systemd.user.services.substrate-pusher;
   pullerUnit = armed.systemd.user.services.substrate-puller;
   inherit (lib) hasInfix;
@@ -93,16 +92,14 @@ assert hasInfix "/home/tom/.local/bin" pusherUnit.environment.PATH;
 assert hasInfix "/etc/profiles/per-user/tom/bin"
   declared.systemd.user.services.substrate-puller.environment.PATH;
 assert pullerUnit.serviceConfig.RuntimeDirectory == "substrate-puller";
-# The standing lane B submit: a oneshot user service on a Persistent=false timer, the bearer by LoadCredential.
+# The standing lane B submit: a oneshot user service with no timer even when armed, the bearer by LoadCredential.
 assert !declared.services.academicDrain.standing.enable;
 assert !(declared.systemd.user.timers ? academic-drain-standing);
 assert standing.serviceConfig.Type == "oneshot";
 assert standing.unitConfig.ConditionUser == "tom";
 assert standing.serviceConfig.LoadCredential == [ "floor-token:/run/agenix/substrate-floor-token" ];
 assert !(standing ? wantedBy) || standing.wantedBy == [ ];
-assert standingTimer.timerConfig.OnCalendar == "*-*-* 01:30:00";
-assert standingTimer.timerConfig.Persistent == false;
-assert standingTimer.wantedBy == [ "timers.target" ];
+assert !(armed.systemd.user.timers ? academic-drain-standing);
 assert declared.services.academicDrain.standing.args.runtime == "ssh:strix";
 # puller.sshRuntimes MERGES into the default runtimes (a hand-set runtimes.runtime."ssh:strix" would replace it).
 assert declared.services.substrate.puller.sshRuntimes ? "ssh:strix";

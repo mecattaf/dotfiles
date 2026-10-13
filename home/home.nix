@@ -127,11 +127,6 @@ in
     "$HOME/.local/bin"
   ];
 
-  # Force the file backend explicitly so gws never guesses between it and an
-  # OS keyring (GNOME keyring/kwallet) — the agenix-delivered .encryption_key
-  # only makes sense if gws is always in file mode. See gws-*.age in secrets.nix.
-  home.sessionVariables.GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND = "file";
-
   # ---------------------------------------------------------------------------
   # RAW configs (whole-dir per ~/.config/<name>).
   # ---------------------------------------------------------------------------
@@ -583,7 +578,6 @@ in
     huggingface-cli # metadata CLI; agenix authentication is strix-only
     gh
     google-cloud-sdk
-    gws # Google Workspace CLI (Gmail/Calendar/Drive/Sheets/Docs/...), Discovery-doc-backed
     cloudflared
     wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (strix-only cred, binary fleet-wide)
     music-acquire # evidence-gated SoundCloud → YouTube → capture acquisition

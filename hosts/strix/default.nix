@@ -56,8 +56,8 @@
     # gentle capacity pusher and the interpreter-host puller, both declared
     # ON below (2026-09-24).
     ../../modules/substrate.nix
-    # The academic OCR drain's standing submit (services.academicDrain.standing, ON below): a nightly lane B run on
-    # the floor this box's puller serves (2026-09-25).
+    # The academic OCR drain's standing submit (services.academicDrain.standing, OFF below since 2026-09-30, no
+    # timer since 2026-10-13): a lane B run on the floor this box's puller serves, started by hand.
     ../../modules/academic-drain.nix
   ];
 
@@ -114,10 +114,7 @@
     };
   };
 
-  services.academicDrain.standing = {
-    enable = false;
-    onCalendar = "*-*-* 01:30:00";
-  };
+  services.academicDrain.standing.enable = false;
 
   myGvisor.enable = false;
 

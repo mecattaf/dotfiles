@@ -176,12 +176,4 @@ in
   #       -o secrets/codex-auth.age ~/.codex/auth.json
   # (no admin key needed — creating a ciphertext only uses public keys).
   "secrets/codex-auth.age".publicKeys = editors ++ strixOnly;
-  # gws (Google Workspace CLI, personal account thomasmecattaf@gmail.com) — same
-  # operator-box ruling as gh/wrangler above. client_secret identifies the OAuth
-  # app; credentials.enc + .encryption_key + token_cache.json are the actual
-  # logged-in state (see ~/.config/gws/HANDOFF.md for full provenance, 2026-07-10).
-  "secrets/gws-client-secret.age".publicKeys = editors ++ strixOnly;
-  "secrets/gws-credentials.age".publicKeys = editors ++ strixOnly;
-  "secrets/gws-encryption-key.age".publicKeys = editors ++ strixOnly;
-  "secrets/gws-token-cache.age".publicKeys = editors ++ strixOnly;
 }

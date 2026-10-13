@@ -143,17 +143,7 @@ stdenvNoCC.mkDerivation {
       ${callRecord} \
       ${callDiarizeStart} \
       launcher.sh \
-      backfill.sh \
-      tests/test_backfill.sh \
       tests/test_call_record.sh
-    PATH=${
-      lib.makeBinPath [
-        coreutils
-        findutils
-        jq
-      ]
-    }:$PATH \
-      ${bash}/bin/bash tests/test_backfill.sh
     ${bash}/bin/bash tests/test_call_record.sh \
       ${callRecord} \
       ${bash}/bin/bash \
@@ -180,7 +170,7 @@ stdenvNoCC.mkDerivation {
     runHook preInstall
     mkdir -p $out/bin $out/libexec/call-diarize
     cp -R call_diarize tests $out/libexec/call-diarize/
-    cp launcher.sh backfill.sh pyproject.toml uv.lock $out/libexec/call-diarize/
+    cp launcher.sh pyproject.toml uv.lock $out/libexec/call-diarize/
     makeWrapper ${bash}/bin/bash $out/bin/call-diarize \
       --add-flags "$out/libexec/call-diarize/launcher.sh" \
       --prefix PATH : ${
@@ -195,15 +185,6 @@ stdenvNoCC.mkDerivation {
       --set CALL_DIARIZE_PYTHON ${lib.escapeShellArg "${python}/bin/python3"} \
       --set CALL_DIARIZE_PYTHONPATH "$out/libexec/call-diarize:${runtimePythonPath}" \
       --set CALL_DIARIZE_TORCH_ROOT ${lib.escapeShellArg (toString torchRocm)}
-    makeWrapper ${bash}/bin/bash $out/bin/call-diarize-backfill \
-      --add-flags "$out/libexec/call-diarize/backfill.sh" \
-      --prefix PATH : ${
-        lib.makeBinPath [
-          coreutils
-          findutils
-          jq
-        ]
-      }
     runHook postInstall
   '';
 

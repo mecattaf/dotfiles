@@ -123,15 +123,6 @@ in
         default = 8734;
       };
     };
-    schedule.enable = lib.mkOption {
-      type = lib.types.bool;
-      default = true;
-      description = ''
-        Arm the 01:30 timer. Off leaves the service defined and hand-startable
-        but nothing fires on a clock — the committed form of "paused", which a
-        runtime `systemctl stop update-center.timer` is not (#234).
-      '';
-    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -267,24 +258,7 @@ in
       };
     };
 
-    # ── The pause has to be committable (#234, 2026-08-28) ─────────────────
-    # `systemctl stop update-center.timer` is runtime-only, and `wantedBy` is
-    # re-asserted on every activation: three separate nixos-rebuilds during the
-    # #235 recovery silently re-armed it, and the 08-28 run fired four minutes
-    # after the power cycle that ended a five-day outage. A pause that has to
-    # be re-applied by hand after every switch will be forgotten exactly once.
-    # So the schedule is its own gate: flip it false to park the nightly in the
-    # repo, where the reason lives next to it. The SERVICE stays defined and
-    # `systemctl start update-center` still works — this parks the clock, not
-    # the build farm.
-    systemd.timers.update-center = lib.mkIf cfg.schedule.enable {
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "01:30";
-        # Never catch up in daylight (see header).
-        Persistent = false;
-        AccuracySec = "15min";
-      };
-    };
+    # No timer (#484, 2026-10-13): scheduled work does not live in dotfiles. The
+    # service stays defined; `systemctl start update-center` still runs one build.
   };
 }

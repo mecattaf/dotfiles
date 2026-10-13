@@ -857,23 +857,6 @@
               cp "$TMPDIR/out" $out
             '';
 
-        fleet-identity-backup =
-          pkgs.runCommand "fleet-identity-backup-check"
-            {
-              nativeBuildInputs = [
-                pkgs.python3
-                pkgs.openssh
-                pkgs.age
-              ];
-            }
-            ''
-              mkdir -p hosts/nas tests/fleet-identity-backup
-              cp ${./hosts/nas/fleet-identity-backup.py} hosts/nas/fleet-identity-backup.py
-              cp ${./tests/fleet-identity-backup/test_backup.py} tests/fleet-identity-backup/test_backup.py
-              python -m unittest discover -v -s tests/fleet-identity-backup
-              touch "$out"
-            '';
-
         nas-topology =
           let
             nas = self.nixosConfigurations.nas.config;
