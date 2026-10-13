@@ -5,7 +5,8 @@
   ...
 }:
 # The paper loop (dotfiles#384). "/print" is one file write: an agent drops
-# ~/Paper/intake/<slug>.md and paper-daemon owns everything after it —
+# ~/Paper/intake/<slug>.md (or an existing <slug>.pdf, printed as it is,
+# dotfiles#501) and paper-daemon owns everything after it —
 # render, target_pages validation, quiet hours, the pinned-queue guard, and a
 # receipt only when the PRINTER reports every impression. The layout under
 # ~/Paper is the daemon's: intake/ (drops), outbox/ (held for 06:05),

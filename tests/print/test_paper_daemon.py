@@ -9,6 +9,7 @@ asserts both the outcome directory and what was — or was not — sent.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -172,6 +173,27 @@ def main(name):
     if name == "journalctl":
         print("fake cups journal")
         return 0
+    if name == "pdfinfo":
+        # Reads the fake PDF's own markers: PAGES=n, SIZE=a4|letter|mixed
+        # (page 2 is Letter), ENCRYPTED. No %PDF header is a malformed file.
+        text = Path(args[-1]).read_text(errors="replace")
+        if not text.startswith("%PDF"):
+            print("Syntax Error: Couldn't find trailer dictionary", file=sys.stderr)
+            return 1
+        pages = int(text.split("PAGES=")[1].split()[0])
+        size = text.split("SIZE=")[1].split()[0] if "SIZE=" in text else "a4"
+        a4, letter = "594.96 x 841.92 pts (A4)", "612 x 792 pts (letter)"
+        if "-f" in args:
+            for n in range(1, pages + 1):
+                page = letter if size == "letter" or (size == "mixed" and n == 2) else a4
+                print(f"Page {n:4d} size:  {page}")
+            return 0
+        encrypted = ("yes (print:yes copy:no change:no addNotes:no algorithm:AES-256)"
+                     if "ENCRYPTED" in text else "no")
+        print(f"Pages:           {pages}")
+        print(f"Encrypted:       {encrypted}")
+        print(f"Page size:       {letter if size == 'letter' else a4}")
+        return 0
     # ssh, cancel: logged above, succeed.
     return 0
 '''
@@ -236,7 +258,7 @@ class DaemonHarness(unittest.TestCase):
         stubs.mkdir()
         (stubs / "fakecups.py").write_text(FAKE_CUPS)
         for name in ("lp", "lpstat", "lpoptions", "ipptool", "sudo", "ssh",
-                     "cancel", "journalctl"):
+                     "cancel", "journalctl", "pdfinfo"):
             stub = stubs / name
             stub.write_text(
                 f"#!{sys.executable}\n"
@@ -287,6 +309,17 @@ class DaemonHarness(unittest.TestCase):
         tmp = self.intake / f".{slug}.md.tmp"
         tmp.write_text(text)
         final = self.intake / f"{slug}.md"
+        tmp.rename(final)
+        return final
+
+    def drop_pdf(self, slug: str, pages: int = 1, marks: str = "",
+                 options: dict | None = None, raw: str | None = None) -> Path:
+        """An existing PDF, dropped the same way; the sidecar comes first."""
+        if options is not None:
+            (self.intake / f"{slug}.pdf.json").write_text(json.dumps(options))
+        tmp = self.intake / f".{slug}.pdf.tmp"
+        tmp.write_text(raw if raw is not None else f"%PDF-1.7 fake PAGES={pages} {marks}\n")
+        final = self.intake / f"{slug}.pdf"
         tmp.rename(final)
         return final
 
@@ -594,6 +627,102 @@ class QueueGuardTests(DaemonHarness):
         self.ppd.chmod(0o600)
         self.assertEqual(result.returncode, 1)
         self.assertTrue(any("unreadable" in p for p in json.loads(result.stdout)["problems"]))
+
+
+class PdfDropTests(DaemonHarness):
+    """An existing PDF is printed as it is, through the same gates (#501)."""
+
+    def test_an_a4_pdf_prints_as_it_is_with_a_receipt(self) -> None:
+        path = self.drop_pdf("invoice")
+        original = hashlib.sha256(path.read_bytes()).hexdigest()
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        receipt = self.receipt("invoice")
+        self.assertEqual(receipt["kind"], "pdf")
+        self.assertEqual(receipt["pages"], 1)
+        self.assertEqual(receipt["impressions_completed"], 1)
+        self.assertEqual(receipt["source_sha256"], original)
+        self.assertEqual(receipt["pdf_sha256"], original)
+        self.assertTrue(receipt["source"].endswith("printed/invoice/source.pdf"))
+        self.assertEqual(receipt["sides"], "one-sided")
+        self.assertFalse(receipt["fit_to_page"])
+        self.assertFalse(self.render_log.exists())  # no render step
+        (lp,) = self.calls("lp")
+        self.assertEqual(lp[:8], ["-d", QUEUE, "-n", "1", "-o", "media=A4", "-o", "sides=one-sided"])
+        self.assertNotIn("fit-to-page", lp)
+        self.assertTrue(lp[-1].endswith("source.pdf"))
+        self.assertEqual(list(self.intake.iterdir()), [])
+
+    def test_a_longer_pdf_defaults_to_duplex(self) -> None:
+        self.drop_pdf("contract", pages=3)
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.receipt("contract")["sides"], "two-sided-long-edge")
+        self.assertEqual(self.receipt("contract")["impressions_completed"], 3)
+
+    def test_pages_that_are_not_a4_are_scaled_to_fit(self) -> None:
+        self.drop_pdf("letter-invoice", marks="SIZE=letter")
+        self.drop_pdf("mixed", pages=3, marks="SIZE=mixed")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for job in ("letter-invoice", "mixed"):
+            self.assertTrue(self.receipt(job)["fit_to_page"], job)
+        for lp in self.calls("lp"):
+            self.assertIn("fit-to-page", lp)
+            self.assertIn("media=A4", lp)
+        decision = json.loads((self.paper / "printed/mixed/decision.json").read_text())
+        self.assertEqual(decision["pdf"]["not_a4_pages"], [2])
+
+    def test_a_malformed_pdf_is_rejected_and_nothing_is_sent(self) -> None:
+        self.drop_pdf("broken", raw="this is not a pdf\n")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        reason = json.loads((self.paper / "rejected/broken/reason.json").read_text())
+        self.assertIn("not a readable PDF", reason["reason"])
+        self.assertTrue((self.paper / "rejected/broken/source.pdf").exists())
+        self.assertEqual(self.calls("lp"), [])
+
+    def test_an_encrypted_pdf_is_rejected(self) -> None:
+        self.drop_pdf("locked", marks="ENCRYPTED")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        reason = json.loads((self.paper / "rejected/locked/reason.json").read_text())
+        self.assertIn("encrypted", reason["reason"])
+        self.assertEqual(self.calls("lp"), [])
+
+    def test_sidecar_options_are_used_and_kept_with_the_job(self) -> None:
+        self.drop_pdf("form", options={"sides": "duplex", "force": True})
+        result = self.daemon("run", now="2026-09-14T02:00:00")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.receipt("form")["sides"], "two-sided-long-edge")
+        self.assertTrue((self.paper / "printed/form/options.json").exists())
+        self.assertEqual(list(self.intake.iterdir()), [])
+
+    def test_render_options_in_a_sidecar_are_rejected(self) -> None:
+        self.drop_pdf("wrong", options={"target_pages": 1})
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        reason = json.loads((self.paper / "rejected/wrong/reason.json").read_text())
+        self.assertIn("does not apply to a PDF drop", reason["reason"])
+        self.assertEqual(self.calls("lp"), [])
+
+    def test_a_night_pdf_waits_for_the_morning_flush(self) -> None:
+        self.drop_pdf("overnight-pdf")
+        result = self.daemon("run", now="2026-09-14T02:00:00")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.paper / "outbox/overnight-pdf/source.pdf").exists())
+        self.assertEqual(self.calls("lp"), [])
+        result = self.daemon("flush", now="2026-09-14T06:05:00")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.receipt("overnight-pdf")["submitted_at"], "2026-09-14T06:05:00")
+
+    def test_a_pdf_still_being_written_is_ignored(self) -> None:
+        (self.intake / ".half.pdf.tmp").write_text("%PDF-1.7 fake PAGES=1\n")
+        (self.intake / "orphan.pdf.json").write_text("{}")
+        result = self.daemon("run")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls("lp"), [])
+        self.assertEqual(self.calls("pdfinfo"), [])
 
 
 class PrinterTruthTests(DaemonHarness):

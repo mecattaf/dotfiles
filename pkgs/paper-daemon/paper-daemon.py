@@ -34,6 +34,15 @@ Optional front matter (a leading `---` block of `key: value` lines):
     profile: garamond|baskerville|source-serif|times
     force: true               print now even inside quiet hours
 
+An existing PDF (an invoice, a form) is dropped the same way, `.<slug>.pdf.tmp`
+then `<slug>.pdf` (dotfiles#501), and printed as it is: never rasterized or
+re-rendered. pdfinfo gives the page count, which is a fact of the file, so
+target_pages does not apply. A malformed or encrypted PDF is rejected. Pages
+that are not A4 are scaled onto A4 with `fit-to-page`, and the receipt says
+so. Options, if any, come from a sidecar `<slug>.pdf.json` written BEFORE the
+rename: {"sides": "one-sided"|"duplex"|"short-edge", "force": true}. Without
+one, a 1 or 2 page PDF prints one-sided and a longer one duplex.
+
 Why the receipt reads the printer and not cupsd. 2026-09-11 job 303: cupsd
 logged "Job completed", 10 pages, and the Brother received nothing (the queue
 had been rewritten to implicitclass:// by cups-browsed). 2026-09-12 job 304:
@@ -201,12 +210,83 @@ def parse_front_matter(text: str) -> dict:
     return options
 
 
+# What intake/ accepts: Markdown to render, or a PDF to print as it is.
+DROP_SUFFIXES = (".md", ".pdf")
+# A4 in PostScript points, and how far a page may be off it (rounding in the
+# producing tool: Chrome writes 594.96 x 841.92) and still count as A4.
+A4_PTS = (595.28, 841.89)
+A4_TOLERANCE = 3.0
+
+
 def ready_drops(intake: Path) -> list[Path]:
     return sorted(
         p for p in intake.iterdir()
         if p.is_file() and not p.name.startswith(".")
-        and p.suffix == ".md" and not p.name.endswith(".tmp")
+        and p.suffix in DROP_SUFFIXES and not p.name.endswith(".tmp")
     )
+
+
+def parse_pdf_options(path: Path) -> dict:
+    """The optional `<slug>.pdf.json` sidecar. Strict: a PDF is printed as it
+    is, so the render options of a Markdown drop are refused by name."""
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        raise Rejected(f"{path.name} is not valid JSON: {exc}") from None
+    if not isinstance(data, dict):
+        raise Rejected(f"{path.name} must be a JSON object")
+    options: dict = {}
+    for key, value in data.items():
+        if key in ("target_pages", "page_slack", "profile"):
+            raise Rejected(f"{key} does not apply to a PDF drop: the PDF is printed as it is")
+        if key == "sides":
+            if value not in ("one-sided", "duplex", "short-edge"):
+                raise Rejected(f"sides must be one-sided, duplex or short-edge, got {value!r}")
+            options["sides"] = value
+        elif key == "force":
+            if not isinstance(value, bool):
+                raise Rejected(f"force must be true or false, got {value!r}")
+            options["force"] = value
+        else:
+            raise Rejected(f"unknown option {key!r} for a PDF drop (sides, force)")
+    return options
+
+
+def is_a4(width: float, height: float) -> bool:
+    short, long = sorted((width, height))
+    return (abs(short - A4_PTS[0]) <= A4_TOLERANCE
+            and abs(long - A4_PTS[1]) <= A4_TOLERANCE)
+
+
+def pdf_facts(pdf: Path) -> dict:
+    """Page count, encryption and page sizes, read with pdfinfo. Anything
+    that is not a readable, unencrypted PDF with pages is Rejected."""
+    info = run(["pdfinfo", str(pdf)])
+    if info.returncode != 0:
+        detail = (info.stderr or info.stdout).strip()[-500:]
+        raise Rejected(f"not a readable PDF (pdfinfo exited {info.returncode}): {detail}")
+    fields: dict = {}
+    for line in info.stdout.splitlines():
+        key, sep, value = line.partition(":")
+        if sep:
+            fields[key.strip()] = value.strip()
+    if fields.get("Encrypted", "no").startswith("yes"):
+        raise Rejected("the PDF is encrypted; drop an unencrypted copy")
+    if not re.fullmatch(r"[1-9][0-9]*", fields.get("Pages", "")):
+        raise Rejected(f"the PDF reports no pages ({fields.get('Pages')!r})")
+    pages = int(fields["Pages"])
+    size_re = r"([0-9.]+) x ([0-9.]+) pts"
+    per_page = run(["pdfinfo", "-f", "1", "-l", str(pages), str(pdf)])
+    sizes = [(float(w), float(h)) for w, h in
+             re.findall(r"^Page\s+\d+\s+size:\s+" + size_re, per_page.stdout, flags=re.M)]
+    if len(sizes) != pages:
+        first = re.match(size_re, fields.get("Page size", ""))
+        if not first:
+            raise Rejected(f"pdfinfo gave no page size ({fields.get('Page size')!r})")
+        sizes = [(float(first.group(1)), float(first.group(2)))] * pages
+    not_a4 = [n for n, (w, h) in enumerate(sizes, start=1) if not is_a4(w, h)]
+    return {"pages": pages, "page_size": fields.get("Page size"),
+            "not_a4_pages": not_a4[:50], "fit_to_page": bool(not_a4)}
 
 
 def settled(path: Path) -> bool:
@@ -247,6 +327,14 @@ def settle_into(jobdir: Path, state: str) -> Path:
     dest = state_dir(state) / jobdir.name
     jobdir.rename(dest)
     return dest
+
+
+def reject(jobdir: Path, reason: dict, message: str) -> bool:
+    """The drop is wrong, not the printer: reason.json, rejected/, nothing sent."""
+    write_json(jobdir / "reason.json", reason)
+    dest = settle_into(jobdir, "rejected")
+    log(f"rejected {dest.name}: {message}")
+    return True
 
 
 # ── queue health ─────────────────────────────────────────────────────────────
@@ -484,10 +572,14 @@ def submit(jobdir: Path) -> bool:
                             {"repairs": repairs})
 
     sides = meta.get("options", {}).get("sides") or decision["decision"].get("sides", "duplex")
+    # A dropped PDF with pages that are not A4 (a Letter invoice) is scaled
+    # onto the A4 the printer holds rather than cropped (dotfiles#501).
+    fit = bool(decision.get("pdf", {}).get("fit_to_page"))
     submitted = now()
     title = f"paper-{jobdir.name}-{submitted:%Y%m%dT%H%M%S}"
     cmd = ["lp", "-d", QUEUE, "-n", "1", "-o", "media=A4",
-           "-o", f"sides={SIDES_LP[sides]}", "-t", title, str(pdf)]
+           "-o", f"sides={SIDES_LP[sides]}", *(["-o", "fit-to-page"] if fit else []),
+           "-t", title, str(pdf)]
     lp = run(cmd)
     meta["submitted_at"] = submitted.isoformat(timespec="seconds")
     if lp.returncode != 0:
@@ -551,14 +643,18 @@ def submit(jobdir: Path) -> bool:
                             f"for {pages} rendered pages",
                             {**base, "printer_job": seen, "ipp": dumps})
 
+    # Jobs queued before dotfiles#501 carry no "source": they are Markdown.
+    source_name = meta.get("source", "source.md")
     receipt = {
         "id": jobdir.name,
-        "source": str(root() / "printed" / jobdir.name / "source.md"),
-        "source_sha256": sha256(jobdir / "source.md"),
+        "kind": meta.get("kind", "markdown"),
+        "source": str(root() / "printed" / jobdir.name / source_name),
+        "source_sha256": sha256(jobdir / source_name),
         "pdf": str(root() / "printed" / jobdir.name / pdf.name),
         "pdf_sha256": sha256(pdf),
         "pages": pages,
         "sides": SIDES_LP[sides],
+        "fit_to_page": fit,
         "queue": QUEUE,
         "device_uri": DEVICE_URI,
         "cups_job_id": cups_job,
@@ -590,28 +686,57 @@ def process(drop: Path) -> bool:
     jid = job_id(drop.stem, at)
     jobdir = state_dir("work") / jid
     jobdir.mkdir()
-    source = jobdir / "source.md"
+    kind = "pdf" if drop.suffix == ".pdf" else "markdown"
+    source = jobdir / ("source.pdf" if kind == "pdf" else "source.md")
     # Moving the drop out of intake/ first is what makes processing
     # at-most-once: a crash from here on leaves work/<id>/, never a file the
     # next sweep would print again.
     drop.rename(source)
-    meta = {"id": jid, "original_name": drop.name,
+    meta = {"id": jid, "original_name": drop.name, "kind": kind, "source": source.name,
             "dropped_at": at.isoformat(timespec="seconds"), "options": {}}
     try:
+        if kind == "pdf":
+            sidecar = drop.with_name(drop.name + ".json")
+            if sidecar.is_file():
+                sidecar.rename(jobdir / "options.json")
         write_json(jobdir / "job.json", meta)
+        if kind == "pdf":
+            return process_pdf_job(jobdir, source, meta, at)
         return process_job(jobdir, source, meta, at)
     except Exception:  # noqa: BLE001 — becomes failed/, never a stranded work/
         return crashed(jobdir, "processing")
+
+
+def process_pdf_job(jobdir: Path, source: Path, meta: dict, at: dt.datetime) -> bool:
+    """An existing PDF: no render, the same gates (dotfiles#501)."""
+    try:
+        options_path = jobdir / "options.json"
+        meta["options"] = parse_pdf_options(options_path) if options_path.exists() else {}
+        facts = pdf_facts(source)
+    except Rejected as exc:
+        return reject(jobdir, {"reason": str(exc)}, str(exc))
+    write_json(jobdir / "job.json", meta)
+    options = meta["options"]
+    sides = options.get("sides") or ("one-sided" if facts["pages"] <= 2 else "duplex")
+    write_json(jobdir / "decision.json", {
+        "decision": {"filename": source.name, "sides": sides},
+        "provenance": "pdf-drop",
+        "pages_rendered": facts["pages"],
+        "length_check": "not_applicable",
+        "pdf": facts,
+    })
+    if quiet_hours(at) and not options.get("force"):
+        dest = settle_into(jobdir, "outbox")
+        log(f"quiet hours: {dest.name} waits in outbox/ for the 06:05 flush")
+        return True
+    return submit(jobdir)
 
 
 def process_job(jobdir: Path, source: Path, meta: dict, at: dt.datetime) -> bool:
     try:
         meta["options"] = parse_front_matter(source.read_text(errors="replace"))
     except Rejected as exc:
-        write_json(jobdir / "reason.json", {"reason": str(exc)})
-        dest = settle_into(jobdir, "rejected")
-        log(f"rejected {dest.name}: {exc}")
-        return True
+        return reject(jobdir, {"reason": str(exc)}, str(exc))
     write_json(jobdir / "job.json", meta)
     options = meta["options"]
 
