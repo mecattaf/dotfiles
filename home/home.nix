@@ -64,8 +64,7 @@ let
   # Whole-dir RAW config dirs, one per ~/.config/<name>.
   configDirs = [
     "sway" # shared physical desktop
-    "scroll" # the physical seats' compositor on scroll/transition (dawsers/scroll master)
-    "niri" # kept beside scroll for rollback until niri retirement (myDisplay.keepNiri)
+    "niri" # kept beside Sway for rollback until niri retirement (myDisplay.keepNiri)
     "kitty"
     "ghostty" # kitty.conf's twin, read by libghostty in cmux Browser's panes
     "fish"
@@ -253,52 +252,6 @@ in
         else
           ''
             // GENERATED per-host (home.nix). No host-specific niri config on ${hostName}.
-          '';
-
-      # Per-HOST scroll config: the scroll twin of niri-local.kdl, same reasons
-      # (scroll/ is a whole-dir RAW symlink shared by every host). Included by
-      # scroll/config after binds.conf and before the theme fragment, so the
-      # client's chords override binds.conf (a later bindsym wins; --no-warn
-      # silences the duplicate notice). Store-managed, re-emitted on switch.
-      #
-      # Touch: sway-family input blocks map PER DEVICE, which closes the
-      # accepted R-10 defect niri could not (stock niri maps every touch device
-      # to one output). The type-wide line keeps today's niri behaviour
-      # (everything on eDP-1); the two per-device lines are the R-10 fix, left
-      # commented until `scrollmsg -t get_inputs` on the client confirms which
-      # ELAN panel is which (identifiers inferred from the scroll-era
-      # lisgd-start device names, 0x04F3 = 1267, 0x425A/B = 16986/16987).
-      #
-      # Lid: niri turned eDP-1 off on lid close by itself and hosts/client/
-      # lid.nix relies on that (logind ignores the lid). sway-family
-      # compositors do not, so bindswitch does it; --reload re-applies the
-      # state after a config reload.
-      #
-      # F10 / XF86: as niri-local.kdl (backlight toggle; the Duo daemon's
-      # re-emitted Fn keys).
-      "scroll-local.conf".text =
-        if hostName == "client" then
-          ''
-            # GENERATED per-host (home.nix). client — ASUS Zenbook Duo UX8406MA.
-            input type:touch map_to_output eDP-1
-            # R-10 per-device mapping (verify ids with `scrollmsg -t get_inputs`):
-            # input "1267:16986:ELAN9008:00_04F3:425A" map_to_output eDP-1
-            # input "1267:16987:ELAN9008:00_04F3:425B" map_to_output eDP-2
-
-            bindswitch --reload --locked lid:on output eDP-1 disable
-            bindswitch --reload --locked lid:off output eDP-1 enable
-
-            # @title Backlight off / restore
-            bindsym --no-warn F10 exec ~/.local/bin/brightness toggle
-            bindsym --locked XF86MonBrightnessDown exec ~/.local/bin/brightness down
-            bindsym --locked XF86MonBrightnessUp exec ~/.local/bin/brightness up
-            bindsym --locked Shift+XF86MonBrightnessDown exec ~/.local/bin/brightness down 2%
-            bindsym --locked Shift+XF86MonBrightnessUp exec ~/.local/bin/brightness up 2%
-            bindsym --locked XF86AudioMicMute exec ~/.local/bin/volume micmute
-          ''
-        else
-          ''
-            # GENERATED per-host (home.nix). No host-specific scroll config on ${hostName}.
           '';
     };
   # (The gtk-4.0/{gtk.css,gtk-dark.css,assets} links that used to sit here — a
@@ -591,10 +544,10 @@ in
     glow
 
     # wayland desktop tooling. xwayland-satellite: niri's X11 path — X11 apps
-    # and Chrome fallbacks need it on the session PATH under niri; scroll has
+    # and Chrome fallbacks need it on the session PATH under niri; Sway has
     # native Xwayland. Kept while niri is the rollback (myDisplay.keepNiri).
     xwayland-satellite
-    # scroll/scripts/monitors-off: sway-family compositors do not wake outputs
+    # bin/monitors-off: sway-family compositors do not wake outputs
     # on input, so a one-shot swayidle resume does it (niri's power-off-monitors).
     swayidle
     acpi

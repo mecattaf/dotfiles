@@ -5,9 +5,9 @@
 # capability.
 #
 # The compositor is a seat choice. `session` picks what greetd starts;
-# `keepNiri` keeps niri installed beside Scroll or Sway for
+# `keepNiri` keeps niri installed beside Sway for
 # rollback (flip `session` back to "niri" and rebuild). modules/common.nix
-# derives programs.scroll / programs.niri / greetd from these three options.
+# derives programs.swayPhysical / programs.niri / greetd from these three options.
 {
   options.myDisplay = {
     enable = lib.mkOption {
@@ -18,15 +18,13 @@
 
     session = lib.mkOption {
       type = lib.types.enum [
-        "scroll"
         "sway"
         "niri"
       ];
-      default = "scroll";
+      default = "sway";
       description = ''
-        The compositor greetd starts on this seat. "scroll" (dawsers/scroll
-        master, modules/scroll.nix) is the default on the scroll/transition
-        branch; "sway" is the native tiling client trial; "niri" is the rollback.
+        The compositor greetd starts on this seat. "sway" (modules/sway.nix) is
+        the seats' compositor; "niri" is the rollback.
       '';
     };
 
@@ -35,7 +33,7 @@
       default = true;
       description = ''
         Keep niri (programs.niri, its portals table and niri-session) installed
-        on a Scroll or Sway seat, so rolling back is a one-option rebuild and
+        on a Sway seat, so rolling back is a one-option rebuild and
         `niri-session` stays startable from a VT. Turned off at niri
         retirement (scoping S9).
       '';

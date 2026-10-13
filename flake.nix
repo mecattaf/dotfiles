@@ -580,9 +580,6 @@
             mactahoe-claude-gtk-theme
             mactahoe-icon-theme
             music-acquire
-            # `nix build .#scroll` — the seats' compositor, dawsers/scroll master
-            # pinned in pkgs/scroll (docs/scroll.md "Master bump").
-            scroll
             sfmono-liga
             ;
 
@@ -1125,7 +1122,6 @@
           assert nas.networking.nftables.enable;
           # The NAS is a storage/router appliance with no graphical session.
           assert !nas.programs.niri.enable;
-          assert !nas.programs.scroll.enable;
           assert !nas.services.greetd.enable;
           assert !nas.services.pipewire.enable;
           assert !(nas.systemd.user.services ? wayvnc);
@@ -1481,17 +1477,16 @@
           assert nixpkgs.lib.hasInfix
             ''Mod+Shift+Return hotkey-overlay-title="Terminal (plain)" { spawn "kitty" "-e" "fish"; }''
             (builtins.readFile ./home/dot_config/niri/binds.kdl);
-          # The same four chords in scroll's RAW binds.conf (scroll/transition),
-          # where the seats now read them. Whole lines, so a commented-out or
-          # re-targeted bind fails here.
+          # The same chords in Sway's RAW binds.conf, where the seats read them.
+          # Whole lines, so a commented-out or re-targeted bind fails here.
+          # (Mod+Shift+N moves a window on Sway, #538, so rename is not here.)
           assert
             let
-              scrollBinds = nixpkgs.lib.splitString "\n" (builtins.readFile ./home/dot_config/scroll/binds.conf);
+              swayBinds = nixpkgs.lib.splitString "\n" (builtins.readFile ./home/dot_config/sway/binds.conf);
             in
-            builtins.all (l: builtins.elem l scrollBinds) [
+            builtins.all (l: builtins.elem l swayBinds) [
               "bindsym $mod+Return exec ~/.local/bin/herdr-chord new"
               "bindsym $mod+Ctrl+Shift+Return exec ~/.local/bin/herdr-chord sidebar"
-              "bindsym $mod+Shift+n exec ~/.local/bin/herdr-chord rename"
               "bindsym $mod+Shift+Return exec kitty -e fish"
               # AGENTS.md seat rule: Alt+H/L left/right monitor, Alt+J/K down/up.
               "bindsym Alt+h focus output left"
@@ -1499,18 +1494,6 @@
               "bindsym Alt+j focus output down"
               "bindsym Alt+k focus output up"
             ];
-          # The RAW scroll config must read the system session plumbing (scroll
-          # never reads /etc by itself) and must never import SWAYSOCK/I3SOCK.
-          assert
-            let
-              scrollMain = nixpkgs.lib.splitString "\n" (builtins.readFile ./home/dot_config/scroll/config);
-            in
-            builtins.elem "include /etc/scroll/config.d/*" scrollMain
-            && builtins.elem "include ~/.config/scroll/cubs.d/*.conf" scrollMain;
-          assert
-            !(builtins.any (l: !(nixpkgs.lib.hasPrefix "#" l) && nixpkgs.lib.hasInfix "SWAYSOCK" l) (
-              nixpkgs.lib.splitString "\n" (builtins.readFile ./home/dot_config/scroll/startup.conf)
-            ));
           # kitty.conf may not map anything to the removed `hk` action: kitty
           # turns an unknown action into a bad-config overlay on every start,
           # and a `map ctrl+b …` would eat herdr's prefix before herdr sees it.
@@ -1561,12 +1544,11 @@
           assert !(strixHome.systemd.user.services ? wayvnc);
           assert (strixHome.systemd.user.services ? piri) == (cfgOf "strix").myDisplay.enable;
           assert clientHome.systemd.user.services ? piri;
-          # piri is niri-only: on a scroll seat it must be skipped, not crash-loop.
+          # piri is niri-only: on a Sway seat it must be skipped, not crash-loop.
           assert clientHome.systemd.user.services.piri.Unit.ConditionEnvironment == "NIRI_SOCKET";
-          # The seat EQUALITIES (scroll/transition): greetd == myDisplay; the
-          # selected compositor is on exactly when there is a seat; scroll is on
-          # only when it is the selected session; niri is on for its own session
-          # or as the kept rollback; greetd starts the selected session's launcher.
+          # The seat EQUALITIES: greetd == myDisplay; the selected compositor is
+          # on exactly when there is a seat; niri is on for its own session or as
+          # the kept rollback; greetd starts the selected session's launcher.
           assert builtins.all (
             h:
             let
@@ -1574,18 +1556,12 @@
               d = c.myDisplay;
             in
             c.services.greetd.enable == d.enable
-            && c.programs.scroll.enable == (d.enable && d.session == "scroll")
             && c.programs.swayPhysical.enable == (d.enable && d.session == "sway")
             && c.programs.niri.enable == (d.enable && (d.session == "niri" || d.keepNiri))
             && (
               !d.enable
               || nixpkgs.lib.hasSuffix (
-                if d.session == "scroll" then
-                  "/bin/scroll-session"
-                else if d.session == "sway" then
-                  "/bin/sway-physical-session"
-                else
-                  "/bin/niri-session"
+                if d.session == "sway" then "/bin/sway-physical-session" else "/bin/niri-session"
               ) c.services.greetd.settings.initial_session.command
             )
           ) displayHosts;
@@ -1593,7 +1569,6 @@
           assert (cfgOf "client").myDisplay.session == "sway";
           assert (cfgOf "strix").myDisplay.session == "sway";
           assert (cfgOf "client").programs.sway.enable;
-          assert !(cfgOf "client").programs.scroll.enable;
           assert clientHome.programs.vicinae.enable;
           assert clientHome.services.mako.enable;
           assert clientHome.systemd.user.services.mako.Service.Type == "dbus";
@@ -1613,52 +1588,16 @@
           assert clientHome.services.mako.settings.font == "Anthropic Sans 11";
           assert clientHome.xdg.configFile ? "sway-local.conf";
           # niri is never dropped without a decision: each seat either runs
-          # niri or keeps it installed beside scroll (myDisplay.keepNiri), so a
+          # niri or keeps it installed beside Sway (myDisplay.keepNiri), so a
           # rollback to session = "niri" keeps these checks green.
           assert builtins.all (h: (cfgOf h).myDisplay.keepNiri || (cfgOf h).myDisplay.session == "niri") [
             "strix"
             "client"
           ];
-          # The physical session owns the portals: XDG_CURRENT_DESKTOP=scroll's
-          # table names Nautilus for FileChooser, wlr for capture, gnome-keyring
-          # for Secret; scroll's session export is SCROLLSOCK-only.
-          assert builtins.all
-            (
-              h:
-              let
-                c = cfgOf h;
-                p = c.xdg.portal.config.scroll;
-                sessionConf = builtins.concatStringsSep "\n" (
-                  builtins.filter (nixpkgs.lib.hasPrefix "exec ") (
-                    nixpkgs.lib.splitString "\n" c.environment.etc."scroll/config.d/10-session.conf".text
-                  )
-                );
-              in
-              p."org.freedesktop.impl.portal.FileChooser" == "gnome"
-              && p."org.freedesktop.impl.portal.ScreenCast" == "wlr"
-              && p."org.freedesktop.impl.portal.Screenshot" == "wlr"
-              && p."org.freedesktop.impl.portal.Secret" == "gnome-keyring"
-              && builtins.elem p.default [
-                "gtk"
-                [ "gtk" ]
-              ]
-              && c.xdg.portal.wlr.enable
-              && nixpkgs.lib.hasInfix " SCROLLSOCK " sessionConf
-              && !(nixpkgs.lib.hasInfix "SWAYSOCK" sessionConf)
-              && !(nixpkgs.lib.hasInfix "I3SOCK" sessionConf)
-              && c.systemd.user.services.scroll.restartIfChanged == false
-              && c.systemd.user.services.scroll.enableDefaultPath == false
-            )
-            (
-              builtins.filter (h: (cfgOf h).programs.scroll.enable) [
-                "strix"
-                "client"
-              ]
-            );
           # The niri rollback, evaluated in memory (never switched): with
           # session = "niri" each seat gets exactly the niri desktop main had —
-          # greetd starts niri-session, scroll is off, niri's portal table is
-          # the one the scroll default carries for it, piri's service and
+          # greetd starts niri-session, niri's portal table is the one the Sway
+          # default carries for it, piri's service and
           # xwayland-satellite are installed.
           assert builtins.all
             (
@@ -1677,7 +1616,6 @@
                 rh = r.home-manager.users.tom;
               in
               r.programs.niri.enable
-              && !r.programs.scroll.enable
               && nixpkgs.lib.hasSuffix "/bin/niri-session" r.services.greetd.settings.initial_session.command
               && r.xdg.portal.config.niri == c.xdg.portal.config.niri
               && rh.systemd.user.services ? piri
@@ -1713,11 +1651,9 @@
             [
               clientHome
             ];
-          # pkgs.sway stays stock for the headless browser desktop: scroll is a
-          # NEW attribute, never an override of sway.
+          # pkgs.sway stays stock for the seats and the headless browser desktop.
           assert pkgs.sway-unwrapped.src.repo or "sway" == "sway";
           assert nixpkgs.lib.getName pkgs.sway == "sway";
-          assert pkgs.scroll.unwrapped.src.repo or "" == "scroll";
           assert (cfgOf "client").myDisplay.enable;
           assert !(cfgOf "strix").myDisplay.enable;
           assert builtins.all
@@ -1815,16 +1751,16 @@
             !(nixpkgs.lib.hasInfix "Mod+Ctrl+Shift+Return " clientHome.xdg.configFile."niri-local.kdl".text);
           assert !(nixpkgs.lib.hasInfix "Mod+Shift+N " clientHome.xdg.configFile."niri-local.kdl".text);
           assert !(nixpkgs.lib.hasInfix "binds" strixHome.xdg.configFile."niri-local.kdl".text);
-          # scroll twins of the slot asserts: touch mapped, the lid handled by
+          # Sway twins of the slot asserts: touch mapped, the lid handled by
           # bindswitch (hosts/client/lid.nix relies on the compositor for the
           # panel), and no override of the herdr chords.
           assert nixpkgs.lib.hasInfix "input type:touch map_to_output eDP-1"
-            clientHome.xdg.configFile."scroll-local.conf".text;
+            clientHome.xdg.configFile."sway-local.conf".text;
           assert nixpkgs.lib.hasInfix "bindswitch --reload --locked lid:on output eDP-1 disable"
-            clientHome.xdg.configFile."scroll-local.conf".text;
-          assert !(nixpkgs.lib.hasInfix "$mod+Return " clientHome.xdg.configFile."scroll-local.conf".text);
-          assert !(nixpkgs.lib.hasInfix "$mod+Shift+n " clientHome.xdg.configFile."scroll-local.conf".text);
-          assert !(nixpkgs.lib.hasInfix "bindsym" strixHome.xdg.configFile."scroll-local.conf".text);
+            clientHome.xdg.configFile."sway-local.conf".text;
+          assert !(nixpkgs.lib.hasInfix "$mod+Return " clientHome.xdg.configFile."sway-local.conf".text);
+          assert !(nixpkgs.lib.hasInfix "$mod+Shift+n " clientHome.xdg.configFile."sway-local.conf".text);
+          assert !(nixpkgs.lib.hasInfix "bindsym" strixHome.xdg.configFile."sway-local.conf".text);
 
           assert
             !builtins.elem 5900 (
@@ -2583,7 +2519,6 @@
           assert nas.services.tailscale.enable;
           assert nixpkgs.lib.elem "--advertise-routes=10.42.0.0/24" nas.services.tailscale.extraUpFlags;
           assert !nas.programs.niri.enable;
-          assert !nas.programs.scroll.enable;
           assert !nas.services.greetd.enable;
           assert !nas.services.pipewire.enable;
           assert !nas.services.printing.enable;
@@ -2827,66 +2762,6 @@
             || (cat $out; exit 1)
         '';
 
-        # The scroll twin of the readFile asserts on niri's binds.kdl: the RAW
-        # scroll config, assembled exactly as a seat sees it (system session
-        # fragment, every RAW file, the client's generated slot, every theme's
-        # client.* fragment), must pass `scroll -C`. -C is not a pure parser:
-        # it starts a server first (sway/main.c), so it runs on the headless
-        # backend with a private XDG_RUNTIME_DIR inside the build sandbox,
-        # never on a seat. It checks config syntax; bind and for_window
-        # command bodies are only checked when they run.
-        scroll-config =
-          let
-            # Always the scroll config, whichever session the client selects,
-            # so a niri rollback leaves this check green.
-            client =
-              (self.nixosConfigurations.client.extendModules {
-                modules = [ { myDisplay.session = nixpkgs.lib.mkForce "scroll"; } ];
-              }).config;
-            clientHome = client.home-manager.users.tom;
-            themeNames = builtins.attrNames (import ./home/themes { inherit (nixpkgs) lib; }).themes;
-          in
-          pkgs.runCommand "scroll-config"
-            {
-              sessionConf = client.environment.etc."scroll/config.d/10-session.conf".text;
-              localConf = clientHome.xdg.configFile."scroll-local.conf".text;
-              passAsFile = [
-                "sessionConf"
-                "localConf"
-              ];
-            }
-            ''
-              export HOME=$TMPDIR/home XDG_RUNTIME_DIR=$TMPDIR/run
-              export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
-              unset SCROLLSOCK SWAYSOCK I3SOCK WAYLAND_DISPLAY
-              mkdir -p "$HOME/.config" "$XDG_RUNTIME_DIR"
-              chmod 0700 "$XDG_RUNTIME_DIR"
-              cp -r ${./home/dot_config/scroll} "$HOME/.config/scroll"
-              chmod -R u+w "$HOME/.config/scroll"
-              cp "$localConfPath" "$HOME/.config/scroll-local.conf"
-              # /etc is not writable here: splice the session fragment in
-              # where the real config includes /etc/scroll/config.d/*.
-              cp "$sessionConfPath" "$TMPDIR/10-session.conf"
-              sed -i "s|^include /etc/scroll/config.d/\*$|include $TMPDIR/10-session.conf|" \
-                "$HOME/.config/scroll/config"
-              grep -qx "include $TMPDIR/10-session.conf" "$HOME/.config/scroll/config"
-              for theme in ${toString themeNames}; do
-                mkdir -p "$HOME/.config/theme"
-                install -m644 ${
-                  pkgs.linkFarm "scroll-theme-fragments" (
-                    map (n: {
-                      name = n;
-                      path = pkgs.writeText "${n}-scroll.conf" clientHome.xdg.configFile."themes/${n}/scroll.conf".text;
-                    }) themeNames
-                  )
-                }/"$theme" "$HOME/.config/theme/scroll.conf"
-                echo "== theme $theme" >> "$out"
-                ${pkgs.scroll}/bin/scroll -C -c "$HOME/.config/scroll/config" >> "$out" 2>&1 \
-                  || { cat "$out"; exit 1; }
-              done
-              echo ok >> "$out"
-            '';
-
         browser-session-runtime =
           let
             coord = self.nixosConfigurations.strix.config;
@@ -2905,15 +2780,10 @@
                 && (portal name).serviceConfig.EnvironmentFile == "%t/browser-desktop/portal-environment"
                 && (portal name).unitConfig.ConditionPathExists == "%t/browser-desktop/portal-environment"
             )
-            (
-              [
-                "xdg-desktop-portal"
-                "xdg-desktop-portal-gtk"
-              ]
-              # the physical scroll seat's screencast portal must not be tied
-              # to the headless browser desktop either (scroll/transition)
-              ++ nixpkgs.lib.optional coord.programs.scroll.enable "xdg-desktop-portal-wlr"
-            );
+            ([
+              "xdg-desktop-portal"
+              "xdg-desktop-portal-gtk"
+            ]);
           assert builtins.elem "user@1000.service" coord.systemd.services.keyring-unlock-boot.partOf;
           assert builtins.elem "user@1000.service" coord.systemd.services.keyring-unlock-boot.wantedBy;
           pkgs.browser-desktop.tests.contract;
