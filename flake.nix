@@ -198,8 +198,8 @@
     # Halogen (dotfiles #525). Tom, 2026-10-13: "i said let  move to gufo!! not
     # halogen!!!!" and "use that as the full collection of modles that we use":
     # its model set is the catalog in lib/local-models.nix. One native binary,
-    # no container (modules/gufo.nix). Pinned to the commit the catalog was read
-    # from. No nixpkgs.follows: upstream qualifies its build against its own
+    # no container (modules/gufo.nix). Pinned to the release the catalog matches
+    # (v0.15.0). No nixpkgs.follows: upstream qualifies its build against its own
     # nixpkgs pin (GCC 15.3, ROCm 7.2.3).
     gufo.url = "github:gufo-org/gufo/89d6185532ff6d5de0336000fc6ad62e869b82b6";
 
@@ -2227,8 +2227,8 @@
           # embedder retired); no other top-level attribute — no deployments,
           # no backend kinds, no utility pointer.
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
-          # Plus Gufo's collection (lib/gufo-models.json), read from
-          # gufo-org/gufo at ae26ca4a; MiniMax H3 is gated until Tom accepts
+          # Plus Gufo's collection (lib/gufo-models.json), as gufo-org/gufo
+          # v0.15.0 pins it; MiniMax H3 is gated until Tom accepts
           # its licence, so library-fetch skips it and no host may want it.
           assert
             builtins.attrNames localModelCatalog.artifacts == [
