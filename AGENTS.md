@@ -28,7 +28,6 @@ hand-run service, a path/udev/session trigger, or a factory schedule:
 | D43 | nix-gc (weekly), gc-root-reaper (daily) | all | `modules/gc-retention.nix`, `modules/gc-root-reaper.nix` |
 | D44 | atticd GC every 12 h | NAS | `hosts/nas/attic.nix` |
 | D45 | btrbk-nas (first Saturday 08:00), btrfs-scrub-mnt-nas (monthly) | NAS | `hosts/nas/snapshots.nix`, `hosts/nas/storage.nix` |
-| D47 | docker-registry-garbage-collect (weekly) | NAS | `modules/ax-fleet/control.nix` |
 | D48 | artifact-reaper (daily) | strix | `modules/caddy-artifacts.nix` |
 | D49 | fstrim, logrotate, fwupd-refresh, systemd-tmpfiles-clean (system and user) | all | NixOS defaults |
 | D50 | smartd (`-n standby,q`; a daemon, not a timer) | NAS | `hosts/nas/storage.nix` |
