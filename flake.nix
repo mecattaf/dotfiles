@@ -36,20 +36,6 @@
     # `nix flake update nixpkgs-stable` on the same few-years cadence.
     nixpkgs-stable.url = "github:NixOS/nixpkgs/nixos-26.05";
 
-    # nixpkgs-paperless — pins ONLY the NAS Paperless v3 module+package
-    # (#136, hosts/nas/paperless.nix): the stable-pinned NAS needs v3 (stable
-    # has 2.20.15, and 2.x is ruled out), the main pin deliberately lags, and
-    # nixpkgs-fresh is a nightly ROLLING resolver — the wrong risk profile
-    # for a database with schema migrations. A fixed rev makes Paperless
-    # upgrades a deliberate one-line bump reviewed like any other change.
-    # Pinned rev = nixpkgs-unstable on 2026-09-08 (the same rev the main
-    # `nixpkgs` input locked that day), paperless-ngx 3.1.3 = upstream latest
-    # stable. Bumped from 3.0.4 on 2026-09-13 BEFORE the gate flip, while the
-    # database is still empty: after 8951 documents the same bump would be
-    # the migration exercise #136 forbids. The module diff 3.0.4 -> 3.1.3 is
-    # one new `group` option (default = user) and a nounset fix; no drift.
-    nixpkgs-paperless.url = "github:NixOS/nixpkgs/da39501c8d0a093136854eddcd6927c8a8bb0d8f";
-
     home-manager = {
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -1061,46 +1047,11 @@
           # ws5 EXECUTED 2026-08-21: atticd runs on the NAS M.2, no relay —
           # every host dials http://nas:8080/fleet directly.
           assert nas.myNas.attic.enable; # ws5  hosts/nas/attic.nix
-          # #136 FLIPPED ON 2026-09-13 (pre-flip snapshot, runbook dirs and
-          # the 3.1.3 bump done first; hosts/nas/paperless.nix). Inverted in
-          # the same commit as the gate, per this block's instruction. The
-          # bulk admission timer is its own gate and stays OFF until canary
-          # throughput and RSS are measured; the bulk service is never
-          # auto-started by a switch or a boot.
-          assert nas.myNas.paperless.enable; # #136 hosts/nas/paperless.nix
-          assert nas.services.paperless.enable;
-          assert !(nas.systemd.timers ? paperless-bridge-bulk);
-          assert nas.systemd.services.paperless-bridge-bulk.wantedBy == [ ];
-          # Router safety: the NAS is the house DHCP/DNS router.
-          assert builtins.all
-            (
-              u:
-              nas.systemd.services.${u}.serviceConfig.CPUWeight == 20
-              && nas.systemd.services.${u}.serviceConfig.IOSchedulingClass == "idle"
-              && nas.systemd.services.${u}.serviceConfig.MemoryMax == "8G"
-            )
-            [
-              "paperless-task-queue"
-              "paperless-consumer"
-              "paperless-bridge-bulk"
-            ];
-          # The backend port is admitted from the strix only; nothing
-          # tailnet-facing on the appliance may name it.
-          assert nixpkgs.lib.hasInfix "ip saddr 10.42.0.2 tcp dport 28981 accept"
-            nas.networking.firewall.extraInputRules;
-          assert !(builtins.elem 28981 nas.networking.firewall.allowedTCPPorts);
+          # Paperless was removed on 2026-10-13 (Tom 2026-09-29: "i m removing
+          # paperless fully"); nothing on the NAS or the strix may bring it back.
+          assert !nas.services.paperless.enable;
+          assert !(strix.services.caddy.virtualHosts ? "http://paperless.internal");
           assert !(builtins.elem "tailscale0" nas.networking.firewall.trustedInterfaces);
-          # Without the ACL the consumer cannot reach its spool; without the
-          # view ownership the bridge (tom) cannot verify (hosts/nas/paperless.nix).
-          assert builtins.elem "a+ /mnt/nas/documents - - - - u:paperless:--x" nas.systemd.tmpfiles.rules;
-          assert builtins.elem "z /mnt/nas/documents/.paperless-view 0770 tom paperless -"
-            nas.systemd.tmpfiles.rules;
-          assert builtins.elem "z /mnt/nas/services/paperless/media/documents 0750 paperless paperless -"
-            nas.systemd.tmpfiles.rules;
-          # The relay auto-logs in a superuser: only the client and tailnet
-          # peers may reach it, never another LAN host (2026-09-14: the worker got 200).
-          assert nixpkgs.lib.hasInfix "not remote_ip"
-            strix.services.caddy.virtualHosts."http://paperless.internal".extraConfig;
           assert !strix.myNasClient.relayAttic;
           # Plex is the video server (Tom's 2026-08-02 ruling, confirmed
           # 2026-08-03: the staged Jellyfin alternative was deleted, not kept
@@ -1112,8 +1063,6 @@
           # (The attic relay pairing died with the 2026-08-21 direct-serve
           # move: the NAS serves 8080 itself and relayAttic must stay off.)
           assert nas.myNas.attic.enable && !strix.myNasClient.relayAttic;
-          # Paperless backend and its tailnet relay flip together (#136).
-          assert nas.myNas.paperless.enable == strix.myNasClient.relayPaperless;
           # The binary cache can only live in one place: moving it to the NAS
           # requires the strix's own atticd to go away in the same
           # commit, because both bind tcp/8080 on the strix (the relay
@@ -1123,62 +1072,6 @@
           # (ws2b borg deleted 2026-08-21 — Tom ruled it redundant against
           # the physical-redundancy stack; its asserts died with it.)
           pkgs.runCommand "nas-topology" { } ''
-            touch "$out"
-          '';
-
-        # #136 gate-then-verify: evaluate the ENABLED Paperless shape without
-        # deploying it, so the gate flip is an eval-proven one-liner. Same
-        # extendModules simulation technique the NAS cutover used pre-#131.
-        nas-paperless-staged =
-          let
-            nasOff = self.nixosConfigurations.nas.config;
-            nasOn =
-              (self.nixosConfigurations.nas.extendModules {
-                modules = [ { myNas.paperless.enable = true; } ];
-              }).config;
-          in
-          assert nasOn.services.paperless.enable;
-          # v3 only — a 2.x here means the nixpkgs-paperless input regressed.
-          assert pkgs.lib.versionAtLeast nasOn.services.paperless.package.version "3";
-          # PDFs only: no Tika/Gotenberg, no persistent PDF/A twin, no NAS AI.
-          assert !nasOn.services.paperless.configureTika;
-          assert nasOn.services.paperless.settings.PAPERLESS_ARCHIVE_FILE_GENERATION == "never";
-          assert nasOn.services.paperless.settings.PAPERLESS_OCR_MODE == "auto";
-          assert nasOn.services.paperless.settings.PAPERLESS_AI_ENABLED == false;
-          # Same-subvolume storage contract for the hardlink projection.
-          assert nasOn.services.paperless.consumptionDir == "/mnt/nas/documents/.paperless-consume";
-          assert nasOn.services.paperless.mediaDir == "/mnt/nas/services/paperless/media";
-          assert nasOn.fileSystems ? "/mnt/nas/services/paperless/media/documents/originals";
-          # Enabling Paperless must not CHANGE the NAS's tailnet posture. This
-          # read `!nasOn.services.tailscale.enable` until 2026-08-21, expressing
-          # the same intent back when the answer was "the NAS has no tailnet at
-          # all"; the ws5 pivot made the appliance the fleet's tailscale sink and
-          # left this assert unconditionally false, so the gate-then-verify check
-          # had been failing. Stated as an equality against the gate-OFF
-          # configuration, it now says the thing that was always meant: this gate
-          # is orthogonal to the tailnet, whichever way the tailnet is set.
-          #
-          # That equality form is why the 2026-09-01 control-plane cutover needed
-          # no edit here — the appliance moved from tailscale.com to its own
-          # headscale, --login-server appeared in extraUpFlags, and both asserts
-          # stayed true without being retargeted. Keep it stated this way: an
-          # assert that names a specific tailnet posture has now had to be
-          # rewritten twice, and this one has survived both pivots.
-          assert nasOn.services.tailscale.enable == nasOff.services.tailscale.enable;
-          assert nasOn.services.tailscale.extraUpFlags == nasOff.services.tailscale.extraUpFlags;
-          # And it must not grow the appliance a secret. This read
-          # `!nasOn.mySecrets.enable` until 2026-08-28, encoding the "NO SECRET
-          # LIVES ON THIS BOX" ruling — which that ruling's own named door was
-          # walked through the same day (hf token for models.nix's library
-          # fetch, commit 7f1072e2), leaving this assert unconditionally false
-          # exactly like the tailscale one above it before the ws5 restatement.
-          # Same cure: state it against the gate-OFF configuration. Paperless
-          # must not CHANGE the secrets posture, whatever it is — the flip
-          # itself may not be what sneaks a credential onto the appliance.
-          assert nasOn.mySecrets.enable == nasOff.mySecrets.enable;
-          assert builtins.attrNames nasOn.age.secrets == builtins.attrNames nasOff.age.secrets;
-          assert nasOn.services.paperless.database.createLocally;
-          pkgs.runCommand "nas-paperless-staged" { } ''
             touch "$out"
           '';
 

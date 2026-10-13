@@ -14,7 +14,6 @@ let
     "photos.internal"
     "music.internal"
     "videos.internal"
-    "paperless.internal"
     "browser.internal"
     "handwriting.internal"
     "drain.internal"

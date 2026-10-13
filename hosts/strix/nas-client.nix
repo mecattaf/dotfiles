@@ -38,7 +38,6 @@ in
     # assert it is FALSE forever (the 2026-08-21 direct-serve move made a
     # relay architecturally wrong, not merely unused).
     relayAttic = lib.mkEnableOption "DEAD OPTION — never enable; the NAS serves the cache directly since 2026-08-21";
-    relayPaperless = lib.mkEnableOption "relaying tailnet Paperless traffic to the Ethernet-only NAS (#136)";
   };
 
   config = lib.mkMerge [
@@ -359,63 +358,5 @@ in
     # (The #130 ws5 binary-cache relay that lived here was DELETED 2026-08-21:
     # the direct-serve move made it dead code — every host dials
     # http://nas:8080/fleet itself. See hosts/nas/attic.nix.)
-
-    # ── #136: Paperless relay ───────────────────────────────────────────────
-    # The durable tailnet front door for the NAS-hosted Paperless backend:
-    # a declarative Caddy route (paperless.internal, same .internal doctrine
-    # as the media front doors above) plus a port relay. Like attic, no wake
-    # proxy — Paperless is always-on on the NAS (consumer + scheduler; see
-    # the exception note in hosts/nas/paperless.nix). Deliberately NOT a TTL
-    # artifact drop-dir entry: this route outlives any artifact sweep.
-    (lib.mkIf cfg.relayPaperless {
-      systemd.sockets.paperless-relay = {
-        description = "Coordinator front door for NAS Paperless";
-        wantedBy = [ "sockets.target" ];
-        socketConfig = {
-          ListenStream = "0.0.0.0:28981";
-          NoDelay = true;
-        };
-      };
-      systemd.services.paperless-relay = {
-        description = "Relay Paperless to nas:28981 over the private link";
-        after = [ "network-online.target" ];
-        wants = [ "network-online.target" ];
-        serviceConfig = {
-          ExecStart = "${socketProxyd} nas:28981";
-          DynamicUser = true;
-          NoNewPrivileges = true;
-          PrivateDevices = true;
-          PrivateTmp = true;
-          ProtectHome = true;
-          ProtectSystem = "strict";
-          RestrictAddressFamilies = [
-            "AF_INET"
-            "AF_INET6"
-          ];
-        };
-      };
-
-      networking.firewall.interfaces.enp191s0.allowedTCPPorts = [ 28981 ];
-
-      # `paperless-bridge suggest` runs HERE, not on the NAS: the
-      # utility-model wrapper (modules/halogen.nix client) is the fleet's one
-      # accounted seam to the worker's resident Halogen server (AGENTS.md),
-      # and it exists on the strix only. The package records the
-      # concrete served model id beside every ai-candidate/* tag (#136).
-      environment.systemPackages = [
-        (pkgs.callPackage ../../pkgs/paperless-bridge {
-          suggestModelId = config.services.halogen.modelId;
-        })
-      ];
-
-      # Paperless auto-logs in as tom (superuser), so this vhost answers only
-      # the client seat and tailnet peers. Without the matcher any LAN host
-      # resolving paperless.internal got the UI (2026-09-14: the worker, 200).
-      services.caddy.virtualHosts."http://paperless.internal".extraConfig = ''
-        @outside not remote_ip 127.0.0.1/8 10.42.0.16/32 100.64.0.0/10
-        respond @outside 403
-        reverse_proxy 127.0.0.1:28981
-      '';
-    })
   ];
 }
