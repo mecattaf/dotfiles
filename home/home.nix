@@ -30,10 +30,6 @@ let
   # pulled from the catalog. Adding an agent is now a deliberate edit here, and
   # agents upstream adds no longer land automatically on `nix flake update`.
   #
-  # backlog-md is DELIBERATELY absent from this list: we build our own at top
-  # level (pkgs/backlog-md.nix, bin/backlog) and pulling it from the catalog too
-  # would double-load and collide on the same binary. One source only.
-  #
   # `meta.available` filtering (wrapped in tryEval, since evaluating meta can
   # itself throw) skips any keeper that's broken / wrong-platform on this host.
   # claude-code comes FROM this set, so it has no standalone home.packages entry.
@@ -684,7 +680,6 @@ in
     gws # Google Workspace CLI (Gmail/Calendar/Drive/Sheets/Docs/...), Discovery-doc-backed
     cloudflared
     wrangler # CF Pages/DNS control plane; auth = wrangler-config.age (strix-only cred, binary fleet-wide)
-    backlog-md # bespoke pkg via overlay — see pkgs/backlog-md.nix
     pkgs.crm # vendored personal CRM CLI; data stays at its built-in notes path
     pkgs.dcal # vendored calendar CLI; data lives under XDG, nothing in git
     music-acquire # evidence-gated SoundCloud → YouTube → capture acquisition
