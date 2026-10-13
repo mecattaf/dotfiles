@@ -17,21 +17,27 @@
  *
  * Every call leaves `receipt.json` in its job dir: runtime, how it was chosen,
  * exit code, duration and the runner's own evidence.
+ *
+ * A call with `agent({session})` (sessions chapter, 2026-10-12) is one turn of
+ * an agent session: with no runtime named, its model's catalog entry picks one
+ * (config.ts sessionRuntime); the harness session is resumed by id in the
+ * session's own dir and cwd under the transcript root, with the one project MCP
+ * of `[sessions]`; the outcome adds the route and the session file's path.
  */
 import { accessSync, closeSync, constants as fsc, existsSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync, writeSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { carriesCredential, credentialDirFor, piProviderOf, seatOf, selectForCall, type RuntimesConfig, type Runtime, type Selection } from "./config.ts";
+import { carriesCredential, credentialDirFor, harnessOf, piProviderOf, RuntimesConfigError, seatOf, selectForCall, sessionRuntime, type RuntimesConfig, type Runtime, type Selection } from "./config.ts";
 import { DEFAULT_TIMEOUT_MS } from "./host.ts";
-import { isRefusal, type Mount, type ProcessJob, type Runner } from "./job.ts";
+import { isRefusal, JOB_ID, type Mount, type ProcessJob, type Runner } from "./job.ts";
 import { runnerFor } from "./registry.ts";
-import { catalogFor, entryFor, resolveModel, type ModelAllowlist, type ModelCeilings, type ModelEntry } from "./models.ts";
-import { CLAUDE_MODEL, HALOGEN_MODEL, HALOGEN_PROVIDER, HARNESS_OPTIONS, invocationFor, parseFor, PI_PROVIDERS, type HarnessName, type PiProvider, type Usage } from "./harness.ts";
+import { catalogEntry, catalogFor, entryFor, resolveModel, type ModelAllowlist, type ModelCeilings, type ModelEntry } from "./models.ts";
+import { CLAUDE_MODEL, HALOGEN_MODEL, HALOGEN_PROVIDER, HARNESS_OPTIONS, invocationFor, parseFor, PI_PROVIDERS, type HarnessName, type HarnessSession, type PiProvider, type Usage } from "./harness.ts";
 import { spawnSync } from "node:child_process";
 import { axTaskSpec } from "./ax.ts";
 import { SANDBOX_HOME } from "./gvisor.ts";
 import { createHash } from "node:crypto";
 import { procStartTicks, runProc, sameProcess } from "./proc.ts";
-import { archiveShadowTranscripts, copyCapped, findClaudeSession, findCodexRollout, storeText, transcriptRootFor, transcriptSummary, type TranscriptFile } from "./transcripts.ts";
+import { archiveShadowTranscripts, copyCapped, findClaudeSession, findCodexRollout, findPiSession, storeText, transcriptRootFor, transcriptSummary, type TranscriptFile } from "./transcripts.ts";
 import { homedir } from "node:os";
 
 /**
@@ -91,6 +97,11 @@ export interface RunnerAgentOutcome {
   readonly agentId?: string;
   /** C3-4: set when this outcome was adopted from an earlier start's finished job; nothing ran. The earlier job id. */
   readonly adoptedFrom?: string;
+  /** agent({session}): the runtime and harness that served the call (the floor pins them on a session's first turn). */
+  readonly route?: { readonly runtime: string; readonly harness: HarnessName };
+  /** agent({session}): the harness session file on this host, found by id (claude's transcript, pi's session file,
+   *  codex's rollout). Its path is reported; the file is never copied into the archive. */
+  readonly sessionFile?: string;
 }
 
 export interface RunnerBackendOptions {
@@ -429,6 +440,73 @@ export function writeFresh(path: string, data: string): boolean {
   return true;
 }
 
+/**
+ * agent({session}) as the turn program passes it (sessions chapter, EXCHANGE section 8): the substrate session id,
+ * the harness session id to resume, the session's cwd when it has its own, its role, and the harness its first turn
+ * pinned. String fields only; anything else is refused, never dropped.
+ */
+export interface SessionArg {
+  readonly id: string;
+  readonly harnessSessionId: string;
+  readonly cwd?: string;
+  readonly role: "coordinator" | "thread";
+  readonly harness?: string;
+}
+const SESSION_KEYS = ["id", "harnessSessionId", "cwd", "role", "harness"];
+
+/** The session argument, or why it is malformed. Both ids name a dir or reach an argv, so they are job-id shaped. */
+export function sessionArg(v: unknown): SessionArg | string {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return "agent({session}) must be an object {id, harnessSessionId, cwd?, role, harness?}";
+  const o = v as Record<string, unknown>;
+  const unknown = Object.keys(o).filter((k) => !SESSION_KEYS.includes(k));
+  if (unknown.length) return `agent({session}) has unknown field(s) ${unknown.join(", ")}`;
+  for (const k of SESSION_KEYS) if (o[k] !== undefined && typeof o[k] !== "string") return `agent({session}).${k} must be a string`;
+  for (const k of ["id", "harnessSessionId"]) if (typeof o[k] !== "string" || !JOB_ID.test(o[k] as string)) return `agent({session}).${k} must match ${JOB_ID}`;
+  if (o.role !== "coordinator" && o.role !== "thread") return "agent({session}).role must be coordinator or thread";
+  if (o.cwd !== undefined && !(o.cwd as string).startsWith("/")) return "agent({session}).cwd must be an absolute path";
+  return o as unknown as SessionArg;
+}
+
+/**
+ * Why a session call may not run on `sel`: a session pinned to another harness, or a model `sel` does not serve: one
+ * with no catalog entry, one the catalog serves with another harness ("A session never changes harness", EXCHANGE
+ * section 11), or a pi model of another provider. A pinned runtime never swaps the model for its own default: "a model
+ * its harness cannot serve fails the next turn with failed and the reason" (EXCHANGE section 7). Undefined for a call
+ * without a session.
+ */
+function sessionHarnessProblem(sel: Selection, opts: { readonly session?: unknown; readonly model?: unknown }, catalog: () => ModelAllowlist): string | undefined {
+  if (opts.session === undefined) return undefined;
+  const h = harnessOf(sel.runtime);
+  const pinned = (opts.session as { harness?: unknown } | null)?.harness;
+  if (typeof pinned === "string" && pinned !== h) return `the session is pinned to the ${pinned} harness; runtime ${sel.name} runs ${h}`;
+  if (typeof opts.model !== "string") return undefined;
+  const entry = catalogEntry(catalog(), opts.model);
+  if (entry === undefined) return `model ${opts.model} has no catalog entry, so runtime ${sel.name} cannot serve it`;
+  if (entry.harness !== h) return `model ${opts.model} is served by the ${entry.harness} harness; runtime ${sel.name} runs ${h}`;
+  const provider = entry.harness === "pi" ? (entry.provider ?? "halogen") : undefined;
+  if (provider !== piProviderOf(sel.runtime)) return `model ${opts.model} is served by pi provider ${provider}; runtime ${sel.name} runs pi provider ${piProviderOf(sel.runtime)}`;
+  return undefined;
+}
+
+/** Where agent sessions keep their dirs: `<transcript root>/sessions/<id>/`, under a seats spend root (correction 9). */
+export const sessionsRootFor = (transcriptRoot: string): string => join(transcriptRoot, "sessions");
+
+/**
+ * The tools a coordinator on pi is limited to (03 3.3: `read` and the project MCP; EXCHANGE section 8). A thread
+ * session gets pi's own defaults.
+ */
+export const COORDINATOR_TOOLS: readonly string[] = ["read", ...["start_thread_session", "message_thread", "list_thread_sessions", "fetch_thread",
+  "fetch_project_timeline", "fetch_messages", "post_message", "read_memory", "update_memory", "send_later", "list_triggers", "create_trigger",
+  "update_trigger", "delete_trigger"].map((t) => `mcp__project__${t}`)];
+
+/** A runner file in a session dir, replaced whole: a fresh temp file (never through a link) renamed over the old one. */
+function writeSessionFile(path: string, data: string): void {
+  const tmpPath = `${path}.${process.pid}.tmp`;
+  rmSync(tmpPath, { force: true });
+  if (!writeFresh(tmpPath, data)) throw new Error(`${tmpPath} could not be created`);
+  renameSync(tmpPath, path);
+}
+
 /** Where one call runs and what it spends: the runtime, the harness, the model that runs and its seat. */
 export interface Route {
   readonly selection: Selection;
@@ -445,6 +523,12 @@ export interface Route {
   readonly provider?: PiProvider;
   /** pi only: the provider its seat's capacity reading must carry (the gate checks it). */
   readonly seatProvider?: string;
+  /**
+   * A session call this runtime cannot serve (another harness pinned, or a model it does not serve): why. The route is
+   * then the runtime's own (its default model, its seat), so admission is gated as for any call on it, and run()
+   * refuses the call with its receipt (C2.1); the caller's model policy keeps the declared model, never this default.
+   */
+  readonly sessionRefused?: string;
 }
 
 export class RunnerBackend {
@@ -471,11 +555,24 @@ export class RunnerBackend {
    * model that RUNS on the seat that PAYS (successor review 2026-09-23: the
    * gate used to judge the script's declared model on the run's --seat while
    * the runner ran claude-opus-5-5, or codex, elsewhere). Throws on a runtime
-   * the file refuses.
+   * the file refuses. A session call the runtime cannot serve is not refused
+   * here: its route names why (`sessionRefused`) and run() refuses it with
+   * the receipt (integration pass 2026-10-13, CARRIED item 13).
    */
-  route(call: { readonly opts: { readonly runtime?: unknown; readonly model?: unknown; readonly seat?: unknown; readonly runsOn?: unknown }; readonly phase: string | undefined }): Route {
-    const sel = this.select(call);
-    const declared = typeof call.opts.model === "string" ? call.opts.model : undefined;
+  route(call: { readonly opts: { readonly runtime?: unknown; readonly model?: unknown; readonly seat?: unknown; readonly runsOn?: unknown; readonly session?: unknown }; readonly phase: string | undefined }): Route {
+    const sel = this.#select(call);
+    let sessionRefused: string | undefined;
+    try {
+      sessionRefused = sessionHarnessProblem(sel, call.opts, () => this.catalog());
+    } catch {
+      sessionRefused = undefined; // the models file's own error is thrown by catalog() below
+    }
+    // An unserved session call is routed as a call naming no model: the runtime's own default is what admission gates.
+    const declared = sessionRefused === undefined && typeof call.opts.model === "string" ? call.opts.model : undefined;
+    const r = this.#route(sel, declared);
+    return sessionRefused === undefined ? r : { ...r, sessionRefused };
+  }
+  #route(sel: Selection, declared: string | undefined): Route {
     const provider = piProviderOf(sel.runtime);
     const catalog = this.catalog(); // throws ModelsFileError: the route is refused with the file's own error
     const pick = (h: HarnessName, fallback: string) => {
@@ -514,9 +611,23 @@ export class RunnerBackend {
     return catalogFor(this.config);
   }
 
-  /** The runtime for one call from all its routing opts: runtime, seat, runsOn (config.ts selectForCall). Throws on a refusal. */
-  select(call: { readonly opts: { readonly runtime?: unknown; readonly seat?: unknown; readonly runsOn?: unknown }; readonly phase: string | undefined }): Selection {
-    return selectForCall(this.config, { runtime: call.opts.runtime, seat: call.opts.seat, runsOn: call.opts.runsOn, phase: call.phase }, this.options.defaultSeat);
+  /**
+   * The runtime for one call from all its routing opts: runtime, seat, runsOn (config.ts selectForCall); a session call
+   * that names none takes the runtime its model's catalog entry picks (config.ts sessionRuntime). Throws on a refusal,
+   * a session call on a harness other than its own included.
+   */
+  select(call: { readonly opts: { readonly runtime?: unknown; readonly seat?: unknown; readonly runsOn?: unknown; readonly model?: unknown; readonly session?: unknown }; readonly phase: string | undefined }): Selection {
+    const sel = this.#select(call);
+    const why = sessionHarnessProblem(sel, call.opts, () => this.catalog());
+    if (why !== undefined) throw new RuntimesConfigError(`agent({session}) route refused: ${why}`);
+    return sel;
+  }
+  #select(call: { readonly opts: { readonly runtime?: unknown; readonly seat?: unknown; readonly runsOn?: unknown; readonly model?: unknown; readonly session?: unknown }; readonly phase: string | undefined }): Selection {
+    const o = call.opts;
+    if (o.session !== undefined && o.runtime === undefined && o.seat === undefined && o.runsOn === undefined) {
+      return sessionRuntime(this.config, this.catalog(), o.model, (o.session as { harness?: unknown } | null)?.harness, call.phase);
+    }
+    return selectForCall(this.config, { runtime: o.runtime, seat: o.seat, runsOn: o.runsOn, phase: call.phase }, this.options.defaultSeat);
   }
 
   /**
@@ -537,7 +648,8 @@ export class RunnerBackend {
     }
     let sel: Selection;
     try {
-      sel = this.select(call);
+      // The session checks run below, once the job dir exists, so a refused session call leaves its receipt.
+      sel = this.#select(call);
     } catch (e) {
       return { error: (e as Error).message };
     }
@@ -615,7 +727,7 @@ export class RunnerBackend {
     }
     // agent() options are honoured or refused, never dropped (successor review
     // r2: isolation, effort and agentType were keyed but never reached the harness).
-    const o = call.opts as { effort?: unknown; agentType?: unknown; isolation?: unknown; timeoutMs?: unknown };
+    const o = call.opts as { effort?: unknown; agentType?: unknown; isolation?: unknown; timeoutMs?: unknown; session?: unknown; model?: unknown };
     const refuse = (why: string) => {
       receipt({ refused: why });
       return { error: `runtime ${sel.name} refused: ${why}` };
@@ -632,6 +744,24 @@ export class RunnerBackend {
       if (o[k] === undefined) continue;
       if (typeof o[k] !== "string") return refuse(`agent({${k}}) must be a string`);
       if (!HARNESS_OPTIONS[harness].includes(k)) return refuse(`harness ${harness} cannot honour agent({${k}: ${JSON.stringify(o[k])}})`);
+    }
+    // agent({session}) (sessions chapter): one turn of an agent session, resumed by id in the session's own dir and cwd
+    // with the one project MCP. A malformed value, isolation, no [sessions] table, or another harness than the
+    // session's is refused here, with the receipt.
+    let session: SessionArg | undefined;
+    if (o.session !== undefined) {
+      const s = sessionArg(o.session);
+      if (typeof s === "string") return refuse(s);
+      if (o.isolation !== undefined) return refuse("agent({session}) cannot take isolation: a session runs in its own cwd");
+      if (this.config.sessions === undefined) return refuse("agent({session}) needs the [sessions] table (project_url, project_token_file) in the runtimes file");
+      let why: string | undefined;
+      try {
+        why = sessionHarnessProblem(sel, o, () => this.catalog());
+      } catch (e) {
+        why = (e as Error).message;
+      }
+      if (why !== undefined) return refuse(why);
+      session = s;
     }
     // TX5 (seat_dirs) and RG-1 ([credentials.seats]) are one map since the 2026-09-24 integrate: credentialMounts
     // below mounts the dir of the seat this call spends (credentialDirFor), and refuses a seat with no dir.
@@ -661,11 +791,21 @@ export class RunnerBackend {
     // credential was left in <run dir>/jobs/<id>.seat/, and run dirs under
     // ~/today are landed into notes and pushed every night).
     const shadow = join(seatShadowRoot(this.config, this.options.seatShadowRoot), id);
+    const seat = seatOf(this.config, sel.runtime, this.options.defaultSeat);
+    const fromRunSeat = seat !== undefined && seatOf(this.config, sel.runtime) === undefined;
     // pi on a host-side runtime (2026-10-10): the session is saved in the job's shadow (archived with the
     // transcripts, so the seats oracle counts factory spend; CMP-2), and a catalog entry pi's own catalog does not
     // know rides in a job-scoped agent dir whose models.json is the host's plus that one model (piAgentModelsJson).
     let piDirs: { piSessionDir: string; piAgentDir?: string } | undefined;
-    if (harness === "pi" && (sel.runtime.type === "host" || sel.runtime.type === "runtime-test" || sel.runtime.type === "herdr")) {
+    let turn: { session: SessionArg; dir: string; cwd: string; harnessSession: HarnessSession; env: Record<string, string> } | undefined;
+    if (session !== undefined) {
+      try {
+        turn = this.#sessionTurn(session, harness, piProvider ?? HALOGEN_PROVIDER, entryFor(catalog, harness, resolved.id, piProvider), seat, fromRunSeat);
+      } catch (e) {
+        return refuse(`cannot prepare the session dir of ${session.id}: ${(e as Error).message}`);
+      }
+      if (harness === "pi") piDirs = { piSessionDir: join(turn.dir, "pi"), piAgentDir: join(turn.dir, "pi-agent") };
+    } else if (harness === "pi" && (sel.runtime.type === "host" || sel.runtime.type === "runtime-test" || sel.runtime.type === "herdr")) {
       const agentDir = join(shadow, "pi-agent");
       const sessions = join(agentDir, "sessions");
       try {
@@ -696,10 +836,12 @@ export class RunnerBackend {
       ...(typeof o.effort === "string" ? { effort: o.effort } : {}),
       ...(typeof o.agentType === "string" ? { agentType: o.agentType } : {}),
       ...(call.previousErrors && call.previousErrors.length ? { previousErrors: call.previousErrors } : {}),
+      // a retry (only a reply the schema rejected is retried) of a turn the harness session already holds sends the
+      // corrections alone: the envelopes reached the session in the attempt before, and its tool calls have run
+      ...(turn?.harnessSession.resume && call.previousErrors && call.previousErrors.length ? { continued: true } : {}),
       ...(sel.runtime.codexSandbox !== undefined ? { codexSandbox: sel.runtime.codexSandbox } : {}),
+      ...(turn ? { session: turn.harnessSession } : {}),
     });
-    const seat = seatOf(this.config, sel.runtime, this.options.defaultSeat);
-    const fromRunSeat = seat !== undefined && seatOf(this.config, sel.runtime) === undefined;
     const mounts = credentialMounts(this.config, sel.runtime, harness, shadow, { seat, fromRunSeat });
     if ("refused" in mounts) {
       rmSync(shadow, { recursive: true, force: true });
@@ -710,7 +852,7 @@ export class RunnerBackend {
     const txDest = join(transcriptRootFor(seatShadowRoot(this.config, this.options.seatShadowRoot), this.options.transcriptRoot), jobIdFor(this.options.runId, 0, 0).replace(/-0-a0$/, ""), id);
     const tx = { archived: false };
     try {
-      return await this.#runJob(call, sel, id, jobDir, harness, inv, mounts, worktree, receipt, shadow, txDest, tx, { seat, ...(timeoutMs !== undefined ? { timeoutMs } : {}), ...credDirOf(this.config, harness, seat, fromRunSeat) });
+      return await this.#runJob(call, sel, id, jobDir, harness, inv, mounts, worktree, receipt, shadow, txDest, tx, { seat, ...(timeoutMs !== undefined ? { timeoutMs } : {}), ...credDirOf(this.config, harness, seat, fromRunSeat), ...(turn ? { turn } : {}) });
     } finally {
       // The runner threw or the call aborted before the archive ran: the shadow's sessions are kept anyway.
       if (!tx.archived) {
@@ -723,6 +865,54 @@ export class RunnerBackend {
       rmSync(shadow, { recursive: true, force: true });
       rmSync(`${shadow}.owner.json`, { force: true });
     }
+  }
+
+  /**
+   * The dirs and files of one session turn (sessions chapter, C2.3 to C2.8): `<sessions root>/<id>/` (0700) outlives
+   * the job, its `cwd` (the session's own, else `<id>/cwd`) is the same on every turn, `mcp.json` names the one project
+   * MCP with its four variables, and pi gets `<id>/pi` for its session files and `<id>/pi-agent` (PI_CODING_AGENT_DIR)
+   * holding mcp.json and the host's models.json (with the catalog entry upserted when it carries `[models.pi]`, as a
+   * job-scoped agent dir has it). The harness resumes when it already holds the session: claude's transcript or
+   * codex's rollout found by id (a retry after a partial first attempt resumes rather than colliding).
+   */
+  #sessionTurn(s: SessionArg, harness: HarnessName, provider: PiProvider, entry: ModelEntry | undefined, seat: string | undefined, fromRunSeat: boolean) {
+    const cfg = this.config.sessions!;
+    const root = sessionsRootFor(transcriptRootFor(seatShadowRoot(this.config, this.options.seatShadowRoot), this.options.transcriptRoot));
+    const dir = join(root, s.id);
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const cwd = s.cwd ?? join(dir, "cwd");
+    if (s.cwd === undefined) mkdirSync(cwd, { recursive: true, mode: 0o700 });
+    const env = { PROJECT_URL: cfg.projectUrl, PROJECT_TOKEN_FILE: cfg.projectTokenFile, PROJECT_SESSION_ID: s.id, PROJECT_ROLE: s.role };
+    const server = { command: cfg.projectBin, args: ["mcp"], env };
+    const mcpConfig = join(dir, "mcp.json");
+    writeSessionFile(mcpConfig, JSON.stringify({ mcpServers: { project: server } }, null, 1) + "\n");
+    let resume = false;
+    if (harness === "claude") {
+      const d = credentialDirFor(this.config, seat, fromRunSeat);
+      resume = "dir" in d && findClaudeSession(d.dir, s.harnessSessionId) !== undefined;
+    }
+    if (harness === "codex") resume = findCodexRollout(process.env.CODEX_HOME ?? join(homedir(), ".codex"), s.harnessSessionId) !== undefined;
+    if (harness === "pi") {
+      const agentDir = join(dir, "pi-agent");
+      mkdirSync(join(dir, "pi"), { recursive: true, mode: 0o700 });
+      mkdirSync(agentDir, { recursive: true, mode: 0o700 });
+      // pi always passes --session-id (it creates the session when missing); its file found by id says it holds it
+      resume = findPiSession(join(dir, "pi"), s.harnessSessionId) !== undefined;
+      let host: string | undefined;
+      try {
+        host = readFileSync(join(this.options.piHostAgentDir ?? piHostAgentDir(), "models.json"), "utf8");
+      } catch {
+        host = undefined;
+      }
+      const models = entry !== undefined && (entry.pi !== undefined || host === undefined) ? piAgentModelsJson(host, provider, entry) : (host ?? "{}\n");
+      writeSessionFile(join(agentDir, "models.json"), models);
+      writeSessionFile(join(agentDir, "mcp.json"), JSON.stringify({ mcpServers: { project: { ...server, exposure: "direct" } } }, null, 1) + "\n");
+    }
+    const harnessSession: HarnessSession = {
+      id: s.harnessSessionId, resume, mcp: { command: cfg.projectBin, env }, mcpConfig,
+      ...(harness === "pi" && s.role === "coordinator" ? { tools: COORDINATOR_TOOLS } : {}),
+    };
+    return { session: s, dir, cwd, harnessSession, env };
   }
 
   async #runJob(
@@ -738,14 +928,20 @@ export class RunnerBackend {
     shadow: string,
     txDest: string,
     tx: { archived: boolean },
-    extra: { readonly seat: string | undefined; readonly timeoutMs?: number; readonly credentialDir?: string; readonly credentialUnverified?: true },
+    extra: {
+      readonly seat: string | undefined; readonly timeoutMs?: number; readonly credentialDir?: string; readonly credentialUnverified?: true;
+      readonly turn?: { readonly session: SessionArg; readonly dir: string; readonly cwd: string; readonly harnessSession: HarnessSession; readonly env: Readonly<Record<string, string>> };
+    },
   ): Promise<RunnerAgentOutcome> {
     const cred = mounts.find((m) => m.purpose === "credential");
     const stableId = call.cid !== undefined ? stableJobIdFor(this.options.runId, call.cid, call.attempt) : undefined;
+    const turn = extra.turn;
     const env = {
       ...(inv.env ?? {}),
       ...(cred && harness === "claude" ? { CLAUDE_CONFIG_DIR: cred.target } : {}),
       ...(stableId !== undefined ? { [IDEMPOTENCY_ENV]: stableId } : {}),
+      // The project MCP's four variables on the harness too, so a `project` call from the session's shell is the session's.
+      ...(turn ? turn.env : {}),
     };
     const job: ProcessJob = {
       kind: "process",
@@ -756,7 +952,7 @@ export class RunnerBackend {
       jobDir,
       agent: true,
       procFile: join(this.options.jobsRoot, `${id}.proc.json`),
-      ...(worktree ? { cwd: worktree.path } : {}),
+      ...(worktree ? { cwd: worktree.path } : turn ? { cwd: turn.cwd } : {}),
       ...(mounts.length ? { mounts } : {}),
       ...(this.config.cancelGraceMs !== undefined ? { cancelGraceMs: this.config.cancelGraceMs } : {}),
       ...(extra.timeoutMs !== undefined ? { timeoutMs: extra.timeoutMs } : {}),
@@ -802,9 +998,13 @@ export class RunnerBackend {
     } catch {
       spent = undefined;
     }
-    const sessionId = spent?.agentId;
-    const archived = this.#archive(sel, harness, cred, shadow, txDest, res, sessionId, inv.env);
+    // A session call knows its harness session id before the harness prints anything, so a killed or timed-out turn
+    // still names it (#26); codex's first turn mints its own thread id, read from its events.
+    const sessionId = turn ? (harness === "codex" ? spent?.agentId ?? (turn.harnessSession.resume ? turn.harnessSession.id : undefined) : turn.harnessSession.id) : spent?.agentId;
+    const sessionFile = turn && sessionId !== undefined ? this.#sessionFile(harness, cred, turn.dir, sessionId, inv.env) : undefined;
+    const archived = this.#archive(sel, harness, cred, shadow, txDest, res, sessionId, inv.env, turn !== undefined);
     tx.archived = true;
+    const session = turn ? { route: { runtime: sel.name, harness }, ...(sessionId !== undefined ? { agentId: sessionId } : {}), ...(sessionFile !== undefined ? { sessionFile } : {}) } : {};
     const context = mounts.filter((m) => m.purpose === "other" && m.mode === "ro").map((m) => m.source);
     // argv carries no prompt (it rides on stdin) and no credential (mounted by path).
     const clean = receipt({
@@ -816,6 +1016,7 @@ export class RunnerBackend {
       ...(extra.timeoutMs !== undefined ? { timeoutMs: extra.timeoutMs } : {}),
       ...(context.length ? { context } : sel.runtime.type === "microvm" && (this.config.credentials.context ?? []).length ? { context: "not mounted (microvm 9p shares directories only)" } : {}),
       sessionId: sessionId ?? null,
+      ...(turn ? { session: turn.session.id, sessionFile: sessionFile ?? null } : {}),
       answeringModel: spent?.answeringModel ?? null,
       transcriptDir: txDest, transcripts: transcriptSummary(archived.files), ...(archived.error ? { transcriptError: archived.error } : {}),
       ...(wtNote ? { worktree: wtNote } : {}), detail: res.detail ?? {},
@@ -829,12 +1030,21 @@ export class RunnerBackend {
       return {
         ...(spent?.usage ? { usage: spent.usage } : {}),
         ...(spent?.agentId ? { agentId: spent.agentId } : {}),
+        ...session,
         error: `runtime ${sel.name}: ${harness} exited ${res.exitCode}${res.timedOut ? " (timeout)" : ""}: ${res.stderr.slice(-500) || res.stdout.slice(-500)}`,
       };
     }
-    const { answeringModel: _m, ...parsed } = parseFor(harness, res.stdout, call.opts.schema !== undefined);
+    const { answeringModel: _m, ...reply } = parseFor(harness, res.stdout, call.opts.schema !== undefined);
+    const parsed: RunnerAgentOutcome = { ...reply, ...session };
     if (stableId !== undefined && parsed.error === undefined) writeOutcomeRecord(outcomeRecordFile(this.options.jobsRoot, stableId), id, parsed);
     return parsed;
+  }
+
+  /** A session's harness file on this host, found by id: claude's transcript, pi's session file, codex's rollout. */
+  #sessionFile(harness: HarnessName, cred: Mount | undefined, dir: string, sessionId: string, invEnv: Readonly<Record<string, string>> | undefined): string | undefined {
+    if (harness === "claude") return cred !== undefined ? findClaudeSession(cred.source, sessionId) : undefined;
+    if (harness === "pi") return findPiSession(join(dir, "pi"), sessionId);
+    return findCodexRollout(invEnv?.["CODEX_HOME"] ?? process.env.CODEX_HOME ?? join(homedir(), ".codex"), sessionId);
   }
 
   /** Archive one finished job's transcript; never throws (a failure is named in the receipt). */
@@ -847,6 +1057,8 @@ export class RunnerBackend {
     res: { stdout: string; stderr: string },
     sessionId: string | undefined,
     invEnv: Readonly<Record<string, string>> | undefined,
+    /** A session call: its session file stays where the harness wrote it (the receipt names it); only stdout and stderr are kept. */
+    sessionCall = false,
   ): { files: TranscriptFile[]; error?: string } {
     const files: TranscriptFile[] = [];
     try {
@@ -854,6 +1066,7 @@ export class RunnerBackend {
       const push = (t: TranscriptFile | undefined) => { if (t) files.push(t); };
       push(storeText(dest, "harness.stdout", res.stdout, "stdout"));
       push(storeText(dest, "harness.stderr", res.stderr, "stderr"));
+      if (sessionCall) return { files };
       const t = sel.runtime.type;
       if (t === "gvisor" || t === "microvm") files.push(...archiveShadowTranscripts(shadow, dest));
       else if (t === "host" || t === "runtime-test" || t === "herdr") {

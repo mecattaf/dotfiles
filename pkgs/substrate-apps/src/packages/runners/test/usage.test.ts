@@ -9,6 +9,11 @@ describe("usage from the harness envelopes", () => {
     expect(parseClaude(JSON.stringify(env), false)).toEqual({ text: "hi", agentId: "s1",
       usage: { inputTokens: 10, outputTokens: 7, cacheCreationTokens: 5, cacheReadTokens: 20, reasoningTokens: 2 } });
   });
+  it("claude: total_cost_usd becomes costUsd beside the token counts (sessions chapter, C2.10)", () => {
+    const env = { type: "result", subtype: "success", is_error: false, result: "hi", session_id: "s1", total_cost_usd: 0.0123, usage: { input_tokens: 10, output_tokens: 7 } };
+    expect(parseClaude(JSON.stringify(env), false).usage).toEqual({ inputTokens: 10, outputTokens: 7, costUsd: 0.0123 });
+    expect(parseClaude(JSON.stringify({ ...env, total_cost_usd: -1 }), false).usage).toEqual({ inputTokens: 10, outputTokens: 7 });
+  });
   it("claude: an envelope without cache fields keeps the two-field shape", () => {
     expect(claudeUsage({ input_tokens: 3, output_tokens: 4 })).toEqual({ inputTokens: 3, outputTokens: 4 });
     expect(claudeUsage({ input_tokens: -1, output_tokens: "x", cache_read_input_tokens: null })).toEqual({ inputTokens: 0, outputTokens: 0 });

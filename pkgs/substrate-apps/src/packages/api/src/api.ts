@@ -48,11 +48,32 @@ export const CapacityGroup = HttpApiGroup.make("capacity")
   .add(doc(HttpApiEndpoint.post("capacitySnapshot", "/capacity/snapshots", { payload: Schema.Unknown.annotate({ description: "A seat-capacity/2 snapshot." }), success: Schema.Record(Schema.String, Schema.Unknown), error: errors }), "Push a seat-capacity/2 snapshot (the pusher)"))
 
 export const FloorGroup = HttpApiGroup.make("floor")
-  .add(doc(HttpApiEndpoint.get("floorState", "/floor/state", { success: S.FloorState, error: errors }), "Floor statistics, run WIP, alarm and config"))
+  .add(doc(HttpApiEndpoint.get("floorState", "/floor/state", { success: S.FloorState, error: errors }), "Floor statistics, run WIP, alarm, config and schema version"))
+  .add(doc(HttpApiEndpoint.get("health", "/health", { success: S.Health, error: errors }), "The deployed commit", "Answered by the Worker entry under the operator or read bearer."))
   .add(doc(HttpApiEndpoint.get("openapi", "/openapi.json", { success: Schema.Record(Schema.String, Schema.Unknown) }), "This document", "Served without a credential: it carries no data."))
 
+export const SessionsGroup = HttpApiGroup.make("sessions")
+  .add(doc(HttpApiEndpoint.get("listSessions", "/sessions", { query: { project: Schema.optionalKey(Schema.String), thread: Schema.optionalKey(Schema.String) }, success: Schema.Struct({ sessions: Schema.Array(S.SessionView) }), error: errors }),
+    "Agent sessions", "Every session the floor holds, oldest first: its harness, model, worker status, latest post-turn summary, cumulative usage and transcript path. ?project and ?thread filter."))
+  .add(doc(HttpApiEndpoint.get("getSession", "/sessions/:id", { params: Id, success: S.SessionView, error: errors }), "One session"))
+  .add(doc(HttpApiEndpoint.patch("patchSession", "/sessions/:id", { params: Id, payload: S.SessionPatch, success: S.SessionView, error: errors }),
+    "Change a session's model or effort", "The next turn uses them; the harness never changes. 400 bad-request for any other field or a value that is not a string."))
+  .add(doc(HttpApiEndpoint.post("stopSession", "/sessions/:id/stop", { params: Id, success: S.SessionView, error: errors }),
+    "Stop a session", "Cancels its current turn run; no turn starts again. The project tool learns it from the session report."))
+  .add(doc(HttpApiEndpoint.post("nudge", "/nudge", { success: Schema.Struct({ ok: Schema.Boolean }).pipe(HttpApiSchema.status(202)), error: errors }),
+    "Pull the feed now", "The project tool's call after a write that produced a feed row: the alarm fires now, pulls the feed and sends every unacked report."))
+
+export const TriggersGroup = HttpApiGroup.make("triggers")
+  .add(doc(HttpApiEndpoint.get("listTriggers", "/triggers", { query: { project: Schema.optionalKey(Schema.String) }, success: Schema.Struct({ triggers: Schema.Array(S.TriggerView) }), error: errors }),
+    "Routines and send_later triggers", "Both kinds; ?project filters."))
+  .add(doc(HttpApiEndpoint.post("createTrigger", "/triggers", { payload: S.TriggerCreate, success: S.TriggerView.pipe(HttpApiSchema.status(201)), error: errors }),
+    "Create a trigger", "A routine fires its prompt into its persistent session at each time its cron expression names in its zone; a send_later is reported to the project tool once at run_at. 400 bad-request for an expression the floor cannot parse."))
+  .add(doc(HttpApiEndpoint.get("getTrigger", "/triggers/:id", { params: Id, success: S.TriggerView, error: errors }), "One trigger"))
+  .add(doc(HttpApiEndpoint.patch("updateTrigger", "/triggers/:id", { params: Id, payload: S.TriggerPatch, success: S.TriggerView, error: errors }), "Change a trigger", "enabled, prompt, cron_expression, timezone, name."))
+  .add(doc(HttpApiEndpoint.delete("deleteTrigger", "/triggers/:id", { params: Id, success: Schema.Struct({ deleted: Schema.Boolean }), error: errors }), "Delete a trigger"))
+
 export const SubstrateApi = HttpApi.make("substrate")
-  .add(RunsGroup).add(JobsGroup).add(HoldersGroup).add(CapacityGroup).add(FloorGroup)
+  .add(RunsGroup).add(JobsGroup).add(HoldersGroup).add(CapacityGroup).add(FloorGroup).add(SessionsGroup).add(TriggersGroup)
   .annotate(OpenApi.Title, "substrate floor")
   .annotate(OpenApi.Description, "The job-of-record floor. Operator routes take `Authorization: Bearer <FLOOR_TOKEN>` or a Cloudflare Access service token pair. " +
     "Pullers and links use POST /rpc (Effect RPC over HTTP, JSON serialization) with a per-link token: Lease, Heartbeat, Complete (see apps/link/src/contract.ts).")
@@ -68,7 +89,7 @@ export const openApiDocument = (): Record<string, unknown> => {
   const spec = OpenApi.fromApi(SubstrateApi) as unknown as Record<string, unknown> & { components?: Record<string, unknown>; paths: Record<string, Record<string, Record<string, unknown>>> }
   const components = (spec.components ?? {}) as Record<string, unknown>
   components.securitySchemes = {
-    bearer: { type: "http", scheme: "bearer", description: "FLOOR_TOKEN (operator)." },
+    bearer: { type: "http", scheme: "bearer", description: "FLOOR_TOKEN (operator); PROJECT_TOKEN (the project tool) on /nudge, /sessions and /triggers; FLOOR_READ_TOKEN on GET routes." },
     accessClientId: { type: "apiKey", in: "header", name: "CF-Access-Client-Id" },
     accessClientSecret: { type: "apiKey", in: "header", name: "CF-Access-Client-Secret" }
   }

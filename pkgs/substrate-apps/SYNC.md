@@ -2,7 +2,9 @@
 
 - Upstream: agency-agency/substrate (private; the repo formerly named ax-conwip, Tom 2026-09-23 E10), local
   checkout `/home/tom/mecattaf/substrate`, branch `main`.
-- Source sha: `d2c1125b738ae6e8a05f2bc64227936abb3123ac` (synced 2026-10-10T17:33:38Z, apps/puller present)
+- Source sha: `200767b24484b3e0568795af121fb35dade05d20` (synced 2026-10-13T01:31:43Z, apps/puller present)
+  2026-10-13: synced to 200767b, the merge of agency-agency/substrate#33 (sessions and one clock). The lockfile did
+  not change (MEASURED `git diff --cached --stat` on the vendored pnpm-lock.yaml: empty), so `pnpmDeps.hash` is unchanged.
   2026-10-10: synced to d2c1125, the HEAD of the branch `fix/models-file-pi-sessions` (agency-agency/substrate#9,
   open: the model catalog is runtime data (`models_file`, D-S17), a pi provider with no entry is parked (D-S18),
   host-side pi jobs save their session for seats (D-S19), Halogen base URL on strix). The lockfile did not change
@@ -75,6 +77,13 @@ commits) and the config diffs. The pnpm dependency tree did not change (the lock
   exit 3 pidfile held, 75 holder session conflict). The pusher still imports only `node:` builtins and its own
   files. Upstream `packages/runners/package.json` names a bin `bin/substrate-runners.mjs` that does not exist
   (the file is `bin/ax-conwip-runners.mjs`); pnpm warns and skips it, harmless for the puller.
+
+## What changed between d2c1125 and 200767b that matters to the box (2026-10-13)
+
+- `agent({session})`: a turn resumes one harness session by id (claude `--session-id` then `--resume`, pi `--session-id`), in a per-session cwd and session directory under the transcript root, with the project MCP written per session from `[sessions]` (`project_bin`, `project_url`, `project_token_file`); a session call with no `[sessions]` table is refused.
+- pi coordinator turns get the coordinator `--tools` list plus `--no-skills --no-context-files`.
+- The verdict carries `calls[]` with usage, route and the harness session id; a prompt over 16 KB goes through CONWIP's prompt-file route instead of being refused.
+- The floor side (session records, the feed pull, reports, the clock) is the Worker's, deployed from the substrate repo, not vendored here.
 
 ## Programs and where they run
 

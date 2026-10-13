@@ -92,7 +92,8 @@ describe("agent() options reach the harness or are refused, never dropped", () =
     const cfg = parseRuntimesToml(`[runtime.pi]\ntype = "host"\nharness = "pi"\n[runtime.gv]\ntype = "gvisor"\nrunsc = "/nix/store/x/bin/runsc"\n`, "t", "/home/u");
     const b = new RunnerBackend(cfg, { jobsRoot: join(tmp(), "jobs"), runId: "r2x", repoDir: tmp() });
     await withPath(f.bin, async () => {
-      expect((await b.run(call(1, "p", { runtime: "pi", effort: "high" }))).error).toMatch(/harness pi cannot honour agent\(\{effort/);
+      // pi honours effort as --thinking since the sessions chapter (correction 7); agentType is still claude's alone.
+      expect((await b.run(call(1, "p", { runtime: "pi", agentType: "code-reviewer" }))).error).toMatch(/harness pi cannot honour agent\(\{agentType/);
       expect((await b.run(call(2, "p", { isolation: "container" }))).error).toMatch(/not supported/);
       expect((await b.run(call(3, "p", { isolation: "worktree" }))).error).toMatch(/needs a git repository/);
     });

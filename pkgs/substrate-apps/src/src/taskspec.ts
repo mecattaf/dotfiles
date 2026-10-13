@@ -59,11 +59,12 @@ export interface TaskContext {
   /** `<atespace>/<name>` of a parent Task, for a nested workflow(). */
   readonly parent?: string;
   /**
-   * The prompt-file route. Given the prompt's sha256 and its 8-char key, it
-   * returns the in-sandbox path of a file it has ALREADY written, or undefined
-   * when no route exists. Absent, an oversize prompt is refused.
+   * The prompt-file route. Given the prompt's sha256, its 8-char key and the
+   * prompt itself, it returns the in-sandbox path of a file it has ALREADY
+   * written, or undefined when no route exists. Absent, an oversize prompt is
+   * refused.
    */
-  readonly promptFile?: (sha256: string, key8: string) => string | undefined;
+  readonly promptFile?: (sha256: string, key8: string, prompt: string) => string | undefined;
 }
 
 export type TaskBuild =
@@ -138,7 +139,7 @@ export function buildTask(i: WorkItem, atespace: string, image: string, ctx: Tas
     env.push({ name: "AX_CONWIP_PROMPT", value: i.prompt });
     route = "inline";
   } else {
-    const path = ctx.promptFile?.(promptSha, key8);
+    const path = ctx.promptFile?.(promptSha, key8, i.prompt);
     if (path === undefined) {
       return {
         ok: false,

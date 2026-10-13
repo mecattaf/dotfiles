@@ -38,7 +38,11 @@ const SCRIPT = `export const meta = { name: "r3", description: "d" }\nreturn "ok
 /** A run leased by a first puller whose executor never ends, then that puller stopped: the grant stays in held.json. */
 const heldRun = async (w: Awaited<ReturnType<typeof world>>, id: string) => {
   await w.client.submitScript(SCRIPT, { id })
-  const first = await w.start((t) => new Promise((ok) => t.signal.addEventListener("abort", () => ok({ result: "failure", output: null }), { once: true })))
+  // stop() can abort the run while launch() still hashes the script, so execute may be handed a signal already aborted
+  const first = await w.start((t) => new Promise((ok) => {
+    const end = () => ok({ result: "failure", output: null })
+    if (t.signal.aborted) end(); else t.signal.addEventListener("abort", end, { once: true })
+  }))
   await until("leased", () => Object.keys(first.p.held).length === 1)
   first.p.stop(); await first.done
   return Object.keys(JSON.parse(readFileSync(join(w.stateDir, "held.json"), "utf8")))[0]!

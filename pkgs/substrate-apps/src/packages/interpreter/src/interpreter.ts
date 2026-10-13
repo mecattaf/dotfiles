@@ -176,6 +176,13 @@ export const retryableFailure = (reason: string): boolean =>
   !HARNESS_VERDICT.test(reason) &&
   /budget exhausted|capacity refused|aborted|conwip refused|runner threw|refused|already exists|^skipped$|^journal: failed$/i.test(reason);
 
+/** Usage summed key by key over a call's attempts (every finite count the backend reported). */
+const addUsage = (prior: Record<string, number> | undefined, u: object): Record<string, number> => {
+  const out = { ...(prior ?? {}) };
+  for (const [k, v] of Object.entries(u)) if (typeof v === "number" && Number.isFinite(v)) out[k] = (out[k] ?? 0) + v;
+  return out;
+};
+
 export interface CallRecord {
   readonly index: number;
   readonly key: string;
@@ -197,6 +204,15 @@ export interface CallRecord {
   resultPreview: string | undefined;
   /** Why a call returned null; the record's row carries it as `error` (MEASURED, 38 of 38 error rows). */
   error: string | undefined;
+  /**
+   * What the backend reported of the harness (sessions chapter, 2026-10-12): its own session id, the usage of every
+   * attempt summed key by key, the route that served the call and its session file. Kept in memory for the run's
+   * caller (runIntegrated's `calls`); none of it is written into the Claude-shaped record or the journal.
+   */
+  harnessSessionId: string | undefined;
+  usage: Record<string, number> | undefined;
+  route: { readonly runtime?: string; readonly harness?: string } | undefined;
+  sessionFile: string | undefined;
 }
 
 export interface RunResult {
@@ -437,6 +453,7 @@ async function runScript(
     const rec: CallRecord = {
       index, key, label, phase, model, schema: opts.schema !== undefined, prompt, depth, phaseIndex: phaseIndex(phase),
       state: "queued", attempts: 0, agentId: undefined, startTick: undefined, endTick: undefined, tokens: 0, resultPreview: undefined, error: undefined,
+      harnessSessionId: undefined, usage: undefined, route: undefined, sessionFile: undefined,
     };
     shared.calls.push(rec);
     emit({ type: "agent_queued", index, key, label, phase });
@@ -519,6 +536,10 @@ async function runScript(
         // pairs them (successor review r4: 653 of 653 real terminal lines). The
         // harness's own session id rides separately, on agent_done.
         if (outcome.agentId) sessionId = outcome.agentId;
+        rec.harnessSessionId = sessionId;
+        if (outcome.usage) rec.usage = addUsage(rec.usage, outcome.usage);
+        if (outcome.route) rec.route = outcome.route;
+        if (outcome.sessionFile) rec.sessionFile = outcome.sessionFile;
         // The dialect: budget.spent() counts OUTPUT tokens spent this turn
         // (successor review r2: charging input tokens too bound the ceiling
         // several times too early). Input tokens are not charged or journaled.

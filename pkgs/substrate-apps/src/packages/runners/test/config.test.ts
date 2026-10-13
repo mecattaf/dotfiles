@@ -124,3 +124,19 @@ state = "/run/user/1000/runsc"
     expect(() => selectRuntime(c, { runtime: 3 })).toThrow(/must be a string/);
   });
 });
+
+describe("the [sessions] table (sessions chapter, C2.16)", () => {
+  it("sessions table: project_bin defaults to project; project_url and project_token_file are required; an unknown key is ignored", () => {
+    const c = parseRuntimesToml(`[sessions]\nproject_url = "https://project.example"\nproject_token_file = "~/.config/project/token"\n`, "t", HOME);
+    expect(c.sessions).toEqual({ projectBin: "project", projectUrl: "https://project.example", projectTokenFile: "/home/u/.config/project/token" });
+    const bin = parseRuntimesToml(`[sessions]\nproject_bin = "/opt/project/bin/project"\nproject_url = "u"\nproject_token_file = "/t"\nbogus = 1\n`, "t", HOME);
+    expect(bin.sessions).toEqual({ projectBin: "/opt/project/bin/project", projectUrl: "u", projectTokenFile: "/t" });
+    // a table lacking a required key is refused, as a malformed runtime table is
+    expect(() => parseRuntimesToml(`[sessions]\nproject_token_file = "/t"\n`, "t", HOME)).toThrow(RuntimesConfigError);
+    expect(() => parseRuntimesToml(`[sessions]\nproject_token_file = "/t"\n`, "t", HOME)).toThrow(/project_url/);
+    expect(() => parseRuntimesToml(`[sessions]\nproject_url = "u"\n`, "t", HOME)).toThrow(/project_token_file/);
+    expect(() => parseRuntimesToml(`[runtime.x]\ntype = "host"\ntimeoutMs = "slow"\n`, "t", HOME)).toThrow(RuntimesConfigError);
+    // no table: no sessions (an agent({session}) call is then refused, test/sessions.test.ts)
+    expect(parseRuntimesToml(``, "t", HOME).sessions).toBeUndefined();
+  });
+});

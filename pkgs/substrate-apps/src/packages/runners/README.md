@@ -36,6 +36,13 @@ call with the error. Precedence: `models_file`, inline `[[models]]`, the compile
 Host-side pi jobs save their session in the job's shadow (`--session-dir`), archived with the
 transcripts so the seats oracle counts factory spend.
 
+**Agent sessions** (2026-10-12). `agent(prompt, { session: {id, harnessSessionId, cwd?, role, harness?} })`
+is one turn of an agent session: the harness session is resumed by id (claude `--session-id`, then
+`--resume`; pi `--session-id`; codex `exec resume`, built and tested with a fake only) in
+`<transcript root>/sessions/<id>/`, whose `cwd/` is the session's cwd on every turn, with the one
+`project` MCP that `[sessions]` names (`project_bin`, `project_url`, `project_token_file`). The
+session file stays where the harness writes it; the receipt and the outcome name its path.
+
 | type | runs | notes |
 |---|---|---|
 | `host` | child process | baseline, no isolation |

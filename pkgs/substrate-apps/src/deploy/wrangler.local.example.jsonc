@@ -27,6 +27,10 @@
   //   LEASE_TOKEN_KEY       HMAC key for guest lease tokens (only needed when a holder has "guest": true)
   //   ACCESS_CLIENT_ID      optional: a Cloudflare Access service token accepted in place of FLOOR_TOKEN
   //   ACCESS_CLIENT_SECRET
+  //   PROJECT_TOKEN         the project tool's bearer, one value shared with that Worker (/nudge, /sessions, /triggers; the
+  //                         floor sends it with every feed pull and report)
+  // Set per deploy with --var: BUILD_COMMIT:<git sha> (GET /health), PROJECT_URL:<the project tool's URL> (unset: the
+  // alarm pulls no feed and sends no report; reports queue).
   "vars": {
     // The CONWIP cap over agent jobs, and the runs held by interpreter hosts at once.
     "FLOOR_CAP": "2",
