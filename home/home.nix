@@ -326,9 +326,6 @@ in
   # ~/.claude-work. Same skills + settings, separate .credentials.json/.claude.json.
   home.file.".claude-work/skills".source = link "dot_claude/skills";
   home.file.".claude-work/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
-  # Third account (2026-09-05): `cc3`/`cac3` → ~/.claude-3, same links.
-  home.file.".claude-3/skills".source = link "dot_claude/skills";
-  home.file.".claude-3/rules/runtime-tests.md".source = link "agent-runtime-rules.md";
 
   # Claude owns mutable preferences. One direct symlink hop reaches writable
   # shared state, never the Nix store or Git checkout. Activation seeds only

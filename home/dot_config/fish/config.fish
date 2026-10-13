@@ -46,13 +46,13 @@ alias cd='z'
 #   cc  / cac   -> ~/.claude       the personal Claude Max login (gmail org)
 #   cc2 / cac2  -> ~/.claude-work  the leger.run Claude Max login
 # CLAUDE_CONFIG_DIR isolates login, history and state per seat; skills and
-# settings are the same dotfiles links for both (home.nix). TALLY_SEAT names the
-# seat to hooks and receipts. Claude Code never saves workspace trust for $HOME
-# (docs, security: "trust acceptance is held for the current session only and
-# is not written to disk"), so a seat started in ~ shows "Accessing workspace"
-# on every launch. Both launchers therefore move into the desk envelope when
-# typed from ~; the shell stays there afterwards, which is where the desk
-# session's files belong (~/today/CLAUDE.md section 4).
+# settings are the same dotfiles links for both (home.nix). Claude Code never
+# saves workspace trust for $HOME (docs, security: "trust acceptance is held
+# for the current session only and is not written to disk"), so a seat started
+# in ~ shows "Accessing workspace" on every launch. Both launchers therefore
+# move into the desk envelope (~/today) when typed from ~; the shell stays
+# there afterwards. Tom, 2026-10-13: cc and cc2 keep starting in ~/today; its
+# stale CLAUDE.md brief was moved out that day.
 set -q CLAUDE_ENVELOPE; or set -gx CLAUDE_ENVELOPE $HOME/today
 function __claude_seat --description 'start one Claude seat outside $HOME'
     set -l seat $argv[1]
@@ -76,18 +76,15 @@ function __claude_seat --description 'start one Claude seat outside $HOME'
     # CLAUDE_CONFIG_DIR, so `cc` must clear it explicitly or it silently starts
     # cc2 (measured 2026-09-22). Each seat sets its own value or none.
     if test -n "$config_dir"
-        env CLAUDE_CONFIG_DIR=$config_dir TALLY_SEAT=$seat claude --dangerously-skip-permissions $args
+        env CLAUDE_CONFIG_DIR=$config_dir claude --dangerously-skip-permissions $args
     else
-        env -u CLAUDE_CONFIG_DIR TALLY_SEAT=$seat claude --dangerously-skip-permissions $args
+        env -u CLAUDE_CONFIG_DIR claude --dangerously-skip-permissions $args
     end
 end
 function cc;   __claude_seat cc  "" $argv; end
 function cac;  __claude_seat cc  "" --continue $argv; end
 function cc2;  __claude_seat cc2 $HOME/.claude-work $argv; end
 function cac2; __claude_seat cc2 $HOME/.claude-work --continue $argv; end
-# Third Claude account (2026-09-05), same rotation: state in ~/.claude-3.
-alias cc3='env CLAUDE_CONFIG_DIR=$HOME/.claude-3 claude --dangerously-skip-permissions'
-alias cac3='env CLAUDE_CONFIG_DIR=$HOME/.claude-3 claude --continue --dangerously-skip-permissions'
 # Codex, same shape: cx starts, cax resumes the newest session. codex 0.160.0
 # auto-starts a shared app-server daemon that copies its install into
 # ~/.codex/packages and needs the codex-package.json manifest the Nix build does
