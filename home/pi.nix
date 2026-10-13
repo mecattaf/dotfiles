@@ -216,7 +216,7 @@ let
           {
             id = "qwen3.8-27b";
             name = "Qwen3.8-27B (local alternate, Strix)";
-            contextWindow = 262144;
+            contextWindow = 131072;
             maxTokens = 16384;
             input = [
               "text"
