@@ -8,7 +8,9 @@ The initializer preserves existing choices and never resets them on activation; 
 session id resumes only on the seat and from the cwd that created it
 (`claude-sessions` fans out over the seats). Claude never saves workspace trust
 for `$HOME`, so the launchers move into `$CLAUDE_ENVELOPE` (default `~/today`)
-when typed from `~`; never start a seat in the home directory. Logins are hand
+when typed from `~`; never start a seat in the home directory. `~/today` carries
+no brief file (its stale CLAUDE.md was moved out on 2026-10-13, Tom: cc and cc2
+keep starting there), and there is no third seat (Tom, 2026-09-22: "no more cc3"). Logins are hand
 `/login`s, never a delivered secret (the old claude-credentials seed was removed
 this day). `seats` reads its peer cache from `~/.local/state/tally-rewrite/meters`
 (the directory name outlives Tally, which was removed on 2026-09-30).
