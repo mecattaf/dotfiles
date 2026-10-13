@@ -53,7 +53,7 @@ assert
   c.networking.networkmanager.ensureProfiles.profiles.thomas-6ghz.ipv4.routing-rule1
   == "priority 2500 to 10.42.0.0/24 table 254";
 assert s.services.halogen.autoStart;
-assert s.services.halogen.client.endpoint == "http://strix:8731";
+assert s.services.utilityModel.endpoint == "http://strix:8731";
 assert n.services.immich.environment.IMMICH_MACHINE_LEARNING_URL == "http://strix:3003";
 assert s.systemd.services.immich-machine-learning.wantedBy == [ ];
 assert s.systemd.services.immich-machine-learning.unitConfig.StopWhenUnneeded;

@@ -207,16 +207,6 @@ let
     '';
   };
 
-  utilityRunner = pkgs.writeShellApplication {
-    name = "utility-model";
-    runtimeInputs = [ pkgs.python3 ];
-    text = ''
-      exec ${pkgs.python3}/bin/python3 ${../pkgs/utility-model/utility_model.py} "$@" \
-        --endpoint ${lib.escapeShellArg cfg.client.endpoint} \
-        --concrete-model ${lib.escapeShellArg cfg.modelId} \
-        --context-tokens ${toString cfg.client.contextTokens}
-    '';
-  };
 in
 {
   options.services.halogen = {
@@ -463,21 +453,6 @@ in
       '';
     };
 
-    client = {
-      enable = lib.mkEnableOption "the utility-model wrapper that forwards one request to the fleet's Halogen server";
-
-      endpoint = lib.mkOption {
-        type = lib.types.str;
-        default = "http://strix:8731";
-        description = "Where the fleet's Halogen server answers.";
-      };
-
-      contextTokens = lib.mkOption {
-        type = lib.types.ints.positive;
-        default = 131072;
-        description = "Prompt budget the utility-model wrapper plans against.";
-      };
-    };
   };
 
   config = lib.mkMerge [
@@ -626,8 +601,5 @@ in
       ];
     })
 
-    (lib.mkIf cfg.client.enable {
-      environment.systemPackages = [ utilityRunner ];
-    })
   ];
 }

@@ -2262,7 +2262,8 @@
           assert strix.services.halogen.autoStart;
 
           assert strix.virtualisation.oci-containers.containers.halogen.autoStart;
-          assert strix.services.halogen.client.enable;
+          assert strix.services.utilityModel.enable;
+          assert strix.services.utilityModel.modelId == "qwen3.8-flash-next";
 
           # One declaration, two hosts: the containers differ only in autoStart
           # and the strix's two desktop memory bounds (Flash's KV pool,
