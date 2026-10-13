@@ -40,12 +40,10 @@
 # master).
 #
 # COMPOSITOR. Sway uses one projector per numbered workspace through herdr-picker.
-# Scroll when SCROLLSOCK is set, niri when NIRI_SOCKET is set,
-# otherwise scroll (the seats' default since scroll/transition); niri stays
-# supported while it is the rollback. HERDR_CHORD_WM=sway|scroll|niri overrides.
-# scroll reports pid and app_id in get_tree; a new projector on scroll lands
-# on the focused workspace when it is empty, else on a fresh one numbered
-# after all others (niri: its empty trailing workspace).
+# Sway when SWAYSOCK is set, niri when NIRI_SOCKET is set, otherwise Sway (the
+# seats' compositor); niri stays supported while it is the rollback.
+# HERDR_CHORD_WM=sway|niri overrides. On niri a new projector lands on its
+# empty trailing workspace.
 set -euo pipefail
 
 verb="${1:-}"
@@ -103,10 +101,9 @@ wait_ready() {
 
 wm="${HERDR_CHORD_WM:-}"
 if [ -z "$wm" ]; then
-  if [ -n "${SCROLLSOCK:-}" ]; then wm=scroll
-  elif [ -n "${SWAYSOCK:-}" ]; then wm=sway
+  if [ -n "${SWAYSOCK:-}" ]; then wm=sway
   elif [ -n "${NIRI_SOCKET:-}" ]; then wm=niri
-  else wm=scroll
+  else wm=sway
   fi
 fi
 
@@ -118,7 +115,6 @@ fi
 windows_json() {
   case "$wm" in
     niri) niri msg -j windows ;;
-    scroll) scrollmsg -r -t get_tree | jq -c '[.. | objects | select(.app_id? != null and .pid? != null) | {id, app_id, pid}]' ;;
   esac
 }
 
@@ -126,10 +122,6 @@ windows_json() {
 focused_window() {
   case "$wm" in
     niri) niri msg -j focused-window 2>/dev/null || true ;;
-    scroll)
-      scrollmsg -r -t get_tree 2>/dev/null |
-        jq -c 'first(.. | objects | select(.focused? == true and .app_id? != null) | {app_id, pid}) // null' 2>/dev/null || true
-      ;;
   esac
 }
 
@@ -138,30 +130,18 @@ focused_window() {
 spawn_kitty() {
   case "$wm" in
     niri) niri msg action spawn -- kitty --class "$class" -e "$projector" ;;
-    scroll) scrollmsg -r -- "exec kitty --class $class -e '$projector'" >/dev/null ;;
   esac
 }
 
 # The workspace hop before a spawn: an empty workspace on the focused output.
 hop_to_empty_workspace() {
-  local idx num
+  local idx
   case "$wm" in
     niri)
       # niri's dynamic workspaces guarantee an empty trailing one per output.
       idx="$(niri msg -j workspaces | jq -re 'map(select(.is_focused))[0].output as $o
         | map(select(.output == $o)) | max_by(.idx) | .idx' 2>/dev/null || true)"
       [ -n "$idx" ] && niri msg action focus-workspace "$idx"
-      ;;
-    scroll)
-      # Stay when the focused workspace is already empty; otherwise open a
-      # fresh one numbered after all others (it sorts last, as niri's does,
-      # and sway creates it on the focused output).
-      num="$(scrollmsg -r -t get_tree | jq -r '
-        [.. | objects | select(.type? == "workspace" and .name != "__i3_scratch")] as $ws
-        | first($ws[] | select(any(.. | objects; .focused? == true))) as $f
-        | if (($f.nodes | length) + ($f.floating_nodes | length)) == 0 then empty
-          else ([$ws[].num // 0] | max) + 1 end' 2>/dev/null || true)"
-      [ -n "$num" ] && scrollmsg -r -- "workspace number $num" >/dev/null
       ;;
   esac
   return 0

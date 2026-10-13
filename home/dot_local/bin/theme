@@ -73,19 +73,6 @@ reload_niri() {
     fi
 }
 
-reload_scroll() {
-    # scroll/config includes ~/.config/theme/scroll.conf (client.* colours)
-    # last. `reload` validates first and keeps the old config on a parse
-    # failure; it re-runs exec_always (none in scroll/) but not exec.
-    if [[ -n "${SCROLLSOCK:-}" ]] && command -v scrollmsg >/dev/null; then
-        if scrollmsg reload >/dev/null 2>&1; then
-            echo '  scroll: config reloaded'
-        else
-            echo '  scroll: reload failed (is a session running?)' >&2
-        fi
-    fi
-}
-
 reload_nvim() {
     # nvim >= 0.9 listens on $XDG_RUNTIME_DIR/nvim.<pid>.0. lua/theme.lua's
     # reload() re-applies catppuccin, bufferline and lualine from the new fragment.
@@ -143,7 +130,7 @@ set_claude_code() {
 gset() { gsettings set "$@" 2>/dev/null || printf '  gsettings: set %s failed\n' "$*" >&2; }
 
 #
-# The theme is MacTahoe on every session (niri and scroll alike): the gtk-theme
+# The theme is MacTahoe on every session (Sway and niri alike): the gtk-theme
 # written here is the selected theme's MacTahoe variant, and Home Manager's gtk
 # block (home/home.nix) keeps its MacTahoe defaults and settings.ini files.
 # color-scheme is ALWAYS written explicitly, never left at "default": an unset
@@ -190,7 +177,6 @@ apply() {
     local name; name="$(current)" || die "no theme selected ($link missing)"
     echo "theme: $name"
     reload_kitty
-    reload_scroll
     reload_sway
     reload_desktop_tools
     reload_niri
