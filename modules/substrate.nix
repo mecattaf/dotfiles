@@ -10,7 +10,7 @@
 # CODE: pkgs/substrate-apps (vendored from agency-agency/substrate at the sha in its SYNC.md). ARCHITECTURE:
 # ~/today/wednesday-prep-2026-09-23/03-substrate-ax-conwip.md section 2. RULING: E1 (2026-09-23), the code that
 # wraps ax lives in dotfiles; A2, the NAS link, the strix puller and the capacity pusher are dotfiles
-# packages and modules. The NAS side is hosts/nas/substrate-link.nix (Lane A); this file is the strix side.
+# packages and modules. The NAS side (hosts/nas/substrate-link.nix, Lane A) was retired with ax on 2026-10-13; this file is the strix side.
 #
 #   pusher  reads `seats --json --no-spend` (the box's one capacity oracle, ~/.local/bin/seats) under the gentle
 #           policy (120 s floor, 900 s idle, 300 s active, 180 s above 85 percent, one read at reset + 90 s) and

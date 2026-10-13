@@ -52,15 +52,9 @@
     ../../modules/strix.nix
     ../../modules/gvisor.nix # runsc on PATH; gate below (G1, 2026-09-23)
     ../../modules/fleet-hosts.nix
-    # ax on the fleet (2026-09-23): the HARNESS node, see myAxFleet below.
-    ../../modules/ax-fleet
-    # kubectl + the google/ax binaries, behind myAxClient.enable. Imported on
-    # all three interactive hosts, OFF on all three; read that module's header
-    # for the runbook and for what it deliberately does not declare.
-    ../../modules/ax-client.nix
     # The Cloudflare Substrate's strix side (2026-09-23, E1/A2): the
     # gentle capacity pusher and the interpreter-host puller, both declared
-    # ON below (2026-09-24). The NAS side is hosts/nas/substrate-link.nix.
+    # ON below (2026-09-24).
     ../../modules/substrate.nix
     # The academic OCR drain's standing submit (services.academicDrain.standing, ON below): a nightly lane B run on
     # the floor this box's puller serves (2026-09-25).
@@ -125,20 +119,6 @@
     onCalendar = "*-*-* 01:30:00";
   };
 
-  myAxFleet = {
-    enable = true;
-    role = "harness";
-    guardInterfaces = [ ];
-    lan = {
-      interface = "enp191s0";
-      address = "10.42.0.2";
-      # The wired port: "Wired connection 1" autoconnects with DHCP (MEASURED
-      # nmcli, 2026-09-23). The guard covers it and it never takes the LAN
-      # routes from the wifi (fix round 3).
-      extraInterfaces = [ ];
-    };
-  };
-
   myGvisor.enable = false;
 
   # Primary physical seat again (2026-09-16); Zenbook remains a second seat.
@@ -168,10 +148,6 @@
   services.caddy.virtualHosts."http://drain.internal".extraConfig = ''
     reverse_proxy 127.0.0.1:8740
   '';
-
-  # myAxClient (kubectl + ax) is ON here by mkDefault from myAxFleet's
-  # harness role (modules/ax-fleet/default.nix); ax-client-topology in
-  # flake.nix pins that.
 
   services.halogen.client.enable = true;
   # Flipped post-flash after the zero-TOFU host-key check (2026-07-05): the

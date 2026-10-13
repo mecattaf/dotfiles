@@ -1,5 +1,16 @@
 # DECISIONS
 
+2026-10-13 ax is RETIRED from the fleet: k3s, Agent Substrate, the image
+registry and its weekly timer, the network guard, the strix port 8099 proxy,
+kubectl and the ax binaries, the NAS floor-to-ax bridge and the ax-conwip
+skeleton are gone from dotfiles. History is kept as the tag archive/ax-fleet.
+Substrate never sent a job through ax and keeps running unchanged.
+
+Tom, 2026-10-13: "okay so we're not using ax.. that's totally fine by me. just
+makes things simpler. in that case you can retire it completely and keep its
+history as a tag indeed. tha way we clean up on the nas and stop the "every 15
+minute" action. leaner is better."
+
 2026-10-13 the Go CRM CLI and dcal are REMOVED from dotfiles, no tag kept
 (#452, #528). Tom: "remove go crm and dcal. fully. no tag"
 

@@ -69,9 +69,6 @@ in
   # NAS private media HTTPS: zone-limited DNS-01 token, no broad Wrangler OAuth
   # authority. Ciphertext is provisioned before enabling personal-https.nix.
   "secrets/nas-cloudflare-dns.age".publicKeys = editors ++ nasOnly;
-  "secrets/k3s-token.age".publicKeys = editors ++ nasOnly;
-  "secrets/k3s-agent-token.age".publicKeys = editors ++ strixOnly ++ nasOnly;
-  "secrets/floor-link-token.age".publicKeys = editors ++ nasOnly;
   # --- wifi PSK tier: the strix, whose Freebox uplink
   # (wlp192s0) is now declarative too (migrated from an imperative profile on
   # flash night — refs #37). Rekey after this change:  nix develop -c agenix -r
