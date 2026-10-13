@@ -79,9 +79,8 @@ profiles and `/var/lib/nas-router/freebox-uplink.env` are retired after checking
 the wired path; removing a declaration alone does not remove persistent
 NetworkManager profiles. Kernel selection is unchanged.
 
-The coordinator's independent SaaS Tailscale emergency path stays enabled.
-Preserve NAS Headscale identity, policy and signed laptop updates; overseas
-control-plane reachability is a [separate follow-up](overseas-headscale.md).
+The strix keeps its own Tailscale identity as an independent fallback, and the
+NAS is the only Tailscale subnet router. Headscale was retired on 2026-10-08.
 Rollback means restoring the saved router mode/configuration, wiring and NixOS
 generations together. The deleted USB/TV implementation remains in Git history.
 
