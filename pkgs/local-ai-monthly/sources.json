@@ -4,7 +4,7 @@
   "inference": {
     "provider": "halogen",
     "url": "http://strix:8731",
-    "model": "halogen-qwen3.8-flash-next",
+    "model": "qwen3.8-flash-next",
     "execution_host": "strix",
     "compute_host": "strix",
     "tally_pool": "strix-gpu"
@@ -44,11 +44,11 @@
         ]
       }
     ],
-    "runtime_policy": "Every automated local LLM call goes through the Halogen Flash server on Strix (http://strix:8731); the strix declares the same Halogen engines for operator-started use only; stable diffusion is outside this route.",
+    "runtime_policy": "Every automated local LLM call goes through the local model server on Strix (http://strix:8731), serving qwen3.8-flash-next; the alternates (qwen3.8-27b, deepseek-v4-flash) are operator-switched only.",
     "change_policy": "The monthly workflow proposes catalog and source-pin changes only. It never downloads, installs, removes, or activates models."
   },
   "model_selection_policy": {
-    "summary": "The fleet's language models are the two Halogen engines (halogen-qwen3.8-flash-next and halogen-qwen3.8-27b), declared on Strix, with Flash resident on Strix. No small GGUF LLM is kept (Tom, 2026-09-16).",
+    "summary": "The fleet's models are the Gufo collection (github.com/gufo-org/gufo; Tom, 2026-10-13: \"use that as the full collection of modles that we use\"), served on Strix with qwen3.8-flash-next resident.",
     "kept_small_artifacts": []
   },
   "llm_agents_allowlist": [

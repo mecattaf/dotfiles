@@ -28,7 +28,7 @@ cat > "$registry" <<'JSON'
   "inference": {
     "provider": "halogen",
     "url": "http://strix:8731",
-    "model": "halogen-qwen3.8-flash-next",
+    "model": "qwen3.8-flash-next",
     "execution_host": "strix",
     "compute_host": "strix",
     "tally_pool": "strix-gpu"
@@ -111,7 +111,7 @@ cat > "$capture/catalog.json" <<'JSON'
 }
 JSON
 cat > "$capture/models.json" <<'JSON'
-{"data":[{"id":"halogen-qwen3.8-flash-next"}]}
+{"data":[{"id":"qwen3.8-flash-next"}]}
 JSON
 cat > "$capture/accepted-tally.md" <<'EOF'
 # Previous accepted review
@@ -144,16 +144,16 @@ if "$LOCAL_AI_PURE_STAGE" prepare "$registry" "$unadvertised" "$work/unadvertise
 fi
 
 "$LOCAL_AI_PURE_STAGE" prepare "$registry" "$capture" "$prepared"
-jq -e '.provider == "halogen" and .model_id == "halogen-qwen3.8-flash-next"
+jq -e '.provider == "halogen" and .model_id == "qwen3.8-flash-next"
   and .endpoint == "http://strix:8731" and .compute_host == "strix"' "$prepared/model.json" >/dev/null
-jq -e '.data[0].id == "halogen-qwen3.8-flash-next"' "$prepared/inference-models.json" >/dev/null
+jq -e '.data[0].id == "qwen3.8-flash-next"' "$prepared/inference-models.json" >/dev/null
 jq -e '[.[].repository] == ["example/best-gguf", "example/new-model", "example/served-bundle"]' \
   "$prepared/hf-requests.json" >/dev/null
 jq -e '.sources[0].baseline == "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"' \
   "$prepared/next-sources.json" >/dev/null
 grep -q 'Add candidate model' "$prepared/evidence.md"
 grep -Fq -- '- test mono-model policy' "$prepared/context.md"
-grep -Fq -- 'Served model: `halogen-qwen3.8-flash-next` through provider `halogen` at `http://strix:8731` on `strix`' \
+grep -Fq -- 'Served model: `qwen3.8-flash-next` through provider `halogen` at `http://strix:8731` on `strix`' \
   "$prepared/context.md"
 grep -Fq -- 'Kept small Library artifacts: `best-q8`' "$prepared/context.md"
 grep -q 'best-Q8_0.gguf \[Q8_0\]' "$prepared/context.md"
@@ -246,7 +246,7 @@ judge_state="$work/judge-state"
 judge_output="$work/judge/commentary.md"
 mkdir -p "$agent_dir"
 cat > "$agent_dir/models.json" <<'JSON'
-{"providers":{"halogen":{"baseUrl":"http://strix:8731/v1","models":[{"id":"halogen-qwen3.8-flash-next"}]}}}
+{"providers":{"halogen":{"baseUrl":"http://strix:8731/v1","models":[{"id":"qwen3.8-flash-next"}]}}}
 JSON
 # The shebang names the bash running this test: inside the build sandbox
 # there is no /usr/bin/env to resolve one.
@@ -270,15 +270,15 @@ fi
 PI_CODING_AGENT_DIR="$agent_dir" LOCAL_AI_PI="$fake_pi" FAKE_PI_ARGV="$work/pi-argv" \
   bash "$LOCAL_AI_JUDGE_SOURCE" "$work/commentary.md" "$enriched/evidence.md" \
     "$enriched/context.md" "$enriched/hf-metadata.md" \
-    halogen halogen-qwen3.8-flash-next "$judge_output" "$judge_state"
+    halogen qwen3.8-flash-next "$judge_output" "$judge_state"
 grep -q '^## Local-model review' "$judge_output"
-jq -e '.providers.halogen.models[0].id == "halogen-qwen3.8-flash-next"' "$judge_state/models.json" >/dev/null
+jq -e '.providers.halogen.models[0].id == "qwen3.8-flash-next"' "$judge_state/models.json" >/dev/null
 mapfile -t pi_argv < "$work/pi-argv"
 [[ "${pi_argv[0]}" == "--no-extensions" ]]
 for ((index = 0; index < ${#pi_argv[@]}; index++)); do
   if [[ "${pi_argv[index]}" == "--provider" ]]; then
     [[ "${pi_argv[index + 1]}" == "halogen" ]]
   elif [[ "${pi_argv[index]}" == "--model" ]]; then
-    [[ "${pi_argv[index + 1]}" == "halogen-qwen3.8-flash-next" ]]
+    [[ "${pi_argv[index + 1]}" == "qwen3.8-flash-next" ]]
   fi
 done

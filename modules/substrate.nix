@@ -694,7 +694,7 @@ in
           ceilings = { model_scoped = 90 }
 
           [[models]]
-          id = "halogen-qwen3.8-flash-next"
+          id = "qwen3.8-flash-next"
           harness = "pi"
           default = true
 
