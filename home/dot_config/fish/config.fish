@@ -66,6 +66,12 @@ function __claude_seat --description 'start one Claude seat outside $HOME'
         builtin cd $CLAUDE_ENVELOPE
         echo "($seat: started in $CLAUDE_ENVELOPE, not in ~)" >&2
     end
+    # Agent view off for both seats (2026-10-12): herdr is the multiplexer, and
+    # finished background sessions sat in "Needs input" for weeks. The 2.1.287
+    # binary describes the switch as "Disable agent view (`claude agents`,
+    # `--bg`, /background, the on-demand daemon)". The env var form needs no
+    # edit to the seeded ~/.local/state/claude/settings.json.
+    set -lx CLAUDE_CODE_DISABLE_AGENT_VIEW 1
     # A terminal opened from inside a cc2 session already carries
     # CLAUDE_CONFIG_DIR, so `cc` must clear it explicitly or it silently starts
     # cc2 (measured 2026-09-22). Each seat sets its own value or none.
