@@ -27,6 +27,39 @@ describe("SubstrateClient", () => {
   })
 })
 
+describe("sessions chapter client methods", () => {
+  it("sessions, session, patchSession, stopSession, nudge, the trigger methods and health send their route and decode the record", async () => {
+    const S = { id: "s1", project: "desk", thread: "T-9", harness: null, harness_session_id: "h", model: "m", effort: null, cwd: null, worker_status: "idle",
+      post_turn_summary: null, usage: null, transcript: null, turn: 0, stopped: false, created_at: "2026-10-12T21:00:00Z", last_event_at: "2026-10-12T21:00:00Z" }
+    const T = { id: "trig_0123456789abcdef", name: "n", project: "desk", kind: "routine", thread: "T-9", persistent_session_id: "s1", prompt: "p", cron_expression: "* * * * *",
+      timezone: "Europe/Paris", message: null, run_at: null, enabled: true, suspension_reason: null, next_run_at: null, last_run_at: null, creator: "cli", created_at: "2026-10-12T21:00:00Z" }
+    const seen: Array<string> = []
+    const f = (async (input: unknown, init?: RequestInit) => {
+      const u = new URL(String(input)), m = init?.method ?? "GET"
+      seen.push(`${m} ${u.pathname}${u.search}${typeof init?.body === "string" ? ` ${init.body}` : ""}`)
+      const body = u.pathname === "/sessions" ? { sessions: [S] } : u.pathname.startsWith("/sessions") ? S : u.pathname === "/nudge" ? { ok: true }
+        : u.pathname === "/health" ? { ok: true, commit: null } : m === "DELETE" ? { deleted: true } : u.pathname === "/triggers" && m === "GET" ? { triggers: [T] } : T
+      return new Response(JSON.stringify(body), { status: m === "POST" && u.pathname === "/nudge" ? 202 : m === "POST" && u.pathname === "/triggers" ? 201 : 200 })
+    }) as typeof fetch
+    const c = new SubstrateClient({ url: "http://f", token: "t", fetch: f })
+    expect(await c.sessions({ project: "desk", thread: "T-9" })).toEqual([S])
+    expect(await c.session("s1")).toEqual(S)
+    await c.patchSession("s1", { model: "m2" })
+    await c.stopSession("s1")
+    expect(await c.nudge()).toEqual({ ok: true })
+    expect(await c.triggers({ project: "desk" })).toEqual([T])
+    await c.trigger(T.id)
+    await c.createTrigger({ kind: "routine", project: "desk", thread: "T-9", persistent_session_id: "s1", prompt: "p", cron_expression: "* * * * *", creator: "cli", name: "n" })
+    await c.updateTrigger(T.id, { enabled: false })
+    expect(await c.deleteTrigger(T.id)).toEqual({ deleted: true })
+    expect(await c.health()).toEqual({ ok: true, commit: null })
+    expect(seen).toEqual(["GET /sessions?project=desk&thread=T-9", "GET /sessions/s1", "PATCH /sessions/s1 {\"model\":\"m2\"}", "POST /sessions/s1/stop", "POST /nudge {}",
+      "GET /triggers?project=desk", `GET /triggers/${T.id}`,
+      "POST /triggers {\"kind\":\"routine\",\"project\":\"desk\",\"thread\":\"T-9\",\"persistent_session_id\":\"s1\",\"prompt\":\"p\",\"cron_expression\":\"* * * * *\",\"creator\":\"cli\",\"name\":\"n\"}",
+      `PATCH /triggers/${T.id} {"enabled":false}`, `DELETE /triggers/${T.id}`, "GET /health"])
+  })
+})
+
 describe("config", () => {
   it("reads the file, expands ~, lets the environment override, and refuses a loose secret file", () => {
     const home = mkdtempSync(join(tmpdir(), "substrate-home-"))

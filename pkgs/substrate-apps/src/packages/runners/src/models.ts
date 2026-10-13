@@ -246,3 +246,8 @@ export function entryFor(list: ModelAllowlist, harness: HarnessName, id: string 
   const want = harness === "pi" ? (provider ?? "halogen") : undefined;
   return list.find((e) => e.harness === harness && providerOf(e) === want && e.id === id);
 }
+
+/** The catalog entry a model names, by full id, else by alias (any harness): what an agent session's runtime is resolved from. */
+export function catalogEntry(list: ModelAllowlist, model: string): ModelEntry | undefined {
+  return list.find((e) => e.id === model) ?? list.find((e) => (e.aliases ?? []).some((a) => a.toLowerCase() === model.toLowerCase()));
+}

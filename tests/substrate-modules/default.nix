@@ -186,6 +186,8 @@ pkgs.runCommand "substrate-modules"
     # store copy only when it is absent (an existing file is Tom's and is never overwritten) and never rewrites it.
     assert rt["models_file"] == "/home/tom/.config/substrate/models.toml", rt.get("models_file")
     assert 'models_file = "/home/tom/.config/substrate/models.toml"' in open(sys.argv[2]).read()
+    # The project MCP for substrate sessions (projects build, EXCHANGE.md section 8): the CLI out-link's binary, a URL and a token path.
+    assert rt["sessions"] == {"project_bin": "/home/tom/.local/state/agency/project/cli/bin/project", "project_url": "https://project.mecattaf.dev", "project_token_file": "/home/tom/.config/project/token"}, rt.get("sessions")
     assert "substrate-models-seed" in start and "models.toml" in start, "the start script must seed the catalog"
     assert re.search(r'if \[ ! -e "\$models" \]', start), "seed only when absent"
     assert "install -m 600" in start, "the seeded catalog is private to the user"

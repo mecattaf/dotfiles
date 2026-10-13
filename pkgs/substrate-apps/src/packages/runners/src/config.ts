@@ -36,7 +36,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { Schema } from "effect";
 import { parse as parseToml } from "smol-toml";
-import { loadModelsFile, modelAllowlistProblems, ModelEntrySchema, ModelsFileError, type ModelAllowlist } from "./models.ts";
+import { catalogEntry, loadModelsFile, modelAllowlistProblems, ModelEntrySchema, ModelsFileError, type ModelAllowlist } from "./models.ts";
 import { PI_PROVIDER_NAMES, PI_PROVIDERS, type PiProvider } from "./harness.ts";
 
 const Harness = Schema.Literals(["claude", "pi", "codex"]);
@@ -246,6 +246,16 @@ export const RuntimesFile = Schema.Struct({
     pre_exit: Schema.optionalKey(Schema.Array(Schema.String)),
     timeout_ms: Schema.optionalKey(Schema.Number),
   })),
+  /**
+   * Agent sessions (sessions chapter, 2026-10-12): the one `project` MCP every session turn gets. `project_bin`
+   * (default `project`) is started as `<project_bin> mcp`; `project_url` and `project_token_file` reach it, and the
+   * harness, as PROJECT_URL and PROJECT_TOKEN_FILE. Without this table an agent({session}) call is refused.
+   */
+  sessions: Schema.optionalKey(Schema.Struct({
+    project_bin: Schema.optionalKey(Schema.String),
+    project_url: Schema.String,
+    project_token_file: Schema.String,
+  })),
 });
 export type RuntimesFile = typeof RuntimesFile.Type;
 
@@ -281,6 +291,8 @@ export interface RuntimesConfig {
   readonly cancelGraceMs?: number;
   /** G-BK8: operator lifecycle hooks. */
   readonly hooks?: { readonly preStart?: readonly string[]; readonly preExit?: readonly string[]; readonly timeoutMs?: number };
+  /** `[sessions]`: the project MCP of agent({session}) calls; absent, such a call is refused. */
+  readonly sessions?: { readonly projectBin: string; readonly projectUrl: string; readonly projectTokenFile: string };
 }
 
 export const DEFAULT_PATH = "~/.config/substrate/runtimes.toml";
@@ -356,6 +368,11 @@ export function decodeRuntimes(doc: unknown, source: string, home = homedir()): 
       ...(file.hooks.pre_start?.length ? { preStart: file.hooks.pre_start } : {}),
       ...(file.hooks.pre_exit?.length ? { preExit: file.hooks.pre_exit } : {}),
       ...(file.hooks.timeout_ms !== undefined ? { timeoutMs: file.hooks.timeout_ms } : {}),
+    } } : {}),
+    ...(file.sessions !== undefined ? { sessions: {
+      projectBin: expandHome(file.sessions.project_bin ?? "project", home),
+      projectUrl: file.sessions.project_url,
+      projectTokenFile: expandHome(file.sessions.project_token_file, home),
     } } : {}),
   };
   const problems: string[] = [...(file.models !== undefined ? modelAllowlistProblems(file.models) : [])];
@@ -438,8 +455,9 @@ export function loadRuntimes(path?: string, home = homedir()): RuntimesConfig {
 export interface Selection {
   readonly name: string;
   readonly runtime: Runtime;
-  /** `seat`: the call named a seat (agent({seat}) or runs-on seat:X) and this is the one runtime that spends it. */
-  readonly via: "call" | "phase" | "default" | "seat";
+  /** `seat`: the call named a seat (agent({seat}) or runs-on seat:X) and this is the one runtime that spends it.
+   *  `model`: an agent({session}) call named no runtime and its model's catalog entry picked it (sessionRuntime). */
+  readonly via: "call" | "phase" | "default" | "seat" | "model";
 }
 
 /** Pick the runtime for one agent() call. Throws when the call or phase names an unknown runtime. */
@@ -703,4 +721,32 @@ export function selectForCall(config: RuntimesConfig, call: CallRoute, defaultSe
   }
   if (matches.length > 1) refuse(`seat ${seat} is spent by ${matches.length} permitted runtimes (${matches.map((m) => m.name).join(", ")}); name one with agent({runtime})`);
   return { ...matches[0]!, via: "seat" };
+}
+
+/**
+ * The runtime of an agent({session}) call that names none (sessions chapter, correction 12): the model's catalog entry
+ * gives its harness and pi provider, and the first host runtime this file permits the call (the default, then the
+ * tables in file order, then the allow list) whose harness is that one and whose pi provider serves the model runs it.
+ * A session pinned to a harness (`harness`) never moves to another, and no session runs on codex (04 3.2); either is a
+ * refusal naming the reason, as is a model the catalog does not list or no runtime fits.
+ */
+export function sessionRuntime(config: RuntimesConfig, catalog: ModelAllowlist, model: unknown, harness: unknown, phase?: string): Selection {
+  const refuse = (why: string): never => {
+    throw new RuntimesConfigError(`agent({session}) route refused: ${why} (${config.source})`);
+  };
+  if (typeof model !== "string") return refuse("a session call that names no runtime must name its model");
+  const entry = catalogEntry(catalog, model) ?? refuse(`model ${model} has no catalog entry, so no harness is known to serve it`);
+  if (entry.harness === "codex") refuse(`model ${model} is served by the codex harness, which runs no session`);
+  if (typeof harness === "string" && harness !== entry.harness) refuse(`model ${model} is served by the ${entry.harness} harness; this session runs on ${harness}`);
+  const provider = entry.harness === "pi" ? (entry.provider ?? "halogen") : undefined;
+  for (const n of new Set([config.default, ...Object.keys(config.runtimes), ...(config.allow ?? [])])) {
+    let sel: Selection;
+    try {
+      sel = selectRuntime(config, { runtime: n, phase });
+    } catch {
+      continue; // not permitted to this call
+    }
+    if (sel.runtime.type === "host" && harnessOf(sel.runtime) === entry.harness && piProviderOf(sel.runtime) === provider) return { ...sel, via: "model" };
+  }
+  return refuse(`no host runtime this file permits serves model ${model} (harness ${entry.harness}${provider !== undefined ? `, pi provider ${provider}` : ""})`);
 }

@@ -74,7 +74,10 @@ export type FloorEvent = typeof FloorEvent.Type
 export const ScriptSubmit = Schema.Struct({
   script: Schema.String.annotate({ description: "An ultracode workflow script whose `export const meta` is a pure literal." }),
   args: Schema.optionalKey(Schema.Unknown),
-  id: Schema.optionalKey(Schema.String.annotate({ description: "6 to 40 lowercase letters or digits; makes the submit idempotent." }))
+  id: Schema.optionalKey(Schema.String.annotate({ description: "6 to 40 lowercase letters or digits; makes the submit idempotent." })),
+  priority: Schema.optionalKey(Schema.Number.annotate({ description: "0 build, 1 normal (the default), 2 routine; runs and their jobs lease in (priority, seq) order." })),
+  project: Schema.optionalKey(Schema.String.annotate({ description: "With thread: the project whose thread the run's end is reported to." })),
+  thread: Schema.optionalKey(Schema.String.annotate({ description: "With project: the thread the run's end is reported to (\"\" for the project's top level)." }))
 }).annotate({ identifier: "ScriptSubmit" })
 export const JobsSubmit = Schema.Struct({
   jobs: Schema.Array(AgentJob),
@@ -117,5 +120,66 @@ export const Holder = Schema.Struct({
 }).annotate({ identifier: "Holder", description: "A puller or link: anything that leases over /rpc." })
 export type Holder = typeof Holder.Type
 
-export const FloorState = Schema.Struct({ stats: Schema.Unknown, runWip: Schema.Unknown, alarm: Schema.Unknown, config: Schema.Unknown })
+export const FloorState = Schema.Struct({ stats: Schema.Unknown, runWip: Schema.Unknown, alarm: Schema.Unknown, config: Schema.Unknown,
+  schema_version: Schema.optionalKey(Schema.Number.annotate({ description: "The last FLOOR_MIGRATIONS version applied to the floor's SQLite." })) })
 export type FloorState = typeof FloorState.Type
+
+// ---------------------------------------------------------------- sessions chapter (2026-10-12): agent sessions and the clock
+// Field names are the floor's own and Claude's (EXCHANGE section 7): times are ISO 8601 UTC strings.
+export const PostTurnSummary = Schema.Struct({
+  title: Schema.String, description: Schema.optionalKey(Schema.String),
+  status_category: Schema.String.annotate({ description: "need_input, in_progress or completed; failed is written by the floor only, for a turn that ended with no valid summary." }),
+  status_detail: Schema.String, needs_action: Schema.String, recent_action: Schema.String, is_noteworthy: Schema.Boolean
+}).annotate({ identifier: "PostTurnSummary", description: "What a session answers at the end of each turn." })
+export type PostTurnSummary = typeof PostTurnSummary.Type
+export const SessionUsage = Schema.Struct({
+  input_tokens: Schema.Number, output_tokens: Schema.Number, cache_read_tokens: Schema.Number, cache_write_tokens: Schema.Number, cost_usd: Schema.Number
+}).annotate({ identifier: "SessionUsage", description: "Cumulative over the session's completed turns; a count the harness does not report counts 0." })
+export type SessionUsage = typeof SessionUsage.Type
+export const SessionView = Schema.Struct({
+  id: Schema.String, project: Schema.String,
+  thread: Schema.String.annotate({ description: "T-<n>, or \"\" for the project's coordinator." }),
+  harness: Schema.NullOr(Schema.String).annotate({ description: "Pinned by the first turn from the model's catalog entry; null before." }),
+  harness_session_id: Schema.String.annotate({ description: "The harness's own session id, resumed on every turn." }),
+  model: Schema.String, effort: Schema.NullOr(Schema.String), cwd: Schema.NullOr(Schema.String),
+  worker_status: Schema.String.annotate({ description: "idle, queued (a turn run waits for a slot) or running." }),
+  post_turn_summary: Schema.NullOr(PostTurnSummary), usage: Schema.NullOr(SessionUsage),
+  transcript: Schema.NullOr(Schema.String).annotate({ description: "The harness session file's path on the host that ran the turns." }),
+  turn: Schema.Number.annotate({ description: "Completed turns; a failed turn does not advance it." }),
+  stopped: Schema.Boolean, created_at: Schema.String, last_event_at: Schema.String
+}).annotate({ identifier: "SessionView", description: "One agent session: a project's coordinator, a thread's session or a routine's." })
+export type SessionView = typeof SessionView.Type
+export const SessionPatch = Schema.Struct({ model: Schema.optionalKey(Schema.String), effort: Schema.optionalKey(Schema.String) })
+  .annotate({ identifier: "SessionPatch", description: "The next turn uses them; the harness never changes." })
+export type SessionPatch = typeof SessionPatch.Type
+
+export const TriggerView = Schema.Struct({
+  id: Schema.String.annotate({ description: "trig_ and 16 hex characters." }),
+  name: Schema.NullOr(Schema.String), project: Schema.String,
+  kind: Schema.String.annotate({ description: "routine or send_later." }),
+  thread: Schema.String, persistent_session_id: Schema.NullOr(Schema.String), prompt: Schema.NullOr(Schema.String),
+  cron_expression: Schema.NullOr(Schema.String), timezone: Schema.NullOr(Schema.String), message: Schema.NullOr(Schema.String),
+  run_at: Schema.NullOr(Schema.String), enabled: Schema.Boolean, suspension_reason: Schema.NullOr(Schema.String),
+  next_run_at: Schema.NullOr(Schema.String), last_run_at: Schema.NullOr(Schema.String), creator: Schema.NullOr(Schema.String), created_at: Schema.String
+}).annotate({ identifier: "TriggerView", description: "A routine (cron_expression in timezone, firing prompt into persistent_session_id) or a send_later (message at run_at)." })
+export type TriggerView = typeof TriggerView.Type
+export const RoutineCreate = Schema.Struct({
+  kind: Schema.Literal("routine"), project: Schema.String, thread: Schema.String, persistent_session_id: Schema.String, prompt: Schema.String,
+  cron_expression: Schema.String.annotate({ description: "Five fields: minute hour day-of-month month day-of-week." }),
+  timezone: Schema.optionalKey(Schema.String.annotate({ description: "An IANA zone; Europe/Paris by default." })),
+  enabled: Schema.optionalKey(Schema.Boolean), creator: Schema.String, name: Schema.optionalKey(Schema.String)
+}).annotate({ identifier: "RoutineCreate" })
+export const SendLaterCreate = Schema.Struct({
+  kind: Schema.Literal("send_later"), project: Schema.String, thread: Schema.String, message: Schema.String,
+  run_at: Schema.String.annotate({ description: "ISO 8601 with an offset or Z." }), creator: Schema.String
+}).annotate({ identifier: "SendLaterCreate" })
+export const TriggerCreate = Schema.Union([RoutineCreate, SendLaterCreate]).annotate({ identifier: "TriggerCreate" })
+export type TriggerCreate = typeof TriggerCreate.Type
+export const TriggerPatch = Schema.Struct({
+  enabled: Schema.optionalKey(Schema.Boolean), prompt: Schema.optionalKey(Schema.String), cron_expression: Schema.optionalKey(Schema.String),
+  timezone: Schema.optionalKey(Schema.String), name: Schema.optionalKey(Schema.String)
+}).annotate({ identifier: "TriggerPatch" })
+export type TriggerPatch = typeof TriggerPatch.Type
+export const Health = Schema.Struct({ ok: Schema.Boolean, commit: Schema.NullOr(Schema.String) })
+  .annotate({ identifier: "Health", description: "The deployed git sha (var BUILD_COMMIT), null when the deploy set none." })
+export type Health = typeof Health.Type

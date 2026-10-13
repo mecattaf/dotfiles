@@ -40,6 +40,10 @@ const JobReply = Schema.Struct({ job: S.JobView })
 const EventsReply = Schema.Struct({ events: Schema.Array(S.FloorEvent) })
 const HoldersReply = Schema.Struct({ holders: Schema.Array(S.Holder) })
 const PauseReply = Schema.Struct({ holder: Schema.String, paused: Schema.Boolean })
+const SessionsReply = Schema.Struct({ sessions: Schema.Array(S.SessionView) })
+const TriggersReply = Schema.Struct({ triggers: Schema.Array(S.TriggerView) })
+const OkReply = Schema.Struct({ ok: Schema.Boolean })
+const DeletedReply = Schema.Struct({ deleted: Schema.Boolean })
 
 export class SubstrateClient {
   readonly url: string
@@ -84,7 +88,7 @@ export class SubstrateClient {
   // ---- runs
   /** Submit a workflow script (source text) or AgentJobs. Idempotent when `id` is given. */
   async submit(req: S.SubmitRequest): Promise<S.SubmitReply> { return decode(S.SubmitReply, await this.json("POST", "/runs", req), "submit") }
-  submitScript(script: string, o: { args?: unknown; id?: string } = {}): Promise<S.SubmitReply> { return this.submit({ script, ...o }) }
+  submitScript(script: string, o: { args?: unknown; id?: string; priority?: number; project?: string; thread?: string } = {}): Promise<S.SubmitReply> { return this.submit({ script, ...o }) }
   submitJobs(jobs: ReadonlyArray<S.AgentJob>, o: { name?: string; id?: string } = {}): Promise<S.SubmitReply> { return this.submit({ jobs, ...o }) }
   async runs(o: { limit?: number } = {}): Promise<ReadonlyArray<S.RunView>> { return decode(RunsReply, await this.json("GET", `/runs?limit=${o.limit ?? 50}`), "runs").runs }
   async run(id: string): Promise<S.RunView> { return decode(RunReply, await this.json("GET", `/runs/${this.p(id)}`), "run").run }
@@ -168,7 +172,30 @@ export class SubstrateClient {
   async pausePuller(holder: string): Promise<{ holder: string; paused: boolean }> { return decode(PauseReply, await this.json("POST", `/holders/${this.p(holder)}/pause`), "pause") }
   async resumePuller(holder: string): Promise<{ holder: string; paused: boolean }> { return decode(PauseReply, await this.json("POST", `/holders/${this.p(holder)}/resume`), "resume") }
 
+  // ---- agent sessions (sessions chapter): the floor's record of every session, a model or effort change, a stop
+  async sessions(o: { project?: string; thread?: string } = {}): Promise<ReadonlyArray<S.SessionView>> {
+    const q = new URLSearchParams({ ...(o.project !== undefined ? { project: o.project } : {}), ...(o.thread !== undefined ? { thread: o.thread } : {}) }).toString()
+    return decode(SessionsReply, await this.json("GET", `/sessions${q ? `?${q}` : ""}`), "sessions").sessions
+  }
+  async session(id: string): Promise<S.SessionView> { return decode(S.SessionView, await this.json("GET", `/sessions/${this.p(id)}`), "session") }
+  /** The next turn uses the new model or effort; the harness never changes. */
+  async patchSession(id: string, patch: S.SessionPatch): Promise<S.SessionView> { return decode(S.SessionView, await this.json("PATCH", `/sessions/${this.p(id)}`, patch), "patchSession") }
+  async stopSession(id: string): Promise<S.SessionView> { return decode(S.SessionView, await this.json("POST", `/sessions/${this.p(id)}/stop`), "stopSession") }
+  /** The project tool's call after a write that produced a feed row: the alarm fires now. */
+  async nudge(): Promise<{ ok: boolean }> { return decode(OkReply, await this.json("POST", "/nudge", {}), "nudge") }
+
+  // ---- triggers (routines and send_later), under Claude's names
+  async triggers(o: { project?: string } = {}): Promise<ReadonlyArray<S.TriggerView>> {
+    return decode(TriggersReply, await this.json("GET", `/triggers${o.project !== undefined ? `?project=${this.p(o.project)}` : ""}`), "triggers").triggers
+  }
+  async trigger(id: string): Promise<S.TriggerView> { return decode(S.TriggerView, await this.json("GET", `/triggers/${this.p(id)}`), "trigger") }
+  async createTrigger(t: S.TriggerCreate): Promise<S.TriggerView> { return decode(S.TriggerView, await this.json("POST", "/triggers", t), "createTrigger") }
+  async updateTrigger(id: string, patch: S.TriggerPatch): Promise<S.TriggerView> { return decode(S.TriggerView, await this.json("PATCH", `/triggers/${this.p(id)}`, patch), "updateTrigger") }
+  async deleteTrigger(id: string): Promise<{ deleted: boolean }> { return decode(DeletedReply, await this.json("DELETE", `/triggers/${this.p(id)}`), "deleteTrigger") }
+
   // ---- floor
   async floorState(): Promise<S.FloorState> { return decode(S.FloorState, await this.json("GET", "/floor/state"), "floorState") }
+  /** The deployed commit (var BUILD_COMMIT), null when the deploy set none. */
+  async health(): Promise<S.Health> { return decode(S.Health, await this.json("GET", "/health"), "health") }
   async openapi(): Promise<Record<string, unknown>> { return await this.json("GET", "/openapi.json") as Record<string, unknown> }
 }

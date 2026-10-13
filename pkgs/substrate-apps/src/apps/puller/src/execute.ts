@@ -152,6 +152,9 @@ const runLocal = async (o: LocalOptions, t: Parameters<Executor>[0]): ReturnType
     output: {
       runId: t.runId, interpreterRunId: run.runId, resumed: run.resumed, outcome: run.outcome, callCounts: run.callCounts, dispatched: run.dispatched,
       status: run.result.status, result: run.result.result ?? null, error: run.result.error ?? null,
+      // the sessions chapter: per call, the harness session id, usage, route and session file, in call order; the
+      // floor ends a turn from calls[0] (an old puller's verdict without it fails the turn, puller/no-calls)
+      calls: run.calls,
       ...(transcripts !== undefined ? { transcripts } : {}),
       ...(ok ? {} : { reason: "agent/script-failed", message: run.result.error ?? `the run ended ${run.outcome}` })
     }
@@ -279,6 +282,9 @@ export class FloorBackend implements Backend {
     }
   }
   async run(call: AgentCall): Promise<AgentOutcome> {
+    // an AgentJob carries no session, so a floor node would be a fresh harness with no resume and no project MCP:
+    // agent({session}) is refused here, before nodeJob would drop it, and spends no model call (sessions chapter)
+    if (call.opts.session !== undefined) return { error: "agent({session}) runs only with [puller] node_dispatch = \"local\"" }
     let job: AgentJob
     try { job = nodeJob(call, this.o) } catch (e) { if (e instanceof RouteRefused) return { error: e.message }; throw e }
     const name = job.metadata.name

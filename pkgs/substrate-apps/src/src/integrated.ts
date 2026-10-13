@@ -24,6 +24,7 @@
  *   <dir>/jobs/<id>.proc.json  the runner-side record of a local child's group
  *   <dir>/jobs/<runId>-c<hash>o<occurrence>-a<n>.outcome.json  a finished attempt's outcome, adopted by a resume
  *                        that finds no journal line for it (C3-4)
+ *   <dir>/prompts/<sha256>.md  a prompt over the Task's 16384-byte inline env budget, on the prompt-file route
  *   <dir>/record.json    the run record, written when the run ends
  *   <dir>/result.json    status, return value, per-call states, written when the run ends
  */
@@ -139,6 +140,22 @@ export interface IntegratedRun {
   /** How many calls reached the runner in THIS process (cache hits never do). */
   readonly dispatched: number;
   readonly dir: string;
+  /**
+   * Sessions chapter (2026-10-12): per agent() call, in call order, what the runner reported of the harness: its
+   * session id, its usage (the runner's Usage names, costUsd included), the runtime and harness that served it and its
+   * session file. The puller's verdict carries it to the floor as `output.calls`; the script never sees it.
+   */
+  readonly calls: ReadonlyArray<CallReport>;
+}
+
+/** One entry of IntegratedRun.calls; a field the runner did not report is absent. `error` is why the call returned
+ *  null (the runner's or the admission's reason), which the floor shows as a failed turn's status_detail. */
+export interface CallReport {
+  readonly harnessSessionId?: string;
+  readonly usage?: Readonly<Record<string, number>>;
+  readonly route?: { readonly runtime?: string; readonly harness?: string };
+  readonly sessionFile?: string;
+  readonly error?: string;
 }
 
 interface RunMeta {
@@ -347,6 +364,18 @@ async function runLocked(
     ...(o.capacityWait ? { capacityWait: o.capacityWait } : {}),
     ...(o.machineSlots ? { machineSlots: o.machineSlots } : {}),
     ledgerSink: { append: (e) => appendFileSync(ledgerPath, JSON.stringify(e) + "\n") },
+    // FM-2's prompt-file route: a prompt over the Task's inline env budget (a session's turn carries every pending
+    // envelope, a first turn its context and MEMORY.md) is written once under the run dir and the Task names that file;
+    // without the route Conwip refuses such a call before it runs (integration pass 2026-10-13). A host runtime reads
+    // the prompt from stdin as before; the admission and the size checks are unchanged.
+    promptFile: (sha256, _key8, prompt) => {
+      const path = join(dir, "prompts", `${sha256}.md`);
+      if (!existsSync(path)) {
+        mkdirSync(join(dir, "prompts"), { recursive: true, mode: 0o700 });
+        writeAtomic(path, prompt);
+      }
+      return path;
+    },
   });
   const conwipBackend = conwip.asBackend();
 
@@ -382,7 +411,10 @@ async function runLocked(
     // runtime this call selects, not the script's pin (fable, sonnet, ...).
     modelPolicy: (declared, c) => {
       try {
-        return routeOf({ opts: (c.opts ?? {}) as InterpreterOpts & { runtime?: unknown }, phase: c.phase }).model;
+        const r = backend.route({ opts: (c.opts ?? {}) as InterpreterOpts & { runtime?: unknown }, phase: c.phase });
+        // a session call its runtime cannot serve keeps the model it asked for: the runner refuses it with the receipt
+        // (C2.1) and never runs the runtime's default in its place (EXCHANGE section 7)
+        return r.sessionRefused !== undefined ? declared : r.model;
       } catch {
         return declared; // a refused runtime is refused at admission, as an outcome
       }
@@ -431,5 +463,10 @@ async function runLocked(
       2,
     ) + "\n",
   );
-  return { runId, resumed, result, outcome: done.outcome, exitCode: done.code, callCounts: done.counts, dispatched, dir };
+  const calls = result.calls.map((c): CallReport => ({
+    ...(c.harnessSessionId !== undefined ? { harnessSessionId: c.harnessSessionId } : {}), ...(c.usage !== undefined ? { usage: c.usage } : {}),
+    ...(c.route !== undefined ? { route: c.route } : {}), ...(c.sessionFile !== undefined ? { sessionFile: c.sessionFile } : {}),
+    ...(c.error !== undefined ? { error: c.error } : {}),
+  }));
+  return { runId, resumed, result, outcome: done.outcome, exitCode: done.code, callCounts: done.counts, dispatched, dir, calls };
 }

@@ -536,6 +536,15 @@ in
           default = "opus";
           # The model catalog lives outside the store (puller.modelsFile); the runners re-read it on every call.
           models_file = cfg.puller.modelsFile;
+          # The project MCP for substrate sessions (projects build 2026-10-12, EXCHANGE.md section 8): the runner
+          # writes each session's MCP config from these. project_bin is the CLI out-link's own binary by absolute path
+          # (nix build --out-link, pattern B), so the MCP launch depends on neither PATH nor HOME; the token is a
+          # path, never a value (0600, read as this user). root and codex keep the loader's defaults.
+          sessions = {
+            project_bin = "${home}/.local/state/agency/project/cli/bin/project";
+            project_url = "https://project.mecattaf.dev";
+            project_token_file = "${home}/.config/project/token";
+          };
           allow = [
             "opus"
             "halogen"
@@ -633,7 +642,7 @@ in
           }
           // sshRuntimeTables;
         };
-        description = "The runtimes file (packages/runners/src/config.ts), rendered to TOML and named by [puller].runtimes (and AX_CONWIP_RUNTIMES). Default: the shape proven live on 2026-09-24, plus models_file = puller.modelsFile (2026-10-10). opus (host, claude on claudeSeat), halogen (host, pi against the worker's Halogen server), codex (read-only) and codex-rw (workspace-write), default opus, each claude seat bound to its config dir in [credentials.seats], plus one ssh table per puller.sshRuntimes entry (on allow too). herdr and gvisor tables are not declared by default (never exercised); override this option to add them, and restate the ssh tables when you do.";
+        description = "The runtimes file (packages/runners/src/config.ts), rendered to TOML and named by [puller].runtimes (and AX_CONWIP_RUNTIMES). Default: the shape proven live on 2026-09-24, plus models_file = puller.modelsFile (2026-10-10), plus [sessions], the project MCP for substrate sessions (project_bin, project_url, project_token_file) (2026-10-13). opus (host, claude on claudeSeat), halogen (host, pi against the worker's Halogen server), codex (read-only) and codex-rw (workspace-write), default opus, each claude seat bound to its config dir in [credentials.seats], plus one ssh table per puller.sshRuntimes entry (on allow too). herdr and gvisor tables are not declared by default (never exercised); override this option to add them, and restate the ssh tables when you do.";
       };
 
       runtimesFile = mkOption {

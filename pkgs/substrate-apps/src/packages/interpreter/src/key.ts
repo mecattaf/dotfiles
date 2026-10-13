@@ -92,7 +92,9 @@ export function contentHash(prompt: string, opts: Record<string, unknown> | unde
   return h.digest("hex");
 }
 
-const ROUTE_OPTS = ["runtime", "seat", "runsOn"] as const;
+// The sessions chapter (2026-10-12) adds `session`: two turns of one prompt on different agent sessions are different
+// calls. A call without it keeps its content id, so every existing journal replays as before.
+const ROUTE_OPTS = ["runtime", "seat", "runsOn", "session"] as const;
 /** The routing subset of opts (not part of the harness chain key), serialized canonically. */
 export function routeOpts(opts: Record<string, unknown> | undefined | null): string {
   if (!opts) return "{}";

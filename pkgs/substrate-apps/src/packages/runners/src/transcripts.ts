@@ -195,6 +195,11 @@ export function findCodexRollout(codexHome: string, threadId: string): string | 
   return hits[0];
 }
 
+/** A pi session file by id under a session's own dir: `<dir>/[...]/<timestamp>_<id>.jsonl` (pi docs/session-format.md). */
+export function findPiSession(dir: string, sessionId: string): string | undefined {
+  return walk(dir, (rel) => rel.endsWith(`_${sessionId}.jsonl`), 1, 2)[0];
+}
+
 /** Sum of a job's archive, for the receipt. */
 export const transcriptSummary = (files: readonly TranscriptFile[]) =>
   files.map((f) => ({ name: f.name, path: f.path, bytes: f.bytes, sha256: f.sha256, source: f.source, ...(f.truncated ? { truncated: true } : {}) }));

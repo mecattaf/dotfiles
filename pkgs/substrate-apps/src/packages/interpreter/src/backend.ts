@@ -71,6 +71,10 @@ export interface AgentOutcome {
   readonly skipped?: boolean;
   /** The backend refused to run the call because the run's budget was spent at admission. */
   readonly budgetExhausted?: boolean;
+  /** agent({session}) (sessions chapter): the runtime and harness that served the call. */
+  readonly route?: { readonly runtime?: string; readonly harness?: string };
+  /** agent({session}): the harness session file's path on the host that ran the call. */
+  readonly sessionFile?: string;
 }
 
 export interface Backend {

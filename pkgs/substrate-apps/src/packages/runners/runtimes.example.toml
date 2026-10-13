@@ -142,3 +142,15 @@ type = "ax"                   # spec only: writes the Task an ax dispatch would 
 # Host-side pi jobs save their session in the job's shadow (`--session-dir`) and it is archived
 # with the transcripts (~/.local/state/substrate/transcripts/<run>/<job>/pi-*.jsonl), which is
 # what the seats oracle reads to count factory spend on a credit-metered seat.
+
+# Agent sessions (sessions chapter, 2026-10-12): agent({session: {id, harnessSessionId, cwd?, role, harness?}})
+# resumes the harness session by id (claude --session-id then --resume, pi --session-id) in
+# <transcript root>/sessions/<id>/, whose cwd/ is the session's cwd on every turn, with the one
+# `project` MCP: `<project_bin> mcp` with PROJECT_URL, PROJECT_TOKEN_FILE, PROJECT_SESSION_ID and
+# PROJECT_ROLE, also set on the harness. A session call naming no runtime runs on the first host
+# runtime of its model's catalog harness and pi provider, never on codex. Without this table a
+# session call is refused.
+# [sessions]
+# project_bin = "project"                              # the default
+# project_url = "https://project.example.dev"
+# project_token_file = "~/.config/project/token"
