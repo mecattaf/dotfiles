@@ -43,8 +43,6 @@ Generated from openapi.json (API version 0.1.0) by `pnpm gen:reference`. Do not 
 | `deals.reopen` | `POST /v1/deals/{ref}/reopen` | W | 0, 1, 2, 3, 4, 5, 6 |
 | `deals.unarchive` | `POST /v1/deals/{ref}/unarchive` | W | 0, 1, 2, 3, 4, 5, 6 |
 | `deals.win` | `POST /v1/deals/{ref}/win` | W | 0, 1, 2, 3, 4, 5, 6 |
-| `doctor` | `GET /v1/doctor` | R | 0, 1, 5, 6 |
-| `doctor.rebuild_fts` | `POST /v1/doctor/rebuild-fts` | W | 0, 1, 4, 5, 6 |
 | `dupes` | `GET /v1/dupes` | R | 0, 1, 5, 6 |
 | `dupes.verdicts.clear` | `DELETE /v1/dupes/verdicts/{entity}/{left}/{right}` | W | 0, 1, 2, 3, 4, 5, 6 |
 | `dupes.verdicts.list` | `GET /v1/dupes/verdicts` | R | 0, 1, 5, 6 |
@@ -151,7 +149,7 @@ Generated from openapi.json (API version 0.1.0) by `pnpm gen:reference`. Do not 
 
 `POST /v1/attachments/{ref}/archive`: Archive an attachment (the R2 object is kept)
 
-Archives the attachment: it leaves attachments.list and the attachments of its record, stays readable by attachments.get and attachments.content, and its R2 object is kept as evidence of record (doctor reports an object whose rows are all archived as retained, never orphan). The same bytes may then be attached again. Archiving an archived attachment answers 409 state_conflict (exit 4). There is no unarchive. Every attachment route answers 503 storage_unavailable (exit 5) when this deployment has no FILES (R2) binding (GET /v1/whoami features.files). Every mutation accepts dry_run=1 (also with the read-only token): nothing is written, the projected record comes back with dry_run true and planned_changes. Send an Idempotency-Key to make a retry safe.
+Archives the attachment: it leaves attachments.list and the attachments of its record, stays readable by attachments.get and attachments.content, and its R2 object is kept as evidence of record. The same bytes may then be attached again. Archiving an archived attachment answers 409 state_conflict (exit 4). There is no unarchive. Every attachment route answers 503 storage_unavailable (exit 5) when this deployment has no FILES (R2) binding (GET /v1/whoami features.files). Every mutation accepts dry_run=1 (also with the read-only token): nothing is written, the projected record comes back with dry_run true and planned_changes. Send an Idempotency-Key to make a retry safe.
 
 | parameter | in | required | type | description |
 |---|---|---|---|---|
@@ -172,9 +170,8 @@ Archives the attachment: it leaves attachments.list and the attachments of its r
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served; storage_unavailable (exit 5): FILES (R2) binding absent | Error |
 
@@ -182,7 +179,7 @@ Archives the attachment: it leaves attachments.list and the attachments of its r
 
 `GET /v1/attachments/{ref}/content`: Stream an attachment's bytes
 
-Streams the R2 object of the attachment (live or archived: archive keeps the object) with its stored Content-Type, Content-Length, ETag "<sha256>" and Content-Disposition attachment with the stored filename. A row whose R2 object is missing answers 404 not_found (doctor check r2_missing lists them; uploading the same file to the same target again restores the object). Every attachment route answers 503 storage_unavailable (exit 5) when this deployment has no FILES (R2) binding (GET /v1/whoami features.files).
+Streams the R2 object of the attachment (live or archived: archive keeps the object) with its stored Content-Type, Content-Length, ETag "<sha256>" and Content-Disposition attachment with the stored filename. A row whose R2 object is missing answers 404 not_found (uploading the same file to the same target again restores the object). Every attachment route answers 503 storage_unavailable (exit 5) when this deployment has no FILES (R2) binding (GET /v1/whoami features.files).
 
 | parameter | in | required | type | description |
 |---|---|---|---|---|
@@ -209,7 +206,7 @@ Streams the R2 object of the attachment (live or archived: archive keeps the obj
 
 `POST /v1/attachments`: Attach a file to an org, contact, deal or interaction
 
-Takes a multipart/form-data body: file (required; the part's filename and Content-Type are kept), ref (required: the org, contact, deal or interaction, o4, c12, d3, i43 or any resolver input), note (at most 2000 characters) and source (at most 200). The bytes go to R2 under attachments/<sha256> (content-addressed), then the row and its journal (create on the attachment, attach on the target) are written in one batch. A file over MAX_UPLOAD_BYTES (GET /v1/schema limits.max_upload_bytes) answers 413 payload_too_large before anything is stored. The same bytes already live on the same target answer 200 with outcome unchanged and the existing attachment (a safe retry, even without an Idempotency-Key; a missing R2 object is restored); the same bytes live on another target answer 409 uniqueness_conflict naming that attachment in candidates (archive it first). An archived target answers 409 state_conflict. A request that failed after the bytes reached R2 leaves an object doctor reports as orphan until the same upload is retried. Answers 201 with outcome created. Every attachment route answers 503 storage_unavailable (exit 5) when this deployment has no FILES (R2) binding (GET /v1/whoami features.files). Every mutation accepts dry_run=1 (also with the read-only token): nothing is written, the projected record comes back with dry_run true and planned_changes. Send an Idempotency-Key to make a retry safe.
+Takes a multipart/form-data body: file (required; the part's filename and Content-Type are kept), ref (required: the org, contact, deal or interaction, o4, c12, d3, i43 or any resolver input), note (at most 2000 characters) and source (at most 200). The bytes go to R2 under attachments/<sha256> (content-addressed), then the row and its journal (create on the attachment, attach on the target) are written in one batch. A file over MAX_UPLOAD_BYTES (GET /v1/schema limits.max_upload_bytes) answers 413 payload_too_large before anything is stored. The same bytes already live on the same target answer 200 with outcome unchanged and the existing attachment (a safe retry, even without an Idempotency-Key; a missing R2 object is restored); the same bytes live on another target answer 409 uniqueness_conflict naming that attachment in candidates (archive it first). An archived target answers 409 state_conflict. A request that failed after the bytes reached R2 leaves an orphan object until the same upload is retried. Answers 201 with outcome created. Every attachment route answers 503 storage_unavailable (exit 5) when this deployment has no FILES (R2) binding (GET /v1/whoami features.files). Every mutation accepts dry_run=1 (also with the read-only token): nothing is written, the projected record comes back with dry_run true and planned_changes. Send an Idempotency-Key to make a retry safe.
 
 | parameter | in | required | type | description |
 |---|---|---|---|---|
@@ -230,10 +227,9 @@ Takes a multipart/form-data body: file (required; the part's filename and Conten
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served; storage_unavailable (exit 5): FILES (R2) binding absent | Error |
 
@@ -318,10 +314,9 @@ Body: `BatchIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; precondition_failed (exit 1): Go "still holds N" preconditions (pipeline with stages, stage reorder incomplete); blocked_by_references (exit 4): hard delete refused; `error` counts each blocking reference; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; archived_match (exit 4): assert matched only an archived row; `candidates` names it; never silently restored; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -350,9 +345,8 @@ Returns every live stage with exact open and rotting counts and at most per_stag
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates` | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. response_too_large (exit 1): response would exceed RESPONSE_BUDGET_BYTES; page or narrow: add limit, cursor, include | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 
 ## calls.assign
@@ -382,10 +376,9 @@ Body: `CallAssign`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -435,9 +428,8 @@ Archives the contact and, in the same batch with the same archived_at, its live 
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -469,10 +461,9 @@ Body: `ContactAssert`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; archived_match (exit 4): assert matched only an archived row; `candidates` names it; never silently restored; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -502,10 +493,9 @@ Body: `ContactIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -535,9 +525,8 @@ Deletes the contact for good; confirm=1 is required. Refused with 409 blocked_by
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; blocked_by_references (exit 4): hard delete refused; `error` counts each blocking reference | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -568,10 +557,9 @@ Body: `EmailAdd`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -628,9 +616,8 @@ Makes a live address of the contact its primary and rewrites the contact's email
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -660,9 +647,8 @@ Archives one live address (kept as history) and writes a reconcile_queue row. Re
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -719,10 +705,9 @@ Body: `LinkIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -753,9 +738,8 @@ Removes the links between this contact and related: only links of the given type
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -821,9 +805,8 @@ Merges loser into winner in one batch: the loser's addresses move to the winner 
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -855,10 +838,9 @@ Body: `ContactPatch`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -888,9 +870,8 @@ Restores the contact and exactly the addresses archived with it. 409 uniqueness_
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -921,7 +902,6 @@ One call before talking to someone: the contact (and its org), the org with its 
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates` | Error |
 | 422 | Unprocessable. response_too_large (exit 1): response would exceed RESPONSE_BUDGET_BYTES; page or narrow: add limit, cursor, include | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 
 ## deals.archive
@@ -950,9 +930,8 @@ Archives the deal; archiving an archived deal answers 409 state_conflict. Every 
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -984,10 +963,9 @@ Body: `DealIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; archived_match (exit 4): assert matched only an archived row; `candidates` names it; never silently restored; precondition_failed (exit 1): Go "still holds N" preconditions (pipeline with stages, stage reorder incomplete) | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1017,10 +995,9 @@ Body: `DealIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; precondition_failed (exit 1): Go "still holds N" preconditions (pipeline with stages, stage reorder incomplete) | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1050,9 +1027,8 @@ Deletes the deal for good; confirm=1 is required. Refused with 409 blocked_by_re
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; blocked_by_references (exit 4): hard delete refused; `error` counts each blocking reference | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1145,10 +1121,9 @@ Body: `Close`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1180,10 +1155,9 @@ Body: `Move`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1215,10 +1189,9 @@ Body: `DealPatch`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1249,10 +1222,9 @@ Body: `DealPerson`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1282,9 +1254,8 @@ Removes the contact from the deal's people; a contact that is not one answers 40
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1314,9 +1285,8 @@ Sets status open and clears closed_at; outcome_reason is kept as the record of t
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1346,9 +1316,8 @@ Restores an archived deal; a live deal answers 409 state_conflict. Every mutatio
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1380,69 +1349,9 @@ Body: `Close`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
-| 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
-| 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
-
-## doctor
-
-`GET /v1/doctor`: Check database and object health
-
-Pages by check and cursor. check accepts a check name or group such as fts_integrity, orphan_references, identity_normalization, r2_missing, r2_objects or usage_daily. Rank-1 FTS integrity compares external content; refusal reports unverified with unsupported_remote. Counts for scanned identities and R2 objects cover this chunk. Other counts are exact. Follow next_cursor to finish all checks. Never repairs or deletes evidence.
-
-| parameter | in | required | type | description |
-|---|---|---|---|---|
-| `limit` | query | no | integer |  |
-| `cursor` | query | no | string |  |
-| `sort` | query | no | "check" | the one doctor order: check, then the check's own chunk key |
-| `include` | query | no | string | accepted on every route (SPEC 3.5); has no effect here |
-| `dry_run` | query | no | "0" | "1" | 1 or true: accepted on every route (SPEC 3.5); has no effect on a read |
-| `check` | query | no | string |  |
-| `X-Request-Id` | header | no | string | Optional caller id for this request: 1 to 200 visible ASCII characters (0x21-0x7E). Echoed unchanged in the X-Request-Id response header and the error body's request_id; generated when absent; a present value outside the bound is refused with 400 validation_error, field X-Request-Id. |
-| `X-CRM-Actor` | header | no | string | Who is writing (attribution, not identity): tom, cli, bearer, system, or claude:, codex:, pi:, import:, email: plus 1 to 40 of [a-z0-9._-]. Absent means bearer on the public door; binding callers must send it. A value outside the pattern answers 400 invalid_actor. |
-
-| status | description | body |
-|---|---|---|
-| 200 | Health checks and continuation | Doctor |
-| 400 | Bad request. invalid_cursor (exit 1): cursor from another route, sort, or corrupt; validation_error (exit 1): body or query fails the schema; `field` names it; unknown_parameter (exit 1): query parameter not in the route's whitelist; invalid_actor (exit 1): X-CRM-Actor fails the pattern | Error |
-| 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
-| 422 | Unprocessable. response_too_large (exit 1): response would exceed RESPONSE_BUDGET_BYTES; page or narrow: add limit, cursor, include | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
-| 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
-
-## doctor.rebuild_fts
-
-`POST /v1/doctor/rebuild-fts`: Rebuild one FTS index per chunk
-
-Runs the FTS5 rebuild command for the selected table. Without table, follow next_cursor through the five indexes. dry_run plans the command without writing. The rebuild and journal entry run in one atomic batch.
-
-| parameter | in | required | type | description |
-|---|---|---|---|---|
-| `limit` | query | no | integer | accepted on every route (SPEC 3.16); has no effect on a mutation |
-| `cursor` | query | no | string | next_cursor from the previous page of the same route, filters and sort; any other value (corrupt, or from another route, filter set or sort) answers 400 invalid_cursor |
-| `sort` | query | no | string | accepted on every route (SPEC 3.16); has no effect on a mutation |
-| `include` | query | no | string | accepted on every route (SPEC 3.16); has no effect on a mutation |
-| `dry_run` | query | no | "0" | "1" | 1 to enable |
-| `X-Request-Id` | header | no | string | Optional caller id for this request: 1 to 200 visible ASCII characters (0x21-0x7E). Echoed unchanged in the X-Request-Id response header and the error body's request_id; generated when absent; a present value outside the bound is refused with 400 validation_error, field X-Request-Id. |
-| `X-CRM-Actor` | header | no | string | Who is writing (attribution, not identity): tom, cli, bearer, system, or claude:, codex:, pi:, import:, email: plus 1 to 40 of [a-z0-9._-]. Absent means bearer on the public door; binding callers must send it. A value outside the pattern answers 400 invalid_actor. |
-| `Idempotency-Key` | header | no | string | Optional, 8 to 128 characters of [A-Za-z0-9:._-]; scoped to (key, door, actor). Checked after auth and the read-only scope. A retry with the same key and the same method, path, query (dry_run included), content type and body returns the stored 2xx response with the Idempotent-Replayed: true header and writes nothing again; the same key with a different request answers 422 idempotency_mismatch; while the first request with the key is still executing (up to 60 seconds) it answers 409 idempotency_in_flight (retry later with the same key). Only 2xx outcomes are stored: a 4xx may be corrected and resent with the same key. dry_run=1 never stores a key. |
-
-Body: `object`
-
-| status | description | body |
-|---|---|---|
-| 200 | Rebuilt indexes | object |
-| 400 | Bad request. invalid_cursor (exit 1): cursor from another route, sort, or corrupt; validation_error (exit 1): body or query fails the schema; `field` names it; unknown_parameter (exit 1): query parameter not in the route's whitelist; invalid_actor (exit 1): X-CRM-Actor fails the pattern | Error |
-| 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
-| 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
-| 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
-| 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1470,9 +1379,8 @@ Scores live contact and org pairs sharing a name token, non-free-mail registrabl
 | 200 | Duplicate candidate chunk | object |
 | 400 | Bad request. invalid_cursor (exit 1): cursor from another route, sort, or corrupt; validation_error (exit 1): body or query fails the schema; `field` names it; unknown_parameter (exit 1): query parameter not in the route's whitelist; invalid_actor (exit 1): X-CRM-Actor fails the pattern | Error |
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. response_too_large (exit 1): response would exceed RESPONSE_BUDGET_BYTES; page or narrow: add limit, cursor, include | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 
 ## dupes.verdicts.clear
@@ -1502,9 +1410,8 @@ Resolves and orders the pair before deleting the verdict. Returns its previous r
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1531,7 +1438,7 @@ Filter by entity and verdict. Keyset order is entity, left id, right id; total i
 | 200 | Verdicts | VerdictEnvelope |
 | 400 | Bad request. invalid_cursor (exit 1): cursor from another route, sort, or corrupt; validation_error (exit 1): body or query fails the schema; `field` names it; unknown_parameter (exit 1): query parameter not in the route's whitelist; invalid_actor (exit 1): X-CRM-Actor fails the pattern | Error |
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. response_too_large (exit 1): response would exceed RESPONSE_BUDGET_BYTES; page or narrow: add limit, cursor, include | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 
@@ -1561,10 +1468,9 @@ Body: `VerdictIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1595,10 +1501,9 @@ Body: `PinIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1628,9 +1533,8 @@ Archives the live link {id} (ThreadLink.id from email.threads.get), auto or manu
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1638,7 +1542,7 @@ Archives the live link {id} (ThreadLink.id from email.threads.get), auto or manu
 
 `POST /v1/email/send`: Send a message through the mail service and track it
 
-Body {to[], from, subject, text?, html?, require_approval?, dry_run?}. Each item of to (1 to 50) is an address, or any resolver input for a contact, org or deal: a contact contributes its primary address as a recipient and stays a link target of the sent thread, an org or a deal is a link target only (neither holds a mailbox). A contact without a primary address is refused 409 no_email (exit 4) with candidates, and so is a send left without any recipient. from is a mail identity (its address or id); an identity mail does not list is refused 422 unknown_identity (exit 1) with the identities mail lists as candidates. require_approval defaults to false when X-CRM-Actor is cli and to true for every other actor; a non-cli actor that sends false is refused 403 approval_required (exit 6), because a machine send waits for `mail outbox approve`. The message itself is mail's: this route never touches SMTP, a mailbox or an identity store. It calls the mail Worker's EmailBinding (POST /v1/send) with X-Email-Owner, X-Email-Caller and X-Email-Actor and the idempotency key `crm:<Idempotency-Key>`, so a retry of this request never sends twice. A deployment without the MAIL binding answers 503 feature_unavailable (exit 5). One email_sends row and one journal row are written; the answer is {outbox_id, status, identity}, where status is mail's answer as one of pending_approval, queued, sent, failed or cancelled. The scheduled handler (SPEC 3.14) polls mail for the row, and once the thread the sent message joined arrives through email.threads.ingest it pins the requested org and deal refs, records that thread's email interaction with direction out and sets the row sent; context, timeline and show list the sends of a record. A dry run resolves local targets and checks approval policy, defers identity validation until the real send, calls mail never and writes nothing: outbox_id is null and status is dry_run. Every mutation accepts dry_run=1 (also with the read-only token): nothing is written, the projected record comes back with dry_run true and planned_changes. Send an Idempotency-Key to make a retry safe.
+Body {to[], from, subject, text?, html?, require_approval?, dry_run?}. Each item of to (1 to 50) is an address, or any resolver input for a contact, org or deal: a contact contributes its primary address as a recipient and stays a link target of the sent thread, an org or a deal is a link target only (neither holds a mailbox). A contact without a primary address is refused 409 no_email (exit 4) with candidates, and so is a send left without any recipient. from is a mail identity (its address or id); an identity mail does not list is refused 422 unknown_identity (exit 1) with the identities mail lists as candidates. require_approval defaults to false when X-CRM-Actor is cli and to true for every other actor; a non-cli actor that sends false is refused 403 approval_required (exit 6), because a machine send waits for `mail outbox approve`. The message itself is mail's: this route never touches SMTP, a mailbox or an identity store. It calls the mail Worker's EmailBinding (POST /v1/send) with X-Email-Owner, X-Email-Caller and X-Email-Actor and an idempotency key derived from the Idempotency-Key (`crm:` plus 32 hex characters of its SHA-256), so a retry of this request never sends twice. A deployment without the MAIL binding answers 503 feature_unavailable (exit 5). One email_sends row and one journal row are written; the answer is {outbox_id, status, identity}, where status is mail's answer as one of pending_approval, queued, sent, failed or cancelled. The scheduled handler (SPEC 3.14) polls mail for the row, and once the thread the sent message joined arrives through email.threads.ingest it pins the requested org and deal refs, records that thread's email interaction with direction out and sets the row sent; context, timeline and show list the sends of a record. A dry run resolves local targets and checks approval policy, defers identity validation until the real send, calls mail never and writes nothing: outbox_id is null and status is dry_run. Every mutation accepts dry_run=1 (also with the read-only token): nothing is written, the projected record comes back with dry_run true and planned_changes. Send an Idempotency-Key to make a retry safe.
 
 | parameter | in | required | type | description |
 |---|---|---|---|---|
@@ -1660,10 +1564,9 @@ Body: `EmailSendIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token; approval_required (exit 6): a machine actor asked for a send that skips approval; only X-CRM-Actor cli may | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; no_email (exit 4): a ref offered as a mail recipient holds no primary address; `candidates` names the record and its addresses; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint; unknown_identity (exit 1): `from` is not an identity the mail service lists; `candidates` lists the identities it does | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served; feature_unavailable (exit 5): the MAIL service binding is absent, so this deployment cannot send | Error |
 
@@ -1753,7 +1656,7 @@ Answers the thread (archived ones too) with its metadata, its participants (hand
 
 `PUT /v1/email/threads`: Push email thread metadata from the email service
 
-The email service's push (SPEC 3.12, identical to email SPEC 7.8): body {threads: ThreadIn[]} (1 to 100), each {thread_ref (the bare email-service id, never prefixed), account, subject, first_at, last_at, message_count, last_direction, automated, participants: [{handle, display_name, role}]} and nothing else. Over the binding door only X-CRM-Caller email may push, with X-CRM-Actor email:<account> or import:email (403 otherwise); send Idempotency-Key (the payload sha256). Idempotent on (account, thread_ref): fields are overwritten, participants replaced as a set, and auto links reconciled: an address of a live contact links the contact (matched_by contact_email) and the contact's org, an address whose domain a live org owns links the org (org_domain); self addresses never link; manual links and unpinned auto links (manual tombstones) are never touched. A thread that is not automated, holds a message and keeps a live contact link gets one email interaction (external_ref email:thread:<account>:<thread_ref>, dated by last_at, participants the linked contacts); it is updated as the thread moves, archived when the thread stops being eligible and unarchived when it is again. items[i] is the ThreadOut of threads[i]: outcome created, updated or unchanged; stale (last_at older than stored, or equal with fewer messages: nothing applied); emptied (message_count 0 and no participants: participants cleared, auto links and the interaction archived, manual links kept; applied whatever its dates); deferred (the request's D1 budget ran out before this thread, or its thread_ref was already in this push: untouched, send it again); rejected (this thread alone needs more than one request's budget, error {code: request_budget_exceeded}, or cannot be applied as sent; the rest of the push proceeds). thread is null only for a thread never stored that came back deferred or rejected. warnings holds self_addresses_unset while SELF_ADDRESSES is empty. Every mutation accepts dry_run=1 (also with the read-only token): nothing is written, the projected record comes back with dry_run true and planned_changes. Send an Idempotency-Key to make a retry safe.
+The email service's push (SPEC 3.12, identical to email SPEC 7.8): body {threads: ThreadIn[]} (1 to 100), each {thread_ref (the bare email-service id, never prefixed), account, subject, first_at, last_at, message_count, last_direction, automated, participants: [{handle, display_name, role}]} and nothing else. Over the binding door only X-CRM-Caller email may push, with X-CRM-Actor email:<account> or import:email (403 otherwise); send Idempotency-Key (the payload sha256). Idempotent on (account, thread_ref): fields are overwritten, participants replaced as a set, and auto links reconciled: an address of a live contact links the contact (matched_by contact_email) and the contact's org, an address whose domain a live org owns links the org (org_domain); self addresses never link; manual links and unpinned auto links (manual tombstones) are never touched. A thread that is not automated, holds a message and keeps a live contact link gets one email interaction (external_ref email:thread:<account>:<thread_ref>, dated by last_at, participants the linked contacts); it is updated as the thread moves, archived when the thread stops being eligible and unarchived when it is again. items[i] is the ThreadOut of threads[i]: outcome created, updated or unchanged; stale (last_at older than stored, or equal with fewer messages: nothing applied); emptied (message_count 0 and no participants: participants cleared, auto links and the interaction archived, manual links kept; applied whatever its dates); deferred (the request's D1 budget ran out before this thread, or its thread_ref was already in this push: untouched, send it again); rejected (this thread alone needs more than one request's budget, error {code: platform_limit_exceeded}, or cannot be applied as sent; the rest of the push proceeds). thread is null only for a thread never stored that came back deferred or rejected. warnings holds self_addresses_unset while SELF_ADDRESSES is empty. Every mutation accepts dry_run=1 (also with the read-only token): nothing is written, the projected record comes back with dry_run true and planned_changes. Send an Idempotency-Key to make a retry safe.
 
 | parameter | in | required | type | description |
 |---|---|---|---|---|
@@ -1774,10 +1677,9 @@ Body: `ThreadsIngest`
 | 400 | Bad request. invalid_cursor (exit 1): cursor from another route, sort, or corrupt; validation_error (exit 1): body or query fails the schema; `field` names it; unknown_parameter (exit 1): query parameter not in the route's whitelist; invalid_actor (exit 1): X-CRM-Actor fails the pattern | Error |
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -1869,7 +1771,7 @@ Delivers journal rows with id greater than after (default 0), ascending, filtere
 
 `GET /v1/export/all`: Export every data table, paged (the backup a restore imports)
 
-Pages through every data table (archived rows and the journal included) in the restore dependency order: orgs, contacts, contact_links, pipelines, stages, deals, stage_moves, interactions, interaction_people, deal_people, contact_emails, org_domains, follow_ups, tags, taggings, transcripts, transcript_segments, attachments, email_threads, email_participants, email_links, dupe_verdicts, imports, changes; rowid order within a table. Each page is {format: crm-export/1, table, rows, rows_sha256, as_of, next_cursor}: rows are the stored columns as D1 holds them, rows_sha256 the sha256 of JSON.stringify(rows), as_of the max(changes.id) the first page recorded. The first page adds manifest {format, migrations, as_of, tables: {<table>: {rows, max_id}}} (imports.begin takes it with chunk_count added); the last page (next_cursor null) adds end_as_of, max(changes.id) now, and consistent = end_as_of equals as_of: false means a mutation ran during the export, so export again from the first page (crm export all retries once, then writes the file with consistent false and exits 5). tables narrows to a comma list of data tables (still in dependency order). limit sets rows per page (1 to 200, default and ceiling CHUNK_ROWS). Control tables are never exported. Pages are exempt from RESPONSE_BUDGET_BYTES. Errors: 400 validation_error (field tables: not a data table), invalid_cursor (from another route or other tables: restart without cursor), unknown_parameter; 429 rate_limited.
+Pages through every data table (archived rows and the journal included) in the restore dependency order: orgs, contacts, contact_links, pipelines, stages, deals, stage_moves, interactions, interaction_people, deal_people, contact_emails, org_domains, follow_ups, tags, taggings, transcripts, transcript_segments, attachments, email_threads, email_participants, email_links, dupe_verdicts, imports, changes; rowid order within a table. Each page is {format: crm-export/1, table, rows, rows_sha256, as_of, next_cursor}: rows are the stored columns as D1 holds them, rows_sha256 the sha256 of JSON.stringify(rows), as_of the max(changes.id) the first page recorded. The first page adds manifest {format, migrations, as_of, tables: {<table>: {rows, max_id}}} (imports.begin takes it with chunk_count added); the last page (next_cursor null) adds end_as_of, max(changes.id) now, and consistent = end_as_of equals as_of: false means a mutation ran during the export, so export again from the first page (crm export all retries once, then writes the file with consistent false and exits 5). tables narrows to a comma list of data tables (still in dependency order). limit sets rows per page (1 to 200, default and ceiling CHUNK_ROWS). Control tables are never exported. Pages are exempt from RESPONSE_BUDGET_BYTES. Errors: 400 validation_error (field tables: not a data table), invalid_cursor (from another route or other tables: restart without cursor), unknown_parameter.
 
 | parameter | in | required | type | description |
 |---|---|---|---|---|
@@ -1887,14 +1789,13 @@ Pages through every data table (archived rows and the journal included) in the r
 | 200 | One page of the export | ExportPage |
 | 400 | Bad request. invalid_cursor (exit 1): cursor from another route, sort, or corrupt; validation_error (exit 1): body or query fails the schema; `field` names it; unknown_parameter (exit 1): query parameter not in the route's whitelist; invalid_actor (exit 1): X-CRM-Actor fails the pattern | Error |
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 
 ## export.entity
 
 `GET /v1/export/{entity}`: Export orgs, contacts, interactions or deals as JSON or CSV
 
-Every row of the entity, archived included, by id ascending: ref, every stored column, then the Go derived columns (contacts: links {outgoing, incoming} with each link's type and note; deals: pipeline and stage names, days_in_stage, rot_days; interactions: contact_ids). format=json (default) answers the list envelope with an exact total; format=csv answers RFC 4180 text (CRLF line ends, a header line on every page, NULL as an empty cell, links and contact_ids as JSON cells) with the next page's cursor in the X-Next-Cursor header (absent on the last page) and the total in X-Total-Count. limit 1 to 200 (default 50); a cursor continues the same entity and format only. Errors: 400 validation_error (an entity other than orgs, contacts, interactions, deals), invalid_cursor, unknown_parameter; 429 rate_limited.
+Every row of the entity, archived included, by id ascending: ref, every stored column, then the Go derived columns (contacts: links {outgoing, incoming} with each link's type and note; deals: pipeline and stage names, days_in_stage, rot_days; interactions: contact_ids). format=json (default) answers the list envelope with an exact total; format=csv answers RFC 4180 text (CRLF line ends, a header line on every page, NULL as an empty cell, links and contact_ids as JSON cells) with the next page's cursor in the X-Next-Cursor header (absent on the last page) and the total in X-Total-Count. limit 1 to 200 (default 50); a cursor continues the same entity and format only. Errors: 400 validation_error (an entity other than orgs, contacts, interactions, deals), invalid_cursor, unknown_parameter.
 
 | parameter | in | required | type | description |
 |---|---|---|---|---|
@@ -1913,7 +1814,6 @@ Every row of the entity, archived included, by id ascending: ref, every stored c
 | 200 | A page of the entity | ExportEntityEnvelope |
 | 400 | Bad request. invalid_cursor (exit 1): cursor from another route, sort, or corrupt; validation_error (exit 1): body or query fails the schema; `field` names it; unknown_parameter (exit 1): query parameter not in the route's whitelist; invalid_actor (exit 1): X-CRM-Actor fails the pattern | Error |
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 
 ## export.snapshot
@@ -1939,9 +1839,8 @@ Stores the export.all pages in R2 as one backup file, exports/<yyyy>/<mm>/<dd>/e
 | 400 | Bad request. invalid_cursor (exit 1): cursor from another route, sort, or corrupt; validation_error (exit 1): body or query fails the schema; `field` names it; unknown_parameter (exit 1): query parameter not in the route's whitelist; invalid_actor (exit 1): X-CRM-Actor fails the pattern | Error |
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served; storage_unavailable (exit 5): FILES (R2) binding absent | Error |
 
@@ -1970,7 +1869,6 @@ Searches the FTS5 indexes of contacts, orgs, deals, interactions and transcript 
 | 400 | Bad request. invalid_cursor (exit 1): cursor from another route, sort, or corrupt; validation_error (exit 1): body or query fails the schema; `field` names it; unknown_parameter (exit 1): query parameter not in the route's whitelist; invalid_actor (exit 1): X-CRM-Actor fails the pattern | Error |
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail | Error |
 | 422 | Unprocessable. response_too_large (exit 1): response would exceed RESPONSE_BUDGET_BYTES; page or narrow: add limit, cursor, include | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 
 ## followups.archive
@@ -1999,9 +1897,8 @@ Archives the follow-up: it leaves lists, context and signals but keeps its data.
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2033,10 +1930,9 @@ Body: `FollowUpIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; archived_match (exit 4): assert matched only an archived row; `candidates` names it; never silently restored | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2066,10 +1962,9 @@ Body: `FollowUpIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2099,9 +1994,8 @@ Deletes the follow-up for good; confirm=1 is required (else 400 validation_error
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2133,10 +2027,9 @@ Body: `FollowUpClose`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2168,10 +2061,9 @@ Body: `FollowUpClose`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2260,10 +2152,9 @@ Body: `FollowUpPatch`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2293,9 +2184,8 @@ Sets a done or dropped follow-up open again: done_at is cleared, the outcome tex
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2325,17 +2215,16 @@ Restores an archived follow-up. A live follow-up answers 409 state_conflict; an 
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
 ## health
 
-`GET /health`: Liveness, version, applied migrations and deployment features
+`GET /health`: Liveness, version, commit, applied migrations and deployment features
 
-The only unauthenticated route. Use it to check that the Worker answers, which version runs, how many D1 migrations are applied and which features this deployment has (files, access, rate_limit). `auth_misconfigured: true` means the auth doors refuse every request until the operator fixes the secrets or Access settings; it never says which check failed. Takes no query parameters. Errors: 400 `unknown_parameter` (exit 1, `field` names the parameter) means the request carried a query parameter; resend without a query string. 400 `validation_error` (exit 1, `field` `X-Request-Id`) means the request sent an `X-Request-Id` that is not 1 to 200 visible ASCII characters; resend without it or with a shorter one. 500 `internal_error` (exit 5) means the Worker could not read the applied migration count from D1 (or failed otherwise); the `request_id` in the body is in the Worker log.
+The only unauthenticated route. Use it to check that the Worker answers, which version and git commit run (`commit` is `unknown` when the deploy did not render one), how many D1 migrations are applied and which features this deployment has (files, access, rate_limit). `auth_misconfigured: true` means the auth doors refuse every request until the operator fixes the secrets or Access settings; it never says which check failed. Takes no query parameters. Errors: 400 `unknown_parameter` (exit 1, `field` names the parameter) means the request carried a query parameter; resend without a query string. 400 `validation_error` (exit 1, `field` `X-Request-Id`) means the request sent an `X-Request-Id` that is not 1 to 200 visible ASCII characters; resend without it or with a shorter one. 500 `internal_error` (exit 5) means the Worker could not read the applied migration count from D1 (or failed otherwise); the `request_id` in the body is in the Worker log.
 
 | parameter | in | required | type | description |
 |---|---|---|---|---|
@@ -2431,10 +2320,9 @@ Creates or matches contacts, one per CSV line: name (or full_name, or first_name
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; archived_match (exit 4): assert matched only an archived row; `candidates` names it; never silently restored; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2464,10 +2352,9 @@ The body (Content-Type application/x-ndjson) holds one InteractionIn JSON object
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; archived_match (exit 4): assert matched only an archived row; `candidates` names it; never silently restored; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2498,10 +2385,9 @@ Creates or matches orgs, one per CSV line: the name column (or organization, com
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; archived_match (exit 4): assert matched only an archived row; `candidates` names it; never silently restored; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2530,9 +2416,8 @@ Deletes exactly the id ranges the chunk receipts recorded, children before paren
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; precondition_failed (exit 1): Go "still holds N" preconditions (pipeline with stages, stage reorder incomplete); concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2562,10 +2447,9 @@ Body: `SessionIn`
 | 400 | Bad request. invalid_cursor (exit 1): cursor from another route, sort, or corrupt; validation_error (exit 1): body or query fails the schema; `field` names it; unknown_parameter (exit 1): query parameter not in the route's whitelist; invalid_actor (exit 1): X-CRM-Actor fails the pattern | Error |
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; not_empty (exit 4): snapshot import into a non-empty database; precondition_failed (exit 1): Go "still holds N" preconditions (pipeline with stages, stage reorder incomplete); uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2596,10 +2480,9 @@ Body: `ChunkIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; precondition_failed (exit 1): Go "still holds N" preconditions (pipeline with stages, stage reorder incomplete); concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2628,9 +2511,8 @@ Checks that every seq from 0 to chunk_count - 1 arrived and that each data table
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; precondition_failed (exit 1): Go "still holds N" preconditions (pipeline with stages, stage reorder incomplete); concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2734,9 +2616,8 @@ Archives the interaction: it leaves lists, timelines and signals but keeps its d
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2768,10 +2649,9 @@ Body: `InteractionIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; archived_match (exit 4): assert matched only an archived row; `candidates` names it; never silently restored | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2801,10 +2681,9 @@ Body: `InteractionIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2834,9 +2713,8 @@ Deletes the interaction for good; confirm=1 is required (else 400 validation_err
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; blocked_by_references (exit 4): hard delete refused; `error` counts each blocking reference | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2931,10 +2809,9 @@ Body: `InteractionPatch`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -2964,9 +2841,8 @@ Restores an archived interaction. A live interaction answers 409 state_conflict;
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3065,9 +2941,8 @@ Archives the org and, in the same batch and with the same archived_at, its live 
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3099,10 +2974,9 @@ Body: `OrgAssert`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; archived_match (exit 4): assert matched only an archived row; `candidates` names it; never silently restored | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3132,10 +3006,9 @@ Body: `OrgIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3165,9 +3038,8 @@ Deletes the org for good; confirm=1 is required (else 400 validation_error). Ref
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; blocked_by_references (exit 4): hard delete refused; `error` counts each blocking reference | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3198,10 +3070,9 @@ Body: `DomainAdd`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3257,9 +3128,8 @@ Archives one live domain of the org (the row is kept as history) and writes a re
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3348,9 +3218,8 @@ Merges loser into winner in one batch: the loser's domains move to the winner (p
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3382,10 +3251,9 @@ Body: `OrgPatch`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3415,9 +3283,8 @@ Restores the org and exactly the domains archived with it. Refused with 409 uniq
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3447,9 +3314,8 @@ Archives the pipeline; its stages and deals keep their data. New deals cannot en
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3481,10 +3347,9 @@ Body: `PipelineIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; archived_match (exit 4): assert matched only an archived row; `candidates` names it; never silently restored | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3514,10 +3379,9 @@ Body: `PipelineIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3547,9 +3411,8 @@ Deletes the pipeline for good; confirm=1 is required. Refused with 409 precondit
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; precondition_failed (exit 1): Go "still holds N" preconditions (pipeline with stages, stage reorder incomplete) | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3581,9 +3444,9 @@ Returns the pipeline with its live stages in position order, each with rot_days 
 
 ## pipelines.list
 
-`GET /v1/pipelines`: List live pipelines with their stages
+`GET /v1/pipelines`: List pipelines with their stages
 
-Lists live pipelines, each with its live stages in order (rot_days and open deal counts), sorted by position (default), name, updated_at or created_at (- for descending), id breaking ties; 50 per page (limit 1 to 200). next_cursor continues the same route and sort only (else 400 invalid_cursor). Errors: 400 unknown_parameter, validation_error.
+Lists pipelines, each with its live stages in order (rot_days and open deal counts), sorted by position (default), name, updated_at or created_at (- for descending), id breaking ties; 50 per page (limit 1 to 200). archived=0 (default, live), 1 (archived only), all (both). next_cursor continues the same route, filters and sort only (else 400 invalid_cursor). Errors: 400 unknown_parameter, validation_error.
 
 | parameter | in | required | type | description |
 |---|---|---|---|---|
@@ -3592,6 +3455,7 @@ Lists live pipelines, each with its live stages in order (rot_days and open deal
 | `sort` | query | no | "position" | "-position" | "name" | "-name" | "updated_at" | "-updated_at" | "created_at" | "-created_at" | sort key, "-" for descending; id breaks ties |
 | `include` | query | no | string | comma list of (none) |
 | `dry_run` | query | no | "0" | "1" | 1 or true: accepted on every route (SPEC 3.5); has no effect on a read |
+| `archived` | query | no | "0" | "1" | "all" | 0 live rows (default), 1 archived only, all both |
 | `X-Request-Id` | header | no | string | Optional caller id for this request: 1 to 200 visible ASCII characters (0x21-0x7E). Echoed unchanged in the X-Request-Id response header and the error body's request_id; generated when absent; a present value outside the bound is refused with 400 validation_error, field X-Request-Id. |
 | `X-CRM-Actor` | header | no | string | Who is writing (attribution, not identity): tom, cli, bearer, system, or claude:, codex:, pi:, import:, email: plus 1 to 40 of [a-z0-9._-]. Absent means bearer on the public door; binding callers must send it. A value outside the pattern answers 400 invalid_actor. |
 
@@ -3631,10 +3495,9 @@ Body: `PipelinePatch`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3664,9 +3527,8 @@ Restores an archived pipeline; its name live on another pipeline answers 409 uni
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3701,7 +3563,7 @@ Returns the one record a ref names, whatever its entity: c contact (with emails,
 
 `POST /v1/sql`: Execute a guarded read-only SQL query
 
-One SELECT or WITH statement with bound parameters. Comments, stacked statements, write keywords, extension loading and PRAGMA escapes are guarded before D1. An unconditional outer limit caps results at 500 rows, then the response byte budget applies. Returns columns, rows, row_count and truncated. Errors: validation_error for refused or invalid SQL, request_budget_exceeded for too many parameters, response_too_large for a single oversized row.
+One SELECT or WITH statement with bound parameters. Comments, stacked statements, write keywords, extension loading and PRAGMA escapes are guarded before D1. An unconditional outer limit caps results at 500 rows, then the response byte budget applies. Returns columns, rows, row_count and truncated. Errors: validation_error for refused or invalid SQL, platform_limit_exceeded for too many parameters, response_too_large for a single oversized row.
 
 | parameter | in | required | type | description |
 |---|---|---|---|---|
@@ -3722,10 +3584,9 @@ Body: `object`
 | 400 | Bad request. invalid_cursor (exit 1): cursor from another route, sort, or corrupt; validation_error (exit 1): body or query fails the schema; `field` names it; unknown_parameter (exit 1): query parameter not in the route's whitelist; invalid_actor (exit 1): X-CRM-Actor fails the pattern | Error |
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint; response_too_large (exit 1): response would exceed RESPONSE_BUDGET_BYTES; page or narrow: add limit, cursor, include | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 
 ## stages.archive
@@ -3754,9 +3615,8 @@ Archives the stage: it leaves the pipeline's live stages and cannot receive move
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3787,10 +3647,9 @@ Body: `StageIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3820,9 +3679,8 @@ Deletes the stage for good; confirm=1 is required. Refused with 409 blocked_by_r
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; blocked_by_references (exit 4): hard delete refused; `error` counts each blocking reference | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3854,10 +3712,9 @@ Body: `StagePatch`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3888,10 +3745,9 @@ Body: `Reorder`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; precondition_failed (exit 1): Go "still holds N" preconditions (pipeline with stages, stage reorder incomplete) | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3921,9 +3777,8 @@ Restores an archived stage at its old position; its name live on another stage o
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -3951,7 +3806,7 @@ Cadence overrides days (default 90). Never-touched rows come first, then days_si
 | 200 | Due relationships | StaleEnvelope |
 | 400 | Bad request. invalid_cursor (exit 1): cursor from another route, sort, or corrupt; validation_error (exit 1): body or query fails the schema; `field` names it; unknown_parameter (exit 1): query parameter not in the route's whitelist; invalid_actor (exit 1): X-CRM-Actor fails the pattern | Error |
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. response_too_large (exit 1): response would exceed RESPONSE_BUDGET_BYTES; page or narrow: add limit, cursor, include | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 
@@ -3976,7 +3831,7 @@ Counts live records, never contacted and stale contacts, overdue follow-ups, cad
 | 200 | Book health and quota watch | Status |
 | 400 | Bad request. invalid_cursor (exit 1): cursor from another route, sort, or corrupt; validation_error (exit 1): body or query fails the schema; `field` names it; unknown_parameter (exit 1): query parameter not in the route's whitelist; invalid_actor (exit 1): X-CRM-Actor fails the pattern | Error |
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. response_too_large (exit 1): response would exceed RESPONSE_BUDGET_BYTES; page or narrow: add limit, cursor, include | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 
@@ -4006,9 +3861,8 @@ Archives the tag: it leaves tags.list and the tags of records, keeps its members
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -4038,10 +3892,9 @@ Body: `TagIn`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -4071,9 +3924,8 @@ Deletes the tag for good with every tagging (each journaled as untag on the tagg
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -4133,7 +3985,7 @@ Lists live tags, each with counts {org, contact, deal} of its members, sorted by
 
 `POST /v1/tags/{ref}/members`: Apply a tag to orgs, contacts and deals
 
-Takes {refs: [...]}, 1 to tag_members_max (200, GET /v1/schema limits) orgs, contacts or deals: prefixed refs (o4, c12, d3) or any resolver input, resolved set-wise; a bare name matching rows of two kinds answers 409 ambiguous_ref. Memberships that already exist and refs repeated in the list are no-ops (all existing: 200 with no journal row). An archived tag or member answers 409 state_conflict; an unknown ref 404 not_found, an interaction or other kind 404 wrong_prefix; nothing is written then. Each new membership is journaled as tag on the tagged row. Answers the tag with its counts. A list whose rows and journal rows pass the request's D1 budget answers 413 request_budget_exceeded before anything is written: send fewer refs per request. Every mutation accepts dry_run=1 (also with the read-only token): nothing is written, the projected record comes back with dry_run true and planned_changes. Send an Idempotency-Key to make a retry safe.
+Takes {refs: [...]}, 1 to tag_members_max (200, GET /v1/schema limits) orgs, contacts or deals: prefixed refs (o4, c12, d3) or any resolver input, resolved set-wise; a bare name matching rows of two kinds answers 409 ambiguous_ref. Memberships that already exist and refs repeated in the list are no-ops (all existing: 200 with no journal row). An archived tag or member answers 409 state_conflict; an unknown ref 404 not_found, an interaction or other kind 404 wrong_prefix; nothing is written then. Each new membership is journaled as tag on the tagged row. Answers the tag with its counts. A list whose rows and journal rows pass the request's D1 budget answers 413 platform_limit_exceeded before anything is written: send fewer refs per request. Every mutation accepts dry_run=1 (also with the read-only token): nothing is written, the projected record comes back with dry_run true and planned_changes. Send an Idempotency-Key to make a retry safe.
 
 | parameter | in | required | type | description |
 |---|---|---|---|---|
@@ -4156,10 +4008,9 @@ Body: `Members`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -4189,9 +4040,8 @@ Removes one membership, journaled as untag on the untagged row. member is the or
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -4223,10 +4073,9 @@ Body: `TagPatch`
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -4256,9 +4105,8 @@ Restores an archived tag with its memberships. A live tag answers 409 state_conf
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; stale_write (exit 4): `expect_rev` differs from the row's `rev`; `current` carries the row | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served | Error |
 
@@ -4287,7 +4135,6 @@ Interactions, stage moves (deals), email threads, follow-ups and the outbound se
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates` | Error |
 | 422 | Unprocessable. response_too_large (exit 1): response would exceed RESPONSE_BUDGET_BYTES; page or narrow: add limit, cursor, include | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 
 ## today
@@ -4311,7 +4158,7 @@ Local date and timezone, counts of overdue and today follow-ups, rotting deals, 
 | 200 | Daily agenda | Today |
 | 400 | Bad request. invalid_cursor (exit 1): cursor from another route, sort, or corrupt; validation_error (exit 1): body or query fails the schema; `field` names it; unknown_parameter (exit 1): query parameter not in the route's whitelist; invalid_actor (exit 1): X-CRM-Actor fails the pattern | Error |
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. response_too_large (exit 1): response would exceed RESPONSE_BUDGET_BYTES; page or narrow: add limit, cursor, include | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 
@@ -4319,7 +4166,7 @@ Local date and timezone, counts of overdue and today follow-ups, rotting deals, 
 
 `POST /v1/transcripts/{ref}/archive`: Archive a transcript (the R2 object and the segments are kept)
 
-Archives the transcript: it leaves transcripts.list, its interaction's transcript field and the interaction's record, stays readable by transcripts.get, transcripts.segments and transcripts.content, and its R2 object and segments are kept as evidence of record (doctor reports an object whose rows are all archived as retained, never orphan). The same bytes may then be attached to another interaction. Archiving an archived transcript answers 409 state_conflict (exit 4). There is no unarchive. The interaction keeps being undeletable while the archived transcript references it. Every transcript route answers 503 storage_unavailable (exit 5) when this deployment has no FILES (R2) binding (GET /v1/whoami features.files). Every mutation accepts dry_run=1 (also with the read-only token): nothing is written, the projected record comes back with dry_run true and planned_changes. Send an Idempotency-Key to make a retry safe.
+Archives the transcript: it leaves transcripts.list, its interaction's transcript field and the interaction's record, stays readable by transcripts.get, transcripts.segments and transcripts.content, and its R2 object and segments are kept as evidence of record. The same bytes may then be attached to another interaction. Archiving an archived transcript answers 409 state_conflict (exit 4). There is no unarchive. The interaction keeps being undeletable while the archived transcript references it. Every transcript route answers 503 storage_unavailable (exit 5) when this deployment has no FILES (R2) binding (GET /v1/whoami features.files). Every mutation accepts dry_run=1 (also with the read-only token): nothing is written, the projected record comes back with dry_run true and planned_changes. Send an Idempotency-Key to make a retry safe.
 
 | parameter | in | required | type | description |
 |---|---|---|---|---|
@@ -4340,9 +4187,8 @@ Archives the transcript: it leaves transcripts.list, its interaction's transcrip
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served; storage_unavailable (exit 5): FILES (R2) binding absent | Error |
 
@@ -4375,10 +4221,9 @@ Takes a multipart/form-data body with one file part, or the raw bytes with a tra
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed; payload_too_large (exit 1): body over the route's cap | Error |
 | 415 | Unsupported media type. unsupported_media_type (exit 1): wrong content type | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served; storage_unavailable (exit 5): FILES (R2) binding absent | Error |
 
@@ -4386,7 +4231,7 @@ Takes a multipart/form-data body with one file part, or the raw bytes with a tra
 
 `GET /v1/transcripts/{ref}/content`: Stream a transcript's bytes
 
-Streams the R2 object of the transcript (live or archived: archive keeps the object as evidence of record) with its format's Content-Type (md text/markdown; charset=utf-8, txt text/plain; charset=utf-8, json application/json, vtt text/vtt; charset=utf-8, srt application/x-subrip), Content-Length and ETag "<sha256>". A row whose R2 object is missing answers 404 not_found (doctor check r2_missing lists them; the same upload again restores the object). Every transcript route answers 503 storage_unavailable (exit 5) when this deployment has no FILES (R2) binding (GET /v1/whoami features.files).
+Streams the R2 object of the transcript (live or archived: archive keeps the object as evidence of record) with its format's Content-Type (md text/markdown; charset=utf-8, txt text/plain; charset=utf-8, json application/json, vtt text/vtt; charset=utf-8, srt application/x-subrip), Content-Length and ETag "<sha256>". A row whose R2 object is missing answers 404 not_found (the same upload again restores the object). Every transcript route answers 503 storage_unavailable (exit 5) when this deployment has no FILES (R2) binding (GET /v1/whoami features.files).
 
 | parameter | in | required | type | description |
 |---|---|---|---|---|
@@ -4440,7 +4285,7 @@ Returns the transcript (live or archived) as TranscriptMeta: metadata, speakers,
 
 `POST /v1/transcripts/{ref}/index`: Continue indexing a transcript's segments
 
-Re-parses the transcript's R2 object and inserts the segments with seq above the highest stored one, within this request's D1 budget; answers the transcript with {segments_indexed, segments_total}. Call it until segments_indexed equals segments_total (crm transcript attach loops). A complete transcript answers 200 with equal counts and writes nothing. An archived transcript answers 409 state_conflict; a row whose R2 object is missing answers 404 not_found (doctor check r2_missing; the same upload again restores it). A concurrent index that stored the same seq first answers 409 uniqueness_conflict naming the transcript; calling index again continues. Every transcript route answers 503 storage_unavailable (exit 5) when this deployment has no FILES (R2) binding (GET /v1/whoami features.files). Every mutation accepts dry_run=1 (also with the read-only token): nothing is written, the projected record comes back with dry_run true and planned_changes. Send an Idempotency-Key to make a retry safe.
+Re-parses the transcript's R2 object and inserts the segments with seq above the highest stored one, within this request's D1 budget; answers the transcript with {segments_indexed, segments_total}. Call it until segments_indexed equals segments_total (crm transcript attach loops). A complete transcript answers 200 with equal counts and writes nothing. An archived transcript answers 409 state_conflict; a row whose R2 object is missing answers 404 not_found (the same upload again restores it). A concurrent index that stored the same seq first answers 409 uniqueness_conflict naming the transcript; calling index again continues. Every transcript route answers 503 storage_unavailable (exit 5) when this deployment has no FILES (R2) binding (GET /v1/whoami features.files). Every mutation accepts dry_run=1 (also with the read-only token): nothing is written, the projected record comes back with dry_run true and planned_changes. Send an Idempotency-Key to make a retry safe.
 
 | parameter | in | required | type | description |
 |---|---|---|---|---|
@@ -4461,9 +4306,8 @@ Re-parses the transcript's R2 object and inserts the segments with seq above the
 | 403 | Refused by the auth doors or the read-only scope. forbidden (exit 6): any auth failure; uniform body, no detail; read_only (exit 6): mutating route called with the read-only token | Error |
 | 404 | Not found. not_found (exit 2): no row for the ref; `remedy` gives a find or create command; wrong_prefix (exit 2): ref prefix names another entity for this route | Error |
 | 409 | Conflict. idempotency_in_flight (exit 5): the same key is still executing; retry later with the same key; ambiguous_ref (exit 3): two or more rows on the first matching resolver rung; `candidates`; state_conflict (exit 4): already archived, not archived, already in stage, already won or lost, already open, already done; uniqueness_conflict (exit 4): live unique value held by another row; `candidates[0]` is the owner; concurrent_modification (exit 5): the server's own re-plans kept meeting a changed row; retry; import_in_progress (exit 5): a snapshot import session is open; non-import writes wait | Error |
-| 413 | Too large. request_budget_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
+| 413 | Too large. platform_limit_exceeded (exit 1): the request would pass the D1 query or parameter budget; nothing was executed | Error |
 | 422 | Unprocessable. idempotency_mismatch (exit 4): same Idempotency-Key, different fingerprint | Error |
-| 429 | Rate limited; see Retry-After. rate_limited (exit 5): write rate exceeded; `Retry-After` header | Error |
 | 500 | Internal error. internal_error (exit 5): unexpected; logged with request_id; never a constraint error (those map to 409) | Error |
 | 503 | Unavailable. maintenance (exit 5): MAINTENANCE=true during a restore; reads are still served; storage_unavailable (exit 5): FILES (R2) binding absent | Error |
 
@@ -4920,13 +4764,6 @@ The transcript's segments {transcript, seq, speaker, start_ms, end_ms, text} in 
 | `ref` | string | yes |
 | `title` | string | yes |
 
-### Doctor
-
-| field | type | required |
-|---|---|---|
-| `checks` | object[] | yes |
-| `next_cursor` | string | null | yes |
-
 ### DomainAdd
 
 | field | type | required |
@@ -5014,6 +4851,9 @@ The transcript's segments {transcript, seq, speaker, start_ms, end_ms, text} in 
 | `mail_thread_ref` | string | null | yes |
 | `thread` | string | null | yes |
 | `interaction` | string | null | yes |
+| `last_error` | string | null | yes |
+| `mail_status` | string | null | yes |
+| `thread_account` | string | null | yes |
 | `created_at` | string | yes |
 | `updated_at` | string | yes |
 
@@ -5085,7 +4925,15 @@ The transcript's segments {transcript, seq, speaker, start_ms, end_ms, text} in 
 | `field` | string | no |
 | `op_index` | integer | no |
 | `current` | object | no |
+| `detail` | ErrorDetail | no |
 | `request_id` | string | yes |
+
+### ErrorDetail
+
+| field | type | required |
+|---|---|---|
+| `outbox_id` | string | no |
+| `idempotency_key` | string | no |
 
 ### ExportEntityEnvelope
 
@@ -5155,7 +5003,6 @@ The transcript's segments {transcript, seq, speaker, start_ms, end_ms, text} in 
 |---|---|---|
 | `files` | boolean | yes |
 | `access` | boolean | yes |
-| `rate_limit` | boolean | yes |
 | `mail` | boolean | yes |
 
 ### FindEnvelope
@@ -5270,6 +5117,7 @@ The transcript's segments {transcript, seq, speaker, start_ms, end_ms, text} in 
 |---|---|---|
 | `ok` | true | yes |
 | `version` | string | yes |
+| `commit` | string | yes |
 | `migrations_applied` | integer | yes |
 | `features` | Features | yes |
 | `auth_misconfigured` | true | no |
@@ -5906,6 +5754,8 @@ The transcript's segments {transcript, seq, speaker, start_ms, end_ms, text} in 
 | `cadence_due` | integer | yes |
 | `overdue_follow_ups` | integer | yes |
 | `usage` | object | yes |
+| `migrations_applied` | integer | yes |
+| `last_mail_push` | string | null | yes |
 | `warnings` | string[] | yes |
 
 ### Tag
@@ -6220,6 +6070,5 @@ The transcript's segments {transcript, seq, speaker, start_ms, end_ms, text} in 
 |---|---|---|
 | `files` | boolean | yes |
 | `access` | boolean | yes |
-| `rate_limit` | boolean | yes |
 | `mail` | boolean | yes |
 | `email_autocreate` | string | yes |
