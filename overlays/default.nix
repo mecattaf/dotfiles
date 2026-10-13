@@ -53,9 +53,6 @@ final: prev: {
   # comment in flake.nix, and the `let` in pkgs/ax/default.nix.
   ax = final.callPackage ../pkgs/ax { go_1_27 = go127; };
 
-  # Personal git-backed CRM CLI, vendored with its package definition.
-  crm = final.callPackage ../pkgs/crm/nix/package.nix { };
-
   # Evidence-gated, resumable front door over the music acquisition campaign.
   music-acquire = final.callPackage ../pkgs/music-acquire { };
 
@@ -65,9 +62,6 @@ final: prev: {
   # Packaged rather than inlined in modules/local-models.nix so the hermetic
   # check in flake.nix can build and drive it directly.
   local-models-prune = final.callPackage ../pkgs/local-models-prune.nix { };
-
-  # Headless calendar CLI, vendored with its package definition.
-  dcal = final.callPackage ../pkgs/dcal/nix/package.nix { };
 
   # VibeVoice-ASR-Streaming-7B call transcription. Torch is the gfx1151 ROCm
   # wheel bundle from nix-strix-halo; upstream VibeVoice is pinned by commit, and

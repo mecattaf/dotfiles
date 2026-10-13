@@ -30,7 +30,7 @@
 #   * not an agent host — no herdr server (home/herdr.nix is strix-
 #     gated), no Claude/Codex credential (secrets.nix: strixOnly, the
 #     jul12 "own session" ruling stands), no tally clocks, no voxtype, no
-#     transcript mirror, no dcal daemon, no paper timers. Every one of those
+#     transcript mirror, no paper timers. Every one of those
 #     is `hostName == "strix"`-gated in home/; the flake's home-profiles
 #     check asserts their absence here.
 #   * not a runner of anything, with ONE exception — ./huion.nix pulls the
