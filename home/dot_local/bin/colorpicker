@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # colorpicker -- pick a color from screen, copy its hex to the clipboard (Mod+C)
 #
-# scroll: the grim + slurp picker of the Hyprland/sway/scroll eras (adi1090x,
+# Sway: the grim + slurp picker of the Hyprland/sway/scroll eras (adi1090x,
 # bound to $mod+C until 2026-09-11), minus its ImageMagick step, swatch and
 # notification (no convert, notify-send or notification daemon on the fleet).
 # slurp -p picks a point; grim captures it at the output's NATIVE scale (no -s:
 # downscaling at scale 2 would Lanczos-blend neighbouring pixels) in binary PPM,
 # whose header grim always writes as "P6\nW H\n255\n" (write_ppm.c). The first
 # three bytes after it are the exact pixel's R, G, B. On niri (the rollback,
-# NIRI_SOCKET set and SCROLLSOCK not) it stays `niri msg pick-color`.
+# NIRI_SOCKET set and SWAYSOCK not) it stays `niri msg pick-color`.
 set -euo pipefail
 
-if [ -n "${SCROLLSOCK:-}" ] || [ -z "${NIRI_SOCKET:-}" ]; then
+if [ -n "${SWAYSOCK:-}" ] || [ -z "${NIRI_SOCKET:-}" ]; then
     point="$(slurp -p)" || exit 0
     hex="#$(grim -g "$point" -t ppm - | { read -r _; read -r _; read -r _; head -c 3; } | od -An -tx1 | tr -d ' \n')"
 else

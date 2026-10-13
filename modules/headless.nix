@@ -16,7 +16,6 @@ in
     # Belt and braces: ./common.nix already derives both of these from the
     # option ./display.nix declares, and these forces now agree with it rather than fight it.
     programs.niri.enable = lib.mkForce false;
-    programs.scroll.enable = lib.mkForce false;
     services.greetd.enable = lib.mkForce false;
     services.getty.autologinUser = "tom";
     users.users.tom.linger = lib.mkForce false;

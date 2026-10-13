@@ -139,21 +139,6 @@ let
     }
   '';
 
-  # scroll: client.<class> <border> <background> <text> <indicator> <child_border>.
-  # Joined LAST by scroll/config's `include ~/.config/theme/scroll.conf`; the
-  # niri border roles map one to one. scroll has no tab indicator and no
-  # insert hint, so those roles have no scroll consumer.
-  scroll = t: ''
-    ${header t "#"}
-    # Joined by scroll/config's `include ~/.config/theme/scroll.conf`, LAST.
-    client.focused          ${t.border.active} ${t.ground.base} ${t.fg} ${t.border.active} ${t.border.active}
-    client.focused_inactive ${t.border.inactive} ${t.ground.base} ${t.fg} ${t.border.inactive} ${t.border.inactive}
-    client.unfocused        ${t.border.inactive} ${t.ground.base} ${t.fgDim} ${t.border.inactive} ${t.border.inactive}
-    client.urgent           ${t.border.urgent} ${t.ground.base} ${t.fg} ${t.border.urgent} ${t.border.urgent}
-    jump_labels_color ${t.brand}
-    workspace_labels_color ${t.brand}
-  '';
-
   sway = t: ''
     ${header t "#"}
     client.focused          ${t.border.active} ${t.ground.base} ${t.fg} ${t.border.active} ${t.border.active}
@@ -322,7 +307,6 @@ rec {
     "kitty.conf" = kitty t;
     "ghostty" = ghostty t;
     "niri.kdl" = niri t;
-    "scroll.conf" = scroll t;
     "sway.conf" = sway t;
     "mako.conf" = mako t;
     "vicinae.toml" = vicinae t;

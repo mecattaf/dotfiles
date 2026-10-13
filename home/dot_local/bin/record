@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # record -- screen recording using wf-recorder + compositor IPC
-# The focused output comes from scroll (SCROLLSOCK set) or niri (rollback).
+# The focused output comes from Sway (SWAYSOCK set) or niri (rollback).
 
 get_focused_output() {
-    if [ -n "${SCROLLSOCK:-}" ] || [ -z "${NIRI_SOCKET:-}" ]; then
-        scrollmsg -r -t get_outputs | jq -r 'map(select(.focused))[0].name // empty'
+    if [ -n "${SWAYSOCK:-}" ] || [ -z "${NIRI_SOCKET:-}" ]; then
+        swaymsg -r -t get_outputs | jq -r 'map(select(.focused))[0].name // empty'
     else
         niri msg -j outputs | jq -r 'to_entries[] | select(.value.current_mode != null) | .key' | head -1
     fi

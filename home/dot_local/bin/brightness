@@ -4,7 +4,7 @@
 #
 # Usage:
 #   brightness up|down [N%]          adjust ALL internal (DRM/eDP) backlights together
-#   brightness up|down focused [N%]  adjust ONLY the focused output's backlight (scroll or niri)
+#   brightness up|down focused [N%]  adjust ONLY the focused output's backlight (Sway or niri)
 #                                    N% overrides the 10% step (Shift+F5/F6 on the Duo: 2%)
 #   brightness off                save the current level, then blank the backlight
 #   brightness restore            put back the level `off` saved (50% if none)
@@ -30,7 +30,7 @@
 # The `focused` mode was written for the zenbook-duo's two eDP panels. That
 # device came BACK on 2026-09-11 as the fleet's only seat, host `client`, so the
 # mode is load-bearing again rather than merely generic: it reads
-# the focused output (scroll get_outputs, or `niri msg focused-output`), then finds the backlight whose sysfs path carries
+# the focused output (Sway get_outputs, or `niri msg focused-output`), then finds the backlight whose sysfs path carries
 # that connector name (e.g. eDP-2 -> .../card1-eDP-2/card1-eDP-2-backlight,
 # eDP-1 -> .../card1-eDP-1/intel_backlight). Fully generic -- no per-host device
 # names -- so it is harmless on single-screen hosts (falls back to all-internal).
@@ -103,8 +103,8 @@ step() {
     op="${size}%${dir}"
     if [ -n "$focused" ]; then
         local out dev
-        if [ -n "${SCROLLSOCK:-}" ] || [ -z "${NIRI_SOCKET:-}" ]; then
-            out="$(scrollmsg -r -t get_outputs | jq -r 'map(select(.focused))[0].name // empty')"
+        if [ -n "${SWAYSOCK:-}" ] || [ -z "${NIRI_SOCKET:-}" ]; then
+            out="$(swaymsg -r -t get_outputs | jq -r 'map(select(.focused))[0].name // empty')"
         else
             out="$(niri msg -j focused-output | jq -r '.name // empty')"
         fi
