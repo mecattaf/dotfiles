@@ -54,7 +54,7 @@ tool stop it.
 - Tom says a thread is done: `project thread resolve <p> <T> "<his words>"`.
   He wants a project, or a project's goal, repos or instructions changed:
   `project new <key> --name --goal`, `project set <p> <field> <value>`,
-  `project instructions set <p> --file -`, on his word only.
+  `project instructions set <p> --file /dev/stdin`, on his word only.
 
 Set `--priority high|medium|low` or `--due YYYY-MM-DD` only from Tom's own
 words (`urgent` is high; `tomorrow`, `tonight` and `end of the day` are
