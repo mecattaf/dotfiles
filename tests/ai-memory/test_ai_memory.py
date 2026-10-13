@@ -254,18 +254,19 @@ class SkillBoundaryTests(unittest.TestCase):
     def test_drain_skill_names_the_gpu_seam_the_distillation_runs_on(self) -> None:
         drain = DRAIN_SKILL.read_text()
         # A session reading only the frontmatter description must learn which
-        # engine answers — the Halogen server on the worker, reached through
+        # engine answers — the local model server on the strix, reached through
         # the utility-model wrapper — because the skills tree is hot-loaded
         # through an out-of-store symlink and the body may never be read.
         description = drain.split("---")[1]
         self.assertIn("GPU utility model", description)
-        self.assertIn("Halogen", description)
-        self.assertIn("worker", description)
+        self.assertIn("local model server", description)
+        self.assertNotIn("Halogen", description)
         self.assertNotIn("RETIRED", description)
         # The body must name where the request goes, must not claim the path
         # is gone, and must not send a session off to change a host's
         # configuration and retry.
-        self.assertIn("Halogen", drain)
+        self.assertIn("local model server", drain)
+        self.assertIn("qwen3.8-flash-next", drain)
         self.assertIn("http://strix:8731", drain)
         self.assertIn("strix only", drain)
         self.assertNotIn("switch the strix configuration", drain)
@@ -557,8 +558,8 @@ class DrainTests(unittest.TestCase):
 
     def test_default_invoker_forwards_through_the_installed_wrapper(self) -> None:
         # The default invoker's whole job is to shell out to the
-        # `utility-model` wrapper, which forwards to the Halogen server on the
-        # worker. Prove the seam is wired end to end here: the stable id
+        # `utility-model` wrapper, which forwards to the local model server on
+        # the strix. Prove the seam is wired end to end here: the stable id
         # goes out on stdin, the wrapper's stdout comes back as the response,
         # and a real note gets written from it.
         wrapper_dir = self.root / "bin"
@@ -625,7 +626,7 @@ class DrainTests(unittest.TestCase):
                     now=datetime.fromisoformat("2026-08-29T10:00:00+02:00"),
                 )
         message = str(caught.exception)
-        self.assertIn("Halogen", message)
+        self.assertIn("local model server", message)
         self.assertIn("strix only", message)
         self.assertNotIn("NPU", message)
         self.assertNotIn("switch the strix configuration", message)

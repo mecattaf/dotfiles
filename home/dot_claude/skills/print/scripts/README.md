@@ -13,7 +13,7 @@ hand: make a PDF without printing, and compare typefaces.
       [--target-pages N] [--page-slack N] [--profile P] [--sides one-sided|duplex] [--output-dir DIR]
 
 The request-scoped utility model (`utility-model` on the strix, which
-forwards to the Halogen server on the worker) picks profile, one-page
+forwards to the local model server on the strix) picks profile, one-page
 enforcement, duplex, filename and title; `--profile`/`--sides` override it.
 Classification failure is non-fatal: one stderr line, the deterministic
 default (source-serif, duplex, no one-page enforcement), provenance
