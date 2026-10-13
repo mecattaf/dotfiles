@@ -80,8 +80,7 @@ in
       # Same single-process shape the strix ran: API + GC + storage.
       mode = "monolithic";
       settings = {
-        # nftables admits LAN clients below; omarchy-update-center.nix admits
-        # the Headscale distribution path, further restricted by its ACL.
+        # nftables admits LAN clients below.
         listen = "[::]:8080";
         # ── Chunking, sized for THIS cache and not for a public one (#234) ──
         # attic's defaults are avg 64 KiB / min 16 KiB / max 256 KiB, with

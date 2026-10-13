@@ -5,11 +5,13 @@
   ...
 }:
 # services.academicDrain.standing: lane B of the academic OCR drain, standing on the substrate (conwip) floor.
-# Declared ON on the strix since 2026-09-25.
+# Declared ON on the strix 2026-09-25, OFF since 2026-09-30. Since 2026-10-13 it has no timer at all (no scheduled
+# agent work in dotfiles, #484): the service is started by hand or by a factory schedule. "Every night" and "the
+# timer" below describe that start, whoever makes it.
 #
 # RULING. Tom, 2026-09-25 17:51Z: "it would be better to have the changes made durable, in dotfiles through
 # PR's. that way the academic ocr task drain is "permamnently" registered on the factory floor". Registered here
-# means: every night at `onCalendar` a user timer submits ~/mecattaf/academic-drain/ocr.substrate.workflow.js to
+# means: each start (at most once a night) submits ~/mecattaf/academic-drain/ocr.substrate.workflow.js to
 # the floor under the per-night run id acadlb<YYYYMMDD>, with `args` plus day = today. The shared receipt root
 # (<out>/ledger.jsonl on Strix) makes each night resume where the last stopped, and the run id is an
 # idempotency key: the same id with the same script sha256 and args answers created:false, the same id with other
@@ -252,7 +254,7 @@ in
       type = types.str;
       default = config.services.substrate.user;
       defaultText = lib.literalExpression "config.services.substrate.user";
-      description = "The login whose user manager runs the timer (the puller's).";
+      description = "The login whose user manager runs the service (the puller's).";
     };
 
     workflowFile = mkOption {
@@ -266,12 +268,6 @@ in
       default = sub.floorUrl;
       defaultText = lib.literalExpression "config.services.substrate.floorUrl";
       description = "The floor's base URL (HTTPS).";
-    };
-
-    onCalendar = mkOption {
-      type = types.str;
-      default = "*-*-* 01:30:00";
-      description = "When the timer fires (systemd.time OnCalendar). Persistent = false: a missed night is not caught up.";
     };
 
     runName = mkOption {
@@ -308,7 +304,7 @@ in
       type = types.str;
       default = "${home}/.local/state/academic-drain/STANDING-OFF";
       defaultText = lib.literalExpression ''"''${home}/.local/state/academic-drain/STANDING-OFF"'';
-      description = "While this file exists on this box, the timer submits nothing.";
+      description = "While this file exists on this box, a start submits nothing.";
     };
 
     submitScript = mkOption {
@@ -369,16 +365,6 @@ in
         UMask = "0077";
         NoNewPrivileges = true;
         TimeoutStartSec = "5min";
-      };
-    };
-
-    systemd.user.timers.academic-drain-standing = {
-      description = "academic-drain-standing: the nightly lane B submit";
-      wantedBy = [ "timers.target" ];
-      unitConfig.ConditionUser = cfg.user;
-      timerConfig = {
-        OnCalendar = cfg.onCalendar;
-        Persistent = false;
       };
     };
   };
