@@ -1095,56 +1095,31 @@
             strix = self.nixosConfigurations.strix.config;
 
           in
-          # ── the tailnet sink, on its OWN control plane (2026-09-01) ────────
-          # This assertion once read `!nas.services.tailscale.enable` and was
-          # left inverted when the ws5 pivot landed — the NAS became the fleet's
-          # tailscale SINK and subnet router in commit 33fb9a15 while the check
-          # still demanded it have no tailnet identity, so `nix flake check` had
-          # been failing here ever since. Corrected with the #229 work in the
-          # direction the architecture actually went: the appliance IS the
-          # tailnet node and it advertises the house LAN.
-          #
-          # What changed 2026-09-01 is not WHETHER it has a tailnet but WHOSE:
-          # the appliance is now a client of the headscale running on itself
-          # (hosts/nas/headscale.nix), and controlplane.tailscale.com no longer
-          # holds its node key. The sink asserts below are untouched by that on
-          # purpose — routing features and the advertised route are properties of
-          # this node's job, not of who issues its netmap.
+          # ── the tailnet (2026-10-08, Tom's final closet decision) ──────────
+          # The NAS is the closet's subnet router on official Tailscale
+          # (hosts/nas/tailscale.nix): it advertises the house LAN so the
+          # Zenbook reaches every home device through one node. Headscale is
+          # gone, so no --login-server may be passed: its appearance would
+          # point the node at a control plane that no longer exists, and in
+          # extraSetFlags it would also fail the tailscaled-set unit on boot
+          # (`tailscale set` has no such flag).
           assert nas.services.tailscale.enable;
           assert nas.services.tailscale.useRoutingFeatures == "server";
           assert builtins.elem "--advertise-routes=10.42.0.0/24" nas.services.tailscale.extraUpFlags;
           assert builtins.elem "--advertise-routes=10.42.0.0/24" nas.services.tailscale.extraSetFlags;
-          # The control plane itself, asserted by SHAPE rather than by URL. The
-          # address and port are hosts/nas/headscale.nix's to choose and will
-          # change at its phase-2 public-endpoint flip; what must never drift is
-          # that SOME --login-server is passed (without it the node silently
-          # falls back to tailscale.com, which is a regression to the superseded
-          # #233 design and would look perfectly healthy) and that it is not
-          # tailscale.com's. --login-server rides extraUpFlags ONLY: `tailscale
-          # set` has no such flag, so its appearance in extraSetFlags would fail
-          # the packaged tailscaled-set unit on every boot — assert its absence
-          # there too, because that failure is a boot-time surprise, not an
-          # eval-time one.
           assert !builtins.any (nixpkgs.lib.hasPrefix "--login-server=") nas.services.tailscale.extraUpFlags;
           assert !builtins.any (nixpkgs.lib.hasInfix "tailscale.com") nas.services.tailscale.extraUpFlags;
           assert !builtins.any (nixpkgs.lib.hasPrefix "--login-server=") nas.services.tailscale.extraSetFlags;
-          # ...and the mirror image on the strix, which is the fleet's LAST
-          # official tailscale.com node and keeps it as the emergency rail
-          # (hosts/strix/tailscale.nix). The ABSENCE of --login-server is
-          # the entire content of "official tailscale.com", so it is the thing
-          # worth pinning: a well-meaning sweep that pointed this box at the
-          # NAS's headscale would destroy the rail's whole reason for existing —
-          # a fallback that shares a control plane with what it backs up.
-          assert !strix.services.tailscale.enable;
+          # The strix keeps its own Tailscale identity as an independent
+          # fallback for when the NAS is down (hosts/strix/tailscale.nix). It
+          # is a plain node, not a second router: the NAS stays the only one
+          # advertising the LAN, and no --login-server ties it to anything but
+          # official Tailscale.
+          assert strix.services.tailscale.enable;
           assert
             !builtins.any (nixpkgs.lib.hasPrefix "--login-server=") strix.services.tailscale.extraUpFlags;
-          # The worker is the counter-example that keeps the sink meaningful: a
-          # LAN compute node reached over ordinary SSH, with no node of its own
-          # on EITHER control plane. All three knobs still, but the reason
-          # changed on 2026-09-01: the empty flag lists used to be mkForced here
-          # against the fleet-wide default in modules/common.nix, and now hold by
-          # default because that default is gone. Asserting them is how a
-          # re-introduced fleet tailscale tier gets caught.
+          assert
+            !builtins.any (nixpkgs.lib.hasPrefix "--advertise-routes") strix.services.tailscale.extraUpFlags;
 
           # The NAS admits SSH/NFS via networking.firewall.extraInputRules,
           # which only renders under the nftables backend — with iptables the
@@ -2589,35 +2564,26 @@
           # carries exactly one and modules/common.nix carries none.
 
           assert nixpkgs.lib.elem "AddressFamily=inet" self.deploy.sshOpts;
-          # ── the emergency rail (2026-09-01) ────────────────────────────────
-          # This box owns its own tailnet since the fleet-wide default in
-          # modules/common.nix was retired; the enable assert is NEW and is the
-          # half that matters, because `extraUpFlags == [ "--ssh" ]` alone passed
-          # happily back when the flags came from the fleet tier and would pass
-          # again if the enable were dropped and the flags left behind as inert
-          # decoration. Exact list, not `elem`: the flag set is the rail's whole
-          # configuration and a silent addition to it is a change of posture.
-          assert !strix.services.tailscale.enable;
-          assert strix.services.tailscale.extraUpFlags == [ ];
-          assert strix.services.tailscale.extraSetFlags == [ ];
-          # ...and it must actually be able to JOIN unattended, which is the one
-          # property an idle fallback cannot prove by being idle. The authkey is
-          # wired by modules/secrets.nix's host-gated block, not by hand — assert
-          # the wiring rather than the file's existence, so a rename of the
-          # ciphertext or a change to that gate surfaces here.
+          # ── the strix fallback (2026-10-08) ────────────────────────────────
+          # The strix keeps its already enrolled official Tailscale identity as
+          # an independent path in when the NAS is down (hosts/strix/tailscale.nix).
+          # Exact lists, not `elem`: the flag set is the fallback's whole
+          # configuration, and a silent addition to it (a route, an exit node,
+          # Tailscale SSH) is a change of posture.
+          assert strix.services.tailscale.enable;
+          assert
+            strix.services.tailscale.extraUpFlags == [
+              "--hostname=strix"
+              "--accept-routes=false"
+              "--accept-dns=false"
+              "--ssh=false"
+            ];
+          assert strix.services.tailscale.extraSetFlags == strix.services.tailscale.extraUpFlags;
+          # It reuses its persistent state: no enrollment key is deployed, so a
+          # stale key can never silently re-join the box under a new identity.
           assert !(strix.age.secrets ? tailscale-authkey);
 
-          # The worker is the counter-example, and since 2026-09-01 the empty
-          # flag lists hold BY DEFAULT rather than by mkForce — which is the
-          # positive statement that no fleet-wide tailscale tier is back. Keep
-          # all three: they are the tripwire on modules/common.nix.
-
-          # No tailnet means no authkey secret may be declared for this host —
-          # the guard added to modules/secrets.nix with #229. A stale key here
-          # would silently re-join the box on its next flash.
-
-          # The NAS keeps a tailnet, on its OWN control plane — see the
-          # headscale block in nas-topology for the shape assert.
+          # The NAS is the subnet router; see the tailnet block in nas-topology.
           assert nas.services.tailscale.enable;
           assert nixpkgs.lib.elem "--advertise-routes=10.42.0.0/24" nas.services.tailscale.extraUpFlags;
           assert !nas.programs.niri.enable;
