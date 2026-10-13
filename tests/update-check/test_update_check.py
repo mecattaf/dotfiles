@@ -232,6 +232,12 @@ class PureHelpers(unittest.TestCase):
         with self.assertRaises(uc.CheckError):
             uc.rewrite_pin(text, "github:o/r/x", "github:o/r/y")
 
+    def test_a_snapshot_version_is_titled_by_its_release(self) -> None:
+        self.assertEqual(uc.pr_title("gufo", {"gufo": ("0-unstable-ae26ca4", "0-unstable-89d6185")},
+                                     "v0.15.0"), "update: gufo (gufo v0.15.0)")
+        self.assertEqual(uc.pr_title("herdr", {"herdr": ("0.9.3", "0.9.4")}, "v0.9.4"),
+                         "update: herdr (herdr 0.9.4)")
+
     def test_body_marker_round_trips_and_the_body_fits(self) -> None:
         report = {
             "input": "llm-agents", "to_rev": A1, "from_rev": A0, "base": "f" * 40,
@@ -302,6 +308,8 @@ class WatchFile(unittest.TestCase):
                 for src in e.get("notes", {}).values():
                     self.assertRegex(src["repo"], r"^[\w.-]+/[\w.-]+$")
                 self.assertTrue(e.get("switch"))
+                for out in e.get("build", []):
+                    self.assertRegex(out, r"^\.#[\w.-]+$")
 
 
 class Run(unittest.TestCase):

@@ -1,5 +1,5 @@
 {
-  "_comment": "What the nightly update check (home/dot_local/bin/update-check, #550) watches. One entry per flake input, one rolling PR per entry (branch update/<input>). follow = branch: the input tracks a branch and `nix flake update <input>` moves it. follow = release: flake.nix pins a tag or a commit, and the check moves the pin to the newest stable GitHub release. versions are flake attribute paths read before and after; notes name the GitHub releases whose bodies go into the PR for the version range. hosts are the closures the gate builds. switch is what a switch to the bump restarts, written for Tom. Adding a program is an edit here. The clock is a routine on the substrate floor (substrate T-7); nothing in this repo schedules it.",
+  "_comment": "What the nightly update check (home/dot_local/bin/update-check, #550) watches. One entry per flake input, one rolling PR per entry (branch update/<input>). follow = branch: the input tracks a branch and `nix flake update <input>` moves it. follow = release: flake.nix pins a tag or a commit, and the check moves the pin to the newest stable GitHub release. versions are flake attribute paths read before and after; notes name the GitHub releases whose bodies go into the PR for the version range. hosts are the closures the gate builds; build names any further flake output it builds (a package no host enables yet). switch is what a switch to the bump restarts, written for Tom. Adding a program is an edit here. The clock is a routine on the substrate floor (substrate T-7); nothing in this repo schedules it.",
   "inputs": [
     {
       "name": "llm-agents",
@@ -40,6 +40,7 @@
       "name": "gufo",
       "follow": "release",
       "hosts": ["strix"],
+      "build": [".#packages.x86_64-linux.gufo"],
       "versions": {
         "gufo": "packages.x86_64-linux.gufo.version"
       },

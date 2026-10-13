@@ -229,8 +229,10 @@ def day(timestamp: int | str | None) -> str:
     return str(timestamp)[:10]
 
 
-def pr_title(name: str, changed: dict[str, tuple[Any, Any]]) -> str:
-    parts = [f"{pkg} {new}" for pkg, (_, new) in changed.items()]
+def pr_title(name: str, changed: dict[str, tuple[Any, Any]], tag: str | None = None) -> str:
+    # A snapshot version (0-unstable-<sha>) says less than the release it is.
+    parts = [f"{pkg} {tag if tag and parse_version(new) is None else new}"
+             for pkg, (_, new) in changed.items()]
     head = ", ".join(parts[:4]) + (f", +{len(parts) - 4}" if len(parts) > 4 else "")
     return f"update: {name} ({head})"
 
@@ -487,9 +489,10 @@ class Run:
             steps.append(("format", ["nix", "fmt", "--", "--check", "flake.nix"]))
         steps.append(("flake check", ["nix", "flake", "check", "--no-build", "--keep-going"]))
         steps.append((
-            "build " + ", ".join(entry["hosts"]),
+            "build " + ", ".join(entry["hosts"] + [b.rsplit(".", 1)[-1] for b in entry.get("build", [])]),
             ["nix", "build", "--no-link", "--keep-going"]
-            + [f".#nixosConfigurations.{h}.config.system.build.toplevel" for h in entry["hosts"]],
+            + [f".#nixosConfigurations.{h}.config.system.build.toplevel" for h in entry["hosts"]]
+            + entry.get("build", []),
         ))
         deadline = time.monotonic() + GATE_TIMEOUT
         results = []
@@ -631,7 +634,7 @@ class Run:
         notes = self.notes(entry, node, before, after, up, old_tag)
         rec["gate"] = self.gate(wt, entry, flake_changed)
         body = build_body(rec, entry, notes)
-        title = pr_title(name, changed)
+        title = pr_title(name, changed, rec.get("tag"))
 
         remote = git("rev-parse", "-q", "--verify", f"refs/remotes/origin/{branch}", check=False)
         git("push", "-q", f"--force-with-lease=refs/heads/{branch}:{remote}", "origin",
