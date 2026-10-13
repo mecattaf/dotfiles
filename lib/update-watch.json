@@ -1,0 +1,78 @@
+{
+  "_comment": "What the nightly update check (home/dot_local/bin/update-check, #550) watches. One entry per flake input, one rolling PR per entry (branch update/<input>). follow = branch: the input tracks a branch and `nix flake update <input>` moves it. follow = release: flake.nix pins a tag or a commit, and the check moves the pin to the newest stable GitHub release. versions are flake attribute paths read before and after; notes name the GitHub releases whose bodies go into the PR for the version range. hosts are the closures the gate builds. switch is what a switch to the bump restarts, written for Tom. Adding a program is an edit here. The clock is a routine on the substrate floor (substrate T-7); nothing in this repo schedules it.",
+  "inputs": [
+    {
+      "name": "llm-agents",
+      "follow": "branch",
+      "hosts": ["strix", "client"],
+      "versions": {
+        "claude-code": "nixosConfigurations.strix.pkgs.llm-agents.claude-code.version",
+        "codex": "nixosConfigurations.strix.pkgs.llm-agents.codex.version",
+        "pi": "nixosConfigurations.strix.pkgs.llm-agents.pi.version",
+        "claude-agent-acp": "nixosConfigurations.strix.pkgs.llm-agents.claude-agent-acp.version",
+        "claude-code-router": "nixosConfigurations.strix.pkgs.llm-agents.claude-code-router.version",
+        "ccusage": "nixosConfigurations.strix.pkgs.llm-agents.ccusage.version",
+        "qmd": "nixosConfigurations.strix.pkgs.llm-agents.qmd.version",
+        "spec-kit": "nixosConfigurations.strix.pkgs.llm-agents.spec-kit.version",
+        "cc-switch-cli": "nixosConfigurations.strix.pkgs.llm-agents.cc-switch-cli.version",
+        "ck": "nixosConfigurations.strix.pkgs.llm-agents.ck.version"
+      },
+      "notes": {
+        "claude-code": { "repo": "anthropics/claude-code", "tagPrefix": "v" },
+        "codex": { "repo": "openai/codex", "tagPrefix": "rust-v" },
+        "pi": { "repo": "earendil-works/pi", "tagPrefix": "v" }
+      },
+      "switch": "Home Manager only. Running agent sessions keep the binary they started with; the next session starts on the new one. The substrate units find claude, codex and pi through the profile, so their unit text does not change and nothing restarts."
+    },
+    {
+      "name": "herdr",
+      "follow": "release",
+      "hosts": ["strix"],
+      "versions": {
+        "herdr": "inputs.herdr.packages.x86_64-linux.herdr.version"
+      },
+      "notes": {
+        "herdr": { "repo": "herdrdev/herdr", "tagPrefix": "v" }
+      },
+      "switch": "The herdr server keeps X-SwitchMethod=keep-old, so a switch never kills a live PTY. The new server runs only after a deliberate `systemctl --user restart herdr`, and existing clients need a new projector launch."
+    },
+    {
+      "name": "gufo",
+      "follow": "release",
+      "hosts": ["strix"],
+      "versions": {
+        "gufo": "packages.x86_64-linux.gufo.version"
+      },
+      "notes": {
+        "gufo": { "repo": "gufo-org/gufo", "tagPrefix": "v" }
+      },
+      "switch": "Restarts gufo-llm.service once Gufo is enabled on the strix (a short gap on strix:8731 while the model reloads). Before the cutover nothing runs it. Gufo pins its model collection in its docs: a bump can move the revisions lib/gufo-models.json records."
+    },
+    {
+      "name": "vicinae",
+      "follow": "release",
+      "hosts": ["client"],
+      "versions": {
+        "vicinae": "inputs.vicinae.packages.x86_64-linux.default.version"
+      },
+      "notes": {
+        "vicinae": { "repo": "vicinaehq/vicinae", "tagPrefix": "v" }
+      },
+      "switch": "Client only, through `deploy .#client`. The Vicinae user service restarts in the Sway session."
+    },
+    {
+      "name": "nixpkgs-fresh",
+      "follow": "branch",
+      "hosts": ["strix", "client", "nas"],
+      "versions": {
+        "google-chrome": "nixosConfigurations.client.pkgs.google-chrome.version",
+        "uv": "nixosConfigurations.strix.pkgs.uv.version",
+        "linux (strix)": "nixosConfigurations.strix.config.boot.kernelPackages.kernel.version",
+        "linux (nas)": "nixosConfigurations.nas.config.boot.kernelPackages.kernel.version",
+        "linux (client)": "nixosConfigurations.client.config.boot.kernelPackages.kernel.version"
+      },
+      "notes": {},
+      "switch": "A new kernel is only staged: it runs after the next reboot, which stays Tom's to name. Chrome on the client updates with `deploy .#client`; the NAS takes this only on a NAS deploy, which is a decision."
+    }
+  ]
+}
