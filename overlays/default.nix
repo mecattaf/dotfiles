@@ -64,9 +64,6 @@ final: prev: {
   # check in flake.nix can build and drive it directly.
   local-models-prune = final.callPackage ../pkgs/local-models-prune.nix { };
 
-  # Headless calendar CLI, vendored with its package definition.
-  dcal = final.callPackage ../pkgs/dcal/nix/package.nix { };
-
   # VibeVoice-ASR-Streaming-7B call transcription. Torch is the gfx1151 ROCm
   # wheel bundle from nix-strix-halo; upstream VibeVoice is pinned by commit, and
   # transformers 4.57.6 / huggingface-hub 0.36.2 come from pinned PyPI wheels

@@ -1,5 +1,8 @@
 # DECISIONS
 
+2026-10-13 the Go CRM CLI and dcal are REMOVED from dotfiles, no tag kept
+(#452, #528). Tom: "remove go crm and dcal. fully. no tag"
+
 2026-10-01 DIRECTION (not yet landed): drop Caddy for artifacts; Cloudflare
 Pages serves them.
 

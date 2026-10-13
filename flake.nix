@@ -560,7 +560,6 @@
             call-diarize
             browser-desktop
             chrome-stream
-            dcal
             fleet-status
             # `nix run .#fontbuilder -- <capture-dir> <out-dir>` — the press for
             # the Anthropic suite. Exported because that IS the invocation. The
@@ -1746,7 +1745,7 @@
           # Remmina profile — asserted below as an equality, absent since the
           # 2026-09-11 flip — and no
           # `client (VNC)` profile ever exists on the strix, in either
-          # direction of the flip), no dcal daemon, no :5900 door, no
+          # direction of the flip), no :5900 door, no
           # seat-feeder clocks. Touch is mapped globally to
           # eDP-1 on stock niri (PR #1856 accepted as a defect, no fork).
           assert clientHome.home.username == "tom";
@@ -1799,8 +1798,6 @@
           assert !(builtins.any (p: nixpkgs.lib.getName p == "herdr-kitten") clientHome.home.packages);
           assert !(clientHome.systemd.user.services ? wayvnc);
           assert !(clientHome.xdg.configFile ? "wayvnc/config");
-          assert !(clientHome.systemd.user.services ? dcal-daemon);
-          assert strixHome.systemd.user.services ? dcal-daemon;
           # Physical-session VNC stays retired on both seats.
           assert !(clientHome.xdg.dataFile ? "remmina/strix.remmina");
           assert !(strixHome.xdg.dataFile ? "remmina/client.remmina");
