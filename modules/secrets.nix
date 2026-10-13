@@ -151,59 +151,6 @@ in
             chmod 600 "$cf"
           fi
         '';
-
-        # gws (Google Workspace CLI, personal account) — strix-only, same
-        # ruling as gh/wrangler above. Four files, copy-not-link throughout: gws
-        # rewrites credentials.enc + token_cache.json on token refresh, and
-        # client_secret.json/.encryption_key travel alongside them for consistency.
-        # See ~/.config/gws/HANDOFF.md (2026-07-10) for full provenance/rationale.
-        age.secrets.gws-client-secret = {
-          file = ../secrets/gws-client-secret.age;
-          owner = "tom";
-          group = "users";
-          mode = "600";
-        };
-        age.secrets.gws-credentials = {
-          file = ../secrets/gws-credentials.age;
-          owner = "tom";
-          group = "users";
-          mode = "600";
-        };
-        age.secrets.gws-encryption-key = {
-          file = ../secrets/gws-encryption-key.age;
-          owner = "tom";
-          group = "users";
-          mode = "600";
-        };
-        age.secrets.gws-token-cache = {
-          file = ../secrets/gws-token-cache.age;
-          owner = "tom";
-          group = "users";
-          mode = "600";
-        };
-        system.userActivationScripts.seedGwsCreds.text = ''
-          mkdir -p "$HOME/.config/gws"
-          dst="$HOME/.config/gws/client_secret.json"
-          if [ ! -e "$dst" ] && [ -r "${config.age.secrets.gws-client-secret.path}" ]; then
-            cp "${config.age.secrets.gws-client-secret.path}" "$dst"
-            chmod 600 "$dst"
-          fi
-          dst="$HOME/.config/gws/credentials.enc"
-          if [ ! -e "$dst" ] && [ -r "${config.age.secrets.gws-credentials.path}" ]; then
-            cp "${config.age.secrets.gws-credentials.path}" "$dst"
-            chmod 600 "$dst"
-          fi
-          dst="$HOME/.config/gws/.encryption_key"
-          if [ ! -e "$dst" ] && [ -r "${config.age.secrets.gws-encryption-key.path}" ]; then
-            cp "${config.age.secrets.gws-encryption-key.path}" "$dst"
-            chmod 600 "$dst"
-          fi
-          dst="$HOME/.config/gws/token_cache.json"
-          if [ ! -e "$dst" ] && [ -r "${config.age.secrets.gws-token-cache.path}" ]; then
-            cp "${config.age.secrets.gws-token-cache.path}" "$dst"
-            chmod 600 "$dst"
-          fi
-        '';
       })
 
       # Hugging Face read token — strix AND nas since 2026-08-28. The

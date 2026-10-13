@@ -65,7 +65,6 @@ final: prev: {
 
   # fgp-browser: intentionally NOT packaged here — picked up as part of the
   # agency agency browser project (custom Chromium surface). Tracked in issue #45.
-  # gws ships as a home package + agenix credentials, with no overlay.
 
   # Hugging Face Hub CLI — the Python package comes from the locked nixpkgs
   # input; this wrapper reads the coordinator's agenix token only at runtime.
