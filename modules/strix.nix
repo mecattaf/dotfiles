@@ -17,12 +17,19 @@
     # Typed model catalog, guarded store materialization, and host projections.
     ./local-models.nix
     ./halogen.nix
+    ./gufo.nix
   ];
 
   config = {
     services.local-models.artifacts = [
       "halogen-qwen38-flash-next"
       "halogen-qwen38-27b"
+      # Gufo (#525): Flash-Next and the 27B with its draft, loaned before the
+      # cutover with `sudo local-models-borrow --yes` (about 125 GiB). Halogen's
+      # two rows leave this list, and the strix, once Gufo serves.
+      "qwen38-flash-next-gguf"
+      "qwen38-27b-gguf"
+      "qwen38-27b-dflash2-gguf"
     ]
     ++ lib.optionals (config.networking.hostName == "strix") [
       # The one diarization model (Tom, 2026-09-16), loaded by call-diarize.
@@ -90,6 +97,40 @@
         environment = lib.optionalAttrs (config.networking.hostName == "strix") {
           HALOGEN_CACHE_MB = "8192";
         };
+      };
+    };
+
+    # Gufo replaces Halogen (#525): declared here, switched on at the cutover
+    # (enable = true together with services.halogen.autoStart = false), after
+    # its weights are borrowed. Until then nothing about it exists on the box.
+    services.gufo = {
+      enable = false;
+      lanInterface = "enp191s0";
+      alternates = {
+        qwen38-27b = {
+          artifact = "qwen38-27b-gguf";
+          servedModelName = "qwen3.8-27b";
+          mmproj = "mmproj-BF16.gguf";
+          dflashArtifact = "qwen38-27b-dflash2-gguf";
+          sessions = 4;
+          context = 131072;
+        };
+        # Text only, 80.76 GiB: one session, as Gufo's docs run it.
+        deepseek-v4-flash = {
+          artifact = "deepseek-v4-flash-gguf";
+          servedModelName = "deepseek-v4-flash";
+          dsparkArtifact = "deepseek-v4-flash-dspark-gguf";
+          sessions = 1;
+          context = 32768;
+        };
+      };
+      # The one voice (Tom, 2026-09-14): the K-2SO midway-B matched prefix and
+      # its transcript. qwentts.cpp stays the live voice until Tom has listened
+      # to Gufo's BF16 Base with it.
+      tts.voices.k2so = {
+        artifact = "qwen-k2so-midway-b";
+        wav = "b-prefix.wav";
+        text = "b-prefix.txt";
       };
     };
 

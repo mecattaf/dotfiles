@@ -194,6 +194,15 @@
     # own nixpkgs and provider pins (cache configured in common.nix).
     nix-strix-halo.url = "github:hellas-ai/nix-strix-halo";
 
+    # gufo — the fleet's local inference engine for Strix Halo (gfx1151), replacing
+    # Halogen (dotfiles #525). Tom, 2026-10-13: "i said let  move to gufo!! not
+    # halogen!!!!" and "use that as the full collection of modles that we use":
+    # its model set is the catalog in lib/local-models.nix. One native binary,
+    # no container (modules/gufo.nix). Pinned to the commit the catalog was read
+    # from. No nixpkgs.follows: upstream qualifies its build against its own
+    # nixpkgs pin (GCC 15.3, ROCm 7.2.3).
+    gufo.url = "github:gufo-org/gufo/ae26ca4a13f252a0424c23e4bd7662167f23b436";
+
     # microvm.nix — declarative microVMs (astro → microvm-nix/microvm.nix). The
     # instrument behind the /microvm skill: it exports nixosModules.{microvm,host}
     # and, per guest, a `config.microvm.declaredRunner` package. DEFAULT USAGE is
@@ -537,6 +546,8 @@
             llama-cpp-vulkan
             strix-halo-mes-firmware
             ;
+          # `nix build .#gufo` — the engine modules/gufo.nix runs (#525).
+          gufo = inputs.gufo.packages.${system}.default;
           live-iso = strixAi.live-iso;
           nas-installer-iso = nasInstaller.config.system.build.isoImage;
           # `nix build .#substrate-pusher`, `.#substrate-puller`: the strix's
@@ -2195,10 +2206,17 @@
           # no `allow` any more: nothing is a deployment, nothing is served by a
           # roster.
 
+          # Gufo (#525, Tom 2026-10-13: "use that as the full collection of
+          # modles that we use"): Flash-Next and the 27B with its draft join
+          # the strix's set before the cutover; Halogen's two rows leave it
+          # once Gufo serves.
           assert
             strix.services.local-models.artifacts == [
               "halogen-qwen38-flash-next"
               "halogen-qwen38-27b"
+              "qwen38-flash-next-gguf"
+              "qwen38-27b-gguf"
+              "qwen38-27b-dflash2-gguf"
               "vibevoice-asr-streaming-7b-bf16"
               "qwen3-tts-1.7b-base-q8-0"
               "qwen-k2so-midway-b"
@@ -2209,15 +2227,33 @@
           # embedder retired); no other top-level attribute — no deployments,
           # no backend kinds, no utility pointer.
           assert builtins.attrNames localModelCatalog == [ "artifacts" ];
+          # Plus Gufo's collection (lib/gufo-models.json), read from
+          # gufo-org/gufo at ae26ca4a; MiniMax H3 is gated until Tom accepts
+          # its licence, so library-fetch skips it and no host may want it.
           assert
             builtins.attrNames localModelCatalog.artifacts == [
+              "deepseek-v4-flash-dspark-gguf"
+              "deepseek-v4-flash-gguf"
               "halogen-qwen38-27b"
               "halogen-qwen38-flash-next"
+              "minimax-h3-fl2va"
+              "qwen-image-2.1"
               "qwen-k2so-midway-b"
+              "qwen3-asr-1.7b"
               "qwen3-tts-1.7b-base-q8-0"
+              "qwen3-tts-12hz-1.7b-base"
               "qwen3-tts-tokenizer-f32"
+              "qwen38-27b-dflash2-gguf"
+              "qwen38-27b-gguf"
+              "qwen38-flash-next-gguf"
               "vibevoice-asr-streaming-7b-bf16"
             ];
+          assert localModelCatalog.artifacts.minimax-h3-fl2va.source.gate != null;
+          assert builtins.all (id: localModelCatalog.artifacts.${id}.source.gate == null) (
+            builtins.filter (id: id != "minimax-h3-fl2va") (builtins.attrNames localModelCatalog.artifacts)
+          );
+          # Declared, not enabled: Halogen serves until the cutover.
+          assert !strix.services.gufo.enable;
           assert localModelCatalog.artifacts.halogen-qwen38-flash-next.source.layout == "snapshot";
           assert builtins.length localModelCatalog.artifacts.halogen-qwen38-flash-next.source.files == 9;
 

@@ -258,6 +258,12 @@ let
       message = "services.local-models.artifacts must not contain duplicate artifact IDs.";
     }
     {
+      assertion = lib.all (
+        artifactId: (catalog.artifacts.${artifactId}.source.gate or null) == null
+      ) cfg.artifacts;
+      message = "services.local-models.artifacts names a gated artifact (source.gate in lib/local-models.nix): it waits for Tom and cannot be wanted yet.";
+    }
+    {
       assertion = lib.all (artifactId: lib.elem artifactId artifactIds) cfg.artifacts;
       message = "services.local-models.artifacts references an unknown artifact ID.";
     }
