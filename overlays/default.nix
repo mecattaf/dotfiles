@@ -53,10 +53,6 @@ final: prev: {
   # comment in flake.nix, and the `let` in pkgs/ax/default.nix.
   ax = final.callPackage ../pkgs/ax { go_1_27 = go127; };
 
-  # Backlog.md — markdown-native task manager CLI (`backlog`). Not in nixpkgs;
-  # packaged from the upstream release binary (Bun compile). See pkgs/backlog-md.nix.
-  backlog-md = final.callPackage ../pkgs/backlog-md.nix { };
-
   # Personal git-backed CRM CLI, vendored with its package definition.
   crm = final.callPackage ../pkgs/crm/nix/package.nix { };
 
